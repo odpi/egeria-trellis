@@ -1,0 +1,1639 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;600&amp;family=Lora:wght@400;500&amp;display=swap">
+  <style>
+    :root{
+      --paper:#f3f2f2; --rule:rgba(32,31,29,.16); --rule-strong:#8e8a8a;
+      --ink:#201f1d; --ink-muted:#4a463e;
+      --accent:#b68235; --accent-ink:#7d5411;
+      --ok:#1d6b3f; --warn:#9c4212; --gap:#5b4a9c;
+      --s1:4.6px; --s2:9.2px; --s3:13.8px; --s4:18.4px; --s6:27.6px;
+      --heading:"Cormorant Garamond",Georgia,serif;
+      --body:"Lora",Georgia,serif;
+      --mono:ui-monospace,"SF Mono",Menlo,monospace;
+    }
+    *{box-sizing:border-box}
+    body{margin:0;font-family:var(--body);background:var(--paper);color:var(--ink);font-size:15px;line-height:1.55}
+    .tnum{font-feature-settings:"tnum";font-variant-numeric:tabular-nums}
+    .mono{font-family:var(--mono);font-size:.87em}
+    .caps{font-family:var(--heading);font-weight:600;font-size:12px;letter-spacing:.09em;text-transform:uppercase}
+    .prov{font-size:13px;line-height:1.45}
+    .h{font-family:var(--heading);font-weight:600}
+    .lnk{color:var(--accent-ink);text-decoration:underline;text-underline-offset:3px}
+    .card{border:1px solid var(--rule);border-radius:2px;padding:var(--s3);background:#fff}
+    .mine{border-left:3px solid var(--gap);padding-left:var(--s3)}
+    .bad{border-left:3px solid var(--warn);padding-left:var(--s3)}
+    .good{border-left:3px solid var(--ok);padding-left:var(--s3)}
+    .btn{display:inline-block;border:1px solid var(--rule-strong);border-radius:2px;
+         padding:1px var(--s2);font-size:12px;margin-right:var(--s1)}
+    .kv{display:grid;grid-template-columns:118px minmax(0,1fr);gap:var(--s1) var(--s3);font-size:13px}
+    .kv dt{color:var(--ink-muted)}
+    .kv dd{margin:0}
+    .nullbar{height:9px;background:#e6e4e0;border-radius:1px;overflow:hidden;width:190px}
+    .nullbar i{display:block;height:100%;background:var(--accent)}
+    .hatch{background-image:repeating-linear-gradient(45deg,#e6e4e0 0 5px,#f3f2f2 5px 10px);
+           border:1px dashed var(--rule-strong);border-radius:2px}
+    /* classic, as it actually renders: dark slate chrome */
+    .classic{background:#0f172a;color:#cbd5e1;font-family:ui-sans-serif,system-ui,sans-serif;
+             font-size:12px;padding:var(--s3);border-radius:3px;line-height:1.7}
+    .classic .amber{background:rgba(245,158,11,.2);color:#fbbf24;font-size:10px;
+                    text-transform:uppercase;font-weight:600;padding:0 4px;border-radius:3px}
+    .classic .dim{color:#64748b}
+    /* the proposed /next chip: ink outline, not a state colour */
+    .chip{display:inline-block;border:1px solid var(--ink-muted);border-radius:2px;
+          padding:0 5px;font-size:10px;letter-spacing:.08em;text-transform:uppercase;
+          font-family:var(--heading);font-weight:600;color:var(--ink-muted);vertical-align:2px}
+  </style>
+</helmet>
+<div style="width:1400px;padding:var(--s6) var(--s6) 60px">
+
+  <div style="border-bottom:1px solid var(--rule-strong);padding-bottom:var(--s4)">
+    <div class="caps" style="color:var(--accent-ink)">Relationship Graph &middot; drawn from the real edges, not a mock</div>
+    <h1 class="h" style="font-weight:400;font-size:38px;margin:var(--s3) 0 var(--s2);max-width:40ch">AdventureWorks&rsquo; 91 foreign keys, at three zoom levels</h1>
+    <p style="max-width:92ch;margin:0">
+      Every edge here was fetched on 28 Sep from <span class="mono">GET /api/databases/laz_local_adventureworks/survey-results</span>,
+      the <span class="mono">db_relationship_graph</span> result the By-analysis tab is built from, and laid out with Graphviz
+      (<span class="mono">dot</span>). Nothing is illustrative. The counts match the analysis exactly: 68 tables, 91 keys,
+      20 of them crossing a schema boundary, 2 components, 1 table with no keys at all. <b style="font-weight:500">Arrows
+      point at the table being referenced</b>, so many arrows into a node make it a hub.
+    </p>
+  </div>
+
+  <div style="margin-top:var(--s6)">
+    <div class="caps" style="color:var(--ink-muted)">One &middot; the schema map, the entry point at any size</div>
+    <div class="card" style="max-width:1300px;margin-top:var(--s2)">
+      <svg width="100%"
+ viewBox="0.00 0.00 1070.80 256.80" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+<g id="graph0" class="graph" transform="scale(1 1) rotate(0) translate(14.4 242.4)">
+<title>G</title>
+
+<g id="node1" class="node">
+<title>person</title>
+<path fill="#ffffff" stroke="#201f1d" stroke-width="1.52" d="M141,-139.5C141,-139.5 12,-139.5 12,-139.5 6,-139.5 0,-133.5 0,-127.5 0,-127.5 0,-114.5 0,-114.5 0,-108.5 6,-102.5 12,-102.5 12,-102.5 141,-102.5 141,-102.5 147,-102.5 153,-108.5 153,-114.5 153,-114.5 153,-127.5 153,-127.5 153,-133.5 147,-139.5 141,-139.5"/>
+<text text-anchor="start" x="51" y="-123.1" font-family="Lora,Georgia,serif" font-weight="bold" font-size="13.00" fill="#201f1d">person</text>
+<text text-anchor="start" x="13" y="-112.5" font-family="Lora,Georgia,serif" font-size="10.00" fill="#4a463e">13 tables · 13 keys inside</text>
+</g>
+
+<g id="node5" class="node">
+<title>sales</title>
+<path fill="#ffffff" stroke="#201f1d" stroke-width="1.76" d="M367,-205.5C367,-205.5 238,-205.5 238,-205.5 232,-205.5 226,-199.5 226,-193.5 226,-193.5 226,-180.5 226,-180.5 226,-174.5 232,-168.5 238,-168.5 238,-168.5 367,-168.5 367,-168.5 373,-168.5 379,-174.5 379,-180.5 379,-180.5 379,-193.5 379,-193.5 379,-199.5 373,-205.5 367,-205.5"/>
+<text text-anchor="start" x="284" y="-189.1" font-family="Lora,Georgia,serif" font-weight="bold" font-size="13.00" fill="#201f1d">sales</text>
+<text text-anchor="start" x="239" y="-178.5" font-family="Lora,Georgia,serif" font-size="10.00" fill="#4a463e">19 tables · 22 keys inside</text>
+</g>
+
+<g id="edge5" class="edge">
+<title>person&#45;&gt;sales</title>
+<path fill="none" stroke="#4a463e" stroke-width="1.25" d="M119.13,-139.55C139.07,-147.9 163.46,-157.35 186,-164 196.56,-167.11 207.78,-169.94 218.92,-172.45"/>
+<polygon fill="#4a463e" stroke="#4a463e" stroke-width="1.25" points="218.48,-174.86 225.84,-173.98 219.53,-170.08 218.48,-174.86"/>
+<text text-anchor="middle" x="189.5" y="-169.2" font-family="Lora,Georgia,serif" font-size="11.00" fill="#201f1d">1</text>
+</g>
+
+<g id="node2" class="node">
+<title>humanresources</title>
+<path fill="#ffffff" stroke="#201f1d" stroke-width="1.24" d="M1030,-142.5C1030,-142.5 904,-142.5 904,-142.5 898,-142.5 892,-136.5 892,-130.5 892,-130.5 892,-117.5 892,-117.5 892,-111.5 898,-105.5 904,-105.5 904,-105.5 1030,-105.5 1030,-105.5 1036,-105.5 1042,-111.5 1042,-117.5 1042,-117.5 1042,-130.5 1042,-130.5 1042,-136.5 1036,-142.5 1030,-142.5"/>
+<text text-anchor="start" x="905" y="-126.1" font-family="Lora,Georgia,serif" font-weight="bold" font-size="13.00" fill="#201f1d">humanresources</text>
+<text text-anchor="start" x="909.5" y="-115.5" font-family="Lora,Georgia,serif" font-size="10.00" fill="#4a463e">6 tables · 5 keys inside</text>
+</g>
+
+<g id="edge4" class="edge">
+<title>humanresources&#45;&gt;person</title>
+<path fill="none" stroke="#4a463e" stroke-width="1.25" d="M947.99,-105.44C912.4,-70.84 829.07,0 743.5,0 301.5,0 301.5,0 301.5,0 220.4,0 140.49,-62.15 101.72,-97.37"/>
+<polygon fill="#4a463e" stroke="#4a463e" stroke-width="1.25" points="99.79,-95.81 96.3,-102.36 103.11,-99.42 99.79,-95.81"/>
+<text text-anchor="middle" x="522.5" y="-3.2" font-family="Lora,Georgia,serif" font-size="11.00" fill="#201f1d">1</text>
+</g>
+
+<g id="node3" class="node">
+<title>production</title>
+<path fill="#ffffff" stroke="#201f1d" stroke-width="2" d="M807,-176.5C807,-176.5 678,-176.5 678,-176.5 672,-176.5 666,-170.5 666,-164.5 666,-164.5 666,-151.5 666,-151.5 666,-145.5 672,-139.5 678,-139.5 678,-139.5 807,-139.5 807,-139.5 813,-139.5 819,-145.5 819,-151.5 819,-151.5 819,-164.5 819,-164.5 819,-170.5 813,-176.5 807,-176.5"/>
+<text text-anchor="start" x="701.5" y="-160.1" font-family="Lora,Georgia,serif" font-weight="bold" font-size="13.00" fill="#201f1d">production</text>
+<text text-anchor="start" x="679" y="-149.5" font-family="Lora,Georgia,serif" font-size="10.00" fill="#4a463e">25 tables · 27 keys inside</text>
+</g>
+
+<g id="edge6" class="edge">
+<title>production&#45;&gt;humanresources</title>
+<path fill="none" stroke="#4a463e" stroke-width="1.25" d="M819.14,-146.44C840.19,-143.22 863.15,-139.72 884.52,-136.45"/>
+<polygon fill="#4a463e" stroke="#4a463e" stroke-width="1.25" points="885.15,-138.83 891.7,-135.35 884.41,-133.99 885.15,-138.83"/>
+<text text-anchor="middle" x="855.5" y="-144.2" font-family="Lora,Georgia,serif" font-size="11.00" fill="#201f1d">1</text>
+</g>
+
+<g id="node4" class="node">
+<title>purchasing</title>
+<path fill="#ffffff" stroke="#201f1d" stroke-width="1.2" d="M581,-112.5C581,-112.5 464,-112.5 464,-112.5 458,-112.5 452,-106.5 452,-100.5 452,-100.5 452,-87.5 452,-87.5 452,-81.5 458,-75.5 464,-75.5 464,-75.5 581,-75.5 581,-75.5 587,-75.5 593,-81.5 593,-87.5 593,-87.5 593,-100.5 593,-100.5 593,-106.5 587,-112.5 581,-112.5"/>
+<text text-anchor="start" x="480.5" y="-96.1" font-family="Lora,Georgia,serif" font-weight="bold" font-size="13.00" fill="#201f1d">purchasing</text>
+<text text-anchor="start" x="465" y="-85.5" font-family="Lora,Georgia,serif" font-size="10.00" fill="#4a463e">5 tables · 4 keys inside</text>
+</g>
+
+<g id="edge8" class="edge">
+<title>purchasing&#45;&gt;person</title>
+<path fill="none" stroke="#4a463e" stroke-width="1.25" d="M451.76,-98.24C372.81,-103.04 244.27,-110.86 160.3,-115.97"/>
+<polygon fill="#4a463e" stroke="#4a463e" stroke-width="1.25" points="159.91,-113.53 153.07,-116.4 160.21,-118.43 159.91,-113.53"/>
+<text text-anchor="middle" x="302.5" y="-115.2" font-family="Lora,Georgia,serif" font-size="11.00" fill="#201f1d">1</text>
+</g>
+
+<g id="edge7" class="edge">
+<title>purchasing&#45;&gt;humanresources</title>
+<path fill="none" stroke="#4a463e" stroke-width="1.25" d="M593.12,-96.53C653.04,-98.95 741.79,-103.1 819,-109 840.26,-110.62 863.2,-112.77 884.5,-114.94"/>
+<polygon fill="#4a463e" stroke="#4a463e" stroke-width="1.25" points="884.45,-117.39 891.66,-115.67 884.95,-112.52 884.45,-117.39"/>
+<text text-anchor="middle" x="742.5" y="-112.2" font-family="Lora,Georgia,serif" font-size="11.00" fill="#201f1d">1</text>
+</g>
+
+<g id="edge2" class="edge">
+<title>purchasing&#45;&gt;production</title>
+<path fill="none" stroke="#4a463e" stroke-width="2.15" d="M586.55,-112.51C613.1,-120.31 644.1,-129.41 671.36,-137.41"/>
+<polygon fill="#4a463e" stroke="#4a463e" stroke-width="2.15" points="670.8,-139.8 678.21,-139.42 672.18,-135.1 670.8,-139.8"/>
+<text text-anchor="middle" x="629.5" y="-129.2" font-family="Lora,Georgia,serif" font-size="11.00" fill="#201f1d">3</text>
+</g>
+
+<g id="edge1" class="edge">
+<title>sales&#45;&gt;person</title>
+<path fill="none" stroke="#4a463e" stroke-width="4.4" d="M251.87,-168.46C233.51,-161.9 212.43,-154.74 193,-149 182.43,-145.88 171.24,-142.84 160.16,-139.98"/>
+<polygon fill="#4a463e" stroke="#4a463e" stroke-width="4.4" points="160.72,-137.35 153.27,-138.23 159.39,-142.57 160.72,-137.35"/>
+<text text-anchor="middle" x="189.5" y="-152.2" font-family="Lora,Georgia,serif" font-size="11.00" fill="#201f1d">8</text>
+</g>
+
+<g id="edge10" class="edge">
+<title>sales&#45;&gt;humanresources</title>
+<path fill="none" stroke="#4a463e" stroke-width="1.25" d="M379.11,-203.55C390.1,-205.39 401.3,-206.97 412,-208 415.1,-208.3 415.89,-208.05 419,-208 596.85,-205.11 646.28,-237.49 819,-195 859.43,-185.05 901.86,-163.15 930.68,-146.28"/>
+<polygon fill="#4a463e" stroke="#4a463e" stroke-width="1.25" points="932.21,-148.22 936.98,-142.55 929.71,-144.01 932.21,-148.22"/>
+<text text-anchor="middle" x="629.5" y="-219.2" font-family="Lora,Georgia,serif" font-size="11.00" fill="#201f1d">1</text>
+</g>
+
+<g id="edge3" class="edge">
+<title>sales&#45;&gt;production</title>
+<path fill="none" stroke="#4a463e" stroke-width="1.7" d="M379.29,-181.98C457.25,-176.82 578.32,-168.8 658.73,-163.48"/>
+<polygon fill="#4a463e" stroke="#4a463e" stroke-width="1.7" points="659.08,-165.91 665.9,-163.01 658.75,-161.02 659.08,-165.91"/>
+<text text-anchor="middle" x="522.5" y="-180.2" font-family="Lora,Georgia,serif" font-size="11.00" fill="#201f1d">2</text>
+</g>
+
+<g id="edge9" class="edge">
+<title>sales&#45;&gt;purchasing</title>
+<path fill="none" stroke="#4a463e" stroke-width="1.25" d="M347.09,-168.4C382.89,-153.13 433.61,-131.49 471.14,-115.48"/>
+<polygon fill="#4a463e" stroke="#4a463e" stroke-width="1.25" points="472.51,-117.56 477.98,-112.56 470.58,-113.06 472.51,-117.56"/>
+<text text-anchor="middle" x="415.5" y="-144.2" font-family="Lora,Georgia,serif" font-size="11.00" fill="#201f1d">1</text>
+</g>
+</g>
+</svg>
+
+      <p class="prov" style="margin:var(--s2) 0 0;color:var(--ink-muted);max-width:92ch">
+        Five nodes and ten lines, whatever size the database is. <b style="font-weight:500" class="ink">It answers the owner&rsquo;s question at a
+        glance</b>: <span class="mono">sales</span> leans on <span class="mono">person</span> (8 keys), <span class="mono">purchasing</span>
+        on <span class="mono">production</span> (3), and everything eventually reaches <span class="mono">humanresources.employee</span>.
+        <b style="font-weight:500">Not drawn:</b> <span class="mono">hr, pe, pr, pu, sa</span>, which hold only views (views declare no keys), and
+        <span class="mono">public</span>, which has no tables. The caption has to say so, or six of the eleven schemas silently vanish.
+      </p>
+    </div>
+  </div>
+
+  <div style="margin-top:var(--s6)">
+    <div class="caps" style="color:var(--ink-muted)">Two &middot; the whole database, 68 tables: at this size it still reads</div>
+    <div class="card" style="max-width:1300px;margin-top:var(--s2)">
+      <svg width="100%"
+ viewBox="0.00 0.00 1121.80 846.80" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+<g id="graph0" class="graph" transform="scale(1 1) rotate(0) translate(14.4 832.4)">
+<title>G</title>
+<g id="clust1" class="cluster">
+<title>cluster_person</title>
+<path fill="transparent" stroke="#c9c6c1" d="M385,-671C385,-671 1073,-671 1073,-671 1079,-671 1085,-677 1085,-683 1085,-683 1085,-798 1085,-798 1085,-804 1079,-810 1073,-810 1073,-810 385,-810 385,-810 379,-810 373,-804 373,-798 373,-798 373,-683 373,-683 373,-677 379,-671 385,-671"/>
+<text text-anchor="start" x="706" y="-797.4" font-family="Lora,Georgia,serif" font-weight="bold" font-size="12.00" fill="#201f1d">person</text>
+</g>
+<g id="clust2" class="cluster">
+<title>cluster_humanresources</title>
+<path fill="transparent" stroke="#c9c6c1" d="M371,-291C371,-291 664.5,-291 664.5,-291 670.5,-291 676.5,-297 676.5,-303 676.5,-303 676.5,-382 676.5,-382 676.5,-388 670.5,-394 664.5,-394 664.5,-394 371,-394 371,-394 365,-394 359,-388 359,-382 359,-382 359,-303 359,-303 359,-297 365,-291 371,-291"/>
+<text text-anchor="start" x="461.25" y="-381.4" font-family="Lora,Georgia,serif" font-weight="bold" font-size="12.00" fill="#201f1d">humanresources</text>
+</g>
+<g id="clust3" class="cluster">
+<title>cluster_production</title>
+<path fill="transparent" stroke="#c9c6c1" d="M27,-8C27,-8 814.5,-8 814.5,-8 820.5,-8 826.5,-14 826.5,-20 826.5,-20 826.5,-260 826.5,-260 826.5,-266 820.5,-272 814.5,-272 814.5,-272 27,-272 27,-272 21,-272 15,-266 15,-260 15,-260 15,-20 15,-20 15,-14 21,-8 27,-8"/>
+<text text-anchor="start" x="383.25" y="-259.4" font-family="Lora,Georgia,serif" font-weight="bold" font-size="12.00" fill="#201f1d">production</text>
+</g>
+<g id="clust4" class="cluster">
+<title>cluster_purchasing</title>
+<path fill="transparent" stroke="#c9c6c1" d="M39.5,-402C39.5,-402 463.5,-402 463.5,-402 469.5,-402 475.5,-408 475.5,-414 475.5,-414 475.5,-468 475.5,-468 475.5,-474 469.5,-480 463.5,-480 463.5,-480 39.5,-480 39.5,-480 33.5,-480 27.5,-474 27.5,-468 27.5,-468 27.5,-414 27.5,-414 27.5,-408 33.5,-402 39.5,-402"/>
+<text text-anchor="start" x="213.5" y="-467.4" font-family="Lora,Georgia,serif" font-weight="bold" font-size="12.00" fill="#201f1d">purchasing</text>
+</g>
+<g id="clust5" class="cluster">
+<title>cluster_sales</title>
+<path fill="transparent" stroke="#c9c6c1" d="M20,-488C20,-488 966,-488 966,-488 972,-488 978,-494 978,-500 978,-500 978,-651 978,-651 978,-657 972,-663 966,-663 966,-663 20,-663 20,-663 14,-663 8,-657 8,-651 8,-651 8,-500 8,-500 8,-494 14,-488 20,-488"/>
+<text text-anchor="start" x="476" y="-650.4" font-family="Lora,Georgia,serif" font-weight="bold" font-size="12.00" fill="#201f1d">sales</text>
+</g>
+
+<g id="node1" class="node">
+<title>person.address</title>
+<path fill="#ffffff" stroke="#8e8a8a" stroke-width="0.7" d="M797.17,-720C797.17,-720 753.83,-720 753.83,-720 751.17,-720 748.5,-717.33 748.5,-714.67 748.5,-714.67 748.5,-709.33 748.5,-709.33 748.5,-706.67 751.17,-704 753.83,-704 753.83,-704 797.17,-704 797.17,-704 799.83,-704 802.5,-706.67 802.5,-709.33 802.5,-709.33 802.5,-714.67 802.5,-714.67 802.5,-717.33 799.83,-720 797.17,-720"/>
+<text text-anchor="middle" x="775.5" y="-709.8" font-family="Lora,Georgia,serif" font-size="9.00" fill="#201f1d">address</text>
+</g>
+
+<g id="node13" class="node">
+<title>person.stateprovince</title>
+<path fill="#ffffff" stroke="#8e8a8a" stroke-width="0.7" d="M947.67,-707C947.67,-707 886.33,-707 886.33,-707 883.67,-707 881,-704.33 881,-701.67 881,-701.67 881,-696.33 881,-696.33 881,-693.67 883.67,-691 886.33,-691 886.33,-691 947.67,-691 947.67,-691 950.33,-691 953,-693.67 953,-696.33 953,-696.33 953,-701.67 953,-701.67 953,-704.33 950.33,-707 947.67,-707"/>
+<text text-anchor="middle" x="917" y="-696.8" font-family="Lora,Georgia,serif" font-size="9.00" fill="#201f1d">stateprovince</text>
+</g>
+
+<g id="edge7" class="edge">
+<title>person.address&#45;&gt;person.stateprovince</title>
+<path fill="none" stroke="#c9c6c1" stroke-width="0.7" d="M802.74,-709.55C823.46,-707.62 852.7,-704.9 876.29,-702.7"/>
+<polygon fill="#c9c6c1" stroke="#c9c6c1" stroke-width="0.7" points="876.59,-704.25 880.92,-702.27 876.3,-701.12 876.59,-704.25"/>
+</g>
+
+<g id="node2" class="node">
+<title>person.addresstype</title>
+<path fill="#ffffff" stroke="#8e8a8a" stroke-width="0.7" d="M802.67,-781C802.67,-781 748.33,-781 748.33,-781 745.67,-781 743,-778.33 743,-775.67 743,-775.67 743,-770.33 743,-770.33 743,-767.67 745.67,-765 748.33,-765 748.33,-765 802.67,-765 802.67,-765 805.33,-765 808,-767.67 808,-770.33 808,-770.33 808,-775.67 808,-775.67 808,-778.33 805.33,-781 802.67,-781"/>
+<text text-anchor="middle" x="775.5" y="-770.8" font-family="Lora,Georgia,serif" font-size="9.00" fill="#201f1d">addresstype</text>
+</g>
+
+<g id="node3" class="node">
+<title>person.businessentity</title>
+<path fill="#ffffff" stroke="#201f1d" stroke-width="1.4" d="M826.67,-695C826.67,-695 724.33,-695 724.33,-695 721.67,-695 719,-692.33 719,-689.67 719,-689.67 719,-684.33 719,-684.33 719,-681.67 721.67,-679 724.33,-679 724.33,-679 826.67,-679 826.67,-679 829.33,-679 832,-681.67 832,-684.33 832,-684.33 832,-689.67 832,-689.67 832,-692.33 829.33,-695 826.67,-695"/>
+<text text-anchor="start" x="723" y="-685.34" font-family="Lora,Georgia,serif" font-weight="bold" font-size="10.20" fill="#201f1d">businessentity</text>
+<text text-anchor="start" x="808" y="-685.34" font-family="Lora,Georgia,serif" font-size="10.20" fill="#201f1d"> </text>
+<text text-anchor="start" x="812" y="-685.34" font-family="Lora,Georgia,serif" font-size="10.20" fill="#4a463e">←5</text>
+</g>
+
+<g id="node4" class="node">
+<title>person.businessentityaddress</title>
+<path fill="#ffffff" stroke="#8e8a8a" stroke-width="0.7" d="M676.67,-781C676.67,-781 576.33,-781 576.33,-781 573.67,-781 571,-778.33 571,-775.67 571,-775.67 571,-770.33 571,-770.33 571,-767.67 573.67,-765 576.33,-765 576.33,-765 676.67,-765 676.67,-765 679.33,-765 682,-767.67 682,-770.33 682,-770.33 682,-775.67 682,-775.67 682,-778.33 679.33,-781 676.67,-781"/>
+<text text-anchor="middle" x="626.5" y="-770.8" font-family="Lora,Georgia,serif" font-size="9.00" fill="#201f1d">businessentityaddress</text>
+</g>
+
+<g id="edge9" class="edge">
+<title>person.businessentityaddress&#45;&gt;person.address</title>
+<path fill="none" stroke="#c9c6c1" stroke-width="0.7" d="M674.65,-764.91C678.88,-763.76 683.05,-762.46 687,-761 713.64,-751.13 741.87,-733.94 758.84,-722.76"/>
+<polygon fill="#c9c6c1" stroke="#c9c6c1" stroke-width="0.7" points="760.03,-723.86 762.9,-720.06 758.28,-721.24 760.03,-723.86"/>
+</g>
+
+<g id="edge10" class="edge">
+<title>person.businessentityaddress&#45;&gt;person.addresstype</title>
+<path fill="none" stroke="#c9c6c1" stroke-width="0.7" d="M682.24,-773C700.89,-773 721.27,-773 738.12,-773"/>
+<polygon fill="#c9c6c1" stroke="#c9c6c1" stroke-width="0.7" points="738.28,-774.58 742.78,-773 738.28,-771.43 738.28,-774.58"/>
+</g>
+
+<g id="edge8" class="edge">
+<title>person.businessentityaddress&#45;&gt;person.businessentity</title>
+<path fill="none" stroke="#c9c6c1" stroke-width="0.7" d="M680.83,-764.89C682.99,-763.74 685.06,-762.45 687,-761 711.5,-742.63 694.79,-718.74 719,-700 720.21,-699.06 721.48,-698.19 722.8,-697.38"/>
+<polygon fill="#c9c6c1" stroke="#c9c6c1" stroke-width="0.7" points="723.69,-698.68 726.87,-695.12 722.17,-695.93 723.69,-698.68"/>
+</g>
+
+<g id="node5" class="node">
+<title>person.businessentitycontact</title>
+<path fill="#ffffff" stroke="#8e8a8a" stroke-width="0.7" d="M485.67,-781C485.67,-781 386.33,-781 386.33,-781 383.67,-781 381,-778.33 381,-775.67 381,-775.67 381,-770.33 381,-770.33 381,-767.67 383.67,-765 386.33,-765 386.33,-765 485.67,-765 485.67,-765 488.33,-765 491,-767.67 491,-770.33 491,-770.33 491,-775.67 491,-775.67 491,-778.33 488.33,-781 485.67,-781"/>
+<text text-anchor="middle" x="436" y="-770.8" font-family="Lora,Georgia,serif" font-size="9.00" fill="#201f1d">businessentitycontact</text>
+</g>
+
+<g id="edge11" class="edge">
+<title>person.businessentitycontact&#45;&gt;person.businessentity</title>
+<path fill="none" stroke="#c9c6c1" stroke-width="0.7" d="M491.19,-771.49C505.51,-769.7 520.68,-766.53 534,-761 550.67,-754.09 549.22,-742.64 566,-736 616.21,-716.12 636.79,-744.88 687,-725 703.78,-718.36 702.72,-707.8 719,-700 721.64,-698.74 724.4,-697.59 727.23,-696.56"/>
+<polygon fill="#c9c6c1" stroke="#c9c6c1" stroke-width="0.7" points="727.98,-697.97 731.73,-695.02 726.96,-694.99 727.98,-697.97"/>
+</g>
+
+<g id="node6" class="node">
+<title>person.contacttype</title>
+<path fill="#ffffff" stroke="#8e8a8a" stroke-width="0.7" d="M652.67,-756C652.67,-756 600.33,-756 600.33,-756 597.67,-756 595,-753.33 595,-750.67 595,-750.67 595,-745.33 595,-745.33 595,-742.67 597.67,-740 600.33,-740 600.33,-740 652.67,-740 652.67,-740 655.33,-740 658,-742.67 658,-745.33 658,-745.33 658,-750.67 658,-750.67 658,-753.33 655.33,-756 652.67,-756"/>
+<text text-anchor="middle" x="626.5" y="-745.8" font-family="Lora,Georgia,serif" font-size="9.00" fill="#201f1d">contacttype</text>
+</g>
+
+<g id="edge13" class="edge">
+<title>person.businessentitycontact&#45;&gt;person.contacttype</title>
+<path fill="none" stroke="#c9c6c1" stroke-width="0.7" d="M491.15,-766.48C505.12,-764.75 520.12,-762.84 534,-761 552.46,-758.55 573,-755.64 589.93,-753.21"/>
+<polygon fill="#c9c6c1" stroke="#c9c6c1" stroke-width="0.7" points="590.37,-754.73 594.6,-752.53 589.92,-751.62 590.37,-754.73"/>
+</g>
+
+<g id="node10" class="node">
+<title>person.person</title>
+<path fill="#ffffff" stroke="#201f1d" stroke-width="1.64" d="M656.17,-720C656.17,-720 596.83,-720 596.83,-720 594.17,-720 591.5,-717.33 591.5,-714.67 591.5,-714.67 591.5,-709.33 591.5,-709.33 591.5,-706.67 594.17,-704 596.83,-704 596.83,-704 656.17,-704 656.17,-704 658.83,-704 661.5,-706.67 661.5,-709.33 661.5,-709.33 661.5,-714.67 661.5,-714.67 661.5,-717.33 658.83,-720 656.17,-720"/>
+<text text-anchor="start" x="595.5" y="-710.36" font-family="Lora,Georgia,serif" font-weight="bold" font-size="10.80" fill="#201f1d">person</text>
+<text text-anchor="start" x="637.5" y="-710.36" font-family="Lora,Georgia,serif" font-size="10.80" fill="#201f1d"> </text>
+<text text-anchor="start" x="641.5" y="-710.36" font-family="Lora,Georgia,serif" font-size="10.80" fill="#4a463e">←7</text>
+</g>
+
+<g id="edge12" class="edge">
+<title>person.businessentitycontact&#45;&gt;person.person</title>
+<path fill="none" stroke="#c9c6c1" stroke-width="0.7" d="M491.04,-772.92C505.59,-771.16 520.91,-767.64 534,-761 552.51,-751.61 548.11,-737.51 566,-727 572.39,-723.25 579.7,-720.42 586.96,-718.3"/>
+<polygon fill="#c9c6c1" stroke="#c9c6c1" stroke-width="0.7" points="587.54,-719.78 591.46,-717.07 586.71,-716.74 587.54,-719.78"/>
+</g>
+
+<g id="node7" class="node">
+<title>person.countryregion</title>
+<path fill="#ffffff" stroke="#8e8a8a" stroke-width="0.7" d="M1071.67,-695C1071.67,-695 1007.33,-695 1007.33,-695 1004.67,-695 1002,-692.33 1002,-689.67 1002,-689.67 1002,-684.33 1002,-684.33 1002,-681.67 1004.67,-679 1007.33,-679 1007.33,-679 1071.67,-679 1071.67,-679 1074.33,-679 1077,-681.67 1077,-684.33 1077,-684.33 1077,-689.67 1077,-689.67 1077,-692.33 1074.33,-695 1071.67,-695"/>
+<text text-anchor="middle" x="1039.5" y="-684.8" font-family="Lora,Georgia,serif" font-size="9.00" fill="#201f1d">countryregion</text>
+</g>
+
+<g id="node8" class="node">
+<title>person.emailaddress</title>
+<path fill="#ffffff" stroke="#8e8a8a" stroke-width="0.7" d="M465.17,-756C465.17,-756 406.83,-756 406.83,-756 404.17,-756 401.5,-753.33 401.5,-750.67 401.5,-750.67 401.5,-745.33 401.5,-745.33 401.5,-742.67 404.17,-740 406.83,-740 406.83,-740 465.17,-740 465.17,-740 467.83,-740 470.5,-742.67 470.5,-745.33 470.5,-745.33 470.5,-750.67 470.5,-750.67 470.5,-753.33 467.83,-756 465.17,-756"/>
+<text text-anchor="middle" x="436" y="-745.8" font-family="Lora,Georgia,serif" font-size="9.00" fill="#201f1d">emailaddress</text>
+</g>
+
+<g id="edge14" class="edge">
+<title>person.emailaddress&#45;&gt;person.person</title>
+<path fill="none" stroke="#c9c6c1" stroke-width="0.7" d="M470.87,-745.08C489.59,-743.14 513.21,-740.19 534,-736 548.48,-733.08 551.72,-730.81 566,-727 573.25,-725.07 581.01,-723.06 588.45,-721.17"/>
+<polygon fill="#c9c6c1" stroke="#c9c6c1" stroke-width="0.7" points="589.06,-722.65 593.03,-720.01 588.29,-719.59 589.06,-722.65"/>
+</g>
+
+<g id="node9" class="node">
+<title>person.password</title>
+<path fill="#ffffff" stroke="#8e8a8a" stroke-width="0.7" d="M457.67,-731C457.67,-731 414.33,-731 414.33,-731 411.67,-731 409,-728.33 409,-725.67 409,-725.67 409,-720.33 409,-720.33 409,-717.67 411.67,-715 414.33,-715 414.33,-715 457.67,-715 457.67,-715 460.33,-715 463,-717.67 463,-720.33 463,-720.33 463,-725.67 463,-725.67 463,-728.33 460.33,-731 457.67,-731"/>
+<text text-anchor="middle" x="436" y="-720.8" font-family="Lora,Georgia,serif" font-size="9.00" fill="#201f1d">password</text>
+</g>
+
+<g id="edge15" class="edge">
+<title>person.password&#45;&gt;person.person</title>
+<path fill="none" stroke="#c9c6c1" stroke-width="0.7" d="M463.21,-721.47C495.16,-719.61 549.44,-716.44 586.35,-714.28"/>
+<polygon fill="#c9c6c1" stroke="#c9c6c1" stroke-width="0.7" points="586.81,-715.84 591.21,-714 586.63,-712.69 586.81,-715.84"/>
+</g>
+
+<g id="edge16" class="edge">
+<title>person.person&#45;&gt;person.businessentity</title>
+<path fill="none" stroke="#c9c6c1" stroke-width="0.7" d="M661.59,-706.2C679.73,-703.12 702.41,-699.26 722.68,-695.81"/>
+<polygon fill="#c9c6c1" stroke="#c9c6c1" stroke-width="0.7" points="723.06,-697.35 727.23,-695.04 722.53,-694.24 723.06,-697.35"/>
+</g>
+
+<g id="node11" class="node">
+<title>person.personphone</title>
+<path fill="#ffffff" stroke="#8e8a8a" stroke-width="0.7" d="M465.17,-706C465.17,-706 406.83,-706 406.83,-706 404.17,-706 401.5,-703.33 401.5,-700.67 401.5,-700.67 401.5,-695.33 401.5,-695.33 401.5,-692.67 404.17,-690 406.83,-690 406.83,-690 465.17,-690 465.17,-690 467.83,-690 470.5,-692.67 470.5,-695.33 470.5,-695.33 470.5,-700.67 470.5,-700.67 470.5,-703.33 467.83,-706 465.17,-706"/>
+<text text-anchor="middle" x="436" y="-695.8" font-family="Lora,Georgia,serif" font-size="9.00" fill="#201f1d">personphone</text>
+</g>
+
+<g id="edge17" class="edge">
+<title>person.personphone&#45;&gt;person.person</title>
+<path fill="none" stroke="#c9c6c1" stroke-width="0.7" d="M470.7,-700.5C503.33,-702.93 552.76,-706.6 586.95,-709.14"/>
+<polygon fill="#c9c6c1" stroke="#c9c6c1" stroke-width="0.7" points="586.85,-710.71 591.46,-709.47 587.09,-707.57 586.85,-710.71"/>
+</g>
+
+<g id="node12" class="node">
+<title>person.phonenumbertype</title>
+<path fill="#ffffff" stroke="#8e8a8a" stroke-width="0.7" d="M667.67,-695C667.67,-695 585.33,-695 585.33,-695 582.67,-695 580,-692.33 580,-689.67 580,-689.67 580,-684.33 580,-684.33 580,-681.67 582.67,-679 585.33,-679 585.33,-679 667.67,-679 667.67,-679 670.33,-679 673,-681.67 673,-684.33 673,-684.33 673,-689.67 673,-689.67 673,-692.33 670.33,-695 667.67,-695"/>
+<text text-anchor="middle" x="626.5" y="-684.8" font-family="Lora,Georgia,serif" font-size="9.00" fill="#201f1d">phonenumbertype</text>
+</g>
+
+<g id="edge18" class="edge">
+<title>person.personphone&#45;&gt;person.phonenumbertype</title>
+<path fill="none" stroke="#c9c6c1" stroke-width="0.7" d="M470.7,-696.03C499.67,-694.34 541.87,-691.88 574.89,-689.95"/>
+<polygon fill="#c9c6c1" stroke="#c9c6c1" stroke-width="0.7" points="575.3,-691.51 579.7,-689.67 575.11,-688.36 575.3,-691.51"/>
+</g>
+
+<g id="edge19" class="edge">
+<title>person.stateprovince&#45;&gt;person.countryregion</title>
+<path fill="none" stroke="#c9c6c1" stroke-width="0.7" d="M953.18,-695.5C966.91,-694.13 982.75,-692.55 997.03,-691.13"/>
+<polygon fill="#c9c6c1" stroke="#c9c6c1" stroke-width="0.7" points="997.49,-692.67 1001.81,-690.65 997.18,-689.53 997.49,-692.67"/>
+</g>
+
+<g id="node63" class="node">
+<title>sales.salesterritory</title>
+<path fill="#ffffff" stroke="#201f1d" stroke-width="1.4" d="M964.67,-572C964.67,-572 869.33,-572 869.33,-572 866.67,-572 864,-569.33 864,-566.67 864,-566.67 864,-561.33 864,-561.33 864,-558.67 866.67,-556 869.33,-556 869.33,-556 964.67,-556 964.67,-556 967.33,-556 970,-558.67 970,-561.33 970,-561.33 970,-566.67 970,-566.67 970,-569.33 967.33,-572 964.67,-572"/>
+<text text-anchor="start" x="868" y="-562.34" font-family="Lora,Georgia,serif" font-weight="bold" font-size="10.20" fill="#201f1d">salesterritory</text>
+<text text-anchor="start" x="946" y="-562.34" font-family="Lora,Georgia,serif" font-size="10.20" fill="#201f1d"> </text>
+<text text-anchor="start" x="950" y="-562.34" font-family="Lora,Georgia,serif" font-size="10.20" fill="#4a463e">←5</text>
+</g>
+
+<g id="edge20" class="edge">
+<title>person.stateprovince&#45;&gt;sales.salesterritory</title>
+<path fill="none" stroke="#4a463e" d="M917,-690.58C917,-652.65 917,-614.73 917,-576.8"/>
+<polygon fill="#4a463e" stroke="#4a463e" points="918.58,-576.67 917,-572.17 915.43,-576.67 918.58,-576.67"/>
+</g>
+
+<g id="node14" class="node">
+<title>humanresources.department</title>
+<path fill="#ffffff" stroke="#8e8a8a" stroke-width="0.7" d="M652.67,-340C652.67,-340 600.33,-340 600.33,-340 597.67,-340 595,-337.33 595,-334.67 595,-334.67 595,-329.33 595,-329.33 595,-326.67 597.67,-324 600.33,-324 600.33,-324 652.67,-324 652.67,-324 655.33,-324 658,-326.67 658,-329.33 658,-329.33 658,-334.67 658,-334.67 658,-337.33 655.33,-340 652.67,-340"/>
+<text text-anchor="middle" x="626.5" y="-329.8" font-family="Lora,Georgia,serif" font-size="9.00" fill="#201f1d">department</text>
+</g>
+
+<g id="node15" class="node">
+<title>humanresources.employee</title>
+<path fill="#ffffff" stroke="#201f1d" stroke-width="1.52" d="M663.17,-315C663.17,-315 589.83,-315 589.83,-315 587.17,-315 584.5,-312.33 584.5,-309.67 584.5,-309.67 584.5,-304.33 584.5,-304.33 584.5,-301.67 587.17,-299 589.83,-299 589.83,-299 663.17,-299 663.17,-299 665.83,-299 668.5,-301.67 668.5,-304.33 668.5,-304.33 668.5,-309.67 668.5,-309.67 668.5,-312.33 665.83,-315 663.17,-315"/>
+<text text-anchor="start" x="588.5" y="-305.6" font-family="Lora,Georgia,serif" font-weight="bold" font-size="10.50" fill="#201f1d">employee</text>
+<text text-anchor="start" x="644.5" y="-305.6" font-family="Lora,Georgia,serif" font-size="10.50" fill="#201f1d"> </text>
+<text text-anchor="start" x="648.5" y="-305.6" font-family="Lora,Georgia,serif" font-size="10.50" fill="#4a463e">←6</text>
+</g>
+
+<g id="edge1" class="edge">
+<title>humanresources.employee&#45;&gt;person.person</title>
+<path fill="none" stroke="#4a463e" d="M584.26,-306.61C571.16,-308.8 558.06,-313.86 550,-324.5 537.55,-340.93 537.55,-679.07 550,-695.5 558.55,-706.79 572.82,-711.62 586.73,-713.38"/>
+<polygon fill="#4a463e" stroke="#4a463e" points="586.79,-714.97 591.43,-713.86 587.11,-711.84 586.79,-714.97"/>
+</g>
+
+<g id="node16" class="node">
+<title>humanresources.employeedepartmenthistory</title>
+<path fill="#ffffff" stroke="#8e8a8a" stroke-width="0.7" d="M499.67,-365C499.67,-365 372.33,-365 372.33,-365 369.67,-365 367,-362.33 367,-359.67 367,-359.67 367,-354.33 367,-354.33 367,-351.67 369.67,-349 372.33,-349 372.33,-349 499.67,-349 499.67,-349 502.33,-349 505,-351.67 505,-354.33 505,-354.33 505,-359.67 505,-359.67 505,-362.33 502.33,-365 499.67,-365"/>
+<text text-anchor="middle" x="436" y="-354.8" font-family="Lora,Georgia,serif" font-size="9.00" fill="#201f1d">employeedepartmenthistory</text>
+</g>
+
+<g id="edge3" class="edge">
+<title>humanresources.employeedepartmenthistory&#45;&gt;humanresources.department</title>
+<path fill="none" stroke="#c9c6c1" stroke-width="0.7" d="M503.03,-348.99C513.4,-347.69 523.99,-346.33 534,-345 552.46,-342.55 573,-339.64 589.93,-337.21"/>
+<polygon fill="#c9c6c1" stroke="#c9c6c1" stroke-width="0.7" points="590.37,-338.73 594.6,-336.53 589.92,-335.62 590.37,-338.73"/>
+</g>
+
+<g id="edge2" class="edge">
+<title>humanresources.employeedepartmenthistory&#45;&gt;humanresources.employee</title>
+<path fill="none" stroke="#c9c6c1" stroke-width="0.7" d="M505,-353.34C514.96,-351.45 524.91,-348.77 534,-345 550.67,-338.09 549.66,-327.67 566,-320 570.4,-317.93 575.13,-316.19 579.94,-314.72"/>
+<polygon fill="#c9c6c1" stroke="#c9c6c1" stroke-width="0.7" points="580.48,-316.21 584.37,-313.45 579.61,-313.18 580.48,-316.21"/>
+</g>
+
+<g id="node19" class="node">
+<title>humanresources.shift</title>
+<path fill="#ffffff" stroke="#8e8a8a" stroke-width="0.7" d="M648.17,-365C648.17,-365 604.83,-365 604.83,-365 602.17,-365 599.5,-362.33 599.5,-359.67 599.5,-359.67 599.5,-354.33 599.5,-354.33 599.5,-351.67 602.17,-349 604.83,-349 604.83,-349 648.17,-349 648.17,-349 650.83,-349 653.5,-351.67 653.5,-354.33 653.5,-354.33 653.5,-359.67 653.5,-359.67 653.5,-362.33 650.83,-365 648.17,-365"/>
+<text text-anchor="middle" x="626.5" y="-354.8" font-family="Lora,Georgia,serif" font-size="9.00" fill="#201f1d">shift</text>
+</g>
+
+<g id="edge4" class="edge">
+<title>humanresources.employeedepartmenthistory&#45;&gt;humanresources.shift</title>
+<path fill="none" stroke="#c9c6c1" stroke-width="0.7" d="M505.05,-357C535.7,-357 570.36,-357 594.61,-357"/>
+<polygon fill="#c9c6c1" stroke="#c9c6c1" stroke-width="0.7" points="594.81,-358.58 599.31,-357 594.81,-355.43 594.81,-358.58"/>
+</g>
+
+<g id="node17" class="node">
+<title>humanresources.employeepayhistory</title>
+<path fill="#ffffff" stroke="#8e8a8a" stroke-width="0.7" d="M481.17,-340C481.17,-340 390.83,-340 390.83,-340 388.17,-340 385.5,-337.33 385.5,-334.67 385.5,-334.67 385.5,-329.33 385.5,-329.33 385.5,-326.67 388.17,-324 390.83,-324 390.83,-324 481.17,-324 481.17,-324 483.83,-324 486.5,-326.67 486.5,-329.33 486.5,-329.33 486.5,-334.67 486.5,-334.67 486.5,-337.33 483.83,-340 481.17,-340"/>
+<text text-anchor="middle" x="436" y="-329.8" font-family="Lora,Georgia,serif" font-size="9.00" fill="#201f1d">employeepayhistory</text>
+</g>
+
+<g id="edge5" class="edge">
+<title>humanresources.employeepayhistory&#45;&gt;humanresources.employee</title>
+<path fill="none" stroke="#c9c6c1" stroke-width="0.7" d="M486.87,-326.01C502.01,-324.14 518.69,-322.03 534,-320 548.85,-318.03 565.03,-315.76 579.6,-313.69"/>
+<polygon fill="#c9c6c1" stroke="#c9c6c1" stroke-width="0.7" points="579.84,-315.24 584.07,-313.05 579.39,-312.13 579.84,-315.24"/>
+</g>
+
+<g id="node18" class="node">
+<title>humanresources.jobcandidate</title>
+<path fill="#ffffff" stroke="#8e8a8a" stroke-width="0.7" d="M465.17,-315C465.17,-315 406.83,-315 406.83,-315 404.17,-315 401.5,-312.33 401.5,-309.67 401.5,-309.67 401.5,-304.33 401.5,-304.33 401.5,-301.67 404.17,-299 406.83,-299 406.83,-299 465.17,-299 465.17,-299 467.83,-299 470.5,-301.67 470.5,-304.33 470.5,-304.33 470.5,-309.67 470.5,-309.67 470.5,-312.33 467.83,-315 465.17,-315"/>
+<text text-anchor="middle" x="436" y="-304.8" font-family="Lora,Georgia,serif" font-size="9.00" fill="#201f1d">jobcandidate</text>
+</g>
+
+<g id="edge6" class="edge">
+<title>humanresources.jobcandidate&#45;&gt;humanresources.employee</title>
+<path fill="none" stroke="#c9c6c1" stroke-width="0.7" d="M470.7,-307C500.98,-307 545.72,-307 579.32,-307"/>
+<polygon fill="#c9c6c1" stroke="#c9c6c1" stroke-width="0.7" points="579.7,-308.58 584.2,-307 579.7,-305.43 579.7,-308.58"/>
+</g>
+
+<g id="node20" class="node">
+<title>production.billofmaterials</title>
+<path fill="#ffffff" stroke="#8e8a8a" stroke-width="0.7" d="M280.17,-218C280.17,-218 215.83,-218 215.83,-218 213.17,-218 210.5,-215.33 210.5,-212.67 210.5,-212.67 210.5,-207.33 210.5,-207.33 210.5,-204.67 213.17,-202 215.83,-202 215.83,-202 280.17,-202 280.17,-202 282.83,-202 285.5,-204.67 285.5,-207.33 285.5,-207.33 285.5,-212.67 285.5,-212.67 285.5,-215.33 282.83,-218 280.17,-218"/>
+<text text-anchor="middle" x="248" y="-207.8" font-family="Lora,Georgia,serif" font-size="9.00" fill="#201f1d">billofmaterials</text>
+</g>
+
+<g id="node25" class="node">
+<title>production.product</title>
+<path fill="#ffffff" stroke="#201f1d" stroke-width="2.48" d="M478.67,-201C478.67,-201 393.33,-201 393.33,-201 390.67,-201 388,-198.33 388,-195.67 388,-195.67 388,-190.33 388,-190.33 388,-187.67 390.67,-185 393.33,-185 393.33,-185 478.67,-185 478.67,-185 481.33,-185 484,-187.67 484,-190.33 484,-190.33 484,-195.67 484,-195.67 484,-198.33 481.33,-201 478.67,-201"/>
+<text text-anchor="start" x="392" y="-191" font-family="Lora,Georgia,serif" font-weight="bold" font-size="12.50" fill="#201f1d">product</text>
+<text text-anchor="start" x="448" y="-191" font-family="Lora,Georgia,serif" font-size="12.50" fill="#201f1d"> </text>
+<text text-anchor="start" x="452" y="-191" font-family="Lora,Georgia,serif" font-size="12.50" fill="#4a463e">←14</text>
+</g>
+
+<g id="edge21" class="edge">
+<title>production.billofmaterials&#45;&gt;production.product</title>
+<path fill="none" stroke="#c9c6c1" stroke-width="0.7" d="M285.75,-204.2C313.6,-201.02 352.23,-197.4 383.21,-195.01"/>
+<polygon fill="#c9c6c1" stroke="#c9c6c1" stroke-width="0.7" points="383.36,-196.58 387.73,-194.67 383.12,-193.44 383.36,-196.58"/>
+</g>
+
+<g id="edge22" class="edge">
+<title>production.billofmaterials&#45;&gt;production.product</title>
+<path fill="none" stroke="#c9c6c1" stroke-width="0.7" d="M285.75,-209.7C313.6,-207.94 352.23,-204.53 383.21,-201.13"/>
+<polygon fill="#c9c6c1" stroke="#c9c6c1" stroke-width="0.7" points="383.43,-202.7 387.73,-200.63 383.08,-199.56 383.43,-202.7"/>
+</g>
+
+<g id="node42" class="node">
+<title>production.unitmeasure</title>
+<path fill="#ffffff" stroke="#8e8a8a" stroke-width="0.7" d="M654.17,-224C654.17,-224 598.83,-224 598.83,-224 596.17,-224 593.5,-221.33 593.5,-218.67 593.5,-218.67 593.5,-213.33 593.5,-213.33 593.5,-210.67 596.17,-208 598.83,-208 598.83,-208 654.17,-208 654.17,-208 656.83,-208 659.5,-210.67 659.5,-213.33 659.5,-213.33 659.5,-218.67 659.5,-218.67 659.5,-221.33 656.83,-224 654.17,-224"/>
+<text text-anchor="middle" x="626.5" y="-213.8" font-family="Lora,Georgia,serif" font-size="9.00" fill="#201f1d">unitmeasure</text>
+</g>
+
+<g id="edge23" class="edge">
+<title>production.billofmaterials&#45;&gt;production.unitmeasure</title>
+<path fill="none" stroke="#c9c6c1" stroke-width="0.7" d="M285.79,-210.59C357.85,-211.73 516.83,-214.27 588.81,-215.42"/>
+<polygon fill="#c9c6c1" stroke="#c9c6c1" stroke-width="0.7" points="588.9,-216.99 593.43,-215.49 588.95,-213.84 588.9,-216.99"/>
+</g>
+
+<g id="node21" class="node">
+<title>production.culture</title>
+<path fill="#ffffff" stroke="#8e8a8a" stroke-width="0.7" d="M648.17,-124C648.17,-124 604.83,-124 604.83,-124 602.17,-124 599.5,-121.33 599.5,-118.67 599.5,-118.67 599.5,-113.33 599.5,-113.33 599.5,-110.67 602.17,-108 604.83,-108 604.83,-108 648.17,-108 648.17,-108 650.83,-108 653.5,-110.67 653.5,-113.33 653.5,-113.33 653.5,-118.67 653.5,-118.67 653.5,-121.33 650.83,-124 648.17,-124"/>
+<text text-anchor="middle" x="626.5" y="-113.8" font-family="Lora,Georgia,serif" font-size="9.00" fill="#201f1d">culture</text>
+</g>
+
+<g id="node22" class="node">
+<title>production.document</title>
+<path fill="#ffffff" stroke="#8e8a8a" stroke-width="0.7" d="M457.67,-243C457.67,-243 414.33,-243 414.33,-243 411.67,-243 409,-240.33 409,-237.67 409,-237.67 409,-232.33 409,-232.33 409,-229.67 411.67,-227 414.33,-227 414.33,-227 457.67,-227 457.67,-227 460.33,-227 463,-229.67 463,-232.33 463,-232.33 463,-237.67 463,-237.67 463,-240.33 460.33,-243 457.67,-243"/>
+<text text-anchor="middle" x="436" y="-232.8" font-family="Lora,Georgia,serif" font-size="9.00" fill="#201f1d">document</text>
+</g>
+
+<g id="edge24" class="edge">
+<title>production.document&#45;&gt;humanresources.employee</title>
+<path fill="none" stroke="#4a463e" d="M458.26,-243.12C493.14,-256.44 562.39,-282.89 599.91,-297.22"/>
+<polygon fill="#4a463e" stroke="#4a463e" points="599.55,-298.78 604.32,-298.91 600.68,-295.83 599.55,-298.78"/>
+</g>
+
+<g id="node23" class="node">
+<title>production.illustration</title>
+<path fill="#ffffff" stroke="#8e8a8a" stroke-width="0.7" d="M651.17,-174C651.17,-174 601.83,-174 601.83,-174 599.17,-174 596.5,-171.33 596.5,-168.67 596.5,-168.67 596.5,-163.33 596.5,-163.33 596.5,-160.67 599.17,-158 601.83,-158 601.83,-158 651.17,-158 651.17,-158 653.83,-158 656.5,-160.67 656.5,-163.33 656.5,-163.33 656.5,-168.67 656.5,-168.67 656.5,-171.33 653.83,-174 651.17,-174"/>
+<text text-anchor="middle" x="626.5" y="-163.8" font-family="Lora,Georgia,serif" font-size="9.00" fill="#201f1d">illustration</text>
+</g>
+
+<g id="node24" class="node">
+<title>production.location</title>
+<path fill="#ffffff" stroke="#8e8a8a" stroke-width="0.7" d="M269.67,-57C269.67,-57 226.33,-57 226.33,-57 223.67,-57 221,-54.33 221,-51.67 221,-51.67 221,-46.33 221,-46.33 221,-43.67 223.67,-41 226.33,-41 226.33,-41 269.67,-41 269.67,-41 272.33,-41 275,-43.67 275,-46.33 275,-46.33 275,-51.67 275,-51.67 275,-54.33 272.33,-57 269.67,-57"/>
+<text text-anchor="middle" x="248" y="-46.8" font-family="Lora,Georgia,serif" font-size="9.00" fill="#201f1d">location</text>
+</g>
+
+<g id="node32" class="node">
+<title>production.productmodel</title>
+<path fill="#ffffff" stroke="#8e8a8a" stroke-width="0.7" d="M657.67,-149C657.67,-149 595.33,-149 595.33,-149 592.67,-149 590,-146.33 590,-143.67 590,-143.67 590,-138.33 590,-138.33 590,-135.67 592.67,-133 595.33,-133 595.33,-133 657.67,-133 657.67,-133 660.33,-133 663,-135.67 663,-138.33 663,-138.33 663,-143.67 663,-143.67 663,-146.33 660.33,-149 657.67,-149"/>
+<text text-anchor="middle" x="626.5" y="-138.8" font-family="Lora,Georgia,serif" font-size="9.00" fill="#201f1d">productmodel</text>
+</g>
+
+<g id="edge28" class="edge">
+<title>production.product&#45;&gt;production.productmodel</title>
+<path fill="none" stroke="#c9c6c1" stroke-width="0.7" d="M470.97,-184.99C489.73,-180.3 513.34,-173.94 534,-167 548.55,-162.11 551.34,-158.54 566,-154 572.15,-152.09 578.75,-150.36 585.23,-148.82"/>
+<polygon fill="#c9c6c1" stroke="#c9c6c1" stroke-width="0.7" points="585.66,-150.34 589.69,-147.79 584.95,-147.27 585.66,-150.34"/>
+</g>
+
+<g id="node38" class="node">
+<title>production.productsubcategory</title>
+<path fill="#ffffff" stroke="#8e8a8a" stroke-width="0.7" d="M672.17,-199C672.17,-199 580.83,-199 580.83,-199 578.17,-199 575.5,-196.33 575.5,-193.67 575.5,-193.67 575.5,-188.33 575.5,-188.33 575.5,-185.67 578.17,-183 580.83,-183 580.83,-183 672.17,-183 672.17,-183 674.83,-183 677.5,-185.67 677.5,-188.33 677.5,-188.33 677.5,-193.67 677.5,-193.67 677.5,-196.33 674.83,-199 672.17,-199"/>
+<text text-anchor="middle" x="626.5" y="-188.8" font-family="Lora,Georgia,serif" font-size="9.00" fill="#201f1d">productsubcategory</text>
+</g>
+
+<g id="edge27" class="edge">
+<title>production.product&#45;&gt;production.productsubcategory</title>
+<path fill="none" stroke="#c9c6c1" stroke-width="0.7" d="M484.08,-192.5C510.37,-192.22 543.25,-191.87 570.69,-191.58"/>
+<polygon fill="#c9c6c1" stroke="#c9c6c1" stroke-width="0.7" points="570.91,-193.15 575.39,-191.53 570.88,-190 570.91,-193.15"/>
+</g>
+
+<g id="edge25" class="edge">
+<title>production.product&#45;&gt;production.unitmeasure</title>
+<path fill="none" stroke="#c9c6c1" stroke-width="0.7" d="M484.08,-196.11C516.48,-199.52 558.9,-204.76 588.8,-209.09"/>
+<polygon fill="#c9c6c1" stroke="#c9c6c1" stroke-width="0.7" points="588.8,-210.68 593.48,-209.77 589.26,-207.56 588.8,-210.68"/>
+</g>
+
+<g id="edge26" class="edge">
+<title>production.product&#45;&gt;production.unitmeasure</title>
+<path fill="none" stroke="#c9c6c1" stroke-width="0.7" d="M476.98,-201.01C510.04,-205.9 556.62,-211.55 588.76,-214.56"/>
+<polygon fill="#c9c6c1" stroke="#c9c6c1" stroke-width="0.7" points="588.77,-216.14 593.4,-214.99 589.06,-213.01 588.77,-216.14"/>
+</g>
+
+<g id="node26" class="node">
+<title>production.productcategory</title>
+<path fill="#ffffff" stroke="#8e8a8a" stroke-width="0.7" d="M813.17,-199C813.17,-199 737.83,-199 737.83,-199 735.17,-199 732.5,-196.33 732.5,-193.67 732.5,-193.67 732.5,-188.33 732.5,-188.33 732.5,-185.67 735.17,-183 737.83,-183 737.83,-183 813.17,-183 813.17,-183 815.83,-183 818.5,-185.67 818.5,-188.33 818.5,-188.33 818.5,-193.67 818.5,-193.67 818.5,-196.33 815.83,-199 813.17,-199"/>
+<text text-anchor="middle" x="775.5" y="-188.8" font-family="Lora,Georgia,serif" font-size="9.00" fill="#201f1d">productcategory</text>
+</g>
+
+<g id="node27" class="node">
+<title>production.productcosthistory</title>
+<path fill="#ffffff" stroke="#8e8a8a" stroke-width="0.7" d="M290.67,-193C290.67,-193 205.33,-193 205.33,-193 202.67,-193 200,-190.33 200,-187.67 200,-187.67 200,-182.33 200,-182.33 200,-179.67 202.67,-177 205.33,-177 205.33,-177 290.67,-177 290.67,-177 293.33,-177 296,-179.67 296,-182.33 296,-182.33 296,-187.67 296,-187.67 296,-190.33 293.33,-193 290.67,-193"/>
+<text text-anchor="middle" x="248" y="-182.8" font-family="Lora,Georgia,serif" font-size="9.00" fill="#201f1d">productcosthistory</text>
+</g>
+
+<g id="edge29" class="edge">
+<title>production.productcosthistory&#45;&gt;production.product</title>
+<path fill="none" stroke="#c9c6c1" stroke-width="0.7" d="M296.42,-187.04C322.97,-188.18 356.12,-189.61 383.33,-190.78"/>
+<polygon fill="#c9c6c1" stroke="#c9c6c1" stroke-width="0.7" points="383.43,-192.36 387.99,-190.98 383.56,-189.21 383.43,-192.36"/>
+</g>
+
+<g id="node28" class="node">
+<title>production.productdescription</title>
+<path fill="#ffffff" stroke="#8e8a8a" stroke-width="0.7" d="M670.17,-99C670.17,-99 582.83,-99 582.83,-99 580.17,-99 577.5,-96.33 577.5,-93.67 577.5,-93.67 577.5,-88.33 577.5,-88.33 577.5,-85.67 580.17,-83 582.83,-83 582.83,-83 670.17,-83 670.17,-83 672.83,-83 675.5,-85.67 675.5,-88.33 675.5,-88.33 675.5,-93.67 675.5,-93.67 675.5,-96.33 672.83,-99 670.17,-99"/>
+<text text-anchor="middle" x="626.5" y="-88.8" font-family="Lora,Georgia,serif" font-size="9.00" fill="#201f1d">productdescription</text>
+</g>
+
+<g id="node29" class="node">
+<title>production.productdocument</title>
+<path fill="#ffffff" stroke="#8e8a8a" stroke-width="0.7" d="M288.17,-243C288.17,-243 207.83,-243 207.83,-243 205.17,-243 202.5,-240.33 202.5,-237.67 202.5,-237.67 202.5,-232.33 202.5,-232.33 202.5,-229.67 205.17,-227 207.83,-227 207.83,-227 288.17,-227 288.17,-227 290.83,-227 293.5,-229.67 293.5,-232.33 293.5,-232.33 293.5,-237.67 293.5,-237.67 293.5,-240.33 290.83,-243 288.17,-243"/>
+<text text-anchor="middle" x="248" y="-232.8" font-family="Lora,Georgia,serif" font-size="9.00" fill="#201f1d">productdocument</text>
+</g>
+
+<g id="edge31" class="edge">
+<title>production.productdocument&#45;&gt;production.document</title>
+<path fill="none" stroke="#c9c6c1" stroke-width="0.7" d="M293.55,-235C327.73,-235 374.01,-235 404.18,-235"/>
+<polygon fill="#c9c6c1" stroke="#c9c6c1" stroke-width="0.7" points="404.38,-236.58 408.88,-235 404.38,-233.43 404.38,-236.58"/>
+</g>
+
+<g id="edge30" class="edge">
+<title>production.productdocument&#45;&gt;production.product</title>
+<path fill="none" stroke="#c9c6c1" stroke-width="0.7" d="M287.66,-226.98C293.8,-225.67 300.08,-224.31 306,-223 336.54,-216.24 371.05,-208.19 396.68,-202.13"/>
+<polygon fill="#c9c6c1" stroke="#c9c6c1" stroke-width="0.7" points="397.35,-203.59 401.36,-201.03 396.62,-200.53 397.35,-203.59"/>
+</g>
+
+<g id="node30" class="node">
+<title>production.productinventory</title>
+<path fill="#ffffff" stroke="#8e8a8a" stroke-width="0.7" d="M126.67,-155C126.67,-155 47.33,-155 47.33,-155 44.67,-155 42,-152.33 42,-149.67 42,-149.67 42,-144.33 42,-144.33 42,-141.67 44.67,-139 47.33,-139 47.33,-139 126.67,-139 126.67,-139 129.33,-139 132,-141.67 132,-144.33 132,-144.33 132,-149.67 132,-149.67 132,-152.33 129.33,-155 126.67,-155"/>
+<text text-anchor="middle" x="87" y="-144.8" font-family="Lora,Georgia,serif" font-size="9.00" fill="#201f1d">productinventory</text>
+</g>
+
+<g id="edge33" class="edge">
+<title>production.productinventory&#45;&gt;production.location</title>
+<path fill="none" stroke="#c9c6c1" stroke-width="0.7" d="M114.1,-138.89C128.28,-133.51 145.43,-125.34 158,-114 178.43,-95.57 167.57,-76.93 190,-61 197.51,-55.66 206.9,-52.61 215.87,-50.88"/>
+<polygon fill="#c9c6c1" stroke="#c9c6c1" stroke-width="0.7" points="216.63,-52.35 220.8,-50.05 216.1,-49.25 216.63,-52.35"/>
+</g>
+
+<g id="edge32" class="edge">
+<title>production.productinventory&#45;&gt;production.product</title>
+<path fill="none" stroke="#c9c6c1" stroke-width="0.7" d="M132.12,-153.99C150.05,-156.7 170.99,-159.7 190,-162 241.41,-168.21 254.61,-166.59 306,-173 331.51,-176.18 359.74,-180.47 383.27,-184.26"/>
+<polygon fill="#c9c6c1" stroke="#c9c6c1" stroke-width="0.7" points="383.22,-185.85 387.92,-185.01 383.73,-182.74 383.22,-185.85"/>
+</g>
+
+<g id="node31" class="node">
+<title>production.productlistpricehistory</title>
+<path fill="#ffffff" stroke="#8e8a8a" stroke-width="0.7" d="M300.67,-157C300.67,-157 195.33,-157 195.33,-157 192.67,-157 190,-154.33 190,-151.67 190,-151.67 190,-146.33 190,-146.33 190,-143.67 192.67,-141 195.33,-141 195.33,-141 300.67,-141 300.67,-141 303.33,-141 306,-143.67 306,-146.33 306,-146.33 306,-151.67 306,-151.67 306,-154.33 303.33,-157 300.67,-157"/>
+<text text-anchor="middle" x="248" y="-146.8" font-family="Lora,Georgia,serif" font-size="9.00" fill="#201f1d">productlistpricehistory</text>
+</g>
+
+<g id="edge34" class="edge">
+<title>production.productlistpricehistory&#45;&gt;production.product</title>
+<path fill="none" stroke="#c9c6c1" stroke-width="0.7" d="M283.12,-157.07C315.23,-164.67 363.27,-176.03 396.69,-183.94"/>
+<polygon fill="#c9c6c1" stroke="#c9c6c1" stroke-width="0.7" points="396.36,-185.48 401.1,-184.98 397.08,-182.41 396.36,-185.48"/>
+</g>
+
+<g id="node33" class="node">
+<title>production.productmodelillustration</title>
+<path fill="#ffffff" stroke="#8e8a8a" stroke-width="0.7" d="M492.67,-162C492.67,-162 379.33,-162 379.33,-162 376.67,-162 374,-159.33 374,-156.67 374,-156.67 374,-151.33 374,-151.33 374,-148.67 376.67,-146 379.33,-146 379.33,-146 492.67,-146 492.67,-146 495.33,-146 498,-148.67 498,-151.33 498,-151.33 498,-156.67 498,-156.67 498,-159.33 495.33,-162 492.67,-162"/>
+<text text-anchor="middle" x="436" y="-151.8" font-family="Lora,Georgia,serif" font-size="9.00" fill="#201f1d">productmodelillustration</text>
+</g>
+
+<g id="edge36" class="edge">
+<title>production.productmodelillustration&#45;&gt;production.illustration</title>
+<path fill="none" stroke="#c9c6c1" stroke-width="0.7" d="M498.2,-157.9C529.27,-159.87 565.83,-162.2 591.77,-163.85"/>
+<polygon fill="#c9c6c1" stroke="#c9c6c1" stroke-width="0.7" points="591.9,-165.44 596.49,-164.15 592.1,-162.3 591.9,-165.44"/>
+</g>
+
+<g id="edge35" class="edge">
+<title>production.productmodelillustration&#45;&gt;production.productmodel</title>
+<path fill="none" stroke="#c9c6c1" stroke-width="0.7" d="M498.2,-149.78C526.74,-147.81 559.91,-145.52 585.23,-143.78"/>
+<polygon fill="#c9c6c1" stroke="#c9c6c1" stroke-width="0.7" points="585.49,-145.34 589.87,-143.46 585.27,-142.2 585.49,-145.34"/>
+</g>
+
+<g id="node34" class="node">
+<title>production.productmodelproductdescriptionculture</title>
+<path fill="#ffffff" stroke="#8e8a8a" stroke-width="0.7" d="M528.67,-124C528.67,-124 343.33,-124 343.33,-124 340.67,-124 338,-121.33 338,-118.67 338,-118.67 338,-113.33 338,-113.33 338,-110.67 340.67,-108 343.33,-108 343.33,-108 528.67,-108 528.67,-108 531.33,-108 534,-110.67 534,-113.33 534,-113.33 534,-118.67 534,-118.67 534,-121.33 531.33,-124 528.67,-124"/>
+<text text-anchor="middle" x="436" y="-113.8" font-family="Lora,Georgia,serif" font-size="9.00" fill="#201f1d">productmodelproductdescriptionculture</text>
+</g>
+
+<g id="edge39" class="edge">
+<title>production.productmodelproductdescriptionculture&#45;&gt;production.culture</title>
+<path fill="none" stroke="#c9c6c1" stroke-width="0.7" d="M534.01,-116C556.11,-116 578.01,-116 594.83,-116"/>
+<polygon fill="#c9c6c1" stroke="#c9c6c1" stroke-width="0.7" points="594.94,-117.58 599.44,-116 594.94,-114.43 594.94,-117.58"/>
+</g>
+
+<g id="edge38" class="edge">
+<title>production.productmodelproductdescriptionculture&#45;&gt;production.productdescription</title>
+<path fill="none" stroke="#c9c6c1" stroke-width="0.7" d="M497.42,-107.99C521.65,-104.77 549.32,-101.1 572.72,-98"/>
+<polygon fill="#c9c6c1" stroke="#c9c6c1" stroke-width="0.7" points="573.09,-99.54 577.35,-97.39 572.68,-96.42 573.09,-99.54"/>
+</g>
+
+<g id="edge37" class="edge">
+<title>production.productmodelproductdescriptionculture&#45;&gt;production.productmodel</title>
+<path fill="none" stroke="#c9c6c1" stroke-width="0.7" d="M497.42,-124.01C526.11,-127.82 559.62,-132.26 585.17,-135.65"/>
+<polygon fill="#c9c6c1" stroke="#c9c6c1" stroke-width="0.7" points="585.18,-137.24 589.84,-136.27 585.59,-134.12 585.18,-137.24"/>
+</g>
+
+<g id="node35" class="node">
+<title>production.productphoto</title>
+<path fill="#ffffff" stroke="#8e8a8a" stroke-width="0.7" d="M466.67,-82C466.67,-82 405.33,-82 405.33,-82 402.67,-82 400,-79.33 400,-76.67 400,-76.67 400,-71.33 400,-71.33 400,-68.67 402.67,-66 405.33,-66 405.33,-66 466.67,-66 466.67,-66 469.33,-66 472,-68.67 472,-71.33 472,-71.33 472,-76.67 472,-76.67 472,-79.33 469.33,-82 466.67,-82"/>
+<text text-anchor="middle" x="436" y="-71.8" font-family="Lora,Georgia,serif" font-size="9.00" fill="#201f1d">productphoto</text>
+</g>
+
+<g id="node36" class="node">
+<title>production.productproductphoto</title>
+<path fill="#ffffff" stroke="#8e8a8a" stroke-width="0.7" d="M296.67,-82C296.67,-82 199.33,-82 199.33,-82 196.67,-82 194,-79.33 194,-76.67 194,-76.67 194,-71.33 194,-71.33 194,-68.67 196.67,-66 199.33,-66 199.33,-66 296.67,-66 296.67,-66 299.33,-66 302,-68.67 302,-71.33 302,-71.33 302,-76.67 302,-76.67 302,-79.33 299.33,-82 296.67,-82"/>
+<text text-anchor="middle" x="248" y="-71.8" font-family="Lora,Georgia,serif" font-size="9.00" fill="#201f1d">productproductphoto</text>
+</g>
+
+<g id="edge40" class="edge">
+<title>production.productproductphoto&#45;&gt;production.product</title>
+<path fill="none" stroke="#c9c6c1" stroke-width="0.7" d="M300.55,-82.15C302.47,-83.29 304.3,-84.56 306,-86 335.58,-110.97 309.11,-141.24 338,-167 350.49,-178.14 367.25,-184.58 383.32,-188.28"/>
+<polygon fill="#c9c6c1" stroke="#c9c6c1" stroke-width="0.7" points="383.1,-189.84 387.83,-189.25 383.76,-186.76 383.1,-189.84"/>
+</g>
+
+<g id="edge41" class="edge">
+<title>production.productproductphoto&#45;&gt;production.productphoto</title>
+<path fill="none" stroke="#c9c6c1" stroke-width="0.7" d="M302.3,-74C331.93,-74 368.18,-74 395.3,-74"/>
+<polygon fill="#c9c6c1" stroke="#c9c6c1" stroke-width="0.7" points="395.42,-75.58 399.92,-74 395.42,-72.43 395.42,-75.58"/>
+</g>
+
+<g id="node37" class="node">
+<title>production.productreview</title>
+<path fill="#ffffff" stroke="#8e8a8a" stroke-width="0.7" d="M280.67,-132C280.67,-132 215.33,-132 215.33,-132 212.67,-132 210,-129.33 210,-126.67 210,-126.67 210,-121.33 210,-121.33 210,-118.67 212.67,-116 215.33,-116 215.33,-116 280.67,-116 280.67,-116 283.33,-116 286,-118.67 286,-121.33 286,-121.33 286,-126.67 286,-126.67 286,-129.33 283.33,-132 280.67,-132"/>
+<text text-anchor="middle" x="248" y="-121.8" font-family="Lora,Georgia,serif" font-size="9.00" fill="#201f1d">productreview</text>
+</g>
+
+<g id="edge42" class="edge">
+<title>production.productreview&#45;&gt;production.product</title>
+<path fill="none" stroke="#c9c6c1" stroke-width="0.7" d="M286.21,-129.49C293.03,-131.32 299.91,-133.76 306,-137 323.21,-146.15 320.96,-157.53 338,-167 351.81,-174.68 368,-180.18 383.15,-184.08"/>
+<polygon fill="#c9c6c1" stroke="#c9c6c1" stroke-width="0.7" points="383.07,-185.68 387.81,-185.24 383.83,-182.63 383.07,-185.68"/>
+</g>
+
+<g id="edge43" class="edge">
+<title>production.productsubcategory&#45;&gt;production.productcategory</title>
+<path fill="none" stroke="#c9c6c1" stroke-width="0.7" d="M677.68,-191C693.81,-191 711.61,-191 727.5,-191"/>
+<polygon fill="#c9c6c1" stroke="#c9c6c1" stroke-width="0.7" points="727.87,-192.58 732.37,-191 727.87,-189.43 727.87,-192.58"/>
+</g>
+
+<g id="node39" class="node">
+<title>production.scrapreason</title>
+<path fill="#ffffff" stroke="#8e8a8a" stroke-width="0.7" d="M463.17,-32C463.17,-32 408.83,-32 408.83,-32 406.17,-32 403.5,-29.33 403.5,-26.67 403.5,-26.67 403.5,-21.33 403.5,-21.33 403.5,-18.67 406.17,-16 408.83,-16 408.83,-16 463.17,-16 463.17,-16 465.83,-16 468.5,-18.67 468.5,-21.33 468.5,-21.33 468.5,-26.67 468.5,-26.67 468.5,-29.33 465.83,-32 463.17,-32"/>
+<text text-anchor="middle" x="436" y="-21.8" font-family="Lora,Georgia,serif" font-size="9.00" fill="#201f1d">scrapreason</text>
+</g>
+
+<g id="node40" class="node">
+<title>production.transactionhistory</title>
+<path fill="#ffffff" stroke="#8e8a8a" stroke-width="0.7" d="M289.17,-107C289.17,-107 206.83,-107 206.83,-107 204.17,-107 201.5,-104.33 201.5,-101.67 201.5,-101.67 201.5,-96.33 201.5,-96.33 201.5,-93.67 204.17,-91 206.83,-91 206.83,-91 289.17,-91 289.17,-91 291.83,-91 294.5,-93.67 294.5,-96.33 294.5,-96.33 294.5,-101.67 294.5,-101.67 294.5,-104.33 291.83,-107 289.17,-107"/>
+<text text-anchor="middle" x="248" y="-96.8" font-family="Lora,Georgia,serif" font-size="9.00" fill="#201f1d">transactionhistory</text>
+</g>
+
+<g id="edge44" class="edge">
+<title>production.transactionhistory&#45;&gt;production.product</title>
+<path fill="none" stroke="#c9c6c1" stroke-width="0.7" d="M294.7,-104.89C298.73,-106.5 302.57,-108.5 306,-111 329.17,-127.88 315.3,-149.5 338,-167 351,-177.02 367.56,-183.19 383.3,-186.98"/>
+<polygon fill="#c9c6c1" stroke="#c9c6c1" stroke-width="0.7" points="382.97,-188.52 387.71,-187.99 383.68,-185.45 382.97,-188.52"/>
+</g>
+
+<g id="node41" class="node">
+<title>production.transactionhistoryarchive</title>
+<path fill="#ffffff" stroke="#201f1d" stroke-width="1.1" d="M145,-110C145,-110 29,-110 29,-110 26,-110 23,-107 23,-104 23,-104 23,-98 23,-98 23,-95 26,-92 29,-92 29,-92 145,-92 145,-92 148,-92 151,-95 151,-98 151,-98 151,-104 151,-104 151,-107 148,-110 145,-110"/>
+<text text-anchor="start" x="27" y="-102.8" font-family="Lora,Georgia,serif" font-size="9.00" fill="#201f1d">transactionhistoryarchive</text>
+<text text-anchor="start" x="56.5" y="-95.4" font-family="Lora,Georgia,serif" font-size="7.00" fill="#4a463e">no keys in or out</text>
+</g>
+
+<g id="node43" class="node">
+<title>production.workorder</title>
+<path fill="#ffffff" stroke="#8e8a8a" stroke-width="0.7" d="M271.17,-32C271.17,-32 224.83,-32 224.83,-32 222.17,-32 219.5,-29.33 219.5,-26.67 219.5,-26.67 219.5,-21.33 219.5,-21.33 219.5,-18.67 222.17,-16 224.83,-16 224.83,-16 271.17,-16 271.17,-16 273.83,-16 276.5,-18.67 276.5,-21.33 276.5,-21.33 276.5,-26.67 276.5,-26.67 276.5,-29.33 273.83,-32 271.17,-32"/>
+<text text-anchor="middle" x="248" y="-21.8" font-family="Lora,Georgia,serif" font-size="9.00" fill="#201f1d">workorder</text>
+</g>
+
+<g id="edge45" class="edge">
+<title>production.workorder&#45;&gt;production.product</title>
+<path fill="none" stroke="#c9c6c1" stroke-width="0.7" d="M276.55,-23.81C286.99,-25.14 298.23,-28.47 306,-36 349.05,-77.69 296.1,-124.15 338,-167 349.92,-179.19 366.89,-185.86 383.31,-189.45"/>
+<polygon fill="#c9c6c1" stroke="#c9c6c1" stroke-width="0.7" points="383.2,-191.04 387.93,-190.38 383.83,-187.95 383.2,-191.04"/>
+</g>
+
+<g id="edge46" class="edge">
+<title>production.workorder&#45;&gt;production.scrapreason</title>
+<path fill="none" stroke="#c9c6c1" stroke-width="0.7" d="M276.85,-24C309.24,-24 362.83,-24 398.52,-24"/>
+<polygon fill="#c9c6c1" stroke="#c9c6c1" stroke-width="0.7" points="398.72,-25.58 403.22,-24 398.72,-22.43 398.72,-25.58"/>
+</g>
+
+<g id="node44" class="node">
+<title>production.workorderrouting</title>
+<path fill="#ffffff" stroke="#8e8a8a" stroke-width="0.7" d="M127.17,-44C127.17,-44 46.83,-44 46.83,-44 44.17,-44 41.5,-41.33 41.5,-38.67 41.5,-38.67 41.5,-33.33 41.5,-33.33 41.5,-30.67 44.17,-28 46.83,-28 46.83,-28 127.17,-28 127.17,-28 129.83,-28 132.5,-30.67 132.5,-33.33 132.5,-33.33 132.5,-38.67 132.5,-38.67 132.5,-41.33 129.83,-44 127.17,-44"/>
+<text text-anchor="middle" x="87" y="-33.8" font-family="Lora,Georgia,serif" font-size="9.00" fill="#201f1d">workorderrouting</text>
+</g>
+
+<g id="edge48" class="edge">
+<title>production.workorderrouting&#45;&gt;production.location</title>
+<path fill="none" stroke="#c9c6c1" stroke-width="0.7" d="M132.71,-39.66C159.41,-41.84 192.62,-44.55 216.35,-46.49"/>
+<polygon fill="#c9c6c1" stroke="#c9c6c1" stroke-width="0.7" points="216.35,-48.07 220.97,-46.87 216.61,-44.93 216.35,-48.07"/>
+</g>
+
+<g id="edge47" class="edge">
+<title>production.workorderrouting&#45;&gt;production.workorder</title>
+<path fill="none" stroke="#c9c6c1" stroke-width="0.7" d="M132.71,-32.63C158.72,-30.66 190.91,-28.23 214.49,-26.45"/>
+<polygon fill="#c9c6c1" stroke="#c9c6c1" stroke-width="0.7" points="214.72,-28.02 219.09,-26.11 214.49,-24.87 214.72,-28.02"/>
+</g>
+
+<g id="node45" class="node">
+<title>purchasing.productvendor</title>
+<path fill="#ffffff" stroke="#8e8a8a" stroke-width="0.7" d="M281.67,-426C281.67,-426 214.33,-426 214.33,-426 211.67,-426 209,-423.33 209,-420.67 209,-420.67 209,-415.33 209,-415.33 209,-412.67 211.67,-410 214.33,-410 214.33,-410 281.67,-410 281.67,-410 284.33,-410 287,-412.67 287,-415.33 287,-415.33 287,-420.67 287,-420.67 287,-423.33 284.33,-426 281.67,-426"/>
+<text text-anchor="middle" x="248" y="-415.8" font-family="Lora,Georgia,serif" font-size="9.00" fill="#201f1d">productvendor</text>
+</g>
+
+<g id="edge49" class="edge">
+<title>purchasing.productvendor&#45;&gt;production.product</title>
+<path fill="none" stroke="#4a463e" d="M262.01,-409.93C275.19,-401.05 295.13,-385.56 306,-367 339.13,-310.43 293.56,-271.2 338,-223 349.74,-210.26 366.76,-202.89 383.27,-198.63"/>
+<polygon fill="#4a463e" stroke="#4a463e" points="383.91,-200.1 387.91,-197.51 383.17,-197.03 383.91,-200.1"/>
+</g>
+
+<g id="edge51" class="edge">
+<title>purchasing.productvendor&#45;&gt;production.unitmeasure</title>
+<path fill="none" stroke="#4a463e" d="M261.08,-409.97C273.86,-400.91 293.83,-385.06 306,-367 329.49,-332.14 305.55,-304.72 338,-278 406.04,-221.99 448.49,-269.3 534,-248 557.33,-242.19 583.13,-232.89 601.36,-225.82"/>
+<polygon fill="#4a463e" stroke="#4a463e" points="602.21,-227.17 605.83,-224.07 601.07,-224.24 602.21,-227.17"/>
+</g>
+
+<g id="node49" class="node">
+<title>purchasing.vendor</title>
+<path fill="#ffffff" stroke="#8e8a8a" stroke-width="0.7" d="M457.67,-426C457.67,-426 414.33,-426 414.33,-426 411.67,-426 409,-423.33 409,-420.67 409,-420.67 409,-415.33 409,-415.33 409,-412.67 411.67,-410 414.33,-410 414.33,-410 457.67,-410 457.67,-410 460.33,-410 463,-412.67 463,-415.33 463,-415.33 463,-420.67 463,-420.67 463,-423.33 460.33,-426 457.67,-426"/>
+<text text-anchor="middle" x="436" y="-415.8" font-family="Lora,Georgia,serif" font-size="9.00" fill="#201f1d">vendor</text>
+</g>
+
+<g id="edge50" class="edge">
+<title>purchasing.productvendor&#45;&gt;purchasing.vendor</title>
+<path fill="none" stroke="#c9c6c1" stroke-width="0.7" d="M287.09,-418C321.73,-418 372.22,-418 404.33,-418"/>
+<polygon fill="#c9c6c1" stroke="#c9c6c1" stroke-width="0.7" points="404.43,-419.58 408.93,-418 404.43,-416.43 404.43,-419.58"/>
+</g>
+
+<g id="node46" class="node">
+<title>purchasing.purchaseorderdetail</title>
+<path fill="#ffffff" stroke="#8e8a8a" stroke-width="0.7" d="M133.17,-438C133.17,-438 40.83,-438 40.83,-438 38.17,-438 35.5,-435.33 35.5,-432.67 35.5,-432.67 35.5,-427.33 35.5,-427.33 35.5,-424.67 38.17,-422 40.83,-422 40.83,-422 133.17,-422 133.17,-422 135.83,-422 138.5,-424.67 138.5,-427.33 138.5,-427.33 138.5,-432.67 138.5,-432.67 138.5,-435.33 135.83,-438 133.17,-438"/>
+<text text-anchor="middle" x="87" y="-427.8" font-family="Lora,Georgia,serif" font-size="9.00" fill="#201f1d">purchaseorderdetail</text>
+</g>
+
+<g id="edge53" class="edge">
+<title>purchasing.purchaseorderdetail&#45;&gt;production.product</title>
+<path fill="none" stroke="#4a463e" d="M97.8,-421.79C143.19,-383.82 331.03,-226.77 338,-223 355.01,-213.8 375.25,-206.98 392.84,-202.18"/>
+<polygon fill="#4a463e" stroke="#4a463e" points="393.3,-203.69 397.25,-201.01 392.49,-200.64 393.3,-203.69"/>
+</g>
+
+<g id="node47" class="node">
+<title>purchasing.purchaseorderheader</title>
+<path fill="#ffffff" stroke="#8e8a8a" stroke-width="0.7" d="M297.17,-451C297.17,-451 198.83,-451 198.83,-451 196.17,-451 193.5,-448.33 193.5,-445.67 193.5,-445.67 193.5,-440.33 193.5,-440.33 193.5,-437.67 196.17,-435 198.83,-435 198.83,-435 297.17,-435 297.17,-435 299.83,-435 302.5,-437.67 302.5,-440.33 302.5,-440.33 302.5,-445.67 302.5,-445.67 302.5,-448.33 299.83,-451 297.17,-451"/>
+<text text-anchor="middle" x="248" y="-440.8" font-family="Lora,Georgia,serif" font-size="9.00" fill="#201f1d">purchaseorderheader</text>
+</g>
+
+<g id="edge52" class="edge">
+<title>purchasing.purchaseorderdetail&#45;&gt;purchasing.purchaseorderheader</title>
+<path fill="none" stroke="#c9c6c1" stroke-width="0.7" d="M138.75,-434.15C154.7,-435.45 172.43,-436.9 188.85,-438.25"/>
+<polygon fill="#c9c6c1" stroke="#c9c6c1" stroke-width="0.7" points="188.83,-439.82 193.45,-438.62 189.09,-436.68 188.83,-439.82"/>
+</g>
+
+<g id="edge54" class="edge">
+<title>purchasing.purchaseorderheader&#45;&gt;humanresources.employee</title>
+<path fill="none" stroke="#4a463e" d="M301.07,-434.98C302.83,-433.81 304.48,-432.48 306,-431 350.42,-387.61 289.32,-333.55 338,-295 374.26,-266.28 508.5,-285.39 580,-298.16"/>
+<polygon fill="#4a463e" stroke="#4a463e" points="579.9,-299.74 584.61,-298.99 580.46,-296.64 579.9,-299.74"/>
+</g>
+
+<g id="node48" class="node">
+<title>purchasing.shipmethod</title>
+<path fill="#ffffff" stroke="#8e8a8a" stroke-width="0.7" d="M462.17,-451C462.17,-451 409.83,-451 409.83,-451 407.17,-451 404.5,-448.33 404.5,-445.67 404.5,-445.67 404.5,-440.33 404.5,-440.33 404.5,-437.67 407.17,-435 409.83,-435 409.83,-435 462.17,-435 462.17,-435 464.83,-435 467.5,-437.67 467.5,-440.33 467.5,-440.33 467.5,-445.67 467.5,-445.67 467.5,-448.33 464.83,-451 462.17,-451"/>
+<text text-anchor="middle" x="436" y="-440.8" font-family="Lora,Georgia,serif" font-size="9.00" fill="#201f1d">shipmethod</text>
+</g>
+
+<g id="edge56" class="edge">
+<title>purchasing.purchaseorderheader&#45;&gt;purchasing.shipmethod</title>
+<path fill="none" stroke="#c9c6c1" stroke-width="0.7" d="M302.8,-443C333.94,-443 372.25,-443 399.6,-443"/>
+<polygon fill="#c9c6c1" stroke="#c9c6c1" stroke-width="0.7" points="399.73,-444.58 404.23,-443 399.73,-441.43 399.73,-444.58"/>
+</g>
+
+<g id="edge55" class="edge">
+<title>purchasing.purchaseorderheader&#45;&gt;purchasing.vendor</title>
+<path fill="none" stroke="#c9c6c1" stroke-width="0.7" d="M302.65,-435.76C314.3,-434.19 326.57,-432.54 338,-431 360.04,-428.04 384.91,-424.7 403.94,-422.16"/>
+<polygon fill="#c9c6c1" stroke="#c9c6c1" stroke-width="0.7" points="404.4,-423.68 408.65,-421.53 403.98,-420.56 404.4,-423.68"/>
+</g>
+
+<g id="edge57" class="edge">
+<title>purchasing.vendor&#45;&gt;person.businessentity</title>
+<path fill="none" stroke="#4a463e" d="M463.18,-416.33C514.98,-414.61 630.41,-418.99 687,-486 739.14,-547.74 667.86,-602.42 719,-665 723.16,-670.09 728.66,-674 734.58,-677.02"/>
+<polygon fill="#4a463e" stroke="#4a463e" points="733.99,-678.48 738.74,-678.96 735.33,-675.63 733.99,-678.48"/>
+</g>
+
+<g id="node50" class="node">
+<title>sales.countryregioncurrency</title>
+<path fill="#ffffff" stroke="#8e8a8a" stroke-width="0.7" d="M489.17,-634C489.17,-634 382.83,-634 382.83,-634 380.17,-634 377.5,-631.33 377.5,-628.67 377.5,-628.67 377.5,-623.33 377.5,-623.33 377.5,-620.67 380.17,-618 382.83,-618 382.83,-618 489.17,-618 489.17,-618 491.83,-618 494.5,-620.67 494.5,-623.33 494.5,-623.33 494.5,-628.67 494.5,-628.67 494.5,-631.33 491.83,-634 489.17,-634"/>
+<text text-anchor="middle" x="436" y="-623.8" font-family="Lora,Georgia,serif" font-size="9.00" fill="#201f1d">countryregioncurrency</text>
+</g>
+
+<g id="edge58" class="edge">
+<title>sales.countryregioncurrency&#45;&gt;person.countryregion</title>
+<path fill="none" stroke="#4a463e" d="M494.67,-631.85C615.49,-644.1 892.64,-672.21 997.39,-682.83"/>
+<polygon fill="#4a463e" stroke="#4a463e" points="997.31,-684.41 1001.94,-683.29 997.63,-681.27 997.31,-684.41"/>
+</g>
+
+<g id="node52" class="node">
+<title>sales.currency</title>
+<path fill="#ffffff" stroke="#8e8a8a" stroke-width="0.7" d="M648.17,-620C648.17,-620 604.83,-620 604.83,-620 602.17,-620 599.5,-617.33 599.5,-614.67 599.5,-614.67 599.5,-609.33 599.5,-609.33 599.5,-606.67 602.17,-604 604.83,-604 604.83,-604 648.17,-604 648.17,-604 650.83,-604 653.5,-606.67 653.5,-609.33 653.5,-609.33 653.5,-614.67 653.5,-614.67 653.5,-617.33 650.83,-620 648.17,-620"/>
+<text text-anchor="middle" x="626.5" y="-609.8" font-family="Lora,Georgia,serif" font-size="9.00" fill="#201f1d">currency</text>
+</g>
+
+<g id="edge59" class="edge">
+<title>sales.countryregioncurrency&#45;&gt;sales.currency</title>
+<path fill="none" stroke="#c9c6c1" stroke-width="0.7" d="M494.58,-621.72C527.64,-619.27 567.83,-616.28 594.89,-614.27"/>
+<polygon fill="#c9c6c1" stroke="#c9c6c1" stroke-width="0.7" points="595.08,-615.84 599.45,-613.93 594.84,-612.7 595.08,-615.84"/>
+</g>
+
+<g id="node51" class="node">
+<title>sales.creditcard</title>
+<path fill="#ffffff" stroke="#8e8a8a" stroke-width="0.7" d="M459.17,-609C459.17,-609 412.83,-609 412.83,-609 410.17,-609 407.5,-606.33 407.5,-603.67 407.5,-603.67 407.5,-598.33 407.5,-598.33 407.5,-595.67 410.17,-593 412.83,-593 412.83,-593 459.17,-593 459.17,-593 461.83,-593 464.5,-595.67 464.5,-598.33 464.5,-598.33 464.5,-603.67 464.5,-603.67 464.5,-606.33 461.83,-609 459.17,-609"/>
+<text text-anchor="middle" x="436" y="-598.8" font-family="Lora,Georgia,serif" font-size="9.00" fill="#201f1d">creditcard</text>
+</g>
+
+<g id="node53" class="node">
+<title>sales.currencyrate</title>
+<path fill="#ffffff" stroke="#8e8a8a" stroke-width="0.7" d="M465.17,-584C465.17,-584 406.83,-584 406.83,-584 404.17,-584 401.5,-581.33 401.5,-578.67 401.5,-578.67 401.5,-573.33 401.5,-573.33 401.5,-570.67 404.17,-568 406.83,-568 406.83,-568 465.17,-568 465.17,-568 467.83,-568 470.5,-570.67 470.5,-573.33 470.5,-573.33 470.5,-578.67 470.5,-578.67 470.5,-581.33 467.83,-584 465.17,-584"/>
+<text text-anchor="middle" x="436" y="-573.8" font-family="Lora,Georgia,serif" font-size="9.00" fill="#201f1d">currencyrate</text>
+</g>
+
+<g id="edge60" class="edge">
+<title>sales.currencyrate&#45;&gt;sales.currency</title>
+<path fill="none" stroke="#c9c6c1" stroke-width="0.7" d="M470.52,-575.32C489.34,-576.85 513.17,-580.07 534,-585 548.64,-588.46 551.49,-592.06 566,-596 575.53,-598.59 586.05,-600.89 595.56,-602.96"/>
+<polygon fill="#c9c6c1" stroke="#c9c6c1" stroke-width="0.7" points="595.41,-604.54 600.14,-603.96 596.08,-601.46 595.41,-604.54"/>
+</g>
+
+<g id="edge61" class="edge">
+<title>sales.currencyrate&#45;&gt;sales.currency</title>
+<path fill="none" stroke="#c9c6c1" stroke-width="0.7" d="M470.52,-583.25C489.34,-585.85 513.17,-589.07 534,-594 548.64,-597.46 551.49,-601.06 566,-605 575.26,-607.51 585.47,-609.76 594.77,-611.38"/>
+<polygon fill="#c9c6c1" stroke="#c9c6c1" stroke-width="0.7" points="594.56,-612.94 599.26,-612.13 595.08,-609.84 594.56,-612.94"/>
+</g>
+
+<g id="node54" class="node">
+<title>sales.customer</title>
+<path fill="#ffffff" stroke="#8e8a8a" stroke-width="0.7" d="M457.67,-559C457.67,-559 414.33,-559 414.33,-559 411.67,-559 409,-556.33 409,-553.67 409,-553.67 409,-548.33 409,-548.33 409,-545.67 411.67,-543 414.33,-543 414.33,-543 457.67,-543 457.67,-543 460.33,-543 463,-545.67 463,-548.33 463,-548.33 463,-553.67 463,-553.67 463,-556.33 460.33,-559 457.67,-559"/>
+<text text-anchor="middle" x="436" y="-548.8" font-family="Lora,Georgia,serif" font-size="9.00" fill="#201f1d">customer</text>
+</g>
+
+<g id="edge62" class="edge">
+<title>sales.customer&#45;&gt;person.person</title>
+<path fill="none" stroke="#4a463e" d="M463.41,-547.04C485.06,-545.36 515.12,-546.88 534,-564 580,-605.71 521.39,-656.8 566,-700 571.64,-705.46 579.04,-708.76 586.7,-710.7"/>
+<polygon fill="#4a463e" stroke="#4a463e" points="586.75,-712.32 591.49,-711.73 587.42,-709.24 586.75,-712.32"/>
+</g>
+
+<g id="edge64" class="edge">
+<title>sales.customer&#45;&gt;sales.salesterritory</title>
+<path fill="none" stroke="#c9c6c1" stroke-width="0.7" d="M463.16,-553.56C489.2,-555.98 530.32,-559.47 566,-561 669.16,-565.44 789.57,-565.3 858.89,-564.71"/>
+<polygon fill="#c9c6c1" stroke="#c9c6c1" stroke-width="0.7" points="859.3,-566.29 863.79,-564.67 859.28,-563.14 859.3,-566.29"/>
+</g>
+
+<g id="node68" class="node">
+<title>sales.store</title>
+<path fill="#ffffff" stroke="#8e8a8a" stroke-width="0.7" d="M648.17,-595C648.17,-595 604.83,-595 604.83,-595 602.17,-595 599.5,-592.33 599.5,-589.67 599.5,-589.67 599.5,-584.33 599.5,-584.33 599.5,-581.67 602.17,-579 604.83,-579 604.83,-579 648.17,-579 648.17,-579 650.83,-579 653.5,-581.67 653.5,-584.33 653.5,-584.33 653.5,-589.67 653.5,-589.67 653.5,-592.33 650.83,-595 648.17,-595"/>
+<text text-anchor="middle" x="626.5" y="-584.8" font-family="Lora,Georgia,serif" font-size="9.00" fill="#201f1d">store</text>
+</g>
+
+<g id="edge63" class="edge">
+<title>sales.customer&#45;&gt;sales.store</title>
+<path fill="none" stroke="#c9c6c1" stroke-width="0.7" d="M463.07,-553.68C482.67,-555.9 510.14,-559.42 534,-564 534.78,-564.15 568.58,-572.66 594.87,-579.28"/>
+<polygon fill="#c9c6c1" stroke="#c9c6c1" stroke-width="0.7" points="594.6,-580.84 599.35,-580.41 595.37,-577.78 594.6,-580.84"/>
+</g>
+
+<g id="node55" class="node">
+<title>sales.personcreditcard</title>
+<path fill="#ffffff" stroke="#8e8a8a" stroke-width="0.7" d="M287.17,-622C287.17,-622 208.83,-622 208.83,-622 206.17,-622 203.5,-619.33 203.5,-616.67 203.5,-616.67 203.5,-611.33 203.5,-611.33 203.5,-608.67 206.17,-606 208.83,-606 208.83,-606 287.17,-606 287.17,-606 289.83,-606 292.5,-608.67 292.5,-611.33 292.5,-611.33 292.5,-616.67 292.5,-616.67 292.5,-619.33 289.83,-622 287.17,-622"/>
+<text text-anchor="middle" x="248" y="-611.8" font-family="Lora,Georgia,serif" font-size="9.00" fill="#201f1d">personcreditcard</text>
+</g>
+
+<g id="edge65" class="edge">
+<title>sales.personcreditcard&#45;&gt;person.person</title>
+<path fill="none" stroke="#4a463e" d="M259.85,-622.02C275.97,-633.47 307.64,-654.21 338,-664 421.43,-690.89 449.34,-663.29 534,-686 548.99,-690.02 551.2,-695.33 566,-700 572.53,-702.06 579.58,-703.85 586.47,-705.37"/>
+<polygon fill="#4a463e" stroke="#4a463e" points="586.47,-706.98 591.2,-706.38 587.13,-703.9 586.47,-706.98"/>
+</g>
+
+<g id="edge66" class="edge">
+<title>sales.personcreditcard&#45;&gt;sales.creditcard</title>
+<path fill="none" stroke="#c9c6c1" stroke-width="0.7" d="M292.61,-610.95C326.24,-608.6 372.02,-605.4 402.49,-603.27"/>
+<polygon fill="#c9c6c1" stroke="#c9c6c1" stroke-width="0.7" points="402.87,-604.82 407.25,-602.94 402.65,-601.68 402.87,-604.82"/>
+</g>
+
+<g id="node56" class="node">
+<title>sales.salesorderdetail</title>
+<path fill="#ffffff" stroke="#8e8a8a" stroke-width="0.7" d="M123.17,-562C123.17,-562 50.83,-562 50.83,-562 48.17,-562 45.5,-559.33 45.5,-556.67 45.5,-556.67 45.5,-551.33 45.5,-551.33 45.5,-548.67 48.17,-546 50.83,-546 50.83,-546 123.17,-546 123.17,-546 125.83,-546 128.5,-548.67 128.5,-551.33 128.5,-551.33 128.5,-556.67 128.5,-556.67 128.5,-559.33 125.83,-562 123.17,-562"/>
+<text text-anchor="middle" x="87" y="-551.8" font-family="Lora,Georgia,serif" font-size="9.00" fill="#201f1d">salesorderdetail</text>
+</g>
+
+<g id="node57" class="node">
+<title>sales.salesorderheader</title>
+<path fill="#ffffff" stroke="#8e8a8a" stroke-width="0.7" d="M287.17,-562C287.17,-562 208.83,-562 208.83,-562 206.17,-562 203.5,-559.33 203.5,-556.67 203.5,-556.67 203.5,-551.33 203.5,-551.33 203.5,-548.67 206.17,-546 208.83,-546 208.83,-546 287.17,-546 287.17,-546 289.83,-546 292.5,-548.67 292.5,-551.33 292.5,-551.33 292.5,-556.67 292.5,-556.67 292.5,-559.33 289.83,-562 287.17,-562"/>
+<text text-anchor="middle" x="248" y="-551.8" font-family="Lora,Georgia,serif" font-size="9.00" fill="#201f1d">salesorderheader</text>
+</g>
+
+<g id="edge67" class="edge">
+<title>sales.salesorderdetail&#45;&gt;sales.salesorderheader</title>
+<path fill="none" stroke="#c9c6c1" stroke-width="0.7" d="M128.53,-554C149.92,-554 176.31,-554 198.75,-554"/>
+<polygon fill="#c9c6c1" stroke="#c9c6c1" stroke-width="0.7" points="198.97,-555.58 203.47,-554 198.97,-552.43 198.97,-555.58"/>
+</g>
+
+<g id="node67" class="node">
+<title>sales.specialofferproduct</title>
+<path fill="#ffffff" stroke="#8e8a8a" stroke-width="0.7" d="M292.17,-537C292.17,-537 203.83,-537 203.83,-537 201.17,-537 198.5,-534.33 198.5,-531.67 198.5,-531.67 198.5,-526.33 198.5,-526.33 198.5,-523.67 201.17,-521 203.83,-521 203.83,-521 292.17,-521 292.17,-521 294.83,-521 297.5,-523.67 297.5,-526.33 297.5,-526.33 297.5,-531.67 297.5,-531.67 297.5,-534.33 294.83,-537 292.17,-537"/>
+<text text-anchor="middle" x="248" y="-526.8" font-family="Lora,Georgia,serif" font-size="9.00" fill="#201f1d">specialofferproduct</text>
+</g>
+
+<g id="edge68" class="edge">
+<title>sales.salesorderdetail&#45;&gt;sales.specialofferproduct</title>
+<path fill="none" stroke="#c9c6c1" stroke-width="0.7" d="M122.89,-545.98C143.63,-542.23 170.36,-537.92 193.7,-534.53"/>
+<polygon fill="#c9c6c1" stroke="#c9c6c1" stroke-width="0.7" points="194.09,-536.07 198.32,-533.86 193.64,-532.95 194.09,-536.07"/>
+</g>
+
+<g id="edge69" class="edge">
+<title>sales.salesorderdetail&#45;&gt;sales.specialofferproduct</title>
+<path fill="none" stroke="#c9c6c1" stroke-width="0.7" d="M128.53,-550.94C153.91,-547.57 186.33,-542.43 210.84,-537.89"/>
+<polygon fill="#c9c6c1" stroke="#c9c6c1" stroke-width="0.7" points="211.18,-539.43 215.32,-537.05 210.6,-536.33 211.18,-539.43"/>
+</g>
+
+<g id="edge73" class="edge">
+<title>sales.salesorderheader&#45;&gt;person.address</title>
+<path fill="none" stroke="#4a463e" d="M263.6,-562.01C275.45,-570.61 292.37,-584.55 306,-598 321.47,-613.27 318.72,-624.96 338,-635 407.15,-671.02 614.68,-641.86 687,-671 703.74,-677.74 702.66,-688.34 719,-696 726.68,-699.6 735.47,-702.13 743.76,-704.07"/>
+<polygon fill="#4a463e" stroke="#4a463e" points="743.56,-705.64 748.3,-705.08 744.25,-702.56 743.56,-705.64"/>
+</g>
+
+<g id="edge74" class="edge">
+<title>sales.salesorderheader&#45;&gt;person.address</title>
+<path fill="none" stroke="#4a463e" d="M255.61,-562.09C266.54,-572.42 288.87,-590.1 306,-607 321.47,-622.27 318.72,-633.96 338,-644 407.15,-680.02 614.68,-650.86 687,-680 703.74,-686.74 702.66,-697.34 719,-705 726.68,-708.6 735.47,-711.13 743.76,-712.72"/>
+<polygon fill="#4a463e" stroke="#4a463e" points="743.59,-714.29 748.3,-713.51 744.13,-711.19 743.59,-714.29"/>
+</g>
+
+<g id="edge75" class="edge">
+<title>sales.salesorderheader&#45;&gt;purchasing.shipmethod</title>
+<path fill="none" stroke="#4a463e" d="M292.68,-548.87C297.43,-547.16 301.99,-544.92 306,-542 329.17,-525.12 316.72,-505.21 338,-486 355.54,-470.16 379.86,-459.4 399.76,-452.6"/>
+<polygon fill="#4a463e" stroke="#4a463e" points="400.42,-454.04 404.2,-451.13 399.43,-451.05 400.42,-454.04"/>
+</g>
+
+<g id="edge76" class="edge">
+<title>sales.salesorderheader&#45;&gt;sales.creditcard</title>
+<path fill="none" stroke="#c9c6c1" stroke-width="0.7" d="M265.64,-562.01C283.22,-570.12 311.93,-582.37 338,-589 359.23,-594.39 383.7,-597.4 402.76,-599.05"/>
+<polygon fill="#c9c6c1" stroke="#c9c6c1" stroke-width="0.7" points="402.87,-600.64 407.48,-599.45 403.13,-597.5 402.87,-600.64"/>
+</g>
+
+<g id="edge77" class="edge">
+<title>sales.salesorderheader&#45;&gt;sales.currencyrate</title>
+<path fill="none" stroke="#c9c6c1" stroke-width="0.7" d="M292.61,-559.16C324.1,-562.88 366.24,-567.87 396.5,-571.45"/>
+<polygon fill="#c9c6c1" stroke="#c9c6c1" stroke-width="0.7" points="396.59,-573.04 401.25,-572.01 396.96,-569.91 396.59,-573.04"/>
+</g>
+
+<g id="edge70" class="edge">
+<title>sales.salesorderheader&#45;&gt;sales.customer</title>
+<path fill="none" stroke="#c9c6c1" stroke-width="0.7" d="M292.61,-553.3C326.85,-552.74 373.69,-551.99 404.14,-551.5"/>
+<polygon fill="#c9c6c1" stroke="#c9c6c1" stroke-width="0.7" points="404.41,-553.07 408.88,-551.42 404.36,-549.92 404.41,-553.07"/>
+</g>
+
+<g id="node59" class="node">
+<title>sales.salesperson</title>
+<path fill="#ffffff" stroke="#8e8a8a" stroke-width="0.7" d="M801.67,-544C801.67,-544 749.33,-544 749.33,-544 746.67,-544 744,-541.33 744,-538.67 744,-538.67 744,-533.33 744,-533.33 744,-530.67 746.67,-528 749.33,-528 749.33,-528 801.67,-528 801.67,-528 804.33,-528 807,-530.67 807,-533.33 807,-533.33 807,-538.67 807,-538.67 807,-541.33 804.33,-544 801.67,-544"/>
+<text text-anchor="middle" x="775.5" y="-533.8" font-family="Lora,Georgia,serif" font-size="9.00" fill="#201f1d">salesperson</text>
+</g>
+
+<g id="edge71" class="edge">
+<title>sales.salesorderheader&#45;&gt;sales.salesperson</title>
+<path fill="none" stroke="#c9c6c1" stroke-width="0.7" d="M290.89,-545.94C296.01,-544.73 301.14,-543.41 306,-542 320.58,-537.76 323.07,-532.78 338,-530 414.25,-515.83 609.52,-524.47 687,-528 704.12,-528.78 723.07,-530.42 738.95,-532.01"/>
+<polygon fill="#c9c6c1" stroke="#c9c6c1" stroke-width="0.7" points="739.13,-533.61 743.77,-532.5 739.45,-530.48 739.13,-533.61"/>
+</g>
+
+<g id="edge72" class="edge">
+<title>sales.salesorderheader&#45;&gt;sales.salesterritory</title>
+<path fill="none" stroke="#c9c6c1" stroke-width="0.7" d="M288.25,-545.93C303.69,-543.14 321.6,-540.37 338,-539 424.81,-531.74 448.73,-521.16 534,-539 549.19,-542.18 550.86,-549.58 566,-553 580,-556.16 763.74,-560.64 859.22,-562.78"/>
+<polygon fill="#c9c6c1" stroke="#c9c6c1" stroke-width="0.7" points="859.45,-564.36 863.98,-562.88 859.52,-561.21 859.45,-564.36"/>
+</g>
+
+<g id="node58" class="node">
+<title>sales.salesorderheadersalesreason</title>
+<path fill="#ffffff" stroke="#8e8a8a" stroke-width="0.7" d="M152.67,-537C152.67,-537 21.33,-537 21.33,-537 18.67,-537 16,-534.33 16,-531.67 16,-531.67 16,-526.33 16,-526.33 16,-523.67 18.67,-521 21.33,-521 21.33,-521 152.67,-521 152.67,-521 155.33,-521 158,-523.67 158,-526.33 158,-526.33 158,-531.67 158,-531.67 158,-534.33 155.33,-537 152.67,-537"/>
+<text text-anchor="middle" x="87" y="-526.8" font-family="Lora,Georgia,serif" font-size="9.00" fill="#201f1d">salesorderheadersalesreason</text>
+</g>
+
+<g id="edge78" class="edge">
+<title>sales.salesorderheadersalesreason&#45;&gt;sales.salesorderheader</title>
+<path fill="none" stroke="#c9c6c1" stroke-width="0.7" d="M139.18,-537.05C158.27,-540.05 179.85,-543.44 198.67,-546.4"/>
+<polygon fill="#c9c6c1" stroke="#c9c6c1" stroke-width="0.7" points="198.7,-548 203.39,-547.14 199.19,-544.89 198.7,-548"/>
+</g>
+
+<g id="node61" class="node">
+<title>sales.salesreason</title>
+<path fill="#ffffff" stroke="#8e8a8a" stroke-width="0.7" d="M273.67,-512C273.67,-512 222.33,-512 222.33,-512 219.67,-512 217,-509.33 217,-506.67 217,-506.67 217,-501.33 217,-501.33 217,-498.67 219.67,-496 222.33,-496 222.33,-496 273.67,-496 273.67,-496 276.33,-496 279,-498.67 279,-501.33 279,-501.33 279,-506.67 279,-506.67 279,-509.33 276.33,-512 273.67,-512"/>
+<text text-anchor="middle" x="248" y="-501.8" font-family="Lora,Georgia,serif" font-size="9.00" fill="#201f1d">salesreason</text>
+</g>
+
+<g id="edge79" class="edge">
+<title>sales.salesorderheadersalesreason&#45;&gt;sales.salesreason</title>
+<path fill="none" stroke="#c9c6c1" stroke-width="0.7" d="M139.18,-520.95C163.08,-517.19 190.91,-512.82 212.31,-509.45"/>
+<polygon fill="#c9c6c1" stroke="#c9c6c1" stroke-width="0.7" points="212.57,-511.01 216.77,-508.75 212.08,-507.9 212.57,-511.01"/>
+</g>
+
+<g id="edge80" class="edge">
+<title>sales.salesperson&#45;&gt;humanresources.employee</title>
+<path fill="none" stroke="#4a463e" d="M773.83,-527.79C770.76,-495.66 755.05,-377.38 687,-320 682.9,-316.54 678.08,-313.94 672.99,-312"/>
+<polygon fill="#4a463e" stroke="#4a463e" points="673.43,-310.48 668.67,-310.51 672.41,-313.46 673.43,-310.48"/>
+</g>
+
+<g id="edge81" class="edge">
+<title>sales.salesperson&#45;&gt;sales.salesterritory</title>
+<path fill="none" stroke="#c9c6c1" stroke-width="0.7" d="M807.11,-542.14C825.98,-545.93 850.5,-550.85 871.49,-555.07"/>
+<polygon fill="#c9c6c1" stroke="#c9c6c1" stroke-width="0.7" points="871.19,-556.61 875.92,-555.95 871.81,-553.52 871.19,-556.61"/>
+</g>
+
+<g id="node60" class="node">
+<title>sales.salespersonquotahistory</title>
+<path fill="#ffffff" stroke="#8e8a8a" stroke-width="0.7" d="M681.67,-548C681.67,-548 571.33,-548 571.33,-548 568.67,-548 566,-545.33 566,-542.67 566,-542.67 566,-537.33 566,-537.33 566,-534.67 568.67,-532 571.33,-532 571.33,-532 681.67,-532 681.67,-532 684.33,-532 687,-534.67 687,-537.33 687,-537.33 687,-542.67 687,-542.67 687,-545.33 684.33,-548 681.67,-548"/>
+<text text-anchor="middle" x="626.5" y="-537.8" font-family="Lora,Georgia,serif" font-size="9.00" fill="#201f1d">salespersonquotahistory</text>
+</g>
+
+<g id="edge82" class="edge">
+<title>sales.salespersonquotahistory&#45;&gt;sales.salesperson</title>
+<path fill="none" stroke="#c9c6c1" stroke-width="0.7" d="M687.29,-538.37C704.87,-537.89 723.53,-537.39 739.06,-536.96"/>
+<polygon fill="#c9c6c1" stroke="#c9c6c1" stroke-width="0.7" points="739.32,-538.53 743.77,-536.84 739.23,-535.38 739.32,-538.53"/>
+</g>
+
+<g id="node62" class="node">
+<title>sales.salestaxrate</title>
+<path fill="#ffffff" stroke="#8e8a8a" stroke-width="0.7" d="M113.67,-634C113.67,-634 60.33,-634 60.33,-634 57.67,-634 55,-631.33 55,-628.67 55,-628.67 55,-623.33 55,-623.33 55,-620.67 57.67,-618 60.33,-618 60.33,-618 113.67,-618 113.67,-618 116.33,-618 119,-620.67 119,-623.33 119,-623.33 119,-628.67 119,-628.67 119,-631.33 116.33,-634 113.67,-634"/>
+<text text-anchor="middle" x="87" y="-623.8" font-family="Lora,Georgia,serif" font-size="9.00" fill="#201f1d">salestaxrate</text>
+</g>
+
+<g id="edge83" class="edge">
+<title>sales.salestaxrate&#45;&gt;person.stateprovince</title>
+<path fill="none" stroke="#4a463e" d="M97.12,-634.23C128.1,-661.62 233.22,-750 338,-786 378.95,-800.07 391.7,-795 435,-795 435,-795 435,-795 627.5,-795 718.48,-795 749.06,-823.38 832,-786 867.74,-769.89 896.03,-731 908.73,-711.13"/>
+<polygon fill="#4a463e" stroke="#4a463e" points="910.14,-711.84 911.2,-707.19 907.47,-710.17 910.14,-711.84"/>
+</g>
+
+<g id="edge84" class="edge">
+<title>sales.salesterritory&#45;&gt;person.countryregion</title>
+<path fill="none" stroke="#4a463e" d="M925.91,-572.07C946.67,-593.26 1002.8,-650.56 1027.07,-675.33"/>
+<polygon fill="#4a463e" stroke="#4a463e" points="1026.13,-676.63 1030.41,-678.74 1028.38,-674.42 1026.13,-676.63"/>
+</g>
+
+<g id="node64" class="node">
+<title>sales.salesterritoryhistory</title>
+<path fill="#ffffff" stroke="#8e8a8a" stroke-width="0.7" d="M672.67,-512C672.67,-512 580.33,-512 580.33,-512 577.67,-512 575,-509.33 575,-506.67 575,-506.67 575,-501.33 575,-501.33 575,-498.67 577.67,-496 580.33,-496 580.33,-496 672.67,-496 672.67,-496 675.33,-496 678,-498.67 678,-501.33 678,-501.33 678,-506.67 678,-506.67 678,-509.33 675.33,-512 672.67,-512"/>
+<text text-anchor="middle" x="626.5" y="-501.8" font-family="Lora,Georgia,serif" font-size="9.00" fill="#201f1d">salesterritoryhistory</text>
+</g>
+
+<g id="edge85" class="edge">
+<title>sales.salesterritoryhistory&#45;&gt;sales.salesperson</title>
+<path fill="none" stroke="#c9c6c1" stroke-width="0.7" d="M664.59,-512.07C687.56,-517.07 716.87,-523.45 739.44,-528.37"/>
+<polygon fill="#c9c6c1" stroke="#c9c6c1" stroke-width="0.7" points="739.13,-529.91 743.86,-529.33 739.8,-526.83 739.13,-529.91"/>
+</g>
+
+<g id="edge86" class="edge">
+<title>sales.salesterritoryhistory&#45;&gt;sales.salesterritory</title>
+<path fill="none" stroke="#c9c6c1" stroke-width="0.7" d="M678.39,-504.12C720.32,-505.36 780.96,-509.82 832,-524 856.39,-530.78 882.4,-544.25 898.9,-553.68"/>
+<polygon fill="#c9c6c1" stroke="#c9c6c1" stroke-width="0.7" points="898.2,-555.09 902.89,-555.98 899.78,-552.36 898.2,-555.09"/>
+</g>
+
+<g id="node65" class="node">
+<title>sales.shoppingcartitem</title>
+<path fill="#ffffff" stroke="#8e8a8a" stroke-width="0.7" d="M126.67,-512C126.67,-512 47.33,-512 47.33,-512 44.67,-512 42,-509.33 42,-506.67 42,-506.67 42,-501.33 42,-501.33 42,-498.67 44.67,-496 47.33,-496 47.33,-496 126.67,-496 126.67,-496 129.33,-496 132,-498.67 132,-501.33 132,-501.33 132,-506.67 132,-506.67 132,-509.33 129.33,-512 126.67,-512"/>
+<text text-anchor="middle" x="87" y="-501.8" font-family="Lora,Georgia,serif" font-size="9.00" fill="#201f1d">shoppingcartitem</text>
+</g>
+
+<g id="edge87" class="edge">
+<title>sales.shoppingcartitem&#45;&gt;production.product</title>
+<path fill="none" stroke="#4a463e" d="M132.3,-496.6C141.65,-493.36 150.83,-488.7 158,-482 186.58,-455.29 167.25,-431.82 190,-400 229.25,-345.1 266.4,-356.65 306,-302 328.23,-271.33 310.1,-248.63 338,-223 350.46,-211.56 367.21,-204.48 383.28,-200.1"/>
+<polygon fill="#4a463e" stroke="#4a463e" points="383.83,-201.58 387.8,-198.93 383.05,-198.53 383.83,-201.58"/>
+</g>
+
+<g id="node66" class="node">
+<title>sales.specialoffer</title>
+<path fill="#ffffff" stroke="#8e8a8a" stroke-width="0.7" d="M462.17,-512C462.17,-512 409.83,-512 409.83,-512 407.17,-512 404.5,-509.33 404.5,-506.67 404.5,-506.67 404.5,-501.33 404.5,-501.33 404.5,-498.67 407.17,-496 409.83,-496 409.83,-496 462.17,-496 462.17,-496 464.83,-496 467.5,-498.67 467.5,-501.33 467.5,-501.33 467.5,-506.67 467.5,-506.67 467.5,-509.33 464.83,-512 462.17,-512"/>
+<text text-anchor="middle" x="436" y="-501.8" font-family="Lora,Georgia,serif" font-size="9.00" fill="#201f1d">specialoffer</text>
+</g>
+
+<g id="edge89" class="edge">
+<title>sales.specialofferproduct&#45;&gt;production.product</title>
+<path fill="none" stroke="#4a463e" d="M297.52,-523.62C300.67,-521.88 303.56,-519.7 306,-517 394.22,-419.57 254.37,-324.4 338,-223 349.17,-209.45 366.34,-201.9 383.15,-197.74"/>
+<polygon fill="#4a463e" stroke="#4a463e" points="383.84,-199.2 387.87,-196.65 383.13,-196.13 383.84,-199.2"/>
+</g>
+
+<g id="edge88" class="edge">
+<title>sales.specialofferproduct&#45;&gt;sales.specialoffer</title>
+<path fill="none" stroke="#c9c6c1" stroke-width="0.7" d="M297.87,-522.43C329.85,-518.13 370.89,-512.62 399.71,-508.74"/>
+<polygon fill="#c9c6c1" stroke="#c9c6c1" stroke-width="0.7" points="399.97,-510.3 404.22,-508.14 399.55,-507.18 399.97,-510.3"/>
+</g>
+
+<g id="edge90" class="edge">
+<title>sales.store&#45;&gt;person.businessentity</title>
+<path fill="none" stroke="#4a463e" d="M653.65,-587.74C664.9,-589.24 677.59,-592.63 687,-600 712.35,-619.85 695.34,-643.16 719,-665 724.49,-670.06 731.28,-674.02 738.21,-677.09"/>
+<polygon fill="#4a463e" stroke="#4a463e" points="737.78,-678.62 742.54,-678.89 738.99,-675.71 737.78,-678.62"/>
+</g>
+
+<g id="edge91" class="edge">
+<title>sales.store&#45;&gt;sales.salesperson</title>
+<path fill="none" stroke="#c9c6c1" stroke-width="0.7" d="M650.79,-578.92C676.92,-569.85 719.26,-555.16 747,-545.54"/>
+<polygon fill="#c9c6c1" stroke="#c9c6c1" stroke-width="0.7" points="747.58,-547.01 751.32,-544.04 746.55,-544.03 747.58,-547.01"/>
+</g>
+</g>
+</svg>
+
+      <p class="prov" style="margin:var(--s2) 0 0;color:var(--ink-muted);max-width:92ch">
+        It works at 68 tables because of three choices, and each one matters: <b style="font-weight:500">schemas as boxes</b>; <b style="font-weight:500">hubs in weight</b>,
+        with their in-count (<span class="mono">product &larr;14</span>, <span class="mono">person &larr;7</span>, <span class="mono">employee &larr;6</span>);
+        and <b style="font-weight:500">cross-schema keys darker</b> than keys inside a schema. A force layout (<span class="mono">fdp</span>) of the same
+        data was noticeably worse, so clustering does the work here, not the algorithm. Somewhere around 100 tables this stops
+        reading, and the drawing should fall back to the map plus the hub list the analysis already ranks.
+        <span class="mono">transactionhistoryarchive</span> is the one table with no keys in or out. It's drawn solid and labelled, because it
+        was measured. Dashed is reserved for keys that point outside what was captured (none here).
+      </p>
+    </div>
+  </div>
+
+  <div style="margin-top:var(--s6)">
+    <div class="caps" style="color:var(--ink-muted)">Three &middot; one schema opened: why the edges leaving it have to be drawn</div>
+    <div class="card" style="max-width:1300px;margin-top:var(--s2)">
+      <svg width="100%"
+ viewBox="0.00 0.00 1189.80 377.80" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+<g id="graph0" class="graph" transform="scale(1 1) rotate(0) translate(14.4 363.4)">
+<title>G</title>
+<g id="clust1" class="cluster">
+<title>cluster_s</title>
+<path fill="transparent" stroke="#201f1d" stroke-width="1.2" d="M20,-59.5C20,-59.5 971,-59.5 971,-59.5 977,-59.5 983,-65.5 983,-71.5 983,-71.5 983,-264.5 983,-264.5 983,-270.5 977,-276.5 971,-276.5 971,-276.5 20,-276.5 20,-276.5 14,-276.5 8,-270.5 8,-264.5 8,-264.5 8,-71.5 8,-71.5 8,-65.5 14,-59.5 20,-59.5"/>
+<text text-anchor="start" x="439.5" y="-263.1" font-family="Lora,Georgia,serif" font-weight="bold" font-size="13.00">sales</text>
+<text text-anchor="start" x="476.5" y="-263.1" font-family="Lora,Georgia,serif" font-size="13.00"> </text>
+<text text-anchor="start" x="481.5" y="-263.1" font-family="Lora,Georgia,serif" font-size="13.00" fill="#4a463e">· 19 tables</text>
+</g>
+
+<g id="node1" class="node">
+<title>sales.countryregioncurrency</title>
+<path fill="#ffffff" stroke="#8e8a8a" stroke-width="0.8" d="M486.67,-87C486.67,-87 371.33,-87 371.33,-87 368.17,-87 365,-83.83 365,-80.67 365,-80.67 365,-74.33 365,-74.33 365,-71.17 368.17,-68 371.33,-68 371.33,-68 486.67,-68 486.67,-68 489.83,-68 493,-71.17 493,-74.33 493,-74.33 493,-80.67 493,-80.67 493,-83.83 489.83,-87 486.67,-87"/>
+<text text-anchor="middle" x="429" y="-75" font-family="Lora,Georgia,serif" font-size="10.00" fill="#201f1d">countryregioncurrency</text>
+</g>
+
+<g id="node3" class="node">
+<title>sales.currency</title>
+<path fill="#ffffff" stroke="#8e8a8a" stroke-width="0.8" d="M622.67,-127C622.67,-127 579.33,-127 579.33,-127 576.17,-127 573,-123.83 573,-120.67 573,-120.67 573,-114.33 573,-114.33 573,-111.17 576.17,-108 579.33,-108 579.33,-108 622.67,-108 622.67,-108 625.83,-108 629,-111.17 629,-114.33 629,-114.33 629,-120.67 629,-120.67 629,-123.83 625.83,-127 622.67,-127"/>
+<text text-anchor="middle" x="601" y="-115" font-family="Lora,Georgia,serif" font-size="10.00" fill="#201f1d">currency</text>
+</g>
+
+<g id="edge3" class="edge">
+<title>sales.countryregioncurrency&#45;&gt;sales.currency</title>
+<path fill="none" stroke="#8e8a8a" stroke-width="0.8" d="M470.72,-87.08C500.5,-94.09 540.33,-103.46 567.88,-109.94"/>
+<polygon fill="#8e8a8a" stroke="#8e8a8a" stroke-width="0.8" points="567.6,-111.67 572.87,-111.12 568.4,-108.27 567.6,-111.67"/>
+</g>
+
+<g id="node23" class="node">
+<title>person.countryregion</title>
+<text text-anchor="start" x="1051" y="-88.9" font-family="Lora,Georgia,serif" font-size="9.50" fill="#4a463e">person.</text>
+<text text-anchor="start" x="1088" y="-88.9" font-family="Lora,Georgia,serif" font-size="9.50" fill="#201f1d">countryregion</text>
+</g>
+
+<g id="edge2" class="edge">
+<title>sales.countryregioncurrency&#45;&gt;person.countryregion</title>
+<path fill="none" stroke="#4a463e" stroke-width="0.9" d="M480.86,-67.99C602.7,-46 908.41,4.3 1006,-25.5 1039.23,-35.65 1071.36,-61.5 1088.88,-77.37"/>
+<polygon fill="#4a463e" stroke="#4a463e" stroke-width="0.9" points="1092.6,-80.79 1087.39,-79.06 1090.76,-79.1 1088.92,-77.41 1088.92,-77.41 1088.92,-77.41 1090.76,-79.1 1090.44,-75.75 1092.6,-80.79 1092.6,-80.79"/>
+</g>
+
+<g id="node2" class="node">
+<title>sales.creditcard</title>
+<path fill="#ffffff" stroke="#8e8a8a" stroke-width="0.8" d="M453.67,-246C453.67,-246 404.33,-246 404.33,-246 401.17,-246 398,-242.83 398,-239.67 398,-239.67 398,-233.33 398,-233.33 398,-230.17 401.17,-227 404.33,-227 404.33,-227 453.67,-227 453.67,-227 456.83,-227 460,-230.17 460,-233.33 460,-233.33 460,-239.67 460,-239.67 460,-242.83 456.83,-246 453.67,-246"/>
+<text text-anchor="middle" x="429" y="-234" font-family="Lora,Georgia,serif" font-size="10.00" fill="#201f1d">creditcard</text>
+</g>
+
+<g id="node4" class="node">
+<title>sales.currencyrate</title>
+<path fill="#ffffff" stroke="#8e8a8a" stroke-width="0.8" d="M460.67,-151C460.67,-151 397.33,-151 397.33,-151 394.17,-151 391,-147.83 391,-144.67 391,-144.67 391,-138.33 391,-138.33 391,-135.17 394.17,-132 397.33,-132 397.33,-132 460.67,-132 460.67,-132 463.83,-132 467,-135.17 467,-138.33 467,-138.33 467,-144.67 467,-144.67 467,-147.83 463.83,-151 460.67,-151"/>
+<text text-anchor="middle" x="429" y="-139" font-family="Lora,Georgia,serif" font-size="10.00" fill="#201f1d">currencyrate</text>
+</g>
+
+<g id="edge4" class="edge">
+<title>sales.currencyrate&#45;&gt;sales.currency</title>
+<path fill="none" stroke="#8e8a8a" stroke-width="0.8" d="M467.31,-132.43C497.3,-127.21 539.01,-121.38 567.62,-118.45"/>
+<polygon fill="#8e8a8a" stroke="#8e8a8a" stroke-width="0.8" points="568,-120.17 572.8,-117.94 567.65,-116.69 568,-120.17"/>
+</g>
+
+<g id="edge5" class="edge">
+<title>sales.currencyrate&#45;&gt;sales.currency</title>
+<path fill="none" stroke="#8e8a8a" stroke-width="0.8" d="M467.31,-140.67C497.3,-137.59 539.01,-131.63 567.62,-126.3"/>
+<polygon fill="#8e8a8a" stroke="#8e8a8a" stroke-width="0.8" points="568.22,-127.97 572.8,-125.31 567.56,-124.53 568.22,-127.97"/>
+</g>
+
+<g id="node5" class="node">
+<title>sales.customer</title>
+<path fill="#ffffff" stroke="#8e8a8a" stroke-width="0.8" d="M451.67,-214C451.67,-214 406.33,-214 406.33,-214 403.17,-214 400,-210.83 400,-207.67 400,-207.67 400,-201.33 400,-201.33 400,-198.17 403.17,-195 406.33,-195 406.33,-195 451.67,-195 451.67,-195 454.83,-195 458,-198.17 458,-201.33 458,-201.33 458,-207.67 458,-207.67 458,-210.83 454.83,-214 451.67,-214"/>
+<text text-anchor="middle" x="429" y="-202" font-family="Lora,Georgia,serif" font-size="10.00" fill="#201f1d">customer</text>
+</g>
+
+<g id="node14" class="node">
+<title>sales.salesterritory</title>
+<path fill="#ffffff" stroke="#8e8a8a" stroke-width="0.8" d="M968.67,-191C968.67,-191 903.33,-191 903.33,-191 900.17,-191 897,-187.83 897,-184.67 897,-184.67 897,-178.33 897,-178.33 897,-175.17 900.17,-172 903.33,-172 903.33,-172 968.67,-172 968.67,-172 971.83,-172 975,-175.17 975,-178.33 975,-178.33 975,-184.67 975,-184.67 975,-187.83 971.83,-191 968.67,-191"/>
+<text text-anchor="middle" x="936" y="-179" font-family="Lora,Georgia,serif" font-size="10.00" fill="#201f1d">salesterritory</text>
+</g>
+
+<g id="edge8" class="edge">
+<title>sales.customer&#45;&gt;sales.salesterritory</title>
+<path fill="none" stroke="#8e8a8a" stroke-width="0.8" d="M458.37,-204.51C523.44,-204.35 688.43,-202.97 826,-193.5 847.8,-192 871.96,-189.43 891.99,-187.06"/>
+<polygon fill="#8e8a8a" stroke="#8e8a8a" stroke-width="0.8" points="892.23,-188.79 896.98,-186.46 891.81,-185.32 892.23,-188.79"/>
+</g>
+
+<g id="node19" class="node">
+<title>sales.store</title>
+<path fill="#ffffff" stroke="#8e8a8a" stroke-width="0.8" d="M621.67,-238C621.67,-238 580.33,-238 580.33,-238 577.17,-238 574,-234.83 574,-231.67 574,-231.67 574,-225.33 574,-225.33 574,-222.17 577.17,-219 580.33,-219 580.33,-219 621.67,-219 621.67,-219 624.83,-219 628,-222.17 628,-225.33 628,-225.33 628,-231.67 628,-231.67 628,-234.83 624.83,-238 621.67,-238"/>
+<text text-anchor="middle" x="601" y="-226" font-family="Lora,Georgia,serif" font-size="10.00" fill="#201f1d">store</text>
+</g>
+
+<g id="edge7" class="edge">
+<title>sales.customer&#45;&gt;sales.store</title>
+<path fill="none" stroke="#8e8a8a" stroke-width="0.8" d="M458.07,-208.46C488.47,-212.75 536.85,-219.58 568.52,-224.06"/>
+<polygon fill="#8e8a8a" stroke="#8e8a8a" stroke-width="0.8" points="568.65,-225.84 573.84,-224.81 569.14,-222.38 568.65,-225.84"/>
+</g>
+
+<g id="node24" class="node">
+<title>person.person</title>
+<text text-anchor="start" x="565.5" y="-306.9" font-family="Lora,Georgia,serif" font-size="9.50" fill="#4a463e">person.</text>
+<text text-anchor="start" x="602.5" y="-306.9" font-family="Lora,Georgia,serif" font-size="9.50" fill="#201f1d">person</text>
+</g>
+
+<g id="edge6" class="edge">
+<title>sales.customer&#45;&gt;person.person</title>
+<path fill="none" stroke="#4a463e" stroke-width="0.9" d="M458.19,-207.22C469.78,-209.41 482.84,-213.37 493,-220.5 518.93,-238.7 508.6,-259.29 533,-279.5 541.89,-286.86 552.93,-292.66 563.47,-297.07"/>
+<polygon fill="#4a463e" stroke="#4a463e" stroke-width="0.9" points="568.27,-298.99 562.79,-299.22 565.95,-298.06 563.63,-297.13 563.63,-297.13 563.63,-297.13 565.95,-298.06 564.47,-295.04 568.27,-298.99 568.27,-298.99"/>
+</g>
+
+<g id="node6" class="node">
+<title>sales.personcreditcard</title>
+<path fill="#ffffff" stroke="#8e8a8a" stroke-width="0.8" d="M313.17,-246C313.17,-246 227.83,-246 227.83,-246 224.67,-246 221.5,-242.83 221.5,-239.67 221.5,-239.67 221.5,-233.33 221.5,-233.33 221.5,-230.17 224.67,-227 227.83,-227 227.83,-227 313.17,-227 313.17,-227 316.33,-227 319.5,-230.17 319.5,-233.33 319.5,-233.33 319.5,-239.67 319.5,-239.67 319.5,-242.83 316.33,-246 313.17,-246"/>
+<text text-anchor="middle" x="270.5" y="-234" font-family="Lora,Georgia,serif" font-size="10.00" fill="#201f1d">personcreditcard</text>
+</g>
+
+<g id="edge10" class="edge">
+<title>sales.personcreditcard&#45;&gt;sales.creditcard</title>
+<path fill="none" stroke="#8e8a8a" stroke-width="0.8" d="M319.73,-236.5C343.35,-236.5 371.26,-236.5 392.83,-236.5"/>
+<polygon fill="#8e8a8a" stroke="#8e8a8a" stroke-width="0.8" points="392.89,-238.25 397.89,-236.5 392.89,-234.75 392.89,-238.25"/>
+</g>
+
+<g id="edge9" class="edge">
+<title>sales.personcreditcard&#45;&gt;person.person</title>
+<path fill="none" stroke="#4a463e" stroke-width="0.9" d="M279.53,-246.14C294.34,-263.07 327.85,-297.58 365,-310.5 428.21,-332.49 506.89,-325.48 555.27,-317.6"/>
+<polygon fill="#4a463e" stroke="#4a463e" stroke-width="0.9" points="560.44,-316.74 555.87,-319.78 557.97,-317.15 555.5,-317.56 555.5,-317.56 555.5,-317.56 557.97,-317.15 555.13,-315.34 560.44,-316.74 560.44,-316.74"/>
+</g>
+
+<g id="node7" class="node">
+<title>sales.salesorderdetail</title>
+<path fill="#ffffff" stroke="#8e8a8a" stroke-width="0.8" d="M135.67,-154C135.67,-154 56.33,-154 56.33,-154 53.17,-154 50,-150.83 50,-147.67 50,-147.67 50,-141.33 50,-141.33 50,-138.17 53.17,-135 56.33,-135 56.33,-135 135.67,-135 135.67,-135 138.83,-135 142,-138.17 142,-141.33 142,-141.33 142,-147.67 142,-147.67 142,-150.83 138.83,-154 135.67,-154"/>
+<text text-anchor="middle" x="96" y="-142" font-family="Lora,Georgia,serif" font-size="10.00" fill="#201f1d">salesorderdetail</text>
+</g>
+
+<g id="node8" class="node">
+<title>sales.salesorderheader</title>
+<path fill="#ffffff" stroke="#8e8a8a" stroke-width="0.8" d="M314.17,-175C314.17,-175 226.83,-175 226.83,-175 223.67,-175 220.5,-171.83 220.5,-168.67 220.5,-168.67 220.5,-162.33 220.5,-162.33 220.5,-159.17 223.67,-156 226.83,-156 226.83,-156 314.17,-156 314.17,-156 317.33,-156 320.5,-159.17 320.5,-162.33 320.5,-162.33 320.5,-168.67 320.5,-168.67 320.5,-171.83 317.33,-175 314.17,-175"/>
+<text text-anchor="middle" x="270.5" y="-163" font-family="Lora,Georgia,serif" font-size="10.00" fill="#201f1d">salesorderheader</text>
+</g>
+
+<g id="edge11" class="edge">
+<title>sales.salesorderdetail&#45;&gt;sales.salesorderheader</title>
+<path fill="none" stroke="#8e8a8a" stroke-width="0.8" d="M142.32,-150.02C164.6,-152.73 191.61,-156.02 215,-158.87"/>
+<polygon fill="#8e8a8a" stroke="#8e8a8a" stroke-width="0.8" points="215.07,-160.64 220.24,-159.5 215.49,-157.16 215.07,-160.64"/>
+</g>
+
+<g id="node18" class="node">
+<title>sales.specialofferproduct</title>
+<path fill="#ffffff" stroke="#8e8a8a" stroke-width="0.8" d="M318.67,-143C318.67,-143 222.33,-143 222.33,-143 219.17,-143 216,-139.83 216,-136.67 216,-136.67 216,-130.33 216,-130.33 216,-127.17 219.17,-124 222.33,-124 222.33,-124 318.67,-124 318.67,-124 321.83,-124 325,-127.17 325,-130.33 325,-130.33 325,-136.67 325,-136.67 325,-139.83 321.83,-143 318.67,-143"/>
+<text text-anchor="middle" x="270.5" y="-131" font-family="Lora,Georgia,serif" font-size="10.00" fill="#201f1d">specialofferproduct</text>
+</g>
+
+<g id="edge12" class="edge">
+<title>sales.salesorderdetail&#45;&gt;sales.specialofferproduct</title>
+<path fill="none" stroke="#8e8a8a" stroke-width="0.8" d="M142.32,-137.59C163.3,-135.72 188.47,-134.02 210.87,-132.95"/>
+<polygon fill="#8e8a8a" stroke="#8e8a8a" stroke-width="0.8" points="210.99,-134.7 215.9,-132.72 210.83,-131.2 210.99,-134.7"/>
+</g>
+
+<g id="edge13" class="edge">
+<title>sales.salesorderdetail&#45;&gt;sales.specialofferproduct</title>
+<path fill="none" stroke="#8e8a8a" stroke-width="0.8" d="M142.32,-146.29C163.3,-145.58 188.47,-144.08 210.87,-142.24"/>
+<polygon fill="#8e8a8a" stroke="#8e8a8a" stroke-width="0.8" points="211.07,-143.98 215.9,-141.82 210.77,-140.49 211.07,-143.98"/>
+</g>
+
+<g id="edge20" class="edge">
+<title>sales.salesorderheader&#45;&gt;sales.creditcard</title>
+<path fill="none" stroke="#8e8a8a" stroke-width="0.8" d="M285.11,-175.19C302.76,-187.35 334.87,-208.11 365,-220.5 373.81,-224.12 383.65,-227.09 392.89,-229.45"/>
+<polygon fill="#8e8a8a" stroke="#8e8a8a" stroke-width="0.8" points="392.68,-231.2 397.96,-230.7 393.52,-227.8 392.68,-231.2"/>
+</g>
+
+<g id="edge21" class="edge">
+<title>sales.salesorderheader&#45;&gt;sales.currencyrate</title>
+<path fill="none" stroke="#8e8a8a" stroke-width="0.8" d="M320.59,-157.97C341.41,-154.78 365.45,-151.09 385.5,-148.02"/>
+<polygon fill="#8e8a8a" stroke="#8e8a8a" stroke-width="0.8" points="385.83,-149.74 390.51,-147.25 385.3,-146.28 385.83,-149.74"/>
+</g>
+
+<g id="edge14" class="edge">
+<title>sales.salesorderheader&#45;&gt;sales.customer</title>
+<path fill="none" stroke="#8e8a8a" stroke-width="0.8" d="M309.78,-175.04C335.8,-181.52 369.88,-190.02 394.76,-196.22"/>
+<polygon fill="#8e8a8a" stroke="#8e8a8a" stroke-width="0.8" points="394.65,-197.99 399.93,-197.5 395.5,-194.6 394.65,-197.99"/>
+</g>
+
+<g id="node10" class="node">
+<title>sales.salesperson</title>
+<path fill="#ffffff" stroke="#8e8a8a" stroke-width="0.8" d="M796.67,-153C796.67,-153 738.33,-153 738.33,-153 735.17,-153 732,-149.83 732,-146.67 732,-146.67 732,-140.33 732,-140.33 732,-137.17 735.17,-134 738.33,-134 738.33,-134 796.67,-134 796.67,-134 799.83,-134 803,-137.17 803,-140.33 803,-140.33 803,-146.67 803,-146.67 803,-149.83 799.83,-153 796.67,-153"/>
+<text text-anchor="middle" x="767.5" y="-141" font-family="Lora,Georgia,serif" font-size="10.00" fill="#201f1d">salesperson</text>
+</g>
+
+<g id="edge15" class="edge">
+<title>sales.salesorderheader&#45;&gt;sales.salesperson</title>
+<path fill="none" stroke="#8e8a8a" stroke-width="0.8" d="M320.5,-165.99C365.5,-165.91 433.95,-164.43 493,-157.5 511.01,-155.39 514.98,-151.52 533,-149.5 600.71,-141.92 680.13,-141.7 726.72,-142.45"/>
+<polygon fill="#8e8a8a" stroke="#8e8a8a" stroke-width="0.8" points="726.92,-144.21 731.95,-142.54 726.98,-140.71 726.92,-144.21"/>
+</g>
+
+<g id="edge16" class="edge">
+<title>sales.salesorderheader&#45;&gt;sales.salesterritory</title>
+<path fill="none" stroke="#8e8a8a" stroke-width="0.8" d="M320.62,-169.4C373.14,-173.37 458.9,-179.24 533,-181.5 663.46,-185.49 817.84,-183.65 891.57,-182.37"/>
+<polygon fill="#8e8a8a" stroke="#8e8a8a" stroke-width="0.8" points="891.77,-184.12 896.74,-182.28 891.71,-180.62 891.77,-184.12"/>
+</g>
+
+<g id="node21" class="node">
+<title>person.address</title>
+<text text-anchor="start" x="391" y="-39.9" font-family="Lora,Georgia,serif" font-size="9.50" fill="#4a463e">person.</text>
+<text text-anchor="start" x="428" y="-39.9" font-family="Lora,Georgia,serif" font-size="9.50" fill="#201f1d">address</text>
+</g>
+
+<g id="edge17" class="edge">
+<title>sales.salesorderheader&#45;&gt;person.address</title>
+<path fill="none" stroke="#4a463e" stroke-width="0.9" d="M300.48,-155.97C309.17,-153.33 318.19,-149.56 325,-143.5 358.6,-113.58 330.56,-79.46 365,-50.5 369.64,-46.6 375.12,-43.68 380.88,-41.55"/>
+<polygon fill="#4a463e" stroke="#4a463e" stroke-width="0.9" points="385.77,-39.94 381.72,-43.64 383.39,-40.72 381.02,-41.5 381.02,-41.5 381.02,-41.5 383.39,-40.72 380.32,-39.36 385.77,-39.94 385.77,-39.94"/>
+</g>
+
+<g id="edge18" class="edge">
+<title>sales.salesorderheader&#45;&gt;person.address</title>
+<path fill="none" stroke="#4a463e" stroke-width="0.9" d="M320.86,-159.73C322.31,-158.74 323.7,-157.66 325,-156.5 358.6,-126.58 330.56,-92.46 365,-63.5 371.13,-58.35 378.72,-54.9 386.49,-52.46"/>
+<polygon fill="#4a463e" stroke="#4a463e" stroke-width="0.9" points="391.34,-51.06 387.16,-54.61 388.94,-51.75 386.54,-52.44 386.54,-52.44 386.54,-52.44 388.94,-51.75 385.92,-50.28 391.34,-51.06 391.34,-51.06"/>
+</g>
+
+<g id="node27" class="node">
+<title>purchasing.shipmethod</title>
+<text text-anchor="start" x="371.5" y="-292.9" font-family="Lora,Georgia,serif" font-size="9.50" fill="#4a463e">purchasing.</text>
+<text text-anchor="start" x="429.5" y="-292.9" font-family="Lora,Georgia,serif" font-size="9.50" fill="#201f1d">shipmethod</text>
+</g>
+
+<g id="edge19" class="edge">
+<title>sales.salesorderheader&#45;&gt;purchasing.shipmethod</title>
+<path fill="none" stroke="#4a463e" stroke-width="0.9" d="M281.92,-175.14C293.13,-185.75 311.2,-203.56 325,-220.5 345.01,-245.06 338.93,-261.5 365,-279.5 366.62,-280.62 368.32,-281.66 370.07,-282.62"/>
+<polygon fill="#4a463e" stroke="#4a463e" stroke-width="0.9" points="374.82,-284.98 369.34,-284.77 372.58,-283.87 370.34,-282.75 370.34,-282.75 370.34,-282.75 372.58,-283.87 371.35,-280.74 374.82,-284.98 374.82,-284.98"/>
+</g>
+
+<g id="node9" class="node">
+<title>sales.salesorderheadersalesreason</title>
+<path fill="#ffffff" stroke="#8e8a8a" stroke-width="0.8" d="M169.67,-122C169.67,-122 22.33,-122 22.33,-122 19.17,-122 16,-118.83 16,-115.67 16,-115.67 16,-109.33 16,-109.33 16,-106.17 19.17,-103 22.33,-103 22.33,-103 169.67,-103 169.67,-103 172.83,-103 176,-106.17 176,-109.33 176,-109.33 176,-115.67 176,-115.67 176,-118.83 172.83,-122 169.67,-122"/>
+<text text-anchor="middle" x="96" y="-110" font-family="Lora,Georgia,serif" font-size="10.00" fill="#201f1d">salesorderheadersalesreason</text>
+</g>
+
+<g id="edge22" class="edge">
+<title>sales.salesorderheadersalesreason&#45;&gt;sales.salesorderheader</title>
+<path fill="none" stroke="#8e8a8a" stroke-width="0.8" d="M154.06,-122.04C161.53,-123.87 169.01,-126.02 176,-128.5 194.92,-135.23 197.41,-141.92 216,-149.5 220.22,-151.22 224.69,-152.85 229.18,-154.36"/>
+<polygon fill="#8e8a8a" stroke="#8e8a8a" stroke-width="0.8" points="228.76,-156.06 234.06,-155.95 229.85,-152.73 228.76,-156.06"/>
+</g>
+
+<g id="node12" class="node">
+<title>sales.salesreason</title>
+<path fill="#ffffff" stroke="#8e8a8a" stroke-width="0.8" d="M299.67,-111C299.67,-111 241.33,-111 241.33,-111 238.17,-111 235,-107.83 235,-104.67 235,-104.67 235,-98.33 235,-98.33 235,-95.17 238.17,-92 241.33,-92 241.33,-92 299.67,-92 299.67,-92 302.83,-92 306,-95.17 306,-98.33 306,-98.33 306,-104.67 306,-104.67 306,-107.83 302.83,-111 299.67,-111"/>
+<text text-anchor="middle" x="270.5" y="-99" font-family="Lora,Georgia,serif" font-size="10.00" fill="#201f1d">salesreason</text>
+</g>
+
+<g id="edge23" class="edge">
+<title>sales.salesorderheadersalesreason&#45;&gt;sales.salesreason</title>
+<path fill="none" stroke="#8e8a8a" stroke-width="0.8" d="M176.18,-107.45C194.64,-106.27 213.54,-105.07 229.46,-104.05"/>
+<polygon fill="#8e8a8a" stroke="#8e8a8a" stroke-width="0.8" points="229.86,-105.78 234.73,-103.72 229.63,-102.29 229.86,-105.78"/>
+</g>
+
+<g id="edge25" class="edge">
+<title>sales.salesperson&#45;&gt;sales.salesterritory</title>
+<path fill="none" stroke="#8e8a8a" stroke-width="0.8" d="M803.4,-151.47C829.17,-157.35 864.39,-165.38 891.91,-171.66"/>
+<polygon fill="#8e8a8a" stroke="#8e8a8a" stroke-width="0.8" points="891.69,-173.41 896.95,-172.82 892.47,-170 891.69,-173.41"/>
+</g>
+
+<g id="node20" class="node">
+<title>humanresources.employee</title>
+<text text-anchor="start" x="871" y="-39.9" font-family="Lora,Georgia,serif" font-size="9.50" fill="#4a463e">humanresources.</text>
+<text text-anchor="start" x="955" y="-39.9" font-family="Lora,Georgia,serif" font-size="9.50" fill="#201f1d">employee</text>
+</g>
+
+<g id="edge24" class="edge">
+<title>sales.salesperson&#45;&gt;humanresources.employee</title>
+<path fill="none" stroke="#4a463e" stroke-width="0.9" d="M776.22,-133.9C791.38,-115.73 826.99,-76.38 866,-56.5 868.59,-55.18 871.3,-53.97 874.08,-52.87"/>
+<polygon fill="#4a463e" stroke="#4a463e" stroke-width="0.9" points="879.14,-51.01 875.23,-54.85 876.79,-51.87 874.45,-52.74 874.45,-52.74 874.45,-52.74 876.79,-51.87 873.67,-50.62 879.14,-51.01 879.14,-51.01"/>
+</g>
+
+<g id="node11" class="node">
+<title>sales.salespersonquotahistory</title>
+<path fill="#ffffff" stroke="#8e8a8a" stroke-width="0.8" d="M662.67,-95C662.67,-95 539.33,-95 539.33,-95 536.17,-95 533,-91.83 533,-88.67 533,-88.67 533,-82.33 533,-82.33 533,-79.17 536.17,-76 539.33,-76 539.33,-76 662.67,-76 662.67,-76 665.83,-76 669,-79.17 669,-82.33 669,-82.33 669,-88.67 669,-88.67 669,-91.83 665.83,-95 662.67,-95"/>
+<text text-anchor="middle" x="601" y="-83" font-family="Lora,Georgia,serif" font-size="10.00" fill="#201f1d">salespersonquotahistory</text>
+</g>
+
+<g id="edge26" class="edge">
+<title>sales.salespersonquotahistory&#45;&gt;sales.salesperson</title>
+<path fill="none" stroke="#8e8a8a" stroke-width="0.8" d="M646.63,-95.02C654.16,-96.95 661.85,-99.13 669,-101.5 694.64,-110.01 722.88,-122.55 742.34,-131.71"/>
+<polygon fill="#8e8a8a" stroke="#8e8a8a" stroke-width="0.8" points="741.82,-133.4 747.09,-133.96 743.32,-130.23 741.82,-133.4"/>
+</g>
+
+<g id="node13" class="node">
+<title>sales.salestaxrate</title>
+<path fill="#ffffff" stroke="#201f1d" stroke-width="1.1" d="M163.67,-246.5C163.67,-246.5 28.33,-246.5 28.33,-246.5 24.67,-246.5 21,-242.83 21,-239.17 21,-239.17 21,-231.83 21,-231.83 21,-228.17 24.67,-224.5 28.33,-224.5 28.33,-224.5 163.67,-224.5 163.67,-224.5 167.33,-224.5 171,-228.17 171,-231.83 171,-231.83 171,-239.17 171,-239.17 171,-242.83 167.33,-246.5 163.67,-246.5"/>
+<text text-anchor="start" x="65" y="-237.5" font-family="Lora,Georgia,serif" font-size="10.00" fill="#201f1d">salestaxrate</text>
+<text text-anchor="start" x="26" y="-229.1" font-family="Lora,Georgia,serif" font-size="8.00" fill="#4a463e">no keys inside sales — joined across</text>
+</g>
+
+<g id="node25" class="node">
+<title>person.stateprovince</title>
+<text text-anchor="start" x="716" y="-337.9" font-family="Lora,Georgia,serif" font-size="9.50" fill="#4a463e">person.</text>
+<text text-anchor="start" x="753" y="-337.9" font-family="Lora,Georgia,serif" font-size="9.50" fill="#201f1d">stateprovince</text>
+</g>
+
+<g id="edge27" class="edge">
+<title>sales.salestaxrate&#45;&gt;person.stateprovince</title>
+<path fill="none" stroke="#4a463e" stroke-width="0.9" d="M121.09,-246.54C167.25,-267.06 271.84,-310.52 365,-327.5 484.16,-349.22 626.44,-346.99 705.62,-343.31"/>
+<polygon fill="#4a463e" stroke="#4a463e" stroke-width="0.9" points="710.75,-343.07 705.86,-345.55 708.25,-343.19 705.75,-343.31 705.75,-343.31 705.75,-343.31 708.25,-343.19 705.65,-341.06 710.75,-343.07 710.75,-343.07"/>
+</g>
+
+<g id="edge28" class="edge">
+<title>sales.salesterritory&#45;&gt;person.countryregion</title>
+<path fill="none" stroke="#4a463e" stroke-width="0.9" d="M954.4,-171.93C984.69,-155.28 1047.08,-120.97 1080.39,-102.66"/>
+<polygon fill="#4a463e" stroke="#4a463e" stroke-width="0.9" points="1085.09,-100.07 1081.79,-104.46 1082.9,-101.28 1080.7,-102.48 1080.7,-102.48 1080.7,-102.48 1082.9,-101.28 1079.62,-100.51 1085.09,-100.07 1085.09,-100.07"/>
+</g>
+
+<g id="node15" class="node">
+<title>sales.salesterritoryhistory</title>
+<path fill="#ffffff" stroke="#8e8a8a" stroke-width="0.8" d="M651.17,-175C651.17,-175 550.83,-175 550.83,-175 547.67,-175 544.5,-171.83 544.5,-168.67 544.5,-168.67 544.5,-162.33 544.5,-162.33 544.5,-159.17 547.67,-156 550.83,-156 550.83,-156 651.17,-156 651.17,-156 654.33,-156 657.5,-159.17 657.5,-162.33 657.5,-162.33 657.5,-168.67 657.5,-168.67 657.5,-171.83 654.33,-175 651.17,-175"/>
+<text text-anchor="middle" x="601" y="-163" font-family="Lora,Georgia,serif" font-size="10.00" fill="#201f1d">salesterritoryhistory</text>
+</g>
+
+<g id="edge29" class="edge">
+<title>sales.salesterritoryhistory&#45;&gt;sales.salesperson</title>
+<path fill="none" stroke="#8e8a8a" stroke-width="0.8" d="M657.69,-158.05C680.38,-155.02 706.08,-151.58 726.81,-148.81"/>
+<polygon fill="#8e8a8a" stroke="#8e8a8a" stroke-width="0.8" points="727.24,-150.52 731.97,-148.12 726.78,-147.05 727.24,-150.52"/>
+</g>
+
+<g id="edge30" class="edge">
+<title>sales.salesterritoryhistory&#45;&gt;sales.salesterritory</title>
+<path fill="none" stroke="#8e8a8a" stroke-width="0.8" d="M657.74,-168.18C723.52,-171.34 831.51,-176.53 891.46,-179.41"/>
+<polygon fill="#8e8a8a" stroke="#8e8a8a" stroke-width="0.8" points="891.67,-181.17 896.75,-179.66 891.84,-177.67 891.67,-181.17"/>
+</g>
+
+<g id="node16" class="node">
+<title>sales.shoppingcartitem</title>
+<path fill="#ffffff" stroke="#201f1d" stroke-width="1.1" d="M163.67,-89.5C163.67,-89.5 28.33,-89.5 28.33,-89.5 24.67,-89.5 21,-85.83 21,-82.17 21,-82.17 21,-74.83 21,-74.83 21,-71.17 24.67,-67.5 28.33,-67.5 28.33,-67.5 163.67,-67.5 163.67,-67.5 167.33,-67.5 171,-71.17 171,-74.83 171,-74.83 171,-82.17 171,-82.17 171,-85.83 167.33,-89.5 163.67,-89.5"/>
+<text text-anchor="start" x="50.5" y="-80.5" font-family="Lora,Georgia,serif" font-size="10.00" fill="#201f1d">shoppingcartitem</text>
+<text text-anchor="start" x="26" y="-72.1" font-family="Lora,Georgia,serif" font-size="8.00" fill="#4a463e">no keys inside sales — joined across</text>
+</g>
+
+<g id="node26" class="node">
+<title>production.product</title>
+<text text-anchor="start" x="382" y="-7.9" font-family="Lora,Georgia,serif" font-size="9.50" fill="#4a463e">production.</text>
+<text text-anchor="start" x="438" y="-7.9" font-family="Lora,Georgia,serif" font-size="9.50" fill="#201f1d">product</text>
+</g>
+
+<g id="edge31" class="edge">
+<title>sales.shoppingcartitem&#45;&gt;production.product</title>
+<path fill="none" stroke="#4a463e" stroke-width="0.9" d="M149.81,-67.49C212.3,-54.46 315.61,-32.93 377.21,-20.09"/>
+<polygon fill="#4a463e" stroke="#4a463e" stroke-width="0.9" points="382.3,-19.03 377.87,-22.25 379.85,-19.54 377.41,-20.05 377.41,-20.05 377.41,-20.05 379.85,-19.54 376.95,-17.84 382.3,-19.03 382.3,-19.03"/>
+</g>
+
+<g id="node17" class="node">
+<title>sales.specialoffer</title>
+<path fill="#ffffff" stroke="#8e8a8a" stroke-width="0.8" d="M457.17,-119C457.17,-119 400.83,-119 400.83,-119 397.67,-119 394.5,-115.83 394.5,-112.67 394.5,-112.67 394.5,-106.33 394.5,-106.33 394.5,-103.17 397.67,-100 400.83,-100 400.83,-100 457.17,-100 457.17,-100 460.33,-100 463.5,-103.17 463.5,-106.33 463.5,-106.33 463.5,-112.67 463.5,-112.67 463.5,-115.83 460.33,-119 457.17,-119"/>
+<text text-anchor="middle" x="429" y="-107" font-family="Lora,Georgia,serif" font-size="10.00" fill="#201f1d">specialoffer</text>
+</g>
+
+<g id="edge32" class="edge">
+<title>sales.specialofferproduct&#45;&gt;sales.specialoffer</title>
+<path fill="none" stroke="#8e8a8a" stroke-width="0.8" d="M325.36,-125.24C346.21,-122.04 369.63,-118.45 388.83,-115.51"/>
+<polygon fill="#8e8a8a" stroke="#8e8a8a" stroke-width="0.8" points="389.45,-117.18 394.12,-114.7 388.92,-113.72 389.45,-117.18"/>
+</g>
+
+<g id="edge33" class="edge">
+<title>sales.specialofferproduct&#45;&gt;production.product</title>
+<path fill="none" stroke="#4a463e" stroke-width="0.9" d="M315.56,-123.91C318.96,-122.12 322.17,-120.01 325,-117.5 358.35,-87.91 331.03,-54.38 365,-25.5 367.2,-23.63 369.6,-21.97 372.12,-20.5"/>
+<polygon fill="#4a463e" stroke="#4a463e" stroke-width="0.9" points="376.79,-18.06 373.4,-22.37 374.57,-19.22 372.36,-20.38 372.36,-20.38 372.36,-20.38 374.57,-19.22 371.32,-18.38 376.79,-18.06 376.79,-18.06"/>
+</g>
+
+<g id="edge35" class="edge">
+<title>sales.store&#45;&gt;sales.salesperson</title>
+<path fill="none" stroke="#8e8a8a" stroke-width="0.8" d="M620.55,-218.91C650.66,-203.35 710.13,-172.63 743.1,-155.59"/>
+<polygon fill="#8e8a8a" stroke="#8e8a8a" stroke-width="0.8" points="744.13,-157.03 747.76,-153.18 742.52,-153.92 744.13,-157.03"/>
+</g>
+
+<g id="node22" class="node">
+<title>person.businessentity</title>
+<text text-anchor="start" x="714" y="-292.9" font-family="Lora,Georgia,serif" font-size="9.50" fill="#4a463e">person.</text>
+<text text-anchor="start" x="751" y="-292.9" font-family="Lora,Georgia,serif" font-size="9.50" fill="#201f1d">businessentity</text>
+</g>
+
+<g id="edge34" class="edge">
+<title>sales.store&#45;&gt;person.businessentity</title>
+<path fill="none" stroke="#4a463e" stroke-width="0.9" d="M619.35,-238.04C640.16,-249.17 676.33,-267.58 709,-279.5 712.9,-280.92 717,-282.27 721.13,-283.53"/>
+<polygon fill="#4a463e" stroke="#4a463e" stroke-width="0.9" points="725.99,-284.97 720.56,-285.71 723.59,-284.26 721.19,-283.55 721.19,-283.55 721.19,-283.55 723.59,-284.26 721.83,-281.39 725.99,-284.97 725.99,-284.97"/>
+</g>
+
+<g id="edge1" class="edge">
+<title>person.stateprovince&#45;&gt;sales.salesterritory</title>
+<path fill="none" stroke="#4a463e" stroke-width="0.9" d="M792.71,-329.92C803.5,-325.01 816,-318.4 826,-310.5 869.98,-275.78 909.04,-221.01 926.02,-195.47"/>
+<polygon fill="#4a463e" stroke="#4a463e" stroke-width="0.9" points="928.93,-191.06 928.06,-196.47 927.55,-193.14 926.18,-195.23 926.18,-195.23 926.18,-195.23 927.55,-193.14 924.3,-193.99 928.93,-191.06 928.93,-191.06"/>
+</g>
+</g>
+</svg>
+
+    </div>
+    <div class="card bad" style="max-width:1000px;margin-top:var(--s3);border-left-width:3px">
+      <p class="prov" style="margin:0;max-width:92ch">
+        <b style="font-weight:500">A finding the drawing turned up.</b> The analysis's own per-schema result says <span class="mono">sales</span> has
+        <b style="font-weight:500">3 components</b> and <b style="font-weight:500">2 isolated tables</b>, <span class="mono">salestaxrate</span> and
+        <span class="mono">shoppingcartitem</span>. Neither is isolated: one references <span class="mono">person.stateprovince</span>, the other
+        <span class="mono">production.product</span>. Across the whole database, <span class="mono">sales</span> is entirely inside the main component.
+        The "3 components" is an artefact of cutting the graph at the schema boundary. The rollup text says cross-schema keys
+        "are counted in NO schema's own edge count", which is right as bookkeeping, but it means the per-schema words
+        <i>isolated</i> and <i>components</i> describe the cut, not the tables.
+      </p>
+      <p class="prov" style="margin:var(--s2) 0 0;max-width:92ch">
+        So two rules. <b style="font-weight:500">A per-schema drawing always draws the keys that leave it</b>, as lines to the named tables outside, as
+        here. <b style="font-weight:500">A per-schema sentence says "no keys inside sales", never "isolated"</b>. <i>Isolated</i> is a claim about the
+        database, and only the database-level result can make it. This also changes what the Questions and By-analysis
+        rollups say for <span class="mono">sales</span> today.
+      </p>
+    </div>
+  </div>
+
+  <div style="margin-top:var(--s6)">
+    <div class="caps" style="color:var(--ink-muted)">Four &middot; getting it into /next</div>
+    <div class="card mine" style="max-width:1000px;margin-top:var(--s2);border-left-width:3px">
+      <p class="prov" style="margin:0;max-width:92ch">
+        The pipeline exists: <span class="mono">factMermaid()</span> &rarr; Kroki &rarr; a pane, already used for repos. Two adjustments.
+        <b style="font-weight:500">Emit Graphviz, not Mermaid:</b> Kroki renders both, and Mermaid's layout has nothing comparable to <span class="mono">dot</span>'s
+        clusters, which the whole-database view depends on. That means a sibling to <span class="mono">/api/diagrams/mermaid</span> and a
+        <span class="mono">graphviz</span> field beside <span class="mono">mermaid</span> on the fact. <b style="font-weight:500">Emit three sources, not one:</b> the map, the
+        whole graph when it is under the size limit, and one per schema with its outgoing keys. The pane opens on the map.
+      </p>
+      <p class="prov" style="margin:var(--s2) 0 0;max-width:92ch;color:var(--ink-muted)">
+        Static first. The version worth having later lets you click a table and land on it in the Schema Inventory tree. That needs a
+        graph library in the browser, which <span class="mono">/next</span> doesn't have. Worth choosing on purpose, not drifting into.
+        Keys are read from the catalog, so a limited credential like coco_pharma's should still get the complete graph. That
+        makes this one of the few whole pictures that database gets.
+      </p>
+    </div>
+  </div>
+
+</div>
+</x-dc>
+</body>
+</html>

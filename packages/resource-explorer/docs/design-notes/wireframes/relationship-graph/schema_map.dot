@@ -1,0 +1,19 @@
+digraph G { graph [rankdir=LR,bgcolor="transparent",pad=0.2,nodesep=0.5,ranksep=0.9,fontname="DejaVu Serif"];
+node [shape=box,style="rounded,filled",fillcolor="#ffffff",color="#201f1d",fontname="DejaVu Serif",fontcolor="#201f1d",fontsize=13,margin="0.18,0.10"];
+edge [color="#4a463e",fontname="DejaVu Serif",fontsize=11,fontcolor="#201f1d",arrowsize=0.7];
+"person" [label=<<b>person</b><br/><font point-size="10" color="#4a463e">13 tables · 13 keys inside</font>>,width=1.42,penwidth=1.52];
+"humanresources" [label=<<b>humanresources</b><br/><font point-size="10" color="#4a463e">6 tables · 5 keys inside</font>>,width=1.09,penwidth=1.24];
+"production" [label=<<b>production</b><br/><font point-size="10" color="#4a463e">25 tables · 27 keys inside</font>>,width=2.00,penwidth=2.00];
+"purchasing" [label=<<b>purchasing</b><br/><font point-size="10" color="#4a463e">5 tables · 4 keys inside</font>>,width=1.04,penwidth=1.20];
+"sales" [label=<<b>sales</b><br/><font point-size="10" color="#4a463e">19 tables · 22 keys inside</font>>,width=1.71,penwidth=1.76];
+"sales" -> "person" [label="8",penwidth=4.40];
+"purchasing" -> "production" [label="3",penwidth=2.15];
+"sales" -> "production" [label="2",penwidth=1.70];
+"humanresources" -> "person" [label="1",penwidth=1.25];
+"person" -> "sales" [label="1",penwidth=1.25];
+"production" -> "humanresources" [label="1",penwidth=1.25];
+"purchasing" -> "humanresources" [label="1",penwidth=1.25];
+"purchasing" -> "person" [label="1",penwidth=1.25];
+"sales" -> "purchasing" [label="1",penwidth=1.25];
+"sales" -> "humanresources" [label="1",penwidth=1.25];
+}
