@@ -1,0 +1,229 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;600&amp;family=Lora:wght@400;500&amp;display=swap">
+  <style>
+    :root{
+      --paper:#f3f2f2; --rule:rgba(32,31,29,.16); --rule-strong:#8e8a8a;
+      --ink:#201f1d; --ink-muted:#4a463e;
+      --accent:#b68235; --accent-ink:#7d5411;
+      --ok:#1d6b3f; --warn:#9c4212; --gap:#5b4a9c;
+      --s1:4.6px; --s2:9.2px; --s3:13.8px; --s4:18.4px; --s6:27.6px;
+      --heading:"Cormorant Garamond",Georgia,serif;
+      --body:"Lora",Georgia,serif;
+      --mono:ui-monospace,"SF Mono",Menlo,monospace;
+    }
+    *{box-sizing:border-box}
+    body{margin:0;font-family:var(--body);background:var(--paper);color:var(--ink);font-size:15px;line-height:1.55}
+    .tnum{font-feature-settings:"tnum";font-variant-numeric:tabular-nums}
+    .mono{font-family:var(--mono);font-size:.87em}
+    .caps{font-family:var(--heading);font-weight:600;font-size:12px;letter-spacing:.09em;text-transform:uppercase}
+    .prov{font-size:13px;line-height:1.45}
+    .h{font-family:var(--heading);font-weight:600}
+    .lnk{color:var(--accent-ink);text-decoration:underline;text-underline-offset:3px}
+    .card{border:1px solid var(--rule);border-radius:2px;padding:var(--s3);background:#fff}
+    .mine{border-left:3px solid var(--gap);padding-left:var(--s3)}
+    .bad{border-left:3px solid var(--warn);padding-left:var(--s3)}
+    .btn{display:inline-block;border:1px solid var(--rule-strong);border-radius:2px;
+         padding:1px var(--s2);font-size:12px;margin-right:var(--s1)}
+    .btn.p{border-color:var(--accent);color:var(--accent-ink)}
+    /* the card's parts */
+    .kv{display:grid;grid-template-columns:118px minmax(0,1fr);gap:var(--s1) var(--s3);font-size:13px}
+    .kv dt{color:var(--ink-muted)}
+    .kv dd{margin:0}
+    .nullbar{height:9px;background:#e6e4e0;border-radius:1px;overflow:hidden;width:190px}
+    .nullbar i{display:block;height:100%;background:var(--accent)}
+    .mcv{display:grid;grid-template-columns:118px 1fr 44px;gap:2px var(--s2);font-size:12px;align-items:center}
+    .mcv i{display:block;height:8px;background:var(--accent-ink);opacity:.75}
+    .badge{display:inline-block;border:1px solid var(--rule-strong);border-radius:9px;
+           padding:0 var(--s2);font-size:12px}
+    .hatch{background-image:repeating-linear-gradient(45deg,#e6e4e0 0 5px,#f3f2f2 5px 10px);
+           border:1px dashed var(--rule-strong);border-radius:2px}
+  </style>
+</helmet>
+
+<div style="width:1320px;padding:var(--s6) var(--s6) 60px">
+
+  <div style="border-bottom:1px solid var(--rule-strong);padding-bottom:var(--s4)">
+    <div class="caps" style="color:var(--accent-ink)">Round 2 · drawn against slices 6 and 7</div>
+    <h1 class="h" style="font-weight:400;font-size:38px;margin:var(--s3) 0 var(--s2);max-width:34ch">The column profile card, in all four of its states</h1>
+    <p style="max-width:86ch;margin:0">
+      Field names are the shipped ones from <span class="mono">database_column_profiles</span>
+      (<span class="mono">registry.py:573</span>). The four states are the shipped constants:
+      <span class="mono">measured</span>, <span class="mono">not_collected</span>,
+      <span class="mono">not_supported</span>, and the backfill's
+      <span class="mono">not_measured</span>. Drawing against the real columns turned up one thing
+      that is not a design question at all &mdash; see the last panel.
+    </p>
+  </div>
+
+  <!-- 1 · measured -->
+  <div style="margin-top:var(--s6)">
+    <div class="caps" style="color:var(--ink-muted)">One &middot; <span class="mono">state = measured</span></div>
+    <div class="card" style="max-width:560px;margin-top:var(--s2)">
+      <div><span class="mono">coco_pharma</span> &middot; <span class="mono">public.patient</span> &middot; <strong style="font-weight:500">email</strong></div>
+      <div class="prov" style="color:var(--ink-muted);margin-top:var(--s1)"><span class="mono">character varying(320)</span></div>
+
+      <div style="margin-top:var(--s3)">
+        <div class="prov" style="color:var(--ink-muted)">nulls</div>
+        <div style="display:flex;align-items:center;gap:var(--s2);margin-top:2px">
+          <div class="nullbar"><i style="width:2%"></i></div>
+          <span class="prov tnum">2%</span>
+        </div>
+      </div>
+
+      <dl class="kv" style="margin:var(--s3) 0 0">
+        <dt>distinct</dt><dd><span class="tnum">~80%</span> of rows <span style="color:var(--ink-muted)">(<span class="mono">n_distinct −0.8</span>)</span></dd>
+        <dt>width</dt><dd><span class="tnum">24</span> bytes average</dd>
+        <dt>ordering</dt><dd><span class="tnum">0.04</span> — effectively unordered on disk</dd>
+        <dt>range</dt><dd class="mono">a.chen@… — z.wu@…</dd>
+      </dl>
+
+      <div style="margin-top:var(--s3)">
+        <div class="prov" style="color:var(--ink-muted)">most common values</div>
+        <div class="mcv" style="margin-top:var(--s1)">
+          <span class="mono">(blank)</span><i style="width:34%"></i><span class="tnum">1.7%</span>
+          <span class="mono">noreply@…</span><i style="width:18%"></i><span class="tnum">0.9%</span>
+          <span class="mono">test@…</span><i style="width:8%"></i><span class="tnum">0.4%</span>
+        </div>
+      </div>
+
+      <div style="margin-top:var(--s3);border-top:1px solid var(--rule);padding-top:var(--s2)">
+        <span class="badge" style="border-color:var(--ok);color:var(--ok)">Email &middot; <span class="tnum">0.98</span> &middot; measured</span>
+        <span class="btn p" style="margin-left:var(--s1)">declare</span>
+      </div>
+
+      <div class="prov" style="color:var(--ink-muted);margin-top:var(--s3);border-top:1px solid var(--rule);padding-top:var(--s2)">
+        The database's own statistics, computed <span class="tnum">4h</span> ago
+        (<span class="mono">ANALYZE</span>) &middot; whole table
+      </div>
+    </div>
+    <p class="prov" style="max-width:86ch;color:var(--ink-muted);margin:var(--s3) 0 0">
+      The foot line is <span class="mono">stats_source</span> +
+      <span class="mono">stats_computed_at</span>, and it is the one part of this card that must never
+      be omitted: it is what stops a null fraction from three months ago sitting silently beside a row
+      count from two minutes ago. <span class="mono">sample_strategy</span> /
+      <span class="mono">sample_rows</span> replace &ldquo;whole table&rdquo; when RE did the reading.
+    </p>
+  </div>
+
+  <!-- 2 · the two real absences -->
+  <div style="margin-top:var(--s6);border-top:1px solid var(--rule-strong);padding-top:var(--s4)">
+    <div class="caps" style="color:var(--ink-muted)">Two &middot; the absences, which must not look alike</div>
+    <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--s4);margin-top:var(--s3)">
+
+      <div class="card">
+        <div><span class="mono">public.patient</span> &middot; <strong style="font-weight:500">notes</strong></div>
+        <div class="prov" style="color:var(--ink-muted);margin-top:var(--s1)"><span class="mono">text</span></div>
+        <div class="hatch" style="height:96px;margin-top:var(--s3);display:flex;align-items:center;justify-content:center">
+          <span class="prov" style="color:var(--ink-muted)">no statistics collected</span>
+        </div>
+        <p class="prov" style="margin:var(--s3) 0 0">
+          <strong style="font-weight:500"><span class="mono">ANALYZE</span> has never run on this
+          table</strong>, so Postgres holds no estimates for it. Nothing here is a measurement of
+          zero.
+        </p>
+        <div style="margin-top:var(--s2)"><span class="btn">run ANALYZE ›</span></div>
+        <div class="prov" style="color:var(--ink-muted);margin-top:var(--s2)"><span class="mono">state = not_collected</span></div>
+      </div>
+
+      <div class="card">
+        <div><span class="mono">warehouse.fact_sales</span> &middot; <strong style="font-weight:500">amount</strong></div>
+        <div class="prov" style="color:var(--ink-muted);margin-top:var(--s1)"><span class="mono">numeric(12,2)</span> · on a MySQL connection</div>
+        <div class="hatch" style="height:96px;margin-top:var(--s3);display:flex;align-items:center;justify-content:center">
+          <span class="prov" style="color:var(--ink-muted)">this engine does not report column statistics</span>
+        </div>
+        <p class="prov" style="margin:var(--s3) 0 0">
+          <strong style="font-weight:500">The capability is not declared</strong>, so the query was
+          never attempted &mdash; there is nothing to run and nothing to wait for. No action offered,
+          because none would help.
+        </p>
+        <div class="prov" style="color:var(--ink-muted);margin-top:calc(var(--s2) + 21px)"><span class="mono">state = not_supported</span></div>
+      </div>
+    </div>
+    <p class="prov" style="max-width:86ch;color:var(--ink-muted);margin:var(--s3) 0 0">
+      Same hatching, different sentence, and <strong style="font-weight:500;color:var(--ink)">only one
+      of the two carries an action</strong>. That is the distinction
+      <span class="mono">EngineCapabilities</span> was added to preserve, in its own words: declaring
+      a capability true ahead of the code that reads it would make
+      <em>&ldquo;not yet implemented&rdquo;</em> render identically to
+      <em>&ldquo;measured, and there was nothing&rdquo;</em>.
+    </p>
+  </div>
+
+  <!-- 3 · not a design question -->
+  <div class="bad" style="margin-top:var(--s6)">
+    <div class="caps" style="color:var(--warn)">Three &middot; not a design question — a rendering rule the shipped column needs</div>
+    <p style="max-width:86ch;margin:var(--s2) 0 var(--s2)">
+      <span class="mono">distinct_count</span> is <span class="mono">REAL</span>, correctly, because
+      <strong style="font-weight:500">Postgres' <span class="mono">n_distinct</span> is negative when
+      it expresses a ratio rather than a count</strong>: above zero it is an estimated number of
+      distinct values; below zero it is the negative of that number divided by the row count. So
+      <span class="mono">−0.8</span> means <em>distinct values are about 80% of rows</em>.
+    </p>
+    <p style="max-width:86ch;margin:0 0 var(--s2)">
+      A card that prints the field as a count renders
+      <strong style="font-weight:500">&ldquo;distinct: −0.8&rdquo;</strong> — a negative cardinality,
+      which cannot happen. It is the same shape as the counter-reset case from round 1: a real number,
+      rendered as the wrong kind of quantity, and read as an error in the data rather than in the view.
+    </p>
+    <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--s4);margin-top:var(--s3)">
+      <div class="card" style="background:transparent">
+        <div class="caps" style="color:var(--warn)">wrong</div>
+        <div class="prov" style="margin-top:var(--s1)">distinct <span class="tnum">−0.8</span></div>
+      </div>
+      <div class="card" style="background:transparent">
+        <div class="caps" style="color:var(--ok)">right</div>
+        <div class="prov" style="margin-top:var(--s1)">
+          <span class="tnum">−0.8</span> → <strong style="font-weight:500">~80% of rows</strong><br>
+          <span class="tnum">1274</span> → <strong style="font-weight:500"><span class="tnum">1,274</span> values</strong>
+        </div>
+      </div>
+    </div>
+    <p class="prov" style="max-width:86ch;margin:var(--s3) 0 0">
+      One branch on the sign, at the render site. Worth a test, since the sample data in
+      <span class="mono">coco_pharma</span> may well contain only one of the two forms, and the bug
+      would then ship invisible.
+    </p>
+  </div>
+
+  <!-- 4 · what this card does not answer -->
+  <div class="mine" style="margin-top:var(--s6)">
+    <div class="caps" style="color:var(--gap)">Still to draw, and why not here</div>
+    <p class="prov" style="margin:var(--s2) 0 0;max-width:86ch">
+      <strong style="font-weight:500;color:var(--ink)">The treemap and the exposure heatmap.</strong>
+      The card is drawn first because it is the one with a committed schema behind it, so it is the
+      one where a drawing can be wrong in a way that costs a migration. The treemap needs the
+      inventory rows to be checked the same way — area and colour must come from fields that exist,
+      and the hatched &ldquo;could not read&rdquo; region needs whichever state the FS walk records
+      for an unreadable directory. The heatmap needs the role side, which is slice 8/9
+      (<span class="mono">postgres_operations</span>) and not yet there: drawing a
+      columns-by-roles grid before the roles exist would be designing against a guess, which is the
+      thing round 2 was created to stop.
+    </p>
+  </div>
+
+  <div style="margin-top:var(--s6);border-top:1px solid var(--rule);padding-top:var(--s3)">
+    <div class="caps" style="color:var(--ink-muted)">Data in this drawing</div>
+    <p class="prov" style="color:var(--ink-muted);max-width:86ch;margin:var(--s2) 0 0">
+      <strong style="font-weight:500;color:var(--ink)">Real:</strong> every field name and all four
+      state values, from <span class="mono">database_column_profiles</span>
+      (<span class="mono">registry.py:573-610</span>); the seven
+      <span class="mono">EngineCapabilities</span> booleans and the three Postgres declares true;
+      <span class="mono">n_distinct</span>'s sign convention.
+      <strong style="font-weight:500;color:var(--ink)">Illustrative:</strong> the column names and
+      every number on the cards — <span class="mono">coco_pharma</span>'s actual
+      <span class="tnum">91</span> annotations have not been read into a card yet. Not spec.
+    </p>
+  </div>
+
+</div>
+</x-dc>
+</body>
+</html>
