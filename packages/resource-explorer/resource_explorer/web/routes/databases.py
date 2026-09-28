@@ -42,11 +42,20 @@ class DatabaseSummary(BaseModel):
     # once `repo_dispositions`' PK generalized to (entity_type, entity_slug)
     # (Backlog.md, "Disposition is NOT fixed here", 2026-09-22).
     disposition: str = "undecided"
-    # egeria_asset_guid set — boolean only, not the raw GUID, same convention
-    # as `ProjectSummary.is_published` (projects.py). Lets /next's shared
-    # `lifecycleMark()` render the same "published to Egeria" mark for a
-    # database row it already renders for a repo row.
+    # egeria_asset_guid set AND the linkage is not recorded stale — see
+    # `egeria_linkage.describe_publish_status`. Boolean only, not the raw
+    # GUID, same convention as `ProjectSummary.is_published` (projects.py).
+    # Lets /next's shared `lifecycleMark()` render the same "published to
+    # Egeria" mark for a database row it already renders for a repo row.
     is_published: bool = False
+    # Non-empty only when a GUID IS cached but the linkage is stale (the
+    # element no longer exists in Egeria, e.g. after a platform reset) — a
+    # ready-to-render sentence carrying the GUID history that a plain
+    # `is_published=False` would otherwise discard. See
+    # `egeria_linkage.describe_publish_status`'s own docstring for why this
+    # exists: found live 2026-09-26, `coco_pharma` had shown a plain
+    # "published to Egeria" for four days after its link went stale.
+    egeria_publish_note: str = ""
     # Personal view filter, separate axis from disposition — see
     # `ProjectSummary.working_set_hidden` (projects.py) and
     # `registry.py`'s `resource_working_set` table. Needed so /next's
@@ -176,6 +185,10 @@ def _to_summary(db) -> DatabaseSummary:
             credential_capability = cap
             break
 
+    from resource_explorer.egeria_linkage import describe_publish_status
+    publish_status = describe_publish_status(
+        registry, "database", db.slug, getattr(db, "egeria_asset_guid", "") or "")
+
     return DatabaseSummary(
         slug=db.slug,
         display_name=db.display_name,
@@ -199,9 +212,10 @@ def _to_summary(db) -> DatabaseSummary:
         egeria_user=db.egeria_user or "",
         group_slug=getattr(db, "group_slug", "") or "",
         disposition=disp.get("disposition", "undecided"),
-        is_published=bool(getattr(db, "egeria_asset_guid", "") or ""),
         working_set_hidden=registry.is_working_set_hidden("database", db.slug),
         credential_capability=credential_capability,
+        is_published=publish_status["is_published"],
+        egeria_publish_note=publish_status["note"],
     )
 
 
@@ -278,6 +292,30 @@ async def get_database_survey_results(slug: str, stage: str = "", include_empty:
     return await asyncio.to_thread(
         build_survey_results, registry, "database", slug, stage, include_empty,
     )
+
+
+@router.get("/{slug}/schema-inventory-tree")
+async def get_database_schema_inventory_tree(slug: str) -> dict:
+    """Slice 22's Schemas → Tables → Columns tree for /next's Schema
+    Inventory view — one call, the whole tree, built from the structured
+    `database_tables`/`database_columns` detail rows (never the classic
+    UI's `survey_data` blob path). See `schema_inventory_tree()`'s own
+    docstring for the shape.
+
+    404s the same way `get_database_survey_results` does; `to_thread`
+    since this walks every stored table/column row plus the credential
+    probe, same reasoning as that route."""
+    from resource_explorer.registry import ProjectRegistry
+    from resource_explorer.surveyors.database.survey_definition_adapter import (
+        schema_inventory_tree,
+    )
+
+    registry = ProjectRegistry()
+    if not registry.get_database(slug):
+        raise HTTPException(status_code=404, detail=f"Database '{slug}' not found")
+
+    tree = await asyncio.to_thread(schema_inventory_tree, registry, slug)
+    return tree or {"schemas": []}
 
 
 @router.get("/{slug}/questions")
@@ -564,7 +602,7 @@ class AnalysisRunResult(BaseModel):
     was thrown away and reported as a failure. Reproduced live via
     `db_activity_signals`'s "Is this database alive…" Questions-checklist
     card, but not specific to it — every analysis_id in
-    `DATABASE_ANALYSIS_STEP_MAP` (and every `db_derived` id) went through
+    `DATABASE_SURVEYOR_STEP_MAP` (and every `db_derived` id) went through
     this same handler.
 
     Matches `projects.py`'s `run_single_analysis` or `run_stage_batch`'s
@@ -619,7 +657,7 @@ async def run_single_database_analysis(slug: str, analysis_id: str) -> AnalysisR
     queued here for consistency and because a database that has never been
     reachable must not be treated specially by this route — but see
     `workflows.analysis.run_database_analysis` for confirmation it does no
-    fetch of its own. The DATABASE_ANALYSIS_STEP_MAP branch opens a real
+    fetch of its own. The DATABASE_SURVEYOR_STEP_MAP branch opens a real
     connection and can legitimately take a while (the same shape that made
     the repo path's `architecture_recovery` worth backgrounding), so it is
     the one this fix is actually for.
@@ -628,7 +666,7 @@ async def run_single_database_analysis(slug: str, analysis_id: str) -> AnalysisR
     from resource_explorer.registry import ProjectRegistry
     from resource_explorer.run_queue import requested_by as _requested_by
     from resource_explorer.surveyors.database.database_surveyor import (
-        DATABASE_ANALYSIS_STEP_MAP,
+        DATABASE_SURVEYOR_STEP_MAP,
     )
     from resource_explorer.surveyors.database.db_derived import DB_DERIVED_ANALYSES
 
@@ -643,7 +681,7 @@ async def run_single_database_analysis(slug: str, analysis_id: str) -> AnalysisR
     # projects.py's run_single_analysis follows).
     if analysis_id in DB_DERIVED_ANALYSES:
         pass  # zero-fetch — no credentials check needed
-    elif analysis_id not in DATABASE_ANALYSIS_STEP_MAP:
+    elif analysis_id not in DATABASE_SURVEYOR_STEP_MAP:
         raise HTTPException(
             status_code=400,
             detail=f"Analysis '{analysis_id}' has no local survey step(s) mapped — "

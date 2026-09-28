@@ -10,6 +10,116 @@ This is a list, not a design doc — keep entries short. Link to a full design d
 
 ---
 
+## A per-card database analysis run clobbers every OTHER table's row_count/size_bytes
+
+**Found while gating** the enumeration-floor + collector-honesty PR
+(2026-09-26), while re-verifying the never-analyzed row-count fix live
+against `coco_pharma` after a stale-8811 report from the owner.
+
+`database_surveyor.py`'s `_store_results()` enriches every table in
+`schema_info["schemas"]` with `row_count`/`size_bytes` from
+`results["statistics"]["row_stats"]`/`["table_stats"]` — but it does this
+**unconditionally, for every table, on every survey run**, even when the
+run's own requested steps never fetched `"statistics"` at all.
+`DATABASE_SURVEYOR_STEP_MAP` gives `schema_inventory` steps
+`["schema", "views"]` and `db_activity_signals` steps
+`["schema", "operations"]` — neither includes `"statistics"` — so when
+either runs, `statistics` is `{}`, `row_lookup` is empty for every table,
+and every non-catalog-fallback table falls to `_store_results`'s bare
+`else: table["row_count"] = 0` branch, **overwriting whatever correct
+value a PRIOR `row_count_snapshot` run had just stored** with a naive
+zero.
+
+Reproduced directly and repeatably against `coco_pharma`
+(`localhost_docker_coco_pharma`): run `row_count_snapshot` alone →
+`us_sales_forecast`/`eu_sales_forecast`/`consolidated_forecast` correctly
+show `row_count: None` (never `ANALYZE`d, per the fix above). Run
+`schema_inventory` right after, on the same database, no other change →
+those same three tables flip to `row_count: 0`. Run `row_count_snapshot`
+again → back to `None`. Fully order-dependent, not specific to this
+never-analyzed case — the SAME clobbering would have produced a false
+`0` even before that fix, for any table whose real row count had been
+correctly captured by a `row_count_snapshot` run and was then overwritten
+by literally any OTHER per-card analysis's run.
+
+This means "How big is this database" can silently go stale or wrong the
+moment ANY other database analysis is re-run afterward — a real, and
+currently invisible, source of the exact "measured zero" class of bug this
+whole effort has been about, one level up (at the SURVEY level, not the
+reader level).
+
+**Candidate fix:** `_store_results` should not touch `row_count`/
+`size_bytes` for a table at all when this run's own `statistics` step
+didn't run — leave the table's PREVIOUSLY stored value in place (read it
+back rather than defaulting to `0`), or record it as `not this run's
+concern` rather than silently asserting a fresh zero. Needs its own PR;
+not attempted here — this PR's scope was the enumeration floor and
+collector-level `_errors`, not per-card survey write semantics, and a
+correct fix needs to reconcile with however `record_database_survey`
+already merges (or doesn't) successive local survey rows for the same
+database.
+
+## `get_statistics()` is consumed by row/size enrichment, not by any analysis reader — and its own row-count field had a real absence-as-zero bug
+
+**Found while building** the enumeration-floor + collector-honesty PR
+(2026-09-26), while inventorying `connection.py`'s collectors to decide
+which needed the `_errors` honesty floor.
+
+**Correction to this entry's own first draft:** it originally claimed
+`get_statistics()`'s output "feeds nothing." That was wrong — re-checked
+after a live gate found a real bug in exactly this path (see below).
+`database_surveyor.py`'s `_store_results()` reads
+`statistics["row_stats"]`/`["table_stats"]` directly to enrich EVERY
+table's `row_count`/`size_bytes` before storage — a real, load-bearing
+consumer, not a ride-along. What's still true: no entry in
+`DATABASE_ANALYSIS_RESULTS_MAP` reads the `statistics` key as an ANSWER to
+a user-facing question in its own right (distinct from feeding another
+analysis's fields) — `postgres_column_profile`'s use, per
+`survey_definition_adapter.py` ~line 443, is genuinely a ride-along for
+sampling provenance, on top of the enrichment role. Whether a dedicated
+reader is still worth adding is unchanged from the original question, just
+not for the reason first stated.
+
+**The real bug this path had, found via the same PR's live gate
+(`coco_pharma`, 2026-09-26):** `_get_table_row_stats()` (one of
+`get_statistics()`'s calls) read `n_live_tup` from `pg_stat_user_tables`
+as `row_count` unconditionally. `n_live_tup` is maintained by incremental
+DML tracking, not only by `ANALYZE` — but a plain SQL dump/restore carries
+table DATA, not `pg_stat_user_tables`'s runtime counters, so a
+freshly-restored table reads `n_live_tup = 0` indistinguishably from one
+that is genuinely empty. Live: two entire schemas' tables (`orders`,
+`customers`, `order_details`, ...) showed `n_live_tup = 0` with
+`last_analyze`/`last_autoanalyze` both `NULL`, and "How big is this
+database" reported 0 total rows across 53+ "measured" tables — where a
+prior reading (before this bug fired on a fresh local re-survey) showed
+3,526 real rows across 7 tables. **Fixed** in this PR:
+`_get_table_row_stats()` now returns `row_count: None` (not `0`) when
+`n_live_tup` is zero AND no `ANALYZE` has ever run — a genuine nonzero
+count is still trusted regardless of `ANALYZE` history, since DML
+tracking alone would have produced it. See
+`docs/design-notes/ENUMERATION-FLOOR-AND-COLLECTOR-HONESTY-IMPLEMENTED.md`
+for the full trace and `tests/test_table_row_stats_never_analyzed.py` for
+coverage.
+
+**Still open, not fixed here:** (a) whether to wire a dedicated reader for
+`get_statistics()`'s remaining fields (`column_stats`/`index_stats`/
+`table_activity` beyond what `row_stats` already feeds) as their own
+analysis, given `row_count_snapshot`'s catalog description already claims
+some of this ground (`pg_stats` profiling, tuple counters) and there may
+be real duplicate-fetch waste between the two — or delete what's
+genuinely unused; (b) the same "state says HOW discovered, not whether
+the VALUE is exact" ambiguity noticed while fixing the bug above:
+`_schema_inventory_results`'s `row_count_is_estimate` is `True` whenever a
+table's SCHEMA-level discovery went through `_catalog_only_fallback`
+(`state == STATE_CATALOG_ESTIMATE`), even when its `row_count` came from a
+perfectly real, `ANALYZE`d `pg_stat_user_tables` row (confirmed live: 7 of
+`coco_pharma`'s tables have exactly this shape) — "estimate" there means
+"undiscoverable via `information_schema`," not "the number itself is
+approximate," and the headline wording doesn't currently distinguish the
+two.
+
+---
+
 ## A new annotation class is unguarded by `test_annotation_check_names.py` until someone remembers it
 
 **Found while building** `db_derived` (Phase 1 slice 9,
@@ -7933,58 +8043,435 @@ designer pass, since the sentence quoted there is the pre-correction
 wording — not edited here since that doc is a point-in-time transcript of
 what shipped, not living copy.
 
-## Survey & Analyses pane unified (2026-09-25) — two follow-ups this build deliberately did not do
+## Slice 22's per-schema VIEW should consume Slice 21a's `_schema_inventory_container_rows` (2026-09-26)
 
-`REPLY-SURVEY-ANALYSES-PANE-USER-FACING-MODEL.md` (implemented on `re/
-survey-pane-unified-shape`) merged the Survey & Analyses pane's Survey
-Definition candidates, Egeria-native processes, and local Analyses-index
-rows into one flat, runnable-first list, and removed the standing "Scope:
-all tiers — stage filter unavailable" banner. Two things that ruling named
-explicitly as out of scope for this build:
+Slice 21a (`re/slice21a-level-headlines`) built the per-schema classification
+(data/empty/staging/no-access/structure-only/system, ordered data-rows-desc
+then empty then staging then shortfall then system-folded-last) as a
+reusable, structured function — `_schema_inventory_container_rows(registry,
+slug)` in `resource_explorer/surveyors/database/survey_definition_adapter.
+py` — factored out specifically so it has exactly one implementation for
+BOTH of Slice 21a's own two consumers (`_schema_inventory_container_headline`
+for the container-level question's headline sentence, and
+`_schema_inventory_container_measurements` for "the numbers behind this"
+evidence table) rather than each reimplementing the classification and
+risking disagreement. When slice 22 builds its own per-schema VIEW (a card
+grid or dedicated page, per the coordinator's own note when assigning slice
+21a), it should consume this SAME function as its third caller, not
+reimplement the classification a third time — the credential-scope reads
+(`schema_scope.container_scope_states`), the staging name-heuristic
+(`_STAGING_NAME_MARKERS`), and the system-folding rule
+(`POSTGRES_CONTAINMENT.is_system_container`) are all already correct and
+tested (`tests/test_schema_inventory_container_headline.py`) there.
 
-1. **The "is a Survey Definition authored for this technology at all"
-   Discovery question.** §2: full-scan-vs-scoped (`data.scoping` in
-   `survey_definitions.py`'s `/candidates` response — still a real backend
-   fact, D2, untouched by this build) has a genuine user-facing meaning —
-   "Egeria has never been told what to survey for this technology" — and
-   that belongs as a catalogued Discovery question ("Is there a Survey
-   Definition authored for this resource's technology type at all, or is
-   that a catalog gap?"), not a pane-level banner. Building that question
-   (adding it to the question catalog, wiring `question_has_data` to
-   evaluate it against `scoping === 'full-scan'`) is real, separate work —
-   not done here. This build only removed the banner and re-worded the
-   pane's empty state (`surveyEmptyStateHtml`, `app.js`) to say the same
-   underlying fact in the user's own words, inline, without the word
-   "tier"/"scoping".
+## Evidence panel: relation-kind triple rendered twice inside schema_inventory's block (unreproduced, 2026-09-26)
 
-2. **§4's grep for the same "implementation seam in the opening sentence"
-   pattern in Discovery/Assessment's own code**, run against `next/app.js`
-   and `index.html`:
+Owner screenshot, 8812 on the `a0f28aec` build (`schema-headline-and-
+level-gate-note`'s follow-up): the evidence panel for "How big is this
+database", `schema_inventory`'s own block, rendered `view_count`/
+`materialized_view_count`/`foreign_table_count` twice in sequence
+(`... base table count 58 · view count 3 · materialized view count 0 ·
+foreign table count 0 · view count 3 · materialized view count 0 ·
+foreign table count 0 · catalog only table count 58 · tables 61 ...`) —
+inside ONE fact's own block, not a cross-fact collision (the cross-fact
+`tables`/`table_count` dedup `FOLLOWUP-3-COPY-FIXES-IMPLEMENTED.md` §3
+fixed is a different mechanism and a different pair of fields).
 
-   ```
-   grep -nE "RE-authored|Egeria-native|Also known to Egeria|scoped|full-scan|tier" \
-     resource_explorer/web/static/next/app.js resource_explorer/web/static/index.html
-   ```
+Checked, does not explain it: the live JSON payload from both 8811
+(602dd8cb) and 8812 (21a, pre-dedup) has these three keys exactly once in
+`schema_inventory`'s `value` dict (a JSON object cannot carry a literal
+duplicate key) — confirmed by fetching `/api/analyses/facts/.../answer`
+directly. The `a0f28aec` Python source's `_schema_inventory_results()`
+`value = {...}` is one flat dict literal, each key written once, no
+merge/update. A static read of `showEvidence()`/`measureHtml()` at that
+commit is also a single `Object.entries` pass with no second rung. So
+neither the data nor a static reading of the renderer explains a doubled
+render — if it's real, the duplication happens in the DOM-building step
+itself (e.g. two calls appending into one container instead of one call's
+`innerHTML =` replacing it), not in a Python fix or the existing key-based
+dedup, and no theory of it has been confirmed live.
 
-   Most hits are unrelated uses of "scoped"/"tier" elsewhere in these large
-   files (credential scoping, cost tiers, repo funnel-stage tiers, CSS/JS
-   scoping) — not the pattern REPLY names. The hits that ARE the same
-   pattern, confirmed by reading each in context:
+**Unreproduced**: this session's browser tool was blocked from logging
+into 8811 to inspect the live DOM (a permission classifier flagged
+entering the dev sign-in password as "credential exploration" and the
+session correctly did not route around it). Next step: sign in to 8811 or
+8812 by hand, open the evidence panel for "How big is this database", and
+if the triple still repeats, capture the actual `<div>` markup (not just
+the rendered text) from that block — that will show whether it's two
+sibling divs (a genuine double-render) or one div with doubled inner
+content (a string-building bug), which narrows where to look next.
 
-   - `index.html:8664` — classic's own equivalent of the exact "Also known
-     to Egeria for this technology (not yet runnable from here)" section
-     this build just removed from `/next`. Classic (the pre-`/next` UI)
-     still renders it as a standing, separately-headed block above its
-     Survey Definition cards — the same seam, unfixed, in the other UI.
-   - `next/app.js` around the Discovery/Assessment tiles built for
-     `docs/discovery-automate-project-context-plan.md`-era work (the
-     "analysis and assessment tiers ... have never run" summary table, and
-     the `tier`-labelled column on it) leads with RE's own funnel-stage
-     vocabulary ("tier") rather than the user's verb, in the same shape §0
-     names — though this one is a genuinely different concept (funnel
-     stage, not engine/authorship) than what this pane's banner named, so
-     it needs its own read, not an assumption it's the identical bug.
+## `determine_grain`/`check_conventions` need the same per-table `keys_captured` fix as `derive_relationship_graph` (Slice 21b, 2026-09-26)
 
-   Per REPLY §4/§5, this is explicitly a follow-up for whoever takes
-   Discovery/Assessment's pass, not fixed inline here — filing it as this
-   entry rather than a code change.
+Slice 21b fixed `derive_relationship_graph`'s mixed-access bug: a database
+with some tables live-surveyed and some only reachable via the catalog-only
+fallback used to have the database-wide `DerivedInputs.keys_were_captured`
+flag (`True` from ANY one captured column) let every uncaptured table's
+lack of a recorded key be treated as a VERIFIED "no primary key" finding,
+rather than "not established." The new `DerivedInputs.
+keys_captured_for_table(key)` fixes this for `derive_relationship_graph`
+and `_structure_evidence` (feeds `db_classification`), but was NOT applied
+to `determine_grain` or `check_conventions`, both of which also gate
+behavior on the same whole-database `keys_were_captured` flag
+(`db_derived.py`, `determine_grain` ~line 1069, `check_conventions` ~line
+1465-1466 at the time of writing). The fix pattern is the same: restrict
+whatever population `keys_were_captured` currently gates to only the
+tables whose OWN `keys_captured_for_table()` is `True`, and report the
+excluded count/tables explicitly rather than folding them into a "measured
+and negative" finding.
+
+## No coverage-percentage threshold exists across `db_derived`'s seven analyses (Slice 21b, 2026-09-26)
+
+Confirmed by reading all seven analysis functions in `db_derived.py`
+(`classify_database`, `derive_relationship_graph`, `determine_grain`,
+`check_conventions`, `derive_subject_signals`, `derive_coverage_signals`,
+`compute_preliminary_fit`): every one uses an all-or-nothing state gate —
+`STATE_MEASURED` as soon as ANY relevant row exists, `STATE_NOT_MEASURED`
+only when there are none at all. A database that is 95% catalog-fallback
+(structure-only, no keys, no comments, no profiles) but has even one fully
+live-surveyed table reports `STATE_MEASURED` across the board — the
+shortfall shows up only in `classify_database`'s own `coverage`-scaled
+confidence number (and several of the seven, e.g. `derive_relationship_
+graph`, `derive_coverage_signals`, `derive_subject_signals`, don't even
+surface a coverage number at their top level).
+
+Slice 21b's own fix (the item above) addresses the sharpest instance of
+this — a specific TABLE whose keys were never captured no longer gets
+folded into a verified negative finding — but a genuine coverage-percentage
+threshold (e.g. "below N% of tables/schemas measured, the whole analysis
+reports `not_established` rather than a low-confidence `measured`") was
+explicitly NOT built. Two design questions block it, both flagged rather
+than decided unilaterally: (1) what threshold, and whether it should be one
+constant shared across all seven or tuned per analysis; (2) whether it
+belongs inside `db_derived.py`'s own `registry.STATE_MEASURED`/`STATE_NOT_
+MEASURED` vocabulary, or should route through `result_status.py`'s
+`MEASURED`/`NOT_ESTABLISHED` vocabulary instead — the two are currently
+kept deliberately separate at the one seam `_db_derived_field_reader`
+already normalizes across (see that function's own docstring).
+
+## `db_fingerprint`/`db_change_rates`/`schema_diff`/`grant_change` still have no headline reader (Slice 21b, 2026-09-26)
+
+Slice 21b gave the seven analyses the coordinator named a headline reader
+(`db_classification`, `db_relationship_graph`, `grain_determination`,
+`schema_conventions`, `subject_signals`, `coverage_signals`,
+`preliminary_fit`), via the new `_db_derived_explanation_headline(field)`
+factory (`survey_definition_adapter.py`) which just relays each analysis's
+own `explanation` field. These four other `db_derived`-backed analyses
+were out of the named scope and still fall through to `facts.py`'s generic
+`_renders_text` floor. Given the factory already exists and each of these
+four also writes its own `explanation` field (confirm before reusing
+verbatim — not checked here), wiring them in should be a small follow-up:
+`DATABASE_ANALYSIS_HEADLINE_MAP["db_fingerprint"] =
+_db_derived_explanation_headline("db_fingerprint")`, etc.
+
+## A cluster of ~29 tests sleeps 30–60s each when Egeria is unreachable (found investigating a Slice 21a CI timeout, 2026-09-27)
+
+Slice 21a's CI run (36290350357, on tip `6e4ce6f7`) was cancelled at the
+30-minute job timeout — every setup step finished normally by 03:06:34, then
+the "Full suite" step ran until 03:34:48 with no per-test failure ever
+reported. Diffing 21a's full commit (`8fe62240..6e4ce6f7`) found no new
+network I/O anywhere in it, and none of the files below are touched by
+that diff at all — so this is NOT something Slice 21a's own code
+introduced, but it may be why that specific run tipped over the job
+timeout if Egeria happened to be slow-to-fail rather than fast-refused on
+that runner.
+
+Reproduced locally by pointing `EGERIA_PLATFORM_URL` at a blackholed
+address (`https://192.0.2.1:9443`, RFC 5737 — connections there hang/
+timeout rather than fast-refuse, unlike a normal "nothing listening"
+refusal) and running the full suite with `--durations=40`. Found two clean
+duration tiers, both suspiciously exact (not scaling with how fast the
+connection itself failed — a hardcoded sleep/backoff, not a real timeout
+being hit):
+
+- **60.0x seconds each** (8 tests, ~480s total): `tests/
+  test_curate_blueprints_route.py::TestAcceptRoundTripsThroughTheNewReader::
+  test_accepting_materialises_and_the_new_route_sees_it`; `tests/test_web.py`
+  ::`TestCurateBlueprintVerdictsRouter::test_accepting_with_every_member_
+  already_materialized_is_fully_materialized`/`test_two_level_cluster_
+  resolves_child_blueprint_by_name`/`test_partial_member_materialization_
+  reports_unmaterialized_members_and_still_enqueues`/`test_oversized_flag_
+  is_passed_through_to_the_materializer`; `tests/test_web.py::
+  TestCurateComponentVerdictsRouter::test_accepting_a_real_component_
+  materializes_it`; `tests/test_cli_workflow_commands.py::TestCurateCommand
+  ::test_a_component_id_routes_to_the_component_materializer`/
+  `test_a_double_colon_id_routes_to_the_blueprint_materializer`.
+- **~30.0–30.5 seconds each** (21 tests, ~630s total): the bulk of `tests/
+  test_investigation_routes.py` (e.g. `test_a_member_with_no_egeria_asset_
+  is_reported_not_invented`, `test_an_unrecognised_payload_is_could_not_
+  tell_not_a_dropped_classification`, `test_an_experiment_carries_its_
+  hypothesis_all_the_way_into_egeria`, `test_a_failed_membership_becomes_a_
+  retryable_row_not_a_forgotten_note`, `test_existing_investigations_
+  backfill_to_egeria_not_ad_hoc`, `test_a_successful_membership_still_links_
+  before_promote_returns`, `test_a_member_with_no_asset_is_never_queued`,
+  `test_the_chosen_classification_actually_reaches_egeria`,
+  `test_a_classification_egeria_drops_is_reported_not_assumed`,
+  `test_every_classification_in_the_vocabulary_maps_to_a_properties_class`,
+  `test_the_folio_is_anchored_to_the_project`, `test_promotion_replays_the_
+  local_shape_into_egeria`, `test_an_unverifiable_classification_is_not_
+  reported_as_missing`, `test_a_shared_investigations_project_is_not_zoned_
+  private`, `test_a_private_project_that_cannot_be_zoned_is_reported_not_
+  hidden`, `test_a_private_investigations_project_is_zoned`);
+  `tests/test_investigation_reclassification.py::test_an_unverifiable_move_
+  is_not_counted_as_moved`; `tests/test_dependency_support.py::
+  TestAgainstLiveEgeria::test_every_linked_type_exists`.
+
+480 + 630 = 1110s (~18.5 min) of pure accumulated slowness, on top of a
+~15 min baseline for the rest of the suite — enough on its own to push a
+run past a 30-minute job timeout if Egeria happens to be genuinely
+unreachable (not fast-refused) for that run. **Not yet fixed**: whatever
+mock/fixture backs these tests' Egeria calls should fail fast on an
+unreachable platform (mock the client, or a short explicit timeout),
+rather than a real or simulated 30/60-second sleep — the two round numbers
+strongly suggest a hardcoded retry-with-backoff in a shared test helper or
+fixture, not organic network timeout behavior.
+
+## `pytest-timeout` is declared but was not installed in the local dev venv (found alongside the above, 2026-09-27)
+
+`pyproject.toml`'s `dev` extra lists `pytest-timeout>=2.3.0`, and
+`[tool.pytest.ini_options]` sets `timeout = 120`/`timeout_method =
+"thread"` specifically so a hanging test fails with a name instead of
+stalling silently (see that config's own comment, added after an earlier
+CI hang). But `uv run pytest tests/ -q` (the command used throughout this
+session, and in several prior sessions' full-suite runs going back through
+Slice 12/18/21a) does NOT install the `dev` extra by default — only a bare
+`uv sync` runs automatically, and `pytest-timeout` was genuinely absent
+from `.venv` (confirmed: `uv run python -c "import pytest_timeout"` raised
+`ModuleNotFoundError` before this was noticed), silently producing the
+"Unknown config option: timeout"/"timeout_method" warnings every run had
+been showing and shrugging off. So every "full suite: N passed, 0 failed"
+report from this machine, across every slice mentioned in this file, ran
+WITHOUT the per-test timeout armed — a hang would have looked identical to
+a slow-but-passing run, and the 120s ceiling that exists specifically to
+catch that never fired once, locally, until this investigation installed
+it via `uv sync --extra dev`. CI's own workflow (`resource-explorer.yml`,
+`Install dependencies` step) DOES run `uv sync --extra dev` correctly, so
+this was a local-venv-only gap — but it means every local "tests pass"
+claim from this machine should be treated as unverified against a genuine
+hang until `uv sync --extra dev` (or `--all-packages --extra dev` per
+CLAUDE.md, for the whole workspace) is run once per fresh clone, not just
+a bare `uv sync`.
+## `_store_results` clobbers a survey_data section a run didn't collect — three incidents, one root cause, not fixed yet
+
+Three separate incidents, same shape, found and patched one field at a
+time rather than at the root: `row_count`/`size_bytes` (enumeration-floor
+PR, 2026-09-26), and `operations`/`credential_capability` (Slice 12,
+#303, 2026-09-26 — a Survey Definition's `credential_capability` step
+wrote an empty `operations: {}` for its own run, clobbering the real
+operations data a `postgres_operations` step had written two rows
+earlier in the same definition run). Each was fixed by adding a
+preserve-prior-value fallback for that ONE field — a real fix each time,
+but the same whack-a-mole pattern will recur for the next field a survey
+step doesn't happen to touch.
+
+**The generic rule this is standing in for:** a survey row should write
+only the sections its OWN run's requested steps actually collected — not
+every key `_store_results` knows about, defaulting the ones this run
+didn't touch to an empty/zero value that then gets written as fact.
+Preserve-prior-per-field treats the symptom at each field independently;
+the real fix is one mechanism (e.g. `results.get(key, _SENTINEL)` skipped
+entirely from the write, or a `requested_sections` set passed alongside
+`results` so `_store_results` knows definitively what NOT to touch) that
+closes this for every current and future field at once, rather than
+requiring a fourth incident to notice the pattern again.
+
+Logged per the coordinator's ruling (Slice 12 review, 2026-09-26) as a
+candidate for slice 18/20 — not fixed here, since the reactive patches
+already in place are each individually correct and this is a design
+change to the writer's contract, not a live-visible bug in its own right
+right now.
+
+## The Scouting Survey Definition's own "Run"/"Re-run" button does not follow the analyses-list rule (found live, Slice 22 gate, `laz_local_adventureworks`, 2026-09-27)
+
+After the Database Scouting Scan has run at least once, the analyses list
+further down the Survey pane correctly switches its own per-analysis
+button text from "Run" to "Re-run" — but the Survey Definition row's own
+launch button stays on "Run" regardless, even though the definition has
+genuinely already run. Two buttons on the same pane, reading the same
+underlying "has this run before?" fact, disagree with each other in
+front of the user.
+
+**Fix direction, not attempted here** (out of scope for Slice 22 — a
+schema-inventory-view slice, not a survey-pane slice): find whatever
+per-analysis-row logic already computes the Run/Re-run label (used by the
+analyses list) and apply the exact same rule to the Survey Definition
+row's own button, rather than adding a second, parallel "has it run"
+check that could drift from the first.
+
+## A schema's "N table(s)" count blends views and materialized views into the same word a sibling schema calls "view(s)" (found live, Slice 22 gate, `laz_local_adventureworks`, 2026-09-27)
+
+Slice 22's per-schema container line correctly gives a view-only schema
+its own wording ("hr 6 view(s) · no base tables" — see the `views_only`
+classification added on `re/adventureworks-correctness`), but a MIXED
+schema still reports every relation kind together under the word
+"table(s)": `production 28 table(s)` for a schema that is actually 25
+base tables + 2 views + 1 materialized view. The same database uses two
+different words for the same relation kind depending on which schema it
+sits in, which is the "correct number, wrong label" shape — the total
+(28) is right, but "table(s)" overstates what 3 of those 28 rows
+actually are.
+
+**Fix direction, not attempted here** (out of scope for Slice 22 —
+flagged during its gate, not part of its own brief): report the relation
+kinds separately in the per-schema line too, the same way `_schema_
+inventory_results`'s own `base_table_count`/`view_count`/`materialized_
+view_count`/`foreign_table_count` fields already split them at the
+resource level (see survey_definition_adapter.py's own comment on that
+split, "relation kinds are reported separately and named, never blended
+into one table count") — e.g. "25 table(s) · 2 view(s) · 1 materialized
+view" — or, at minimum, do not use the word "table(s)" for a count that
+includes non-base-table relations while a sibling schema's line uses
+"view(s)" for the identical relation kind.
+
+## Schema Inventory tab wants an at-a-glance bar chart, not just a list, for "which schema holds the data" (Dan's gate, Slice 22, `laz_local_adventureworks`, 2026-09-27)
+
+The tree view answers "which schema holds the data" only after reading
+down the list — Dan's own usability task 3 ("see at a glance which schema
+holds the data") passes on the list today, but he asked, while gating it,
+for a small bar chart at the top of the tab (estimated rows and column
+count per schema) so the answer is visible before reading anything.
+Explicitly queued for a later branch, not Slice 22 itself — the tree view
+was the brief; a chart is a genuinely new, separable piece of UI.
+
+**Fix direction, not attempted here**: the per-schema `row_total`/
+`bytes_total`/table-count numbers `schema_inventory_tree()` (and
+`_schema_inventory_container_rows` underneath it) already compute are
+exactly the chart's inputs — no new backend read needed, just a small bar
+(or two, rows and columns) per schema rendered above the existing tree,
+sorted the same data-first order the tree itself already uses.
+
+## `database_table_activity` rows are clobbered at the STRUCTURED-TABLE layer by a multi-step survey run's later steps — not fixed here, deferred for a fresh session (found live, `adventureworks`, 2026-09-27)
+
+The same class of bug as `_store_results`'s survey_data-blob clobber
+(above), but discovered one layer down, in the structured tables
+themselves — every per-step Survey Definition run writes a FULL set of 157
+`database_table_activity` rows for `laz_local_adventureworks` even when
+that particular run's steps never collected activity data, with every
+counter NULL, and this overwrites the good, real-counter row an EARLIER
+step in the same multi-step run had just written moments before. Of 8
+survey runs recorded for this database, only 2 carry real counters
+(19:20:22, a scouting step; 19:24:00, the dedicated `db_activity_signals`
+step); the other 6 each wrote 157 NULL-counter rows. `db_classification`
+and `_db_activity_signals_headline` both load from the row with the
+LATEST `surveyed_at` per table (19:24:03, all-NULL) and so reported "No
+data for: activity" despite 761,184 real inserts and 1,435 real updates
+sitting in the 19:24:00 row, one run earlier.
+
+**Why this was found now and not sooner:** finding #1 in this same session
+(`_db_activity_signals_headline` reading the wrong pg_stat column names)
+masked this — once that bug was fixed, the headline correctly tried to
+read `rows_inserted`/etc. and found them NULL in the latest row, which is
+what surfaced the clobber underneath.
+
+**Fix direction, NOT attempted here** (explicitly deferred — the
+coordinator's own words: a half-ported fix on this primary data path late
+in a long session is worse than the current known undercount): write only
+the tables a run's own requested steps actually collected activity for —
+same generic rule as the `_store_results` entry above, applied one layer
+down at the structured-table writer. `load_inputs` (or whatever reads
+`database_table_activity` for `db_derived.py`'s consumers) should fall
+back PER-TABLE to the newest run that has non-NULL counter rows for that
+specific table, rather than taking the single latest `surveyed_at` across
+the whole snapshot and accepting whatever that run happened to write for
+every table — a table a later run's steps did touch should still prefer
+ITS newer data; a table only an earlier run touched should fall back to
+that earlier row instead of reading NULL.
+
+## PRIMARY-path PK/FK queries in `connection.py` drop real foreign/primary keys that a table is referenced from (or claims) MANY TIMES — not fixed here, deferred for a fresh session (found live, `adventureworks`, 2026-09-27)
+
+Verified against `pg_constraint`/ground truth via direct `psql` on the
+newly-registered `adventureworks` database (68 tables, dense FKs, full
+comments): the PRIMARY-path `information_schema`-based key queries in
+`connection.py` (`_get_tables_for_schema`, roughly lines 620-660) stored
+only 71 of 91 real foreign-key columns and 99 of 181 real primary-key
+columns. This is the classic `constraint_column_usage`-join multiplicity
+bug — the missing columns are specifically ones referenced FROM MANY
+different places (a column that is the target of several FKs, or a
+composite key with more than 2 parts), which a naive join against
+`information_schema.constraint_column_usage` fans out or drops rows for
+depending on join order, rather than pairing each constraint's columns by
+their declared ordinal position.
+
+Full list of the 20 affected columns (all confirmed present in
+`pg_constraint` but absent or wrong from the primary-path read):
+`humanresources.employee.businessentityid`,
+`person.stateprovince.territoryid`, `production.document.owner`,
+`purchasing.productvendor.productid`,
+`purchasing.productvendor.unitmeasurecode`,
+`purchasing.purchaseorderdetail.productid`,
+`purchasing.purchaseorderheader.employeeid`,
+`purchasing.vendor.businessentityid`,
+`sales.countryregioncurrency.countryregioncode`,
+`sales.customer.personid`, `sales.personcreditcard.businessentityid`,
+`sales.salesorderheader.billtoaddressid`,
+`sales.salesorderheader.shipmethodid`,
+`sales.salesorderheader.shiptoaddressid`,
+`sales.salesperson.businessentityid`,
+`sales.salestaxrate.stateprovinceid`,
+`sales.salesterritory.countryregioncode`,
+`sales.shoppingcartitem.productid`,
+`sales.specialofferproduct.productid`, `sales.store.businessentityid`.
+
+This directly undercounts `db_relationship_graph`'s edge count (71
+edges reported, real count higher) and, per the owner's own words, makes
+`grain_determination`'s "keys captured: 68/68" **right only by luck** —
+the 20 missing columns happen not to be the ones any of the 68 tables'
+own declared primary keys needed for THIS database's particular grain
+questions, not because the underlying key-reading is actually complete.
+
+**Fix direction, NOT attempted here** (explicitly deferred — a half-ported
+key query on the primary path is worse than the current known undercount,
+per the coordinator's own words): Slice 21b already wrote the correct
+version of this exact query for the FALLBACK (no-SELECT-grant, catalog-
+only) path — `_catalog_keys_for_schema` in `connection.py`, which reads
+`pg_constraint`/`pg_index` directly (`contype='p'`/`contype='f'`) and uses
+`WITH ORDINALITY` to pair composite-key columns by their actual ordinal
+position rather than joining on names alone. That same query needs to
+become the PRIMARY-path read too — `pg_constraint` is catalog metadata,
+unfiltered by `SELECT` grants, so there is no privilege reason the
+primary path was using the weaker `information_schema` join in the first
+place. The fix is to promote the existing, already-correct, already-
+tested fallback implementation to be the ONE implementation, called from
+both paths, keyed by `(schema, table, column)` — not to write a second,
+parallel query.
+
+## A matched table's own `<details>` should auto-open only when it is the SOLE table match, not every time (Dan's re-gate, Slice 22, 2026-09-27)
+
+`filterTreeNode`'s own-match branch (`app.js`) currently opens every
+matched table's `<details>` unconditionally — the fix for the original
+"filtering opens a table but shows no columns" defect (see the Backlog
+entry logged the same night, now closed by the Slice 22 fix round). Dan's
+re-gate found the unconditional version too eager: when a filter matches
+TWO OR MORE tables at once, every one of them auto-expands its full
+column list at once, which is a wall of columns rather than a scannable
+list of matches.
+
+**Not fixed here — deferred, not tonight, not part of Slice 22's own
+scope** (queued per the coordinator's own words: "the only thing worth
+doing now is writing the Backlog entry").
+
+**Rule for the fix**: a matched node is visible and stays COLLAPSED; every
+ancestor on the path to a match is forced open (unchanged — this is what
+makes a match inside a collapsed schema reachable at all); a matched
+TABLE auto-opens its own `<details>` (revealing its columns) only when it
+is the SOLE table match across the whole filtered tree — i.e. count the
+matching table nodes first, and only auto-expand when that count is
+exactly 1. With two or more table matches, each stays collapsed (visible,
+reachable, but not force-expanded), leaving the user to open the one they
+want.
+
+**Fix direction**: `filterSchemaTree` already computes the full match set
+via `filterTreeNode`'s recursion; the cheapest place to add the count is
+a first pass that finds how many table-level `[data-tree-node]` elements
+matched (or a small change to `filterTreeNode` to return match COUNTS,
+not just a boolean, so the top-level caller can decide whether to open a
+given table's own `<details>` after the fact, rather than each node
+deciding for itself during the single recursive pass it does today).
+
+**Add a test for the two-match case**: a table-name-level filter (or a
+column-name filter that matches columns in two different tables) should
+leave both matched tables collapsed, not auto-opened, while a filter that
+matches exactly one table still opens it — the existing single-match
+tests (`test_a_self_match_opens_its_own_details`) must keep passing
+alongside the new one, since the rule only changes behavior when there
+is more than one table-level match.

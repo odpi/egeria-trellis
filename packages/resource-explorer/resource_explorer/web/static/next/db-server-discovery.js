@@ -258,6 +258,28 @@ function readFormFromDom(el) {
     if (inp.type === 'number') view.form[key] = parseInt(inp.value, 10) || 0;
     else view.form[key] = inp.value.trim();
   });
+  applyEgeriaHostDefault();
+}
+
+/** `egeria_host` empty and the DB host is `localhost`/`127.0.0.1`: Egeria
+ *  runs in its own container, so "localhost" from THERE means the Egeria
+ *  container itself, never the Mac's own Postgres — `host.docker.internal`
+ *  is what actually reaches back out. Found live, 2026-09-27: nothing
+ *  filled this in, so `databases.py`'s own runtime fallback (`egeria_host
+ *  or host`) silently used the DB's own "localhost" instead, which is
+ *  wrong whenever Egeria is in Docker (the common case here). Only sets
+ *  it when still empty — never overwrites a value the person typed,
+ *  including one they deliberately cleared back to "" to opt out.
+ *  Runs on every `readFormFromDom()` (test/submit time) rather than as a
+ *  live keystroke listener, since `egeria_host`'s own input only exists in
+ *  the DOM once the collapsed "Egeria Connection" section is expanded —
+ *  reading `view.form` directly here works whether or not it ever was. */
+function applyEgeriaHostDefault() {
+  const f = view.form;
+  if (f.egeria_host) return;
+  if (f.host === 'localhost' || f.host === '127.0.0.1') {
+    f.egeria_host = 'host.docker.internal';
+  }
 }
 
 async function testInline(el) {

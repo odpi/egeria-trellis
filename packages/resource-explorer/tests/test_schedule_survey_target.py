@@ -175,14 +175,24 @@ class TestDefinitionsListRoute:
         silently mislabeled the first database/filesystem Survey Definition
         ever authored. Now inferred from the source filename's
         `{resource_type}-survey-definition-*.md` convention (see
-        survey_definition_docs.py's _resource_type_from_filename) — every
-        currently-authored document is `repo-survey-definition-*.md`, so
-        this is the one value there is to confirm today, but the field is
-        no longer a constant."""
+        survey_definition_docs.py's _resource_type_from_filename).
+
+        That first database Survey Definition now exists (Slice 12,
+        2026-09-26) — three `database-survey-definition-*.md` documents,
+        authored in their own `survey-definitions-database/` directory for
+        bootstrap.py's one-batch-per-directory rule, but merged back into
+        `documented_definitions()`'s single list by `_extension_docs_dirs`.
+        So the blanket "every entry is repo" this test used to assert is
+        exactly the mislabeling risk its own docstring predicted — updated
+        to assert per-document rather than blanket, the assertion this test
+        was always really testing."""
         from resource_explorer.web.routes.survey_definitions import list_definitions
         defs = list_definitions()
         assert defs, "no Survey Definitions documented"
-        assert all(d["resource_type"] == "repo" for d in defs)
+        by_type = {d["name"]: d["resource_type"] for d in defs}
+        assert by_type["RepoFullSurvey"] == "repo"
+        assert by_type["DatabaseAnalysisSurvey"] == "database"
+        assert not any(rt not in ("repo", "database", "filesystem") for rt in by_type.values())
 
 
 class TestAScheduleMustNameAResourceThatExists:

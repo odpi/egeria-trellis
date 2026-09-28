@@ -125,6 +125,61 @@ def _egeria_reachable() -> bool:
 
 _EGERIA_AVAILABLE = _egeria_reachable()
 
+
+@pytest.fixture
+def mock_egeria_client_connections(monkeypatch):
+    """Make every pyegeria client construction fail FAST, instead of the real
+    ~30s `check_connection()` handshake `pyegeria.core._base_server_client.
+    BaseServerClient.__init__` does synchronously against `cfg.platform_url`
+    on every `ProjectManager`/`CollectionManager`/`MetadataExpert`/etc.
+    construction.
+
+    Root-caused 2026-09-27, `re/tests-fail-fast-without-egeria`: a cluster of
+    ~29 tests across test_investigation_routes.py, test_investigation_
+    reclassification.py, test_curate_blueprints_route.py, test_web.py's Curate
+    router tests, test_cli_workflow_commands.py's TestCurateCommand and
+    test_dependency_support.py::TestAgainstLiveEgeria each took 30 or 60
+    seconds (one or two unmocked client constructions) whenever Egeria was
+    unreachable — accumulating to ~18.5 minutes of pure dead time, enough on
+    its own to push a CI run over its 30-minute job timeout (Slice 21a's run
+    36290350357, investigated and found unrelated to that slice's own diff;
+    see docs/Backlog.md).
+
+    These tests already inject a stub `project_manager`/`collection_manager`
+    at their own call sites (see `_StubPM`/`_StubCM` in
+    test_investigation_routes.py) — but `_apply_investigation_marker` and
+    similar helper functions construct their OWN `MetadataExpert` (or
+    equivalent) directly, bypassing that injection entirely. The Egeria call
+    these tests reach is not what any of them actually test (they assert on
+    registry state and error message text) — mocking the client boundary
+    rather than the many individual call sites is Slice 12/17's own established
+    pattern for "this dependency isn't the point of the test."
+
+    Patches the SHARED base class every pyegeria client inherits from
+    (`BaseServerClient.check_connection`), not each client class individually
+    — a construction site added later automatically gets the same fast-fail
+    rather than silently reintroducing this hang. Raises
+    `PyegeriaConnectionException` (pyegeria's own real exception for "could
+    not connect"), which every call site in `resource_explorer` already
+    catches via a broad `except Exception` — mirroring what a genuinely
+    fast-refused connection raises, so the test still exercises the SAME
+    error-handling path as it does against a real (reachable or refused)
+    Egeria, just without the 30s wait when the platform is not merely refused
+    but actually unreachable.
+
+    Fixtures/tests that need a REAL platform check use `requires_egeria`
+    (auto-skipped by `pytest_collection_modifyitems` above) instead — this
+    fixture is for tests where the point is registry/CLI/route behavior with
+    Egeria incidentally in the call graph.
+    """
+    from pyegeria.core._base_server_client import BaseServerClient
+    from pyegeria.core._exceptions import PyegeriaConnectionException
+
+    def _fail_fast(self) -> str:
+        raise PyegeriaConnectionException()
+
+    monkeypatch.setattr(BaseServerClient, "check_connection", _fail_fast)
+
 # Load the phase-4 live-write fixtures (`live_egeria_write_target` and
 # friends) as a plugin so `tests/` doesn't have to import them per-module.
 # `tests/` is a package (has __init__.py), so this resolves the same way any

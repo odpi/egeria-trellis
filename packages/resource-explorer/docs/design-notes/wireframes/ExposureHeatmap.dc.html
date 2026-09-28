@@ -1,0 +1,311 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;600&amp;family=Lora:wght@400;500&amp;display=swap">
+  <style>
+    :root{
+      --paper:#f3f2f2; --rule:rgba(32,31,29,.16); --rule-strong:#8e8a8a;
+      --ink:#201f1d; --ink-muted:#4a463e;
+      --accent:#b68235; --accent-ink:#7d5411;
+      --ok:#1d6b3f; --warn:#9c4212; --gap:#5b4a9c;
+      --s1:4.6px; --s2:9.2px; --s3:13.8px; --s4:18.4px; --s6:27.6px;
+      --heading:"Cormorant Garamond",Georgia,serif;
+      --body:"Lora",Georgia,serif;
+      --mono:ui-monospace,"SF Mono",Menlo,monospace;
+    }
+    *{box-sizing:border-box}
+    body{margin:0;font-family:var(--body);background:var(--paper);color:var(--ink);font-size:15px;line-height:1.55}
+    .tnum{font-feature-settings:"tnum";font-variant-numeric:tabular-nums}
+    .mono{font-family:var(--mono);font-size:.87em}
+    .caps{font-family:var(--heading);font-weight:600;font-size:12px;letter-spacing:.09em;text-transform:uppercase}
+    .prov{font-size:13px;line-height:1.45}
+    .h{font-family:var(--heading);font-weight:600}
+    .lnk{color:var(--accent-ink);text-decoration:underline;text-underline-offset:3px}
+    .card{border:1px solid var(--rule);border-radius:2px;padding:var(--s3);background:#fff}
+    .mine{border-left:3px solid var(--gap);padding-left:var(--s3)}
+    .bad{border-left:3px solid var(--warn);padding-left:var(--s3)}
+    .btn{display:inline-block;border:1px solid var(--rule-strong);border-radius:2px;
+         padding:1px var(--s2);font-size:12px;margin-right:var(--s1)}
+    .btn.p{border-color:var(--accent);color:var(--accent-ink)}
+    .badge{display:inline-block;border:1px solid var(--rule-strong);border-radius:9px;
+           padding:0 var(--s2);font-size:12px}
+    .hatch{background-image:repeating-linear-gradient(45deg,#e6e4e0 0 5px,#f3f2f2 5px 10px);
+           border:1px dashed var(--rule-strong);border-radius:2px}
+    /* the grid */
+    table.hm{border-collapse:collapse;font-size:12px}
+    table.hm th,table.hm td{border:1px solid var(--rule);padding:0}
+    table.hm th.rh{text-align:left;padding:var(--s1) var(--s2);font-weight:400;
+                   font-family:var(--body);white-space:nowrap;background:#fff}
+    table.hm th.ch{padding:var(--s2) var(--s1);font-weight:400;font-family:var(--body);
+                   vertical-align:bottom;background:#fff}
+    table.hm th.ch span{writing-mode:vertical-rl;transform:rotate(180deg);white-space:nowrap}
+    .cell{width:58px;height:30px;display:flex;align-items:center;justify-content:center;
+          font-size:11px;letter-spacing:.04em}
+    .c-rw{background:#9c4212;color:#fff}
+    .c-r {background:#d8b58a;color:#3b2a14}
+    .c-none{background:#fff;color:var(--ink-muted)}
+    .c-unk{background-image:repeating-linear-gradient(45deg,#e6e4e0 0 5px,#fff 5px 10px);color:var(--ink-muted)}
+  </style>
+</helmet>
+
+<div style="width:1320px;padding:var(--s6) var(--s6) 60px">
+
+  <div style="border-bottom:1px solid var(--rule-strong);padding-bottom:var(--s4)">
+    <div class="caps" style="color:var(--accent-ink)">Round 2 &middot; drawn against slice 8, which had landed</div>
+    <h1 class="h" style="font-weight:400;font-size:38px;margin:var(--s3) 0 var(--s2);max-width:36ch">The exposure heatmap, and the three ways it can under-report</h1>
+    <p style="max-width:88ch;margin:0">
+      I said in round 1 that I would not draw this until the role side existed. It does:
+      <span class="mono">#193</span> shipped <span class="mono">postgres_operations</span>, whose
+      <span class="mono">privilege_audit</span> reads <span class="mono">pg_roles</span>,
+      <span class="mono">information_schema.role_table_grants</span> and
+      <span class="mono">pg_default_acl</span> (<span class="mono">connection.py:486</span>), and
+      stores grants in <span class="mono">database_grants</span>
+      (<span class="mono">registry.py:654</span>). So it is drawable now &mdash; and drawing it
+      against those two shapes is what produced the rest of this page.
+    </p>
+    <p class="mine" style="max-width:88ch;margin-top:var(--s3)">
+      <strong style="font-weight:500">The rule this whole artboard turns on.</strong>
+      For every other representation in the brief, a missing measurement shows as a gap and the
+      reader is mildly worse off. For an exposure view it is not symmetric: a cell that should say
+      <em>this role can read this column</em> and instead says nothing is read as a clean bill of
+      health. <strong style="font-weight:500">So an empty cell here must mean &ldquo;no path
+      found&rdquo;, never &ldquo;no path&rdquo;</strong> &mdash; and every path the survey does not
+      look down has to be named on the surface, not in a doc.
+    </p>
+  </div>
+
+  <!-- 1 · the grid -->
+  <div style="margin-top:var(--s6)">
+    <div class="caps" style="color:var(--ink-muted)">One &middot; the grid, with everything it owes the reader</div>
+
+    <div class="card" style="max-width:860px;margin-top:var(--s2)">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;gap:var(--s3)">
+        <div>
+          <div class="h" style="font-size:19px;font-weight:400">Who can read the sensitive columns</div>
+          <div class="prov" style="color:var(--ink-muted);margin-top:2px">
+            <span class="mono">coco_pharma</span> &middot; 6 columns carrying a sensitive class
+            &middot; 5 login roles
+          </div>
+        </div>
+        <div class="prov" style="text-align:right;color:var(--ink-muted)">
+          grants read <span class="mono tnum">2026-09-21 04:12</span><br>
+          classes from <span class="mono">column_profiles</span>, same survey
+        </div>
+      </div>
+
+      <!-- PUBLIC band: finding two, drawn -->
+      <div class="bad" style="margin-top:var(--s3);background:#fdf6f1;padding:var(--s2) var(--s3)">
+        <div style="font-weight:500">
+          <span class="mono">PUBLIC</span> has <span class="mono">SELECT</span> on
+          <span class="mono">public.patient</span> &mdash; so every role below can read its four
+          columns, whatever its own row says.
+        </div>
+        <div class="prov" style="margin-top:2px;color:var(--ink-muted)">
+          <span class="mono">PUBLIC</span> is a pseudo-role, not a role, so it is not a column in
+          the grid: as a column it would be one mark among five, and a reader scanning
+          <span class="mono">analyst_ro</span>'s row for red would find none.
+          <span class="btn" style="margin-left:2px">the 1 grant &rsaquo;</span>
+        </div>
+      </div>
+
+      <table class="hm" style="margin-top:var(--s3)">
+        <tr>
+          <th class="rh" style="border:none"></th>
+          <th class="ch"><span>etl_writer</span></th>
+          <th class="ch"><span>analyst_ro</span></th>
+          <th class="ch"><span>app_service</span></th>
+          <th class="ch"><span>reporting</span></th>
+          <th class="ch"><span>dba</span></th>
+        </tr>
+        <tr>
+          <th class="rh"><span class="mono">patient.email</span> <span class="prov" style="color:var(--ink-muted)">Email</span></th>
+          <td><div class="cell c-rw">R W</div></td>
+          <td><div class="cell c-r">R</div></td>
+          <td><div class="cell c-rw">R W</div></td>
+          <td><div class="cell c-r">R</div></td>
+          <td><div class="cell c-rw">R W</div></td>
+        </tr>
+        <tr>
+          <th class="rh"><span class="mono">patient.national_id</span> <span class="prov" style="color:var(--ink-muted)">Gov ID</span></th>
+          <td><div class="cell c-rw">R W</div></td>
+          <td><div class="cell c-r">R</div></td>
+          <td><div class="cell c-rw">R W</div></td>
+          <td><div class="cell c-r">R</div></td>
+          <td><div class="cell c-rw">R W</div></td>
+        </tr>
+        <tr>
+          <th class="rh"><span class="mono">patient.dob</span> <span class="prov" style="color:var(--ink-muted)">Date of birth</span></th>
+          <td><div class="cell c-rw">R W</div></td>
+          <td><div class="cell c-r">R</div></td>
+          <td><div class="cell c-rw">R W</div></td>
+          <td><div class="cell c-r">R</div></td>
+          <td><div class="cell c-rw">R W</div></td>
+        </tr>
+        <tr>
+          <th class="rh"><span class="mono">payment.card_last4</span> <span class="prov" style="color:var(--ink-muted)">Card fragment</span></th>
+          <td><div class="cell c-rw">R W</div></td>
+          <td><div class="cell c-none">&mdash;</div></td>
+          <td><div class="cell c-r">R</div></td>
+          <td><div class="cell c-none">&mdash;</div></td>
+          <td><div class="cell c-rw">R W</div></td>
+        </tr>
+        <tr>
+          <th class="rh"><span class="mono">staff.home_phone</span> <span class="prov" style="color:var(--ink-muted)">Phone</span></th>
+          <td><div class="cell c-none">&mdash;</div></td>
+          <td><div class="cell c-none">&mdash;</div></td>
+          <td><div class="cell c-r">R</div></td>
+          <td><div class="cell c-none">&mdash;</div></td>
+          <td><div class="cell c-rw">R W</div></td>
+        </tr>
+        <tr>
+          <th class="rh"><span class="mono">legacy.ssn_old</span> <span class="prov" style="color:var(--ink-muted)">Gov ID</span></th>
+          <td colspan="5" style="border-left:1px solid var(--rule)">
+            <div class="cell c-unk" style="width:auto;justify-content:flex-start;padding:0 var(--s2);height:30px">
+              grants not read for schema <span class="mono" style="margin:0 3px">legacy</span> &mdash; not measured, not none
+            </div>
+          </td>
+        </tr>
+      </table>
+
+      <div style="display:flex;gap:var(--s4);margin-top:var(--s3);flex-wrap:wrap;align-items:center">
+        <div class="prov" style="display:flex;align-items:center;gap:var(--s1)">
+          <span class="cell c-rw" style="width:30px;height:16px">R W</span> read and write
+        </div>
+        <div class="prov" style="display:flex;align-items:center;gap:var(--s1)">
+          <span class="cell c-r" style="width:30px;height:16px">R</span> read
+        </div>
+        <div class="prov" style="display:flex;align-items:center;gap:var(--s1)">
+          <span class="cell c-none" style="width:30px;height:16px;border:1px solid var(--rule)">&mdash;</span>
+          no grant found
+        </div>
+        <div class="prov" style="display:flex;align-items:center;gap:var(--s1)">
+          <span class="cell c-unk" style="width:30px;height:16px;border:1px solid var(--rule)"></span> not measured
+        </div>
+      </div>
+      <div class="prov" style="color:var(--ink-muted);margin-top:var(--s2);max-width:78ch">
+        The letters carry the value, the fill only reinforces it &mdash; per the palette's own note
+        that colour is never the sole channel, which matters more here than anywhere, since
+        <span class="mono">state-warn</span> and gold sit within 1.02:1.
+      </div>
+
+      <div style="border-top:1px solid var(--rule);margin-top:var(--s3);padding-top:var(--s2)">
+        <div class="prov" style="color:var(--ink-muted)">
+          Every cell is <strong style="font-weight:500">inherited from a grant on the table</strong>,
+          not measured on the column &mdash; see panel two. Roles are
+          <span class="mono">rolcanlogin</span> only;
+          <span class="btn">4 non-login roles &rsaquo;</span>
+          <span class="btn">default ACLs for future tables &rsaquo;</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 2 · finding one -->
+  <div style="margin-top:var(--s6)">
+    <div class="caps" style="color:var(--ink-muted)">Two &middot; the cells are table grants wearing column labels</div>
+    <div class="card bad" style="max-width:900px;margin-top:var(--s2);border-left-width:3px">
+      <p style="margin:0;max-width:86ch">
+        <span class="mono">get_privilege_audit()</span> reads
+        <span class="mono">information_schema.role_table_grants</span>, which is
+        <strong style="font-weight:500">table-level</strong>. And
+        <span class="mono">database_grants</span> cannot hold anything finer: its columns are
+        <span class="mono">schema_name, object_name, object_type, grantee, privilege_type</span>,
+        and its <span class="mono">UNIQUE</span> has no column dimension either.
+      </p>
+      <p style="margin:var(--s2) 0 0;max-width:86ch">
+        One direction of that inheritance is sound: a role with <span class="mono">SELECT</span> on a
+        table really can read every column in it, so a filled cell is true. The other direction is
+        not. <strong style="font-weight:500">Postgres also supports column-level grants</strong>
+        &mdash; <span class="mono">GRANT SELECT (email) ON patient TO analyst_ro</span> &mdash; and a
+        column-only grant <em>does not appear in</em> <span class="mono">role_table_grants</span> at
+        all. So a role given access to exactly the sensitive column, and nothing else, renders as a
+        row of dashes.
+      </p>
+      <p style="margin:var(--s2) 0 0;max-width:86ch">
+        <strong style="font-weight:500">The ask, and it is a migration, which is why it belongs in
+        round 2:</strong> read
+        <span class="mono">information_schema.column_privileges</span> instead. It returns
+        column-level grants <em>and</em> table-level grants already expanded per column, so it is a
+        strict superset of what is read today &mdash; one query, not two &mdash; and add
+        <span class="mono">column_name</span> to <span class="mono">database_grants</span> and its
+        <span class="mono">UNIQUE</span>. Then the grid's cells are measured at the grain they are
+        drawn at, and the inheritance disappears rather than needing a caption.
+      </p>
+      <p class="prov" style="margin:var(--s2) 0 0;color:var(--ink-muted);max-width:86ch">
+        <span class="mono">column_privileges</span> appears nowhere in the repo today. If the read
+        stays table-level for now, the grid keeps panel one's footer sentence and the columns are
+        labelled <em>tables</em>, not columns &mdash; capability may diverge, honesty may not.
+      </p>
+    </div>
+  </div>
+
+  <!-- 3 · finding three -->
+  <div style="margin-top:var(--s6)">
+    <div class="caps" style="color:var(--ink-muted)">Three &middot; the third path: a role that inherits</div>
+    <div class="card bad" style="max-width:900px;margin-top:var(--s2);border-left-width:3px">
+      <p style="margin:0;max-width:86ch">
+        <span class="mono">privilege_audit</span> reads <span class="mono">pg_roles</span> &mdash;
+        the roles &mdash; but nothing reads
+        <strong style="font-weight:500">role membership</strong>:
+        <span class="mono">pg_auth_members</span>, <span class="mono">pg_has_role</span> and
+        <span class="mono">rolinherit</span> are absent from the repo. Granting through a group role
+        is the normal way to administer Postgres, so this is not an edge case: give
+        <span class="mono">SELECT</span> to <span class="mono">readers</span>, put
+        <span class="mono">analyst_ro</span> in <span class="mono">readers</span>, and the grid shows
+        <span class="mono">analyst_ro</span> with no access to anything.
+      </p>
+      <p style="margin:var(--s2) 0 0;max-width:86ch">
+        Two ways out, and the choice is the implementer's:
+        read <span class="mono">pg_auth_members</span> and resolve the closure ourselves, or ask
+        Postgres directly with <span class="mono">has_column_privilege(role, table, column, 'SELECT')</span>,
+        which already accounts for membership, inheritance and <span class="mono">PUBLIC</span> in
+        one call. The second is the honest answer to the question the grid actually asks &mdash;
+        <em>can this role read this column</em> &mdash; rather than a reconstruction of it from
+        three catalogs.
+      </p>
+      <p style="margin:var(--s2) 0 0;max-width:86ch">
+        Whichever is chosen, <strong style="font-weight:500">a filled cell then needs to say which
+        path it came by</strong>, because <em>granted directly</em> and <em>inherited via
+        <span class="mono">readers</span></em> are revoked in different places, and a reader who
+        cannot tell will revoke the wrong one. The cell's detail popover carries it; the grid stays
+        a grid.
+      </p>
+    </div>
+  </div>
+
+  <!-- 4 · what the grid is for -->
+  <div style="margin-top:var(--s6)">
+    <div class="caps" style="color:var(--ink-muted)">Four &middot; and the count opens what it counted</div>
+    <div class="card" style="max-width:900px;margin-top:var(--s2)">
+      <p style="margin:0;max-width:86ch">
+        House rule, applied: the grid is not the answer, it is the question made visible. So the
+        summary above it is a sentence with the paths in it, and each figure opens the rows behind
+        it &mdash;
+      </p>
+      <p style="margin:var(--s3) 0 0;max-width:86ch;padding-left:var(--s3);border-left:2px solid var(--accent)">
+        <span class="mono tnum">6</span> columns carry a sensitive class.
+        <a class="lnk" href="#">4 are readable by every role</a>, through a
+        <span class="mono">PUBLIC</span> grant on one table.
+        <a class="lnk" href="#">1 is readable by a role that need not read it</a>.
+        <a class="lnk" href="#">1 was not measured</a>.
+      </p>
+      <p class="prov" style="margin:var(--s3) 0 0;color:var(--ink-muted);max-width:86ch">
+        &mdash; which is also why <span class="mono">legacy.ssn_old</span> is a row rather than an
+        omission. <span class="mono">SECTION_GRANTS</span>
+        (<span class="mono">registry.py:479</span>) already stores <em>this survey never looked at
+        grants</em> as a fact, so the not-measured row is a read, not a new mechanism. It is the one
+        part of this page that needs no build at all.
+      </p>
+    </div>
+  </div>
+
+</div>
+</x-dc>
+</body>
+</html>

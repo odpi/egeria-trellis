@@ -38,6 +38,17 @@ MEASURED = "measured"
 NOTHING_FOUND = "nothing_found"
 NOT_ESTABLISHED = "not_established"
 NEVER_RUN = "never_run"
+#: The analysis ran (or reads live-ingested data), but no `results_reader` is
+#: registered for it at all -- distinct from `NOTHING_FOUND` (a reader ran and
+#: genuinely measured a zero). Conflating the two was found live 2026-09-25
+#: (REVIEW-SURVEY-PANE-285.md): `facts.py::_read_results` returned `{}`
+#: whether a reader existed and found nothing, or no reader existed to call,
+#: so "is this database alive" and "primary or replica" rendered "ran and
+#: found nothing -- a measured zero" for db_activity_signals/db_resilience,
+#: which is a real gap in the answering machinery, not a real zero. Excluded
+#: from `Fact.is_known` on purpose: withholding the checkmark is the point --
+#: a reader that does not exist has not measured anything, known or not.
+NO_READER = "no_reader"
 #: A third completeness state alongside `measured`/`not_established`
 #: (REPLY-DATABASE-CREDENTIAL-CAPABILITY-VISIBILITY.md §4, replying to
 #: ASK-DATABASE-CREDENTIAL-CAPABILITY-VISIBILITY.md #251): the surveyor DID

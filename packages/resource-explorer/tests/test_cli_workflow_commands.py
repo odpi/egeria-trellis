@@ -154,6 +154,7 @@ class TestDiscoveryCommands:
         assert registry.list_runs(state="queued")[0]["kind"] == "discovery_expand"
 
 
+@pytest.mark.usefixtures("mock_egeria_client_connections")
 class TestCurateCommand:
     """`curate materialize` requires a signed-in session as of 2026-09-04.
 

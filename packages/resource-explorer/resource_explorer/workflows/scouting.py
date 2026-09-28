@@ -209,6 +209,16 @@ def build_question_checklist(
             "has_data": has_data,
             "purposes": e.get("purposes", []),
             "derivation": e.get("derivation", {}),
+            # Slice 21a point 4: dropped here before this fix — `entries`
+            # (question_catalog_reader.get_questions()) already carries
+            # `levels` on every entry, but this function builds its own,
+            # separate per-question dict and never copied it across, so
+            # app.js's `primaryQuestionLevel(entry)` always saw `undefined`
+            # and silently fell back to "resource" for every question,
+            # including container-only ones. Found live gating Slice 21a,
+            # 2026-09-26 — the container-level evidence table never
+            # actually reached the container reader through this route.
+            "levels": e.get("levels") or ["resource"],
         })
 
     return {

@@ -88,7 +88,7 @@ class TestRunSingleDatabaseAnalysisValidation:
 
     def test_db_derived_needs_no_credentials(self, client, registry):
         """db_derived is zero-fetch — it must not be refused for missing
-        credentials the way a DATABASE_ANALYSIS_STEP_MAP entry is."""
+        credentials the way a DATABASE_SURVEYOR_STEP_MAP entry is."""
         registry.register_database(DatabaseEntity(
             slug="nocreds2", display_name="No Creds 2", db_type="postgresql",
             host="localhost", port=5432, database_name="nocreds2",

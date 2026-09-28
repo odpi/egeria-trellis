@@ -2673,15 +2673,29 @@ class ProjectRegistry:
             # and should cost nothing to represent.
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS egeria_linkage_status (
-                    entity_type  TEXT NOT NULL,
-                    entity_slug  TEXT NOT NULL,
-                    status       TEXT NOT NULL DEFAULT 'stale',
-                    stale_guid   TEXT DEFAULT '',
-                    detected_at  TEXT NOT NULL DEFAULT '',
-                    detail       TEXT DEFAULT '',
+                    entity_type    TEXT NOT NULL,
+                    entity_slug    TEXT NOT NULL,
+                    status         TEXT NOT NULL DEFAULT 'stale',
+                    stale_guid     TEXT DEFAULT '',
+                    detected_at    TEXT NOT NULL DEFAULT '',
+                    last_checked_at TEXT NOT NULL DEFAULT '',
+                    detail         TEXT DEFAULT '',
                     PRIMARY KEY (entity_type, entity_slug)
                 )
             """)
+            # Migration: add last_checked_at to existing databases.
+            # `detected_at` is the FIRST detection and must never move while a
+            # row stays stale (mark_egeria_linkage_stale's ON CONFLICT below
+            # preserves it) — found live 2026-09-26: `recheck_all_linkages`
+            # re-confirming a still-stale link overwrote `detected_at` to
+            # today, so the header read "link stale since 2026-09-26" for a
+            # link that had actually been stale since 2026-09-22.
+            # `last_checked_at` is the new column that DOES move on every
+            # recheck, so "how long has this been broken" and "how fresh is
+            # this reading" are two separate, both-honest facts.
+            if "last_checked_at" not in self._get_table_columns(conn, "egeria_linkage_status"):
+                conn.execute(
+                    "ALTER TABLE egeria_linkage_status ADD COLUMN last_checked_at TEXT NOT NULL DEFAULT ''")
             # Pending Egeria writes, one row per ELEMENT (asset, report,
             # each annotation, each relationship) — docs/outbox-publishing-
             # design.md, D1, settled per-element 2026-08-31.
@@ -6161,18 +6175,32 @@ class ProjectRegistry:
         elements and silently discarding catalog history that may still matter.
         The GUIDs are kept so a human can see what RE had, and so "republish"
         can report exactly what it is replacing.
+
+        `detected_at` is the FIRST time this was found stale, and is preserved
+        across repeat calls (e.g. `recheck_all_linkages` re-confirming an
+        already-stale link) rather than overwritten — found live 2026-09-26:
+        a recheck bumped `detected_at` to the recheck's own timestamp, so a
+        link stale since 2026-09-22 read as "stale since <today>" on every
+        re-confirmation. `last_checked_at` is the one that always advances —
+        "how long has this been broken" and "how fresh is this reading" are
+        two separate facts, both honest.
         """
         from datetime import timezone
+        now = datetime.now(timezone.utc).isoformat()
         with self._conn() as conn:
             conn.execute(
                 """INSERT INTO egeria_linkage_status
-                       (entity_type, entity_slug, status, stale_guid, detected_at, detail)
-                   VALUES (?, ?, 'stale', ?, ?, ?)
+                       (entity_type, entity_slug, status, stale_guid, detected_at,
+                        last_checked_at, detail)
+                   VALUES (?, ?, 'stale', ?, ?, ?, ?)
                    ON CONFLICT (entity_type, entity_slug) DO UPDATE SET
                        status='stale', stale_guid=excluded.stale_guid,
-                       detected_at=excluded.detected_at, detail=excluded.detail""",
-                (entity_type, entity_slug, stale_guid,
-                 datetime.now(timezone.utc).isoformat(), detail),
+                       detected_at=CASE WHEN egeria_linkage_status.status='stale'
+                                        THEN egeria_linkage_status.detected_at
+                                        ELSE excluded.detected_at END,
+                       last_checked_at=excluded.last_checked_at,
+                       detail=excluded.detail""",
+                (entity_type, entity_slug, stale_guid, now, now, detail),
             )
 
     def get_egeria_linkage(self, entity_type: str, entity_slug: str) -> dict | None:
@@ -9713,6 +9741,14 @@ class ProjectRegistry:
             if row["operation"] == "survey" and "last_run_at" not in entry:
                 entry["last_run_at"] = row["ts"]
                 entry["last_run_status"] = row["status"]
+                # The run's own step report — carried so the UI's "ran but
+                # something failed" indicator can open what actually failed
+                # instead of only flagging that something did (found live
+                # 2026-09-26: the ⚠ beside "ran Xm ago" on a Survey
+                # Definition card did nothing on click). Empty list on a
+                # clean run, never absent, so the frontend can tell
+                # "no errors" from "not fetched yet".
+                entry["last_run_errors"] = detail.get("errors") or []
                 # SurveyDefinitionExecutor.run() (added 2026-08-27) publishes
                 # BEFORE it logs the 'survey' row that records the run itself
                 # — adapter.publish() runs first, its own untagged 'catalog'
@@ -9793,7 +9829,7 @@ class ProjectRegistry:
         analyses — each key belongs to exactly one — so attribution is exact.
         For database, a single coarse step (e.g. "db_derived") is the source
         of SEVERAL analysis_catalog entries at once (see
-        DATABASE_ANALYSIS_STEP_MAP's docstring) — that fan-out is real and
+        DATABASE_ANALYSIS_RE_STEP_MAP's docstring) — that fan-out is real and
         intentional, not a guess, so one step run credits every analysis_id
         it names, not just one.
 
@@ -9807,7 +9843,7 @@ class ProjectRegistry:
 
         with self._conn() as conn:
             rows = conn.execute(
-                "SELECT ts, status, detail, operation, summary FROM activity_log "
+                "SELECT ts, status, detail, operation FROM activity_log "
                 "WHERE entity_type = ? AND entity_slug = ? "
                 "AND operation IN ('analysis_run', 'survey') "
                 "ORDER BY ts DESC LIMIT ?",
@@ -9866,17 +9902,6 @@ class ProjectRegistry:
                         # frontend's ☁ Publish button uses this to decide
                         # whether it's a recovery action worth showing.
                         "last_publish_failed": detail.get("published") is False,
-                        # The activity row's own one-line summary — for a
-                        # failed run this is the concrete error
-                        # (`execute_and_record_analysis` writes
-                        # `result.error or summary` there), read here so the
-                        # Survey & Analyses pane's result-summary line
-                        # (REPLY-SURVEY-ANALYSES-PANE-USER-FACING-MODEL.md
-                        # §1.1, "ran, failed" state) can say WHAT failed
-                        # rather than just THAT it failed. Absent for older
-                        # rows or non-analysis_run attribution — callers must
-                        # not assume it's always present.
-                        "last_run_summary": row["summary"] or "",
                     }
                 continue
 
@@ -9970,7 +9995,7 @@ class ProjectRegistry:
     def _step_key_to_analysis_ids(entity_type: str) -> dict[str, list[str]]:
         """Inverse of `_analysis_step_map(entity_type)`: step_key ->
         [analysis_id, ...]. A list, not a single id, because database's
-        `DATABASE_ANALYSIS_STEP_MAP` genuinely fans one step key out to
+        `DATABASE_ANALYSIS_RE_STEP_MAP` genuinely fans one step key out to
         several analysis_ids (e.g. "db_derived" -> six analyses) — unlike
         repo's REPO_ANALYSIS_STEP_MAP, which partitions the step-key space so
         this inversion happens to be 1:1 there. `setdefault(...).append(...)`
@@ -10642,11 +10667,11 @@ def _analysis_step_map(entity_type: str) -> dict[str, list[str]]:
     if entity_type == "database":
         try:
             from resource_explorer.surveyors.database.survey_definition_adapter import (
-                DATABASE_ANALYSIS_STEP_MAP,
+                DATABASE_ANALYSIS_RE_STEP_MAP,
             )
         except ImportError:  # pragma: no cover - defensive
             return {}
-        return DATABASE_ANALYSIS_STEP_MAP
+        return DATABASE_ANALYSIS_RE_STEP_MAP
     if entity_type == "filesystem":
         try:
             from resource_explorer.surveyors.filesystem.survey_definition_adapter import (

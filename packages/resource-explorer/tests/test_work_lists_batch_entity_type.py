@@ -80,14 +80,14 @@ class TestRouteValidatesAgainstTheRightCatalog:
         wrong steps downstream. This pins that the route now stores and
         validates against the entity type actually named."""
         from resource_explorer.surveyors.database.survey_definition_adapter import (
-            DATABASE_ANALYSIS_STEP_MAP,
+            DATABASE_ANALYSIS_RE_STEP_MAP,
         )
         from resource_explorer.surveyors.repo_survey_definition_adapter import (
             REPO_ANALYSIS_SOURCE_STEPS,
         )
 
         analysis_id = next(
-            aid for aid in DATABASE_ANALYSIS_STEP_MAP if aid not in REPO_ANALYSIS_SOURCE_STEPS
+            aid for aid in DATABASE_ANALYSIS_RE_STEP_MAP if aid not in REPO_ANALYSIS_SOURCE_STEPS
         )
         resp = client.post("/api/work-lists/runs/batch", json={
             "analysis_id": analysis_id, "entity_slugs": ["mydb1"], "entity_type": "database",

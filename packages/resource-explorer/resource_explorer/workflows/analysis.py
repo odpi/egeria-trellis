@@ -501,7 +501,7 @@ def run_database_analysis(slug: str, analysis_id: str, *, registry=None) -> Data
       never has — see its own module docstring); this function's only new
       behaviour versus the old inline route is recording the run onto the
       activity entry.
-    * Everything in `DATABASE_ANALYSIS_STEP_MAP` — needs the database's
+    * Everything in `DATABASE_SURVEYOR_STEP_MAP` — needs the database's
       stored credentials and actually opens a connection via
       `run_database_survey`.
 
@@ -512,7 +512,7 @@ def run_database_analysis(slug: str, analysis_id: str, *, registry=None) -> Data
     """
     from resource_explorer.registry import ProjectRegistry
     from resource_explorer.surveyors.database.database_surveyor import (
-        DATABASE_ANALYSIS_STEP_MAP,
+        DATABASE_SURVEYOR_STEP_MAP,
         run_database_survey,
     )
     from resource_explorer.surveyors.database.db_derived import (
@@ -552,7 +552,7 @@ def run_database_analysis(slug: str, analysis_id: str, *, registry=None) -> Data
             annotations=ann_summary,
         )
 
-    if analysis_id not in DATABASE_ANALYSIS_STEP_MAP:
+    if analysis_id not in DATABASE_SURVEYOR_STEP_MAP:
         return DatabaseAnalysisRunResult(
             status="error",
             error=f"Analysis '{analysis_id}' has no local survey step(s) mapped.",
@@ -565,7 +565,7 @@ def run_database_analysis(slug: str, analysis_id: str, *, registry=None) -> Data
                   "db_user/db_password, or run a full survey with credentials, first.",
         )
 
-    steps = DATABASE_ANALYSIS_STEP_MAP[analysis_id]
+    steps = DATABASE_SURVEYOR_STEP_MAP[analysis_id]
     try:
         result = run_database_survey(
             slug, credentials={"user": db.db_user, "password": db.db_password},
@@ -929,7 +929,7 @@ def build_analysis_last_activity(registry, entity_type: str, slug: str) -> dict[
     `last_run_*` is real, attributed data for every entity_type now that
     `ProjectRegistry.get_analysis_last_run()` is generalized (see its
     docstring and `database/survey_definition_adapter.py`'s
-    `DATABASE_ANALYSIS_STEP_MAP`).
+    `DATABASE_SURVEYOR_STEP_MAP`).
 
     `last_published_at`/`last_published_scope` are NOT yet real data for
     database/filesystem: `record_published_annotation_types()`/

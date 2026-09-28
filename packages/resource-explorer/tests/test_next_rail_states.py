@@ -95,8 +95,10 @@ class TestTheListSentence:
         end = app.index("function renderTurnList(")
         src = app[start:end]
         mod = tmp_path / "lists.mjs"
-        mod.write_text("const esc = (s) => String(s); const icon = (n) => `<svg data-icon='${n}'/>`;\n" + src + "\nexport { listSources, listSentences, listSentenceHtml };\n")
-        script = f"import {{ listSources, listSentences, listSentenceHtml }} from '{mod.as_uri()}';\nconsole.log(JSON.stringify({expr}));"
+        mod.write_text("const esc = (s) => String(s); const icon = (n) => `<svg data-icon='${n}'/>`;\n" + src
+                       + "\nexport { listSources, listSentences, listSentenceHtml, evidenceFooterListsHtml };\n")
+        script = (f"import {{ listSources, listSentences, listSentenceHtml, evidenceFooterListsHtml }} "
+                  f"from '{mod.as_uri()}';\nconsole.log(JSON.stringify({expr}));")
         out = subprocess.run(["node", "--input-type=module", "-e", script], capture_output=True, text=True, check=True)
         return json.loads(out.stdout)
 
@@ -118,18 +120,108 @@ class TestTheListSentence:
         assert 'open the full list' in html and 'data-list-source="dependency_analysis"' in html
         assert '›' not in html and 'chevron-right' in html
 
-    def test_a_section_without_a_member_view_says_so_rather_than_omitting_the_link(self, tmp_path):
+    def test_a_readerless_section_is_not_named_in_the_footer_at_all(self, tmp_path):
+        """Corrected 2026-09-25 on review of the first fix
+        (REVIEW-SURVEY-PANE-285.md): the footer lists only lists that exist
+        to open. A single readerless section used to get its own "No list to
+        open" sentence -- that sentence is gone too now, not just collapsed,
+        because a footer that lists what exists has no business enumerating
+        what doesn't, one key or twelve. The absence moves to sourceLine()'s
+        one-line provenance sentence instead (tested below)."""
         import json
         body = {"compiled": {"manifest": {"packed": [{"key": "security_scan", "role": "evidence", "rung": "FULL"}],
                                           "lists": {"security_scan": {"findings": {"total": 3, "shown": {"FULL": 3, "SUMMARY": 3}}}}}}}
-        html = self._run(f"listSentenceHtml(listSentences({json.dumps(body)})[0], 'p')", tmp_path)
-        assert "No list to open — <span class=\"font-mono\">security_scan</span> has no member reader yet." in html and "data-list-source" not in html
+        html = self._run(f"evidenceFooterListsHtml(listSentences({json.dumps(body)}), 'p')", tmp_path)
+        assert html == ""
+
+    def test_several_readerless_sections_are_also_not_named_in_the_footer(self, tmp_path):
+        """Live-reproduced 2026-09-25 (REVIEW-SURVEY-PANE-285.md): a
+        database's compiled evidence packs many sections with list-shaped
+        fields and NONE of them has a member reader (MEMBER_LISTED is
+        repo-shaped analyses only), so the per-section fallback rendered a
+        dozen near-identical "No list to open" lines for one answer. The
+        first fix collapsed that into one combined line naming every key --
+        still a wall, per review; the footer now renders nothing for any of
+        them, at any count."""
+        import json
+        body = {"compiled": {"manifest": {
+            "packed": [{"key": "coverage_signals", "role": "evidence", "rung": "FULL"},
+                       {"key": "subject_signals", "role": "evidence", "rung": "FULL"},
+                       {"key": "grain_determination", "role": "evidence", "rung": "FULL"}],
+            "lists": {"coverage_signals": {"gaps": {"total": 2, "shown": {"FULL": 2, "SUMMARY": 2}}},
+                      "subject_signals": {"terms": {"total": 4, "shown": {"FULL": 4, "SUMMARY": 4}}},
+                      "grain_determination": {"grains": {"total": 3, "shown": {"FULL": 3, "SUMMARY": 3}}}},
+        }}}
+        html = self._run(f"evidenceFooterListsHtml(listSentences({json.dumps(body)}), 'p')", tmp_path)
+        assert html == ""
+
+    def test_a_readerful_section_still_renders_even_alongside_readerless_ones(self, tmp_path):
+        import json
+        body = {"compiled": {"manifest": {
+            "packed": [{"key": "dependency_analysis", "role": "evidence", "rung": "FULL"},
+                       {"key": "coverage_signals", "role": "evidence", "rung": "FULL"}],
+            "lists": {"dependency_analysis": {"by_ecosystem.python": {"total": 5, "shown": {"FULL": 5, "SUMMARY": 5}}},
+                      "coverage_signals": {"gaps": {"total": 2, "shown": {"FULL": 2, "SUMMARY": 2}}}},
+        }}}
+        html = self._run(f"evidenceFooterListsHtml(listSentences({json.dumps(body)}), 'p')", tmp_path)
+        assert "dependency_analysis" in html and "data-list-source" in html
+        assert "No list to open" not in html and "coverage_signals" not in html
 
     def test_a_manifest_without_lists_falls_back_to_the_bare_link(self, tmp_path):
         body = {"compiled": {"manifest": {"packed": [{"key": "cve_scan", "role": "evidence", "rung": "FULL"}]}}}
         import json
         assert self._run(f"listSentences({json.dumps(body)})", tmp_path) == []
         assert self._run(f"listSources({json.dumps(body)})", tmp_path) == ["cve_scan"]
+
+
+class TestSourceLineCarriesTheAbsenceFact:
+    """The footer names only lists that exist (above); the fact that NONE do
+    moves to the answer's own one-line provenance sentence instead, said
+    once and generically -- not per key, not combined. REVIEW-SURVEY-
+    PANE-285.md's correction to the first fix's combined footer line."""
+
+    def _run(self, expr, tmp_path):
+        import json, shutil, subprocess
+        import pytest
+        if shutil.which("node") is None:
+            pytest.skip("node not installed")
+        app = (NEXT / "chat.js").read_text(encoding="utf-8")
+        start = app.index("function sourceLine(")
+        end = app.index("function renderTurnList(")
+        src = app[start:end]
+        mod = tmp_path / "sourceline.mjs"
+        mod.write_text("const esc = (s) => String(s); const icon = (n) => `<svg data-icon='${n}'/>`;\n" + src
+                       + "\nexport { sourceLine };\n")
+        script = f"import {{ sourceLine }} from '{mod.as_uri()}';\nconsole.log(JSON.stringify({expr}));"
+        out = subprocess.run(["node", "--input-type=module", "-e", script], capture_output=True, text=True, check=True)
+        return json.loads(out.stdout)
+
+    def test_no_readable_lists_at_all_adds_the_absence_clause(self, tmp_path):
+        import json
+        body = {"compiled": {"manifest": {
+            "packed": [{"key": "coverage_signals", "role": "evidence", "rung": "FULL"}],
+            "lists": {"coverage_signals": {"gaps": {"total": 2, "shown": {"FULL": 2, "SUMMARY": 2}}}},
+        }}}
+        line = self._run(f"sourceLine({json.dumps(body)})", tmp_path)
+        assert "no evidence lists were available for this question" in line
+
+    def test_a_readable_list_present_does_not_add_the_clause(self, tmp_path):
+        import json
+        body = {"compiled": {"manifest": {
+            "packed": [{"key": "dependency_analysis", "role": "evidence", "rung": "FULL"}],
+            "lists": {"dependency_analysis": {"by_ecosystem.python": {"total": 5, "shown": {"FULL": 5, "SUMMARY": 5}}}},
+        }}}
+        line = self._run(f"sourceLine({json.dumps(body)})", tmp_path)
+        assert "no evidence lists were available" not in line
+
+    def test_no_lists_in_the_manifest_at_all_does_not_add_the_clause_either(self, tmp_path):
+        """Nothing list-shaped was packed at all -- a different, unrelated
+        fact from "lists existed but none had a reader" -- so this clause,
+        specific to the latter, must not fire here."""
+        import json
+        body = {"compiled": {"manifest": {"packed": [{"key": "cve_scan", "role": "evidence", "rung": "FULL"}]}}}
+        line = self._run(f"sourceLine({json.dumps(body)})", tmp_path)
+        assert "no evidence lists were available" not in line
 
 
 class TestTheRailScopeFollowsTheSelection:

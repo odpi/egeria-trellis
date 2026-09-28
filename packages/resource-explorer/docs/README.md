@@ -36,6 +36,8 @@ Decisions and models. Cited from source where a comment cannot restate them.
   consolidated design. Current as of 2026-09-02
 - **[filesystem-and-database-surveying.md](filesystem-and-database-surveying.md)** — 2026-09-02  
   consolidated design and reference. Current as of 2026-09-02
+- **[security-model.md](security-model.md)** — 2026-09-25  
+  consolidated model: the two survey identities (catalog, data), capabilities per step, where credentials live in Egeria and RE, how a connection is chosen, what the user is told. Supersedes the credential detail in the design notes it cites
 - **[project-review-2026-07-14.md](project-review-2026-07-14.md)** — 2026-09-02  
   DATED SNAPSHOT — 2026-07-14, the oldest document here. Predates the migration into the Trellis m
 - **[question-answering-and-context.md](question-answering-and-context.md)** — 2026-09-02  

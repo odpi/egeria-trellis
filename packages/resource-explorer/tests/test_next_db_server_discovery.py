@@ -240,3 +240,52 @@ class TestOpenDialogWideModeReused:
     def test_uses_the_wide_dialog_option(self):
         src = _db_discovery_src()
         assert "{ wide: true }" in src
+
+
+class TestEgeriaHostDefaultsForDocker:
+    """Found live, 2026-09-27: `egeria_host` stayed empty by default, so
+    `databases.py`'s own runtime fallback (`egeria_host or host`) silently
+    used the DB's own "localhost" — wrong whenever Egeria runs in Docker
+    (the common case), since "localhost" from inside that container means
+    the container itself, never the Mac's Postgres."""
+
+    def test_applies_host_docker_internal_when_db_host_is_localhost(self):
+        src = _db_discovery_src()
+        assert "applyEgeriaHostDefault" in src
+        fn = src[src.index("function applyEgeriaHostDefault"):]
+        fn = fn[:fn.index("\n}\n")]
+        assert "'host.docker.internal'" in fn
+        assert "f.host === 'localhost'" in fn
+        assert "f.host === '127.0.0.1'" in fn
+
+    def test_never_overwrites_an_already_set_value(self):
+        src = _db_discovery_src()
+        fn = src[src.index("function applyEgeriaHostDefault"):]
+        fn = fn[:fn.index("\n}\n")]
+        assert "if (f.egeria_host) return;" in fn
+
+    def test_runs_on_every_form_read_not_only_at_submit(self):
+        src = _db_discovery_src()
+        read_fn = src[src.index("function readFormFromDom"):]
+        read_fn = read_fn[:read_fn.index("\n}\n")]
+        assert "applyEgeriaHostDefault();" in read_fn
+
+
+class TestNetworkFailureGetsAClearMessage:
+    """Found live, 2026-09-27: a stopped/unreachable RE server made the
+    Register Database Server dialog show the raw "Failed to fetch" three
+    times over ("Could not load registered servers: Failed to fetch",
+    "Failed to fetch", "Request failed: Failed to fetch") -- read as a
+    database or Egeria problem rather than what it actually was."""
+
+    def test_request_wraps_a_fetch_level_failure_with_a_clear_message(self):
+        src = _reapi_src()
+        fn = src[src.index("async function request"):]
+        fn = fn[:fn.index("\nconst get")]
+        assert "catch (err)" in fn
+        assert "is not responding" in fn
+        assert "window.location.origin" in fn
+        # The raw browser message must never reach the caller unwrapped --
+        # every caller reads `err.message` and would otherwise show the
+        # literal "Failed to fetch" text this fix exists to replace.
+        assert "new ApiError(" in fn

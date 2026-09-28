@@ -27,13 +27,15 @@ from resource_explorer.surveyors.survey_report import (
 
 from .connection import EngineCapabilities, NO_CAPABILITIES, database_connection
 
-# analysis_catalog.yaml database entry id -> DatabaseSurveyor.survey() steps.
-# Database per-card dispatch fix (D6 prerequisite, repo-scope-narrowing-
-# funnel plan) — closes the gap where every local database analysis card
-# triggered the identical whole-DB survey() regardless of which was
-# clicked. "schema" always runs (see DatabaseSurveyor._ALL_STEPS's
-# comment), so schema_inventory/row_count_snapshot genuinely diverge in
-# what extra work they do (views vs. statistics), not just in label.
+# analysis_catalog.yaml database entry id -> DatabaseSurveyor.survey() steps,
+# for the subset of database analyses that need an open connection to run at
+# all (a DatabaseSurveyor.survey() call). Database per-card dispatch fix (D6
+# prerequisite, repo-scope-narrowing-funnel plan) — closes the gap where every
+# local database analysis card triggered the identical whole-DB survey()
+# regardless of which was clicked. "schema" always runs (see
+# DatabaseSurveyor._ALL_STEPS's comment), so schema_inventory/row_count_
+# snapshot genuinely diverge in what extra work they do (views vs.
+# statistics), not just in label.
 #
 # privilege_audit: had no dedicated check before Phase 1 slice 8
 # (confirmed — "database-only, aspirational" per the target-shape audit),
@@ -47,7 +49,30 @@ from .connection import EngineCapabilities, NO_CAPABILITIES, database_connection
 # _survey_operations()'s activity-signals table count, which is why
 # "schema" appears in their step lists too, not just because the shared
 # invariant below forces it regardless.
-DATABASE_ANALYSIS_STEP_MAP: dict[str, list[str]] = {
+#
+# Deliberately does NOT carry the zero-fetch `db_derived`-backed ids
+# (db_classification, subject_signals, …) — those never call
+# DatabaseSurveyor.survey() at all (see db_derived.py's own module
+# docstring: it opens no connection, to the database or to Egeria), so a
+# "which DatabaseSurveyor steps does X need" map has nothing to say about
+# them. Every caller of this map (below, plus web/routes/databases.py,
+# workflows/analysis.py, scheduler.py) checks `analysis_id in
+# db_derived.DB_DERIVED_ANALYSES` FIRST and only falls through to this map
+# for what remains — that membership check, not this map, is what used to
+# be missing for `subject_signals`/`coverage_signals`/`preliminary_fit`
+# wherever a caller forgot it (see `survey_definition_adapter.py`'s
+# `DATABASE_ANALYSIS_RE_STEP_MAP`, now derived from `DB_DERIVED_ANALYSES`
+# rather than hand-listed a second time, for exactly that reason).
+#
+# Renamed from `DATABASE_ANALYSIS_STEP_MAP` (slice 17,
+# docs/design-notes/SLICE-17-RUNNABILITY-FROM-CATALOG-IMPLEMENTED.md) — that
+# name was shared, coincidentally, with a SEPARATE hand-maintained dict in
+# `survey_definition_adapter.py` with a different shape (re_analysis_step
+# keys, not DatabaseSurveyor.survey() step names) and a different set of
+# consumers. The two were never the same data and updating one while
+# forgetting the other is exactly the bug REVIEW-SURVEY-PANE-285.md §5(a)
+# found — distinct names make that mistake harder to make by accident.
+DATABASE_SURVEYOR_STEP_MAP: dict[str, list[str]] = {
     "schema_inventory": ["schema", "views"],
     "row_count_snapshot": ["schema", "statistics"],
     "privilege_audit": ["schema", "operations"],
@@ -251,8 +276,8 @@ class DatabaseSurveyor:
     # structural backbone every other step is enrichment on top of, not an
     # independently optional step. Database per-card dispatch fix (D6
     # prerequisite, repo-scope-narrowing-funnel plan) — see
-    # DATABASE_ANALYSIS_STEP_MAP in web/routes/databases.py for the
-    # analysis_id -> steps mapping this enables.
+    # DATABASE_SURVEYOR_STEP_MAP (this module, used by web/routes/databases.py)
+    # for the analysis_id -> steps mapping this enables.
     #
     # "operations" (Phase 1 slice 8, postgres_operations) is deliberately
     # NOT in _ALL_STEPS: unlike statistics/views, its four constituent
@@ -260,7 +285,7 @@ class DatabaseSurveyor:
     # db_external_dependencies) are read directly from pg_roles/pg_stat_*/
     # pg_settings/pg_extension — an "api / low" cost per design §5.7 that
     # should not silently ride along on every default full survey(). It
-    # only runs when explicitly requested (DATABASE_ANALYSIS_STEP_MAP or the
+    # only runs when explicitly requested (DATABASE_SURVEYOR_STEP_MAP or the
     # postgres_operations adapter entry point), same opt-in shape "views"
     # already had before this slice.
     _ALL_STEPS = ("schema", "statistics", "views")
@@ -1546,9 +1571,47 @@ class DatabaseSurveyor:
         return annotations
 
     def _store_results(self, results: dict) -> None:
-        """Store survey results in the registry."""
+        """Store survey results in the registry.
+
+        Collector-honesty rule (design ruling 2026-09-26, generalizing
+        slice 17c/the enumeration-floor PR's own fix): this method must
+        write only the fields THIS run actually collected. Found live on
+        `coco_pharma`: a per-card run of `schema_inventory` (steps
+        `["schema", "views"]` — no `"statistics"`) or `db_activity_signals`
+        (`["schema", "operations"]` — also no `"statistics"`) used to
+        silently overwrite EVERY table's `row_count`/`size_bytes` back to a
+        bare `0`, clobbering whatever a PRIOR `row_count_snapshot` run had
+        correctly measured — a run that fetched no statistics manufacturing
+        a "measured zero" by the act of writing, the exact class of bug
+        this effort exists to close, one level up (the survey writer, not
+        a results reader). Reproduced and fixed: a table this run has no
+        fresh statistics for keeps whatever was already stored (read back
+        before overwriting), or `None` if nothing was ever stored — never a
+        fabricated `0`.
+
+        This is the honest STOPGAP, not the real fix: the underlying cause
+        is one row per table getting overwritten by every survey run
+        instead of survey rows keyed `(slug, surveyed_at, source)` per
+        design rule D — the structured-tables rework (stream 3) is where
+        that actually gets fixed. Preserving prior values here prevents the
+        visible symptom (numbers flipping between runs) without touching
+        that larger design.
+        """
         schema_info = results["schema_info"]
         statistics  = results.get("statistics", {})
+
+        # Read back whatever is already stored for this database BEFORE
+        # this run's own write, so a table this run has no fresh
+        # statistics for can keep its prior value instead of losing it.
+        try:
+            prior_rows = self.registry.query_detail_rows(
+                "database_tables", self.db_entity.slug
+            )
+        except Exception:
+            prior_rows = []
+        prior_by_key = {
+            (r.get("schema_name"), r.get("table_name")): r for r in prior_rows
+        }
 
         # Enrich each table with row count + activity timestamps from
         # pg_stat_user_tables. CORRECTED 2026-09-24/25: unlike information_
@@ -1566,7 +1629,8 @@ class DatabaseSurveyor:
         }
         for schema in schema_info.get("schemas", []):
             for table in schema["tables"]:
-                rs = row_lookup.get((schema["name"], table["name"]), {})
+                key = (schema["name"], table["name"])
+                rs = row_lookup.get(key, {})
                 if rs:
                     table["row_count"] = rs.get("row_count", 0)
                 elif table.get("source") == "catalog_fallback":
@@ -1578,7 +1642,12 @@ class DatabaseSurveyor:
                     # `row_count_estimate` when `row_count` is left absent.
                     table["row_count"] = None
                 else:
-                    table["row_count"] = 0
+                    # This run's own steps did not include "statistics" at
+                    # all -- nothing here was measured THIS run. Keep
+                    # whatever was already stored rather than asserting a
+                    # zero this run never looked at.
+                    prior = prior_by_key.get(key)
+                    table["row_count"] = prior.get("row_count") if prior else None
                 table["last_analyzed"]  = rs.get("last_analyzed", "")
                 table["last_vacuumed"]  = rs.get("last_vacuumed", "")
                 table["pending_changes"] = rs.get("pending_changes", 0)
@@ -1590,7 +1659,8 @@ class DatabaseSurveyor:
         }
         for schema in schema_info.get("schemas", []):
             for table in schema["tables"]:
-                ts = size_lookup.get((schema["name"], table["name"]), {})
+                key = (schema["name"], table["name"])
+                ts = size_lookup.get(key, {})
                 if ts:
                     table["size_bytes"] = ts.get("total_bytes", 0) or 0
                 elif table.get("source") == "catalog_fallback":
@@ -1600,8 +1670,45 @@ class DatabaseSurveyor:
                     # back to at all — leave it unmeasured rather than 0.
                     table["size_bytes"] = None
                 else:
-                    table["size_bytes"] = 0
+                    # Same stopgap as row_count above -- this run collected
+                    # no size data at all, so keep the prior value.
+                    prior = prior_by_key.get(key)
+                    table["size_bytes"] = prior.get("size_bytes") if prior else None
                 table["size_pretty"] = ts.get("total_size", "")
+
+        # `operations`/`credential_capability` preserve-prior, same stopgap
+        # as row_count/size_bytes above — found live 2026-09-26 running a
+        # database Survey Definition: SurveyDefinitionExecutor dispatches
+        # each step as its OWN separate DatabaseSurveyor.survey() call, so
+        # a 3-step Scouting definition writes THREE survey rows a couple of
+        # seconds apart. The last step, credential_capability, collects no
+        # "operations" at all — its own `results.get("operations", {})` is
+        # correctly `{}` for ITS run — but writing that `{}` unconditionally
+        # made it the newest row's value, silently shadowing the real
+        # operations data postgres_operations had written two rows earlier.
+        # db_activity_signals/db_resilience (which read the operations
+        # section off the single latest row) then read nothing and
+        # degraded from "0 writes and 6 reads" to "ran and found nothing" —
+        # a per-analysis-path answer clobbered by an unrelated step in the
+        # same Survey Definition run, not a real measurement. Same fix as
+        # row_count/size_bytes: this run's own emptiness is only trusted
+        # when this run's OWN requested steps included that section; when
+        # they were run but the fields at hand happens to be empty by
+        # design (a genuinely stale-only db) it stays empty. This is only a
+        # difference at the boundary — for statistics we lacked a
+        # "did this run cover it" flag, so we fall back to a permissive
+        # "keep the value if THIS run's own value is empty" rule.
+        import json
+        prior_operations: dict = {}
+        prior_credential_capability: dict = {}
+        try:
+            prior_survey = self.registry.get_latest_database_survey(self.db_entity.slug)
+            if prior_survey:
+                prior_data = json.loads(prior_survey.get("survey_data") or "{}")
+                prior_operations = prior_data.get("operations") or {}
+                prior_credential_capability = prior_data.get("credential_capability") or {}
+        except Exception:
+            pass
 
         # `surveyed_at` is passed explicitly (rather than left to default)
         # so this call's own backfill_database_survey() write and the
@@ -1618,15 +1725,17 @@ class DatabaseSurveyor:
                 "statistics": statistics,
                 "annotation_count": len(results["annotations"]),
                 "views": results.get("views", []),
-                #: postgres_operations (Phase 1 slice 8) — empty dict when
-                #: the "operations" step was not requested, same "step
-                #: didn't run" convention as `views` above; not a new
-                #: structured table, folded into this existing blob.
-                "operations": results.get("operations", {}),
-                #: credential_capability (design §3/§4) — empty dict when the
-                #: step was not requested, same "step didn't run" convention
-                #: as "operations"/"views" above.
-                "credential_capability": results.get("credential_capability", {}),
+                #: postgres_operations (Phase 1 slice 8) — falls back to the
+                #: prior stored value when THIS run's own results have none,
+                #: same "don't manufacture an empty answer" rule row_count/
+                #: size_bytes above use; empty dict only when neither this
+                #: run nor any prior one ever collected it.
+                "operations": results.get("operations") or prior_operations,
+                #: credential_capability (design §3/§4) — same preserve-prior
+                #: rule as "operations" above.
+                "credential_capability": (
+                    results.get("credential_capability") or prior_credential_capability
+                ),
             },
             surveyed_at=results["surveyed_at"],
             # `surveyed_as`: the credential identity this run connected as

@@ -610,12 +610,19 @@ questions succeeds silently while creating no ScopedBy links at all.
 
 1. **foundations** — glossary, perspectives, funnel stages.
 2. **questions** — all 49 from `resource_questions.csv` via `questions/scouting-questions.md`.
-3. **survey-definitions** — all 8 documents, including `repo_security_summary` in both
+3. **survey-definitions** — the repo documents, including `repo_security_summary` in both
    `RepoAssessmentSurvey` (10 steps) and `RepoFullSurvey` (35 steps).
 4. **`scripts/reconcile_survey_definition_links.py`** — always, after step 3.
+5. **survey-definitions-database** (added Slice 12, 2026-09-26) — the three
+   database Survey Definitions (Scouting/Analysis/Assessment), in its own
+   directory/canary/batch since `bootstrap.py` is one batch per directory
+   and this batch shares no reconciler with the repo one above.
+6. **`scripts/reconcile_database_survey_definition_links.py`** — always,
+   after step 5, same non-idempotent-link reason as step 4.
 
-`resource_explorer/bootstrap.py`'s `check_and_heal()` does 1–3 by canary and then the post-heal
-reconcile, so a wiped platform should self-heal on startup. **Verify rather than assume it did** —
+`resource_explorer/bootstrap.py`'s `check_and_heal()` does every folder listed in
+`_folder_order.json` (1, 2, 3, 5 above) by canary, each followed by its own post-heal reconcile (4,
+6), so a wiped platform should self-heal on startup. **Verify rather than assume it did** —
 the canary proves a batch *ran*, not that every element inside it exists. That is precisely how 8
 of 49 questions went missing today.
 

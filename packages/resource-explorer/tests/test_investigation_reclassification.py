@@ -21,6 +21,11 @@ from resource_explorer.surveyors.investigation_reclassifier import (
     LATERAL, LOOSEN, TIGHTEN, InvestigationReclassifier, direction_of,
 )
 
+# See test_investigation_routes.py's identical pytestmark / conftest.py's
+# mock_egeria_client_connections docstring — this file reaches the same
+# unmocked marker-application client construction via EgeriaInvestigationPublisher.
+pytestmark = pytest.mark.usefixtures("mock_egeria_client_connections")
+
 
 @contextmanager
 def _as(user_id: str):

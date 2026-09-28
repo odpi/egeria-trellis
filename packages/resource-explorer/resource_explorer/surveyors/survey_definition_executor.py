@@ -135,6 +135,30 @@ class ResourceTypeAdapter:
     #: own `DATABASE_ANALYSIS_HEADLINE_MAP`/`FILESYSTEM_ANALYSIS_HEADLINE_MAP`
     #: constants being empty dicts.
     analysis_headline_map: Callable | None = None
+    #: () -> {analysis_id: container_level_headline_reader} — Slice 21a.
+    #: Consulted by `FactLayer._headline_for` only when the asking
+    #: question's level is a sub-resource one (container/member/field),
+    #: and only for the analysis_ids that register one here; every other
+    #: analysis, and every level-agnostic caller of `analysis_headline_map`
+    #: itself, is unaffected. None (undeclared, the default) means no
+    #: resource type currently offers a level-aware reading for anything —
+    #: the falls-back-to-resource behaviour is `_headline_for`'s own, not
+    #: this field's absence being treated as an error.
+    analysis_container_headline_map: Callable | None = None
+    #: () -> {analysis_id: container_level_results_reader} — Slice 21a point
+    #: 4. The "numbers behind this" evidence table's container-level
+    #: counterpart to `analysis_container_headline_map`: consulted by
+    #: `workflows/stage_page.py::build_measurements` only when the request's
+    #: `level` query param is a sub-resource one, and only for the
+    #: analysis_ids that register one here. Its reader returns a list of
+    #: `{name, value, opens, note}` rows already shaped for the frontend
+    #: table (one row per container — e.g. per schema — rather than one row
+    #: per resource-level scalar), not a raw results dict like
+    #: `analysis_results_map`'s readers return. None (undeclared, the
+    #: default) means no resource type offers a level-aware measurements
+    #: table for anything yet — `build_measurements` falls back to the
+    #: existing resource-level reader, unchanged.
+    analysis_container_results_map: Callable | None = None
     #: () -> {step_key: StepInfo} — what each of this type's steps COSTS,
     #: what stored data it REQUIRES, and what tables it PRODUCES (design
     #: §17.1/§17.2). A provider for the same import-cycle reason as the four
@@ -241,6 +265,22 @@ class SurveyDefinitionExecutor:
             raise SurveyDefinitionExecutorError(
                 f"{entity_type} '{slug}' not found in registry"
             )
+
+        # Fall back to the entity's own stored credentials when the caller
+        # supplied neither — the same fallback databases.py's plain (non-Survey-
+        # Definition) survey route already applies (`req.db_user or database.
+        # db_user`). Without this, every database Survey Definition run through
+        # this path fails on its first step ("Database credentials are
+        # required to connect") even though the database has stored
+        # credentials and its ordinary survey button works fine — found live
+        # 2026-09-26 running the first-ever database Survey Definition
+        # (Slice 12) end to end. `getattr(entity, ..., "")` is a no-op for
+        # repo/filesystem entities, which carry no db_user/db_password.
+        if not runner_kwargs.get("db_user") and not runner_kwargs.get("db_pwd"):
+            stored_user = getattr(entity, "db_user", "") or ""
+            stored_pwd = getattr(entity, "db_password", "") or ""
+            if stored_user or stored_pwd:
+                runner_kwargs = {**runner_kwargs, "db_user": stored_user, "db_pwd": stored_pwd}
 
         process_guid, process_qn = self._resolve_process_guid(
             entity_type, slug, tech_type, survey_definition_ref, refresh_definition

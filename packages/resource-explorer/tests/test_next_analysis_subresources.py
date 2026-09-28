@@ -62,14 +62,20 @@ def _projects_py():
 
 
 class TestNoFifthTabIsAdded:
-    """The ruling's central point: nothing joins SUB_TABS."""
+    """The ruling's central point: sub-resources specifically does not join
+    SUB_TABS — see `test_no_sub_resources_tab_id_anywhere_in_sub_tabs`
+    below, the actual guard. Slice 22 (2026-09-27) added a genuinely new,
+    unrelated tab (`schema_inventory`, database-only — see `resourceTypes`
+    filtering in `subTabsHtml()`), so the exact count this test pins is
+    "the current canonical set," not "four forever"; the ruling this class
+    is named for was never about a hard cap on tab count."""
 
-    def test_sub_tabs_are_still_exactly_the_canonical_four(self):
+    def test_sub_tabs_are_the_current_canonical_set(self):
         app = _app()
         start = app.index("const SUB_TABS = [")
         end = app.index("];", start)
         block = app[start:end]
-        ids = ["questions", "survey", "by_analysis", "disposition"]
+        ids = ["questions", "survey", "by_analysis", "disposition", "schema_inventory"]
         for i in ids:
             assert f"id: '{i}'" in block
         assert block.count("id: '") == len(ids)
@@ -80,6 +86,38 @@ class TestNoFifthTabIsAdded:
         end = app.index("];", start)
         assert "sub-resources" not in app[start:end]
         assert "sub_resources" not in app[start:end]
+
+
+class TestSchemaInventoryTabGatesOnTheRealResourceTypeValue:
+    """Found live, `laz_local_adventureworks`, 2026-09-27: Dan's Slice 22
+    usability gate failed before task 1 -- the Schema Inventory tab never
+    appeared for ANY database. `resourceTypes: ['database']` used the
+    display word, but `state.resourceType` is always the short form 'db'
+    (see the module comment above `$` -- "'repo' | 'db' | 'filesystem'" --
+    and every other comparison site in this file: `apiEntityType`,
+    `nonRepoLabel`, the find-title branch, the empty-selection prompt all
+    compare to 'db'). `subTabsHtml()`'s own `.includes(state.resourceType)`
+    filter silently never matched, so the tab was dropped for every
+    database. No existing test asserted the tab's gating at all -- these
+    are new, not fixes to a test that used the wrong fixture value."""
+
+    def test_sub_tabs_resourcetypes_uses_the_short_form(self):
+        app = _app()
+        start = app.index("const SUB_TABS = [")
+        end = app.index("];", start)
+        block = app[start:end]
+        row = block[block.index("id: 'schema_inventory'"):]
+        row = row[:row.index("},") + 1]
+        assert "resourceTypes: ['db']" in row
+        assert "'database'" not in row
+
+    def test_pane_guard_compares_against_the_short_form(self):
+        app = _app()
+        start = app.index("async function loadSchemaInventoryPane()")
+        end = app.index("\n}\n", start)
+        body = app[start:end]
+        assert "state.resourceType !== 'db'" in body
+        assert "state.resourceType !== 'database'" not in body
 
 
 class TestRunConfigurationAttachedToTheAnalysisRow:

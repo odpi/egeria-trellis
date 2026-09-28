@@ -73,7 +73,18 @@ one fact a returning user needs before deciding whether to run again —
 the same "open the thing a user opens" rule that caught four invisible
 extensions in September.
 
-## 2 · Q2 — the scope concept leaves the pane
+## 2 · Q2 — the scope concept leaves the pane; the stage scoping does not
+
+**Correction, 2026-09-25 (`REVIEW-SURVEY-PANE-285.md`).** The first
+implementation of this section dropped the stage filter, and the wording
+below gave it cover. To be unambiguous: **the list is scoped to the stage.**
+A stage's pane lists the surveys and analyses that answer that stage's
+questions — derived from the question catalog's `analysis_ids`
+(`survey-model.md` Part II §4, "questions are the composition key") — plus
+the stage's own analyses by `intent`. What leaves the pane is the *banner
+about how the list was scoped*, not the scoping. When nothing answers the
+stage's questions, the empty state says so and names the nearest stage
+that has something.
 
 Full-scan versus scoped is a fact about **how the candidate list was
 built**, not about the database. It stays in the API response (D2 is

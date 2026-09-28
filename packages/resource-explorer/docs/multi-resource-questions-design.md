@@ -117,8 +117,11 @@ there is one combined step.
   Without structured rows, per-object questions ("which tables have no
   primary key?"), diffs, trending and change detection all have to re-parse
   JSON (`web/routes/databases.py:655` already does).
-- No survey definitions exist for either type; the ten in
-  `docs/dr-egeria/survey-definitions/` are all `repo-*`.
+- No survey definitions exist for either type **(no longer current — Slice
+  12, 2026-09-26, authored three for database: Scouting/Analysis/
+  Assessment, in their own `docs/dr-egeria/survey-definitions-database/`
+  directory)**; the ten in `docs/dr-egeria/survey-definitions/` are still
+  all `repo-*`, and filesystem has none yet.
 - `executes_at: egeria` has no test coverage on either type; the hybrid
   surveyors have none (`Backlog.md:875-935`, Tier 1).
 - The `next` UI is repo-only by decision (`next/app.js:121`, `:1833`); the
@@ -271,6 +274,13 @@ already labels) and in the survey report's engine identity.
 
 **Decision (project owner, 2026-09-20):** generally yes to the reachability
 rule; and there is an efficiency question alongside it.
+
+**Credentials, identities and capabilities are specified in
+`docs/security-model.md` (2026-09-25)**, which supersedes the credential
+details below and in rule C: two identities (catalog at registration, data
+at the gate), a four-value capability vocabulary bound per step, a
+structural floor declared per engine, and the operational rule for which
+connection Egeria's own surveys receive.
 
 *Reachability.* The engine host runs in a container on the Egeria network. A
 database at `localhost:5442` from the laptop is reachable to the container only
@@ -462,6 +472,71 @@ never collected", which must render as "run ANALYZE" rather than as "no
 values". Value sampling (`postgres_column_profile`, §5.7) becomes the
 *fallback* for columns whose stats are stale or missing, and the only route for
 data-class and reference-data matching, which need actual values.
+
+### 5.1a Catalog values are estimates as of the last utility run — stamp them, and get actuals later
+
+**Project owner, 2026-09-25:** `pg_stats` and its relatives are refreshed
+only when a utility runs (`ANALYZE`, `VACUUM`, index builds), so the best
+they can say is "an estimate as of the last run". Everything in §5.1's
+catalog-first strategy is therefore an *estimate*, and the design needs
+three things it did not have: a freshness stamp on every estimate, a
+vocabulary for how stale it is, and the later pass that produces actuals.
+
+**The stamp is itself a catalog-tier read.** The same unprivileged activity
+view identity A already reads carries `last_analyze`, `last_autoanalyze`
+and `n_mod_since_analyze` (rows modified since statistics were taken), so
+every estimate is stamped "as of *date*, *N* rows changed since" — a
+quantified freshness, not a caveat. `reltuples`/`relpages` refresh on the
+same events; `n_live_tup`/`n_dead_tup` are running counters (more current,
+still approximate). Per engine, the freshness source goes in the engine
+declaration: SQL Server `sys.dm_db_stats_properties` (`last_updated`,
+`modification_counter`); Oracle `DBA_TAB_STATISTICS.LAST_ANALYZED` and
+`STALE_STATS`; MySQL `mysql.innodb_table_stats.last_update`; DuckDB
+computes on the fly, so no staleness.
+
+**Four freshness states**, shown in every envelope and annotation built
+from a catalog value: `fresh` · `stale` (with the modification count and
+age) · `never_collected` (statistics absent — "run ANALYZE") ·
+`not_visible` (this identity cannot see them — §9 of the credentials
+reply). A `stats_staleness` comparator (§9.1) fires when age or
+modification count crosses a threshold, because "statistics are three
+months old" is a finding in its own right.
+
+**Actuals come from the Analysis-tier pushdown pass**, bound to identity
+B and labelled *measured*: exact `COUNT(*)`, `COUNT(*) - COUNT(col)`
+(estimates can never assert zero nulls), `COUNT(DISTINCT)` or HyperLogLog,
+`MIN`/`MAX`, key uniqueness for grain, exact coverage gaps, pattern
+conformance — sampled and time-boxed per §5.8. The gate then reads
+"estimated from statistics 40 days old (4,120 rows changed since) — run
+the measured pass?", which is a better prompt than a bare Run.
+
+**A third basis: recorded at write.** Estimated and measured are not the
+only two. Some sources maintain statistics as a byproduct of writing, so
+the numbers are exact as of the write and readable without touching data:
+Delta Lake and Iceberg keep per-file min, max and null counts in the
+transaction log or manifests, stamped with a version or snapshot id;
+Parquet and ORC footers carry per-row-group column bounds; Snowflake
+micro-partition metadata and BigQuery storage metadata give exact row
+counts with no `ANALYZE` concept; Unity Catalog exposes column summaries
+to `BROWSE` users alone; and OpenLineage run facets carry output row
+counts and sizes emitted by the writing pipeline, which Egeria's Lovelace
+service already consumes. For these there is no estimate-versus-actual
+gap. So every value carries one of three bases — `estimated` (catalog,
+with the freshness stamp above), `measured` (pushdown, identity B, sampled
+and time-boxed), `recorded_at_write` (format or pipeline metadata, exact,
+with the version or snapshot stamp where one exists) — and the envelope
+names it. `recorded_at_write` needs no data identity, is the cheapest
+source of exact numbers where it exists, and a comparator over its
+version stamp is exact change detection for free. The engine and format
+declaration says which basis each source can offer.
+
+**Two consequences.** Egeria's native Postgres survey reads `pg_stats` too
+(`PROBES-2026-09-21.md`: *Most Common Values* comes from
+`pg_stats.most_common_vals`), so native annotations are estimates with the
+same staleness and the read-back labels them so — a native result is not
+authoritative because it is native. And refreshing statistics is not a
+survey identity's job (`ANALYZE` needs ownership or `MAINTAIN`), so stale
+statistics raise an RFA to the DBA, never a write.
 
 Perspectives: **Data Expert, Steward, Privacy, Security, Admin, Data Owner,
 Architecture, Governance** carry most rows. No new Perspective is needed.
@@ -851,6 +926,16 @@ a drawer: an actor with no screen needs an engine action or a webhook.
 
 **Decision (project owner, 2026-09-20):** spec it; a set of Terms or a Valid
 Value set are acceptable starting points.
+
+**Decision (project owner, 2026-09-25):** Purposes are being modelled in
+Egeria as a **valid values list**, and will be used, in part, **to select
+the right connection for the right purpose**. Two consequences: the
+recommendation below (a `ValidValueSet` with `ReferenceValueAssignment`
+from Question terms) is confirmed rather than proposed, and Purpose gains a
+second consumer beyond question ranking — the connection choice in
+`security-model.md` §5, where an investigation's purpose (Explore, Assess,
+Certify …) selects among the labelled connections on an asset. `Level`
+(§18.3) rides the same mechanism as a second small set.
 
 Recommendation: **a `ValidValueSet` named `Resource Explorer Purposes`, one
 `ValidValueDefinition` per purpose, and `ReferenceValueAssignment` from each
@@ -1262,14 +1347,15 @@ with the cost of each signal stated.
 | **Subject from names and comments** — table, column, file and folder names; `pg_description`; README and descriptor text; DCAT `theme`/`keyword`; card tags | catalog / walk / descriptor | none beyond what Scouting already reads | Scouting | low–medium; a name is a claim |
 | **Time grain from naming** — columns `*_date`, `*_ts`, `day`, `hour`, `period`; tables `daily_*`, `*_hourly`; partition keys `year=/month=/day=`; file names carrying dates (`sales_2025-03.parquet`) | same | none | Scouting | medium for partitions and file names, low for column names |
 | **Entity grain from keys** — PK composition; a date column *in* the PK means per-period grain | catalog | none | Scouting | medium–high |
-| **Coverage from catalog statistics** — `pg_stats.histogram_bounds` on date and timestamp columns gives min and max **without reading rows** (after `ANALYZE`); partition bounds from `pg_partitioned_table` / check constraints give exact ranges | catalog | none | Scouting | high when stats are fresh; **absent means "run ANALYZE", not "no dates"** |
+| **Coverage from partition bounds** — `pg_partitioned_table` / check constraints give exact ranges for partitioned tables | catalog | none | Scouting | high; only for partitioned tables |
+| **Coverage from column statistics** — `pg_stats.histogram_bounds` on date and timestamp columns gives min and max without a row scan (after `ANALYZE`) — **but `pg_stats` is filtered by column `SELECT`, so this needs the data identity, not the catalog identity** (corrected 2026-09-25 per the credentials reply §9 and settled by a live probe the same day: `pg_read_all_stats` alone yields 0 `pg_stats` rows for a table without `SELECT`; the earlier wording called it free at Scouting) | data identity (B) | tiny once B exists | Discovery, when B is held; otherwise deferred to Analysis | high when stats are fresh; **absent means "run ANALYZE" or "no column access", and the envelope must say which** |
 | **Coverage from file metadata** — Parquet and Feather footers carry per-row-group min/max per column, so date range comes from the footer alone; ORC likewise | file footer read, no data | tiny | Scouting | high |
 | **Coverage from descriptors** — DCAT `temporal` and `spatial`; Croissant; HF card front matter; DataScope already declared on the asset | descriptor | none | Scouting | as good as the publisher |
 | **Geography from names and classes** — columns named country, region, state, postcode, lat/lon; data-class matches by *name only* (ISO country code, postcode) | catalog + class registry | none | Scouting | low–medium |
 | **Preliminary fit** — the above against the requirement: subject overlap, grain estimate compatible, catalog-bound coverage overlaps the window | stored rows | none | **Discovery** | stated per input; this is the gate |
 | **Measured cadence and gaps** — one aggregate query per date column (`date_trunc(period), count(*) group by 1`) rather than sampling: one scan, exact; gaps = missing periods inside the range; per-region gaps by grouping on the region column too | data read, single aggregate pass per column | api_heavy / medium; bounded by the sampling config (§5.8) when the table is large | **Analysis** | high |
 | **Measured spatial extent** — min/max of lat/lon columns; distinct values of region-typed columns matched to a reference set (`reference_data_match`) | data read | api_heavy / low–medium | Analysis | high |
-| **Measured entity grain** — `n_distinct` of candidate key ≈ row count, from `pg_stats` first, sample second | catalog then data | none, then medium | Analysis (confirms Scouting's estimate) | high |
+| **Measured entity grain** — `n_distinct` of candidate key ≈ row count, from `pg_stats` first (data identity), sample second | data | tiny, then medium | Analysis (confirms Scouting's estimate) | high |
 | **Quality by dimension** (§16.4) | mostly already-stored profiles | low once profiles exist | Analysis | per dimension |
 | **Fit** — lens versus scope, grain compatibility, thresholds | stored rows | none | **Assessment** | states which inputs were measured vs estimated |
 
@@ -1279,7 +1365,12 @@ whether the aggregate pass is worth running; Analysis runs it; Assessment
 compares against the lens.** For files, Parquet's footer statistics make the
 Scouting estimate nearly as good as the measurement; for CSV there is no
 free signal beyond names and the file's date, so CSV is where the
-Discovery gate earns its keep.
+Discovery gate earns its keep. For databases, what the *catalog identity*
+can see (structure, keys, names, comments, partition bounds, activity
+counters) is the Scouting estimate; column statistics and everything
+value-derived need the *data identity* and so arrive at Discovery only when
+that identity is held — the two-identity model in
+`design-notes/REPLY-DATABASE-CREDENTIAL-CAPABILITY-VISIBILITY.md` §9.
 
 ### 16.3 The questions
 
@@ -1483,6 +1574,58 @@ first analysis whose source is `egeria` for *every* resource type,
 including repositories, so its results reader is the template for any
 later Egeria-mirrored analysis.
 
+### 16.8 Scope relations are per axis — "similar" is not one number
+
+**Project owner, 2026-09-26:** two databases may both hold "customer data"
+and differ entirely — one for pre-sales, one for post-sales support; one
+for the US, one for New York, where the second is a subset of the first.
+The scope-similarity question (§16.3, the three-way split of "similar
+resources") therefore answers with a **relation per axis**, and
+"substitutable" is derived from those relations, never scored.
+
+**The axes**, each with its own source and its own comparison:
+
+| Axis | What it captures | Held side | Sought side | Comparison |
+|---|---|---|---|---|
+| Subject | what the data is about — glossary terms, data classes | `scopeElements.subjectTerms`, `dataClasses` (declared) or `subject_signals` (measured) | the lens's terms | set relation |
+| **Population** | *which* of that subject — customers in which lifecycle stage, which segment, which business process (pre-sales vs post-sales) | `scopeElements.population`, `lifecycleStage`, `businessProcess`; usually **declared**, occasionally inferable from names (`presales_customers`) | the lens's `DataLens` *processing type* — Egeria's own definition of a lens is "the scope of data for a particular type of processing", which is exactly this axis | set relation; **unknown when undeclared**, never assumed equal because the subject matches |
+| Space | where — regions, bounding box, jurisdiction | `DataScope` bbox, `scopeElements.regions` | lens bbox / regions | containment |
+| Time | collection, validity, coverage windows | `DataScope` times | lens times | interval containment |
+| Grain | one row per what, per what interval | `DataGrain` | lens grain | finer / same / coarser |
+| Structure | the schema or file signature | `db_fingerprint` / `file_fingerprint` | another resource's signature | same / subset / superset (this is the *structural* member of the split, §16.3) |
+
+**The relation vocabulary**, the same on every axis: `same`, `contains`,
+`contained_by`, `overlaps`, `disjoint`, `not_established`. The last is a
+real value: an undeclared population axis renders as "population: not
+established — the two may be the same customers or different ones", which
+is the honest answer to the pre-sales/post-sales pair until someone
+declares it, and the reason two "customer" databases must never be called
+similar on subject alone.
+
+**Derived answers**, computed from the per-axis relations and shown with
+them, not instead of them:
+
+- *Can B stand in for A?* — every axis `same` or `contains` in B's favour,
+  grain `same` or finer, structure at least `subset`-compatible with what
+  A's consumers use. One `disjoint` or `not_established` axis and the
+  answer is "not without checking *axis*".
+- *Is B a subset of A?* — structure `same` and one or more of space, time,
+  population `contained_by`, the rest `same`. NY-of-US is: subject same,
+  population same, structure same, space contained_by, time same.
+- *Are these the same data twice?* — every axis `same` including structure;
+  a candidate for the copy finding (§5.3) and for consolidation.
+
+**What it changes.** `requirement_fit` and `preliminary_fit` (§16.3) report
+per axis, and the designer's two-extent map and calendar strip (§11) are
+the space and time axes drawn; the population axis has no drawing and is a
+labelled line. The `scopeElements` key convention in §16.6 gains
+`population`, `lifecycleStage` and `businessProcess`. `DataLens`'s
+processing type is the sought side of population and should be set when
+an investigation is framed. The structural and scope members of the
+"similar" split are asked together on one row of the answer, because
+"same structure, subset of rows by geography" is the precise statement
+about the NY/US pair and neither half says it alone.
+
 ## 17. Prerequisites run themselves, and every run says what it cost
 
 **Added 2026-09-23 at the project owner's direction**, from two questions:
@@ -1617,6 +1760,355 @@ the vector has a few weeks of rows in it.
 | `step_runs` table and the observer writing the vector (wall, CPU, bytes, API calls, Egeria calls, cache hits, yield, executor) | a day; the counting wrappers are the work | Phase 1, before the native-vs-local comparison is worth reading |
 | Optional collectors: `pg_stat_statements` delta, LLM tokens | half a day each, behind config | when the first board shows a gap |
 | Admin "Performance" panel, four views | designer round 2 | after two weeks of rows |
+
+## 18. Scope, focus and clusters — working below the database
+
+**Added 2026-09-25 at the project owner's direction**, after the live test of
+`coco_pharma`: *"many of the questions and surveys are talking about the
+database level but really the discussion should be (or include) the schema
+and table level — e.g. #rows … users [need] to focus on specific schemas for
+some of their surveys rather than entire databases … When faced with a large
+database, like a data warehouse, there could be hundreds of tables — in
+later funnel stages you probably will focus on a few at a time — a logical
+cluster of related tables. The design as is doesn't support more than a few
+of anything."*
+
+That last sentence is accurate, and the catalog shows why: **49 of 62
+analyses declare `target_shape: whole_resource_only`**, 12 `corpus`, 1
+`single_container`. The question rows are phrased at database level. The
+left navigation lists resources and never their parts. So every answer is a
+rollup of the whole database, every survey runs against all of it, and a
+warehouse with 400 tables produces the same one-line answers as a demo with
+three. The §16 coverage and grain work made this worse by adding more
+whole-database questions to a model that could only answer at that level.
+
+### 18.1 Three things, kept distinct
+
+| Concept | What it is | Persisted as | Made by |
+|---|---|---|---|
+| **Containment level** | the engine's declared hierarchy: server → database → schema → table → column (per engine, `REPLY-SCHEMA-AS-SUB-RESOURCE.md` §5) | `sub_resources` rows, `kind` = the level, `locator` = the path, created deterministically from the inventory | the survey, not the user |
+| **Focus** | *what the funnel pages currently show and surveys currently run against*: the whole database, one schema, a set of tables, or a cluster. A selection, not a resource | a locator set on the investigation (`investigation_scope`: resource, locators, set at, by whom); the current focus is a URL state and a header crumb | the user, by clicking in the tree or accepting a proposed cluster |
+| **Proposed cluster** | a logical set of related tables that Discovery *infers* from structure and use — the database analogue of architecture recovery's *components* for repositories, and the one piece here the field does not do (§18.9) | a Discovery finding: `sub_resources` row with `kind = proposed_cluster`, members and evidence in `detail_json` | Discovery; never a decision |
+| **Domain / data product** | the *accepted* form of a cluster: what every catalog calls a domain (organisational, owned, hierarchical) or a data product (curated, contracted, subscribed). Not a third concept | in Egeria, exactly its existing types: a `Collection` with `CollectionMembership` over the table assets, a `SubjectArea` classification (model 0425) where the grouping is by meaning, a `DigitalProduct` when it is offered (§4); locally the same `sub_resources` row promoted to `kind = domain` with the Egeria GUID | a curator, in Curate, from a proposal or by hand |
+
+Focus is not registration. A schema or cluster in focus is still a
+sub-resource of the database; D3's *first-class on direct registration*
+remains the only way it becomes a top-level resource. What changes is that
+**every stage page, question, survey row and answer is scoped to the focus**,
+and says so.
+
+### 18.2 The funnel narrows scope as it goes
+
+| Stage | Scope | What the page shows |
+|---|---|---|
+| Scouting | the whole database, **always broken down by containment level** — never a rollup without its parts | the tree: schemas with table counts, rows, bytes, activity, credential visibility per schema; system schemas folded away |
+| Discovery | per schema, **tables ranked by importance**, then **proposed clusters** | first a ranked list of tables — the entry point at scale is not the tree (§18.9) — from signals RE already has or can read cheaply: activity counters and scan counts (catalog identity), FK degree from `db_relationship_graph`, row estimates, query statistics where `stats` is held, OpenLineage run facets where an emitter exists, and **declared or measured `DataScope` and `DataGrain`** (a table whose scope and grain match the investigation's lens ranks above one that merely has traffic — the project owner's point that scope and grain are strong focus signals, §16.5). Then `db_relationship_graph` components become cluster proposals (FK-connected sets, naming prefixes, shared key columns, co-access); `db_classification` per schema; `preliminary_fit` per schema and per cluster. The *worth pursuing* verdict tells the user where to focus |
+| Analysis | a cluster or a few tables | column profiles, data-class and reference-set matches, coverage and grain per table; the cost vector per focus so a 400-table warehouse is never profiled whole by accident |
+| Assessment | a cluster | quality dimensions, exposure, fit against the lens, readiness — per cluster, with the tables listed |
+| Curate | a table or cluster | declare scope, grain, classes, ownership per table; accept or reshape clusters; promote to first-class if wanted |
+| Automate | the focus | comparators scoped to the tables the user cares about, not the database |
+
+This is the repository path's *scope narrowing* (`scoping.py`,
+`target_shape: corpus` with a `scope_locator` path-prefix filter;
+architecture recovery's components → blueprints) applied to databases with
+the engine's containment levels as the axis. The mechanism exists; the
+catalog tagging, the questions and the navigation do not use it.
+
+### 18.3 Questions carry a level, and answers carry a distribution
+
+Add a **`Level`** column to the question CSV: `database`, `schema`,
+`table`, `column`, or several. "How many rows?" is a *table* question; at
+database or schema level its answer is a **distribution**, not a sum: "23
+tables in `coco_ods`: `customers` 20 rows … top 10 shown, 13 more; 3,526
+rows across the schema (7 of 23 catalog estimates as of 2026-09-18)". The
+envelope gains `scope` (the locator set answered for) and `shown_of`
+(N of M), and the rule from §16.3 stands: **every answer names its scope**.
+A whole-database ✓ on a question whose level is `schema` is not an answer.
+
+**Specification (2026-09-25, built the same day on `re/questions-level-column`).**
+
+- **Column:** `Level`, one column, `;`-separated, validated against a
+  controlled vocabulary the way Purposes are — a typo stops the build. Blank
+  means `resource`. Registered in both generators' non-perspective lists
+  (`NON_PERSPECTIVE_COLUMNS`, `OPTIONAL_LEAD_COLUMNS`), because any column
+  they do not know becomes a phantom Perspective.
+- **Vocabulary, engine-neutral:** `resource`, `container`, `member`,
+  `field`. "Schema" does not exist on MySQL and the level names come from
+  each engine's containment declaration, so the CSV uses the abstract four
+  and the guide maps them per resource type: database = database / schema /
+  table / column; filesystem = root / folder / file / field; dataset =
+  dataset / distribution / file / field; repository = repository /
+  component / file / symbol.
+- **Semantics:** the level(s) at which the answer is a *single value*.
+  Asked above its level, a question answers as a ranked distribution ("top
+  10 and 13 more, total across the scope") — nothing in the CSV enumerates
+  the combinations. A row may carry two levels when it is natural at both
+  ("how big is this database" is `resource;container`: one figure for the
+  database, and a breakdown per schema that is not a derived distribution
+  but the same answer at the next level).
+- **Consumers:** the YAML entry gains `levels`; `QuestionCatalogEntry.levels`
+  defaults to `["resource"]` for entries generated before the column
+  existed; the Questions tab filters by the current focus (§18.1) and rolls
+  up the levels below it; the envelope gains `scope` and `shown_of`
+  (slice 21's second half). Survey-definition generation is unaffected —
+  `ScopedBy` links are per question, not per level (verified: regenerating
+  after the column landed changed nothing).
+- **Egeria:** not published yet. Level rides the same valid-value-set
+  mechanism as Purposes (§10, decided 2026-09-25), a second small set, so
+  one server fix unblocks both.
+- **The second extension slice 21 still owes:** per-type `Answering
+  Analysis`. Cross-type rows answer a database with repository prose today
+  (`REVIEW-SURVEY-PANE-285.md` §6.3). Rather than five new columns, the one
+  cell allows per-type segments with a type prefix and a type-neutral
+  default — `N/A — direct field || database: N/A — direct field
+  (pg_description) || filesystem: descriptor_detection` — and a type with
+  neither segment nor default renders *not authored for this type*.
+- **Guards:** unknown level → build fails (built). A row below `resource`
+  whose analysis produces no per-member rows is the "answered with counts,
+  no schema named" failure; that guard lands with slice 20's `scopes`
+  declaration, which is what makes it checkable.
+
+Cross-type questions (§4) carry `resource`; §5's database questions were
+levelled row by row on 2026-09-25 (9 `container`, 7 `member`, 7 `field`,
+plus the dual-level rows); the answering analysis for a `member`-level
+question must produce per-table rows, which the structured tables (§5.7)
+already hold.
+
+### 18.4 Analyses accept a scope
+
+`target_shape: whole_resource_only` becomes the exception, not the default,
+for database analyses. Each declares the levels it can run at (`scopes:
+[database, schema, cluster, table]`), the API takes a locator set, results
+are stored **with the scope on the row** (rule D's key gains `scope`), and
+`schema_scope.py`'s grouping by containment level is the filter. Rollups
+are computed from scoped rows and labelled as rollups (`REPLY-SCHEMA-AS-SUB-
+RESOURCE.md` §1); nothing runs whole-database because a whole-database run
+was the only shape available.
+
+### 18.5 Scale rules, so hundreds of tables are a normal case
+
+- The left navigation is a **tree with counts**, not a list: database →
+  schemas (table count, rows, visibility) → tables, with search, paging past
+  50, and clusters shown first once they exist. Nothing renders hundreds of
+  rows flat.
+- Every list says **N of M shown**; every survey row says what scope it ran
+  on; every rollup names what it rolled up.
+- Sampling (§5.8) and the cost vector (§17.2) are per table and per focus;
+  "profile the warehouse" is a proposal with a summed cost, never a click.
+- Clusters are the unit of work in Analysis and beyond; a table outside any
+  cluster is reachable by search, not by scrolling.
+- **Include and exclude patterns at registration**, at schema, table, view
+  and column level — the one control every crawler and profiler in the
+  field exposes and ours has none. Egeria already defines the vocabulary
+  (`includeSchemaNames`/`excludeSchemaNames`, `…TableNames`, `…ViewNames`,
+  `…ColumnNames` on the JDBC integration connector; catalog/schema/table on
+  Unity) and RE should use the same names so a pattern set travels with the
+  asset into Egeria's own cataloguing. Note the Postgres *survey* service
+  takes only the generic `finalAnalysisStep`/`ignoreAnalysisSteps`; the
+  include/exclude lives on the cataloguing side, which is where scope is
+  decided anyway.
+- **A per-table profiling policy** persisted on the sub-resource — sample
+  strategy and bounds (§5.8), schedule, or *never* — so cost is set once per
+  table the way every profiler does it, instead of per resource and
+  analysis.
+
+### 18.6 Egeria already has most of this — use it rather than mirror it
+
+**Project owner, 2026-09-25:** Egeria addresses several of these issues
+itself. Mapped, with what each is for in this model:
+
+| Need | Egeria mechanism | Where it applies |
+|---|---|---|
+| the levels | `DeployedDatabaseSchema`, `RelationalTable`, `RelationalColumn` assets — the native Postgres survey creates and annotates them per schema and table; `sub_resources.egeria_guid` links each local row to its asset | Scouting onward |
+| scoping what is catalogued and surveyed | include/exclude name lists on the JDBC integration connector and Unity catalog config (schema, table, view, column; catalog for Unity) — **which RE does not use today** | registration |
+| accepted clusters by meaning | `SubjectArea` classification (0425) with `SubjectAreaHierarchy`; `SubjectAreaDefinition` as the governance definition behind it | Curate |
+| accepted clusters as bundles | `Collection` + `CollectionMembership` (the `blueprint_materializer.py` shape) | Curate |
+| offered clusters | `DigitalProduct`, `DigitalProductCatalog`, `DigitalSubscription` (§4, §16.7) | Curate → product |
+| meaning on tables and columns | `SemanticAssignment` to glossary terms, `DataClassAssignment`, `ValidValuesAssignment` — the accepted forms of `semantic_suggestions`, `data_class_match`, `reference_data_match` (§5.4); applies once catalogued, so it is Curate work | Curate |
+| who may see a scope | governance zones and security tags on the assets and collections — the same mechanism §5 of `security-model.md` relies on for connections | Curate; also the draft-visibility answer for proposals (§14) |
+| what other tools know | OpenLineage: Egeria's event-receiver integration connector ingests runs, and Lovelace derives `DataScope`, run profiles and data-quality summaries from them. A co-located Marquez is the cheap way to have that history for resources RE surveys. **Nothing says this must wait for cataloguing**: RE can ask Marquez what it knows about a table by name during Scouting, as a signal, and Egeria consumes the same events after cataloguing | Scouting (pre-catalogue signal) and Curate (post) |
+
+Declared scope and grain (§16) land on the table asset; lens fit (§16.5)
+runs per cluster or domain, which is where "does this data fit what I am
+looking for" is actually answerable.
+
+### 18.7 For the designer
+
+The tree navigation with focus; a **focus crumb** in the header
+("coco_pharma › coco_ods › 23 tables") that every page carries; distribution
+rendering (top N with "and M more", the calendar strip and profile card per
+table from §11); cluster proposals as a Discovery result the user accepts,
+edits or dismisses; the survey pane rows scoped to the focus and saying so.
+
+### 18.9 How other products handle this, and what is borrowed
+
+Reviewed 2026-09-25 at the project owner's request before executing, from
+knowledge of the products rather than fresh verification. We are not
+unique; the shape of the answer is stable across the field.
+
+| Question | What the field does | Borrowed into §18 |
+|---|---|---|
+| Navigating below the database | every catalog (Unity, Purview, Alation, Atlan, DataHub, OpenMetadata) renders the engine hierarchy as a tree with each level a first-class page; trees collapse past a threshold and rely on search and facets; Alation and Atlan show usage-derived popularity on the node | the tree with counts and search (§18.5); focus behaves like *being on a node's page*, persisted only as where you were, not as a mode |
+| Scoping what is profiled | include/exclude patterns at schema and table level on every crawler (OpenMetadata filter patterns, Purview scan rule sets, Glue include paths, DataHub allow/deny); profiling on a chosen subset with sampling and a size cap; a per-table schedule | include/exclude at registration using Egeria's own names; per-table profiling policy (§18.5) |
+| Logical clusters | three distinct mechanisms, kept distinct: **domains** (organisational, owned, hierarchical: DataHub, Atlan, OpenMetadata, Collibra, Purview collections), **data products** (curated, contracted, subscribed: DataHub, OpenMetadata, Atlan), **subject areas** (data-modelling tools: erwin, ER/Studio submodels, drawn by a modeller). None *infers* clusters from FK graphs; schema-summarisation research does, and is not productised | proposed cluster stays (RE surveys the unknown and has nobody to assign domains yet); the accepted form is Egeria's SubjectArea / Collection / DigitalProduct, not a third concept (§18.1, §18.6) |
+| Level of answers | catalogs show table statistics on the table page and only counts and lists above it; observability tools (Monte Carlo, Bigeye, Elementary) keep row count, freshness and volume as per-table series and make the database view a **ranked list**, never an aggregate | the distribution answer with ranking (§18.3) |
+| Prioritising at scale | Monte Carlo key assets, Bigeye importance, Alation popularity, DataHub usage, Select Star "most queried / most joined": rank by query volume, lineage fan-out, recency of use | Discovery's ranked table list first (§18.2), from activity counters, FK degree, query statistics where held, OpenLineage — **and DataScope / DataGrain fit against the lens**, which the field does not have and which is RE's differentiator |
+| Meaning and stewardship | glossary assignment, classification and ownership are curation steps after cataloguing, everywhere | Egeria's `SemanticAssignment`, `DataClassAssignment`, zones (§18.6) as the Curate-tier acceptance of what Discovery and Analysis proposed |
+
+### 18.8 Where it goes in the plan
+
+Before any re-land of the survey pane (`REVIEW-SURVEY-PANE-285.md` §4),
+because the pane, the Questions tab and the answers all take a scope:
+
+1. `investigation_scope` and the focus crumb; the tree navigation over
+   `sub_resources` for the levels the inventory already produces.
+2. `scopes` on the database analyses and the locator-set parameter; results
+   keyed by scope; `schema_scope.py` as the filter. Convert the §5 analyses
+   from `whole_resource_only` one by one, starting with `schema_inventory`,
+   `row_count_snapshot`, `db_relationship_graph`.
+3. `Level` on the question CSV and the distribution envelope; the Questions
+   tab scoped to the focus.
+4. Include/exclude at registration (Egeria's names) and the per-table
+   profiling policy.
+5. Table ranking in Discovery from the signals RE holds; then cluster
+   proposals from `db_relationship_graph`; accept in Curate as
+   `SubjectArea` / `Collection` / `DigitalProduct`.
+6. Then the pane re-land, per focus.
+
+## 19. Two entry paths: a resource Egeria does not know, and one it does
+
+**Added 2026-09-25 at the project owner's direction.** RE has two roles that
+look alike and are not: *determine new resources worthy of cataloguing and
+use*, and *further explore, survey and analyse things Egeria already knows
+about, at least in part*. Some RE surveys augment analyses Egeria performs
+itself through its integration daemon and integration connectors, so that
+path has to be designed through, not assumed to be the unknown path with a
+GUID attached.
+
+Pieces already in place: rule A (native results are canonical in shape),
+rule D (every result is mirrored locally), the governance read-back layer
+(§16.7), reuse-by-qualified-name in the catalogue step
+(`egeria_database_surveyor.py:285`), and a Discovery question "has this
+been catalogued in Egeria, and when?". What was missing is the entry path
+itself, and what "known" means per containment level.
+
+### 19.1 "Known" is per level and per depth, not a flag
+
+Egeria's knowledge of a database is a matrix, and RE's job differs per
+cell:
+
+| Level (§18.1) | absent | catalogued (structure exists) | surveyed (annotations exist) | curated (scope, grain, classes, owner declared) |
+|---|---|---|---|---|
+| server, database | RE registers and offers Catalog & Survey | RE adopts the GUID, reads back | RE reads back the reports; surveys only what is missing | RE reads back and respects the declarations |
+| schema, table, column | RE's inventory is the only structure; sub-resources local until published | **an integration connector probably maintains these** (§19.3): RE reads, never writes structure | RE mirrors annotations per table (rule D) | declarations bind RE's proposals: a declared grain is not re-proposed |
+
+The Discovery question becomes: *"How much of this does Egeria already know
+— catalogued, surveyed, curated — at which levels, maintained by what, and
+when was it last refreshed?"* Its answer is a small table, not a yes.
+
+### 19.2 Path A — unknown to Egeria
+
+Unchanged, and the security model's registration case: the user supplies
+the catalog identity; RE scouts locally; Discovery decides worth; *Catalog
+& Survey* creates the assets from Egeria's templates (server, database, the
+levels the inventory found, connections per identity per `security-model.md`
+§4) and runs the native survey; RE's own findings publish as annotations
+on those assets. Everything RE created, RE may later repair or delete.
+
+### 19.3 Path B — known to Egeria, in whole or in part
+
+Five rules, in the order they run:
+
+1. **Resolve identity before anything else.** Match the registration to an
+   existing asset by endpoint (host, port, database) and by the qualified
+   name convention, at every level, and adopt the GUIDs. **Never create a
+   second asset for a resource Egeria has.** The reuse path exists for the
+   database; it has to exist for schemas and tables too, and the
+   `coco_pharma` lesson applies: reuse must *repair* what it finds partial
+   (a connection with an unbound placeholder) rather than skip it.
+2. **Read back before surveying.** `governance_context_readback` (§16.7),
+   the existing survey reports and their annotations, the structure the
+   connector maintains, the declared `DataScope`, `DataGrain`, classes,
+   terms and ownership — all into RE's store as rows with `source =
+   egeria` (rule D). The Questions tab answers from those rows first.
+3. **Survey the gaps only.** With Egeria's knowledge in the store, the
+   question layer knows which questions are already answered and at what
+   freshness; the prerequisite resolver (§17.1) treats a fresh Egeria
+   answer as a satisfied producer and proposes only the steps whose
+   questions are unanswered or stale. A native survey report from
+   yesterday is not re-run locally today because RE has a local step for
+   it.
+4. **Write only what RE owns.** RE publishes survey reports, annotations,
+   proposals (`contentStatus: DRAFT`), RFAs, and — through Curate — the
+   declarations a curator makes. RE **never edits structural elements it
+   did not create**: a schema, table or column maintained by an integration
+   connector belongs to the connector, which will overwrite RE's edit on
+   its next refresh anyway.
+5. **Show provenance.** Every fact on the page says where it came from:
+   *from Egeria (connector X, refreshed 3 h ago)*, *from Egeria's survey
+   (report of 2026-09-21)*, *measured here (as `egeria_user`, just now)*,
+   *declared by a curator*. The four are different kinds of truth and the
+   design's honesty rules apply to each.
+
+### 19.4 Coexisting with the integration daemon
+
+Egeria's integration connectors (the JDBC integration connector for
+schemas, tables and columns; the Postgres server connector for databases;
+Unity, Kafka and file connectors for theirs) run in the integration daemon
+on their own schedule and **own the structural catalog** of what they
+maintain. Consequences for RE:
+
+- **Structure is rule A** when a connector maintains the asset: Egeria's
+  structure is canonical; RE's local inventory is for RE's own store and
+  for the gap check, not a competing truth. A `maintained_by` fact
+  (connector, last refresh) is part of the read-back and shown with the
+  structure.
+- **Drift between source and catalog is a finding.** RE reads the source
+  directly and Egeria's structure through the read-back; their difference
+  ("Egeria's catalog lags the source by 3 tables since the last refresh") is
+  a comparator and an RFA to whoever runs the connector — the one thing RE
+  can tell that neither the connector nor the source can.
+- **Include/exclude travel with the asset.** The connector's own include
+  and exclude lists (§18.5) define what Egeria will ever know; RE reads
+  them and does not report as "missing from Egeria" what was excluded on
+  purpose.
+- **RE's steps augment, in the same conventions.** Where a native survey
+  exists, RE reads it back; where RE's step adds what no native service
+  computes (rule C), it publishes onto the same asset under the same
+  report conventions, so a consumer sees one survey history. Longer term,
+  RE's steps register as governance services so Egeria's own processes
+  can call them (execution permutation 2), and the integration daemon's
+  refresh can trigger RE's gap survey through an engine action rather
+  than a person.
+
+### 19.5 Egeria as a discovery source
+
+Discovery sources today are repository-shaped (GitHub organisations,
+quick lists). Egeria itself is the natural source for Path B: enumerate its
+assets by technology type (`find_assets` with the technology type, which
+already returns the connections §4.1 of the security model needs), diff
+against RE's registry, and queue *"known to Egeria, never surveyed by RE"*
+and *"surveyed by Egeria, never read by RE"* as Discovery work — with
+Egeria's notifications (§9.2) telling RE when a connector adds an asset, so
+the queue fills itself.
+
+### 19.6 Questions this adds
+
+| Stage | Question | Answered by |
+|---|---|---|
+| Discovery | How much of this does Egeria already know — at which levels, maintained by what, refreshed when? | read-back (§16.7) + `maintained_by` |
+| Discovery | What has Egeria surveyed that I have not read yet? | survey-report read-back vs local rows |
+| Discovery | Does Egeria's catalog match the source, or has it drifted? | inventory vs read-back comparator |
+| Analysis | Which of my questions are already answered by Egeria's surveys, and which need a local run? | prerequisite resolver over the store |
+| Curate | What has been declared on this already (scope, grain, classes, terms, owner), and by whom? | read-back of classifications and assignments |
+
+### 19.7 Where it goes in the plan
+
+Identity resolution at every level and the read-back-before-survey rule go
+with §18.8's first item, because focus and the tree are built over
+`sub_resources` rows that must carry Egeria's GUIDs when they exist.
+`maintained_by` and the drift comparator go with the read-back slice
+(§16.7). Egeria as a discovery source is its own small slice after those.
 
 *Inventory sources for §1: three read-only sweeps on 2026-09-20 over
 `resource_explorer/surveyors/{database,filesystem,file_classifier,sub_surveyors}`,

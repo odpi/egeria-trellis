@@ -68,6 +68,20 @@ class TestListCandidates:
         survey_def = _fake_survey_def(steps=[step])
 
         with patch(
+            # The questions-scoped path (get_questions(resource_type="database")
+            # resolves real local rows unconditionally, so it is always tried
+            # first — see the questions-scoped fallback in list_candidates) must
+            # be pinned to empty too, or this test's real fixture would win the
+            # "if not thin_candidates" fallback race for the wrong reason and
+            # silently pass by accident rather than by testing the full-scan
+            # path it names. Confirmed live 2026-09-26: once real database
+            # Survey Definitions with ScopedBy links existed on the dev
+            # platform (Slice 12), the unmocked questions-scoped lookup started
+            # returning them for real, which is what broke this test — not a
+            # code regression, an incomplete mock.
+            "resource_explorer.surveyors.survey_definition_reader.SurveyDefinitionReader.find_candidate_process_guids_by_questions",
+            return_value=[],
+        ), patch(
             "resource_explorer.surveyors.survey_definition_reader.SurveyDefinitionReader.find_candidate_process_guids",
             return_value=[{"qualified_name": "GovActionProcess::Test", "display_name": "Test", "guid": "proc-guid"}],
         ), patch(
@@ -103,6 +117,12 @@ class TestListCandidates:
         # Backward compatibility — omitting the param must behave exactly as
         # before this feature (every candidate for the technology type).
         with patch(
+            # See test_returns_step_detail_for_valid_candidate's comment: the
+            # questions-scoped path must be pinned empty too, or this database
+            # candidate lookup finds Slice 12's real live Survey Definitions.
+            "resource_explorer.surveyors.survey_definition_reader.SurveyDefinitionReader.find_candidate_process_guids_by_questions",
+            return_value=[],
+        ), patch(
             "resource_explorer.surveyors.survey_definition_reader.SurveyDefinitionReader.find_candidate_process_guids",
             return_value=[],
         ) as mock_find:
@@ -125,6 +145,10 @@ class TestListCandidates:
         }]
 
         with patch(
+            # See test_returns_step_detail_for_valid_candidate's comment.
+            "resource_explorer.surveyors.survey_definition_reader.SurveyDefinitionReader.find_candidate_process_guids_by_questions",
+            return_value=[],
+        ), patch(
             "resource_explorer.surveyors.survey_definition_reader.SurveyDefinitionReader.find_candidate_process_guids",
             return_value=[{"qualified_name": "GovActionProcess::Test", "display_name": "Test", "guid": "proc-guid"}],
         ), patch(
@@ -145,6 +169,12 @@ class TestListCandidates:
         survey_def = _fake_survey_def(steps=[step])
 
         with patch(
+            # See test_returns_step_detail_for_valid_candidate's comment:
+            # without this, CI (no live Egeria/registry) 400s here instead
+            # of exercising the full-scan fixture this test actually wants.
+            "resource_explorer.surveyors.survey_definition_reader.SurveyDefinitionReader.find_candidate_process_guids_by_questions",
+            return_value=[],
+        ), patch(
             "resource_explorer.surveyors.survey_definition_reader.SurveyDefinitionReader.find_candidate_process_guids",
             return_value=[{"qualified_name": "GovActionProcess::Test", "display_name": "Test", "guid": "proc-guid"}],
         ), patch(
@@ -156,12 +186,16 @@ class TestListCandidates:
         ):
             resp = client.get("/api/survey-definitions/database/mydb/candidates")
 
-        assert resp.status_code == 200
+        assert resp.status_code == 200, resp.text
         step_out = resp.json()["candidates"][0]["steps"][0]
         assert "egeria_produced_annotation_types" not in step_out
 
     def test_unfetchable_candidate_surfaces_as_errored_not_crashing(self, client):
         with patch(
+            # See test_returns_step_detail_for_valid_candidate's comment.
+            "resource_explorer.surveyors.survey_definition_reader.SurveyDefinitionReader.find_candidate_process_guids_by_questions",
+            return_value=[],
+        ), patch(
             "resource_explorer.surveyors.survey_definition_reader.SurveyDefinitionReader.find_candidate_process_guids",
             return_value=[{"qualified_name": "GovActionProcess::Branching", "display_name": "Branching", "guid": "bad-guid"}],
         ), patch(
@@ -178,6 +212,10 @@ class TestListCandidates:
 
     def test_empty_candidates_list(self, client):
         with patch(
+            # See test_returns_step_detail_for_valid_candidate's comment.
+            "resource_explorer.surveyors.survey_definition_reader.SurveyDefinitionReader.find_candidate_process_guids_by_questions",
+            return_value=[],
+        ), patch(
             "resource_explorer.surveyors.survey_definition_reader.SurveyDefinitionReader.find_candidate_process_guids",
             return_value=[],
         ):
@@ -285,11 +323,15 @@ class TestListCandidates:
         # "PostgreSQL Relational Database") rather than mocking — this is the
         # externalized table, not something to fake in a unit test.
         with patch(
+            # See test_returns_step_detail_for_valid_candidate's comment.
+            "resource_explorer.surveyors.survey_definition_reader.SurveyDefinitionReader.find_candidate_process_guids_by_questions",
+            return_value=[],
+        ), patch(
             "resource_explorer.surveyors.survey_definition_reader.SurveyDefinitionReader.find_candidate_process_guids",
             return_value=[],
         ):
             resp = client.get("/api/survey-definitions/database/mydb/candidates")
-        assert resp.status_code == 200
+        assert resp.status_code == 200, resp.text
         native = resp.json()["egeria_native_processes"]
         kinds = {p["kind"] for p in native}
         assert "delete" not in kinds

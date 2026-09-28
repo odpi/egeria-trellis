@@ -584,7 +584,7 @@ def signed_in_curator(client):
     client.headers.pop("Authorization", None)
 
 
-@pytest.mark.usefixtures("signed_in_curator")
+@pytest.mark.usefixtures("signed_in_curator", "mock_egeria_client_connections")
 class TestCurateComponentVerdictsRouter:
     def test_add_and_list_verdict(self, client):
         resp = client.post("/api/curate/component-verdicts/repo/myproj", json={
@@ -688,7 +688,7 @@ class TestCurateComponentVerdictsRouter:
         }
 
 
-@pytest.mark.usefixtures("signed_in_curator")
+@pytest.mark.usefixtures("signed_in_curator", "mock_egeria_client_connections")
 class TestCurateBlueprintVerdictsRouter:
     """docs/blueprint-materialization-plan.md Phase B. Wires are deliberately
     out of scope (project-owner decision, 2026-09-03) — none of these tests

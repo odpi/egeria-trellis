@@ -67,6 +67,11 @@ class QuestionCatalogEntry:
     perspectives: list[str]
     answering: QuestionAnswering
     purposes: list[str] = field(default_factory=list)
+    #: Granularity the answer is a single value at (design §18.3): one or more
+    #: of resource / container / member / field. Asked above its level a
+    #: question answers as a ranked distribution. Default "resource" so entries
+    #: generated before the column existed keep their meaning.
+    levels: list[str] = field(default_factory=lambda: ["resource"])
     answering_mechanism: str = ""
     # What this question's answer can and cannot claim — the CSV's
     # Rationale/Source column. Carried to the UI because a caveat that lives
@@ -91,6 +96,7 @@ class QuestionCatalogEntry:
             "stage": self.stage,
             "perspectives": self.perspectives,
             "purposes": self.purposes,
+            "levels": self.levels,
             "answering": self.answering.to_dict(),
             "answering_mechanism": self.answering_mechanism,
             "rationale": self.rationale,
@@ -106,6 +112,7 @@ def _entry_from_yaml(raw: dict) -> QuestionCatalogEntry:
         stage=raw.get("stage", ""),
         perspectives=list(raw.get("perspectives") or []),
         purposes=list(raw.get("purposes") or []),
+        levels=list(raw.get("levels") or ["resource"]),
         answering=QuestionAnswering(
             kind=answering_raw.get("kind", "unknown"),
             analysis_ids=list(answering_raw.get("analysis_ids") or []),

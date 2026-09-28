@@ -640,7 +640,7 @@ def _run_db_survey(slug: str, analysis_id: str, registry, next_run: str = "") ->
     # `_run_local_db_survey`, which (a) requires stored db_user/db_password
     # even though db_derived needs none, and (b) would have run the full
     # DatabaseSurveyor (steps=None, since db_change_rates isn't in
-    # DATABASE_ANALYSIS_STEP_MAP) instead of the zero-fetch step — the exact
+    # DATABASE_SURVEYOR_STEP_MAP) instead of the zero-fetch step — the exact
     # database-unreachable case db_derived exists to still answer for could
     # never be scheduled at all. A real, in-scope bug: it directly blocked
     # this slice's own comparator from ever running on a cadence.
@@ -698,7 +698,7 @@ def _run_local_db_survey(db, registry, analysis_id: str = "") -> tuple[str, str,
         ])
 
     from resource_explorer.surveyors.database.database_surveyor import (
-        DATABASE_ANALYSIS_STEP_MAP,
+        DATABASE_SURVEYOR_STEP_MAP,
         run_database_survey,
     )
 
@@ -707,7 +707,7 @@ def _run_local_db_survey(db, registry, analysis_id: str = "") -> tuple[str, str,
     # time. analysis_id="" (or an unmapped id) falls back to steps=None
     # (the full survey), matching this function's exact prior behavior for
     # any caller that doesn't have an analysis_id in hand.
-    steps = DATABASE_ANALYSIS_STEP_MAP.get(analysis_id)
+    steps = DATABASE_SURVEYOR_STEP_MAP.get(analysis_id)
 
     errors: list[str] = []
     try:

@@ -11,7 +11,7 @@ database and filesystem, no matter what had run.
 This file exercises the fix at the two layers that made the repo card work:
 
 * `ProjectRegistry.get_analysis_last_run()`, generalized to attribute
-  database/filesystem survey steps via `DATABASE_ANALYSIS_STEP_MAP` /
+  database/filesystem survey steps via `DATABASE_ANALYSIS_RE_STEP_MAP` /
   `FILESYSTEM_ANALYSIS_STEP_MAP` (a step_key -> [analysis_id, ...] fan-out,
   unlike repo's step_key -> analysis_id partition -- one coarse database step
   like "db_derived" is the real source of six separate analysis_catalog
@@ -64,33 +64,46 @@ def _log_db_survey(reg, slug, ts, steps, process="PostgresFullSurvey"):
 
 
 class TestDatabaseStepMapFansOutCorrectly:
-    """DATABASE_ANALYSIS_STEP_MAP: one coarse step legitimately credits
+    """DATABASE_ANALYSIS_RE_STEP_MAP: one coarse step legitimately credits
     several analysis_catalog entries at once -- not a partition like repo's."""
 
     def test_db_derived_credits_all_analyses(self):
         """Was "all six" until Phase 1 slice 14's follow-up (2026-09-22) added
-        schema_diff and grant_change to db_derived — both zero-fetch, same
-        shape as the original six, so they own the same step key."""
+        schema_diff and grant_change to db_derived, then "all eight" until
+        slice 17 (docs/design-notes/SLICE-17-RUNNABILITY-FROM-CATALOG-
+        IMPLEMENTED.md) fixed this map being derived from
+        `db_derived.DB_DERIVED_ANALYSES` instead of hand-listed a second
+        time — `subject_signals`/`coverage_signals`/`preliminary_fit`
+        (design §16.3's Scouting/Discovery rows, added to
+        DB_DERIVED_ANALYSES 2026-09-24) had never been added here, which is
+        exactly why their Run buttons reported "no mapped survey step(s))"
+        live against `coco_pharma` (REVIEW-SURVEY-PANE-285.md §5(a)). Now
+        that this map is computed from DB_DERIVED_ANALYSES directly, this
+        assertion is really pinning that the two constants agree, not an
+        independent list."""
+        from resource_explorer.surveyors.database.db_derived import DB_DERIVED_ANALYSES
         from resource_explorer.surveyors.database.survey_definition_adapter import (
-            DATABASE_ANALYSIS_STEP_MAP)
+            DATABASE_ANALYSIS_RE_STEP_MAP)
 
         owners_of_db_derived = [
-            analysis_id for analysis_id, keys in DATABASE_ANALYSIS_STEP_MAP.items()
+            analysis_id for analysis_id, keys in DATABASE_ANALYSIS_RE_STEP_MAP.items()
             if "db_derived" in keys
         ]
+        assert set(owners_of_db_derived) == set(DB_DERIVED_ANALYSES)
         assert set(owners_of_db_derived) == {
             "db_classification", "db_relationship_graph", "grain_determination",
             "db_fingerprint", "schema_conventions", "db_change_rates",
             "schema_diff", "grant_change",
+            "subject_signals", "coverage_signals", "preliminary_fit",
         }
 
     def test_sql_analysis_has_no_analysis_catalog_entry(self):
         """A known, documented gap -- not silently mapped to something wrong."""
         from resource_explorer.surveyors.database.survey_definition_adapter import (
-            DATABASE_ANALYSIS_STEP_MAP)
+            DATABASE_ANALYSIS_RE_STEP_MAP)
 
-        assert "sql_analysis" not in DATABASE_ANALYSIS_STEP_MAP.values()
-        for keys in DATABASE_ANALYSIS_STEP_MAP.values():
+        assert "sql_analysis" not in DATABASE_ANALYSIS_RE_STEP_MAP.values()
+        for keys in DATABASE_ANALYSIS_RE_STEP_MAP.values():
             assert "sql_analysis" not in keys
 
 

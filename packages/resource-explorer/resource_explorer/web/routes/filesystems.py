@@ -32,12 +32,16 @@ class FileSystemSummary(BaseModel):
     # 'undecided' when nobody has ever decided — see DatabaseSummary's own
     # comment (databases.py) for why this field exists now.
     disposition: str = "undecided"
-    # egeria_asset_guid set — boolean only, not the raw GUID, same convention
-    # as `ProjectSummary.is_published` (projects.py). Lets /next's shared
-    # `lifecycleMark()` render the same "published to Egeria" mark for a
-    # filesystem row it already renders for a repo row, instead of a
-    # filesystem-only ad hoc egeria_asset_guid check.
+    # egeria_asset_guid set AND the linkage is not recorded stale — see
+    # `egeria_linkage.describe_publish_status`. Boolean only, not the raw
+    # GUID, same convention as `ProjectSummary.is_published` (projects.py).
+    # Lets /next's shared `lifecycleMark()` render the same "published to
+    # Egeria" mark for a filesystem row it already renders for a repo row.
     is_published: bool = False
+    # Non-empty only when a GUID IS cached but the linkage is stale — see
+    # `DatabaseSummary.egeria_publish_note` (databases.py) for the full
+    # rationale; the same gap existed here.
+    egeria_publish_note: str = ""
     # Personal view filter, separate axis from disposition — see
     # `ProjectSummary.working_set_hidden` (projects.py) and
     # `registry.py`'s `resource_working_set` table. Needed so /next's
@@ -106,13 +110,17 @@ class EgeriaAnnotationItem(BaseModel):
 @router.get("/", response_model=list[FileSystemSummary])
 def list_filesystems():
     """List all registered filesystems."""
+    from resource_explorer.egeria_linkage import describe_publish_status
+
     registry = ProjectRegistry()
     filesystems = registry.list_filesystems()
-    
+
     result = []
     for fs in filesystems:
         latest = registry.get_latest_filesystem_survey(fs.slug)
         disp = registry.get_disposition_for_entity("filesystem", fs.slug) or {}
+        publish_status = describe_publish_status(
+            registry, "filesystem", fs.slug, fs.egeria_asset_guid or "")
         result.append(
             FileSystemSummary(
                 slug=fs.slug,
@@ -130,7 +138,8 @@ def list_filesystems():
                 egeria_user=fs.egeria_user or "",
                 group_slug=getattr(fs, "group_slug", "") or "",
                 disposition=disp.get("disposition", "undecided"),
-                is_published=bool(fs.egeria_asset_guid or ""),
+                is_published=publish_status["is_published"],
+                egeria_publish_note=publish_status["note"],
                 working_set_hidden=registry.is_working_set_hidden("filesystem", fs.slug),
             )
         )
@@ -203,6 +212,9 @@ def get_filesystem(slug: str):
             detail=f"FileSystem '{slug}' not found."
         )
     disp = registry.get_disposition_for_entity("filesystem", fs.slug) or {}
+    from resource_explorer.egeria_linkage import describe_publish_status
+    publish_status = describe_publish_status(
+        registry, "filesystem", fs.slug, fs.egeria_asset_guid or "")
 
     return FileSystemSummary(
         slug=fs.slug,
@@ -219,7 +231,8 @@ def get_filesystem(slug: str):
         egeria_url=fs.egeria_url or "",
         egeria_server=fs.egeria_server or "",
         egeria_user=fs.egeria_user or "",
-        is_published=bool(fs.egeria_asset_guid or ""),
+        is_published=publish_status["is_published"],
+        egeria_publish_note=publish_status["note"],
         working_set_hidden=registry.is_working_set_hidden("filesystem", fs.slug),
     )
 

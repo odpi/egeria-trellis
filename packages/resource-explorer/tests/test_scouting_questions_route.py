@@ -210,7 +210,11 @@ class TestLimitAndHistoryAreSeparate:
         # 17 since 2026-09-12: "Do we already support these dependencies?"
         # went from `human` to `mixed` when dependency_support gave it a
         # machine starting point, so it now carries an analysis id.
-        assert len(measured) == 17
+        # 16 since 2026-09-26 (#296): "Does it fit into our security
+        # infrastructure?" moved from Analysis/Enrichment to Enrichment at
+        # the project owner's direction (the answer is a person's), taking
+        # its security_scan analysis id out of the Analysis phase with it.
+        assert len(measured) == 16
         tells = ("shipped 2026", "was marked GAP", "landed 2026", "could not parse",
                  "Closed 2026", "before any question referenced")
         leaked = [q["question"] for q in measured
@@ -222,8 +226,9 @@ class TestLimitAndHistoryAreSeparate:
                         params={"phase": "analysis"}).json()["questions"]
         assert all(isinstance(q.get("catalog_history"), str) for q in qs)
         with_history = [q for q in qs if q["analysis_ids"] and q["catalog_history"]]
-        # 16 of the 17: the security-infrastructure question is a person's to
-        # answer and has no build history to record. (Was 15 of 16 until
-        # 2026-09-12, when the dependencies question joined `measured` already
-        # carrying history from its Analysis/Enrichment stage change.)
+        # 16 of 16 since 2026-09-26 (#296): the one measured question without
+        # build history — the security-infrastructure question, a person's to
+        # answer — left the Analysis phase for Enrichment, so every remaining
+        # measured question carries history. (Was 16 of 17 from 2026-09-12,
+        # and 15 of 16 before that.)
         assert len(with_history) == 16

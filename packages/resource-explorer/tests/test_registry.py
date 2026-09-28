@@ -1350,6 +1350,44 @@ class TestSurveyDefinitionLastActivityRepoWideFallback:
         assert "last_published_at" in activity["RefZ"]
 
 
+class TestSurveyDefinitionLastActivityCarriesRunErrors:
+    """The ⚠ beside "ran Xm ago" on a Survey Definition card used to do
+    nothing on click (found live 2026-09-26) because the step report a run
+    actually recorded was parsed here and then discarded — only
+    last_run_at/last_run_status survived into the per-ref entry."""
+
+    def test_errors_from_the_run_detail_are_carried_into_the_entry(self, db):
+        from resource_explorer.activity_logger import log_survey
+        log_survey(
+            db, entity_type="database", entity_slug="s", entity_name="s",
+            entity_location="", intent="scouting", status="error",
+            summary="ran, 1 error",
+            detail=json.dumps({
+                "survey_definition_ref": "RefE",
+                "errors": ["RE step 'postgres_schema_and_stats' failed: boom"],
+            }),
+        )
+
+        activity = db.get_survey_definition_last_activity("database", "s")
+
+        assert activity["RefE"]["last_run_errors"] == [
+            "RE step 'postgres_schema_and_stats' failed: boom"
+        ]
+
+    def test_a_clean_run_carries_an_empty_list_not_a_missing_key(self, db):
+        from resource_explorer.activity_logger import log_survey
+        log_survey(
+            db, entity_type="database", entity_slug="s", entity_name="s",
+            entity_location="", intent="scouting", status="ok",
+            summary="ran clean",
+            detail=json.dumps({"survey_definition_ref": "RefC"}),
+        )
+
+        activity = db.get_survey_definition_last_activity("database", "s")
+
+        assert activity["RefC"]["last_run_errors"] == []
+
+
 class TestAnalysisLastRunPublishFailedFlag:
     """last_publish_failed backs the ☁ Publish button's visibility (2026-08-27):
     shown as a recovery action when the last auto-publish attempt failed, hidden

@@ -88,6 +88,8 @@ repo_questions:
   purposes:
   - Select
   - Maintain
+  levels:
+  - resource
   answering:
     kind: analysis
     analysis_ids:
@@ -111,6 +113,8 @@ repo_questions:
   - Explore
   - Select
   - Learn
+  levels:
+  - resource
   answering:
     kind: direct
     analysis_ids: []
@@ -130,6 +134,8 @@ repo_questions:
   purposes:
   - Explore
   - Select
+  levels:
+  - resource
   answering:
     kind: analysis
     analysis_ids:
@@ -151,6 +157,8 @@ repo_questions:
   purposes:
   - Explore
   - Select
+  levels:
+  - resource
   answering:
     kind: analysis
     analysis_ids:
@@ -174,6 +182,8 @@ repo_questions:
   purposes:
   - Explore
   - Maintain
+  levels:
+  - resource
   answering:
     kind: direct
     analysis_ids: []
@@ -197,6 +207,8 @@ repo_questions:
   - Assess
   - Certify
   - Maintain
+  levels:
+  - resource
   answering:
     kind: analysis
     analysis_ids:
@@ -222,6 +234,8 @@ repo_questions:
   purposes:
   - Explore
   - Select
+  levels:
+  - resource
   answering:
     kind: direct
     analysis_ids: []
@@ -245,6 +259,8 @@ repo_questions:
   purposes:
   - Explore
   - Select
+  levels:
+  - resource
   answering:
     kind: direct
     analysis_ids: []
@@ -262,6 +278,8 @@ repo_questions:
   - Architecture
   purposes:
   - Select
+  levels:
+  - resource
   answering:
     kind: direct
     analysis_ids: []
@@ -271,7 +289,8 @@ repo_questions:
   rationale: Answerable locally from RE's own registry/groups, same as "existing use within our organization."
   catalog_history: ''
   retired: false
-- question: What are similar resources, and how does this differ?
+- question: Which resources have similar content — code, documentation or data values — and how does this
+    one differ?
   stage: Analysis
   perspectives:
   - Community
@@ -279,15 +298,23 @@ repo_questions:
   - Admin
   purposes:
   - Select
+  levels:
+  - resource
   answering:
     kind: gap
     analysis_ids: []
     checks: []
-    note: 'GAP: similarity search over pgvector embeddings (not built) - Agent over RAG'
-  answering_mechanism: Agent-Based Analysis
-  rationale: Needs similarity search over content (RAG/embeddings) — real gap, not built.
-  catalog_history: '2026-09-21: reworded from repo-only to cross-type wording (multi-resource-questions-design.md
-    §4) as part of the re/db-questions-csv authoring stream.'
+    note: 'GAP: similarity search over pgvector embeddings (not built) — content similarity; an Agent
+      over RAG can describe how two resources differ once candidates exist'
+  answering_mechanism: RAG Queries + Agent-Based Analysis
+  rationale: 'Content similarity over embeddings of code, documents and sampled data (pgvector). Complements
+    scope similarity (which needs declared or measured scope) and structural similarity (which needs a
+    schema). Design §16.7 5′ and the coverage audit''s similarity item: content finds candidates; scope
+    fit ranks them.'
+  catalog_history: '2026-09-26: split from ''What are similar resources, and how does this differ?'' (project
+    owner: ''tease apart what we mean by similar — scope, database type, data objects''); three questions
+    now — content similarity (RAG), scope similarity (lens fit), structural similarity (fingerprint, the
+    pre-existing copy/subset row).'
   retired: false
 - question: Under what licence or agreement may this resource be used?
   stage: Scouting
@@ -298,6 +325,8 @@ repo_questions:
   purposes:
   - Select
   - Certify
+  levels:
+  - resource
   answering:
     kind: direct
     analysis_ids: []
@@ -323,6 +352,8 @@ repo_questions:
   - Select
   - Assess
   - Deploy
+  levels:
+  - resource
   answering:
     kind: analysis
     analysis_ids:
@@ -342,6 +373,8 @@ repo_questions:
   purposes:
   - Select
   - Deploy
+  levels:
+  - resource
   answering:
     kind: mixed
     analysis_ids:
@@ -370,6 +403,8 @@ repo_questions:
   purposes:
   - Select
   - Deploy
+  levels:
+  - resource
   answering:
     kind: mixed
     analysis_ids:
@@ -385,13 +420,15 @@ repo_questions:
     check; a content read of Dockerfiles and deployment docs remains a RAG-tier gap.
   retired: false
 - question: What does this resource cost to run, host or license?
-  stage: Analysis/Enrichment
+  stage: Enrichment
   perspectives:
   - Financial
   - Admin
   purposes:
   - Select
   - Deploy
+  levels:
+  - resource
   answering:
     kind: human
     analysis_ids: []
@@ -403,7 +440,9 @@ repo_questions:
     Enrichment (says so in Answering Analysis), but exact phase matching kept the row off the Enrichment
     pane, under a heading that promised the catalog''s questions for a person. | 2026-09-21: reworded
     from repo-only to cross-type wording (multi-resource-questions-design.md §4) as part of the re/db-questions-csv
-    authoring stream.'
+    authoring stream. | 2026-09-26: re-staged from Analysis/Enrichment to Enrichment — project owner''s
+    live review of the Analysis tab: the answer is human-supplied, so it is asked at Enrichment and consumed
+    by Assessment; appearing on Analysis with an ''Answer this'' button read as noise.'
   retired: false
 - question: Is there a validation / deployment test for it?
   stage: Analysis
@@ -413,6 +452,8 @@ repo_questions:
   purposes:
   - Assess
   - Deploy
+  levels:
+  - resource
   answering:
     kind: mixed
     analysis_ids:
@@ -441,6 +482,8 @@ repo_questions:
   purposes:
   - Maintain
   - Deploy
+  levels:
+  - resource
   answering:
     kind: gap
     analysis_ids: []
@@ -451,7 +494,7 @@ repo_questions:
   catalog_history: ''
   retired: false
 - question: Does it fit into our monitoring infrastructure?
-  stage: Analysis/Enrichment
+  stage: Enrichment
   perspectives:
   - Data Owner
   - Consumer
@@ -460,6 +503,8 @@ repo_questions:
   purposes:
   - Deploy
   - Maintain
+  levels:
+  - resource
   answering:
     kind: human
     analysis_ids: []
@@ -468,10 +513,12 @@ repo_questions:
       first - augmented with enrichment.
   answering_mechanism: Egeria Queries + Human-Supplied
   rationale: Org-internal cross-reference — human-supplied.
-  catalog_history: ''
+  catalog_history: '2026-09-26: re-staged from Analysis/Enrichment to Enrichment — project owner''s live
+    review of the Analysis tab: the answer is human-supplied, so it is asked at Enrichment and consumed
+    by Assessment; appearing on Analysis with an ''Answer this'' button read as noise.'
   retired: false
 - question: Does it fit into our security infrastructure?
-  stage: Analysis/Enrichment
+  stage: Enrichment
   perspectives:
   - Financial
   - Data Owner
@@ -483,6 +530,8 @@ repo_questions:
   purposes:
   - Assess
   - Deploy
+  levels:
+  - resource
   answering:
     kind: human
     analysis_ids:
@@ -493,7 +542,9 @@ repo_questions:
   answering_mechanism: Code Analysis + Egeria Queries + Human-Supplied
   rationale: 'An organisation-internal cross-reference: the security findings inform it, a person answers
     it.'
-  catalog_history: ''
+  catalog_history: '2026-09-26: re-staged from Analysis/Enrichment to Enrichment — project owner''s live
+    review of the Analysis tab: the answer is human-supplied, so it is asked at Enrichment and consumed
+    by Assessment; appearing on Analysis with an ''Answer this'' button read as noise.'
   retired: false
 - question: Is there any reliability or availability aspects?
   stage: Analysis
@@ -504,6 +555,8 @@ repo_questions:
   purposes:
   - Select
   - Maintain
+  levels:
+  - resource
   answering:
     kind: chart
     analysis_ids: []
@@ -526,6 +579,8 @@ repo_questions:
   purposes:
   - Select
   - Deploy
+  levels:
+  - resource
   answering:
     kind: partial
     analysis_ids:
@@ -541,7 +596,7 @@ repo_questions:
     no surveyor.
   retired: false
 - question: Does this fit within or need to extend our existing infrastructure estate?
-  stage: Analysis/Enrichment
+  stage: Enrichment
   perspectives:
   - Consumer
   - Security
@@ -550,6 +605,8 @@ repo_questions:
   purposes:
   - Select
   - Deploy
+  levels:
+  - resource
   answering:
     kind: human
     analysis_ids: []
@@ -557,7 +614,9 @@ repo_questions:
     note: N/A — human-supplied via Enrichment Context form with as fallback from Egeria queries.
   answering_mechanism: Human-Supplied + Egeria Queries
   rationale: Org-internal cross-reference — human-supplied.
-  catalog_history: ''
+  catalog_history: '2026-09-26: re-staged from Analysis/Enrichment to Enrichment — project owner''s live
+    review of the Analysis tab: the answer is human-supplied, so it is asked at Enrichment and consumed
+    by Assessment; appearing on Analysis with an ''Answer this'' button read as noise.'
   retired: false
 - question: How mature is it?
   stage: Assessment
@@ -569,6 +628,8 @@ repo_questions:
   purposes:
   - Select
   - Assess
+  levels:
+  - resource
   answering:
     kind: mixed
     analysis_ids:
@@ -584,7 +645,7 @@ repo_questions:
   catalog_history: ''
   retired: false
 - question: Do we have the skills to support its use?
-  stage: Analysis/Enrichment
+  stage: Enrichment
   perspectives:
   - Security
   - Architecture
@@ -592,6 +653,8 @@ repo_questions:
   purposes:
   - Select
   - Learn
+  levels:
+  - resource
   answering:
     kind: human
     analysis_ids: []
@@ -599,7 +662,9 @@ repo_questions:
     note: N/A — human-supplied via Enrichment Context form - Egeria queries as well
   answering_mechanism: Human-Supplied + Egeria Queries
   rationale: Purely human-supplied — never resource-derivable.
-  catalog_history: ''
+  catalog_history: '2026-09-26: re-staged from Analysis/Enrichment to Enrichment — project owner''s live
+    review of the Analysis tab: the answer is human-supplied, so it is asked at Enrichment and consumed
+    by Assessment; appearing on Analysis with an ''Answer this'' button read as noise.'
   retired: false
 - question: How well documented is it?
   stage: Analysis
@@ -613,6 +678,8 @@ repo_questions:
   - Select
   - Learn
   - Share
+  levels:
+  - resource
   answering:
     kind: mixed
     analysis_ids:
@@ -641,6 +708,8 @@ repo_questions:
   purposes:
   - Select
   - Maintain
+  levels:
+  - resource
   answering:
     kind: mixed
     analysis_ids:
@@ -665,6 +734,8 @@ repo_questions:
   purposes:
   - Assess
   - Certify
+  levels:
+  - resource
   answering:
     kind: mixed
     analysis_ids:
@@ -686,7 +757,7 @@ repo_questions:
     MIXED rather than answered.
   retired: false
 - question: Does it fit into our governance frameworks?
-  stage: Analysis/Enrichment
+  stage: Enrichment
   perspectives:
   - Governance
   - Security
@@ -695,6 +766,8 @@ repo_questions:
   purposes:
   - Certify
   - Share
+  levels:
+  - resource
   answering:
     kind: human
     analysis_ids: []
@@ -703,7 +776,9 @@ repo_questions:
       plus Egeria queries.
   answering_mechanism: Human-Supplied + Egeria Queries
   rationale: Org policy cross-reference (human-supplied), plus Curate's zone/catalog membership once published.
-  catalog_history: ''
+  catalog_history: '2026-09-26: re-staged from Analysis/Enrichment to Enrichment — project owner''s live
+    review of the Analysis tab: the answer is human-supplied, so it is asked at Enrichment and consumed
+    by Assessment; appearing on Analysis with an ''Answer this'' button read as noise.'
   retired: false
 - question: What explicit licence does this resource use, and are there non-standard or copyleft terms?
   stage: Assessment
@@ -715,6 +790,8 @@ repo_questions:
   purposes:
   - Select
   - Certify
+  levels:
+  - resource
   answering:
     kind: analysis
     analysis_ids:
@@ -742,6 +819,8 @@ repo_questions:
   purposes:
   - Select
   - Certify
+  levels:
+  - resource
   answering:
     kind: analysis
     analysis_ids:
@@ -763,6 +842,8 @@ repo_questions:
   purposes:
   - Assess
   - Certify
+  levels:
+  - resource
   answering:
     kind: analysis
     analysis_ids:
@@ -785,6 +866,8 @@ repo_questions:
   purposes:
   - Select
   - Certify
+  levels:
+  - resource
   answering:
     kind: gap
     analysis_ids: []
@@ -803,6 +886,8 @@ repo_questions:
   purposes:
   - Assess
   - Certify
+  levels:
+  - resource
   answering:
     kind: analysis
     analysis_ids:
@@ -822,6 +907,8 @@ repo_questions:
   - Security
   purposes:
   - Certify
+  levels:
+  - resource
   answering:
     kind: analysis
     analysis_ids:
@@ -844,6 +931,8 @@ repo_questions:
   purposes:
   - Certify
   - Deploy
+  levels:
+  - resource
   answering:
     kind: analysis
     analysis_ids:
@@ -866,6 +955,8 @@ repo_questions:
   - Architecture
   purposes:
   - Share
+  levels:
+  - resource
   answering:
     kind: analysis
     analysis_ids:
@@ -887,6 +978,8 @@ repo_questions:
   purposes:
   - Explore
   - Maintain
+  levels:
+  - resource
   answering:
     kind: direct
     analysis_ids: []
@@ -906,6 +999,8 @@ repo_questions:
   - Admin
   purposes:
   - Explore
+  levels:
+  - resource
   answering:
     kind: direct
     analysis_ids: []
@@ -925,6 +1020,8 @@ repo_questions:
   purposes:
   - Explore
   - Select
+  levels:
+  - resource
   answering:
     kind: direct
     analysis_ids: []
@@ -943,6 +1040,8 @@ repo_questions:
   - Data Expert
   purposes:
   - Maintain
+  levels:
+  - resource
   answering:
     kind: direct
     analysis_ids: []
@@ -964,6 +1063,8 @@ repo_questions:
   purposes:
   - Explore
   - Share
+  levels:
+  - resource
   answering:
     kind: direct
     analysis_ids: []
@@ -983,6 +1084,8 @@ repo_questions:
   purposes:
   - Explore
   - Select
+  levels:
+  - resource
   answering:
     kind: analysis
     analysis_ids:
@@ -1004,6 +1107,8 @@ repo_questions:
   - Explore
   - Learn
   - Select
+  levels:
+  - resource
   answering:
     kind: analysis
     analysis_ids:
@@ -1028,6 +1133,8 @@ repo_questions:
   - Explore
   - Learn
   - Select
+  levels:
+  - resource
   answering:
     kind: analysis
     analysis_ids:
@@ -1051,6 +1158,8 @@ repo_questions:
   purposes:
   - Explore
   - Select
+  levels:
+  - resource
   answering:
     kind: analysis
     analysis_ids:
@@ -1072,6 +1181,8 @@ repo_questions:
   purposes:
   - Explore
   - Assess
+  levels:
+  - resource
   answering:
     kind: analysis
     analysis_ids:
@@ -1093,6 +1204,8 @@ repo_questions:
   - Select
   - Deploy
   - Learn
+  levels:
+  - resource
   answering:
     kind: analysis
     analysis_ids:
@@ -1115,6 +1228,8 @@ repo_questions:
   - Assess
   - Certify
   - Select
+  levels:
+  - resource
   answering:
     kind: analysis
     analysis_ids:
@@ -1139,6 +1254,8 @@ repo_questions:
   - Assess
   - Certify
   - Attest
+  levels:
+  - resource
   answering:
     kind: analysis
     analysis_ids:
@@ -1159,6 +1276,8 @@ repo_questions:
   purposes:
   - Assess
   - Maintain
+  levels:
+  - resource
   answering:
     kind: analysis
     analysis_ids:
@@ -1180,6 +1299,8 @@ repo_questions:
   purposes:
   - Assess
   - Maintain
+  levels:
+  - resource
   answering:
     kind: analysis
     analysis_ids:
@@ -1212,6 +1333,8 @@ repo_questions:
   - Deploy
   - Explore
   - Learn
+  levels:
+  - resource
   answering:
     kind: analysis
     analysis_ids:
@@ -1236,12 +1359,17 @@ repo_questions:
   purposes:
   - Explore
   - Maintain
+  levels:
+  - resource
   answering:
     kind: gap
     analysis_ids: []
     checks: []
-    note: 'GAP: no reachability probe exists — this needs a CHECK_ASSET-only engine action plus the observed-cost
-      comparison step_cost_observer already collects.'
+    note: 'GAP: by type — filesystem: the resource_reachability probe exists (Phase 1 slice 13, 2026-09-22;
+      CHECK_ASSET-only engine action, results in the resource_reachability table, launcher in the classic
+      UI) but nothing reads it into this answer yet; database and repo: no reachability probe exists.
+      The observed-cost comparison step_cost_observer already collects is unused for any type. Corrected
+      2026-09-27; the row previously claimed no probe existed for any type.'
   answering_mechanism: Egeria Queries + Direct Field
   rationale: Reachability is testable by running the native survey with finalAnalysisStep=CHECK_ASSET
     from the engine host; efficiency is a separate axis (data locality, latency to first result, load
@@ -1262,6 +1390,8 @@ repo_questions:
   - Assess
   - Certify
   - Attest
+  levels:
+  - resource
   answering:
     kind: gap
     analysis_ids: []
@@ -1285,6 +1415,8 @@ repo_questions:
   purposes:
   - Select
   - Certify
+  levels:
+  - resource
   answering:
     kind: gap
     analysis_ids: []
@@ -1308,6 +1440,8 @@ repo_questions:
   purposes:
   - Share
   - Certify
+  levels:
+  - resource
   answering:
     kind: gap
     analysis_ids: []
@@ -1331,6 +1465,8 @@ repo_questions:
   purposes:
   - Share
   - Select
+  levels:
+  - resource
   answering:
     kind: gap
     analysis_ids: []
@@ -1354,6 +1490,8 @@ database_questions:
   - Explore
   - Select
   - Learn
+  levels:
+  - resource
   answering:
     kind: direct
     analysis_ids: []
@@ -1373,6 +1511,8 @@ database_questions:
   purposes:
   - Explore
   - Select
+  levels:
+  - resource
   answering:
     kind: gap
     analysis_ids: []
@@ -1394,6 +1534,8 @@ database_questions:
   purposes:
   - Explore
   - Maintain
+  levels:
+  - resource
   answering:
     kind: direct
     analysis_ids: []
@@ -1421,6 +1563,8 @@ database_questions:
   purposes:
   - Explore
   - Select
+  levels:
+  - resource
   answering:
     kind: direct
     analysis_ids: []
@@ -1444,6 +1588,8 @@ database_questions:
   purposes:
   - Explore
   - Select
+  levels:
+  - resource
   answering:
     kind: direct
     analysis_ids: []
@@ -1461,6 +1607,8 @@ database_questions:
   - Architecture
   purposes:
   - Select
+  levels:
+  - resource
   answering:
     kind: direct
     analysis_ids: []
@@ -1470,7 +1618,8 @@ database_questions:
   rationale: Answerable locally from RE's own registry/groups, same as "existing use within our organization."
   catalog_history: ''
   retired: false
-- question: What are similar resources, and how does this differ?
+- question: Which resources have similar content — code, documentation or data values — and how does this
+    one differ?
   stage: Analysis
   perspectives:
   - Community
@@ -1478,15 +1627,62 @@ database_questions:
   - Admin
   purposes:
   - Select
+  levels:
+  - resource
   answering:
     kind: gap
     analysis_ids: []
     checks: []
-    note: 'GAP: similarity search over pgvector embeddings (not built) - Agent over RAG'
-  answering_mechanism: Agent-Based Analysis
-  rationale: Needs similarity search over content (RAG/embeddings) — real gap, not built.
-  catalog_history: '2026-09-21: reworded from repo-only to cross-type wording (multi-resource-questions-design.md
-    §4) as part of the re/db-questions-csv authoring stream.'
+    note: 'GAP: similarity search over pgvector embeddings (not built) — content similarity; an Agent
+      over RAG can describe how two resources differ once candidates exist'
+  answering_mechanism: RAG Queries + Agent-Based Analysis
+  rationale: 'Content similarity over embeddings of code, documents and sampled data (pgvector). Complements
+    scope similarity (which needs declared or measured scope) and structural similarity (which needs a
+    schema). Design §16.7 5′ and the coverage audit''s similarity item: content finds candidates; scope
+    fit ranks them.'
+  catalog_history: '2026-09-26: split from ''What are similar resources, and how does this differ?'' (project
+    owner: ''tease apart what we mean by similar — scope, database type, data objects''); three questions
+    now — content similarity (RAG), scope similarity (lens fit), structural similarity (fingerprint, the
+    pre-existing copy/subset row).'
+  retired: false
+- question: Which resources cover similar subjects, grain and period or places — could one stand in for
+    this one, or this one for them?
+  stage: Discovery
+  perspectives:
+  - Community
+  - Security
+  - Admin
+  purposes:
+  - Select
+  levels:
+  - resource
+  - container
+  answering:
+    kind: mixed
+    analysis_ids:
+    - grain_determination
+    - subject_signals
+    - coverage_signals
+    - preliminary_fit
+    checks: []
+    note: 'MIXED: preliminary_fit + coverage_signals + subject_signals + grain_determination (the lens
+      is derived from a resource rather than an investigation — design §16.5 ''lens from a resource'';
+      the comparison is requirement_fit''s field-by-field overlap)'
+  answering_mechanism: Analysis (lens fit over stored scope)
+  rationale: 'Scope similarity is lens fit (design §16.5): derive a lens from this resource''s declared
+    or measured DataScope, DataGrain and subject terms and run the fit against every other resource''s
+    stored scope — no new survey, a query over stored measurements. Runs both ways, so a resource that
+    fails one investigation''s lens can still match another (§16.5 point 5). Also the mechanism behind
+    ''is something like this already productised'' (§16.7 5′). The answer is a relation per scope axis
+    — subject, population (which customers: pre-sales vs post-sales), space, time, grain, structure —
+    each same / contains / contained_by / overlaps / disjoint / not_established, with ''can one stand
+    in for the other'' and ''is one a subset of the other'' derived from them (design §16.8). Two ''customer''
+    databases are never called similar on subject alone: an undeclared population axis renders not_established.'
+  catalog_history: '2026-09-26: split from ''What are similar resources, and how does this differ?'' (project
+    owner: ''tease apart what we mean by similar — scope, database type, data objects''); three questions
+    now — content similarity (RAG), scope similarity (lens fit), structural similarity (fingerprint, the
+    pre-existing copy/subset row). | 2026-09-26: rationale extended with the per-axis relation model (design
+    §16.8) after the owner''s pre-sales/post-sales and NY/US examples.'
   retired: false
 - question: Under what licence or agreement may this resource be used?
   stage: Scouting
@@ -1497,6 +1693,8 @@ database_questions:
   purposes:
   - Select
   - Certify
+  levels:
+  - resource
   answering:
     kind: direct
     analysis_ids: []
@@ -1512,13 +1710,15 @@ database_questions:
     §4) as part of the re/db-questions-csv authoring stream.'
   retired: false
 - question: What does this resource cost to run, host or license?
-  stage: Analysis/Enrichment
+  stage: Enrichment
   perspectives:
   - Financial
   - Admin
   purposes:
   - Select
   - Deploy
+  levels:
+  - resource
   answering:
     kind: human
     analysis_ids: []
@@ -1530,10 +1730,12 @@ database_questions:
     Enrichment (says so in Answering Analysis), but exact phase matching kept the row off the Enrichment
     pane, under a heading that promised the catalog''s questions for a person. | 2026-09-21: reworded
     from repo-only to cross-type wording (multi-resource-questions-design.md §4) as part of the re/db-questions-csv
-    authoring stream.'
+    authoring stream. | 2026-09-26: re-staged from Analysis/Enrichment to Enrichment — project owner''s
+    live review of the Analysis tab: the answer is human-supplied, so it is asked at Enrichment and consumed
+    by Assessment; appearing on Analysis with an ''Answer this'' button read as noise.'
   retired: false
 - question: Does it fit into our monitoring infrastructure?
-  stage: Analysis/Enrichment
+  stage: Enrichment
   perspectives:
   - Data Owner
   - Consumer
@@ -1542,6 +1744,8 @@ database_questions:
   purposes:
   - Deploy
   - Maintain
+  levels:
+  - resource
   answering:
     kind: human
     analysis_ids: []
@@ -1550,10 +1754,12 @@ database_questions:
       first - augmented with enrichment.
   answering_mechanism: Egeria Queries + Human-Supplied
   rationale: Org-internal cross-reference — human-supplied.
-  catalog_history: ''
+  catalog_history: '2026-09-26: re-staged from Analysis/Enrichment to Enrichment — project owner''s live
+    review of the Analysis tab: the answer is human-supplied, so it is asked at Enrichment and consumed
+    by Assessment; appearing on Analysis with an ''Answer this'' button read as noise.'
   retired: false
 - question: Does it fit into our security infrastructure?
-  stage: Analysis/Enrichment
+  stage: Enrichment
   perspectives:
   - Financial
   - Data Owner
@@ -1565,6 +1771,8 @@ database_questions:
   purposes:
   - Assess
   - Deploy
+  levels:
+  - resource
   answering:
     kind: human
     analysis_ids: []
@@ -1574,10 +1782,12 @@ database_questions:
   answering_mechanism: Code Analysis + Egeria Queries + Human-Supplied
   rationale: 'An organisation-internal cross-reference: the security findings inform it, a person answers
     it.'
-  catalog_history: ''
+  catalog_history: '2026-09-26: re-staged from Analysis/Enrichment to Enrichment — project owner''s live
+    review of the Analysis tab: the answer is human-supplied, so it is asked at Enrichment and consumed
+    by Assessment; appearing on Analysis with an ''Answer this'' button read as noise.'
   retired: false
 - question: Do we have the skills to support its use?
-  stage: Analysis/Enrichment
+  stage: Enrichment
   perspectives:
   - Security
   - Architecture
@@ -1585,6 +1795,8 @@ database_questions:
   purposes:
   - Select
   - Learn
+  levels:
+  - resource
   answering:
     kind: human
     analysis_ids: []
@@ -1592,10 +1804,12 @@ database_questions:
     note: N/A — human-supplied via Enrichment Context form - Egeria queries as well
   answering_mechanism: Human-Supplied + Egeria Queries
   rationale: Purely human-supplied — never resource-derivable.
-  catalog_history: ''
+  catalog_history: '2026-09-26: re-staged from Analysis/Enrichment to Enrichment — project owner''s live
+    review of the Analysis tab: the answer is human-supplied, so it is asked at Enrichment and consumed
+    by Assessment; appearing on Analysis with an ''Answer this'' button read as noise.'
   retired: false
 - question: Does it fit into our governance frameworks?
-  stage: Analysis/Enrichment
+  stage: Enrichment
   perspectives:
   - Governance
   - Security
@@ -1604,6 +1818,8 @@ database_questions:
   purposes:
   - Certify
   - Share
+  levels:
+  - resource
   answering:
     kind: human
     analysis_ids: []
@@ -1612,7 +1828,9 @@ database_questions:
       plus Egeria queries.
   answering_mechanism: Human-Supplied + Egeria Queries
   rationale: Org policy cross-reference (human-supplied), plus Curate's zone/catalog membership once published.
-  catalog_history: ''
+  catalog_history: '2026-09-26: re-staged from Analysis/Enrichment to Enrichment — project owner''s live
+    review of the Analysis tab: the answer is human-supplied, so it is asked at Enrichment and consumed
+    by Assessment; appearing on Analysis with an ''Answer this'' button read as noise.'
   retired: false
 - question: What explicit licence does this resource use, and are there non-standard or copyleft terms?
   stage: Assessment
@@ -1624,6 +1842,8 @@ database_questions:
   purposes:
   - Select
   - Certify
+  levels:
+  - resource
   answering:
     kind: gap
     analysis_ids: []
@@ -1649,6 +1869,8 @@ database_questions:
   purposes:
   - Explore
   - Maintain
+  levels:
+  - resource
   answering:
     kind: direct
     analysis_ids: []
@@ -1668,6 +1890,8 @@ database_questions:
   - Admin
   purposes:
   - Explore
+  levels:
+  - resource
   answering:
     kind: direct
     analysis_ids: []
@@ -1687,6 +1911,8 @@ database_questions:
   purposes:
   - Explore
   - Select
+  levels:
+  - resource
   answering:
     kind: direct
     analysis_ids: []
@@ -1705,6 +1931,8 @@ database_questions:
   - Data Expert
   purposes:
   - Maintain
+  levels:
+  - resource
   answering:
     kind: direct
     analysis_ids: []
@@ -1726,6 +1954,8 @@ database_questions:
   purposes:
   - Explore
   - Share
+  levels:
+  - resource
   answering:
     kind: direct
     analysis_ids: []
@@ -1746,12 +1976,17 @@ database_questions:
   purposes:
   - Explore
   - Maintain
+  levels:
+  - resource
   answering:
     kind: gap
     analysis_ids: []
     checks: []
-    note: 'GAP: no reachability probe exists — this needs a CHECK_ASSET-only engine action plus the observed-cost
-      comparison step_cost_observer already collects.'
+    note: 'GAP: by type — filesystem: the resource_reachability probe exists (Phase 1 slice 13, 2026-09-22;
+      CHECK_ASSET-only engine action, results in the resource_reachability table, launcher in the classic
+      UI) but nothing reads it into this answer yet; database and repo: no reachability probe exists.
+      The observed-cost comparison step_cost_observer already collects is unused for any type. Corrected
+      2026-09-27; the row previously claimed no probe existed for any type.'
   answering_mechanism: Egeria Queries + Direct Field
   rationale: Reachability is testable by running the native survey with finalAnalysisStep=CHECK_ASSET
     from the engine host; efficiency is a separate axis (data locality, latency to first result, load
@@ -1772,6 +2007,8 @@ database_questions:
   - Assess
   - Certify
   - Attest
+  levels:
+  - resource
   answering:
     kind: gap
     analysis_ids: []
@@ -1794,17 +2031,24 @@ database_questions:
   purposes:
   - Assess
   - Certify
+  levels:
+  - member
   answering:
-    kind: gap
-    analysis_ids: []
+    kind: mixed
+    analysis_ids:
+    - coverage_signals
     checks: []
-    note: 'GAP: date-range extraction feeds no DataScope proposal today, and the column-level profiling
-      that would supply the ranges is itself unbuilt.'
-  answering_mechanism: Value Profiling + Human-Supplied
+    note: 'MIXED: coverage_signals (Discovery, catalog tier — partition bounds, file-name dates, descriptor
+      temporal fields; identity A) + coverage_profile (Analysis, data identity B — measured date ranges,
+      cadence and gaps per table); the declared DataScope is curated from the measured one (design §16,
+      §14)'
+  answering_mechanism: DB Introspection + Profiling + Human-Supplied
   rationale: 'The other half of DataScope, and machine-proposable for most types: minimum and maximum
     of date columns for a database, modification-time range and in-file date ranges for a filesystem,
     DCAT temporal for a published dataset. Human confirmation of validity and coverage comes through Enrichment.'
-  catalog_history: ''
+  catalog_history: '2026-09-26: ''no mechanism'' text predated design §16; now points at coverage_signals
+    / coverage_profile (both catalogued in analysis_catalog.yaml); project owner: ''scope we should be
+    able to have a surveyor for''.'
   retired: false
 - question: Are there any restrictions for use beyond the licence — classification, zone or terms of use?
   stage: Analysis
@@ -1816,6 +2060,8 @@ database_questions:
   purposes:
   - Select
   - Certify
+  levels:
+  - resource
   answering:
     kind: gap
     analysis_ids: []
@@ -1839,6 +2085,8 @@ database_questions:
   purposes:
   - Share
   - Certify
+  levels:
+  - resource
   answering:
     kind: gap
     analysis_ids: []
@@ -1862,6 +2110,8 @@ database_questions:
   purposes:
   - Share
   - Select
+  levels:
+  - resource
   answering:
     kind: gap
     analysis_ids: []
@@ -1883,6 +2133,9 @@ database_questions:
   purposes:
   - Explore
   - Select
+  levels:
+  - resource
+  - container
   answering:
     kind: mixed
     analysis_ids:
@@ -1903,6 +2156,8 @@ database_questions:
   - Architecture
   purposes:
   - Explore
+  levels:
+  - container
   answering:
     kind: analysis
     analysis_ids:
@@ -1924,6 +2179,9 @@ database_questions:
   purposes:
   - Maintain
   - Assess
+  levels:
+  - resource
+  - member
   answering:
     kind: analysis
     analysis_ids:
@@ -1947,6 +2205,9 @@ database_questions:
   purposes:
   - Assess
   - Share
+  levels:
+  - resource
+  - container
   answering:
     kind: gap
     analysis_ids: []
@@ -1971,6 +2232,8 @@ database_questions:
   purposes:
   - Explore
   - Maintain
+  levels:
+  - resource
   answering:
     kind: gap
     analysis_ids: []
@@ -1991,6 +2254,8 @@ database_questions:
   purposes:
   - Assess
   - Maintain
+  levels:
+  - resource
   answering:
     kind: analysis
     analysis_ids:
@@ -2007,7 +2272,7 @@ database_questions:
   catalog_history: ''
   retired: false
 - question: When was this resource last backed up successfully, and has a restore ever been tested?
-  stage: Analysis/Enrichment
+  stage: Enrichment
   perspectives:
   - Governance
   - Data Owner
@@ -2016,19 +2281,23 @@ database_questions:
   - Assess
   - Attest
   - Maintain
+  levels:
+  - resource
   answering:
-    kind: human
+    kind: mixed
     analysis_ids:
     - db_resilience
     checks: []
-    note: N/A — human-supplied via the Enrichment Context form (the Enrichment half of the proposed db_resilience
-      analysis for databases; no filesystem-side catalog-observable half exists yet).
-  answering_mechanism: Human-Supplied
+    note: 'MIXED: db_resilience (machine half — backup-tool signals and WAL archiving status, explicitly
+      non-definitive: absence of a detected tool is not absence of backups) + human-supplied via the Enrichment
+      Context form (last successful backup, last tested restore, RPO/RTO)'
+  answering_mechanism: DB Introspection + Human-Supplied
   rationale: 'Design §5.5 draws the line explicitly for databases: primary/standby role, replicas, WAL
     archiving and extension-based backup tooling are catalog-observable, while last successful backup,
     tested restore and RPO/RTO are not, for any resource type. They come from an Enrichment "Backup and
     recovery" section, and the answer envelope must say which half answered.'
-  catalog_history: ''
+  catalog_history: '2026-09-26: moved to Enrichment (project owner, live review): the definitive answer
+    is human; db_resilience''s backup-tool signal is shown as non-definitive supporting evidence.'
   retired: false
 - question: What kind of database is this — transactional, analytical, reference data, staging or a copy?
   stage: Discovery
@@ -2038,6 +2307,8 @@ database_questions:
   purposes:
   - Explore
   - Select
+  levels:
+  - container
   answering:
     kind: analysis
     analysis_ids:
@@ -2061,6 +2332,8 @@ database_questions:
   purposes:
   - Explore
   - Learn
+  levels:
+  - container
   answering:
     kind: analysis
     analysis_ids:
@@ -2083,6 +2356,8 @@ database_questions:
   - Explore
   - Learn
   - Assess
+  levels:
+  - member
   answering:
     kind: analysis
     analysis_ids:
@@ -2104,7 +2379,8 @@ database_questions:
     of §16.2 was already built and is unchanged. §16.2''s literal year=/month=/day= partition keys are
     a filesystem layout and are not looked for here.'
   retired: false
-- question: Does this look like a copy or a subset of a database we already know?
+- question: Is this a copy, subset or superset of a resource we already know — structurally, by schema
+    or file signature?
   stage: Discovery
   perspectives:
   - Financial
@@ -2113,19 +2389,25 @@ database_questions:
   purposes:
   - Explore
   - Select
+  levels:
+  - container
   answering:
-    kind: analysis
+    kind: partial
     analysis_ids:
     - db_fingerprint
     checks: []
-    note: db_fingerprint (design §3, §5.3 — a structural signature over stored table/column names and
-      types, hashed and compared by Jaccard similarity and containment against every other database in
-      the registry with stored schema rows)
+    note: 'PARTIAL: db_fingerprint answers it for databases (a structural signature over schema shape
+      — likely_copy / likely_subset_of / likely_superset_of, design §5.3); for filesystems it is a GAP
+      until file_fingerprint (design §6.2) exists'
   answering_mechanism: Database Catalog Query + Local Registry Query
   rationale: A schema signature — table and column names, types, key structure — hashed into a fingerprint
     and compared against the fingerprints of databases already in the registry. Egeria's FingerprintAnnotation
     is the publication shape.
-  catalog_history: ''
+  catalog_history: '2026-09-26: reworded and widened to filesystems as the structural-similarity member
+    of the three-way split of ''What are similar resources'' (project owner); databases keep db_fingerprint,
+    filesystems are a GAP until file_fingerprint exists. | 2026-09-26: Answering Analysis rewritten as
+    PARTIAL: — the widened note had broken the bare-analysis-id convention and left the row kind=unknown
+    (caught by test_catalog_invariants in #299''s CI).'
   retired: false
 - question: Are there views, materialised views, functions or triggers that encode business logic?
   stage: Discovery
@@ -2136,6 +2418,8 @@ database_questions:
   purposes:
   - Explore
   - Learn
+  levels:
+  - container
   answering:
     kind: partial
     analysis_ids: []
@@ -2158,6 +2442,8 @@ database_questions:
   purposes:
   - Explore
   - Learn
+  levels:
+  - member
   answering:
     kind: gap
     analysis_ids: []
@@ -2177,13 +2463,18 @@ database_questions:
   purposes:
   - Explore
   - Assess
+  levels:
+  - field
   answering:
-    kind: gap
-    analysis_ids: []
+    kind: partial
+    analysis_ids:
+    - nested_column_profile
     checks: []
-    note: 'GAP: no analysis classifies a column as semi-structured (JSON/JSONB/XML/array/hstore) or measures
-      the share of stored bytes it accounts for -- the catalog reads that already capture column types
-      perform no such derivation, and no id in the database analysis catalog performs it either.'
+    note: 'PARTIAL: nested_column_profile (design §5.4; Phase 1 slice 11) classifies JSON/JSONB/XML/array/hstore
+      columns from the stored column types and infers their nested structure by bounded sampling; chained
+      into GovActionProcess::DatabaseAnalysisSurvey. Remaining gap: the share of stored bytes those columns
+      account for is not measured by any analysis. Corrected 2026-09-27; the row previously claimed no
+      analysis classified a column as semi-structured.'
   answering_mechanism: Database Catalog Query
   rationale: Zero new fetch — the column types are already in the catalog read; what is derived is which
     columns are semi-structured and what share of the stored bytes they account for. The contents themselves
@@ -2201,6 +2492,9 @@ database_questions:
   - Explore
   - Learn
   - Select
+  levels:
+  - container
+  - member
   answering:
     kind: analysis
     analysis_ids:
@@ -2232,6 +2526,8 @@ database_questions:
   - Explore
   - Select
   - Assess
+  levels:
+  - member
   answering:
     kind: analysis
     analysis_ids:
@@ -2263,6 +2559,8 @@ database_questions:
   purposes:
   - Explore
   - Select
+  levels:
+  - container
   answering:
     kind: analysis
     analysis_ids:
@@ -2299,6 +2597,9 @@ database_questions:
   - Explore
   - Assess
   - Deploy
+  levels:
+  - member
+  - field
   answering:
     kind: analysis
     analysis_ids:
@@ -2321,11 +2622,20 @@ database_questions:
   purposes:
   - Assess
   - Learn
+  levels:
+  - field
   answering:
-    kind: gap
-    analysis_ids: []
+    kind: partial
+    analysis_ids:
+    - data_class_match
+    - reference_data_match
     checks: []
-    note: 'GAP: column_profile (proposed) — pg_stats is never read, and no sampling fallback exists.'
+    note: 'PARTIAL: the postgres_column_profile step (Phase 1 slice 10) reads pg_stats (null fraction,
+      distinct count, most-common values, widths) and falls back to bounded sampling where pg_stats is
+      absent; chained into GovActionProcess::DatabaseAnalysisSurvey (published 2026-09-26). No analysis
+      id yet reads that profile back into THIS answer — data_class_match and reference_data_match consume
+      it for their own questions. Corrected 2026-09-27; the row previously claimed no sampling fallback
+      existed.'
   answering_mechanism: Database Catalog Query + Value Profiling
   rationale: 'pg_stats, populated by ANALYZE, already carries null_frac, n_distinct, most_common_vals,
     most_common_freqs, histogram_bounds, avg_width and correlation — column profiling with no sampling
@@ -2345,6 +2655,8 @@ database_questions:
   - Assess
   - Certify
   - Remediate
+  levels:
+  - field
   answering:
     kind: analysis
     analysis_ids:
@@ -2372,6 +2684,8 @@ database_questions:
   purposes:
   - Assess
   - Remediate
+  levels:
+  - field
   answering:
     kind: analysis
     analysis_ids:
@@ -2397,6 +2711,8 @@ database_questions:
   purposes:
   - Assess
   - Learn
+  levels:
+  - field
   answering:
     kind: analysis
     analysis_ids:
@@ -2422,6 +2738,8 @@ database_questions:
   purposes:
   - Assess
   - Remediate
+  levels:
+  - member
   answering:
     kind: analysis
     analysis_ids:
@@ -2446,6 +2764,8 @@ database_questions:
   purposes:
   - Assess
   - Deploy
+  levels:
+  - resource
   answering:
     kind: analysis
     analysis_ids:
@@ -2470,6 +2790,9 @@ database_questions:
   - Assess
   - Certify
   - Remediate
+  levels:
+  - resource
+  - member
   answering:
     kind: partial
     analysis_ids:
@@ -2495,6 +2818,8 @@ database_questions:
   purposes:
   - Maintain
   - Assess
+  levels:
+  - member
   answering:
     kind: analysis
     analysis_ids:
@@ -2518,6 +2843,8 @@ database_questions:
   purposes:
   - Learn
   - Share
+  levels:
+  - field
   answering:
     kind: gap
     analysis_ids: []
@@ -2538,6 +2865,8 @@ database_questions:
   purposes:
   - Assess
   - Share
+  levels:
+  - container
   answering:
     kind: partial
     analysis_ids:
@@ -2562,6 +2891,8 @@ database_questions:
   - Assess
   - Certify
   - Remediate
+  levels:
+  - field
   answering:
     kind: partial
     analysis_ids:
@@ -2585,6 +2916,8 @@ database_questions:
   - Architecture
   purposes:
   - Assess
+  levels:
+  - container
   answering:
     kind: mixed
     analysis_ids:
@@ -2609,6 +2942,8 @@ database_questions:
   purposes:
   - Assess
   - Certify
+  levels:
+  - container
   answering:
     kind: partial
     analysis_ids:
@@ -2631,6 +2966,9 @@ database_questions:
   purposes:
   - Maintain
   - Assess
+  levels:
+  - resource
+  - member
   answering:
     kind: analysis
     analysis_ids:
@@ -2653,6 +2991,8 @@ database_questions:
   purposes:
   - Assess
   - Attest
+  levels:
+  - resource
   answering:
     kind: analysis
     analysis_ids:
@@ -2678,6 +3018,8 @@ filesystem_questions:
   - Explore
   - Select
   - Learn
+  levels:
+  - resource
   answering:
     kind: direct
     analysis_ids: []
@@ -2697,6 +3039,8 @@ filesystem_questions:
   purposes:
   - Explore
   - Select
+  levels:
+  - resource
   answering:
     kind: gap
     analysis_ids: []
@@ -2718,6 +3062,8 @@ filesystem_questions:
   purposes:
   - Explore
   - Maintain
+  levels:
+  - resource
   answering:
     kind: direct
     analysis_ids: []
@@ -2745,6 +3091,8 @@ filesystem_questions:
   purposes:
   - Explore
   - Select
+  levels:
+  - resource
   answering:
     kind: direct
     analysis_ids: []
@@ -2768,6 +3116,8 @@ filesystem_questions:
   purposes:
   - Explore
   - Select
+  levels:
+  - resource
   answering:
     kind: direct
     analysis_ids: []
@@ -2785,6 +3135,8 @@ filesystem_questions:
   - Architecture
   purposes:
   - Select
+  levels:
+  - resource
   answering:
     kind: direct
     analysis_ids: []
@@ -2794,7 +3146,8 @@ filesystem_questions:
   rationale: Answerable locally from RE's own registry/groups, same as "existing use within our organization."
   catalog_history: ''
   retired: false
-- question: What are similar resources, and how does this differ?
+- question: Which resources have similar content — code, documentation or data values — and how does this
+    one differ?
   stage: Analysis
   perspectives:
   - Community
@@ -2802,15 +3155,58 @@ filesystem_questions:
   - Admin
   purposes:
   - Select
+  levels:
+  - resource
   answering:
     kind: gap
     analysis_ids: []
     checks: []
-    note: 'GAP: similarity search over pgvector embeddings (not built) - Agent over RAG'
-  answering_mechanism: Agent-Based Analysis
-  rationale: Needs similarity search over content (RAG/embeddings) — real gap, not built.
-  catalog_history: '2026-09-21: reworded from repo-only to cross-type wording (multi-resource-questions-design.md
-    §4) as part of the re/db-questions-csv authoring stream.'
+    note: 'GAP: similarity search over pgvector embeddings (not built) — content similarity; an Agent
+      over RAG can describe how two resources differ once candidates exist'
+  answering_mechanism: RAG Queries + Agent-Based Analysis
+  rationale: 'Content similarity over embeddings of code, documents and sampled data (pgvector). Complements
+    scope similarity (which needs declared or measured scope) and structural similarity (which needs a
+    schema). Design §16.7 5′ and the coverage audit''s similarity item: content finds candidates; scope
+    fit ranks them.'
+  catalog_history: '2026-09-26: split from ''What are similar resources, and how does this differ?'' (project
+    owner: ''tease apart what we mean by similar — scope, database type, data objects''); three questions
+    now — content similarity (RAG), scope similarity (lens fit), structural similarity (fingerprint, the
+    pre-existing copy/subset row).'
+  retired: false
+- question: Which resources cover similar subjects, grain and period or places — could one stand in for
+    this one, or this one for them?
+  stage: Discovery
+  perspectives:
+  - Community
+  - Security
+  - Admin
+  purposes:
+  - Select
+  levels:
+  - resource
+  - container
+  answering:
+    kind: mixed
+    analysis_ids: []
+    checks: []
+    note: 'MIXED: preliminary_fit + coverage_signals + subject_signals + grain_determination (the lens
+      is derived from a resource rather than an investigation — design §16.5 ''lens from a resource'';
+      the comparison is requirement_fit''s field-by-field overlap)'
+  answering_mechanism: Analysis (lens fit over stored scope)
+  rationale: 'Scope similarity is lens fit (design §16.5): derive a lens from this resource''s declared
+    or measured DataScope, DataGrain and subject terms and run the fit against every other resource''s
+    stored scope — no new survey, a query over stored measurements. Runs both ways, so a resource that
+    fails one investigation''s lens can still match another (§16.5 point 5). Also the mechanism behind
+    ''is something like this already productised'' (§16.7 5′). The answer is a relation per scope axis
+    — subject, population (which customers: pre-sales vs post-sales), space, time, grain, structure —
+    each same / contains / contained_by / overlaps / disjoint / not_established, with ''can one stand
+    in for the other'' and ''is one a subset of the other'' derived from them (design §16.8). Two ''customer''
+    databases are never called similar on subject alone: an undeclared population axis renders not_established.'
+  catalog_history: '2026-09-26: split from ''What are similar resources, and how does this differ?'' (project
+    owner: ''tease apart what we mean by similar — scope, database type, data objects''); three questions
+    now — content similarity (RAG), scope similarity (lens fit), structural similarity (fingerprint, the
+    pre-existing copy/subset row). | 2026-09-26: rationale extended with the per-axis relation model (design
+    §16.8) after the owner''s pre-sales/post-sales and NY/US examples.'
   retired: false
 - question: Under what licence or agreement may this resource be used?
   stage: Scouting
@@ -2821,6 +3217,8 @@ filesystem_questions:
   purposes:
   - Select
   - Certify
+  levels:
+  - resource
   answering:
     kind: direct
     analysis_ids: []
@@ -2836,13 +3234,15 @@ filesystem_questions:
     §4) as part of the re/db-questions-csv authoring stream.'
   retired: false
 - question: What does this resource cost to run, host or license?
-  stage: Analysis/Enrichment
+  stage: Enrichment
   perspectives:
   - Financial
   - Admin
   purposes:
   - Select
   - Deploy
+  levels:
+  - resource
   answering:
     kind: human
     analysis_ids: []
@@ -2854,10 +3254,12 @@ filesystem_questions:
     Enrichment (says so in Answering Analysis), but exact phase matching kept the row off the Enrichment
     pane, under a heading that promised the catalog''s questions for a person. | 2026-09-21: reworded
     from repo-only to cross-type wording (multi-resource-questions-design.md §4) as part of the re/db-questions-csv
-    authoring stream.'
+    authoring stream. | 2026-09-26: re-staged from Analysis/Enrichment to Enrichment — project owner''s
+    live review of the Analysis tab: the answer is human-supplied, so it is asked at Enrichment and consumed
+    by Assessment; appearing on Analysis with an ''Answer this'' button read as noise.'
   retired: false
 - question: Does it fit into our monitoring infrastructure?
-  stage: Analysis/Enrichment
+  stage: Enrichment
   perspectives:
   - Data Owner
   - Consumer
@@ -2866,6 +3268,8 @@ filesystem_questions:
   purposes:
   - Deploy
   - Maintain
+  levels:
+  - resource
   answering:
     kind: human
     analysis_ids: []
@@ -2874,10 +3278,12 @@ filesystem_questions:
       first - augmented with enrichment.
   answering_mechanism: Egeria Queries + Human-Supplied
   rationale: Org-internal cross-reference — human-supplied.
-  catalog_history: ''
+  catalog_history: '2026-09-26: re-staged from Analysis/Enrichment to Enrichment — project owner''s live
+    review of the Analysis tab: the answer is human-supplied, so it is asked at Enrichment and consumed
+    by Assessment; appearing on Analysis with an ''Answer this'' button read as noise.'
   retired: false
 - question: Does it fit into our security infrastructure?
-  stage: Analysis/Enrichment
+  stage: Enrichment
   perspectives:
   - Financial
   - Data Owner
@@ -2889,6 +3295,8 @@ filesystem_questions:
   purposes:
   - Assess
   - Deploy
+  levels:
+  - resource
   answering:
     kind: human
     analysis_ids: []
@@ -2898,10 +3306,12 @@ filesystem_questions:
   answering_mechanism: Code Analysis + Egeria Queries + Human-Supplied
   rationale: 'An organisation-internal cross-reference: the security findings inform it, a person answers
     it.'
-  catalog_history: ''
+  catalog_history: '2026-09-26: re-staged from Analysis/Enrichment to Enrichment — project owner''s live
+    review of the Analysis tab: the answer is human-supplied, so it is asked at Enrichment and consumed
+    by Assessment; appearing on Analysis with an ''Answer this'' button read as noise.'
   retired: false
 - question: Do we have the skills to support its use?
-  stage: Analysis/Enrichment
+  stage: Enrichment
   perspectives:
   - Security
   - Architecture
@@ -2909,6 +3319,8 @@ filesystem_questions:
   purposes:
   - Select
   - Learn
+  levels:
+  - resource
   answering:
     kind: human
     analysis_ids: []
@@ -2916,10 +3328,12 @@ filesystem_questions:
     note: N/A — human-supplied via Enrichment Context form - Egeria queries as well
   answering_mechanism: Human-Supplied + Egeria Queries
   rationale: Purely human-supplied — never resource-derivable.
-  catalog_history: ''
+  catalog_history: '2026-09-26: re-staged from Analysis/Enrichment to Enrichment — project owner''s live
+    review of the Analysis tab: the answer is human-supplied, so it is asked at Enrichment and consumed
+    by Assessment; appearing on Analysis with an ''Answer this'' button read as noise.'
   retired: false
 - question: Does it fit into our governance frameworks?
-  stage: Analysis/Enrichment
+  stage: Enrichment
   perspectives:
   - Governance
   - Security
@@ -2928,6 +3342,8 @@ filesystem_questions:
   purposes:
   - Certify
   - Share
+  levels:
+  - resource
   answering:
     kind: human
     analysis_ids: []
@@ -2936,7 +3352,9 @@ filesystem_questions:
       plus Egeria queries.
   answering_mechanism: Human-Supplied + Egeria Queries
   rationale: Org policy cross-reference (human-supplied), plus Curate's zone/catalog membership once published.
-  catalog_history: ''
+  catalog_history: '2026-09-26: re-staged from Analysis/Enrichment to Enrichment — project owner''s live
+    review of the Analysis tab: the answer is human-supplied, so it is asked at Enrichment and consumed
+    by Assessment; appearing on Analysis with an ''Answer this'' button read as noise.'
   retired: false
 - question: What explicit licence does this resource use, and are there non-standard or copyleft terms?
   stage: Assessment
@@ -2948,6 +3366,8 @@ filesystem_questions:
   purposes:
   - Select
   - Certify
+  levels:
+  - resource
   answering:
     kind: gap
     analysis_ids: []
@@ -2973,6 +3393,8 @@ filesystem_questions:
   purposes:
   - Explore
   - Maintain
+  levels:
+  - resource
   answering:
     kind: direct
     analysis_ids: []
@@ -2992,6 +3414,8 @@ filesystem_questions:
   - Admin
   purposes:
   - Explore
+  levels:
+  - resource
   answering:
     kind: direct
     analysis_ids: []
@@ -3011,6 +3435,8 @@ filesystem_questions:
   purposes:
   - Explore
   - Select
+  levels:
+  - resource
   answering:
     kind: direct
     analysis_ids: []
@@ -3029,6 +3455,8 @@ filesystem_questions:
   - Data Expert
   purposes:
   - Maintain
+  levels:
+  - resource
   answering:
     kind: direct
     analysis_ids: []
@@ -3050,6 +3478,8 @@ filesystem_questions:
   purposes:
   - Explore
   - Share
+  levels:
+  - resource
   answering:
     kind: direct
     analysis_ids: []
@@ -3070,12 +3500,17 @@ filesystem_questions:
   purposes:
   - Explore
   - Maintain
+  levels:
+  - resource
   answering:
     kind: gap
     analysis_ids: []
     checks: []
-    note: 'GAP: no reachability probe exists — this needs a CHECK_ASSET-only engine action plus the observed-cost
-      comparison step_cost_observer already collects.'
+    note: 'GAP: by type — filesystem: the resource_reachability probe exists (Phase 1 slice 13, 2026-09-22;
+      CHECK_ASSET-only engine action, results in the resource_reachability table, launcher in the classic
+      UI) but nothing reads it into this answer yet; database and repo: no reachability probe exists.
+      The observed-cost comparison step_cost_observer already collects is unused for any type. Corrected
+      2026-09-27; the row previously claimed no probe existed for any type.'
   answering_mechanism: Egeria Queries + Direct Field
   rationale: Reachability is testable by running the native survey with finalAnalysisStep=CHECK_ASSET
     from the engine host; efficiency is a separate axis (data locality, latency to first result, load
@@ -3096,6 +3531,8 @@ filesystem_questions:
   - Assess
   - Certify
   - Attest
+  levels:
+  - resource
   answering:
     kind: gap
     analysis_ids: []
@@ -3118,17 +3555,23 @@ filesystem_questions:
   purposes:
   - Assess
   - Certify
+  levels:
+  - member
   answering:
-    kind: gap
+    kind: mixed
     analysis_ids: []
     checks: []
-    note: 'GAP: date-range extraction feeds no DataScope proposal today, and the column-level profiling
-      that would supply the ranges is itself unbuilt.'
-  answering_mechanism: Value Profiling + Human-Supplied
+    note: 'MIXED: coverage_signals (Discovery, catalog tier — partition bounds, file-name dates, descriptor
+      temporal fields; identity A) + coverage_profile (Analysis, data identity B — measured date ranges,
+      cadence and gaps per table); the declared DataScope is curated from the measured one (design §16,
+      §14)'
+  answering_mechanism: DB Introspection + Profiling + Human-Supplied
   rationale: 'The other half of DataScope, and machine-proposable for most types: minimum and maximum
     of date columns for a database, modification-time range and in-file date ranges for a filesystem,
     DCAT temporal for a published dataset. Human confirmation of validity and coverage comes through Enrichment.'
-  catalog_history: ''
+  catalog_history: '2026-09-26: ''no mechanism'' text predated design §16; now points at coverage_signals
+    / coverage_profile (both catalogued in analysis_catalog.yaml); project owner: ''scope we should be
+    able to have a surveyor for''.'
   retired: false
 - question: Are there any restrictions for use beyond the licence — classification, zone or terms of use?
   stage: Analysis
@@ -3140,6 +3583,8 @@ filesystem_questions:
   purposes:
   - Select
   - Certify
+  levels:
+  - resource
   answering:
     kind: gap
     analysis_ids: []
@@ -3163,6 +3608,8 @@ filesystem_questions:
   purposes:
   - Share
   - Certify
+  levels:
+  - resource
   answering:
     kind: gap
     analysis_ids: []
@@ -3186,6 +3633,8 @@ filesystem_questions:
   purposes:
   - Share
   - Select
+  levels:
+  - resource
   answering:
     kind: gap
     analysis_ids: []
@@ -3199,7 +3648,7 @@ filesystem_questions:
   catalog_history: ''
   retired: false
 - question: When was this resource last backed up successfully, and has a restore ever been tested?
-  stage: Analysis/Enrichment
+  stage: Enrichment
   perspectives:
   - Governance
   - Data Owner
@@ -3208,18 +3657,22 @@ filesystem_questions:
   - Assess
   - Attest
   - Maintain
+  levels:
+  - resource
   answering:
-    kind: human
+    kind: mixed
     analysis_ids: []
     checks: []
-    note: N/A — human-supplied via the Enrichment Context form (the Enrichment half of the proposed db_resilience
-      analysis for databases; no filesystem-side catalog-observable half exists yet).
-  answering_mechanism: Human-Supplied
+    note: 'MIXED: db_resilience (machine half — backup-tool signals and WAL archiving status, explicitly
+      non-definitive: absence of a detected tool is not absence of backups) + human-supplied via the Enrichment
+      Context form (last successful backup, last tested restore, RPO/RTO)'
+  answering_mechanism: DB Introspection + Human-Supplied
   rationale: 'Design §5.5 draws the line explicitly for databases: primary/standby role, replicas, WAL
     archiving and extension-based backup tooling are catalog-observable, while last successful backup,
     tested restore and RPO/RTO are not, for any resource type. They come from an Enrichment "Backup and
     recovery" section, and the answer envelope must say which half answered.'
-  catalog_history: ''
+  catalog_history: '2026-09-26: moved to Enrichment (project owner, live review): the definitive answer
+    is human; db_resilience''s backup-tool signal is shown as non-definitive supporting evidence.'
   retired: false
 - question: What is the grain of each table — one row per what?
   stage: Discovery
@@ -3231,6 +3684,8 @@ filesystem_questions:
   - Explore
   - Learn
   - Assess
+  levels:
+  - member
   answering:
     kind: gap
     analysis_ids: []
@@ -3253,6 +3708,35 @@ filesystem_questions:
     of §16.2 was already built and is unchanged. §16.2''s literal year=/month=/day= partition keys are
     a filesystem layout and are not looked for here.'
   retired: false
+- question: Is this a copy, subset or superset of a resource we already know — structurally, by schema
+    or file signature?
+  stage: Discovery
+  perspectives:
+  - Financial
+  - Steward
+  - Architecture
+  purposes:
+  - Explore
+  - Select
+  levels:
+  - container
+  answering:
+    kind: partial
+    analysis_ids: []
+    checks: []
+    note: 'PARTIAL: db_fingerprint answers it for databases (a structural signature over schema shape
+      — likely_copy / likely_subset_of / likely_superset_of, design §5.3); for filesystems it is a GAP
+      until file_fingerprint (design §6.2) exists'
+  answering_mechanism: Database Catalog Query + Local Registry Query
+  rationale: A schema signature — table and column names, types, key structure — hashed into a fingerprint
+    and compared against the fingerprints of databases already in the registry. Egeria's FingerprintAnnotation
+    is the publication shape.
+  catalog_history: '2026-09-26: reworded and widened to filesystems as the structural-similarity member
+    of the three-way split of ''What are similar resources'' (project owner); databases keep db_fingerprint,
+    filesystems are a GAP until file_fingerprint exists. | 2026-09-26: Answering Analysis rewritten as
+    PARTIAL: — the widened note had broken the bare-analysis-id convention and left the row kind=unknown
+    (caught by test_catalog_invariants in #299''s CI).'
+  retired: false
 - question: Which columns conform to a known Data Class, with what confidence, and which look like a class
     we do not have yet?
   stage: Analysis
@@ -3265,6 +3749,8 @@ filesystem_questions:
   - Assess
   - Certify
   - Remediate
+  levels:
+  - field
   answering:
     kind: gap
     analysis_ids: []
@@ -3292,6 +3778,8 @@ filesystem_questions:
   purposes:
   - Assess
   - Remediate
+  levels:
+  - field
   answering:
     kind: gap
     analysis_ids: []
@@ -3317,6 +3805,8 @@ filesystem_questions:
   purposes:
   - Learn
   - Share
+  levels:
+  - field
   answering:
     kind: gap
     analysis_ids: []
@@ -3338,6 +3828,8 @@ filesystem_questions:
   purposes:
   - Explore
   - Select
+  levels:
+  - resource
   answering:
     kind: analysis
     analysis_ids:
@@ -3362,6 +3854,8 @@ filesystem_questions:
   purposes:
   - Explore
   - Select
+  levels:
+  - member
   answering:
     kind: analysis
     analysis_ids:
@@ -3387,6 +3881,8 @@ dataset_questions:
   - Explore
   - Select
   - Learn
+  levels:
+  - resource
   answering:
     kind: direct
     analysis_ids: []
@@ -3406,6 +3902,8 @@ dataset_questions:
   purposes:
   - Explore
   - Select
+  levels:
+  - resource
   answering:
     kind: gap
     analysis_ids: []
@@ -3427,6 +3925,8 @@ dataset_questions:
   purposes:
   - Explore
   - Maintain
+  levels:
+  - resource
   answering:
     kind: direct
     analysis_ids: []
@@ -3454,6 +3954,8 @@ dataset_questions:
   purposes:
   - Explore
   - Select
+  levels:
+  - resource
   answering:
     kind: direct
     analysis_ids: []
@@ -3477,6 +3979,8 @@ dataset_questions:
   purposes:
   - Explore
   - Select
+  levels:
+  - resource
   answering:
     kind: direct
     analysis_ids: []
@@ -3494,6 +3998,8 @@ dataset_questions:
   - Architecture
   purposes:
   - Select
+  levels:
+  - resource
   answering:
     kind: direct
     analysis_ids: []
@@ -3503,7 +4009,8 @@ dataset_questions:
   rationale: Answerable locally from RE's own registry/groups, same as "existing use within our organization."
   catalog_history: ''
   retired: false
-- question: What are similar resources, and how does this differ?
+- question: Which resources have similar content — code, documentation or data values — and how does this
+    one differ?
   stage: Analysis
   perspectives:
   - Community
@@ -3511,15 +4018,58 @@ dataset_questions:
   - Admin
   purposes:
   - Select
+  levels:
+  - resource
   answering:
     kind: gap
     analysis_ids: []
     checks: []
-    note: 'GAP: similarity search over pgvector embeddings (not built) - Agent over RAG'
-  answering_mechanism: Agent-Based Analysis
-  rationale: Needs similarity search over content (RAG/embeddings) — real gap, not built.
-  catalog_history: '2026-09-21: reworded from repo-only to cross-type wording (multi-resource-questions-design.md
-    §4) as part of the re/db-questions-csv authoring stream.'
+    note: 'GAP: similarity search over pgvector embeddings (not built) — content similarity; an Agent
+      over RAG can describe how two resources differ once candidates exist'
+  answering_mechanism: RAG Queries + Agent-Based Analysis
+  rationale: 'Content similarity over embeddings of code, documents and sampled data (pgvector). Complements
+    scope similarity (which needs declared or measured scope) and structural similarity (which needs a
+    schema). Design §16.7 5′ and the coverage audit''s similarity item: content finds candidates; scope
+    fit ranks them.'
+  catalog_history: '2026-09-26: split from ''What are similar resources, and how does this differ?'' (project
+    owner: ''tease apart what we mean by similar — scope, database type, data objects''); three questions
+    now — content similarity (RAG), scope similarity (lens fit), structural similarity (fingerprint, the
+    pre-existing copy/subset row).'
+  retired: false
+- question: Which resources cover similar subjects, grain and period or places — could one stand in for
+    this one, or this one for them?
+  stage: Discovery
+  perspectives:
+  - Community
+  - Security
+  - Admin
+  purposes:
+  - Select
+  levels:
+  - resource
+  - container
+  answering:
+    kind: mixed
+    analysis_ids: []
+    checks: []
+    note: 'MIXED: preliminary_fit + coverage_signals + subject_signals + grain_determination (the lens
+      is derived from a resource rather than an investigation — design §16.5 ''lens from a resource'';
+      the comparison is requirement_fit''s field-by-field overlap)'
+  answering_mechanism: Analysis (lens fit over stored scope)
+  rationale: 'Scope similarity is lens fit (design §16.5): derive a lens from this resource''s declared
+    or measured DataScope, DataGrain and subject terms and run the fit against every other resource''s
+    stored scope — no new survey, a query over stored measurements. Runs both ways, so a resource that
+    fails one investigation''s lens can still match another (§16.5 point 5). Also the mechanism behind
+    ''is something like this already productised'' (§16.7 5′). The answer is a relation per scope axis
+    — subject, population (which customers: pre-sales vs post-sales), space, time, grain, structure —
+    each same / contains / contained_by / overlaps / disjoint / not_established, with ''can one stand
+    in for the other'' and ''is one a subset of the other'' derived from them (design §16.8). Two ''customer''
+    databases are never called similar on subject alone: an undeclared population axis renders not_established.'
+  catalog_history: '2026-09-26: split from ''What are similar resources, and how does this differ?'' (project
+    owner: ''tease apart what we mean by similar — scope, database type, data objects''); three questions
+    now — content similarity (RAG), scope similarity (lens fit), structural similarity (fingerprint, the
+    pre-existing copy/subset row). | 2026-09-26: rationale extended with the per-axis relation model (design
+    §16.8) after the owner''s pre-sales/post-sales and NY/US examples.'
   retired: false
 - question: Under what licence or agreement may this resource be used?
   stage: Scouting
@@ -3530,6 +4080,8 @@ dataset_questions:
   purposes:
   - Select
   - Certify
+  levels:
+  - resource
   answering:
     kind: direct
     analysis_ids: []
@@ -3545,13 +4097,15 @@ dataset_questions:
     §4) as part of the re/db-questions-csv authoring stream.'
   retired: false
 - question: What does this resource cost to run, host or license?
-  stage: Analysis/Enrichment
+  stage: Enrichment
   perspectives:
   - Financial
   - Admin
   purposes:
   - Select
   - Deploy
+  levels:
+  - resource
   answering:
     kind: human
     analysis_ids: []
@@ -3563,10 +4117,12 @@ dataset_questions:
     Enrichment (says so in Answering Analysis), but exact phase matching kept the row off the Enrichment
     pane, under a heading that promised the catalog''s questions for a person. | 2026-09-21: reworded
     from repo-only to cross-type wording (multi-resource-questions-design.md §4) as part of the re/db-questions-csv
-    authoring stream.'
+    authoring stream. | 2026-09-26: re-staged from Analysis/Enrichment to Enrichment — project owner''s
+    live review of the Analysis tab: the answer is human-supplied, so it is asked at Enrichment and consumed
+    by Assessment; appearing on Analysis with an ''Answer this'' button read as noise.'
   retired: false
 - question: Does it fit into our monitoring infrastructure?
-  stage: Analysis/Enrichment
+  stage: Enrichment
   perspectives:
   - Data Owner
   - Consumer
@@ -3575,6 +4131,8 @@ dataset_questions:
   purposes:
   - Deploy
   - Maintain
+  levels:
+  - resource
   answering:
     kind: human
     analysis_ids: []
@@ -3583,10 +4141,12 @@ dataset_questions:
       first - augmented with enrichment.
   answering_mechanism: Egeria Queries + Human-Supplied
   rationale: Org-internal cross-reference — human-supplied.
-  catalog_history: ''
+  catalog_history: '2026-09-26: re-staged from Analysis/Enrichment to Enrichment — project owner''s live
+    review of the Analysis tab: the answer is human-supplied, so it is asked at Enrichment and consumed
+    by Assessment; appearing on Analysis with an ''Answer this'' button read as noise.'
   retired: false
 - question: Does it fit into our security infrastructure?
-  stage: Analysis/Enrichment
+  stage: Enrichment
   perspectives:
   - Financial
   - Data Owner
@@ -3598,6 +4158,8 @@ dataset_questions:
   purposes:
   - Assess
   - Deploy
+  levels:
+  - resource
   answering:
     kind: human
     analysis_ids: []
@@ -3607,10 +4169,12 @@ dataset_questions:
   answering_mechanism: Code Analysis + Egeria Queries + Human-Supplied
   rationale: 'An organisation-internal cross-reference: the security findings inform it, a person answers
     it.'
-  catalog_history: ''
+  catalog_history: '2026-09-26: re-staged from Analysis/Enrichment to Enrichment — project owner''s live
+    review of the Analysis tab: the answer is human-supplied, so it is asked at Enrichment and consumed
+    by Assessment; appearing on Analysis with an ''Answer this'' button read as noise.'
   retired: false
 - question: Do we have the skills to support its use?
-  stage: Analysis/Enrichment
+  stage: Enrichment
   perspectives:
   - Security
   - Architecture
@@ -3618,6 +4182,8 @@ dataset_questions:
   purposes:
   - Select
   - Learn
+  levels:
+  - resource
   answering:
     kind: human
     analysis_ids: []
@@ -3625,10 +4191,12 @@ dataset_questions:
     note: N/A — human-supplied via Enrichment Context form - Egeria queries as well
   answering_mechanism: Human-Supplied + Egeria Queries
   rationale: Purely human-supplied — never resource-derivable.
-  catalog_history: ''
+  catalog_history: '2026-09-26: re-staged from Analysis/Enrichment to Enrichment — project owner''s live
+    review of the Analysis tab: the answer is human-supplied, so it is asked at Enrichment and consumed
+    by Assessment; appearing on Analysis with an ''Answer this'' button read as noise.'
   retired: false
 - question: Does it fit into our governance frameworks?
-  stage: Analysis/Enrichment
+  stage: Enrichment
   perspectives:
   - Governance
   - Security
@@ -3637,6 +4205,8 @@ dataset_questions:
   purposes:
   - Certify
   - Share
+  levels:
+  - resource
   answering:
     kind: human
     analysis_ids: []
@@ -3645,7 +4215,9 @@ dataset_questions:
       plus Egeria queries.
   answering_mechanism: Human-Supplied + Egeria Queries
   rationale: Org policy cross-reference (human-supplied), plus Curate's zone/catalog membership once published.
-  catalog_history: ''
+  catalog_history: '2026-09-26: re-staged from Analysis/Enrichment to Enrichment — project owner''s live
+    review of the Analysis tab: the answer is human-supplied, so it is asked at Enrichment and consumed
+    by Assessment; appearing on Analysis with an ''Answer this'' button read as noise.'
   retired: false
 - question: What explicit licence does this resource use, and are there non-standard or copyleft terms?
   stage: Assessment
@@ -3657,6 +4229,8 @@ dataset_questions:
   purposes:
   - Select
   - Certify
+  levels:
+  - resource
   answering:
     kind: gap
     analysis_ids: []
@@ -3682,6 +4256,8 @@ dataset_questions:
   purposes:
   - Explore
   - Maintain
+  levels:
+  - resource
   answering:
     kind: direct
     analysis_ids: []
@@ -3701,6 +4277,8 @@ dataset_questions:
   - Admin
   purposes:
   - Explore
+  levels:
+  - resource
   answering:
     kind: direct
     analysis_ids: []
@@ -3720,6 +4298,8 @@ dataset_questions:
   purposes:
   - Explore
   - Select
+  levels:
+  - resource
   answering:
     kind: direct
     analysis_ids: []
@@ -3738,6 +4318,8 @@ dataset_questions:
   - Data Expert
   purposes:
   - Maintain
+  levels:
+  - resource
   answering:
     kind: direct
     analysis_ids: []
@@ -3759,6 +4341,8 @@ dataset_questions:
   purposes:
   - Explore
   - Share
+  levels:
+  - resource
   answering:
     kind: direct
     analysis_ids: []
@@ -3779,12 +4363,17 @@ dataset_questions:
   purposes:
   - Explore
   - Maintain
+  levels:
+  - resource
   answering:
     kind: gap
     analysis_ids: []
     checks: []
-    note: 'GAP: no reachability probe exists — this needs a CHECK_ASSET-only engine action plus the observed-cost
-      comparison step_cost_observer already collects.'
+    note: 'GAP: by type — filesystem: the resource_reachability probe exists (Phase 1 slice 13, 2026-09-22;
+      CHECK_ASSET-only engine action, results in the resource_reachability table, launcher in the classic
+      UI) but nothing reads it into this answer yet; database and repo: no reachability probe exists.
+      The observed-cost comparison step_cost_observer already collects is unused for any type. Corrected
+      2026-09-27; the row previously claimed no probe existed for any type.'
   answering_mechanism: Egeria Queries + Direct Field
   rationale: Reachability is testable by running the native survey with finalAnalysisStep=CHECK_ASSET
     from the engine host; efficiency is a separate axis (data locality, latency to first result, load
@@ -3805,6 +4394,8 @@ dataset_questions:
   - Assess
   - Certify
   - Attest
+  levels:
+  - resource
   answering:
     kind: gap
     analysis_ids: []
@@ -3827,17 +4418,23 @@ dataset_questions:
   purposes:
   - Assess
   - Certify
+  levels:
+  - member
   answering:
-    kind: gap
+    kind: mixed
     analysis_ids: []
     checks: []
-    note: 'GAP: date-range extraction feeds no DataScope proposal today, and the column-level profiling
-      that would supply the ranges is itself unbuilt.'
-  answering_mechanism: Value Profiling + Human-Supplied
+    note: 'MIXED: coverage_signals (Discovery, catalog tier — partition bounds, file-name dates, descriptor
+      temporal fields; identity A) + coverage_profile (Analysis, data identity B — measured date ranges,
+      cadence and gaps per table); the declared DataScope is curated from the measured one (design §16,
+      §14)'
+  answering_mechanism: DB Introspection + Profiling + Human-Supplied
   rationale: 'The other half of DataScope, and machine-proposable for most types: minimum and maximum
     of date columns for a database, modification-time range and in-file date ranges for a filesystem,
     DCAT temporal for a published dataset. Human confirmation of validity and coverage comes through Enrichment.'
-  catalog_history: ''
+  catalog_history: '2026-09-26: ''no mechanism'' text predated design §16; now points at coverage_signals
+    / coverage_profile (both catalogued in analysis_catalog.yaml); project owner: ''scope we should be
+    able to have a surveyor for''.'
   retired: false
 - question: Are there any restrictions for use beyond the licence — classification, zone or terms of use?
   stage: Analysis
@@ -3849,6 +4446,8 @@ dataset_questions:
   purposes:
   - Select
   - Certify
+  levels:
+  - resource
   answering:
     kind: gap
     analysis_ids: []
@@ -3872,6 +4471,8 @@ dataset_questions:
   purposes:
   - Share
   - Certify
+  levels:
+  - resource
   answering:
     kind: gap
     analysis_ids: []
@@ -3895,6 +4496,8 @@ dataset_questions:
   purposes:
   - Share
   - Select
+  levels:
+  - resource
   answering:
     kind: gap
     analysis_ids: []
@@ -3919,6 +4522,8 @@ dataset_questions:
   - Assess
   - Certify
   - Remediate
+  levels:
+  - field
   answering:
     kind: gap
     analysis_ids: []
@@ -3947,6 +4552,8 @@ model_questions:
   - Explore
   - Select
   - Learn
+  levels:
+  - resource
   answering:
     kind: direct
     analysis_ids: []
@@ -3966,6 +4573,8 @@ model_questions:
   purposes:
   - Explore
   - Select
+  levels:
+  - resource
   answering:
     kind: gap
     analysis_ids: []
@@ -3987,6 +4596,8 @@ model_questions:
   purposes:
   - Explore
   - Maintain
+  levels:
+  - resource
   answering:
     kind: direct
     analysis_ids: []
@@ -4014,6 +4625,8 @@ model_questions:
   purposes:
   - Explore
   - Select
+  levels:
+  - resource
   answering:
     kind: direct
     analysis_ids: []
@@ -4037,6 +4650,8 @@ model_questions:
   purposes:
   - Explore
   - Select
+  levels:
+  - resource
   answering:
     kind: direct
     analysis_ids: []
@@ -4054,6 +4669,8 @@ model_questions:
   - Architecture
   purposes:
   - Select
+  levels:
+  - resource
   answering:
     kind: direct
     analysis_ids: []
@@ -4063,7 +4680,8 @@ model_questions:
   rationale: Answerable locally from RE's own registry/groups, same as "existing use within our organization."
   catalog_history: ''
   retired: false
-- question: What are similar resources, and how does this differ?
+- question: Which resources have similar content — code, documentation or data values — and how does this
+    one differ?
   stage: Analysis
   perspectives:
   - Community
@@ -4071,15 +4689,23 @@ model_questions:
   - Admin
   purposes:
   - Select
+  levels:
+  - resource
   answering:
     kind: gap
     analysis_ids: []
     checks: []
-    note: 'GAP: similarity search over pgvector embeddings (not built) - Agent over RAG'
-  answering_mechanism: Agent-Based Analysis
-  rationale: Needs similarity search over content (RAG/embeddings) — real gap, not built.
-  catalog_history: '2026-09-21: reworded from repo-only to cross-type wording (multi-resource-questions-design.md
-    §4) as part of the re/db-questions-csv authoring stream.'
+    note: 'GAP: similarity search over pgvector embeddings (not built) — content similarity; an Agent
+      over RAG can describe how two resources differ once candidates exist'
+  answering_mechanism: RAG Queries + Agent-Based Analysis
+  rationale: 'Content similarity over embeddings of code, documents and sampled data (pgvector). Complements
+    scope similarity (which needs declared or measured scope) and structural similarity (which needs a
+    schema). Design §16.7 5′ and the coverage audit''s similarity item: content finds candidates; scope
+    fit ranks them.'
+  catalog_history: '2026-09-26: split from ''What are similar resources, and how does this differ?'' (project
+    owner: ''tease apart what we mean by similar — scope, database type, data objects''); three questions
+    now — content similarity (RAG), scope similarity (lens fit), structural similarity (fingerprint, the
+    pre-existing copy/subset row).'
   retired: false
 - question: Under what licence or agreement may this resource be used?
   stage: Scouting
@@ -4090,6 +4716,8 @@ model_questions:
   purposes:
   - Select
   - Certify
+  levels:
+  - resource
   answering:
     kind: direct
     analysis_ids: []
@@ -4105,13 +4733,15 @@ model_questions:
     §4) as part of the re/db-questions-csv authoring stream.'
   retired: false
 - question: What does this resource cost to run, host or license?
-  stage: Analysis/Enrichment
+  stage: Enrichment
   perspectives:
   - Financial
   - Admin
   purposes:
   - Select
   - Deploy
+  levels:
+  - resource
   answering:
     kind: human
     analysis_ids: []
@@ -4123,10 +4753,12 @@ model_questions:
     Enrichment (says so in Answering Analysis), but exact phase matching kept the row off the Enrichment
     pane, under a heading that promised the catalog''s questions for a person. | 2026-09-21: reworded
     from repo-only to cross-type wording (multi-resource-questions-design.md §4) as part of the re/db-questions-csv
-    authoring stream.'
+    authoring stream. | 2026-09-26: re-staged from Analysis/Enrichment to Enrichment — project owner''s
+    live review of the Analysis tab: the answer is human-supplied, so it is asked at Enrichment and consumed
+    by Assessment; appearing on Analysis with an ''Answer this'' button read as noise.'
   retired: false
 - question: Does it fit into our monitoring infrastructure?
-  stage: Analysis/Enrichment
+  stage: Enrichment
   perspectives:
   - Data Owner
   - Consumer
@@ -4135,6 +4767,8 @@ model_questions:
   purposes:
   - Deploy
   - Maintain
+  levels:
+  - resource
   answering:
     kind: human
     analysis_ids: []
@@ -4143,10 +4777,12 @@ model_questions:
       first - augmented with enrichment.
   answering_mechanism: Egeria Queries + Human-Supplied
   rationale: Org-internal cross-reference — human-supplied.
-  catalog_history: ''
+  catalog_history: '2026-09-26: re-staged from Analysis/Enrichment to Enrichment — project owner''s live
+    review of the Analysis tab: the answer is human-supplied, so it is asked at Enrichment and consumed
+    by Assessment; appearing on Analysis with an ''Answer this'' button read as noise.'
   retired: false
 - question: Does it fit into our security infrastructure?
-  stage: Analysis/Enrichment
+  stage: Enrichment
   perspectives:
   - Financial
   - Data Owner
@@ -4158,6 +4794,8 @@ model_questions:
   purposes:
   - Assess
   - Deploy
+  levels:
+  - resource
   answering:
     kind: human
     analysis_ids: []
@@ -4167,10 +4805,12 @@ model_questions:
   answering_mechanism: Code Analysis + Egeria Queries + Human-Supplied
   rationale: 'An organisation-internal cross-reference: the security findings inform it, a person answers
     it.'
-  catalog_history: ''
+  catalog_history: '2026-09-26: re-staged from Analysis/Enrichment to Enrichment — project owner''s live
+    review of the Analysis tab: the answer is human-supplied, so it is asked at Enrichment and consumed
+    by Assessment; appearing on Analysis with an ''Answer this'' button read as noise.'
   retired: false
 - question: Do we have the skills to support its use?
-  stage: Analysis/Enrichment
+  stage: Enrichment
   perspectives:
   - Security
   - Architecture
@@ -4178,6 +4818,8 @@ model_questions:
   purposes:
   - Select
   - Learn
+  levels:
+  - resource
   answering:
     kind: human
     analysis_ids: []
@@ -4185,10 +4827,12 @@ model_questions:
     note: N/A — human-supplied via Enrichment Context form - Egeria queries as well
   answering_mechanism: Human-Supplied + Egeria Queries
   rationale: Purely human-supplied — never resource-derivable.
-  catalog_history: ''
+  catalog_history: '2026-09-26: re-staged from Analysis/Enrichment to Enrichment — project owner''s live
+    review of the Analysis tab: the answer is human-supplied, so it is asked at Enrichment and consumed
+    by Assessment; appearing on Analysis with an ''Answer this'' button read as noise.'
   retired: false
 - question: Does it fit into our governance frameworks?
-  stage: Analysis/Enrichment
+  stage: Enrichment
   perspectives:
   - Governance
   - Security
@@ -4197,6 +4841,8 @@ model_questions:
   purposes:
   - Certify
   - Share
+  levels:
+  - resource
   answering:
     kind: human
     analysis_ids: []
@@ -4205,7 +4851,9 @@ model_questions:
       plus Egeria queries.
   answering_mechanism: Human-Supplied + Egeria Queries
   rationale: Org policy cross-reference (human-supplied), plus Curate's zone/catalog membership once published.
-  catalog_history: ''
+  catalog_history: '2026-09-26: re-staged from Analysis/Enrichment to Enrichment — project owner''s live
+    review of the Analysis tab: the answer is human-supplied, so it is asked at Enrichment and consumed
+    by Assessment; appearing on Analysis with an ''Answer this'' button read as noise.'
   retired: false
 - question: What explicit licence does this resource use, and are there non-standard or copyleft terms?
   stage: Assessment
@@ -4217,6 +4865,8 @@ model_questions:
   purposes:
   - Select
   - Certify
+  levels:
+  - resource
   answering:
     kind: gap
     analysis_ids: []
@@ -4242,6 +4892,8 @@ model_questions:
   purposes:
   - Explore
   - Maintain
+  levels:
+  - resource
   answering:
     kind: direct
     analysis_ids: []
@@ -4261,6 +4913,8 @@ model_questions:
   - Admin
   purposes:
   - Explore
+  levels:
+  - resource
   answering:
     kind: direct
     analysis_ids: []
@@ -4280,6 +4934,8 @@ model_questions:
   purposes:
   - Explore
   - Select
+  levels:
+  - resource
   answering:
     kind: direct
     analysis_ids: []
@@ -4298,6 +4954,8 @@ model_questions:
   - Data Expert
   purposes:
   - Maintain
+  levels:
+  - resource
   answering:
     kind: direct
     analysis_ids: []
@@ -4319,6 +4977,8 @@ model_questions:
   purposes:
   - Explore
   - Share
+  levels:
+  - resource
   answering:
     kind: direct
     analysis_ids: []
@@ -4339,12 +4999,17 @@ model_questions:
   purposes:
   - Explore
   - Maintain
+  levels:
+  - resource
   answering:
     kind: gap
     analysis_ids: []
     checks: []
-    note: 'GAP: no reachability probe exists — this needs a CHECK_ASSET-only engine action plus the observed-cost
-      comparison step_cost_observer already collects.'
+    note: 'GAP: by type — filesystem: the resource_reachability probe exists (Phase 1 slice 13, 2026-09-22;
+      CHECK_ASSET-only engine action, results in the resource_reachability table, launcher in the classic
+      UI) but nothing reads it into this answer yet; database and repo: no reachability probe exists.
+      The observed-cost comparison step_cost_observer already collects is unused for any type. Corrected
+      2026-09-27; the row previously claimed no probe existed for any type.'
   answering_mechanism: Egeria Queries + Direct Field
   rationale: Reachability is testable by running the native survey with finalAnalysisStep=CHECK_ASSET
     from the engine host; efficiency is a separate axis (data locality, latency to first result, load
@@ -4365,6 +5030,8 @@ model_questions:
   - Assess
   - Certify
   - Attest
+  levels:
+  - resource
   answering:
     kind: gap
     analysis_ids: []
@@ -4388,6 +5055,8 @@ model_questions:
   purposes:
   - Select
   - Certify
+  levels:
+  - resource
   answering:
     kind: gap
     analysis_ids: []
@@ -4411,6 +5080,8 @@ model_questions:
   purposes:
   - Share
   - Certify
+  levels:
+  - resource
   answering:
     kind: gap
     analysis_ids: []
@@ -4434,6 +5105,8 @@ model_questions:
   purposes:
   - Share
   - Select
+  levels:
+  - resource
   answering:
     kind: gap
     analysis_ids: []

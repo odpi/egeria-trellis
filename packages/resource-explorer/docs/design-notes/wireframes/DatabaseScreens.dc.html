@@ -1,0 +1,260 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;600&amp;family=Lora:wght@400;500&amp;display=swap">
+  <style>
+    :root{
+      --paper:#f3f2f2; --rule:rgba(32,31,29,.16); --rule-strong:#8e8a8a;
+      --ink:#201f1d; --ink-muted:#4a463e;
+      --accent:#b68235; --accent-ink:#7d5411;
+      --ok:#1d6b3f; --warn:#9c4212; --gap:#5b4a9c;
+      --s1:4.6px; --s2:9.2px; --s3:13.8px; --s4:18.4px; --s6:27.6px;
+      --heading:"Cormorant Garamond",Georgia,serif;
+      --body:"Lora",Georgia,serif;
+      --mono:ui-monospace,"SF Mono",Menlo,monospace;
+    }
+    *{box-sizing:border-box}
+    body{margin:0;font-family:var(--body);background:var(--paper);color:var(--ink);font-size:15px;line-height:1.55}
+    .tnum{font-feature-settings:"tnum";font-variant-numeric:tabular-nums}
+    .mono{font-family:var(--mono);font-size:.87em}
+    .caps{font-family:var(--heading);font-weight:600;font-size:12px;letter-spacing:.09em;text-transform:uppercase}
+    .prov{font-size:13px;line-height:1.45}
+    .h{font-family:var(--heading);font-weight:600}
+    .lnk{color:var(--accent-ink);text-decoration:underline;text-underline-offset:3px}
+    .card{border:1px solid var(--rule);border-radius:2px;padding:var(--s3);background:#fff}
+    .mine{border-left:3px solid var(--gap);padding-left:var(--s3)}
+    .bad{border-left:3px solid var(--warn);padding-left:var(--s3)}
+    .muted{color:var(--ink-muted)}
+    .g{display:inline-block;width:1.25em;text-align:center;font-weight:600}
+    .g,.gi,.g-ok,.g-warn,.g-gap,.g-m{font-family:"DejaVu Sans","Apple Symbols","Segoe UI Symbol",sans-serif}
+    .g-ok{color:var(--ok)} .g-warn{color:var(--warn)} .g-gap{color:var(--gap)} .g-m{color:var(--ink-muted)}
+    /* the pane mock */
+    .pane{background:#fff;border:1px solid var(--rule);padding:var(--s4) var(--s4) var(--s6);max-width:900px}
+    .board{position:relative;border-bottom:1px solid var(--rule-strong);padding-bottom:var(--s2)}
+    .brow{display:grid;grid-template-columns:22px 190px minmax(0,1fr) 92px;gap:0 var(--s2);
+          font-size:13.5px;padding:3px 0;border-top:1px solid var(--rule);align-items:baseline}
+    .brow .hl{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .brow .t{text-align:right;color:var(--ink-muted);font-size:12.5px}
+    .band{border-top:1px solid var(--rule-strong);margin-top:var(--s6);padding-top:var(--s2);
+          display:flex;align-items:baseline;gap:var(--s2)}
+    .band .name{font-family:var(--heading);font-weight:600;font-size:20px}
+    .band .acts{margin-left:auto;font-size:12.5px;color:var(--ink-muted)}
+    .answer{font-size:15.5px;margin-top:var(--s2);max-width:70ch}
+    .grp{margin-top:var(--s3)}
+    .kv{display:grid;grid-template-columns:minmax(0,1fr) 90px;max-width:420px;font-size:13px}
+    .kv div{padding:2px 0;border-top:1px solid var(--rule)}
+    .kv .n{text-align:right}
+    /* the tree */
+    .trow{display:grid;grid-template-columns:18px 150px 118px minmax(0,1fr) minmax(0,1fr);gap:0 var(--s2);
+          font-size:13.5px;padding:4px 0;border-top:1px solid var(--rule);align-items:center}
+    .bar{height:9px;background:var(--accent);border-radius:1px}
+    .bar.est{background:repeating-linear-gradient(90deg,var(--accent) 0 3px,transparent 3px 5px)}
+    .bar.cols{background:var(--ink-muted)}
+    .tick{display:inline-block;width:2px;height:11px;background:var(--ink);vertical-align:-1px;margin-right:4px}
+  </style>
+</helmet>
+
+<div style="width:1340px;padding:var(--s6) var(--s6) 60px">
+
+  <div style="border-bottom:1px solid var(--rule-strong);padding-bottom:var(--s4)">
+    <div class="caps" style="color:var(--accent-ink)">Designer round 2 &middot; the database screens &middot; against main at 019c2796</div>
+    <h1 class="h" style="font-weight:400;font-size:38px;margin:var(--s3) 0 var(--s2);max-width:40ch">One card, one tree row, two header lines &mdash; and one glyph table under all of them</h1>
+    <p style="max-width:90ch;margin:0">
+      Drawn against the code at HEAD, not only the screenshots. Three things in the screenshots
+      have been fixed since they were taken: the tree's schema order, the quiet kind words, and
+      the filter that opened a table with nothing under it. This page doesn't redraw those. Figures
+      are illustrative where marked. AdventureWorks graph figures come from the ask, because the
+      screenshot shows an earlier run.
+    </p>
+  </div>
+
+  <!-- 0 · glyphs -->
+  <div style="margin-top:var(--s6)">
+    <div class="caps muted">Zero &middot; the glyph table, since everything below uses it</div>
+    <div class="card" style="max-width:1000px;margin-top:var(--s2)">
+      <p style="margin:0;max-width:90ch">
+        There are three glyph tables in the code today: <span class="mono">GLYPH</span> (Questions),
+        <span class="mono">factGlyph</span> (the rail) and <span class="mono">CELL</span> (work
+        lists). The brief would add a fourth. They disagree. <span class="gi">&#9680;</span>
+        means <i>ran, but not at this level</i> on Questions, and the brief assigns it to <i>not
+        established</i>. <span class="gi">&#9675;</span> covers <i>not run</i> and <i>no
+        surveyor</i>, and in the work list those two are told apart <b style="font-weight:500">by
+        colour alone</b>. The brief would give it a third meaning, <i>nothing found</i>. So the
+        proposal is one table in one module, where the glyph says which <i>family</i> a state is in
+        and the word beside it names the state:
+      </p>
+      <div style="display:grid;grid-template-columns:78px 260px minmax(0,1fr);gap:4px var(--s3);margin-top:var(--s3);font-size:13.5px">
+        <div class="g g-ok">&#10003;</div><div>measured</div><div class="muted">answered &middot; measured &middot; readable</div>
+        <div class="g g-ok">&#8709;</div><div>measured nothing</div><div class="muted">found nothing &middot; empty (a real, counted zero). Already <span class="mono">CELL.nothing</span>.</div>
+        <div class="g g-warn">&#9680;</div><div>measured, within a limit</div><div class="muted">at database level only &middot; within surveyor's access &middot; structure only &middot; partly readable. The word names the limit.</div>
+        <div class="g g-m">&#9675;</div><div>not run &mdash; can be</div><div class="muted">a run control sits beside it</div>
+        <div class="g g-gap">&#9676;</div><div>can't be answered here yet</div><div class="muted">no surveyor &middot; no reader &middot; containment undeclared. Nobody's move today.</div>
+        <div class="g g-warn">?</div><div>tried, couldn't establish</div><div class="muted">not established &middot; not measured &middot; no access. The reason says what would fix it. Already <span class="mono">CELL.unknown</span>.</div>
+        <div class="g" style="color:var(--accent-ink)">&#9888;</div><div>needs a person</div><div class="muted">Enrichment, declare a lens. <b style="font-weight:500">Only</b> this. Disagreements use &ne;, errors use &#10005;.</div>
+        <div class="gi g-m" style="font-weight:600">&#9684; &#10005; &#9205; &middot;</div><div>running &middot; failed &middot; waiting for your yes &middot; unclassified</div><div class="muted">as today</div>
+      </div>
+      <p class="prov muted" style="margin:var(--s3) 0 0;max-width:90ch">
+        No separate legend. The count line at the top of each surface <i>is</i> the key, as it
+        already is on Questions: <span class="tnum"><span class="gi g-ok">&#10003;</span> 4 answered &middot; <span class="gi g-warn">&#9680;</span> 4 at database level only &middot; <span class="gi g-m">&#9675;</span> 10 not run &middot; <span class="gi g-gap">&#9676;</span> 4 no surveyor</span>.
+        Each glyph carries its word in <span class="mono">title</span>/<span class="mono">aria-label</span>.
+      </p>
+    </div>
+  </div>
+
+  <!-- 1 · by-analysis -->
+  <div style="margin-top:var(--s6)">
+    <div class="caps muted">One &middot; By-analysis: the contents board, and one card open</div>
+    <div class="pane" style="margin-top:var(--s2)">
+      <div class="board">
+        <div class="prov muted tnum" style="margin-bottom:var(--s1)">
+          7 analyses &middot; <span class="g-ok">&#10003;</span> 5 measured &middot; <span class="g-m">&#9675;</span> 1 not run &middot; <span class="g-gap">&#9676;</span> 1 no reader yet &middot; <span class="lnk">2 names mean different things here &rsaquo;</span>
+        </div>
+        <div class="brow"><span class="g g-ok">&#10003;</span><span>Database Classification</span><span class="hl muted">transactional &mdash; 4 of 4 signal families</span><span class="t tnum">2m ago</span></div>
+        <div class="brow" style="background:rgba(182,130,53,.07)"><span class="g g-ok">&#10003;</span><span style="font-weight:500">Relationship Graph</span><span class="hl">91 foreign keys, 2 components; the largest spans 67 of 68 tables</span><span class="t tnum">2m ago</span></div>
+        <div class="brow"><span class="g g-ok">&#10003;</span><span>Table Grain</span><span class="hl muted">68 of 68 tables have a determined grain &middot; <span class="lnk">11 schemas &rsaquo;</span></span><span class="t tnum">2m ago</span></div>
+        <div class="brow"><span class="g g-ok">&#10003;</span><span>Schema Fingerprint</span><span class="hl muted">no close match among 2 comparable databases</span><span class="t tnum">2m ago</span></div>
+        <div class="brow"><span class="g g-ok">&#10003;</span><span>Subject Signals</span><span class="hl muted">735 candidate terms; strongest: product, sales, person</span><span class="t tnum">2m ago</span></div>
+        <div class="brow"><span class="g" style="color:var(--accent-ink)">&#9888;</span><span>Preliminary Fit</span><span class="hl muted">no fit requirement declared &mdash; <span class="lnk">declare one &rsaquo;</span></span><span class="t tnum">2m ago</span></div>
+        <div class="brow"><span class="g g-m">&#9675;</span><span>Coverage Signals</span><span class="hl muted">not run</span><span class="t"><span class="lnk">run &rarr;</span></span></div>
+      </div>
+
+      <div class="band">
+        <span class="g g-ok">&#10003;</span><span class="name">Relationship Graph</span>
+        <span class="prov muted tnum">run 2m ago</span>
+        <span class="acts">evidence &middot; copy as evidence &middot; re-run &middot; the numbers behind this &middot; notify me</span>
+      </div>
+      <div class="answer">91 foreign keys join 68 tables into 2 components; the largest spans 67 of 68 tables, and 1 table stands alone.</div>
+      <div class="prov" style="margin-top:var(--s1)"><span class="lnk">what it does &#9656;</span></div>
+      <div class="grp">
+        <div class="caps muted" style="font-size:11px">Result</div>
+        <div class="kv tnum"><div>edges</div><div class="n">91</div><div>components</div><div class="n">2</div><div>largest component</div><div class="n">67</div><div>isolated tables</div><div class="n">1</div></div>
+      </div>
+      <div class="grp">
+        <div class="caps muted" style="font-size:11px">Coverage</div>
+        <div class="kv tnum"><div>base tables</div><div class="n">68</div><div>tables with keys unmeasured</div><div class="n">0</div></div>
+      </div>
+
+      <div class="band">
+        <span class="g g-ok">&#10003;</span><span class="name">Table Grain</span>
+        <span class="prov muted tnum">run 2m ago</span>
+        <span class="acts">&#9656; open</span>
+      </div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:var(--s4);max-width:1100px;margin-top:var(--s3)">
+      <div class="card mine" style="border-left-width:3px">
+        <div class="caps muted">why a band and not a box</div>
+        <p class="prov" style="margin:var(--s1) 0 0">Every count row inside a card already has a hairline. A
+        box around a ruled table makes a grid of lines, and a collapsed box is a frame around one line. The
+        card boundary is three signals stacked: <b style="font-weight:500">space</b> (s6 above, where rows get s1),
+        <b style="font-weight:500">weight</b> (a rule-strong top rule, where rows get a hairline), and
+        <b style="font-weight:500">type</b> (heading face at name size). It reads the same whether the card is open or collapsed,
+        so collapsed cards become a clean list of bands.</p>
+      </div>
+      <div class="card mine" style="border-left-width:3px">
+        <div class="caps muted">how a board row truncates</div>
+        <p class="prov" style="margin:var(--s1) 0 0">At a <b style="font-weight:500">structural</b> boundary, never a character count.
+        A rollup headline shows its whole-database lead, then <span class="lnk">N schemas &rsaquo;</span>. Cutting
+        mid-list promotes whichever schema sorts first. On AdventureWorks that's <span class="mono">hr</span>,
+        which holds only views, so the analysis would read as <i>&ldquo;hr: not established
+        (no_schema_rows)&hellip;&rdquo;</i>. The server should return <span class="mono">{lead, parts}</span>
+        already split. The client should never parse the sentence apart.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- 2 · tree -->
+  <div style="margin-top:var(--s6)">
+    <div class="caps muted">Two &middot; the Schema Inventory tree: the overview goes in the rows</div>
+    <div class="pane" style="margin-top:var(--s2)">
+      <div class="prov muted" style="margin-bottom:var(--s1)">
+        <span class="caps" style="font-size:11px">schemas &rsaquo; tables &rsaquo; columns</span>
+        &nbsp;&middot;&nbsp; 8 schemas &middot; <span class="g-warn">&#9680;</span> 2 structure only &middot; <span class="g-ok">&#8709;</span> 3 empty &middot; <span class="g-warn">?</span> 2 no access &middot; 1 with no tables
+      </div>
+      <div class="prov" style="margin-bottom:var(--s2)">Rows readable in 3 of 61 tables, so the row column is mostly words. Column counts come from the catalog, so they're drawn for every schema.</div>
+      <div class="trow caps muted" style="font-size:10.5px;border-top:none"><span></span><span>schema</span><span>tables</span><span>rows</span><span>columns</span></div>
+      <div class="trow"><span class="g g-warn">&#9680;</span><b style="font-weight:600">coco_sus</b><span class="tnum">30</span><span class="muted">rows not readable</span><span><div class="bar cols" style="width:92%"></div></span></div>
+      <div class="trow"><span class="g g-warn">&#9680;</span><b style="font-weight:600">coco_ods</b><span class="tnum">23</span><span class="muted">rows not readable</span><span><div class="bar cols" style="width:74%"></div></span></div>
+      <div class="trow"><span class="g g-ok">&#8709;</span><b style="font-weight:600">eu_sales</b><span class="tnum">1</span><span class="tnum"><span class="tick"></span>0</span><span><div class="bar cols" style="width:6%"></div></span></div>
+      <div class="trow"><span class="g g-ok">&#8709;</span><b style="font-weight:600">target_sales</b><span class="tnum">1</span><span class="tnum"><span class="tick"></span>0</span><span><div class="bar cols" style="width:5%"></div></span></div>
+      <div class="trow"><span class="g g-ok">&#8709;</span><b style="font-weight:600">us_sales</b><span class="tnum">1</span><span class="tnum"><span class="tick"></span>0</span><span><div class="bar cols" style="width:6%"></div></span></div>
+      <div class="trow"><span class="g g-ok">&#8709;</span><b style="font-weight:600">public</b><span class="tnum">0</span><span class="muted">no tables</span><span class="muted">&mdash;</span></div>
+      <div class="trow"><span class="g g-warn">?</span><b style="font-weight:600">demo_auth</b><span class="tnum">4</span><span class="muted">no access</span><span><div class="bar cols" style="width:14%"></div></span></div>
+      <div class="trow"><span class="g g-warn">?</span><b style="font-weight:600">demo</b><span class="tnum">1</span><span class="muted">no access</span><span><div class="bar cols" style="width:4%"></div></span></div>
+      <div class="prov muted" style="margin-top:var(--s2)">coco_pharma, in current code order. Column widths are illustrative. On AdventureWorks the row column fills with bars (<span class="mono">sales</span> 253,735 leading). Estimated totals are drawn <span style="display:inline-block;width:40px;vertical-align:middle"><span class="bar est" style="display:block"></span></span> with &ldquo;~&rdquo;, and the number is always printed.</div>
+    </div>
+
+    <div class="card bad" style="max-width:1000px;margin-top:var(--s3);border-left-width:3px">
+      <div class="caps" style="color:var(--warn)">a prerequisite, not a design choice: &ldquo;empty&rdquo; is four things</div>
+      <p class="prov" style="margin:var(--s1) 0 0;max-width:92ch">
+        <span class="mono">_schema_inventory_container_rows</span> puts a schema in <span class="mono">empty</span> when
+        <span class="mono">table_count == 0 or scope_state == SCOPE_EMPTY or row_total == 0 or row_total is None</span>,
+        and then stores <span class="mono">"row_total": row_total or 0</span>. So <i>never measured</i> becomes
+        a stored zero, and the renderer prints it as &ldquo;1 table(s) &mdash; empty&rdquo;. The comment's
+        quote of the owner's ruling has <i>&ldquo;[or, as here, no row data at all]&rdquo;</i> added inside the
+        quote marks, but the owner ruled on zero rows. A row-count bar built on this field would draw
+        <i>not measured</i> at the same height as <i>counted, zero</i>. This one split has to land before the
+        overview does: <span class="mono">row_total is None</span> &rarr; <span class="g-warn">?</span> &ldquo;rows not measured&rdquo;;
+        <span class="mono">== 0</span> &rarr; <span class="g-ok">&#8709;</span> 0; <span class="mono">table_count == 0</span> &rarr; &ldquo;no tables&rdquo;.
+        Whether coco_pharma's three sales schemas are really zero or never measured is one query away.
+        I've drawn them as &#8709; on the assumption they're real zeros.
+      </p>
+    </div>
+  </div>
+
+  <!-- 3 · header -->
+  <div style="margin-top:var(--s6)">
+    <div class="caps muted">Three &middot; the two header lines, as two states</div>
+    <div class="pane" style="margin-top:var(--s2)">
+      <div class="caps muted" style="font-size:11px">today</div>
+      <div class="prov" style="color:var(--accent-ink);margin-top:var(--s1)">surveyed 9h ago &middot; published to Egeria &middot; link stale since 2026-09-26 &middot; last checked 2026-09-27 &mdash; element not found</div>
+      <div class="prov" style="color:var(--accent-ink)">connected as <span class="mono">surveyor</span> &mdash; sees 6 of 8 schema(s), SELECT on 3 of 61 table(s) &middot; every count on this page is scoped to this credential, not the whole database</div>
+
+      <div class="caps muted" style="font-size:11px;margin-top:var(--s4)">proposed</div>
+      <div style="margin-top:var(--s1);font-size:14px">
+        <span class="g" style="color:var(--warn)">&#10005;</span>
+        Egeria no longer has this database's entry &mdash;
+        <span class="muted">published once, missing since <span class="tnum" style="text-decoration:underline dotted">26 Sep</span></span>
+        &middot; <span class="lnk">publish again in the current UI &#8599;</span>
+      </div>
+      <div style="margin-top:3px;font-size:14px">
+        <span class="g g-warn">&#9680;</span>
+        Within <span class="mono">surveyor</span>'s access &mdash;
+        <span class="muted">reads 3 of 61 tables in 6 of 8 schemas; every count here stops there</span>
+        &middot; <span class="lnk">access request open &rsaquo;</span>
+      </div>
+      <div class="prov muted" style="margin-top:var(--s2)">surveyed 9h ago</div>
+
+      <div class="caps muted" style="font-size:11px;margin-top:var(--s4)">when all is well (adventureworks)</div>
+      <div class="prov muted" style="margin-top:var(--s1)"><span class="g g-m">&#9675;</span> not published to Egeria &middot; <span class="g g-ok">&#10003;</span> reads all 157 tables in 11 schemas as <span class="mono">dwolfson</span> &middot; surveyed 12m ago</div>
+    </div>
+    <div class="card mine" style="max-width:1000px;margin-top:var(--s3);border-left-width:3px">
+      <p class="prov" style="margin:0;max-width:92ch">
+        <b style="font-weight:500">What changed.</b> Each line leads with its state, not with &ldquo;published to Egeria&rdquo;.
+        The note begins with those words today, while <span class="mono">is_published</span> is false, and a reader
+        stops at the first clause. The glyph carries the state, so the text goes back to ink, and
+        <b style="font-weight:500">only the remedy is in the accent colour, because it's the only thing you can
+        click.</b> Today both lines are accent from end to end. Dates and GUID go behind the date's hover:
+        provenance in the evidence, not the sentence. A healthy header folds to one quiet line.
+      </p>
+      <p class="prov" style="margin:var(--s2) 0 0;max-width:92ch">
+        <b style="font-weight:500">Neither remedy exists in <span class="mono">/next</span>.</b> There's no database publish
+        action (classic has one, at <span class="mono">POST /api/databases/{slug}/publish</span>) and nowhere,
+        classic included, to pick a different connection. So the publish remedy links to classic, as a deferred
+        affordance that's named rather than omitted. The credential remedy links to the RFA the probe already
+        raises (&ldquo;grant SELECT on <span class="mono">coco_ods.*</span>&rdquo;), which is the real way forward:
+        a DBA grants it. &ldquo;Pick a broader account&rdquo; needs a connections UI that doesn't exist yet.
+      </p>
+    </div>
+  </div>
+
+</div>
+</x-dc>
+</body>
+</html>

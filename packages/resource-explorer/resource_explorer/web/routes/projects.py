@@ -37,7 +37,8 @@ class ProjectSummary(BaseModel):
     last_commit_sha: str
     group_slug: str = ""
     last_surveyed_at: str = ""  # "" = never surveyed (coarse scan or deep)
-    is_published: bool = False  # egeria_asset_guid set — boolean only, not the raw GUID
+    is_published: bool = False  # egeria_asset_guid set AND linkage not stale — see egeria_linkage.describe_publish_status
+    egeria_publish_note: str = ""  # non-empty only when a GUID is cached but the linkage is stale
     disposition: str = "undecided"  # undecided | tracking | investigating | abandoned | ignored — see registry.py's repo_dispositions
     working_set_hidden: bool = False  # personal view filter, separate axis from disposition — see registry.py's resource_working_set
 
@@ -45,11 +46,15 @@ class ProjectSummary(BaseModel):
 def _to_summary(p, registry=None) -> ProjectSummary:
     disposition = "undecided"
     working_set_hidden = False
+    guid = getattr(p, "egeria_asset_guid", "") or ""
+    publish_status = {"is_published": bool(guid), "note": ""}
     if registry is not None:
         disp = registry.get_disposition(p.github_url)
         if disp:
             disposition = disp["disposition"]
         working_set_hidden = registry.is_working_set_hidden("repo", p.slug)
+        from resource_explorer.egeria_linkage import describe_publish_status
+        publish_status = describe_publish_status(registry, "repo", p.slug, guid)
     return ProjectSummary(
         slug=p.slug,
         display_name=p.display_name,
@@ -61,7 +66,8 @@ def _to_summary(p, registry=None) -> ProjectSummary:
         last_commit_sha=p.last_commit_sha,
         group_slug=getattr(p, "group_slug", "") or "",
         last_surveyed_at=getattr(p, "last_surveyed_at", "") or "",
-        is_published=bool(getattr(p, "egeria_asset_guid", "") or ""),
+        is_published=publish_status["is_published"],
+        egeria_publish_note=publish_status["note"],
         disposition=disposition,
         working_set_hidden=working_set_hidden,
     )
@@ -268,6 +274,12 @@ class ScoutingOverview(BaseModel):
     # before this existed.
     last_profiled_at: str = ""
     is_published: bool = False
+    # Non-empty only when a GUID IS cached but the linkage is stale — see
+    # `DatabaseSummary.egeria_publish_note` (databases.py) for the full
+    # rationale. Redundant with `egeria_link_stale` below (both come from the
+    # same linkage row) but carries the ready-to-render sentence rather than
+    # a bare boolean.
+    egeria_publish_note: str = ""
     # When egeria_publish last actually wrote to the catalog — distinct from
     # is_published (a point-in-time boolean derived from whether a GUID is
     # currently set). The data already existed (project_egeria_surveys.
@@ -331,6 +343,9 @@ async def get_scouting_overview(slug: str) -> ScoutingOverview:
 
     linkage = registry.get_egeria_linkage("repo", project.slug) or {}
     publish_linkage = registry.get_egeria_linkage("repo_publish", project.slug) or {}
+    from resource_explorer.egeria_linkage import describe_publish_status
+    publish_status = describe_publish_status(
+        registry, "repo", project.slug, project.egeria_asset_guid or "")
 
     return ScoutingOverview(
         egeria_link_stale=linkage.get("status") == "stale",
@@ -349,7 +364,8 @@ async def get_scouting_overview(slug: str) -> ScoutingOverview:
         repo_size_kb=stats.get("repo_size_kb") or 0,
         last_surveyed_at=project.last_surveyed_at,
         last_profiled_at=project.last_profiled_at,
-        is_published=bool(project.egeria_asset_guid),
+        is_published=publish_status["is_published"],
+        egeria_publish_note=publish_status["note"],
         last_published_at=(latest_survey or {}).get("published_at") or "",
         disposition=disp.get("disposition", "undecided"),
         disposition_reason=disp.get("reason", ""),
@@ -1409,7 +1425,8 @@ async def get_scoped_analysis_results(slug: str, analysis_id: str, locator: str)
 
 @router.get("/{slug}/analyses/{analysis_id}/measurements")
 async def get_analysis_measurements(slug: str, analysis_id: str,
-                                     entity_type: str = "repo") -> dict:
+                                     entity_type: str = "repo",
+                                     level: str = "resource") -> dict:
     """The numbers behind one analysis's answer — see
     resource_explorer/workflows/stage_page.py::build_measurements and the
     designer's round (STAGE-PAGE-ROUND.md point 10, "the fact opens under
@@ -1425,14 +1442,19 @@ async def get_analysis_measurements(slug: str, analysis_id: str,
     against repo's own `ANALYSIS_KINDS`, regardless of what kind of resource
     the caller actually asked about (see that function's docstring, fixed
     2026-09-23 — the fourth instance of PR #226/#233/#236's "resource-type
-    never threaded through" bug class)."""
+    never threaded through" bug class).
+
+    `level` (Slice 21a point 4) defaults to "resource" — every pre-existing
+    caller. app.js passes the asking question's own primary level; see
+    `build_measurements()`'s own docstring for what changes when it names a
+    sub-resource level."""
     from resource_explorer.registry import ProjectRegistry
     from resource_explorer.workflows.stage_page import build_measurements
 
     registry = ProjectRegistry()
     try:
         return await asyncio.to_thread(
-            build_measurements, registry, slug, analysis_id, entity_type)
+            build_measurements, registry, slug, analysis_id, entity_type, level)
     except LookupError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
 

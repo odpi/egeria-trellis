@@ -36,6 +36,7 @@ agreed" and "the detector was sure" are different claims.
 """
 from __future__ import annotations
 
+import functools
 import logging
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
@@ -45,6 +46,7 @@ from resource_explorer.surveyors.result_status import (
     MEASURED,
     MEASURED_WITHIN_CREDENTIAL_SCOPE,
     NEVER_RUN,
+    NO_READER,
     NOT_ESTABLISHED,
     NOTHING_FOUND,
 )
@@ -175,6 +177,20 @@ class Envelope:
     facts: list = field(default_factory=list)
     #: Why no answer is possible, when none is. Empty when `answerable`.
     blocked_reason: str = ""
+    #: Design §18.3 (docs/multi-resource-questions-design.md): true when this
+    #: question is asked at a level BELOW `resource` (container/member/field)
+    #: but every fact that answers it comes from an analysis whose own
+    #: `target_shape` is `whole_resource_only` — a rollup with nothing
+    #: per-member in it. `answerable` stays true (something real WAS
+    #: measured, and that is not nothing), but a checkmark on this envelope
+    #: would be exactly the "✓ means the mapped analysis ran, not that the
+    #: question was answered" failure REVIEW-SURVEY-PANE-285.md's small-
+    #: findings list names ("which schemas carry the data" ticked with a
+    #: table/column COUNT and no schema named). Consumers gate the checkmark
+    #: on `answerable and not level_mismatch`, not on `answerable` alone.
+    level_mismatch: bool = False
+    #: Why, in words, when `level_mismatch` is true. Empty otherwise.
+    level_note: str = ""
 
     @property
     def answerable(self) -> bool:
@@ -196,6 +212,8 @@ class Envelope:
             "question_id": self.question_id, "kind": self.kind,
             "answerable": self.answerable,
             "blocked_reason": self.blocked_reason,
+            "level_mismatch": self.level_mismatch,
+            "level_note": self.level_note,
             "facts": [f.as_dict() for f in self.facts],
             "can_run": self.can_run,
             # Counted here rather than left to each caller, so two agents
@@ -213,6 +231,29 @@ class Envelope:
             # key nothing else uses.
             "query_hash": _query_hash(self.question),
         }
+
+
+@functools.lru_cache(maxsize=8)
+def _analysis_target_shapes(resource_type: str) -> dict:
+    """{analysis_id: target_shape} for one resource type, read straight from
+    `analysis_catalog.yaml` — no new declaration; every entry already carries
+    `target_shape` (default `"whole_resource_only"`). Used by `FactLayer.
+    _check_level` to tell a whole-database rollup from a real per-member
+    answer (design §18.3). Cached the same way `analysis_catalog_reader`'s
+    own loader is — this reads a small, rarely-changing YAML file, not
+    per-resource state, so caching by resource_type alone is safe; tests
+    that mutate the catalog on disk call `clear_cache()` below."""
+    from resource_explorer.surveyors.analysis_catalog_reader import get_analyses
+
+    return {
+        a["id"]: a.get("target_shape", "whole_resource_only")
+        for a in get_analyses(resource_type, include_egeria_live=False)
+    }
+
+
+def clear_target_shape_cache() -> None:
+    """Testing hook — mirrors every other catalog loader's `clear_cache()`."""
+    _analysis_target_shapes.cache_clear()
 
 
 #: answering.kind values that no amount of surveying will satisfy. Each is a
@@ -657,6 +698,92 @@ RESOURCE_STATE_SOURCES = {
 #: that answers gets stated, one that informs gets offered.
 EVIDENCE_ONLY = {"related_resources"}
 
+#: Owner's gate follow-up (2026-09-27): `_resource_state_fact` never set a
+#: `headline` at all — every resource-state-sourced question fell straight
+#: to `readEnvelope`'s rung-3 scalar fallback ("no written summary — the
+#: figures above are the raw measures"), the exact defect this whole area
+#: exists to close for analysis-backed facts, just never extended to these.
+#: `{subject: (value, state) -> str}` — a headline function per subject,
+#: not per resolver, since `survey_definitions` is shared by two resolvers
+#: with different value shapes (`_r_which_survey`'s `candidates` list vs
+#: `_r_survey_definition_exists`'s bare `authored`/`count`) and must handle
+#: both. Returning "" falls through to the scalar floor unchanged — the
+#: same "never fail to report a fact" contract `_headline_for` keeps.
+def _h_catalog_presence(value: dict, state: str) -> str:
+    siblings = value.get("siblings_in_group") or 0
+    group = value.get("group") or ""
+    if not group:
+        return "Registered, but not assigned to a group — no siblings to compare against."
+    if siblings:
+        return f"Registered in group {group!r}, alongside {siblings} other resource(s)."
+    return f"Registered in group {group!r}, with no other resources alongside it yet."
+
+
+def _h_related_resources(value: dict, state: str) -> str:
+    lang = value.get("primary_language") or ""
+    same_lang = value.get("same_language_count") or 0
+    same_group = value.get("same_group_count") or 0
+    if state == NOTHING_FOUND:
+        return "No candidate overlap found — no other resource shares its group or primary language."
+    parts = []
+    if same_group:
+        parts.append(f"{same_group} in the same group")
+    if same_lang:
+        parts.append(f"{same_lang} sharing its {lang or 'primary'} language")
+    return ("Candidate overlap only, not a judgement of replacement: "
+            + "; ".join(parts) + ".")
+
+
+def _h_survey_history(value: dict, state: str) -> str:
+    if state == NOTHING_FOUND:
+        return "Never surveyed at any tier."
+    return f"Last surveyed {value.get('last_surveyed_at', '')}."
+
+
+def _h_survey_definitions(value: dict, state: str) -> str:
+    if state == NOT_ESTABLISHED:
+        return value.get("detail") or "Egeria could not be reached, so this is not established."
+    if "candidates" in value:
+        count = value.get("count") or 0
+        if not count:
+            return "No Survey Definition is authored for this technology type."
+        names = ", ".join(value.get("candidates") or [])
+        return f"{count} Survey Definition(s) authored: {names}."
+    authored = value.get("authored")
+    count = value.get("count") or 0
+    tech = value.get("technology_type") or "this technology type"
+    return (f"{count} Survey Definition(s) authored for {tech}." if authored
+            else f"No Survey Definition is authored for {tech} — a catalog gap.")
+
+
+def _h_disposition(value: dict, state: str) -> str:
+    if state == NOTHING_FOUND:
+        return "No disposition recorded yet — undecided."
+    verdict = value.get("disposition") or ""
+    reason = value.get("reason") or ""
+    return f"{verdict.capitalize()}" + (f" — {reason}" if reason else ".")
+
+
+def _h_change_since_last_survey(value: dict, state: str) -> str:
+    if state == NOT_ESTABLISHED:
+        return "Nothing comparable yet — no prior survey to measure change against."
+    changed = value.get("changed_count") or 0
+    unchanged = value.get("unchanged_count") or 0
+    if not changed:
+        return f"Nothing has changed since the last survey ({unchanged} analysis(es) compared)."
+    names = ", ".join(c["analysis_id"] for c in (value.get("changed") or [])[:5])
+    return f"{changed} of {changed + unchanged} analysis(es) changed since the last survey: {names}."
+
+
+_RESOURCE_STATE_HEADLINES: dict[str, "Callable[[dict, str], str]"] = {
+    "catalog_presence": _h_catalog_presence,
+    "related_resources": _h_related_resources,
+    "survey_history": _h_survey_history,
+    "survey_definitions": _h_survey_definitions,
+    "disposition": _h_disposition,
+    "change_since_last_survey": _h_change_since_last_survey,
+}
+
 #: Kinds that ARE answerable, but not from analysis results — and not yet
 #: readable here. `direct` questions come from a field on the resource
 #: (Project.description and the like) and `chart` from a trend series. The
@@ -733,7 +860,7 @@ class FactLayer:
         )
 
     # ── one analysis ────────────────────────────────────────────────────────
-    def fact(self, slug: str, analysis_id: str) -> Fact:
+    def fact(self, slug: str, analysis_id: str, level: str = "resource") -> Fact:
         results_map = self._map("analysis_results_map")
         source_steps = self._map("analysis_source_steps") or {}
 
@@ -781,9 +908,26 @@ class FactLayer:
                 log.debug("live read failed for %s/%s: %s", slug, analysis_id, exc)
                 value = {}
             if _has_content(value):
+                # Slice 21b follow-up (2026-09-27, live gate on coco_pharma):
+                # this used to hardcode state=MEASURED whenever there was any
+                # content at all, bypassing `_state_for`'s own `_status`
+                # override entirely -- a live-read analysis (every database
+                # analysis is one; see DATABASE_ANALYSIS_KINDS's own comment)
+                # that attaches `_status={"state": NOT_ESTABLISHED, ...}` for
+                # thin coverage (db_relationship_graph/db_classification/
+                # grain_determination's own coverage check) had that override
+                # silently ignored here, reporting a confident "measured"
+                # over data that was 95% unmeasured -- the exact "correct
+                # number, wrong label" defect the owner's gate caught: the
+                # headline text already said "insufficient signal", the state
+                # field the UI actually gates a checkmark on did not agree.
+                # `_state_for` falls back to MEASURED (given `_has_content`
+                # is already true here) when no `_status` override exists, so
+                # this is a strict widening, not a behavior change, for every
+                # other live-read analysis that has never set one.
                 return Fact(
-                    analysis_id=analysis_id, state=MEASURED, value=value,
-                    headline=self._headline_for(analysis_id, slug),
+                    analysis_id=analysis_id, state=self._state_for(value, run), value=value,
+                    headline=self._headline_for(analysis_id, slug, level),
                     provenance=self._provenance_for(value), can_run=can_run,
                     note="Read live from data refreshed at ingestion, not from a "
                          "recorded survey run — current regardless of when a survey "
@@ -815,21 +959,63 @@ class FactLayer:
                 note=f"Results could not be read ({type(exc).__name__}).",
             )
 
+        if value is None:
+            # No results_reader registered for this analysis at all -- not to
+            # be confused with a reader that ran and measured a real zero
+            # (NOTHING_FOUND, below). See NO_READER's own docstring.
+            return Fact(
+                analysis_id=analysis_id, state=NO_READER, can_run=can_run,
+                last_run_at=run.get("last_run_at", ""),
+                note="This analysis ran; no summary reader exists yet for its "
+                     "results.",
+            )
+
         state = self._state_for(value, run)
         return Fact(
             analysis_id=analysis_id, state=state, value=value,
-            headline=self._headline_for(analysis_id, slug),
+            headline=self._headline_for(analysis_id, slug, level),
             provenance=self._provenance_for(value),
             last_run_at=run.get("last_run_at", ""), can_run=can_run,
             note=self._note_for(state, value, run),
         )
 
-    def _headline_for(self, analysis_id: str, slug: str) -> str:
-        """The analysis's own summary sentence, or "".
+    def _headline_for(self, analysis_id: str, slug: str, level: str = "resource") -> str:
+        """The analysis's own summary sentence, or "" — level-aware (slice
+        21a). Before this, the SAME resource-level sentence answered every
+        question an analysis backs regardless of the question's own
+        declared level — found live, owner's question 2026-09-26: "How big
+        is this database" (`levels: [resource, container]`) and "Which
+        schemas carry the data...?" (`levels: [container]` alone) both
+        rendered schema_inventory's identical resource-level headline, so
+        the second question ticked ✓ on a line that names schemas but
+        classifies none.
+
+        `level` at any value other than "resource" first tries the
+        resource type's `analysis_container_headline_map` (a SEPARATE
+        provider from `analysis_headline_map` — see that field's own
+        docstring in `survey_definition_executor.py` for why the shape of
+        the existing, level-agnostic map could not simply change). Only
+        `schema_inventory` registers one today; every other analysis, and
+        every level that isn't specifically registered, falls straight
+        through to the ordinary resource-level reading below — "readers
+        that don't declare level support return the resource headline for
+        any level," the coordinator's own no-regression rule.
 
         Best-effort by design: this layer must never fail to report a fact
         because the sentence describing it could not be built.
         """
+        if level != "resource":
+            container_map = self._map("analysis_container_headline_map") or {}
+            container_reader = container_map.get(analysis_id)
+            if container_reader is not None:
+                try:
+                    head = container_reader(self._registry, slug) or {}
+                except Exception as exc:
+                    log.debug("container headline read failed for %s/%s/%s: %s",
+                              slug, analysis_id, level, exc)
+                    return ""
+                return str(head.get("label") or "")
+
         kind = (self._map("analysis_kinds") or {}).get(analysis_id)
         reader = getattr(getattr(kind, "results", None), "headline_reader", None)
         if reader is None:
@@ -841,12 +1027,31 @@ class FactLayer:
             return ""
         return str(head.get("label") or "")
 
-    def _read_results(self, slug: str, analysis_id: str, entry) -> dict:
+    def _level_specific_headline_exists(self, analysis_id: str, level: str) -> bool:
+        """Would `_headline_for(analysis_id, ..., level)` return a GENUINE
+        reading at `level`, rather than falling back to the resource
+        headline? "Resource" always counts (it IS the base reading); any
+        other level requires this exact analysis_id to have its own entry
+        in `analysis_container_headline_map` — used by `_check_level` to
+        tell "this fact's headline answers the question's own containment
+        claim" from "this fact's headline is the resource-fallback text,
+        rendered so something shows, but not an answer at this level."
+        """
+        if level == "resource":
+            return True
+        container_map = self._map("analysis_container_headline_map") or {}
+        return analysis_id in container_map
+
+    def _read_results(self, slug: str, analysis_id: str, entry) -> dict | None:
+        """The reader's own result, or `None` when no reader is registered at
+        all -- `{}` (falsy but not `None`) still means "a reader ran and
+        returned nothing", which `_state_for` must tell apart from this."""
         reader = entry[0] if isinstance(entry, (tuple, list)) else entry
-        if callable(reader):
-            return reader(self._registry, slug) or {}
-        reader = getattr(entry, "results_reader", None)
-        return (reader(self._registry, slug) or {}) if callable(reader) else {}
+        if not callable(reader):
+            reader = getattr(entry, "results_reader", None)
+        if not callable(reader):
+            return None
+        return reader(self._registry, slug) or {}
 
     @staticmethod
     def _state_for(value: dict, run: dict) -> str:
@@ -938,8 +1143,8 @@ class FactLayer:
         return ""
 
     # ── many analyses ───────────────────────────────────────────────────────
-    def facts(self, slug: str, analysis_ids: list) -> list:
-        results = [self.fact(slug, a) for a in analysis_ids]
+    def facts(self, slug: str, analysis_ids: list, level: str = "resource") -> list:
+        results = [self.fact(slug, a, level) for a in analysis_ids]
         # The one choke point every consumer of "what is known about this
         # resource" already goes through (resource_facts, bulk_resource_facts,
         # the Questions tab's has_data checks) — so the gaps collection
@@ -996,13 +1201,206 @@ class FactLayer:
                 "nothing to read."
             )
             return env
-        env.facts = self.facts(slug, ids)
+        env.facts = self.facts(slug, ids, self._primary_level(question))
         if not env.answerable:
             env.blocked_reason = (
                 "Nothing has been measured for this yet."
                 + (f" Run: {', '.join(env.can_run)}." if env.can_run else "")
             )
+        else:
+            self._check_level(env, question)
         return env
+
+    #: Levels named below "resource" (design §18.3's engine-neutral
+    #: vocabulary: database=resource, schema=container, table=member,
+    #: column=field). A question carrying only "resource" (the default for
+    #: every entry generated before the `Level` column existed) is exempt —
+    #: a whole-resource rollup genuinely IS the answer at that level.
+    _SUB_RESOURCE_LEVELS = frozenset({"container", "member", "field"})
+
+    def _primary_level(self, question: dict) -> str:
+        """The single level to build this question's facts/headlines at
+        (slice 21a). A question can declare MORE THAN ONE level — "How big
+        is this database" is `[resource, container]`, "Which schemas carry
+        the data...?" is `[container]` alone (design §18.3's CSV column).
+
+        `resource` wins when it is one of the declared levels: until the
+        scope model (slice 19) gives sub-resource levels their own
+        navigable screen, every question is asked from the whole-resource
+        page, so a question that declares BOTH is read as "the
+        whole-resource summary, which also happens to be answerable
+        per-container elsewhere" — "How big"'s own headline is unchanged by
+        this slice, per the coordinator's own gate. A question with NO
+        resource-level declaration has no resource reading to fall back to
+        at all, so it gets its own (first) sub-resource level instead.
+        """
+        levels = question.get("levels") or ["resource"]
+        if "resource" in levels:
+            return "resource"
+        for lv in levels:
+            if lv in self._SUB_RESOURCE_LEVELS:
+                return lv
+        return "resource"
+
+    #: Mirrors `app.js`'s `scalarMeasures()` closely enough to answer one
+    #: question — would rung 3 of `readEnvelope` find anything to say at
+    #: all — never a general-purpose renderer. Both must be kept in step by
+    #: hand; there is no shared source between a Python backend and a
+    #: browser-side fallback formatter.
+    _SCALAR_FALLBACK_MAX_LEN = 60
+
+    def _renders_text(self, fact: "Fact") -> bool:
+        """Would ANYTHING on this fact reach the screen — `readEnvelope`'s
+        rung 1 (`headline`), rung 2 (`value.detail`/`summary`/`description`
+        prose), or rung 3 (`scalarMeasures()`'s last-resort `key value`
+        dump)? Slice 17c's own trigger: `db_resilience` ties four nested
+        dicts (`replication`/`wal_archiving`/`backup_tool_signals`/
+        `clustering`) together with no top-level scalar anywhere, so rung 3
+        — which explicitly skips every list/object field by design — can
+        NEVER produce a line for it, structurally, on every run, not only
+        the runs the gate happened to catch live. A known fact with nothing
+        renderable is not an answer; the checkmark it sits under is the one
+        the whole fact/envelope layer exists to keep honest.
+
+        `NOTHING_FOUND` gets its own rung, ahead of headline/prose/scalar,
+        matching `readEnvelope`'s own ordering (`app.js`): a fact whose
+        state is `NOTHING_FOUND` and carries no headline/prose still
+        renders a synthesized sentence there — "`<analysis_id>` ran and
+        found nothing." Missing this case here produced a genuine
+        contradiction live (`coco_pharma`, 2026-09-26): a card showed BOTH
+        that synthesized sentence AND "This ran; no summary reader exists
+        yet for its results.", because `_renders_text` (not knowing about
+        `readEnvelope`'s special case) concluded nothing rendered and
+        `_check_level` added its own note on top of an answer that, in
+        fact, already rendered one. A measured zero is knowledge (see
+        `Fact.is_known`'s own docstring) and must not ALSO be treated as
+        "nothing to show."
+        """
+        if (fact.headline or "").strip():
+            return True
+        if fact.state == NOTHING_FOUND:
+            return True
+        value = fact.value or {}
+        for key in ("detail", "summary", "description"):
+            v = value.get(key)
+            if isinstance(v, str) and v.strip():
+                return True
+        for k, v in value.items():
+            if v is None or v == "" or k == "verdict":
+                continue
+            if isinstance(v, (dict, list)):
+                continue
+            if len(str(v)) > self._SCALAR_FALLBACK_MAX_LEN:
+                continue
+            return True
+        return False
+
+    def _check_level(self, env: "Envelope", question: dict) -> None:
+        """Withhold the checkmark (design §18.3) when nothing that actually
+        reaches the screen answers this question — either because nothing
+        renders at ANY level, or because the question is asked below
+        `resource` level and nothing names an item at that level.
+
+        First cut of this gate (slice 17) bound the sub-resource-level check
+        to `target_shape` — a static catalog declaration of what an
+        analysis is CAPABLE of producing. Live gate on `coco_pharma`
+        (2026-09-26) found that wrong: "Which schemas carry the data"
+        stayed ticked with the rendered answer reading "table count 56 ·
+        column count 427" — no schema named anywhere — because
+        `schema_inventory` declares `target_shape: single_container` (it
+        does store one row per table, schema_name and all) even though
+        nothing renders that breakdown. Slice 17b's fix bound the
+        sub-resource check to whether a known fact produced a `headline`.
+
+        The SAME gate on the very next screen (still 2026-09-26) found the
+        identical defect one level up: "Is this database a primary or a
+        replica..." — a plain `resource`-level question, exempt from the
+        sub-resource check entirely — showed a ✓ with NO answer text at
+        all, because `db_resilience` has no `headline_reader` and its
+        value is four nested dicts, which `scalarMeasures()`'s fallback
+        (rung 3) skips by design. `target_shape`-vs-`headline` was never
+        the right axis to generalize; "does the checkmark's own fact
+        produce a line of text, at any level" is. `_renders_text` answers
+        that directly, so this method now runs it FIRST and unconditionally
+        (`levels` no longer gates whether the check happens at all — only
+        whether the stricter member-naming rule on top of it applies).
+
+        `target_shape` still decides what the NOTE says once a sub-resource
+        question additionally fails the headline-specific check, because
+        "nothing to show" (`whole_resource_only`) and "rows exist, no
+        reader shows them" (anything else) point different people at
+        different follow-ups — the second is a live pointer at slice 22's
+        per-schema view.
+
+        Deliberately conservative in the same way as before: only ids that
+        actually CONTRIBUTED a known fact are checked, and one fact with
+        renderable text (rung 1-3) is enough to clear the first check; one
+        with a headline specifically (rung 1) is enough to clear the
+        sub-resource one.
+        """
+        known = [f for f in env.facts if f.is_known]
+        if not known:
+            return
+        if not any(self._renders_text(f) for f in known):
+            env.level_mismatch = True
+            env.level_note = (
+                "This ran; no summary reader exists yet for its results."
+            )
+            return
+
+        levels = question.get("levels") or ["resource"]
+        sub_levels = [lv for lv in levels if lv in self._SUB_RESOURCE_LEVELS]
+        if not sub_levels:
+            return
+        # Slice 21a: a question whose PRIMARY level (see `_primary_level`) is
+        # still "resource" — because it also declares `resource` alongside a
+        # sub-level, like "How big is this database" ([resource, container])
+        # — keeps the pre-existing rule: any non-empty headline clears it,
+        # since a whole-database rollup genuinely does answer that question.
+        # A question with NO resource fallback at all — "Which schemas carry
+        # the data...?" is `[container]` alone — has nothing to fall back to,
+        # so its headline must have come from a GENUINE level-specific
+        # reader, not `_headline_for`'s own resource-headline fallback (which
+        # exists so a reader with no level support keeps rendering
+        # something, not so that fallback text can satisfy a level-only
+        # question's own checkmark). Otherwise an analysis that ships a
+        # container reader for another question, but not this one's own
+        # analysis_id, would tick on text that never answered this
+        # question's own containment claim at all.
+        primary_level = self._primary_level(question)
+        if primary_level == "resource":
+            if any((f.headline or "").strip() for f in known):
+                return
+        else:
+            if any(
+                (f.headline or "").strip()
+                and self._level_specific_headline_exists(f.analysis_id, primary_level)
+                for f in known
+            ):
+                return
+        known_ids = [f.analysis_id for f in known]
+        shapes = _analysis_target_shapes(self.resource_type)
+        capable_ids = [
+            aid for aid in known_ids
+            if shapes.get(aid, "whole_resource_only") != "whole_resource_only"
+        ]
+        env.level_mismatch = True
+        if capable_ids:
+            env.level_note = (
+                f"Answered, but not at {'/'.join(sub_levels)} level — "
+                + (f"{capable_ids[0]} stores per-{sub_levels[0]} rows"
+                   if len(capable_ids) == 1
+                   else f"{', '.join(capable_ids)} store per-{sub_levels[0]} rows")
+                + f", but no reader shows them yet."
+            )
+        else:
+            env.level_note = (
+                "Answered only as a whole-resource rollup — this question is "
+                f"asked at {'/'.join(sub_levels)} level and "
+                + (f"{known_ids[0]} names no {sub_levels[0]}."
+                   if len(known_ids) == 1
+                   else f"none of {', '.join(known_ids)} name one.")
+            )
 
     # ── internals ───────────────────────────────────────────────────────────
     def _resource_state_fact(self, slug: str, resolver, subject: str) -> Fact:
@@ -1022,12 +1420,27 @@ class FactLayer:
             log.debug("resource-state resolver failed for %s/%s: %s", slug, subject, exc)
             return Fact(subject, NOT_ESTABLISHED,
                         note=f"Could not be read ({type(exc).__name__}).")
+        headline = self._resource_state_headline(slug, subject, value, state)
         return Fact(
-            subject, state, value=value, provenance=PROVENANCE_MEASURED,
+            subject, state, value=value, headline=headline, provenance=PROVENANCE_MEASURED,
             evidence_only=subject in EVIDENCE_ONLY,
             note=("Nothing is recorded for this — a real absence, not an "
                   "unrun analysis." if state == NOTHING_FOUND else ""),
         )
+
+    @staticmethod
+    def _resource_state_headline(slug: str, subject: str, value: dict, state: str) -> str:
+        """The resource-state fact's own summary sentence, or "" — best
+        effort, mirroring `_headline_for`'s own "must never fail to report a
+        fact because the sentence could not be built" contract."""
+        headline_fn = _RESOURCE_STATE_HEADLINES.get(subject)
+        if headline_fn is None:
+            return ""
+        try:
+            return headline_fn(value, state) or ""
+        except Exception as exc:
+            log.debug("resource-state headline failed for %s/%s: %s", slug, subject, exc)
+            return ""
 
     def _last_run(self, slug: str) -> dict:
         """{analysis_id: {last_run_at, basis, partial}} — one query per resource.

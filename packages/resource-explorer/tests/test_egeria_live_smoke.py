@@ -223,6 +223,42 @@ class TestTheByNameFallbackWorks:
         # tests the reset rather than the fallback, so skip with the reason
         # instead of failing — this test is about the by-name mechanism, not
         # about whether the catalog happens to be populated right now.
+        #
+        # The linkage table only reflects PAST detected divergences
+        # (`guard_linkage`/`note_divergence` fire reactively, the next time
+        # something actually uses a cached GUID) — a database nothing has
+        # surveyed/published recently can carry a genuinely dead GUID with no
+        # linkage row at all, which read as "not stale" and let this test pick
+        # it and fail for the same reason a stale one would have been skipped
+        # for. Found live 2026-09-26: `egeria_optional_prefect_db` had no
+        # linkage row (never probed), but its cached GUID 404s exactly like
+        # `coco_pharma`'s recorded-stale one does — this test's own skip
+        # message already says to run `resource-explorer egeria-recheck`
+        # first; it just never did so itself. `recheck_all_linkages`
+        # proactively asks Egeria about every cached database GUID and
+        # records/clears staleness accordingly, so the filter below is
+        # trustworthy.
+        #
+        # This WRITES to the shared registry (`mark_egeria_linkage_stale`/
+        # `clear_egeria_linkage_status`) from inside a test — acceptable only
+        # here because (a) it records what is actually true (a proactive
+        # confirmation, not a guess), and (b) this whole file is a live-smoke
+        # suite that already talks to the real Egeria platform; it is not a
+        # pattern to copy into an isolated/unit test. Skip cleanly rather than
+        # error if the registry can't be written to or Egeria can't be
+        # reached at all — this test is about the by-name mechanism, not
+        # about connectivity, and a connection failure here is not evidence
+        # that mechanism is broken. Fixed here (not in the Slice 12 branch
+        # this was first diagnosed from) since `is_published` honouring
+        # linkage staleness (this same branch) is what makes the resulting
+        # `stale` records user-visible — the coordinator's own call.
+        from resource_explorer.egeria_linkage import recheck_all_linkages
+        try:
+            recheck_all_linkages(registry, entity_types=["database"])
+        except Exception as exc:
+            pytest.skip(f"could not recheck Egeria linkages before selecting a "
+                        f"database (registry unwritable or Egeria unreachable): {exc}")
+
         cataloged = [
             d for d in registry.list_databases()
             if d.egeria_asset_guid

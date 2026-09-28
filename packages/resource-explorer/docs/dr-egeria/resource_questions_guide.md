@@ -71,6 +71,7 @@ script runs.
 | `Rationale/Source` | Optional but expected | Longer explanation: where the answer comes from, what tooling/signal is involved, any caveats. Becomes the term's **Description** (falls back to the question text itself if left blank). This is the column most worth writing carefully — it's what someone reads to understand *why* the answer works the way it does. |
 | `Answering Analysis` | Optional, RE-internal | Free text describing how RE answers this today. Parsed by the generator into a structured `kind` — see **Answering Analysis conventions** below. Not published to Egeria. |
 | `Answering Mechanism` | Optional, RE-internal | Which engine answers the question — one of: `Git Statistics`, `Code Analysis`, `RAG Queries`, `Agent-Based Analysis`, `Egeria Queries`, `Local Registry Query`, `Human-Supplied`, `Direct Field`, `Trend Chart`, `Gap`, `Automate Change Detection`, or a `+`-joined combination (e.g. `Code Analysis + Egeria Queries`). Orthogonal to `Answering Analysis`'s `kind` — this says *which system* answers it, not *how confidently*. Not published to Egeria. |
+| `Level` | Optional, RE-internal | The resource granularity at which the answer is a **single value**, `;`-separated from a controlled vocabulary — see **Level** below. Blank means `resource`. A typo fails the build, like `Purposes`. Not published to Egeria yet. |
 | **Perspective columns** (everything after `Answering Mechanism`) | Optional per question | One column per Perspective: `Financial`, `Governance`, `Steward`, `Data Owner`, `Consumer`, `App/AI Builder`, `Privacy`, `Community`, `Data Expert`, `Security`, `Architecture`, `Admin`. Put an `X` (any non-empty value works, but use `X` for consistency) in every column that applies to this question. Leave the cell blank if the perspective doesn't apply. A question can — and often should — have several perspectives marked. |
 
 The generator treats **every column that isn't one of the named lead
@@ -114,6 +115,63 @@ descriptions live in `docs/dr-egeria/foundations/foundations.md`; summary:
 - **Security** — risk signals: CVEs, dependency vulnerabilities, security responsiveness.
 - **Architecture** — how the resource fits the broader information architecture/supply chain.
 - **Admin** — operational/infrastructure upkeep, access, reliability.
+
+## The headline rule — what an answer line must contain
+
+**Decision (project owner, 2026-09-26):** the one-line answer to a question
+covers **every part the question asks**, in the fewest words, and nothing
+the question did not ask. "Is this database a primary or a replica, is it
+clustered, and is WAL archiving or backup configured?" asks four things, so
+its line has four clauses: "primary; not clustered; WAL archiving off; no
+backup tool detected". Supporting detail — lag figures, archiver counters,
+tool names, grant lists — goes under *evidence* or is reached by a chat
+follow-up, never into the line. If the question were only "is this database
+a primary or a replica?", the line would stop at "primary" and the rest
+would be evidence. Write the `Question` cell with this in mind: each clause
+you put in the question is a clause the headline reader must answer.
+
+## `Level` — which granularity the question is about
+
+Added 2026-09-25 (`docs/multi-resource-questions-design.md` §18.3), because
+questions phrased at database level were being answered with whole-database
+rollups that named nothing — "which schemas carry the data" answered with a
+table count. `Level` says where a question's answer is a *single value*;
+asked at a higher level, it answers as a ranked distribution (top 10 and
+"13 more", total across the scope) without any extra rows in the CSV.
+
+**Vocabulary** — four engine-neutral values, because "schema" does not exist
+on every engine and the level names come from the engine's containment
+declaration:
+
+| Value | database | filesystem | dataset | repository |
+|---|---|---|---|---|
+| `resource` | the database | the registered root | the dataset | the repository |
+| `container` | schema (or the engine's namespace level: MySQL has none, Oracle's is the owner) | folder | distribution or split | component |
+| `member` | table (or view) | file | file | file |
+| `field` | column | field in a data file | field | symbol |
+
+**Writing it.** One value, or several `;`-separated when the question is
+natural at more than one level: "How big is this database?" is
+`resource;container` — one figure for the database *and* the same answer per
+schema, not a derived distribution. "How many rows?" is `member`; "which
+columns hold personal data?" is `field`; "is this database a primary or a
+replica?" is `resource`. Cross-type rows (`Resource Types` = `*`) are
+`resource` unless you have a reason. Leave the cell blank and it means
+`resource`.
+
+**What consumes it.** `question_catalog.yaml` carries it as `levels`;
+`QuestionCatalogEntry.levels` defaults to `["resource"]`; the Questions tab
+will filter by the current focus (a schema, a cluster, a table — design
+§18.1) and roll up what is below it. It does **not** affect the survey
+definitions: the `ScopedBy` links are per question, so regenerating them
+after adding the column changes nothing.
+
+**One rule to check before choosing `member` or `field`:** the answering
+analysis must produce per-table or per-column rows. A `member` question
+wired to an analysis that only stores whole-database counts is exactly the
+"answered with counts, no schema named" failure this column exists to
+prevent. The guard that enforces it arrives with the analyses' `scopes`
+declaration (design §18.4); until then, check the results reader by hand.
 
 ## `Answering Analysis` conventions
 

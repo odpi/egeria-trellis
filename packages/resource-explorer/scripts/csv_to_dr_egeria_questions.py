@@ -116,7 +116,10 @@ REQUIRED_COLUMNS = ["Question", "Funnel Stage"]
 # steers RE's own catalog generation only. It is listed here purely so the
 # by-elimination perspective scan does not turn it into a thirteenth
 # Perspective on every row.
-OPTIONAL_LEAD_COLUMNS = ["Why is this important?", "Rationale/Source", "Answering Analysis", "Answering Mechanism", "Purposes", "Catalog History", "Status", "Resource Types"]
+# "Level" (2026-09-25, design §18.3) is RE-internal like Purposes: the
+# granularity the answer is a single value at. Not published to Egeria yet —
+# it will ride the same valid-value-set mechanism as Purposes (§10).
+OPTIONAL_LEAD_COLUMNS = ["Why is this important?", "Rationale/Source", "Answering Analysis", "Answering Mechanism", "Purposes", "Catalog History", "Status", "Resource Types", "Level"]
 
 
 def _block(command: str, **fields: str) -> str:

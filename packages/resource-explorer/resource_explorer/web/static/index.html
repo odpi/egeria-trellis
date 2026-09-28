@@ -11868,6 +11868,12 @@ const _FACT_STATE_TEXT = {
   never_run:       { icon: '·', text: 'never run here' },
   not_established: { icon: '?', text: 'cannot be established from what was recorded' },
   partial:         { icon: '◐', text: 'ran over part of what it covers' },
+  // No results_reader is registered for this analysis at all -- distinct
+  // from nothing_found, which is a reader that ran and measured a real
+  // zero. Live-reproduced 2026-09-25 (REVIEW-SURVEY-PANE-285.md): before
+  // this state existed, an analysis with no reader fell through to
+  // nothing_found's wording and claimed a "measured zero" it never took.
+  no_reader:       { icon: '·', text: 'ran; no summary reader exists yet for its results' },
 };
 
 async function _renderEnvelopeMarkdown(env, slug, opts) {

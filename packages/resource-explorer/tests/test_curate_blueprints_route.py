@@ -18,6 +18,12 @@ from fastapi.testclient import TestClient
 
 from resource_explorer.registry import Project, ProjectRegistry
 
+# See test_investigation_routes.py's identical pytestmark / conftest.py's
+# mock_egeria_client_connections docstring — the accept round trip here
+# reaches an unmocked pyegeria client construction that spends ~60s on two
+# real check_connection() handshakes when Egeria is unreachable.
+pytestmark = pytest.mark.usefixtures("mock_egeria_client_connections")
+
 
 @pytest.fixture
 def registry(tmp_path):

@@ -273,12 +273,19 @@ register_adapter(_ADAPTER)
 
 #: analysis_id -> the re_analysis_step key(s) that produce it — the
 #: filesystem equivalent of database/survey_definition_adapter's
-#: DATABASE_ANALYSIS_STEP_MAP (see that constant's docstring for the full
-#: reasoning). Filesystem has exactly one local re_analysis_step and one
-#: analysis_catalog.yaml entry today, so this is a 1:1 map rather than a
-#: fan-out — kept as its own named constant anyway, matching the per-
-#: resource-type convention, so a second filesystem analysis added later has
-#: an obvious place to be attributed rather than a special case bolted on.
+#: DATABASE_ANALYSIS_RE_STEP_MAP (see that constant's docstring for the full
+#: reasoning, and slice 17's fix — docs/design-notes/SLICE-17-RUNNABILITY-
+#: FROM-CATALOG-IMPLEMENTED.md — for the bug a hand-maintained, un-derived
+#: copy of a map like this one can develop). Filesystem has exactly one
+#: local re_analysis_step and one analysis_catalog.yaml entry today, so this
+#: is a 1:1 map rather than a fan-out — kept as its own named constant
+#: anyway, matching the per-resource-type convention, so a second filesystem
+#: analysis added later has an obvious place to be attributed rather than a
+#: special case bolted on. **Known risk, out of slice 17's scope (database-
+#: only)**: if filesystem grows a second, zero-fetch-style analysis the way
+#: database's `db_derived` did, this map would need the same "derive from
+#: the real backing set" treatment rather than a second hand-maintained
+#: entry — flagged, not fixed, since nothing here is broken today.
 FILESYSTEM_ANALYSIS_STEP_MAP: dict[str, list[str]] = {
     "filesystem_inventory": ["filesystem_inventory"],
 }

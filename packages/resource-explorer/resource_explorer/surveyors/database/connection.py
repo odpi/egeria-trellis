@@ -440,20 +440,59 @@ class PostgreSQLConnection(DatabaseConnection):
             return []
 
     def get_schema_info(self) -> dict:
-        """Get PostgreSQL schema information."""
-        # Query information_schema for schemas (excluding system schemas)
+        """Get PostgreSQL schema information.
+
+        `information_schema.schemata` is privilege-filtered by Postgres
+        itself, to schemas the connected role owns or holds ANY grant on —
+        a schema with zero privilege (not even `USAGE`) never appears here
+        at all, and everything below is keyed off this list, so that
+        schema's tables were never even attempted. This is the identical
+        gap `get_credential_capability()`'s own docstring documents having
+        hit and fixed for the credential-visibility PROBE (an 8-vs-6
+        schema undercount, `coco_pharma`) by reading `pg_namespace`
+        directly instead — a fix that was never carried back to this
+        enumeration, so the probe and this inventory could (and did,
+        `coco_pharma` 2026-09-26: 61 vs. 56 tables) disagree on the
+        database's own totals. Design ruling (security-model.md
+        §2.1/§3.4): on an engine whose structural floor is unprivileged
+        (Postgres), every enumeration reads that floor, never a
+        privilege-filtered view, so there is exactly one denominator.
+
+        Fixed by adding a second pass below: any schema `_enumerate_relations`
+        (the same unprivileged `pg_namespace`/`pg_class` floor
+        `get_credential_capability` uses) sees that the privileged loop
+        above missed is read the same way `_catalog_only_fallback` already
+        reads a table `information_schema` couldn't see WITHIN an
+        already-known schema — `pg_class`/`pg_attribute` are catalog
+        metadata, not privilege-filtered, so table names, relation kinds,
+        and column names/types ARE visible with zero grants; only row data
+        and comments are not. Each such table is tagged `source:
+        "catalog_fallback"`, the same marker `database_rows_from_survey_data`
+        (`result_materializer.py`) already recognizes and stores as
+        `STATE_CATALOG_ESTIMATE` — no downstream change needed for the
+        table-level honesty; a zero-privilege schema now appears with real,
+        named tables in "structure only" state rather than not appearing at
+        all.
+        """
+        errors: dict[str, str] = {}
         schemas_query = """
             SELECT schema_name
             FROM information_schema.schemata
             WHERE schema_name NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
             ORDER BY schema_name
         """
-        schemas = self.execute_query(schemas_query)
+        try:
+            schemas = self.execute_query(schemas_query)
+        except Exception as exc:
+            errors["schemas"] = str(exc)
+            schemas = []
         schema_descriptions = self._get_schema_descriptions()
 
         result = {"schemas": [], "total_tables": 0, "total_columns": 0}
+        seen_schema_names: set[str] = set()
         for schema in schemas:
             schema_name = schema["schema_name"]
+            seen_schema_names.add(schema_name)
             tables = self._get_tables_for_schema(schema_name)
             result["schemas"].append({
                 "name": schema_name,
@@ -463,7 +502,81 @@ class PostgreSQLConnection(DatabaseConnection):
             result["total_tables"] += len(tables)
             result["total_columns"] += sum(len(t["columns"]) for t in tables)
 
+        try:
+            floor_schemas, _floor_tables = self._enumerate_relations()
+        except Exception as exc:
+            errors["enumeration_floor"] = str(exc)
+            floor_schemas = []
+        for s in floor_schemas:
+            schema_name = s.get("schema_name")
+            if not schema_name or schema_name in seen_schema_names:
+                continue
+            seen_schema_names.add(schema_name)
+            try:
+                catalog_tables = self._catalog_table_summary(schema_name)
+            except Exception as exc:
+                errors[f"schema:{schema_name}"] = str(exc)
+                catalog_tables = {}
+            tables = []
+            for table_name, info in catalog_tables.items():
+                tables.append({
+                    "name": table_name,
+                    "type": info.get("table_type") or "",
+                    "description": "",
+                    "columns": self._catalog_columns_for_table(schema_name, table_name),
+                    "source": "catalog_fallback",
+                    "row_count_estimate": info.get("reltuples"),
+                    "row_count_basis": "estimated",
+                })
+            result["schemas"].append({
+                "name": schema_name,
+                "description": schema_descriptions.get(schema_name, ""),
+                "tables": tables,
+                # Distinguishes "found via the floor, zero USAGE grant" from
+                # an ordinary schema above -- not yet rendered anywhere (no
+                # per-schema view exists until slice 22), but present so
+                # that view can tell the two apart without re-deriving it.
+                "access": "no_usage",
+            })
+            result["total_tables"] += len(tables)
+            result["total_columns"] += sum(len(t["columns"]) for t in tables)
+
+        if errors:
+            result["_errors"] = errors
         return result
+
+    def _enumerate_relations(self) -> tuple[list[dict], list[dict]]:
+        """The unprivileged floor: every non-system schema and relation in
+        this database, read straight from `pg_namespace`/`pg_class` —
+        readable by any connected role regardless of `USAGE`/`SELECT`
+        grants (`get_credential_capability()`'s own docstring establishes
+        this). The single enumeration both the credential-capability probe
+        and `get_schema_info()`'s inventory read from, so the two can no
+        longer independently drift on how many schemas or tables this
+        database has (design ruling, security-model.md §2.1/§3.4,
+        2026-09-26 — see `get_schema_info()`'s docstring for the incident
+        that prompted it). Raises on failure; callers record the error on
+        their own section rather than this shared helper silently
+        defaulting, since what "no rows" should mean differs per caller.
+        """
+        schemas = self.execute_query("""
+            SELECT n.nspname AS schema_name,
+                   has_schema_privilege(current_user, n.nspname, 'USAGE') AS usage_granted
+            FROM pg_namespace n
+            WHERE n.nspname NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
+            ORDER BY n.nspname
+        """)
+        tables = self.execute_query("""
+            SELECT n.nspname AS schema_name, c.relname AS table_name, c.relkind,
+                   has_table_privilege(current_user, c.oid, 'SELECT') AS can_select,
+                   has_table_privilege(current_user, c.oid, 'INSERT') AS can_insert
+            FROM pg_class c
+            JOIN pg_namespace n ON n.oid = c.relnamespace
+            WHERE c.relkind IN ('r', 'v', 'm', 'f', 'p')
+              AND n.nspname NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
+            ORDER BY n.nspname, c.relname
+        """)
+        return schemas, tables
 
     def _get_schema_descriptions(self) -> dict[str, str]:
         """Return {schema_name: description} from pg_namespace."""
@@ -504,44 +617,27 @@ class PostgreSQLConnection(DatabaseConnection):
         richer exact data (real PK/FK, `is_nullable`, `column_default`,
         exact comments) that only that path can supply.
         """
-        # Get primary keys for the schema
-        pk_query = """
-            SELECT kcu.table_name, kcu.column_name
-            FROM information_schema.table_constraints tc
-            JOIN information_schema.key_column_usage kcu
-                ON tc.constraint_name = kcu.constraint_name
-                AND tc.table_schema = kcu.table_schema
-            WHERE tc.constraint_type = 'PRIMARY KEY'
-            AND tc.table_schema = %s
-        """
-        pk_rows = self.execute_query(pk_query, (schema_name,))
-        pk_lookup: dict[str, set] = {}
-        for r in pk_rows:
-            pk_lookup.setdefault(r["table_name"], set()).add(r["column_name"])
-
-        # Get foreign keys for the schema
-        fk_query = """
-            SELECT
-                kcu.table_name, kcu.column_name,
-                ccu.table_schema AS foreign_schema,
-                ccu.table_name AS foreign_table,
-                ccu.column_name AS foreign_column
-            FROM information_schema.table_constraints tc
-            JOIN information_schema.key_column_usage kcu
-                ON tc.constraint_name = kcu.constraint_name AND tc.table_schema = kcu.table_schema
-            JOIN information_schema.constraint_column_usage ccu
-                ON ccu.constraint_name = tc.constraint_name AND ccu.table_schema = tc.table_schema
-            WHERE tc.constraint_type = 'FOREIGN KEY'
-            AND tc.table_schema = %s
-        """
-        fk_rows = self.execute_query(fk_query, (schema_name,))
-        fk_lookup: dict[tuple, dict] = {}
-        for r in fk_rows:
-            fk_lookup[(r["table_name"], r["column_name"])] = {
-                "foreign_schema": r["foreign_schema"],
-                "foreign_table": r["foreign_table"],
-                "foreign_column": r["foreign_column"],
-            }
+        # Primary/foreign keys: read from `pg_constraint`/`pg_index` via
+        # `_catalog_keys_for_schema()`, not `information_schema.
+        # table_constraints`/`key_column_usage`/`constraint_column_usage`.
+        #
+        # This used to be two separate `information_schema` queries here,
+        # promoted to the fallback-only `_catalog_keys_for_schema()` in
+        # Slice 21b and now promoted again to be the ONLY path (2026-09-27,
+        # BRIEF-KEYS-AND-ACTIVITY-CLOBBER.md §A). `constraint_column_usage`
+        # is not keyed per column: when a referenced table (e.g.
+        # `person.businessentity`) carries several referencing FK
+        # constraints, the join multiplies or collapses rows depending on
+        # constraint shape, and the same defect shape hit the PK query.
+        # Verified live against `laz_local_adventureworks` on 2026-09-27:
+        # this path recovered 91/91 FK columns and 181/181 PK columns
+        # versus 71/99 from the retired queries above.
+        #
+        # `pg_lookup`/`fk_lookup` may come back `None` (not `{}`) if their
+        # own catalog query failed — see `_catalog_keys_for_schema()`'s
+        # docstring for why that distinction matters and must be preserved
+        # here rather than collapsed into a confident `False`/absent.
+        pk_lookup, fk_lookup = self._catalog_keys_for_schema(schema_name)
 
         # Main query: tables + columns with descriptions
         query = """
@@ -586,8 +682,23 @@ class PostgreSQLConnection(DatabaseConnection):
                 }
             if row["column_name"]:
                 col_name = row["column_name"]
-                is_pk = col_name in pk_lookup.get(table_name, set())
-                fk = fk_lookup.get((table_name, col_name))
+                # `None` means the catalog PK/FK query itself failed for
+                # this schema — propagate that as "not established" rather
+                # than a confident `False`/absent (see
+                # `_catalog_keys_for_schema()`'s docstring).
+                is_pk = (
+                    None if pk_lookup is None
+                    else col_name in pk_lookup.get(table_name, set())
+                )
+                fk_entries = (
+                    None if fk_lookup is None
+                    else fk_lookup.get((table_name, col_name))
+                )
+                # A column normally carries at most one FK; the rare
+                # legal case of two FKs on one column keeps the full list
+                # under `foreign_keys` while `foreign_key` stays the first
+                # entry for existing single-FK consumers.
+                fk = fk_entries[0] if fk_entries else None
 
                 # Build a human-friendly type display
                 data_type = row["data_type"] or ""
@@ -613,6 +724,7 @@ class PostgreSQLConnection(DatabaseConnection):
                     "description": row.get("column_description") or "",
                     "is_primary_key": is_pk,
                     "foreign_key": fk,
+                    "foreign_keys": fk_entries if fk_entries and len(fk_entries) > 1 else None,
                     "source": "information_schema",
                 })
 
@@ -634,10 +746,12 @@ class PostgreSQLConnection(DatabaseConnection):
             catalog = self._catalog_table_summary(schema_name)
         except Exception:
             return
+        pk_lookup, fk_lookup = self._catalog_keys_for_schema(schema_name)
         for table_name, info in catalog.items():
             if table_name in tables:
                 continue
-            columns = self._catalog_columns_for_table(schema_name, table_name)
+            columns = self._catalog_columns_for_table(
+                schema_name, table_name, pk_lookup, fk_lookup)
             tables[table_name] = {
                 "name": table_name,
                 "type": info.get("table_type") or "",
@@ -685,19 +799,116 @@ class PostgreSQLConnection(DatabaseConnection):
             }
         return out
 
-    def _catalog_columns_for_table(self, schema_name: str, table_name: str) -> list[dict]:
+    def _catalog_keys_for_schema(self, schema_name: str) -> tuple[dict | None, dict | None]:
+        """`(pk_lookup, fk_lookup)` — as of 2026-09-27
+        (BRIEF-KEYS-AND-ACTIVITY-CLOBBER.md §A) this is the PRIMARY PK/FK
+        source for `_get_tables_for_schema()`, not only the catalog-only
+        fallback path. Shape: `{table_name: {column_name, ...}}` /
+        `{(table_name, column_name): [{foreign_schema, foreign_table,
+        foreign_column}, ...]}` — a list per column, not a single dict,
+        because a column may legally carry more than one FK constraint.
+        Read from `pg_constraint`/`pg_attribute` rather than
+        `information_schema.table_constraints`/`key_column_usage`/
+        `constraint_column_usage`: the latter is not keyed per column and
+        multiplies or collapses rows when a referenced table carries
+        several referencing constraints (verified live: 71/99 recovered
+        vs. 91/181 true on `laz_local_adventureworks`, 2026-09-27) —
+        besides being the exact privilege-filtered view this fallback
+        originally existed to route around.
+
+        `pg_constraint` is catalog metadata like `pg_class`/`pg_attribute`/
+        `pg_namespace` (see `_get_tables_for_schema()`'s own docstring) —
+        readable by any connected role regardless of `USAGE`/`SELECT`
+        grants, so a fallback table's PK/FK no longer needs to default to
+        `None`: unlike `is_nullable`/`column_default`/comments (which
+        genuinely have no catalog-only source), key membership is exactly
+        as available here as the table/column names already are. Composite
+        keys are matched position-by-position (`WITH ORDINALITY`) so a
+        multi-column FK pairs each local column with its correct referenced
+        column rather than a cross product.
+
+        Returns `None` (not `{}`) for either half when its own query
+        failed — an empty dict here would be indistinguishable from "the
+        query ran and genuinely found no keys," and a caller reading
+        `pk_lookup.get(table, set())` against a silently-failed empty dict
+        would report every column as confidently NOT a primary key: the
+        exact confident-wrong-answer shape `_catalog_columns_for_table`'s
+        own docstring already refuses for `is_nullable`/`default`.
+        """
+        pk_lookup: dict[str, set] | None = {}
+        try:
+            pk_query = """
+                SELECT c.relname AS table_name, a.attname AS column_name
+                FROM pg_constraint con
+                JOIN pg_class c ON c.oid = con.conrelid
+                JOIN pg_namespace n ON n.oid = c.relnamespace
+                JOIN unnest(con.conkey) AS ck(attnum) ON true
+                JOIN pg_attribute a ON a.attrelid = con.conrelid AND a.attnum = ck.attnum
+                WHERE n.nspname = %s AND con.contype = 'p'
+            """
+            for r in self.execute_query(pk_query, (schema_name,)):
+                pk_lookup.setdefault(r["table_name"], set()).add(r["column_name"])
+        except Exception:
+            pk_lookup = None
+
+        fk_lookup: dict[tuple, list] | None = {}
+        try:
+            fk_query = """
+                SELECT c.relname AS table_name, a.attname AS column_name,
+                       fn.nspname AS foreign_schema, fc.relname AS foreign_table,
+                       fa.attname AS foreign_column
+                FROM pg_constraint con
+                JOIN pg_class c ON c.oid = con.conrelid
+                JOIN pg_namespace n ON n.oid = c.relnamespace
+                JOIN pg_class fc ON fc.oid = con.confrelid
+                JOIN pg_namespace fn ON fn.oid = fc.relnamespace
+                JOIN unnest(con.conkey) WITH ORDINALITY AS ck(attnum, ord) ON true
+                JOIN unnest(con.confkey) WITH ORDINALITY AS fk(attnum, ord) ON fk.ord = ck.ord
+                JOIN pg_attribute a ON a.attrelid = con.conrelid AND a.attnum = ck.attnum
+                JOIN pg_attribute fa ON fa.attrelid = con.confrelid AND fa.attnum = fk.attnum
+                WHERE n.nspname = %s AND con.contype = 'f'
+            """
+            for r in self.execute_query(fk_query, (schema_name,)):
+                # Appended, not assigned: a column that carries two FK
+                # constraints (rare, legal) keeps both entries instead of
+                # the second silently clobbering the first.
+                fk_lookup.setdefault((r["table_name"], r["column_name"]), []).append({
+                    "foreign_schema": r["foreign_schema"],
+                    "foreign_table": r["foreign_table"],
+                    "foreign_column": r["foreign_column"],
+                })
+        except Exception:
+            fk_lookup = None
+
+        return pk_lookup, fk_lookup
+
+    def _catalog_columns_for_table(
+        self, schema_name: str, table_name: str,
+        pk_lookup: dict | None = None, fk_lookup: dict | None = None,
+    ) -> list[dict]:
         """Column names and Postgres type names from `pg_attribute`, for the
         catalog-only fallback path.
 
-        Deliberately does NOT attempt `is_nullable`, `column_default`,
-        primary/foreign-key detail or a comment for these columns — this
-        codebase's PK/FK/default/comment lookups all go through
-        `information_schema`/`obj_description()`/`col_description()`, which
-        are exactly the privilege-filtered paths this fallback exists
-        because of. Reporting `nullable`/`is_primary_key` as a guessed
-        `False` here would be a confident wrong answer of the same shape
-        this whole change exists to avoid, so those fields are left `None`/
-        absent rather than defaulted.
+        Deliberately does NOT attempt `is_nullable`, `column_default`, or a
+        comment for these columns — this codebase's default/comment lookups
+        go through `information_schema`/`col_description()`, which are
+        exactly the privilege-filtered paths this fallback exists because
+        of, and Postgres genuinely has no catalog-only source for them.
+        Reporting `nullable` as a guessed `False` here would be a confident
+        wrong answer of the same shape this whole change exists to avoid,
+        so that field stays `None`/absent rather than defaulted.
+
+        `is_primary_key`/`foreign_key` are the exception (fixed 2026-09-26,
+        Slice 21b — previously always `None`/absent here too): `pk_lookup`/
+        `fk_lookup`, from `_catalog_keys_for_schema()`'s catalog-only
+        `pg_constraint` read, are exactly as available in this path as the
+        column names themselves already are — see that function's own
+        docstring for why. A caller that omits them, or whose
+        `_catalog_keys_for_schema()` call itself failed (passed through here
+        as `None`, not `{}` — see that function's docstring), gets the
+        pre-fix `None`/absent behaviour rather than a confidently-wrong
+        `False`: `pk_lookup is None` is checked explicitly below rather than
+        folding a failed lookup into an empty one.
         """
         query = """
             SELECT a.attname AS column_name,
@@ -720,6 +931,9 @@ class PostgreSQLConnection(DatabaseConnection):
             if not name:
                 continue
             data_type = r.get("data_type") or ""
+            is_pk = None if pk_lookup is None else (name in pk_lookup.get(table_name, set()))
+            fk_entries = None if fk_lookup is None else fk_lookup.get((table_name, name))
+            fk = fk_entries[0] if fk_entries else None
             columns.append({
                 "name": name,
                 "type": data_type,
@@ -728,8 +942,9 @@ class PostgreSQLConnection(DatabaseConnection):
                 "default": None,
                 "position": r.get("ordinal_position"),
                 "description": "",
-                "is_primary_key": None,
-                "foreign_key": None,
+                "is_primary_key": is_pk,
+                "foreign_keys": fk_entries if fk_entries and len(fk_entries) > 1 else None,
+                "foreign_key": fk,
                 "source": "catalog_fallback",
             })
         return columns
@@ -955,17 +1170,35 @@ class PostgreSQLConnection(DatabaseConnection):
         # that fallback keeps the failure's default visible in the code, in
         # the shape `tests/test_no_silent_success.py`'s ratchet expects of a
         # handler in a value-returning function.
+        errors: dict[str, str] = {}
         roles: list[dict] = []
         try:
+            # `execute_query` always calls `cursor.execute(query, params)`
+            # with a params tuple, even the default empty `()` -- which
+            # still switches psycopg2 into printf-style query substitution.
+            # A literal `%` that isn't part of a `%s`/`%(name)s` placeholder
+            # then reads as a malformed format spec and raises (here,
+            # `IndexError: tuple index out of range`) -- caught by this
+            # very `except`, silently turning "the query is broken" into
+            # "there are no roles", live-confirmed on `coco_pharma`
+            # (2026-09-26): every survey's `privilege_audit.roles` was
+            # empty, though `pg_roles` genuinely has 13 real rows there.
+            # `%%` is the literal-percent escape psycopg2's substitution
+            # expects; `pg\_%` (one escaped underscore, one literal
+            # trailing wildcard) becomes `pg\_%%`. Recorded on `_errors`
+            # (collector-honesty rule, design ruling 2026-09-26) now too,
+            # so a future regression of this exact class is caught by the
+            # headline reader rather than only by luck or a live incident.
             roles = self.execute_query("""
                 SELECT rolname, rolsuper, rolcreaterole, rolcreatedb,
                        rolcanlogin, rolreplication, rolbypassrls
                 FROM pg_roles
-                WHERE rolname NOT LIKE 'pg\\_%'
+                WHERE rolname NOT LIKE 'pg\\_%%'
                 ORDER BY rolname
             """)
-        except Exception:
+        except Exception as exc:
             roles = []
+            errors["roles"] = str(exc)
 
         table_grants: list[dict] = []
         try:
@@ -1000,8 +1233,9 @@ class PostgreSQLConnection(DatabaseConnection):
                   AND c.relacl IS NOT NULL
                 ORDER BY table_schema, table_name, grantee, privilege_type
             """)
-        except Exception:
+        except Exception as exc:
             table_grants = []
+            errors["table_grants"] = str(exc)
 
         default_acl: list[dict] = []
         try:
@@ -1015,10 +1249,14 @@ class PostgreSQLConnection(DatabaseConnection):
                 LEFT JOIN pg_namespace n ON n.oid = a.defaclnamespace
                 ORDER BY schema_name NULLS FIRST, role_name
             """)
-        except Exception:
+        except Exception as exc:
             default_acl = []
+            errors["default_acl"] = str(exc)
 
-        return {"roles": roles, "table_grants": table_grants, "default_acl": default_acl}
+        result = {"roles": roles, "table_grants": table_grants, "default_acl": default_acl}
+        if errors:
+            result["_errors"] = errors
+        return result
 
     def get_credential_capability(self) -> dict:
         """What THIS credential can see and do, as distinct from what the
@@ -1040,40 +1278,30 @@ class PostgreSQLConnection(DatabaseConnection):
         table to answer "could this credential write", but no write is ever
         attempted — `write_capable` is a probe result, reported honestly as
         such, never an exercised capability.
+
+        The schema/table enumeration itself now goes through
+        `_enumerate_relations()`, shared with `get_schema_info()`'s own
+        floor pass, rather than duplicating the same two queries — see that
+        method's docstring for why the two needing to agree is the point.
+        A caught exception here is recorded on `_errors` (collector-honesty
+        rule, design ruling 2026-09-26) rather than only silently degrading
+        to empty defaults, so a reader can tell "measured, and it's zero"
+        from "the read itself failed."
         """
+        errors: dict[str, str] = {}
         connected_as = ""
         try:
             rows = self.execute_query("SELECT current_user AS connected_as")
             connected_as = rows[0].get("connected_as") or "" if rows else ""
-        except Exception:
+        except Exception as exc:
             connected_as = ""
+            errors["connected_as"] = str(exc)
 
-        schemas: list[dict] = []
         try:
-            schemas = self.execute_query("""
-                SELECT n.nspname AS schema_name,
-                       has_schema_privilege(current_user, n.nspname, 'USAGE') AS usage_granted
-                FROM pg_namespace n
-                WHERE n.nspname NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
-                ORDER BY n.nspname
-            """)
-        except Exception:
-            schemas = []
-
-        tables: list[dict] = []
-        try:
-            tables = self.execute_query("""
-                SELECT n.nspname AS schema_name, c.relname AS table_name,
-                       has_table_privilege(current_user, c.oid, 'SELECT') AS can_select,
-                       has_table_privilege(current_user, c.oid, 'INSERT') AS can_insert
-                FROM pg_class c
-                JOIN pg_namespace n ON n.oid = c.relnamespace
-                WHERE c.relkind IN ('r', 'v', 'm', 'f', 'p')
-                  AND n.nspname NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
-                ORDER BY n.nspname, c.relname
-            """)
-        except Exception:
-            tables = []
+            schemas, tables = self._enumerate_relations()
+        except Exception as exc:
+            schemas, tables = [], []
+            errors["enumeration"] = str(exc)
 
         stats_role = False
         try:
@@ -1085,8 +1313,9 @@ class PostgreSQLConnection(DatabaseConnection):
                 "SELECT pg_has_role(current_user, 'pg_monitor', 'MEMBER') AS has_role"
             )
             stats_role = bool(rows[0].get("has_role")) if rows else False
-        except Exception:
+        except Exception as exc:
             stats_role = False
+            errors["stats_role"] = str(exc)
 
         by_schema: dict[str, dict] = {}
         for s in schemas:
@@ -1104,7 +1333,7 @@ class PostgreSQLConnection(DatabaseConnection):
             if t.get("can_select"):
                 sc["table_select"] += 1
 
-        return {
+        result = {
             "connected_as": connected_as,
             "schema_total": len(schemas),
             "schema_visible": sum(1 for s in schemas if s.get("usage_granted")),
@@ -1117,6 +1346,9 @@ class PostgreSQLConnection(DatabaseConnection):
             "write_probed": True,
             "write_capable": any(t.get("can_insert") for t in tables),
         }
+        if errors:
+            result["_errors"] = errors
+        return result
 
     def get_replication_status(self) -> dict:
         """Whether this connection is a standby, and — if it is a primary —
@@ -1126,14 +1358,19 @@ class PostgreSQLConnection(DatabaseConnection):
         not be queried (should not happen on a reachable Postgres server);
         that is a genuinely different, worse case than "queried and it said
         false", so the two are kept distinguishable rather than both
-        defaulting to `False`.
+        defaulting to `False`. `replicas` gets the same collector-honesty
+        floor (`_errors`, design ruling 2026-09-26) a bare `[]` cannot carry
+        on its own -- a query failure and "genuinely no replicas attached"
+        must not read identically to a reader.
         """
+        errors: dict[str, str] = {}
         is_in_recovery: bool | None = None
         try:
             rows = self.execute_query("SELECT pg_is_in_recovery() AS in_recovery")
             is_in_recovery = bool(rows[0]["in_recovery"]) if rows else None
-        except Exception:
+        except Exception as exc:
             is_in_recovery = None
+            errors["is_in_recovery"] = str(exc)
 
         replicas: list[dict] = []
         try:
@@ -1158,19 +1395,28 @@ class PostgreSQLConnection(DatabaseConnection):
                         if r.get("replay_lag_seconds") is not None else None
                     ),
                 })
-        except Exception:
+        except Exception as exc:
             replicas = []
+            errors["replicas"] = str(exc)
 
-        return {"is_in_recovery": is_in_recovery, "replicas": replicas}
+        result = {"is_in_recovery": is_in_recovery, "replicas": replicas}
+        if errors:
+            result["_errors"] = errors
+        return result
 
     def get_wal_archiving_status(self) -> dict:
-        """Is WAL archiving on, and is it succeeding (design §5.5)."""
+        """Is WAL archiving on, and is it succeeding (design §5.5). A caught
+        exception is recorded on `_errors` (collector-honesty rule, design
+        ruling 2026-09-26) rather than only degrading to the empty
+        defaults, which otherwise read identically to "archiving is off"."""
+        errors: dict[str, str] = {}
         archive_mode = ""
         try:
             rows = self.execute_query("SHOW archive_mode")
             archive_mode = str(rows[0].get("archive_mode", "")) if rows else ""
-        except Exception:
+        except Exception as exc:
             archive_mode = ""
+            errors["archive_mode"] = str(exc)
 
         archived_count = None
         failed_count = None
@@ -1189,17 +1435,21 @@ class PostgreSQLConnection(DatabaseConnection):
                 failed_count = r.get("failed_count")
                 last_archived_time = r.get("last_archived_time") or ""
                 last_failed_time = r.get("last_failed_time") or ""
-        except Exception:
+        except Exception as exc:
             archived_count, failed_count = None, None
             last_archived_time, last_failed_time = "", ""
+            errors["archiver_stats"] = str(exc)
 
-        return {
+        result = {
             "archive_mode": archive_mode,
             "archived_count": archived_count,
             "failed_count": failed_count,
             "last_archived_time": last_archived_time,
             "last_failed_time": last_failed_time,
         }
+        if errors:
+            result["_errors"] = errors
+        return result
 
     def get_backup_tool_signals(self) -> dict:
         """Presence of a known backup-tool extension (design §5.5: "partly"
@@ -1211,15 +1461,18 @@ class PostgreSQLConnection(DatabaseConnection):
         """
         known_tool_markers = ("pgbackrest", "pg_backrest", "wal-g", "wal_g", "barman")
         detected: list[str] = []
+        result: dict = {}
         try:
             rows = self.execute_query("SELECT extname FROM pg_extension ORDER BY extname")
             for r in rows:
                 name = (r.get("extname") or "")
                 if any(marker in name.lower() for marker in known_tool_markers):
                     detected.append(name)
-        except Exception:
+        except Exception as exc:
             detected = []
-        return {"detected_extensions": detected}
+            result["_errors"] = {"detected_extensions": str(exc)}
+        result["detected_extensions"] = detected
+        return result
 
     def get_clustering_info(self) -> dict:
         """Citus clustering catalogs, when the extension is present (design
@@ -1229,6 +1482,7 @@ class PostgreSQLConnection(DatabaseConnection):
         """
         citus_detected = False
         citus_version = None
+        result: dict = {}
         try:
             rows = self.execute_query(
                 "SELECT extversion FROM pg_extension WHERE extname = 'citus'"
@@ -1236,15 +1490,22 @@ class PostgreSQLConnection(DatabaseConnection):
             if rows:
                 citus_detected = True
                 citus_version = rows[0].get("extversion")
-        except Exception:
+        except Exception as exc:
             citus_detected, citus_version = False, None
-        return {"citus_detected": citus_detected, "citus_version": citus_version}
+            result["_errors"] = {"citus_detected": str(exc)}
+        result["citus_detected"] = citus_detected
+        result["citus_version"] = citus_version
+        return result
 
     def get_external_dependencies(self) -> dict:
         """What this database depends on outside itself (design §5.4):
         extensions, foreign data wrappers/servers/tables, and logical
-        replication publications/subscriptions.
+        replication publications/subscriptions. Each caught exception is
+        recorded on `_errors` (collector-honesty rule, design ruling
+        2026-09-26) so a real query failure never reads identically to
+        "this database genuinely depends on nothing".
         """
+        errors: dict[str, str] = {}
         extensions: list[dict] = []
         foreign_servers: list[dict] = []
         foreign_tables: list[dict] = []
@@ -1254,8 +1515,9 @@ class PostgreSQLConnection(DatabaseConnection):
             extensions = self.execute_query(
                 "SELECT extname, extversion FROM pg_extension ORDER BY extname"
             )
-        except Exception:
+        except Exception as exc:
             extensions = []
+            errors["extensions"] = str(exc)
         try:
             foreign_servers = self.execute_query("""
                 SELECT fs.srvname, fdw.fdwname
@@ -1263,8 +1525,9 @@ class PostgreSQLConnection(DatabaseConnection):
                 JOIN pg_foreign_data_wrapper fdw ON fdw.oid = fs.srvfdw
                 ORDER BY fs.srvname
             """)
-        except Exception:
+        except Exception as exc:
             foreign_servers = []
+            errors["foreign_servers"] = str(exc)
         try:
             foreign_tables = self.execute_query("""
                 SELECT n.nspname AS schema_name, c.relname AS table_name, fs.srvname
@@ -1274,14 +1537,16 @@ class PostgreSQLConnection(DatabaseConnection):
                 JOIN pg_foreign_server fs ON fs.oid = ft.ftserver
                 ORDER BY schema_name, table_name
             """)
-        except Exception:
+        except Exception as exc:
             foreign_tables = []
+            errors["foreign_tables"] = str(exc)
         try:
             publications = self.execute_query(
                 "SELECT pubname FROM pg_publication ORDER BY pubname"
             )
-        except Exception:
+        except Exception as exc:
             publications = []
+            errors["publications"] = str(exc)
         try:
             # Only visible to a superuser/subscription-owning role on the
             # subscriber database — a permission error here is swallowed to
@@ -1290,19 +1555,26 @@ class PostgreSQLConnection(DatabaseConnection):
             # see pg_subscription" are not distinguished per-item. That is a
             # known simplification (see DB-OPERATIONS-STEP-IMPLEMENTED.md);
             # the whole-method `external_dependencies` capability gate is
-            # what distinguishes "this engine can't do this at all".
+            # what distinguishes "this engine can't do this at all". The
+            # `_errors` entry at least says a permission error happened,
+            # even if it can't say for which reason relative to the other
+            # two.
             subscriptions = self.execute_query(
                 "SELECT subname FROM pg_subscription ORDER BY subname"
             )
-        except Exception:
+        except Exception as exc:
             subscriptions = []
-        return {
+            errors["subscriptions"] = str(exc)
+        result = {
             "extensions": extensions,
             "foreign_servers": foreign_servers,
             "foreign_tables": foreign_tables,
             "publications": publications,
             "subscriptions": subscriptions,
         }
+        if errors:
+            result["_errors"] = errors
+        return result
 
     def get_statistics(self) -> dict:
         """Get database statistics."""
@@ -1344,7 +1616,27 @@ class PostgreSQLConnection(DatabaseConnection):
         return self.execute_query(query)
 
     def _get_table_row_stats(self) -> list[dict]:
-        """Get row counts and last-activity timestamps from pg_stat_user_tables."""
+        """Get row counts and last-activity timestamps from pg_stat_user_tables.
+
+        `n_live_tup` is maintained incrementally by DML tracking, not only
+        by `ANALYZE` — but that tracking is exactly what a fresh restore
+        from a dump loses (a plain SQL dump/restore carries table DATA, not
+        `pg_stat_user_tables`'s runtime counters), and a table nobody has
+        ever `ANALYZE`d or written to since restore reads `n_live_tup == 0`
+        indistinguishably from a table that is genuinely empty. Found live
+        on `coco_pharma` (2026-09-26): every table in two entire schemas
+        showed `n_live_tup = 0` with `last_analyze`/`last_autoanalyze` both
+        `NULL` — reported downstream as "measured, 0 rows", a confident
+        wrong answer for tables that plainly hold real data (their own
+        names — `orders`, `customers`, `order_details` — are not those of
+        empty tables) design §5.1a already has a name for this exact
+        state (`REASON_NEVER_ANALYZED` in `database_surveyor.py`) for a
+        sibling case (`n_distinct` resolution); this reader gets the same
+        treatment: `row_count` is `None`, not `0`, when the stats
+        collector shows zero activity AND no `ANALYZE` has ever run — a
+        real, non-zero `n_live_tup` is trusted regardless of `ANALYZE`
+        history, since DML tracking alone would have produced it.
+        """
         query = """
             SELECT
                 schemaname,
@@ -1361,11 +1653,14 @@ class PostgreSQLConnection(DatabaseConnection):
             # Cast timestamps to ISO strings so they survive JSON serialisation
             result = []
             for r in rows:
+                live_tup = r.get("row_count")
+                last_analyzed = str(r["last_analyzed"]) if r.get("last_analyzed") else ""
+                never_analyzed_zero = (not live_tup) and not last_analyzed
                 result.append({
                     "schemaname": r.get("schemaname", ""),
                     "tablename":  r.get("tablename", ""),
-                    "row_count":  int(r.get("row_count") or 0),
-                    "last_analyzed": str(r["last_analyzed"]) if r.get("last_analyzed") else "",
+                    "row_count":  None if never_analyzed_zero else int(live_tup or 0),
+                    "last_analyzed": last_analyzed,
                     "last_vacuumed": str(r["last_vacuumed"]) if r.get("last_vacuumed") else "",
                     "pending_changes": int(r.get("pending_changes") or 0),
                 })

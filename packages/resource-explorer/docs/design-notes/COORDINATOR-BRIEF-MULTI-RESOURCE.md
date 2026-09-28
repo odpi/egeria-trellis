@@ -62,13 +62,53 @@ In this order; each is one worktree, one PR, one `*-IMPLEMENTED.md`.
 | 9 | `db_derived` zero-fetch step: classification, grain, fingerprint, conventions checks, change rates, proposed scope as a measured annotation (design §5.3, §7 of the support doc for key names) | Opus | 3, 7 |
 | 10 | `postgres_column_profile` with sampling config (design §5.8), `data_class_match`, `reference_data_match`, RFA proposal convention (support doc §3) | Opus | probes 4, 5; 7 |
 | 11 | `postgres_nested_columns` | Sonnet | 10 (shares the inference core) |
-| 12 | Database survey definitions: `generate_database_survey_definition.py` cloned from the repo generator; `scouting`, `analysis`, `assessment` documents; publish through Dr.Egeria | Sonnet | 2, 4 |
+| 12 | Database survey definitions: `generate_database_survey_definition.py` cloned from the repo generator; `scouting`, `analysis`, `assessment` documents; publish through Dr.Egeria | Sonnet | 2, 4 — **built (#303, 2026-09-26)**, see `docs/design-notes/SLICE-12-DATABASE-SURVEY-DEFINITIONS-IMPLEMENTED.md` |
 | 13 | Reachability probe (`finalAnalysisStep=CHECK_ASSET` via `initiate_gov_action_type` directly), `resource_reachability` table, launcher sentence in the classic UI | Sonnet | probe 7 — **built 2026-09-22, filesystem-scoped**, see `docs/design-notes/RESOURCE-REACHABILITY-IMPLEMENTED.md` (this slice was deferred 2026-09-21, reversed by the project owner 2026-09-22) |
 | 14 | Database change comparators on the local delivery path (design §9.1) | Sonnet | 3, 9 |
 | 15 | Designer round 2 — real drawings against the rows from 6 and 7 | designer | 6, 7 |
 
-Phase 2 (filesystems) mirrors 7–14 with the walk split first; the design doc
-§13 has the list. Do not start it until Phase 1's done-test passes:
+Rows 6–15 above are the plan as of 2026-09-20. Most have landed (see the
+`*-IMPLEMENTED.md` files in this folder); the sequence below supersedes
+their ordering for whatever remains.
+
+## Phase 1b — after the #285 revert: honest states, scope, then the pane (2026-09-25)
+
+The live test of `coco_pharma` (`REVIEW-SURVEY-PANE-285.md`) and the two
+design sections it produced (`multi-resource-questions-design.md` §18
+*Scope, focus and clusters* and §19 *Two entry paths*) change the order.
+**#285 is reverted first** (project owner, 2026-09-25). Then, in this
+order — each one worktree, one PR, one `*-IMPLEMENTED.md`, and **each gated
+by a live, signed-in run against `coco_pharma` written into that document
+as a sentence per screen** (the rule in the review §5; unit tests gate
+logic, not whether a person can use the screen):
+
+| # | Slice | Design | Model | Gate |
+|---|---|---|---|---|
+| 16 | **Honest absence.** An analysis with no results reader renders "ran; no summary reader yet" with the ✓ withheld — never "ran and found nothing — a measured zero". Delete the generic key-walking summariser ("5 rankeds", "56 per tables"); the result line comes from existing readers only. Fix the chat evidence footer to render only lists that exist, and add the stored capability probe to `context_compile`'s evidence | review §6.1, §6.2, §4 point 3 | Opus | on `coco_pharma`: no screen shows "found nothing" for an analysis without a reader; Credential Capability's line reads its real probe; chat answers "what can this credential see" |
+| 17 | **Runnability from the catalog.** Delete both `DATABASE_ANALYSIS_STEP_MAP` copies (`database_surveyor.py:50`, `survey_definition_adapter.py:823`); derive analysis → steps from `analysis_catalog.yaml` and the step registry (`PRODUCES`, design §17.1); the Questions tab shows Run for every analysis that answers a question; a ✓ requires the answer to address the question's level, not merely that a mapped analysis ran | review §4 point 5, §6 | Sonnet | every question with an answerable analysis shows Run; `subject_signals`, `coverage_signals`, `preliminary_fit` are runnable; "which schemas carry the data" is not ✓ until it names schemas |
+| 18 | **Identity and read-back first.** Resolve a registration to existing Egeria assets at every containment level and adopt the GUIDs (never a second asset; reuse repairs partial finds); read back structure, survey reports, declarations and `maintained_by` into RE's store as `source='egeria'` before any local survey; provenance on every fact. **Pulled forward (#304, 2026-09-26):** `is_published`/linkage-staleness honesty for databases and filesystems (`egeria_linkage.describe_publish_status`) — a narrow slice of this row's own "read-back before trusting a cached GUID" principle, done early because a Slice 12 gate found `coco_pharma`'s header claiming "published to Egeria" for days after the linkage was recorded stale. The rest of this row (asset resolution at every containment level, survey-report/declaration read-back) is NOT done. Also **candidate for this row or slice 20** (not fixed, logged in `docs/Backlog.md`): `_store_results` writes a survey_data section only when THIS run's own steps collected it, generically — three incidents patched field-by-field so far (`row_count`/`size_bytes`; `operations`/`credential_capability`, #303) without the generic mechanism ever being built | design §19.3 rules 1–2, 5; §16.7 | Opus | registering `coco_pharma` again creates nothing new in Egeria; the Questions tab answers from Egeria's rows with "from Egeria (…)" provenance before any local run |
+| 19 | **Scope model.** `sub_resources` rows per containment level from the inventory (engine-declared, `REPLY-SCHEMA-AS-SUB-RESOURCE.md` §5); `investigation_scope` and the focus crumb; the left-nav tree with counts, search and paging; focus behaves like being on a node's page | design §18.1, §18.5, §18.8 item 1 | Opus | the tree shows `coco_pharma`'s 8 schemas with table counts and credential visibility; clicking `coco_ods` sets the crumb and every stage page follows it |
+| 20 | **Scoped analyses.** `scopes` on database analyses, a locator-set parameter, results keyed by scope (rule D key gains `scope`), `schema_scope.py` as the filter; convert `schema_inventory`, `row_count_snapshot`, `db_relationship_graph` first; rollups labelled as rollups and naming their parts. **Also candidate for this row** (see slice 18's own note, not fixed here): `_store_results`'s generic "write only the sections THIS run's steps collected" rule — a scope-keyed rewrite of survey storage is a natural place to also close this, rather than patching a fourth field-specific incident | design §18.4; `REPLY-SCHEMA-AS-SUB-RESOURCE.md` §1 | Opus | Relationship Graph on `coco_ods` shows its FK components, not "53 isolated tables"; the database answer names the schemas it rolled up |
+| 21 | **Questions carry a level; answers carry a distribution.** `Level` column on the CSV; per-type `Answering Analysis` for cross-type rows (or the not-authored state until it exists — no repository prose on a database); the envelope gains `scope` and `shown_of`; table-level questions answer at schema level as a ranked distribution | design §18.3; review §6.3 | Opus, with the design session for the CSV | "how many rows" on `coco_ods` lists tables with counts, top 10 and "13 more"; "what is this resource" on a database shows no README or GitHub text |
+| 22 | **The Schema Inventory result view in `/next`**, per schema, from the structured tables: schemas → tables → columns with types, keys, comments; "not measured" for bytes; the estimate stamp per row | review §4 point 4; design §5.1a | Sonnet | the owner can read `coco_pharma`'s tables and columns in `/next` with the credential banner above them |
+| 23 | **Include/exclude and per-table policy.** Include/exclude name lists at registration using Egeria's names (`includeSchemaNames` …); sample strategy, bounds and schedule persisted per table; connector-maintained include/exclude read back so deliberate exclusions are not reported as gaps | design §18.5; §19.4 | Sonnet | registering with `excludeSchemaNames=[demo, demo_auth]` never lists them, and the probe's denominator says so |
+| 24 | **Ranking and clusters.** Discovery ranks tables from activity counters, FK degree, query statistics where held, OpenLineage where present, and `DataScope`/`DataGrain` fit against the lens; `db_relationship_graph` components become cluster proposals; accept in Curate as `SubjectArea` / `Collection` / `DigitalProduct` | design §18.2, §18.6, §18.9 | Opus | Discovery on `coco_pharma` shows a ranked table list and proposes `coco_ods` as one cluster; accepting it creates a `Collection` in Egeria |
+| 25 | **Coexisting with the integration daemon.** `maintained_by` on read-back; source-vs-catalog drift comparator and RFA; survey only the gaps (a fresh Egeria answer satisfies the prerequisite resolver); Egeria as a discovery source ("known to Egeria, never surveyed by RE") | design §19.4–19.6 | Opus | a table added to the source shows as "Egeria's catalog lags the source by 1 table" until the connector refreshes |
+| 26 | **The unified pane, re-landed per focus**, per the corrected `REPLY-SURVEY-ANALYSES-PANE-USER-FACING-MODEL.md` (stage-scoped list, result line from real readers, engine as a secondary tag, honest empty state) | review §4 point 3 | Opus | Scouting and Discovery tabs list different surveys for `coco_ods`; each row's second line is a real result or "no summary reader yet"; nothing on the screen is an unnamed rollup |
+
+Slices 16 and 17 unblock everything visible and go first, in that order.
+18–21 are the scope model and may run as two parallel worktrees (18+19,
+20+21) once 16 and 17 are on main. 22 and 23 are independent of each other.
+24 and 25 follow 20. 26 is last and is not started until 16–22 have each
+passed their gate.
+
+**File ownership for this phase:** `registry.py` and `sub_resources` — slice
+19; `schema_scope.py` and the analysis catalog `scopes` — slice 20; the
+question CSV and generators — slice 21; `next/app.js` and `next/stages/*` —
+one slice at a time, 22 then 26; `chat.js` — slice 16 only.
+
+Phase 2 (filesystems) mirrors the database slices with the walk split first;
+the design doc §13 has the list. Do not start it until Phase 1's done-test passes:
 `coco_ods` answers "which columns conform to a Data Class?" and "how is it
 changing?" from stored rows; the Egeria asset carries both a native and an
 RE report with same-typed column annotations; a new column and a new PUBLIC
@@ -92,6 +132,10 @@ grant each raise an RFA.
   screen or a `FactLayer.answer()` call, not a table row. Four extensions
   were "done" this month with nothing visible; the check that catches it is
   in `extending-resource-explorer.md`.
+- **A user surface is not done until a person has used it.** For any PR
+  that changes what a user sees, the `*-IMPLEMENTED.md` carries a sentence
+  per screen saying what the implementer saw, signed in, on a real resource.
+  1327 green tests shipped a pane nobody could use (`REVIEW-SURVEY-PANE-285.md`).
 - **Absence is a result.** Missing schemas in a native Postgres survey mean
   the survey user lacks permission; `pg_stats` empty means `ANALYZE` never
   ran; an empty question list for a type means not authored. Each of those

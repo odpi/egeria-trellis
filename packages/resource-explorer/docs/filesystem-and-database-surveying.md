@@ -222,6 +222,14 @@ for using it are not in separate files. The survey produces schema, table and
 column structure plus profiling statistics, published as annotations against the
 catalogued database asset.
 
+**Credentials (2026-09-25):** register the *catalog identity* only; the
+survey's structure and estimate steps run with it, and the steps that read
+rows bind to a separate *data identity* requested at the point of use. What
+each identity holds per engine, how the connected account's visibility is
+probed and reported, and how Egeria's own surveys choose a connection are in
+`docs/security-model.md`, which supersedes anything this document implies
+about a single `db_user`/`db_password` pair.
+
 ---
 
 # Part III — Settled — do not reopen without re-measuring
@@ -233,3 +241,5 @@ catalogued database asset.
 | Should steps be split per annotation type? | **No** — per cost | One `stat()` pass yields several annotations; the meaningful boundary is metadata-only versus content-reading |
 | Should RE define its own database asset shape? | **No** | Egeria already separates server software, server instance, database, schema, table and RDBMS capability |
 | Are RE's 7 annotation types sufficient for FS/DB? | **Unresolved** | Egeria defines 18; which of the remaining 11 apply is open, and is design input rather than a settled answer |
+| Is a database credential one account with more or fewer grants? | **No** — two identities | Project owner, 2026-09-25: a catalog identity (registration) and a data identity (at the gate); `docs/security-model.md` |
+| Are catalog statistics actuals? | **No** — estimates as of the last utility run | `pg_stats` is refreshed only by `ANALYZE`/`VACUUM` and is gated by column `SELECT` (live probe 2026-09-25); `multi-resource-questions-design.md` §5.1a |

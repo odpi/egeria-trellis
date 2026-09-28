@@ -895,3 +895,102 @@ class TestEngineOverrideAndWholeDefinitionOrchestration:
         with patch.object(config_module, "get_config", return_value=fake_cfg):
             assert _prefect_orchestration_enabled(None) is False
             assert _prefect_orchestration_enabled("prefect") is True
+
+
+class TestCredentialFallbackToStoredEntity:
+    """`run()` falls back to the entity's own stored db_user/db_password when
+    the caller supplies neither — found live 2026-09-26 running the
+    first-ever database Survey Definition (Slice 12): every RE step failed
+    with "Database credentials are required to connect" even though the
+    database's ordinary (non-Survey-Definition) survey button works fine,
+    because that route already falls back to stored credentials
+    (`databases.py`'s `req.db_user or database.db_user`) and this path never
+    had that fallback. `getattr(entity, ..., "")` must be a no-op for entity
+    types that carry no such attributes (repo, filesystem) — the second test
+    below pins that."""
+
+    def _survey_def_and_reader(self):
+        survey_def = SurveyDefinition(
+            process_guid="proc-1",
+            display_name="Fake Survey",
+            qualified_name="GovActionProcess::Fake",
+            supported_technology_type="Fake Tech",
+            steps=[
+                SurveyStep(
+                    guid="s1", display_name="OneStep", qualified_name="Step::One",
+                    executes_at="resource-explorer", re_analysis_step="one_step",
+                ),
+            ],
+        )
+        return survey_def, _fake_reader(
+            survey_def,
+            candidates=[{"guid": "proc-1", "qualified_name": "GovActionProcess::Fake", "display_name": "Fake"}],
+        )
+
+    def test_falls_back_to_stored_credentials_when_caller_supplies_none(self):
+        runner = MagicMock(return_value={"ok": True})
+        entity = MagicMock()
+        entity.db_user = "stored_user"
+        entity.db_password = "stored_pwd"
+        adapter = ResourceTypeAdapter(
+            entity_type="fake",
+            technology_type="Fake Tech",
+            re_analysis_steps={"one_step": runner},
+            get_entity=lambda registry, slug: entity,
+            publish=MagicMock(return_value="report-guid-1"),
+        )
+        register_adapter(adapter)
+
+        survey_def, reader = self._survey_def_and_reader()
+        executor = SurveyDefinitionExecutor(_fake_registry(), reader=reader)
+        executor.run(entity_type="fake", slug="my-fake")
+
+        runner.assert_called_once()
+        _, kwargs = runner.call_args
+        assert kwargs["db_user"] == "stored_user"
+        assert kwargs["db_pwd"] == "stored_pwd"
+
+    def test_caller_supplied_credentials_win_over_stored(self):
+        runner = MagicMock(return_value={"ok": True})
+        entity = MagicMock()
+        entity.db_user = "stored_user"
+        entity.db_password = "stored_pwd"
+        adapter = ResourceTypeAdapter(
+            entity_type="fake",
+            technology_type="Fake Tech",
+            re_analysis_steps={"one_step": runner},
+            get_entity=lambda registry, slug: entity,
+            publish=MagicMock(return_value="report-guid-1"),
+        )
+        register_adapter(adapter)
+
+        survey_def, reader = self._survey_def_and_reader()
+        executor = SurveyDefinitionExecutor(_fake_registry(), reader=reader)
+        executor.run(entity_type="fake", slug="my-fake", db_user="caller_user", db_pwd="caller_pwd")
+
+        _, kwargs = runner.call_args
+        assert kwargs["db_user"] == "caller_user"
+        assert kwargs["db_pwd"] == "caller_pwd"
+
+    def test_no_op_for_an_entity_with_no_stored_credential_attributes(self):
+        """A repo/filesystem entity carries no db_user/db_password at all —
+        the fallback must not invent empty-string kwargs where none were
+        passed before this fix existed."""
+        runner = MagicMock(return_value={"ok": True})
+        entity = object()  # no db_user/db_password attributes at all
+        adapter = ResourceTypeAdapter(
+            entity_type="fake",
+            technology_type="Fake Tech",
+            re_analysis_steps={"one_step": runner},
+            get_entity=lambda registry, slug: entity,
+            publish=MagicMock(return_value="report-guid-1"),
+        )
+        register_adapter(adapter)
+
+        survey_def, reader = self._survey_def_and_reader()
+        executor = SurveyDefinitionExecutor(_fake_registry(), reader=reader)
+        executor.run(entity_type="fake", slug="my-fake")
+
+        _, kwargs = runner.call_args
+        assert "db_user" not in kwargs
+        assert "db_pwd" not in kwargs

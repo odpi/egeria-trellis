@@ -696,13 +696,13 @@ ___
 User Questions
 
 ### Display Name
-What are similar resources, and how does this differ?
+Which resources have similar content — code, documentation or data values — and how does this one differ?
 
 ### Description
-Needs similarity search over content (RAG/embeddings) — real gap, not built.
+Content similarity over embeddings of code, documents and sampled data (pgvector). Complements scope similarity (which needs declared or measured scope) and structural similarity (which needs a schema). Design §16.7 5′ and the coverage audit's similarity item: content finds candidates; scope fit ranks them.
 
 ### Summary
-Helping me choose.
+Finds candidates by what they contain, including resources whose scope and purpose were never declared — the only similarity that works before any curation.
 
 ### Usage
 Typically asked and answerable during Analysis.
@@ -712,7 +712,7 @@ ___
 ## Classify Term as Question
 
 ### Term Name
-What are similar resources, and how does this differ?
+Which resources have similar content — code, documentation or data values — and how does this one differ?
 
 ___
 
@@ -722,7 +722,7 @@ ___
 Perspective::Community
 
 ### Question Name
-What are similar resources, and how does this differ?
+Which resources have similar content — code, documentation or data values — and how does this one differ?
 
 ___
 
@@ -732,7 +732,7 @@ ___
 Perspective::Security
 
 ### Question Name
-What are similar resources, and how does this differ?
+Which resources have similar content — code, documentation or data values — and how does this one differ?
 
 ___
 
@@ -742,17 +742,86 @@ ___
 Perspective::Admin
 
 ### Question Name
-What are similar resources, and how does this differ?
+Which resources have similar content — code, documentation or data values — and how does this one differ?
 
 ___
 
 ## Link Element To Scope
 
 ### Target Element
-What are similar resources, and how does this differ?
+Which resources have similar content — code, documentation or data values — and how does this one differ?
 
 ### Scope Reference
 Analysis
+
+### Scope Category
+Asked At
+
+___
+
+## Create Glossary Term
+
+### Glossary Name
+User Questions
+
+### Display Name
+Which resources cover similar subjects, grain and period or places — could one stand in for this one, or this one for them?
+
+### Description
+Scope similarity is lens fit (design §16.5): derive a lens from this resource's declared or measured DataScope, DataGrain and subject terms and run the fit against every other resource's stored scope — no new survey, a query over stored measurements. Runs both ways, so a resource that fails one investigation's lens can still match another (§16.5 point 5). Also the mechanism behind 'is something like this already productised' (§16.7 5′). The answer is a relation per scope axis — subject, population (which customers: pre-sales vs post-sales), space, time, grain, structure — each same / contains / contained_by / overlaps / disjoint / not_established, with 'can one stand in for the other' and 'is one a subset of the other' derived from them (design §16.8). Two 'customer' databases are never called similar on subject alone: an undeclared population axis renders not_established.
+
+### Summary
+Whether a resource can substitute for another is a question of scope — subject, grain, coverage in time and space — not of content; this is what a consumer choosing between two datasets actually asks.
+
+### Usage
+Typically asked and answerable during Discovery.
+
+___
+
+## Classify Term as Question
+
+### Term Name
+Which resources cover similar subjects, grain and period or places — could one stand in for this one, or this one for them?
+
+___
+
+## Link Perspective to Question
+
+### Perspective Name
+Perspective::Community
+
+### Question Name
+Which resources cover similar subjects, grain and period or places — could one stand in for this one, or this one for them?
+
+___
+
+## Link Perspective to Question
+
+### Perspective Name
+Perspective::Security
+
+### Question Name
+Which resources cover similar subjects, grain and period or places — could one stand in for this one, or this one for them?
+
+___
+
+## Link Perspective to Question
+
+### Perspective Name
+Perspective::Admin
+
+### Question Name
+Which resources cover similar subjects, grain and period or places — could one stand in for this one, or this one for them?
+
+___
+
+## Link Element To Scope
+
+### Target Element
+Which resources cover similar subjects, grain and period or places — could one stand in for this one, or this one for them?
+
+### Scope Reference
+Discovery
 
 ### Scope Category
 Asked At
@@ -1073,7 +1142,7 @@ Human-supplied/derived — not resource-derivable.
 Cost is part of the decision process.
 
 ### Usage
-Typically relevant during Analysis and Enrichment.
+Typically asked and answerable during Enrichment.
 
 ___
 
@@ -1101,19 +1170,6 @@ Perspective::Admin
 
 ### Question Name
 What does this resource cost to run, host or license?
-
-___
-
-## Link Element To Scope
-
-### Target Element
-What does this resource cost to run, host or license?
-
-### Scope Reference
-Analysis
-
-### Scope Category
-Asked At
 
 ___
 
@@ -1283,7 +1339,7 @@ Org-internal cross-reference — human-supplied.
 Cost, Skills and manageability.
 
 ### Usage
-Typically relevant during Analysis and Enrichment.
+Typically asked and answerable during Enrichment.
 
 ___
 
@@ -1340,19 +1396,6 @@ ___
 Does it fit into our monitoring infrastructure?
 
 ### Scope Reference
-Analysis
-
-### Scope Category
-Asked At
-
-___
-
-## Link Element To Scope
-
-### Target Element
-Does it fit into our monitoring infrastructure?
-
-### Scope Reference
 Enrichment
 
 ### Scope Category
@@ -1375,7 +1418,7 @@ An organisation-internal cross-reference: the security findings inform it, a per
 Will it be allowed in? What are the risks?
 
 ### Usage
-Typically relevant during Analysis and Enrichment.
+Typically asked and answerable during Enrichment.
 
 ___
 
@@ -1453,19 +1496,6 @@ Perspective::Admin
 
 ### Question Name
 Does it fit into our security infrastructure?
-
-___
-
-## Link Element To Scope
-
-### Target Element
-Does it fit into our security infrastructure?
-
-### Scope Reference
-Analysis
-
-### Scope Category
-Asked At
 
 ___
 
@@ -1655,7 +1685,7 @@ Org-internal cross-reference — human-supplied.
 Impact on existing architecture and operations.
 
 ### Usage
-Typically relevant during Analysis and Enrichment.
+Typically asked and answerable during Enrichment.
 
 ___
 
@@ -1703,19 +1733,6 @@ Perspective::Admin
 
 ### Question Name
 Does this fit within or need to extend our existing infrastructure estate?
-
-___
-
-## Link Element To Scope
-
-### Target Element
-Does this fit within or need to extend our existing infrastructure estate?
-
-### Scope Reference
-Analysis
-
-### Scope Category
-Asked At
 
 ___
 
@@ -1826,7 +1843,7 @@ Purely human-supplied — never resource-derivable.
 Operational readiness and skill gaps.
 
 ### Usage
-Typically relevant during Analysis and Enrichment.
+Typically asked and answerable during Enrichment.
 
 ___
 
@@ -1864,19 +1881,6 @@ Perspective::Admin
 
 ### Question Name
 Do we have the skills to support its use?
-
-___
-
-## Link Element To Scope
-
-### Target Element
-Do we have the skills to support its use?
-
-### Scope Reference
-Analysis
-
-### Scope Category
-Asked At
 
 ___
 
@@ -2165,7 +2169,7 @@ Org policy cross-reference (human-supplied), plus Curate's zone/catalog membersh
 Compliance and regulatory alignment.
 
 ### Usage
-Typically relevant during Analysis and Enrichment.
+Typically asked and answerable during Enrichment.
 
 ___
 
@@ -2213,19 +2217,6 @@ Perspective::Admin
 
 ### Question Name
 Does it fit into our governance frameworks?
-
-___
-
-## Link Element To Scope
-
-### Target Element
-Does it fit into our governance frameworks?
-
-### Scope Reference
-Analysis
-
-### Scope Category
-Asked At
 
 ___
 
@@ -4821,7 +4812,7 @@ Design §5.5 draws the line explicitly for databases: primary/standby role, repl
 These are the two resilience questions a data owner actually asks, and the two that nothing inside the resource itself can answer.
 
 ### Usage
-Typically relevant during Analysis and Enrichment.
+Typically asked and answerable during Enrichment.
 
 ___
 
@@ -4859,19 +4850,6 @@ Perspective::Admin
 
 ### Question Name
 When was this resource last backed up successfully, and has a restore ever been tested?
-
-___
-
-## Link Element To Scope
-
-### Target Element
-When was this resource last backed up successfully, and has a restore ever been tested?
-
-### Scope Reference
-Analysis
-
-### Scope Category
-Asked At
 
 ___
 
@@ -5081,7 +5059,7 @@ ___
 User Questions
 
 ### Display Name
-Does this look like a copy or a subset of a database we already know?
+Is this a copy, subset or superset of a resource we already know — structurally, by schema or file signature?
 
 ### Description
 A schema signature — table and column names, types, key structure — hashed into a fingerprint and compared against the fingerprints of databases already in the registry. Egeria's FingerprintAnnotation is the publication shape.
@@ -5097,7 +5075,7 @@ ___
 ## Classify Term as Question
 
 ### Term Name
-Does this look like a copy or a subset of a database we already know?
+Is this a copy, subset or superset of a resource we already know — structurally, by schema or file signature?
 
 ___
 
@@ -5107,7 +5085,7 @@ ___
 Perspective::Financial
 
 ### Question Name
-Does this look like a copy or a subset of a database we already know?
+Is this a copy, subset or superset of a resource we already know — structurally, by schema or file signature?
 
 ___
 
@@ -5117,7 +5095,7 @@ ___
 Perspective::Steward
 
 ### Question Name
-Does this look like a copy or a subset of a database we already know?
+Is this a copy, subset or superset of a resource we already know — structurally, by schema or file signature?
 
 ___
 
@@ -5127,14 +5105,14 @@ ___
 Perspective::Architecture
 
 ### Question Name
-Does this look like a copy or a subset of a database we already know?
+Is this a copy, subset or superset of a resource we already know — structurally, by schema or file signature?
 
 ___
 
 ## Link Element To Scope
 
 ### Target Element
-Does this look like a copy or a subset of a database we already know?
+Is this a copy, subset or superset of a resource we already know — structurally, by schema or file signature?
 
 ### Scope Reference
 Discovery

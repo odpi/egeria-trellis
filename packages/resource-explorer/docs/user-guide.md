@@ -205,6 +205,42 @@ Below the main report, a **Survey History** chart shows key metrics over time.
 
 ---
 
+## Database access and credentials
+
+Resource Explorer surveys a database with **the account you give it**, and
+its answers are only as complete as that account can see. Two things follow.
+
+**What to supply when you register a database.** A read-only account that
+can see the catalog and statistics. Table data access is not needed yet:
+Scouting and Discovery work from the catalog alone (structure, keys,
+comments, row estimates, activity), and Resource Explorer asks for a
+broader account only when a specific survey needs to read rows, telling you
+which one and why. Passwords are encrypted at rest and never shown back.
+
+**The credential banner.** After registration Resource Explorer probes what
+the account can see and shows it persistently on the database, for example
+*"Connected as egeria_user — sees 6 of 8 schemas; can read 3 of 26 tables;
+no write access."* Every answer on that database then says whether it was
+measured completely or **measured within what this account can see**. A
+count of "3 tables" from an account that can read 3 of 26 is reported as
+"3 of 26", never as "3".
+
+**When a survey needs more.** A survey that must read rows (column
+profiling, data-class matching, coverage checks) is not run silently with
+an account that cannot. Its row says what it needs and offers three
+choices: run only the parts the current account can answer, pick a broader
+account already registered for this database, or send a request to the
+database owner naming the exact grant. Retry appears only when retrying
+could change the answer.
+
+**Estimates versus actuals.** Numbers taken from the database's own
+statistics are estimates as of the last time the database refreshed them,
+and are labelled with that date and how many rows have changed since.
+Exact counts come from the later, heavier surveys. See
+[`docs/security-model.md`](security-model.md) for the full model,
+including how Egeria's own surveys and Resource Explorer's local surveys
+choose which account to use.
+
 ## Analyses Panel
 
 The Analyses panel lists all available analyses for the selected resource type, filterable by:

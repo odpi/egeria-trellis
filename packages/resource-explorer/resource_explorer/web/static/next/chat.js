@@ -148,9 +148,20 @@ function sourceLine(body) {
       const v = manifest[k];
       return Array.isArray(v) ? v.length : v != null && v !== '';
     });
-    return parts.length
+    // The absence fact `evidenceFooterListsHtml` deliberately does not
+    // enumerate belongs here instead, as one clause on the answer's own
+    // sentence -- not a footer line per key, and not one combined line
+    // naming every key either (REVIEW-SURVEY-PANE-285.md's correction:
+    // "the footer lists only lists that exist ... a combined line naming
+    // twelve analysis ids is the same wall, shorter"). Said once, generically,
+    // only when packed evidence had list-shaped sections and NONE had a
+    // member reader to open.
+    const lists = listSentences(body);
+    const noListsAvailable = lists.length > 0 && !lists.some((l) => l.members);
+    const suffix = noListsAvailable ? ' · no evidence lists were available for this question' : '';
+    return (parts.length
       ? `From compiled evidence · ${parts.join(', ')}`
-      : 'Compiled evidence was empty · answered from retrieval';
+      : 'Compiled evidence was empty · answered from retrieval') + suffix;
   }
   return 'No compiled evidence on this answer · source not reported';
 }
@@ -242,20 +253,42 @@ function listSentenceHtml(l, i) {
   // internal and "at full" read as "shown fully"; a section with no member
   // reader rendered nothing where the link would be (the silent-omission
   // rule); and › was a text glyph doing an icon's job.
+  //
+  // A missing member reader is rendered ONLY here, per-section, when this is
+  // called at all -- see `evidenceFooterListsHtml` below, which stops calling
+  // this for readerless sections once there is more than one, so the reader
+  // is not shown a wall of near-identical "no member reader" lines. This
+  // function assumes `l.members` is true; a readerless `l` reaching it is a
+  // caller bug, not a state to render.
   return `<div class="mt-s2 text-chip text-chrome-ink">
     ${head}${
       partial ? ` · <span class="text-chrome-muted"><span class="tnum">${l.shown}</span> shown to the model</span>` : ' · all shown to the model'}${
-      l.members
-        // The control says what pressing it does; it is the only clickable
-        // part of the line, and the middot before it does the sentence
-        // break's work.
-        ? ` · <button data-list-source="${esc(l.key)}" data-list-slug="${esc(i)}"
-            class="cursor-pointer bg-transparent p-0 text-accent-on-dark underline">open the full list${icon('chevron-right', { size: 13 })}</button>`
-        // Case four on the sheet: metadata, not a control, in the slot the
-        // link would occupy -- the absence becomes a fact about that
-        // analysis, and a list of which readers to write next.
-        : ` · <span class="text-chrome-muted">No list to open — <span class="font-mono">${esc(l.key)}</span> has no member reader yet.</span>`}
+      // The control says what pressing it does; it is the only clickable
+      // part of the line, and the middot before it does the sentence
+      // break's work.
+      ` · <button data-list-source="${esc(l.key)}" data-list-slug="${esc(i)}"
+          class="cursor-pointer bg-transparent p-0 text-accent-on-dark underline">open the full list${icon('chevron-right', { size: 13 })}</button>`}
   </div>`;
+}
+
+/** `turn.lists`, filtered to sections that actually HAVE a member reader.
+ *  The footer names only lists that exist to open — a readerless section is
+ *  not named here at all, singly or combined; that fact belongs in the
+ *  answer's own one-line provenance sentence instead (`sourceLine()`).
+ *
+ *  Live-reproduced 2026-09-25 (REVIEW-SURVEY-PANE-285.md, then corrected on
+ *  review of the first fix): a database's compiled evidence packs many
+ *  sections with list-shaped fields (coverage_signals, grain_determination,
+ *  preliminary_fit, subject_signals, schema_conventions, ...) and NONE of
+ *  them are in `MEMBER_LISTED` -- that set is repo-shaped analyses only.
+ *  `listSentenceHtml`'s per-section fallback rendered "No list to open — X
+ *  has no member reader yet." once per section, a wall of near-identical
+ *  lines for one answer. The first fix collapsed that wall into one combined
+ *  line naming every key — still a wall, just shorter, and still something
+ *  the footer had no business asserting: a footer that lists what exists is
+ *  not the place to enumerate what doesn't. */
+function evidenceFooterListsHtml(lists, slug) {
+  return lists.filter((l) => l.members).map((l) => listSentenceHtml(l, slug)).join('');
 }
 
 /**
@@ -525,7 +558,7 @@ function renderPromotedFooter(turn, i) {
   // was written to stop.
   footer.innerHTML = `
     ${structuredTableHtml(turn)}
-    ${(turn.lists || []).map((l) => listSentenceHtml(l, turn.slug || '')).join('')}
+    ${evidenceFooterListsHtml(turn.lists || [], turn.slug || '')}
     ${listButtons ? `<div class="mt-s2 flex flex-wrap gap-s2">${listButtons}</div>` : ''}
     <div class="mt-s3 flex flex-wrap items-baseline gap-s3 text-caveat">
       <button data-act="open-compile"

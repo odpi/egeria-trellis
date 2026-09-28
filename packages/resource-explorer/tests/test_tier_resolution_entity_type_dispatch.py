@@ -32,7 +32,7 @@ def _survey(*step_keys, process="Survey"):
 class TestStepOwnershipDispatchesByEntityType:
     def test_a_database_survey_step_resolves_against_the_database_step_map(self):
         """`postgres_nested_columns` only means anything (and only maps to
-        exactly one owner) under DATABASE_ANALYSIS_STEP_MAP — resolving it
+        exactly one owner) under DATABASE_ANALYSIS_RE_STEP_MAP — resolving it
         against repo's step map (the pre-fix behavior) would never find it."""
         a = tier_of_activity_row("survey", _survey("postgres_nested_columns"),
                                  entity_type="database")

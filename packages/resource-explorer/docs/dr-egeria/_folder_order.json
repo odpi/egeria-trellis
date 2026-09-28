@@ -17,12 +17,19 @@
     "it run against Egeria. Root-level files (the CSV sources of truth, one-off probe/debug",
     "documents) are never batches, since only directories are considered.",
     "",
-    "governance-metrics is last because nothing depends on it \u2014 a failure there cannot cascade into the batches that do have dependents. Unlike survey-definitions it IS idempotent: it creates elements and links nothing, so it has no Link Next Process Step problem."
+    "governance-metrics is last because nothing depends on it \u2014 a failure there cannot cascade into the batches that do have dependents. Unlike survey-definitions it IS idempotent: it creates elements and links nothing, so it has no Link Next Process Step problem.",
+    "",
+    "survey-definitions-database (added 2026-09-26, Slice 12) is the database counterpart of",
+    "survey-definitions \u2014 same dependency on questions, same non-idempotent Link Next Process",
+    "Step mechanism, but its own directory/canary/reconciler since the two batches share no",
+    "documents or scripts. Listed after survey-definitions rather than before purely because that",
+    "is authoring order; the two do not depend on each other, only both on questions."
   ],
   "folders": [
     "foundations",
     "questions",
     "survey-definitions",
+    "survey-definitions-database",
     "governance-metrics"
   ]
 }

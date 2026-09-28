@@ -66,6 +66,63 @@ class TestDocumentedDefinitionsSetsResourceType:
         assert docs["X"].resource_type == "filesystem"
 
 
+class TestExtensionDirectoriesAreMergedWhenNoDirectoryIsGiven:
+    """Slice 12: database Survey Definitions live in their own
+    `survey-definitions-database/` directory, sibling to the repo batch's
+    `survey-definitions/` — one bootstrap batch (canary + reconciler) per
+    directory, per `bootstrap.py`'s `BATCH_MANIFEST_FILE` discovery. But
+    `documented_definitions()`'s real callers (the reader's questions-scoped
+    local-match fast path, the cache warmer, `/api/survey-definitions/
+    definitions`) all assume one merged list — `_extension_docs_dirs` finds
+    every `survey-definitions-*` sibling and folds it in, but ONLY when no
+    explicit `directory` was passed (existing fixture-directory tests, and
+    every test above in this file, must keep seeing only what they wrote)."""
+
+    def _write_in(self, directory: Path, filename: str) -> None:
+        directory.mkdir(parents=True, exist_ok=True)
+        (directory / filename).write_text(_MINIMAL_DOC.replace("::X", "::" + filename.split("-survey-definition")[0].title()))
+
+    def test_primary_and_extension_directories_are_both_read(self, tmp_path, monkeypatch):
+        primary = tmp_path / "survey-definitions"
+        extension = tmp_path / "survey-definitions-database"
+        self._write_in(primary, "repo-survey-definition-x.md")
+        self._write_in(extension, "database-survey-definition-x.md")
+        monkeypatch.setattr(D, "definition_docs_dir", lambda: primary)
+
+        docs = D.documented_definitions()
+
+        assert docs["Repo"].resource_type == "repo"
+        assert docs["Database"].resource_type == "database"
+
+    def test_an_explicit_directory_argument_is_not_merged_with_extensions(self, tmp_path, monkeypatch):
+        """A caller passing its own fixture directory (every test above)
+        must see exactly that directory, never a real extension directory
+        that happens to sit next to the real `definition_docs_dir()`."""
+        primary = tmp_path / "survey-definitions"
+        extension = tmp_path / "survey-definitions-database"
+        self._write_in(primary, "repo-survey-definition-x.md")
+        self._write_in(extension, "database-survey-definition-x.md")
+        monkeypatch.setattr(D, "definition_docs_dir", lambda: primary)
+
+        docs = D.documented_definitions(primary)
+
+        assert "Repo" in docs
+        assert "Database" not in docs
+
+    def test_no_extension_directories_present_is_unaffected(self, tmp_path, monkeypatch):
+        """A deployment with no database Survey Definitions authored yet
+        (`survey-definitions-database/` doesn't exist) behaves exactly as
+        before this generalization — `_extension_docs_dirs` glob simply
+        finds nothing."""
+        primary = tmp_path / "survey-definitions"
+        self._write_in(primary, "repo-survey-definition-x.md")
+        monkeypatch.setattr(D, "definition_docs_dir", lambda: primary)
+
+        docs = D.documented_definitions()
+
+        assert list(docs) == ["Repo"]
+
+
 class TestDocumentsCarryTheirOwnScoping:
     """The `Link Element To Scope` blocks ARE the ScopedBy relationships —
     they are what publish them — so the document is the source and the graph

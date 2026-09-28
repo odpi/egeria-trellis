@@ -67,7 +67,8 @@ class _FakeCursorConnection(PostgreSQLConnection):
     for real against canned SQL responses — no live Postgres, no psycopg2.
     """
 
-    def __init__(self, information_schema_tables, catalog_tables, catalog_columns):
+    def __init__(self, information_schema_tables, catalog_tables, catalog_columns,
+                 catalog_pk_rows=None, catalog_fk_rows=None, fail_catalog_keys=False):
         super().__init__(host="localhost", port=5432, database="x", user="u", password="p")
         #: {table_name: {"table_type": ..., "columns": [col_row, ...]}} — what
         #: information_schema.tables/columns would return for this schema.
@@ -78,6 +79,15 @@ class _FakeCursorConnection(PostgreSQLConnection):
         #: {table_name: [{"column_name", "ordinal_position", "data_type"}]}
         #: — what pg_attribute (unfiltered) says about a table's columns.
         self._catalog_columns = catalog_columns
+        #: Slice 21b — what `pg_constraint` (unfiltered) says a fallback
+        #: table's PK/FK constraints are. `[]` (the default) means the
+        #: catalog query succeeded and genuinely found no keys, distinct
+        #: from `fail_catalog_keys=True`, which simulates the query itself
+        #: failing (e.g. permission oddity) so `_catalog_keys_for_schema()`
+        #: falls back to `None` (unestablished, not a guessed `False`).
+        self._catalog_pk_rows = catalog_pk_rows or []
+        self._catalog_fk_rows = catalog_fk_rows or []
+        self._fail_catalog_keys = fail_catalog_keys
         self.executed: list[str] = []
 
     def execute_query(self, query, params=()):
@@ -86,6 +96,14 @@ class _FakeCursorConnection(PostgreSQLConnection):
             return []
         if "information_schema.table_constraints" in query and "FOREIGN KEY" in query:
             return []
+        if "FROM pg_constraint con" in query and "contype = 'p'" in query:
+            if self._fail_catalog_keys:
+                raise RuntimeError("pg_constraint (PK) unreachable in this test")
+            return list(self._catalog_pk_rows)
+        if "FROM pg_constraint con" in query and "contype = 'f'" in query:
+            if self._fail_catalog_keys:
+                raise RuntimeError("pg_constraint (FK) unreachable in this test")
+            return list(self._catalog_fk_rows)
         if "FROM information_schema.tables t" in query:
             rows = []
             for name, info in self._info_schema_tables.items():
@@ -176,10 +194,16 @@ class TestZeroAccessToASchema:
         assert [c["name"] for c in orders["columns"]] == ["id", "customer_id"]
         for col in orders["columns"]:
             assert col["source"] == "catalog_fallback"
-            # Never guessed — see connection.py's docstring on why these
-            # stay unestablished rather than a fabricated False.
+            # `nullable`/`default` have no catalog-only source at all — see
+            # connection.py's docstring on why they stay unestablished
+            # rather than a fabricated guess.
             assert col["nullable"] is None
-            assert col["is_primary_key"] is None
+            assert col["default"] is None
+            # `is_primary_key` DOES have a catalog-only source (`pg_
+            # constraint`, Slice 21b) — with no PK rows configured in this
+            # test, the catalog query genuinely ran and found none, so this
+            # is a real, established `False`, not a guess.
+            assert col["is_primary_key"] is False
             assert col["type"]  # a real Postgres type name, not blank
 
         assert by_name["line_items"]["row_count_estimate"] == 42000
@@ -214,6 +238,144 @@ class TestPartialAccess:
         assert "row_count_estimate" not in by_name["public_view_table"]
         assert by_name["hidden_table"]["source"] == "catalog_fallback"
         assert by_name["hidden_table"]["row_count_estimate"] == 999
+
+
+class TestCatalogFallbackRecoversPrimaryAndForeignKeys:
+    """Slice 21b: `pg_constraint` is catalog metadata like `pg_class`/
+    `pg_attribute` — not privilege-filtered — so a catalog-fallback table no
+    longer needs to report `is_primary_key`/`foreign_key` as `None`. Fixed
+    2026-09-26; before this, `_catalog_columns_for_table()` always wrote
+    `None` for both, unconditionally, even when the key data was exactly as
+    available as the column names it was already recovering."""
+
+    def test_a_recovered_table_gets_its_real_primary_key(self):
+        conn = _FakeCursorConnection(
+            information_schema_tables={},
+            catalog_tables={"orders": {"relkind": "r", "reltuples": 1500}},
+            catalog_columns={"orders": [
+                {"column_name": "id", "ordinal_position": 1, "data_type": "integer"},
+                {"column_name": "customer_id", "ordinal_position": 2, "data_type": "integer"},
+            ]},
+            catalog_pk_rows=[{"table_name": "orders", "column_name": "id"}],
+        )
+        tables = conn._get_tables_for_schema(_schema("coco_ods"))
+        by_name = {c["name"]: c for c in tables[0]["columns"]}
+        assert by_name["id"]["is_primary_key"] is True
+        assert by_name["customer_id"]["is_primary_key"] is False
+
+    def test_a_recovered_table_gets_its_real_foreign_key(self):
+        conn = _FakeCursorConnection(
+            information_schema_tables={},
+            catalog_tables={"orders": {"relkind": "r", "reltuples": 1500}},
+            catalog_columns={"orders": [
+                {"column_name": "customer_id", "ordinal_position": 1, "data_type": "integer"},
+            ]},
+            catalog_fk_rows=[{
+                "table_name": "orders", "column_name": "customer_id",
+                "foreign_schema": "coco_ods", "foreign_table": "customers",
+                "foreign_column": "id",
+            }],
+        )
+        tables = conn._get_tables_for_schema(_schema("coco_ods"))
+        col = tables[0]["columns"][0]
+        assert col["foreign_key"] == {
+            "foreign_schema": "coco_ods", "foreign_table": "customers", "foreign_column": "id",
+        }
+
+    def test_information_schema_visible_table_still_gets_catalog_keys(self):
+        """BRIEF-KEYS-AND-ACTIVITY-CLOBBER.md §A (2026-09-27): PK/FK are no
+        longer read from `information_schema.table_constraints`/
+        `key_column_usage`/`constraint_column_usage` at all, even for a
+        table `information_schema` can see fully — that query joined
+        `constraint_column_usage`, which is not keyed per column and
+        multiplied/collapsed rows when the REFERENCED table (e.g.
+        `person.businessentity`, referenced by five different tables on
+        AdventureWorks) carried several referencing constraints. `pg_
+        constraint`/`pg_attribute`, keyed by the REFERENCING side, has no
+        such collapse. This reproduces the shape: three tables' worth of FK
+        columns pointing at the same referenced table, a two-column
+        composite-style FK, and one column carrying two distinct FK
+        constraints (rare, legal) — all of it must survive."""
+        conn = _FakeCursorConnection(
+            information_schema_tables={
+                "orderdetail": {
+                    "table_type": "BASE TABLE",
+                    "columns": [
+                        {"column_name": "order_id", "data_type": "integer",
+                         "ordinal_position": 1, "nullable": False},
+                        {"column_name": "line_no", "data_type": "integer",
+                         "ordinal_position": 2, "nullable": False},
+                        {"column_name": "vendor_id", "data_type": "integer",
+                         "ordinal_position": 3, "nullable": True},
+                    ],
+                },
+            },
+            catalog_tables={"orderdetail": {"relkind": "r", "reltuples": 100}},
+            catalog_columns={},
+            catalog_fk_rows=[
+                # Two columns of the same local table referencing the same
+                # target table on two different columns — the composite
+                # shape (each local column contributes its own entry).
+                {"table_name": "orderdetail", "column_name": "order_id",
+                 "foreign_schema": "sales", "foreign_table": "orders",
+                 "foreign_column": "id"},
+                {"table_name": "orderdetail", "column_name": "line_no",
+                 "foreign_schema": "sales", "foreign_table": "orders",
+                 "foreign_column": "line_no"},
+                # One column, two distinct FK constraints (legal).
+                {"table_name": "orderdetail", "column_name": "vendor_id",
+                 "foreign_schema": "purchasing", "foreign_table": "vendor",
+                 "foreign_column": "id"},
+                {"table_name": "orderdetail", "column_name": "vendor_id",
+                 "foreign_schema": "purchasing", "foreign_table": "temp_vendor",
+                 "foreign_column": "id"},
+            ],
+        )
+        tables = conn._get_tables_for_schema(_schema("sales"))
+        assert tables[0]["source"] == "information_schema"
+        by_name = {c["name"]: c for c in tables[0]["columns"]}
+
+        # All three FK-bearing columns are captured — nothing collapsed by
+        # a referenced-table-side collision the way `constraint_column_
+        # usage` used to collapse them.
+        assert by_name["order_id"]["foreign_key"] == {
+            "foreign_schema": "sales", "foreign_table": "orders", "foreign_column": "id",
+        }
+        assert by_name["line_no"]["foreign_key"] == {
+            "foreign_schema": "sales", "foreign_table": "orders", "foreign_column": "line_no",
+        }
+        assert by_name["vendor_id"]["foreign_key"] == {
+            "foreign_schema": "purchasing", "foreign_table": "vendor", "foreign_column": "id",
+        }
+        # The rare column-carries-two-FKs case keeps both, not just the one
+        # that happened to be inserted last.
+        assert by_name["vendor_id"]["foreign_keys"] == [
+            {"foreign_schema": "purchasing", "foreign_table": "vendor", "foreign_column": "id"},
+            {"foreign_schema": "purchasing", "foreign_table": "temp_vendor", "foreign_column": "id"},
+        ]
+        # And no information_schema PK/FK query was ever issued — the
+        # retired queries are gone, not merely unused.
+        assert not any("information_schema.table_constraints" in q for q in conn.executed)
+
+    def test_a_failed_catalog_key_query_stays_unestablished_not_a_guessed_false(self):
+        """The `pg_constraint` read itself can fail (an odd permission
+        setup, a connection hiccup) — that must NOT be read as "genuinely no
+        keys." `_catalog_keys_for_schema()` returns `None` (not `{}`) for a
+        failed half, and `_catalog_columns_for_table()` must propagate that
+        as `None`, not silently degrade a failure into a confident `False`
+        the exact way `nullable`/`default` already refuse to."""
+        conn = _FakeCursorConnection(
+            information_schema_tables={},
+            catalog_tables={"orders": {"relkind": "r", "reltuples": 1500}},
+            catalog_columns={"orders": [
+                {"column_name": "id", "ordinal_position": 1, "data_type": "integer"},
+            ]},
+            fail_catalog_keys=True,
+        )
+        tables = conn._get_tables_for_schema(_schema("coco_ods"))
+        col = tables[0]["columns"][0]
+        assert col["is_primary_key"] is None
+        assert col["foreign_key"] is None
 
 
 # ── database_rows_from_survey_data(): connection dict -> detail rows ───────
@@ -364,6 +526,46 @@ class TestSchemaInventoryResultsSurfaceTheEstimate:
         value = _schema_inventory_results(registry, slug)
         assert value["catalog_only_table_count"] == 0
         assert value["tables"][0]["row_count_is_estimate"] is False
+
+
+class TestSchemaInventoryResultsNameRelationKindsSeparately:
+    """Design ruling (security-model.md §2.1/§3.4, 2026-09-26): relation
+    kinds are reported separately and named, never blended into one "table
+    count" -- base_table_count stays the stable field the comparators
+    already diff `table_count` as if it meant."""
+
+    def test_mixed_relation_kinds_are_each_counted(self, registry, db_entity):
+        slug = db_entity.slug
+        _write_tables(registry, slug, [
+            {"schema_name": "public", "table_name": "customers",
+             "table_type": "BASE TABLE", "row_count": 5, "state": STATE_MEASURED},
+            {"schema_name": "public", "table_name": "recent_orders",
+             "table_type": "VIEW", "state": STATE_MEASURED},
+            {"schema_name": "public", "table_name": "monthly_totals",
+             "table_type": "MATERIALIZED VIEW", "state": STATE_MEASURED},
+            {"schema_name": "public", "table_name": "remote_customers",
+             "table_type": "FOREIGN", "state": STATE_MEASURED},
+        ])
+        value = _schema_inventory_results(registry, slug)
+        assert value["table_count"] == 4
+        assert value["base_table_count"] == 1
+        assert value["view_count"] == 1
+        assert value["materialized_view_count"] == 1
+        assert value["foreign_table_count"] == 1
+
+    def test_all_base_tables_reports_zero_for_the_others(self, registry, db_entity):
+        slug = db_entity.slug
+        _write_tables(registry, slug, [
+            {"schema_name": "public", "table_name": "a",
+             "table_type": "BASE TABLE", "state": STATE_MEASURED},
+            {"schema_name": "public", "table_name": "b",
+             "table_type": "BASE TABLE", "state": STATE_MEASURED},
+        ])
+        value = _schema_inventory_results(registry, slug)
+        assert value["table_count"] == value["base_table_count"] == 2
+        assert value["view_count"] == 0
+        assert value["materialized_view_count"] == 0
+        assert value["foreign_table_count"] == 0
 
 
 class TestRowCountSnapshotResultsLabelEstimates:

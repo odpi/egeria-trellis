@@ -324,9 +324,24 @@ class TestItIsWiredEverywhere:
 
 
 @pytest.mark.live_egeria
+@pytest.mark.requires_egeria
 class TestAgainstLiveEgeria:
     """Every `egeria_technology_type` in the mapping must name a type Egeria
-    actually holds — verified live, skipped (not passed) when Egeria is down."""
+    actually holds — verified live, skipped (not passed) when Egeria is down.
+
+    Unlike the Investigation/Curate tests this session also fixed (see
+    conftest.py::mock_egeria_client_connections), the point of THIS test
+    genuinely is a live Egeria round trip — mocking the client boundary
+    would make it always skip, never actually verifying anything, which is
+    a real loss of coverage, not just a speedup. Its own manual `pytest.skip`
+    below still exists as a defense in depth (`egeria_technology_types_
+    present()` can also fail for a reason unrelated to raw reachability,
+    e.g. a bad credential), but `requires_egeria` gives it the same fast
+    (~2s) reachability probe every other live-Egeria test in this suite
+    already uses (`pytest_collection_modifyitems` in conftest.py), instead
+    of reaching this test's own real client construction — which spent
+    ~30s per run when Egeria was genuinely unreachable rather than the
+    ~2s `_egeria_reachable()` check takes."""
 
     def test_every_linked_type_exists(self):
         linked = sorted({t.egeria_technology_type for t in ds.load_mapping() if t.egeria_technology_type})

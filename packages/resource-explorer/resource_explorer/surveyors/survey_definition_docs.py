@@ -246,17 +246,52 @@ def _resource_type_from_filename(path: Path) -> str:
     return prefix if prefix in _KNOWN_RESOURCE_TYPES else "repo"
 
 
+def _extension_docs_dirs(primary: Path) -> list[Path]:
+    """Sibling directories under the same `docs/dr-egeria/` parent as
+    `primary`, named `survey-definitions-<resource_type>` — one bootstrap
+    batch per non-repo resource type (e.g. `survey-definitions-database`,
+    Slice 12), each with its own canary/reconciler since bootstrap.py
+    discovers one batch per directory (`BATCH_MANIFEST_FILE`) and a database
+    Survey Definition heal has nothing to do with the repo batch's
+    `reconcile_survey_definition_links.py` or vice versa.
+
+    `documented_definitions()`'s callers (the questions-scoped local-match
+    fast path in `survey_definition_reader.py`, the cache warmer, the
+    `/api/survey-definitions/definitions` listing) all assume every authored
+    document lives in ONE place they can glob — true again once these are
+    merged in, even though the documents themselves are split across
+    directories for bootstrap's sake. Only directories that actually exist
+    are returned, so a deployment with no database Survey Definitions
+    authored yet sees no change at all.
+    """
+    return sorted(
+        p for p in primary.parent.glob("survey-definitions-*")
+        if p.is_dir()
+    )
+
+
 def documented_definitions(directory=None) -> dict:
-    """{definition name: DefinitionDoc} across every authored document."""
-    directory = Path(directory) if directory else definition_docs_dir()
+    """{definition name: DefinitionDoc} across every authored document.
+
+    An explicit `directory` scans only that one directory (existing tests
+    rely on this to isolate a fixture directory). The default scans the
+    primary repo directory PLUS every per-resource-type extension directory
+    next to it (`_extension_docs_dirs`) — see that function's docstring for
+    why the documents live in more than one place but are read as one list.
+    """
+    directories = (
+        [Path(directory)] if directory
+        else [definition_docs_dir(), *_extension_docs_dirs(definition_docs_dir())]
+    )
     out: dict = {}
-    if not directory.is_dir():
-        return out
-    for path in sorted(directory.glob("*.md")):
-        doc = parse_document(path)
-        if doc.process and doc.steps:
-            doc.resource_type = _resource_type_from_filename(path)
-            out[doc.process] = doc
+    for directory in directories:
+        if not directory.is_dir():
+            continue
+        for path in sorted(directory.glob("*.md")):
+            doc = parse_document(path)
+            if doc.process and doc.steps:
+                doc.resource_type = _resource_type_from_filename(path)
+                out[doc.process] = doc
     return out
 
 

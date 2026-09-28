@@ -105,6 +105,63 @@ class StaleEgeriaLinkageError(Exception):
         )
 
 
+def describe_publish_status(registry, entity_type: str, entity_slug: str, guid: str) -> dict:
+    """The one honest answer to "is this published to Egeria?" for a
+    summary row — `is_published` plus enough to explain a `False` that
+    used to be a silent `True`.
+
+    Before this existed, every entity-type's summary row (`DatabaseSummary`,
+    `FileSystemSummary`, `ProjectSummary`) computed `is_published =
+    bool(egeria_asset_guid)` — a claim that the cached GUID is current,
+    checked nowhere. `recheck_all_linkages`/`note_divergence` above already
+    detect and record exactly the case where it isn't (`egeria_linkage_status`,
+    status='stale') — for repos, ONLY on the repo detail page's separate
+    `scouting-overview` endpoint (a slow, best-effort fetch that renders no
+    stale warning at all if it fails or hasn't loaded yet), and not at all
+    for databases or filesystems. Found live 2026-09-26: `coco_pharma`'s
+    linkage had been `stale` since 2026-09-22 (a platform reset — Egeria's
+    repository 404s on the cached GUID), yet its summary row and every
+    header built from it said plain "published to Egeria" throughout,
+    because `databases.py`'s `is_published` never consulted the linkage
+    table that already knew better.
+
+    Returns `{"is_published": bool, "note": str}`. `is_published` is True
+    only when a GUID is cached AND the linkage is not recorded stale — the
+    rule the caller should gate any "is it safe to treat as published"
+    decision on (e.g. a Survey Definition publish step precondition).
+    `note`, non-empty only when the GUID is cached but the link IS stale,
+    is a ready-to-render sentence: the GUID history is itself information
+    ("this was published once") that a plain "not published" would discard,
+    so the caller should show `note` in place of — not merged with — its
+    own not-published/published copy. Empty in both other cases (never
+    published; published and healthy), where a caller's existing 'not
+    published to Egeria' / 'published to Egeria' text needs no help.
+    """
+    if not guid:
+        return {"is_published": False, "note": ""}
+    linkage = registry.get_egeria_linkage(entity_type, entity_slug) or {}
+    if linkage.get("status") != "stale":
+        return {"is_published": True, "note": ""}
+    # `detected_at` is the FIRST detection (never overwritten while the row
+    # stays stale — see `mark_egeria_linkage_stale`); `last_checked_at` is the
+    # most recent recheck. Both dates only, e.g. 2026-09-22 — found live
+    # 2026-09-26: showing only a since-date that gets bumped on every
+    # recheck made a link stale since the 22nd read as "stale since the
+    # 26th" the moment it was re-confirmed.
+    since = (linkage.get("detected_at") or "")[:10]
+    checked = (linkage.get("last_checked_at") or "")[:10]
+    if since and checked and checked != since:
+        detail = f"link stale since {since} · last checked {checked} — element not found"
+    elif since:
+        detail = f"link stale since {since} — element not found"
+    else:
+        detail = "link stale — element not found"
+    return {
+        "is_published": False,
+        "note": f"published to Egeria · {detail}",
+    }
+
+
 def note_divergence(
     registry, entity_type: str, entity_slug: str, entity_name: str,
     stale_guid: str, exc: BaseException,

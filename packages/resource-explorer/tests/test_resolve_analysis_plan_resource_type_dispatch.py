@@ -37,32 +37,32 @@ class TestDatabaseDispatch:
         `steps=None` (undispatchable) even though the database adapter knows
         exactly what it needs."""
         from resource_explorer.surveyors.database.survey_definition_adapter import (
-            DATABASE_ANALYSIS_STEP_MAP,
+            DATABASE_ANALYSIS_RE_STEP_MAP,
         )
         from resource_explorer.surveyors.repo_survey_definition_adapter import (
             REPO_ANALYSIS_SOURCE_STEPS,
         )
 
         analysis_id = next(
-            aid for aid in DATABASE_ANALYSIS_STEP_MAP if aid not in REPO_ANALYSIS_SOURCE_STEPS
+            aid for aid in DATABASE_ANALYSIS_RE_STEP_MAP if aid not in REPO_ANALYSIS_SOURCE_STEPS
         )
         is_ingest, steps = resolve_analysis_plan(analysis_id, "database")
         assert is_ingest is False
-        assert steps == DATABASE_ANALYSIS_STEP_MAP[analysis_id]
+        assert steps == DATABASE_ANALYSIS_RE_STEP_MAP[analysis_id]
 
     def test_a_database_only_id_is_undispatchable_under_the_repo_default(self):
         """The bug this test pins directly: the SAME analysis_id resolves to
         nothing when the caller (as every caller used to) omits entity_type,
         because it does not exist in the repo's own step map."""
         from resource_explorer.surveyors.database.survey_definition_adapter import (
-            DATABASE_ANALYSIS_STEP_MAP,
+            DATABASE_ANALYSIS_RE_STEP_MAP,
         )
         from resource_explorer.surveyors.repo_survey_definition_adapter import (
             REPO_ANALYSIS_SOURCE_STEPS,
         )
 
         analysis_id = next(
-            aid for aid in DATABASE_ANALYSIS_STEP_MAP if aid not in REPO_ANALYSIS_SOURCE_STEPS
+            aid for aid in DATABASE_ANALYSIS_RE_STEP_MAP if aid not in REPO_ANALYSIS_SOURCE_STEPS
         )
         _, steps_as_repo = resolve_analysis_plan(analysis_id)  # old default
         assert steps_as_repo is None

@@ -23,6 +23,7 @@ from resource_explorer.facts import (
 from resource_explorer.surveyors.result_status import (
     MEASURED,
     NEVER_RUN,
+    NO_READER,
     NOT_ESTABLISHED,
     NOTHING_FOUND,
 )
@@ -38,6 +39,14 @@ class TestIsKnown:
     def test_never_run_and_not_established_are_not(self):
         assert Fact("x", NEVER_RUN).is_known is False
         assert Fact("x", NOT_ESTABLISHED).is_known is False
+
+    def test_no_reader_is_not_knowledge_either(self):
+        """A missing results_reader is a gap in the answering machinery, not
+        a measured zero -- live-reproduced 2026-09-25 (REVIEW-SURVEY-
+        PANE-285.md) as "db_activity_signals ran and found nothing" for an
+        analysis with no reader at all. `is_known` must stay False so the
+        checkmark and "ran and found nothing" sentence are both withheld."""
+        assert Fact("x", NO_READER).is_known is False
 
     def test_a_partial_run_still_counts(self):
         """A partial result is usable. Discarding it would throw away real work
@@ -90,6 +99,38 @@ class TestHasContent:
     def test_a_false_flag_is_not_content(self):
         """`partial: False` says a run was complete; it is not a finding."""
         assert _has_content({"partial": False}) is False
+
+
+class TestReadResultsDistinguishesNoReaderFromEmpty:
+    """Live-reproduced 2026-09-25 (REVIEW-SURVEY-PANE-285.md): `_read_results`
+    used to return `{}` both when a reader ran and found nothing AND when no
+    reader was registered at all, so `_state_for` could not tell "measured a
+    real zero" from "there is no way to measure this yet" -- rendered on
+    screen as "db_activity_signals ran and found nothing -- a measured zero,
+    not a gap in coverage" for an analysis with no results_reader."""
+
+    def _layer(self):
+        layer = object.__new__(FactLayer)
+        layer._registry = None
+        return layer
+
+    def test_no_reader_at_all_returns_none(self):
+        assert self._layer()._read_results("slug", "aid", entry=None) is None
+
+    def test_a_bare_callable_entry_with_no_results_is_not_none(self):
+        """A real reader that ran and genuinely found nothing must stay `{}`,
+        not collapse into the same signal as "no reader exists"."""
+        reader = lambda registry, slug: {}
+        assert self._layer()._read_results("slug", "aid", entry=reader) == {}
+
+    def test_a_tuple_entry_whose_first_element_is_not_callable_is_none(self):
+        assert self._layer()._read_results("slug", "aid", entry=(None, None)) is None
+
+    def test_an_object_entry_with_no_results_reader_attribute_is_none(self):
+        class NoReader:
+            pass
+
+        assert self._layer()._read_results("slug", "aid", entry=NoReader()) is None
 
 
 class TestQuestionRouting:
@@ -219,9 +260,14 @@ class TestQuestionsTabWiring:
         narrated without its state, so the wording is not left to a model."""
         html = self._html()
         table = html.split("const _FACT_STATE_TEXT = {")[1].split("};")[0]
-        for state in ("measured", "nothing_found", "never_run", "not_established", "partial"):
+        for state in ("measured", "nothing_found", "never_run", "not_established",
+                      "partial", "no_reader"):
             assert f"{state}:" in table, f"no fixed wording for {state}"
         assert "measured zero" in table, "nothing_found must not read as absence of coverage"
+        assert "no summary reader" in table, (
+            "no_reader must not borrow nothing_found's 'measured zero' wording -- "
+            "a missing reader has not measured anything"
+        )
 
     def test_a_recovered_fact_is_labelled_as_a_proposal(self):
         html = self._html()
@@ -572,3 +618,65 @@ def test_maintainers_merge_one_person_committing_under_two_addresses(pg_registry
     assert top["name"] == "Mandy Chessell"
     assert top["emails"] == 2, "the merge must be inspectable"
     assert top["share"] > 0.99, f"expected ~99.5%, got {top['share']:.1%}"
+
+
+class TestResourceStateHeadlines:
+    """Owner's gate follow-up (2026-09-27): `_resource_state_fact` never set
+    a `headline` at all, so every one of these six questions fell to
+    `readEnvelope`'s rung-3 scalar fallback ("no written summary — the
+    figures above are the raw measures") — the exact defect this whole area
+    exists to close for analysis-backed facts, just never extended to these
+    resource-state-sourced ones."""
+
+    def test_every_named_subject_is_registered(self):
+        from resource_explorer.facts import _RESOURCE_STATE_HEADLINES
+        for subject in (
+            "catalog_presence", "related_resources", "survey_history",
+            "survey_definitions", "disposition", "change_since_last_survey",
+        ):
+            assert subject in _RESOURCE_STATE_HEADLINES
+
+    def test_catalog_presence_names_the_group_and_sibling_count(self):
+        from resource_explorer.facts import _RESOURCE_STATE_HEADLINES
+        from resource_explorer.surveyors.result_status import MEASURED
+        fn = _RESOURCE_STATE_HEADLINES["catalog_presence"]
+        headline = fn({"registered": True, "group": "data-platform",
+                        "siblings_in_group": 3}, MEASURED)
+        assert "data-platform" in headline
+        assert "3" in headline
+
+    def test_survey_definitions_handles_both_resolver_shapes(self):
+        from resource_explorer.facts import _RESOURCE_STATE_HEADLINES
+        from resource_explorer.surveyors.result_status import MEASURED, NOTHING_FOUND
+        fn = _RESOURCE_STATE_HEADLINES["survey_definitions"]
+        # _r_which_survey's shape (a "candidates" list).
+        assert "coco_survey" in fn(
+            {"count": 1, "candidates": ["coco_survey"], "note": ""}, MEASURED)
+        # _r_survey_definition_exists's shape (authored/count, no candidates).
+        assert "catalog gap" in fn(
+            {"authored": False, "count": 0, "technology_type": "Git Repository"},
+            NOTHING_FOUND)
+
+    def test_change_since_last_survey_names_what_changed(self):
+        from resource_explorer.facts import _RESOURCE_STATE_HEADLINES
+        from resource_explorer.surveyors.result_status import MEASURED
+        fn = _RESOURCE_STATE_HEADLINES["change_since_last_survey"]
+        headline = fn({"changed_count": 2, "unchanged_count": 5,
+                        "changed": [{"analysis_id": "cve_scan", "summary": "x"},
+                                    {"analysis_id": "foss_scorecard", "summary": "y"}]},
+                       MEASURED)
+        assert "2 of 7" in headline
+        assert "cve_scan" in headline and "foss_scorecard" in headline
+
+    def test_a_resource_state_fact_carries_the_headline(self, pg_registry):
+        from resource_explorer.facts import FactLayer, RESOURCE_STATE_SOURCES
+        from resource_explorer.registry import Project
+
+        reg = pg_registry
+        reg.add(Project(slug="hl", display_name="hl", github_url="https://github.com/x/hl",
+                         group_slug="platform"))
+        fl = FactLayer(registry=reg, resource_type="repo")
+        resolver, subject = RESOURCE_STATE_SOURCES["Is there any existing use within our organization?"]
+        fact = fl._resource_state_fact("hl", resolver, subject)
+        assert fact.headline
+        assert "platform" in fact.headline

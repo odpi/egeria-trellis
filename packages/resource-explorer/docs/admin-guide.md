@@ -273,6 +273,32 @@ uv run resource-explorer add-database \
 
 Or use the web UI: select **Databases** in the left sidebar → **+ Add Database**.
 
+**Which account to register.** The *catalog identity* only — a read-only
+account that can see the catalog and statistics with no table `SELECT`
+(`docs/security-model.md` §2). On PostgreSQL that is `CONNECT`, `USAGE` on
+the schemas of interest and, for the resilience checks, `pg_read_all_stats`.
+Resource Explorer probes the account at registration and shows what it can
+see; surveys that need to read rows ask for a *data identity* later, at the
+point of use. Do not register an owner or superuser account for surveying.
+
+**Where the password goes.** Encrypted at rest in the registry with a key
+from `RE_DB_CREDENTIAL_KEY` (or `TRELLIS_DB_CREDENTIAL_KEY`); with neither
+set, a per-host key is derived and a warning is logged — set one for any
+deployment that might move machines. The same credential is written, in one
+operation, to Resource Explorer's own secrets file for Egeria's engine host
+(`EGERIA_SECRETS_STORE_LOCAL_PATH`, normally
+`/deployments/secrets/resource-explorer.omsecrets` in the quickstart) so a
+native Egeria survey can open the database; an edit to that file is picked
+up by the next survey run without a restart. The collection name is fixed
+at registration and must not be re-derived if a database is renamed.
+
+```bash
+# Encryption key for stored database passwords (any long random string)
+RE_DB_CREDENTIAL_KEY=…
+# Host-visible path of RE's own .omsecrets projection, read by Egeria's engine host
+EGERIA_SECRETS_STORE_LOCAL_PATH=/path/to/deployments/secrets/resource-explorer.omsecrets
+```
+
 ---
 
 ## Surveys
@@ -339,6 +365,15 @@ In the web UI, open a database survey report and click **Catalog & Survey in Ege
 3. Simultaneously runs a local schema scan for immediate display
 
 Results from the Egeria survey appear with a ☁ badge when the survey completes (poll with **Re-survey in Egeria** button).
+
+**Which account Egeria uses.** Egeria's engine host chooses the connection
+through its security connector, for *its own* user, and Resource Explorer
+cannot pass one. Until two upstream defects in that selection are fixed
+(`docs/security-model.md` §5), the engine host's user must be able to see
+exactly one connection per database asset — the catalog identity. A native
+Postgres survey reads only the catalog and statistics, so it needs nothing
+more; its most-common-values figures come from `pg_stats` and carry the
+same "estimate as of the last ANALYZE" caveat as Resource Explorer's own.
 
 ### RFA lifecycle
 

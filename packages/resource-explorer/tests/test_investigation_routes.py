@@ -11,6 +11,15 @@ from fastapi.testclient import TestClient
 
 from resource_explorer.web.app import app
 
+# Several tests here inject a stub project_manager/collection_manager but
+# reach helper code (e.g. _apply_investigation_marker) that constructs its
+# OWN pyegeria client directly — an unmocked construction that spends ~30s
+# per call on a real check_connection() handshake when Egeria is unreachable.
+# None of these tests assert on that marker step's own success; they assert
+# on registry state and the stub's captured calls. See
+# conftest.py::mock_egeria_client_connections's own docstring.
+pytestmark = pytest.mark.usefixtures("mock_egeria_client_connections")
+
 
 @pytest.fixture(autouse=True)
 def _isolated_registry(pg_test_schema, monkeypatch):

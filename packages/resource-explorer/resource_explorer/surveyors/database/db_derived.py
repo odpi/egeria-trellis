@@ -258,6 +258,34 @@ class DerivedInputs:
         """
         return any(c.get("is_primary_key") is not None for c in self.columns)
 
+    def keys_captured_for_table(self, key: tuple[str, str]) -> bool:
+        """The per-table counterpart of `keys_were_captured` (Slice 21b).
+
+        `keys_were_captured` answers "was ANY column anywhere in this
+        database's stored rows key-captured?" — a database-wide `any()`.
+        That is right for gating a whole-database analysis on "were keys
+        captured at all," but wrong for crediting individual tables: a
+        database that is mostly catalog-only-fallback (Slice 21b's
+        `pg_constraint` read, `connection.py`) with one live-surveyed table
+        would have `keys_were_captured is True` from that one table alone,
+        and every OTHER table's genuine "keys not captured" would then be
+        silently read as "genuinely has no primary key" by any caller that
+        gated on the single global boolean instead of asking per table —
+        found in review, Slice 21b, 2026-09-26: exactly the confident-
+        wrong-answer shape this module exists to prevent, just one level
+        finer than the case `keys_were_captured` itself already guards
+        against (a fully native-only survey with NO column ever captured).
+
+        `False` (not captured for this table) when the table has no column
+        rows at all — nothing to have captured yet, same "absence is not
+        established" stance as the whole-database property for that case.
+        """
+        return any(
+            c.get("is_primary_key") is not None
+            for c in self.columns
+            if _table_key(c) == key
+        )
+
 
 def load_inputs(
     registry,
@@ -408,16 +436,31 @@ def _structure_evidence(inputs: DerivedInputs) -> dict[str, float] | None:
     keys_captured = inputs.keys_were_captured
 
     table_count = len(tables)
+    # Slice 21b: `with_pk`'s denominator must be the tables whose OWN keys
+    # were captured, not every table — see `DerivedInputs.
+    # keys_captured_for_table`'s own docstring for the mixed-access case
+    # this fixes (a database that is mostly catalog-fallback with one
+    # live-surveyed table used to have `keys_captured` (the global flag)
+    # read as True, but `table_count` below still counted every
+    # catalog-fallback table as a denominator entry that could never
+    # contribute a `with_pk`, silently inflating `no_pk_share` — evidence
+    # FOR "staging" (KIND_STAGING) built from tables that were simply never
+    # checked, not from tables genuinely observed to lack a key).
+    measured_tables = [t for t in tables if inputs.keys_captured_for_table(_table_key(t))]
+    measured_count = len(measured_tables)
     with_pk = 0
     widths: list[int] = []
     row_counts: list[int] = []
     small_tables = 0
 
+    for table in measured_tables:
+        key = _table_key(table)
+        cols = by_table.get(key, [])
+        if any(c.get("is_primary_key") for c in cols):
+            with_pk += 1
     for table in tables:
         key = _table_key(table)
         cols = by_table.get(key, [])
-        if keys_captured and any(c.get("is_primary_key") for c in cols):
-            with_pk += 1
         width = table.get("column_count")
         if width is None:
             width = len(cols) or None
@@ -430,7 +473,7 @@ def _structure_evidence(inputs: DerivedInputs) -> dict[str, float] | None:
                 small_tables += 1
 
     edges = _foreign_key_edges(inputs.columns) if keys_captured else []
-    fk_density = _ratio(len(edges), table_count)
+    fk_density = _ratio(len(edges), measured_count) if measured_count else 0.0
     avg_width = (sum(widths) / len(widths)) if widths else 0.0
     wide = _ramp(avg_width - _WIDE_TABLE_COLUMNS, _WIDE_TABLE_COLUMNS)
     small_share = _ratio(small_tables, len(row_counts)) if row_counts else 0.0
@@ -443,11 +486,13 @@ def _structure_evidence(inputs: DerivedInputs) -> dict[str, float] | None:
     if len(row_counts) >= 3 and total_rows > 0:
         skew = _ratio(max(row_counts), total_rows)
 
-    if keys_captured:
-        pk_coverage = _ratio(with_pk, table_count)
+    if measured_count:
+        pk_coverage = _ratio(with_pk, measured_count)
         no_pk_share = 1.0 - pk_coverage
     else:
-        # Keys were never captured. Neither "has keys" nor "has no keys" is
+        # No table's keys were captured (the whole-database case
+        # `keys_were_captured` guards, now checked per-table via
+        # `measured_count`). Neither "has keys" nor "has no keys" is
         # evidence here, so both the PK and FK signals contribute nothing —
         # but the rest of the family (widths, row skew, small-table share) is
         # still real, so the family stays in.
@@ -551,19 +596,31 @@ def _activity_evidence(inputs: DerivedInputs) -> dict[str, float] | None:
 
 
 def _fingerprint_evidence(fingerprint: dict) -> dict[str, float] | None:
-    """Copy evidence from the fingerprint check's own best match."""
+    """Copy evidence from the fingerprint check's own best match.
+
+    `best_similarity is None` has TWO different causes, found conflated
+    live (`adventureworks`, 2026-09-27): `fingerprint_database()` measured
+    against real comparable databases and genuinely found no match above
+    the reportable floor (a real, negative finding — "no known database
+    resembles this one," that function's own words) sets `best_similarity`
+    to `None` in EXACTLY the same way as never having had a comparable
+    database to check against at all. Only the second case is "missing
+    data" (`None` here, sorted into `classify_database`'s own `missing`
+    list, reported as "No data for: fingerprint"); the first is a real,
+    zero-strength "copy" measurement — this family DID contribute, it
+    contributed "not a copy of anything on hand."
+    """
     if fingerprint.get("state") != STATE_MEASURED:
         return None
     if not fingerprint.get("comparable_databases"):
         return None
-    best = fingerprint.get("best_similarity")
-    if best is None:
-        return None
     evidence = {kind: 0.0 for kind in _ALL_KINDS}
-    # Ramp from the reportable floor to the copy threshold, so a 0.3 overlap
-    # is nearly no evidence and a 0.95 match is full evidence.
-    span = _COPY_JACCARD - _REPORTABLE_JACCARD
-    evidence[KIND_COPY] = _ramp(float(best) - _REPORTABLE_JACCARD, span)
+    best = fingerprint.get("best_similarity")
+    if best is not None:
+        # Ramp from the reportable floor to the copy threshold, so a 0.3
+        # overlap is nearly no evidence and a 0.95 match is full evidence.
+        span = _COPY_JACCARD - _REPORTABLE_JACCARD
+        evidence[KIND_COPY] = _ramp(float(best) - _REPORTABLE_JACCARD, span)
     return evidence
 
 
@@ -698,8 +755,30 @@ def derive_relationship_graph(inputs: DerivedInputs) -> dict:
             ),
         }
 
+    # Slice 21b: a MIXED database — some tables key-captured, some not (a
+    # partial credential, or a schema only reachable via the catalog-only
+    # fallback) — used to fall straight through here once ANY column
+    # anywhere had been key-captured, then treat every uncaptured table's
+    # lack of adjacency as a verified "isolated" finding, identically to a
+    # table genuinely checked and found to have no FK. Uncaptured tables
+    # are excluded from the graph itself and reported separately
+    # (`unmeasured_table_count`) — never silently counted as isolated.
+    measured_tables = [t for t in tables if inputs.keys_captured_for_table(_table_key(t))]
+    unmeasured_tables = [t for t in tables if t not in measured_tables]
+    if not measured_tables:
+        return {
+            "state": STATE_NOT_MEASURED,
+            "reason": "keys_not_captured",
+            "table_count": len(tables),
+            "explanation": (
+                f"{len(tables)} tables are stored, but none of their own "
+                "column rows carry key information — so whether these "
+                "tables relate is NOT established."
+            ),
+        }
+
     edges = _foreign_key_edges(inputs.columns)
-    names = {_table_key(t) for t in tables}
+    names = {_table_key(t) for t in measured_tables}
     # Adjacency over table identity, ignoring direction for component
     # counting (a data model is connected whichever way you walk it).
     adjacency: dict[tuple[str, str], set[tuple[str, str]]] = {n: set() for n in names}
@@ -743,27 +822,36 @@ def derive_relationship_graph(inputs: DerivedInputs) -> dict:
     connected_tables = len(names) - len(isolated)
     largest = max((len(c) for c in components), default=0)
 
+    unmeasured_note = (
+        f" ({len(unmeasured_tables)} other table(s) excluded — their own keys "
+        "were not captured, so their relationships are not established.)"
+        if unmeasured_tables else ""
+    )
+
     if not edges:
         verdict = "bag_of_tables"
         explanation = (
-            f"Measured: all {len(tables)} tables were checked and not one "
-            "declares a foreign key. This is a real finding — the database "
-            "is a bag of tables with no enforced relational model — not a "
-            "gap in what was surveyed."
+            f"Measured: all {len(measured_tables)} key-captured tables were "
+            "checked and not one declares a foreign key. This is a real "
+            "finding — the measured part of the database is a bag of tables "
+            f"with no enforced relational model — not a gap in what was "
+            f"surveyed.{unmeasured_note}"
         )
     elif _ratio(connected_tables, len(names)) >= 0.7:
         verdict = "data_model"
         explanation = (
             f"{len(edges)} foreign keys connect {connected_tables} of "
-            f"{len(names)} tables into {len(components)} component(s), the "
-            f"largest holding {largest}. A real relational model."
+            f"{len(names)} key-captured tables into {len(components)} "
+            f"component(s), the largest holding {largest}. A real "
+            f"relational model.{unmeasured_note}"
         )
     else:
         verdict = "partial_model"
         explanation = (
             f"{len(edges)} foreign keys connect only {connected_tables} of "
-            f"{len(names)} tables; {len(isolated)} stand alone. A partial "
-            "model — some of the schema is related, much of it is not."
+            f"{len(names)} key-captured tables; {len(isolated)} stand alone. "
+            f"A partial model — some of the schema is related, much of it is "
+            f"not.{unmeasured_note}"
         )
 
     hubs = sorted(
@@ -774,7 +862,8 @@ def derive_relationship_graph(inputs: DerivedInputs) -> dict:
     return {
         "state": STATE_MEASURED,
         "verdict": verdict,
-        "table_count": len(tables),
+        "table_count": len(measured_tables),
+        "unmeasured_table_count": len(unmeasured_tables),
         "edge_count": len(edges),
         "component_count": len(components),
         "largest_component": largest,
@@ -1164,19 +1253,43 @@ def determine_grain(inputs: DerivedInputs) -> dict:
         _apply_time_grain(entry, table_name, date_columns, named_date_columns)
         grains.append(entry)
 
+    # Slice 21b follow-up (2026-09-27, live gate): the "numbers behind this"
+    # evidence panel's `measureHtml()` array branch (app.js) renders a list
+    # row's "name"/"summary" fields when present, falling back to
+    # `check_name`/`name`/`id` and `summary`/`detail`/`label` — none of
+    # which a grain entry has, so 58 of them rendered as a bare, repeated
+    # `label` value ("gap gap gap gap gap gap and 52 more") with no way to
+    # tell WHICH table each one was about. `name` is the qualified table
+    # name every entry already computes; `summary` is the entry's own
+    # explanation of ITS grain (or lack of one) — the same sentence
+    # `grain_statement`/`explanation` already carries, just under the key
+    # name the generic renderer looks for.
+    for g in grains:
+        g["name"] = g.get("qualified_name") or ""
+        g["summary"] = g.get("grain_statement") or g.get("explanation") or g.get("label") or ""
+
     determined = [g for g in grains if g.get("grain_statement")]
     timed = [g for g in grains if g.get("interval")]
     bases: dict[str, int] = {}
     for g in timed:
         basis = g.get("interval_basis") or ""
         bases[basis] = bases.get(basis, 0) + 1
+    # Slice 21a follow-up (owner's gate, 2026-09-27): a whole-database
+    # boolean read as a flat contradiction beside the per-schema container
+    # headline's own "keys_not_captured" lines for individual schools — "keys
+    # were captured: yes" next to "coco_ods: not established
+    # (keys_not_captured)" looked like two disagreeing claims about the same
+    # fact, when they were actually answering different questions (ANY
+    # table vs THIS table). A count, not a boolean, states what was actually
+    # true without needing the reader to reconcile scope themselves.
+    keys_captured_count = sum(1 for t in tables if inputs.keys_captured_for_table(_table_key(t)))
     return {
         "state": STATE_MEASURED,
         "grains": grains,
         "table_count": len(tables),
         "determined_count": len(determined),
         "undetermined_count": len(grains) - len(determined),
-        "keys_were_captured": keys_captured,
+        "keys_captured_count": keys_captured_count,
         # §16.3's time-grain extension, rolled up so `preliminary_fit` and the
         # results card can read it without walking every table. `timed_count`
         # is a count of tables with a NAMING-derived interval; a table missing

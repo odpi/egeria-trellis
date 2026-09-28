@@ -449,6 +449,10 @@ async def list_candidates(
                 "survey_kind": survey_def.survey_kind,
                 "last_run_at": last_activity.get("last_run_at", ""),
                 "last_run_status": last_activity.get("last_run_status", ""),
+                # Non-empty only when the last run recorded step errors — the
+                # ⚠ beside "ran Xm ago" opens these, rather than only
+                # flagging that something went wrong with no way to see what.
+                "last_run_errors": last_activity.get("last_run_errors") or [],
                 "last_published_at": last_activity.get("last_published_at", ""),
                 # 'candidate' = a real per-Survey-Definition publish (the ☁
                 # Publish button on this exact card); 'repo' = inferred from

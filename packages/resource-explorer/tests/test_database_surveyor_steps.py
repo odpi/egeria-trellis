@@ -12,7 +12,7 @@ import pytest
 from resource_explorer.registry import DatabaseEntity, ProjectRegistry
 from resource_explorer.surveyors.database.connection import EngineCapabilities
 from resource_explorer.surveyors.database.database_surveyor import (
-    DATABASE_ANALYSIS_STEP_MAP,
+    DATABASE_SURVEYOR_STEP_MAP,
     DatabaseSurveyor,
 )
 
@@ -75,7 +75,7 @@ class TestStepsFiltered:
         surveyor = DatabaseSurveyor(db_entity, {"user": "admin", "password": "secret"}, registry)
         with _patched_connection(conn), \
              patch.object(surveyor, "_survey_views", return_value=[]) as mock_views:
-            surveyor.survey(steps=DATABASE_ANALYSIS_STEP_MAP["schema_inventory"])
+            surveyor.survey(steps=DATABASE_SURVEYOR_STEP_MAP["schema_inventory"])
         conn.get_schema_info.assert_called_once()  # "schema" always runs
         conn.get_statistics.assert_not_called()
         mock_views.assert_called_once()
@@ -85,7 +85,7 @@ class TestStepsFiltered:
         surveyor = DatabaseSurveyor(db_entity, {"user": "admin", "password": "secret"}, registry)
         with _patched_connection(conn), \
              patch.object(surveyor, "_survey_views", return_value=[]) as mock_views:
-            surveyor.survey(steps=DATABASE_ANALYSIS_STEP_MAP["row_count_snapshot"])
+            surveyor.survey(steps=DATABASE_SURVEYOR_STEP_MAP["row_count_snapshot"])
         conn.get_schema_info.assert_called_once()
         conn.get_statistics.assert_called_once()
         mock_views.assert_not_called()
@@ -206,7 +206,7 @@ class TestDatabaseAnalysisStepMap:
         # credential_capability (design REPLY-DATABASE-CREDENTIAL-CAPABILITY-
         # VISIBILITY.md §3/§4, replying to ASK-...-#251) added the
         # credential_capability id and its own opt-in step.
-        assert set(DATABASE_ANALYSIS_STEP_MAP) == {
+        assert set(DATABASE_SURVEYOR_STEP_MAP) == {
             "schema_inventory", "row_count_snapshot", "privilege_audit",
             "db_activity_signals", "db_resilience", "db_external_dependencies",
             "data_class_match", "reference_data_match", "nested_column_profile",
@@ -218,11 +218,11 @@ class TestDatabaseAnalysisStepMap:
         # privilege_audit is no longer "aspirational" — it has a real,
         # dedicated check (pg_roles/role_table_grants/pg_default_acl, RFA on
         # PUBLIC grants) and no longer needs to run the full survey.
-        assert set(DATABASE_ANALYSIS_STEP_MAP["privilege_audit"]) == {"schema", "operations"}
+        assert set(DATABASE_SURVEYOR_STEP_MAP["privilege_audit"]) == {"schema", "operations"}
 
     def test_new_operations_backed_ids_map_to_schema_and_operations(self):
         for analysis_id in ("db_activity_signals", "db_resilience", "db_external_dependencies"):
-            assert set(DATABASE_ANALYSIS_STEP_MAP[analysis_id]) == {"schema", "operations"}
+            assert set(DATABASE_SURVEYOR_STEP_MAP[analysis_id]) == {"schema", "operations"}
 
     def test_column_profile_backed_ids_also_need_statistics(self):
         # Phase 1 slice 10. "statistics" is not optional for these two:
@@ -231,13 +231,13 @@ class TestDatabaseAnalysisStepMap:
         # the per-table row counts "statistics" collects (design §5.8's "of
         # 4.2M rows"). Without it the step runs and establishes nothing.
         for analysis_id in ("data_class_match", "reference_data_match"):
-            assert set(DATABASE_ANALYSIS_STEP_MAP[analysis_id]) == {
+            assert set(DATABASE_SURVEYOR_STEP_MAP[analysis_id]) == {
                 "schema", "statistics", "column_profile",
             }
 
     def test_nested_column_profile_also_needs_statistics(self):
         # Phase 1 slice 11, same reasoning as slice 10 above: the sample's
         # provenance is stated against "statistics"'s per-table row counts.
-        assert set(DATABASE_ANALYSIS_STEP_MAP["nested_column_profile"]) == {
+        assert set(DATABASE_SURVEYOR_STEP_MAP["nested_column_profile"]) == {
             "schema", "statistics", "nested_columns",
         }

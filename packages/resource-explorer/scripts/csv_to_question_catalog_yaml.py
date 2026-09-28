@@ -181,6 +181,16 @@ KNOWN_PURPOSES = [
     "Deploy",
 ]
 
+# Level vocabulary — the resource granularity at which a question's answer is a
+# single value (docs/multi-resource-questions-design.md §18.3, 2026-09-25).
+# Engine-neutral on purpose: "schema" does not exist on MySQL and the level
+# names come from each engine's containment declaration
+# (REPLY-SCHEMA-AS-SUB-RESOURCE.md §5). Per resource type: database =
+# database/schema/table/column; filesystem = root/folder/file/field; dataset =
+# dataset/distribution/file/field; repo = repository/component/file/symbol.
+# Asked above its level, a question answers as a ranked distribution.
+KNOWN_LEVELS = ["resource", "container", "member", "field"]
+
 # Columns that are NOT perspectives. Perspectives are identified by
 # elimination, so anything missing here silently becomes a phantom Perspective
 # on every row — keep in sync with csv_to_dr_egeria_questions.py's
@@ -188,6 +198,10 @@ KNOWN_PURPOSES = [
 NON_PERSPECTIVE_COLUMNS = (
     "Question", "Funnel Stage", "Why is this important?", "Rationale/Source",
     "Answering Analysis", "Answering Mechanism", "Purposes", "Catalog History",
+    # "Level" (added 2026-09-25, design §18.3): the granularity the answer is a
+    # single value at — one or more of KNOWN_LEVELS, `;`-separated, blank means
+    # "resource". By-elimination trap as for every other name here.
+    "Level",
     # "Status" (added 2026-09-20, SPEC-ADMIN-THE-FOUR-GAPS.md §4) carries the
     # append-only catalog's retirement marker ("Retired", or empty for
     # active) — see question_catalog_writer.py. Must stay in this list for
@@ -267,6 +281,25 @@ def _parse_purposes(raw: str) -> list[str]:
             f"unknown Purpose(s) {unknown}; valid values are {KNOWN_PURPOSES}. "
             f"Fix the CSV, or add the purpose to KNOWN_PURPOSES if the "
             f"ProjectCharter vocabulary genuinely gained one."
+        )
+    return list(dict.fromkeys(values))
+
+
+def _parse_levels(raw: str) -> list[str]:
+    """Parse the semicolon-separated Level column; blank means ["resource"].
+
+    Validated like Purposes so a typo stops the build instead of creating a
+    phantom level. A row may carry several levels when its answer is a single
+    value at more than one (e.g. "resource;container" for a size question that
+    is natural at the database and breaks down per schema)."""
+    values = [v.strip().lower() for v in (raw or "").split(";") if v.strip()]
+    if not values:
+        return ["resource"]
+    unknown = [v for v in values if v not in KNOWN_LEVELS]
+    if unknown:
+        raise ValueError(
+            f"unknown Level(s) {unknown}; valid values are {KNOWN_LEVELS} "
+            f"(design §18.3). Fix the CSV."
         )
     return list(dict.fromkeys(values))
 
@@ -408,6 +441,7 @@ def generate(rows: list[dict]) -> str:
             "stage": (row.get("Funnel Stage") or "").strip(),
             "perspectives": perspectives,
             "purposes": _parse_purposes(row.get("Purposes", "")),
+            "levels": _parse_levels(row.get("Level", "")),
             "answering": _parse_answering(row.get("Answering Analysis", ""), known_checks),
             "answering_mechanism": (row.get("Answering Mechanism") or "").strip(),
             "rationale": (row.get("Rationale/Source") or "").strip(),

@@ -43,6 +43,14 @@
   {
    "id": "page-11",
    "name": "DRAFT badge & distinct (round 3)"
+  },
+  {
+   "id": "page-12",
+   "name": "Database screens (designer round 2)"
+  },
+  {
+   "id": "page-13",
+   "name": "Relationship graph (real edges)"
   }
  ],
  "artboards": [
@@ -214,6 +222,22 @@
    "w": 1400,
    "h": 3100,
    "page": "page-11"
+  },
+  {
+   "file": "DatabaseScreens.dc.html",
+   "x": 0,
+   "y": 0,
+   "w": 1400,
+   "h": 3160,
+   "page": "page-12"
+  },
+  {
+   "file": "RelationshipGraph.dc.html",
+   "x": 0,
+   "y": 0,
+   "w": 1460,
+   "h": 3060,
+   "page": "page-13"
   }
  ],
  "annotations": [
@@ -320,10 +344,26 @@
    "w": 300,
    "page": "page-11",
    "text": "Round 3. Read against main at 9bc1c153 \u2014 slices 9, 10 and 12 merged.\n\nBoth round-2 items were fixed, and the n_distinct fix went three corrections deep, catching the reltuples provenance and the PG13 sentinel ambiguity I had not seen.\n\nTwo findings:\n\n1. The DRAFT badge is correct in classic, including the part nobody asked for \u2014 an empty contentStatus draws no badge because 'not stated' is not 'confirmed'. /next has no Egeria annotation surface at all, so the divergence is permitted today and becomes a silent omission the day that pane is built. And amber cannot port: /next has three audited state roles and no room for a fourth. DRAFT is not a state \u2014 it says who has agreed so far, orthogonal to ok/warn/gap \u2014 so it is an ink chip, not a colour.\n\n2. The n_distinct fix correctly refuses to guess, returning None \u2014 for four different reasons, on a row still labelled state = measured. A wrong number became a blank that cannot say why. The live case: pg_stat_reset() clears last_analyze while pg_stats survives, so after a reset every near-unique column loses its distinct count on a healthy database. stats_reset is already in scope at database_surveyor.py:379 and is not consulted.\n\nHeatmap: wait. The next drawing depends on which of the two grant fixes is taken. But the shipping rule is settleable now \u2014 it must not ship caveated, because a caveated exposure grid is still read as a grid."
+  },
+  {
+   "id": "dbscreens-brief",
+   "x": 1500,
+   "y": 0,
+   "w": 300,
+   "page": "page-12",
+   "text": "Designer round 2 on the database screens. Read against main at 019c2796 (#318) and the owner's screenshots of 2026-09-27.\n\nThree things in the screenshots are already fixed in code: tree order, kind words, the filter's expanded-empty table.\n\nThe finding under all three items: there are already three glyph tables (GLYPH, factGlyph, CELL) that disagree, and the brief would add a fourth. One table, one module; the glyph names a family, the word names the state.\n\nA prerequisite for the tree overview: 'empty' folds four conditions, including never-measured, stored as row_total 0. A row-count bar built on it draws 'not measured' as 'counted, zero'.\n\nThe per-schema overview goes into the tree's rows rather than a second chart, with rows AND columns: column counts come from the catalog, so a structure-only credential still gets a real bar.\n\nHeader: each line leads with its state; only the remedy is in the accent colour. Neither remedy exists in /next today."
+  },
+  {
+   "id": "relgraph-brief",
+   "x": 1560,
+   "y": 0,
+   "w": 300,
+   "page": "page-13",
+   "text": "Drawn from the 91 real AdventureWorks edges, fetched 2026-09-28 from the running /next through the owner's session. Laid out with Graphviz dot; nothing illustrative.\n\nThree zoom levels: the schema map (always legible), the whole database (reads at 68 tables thanks to clusters, hub weight and darker cross-schema keys; falls back to map + hubs above ~100), and one schema opened with its outgoing keys drawn.\n\nFinding: the analysis's by_schema result calls sales.salestaxrate and sales.shoppingcartitem isolated and sales '3 components'. Both have keys that leave the schema; only production.transactionhistoryarchive is isolated in the database. A per-schema sentence must say 'no keys inside sales', never 'isolated'.\n\nIn /next: emit Graphviz rather than Mermaid (Kroki renders both; Mermaid has no cluster layout comparable to dot)."
   }
  ],
  "launch": {
   "view": "canvas",
-  "page": "page-11"
+  "page": "page-13"
  }
 }
