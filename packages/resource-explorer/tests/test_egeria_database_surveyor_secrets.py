@@ -1,6 +1,6 @@
 """Tests for EgeriaDatabaseSurveyor's own secrets-store wiring.
 
-docs/design-notes/PROBES-2026-09-21.md found that a freshly-cataloged
+PROBES-2026-09-21.md found that a freshly-cataloged
 database's native PostgreSQL survey failed with a SCRAM/no-password error
 because the "secretsCollectionName"/"secretsStorePathName" placeholders on
 its templated Connection were never bound -- left as Egeria's own literal,
@@ -19,6 +19,10 @@ from resource_explorer.surveyors.database.egeria_database_surveyor import (
     _build_secrets_collection_body,
     _secrets_collection_name,
 )
+
+# Brief I: these tests fake the Egeria clients; the code under test runs as a signed-in caller, as on a route.
+import pytest  # noqa: E402
+pytestmark = pytest.mark.usefixtures("signed_in_caller")
 
 
 class TestSecretsCollectionNaming:
@@ -85,7 +89,9 @@ class TestEnsureOwnSecretsStoreGuid:
 
     def test_creates_connection_endpoint_connector_type_asset_graph_when_absent(self):
         surveyor = self._surveyor()
-        surveyor._automated_curation.get_guid_for_name.side_effect = Exception("not found")
+        # A real miss is pyegeria's "No elements found" answer. A RAISED look-up is "could not check", which
+        # creates nothing (tests/test_lookup_failure_never_creates.py); this test used to fake the miss as one.
+        surveyor._automated_curation.get_guid_for_name.return_value = "No elements found"
         mock_maker = MagicMock()
         mock_maker.create_connector_type.return_value = "connector-type-guid"
         mock_maker.create_endpoint.return_value = "endpoint-guid"

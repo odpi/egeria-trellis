@@ -4,25 +4,34 @@
 
 * **Per-request client.** Every pyegeria client RE builds *on behalf of a
   person* is authenticated with that person's Egeria bearer token, so Egeria's
-  own provenance records the person rather than `erinoverview`.
-  `caller_credentials()` reports which of the two identities is in play, and
-  `apply_identity()` is the single place a client is handed a token.
+  own provenance records the person rather than `erinoverview`. Since Brief I
+  (2026-10-09) every client is built by `egeria_clients.egeria_client`, the one
+  factory; this module keeps the identity record and the governance stamps.
 * **Ownership.** Everything RE publishes gets the `Ownership` classification
-  (`0445`) with `owner` = the requesting user's id and
-  `ownerTypeName = "UserIdentity"`. Ownership is curation by default: the
-  owner may accept, reject, promote and delete without any further grant.
-* **Draft zone.** One zone per app (owner's decision, 2026-09-04). On publish
-  an element joins `resource-explorer-draft`; on curate-accept it is promoted
-  into the deployment's publish zones.
+  (`0445`) naming the requesting person: their profile (owner = its
+  qualifiedName, ownerTypeName = its type) when Egeria links one to their
+  UserIdentity, else `owner` = their userId and `ownerTypeName = "UserIdentity"`
+  (7h, `egeria_actors.ownership_for_person`). Ownership is attribution; who may curate
+  follows Egeria's zones (`workflows/curate.curation_access`, Brief Z).
+* **Draft zone: configured-only.** DRAFT is a content status, not a zone (owner ruling
+  2026-10-08, retiring the 2026-09-04 one-zone-per-app default). Published assets get NO
+  RE-imposed zone; a draft zone (`EXPLORER_DRAFT_ZONE`, conventionally
+  `resource-explorer-draft`) exists only if a deployment configures one, and then
+  curate-accept moves the element into the configured publish zones. Private-investigation
+  work is zoned `[resource-explorer-private, <owner>]`.
 
-The service account is legitimate in exactly one place
----------------------------------------------------
+The daemon identity is legitimate only where it is named
+--------------------------------------------------------
 The **worker role's own loops** — bootstrap heal, Egeria resync, the outbox
-drain — are the platform's integration identity and *should* be attributed to
-it. `service_credentials()` is that identity, named so a reader can tell a
-deliberate service-account call from one that merely forgot to pass a token.
+drain, scheduled and queued surveys — are RE's daemon identity and *should* be
+attributed to it: `egeria_clients.Daemon(reason)`, with `reason` from a closed
+enum, so a reader can tell a deliberate daemon call from one that merely forgot
+a token. Nothing falls back to it silently.
 
-**Interim, and deliberate: a queued run does not carry a token.** An Egeria
+**Deliberate, and Egeria-consistent: a queued run does not carry a token**
+(owner, 2026-10-09). Any queued work — a survey, or a person's own Publish or
+Curate commit — is committed by RE's daemon, as Egeria's engine hosts commit
+theirs, with the person recorded as `requested_by` and stamped as Ownership. An Egeria
 bearer token lives one hour (measured — `trellis_auth.
 EGERIA_TOKEN_TTL_SECONDS_OBSERVED`) and dies whenever the platform restarts,
 while a queued survey may sit in the queue longer than that and then run for
@@ -40,34 +49,39 @@ from __future__ import annotations
 
 import logging
 import os
-import re
 from contextlib import contextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Iterable, Iterator, Optional
 
 log = logging.getLogger(__name__)
 
 __all__ = [
     "DRAFT_ZONE",
-    "DEFAULT_PUBLISH_ZONES",
     "EgeriaIdentity",
-    "apply_identity",
     "caller_credentials",
     "caller_user_id",
     "classification_client",
     "current_identity",
     "current_zones",
     "draft_zone",
+    "draft_zones",
     "ensure_draft_zone_exists",
     "ensure_private_zone_exists",
     "private_zone",
     "private_zone_is_enforced",
     "private_zone_status",
     "private_zones",
-    "identity_for_user",
+    "assess_zone_control",
+    "check_zone_controls",
+    "stamped_zones",
+    "zone_controls_line",
+    "zone_controls_report",
+    "zone_lockout_refusal",
     "ownership_body",
-    "publish_zones",
-    "service_credentials",
+    "person_ownership_body",
+    "configured_publish_zones",
+    "clear_zone_membership",
+    "read_zones",
     "set_ownership",
     "set_zone_membership",
     "stamp_published",
@@ -76,11 +90,10 @@ __all__ = [
 ]
 
 
-#: RE's single draft zone. One zone per app, decided 2026-09-04 (project
-#: owner): per-user zones multiply fast and per-project zones are a later
-#: refinement if visibility must follow *what* is surveyed rather than *who*
-#: surveyed it. Overridable so a second RE deployment against one Egeria does
-#: not share a draft zone with the first.
+#: The name RE used to stamp by default (2026-09-04). RETIRED as a default on 2026-10-08 (project
+#: owner: DRAFT is a content status, not a zone): kept only so a deployment that wants the old
+#: behaviour can set `EXPLORER_DRAFT_ZONE=resource-explorer-draft`, and so tests can name it.
+#: `draft_zone()` never returns it unless configured.
 DRAFT_ZONE = "resource-explorer-draft"
 
 #: RE's private zone — the one that actually DENIES.
@@ -101,18 +114,6 @@ DRAFT_ZONE = "resource-explorer-draft"
 #: with both entries present, and the owner still read the element.
 PRIVATE_ZONE = "resource-explorer-private"
 
-#: Where an accepted element is promoted to.
-#:
-#: `egeria-runtime` is not a guess: it is what the quickstart deployment
-#: actually configures. `egeria-workspaces-fs/compose-configs/egeria-freshstart/
-#: secrets/egeria-user-directory.omsecrets` sets `defaultZones: [egeria-runtime]`
-#: and `publishZones: [egeria-runtime]` for the platform's own account, and it
-#: is the only concrete zone value in the whole compose config. Deliberately
-#: NOT `quarantine`, which appears only as filler in pyegeria's own docstring
-#: examples and would put every accepted element somewhere the quickstart's
-#: view server does not serve.
-DEFAULT_PUBLISH_ZONES: tuple[str, ...] = ("egeria-runtime",)
-
 _OWNER_TYPE_NAME = "UserIdentity"
 
 #: `Ownership.ownerPropertyName` — which property of the owning element holds
@@ -120,9 +121,49 @@ _OWNER_TYPE_NAME = "UserIdentity"
 _OWNER_PROPERTY_NAME = "userId"
 
 
-def draft_zone() -> str:
-    """RE's draft zone name (`EXPLORER_DRAFT_ZONE` overrides)."""
-    return (os.environ.get("EXPLORER_DRAFT_ZONE") or "").strip() or DRAFT_ZONE
+def draft_zone() -> Optional[str]:
+    """The draft zone this deployment CONFIGURED (`EXPLORER_DRAFT_ZONE`), or `None`.
+
+    **No default (project owner's ruling, 2026-10-08): DRAFT is a content status, not a zone.**
+    RE-authored elements carry no zone unless someone configured one on purpose. The old default,
+    `resource-explorer-draft`, named a zone nothing in the security directory defined, so every
+    element RE created sat in a zone no rule named. Writers use `draft_zones()` (a list, `[]`
+    when unconfigured) and send NO `ZoneMembership` at all when it is empty.
+    """
+    return (os.environ.get("EXPLORER_DRAFT_ZONE") or "").strip() or None
+
+
+def draft_zones() -> list[str]:
+    """`[draft_zone()]` when one is configured, else `[]` (the default: stamp nothing)."""
+    zone = draft_zone()
+    return [zone] if zone else []
+
+
+def referenced_element_zones() -> list[str]:
+    """The zones for an element a publish REFERENCES rather than produces. Never the private zone.
+
+    Design §3.6 (`docs/investigation-classification-and-zoning-design.md`): "an investigation zones
+    what it produced, never what it references". A repository, database or file-system Asset, and the
+    deployment-wide GitHub `SourceControlLibrary`, are shared by every investigation that names them;
+    zoning one private to one owner hides it from everyone else, and the next publish by anyone else
+    cannot see it, clears its registration and 409s on the re-create. So a referenced element gets
+    the deployment's ordinary treatment, whoever publishes and however private their investigation
+    is: the configured draft zone, else none (`draft_zones()`). The ONE helper the creates and the
+    referenced-element stamp share, so the two cannot drift apart again (2026-10-13 review).
+    """
+    return draft_zones()
+
+
+def zone_membership_initial_classification(zones: Iterable[str]) -> dict:
+    """The `initialClassifications` entry that CREATES an element already in `zones`.
+
+    The shape Egeria's `NewElementRequestBody.initialClassifications` takes
+    (`Map<String, ClassificationProperties>`, `ZoneMembershipProperties` a registered subtype), and
+    the one pyegeria's `InitialClassifications` model serialises flat. A `zoneMembership` key inside
+    an Asset's `properties` is NOT this: Egeria's `AssetProperties` has no such field and ignores
+    unknown keys, so a zone sent there never reaches the element.
+    """
+    return {"ZoneMembership": {"class": "ZoneMembershipProperties", "zoneMembership": list(zones)}}
 
 
 def private_zone() -> str:
@@ -143,13 +184,17 @@ def private_zones(owner: str) -> list[str]:
     return zones
 
 
-def publish_zones() -> list[str]:
-    """The zones a curate-accepted element is promoted into.
+def configured_publish_zones() -> list[str]:
+    """The publish zones this deployment CONFIGURED, or `[]` when it did not.
 
-    `EXPLORER_PUBLISH_ZONES` (comma-separated) wins; then RE's own
-    `egeria.default_catalog_zones` if a deployment already set it, since that
-    is the same question asked earlier under a different name; then
-    `DEFAULT_PUBLISH_ZONES`.
+    **The configured-only rule (project owner, 2026-10-07): no zone unless someone configured one.**
+    This is the ONLY source of a publish zone on any write path (catalogue commit, curate
+    promotion, investigation loosening). There is no default: the old fallback zone and its function
+    are removed, because the 2026-10-05 rehearsal
+    found that writing it onto an element locks the service identity, Egeria's survey engine and
+    the cataloguer out of it. A zone is written ONLY when someone set `EXPLORER_PUBLISH_ZONES`
+    (or RE's `egeria.default_catalog_zones`) on purpose; with nothing configured the writers leave
+    zones to Egeria, and promotion CLEARS RE's own draft zone instead of replacing it.
     """
     raw = os.environ.get("EXPLORER_PUBLISH_ZONES", "")
     zones = [z.strip() for z in raw.split(",") if z.strip()]
@@ -157,10 +202,7 @@ def publish_zones() -> list[str]:
         return zones
     from resource_explorer.config import get_config
 
-    configured = list(get_config().egeria.default_catalog_zones or [])
-    if configured:
-        return configured
-    return list(DEFAULT_PUBLISH_ZONES)
+    return list(get_config().egeria.default_catalog_zones or [])
 
 
 # ---------------------------------------------------------------------------
@@ -173,8 +215,8 @@ class EgeriaIdentity:
 
     Exactly one of `token` / `password` is meaningful:
 
-    * `token` set — a signed-in person. `apply_identity` calls
-      `set_bearer_token`, and Egeria's provenance names them.
+    * `token` set — a signed-in person. The factory calls `set_bearer_token`,
+      and Egeria's provenance names them.
     * `password` set, `is_service_account` True — the worker role's own
       identity, which is the right attribution for background loops.
 
@@ -185,8 +227,18 @@ class EgeriaIdentity:
 
     user_id: str
     token: Optional[str] = None
-    password: str = ""
+    password: str = field(default="", repr=False)
     is_service_account: bool = False
+    #: Set by `egeria_clients`: "caller" | "system" | "background". Empty on a bare identity,
+    #: which `egeria_clients.egeria_client` refuses — who a client acts as is always named.
+    kind: str = ""
+    #: A Daemon identity's `DaemonReason` value.
+    reason: str = ""
+    #: A Daemon identity's requester (recorded; `user_id` carries it for Ownership).
+    requested_by: str = ""
+    #: The Egeria user a client is built for when it differs from `user_id` (Background: the
+    #: service account mints the token while `user_id` names the requester for Ownership).
+    client_user: str = ""
 
     @property
     def is_person(self) -> bool:
@@ -215,62 +267,16 @@ def caller_user_id(default: str = "") -> str:
     return identity.user_id if identity is not None else default
 
 
-def service_credentials() -> EgeriaIdentity:
-    """The worker role's own Egeria identity — the one legitimate service account."""
-    from resource_explorer.config import get_config
+def caller_credentials() -> EgeriaIdentity:
+    """Who an Egeria call here acts as: `egeria_clients.current_principal()`.
 
-    egeria = get_config().egeria
-    return EgeriaIdentity(
-        user_id=egeria.user_id, password=egeria.user_password, is_service_account=True
-    )
-
-
-def caller_credentials(*, required: bool = False) -> EgeriaIdentity:
-    """The identity a live Egeria call on this request should use.
-
-    `required=True` raises when nothing is signed in — for a call that must be
-    attributed to a person (a publish, a materialization). `required=False`
-    falls back to the service account, which is correct only for the worker's
-    own loops and for read-only calls; those call sites pass it explicitly so
-    the fallback is never something a reader has to infer.
+    The declared Daemon job, else the signed-in Caller; with neither it raises
+    `NoCallerIdentity`. It no longer falls back to the service account (Brief I, 2026-10-09):
+    a daemon job names itself with `egeria_clients.acting_as(Daemon(reason))`.
     """
-    identity = current_identity()
-    if identity is not None:
-        return identity
-    if required:
-        raise PermissionError(
-            "This operation writes to Egeria on behalf of a person and no user is "
-            "signed in. Sign in (POST /api/auth/login) or run `resource-explorer login`."
-        )
-    return service_credentials()
+    from resource_explorer.egeria_clients import current_principal
 
-
-def identity_for_user(user_id: str) -> EgeriaIdentity:
-    """A service-account identity that *owns* its writes as `user_id`.
-
-    The interim shape for a queued run: no token survives the queue, so the
-    worker authenticates as itself and stamps `Ownership` with the person who
-    asked. See the module docstring.
-    """
-    svc = service_credentials()
-    return EgeriaIdentity(
-        user_id=user_id or svc.user_id,
-        password=svc.password,
-        is_service_account=True,
-    )
-
-
-def apply_identity(client: Any, identity: Optional[EgeriaIdentity] = None) -> None:
-    """Authenticate a freshly-built pyegeria client. The one place this happens.
-
-    A person's token is reused via `set_bearer_token`; a service account mints
-    its own. Delegates to `trellis_auth.apply_token`, so RE and the Portal
-    build clients the same way.
-    """
-    from trellis_auth import apply_token
-
-    identity = identity or caller_credentials()
-    apply_token(client, identity.token if identity.is_person else None)
+    return current_principal()
 
 
 @contextmanager
@@ -302,7 +308,119 @@ def use_identity(identity: Optional[EgeriaIdentity]) -> Iterator[None]:
 # Ownership and zones
 # ---------------------------------------------------------------------------
 
-def ownership_body(owner: str, owner_type_name: str = _OWNER_TYPE_NAME) -> dict:
+@dataclass(frozen=True)
+class OnBehalf:
+    """Whose an element is, for ONE write made on a person's behalf (Brief I, rounds 3-4).
+
+    `requester` — who asked: a queued run's `requested_by`, or the signed-in person.
+    `owner` — what Ownership is stamped with: the requester (owner's ruling, round 4: no declared-
+    owner or investigation branch here — a free-text or team owner gets no UserIdentity). Empty
+    when nobody asked, and NEVER RE's own daemon user: the service account is not an owner.
+    """
+
+    requester: str
+    owner: str
+
+    def provenance(self) -> dict:
+        """`additionalProperties.requestedBy`, beside the element's other provenance keys. Empty
+        when nobody asked (the daemon's own work)."""
+        return {"requestedBy": self.requester} if self.requester else {}
+
+
+def on_behalf_of(identity: Optional[EgeriaIdentity] = None) -> OnBehalf:
+    """THE helper every write made on a person's behalf uses: who asked, and what Ownership names.
+    A daemon with no requester (the drain loop's own retry of an unattributed row) gets nothing:
+    no owner, no requestedBy — never the service account."""
+    identity = identity or caller_credentials()
+    if identity.kind == "daemon":
+        requester = (identity.requested_by or "").strip()
+        daemon_user = identity.client_user or ""
+    elif identity.kind == "caller" or identity.is_person:   # a signed-in person (token held)
+        requester, daemon_user = (identity.user_id or "").strip(), ""
+    else:
+        requester, daemon_user = "", ""
+    if requester and daemon_user and requester == daemon_user:
+        requester = ""                     # the daemon's own user is never recorded as the person
+    return OnBehalf(requester=requester, owner=requester)
+
+
+def _read_additional_properties(element: Any) -> dict:
+    """An element's current `additionalProperties` as {key: string}, from a raw generic read
+    (`elementProperties.propertyValueMap.additionalProperties.mapValues...`) or a formatted one.
+    Raises ValueError when the answer is not an element at all."""
+    if not isinstance(element, dict):
+        raise ValueError(f"the read returned {type(element).__name__}, not an element")
+    if not isinstance(element.get("elementProperties") or element.get("properties"), dict):
+        # Not a shape we know: reading it as "no additionalProperties" and writing ours would wipe
+        # whatever the element carries. Refuse instead (nothing is written; the caller says why).
+        raise ValueError(f"unrecognised element shape (keys: {sorted(element)[:6]})")
+    vm = ((element.get("elementProperties") or element.get("properties") or {}).get("propertyValueMap")
+          if isinstance(element.get("elementProperties") or element.get("properties"), dict) else None) or {}
+    mp = vm.get("additionalProperties") if isinstance(vm, dict) else None
+    if isinstance(mp, dict):
+        inner = ((mp.get("mapValues") or {}).get("propertyValueMap") or {})
+        return {k: str((v or {}).get("primitiveValue", "")) for k, v in inner.items() if isinstance(v, dict)}
+    props = element.get("properties") or element.get("elementProperties") or {}
+    flat = props.get("additionalProperties") if isinstance(props, dict) else None
+    return {k: str(v) for k, v in flat.items()} if isinstance(flat, dict) else {}
+
+
+def _map_property(values: dict) -> dict:
+    return {"class": "MapTypePropertyValue", "typeName": "map<string,string>",
+            "mapValues": {"class": "ElementProperties", "propertyValueMap": {
+                k: {"class": "PrimitiveTypePropertyValue", "typeName": "string",
+                    "primitiveTypeCategory": "OM_PRIMITIVE_TYPE_STRING", "primitiveValue": v}
+                for k, v in values.items()}}}
+
+
+def record_requested_by(element_guid: str, behalf: OnBehalf, *, client: Any) -> str:
+    """For an element whose create body cannot carry `additionalProperties` (a template copy, a
+    generic metadata-element create): READ its current additionalProperties, merge `requestedBy`
+    in, write the merged map. Returns '' when recorded (or nothing to record), else the reason.
+    A failed read writes nothing (an update would replace the map with ours alone). Never raises.
+    UNVERIFIED LIVE: the map-typed property shape on `update_metadata_element_properties`."""
+    if not behalf.requester:
+        return ""
+    if not element_guid:
+        return "no element GUID"
+    try:
+        current = _read_additional_properties(client.get_metadata_element_by_guid(element_guid))
+    except Exception as exc:  # noqa: BLE001 - reported; nothing is written on a failed read
+        return f"its additionalProperties could not be read ({type(exc).__name__}: {str(exc)[:160]})"
+    try:
+        client.update_metadata_element_properties(element_guid, {
+            "class": "UpdatePropertiesRequestBody",
+            "properties": {"class": "ElementProperties", "propertyValueMap": {
+                "additionalProperties": _map_property({**current, **behalf.provenance()})}},
+            "replaceProperties": False,
+        })
+        return ""
+    except Exception as exc:  # noqa: BLE001 - reported, the element already exists
+        log.warning("egeria: could not record requestedBy=%s on %s — %s: %s",
+                    behalf.requester, element_guid, type(exc).__name__, exc)
+        return f"{type(exc).__name__}: {str(exc)[:200]}"
+
+
+def stamp_on_behalf(element_guid: str, behalf: OnBehalf, *, identity: Optional[EgeriaIdentity] = None,
+                    props_client: Any = None) -> str:
+    """Ownership = the requester, and (with `props_client`) `requestedBy` merged into the
+    element's additionalProperties. '' when everything landed (or there was nobody to record),
+    else "requester not recorded (<reason>)", which the caller reports as partial."""
+    if not behalf.requester:
+        return ""
+    reasons = []
+    if props_client is not None:
+        why = record_requested_by(element_guid, behalf, client=props_client)
+        if why:
+            reasons.append(f"requestedBy: {why}")
+    ok, why = set_ownership_reason(element_guid, behalf.owner, identity=identity)
+    if not ok:
+        reasons.append(f"Ownership: {why}")
+    return f"requester not recorded ({'; '.join(reasons)})" if reasons else ""
+
+
+def ownership_body(owner: str, owner_type_name: str = _OWNER_TYPE_NAME,
+                   owner_property_name: str = _OWNER_PROPERTY_NAME) -> dict:
     """The `NewClassificationRequestBody` for `Ownership` (`0445`).
 
     **`OwnershipProperties`, not `OwnerProperties`.** pyegeria's own
@@ -324,9 +442,22 @@ def ownership_body(owner: str, owner_type_name: str = _OWNER_TYPE_NAME) -> dict:
             "class": "OwnershipProperties",
             "owner": owner,
             "ownerTypeName": owner_type_name,
-            "ownerPropertyName": _OWNER_PROPERTY_NAME,
+            "ownerPropertyName": owner_property_name,
         },
     }
+
+
+def person_ownership_body(user_id: str) -> "tuple[dict, Any]":
+    """(the Ownership body, its `egeria_actors.OwnershipShape`) for a PERSON's userId (7h).
+
+    With a profile linked to the person's UserIdentity: owner = the profile's qualifiedName,
+    ownerTypeName = its type, ownerPropertyName "qualifiedName" — Egeria's own shape
+    (`OpenLineageCataloguerIntegrationConnector.addOwnership`). Otherwise the userId form. A
+    failed lookup falls back to the userId form and is reported (`shape.note`); never raises."""
+    from resource_explorer.egeria_actors import ownership_for_person
+
+    shape = ownership_for_person(user_id)
+    return ownership_body(shape.owner, shape.owner_type_name, shape.owner_property_name), shape
 
 
 def zone_membership_body(zones: Iterable[str]) -> dict:
@@ -349,18 +480,9 @@ def classification_client(identity: Optional[EgeriaIdentity] = None):
     """
     from pyegeria import ClassificationExplorer
 
-    from resource_explorer.config import get_config
+    from resource_explorer.egeria_clients import egeria_client
 
-    egeria = get_config().egeria
-    identity = identity or caller_credentials()
-    client = ClassificationExplorer(
-        egeria.view_server,
-        egeria.platform_url,
-        identity.user_id if identity.is_person else egeria.user_id,
-        identity.password or egeria.user_password,
-    )
-    apply_identity(client, identity)
-    return client
+    return egeria_client(identity or caller_credentials(), purpose="classification").of(ClassificationExplorer)
 
 
 def set_ownership(
@@ -369,7 +491,7 @@ def set_ownership(
     *,
     identity: Optional[EgeriaIdentity] = None,
     client: Any = None,
-    owner_type_name: str = _OWNER_TYPE_NAME,
+    owner_type_name: Optional[str] = None,
 ) -> bool:
     """Classify `element_guid` as owned by `owner`. True when Egeria accepted it.
 
@@ -378,19 +500,48 @@ def set_ownership(
     failure is logged and returned as False so a caller that cares (the tests,
     and the publish response's warning field) can say so.
     """
+    return set_ownership_reason(element_guid, owner, identity=identity, client=client,
+                                owner_type_name=owner_type_name)[0]
+
+
+def set_ownership_reason(element_guid: str, owner: str, *, identity: Optional[EgeriaIdentity] = None,
+                         client: Any = None, owner_type_name: Optional[str] = None) -> tuple[bool, str]:
+    """`set_ownership`, with the reason when it did not land. Never raises (round 5): it runs after
+    an element was created, so a client that cannot be built (no sign-in, a refused platform) is a
+    PARTIAL outcome with its reason — raising here would skip the caller's own record of the
+    element it just created.
+
+    `owner` is a PERSON's userId unless `owner_type_name` says otherwise: the person's profile is
+    looked up (7h, `person_ownership_body`) and named when Egeria has one."""
+    return _set_ownership(element_guid, owner, identity=identity, client=client,
+                          owner_type_name=owner_type_name)[:2]
+
+
+def _set_ownership(element_guid: str, owner: str, *, identity: Optional[EgeriaIdentity] = None,
+                   client: Any = None, owner_type_name: Optional[str] = None) -> tuple[bool, str, Any]:
+    """(landed, reason, OwnershipShape or None). The one Ownership write."""
     if not element_guid or not owner:
-        return False
+        return False, "no element or no owner", None
     try:
         client = client or classification_client(identity)
-        client.add_ownership_to_element(element_guid, ownership_body(owner, owner_type_name))
-        log.info("egeria: Ownership(owner=%s) set on %s", owner, element_guid)
-        return True
+    except Exception as exc:  # noqa: BLE001 - reported as partial by the caller
+        log.warning("egeria: no Ownership client for %s — %s: %s", element_guid, type(exc).__name__, exc)
+        return False, f"the Ownership client could not be built ({type(exc).__name__}: {str(exc)[:160]})", None
+    if owner_type_name is None:
+        body, shape = person_ownership_body(owner)
+    else:
+        body, shape = ownership_body(owner, owner_type_name), None
+    try:
+        client.add_ownership_to_element(element_guid, body)
+        log.info("egeria: Ownership(owner=%s, %s) set on %s", body["properties"]["owner"],
+                 body["properties"]["ownerTypeName"], element_guid)
+        return True, "", shape
     except Exception as exc:
         log.warning(
             "egeria: could not set Ownership(owner=%s) on %s — %s: %s",
             owner, element_guid, type(exc).__name__, exc,
         )
-        return False
+        return False, f"{type(exc).__name__}: {str(exc)[:200]}", shape
 
 
 def set_zone_membership(
@@ -423,6 +574,62 @@ def set_zone_membership(
         return False
 
 
+def clear_zone_membership(
+    element_guid: str,
+    *,
+    identity: Optional[EgeriaIdentity] = None,
+    client: Any = None,
+) -> bool:
+    """Remove the element's `ZoneMembership` classification ("zones left to Egeria"). True when
+    Egeria accepted the call. The documented clear call (`clear_zone_membership`, `0424`), used
+    when promotion has no CONFIGURED zone to move the element into: RE's draft zone must not stay
+    on an accepted element, and RE must not invent a zone to replace it.
+
+    UNVERIFIED LIVE: the body is `{"class": "DeleteClassificationRequestBody"}` per pyegeria's
+    model; the caller reads the zones back (`read_zones`) before it says anything is cleared."""
+    if not element_guid:
+        return False
+    try:
+        client = client or classification_client(identity)
+        client.clear_zone_membership(element_guid, {"class": "DeleteClassificationRequestBody"})
+        log.info("egeria: ZoneMembership cleared on %s", element_guid)
+        return True
+    except Exception as exc:
+        log.warning(
+            "egeria: could not clear ZoneMembership on %s — %s: %s",
+            element_guid, type(exc).__name__, exc,
+        )
+        return False
+
+
+def _metadata_client(identity: Optional[EgeriaIdentity] = None):
+    """A `MetadataExpert` authenticated as `identity` (the read side of zone checks)."""
+    from pyegeria.omvs.metadata_expert import MetadataExpert
+
+    from resource_explorer.egeria_clients import egeria_client
+
+    return egeria_client(identity or caller_credentials(), purpose="zone read").of(MetadataExpert)
+
+
+class ZoneReadError(RuntimeError):
+    """The element's zones could not be read: not the same as "it has none"."""
+
+
+def read_zones(element_guid: str, identity: Optional[EgeriaIdentity] = None) -> list[str]:
+    """The element's zones as Egeria holds them NOW. `[]` means Egeria answered and the element has
+    no `ZoneMembership`; an unreadable answer RAISES `ZoneReadError`, never `[]`
+    (`current_zones` is the lenient reader whose `[]` means "could not tell")."""
+    from resource_explorer.catalogue_gateway import zones_of_element
+
+    if not element_guid:
+        raise ZoneReadError("no element to read")
+    try:
+        element = _metadata_client(identity).get_metadata_element_by_guid(element_guid)
+        return zones_of_element(element)
+    except Exception as exc:                      # re-raised as the one named error, never swallowed
+        raise ZoneReadError(f"could not read the zones of {element_guid[:8]}: {exc}") from exc
+
+
 def current_zones(element_guid: str, identity: Optional[EgeriaIdentity] = None) -> list[str]:
     """The zones `element_guid` is in right now, or `[]` if we could not tell.
 
@@ -434,34 +641,18 @@ def current_zones(element_guid: str, identity: Optional[EgeriaIdentity] = None) 
     element that needs promoting and a genuinely promoted element would be
     re-promoted into a 403.
     """
+    from resource_explorer.catalogue_gateway import zones_of_element
+
     if not element_guid:
         return []
     try:
-        from pyegeria.omvs.metadata_expert import MetadataExpert
-
-        from resource_explorer.config import get_config
-
-        egeria = get_config().egeria
-        identity = identity or caller_credentials()
-        client = MetadataExpert(
-            egeria.view_server,
-            egeria.platform_url,
-            identity.user_id if identity.is_person else egeria.user_id,
-            identity.password or egeria.user_password,
-        )
-        apply_identity(client, identity)
+        client = _metadata_client(identity)
         element = client.get_metadata_element_by_guid(element_guid)
         if not isinstance(element, dict):
             return []
-        header = element.get("elementHeader", element)
-        for classification in header.get("classifications") or []:
-            if classification.get("classificationName") != "ZoneMembership":
-                continue
-            props = classification.get("classificationProperties") or {}
-            array = (props.get("propertyValueMap") or {}).get("zoneMembership") or {}
-            values = (array.get("arrayValues") or {}).get("propertiesAsStrings") or {}
-            return [values[k] for k in sorted(values, key=lambda x: int(x))]
-        return []
+        # The one zone reader (6.2's `elementHeader.zoneMembership` first, then the `classifications` list); an
+        # answer it cannot read raises, which this lenient reader turns into "could not tell" below.
+        return zones_of_element(element)
     except Exception as exc:
         log.debug("egeria: could not read zones of %s — %s", element_guid, exc)
         return []
@@ -475,23 +666,29 @@ def stamp_published(
     client: Any = None,
     zones: Optional[Iterable[str]] = None,
 ) -> dict:
-    """`Ownership` + draft-zone `ZoneMembership` on one just-published element.
+    """`Ownership` + `ZoneMembership` (the zones passed in; by default the CONFIGURED draft
+    zone, if any, else none) on one just-published element.
 
     The pair is applied together because they are one decision — "this is
-    yours, and it is not visible outside the draft zone yet" — and a publish
+    yours, and (when a draft zone is configured) it is not visible outside it yet" — and a publish
     that set one without the other would be either an unowned draft or an
     owned element already in the catalogue's normal zones.
 
     One client is built and reused across both calls: two classifications on
     one element should cost one authentication, not two.
     """
-    zones = list(zones) if zones is not None else [draft_zone()]
+    zones = list(zones) if zones is not None else draft_zones()
     client = client or classification_client(identity)
+    landed, _why, shape = _set_ownership(element_guid, owner, client=client)
     return {
-        "ownership": set_ownership(element_guid, owner, client=client),
+        "ownership": landed,
         "zone_membership": set_zone_membership(element_guid, zones, client=client),
         "owner": owner,
         "zones": zones,
+        # 7h: which Ownership form went out ('profile' | 'userId'), and why the userId form when a
+        # profile lookup failed ('' otherwise). None when no Ownership was attempted.
+        "ownership_form": shape.form if shape is not None else None,
+        "ownership_note": shape.note if shape is not None else "",
     }
 
 
@@ -553,12 +750,9 @@ def _resolve_platform() -> "tuple[str, Optional[str]]":
         return configured, None
     from pyegeria import EgeriaTech
 
-    from resource_explorer.config import get_config
+    from resource_explorer.egeria_clients import Daemon, DaemonReason, egeria_client
 
-    egeria = get_config().egeria
-    tech = EgeriaTech(egeria.view_server, egeria.platform_url,
-                      egeria.user_id, egeria.user_password)
-    tech.create_egeria_bearer_token()
+    tech = egeria_client(Daemon(DaemonReason.ZONE_SETUP), purpose="resolve platform").of(EgeriaTech)
     entries: list[tuple[str, Optional[str], str]] = []  # (name, guid, urlRoot)
     for el in tech.get_elements("SoftwareServerPlatform", output_format="JSON") or []:
         props = el.get("properties") or {}
@@ -573,7 +767,7 @@ def _resolve_platform() -> "tuple[str, Optional[str]]":
         return entries[0][0], entries[0][1]
     if not entries:
         raise RuntimeError(
-            "could not identify the platform to configure: no catalogued "
+            "could not identify the platform to configure: no cataloged "
             "SoftwareServerPlatform found. Set EXPLORER_EGERIA_PLATFORM_NAME."
         )
 
@@ -587,11 +781,13 @@ def _resolve_platform() -> "tuple[str, Optional[str]]":
     # holder-probe below it works even before any control has ever been
     # created (which is exactly the situation a first-boot ambiguity like
     # this one is in).
-    configured_url = (egeria.platform_url or "").strip().rstrip("/").lower()
+    from resource_explorer.config import get_config
+
+    configured_url = (get_config().egeria.platform_url or "").strip().rstrip("/").lower()
     url_matches = [e for e in entries if e[2].strip().rstrip("/").lower() == configured_url]
     if configured_url and len(url_matches) == 1:
         name, guid, _ = url_matches[0]
-        log.info("egeria: several platforms catalogued %s; using %r (guid %s), whose "
+        log.info("egeria: several platforms cataloged %s; using %r (guid %s), whose "
                  "platformURLRoot matches this process's configured EGERIA_PLATFORM_URL",
                  names, name, guid)
         return name, guid
@@ -612,9 +808,8 @@ def _resolve_platform() -> "tuple[str, Optional[str]]":
     try:
         from pyegeria.omvs.security_officer import SecurityOfficer
 
-        probe = SecurityOfficer(egeria.view_server, egeria.platform_url,
-                                egeria.user_id, egeria.user_password)
-        probe.create_egeria_bearer_token()
+        probe = egeria_client(Daemon(DaemonReason.ZONE_SETUP),
+                              purpose="resolve platform").of(SecurityOfficer)
         holders: list[tuple[str, Optional[str]]] = []
         for name, guid, _ in entries:
             try:
@@ -624,12 +819,12 @@ def _resolve_platform() -> "tuple[str, Optional[str]]":
             if got and (got.get("associatedSecurityList") or {}):
                 holders.append((name, guid))
         if len(holders) == 1:
-            log.info("egeria: several platforms catalogued %s; using %r, which holds "
+            log.info("egeria: several platforms cataloged %s; using %r, which holds "
                      "the %r control", names, holders[0][0], zone)
             return holders[0]
         if len(holders) > 1:
             raise RuntimeError(
-                f"the {zone!r} control exists on more than one catalogued platform "
+                f"the {zone!r} control exists on more than one cataloged platform "
                 f"({[h[0] for h in holders]}), so which one governs this deployment is "
                 "ambiguous. Set EXPLORER_EGERIA_PLATFORM_NAME."
             )
@@ -716,23 +911,32 @@ def ensure_private_zone_exists(identity: Optional[EgeriaIdentity] = None) -> dic
     try:
         from pyegeria.omvs.security_officer import SecurityOfficer
 
-        from resource_explorer.config import get_config
+        from resource_explorer.egeria_clients import Daemon, DaemonReason, egeria_client
 
-        egeria = get_config().egeria
-        identity = identity or service_credentials()
-        client = SecurityOfficer(egeria.view_server, egeria.platform_url,
-                                 egeria.user_id, egeria.user_password)
-        apply_identity(client, identity)
+        client = egeria_client(identity or Daemon(DaemonReason.ZONE_SETUP),
+                               purpose="private zone").of(SecurityOfficer)
         platform, platform_guid = _resolve_platform()
         guid_kwargs = {"platform_guid": platform_guid} if platform_guid else {}
 
         existing = client.get_security_access_control(platform, zone, **guid_kwargs)
         if existing and (existing.get("associatedSecurityList") or {}):
+            facts = assess_zone_control(zone, existing)
+            if facts["verdict"] == "blocked":
+                # An operator's control that lists neither READ nor DEFAULT. Today Egeria treats the zone as
+                # unsecured for a read (world-readable); once e9fd817f4c ships it grants nobody. Neither is
+                # private, so it is reported and refused, never overwritten (it is not RE's to rewrite).
+                _private_zone_state = {
+                    "status": "locks_out", "zone": zone, "platform": platform,
+                    "control_present": True, "enforced": False, "zone_control": facts,
+                    "detail": f"the {zone!r} control ({', '.join(facts['operations'])} only): {facts['words']}",
+                    "remedy": f"Add a DEFAULT (or READ) list to the {zone!r} security access control.",
+                }
+                return _private_zone_state
             # Already there when we first looked, so it predates this process
             # and the connector has had at least as long as we have been up.
             _private_zone_state = {
                 "status": "exists", "zone": zone, "platform": platform,
-                "control_present": True, "enforced": True,
+                "control_present": True, "enforced": True, "zone_control": facts,
                 "basis": "control was already present when this process first looked",
             }
             return _private_zone_state
@@ -771,6 +975,7 @@ def ensure_private_zone_exists(identity: Optional[EgeriaIdentity] = None) -> dic
             _private_zone_state = {
                 "status": "unconfirmed", "zone": zone, "platform": platform,
                 "control_present": False, "enforced": False,
+                "zone_control": assess_zone_control(zone, back),
                 "detail": "the control did not read back with a security list",
             }
             return _private_zone_state
@@ -782,6 +987,7 @@ def ensure_private_zone_exists(identity: Optional[EgeriaIdentity] = None) -> dic
         _private_zone_state = {
             "status": "created", "zone": zone, "platform": platform,
             "control_present": True, "enforced": False,
+            "zone_control": assess_zone_control(zone, back),
             "settle_after": settle_at,
             "detail": (
                 f"just created; the security connector reloads on its own timer, so "
@@ -799,6 +1005,7 @@ def ensure_private_zone_exists(identity: Optional[EgeriaIdentity] = None) -> dic
         _private_zone_state = {
             "status": "not_authorized" if unauthorized else "error",
             "zone": zone, "control_present": False, "enforced": False,
+            "zone_control": assess_zone_control(zone, None, unreadable=detail[:300]),
             "detail": detail,
             "remedy": (
                 "Writing a security access control needs platform-operator rights. "
@@ -840,8 +1047,11 @@ def private_zone_status() -> dict:
 
     if _private_zone_state is None:
         return {"status": "unknown", "zone": private_zone(), "control_present": False,
-                "enforced": False, "detail": "not checked yet this process"}
+                "enforced": False, "detail": "not checked yet this process",
+                "zone_controls": zone_controls_report()}
     state = dict(_private_zone_state)
+    # The start-up report over EVERY zone RE stamps (the private zone's entry is `zone_control`).
+    state["zone_controls"] = zone_controls_report()
     settle_after = state.pop("settle_after", None)
     if settle_after is not None:
         remaining = max(0, int(settle_after - _time.time()))
@@ -850,6 +1060,159 @@ def private_zone_status() -> dict:
         if remaining:
             state["status"] = "settling"
     return state
+
+
+# ---------------------------------------------------------------------------
+# The start-up check over every zone RE stamps (design brief, 2026-10-14)
+# ---------------------------------------------------------------------------
+#
+# Egeria e9fd817f4c ("Make governance zones without a security control private"; origin/main 003f6f6510,
+# `OpenMetadataAccessSecurityConnector.validateZoneAccess` ~1094-1205) secures EVERY named zone:
+#
+# * a zone named after the userId grants first, so the owner-id zone RE puts beside the private zone is exempt;
+# * any other zone with no SecurityAccessControl, or whose control has neither a list for the operation nor a
+#   DEFAULT list (`getAssociatedSecurityListForZone`: the operation's enum NAME, then DEFAULT), grants NOBODY;
+# * an element in no zone stays open.
+#
+# Not in the image running on 2026-10-14 (built 2026-10-06), but in the next rebuild. Before it, such a zone is
+# "not secured" and ignored, so the same element was readable by everyone; after it, by no one (RE's own
+# daemon, Egeria's survey engine and the cataloguer included) and nothing can unzone it. So RE reads each
+# control at start-up, records three facts (control present / absent, the operations it lists, a DEFAULT list
+# or not), and refuses to publish into a zone that would lock everyone out.
+
+#: The words for a zone whose control would grant nobody once e9fd817f4c is in the running image.
+ZONE_LOCKOUT_WORDS = "would lock out everyone once Egeria e9fd817f4c ships"
+#: The words for a READ-only control (no DEFAULT, no write-operation list): readable, but no write is granted.
+ZONE_WRITES_DENIED_WORDS = "writes would be denied once Egeria e9fd817f4c ships"
+#: A control that could not be read. Never "fine": see `zone_lockout_refusal`.
+ZONE_COULD_NOT_CHECK_WORDS = "could not check"
+
+#: `AccessOperation` names (open-connector-framework .../users/AccessOperation.java) other than READ and
+#: DEFAULT: the operations a write is judged on.
+_WRITE_OPERATIONS = frozenset({
+    "CREATE", "UPDATE_PROPERTIES", "UPDATE_STATUS", "DELETE", "ATTACH", "DETACH", "ADD_MEMBER",
+    "DELETE_MEMBER", "ADD_FEEDBACK", "DELETE_FEEDBACK", "CLASSIFY", "DECLASSIFY", "PUBLISH",
+})
+
+#: The last `check_zone_controls()` answer for the zones OTHER than the private zone, `{zone: entry}`. The
+#: private zone's entry lives in `_private_zone_state["zone_control"]`, written by the same read that decides
+#: whether it is enforced (`ensure_private_zone_exists`). `None` = not checked in this process yet.
+_zone_controls_state: Optional[dict] = None
+
+
+def stamped_zones() -> list[str]:
+    """Every zone RE itself will stamp: the private zone, then any configured draft or publish zone. Never
+    the owner-userId zone (exempt in Egeria: `userId.equals(zoneName)` grants first)."""
+    return list(dict.fromkeys([private_zone(), *draft_zones(), *configured_publish_zones()]))
+
+
+def assess_zone_control(zone: str, control: Any, *, unreadable: str = "") -> dict:
+    """The three facts about one zone's control, and what they mean once e9fd817f4c ships.
+
+    `control` is pyegeria's answer (`get_security_access_control`: the `securityAccessControl` dict, or None
+    when Egeria holds no such control). `unreadable` is why the read failed; then nothing is claimed about the
+    control (`operations` / `default_list` are None, not empty) and the verdict is `could_not_check`.
+    Keys are read the way Egeria reads them: a list is there when its key holds a non-null value.
+    """
+    if unreadable:
+        return {"zone": zone, "control": "could not check", "operations": None, "default_list": None,
+                "verdict": "could_not_check", "words": f"{ZONE_COULD_NOT_CHECK_WORDS} ({unreadable})"}
+    if not isinstance(control, dict):
+        return {"zone": zone, "control": "absent", "operations": [], "default_list": False, "verdict": "blocked",
+                "words": f"no security access control: {ZONE_LOCKOUT_WORDS}"}
+    lists = control.get("associatedSecurityList")
+    lists = {k: v for k, v in lists.items() if v is not None} if isinstance(lists, dict) else {}
+    operations = sorted(k for k in lists if k != "DEFAULT")
+    has_default = "DEFAULT" in lists
+    entry = {"zone": zone, "control": "present", "operations": operations, "default_list": has_default}
+    if not has_default and "READ" not in lists:
+        return {**entry, "verdict": "blocked",
+                "words": f"its control lists neither READ nor DEFAULT: {ZONE_LOCKOUT_WORDS}"}
+    if not has_default and not (_WRITE_OPERATIONS & set(lists)):
+        return {**entry, "verdict": "warned",
+                "words": f"READ only, no DEFAULT and no write-operation list: {ZONE_WRITES_DENIED_WORDS}"}
+    return {**entry, "verdict": "ok", "words": "ok"}
+
+
+def _read_zone_control(zone: str) -> dict:
+    """Read one zone's control through RE's control reader (`zone_access.EgeriaAccessReader.control`: the
+    Security Officer client as RE's daemon, the resolved platform guid, bounded, and pyegeria's catch wrapper
+    treated as unreadable). Never raises: a failed read is the `could_not_check` entry."""
+    from resource_explorer.zone_access import EgeriaAccessReader
+
+    try:
+        return assess_zone_control(zone, EgeriaAccessReader().control(zone))
+    except Exception as exc:  # noqa: BLE001 - every failure is "could not check", never "no control"
+        reason = str(exc) if type(exc).__name__ == "AccessUnreadable" else f"{type(exc).__name__}: {exc}"
+        return assess_zone_control(zone, None, unreadable=reason[:300])
+
+
+def check_zone_controls(zones: Optional[Iterable[str]] = None) -> list[dict]:
+    """Read the control of every stamped zone other than the private zone (or just `zones`), remember the
+    answers, and return the whole start-up report (`zone_controls_report`). Never raises.
+
+    The private zone is not read here: `ensure_private_zone_exists` reads it (and creates it when missing),
+    and records its entry from that same read, so the facts shown and the `enforced` gate cannot disagree."""
+    global _zone_controls_state
+    targets = [z for z in (zones if zones is not None else stamped_zones()) if z and z != private_zone()]
+    state = dict(_zone_controls_state or {})
+    for zone in dict.fromkeys(targets):
+        state[zone] = _read_zone_control(zone)
+    _zone_controls_state = state
+    return zone_controls_report()
+
+
+def zone_controls_report() -> list[dict]:
+    """One entry per stamped zone, in stamping order: what the last check found, or `not checked yet`."""
+    out = []
+    for zone in stamped_zones():
+        if zone == private_zone():
+            entry = (_private_zone_state or {}).get("zone_control")
+        else:
+            entry = (_zone_controls_state or {}).get(zone)
+        out.append(entry or {"zone": zone, "control": "not checked yet", "operations": None,
+                             "default_list": None, "verdict": "unknown", "words": "not checked yet"})
+    return out
+
+
+def zone_controls_line(report: Optional[list[dict]] = None) -> str:
+    """The start-up report as one log line: `zone · control … · lists … · DEFAULT yes/no · words` per zone."""
+    parts = []
+    for e in report if report is not None else zone_controls_report():
+        if e["control"] == "present":
+            ops = ", ".join(e["operations"]) or "no operation"
+            parts.append(f"{e['zone']} · control present · lists {ops} · DEFAULT "
+                         f"{'yes' if e['default_list'] else 'no'} · {e['words']}")
+        elif e["control"] == "absent":
+            parts.append(f"{e['zone']} · control absent · {e['words']}")
+        else:
+            parts.append(f"{e['zone']} · {e['words']}")
+    return "zone controls: " + ("; ".join(parts) or "no zone stamped")
+
+
+def zone_lockout_refusal(zones: Iterable[str]) -> str:
+    """Why a write that stamps `zones` must not happen, or `""` when it may.
+
+    Judges only the zones RE stamps other than the private zone (that one has its own gate,
+    `EgeriaPublisher._require_enforced_private_zone`, which carries the same words); the owner-userId zone and
+    any zone RE did not configure are not read. A zone not checked yet in this process is checked now, and a
+    zone last seen blocked or unreadable is RE-READ before refusing, so an operator's fix takes effect without
+    a restart.
+
+    **Unreadable blocks**, as it does for the private zone (`private_zone_is_enforced` is False for `error` and
+    `unknown`): the cost asymmetry is the same. Refusing is visible and recoverable; publishing into a zone
+    that turns out to grant nobody leaves elements nobody can read or unzone, RE's own daemon included."""
+    stamped = set(stamped_zones()) - {private_zone()}
+    targets = [z for z in dict.fromkeys(zones) if z in stamped]
+    if not targets:
+        return ""
+    known = _zone_controls_state or {}
+    recheck = [z for z in targets if (known.get(z) or {}).get("verdict") not in ("ok", "warned")]
+    if recheck:
+        check_zone_controls(recheck)
+    known = _zone_controls_state or {}
+    problems = [known[z] for z in targets if known[z]["verdict"] in ("blocked", "could_not_check")]
+    return "; ".join(f"zone '{e['zone']}': {e['words']}" for e in problems)
 
 
 def ensure_draft_zone_exists(identity: Optional[EgeriaIdentity] = None) -> dict:
@@ -874,18 +1237,17 @@ def ensure_draft_zone_exists(identity: Optional[EgeriaIdentity] = None) -> dict:
     not require the zone element to exist, it just cannot be navigated to.
     """
     zone = draft_zone()
+    if not zone:
+        # Default: no draft zone is configured, so there is nothing to create (2026-10-08 ruling).
+        return {"status": "none", "zone": None}
     qualified_name = _zone_qualified_name(zone)
     try:
         from pyegeria.omvs.metadata_expert import MetadataExpert
 
-        from resource_explorer.config import get_config
+        from resource_explorer.egeria_clients import Daemon, DaemonReason, egeria_client
 
-        egeria = get_config().egeria
-        identity = identity or service_credentials()
-        client = MetadataExpert(
-            egeria.view_server, egeria.platform_url, egeria.user_id, egeria.user_password
-        )
-        apply_identity(client, identity)
+        client = egeria_client(identity or Daemon(DaemonReason.ZONE_SETUP),
+                               purpose="draft zone").of(MetadataExpert)
 
         existing = _existing_guid(client, qualified_name)
         if existing:
@@ -922,13 +1284,6 @@ def ensure_draft_zone_exists(identity: Optional[EgeriaIdentity] = None) -> dict:
         return {"status": "error", "zone": zone, "error": str(exc)}
 
 
-#: A GUID and nothing else. `get_metadata_element_by_unique_name` returns a
-#: *sentence* when it finds nothing, and there is no documented list of which
-#: sentence — so the only reliable test is whether what came back is shaped like
-#: an identifier.
-_UUID_RE = re.compile(
-    r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", re.IGNORECASE
-)
 
 
 def _existing_guid(client: Any, qualified_name: str) -> str:
@@ -948,23 +1303,21 @@ def _existing_guid(client: Any, qualified_name: str) -> str:
     cannot go stale when the message changes. Same reasoning, and the same
     regex, as `EgeriaPublisher._find_element_guid`.
     """
+    from resource_explorer.egeria_absence import lookup_could_not_be_made, lookup_exception_is_absent
+
     try:
         found = client.get_metadata_element_by_unique_name(qualified_name)
     except Exception as exc:
-        log.debug("egeria: lookup of %r failed — %s", qualified_name, exc)
-        return ""
-    if isinstance(found, dict):
-        candidate = (
-            found.get("elementGUID")
-            or (found.get("elementHeader") or {}).get("guid")
-            or found.get("guid")
-            or ""
-        )
-    elif isinstance(found, str):
-        candidate = found
-    else:
-        return ""
-    return candidate if _UUID_RE.match(candidate.strip()) else ""
+        # Only a real miss is "": a look-up that could not be made raises, so `ensure_draft_zone_exists`
+        # reports an error and creates nothing (it used to create a second GovernanceZone beside one it
+        # could not see).
+        if lookup_exception_is_absent(exc):
+            return ""
+        raise RuntimeError(lookup_could_not_be_made(qualified_name, exc)) from exc
+    from resource_explorer.egeria_absence import guid_from_answer
+
+    # Found, a real miss (""), or could-not-check (raised): one shared reader (an odd answer used to be "").
+    return guid_from_answer(found, qualified_name)
 
 
 def _string_property(value: str) -> dict:

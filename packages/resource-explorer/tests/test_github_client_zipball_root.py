@@ -135,7 +135,7 @@ class TestZipballRootCaching:
         repo.full_name = "test/myproj"
         calls = []
 
-        def _fake_fetch(repo_arg, zip_path):
+        def _fake_fetch(repo_arg, zip_path, ref=None):
             calls.append(zip_path)
             self._make_zip(zip_path)
             return zip_path
@@ -176,7 +176,7 @@ class TestZipballRootCaching:
         repo.full_name = "test/myproj"
         calls = []
 
-        def _fake_fetch(repo_arg, zip_path):
+        def _fake_fetch(repo_arg, zip_path, ref=None):
             calls.append(zip_path)
             self._make_zip(zip_path)
             return zip_path
@@ -197,7 +197,7 @@ class TestZipballRootCaching:
         repo = MagicMock()
         repo.full_name = "test/myproj"
 
-        def _fake_fetch(repo_arg, zip_path):
+        def _fake_fetch(repo_arg, zip_path, ref=None):
             self._make_zip(zip_path, subdirs=("sub/dir",))
             return zip_path
 
@@ -218,7 +218,7 @@ class TestZipballRootCaching:
         repo = MagicMock()
         repo.full_name = "test/myproj"
 
-        def _fake_fetch(repo_arg, zip_path):
+        def _fake_fetch(repo_arg, zip_path, ref=None):
             self._make_zip(zip_path, subdirs=("actual",))
             return zip_path
 

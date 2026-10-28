@@ -39,9 +39,19 @@ async def auth_login(req: LoginRequest) -> Dict[str, Any]:
     It is never stored and never signed into the JWT (contract, 2026-09-04).
     """
     from resource_explorer.auth import create_access_token, login_with_password
+    from resource_explorer import egeria_clients
+    from resource_explorer.egeria_clients import (
+        TOKEN_REFUSED, TOKEN_UNREACHABLE, DaemonSignInRefused, refuse_daemon_sign_in,
+    )
+
+    check_token_accepted = egeria_clients.check_token_accepted   # looked up per call: tests swap it
 
     if not req.username or not req.password:
         raise HTTPException(status_code=400, detail="username and password required")
+    try:
+        refuse_daemon_sign_in(req.username)          # before any Egeria call (Brief L)
+    except DaemonSignInRefused as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from None
     egeria_token = await asyncio.get_event_loop().run_in_executor(
         None, login_with_password, req.username, req.password
     )
@@ -49,8 +59,27 @@ async def auth_login(req: LoginRequest) -> Dict[str, Any]:
         raise HTTPException(
             status_code=401, detail="Invalid credentials or Egeria is unreachable."
         )
+    # Egeria mints a token for any user id, then refuses every request made with it (2026-10-16,
+    # 'rover'). One authorized read tells the two apart before a session exists.
+    verdict = await asyncio.get_event_loop().run_in_executor(
+        None, check_token_accepted, req.username, egeria_token
+    )
+    if verdict == TOKEN_REFUSED:
+        log.warning("auth: Egeria issued a token for %r but refused its first read; login refused",
+                    req.username)
+        raise HTTPException(
+            status_code=401,
+            detail=(f"Egeria accepted {req.username}'s password but refuses its requests. "
+                    "Sign in as a user this Egeria server knows."),
+        )
     token = create_access_token(user_id=req.username, egeria_token=egeria_token)
-    return {"access_token": token, "token_type": "bearer", "egeria_user": req.username}
+    reply = {"access_token": token, "token_type": "bearer", "egeria_user": req.username}
+    if verdict == TOKEN_UNREACHABLE:
+        # Not a refusal: the old behaviour (signed in, live calls may fail), said out loud.
+        log.warning("auth: could not check with Egeria that %r's token is honoured; "
+                    "login accepted as before", req.username)
+        reply["check"] = "could not check with Egeria"
+    return reply
 
 
 @router.post("/portal")
@@ -68,9 +97,15 @@ async def auth_portal(req: PortalTokenRequest) -> Dict[str, Any]:
         validate_egeria_token,
     )
 
+    from resource_explorer.egeria_clients import DaemonSignInRefused, refuse_daemon_sign_in
+
     payload = exchange_portal_token(req.portal_token)
     egeria_user = payload.get("sub", "")
     egeria_token = payload.get("egeria_token", "")
+    try:
+        refuse_daemon_sign_in(egeria_user)
+    except DaemonSignInRefused as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from None
 
     # Liveness check, deliberately NOT a gate: the token was minted by someone
     # else, so confirming it works is worth one cheap call — but a briefly
@@ -120,15 +155,17 @@ async def auth_logout() -> Dict[str, str]:
 
 @router.get("/defaults")
 async def auth_defaults() -> Dict[str, Any]:
-    """The configured default Egeria username, for login-form prefill.
+    """The login-form prefill: `RE_LOGIN_DEFAULT_USER` when set, else empty.
 
-    Deliberately does NOT return the password: this endpoint is public by
-    necessity, and returning a plaintext service-account password from it
-    would hand it to anyone who can reach the port.
+    Never the daemon's userId (Brief L): `EGERIA_USER_ID` is RE's own service account, and
+    prefilling it would invite people to sign in as the daemon. Never a password either: this
+    endpoint is public by necessity.
     """
     from resource_explorer.config import get_config
+    from resource_explorer.egeria_clients import is_daemon_user
 
-    return {"username": get_config().egeria.user_id}
+    user = (getattr(get_config().egeria, "login_default_user", "") or "").strip()
+    return {"username": "" if is_daemon_user(user) else user}
 
 
 @router.get("/policy")

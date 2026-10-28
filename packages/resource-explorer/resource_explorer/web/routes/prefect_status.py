@@ -19,7 +19,8 @@ import asyncio
 import logging
 
 from fastapi import APIRouter, HTTPException
-from prefect.client.orchestration import get_client
+
+from resource_explorer.surveyors.prefect_adapter import re_prefect_client
 
 router = APIRouter()
 log = logging.getLogger(__name__)
@@ -27,7 +28,7 @@ log = logging.getLogger(__name__)
 
 async def _reachable() -> tuple[bool, str]:
     try:
-        async with get_client() as client:
+        async with re_prefect_client() as client:
             await client.api_healthcheck()
         return True, ""
     except Exception as exc:  # pragma: no cover — exact exception shape depends on failure mode
@@ -54,7 +55,7 @@ def get_status() -> dict:
 
 
 async def _list_flow_runs(limit: int) -> list[dict]:
-    async with get_client() as client:
+    async with re_prefect_client() as client:
         runs = await client.read_flow_runs(
             sort="START_TIME_DESC",
             limit=limit,
@@ -99,7 +100,7 @@ async def _cancel(flow_run_id: str) -> None:
     from prefect.client.schemas.objects import StateType
     from prefect.states import Cancelled
 
-    async with get_client() as client:
+    async with re_prefect_client() as client:
         await client.set_flow_run_state(
             flow_run_id=UUID(flow_run_id), state=Cancelled(), force=True,
         )

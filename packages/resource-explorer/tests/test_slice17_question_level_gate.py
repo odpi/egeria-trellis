@@ -1,4 +1,4 @@
-"""Slice 17, item 3 (docs/design-notes/COORDINATOR-BRIEF-MULTI-RESOURCE.md,
+"""Slice 17, item 3 (docs/design-notes/exchange/COORDINATOR-BRIEF-MULTI-RESOURCE.md,
 Phase 1b row 17; docs/multi-resource-questions-design.md §18.3): a checkmark
 is withheld when the question is asked below `resource` level (`container`,
 `member`, `field` — design §18.3's engine-neutral vocabulary) and nothing
@@ -278,8 +278,7 @@ class TestRealCatalogAgreesWithTheLiveBugReport(object):
 class TestRealCatalogAgreesWithTheSlice17bLiveBugReport:
     """Confirms, against the real catalog on disk, that the coco_pharma
     gate's original regression is now closed: `schema_inventory` was given
-    a real headline_reader (docs/design-notes/
-    ENUMERATION-FLOOR-AND-COLLECTOR-HONESTY-IMPLEMENTED.md's follow-up)
+    a real headline_reader (ENUMERATION-FLOOR-AND-COLLECTOR-HONESTY-IMPLEMENTED.md's follow-up)
     that names actual schemas, not just a count -- see
     `test_schema_inventory_headline.py` for the headline's own content
     tests. The mechanism test below (no headline at all -> gate fires) is

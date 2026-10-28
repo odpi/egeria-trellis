@@ -43,6 +43,7 @@ from typing import Any
 
 from resource_explorer.registry import (
     STATE_MEASURED,
+    STATE_NOT_APPLICABLE,
     STATE_NOT_COLLECTED,
     STATE_NOT_SUPPORTED,
 )
@@ -100,6 +101,19 @@ ACTION_REVIEW_UNMATCHED_VALUES = "review-unmatched-reference-values"
 #: How many unmatched values an RFA names before it summarises. A curator
 #: needs to see the values; a column with 60 of them needs a list, not a wall.
 MAX_UNMATCHED_VALUES_IN_RFA = 40
+
+#: §F, 2026-09-28: relation `type` strings (as `get_schema_info()` reports
+#: them — `information_schema.tables.table_type`, or the catalog fallback's
+#: own `kind_to_type` mapping) that `TABLESAMPLE` cannot be applied to at
+#: all. Postgres rejects it outright on a view or a foreign table; a
+#: materialized view is a real, TABLESAMPLE-able relation and is
+#: deliberately NOT in this set — it is sampled exactly like a base table.
+NOT_SAMPLABLE_TABLE_TYPES = frozenset({"VIEW", "FOREIGN", "FOREIGN TABLE"})
+
+#: The step's own status (§F item 3) — not a `result_status` state, since
+#: this describes the STEP's overall run, not one column's finding.
+STEP_STATUS_OK = "ok"
+STEP_STATUS_PARTIAL = "partial"
 
 
 def _iso_now() -> str:
@@ -228,7 +242,15 @@ def sample_column_values(
         return None, not_sampled_provenance(config)
 
     try:
-        rows = conn.execute_query(query.sql)
+        # `execute_query_isolated` (§F, 2026-09-28), not `execute_query`: this
+        # loop issues one speculative query per column, and Postgres aborts
+        # the WHOLE transaction on the first one that fails — every column
+        # sampled afterward would fail too, silently, on a connection nothing
+        # ever released from that state. See `PostgreSQLConnection.
+        # execute_query_isolated`'s own docstring for the live incident this
+        # replaced (`laz_local_adventureworks`, ~40 columns cascade-failed
+        # behind one TABLESAMPLE-on-a-view error).
+        rows = conn.execute_query_isolated(query.sql)
     except Exception as exc:
         # A failed sample is NOT an empty sample. Reported as not-sampled with
         # the error, so a permission problem on one table does not read as
@@ -239,6 +261,7 @@ def sample_column_values(
         return None, SampleProvenance(
             strategy=CATALOG_STATS_ONLY,
             reason_not_sampled=f"the sample query failed: {exc}",
+            errored=True,
         )
 
     values = [r.get("value") for r in (rows or []) if isinstance(r, dict)]
@@ -566,7 +589,7 @@ def run_column_profile(
                 resource_properties=catalog.as_dict(),
                 explanation=(
                     f"{catalog.unavailable_reason}. Every column's match verdict "
-                    f"is therefore 'no_candidates' — an unread catalogue cannot "
+                    f"is therefore 'no_candidates' — an unread catalog cannot "
                     f"produce a negative finding."
                 ),
             )
@@ -578,11 +601,46 @@ def run_column_profile(
         strategy=CATALOG_STATS_ONLY, seed=config.seed,
     )
 
+    # ── §F, 2026-09-28: the step's own status ──────────────────────────────
+    #
+    # Counted per COLUMN, from the PRIMARY (data_class_match) sample's
+    # provenance — the same one `_profile_row` bases its `state` on — so a
+    # column that also took a second `distinct=True` sample for
+    # `reference_data_match` is not counted twice. `_note_sample_outcome`
+    # still checks every provenance it is handed for `errored`, so a failure
+    # on the SECOND sample still counts toward `errored_count`/`first_error`
+    # even when the first one succeeded.
+    sampled_count = 0
+    skipped_not_applicable_count = 0
+    errored_count = 0
+    first_error = ""
+
+    def _note_sample_outcome(prov: SampleProvenance, *, count_success: bool) -> None:
+        nonlocal errored_count, first_error, sampled_count
+        if prov.errored:
+            errored_count += 1
+            if not first_error:
+                first_error = prov.reason_not_sampled
+        elif count_success and prov.reads_values and prov.sample_rows is not None:
+            sampled_count += 1
+
     columns_seen = 0
     for schema in schema_info.get("schemas", []) or []:
         schema_name = schema.get("name", "")
         for table in schema.get("tables", []) or []:
             table_name = table.get("name", "")
+            # §F: a view or foreign table's columns are never offered to
+            # TABLESAMPLE at all — Postgres rejects it outright, and (before
+            # this fix) that rejection aborted the whole transaction and
+            # silently failed every column sampled afterward. A materialized
+            # view's `type` is NOT in `NOT_SAMPLABLE_TABLE_TYPES`; it is
+            # sampled exactly like a base table.
+            table_type = (table.get("type") or "").strip().upper()
+            not_samplable_reason = (
+                "view" if table_type == "VIEW"
+                else "foreign table" if table_type in ("FOREIGN", "FOREIGN TABLE")
+                else ""
+            )
             total_rows = row_counts.get((schema_name, table_name))
             for column in table.get("columns", []) or []:
                 column_name = column.get("name", "")
@@ -597,10 +655,20 @@ def run_column_profile(
                 profile = profiles.get((schema_name, table_name, column_name)) or {}
 
                 # ── data_class_match ──
-                values, provenance = sample_column_values(
-                    conn, schema_name, table_name, column_name,
-                    effective_config, total_rows, budget,
-                )
+                if not_samplable_reason:
+                    values, provenance = None, not_sampled_provenance(
+                        effective_config,
+                        f"this is a {not_samplable_reason} — TABLESAMPLE cannot "
+                        "be applied to it",
+                        not_applicable=True,
+                    )
+                    skipped_not_applicable_count += 1
+                else:
+                    values, provenance = sample_column_values(
+                        conn, schema_name, table_name, column_name,
+                        effective_config, total_rows, budget,
+                    )
+                    _note_sample_outcome(provenance, count_success=True)
                 dc_match = data_class_match(
                     schema_name=schema_name, table_name=table_name,
                     column_name=column_name, column_type=column_type,
@@ -619,11 +687,17 @@ def run_column_profile(
                     profile.get("distinct_count"), total_rows
                 )
                 low = is_low_cardinality(distinct_count, total_rows)
-                if low is True:
+                if low is True and not not_samplable_reason:
                     distinct_values, distinct_provenance = sample_column_values(
                         conn, schema_name, table_name, column_name,
                         effective_config, total_rows, budget, distinct=True,
                     )
+                    # `count_success=False`: this column was already counted
+                    # sampled (or errored) above, from the primary provenance
+                    # `_profile_row` bases its state on — this call only adds
+                    # to `errored_count`/`first_error` if IT fails, never a
+                    # second success tally for the same column.
+                    _note_sample_outcome(distinct_provenance, count_success=False)
                 else:
                     # Not low-cardinality (or unknown): no second sample is
                     # taken. The gate is what §5.4 specifies, and paying for a
@@ -659,6 +733,14 @@ def run_column_profile(
                     )
                 )
 
+    # §F item 3: the step's own status stops saying "ok" the moment any
+    # column actually ERRORED (a real query failure, `SampleProvenance.
+    # errored`) — never for the ordinary, honest not-sampled reasons
+    # (`catalog_stats_only`, budget exhausted, a view/foreign table's
+    # `skipped_not_applicable_count`), which are not failures and have always
+    # produced a complete, correct run.
+    status = STEP_STATUS_PARTIAL if errored_count else STEP_STATUS_OK
+
     return {
         "column_profile_rows": rows,
         "annotations": annotations,
@@ -671,6 +753,13 @@ def run_column_profile(
             "value_sampling_supported": supports_sampling,
         },
         "reference_catalog": catalog.as_dict(),
+        "status": status,
+        "counts": {
+            "sampled": sampled_count,
+            "skipped_not_applicable": skipped_not_applicable_count,
+            "errored": errored_count,
+        },
+        "first_error": first_error,
     }
 
 
@@ -726,7 +815,11 @@ def _profile_row(
     The `sample_*` columns already exist on the table (stream 3 added them for
     exactly this slice); `sample_total_rows` is added by this slice.
     """
-    if not supports_sampling:
+    if provenance.not_applicable:
+        # §F: checked before `supports_sampling` — a view's column is not
+        # applicable to TABLESAMPLE regardless of what the engine can do.
+        state = STATE_NOT_APPLICABLE
+    elif not supports_sampling:
         state = STATE_NOT_SUPPORTED
     elif provenance.reads_values and provenance.sample_rows is not None:
         state = STATE_MEASURED

@@ -70,8 +70,8 @@ class TestDatabaseStepMapFansOutCorrectly:
     def test_db_derived_credits_all_analyses(self):
         """Was "all six" until Phase 1 slice 14's follow-up (2026-09-22) added
         schema_diff and grant_change to db_derived, then "all eight" until
-        slice 17 (docs/design-notes/SLICE-17-RUNNABILITY-FROM-CATALOG-
-        IMPLEMENTED.md) fixed this map being derived from
+        slice 17 (SLICE-17-RUNNABILITY-FROM-CATALOG-IMPLEMENTED.md) fixed this map being derived
+        from
         `db_derived.DB_DERIVED_ANALYSES` instead of hand-listed a second
         time — `subject_signals`/`coverage_signals`/`preliminary_fit`
         (design §16.3's Scouting/Discovery rows, added to
@@ -95,6 +95,7 @@ class TestDatabaseStepMapFansOutCorrectly:
             "db_fingerprint", "schema_conventions", "db_change_rates",
             "schema_diff", "grant_change",
             "subject_signals", "coverage_signals", "preliminary_fit",
+            "db_hub_tables", "db_statistics_freshness",
         }
 
     def test_sql_analysis_has_no_analysis_catalog_entry(self):

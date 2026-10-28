@@ -40,6 +40,19 @@ class SurveyDefinitionRunParams:
     #: request body spells it) so it round-trips through the run queue's JSON
     #: `target` column under the same name the executor itself uses.
     engine_override: str | None = None
+    #: "this run" when `db_user`/`db_pwd` are a credential override for this
+    #: one run (parity G2, PI-016). A run carrying one is NEVER put on the run
+    #: queue (the queue persists its payload in the registry) — see
+    #: `web/routes/survey_definitions.py`. "" for every other run.
+    credential_scope: str = ""
+    #: True = "do not try Egeria first": an egeria-adaptive step runs its
+    #: local scan only (parity G2, PI-018). False leaves every step as it was.
+    force_custom: bool = False
+    #: Engine host case 3, decision 5: who coordinates the run. RE's own Run is "re" (RE's executor runs every step
+    #: and creates no engine action); "coordinated by Egeria" never comes through here. `started_by_person` is who
+    #: pressed Run. Both land in the run's activity detail, which Understanding reads ("started in RE by <person>").
+    started_by: str = "re"          # engine_host.STARTED_BY_RE
+    started_by_person: str = ""
 
     @classmethod
     def from_dict(cls, data: dict) -> SurveyDefinitionRunParams:
@@ -54,6 +67,10 @@ class SurveyDefinitionRunParams:
             "db_pwd": self.db_pwd,
             "publish": self.publish,
             "engine_override": self.engine_override,
+            "credential_scope": self.credential_scope,
+            "force_custom": self.force_custom,
+            "started_by": self.started_by,
+            "started_by_person": self.started_by_person,
         }
 
 
@@ -80,6 +97,7 @@ def run_definition(entity_type: str, slug: str, params: SurveyDefinitionRunParam
     )
 
     registry = registry or ProjectRegistry()
+    extra = {"force_custom": True} if params.force_custom else {}
     result = run_survey_definition(
         entity_type, slug, registry=registry,
         survey_definition_ref=params.survey_definition_ref,
@@ -88,6 +106,8 @@ def run_definition(entity_type: str, slug: str, params: SurveyDefinitionRunParam
         db_pwd=params.db_pwd,
         publish=params.publish,
         engine_override=params.engine_override,
+        credential_scope=params.credential_scope,
+        **extra,
     )
 
     report_guid = result.get("egeria_report_guid", "")
@@ -126,22 +146,48 @@ def execute_and_record_definition(entity_type: str, slug: str,
 
     registry = registry or ProjectRegistry()
     ref = params.survey_definition_ref
+    secret = params.db_pwd if params.credential_scope else ""
+    ran_as = ({"user": params.db_user, "scope": params.credential_scope}
+              if params.credential_scope and params.db_user else None)
+
+    def _detail(body: dict) -> str:
+        # An override's password never reaches a row: scrubbed from anything
+        # stored, and the row says who the run was as (never with what).
+        from resource_explorer.secret_redaction import scrub
+
+        if ran_as:
+            body = {**body, "ran_as": ran_as}
+        # Case 3: where the run was started and by whom, read back by get_survey_definition_last_activity.
+        body = {**body, "started_by": params.started_by, "started_by_person": params.started_by_person}
+        return json.dumps(scrub(body, secret))
+
+    def _say(text: str) -> str:
+        from resource_explorer.secret_redaction import scrub
+
+        return scrub(text, secret)
+
     try:
         result = run_definition(entity_type, slug, params)
     except (SurveyDefinitionExecutorError, SurveyDefinitionReaderError) as exc:
+        msg = _say(str(exc))
         registry.update_activity_status(
-            activity_id, "error", summary=str(exc),
-            detail=json.dumps({"errors": [str(exc)], "survey_definition_ref": ref}),
+            activity_id, "error", summary=msg,
+            detail=_detail({"errors": [msg], "survey_definition_ref": ref}),
         )
-        return SurveyDefinitionRunResult(status="error", summary=str(exc), errors=[str(exc)])
+        return SurveyDefinitionRunResult(status="error", summary=msg, errors=[msg])
     except Exception as exc:  # pragma: no cover — genuinely unexpected
-        log.exception("Survey Definition run crashed for %s/%s", entity_type, slug)
+        msg = _say(str(exc))
+        if secret:
+            # No traceback: its frames and message are the override's to leak.
+            log.error("Survey Definition run crashed for %s/%s: %s", entity_type, slug, msg)
+        else:
+            log.exception("Survey Definition run crashed for %s/%s", entity_type, slug)
         registry.update_activity_status(
-            activity_id, "error", summary=f"Survey Definition run crashed: {exc}",
-            detail=json.dumps({"errors": [str(exc)], "survey_definition_ref": ref}),
+            activity_id, "error", summary=f"Survey Definition run crashed: {msg}",
+            detail=_detail({"errors": [msg], "survey_definition_ref": ref}),
         )
         return SurveyDefinitionRunResult(
-            status="error", summary=f"Survey Definition run crashed: {exc}", errors=[str(exc)],
+            status="error", summary=f"Survey Definition run crashed: {msg}", errors=[msg],
         )
 
     errors = result.get("errors") or []
@@ -150,8 +196,32 @@ def execute_and_record_definition(entity_type: str, slug: str,
     result["survey_definition_ref"] = ref
     registry.update_activity_status(
         activity_id, "error" if errors else "ok", summary=summary,
-        detail=json.dumps(result),
+        detail=_detail(result),
     )
+    from resource_explorer.secret_redaction import scrub
+
     return SurveyDefinitionRunResult(
-        status="error" if errors else "ok", summary=summary, errors=errors, result=result,
+        status="error" if errors else "ok", summary=summary,
+        errors=scrub(errors, secret), result=scrub(result, secret),
     )
+
+
+def start_in_process(target, *args, name: str) -> None:
+    """Run `target(*args)` on a daemon thread in THIS process.
+
+    The one place a Survey Definition run is allowed off the run queue: a run
+    carrying a credential typed for that run only (parity G2, PI-016). The queue
+    persists its payload in the registry; an override must not be, so it runs
+    where it was received and dies with the process. Everything else goes
+    through `registry.enqueue_run`.
+    """
+    import contextvars
+    import threading
+
+    # Run under a COPY of the caller's context, not a bare thread: the signed-in
+    # caller lives in a ContextVar and a plain Thread starts with an empty one,
+    # so the run's Egeria publish and private-zone reads would be attributed to
+    # '' (the shared bucket). Same mechanism as the chat turn in
+    # web/routes/query.py (found 2026-09-08).
+    ctx = contextvars.copy_context()
+    threading.Thread(target=ctx.run, args=(target, *args), name=name, daemon=True).start()

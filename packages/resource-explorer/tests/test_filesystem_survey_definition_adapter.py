@@ -170,4 +170,4 @@ def test_publish_step_annotations_requires_cataloged_filesystem():
             e.publish_step_annotations(fs_entity, minimal_survey_data, MagicMock())
             assert False, "expected EgeriaFileSystemSurveyorError"
         except Exception as exc:
-            assert "not yet cataloged" in str(exc)
+            assert "is not yet published to Egeria" in str(exc)

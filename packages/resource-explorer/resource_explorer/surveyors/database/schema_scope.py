@@ -293,8 +293,16 @@ def credential_shortfall(
     if not states:
         return None
     cap = credential_capability or {}
-    table_total = int(cap.get("table_total") or 0)
-    table_select = int(cap.get("table_select") or 0)
+    # `relation_total`/`relation_select` (renamed from `table_total`/
+    # `table_select`, REPLY-DESIGNER-ROUND2-DATABASE-SCREENS.md §2.3): the
+    # whole-database, all-relation-kinds figure from `connection.py`'s
+    # `get_credential_capability()` -- NOT the same field name as this
+    # function's own per-schema `states[name]["table_total"]` below, which
+    # stays named `table_total` since it is legitimately schema-scoped.
+    # `cap` can be a `credential_capability` blob stored under a survey
+    # from before this rename, so the old key is a fallback, not dropped.
+    relation_total = int(cap.get("relation_total", cap.get("table_total")) or 0)
+    relation_select = int(cap.get("relation_select", cap.get("table_select")) or 0)
     readable = [n for n, s in states.items() if s["state"] == SCOPE_READABLE]
     empty = [n for n, s in states.items() if s["state"] == SCOPE_EMPTY]
     order = {SCOPE_NOT_VISIBLE: 0, SCOPE_STRUCTURE_ONLY: 1, SCOPE_PARTIALLY_READABLE: 2}
@@ -308,6 +316,9 @@ def credential_shortfall(
     # tables is not withholding anything. Counted separately as well, so the
     # fraction can be disputed.
     reachable = len(readable) + len(empty)
+    # "Visible" (USAGE granted: the header's "sees N of M") and "readable" (every table SELECTable) count
+    # different things. A schema with USAGE and SELECT on only some tables is visible, not readable.
+    visible = sum(1 for s in states.values() if s["usage_granted"])
     # The level's name comes from the engine's declaration, never a literal:
     # the same probe shape against Oracle would be reporting on *owners*.
     # "container" is the honest generic when no engine was passed — a caller
@@ -318,14 +329,17 @@ def credential_shortfall(
         "container_level": level,
         "container_total": len(states),
         "containers_readable": reachable,
+        "containers_visible": visible,
         "containers_empty": len(empty),
         "short_containers": short,
         "by_container": {n: states[n] for n in sorted(states)},
-        "table_total": table_total,
-        "table_select": table_select,
+        "relation_total": relation_total,
+        "relation_select": relation_select,
         "phrase": (
-            f"{reachable} of {len(states)} {level}s readable; "
-            f"{table_select} of {table_total} tables"
+            f"{reachable} of {len(states)} {level}s readable"
+            + (f" ({visible} visible)" if visible != reachable else "")
+            + "; "
+            f"{relation_select} of {relation_total} relation(s)"
         ),
         "short_phrase": (
             f"short on {len(short)} {level}(s): " + ", ".join(

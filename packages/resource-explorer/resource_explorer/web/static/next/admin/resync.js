@@ -3,8 +3,8 @@
  * Port of classic's `loadAdminResyncPanel`/`renderAdminResyncPanel`/
  * `_applyResync` (index.html), against `resource_explorer/egeria_resync.py`'s
  * twelve scanners and nine repair actions — the backend is complete; this is
- * a UI-only port. See docs/design-notes/SPEC-ADMIN-THE-FOUR-GAPS.md §1 and
- * docs/design-notes/RECONCILE-ADMIN-IMPLEMENTED.md.
+ * a UI-only port. See SPEC-ADMIN-THE-FOUR-GAPS.md §1 and
+ * RECONCILE-ADMIN-IMPLEMENTED.md.
  *
  * This is Resync, NOT Repair (admin/repair.js) — drift across the whole
  * store, not a correction to one repository. Classic has these as two
@@ -34,7 +34,7 @@
  * is the single source of truth for "is this one of SAFE_SCHEDULED_STEPS" —
  * this file used to keep its own hand-maintained copy (`SCHEDULED_STEPS`)
  * that had to be updated by hand whenever the Python set changed; see
- * docs/design-notes/RESYNC-STATUS-ROUTE-IMPLEMENTED.md for the history.
+ * RESYNC-STATUS-ROUTE-IMPLEMENTED.md for the history.
  * The scheduler's own run history (last_run_at/consecutive_failures/etc.)
  * comes from `/api/egeria/resync/scheduler-status` (egeria_resync.get_status()),
  * modeled on bootstrap.py's `/status` route — see loadStatus()/render()
@@ -42,6 +42,7 @@
  */
 import { getPrivateZone, getResyncScan, getResyncStatus, applyResyncSteps } from '/static/re-api.js';
 import { esc } from '/static/next/app.js';
+import { inPageConfirm, inPageNotice } from '/static/next/confirm-dialog.js';
 
 const SCHEDULE_INTERVAL_TEXT = 'every ~600s';
 
@@ -58,7 +59,7 @@ const SCHEDULE_INTERVAL_TEXT = 'every ~600s';
 const BLAST_RADIUS = {
   clear_stale_assets: (n) =>
     `Clears the local "has an Egeria asset" pointer on ${n} record(s) whose asset no `
-    + `longer resolves in Egeria. Local only — writes nothing to Egeria, and re-cataloguing `
+    + `longer resolves in Egeria. Local only — writes nothing to Egeria, and re-publishing `
     + `later restores the pointer. Reversible.`,
   clear_orphan_publish_claims: (n) =>
     `Clears ${n} local publish-claim record(s) that point at a survey report Egeria no `
@@ -67,6 +68,10 @@ const BLAST_RADIUS = {
     `WRITES a flag (egeria_linkage_status) on ${n} record(s) whose published survey vanished `
     + `from Egeria — it does not delete anything. A false positive here costs one wrong badge `
     + `state until the next scan corrects it, never a decision silently unmade.`,
+  flag_stale_dbfs_assets: (n) =>
+    `WRITES a stale flag (egeria_linkage_status) on ${n} database/filesystem record(s) whose `
+    + `asset no longer resolves in Egeria, and clears the flag on any that resolve again. It `
+    + `never deletes the GUID and writes nothing to Egeria.`,
   clear_stale_investigations: (n) =>
     `⚠ Clears the Egeria Project/working-set binding on ${n} investigation(s)/working set(s) `
     + `whose target no longer resolves in Egeria. THIS CAN UNBIND A REAL EGERIA PROJECT A `
@@ -87,7 +92,7 @@ const BLAST_RADIUS = {
     + `API budget. Adds a new report; does not delete the existing asset.`,
   reauthor_survey_definitions: (n) =>
     `Re-authors ${n} Survey Definition(s) IN EGERIA by re-running their Dr.Egeria documents, `
-    + `then reconciles their step links. Writes to the shared catalog and can take a few `
+    + `then reconciles their step links. Writes to shared Egeria and can take a few `
     + `minutes — leave the page open.`,
   relink_investigation_members: (n) =>
     `Attaches ${n} investigation member(s) to their Egeria assets. Additive — does not detach `
@@ -107,7 +112,7 @@ function itemsHtml(f) {
       esc(Object.entries(i).map(([k, v]) => `${k}=${v}`).join('  '))}</div>`).join('');
   return `<details class="mt-[6px]">
     <summary class="cursor-pointer select-none text-caveat text-ink-muted hover:text-ink">show ${f.count}</summary>
-    <div class="mt-[4px] max-h-[30vh] space-y-[2px] overflow-auto rounded-sm border border-rule bg-paper-raised p-s2">
+    <div class="mt-[4px] max-h-[30vh] space-y-[2px] overflow-auto rounded-sm border border-rule bg-paper-surface p-s2">
       ${rows}
       ${f.truncated ? `<div class="text-provenance text-ink-muted">… and ${f.truncated} more</div>` : ''}
     </div>
@@ -191,19 +196,45 @@ function decisionRowHtml(f) {
   </div>`;
 }
 
+// The start-up check over every zone RE stamps: one row per zone, a cue plus a short word, the sentence on hover.
+// Full literal markup per verdict (no interpolated class names, so the Tailwind coverage check can read them).
+const ZONE_CUE = {
+  ok: '<span class="text-state-ok">✓</span>',
+  warned: '<span class="text-state-warn">⚠</span>',
+  blocked: '<span class="text-state-warn">⛔</span>',
+  could_not_check: '<span class="text-state-warn">?</span>',
+  unknown: '<span class="text-ink-muted">…</span>',
+};
+function zoneControlsHtml(rows) {
+  if (!rows || !rows.length) return '';
+  return `<ul class="mt-s2 list-none p-0 text-provenance">${rows.map((e) => {
+    const cue = ZONE_CUE[e.verdict] || ZONE_CUE.unknown;
+    const facts = e.control === 'present'
+      ? `control present · lists ${esc((e.operations || []).join(', ') || 'no operation')} · DEFAULT ${e.default_list ? 'yes' : 'no'}`
+      : `control ${esc(e.control)}`;
+    const words = e.verdict === 'ok' ? ''
+      : e.verdict === 'unknown' ? `· <span class="text-ink-muted">${esc(e.words || '')}</span>`
+        : `· <span class="text-state-warn">${esc(e.words || '')}</span>`;
+    return `<li title="${esc(e.words || '')}">${cue}
+      <span class="font-mono">${esc(e.zone)}</span> · <span class="text-ink-muted">${facts}</span>
+      ${words}</li>`;
+  }).join('')}</ul>`;
+}
+
 function privateZoneHtml() {
   const z = _zone;
   if (!z) return '';
   const zone = esc(z.zone || 'private zone');
   if (z.enforced) {
-    return `<div class="mb-s3 rounded-sm border border-rule bg-paper-raised p-s3">
+    return `<div class="mb-s3 rounded-sm border border-rule bg-paper-surface p-s3">
       <div class="text-caveat text-state-ok">🔒 Private zone enforced</div>
       <div class="mt-[2px] text-provenance text-ink-muted">Personal and Experiment investigations
         publish to <span class="font-mono">${zone}</span>, readable only by their creator.</div>
+      ${zoneControlsHtml(z.zone_controls)}
     </div>`;
   }
   const settling = (z.settling_seconds_remaining || 0) > 0;
-  return `<div class="mb-s3 rounded-sm border border-rule bg-paper-raised p-s3">
+  return `<div class="mb-s3 rounded-sm border border-rule bg-paper-surface p-s3">
     <div class="text-caveat text-state-warn">${settling ? '⏳ Private zone settling' : '⚠ Private investigations cannot publish'}</div>
     <div class="mt-[2px] text-caveat text-ink">${settling
       ? `The <span class="font-mono">${zone}</span> control exists but Egeria's security connector `
@@ -214,6 +245,7 @@ function privateZoneHtml() {
         + `everyone could read them.`}</div>
     ${z.detail ? `<div class="mt-[2px] text-provenance text-ink-muted">${esc(z.detail)}</div>` : ''}
     ${z.remedy ? `<div class="mt-[2px] text-caveat text-accent-ink">${esc(z.remedy)}</div>` : ''}
+    ${zoneControlsHtml(z.zone_controls)}
   </div>`;
 }
 
@@ -229,8 +261,8 @@ function render() {
       <div class="my-s3 h-px bg-rule"></div>
       <p class="text-answer text-state-warn">Egeria is unreachable — nothing was checked.</p>
       <p class="text-caveat text-ink-muted">${esc(d.unreachable_reason || '')}</p>
-      <p class="text-caveat text-ink-muted">Deliberately not reported as "no drift": a catalog we
-        cannot read is not a catalog known to be fine.</p>
+      <p class="text-caveat text-ink-muted">Deliberately not reported as "no drift": an Egeria we
+        cannot read is not one known to be fine.</p>
       <button type="button" data-retry
         class="mt-s2 cursor-pointer rounded-sm border border-rule-strong px-2 py-[2px] text-caveat text-ink hover:border-accent">Retry</button>`;
     _host.querySelector('[data-retry]')?.addEventListener('click', load);
@@ -254,7 +286,7 @@ function render() {
         class="cursor-pointer rounded-sm border border-rule-strong px-2 py-[2px] text-caveat text-ink hover:border-accent">🔄 Re-scan</button>
     </div>
     <p class="mb-s3 max-w-[70ch] text-caveat text-ink-muted">Everywhere RE and Egeria have drifted
-      apart, in both directions: pointers here into a catalog that no longer holds what they point
+      apart, in both directions: pointers here into Egeria that no longer holds what they point
       at, and definitions in Egeria that have fallen behind what RE can now run. Scanning never
       writes.</p>
     ${privateZoneHtml()}
@@ -282,7 +314,7 @@ function render() {
       <div class="space-y-s2">${repairable.map(repairableRowHtml).join('')}</div>
       <div class="mt-s2 flex items-center gap-s3">
         <button type="button" data-apply-selected
-          class="cursor-pointer rounded-sm border border-accent bg-transparent px-3 py-[4px] text-caveat text-accent-ink hover:bg-paper-raised">
+          class="cursor-pointer rounded-sm border border-accent bg-transparent px-3 py-[4px] text-caveat text-accent-ink hover:bg-paper-surface">
           Apply selected
         </button>
         <span class="text-provenance text-ink-muted">Runs in dependency order regardless of what you tick.</span>
@@ -299,12 +331,51 @@ function render() {
   bind();
 }
 
-function resultHtml(applied) {
-  return `<div class="mt-s3 rounded-sm border border-rule bg-paper-raised p-s3 text-caveat">
+/** Every way an apply can have not worked, as plain sentences.
+ *  HTTP 200 only means the request was handled — a repair that failed on
+ *  every repo, or could not reach Egeria, still returns 200. */
+export function applyFailures(data) {
+  const out = [];
+  if (data && data.reachable === false) {
+    out.push(`Egeria is unreachable — nothing was applied. ${data.unreachable_reason || ''}`.trim());
+  }
+  for (const [step, v] of Object.entries((data && data.applied) || {})) {
+    if (!v || !(v.failed > 0)) continue;
+    const errs = v.errors || [];
+    if (!errs.length) out.push(`${step}: ${v.failed} failed`);
+    for (const e of errs) out.push(`${step}: ${e.slug} — ${e.error}`);
+    if (v.failed > errs.length) out.push(`${step}: ${v.failed - errs.length} more failed (not listed)`);
+  }
+  return out;
+}
+
+function resultHtml(data) {
+  const applied = (data && data.applied) || {};
+  const failures = applyFailures(data);
+  return `<div class="mt-s3 rounded-sm border ${failures.length ? 'border-state-warn' : 'border-rule'} bg-paper-surface p-s3 text-caveat">
+    ${failures.length ? `<div data-resync-failures class="mb-s2 text-state-warn">
+      <div>Not everything was applied (${failures.length} problem(s)):</div>
+      ${failures.map((f) => `<div class="font-mono text-provenance">${esc(f)}</div>`).join('')}
+      <button type="button" data-resync-dismiss
+        class="mt-s2 cursor-pointer rounded-sm border border-rule-strong px-2 py-[2px] text-caveat text-ink hover:border-accent">Dismiss and re-scan</button>
+    </div>` : ''}
     <div class="text-ink">Applied:</div>
-    ${Object.entries(applied || {}).map(([k, v]) =>
+    ${Object.entries(applied).map(([k, v]) =>
       `<div class="font-mono text-provenance text-ink-muted">${esc(k)} — ${esc(JSON.stringify(v))}</div>`).join('')}
   </div>`;
+}
+
+/** Show the result. On any failure the result STAYS until dismissed —
+ *  load() would replace it within the same tick, which is how a failed
+ *  Apply used to look like nothing had happened. */
+async function showApplyResult(data) {
+  const out = _host.querySelector('[data-resync-result]');
+  if (out) out.innerHTML = resultHtml(data);
+  if (applyFailures(data).length) {
+    out?.querySelector('[data-resync-dismiss]')?.addEventListener('click', () => load());
+    return;
+  }
+  await load();
 }
 
 async function runNow(step, finding) {
@@ -314,11 +385,9 @@ async function runNow(step, finding) {
   if (btn) { btn.disabled = true; btn.textContent = 'Running…'; }
   try {
     const data = await applyResyncSteps([step]);
-    const out = _host.querySelector('[data-resync-result]');
-    if (out) out.innerHTML = resultHtml(data.applied);
-    await load();
+    await showApplyResult(data);
   } catch (err) {
-    window.alert(`Run failed: ${err.message}`);
+    await inPageNotice({ message: `Run failed: ${err.message}` });
   } finally {
     _busy = false;
   }
@@ -327,7 +396,7 @@ async function runNow(step, finding) {
 async function applySelected() {
   if (_busy) return;
   const steps = [..._host.querySelectorAll('[data-resync-step]:checked')].map((c) => c.dataset.resyncStep);
-  if (!steps.length) { window.alert('Nothing selected.'); return; }
+  if (!steps.length) { await inPageNotice({ title: 'Nothing to do', message: 'Nothing selected.' }); return; }
 
   const findingByStep = new Map((_scan.findings || []).map((f) => [f.repair_step, f]));
   const lines = steps.map((s) => {
@@ -335,8 +404,7 @@ async function applySelected() {
     const describe = BLAST_RADIUS[s];
     return describe && f ? `• ${describe(f.count)}` : `• ${s}`;
   });
-  const confirmed = window.confirm(
-    `Apply ${steps.length} repair step(s)?\n\n${steps.join(', ')}\n\n${lines.join('\n\n')}`);
+  const confirmed = (await inPageConfirm({ message: `Apply ${steps.length} repair step(s)?\n\n${steps.join(', ')}\n\n${lines.join('\n\n')}`, confirmLabel: 'Confirm' }));
   if (!confirmed) return;
 
   _busy = true;
@@ -344,11 +412,12 @@ async function applySelected() {
   if (btn) { btn.disabled = true; btn.textContent = 'Applying…'; }
   try {
     const data = await applyResyncSteps(steps);
-    const out = _host.querySelector('[data-resync-result]');
-    if (out) out.innerHTML = resultHtml(data.applied);
-    await load();
+    await showApplyResult(data);
+    _busy = false;
+    const b = _host.querySelector('[data-apply-selected]');
+    if (b) { b.disabled = false; b.textContent = 'Apply selected'; }
   } catch (err) {
-    window.alert(`Resync failed: ${err.message}`);
+    await inPageNotice({ message: `Resync failed: ${err.message}` });
     _busy = false;
     if (btn) { btn.disabled = false; btn.textContent = 'Apply selected'; }
   }

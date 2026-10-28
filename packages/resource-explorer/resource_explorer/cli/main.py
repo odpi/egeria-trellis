@@ -21,6 +21,7 @@ from rich.console import Console
 # evaluates at import time. a2a_role imports nothing heavier than stdlib at
 # module scope, so this costs the CLI nothing on any other command.
 from resource_explorer.a2a_role import DEFAULT_A2A_PORT
+from resource_explorer.config import egeria_platform_url, egeria_view_server  # noqa: E402,F401
 
 app = typer.Typer(
     name="resource-explorer",
@@ -28,6 +29,27 @@ app = typer.Typer(
     rich_markup_mode="rich",
 )
 console = Console()
+
+
+@app.callback()
+def _announce_registry() -> None:
+    """Print which registry this command will use, once, to stderr.
+
+    A worktree has no `.env` and the default is the SHARED Postgres, so a
+    stray command must be visible: the shared default prints
+    `registry: localhost:5442/egeria_advisor (shared) ...`, anything else
+    (e.g. a builder's temp SQLite) prints `registry: sqlite:///<file>`.
+    Host and database only, never credentials. Not a refusal: 8810 and 8813
+    legitimately use the default.
+    """
+    from resource_explorer.registry_label import describe_registry
+
+    try:
+        from resource_explorer.config import get_config
+        url = get_config().registry.database_url
+    except Exception:
+        url = os.environ.get("REGISTRY_DATABASE_URL", "sqlite:///data/registry.db")
+    typer.echo(describe_registry(url), err=True)
 
 
 # ── sign in / sign out ───────────────────────────────────────────────────────
@@ -60,10 +82,19 @@ def login_command(
     from resource_explorer.auth import login_with_password
     from resource_explorer.cli import session as cli_session
 
+    from resource_explorer.egeria_clients import DaemonSignInRefused, is_daemon_user, refuse_daemon_sign_in
+
     if not user:
         from resource_explorer.config import get_config
 
-        user = typer.prompt("Egeria user id", default=get_config().egeria.user_id or None)
+        # Never the daemon's userId (EGERIA_USER_ID is RE's service account, Brief L).
+        prefill = (get_config().egeria.login_default_user or "").strip()
+        user = typer.prompt("Egeria user id", default=(None if not prefill or is_daemon_user(prefill) else prefill))
+    try:
+        refuse_daemon_sign_in(user)
+    except DaemonSignInRefused as exc:
+        console.print(f"[red]✗ {exc}[/red]")
+        raise typer.Exit(1) from None
     password = typer.prompt("Password", hide_input=True)
 
     egeria_token = login_with_password(user, password)
@@ -873,8 +904,11 @@ def group_assign(
     resource_slug: str = typer.Argument(..., help="Slug of the resource to assign"),
     group_slug: str = typer.Argument(..., help="Group slug to assign it to"),
 ):
-    """Assign a registered resource to a group."""
+    """Assign a registered resource to a group. Needs a signed-in session: the group is a Folio in Egeria, so the
+    change is checked like the web's (Brief T round 2) and reaches Egeria at the resource's next sync."""
+    from resource_explorer.cli import session as cli_session
     from resource_explorer.registry import ProjectRegistry
+    cli_session.require_and_activate(console)
     registry = ProjectRegistry()
     
     if not registry.get_group(group_slug):
@@ -885,22 +919,35 @@ def group_assign(
         if not registry.get(resource_slug):
             console.print(f"[red]Repository '{resource_slug}' not found.[/red]")
             raise typer.Exit(1)
-        registry.set_project_group(resource_slug, group_slug)
+        setter = registry.set_project_group
     elif resource_type == "database":
-        if not registry.get_database(resource_slug):
+        if not registry.get_database(resource_slug, allow_unreadable=True):
             console.print(f"[red]Database '{resource_slug}' not found.[/red]")
             raise typer.Exit(1)
-        registry.set_database_group(resource_slug, group_slug)
+        setter = registry.set_database_group
     elif resource_type == "filesystem":
         if not registry.get_filesystem(resource_slug):
             console.print(f"[red]Filesystem '{resource_slug}' not found.[/red]")
             raise typer.Exit(1)
-        registry.set_filesystem_group(resource_slug, group_slug)
+        setter = registry.set_filesystem_group
     else:
         console.print(f"[red]Invalid resource type '{resource_type}'. Use 'repo', 'database', or 'filesystem'.[/red]")
         raise typer.Exit(1)
 
-    console.print(f"[green]{resource_type} '{resource_slug}' → group '{group_slug}'.[/green]")
+    _refuse_group_change(registry, resource_type, resource_slug, group_slug)
+    setter(resource_slug, group_slug)
+    console.print(f"[green]{resource_type} '{resource_slug}' → group '{group_slug}'.[/green] "
+                  "Egeria's Folio follows at the resource's next sync.")
+
+
+def _refuse_group_change(registry, resource_type: str, resource_slug: str, group_slug: str) -> None:
+    """Exit 1 with the reason when curation access refuses the group change (the web route's check)."""
+    from resource_explorer.curation_egeria import group_change_refusal
+
+    why = group_change_refusal(registry, resource_type, resource_slug, group_slug)
+    if why:
+        console.print(f"[red]not permitted · {why}[/red]")
+        raise typer.Exit(1)
 
 
 @groups_app.command(name="unassign")
@@ -908,10 +955,15 @@ def group_unassign(
     resource_type: str = typer.Argument(..., help="Type of resource: repo, database, or filesystem"),
     resource_slug: str = typer.Argument(..., help="Slug of the resource to unassign"),
 ):
-    """Remove a resource from whatever group it belongs to."""
+    """Remove a resource from whatever group it belongs to. Needs a signed-in session (see `group assign`)."""
+    from resource_explorer.cli import session as cli_session
     from resource_explorer.registry import ProjectRegistry
+    cli_session.require_and_activate(console)
     registry = ProjectRegistry()
-    
+
+    from resource_explorer.resource_types import SURVEYED_RESOURCE_TYPES
+    if resource_type in SURVEYED_RESOURCE_TYPES:
+        _refuse_group_change(registry, resource_type, resource_slug, "")
     if resource_type == "repo":
         registry.set_project_group(resource_slug, "")
     elif resource_type == "database":
@@ -930,11 +982,19 @@ def group_remove(
     slug: str = typer.Argument(help="Group slug to delete"),
     yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation"),
 ):
-    """Delete a group. Member resources are ungrouped, not removed."""
+    """Delete a group. Member resources are ungrouped, not removed. Needs a signed-in session: every member leaves
+    the group's Folio in Egeria (at its next sync), so each is checked first; the Folio itself is never deleted."""
+    from resource_explorer.cli import session as cli_session
+    from resource_explorer.curation_egeria import group_delete_refusals, refusal_words
     from resource_explorer.registry import ProjectRegistry
+    cli_session.require_and_activate(console)
     registry = ProjectRegistry()
     if not registry.get_group(slug):
         console.print(f"[red]Group '{slug}' not found.[/red]")
+        raise typer.Exit(1)
+    refused = group_delete_refusals(registry, slug)
+    if refused:
+        console.print(f"[red]{refusal_words(refused)}[/red]")
         raise typer.Exit(1)
     if not yes:
         typer.confirm(f"Delete group '{slug}'? Member resources will be ungrouped.", abort=True)
@@ -1034,6 +1094,29 @@ def repair_rename(
         console.print(f"  [dim]collection: {line}[/dim]")
     if result.unchanged_shared_collections:
         console.print(f"  [dim]shared collections left unchanged: {result.unchanged_shared_collections}[/dim]")
+
+
+@repair_app.command(name="mark-false-zero-surveys")
+def repair_mark_false_zero_surveys(
+    apply: bool = typer.Option(
+        False, "--apply",
+        help="Actually mark the rows. Without it this is a DRY RUN that only prints what it would mark."),
+):
+    """Mark false-zero database survey rows invalid (never deletes them).
+
+    Finds rows whose source is a publish source ('egeria-published') and whose
+    schema_info is empty, for ANY database — the damage left by a publish step
+    that wrote a survey row with nothing measured. DRY RUN by default: prints
+    slug, timestamp, source and reason per row plus a count, writes nothing.
+    """
+    from resource_explorer.registry import ProjectRegistry
+    from resource_explorer.repair import (
+        apply_false_zero_survey_repair, format_false_zero_plan, plan_false_zero_survey_repair)
+    registry = ProjectRegistry()
+    plan = plan_false_zero_survey_repair(registry)
+    if apply:
+        apply_false_zero_survey_repair(plan, registry)
+    console.print(format_false_zero_plan(plan, apply=apply), markup=False, highlight=False)
 
 
 @repair_app.command(name="set-github-url")
@@ -1262,11 +1345,22 @@ def survey(
 
         # ── Egeria publish ────────────────────────────────────────────────
         report_guid = None
-        if publisher:
+        refused = _resource_write_refusal(registry, "repo", project.slug) if publisher else ""
+        if refused:                       # Brief Z2: this repository is skipped, the rest proceed
+            console.print(f"  [yellow]{refused}[/yellow]")
+        if publisher and not refused:
+            from resource_explorer.private_publish import PrivateAwaitsOwner, record_waiting
+
             try:
                 console.print(f"  [dim]Publishing to Egeria…[/dim]")
-                report_guid = publisher.publish(result)
+                # An explicit publish waits for Egeria (RUNS_PUBLISH_INLINE governs a run's auto-publish only).
+                report_guid = publisher.publish(result, defer_drain=False)
                 console.print(f"  [green]SurveyReport GUID: {report_guid}[/green]")
+            except PrivateAwaitsOwner as exc:
+                # Waiting, not failed (2026-10-13 review): only the private investigation's owner can publish it.
+                console.print(f"  [yellow]{exc}[/yellow]")
+                record_waiting(registry, exc, run_key=result.surveyed_at.isoformat(), source="cli survey",
+                               name=project.display_name, location=project.github_url)
             except Exception as exc:
                 console.print(f"  [red]Egeria publish failed: {exc}[/red]")
                 try:
@@ -1629,17 +1723,19 @@ def database_register(
 def database_update_credentials(
     slug: str = typer.Argument(help="Database slug to update"),
     user: str = typer.Option(..., "--user", "-u", help="New database username"),
-    password: str = typer.Option(..., "--password", "-p", help="New database password", hide_input=True),
+    password: str = typer.Option(..., "--password", "-p", prompt=True, help="New database password (prompted, not echoed, when omitted)", hide_input=True),
 ):
     """Update the stored db_user/db_password for an already-registered database.
 
     The registration itself (slug, egeria_asset_guid, survey history) is
     untouched -- this only repoints which role/password future surveys connect
-    with.
+    with. The new credential is tested against the database first; if the
+    connection fails nothing is stored and the exit code is non-zero.
 
     Example:
-        resource-explorer database update-credentials my-postgres \\
-            --user surveyor --password secret
+        resource-explorer database update-credentials <slug> --user <role>
+
+    The password is prompted for.
     """
     from resource_explorer.registry import ProjectRegistry
 
@@ -1647,6 +1743,19 @@ def database_update_credentials(
 
     if not registry.database_exists(slug):
         console.print(f"[red]Database '{slug}' not found. Register it first with 'database register'.[/red]")
+        raise typer.Exit(1)
+
+    from rich.markup import escape
+
+    from resource_explorer.credential_check import (
+        CredentialCheckError,
+        check_database_credential,
+    )
+
+    try:
+        check_database_credential(registry.get_database(slug, allow_unreadable=True), user, password)
+    except CredentialCheckError as exc:
+        console.print(f"[red]{escape(str(exc))}[/red]")
         raise typer.Exit(1)
 
     registry.update_database_credentials(slug, user, password)
@@ -1661,6 +1770,54 @@ def database_update_credentials(
 
     console.print(f"[green]✓ Credentials updated for database '{slug}'.[/green]")
     console.print(f"  User: {user}")
+
+
+@database_app.command(name="reproject-secrets")
+def database_reproject_secrets(
+    slug: str = typer.Argument(None, help="Database slug to project (omit with --all)"),
+    all_databases: bool = typer.Option(False, "--all", help="Project every registered database"),
+):
+    """Re-project stored credentials into the Egeria secrets file.
+
+    Uses the credentials RE already holds (decrypted the way the survey runner
+    decrypts them); nothing is typed or printed. One collection per database.
+    A database with no stored credential is skipped and said. Idempotent.
+    Use after a redeploy recreated the secrets directory.
+
+    Example:
+        resource-explorer database reproject-secrets --all
+    """
+    from resource_explorer import omsecrets_reproject, omsecrets_store
+    from resource_explorer.registry import ProjectRegistry
+
+    if bool(slug) == bool(all_databases):
+        console.print("[red]Give exactly one of <slug> or --all.[/red]")
+        raise typer.Exit(2)
+    path = omsecrets_store.local_path()
+    if not path:
+        console.print("[red]EGERIA_SECRETS_STORE_LOCAL_PATH is not set; there is no secrets file to project to.[/red]")
+        raise typer.Exit(1)
+    registry = ProjectRegistry()
+    if slug and not registry.database_exists(slug):
+        console.print(f"[red]Database '{slug}' not found.[/red]")
+        raise typer.Exit(1)
+    outcomes = omsecrets_reproject.reproject(
+        registry, [registry._normalize_slug(slug)] if slug else None, path=path)
+    failed = False
+    for o in outcomes:
+        if o.status == omsecrets_reproject.WRITTEN:
+            console.print(f"[green]written[/green]   {o.collection}")
+        elif o.status == omsecrets_reproject.UNCHANGED:
+            console.print(f"unchanged  {o.collection}")
+        elif o.status == omsecrets_reproject.SKIPPED:
+            console.print(f"[yellow]skipped[/yellow]   {o.slug}: {o.message}")
+        else:
+            failed = True
+            console.print(f"[red]error[/red]     {o.slug}: {o.message}")
+    if not outcomes:
+        console.print("No registered databases.")
+    if failed:
+        raise typer.Exit(1)
 
 
 @database_app.command(name="check-credential-drift")
@@ -1773,6 +1930,7 @@ def database_survey(
     
     # Determine survey mode
     if use_egeria or (not force_custom and not user):
+        _require_resource_write(registry, "database", slug)      # Brief Z2: may catalog it in Egeria
         # Routed through executes_at="egeria-adaptive" (the folded-in
         # HybridDatabaseSurveyor strategy selector) via a one-step synthetic
         # Survey Definition, rather than calling run_hybrid_survey directly
@@ -2125,8 +2283,10 @@ def filesystem_register(
     description: str = typer.Option("", "--description", help="Filesystem description"),
     egeria_url: Optional[str] = typer.Option(None, "--egeria-url", help="Egeria platform URL"),
     egeria_server: Optional[str] = typer.Option(None, "--egeria-server", help="Egeria view server name"),
-    egeria_user: Optional[str] = typer.Option(None, "--egeria-user", help="Egeria user id"),
-    egeria_password: Optional[str] = typer.Option(None, "--egeria-password", help="Egeria user password", hide_input=True),
+    egeria_user: Optional[str] = typer.Option(None, "--egeria-user", hidden=True,
+                                              help="Ignored: per-resource Egeria credentials are no longer used"),
+    egeria_password: Optional[str] = typer.Option(None, "--egeria-password", hidden=True, hide_input=True,
+                                                  help="Ignored: per-resource Egeria credentials are no longer used"),
     group: Optional[str] = typer.Option(None, "--group", help="Assign this filesystem to a project group"),
 ):
     """Register a local filesystem directory in the registry.
@@ -2139,7 +2299,8 @@ def filesystem_register(
             --group egeria
     """
     from resource_explorer.registry import FileSystemEntity, ProjectRegistry
-    
+
+    _warn_ignored_egeria_credentials(egeria_user, egeria_password)
     registry = ProjectRegistry()
     
     # Check if already exists
@@ -2160,8 +2321,6 @@ def filesystem_register(
         description=description,
         egeria_url=egeria_url or "",
         egeria_server=egeria_server or "",
-        egeria_user=egeria_user or "",
-        egeria_password=egeria_password or "",
         group_slug=group or "",
     )
     
@@ -2206,8 +2365,10 @@ def filesystem_survey(
     use_egeria: bool = typer.Option(False, "--egeria", help="Publish survey results to Egeria (hybrid approach)"),
     egeria_url: Optional[str] = typer.Option(None, "--egeria-url", help="Egeria platform URL override"),
     egeria_server: Optional[str] = typer.Option(None, "--egeria-server", help="Egeria view server name override"),
-    egeria_user: Optional[str] = typer.Option(None, "--egeria-user", help="Egeria user id override"),
-    egeria_password: Optional[str] = typer.Option(None, "--egeria-password", help="Egeria user password override", hide_input=True),
+    egeria_user: Optional[str] = typer.Option(None, "--egeria-user", hidden=True,
+                                              help="Ignored: per-resource Egeria credentials are no longer used"),
+    egeria_password: Optional[str] = typer.Option(None, "--egeria-password", hidden=True, hide_input=True,
+                                                  help="Ignored: per-resource Egeria credentials are no longer used"),
 ):
     """Run a local survey on the filesystem, walking files and profiling schemas.
     
@@ -2224,6 +2385,9 @@ def filesystem_survey(
         console.print(f"[red]FileSystem '{slug}' not found. Register it first with 'filesystem register'.[/red]")
         raise typer.Exit(1)
         
+    _warn_ignored_egeria_credentials(egeria_user, egeria_password)
+    if use_egeria:
+        _require_resource_write(registry, "filesystem", slug)    # Brief Z2: catalogs and publishes it
     console.print(f"[cyan]Surveying filesystem '{slug}'...[/cyan]")
     registry.update_filesystem_status(slug, ProjectStatus.ACTIVE)
     
@@ -2246,8 +2410,6 @@ def filesystem_survey(
                 executes_at="egeria-adaptive",
                 egeria_url=egeria_url,
                 egeria_server=egeria_server,
-                egeria_user=egeria_user,
-                egeria_password=egeria_password,
                 force_egeria_publish=True,
             )
             step_report = (exec_result.get("steps") or [{}])[0]
@@ -2420,20 +2582,55 @@ def filesystem_remove(
 
 
 
+def _warn_ignored_egeria_credentials(user: Optional[str], password: Optional[str]) -> None:
+    """Per-resource Egeria credentials are no longer accepted (owner, 2026-10-09): say so, once,
+    naming the options only — never their values."""
+    sent = [n for n, v in (("--egeria-user", user), ("--egeria-password", password)) if v]
+    if sent:
+        console.print(f"[yellow]{'/'.join(sent)} ignored: RE no longer uses per-resource Egeria "
+                      "credentials; it calls Egeria as you (resource-explorer login) or as its daemon.[/yellow]")
+        import logging
+
+        logging.getLogger(__name__).warning(
+            "CLI: %s ignored (per-resource Egeria credentials are no longer used)", "/".join(sent))
+
+
+def _resource_write_refusal(registry, entity_type: str, slug: str, write: str = "publish") -> str:
+    """Brief Z2: the CLI asks the same decision as the web (`workflows.curate.resource_access`). "" when the
+    signed-in person may make this write, else "not permitted · <reason>"."""
+    from resource_explorer.workflows.curate import resource_access
+
+    d = resource_access(registry, entity_type, slug, write)
+    return "" if d.allowed else f"not permitted · {d.reason}"
+
+
+def _require_resource_write(registry, entity_type: str, slug: str, write: str = "publish") -> None:
+    """Sign-in (exit 2 without one) and `_resource_write_refusal` (exit 1, with the reason)."""
+    from resource_explorer.cli import session as cli_session
+
+    cli_session.require_and_activate(console)
+    why = _resource_write_refusal(registry, entity_type, slug, write)
+    if why:
+        console.print(f"[red]{why}[/red]")
+        raise typer.Exit(1)
+
+
 def _try_build_egeria_client(platform_url: Optional[str], view_server: Optional[str]):
     """Attempt to build a pyegeria client for optional cache refresh. Returns None on failure."""
     import os
-    url = platform_url or os.getenv("EGERIA_PLATFORM_URL", "")
-    server = view_server or os.getenv("EGERIA_VIEW_SERVER", "")
-    user = os.getenv("EGERIA_USER", "")
-    password = os.getenv("EGERIA_USER_PASSWORD", "")
+    url = platform_url or egeria_platform_url()
+    server = view_server or egeria_view_server()
     if not url:
         return None
     try:
         from pyegeria import ValidMetadataManager
-        client = ValidMetadataManager(server, url, user, password)
-        client.create_egeria_bearer_token(user, password)
-        return client
+
+        from resource_explorer.egeria_clients import current_principal, egeria_client
+
+        # The signed-in CLI user (`resource-explorer login`), never env credentials (Brief I).
+        # No session: no refresh, as before for an unreachable Egeria.
+        return egeria_client(current_principal(), purpose="valid values cache",
+                             view_server=server or None, platform_url=url).of(ValidMetadataManager)
     except Exception:
         return None
 
@@ -2497,6 +2694,133 @@ def prefect_worker(
         raise typer.Exit(1)
 
 
+# ── board_summary backfill (BOARD-SUMMARY-READ-COST-IMPLEMENTED.md) ──
+
+@app.command(name="backfill-board-summaries")
+def backfill_board_summaries(
+    slug: Optional[str] = typer.Argument(
+        None, help="Database or filesystem slug to backfill. Omit and pass --all instead."),
+    all_resources: bool = typer.Option(
+        False, "--all", help="Backfill every database and filesystem resource in the registry."),
+):
+    """Pre-populate `board_summary` rows for a resource (or every resource)
+    BEFORE any real user visits its By-analysis pane.
+
+    `build_survey_results(..., board_id=...)` (`resource_explorer/workflows/
+    analysis.py`) already self-heals — the first read of a missing/stale
+    board recomputes it and persists the result, so a real visitor's request
+    is never wrong, just slow the first time. On coco_pharma that first-visit
+    cost measured over 4 minutes across all 7 discovery boards, all paid in
+    the request path by whoever happened to click first (2026-09-29 owner
+    gate check). This command drives the SAME recompute-and-persist function
+    proactively, out of band, so an operator (or CI, right after a merge)
+    can pay that cost once, before anyone is waiting on it.
+
+    Only `board_id`s already fresh in `board_summary` are skipped — this is a
+    warm/backfill command, not a forced recompute of everything. A board
+    whose analysis has never run is still visited (it persists an empty-but-
+    valid summary, the same self-heal a real request would trigger) so a
+    later real run's write hook has a consistent row to update rather than a
+    gap.
+
+    Scoped to `database` and `filesystem` entity types only. `repo` boards
+    are not covered — no per-analysis run route exists for repo through this
+    branch's writer hook shape (see the IMPLEMENTED doc's writer-path
+    section); nothing here silently pretends otherwise.
+    """
+    import time
+
+    from resource_explorer.registry import ProjectRegistry
+    from resource_explorer.workflows.analysis import (
+        _read_board_summary_if_fresh,
+        build_survey_results,
+        list_survey_result_boards,
+    )
+
+    if bool(slug) == all_resources:
+        if slug and all_resources:
+            console.print("[red]Pass a slug OR --all, not both.[/red]")
+        else:
+            console.print("[red]Pass a resource slug, or --all to backfill every resource.[/red]")
+        raise typer.Exit(code=1)
+
+    registry = ProjectRegistry()
+
+    targets: list[tuple[str, str]] = []
+    if all_resources:
+        targets.extend(("database", db.slug) for db in registry.list_databases())
+        targets.extend(("filesystem", fs.slug) for fs in registry.list_filesystems())
+        if not targets:
+            console.print("[dim]No database or filesystem resources registered.[/dim]")
+            return
+    elif registry.database_exists(slug):
+        targets.append(("database", slug))
+    elif registry.filesystem_exists(slug):
+        targets.append(("filesystem", slug))
+    else:
+        console.print(f"[red]'{slug}' is not a registered database or filesystem.[/red]")
+        raise typer.Exit(code=1)
+
+    total_boards = 0
+    backfilled = 0
+    skipped = 0
+    errors: list[str] = []
+    overall_start = time.monotonic()
+
+    for entity_type, rslug in targets:
+        try:
+            boards = list_survey_result_boards(registry, entity_type, rslug).get("boards") or []
+        except Exception as exc:
+            errors.append(f"{entity_type}/{rslug}: could not list boards — {exc}")
+            console.print(f"[red]{entity_type}/{rslug}: could not list boards — {exc}[/red]")
+            continue
+
+        for i, board in enumerate(boards, start=1):
+            board_id = board["id"]
+            total_boards += 1
+            already_fresh = _read_board_summary_if_fresh(
+                registry, entity_type, rslug, board_id, "", True,
+            )
+            if already_fresh is not None and already_fresh.get("dashboards"):
+                console.print(
+                    f"backfilling {rslug}: board {i}/{len(boards)} ({board_id})... "
+                    f"[dim]already fresh, skipped[/dim]"
+                )
+                skipped += 1
+                continue
+
+            start = time.monotonic()
+            try:
+                build_survey_results(
+                    registry, entity_type, rslug, stage="", include_empty=True, board_id=board_id,
+                )
+            except Exception as exc:
+                elapsed = time.monotonic() - start
+                errors.append(f"{entity_type}/{rslug}/{board_id}: {exc}")
+                console.print(
+                    f"backfilling {rslug}: board {i}/{len(boards)} ({board_id})... "
+                    f"[red]FAILED after {elapsed:.1f}s — {exc}[/red]"
+                )
+                continue
+            elapsed = time.monotonic() - start
+            backfilled += 1
+            console.print(
+                f"backfilling {rslug}: board {i}/{len(boards)} ({board_id})... "
+                f"[green]done in {elapsed:.1f}s[/green]"
+            )
+
+    total_elapsed = time.monotonic() - overall_start
+    console.print(
+        f"\n[bold]{len(targets)} resource(s), {total_boards} board(s) — "
+        f"{backfilled} backfilled, {skipped} already fresh, {len(errors)} error(s), "
+        f"{total_elapsed:.1f}s total[/bold]"
+    )
+    if errors:
+        for e in errors:
+            console.print(f"  [yellow]{e}[/yellow]")
+        raise typer.Exit(code=1)
+
+
 # ── batch CSV import/export (resource_explorer/batch_io.py) ─────────────────
 
 @app.command(name="export-resources")
@@ -2547,7 +2871,9 @@ def import_resources(
         console.print("[yellow]No rows found.[/yellow]")
         raise typer.Exit(0)
 
-    plan = plan_import(registry, rows)
+    # The command line registers repos only; database rows are registered from
+    # the web Find databases dialog (they need a server chosen by a person).
+    plan = plan_import(registry, rows, importable=("repo",))
     console.print(f"[bold]{plan.total} row(s) in {path}[/bold]")
     console.print(f"  [green]{len(plan.to_register)}[/green] to register")
     console.print(f"  [dim]{len(plan.already_registered)} already registered[/dim]")
@@ -2681,6 +3007,10 @@ def egeria_recheck(
 from resource_explorer.cli import runs_commands as _runs_commands  # noqa: E402
 
 _runs_commands.register(app)
+
+from resource_explorer.cli import dr_egeria_commands as _dr_egeria_commands  # noqa: E402
+
+_dr_egeria_commands.register(app)
 
 
 if __name__ == "__main__":

@@ -293,6 +293,10 @@
     <span id="db-scope-badge" class="hidden text-xs bg-emerald-900 text-emerald-300 px-2 py-0.5 rounded-full"></span>
   </div>
   <div class="flex items-center gap-3">
+    <!-- Next is the default UI at `/` (2026-10-07); Classic is at `/classic`.
+         `/next` always serves Next, even if RE_DEFAULT_UI=classic. -->
+    <a id="open-new-ui" href="/next" title="Open the new UI"
+      class="text-xs text-slate-400 hover:text-cyan-300 transition-colors px-2 py-1 rounded border border-slate-600" style="text-decoration:none">New UI</a>
     <button onclick="showMainView('activity')" id="nav-activity-hdr"
       class="flex items-center gap-1.5 text-xs text-slate-400 hover:text-cyan-300 transition-colors px-2 py-1 rounded hover:bg-slate-700">
       📋 Activity
@@ -561,7 +565,7 @@
       <div id="analysis-sub-resources-view" class="flex-1 overflow-y-auto hidden p-4 space-y-2"></div>
       <!-- Discovery's analysis cards. Added 2026-08-24: all five discovery-intent
            analyses (repo_classification, architecture_recovery,
-           license_classification, maturity, repo_conventions) were catalogued,
+           license_classification, maturity, repo_conventions) were cataloged,
            step-mapped and runnable via POST /{slug}/analyses/{id}/run, and had
            no control anywhere in the UI — _loadAnalysisCatalogPanel was called
            only for 'assessment' and 'analysis'. The pane rendered Survey
@@ -855,14 +859,6 @@
               <label class="modal-label">View Server</label>
               <input id="srv-egeria-server" type="text" class="modal-input" placeholder="view-server">
             </div>
-            <div>
-              <label class="modal-label">Egeria User</label>
-              <input id="srv-egeria-user" type="text" class="modal-input" placeholder="erinoverview">
-            </div>
-            <div>
-              <label class="modal-label">Egeria Password</label>
-              <input id="srv-egeria-password" type="password" class="modal-input" placeholder="••••••••">
-            </div>
           </div>
         </div>
       </div>
@@ -1047,14 +1043,6 @@
               <label class="modal-label">View Server</label>
               <input id="reg-egeria-server" type="text" class="modal-input" placeholder="view-server">
             </div>
-            <div>
-              <label class="modal-label">Egeria User</label>
-              <input id="reg-egeria-user" type="text" class="modal-input" placeholder="erinoverview">
-            </div>
-            <div>
-              <label class="modal-label">Egeria Password</label>
-              <input id="reg-egeria-password" type="password" class="modal-input" placeholder="••••••••">
-            </div>
           </div>
         </div>
       </div>
@@ -1123,67 +1111,10 @@
   </div>
 </div>
 
-<!-- Publish-to-Egeria modal -->
-<div id="publish-db-modal" class="modal-overlay hidden">
-  <div class="modal-box">
-    <div class="flex items-center justify-between mb-4">
-      <span class="font-semibold text-slate-100"><span id="publish-db-title-verb">Catalog &amp; Survey in Egeria</span> — <span id="publish-db-slug-label" class="text-cyan-400"></span></span>
-      <button onclick="hidePublishDbModal()" class="text-slate-500 hover:text-slate-200 text-lg leading-none">×</button>
-    </div>
-    <div class="space-y-3">
-      <p id="publish-db-description" class="text-xs text-slate-400">Registers the PostgreSQL server + database in Egeria (storing credentials) then initiates Egeria's native survey. Annotations are populated asynchronously by Egeria.</p>
-      <div id="publish-creds-hint" class="text-xs text-emerald-400"></div>
-      <div class="border-t border-slate-700 pt-3">
-        <div class="text-xs text-slate-400 uppercase tracking-wide mb-2">Database Credentials <span class="text-slate-600">(blank = use stored)</span></div>
-        <div class="grid grid-cols-2 gap-3">
-          <div>
-            <label class="modal-label">DB Username</label>
-            <input id="publish-db-user" type="text" class="modal-input" placeholder="postgres">
-          </div>
-          <div>
-            <label class="modal-label">DB Password</label>
-            <input id="publish-db-pwd" type="password" class="modal-input" placeholder="••••••••">
-          </div>
-        </div>
-      </div>
-      <div class="border-t border-slate-700 pt-3">
-        <div class="text-xs text-slate-400 uppercase tracking-wide mb-2">Egeria Connection (optional — falls back to env vars)</div>
-        <div class="space-y-2">
-          <div>
-            <label class="modal-label">Platform URL</label>
-            <input id="publish-egeria-url" type="text" class="modal-input" placeholder="https://localhost:9443">
-          </div>
-          <div class="grid grid-cols-3 gap-2">
-            <div>
-              <label class="modal-label">View Server</label>
-              <input id="publish-egeria-server" type="text" class="modal-input" placeholder="view-server">
-            </div>
-            <div>
-              <label class="modal-label">User</label>
-              <input id="publish-egeria-user" type="text" class="modal-input" placeholder="erinoverview">
-            </div>
-            <div>
-              <label class="modal-label">Password</label>
-              <input id="publish-egeria-password" type="password" class="modal-input" placeholder="••••••••">
-            </div>
-          </div>
-        </div>
-      </div>
-      <div id="publish-db-error" class="text-red-400 text-xs hidden"></div>
-      <div id="publish-db-progress" class="text-slate-400 text-xs hidden">Cataloging &amp; initiating survey… this may take 30–90 s</div>
-      <div class="flex gap-2 pt-1">
-        <button id="publish-submit-btn" onclick="submitPublishDb()"
-          class="flex-1 py-1.5 rounded bg-cyan-700 hover:bg-cyan-600 text-white text-sm font-medium transition-colors">
-          Catalog + Survey →
-        </button>
-        <button onclick="hidePublishDbModal()"
-          class="px-4 py-1.5 rounded bg-slate-700 hover:bg-slate-600 text-slate-300 text-sm transition-colors">
-          Cancel
-        </button>
-      </div>
-    </div>
-  </div>
-</div>
+<!-- The Publish-to-Egeria modal for databases was retired here (Curate slice B,
+     BRIEF-CURATE-CATALOGUE-COMMIT-DATABASES.md): "Catalogue" on a database's Curate pane in /next
+     is the publish now, a curation record with a manifest and per-node proof. The REST route
+     POST /api/databases/{slug}/publish is no longer called from this page (see the backlog note in the implemented note). -->
 
 <!-- Run Analysis (catalog card) modal — gives the analysis-card "Run" action
      the same backgrounded shape as the Run Survey Definition modal below:
@@ -1312,14 +1243,6 @@
               <label class="modal-label">View Server</label>
               <input id="reg-fs-egeria-server" type="text" class="modal-input" placeholder="qs-view-server">
             </div>
-            <div>
-              <label class="modal-label">User</label>
-              <input id="reg-fs-egeria-user" type="text" class="modal-input" placeholder="erinoverview">
-            </div>
-            <div>
-              <label class="modal-label">Password</label>
-              <input id="reg-fs-egeria-pwd" type="password" class="modal-input" placeholder="••••••••">
-            </div>
           </div>
         </div>
       </div>
@@ -1365,14 +1288,6 @@
             <label class="modal-label">View Server</label>
             <input id="survey-fs-egeria-server" type="text" class="modal-input" placeholder="qs-view-server">
           </div>
-          <div>
-            <label class="modal-label">User</label>
-            <input id="survey-fs-egeria-user" type="text" class="modal-input" placeholder="erinoverview">
-          </div>
-          <div>
-            <label class="modal-label">Password</label>
-            <input id="survey-fs-egeria-pwd" type="password" class="modal-input" placeholder="••••••••">
-          </div>
         </div>
       </div>
 
@@ -1411,14 +1326,6 @@
           <div>
             <label class="modal-label">View Server</label>
             <input id="publish-fs-egeria-server" type="text" class="modal-input" placeholder="qs-view-server">
-          </div>
-          <div>
-            <label class="modal-label">User</label>
-            <input id="publish-fs-egeria-user" type="text" class="modal-input" placeholder="erinoverview">
-          </div>
-          <div>
-            <label class="modal-label">Password</label>
-            <input id="publish-fs-egeria-pwd" type="password" class="modal-input" placeholder="••••••••">
           </div>
         </div>
       </div>
@@ -1689,8 +1596,17 @@ async function _runBootstrapNow() {
   showToast('running', 'Running definition repair…', 4000);
   try {
     const res = await fetch('/api/bootstrap/run', {
-      method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({}),
+      method: 'POST', headers: {'Content-Type': 'application/json', ..._adminAuthHeaders()}, body: JSON.stringify({}),
     });
+    if (!res.ok) {
+      // A refusal is not "everything already present". 409: a heal is already running (this tab, another, or the
+      // automatic loop). 403: this caller is not an admin (or no admin is configured: it fails closed).
+      if (res.status === 409) showToast('info', 'A repair is already running', 5000);
+      else if (res.status === 403) showToast('error', 'Admin only: enter the admin token under Admin → Feedback', 6000);
+      else showToast('error', `Repair refused (HTTP ${res.status})`, 6000);
+      _refreshBootstrapBanner();
+      return;
+    }
     const data = await res.json();
     const healed = Object.entries(data.batches || {}).filter(([, r]) => r.action === 'healed');
     const failed = Object.entries(data.batches || {}).filter(([, r]) => r.action === 'failed');
@@ -2308,8 +2224,8 @@ function _showWhoamiInfo() {
   showToast('info',
     `Signed in as <b>${_esc(who)}</b>. Every Egeria read and write this session makes ` +
     `runs as you, so Egeria's own provenance records your user id — and anything ` +
-    `published is owned by you and starts in the <code>resource-explorer-draft</code> zone ` +
-    `until a curator accepts it.<br><br>` +
+    `published is owned by you. Resource Explorer adds no zone unless your deployment ` +
+    `configures one; private investigations are visible to you only.<br><br>` +
     `Egeria view server <b>${_esc(vs)}</b> at <b>${_esc(url)}</b>. ` +
     `Sessions last as long as your Egeria token (one hour by default); when it lapses, ` +
     `sign in again.`,
@@ -2358,6 +2274,7 @@ try {
 
 const _EGERIA_PROJECT_STATUS_LABEL = {
   unset:    () => '📁 No project set',
+  unbound:  () => '📁 unbound by reset \u00b7 rebind to recreate',
   personal: () => '👤 Personal exploration',
   declined: () => '🚫 Not associated',
   linked:   (ctx) => `📁 ${ctx.egeria_project_qualified_name ? ctx.egeria_project_qualified_name.split('::')[0] || ctx.egeria_project_qualified_name : 'Linked'}`,
@@ -2388,10 +2305,10 @@ async function _ensureEgeriaProjectContext(entityType, slug) {
   try {
     const res = await fetch(`/api/project-context/${entityType}/${encodeURIComponent(slug)}`);
     const ctx = await res.json();
-    if (ctx.status && ctx.status !== 'unset') return true;
+    if (ctx.status && ctx.status !== 'unset' && ctx.status !== 'unbound') return true;
   } catch (e) { /* fail open — an unreachable context check shouldn't block the publish attempt itself */ }
 
-  if (_sessionEgeriaProjectContext.status === 'unset') return false;
+  if (_sessionEgeriaProjectContext.status === 'unset' || _sessionEgeriaProjectContext.status === 'unbound') return false;
 
   try {
     const res = await fetch(`/api/project-context/${entityType}/${encodeURIComponent(slug)}`, {
@@ -2438,7 +2355,7 @@ function _openEgeriaProjectPicker() {
   fetch(`/api/project-context/${_egeriaProjectEntityType}/${encodeURIComponent(_egeriaProjectEntitySlug)}`)
     .then(r => r.json())
     .then(ctx => {
-      if (ctx.status && ctx.status !== 'unset') {
+      if (ctx.status && ctx.status !== 'unset') {   // 'unbound' IS shown: its words say what happened
         const labelFn = _EGERIA_PROJECT_STATUS_LABEL[ctx.status] || _EGERIA_PROJECT_STATUS_LABEL.unset;
         cur.textContent = `Currently: ${labelFn(ctx)}`;
       }
@@ -2482,9 +2399,15 @@ async function _postEgeriaProjectContext(body) {
     // The binding belongs to the investigation record, not to the browser.
     const slug = _currentInvestigation();
     if (slug) {
-      await fetch(`/api/investigations/${encodeURIComponent(slug)}/egeria-project`, {
+      const bound = await fetch(`/api/investigations/${encodeURIComponent(slug)}/egeria-project`, {
         method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body),
       });
+      if (bound.status === 403) {
+        // Brief Z3: refused by the zone check; nothing was recorded.
+        const detail = (await bound.json().catch(() => ({}))).detail || '';
+        showToast('error', `⊘ not permitted · ${_esc(detail)}`, 8000);
+        return;
+      }
     }
     _setSessionEgeriaProjectContext(body);
     closeEgeriaProjectModal();
@@ -2961,8 +2884,7 @@ function renderAnalysisCatalogCards(analyses, candidates, view, { title, intent,
     // means only shared types matched, so all that is known is that the
     // resource was published; shown dimmer and hedged rather than claiming a
     // precision the join cannot support.
-    // Fourth publish state, on top of the two tiers above (PUBLISH-STATE-
-    // AFTER-REDEPLOY-CORRECTIONS.md / REPLY-PUBLISH-STATE-GO-AHEAD.md §4):
+    // Fourth publish state, on top of the two tiers above (PUBLISH-STATE-AFTER-REDEPLOY-CORRECTIONS.md / REPLY-PUBLISH-STATE-GO-AHEAD.md §4):
     // the date stays — it is the only evidence a publish happened — and the
     // warning states what was observed (a failed resolve), never why.
     const staleSuffix = la.publish_stale
@@ -2971,8 +2893,8 @@ function renderAnalysisCatalogCards(analyses, candidates, view, { title, intent,
     const lastPublishedHtml = la.last_published_at
       ? la.last_published_scope && la.last_published_scope !== 'analysis'
         ? `<span class="text-slate-600" title="No publish attributable to this analysis alone — its annotation types are produced by several analyses. The resource was published at ${_esc(la.last_published_at)}.">☁ Resource published ${_relTime(la.last_published_at)}</span>${staleSuffix}`
-        : `<span class="text-slate-500" title="Last published: ${_esc(la.last_published_at)}">☁ Published ${_relTime(la.last_published_at)}</span>${staleSuffix}`
-      : `<span class="text-slate-600">☁ Not published</span>`;
+        : `<span class="text-slate-500" title="${_esc(_pubTitle(la, 'Last published: ' + la.last_published_at))}">☁ ${_pubWord(la)} ${_relTime(la.last_published_at)}</span>${staleSuffix}`
+      : `<span class="text-slate-600">☁ Not published</span>${la.publish_uncatalogued ? ` <span class="text-amber-400">⚠ not cataloged, publish needed</span>` : ''}`;
     // Scheduling is a cross-cutting, per-analysis action — available from
     // whichever card surfaced it (Assessment, Analysis, or Discovery),
     // rather than a separate admin page. Reuses the same schedules backend
@@ -3361,7 +3283,7 @@ const _FACT_SUBJECT_DISPLAY_NAMES = {
   change_since_last_survey: 'Change Since Last Survey',
   description: 'Description',
   disposition: 'Disposition',
-  egeria_catalogue_state: 'Egeria Catalogue State',
+  egeria_catalogue_state: 'Egeria Catalog State',
   license: 'License',
   project_commits: 'Maintainers',
   related_resources: 'Related Resources',
@@ -3396,7 +3318,7 @@ async function loadAnalysisResults(analysisId, slug) {
   try {
     const [resultsRes, trendRes] = await Promise.all([
       fetch(`/api/projects/${slug}/analyses/${analysisId}/results`),
-      fetch(`/api/projects/${slug}/analyses/${analysisId}/trend`),
+      fetch(`/api/projects/${slug}/analyses/${analysisId}/trend?entity_type=${encodeURIComponent('repo')}`),
     ]);
     if (!resultsRes.ok) throw new Error(`HTTP ${resultsRes.status}`);
     const data = await resultsRes.json();
@@ -3924,9 +3846,23 @@ function _renderDeploymentEvidenceResults(data) {
     const items = groups[v];
     if (!items.length) return '';
     const rows = items.map(d => {
-      const evidenceKinds = (d.evidence || []).map(e => e.kind);
+      // Group by kind: a distribution with 50 [project.scripts] entries has 50
+      // console_script items, which used to print as 50 bare "console_script"
+      // strings (the kind where the name belonged). One entry per kind; when a
+      // kind has more than one item, show the count and the item names
+      // (EvidenceItem.detail — the script name for console_script).
+      const byKind = new Map();
+      for (const e of (d.evidence || [])) {
+        if (!byKind.has(e.kind)) byKind.set(e.kind, []);
+        byKind.get(e.kind).push(e);
+      }
+      const evidenceKinds = [...byKind.entries()].map(([kind, es]) => {
+        if (es.length === 1) return kind;
+        const names = es.map(e => e.detail).filter(Boolean);
+        return `${kind} · ${es.length}` + (names.length ? `: ${names.join(', ')}` : '');
+      });
       const evLine = evidenceKinds.length
-        ? `<div class="text-[11px] text-slate-500 mono">${_esc(evidenceKinds.join(', '))}</div>` : '';
+        ? `<div class="text-[11px] text-slate-500 mono">${_esc(evidenceKinds.join([...byKind.values()].some(es => es.length > 1) ? '; ' : ', '))}</div>` : '';
       const cnc = d.could_not_check || [];
       const cncLine = cnc.length
         ? `<div class="text-[11px] text-amber-400/80 leading-snug">${cnc.length} evidence item`
@@ -4324,7 +4260,7 @@ function _archRow(c, slug, rowUid) {
   }
   const evidenceHtml = (_archInteractiveMode && evidenceDeduped.length)
     ? `<div class="mt-1 pl-2 border-l-2 border-slate-700/50 space-y-0.5">
-        ${evidenceDeduped.map(e => `<div class="text-[11px] text-slate-500">🔍 <span class="text-slate-400">${_esc(e.approach || e.assertion)}</span>: ${_esc(e.summary)}${e.confidence ? ` <span class="text-slate-600">(${e.confidence}%)</span>` : ''}</div>`).join('')}
+        ${evidenceDeduped.map(e => `<div class="text-[11px] text-slate-500">🔍 <span class="text-slate-400">${_esc(e.approach || e.assertion)}</span>: ${_esc(e.summary)}${e.confidence ? ` <span class="text-slate-600">(confidence ${e.confidence}%)</span>` : ''}</div>`).join('')}
       </div>`
     : '';
   const blueprintLinksHtml = (_archInteractiveMode && (c.candidate_blueprints || []).length)
@@ -4357,7 +4293,7 @@ function _archRow(c, slug, rowUid) {
         <div class="text-xs text-slate-300 mb-1"${anchorId}>
           <div class="flex justify-between gap-2">
             <span class="font-medium text-cyan-400 truncate" title="${_esc(c.path)}">${_esc(c.name)}</span>
-            <span class="text-slate-500 shrink-0">${c.type ? _esc(c.type) : 'untyped'} · ${c.confidence}%</span>
+            <span class="text-slate-500 shrink-0">${c.type ? _esc(c.type) : 'type not assigned · boundary only'} · confidence ${c.confidence}%</span>
           </div>
           <div class="text-slate-500 truncate" title="${_esc(c.path)}">${_esc(c.path)}</div>
           <div class="text-slate-500">${(c.proposed_by || []).map(_esc).join(', ') || '—'}</div>
@@ -4458,9 +4394,17 @@ function _archVerdictBadgeHtml(rowUid, slug, path, v, materialized) {
     : `✎ Retyped → ${_esc(v.retyped_to || '?')}`;
   const color = v.verdict === 'accepted' ? 'text-emerald-400'
     : v.verdict === 'rejected' ? 'text-red-400' : 'text-cyan-400';
-  const egeriaBadge = (materialized && materialized.guid)
-    ? `<span class="text-[10px] text-cyan-500" title="${_esc(materialized.qualified_name || '')}\n${_esc(materialized.guid)}">⬡ in Egeria</span>`
-    : '';
+  const inEgeria = !!(materialized && materialized.guid);
+  // Accept is a decision only (Brief A): the words come from the element's cache row, never from the click.
+  // Publish is the one verb that writes; a reject writes nothing and RE removes nothing.
+  const egeriaBadge = inEgeria
+    ? (v.verdict === 'rejected'
+      ? `<span class="text-[10px] text-amber-400/80" data-arch-egeria="still" title="Rejecting writes nothing: Resource Explorer cannot remove an element from Egeria, so it stays there until a steward removes it.">· still in Egeria</span>`
+      : `<span class="text-[10px] text-cyan-500" data-arch-egeria="yes" title="${_esc((materialized && materialized.qualified_name) || '')}\n${_esc(materialized.guid)}">⬡ in Egeria</span>`)
+    : (v.verdict === 'accepted'
+      ? `<span class="text-[10px] text-slate-400" data-arch-egeria="no" title="Accepting is a decision. Nothing is written to Egeria until Publish is pressed.">· not in Egeria yet</span>${
+        _archInteractiveMode ? ` <button class="text-[10px] text-cyan-400 hover:text-cyan-300 underline" onclick="_classicArchPublishJump()">Publish ↑</button>` : ''}`
+      : '');
   // "change" re-opens the accept/reject controls — a Curate-only action;
   // Analysis's read-only pass shows the verdict as a fact, not an editor.
   const changeBtn = _archInteractiveMode
@@ -4516,30 +4460,27 @@ async function _archSubmitVerdict(rowUid, verdict, retypedTo) {
     if (!resp.ok) {
       let detail = `HTTP ${resp.status}`;
       try { detail = (await resp.json()).detail || detail; } catch (_) { /* body wasn't JSON */ }
-      throw new Error(detail);
+      throw new Error(resp.status === 403 ? `not permitted · ${detail}` : detail);
     }
     // record_component_verdict's own row shape (registry.py) — `created_at`,
     // not `decided_at`; that rename only happens in _verdict_view's
     // read-back merge, which this direct POST response doesn't go through.
-    // `materialization` is only ever present on an 'accepted' call
-    // (curate.py's _materialize_if_accepted) — {status, guid, qualified_name}
-    // on success, {status:"error", error} if Egeria couldn't be reached or
-    // rejected the write. Either way the verdict above is already saved;
-    // materialization failing is reported, not treated as the call failing.
+    // A decision only (Brief A follow-up 1): nothing is written to Egeria here. `in_egeria` is read from the
+    // element's cache row by the route; Publish (the band at the top of this panel) is what writes it.
     const saved = await resp.json();
-    const m = saved.materialization;
-    el.outerHTML = _archVerdictBadgeHtml(rowUid, slug, path, {
-      verdict: saved.verdict, retyped_to: saved.retyped_to, decided_at: saved.created_at, note: saved.note,
-    }, m && m.status !== 'error' ? m : null);
-    if (m && m.status === 'error') {
-      showToast('error', `Verdict saved, but Egeria materialization failed: ${_esc(m.error)}`);
-    } else if (m && m.status === 'materialized') {
-      showToast('success', `Accepted — created as a real SolutionComponent in Egeria`);
-    } else if (m && m.status === 'already_materialized') {
-      showToast('success', `Accepted — already exists in Egeria`);
-    } else {
-      showToast('success', `Marked ${verdict}${retypedTo ? ` (${retypedTo})` : ''}`);
+    _archInteractiveMode = true;
+    try {
+      el.outerHTML = _archVerdictBadgeHtml(rowUid, slug, path, {
+        verdict: saved.verdict, retyped_to: saved.retyped_to, decided_at: saved.created_at, note: saved.note,
+      }, saved.materialized || null);
+    } finally {
+      _archInteractiveMode = false;
     }
+    showToast('success', verdict === 'accepted'
+      ? (saved.in_egeria ? 'Accepted · already in Egeria' : 'Accepted · not in Egeria yet — Publish writes it')
+      : verdict === 'rejected' ? `Rejected · nothing written to Egeria${saved.in_egeria ? ' (it is still there)' : ''}`
+      : `Marked ${verdict}${retypedTo ? ` (${retypedTo})` : ''}`);
+    _classicArchPublishLoad(slug);
   } catch (e) {
     showToast('error', `Could not save verdict: ${_esc(e.message)}`);
   }
@@ -5079,7 +5020,8 @@ function _handleFreshnessSkip(started, onForce, onForceBackground = null) {
   return true;
 }
 
-// `publish`: null (default) leaves the choice to RunsConfig.publish_inline;
+// `publish`: null (default) leaves the choice to RunsConfig.publish_inline
+// (enqueue-only since 2026-10-14);
 // "background" enqueues the Egeria write and returns without waiting for it
 // (run-in-background plan, project owner 2026-09-13 — measured: the publish
 // is almost all of a run's wall time, ~3min at ~3.6s/write). "Run in
@@ -6235,7 +6177,6 @@ async function loadServerDetail(slug) {
     srv.egeria_url    ? `<div><span class="text-slate-500">Egeria URL</span> <span class="text-slate-200">${_esc(srv.egeria_url)}</span></div>` : '',
     srv.egeria_server ? `<div><span class="text-slate-500">View Server</span> <span class="text-slate-200">${_esc(srv.egeria_server)}</span></div>` : '',
     srv.egeria_host   ? `<div><span class="text-slate-500">Egeria Host</span> <span class="text-slate-200">${_esc(srv.egeria_host)}</span></div>` : '',
-    srv.egeria_user   ? `<div><span class="text-slate-500">Egeria User</span> <span class="text-slate-200">${_esc(srv.egeria_user)}</span></div>` : '',
   ].filter(Boolean).join('');
 
   view.innerHTML = `
@@ -6456,7 +6397,14 @@ async function showDbChart(type) {
       container.innerHTML = '<div class="h-full flex items-center justify-center text-slate-500 text-xs">No survey data — run a survey first</div>';
       return;
     }
-    const data = await res.json();
+    let data = await res.json();
+    // table_sizes ranks by ESTABLISHED row counts only (null is not 0). When none
+    // are established, ask for the size measure explicitly, as the old
+    // all-zero fallback did, instead of drawing nothing.
+    if (type === 'table_sizes' && !data.tables?.length && data.not_established_count > 0) {
+      const res2 = await fetch(`/api/stats/databases/${selectedDatabase}/table_sizes?measure=size`);
+      if (res2.ok) data = await res2.json();
+    }
     _renderDbChart(container, type, data);
   } catch(e) {
     container.innerHTML = `<div class="h-full flex items-center justify-center text-red-400 text-xs">${e.message}</div>`;
@@ -6622,7 +6570,7 @@ async function publishSurvey() {
     }
     const data = await res.json();
     if (data.status === 'ok') {
-      fb.innerHTML = `<span class="text-emerald-400">✓ Published — ${data.annotation_count} annotations · Report: <span class="font-mono">${(data.report_guid||'').substring(0,12)}…</span></span>`;
+      fb.innerHTML = `${_publishStateCue(data).html} <span class="text-slate-400">— ${data.annotation_count} annotations · Report: <span class="font-mono">${(data.report_guid||'').substring(0,12)}…</span></span>`;
       loadActivityLog();
       setTimeout(() => showEgeria(), 800);
     } else {
@@ -6636,6 +6584,17 @@ async function publishSurvey() {
     btn.disabled = false;
     btn.textContent = 'Retry →';
   }
+}
+
+// The manual Publish's word, from the server's proof-derived `publish_state` (registry.publish_proofs): only a
+// read-back says "published". A cue plus a short word; Egeria's words only for a failure.
+function _publishStateCue(data) {
+  const st = data && data.publish_state;
+  if (st === 'read_back') return { tone: 'success', html: '<span class="text-emerald-400">✓ published · read back</span>', text: 'published · read back' };
+  if (st === 'queued') return { tone: 'info', html: '<span class="text-amber-400">◔ queued for publish</span>', text: 'queued for publish' };
+  if (st === 'failed') return { tone: 'error', html: `<span class="text-red-400">✕ publish failed · ${_esc(data.publish_words || '')}</span>`, text: `publish failed · ${data.publish_words || ''}` };
+  if (st === 'nothing') return { tone: 'info', html: '<span class="text-slate-400">nothing to publish</span>', text: 'nothing to publish' };
+  return { tone: 'info', html: `<span class="text-slate-400">· ${_esc((data && data.publish_word) || 'publish not established')}</span>`, text: (data && data.publish_word) || 'publish not established' };
 }
 
 async function resetEgeria(btn) {
@@ -6908,7 +6867,7 @@ function hideRegisterDbModal() {
   document.getElementById('register-db-modal').classList.add('hidden');
   ['reg-slug','reg-name','reg-host','reg-dbname','reg-desc',
    'reg-db-user','reg-db-password',
-   'reg-egeria-host','reg-egeria-url','reg-egeria-server','reg-egeria-user','reg-egeria-password',
+   'reg-egeria-host','reg-egeria-url','reg-egeria-server',
   ].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
   document.getElementById('reg-port').value = '5432';
   document.getElementById('reg-type').value = 'postgresql';
@@ -6928,8 +6887,6 @@ async function submitRegisterDb() {
   const egeriaHost  = document.getElementById('reg-egeria-host').value.trim();
   const egeriaUrl   = document.getElementById('reg-egeria-url').value.trim();
   const egeriaServer = document.getElementById('reg-egeria-server').value.trim();
-  const egeriaUser  = document.getElementById('reg-egeria-user').value.trim();
-  const egeriaPwd   = document.getElementById('reg-egeria-password').value;
   const errEl       = document.getElementById('register-db-error');
 
   if (!slug || !name || !host || !dbname) {
@@ -6948,7 +6905,6 @@ async function submitRegisterDb() {
         db_user: dbUser, db_password: dbPassword,
         egeria_host: egeriaHost,
         egeria_url: egeriaUrl, egeria_server: egeriaServer,
-        egeria_user: egeriaUser, egeria_password: egeriaPwd,
       }),
     });
     if (res.ok) {
@@ -6980,7 +6936,7 @@ function hideRegisterServerModal() {
   document.getElementById('register-server-modal').classList.add('hidden');
   ['srv-slug','srv-name','srv-host','srv-desc',
    'srv-db-user','srv-db-password',
-   'srv-egeria-host','srv-egeria-url','srv-egeria-server','srv-egeria-user','srv-egeria-password',
+   'srv-egeria-host','srv-egeria-url','srv-egeria-server',
   ].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
   document.getElementById('srv-port').value = '5432';
   document.getElementById('srv-type').value = 'postgresql';
@@ -7011,8 +6967,6 @@ async function submitRegisterServer() {
     egeria_host:     document.getElementById('srv-egeria-host').value.trim(),
     egeria_url:      document.getElementById('srv-egeria-url').value.trim(),
     egeria_server:   document.getElementById('srv-egeria-server').value.trim(),
-    egeria_user:     document.getElementById('srv-egeria-user').value.trim(),
-    egeria_password: document.getElementById('srv-egeria-password').value,
   };
 
   try {
@@ -7123,16 +7077,20 @@ async function _fetchDiscoverDatabases(slug) {
     } else {
       data.forEach(db => {
         const row = document.createElement('label');
-        row.className = `flex items-center gap-2 px-3 py-2 rounded cursor-pointer ${db.is_registered ? 'opacity-40 cursor-not-allowed' : 'hover:bg-slate-700/50'}`;
+        // list_databases() no longer drops databases this credential cannot
+        // CONNECT to; they are listed, marked, and not selectable here.
+        const noConnect = db.can_connect === false;
+        row.className = `flex items-center gap-2 px-3 py-2 rounded cursor-pointer ${db.is_registered || noConnect ? 'opacity-40 cursor-not-allowed' : 'hover:bg-slate-700/50'}`;
         row.innerHTML = `
           <input type="checkbox" class="discover-db-check accent-emerald-400"
-            data-name="${_esc(db.name)}" ${db.is_registered ? 'disabled checked' : ''}>
+            data-name="${_esc(db.name)}" ${db.is_registered ? 'disabled checked' : (noConnect ? 'disabled' : '')}>
           <div class="flex-1 min-w-0">
             <div class="text-sm text-slate-200 font-mono">${_esc(db.name)}
               ${db.is_registered ? '<span class="text-xs text-slate-500 ml-1">(already registered)</span>' : ''}
+              ${noConnect ? '<span class="text-xs text-slate-500 ml-1">(? can\'t connect with this credential)</span>' : ''}
             </div>
             <div class="text-xs text-slate-500">
-              ${db.size_pretty ? _esc(db.size_pretty) + ' · ' : ''}${_esc(db.owner)}
+              ${db.size_pretty ? _esc(db.size_pretty) + ' · ' : ''}${_esc(db.owner || '')}
               ${db.description ? ' · ' + _esc(db.description) : ''}
             </div>
           </div>`;
@@ -7209,6 +7167,18 @@ async function submitSurveyDb() {
   const errEl    = document.getElementById('survey-db-error');
   const progress = document.getElementById('survey-db-progress');
   const submitBtn = document.getElementById('survey-submit-btn');
+
+  // Say what this run does BEFORE it does it: with "Egeria hybrid" ticked it
+  // runs postgres_schema_and_stats and then publishes the results to Egeria
+  // (false-zero hotfix, 2026-09-30 — three unannounced publishes wrote empty
+  // survey rows for coco_pharma).
+  if (useEgeria && !window.confirm(
+      `Run the Egeria hybrid survey on "${slug}"?\n\n` +
+      'This runs postgres_schema_and_stats, which publishes to Egeria when it finishes ' +
+      '(a SurveyReport is written to the catalog if the database is cataloged there).\n\n' +
+      'Untick "Try Egeria first" for a local-only survey.')) {
+    return;
+  }
 
   // Only require credentials if nothing is stored
   const db = _dbMap[slug];
@@ -7921,6 +7891,11 @@ async function submitRfaAction(rfaId, status, extra, containerId) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ status, ...extra }),
     });
+    if (res.status === 403) {
+      // Brief Z3: its Egeria ToDo write was refused by the zone check; nothing was recorded.
+      const detail = (await res.json().catch(() => ({}))).detail || '';
+      throw new Error(`⊘ not permitted · ${detail}`);
+    }
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     showToast('success', `RFA marked ${_esc(status)}.`, 3000);
     loadRfaPanel(containerId);
@@ -8504,12 +8479,12 @@ function _renderSurveyDefCandidateCard(c, allCandidates, entityType, slug, sched
   const lastPublishedHtml = c.last_published_at
     ? c.last_published_scope === 'repo'
       ? `<span class="text-slate-600" title="No candidate-specific publish yet — inferred from a whole-repo publish after this ran: ${_esc(c.last_published_at)}">☁ Repo published ${_relTime(c.last_published_at)}</span>${candStaleSuffix}`
-      : `<span class="text-slate-500" title="Last published: ${_esc(c.last_published_at)}">☁ Published ${_relTime(c.last_published_at)}</span>${candStaleSuffix}`
+      : `<span class="text-slate-500" title="${_esc(_pubTitle(c, 'Last published: ' + c.last_published_at))}">☁ ${_pubWord(c)} ${_relTime(c.last_published_at)}</span>${candStaleSuffix}`
     // Was '' — so "never published" and "we did not look" rendered the same
     // (as nothing), while the local cards beside these said "Not published".
     : c.publishes_itself
       ? `<span class="text-slate-500" title="Every step of this survey runs natively in Egeria, so its annotations are written there as it runs — there is nothing held locally to publish">☁ Publishes itself</span>`
-      : `<span class="text-slate-600">☁ Not published</span>`;
+      : `<span class="text-slate-600">☁ Not published</span>${c.publish_uncatalogued ? ` <span class="text-amber-400">⚠ not cataloged, publish needed</span>` : ''}`;
   const speedTagClass = { fast: 'tag-fast', minutes: 'tag-mins', async: 'tag-async' };
   const speedTag = c.run_time ? `<span class="analysis-tag ${speedTagClass[c.run_time] || ''}">${_esc(c.run_time)}</span>` : '';
   // Same tags the local cards carry. A Survey Definition declares none in
@@ -8758,10 +8733,10 @@ function _renderResultsCardStatusHtml(d) {
   // the Analyses/Survey Definition cards' own Publish button, which already
   // reappears on the same signal.
   const publishedHtml = d.last_published_at
-    ? `<span class="text-slate-500" title="Last published: ${_esc(d.last_published_at)}">☁ Published ${_relTime(d.last_published_at)}</span>${
+    ? `<span class="text-slate-500" title="${_esc(_pubTitle(d, 'Last published: ' + d.last_published_at))}">☁ ${_pubWord(d)} ${_relTime(d.last_published_at)}</span>${
         d.publish_stale ? ` <span class="text-amber-400">⚠ these elements are no longer in the store</span>` : ''}`
     : d.has_results
-      ? `<span class="text-slate-600">☁ Not published</span>`
+      ? `<span class="text-slate-600">☁ Not published</span>${d.publish_uncatalogued ? ` <span class="text-amber-400">⚠ not cataloged, publish needed</span>` : ''}`
       : '';
   return `<div class="text-xs mb-1.5 flex flex-wrap gap-2.5">${statusHtml}${surveyedHtml}${publishedHtml}</div>`;
 }
@@ -8806,7 +8781,7 @@ function renderSurveyResultsPanel(data, entityType, slug, viewElId, subnavHtml, 
     ${perspectiveRowHtml}
     <div class="p-4 grid grid-cols-2 gap-3" style="align-items:start">${cardsHtml ||
       '<div class="text-slate-600 text-xs text-center py-8 col-span-2">No dashboards match the active Perspective filter.</div>'}</div>`;
-  _loadDashboardTrendCharts(visible, slug);
+  _loadDashboardTrendCharts(visible, slug, entityType);
   renderPendingArchDiagrams();
 }
 
@@ -8843,7 +8818,7 @@ function _renderDashboardTrendPlaceholder(dashboard) {
   </div>`;
 }
 
-async function _loadDashboardTrendCharts(dashboards, slug) {
+async function _loadDashboardTrendCharts(dashboards, slug, entityType) {
   for (const d of dashboards) {
     const cfg = _DASHBOARD_TREND_CONFIG[d.id];
     if (!cfg) continue;
@@ -8868,7 +8843,7 @@ async function _loadDashboardTrendCharts(dashboards, slug) {
     } else if (cfg.kind === 'analysis_trends') {
       for (const analysisId of cfg.analysis_ids) {
         try {
-          const res = await fetch(`/api/projects/${encodeURIComponent(slug)}/analyses/${analysisId}/trend`);
+          const res = await fetch(`/api/projects/${encodeURIComponent(slug)}/analyses/${analysisId}/trend?entity_type=${encodeURIComponent(entityType)}`);
           if (!res.ok) continue;
           const { runs } = await res.json();
           if (runs && runs.length > 1) {
@@ -9206,13 +9181,13 @@ async function submitSurveyDefinitionRun() {
       ? `<div class="mt-2"><div class="text-slate-400 text-xs uppercase tracking-wider mb-1">Annotations</div><div id="survey-def-run-annotations" class="text-xs">Loading…</div></div>`
       : '';
     const notCataloged = entityType === 'database' && (data.errors || []).some(e =>
-      e.includes('no stored Egeria asset guid') || e.includes('is not yet cataloged in Egeria'));
+      e.includes('no stored Egeria asset guid') || e.includes('is not yet cataloged in Egeria') || e.includes('is not yet published to Egeria'));
     const catalogPromptHtml = notCataloged
       ? `<div class="mt-2 p-2 rounded bg-amber-900/30 border border-amber-800/50">
           <div class="text-amber-300">This database isn't cataloged in Egeria yet, so its Egeria-side step(s) couldn't run.</div>
           <button id="survey-def-catalog-retry-btn" onclick="catalogAndRetrySurveyDefinition()"
             class="mt-1.5 text-xs px-2 py-1 rounded bg-amber-700 hover:bg-amber-600 text-white transition-colors">
-            ☁ Catalog in Egeria now, then retry →
+            ☁ Catalog from its scope, then retry →
           </button>
         </div>`
       : '';
@@ -9260,43 +9235,37 @@ async function submitSurveyDefinitionRun() {
 }
 
 async function catalogAndRetrySurveyDefinition() {
+  // Never the unscoped database publish. Catalogue goes through the Curate commit, which
+  // compiles the STORED scope; with no scope declared it stops and writes nothing to Egeria.
+  // The commit is queued work, so the survey definition is not auto-retried: run it again
+  // once the commit has finished (its steps are on the database's Curate pane in /next).
   if (!_surveyDefRun) return;
   const { slug } = _surveyDefRun;
   const btn = document.getElementById('survey-def-catalog-retry-btn');
-  const dbUser = document.getElementById('survey-def-run-user').value.trim();
-  const dbPwd  = document.getElementById('survey-def-run-pwd').value;
-
-  if (btn) { btn.disabled = true; btn.textContent = 'Cataloging in Egeria… (this can take 30–90s)'; }
+  if (btn) { btn.disabled = true; btn.textContent = 'Queuing the catalog commit…'; }
   const opId = logOp({ type:'publish', slug, status:'running',
-    summary:`Cataloging ${slug} in Egeria before retrying Survey Definition…` });
-  showToast('running', `Cataloging <strong>${_esc(slug)}</strong> in Egeria…`, 0);
-  const runningToastId = `toast-${_toastSeq}`;
-
+    summary:`Queuing the catalog commit for ${slug} from its stored scope…` });
   try {
-    const res = await fetch(`/api/databases/${slug}/publish`, {
+    const res = await fetch(`/api/catalogue-scope/${encodeURIComponent(slug)}/commit`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ db_user: dbUser, db_pwd: dbPwd }),
+      body: JSON.stringify({ refresh_now: false }),
     });
-    const data = await res.json();
-    document.getElementById(runningToastId)?.remove();
-    if (!res.ok || data.status === 'error') {
-      const msg = data.detail || data.error || 'Cataloging failed';
-      updateOp(opId, 'error', `Cataloging ${slug} failed: ${msg}`, msg);
-      showToast('error', `Cataloging failed for <strong>${_esc(slug)}</strong>: ${_esc(msg)}`, 10000);
-      if (btn) { btn.disabled = false; btn.textContent = '☁ Catalog in Egeria now, then retry →'; }
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      const msg = data.detail || data.error || 'The catalog commit was refused';
+      updateOp(opId, 'error', `Not cataloged: ${msg}`, msg);
+      showToast('error', `<strong>${_esc(slug)}</strong>: ${_esc(msg)}`, 10000);
+      if (btn) { btn.disabled = false; btn.textContent = '☁ Catalog from its scope, then retry →'; }
       return;
     }
-    updateOp(opId, 'ok', `Cataloged ${slug} in Egeria`, '');
-    showToast('success', `Cataloged <strong>${_esc(slug)}</strong> in Egeria — retrying Survey Definition…`, 5000);
-    // Now that the database has an egeria_asset_guid, retry the whole run —
-    // the previously-failing Egeria-tagged step(s) should succeed this time.
-    await submitSurveyDefinitionRun();
+    updateOp(opId, 'ok', `Catalog commit queued for ${slug}`, '');
+    showToast('success', `Catalog commit queued for <strong>${_esc(slug)}</strong>. Run the Survey Definition again when it has finished (Curate shows its steps).`, 10000);
+    if (btn) { btn.disabled = false; btn.textContent = '☁ Catalog from its scope, then retry →'; }
   } catch(e) {
-    document.getElementById(runningToastId)?.remove();
-    updateOp(opId, 'error', `Cataloging ${slug} failed: ${e.message}`, e.message);
-    showToast('error', `Cataloging failed for <strong>${_esc(slug)}</strong>: ${_esc(e.message)}`, 10000);
-    if (btn) { btn.disabled = false; btn.textContent = '☁ Catalog in Egeria now, then retry →'; }
+    updateOp(opId, 'error', `Catalog commit failed to queue: ${e.message}`, e.message);
+    showToast('error', `Could not queue the catalog commit: ${_esc(e.message)}`, 10000);
+    if (btn) { btn.disabled = false; btn.textContent = '☁ Catalog from its scope, then retry →'; }
   }
 }
 
@@ -10179,11 +10148,13 @@ function _curateBlueprintRow(bp, slug, componentsByPath) {
   // nice message"). A member counts ready only once it has a real Egeria
   // GUID (st.materialized.guid) — an 'accepted' verdict alone isn't enough,
   // same distinction memberVerdictBadgeInline's own ⬡ glyph already draws.
+  // Accept is a decision only (Brief A): a member is ready once it is accepted or already in Egeria, since
+  // Publish writes the accepted components before the blueprint that holds them.
   const unmetMembers = (bp.member_status || [])
-    .filter(st => !(st.materialized && st.materialized.guid))
+    .filter(st => !(st.materialized && st.materialized.guid) && !(st.verdict && st.verdict.verdict === 'accepted'))
     .map(st => ({ scope_locator: st.scope_locator, name: (componentsByPath[st.scope_locator] || {}).name || st.slug }));
   const unmetChildCount = (bp.child_status || [])
-    .filter(st => !(st.materialized && st.materialized.guid)).length;
+    .filter(st => !(st.materialized && st.materialized.guid) && !(st.verdict && st.verdict.verdict === 'accepted')).length;
   const verdictArea = bp.verdict
     ? _archBlueprintVerdictBadgeHtml(rowUid, slug, bp.perspective, bp.cluster_name, bp.verdict, bp.materialized)
     : _archBlueprintVerdictControlsHtml(rowUid, slug, bp.perspective, bp.cluster_name, unmetMembers, unmetChildCount);
@@ -10230,11 +10201,11 @@ function _archBlueprintVerdictControlsHtml(rowUid, slug, perspective, clusterNam
     ? `<div class="mb-1.5 rounded border border-amber-700/50 bg-amber-950/20 px-2 py-1.5">
         <div class="text-[11px] text-amber-300">
           ⚠ ${unmetMembers.length ? `${unmetMembers.length} component(s)` : ''}${unmetMembers.length && unmetChildCount ? ' and ' : ''}${unmetChildCount ? `${unmetChildCount} nested blueprint(s)` : ''}
-          not yet published to Egeria — accept can't complete a real blueprint until every member is.
+          not accepted yet — Publish writes a blueprint only with members that are accepted.
         </div>
         ${unmetMembers.length ? `<div class="text-[10px] text-slate-500 mt-0.5 truncate">${unmetMembers.map(m => _esc(m.name)).join(', ')}</div>` : ''}
         ${unmetMembers.length ? `<button class="text-[10px] px-1.5 py-0.5 rounded bg-cyan-900/40 text-cyan-300 hover:bg-cyan-900/70 mt-1"
-            onclick='_curatePublishMissingComponents("${rowUid}")'>📤 Publish missing component(s) &amp; accept</button>` : ''}
+            onclick='_curatePublishMissingComponents("${rowUid}")'>✓ Accept missing component(s) &amp; this blueprint</button>` : ''}
       </div>`
     : '';
   return `<div class="mt-1" data-arch-bp-verdict="${_esc(rowUid)}" data-arch-bp-slug="${_esc(slug)}" data-arch-bp-persp="${_esc(perspective)}" data-arch-bp-name="${_esc(clusterName)}" data-arch-bp-unmet="${_esc(JSON.stringify(unmetMembers))}">
@@ -10243,7 +10214,7 @@ function _archBlueprintVerdictControlsHtml(rowUid, slug, perspective, clusterNam
       class="text-[10px] bg-slate-800 border border-slate-700 rounded px-1.5 py-1 w-full text-slate-300 mb-1" />
     <div class="flex gap-2 items-center flex-wrap">
       <button class="text-[10px] px-1.5 py-0.5 rounded bg-emerald-900/40 text-emerald-300 hover:bg-emerald-900/70 disabled:opacity-40 disabled:cursor-not-allowed"
-        ${notReady ? 'disabled title="Publish the missing component(s) above first"' : ''}
+        ${notReady ? 'disabled title="Accept the missing component(s) above first"' : ''}
         onclick="_archSubmitBlueprintVerdict('${rowUid}','accepted')">✓ Accept</button>
       <button class="text-[10px] px-1.5 py-0.5 rounded bg-red-900/40 text-red-300 hover:bg-red-900/70"
         onclick="_archSubmitBlueprintVerdict('${rowUid}','rejected')">✗ Reject</button>
@@ -10267,7 +10238,7 @@ async function _curatePublishMissingComponents(rowUid) {
   if (!unmet.length) return;
 
   const btn = el.querySelector('button[onclick^="_curatePublishMissingComponents"]');
-  if (btn) { btn.disabled = true; btn.textContent = `Publishing ${unmet.length} component(s)…`; }
+  if (btn) { btn.disabled = true; btn.textContent = `Accepting ${unmet.length} component(s)…`; }
 
   const failures = [];
   for (const m of unmet) {
@@ -10278,21 +10249,19 @@ async function _curatePublishMissingComponents(rowUid) {
         body: JSON.stringify({ scope_locator: m.scope_locator, verdict: 'accepted', retyped_to: '', note: '' }),
       });
       const saved = await resp.json();
-      if (!resp.ok || (saved.materialization && saved.materialization.status === 'error')) {
-        failures.push(`${m.name}: ${(saved.materialization && saved.materialization.error) || saved.detail || `HTTP ${resp.status}`}`);
-      }
+      if (!resp.ok) failures.push(`${m.name}: ${resp.status === 403 ? 'not permitted · ' : ''}${saved.detail || `HTTP ${resp.status}`}`);
     } catch (e) {
       failures.push(`${m.name}: ${e.message}`);
     }
   }
 
   if (failures.length) {
-    showToast('error', `${failures.length} of ${unmet.length} component(s) could not be published: ${_esc(failures.join('; '))}`, 10000);
-    if (btn) { btn.disabled = false; btn.textContent = '📤 Publish missing component(s) & accept'; }
+    showToast('error', `${failures.length} of ${unmet.length} component(s) could not be accepted: ${_esc(failures.join('; '))}`, 10000);
+    if (btn) { btn.disabled = false; btn.textContent = '✓ Accept missing component(s) & this blueprint'; }
     return;
   }
 
-  showToast('success', `Published ${unmet.length} component(s) to Egeria — accepting blueprint…`, 4000);
+  showToast('success', `Accepted ${unmet.length} component(s) — accepting the blueprint…`, 4000);
   await _archSubmitBlueprintVerdict(rowUid, 'accepted');
 }
 
@@ -10340,25 +10309,15 @@ async function _archSubmitBlueprintVerdict(rowUid, verdict) {
     if (!resp.ok) {
       let detail = `HTTP ${resp.status}`;
       try { detail = (await resp.json()).detail || detail; } catch (_) { /* body wasn't JSON */ }
-      throw new Error(detail);
+      throw new Error(resp.status === 403 ? `not permitted · ${detail}` : detail);
     }
+    // A decision only (Brief A): the blueprint route writes nothing; Publish (top of this panel) writes it.
     const saved = await resp.json();
-    const m = saved.materialization;
     el.outerHTML = _archBlueprintVerdictBadgeHtml(rowUid, slug, perspective, clusterName, {
       verdict: saved.verdict, decided_at: saved.created_at, note: saved.note,
-    }, m && m.status !== 'error' ? m : null);
-    if (m && m.status === 'error') {
-      showToast('error', `Verdict saved, but Egeria materialization failed: ${_esc(m.error)}`);
-    } else if (m && (m.status === 'materialized' || m.status === 'partial')) {
-      showToast(m.status === 'partial' ? 'error' : 'success',
-        m.status === 'partial'
-          ? `Accepted — blueprint created, but some members aren't materialized in Egeria yet`
-          : `Accepted — created as a real SolutionBlueprint in Egeria`);
-    } else if (m && m.status === 'already_materialized') {
-      showToast('success', `Accepted — already exists in Egeria`);
-    } else {
-      showToast('success', `Marked ${verdict}`);
-    }
+    }, null);
+    showToast('success', verdict === 'accepted' ? 'Accepted · not in Egeria yet — Publish writes it' : 'Rejected · nothing written to Egeria');
+    _classicArchPublishLoad(slug);
   } catch (e) {
     showToast('error', `Could not save verdict: ${_esc(e.message)}`);
   }
@@ -10429,6 +10388,10 @@ function renderCurateArchitecturePanel(entityType, slug, data) {
     <div class="p-4 space-y-6 max-w-2xl">
       ${_curateSubnavHtml('architecture', entityType)}
 
+      <div id="classic-arch-publish" data-slug="${_esc(slug)}" class="rpt-section text-xs text-slate-300">
+        <span class="text-slate-500">reading what Publish would write…</span>
+      </div>
+
       ${_curateSectionHtml('components',
         `<span class="text-xs font-semibold text-slate-400 uppercase tracking-wide">🧩 Components (${filteredComponents.length}${filteredComponents.length !== allComponents.length ? ` of ${allComponents.length}` : ''})</span>`,
         `<div class="text-xs text-slate-500 mb-2">${decidedCount ? `${decidedCount} of ${allComponents.length} already decided. ` : ''}Accept, reject, or retype what architecture recovery proposed — evidence and candidate-blueprint links shown below each one.</div>
@@ -10443,7 +10406,7 @@ function renderCurateArchitecturePanel(entityType, slug, data) {
 
       ${_curateSectionHtml('blueprints',
         `<span class="text-xs font-semibold text-slate-400 uppercase tracking-wide">🏛 Candidate Blueprints (${filteredBlueprints.length}${filteredBlueprints.length !== allBlueprints.length ? ` of ${allBlueprints.length}` : ''})</span>`,
-        `<div class="text-xs text-slate-500 mb-2">Groups of components proposed by architecture recovery — accepting one materializes it as a real Egeria SolutionBlueprint and attaches its members. Wire diagrams aren't materialized yet (tracked separately).</div>
+        `<div class="text-xs text-slate-500 mb-2">Groups of components proposed by architecture recovery — accepting one records the decision; Publish (above) writes it as a SolutionBlueprint and attaches its members. Wire diagrams aren't written yet (tracked separately).</div>
         ${allPerspectives.length > 1 ? `<div class="flex flex-wrap gap-1.5 mb-2">${_curateFilterChipsHtml(allPerspectives, _curateBlueprintFilter.perspectives, '_curateTogglePerspectiveFilter')}</div>` : ''}
         ${blueprintsHtml}`)}
 
@@ -10452,6 +10415,101 @@ function renderCurateArchitecturePanel(entityType, slug, data) {
         `<div class="text-xs text-slate-500 mb-2">Declared deployment topology — read-only, no verdict to give; see below for what "declared" means. Not the same as an Egeria SolutionPort/SolutionLinkingWire — those aren't materialized yet.</div>
         ${_renderDeploymentInterfaces(interfaces)}`) : ''}
     </div>`;
+  if (entityType === 'repo') _classicArchPublishLoad(slug);
+}
+
+// ── Publish for the architecture (Brief A follow-up 1) ──────────────────────
+// Accept and Reject are decisions only, in Classic as in Next. This band is Classic's view of the SAME
+// Publish: the list comes from GET /api/projects/{slug}/architecture/publish-plan (the plan the run uses),
+// the press is POST .../architecture/publish (one run: components, then blueprints), and the results after
+// it are the plan's `last` items, read from the proof rows the run wrote. Never drawn from the click.
+async function _classicArchPublishLoad(slug, feedback = '') {
+  const host = document.getElementById('classic-arch-publish');
+  if (!host || host.dataset.slug !== slug) return;
+  let plan;
+  try {
+    const res = await fetch(`/api/projects/${encodeURIComponent(slug)}/architecture/publish-plan`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    plan = await res.json();
+  } catch (e) {
+    if (host.isConnected && host.dataset.slug === slug) {
+      host.innerHTML = `<span class="text-amber-400">What Publish would write could not be read: ${_esc(e.message)}</span>
+        <button class="text-cyan-400 underline ml-1" onclick="_classicArchPublishLoad('${_esc(slug)}')">retry</button>`;
+    }
+    return;
+  }
+  if (!host.isConnected || host.dataset.slug !== slug) return;
+  host.innerHTML = _classicArchPublishHtml(slug, plan, feedback);
+}
+
+function _classicArchPublishHtml(slug, plan, feedback = '') {
+  const comps = (plan.components && plan.components.to_write) || [];
+  const bps = (plan.blueprints && plan.blueprints.to_write) || [];
+  const heldBack = (plan.blueprints && plan.blueprints.needs_identifier) || [];
+  const held = ((plan.components && plan.components.in_egeria) || 0) + ((plan.blueprints && plan.blueprints.in_egeria) || 0);
+  const still = ((plan.components && plan.components.rejected_in_egeria) || 0) + ((plan.blueprints && plan.blueprints.rejected_in_egeria) || 0);
+  const nothing = !comps.length && !bps.length;
+  const label = plan.label || (nothing ? 'Nothing to publish' : 'Publish');
+  const RESULT = { done: ['text-emerald-400', '✓ done'], skipped: ['text-slate-400', '○ already there'],
+                   failed: ['text-red-400', '✗ failed'], partial: ['text-amber-400', '◐ partial'],
+                   not_permitted: ['text-amber-400', '⊘ not permitted'] };
+  const last = (plan.last && plan.last.items) || [];
+  return `<div class="flex items-center justify-between gap-2">
+      <span class="text-xs font-semibold text-slate-400 uppercase tracking-wide">📤 Publish to Egeria</span>
+      <span class="text-slate-500">${held ? `${held} in Egeria` : 'nothing in Egeria yet'}${still ? ` · ${still} rejected but still in Egeria (RE removes nothing)` : ''}</span>
+    </div>
+    ${nothing ? '' : `<div class="mt-1" data-classic-will-write>
+      <div class="text-slate-500">will be written to Egeria</div>
+      ${comps.map(c => `<div data-classic-will-component="${_esc(c.path)}">🧩 ${_esc(c.name || c.path)}${c.type ? ` <span class="text-slate-500">· ${_esc(c.type)}</span>` : ''}</div>`).join('')}
+      ${bps.map(b => `<div data-classic-will-blueprint="${_esc(b.key)}">🏛 ${_esc(b.name || b.key)} <span class="text-slate-500">· ${b.state === 'finish' ? 'already there, to finish' : 'new'}</span></div>`).join('')}
+    </div>`}
+    ${((plan.blueprints && plan.blueprints.check_egeria) || []).map(c => `<div class="mt-1" data-classic-check-blueprint="${_esc(c.key)}"><span class="text-amber-400">◐ check Egeria</span> 🏛 ${_esc(c.name || c.key)} <span class="text-slate-500">· ${_esc(c.words || '')}</span></div>`).join('')}
+    ${heldBack.length ? `<div class="mt-1" data-classic-held-back>
+      <div class="text-slate-500">held back · not written by this press</div>
+      ${heldBack.map(h => `<div data-classic-held-blueprint="${_esc(h.key)}" title="${_esc(h.words || '')}"><span class="text-amber-400">◐ needs an identifier</span> 🏛 ${_esc(h.name || h.key)}</div>`).join('')}
+    </div>` : ''}
+    <div class="mt-2 flex items-center gap-2 flex-wrap">
+      <button data-classic-arch-publish-go ${nothing ? 'disabled' : ''}
+        class="text-xs px-2 py-1 rounded bg-cyan-900/40 text-cyan-300 hover:bg-cyan-900/70 disabled:opacity-40 disabled:cursor-not-allowed"
+        title="Writes what is listed above: the accepted components, then the accepted blueprints. Nothing is written until this is pressed."
+        onclick="_classicArchPublishPress('${_esc(slug)}')">${_esc(nothing ? label : `${label} →`)}</button>
+      <span data-classic-arch-publish-feedback class="text-slate-500">${feedback || (nothing ? 'nothing accepted is waiting' : '')}</span>
+    </div>
+    ${last.length ? `<div class="mt-2" data-classic-arch-results>
+      <div class="text-slate-500">last publish</div>
+      ${last.map(r => { const [cls, word] = RESULT[r.status] || ['text-slate-400', r.status];
+        const words = r.status === 'not_permitted' ? String(r.words || '').replace(/^not permitted · /, '') : (r.words || '');
+        return `<div data-classic-result="${_esc(r.key)}" data-classic-result-status="${_esc(r.status)}"><span class="${cls}">${word}</span> ${_esc(r.name || r.key)}${words && r.status !== 'done' ? ` <span class="text-slate-500">· ${_esc(words)}</span>` : ''}</div>`; }).join('')}
+    </div>` : ''}`;
+}
+
+async function _classicArchPublishPress(slug) {
+  const host = document.getElementById('classic-arch-publish');
+  const btn = host && host.querySelector('[data-classic-arch-publish-go]');
+  if (!btn || btn.disabled) return;                       // a second press is ignored
+  btn.disabled = true;
+  btn.textContent = 'publishing…';
+  try {
+    const res = await fetch(`/api/projects/${encodeURIComponent(slug)}/architecture/publish`, { method: 'POST' });
+    const out = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      const why = res.status === 409 ? 'a publish is already running for this repository'
+        : res.status === 401 ? 'sign in to publish — it needs an author' : (out.detail || `HTTP ${res.status}`);
+      const lead = res.status === 403 ? '⊘ not permitted' : 'not published';
+      await _classicArchPublishLoad(slug, `<span class="text-amber-400">${lead} · ${_esc(why)}</span>`);
+      return;
+    }
+    if (out.activity_id) await _pollActivityUntilDone(out.activity_id, { intervalMs: 2000 });
+    await _classicArchPublishLoad(slug);
+    if (typeof loadCuratePanel === 'function') loadCuratePanel();
+  } catch (e) {
+    await _classicArchPublishLoad(slug, `<span class="text-red-400">not published · ${_esc(e.message)}</span>`);
+  }
+}
+
+function _classicArchPublishJump() {
+  const el = document.getElementById('classic-arch-publish');
+  if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
 async function saveCurateGroup(entityType, slug) {
@@ -10598,14 +10656,17 @@ function _refreshInvestigationLabel() {
   // binding is a property OF the investigation now — a separate badge beside
   // it was two answers to one question.
   const bind = inv && inv.egeria_context ? inv.egeria_context.status : 'unset';
-  const bindMark = {linked: ' · 📁', personal: ' · 👤', declined: ' · 🚫', deferred: ' · ⏳'}[bind] || '';
+  const bindMark = {linked: ' · 📁', personal: ' · 👤', declined: ' · 🚫', deferred: ' · ⏳', unbound: ' · unbound'}[bind] || '';
   el.textContent = (inv ? inv.display_name : (cur ? cur : 'No investigation')) + bindMark;
   el.className = inv ? 'text-cyan-300' : 'text-slate-500';
   el.title = inv
-    ? (bind === 'unset' ? 'Not associated with an Egeria Project yet' : `Egeria: ${bind}`)
+    ? (bind === 'unset' ? 'Not associated with an Egeria Project yet'
+       : bind === 'unbound' ? 'unbound by reset \u00b7 rebind to recreate' : `Egeria: ${bind}`)
     : 'No investigation — declare one to say why this work exists';
   // Keep the publish path's context in step with the current investigation.
-  if (inv && inv.egeria_context && inv.egeria_context.status !== 'unset') {
+  // 'unbound' (project gone after a reset) is not an answer: it must never become the session default,
+  // which is POSTed onto resources that were never bound.
+  if (inv && inv.egeria_context && inv.egeria_context.status !== 'unset' && inv.egeria_context.status !== 'unbound') {
     _sessionEgeriaProjectContext = inv.egeria_context;
   }
 }
@@ -10834,9 +10895,10 @@ function _investigationBindingLabel(inv) {
   const ctx = inv.egeria_context || {};
   switch (ctx.status) {
     case 'linked':   return `📁 ${_esc((ctx.egeria_project_qualified_name || '').split('::')[0] || 'linked to an Egeria Project')}`;
-    case 'personal': return '👤 personal exploration — not catalogued';
+    case 'personal': return '👤 personal exploration — not cataloged';
     case 'declined': return '🚫 deliberately not associated';
     case 'deferred': return `⏳ ${_esc(ctx.free_text_name || 'deferred')}`;
+    case 'unbound':  return 'unbound by reset \u00b7 rebind to recreate';
     default:         return 'local only — not in Egeria';
   }
 }
@@ -10878,7 +10940,7 @@ async function _loadNextSteps(slug) {
   if (!data || data.complete) {
     // Deliberately says something rather than rendering nothing: an empty area
     // where offers used to be reads as a failed load.
-    box.innerHTML = `<div class="text-[11px] text-slate-500">✓ Nothing outstanding — scoped, judged and catalogued.</div>`;
+    box.innerHTML = `<div class="text-[11px] text-slate-500">✓ Nothing outstanding — scoped, judged and cataloged.</div>`;
     return;
   }
   box.innerHTML = (data.steps || []).map(st => {
@@ -10971,6 +11033,16 @@ async function _promoteInvestigation(slug) {
   try {
     const res = await fetch(`/api/investigations/${encodeURIComponent(slug)}/promote`, {method: 'POST'});
     const r = await res.json();
+    if (res.status === 403) {
+      // Brief Z3: refused by the zone check before anything was written.
+      showToast('error', `⊘ not permitted · ${_esc(r.detail || '')}`, 8000);
+      return;
+    }
+    if (r.not_published) {
+      // A private investigation with no owner: refused before anything was sent (ruling 2026-10-13).
+      showToast('error', `⊘ ${_esc(r.not_published)}`, 8000);
+      return;
+    }
     if (!r.ok && !r.project_guid) {
       showToast('error', `Could not create: ${(r.errors || ['unknown']).join('; ')}`, 8000);
       return;
@@ -11030,7 +11102,7 @@ async function _promoteInvestigation(slug) {
         <div class="text-emerald-300 font-semibold">Created in Egeria.</div>
         <div class="text-slate-300">Project <span class="font-mono">${_esc((r.project_guid || '').slice(0, 8))}</span>${r.resource_list_linked ? ' · working set linked' : ''} · ${linked} member(s) attached.</div>
         ${cLine}
-        ${missedNow ? `<div class="text-slate-400">${missedNow} member(s) have no Egeria asset yet. They now inherit this Project, so they can be catalogued: <span class="text-cyan-300">Admin → Egeria Alignment → "Repos with no Egeria asset that can be catalogued"</span>, then re-scan and relink.</div>` : ''}
+        ${missedNow ? `<div class="text-slate-400">${missedNow} member(s) have no Egeria asset yet. They now inherit this Project, so they can be cataloged: <span class="text-cyan-300">Admin → Egeria Alignment → "Repos with no Egeria asset that can be cataloged"</span>, then re-scan and relink.</div>` : ''}
       </div>`;
     }
   } catch (e) {
@@ -11330,7 +11402,7 @@ function renderScoutingOverview(d) {
     ? `<span class="text-emerald-400" title="Surveyed ${_esc(d.last_surveyed_at)}">📊 Surveyed ${_relTime(d.last_surveyed_at)}</span>`
     : `<span class="text-slate-500">🆕 Not yet surveyed</span>`;
   const publishedBadge = d.is_published
-    ? `<span class="text-cyan-400" title="${d.last_published_at ? `Published ${_esc(d.last_published_at)}` : ''}">☁ Published to Egeria${d.last_published_at ? ` ${_relTime(d.last_published_at)}` : ''}</span>`
+    ? `<span class="text-cyan-400" title="${d.last_published_at ? _esc(_pubTitle(d, `Published ${d.last_published_at}`)) : ''}">☁ ${d.published_state === 'published_earlier' ? 'published earlier' : 'Published to Egeria'}${d.last_published_at ? ` ${_relTime(d.last_published_at)}` : ''}</span>`
     : `<span class="text-slate-500">Not published</span>`;
   const _LIFECYCLE_LABELS = {
     active: '', archived: '📦 Archived', disabled: '🚫 Disabled',
@@ -12446,7 +12518,8 @@ async function _publishScopedSteps(slug, steps, btn, label, surveyDefinitionRef 
     if (_handlePublishContextGate(res, slug)) return;
     const data = await res.json();
     if (data.status === 'ok') {
-      showToast('success', `${label}: published ${data.annotation_count} annotation(s).`, 4000);
+      const cue = _publishStateCue(data);
+      showToast(cue.tone, `${label}: ${_esc(cue.text)} · ${data.annotation_count} annotation(s).`, cue.tone === 'success' ? 4000 : 0);
       loadActivityLog();
       // The Survey tab is the only publish surface now (Coarse Profile
       // folded into it) — always safe to just reload it.
@@ -12472,7 +12545,7 @@ async function _publishScopedSteps(slug, steps, btn, label, surveyDefinitionRef 
 // later shows what's already catalogued without disturbing it. ──────────
 
 let _subResFindings = [];      // last-loaded findings, cached for client-side sort/filter
-let _subResCataloged = {};     // locator -> sub_resources row, for "already catalogued" state
+let _subResCataloged = {};     // locator -> sub_resources row, for "already cataloged" state
 let _subResSortKey = null;
 let _subResSortDir = 1;
 let _subResFilterText = '';
@@ -12613,12 +12686,12 @@ function _renderAnalysisSubResourcesView(slug) {
     const catalogedBadge = cataloged
       ? (cataloged.egeria_guid
           ? '<span class="text-cyan-400" title="Published to Egeria">☁ Published</span>'
-          : '<span class="text-slate-400" title="Tracked locally only">🗂 Catalogued</span>')
+          : '<span class="text-slate-400" title="Tracked locally only">🗂 Cataloged</span>')
       : '';
     return `<tr class="border-b border-slate-800 ${f.label !== 'worthy' ? 'opacity-60' : ''}">
       <td class="px-3 py-2">
         ${cataloged
-          ? `<input type="checkbox" disabled checked title="Already catalogued — uncatalog first to re-select">`
+          ? `<input type="checkbox" disabled checked title="Already cataloged — uncatalog first to re-select">`
           : `<input type="checkbox" id="subres-${idx}" data-locator="${_esc(locator)}" data-kind="${_esc(f.kind)}" ${checkedDefault ? 'checked' : ''}>`}
       </td>
       <td class="px-3 py-2 font-mono text-xs text-slate-200 truncate">${_esc(locator) || '(root)'}</td>
@@ -12637,7 +12710,7 @@ function _renderAnalysisSubResourcesView(slug) {
         <h2 class="text-sm font-semibold text-slate-200">Sub-Resources: ${_esc(slug)}</h2>
         <p class="text-xs text-slate-500 mt-1">Review the recommendation list, select which folders/files are worth
           tracking as their own Egeria assets, then catalog the selection. Repeatable — come back anytime with more
-          information and add to what's already catalogued.</p>
+          information and add to what's already cataloged.</p>
       </div>
 
       <div class="flex items-center gap-2 flex-wrap">
@@ -12837,8 +12910,8 @@ async function _submitSubResourceCatalog(slug, btn) {
     if (!res.ok) throw new Error(data.detail || `HTTP ${res.status}`);
     const publishedCount = Object.keys(data.published || {}).length;
     const msg = publishToEgeria
-      ? `Catalogued ${data.cataloged.length} sub-resource(s), published ${publishedCount} to Egeria.`
-      : `Catalogued ${data.cataloged.length} sub-resource(s) locally.`;
+      ? `Cataloged ${data.cataloged.length} sub-resource(s), published ${publishedCount} to Egeria.`
+      : `Cataloged ${data.cataloged.length} sub-resource(s) locally.`;
     showToast('success', msg, 5000);
     if (fb) fb.innerHTML = `<span class="text-emerald-400">✓ ${_esc(msg)}</span>`;
     loadAnalysisSubResourcesView();
@@ -13117,7 +13190,9 @@ async function catalogSelected() {
       body: JSON.stringify({ elements }),
     });
     const data = await res.json();
-    if (data.status === 'ok') {
+    if (res.status === 410) {
+      fb.innerHTML = `<span class="text-amber-400">${_esc(data.detail || 'retired')}</span>`;
+    } else if (data.status === 'ok') {
       fb.innerHTML = `<span class="text-emerald-400">✓ Cataloged ${data.cataloged.length} element(s) in Egeria</span>`;
       checkboxes.forEach(cb => { cb.checked = false; });
     } else {
@@ -13260,6 +13335,58 @@ async function loadDbSurveyReport() {
   }
 }
 
+// Survey History table. Invalid rows (only present when fetched with
+// include_invalid=true) are muted (opacity-50, same pattern as other
+// disabled/hidden rows) and carry the reason plus when they were MARKED invalid
+// (`invalid_at`) — distinct from when they were originally surveyed (`surveyed_at`).
+function _dbSurveyHistoryTableHtml(rows) {
+  const fmt = t => (t || '').replace('T', ' ').substring(0, 16) + ' UTC';
+  const anyInvalid = rows.some(s => s.invalid_at);
+  let html = `<table class="w-full text-xs" id="db-survey-history-table">
+        <thead class="bg-slate-800/80 text-slate-400">
+          <tr>
+            <th class="px-2 py-1 text-left">Date (UTC)</th>
+            <th class="px-2 py-1 text-right">Schemas</th>
+            <th class="px-2 py-1 text-right">Tables</th>
+            <th class="px-2 py-1 text-right">Columns</th>
+            <th class="px-2 py-1 text-left">Source</th>
+            ${anyInvalid ? '<th class="px-2 py-1 text-left">Invalid</th>' : ''}
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-slate-700/50">`;
+  for (const s of rows) {
+    const inv = !!s.invalid_at;
+    html += `<tr class="hover:bg-slate-700/30${inv ? ' opacity-50 italic' : ''}"${inv ? ' data-invalid="1"' : ''}>
+        <td class="px-2 py-1 text-slate-400 whitespace-nowrap">${fmt(s.surveyed_at)}</td>
+        <td class="px-2 py-1 text-right text-slate-300">${s.schema_count ?? '—'}</td>
+        <td class="px-2 py-1 text-right text-slate-300">${s.table_count ?? '—'}</td>
+        <td class="px-2 py-1 text-right text-slate-400">${s.column_count ?? '—'}</td>
+        <td class="px-2 py-1 text-slate-500">${_esc(s.source || '—')}</td>
+        ${anyInvalid ? `<td class="px-2 py-1 text-slate-500">${inv
+          ? `<span class="invalid-reason">${_esc(s.invalid_reason || '(no reason recorded)')}</span> · marked invalid <span class="invalid-at">${fmt(s.invalid_at)}</span>`
+          : ''}</td>` : ''}
+      </tr>`;
+  }
+  return html + `</tbody></table>`;
+}
+
+let _dbHistoryValid = [];   // the default (valid-only) list, restored when the toggle is unchecked
+async function toggleDbInvalidSurveys(show) {
+  const body = document.getElementById('db-survey-history-body');
+  if (!body || !selectedDatabase) return;
+  if (!show) {
+    body.innerHTML = _dbHistoryValid.length > 1 ? _dbSurveyHistoryTableHtml(_dbHistoryValid) : '';
+    return;
+  }
+  try {
+    const res = await fetch(`/api/databases/${selectedDatabase}/surveys?include_invalid=true`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    body.innerHTML = _dbSurveyHistoryTableHtml(await res.json());
+  } catch (e) {
+    body.innerHTML = `<div class="text-red-400 text-xs py-2">Failed to load invalid surveys: ${_esc(e.message)}</div>`;
+  }
+}
+
 function renderDbSurveyReport(db, surveys) {
   const view = document.getElementById('db-survey-view');
   const latest = surveys[0] || null;
@@ -13286,21 +13413,12 @@ function renderDbSurveyReport(db, surveys) {
     ? `<span class="${srcLabel[2]} text-xs font-mono" title="${srcLabel[3]}">${srcLabel[0]} ${srcLabel[1]}</span>`
     : '';
 
-  // Publish button: if already in Egeria show "Re-survey", otherwise "Catalog & Survey"
-  const alreadyInEgeria = !!(db.egeria_asset_guid);
-  const publishBtn = latest
-    ? (alreadyInEgeria
-        ? `<button id="db-publish-btn" onclick="showPublishDbModal('${_esc(db.slug)}')"
-             class="text-xs px-2 py-1 rounded bg-slate-700 hover:bg-slate-600 text-cyan-300 transition-colors whitespace-nowrap"
-             title="DB is already registered in Egeria. Triggers a fresh Egeria native survey.">
-             ☁ Re-survey in Egeria
-           </button>`
-        : `<button id="db-publish-btn" onclick="showPublishDbModal('${_esc(db.slug)}')"
-             class="text-xs px-2 py-1 rounded bg-cyan-800 hover:bg-cyan-700 text-white transition-colors whitespace-nowrap"
-             title="Register this server & database in Egeria and trigger a native survey.">
-             Catalog &amp; Survey in Egeria →
-           </button>`)
-    : '';
+  // Retired (Curate slice B): Classic no longer publishes a database. Catalogue on the
+  // database's Curate pane in /next is the publish, with a manifest of what it does and a
+  // proof row behind every state it shows. Nothing here claims a state either way.
+  const publishBtn = `<span class="text-xs text-slate-400 whitespace-nowrap"
+    title="Publishing a database is now the Catalog button on its Curate pane in /next, which shows what it will do and what Egeria holds afterwards.">
+    Publish: Curate → Catalog in /next</span>`;
 
   // Header
   let html = `
@@ -13543,32 +13661,21 @@ function renderDbSurveyReport(db, surveys) {
   html += `
       </div>
     </div>`;  // Survey history
-  if (surveys.length > 1) {
-    html += `<div class="rpt-section">
+  // Survey history. Rows marked invalid (false-zero repair) are excluded by
+  // default; the "show invalid" toggle re-fetches with ?include_invalid=true and
+  // shows them muted, with the reason and when they were marked.
+  _dbHistoryValid = surveys;
+  html += `<div class="rpt-section" id="db-survey-history-section">
+    <div class="flex items-center justify-between">
       <div class="rpt-section-title">Survey History</div>
-      <table class="w-full text-xs">
-        <thead class="bg-slate-800/80 text-slate-400">
-          <tr>
-            <th class="px-2 py-1 text-left">Date (UTC)</th>
-            <th class="px-2 py-1 text-right">Schemas</th>
-            <th class="px-2 py-1 text-right">Tables</th>
-            <th class="px-2 py-1 text-right">Columns</th>
-            <th class="px-2 py-1 text-left">Source</th>
-          </tr>
-        </thead>
-        <tbody class="divide-y divide-slate-700/50">`;
-    for (const s of surveys) {
-      const ts = (s.surveyed_at||'').replace('T',' ').substring(0,16) + ' UTC';
-      html += `<tr class="hover:bg-slate-700/30">
-        <td class="px-2 py-1 text-slate-400 whitespace-nowrap">${ts}</td>
-        <td class="px-2 py-1 text-right text-slate-300">${s.schema_count ?? '—'}</td>
-        <td class="px-2 py-1 text-right text-slate-300">${s.table_count ?? '—'}</td>
-        <td class="px-2 py-1 text-right text-slate-400">${s.column_count ?? '—'}</td>
-        <td class="px-2 py-1 text-slate-500">${_esc(s.source || '—')}</td>
-      </tr>`;
-    }
-    html += `</tbody></table></div>`;
-  }
+      <label class="text-[10px] text-slate-500 flex items-center gap-1 cursor-pointer"
+             title="Show surveys marked invalid (e.g. false-zero rows), with the reason they are not counted">
+        <input id="db-show-invalid-toggle" type="checkbox" class="accent-emerald-400 cursor-pointer"
+               onchange="toggleDbInvalidSurveys(this.checked)"> show invalid
+      </label>
+    </div>
+    <div id="db-survey-history-body">${surveys.length > 1 ? _dbSurveyHistoryTableHtml(surveys) : ''}</div>
+  </div>`;
 
   if (surveys.length >= 2) {
     html += `<div class="rpt-section">
@@ -13670,119 +13777,6 @@ function toggleTableBlock(tblId) {
   if (!body) return;
   const hidden = body.classList.toggle('hidden');
   if (chevron) chevron.textContent = hidden ? '▶' : '▼';
-}
-
-let _publishingDbSlug = null;
-
-function showPublishDbModal(slug) {
-  _publishingDbSlug = slug;
-  document.getElementById('publish-db-slug-label').textContent = slug;
-  document.getElementById('publish-db-modal').classList.remove('hidden');
-  document.getElementById('publish-db-error').classList.add('hidden');
-  document.getElementById('publish-db-progress').classList.add('hidden');
-  document.getElementById('publish-submit-btn').disabled = false;
-  const db0 = _dbMap[slug] || {};
-  const alreadyCataloged = !!(db0.egeria_asset_guid);
-  document.getElementById('publish-submit-btn').textContent = alreadyCataloged ? 'Re-survey in Egeria →' : 'Catalog + Survey →';
-  const titleVerb = document.getElementById('publish-db-title-verb');
-  if (titleVerb) titleVerb.innerHTML = alreadyCataloged ? 'Re-survey in Egeria' : 'Catalog &amp; Survey in Egeria';
-  const descEl = document.getElementById('publish-db-description');
-  if (descEl) descEl.textContent = alreadyCataloged
-    ? 'Server and database are already registered in Egeria. This will trigger a fresh native survey on the existing asset — useful if the schema has changed. Annotations are updated asynchronously.'
-    : 'Registers the PostgreSQL server + database in Egeria (storing credentials) then initiates Egeria\'s native survey. Also surveys the server itself for connection metadata. Annotations are populated asynchronously.';
-
-  // Pre-fill from stored values; blank = use stored
-  const db = _dbMap[slug] || {};
-  document.getElementById('publish-db-user').value = '';
-  document.getElementById('publish-db-user').placeholder = db.db_user ? `${db.db_user} (stored)` : 'postgres';
-  document.getElementById('publish-db-pwd').value = '';
-  document.getElementById('publish-db-pwd').placeholder = db.db_user ? '(stored — leave blank to reuse)' : '••••••••';
-  document.getElementById('publish-egeria-url').value = db.egeria_url || '';
-  document.getElementById('publish-egeria-server').value = db.egeria_server || '';
-  document.getElementById('publish-egeria-user').value = db.egeria_user || '';
-  document.getElementById('publish-egeria-password').value = '';
-
-  // Show stored-creds note
-  const hint = document.getElementById('publish-creds-hint');
-  if (hint) hint.textContent = db.db_user
-    ? `DB credentials stored (${db.db_user}). Leave blank to reuse.`
-    : 'No stored DB credentials — enter username and password.';
-
-  if (!db.db_user) document.getElementById('publish-db-user').focus();
-}
-
-function hidePublishDbModal() {
-  document.getElementById('publish-db-modal').classList.add('hidden');
-  _publishingDbSlug = null;
-}
-
-async function submitPublishDb() {
-  const slug    = _publishingDbSlug;
-  const dbUser  = document.getElementById('publish-db-user').value.trim();
-  const dbPwd   = document.getElementById('publish-db-pwd').value;
-  const errEl   = document.getElementById('publish-db-error');
-  const progress = document.getElementById('publish-db-progress');
-  const submitBtn = document.getElementById('publish-submit-btn');
-
-  const db = _dbMap[slug] || {};
-  if (!db.db_user && (!dbUser || !dbPwd)) {
-    errEl.textContent = 'Database username and password are required (no stored credentials).';
-    errEl.classList.remove('hidden');
-    return;
-  }
-
-  errEl.classList.add('hidden');
-  progress.classList.remove('hidden');
-  submitBtn.disabled = true;
-  submitBtn.textContent = 'Working…';
-
-  // Log the start of the operation
-  const opId = logOp({ type:'publish', slug, status:'running',
-    summary:`Cataloging ${slug} in Egeria and initiating native survey…` });
-  showToast('running', `Publishing <strong>${_esc(slug)}</strong> to Egeria… (30–90 s)`, 0);
-  const runningToastId = `toast-${_toastSeq}`;
-
-  const payload = {
-    db_user: dbUser,
-    db_pwd: dbPwd,
-    egeria_url: document.getElementById('publish-egeria-url').value.trim() || null,
-    egeria_server: document.getElementById('publish-egeria-server').value.trim() || null,
-    egeria_user: document.getElementById('publish-egeria-user').value.trim() || null,
-    egeria_password: document.getElementById('publish-egeria-password').value || null,
-  };
-
-  hidePublishDbModal();  // close modal immediately — feedback goes to activity log
-
-  try {
-    const res  = await fetch(`/api/databases/${slug}/publish`, {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify(payload),
-    });
-    const data = await res.json();
-    document.getElementById(runningToastId)?.remove();
-
-    if (data.status === 'ok') {
-      // Build structured item list for the activity log
-      const items = [];
-      if (data.server_guid) items.push({ kind:'PostgreSQL Server', name: data.server_display_name || '', guid: data.server_guid });
-      if (data.asset_guid)  items.push({ kind:'PostgreSQL Database', name: data.database_display_name || slug, guid: data.asset_guid });
-      if (data.report_guid) items.push({ kind:'Survey Action (async)', name:'Egeria native survey initiated', guid: data.report_guid });
-      const detail = 'Egeria is running the native PostgreSQL survey — annotations will appear in Asset Catalog asynchronously.';
-      updateOp(opId, 'ok', `Cataloged & surveyed ${slug} in Egeria`, detail, items);
-      showToast('success', `<strong>${_esc(slug)}</strong> cataloged in Egeria ✓ — click 📋 Activity for GUIDs`, 8000);
-      await loadDatabases();
-    } else {
-      const stage = data.stage ? ` [stage: ${data.stage}]` : '';
-      const msg = data.error || 'Publish failed';
-      updateOp(opId, 'error', `Publish failed: ${msg}`, msg + stage);
-      showToast('error', `Publish failed for <strong>${_esc(slug)}</strong>: ${_esc(msg)}${stage}`, 10000);
-    }
-  } catch(e) {
-    document.getElementById(runningToastId)?.remove();
-    updateOp(opId, 'error', `Request failed: ${e.message}`, e.message);
-    showToast('error', `Publish request failed: ${_esc(e.message)}`, 10000);
-  }
 }
 
 // ── chat ───────────────────────────────────────────────────────────────────────
@@ -13955,7 +13949,7 @@ async function _toggleInlineResults(analysisId, slug, containerId) {
   try {
     const [resultsRes, trendRes] = await Promise.all([
       fetch(`/api/projects/${slug}/analyses/${analysisId}/results`),
-      fetch(`/api/projects/${slug}/analyses/${analysisId}/trend`),
+      fetch(`/api/projects/${slug}/analyses/${analysisId}/trend?entity_type=${encodeURIComponent('repo')}`),
     ]);
     if (!resultsRes.ok) throw new Error(`HTTP ${resultsRes.status}`);
     const data = await resultsRes.json();
@@ -14443,6 +14437,36 @@ async function runQuery(query, projectSlug, databaseSlug) {
             wrap.appendChild(banner);
           }
 
+          if (event.disambiguation_chips && event.disambiguation_chips.length > 0) {
+            const chipsDiv = document.createElement('div');
+            chipsDiv.className = 'mt-2 flex flex-wrap gap-1.5 p-2 rounded bg-slate-800/80 border border-slate-700';
+            const title = document.createElement('div');
+            title.className = 'w-full text-xs text-slate-400 mb-0.5';
+            title.textContent = '💡 Select candidate resources to include in comparison / integration:';
+            chipsDiv.appendChild(title);
+            event.disambiguation_chips.forEach(chip => {
+              const btn = document.createElement('button');
+              btn.className = 'px-2 py-1 rounded bg-slate-700 hover:bg-emerald-600/60 text-xs text-slate-200 hover:text-white transition-colors flex items-center gap-1 border border-slate-600';
+              const icon = document.createElement('span');
+              icon.textContent = chip.type === 'database' ? '🗄️' : '📦';
+              const nameEl = document.createElement('strong');
+              nameEl.textContent = chip.name;
+              const slugEl = document.createElement('span');
+              slugEl.className = 'text-slate-400';
+              slugEl.textContent = `(${chip.slug})`;
+              btn.append(icon, ' ', nameEl, ' ', slugEl);
+              btn.onclick = () => {
+                const inp = document.getElementById('chat-input') || document.querySelector('input[name="chat"]');
+                if (inp) {
+                  inp.value = (inp.value ? inp.value.trim() + ' ' : '') + chip.slug;
+                  inp.focus();
+                }
+              };
+              chipsDiv.appendChild(btn);
+            });
+            wrap.appendChild(chipsDiv);
+          }
+
           // Same compile ConversationAgent._compiled_evidence already ran to
           // shape the answer above -- not a second Evidence-button call.
           // See _evidenceSummaryHtml: empty string (nothing appended) when
@@ -14653,8 +14677,6 @@ function showRegisterFsModal() {
   document.getElementById('reg-fs-desc').value = '';
   document.getElementById('reg-fs-egeria-url').value = '';
   document.getElementById('reg-fs-egeria-server').value = '';
-  document.getElementById('reg-fs-egeria-user').value = '';
-  document.getElementById('reg-fs-egeria-pwd').value = '';
 }
 
 function hideRegisterFsModal() {
@@ -14670,8 +14692,6 @@ async function submitRegisterFs() {
   const group_slug = document.getElementById('reg-fs-group').value;
   const egeria_url = document.getElementById('reg-fs-egeria-url').value.trim();
   const egeria_server = document.getElementById('reg-fs-egeria-server').value.trim();
-  const egeria_user = document.getElementById('reg-fs-egeria-user').value.trim();
-  const egeria_password = document.getElementById('reg-fs-egeria-pwd').value.trim();
   
   if (!slug || !display_name || !local_mount_point) {
     const err = document.getElementById('reg-fs-error');
@@ -14687,7 +14707,7 @@ async function submitRegisterFs() {
       body: JSON.stringify({
         slug, display_name, local_mount_point, canonical_mount_point, description,
         group_slug,
-        egeria_url, egeria_server, egeria_user, egeria_password
+        egeria_url, egeria_server
       })
     });
     if (res.ok) {
@@ -14715,17 +14735,26 @@ function showSurveyFsModal(slug) {
   document.getElementById('survey-fs-submit-btn').disabled = false;
   
   const fs = _fsMap[slug] || {};
-  document.getElementById('survey-fs-use-egeria').checked = !!fs.egeria_url;
-  document.getElementById('fs-egeria-options').classList.toggle('hidden', !fs.egeria_url);
+  // Publishing to Egeria is a choice made here, never implied by a URL on the resource (Brief I).
+  document.getElementById('survey-fs-use-egeria').checked = false;
+  document.getElementById('fs-egeria-options').classList.add('hidden');
   document.getElementById('survey-fs-egeria-url').value = fs.egeria_url || '';
   document.getElementById('survey-fs-egeria-server').value = fs.egeria_server || '';
-  document.getElementById('survey-fs-egeria-user').value = fs.egeria_user || '';
-  document.getElementById('survey-fs-egeria-pwd').value = '';
 }
 
 function hideSurveyFsModal() {
   document.getElementById('survey-fs-modal').classList.add('hidden');
   _surveyingFsSlug = null;
+}
+
+// [toast type, words] for a file-system publish or hybrid survey answer. Data files whose look-up could not be
+// made were NOT created: that is partial, said with the count, never a plain success.
+function fsPublishOutcome(data, doneWords) {
+  const skipped = Object.keys((data && data.files_not_checked) || {}).length;
+  if (skipped || (data && data.status === 'partial')) {
+    return ['info', `Partial · ${doneWords.replace(/ successfully\.$/, '')} · ${skipped} file(s) not checked, not created`];
+  }
+  return ['success', doneWords];
 }
 
 async function submitSurveyFs() {
@@ -14734,8 +14763,6 @@ async function submitSurveyFs() {
   const useEgeria = document.getElementById('survey-fs-use-egeria').checked;
   const egeria_url = document.getElementById('survey-fs-egeria-url').value.trim();
   const egeria_server = document.getElementById('survey-fs-egeria-server').value.trim();
-  const egeria_user = document.getElementById('survey-fs-egeria-user').value.trim();
-  const egeria_password = document.getElementById('survey-fs-egeria-pwd').value.trim();
   
   const submitBtn = document.getElementById('survey-fs-submit-btn');
   const progress = document.getElementById('survey-fs-progress');
@@ -14752,17 +14779,16 @@ async function submitSurveyFs() {
       body: JSON.stringify({
         mode: useEgeria ? 'hybrid' : 'local',
         egeria_url: useEgeria ? egeria_url : null,
-        egeria_server: useEgeria ? egeria_server : null,
-        egeria_user: useEgeria ? egeria_user : null,
-        egeria_password: useEgeria ? egeria_password : null
+        egeria_server: useEgeria ? egeria_server : null
       })
     });
     
     if (res.ok) {
+      const data = await res.json().catch(() => ({}));
       hideSurveyFsModal();
       await loadFilesystems();
       if (selectedFilesystem === slug) selectFilesystem(slug);
-      showToast('success', `Survey completed for ${slug}`);
+      showToast(...fsPublishOutcome(data, `Survey completed for ${slug}`));
     } else {
       const data = await res.json();
       err.textContent = data.detail || 'Survey failed';
@@ -14789,8 +14815,6 @@ function showPublishFsModal(slug) {
   const fs = _fsMap[slug] || {};
   document.getElementById('publish-fs-egeria-url').value = fs.egeria_url || '';
   document.getElementById('publish-fs-egeria-server').value = fs.egeria_server || '';
-  document.getElementById('publish-fs-egeria-user').value = fs.egeria_user || '';
-  document.getElementById('publish-fs-egeria-pwd').value = '';
 }
 
 function hidePublishFsModal() {
@@ -14803,8 +14827,6 @@ async function submitPublishFs() {
   const slug = _surveyingFsSlug;
   const egeria_url = document.getElementById('publish-fs-egeria-url').value.trim();
   const egeria_server = document.getElementById('publish-fs-egeria-server').value.trim();
-  const egeria_user = document.getElementById('publish-fs-egeria-user').value.trim();
-  const egeria_password = document.getElementById('publish-fs-egeria-pwd').value.trim();
   
   const submitBtn = document.getElementById('publish-fs-submit-btn');
   const progress = document.getElementById('publish-fs-progress');
@@ -14819,15 +14841,16 @@ async function submitPublishFs() {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        egeria_url, egeria_server, egeria_user, egeria_password
+        egeria_url, egeria_server
       })
     });
     
     if (res.ok) {
+      const data = await res.json().catch(() => ({}));
       hidePublishFsModal();
       await loadFilesystems();
       if (selectedFilesystem === slug) selectFilesystem(slug);
-      showToast('success', `FileSystem published to Egeria successfully.`);
+      showToast(...fsPublishOutcome(data, `FileSystem published to Egeria successfully.`));
     } else {
       const data = await res.json();
       err.textContent = data.detail || 'Publish failed';
@@ -15201,6 +15224,17 @@ function _prettyHost(url) {
   } catch { return url; }
 }
 
+// The Published badge word. `published_state` comes from the server's read of the `egeria_reset` marker:
+// 'published_earlier' means the publish predates an Egeria reset, so the row proves nothing about what Egeria
+// holds now. Short word on the element, the sentence on demand (title).
+function _pubWord(x) {
+  return x && x.published_state === 'published_earlier' ? 'published earlier' : 'Published';
+}
+function _pubTitle(x, plain) {
+  return x && x.published_state === 'published_earlier'
+    ? `published earlier \u00b7 Egeria was reset (${plain}; reset ${x.egeria_reset_at || ''})` : plain;
+}
+
 function _relTime(iso) {
   if (!iso) return '';
   const then = new Date(iso).getTime();
@@ -15267,7 +15301,7 @@ const _ADMIN_GROUPS = [
   { name: 'Configure', tabs: [
     { tab: 'annotations',             label: '📝 Annotation Types' },
     { tab: 'admin-groups',            label: '🗂 Groups' },
-    { tab: 'admin-discovery-sources', label: '🔍 Discovery Sources' },
+    { tab: 'admin-discovery-sources', label: '🔍 Repository discovery sources' },
     { tab: 'admin-question-catalog',  label: '❓ Question Catalog' },
   ]},
   { name: 'Reconcile', tabs: [
@@ -15880,8 +15914,6 @@ async function renderScoutingDiscoverView() {
   if (!_groups.length) {
     try { _groups = await (await fetch('/api/projects/groups')).json(); } catch(e) {}
   }
-  let baseUrlInfo = { base_url: 'api.github.com', is_override: false };
-  try { baseUrlInfo = await (await fetch('/api/discovery/github-base-url')).json(); } catch(e) {}
   try { _scoutFoundations = await (await fetch('/api/discovery/foundations')).json(); } catch(e) {}
   try { _adminDiscoverySources = await (await fetch('/api/discovery/sources')).json(); } catch(e) {}
   try { _scoutQuickListSources = await (await fetch('/api/discovery/quick-list-sources')).json(); } catch(e) {}
@@ -15929,7 +15961,7 @@ async function renderScoutingDiscoverView() {
         <div class="text-xs font-semibold text-slate-400 uppercase tracking-wide">Saved sources</div>
         <div class="flex flex-wrap gap-1.5">${sourceButtons}${quickAddButtons}</div>
         <div id="scout-quick-add-feedback" class="text-[10px] text-slate-500"></div>
-        <div class="text-[10px] text-slate-500">Manage saved sources in ⚙ Admin → Discovery Sources.</div>
+        <div class="text-[10px] text-slate-500">Manage saved sources in ⚙ Admin → Repository discovery sources.</div>
       </div>` : ''}
 
       <div class="flex items-center gap-1 mb-2">
@@ -15971,18 +16003,6 @@ async function renderScoutingDiscoverView() {
           <div class="text-xs font-semibold text-slate-400 uppercase tracking-wide">Search GitHub</div>
           <button onclick="_saveCurrentSearchAsSource()" class="text-xs text-cyan-400 hover:text-cyan-300">💾 Save as new source</button>
         </div>
-        <div class="flex items-center gap-2 text-xs text-slate-500">
-          <span>GitHub source: <span class="font-mono text-slate-400">${_esc(baseUrlInfo.base_url)}</span>${baseUrlInfo.is_override ? ' <span class="text-cyan-400">(override)</span>' : ''}</span>
-          <button onclick="_toggleGithubSourceEdit()" class="text-cyan-400 hover:text-cyan-300">[edit]</button>
-        </div>
-        <div id="github-source-edit" class="hidden flex gap-2 items-center">
-          <input id="github-source-input" type="text" placeholder="https://api.github.com or https://ghe.example.com/api/v3"
-            value="${baseUrlInfo.is_override ? _esc(baseUrlInfo.base_url) : ''}"
-            class="bg-slate-800 border border-slate-700 rounded text-xs text-slate-200 px-2 py-1.5 flex-1">
-          <button onclick="_saveGithubSource()" class="text-xs px-2 py-1.5 bg-cyan-700 hover:bg-cyan-600 text-white rounded font-semibold">Save</button>
-          <button onclick="_saveGithubSource(true)" class="text-xs px-2 py-1.5 bg-slate-700 hover:bg-slate-600 text-slate-300 rounded">Reset to default</button>
-        </div>
-
         ${foundationChips ? `<div class="flex flex-wrap gap-1.5">${foundationChips}</div>` : ''}
 
         <div class="flex gap-2 flex-wrap items-end">
@@ -16122,25 +16142,6 @@ async function _saveCurrentSearchAsSource() {
     renderScoutingDiscoverView();
   } catch(e) {
     showToast('error', `Failed to save source: ${_esc(e.message)}`, 5000);
-  }
-}
-
-function _toggleGithubSourceEdit() {
-  document.getElementById('github-source-edit').classList.toggle('hidden');
-}
-
-async function _saveGithubSource(reset = false) {
-  const value = reset ? '' : document.getElementById('github-source-input').value.trim();
-  try {
-    const res = await fetch('/api/discovery/github-base-url', {
-      method: 'POST', headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({ base_url: value }),
-    });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    showToast('success', 'GitHub source updated.', 3000);
-    renderScoutingDiscoverView();
-  } catch(e) {
-    showToast('error', `Failed to update GitHub source: ${_esc(e.message)}`, 5000);
   }
 }
 
@@ -16716,7 +16717,7 @@ async function loadAdminOutboxPanel(status, runId) {
 
 async function retryOutboxElement(id) {
   try {
-    const res = await fetch(`/api/outbox/${id}/retry`, { method: 'POST' });
+    const res = await fetch(`/api/outbox/${id}/retry`, { method: 'POST', headers: { ..._adminAuthHeaders() } });
     const body = await res.json().catch(() => ({}));
     if (!res.ok) { showToast(body.detail || `HTTP ${res.status}`, 'error'); return; }
     showToast(`Element ${id} re-queued — it will be retried on the next drain.`, 'success');
@@ -17234,7 +17235,7 @@ async function _postEgeriaBulk(kind, targets, dryRun) {
   const body = { targets, dry_run: dryRun };
   if (kind === 'republish') body.action = 'republish';
   const res = await fetch(_EGERIA_BULK_ENDPOINT[kind], {
-    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+    method: 'POST', headers: { 'Content-Type': 'application/json', ..._adminAuthHeaders() }, body: JSON.stringify(body),
   });
   const d = await res.json();
   if (!res.ok) throw new Error(d.detail || `HTTP ${res.status}`);
@@ -17623,6 +17624,27 @@ async function loadAdminResyncPanel() {
 // Four states, rendered differently on purpose. "Enforced" and "not checked
 // yet" must never look alike: the second is a question nobody has asked, and
 // showing it as healthy is the exact failure this whole feature guards against.
+// The start-up check over every zone RE stamps: one row per zone, a cue plus a short word, the sentence on hover.
+function _zoneControlsHtml(rows) {
+  if (!rows || !rows.length) return '';
+  // Full literal markup per verdict (no interpolated class names).
+  const cues = { ok: '<span class="text-emerald-300">✓</span>', warned: '<span class="text-amber-300">⚠</span>',
+    blocked: '<span class="text-amber-300">⛔</span>', could_not_check: '<span class="text-amber-300">?</span>',
+    unknown: '<span class="text-slate-500">…</span>' };
+  return `<ul class="mt-2 text-[11px] space-y-0.5">${rows.map(e => {
+    const cue = cues[e.verdict] || cues.unknown;
+    const facts = e.control === 'present'
+      ? `control present · lists ${_esc((e.operations || []).join(', ') || 'no operation')} · DEFAULT ${e.default_list ? 'yes' : 'no'}`
+      : `control ${_esc(e.control)}`;
+    const words = e.verdict === 'ok' ? ''
+      : e.verdict === 'unknown' ? `· <span class="text-slate-500">${_esc(e.words || '')}</span>`
+        : `· <span class="text-amber-300">${_esc(e.words || '')}</span>`;
+    return `<li title="${_esc(e.words || '')}">${cue}
+      <span class="font-mono text-slate-300">${_esc(e.zone)}</span> · <span class="text-slate-500">${facts}</span>
+      ${words}</li>`;
+  }).join('')}</ul>`;
+}
+
 function _privateZoneCardHtml() {
   const z = _privateZone;
   if (!z) return '';
@@ -17632,6 +17654,7 @@ function _privateZoneCardHtml() {
       <div class="text-xs font-semibold text-emerald-300">🔒 Private zone enforced</div>
       <div class="text-[11px] text-slate-400 mt-1">Personal and Experiment investigations publish to
         <span class="font-mono">${zone}</span>, readable only by their creator.</div>
+      ${_zoneControlsHtml(z.zone_controls)}
     </div>`;
   }
   const settling = (z.settling_seconds_remaining || 0) > 0;
@@ -17649,6 +17672,7 @@ function _privateZoneCardHtml() {
          where everyone could read them.`}</div>
     ${z.detail ? `<div class="text-[11px] text-slate-500 mt-1">${_esc(z.detail)}</div>` : ''}
     ${z.remedy ? `<div class="text-[11px] text-cyan-300 mt-1">${_esc(z.remedy)}</div>` : ''}
+    ${_zoneControlsHtml(z.zone_controls)}
   </div>`;
 }
 
@@ -17785,10 +17809,10 @@ async function _applyResync() {
         + 'documents, then reconciles their step links. This writes to the catalog '
         + 'and can take a few minutes — leave the page open.' : '',
     steps.includes('catalog_assets')
-      ? 'CREATES AN ASSET IN EGERIA for each uncatalogued repo, publishing only the '
+      ? 'CREATES AN ASSET IN EGERIA for each uncataloged repo, publishing only the '
         + 'repository-health step. No repository archives are downloaded.' : '',
     steps.includes('republish_survey_results')
-      ? 'Runs the FULL survey for each catalogued repo and publishes the results to '
+      ? 'Runs the FULL survey for each cataloged repo and publishes the results to '
         + 'Egeria. This DOWNLOADS REPOSITORY ARCHIVES — across a large corpus expect '
         + 'minutes and real GitHub API budget. Leave the page open.' : '',
     steps.includes('relink_investigation_members')
@@ -17808,13 +17832,38 @@ async function _applyResync() {
     const data = await res.json();
     if (!res.ok) throw new Error(data.detail || `HTTP ${res.status}`);
     out.classList.remove('hidden');
-    out.innerHTML = `<div class="bg-slate-950 border border-slate-800 rounded p-3 text-xs space-y-1">
+    const failures = [];
+    if (data.reachable === false) {
+      failures.push(`Egeria is unreachable — nothing was applied. ${data.unreachable_reason || ''}`.trim());
+    }
+    let ok = 0, failed = 0;
+    for (const [k, v] of Object.entries(data.applied || {})) {
+      // Publishing repairs count per repo; the others count as one step.
+      if (v && typeof v.published === 'number') ok += v.published; else ok += 1;
+      if (!v || !(v.failed > 0)) continue;
+      failed += v.failed;
+      const errs = v.errors || [];
+      errs.forEach(er => failures.push(`${k}: ${er.slug} — ${er.error}`));
+      if (v.failed > errs.length) failures.push(`${k}: ${v.failed - errs.length} more failed (not listed)`);
+    }
+    out.innerHTML = `<div class="bg-slate-950 border ${failures.length ? 'border-amber-600' : 'border-slate-800'} rounded p-3 text-xs space-y-1">
+      ${failures.length ? `<div id="resync-failures" class="text-amber-400 space-y-1">
+        <div>Not everything was applied:</div>
+        ${failures.map(f => `<div class="font-mono">${_esc(f)}</div>`).join('')}
+        <button type="button" id="resync-dismiss" class="mt-1 px-2 py-0.5 border border-slate-600 rounded text-slate-200">Dismiss and re-scan</button>
+      </div>` : ''}
       <div class="text-slate-300">Applied:</div>
       ${Object.entries(data.applied || {}).map(([k, v]) =>
         `<div class="font-mono text-slate-400">${_esc(k)} — ${_esc(JSON.stringify(v))}</div>`).join('')}
     </div>`;
-    showToast('success', 'Resync applied.', 3000);
-    await loadAdminResyncPanel();
+    if (failures.length) {
+      // Persistent: no auto-refresh, which would destroy this list.
+      showToast('error', `Resync applied: ${ok} ok · ${failed} failed`, 8000);
+      document.getElementById('resync-dismiss')?.addEventListener('click', () => loadAdminResyncPanel());
+    } else {
+      showToast('success', `Resync applied: ${ok} ok · 0 failed`, 3000);
+      await loadAdminResyncPanel();
+    }
   } catch (e) {
     showToast('error', `Resync failed: ${_esc(String(e.message || e))}`, 5000);
   } finally {
@@ -17847,7 +17896,7 @@ function renderAdminDiscoverySourcesPanel() {
   view.innerHTML = _adminSubnavHtml('admin-discovery-sources') + `
     <div class="p-6 space-y-6">
       <div>
-        <h1 class="text-2xl font-bold text-slate-100 flex items-center gap-2">🔍 Discovery Sources</h1>
+        <h1 class="text-2xl font-bold text-slate-100 flex items-center gap-2">🔍 Repository discovery sources</h1>
         <p class="text-xs text-slate-400 mt-1">Named, reusable "where do we scout" configs — a saved GitHub search, or a manually-curated list of repos (for foundations that spread projects across many orgs, like Eclipse, or your own enterprise repos). Picked from Scouting → Search.</p>
       </div>
 

@@ -87,18 +87,19 @@ class TestTheBlueprintList:
 
     def test_accept_and_reject_are_both_offered_per_row(self):
         app = _app()
-        body = app[app.index("function blueprintRowHtml("):app.index("/** The rail: one cluster")]
+        # accept lives in blueprintWriteHtml (brief section 4: offered only with an accepted node)
+        body = app[app.index("function blueprintWriteHtml("):app.index("/** The rail: one cluster")]
         assert 'data-blueprint-verdict="accepted"' in body and 'data-blueprint-verdict="rejected"' in body
 
     def test_the_screen_says_a_blueprint_verdict_is_reading_scoped(self):
         app = _app()
-        body = app[app.index("async function renderBlueprintList("):app.index("/** Same shared-preview-dialog rule")]
+        body = app[app.index("async function renderBlueprintList("):app.index("/** Accepting a cluster is a decision")]
         assert "applies in this reading only" in body
         assert "switching readings shows a different set, not the same set re-judged" in body
 
     def test_switching_readings_replaces_rather_than_diffs(self):
         app = _app()
-        body = app[app.index("async function renderBlueprintList("):app.index("/** Same shared-preview-dialog rule")]
+        body = app[app.index("async function renderBlueprintList("):app.index("/** Accepting a cluster is a decision")]
         # A fresh innerHTML assignment on every call, no patch/diff step, and
         # a reading switch calls this same function again rather than
         # mutating a subset of the existing rows.
@@ -107,8 +108,8 @@ class TestTheBlueprintList:
 
     def test_the_foot_names_the_current_and_other_readings(self):
         app = _app()
-        body = app[app.index("async function renderBlueprintList("):app.index("/** Same shared-preview-dialog rule")]
-        assert "clusters shown · all in the" in body
+        body = app[app.index("async function renderBlueprintList("):app.index("/** Accepting a cluster is a decision")]
+        assert "clusters shown" in body and "· all in the" in body
         assert "the ${esc(o.p)} reading has" in body
 
     def test_accepting_names_the_pinned_type_and_does_not_invent_one_for_components(self):
@@ -148,7 +149,7 @@ class TestMembershipHonesty:
     def test_an_accepted_but_unmaterialized_blueprint_says_so_honestly(self):
         app = _app()
         body = app[app.index("function blueprintRowHtml("):app.index("/** The rail: one cluster")]
-        assert "not yet catalogued in Egeria" in body
+        assert "not in Egeria yet" in body
 
 
 class TestDeferredStylingComesFromOneHelper:
@@ -173,7 +174,9 @@ class TestDeferredStylingComesFromOneHelper:
         nav_body = app[app.index("function navItemHtml("):app.index("/** The list OF work lists")]
         assert "deferredAttrs(false" in nav_body
         subtab_body = app[app.index("function subTabsHtml("):app.index("export function bindSubTabs(")]
-        assert "deferredAttrs(false" in subtab_body
+        # Every stage with a sub-tab strip is built, so the strip has no dashed/deferred tab branch any more.
+        assert "deferredAttrs(" not in subtab_body
+        assert "data-deferred" not in subtab_body
         # Neither site should carry its own independent dashed-style literal
         # any more -- that duplication is exactly what #130 had to fix twice.
         assert "border-bottom:1px dashed currentColor" not in nav_body

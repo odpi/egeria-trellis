@@ -134,97 +134,106 @@ class TestResurveyPlan:
         assert steps == ["flaky_step"]
 
 
+def _keep_survey(registry, steps=("stale_step", "fresh_step"), at="2026-10-07T01:00:00"):
+    """A kept survey (brief section 1): the commit publishes THIS, it does not run one."""
+    from resource_explorer.surveyors import survey_snapshot
+    from resource_explorer.surveyors.survey_report import ClassificationAnnotation
+    for step in steps:
+        survey_snapshot.record_step(registry, "p", step, at, [
+            ClassificationAnnotation(summary=f"{step} result", analysis_step=step, check_name=step, item_key=step)])
+    return at
+
+
+def _publisher(report_guid="report-guid-1"):
+    pub = MagicMock()
+    pub.return_value.publish.return_value = report_guid
+    pub.return_value.report_reused = False
+    pub.return_value.get_survey_reports_by_guid.return_value = [
+        {"guid": report_guid, "qualified_name": "SurveyReport::x", "annotation_count": 2}]
+    return pub
+
+
+def _seed_stale_and_fresh(registry, monkeypatch):
+    monkeypatch.setattr(
+        "resource_explorer.surveyors.repo_survey_definition_adapter.REPO_ANALYSIS_SOURCE_STEPS",
+        {"fresh_one": ["fresh_step"], "stale_one": ["stale_step"]},
+    )
+    _seed_run(registry, "fresh_one", ago_seconds=FRESH_SECONDS)
+    _seed_run(registry, "stale_one", ago_seconds=STALE_SECONDS)
+
+
+def _make_commit(registry, **selection):
+    return Curations(registry).create(
+        "repo", "p", author="peterprofile", selection=selection, manifest={}, steps=list(STEPS))["id"]
+
+
 class TestExecuteCurationPublishAssetStep:
-    def test_stale_and_fresh_mix_only_reruns_stale_steps(self, registry, monkeypatch):
-        monkeypatch.setattr(
-            "resource_explorer.surveyors.repo_survey_definition_adapter.REPO_ANALYSIS_SOURCE_STEPS",
-            {"fresh_one": ["fresh_step"], "stale_one": ["stale_step"]},
-        )
-        _seed_run(registry, "fresh_one", ago_seconds=FRESH_SECONDS)
-        _seed_run(registry, "stale_one", ago_seconds=STALE_SECONDS)
-        cid = _make_curation(registry)
+    """Brief section 1: the commit publishes the survey already kept. The re-survey box is off by default."""
 
+    def test_unchecked_never_calls_the_orchestrator_and_publishes_the_kept_survey(self, registry, monkeypatch):
+        _seed_stale_and_fresh(registry, monkeypatch)
+        at = _keep_survey(registry)
+        cid = _make_commit(registry)
         with patch("resource_explorer.surveyors.survey_orchestrator.SurveyOrchestrator") as MockOrch, \
-             patch("resource_explorer.surveyors.egeria_publisher.EgeriaPublisher") as MockPub:
-            MockOrch.return_value.run.return_value = _fake_survey_result(n_annotations=2)
-            MockPub.return_value.publish.return_value = "report-guid-1"
-            registry.set_egeria_asset_guid = MagicMock()  # not asserted; publish path may call it
-            with patch.object(ProjectRegistry, "get_egeria_asset_guid", return_value="asset-guid-1"):
-                rec = execute_curation(registry, cid)
-
-            MockOrch.return_value.run.assert_called_once_with("p", steps=["stale_step"])
-
-        publish_step = next(s for s in rec["steps"] if s["name"] == "publish_asset")
-        assert publish_step["state"] == "done"
-        assert "stale" in publish_step["detail"]
-
-    def test_all_fresh_with_existing_asset_skips_survey_and_publish(self, registry, monkeypatch):
-        monkeypatch.setattr(
-            "resource_explorer.surveyors.repo_survey_definition_adapter.REPO_ANALYSIS_SOURCE_STEPS",
-            {"fresh_one": ["fresh_step"]},
-        )
-        _seed_run(registry, "fresh_one", ago_seconds=FRESH_SECONDS)
-        cid = _make_curation(registry)
-
-        with patch("resource_explorer.surveyors.survey_orchestrator.SurveyOrchestrator") as MockOrch, \
-             patch("resource_explorer.surveyors.egeria_publisher.EgeriaPublisher") as MockPub, \
-             patch.object(ProjectRegistry, "get_egeria_asset_guid", return_value="asset-guid-existing"):
+             patch("resource_explorer.surveyors.egeria_publisher.EgeriaPublisher", _publisher()) as MockPub:
+            MockPub.return_value.publish.side_effect = lambda r, **k: (
+                registry.set_egeria_asset_guid("p", "asset-guid-1") or "report-guid-1")
             rec = execute_curation(registry, cid)
+        MockOrch.assert_not_called()
+        MockOrch.return_value.run.assert_not_called()
+        sent = MockPub.return_value.publish.call_args[0][0]
+        assert sorted(a.analysis_step for a in sent.annotations) == ["fresh_step", "stale_step"]
+        step = next(s for s in rec["steps"] if s["name"] == "publish_asset")
+        assert step["state"] == "done"
+        assert "published · from the survey of 2026-10-07" in step["detail"]
+        proof = [p for p in registry.list_catalogue_commit_proofs("p") if p["proof"] == "report_published"][-1]
+        assert proof["detail"]["surveyed_at"] == at
 
+    def test_checked_runs_exactly_the_stale_steps_then_publishes(self, registry, monkeypatch):
+        _seed_stale_and_fresh(registry, monkeypatch)
+        _keep_survey(registry)
+        cid = _make_commit(registry, resurvey_stale=True)
+        with patch("resource_explorer.surveyors.survey_orchestrator.SurveyOrchestrator") as MockOrch, \
+             patch("resource_explorer.surveyors.egeria_publisher.EgeriaPublisher", _publisher()) as MockPub:
+            MockOrch.return_value.run.return_value = MagicMock(errors=[], snapshot_error="")
+            rec = execute_curation(registry, cid)
+        MockOrch.return_value.run.assert_called_once_with("p", steps=["stale_step"])
+        MockPub.return_value.publish.assert_called_once()
+        step = next(s for s in rec["steps"] if s["name"] == "publish_asset")
+        assert step["state"] == "done" and "re-surveyed 1 stale step(s) first" in step["detail"]
+
+    def test_checked_with_nothing_stale_runs_nothing(self, registry, monkeypatch):
+        monkeypatch.setattr(
+            "resource_explorer.surveyors.repo_survey_definition_adapter.REPO_ANALYSIS_SOURCE_STEPS",
+            {"fresh_one": ["fresh_step"]})
+        _seed_run(registry, "fresh_one", ago_seconds=FRESH_SECONDS)
+        _keep_survey(registry, steps=("fresh_step",))
+        cid = _make_commit(registry, resurvey_stale=True)
+        with patch("resource_explorer.surveyors.survey_orchestrator.SurveyOrchestrator") as MockOrch, \
+             patch("resource_explorer.surveyors.egeria_publisher.EgeriaPublisher", _publisher()):
+            rec = execute_curation(registry, cid)
+        MockOrch.return_value.run.assert_not_called()
+        assert "nothing was stale" in next(s for s in rec["steps"] if s["name"] == "publish_asset")["detail"]
+
+    def test_no_survey_blocks_the_commit_with_the_sentence_and_runs_nothing(self, registry):
+        for selection in ({}, {"resurvey_stale": True}):
+            cid = _make_commit(registry, **selection)
+            with patch("resource_explorer.surveyors.survey_orchestrator.SurveyOrchestrator") as MockOrch, \
+                 patch("resource_explorer.surveyors.egeria_publisher.EgeriaPublisher") as MockPub:
+                rec = execute_curation(registry, cid)
             MockOrch.return_value.run.assert_not_called()
             MockPub.return_value.publish.assert_not_called()
+            step = next(s for s in rec["steps"] if s["name"] == "publish_asset")
+            assert step["state"] == "failed" and "no survey to publish yet · run the first survey" in step["detail"]
 
-        publish_step = next(s for s in rec["steps"] if s["name"] == "publish_asset")
-        assert publish_step["state"] == "done"
-        assert "asset-guid-existing" in publish_step["detail"]
-        assert "already published" in publish_step["detail"]
-
-    def test_all_fresh_without_existing_asset_still_ensures_asset_exists(self, registry, monkeypatch):
-        monkeypatch.setattr(
-            "resource_explorer.surveyors.repo_survey_definition_adapter.REPO_ANALYSIS_SOURCE_STEPS",
-            {"fresh_one": ["fresh_step"]},
-        )
-        _seed_run(registry, "fresh_one", ago_seconds=FRESH_SECONDS)
-        cid = _make_curation(registry)
-
-        guid_calls = {"n": 0}
-
-        def fake_get_guid(self, slug):
-            # No cached asset guid before publish; publish "creates" one.
-            guid_calls["n"] += 1
-            return "" if guid_calls["n"] == 1 else "new-asset-guid"
-
+    def test_a_repo_surveyed_before_kept_surveys_is_blocked_with_the_other_sentence(self, registry):
+        registry.update_project_surveyed_at("p")
+        cid = _make_commit(registry)
         with patch("resource_explorer.surveyors.survey_orchestrator.SurveyOrchestrator") as MockOrch, \
-             patch("resource_explorer.surveyors.egeria_publisher.EgeriaPublisher") as MockPub, \
-             patch.object(ProjectRegistry, "get_egeria_asset_guid", fake_get_guid, create=True):
-            MockOrch.return_value.run.return_value = _fake_survey_result(n_annotations=0)
-            MockPub.return_value.publish.return_value = "report-guid-empty"
-
+             patch("resource_explorer.surveyors.egeria_publisher.EgeriaPublisher") as MockPub:
             rec = execute_curation(registry, cid)
-
-            # Nothing was stale, so the survey is called with an EMPTY step
-            # list -- not None (that would re-run everything) and not
-            # skipped outright (there's no asset yet to skip for).
-            MockOrch.return_value.run.assert_called_once_with("p", steps=[])
-            MockPub.return_value.publish.assert_called_once()
-
-        publish_step = next(s for s in rec["steps"] if s["name"] == "publish_asset")
-        assert publish_step["state"] == "done"
-        assert "new-asset-guid" in publish_step["detail"]
-
-    def test_no_run_history_runs_full_survey(self, registry):
-        cid = _make_curation(registry)
-
-        with patch("resource_explorer.surveyors.survey_orchestrator.SurveyOrchestrator") as MockOrch, \
-             patch("resource_explorer.surveyors.egeria_publisher.EgeriaPublisher") as MockPub, \
-             patch.object(ProjectRegistry, "get_egeria_asset_guid", return_value="fresh-asset-guid"):
-            MockOrch.return_value.run.return_value = _fake_survey_result(n_annotations=5)
-            MockPub.return_value.publish.return_value = "report-guid-full"
-
-            rec = execute_curation(registry, cid)
-
-            MockOrch.return_value.run.assert_called_once_with("p", steps=None)
-
-        publish_step = next(s for s in rec["steps"] if s["name"] == "publish_asset")
-        assert publish_step["state"] == "done"
-        assert "no run history" in publish_step["detail"] or "first catalogue" in publish_step["detail"]
+        MockOrch.return_value.run.assert_not_called()
+        MockPub.return_value.publish.assert_not_called()
+        step = next(s for s in rec["steps"] if s["name"] == "publish_asset")
+        assert step["state"] == "failed" and "surveyed before 10-07 · nothing kept to publish" in step["detail"]
+        assert "first survey" not in step["detail"]

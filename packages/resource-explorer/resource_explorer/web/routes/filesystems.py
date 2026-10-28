@@ -7,6 +7,7 @@ from typing import Any
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
+from resource_explorer.web.routes._annotation_items import build_annotation_items
 from resource_explorer.registry import FileSystemEntity, ProjectRegistry, ProjectStatus
 
 log = logging.getLogger(__name__)
@@ -27,7 +28,6 @@ class FileSystemSummary(BaseModel):
     data_file_count: int
     egeria_url: str = ""
     egeria_server: str = ""
-    egeria_user: str = ""
     group_slug: str = ""
     # 'undecided' when nobody has ever decided — see DatabaseSummary's own
     # comment (databases.py) for why this field exists now.
@@ -59,6 +59,7 @@ class FileSystemRegistration(BaseModel):
     description: str = ""
     egeria_url: str = ""
     egeria_server: str = ""
+    #: Ignored (owner, 2026-10-09): accepted only so an older caller is not refused; logged.
     egeria_user: str = ""
     egeria_password: str = ""
     group_slug: str = ""
@@ -69,9 +70,20 @@ class FileSystemSurveyRequest(BaseModel):
     mode: str = "hybrid"  # "local" | "hybrid" | "egeria"
     egeria_url: str | None = None
     egeria_server: str | None = None
+    #: Ignored (owner, 2026-10-09): accepted only so an older caller is not refused; logged.
     egeria_user: str | None = None
     egeria_password: str | None = None
     force_publish: bool = False
+    #: Publish to Egeria (Brief I round 4: an explicit choice). Also chosen by SENDING mode
+    #: "hybrid" or "egeria"; the default mode alone never publishes.
+    publish: bool = False
+
+
+def _publish_chosen(req: "FileSystemSurveyRequest") -> bool:
+    """Whether the caller chose to publish this survey to Egeria: `publish`/`force_publish`, or an
+    explicitly sent mode "hybrid"/"egeria" (not the field's default)."""
+    sent_mode = "mode" in req.model_fields_set and req.mode in ("hybrid", "egeria")
+    return bool(req.publish or req.force_publish or sent_mode)
 
 
 class EgeriaSurveyReportRow(BaseModel):
@@ -135,7 +147,6 @@ def list_filesystems():
                 data_file_count=fs.data_file_count,
                 egeria_url=fs.egeria_url or "",
                 egeria_server=fs.egeria_server or "",
-                egeria_user=fs.egeria_user or "",
                 group_slug=getattr(fs, "group_slug", "") or "",
                 disposition=disp.get("disposition", "undecided"),
                 is_published=publish_status["is_published"],
@@ -149,9 +160,9 @@ def list_filesystems():
 @router.post("/", response_model=FileSystemSummary)
 def register_filesystem(registration: FileSystemRegistration):
     """Register a new filesystem connection."""
-    from resource_explorer.web.routes._validation import validate_egeria_user
+    from resource_explorer.web.routes._validation import ignore_egeria_credentials
 
-    validate_egeria_user(registration.egeria_user)
+    ignore_egeria_credentials(registration, where="register filesystem")
 
     registry = ProjectRegistry()
 
@@ -170,8 +181,6 @@ def register_filesystem(registration: FileSystemRegistration):
         description=registration.description,
         egeria_url=registration.egeria_url,
         egeria_server=registration.egeria_server,
-        egeria_user=registration.egeria_user,
-        egeria_password=registration.egeria_password,
         group_slug=registration.group_slug,
     )
     
@@ -197,7 +206,6 @@ def register_filesystem(registration: FileSystemRegistration):
         data_file_count=0,
         egeria_url=fs.egeria_url or "",
         egeria_server=fs.egeria_server or "",
-        egeria_user=fs.egeria_user or "",
     )
 
 
@@ -230,7 +238,6 @@ def get_filesystem(slug: str):
         disposition=disp.get("disposition", "undecided"),
         egeria_url=fs.egeria_url or "",
         egeria_server=fs.egeria_server or "",
-        egeria_user=fs.egeria_user or "",
         is_published=publish_status["is_published"],
         egeria_publish_note=publish_status["note"],
         working_set_hidden=registry.is_working_set_hidden("filesystem", fs.slug),
@@ -256,13 +263,32 @@ async def get_analyses_last_activity(slug: str) -> dict[str, dict]:
     return build_analysis_last_activity(registry, "filesystem", slug)
 
 
+@router.get("/{slug}/survey-results/boards")
+async def get_filesystem_survey_results_boards(slug: str, stage: str = "") -> dict:
+    """The By-analysis contents board's cheap half for filesystems — see
+    `projects.py`'s identically-shaped route and `workflows.analysis.
+    list_survey_result_boards`'s docstring."""
+    from resource_explorer.workflows.analysis import list_survey_result_boards
+
+    registry = ProjectRegistry()
+    if not registry.get_filesystem(slug):
+        raise HTTPException(status_code=404, detail=f"FileSystem '{slug}' not found.")
+
+    return await asyncio.to_thread(list_survey_result_boards, registry, "filesystem", slug, stage)
+
+
 @router.get("/{slug}/survey-results")
-async def get_filesystem_survey_results(slug: str, stage: str = "", include_empty: bool = False) -> dict:
+async def get_filesystem_survey_results(
+    slug: str, stage: str = "", include_empty: bool = False, board_id: str = "",
+) -> dict:
     """The filesystem equivalent of `projects.py`'s `GET /{slug}/survey-
     results` ("By analysis" in /next) and `databases.py`'s identically-shaped
     route. See `workflows.analysis.build_survey_results`'s docstring — a
     filesystem gets one synthesized dashboard, since `FILESYSTEM_ANALYSIS_
-    RESULTS_MAP` has exactly the one entry filesystem has an analysis for."""
+    RESULTS_MAP` has exactly the one entry filesystem has an analysis for.
+
+    `board_id` (optional): one board only, for the /next By-analysis pane's
+    progressive fetch — see `projects.py`'s `get_survey_results` docstring."""
     from resource_explorer.workflows.analysis import build_survey_results
 
     registry = ProjectRegistry()
@@ -270,7 +296,7 @@ async def get_filesystem_survey_results(slug: str, stage: str = "", include_empt
         raise HTTPException(status_code=404, detail=f"FileSystem '{slug}' not found.")
 
     return await asyncio.to_thread(
-        build_survey_results, registry, "filesystem", slug, stage, include_empty,
+        build_survey_results, registry, "filesystem", slug, stage, include_empty, board_id,
     )
 
 
@@ -283,7 +309,10 @@ async def get_filesystem_questions(
 ) -> dict:
     """The filesystem equivalent of `projects.py`'s `GET /{slug}/scouting-
     questions` and `databases.py`'s identically-shaped route — see that
-    route's docstring."""
+    route's docstring, including why this is now off the event loop
+    (BY-ANALYSIS-PROGRESSIVE-AND-GRAPH, 2026-09-28: `question_has_data`
+    reaches the same expensive readers `/survey-results` already
+    off-loads)."""
     from resource_explorer.workflows.scouting import build_question_checklist
 
     registry = ProjectRegistry()
@@ -292,7 +321,9 @@ async def get_filesystem_questions(
 
     persp_list = [p.strip() for p in (perspectives or "").split(",") if p.strip()]
     purp_list = [p.strip() for p in (purposes or "").split(",") if p.strip()]
-    return build_question_checklist(registry, "filesystem", slug, phase, persp_list, purp_list)
+    return await asyncio.to_thread(
+        build_question_checklist, registry, "filesystem", slug, phase, persp_list, purp_list,
+    )
 
 
 @router.delete("/{slug}/")
@@ -317,9 +348,9 @@ def delete_filesystem(slug: str):
 @router.post("/{slug}/survey")
 def survey_filesystem(slug: str, req: FileSystemSurveyRequest):
     """Run a local or hybrid survey on the filesystem, optionally publishing to Egeria."""
-    from resource_explorer.web.routes._validation import validate_egeria_user
+    from resource_explorer.web.routes._validation import ignore_egeria_credentials
 
-    validate_egeria_user(req.egeria_user or "")
+    ignore_egeria_credentials(req, where="survey filesystem")
 
     registry = ProjectRegistry()
     fs_entity = registry.get_filesystem(slug)
@@ -328,6 +359,11 @@ def survey_filesystem(slug: str, req: FileSystemSurveyRequest):
             status_code=404,
             detail=f"FileSystem '{slug}' not found."
         )
+    if req.mode in ("hybrid", "egeria") and _publish_chosen(req):
+        # Brief Z2: a chosen publish catalogs and publishes the file system in Egeria (the same choice the survey
+        # passes on as force_egeria_publish); without it, nothing is written there.
+        from resource_explorer.web.routes.curate import require_resource_write
+        require_resource_write(registry, "filesystem", slug, "publish")
 
     # 1. Update status to active/surveying
     registry.update_filesystem_status(slug, ProjectStatus.ACTIVE)
@@ -395,9 +431,7 @@ def survey_filesystem(slug: str, req: FileSystemSurveyRequest):
                 executes_at="egeria-adaptive",
                 egeria_url=req.egeria_url,
                 egeria_server=req.egeria_server,
-                egeria_user=req.egeria_user,
-                egeria_password=req.egeria_password,
-                force_egeria_publish=req.force_publish or (req.mode == "egeria"),
+                force_egeria_publish=_publish_chosen(req),
             )
             step_report = (exec_result.get("steps") or [{}])[0]
             # Reconstruct run_hybrid_filesystem_survey's historic flat
@@ -409,9 +443,11 @@ def survey_filesystem(slug: str, req: FileSystemSurveyRequest):
             res = {**detail, **nested}
 
             publish_info = res.get("egeria_publish") or {}
+            not_checked = publish_info.get("files_not_checked") or {}
 
             return {
-                "status": "ok",
+                # Partial when a data file's look-up could not be made (nothing was created for it).
+                "status": "partial" if not_checked else "ok",
                 "mode": req.mode,
                 "source": res.get("source", "custom"),
                 "total_files": res["total_files"],
@@ -420,6 +456,8 @@ def survey_filesystem(slug: str, req: FileSystemSurveyRequest):
                 "egeria_asset_guid": publish_info.get("filesystem_guid", ""),
                 "egeria_report_guid": publish_info.get("report_guid", ""),
                 "annotation_count": publish_info.get("annotation_count", 0),
+                "annotations_in_egeria": publish_info.get("annotations_in_egeria"),
+                "files_not_checked": not_checked,
             }
             
         else:
@@ -502,15 +540,15 @@ def get_filesystem_egeria_annotations(slug: str, report_guid: str) -> list[Egeri
         annotations = surveyor.get_annotations_by_report_guid(report_guid)
     except EgeriaFileSystemSurveyorError as exc:
         raise HTTPException(status_code=503, detail=str(exc))
-    return [EgeriaAnnotationItem(**a) for a in annotations]
+    return build_annotation_items(EgeriaAnnotationItem, annotations)
 
 
 @router.post("/{slug}/publish")
 def publish_survey_to_egeria(slug: str, req: FileSystemSurveyRequest):
     """Manually publish the latest local filesystem survey details to Egeria."""
-    from resource_explorer.web.routes._validation import validate_egeria_user
+    from resource_explorer.web.routes._validation import ignore_egeria_credentials
 
-    validate_egeria_user(req.egeria_user or "")
+    ignore_egeria_credentials(req, where="publish filesystem")
 
     registry = ProjectRegistry()
     fs_entity = registry.get_filesystem(slug)
@@ -520,6 +558,9 @@ def publish_survey_to_egeria(slug: str, req: FileSystemSurveyRequest):
             detail=f"FileSystem '{slug}' not found."
         )
 
+    from resource_explorer.web.routes.curate import require_resource_write
+    require_resource_write(registry, "filesystem", slug, "publish")        # Brief Z2
+
     survey = registry.get_latest_filesystem_survey(slug)
     if not survey:
         raise HTTPException(
@@ -527,33 +568,53 @@ def publish_survey_to_egeria(slug: str, req: FileSystemSurveyRequest):
             detail="No local survey results available to publish. Run a survey first."
         )
 
-    url = req.egeria_url or fs_entity.egeria_url or ""
-    server = req.egeria_server or fs_entity.egeria_server or ""
-    user = req.egeria_user or fs_entity.egeria_user or ""
-    pwd = req.egeria_password or fs_entity.egeria_password or ""
-
-    if not (url and server and user and pwd):
-        raise HTTPException(
-            status_code=400,
-            detail="Missing Egeria credentials (url, server, user, password)."
-        )
+    # Which Egeria: the request's or the entity's URL/server, else the configured one. WHO: the
+    # signed-in person (Brief I) — a typed or stored Egeria user/password is no longer used to
+    # authenticate this publish.
+    url = req.egeria_url or fs_entity.egeria_url or None
+    server = req.egeria_server or fs_entity.egeria_server or None
 
     try:
+        from resource_explorer.egeria_clients import Caller
         from resource_explorer.surveyors.filesystem.egeria_filesystem_surveyor import EgeriaFileSystemSurveyor
         egeria_surveyor = EgeriaFileSystemSurveyor(
             platform_url=url,
             view_server=server,
-            user_id=user,
-            user_password=pwd,
+            identity=Caller(),
         )
         publish_res = egeria_surveyor.catalog_and_survey(fs_entity, survey["survey_data"], registry=registry)
+        # BRIEF-DATABASE-DOCUMENTATION-SOURCES.md slice 1 — same hook as
+        # databases.py's publish route; see its comment for why this is
+        # best-effort and never fails the filesystem's own publish.
+        fs_asset_guid = publish_res.get("filesystem_guid", "")
+        if fs_asset_guid:
+            # Brief F round 3: documentation sources go ONCE, inside send_with_publish (unpublished ones only).
+            # Brief F: the same press sends the tags and group (the presser checked per item) and the PRESSER's
+            # own rating and notes, as them (never anyone else's).
+            from resource_explorer.egeria_identity import caller_user_id
+            from resource_explorer.single_publish import send_with_publish
+            try:
+                send_with_publish(registry, "filesystem", slug, fs_asset_guid, caller_user_id())
+            except Exception:  # noqa: BLE001 - each item's outcome is on its row; never fails the publish
+                log.warning("Could not send the presser's feedback for %s", slug, exc_info=True)
+        not_checked = publish_res.get("files_not_checked") or {}
         return {
-            "status": "ok",
+            # Partial, never "ok", when a data file's look-up could not be made: nothing was created for it.
+            "status": "partial" if not_checked else "ok",
             "egeria_asset_guid": publish_res.get("filesystem_guid", ""),
             "egeria_report_guid": publish_res.get("report_guid", ""),
             "annotation_count": publish_res.get("annotation_count", 0),
+            "annotations_in_egeria": publish_res.get("annotations_in_egeria"),
+            "files_not_checked": not_checked,
         }
+    except PermissionError:
+        raise      # no caller / expired sign-in: the app's 401 handler, never a 500
     except Exception as exc:
+        from resource_explorer.egeria_clients import refusal
+
+        refused = refusal(exc)
+        if refused is not None:
+            raise refused from exc       # "refused by Egeria", with Egeria's sentence
         log.exception(f"Manual filesystem publish failed for {slug}")
         raise HTTPException(
             status_code=500,

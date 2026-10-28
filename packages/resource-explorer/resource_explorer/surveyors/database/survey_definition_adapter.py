@@ -14,7 +14,7 @@ a terminal status, and reads back its real result — rather than being
 silently skipped (unlike auto-cataloging, which publish_step_annotations
 deliberately avoids). See egeria_async_survey_result.py for the poll/resolve/
 convert machinery this shares with the filesystem adapter, and
-docs/design-notes/EGERIA-ASYNC-RESULT-RETRIEVAL-IMPLEMENTED.md for the
+EGERIA-ASYNC-RESULT-RETRIEVAL-IMPLEMENTED.md for the
 report-attribution design.
 
 A step tagged executes_at="egeria-adaptive" is a third, separate
@@ -27,9 +27,11 @@ docs/design-notes/EXECUTION-MODES-HYBRID-CLARIFICATION.md. Unlike the plain
 """
 from __future__ import annotations
 
+import json
 import logging
 from datetime import datetime, timezone
 
+from resource_explorer.table_kinds import is_table_type
 from resource_explorer.surveyors.survey_definition_executor import (
     ResourceTypeAdapter,
     register_adapter,
@@ -43,11 +45,14 @@ from resource_explorer.surveyors.repo_survey_definition_adapter import (
 log = logging.getLogger(__name__)
 
 
-def _run_postgres_schema_and_stats(db_entity, registry, db_user: str = "", db_pwd: str = "", **_) -> dict:
+def _run_postgres_schema_and_stats(
+    db_entity, registry, db_user: str = "", db_pwd: str = "",
+    scan_surveyed_at: str | None = None, **_,
+) -> dict:
     from resource_explorer.surveyors.database.database_surveyor import DatabaseSurveyor
 
     surveyor = DatabaseSurveyor(db_entity, {"user": db_user, "password": db_pwd}, registry)
-    result = surveyor.survey()
+    result = surveyor.survey(surveyed_at=scan_surveyed_at or None)
     return {
         "schema_info": result.get("schema_info", {}),
         "statistics": result.get("statistics", {}),
@@ -59,7 +64,10 @@ def _run_postgres_schema_and_stats(db_entity, registry, db_user: str = "", db_pw
     }
 
 
-def _run_postgres_operations(db_entity, registry, db_user: str = "", db_pwd: str = "", **_) -> dict:
+def _run_postgres_operations(
+    db_entity, registry, db_user: str = "", db_pwd: str = "",
+    scan_surveyed_at: str | None = None, **_,
+) -> dict:
     """postgres_operations (Phase 1 slice 8, design §5.5/§5.7): privilege_audit,
     db_activity_signals, db_resilience, db_external_dependencies. Runs
     DatabaseSurveyor.survey(steps=["operations"]) — "schema" runs alongside
@@ -70,14 +78,17 @@ def _run_postgres_operations(db_entity, registry, db_user: str = "", db_pwd: str
     from resource_explorer.surveyors.database.database_surveyor import DatabaseSurveyor
 
     surveyor = DatabaseSurveyor(db_entity, {"user": db_user, "password": db_pwd}, registry)
-    result = surveyor.survey(steps=["operations"])
+    result = surveyor.survey(steps=["operations"], surveyed_at=scan_surveyed_at or None)
     return {
         "schema_info": result.get("schema_info", {}),
         "operations": result.get("operations", {}),
     }
 
 
-def _run_credential_capability(db_entity, registry, db_user: str = "", db_pwd: str = "", **_) -> dict:
+def _run_credential_capability(
+    db_entity, registry, db_user: str = "", db_pwd: str = "",
+    scan_surveyed_at: str | None = None, **_,
+) -> dict:
     """credential_capability (design REPLY-DATABASE-CREDENTIAL-CAPABILITY-
     VISIBILITY.md §3/§4, replying to ASK-...-#251, "Piece 1"): read-only
     catalog/privilege introspection of what THIS connection can see and do.
@@ -88,7 +99,8 @@ def _run_credential_capability(db_entity, registry, db_user: str = "", db_pwd: s
     from resource_explorer.surveyors.database.database_surveyor import DatabaseSurveyor
 
     surveyor = DatabaseSurveyor(db_entity, {"user": db_user, "password": db_pwd}, registry)
-    result = surveyor.survey(steps=["credential_capability"])
+    result = surveyor.survey(
+        steps=["credential_capability"], surveyed_at=scan_surveyed_at or None)
     return {
         "schema_info": result.get("schema_info", {}),
         "credential_capability": result.get("credential_capability", {}),
@@ -114,12 +126,17 @@ def _run_db_derived(db_entity, registry, **_) -> dict:
     return {
         "derived": result.get("derived", {}),
         "read_snapshot": result.get("read_snapshot"),
+        # The annotations this run built (2026-10-14, engine host E4): the step_runs row now counts what the
+        # step produced (it recorded none before, as if the step yielded nothing), and the engine host
+        # publishes exactly these, never a re-derivation. The adapter's own publish does not read this key.
+        "annotations": result.get("annotations") or [],
     }
 
 
 def _run_postgres_column_profile(
     db_entity, registry, db_user: str = "", db_pwd: str = "",
-    sampling: dict | None = None, read_egeria_catalog: bool = True, **_,
+    sampling: dict | None = None, read_egeria_catalog: bool = True,
+    scan_surveyed_at: str | None = None, **_,
 ) -> dict:
     """postgres_column_profile (Phase 1 slice 10, design §5.4/§5.7/§5.8):
     bounded value sampling, `data_class_match`, `reference_data_match`.
@@ -180,6 +197,7 @@ def _run_postgres_column_profile(
     surveyor = DatabaseSurveyor(db_entity, {"user": db_user, "password": db_pwd}, registry)
     result = surveyor.survey(
         steps=["column_profile"], sampling_overrides=sampling, reference_catalog=catalog,
+        surveyed_at=scan_surveyed_at or None,
     )
     return {
         "schema_info": result.get("schema_info", {}),
@@ -193,7 +211,7 @@ def _run_postgres_column_profile(
 
 def _run_postgres_nested_columns(
     db_entity, registry, db_user: str = "", db_pwd: str = "",
-    sampling: dict | None = None, **_,
+    sampling: dict | None = None, scan_surveyed_at: str | None = None, **_,
 ) -> dict:
     """postgres_nested_columns (Phase 1 slice 11, design §5.4/§5.7): bounded
     JSON/JSONB/XML value sampling and nested-schema inference.
@@ -216,18 +234,24 @@ def _run_postgres_nested_columns(
     from resource_explorer.surveyors.database.database_surveyor import DatabaseSurveyor
 
     surveyor = DatabaseSurveyor(db_entity, {"user": db_user, "password": db_pwd}, registry)
-    result = surveyor.survey(steps=["nested_columns"], sampling_overrides=sampling)
+    result = surveyor.survey(
+        steps=["nested_columns"], sampling_overrides=sampling,
+        surveyed_at=scan_surveyed_at or None,
+    )
     return {
         "schema_info": result.get("schema_info", {}),
         "nested_columns": result.get("nested_columns", {}),
     }
 
 
-def _run_postgres_sql_analysis(db_entity, registry, db_user: str = "", db_pwd: str = "", **_) -> dict:
+def _run_postgres_sql_analysis(
+    db_entity, registry, db_user: str = "", db_pwd: str = "",
+    scan_surveyed_at: str | None = None, **_,
+) -> dict:
     from resource_explorer.surveyors.database.database_surveyor import DatabaseSurveyor
 
     surveyor = DatabaseSurveyor(db_entity, {"user": db_user, "password": db_pwd}, registry)
-    result = surveyor.survey()
+    result = surveyor.survey(surveyed_at=scan_surveyed_at or None)
     return {
         "schema_info": result.get("schema_info", {}),
         "statistics": result.get("statistics", {}),
@@ -267,7 +291,7 @@ def _trigger_egeria_native_survey(db_entity, registry, step, **_) -> dict:
     if not db_guid:
         raise RuntimeError(
             f"Database '{db_entity.slug}' has no stored Egeria asset guid — "
-            "cannot trigger Egeria's native survey for an uncataloged database."
+            "cannot trigger Egeria's native survey for an unpublished database."
         )
     surveyor = EgeriaDatabaseSurveyor()
     triggered_at = datetime.now(timezone.utc)
@@ -344,7 +368,20 @@ def _run_egeria_adaptive(
         db_entity.slug, credentials=credentials, refresh=refresh,
         secrets_path=secrets_path, force_custom=force_custom,
     )
-    result.setdefault("status", "error" if result.get("source") == "error" else "ok")
+    # A survey that measured nothing and carries errors FAILED — say so, with
+    # the real error text (false-zero hotfix, 2026-09-30). Before this, a local
+    # survey that died on an auth error still came back status "ok" (the
+    # Egeria-trigger half "worked") with the error buried in the result, and
+    # the executor's publish step then pushed an empty inventory as if it were
+    # a measurement. "ok" is reserved for results that carry proof of a
+    # measurement or a real retrieval.
+    errs = [str(e) for e in (result.get("errors") or [])]
+    measured_now = bool(result.get("schema_info") or result.get("statistics"))
+    if result.get("source") == "error" or (errs and not measured_now):
+        result["status"] = "failed"
+        result["errors"] = errs or ["Survey failed with no error detail recorded"]
+    else:
+        result.setdefault("status", "ok")
 
     # HybridDatabaseSurveyor.survey() already does its own Egeria write when
     # source == "egeria-custom" (publish_local_survey, called inside
@@ -372,7 +409,21 @@ def _run_egeria_adaptive(
 
 
 def _publish(entity, step_outputs: list, surveyed_at: str, registry) -> str:
-    from resource_explorer.surveyors.database.egeria_database_surveyor import EgeriaDatabaseSurveyor
+    """Publish a run's results to Egeria WITHOUT writing a survey row.
+
+    A publish step measures nothing, so it never writes `database_surveys`
+    (false-zero hotfix, 2026-09-30). It reads what it publishes from this
+    run's step outputs when they carry a schema inventory, otherwise from the
+    latest MEASURED stored row (`ProjectRegistry.latest_measured_database_
+    survey` — the one shared definition of "measured"). If neither exists
+    there is nothing to publish and it raises rather than pushing an empty
+    inventory to Egeria. It records its own step_run and stamps the outcome on
+    the measured row it published.
+    """
+    from resource_explorer.surveyors.database.egeria_database_surveyor import (
+        EgeriaDatabaseSurveyor,
+        EgeriaDatabaseSurveyorError,
+    )
 
     schema_info: dict = {}
     statistics: dict = {}
@@ -386,13 +437,54 @@ def _publish(entity, step_outputs: list, surveyed_at: str, registry) -> str:
         operations = output.get("operations") or operations
         credential_capability = output.get("credential_capability") or credential_capability
 
+    measured_row = None
+    if not schema_info:
+        measured_row = registry.latest_measured_database_survey(entity.slug)
+        if measured_row is None:
+            raise EgeriaDatabaseSurveyorError(
+                f"Nothing measured to publish for '{entity.slug}': this run produced no "
+                "schema inventory and no measured survey is stored. Run a survey first; "
+                "publish does not write a survey row."
+            )
+        stored = json.loads(measured_row.get("survey_data") or "{}")
+        schema_info = stored.get("schema_info") or {}
+        statistics = statistics or stored.get("statistics") or {}
+        views = views or stored.get("views") or []
+        operations = operations or stored.get("operations") or {}
+
     surveyor = EgeriaDatabaseSurveyor()
     result = surveyor.publish_step_annotations(
         entity, schema_info, statistics, surveyed_at, registry,
         views=views, operations=operations,
         credential_capability=credential_capability,
     )
-    return result.get("report_guid", "")
+    report_guid = result.get("report_guid", "")
+    try:
+        registry.record_step_run(
+            entity.slug, "egeria_publish", surveyed_at, entity_type="database",
+            source="egeria", executor="local",
+            metrics={"report_guid": report_guid,
+                     "annotation_count": result.get("annotation_count"),
+                     "annotations_in_egeria": result.get("annotations_in_egeria"),
+                     # Columns whose look-up could not be made, so their lineage was not linked (proof, not
+                     # silence: an empty list means every lineage look-up was answered).
+                     "lineage_not_checked": result.get("lineage_not_checked", []),
+                     "published_measured_at": (measured_row or {}).get("surveyed_at", "")},
+        )
+        # Outcome goes ON the measured row (never a new row). For an in-run
+        # measurement the row is the run's own (slug, surveyed_at); a no-op if
+        # this run stored none.
+        registry.record_database_survey_published(
+            entity.slug, (measured_row or {}).get("surveyed_at") or surveyed_at, report_guid)
+    except Exception as exc:
+        if not report_guid:
+            raise
+        # Egeria accepted the report; only RE's record of it failed. The guid
+        # travels on, so the run says "published" (backlog 7f.8 review).
+        from resource_explorer.surveyors.survey_definition_executor import PublishedNotRecorded
+
+        raise PublishedNotRecorded(report_guid, exc) from exc
+    return report_guid
 
 
 #: Cost, preconditions and PRODUCES for each database step — design §5.7's own
@@ -416,7 +508,7 @@ def _publish(entity, step_outputs: list, surveyed_at: str, registry) -> str:
 #: sequenced with the DB steps rather than the repo ones.
 # ── requires_capability, per DATABASE-STEP-CAPABILITY-AUDIT.md ───────────
 #
-# The audit (`docs/design-notes/DATABASE-STEP-CAPABILITY-AUDIT.md`) traced
+# The audit (`DATABASE-STEP-CAPABILITY-AUDIT.md`) traced
 # every step here to its actual SQL and classified each sub-piece. It
 # deliberately stopped short of one decision, and said so: three of these
 # steps bundle several tiers under one step id, and "one step, one tier does
@@ -642,9 +734,21 @@ _ADAPTER = ResourceTypeAdapter(
     # step, not a fresh fetch, so none of them should gate on per-STEP run
     # attribution (see DATABASE_ANALYSIS_KINDS's own comment for why, and
     # the api_structure precedent facts.py already documents this pattern
-    # for). `state_sources` stays undeclared for now — no database question
-    # is answered directly off a state-source table the way repo's
-    # "actively maintained?" is.
+    # for).
+    #
+    # `state_sources` NOW declared (DATABASE-DIRECT-FIELD-ROWS-IMPLEMENTED.md,
+    # porting #309's repo pattern): 10 of the 11 database questions the owner
+    # found rendering `○ not run` live on `laz_local_adventureworks`
+    # (2026-09-29, #8810) are answered directly off a stored field, the same
+    # way repo's "actively maintained?" is — this comment used to say that
+    # mechanism did not exist for databases yet; it now does, in facts.py's
+    # `DATABASE_RESOURCE_STATE_SOURCES`. Resolved lazily, same reasoning as
+    # the repo adapter's own `state_sources` lambda: avoids an import cycle
+    # with facts.py, which imports this module back for `DATABASE_ANALYSIS_
+    # RESULTS_MAP` (see `_db_r_changed_since_survey`).
+    state_sources=lambda: __import__(
+        "resource_explorer.facts", fromlist=["DATABASE_RESOURCE_STATE_SOURCES"],
+    ).DATABASE_RESOURCE_STATE_SOURCES,
     analysis_results_map=lambda: DATABASE_ANALYSIS_RESULTS_MAP,
     analysis_source_steps=lambda: DATABASE_ANALYSIS_RE_STEP_MAP,
     analysis_kinds=lambda: DATABASE_ANALYSIS_KINDS,
@@ -807,8 +911,8 @@ register_adapter(_ADAPTER)
 #: here owns exactly one step key of its own, so `last_run_partial` is never
 #: true for a database analysis today.
 #:
-#: **Slice 17 fix** (docs/design-notes/SLICE-17-RUNNABILITY-FROM-CATALOG-
-#: IMPLEMENTED.md; replying to REVIEW-SURVEY-PANE-285.md §5(a)). This used to
+#: **Slice 17 fix** (SLICE-17-RUNNABILITY-FROM-CATALOG-IMPLEMENTED.md; replying to
+#: REVIEW-SURVEY-PANE-285.md §5(a)). This used to
 #: be a second dict, hand-authored independently of `db_derived.py`'s own
 #: `DB_DERIVED_ANALYSES` tuple — the list of analysis_catalog ids the
 #: zero-fetch `db_derived` step backs. The two are supposed to agree (every
@@ -858,6 +962,8 @@ def _build_database_analysis_re_step_map() -> dict[str, list[str]]:
         "nested_column_profile": ["postgres_nested_columns"],
         "egeria_db_survey": ["egeria_db_survey"],
         "credential_capability": ["credential_capability"],
+        # Read in the always-on schema step (DatabaseSurveyor.survey()).
+        "database_owner": ["postgres_schema_and_stats"],
     }
     # Every db_derived-backed id, derived rather than hand-listed — see this
     # constant's own docstring above for the bug this specifically closes.
@@ -941,89 +1047,43 @@ def _db_derived_field_reader(field: str):
     def _read(registry, slug: str) -> dict:
         from resource_explorer.surveyors.database.db_derived import run_db_derived
 
-        data = run_db_derived(registry, slug).get("derived", {}).get(field) or {}
+        result = run_db_derived(registry, slug)
+        data = result.get("derived", {}).get(field) or {}
         if isinstance(data, dict) and data.get("state") == STATE_NOT_MEASURED:
             return {}
         if isinstance(data, dict):
             _attach_container_credential_scope(registry, slug, data)
-            _attach_coverage_status(field, data)
+            _attach_coverage_status(field, data, result.get("table_coverage"))
         return data
 
     return _read
 
 
-#: Below this fraction of tables actually measured (not merely "some table
-#: somewhere had a key captured" — see keys_captured_for_table's own
-#: docstring), the WHOLE analysis reports `not_established` rather than a
-#: technically-true-but-misleading `measured` built almost entirely from
-#: unmeasured tables. Live-found, `coco_pharma`, 2026-09-27: with 3 of 58
-#: tables key-captured, `db_relationship_graph` read "state measured ·
-#: verdict bag_of_tables" — a confident verdict over a database that was 95%
-#: unmeasured. 0.5 (a plain majority) is a coordinator-approved starting
-#: point, not a tuned constant; see docs/Backlog.md for the open question of
-#: whether it should be uniform across all seven or tuned per analysis.
-_COVERAGE_NOT_ESTABLISHED_THRESHOLD = 0.5
+def _attach_coverage_status(field: str, data: dict, coverage: dict | None = None) -> None:
+    """Flip `_status.state` to NOT_ESTABLISHED when too little of the database
+    was measured for this analysis's `STATE_MEASURED` verdict to mean much.
 
-
-def _attach_coverage_status(field: str, data: dict) -> None:
-    """Slice 21b follow-up (2026-09-27, live gate on `coco_pharma`): flip
-    `_status.state` to NOT_ESTABLISHED, with a reason and the actual counts,
-    when too little of the database was measured for this analysis's
-    `STATE_MEASURED` verdict to mean much — the exact "correct number, wrong
-    label" defect the owner's gate caught (the explanation text already said
-    "insufficient signal"/named 55 of 58 tables excluded; `_status.state`
-    still said `measured`).
-
-    Mutates `data` in place, in the SAME `_status` slot
-    `_attach_container_credential_scope` uses — `facts.py`'s `_state_for`
-    already prefers `value["_status"]["state"]` over its own generic
-    MEASURED/NOTHING_FOUND inference (see that function's own docstring:
-    "the surveyor knew more about its own run than this layer can infer"),
-    so this is the existing seam, not a new one. Only overwrites an ALREADY
-    STATE_MEASURED payload's `_status` — a genuinely NOT_MEASURED payload
-    (empty `{}`, normalized by this reader's own caller) never reaches here
-    at all, and a `_status` a container-credential-scope check already set
-    is left alone (that check runs first and is the more specific of the
-    two when both would apply).
+    One bar for all seven analyses: `result_status.COVERAGE_BAR` (80% of
+    tables), overridable per field via `COVERAGE_BAR_OVERRIDES`. Counts come
+    from the analysis's own payload where it carries them (relationship graph,
+    grain), otherwise from `coverage` (`run_db_derived`'s `table_coverage`).
+    Mutates `data` in the same `_status` slot `_attach_container_credential_
+    scope` uses (which runs first and wins) — `facts.py`'s `_state_for` already
+    prefers `value["_status"]["state"]`.
     """
     if "_status" in data:
         return
-    from resource_explorer.surveyors.result_status import NOT_ESTABLISHED
+    from resource_explorer.surveyors.result_status import (
+        NOT_ESTABLISHED,
+        coverage_shortfall,
+    )
 
+    notion = "keys"
     if field == "db_relationship_graph":
         measured = data.get("table_count")
-        unmeasured = data.get("unmeasured_table_count") or 0
         if measured is None:
             return
-        total = measured + unmeasured
-        if total and measured / total < _COVERAGE_NOT_ESTABLISHED_THRESHOLD:
-            data["_status"] = {
-                "state": NOT_ESTABLISHED,
-                "reason": "thin_key_coverage",
-                "detail": (f"only {measured} of {total} tables have their own keys "
-                           f"captured — too little of the database was measured for "
-                           f"a relationship verdict to mean much"),
-            }
-    elif field == "db_classification":
-        # `classify_database` already computes its own "undecided" verdict
-        # (`kind: None, confidence: 0`) whenever the winning and runner-up
-        # scores are too close to call at the available coverage — that IS
-        # this analysis's own signal for "not established," more precise
-        # than re-deriving a coverage-percentage cutoff (the live defect's
-        # own case was exactly 50% coverage, kind None: a coverage threshold
-        # tuned to catch it would have to sit AT the boundary rather than
-        # below it, which a stray fraction of a percent either way would
-        # then miss).
-        if "kind" in data and data.get("kind") is None:
-            coverage = data.get("coverage")
-            pct = f"{int(coverage * 100)}%" if coverage is not None else "unknown"
-            data["_status"] = {
-                "state": NOT_ESTABLISHED,
-                "reason": "undecided",
-                "detail": (f"the classification could not settle on a kind at "
-                           f"{pct} signal coverage — too close to call, or too "
-                           f"little signal to call at all"),
-            }
+        total = measured + (data.get("unmeasured_table_count") or 0)
     elif field == "grain_determination":
         grains = data.get("grains") or []
         if not grains:
@@ -1031,14 +1091,50 @@ def _attach_coverage_status(field: str, data: dict) -> None:
         from resource_explorer.registry import STATE_MEASURED
         measured = sum(1 for g in grains if g.get("state") == STATE_MEASURED)
         total = len(grains)
-        if total and measured / total < _COVERAGE_NOT_ESTABLISHED_THRESHOLD:
+    elif field in COVERAGE_BAR_FIELDS:
+        notion = "catalog" if field in CATALOG_READ_FIELDS else "keys"
+        counts = (coverage or {}).get(notion)
+        if not counts:
+            return
+        measured, total = counts.get("measured") or 0, counts.get("total") or 0
+    else:
+        return
+
+    status = coverage_shortfall(field, measured, total, notion)
+    if status is not None:
+        data["_status"] = status
+        return
+
+    if field == "db_classification":
+        # `classify_database`'s own "undecided" verdict (`kind: None`) is a
+        # separate signal, not a coverage threshold: kept as it was.
+        if "kind" in data and data.get("kind") is None:
+            cov = data.get("coverage")
+            pct = f"{int(cov * 100)}%" if cov is not None else "unknown"
             data["_status"] = {
                 "state": NOT_ESTABLISHED,
-                "reason": "thin_key_coverage",
-                "detail": (f"only {measured} of {total} tables were actually "
-                           f"measured for a grain — too little of the database "
-                           f"was covered for this analysis to mean much"),
+                "reason": "undecided",
+                "detail": (f"the classification could not settle on a kind at "
+                           f"{pct} signal coverage — too close to call, or too "
+                           f"little signal to call at all"),
             }
+
+
+#: The five analyses that decide at the catalog tier (names, comments, row
+#: estimates): measured = the table's schema, table and column rows were read.
+#: The other two (graph, grain) measure by keys captured.
+CATALOG_READ_FIELDS = ("db_classification", "schema_conventions", "subject_signals", "coverage_signals", "preliminary_fit")
+
+#: The seven `db_derived` analyses the shared coverage bar applies to.
+COVERAGE_BAR_FIELDS = (
+    "db_classification",
+    "db_relationship_graph",
+    "grain_determination",
+    "schema_conventions",
+    "subject_signals",
+    "coverage_signals",
+    "preliminary_fit",
+)
 
 
 def _attach_container_credential_scope(registry, slug: str, data: dict) -> None:
@@ -1128,8 +1224,37 @@ def _credential_capability_results(registry, slug: str) -> dict:
     schema(s)" from an earlier run, while this reader (and therefore the
     `schema_inventory` headline's visibility clause) saw nothing and rendered
     no credential-visibility fraction at all for the exact same database.
+
+    **Round 2 (2026-09-29, PER-REQUEST-SERVER-LATENCY-ROUND-2-IMPLEMENTED.md):** prefers
+    **`registry.find_latest_database_survey_
+    with_key(slug, "credential_capability")` when the registry implements
+    it — the query-pushed-to-Postgres version of the exact same "search
+    every stored survey newest-first" scan below, ~2-3x faster on a
+    heavily-surveyed database (see that method's own docstring for why it
+    can never be less correct, only faster). Falls back to the linear scan
+    for any registry that doesn't implement it (SQLite already falls back
+    *inside* that method; this is the outer fallback for a registry STUB
+    that implements `get_database_surveys` but not the new method at all —
+    `tests/test_schema_inventory_headline.py`'s `_FakeRegistry` and
+    `_MultiSurveyRegistry` are exactly that shape, and
+    `test_credential_totals_from_an_older_survey_still_show_when_the_latest_
+    run_omits_the_probe` (the 2026-09-26 regression test) is what pins this
+    fallback still returning the right answer).
     """
     import json as _json
+
+    fast = getattr(registry, "find_latest_database_survey_with_key", None)
+    if callable(fast):
+        survey = fast(slug, "credential_capability")
+        if survey is not None:
+            try:
+                survey_data = _json.loads(survey.get("survey_data") or "{}")
+            except (ValueError, TypeError):
+                survey_data = {}
+            cap = survey_data.get("credential_capability")
+            if cap:
+                return cap
+        return {}
 
     get_surveys = getattr(registry, "get_database_surveys", None)
     if not callable(get_surveys):
@@ -1150,6 +1275,51 @@ def _credential_capability_results(registry, slug: str) -> dict:
     return {}
 
 
+def _database_owner_results(registry, slug: str) -> dict:
+    """The database's owner role (`pg_database.datdba`) from the newest stored
+    survey that carries one -- same search-every-survey shape as
+    `_credential_capability_results`. {} means "not measured yet" (an
+    existing database that has not been re-surveyed since E3), never
+    "no owner"."""
+    import json as _json
+
+    fast = getattr(registry, "find_latest_database_survey_with_key", None)
+    surveys = []
+    if callable(fast):
+        found = fast(slug, "database_owner")
+        surveys = [found] if found is not None else []
+    else:
+        get_surveys = getattr(registry, "get_database_surveys", None)
+        surveys = (get_surveys(slug) or []) if callable(get_surveys) else []
+    for survey in surveys:
+        try:
+            data = _json.loads(survey.get("survey_data") or "{}")
+        except (ValueError, TypeError):
+            continue
+        owner = data.get("database_owner")
+        if owner and owner.get("owner"):
+            return owner
+    return {}
+
+
+def _database_owner_fact_results(registry, slug: str) -> dict:
+    """`database_owner`'s OWN fact (ENRICHMENT-E3): the owner role a survey
+    read from `pg_database.datdba`, with its own `measured_at`, independent of
+    `schema_inventory` -- an empty-tables database that was surveyed
+    successfully still has its owner, and the tables list is not evidence
+    about it either way. {} = never measured (an existing database not yet
+    re-surveyed), which the fact layer reads as no content."""
+    owner = _database_owner_results(registry, slug)
+    if not owner:
+        return {}
+    return {"owner": owner["owner"], "measured_at": owner.get("measured_at", "")}
+
+
+def _database_owner_headline(registry, slug: str) -> dict:
+    owner = _database_owner_results(registry, slug)
+    return {"label": f"database owner role: {owner['owner']}"} if owner else {}
+
+
 def _credential_scope_status(registry, slug: str) -> dict | None:
     """The third fact-envelope state's trigger (design REPLY-DATABASE-
     CREDENTIAL-CAPABILITY-VISIBILITY.md §4): when the latest
@@ -1166,8 +1336,13 @@ def _credential_scope_status(registry, slug: str) -> dict | None:
         return None
     schema_total = cap.get("schema_total", 0)
     schema_visible = cap.get("schema_visible", 0)
-    table_total = cap.get("table_total", 0)
-    table_select = cap.get("table_select", 0)
+    # `relation_total`/`relation_select` (renamed from `table_total`/
+    # `table_select`, REPLY-DESIGNER-ROUND2-DATABASE-SCREENS.md §2.3): the
+    # whole-database figure counts base tables + views + matviews, never
+    # tables alone. `cap` can be a `credential_capability` blob stored
+    # before this rename, so the old key is a fallback.
+    table_total = cap.get("relation_total", cap.get("table_total", 0))
+    table_select = cap.get("relation_select", cap.get("table_select", 0))
     if not table_total:
         return None
     if table_select >= table_total and schema_visible >= schema_total:
@@ -1180,7 +1355,7 @@ def _credential_scope_status(registry, slug: str) -> dict | None:
         "state": MEASURED_WITHIN_CREDENTIAL_SCOPE,
         "connected_as": cap.get("connected_as", ""),
         "fraction": (
-            f"{table_select} of {table_total} tables in "
+            f"{table_select} of {table_total} relation(s) in "
             f"{schema_visible} of {schema_total} schemas"
         ),
     }
@@ -1228,13 +1403,27 @@ def _schema_inventory_results(registry, slug: str) -> dict:
     # "table count" -- `table_type` (`information_schema.tables`, or a
     # catalog-only-fallback row's `_catalog_table_summary` mapping) is
     # always one of these four for the relkinds `get_schema_info`/
-    # `_enumerate_relations` select (`r`/`p` -> BASE TABLE, `v` -> VIEW,
+    # `_enumerate_relations` select (`r` -> BASE TABLE, `p` -> PARTITIONED TABLE (counted with base tables), `v` -> VIEW,
     # `m` -> MATERIALIZED VIEW, `f` -> FOREIGN). `base_table_count` is kept
-    # as the stable field existing comparators already diff `table_count`
-    # as if it meant; `table_count` itself is unchanged (every relation
-    # kind combined), so neither meaning silently changes under a caller
-    # that hasn't been updated to read the new fields.
-    base_table_count = sum(1 for t in tables if t.get("table_type") == "BASE TABLE")
+    # as the stable field existing comparators already diff.
+    #
+    # RENAMED 2026-09-28 (REPLY-DESIGNER-ROUND2-DATABASE-SCREENS.md §2.3):
+    # the field below WAS `table_count`, and the paragraph above used to end
+    # "`table_count` itself is unchanged (every relation kind combined), so
+    # neither meaning silently changes." That was exactly backwards for a
+    # reader: `table_count` naming an all-kinds figure (a real database
+    # showed 157 here — 68 base tables, 87 views, 2 materialized views) sits
+    # on the same screen as the Relationship Graph card's own "68", which
+    # counts base tables only, and nothing distinguishes the two numbers by
+    # name. `table_count` is now `relation_count` here; `base_table_count`,
+    # unchanged, is the one that means base tables only. This function
+    # always builds `value` fresh from the current `database_tables` rows
+    # (never reads a stored `survey_data` field named `table_count` back),
+    # so no old-key fallback is needed for this one field specifically —
+    # unlike the `credential_capability` probe's `table_total`/
+    # `table_select`, which ARE read back from old stored blobs elsewhere in
+    # this module.
+    base_table_count = sum(1 for t in tables if is_table_type(t.get("table_type")))
     view_count = sum(1 for t in tables if t.get("table_type") == "VIEW")
     materialized_view_count = sum(1 for t in tables if t.get("table_type") == "MATERIALIZED VIEW")
     foreign_table_count = sum(1 for t in tables if t.get("table_type") == "FOREIGN")
@@ -1264,11 +1453,11 @@ def _schema_inventory_results(registry, slug: str) -> dict:
     # figure (reported 10, truth 5 base-table-bearing schemas).
     schemas_with_tables = len({
         t.get("schema_name") for t in tables
-        if t.get("schema_name") and t.get("table_type") == "BASE TABLE"
+        if t.get("schema_name") and is_table_type(t.get("table_type"))
     })
     cap = _credential_capability_results(registry, slug)
     value = {
-        "table_count": len(tables),
+        "relation_count": len(tables),
         "column_count": len(columns),
         "schemas_with_tables": schemas_with_tables,
         # From the credential-capability probe (same source the header's
@@ -1321,6 +1510,21 @@ def _schema_inventory_results(registry, slug: str) -> dict:
     return value
 
 
+def index_bytes_total(tables: list[dict]) -> int | None:
+    """Sum of the tables' index sizes, or None.
+
+    Brief D: a total only when EVERY base table's `index_bytes` was read (a
+    plain view owns no storage and is ignored). One unread table makes any
+    sum a confident wrong total, so the whole total is NULL -- shown as "not
+    read", never 0. Same rule as the schema's `total_table_size_bytes`.
+    """
+    base = [t for t in tables
+            if str(t.get("table_type") or t.get("type") or "").upper().replace("_", " ") != "VIEW"]
+    if not base or any(t.get("index_bytes") is None for t in base):
+        return None
+    return sum(int(t["index_bytes"]) for t in base)
+
+
 def _row_count_snapshot_results(registry, slug: str) -> dict:
     """Row counts and sizes by table, from the same `database_tables` detail
     rows schema_inventory reads — its own catalog entry, since "how much
@@ -1349,10 +1553,28 @@ def _row_count_snapshot_results(registry, slug: str) -> dict:
              "row_count_is_estimate": t.get("state") == STATE_CATALOG_ESTIMATE}
             for t in tables
         ],
-        "table_count": len(tables),
+        # `relation_count`, not `table_count` -- `tables` above is every
+        # stored `database_tables` row for this database, same all-relation-
+        # kinds population `_schema_inventory_results`'s own `relation_count`
+        # counts (both read the identical unfiltered query). Renamed
+        # alongside that field (REPLY-DESIGNER-ROUND2-DATABASE-SCREENS.md
+        # §2.3) rather than left as a second `table_count` under a different
+        # analysis id: the evidence rail's own fact-dedup (`showEvidence` in
+        # app.js) drops a later fact's field when an earlier fact already
+        # showed the same KEY NAME, so two all-kinds counts sharing the name
+        # `table_count` were silently merged into one row -- correct by
+        # accident, not by contract, and the first accident this rename
+        # closes rather than relocates. Built fresh from `database_tables`
+        # every call, never read back from an old stored blob, so no old-key
+        # fallback is needed here (unlike the credential_capability probe's
+        # `table_total`/`table_select`).
+        "relation_count": len(tables),
         "measured_count": len(measured),
         "total_row_count": sum(t.get("row_count") or 0 for t in measured) if measured else None,
         "total_size_bytes": sum(t.get("size_bytes") or 0 for t in sized) if sized else None,
+        # Brief D: the index share, a total only when every base table's index
+        # size was read (same rule as the schema's total_table_size_bytes).
+        "total_index_bytes": index_bytes_total(tables),
         # Of `measured_count` above, how many are pg_class.reltuples
         # estimates (catalog-only fallback) rather than a live count —
         # folded into `total_row_count` today (both are integers, and
@@ -1409,7 +1631,7 @@ def _schema_inventory_headline(registry, slug: str) -> dict | None:
     picking one.
     """
     value = _schema_inventory_results(registry, slug)
-    if not value or not value.get("table_count"):
+    if not value or not value.get("relation_count"):
         return None
     cap = _credential_capability_results(registry, slug)
     schema_total = cap.get("schema_total")
@@ -1453,7 +1675,13 @@ def _schema_inventory_headline(registry, slug: str) -> dict | None:
 
     parts = [
         schema_part,
-        f"{value['table_count']} table(s){kind_str}",
+        # "relation(s)", not "table(s)" (REPLY-DESIGNER-ROUND2-DATABASE-
+        # SCREENS.md §2.3): this is the all-kinds figure the breakdown right
+        # after it names in full (base/view/materialized view/foreign) --
+        # calling the sum "table(s)" is what let it collide, unnamed, with
+        # the Relationship Graph card's own "68", which means base tables
+        # only.
+        f"{value['relation_count']} relation(s){kind_str}",
         f"{value.get('column_count', 0)} column(s)",
     ]
     return {"label": " · ".join(parts) + ".", "status": "info"}
@@ -1560,6 +1788,7 @@ def _schema_inventory_container_rows(registry, slug: str) -> list[dict] | None:
         row_total = sum(t.get("row_count") or 0 for t in measured) if measured else None
         sized = [t for t in ts if t.get("size_bytes") is not None]
         bytes_total = sum(t.get("size_bytes") or 0 for t in sized) if sized else None
+        index_total = index_bytes_total(ts)
         is_estimate = any(t.get("state") == STATE_CATALOG_ESTIMATE for t in measured)
         scope_state = (states.get(name) or {}).get("state")
 
@@ -1568,21 +1797,21 @@ def _schema_inventory_container_rows(registry, slug: str) -> list[dict] | None:
         if scope_state == SCOPE_STRUCTURE_ONLY:
             structure_only_rows.append({
                 "schema": name, "table_count": table_count, "row_total": row_total,
-                "bytes_total": bytes_total, "is_estimate": is_estimate,
+                "bytes_total": bytes_total, "index_bytes_total": index_total, "is_estimate": is_estimate,
                 "classification": "structure_only", "reason": reason,
             })
             continue
         if scope_state == SCOPE_NOT_VISIBLE:
             no_access_rows.append({
                 "schema": name, "table_count": table_count, "row_total": row_total,
-                "bytes_total": bytes_total, "is_estimate": is_estimate,
+                "bytes_total": bytes_total, "index_bytes_total": index_total, "is_estimate": is_estimate,
                 "classification": "no_access", "reason": reason,
             })
             continue
         if any(marker in name.lower() for marker in _STAGING_NAME_MARKERS):
             staging_rows.append({
                 "schema": name, "table_count": table_count, "row_total": row_total,
-                "bytes_total": bytes_total, "is_estimate": is_estimate,
+                "bytes_total": bytes_total, "index_bytes_total": index_total, "is_estimate": is_estimate,
                 "classification": "staging", "reason": reason,
             })
             continue
@@ -1598,32 +1827,66 @@ def _schema_inventory_container_rows(registry, slug: str) -> list[dict] | None:
         # that lives elsewhere" without opening the schema — exactly the
         # owner's Slice 22 usability gate ("see which schema holds the
         # data at a glance") that this conflation defeats.
-        if table_count > 0 and all(t.get("table_type") != "BASE TABLE" for t in ts):
+        if table_count > 0 and not any(is_table_type(t.get("table_type")) for t in ts):
             views_only_rows.append({
                 "schema": name, "table_count": table_count, "row_total": row_total,
-                "bytes_total": bytes_total, "is_estimate": is_estimate,
+                "bytes_total": bytes_total, "index_bytes_total": index_total, "is_estimate": is_estimate,
                 "classification": "views_only",
             })
             continue
-        # `row_total is None` (Slice 21a follow-up, owner's gate, 2026-09-27):
-        # a schema whose only tables have `row_count IS NULL` — never
-        # measured at all, no catalog-estimate fallback either — used to
-        # fall through to the "data" branch below, where `row_total or 0`
-        # silently displayed a genuine "not measured" as "0 row(s)"
-        # indistinguishable from a real measured empty. The owner's own
-        # ruling: "a schema whose every readable table has zero rows [or, as
-        # here, no row data at all] is class `empty`" — every readable table
-        # reporting nothing is exactly as uninformative as reporting zero.
-        if table_count == 0 or scope_state == SCOPE_EMPTY or row_total == 0 or row_total is None:
+        # Split three ways (designer round-2 reply, REPLY-DESIGNER-ROUND2-
+        # DATABASE-SCREENS.md §3.3, 2026-09-28): this used to be one
+        # `"empty"` classification covering `table_count == 0`,
+        # `scope_state == SCOPE_EMPTY`, `row_total == 0` AND `row_total is
+        # None` all together, with `row_total or 0` silently storing a
+        # genuine "never measured" as a stored zero. The comment that used
+        # to justify this quoted the owner's ruling with "[or, as here, no
+        # row data at all]" ADDED inside the quote marks — the owner ruled
+        # on schemas with zero rows, not on schemas with no measurement at
+        # all, and the bracketed addition is exactly what blurred the three
+        # conditions below into one. A row-count bar (or any other reader)
+        # built on the old single field could not tell "never measured" from
+        # "counted, and zero" — they are different findings and need
+        # different words:
+        #
+        # - `table_count == 0` (or the credential probe's own `SCOPE_EMPTY`,
+        #   which means the same thing: USAGE is granted and the catalog
+        #   shows no tables — see `schema_scope.py`'s own docstring, "Measured,
+        #   and empty — not a visibility gap") is a schema that structurally
+        #   HAS no tables. `"no_tables"` / "no tables".
+        # - `row_total is None` is a schema whose every table has
+        #   `row_count IS NULL` — never measured, no catalog-estimate
+        #   fallback either. Genuinely unknown, not zero. `"not_measured"` /
+        #   "?" "rows not measured".
+        # - `row_total == 0` is a schema that WAS measured and every table
+        #   in it counted zero rows — a real, confirmed zero. `"empty"` /
+        #   "∅" "0". This is the only one of the three that is `STATE_
+        #   MEASURED` with a real reading, and the only one the owner's
+        #   original ruling actually covers.
+        if table_count == 0 or scope_state == SCOPE_EMPTY:
             empty_rows.append({
-                "schema": name, "table_count": table_count, "row_total": row_total or 0,
-                "bytes_total": bytes_total, "is_estimate": is_estimate,
+                "schema": name, "table_count": table_count, "row_total": None,
+                "bytes_total": bytes_total, "index_bytes_total": index_total, "is_estimate": is_estimate,
+                "classification": "no_tables", "reason": reason,
+            })
+            continue
+        if row_total is None:
+            empty_rows.append({
+                "schema": name, "table_count": table_count, "row_total": None,
+                "bytes_total": bytes_total, "index_bytes_total": index_total, "is_estimate": is_estimate,
+                "classification": "not_measured", "reason": reason,
+            })
+            continue
+        if row_total == 0:
+            empty_rows.append({
+                "schema": name, "table_count": table_count, "row_total": 0,
+                "bytes_total": bytes_total, "index_bytes_total": index_total, "is_estimate": is_estimate,
                 "classification": "empty", "reason": reason,
             })
             continue
         data_rows.append({
             "schema": name, "table_count": table_count, "row_total": row_total or 0,
-            "bytes_total": bytes_total, "is_estimate": is_estimate,
+            "bytes_total": bytes_total, "index_bytes_total": index_total, "is_estimate": is_estimate,
             "classification": "data", "reason": reason,
         })
 
@@ -1722,6 +1985,9 @@ def schema_inventory_tree(registry, slug: str) -> dict | None:
                     "nullable": None if is_nullable is None else bool(is_nullable),
                     "key_role": "PK" if is_pk else ("FK" if fk else ""),
                     "foreign_key": fk if isinstance(fk, dict) else None,
+                    # "" is "none recorded": the table cannot tell no default
+                    # from a default never captured, and the screen says so.
+                    "default": c.get("column_default") or "",
                     "comment": c.get("description") or "",
                 })
             table_nodes.append({
@@ -1730,6 +1996,8 @@ def schema_inventory_tree(registry, slug: str) -> dict | None:
                 "row_count": t.get("row_count"),
                 "row_count_state": t.get("state") or "",
                 "size_bytes": t.get("size_bytes"),
+                "table_bytes": t.get("table_bytes"),
+                "index_bytes": t.get("index_bytes"),
                 "column_count": t.get("column_count") if t.get("column_count") is not None else len(col_nodes),
                 "columns": col_nodes,
             })
@@ -1774,17 +2042,25 @@ def _schema_inventory_container_headline(registry, slug: str) -> dict | None:
     - **staging** — name-heuristic (`_STAGING_NAME_MARKERS`), explicitly
       marked "by name" in the rendered text since it is a guess, not a
       measurement, unlike every other category here.
-    - **empty** — zero tables in the schema, or every table in it has a
-      measured row count of exactly zero (`schema_scope.SCOPE_EMPTY`
-      agrees when a probe is available; the table-count/row-total check
-      below is the fallback for when it isn't, so this category still
-      works without a credential-capability run).
+    - **no tables** — zero tables in the schema (`schema_scope.SCOPE_EMPTY`
+      agrees when a probe is available; the table-count check below is the
+      fallback for when it isn't, so this category still works without a
+      credential-capability run). A structural fact about the schema, not a
+      measurement.
+    - **rows not measured** — has tables, but every one of them has
+      `row_count IS NULL` — never measured, no catalog-estimate fallback
+      either. Genuinely unknown, distinct from a confirmed zero (designer
+      round-2 reply, REPLY-DESIGNER-ROUND2-DATABASE-SCREENS.md §3.3,
+      2026-09-28 — see `_schema_inventory_container_rows`'s own docstring).
+    - **empty** — every table in the schema has a *measured* row count of
+      exactly zero: a real, confirmed zero, not an absence of measurement.
     - **data** — everything else: has at least one table with rows.
 
     Order (Dan's gate, `coco_pharma`, 2026-09-27 — this REPLACES the
     original "data, empty, staging, then no-access/structure-only" order):
     data (by total rows descending) → structure-only → views-only →
-    staging → empty → no-access, each of the latter five by TABLE COUNT
+    staging → no tables / rows not measured / empty (sorted together as one
+    group) → no-access, each of the latter groups by TABLE COUNT
     descending — the only signal a credential-limited or genuinely-empty
     group has, and the reason a structure-only schema with many tables
     (almost certainly where the real data lives, for a credential that
@@ -1807,11 +2083,12 @@ def _schema_inventory_container_headline(registry, slug: str) -> dict | None:
         if row["classification"] == "data":
             est = " (est.)" if row["is_estimate"] else ""
             parts.append(f"{name} {count} table(s) · {row['row_total']:,} row(s){est}")
+        elif row["classification"] == "no_tables":
+            parts.append(f"{name} — no tables")
+        elif row["classification"] == "not_measured":
+            parts.append(f"{name} {count} table(s) — rows not measured")
         elif row["classification"] == "empty":
-            if count == 0:
-                parts.append(f"{name} — empty (no tables)")
-            else:
-                parts.append(f"{name} {count} table(s) · 0 row(s) — empty")
+            parts.append(f"{name} {count} table(s) · 0 row(s) — empty")
         elif row["classification"] == "staging":
             parts.append(f"{name} {count} table(s) — staging (by name)")
         elif row["classification"] == "views_only":
@@ -1844,22 +2121,22 @@ def _row_count_snapshot_headline(registry, slug: str) -> dict | None:
     """The one-sentence summary `scalarMeasures()` on the frontend cannot
     produce on its own, since it skips the `tables` array entirely (by
     design — a per-table breakdown is not a scalar) and so has nothing to
-    say beyond the bare `measured_count`/`table_count` numbers."""
+    say beyond the bare `measured_count`/`relation_count` numbers."""
     value = _row_count_snapshot_results(registry, slug)
-    if not value or not value.get("table_count"):
+    if not value or not value.get("relation_count"):
         return None
     total_rows = value.get("total_row_count")
     total_bytes = value.get("total_size_bytes")
-    measured, total = value["measured_count"], value["table_count"]
+    measured, total = value["measured_count"], value["relation_count"]
     parts = []
     if total_rows is not None:
         parts.append(f"{total_rows:,} row(s)")
     if total_bytes is not None:
         parts.append(_format_bytes(total_bytes))
     if not parts:
-        return {"label": f"No row counts recorded for any of {total} table(s).",
+        return {"label": f"No row counts recorded for any of {total} relation(s).",
                 "status": "info"}
-    coverage = "" if measured == total else f" ({measured} of {total} tables measured)"
+    coverage = "" if measured == total else f" ({measured} of {total} relations measured)"
     estimated = value.get("estimated_count") or 0
     caveat = (
         f" {estimated} of {measured} row count(s) are catalog estimates, not exact."
@@ -1871,7 +2148,7 @@ def _row_count_snapshot_headline(registry, slug: str) -> dict | None:
 def _merge_collector_errors(*sections: dict) -> dict:
     """Combine every `_errors` sub-dict a collector attached to its own
     section (collector-honesty rule, design ruling 2026-09-26 — see
-    `docs/design-notes/SLICE-17C-RENDERABLE-ANSWER-GATE-IMPLEMENTED.md`'s
+    `SLICE-17C-RENDERABLE-ANSWER-GATE-IMPLEMENTED.md`'s
     "Live gate follow-ups" section for the incident and the 26-site
     inventory) into one dict, so a headline built from several
     independently-collected sections can tell a real collection failure
@@ -2378,7 +2655,13 @@ DATABASE_ANALYSIS_RESULTS_MAP: dict[str, tuple] = {
     "subject_signals": (_db_derived_field_reader("subject_signals"), None),
     "coverage_signals": (_db_derived_field_reader("coverage_signals"), None),
     "preliminary_fit": (_db_derived_field_reader("preliminary_fit"), None),
+    # Design §5.3's "which tables would a consumer start with" — same reader.
+    "db_hub_tables": (_db_derived_field_reader("db_hub_tables"), None),
+    # Backlog 7i(b): planner-statistics currency, same reader.
+    "db_statistics_freshness": (_db_derived_field_reader("db_statistics_freshness"), None),
     "credential_capability": (_credential_capability_results, None),
+    # ENRICHMENT-E3: the measured `datdba`, its own fact (see the reader).
+    "database_owner": (_database_owner_fact_results, None),
 }
 
 #: Headline readers (Tier 1 stat tiles) — an additional, optional
@@ -2412,6 +2695,7 @@ DATABASE_ANALYSIS_RESULTS_MAP: dict[str, tuple] = {
 #: here rather than a bespoke per-field summary.
 DATABASE_ANALYSIS_HEADLINE_MAP: dict = {
     "schema_inventory": _schema_inventory_headline,
+    "database_owner": _database_owner_headline,
     "row_count_snapshot": _row_count_snapshot_headline,
     "db_resilience": _db_resilience_headline,
     "db_activity_signals": _db_activity_signals_headline,
@@ -2424,6 +2708,8 @@ DATABASE_ANALYSIS_HEADLINE_MAP: dict = {
     "subject_signals": _db_derived_explanation_headline("subject_signals"),
     "coverage_signals": _db_derived_explanation_headline("coverage_signals"),
     "preliminary_fit": _db_derived_explanation_headline("preliminary_fit"),
+    "db_hub_tables": _db_derived_explanation_headline("db_hub_tables"),
+    "db_statistics_freshness": _db_derived_explanation_headline("db_statistics_freshness"),
     #: Owner's gate follow-up (2026-09-27): the last `db_derived` analysis
     #: with no headline — `fingerprint_database()` already writes a real
     #: `explanation` for every branch (no schema rows; measured, no
@@ -2456,6 +2742,11 @@ DATABASE_ANALYSIS_CONTAINER_HEADLINE_MAP: dict = {
     "schema_inventory": _schema_inventory_container_headline,
     "db_relationship_graph": _db_relationship_graph_container_headline,
     "grain_determination": _grain_determination_container_headline,
+    # The answer to "which tables would a consumer start with" IS a list of
+    # tables (a member-level question), so the relayed `explanation` — which
+    # names the top tables with the evidence for each — is a genuine
+    # member-level reading, not the resource-level fallback text.
+    "db_hub_tables": _db_derived_explanation_headline("db_hub_tables"),
 }
 
 
@@ -2473,7 +2764,8 @@ def _schema_inventory_container_measurements(registry, slug: str) -> list[dict] 
     if not rows:
         return None
 
-    _NOTES = {"data": "", "empty": "empty", "staging": "staging (by name)",
+    _NOTES = {"data": "", "empty": "empty", "no_tables": "no tables",
+              "not_measured": "rows not measured", "staging": "staging (by name)",
               "no_access": "no access", "structure_only": "structure only",
               "views_only": "views only, no base tables"}
     out = []
@@ -2537,3 +2829,15 @@ DATABASE_ANALYSIS_KINDS: dict[str, AnalysisKind] = {
     for analysis_id, step_keys in DATABASE_ANALYSIS_RE_STEP_MAP.items()
     if analysis_id in DATABASE_ANALYSIS_RESULTS_MAP
 }
+
+
+# ── user steps (extensibility brief 2c) ─────────────────────────────────────
+#
+# Installable steps found through the `trellis.analytics` entry point, attached
+# BESIDE the registry above by `survey_step_host`, from the catalog entries the
+# generator writes from their manifests. Last, so every map it fills exists.
+from resource_explorer.surveyors import survey_step_host as _survey_step_host  # noqa: E402
+
+_survey_step_host.attach(
+    "database", _ADAPTER, DATABASE_STEP_REGISTRY, DATABASE_ANALYSIS_RE_STEP_MAP,
+    DATABASE_ANALYSIS_RESULTS_MAP, DATABASE_ANALYSIS_KINDS, DATABASE_ANALYSIS_HEADLINE_MAP)

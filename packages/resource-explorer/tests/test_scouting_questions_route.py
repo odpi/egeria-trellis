@@ -62,7 +62,7 @@ class TestScoutingQuestionsRoute:
         )
         questions = {q["question"] for q in data["questions"]}
         assert "How mature is it?" in questions
-        assert "What explicit licence does this resource use, and are there non-standard or copyleft terms?" in questions
+        assert "What explicit license does this resource use, and are there non-standard or copyleft terms?" in questions
 
     def test_perspective_filter_narrows_results(self, client):
         unfiltered = client.get("/api/projects/myproj/scouting-questions?phase=assessment").json()
@@ -75,7 +75,7 @@ class TestScoutingQuestionsRoute:
         resp = client.get("/api/projects/myproj/scouting-questions?phase=assessment")
         license_q = next(
             q for q in resp.json()["questions"]
-            if q["question"].startswith("What explicit licence")
+            if q["question"].startswith("What explicit license")
         )
         assert license_q["kind"] == "analysis"
         assert license_q["has_data"] is False
@@ -88,7 +88,7 @@ class TestScoutingQuestionsRoute:
         resp2 = client.get("/api/projects/myproj/scouting-questions?phase=assessment")
         license_q2 = next(
             q for q in resp2.json()["questions"]
-            if q["question"].startswith("What explicit licence")
+            if q["question"].startswith("What explicit license")
         )
         assert license_q2["has_data"] is True
 

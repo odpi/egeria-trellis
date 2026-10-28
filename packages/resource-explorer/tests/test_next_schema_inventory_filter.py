@@ -56,7 +56,7 @@ class TestOwnNameOnlySearchText:
     what let a table "match" while its own columns silently didn't."""
 
     def test_schema_search_text_is_the_schema_name_alone(self):
-        body = _fn("function schemaTreeHtml(schemas)", "\n}\n\nfunction tableHtml")
+        body = _fn("function schemaTreeHtml(schemas)", "\n}\n\nexport function tableHtml")
         assert "data-tree-text=\"${esc(s.schema.toLowerCase())}\"" in body
         # The old concatenation join must be gone, not just unused.
         assert "...(s.tables || [])" not in body
@@ -149,5 +149,5 @@ class TestTableKindLabels:
         assert "text-caveat text-ink-muted" in body
 
     def test_schema_row_also_names_its_own_kind(self):
-        body = _fn("function schemaTreeHtml(schemas)", "\n}\n\nfunction tableHtml")
+        body = _fn("function schemaTreeHtml(schemas)", "\n}\n\nexport function tableHtml")
         assert "<span class=\"text-caveat text-ink-muted\"> schema</span>" in body

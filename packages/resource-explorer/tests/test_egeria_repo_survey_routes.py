@@ -116,3 +116,52 @@ class TestRepoEgeriaAnnotations:
         ):
             resp = client.get("/api/egeria/myproj/egeria-surveys/report-guid-1/annotations")
         assert resp.status_code == 503
+
+
+class TestRepoEgeriaAnnotationsJsonProperties:
+    """Egeria stores jsonProperties as a JSON string. One such annotation used to 500 the whole list."""
+
+    def _report(self, props_by_guid):
+        return {"reportedAnnotations": [{"relatedElement": {
+            "elementHeader": {"guid": g, "type": {"typeName": "Annotation"}},
+            "properties": {"annotationType": "Fake", "summary": f"s-{g}", "jsonProperties": jp},
+        }} for g, jp in props_by_guid.items()]}
+
+    def _get(self, client, report):
+        from unittest.mock import MagicMock
+        from resource_explorer.surveyors.egeria_publisher import EgeriaPublisher
+        from resource_explorer.surveyors.egeria_survey_reader import get_annotations_by_report_guid
+        am = MagicMock()
+        am.get_asset_by_guid.return_value = report
+        # the real reader runs against a fake asset maker; nothing reaches Egeria
+        with patch.object(EgeriaPublisher, "get_annotations_by_report_guid",
+                          side_effect=lambda guid: get_annotations_by_report_guid(am, guid)):
+            return client.get("/api/egeria/myproj/egeria-surveys/report-guid-1/annotations")
+
+    def test_string_json_properties_returns_200_with_parsed_dict(self, client):
+        resp = self._get(client, self._report({
+            "a1": '{"outcome": "recovered", "detail": {"chunks": 51729}}', "a2": "", "a3": {"k": 1}}))
+        assert resp.status_code == 200
+        by = {a["guid"]: a["json_properties"] for a in resp.json()}
+        assert by["a1"] == {"outcome": "recovered", "detail": {"chunks": 51729}}
+        assert by["a2"] == {}
+        assert by["a3"] == {"k": 1}
+
+    def test_invalid_and_non_object_json_keep_raw_text(self, client):
+        resp = self._get(client, self._report({"a1": "{oops", "a2": "[1]"}))
+        assert resp.status_code == 200
+        by = {a["guid"]: a["json_properties"] for a in resp.json()}
+        assert by == {"a1": {"raw": "{oops"}, "a2": {"raw": "[1]"}}
+
+    def test_one_unreadable_item_is_shown_with_a_sentence_not_a_500(self, client):
+        from resource_explorer.surveyors.egeria_publisher import EgeriaPublisher
+        bad = {"guid": "bad1", "annotation_type": "Fake", "summary": "s", "confidence": "not-a-number",
+               "analysis_step": "", "explanation": "", "expression": "", "json_properties": {}}
+        good = dict(bad, guid="good1", confidence=100)
+        with patch.object(EgeriaPublisher, "get_annotations_by_report_guid", return_value=[good, bad]):
+            resp = client.get("/api/egeria/myproj/egeria-surveys/report-guid-1/annotations")
+        assert resp.status_code == 200
+        items = {a["guid"]: a for a in resp.json()}
+        assert items["good1"]["confidence"] == 100
+        assert "could not be read" in items["bad1"]["summary"]
+        assert "not-a-number" in items["bad1"]["json_properties"]["unreadable_input"]

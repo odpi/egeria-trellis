@@ -17,6 +17,14 @@ from fastapi.testclient import TestClient
 from resource_explorer.registry import Project, ProjectRegistry
 
 
+@pytest.fixture(autouse=True)
+def _curation_access_open(monkeypatch):
+    """Brief Z round 2: the publish route checks curation access first; here no zone is in use."""
+    from tests.zone_fakes import permit_publish_routes
+
+    return permit_publish_routes(monkeypatch)
+
+
 @pytest.fixture
 def registry(tmp_path):
     r = ProjectRegistry(db_path=str(tmp_path / "test.db"))

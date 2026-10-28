@@ -340,7 +340,7 @@ class TestRunDueDispatch:
 
         entries = registry.list_activity(entity_slug="mydb-not-cataloged")
         assert entries[0]["status"] == "error"
-        assert "not yet cataloged in Egeria" in entries[0]["detail"]
+        assert "not yet published to Egeria" in entries[0]["detail"]
 
     def test_discovery_candidate_dispatches_to_run_survey_definition(self, registry, registered_database_with_credentials):
         qualified_name = "PostgreSQLSurvey::custom-candidate"  # not in the local catalog

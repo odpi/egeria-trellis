@@ -514,6 +514,18 @@ def _capability_reason(step_key: str, info, probe, consented: bool = False,
     return ConsentReason(step_key, "capability", detail), assessment
 
 
+def capability_reason_detail(step_key: str, info, probe) -> str:
+    """The launcher's own reason for `step_key`'s capability shortfall against the stored `probe` (the
+    `ConsentReason.detail` the launcher puts in its proposal, "`<step>` needs `<tier>`: connected as ..."), or ""
+    when there is none (the step declares no capability, nobody has probed, or the credential has it).
+
+    The reason only, never `Proposal.sentence()`: that sentence offers to "run, but not completely", and RE's engine
+    host (case 3, decision 4), which has nobody to ask, does not run such a step at all; it completes it
+    `survey-invalid` with this reason instead of the advisory partial run an unattended RE run takes."""
+    reason, _assessment = _capability_reason(step_key, info, probe)
+    return reason.detail if reason is not None else ""
+
+
 def _estimate(registry, slug: str, step_keys: list[str],
               registries: Mapping[str, Any]) -> tuple[float, bool]:
     """(seconds, every_step_was_measured) for a chain."""

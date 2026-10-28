@@ -77,17 +77,19 @@ class TestPublishAnnotationsShared:
         created_qn = discovery.create_annotation.call_args.kwargs["body"]["properties"]["qualifiedName"]
         assert created_qn == "Annotation::proj::ts::1"
 
-    def test_lookup_failure_falls_through_to_create(self):
-        """A lookup error (network blip) must not block creation — same
-        "will attempt create" behaviour as the D8 sub-resource guard."""
+    def test_lookup_failure_creates_nothing(self):
+        """A look-up that could not be made (network blip) is not "not there": the annotation is NOT
+        created, and its slot in the result is None (it used to fall through to create; reversed by
+        re/lookup-failure-never-creates, AUDIT-PYEGERIA-6.2.2.md "Not in scope")."""
         discovery = MagicMock()
 
         def _raise(_qn):
             raise RuntimeError("network blip")
 
-        publish_annotations(discovery, _raise, ANNOTATIONS[:1], "report-1", "Annotation::proj::ts")
+        guids = publish_annotations(discovery, _raise, ANNOTATIONS[:1], "report-1", "Annotation::proj::ts")
 
-        discovery.create_annotation.assert_called_once()
+        discovery.create_annotation.assert_not_called()
+        assert guids == [None]
 
     def test_create_failure_is_logged_and_loop_continues(self):
         """Error-handling semantics unchanged: a failed annotation must not

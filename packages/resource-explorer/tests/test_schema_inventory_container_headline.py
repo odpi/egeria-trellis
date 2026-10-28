@@ -270,7 +270,12 @@ class TestSlice21aFollowups:
     def test_a_zero_table_schema_the_probe_knows_about_still_appears(self):
         """`public` (USAGE granted, zero tables) never has a `database_
         tables` row to be grouped by, so it was silently missing from a list
-        the header's own schema_total says should have every schema."""
+        the header's own schema_total says should have every schema.
+
+        Renders as "no tables" (REPLY-DESIGNER-ROUND2-DATABASE-SCREENS.md
+        §3.3, 2026-09-28) — a structurally empty schema is a distinct
+        finding from "measured, and zero" or "never measured", not another
+        name for either of them."""
         registry = _FakeRegistry(
             tables=[_table("coco_ods", "a", row_count=5)],
             survey_data=_cap({
@@ -279,7 +284,7 @@ class TestSlice21aFollowups:
             }),
         )
         result = _schema_inventory_container_headline(registry, "mydb")
-        assert "public — empty (no tables)" in result["label"]
+        assert "public — no tables" in result["label"]
 
     def test_structure_only_schema_still_names_its_estimated_row_total(self):
         """A structure-only schema can still carry a real catalog-estimated
@@ -296,16 +301,23 @@ class TestSlice21aFollowups:
         result = _schema_inventory_container_headline(registry, "mydb")
         assert "coco_ods 1 table(s) · ~113 row(s) (est.) — structure only" in result["label"]
 
-    def test_a_schema_whose_only_table_has_no_row_data_is_empty_not_data(self):
+    def test_a_schema_whose_only_table_has_no_row_data_is_not_measured_not_data(self):
         """`row_count IS NULL` (never measured, no catalog-estimate fallback
         either) used to fall through to the "data" branch, where `row_total
         or 0` silently displayed "not measured" as a measured "0 row(s)"
-        under the DATA classification rather than `empty`."""
+        under the DATA classification rather than `empty`.
+
+        Corrected further (REPLY-DESIGNER-ROUND2-DATABASE-SCREENS.md §3.3,
+        2026-09-28): this is not a measured zero either — folding "never
+        measured" into `empty` was exactly the bug the reply called out
+        (the docstring quoted the owner's ruling with "[or, as here, no row
+        data at all]" ADDED inside the quote marks). `row_total is None`
+        now renders as its own "rows not measured" reading."""
         registry = _FakeRegistry(
             tables=[_table("eu_sales", "eu_sales_forecast", row_count=None)],
         )
         result = _schema_inventory_container_headline(registry, "mydb")
-        assert "eu_sales 1 table(s) · 0 row(s) — empty" in result["label"]
+        assert "eu_sales 1 table(s) — rows not measured" in result["label"]
 
     def test_ordering_is_data_then_structure_only_then_empty_then_system(self):
         """Dan's gate, `coco_pharma`, 2026-09-27: `coco_ods` here is

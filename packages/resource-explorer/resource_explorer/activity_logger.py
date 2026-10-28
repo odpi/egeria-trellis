@@ -121,6 +121,7 @@ def log_analysis_run(
     analysis_id: str,
     published: bool | None = None,
     runner: dict | None = None,
+    extra: dict | None = None,
 ) -> str:
     """One row per local AnalysisKind run (POST /{slug}/analyses/{analysis_id}
     /run) — the Analyses cards' equivalent of log_survey's Survey Definition
@@ -151,6 +152,10 @@ def log_analysis_run(
     detail = {"analysis_id": analysis_id, "published": published}
     if runner is not None:
         detail["_runner"] = runner
+    if extra:
+        # e.g. `ran_as` for a run with a credential typed for that run only (brief section 8):
+        # who it ran as, never with what.
+        detail.update(extra)
 
     entry_id = str(uuid.uuid4())
     registry.write_activity(ActivityEntry(
@@ -239,8 +244,13 @@ def log_scout(
     status: str,
     summary: str,
     detail: str = "",
+    entry_id: str = "",
+    items: list[dict] | None = None,
 ) -> str:
-    entry_id = str(uuid.uuid4())
+    """Write a scout entry. Passing the `entry_id` of an earlier 'running' entry
+    finalises that row in place (write_activity upserts on id) instead of adding
+    a second one, so a long import shows up as running from its first moment."""
+    entry_id = entry_id or str(uuid.uuid4())
     registry.write_activity(ActivityEntry(
         id=entry_id,
         ts=_now(),
@@ -253,5 +263,6 @@ def log_scout(
         status=status,
         summary=summary,
         detail=detail,
+        items=items or [],
     ))
     return entry_id

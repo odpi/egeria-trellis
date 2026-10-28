@@ -21,6 +21,8 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Callable
 
+from resource_explorer import credential_handoff
+from resource_explorer.credential_handoff import split_credentials
 from resource_explorer.surveyors import result_status, step_cost_observer
 from resource_explorer.surveyors.survey_definition_reader import SurveyDefinitionReader
 
@@ -173,6 +175,131 @@ class ResourceTypeAdapter:
     step_registry: Callable | None = None
 
 
+
+def _redactable(password, credential_scope: str) -> str:
+    """The password to keep out of stored and logged text, or "".
+
+    A credential override is always redacted, whatever its length. A STORED
+    password is redacted only when it is long enough to be an identifiable
+    string: replacing a one- or two-character secret everywhere would garble
+    every message (and no driver echoes a password it was not asked to).
+    """
+    if not password or not isinstance(password, str):
+        return ""
+    return password if (credential_scope or len(password) >= 8) else ""
+
+
+#: `answered_by` words an `egeria-adaptive` handler reports as `source`.
+_LOCAL_SOURCES = ("custom", "egeria-custom", "local")
+
+#: The words a run's outcome carries about Egeria (Brief I round 5; moved here
+#: from the filesystem adapter, which re-exports them, so the database run's
+#: word and the filesystem step's word are one vocabulary): a run that did not
+#: publish must never read like one whose publish failed. /next's
+#: `stepPublishHtml` classifies them by these leading words.
+PUBLISH_NOT_CHOSEN = "local only · publish not chosen"
+PUBLISHED = "published to Egeria"
+PUBLISH_FAILED = "publish failed"
+NOTHING_TO_PUBLISH = "nothing to publish · no step produced results"
+#: Egeria accepted the report (its guid is the proof) but RE could not record
+#: that locally; the guid is kept on the run.
+PUBLISHED_NOT_RECORDED = "published to Egeria · not recorded locally"
+#: Longest publish word stored or shown (the sentence lives in a title).
+PUBLISH_WORD_LIMIT = 300
+
+
+class PublishedNotRecorded(Exception):
+    """An adapter's publish reached Egeria (`report_guid`) and then its LOCAL
+    bookkeeping failed. Raised so the run keeps the guid and says "published"
+    rather than "publish failed" (the word follows the proof, not the branch)."""
+
+    def __init__(self, report_guid: str, cause: BaseException):
+        super().__init__(f"{type(cause).__name__}: {cause}")
+        self.report_guid = report_guid
+        self.cause = cause
+
+
+class NothingToPublish(Exception):
+    """Raised by a caller-supplied `publisher` (the engine host's, for a library step with nothing to derive) that
+    decided, after reading the step's output, that there is no report to write. Not a failure: the run's publish
+    word says "nothing to publish · <why>", nothing is added to `errors`, and nothing was written to Egeria."""
+
+
+def safe_publish_text(text: str, secrets: "list[str] | tuple[str, ...]" = ()) -> str:
+    """Text about a publish that is stored and shown: credentials masked by
+    shape (`scrub_text`: URL userinfo, password=, Bearer ...), then every known
+    password of this run masked at ANY length (a stored password may be short;
+    this is a status sentence, so a masked common substring costs only
+    readability), then bounded."""
+    from resource_explorer.secret_redaction import scrub, scrub_text
+
+    out = scrub_text(str(text or ""))
+    for secret in secrets:
+        if secret:
+            out = scrub(out, secret)
+    return out[:PUBLISH_WORD_LIMIT]
+
+
+def run_publish_state(*, chosen: bool, had_outputs: bool, refusal: str,
+                      published: "bool | str", report_guid: str, error: str,
+                      not_recorded: str = "", declined: str = "") -> str:
+    """The database run's publish word, from the same variables `_execute`'s
+    publish block decided with (backlog 7f.8). `chosen` is "the resource has
+    an assigned Egeria project", which is what makes a run publish at all.
+    "Published" is said only with the report guid in hand. A database publish
+    is never deferred (its adapter takes no `defer_drain`), so there is no
+    queued word: a "queued" without an outbox row to prove it is not a publish."""
+    if not chosen:
+        return PUBLISH_NOT_CHOSEN
+    if declined:
+        return f"{NOTHING_TO_PUBLISH.split(' · ')[0]} · {declined}"
+    if not had_outputs:
+        return NOTHING_TO_PUBLISH
+    if refusal:
+        return f"{PUBLISH_FAILED} · {refusal}"
+    if report_guid:
+        return f"{PUBLISHED_NOT_RECORDED} · {not_recorded}" if not_recorded else PUBLISHED
+    if error:
+        return f"{PUBLISH_FAILED} · {error}"
+    return f"{PUBLISH_FAILED} · Egeria returned no report"
+
+
+def _annotate_step_provenance(steps_report: list, survey_def, user: str, credential_scope: str) -> None:
+    """Add `answered_by` to every step entry, and `ran_as` to those that
+    connected with a credential override (parity G2, PI-016/PI-018).
+
+    `answered_by` is "egeria" when Egeria's own engine answered, "prefect" when
+    a Prefect worker ran it, "custom" / "egeria-custom" when an adaptive step
+    scanned locally (the second also published to Egeria), and "local" for a
+    plain RE step. It is read off the entry's own `source` / `engine` /
+    the step's `executes_at`, never guessed from the run as a whole.
+
+    `ran_as` ({"user", "scope"}) is stamped only when `credential_scope` says
+    this run used an override AND the step ran RE-side: an Egeria answer used
+    the engine host's own stored secret, so claiming the override ran it would
+    be wrong.
+    """
+    executes_at = {s.qualified_name: s.executes_at for s in getattr(survey_def, "steps", [])}
+    for entry in steps_report:
+        if not isinstance(entry, dict):
+            continue
+        if entry.get("status") not in ("ok", "error", "failed", "triggered"):
+            continue                       # skipped / not executed: nothing answered it
+        where = executes_at.get(entry.get("step"), "")
+        src = entry.get("source")
+        if src:
+            answered = src
+        elif entry.get("engine") == "prefect" or where == "prefect":
+            answered = "prefect"
+        elif where == "egeria":
+            answered = "egeria"
+        else:
+            answered = "local"
+        entry.setdefault("answered_by", answered)
+        ran_here = answered in _LOCAL_SOURCES or answered == "prefect"
+        if credential_scope and user and ran_here:
+            entry["ran_as"] = {"user": user, "scope": credential_scope}
+
 _ADAPTERS: dict = {}
 
 
@@ -217,9 +344,16 @@ class SurveyDefinitionExecutor:
         engine_override: str | None = None,
         demanded_by: str = "",
         capability_consented: bool = False,
+        credential_scope: str = "",
         **runner_kwargs: Any,
     ) -> dict:
         """
+        credential_scope: "this run" when `db_user`/`db_pwd` are a credential
+        override for THIS run only (parity G2, PI-016). It is never forwarded
+        to a step runner; it only makes the report say "ran as <user> (this
+        run)" for the steps that connected with that credential. "" (the
+        default) claims nothing.
+
         engine_override: per-RUN choice of which engine runs this definition's
         `resource-explorer`-tagged steps, taking precedence over
         `config.prefect.enabled`/`route_local_steps` for the duration of THIS
@@ -245,7 +379,7 @@ class SurveyDefinitionExecutor:
         of this override, and a step that exists ONLY as a Prefect flow (see
         PREFECT_ONLY_STEPS below — it has no local implementation to force it
         onto) is likewise left alone by "resource-explorer". See
-        `docs/design-notes/ENGINE-CHOICE-IMPLEMENTED.md` for the full
+        `ENGINE-CHOICE-IMPLEMENTED.md` for the full
         reasoning.
 
         Raises ValueError for any other value, so a typo or a stale UI/API
@@ -307,17 +441,30 @@ class SurveyDefinitionExecutor:
                 "server (see docs/survey-definitions.md, Current Limitations)."
             )
 
-        return self._execute(
-            entity_type=entity_type, slug=slug, entity=entity, survey_def=survey_def,
-            process_guid=process_guid, process_qn=process_qn,
-            publish=publish, engine_override=engine_override, runner_kwargs=runner_kwargs,
-            # `demanded_by` used to be dropped here (a latent attribution bug
-            # named but deliberately left alone by the capability-axis change
-            # below) — fixed by re/survey-executor-demanded-by-run, forwarded
-            # like every other kwarg `_execute` already accepts.
-            demanded_by=demanded_by,
-            capability_consented=capability_consented,
-        )
+        from resource_explorer.secret_redaction import redacting_logs
+
+        # Whatever password this run connects with (an override or the stored
+        # one) is kept out of the log lines about its own failures.
+        with redacting_logs(_redactable(runner_kwargs.get("db_pwd"), credential_scope)):
+            return self._execute(
+                entity_type=entity_type, slug=slug, entity=entity, survey_def=survey_def,
+                process_guid=process_guid, process_qn=process_qn,
+                publish=publish, engine_override=engine_override, runner_kwargs=runner_kwargs,
+                credential_scope=credential_scope,
+                # `demanded_by` used to be dropped here (a latent attribution bug
+                # named but deliberately left alone by the capability-axis change
+                # below) — fixed by re/survey-executor-demanded-by-run, forwarded
+                # like every other kwarg `_execute` already accepts.
+                demanded_by=demanded_by,
+                capability_consented=capability_consented,
+            )
+
+    @staticmethod
+    def _run_secrets(entity, runner_kwargs: dict) -> list[str]:
+        """The passwords this run could echo: the one typed for the run and the
+        one stored on the resource."""
+        return [p for p in ((runner_kwargs or {}).get("db_pwd"),
+                            getattr(entity, "db_password", "")) if isinstance(p, str) and p]
 
     def _execute(
         self,
@@ -333,6 +480,8 @@ class SurveyDefinitionExecutor:
         runner_kwargs: dict,
         demanded_by: str = "",
         capability_consented: bool = False,
+        credential_scope: str = "",
+        publisher: Callable | None = None,
     ) -> dict:
         """Run an already-resolved Survey Definition's steps.
 
@@ -350,6 +499,21 @@ class SurveyDefinitionExecutor:
         """
         adapter = get_adapter(entity_type)
         surveyed_at = datetime.utcnow().isoformat()
+        if entity_type == "database":
+            # Brief D 7f.1: one scan, one snapshot. Every step of this run --
+            # prerequisite auto-runs and batch/Prefect paths included, they
+            # all read `runner_kwargs` -- stamps its rows with the run's own
+            # time, so the scan's steps merge into ONE `database_surveys` row
+            # instead of leaving one per step with the activity on only one.
+            #
+            # The whole-definition Prefect flow is handed the ORIGINAL kwargs
+            # (its parameters are persisted, and are asserted to carry only an
+            # opaque credential reference); it stamps the same `surveyed_at`
+            # itself, in `run_planned_step_task`.
+            prefect_runner_kwargs = runner_kwargs
+            runner_kwargs = {**runner_kwargs, "scan_surveyed_at": surveyed_at}
+        else:
+            prefect_runner_kwargs = runner_kwargs
 
         steps_report: list = []
         step_outputs: list = []
@@ -411,17 +575,62 @@ class SurveyDefinitionExecutor:
         # the activity entry, the assembled result — is shared, so the two
         # paths differ only in who sequenced the steps.
         pending_steps = survey_def.steps
-        if (
+        #: Whole-definition Prefect default (2026-09-28, project owner
+        #: decision — see PREFECT-DEFAULT-WHOLE-DEFINITION-IMPLEMENTED.md): tonight's
+        #: dispatch-honesty fix proved real end-to-end Prefect dispatch
+        #: works, so Prefect is now what a default (`engine_override is
+        #: None`) run attempts first for a whole definition — the +24-27%
+        #: overhead buys real run history, retries and UI visibility. This
+        #: is deliberately narrower than `_prefect_orchestration_enabled`
+        #: reading `prefect.enabled`: for the DEFAULT case specifically, a
+        #: live reachability check runs first, so an unreachable server
+        #: never gets a silent whole-definition fallback — the run stays
+        #: local and `engine_note` says why, on the same pane line
+        #: dispatch-honesty already wired for per-step fallbacks.
+        #: `engine_override="prefect"` is unaffected: it still always
+        #: attempts (its own try/except in `_run_via_prefect` already
+        #: degrades to local on failure, unchanged) — this gate only
+        #: applies to the unforced default.
+        #: `PREFECT_ROUTE_LOCAL_STEPS` (per-step REST dispatch for
+        #: `executes_at: resource-explorer` steps) is untouched — stays
+        #: opt-in, a separate, deliberately-deferred cost tradeoff.
+        engine_note = ""
+        _attempt_prefect = (
             _prefect_orchestration_enabled(engine_override)
             and _all_steps_prefect_runnable(survey_def)
             and not self._any_step_needs_prerequisites(adapter, entity, survey_def, surveyed_at)
-        ):
-            planned = self._run_via_prefect(entity_type, entity, survey_def, runner_kwargs)
+        )
+        # An override credential can only reach a flow that runs in THIS
+        # process (credential_handoff.py), so such a run is always gated on
+        # reachability: an unreachable Prefect means the local loop, said so.
+        if _attempt_prefect and (engine_override is None or credential_scope):
+            from resource_explorer.surveyors.prefect_adapter import (
+                check_prefect_reachable_sync,
+            )
+
+            _reachable, _detail = check_prefect_reachable_sync()
+            if not _reachable:
+                _attempt_prefect = False
+                engine_note = f"Prefect API unreachable at {_detail}: ran locally"
+
+        if _attempt_prefect:
+            planned = self._run_via_prefect(entity_type, entity, survey_def,
+                                            prefect_runner_kwargs,
+                                            surveyed_at, credential_scope=credential_scope)
             if planned is not None:
                 steps_report, step_outputs, errors = planned
                 for _output in step_outputs:
                     _stamp_definition_provenance(_output)
                 pending_steps = []
+                _flow_run_id = next(
+                    (r.get("flow_run_id") for r in steps_report if r.get("flow_run_id")), ""
+                )
+                engine_note = (
+                    f"running via Prefect (flow-run {_flow_run_id})" if _flow_run_id
+                    else "running via Prefect"
+                )
+            elif engine_override is None:
+                engine_note = "Prefect dispatch failed: ran locally"
 
         # Order + guard information for the local loop below. Only built when
         # the local loop is actually going to run something — Prefect having
@@ -511,7 +720,9 @@ class SurveyDefinitionExecutor:
             return True, ""
 
         from resource_explorer.config import get_config
-        from resource_explorer.surveyors.prefect_adapter import PrefectFlowRunCancelled, run_prefect_step
+        from resource_explorer.surveyors.prefect_adapter import (
+            PrefectFlowRunCancelled, PrefectFlowRunTimeout, run_prefect_step,
+        )
 
         # Steps that exist only as Prefect flows (resource_explorer/prefect/flows.py)
         # and have no STEP_REGISTRY entry, so there is nothing local to run them
@@ -656,18 +867,67 @@ class SurveyDefinitionExecutor:
                     # vector — a known gap, of a piece with the one
                     # `_any_step_needs_prerequisites` documents, and the same
                     # fix closes both.
+                    #
+                    # Dispatch honesty (2026-09-28,
+                    # PREFECT-DISPATCH-HONESTY-IMPLEMENTED.md):
+                    # `executor` used to be baked in as `"prefect"` HERE, before
+                    # `run_prefect_step` even attempted dispatch — so a silent
+                    # fallback (see `re_prefect_client`'s docstring for the
+                    # 2026-09-28 bug) still wrote `step_runs.executor='prefect'`
+                    # for a step that had in fact run locally. `observe()` now
+                    # opens with the honest default (`"local"`), and
+                    # `_pf_observed`/`_pf_dispatch` are corrected to the REAL
+                    # outcome after `run_prefect_step` returns, before
+                    # `_record_cost` persists the row.
                     _pf_info = self._step_info(adapter, step.re_analysis_step)
+                    _pf_dispatch: dict = {}
+                    # Never hand Prefect a password. The stored credential is
+                    # resolved by the step's own task from the registry; a
+                    # one-run override is kept in this process's memory and
+                    # only its opaque reference is passed (credential_handoff).
+                    _pf_kwargs, _pf_override = split_credentials(
+                        entity, runner_kwargs, credential_scope)
+                    _pf_ref = credential_handoff.put(*_pf_override) if _pf_override else ""
+                    _pf_extra = {"credential_ref": _pf_ref} if _pf_ref else {}
                     with step_cost_observer.observe(
                         step.re_analysis_step,
                         getattr(_pf_info, "fetch_cost", ""),
                         getattr(_pf_info, "compute_cost", ""),
-                        executor="prefect", source="prefect",
+                        executor="local", source="local",
+                        entity_type=entity_type, slug=getattr(entity, "slug", ""), resource=entity,
                     ) as _pf_observed:
-                        output = run_prefect_step(entity_type, entity.slug, step.re_analysis_step, runner_kwargs)
+                        try:
+                            output = run_prefect_step(
+                                entity_type, entity.slug, step.re_analysis_step,
+                                _pf_kwargs, dispatch_info=_pf_dispatch, **_pf_extra,
+                            )
+                        finally:
+                            if _pf_ref:
+                                credential_handoff.revoke(_pf_ref)
+                    _pf_engine = _pf_dispatch.get("engine", "local")
+                    _pf_dispatch_failed = _pf_dispatch.get("dispatch_failed", "")
+                    if _pf_observed:
+                        _pf_observed[0].executor = _pf_engine
+                        _pf_observed[0].source = _pf_engine
+                        _pf_observed[0].executor_ref = _pf_dispatch.get("flow_run_id", "")
+                        _pf_observed[0].flow_run_id = _pf_dispatch.get("flow_run_id", "")
+                        _pf_observed[0].dispatch_failed = _pf_dispatch_failed
                     self._record_cost(_pf_observed, entity_type, slug, output, surveyed_at)
                     _stamp_definition_provenance(output)
                     step_outputs.append(output)
-                    steps_report.append({"step": step.qualified_name, "re_analysis_step": _step_key(step), "status": "ok", "engine": "prefect"})
+                    _pf_report_entry = {
+                        "step": step.qualified_name, "re_analysis_step": _step_key(step),
+                        "status": "ok", "engine": _pf_engine,
+                    }
+                    if _pf_dispatch_failed:
+                        # The pane-line contract (app.js's survey launch/status
+                        # code): a run that fell back reads "ran locally:
+                        # Prefect dispatch failed — <reason>", not "ok" with no
+                        # trace that Prefect was even asked.
+                        _pf_report_entry["detail"] = (
+                            f"ran locally: Prefect dispatch failed — {_pf_dispatch_failed}"
+                        )
+                    steps_report.append(_pf_report_entry)
                     produced_guard[_step_key(step)] = output.get("guard") if isinstance(output, dict) else None
                 except PrefectFlowRunCancelled as exc:
                     # Distinct from a generic failure — this is the user
@@ -679,6 +939,19 @@ class SurveyDefinitionExecutor:
                     log.info(msg)
                     errors.append(msg)
                     steps_report.append({"step": step.qualified_name, "re_analysis_step": _step_key(step), "status": "cancelled", "engine": "prefect"})
+                except PrefectFlowRunTimeout as exc:
+                    # An honest error, never a pass: no output was produced, so
+                    # no cost row and no findings are written for this step
+                    # (both happen only after run_prefect_step returns), and the
+                    # message carries the flow run id.
+                    msg = f"Prefect step '{step.re_analysis_step}' failed: {exc}"
+                    log.error(msg)
+                    errors.append(msg)
+                    steps_report.append({
+                        "step": step.qualified_name, "re_analysis_step": _step_key(step),
+                        "status": "error", "engine": "prefect",
+                        "flow_run_id": exc.flow_run_id, "detail": str(exc),
+                    })
                 except Exception as exc:
                     msg = f"Prefect step '{step.re_analysis_step}' failed: {exc}"
                     log.exception(msg)
@@ -740,6 +1013,7 @@ class SurveyDefinitionExecutor:
                         # trace of the question that caused it, which is the
                         # one thing `demanded_by` exists to prevent.
                         demanded_by=demanded_by,
+                        entity_type=entity_type, slug=getattr(entity, "slug", ""), resource=entity,
                     ) as observed:
                         output = runner(entity, self.registry, **runner_kwargs)
                     self._record_cost(observed, entity_type, slug, output, surveyed_at)
@@ -778,10 +1052,19 @@ class SurveyDefinitionExecutor:
                     # egeria_async_survey_result.py) set status="ok" themselves —
                     # reported here as-is instead of overwritten, so a genuinely
                     # completed step is never misreported as merely "triggered".
+                    status = outcome.get("status", "triggered") if isinstance(outcome, dict) else "triggered"
                     if isinstance(outcome, dict):
                         _stamp_definition_provenance(outcome)
-                        step_outputs.append(outcome)
-                    status = outcome.get("status", "triggered") if isinstance(outcome, dict) else "triggered"
+                        if status in ("failed", "error"):
+                            # A failed step's output is NOT a measurement: it
+                            # never feeds the publish step (false-zero hotfix,
+                            # 2026-09-30), and its real error text reaches the
+                            # run's `errors` instead of staying buried in the
+                            # step's detail.
+                            for e in (outcome.get("errors") or [f"step '{step.qualified_name}' failed"]):
+                                errors.append(f"Step '{step.re_analysis_step}' failed: {e}")
+                        else:
+                            step_outputs.append(outcome)
                     # `detail` feeds a json.dumps() call below (the activity-log
                     # summary), so it must stay JSON-safe — outcome's own
                     # "annotations" key (when present) carries real Annotation
@@ -864,8 +1147,31 @@ class SurveyDefinitionExecutor:
         # skipped for an unassigned resource. Manual publish is still available
         # to catalog an unassigned resource explicitly, or to re-publish.
         report_guid = ""
+        publish_run_id = ""
+        nothing_published = ""
         published: bool | str = False
-        if step_outputs and self.registry.has_assigned_egeria_project(entity_type, slug):
+        publish_waiting = ""
+        from resource_explorer.private_publish import PrivateAwaitsOwner, record_waiting
+
+        refusal = ""
+        publish_error = ""
+        not_recorded = ""
+        declined = ""
+        # A caller-supplied `publisher` (the engine host, E4) IS the decision to publish: Egeria dispatched the
+        # work and expects its report. It replaces the adapter's publish, and the run's publish words below
+        # follow its proof (the report GUID it returns, or the error it raises) like any other publish.
+        publish_chosen = publisher is not None or bool(self.registry.has_assigned_egeria_project(entity_type, slug))
+        publish_fn = publisher or adapter.publish
+        if step_outputs and publish_chosen and publisher is None:
+            # Brief Z2: the requester must be allowed to publish this resource, re-checked right before the write.
+            from resource_explorer.workflows.curate import person_write_refusal
+
+            refusal = person_write_refusal(self.registry, entity_type, slug)
+            if refusal and entity_type == "database":
+                refusal = safe_publish_text(refusal, self._run_secrets(entity, runner_kwargs))
+            if refusal:
+                errors.append(f"Not published to Egeria: {refusal}")
+        if step_outputs and not refusal and publish_chosen:
             # Same per-run choice run_analysis() honours (project owner,
             # 2026-09-13) — "wait"/"background" from the caller override
             # RunsConfig.publish_inline for this run only; not asked (None,
@@ -889,17 +1195,82 @@ class SurveyDefinitionExecutor:
             import inspect
 
             publish_kwargs = {}
-            if "defer_drain" in inspect.signature(adapter.publish).parameters:
+            params = inspect.signature(publish_fn).parameters
+            if "defer_drain" in params:
                 publish_kwargs["defer_drain"] = defer_drain
+            publish_out: dict = {}
+            if "publish_out" in params:
+                publish_kwargs["publish_out"] = publish_out
             try:
-                report_guid = adapter.publish(
+                report_guid = publish_fn(
                     entity, step_outputs, surveyed_at, self.registry, **publish_kwargs,
                 )
-                published = "queued" if (defer_drain and publish_kwargs) else True
+                if "publish_run_id" in publish_out:
+                    # The publisher said what it did: queued unless its read-back landed before it returned; with
+                    # no run id nothing was queued (no annotations), so there is nothing to publish, not "published".
+                    publish_run_id = publish_out.get("publish_run_id") or ""
+                    if not publish_run_id:
+                        published = None
+                        nothing_published = NOTHING_TO_PUBLISH
+                    else:
+                        published = True if publish_out.get("read_back") else "queued"
+                else:
+                    published = "queued" if (defer_drain and "defer_drain" in publish_kwargs) else True
+            except PrivateAwaitsOwner as exc:
+                # Waiting, not failed (2026-10-13 review): only the private investigation's owner can publish it.
+                # Nothing was written; said in `publish_waiting`, recorded once per (resource, run), not an error.
+                publish_waiting = str(exc)
+                record_waiting(self.registry, exc, run_key=f"{process_qn} · {surveyed_at}", source="survey definition")
+            except NothingToPublish as exc:
+                # The caller's publisher read the output and decided there is no report to write: said, not failed.
+                declined = str(exc) or "the publisher had nothing to write"
+            except PublishedNotRecorded as exc:
+                # Egeria has the report; only RE's own record of it failed.
+                report_guid, published = exc.report_guid, True
+                not_recorded = safe_publish_text(str(exc), self._run_secrets(entity, runner_kwargs))
+                log.warning("published %s to Egeria (%s) but could not record it: %s",
+                            slug, report_guid, not_recorded)
+                errors.append(f"Published to Egeria ({report_guid}) but not recorded locally: {not_recorded}")
             except Exception as exc:
-                msg = f"Failed to publish results to Egeria: {exc}"
-                log.exception(msg)
-                errors.append(msg)
+                if entity_type == "database":
+                    publish_error = safe_publish_text(
+                        str(exc) or type(exc).__name__, self._run_secrets(entity, runner_kwargs))
+                    log.error("Failed to publish results to Egeria: %s", publish_error)
+                    errors.append(f"Failed to publish results to Egeria: {publish_error}")
+                else:
+                    log.exception("Failed to publish results to Egeria")
+                    errors.append(f"Failed to publish results to Egeria: {exc}")
+        # Backlog 7f.8: a database run says what happened to its publish as one
+        # word, from the variables above. Database only: a filesystem step
+        # already carries its own `publish_state` (its adaptive step publishes),
+        # and a second, run-level word could contradict it.
+        publish_state = nothing_published
+        if entity_type == "database":
+            # The variable parts (refusal, error, not_recorded) were masked on
+            # the way in; masking the run's passwords over the WHOLE word would
+            # corrupt the fixed vocabulary when a short password is a substring
+            # of it ("e" in "published to Egeria"). Shape scrub + bound only.
+            publish_state = safe_publish_text(run_publish_state(
+                chosen=publish_chosen, had_outputs=bool(step_outputs), refusal=refusal,
+                published=published, report_guid=report_guid, error=publish_error,
+                not_recorded=not_recorded, declined=declined,
+            ))
+            # The stored flag agrees with the proof: no report guid, not published.
+            published = bool(report_guid)
+
+        # Parity G2 (PI-016/PI-018): say which source answered each step, and
+        # for a credential override say which steps ran as that user; then
+        # keep the run's own password out of every string it is about to
+        # store or return (a driver error can echo the password it was given).
+        _annotate_step_provenance(
+            steps_report, survey_def, runner_kwargs.get("db_user") or "", credential_scope)
+        _secret = _redactable(runner_kwargs.get("db_pwd"), credential_scope)
+        if _secret:
+            from resource_explorer.secret_redaction import scrub
+
+            steps_report[:] = scrub(steps_report, _secret)
+            errors[:] = scrub(errors, _secret)
+            # publish_state: its variable parts were masked with this password already.
 
         # Record that this Survey Definition ran.
         #
@@ -914,7 +1285,7 @@ class SurveyDefinitionExecutor:
         # than to the repo generally.
         ran = sum(1 for r in steps_report if r.get("status") in ("ok", "triggered"))
         try:
-            log_survey(
+            survey_entry = log_survey(
                 self.registry, entity_type, slug,
                 getattr(entity, "display_name", "") or slug,
                 getattr(entity, "github_url", "") or "",
@@ -928,9 +1299,20 @@ class SurveyDefinitionExecutor:
                     "steps": steps_report,
                     "errors": errors,
                     "published": published,
+                    **({"publish_waiting": publish_waiting} if publish_waiting else {}),
                     "egeria_report_guid": report_guid,
+                    **({"publish_state": publish_state} if publish_state else {}),
+                    # Whole-definition Prefect default (2026-09-28) — the
+                    # /next pane's launchSurvey() status line names this
+                    # directly, success or fallback, so a default run's
+                    # engine choice is never invisible.
+                    "engine_note": engine_note,
                 }),
             )
+            if publish_run_id and survey_entry:
+                # The run's publish word is read from that run's proof rows (registry.publish_proofs), and the
+                # drain flips `published` on this row once the run is read back.
+                self.registry.tag_activity_publish_run(survey_entry, publish_run_id)
             run_recorded = True
         except Exception as exc:
             # A survey that ran must not report failure because its bookkeeping
@@ -957,7 +1339,10 @@ class SurveyDefinitionExecutor:
             "proposals": proposals,
             "auto_ran_steps": sorted(auto_ran),
             "egeria_report_guid": report_guid,
+            "engine_note": engine_note,
             "published": published,
+            **({"publish_waiting": publish_waiting} if publish_waiting else {}),
+            **({"publish_state": publish_state} if publish_state else {}),
             # False when the run happened but could not be written to the
             # activity log — the card will say "Never run" and be wrong.
             "run_recorded": run_recorded,
@@ -1113,6 +1498,7 @@ class SurveyDefinitionExecutor:
                 producer, getattr(info, "fetch_cost", ""),
                 getattr(info, "compute_cost", ""),
                 executor="local", source="local", demanded_by=demanding_step,
+                entity_type=entity_type, slug=getattr(entity, "slug", ""), resource=entity,
             ) as observed:
                 output = runner(entity, self.registry, **runner_kwargs)
             self._record_cost(observed, entity_type, entity.slug, output, surveyed_at)
@@ -1163,8 +1549,10 @@ class SurveyDefinitionExecutor:
         annotations = (output or {}).get("annotations") if isinstance(output, dict) else None
         obs.annotations, obs.outcomes = step_cost_observer.describe_work(annotations)
         obs.disagreement = step_cost_observer._disagreement(obs)
+        # The runner's own run knows which commit it read (SurveyOrchestrator); absent = read no code.
+        commit = output.get("survey_commit_sha") if isinstance(output, dict) else None
         step_cost_observer.record(self.registry, slug, obs, surveyed_at,
-                                  entity_type=entity_type)
+                                  entity_type=entity_type, survey_commit_sha=commit)
 
     def run_synthetic_step(
         self,
@@ -1177,6 +1565,7 @@ class SurveyDefinitionExecutor:
         engine_override: str | None = None,
         demanded_by: str = "",
         capability_consented: bool = False,
+        publisher: Callable | None = None,
         **runner_kwargs: Any,
     ) -> dict:
         """Run ONE step through the same dispatch loop `run()` uses, without
@@ -1200,6 +1589,11 @@ class SurveyDefinitionExecutor:
         through the executor" primitive, and a future caller wanting
         "resource-explorer" or "egeria" for one step needs no separate
         method.
+
+        `publisher`, when given, replaces the adapter's publish for this run, with the same signature
+        `(entity, step_outputs, surveyed_at, registry) -> report_guid`, and is always attempted when a step
+        produced output (the engine host, E4: Egeria dispatched the work and expects its report). The run's
+        `published`/`egeria_report_guid`/`publish_state` then follow what it returned or raised.
         """
         from resource_explorer.surveyors.survey_definition_reader import (
             SurveyDefinition,
@@ -1247,9 +1641,11 @@ class SurveyDefinitionExecutor:
             # Without it the re-resolve inside `_execute` would raise the very
             # shortfall the user just accepted and skip the step.
             capability_consented=capability_consented,
+            publisher=publisher,
         )
 
-    def _run_via_prefect(self, entity_type, entity, survey_def, runner_kwargs):
+    def _run_via_prefect(self, entity_type, entity, survey_def, runner_kwargs,
+                         surveyed_at: str = "", credential_scope: str = ""):
         """(steps_report, step_outputs, errors) from one Prefect flow, or None.
 
         Returns None rather than raising when the plan cannot be built or
@@ -1273,6 +1669,19 @@ class SurveyDefinitionExecutor:
         instead of here, so what reaches this function is: definitions with
         no unmet precondition today, plus whatever this folding now corrects
         structurally at build time.
+
+        `surveyed_at` (§E, 2026-09-27): the SAME per-run timestamp `run()`
+        already stamps across the local loop's own steps — passed through so
+        `step_cost_observer.record` (see `prefect/flows.py::run_planned_step_
+        task`) writes this run's `step_runs` rows under it too. Before this,
+        a whole-definition Prefect run wrote NO `step_runs` rows at all —
+        `step_cost_observer.observe`/`record` were only ever called from this
+        module's own local dispatch loop (lines ~660/732/1112), never from
+        the Prefect flow — so the brief's own gate ("the Analysis-tier
+        `step_runs` rows must appear") would have failed on a successful
+        Prefect run exactly as it would have on the bare error this section
+        otherwise fixes. Optional/blank for the handful of tests that call
+        this directly without a real timestamp; those never read `step_runs`.
         """
         from resource_explorer.surveyors.survey_execution_plan import (
             CyclicPlanError,
@@ -1300,35 +1709,88 @@ class SurveyDefinitionExecutor:
                 step_registry = None
 
         try:
-            plan = build_plan(survey_def, step_registry=step_registry)
+            plan = build_plan(survey_def, step_registry=step_registry,
+                              registry=self.registry, entity=entity)
         except CyclicPlanError as exc:
             # Not a fallback case: the local loop would run a cyclic definition
             # in list order and report success for a survey that cannot be
             # ordered at all.
             raise SurveyDefinitionExecutorError(str(exc)) from exc
-        except (MissingPrerequisiteError, PrerequisiteTierError) as exc:
-            # Also not a fallback case, and deliberately so (see
-            # `PrerequisiteTierError`'s docstring): silently falling back to
-            # the local loop here would hide a build-time-detectable problem
-            # behind "Prefect just wasn't reachable", which is exactly the
-            # ambiguity this function's own docstring says a silent fallback
-            # must not create.
+        except PrerequisiteTierError as exc:
+            # Not a fallback case, and deliberately so (see that class's own
+            # docstring): silently falling back to the local loop here would
+            # hide a build-time-detectable problem behind "Prefect just
+            # wasn't reachable", which is exactly the ambiguity this
+            # function's own docstring says a silent fallback must not
+            # create.
             raise SurveyDefinitionExecutorError(str(exc)) from exc
+        except MissingPrerequisiteError as exc:
+            # §E, 2026-09-27: never surface the bare build-time message —
+            # look up which Survey Definition, if any, authors the missing
+            # producer and propose running it first, so the failure a person
+            # (or the launcher pane) sees names a next step rather than
+            # stopping at "not one of this definition's own steps".
+            raise SurveyDefinitionExecutorError(
+                self._propose_producer_definition(entity_type, exc)
+            ) from exc
 
         if not plan.steps:
             return None
+        # Flow-run parameters are persisted by Prefect: strip every credential
+        # from them. Stored -> the step tasks resolve it from the registry;
+        # override -> only an opaque reference to this process's memory (the
+        # flow is called in-process, so its tasks can read it back).
+        flow_kwargs, override = split_credentials(entity, runner_kwargs, credential_scope)
+        ref = credential_handoff.put(*override) if override else ""
         try:
             from resource_explorer.prefect.flows import re_survey_definition_flow
 
-            report = re_survey_definition_flow(
+            flow_params = dict(
                 entity_type=entity_type, slug=entity.slug,
-                plan=serialise(plan), runner_kwargs=runner_kwargs or {},
+                plan=serialise(plan), runner_kwargs=flow_kwargs,
+                surveyed_at=surveyed_at,
             )
+            if ref:
+                flow_params["credential_ref"] = ref
+            credential_handoff.assert_no_credentials(
+                flow_params, where="Prefect flow-run parameters")
+            report = re_survey_definition_flow(**flow_params)
+        except credential_handoff.CredentialLeakError:
+            raise
         except Exception as exc:
             log.warning(
                 "Prefect orchestration unavailable for %s (%s) — falling back to "
                 "in-process sequencing", survey_def.qualified_name, exc)
             return None
+        finally:
+            if ref:
+                credential_handoff.revoke(ref)
+
+        for entry in report:
+            note = entry.get("added_because")
+            if not note:
+                continue
+            # The planner added this step (no fresh stored result for a
+            # precondition, producer inside the definition's budget). One
+            # short activity line, the same record the local loop's auto-run
+            # writes: an added step is a result, not an omission.
+            log.info("%s", note)
+            try:
+                log_survey(
+                    self.registry, entity_type, entity.slug,
+                    getattr(entity, "display_name", "") or entity.slug,
+                    getattr(entity, "github_url", "") or "",
+                    intent="analysis",
+                    status="ok" if entry.get("status") == "ok" else "error",
+                    summary=note,
+                    detail=json.dumps({"prerequisite_auto_run": entry.get("step_key"),
+                                       "demanded_by": entry.get("demanded_by", ""),
+                                       "engine": "prefect"}),
+                )
+            except Exception as exc:
+                # Observable on the step's own report entry, not only in a log.
+                entry["activity_log_error"] = str(exc)
+                log.warning("could not log the added prerequisite step: %s", exc)
 
         return (
             [{k: v for k, v in entry.items() if k != "output"} for entry in report],
@@ -1337,6 +1799,59 @@ class SurveyDefinitionExecutor:
             [f"{e['step_key']}: {e.get('detail', 'failed')}"
              for e in report if e.get("status") == "error"],
         )
+
+    def _propose_producer_definition(self, entity_type: str, exc) -> str:
+        """§E item 3: turn a build-time `MissingPrerequisiteError` into a
+        named next step instead of a bare failure.
+
+        Looks for a Survey Definition (GovernanceActionProcess) for this
+        entity type whose own steps include `exc.producer_key` — the
+        producer this definition is missing — via the same
+        `find_candidate_process_guids` + `fetch` the rest of this module uses
+        to resolve definitions by technology type. Best-effort: any failure
+        reaching Egeria (unreachable, no candidates, the producer not found
+        in any of them) falls back to the plain message `build_plan` already
+        raised with, which still names the missing producer — never worse
+        than today, only better when the lookup succeeds.
+        """
+        base = str(exc)
+        producer = getattr(exc, "producer_key", "") or ""
+        if not producer:
+            return base
+        try:
+            adapter = get_adapter(entity_type)
+            technology_type = getattr(adapter, "technology_type", "") or ""
+            candidates = self.reader.find_candidate_process_guids(technology_type) if technology_type else []
+            # The LIGHTEST definition that contains the producer, not the
+            # first one found: the first was usually "Full Survey (all
+            # steps)", a heavy remedy for one cheap step. Lighter = fewer
+            # steps; ties break on name so the answer is stable.
+            best = None
+            for candidate in candidates:
+                guid = candidate.get("guid")
+                if not guid:
+                    continue
+                survey_def = self.reader.fetch(guid)
+                steps = getattr(survey_def, "steps", []) or []
+                step_keys = {
+                    (getattr(s, "re_analysis_step", None) or getattr(s, "qualified_name", ""))
+                    for s in steps
+                }
+                if producer not in step_keys:
+                    continue
+                name = candidate.get("display_name") or candidate.get("qualified_name") or guid
+                rank = (len(steps), str(name))
+                if best is None or rank < best[0]:
+                    best = (rank, name)
+            if best is not None:
+                return (
+                    f"{base} Proposed next step: run {best[1]!r} first — it "
+                    f"includes {producer!r} — then re-run this definition."
+                )
+        except Exception as lookup_exc:  # pragma: no cover - best-effort only
+            log.warning("could not look up a Survey Definition producing %r: %s",
+                      producer, lookup_exc)
+        return base
 
     def _resolve_process_guid(
         self,

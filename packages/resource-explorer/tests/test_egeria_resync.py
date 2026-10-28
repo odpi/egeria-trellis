@@ -172,7 +172,8 @@ class TestScanAndFlagVanishedPublishes:
         r = EgeriaResync(registry=registry)
         r._clients = {"classification": MagicMock(get_element_by_guid=MagicMock(
             side_effect=lambda g, **kw: "No elements found" if g == "report-1" else {"guid": g}))}
-        registry.get_egeria_linkage.return_value = {"status": "stale"}  # storm had a stale flag from before
+        registry.list_egeria_linkages.return_value = [  # storm had a stale flag from before
+            {"entity_slug": "storm", "status": "stale"}]
 
         result = r._do_flag_vanished_publishes()
 
@@ -180,7 +181,7 @@ class TestScanAndFlagVanishedPublishes:
             "repo_publish", "kafka", stale_guid="report-1",
             detail="the published report no longer resolves in Egeria")
         registry.clear_egeria_linkage_status.assert_called_once_with("repo_publish", "storm")
-        assert result == {"flagged": 1, "healed": 1, "undetermined": 0}
+        assert (result["flagged"], result["healed"], result["undetermined"]) == (1, 1, 0)
 
     def test_flag_vanished_publishes_is_never_in_a_delete_step(self):
         """It must never delete a row — the counterpart to
@@ -195,3 +196,95 @@ class TestScanAndFlagVanishedPublishes:
 
         registry.mark_egeria_linkage_stale.assert_not_called()
         assert "deleted" not in result and "cleared" not in result
+
+
+class TestHealKeyedOnFlaggedRows:
+    """The docstring's promise — "a republish is not stuck showing 'no longer
+    in the store' forever" — as a test against a REAL registry. The bug: the
+    heal loop only ran when the current scan's vanished finding was non-empty,
+    and scan() drops empty findings, so once a republish resolved the heal
+    never ran. These go through scan_and_clear (the real pass), not the
+    private step, so the gating is under test too."""
+
+    def _registry(self, tmp_path):
+        from resource_explorer.registry import ProjectRegistry
+        from resource_explorer.registry import Project
+        reg = ProjectRegistry(db_path=str(tmp_path / "t.db"))
+        for slug in ("egeria_python", "kafka", "sqlglot"):
+            reg.add(Project(slug=slug, display_name=slug,
+                            github_url=f"https://github.com/t/{slug}", collections=[]))
+        return reg
+
+    def _patched_pass(self, registry, present_guids, monkeypatch):
+        from resource_explorer import egeria_resync as mod
+
+        def fake_get(guid, **kw):
+            return {"guid": guid} if guid in present_guids else "No elements found"
+
+        def fake_connect(self):
+            self._clients = {"classification": MagicMock(get_element_by_guid=fake_get),
+                             "asset": MagicMock(), "project": MagicMock(),
+                             "collection": MagicMock()}
+            return True, ""
+
+        monkeypatch.setattr(mod.EgeriaResync, "_connect", fake_connect)
+        # Only the publish scans matter here; the rest are not under test.
+        for name in ("_scan_assets", "_scan_investigation_guids", "_scan_contexts",
+                     "_scan_unlinked_members", "_scan_unpublished_but_expected",
+                     "_scan_unpublishable", "_scan_registration_only",
+                     "_scan_local_investigations", "_scan_definition_drift",
+                     "_scan_specification_gap", "_scan_orphan_publish_claims"):
+            monkeypatch.setattr(mod.EgeriaResync, name,
+                                lambda self, *a, **k: mod.Finding(key="x", title="", detail=""))
+        return mod
+
+    def test_flag_clears_after_republish_in_one_pass(self, tmp_path, monkeypatch):
+        reg = self._registry(tmp_path)
+        reg.record_egeria_survey("egeria_python", "2026-09-29T00:00:00", "old-report")
+        reg.mark_egeria_linkage_stale("repo_publish", "egeria_python", stale_guid="old-report")
+        # Republished: a NEW latest report that resolves; the old one is gone.
+        reg.record_egeria_survey("egeria_python", "2026-10-01T00:00:00", "new-report")
+        mod = self._patched_pass(reg, {"new-report"}, monkeypatch)
+
+        mod.scan_and_clear(reg)
+
+        assert reg.get_egeria_linkage("repo_publish", "egeria_python") is None
+        # The clear leaves visible evidence naming the report it resolved to.
+        entries = [a for a in reg.list_activity(entity_type="repo", entity_slug="egeria_python")
+                   if a["operation"] == "refresh"]
+        assert len(entries) == 1
+        assert "new-report" in entries[0]["summary"]
+
+    def test_still_vanished_keeps_flag_and_advances_last_checked(self, tmp_path, monkeypatch):
+        reg = self._registry(tmp_path)
+        reg.record_egeria_survey("kafka", "2026-09-29T00:00:00", "gone")
+        reg.mark_egeria_linkage_stale("repo_publish", "kafka", stale_guid="gone")
+        with reg._conn() as c:
+            c.execute("UPDATE egeria_linkage_status SET last_checked_at='2026-09-29T00:00:00+00:00'")
+        mod = self._patched_pass(reg, set(), monkeypatch)
+
+        mod.scan_and_clear(reg)
+
+        row = reg.get_egeria_linkage("repo_publish", "kafka")
+        assert row["status"] == "stale"
+        assert row["last_checked_at"] > "2026-09-29T00:00:00+00:00"
+
+    def test_flagged_slug_with_no_report_becomes_uncatalogued(self, tmp_path, monkeypatch):
+        reg = self._registry(tmp_path)
+        reg.mark_egeria_linkage_stale("repo_publish", "amundsen", stale_guid="x")
+        mod = self._patched_pass(reg, set(), monkeypatch)
+
+        mod.scan_and_clear(reg)
+
+        row = reg.get_egeria_linkage("repo_publish", "amundsen")
+        assert row["status"] == "uncatalogued"
+
+    def test_uncatalogued_heals_once_a_resolvable_report_exists(self, tmp_path, monkeypatch):
+        reg = self._registry(tmp_path)
+        reg.mark_egeria_linkage_uncatalogued("repo_publish", "sqlglot")
+        reg.record_egeria_survey("sqlglot", "2026-10-01T00:00:00", "r1")
+        mod = self._patched_pass(reg, {"r1"}, monkeypatch)
+
+        mod.scan_and_clear(reg)
+
+        assert reg.get_egeria_linkage("repo_publish", "sqlglot") is None

@@ -239,7 +239,7 @@ def test_a_step_whose_capability_is_not_satisfied_proposes_partially(world):
 
     sentence = res.proposal.sentence()
     assert "can run, but not completely" in sentence
-    assert "3 of 26 table(s)" in sentence
+    assert "3 of 26 relation(s)" in sentence
     assert "egeria_user" in sentence
     assert sentence.endswith("."), (
         "sentence() ends with a full stop, not the decision -- see question()")
@@ -283,7 +283,7 @@ def test_both_axes_insufficient_produce_ONE_combined_message(world):
     assert sentence.count(".") == 1, (
         "one sentence, not two run together -- exactly one full stop", sentence)
     assert "download" in sentence, "the cost axis vanished from the combined ask"
-    assert "3 of 26 table(s)" in sentence, "the capability axis vanished"
+    assert "3 of 26 relation(s)" in sentence, "the capability axis vanished"
     # The combined template never otherwise names the demanding step, so
     # `asker`'s own capability reason keeps its step-name prefix here (unlike
     # the capability-only case above) -- REPLY-COPY-REVIEW-CREDENTIAL-AND-
@@ -419,11 +419,19 @@ def test_the_database_declarations_match_the_audit():
     """`DATABASE-STEP-CAPABILITY-AUDIT.md` is the source of truth for these,
     not this session's reading of the SQL. Changing one should mean arguing
     with that document — which is what this assertion makes you do."""
+    from resource_explorer.surveyors.analysis_catalog_reader import _load
     from resource_explorer.surveyors.database.survey_definition_adapter import (
         DATABASE_STEP_REGISTRY,
     )
 
-    assert {k: v.requires_capability for k, v in DATABASE_STEP_REGISTRY.items()} == {
+    # User steps (extensibility brief 2c) are not the audit's: each declares its
+    # tier in its own manifest, and the generated catalog entry carries it.
+    user_steps = {e.provided_by.get("step") or e.id: e.provided_by.get("credential_tier", "")
+                  for e in _load()["database"] if e.provided_by}
+    for step, tier in user_steps.items():
+        assert DATABASE_STEP_REGISTRY[step].requires_capability == ("" if tier in ("", "none") else "read"), step
+    assert {k: v.requires_capability for k, v in DATABASE_STEP_REGISTRY.items()
+            if k not in user_steps} == {
         # audit §1 — CORRECTED 2026-09-24/25: `pg_stat_user_tables`/`pg_stat_
         # user_indexes` were live-verified NOT gated by `pg_monitor` (see the
         # audit's "Correction" section). The strongest tier this step's own

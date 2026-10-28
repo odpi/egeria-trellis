@@ -12,7 +12,7 @@ pattern for pure front-end JS behaviour (see test_next_component_review.py,
 test_next_rail_states.py) -- there is no jsdom/browser harness here, so
 live behaviour (persistence across reload, actual click handling) was
 verified manually in a browser instead; see
-docs/design-notes/SIDEBAR-GROUP-COLLAPSE-IMPLEMENTED.md."""
+SIDEBAR-GROUP-COLLAPSE-IMPLEMENTED.md."""
 from __future__ import annotations
 
 from pathlib import Path

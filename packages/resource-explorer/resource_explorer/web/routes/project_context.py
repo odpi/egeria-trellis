@@ -18,7 +18,9 @@ from resource_explorer.registry import ProjectRegistry
 
 router = APIRouter()
 
-_VALID_STATUSES = {"unset", "personal", "linked", "deferred", "declined"}
+#: `unbound` is written by scripts/clear_egeria_pointers_after_reset.py (the Egeria project this context named
+#: is gone after a reset). It is not an answer: the publish gate treats it exactly as `unset`.
+_VALID_STATUSES = {"unset", "unbound", "personal", "linked", "deferred", "declined"}
 
 
 class ProjectContextData(BaseModel):

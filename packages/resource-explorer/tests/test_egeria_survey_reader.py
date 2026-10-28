@@ -96,3 +96,48 @@ class TestGetAnnotationsByReportGuid:
         asset_maker = MagicMock()
         asset_maker.get_asset_by_guid.side_effect = Exception("Egeria unreachable")
         assert get_annotations_by_report_guid(asset_maker, "report-guid-1") == []
+
+
+# ── jsonProperties: Egeria stores a JSON STRING; the reader hands back a dict ──
+
+_OFFENDING = '{"outcome": "recovered", "detail": {"chunks": 51729}}'
+
+
+def _report_with(json_properties):
+    props = {"annotationType": "Fake", "summary": "s"}
+    if json_properties is not _MISSING:
+        props["jsonProperties"] = json_properties
+    return {"reportedAnnotations": [{"relatedElement": {
+        "elementHeader": {"guid": "a1", "type": {"typeName": "Annotation"}},
+        "properties": props}}]}
+
+
+_MISSING = object()
+
+
+class TestJsonPropertiesNormalised:
+    def _jp(self, value):
+        from resource_explorer.surveyors.egeria_survey_reader import annotations_from_report
+        return annotations_from_report(_report_with(value))[0]["json_properties"]
+
+    def test_string_is_parsed_to_dict(self):
+        assert self._jp(_OFFENDING) == {"outcome": "recovered", "detail": {"chunks": 51729}}
+
+    def test_invalid_json_keeps_raw_text(self):
+        assert self._jp("{not json") == {"raw": "{not json"}
+
+    def test_non_object_json_keeps_raw_text(self):
+        assert self._jp("[1, 2]") == {"raw": "[1, 2]"}
+        assert self._jp("42") == {"raw": "42"}
+
+    def test_dict_passes_through(self):
+        assert self._jp({"a": 1}) == {"a": 1}
+
+    def test_empty_and_missing_become_empty_dict(self):
+        assert self._jp("") == {}
+        assert self._jp(None) == {}
+        assert self._jp("   ") == {}
+        assert self._jp(_MISSING) == {}
+
+    def test_other_type_keeps_text(self):
+        assert self._jp(7) == {"raw": "7"}

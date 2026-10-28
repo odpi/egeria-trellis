@@ -139,6 +139,81 @@ class TestProjectsRouter:
         assert resp.json()["disposition"] == "undecided"
         assert resp.json()["working_set_hidden"] is True
 
+    def test_list_projects_keeps_each_projects_disposition_and_hidden_flag_distinct(
+        self, client, registry,
+    ):
+        """2026-09-29 round 2 (PER-REQUEST-SERVER-LATENCY-ROUND-2-IMPLEMENTED.md): `list_projects` now batch-fetches
+        disposition/working-set-hidden/Egeria-linkage for every project in
+        three queries total instead of per-project round trips, joining in
+        Python. The failure mode a batch-then-join refactor risks is
+        crossed wires — project B ending up with project A's disposition —
+        so this pins several projects with DIFFERENT values on every one of
+        those three axes at once and checks each project gets its own,
+        not a neighbor's."""
+        from resource_explorer.registry import Project
+
+        registry.add(Project(
+            slug="secondproj", display_name="Second Project",
+            github_url="https://github.com/test/secondproj",
+        ))
+        registry.add(Project(
+            slug="thirdproj", display_name="Third Project",
+            github_url="https://github.com/test/thirdproj",
+        ))
+        registry.set_disposition("https://github.com/test/myproj", "using")
+        registry.set_disposition("https://github.com/test/secondproj", "investigating")
+        # thirdproj: no disposition set — stays "undecided".
+        registry.set_working_set_hidden("repo", "secondproj", True)
+        # myproj/thirdproj: working_set_hidden stays False.
+
+        resp = client.get("/api/projects/?include_ignored=true&include_working_set_hidden=true")
+        assert resp.status_code == 200
+        by_slug = {p["slug"]: p for p in resp.json()}
+        assert set(by_slug) == {"myproj", "secondproj", "thirdproj"}
+
+        assert by_slug["myproj"]["disposition"] == "using"
+        assert by_slug["myproj"]["working_set_hidden"] is False
+
+        assert by_slug["secondproj"]["disposition"] == "investigating"
+        assert by_slug["secondproj"]["working_set_hidden"] is True
+
+        assert by_slug["thirdproj"]["disposition"] == "undecided"
+        assert by_slug["thirdproj"]["working_set_hidden"] is False
+
+    def test_list_projects_keeps_each_projects_publish_status_distinct(self, client, registry):
+        """The third batched axis (`get_egeria_linkages_for_entities`, via
+        the `_PrefetchedLinkageRegistry` shim in `web/routes/projects.py`)
+        — a project with no GUID, one with a healthy GUID, and one with a
+        GUID whose linkage is marked stale must each get their OWN
+        `is_published`/`egeria_publish_note`, not get crossed by the batch
+        join."""
+        from resource_explorer.registry import Project
+
+        registry.add(Project(
+            slug="publishedproj", display_name="Published Project",
+            github_url="https://github.com/test/publishedproj",
+        ))
+        registry.add(Project(
+            slug="staleproj", display_name="Stale Project",
+            github_url="https://github.com/test/staleproj",
+        ))
+        registry.set_egeria_asset_guid("publishedproj", "guid-healthy")
+        registry.set_egeria_asset_guid("staleproj", "guid-stale")
+        registry.mark_egeria_linkage_stale("repo", "staleproj", stale_guid="guid-stale")
+
+        resp = client.get("/api/projects/")
+        by_slug = {p["slug"]: p for p in resp.json()}
+        assert set(by_slug) == {"myproj", "publishedproj", "staleproj"}
+
+        assert by_slug["myproj"]["is_published"] is False  # no GUID at all
+        assert by_slug["myproj"]["egeria_publish_note"] == ""
+
+        assert by_slug["publishedproj"]["is_published"] is True
+        assert by_slug["publishedproj"]["egeria_publish_note"] == ""
+
+        assert by_slug["staleproj"]["is_published"] is False
+        assert "stale" in by_slug["staleproj"]["egeria_publish_note"]
+
     def test_get_project_found(self, client):
         resp = client.get("/api/projects/myproj")
         assert resp.status_code == 200
@@ -473,7 +548,7 @@ def _write_rfa_activity_entry(registry, entry_id="entry-1", num_rfas=1, extra_an
 # ── /api/curate — tags, resource feedback, curator notes ───────────────────────
 
 class TestCurateTagsRouter:
-    def test_add_list_remove_tag(self, client):
+    def test_add_list_remove_tag(self, client, signed_in_curator):
         resp = client.post("/api/curate/tags/repo/myproj", json={"tag": "Gold-Tier"})
         assert resp.status_code == 200
         assert resp.json()["tag"] == "gold-tier"  # normalized lowercase
@@ -485,23 +560,23 @@ class TestCurateTagsRouter:
         assert resp.status_code == 200
         assert client.get("/api/curate/tags/repo/myproj").json() == []
 
-    def test_add_tag_rejects_empty(self, client):
+    def test_add_tag_rejects_empty(self, client, signed_in_curator):
         resp = client.post("/api/curate/tags/repo/myproj", json={"tag": "   "})
         assert resp.status_code == 400
 
-    def test_list_all_tags_with_counts(self, client):
+    def test_list_all_tags_with_counts(self, client, signed_in_curator):
         client.post("/api/curate/tags/repo/proj-a", json={"tag": "gold-tier"})
         client.post("/api/curate/tags/database/db-a", json={"tag": "gold-tier"})
         tags = {t["tag"]: t["count"] for t in client.get("/api/curate/tags").json()}
         assert tags["gold-tier"] == 2
 
-    def test_resources_by_tag(self, client):
+    def test_resources_by_tag(self, client, signed_in_curator):
         client.post("/api/curate/tags/repo/proj-a", json={"tag": "gold-tier"})
         resp = client.get("/api/curate/tags/gold-tier/resources")
         assert resp.status_code == 200
         assert {"entity_type": "repo", "entity_slug": "proj-a"} in resp.json()
 
-    def test_resources_by_tag_route_does_not_shadow_list_tags_route(self, client):
+    def test_resources_by_tag_route_does_not_shadow_list_tags_route(self, client, signed_in_curator):
         # Regression guard: /tags/{tag}/resources and /tags/{entity_type}/{slug}
         # are both 2-segment paths — declaration order matters (see curate.py's
         # comment). A resource literally named "resources" would be the edge
@@ -513,7 +588,7 @@ class TestCurateTagsRouter:
 
 
 class TestCurateFeedbackRouter:
-    def test_add_and_list_feedback(self, client):
+    def test_add_and_list_feedback(self, client, signed_in_curator):
         resp = client.post("/api/curate/feedback/repo/myproj", json={
             "rating": 4, "category": "quality", "message": "Schema looks stale",
         })
@@ -522,38 +597,44 @@ class TestCurateFeedbackRouter:
         assert len(listed) == 1
         assert listed[0]["message"] == "Schema looks stale"
 
-    def test_rejects_empty_message(self, client):
+    def test_rejects_empty_message(self, client, signed_in_curator):
         resp = client.post("/api/curate/feedback/repo/myproj", json={"message": ""})
         assert resp.status_code == 400
 
-    def test_rejects_out_of_range_rating(self, client):
+    def test_rejects_out_of_range_rating(self, client, signed_in_curator):
         resp = client.post("/api/curate/feedback/repo/myproj", json={"rating": 9, "message": "x"})
         assert resp.status_code == 400
 
-    def test_feedback_without_rating_is_allowed(self, client):
+    def test_feedback_without_rating_is_allowed(self, client, signed_in_curator):
         resp = client.post("/api/curate/feedback/repo/myproj", json={"message": "just a note"})
         assert resp.status_code == 200
         assert resp.json()["rating"] is None
 
 
 class TestCurateNotesRouter:
-    def test_add_list_delete_note(self, client):
+    def test_add_list_note_and_signed_note_is_append_only(self, client, signed_in_curator):
         resp = client.post("/api/curate/notes/repo/myproj", json={"note": "Needs a better README"})
         assert resp.status_code == 200
         note_id = resp.json()["id"]
 
         listed = client.get("/api/curate/notes/repo/myproj").json()
-        assert len(listed) == 1
+        assert len(listed) == 1 and listed[0]["author"] == "dan"
 
+        # Signed notes are append-only (owner ruling 2026-10-01).
         resp = client.delete(f"/api/curate/notes/{note_id}")
-        assert resp.status_code == 200
+        assert resp.status_code == 409
+        assert len(client.get("/api/curate/notes/repo/myproj").json()) == 1
+
+    def test_delete_legacy_unsigned_note(self, client, registry, signed_in_curator):
+        note_id = registry.add_curator_note("repo", "myproj", "from before authors")["id"]
+        assert client.delete(f"/api/curate/notes/{note_id}").status_code == 200
         assert client.get("/api/curate/notes/repo/myproj").json() == []
 
-    def test_rejects_empty_note(self, client):
+    def test_rejects_empty_note(self, client, signed_in_curator):
         resp = client.post("/api/curate/notes/repo/myproj", json={"note": "  "})
         assert resp.status_code == 400
 
-    def test_delete_nonexistent_note_404s(self, client):
+    def test_delete_nonexistent_note_404s(self, client, signed_in_curator):
         resp = client.delete("/api/curate/notes/nonexistent-id")
         assert resp.status_code == 404
 
@@ -634,17 +715,14 @@ class TestCurateComponentVerdictsRouter:
         ).json()
         assert [h["verdict"] for h in history] == ["rejected", "accepted"]
 
-    def test_accepting_with_no_underlying_finding_reports_a_materialization_error(self, client):
-        """The verdict itself still saves — a curator's decision is real
-        independent of whether there's anything left to act on — but nothing
-        is silently skipped: the response says materialization was attempted
-        and could not proceed."""
+    def test_accepting_with_no_underlying_finding_still_saves_and_writes_nothing(self, client):
+        """Accept is a decision only (Brief A follow-up 1): the verdict saves, and nothing is attempted."""
         resp = client.post("/api/curate/component-verdicts/repo/myproj", json={
             "scope_locator": "src/never-surveyed", "verdict": "accepted",
         })
         assert resp.status_code == 200
         assert resp.json()["verdict"] == "accepted"
-        assert resp.json()["materialization"]["status"] == "error"
+        assert "materialization" not in resp.json() and resp.json()["in_egeria"] is False
 
     def test_rejected_and_retyped_never_attempt_materialization(self, client, registry):
         registry.upsert_finding("myproj", "architecture_recovery", [{
@@ -661,31 +739,21 @@ class TestCurateComponentVerdictsRouter:
         assert "materialization" not in rejected.json()
         assert "materialization" not in retyped.json()
 
-    def test_accepting_a_real_component_materializes_it(self, client, registry):
+    def test_accepting_a_real_component_does_not_materialize_it(self, client, registry):
+        """Publish writes it (architecture_publish); Accept only records the decision."""
         registry.upsert_finding("myproj", "architecture_recovery", [{
             "check_name": "component", "label": "manifest",
             "detail": {"name": "svc", "type": "Software Service", "perspective": "deployment"},
         }], surveyed_at="2026-08-30T00:00:00", scope_locator="src/foo")
 
         with patch("resource_explorer.surveyors.arch_recovery.materializer.ComponentMaterializer") as MockCls:
-            MockCls.return_value.materialize.return_value = {
-                "status": "materialized", "guid": "guid-1",
-                "qualified_name": "SolutionComponent::repo::myproj::src/foo",
-            }
             resp = client.post("/api/curate/component-verdicts/repo/myproj", json={
                 "scope_locator": "src/foo", "verdict": "accepted",
             })
 
         assert resp.status_code == 200
-        materialize_call = MockCls.return_value.materialize.call_args
-        assert materialize_call.args == ("repo", "myproj", "src/foo")
-        assert materialize_call.kwargs["name"] == "svc"
-        assert materialize_call.kwargs["component_type"] == "Software Service"
-        assert materialize_call.kwargs["perspective"] == "deployment"
-        assert resp.json()["materialization"] == {
-            "status": "materialized", "guid": "guid-1",
-            "qualified_name": "SolutionComponent::repo::myproj::src/foo",
-        }
+        MockCls.return_value.materialize.assert_not_called()
+        assert "materialization" not in resp.json() and "promotion" not in resp.json()
 
 
 @pytest.mark.usefixtures("signed_in_curator", "mock_egeria_client_connections")
@@ -705,6 +773,16 @@ class TestCurateBlueprintVerdictsRouter:
                        "children": children or [], "parent": "", "oversized": oversized,
                        "target_size": 8, "run_scope": "", "not_a_claim": True},
         }], surveyed_at="2026-08-30T00:00:00")
+
+    def _accept_then_publish(self, client, registry, cluster="core-services"):
+        """Accept is a decision only (no write); what Publish runs for the blueprint is the workflow."""
+        resp = client.post("/api/curate/blueprint-verdicts/repo/myproj", json={
+            "perspective": "physical", "cluster_name": cluster, "verdict": "accepted",
+        })
+        assert resp.status_code == 200
+        assert resp.json()["verdict"] == "accepted" and "materialization" not in resp.json()
+        from resource_explorer.workflows.curate import materialize_blueprint_if_accepted
+        return materialize_blueprint_if_accepted(registry, "repo", "myproj", "physical", cluster, "accepted")
 
     def test_add_and_list_verdict(self, client):
         resp = client.post("/api/curate/blueprint-verdicts/repo/myproj", json={
@@ -747,13 +825,9 @@ class TestCurateBlueprintVerdictsRouter:
         })
         assert "materialization" not in resp.json()
 
-    def test_accepting_with_no_underlying_cluster_reports_a_materialization_error(self, client):
-        resp = client.post("/api/curate/blueprint-verdicts/repo/myproj", json={
-            "perspective": "physical", "cluster_name": "never-clustered", "verdict": "accepted",
-        })
-        assert resp.status_code == 200
-        assert resp.json()["verdict"] == "accepted"
-        assert resp.json()["materialization"]["status"] == "error"
+    def test_publishing_with_no_underlying_cluster_reports_a_materialization_error(self, client, registry):
+        out = self._accept_then_publish(client, registry, cluster="never-clustered")
+        assert out["status"] == "error"
 
     def test_accepting_with_every_member_already_materialized_is_fully_materialized(
         self, client, registry,
@@ -778,12 +852,8 @@ class TestCurateBlueprintVerdictsRouter:
             instance.resolve_member_guids.return_value = ({"web": "guid-web"}, [])
             instance.resolve_child_blueprint_guids.return_value = ({}, [])
 
-            resp = client.post("/api/curate/blueprint-verdicts/repo/myproj", json={
-                "perspective": "physical", "cluster_name": "core-services", "verdict": "accepted",
-            })
+            materialization = self._accept_then_publish(client, registry)
 
-        assert resp.status_code == 200
-        materialization = resp.json()["materialization"]
         assert materialization["status"] == "materialized"
         assert materialization["guid"] == "bp-guid-1"
         assert "unmaterialized_members" not in materialization
@@ -791,7 +861,10 @@ class TestCurateBlueprintVerdictsRouter:
 
         element_call = instance.materialize_blueprint_element.call_args
         assert element_call.args == ("repo", "myproj", "physical", "core-services")
-        assert element_call.kwargs["display_name"] == "core-services"
+        # The KIND is in the name (brief section 4): the sole top blueprint of a reading IS the
+        # repository's blueprint of that kind, and the qualifiedName's perspective slot carries the kind.
+        assert element_call.kwargs["display_name"] == "My Project Physical Blueprint"
+        assert "kind_slot" not in element_call.kwargs and element_call.kwargs["identifier"] == ""
 
     def test_partial_member_materialization_reports_unmaterialized_members_and_still_enqueues(
         self, client, registry,
@@ -812,11 +885,8 @@ class TestCurateBlueprintVerdictsRouter:
             instance.resolve_member_guids.return_value = ({"web": "guid-web"}, ["db"])
             instance.resolve_child_blueprint_guids.return_value = ({}, [])
 
-            resp = client.post("/api/curate/blueprint-verdicts/repo/myproj", json={
-                "perspective": "physical", "cluster_name": "core-services", "verdict": "accepted",
-            })
+            materialization = self._accept_then_publish(client, registry)
 
-        materialization = resp.json()["materialization"]
         assert materialization["status"] == "partial"
         assert materialization["unmaterialized_members"] == ["db"]
         assert materialization["enqueued_membership_rows"] == 1  # only "web", the ready one
@@ -837,11 +907,9 @@ class TestCurateBlueprintVerdictsRouter:
             instance.resolve_member_guids.return_value = ({}, [])
             instance.resolve_child_blueprint_guids.return_value = ({"core-services-sub": "bp-guid-child"}, [])
 
-            resp = client.post("/api/curate/blueprint-verdicts/repo/myproj", json={
-                "perspective": "physical", "cluster_name": "core-services", "verdict": "accepted",
-            })
+            out = self._accept_then_publish(client, registry)
 
-        assert resp.json()["materialization"]["enqueued_membership_rows"] == 1
+        assert out["enqueued_membership_rows"] == 1
         child_call = instance.resolve_child_blueprint_guids.call_args
         assert child_call.args[-1] == ["core-services-sub"]
 
@@ -857,16 +925,12 @@ class TestCurateBlueprintVerdictsRouter:
             instance.resolve_member_guids.return_value = ({}, ["web"])
             instance.resolve_child_blueprint_guids.return_value = ({}, [])
 
-            client.post("/api/curate/blueprint-verdicts/repo/myproj", json={
-                "perspective": "physical", "cluster_name": "core-services", "verdict": "accepted",
-            })
+            self._accept_then_publish(client, registry)
 
         assert instance.materialize_blueprint_element.call_args.kwargs["oversized"] is True
 
-    def test_egeria_unreachable_still_saves_the_verdict(self, client, registry):
-        """Same non-fatal-but-visible contract as the component route: the
-        verdict is real regardless of whether Egeria could be reached just
-        now."""
+    def test_egeria_unreachable_is_reported_by_the_publish_and_the_verdict_stands(self, client, registry):
+        """The verdict is saved at Accept; the unreachable Egeria is said by the Publish write."""
         self._seed_cluster(registry, members=["web"])
         from resource_explorer.surveyors.arch_recovery.blueprint_materializer import (
             BlueprintMaterializationError,
@@ -875,18 +939,23 @@ class TestCurateBlueprintVerdictsRouter:
                   "BlueprintMaterializer") as MockCls:
             MockCls.return_value.materialize_blueprint_element.side_effect = \
                 BlueprintMaterializationError("Could not connect to Egeria")
-            resp = client.post("/api/curate/blueprint-verdicts/repo/myproj", json={
-                "perspective": "physical", "cluster_name": "core-services", "verdict": "accepted",
-            })
+            out = self._accept_then_publish(client, registry)
 
-        assert resp.status_code == 200
-        assert resp.json()["verdict"] == "accepted"
-        assert "Could not connect to Egeria" in resp.json()["materialization"]["error"]
+        assert "Could not connect to Egeria" in out["error"]
+        assert client.get("/api/curate/blueprint-verdicts/repo/myproj").json()["physical::core-services"]["verdict"] == "accepted"
 
 
 # ── /api/schedules — per-resource + global overview ─────────────────────────────
 
 class TestSchedulesRouter:
+    @pytest.fixture(autouse=True)
+    def _zone_access_open(self, monkeypatch):
+        """Brief Z2 round 2: creating a schedule asks the access check; no zone in use here, and a signed-in
+        person for the check (the route's own sign-in handling is untouched)."""
+        from tests.zone_fakes import open_access
+
+        return open_access(monkeypatch, caller_if_none="zone2-tester")
+
     def test_save_and_get_schedule(self, client):
         resp = client.post("/api/schedules/repo/myproj", json={"analysis_id": "security_scan", "schedule": "weekly"})
         assert resp.status_code == 200
@@ -955,6 +1024,13 @@ class TestRfaRouter:
         # pyegeria clients, in test_rfa_egeria_sync.py.
         with patch("resource_explorer.rfa_egeria_sync.sync_rfa_action") as mock_sync:
             yield mock_sync
+
+    @pytest.fixture(autouse=True)
+    def _open_access(self, monkeypatch):
+        """Brief Z3: a status PATCH checks its Egeria ToDo write first; no zone in use, a signed-in caller."""
+        from tests.zone_fakes import open_access
+
+        open_access(monkeypatch, caller_if_none="tester")
 
     def test_list_rfas_defaults_to_open(self, client, registry):
         _write_rfa_activity_entry(registry)
@@ -1050,6 +1126,13 @@ class TestRfaNotesRouter:
         with patch("resource_explorer.rfa_egeria_sync.sync_rfa_action"), \
              patch("resource_explorer.rfa_egeria_sync.sync_rfa_note"):
             yield
+
+    @pytest.fixture(autouse=True)
+    def _open_access(self, monkeypatch):
+        """Brief Z3: a status PATCH checks its Egeria ToDo write first; no zone in use, a signed-in caller."""
+        from tests.zone_fakes import open_access
+
+        open_access(monkeypatch, caller_if_none="tester")
 
     def test_defaults_to_empty(self, client, registry):
         _write_rfa_activity_entry(registry)
@@ -1238,10 +1321,10 @@ class TestQuestionCatalogWriteRoutes:
         import csv as csv_mod
         from resource_explorer.surveyors import question_catalog_writer as qcw
 
-        header = ["Question", "Funnel Stage", "Why is this important?", "Rationale/Source",
+        header = ["Question ID", "Question", "Funnel Stage", "Why is this important?", "Rationale/Source",
                   "Answering Analysis", "Answering Mechanism", "Steward", "Purposes",
                   "Catalog History", "Status"]
-        row = {"Question": "Is this repository actively maintained?", "Funnel Stage": "Scouting",
+        row = {"Question ID": "Q-0001", "Question": "Is this repository actively maintained?", "Funnel Stage": "Scouting",
                "Why is this important?": "", "Rationale/Source": "", "Answering Analysis": "",
                "Answering Mechanism": "", "Steward": "X", "Purposes": "Select",
                "Catalog History": "", "Status": ""}
@@ -1263,7 +1346,21 @@ class TestQuestionCatalogWriteRoutes:
             "purposes": ["Select"],
         })
         assert resp.status_code == 200
-        assert resp.json() == {"status": "success"}
+        assert resp.json() == {"status": "success", "warnings": [], "question_id": "Q-0002"}
+
+    def test_add_question_route_accepts_find(self, client):
+        """Find is a purpose now (owner ruling 2026-10-13); the old hard-coded list 400'd it."""
+        resp = client.post("/api/analyses/question-catalog/questions", json={
+            "question": "Which databases hold customer addresses?", "purposes": ["Find", "Integrate"]})
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["warnings"] == []
+
+    def test_add_question_route_accepts_an_off_list_purpose_with_a_warning(self, client):
+        resp = client.post("/api/analyses/question-catalog/questions", json={
+            "question": "Is this worth a look?", "purposes": ["Wander"]})
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["warnings"] == [
+            "purpose 'Wander' is not in the investigation-purposes list; kept as written"]
 
     def test_add_question_route_400s_on_duplicate_text(self, client):
         """The route-level proof of the append-only refusal: posting the
@@ -1301,11 +1398,18 @@ class TestQuestionCatalogWriteRoutes:
 
 class TestEgeriaRules:
     def test_get_dataclass_rules_fallback(self, client):
+        # Brief I round 4: an unset EGERIA_PLATFORM_URL is NOT "no Egeria" (the configured default
+        # is the platform). The local fallback is what a signed-in reader gets when Egeria cannot
+        # be read — here the test guard refuses to build a real client.
         import os
+
+        from resource_explorer.auth import create_access_token
+
+        token = create_access_token(user_id="dan", egeria_token="tok-dan")
         with patch.dict(os.environ, {}, clear=False):
             if "EGERIA_PLATFORM_URL" in os.environ:
                 del os.environ["EGERIA_PLATFORM_URL"]
-            resp = client.get("/api/egeria/rules/dataclasses")
+            resp = client.get("/api/egeria/rules/dataclasses", headers={"Authorization": f"Bearer {token}"})
             assert resp.status_code == 200
             rules = resp.json()
             assert len(rules) == 6
@@ -1337,7 +1441,12 @@ class TestEgeriaRules:
                 MockRD.return_value.find_valid_value_definitions.return_value = mock_find_response
                 MockDD.return_value.get_guid_for_name.return_value = "dummy-guid"
                 
-                resp = client.get("/api/egeria/rules/dataclasses")
+                from resource_explorer.auth import create_access_token
+
+                # Brief I: the rules are read as the signed-in reader (their Egeria token).
+                token = create_access_token(user_id="dan", egeria_token="tok-dan")
+                resp = client.get("/api/egeria/rules/dataclasses",
+                                  headers={"Authorization": f"Bearer {token}"})
                 assert resp.status_code == 200
                 rules = resp.json()
                 

@@ -1,0 +1,52 @@
+openapi: 3.0.3
+info: {title: Orders Service, version: 2.1.0}
+servers: [{url: https://orders.example/api}]
+tags: [{name: orders, description: Order handling}]
+security: [{bearerAuth: []}]
+paths:
+  /orders:
+    get:
+      tags: [orders]
+      summary: List orders
+      operationId: listOrders
+      parameters:
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema: {type: array, items: {$ref: "#/components/schemas/Order"}}
+    post:
+      tags: [orders]
+      summary: Place an order
+      operationId: placeOrder
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/NewOrder"}
+      responses:
+        "201": {description: created, content: {application/json: {schema: {$ref: "#/components/schemas/Order"}}}}
+        "422": {description: invalid}
+  /orders/{orderId}:
+    delete:
+      tags: [orders]
+      summary: Cancel an order
+      security: []
+      parameters:
+        - {name: orderId, in: path, required: true, schema: {type: string}}
+      responses:
+        "204": {description: gone}
+  /health:
+    get:
+      summary: Liveness
+      responses: {"200": {description: ok}}
+components:
+  securitySchemes:
+    bearerAuth: {type: http, scheme: bearer}
+  parameters:
+    Limit: {name: limit, in: query, required: false, schema: {type: integer}}
+  schemas:
+    Order: {type: object, properties: {id: {type: string}, total: {type: number}}}
+    NewOrder: {type: object, required: [sku], properties: {sku: {type: string}}}

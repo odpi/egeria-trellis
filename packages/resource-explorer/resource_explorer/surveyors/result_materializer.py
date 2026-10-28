@@ -106,43 +106,43 @@ ANN_INACCESSIBLE_FILES = "Inaccessible files"
 
 # ── Metric keys (Relational*Metric, File*Metric) ───────────────────────────
 
-M_DB_NAME = "databaseName"
-M_DB_SCHEMA_COUNT = "schemaCount"
-M_DB_TABLE_COUNT = "tableCount"
-M_DB_COLUMN_COUNT = "columnCount"
-M_DB_SIZE = "dataSize"
-M_LAST_STATS_RESET = "lastStatisticsReset"
+M_DB_NAME = "Database Name"
+M_DB_SCHEMA_COUNT = "Number of schemas"
+M_DB_TABLE_COUNT = "Number of tables"
+M_DB_COLUMN_COUNT = "Number of columns"
+M_DB_SIZE = "Data size"
+M_LAST_STATS_RESET = "Last statistics reset"
 
-M_SCHEMA_QNAME = "qualifiedSchemaName"
-M_SCHEMA_NAME = "schemaName"
-M_SCHEMA_TOTAL_TABLE_SIZE = "totalTableSize"
-M_VIEW_COUNT = "viewCount"
-M_MAT_VIEW_COUNT = "materializedViewCount"
+M_SCHEMA_QNAME = "Qualified Schema Name"
+M_SCHEMA_NAME = "Schema Name"
+M_SCHEMA_TOTAL_TABLE_SIZE = "Total size of tables"
+M_VIEW_COUNT = "Number of views"
+M_MAT_VIEW_COUNT = "Number of materialized views"
 
-M_TABLE_QNAME = "tableQualifiedName"
-M_TABLE_NAME = "tableName"
-M_TABLE_TYPE = "tableType"
-M_TABLE_OWNER = "tableOwner"
-M_TABLE_SIZE = "tableSize"
-M_ROWS_INSERTED = "numberOfRowsInserted"
-M_ROWS_UPDATED = "numberOfRowsUpdated"
-M_ROWS_DELETED = "numberOfRowsDeleted"
-M_IS_POPULATED = "isPopulated"
-M_HAS_INDEXES = "hasIndexes"
-M_HAS_RULES = "hasRules"
-M_HAS_TRIGGERS = "hasTriggers"
-M_HAS_ROW_SECURITY = "hasRowSecurity"
-M_QUERY_DEFINITION = "queryDefinition"
+M_TABLE_QNAME = "Table Qualified Name"
+M_TABLE_NAME = "Table Name"
+M_TABLE_TYPE = "Table Type"
+M_TABLE_OWNER = "Resource Owner"
+M_TABLE_SIZE = "Table Size"
+M_ROWS_INSERTED = "Number Of Rows Inserted"
+M_ROWS_UPDATED = "Number Of Rows Updated"
+M_ROWS_DELETED = "Number Of Rows Deleted"
+M_IS_POPULATED = "Is Populated"
+M_HAS_INDEXES = "Has Indexes"
+M_HAS_RULES = "Has Rules"
+M_HAS_TRIGGERS = "Has Triggers"
+M_HAS_ROW_SECURITY = "Has Row Security"
+M_QUERY_DEFINITION = "Query Definition"
 
-M_COLUMN_QNAME = "columnQualifiedName"
-M_COLUMN_NAME = "columnName"
-M_COLUMN_SIZE = "columnSize"
-M_COLUMN_TYPE = "columnDataType"
-M_COLUMN_NOT_NULL = "columnNotNull"
-M_AVERAGE_WIDTH = "averageColumnWidth"
-M_DISTINCT_VALUES = "numberOfDistinctValues"
-M_MOST_COMMON_VALUES = "mostCommonValues"
-M_MOST_COMMON_FREQS = "mostCommonValuesFrequency"
+M_COLUMN_QNAME = "Column qualified name"
+M_COLUMN_NAME = "Column name"
+M_COLUMN_SIZE = "Column size"
+M_COLUMN_TYPE = "Column data type"
+M_COLUMN_NOT_NULL = "Not Null"
+M_AVERAGE_WIDTH = "Average Column Width"
+M_DISTINCT_VALUES = "Number Of Distinct Values"
+M_MOST_COMMON_VALUES = "Most Common Values"
+M_MOST_COMMON_FREQS = "Most Common Values Frequency"
 
 M_FILE_SIZE = "fileSize"
 M_FILE_CAN_READ = "canRead"
@@ -155,6 +155,60 @@ M_FILE_LAST_MODIFIED = "lastModifiedTime"
 M_FILE_LAST_ACCESSED = "lastAccessedTime"
 M_FILE_RECORD_COUNT = "recordCount"
 M_FILE_ASSET_TYPE = "assetTypeName"
+
+
+# Egeria's survey keys `resourceProperties` by each metric's DISPLAY NAME
+# (`PostgresDatabaseStatsExtractor` puts `Metric.getDisplayName()`; live-confirmed
+# in PROBES-2026-09-21.md as "Number Of Rows Inserted"). The M_* keys above are
+# those exact strings. `LEGACY_PROPERTY_NAMES` maps the camelCase propertyNames
+# RE used to read, so older stored/fixture shapes still resolve.
+LEGACY_PROPERTY_NAMES = {
+    "databaseName": "Database Name",
+    "schemaCount": "Number of schemas",
+    "tableCount": "Number of tables",
+    "columnCount": "Number of columns",
+    "dataSize": "Data size",
+    "lastStatisticsReset": "Last statistics reset",
+    "qualifiedSchemaName": "Qualified Schema Name",
+    "schemaName": "Schema Name",
+    "totalTableSize": "Total size of tables",
+    "viewCount": "Number of views",
+    "materializedViewCount": "Number of materialized views",
+    "tableQualifiedName": "Table Qualified Name",
+    "tableName": "Table Name",
+    "tableType": "Table Type",
+    "tableOwner": "Resource Owner",
+    "tableSize": "Table Size",
+    "numberOfRowsInserted": "Number Of Rows Inserted",
+    "numberOfRowsUpdated": "Number Of Rows Updated",
+    "numberOfRowsDeleted": "Number Of Rows Deleted",
+    "isPopulated": "Is Populated",
+    "hasIndexes": "Has Indexes",
+    "hasRules": "Has Rules",
+    "hasTriggers": "Has Triggers",
+    "hasRowSecurity": "Has Row Security",
+    "queryDefinition": "Query Definition",
+    "columnQualifiedName": "Column qualified name",
+    "columnName": "Column name",
+    "columnSize": "Column size",
+    "columnDataType": "Column data type",
+    "columnNotNull": "Not Null",
+    "averageColumnWidth": "Average Column Width",
+    "numberOfDistinctValues": "Number Of Distinct Values",
+    "mostCommonValues": "Most Common Values",
+    "mostCommonValuesFrequency": "Most Common Values Frequency",
+}
+
+
+def native_props(props) -> dict:
+    """A native annotation's resourceProperties keyed by Egeria's display
+    names. A legacy camelCase propertyName key is renamed; a display-name key
+    already present wins."""
+    out = dict(props or {})
+    for old, new in LEGACY_PROPERTY_NAMES.items():
+        if old in out and new not in out:
+            out[new] = out[old]
+    return out
 
 #: The views a native survey reports as tables. `tableType` comes from
 #: `information_schema.tables.table_type`, so these are its vocabulary.
@@ -186,6 +240,11 @@ def _as_float(value) -> float | None:
         return float(str(value).strip())
     except (TypeError, ValueError):
         return None
+
+
+def _blob_flag(value) -> int | None:
+    """A survey-blob boolean as 1/0; absent or None stays None (not read)."""
+    return None if not isinstance(value, bool) else (1 if value else 0)
 
 
 def _as_bool(value) -> int | None:
@@ -275,13 +334,13 @@ def database_rows_from_annotations(annotations: list[dict]) -> dict[str, list[di
     # comment on `database_table_activity.stats_reset`.
     stats_reset = None
     for ann in _annotations_of_type(annotations, ANN_DATABASE_MEASUREMENTS):
-        value = (ann.get("resource_properties") or {}).get(M_LAST_STATS_RESET)
+        value = (native_props(ann.get("resource_properties"))).get(M_LAST_STATS_RESET)
         if value:
             stats_reset = _text(value)
             break
 
     for ann in _annotations_of_type(annotations, ANN_SCHEMA_MEASUREMENTS):
-        props = ann.get("resource_properties") or {}
+        props = native_props(ann.get("resource_properties"))
         schema_name = _text(props.get(M_SCHEMA_NAME))
         if not schema_name:
             continue
@@ -297,7 +356,7 @@ def database_rows_from_annotations(annotations: list[dict]) -> dict[str, list[di
         })
 
     for ann in _annotations_of_type(annotations, ANN_TABLE_MEASUREMENTS):
-        props = ann.get("resource_properties") or {}
+        props = native_props(ann.get("resource_properties"))
         table_name = _text(props.get(M_TABLE_NAME))
         if not table_name:
             continue
@@ -364,7 +423,7 @@ def database_rows_from_annotations(annotations: list[dict]) -> dict[str, list[di
     # measurement, so collect them first and fold them into the profile row.
     frequent_values: dict[tuple[str, str, str], dict] = {}
     for ann in _annotations_of_type(annotations, ANN_COLUMN_VALUES):
-        props = ann.get("resource_properties") or {}
+        props = native_props(ann.get("resource_properties"))
         schema_name, table_name = _schema_table_of_column(props)
         column_name = _text(props.get(M_COLUMN_NAME))
         if not column_name:
@@ -381,7 +440,7 @@ def database_rows_from_annotations(annotations: list[dict]) -> dict[str, list[di
         }
 
     for ann in _annotations_of_type(annotations, ANN_COLUMN_MEASUREMENTS):
-        props = ann.get("resource_properties") or {}
+        props = native_props(ann.get("resource_properties"))
         column_name = _text(props.get(M_COLUMN_NAME))
         if not column_name:
             continue
@@ -569,7 +628,7 @@ def filesystem_rows_from_annotations(annotations: list[dict]) -> dict[str, list[
             })
 
     for ann in annotations:
-        props = ann.get("resource_properties") or {}
+        props = native_props(ann.get("resource_properties"))
         if not props or M_FILE_SIZE not in props:
             continue
         # A per-file measurement from `survey-data-file`, reached when the
@@ -681,16 +740,30 @@ def database_rows_from_survey_data(survey_data: dict) -> dict[str, list[dict]]:
         if not schema_name:
             continue
         schema_tables = schema.get("tables") or []
+        # Brief D 7f.2: the schema's size is the sum of its tables' sizes, but
+        # only when EVERY table in it was sized. One unread table makes any
+        # sum a confident wrong total, so the whole schema stays NULL then
+        # (the table rows beside it still carry what was read).
+        # A plain view owns no storage, so it is neither summed nor counted
+        # against the total.
+        table_sizes = [
+            _blob_int(t.get("size_bytes")) for t in schema_tables
+            if str(t.get("type") or "").upper().replace("_", " ") != "VIEW"
+        ]
+        schema_size = (
+            sum(table_sizes)
+            if table_sizes and all(s is not None for s in table_sizes) else None
+        )
         schemas.append({
             "schema_name": schema_name,
             "description": schema.get("description") or "",
             "table_count": len(schema_tables),
             "column_count": sum(len(t.get("columns") or []) for t in schema_tables),
             # The local surveyor does not separate views from tables at the
-            # schema level, and does not total schema size. NULL, not 0.
+            # schema level. NULL, not 0.
             "view_count": None,
             "mat_view_count": None,
-            "total_table_size_bytes": None,
+            "total_table_size_bytes": schema_size,
             "state": STATE_MEASURED,
         })
 
@@ -722,6 +795,15 @@ def database_rows_from_survey_data(survey_data: dict) -> dict[str, list[dict]]:
                 "column_count": len(table_columns),
                 "row_count": _blob_int(row_count),
                 "size_bytes": _blob_int(table.get("size_bytes")),
+                "table_bytes": _blob_int(table.get("table_bytes")),
+                "index_bytes": _blob_int(table.get("index_bytes")),
+                #: Egeria's Has Triggers / Has Rules / Has Row Security and the
+                #: materialized-view Is Populated / Has Indexes: NULL = not read.
+                "is_populated": _blob_flag(table.get("is_populated")),
+                "has_indexes": _blob_flag(table.get("has_indexes")),
+                "has_rules": _blob_flag(table.get("has_rules")),
+                "has_triggers": _blob_flag(table.get("has_triggers")),
+                "has_row_security": _blob_flag(table.get("has_row_security")),
                 "state": STATE_CATALOG_ESTIMATE if is_catalog_fallback else STATE_MEASURED,
             })
 
@@ -781,7 +863,8 @@ def database_rows_from_survey_data(survey_data: dict) -> dict[str, list[dict]]:
         sql_objects.append({
             "schema_name": view.get("schema") or view.get("schema_name") or "",
             "object_name": name,
-            "object_type": "view",
+            #: blobs written before materialized views were read have no kind
+            "object_type": "materialized_view" if view.get("kind") == "materialized_view" else "view",
             "definition": view.get("definition") or view.get("view_definition") or "",
             "depends_on_json": view.get("depends_on") or view.get("dependencies") or None,
             "column_lineage_json": view.get("column_lineage") or None,
@@ -968,14 +1051,37 @@ _DATABASE_BLOB_UNMEASURED = {
 }
 
 
+def _section_already_measured(registry, table: str, slug: str, surveyed_at: str,
+                              source: str, section: str) -> bool:
+    """Did an earlier write under this exact key already record `section` as a
+    real attempt (measured or empty), or leave rows in `table`?"""
+    try:
+        if registry.query_detail_rows(table, slug, surveyed_at, source):
+            return True
+        cov = registry.get_section_coverage("database", slug, surveyed_at, source)
+    except Exception:
+        return False
+    entry = cov.get(section)
+    return bool(entry) and entry.get("state") != STATE_NOT_MEASURED
+
+
 def backfill_database_survey(
     registry,
     slug: str,
     surveyed_at: str,
     survey_data: dict,
     source: str = SOURCE_LOCAL,
+    merge: bool = False,
 ) -> dict[str, int]:
-    """Materialise one stored database survey blob into the detail tables."""
+    """Materialise one stored database survey blob into the detail tables.
+
+    `merge=True` (Brief D 7f.1): this key already has a snapshot, because the
+    steps of one scan share a `surveyed_at`. `write_detail_rows` REPLACES per
+    key, so a later step that collected nothing for a section (activity,
+    profiles, grants, settings) must not delete what an earlier step wrote nor
+    overwrite its coverage with a "not measured" marker. The sections the blob
+    carries in full (schemas, tables, columns, views) are rewritten as before.
+    """
     rows = database_rows_from_survey_data(survey_data)
     sections = {
         "database_schemas": SECTION_SCHEMAS,
@@ -991,6 +1097,9 @@ def backfill_database_survey(
     }
     written: dict[str, int] = {}
     for table, table_rows in rows.items():
+        if merge and not table_rows and _section_already_measured(
+                registry, table, slug, surveyed_at, source, sections[table]):
+            continue
         written[table] = registry.write_detail_rows(
             table,
             slug,
@@ -1000,6 +1109,9 @@ def backfill_database_survey(
             coverage_section=sections[table],
         )
     for table, (section, detail) in _DATABASE_BLOB_UNMEASURED.items():
+        if merge and table not in rows and _section_already_measured(
+                registry, table, slug, surveyed_at, source, section):
+            continue
         if table in rows:
             # Actually measured this run (currently only possible for
             # database_grants, when privilege_audit ran) — do not overwrite

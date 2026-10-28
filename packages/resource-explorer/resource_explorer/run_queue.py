@@ -53,6 +53,7 @@ import socket
 import threading
 from collections.abc import Callable
 from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass
 
 log = logging.getLogger(__name__)
@@ -130,6 +131,13 @@ def requested_by() -> str:
 class RunOutcome:
     state: str  # "succeeded" | "failed"
     error: str = ""
+
+    def __post_init__(self) -> None:
+        # One place for EVERY handler: an error text can carry a connection string or token from
+        # somebody else's exception, and this is what finish_run stores and the UI shows.
+        from resource_explorer.secret_redaction import scrub_text
+
+        object.__setattr__(self, "error", scrub_text(self.error))
 
 
 # ── the handlers, one per kind ───────────────────────────────────────────────
@@ -248,39 +256,135 @@ def _handle_curate_commit(target: dict, result_ref: str) -> RunOutcome:
                       error=("failed: " + ", ".join(failed)) if failed else "")
 
 
+def _handle_catalogue_commit(target: dict, result_ref: str) -> RunOutcome:
+    """Catalogue → for a database. Every step writes its outcome to the curation
+    record; the run fails only if a step did (the record says which)."""
+    from resource_explorer.catalogue_commit import execute_commit, run_with_loop
+    from resource_explorer.registry import ProjectRegistry
+
+    # pyegeria's sync wrappers need an event loop on the executing thread
+    rec = run_with_loop(execute_commit, ProjectRegistry(), target["curation_id"])
+    failed = [s["name"] for s in rec.get("steps", []) if s.get("state") == "failed"]
+    return RunOutcome(state="failed" if failed else "succeeded",
+                      error=("failed: " + ", ".join(failed)) if failed else "")
+
+
 def _handle_materialize_components(target: dict, result_ref: str) -> RunOutcome:
     """Accepted components become Egeria SolutionComponents, one at a time,
-    after a branch verdict. Each result is recorded on the activity entry;
-    the run fails only if a materialization did (the detail says which)."""
+    after a branch verdict, then each is promoted out of RE's draft zone (the configured-only zone
+    rule). Run with an event loop on this thread, like its sibling `_handle_curate_commit`: pyegeria's
+    sync wrappers need one and a worker thread has none. The run fails if a materialization did OR a
+    promotion did; the summary says which, separately."""
+    from resource_explorer.catalogue_commit import run_with_loop
+
+    return run_with_loop(_materialize_components, target)
+
+
+def _materialize_components(target: dict) -> RunOutcome:
     from resource_explorer.registry import ProjectRegistry
-    from resource_explorer.workflows.curate import materialize_component_if_accepted
+    from resource_explorer.workflows.curate import (
+        NODE_PROMOTION_COMPONENT,
+        materialize_component_if_accepted,
+        promote_to_publish_zones,
+        record_promotion,
+    )
+
+    from resource_explorer.secret_redaction import scrub_text
 
     registry = ProjectRegistry()
     slug = target["slug"]
-    failed, done = [], 0
+    failed, promo_failed, done = [], [], 0
     for path in target.get("paths") or []:
         try:
             res = materialize_component_if_accepted(registry, "repo", slug, path, "accepted")
             if res and res.get("status") == "error":
-                failed.append(f"{path}: {res.get('error')}")
-            else:
-                done += 1
+                failed.append(scrub_text(f"{path}: {res.get('error')}"))
+                continue
+            guid = (res or {}).get("guid", "")
+            if guid:
+                promotion = promote_to_publish_zones(guid)
+                record_promotion(registry, slug, path, NODE_PROMOTION_COMPONENT, promotion)
+                if promotion.get("status") == "error":
+                    promo_failed.append(scrub_text(f"{path}: {promotion.get('error') or promotion.get('words')}"))
+                    continue
+            done += 1                      # counted only once the whole accept (element and zone) landed
         except Exception as exc:
-            failed.append(f"{path}: {type(exc).__name__}: {exc}")
-    return RunOutcome(state="failed" if failed else "succeeded",
-                      error=(f"{done} materialised; failed: " + "; ".join(failed)[:1500]) if failed else "")
+            failed.append(scrub_text(f"{path}: {type(exc).__name__}: {exc}"))
+    if not failed and not promo_failed:
+        return RunOutcome(state="succeeded")
+    parts = [f"{done} materialised"]
+    if failed:
+        parts.append("materialization failed: " + "; ".join(failed))
+    if promo_failed:
+        parts.append("promotion failed: " + "; ".join(promo_failed))
+    return RunOutcome(state="failed", error=" · ".join(parts)[:1500])
+
+
+def _handle_publish_architecture(target: dict, result_ref: str) -> RunOutcome:
+    """Publish for a repository's architecture: the accepted components, then the accepted blueprints, are
+    written to Egeria (architecture_publish.run_publish). Run with an event loop on this thread, like its
+    sibling `_handle_materialize_components`. The run fails when any item failed or was only partly written;
+    the per-item results are the proof rows the run wrote."""
+    from resource_explorer.catalogue_commit import run_with_loop
+
+    return run_with_loop(_publish_architecture, target, result_ref)
+
+
+def _publish_architecture(target: dict, result_ref: str) -> RunOutcome:
+    from resource_explorer.architecture_publish import FAILED, PARTIAL, run_publish
+    from resource_explorer.registry import ProjectRegistry
+
+    results = run_publish(ProjectRegistry(), target["slug"], target, result_ref)
+    bad = [r for r in results if r["status"] in (FAILED, PARTIAL)]
+    if not bad:
+        return RunOutcome(state="succeeded")
+    return RunOutcome(state="failed", error=" · ".join(
+        f"{r['name']}: {r['status']} · {r['words']}" for r in bad)[:1500])
+
+
+def _handle_engine_action(target: dict, result_ref: str) -> RunOutcome:
+    """An Egeria engine action RE claimed as an engine host (engine_host.py, E4). Runs as
+    `Daemon(ENGINE_HOST, requested_by)` (see `_run_as`), never as `_run_as_requester`'s RUN_QUEUE."""
+    from resource_explorer.engine_host import run_engine_action
+
+    run = current_run.get() or {}
+    state, error = run_engine_action(run.get("registry"), run.get("id", ""), target)
+    return RunOutcome(state=state, error=error)
 
 
 HANDLERS: dict[str, Callable[[dict, str], RunOutcome]] = {
     "curate_commit": _handle_curate_commit,
+    "catalogue_commit": _handle_catalogue_commit,
     "materialize_components": _handle_materialize_components,
+    "publish_architecture": _handle_publish_architecture,
     "analysis_run": _handle_analysis_run,
     "database_analysis_run": _handle_database_analysis_run,
     "stage_batch": _handle_stage_batch,
     "scouting_scan": _handle_scouting_scan,
     "survey_definition_run": _handle_survey_definition_run,
     "discovery_expand": _handle_discovery_expand,
+    "engine_action": _handle_engine_action,
 }
+
+
+#: Kinds whose rows are enqueued before their handler exists, and so are held QUEUED rather than claimed
+#: and failed with "no handler". Empty since E4 (DESIGN-RE-ENGINE-HOST-BY-EQUIVALENCE §5.1) registered the
+#: `engine_action` handler; kept as the mechanism for the next kind enqueued ahead of its handler.
+HELD_KINDS: frozenset[str] = frozenset()
+
+#: Kinds a person may never cancel from RE (web route and CLI; refused in `registry.cancel_queued_run`), in
+#: any state. An `engine_action` row stands for an Egeria engine action RE has already CLAIMED: cancelling
+#: the row would leave that action claimed in Egeria with nothing to complete it (C11: Egeria has no lease).
+#: Cancelling an engine action is Egeria's own call (C10), not in this slice. Held kinds are included.
+UNCANCELLABLE_KINDS: frozenset[str] = HELD_KINDS | frozenset({"engine_action"})
+
+#: Kinds run as an engine host, `Daemon(ENGINE_HOST, requested_by)`: owner, 2026-10-14, "when RE accepts an
+#: action or process for execution, it is acting as a daemon - there is no relationship to logged in users."
+ENGINE_HOST_KINDS = frozenset({"engine_action"})
+
+#: The row being executed (`{"id", "registry"}`), for a handler that must write its own outcome on the row
+#: before it tells Egeria (the engine-action handler). Set by `execute_run` around the handler only.
+current_run: "ContextVar[dict | None]" = ContextVar("re_current_run", default=None)
 
 
 # ── executing one claimed row ────────────────────────────────────────────────
@@ -322,57 +426,128 @@ class _Heartbeat:
         self._stop.set()
 
 
+# ── who a run acts as (Brief I, owner's Egeria-consistent ruling 2026-10-09) ──
+
+#: A person's own actions that are queued. Like Egeria's engine hosts, a queued write is
+#: committed under RE's daemon identity; the person's accountability is the recorded
+#: `requested_by` and the Ownership classification stamped with it. So these kinds MUST carry a
+#: requester: queued with none, they fail loudly rather than write anonymously on someone's behalf.
+#: (`materialize_components` is a run kind with a handler but nothing enqueues it today, so it is
+#: not listed; whoever starts queueing it adds it here.)
+PERSON_ACTION_KINDS = frozenset({"publish_architecture", "curate_commit", "catalogue_commit"})
+
+NO_REQUESTER_SENTENCE = ("this action was queued with no requester recorded; RE does not write to "
+                         "Egeria on a person's behalf without saying whose")
+
+
 @contextmanager
 def _run_as_requester(row: dict):
-    """Execute a claimed row attributed to the person who queued it.
-
-    **The interim shape, and it is deliberate** (plan §4, and see
-    `egeria_identity`'s module docstring): the row carries `requested_by` and
-    **no token**. An Egeria bearer token lives one hour and dies whenever the
-    platform restarts, while a queued survey may wait longer than that and
-    then run for sixteen minutes — so a token stored with the row would be
-    expired more often than not. Storing it in `runs.target` was rejected
-    outright (a credential in a plaintext JSON column), and an encrypted
-    column with a key to manage is out of scope for this pass.
-
-    So the worker authenticates to Egeria **as itself** and stamps
-    `Ownership` with `requested_by`. Egeria's provenance for such a publish
-    says the worker did it; the `Ownership` classification says whose it is,
-    and that is the attribution curate authorization actually reads. The gap
-    is real and named rather than papered over: closing it needs an
-    encrypted-at-rest credential store or a delegation token from Egeria.
-
-    A row with an empty `requested_by` is the worker's own service-account
-    work and runs with no caller at all, which is the correct attribution for
-    bootstrap heal, resync and the outbox drain.
-    """
-    from resource_explorer.a2a_auth import current_caller
-    from resource_explorer.egeria_identity import identity_for_user
+    """Execute a claimed row as `Daemon(RUN_QUEUE, requested_by)`: the daemon authenticates and
+    `Ownership` is stamped with `requested_by` (no token survives a queue; this is also how
+    Egeria's own engine hosts commit queued work). `current_caller` names the requester
+    (token-less), because the registry's user scoping reads it. A row with no requester is the
+    worker's own work: `Daemon(RUN_QUEUE)` with nobody recorded."""
+    from resource_explorer.a2a_auth import CallerIdentity, current_caller
+    from resource_explorer.egeria_clients import Daemon, DaemonReason, acting_as
 
     requester = (row.get("requested_by") or "").strip()
-    if not requester:
-        yield
-        return
-
-    identity = identity_for_user(requester)
-    # A service-account identity carries no token, so `use_identity` would
-    # clear the caller rather than publish one — and the caller is exactly
-    # what `Ownership` is read from. Set it directly, with the token left
-    # None so `apply_identity` mints a service-account token as before.
-    from resource_explorer.a2a_auth import CallerIdentity
-
     reset = current_caller.set(
-        CallerIdentity(
-            user_id=identity.user_id,
-            egeria_token=None,
-            auth_source="queued-run",
-            role="user",
-        )
-    )
+        CallerIdentity(user_id=requester, egeria_token=None, auth_source="queued-run", role="user")
+        if requester else None)
     try:
-        yield
+        with acting_as(Daemon(DaemonReason.RUN_QUEUE, requested_by=requester or None)):
+            yield
     finally:
         current_caller.reset(reset)
+
+
+@contextmanager
+def _run_as_engine_host(row: dict):
+    """Execute an engine-action row as `Daemon(ENGINE_HOST, requested_by=<requesterUserId>)`. No caller is
+    set: the engine host has no relationship to a signed-in person (owner, 2026-10-14). The requester is
+    recorded and stamped as Ownership by the handler; it is never a credential (native does the same:
+    `GovernanceEngineHandler.java:98-101`, `SurveyActionEngineHandler.java:302-331`)."""
+    from resource_explorer.a2a_auth import current_caller
+    from resource_explorer.egeria_clients import Daemon, DaemonReason, acting_as
+
+    requester = (row.get("requested_by") or "").strip()
+    reset = current_caller.set(None)
+    try:
+        with acting_as(Daemon(DaemonReason.ENGINE_HOST, requested_by=requester or None)):
+            yield
+    finally:
+        current_caller.reset(reset)
+
+
+def _run_as(row: dict):
+    """Who a claimed row runs as: the engine host for engine-host kinds, else `_run_as_requester`."""
+    if row.get("kind") in ENGINE_HOST_KINDS:
+        return _run_as_engine_host(row)
+    return _run_as_requester(row)
+
+
+def _first_sentence(text: str, limit: int = 240) -> str:
+    text = " ".join(str(text or "").split())
+    for i, ch in enumerate(text):
+        if ch == "." and (i + 1 == len(text) or text[i + 1] == " "):
+            text = text[:i]
+            break
+    return text[:limit]
+
+
+def _activity_words(registry, kind: str, target: dict, outcome: "RunOutcome") -> tuple[str, str]:
+    """(status, one sentence) for the activity entry of a run that just ended.
+
+    Says what happened. A failed commit names the step that failed and Egeria's/our own first sentence
+    about why, read from the curation record the handler already filled in.
+    """
+    slug = str(target.get("slug") or "") if isinstance(target, dict) else ""
+    ok = outcome.state == "succeeded"
+    status = "ok" if ok else "error"
+    if kind in ("curate_commit", "catalogue_commit"):
+        label = "Cataloging" if not ok else "Cataloged"
+        failed = []
+        steps = []
+        cid = target.get("curation_id") if isinstance(target, dict) else None
+        if cid:
+            from resource_explorer.curate_plan import Curations
+            rec = Curations(registry).get(cid) or {}
+            steps = rec.get("steps") or []
+            failed = [s for s in steps if s.get("state") == "failed"]
+        if ok:
+            done = sum(1 for s in steps if s.get("state") == "done")
+            return status, f"{label} {slug or 'the resource'}: {done} step(s) done."
+        if failed:
+            first = failed[0]
+            why = _first_sentence(first.get("detail") or outcome.error or "no reason recorded")
+            more = f" (and {len(failed) - 1} more step(s) failed)" if len(failed) > 1 else ""
+            return status, f"{label} {slug or 'the resource'} failed at step {first.get('name')}: {why}{more}."
+        return status, f"{label} {slug or 'the resource'} failed: {_first_sentence(outcome.error) or 'no reason recorded'}."
+    if kind == "materialize_components":
+        n = len(target.get("paths") or []) if isinstance(target, dict) else 0
+        if ok:
+            return status, f"Materialised {n} accepted component(s) of {slug or 'the resource'}."
+        return status, f"Materialising {n} accepted component(s) of {slug or 'the resource'} failed: {_first_sentence(outcome.error, 400) or 'no reason recorded'}."
+    if kind == "publish_architecture":
+        n = (len(target.get("paths") or []) + len(target.get("blueprints") or [])) if isinstance(target, dict) else 0
+        refused = len(target.get("not_permitted") or []) if isinstance(target, dict) else 0
+        if ok:
+            return status, (f"Published {n} accepted item(s) of {slug or 'the resource'}"
+                            + (f"; {refused} not permitted." if refused else "."))
+        return status, f"Publishing {n} accepted item(s) of {slug or 'the resource'} failed: {_first_sentence(outcome.error, 400) or 'no reason recorded'}."
+    if ok:
+        return status, f"{kind.replace('_', ' ')} finished."
+    return status, f"{kind.replace('_', ' ')} failed: {_first_sentence(outcome.error) or 'no reason recorded'}."
+
+
+def _close_activity(registry, result_ref: str, kind: str, target: dict, outcome: "RunOutcome") -> None:
+    """Every exit of a run writes the final status on its activity entry (the entry the route opened as
+    'running' and handed over as `result_ref`). A no-op when the handler already closed it. Not wrapped:
+    if the registry cannot be written the caller must see that, not a row quietly left 'running'."""
+    if not result_ref:
+        return
+    status, summary = _activity_words(registry, kind, target, outcome)
+    registry.close_activity_if_running(result_ref, status, summary)
 
 
 def execute_run(row: dict, registry=None) -> RunOutcome:
@@ -403,7 +578,17 @@ def execute_run(row: dict, registry=None) -> RunOutcome:
         error = f"no handler registered for run kind {kind!r}"
         log.error("run %s: %s", run_id, error)
         registry.finish_run(run_id, "failed", error=error)
-        return RunOutcome(state="failed", error=error)
+        outcome = RunOutcome(state="failed", error=error)
+        _close_activity(registry, result_ref, kind, target, outcome)
+        return outcome
+
+    if kind in PERSON_ACTION_KINDS and not (row.get("requested_by") or "").strip():
+        # A person's action with nobody recorded: never an anonymous daemon write (Brief I).
+        log.error("run %s (%s): %s", run_id, kind, NO_REQUESTER_SENTENCE)
+        registry.finish_run(run_id, "failed", error=NO_REQUESTER_SENTENCE)
+        outcome = RunOutcome(state="failed", error=NO_REQUESTER_SENTENCE)
+        _close_activity(registry, result_ref, kind, target, outcome)
+        return outcome
 
     registry.mark_run_running(run_id)
     if result_ref:
@@ -429,14 +614,27 @@ def execute_run(row: dict, registry=None) -> RunOutcome:
     try:
         from resource_explorer.observability import acquisition, llm_usage
 
-        with _Heartbeat(registry, run_id), _run_as_requester(row), \
-                llm_usage.usage_scope() as usage, \
-                acquisition.acquisition_scope() as acquired:
-            outcome = handler(target, result_ref)
+        run_reset = current_run.set({"id": run_id, "registry": registry})
+        try:
+            with _Heartbeat(registry, run_id), \
+                    _run_as(row), \
+                    llm_usage.usage_scope() as usage, \
+                    acquisition.acquisition_scope() as acquired:
+                outcome = handler(target, result_ref)
+        finally:
+            current_run.reset(run_reset)
     except Exception as exc:  # pragma: no cover — a handler is expected to catch its own
-        log.exception("run %s (%s) crashed", run_id, kind)
-        registry.finish_run(run_id, "failed", error=f"{type(exc).__name__}: {exc}")
-        return RunOutcome(state="failed", error=str(exc))
+        # Scrubbed by shape before it is logged or stored: a handler's exception can carry a connection
+        # string or token, and this catch-all writes the traceback, the run row and the outcome.
+        import traceback
+        from resource_explorer.secret_redaction import scrub_text
+
+        log.error("run %s (%s) crashed\n%s", run_id, kind, scrub_text(traceback.format_exc()))
+        crash = scrub_text(f"{type(exc).__name__}: {exc}")
+        registry.finish_run(run_id, "failed", error=crash)
+        outcome = RunOutcome(state="failed", error=crash)
+        _close_activity(registry, result_ref, kind, target, outcome)
+        return outcome
 
     # LLM cost for this run, recorded OUTSIDE the try above on purpose: the
     # handler has already succeeded by here, and a metrics sink must not be able
@@ -465,11 +663,29 @@ def execute_run(row: dict, registry=None) -> RunOutcome:
                       analysis_id=str(target.get("analysis_id") or "") if isinstance(target, dict) else "")
 
     registry.finish_run(run_id, outcome.state, error=outcome.error)
+    _close_activity(registry, result_ref, kind, target, outcome)
     log.info("run finished: id=%s kind=%s state=%s", run_id, kind, outcome.state)
     return outcome
 
 
 # ── the claim loop ───────────────────────────────────────────────────────────
+
+
+def _engine_request_types_here(kinds: list[str] | None) -> "set[str] | None":
+    """The engine-action request types THIS worker can run (built-in steps plus the Analytic Library steps
+    installed here), so an `engine_action` row for a step whose package this worker lacks stays queued for one
+    that has it. None when this claim cannot take an engine_action row at all. Unreadable is the empty set: no
+    engine_action row is taken (fail closed), every other kind is."""
+    if kinds is not None and "engine_action" not in kinds:
+        return None
+    try:
+        from resource_explorer.engine_host import supported_request_types
+
+        return set(supported_request_types())
+    except Exception as exc:  # noqa: BLE001 - never stop the queue for it; take no engine action instead
+        log.warning("run queue: could not read the engine host's request types (%s); no engine_action row is "
+                    "taken by this worker until it can", exc)
+        return set()
 
 
 def claim_and_execute_once(registry=None, *, kinds: list[str] | None = None) -> dict | None:
@@ -485,7 +701,11 @@ def claim_and_execute_once(registry=None, *, kinds: list[str] | None = None) -> 
 
     registry = registry or ProjectRegistry()
     identity = worker_identity()
-    row = registry.claim_next_run(identity, process_identity(), kinds=kinds)
+    if kinds is None and HELD_KINDS:
+        # "All kinds" means all kinds this worker can run: a held kind waits for its handler (see HELD_KINDS).
+        kinds = [k for k in registry.RUN_KINDS if k not in HELD_KINDS]
+    row = registry.claim_next_run(identity, process_identity(), kinds=kinds,
+                                  engine_request_types=_engine_request_types_here(kinds))
     if row is None:
         return None
     log.info("run claimed: id=%s kind=%s claimed_by=%s", row["id"], row["kind"], identity)
@@ -513,9 +733,7 @@ class QueueRunner:
 
     def _loop(self) -> None:
         from resource_explorer.concurrency import run_sync
-        from resource_explorer.registry import ProjectRegistry
 
-        registry = ProjectRegistry()
         while not self._stop.is_set():
             try:
                 # Through the shared bounded pool (step 2a's concurrency.py),
@@ -527,7 +745,10 @@ class QueueRunner:
                 # cannot deadlock against itself.
                 claimed = run_sync(lambda: claim_and_execute_once(kinds=self.kinds))
             except Exception:
-                log.exception("run-queue tick failed; continuing")
+                import traceback
+                from resource_explorer.secret_redaction import scrub_text
+
+                log.error("run-queue tick failed; continuing\n%s", scrub_text(traceback.format_exc()))
                 claimed = None
             if claimed is None:
                 if self._stop.wait(self.poll_interval):

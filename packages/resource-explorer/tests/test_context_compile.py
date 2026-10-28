@@ -581,6 +581,19 @@ class TestGapsAreJudgedNotListed:
         fl.fact.return_value = MagicMock(state="never_run", last_run_at="", can_run=["repo_x"])
         assert _judge_gap(fl, "x", "a")["reason"] == "has not run"
 
+    def test_not_established_is_a_short_cue_with_the_sentence_on_hover(self):
+        from unittest.mock import MagicMock
+
+        from resource_explorer.context_compile import _judge_gap
+
+        fl = MagicMock()
+        fl.fact.return_value = MagicMock(state="not_established", last_run_at="", can_run=[])
+        gap = _judge_gap(fl, "x", "a")
+        assert gap["state"] == "not_established", "the internal state name is unchanged"
+        assert gap["reason"] == "ran · result not attributable"
+        assert "cannot be credited" not in gap["reason"]
+        assert gap["explanation"] == "it ran, but nothing shows this analysis produced the result"
+
     def test_an_unjudgeable_gap_is_still_reported(self):
         """Fail-soft: a fact layer that cannot answer must not cost the compile,
         and an unjudged gap is still worth naming."""
@@ -1427,3 +1440,21 @@ class TestTheManifestCarriesEveryListsTotal:
     def test_only_packed_sections_appear(self, monkeypatch):
         c = compile_context(_registry({"repo_conventions": [_finding("a")]}), "x", "q", budget=6000)
         assert set(c.manifest["lists"]) <= {p["key"] for p in c.manifest["packed"]}
+
+
+class TestVulnerabilityQuestionBindsToCveScan:
+    """Walk 2026-10-12: "...known security vulnerabilities in its dependencies?" compiled without cve_scan. The
+    catalog binds cve_scan to "Are there outstanding CVEs?", which shares no token with it, so cve_scan ranked on
+    catalog position alone and was deferred below the section cap."""
+
+    QUESTION = "Does this repository have any known security vulnerabilities in its dependencies?"
+
+    def _every_analysis_has_a_result(self):
+        from resource_explorer.surveyors.analysis_catalog_reader import get_analyses
+        ids = [a["id"] for a in get_analyses("repo")]
+        return _registry({i: [_finding("c", "ok", "detail " * 40)] for i in ids})
+
+    def test_cve_scan_is_packed_not_deferred(self):
+        c = compile_context(self._every_analysis_has_a_result(), "x", self.QUESTION)
+        assert "cve_scan" in [p["key"] for p in c.manifest["packed"]]
+        assert "cve_scan" not in [d["key"] for d in c.manifest["deferred"]]

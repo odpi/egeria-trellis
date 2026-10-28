@@ -9,9 +9,25 @@ from typing import Any
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
+from resource_explorer.web.routes._annotation_items import build_annotation_items
+from resource_explorer.credential_crypto import (
+    CREDENTIAL_UNREADABLE_REASON,
+    CredentialUnreadableError,
+)
+
 log = logging.getLogger(__name__)
 
 router = APIRouter()
+
+
+def _get_database_for_use(registry, slug: str):
+    """get_database for a route that may CONNECT with the stored credential:
+    an unreadable credential is a clear 409 for this database only, never an
+    empty-password connect and never a pass-shaped result."""
+    try:
+        return registry.get_database(slug)
+    except CredentialUnreadableError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from None
 
 
 class DatabaseSummary(BaseModel):
@@ -35,8 +51,15 @@ class DatabaseSummary(BaseModel):
     egeria_host: str = ""
     egeria_url: str = ""
     egeria_server: str = ""
-    egeria_user: str = ""
     group_slug: str = ""
+    # "ok" | "none" | "unreadable" — a real marker from the registry, never the
+    # password. "unreadable" = a credential is stored but cannot be decrypted;
+    # `credential_reason` is then the fixed, secret-free display string.
+    credential_status: str = "none"
+    credential_reason: str = ""
+    # UTC ISO seconds of the last recorded credential change; None = before
+    # this was recorded.
+    credential_changed_at: str | None = None
     # 'undecided' when nobody has ever decided, same convention
     # `ProjectSummary.disposition` (projects.py) already uses — populated
     # once `repo_dispositions`' PK generalized to (entity_type, entity_slug)
@@ -70,6 +93,10 @@ class DatabaseSummary(BaseModel):
     # the same row it already reads for every other resource type — a repo or
     # filesystem row simply never sets this field.
     credential_capability: dict | None = None
+    # When the survey that carried that probe was taken (a stored row's own
+    # `surveyed_at`), so the visibility banner can say WHICH survey its counts
+    # are about instead of speaking for the whole page. "" when unknown.
+    credential_capability_at: str = ""
 
 
 class DatabaseRegistration(BaseModel):
@@ -90,9 +117,20 @@ class DatabaseRegistration(BaseModel):
     # Optional stored Egeria connection details
     egeria_url: str = ""
     egeria_server: str = ""
+    #: Ignored (owner, 2026-10-09): accepted only so an older caller is not refused; logged.
     egeria_user: str = ""
     egeria_password: str = ""
     group_slug: str = ""
+
+
+class ConnectionTestRequest(BaseModel):
+    """Body of the register form's "Test connection". Nothing is stored."""
+    host: str
+    port: int = 5432
+    database_name: str
+    db_type: str = "postgresql"
+    db_user: str = ""
+    db_password: str = ""
 
 
 class DatabaseCredentialsUpdate(BaseModel):
@@ -159,12 +197,15 @@ class EgeriaAnnotationItem(BaseModel):
 
 def _to_summary(db) -> DatabaseSummary:
     """Convert DatabaseEntity to DatabaseSummary."""
-    # Get latest survey data if available
+    # Get latest survey data if available. `get_latest_database_survey`
+    # (2026-09-29 round 1, PER-REQUEST-SERVER-LATENCY-IMPLEMENTED.md), not
+    # `get_database_surveys(...)[0]` — this route used
+    # to pay the full unbounded "every historical survey's full blob" fetch
+    # for a value that only ever needed the single newest row.
     import json
     from resource_explorer.registry import ProjectRegistry
     registry = ProjectRegistry()
-    surveys = registry.get_database_surveys(db.slug)
-    latest = surveys[0] if surveys else None
+    latest = registry.get_latest_database_survey(db.slug)
     disp = registry.get_disposition_for_entity("database", db.slug) or {}
 
     # The credential_capability probe's last result, if the survey_data blob
@@ -174,16 +215,23 @@ def _to_summary(db) -> DatabaseSummary:
     # rather than a dedicated table. Checked across all stored surveys, most
     # recent first, since a plain schema/statistics-only run after the probe
     # ran would otherwise silently hide a still-current capability reading.
+    #
+    # Uses `find_latest_database_survey_with_key` (2026-09-29 round 2,
+    # PER-REQUEST-SERVER-LATENCY-ROUND-2-IMPLEMENTED.md)
+    # rather than looping `surveys` (already fetched above for
+    # schema/table/column counts) — that method pushes the same
+    # newest-first "has this key" search into Postgres instead of
+    # rescanning every historical blob in Python a second time.
     credential_capability: dict | None = None
-    for row in surveys:
+    credential_capability_at = ""
+    cap_survey = registry.find_latest_database_survey_with_key(db.slug, "credential_capability")
+    if cap_survey is not None:
         try:
-            data = json.loads(row.get("survey_data") or "{}")
+            data = json.loads(cap_survey.get("survey_data") or "{}")
         except (ValueError, TypeError):
-            continue
-        cap = data.get("credential_capability")
-        if cap:
-            credential_capability = cap
-            break
+            data = {}
+        credential_capability = data.get("credential_capability") or None
+        credential_capability_at = str(cap_survey.get("surveyed_at") or "")
 
     from resource_explorer.egeria_linkage import describe_publish_status
     publish_status = describe_publish_status(
@@ -209,23 +257,46 @@ def _to_summary(db) -> DatabaseSummary:
         egeria_host=db.egeria_host or "",
         egeria_url=db.egeria_url or "",
         egeria_server=db.egeria_server or "",
-        egeria_user=db.egeria_user or "",
         group_slug=getattr(db, "group_slug", "") or "",
+        credential_status=getattr(db, "credential_status", "none") or "none",
+        credential_changed_at=getattr(db, "credential_changed_at", None),
+        credential_reason=(CREDENTIAL_UNREADABLE_REASON
+                           if getattr(db, "credential_status", "") == "unreadable" else ""),
         disposition=disp.get("disposition", "undecided"),
         working_set_hidden=registry.is_working_set_hidden("database", db.slug),
         credential_capability=credential_capability,
+        credential_capability_at=credential_capability_at,
         is_published=publish_status["is_published"],
         egeria_publish_note=publish_status["note"],
     )
 
 
-@router.get("/", response_model=list[DatabaseSummary])
-async def list_databases(db_type: str | None = None) -> list[DatabaseSummary]:
-    """List all registered databases, optionally filtered by type."""
+def _list_databases_sync(db_type: str | None) -> list[DatabaseSummary]:
     from resource_explorer.registry import ProjectRegistry
     registry = ProjectRegistry()
     databases = registry.list_databases(db_type=db_type)
     return [_to_summary(db) for db in databases]
+
+
+@router.get("/", response_model=list[DatabaseSummary])
+async def list_databases(db_type: str | None = None) -> list[DatabaseSummary]:
+    """List all registered databases, optionally filtered by type.
+
+    Wrapped in `asyncio.to_thread` (2026-09-29 round 2,
+    PER-REQUEST-SERVER-LATENCY-ROUND-2-IMPLEMENTED.md) — found live while
+    measuring round 2's gate numbers: `_to_summary` calls several
+    synchronous registry methods (including the round-2
+    `find_latest_database_survey_with_key`, a real query) directly inside
+    this `async def` handler, unwrapped. With only 3 registered databases
+    in the environment this was measured in, the effect wasn't a 68-project
+    -scale stall (`list_projects`'s round-1 bug) but it was still real:
+    `/api/auth/me`, which touches no database at all, was caught at 871ms
+    in a concurrent boot-sequence measurement, queued behind this same
+    event-loop-thread block. Same bug class and same fix as `list_projects`
+    (round 1) and `/questions` (BY-ANALYSIS-PROGRESSIVE-AND-GRAPH-IMPLEMENTED.md §2a) — this is a
+    third, independently-found instance.
+    """
+    return await asyncio.to_thread(_list_databases_sync, db_type)
 
 
 @router.get("/{slug}", response_model=DatabaseSummary)
@@ -233,7 +304,7 @@ async def get_database(slug: str) -> DatabaseSummary:
     """Get details for a specific database."""
     from resource_explorer.registry import ProjectRegistry
     registry = ProjectRegistry()
-    database = registry.get_database(slug)
+    database = registry.get_database(slug, allow_unreadable=True)
     if not database:
         raise HTTPException(status_code=404, detail=f"Database '{slug}' not found")
     return _to_summary(database)
@@ -260,14 +331,31 @@ async def get_analyses_last_activity(slug: str) -> dict[str, dict]:
     from resource_explorer.workflows.analysis import build_analysis_last_activity
 
     registry = ProjectRegistry()
-    if not registry.get_database(slug):
+    if not registry.get_database(slug, allow_unreadable=True):
         raise HTTPException(status_code=404, detail=f"Database '{slug}' not found")
 
     return build_analysis_last_activity(registry, "database", slug)
 
 
+@router.get("/{slug}/survey-results/boards")
+async def get_database_survey_results_boards(slug: str, stage: str = "") -> dict:
+    """The By-analysis contents board's cheap half for databases — see
+    `projects.py`'s identically-shaped route and `workflows.analysis.
+    list_survey_result_boards`'s docstring."""
+    from resource_explorer.registry import ProjectRegistry
+    from resource_explorer.workflows.analysis import list_survey_result_boards
+
+    registry = ProjectRegistry()
+    if not registry.get_database(slug, allow_unreadable=True):
+        raise HTTPException(status_code=404, detail=f"Database '{slug}' not found")
+
+    return await asyncio.to_thread(list_survey_result_boards, registry, "database", slug, stage)
+
+
 @router.get("/{slug}/survey-results")
-async def get_database_survey_results(slug: str, stage: str = "", include_empty: bool = False) -> dict:
+async def get_database_survey_results(
+    slug: str, stage: str = "", include_empty: bool = False, board_id: str = "",
+) -> dict:
     """The database equivalent of `projects.py`'s `GET /{slug}/survey-results`
     ("By analysis" in /next) — added because that pane was gated to
     `resourceType === 'repo'` on the honest grounds that the repo route reads
@@ -279,6 +367,9 @@ async def get_database_survey_results(slug: str, stage: str = "", include_empty:
     analyses have one; see that map's own docstring for the three that don't
     yet and why), not repo's curated multi-analysis groupings.
 
+    `board_id` (optional): one board only, for the /next By-analysis pane's
+    progressive fetch — see `projects.py`'s `get_survey_results` docstring.
+
     Off the event loop for the same reason as the repo route: the
     `db_derived`-backed readers recompute on every call and a slow one must
     not block other requests."""
@@ -286,11 +377,11 @@ async def get_database_survey_results(slug: str, stage: str = "", include_empty:
     from resource_explorer.workflows.analysis import build_survey_results
 
     registry = ProjectRegistry()
-    if not registry.get_database(slug):
+    if not registry.get_database(slug, allow_unreadable=True):
         raise HTTPException(status_code=404, detail=f"Database '{slug}' not found")
 
     return await asyncio.to_thread(
-        build_survey_results, registry, "database", slug, stage, include_empty,
+        build_survey_results, registry, "database", slug, stage, include_empty, board_id,
     )
 
 
@@ -302,20 +393,26 @@ async def get_database_schema_inventory_tree(slug: str) -> dict:
     UI's `survey_data` blob path). See `schema_inventory_tree()`'s own
     docstring for the shape.
 
+    Since slice A2.1 the schemas come from `catalogue_scope.resolve_node_set` (the
+    fullest, newest complete survey, native or local) and a `sources` block names
+    them; `schema_inventory_tree()` is still the local half of that merge.
+
     404s the same way `get_database_survey_results` does; `to_thread`
     since this walks every stored table/column row plus the credential
     probe, same reasoning as that route."""
+    from resource_explorer.catalogue_scope import resolve_node_set, sources_view
     from resource_explorer.registry import ProjectRegistry
-    from resource_explorer.surveyors.database.survey_definition_adapter import (
-        schema_inventory_tree,
-    )
 
     registry = ProjectRegistry()
-    if not registry.get_database(slug):
+    if not registry.get_database(slug, allow_unreadable=True):
         raise HTTPException(status_code=404, detail=f"Database '{slug}' not found")
 
-    tree = await asyncio.to_thread(schema_inventory_tree, registry, slug)
-    return tree or {"schemas": []}
+    # A2.1: the same resolved node set the Curate tree reads (`resolve_node_set`),
+    # not RE's own credential-scoped local survey alone. Each schema and table
+    # carries its `source` and as-of; `sources` names the surveys so the pane can
+    # say which one it reads and when the two disagree.
+    resolved = await asyncio.to_thread(resolve_node_set, registry, slug)
+    return {"schemas": resolved["schemas"], "sources": sources_view(resolved)}
 
 
 @router.get("/{slug}/questions")
@@ -331,31 +428,64 @@ async def get_database_questions(
     hardcoded to the repo registry (docs/Backlog.md's "scouting-questions was
     repo-only" entry). Delegates to `workflows.scouting.
     build_question_checklist` — same has_data scoring machinery the repo
-    route uses, keyed to `DATABASE_ANALYSIS_RESULTS_MAP` instead."""
+    route uses, keyed to `DATABASE_ANALYSIS_RESULTS_MAP` instead.
+
+    Off the event loop (BY-ANALYSIS-PROGRESSIVE-AND-GRAPH, 2026-09-28): a
+    live thread dump (`kill -USR1`, this file's own module docstring on the
+    dump handler) caught this route's `build_question_checklist` call
+    running SYNCHRONOUSLY on the main/event-loop thread, blocking every
+    other in-flight request -- including this same process's own
+    `to_thread`-wrapped `/survey-results` board reads, which cannot even
+    have their results delivered while the loop itself is stuck inside a
+    blocking DB call. `question_has_data` (`workflows/scouting.py`) reaches
+    the identical `db_derived`-backed readers `/survey-results` already
+    off-loads (`_db_derived_field_reader`'s `run_db_derived()`), so this had
+    the exact same "recomputes from stored rows on every call" cost as that
+    route -- it was just never wrapped. Same fix as `get_database_survey_
+    results`/`get_database_schema_inventory_tree` above, same reason."""
     from resource_explorer.registry import ProjectRegistry
     from resource_explorer.workflows.scouting import build_question_checklist
 
     registry = ProjectRegistry()
-    if not registry.get_database(slug):
+    if not registry.get_database(slug, allow_unreadable=True):
         raise HTTPException(status_code=404, detail=f"Database '{slug}' not found")
 
     persp_list = [p.strip() for p in (perspectives or "").split(",") if p.strip()]
     purp_list = [p.strip() for p in (purposes or "").split(",") if p.strip()]
-    return build_question_checklist(registry, "database", slug, phase, persp_list, purp_list)
+    return await asyncio.to_thread(
+        build_question_checklist, registry, "database", slug, phase, persp_list, purp_list,
+    )
+
+
+@router.post("/_test-connection")
+async def test_database_connection_before_register(req: ConnectionTestRequest) -> dict:
+    """Parity G2 / PI-015: the "Test connection" of test-then-register.
+
+    Connects with the typed credential (short timeout, off the event loop) and
+    answers with one sentence. Registers nothing, writes no row, logs no
+    credential; a refusal is a 200 whose status is "error", the same shape as
+    `/api/db-servers/_test-inline`, so the form shows the sentence either way.
+    """
+    from resource_explorer.credential_check import probe_database_connection
+
+    return await asyncio.to_thread(
+        probe_database_connection, req.db_type, req.host, req.port,
+        req.database_name, req.db_user, req.db_password)
 
 
 @router.post("/register", response_model=DatabaseSummary)
 async def register_database(req: DatabaseRegistration) -> DatabaseSummary:
     """Register a new database."""
+    from resource_explorer.egeria_host import default_egeria_host
     from resource_explorer.registry import DatabaseEntity, ProjectRegistry, ProjectStatus
-    from resource_explorer.web.routes._validation import validate_egeria_user
+    from resource_explorer.web.routes._validation import ignore_egeria_credentials
 
-    validate_egeria_user(req.egeria_user)
+    ignore_egeria_credentials(req, where="register database")
 
     registry = ProjectRegistry()
 
     # Check if slug already exists
-    existing = registry.get_database(req.slug)
+    existing = registry.get_database(req.slug, allow_unreadable=True)
     if existing:
         raise HTTPException(status_code=400, detail=f"Database '{req.slug}' already exists")
     
@@ -373,20 +503,68 @@ async def register_database(req: DatabaseRegistration) -> DatabaseSummary:
         last_surveyed_at="",
         db_user=req.db_user,
         db_password=req.db_password,
-        egeria_host=req.egeria_host,
+        egeria_host=default_egeria_host(req.host, req.egeria_host),
         egeria_url=req.egeria_url,
         egeria_server=req.egeria_server,
-        egeria_user=req.egeria_user,
-        egeria_password=req.egeria_password,
         group_slug=req.group_slug,
     )
     
     # Register in registry
     registry.register_database(database)
 
+    # One proof row naming who and when (PI-015's "saved · you · just now"
+    # reads it back). The summary carries the slug only: no credential, no
+    # user name, no host.
+    import uuid
+    from datetime import datetime, timezone
+
+    from resource_explorer.registry import ActivityEntry, current_user_id
+
+    registry.write_activity(ActivityEntry(
+        id=str(uuid.uuid4()), ts=datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        operation="register", intent="discovery", entity_type="database",
+        entity_slug=req.slug, entity_name=req.display_name, status="ok",
+        summary=f"Registered database {req.slug}", detail=current_user_id() or "",
+    ))
+
     _project_credential_to_omsecrets(req.slug, req.db_user, req.db_password)
 
     return _to_summary(database)
+
+
+@router.get("/{slug}/registration")
+async def get_database_registration(slug: str) -> dict:
+    """Who registered this database and when, read back from its registration
+    row. `registered_by` is "" when no registration row exists (a database
+    registered before rows were written, or by the CLI): unknown is said, not
+    guessed."""
+    from resource_explorer.registry import ProjectRegistry
+
+    registry = ProjectRegistry()
+    database = registry.get_database(slug, allow_unreadable=True)
+    if not database:
+        raise HTTPException(status_code=404, detail=f"Database '{slug}' not found")
+    rows = registry.list_activity(
+        entity_type="database", entity_slug=database.slug, operation="register", limit=1)
+    return {
+        "slug": database.slug,
+        "registered_at": database.registered_at or "",
+        "registered_by": (rows[0].get("detail") or "") if rows else "",
+    }
+
+
+@router.get("/{slug}/credential-drift")
+async def get_database_credential_drift(slug: str) -> dict:
+    """The drift check, as the CLI's `check-credential-drift` prints it:
+    whether RE's registry and the `.omsecrets` file both hold this database's
+    secrets collection. Collection presence only, never a value. `in_sync` is
+    None (not False, not True) when no `.omsecrets` path is configured."""
+    from resource_explorer.registry import ProjectRegistry
+
+    registry = ProjectRegistry()
+    if not registry.get_database(slug, allow_unreadable=True):
+        raise HTTPException(status_code=404, detail=f"Database '{slug}' not found")
+    return registry.check_credential_drift(slug)
 
 
 def _project_credential_to_omsecrets(slug: str, db_user: str, db_password: str) -> None:
@@ -421,15 +599,58 @@ async def update_database_credentials(slug: str, req: DatabaseCredentialsUpdate)
 
     registry = ProjectRegistry()
 
-    database = registry.get_database(slug)
+    database = registry.get_database(slug, allow_unreadable=True)
     if not database:
         raise HTTPException(status_code=404, detail=f"Database '{slug}' not found")
+
+    # Connect test BEFORE anything is stored or projected, against this
+    # database's own host/port/database_name; off the event loop. No bypass.
+    from resource_explorer.credential_check import (
+        CredentialCheckError,
+        check_database_credential,
+    )
+
+    try:
+        await asyncio.to_thread(
+            check_database_credential, database, req.db_user, req.db_password)
+    except CredentialCheckError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from None
 
     registry.update_database_credentials(slug, req.db_user, req.db_password)
     _project_credential_to_omsecrets(slug, req.db_user, req.db_password)
 
-    updated = registry.get_database(slug)
+    updated = registry.get_database(slug, allow_unreadable=True)
     return _to_summary(updated)
+
+
+class EgeriaHostUpdate(BaseModel):
+    """Request body for changing a database's Egeria-visible host (and nothing else)."""
+    egeria_host: str = ""
+
+
+@router.patch("/{slug}/egeria-host")
+async def update_database_egeria_host(slug: str, req: EgeriaHostUpdate) -> dict:
+    """Change ONLY this database's egeria_host. Same write check as the other database edits (an update on
+    the database's own element). Says so when Egeria already holds elements under the old address: they
+    are not changed here."""
+    from resource_explorer.egeria_host import NOTE_IN_EGERIA, check_egeria_host, default_egeria_host
+    from resource_explorer.registry import ProjectRegistry
+    from resource_explorer.web.routes.curate import authorize_resource_write
+
+    registry = ProjectRegistry()
+    database = registry.get_database(slug, allow_unreadable=True)
+    if not database:
+        raise HTTPException(status_code=404, detail=f"Database '{slug}' not found")
+    try:
+        value = default_egeria_host(database.host, check_egeria_host(req.egeria_host))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from None
+    await authorize_resource_write(registry, "database", slug, write="publish")
+    previous = database.egeria_host or ""
+    registry.update_egeria_host("database", slug, value)
+    in_egeria = bool(getattr(database, "egeria_asset_guid", "") or "")
+    return {"slug": database.slug, "previous": previous, "egeria_host": value, "in_egeria": in_egeria,
+            "note": NOTE_IN_EGERIA if in_egeria and previous != value else ""}
 
 
 @router.post("/{slug}/survey", response_model=SurveyResult)
@@ -438,9 +659,13 @@ async def survey_database(slug: str, req: SurveyRequest) -> SurveyResult:
     from resource_explorer.registry import ProjectRegistry, ProjectStatus
     
     registry = ProjectRegistry()
-    database = registry.get_database(slug)
+    database = _get_database_for_use(registry, slug)
     if not database:
         raise HTTPException(status_code=404, detail=f"Database '{slug}' not found")
+    if req.use_egeria and not req.force_custom:
+        # Brief Z2: the Egeria-adaptive survey can catalog the database in Egeria and start its native survey.
+        from resource_explorer.web.routes.curate import authorize_resource_write
+        await authorize_resource_write(registry, "database", slug, write="publish")
     
     # Update status to surveying
     registry.update_database_status(slug, ProjectStatus.INDEXING, "")
@@ -504,6 +729,15 @@ async def survey_database(slug: str, req: SurveyRequest) -> SurveyResult:
                 secrets_path=req.secrets_path,
             )
             step_report = (exec_result.get("steps") or [{}])[0]
+            # A failed survey step is a FAILED survey (false-zero hotfix,
+            # 2026-09-30): surface its real error on the run instead of
+            # reconstructing an "ok" response with zero counts. The executor
+            # has already withheld the failed output from the publish step, so
+            # nothing was written to the registry or to Egeria.
+            if step_report.get("status") in ("failed", "error"):
+                run_errors = list(exec_result.get("errors") or []) or [
+                    f"Survey step failed ({step_report.get('status')})"]
+                raise RuntimeError("; ".join(str(e) for e in run_errors))
             # Reconstruct run_hybrid_survey's historic flat response shape:
             # the handler nests "schema_info"/"statistics" under "result" to
             # keep the executor's generic publish step from re-publishing
@@ -620,10 +854,21 @@ class AnalysisRunResult(BaseModel):
     error: str | None = None
     activity_id: str = ""
     run_id: str = ""
+    #: Set only for a run with a credential typed for that run (brief section 8): who it ran as.
+    ran_as: dict | None = None
+
+
+class AnalysisRunRequest(BaseModel):
+    """Optional body of `POST /{slug}/analyses/{analysis_id}/run`. Both fields empty (or no body)
+    is the ordinary enqueue with the stored credential. A password makes it a single in-process run
+    with that credential, kept in memory for the call (never queued, never stored)."""
+    db_user: str = ""
+    db_pwd: str = ""
 
 
 @router.post("/{slug}/analyses/{analysis_id}/run", response_model=AnalysisRunResult)
-async def run_single_database_analysis(slug: str, analysis_id: str) -> AnalysisRunResult:
+async def run_single_database_analysis(slug: str, analysis_id: str,
+                                       body: AnalysisRunRequest | None = None) -> AnalysisRunResult:
     """Runs only the DatabaseSurveyor step(s) one named local database
     analysis needs, not the whole schema+statistics+views survey every
     time — the per-card "Run" action in Analysis/Assessment (database
@@ -666,14 +911,17 @@ async def run_single_database_analysis(slug: str, analysis_id: str) -> AnalysisR
     from resource_explorer.registry import ProjectRegistry
     from resource_explorer.run_queue import requested_by as _requested_by
     from resource_explorer.surveyors.database.database_surveyor import (
-        DATABASE_SURVEYOR_STEP_MAP,
+        database_analysis_has_runner,
     )
     from resource_explorer.surveyors.database.db_derived import DB_DERIVED_ANALYSES
 
     registry = ProjectRegistry()
-    db = registry.get_database(slug)
+    db = _get_database_for_use(registry, slug)
     if not db:
         raise HTTPException(status_code=404, detail=f"Database '{slug}' not found")
+
+    if body is not None and body.db_pwd:
+        return _start_override_analysis(registry, db, slug, analysis_id, body)
 
     # Validation stays synchronous — an unknown/unmapped analysis_id, or
     # missing credentials, must be a 400 here, not a queued row that fails a
@@ -681,7 +929,7 @@ async def run_single_database_analysis(slug: str, analysis_id: str) -> AnalysisR
     # projects.py's run_single_analysis follows).
     if analysis_id in DB_DERIVED_ANALYSES:
         pass  # zero-fetch — no credentials check needed
-    elif analysis_id not in DATABASE_SURVEYOR_STEP_MAP:
+    elif not database_analysis_has_runner(analysis_id):
         raise HTTPException(
             status_code=400,
             detail=f"Analysis '{analysis_id}' has no local survey step(s) mapped — "
@@ -712,13 +960,62 @@ async def run_single_database_analysis(slug: str, analysis_id: str) -> AnalysisR
     )
 
 
+def _start_override_analysis(registry, db, slug: str, analysis_id: str,
+                             body: AnalysisRunRequest) -> AnalysisRunResult:
+    """One analysis with a credential typed for this run only (brief section 8, owner-approved).
+
+    **Not enqueued.** The run queue refuses to persist a credential and this run must not reach it
+    (nor Prefect): it runs on a thread in THIS process, on RE's own engine, the password held in
+    memory for the call. No retry; the row says so. The password is in no row, log line or response.
+    """
+    import json
+
+    from resource_explorer.activity_logger import log_analysis_run
+    from resource_explorer.run_reconciler import process_identity
+    from resource_explorer.surveyors.database.database_surveyor import database_analysis_has_runner
+    from resource_explorer.surveyors.database.db_derived import DB_DERIVED_ANALYSES
+    from resource_explorer.workflows.analysis import (
+        NOT_RETRIED_WORDS,
+        OVERRIDE_SCOPE,
+        execute_override_database_analysis,
+    )
+    from resource_explorer.workflows.survey_definition import start_in_process
+
+    if not body.db_user:
+        raise HTTPException(
+            status_code=400,
+            detail="A credential for this run needs both a user and a password; the password alone is not enough.")
+    if analysis_id in DB_DERIVED_ANALYSES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Analysis '{analysis_id}' reads stored rows and opens no connection, so a credential "
+                   "for this run would be used for nothing; run it without one.")
+    if not database_analysis_has_runner(analysis_id):
+        raise HTTPException(status_code=400, detail=f"Analysis '{analysis_id}' has no local survey step(s) mapped.")
+
+    ran_as = {"user": body.db_user, "scope": OVERRIDE_SCOPE}
+    activity_id = log_analysis_run(
+        registry, "database", slug, db.display_name, "running",
+        f"Running '{analysis_id}' on {slug} as {body.db_user} ({OVERRIDE_SCOPE})…", analysis_id,
+        published=None, runner=process_identity(),
+        extra={"ran_as": ran_as, "not_retried": NOT_RETRIED_WORDS})
+    start_in_process(
+        execute_override_database_analysis, slug, analysis_id, activity_id, body.db_user, body.db_pwd,
+        name=f"analysis-override-{activity_id}")
+    log.info("started database analysis override run for %s/%s as %s (activity %s)",
+             slug, analysis_id, body.db_user, activity_id)
+    return AnalysisRunResult(
+        status="started", slug=slug, analysis_id=analysis_id, activity_id=activity_id, run_id="",
+        ran_as=ran_as)
+
+
 @router.delete("/{slug}")
 async def remove_database(slug: str) -> dict:
     """Remove a database from the registry."""
     from resource_explorer.registry import ProjectRegistry
     
     registry = ProjectRegistry()
-    database = registry.get_database(slug)
+    database = registry.get_database(slug, allow_unreadable=True)
     if not database:
         raise HTTPException(status_code=404, detail=f"Database '{slug}' not found")
     
@@ -727,16 +1024,72 @@ async def remove_database(slug: str) -> dict:
 
 
 @router.get("/{slug}/surveys")
-async def get_database_surveys(slug: str) -> list[dict]:
-    """Get survey history for a database."""
+async def get_database_surveys(slug: str, include_invalid: bool = False,
+                               slim: bool = False) -> list[dict]:
+    """Get survey history for a database.
+
+    Rows marked invalid (false-zero repair, `invalid_at` / `invalid_reason`) are
+    excluded by default. `?include_invalid=true` returns them too, so the classic
+    UI's "show invalid" toggle can show WHY a remembered survey is not counted.
+    """
     from resource_explorer.registry import ProjectRegistry
 
     registry = ProjectRegistry()
-    database = registry.get_database(slug)
+    database = registry.get_database(slug, allow_unreadable=True)
     if not database:
         raise HTTPException(status_code=404, detail=f"Database '{slug}' not found")
 
-    return registry.get_database_surveys(slug)
+    if slim:
+        # `slim=true`: dates, counts, source and invalid marks without the
+        # `survey_data` blob (the /next history table reads nothing from it).
+        rows = registry.get_database_surveys(
+            slug, include_invalid=include_invalid, with_survey_data=False)
+        return [{k: v for k, v in r.items() if k != "survey_data"} for r in rows]
+    return registry.get_database_surveys(slug, include_invalid=include_invalid)
+
+
+@router.get("/{slug}/views")
+async def get_database_views(slug: str) -> dict:
+    """The views of the latest valid survey, read-only (PI-040).
+
+    `state` is `measured` (the survey carries a `views` list, possibly empty),
+    `not_measured` (it carries none, or the stored blob cannot be read: the
+    reason says which) or `never_surveyed`. An empty list is only ever the
+    first of these, so "no views" is never confused with "views not looked at".
+    """
+    import json as _json
+    from resource_explorer.registry import ProjectRegistry
+
+    registry = ProjectRegistry()
+    if not registry.get_database(slug, allow_unreadable=True):
+        raise HTTPException(status_code=404, detail=f"Database '{slug}' not found")
+    row = registry.get_latest_database_survey(slug)
+    if not row:
+        return {"state": "never_surveyed", "run": None, "views": [],
+                "reason": "no survey has run for this database"}
+    run = {"surveyed_at": row.get("surveyed_at"), "source": row.get("source")}
+    try:
+        blob = _json.loads(row.get("survey_data") or "{}")
+    except (TypeError, ValueError):
+        return {"state": "not_measured", "run": run, "views": [],
+                "reason": "the stored survey could not be read"}
+    views = blob.get("views") if isinstance(blob, dict) else None
+    if not isinstance(views, list):
+        return {"state": "not_measured", "run": run, "views": [],
+                "reason": "this survey did not run the sql_analysis step, so views were not analyzed"}
+    # The PII keyword source of the run these views came from (`DatabaseSurveyor._store_results`);
+    # "" for a survey stored before it was recorded.
+    kw = blob.get("pii_keyword_source") if isinstance(blob.get("pii_keyword_source"), dict) else {}
+    return {"state": "measured", "run": run, "reason": "", "keyword_source": kw.get("label") or "",
+            "views": [
+        {"kind": v.get("kind") or "view",
+         "schema": v.get("schema") or v.get("schema_name") or "",
+         "name": v.get("name") or v.get("view_name") or "",
+         "definition": v.get("definition") or v.get("view_definition") or "",
+         "dependencies": v.get("dependencies") or v.get("depends_on") or [],
+         "complexity": v.get("complexity") if isinstance(v.get("complexity"), dict) else {},
+         "lineage": v.get("lineage") if isinstance(v.get("lineage"), dict) else {}}
+        for v in views if isinstance(v, dict)]}
 
 
 @router.get("/{slug}/egeria-surveys", response_model=list[EgeriaSurveyReportRow])
@@ -752,7 +1105,7 @@ async def get_database_egeria_surveys(slug: str) -> list[EgeriaSurveyReportRow]:
     )
 
     registry = ProjectRegistry()
-    database = registry.get_database(slug)
+    database = registry.get_database(slug, allow_unreadable=True)
     if not database:
         raise HTTPException(status_code=404, detail=f"Database '{slug}' not found")
     if not database.egeria_asset_guid:
@@ -779,7 +1132,7 @@ async def get_database_egeria_annotations(slug: str, report_guid: str) -> list[E
     )
 
     registry = ProjectRegistry()
-    database = registry.get_database(slug)
+    database = registry.get_database(slug, allow_unreadable=True)
     if not database:
         raise HTTPException(status_code=404, detail=f"Database '{slug}' not found")
 
@@ -788,7 +1141,7 @@ async def get_database_egeria_annotations(slug: str, report_guid: str) -> list[E
         annotations = await asyncio.to_thread(surveyor.get_annotations_by_report_guid, report_guid)
     except EgeriaDatabaseSurveyorError as exc:
         raise HTTPException(status_code=503, detail=str(exc))
-    return [EgeriaAnnotationItem(**a) for a in annotations]
+    return build_annotation_items(EgeriaAnnotationItem, annotations)
 
 
 class PublishRequest(BaseModel):
@@ -799,6 +1152,7 @@ class PublishRequest(BaseModel):
     """
     egeria_url: str | None = None
     egeria_server: str | None = None
+    #: Ignored (owner, 2026-10-09): accepted only so an older caller is not refused; logged.
     egeria_user: str | None = None
     egeria_password: str | None = None
     db_user: str = ""
@@ -815,25 +1169,64 @@ class PublishResult(BaseModel):
     annotation_count: int | None = None
     server_display_name: str | None = None
     database_display_name: str | None = None
+    # Native Egeria surveys this publish started, each backed by a persisted
+    # step_runs proof row (registry.record_native_survey_submission). Empty
+    # means NO survey was recorded; clients must not claim one started.
+    survey_submissions: list[dict[str, Any]] = []
     error: str | None = None
+
+
+async def _send_with_publish(registry, entity_type: str, slug: str, asset_guid: str) -> dict:
+    """Brief F: what the page's ONE Publish sends after the resource's own publish, as the signed-in presser
+    (`single_publish.send_with_publish`). Best-effort: each item's outcome is on its own row."""
+    import asyncio
+
+    from resource_explorer.egeria_identity import caller_user_id
+    from resource_explorer.single_publish import send_with_publish
+
+    try:
+        return await asyncio.to_thread(send_with_publish, registry, entity_type, slug, asset_guid, caller_user_id())
+    except Exception:  # noqa: BLE001
+        log.warning("Could not send the presser's feedback for %s %s", entity_type, slug, exc_info=True)
+        return {}
 
 
 @router.post("/{slug}/publish", response_model=PublishResult)
 async def publish_database_survey(slug: str, req: PublishRequest = PublishRequest()) -> PublishResult:
-    """Publish the latest local database survey to Egeria."""
-    from resource_explorer.registry import ProjectRegistry
-    from resource_explorer.web.routes._validation import validate_egeria_user
+    """Publish the latest local database survey to Egeria.
 
-    validate_egeria_user(req.egeria_user or "")
+    **Retired from the UI (Curate slice B, BRIEF-CURATE-CATALOGUE-COMMIT-DATABASES.md):**
+    Classic's Publish button and modal are gone; "Catalogue" on a database's Curate pane
+    (`POST /api/catalogue-scope/{slug}/commit`) is the publish now, with a manifest, a
+    ZoneMembership written before any target, a survey limited to the chosen schemas, and a
+    proof row behind every state. This route remains only for Classic API callers; RE itself
+    never calls it (the survey-definition retry goes through the commit and its stored scope).
+    It starts an UNSCOPED native survey and catalogues without a declared scope, so it must not
+    be offered as the way to publish. Backlog: make it scope-aware, or remove it."""
+    from resource_explorer.registry import ProjectRegistry
+    from resource_explorer.web.routes._validation import ignore_egeria_credentials
+
+    ignore_egeria_credentials(req, where="publish database")
 
     registry = ProjectRegistry()
-    database = registry.get_database(slug)
+    database = _get_database_for_use(registry, slug)
     if not database:
         raise HTTPException(status_code=404, detail=f"Database '{slug}' not found")
+    # Brief Z round 2: the database's element, every operation a publish performs.
+    from resource_explorer.web.routes.curate import authorize_resource_write
+    await authorize_resource_write(registry, "database", slug, publish=True)
 
-    surveys = registry.get_database_surveys(slug)
-    if not surveys:
-        raise HTTPException(status_code=404, detail=f"No survey data for '{slug}' — run a survey first")
+    # The latest MEASURED row, never merely the latest row (false-zero
+    # hotfix, 2026-09-30): a newer empty/egeria-published row must not be
+    # pushed to Egeria as if it were the database's real inventory.
+    measured = registry.latest_measured_database_survey(slug)
+    if measured is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"No measured survey data for '{slug}' — run a survey first")
+
+    from resource_explorer.run_queue import requested_by
+    submitted_by = requested_by()      # read HERE, in the request; threads get it passed
 
     def _do_publish() -> dict[str, Any]:
         import asyncio as _aio
@@ -849,18 +1242,21 @@ async def publish_database_survey(slug: str, req: PublishRequest = PublishReques
 
         if not resolved_db_user or not resolved_db_pwd:
             raise ValueError(
-                "Database credentials are required to catalog in Egeria. "
+                "Database credentials are required to publish to Egeria. "
                 "Store them at registration or supply db_user/db_pwd in the request."
             )
 
+        from resource_explorer.egeria_clients import Caller
+
+        # WHO: the signed-in person (Brief I); a typed or stored Egeria user/password is no
+        # longer used to authenticate. WHICH Egeria: the request's or entity's URL/server.
         surveyor = EgeriaDatabaseSurveyor(
             platform_url=req.egeria_url or database.egeria_url or None,
             view_server=req.egeria_server or database.egeria_server or None,
-            user_id=req.egeria_user or database.egeria_user or None,
-            user_password=req.egeria_password or database.egeria_password or None,
+            identity=Caller(),
         )
 
-        latest = surveys[0]
+        latest = measured
         survey_data = _json.loads(latest.get("survey_data", "{}"))
         schema_info = survey_data.get("schema_info", {})
         statistics  = survey_data.get("statistics", {})
@@ -877,6 +1273,7 @@ async def publish_database_survey(slug: str, req: PublishRequest = PublishReques
                 db_user=resolved_db_user,
                 db_pwd=resolved_db_pwd,
                 statistics=statistics,
+                submitted_by=submitted_by,
             )
         finally:
             loop.close()
@@ -896,7 +1293,7 @@ async def publish_database_survey(slug: str, req: PublishRequest = PublishReques
                 entity_name=database.display_name,
                 entity_location=f"{database.host}:{database.port}/{database.database_name}",
                 status="ok",
-                summary=f"Cataloged in Egeria: {database.database_name} on {server_dn}",
+                summary=f"Published to Egeria: {database.database_name} on {server_dn}",
                 items=[
                     {"kind": "PostgreSQLServer", "display_name": server_dn,
                      "qualified_name": f"PostgreSQLServer::{server_dn}",
@@ -908,6 +1305,19 @@ async def publish_database_survey(slug: str, req: PublishRequest = PublishReques
             )
         except Exception:
             pass
+        # BRIEF-DATABASE-DOCUMENTATION-SOURCES.md slice 1: every locally
+        # declared documentation source becomes an ExternalReference on the
+        # asset this publish just created/updated. Best-effort — a doc
+        # source failing to publish must not fail the database's own
+        # publish, which is why publish_local_doc_sources reports rather
+        # than raises per source.
+        asset_guid = result.get("asset_guid") or ""
+        if asset_guid:
+            # Brief F round 3: the documentation sources go ONCE, inside send_with_publish (it publishes exactly
+            # `single_publish.unpublished_doc_sources`), not here as well.
+            # Brief F: the same press sends the tags and group (the presser checked per item) and the PRESSER's own
+            # rating and notes, as them (never anyone else's).
+            await _send_with_publish(registry, "database", slug, asset_guid)
         return PublishResult(
             status="ok",
             slug=slug,
@@ -915,11 +1325,22 @@ async def publish_database_survey(slug: str, req: PublishRequest = PublishReques
             asset_guid=result.get("asset_guid"),
             report_guid=result.get("report_guid"),
             annotation_count=result.get("annotation_count"),
+            survey_submissions=result.get("survey_submissions") or [],
             server_display_name=server_dn,
             database_display_name=database.database_name,
         )
+    except PermissionError:
+        raise      # no caller / expired sign-in: the app's 401 handler (Brief I)
     except Exception as exc:
-        err_str = str(exc)
+        from resource_explorer.egeria_clients import refusal
+        from resource_explorer.surveyors.database.egeria_database_surveyor import ArchivedDatabaseNeedsConfirmation
+
+        if isinstance(exc, ArchivedDatabaseNeedsConfirmation):
+            # S19: nothing created; the person confirms the re-include through a Curate commit, never here.
+            return PublishResult(status="needs_confirmation", slug=slug, error=str(exc))
+        refused = refusal(exc)
+        # Egeria refused this person: said as a refusal with Egeria's sentence (Brief I).
+        err_str = f"refused by Egeria: {refused}" if refused is not None else str(exc)
         try:
             from resource_explorer.activity_logger import log_catalog
             log_catalog(
@@ -929,7 +1350,7 @@ async def publish_database_survey(slug: str, req: PublishRequest = PublishReques
                 entity_name=database.display_name,
                 entity_location=f"{database.host}:{database.port}/{database.database_name}",
                 status="error",
-                summary=f"Egeria catalog failed: {err_str[:200]}",
+                summary=f"Egeria publish failed: {err_str[:200]}",
                 detail=err_str,
             )
         except Exception:
@@ -956,7 +1377,7 @@ async def get_database_diff(slug: str) -> dict:
     `table_diff_state`, rather than claiming nothing changed.
     """
     from resource_explorer.registry import (
-        ProjectRegistry, STATE_MEASURED, STATE_EMPTY, STATES_WITHOUT_A_MEASUREMENT,
+        ProjectRegistry, STATE_MEASURED, STATE_EMPTY,
     )
     registry = ProjectRegistry()
     surveys = registry.get_database_surveys(slug)
@@ -972,36 +1393,20 @@ async def get_database_diff(slug: str) -> dict:
         Returns (names, state, note). `state` is STATE_MEASURED only when
         this run actually has structured rows; anything else means the set is
         not a usable basis for a diff, and the caller must not present it as
-        one.
+        one. The state logic is shared with the database chart routes
+        (`db_chart_data.section_state`) so the two cannot disagree.
         """
-        surveyed_at = survey.get("surveyed_at") or ""
-        source = survey.get("source") or None
+        from resource_explorer.db_chart_data import section_state
         rows = registry.query_detail_rows(
-            "database_tables", slug, surveyed_at, source
+            "database_tables", slug,
+            survey.get("surveyed_at") or "", survey.get("source") or None,
         )
-        coverage = registry.get_section_coverage(
-            "database", slug, surveyed_at, source
-        ).get("tables")
-
         names = {
             f"{r.get('schema_name') or ''}.{r.get('table_name') or ''}"
             for r in rows
         }
-        if rows:
-            return names, STATE_MEASURED, ""
-        if coverage is None:
-            # No rows and no coverage record: this run predates the
-            # structured tables and has not been back-filled. Distinct from
-            # "surveyed and found nothing", and actionable.
-            return names, "not_materialized", (
-                "This run has no structured rows yet — run "
-                "scripts/backfill_structured_tables.py to convert its stored "
-                "survey_data."
-            )
-        state = coverage.get("state") or STATE_EMPTY
-        if state in STATES_WITHOUT_A_MEASUREMENT:
-            return names, state, coverage.get("detail") or ""
-        return names, STATE_EMPTY, coverage.get("detail") or ""
+        state, note = section_state(registry, slug, survey, "tables", len(rows))
+        return names, state, note
 
     curr_tables, curr_state, curr_note = _tables_for(curr)
     prev_tables, prev_state, prev_note = _tables_for(prev)

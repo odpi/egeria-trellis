@@ -49,20 +49,7 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-def _ensure_schema(conn) -> None:
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS resource_journal (
-            id            TEXT PRIMARY KEY,
-            entity_type   TEXT NOT NULL,
-            entity_slug   TEXT NOT NULL,
-            author        TEXT NOT NULL,
-            written_at    TEXT NOT NULL,
-            body          TEXT NOT NULL,
-            suggested_to  TEXT NOT NULL DEFAULT '[]'
-        )
-    """)
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_resource_journal_entity "
-                 "ON resource_journal(entity_type, entity_slug, written_at)")
+# The resource_journal table is created by ProjectRegistry._init_schema (a migration), not here.
 
 
 def audience_slug(target: str) -> str:
@@ -81,7 +68,6 @@ class Journal:
     def entries(self, entity_type: str, entity_slug: str) -> list[dict]:
         """Newest first. Every entry ever written; there is no delete."""
         with self._conn() as conn:
-            _ensure_schema(conn)
             rows = conn.execute(
                 "SELECT id, author, written_at, body, suggested_to FROM resource_journal "
                 "WHERE entity_type = ? AND entity_slug = ? ORDER BY written_at DESC",
@@ -111,7 +97,6 @@ class Journal:
         entry_id = uuid.uuid4().hex
         now = _now()
         with self._conn() as conn:
-            _ensure_schema(conn)
             conn.execute(
                 "INSERT INTO resource_journal (id, entity_type, entity_slug, author, written_at, body, suggested_to) "
                 "VALUES (?, ?, ?, ?, ?, ?, ?)",

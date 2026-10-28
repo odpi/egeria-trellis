@@ -11,13 +11,13 @@ Automate's comment about what a card-less Assessment/Analysis stage means.
 
 That note (`renderAnalysisNote`) was later removed once Sub-Resources itself
 was built for real -- see `test_next_analysis_subresources.py` and
-`docs/design-notes/RULING-SUBRESOURCES-PLACEMENT.md`. `TestTheGenericEngine
+`docs/design-notes/rulings/RULING-SUBRESOURCES-PLACEMENT.md`. `TestTheGenericEngine
 NeededNoStageSpecificBranch` below was updated accordingly: Analysis now has
 exactly as little stage-specific code in `loadPane()` as Discovery/
 Assessment.
 
 No browser verification of a signed-in session happened for this file — see
-docs/design-notes/ITEM-11-DISCOVERY-ASSESSMENT-ANALYSIS-IMPLEMENTED.md for
+ITEM-11-DISCOVERY-ASSESSMENT-ANALYSIS-IMPLEMENTED.md for
 what was and was not checked live. These tests grep/slice function bodies
 out of the concatenated source, the established pattern for /next JS
 modules without a browser -- see test_next_curate_pane.py,
@@ -115,8 +115,8 @@ class TestDispositionSubTabAlreadyWritesThroughDiscoveryPy:
 class TestOrgImportRepoSearchFromListCsvExportLiveAtTheSidebarNotTheStage:
     """Item 11's own scoping call: these discovery.py endpoints are
     corpus-level, not resource-scoped, so this item correctly did not build
-    them inside the Discovery stage pane. NEXT-DISCOVERY-IMPORT-SEARCH-
-    IMPLEMENTED.md later built them for real at the sidebar's 'Find repos'
+    them inside the Discovery stage pane. NEXT-DISCOVERY-IMPORT-SEARCH-IMPLEMENTED.md later built
+    them for real at the sidebar's 'Find repos'
     action this item deferred to (`next/discovery-import.js`) -- this class
     now checks that placement held, not that the action still merely links
     out for every resource type (it no longer does, for repos)."""

@@ -4,7 +4,7 @@ holds, and publish proposals for the ones it does not.
 Phase 1 slice 10. Backs `data_class_match` and `reference_data_match`
 (`docs/multi-resource-questions-design.md` §5.4) and the proposal convention
 in `docs/egeria-support-for-multi-resource.md` §3, as revised by the corrected
-probes 4 and 5 of 2026-09-21 (`docs/design-notes/PROBES-2026-09-21.md`).
+probes 4 and 5 of 2026-09-21 (`PROBES-2026-09-21.md`).
 
 **`contentStatus: DRAFT`, not `initialStatus`.** Probe 4's first pass tested
 `initialStatus`, which sets Egeria's generic *entity lifecycle* status
@@ -45,7 +45,7 @@ from resource_explorer.surveyors.database.column_matching import (
     KnownDataClass,
     KnownValidValueSet,
 )
-from resource_explorer.surveyors.survey_definition_reader import _as_guid
+from resource_explorer.config import egeria_platform_url, egeria_view_server  # noqa: E402,F401
 
 log = logging.getLogger(__name__)
 
@@ -59,12 +59,18 @@ CONTENT_STATUS_DRAFT = "DRAFT"
 #: and shares that endpoint, so the results must be filtered by type here.
 DATA_CLASS_TYPE_NAME = "DataClass"
 
-#: Egeria type names that count as a reference-data *set* rather than a single
-#: definition. `ValidValueSet` is the real set type; a plain
-#: `ValidValueDefinition` carrying members is treated as one too, because
-#: pyegeria has no `create_valid_value_set` and RE's own bootstrap creates sets
-#: through `create_valid_value_definition` (see `bootstrap_data_classes.py`).
+#: Egeria type names a READ accepts as a reference-data *set*. On Egeria 6.2 a set is a plain
+#: `ValidValueDefinition` carrying members: 6.2 knows no `ValidValueSet` / `ValidValuesSet` type
+#: (live probe, 2026-10-13: OMAG-COMMON-400-018 on findElements). Both spellings stay in this
+#: read-side list only because `valid_value_set_from_element` reads them from whatever an element
+#: says; nothing RE writes uses them.
 VALID_VALUE_SET_TYPE_NAMES = ("ValidValueSet", "ValidValuesSet", "ValidValueDefinition")
+
+#: The type every RE `find_valid_value_definitions` passes as `metadata_element_type`. Egeria's
+#: Reference Data view defaults an untyped find to `ReferenceDataValue` (egeria
+#: `ReferenceDataInstance.java:65-69`), so without it the plain `ValidValueDefinition`s RE's
+#: bootstrap creates (keyword sets and keywords) are never returned.
+VALID_VALUE_DEFINITION_TYPE_NAME = "ValidValueDefinition"
 
 #: qualifiedName prefixes for the elements this module proposes. Distinct
 #: prefixes so a proposal is identifiable as RE's own, and so the idempotency
@@ -285,6 +291,9 @@ def list_known_valid_value_sets(
         raw = ref_manager.find_valid_value_definitions(
             "*", starts_with=False, page_size=page_size,
             graph_query_depth=graph_query_depth, output_format="JSON",
+            # Typed: the Reference Data view defaults the type to ReferenceDataValue, which hides
+            # plain ValidValueDefinitions (RE's keyword sets) from an untyped find.
+            metadata_element_type=VALID_VALUE_DEFINITION_TYPE_NAME,
         )
     except Exception as exc:
         log.warning("Could not list Valid Value Sets from Egeria: %s", exc)
@@ -333,6 +342,131 @@ def load_reference_catalog(
         available=classes.available and sets.available,
         unavailable_reason="; ".join(reasons),
     )
+
+
+# ── Data-class keywords: one loader, one source label ─────────────────────────
+
+def keyword_prefix(data_class_name: str) -> str:
+    """qualifiedName prefix of one data class's keyword definitions (`bootstrap_data_classes.py`)."""
+    return f"ValidValueDefinition::{data_class_name}Keyword::"
+
+
+#: KeywordLoad.state values. `egeria` = at least one keyword set read; `egeria_none` = Egeria was
+#: read and holds none; `unreadable` = Egeria could not be read (never "had none");
+#: `not_configured` = no platform to ask.
+KEYWORDS_FROM_EGERIA = "egeria"
+KEYWORDS_EGERIA_NONE = "egeria_none"
+KEYWORDS_UNREADABLE = "unreadable"
+KEYWORDS_NOT_CONFIGURED = "not_configured"
+
+
+@dataclass
+class KeywordLoad:
+    """The data-class keywords Egeria gave, and which source the reader therefore uses.
+
+    `label` is the words a screen shows; it comes from this object only, so a reader's label can never
+    disagree with what it loaded.
+    """
+
+    state: str
+    by_class: dict[str, list[str]] = field(default_factory=dict)
+    reason: str = ""
+    #: The data classes asked for, and those whose keywords could not be read (a reader falls back
+    #: to the built-in keywords for exactly these, class by class).
+    asked: int = 0
+    unread: list[str] = field(default_factory=list)
+
+    @property
+    def sets(self) -> int:
+        return len(self.by_class)
+
+    @property
+    def label(self) -> str:
+        if self.state == KEYWORDS_FROM_EGERIA:
+            if self.unread:
+                return (f"keywords: Egeria, {self.sets} of {self.asked} sets · "
+                        f"{len(self.unread)} could not be read")
+            return f"keywords: Egeria, {self.sets} set{'' if self.sets == 1 else 's'}"
+        if self.state == KEYWORDS_EGERIA_NONE:
+            return "keywords: built-in list · Egeria had none"
+        if self.state == KEYWORDS_NOT_CONFIGURED:
+            return "keywords: built-in list · Egeria not configured"
+        why = f" ({self.reason})" if self.reason == "not signed in" else ""
+        return f"keywords: built-in list · could not read Egeria{why}"
+
+    def as_dict(self) -> dict[str, Any]:
+        return {"source": "egeria" if self.state == KEYWORDS_FROM_EGERIA else "built_in",
+                "state": self.state, "sets": self.sets, "asked": self.asked, "unread": self.unread,
+                "label": self.label, "reason": self.reason}
+
+    def keywords_for(self, name: str, built_in: list[str]) -> list[str]:
+        """One class's keywords: Egeria's when read, else `built_in` (also for a class Egeria was
+        read for and holds none, or could not be read for)."""
+        return list(self.by_class.get(name) or built_in)
+
+
+def _keyword_values(elements: list[dict]) -> list[str]:
+    out = []
+    for item in elements:
+        props = item.get("properties") or {}
+        val = props.get("preferredValue") or props.get("displayName")
+        if isinstance(val, str) and val.strip():
+            out.append(val.strip().lower())
+    return sorted(set(out))
+
+
+def load_data_class_keywords(ref_manager, data_class_names: Sequence[str],
+                             data_class_exists=None) -> KeywordLoad:
+    """Each data class's keywords from Egeria, by a TYPED find on its keyword prefix.
+
+    `data_class_exists(name)`, when given, is asked first: False skips that class (Egeria holds no
+    such DataClass, so it has no keywords there); raising marks the read failed. A `TimeoutError`
+    from it stops every later lookup (the platform is not answering; round 6 of Brief I).
+
+    A failed read is never "Egeria had none": with no keywords read and any failure, the state is
+    `unreadable`.
+    """
+    by_class: dict[str, list[str]] = {}
+    failures: list[str] = []
+    unread: list[str] = []
+    timed_out = False
+    for name in data_class_names:
+        if timed_out:
+            failures.append(f"{name}: skipped after a timed-out lookup")
+            unread.append(name)
+            continue
+        try:
+            if data_class_exists is not None and not data_class_exists(name):
+                continue
+            raw = ref_manager.find_valid_value_definitions(
+                search_string=keyword_prefix(name), starts_with=True, output_format="JSON",
+                metadata_element_type=VALID_VALUE_DEFINITION_TYPE_NAME,
+            )
+        except TimeoutError:
+            timed_out = True
+            failures.append(f"{name}: timed out")
+            unread.append(name)
+            continue
+        except Exception as exc:  # noqa: BLE001 - recorded as "could not read", never as "none"
+            failures.append(f"{name}: {exc}")
+            unread.append(name)
+            continue
+        if isinstance(raw, (list, dict)):
+            values = _keyword_values(_results(raw))
+            if values:
+                by_class[name] = values
+        elif not (isinstance(raw, str) and "no " in raw.lower() and "found" in raw.lower()):
+            failures.append(f"{name}: unreadable answer {str(raw)[:80]!r}")
+            unread.append(name)
+    if failures:
+        log.warning("Data-class keywords: could not read %d of %d: %s",
+                    len(failures), len(data_class_names), "; ".join(failures)[:500])
+    asked = len(data_class_names)
+    if by_class:
+        return KeywordLoad(KEYWORDS_FROM_EGERIA, by_class, "; ".join(failures), asked, unread)
+    if failures:
+        return KeywordLoad(KEYWORDS_UNREADABLE, {}, "; ".join(failures), asked, unread)
+    return KeywordLoad(KEYWORDS_EGERIA_NONE, asked=asked)
 
 
 # ── Proposing: `contentStatus: DRAFT` element creation ────────────────────────
@@ -423,11 +557,14 @@ def build_proposed_valid_value_set_body(match: ColumnMatch, qualified_name: str)
     `ValidValueSetProperties` — verified against the whole egeria-python
     checkout. A set is created through `create_valid_value_definition` with
     `properties.class = "ValidValueDefinitionProperties"`, which is also what
-    RE's own `bootstrap_data_classes.py` does. `typeName: "ValidValueSet"` is
-    passed so the element is a real set rather than a bare definition — that
-    path is exercised nowhere in either repo, so it is **unverified against a
-    live server** and recorded as such in the implementation write-up; the
-    create still succeeds without it, producing a definition rather than a set.
+    RE's own `bootstrap_data_classes.py` does, and with NO `typeName`, exactly as
+    bootstrap creates its sets: a set is a plain `ValidValueDefinition` whose members
+    hang off it by `ValidValueMember`. Egeria 6.2 does not know a `ValidValueSet` type
+    (live read-only probe, 2026-10-13: findElements answers OMAG-COMMON-400-018 "The type
+    name ValidValueSet ... is not recognized", and a typed look-up as `ValidValueSet` or
+    `ValidValuesSet` is a 500), so the `typeName: "ValidValueSet"` sent until then made
+    every proposed-set create fail on 6.2. The existing sets
+    (`ValidValuesSet::<Name>Keywords`) are stored as `ValidValueDefinition`.
 
     The member `ValidValueDefinition`s are created separately, by
     `publish_proposed_valid_value_set`, because each is its own element.
@@ -437,7 +574,6 @@ def build_proposed_valid_value_set_body(match: ColumnMatch, qualified_name: str)
         "isOwnAnchor": True,
         "properties": {
             "class": "ValidValueDefinitionProperties",
-            "typeName": "ValidValueSet",
             "qualifiedName": qualified_name,
             "displayName": f"Proposed reference set for {match.column_path}",
             "description": (
@@ -548,6 +684,10 @@ class ProposalResult:
     associated_annotation_linked: bool = False
     content_status: str = CONTENT_STATUS_DRAFT
     error: str = ""
+    #: Members whose look-up could not be made, so they were not created. The set itself still counts as
+    #: published (a partial set is a usable proposal, as for a member whose create failed); this says which
+    #: members are missing because RE could not check, rather than leaving the shortfall unexplained.
+    members_not_checked: list[str] = field(default_factory=list)
 
     @property
     def published(self) -> bool:
@@ -568,28 +708,39 @@ class ProposalResult:
             "content_status": self.content_status,
             "published": self.published,
             "error": self.error,
+            "members_not_checked": list(self.members_not_checked),
         }
 
 
-def _find_existing(client, qualified_name: str) -> str:
-    """`get_guid_for_name`, never raising — "" means "not found or could not
-    look up", and the caller attempts the create either way (Egeria rejects a
-    duplicate qualifiedName, so a failed lookup costs a rejected create rather
-    than a duplicate element).
+class ProposalLookupError(ReferenceCatalogError):
+    """The idempotency look-up before a proposal's create could not be made. Nothing is created on it."""
 
-    Routed through `_as_guid` rather than a bare `or ""`: pyegeria's
-    `get_guid_for_name` returns the literal string "No elements found" (not
-    None/""/an exception) on a miss, which `or ""` does not catch because
-    that string is truthy — the same sentinel bug found live in
-    `bootstrap_data_classes.py` (2026-09-22), here too before this fix. A
-    bare `or ""` would make every proposal's idempotency check read "already
-    exists" for a name that was never created, silently skipping it.
+
+def _find_existing(client, qualified_name: str, type_name: str) -> str:
+    """The GUID of the `type_name` element whose name is `qualified_name`, or "" for a real miss.
+
+    Typed: the look-up asks only for the type about to be created (`DataClass`, or `ValidValueDefinition`,
+    which is what a set is on Egeria 6.2), so an element of another type sharing the name is not adopted.
+
+    Only a real miss returns "": pyegeria's miss sentence or a typed not-found. A look-up that raised for any
+    other reason (unreachable, 401/403, 500, timeout, several hits), or answered anything that is neither a
+    GUID nor that sentence (`egeria_absence.guid_from_answer`), could not be checked and raises
+    `ProposalLookupError`. It used to return "" and the caller created, with Egeria's
+    duplicate-qualifiedName refusal the only backstop (AUDIT-PYEGERIA-6.2.2.md, "Not in scope").
     """
+    from resource_explorer.egeria_absence import lookup_could_not_be_made, lookup_exception_is_absent
+
     try:
-        return _as_guid(client.get_guid_for_name(qualified_name)) or ""
+        answer = client.get_guid_for_name(qualified_name, type_name=type_name)
     except Exception as exc:
-        log.debug("Proposal idempotency lookup failed for %s: %s", qualified_name, exc)
-        return ""
+        if lookup_exception_is_absent(exc):
+            return ""
+        raise ProposalLookupError(lookup_could_not_be_made(qualified_name, exc)) from exc
+    from resource_explorer.egeria_absence import guid_from_answer
+
+    # Found, a real miss (""), or could-not-check: the shared reader. `_as_guid` took any non-blank string
+    # for a GUID and read "Server busy" (whitespace) as a miss, so an odd answer could adopt or create.
+    return guid_from_answer(answer, qualified_name, ProposalLookupError)
 
 
 def publish_proposed_data_class(
@@ -621,7 +772,12 @@ def publish_proposed_data_class(
         kind="data_class", qualified_name=qualified_name,
     )
 
-    existing = _find_existing(designer, qualified_name)
+    try:
+        existing = _find_existing(designer, qualified_name, DATA_CLASS_TYPE_NAME)
+    except ProposalLookupError as exc:
+        result.error = str(exc)
+        log.warning("Proposed Data Class for %s not created: %s", match.column_path, exc)
+        return result
     if existing:
         result.guid = existing
         result.existing_guid = existing
@@ -673,7 +829,12 @@ def publish_proposed_valid_value_set(
         kind="valid_value_set", qualified_name=qualified_name,
     )
 
-    existing = _find_existing(ref_manager, qualified_name)
+    try:
+        existing = _find_existing(ref_manager, qualified_name, VALID_VALUE_DEFINITION_TYPE_NAME)
+    except ProposalLookupError as exc:
+        result.error = str(exc)
+        log.warning("Proposed Valid Value Set for %s not created: %s", match.column_path, exc)
+        return result
     if existing:
         result.guid = existing
         result.existing_guid = existing
@@ -692,10 +853,18 @@ def publish_proposed_valid_value_set(
         result.guid = str(guid)
         result.created = True
 
+    unchecked_members: list[str] = []
     for value in list(match.proposed_values)[:max_members]:
         member_body = build_proposed_valid_value_member_body(qualified_name, value)
         member_qn = member_body["properties"]["qualifiedName"]
-        member_guid = _find_existing(ref_manager, member_qn)
+        try:
+            member_guid = _find_existing(ref_manager, member_qn, VALID_VALUE_DEFINITION_TYPE_NAME)
+        except ProposalLookupError as exc:
+            # This member is not created; the set and the members that did land are still a usable proposal,
+            # but the result says one could not be checked (a partial set is never reported as whole).
+            log.warning("Proposed member %r of %s not created: %s", value, qualified_name, exc)
+            unchecked_members.append(value)
+            continue
         if not member_guid:
             try:
                 member_guid = str(ref_manager.create_valid_value_definition(body=member_body) or "")
@@ -707,13 +876,13 @@ def publish_proposed_valid_value_set(
         try:
             ref_manager.link_valid_value_definition(
                 result.guid, member_guid,
+                # ValidValueMemberProperties (Egeria 6.2) has isDefaultValue and ordinal only; it is
+                # ignoreUnknown, so the label/description sent here until 2026-10-13 were dropped.
                 body={
                     "class": "NewRelationshipRequestBody",
                     "properties": {
                         "class": "ValidValueMemberProperties",
                         "isDefaultValue": False,
-                        "label": value,
-                        "description": "Observed value, proposed as a member.",
                     },
                 },
             )
@@ -722,6 +891,7 @@ def publish_proposed_valid_value_set(
             continue
         result.member_guids.append(member_guid)
 
+    result.members_not_checked = unchecked_members
     _link_evidence(result, discovery, annotation_guid, match)
     return result
 
@@ -774,36 +944,25 @@ def build_reference_clients(
     metadata properties rather than business reference data, and not
     `DataDesigner`, which owns data classes only.
 
-    Authenticated through `apply_identity` so a signed-in person's token is
-    reused and the write carries their provenance, falling back to
-    `create_egeria_bearer_token` only where that machinery is unavailable —
-    `bootstrap_data_classes.py`'s direct-token pattern loses the caller.
+    Built by the one factory (Brief I) as `identity`, else `current_principal()` — the
+    signed-in person's token on a route, the declared daemon job in a run. `user_id` and
+    `user_password` are accepted for old callers and ignored: they no longer authenticate.
     """
     from pyegeria.omvs.data_designer import DataDesigner
     from pyegeria.omvs.reference_data import ReferenceDataManager
 
-    platform_url = platform_url or os.getenv("EGERIA_PLATFORM_URL", "")
+    from resource_explorer.egeria_clients import current_principal, egeria_client
+
+    platform_url = platform_url or egeria_platform_url()
     if not platform_url:
         raise ReferenceCatalogError(
             "EGERIA_PLATFORM_URL is not set — cannot read the platform's Data "
             "Classes, and an unread platform must not be reported as an empty one."
         )
-    view_server = view_server or os.getenv("EGERIA_VIEW_SERVER", "qs-view-server")
-    user_id = user_id or os.getenv("EGERIA_USER", "erinoverview")
-    user_password = user_password or os.getenv("EGERIA_USER_PASSWORD", "secret")
-
-    clients = []
-    for cls in (DataDesigner, ReferenceDataManager):
-        client = cls(view_server, platform_url, user_id, user_password)
-        try:
-            from resource_explorer.egeria_identity import apply_identity
-
-            apply_identity(client, identity)
-        except Exception as exc:
-            log.debug("apply_identity unavailable (%s) — minting a token directly", exc)
-            client.create_egeria_bearer_token(user_id, user_password)
-        clients.append(client)
-    return clients[0], clients[1]
+    view_server = view_server or egeria_view_server()
+    clients = egeria_client(identity or current_principal(), purpose="reference catalog",
+                            view_server=view_server, platform_url=platform_url)
+    return clients.of(DataDesigner), clients.of(ReferenceDataManager)
 
 
 def matches_needing_proposals(matches: Sequence[ColumnMatch]) -> list[ColumnMatch]:

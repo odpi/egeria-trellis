@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import logging
 import os
+from resource_explorer.config import egeria_platform_url, egeria_view_server  # noqa: E402,F401
 
 log = logging.getLogger(__name__)
 
@@ -45,10 +46,10 @@ class EgeriaProjectFinder:
         user_id: str | None = None,
         user_password: str | None = None,
     ) -> None:
-        self.platform_url = platform_url or os.getenv("EGERIA_PLATFORM_URL", "")
-        self.view_server = view_server or os.getenv("EGERIA_VIEW_SERVER", "qs-view-server")
+        self.platform_url = platform_url or egeria_platform_url()
+        self.view_server = view_server or egeria_view_server()
         self.user_id = user_id or os.getenv("EGERIA_USER_ID", "erinoverview")
-        self.user_password = user_password or os.getenv("EGERIA_USER_PASSWORD", "secret")
+        self.user_password = user_password or ""   # not used to authenticate (Brief I)
         self._project_manager = None
 
     def connect(self) -> None:
@@ -61,10 +62,13 @@ class EgeriaProjectFinder:
         try:
             from pyegeria import ProjectManager
 
-            self._project_manager = ProjectManager(
-                self.view_server, self.platform_url, self.user_id, self.user_password
-            )
-            self._project_manager.create_egeria_bearer_token(self.user_id, self.user_password)
+            from resource_explorer.egeria_clients import current_principal, egeria_client
+
+            self._project_manager = egeria_client(
+                current_principal(), purpose="find projects", view_server=self.view_server,
+                platform_url=self.platform_url).of(ProjectManager)
+        except PermissionError:
+            raise
         except ImportError as exc:
             raise EgeriaProjectFinderError("pyegeria is not installed.") from exc
         except Exception as exc:

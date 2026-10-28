@@ -1,4 +1,5 @@
 """BeeAI tool definitions — shared across all explorer agents."""
+
 from __future__ import annotations
 
 from beeai_framework.tools import tool
@@ -22,30 +23,33 @@ def _absence(resource_slug: str, analysis_id: str, subject: str) -> str:
 
         fact = FactLayer().fact(resource_slug, analysis_id)
     except Exception:  # pragma: no cover - a tool must still answer
-        return (f"No {subject} recorded for '{resource_slug}' — and whether the "
-                f"analysis that produces them has run could not be determined.")
+        return (
+            f"No {subject} recorded for '{resource_slug}' — and whether the "
+            f"analysis that produces them has run could not be determined."
+        )
 
     if fact.is_known:
-        return (f"No {subject} for '{resource_slug}'. This is a measured result: "
-                f"the analysis ran and found none.")
+        return (
+            f"No {subject} for '{resource_slug}'. This is a measured result: "
+            f"the analysis ran and found none."
+        )
     runnable = f" Run: {', '.join(fact.can_run)}." if fact.can_run else ""
     if fact.state == "never_run":
-        return (f"Nothing is known about {subject} for '{resource_slug}' — the "
-                f"analysis that produces them has never run here, so this is NOT "
-                f"a finding that there are none.{runnable}")
-    return (f"Nothing is known about {subject} for '{resource_slug}' — "
-            f"{fact.note or 'the result cannot be established from what was recorded.'}"
-            f"{runnable}")
+        return (
+            f"Nothing is known about {subject} for '{resource_slug}' — the "
+            f"analysis that produces them has never run here, so this is NOT "
+            f"a finding that there are none.{runnable}"
+        )
+    return (
+        f"Nothing is known about {subject} for '{resource_slug}' — "
+        f"{fact.note or 'the result cannot be established from what was recorded.'}"
+        f"{runnable}"
+    )
 
 
-@tool(description=(
-    "Search indexed project content (code, docs, API specs) for text relevant to the query. "
-    "collection_names is a comma-separated list of fully-qualified collection names, "
-    "e.g. 'unitycatalog_python_code,unitycatalog_markdown_docs'. "
-    "Call multiple times with different queries or collections to gather more context."
-))
-def vector_search(query: str, collection_names: str) -> str:
+def vector_search_raw(query: str, collection_names: str) -> str:
     from resource_explorer.vector_store_pg import MultiCollectionStore
+
     collections = [c.strip() for c in collection_names.split(",") if c.strip()]
     if not collections:
         return "Error: no collection names provided."
@@ -56,16 +60,23 @@ def vector_search(query: str, collection_names: str) -> str:
     return "\n\n---\n\n".join(parts)
 
 
-@tool(description=(
-    "Get GitHub statistics for a project: stars, forks, watchers, open issues, contributors, "
-    "commits, releases, lines of code, file count, primary language, language breakdown, "
-    "license, topics, repo size, creation date, last pushed date. "
-    "days controls the commit-count window (default 90; use 30 for 30-day counts, 180 for 6-month, etc.)."
-))
-def query_project_stats(resource_slug: str, days: int = 90) -> str:
+@tool(
+    description=(
+        "Search indexed project content (code, docs, API specs) for text relevant to the query. "
+        "collection_names is a comma-separated list of fully-qualified collection names, "
+        "e.g. 'unitycatalog_python_code,unitycatalog_markdown_docs'. "
+        "Call multiple times with different queries or collections to gather more context."
+    )
+)
+def vector_search(query: str, collection_names: str) -> str:
+    return vector_search_raw(query, collection_names)
+
+
+def query_project_stats_raw(resource_slug: str, days: int = 90) -> str:
     import sqlite3
     from datetime import datetime, timedelta
     from resource_explorer.registry import ProjectRegistry
+
     registry = ProjectRegistry()
     slug = registry._normalize_slug(resource_slug)
     try:
@@ -110,12 +121,16 @@ def query_project_stats(resource_slug: str, days: int = 90) -> str:
     loc = d.get("lines_of_code")
     if loc:
         loc = int(loc)
-        loc_str = f"{loc / 1_000_000:.1f}M (est.)" if loc >= 1_000_000 else f"{loc / 1_000:.1f}K (est.)"
+        loc_str = (
+            f"{loc / 1_000_000:.1f}M (est.)" if loc >= 1_000_000 else f"{loc / 1_000:.1f}K (est.)"
+        )
     else:
         loc_str = "N/A"
 
     kb = d.get("repo_size_kb")
-    size_str = f"{int(kb) / 1024:.1f} MB" if kb and int(kb) >= 1024 else (f"{kb} KB" if kb else "N/A")
+    size_str = (
+        f"{int(kb) / 1024:.1f} MB" if kb and int(kb) >= 1024 else (f"{kb} KB" if kb else "N/A")
+    )
 
     # Prefer survey total (all file types) over code-only SQLite count
     try:
@@ -145,7 +160,11 @@ def query_project_stats(resource_slug: str, days: int = 90) -> str:
     file_count_str = (
         f"{survey_total} ({file_count_note})"
         if survey_total
-        else (v('ingestion_file_count') if d.get('ingestion_file_count') is not None else v('file_count'))
+        else (
+            v("ingestion_file_count")
+            if d.get("ingestion_file_count") is not None
+            else v("file_count")
+        )
     )
 
     lines = [
@@ -166,14 +185,23 @@ def query_project_stats(resource_slug: str, days: int = 90) -> str:
     return "\n".join(lines)
 
 
-@tool(description=(
-    "Get the top committers to a project by commit count over the last 90 days. "
-    "Returns a ranked list with commit counts and email addresses."
-))
-def query_top_committers(resource_slug: str, limit: int = 10) -> str:
+@tool(
+    description=(
+        "Get GitHub statistics for a project: stars, forks, watchers, open issues, contributors, "
+        "commits, releases, lines of code, file count, primary language, language breakdown, "
+        "license, topics, repo size, creation date, last pushed date. "
+        "days controls the commit-count window (default 90; use 30 for 30-day counts, 180 for 6-month, etc.)."
+    )
+)
+def query_project_stats(resource_slug: str, days: int = 90) -> str:
+    return query_project_stats_raw(resource_slug, days)
+
+
+def query_top_committers_raw(resource_slug: str, limit: int = 10) -> str:
     import sqlite3
     from collections import Counter
     from resource_explorer.registry import ProjectRegistry
+
     registry = ProjectRegistry()
     slug = registry._normalize_slug(resource_slug)
     try:
@@ -198,6 +226,16 @@ def query_top_committers(resource_slug: str, limit: int = 10) -> str:
     return "\n".join(lines)
 
 
+@tool(
+    description=(
+        "Get the top committers to a project by commit count over the last 90 days. "
+        "Returns a ranked list with commit counts and email addresses."
+    )
+)
+def query_top_committers(resource_slug: str, limit: int = 10) -> str:
+    return query_top_committers_raw(resource_slug, limit)
+
+
 def _query_code_symbols_raw(
     resource_slug: str,
     kind: str = "all",
@@ -207,6 +245,7 @@ def _query_code_symbols_raw(
 ) -> str:
     import sqlite3
     from resource_explorer.registry import ProjectRegistry
+
     registry = ProjectRegistry()
     slug = registry._normalize_slug(resource_slug)
     try:
@@ -239,7 +278,9 @@ def _query_code_symbols_raw(
         return f"Error reading symbol table: {exc}"
     if not rows:
         msg = f"No {kind if kind != 'all' else ''} symbols found in '{slug}'"
-        return msg + (f" matching '{pattern}'" if pattern else "") + ". Has this project been indexed?"
+        return (
+            msg + (f" matching '{pattern}'" if pattern else "") + ". Has this project been indexed?"
+        )
     label = kind if kind != "all" else "symbol"
     header = f"{total} {label}(s) in {slug}"
     if pattern:
@@ -255,13 +296,15 @@ def _query_code_symbols_raw(
     return "\n".join(lines)
 
 
-@tool(description=(
-    "List or count classes, functions, methods, and interfaces defined in a project's source code. "
-    "kind filters by symbol type: 'class', 'function', 'method', 'interface', 'enum', or 'all' (default). "
-    "pattern filters by name substring (case-insensitive). "
-    "file_path restricts to a specific file or directory prefix. "
-    "Returns qualified name, signature, and docstring for each match."
-))
+@tool(
+    description=(
+        "List or count classes, functions, methods, and interfaces defined in a project's source code. "
+        "kind filters by symbol type: 'class', 'function', 'method', 'interface', 'enum', or 'all' (default). "
+        "pattern filters by name substring (case-insensitive). "
+        "file_path restricts to a specific file or directory prefix. "
+        "Returns qualified name, signature, and docstring for each match."
+    )
+)
 def query_code_symbols(
     resource_slug: str,
     kind: str = "all",
@@ -269,18 +312,22 @@ def query_code_symbols(
     file_path: str = "",
     limit: int = 50,
 ) -> str:
-    return _query_code_symbols_raw(resource_slug, kind=kind, pattern=pattern,
-                                   file_path=file_path, limit=limit)
+    return _query_code_symbols_raw(
+        resource_slug, kind=kind, pattern=pattern, file_path=file_path, limit=limit
+    )
 
 
-@tool(description=(
-    "Get the full signature, docstring, and purpose summary for a named class or method. "
-    "name can be a simple name ('parse') or qualified name ('CodeParser.parse'). "
-    "Returns file location, signature, and a one-sentence summary of its purpose."
-))
+@tool(
+    description=(
+        "Get the full signature, docstring, and purpose summary for a named class or method. "
+        "name can be a simple name ('parse') or qualified name ('CodeParser.parse'). "
+        "Returns file location, signature, and a one-sentence summary of its purpose."
+    )
+)
 def get_symbol_detail(resource_slug: str, name: str) -> str:
     import sqlite3
     from resource_explorer.registry import ProjectRegistry
+
     registry = ProjectRegistry()
     slug = registry._normalize_slug(resource_slug)
     try:
@@ -329,9 +376,7 @@ def _generate_summary(resource_slug: str, symbol: dict, db_path: str) -> str:
         if not results:
             return ""
         snippet = results[0].text[:600]
-        prompt = (
-            f"Summarize what this {symbol['kind']} does in one sentence:\n\n{snippet}"
-        )
+        prompt = f"Summarize what this {symbol['kind']} does in one sentence:\n\n{snippet}"
         summary = get_llm().complete(prompt).strip().split("\n")[0]
         # Persist so the next call is instant
         with sqlite3.connect(db_path) as conn:
@@ -345,16 +390,19 @@ def _generate_summary(resource_slug: str, symbol: dict, db_path: str) -> str:
         return ""
 
 
-@tool(description=(
-    "Get weekly commit activity trends for a project. "
-    "weeks controls how many weeks of history to show (default 12). "
-    "Shows commit counts per week with a simple bar chart, plus lines added/deleted when available."
-))
+@tool(
+    description=(
+        "Get weekly commit activity trends for a project. "
+        "weeks controls how many weeks of history to show (default 12). "
+        "Shows commit counts per week with a simple bar chart, plus lines added/deleted when available."
+    )
+)
 def query_commit_activity(resource_slug: str, weeks: int = 12) -> str:
     import sqlite3
     from collections import defaultdict
     from datetime import datetime, timedelta
     from resource_explorer.registry import ProjectRegistry
+
     registry = ProjectRegistry()
     slug = registry._normalize_slug(resource_slug)
     weeks = max(1, min(weeks, 52))
@@ -400,20 +448,25 @@ def query_commit_activity(resource_slug: str, weeks: int = 12) -> str:
     if has_churn:
         total_adds = sum(week_adds.values())
         total_dels = sum(week_dels.values())
-        lines.append(f"\nTotal over {weeks} weeks: +{total_adds:,} additions / -{total_dels:,} deletions")
+        lines.append(
+            f"\nTotal over {weeks} weeks: +{total_adds:,} additions / -{total_dels:,} deletions"
+        )
     return "\n".join(lines)
 
 
-@tool(description=(
-    "Get a detailed contribution profile for a specific author: commit count, lines added/deleted, "
-    "activity tier (core/regular/occasional relative to the project team), and comparison to project median. "
-    "author can be a name or email substring — fuzzy matched against stored commits. "
-    "days controls the lookback window (default 90)."
-))
+@tool(
+    description=(
+        "Get a detailed contribution profile for a specific author: commit count, lines added/deleted, "
+        "activity tier (core/regular/occasional relative to the project team), and comparison to project median. "
+        "author can be a name or email substring — fuzzy matched against stored commits. "
+        "days controls the lookback window (default 90)."
+    )
+)
 def query_contributor_profile(resource_slug: str, author: str, days: int = 90) -> str:
     import sqlite3
     from datetime import datetime, timedelta
     from resource_explorer.registry import ProjectRegistry
+
     registry = ProjectRegistry()
     slug = registry._normalize_slug(resource_slug)
     days = max(1, min(days, 365))
@@ -497,9 +550,7 @@ def query_contributor_profile(resource_slug: str, author: str, days: int = 90) -
         lines.append(f"Commits: {commits}  (project avg: {avg_commits}; {rel_pct:+d}% relative)")
         if additions or deletions:
             net = additions - deletions
-            lines.append(
-                f"Lines added: {additions:,}  Lines deleted: {deletions:,}  Net: {net:+,}"
-            )
+            lines.append(f"Lines added: {additions:,}  Lines deleted: {deletions:,}  Net: {net:+,}")
         else:
             lines.append("Lines added/deleted: not yet fetched (run refresh to populate)")
         lines.append(f"Activity tier: {tier}")
@@ -524,9 +575,11 @@ def _build_example_context_raw(resource_slug: str, topic: str) -> str:
     store = MultiCollectionStore()
     existing = [c for c in candidate_collections if store.collection_exists(c)]
     if not existing:
-        return (f"No indexed collections found for '{slug}' — this repo's content has "
-                f"not been embedded, so nothing can be retrieved from it. That is not a "
-                f"statement about what the repo contains. Run: resource-explorer add/refresh {slug}")
+        return (
+            f"No indexed collections found for '{slug}' — this repo's content has "
+            f"not been embedded, so nothing can be retrieved from it. That is not a "
+            f"statement about what the repo contains. Run: resource-explorer add/refresh {slug}"
+        )
 
     # Targeted searches: topic itself, import/setup patterns, usage examples
     pkg = slug.replace("_", " ")
@@ -534,7 +587,11 @@ def _build_example_context_raw(resource_slug: str, topic: str) -> str:
         (topic, existing, 3),
         (f"from {slug} import", existing, 2),
         (f"import {slug} setup {pkg}", existing, 2),
-        ("usage example how to", [c for c in existing if any(t in c for t in ("examples", "markdown"))], 2),
+        (
+            "usage example how to",
+            [c for c in existing if any(t in c for t in ("examples", "markdown"))],
+            2,
+        ),
     ]
 
     seen: set[str] = set()
@@ -557,14 +614,14 @@ def _build_example_context_raw(resource_slug: str, topic: str) -> str:
     # imports or constructor signatures — both are frequently in a different
     # chunk than the usage code and score too low to be retrieved on their own.
     import re as _re
+
     combined = "\n".join(sections)
 
     # Import hint: collect capitalised names used as constructors
-    class_names = _re.findall(r'\b([A-Z][A-Za-z0-9]+)\s*\(', combined)
-    known_classes = sorted({
-        n for n in class_names
-        if n not in {"True", "False", "None"} and not n[0].isdigit()
-    })
+    class_names = _re.findall(r"\b([A-Z][A-Za-z0-9]+)\s*\(", combined)
+    known_classes = sorted(
+        {n for n in class_names if n not in {"True", "False", "None"} and not n[0].isdigit()}
+    )
     import_hint = ""
     if known_classes:
         import_hint = (
@@ -577,12 +634,12 @@ def _build_example_context_raw(resource_slug: str, topic: str) -> str:
     constructor_hints: list[str] = []
     for cls in known_classes[:6]:
         # Match ClassName(\n    arg, kw=val, ...\n) — allow multi-line
-        pattern = cls + r'\s*\(\s*\n?((?:[^\(\)]*\n?){1,8})\)'
+        pattern = cls + r"\s*\(\s*\n?((?:[^\(\)]*\n?){1,8})\)"
         for m in _re.finditer(pattern, combined):
             args = m.group(1).strip()
             # Skip trivial no-arg or single self calls
-            if args and 'self.' not in args and len(args) > 4:
-                one_line = ' '.join(args.split())
+            if args and "self." not in args and len(args) > 4:
+                one_line = " ".join(args.split())
                 constructor_hints.append(f"  {cls}({one_line})")
                 break
 
@@ -590,35 +647,38 @@ def _build_example_context_raw(resource_slug: str, topic: str) -> str:
     if constructor_hints:
         constructor_hint = (
             "CONSTRUCTOR PATTERNS (use these exact signatures):\n"
-            + "\n".join(constructor_hints) + "\n\n"
+            + "\n".join(constructor_hints)
+            + "\n\n"
         )
 
-    header = (
-        f"Context for: '{topic}' in {slug}\n{'=' * 60}\n\n"
-        f"{import_hint}{constructor_hint}"
-    )
+    header = f"Context for: '{topic}' in {slug}\n{'=' * 60}\n\n" f"{import_hint}{constructor_hint}"
     return header + "\n\n---\n\n".join(sections)
 
 
-@tool(description=(
-    "Gather context for generating a Python code example about a specific topic. "
-    "Searches the examples, python_code, api_reference, and markdown_docs collections "
-    "and returns relevant snippets ready for code generation. "
-    "topic should be a concrete task: e.g. 'connect to server', 'list metadata assets', "
-    "'create a glossary term', 'authenticate with token'. "
-    "Call multiple times with different topics to gather broader context."
-))
+@tool(
+    description=(
+        "Gather context for generating a Python code example about a specific topic. "
+        "Searches the examples, python_code, api_reference, and markdown_docs collections "
+        "and returns relevant snippets ready for code generation. "
+        "topic should be a concrete task: e.g. 'connect to server', 'list metadata assets', "
+        "'create a glossary term', 'authenticate with token'. "
+        "Call multiple times with different topics to gather broader context."
+    )
+)
 def build_example_context(resource_slug: str, topic: str) -> str:
     return _build_example_context_raw(resource_slug, topic)
 
 
-@tool(description=(
-    "Query the dependency graph for a project. Returns a markdown table of dependencies. "
-    "dep_type can be 'runtime', 'dev', 'optional', 'indirect', 'test', or 'all' (default). "
-    "Pass a comma-separated list of project_slugs to find shared dependencies across projects."
-))
+@tool(
+    description=(
+        "Query the dependency graph for a project. Returns a markdown table of dependencies. "
+        "dep_type can be 'runtime', 'dev', 'optional', 'indirect', 'test', or 'all' (default). "
+        "Pass a comma-separated list of project_slugs to find shared dependencies across projects."
+    )
+)
 def query_dependencies(resource_slug: str, dep_type: str = "all") -> str:
     from resource_explorer.registry import ProjectRegistry
+
     registry = ProjectRegistry()
     slugs = [s.strip() for s in resource_slug.split(",") if s.strip()]
     if not slugs:
@@ -630,7 +690,8 @@ def query_dependencies(resource_slug: str, dep_type: str = "all") -> str:
         if not deps:
             return _absence(slug, "dependency_analysis", "dependencies")
         lines = [
-            f"Dependencies for **{slug}** (filter: {dep_type}):", "",
+            f"Dependencies for **{slug}** (filter: {dep_type}):",
+            "",
             # "Version From" is provenance for the Version column — "declared"
             # means the manifest wrote that version at this dependency's own
             # declaration site; "variable_interpolation"/"version_catalog" mean
@@ -651,7 +712,8 @@ def query_dependencies(resource_slug: str, dep_type: str = "all") -> str:
     if not shared:
         return f"No shared dependencies found across: {', '.join(slugs)}"
     lines = [
-        f"Shared dependencies across {', '.join(slugs)}:", "",
+        f"Shared dependencies across {', '.join(slugs)}:",
+        "",
         "| Package | Ecosystem | Projects |",
         "|---------|-----------|---------|",
     ]
@@ -663,13 +725,14 @@ def query_dependencies(resource_slug: str, dep_type: str = "all") -> str:
 def query_databases_raw(database_slug: str = "") -> str:
     import json
     from resource_explorer.registry import ProjectRegistry
+
     registry = ProjectRegistry()
     if database_slug:
         normalized = registry._normalize_slug(database_slug)
-        db_entity = registry.get_database(normalized)
+        db_entity = registry.get_database(normalized, allow_unreadable=True)
         if not db_entity:
             return f"Database '{database_slug}' not found in registry."
-        
+
         lines = [
             f"Database: {db_entity.slug}",
             f"  Display Name: {db_entity.display_name}",
@@ -681,20 +744,20 @@ def query_databases_raw(database_slug: str = "") -> str:
             f"  Registered At: {db_entity.registered_at}",
             f"  Last Surveyed At: {db_entity.last_surveyed_at or 'Never'}",
         ]
-        
+
         latest_survey = registry.get_latest_database_survey(normalized)
         if latest_survey:
             lines.append(f"  Schema Count: {latest_survey.get('schema_count', 0)}")
             lines.append(f"  Table Count: {latest_survey.get('table_count', 0)}")
             lines.append(f"  Column Count: {latest_survey.get('column_count', 0)}")
-            
+
             survey_data = latest_survey.get("survey_data")
             if isinstance(survey_data, str):
                 try:
                     survey_data = json.loads(survey_data)
                 except Exception:
                     pass
-            
+
             if isinstance(survey_data, dict) and "schema_info" in survey_data:
                 schemas = survey_data["schema_info"].get("schemas", [])
                 if schemas:
@@ -703,10 +766,12 @@ def query_databases_raw(database_slug: str = "") -> str:
                         schema_name = schema.get("name", "")
                         tables = schema.get("tables", [])
                         table_names = [t.get("name", "") for t in tables]
-                        lines.append(f"  - Schema '{schema_name}': {', '.join(table_names) if table_names else '(no tables)'}")
+                        lines.append(
+                            f"  - Schema '{schema_name}': {', '.join(table_names) if table_names else '(no tables)'}"
+                        )
         else:
             lines.append("  No survey data available. Run a survey to see schemas/tables.")
-            
+
         return "\n".join(lines)
     else:
         databases = registry.list_databases()
@@ -722,41 +787,46 @@ def query_databases_raw(database_slug: str = "") -> str:
         return "\n".join(lines)
 
 
-@tool(description=(
-    "List registered databases, or show detailed info about a specific database. "
-    "If database_slug is provided, returns details of that database, its schemas, tables, and column counts. "
-    "If database_slug is empty, lists all registered databases with their slugs, types, hosts, ports, and governance states."
-))
+@tool(
+    description=(
+        "List registered databases, or show detailed info about a specific database. "
+        "If database_slug is provided, returns details of that database, its schemas, tables, and column counts. "
+        "If database_slug is empty, lists all registered databases with their slugs, types, hosts, ports, and governance states."
+    )
+)
 def query_databases(database_slug: str = "") -> str:
     return query_databases_raw(database_slug)
 
 
-def query_database_schema_raw(database_slug: str, schema_name: str = "", table_name: str = "") -> str:
+def query_database_schema_raw(
+    database_slug: str, schema_name: str = "", table_name: str = ""
+) -> str:
     import json
     from resource_explorer.registry import ProjectRegistry
+
     registry = ProjectRegistry()
     normalized = registry._normalize_slug(database_slug)
-    db_entity = registry.get_database(normalized)
+    db_entity = registry.get_database(normalized, allow_unreadable=True)
     if not db_entity:
         return f"Database '{database_slug}' not found."
-        
+
     latest_survey = registry.get_latest_database_survey(normalized)
     if not latest_survey:
         return f"No survey data available for database '{database_slug}'."
-        
+
     survey_data = latest_survey.get("survey_data")
     if isinstance(survey_data, str):
         try:
             survey_data = json.loads(survey_data)
         except Exception:
             return f"Failed to parse survey data for database '{database_slug}'."
-            
+
     if not isinstance(survey_data, dict) or "schema_info" not in survey_data:
         return f"No schema information found in survey data for database '{database_slug}'."
-        
+
     schema_info = survey_data["schema_info"]
     schemas = schema_info.get("schemas", [])
-    
+
     if table_name:
         target_table = None
         found_schema_name = None
@@ -772,11 +842,11 @@ def query_database_schema_raw(database_slug: str, schema_name: str = "", table_n
                     break
             if target_table:
                 break
-                
+
         if not target_table:
             filter_desc = f" in schema '{schema_name}'" if schema_name else ""
             return f"Table '{table_name}' not found{filter_desc} in database '{database_slug}'."
-            
+
         columns = target_table.get("columns", [])
         lines = [
             f"Table: {found_schema_name}.{target_table.get('name')}",
@@ -800,7 +870,7 @@ def query_database_schema_raw(database_slug: str, schema_name: str = "", table_n
                 f"{'Yes' if col.get('nullable') else 'No'} | {pk} | {fk} | {col.get('description') or ''} |"
             )
         return "\n".join(lines)
-        
+
     elif schema_name:
         target_schema = None
         for sch in schemas:
@@ -809,16 +879,21 @@ def query_database_schema_raw(database_slug: str, schema_name: str = "", table_n
                 break
         if not target_schema:
             return f"Schema '{schema_name}' not found in database '{database_slug}'."
-            
+
         tables = target_schema.get("tables", [])
-        lines = [f"Schema: {target_schema.get('name')}", f"Description: {target_schema.get('description') or 'None'}", "", "Tables:"]
+        lines = [
+            f"Schema: {target_schema.get('name')}",
+            f"Description: {target_schema.get('description') or 'None'}",
+            "",
+            "Tables:",
+        ]
         for tbl in tables:
             lines.append(
                 f"- {tbl.get('name')} | Type: {tbl.get('type')} | Columns: {len(tbl.get('columns', []))} | "
                 f"Rows: {tbl.get('row_count', 'unknown')} | Size: {tbl.get('size_pretty', 'unknown')}"
             )
         return "\n".join(lines)
-        
+
     else:
         lines = [
             f"Database Schema Summary for '{database_slug}':",
@@ -840,13 +915,15 @@ def query_database_schema_raw(database_slug: str, schema_name: str = "", table_n
         return "\n".join(lines)
 
 
-@tool(description=(
-    "Retrieve schema and structure details for a database, optionally filtering by schema_name and/or table_name. "
-    "If table_name is provided, returns columns (with types, nullable, primary key, foreign key information) "
-    "and row count/size statistics for that table. "
-    "If only schema_name is provided, lists tables in that schema. "
-    "If neither is provided, returns a list of all tables in the database with their row counts and sizes."
-))
+@tool(
+    description=(
+        "Retrieve schema and structure details for a database, optionally filtering by schema_name and/or table_name. "
+        "If table_name is provided, returns columns (with types, nullable, primary key, foreign key information) "
+        "and row count/size statistics for that table. "
+        "If only schema_name is provided, lists tables in that schema. "
+        "If neither is provided, returns a list of all tables in the database with their row counts and sizes."
+    )
+)
 def query_database_schema(database_slug: str, schema_name: str = "", table_name: str = "") -> str:
     return query_database_schema_raw(database_slug, schema_name, table_name)
 
@@ -854,13 +931,14 @@ def query_database_schema(database_slug: str, schema_name: str = "", table_name:
 def query_filesystems_raw(filesystem_slug: str = "", file_pattern: str = "") -> str:
     import json
     from resource_explorer.registry import ProjectRegistry
+
     registry = ProjectRegistry()
     if filesystem_slug:
         normalized = registry._normalize_slug(filesystem_slug)
         fs_entity = registry.get_filesystem(normalized)
         if not fs_entity:
             return f"Filesystem '{filesystem_slug}' not found in registry."
-            
+
         lines = [
             f"Filesystem: {fs_entity.slug}",
             f"  Display Name: {fs_entity.display_name}",
@@ -871,7 +949,7 @@ def query_filesystems_raw(filesystem_slug: str = "", file_pattern: str = "") -> 
             f"  Registered At: {fs_entity.registered_at}",
             f"  Last Surveyed At: {fs_entity.last_surveyed_at or 'Never'}",
         ]
-        
+
         latest_survey = registry.get_latest_filesystem_survey(normalized)
         if latest_survey:
             survey_data = latest_survey.get("survey_data")
@@ -880,17 +958,24 @@ def query_filesystems_raw(filesystem_slug: str = "", file_pattern: str = "") -> 
                     survey_data = json.loads(survey_data)
                 except Exception:
                     pass
-            
+
             if isinstance(survey_data, dict):
                 lines.append(f"  Total Files: {survey_data.get('total_files', 0)}")
                 lines.append(f"  Total Data Files: {survey_data.get('total_data_files', 0)}")
                 lines.append(f"  Total Size: {survey_data.get('total_size', 'unknown')}")
-                
+
                 files = survey_data.get("files", [])
                 if file_pattern:
                     pat = file_pattern.lower()
-                    matching_files = [f for f in files if pat in f.get("file_name", "").lower() or pat in f.get("file_path", "").lower()]
-                    lines.append(f"\nFiles matching pattern '{file_pattern}' ({len(matching_files)} found):")
+                    matching_files = [
+                        f
+                        for f in files
+                        if pat in f.get("file_name", "").lower()
+                        or pat in f.get("file_path", "").lower()
+                    ]
+                    lines.append(
+                        f"\nFiles matching pattern '{file_pattern}' ({len(matching_files)} found):"
+                    )
                     for f in matching_files[:30]:
                         lines.append(
                             f"  - {f.get('file_path')} | Size: {f.get('file_size')} | "
@@ -906,10 +991,12 @@ def query_filesystems_raw(filesystem_slug: str = "", file_pattern: str = "") -> 
                             f"Format: {f.get('format')} | Modified: {f.get('modified_at', '')[:16]}"
                         )
                     if len(files) > 15:
-                        lines.append(f"  ... and {len(files) - 15} more files. Search with file_pattern argument.")
+                        lines.append(
+                            f"  ... and {len(files) - 15} more files. Search with file_pattern argument."
+                        )
         else:
             lines.append("  No survey data available. Run a survey to catalog files.")
-            
+
         return "\n".join(lines)
     else:
         filesystems = registry.list_filesystems()
@@ -924,11 +1011,451 @@ def query_filesystems_raw(filesystem_slug: str = "", file_pattern: str = "") -> 
         return "\n".join(lines)
 
 
-@tool(description=(
-    "List registered filesystems, or search/view files within a specific filesystem. "
-    "If filesystem_slug is provided, returns details of that filesystem and its latest survey (total files, size, etc.). "
-    "If file_pattern is also provided, filters files in the latest survey matching that substring pattern (case-insensitive). "
-    "If filesystem_slug is empty, lists all registered filesystems with their slugs, local mount points, and governance states."
-))
+@tool(
+    description=(
+        "List registered filesystems, or search/view files within a specific filesystem. "
+        "If filesystem_slug is provided, returns details of that filesystem and its latest survey (total files, size, etc.). "
+        "If file_pattern is also provided, filters files in the latest survey matching that substring pattern (case-insensitive). "
+        "If filesystem_slug is empty, lists all registered filesystems with their slugs, local mount points, and governance states."
+    )
+)
 def query_filesystems(filesystem_slug: str = "", file_pattern: str = "") -> str:
     return query_filesystems_raw(filesystem_slug, file_pattern)
+
+
+def compare_database_schemas_raw(
+    database_slug_a: str,
+    database_slug_b: str,
+    schema_name_a: str = "",
+    schema_name_b: str = "",
+) -> str:
+    import json
+    from resource_explorer.registry import ProjectRegistry
+
+    registry = ProjectRegistry()
+    slug_a = registry._normalize_slug(database_slug_a)
+    slug_b = registry._normalize_slug(database_slug_b)
+
+    db_a = registry.get_database(slug_a, allow_unreadable=True)
+    if not db_a:
+        return f"Database '{database_slug_a}' not found in registry."
+    db_b = registry.get_database(slug_b, allow_unreadable=True)
+    if not db_b:
+        return f"Database '{database_slug_b}' not found in registry."
+
+    survey_a = registry.get_latest_database_survey(slug_a)
+    survey_b = registry.get_latest_database_survey(slug_b)
+
+    if not survey_a and not survey_b:
+        return (
+            f"No survey data available for either database '{database_slug_a}' or '{database_slug_b}'. "
+            "Run surveys on both databases to enable schema comparison."
+        )
+    if not survey_a:
+        return f"No survey data available for database '{database_slug_a}'. Run a survey to enable schema comparison."
+    if not survey_b:
+        return f"No survey data available for database '{database_slug_b}'. Run a survey to enable schema comparison."
+
+    def _extract_schema_info(survey: dict, db_slug: str) -> tuple[dict | None, str | None]:
+        survey_data = survey.get("survey_data")
+        if isinstance(survey_data, str):
+            try:
+                survey_data = json.loads(survey_data)
+            except Exception:
+                return None, f"Failed to parse survey data for database '{db_slug}'."
+        if not isinstance(survey_data, dict) or "schema_info" not in survey_data:
+            return None, f"No schema information found in survey data for database '{db_slug}'."
+        return survey_data["schema_info"], None
+
+    info_a, err_a = _extract_schema_info(survey_a, database_slug_a)
+    if err_a:
+        return err_a
+    info_b, err_b = _extract_schema_info(survey_b, database_slug_b)
+    if err_b:
+        return err_b
+
+    assert info_a is not None and info_b is not None
+
+    schemas_list_a = info_a.get("schemas", [])
+    schemas_list_b = info_b.get("schemas", [])
+
+    schemas_dict_a = {s.get("name", "").lower(): s for s in schemas_list_a if s.get("name")}
+    schemas_dict_b = {s.get("name", "").lower(): s for s in schemas_list_b if s.get("name")}
+
+    target_schema_a = schema_name_a.lower().strip() if schema_name_a else ""
+    target_schema_b = (
+        (schema_name_b or schema_name_a).lower().strip() if (schema_name_b or schema_name_a) else ""
+    )
+
+    if target_schema_a and target_schema_a not in schemas_dict_a:
+        return f"Schema '{schema_name_a}' not found in database '{database_slug_a}'."
+    if target_schema_b and target_schema_b not in schemas_dict_b:
+        target_name = schema_name_b or schema_name_a
+        return f"Schema '{target_name}' not found in database '{database_slug_b}'."
+
+    lines = [
+        f"Database Schema Comparison: {db_a.display_name or db_a.slug} vs {db_b.display_name or db_b.slug}",
+        "",
+        f"| Dimension | {db_a.display_name or db_a.slug} ({db_a.slug}) | {db_b.display_name or db_b.slug} ({db_b.slug}) |",
+        "|---|---|---|",
+        f"| Type | {db_a.db_type} | {db_b.db_type} |",
+        f"| Host:Port | {db_a.host}:{db_a.port} | {db_b.host}:{db_b.port} |",
+        f"| Database Name | {db_a.database_name} | {db_b.database_name} |",
+        f"| Total Schemas | {len(schemas_list_a)} | {len(schemas_list_b)} |",
+        f"| Total Tables | {info_a.get('total_tables', 0)} | {info_b.get('total_tables', 0)} |",
+        f"| Total Columns | {info_a.get('total_columns', 0)} | {info_b.get('total_columns', 0)} |",
+        "",
+    ]
+
+    if target_schema_a and target_schema_b:
+        schema_pairs = [(target_schema_a, target_schema_b)]
+    else:
+        all_schema_keys = sorted(set(schemas_dict_a.keys()) | set(schemas_dict_b.keys()))
+        schemas_only_a = [
+            schemas_dict_a[k].get("name", k)
+            for k in all_schema_keys
+            if k in schemas_dict_a and k not in schemas_dict_b
+        ]
+        schemas_only_b = [
+            schemas_dict_b[k].get("name", k)
+            for k in all_schema_keys
+            if k in schemas_dict_b and k not in schemas_dict_a
+        ]
+
+        if schemas_only_a or schemas_only_b:
+            lines.append("Schema Differences:")
+            if schemas_only_a:
+                lines.append(f"- Schemas only in {db_a.slug}: {', '.join(schemas_only_a)}")
+            if schemas_only_b:
+                lines.append(f"- Schemas only in {db_b.slug}: {', '.join(schemas_only_b)}")
+            lines.append("")
+
+        common_keys = [k for k in all_schema_keys if k in schemas_dict_a and k in schemas_dict_b]
+        schema_pairs = [(k, k) for k in common_keys]
+
+    total_diff_tables = 0
+    total_common_tables = 0
+    total_identical_tables = 0
+
+    for sch_k_a, sch_k_b in schema_pairs:
+        sch_obj_a = schemas_dict_a[sch_k_a]
+        sch_obj_b = schemas_dict_b[sch_k_b]
+        sch_name_display_a = sch_obj_a.get("name", sch_k_a)
+        sch_name_display_b = sch_obj_b.get("name", sch_k_b)
+
+        header_label = (
+            f"Schema '{sch_name_display_a}'"
+            if sch_name_display_a == sch_name_display_b
+            else f"Schema '{sch_name_display_a}' ({db_a.slug}) vs '{sch_name_display_b}' ({db_b.slug})"
+        )
+        lines.append(f"### {header_label}")
+
+        tables_a = {
+            t.get("name", "").lower(): t for t in sch_obj_a.get("tables", []) if t.get("name")
+        }
+        tables_b = {
+            t.get("name", "").lower(): t for t in sch_obj_b.get("tables", []) if t.get("name")
+        }
+
+        all_table_names = sorted(set(tables_a.keys()) | set(tables_b.keys()))
+        tbls_only_a = [
+            tables_a[t].get("name", t)
+            for t in all_table_names
+            if t in tables_a and t not in tables_b
+        ]
+        tbls_only_b = [
+            tables_b[t].get("name", t)
+            for t in all_table_names
+            if t in tables_b and t not in tables_a
+        ]
+        common_tbl_keys = [t for t in all_table_names if t in tables_a and t in tables_b]
+
+        if tbls_only_a:
+            lines.append(f"- Tables only in {db_a.slug}: {', '.join(tbls_only_a)}")
+        if tbls_only_b:
+            lines.append(f"- Tables only in {db_b.slug}: {', '.join(tbls_only_b)}")
+
+        table_diff_details = []
+
+        for t_k in common_tbl_keys:
+            total_common_tables += 1
+            t_a = tables_a[t_k]
+            t_b = tables_b[t_k]
+            t_name_display = t_a.get("name", t_k)
+
+            cols_a = {c.get("name", "").lower(): c for c in t_a.get("columns", []) if c.get("name")}
+            cols_b = {c.get("name", "").lower(): c for c in t_b.get("columns", []) if c.get("name")}
+
+            all_col_keys = sorted(set(cols_a.keys()) | set(cols_b.keys()))
+            cols_only_a = [
+                cols_a[c].get("name", c) for c in all_col_keys if c in cols_a and c not in cols_b
+            ]
+            cols_only_b = [
+                cols_b[c].get("name", c) for c in all_col_keys if c in cols_b and c not in cols_a
+            ]
+            common_cols = [c for c in all_col_keys if c in cols_a and c in cols_b]
+
+            col_mismatches = []
+            for c_k in common_cols:
+                ca = cols_a[c_k]
+                cb = cols_b[c_k]
+                c_name_display = ca.get("name", c_k)
+                diffs = []
+                if ca.get("type", "").lower() != cb.get("type", "").lower():
+                    diffs.append(f"Type: '{ca.get('type')}' vs '{cb.get('type')}'")
+                if bool(ca.get("nullable")) != bool(cb.get("nullable")):
+                    diffs.append(f"Nullable: {ca.get('nullable')} vs {cb.get('nullable')}")
+                if bool(ca.get("is_primary_key")) != bool(cb.get("is_primary_key")):
+                    diffs.append(f"PK: {ca.get('is_primary_key')} vs {cb.get('is_primary_key')}")
+
+                if diffs:
+                    col_mismatches.append(
+                        (c_name_display, ca.get("type", ""), cb.get("type", ""), "; ".join(diffs))
+                    )
+
+            if cols_only_a or cols_only_b or col_mismatches:
+                total_diff_tables += 1
+                diff_sec = [f"#### Table '{t_name_display}' Differences:"]
+                if cols_only_a:
+                    diff_sec.append(f"- Columns only in {db_a.slug}: {', '.join(cols_only_a)}")
+                if cols_only_b:
+                    diff_sec.append(f"- Columns only in {db_b.slug}: {', '.join(cols_only_b)}")
+                if col_mismatches:
+                    diff_sec.append(
+                        f"| Column | {db_a.slug} Type | {db_b.slug} Type | Differences |"
+                    )
+                    diff_sec.append("|---|---|---|---|")
+                    for c_name, ta_type, tb_type, d_str in col_mismatches:
+                        diff_sec.append(f"| {c_name} | {ta_type} | {tb_type} | {d_str} |")
+                table_diff_details.append("\n".join(diff_sec))
+            else:
+                total_identical_tables += 1
+
+        if table_diff_details:
+            lines.append("")
+            lines.extend(table_diff_details)
+        elif not tbls_only_a and not tbls_only_b:
+            lines.append(
+                f"All {len(common_tbl_keys)} tables and column definitions in this schema are identical."
+            )
+        else:
+            lines.append(
+                f"Common tables ({len(common_tbl_keys)}) have identical column definitions."
+            )
+        lines.append("")
+
+    return "\n".join(lines).strip()
+
+
+@tool(
+    description=(
+        "Compare database schemas, tables, and column structures between two registered databases. "
+        "Identifies common vs exclusive tables, column mismatches, type differences, primary keys, and nullability. "
+        "Optionally filter to specific schema names (e.g. schema_name_a='public', schema_name_b='public')."
+    )
+)
+def compare_database_schemas(
+    database_slug_a: str,
+    database_slug_b: str,
+    schema_name_a: str = "",
+    schema_name_b: str = "",
+) -> str:
+    return compare_database_schemas_raw(
+        database_slug_a, database_slug_b, schema_name_a, schema_name_b
+    )
+
+
+def database_schema_changes_raw(database_slug: str) -> str:
+    from resource_explorer.history_diff import database_changes
+    from resource_explorer.registry import ProjectRegistry
+
+    return database_changes(ProjectRegistry(), database_slug)
+
+
+@tool(
+    description=(
+        "Show what changed in a registered database's schema between its two most recent surveys: "
+        "tables added or removed, and per table the columns added or removed and any column whose type, "
+        "nullability or primary-key status changed. Use for 'what changed in X since the last survey?'. "
+        "Says so plainly when the database was never surveyed or only surveyed once."
+    )
+)
+def database_schema_changes(database_slug: str) -> str:
+    return database_schema_changes_raw(database_slug)
+
+
+def dependency_changes_raw(resource_slug: str) -> str:
+    from resource_explorer.history_diff import dependency_changes
+    from resource_explorer.registry import ProjectRegistry
+
+    return dependency_changes(ProjectRegistry(), resource_slug)
+
+
+@tool(
+    description=(
+        "Show how a repository's dependencies drifted between its two most recent ingests: dependencies "
+        "added, removed, and version changes. Use for 'has the dependency set of X changed?'. Says so "
+        "plainly when dependencies were never recorded or recorded only once."
+    )
+)
+def dependency_changes(resource_slug: str) -> str:
+    return dependency_changes_raw(resource_slug)
+
+
+def coverage_sweep_raw(analysis: str, resource_type: str = "", only_gaps: bool = False) -> str:
+    from resource_explorer.coverage_sweep import coverage_sweep
+    from resource_explorer.registry import ProjectRegistry
+
+    return coverage_sweep(ProjectRegistry(), analysis, resource_type, only_gaps)
+
+
+@tool(
+    description=(
+        "Sweep EVERY registered resource for one analysis and group them by what is known: has a result, "
+        "ran and found nothing, never run, or cannot be established. Use for 'which repos have no license "
+        "classification?', 'which databases have never been checked for X?'. analysis is an analysis id "
+        "(license_classification, security_scan, cve_scan, secret_scan, documentation_coverage, "
+        "dependency_analysis, ci_quality, database_owner, schema_inventory, ...) or a plain word such as "
+        "'license' or 'security'. resource_type is 'repo', 'database' or 'filesystem' (optional). "
+        "only_gaps=true lists just the resources with nothing known. 'Never run' is not a pass."
+    )
+)
+def coverage_sweep(analysis: str, resource_type: str = "", only_gaps: bool = False) -> str:
+    return coverage_sweep_raw(analysis, resource_type, only_gaps)
+
+
+def find_repos_by_dependency_raw(dependency: str, ecosystem: str = "", contains: bool = False) -> str:
+    from resource_explorer.discovery import repos_using_dependency
+    from resource_explorer.registry import ProjectRegistry
+
+    return repos_using_dependency(ProjectRegistry(), dependency, ecosystem, contains)
+
+
+@tool(
+    description=(
+        "Find which registered repositories use a dependency, by exact package name (case and -/_/. "
+        "spelling ignored, e.g. 'sqlalchemy'), from each repo's latest recorded dependencies. Set "
+        "contains=true to match any package whose name contains the text. ecosystem narrows it (e.g. 'pip'). "
+        "Repositories with no recorded dependencies are listed as unknown, not as non-users."
+    )
+)
+def find_repos_by_dependency(dependency: str, ecosystem: str = "", contains: bool = False) -> str:
+    return find_repos_by_dependency_raw(dependency, ecosystem, contains)
+
+
+def rank_databases_raw(metric: str = "tables", limit: int = 10) -> str:
+    from resource_explorer.discovery import rank_databases
+    from resource_explorer.registry import ProjectRegistry
+
+    return rank_databases(ProjectRegistry(), metric, limit)
+
+
+@tool(
+    description=(
+        "Rank registered databases by a figure from their latest measured survey. metric is 'tables', "
+        "'columns' or 'undocumented_tables' (tables with no description; tables whose description the survey could not read "
+        "are reported separately, not counted as undocumented). Databases with no measured survey are listed "
+        "as not ranked. Use for 'which databases are largest?' or 'which have the most undocumented tables?'."
+    )
+)
+def rank_databases(metric: str = "tables", limit: int = 10) -> str:
+    return rank_databases_raw(metric, limit)
+
+
+def list_rfas_raw(resource_slug: str = "", include_closed: bool = False) -> str:
+    """Read-only view of the RFA drawer, with each RFA's workflow state and any dismissal."""
+    from resource_explorer.registry import ProjectRegistry
+    from resource_explorer.rfas import flatten_rfas
+
+    registry = ProjectRegistry()
+    slug = registry._normalize_slug(resource_slug) if resource_slug else None
+    rfas = flatten_rfas(registry, entity_slug=slug)
+    total = len(rfas)
+    shown = [
+        r for r in rfas
+        if not r.get("dismissed") and (include_closed or r.get("rfa_status") != "completed")
+    ]
+    scope = f" for '{slug}'" if slug else ""
+    if not shown:
+        return f"No open RequestForAction entries{scope} ({total} in total, including closed or dismissed)."
+    lines = [f"{len(shown)} RequestForAction entr{'y' if len(shown) == 1 else 'ies'}{scope} ({total} in total):"]
+    for r in shown[:25]:
+        who = f", assigned to {r['assignee']}" if r.get("assignee") else ""
+        target = f"`{r['entity_slug']}`" if r.get("entity_slug") else "(no specific resource)"
+        lines.append(
+            f"- [{r.get('rfa_status', 'open')}{who}] {target} {r['summary']} "
+            f"({r.get('analysis_name') or 'RFA'}, {r['ts'][:10]}, id {r['id']})"
+        )
+    if len(shown) > 25:
+        lines.append(f"- ... and {len(shown) - 25} more")
+    lines.append("To change an RFA's status, use the RFA drawer; the chat can only read them.")
+    return "\n".join(lines)
+
+
+@tool(
+    description=(
+        "List RequestForAction (RFA) entries from the RFA drawer, optionally for one resource: workflow "
+        "status (open, deferred, reassigned), assignee, summary and date. Closed (completed) and dismissed "
+        "RFAs are hidden unless include_closed=true. Read-only: changing an RFA is done in the drawer."
+    )
+)
+def list_rfas(resource_slug: str = "", include_closed: bool = False) -> str:
+    return list_rfas_raw(resource_slug, include_closed)
+
+
+def query_cross_asset_links_raw(
+    resource_slug: str = "", min_confidence: str = "high", limit: int = 15
+) -> str:
+    from resource_explorer.surveyors.cross_asset_matcher import query_cross_asset_links_raw as _matcher_raw
+    return _matcher_raw(resource_slug=resource_slug, min_confidence=min_confidence, limit=limit)
+
+
+@tool(
+    description=(
+        "Discover linkages between code repositories and cataloged databases: a repo's model classes sharing "
+        "names with a database's tables, plus matching database drivers. Pass resource_slug to filter to one "
+        "repository or database, or leave empty for all. Lists only high-confidence links by default, best "
+        "first (limit, default 15) and always reports how many medium and low ones exist; pass "
+        "min_confidence='medium' or 'low' to see more. A link means shared names, not that the repo owns the "
+        "database; generic table names (users, config, ...) and names found in many databases do not count "
+        "toward high confidence."
+    )
+)
+def query_cross_asset_links(
+    resource_slug: str = "", min_confidence: str = "high", limit: int = 15
+) -> str:
+    return query_cross_asset_links_raw(resource_slug=resource_slug, min_confidence=min_confidence, limit=limit)
+
+
+def delegate_to_compare_agent_raw(query: str, resource_slug: str = "") -> str:
+    from resource_explorer.agents.compare_agent import CompareAgent
+    agent = CompareAgent()
+    return agent.handle(query, resource_slug=resource_slug or None)
+
+
+@tool(
+    description=(
+        "Delegate a comparative question comparing two or more resources (repos, databases, filesystems) "
+        "to the specialized CompareAgent. Returns statistical diffs, schema comparisons, or Plotly charts."
+    )
+)
+def delegate_to_compare_agent(query: str, resource_slug: str = "") -> str:
+    return delegate_to_compare_agent_raw(query, resource_slug=resource_slug)
+
+
+def delegate_to_integration_agent_raw(query: str, resource_slug: str = "") -> str:
+    from resource_explorer.agents.integration_agent import IntegrationAgent
+    agent = IntegrationAgent()
+    return agent.handle(query, resource_slug=resource_slug or None)
+
+
+@tool(
+    description=(
+        "Delegate an integration or ecosystem question ('how do X and Y work together?', 'can I use X with Y?') "
+        "to the specialized IntegrationAgent. Returns technical connection points, shared contributors, and guidelines."
+    )
+)
+def delegate_to_integration_agent(query: str, resource_slug: str = "") -> str:
+    return delegate_to_integration_agent_raw(query, resource_slug=resource_slug)
+
+

@@ -1,5 +1,7 @@
 # Resource Explorer — Process & Threading Model
 
+**Status:** live. Process roles, leader locks and loop inventory.
+
 **Added 2026-09-04**, per `docs/runtime-architecture-plan.md` §Sequencing step 1: "Write RE's
 threading and process-role model into `docs/Architecture.md`" — this is that write-up, split into
 its own file because `Architecture.md` was already dense (see that file's linked pointer). It
@@ -57,8 +59,10 @@ RE through the A2A door and stops there:
 - **`requested_by` is a real user id**, so the per-user fairness rule in §1.2c has stopped being
   inert: `""` now holds only the worker's own service-account runs.
 - **Ownership and zones.** Everything RE publishes carries the `Ownership` classification (owner =
-  the requesting user) and lands in the `resource-explorer-draft` zone; curate-accept promotes it
-  into the deployment's publish zones.
+  the requesting user). RE imposes no zone on published assets (owner ruling 2026-10-08: DRAFT is
+  a content status, not a zone); a draft zone exists only if the deployment sets `EXPLORER_DRAFT_ZONE`,
+  and then curate-accept promotes out of it into the configured publish zones. Private-investigation
+  work is zoned `[resource-explorer-private, <owner>]`.
 - **CLI login.** `resource-explorer login` / `logout`, cached via `trellis_auth.session_file`.
   Commands that reach Egeria exit 2 with one line when the session is missing or expired;
   read-only commands keep working without one.
@@ -108,6 +112,7 @@ run_worker(embedded=?, stop_event=...)          # worker.py:201
 | `resource-explorer-scheduler` | `scheduler.py:84` (`start_scheduler`), loop `scheduler.py:132` (`_scheduler_loop`), stopped by `scheduler.py:109` (`stop_scheduler`) | `_CHECK_INTERVAL_SECONDS = 900` (15 min), `scheduler.py:77` | `scheduler` → `-6561321191492868153` | Three things per tick, in order: (1) `_run_due()` (`scheduler.py:286`) — analyses whose `resource_schedules.next_run` has passed, same-repo due surveys coalesced into one orchestrator call to avoid double-downloading a zipball; (2) `_reconcile_rfa_actions()` (`scheduler.py:158`, docs/rfa-egeria-todo-followup.md); (3) `_drain_egeria_outbox()` (`scheduler.py:170`, docs/outbox-publishing-design.md §5) — **this is where the outbox drain lives**; still not a separate loop (Finding F1) | `resource_schedules.next_run`/`last_run_status`, an `ActivityEntry` per run, `rfa_actions` rows, outbox rows via `drain_outbox`, plus `registry.purge_outbox_completed()` retention |
 | `resource-explorer-bootstrap` | `bootstrap.py:520` (`start_scheduler`), loop `bootstrap.py:509` (`_loop`) | `CHECK_INTERVAL_SECONDS = 600` (10 min), `bootstrap.py:120`; first pass runs immediately, inside the thread | `bootstrap-monitor` → `5582179307941343378` | `check_and_heal(docs_dir)` — detects and repairs Dr.Egeria definitions (glossaries, perspectives, Question terms, Survey Definitions) wiped by an Egeria reset | Recreates missing Dr.Egeria elements in Egeria; no local table write in the loop itself |
 | `egeria-resync-scheduler` | `egeria_resync.py:1254` (`start_scheduler`), loop `egeria_resync.py:1224` (`_loop`) | `CHECK_INTERVAL_SECONDS = 600` (10 min), `egeria_resync.py:1166` | `egeria-resync` → `-3163458856154549756` | `scan_and_clear()` (`egeria_resync.py:1185`) — clears stale Egeria pointers left by a repository-store wipe, applying only `SAFE_SCHEDULED_STEPS` whose findings are present, re-checking `needs_decision`/`EXPENSIVE_STEPS` as defense in depth | In-process `_status` dict read by the admin banner, plus whatever `resync.apply()` clears |
+| `re-engine-host` (only with `RE_ENGINE_HOST_ENABLED` on; off by default) | `engine_host.py` (`start_engine_host`, `EngineHostLoop`) | `SWEEP_INTERVAL_SECONDS = 5`, the native engine host's own sweep interval | `engine-host` → `54773764437381287` | `EngineHost.restart_pass()` once at start (queues RE's claimed actions with no run; completes from the stored outcome those whose run ended unrecorded), then `EngineHost.sweep_once()`: lists active engine actions, keeps RE's engine's APPROVED, unclaimed, known-request-type ones with no privately owned target, claims each in Egeria as `Daemon(ENGINE_HOST, requested_by=requesterUserId)` | One `runs` row of kind `engine_action` per claim, run by the queue (`run_queue._handle_engine_action`, as the same daemon): IN_PROGRESS, the step, a SurveyReport, then completion |
 | `survey-cache-warm` | `worker.py:134` (`_warm_survey_definition_cache`) | one-shot, not a loop | **none — deliberately ungated** | `SurveyDefinitionReader().warm_question_guid_cache()`; failures swallowed (best-effort) | Module-level `_question_guid_cache` / `_candidates_cache` dicts in `survey_definition_reader.py`, which die with the process |
 
 **Why the two one-shots take no lock**, which is easy to "fix" wrongly in both directions:

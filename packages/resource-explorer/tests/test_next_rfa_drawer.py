@@ -76,13 +76,16 @@ class TestTheDrawerIsChromeLevelNotAStage:
 
     def test_it_imports_only_the_api_it_needs(self):
         rfa = _rfa_js()
-        assert "import { listRfas, updateRfaAction } from '/static/re-api.js';" in rfa
+        # PI-112/113/114 added dismiss, restore and note to the same drawer.
+        assert ("import { listRfas, updateRfaAction, dismissRfa, restoreRfaDismissal, saveRfaNote } "
+                "from '/static/re-api.js';") in rfa
 
 
 class TestTheThreeResponseActionsAreWired:
     """Defer / reassign / complete -- the local-only actions the backend
-    already supports (`RFA_STATUSES` in web/routes/activity.py). Dismissal
-    and notes are explicitly out of scope for this drawer."""
+    already supports (`RFA_STATUSES` in web/routes/activity.py). Dismissal,
+    restore and notes arrived with PI-112/113/114 (tests/test_rfa_grouped_ids.py and
+    the p2-rfa-dismiss-restore-note harness test)."""
 
     def test_every_backend_status_the_drawer_offers_is_one_the_route_accepts(self):
         routes = _activity_routes()
@@ -109,7 +112,8 @@ class TestTheThreeResponseActionsAreWired:
 
     def test_completed_rows_lose_the_defer_reassign_complete_buttons(self):
         rfa = _rfa_js()
-        assert "const canAct = rfa.rfa_status !== 'completed';" in rfa
+        # A dismissed request offers Restore, not the response actions.
+        assert "const canAct = rfa.rfa_status !== 'completed' && !rfa.dismissed;" in rfa
 
     def test_clicking_an_action_calls_the_real_update_endpoint(self):
         rfa = _rfa_js()
@@ -129,10 +133,10 @@ class TestTheThreeResponseActionsAreWired:
 class TestReAssignAndDeferAskBeforeActing:
     def test_reassign_prompts_for_an_assignee(self):
         rfa = _rfa_js()
-        assert "window.prompt('Assign to" in rfa
+        assert "inPagePrompt({ title: 'Assign', message: 'Assign to" in rfa
     def test_defer_prompts_for_a_defer_until_value(self):
         rfa = _rfa_js()
-        assert "window.prompt('Defer until" in rfa
+        assert "inPagePrompt({ title: 'Defer', message: 'Defer until" in rfa
     def test_cancelling_a_prompt_records_nothing(self):
         rfa = _rfa_js()
         # Every prompt call is followed by a `null` cancel-guard before use.
@@ -142,7 +146,8 @@ class TestReAssignAndDeferAskBeforeActing:
 class TestScopingToTheCurrentResource:
     def test_scope_only_filters_by_entity_slug(self):
         rfa = _rfa_js()
-        body = rfa[rfa.index("function _visibleRows("):rfa.index("function _rowHtml(")]
+        # The scope filter moved into _scopedRows so the suppressed count is taken over the same scope.
+        body = rfa[rfa.index("function _scopedRows("):rfa.index("function _rowHtml(")]
         assert "r.entity_slug === _scopeSlug" in body
 
     def test_show_closed_excludes_completed_by_default(self):

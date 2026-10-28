@@ -4,10 +4,11 @@ from __future__ import annotations
 import logging
 import os
 from pathlib import Path
-from typing import Any, Optional
+import json
+from typing import Annotated, Any, Optional
 
-from pydantic import BaseModel, Field
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import BaseModel, BeforeValidator, Field
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 log = logging.getLogger(__name__)
 
@@ -40,6 +41,53 @@ _ENV_FILES = (_PACKAGE_ENV, ".env")
 _ENV_FILE_CONFIG = SettingsConfigDict(
     populate_by_name=True, env_file=_ENV_FILES, env_file_encoding="utf-8", extra="ignore",
 )
+
+
+def parse_str_list(value: Any, setting: str = "setting") -> list[str]:
+    """Read a list-of-names setting from an env value without ever raising.
+
+    pydantic-settings parses a plain ``list[str]`` from the environment as JSON, so
+    ``FEEDBACK_ADMIN_USERS=peterprofile`` crashed the whole web process at startup (2026-10-14). Accepted:
+    a JSON list, a comma-separated list, a single name, or empty. Entries are trimmed and empties dropped.
+    A value that cannot be read logs ONE warning and gives ``[]`` (fail closed: nothing listed).
+    """
+    if value is None:
+        return []
+    if isinstance(value, (list, tuple, set)):
+        items = list(value)
+    elif isinstance(value, str):
+        text = value.strip()
+        if text.startswith("["):
+            try:
+                items = json.loads(text)
+            except ValueError:
+                log.warning("%s: could not read %r as a JSON list; treating it as empty (no entries)", setting, value)
+                return []
+            if not isinstance(items, list):
+                log.warning("%s: %r is not a list; treating it as empty (no entries)", setting, value)
+                return []
+        elif text.startswith(("{", '"', "'")) or "[" in text or "]" in text:
+            log.warning("%s: could not read %r; use a JSON list or comma-separated names. Treating it as empty.",
+                        setting, value)
+            return []
+        else:
+            items = text.split(",")
+    else:
+        log.warning("%s: could not read a %s value; treating it as empty (no entries)", setting, type(value).__name__)
+        return []
+    out: list[str] = []
+    for item in items:
+        if not isinstance(item, (str, int)) or isinstance(item, bool):
+            log.warning("%s: ignoring an entry that is not a name: %r", setting, item)
+            continue
+        name = str(item).strip()
+        if name:
+            out.append(name)
+    return out
+
+
+#: A list of names that reads JSON, comma-separated, a single name or empty from the environment.
+NameList = Annotated[list[str], NoDecode, BeforeValidator(lambda v, info: parse_str_list(v, info.field_name or "setting"))]
 
 
 class PgVectorConfig(BaseSettings):
@@ -188,10 +236,9 @@ class GitHubConfig(BaseSettings):
     requests_per_hour: int = 5000
     clone_timeout_seconds: int = 300
     ssl_verify: bool = True  # set GITHUB__SSL_VERIFY=false in .env to bypass (insecure)
-    # Deployment-wide default (e.g. a GitHub Enterprise install) — a *runtime*
-    # override on top of this lives in the app_settings table via
-    # registry.get_setting("github_base_url"), resolved by callers that want
-    # the per-instance value ("Discover repos to scout" plan, D2).
+    # The single source for the GitHub API base URL (e.g. a GitHub Enterprise
+    # install). There is no runtime override: discovery, surveys and ingestion
+    # all resolve it through GitHubClient().
     base_url: str = Field(default="https://api.github.com", alias="GITHUB_BASE_URL")
 
     model_config = _ENV_FILE_CONFIG
@@ -252,8 +299,17 @@ class EgeriaConfig(BaseSettings):
     platform_url: str = Field(default="https://localhost:9443", alias="EGERIA_PLATFORM_URL")
     view_server: str = Field(default="qs-view-server", alias="EGERIA_VIEW_SERVER")
     engine_host: str = Field(default="engine-host", alias="EGERIA_ENGINE_HOST")
+    #: The integration daemon a catalogue commit may ask to refresh the JDBC
+    #: cataloguer (never to restart it). The scratch tests ran against this one.
+    integration_daemon_server: str = Field(default="qs-integration-daemon", alias="EGERIA_INTEGRATION_DAEMON")
     user_id: str = Field(default="erinoverview", alias="EGERIA_USER_ID")
     user_password: str = Field(default="secret", alias="EGERIA_USER_PASSWORD")
+    #: Further Egeria platforms a credential may be sent to, comma separated (Brief I). The
+    #: configured `platform_url` is always allowed; any other URL is refused before a request.
+    allowed_platform_urls: str = Field(default="", alias="EGERIA_ALLOWED_PLATFORM_URLS")
+    #: Optional login-form prefill (`GET /api/auth/defaults`). Never the daemon's userId: the
+    #: daemon (EGERIA_USER_ID) is RE's service account, and the endpoint is public (Brief L).
+    login_default_user: str = Field(default="", alias="RE_LOGIN_DEFAULT_USER")
     kafka_endpoint: str = Field(default="localhost:9092", alias="EGERIA_KAFKA_ENDPOINT")
     # Base URL for Egeria Workspaces' "The Catalog" app (egeria-workspaces-fs
     # PyegeriaWebHandler) — supports deep-linking to a specific element via
@@ -263,14 +319,20 @@ class EgeriaConfig(BaseSettings):
     # ServerName localhost:8885) — override if your deployment differs.
     portal_url: str = Field(default="http://localhost:8885", alias="EGERIA_PORTAL_URL")
     # Governance zones assigned by default when cataloging repos (survey) or databases
-    default_catalog_zones: list[str] = Field(default_factory=list)
-    default_survey_zones: list[str] = Field(default_factory=list)
+    # NOTE: nothing on the 2026-10-05 build assigns a default zone (the read-back found none on any element).
+    # A catalogue commit for a database writes a ZoneMembership ONLY when this (or the
+    # EXPLORER_PUBLISH_ZONES environment variable) is set, and then as its LAST write. UNVERIFIED
+    # FOR A SECOND COMMIT: a zone on the database element may lock the service identity, the
+    # survey engine and the cataloguer out of later anchored writes. First live use: a throwaway
+    # database with TWO commits, the second exercising anchored writes under the zone.
+    default_catalog_zones: NameList = Field(default_factory=list)
+    default_survey_zones: NameList = Field(default_factory=list)
     # Secrets store used when Egeria's own native "catalog and survey" processes
     # need credentials. Confirmed live 2026-07-09: secrets are written via
     # AutomatedCuration.save_client_side_secret(secrets_store_guid, body) with
     # secret key names "userId"/"clearPassword" for Postgres resources — but
-    # this was never wired into a caller until docs/design-notes/
-    # PROBES-2026-09-21.md's investigation (2026-09-21) found the reason a
+    # this was never wired into a caller until PROBES-2026-09-21.md's investigation (2026-09-21)
+    # found the reason a
     # freshly-cataloged coco_pharma asset still failed its native survey with
     # a SCRAM/no-password error: its embedded SecretsStoreConnection carried
     # the literal unsubstituted template placeholders "~{secretsCollectionName}~"
@@ -304,7 +366,7 @@ class EgeriaConfig(BaseSettings):
     # mount's host-side path (e.g. .../runtime-volumes/quickstart-platform-
     # data/secrets/resource-explorer.omsecrets) that lets RE read/write the
     # file directly for the credential-storage/drift-detection work in
-    # docs/design-notes/REPLY-DATABASE-CREDENTIAL-CAPABILITY-VISIBILITY.md
+    # docs/design-notes/exchange/REPLY-DATABASE-CREDENTIAL-CAPABILITY-VISIBILITY.md
     # §7 ("one secrets-collection name per (resource, role), written to both
     # places by RE in the same operation"). Empty by default — most
     # deployments (CI, a from-scratch checkout, a remote engine host) have no
@@ -353,6 +415,15 @@ class KrokiConfig(BaseSettings):
     model_config = _ENV_FILE_CONFIG
 
 
+#: Default ceiling (seconds) on waiting for ONE Prefect-dispatched step's flow
+#: run to reach a terminal state. 1200 s = 20 min. Basis: the slowest measured
+#: Prefect-eligible step, assessment/secret_scan (repo_secret_scan), has median
+#: 330.8 s (n=1) in docs/funnel-cost-measured.md (the PR/CI session's own
+#: measurement quoted 277 s / median 331 s), declared compute_cost "minutes";
+#: 1200 s is ~3.6x that median — generous for a slow repo, yet bounded.
+DEFAULT_PREFECT_STEP_TIMEOUT_SECONDS = 1200.0
+
+
 class PrefectConfig(BaseSettings):
     api_url: str = Field(default="http://localhost:4200/api", alias="PREFECT_API_URL")
     ui_url: str = Field(default="http://localhost:4200", alias="PREFECT_UI_URL")
@@ -389,6 +460,11 @@ class PrefectConfig(BaseSettings):
     # of this setting (see route_local_steps).
     enabled: bool = Field(default=True, alias="PREFECT_ENABLED")
     work_pool: str = Field(default="default-agent-pool", alias="PREFECT_WORK_POOL")
+    # Deadline for a dispatched step's flow run (seconds); see
+    # DEFAULT_PREFECT_STEP_TIMEOUT_SECONDS for the basis of the default.
+    step_timeout_seconds: float = Field(
+        default=DEFAULT_PREFECT_STEP_TIMEOUT_SECONDS, gt=0,
+        alias="PREFECT_STEP_TIMEOUT_SECONDS")
     # Route steps that explicitly declare executes_at="resource-explorer" through
     # Prefect as well. Off by default, and deliberately its own setting rather
     # than a second meaning for `enabled`.
@@ -428,6 +504,24 @@ class RegistryConfig(BaseSettings):
     model_config = _ENV_FILE_CONFIG
 
 
+class WebUIConfig(BaseSettings):
+    """Which UI `/` serves. `next` (default) or `classic`.
+
+    A quick revert without a code change: set RE_DEFAULT_UI=classic and
+    restart. Read once at startup by `web/app.py`. `/next` and `/classic`
+    always serve their own UI regardless of this setting.
+    """
+    default_ui: str = Field(default="next", alias="RE_DEFAULT_UI")
+    #: The URL a browser elsewhere uses to reach this RE web app (e.g. `http://<box-hostname>:8810`), the same
+    #: value the Portal's tile uses (EGERIA_RESOURCE_EXPLORER_URL). Read by a work list's publish to write
+    #: `additionalProperties.resourceExplorerUrl` on its WorkingSet, so the Portal can link back. Empty (the
+    #: default): no link is written. There is deliberately no localhost default: a reader on another machine
+    #: following it would reach its own localhost.
+    public_url: str = Field(default="", alias="RE_PUBLIC_URL")
+
+    model_config = _ENV_FILE_CONFIG
+
+
 class FeedbackConfig(BaseSettings):
     """Product/UI feedback storage + minimal admin gating.
 
@@ -437,7 +531,8 @@ class FeedbackConfig(BaseSettings):
 
     admin_token / admin_users are NOT a general auth system — see
     resource_explorer/web/admin_auth.py. Leaving both unset means every
-    admin-only feedback endpoint denies all requests (fail closed).
+    admin-only endpoint denies all requests (fail closed), unless
+    RE_ADMIN_OPEN_WHEN_UNCONFIGURED is set for local dev.
     """
     #: Defaults to the same shared Postgres instance/schema the registry uses
     #: (2026-08-23), not a local SQLite file. This store was written to be
@@ -453,8 +548,12 @@ class FeedbackConfig(BaseSettings):
         ),
         alias="FEEDBACK_DATABASE_URL",
     )
-    admin_users: list[str] = Field(default_factory=list, alias="FEEDBACK_ADMIN_USERS")
+    admin_users: NameList = Field(default_factory=list, alias="FEEDBACK_ADMIN_USERS")
     admin_token: str = Field(default="", alias="FEEDBACK_ADMIN_TOKEN")
+    #: Local dev only (owner ruling 2026-10-14). With no admin configured, `require_admin` refuses everyone; this
+    #: brings back "any signed-in user may act" for Retry / Run bootstrap / bulk resolve. Ignored once an admin
+    #: is configured; never admits an anonymous caller; never affects `is_admin_request` (Feedback, Curate).
+    admin_open_when_unconfigured: bool = Field(default=False, alias="RE_ADMIN_OPEN_WHEN_UNCONFIGURED")
 
     model_config = _ENV_FILE_CONFIG
 
@@ -513,25 +612,24 @@ class RunsConfig(BaseSettings):
     #: change what "nightly" means, which is a different decision from sparing
     #: someone a redundant click.
     gate_user_runs: bool = True
-    #: Whether `run_analysis`'s auto-publish drains the Egeria outbox inline,
-    #: synchronously, before the run returns (True — unchanged default) or only
-    #: enqueues the annotation outbox rows and leaves draining to the
-    #: scheduler's existing periodic `_drain_egeria_outbox` cycle (False). When
-    #: False, evidence-link rows are deferred entirely rather than enqueued —
-    #: Tier 1 linking needs each annotation's real Egeria GUID, which only
-    #: exists once its own row is applied (see egeria_publisher.py's
-    #: `_create_annotations` docstring).
-    #: Measured 2026-09-13 on a real `language_file_classification` publish
-    #: (`egeria_workspaces_git`, 53 outbox rows): the inline drain cost 546.61s
-    #: of the run's 558.89s total — the run-time cost of auto-publish is almost
-    #: entirely this synchronous drain, not the survey or the asset/report
-    #: setup ahead of it. Turning this off would cut what a user waits for the
-    #: "Run" action to ~15s, at the cost of the "published" state meaning
-    #: "queued for the next drain" rather than "landed in Egeria" at the moment
-    #: the run returns. The default stays True — unchanged behaviour — because
-    #: that trade is the project owner's call to make, not this flag's; it
-    #: exists so they can flip it once made, not to make it for them.
-    publish_inline: bool = Field(default=True, alias="RUNS_PUBLISH_INLINE")
+    #: Whether a run's auto-publish drains the Egeria outbox inline, before the
+    #: run returns (True), or only enqueues the outbox rows and leaves draining
+    #: to the scheduler's periodic `_drain_egeria_outbox` cycle (False, the
+    #: default since 2026-10-14). Both paths enqueue the run's annotations, its
+    #: evidence links (keyed by row id until their referents land) and one
+    #: `publish_read_back` row; the run's publish word is derived from those
+    #: rows (`registry.publish_proofs`): "queued for publish", "published ·
+    #: read back", or "publish failed" with Egeria's words.
+    #:
+    #: Project-owner decision, 2026-10-14: a synchronous survey or analysis
+    #: does NOT wait for its publish. Measured 2026-09-13 on a real
+    #: `language_file_classification` publish (`egeria_workspaces_git`, 53
+    #: outbox rows): the inline drain cost 546.61s of the run's 558.89s total.
+    #: `RUNS_PUBLISH_INLINE=true` keeps the old wait; the per-run "wait" choice
+    #: still overrides either way. The engine host is not governed by this
+    #: flag: its publisher takes no `defer_drain` and completes in its own
+    #: handler, because finishing an engine action needs the report GUID.
+    publish_inline: bool = Field(default=False, alias="RUNS_PUBLISH_INLINE")
 
 
 class RuntimeConfig(BaseSettings):
@@ -675,6 +773,19 @@ class ExplorerConfig(BaseSettings):
 
 
 _config: ExplorerConfig | None = None
+
+
+def egeria_platform_url() -> str:
+    """THE Egeria platform URL (Brief I round 4, found live on 8813): `config.egeria.platform_url`
+    — the environment / .env value, else its default. No other module reads EGERIA_PLATFORM_URL
+    from the environment (the ban test enforces it): two sources once disagreed, and a direct read
+    saw '' where the configured default existed."""
+    return get_config().egeria.platform_url
+
+
+def egeria_view_server() -> str:
+    """THE Egeria view server: `config.egeria.view_server` (same reasoning)."""
+    return get_config().egeria.view_server
 
 
 def get_config() -> ExplorerConfig:

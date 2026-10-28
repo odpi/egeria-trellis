@@ -17,6 +17,9 @@ import pytest
 
 from resource_explorer.registry import Project, ProjectRegistry
 
+# Brief I: these tests fake the Egeria clients; the publish under test is the worker's, a declared daemon job.
+pytestmark = pytest.mark.usefixtures("as_daemon")
+
 
 @contextmanager
 def _as(user_id: str):
@@ -359,12 +362,16 @@ def test_accepting_a_finding_does_not_publicise_a_private_element():
     import resource_explorer.egeria_identity as ident
     before_cz, before_set = ident.current_zones, ident.set_zone_membership
     moved = []
+    before_rz, before_cl = ident.read_zones, ident.clear_zone_membership
     ident.current_zones = lambda guid, *a, **k: [private_zone(), "alice"]
+    ident.read_zones = lambda guid, *a, **k: [private_zone(), "alice"]
     ident.set_zone_membership = lambda guid, zones, **k: moved.append(zones) or True
+    ident.clear_zone_membership = lambda guid, **k: moved.append("clear") or True
     try:
         out = curate.promote_to_publish_zones("g1")
     finally:
         ident.current_zones, ident.set_zone_membership = before_cz, before_set
+        ident.read_zones, ident.clear_zone_membership = before_rz, before_cl
 
     assert out["status"] == "skipped", out
     assert moved == [], "a private element was promoted into the publish zones"
@@ -540,7 +547,7 @@ def test_the_shared_repo_asset_is_never_zoned_private():
     An investigation zones what it PRODUCED (the report, and its annotations by
     anchor), never what it REFERENCES.
     """
-    from resource_explorer.egeria_identity import draft_zone, private_zone
+    from resource_explorer.egeria_identity import draft_zones, private_zone
     from resource_explorer.surveyors.egeria_publisher import EgeriaPublisher
 
     pub = EgeriaPublisher(platform_url="https://fake", registry=_Reg(owner="alice"))
@@ -561,7 +568,7 @@ def test_the_shared_repo_asset_is_never_zoned_private():
 
     assert seen["report-guid"]["zones"] == [private_zone(), "alice"]
     assert seen["report-guid"]["owner"] == "alice"
-    assert seen["asset-guid"]["zones"] == [draft_zone()], (
+    assert seen["asset-guid"]["zones"] == draft_zones() == [], (
         f"the shared repo asset was zoned {seen['asset-guid']['zones']} — that hides "
         "a public repo from everyone else")
     assert seen["asset-guid"]["owner"] != "alice", (
@@ -842,14 +849,15 @@ def test_ensure_private_zone_exists_passes_the_resolved_guid_through(monkeypatch
 
     monkeypatch.setattr(ident, "_resolve_platform",
                         lambda: ("Quickstart OMAG Server Platform", "guid-localhost"))
-    monkeypatch.setattr(ident, "service_credentials", lambda: object())
-    monkeypatch.setattr(ident, "apply_identity", lambda *a, **k: None)
 
     calls = []
 
     class _RecordingOfficer:
         def __init__(self, *a, **k):
             pass
+
+        def create_egeria_bearer_token(self, *a, **k):   # the factory authenticates it (Brief I)
+            return "tok-daemon"
 
         def get_security_access_control(self, platform, zone, **kwargs):
             calls.append(("get", platform, zone, kwargs))

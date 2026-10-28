@@ -474,6 +474,10 @@ def login_command(user_id: Optional[str]) -> None:
     if not user_id:
         from advisor.config import settings
         user_id = click.prompt("Egeria user id", default=settings.egeria_user or None)
+    from advisor.auth import is_service_account, SERVICE_ACCOUNT_DETAIL
+    if is_service_account(user_id):
+        console.print(f"[red]✗ {SERVICE_ACCOUNT_DETAIL}[/red]")
+        sys.exit(1)
     password = click.prompt("Password", hide_input=True)
 
     egeria_token = login_with_password(user_id, password)

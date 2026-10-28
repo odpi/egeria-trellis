@@ -25,6 +25,9 @@ import pytest
 from resource_explorer.egeria_linkage import recheck_all_linkages
 from resource_explorer.registry import DatabaseEntity, Project, ProjectRegistry
 
+# Brief I: these tests fake the Egeria clients; the code under test runs as a signed-in caller, as on a route.
+pytestmark = pytest.mark.usefixtures("signed_in_caller")
+
 
 @pytest.fixture
 def registry(tmp_path):
@@ -68,6 +71,9 @@ def _fake_element_client(behaviors: dict):
             pass
 
         def create_egeria_bearer_token(self, *a, **kw):
+            pass
+
+        def set_bearer_token(self, *a, **kw):    # the factory hands the caller's token (Brief I)
             pass
 
         def get_metadata_element_by_guid(self, guid, *a, **kw):

@@ -24,7 +24,11 @@ router = APIRouter()  # prefix/tags applied in web/app.py, matching every other 
 class InvestigationCreate(BaseModel):
     display_name: str
     description: str = ""
+    #: Suggestive (owner ruling 2026-10-13): a value outside Egeria's purposes list is kept, and the answer's
+    #: `purpose_warnings` names it.
     purposes: list[str] = Field(default_factory=list)
+    #: Free text as entered, kept apart from `purposes` so it can be mined.
+    purpose_text: str = ""
     #: Egeria's own Project classification. Five values; see
     #: `ProjectRegistry.PROJECT_CLASSIFICATIONS`.
     project_classification: str = "StudyProject"
@@ -42,6 +46,7 @@ class InvestigationUpdate(BaseModel):
     display_name: str | None = None
     description: str | None = None
     purposes: list[str] | None = None
+    purpose_text: str | None = None
     #: Sharpening an Experiment's hypothesis stays within one classification.
     #: Changing the classification itself is not here — it can move an
     #: investigation between visibility regimes and needs a flow with a report
@@ -77,16 +82,64 @@ def _registry():
     return ProjectRegistry()
 
 
+async def _require_writes(reg, slug: str, writes) -> None:
+    """Brief Z3: 403 with the reason unless the caller may make every Egeria write a route is about to make
+    (`workflows.egeria_work_access.writes_access` -> `curation_access`, the one decision). Off the event loop:
+    the check may read Egeria (bounded). Nothing to write to Egeria: nothing to check."""
+    import asyncio
+
+    from resource_explorer.workflows.egeria_work_access import writes_access
+
+    writes = list(writes)
+    if not writes:
+        return
+    d = await asyncio.to_thread(writes_access, reg, writes, entity_type="investigation", slug=slug)
+    if not d.allowed:
+        raise HTTPException(status_code=403, detail=d.reason)
+
+
+def _nothing_permitted(res) -> str:
+    """Brief Z3: the 403 words when a members pass permitted nothing: at least one member refused, none linked,
+    and no other member even tried (a member with no asset is a fact, not a permitted write). "" otherwise."""
+    refused = [m for m in res.members_unlinkable if str(m.get("reason", "")).startswith("not permitted")]
+    tried = [m for m in res.members_unlinkable
+             if m not in refused and not str(m.get("reason", "")).startswith("not published")]
+    if not refused or res.members_linked or tried:
+        return ""
+    reasons = sorted({str(m["reason"]).removeprefix("not permitted · ") for m in refused})
+    return reasons[0] if len(reasons) == 1 else "; ".join(reasons)
+
+
 @router.get("/purposes")
 async def list_purposes() -> dict:
-    """The Purpose vocabulary, served rather than hardcoded in the SPA.
+    """The purposes list, served rather than hardcoded in the SPA.
 
-    These are `ProjectCharter.purposes` (design §2) — not a new RE vocabulary —
-    and the same eight values all 41 catalog questions are tagged with, so the
-    UI cannot drift from what ranking will actually key on.
+    Egeria holds it (owner ruling 2026-10-13): read as the signed-in person
+    through `investigation_purposes.current_purposes`, which falls back to RE's
+    cached copy, and then to the shipped seed, when Egeria cannot be read. The
+    answer says which (`source`, `as_of`, `stale`, `words`), so the screen can
+    say it is a cache and how old. `purposes` stays the plain list of names;
+    `values` carries each one's description. Suggestive, never a constraint.
     """
-    from resource_explorer.registry import ProjectRegistry
-    return {"purposes": list(ProjectRegistry.VALID_PURPOSES)}
+    import asyncio
+
+    from resource_explorer import investigation_purposes as ip
+
+    reg = _registry()
+    pl = await asyncio.to_thread(ip.current_purposes, reg, ip.fetch_as_caller)
+    return pl.as_dict()
+
+
+@router.get("/purposes/free-text")
+async def list_purpose_free_text() -> dict:
+    """Purposes people wrote rather than picked, with counts, for mining
+    (owner ruling 2026-10-13): investigations' free text and values outside the
+    list, and Enrichment's Intended use free text. Read-only; nothing here adds
+    to the list — a person adds a value to Egeria's list."""
+    import asyncio
+
+    reg = _registry()
+    return await asyncio.to_thread(reg.purpose_free_text)
 
 
 #: Egeria's own definitions, verbatim from `OpenMetadataType.java` (model
@@ -169,6 +222,7 @@ async def create_investigation(req: InvestigationCreate) -> dict:
         return _registry().create_investigation(
             req.display_name.strip(), description=req.description,
             purposes=req.purposes,
+            purpose_text=req.purpose_text,
             project_classification=req.project_classification,
             egeria_binding=req.egeria_binding,
             hypothesis=req.hypothesis,
@@ -176,13 +230,12 @@ async def create_investigation(req: InvestigationCreate) -> dict:
             egeria_project_qualified_name=req.egeria_project_qualified_name,
         )
     except ValueError as exc:
-        # Every vocabulary violation is a 400, not a silent drop. An
-        # unrecognised purpose would rank nothing and look like an empty
-        # result; an unrecognised classification would be rejected at the
-        # Egeria boundary much later, or dropped; an Experiment with no
-        # hypothesis would publish the classification with its point missing.
-        # All three are the same shape — accepting the write and losing the
-        # meaning — so all three refuse here, where the caller can still fix it.
+        # A classification or binding violation is a 400, not a silent drop: an
+        # unrecognised classification would be rejected at the Egeria boundary
+        # much later, and an Experiment with no hypothesis would publish the
+        # classification with its point missing. Purposes are NOT here: the list
+        # is suggestive (owner ruling 2026-10-13), so an unknown purpose is kept
+        # and named in `purpose_warnings` instead.
         raise HTTPException(status_code=400, detail=str(exc))
 
 
@@ -206,6 +259,25 @@ async def get_members(slug: str) -> list[dict]:
     if not reg.get_investigation(slug):
         raise HTTPException(status_code=404, detail=f"Investigation '{slug}' not found")
     return reg.list_investigation_members(slug)
+
+
+@router.get("/{slug}/scope.csv")
+async def export_scope(slug: str):
+    """The investigation's in-scope members as the shared CSV contract, named
+    `re-scope-<investigation>-<date>.csv`. Importing it into a second
+    investigation adds the resources; `status_in_scope` and `status_fit` are
+    words for a reader and are never read back."""
+    from fastapi.responses import Response
+
+    from resource_explorer.batch_io import export_filename, rows_to_csv_text, scope_export_rows
+
+    reg = _registry()
+    inv = reg.get_investigation(slug)
+    if not inv:
+        raise HTTPException(status_code=404, detail=f"Investigation '{slug}' not found")
+    name = export_filename("scope", inv.get("slug") or slug)
+    return Response(content=rows_to_csv_text(scope_export_rows(reg, slug)), media_type="text/csv",
+                    headers={"Content-Disposition": f'attachment; filename="{name}"'})
 
 
 @router.post("/{slug}/members")
@@ -280,6 +352,11 @@ async def bind_egeria_project(slug: str, req: EgeriaProjectBinding) -> dict:
     reg = _registry()
     if not reg.get_investigation(slug):
         raise HTTPException(status_code=404, detail=f"Investigation '{slug}' not found")
+    # Brief Z3: the working set this may create under the Project (CREATE on the Project's zones, ATTACH), checked
+    # before the binding is recorded so a refusal changes nothing.
+    from resource_explorer.workflows.egeria_work_access import bind_writes
+
+    await _require_writes(reg, slug, bind_writes(reg, slug, req.status, req.egeria_project_guid))
     result = reg.set_investigation_egeria_project(slug, req.model_dump())
 
     # Binding to an existing Project is one of the two ways to end up with one,
@@ -329,6 +406,19 @@ async def promote_to_egeria(slug: str) -> dict:
     if not inv:
         raise HTTPException(status_code=404, detail=f"Investigation '{slug}' not found")
 
+    # Brief Z3: the new Project's writes (CREATE, CLASSIFY, ATTACH; PUBLISH when private) as the caller, before
+    # anything is written; each member's end is checked one by one inside promote (a refused member is
+    # reported with its words, the rest are linked). Not asked when promote would refuse anyway (already bound,
+    # or ad-hoc): it says why itself.
+    from resource_explorer.surveyors.egeria_investigation_publisher import ownerless_private_words
+    from resource_explorer.workflows.egeria_work_access import investigation_member_refusal, promote_writes
+
+    # An ownerless private one is refused by promote itself, with its words and its proof row (ruling
+    # 2026-10-13); the access check would judge an unzoned create that will never be sent.
+    if (not inv.get("egeria_project_guid") and (inv.get("egeria_binding") or "egeria") != "local"
+            and not ownerless_private_words(inv)):
+        await _require_writes(reg, slug, promote_writes(inv))
+
     # In a thread, not inline. pyegeria's synchronous methods drive their own
     # event loop internally, so calling them from inside FastAPI's running loop
     # raises "this event loop is already running" — which a CLI test never sees,
@@ -337,7 +427,8 @@ async def promote_to_egeria(slug: str) -> dict:
     # refresh_project).
     import asyncio
 
-    result = await asyncio.to_thread(EgeriaInvestigationPublisher(reg).promote, slug)
+    result = await asyncio.to_thread(EgeriaInvestigationPublisher(reg).promote, slug,
+                                     refusal=investigation_member_refusal(reg, slug))
     if result.project_guid:
         # Record the binding even on partial success — the Project genuinely
         # exists now, and leaving the local row unbound would orphan it.
@@ -359,7 +450,7 @@ async def update_investigation(slug: str, req: InvestigationUpdate) -> dict:
     try:
         return reg.update_investigation(
             slug, display_name=req.display_name, description=req.description,
-            purposes=req.purposes, hypothesis=req.hypothesis,
+            purposes=req.purposes, purpose_text=req.purpose_text, hypothesis=req.hypothesis,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
@@ -393,10 +484,26 @@ async def reclassify_investigation(slug: str, req: ReclassifyRequest) -> dict:
     # 2026-09-08, and a raw thread would NOT (see test_private_zoning).
     import asyncio
 
+    # Brief Z3: every element the reclassify moves is checked as the caller before it moves (the Project:
+    # PUBLISH, CLASSIFY, DECLASSIFY; each SurveyReport: PUBLISH), inside the reclassifier so the check and
+    # the write read the same list. A refused Project is a 403 and nothing changes.
+    from resource_explorer.workflows.egeria_work_access import access_words, investigation_reader
+
+    # One press: controls and accounts read once, elements fresh per check; a private investigation's elements
+    # are read as its signed-in owner (the service account cannot see them).
+    from resource_explorer.zone_access import AccessUnreadable
+
+    try:
+        reader = investigation_reader(reg, slug)
+    except AccessUnreadable as exc:
+        raise HTTPException(status_code=403, detail=f"could not check access in Egeria ({exc})")
     result = await asyncio.to_thread(
         InvestigationReclassifier(reg).reclassify, slug,
         req.project_classification, req.hypothesis,
+        access=lambda writes: access_words(reg, writes, entity_type="investigation", slug=slug, reader=reader),
     )
+    if result.not_permitted:
+        raise HTTPException(status_code=403, detail=result.not_permitted.removeprefix("not permitted · "))
     return result.as_dict()
 
 
@@ -419,10 +526,40 @@ async def relink_members(slug: str) -> dict:
     reg = _registry()
     if not reg.get_investigation(slug):
         raise HTTPException(status_code=404, detail=f"Investigation '{slug}' not found")
+    # Brief Z3: the Folio's end (ATTACH, judged on its Project) once, then each member's end inside relink; a
+    # refused member is reported with its words and the rest are linked; 403 when nothing is permitted.
+    from resource_explorer.workflows.egeria_work_access import investigation_member_refusal, relink_writes
+
+    await _require_writes(reg, slug, relink_writes(reg, slug))
     res = await asyncio.to_thread(
-        EgeriaInvestigationPublisher(reg).relink_members, slug
+        EgeriaInvestigationPublisher(reg).relink_members, slug,
+        refusal=investigation_member_refusal(reg, slug),
     )
+    refused = _nothing_permitted(res)
+    if refused:
+        raise HTTPException(status_code=403, detail=refused)
     return res.as_dict()
+
+
+@router.get("/{slug}/link-status")
+async def link_status(slug: str) -> dict:
+    """Which members are linked to the investigation's Egeria working set.
+
+    Read-only, no Egeria call: derived from the same asset GUIDs and outbox rows
+    `relink-members` decides and records from. Per member `state` is `linked`,
+    `not_linked` (with a reason) or `could_not_tell`; a caller must not turn
+    `could_not_tell` into a zero.
+    """
+    import asyncio
+
+    from resource_explorer.surveyors.egeria_investigation_publisher import (
+        EgeriaInvestigationPublisher,
+    )
+
+    reg = _registry()
+    if not reg.get_investigation(slug):
+        raise HTTPException(status_code=404, detail=f"Investigation '{slug}' not found")
+    return await asyncio.to_thread(EgeriaInvestigationPublisher(reg).link_status, slug)
 
 
 @router.post("/{slug}/sync-egeria")
@@ -441,8 +578,13 @@ async def sync_egeria_project(slug: str) -> dict:
     )
 
     reg = _registry()
-    if not reg.get_investigation(slug):
+    inv = reg.get_investigation(slug)
+    if not inv:
         raise HTTPException(status_code=404, detail=f"Investigation '{slug}' not found")
+    # Brief Z3: UPDATE_PROPERTIES on the bound Project, as the caller.
+    from resource_explorer.workflows.egeria_work_access import sync_writes
+
+    await _require_writes(reg, slug, sync_writes(inv))
     res = await asyncio.to_thread(
         EgeriaInvestigationPublisher(reg).sync_project_properties, slug
     )
@@ -503,7 +645,7 @@ async def next_steps(slug: str) -> dict:
         raise HTTPException(status_code=404, detail=f"Investigation '{slug}' not found")
 
     steps: list[dict] = []
-    if not inv.get("purposes"):
+    if not inv.get("purposes") and not inv.get("purpose_text"):
         steps.append({
             "id": "declare_purpose",
             "title": "No purpose declared",
@@ -546,7 +688,18 @@ async def next_steps(slug: str) -> dict:
                           + "Dispositions are how this investigation says which ones matter.",
                 "action": "disposition",
             })
-    if inv.get("egeria_project_status") != "linked":
+    if inv.get("egeria_project_status") == "unbound":
+        # After an Egeria reset: the project it named is gone. A status word with a proof or none at all,
+        # so this is its own state, not "local only" (a choice) and not "linked" (a project that is there).
+        from resource_explorer.catalogue_commit import PROJECT_UNBOUND_WORDS
+        steps.append({
+            "id": "bind_egeria",
+            "title": PROJECT_UNBOUND_WORDS,
+            "detail": "Egeria was reset and the project this investigation named is gone. Promote to "
+                      "recreate it under the same name, or bind to an existing Egeria Project.",
+            "action": "egeria",
+        })
+    elif inv.get("egeria_project_status") != "linked":
         steps.append({
             "id": "bind_egeria",
             "title": "Local only — not in Egeria",

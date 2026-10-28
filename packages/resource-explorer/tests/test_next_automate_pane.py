@@ -8,7 +8,7 @@ subscription it is real, but lives in app.js's Questions-checklist engine
 test_next_notify_subscription.py for the creation flow itself.
 
 No browser verification happened for this file with a signed-in session --
-see docs/design-notes/ITEM-4-AUTOMATE-IMPLEMENTED.md for what was and was
+see ITEM-4-AUTOMATE-IMPLEMENTED.md for what was and was
 not checked live. These tests grep/slice function bodies out of the
 concatenated source, the established pattern for /next JS modules without a
 browser -- see test_next_curate_pane.py and test_next_understanding_pane.py's
@@ -114,7 +114,7 @@ class TestSchedulesAreReal:
 
         src = _automate_src()
         body = src[src.index("[data-delete-sched]"):]
-        assert "window.confirm(" in body
+        assert "inPageConfirm(" in body
         assert "deleteSchedule(entityType, entitySlug, analysisId)" in body
 
 

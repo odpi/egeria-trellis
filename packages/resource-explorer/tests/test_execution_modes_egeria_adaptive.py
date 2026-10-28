@@ -168,7 +168,7 @@ class TestDatabaseEgeriaAdaptiveHandler:
             result = _db_run_egeria_adaptive(db_entity, registry, _FakeStep())
 
         assert result["source"] == "error"
-        assert result["status"] == "error"
+        assert result["status"] == "failed"
         assert result["errors"]
         assert "annotations" not in result or not result["annotations"]
 
@@ -221,7 +221,8 @@ class TestFilesystemEgeriaAdaptiveHandler:
             mock_egeria_cls.return_value.catalog_and_survey.return_value = {
                 "report_guid": "g1", "filesystem_guid": "fsguid1", "annotation_count": 7,
             }
-            result = _fs_run_egeria_adaptive(fs_entity, registry, _FakeStep())
+            result = _fs_run_egeria_adaptive(fs_entity, registry, _FakeStep(),
+                                             force_egeria_publish=True)  # Brief I round 4: publishing is an explicit choice, never implied by a URL
 
         assert result["source"] == "egeria-custom"
         assert result["file_count"] == 12
@@ -248,7 +249,8 @@ class TestFilesystemEgeriaAdaptiveHandler:
                 "total_files": 7, "total_data_files": 2, "total_size": 512,
             }
             mock_egeria_cls.return_value.catalog_and_survey.side_effect = RuntimeError("Egeria unreachable")
-            result = _fs_run_egeria_adaptive(fs_entity, registry, _FakeStep())
+            result = _fs_run_egeria_adaptive(fs_entity, registry, _FakeStep(),
+                                             force_egeria_publish=True)  # Brief I round 4: publishing is an explicit choice, never implied by a URL
 
         assert result["source"] == "custom"
         assert result["file_count"] == 7

@@ -51,7 +51,7 @@ from datetime import datetime
 from pathlib import Path
 
 from resource_explorer.registry import Project, ProjectRegistry
-from resource_explorer.step_outcome import RECOVERED, StepOutcome, UNVERIFIED, no_signal
+from resource_explorer.step_outcome import PARTIAL, RECOVERED, StepOutcome, UNVERIFIED, no_signal
 from resource_explorer.surveyors import result_status
 from resource_explorer.surveyors.base_surveyor import BaseSurveyor
 from resource_explorer.surveyors.sub_surveyors import secret_ruleset as ruleset_mod
@@ -69,6 +69,38 @@ STEP = "SecretScan"
 
 #: The finding kind — see module docstring's analysis-id-vs-kind note.
 FINDING_KIND = "secret_scan_findings"
+
+
+def _partial_cause(report) -> str:
+    """Cause token for a PARTIAL scan, derived from the report's counts."""
+    if report.total_budget_hit:
+        return "total_time_budget_hit"
+    if report.timed_out:
+        return "file_time_budget_hit"
+    return "files_over_size_cap"
+
+
+def _skip_sentence(report) -> str:
+    """Counts and the top offenders, paths only (never matched text)."""
+    parts = []
+    if report.skipped_size:
+        parts.append(f"{len(report.skipped_size)} file(s) over the "
+                     f"{report.bounds.max_file_bytes} byte size cap were skipped")
+    if report.skipped_binary:
+        parts.append(f"{len(report.skipped_binary)} binary file(s) were skipped")
+    if report.timed_out:
+        parts.append(f"{len(report.timed_out)} file(s) exhausted the "
+                     f"{report.bounds.file_budget_seconds:g}s per-file time budget and "
+                     "were only partly scanned")
+    if report.not_reached:
+        parts.append(f"{len(report.not_reached)} file(s) were never opened because the "
+                     f"{report.bounds.total_budget_seconds:g}s total time budget ran out")
+    elif report.total_budget_hit:
+        parts.append(f"the {report.bounds.total_budget_seconds:g}s total time budget ran out")
+    worst = sorted(report.skipped_size + [r[:2] for r in report.timed_out]
+                   + report.not_reached, key=lambda r: -r[1])[:3]
+    tail = ("; largest: " + ", ".join(f"{p} ({n} bytes)" for p, n in worst)) if worst else ""
+    return "; ".join(parts) + tail + "."
 
 
 class SecretScanSurveyor(BaseSurveyor):
@@ -144,19 +176,43 @@ class SecretScanSurveyor(BaseSurveyor):
                 self._persist(findings)
                 return results
 
-            matches, files_scanned, files_excluded = rules.scan_paths(
-                Path(self._local_path), inventory)
+            matches, report = rules.scan_paths(Path(self._local_path), inventory)
+            files_scanned, files_excluded = report.files_scanned, report.files_excluded
 
             provider_row = rules.provider_info().as_row()
             self._emit_ruleset_freshness(results, findings, provider_row)
 
-            if matches:
+            # Bounds: facts the scanner recorded, never the code path taken. Keys
+            # are added ONLY when something was skipped, so a scan that skipped
+            # nothing persists exactly what it always did.
+            skipped = (report.detail()
+                       if (report.partial or report.skipped_binary) else {})
+            if report.partial:
+                outcome = StepOutcome(
+                    PARTIAL, cause=_partial_cause(report), known_positive=True,
+                    detail={
+                        "matched": len(matches), "files_scanned": files_scanned,
+                        "files_excluded": files_excluded,
+                        "fixture_self_test": "passed", **skipped, **provider_row,
+                    },
+                )
+                summary_text = (
+                    f"PARTIAL scan — {_skip_sentence(report)} "
+                    f"{len(matches)} secret-shaped match(es) found in what WAS read "
+                    f"against {provider_row['provider_name']} "
+                    f"{provider_row['version_or_as_of'][:12]} ({files_scanned} file(s) "
+                    "fully scanned). This is NOT a clean result and NOT a claim of no "
+                    "secrets: the skipped files were not checked. Limits are set by "
+                    "RE_SECRET_SCAN_MAX_FILE_BYTES / _FILE_BUDGET_SECONDS / "
+                    "_TOTAL_BUDGET_SECONDS."
+                )
+            elif matches:
                 outcome = StepOutcome(
                     RECOVERED, known_positive=True,
                     detail={
                         "matched": len(matches), "files_scanned": files_scanned,
                         "files_excluded": files_excluded,
-                        "fixture_self_test": "passed", **provider_row,
+                        "fixture_self_test": "passed", **skipped, **provider_row,
                     },
                 )
                 summary_text = (
@@ -169,14 +225,17 @@ class SecretScanSurveyor(BaseSurveyor):
                     "no_secret_pattern_matches", known_positive=True,
                     detail={
                         "files_scanned": files_scanned, "files_excluded": files_excluded,
-                        "fixture_self_test": "passed", **provider_row,
+                        "fixture_self_test": "passed", **skipped, **provider_row,
                     },
                 )
                 summary_text = (
                     f"No matches against {provider_row['provider_name']} "
                     f"{provider_row['version_or_as_of'][:12]}'s rules, in the current HEAD "
                     f"snapshot of tracked files ({files_scanned} scanned, "
-                    f"{files_excluded} excluded), self-test passing. This is NOT a claim "
+                    f"{files_excluded} excluded"
+                    + (f", {len(report.skipped_binary)} binary file(s) skipped"
+                       if report.skipped_binary else "")
+                    + "), self-test passing. This is NOT a claim "
                     "that the repository has no secrets — only that none matched this "
                     "ruleset's rules in this scan."
                 )
@@ -196,7 +255,7 @@ class SecretScanSurveyor(BaseSurveyor):
                 "check_name": "scan_summary", "label": outcome.outcome,
                 "confidence": 100 if outcome.is_conclusive else 0,
                 "summary": summary_text,
-                "detail": {**outcome.as_row(), **provider_row,
+                "detail": {**outcome.as_row(), **provider_row, **skipped,
                            "files_scanned": files_scanned, "files_excluded": files_excluded,
                            "fixture_self_test": "passed"},
             })

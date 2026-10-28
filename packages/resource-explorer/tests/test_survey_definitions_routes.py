@@ -102,6 +102,30 @@ class TestListCandidates:
         assert step_out["executes_at"] == "resource-explorer"
         assert "SchemaAnalysisAnnotation" in step_out["annotation_types"]
 
+    def test_a_definition_row_carries_the_analyses_its_steps_run(self, client):
+        """Brief section 9: "3 steps · runs 5 analyses", derived from the steps' re_analysis_step
+        properties through the adapter. A fetched (not authored) definition is used here, so the
+        count follows the steps given and not any list kept by hand."""
+        steps = [_fake_step("S::schema", "resource-explorer", re_analysis_step="postgres_schema_and_stats"),
+                 _fake_step("S::cred", "resource-explorer", re_analysis_step="credential_capability")]
+        survey_def = _fake_survey_def(qn="GovActionProcess::Edited", steps=steps)
+        survey_def.survey_kind = "scouting"
+        with patch(
+            "resource_explorer.surveyors.survey_definition_reader.SurveyDefinitionReader.find_candidate_process_guids_by_questions",
+            return_value=[],
+        ), patch(
+            "resource_explorer.surveyors.survey_definition_reader.SurveyDefinitionReader.find_candidate_process_guids",
+            return_value=[{"qualified_name": "GovActionProcess::Edited", "display_name": "Edited", "guid": "g"}],
+        ), patch(
+            "resource_explorer.surveyors.survey_definition_reader.SurveyDefinitionReader.fetch",
+            return_value=survey_def,
+        ):
+            resp = client.get("/api/survey-definitions/database/mydb/candidates")
+        runs = resp.json()["candidates"][0]["runs_analyses"]
+        assert sorted(a["analysis_id"] for a in runs["own"]) == [
+            "credential_capability", "row_count_snapshot", "schema_inventory"]
+        assert runs["also"] == []          # no operations step in this edited definition
+
     def test_survey_kind_query_param_threaded_to_reader(self, client):
         with patch(
             "resource_explorer.surveyors.survey_definition_reader.SurveyDefinitionReader.find_candidate_process_guids",

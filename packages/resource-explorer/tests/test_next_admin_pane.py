@@ -8,13 +8,13 @@ via the shared `oldUiHref()` helper.
 
 Discovery Sources was ported from a deferral to a full build under
 SPEC-ADMIN-THE-FOUR-GAPS.md §3 — see TestDiscoverySourcesPane below and
-docs/design-notes/DISCOVERY-SOURCES-ADMIN-IMPLEMENTED.md. Groups was ported
-under §2 — see TestGroupsPane below and docs/design-notes/GROUPS-ADMIN-IMPLEMENTED.md.
+DISCOVERY-SOURCES-ADMIN-IMPLEMENTED.md. Groups was ported
+under §2 — see TestGroupsPane below and GROUPS-ADMIN-IMPLEMENTED.md.
 Egeria Alignment (Resync) and Repair were ported under §1 — see
-TestResyncPane/TestRepairPane below and docs/design-notes/RECONCILE-ADMIN-IMPLEMENTED.md.
+TestResyncPane/TestRepairPane below and RECONCILE-ADMIN-IMPLEMENTED.md.
 
 No browser verification of a signed-in session happened for this file — see
-docs/design-notes/ITEM-5-ADMIN-IMPLEMENTED.md for what was and was not
+ITEM-5-ADMIN-IMPLEMENTED.md for what was and was not
 checked live. These tests grep/slice function bodies out of the concatenated
 source, the established pattern for /next JS modules without a browser —
 see test_next_activity_pane.py and test_next_automate_pane.py's identical
@@ -26,11 +26,11 @@ from pathlib import Path
 
 NEXT = Path(__file__).resolve().parents[1] / "resource_explorer" / "web" / "static" / "next"
 
-DEFERRED_TAB_IDS = [
+#: Egeria Links and Publish Queue were the two named deferrals; both were built under parity P1
+#: (PI-130, PI-131). The not-built page in admin/index.js was removed as unreachable.
+BUILT_TAB_IDS = [
     "admin-egeria-links",
     "admin-outbox",
-]
-BUILT_TAB_IDS = [
     "annotations",
     "admin-groups",
     "admin-question-catalog",
@@ -40,6 +40,7 @@ BUILT_TAB_IDS = [
     "admin-resync",
     "admin-repair",
     "admin-discovery-sources",
+    "admin-api-fetch",
 ]
 
 
@@ -120,7 +121,7 @@ class TestGroupsAndTabsMatchClassic:
 
     def test_every_classic_tab_id_is_present(self):
         src = _admin_index_src()
-        for tab_id in BUILT_TAB_IDS + DEFERRED_TAB_IDS:
+        for tab_id in BUILT_TAB_IDS:
             assert f"id: '{tab_id}'" in src, f"missing tab id {tab_id!r}"
 
     def test_exactly_built_tab_ids_are_wired_to_a_real_renderer(self):
@@ -129,36 +130,27 @@ class TestGroupsAndTabsMatchClassic:
         assert render_count == len(BUILT_TAB_IDS)
 
 
-class TestDeferralsAreSpecificNotGeneric:
-    """The Automate item's house style (ITEM-4-AUTOMATE-IMPLEMENTED.md):
-    name specifically what is deferred and why, not a generic 'not built'
-    string, and link out via the shared oldUiHref() helper."""
-
-    def test_every_deferred_tab_names_a_specific_does_and_why(self):
+class TestEgeriaLinksAndPublishQueueAreBuilt:
+    def test_both_tabs_render_their_own_module_and_carry_no_deferral(self):
         src = _admin_index_src()
-        for tab_id in DEFERRED_TAB_IDS:
+        for tab_id, renderer in (("admin-egeria-links", "renderEgeriaLinks"), ("admin-outbox", "renderOutbox")):
             i = src.index(f"id: '{tab_id}'")
-            block = src[i:src.index("} },", i) + 4]
-            assert "does:" in block
-            assert "why:" in block
-            # A generic placeholder would defeat the whole point of naming
-            # the reason -- each block's `why` must be long enough to be an
-            # actual explanation, not a one-word stub.
-            why_start = block.index("why:")
-            why_text = block[why_start:why_start + 200]
-            assert len(why_text) > 40
+            block = src[i:src.index("},", i) + 2]
+            assert f"render: {renderer}" in block
+            assert "defer:" not in block
+        assert (NEXT / "admin" / "egeria_links.js").exists() and (NEXT / "admin" / "outbox.js").exists()
 
-    def test_deferred_panes_link_out_via_the_shared_helper(self):
-        src = _admin_index_src()
-        assert "import { $, esc, icon, oldUiHref } from '/static/next/app.js';" in src
-        assert "oldUiHref()" in src
 
-    def test_no_deferred_tab_id_also_carries_a_render_function(self):
+class TestNoDeferralMachinery:
+    """Every admin tab renders; the not-built page (and its link out to the
+    old UI) was removed in re/next-remove-deferral-stubs."""
+
+    def test_admin_index_has_no_not_built_page_or_old_ui_link(self):
         src = _admin_index_src()
-        for tab_id in DEFERRED_TAB_IDS:
-            i = src.index(f"id: '{tab_id}'")
-            block = src[i:src.index("} },", i) + 4]
-            assert "render:" not in block
+        assert "deferredHtml" not in src
+        assert "not built in /next" not in src
+        assert "oldUiHref" not in src
+        assert "defer:" not in src
 
 
 class TestAnnotationTypesBrowse:
@@ -271,7 +263,7 @@ class TestPrefectPane:
 
     def test_cancel_is_confirmed_before_the_write(self):
         src = _admin_module("prefect.js")
-        assert "window.confirm(" in src
+        assert "inPageConfirm(" in src
 
 
 class TestGroupsPane:
@@ -296,7 +288,7 @@ class TestGroupsPane:
 
     def test_delete_has_no_confirmation_flag_on_the_route_itself(self):
         # Mirrors removeProject's own comment: the DELETE route takes no
-        # confirm parameter, so the caller's window.confirm is the only
+        # confirm parameter, so the caller's inPageConfirm is the only
         # confirmation that will ever exist.
         api = _reapi_src()
         i = api.index("export const deleteGroup = (")
@@ -312,7 +304,7 @@ class TestGroupsPane:
         src = _admin_module("groups.js")
         i = src.index("async function onDeleteGroup(")
         body = src[i:src.index("\n}\n", i)]
-        assert "window.confirm(" in body
+        assert "inPageConfirm(" in body
         assert "return to Ungrouped" in body
         assert "nothing is deleted" in body
 
@@ -399,7 +391,7 @@ class TestResyncPane:
 
     def test_apply_selected_confirms_before_writing(self):
         src = _admin_module("resync.js")
-        assert "window.confirm(" in src
+        assert "inPageConfirm(" in src
         assert "async function applySelected" in src
 
     def test_scheduled_flag_comes_from_finding_data_not_a_hardcoded_list(self):
@@ -463,7 +455,7 @@ class TestRepairPane:
 
     def test_destructive_actions_are_confirmed(self):
         src = _admin_module("repair.js")
-        assert src.count("window.confirm(") >= 3  # rename, github-url change, drop membership
+        assert src.count("inPageConfirm(") >= 3  # rename, github-url change, drop membership
 
     def test_names_what_it_does_not_do(self):
         """SPEC-ADMIN-THE-FOUR-GAPS.md §0's sharpest example -- classic's
@@ -518,7 +510,7 @@ class TestDiscoverySourcesPane:
         src = _admin_module("discovery_sources.js")
         i = src.index("async function doImportSelected(")
         body = src[i:src.index("\n}", i)]
-        assert "window.confirm(" in body
+        assert "inPageConfirm(" in body
         assert "picked.length" in body
         assert "dest" in body  # names the destination group (or "no group")
 
@@ -527,8 +519,8 @@ class TestDiscoverySourcesPane:
         i = src.index("async function doRefresh(")
         body = src[i:src.index("\n}", i)]
         assert "previewSourceRefresh(" in body
-        assert "window.confirm(" in body
-        confirm_pos = body.index("window.confirm(")
+        assert "inPageConfirm(" in body
+        confirm_pos = body.index("inPageConfirm(")
         apply_pos = body.index("applySourceRefresh(")
         assert confirm_pos < apply_pos
 
@@ -540,7 +532,7 @@ class TestDiscoverySourcesPane:
         src = _admin_module("discovery_sources.js")
         i = src.index("async function doDelete(")
         body = src[i:src.index("\n}", i)]
-        assert "window.confirm(" in body
+        assert "inPageConfirm(" in body
         assert "does not affect any repositories already imported" in body
 
     def test_three_add_paths_are_present(self):
@@ -550,12 +542,8 @@ class TestDiscoverySourcesPane:
         assert "quickAddHtml" in src
 
     def test_save_github_source_is_not_treated_as_an_add_source_path(self):
-        """Checked against classic's actual code before porting (spec's own
-        §6 lesson): _saveGithubSource posts to /api/discovery/github-base-url
-        (the GitHub API endpoint override), not a discovery source create --
-        it must not appear here as if it were a third source-creation path."""
+        """_saveGithubSource never created a discovery source, and the override it set is gone (PI-084): the module
+        must not name the removed route at all, only say what the old control was."""
         src = _admin_module("discovery_sources.js")
-        # The comment discussing why it's excluded may mention the route by
-        # name; what must never appear is an actual call to it.
-        assert "'/api/discovery/github-base-url'" not in src
+        assert "github-base-url" not in src
         assert "not create a discovery source" in src.lower()

@@ -266,7 +266,7 @@ class TestScoutingScanMissingSurveyDefinitionFallback:
         assert result.status == "ok"
         assert "ran locally" in result.message
         MockOrch.return_value.run.assert_called_once_with(
-            "myproj", steps=["repo_health", "repo_language"], fast=True,
+            "myproj", steps=["repo_health", "repo_language", "repo_homepage"], fast=True,
         )
 
     def test_fallback_step_errors_are_surfaced(self, registry):
@@ -467,3 +467,46 @@ class TestRunSingleAnalysisBackground:
         entry = registry.get_activity(activity_id)
         assert entry["status"] == "error"
         assert "clone missing" in entry["summary"]
+
+
+class TestScoutingStatsUnread:
+    """PI-050/051: the tiles say "not read" for a stat GitHub was never asked for, never 0."""
+
+    def test_no_stats_row_lists_every_stat_as_unread(self, client):
+        data = client.get("/api/projects/myproj/scouting-overview").json()
+        assert set(data["stats_unread"]) == {
+            "primary_language", "stars", "forks", "contributors", "last_pushed_at",
+            "repo_size_kb", "security_and_analysis", "deployments_count"}
+
+    def test_a_measured_zero_is_not_unread(self, client, registry):
+        """Stars/forks 0 is a measurement (the fetch writes NULL when it did not read them)."""
+        with registry._conn() as conn:
+            conn.execute(
+                "INSERT INTO project_stats (project_slug, fetched_at, stars, forks, "
+                "contributors_count, primary_language, last_pushed_at, repo_size_kb, "
+                "security_and_analysis_json, deployments_count) "
+                "VALUES (?, ?, 0, 0, 1, 'Python', '2026-07-30T00:00:00', 2048, ?, 3)",
+                ("myproj", "2026-08-01T00:00:00", '{"secret_scanning": "enabled"}'),
+            )
+        data = client.get("/api/projects/myproj/scouting-overview").json()
+        assert data["stars"] == 0 and "stars" not in data["stats_unread"]
+        assert data["stats_unread"] == []
+
+    def test_default_zero_columns_prove_nothing(self, client, registry):
+        """repo_size_kb and deployments_count are migrated in DEFAULT 0, so 0 cannot be told from never
+        fetched. It reads "not read"; a non-zero value proves the fetch."""
+        with registry._conn() as conn:
+            conn.execute(
+                "INSERT INTO project_stats (project_slug, fetched_at, stars, forks, repo_size_kb, deployments_count) "
+                "VALUES (?, ?, 5, 1, 0, 0)", ("myproj", "2026-08-01T00:00:00"))
+        unread = client.get("/api/projects/myproj/scouting-overview").json()["stats_unread"]
+        assert "repo_size_kb" in unread and "deployments_count" in unread
+        assert "stars" not in unread and "forks" not in unread
+
+    def test_a_null_column_is_unread(self, client, registry):
+        with registry._conn() as conn:
+            conn.execute(
+                "INSERT INTO project_stats (project_slug, fetched_at, stars, primary_language) "
+                "VALUES (?, ?, NULL, 'Go')", ("myproj", "2026-08-01T00:00:00"))
+        unread = client.get("/api/projects/myproj/scouting-overview").json()["stats_unread"]
+        assert "stars" in unread and "primary_language" not in unread

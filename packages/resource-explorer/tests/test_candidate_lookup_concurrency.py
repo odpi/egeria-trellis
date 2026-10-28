@@ -37,6 +37,10 @@ from unittest.mock import patch
 
 from resource_explorer.surveyors.survey_definition_reader import SurveyDefinitionReader
 
+# Brief I: these tests fake the Egeria clients; the code under test runs as a signed-in caller, as on a route.
+import pytest  # noqa: E402
+pytestmark = pytest.mark.usefixtures("signed_in_caller")
+
 INDEX = Path(__file__).resolve().parents[1] / "resource_explorer" / "web" / "static" / "index.html"
 
 

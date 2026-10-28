@@ -1,61 +1,53 @@
-"""Sub-surveyor: Homepage / external site → ClassificationAnnotation.
+"""Sub-surveyor: Homepage and documentation site -> ClassificationAnnotations.
 
-Finds the web site that documents a repo — the project's own docs or marketing
-site, not the GitHub page. Useful immediately as a navigation shortcut from
-Scouting, and useful later as an ingestion target: the docs site usually
-explains what a project is *for* in a way the source tree never does, so it is
-prime material for the vector store.
+Scouting wants two cheap answers about a repo's web presence, and they are not
+the same answer:
 
-Three tiers, in order, and the order matters:
+* the **homepage** -- the project's own site, or its org's;
+* the **documentation** -- where the docs live, and whether that place answers.
 
-1. GitHub's own `homepage` field, already fetched into project_stats by
-   StatsFetcher. Declared by the maintainers, so it is authoritative when set.
-   Measured across this deployment's registered repos: 13 of 24 had one.
+GitHub's `homepage` field is very often the vendor's marketing site
+(DataKitchen/dataops-testgen declares https://datakitchen.io) while the packaging
+manifest says in so many words `Documentation = "https://docs.datakitchen.io/
+testgen/what-is-testgen/"`. The earlier tiered finder stopped at the first hit
+and never read that line. Now every source is collected first and the choice made
+afterwards (resource_explorer.ingestion.docs_discovery), with the winning source
+and the other candidates kept on the record.
 
-2. Heuristics over the repo contents, ONLY when tier 1 is empty — which is the
-   other 11 of 24, so this is not a rare path. In priority order:
-     * pyproject.toml  [project.urls] Homepage / Documentation
-     * package.json    "homepage"
-     * pom.xml         <url> or <organization><url> (Java — the common case here)
-     * Cargo.toml      [package] homepage / documentation
-     * setup.cfg       [metadata] url (pre-PEP-621 Python)
-     * README          best external link that is not a badge
+Sources, all read from SMALL files only:
 
-   Each is a place maintainers deliberately record the project's site, so a hit
-   is a statement of intent rather than an inference. The README pass is the
-   weakest and is treated as such: it is last, it skips badge/shield images and
-   link targets, skips known vendor/attribution hosts, ignores links back to the
-   repo's own host, and prefers a hostname echoing the org/repo name over mere
-   document order.
+  * GitHub's own homepage field (project_stats, already fetched)
+  * pyproject.toml [project.urls] / [tool.poetry], package.json, setup.cfg,
+    Cargo.toml, pom.xml -- fetched one file each through the GitHub contents API
+    (one listing call for the repo root, then only the files that exist)
+  * the README's most-linked docs host, skipping badges, the repo's own forge
+    and attribution hosts
 
-3. The repo URL itself, when nothing else is found. For a small project there
-   frequently is no separate site — the GitHub page *is* the landing page and
-   the README is the documentation. Marked is_external_site=false and given low
-   confidence so a consumer wanting a genuinely off-GitHub site to ingest can
-   filter it out, while the Scouting link stays actionable for every repo.
+No zipball and no clone: Scouting is the cheap, API-only tier. When a caller
+already holds the repo contents it passes `local_path` and nothing is fetched.
 
-Confidence is reported per tier rather than flattened, so a consumer can tell a
-maintainer-declared URL from one scraped out of a README.
+An entry labelled Documentation/Docs wins for documentation. Placeholders
+(example.com/.org/.net, localhost) are rejected wherever they appear. Each chosen
+URL is labelled `project` or `org_or_vendor` -- recorded, never used to drop it.
 
-Runs as a survey step rather than at publish time because tier 2 needs the repo
-contents. It declares requires_resources={"zipball_root": ...}, so
-resolve_resources shares one download with the other zipball steps and this
-costs no extra fetch. It also means the answer refreshes on every survey instead
-of being frozen at registration.
+For the chosen docs URL ONE bounded request is made (HEAD, GET only if HEAD is
+refused): reachable / unreachable / not_checked, status, final URL after
+redirects, Last-Modified. "Not checked" is its own answer and is never reported
+as "unreachable".
 
-A found URL is persisted via registry.update_project_homepage() (see that
-method for why it writes projects.homepage_url rather than project_stats) and
-published to Egeria by EgeriaPublisher as an ExternalReference linked to the
-repo's own Asset.
+Persistence: projects.homepage_url and projects.docs_url (no DDL), plus a
+`docs_discovery` finding holding the sources, other candidates and reachability.
+The homepage is published to Egeria by EgeriaPublisher as an ExternalReference
+linked to the repo's own Asset; the docs URL is NOT published by this step.
 """
 from __future__ import annotations
 
-import json
 import logging
-import re
+from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import urlparse
 
+from resource_explorer.ingestion import docs_discovery as dd
 from resource_explorer.registry import Project, ProjectRegistry
 from resource_explorer.surveyors.base_surveyor import BaseSurveyor
 from resource_explorer.step_outcome import StepOutcome, no_signal
@@ -64,306 +56,269 @@ from resource_explorer.surveyors.survey_report import Annotation, Classification
 log = logging.getLogger(__name__)
 
 STEP = "Homepage"
+FINDING_KIND = "docs_discovery"
 
-# Hosts that are never "the project's external site" — they are where the code
-# already lives, or a badge/CI service. A repo whose declared homepage is its
-# own GitHub page tells us nothing new.
-_CODE_HOSTS = {"github.com", "www.github.com", "gitlab.com", "bitbucket.org"}
-# Tooling/vendor sites that appear in READMEs as attribution ("generated by
-# ...", "powered by ...") and are never the project's own site. Found the hard
-# way: unitycatalog-python's README yielded stainlessapi.com, its SDK generator.
-_VENDOR_HOSTS = {
-    "stainlessapi.com", "www.stainlessapi.com", "speakeasyapi.dev",
-    "www.speakeasyapi.dev", "openapi-generator.tech", "swagger.io",
-    "readthedocs.org", "readthedocs.com", "netlify.com", "vercel.com",
-    "opensource.org", "creativecommons.org", "contributor-covenant.org",
-    "semver.org", "keepachangelog.com", "conventionalcommits.org",
-}
-
-_BADGE_HOSTS = {
-    "img.shields.io", "shields.io", "badge.fury.io", "travis-ci.org",
-    "travis-ci.com", "codecov.io", "coveralls.io", "circleci.com",
-    "app.codacy.com", "sonarcloud.io", "badgen.net", "anaconda.org",
-}
-
-# Markdown inline link/image: captures ![alt](url) vs [text](url) via group 1.
-_MD_LINK = re.compile(r"(!?)\[[^\]]*\]\(\s*(<?)(https?://[^\s)>]+)\2\s*[^)]*\)")
-
-
-def _host(url: str) -> str:
-    try:
-        return (urlparse(url).hostname or "").lower()
-    except Exception:
-        return ""
+# Kept under their old names: tests and docs reference them.
+_CODE_HOSTS = dd.CODE_HOSTS
+_VENDOR_HOSTS = dd.VENDOR_HOSTS
+_BADGE_HOSTS = dd.BADGE_HOSTS
+_host = dd.host_of
 
 
 def _is_plausible_site(url: str, repo_host: str = "") -> bool:
     """Reject the things that are technically links but never the project site."""
-    h = _host(url)
-    if not h or h in _BADGE_HOSTS or h in _CODE_HOSTS or h in _VENDOR_HOSTS:
-        return False
-    if repo_host and h == repo_host:
-        return False
-    return True
+    return not dd.reject_reason(url, repo_host)
 
 
 class HomepageSurveyor(BaseSurveyor):
-    """Derives the project's external website. See module docstring for tiers."""
+    """Finds the homepage and the documentation site. See the module docstring."""
 
     def __init__(
         self, project: Project, registry: ProjectRegistry, local_path: str | None = None,
-        surveyed_at: str | None = None,
+        surveyed_at: str | None = None, client=None, probe=None,
     ) -> None:
         super().__init__(project, registry)
         self._local_path = local_path
         self._surveyed_at = surveyed_at
+        self._client = client       # GitHubClient; built lazily so tests never need a token
+        self._probe = probe         # HttpProbe; ditto
 
     @property
     def step_name(self) -> str:
         return STEP
 
-    # ── tier 1 ──────────────────────────────────────────────────────────────
-    def _from_github(self) -> str:
+    # -- reading ------------------------------------------------------------
+    def _github_homepage(self) -> str:
         try:
             stats = self.registry.get_latest_project_stats(self.project.slug) or {}
         except Exception:
             return ""
         return (stats.get("homepage") or "").strip()
 
-    # ── tier 2 ──────────────────────────────────────────────────────────────
-    def _from_pyproject(self, root: Path) -> str:
-        f = root / "pyproject.toml"
-        if not f.is_file():
-            return ""
-        try:
-            import tomllib
-
-            urls = (tomllib.loads(f.read_text(encoding="utf-8", errors="ignore"))
-                    .get("project", {}).get("urls", {}) or {})
-        except Exception:
-            return ""
-        # Case-insensitive: PEP 621 does not fix the casing of these keys.
-        lowered = {str(k).lower(): str(v) for k, v in urls.items()}
-        for key in ("homepage", "documentation", "docs"):
-            v = lowered.get(key, "").strip()
-            if v and _is_plausible_site(v):
-                return v
-        return ""
-
-    def _from_package_json(self, root: Path) -> str:
-        f = root / "package.json"
-        if not f.is_file():
-            return ""
-        try:
-            hp = json.loads(f.read_text(encoding="utf-8", errors="ignore")).get("homepage")
-        except Exception:
-            return ""
-        hp = (hp or "").strip() if isinstance(hp, str) else ""
-        return hp if hp and _is_plausible_site(hp) else ""
-
-    def _from_maven(self, root: Path) -> str:
-        """Maven POM <url> / <organization><url>. Worth having: this deployment
-        is Egeria-centric and most of those repos are Java, where pyproject and
-        package.json never appear."""
-        f = root / "pom.xml"
-        if not f.is_file():
-            return ""
-        try:
-            import xml.etree.ElementTree as ET
-
-            root_el = ET.fromstring(f.read_text(encoding="utf-8", errors="ignore"))
-        except Exception:
-            return ""
-        # POMs are namespaced; match on the local tag name instead of guessing
-        # which Maven schema version this file uses.
-        def _local(el):
-            return el.tag.rsplit("}", 1)[-1]
-
-        for el in root_el:
-            if _local(el) == "url" and (el.text or "").strip():
-                v = el.text.strip()
-                if _is_plausible_site(v):
-                    return v
-        for el in root_el.iter():
-            if _local(el) == "organization":
-                for child in el:
-                    if _local(child) == "url" and (child.text or "").strip():
-                        v = child.text.strip()
-                        if _is_plausible_site(v):
-                            return v
-        return ""
-
-    def _from_cargo(self, root: Path) -> str:
-        f = root / "Cargo.toml"
-        if not f.is_file():
-            return ""
-        try:
-            import tomllib
-
-            pkg = tomllib.loads(f.read_text(encoding="utf-8", errors="ignore")).get("package", {}) or {}
-        except Exception:
-            return ""
-        for key in ("homepage", "documentation"):
-            v = str(pkg.get(key) or "").strip()
-            if v and _is_plausible_site(v):
-                return v
-        return ""
-
-    def _from_setup_cfg(self, root: Path) -> str:
-        """Pre-PEP-621 Python packaging, still common in older repos."""
-        f = root / "setup.cfg"
-        if not f.is_file():
-            return ""
-        try:
-            import configparser
-
-            cp = configparser.ConfigParser()
-            cp.read_string(f.read_text(encoding="utf-8", errors="ignore"))
-            v = (cp.get("metadata", "url", fallback="") or "").strip()
-        except Exception:
-            return ""
-        return v if v and _is_plausible_site(v) else ""
-
-    def _from_readme(self, root: Path) -> str:
-        for name in ("README.md", "README.rst", "readme.md", "README"):
-            f = root / name
-            if not f.is_file():
-                continue
+    def _read_local(self, root: Path) -> tuple[dict[str, str], str]:
+        names = [p.name for p in root.iterdir() if p.is_file()] if root.is_dir() else []
+        files = {}
+        for n in dd.wanted_file_names(names):
             try:
-                text = f.read_text(encoding="utf-8", errors="ignore")
-            except Exception:
-                continue
-            repo_host = _host(self.project.github_url)
-            candidates = []
-            for is_image, _br, url in _MD_LINK.findall(text):
-                if is_image:          # ![...](...) is a badge/screenshot, not a site
-                    continue
-                url = url.rstrip(".,;")
-                if _is_plausible_site(url, repo_host):
-                    candidates.append(url)
-            if not candidates:
-                continue
-            # Prefer a host that echoes the org or repo name. "First plausible
-            # link" alone is too loose — it picked an SDK vendor's marketing site
-            # over the actual project. A hostname containing the project's own
-            # name is a much stronger signal than document order.
-            for token in self._name_tokens():
-                for url in candidates:
-                    if token and token in _host(url).replace("-", "").replace(".", ""):
-                        return url
-            return candidates[0]
-        return ""
+                files[n] = (root / n).read_text(encoding="utf-8", errors="ignore")
+            except OSError as exc:
+                log.debug("homepage: could not read %s: %s", n, exc)
+        return files, ""
 
-    def _name_tokens(self) -> list[str]:
-        """org and repo names from the GitHub URL, normalised for host matching."""
-        parts = [p for p in urlparse(self.project.github_url).path.split("/") if p]
-        out = []
-        for p in parts[:2]:
-            t = p.removesuffix(".git").lower().replace("-", "").replace("_", "")
-            if len(t) >= 4:      # "ol", "re" etc. would match almost anything
-                out.append(t)
-        return list(reversed(out))   # repo name is the stronger signal, try it first
+    def _read_remote(self) -> tuple[dict[str, str], str]:
+        """(files, error). Contents API only: one listing call, then each wanted file."""
+        if not self.project.github_url:
+            return {}, "no repo URL"
+        try:
+            client = self._client
+            if client is None:
+                from resource_explorer.github.client import GitHubClient
+                client = self._client = GitHubClient()
+            repo = client.get_repo(self.project.github_url)
+            names = client.list_root_file_names(repo)
+        except Exception as exc:
+            return {}, f"{type(exc).__name__}: {str(exc)[:100]}"
+        files: dict[str, str] = {}
+        for n in dd.wanted_file_names(names):
+            try:
+                text = client.get_file_content(repo, n)
+            except Exception as exc:
+                log.debug("homepage: could not fetch %s: %s", n, exc)
+                continue
+            if text:
+                files[n] = text
+        return files, ""
 
+    def _check_docs(self, url: str) -> dict:
+        probe = self._probe
+        if probe is None:
+            from resource_explorer.ingestion.docs_probe import HttpProbe
+            probe = self._probe = HttpProbe()
+        try:
+            return probe.probe(url).as_dict()
+        except Exception as exc:
+            return {"state": "unreachable", "status": None, "final_url": "", "last_modified": "",
+                    "reason": f"{type(exc).__name__}: {str(exc)[:80]}"}
+
+    # -- run ----------------------------------------------------------------
     def run(self) -> list[Annotation]:
-        homepage, source, confidence = self._from_github(), "github_homepage", 100
+        slug = self.project.slug
+        gh_home = self._github_homepage()
+        if self._local_path:
+            files, read_error = self._read_local(Path(self._local_path))
+        else:
+            files, read_error = self._read_remote()
+        # Without a repo URL nothing was ever readable; with one, an API failure
+        # means the manifests/README were NOT looked at, which is not "none found".
+        sources_read = not read_error
 
-        if not homepage and self._local_path:
-            root = Path(self._local_path)
-            # Manifests first, README last: a manifest URL is something a
-            # maintainer wrote down on purpose, a README link is something we
-            # inferred from prose.
-            for finder, label, conf in (
-                (self._from_pyproject, "pyproject_urls", 90),
-                (self._from_package_json, "package_json", 90),
-                (self._from_maven, "maven_pom", 90),
-                (self._from_cargo, "cargo_toml", 90),
-                (self._from_setup_cfg, "setup_cfg", 85),
-                (self._from_readme, "readme_link", 60),
-            ):
-                try:
-                    found = finder(root)
-                except Exception as exc:      # a malformed file must not end the survey
-                    log.debug("HomepageSurveyor %s failed for %s: %s", label, self.project.slug, exc)
-                    continue
-                if found:
-                    homepage, source, confidence = found, label, conf
-                    break
-
-        # Tier 3 — the repo itself. For a small project there often is no separate
-        # site and the GitHub page *is* the landing page: the README is the docs,
-        # and it is where you would send someone. Recording that is more useful
-        # than recording nothing, and it keeps the Scouting link always
-        # actionable. Distinguished from a real external site by its low
-        # confidence and its derivation_source, so a consumer that specifically
-        # wants an off-GitHub site to ingest can filter it out — which is why
-        # _is_plausible_site still rejects code hosts for tiers 1 and 2. This is
-        # a deliberate last-resort default, not a discovery.
+        found = dd.decide(self.project.github_url or "", gh_home, files)
+        homepage, hp_source, hp_conf = None, "", 0
+        if found.homepage:
+            homepage = found.homepage.url
+            hp_source, hp_conf = found.homepage.source_key, found.homepage.confidence
         fell_back_to_repo = False
         if not homepage and self.project.github_url:
             homepage = self.project.github_url.removesuffix(".git")
-            source, confidence, fell_back_to_repo = "repo_url", 30, True
+            hp_source, hp_conf, fell_back_to_repo = "repo_url", 30, True
 
+        docs = found.docs
+        reach = None
+        if docs:
+            reach = self._check_docs(docs.url)
+
+        # -- persist (no DDL) ---------------------------------------------------
+        # A failed write is recorded on the result (persist_errors), not only logged.
+        persist_errors: list[str] = []
+
+        def _persist(what: str, fn, *args, **kw) -> None:
+            try:
+                fn(*args, **kw)
+            except Exception as exc:
+                persist_errors.append(f"{what}: {type(exc).__name__}: {str(exc)[:80]}")
+
+        if homepage:
+            _persist("homepage_url", self.registry.update_project_homepage, slug, homepage)
+        if docs or sources_read:
+            # A found URL is written; "read everything, found none" clears a stale one.
+            # An unreadable repo (API failure) leaves the previous answer alone.
+            _persist("docs_url", self.registry.update_project_docs_url, slug, docs.url if docs else "")
+
+        state = ("found" if docs else "none_found" if sources_read else "unknown")
+        detail = {
+            "docs_state": state,
+            "docs_url": docs.url if docs else "",
+            "docs_source": docs.source if docs else "",
+            "docs_scope": found.docs_scope,
+            "homepage_url": homepage or "",
+            "homepage_source": hp_source,
+            "homepage_scope": "" if fell_back_to_repo else found.homepage_scope,
+            "reachability": reach or {"state": "not_checked", "reason": "no documentation URL to check"},
+            "candidates": found.others_seen,
+            "files_read": sorted(files),
+            "read_error": read_error,
+        }
+        _persist("docs_discovery finding", self.registry.upsert_finding,
+                 slug, FINDING_KIND,
+                 [{"check_name": "documentation", "label": state,
+                   "summary": docs.url if docs else "", "confidence": docs.confidence if docs else 0,
+                   "detail": detail}],
+                 surveyed_at=self._surveyed_at or datetime.now(timezone.utc).replace(tzinfo=None).isoformat(),
+                 supersedes_previous=True)
+
+        out: list[Annotation] = [
+            self._homepage_annotation(homepage, hp_source, hp_conf, fell_back_to_repo, found, sources_read),
+            self._docs_annotation(docs, found, reach, state, read_error),
+        ]
+        if persist_errors:
+            log.warning("homepage/docs for %s: could not persist %s", slug, persist_errors)
+            for a in out:
+                a.additional_properties = {**(a.additional_properties or {}),
+                                           "persist_errors": "; ".join(persist_errors)}
+        return out
+
+    # -- annotations ---------------------------------------------------------
+    def _homepage_annotation(self, homepage, source, confidence, fell_back_to_repo, found,
+                             sources_read) -> ClassificationAnnotation:
         if not homepage:
-            return [
-                ClassificationAnnotation(
-                    check_name="homepage",
-                    summary="No external site found",
-                    analysis_step=STEP,
-                    confidence=100,
-                    explanation=(
-                        "GitHub declares no homepage, nothing was found in pyproject.toml, "
-                        "package.json or the README, and the project has no repo URL to fall "
-                        "back on. A real answer, not a failure."
-                    ),
-                    candidate_classifications=[],
-                    # This step's explanation already ends "A real answer, not
-                    # a failure", and it has earned that: GitHub's declared
-                    # homepage, pyproject, package.json, the README and the
-                    # repo URL were all checked. Those sources ARE the
-                    # known-positive, which is what makes this the rare zero
-                    # that can be claimed as provable rather than merely
-                    # observed.
-                    json_properties=no_signal(
-                        "no homepage in any declared source, and no repo URL to fall back on",
-                        known_positive=True).as_row(),
-                )
-            ]
-
-        try:
-            self.registry.update_project_homepage(self.project.slug, homepage)
-        except Exception as exc:
-            log.warning("Could not persist homepage for %s: %s", self.project.slug, exc)
-
-        label = "Project page (repo)" if fell_back_to_repo else "External site"
-        return [
-            ClassificationAnnotation(
+            return ClassificationAnnotation(
                 check_name="homepage",
-                summary=f"{label}: {homepage}",
+                summary="No external site found",
                 analysis_step=STEP,
-                confidence=confidence,
-                json_properties=(
-                    # Falling back to the repo URL is not the same as finding a
-                    # site — the step already says so with confidence 30, and
-                    # `partial` is the matching label: something produced,
-                    # knowingly not the thing asked for.
-                    StepOutcome("partial", cause="fell back to the repo URL",
-                                detail={"source": source})
-                    if fell_back_to_repo else
-                    StepOutcome("recovered", detail={"source": source})
-                ).as_row(),
+                confidence=100,
                 explanation=(
-                    f"Derived from {source}. Tier 1 is GitHub's declared homepage; the "
-                    f"pyproject/package.json/README tiers run only when that is empty; the "
-                    f"repo URL itself is the last resort, for small projects whose GitHub "
-                    f"page really is their landing page. Confidence reflects the tier — a "
-                    f"maintainer-declared URL, a README link and a repo-URL fallback are "
-                    f"three different strengths of claim."
+                    "GitHub declares no usable homepage, nothing was found in the packaging "
+                    "manifests or the README, and the project has no repo URL to fall back "
+                    "on. A real answer, not a failure."
                 ),
-                candidate_classifications=[homepage],
+                candidate_classifications=[],
+                json_properties=no_signal(
+                    "no homepage in any declared source, and no repo URL to fall back on",
+                    known_positive=True).as_row(),
+            )
+        label = "Project page (repo)" if fell_back_to_repo else "External site"
+        return ClassificationAnnotation(
+            check_name="homepage",
+            summary=f"{label}: {homepage}",
+            analysis_step=STEP,
+            confidence=confidence,
+            json_properties=(
+                StepOutcome("partial", cause="fell back to the repo URL", detail={"source": source})
+                if fell_back_to_repo else
+                StepOutcome("recovered", detail={"source": source})
+            ).as_row(),
+            explanation=(
+                f"Derived from {found.homepage.source if found.homepage and not fell_back_to_repo else source}. "
+                "Every source is collected first (GitHub's homepage field, packaging manifests, "
+                "the README); placeholders such as example.com are rejected; the repo URL itself "
+                "is the last resort. Confidence reflects the source."
+            ),
+            candidate_classifications=[homepage],
+            additional_properties={
+                "homepage_url": homepage,
+                "derivation_source": source,
+                "is_external_site": str(not fell_back_to_repo).lower(),
+                "site_scope": "" if fell_back_to_repo else (found.homepage_scope or "unknown"),
+            },
+        )
+
+    def _docs_annotation(self, docs, found, reach, state, read_error) -> ClassificationAnnotation:
+        others = [c for c in found.others_seen if not docs or c["url"] != docs.url]
+        if docs:
+            reach = reach or {}
+            rstate = reach.get("state", "not_checked")
+            word = {"reachable": "reachable", "unreachable": "unreachable",
+                    "not_checked": "not checked"}.get(rstate, rstate)
+            return ClassificationAnnotation(
+                check_name="documentation_site",
+                summary=f"Documentation: {docs.url} ({word})",
+                analysis_step=STEP,
+                confidence=docs.confidence,
+                json_properties=StepOutcome(
+                    "recovered" if rstate == "reachable" else "partial",
+                    cause="" if rstate == "reachable" else f"docs site {word}",
+                    detail={"source": docs.source_key}).as_row(),
+                explanation=(
+                    f"Documentation URL from {docs.source}. An entry labelled Documentation or "
+                    "Docs in a manifest wins; otherwise a docs-shaped URL, then the README's "
+                    "most-linked docs host. Reachability is one bounded request, not a crawl."
+                ),
+                candidate_classifications=[docs.url],
                 additional_properties={
-                    "homepage_url": homepage,
-                    "derivation_source": source,
-                    "is_external_site": str(not fell_back_to_repo).lower(),
+                    "docs_url": docs.url,
+                    "derivation_source": docs.source_key,
+                    "source_detail": docs.source,
+                    "site_scope": found.docs_scope or "unknown",
+                    "reachability": rstate,
+                    "http_status": "" if reach.get("status") is None else str(reach.get("status")),
+                    "final_url": reach.get("final_url", ""),
+                    "last_modified": reach.get("last_modified", ""),
+                    "other_candidates": ", ".join(c["url"] for c in others)[:500],
                 },
             )
-        ]
+        if state == "unknown":
+            return ClassificationAnnotation(
+                check_name="documentation_site",
+                summary="Documentation not looked for",
+                analysis_step=STEP,
+                confidence=0,
+                json_properties=StepOutcome(
+                    "unverified", cause="repo files could not be read",
+                    detail={"error": read_error}).as_row(),
+                explanation=f"The manifests and README could not be fetched ({read_error}); "
+                            "this says nothing about whether documentation exists.",
+                candidate_classifications=[],
+            )
+        return ClassificationAnnotation(
+            check_name="documentation_site",
+            summary="No documentation site found",
+            analysis_step=STEP,
+            confidence=100,
+            json_properties=no_signal(
+                "no documentation URL in GitHub's field, the manifests or the README",
+                known_positive=True).as_row(),
+            explanation="GitHub's homepage field, the packaging manifests and the README were "
+                        "read; none names a documentation site. A real answer, not a failure.",
+            candidate_classifications=[],
+            additional_properties={"other_candidates": ", ".join(c["url"] for c in others)[:500]},
+        )

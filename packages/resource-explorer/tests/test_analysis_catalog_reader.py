@@ -191,13 +191,35 @@ class TestFilterByIntent:
         all_intent = acr.get_analyses("repo", intent="all", include_egeria_live=False)
         assert len(unfiltered) == len(all_intent)
 
+    #: ENRICHMENT-E1-CONTEXT-TAB, 2026-09-29 (project owner's amendment to
+    #: the designer's reply §0.2): analyses whose prerequisite is a human
+    #: input, not a survey read, DO run at the Enrichment stage. Named by id
+    #: so a future addition is a deliberate edit here, not a silent pass —
+    #: same shape as DISCOVERY_FETCHES_ANYWAY above.
+    ENRICHMENT_HUMAN_INPUT_ANALYSES = {
+        "preliminary_fit", "doc_source_ingestion", "doc_evidence_check", "semantic_suggestions",
+    }
+
     def test_enrichment_and_automate_have_no_entries_by_design(self):
-        """Still true for these two — Enrichment is served by context.py and
-        Automate by its own notification_subscriptions table. `discovery` was in
-        this list until 2026-08-20; it now has real entries (see
-        test_discovery_is_the_zero_fetch_derivation_tier)."""
+        """Automate is still empty by design — served by its own
+        notification_subscriptions table, not the catalog. `discovery` was in
+        this list until 2026-08-20 (real entries — see
+        test_discovery_is_the_zero_fetch_derivation_tier); `enrichment` joined
+        it, in the other direction, on 2026-09-29: the reply's own §0.2 premise
+        ("no analysis runs at the Enrichment stage") was corrected by the
+        project owner the same day — a class whose prerequisite is a human
+        input DOES run there. The four ids above are that class, every one
+        carrying `requires_input` naming what unlocks it. All four are
+        database-only today (see analysis_catalog.yaml's own comment), so repo
+        and filesystem stay genuinely empty for `enrichment`."""
         for rtype in ("repo", "database", "filesystem"):
-            assert acr.get_analyses(rtype, intent="enrichment", include_egeria_live=False) == []
+            ids = {a["id"] for a in acr.get_analyses(rtype, intent="enrichment", include_egeria_live=False)}
+            if rtype == "database":
+                assert ids == self.ENRICHMENT_HUMAN_INPUT_ANALYSES
+                for a in acr.get_analyses(rtype, intent="enrichment", include_egeria_live=False):
+                    assert a["requires_input"], f"{a['id']} is intent:enrichment with no requires_input"
+            else:
+                assert ids == set()
             assert acr.get_analyses(rtype, intent="automate", include_egeria_live=False) == []
 
 

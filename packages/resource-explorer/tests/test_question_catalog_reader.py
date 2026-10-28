@@ -270,7 +270,7 @@ class TestRealPackagedCatalog:
         # British-spelling wording below -- update this text again if it's
         # reworded further, not the assertions.
         entries = qcr.get_questions("repo")
-        license_q = next(e for e in entries if e["question"].startswith("What explicit licence"))
+        license_q = next(e for e in entries if e["question"].startswith("What explicit license"))
         assert license_q["answering"]["kind"] == "analysis"
         assert "license_classification" in license_q["answering"]["analysis_ids"]
 

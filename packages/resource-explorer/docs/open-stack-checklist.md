@@ -1,5 +1,7 @@
 # Open stack — working checklist
 
+**Status:** live, partly dated. Outstanding-work checklist, last updated 2026-08-31; entries are deleted when done.
+
 **Purpose:** the live list of what is outstanding right now, across repos, so it
 survives a context reset. Short entries with a pointer; the reasoning lives in
 the design docs. Delete an entry when it is done — this is not a history.
@@ -628,7 +630,7 @@ of 49 questions went missing today.
 
 ### Run the FULL questions document after a wipe, not the subset
 
-`questions/missing-questions-2026-08-31.md` exists because 41 of 49 terms already existed and
+`docs/archive/dr-egeria-batches/missing-questions-2026-08-31.md` exists because 41 of 49 terms already existed and
 re-running the whole document would have re-fired 168 `Link Perspective to Question` commands
 against them, with **no reconciler** to clean up after. After a wipe that reasoning inverts: nothing
 exists, so nothing can be duplicated, and the full document is both correct and required — the

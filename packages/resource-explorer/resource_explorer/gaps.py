@@ -53,17 +53,38 @@ SOURCE_PERSON = "person"
 QUESTION_PREFIX = "question:"
 
 
-def question_check_name(question: str) -> str:
+def question_check_name(question: str, question_id: str = "") -> str:
     """The `check_name` a person's disagreement about `question` is stored
-    under. Deterministic and reversible by inspection — the question text is
+    under. Deterministic and reversible by inspection -- the question is
     carried whole rather than hashed, so a row in the gaps table can be read
-    without a lookup table."""
-    return f"{QUESTION_PREFIX}{(question or '').strip()}"
+    without a lookup table.
+
+    With the question's stable id the key is `question:Q-0001`, which a
+    rewording of the text cannot change; without one (an uncatalogued
+    question) it is the text, as every row written before ids existed is."""
+    qid = (question_id or "").strip()
+    return f"{QUESTION_PREFIX}{qid or (question or '').strip()}"
+
+
+def gap_is_about_question(gap: dict, question: str = "", question_id: str = "") -> bool:
+    """Whether a stored gap row is a person's disagreement about this question, by id or by text.
+
+    A row written after ids existed carries the id in its check_name and in `evidence.question_id`; a row
+    written before carries only the text in its check_name. Both match, so a text edit orphans neither."""
+    qid = (question_id or "").strip()
+    name = gap.get("check_name") or ""
+    if not name.startswith(QUESTION_PREFIX):
+        return False
+    evidence = gap.get("evidence") or {}
+    if qid and (name == question_check_name("", qid) or evidence.get("question_id") == qid):
+        return True
+    text = (question or "").strip()
+    return bool(text) and name == question_check_name(text)
 
 
 def _not_measurable_gaps(registry, slug: str) -> list[dict]:
     """One gap per (analysis, check) whose latest finding row is labelled
-    `not_established` — "ran, but this analysis cannot be credited with the
+    `not_established` — "ran, but nothing shows this analysis produced the
     result" (result_status.py). Scoped to check_registry.yaml's `analyses`
     section (the per-check ones query_findings can resolve a check_name
     against); `whole_analysis_only` ids have no check-level rows to read this
@@ -213,7 +234,7 @@ def record_gaps_for(registry, slug: str, entity_type: str = "repo") -> list[dict
 
 def record_disagreement(
     registry, slug: str, question: str, analysis_id: str, comment: str = "",
-    who: str = "", extra_evidence: dict | None = None,
+    who: str = "", extra_evidence: dict | None = None, question_id: str = "",
 ) -> dict:
     """A person read one answer and said it is wrong. Recorded as a gap about
     the ANALYSIS, `ours` — the same destination a disagreement between two of
@@ -247,11 +268,24 @@ def record_disagreement(
     }
     if extra_evidence:
         evidence.update(extra_evidence)
+    question_id = (question_id or evidence.get("question_id") or "").strip()
+    if question_id:
+        evidence["question_id"] = question_id
+    check_name = question_check_name(question, question_id)
+    if question_id:
+        # A row an earlier disagreement wrote under the bare text is refreshed in place rather than
+        # stacking a second one next to it under the id; it already counts as this question's gap.
+        legacy = question_check_name(question)
+        for row in registry.list_gaps(slug):
+            if (row.get("check_name") == legacy and row.get("gap_kind") == DISAGREEMENT
+                    and (row.get("analysis_id") or "") == (analysis_id or "")):
+                check_name = legacy
+                break
     gap = {
         "analysis_id": analysis_id or "",
         "gap_kind": DISAGREEMENT,
         "destination": OURS,
-        "check_name": question_check_name(question),
+        "check_name": check_name,
         "sentence": sentence,
         "evidence": evidence,
     }

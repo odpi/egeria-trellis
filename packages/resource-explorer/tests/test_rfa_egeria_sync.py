@@ -231,6 +231,18 @@ class TestExtractTodoFields:
 
 
 class TestReconcileRfaActions:
+    @pytest.fixture(autouse=True)
+    def _open_access(self, monkeypatch):
+        """Brief Z3: a retried ToDo or note write is re-checked (the no-requester rule); no zone in use here (the
+        access reads faked open at the client boundary)."""
+        import sys
+        from pathlib import Path
+
+        sys.path.insert(0, str(Path(__file__).parent))
+        from tests.zone_fakes import open_access
+
+        open_access(monkeypatch)
+
     def test_retries_unsynced_rows(self, registry):
         _row(registry, rfa_id="e1::0")
         _row(registry, rfa_id="e1::1")

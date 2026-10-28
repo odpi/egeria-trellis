@@ -1,5 +1,7 @@
 # Four gap analyses: secret handling, telemetry, CLA/DCO, SLA content
 
+**Status:** live. Design for four gap analyses; code and tests cite it.
+
 Design only — no code in this note. Scopes four `STEP_REGISTRY` / `ANALYSIS_KINDS` entries that
 do not exist today, tracked as open items in `docs/open-stack-checklist.md` ("From the design
 note — nothing built": *"Four GAP questions with no analysis at all: secret handling,

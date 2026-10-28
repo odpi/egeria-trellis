@@ -6,7 +6,7 @@ import json
 import re
 import logging
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 
 log = logging.getLogger(__name__)
@@ -24,6 +24,7 @@ _HIDDEN_DISPOSITIONS = {"ignored", "abandoned"}
 # trellis-auth (plan §4) — imported rather than hard-coded so adopting auth is
 # one edit in run_queue.py, not a sweep of every enqueue site.
 from resource_explorer.run_queue import requested_by as _requested_by  # noqa: E402
+from resource_explorer.auth import get_current_user  # noqa: E402
 
 
 class ProjectSummary(BaseModel):
@@ -73,6 +74,87 @@ def _to_summary(p, registry=None) -> ProjectSummary:
     )
 
 
+class _PrefetchedLinkageRegistry:
+    """Throwaway shim so `egeria_linkage.describe_publish_status` — which
+    only ever calls `registry.get_egeria_linkage(entity_type, entity_slug)`
+    on whatever `registry` it's given — can run against a batch-prefetched
+    dict instead of one query per project. Reuses that function's exact,
+    already-tested logic rather than re-deriving "is this published"
+    separately for the batched path (`ProjectRegistry.
+    get_egeria_linkages_for_entities`'s own docstring)."""
+
+    def __init__(self, linkages_by_slug: dict[str, dict]) -> None:
+        self._linkages_by_slug = linkages_by_slug
+
+    def get_egeria_linkage(self, entity_type: str, entity_slug: str) -> dict | None:
+        return self._linkages_by_slug.get(entity_slug)
+
+
+def _list_projects_sync(include_ignored: bool, include_working_set_hidden: bool) -> list[ProjectSummary]:
+    """Batch-fetches disposition/working-set-hidden/Egeria-linkage for every
+    registered project in three queries total, instead of `_to_summary`'s
+    per-project reads (up to three real round trips EACH — 68 projects on
+    the box this was profiled on). Round 2, 2026-09-29
+    (PER-REQUEST-SERVER-LATENCY-ROUND-2-IMPLEMENTED.md):
+    round 1 already moved this off the event loop (`asyncio.to_thread`,
+    see `list_projects`'s own docstring), which stopped it blocking OTHER
+    requests, but did nothing about its own wall-clock cost — this fix is
+    that second half. `cProfile` on the unbatched version found the
+    dominant single cost was `get_disposition(p.github_url)`'s
+    `resolve_repo_entity_slug` → `get_by_github_url`, itself a **full
+    `SELECT * FROM projects` table scan searched in Python, per project**
+    (0.93s of 1.42s total) — `get_dispositions_for_entities`'s own
+    docstring explains why keying directly on `p.slug` (which every project
+    here already has, being already-imported) skips that resolution step
+    entirely rather than just batching it.
+
+    `_to_summary` itself is untouched and still used by `get_project` (one
+    project, where per-item registry calls are the right shape, not an N+1)
+    — this is a second, batched summary builder for the list route
+    specifically, not a replacement.
+    """
+    from resource_explorer.egeria_linkage import describe_publish_status
+    from resource_explorer.registry import ProjectRegistry
+
+    registry = ProjectRegistry()
+    projects = registry.list_all()
+    slugs = [p.slug for p in projects]
+
+    dispositions = registry.get_dispositions_for_entities("repo", slugs)
+    working_set_hidden = registry.get_working_set_hidden_for_entities("repo", slugs)
+    guid_slugs = [p.slug for p in projects if getattr(p, "egeria_asset_guid", "") or ""]
+    linkages = registry.get_egeria_linkages_for_entities("repo", guid_slugs)
+    linkage_shim = _PrefetchedLinkageRegistry(linkages)
+
+    summaries = []
+    for p in projects:
+        guid = getattr(p, "egeria_asset_guid", "") or ""
+        disp = dispositions.get(p.slug)
+        publish_status = describe_publish_status(linkage_shim, "repo", p.slug, guid)
+        summaries.append(ProjectSummary(
+            slug=p.slug,
+            display_name=p.display_name,
+            github_url=p.github_url,
+            description=p.description,
+            status=p.status.value,
+            collections=p.collections,
+            last_indexed_at=p.last_indexed_at,
+            last_commit_sha=p.last_commit_sha,
+            group_slug=getattr(p, "group_slug", "") or "",
+            last_surveyed_at=getattr(p, "last_surveyed_at", "") or "",
+            is_published=publish_status["is_published"],
+            egeria_publish_note=publish_status["note"],
+            disposition=disp["disposition"] if disp else "undecided",
+            working_set_hidden=working_set_hidden.get(p.slug, False),
+        ))
+
+    if not include_ignored:
+        summaries = [s for s in summaries if s.disposition not in _HIDDEN_DISPOSITIONS]
+    if not include_working_set_hidden:
+        summaries = [s for s in summaries if not s.working_set_hidden]
+    return summaries
+
+
 @router.get("/", response_model=list[ProjectSummary])
 async def list_projects(include_ignored: bool = False, include_working_set_hidden: bool = False) -> list[ProjectSummary]:
     """Excludes `ignored`/`abandoned`-disposition repos and working-set-hidden
@@ -80,15 +162,25 @@ async def list_projects(include_ignored: bool = False, include_working_set_hidde
     params to reveal everything. Reversible, not a hard delete either way
     (registry.py's repo_dispositions/resource_working_set rows are
     untouched) ("Discover repos to scout" plan, D10; "Scouting workflow
-    redesign" plan, D3/D4)."""
-    from resource_explorer.registry import ProjectRegistry
-    registry = ProjectRegistry()
-    summaries = [_to_summary(p, registry) for p in registry.list_all()]
-    if not include_ignored:
-        summaries = [s for s in summaries if s.disposition not in _HIDDEN_DISPOSITIONS]
-    if not include_working_set_hidden:
-        summaries = [s for s in summaries if not s.working_set_hidden]
-    return summaries
+    redesign" plan, D3/D4).
+
+    Wrapped in `asyncio.to_thread` (2026-09-29,
+    PER-REQUEST-SERVER-LATENCY-IMPLEMENTED.md) — this was
+    calling `_to_summary(p, registry)` **once per registered project**
+    (three registry reads each: `get_disposition`, `is_working_set_hidden`,
+    `describe_publish_status`) directly on the event loop thread. A live
+    SIGUSR1 thread dump during a concurrent by-analysis-pane load caught
+    the **main/event-loop thread itself** parked inside
+    `is_working_set_hidden` → `ProjectRegistry._conn` → a Postgres
+    connection-pool checkout — meaning every other in-flight request,
+    including ones touching no database at all (`/api/auth/me`), queued
+    behind this one route for as long as ~68 projects' worth of
+    synchronous round trips took. Same bug class as the `/questions` fix in
+    BY-ANALYSIS-PROGRESSIVE-AND-GRAPH-IMPLEMENTED.md §2a.
+    """
+    return await asyncio.to_thread(
+        _list_projects_sync, include_ignored, include_working_set_hidden
+    )
 
 
 class GroupStats(BaseModel):
@@ -207,39 +299,114 @@ async def create_group(body: GroupCreate) -> GroupSummary:
 
 
 @router.delete("/groups/{slug}")
-async def delete_group(slug: str) -> dict:
+async def delete_group(slug: str, request: Request) -> dict:
+    """Delete an RE group. Its members are ungrouped, and (Brief T) each member's membership of the group's Folio
+    is removed in Egeria: Brief F, at that member's next Publish (each member's Findable band says "saved · will
+    publish"). The Folio itself is NEVER deleted: that is a delete under the ISSUE-117 block, so the answer reports
+    it and the owner deletes it by hand."""
+    import asyncio
+
+    from resource_explorer import curation_egeria as ce
     from resource_explorer.registry import ProjectRegistry
+    author = _require_group_author(request, "delete a group")
     registry = ProjectRegistry()
     if not registry.get_group(slug):
         raise HTTPException(status_code=404, detail=f"Group '{slug}' not found")
-    unassigned = registry.delete_group(slug)
-    return {"removed": slug, "resources_unassigned": unassigned}
+    # Round 2: a delete detaches every member's Folio membership, so each member is checked (DETACH) BEFORE
+    # anything changes; one refusal refuses the whole delete and names who. Round 3: the members are read ONCE;
+    # that list is checked and is the one the delete must find (same transaction), else nothing changes.
+    members = ce.group_members(registry, slug)
+    refused = await asyncio.to_thread(ce.group_delete_refusals, registry, slug, members)
+    if refused:
+        raise HTTPException(status_code=403, detail=ce.refusal_words(refused))
+    try:
+        unassigned = registry.delete_group(slug, expected_members=set(members))
+    except registry.GroupMembersChanged as exc:
+        changed = ", ".join(f"{t} {s}" for t, s in sorted(exc.added | exc.gone))
+        raise HTTPException(status_code=409, detail=(
+            f"the group's members changed while they were being checked ({changed}); nothing was deleted, "
+            "try again")) from exc
+
+    def member_states() -> list[dict]:
+        """Brief F: nothing is sent here; each member's unlink waits for its own Publish. What each member's plan
+        now says about the old group (read from the rows, never assumed)."""
+        out = []
+        for entity_type, member in members:
+            try:
+                plan = ce.curation_plan(registry, entity_type, member)
+                left = next((i for i in plan["items"] if i.kind == "group" and i.name == slug), None)
+                out.append({"entity_type": entity_type, "slug": member,
+                            "state": left.state if left else "", "word": left.word if left else "",
+                            "will_unlink": bool(left and left.action == "unlink")})
+            except Exception as exc:  # the RE delete stands; the member's band re-reads the rows
+                out.append({"entity_type": entity_type, "slug": member, "error": str(exc)})
+        return out
+
+    egeria = {**ce.group_deleted_report(slug), "members": await asyncio.to_thread(member_states)}
+    return {"removed": slug, "resources_unassigned": unassigned, "egeria": egeria}
+
+
+def _require_group_author(request: Request, action: str) -> str:
+    """The signed-in user id, or 401 (a group change needs an author, and a Folio change needs a caller)."""
+    user = get_current_user(request)
+    author = (user or {}).get("user_id") or (user or {}).get("sub") or (user or {}).get("username") or ""
+    if not author:
+        raise HTTPException(status_code=401, detail=f"Sign in to {action} — a change needs an author.")
+    return author
 
 
 @router.post("/{slug}/group")
-async def assign_group(slug: str, body: GroupAssign) -> dict:
+async def assign_group(slug: str, body: GroupAssign, request: Request) -> dict:
+    """Put a resource in a group, recording WHO did it (the session's user, never the body): the Curate line after
+    the change reads "saved · who · when" (REPLY-DESIGNER-SAVE-AND-PUBLISH-VERBS.md). Signed out is a 401, like the
+    other Curate writes."""
     from resource_explorer.registry import ProjectRegistry
+    user = get_current_user(request)
+    author = (user or {}).get("user_id") or (user or {}).get("sub") or (user or {}).get("username") or ""
+    if not author:
+        raise HTTPException(status_code=401, detail="Sign in to change the group — a change needs an author.")
     registry = ProjectRegistry()
-    
+
     if body.group_slug and not registry.get_group(body.group_slug):
         raise HTTPException(status_code=404, detail=f"Group '{body.group_slug}' not found")
-        
+
     if body.resource_type == "repo":
         if not registry.get(slug):
             raise HTTPException(status_code=404, detail=f"Repository '{slug}' not found")
-        registry.set_project_group(slug, body.group_slug)
+        setter = registry.set_project_group
     elif body.resource_type == "database":
-        if not registry.get_database(slug):
+        if not registry.get_database(slug, allow_unreadable=True):
             raise HTTPException(status_code=404, detail=f"Database '{slug}' not found")
-        registry.set_database_group(slug, body.group_slug)
+        setter = registry.set_database_group
     elif body.resource_type == "filesystem":
         if not registry.get_filesystem(slug):
             raise HTTPException(status_code=404, detail=f"Filesystem '{slug}' not found")
-        registry.set_filesystem_group(slug, body.group_slug)
+        setter = registry.set_filesystem_group
     else:
         raise HTTPException(status_code=400, detail=f"Invalid resource type '{body.resource_type}'")
-        
-    return {"slug": slug, "resource_type": body.resource_type, "group_slug": body.group_slug}
+
+    # Brief T: the group is a Folio in Egeria, so a change is checked (Brief Z) before RE records it: UPDATE on
+    # the resource's element, ATTACH to join a group's Folio, DETACH to leave one.
+    import asyncio
+
+    from resource_explorer.curation_egeria import curation_plan, group_change_refusal, plan_as_dict
+
+    refused = await asyncio.to_thread(group_change_refusal, registry, body.resource_type, slug, body.group_slug)
+    if refused:
+        raise HTTPException(status_code=403, detail=refused)
+    setter(slug, body.group_slug)
+    saved_at = registry.record_group_change(body.resource_type, slug, body.group_slug, author)
+
+    def state() -> dict:
+        # Brief F: a Save sends nothing; the page's Publish sends the membership change. The plan as it now reads.
+        try:
+            return plan_as_dict(curation_plan(registry, body.resource_type, slug))
+        except Exception as exc:  # the RE change is recorded; the band re-reads the state from the rows
+            return {"error": f"{type(exc).__name__}: {exc}"}
+
+    egeria = await asyncio.to_thread(state)
+    return {"slug": slug, "resource_type": body.resource_type, "group_slug": body.group_slug,
+            "saved_by": author, "saved_at": saved_at, "egeria": egeria}
 
 
 @router.get("/{slug}", response_model=ProjectSummary)
@@ -286,12 +453,31 @@ class ScoutingOverview(BaseModel):
     # published_at, one row per publish) but was never surfaced here before;
     # only the bare yes/no was shown.
     last_published_at: str = ""
+    # Read from the `egeria_reset` marker (catalogue_commit.publish_fields): 'published_earlier' when the
+    # newest publish predates an Egeria reset, so the screen does not call it Published.
+    published_state: str = ""
+    egeria_reset_at: str = ""
     disposition: str = "undecided"
     disposition_reason: str = ""
     # Computed from archived/disabled/is_fork/is_template — "archived" >
     # "disabled" > "fork" > "template" > "active", first match wins.
     lifecycle_state: str = "active"
     homepage: str = ""
+    # Documentation site beside the homepage (Scouting's repo_homepage step).
+    # `docs_cue` is the short word shown next to the link: "docs ✓" / "docs
+    # unreachable" / "no docs found" / "docs not checked", or "" when the step has
+    # never run (nothing measured is not "no docs found"). `docs_state` is the
+    # machine word: reachable | unreachable | not_checked | none_found | unknown.
+    docs_url: str = ""
+    docs_state: str = ""
+    docs_cue: str = ""
+    docs_status: int | None = None
+    docs_final_url: str = ""
+    docs_last_modified: str = ""
+    docs_source: str = ""
+    docs_scope: str = ""
+    homepage_source: str = ""
+    homepage_scope: str = ""
     security_and_analysis: dict = {}
     deployments_count: int = 0
     latest_deployment_at: str = ""
@@ -305,13 +491,50 @@ class ScoutingOverview(BaseModel):
     egeria_link_stale: bool = False
     egeria_link_stale_guid: str = ""
     # Set when the latest published SurveyReport's GUID no longer resolves in
-    # Egeria (PUBLISH-STATE-AFTER-REDEPLOY-CORRECTIONS.md / REPLY-PUBLISH-
-    # STATE-GO-AHEAD.md) — a fourth publish-state reading distinct from
+    # Egeria (PUBLISH-STATE-AFTER-REDEPLOY-CORRECTIONS.md / REPLY-PUBLISH-STATE-GO-AHEAD.md) — a
+    # fourth publish-state reading distinct from
     # egeria_link_stale above (that one is the ASSET GUID; this is the
     # REPORT GUID a publish claim points to). Flagged, never cleared
     # automatically — see egeria_resync.py's _do_flag_vanished_publishes.
     publish_stale: bool = False
     publish_stale_guid: str = ""
+    publish_uncatalogued: bool = False
+    # PI-050/051: the scouting tiles must tell "never read" from "read: zero". The numeric fields
+    # above default to 0/"" when GitHub was never asked, so the names of the stats that have no
+    # value in the latest project_stats row (or the whole set, when there is no row) are listed
+    # here and the tile shows "not read" for them.
+    stats_unread: list[str] = []
+    # False when no project_stats row exists at all: an imported repo nobody has surveyed yet.
+    stats_fetched: bool = True
+
+
+_SCOUTING_STAT_FIELDS = (
+    ("primary_language", "primary_language"),
+    ("stars", "stars"),
+    ("forks", "forks"),
+    ("contributors_count", "contributors"),
+    ("last_pushed_at", "last_pushed_at"),
+    ("repo_size_kb", "repo_size_kb"),
+    ("security_and_analysis_json", "security_and_analysis"),
+    ("deployments_count", "deployments_count"),
+)
+
+
+#: Columns migrated in with DEFAULT 0: a row that never fetched them reads 0, exactly as a measured zero does.
+#: Only a non-zero value proves GitHub was asked, so a 0 here is "not read".
+_ZERO_PROVES_NOTHING = ("repo_size_kb", "deployments_count")
+
+
+def _scouting_stats_unread(stats: dict) -> list[str]:
+    """Names of the scouting stats the latest row cannot prove it read. None, '' and an empty security
+    object are unread; 0 is a measurement for stars, forks and contributors (the fetch wrote NULL
+    otherwise) but not for the DEFAULT-0 columns above, which nothing distinguishes from never fetched."""
+    out = []
+    for col, name in _SCOUTING_STAT_FIELDS:
+        v = stats.get(col)
+        if v is None or v in ("", "{}") or (col in _ZERO_PROVES_NOTHING and not v):
+            out.append(name)
+    return out
 
 
 @router.get("/{slug}/scouting-overview", response_model=ScoutingOverview)
@@ -343,6 +566,7 @@ async def get_scouting_overview(slug: str) -> ScoutingOverview:
 
     linkage = registry.get_egeria_linkage("repo", project.slug) or {}
     publish_linkage = registry.get_egeria_linkage("repo_publish", project.slug) or {}
+    from resource_explorer.catalogue_commit import publish_fields
     from resource_explorer.egeria_linkage import describe_publish_status
     publish_status = describe_publish_status(
         registry, "repo", project.slug, project.egeria_asset_guid or "")
@@ -352,6 +576,7 @@ async def get_scouting_overview(slug: str) -> ScoutingOverview:
         egeria_link_stale_guid=linkage.get("stale_guid", ""),
         publish_stale=publish_linkage.get("status") == "stale",
         publish_stale_guid=publish_linkage.get("stale_guid", ""),
+        publish_uncatalogued=publish_linkage.get("status") == "uncatalogued",
         slug=project.slug,
         display_name=project.display_name,
         github_url=project.github_url,
@@ -367,6 +592,7 @@ async def get_scouting_overview(slug: str) -> ScoutingOverview:
         is_published=publish_status["is_published"],
         egeria_publish_note=publish_status["note"],
         last_published_at=(latest_survey or {}).get("published_at") or "",
+        **publish_fields(registry, project.slug, (latest_survey or {}).get("published_at") or ""),
         disposition=disp.get("disposition", "undecided"),
         disposition_reason=disp.get("reason", ""),
         lifecycle_state=lifecycle_state,
@@ -376,12 +602,23 @@ async def get_scouting_overview(slug: str) -> ScoutingOverview:
         # either the same value or a better one. stats.homepage remains the
         # fallback for repos surveyed before that step existed.
         homepage=(project.homepage_url or stats.get("homepage") or ""),
+        **_docs_overview_fields(registry, project),
         security_and_analysis=security_and_analysis,
         deployments_count=stats.get("deployments_count") or 0,
         latest_deployment_at=stats.get("latest_deployment_at") or "",
         latest_deployment_environment=stats.get("latest_deployment_environment") or "",
         latest_deployment_ref=stats.get("latest_deployment_ref") or "",
+        stats_unread=_scouting_stats_unread(stats),
+        stats_fetched=bool(stats),
     )
+
+
+def _docs_overview_fields(registry, project) -> dict:
+    from resource_explorer.ingestion.docs_discovery import read_summary
+    d = read_summary(registry, project.slug, getattr(project, "docs_url", "") or "")
+    return {k: d[k] for k in ("docs_url", "docs_state", "docs_status", "docs_final_url",
+                              "docs_last_modified", "docs_source", "docs_scope",
+                              "homepage_source", "homepage_scope")} | {"docs_cue": d["cue"]}
 
 
 class ScoutingScanResult(BaseModel):
@@ -534,7 +771,15 @@ async def get_scouting_questions(
     As of the database/filesystem generalization (docs/Backlog.md,
     "scouting-questions was repo-only"), this is a thin wrapper over
     `workflows.scouting.build_question_checklist` -- see that function's
-    docstring. repo's own behavior here is unchanged."""
+    docstring. repo's own behavior here is unchanged.
+
+    Off the event loop (BY-ANALYSIS-PROGRESSIVE-AND-GRAPH, 2026-09-28): a
+    live thread dump caught the database sibling of this route blocking the
+    whole process inside `build_question_checklist` -- `question_has_data`
+    reaches the same expensive readers `/survey-results` already off-loads
+    (see `databases.py`'s `get_database_questions` docstring for the full
+    trace). This route makes the identical call, so it carries the same
+    fix."""
     from resource_explorer.registry import ProjectRegistry
     from resource_explorer.workflows.scouting import build_question_checklist
 
@@ -545,9 +790,10 @@ async def get_scouting_questions(
 
     persp_list = [p.strip() for p in (perspectives or "").split(",") if p.strip()]
     purp_list = [p.strip() for p in (purposes or "").split(",") if p.strip()]
-    return QuestionChecklist(
-        **build_question_checklist(registry, "repo", slug, phase, persp_list, purp_list)
+    result = await asyncio.to_thread(
+        build_question_checklist, registry, "repo", slug, phase, persp_list, purp_list,
     )
+    return QuestionChecklist(**result)
 
 
 # POST /{slug}/profile-scan was retired 2026-08-20. It refreshed
@@ -632,8 +878,8 @@ async def run_single_analysis(slug: str, analysis_id: str,
     `force`): the per-run choice of whether to wait for the Egeria publish or
     enqueue it and move on (project owner, 2026-09-13 — measured: the survey
     steps take ~0.2s, the synchronous publish ~3min at ~3.6s/write for 53
-    writes). Omitted keeps `RunsConfig.publish_inline`'s default — unchanged
-    behaviour for every caller that does not ask.
+    writes). Omitted keeps `RunsConfig.publish_inline`'s default: enqueue-only
+    since 2026-10-14 (project owner: a run does not wait for its publish).
 
     Validation still happens synchronously, so an unknown analysis_id is a 400
     rather than a queued row that fails a minute later in a different process.
@@ -919,7 +1165,7 @@ async def record_catalogue_depth_offer(slug: str, cid: str, body: CatalogueDepth
     curations = Curations(registry)
     rec = curations.get(cid)
     if not rec or rec.get("entity_slug") != slug:
-        raise HTTPException(status_code=404, detail=f"Catalogue record {cid!r} not found for {slug!r}")
+        raise HTTPException(status_code=404, detail=f"Publish record {cid!r} not found for {slug!r}")
     try:
         return curations.record_layer2_offer(cid, body.outcome, decided_by)
     except ValueError as exc:
@@ -993,21 +1239,81 @@ async def get_analysis_results(slug: str, analysis_id: str, depth: str | None = 
     return result
 
 
+#: Resource kinds a route can be asked about, and the plural noun the
+#: "not built yet" sentences use. A kind outside this dict is a 400 (the
+#: caller named something that is not a resource kind at all).
+_KIND_PLURAL = {"repo": "repositories", "database": "databases", "filesystem": "filesystems"}
+_KIND_NOUN = {"repo": "Project", "database": "Database", "filesystem": "Filesystem"}
+
+
+# `entity_type` is a REQUIRED query parameter on the routes below: omitting it is
+# a 422 ("Field required", loc query.entity_type), never a silent fall-back to
+# "repo". (Query(...) rather than a bare annotation only because some of these
+# signatures have defaulted params before it.)
+_REQUIRED_KIND = Query(..., description="Resource kind: repo, database or filesystem")
+
+
+def _require_known_kind(entity_type: str) -> None:
+    if entity_type not in _KIND_PLURAL:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unknown resource kind '{entity_type}' — expected one of {sorted(_KIND_PLURAL)}.",
+        )
+
+
+def _require_repo_built(entity_type: str, what: str) -> None:
+    """The honest 400 for a route whose only built readers are repository ones.
+
+    `what` is the subject of the sentence ("Members", "Member children",
+    "Promoting members", ...). Raised BEFORE auth (401) and validation (422)
+    so a request that can never work says so whoever asks. 400, not 404: the
+    resource may well exist; what is missing is the capability, and "not
+    found" would claim the opposite. The wording is "not built yet", not
+    "repository-only": members are a generic idea (a database's tables are
+    its member level) that only has repository readers today."""
+    _require_known_kind(entity_type)
+    if entity_type != "repo":
+        verb = "isn't" if what.endswith("members") and what.startswith("Promoting") else "aren't"
+        raise HTTPException(
+            status_code=400,
+            detail=f"{what} {verb} built for {_KIND_PLURAL[entity_type]} yet; "
+                   "today they list repository findings "
+                   "(advisories, dependencies, symbols, components).",
+        )
+
+
+def _resolve_resource(registry, entity_type: str, slug: str):
+    """Look the slug up as ITS kind (never assume repo); 404 names the kind."""
+    _require_known_kind(entity_type)
+    lookup = {
+        "repo": registry.get,
+        "database": registry.get_database,
+        "filesystem": registry.get_filesystem,
+    }[entity_type]
+    found = lookup(slug)
+    if not found:
+        raise HTTPException(status_code=404, detail=f"{_KIND_NOUN[entity_type]} '{slug}' not found")
+    return found
+
+
 @router.get("/{slug}/analyses/{analysis_id}/trend")
-async def get_analysis_trend(slug: str, analysis_id: str) -> dict:
-    """Raw JSON trend data for one repo analysis — {runs: [{surveyed_at,
+async def get_analysis_trend(slug: str, analysis_id: str, entity_type: str = _REQUIRED_KIND) -> dict:
+    """Raw JSON trend data for one analysis — {runs: [{surveyed_at,
     value, ...}, ...]}, matching the existing survey_history endpoint's
     raw-JSON-not-Plotly-figure convention (D6) rather than building a new
-    server-side Plotly figure per analysis type."""
+    server-side Plotly figure per analysis type.
+
+    Resolves the slug as `entity_type`'s own kind and reads that kind's
+    results map. Database and filesystem maps exist but carry no trend
+    readers yet, so they answer 400 "not built yet" naming the kind — never
+    a "Project not found" for a resource that is simply not a repo."""
     from resource_explorer.registry import ProjectRegistry
-    from resource_explorer.surveyors.repo_survey_definition_adapter import REPO_ANALYSIS_RESULTS_MAP
+    from resource_explorer.surveyors.survey_definition_executor import get_adapter
 
     registry = ProjectRegistry()
-    project = registry.get(slug)
-    if not project:
-        raise HTTPException(status_code=404, detail=f"Project '{slug}' not found")
+    _resolve_resource(registry, entity_type, slug)
 
-    entry = REPO_ANALYSIS_RESULTS_MAP.get(analysis_id)
+    entry = get_adapter(entity_type).analysis_results_map().get(analysis_id)
     if not entry:
         raise HTTPException(
             status_code=400,
@@ -1015,6 +1321,12 @@ async def get_analysis_trend(slug: str, analysis_id: str) -> dict:
                    "either it's scouting-tier (see Scouting instead) or an unknown id.",
         )
     _, trend_reader = entry
+    if trend_reader is None and entity_type != "repo":
+        raise HTTPException(
+            status_code=400,
+            detail=f"Trend history isn't built for {_KIND_PLURAL[entity_type]} yet; "
+                   "today it covers repository analyses.",
+        )
     if trend_reader is None:
         # e.g. license_classification — a single current-state classification,
         # not a repeated-check story (license rarely changes), so it was
@@ -1028,8 +1340,32 @@ async def get_analysis_trend(slug: str, analysis_id: str) -> dict:
     return {"runs": trend_reader(registry, slug)}
 
 
+@router.get("/{slug}/survey-results/boards")
+async def get_survey_results_boards(slug: str, stage: str = "") -> dict:
+    """The By-analysis contents board's cheap half — catalog metadata only,
+    no results/headline reader called. See `workflows.analysis.
+    list_survey_result_boards`'s docstring (BRIEF-BY-ANALYSIS-PANEL-USABILITY.md's "Progressive
+    render" section). Registered before
+    `/survey-results` in this file so `/boards` cannot be captured by
+    the `{slug}` path param of a route registered earlier — it isn't, since
+    this is itself the first `/survey-results*` route, but see the sibling
+    ordering note below on the plain `/survey-results` route.
+    """
+    from resource_explorer.registry import ProjectRegistry
+    from resource_explorer.workflows.analysis import list_survey_result_boards
+
+    registry = ProjectRegistry()
+    project = registry.get(slug)
+    if not project:
+        raise HTTPException(status_code=404, detail=f"Project '{slug}' not found")
+
+    return await asyncio.to_thread(list_survey_result_boards, registry, "repo", slug, stage)
+
+
 @router.get("/{slug}/survey-results")
-async def get_survey_results(slug: str, stage: str = "", include_empty: bool = False) -> dict:
+async def get_survey_results(
+    slug: str, stage: str = "", include_empty: bool = False, board_id: str = "",
+) -> dict:
     """Tier 2 — the Survey Results dashboards, off the event loop.
 
     This aggregation re-runs the same results readers the per-analysis cards
@@ -1038,12 +1374,20 @@ async def get_survey_results(slug: str, stage: str = "", include_empty: bool = F
     while it was in flight took 100s, so ONE person opening this pane froze
     the app for everyone.
 
+    `board_id` (optional, added alongside `/survey-results/boards` above):
+    scopes the read to exactly one board, so a caller (the /next By-analysis
+    pane) can fetch boards one at a time and fill cards progressively
+    instead of waiting on the full sweep — see BRIEF-BY-ANALYSIS-PANEL-USABILITY.md's "Progressive
+    render" section.
+
     Same fix, and same reason, as the `remove` route below it.
     """
-    return await asyncio.to_thread(_survey_results_sync, slug, stage, include_empty)
+    return await asyncio.to_thread(_survey_results_sync, slug, stage, include_empty, board_id)
 
 
-def _survey_results_sync(slug: str, stage: str = "", include_empty: bool = False) -> dict:
+def _survey_results_sync(
+    slug: str, stage: str = "", include_empty: bool = False, board_id: str = "",
+) -> dict:
     """Tier 2 -- the Survey Results dashboards for this repo.
 
     stage (optional): restrict to cards belonging to that funnel stage, so each
@@ -1053,6 +1397,9 @@ def _survey_results_sync(slug: str, stage: str = "", include_empty: bool = False
     include_empty (optional): return cards with no stored results too. Off by
     default -- see build_survey_results' has_results comment for why an empty
     card is worse than an absent one.
+
+    board_id (optional): one board only — see `get_survey_results`'s
+    docstring.
 
     As of the database/filesystem generalization (docs/Backlog.md, "By
     analysis" was repo-only), this is a thin wrapper over
@@ -1067,7 +1414,7 @@ def _survey_results_sync(slug: str, stage: str = "", include_empty: bool = False
     if not project:
         raise HTTPException(status_code=404, detail=f"Project '{slug}' not found")
 
-    return build_survey_results(registry, "repo", slug, stage, include_empty)
+    return build_survey_results(registry, "repo", slug, stage, include_empty, board_id=board_id)
 
 
 @router.get("/{slug}/survey-results/summary")
@@ -1219,84 +1566,122 @@ class SubResourceCatalogItem(BaseModel):
 
 
 class SubResourceCatalogRequest(BaseModel):
-    items: list[SubResourceCatalogItem]
-    publish_to_egeria: bool = True  # default both (local + Egeria); False = sandbox-mode escape hatch
+    #: Ignored. A press publishes what the selection RECORD says (brief 2a); a list in the request is not
+    #: read, so a stale screen cannot publish something nobody chose. Kept so an older client still parses.
+    items: list[SubResourceCatalogItem] = Field(default_factory=list)
 
 
 class SubResourceCatalogResult(BaseModel):
-    cataloged: list[str]              # locators tracked locally (incl. auto-included ancestors)
-    published: dict[str, str] = {}    # locator -> Egeria guid; empty unless publish_to_egeria
+    cataloged: list[str]              # locators tracked locally (incl. the container folders the files need)
+    published: dict[str, str] = {}    # locator -> Egeria guid
+    containers: int = 0               # how many of `cataloged` are folders added only to hold a chosen file
+    read_back: int = 0                # proof rows: elements read back by GUID
+    sent: int = 0                     # proof rows: sent, not yet shown by Egeria
+    failed: int = 0                   # proof rows: not created
+    manifest: dict = {}               # the record's manifest after the press
 
 
-@router.post("/{slug}/sub-resources/catalog", response_model=SubResourceCatalogResult)
-async def catalog_sub_resources(slug: str, body: SubResourceCatalogRequest) -> SubResourceCatalogResult:
-    """Track the selected sub-resources locally (always), and optionally
-    publish them to Egeria as real FileFolder/DataFile assets in the same
-    action (D3 — default both; unchecking publish_to_egeria is the
-    sandbox-mode escape hatch). Repeatable (D4): re-cataloging an
-    already-tracked locator is a no-op that never disturbs its
-    egeria_guid. Every selected file's ancestor folders are auto-included
-    even if not explicitly selected, mirroring SubResourceSurveyor's own
-    ancestor-folder guarantee — NestedFile strictly requires a FileFolder
-    parent, so an inconsistent selection would otherwise silently fail to
-    publish."""
+def _scope_author(request: Request, action: str) -> str:
+    from resource_explorer.auth import get_current_user
+    user = get_current_user(request)
+    author = (user or {}).get("user_id") or (user or {}).get("sub") or (user or {}).get("username") or ""
+    if not author:
+        raise HTTPException(status_code=401, detail=f"Sign in to {action}: a selection needs an author.")
+    return author
+
+
+class ScopeEvent(BaseModel):
+    locator: str = ""
+    kind: str                     # folder | file
+    choice: str = ""              # include | leave_out ('' with action clear)
+    action: str = "set"           # set | clear
+    source: str = "person"        # person | proposal
+    proposal_rule: str = ""
+    reason: str = ""
+
+
+class ScopeEventsRequest(BaseModel):
+    events: list[ScopeEvent]
+
+
+@router.get("/{slug}/scope-events")
+async def get_scope_events(slug: str) -> dict:
+    """The selection record for what this repository publishes, as the view both panes draw: one row per
+    candidate (and per container folder), the current choice with who and when, what is published, and the
+    manifest (counts from the record). Reads only."""
+    from resource_explorer import resource_scope
     from resource_explorer.registry import ProjectRegistry
-    from resource_explorer.surveyors.egeria_publisher import EgeriaConnectionError, EgeriaPublisher
-    from resource_explorer.surveyors.sub_surveyors import ancestor_folder_paths
-
     registry = ProjectRegistry()
     project = registry.get(slug)
     if not project:
         raise HTTPException(status_code=404, detail=f"Repository '{slug}' not found")
-    if not body.items:
-        raise HTTPException(status_code=400, detail="No items given to catalog")
+    return {"slug": slug, "in_egeria": bool(project.egeria_asset_guid),
+            **await asyncio.to_thread(resource_scope.build_view, registry, slug)}
 
-    # Snapshot each item's owners/dates from the current findings into the
-    # local row (denormalized — publish_sub_resources() shouldn't need to
-    # re-join back to findings that a later survey run might supersede).
-    findings_by_path: dict[str, dict] = {}
-    for f in registry.query_findings(slug, "repo_sub_resource_survey"):
-        detail = {}
-        if f.get("detail_json"):
-            try:
-                detail = json.loads(f["detail_json"])
-            except (TypeError, ValueError):
-                detail = {}
-        findings_by_path[detail.get("path", "")] = detail
 
-    selected_kind_by_locator: dict[str, str] = {item.locator: item.kind for item in body.items}
-    for item in body.items:
-        if item.kind != "file":
-            continue
-        for ancestor in ancestor_folder_paths(item.locator):
-            selected_kind_by_locator.setdefault(ancestor, "folder")
+@router.post("/{slug}/scope-events")
+async def post_scope_events(slug: str, body: ScopeEventsRequest, request: Request) -> dict:
+    """Append choices to the record (one event per row, as written), then return the re-read view. The
+    author is the signed-in person, never the body. Nothing here reaches Egeria and nothing writes
+    `sub_resources`: a choice is not a publish."""
+    from resource_explorer import resource_scope
+    from resource_explorer.registry import ProjectRegistry
+    author = _scope_author(request, "save a choice")
+    registry = ProjectRegistry()
+    project = registry.get(slug)
+    if not project:
+        raise HTTPException(status_code=404, detail=f"Repository '{slug}' not found")
+    events = [e.model_dump() for e in body.events]
+    try:
+        clean = resource_scope.validate_events(registry, slug, events)
+        # One transaction: a failure partway writes none of the batch.
+        await asyncio.to_thread(registry.append_resource_scope_events, resource_scope.RESOURCE_TYPE, slug,
+                                author=author, events=clean)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    view = await asyncio.to_thread(resource_scope.build_view, registry, slug)
+    return {"slug": slug, "in_egeria": bool(project.egeria_asset_guid), "written": len(clean), **view}
 
-    cataloged: list[str] = []
-    for locator in sorted(selected_kind_by_locator):
-        registry.catalog_sub_resource(
-            "repo", slug, locator, selected_kind_by_locator[locator],
-            source_finding="repo_sub_resource_survey",
-            detail=findings_by_path.get(locator),
+
+@router.post("/{slug}/sub-resources/catalog", response_model=SubResourceCatalogResult)
+async def catalog_sub_resources(slug: str, body: SubResourceCatalogRequest, request: Request) -> SubResourceCatalogResult:
+    """Publish exactly the items the selection record says are chosen (files and folders), plus the container
+    folders a file needs (Egeria's NestedFile needs a FileFolder), as FileFolder/DataFile assets under the
+    repository's asset, one proof row per element by GUID after a read-back. Repeatable: a second press finds
+    each element by qualifiedName and creates nothing. The old `publish_to_egeria=false` sandbox flag is
+    retired: a choice without a publish is the record itself (POST /scope-events)."""
+    from resource_explorer import resource_scope
+    from resource_explorer.registry import ProjectRegistry
+    from resource_explorer.surveyors.egeria_publisher import EgeriaConnectionError, EgeriaPublisher
+
+    author = _scope_author(request, "publish")
+    registry = ProjectRegistry()
+    project = registry.get(slug)
+    if not project:
+        raise HTTPException(status_code=404, detail=f"Repository '{slug}' not found")
+    chosen = await asyncio.to_thread(resource_scope.chosen_locators, registry, slug)
+    if not chosen:
+        raise HTTPException(status_code=400, detail="nothing selected · choose folders and files first")
+    if not project.egeria_asset_guid:
+        raise HTTPException(
+            status_code=409,
+            detail="Repo has no Egeria asset yet — publish the repo itself first before publishing sub-resources.",
         )
-        cataloged.append(locator)
-
-    published: dict[str, str] = {}
-    if body.publish_to_egeria:
-        if not project.egeria_asset_guid:
-            raise HTTPException(
-                status_code=409,
-                detail="Repo has no Egeria asset yet — publish the repo itself first before publishing sub-resources.",
-            )
-        publisher = EgeriaPublisher(registry=registry)
-        try:
-            published = await asyncio.to_thread(
-                publisher.publish_sub_resources,
-                slug, project.github_url, project.egeria_asset_guid, cataloged,
-            )
-        except EgeriaConnectionError as exc:
-            raise HTTPException(status_code=503, detail=str(exc))
-
-    return SubResourceCatalogResult(cataloged=cataloged, published=published)
+    # Brief Z2: FileFolder/DataFile assets attached under the repository's asset.
+    from resource_explorer.web.routes.curate import authorize_resource_write
+    await authorize_resource_write(registry, "repo", slug, write="publish")
+    try:
+        out = await asyncio.to_thread(
+            resource_scope.publish_chosen, registry, slug, github_url=project.github_url,
+            asset_guid=project.egeria_asset_guid, curation_id="", author=author, locators=chosen,
+            publisher=EgeriaPublisher(registry=registry))
+    except EgeriaConnectionError as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
+    view = await asyncio.to_thread(resource_scope.build_view, registry, slug)
+    return SubResourceCatalogResult(
+        cataloged=sorted(out["want"]), published=out["guids"], containers=out["ancestors"],
+        read_back=out["counts"]["read_back"], sent=out["counts"]["sent"], failed=out["counts"]["failed"],
+        manifest=view["manifest"])
 
 
 @router.delete("/{slug}/sub-resources")
@@ -1347,8 +1732,8 @@ async def run_scoped_analysis(slug: str, analysis_id: str, body: ScopedAnalysisR
     if not sub_resource:
         raise HTTPException(
             status_code=404,
-            detail=f"'{body.locator}' is not a cataloged sub-resource of '{slug}' — "
-                   "catalog it first via POST /sub-resources/catalog.",
+            detail=f"'{body.locator}' is not a published sub-resource of '{slug}' — "
+                   "publish it first via POST /sub-resources/catalog.",
         )
 
     catalog_entry = next(
@@ -1459,8 +1844,58 @@ async def get_analysis_measurements(slug: str, analysis_id: str,
         raise HTTPException(status_code=404, detail=str(exc))
 
 
+@router.get("/{slug}/dependencies")
+def get_dependency_table(slug: str) -> dict:
+    """Dependencies as ONE table with a kind column (brief section 3): build-time (measured, from the
+    manifests) and runtime (proposed, from the deployment artifacts, until a person confirms them).
+    RE's own records only; nothing here contacts Egeria."""
+    from resource_explorer import dependency_table
+    from resource_explorer.registry import ProjectRegistry
+
+    registry = ProjectRegistry()
+    if not registry.get(slug):
+        raise HTTPException(status_code=404, detail=f"Project '{slug}' not found")
+    return dependency_table.build_table(registry, slug)
+
+
+class ConfirmDependencies(BaseModel):
+    # The limits (at most 200 keys of 512 characters, a reason of 500) are enforced in
+    # `dependency_table.record_confirmations` and answered as a 400 with a sentence, not a 422.
+    keys: list[str]
+    verdict: str = "confirmed"        # confirmed | withdrawn
+    reason: str = ""
+
+
+@router.post("/{slug}/dependencies/confirm")
+def confirm_dependencies(slug: str, body: ConfirmDependencies, request: Request) -> dict:
+    """A person confirms (or withdraws) proposed RUNTIME dependency rows. Append-only: a change is a new
+    entry. Returns the table re-read, so the screen's words come from the record."""
+    from resource_explorer import dependency_table
+    from resource_explorer.auth import get_current_user
+    from resource_explorer.registry import ProjectRegistry
+
+    user = get_current_user(request)
+    author = (user or {}).get("user_id") or (user or {}).get("sub") or (user or {}).get("username") or ""
+    if not author:
+        raise HTTPException(status_code=401, detail="Sign in to confirm a dependency — it needs a person who made the call.")
+    registry = ProjectRegistry()
+    if not registry.get(slug):
+        raise HTTPException(status_code=404, detail=f"Project '{slug}' not found")
+    # 401, 404, 403, 400 in that order, like reclassify_node.
+    from resource_explorer.web.routes.curate import _authorize_curation
+    _authorize_curation(registry, "repo", slug, "")
+    # One request, one set of reads: the recovery rebuild and the wires are read once for the check, the
+    # record and the returned table.
+    ctx = dependency_table.Context(registry, slug)
+    try:
+        dependency_table.record_confirmations(registry, slug, body.keys, body.verdict, author, body.reason, ctx=ctx)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    return dependency_table.build_table(registry, slug, ctx=ctx)
+
+
 @router.get("/{slug}/analyses-index")
-async def get_analyses_index(slug: str, entity_type: str = "repo") -> dict:
+async def get_analyses_index(slug: str, entity_type: str = _REQUIRED_KIND) -> dict:
     """Every catalog analysis for this resource, with the questions that
     name it, last run, price, and what it serves — see
     resource_explorer/workflows/stage_page.py::build_analyses_index and the
@@ -1468,8 +1903,8 @@ async def get_analyses_index(slug: str, entity_type: str = "repo") -> dict:
     Thin wrapper; the route only translates the pure function's LookupError
     into a 404.
 
-    `entity_type` defaults to "repo", same convention and same fix date as
-    `get_analysis_measurements` above — `build_analyses_index()` carried the
+    `entity_type` is required (no default; omitting it is a 422), same convention
+    and same fix date as `get_analysis_measurements` above — `build_analyses_index()` carried the
     identical repo-only bug (its own docstring has the detail)."""
     from resource_explorer.registry import ProjectRegistry
     from resource_explorer.workflows.stage_page import build_analyses_index
@@ -1483,7 +1918,7 @@ async def get_analyses_index(slug: str, entity_type: str = "repo") -> dict:
 
 @router.get("/{slug}/members/{analysis_id}")
 async def get_members(slug: str, analysis_id: str, metric: str = "", scope: str = "public",
-                      limit: int = 200) -> dict:
+                      limit: int = 200, entity_type: str = _REQUIRED_KIND) -> dict:
     """The things a count counted — see resource_explorer/members.py.
 
     `scope` is `public` or `all`; the response says whether it was honoured,
@@ -1494,6 +1929,7 @@ async def get_members(slug: str, analysis_id: str, metric: str = "", scope: str 
     from resource_explorer.members import members_for
     from resource_explorer.registry import ProjectRegistry
 
+    _require_repo_built(entity_type, "Members")
     registry = ProjectRegistry()
     if not registry.get(slug):
         raise HTTPException(status_code=404, detail=f"Project '{slug}' not found")
@@ -1503,12 +1939,13 @@ async def get_members(slug: str, analysis_id: str, metric: str = "", scope: str 
 
 @router.get("/{slug}/members/{analysis_id}/children")
 async def get_member_children(slug: str, analysis_id: str, key: str, scope: str = "public",
-                              limit: int = 200) -> dict:
+                              limit: int = 200, entity_type: str = _REQUIRED_KIND) -> dict:
     """One level down a member tree. `key` is opaque — whatever the parent
     row's `children_key` said."""
     from resource_explorer.members import children_for
     from resource_explorer.registry import ProjectRegistry
 
+    _require_repo_built(entity_type, "Member children")
     registry = ProjectRegistry()
     if not registry.get(slug):
         raise HTTPException(status_code=404, detail=f"Project '{slug}' not found")
@@ -1516,10 +1953,36 @@ async def get_member_children(slug: str, analysis_id: str, key: str, scope: str 
     return {"key": key, "members": rows}
 
 
+def _add_to_investigation_scope(registry, investigation: str, entity_type: str, entity_slug: str, rationale: str) -> dict:
+    """The "add to <investigation>" act on a report or a member list: put the
+    resource in the investigation's SCOPE (the Folio), never mint a one-resource
+    work list (REPLY-DESIGNER-WORK-LISTS-VS-INVESTIGATIONS §4). A resource that
+    is already in scope is left exactly as it is: re-adding would overwrite the
+    reason it was added for, so this reports it and writes nothing (and the
+    registry call is `keep_existing` besides, as a second guard against a race).
+    Returns {"investigation", "investigation_name", "already_in_scope"}."""
+    if not investigation:
+        raise HTTPException(status_code=422, detail="action scope needs an investigation")
+    inv = registry.get_investigation(investigation)
+    if not inv:
+        raise HTTPException(status_code=404, detail=f"Investigation '{investigation}' not found")
+    if inv.get("status") not in (None, "", "open"):
+        raise HTTPException(status_code=409, detail=f"Investigation '{inv.get('display_name') or investigation}' is {inv.get('status')}, not open")
+    name = inv.get("display_name") or investigation
+    if any(m["entity_type"] == entity_type and m["entity_slug"] == entity_slug
+           for m in registry.list_investigation_members(investigation)):
+        return {"investigation": investigation, "investigation_name": name, "already_in_scope": True}
+    ws = registry.get_or_create_working_set(investigation)
+    registry.add_working_set_member(ws["slug"], entity_type, entity_slug,
+                                    membership_rationale=rationale, state="in-scope", keep_existing=True)
+    return {"investigation": investigation, "investigation_name": name, "already_in_scope": False}
+
+
 class PromoteSelection(BaseModel):
     """A selection from a member list, with its provenance. `members` are the
     names as they were when selected — a snapshot, never a query."""
-    action: str                      # work_list | rfa | journal
+    action: str                      # scope | rfa | journal (work_list: legacy, no longer offered)
+    investigation: str = ""          # scope only: the investigation whose scope gets the repo
     metric: str = ""
     members: list[str] = Field(default_factory=list)
     total: int = 0
@@ -1530,7 +1993,8 @@ class PromoteSelection(BaseModel):
 
 
 @router.post("/{slug}/members/{analysis_id}/promote")
-def promote_members(slug: str, analysis_id: str, body: PromoteSelection, request: Request) -> dict:
+def promote_members(slug: str, analysis_id: str, body: PromoteSelection, request: Request,
+                    entity_type: str = _REQUIRED_KIND) -> dict:
     """Promote a member-list selection: to a work list (I will deal with
     this), an RFA (someone must), or the journal (worth knowing). One
     provenance line, composed here, travels with all three. See the
@@ -1546,12 +2010,16 @@ def promote_members(slug: str, analysis_id: str, body: PromoteSelection, request
     from resource_explorer.registry import ProjectRegistry
     from resource_explorer.work_lists import WorkLists
 
+    # Kind first: before 401 and 422, so an anonymous caller on a database
+    # is told it is not built, not asked to sign in for something that
+    # could never work.
+    _require_repo_built(entity_type, "Promoting members")
     user = get_current_user(request)
     author = (user or {}).get("user_id") or (user or {}).get("sub") or (user or {}).get("username") or ""
     if not author:
         raise HTTPException(status_code=401, detail="Sign in to promote a selection — it needs someone to have made it.")
-    if body.action not in ("work_list", "rfa", "journal"):
-        raise HTTPException(status_code=422, detail="action must be work_list, rfa or journal")
+    if body.action not in ("scope", "work_list", "rfa", "journal"):
+        raise HTTPException(status_code=422, detail="action must be scope, rfa or journal")
     if not body.members:
         raise HTTPException(status_code=422, detail="nothing is selected")
 
@@ -1575,6 +2043,10 @@ def promote_members(slug: str, analysis_id: str, body: PromoteSelection, request
                            members=body.members, facet=body.facet, metric=body.metric)
     name = body.name.strip() or proposed_name(project.display_name or slug, total=body.total,
                                               members=body.members, facet=body.facet, metric=body.metric)
+
+    if body.action == "scope":
+        out = _add_to_investigation_scope(registry, body.investigation, "repo", slug, line)
+        return {"action": "scope", "name": project.display_name or slug, "provenance": line, **out}
 
     if body.action == "work_list":
         wl = WorkLists(registry).create(name, [slug], entity_type="repo", created_by=author,
@@ -1603,9 +2075,13 @@ def promote_members(slug: str, analysis_id: str, body: PromoteSelection, request
 
 class CurateSelection(BaseModel):
     confirm: list[str] = Field(default_factory=list)          # kinds from what_it_is: SoftwareCapability::<name>, Endpoint, ...
-    sub_resources: list[str] = Field(default_factory=list)    # locators from the sub-resource survey
+    #: (no `sub_resources` here: the commit publishes what the selection RECORD says, brief 2a; a list in the
+    #: request is ignored.)
     data_files: bool = False                                   # contained datasets -- recorded in the manifest; publish path not built
     note: str = ""
+    #: Re-survey the STALE steps before publishing (brief section 1). Off by default: unchecked, the
+    #: commit publishes the survey already kept and runs nothing.
+    resurvey_stale: bool = False
 
 
 @router.get("/{slug}/curate/plan")
@@ -1633,11 +2109,14 @@ def curate_commit(slug: str, body: CurateSelection, request: Request) -> dict:
     user = get_current_user(request)
     author = (user or {}).get("user_id") or (user or {}).get("sub") or (user or {}).get("username") or ""
     if not author:
-        raise HTTPException(status_code=401, detail="Sign in to catalogue — the record needs an author, and the asset an owner.")
+        raise HTTPException(status_code=401, detail="Sign in to publish — the record needs an author, and the asset an owner.")
     registry = ProjectRegistry()
     project = registry.get(slug)
     if not project:
         raise HTTPException(status_code=404, detail=f"Project '{slug}' not found")
+    # Brief Z2: the commit publishes the repository and its chosen files and folders in Egeria.
+    from resource_explorer.web.routes.curate import require_resource_write
+    require_resource_write(registry, "repo", slug, "publish")
     plan = build_plan(registry, slug)
     if not plan["in_population"]:
         raise HTTPException(status_code=409, detail=(
@@ -1647,32 +2126,75 @@ def curate_commit(slug: str, body: CurateSelection, request: Request) -> dict:
     unknown = [k for k in body.confirm if k not in known]
     if unknown:
         raise HTTPException(status_code=400, detail=f"Not candidates on this resource: {unknown}")
+    # What the press publishes comes from the selection RECORD (brief 2a), not from the request: the files and
+    # folders a person chose, and the container folders a file needs. A list in the request is ignored.
+    from resource_explorer import resource_scope
+    scope_manifest = resource_scope.build_view(registry, slug)["manifest"]
+    chosen = list(scope_manifest["chosen"])
+    if not body.confirm and not chosen:
+        # A press that would send nothing the person chose is blocked, and writes nothing (brief section 2).
+        from resource_explorer.curate_plan import NOTHING_SELECTED_SENTENCE
+        raise HTTPException(status_code=409, detail=NOTHING_SELECTED_SENTENCE)
+    from resource_explorer.surveyors import survey_snapshot
+    if survey_snapshot.latest(registry, slug) is None:
+        # Publishing never surveys (brief section 1): with nothing surveyed the commit is blocked, and
+        # the first survey is a separate, explicit act.
+        raise HTTPException(status_code=409, detail=survey_snapshot.no_kept_survey_sentence(registry, slug))
     manifest = {**plan["writes"], "entities": list(body.confirm),
                 "contained": {"data_files": plan["writes"]["contained"]["data_files"] if body.data_files else 0,
-                              "sub_resources": len(body.sub_resources)}}
+                              "sub_resources": len(chosen), "containers": scope_manifest["containers"],
+                              "files": scope_manifest["files"], "folders": scope_manifest["folders"]}}
     activity_id = log_survey(
         registry, entity_type="repo", entity_slug=slug,
         entity_name=project.display_name, entity_location=project.github_url,
         intent="curate", status="running",
-        summary=f"Cataloguing {project.display_name}: {len(body.confirm)} entities, {len(body.sub_resources)} sub-resources…",
+        summary=f"Publishing {project.display_name}: {len(body.confirm)} entities, {len(chosen)} files and folders…",
     )
-    rec = Curations(registry).create(
-        "repo", slug, author=author, selection=body.model_dump(), manifest=manifest,
-        steps=list(STEPS), activity_id=activity_id)
-    run_id = registry.enqueue_run("curate_commit", {"slug": slug, "curation_id": rec["id"]},
-                                  result_ref=activity_id, requested_by=_requested_by())
+    try:
+        rec = Curations(registry).create(
+            "repo", slug, author=author, selection={**body.model_dump(), "sub_resources": chosen}, manifest=manifest,
+            steps=list(STEPS), activity_id=activity_id)
+        # Queued: committed by RE's daemon on the person's behalf, Ownership = them (Brief I).
+        run_id = registry.enqueue_run("curate_commit", {"slug": slug, "curation_id": rec["id"]},
+                                      result_ref=activity_id, requested_by=_requested_by())
+    except Exception as exc:
+        # The row above was opened 'running'; nothing will ever run to close it.
+        registry.update_activity_status(
+            activity_id, "error",
+            summary=f"Publishing {project.display_name} was not started: {type(exc).__name__}: {exc}"[:400])
+        raise
     log.info("enqueued curate_commit %s for %s (activity %s)", run_id, slug, activity_id)
     return {"curation": rec, "activity_id": activity_id, "run_id": run_id}
+
+
+@router.get("/{slug}/curate/commits/latest")
+def curate_commit_latest(slug: str) -> dict:
+    """The newest curation record for a repository (or none), without reading the plan. It lets the
+    running-commit line under the Curate tabs survive a reload. Read only. Declared BEFORE the
+    `/commits/{curation_id}` route so "latest" is not taken for an id."""
+    from resource_explorer import repo_publish
+    from resource_explorer.curate_plan import Curations
+    from resource_explorer.registry import ProjectRegistry
+    registry = ProjectRegistry()
+    if not registry.get(slug):
+        raise HTTPException(status_code=404, detail=f"Project '{slug}' not found")
+    rec = Curations(registry).latest("repo", slug)
+    if not rec:
+        return {"curation": None}
+    return {"curation": {**rec, "proof_summary": repo_publish.commit_proof_summary(registry, slug, rec)}}
 
 
 @router.get("/{slug}/curate/commits/{curation_id}")
 def curate_commit_status(slug: str, curation_id: str) -> dict:
     from resource_explorer.curate_plan import Curations
     from resource_explorer.registry import ProjectRegistry
-    rec = Curations(ProjectRegistry()).get(curation_id)
+    registry = ProjectRegistry()
+    rec = Curations(registry).get(curation_id)
     if not rec or rec["entity_slug"] != slug:
         raise HTTPException(status_code=404, detail="No such curation")
-    return rec
+    # The state column of the commit table: from proof rows only (brief section 2).
+    from resource_explorer import repo_publish
+    return {**rec, "proof_summary": repo_publish.commit_proof_summary(registry, slug, rec)}
 
 
 # ── Records: the report record beside the catalogue record ───────────────
@@ -1740,11 +2262,26 @@ def save_report(slug: str, analysis_id: str, body: SaveReport, request: Request)
 
 
 class RecordAct(BaseModel):
-    action: str                        # work_list | rfa | journal
+    action: str                        # scope | rfa | journal (work_list: legacy, no longer offered)
+    investigation: str = ""            # scope only: the investigation whose scope gets the resource
     rows: list[str] | None = None      # None = the whole report; a subset of the frozen snapshot otherwise
     name: str = ""                     # the work list's / RFA's name; defaults to the record's
     suggest_to: list[str] = Field(default_factory=list)
     journal_id: str = ""               # journal: the entry the client wrote, so its use is recorded
+
+
+def _record_scope_act(registry, cur, record_id: str, investigation: str, entity_type: str, slug: str,
+                      line: str, author: str) -> dict:
+    """`_add_to_investigation_scope` plus the report's own bookkeeping: the
+    record learns the act was used (act `scope`) only when something was
+    actually added -- "already in scope" is not a use."""
+    out = _add_to_investigation_scope(registry, investigation, entity_type, slug, line)
+    if out["already_in_scope"]:
+        out["record"] = cur.get(record_id)
+    else:
+        out["record"] = cur.add_use(record_id, act="scope", target=investigation,
+                                    target_name=out["investigation_name"], by=author)
+    return out
 
 
 @router.post("/{slug}/records/{record_id}/act")
@@ -1767,8 +2304,8 @@ def act_on_record(slug: str, record_id: str, body: RecordAct, request: Request) 
     author = (user or {}).get("user_id") or (user or {}).get("sub") or (user or {}).get("username") or ""
     if not author:
         raise HTTPException(status_code=401, detail="Sign in to act on a report — a work item needs someone who raised it.")
-    if body.action not in ("work_list", "rfa", "journal"):
-        raise HTTPException(status_code=400, detail="action must be work_list, rfa or journal")
+    if body.action not in ("scope", "work_list", "rfa", "journal"):
+        raise HTTPException(status_code=400, detail="action must be scope, rfa or journal")
     registry = ProjectRegistry()
     project = registry.get(slug)
     cur = Curations(registry)
@@ -1779,6 +2316,9 @@ def act_on_record(slug: str, record_id: str, body: RecordAct, request: Request) 
     stale = out_of_date(rep, last_run_at(registry, slug, rep.get("analysis_id", "")))
     line = act_line(rec, rows=body.rows, out_of_date_sentence=stale)
     name = body.name.strip() or rec["name"]
+    if body.action == "scope":
+        out = _record_scope_act(registry, cur, record_id, body.investigation, "repo", slug, line, author)
+        return {"action": "scope", "name": project.display_name or slug, "provenance": line, **out}
     if body.action == "work_list":
         wl = WorkLists(registry).create(name, [slug], entity_type="repo", created_by=author,
                                         derived_from=f"record:{record_id}", rationale=line,
@@ -1827,7 +2367,7 @@ def _entity_display_name(registry, entity_type: str, slug: str) -> str | None:
     entity-generic sibling routes below, the same role `registry.get(slug)`
     plays for the repo-only routes above."""
     if entity_type == "database":
-        d = registry.get_database(slug)
+        d = registry.get_database(slug, allow_unreadable=True)
         return d.display_name if d else None
     if entity_type == "filesystem":
         f = registry.get_filesystem(slug)
@@ -1881,8 +2421,8 @@ def act_on_entity_record(entity_type: str, slug: str, record_id: str, body: Reco
     author = (user or {}).get("user_id") or (user or {}).get("sub") or (user or {}).get("username") or ""
     if not author:
         raise HTTPException(status_code=401, detail="Sign in to act on a report — a work item needs someone who raised it.")
-    if body.action not in ("work_list", "rfa", "journal"):
-        raise HTTPException(status_code=400, detail="action must be work_list, rfa or journal")
+    if body.action not in ("scope", "work_list", "rfa", "journal"):
+        raise HTTPException(status_code=400, detail="action must be scope, rfa or journal")
     registry = ProjectRegistry()
     display_name = _entity_display_name(registry, entity_type, slug)
     cur = Curations(registry)
@@ -1893,6 +2433,9 @@ def act_on_entity_record(entity_type: str, slug: str, record_id: str, body: Reco
     stale = out_of_date(rep, last_run_at(registry, slug, rep.get("analysis_id", "")))
     line = act_line(rec, rows=body.rows, out_of_date_sentence=stale)
     name = body.name.strip() or rec["name"]
+    if body.action == "scope":
+        out = _record_scope_act(registry, cur, record_id, body.investigation, entity_type, slug, line, author)
+        return {"action": "scope", "name": display_name or slug, "provenance": line, **out}
     if body.action == "work_list":
         wl = WorkLists(registry).create(name, [slug], entity_type=entity_type, created_by=author,
                                         derived_from=f"record:{record_id}", rationale=line,
@@ -1956,13 +2499,18 @@ def components_tree(slug: str, prefix: str = "") -> dict:
 
 
 @router.get("/{slug}/components/leaves")
-def components_leaves(slug: str, branch: str) -> dict:
-    from resource_explorer.component_tree import group_leaves, leaves
+def components_leaves(slug: str, branch: str, groups: bool = True, limit: int = 5000) -> dict:
+    from resource_explorer.component_tree import finder_rows, group_leaves, leaves
     from resource_explorer.registry import ProjectRegistry
     registry = ProjectRegistry()
     if not registry.get(slug):
         raise HTTPException(status_code=404, detail=f"Project '{slug}' not found")
+    if not groups and not branch:
+        # The component search: slim rows for the whole repository, capped, with the server's own total.
+        return finder_rows(registry, slug, limit)
     rows = leaves(registry, slug, branch)
+    if not branch:
+        return {"branch": branch, "leaves": rows, "groups": [], "ungrouped": rows}   # no grouping over the whole set
     # `groups`/`ungrouped` (2026-09-17): the same flat rows, re-shaped by
     # scope-hierarchy cluster (component_tree.group_leaves) so a curator
     # opening a large branch sees ~10-row groups instead of one long list.
@@ -1976,19 +2524,25 @@ class BranchVerdicts(BaseModel):
     scope_locators: list[str]          # branch paths and/or component paths
     verdict: str                       # accepted | rejected
     note: str = ""
+    # Scopes (a subset of scope_locators) whose verdict is for THAT component alone and does not pass down to
+    # the components under it (owner, 2026-10-09). A scope not listed keeps the branch meaning.
+    only_scopes: list[str] = []
 
 
 @router.post("/{slug}/components/verdicts")
 def branch_verdicts(slug: str, body: BranchVerdicts, request: Request) -> dict:
     """Accept or reject at the branch. One verdict row per scope given -- a
     branch path is a scope like any other, and every component under it
-    inherits until its own row wins. Materialization of accepted components
-    into Egeria is queued (kind materialize_components) so the pane returns
-    at once; nothing runs until the caller confirmed the preview. No undo,
-    and the word is not offered: a change is a new row and the trail keeps
-    both."""
-    from resource_explorer.activity_logger import log_survey
+    inherits until its own row wins (unless the row is for "this component
+    only"). **A decision and nothing more**: no Egeria call and no run is
+    queued. Publish (`POST /{slug}/architecture/publish`) is the one verb that
+    writes accepted components to Egeria (the owner's 2026-10-08 ruling that Publish is the one Egeria verb, owner
+    2026-10-09). A reject never writes either: RE has no delete path, so a
+    rejected component that is already in Egeria stays there, and the row says
+    so. No undo, and the word is not offered: a change is a new row and the
+    trail keeps both."""
     from resource_explorer.auth import get_current_user
+    from resource_explorer.component_tree import ONLY_THIS
     from resource_explorer.registry import ProjectRegistry
     from resource_explorer.web.routes.curate import _authorize_curation
 
@@ -2001,28 +2555,76 @@ def branch_verdicts(slug: str, body: BranchVerdicts, request: Request) -> dict:
     scopes = [s.strip().rstrip("/") for s in body.scope_locators if s and s.strip().rstrip("/")]
     if not scopes:
         raise HTTPException(status_code=400, detail="no scope given")
+    only = {s.strip().rstrip("/") for s in body.only_scopes if s and s.strip().rstrip("/")}
     registry = ProjectRegistry()
     project = registry.get(slug)
     if not project:
         raise HTTPException(status_code=404, detail=f"Project '{slug}' not found")
+    # Every scope is checked before any is recorded, so a refusal leaves nothing half-recorded (Brief Z).
+    # One request that writes nothing to Egeria: each element is read once, all of them together up front.
+    from resource_explorer.workflows.curate import _guids_for, _reads_zones
+    from resource_explorer.zone_access import EgeriaAccessReader
+    reader = EgeriaAccessReader(cache_elements=True)
+    with reader.check(_guids_for(registry, slug, scopes) if _reads_zones() else ()):
+        for scope in scopes:
+            _authorize_curation(registry, "repo", slug, scope, reader=reader)
     rows = []
     for scope in scopes:
-        _authorize_curation(registry, "repo", slug, scope)
-        rows.append(registry.record_component_verdict("repo", slug, scope, body.verdict, "", body.note, decided_by=author))
-    out = {"verdicts": rows, "run_id": None, "activity_id": None}
-    if body.verdict == "accepted":
-        from resource_explorer.component_tree import leaves
-        accepted_paths = sorted({l["path"] for scope in scopes for l in leaves(registry, slug, scope)
-                                 if (l.get("verdict") or {}).get("verdict") == "accepted"})
-        activity_id = log_survey(
-            registry, entity_type="repo", entity_slug=slug,
-            entity_name=project.display_name, entity_location=project.github_url,
-            intent="curate", status="running",
-            summary=f"Materialising {len(accepted_paths)} accepted component(s) of {project.display_name}…")
-        run_id = registry.enqueue_run("materialize_components", {"slug": slug, "paths": accepted_paths},
-                                      result_ref=activity_id, requested_by=_requested_by())
-        out.update({"run_id": run_id, "activity_id": activity_id, "queued": len(accepted_paths)})
-    return out
+        rows.append(registry.record_component_verdict(
+            "repo", slug, scope, body.verdict, ONLY_THIS if scope in only else "", body.note, decided_by=author))
+    return {"verdicts": rows, "run_id": None, "activity_id": None, "queued": 0}
+
+
+@router.get("/{slug}/architecture/publish-plan")
+def architecture_publish_plan(slug: str) -> dict:
+    """What a Publish press would write to Egeria now, and what the last press did per item. Read only: RE's
+    own rows, no Egeria call. The press (`POST .../architecture/publish`) writes exactly this list."""
+    from resource_explorer.architecture_publish import last_results, publish_plan
+    from resource_explorer.registry import ProjectRegistry
+    registry = ProjectRegistry()
+    if not registry.get(slug):
+        raise HTTPException(status_code=404, detail=f"Project '{slug}' not found")
+    return {**publish_plan(registry, slug), "last": last_results(registry, slug)}
+
+
+@router.post("/{slug}/architecture/publish")
+def architecture_publish(slug: str, request: Request) -> dict:
+    """Publish for the architecture: the one verb that writes accepted components and blueprints to Egeria.
+    Queues ONE run (kind publish_architecture) for the items in the plan, so the pane returns at once. With
+    nothing in the plan, nothing is queued. A second press while one is queued or running is refused (409)."""
+    from resource_explorer.architecture_publish import PublishAlreadyRunning, enqueue_publish, publish_plan
+    from resource_explorer.auth import get_current_user
+    from resource_explorer.registry import ProjectRegistry
+
+    user = get_current_user(request)
+    author = (user or {}).get("user_id") or (user or {}).get("sub") or (user or {}).get("username") or ""
+    if not author:
+        raise HTTPException(status_code=401, detail="Sign in to publish — it needs someone who made it.")
+    registry = ProjectRegistry()
+    project = registry.get(slug)
+    if not project:
+        raise HTTPException(status_code=404, detail=f"Project '{slug}' not found")
+    from resource_explorer.workflows.curate import CurationDenied
+    from resource_explorer.zone_access import EgeriaAccessReader
+
+    # One press, decided before anything is written: each zone's control, the account and each element are read
+    # once for the request. The run re-checks each item fresh right before its write (run_publish).
+    reader = EgeriaAccessReader(cache_elements=True)
+
+    def authorize(kind: str, key: str) -> None:
+        # Every operation the item's write performs (workflows.curate.publish_item_access), raised as
+        # CurationDenied so Publish skips the one item and goes on with the rest (Brief Z: per item, no
+        # whole-press 403 unless nothing is permitted).
+        from resource_explorer.web.routes.curate import _authorize_publish_item
+        _authorize_publish_item(registry, slug, kind, key, reader=reader)
+
+    try:
+        return enqueue_publish(registry, project, publish_plan(registry, slug), requested_by=_requested_by(),
+                               authorize=authorize)
+    except PublishAlreadyRunning as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except CurationDenied as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
 
 
 # ── Blueprints (SPEC-CURATE-SELECTION-AND-BLUEPRINTS.md §2) ─────────────────
@@ -2050,7 +2652,89 @@ def components_blueprints(slug: str) -> dict:
     # the readings a curator can switch between, distinct from the diagram's
     # run_label preference and the chrome's unrelated Perspective filter.
     perspectives = sorted({b["perspective"] for b in blueprints if b.get("perspective")})
-    return {"blueprints": blueprints, "perspectives": perspectives}
+    # Brief section 4: the blueprint selector, one row per KIND RE can offer, and the name each one
+    # will be written under.
+    from resource_explorer.blueprint_kinds import (
+        blueprint_display_name, blueprint_kind_rows, kind_key, repo_label)
+    project = registry.get(slug)
+    label = repo_label(slug, getattr(project, "display_name", "") or "")
+    for b in blueprints:
+        sole = (sum(1 for x in blueprints if x["perspective"] == b["perspective"] and not x.get("parent")) == 1
+                and not b.get("parent"))
+        b["kind"] = kind_key(b["perspective"])
+        b["display_name"] = blueprint_display_name(label, b["perspective"], b["cluster_name"], sole_root=sole)
+    evidence_paths: set[str] = set()
+    for r in registry.query_findings(slug, "architecture_interfaces") or []:
+        d = r.get("detail") if isinstance(r.get("detail"), dict) else None
+        if d is None:
+            import json as _json
+            try:
+                d = _json.loads(r.get("detail_json") or "{}")
+            except ValueError:
+                d = {}
+        path = ((d or {}).get("evidence") or {}).get("path")
+        if path:
+            evidence_paths.add(path)
+    build_names = {"build.gradle", "build.gradle.kts", "settings.gradle", "settings.gradle.kts", "pom.xml"}
+    build_files = sorted({p.rsplit("/", 1)[-1] for p in registry.get_file_inventory(slug) or []
+                          if p.rsplit("/", 1)[-1] in build_names})
+    logical = [bp for bp in blueprints if kind_key(bp["perspective"]) == "logical"]
+    unconfirmed = (sum(1 for bp in logical for m in bp.get("member_status") or [] if not m.get("verdict"))
+                   if logical else None)
+    # What admitted each node, and what was found and not admitted (DESIGN-BLUEPRINT-NODE-ADMISSION.md).
+    from resource_explorer import node_admission
+    # One read of the recovery results, passed to both: `summary` always needs it and `environment` needs it
+    # whenever a person moved a component to referenced-only (module comment in node_admission.summary).
+    paths = node_admission.component_paths(registry, slug)
+    admission = node_admission.summary(registry, slug, paths)
+    env = node_admission.environment(registry, slug, paths) if admission["referenced"] else {"nodes": [], "linked": 0}
+    kinds = blueprint_kind_rows(label=label, blueprints=blueprints, artifact_count=len(evidence_paths),
+                                build_files=build_files, logical_unconfirmed=unconfirmed,
+                                environment_services=len(env["nodes"]), environment_linked=env["linked"])
+    return {"blueprints": blueprints, "perspectives": perspectives, "kinds": kinds, "admission": admission}
+
+
+@router.get("/{slug}/environment-blueprint")
+def environment_blueprint(slug: str) -> dict:
+    """The Environment Deployment Blueprint's nodes: the services this repository runs as other projects'
+    deployment units, each linked to the repository RE knows to build its image."""
+    from resource_explorer import node_admission
+    from resource_explorer.registry import ProjectRegistry
+    registry = ProjectRegistry()
+    if not registry.get(slug):
+        raise HTTPException(status_code=404, detail=f"Project '{slug}' not found")
+    # The wires are the dependency table's own rows whose two ends are both referenced-only services, so the
+    # table and this blueprint cannot disagree (DESIGN-DEPENDENCY-ROW-TWO-ENDS.md).
+    from resource_explorer import dependency_table
+    return {**node_admission.environment(registry, slug), "wires": dependency_table.environment_wires(registry, slug)}
+
+
+class NodeReclassify(BaseModel):
+    scope_locator: str
+    to: str  # "built_here" | "referenced_only"
+    reason: str
+
+
+@router.post("/{slug}/components/reclassify")
+def reclassify_node(slug: str, body: NodeReclassify, request: Request) -> dict:
+    """A person moves a node between the blueprint and the runtime dependencies, with a reason. Append-only;
+    the next survey honours it and the tree and the dependency table show it at once."""
+    from resource_explorer import node_admission
+    from resource_explorer.registry import ProjectRegistry
+    from resource_explorer.web.routes.curate import _require_author
+
+    author = _require_author(request, "reclassify a node")
+    registry = ProjectRegistry()
+    if not registry.get(slug):
+        raise HTTPException(status_code=404, detail=f"Project '{slug}' not found")
+    from resource_explorer.web.routes.curate import _authorize_curation
+    _authorize_curation(registry, "repo", slug, body.scope_locator.strip())
+    try:
+        entry = node_admission.reclassify(registry, slug, body.scope_locator.strip(), body.to, body.reason, author)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    return {"reclassified": entry, "scope_locator": body.scope_locator.strip(),
+            "admission": node_admission.summary(registry, slug)}
 
 
 @router.get("/{slug}/gaps")

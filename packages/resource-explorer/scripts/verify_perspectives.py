@@ -50,7 +50,7 @@ def expected_perspectives() -> list[str]:
     return sorted(n for n in names if n)
 
 
-def main() -> int:
+def _main() -> int:
     expected = expected_perspectives()
     if not expected:
         print("No perspectives found in foundations.md — the parse, not the platform.")
@@ -116,6 +116,15 @@ def main() -> int:
         return 2
     print(f"All {len(expected)} perspectives resolve.")
     return 0
+
+
+def main() -> int:
+    """Run as RE's daemon: SurveyDefinitionReader resolves its principal from the calling context, and
+    a CLI has no signed-in person (NoCallerIdentity otherwise)."""
+    from resource_explorer.egeria_clients import Daemon, DaemonReason, acting_as
+
+    with acting_as(Daemon(DaemonReason.BOOTSTRAP)):
+        return _main()
 
 
 if __name__ == "__main__":

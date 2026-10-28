@@ -1,0 +1,297 @@
+{
+ "captured": "2026-10-14",
+ "platform": "Egeria 6.2 quickstart (qs-view-server), pyegeria 6.2.3",
+ "identity": "RE daemon (DaemonReason.ACCESS_CHECK), read-only",
+ "route": "MetadataExpert.get_metadata_element_by_guid",
+ "call": "get_metadata_element_by_guid(guid)",
+ "secrets": "keys matching token|password|secret|credential|apikey replaced by <removed>",
+ "graph_keys_dropped": [],
+ "answer": {
+  "classifications": [
+   {
+    "class": "AttachedClassification",
+    "classificationName": "Anchors",
+    "classificationOrigin": "ASSIGNED",
+    "classificationProperties": {
+     "propertiesAsStrings": {
+      "anchorDomainName": "Asset",
+      "anchorGUID": "0ff72014-8936-4bea-b3d1-6a4493b99b30",
+      "anchorTypeName": "RelationalDatabase"
+     },
+     "propertyCount": 3,
+     "propertyNames": [
+      "anchorTypeName",
+      "anchorDomainName",
+      "anchorGUID"
+     ],
+     "propertyValueMap": {
+      "anchorDomainName": {
+       "class": "PrimitiveTypePropertyValue",
+       "primitiveTypeCategory": "OM_PRIMITIVE_TYPE_STRING",
+       "primitiveValue": "Asset",
+       "typeName": "string"
+      },
+      "anchorGUID": {
+       "class": "PrimitiveTypePropertyValue",
+       "primitiveTypeCategory": "OM_PRIMITIVE_TYPE_STRING",
+       "primitiveValue": "0ff72014-8936-4bea-b3d1-6a4493b99b30",
+       "typeName": "string"
+      },
+      "anchorTypeName": {
+       "class": "PrimitiveTypePropertyValue",
+       "primitiveTypeCategory": "OM_PRIMITIVE_TYPE_STRING",
+       "primitiveValue": "RelationalDatabase",
+       "typeName": "string"
+      }
+     }
+    },
+    "headerVersion": 0,
+    "origin": {
+     "homeMetadataCollectionId": "9905c3cb-94c5-4494-9229-0d6f69c0b842",
+     "homeMetadataCollectionName": "qs-metadata-store",
+     "originCategory": "LOCAL_COHORT",
+     "sourceServer": "qs-metadata-store"
+    },
+    "status": "ACTIVE",
+    "type": {
+     "typeCategory": "CLASSIFICATION_DEF",
+     "typeDescription": "Identifies the anchor entity for an element that is part of a large composite object such as an asset.",
+     "typeId": "aa44f302-2e43-4669-a1e7-edaae414fc6e",
+     "typeName": "Anchors",
+     "typeVersion": 1
+    },
+    "versions": {
+     "createTime": "2026-10-15T00:15:29.204+00:00",
+     "createdBy": "resourceexplorernpa",
+     "lastRequestId": "ae64d3d3-8334-4ea0-982e-f4e13e34fca2",
+     "maintainedBy": [
+      "resourceexplorernpa"
+     ],
+     "updateTime": "2026-10-15T00:15:29.204+00:00",
+     "updatedBy": "resourceexplorernpa",
+     "version": 1
+    }
+   },
+   {
+    "class": "AttachedClassification",
+    "classificationName": "Ownership",
+    "classificationOrigin": "ASSIGNED",
+    "classificationProperties": {
+     "propertiesAsStrings": {
+      "owner": "Person::UK::986419",
+      "ownerPropertyName": "qualifiedName",
+      "ownerTypeName": "Person"
+     },
+     "propertyCount": 3,
+     "propertyNames": [
+      "owner",
+      "ownerPropertyName",
+      "ownerTypeName"
+     ],
+     "propertyValueMap": {
+      "owner": {
+       "class": "PrimitiveTypePropertyValue",
+       "primitiveTypeCategory": "OM_PRIMITIVE_TYPE_STRING",
+       "primitiveValue": "Person::UK::986419",
+       "typeName": "string"
+      },
+      "ownerPropertyName": {
+       "class": "PrimitiveTypePropertyValue",
+       "primitiveTypeCategory": "OM_PRIMITIVE_TYPE_STRING",
+       "primitiveValue": "qualifiedName",
+       "typeName": "string"
+      },
+      "ownerTypeName": {
+       "class": "PrimitiveTypePropertyValue",
+       "primitiveTypeCategory": "OM_PRIMITIVE_TYPE_STRING",
+       "primitiveValue": "Person",
+       "typeName": "string"
+      }
+     }
+    },
+    "headerVersion": 0,
+    "origin": {
+     "homeMetadataCollectionId": "9905c3cb-94c5-4494-9229-0d6f69c0b842",
+     "homeMetadataCollectionName": "qs-metadata-store",
+     "originCategory": "LOCAL_COHORT",
+     "sourceServer": "qs-metadata-store"
+    },
+    "status": "ACTIVE",
+    "type": {
+     "typeCategory": "CLASSIFICATION_DEF",
+     "typeDescription": "Who is responsible for making decisions on the management and governance of this element.",
+     "typeId": "8139a911-a4bd-432b-a9f4-f6d11c511abe",
+     "typeName": "Ownership",
+     "typeVersion": 2
+    },
+    "versions": {
+     "createTime": "2026-10-15T00:15:42.225+00:00",
+     "createdBy": "resourceexplorernpa",
+     "lastRequestId": "f7ef9846-0bc6-4baf-bf43-ed19632cfb48",
+     "maintainedBy": [
+      "resourceexplorernpa"
+     ],
+     "updateTime": "2026-10-15T00:15:42.225+00:00",
+     "updatedBy": "resourceexplorernpa",
+     "version": 1
+    }
+   }
+  ],
+  "elementGUID": "f2400b9e-312f-4d24-a4dd-f79351b6381f",
+  "elementProperties": {
+   "propertiesAsStrings": {
+    "additionalProperties": "{requestedBy=peterprofile, annotation_count=283, engineActionGUID=5b6138de-3d83-49f9-8426-46949bfa6aab}",
+    "authors": "{0=resourceexplorernpa}",
+    "createdTime": "1792023329192",
+    "description": "This is the re-db-derived survey report for asset 0ff72014-8936-4bea-b3d1-6a4493b99b30 (coco_pharma @ local-docker) generated at 2026-10-15T00:15:29.192Z by Resource Explorer's engine host for engine action 5b6138de-3d83-49f9-8426-46949bfa6aab.",
+    "displayName": "Survey Report for 0ff72014-8936-4bea-b3d1-6a4493b99b30",
+    "purpose": "re-db-derived",
+    "qualifiedName": "SurveyReport::re-db-derived::0ff72014-8936-4bea-b3d1-6a4493b99b30::2026-10-15T00:15:29.192Z",
+    "startTime": "1792023329192"
+   },
+   "propertyCount": 8,
+   "propertyNames": [
+    "purpose",
+    "displayName",
+    "qualifiedName",
+    "createdTime",
+    "description",
+    "startTime",
+    "additionalProperties",
+    "authors"
+   ],
+   "propertyValueMap": {
+    "additionalProperties": {
+     "class": "MapTypePropertyValue",
+     "mapElementCount": 3,
+     "mapValues": {
+      "propertiesAsStrings": {
+       "annotation_count": "283",
+       "engineActionGUID": "5b6138de-3d83-49f9-8426-46949bfa6aab",
+       "requestedBy": "peterprofile"
+      },
+      "propertyCount": 3,
+      "propertyNames": [
+       "requestedBy",
+       "annotation_count",
+       "engineActionGUID"
+      ],
+      "propertyValueMap": {
+       "annotation_count": {
+        "class": "PrimitiveTypePropertyValue",
+        "primitiveTypeCategory": "OM_PRIMITIVE_TYPE_STRING",
+        "primitiveValue": "283",
+        "typeName": "string"
+       },
+       "engineActionGUID": {
+        "class": "PrimitiveTypePropertyValue",
+        "primitiveTypeCategory": "OM_PRIMITIVE_TYPE_STRING",
+        "primitiveValue": "5b6138de-3d83-49f9-8426-46949bfa6aab",
+        "typeName": "string"
+       },
+       "requestedBy": {
+        "class": "PrimitiveTypePropertyValue",
+        "primitiveTypeCategory": "OM_PRIMITIVE_TYPE_STRING",
+        "primitiveValue": "peterprofile",
+        "typeName": "string"
+       }
+      }
+     },
+     "typeName": "map<string,string>"
+    },
+    "authors": {
+     "arrayCount": 1,
+     "arrayValues": {
+      "propertiesAsStrings": {
+       "0": "resourceexplorernpa"
+      },
+      "propertyCount": 1,
+      "propertyNames": [
+       "0"
+      ],
+      "propertyValueMap": {
+       "0": {
+        "class": "PrimitiveTypePropertyValue",
+        "primitiveTypeCategory": "OM_PRIMITIVE_TYPE_STRING",
+        "primitiveValue": "resourceexplorernpa",
+        "typeName": "string"
+       }
+      }
+     },
+     "class": "ArrayTypePropertyValue",
+     "typeName": "array<string>"
+    },
+    "createdTime": {
+     "class": "PrimitiveTypePropertyValue",
+     "primitiveTypeCategory": "OM_PRIMITIVE_TYPE_DATE",
+     "primitiveValue": 1792023329192,
+     "typeName": "date"
+    },
+    "description": {
+     "class": "PrimitiveTypePropertyValue",
+     "primitiveTypeCategory": "OM_PRIMITIVE_TYPE_STRING",
+     "primitiveValue": "This is the re-db-derived survey report for asset 0ff72014-8936-4bea-b3d1-6a4493b99b30 (coco_pharma @ local-docker) generated at 2026-10-15T00:15:29.192Z by Resource Explorer's engine host for engine action 5b6138de-3d83-49f9-8426-46949bfa6aab.",
+     "typeName": "string"
+    },
+    "displayName": {
+     "class": "PrimitiveTypePropertyValue",
+     "primitiveTypeCategory": "OM_PRIMITIVE_TYPE_STRING",
+     "primitiveValue": "Survey Report for 0ff72014-8936-4bea-b3d1-6a4493b99b30",
+     "typeName": "string"
+    },
+    "purpose": {
+     "class": "PrimitiveTypePropertyValue",
+     "primitiveTypeCategory": "OM_PRIMITIVE_TYPE_STRING",
+     "primitiveValue": "re-db-derived",
+     "typeName": "string"
+    },
+    "qualifiedName": {
+     "class": "PrimitiveTypePropertyValue",
+     "primitiveTypeCategory": "OM_PRIMITIVE_TYPE_STRING",
+     "primitiveValue": "SurveyReport::re-db-derived::0ff72014-8936-4bea-b3d1-6a4493b99b30::2026-10-15T00:15:29.192Z",
+     "typeName": "string"
+    },
+    "startTime": {
+     "class": "PrimitiveTypePropertyValue",
+     "primitiveTypeCategory": "OM_PRIMITIVE_TYPE_DATE",
+     "primitiveValue": 1792023329192,
+     "typeName": "date"
+    }
+   }
+  },
+  "headerVersion": 0,
+  "origin": {
+   "homeMetadataCollectionId": "9905c3cb-94c5-4494-9229-0d6f69c0b842",
+   "homeMetadataCollectionName": "qs-metadata-store",
+   "originCategory": "LOCAL_COHORT",
+   "sourceServer": "qs-metadata-store"
+  },
+  "status": "ACTIVE",
+  "type": {
+   "superTypeNames": [
+    "Report",
+    "DataSet",
+    "DataAsset",
+    "Asset",
+    "Referenceable",
+    "OpenMetadataRoot"
+   ],
+   "typeCategory": "ENTITY_DEF",
+   "typeDescription": "A set of results describing the analysis from the execution of a survey action service.",
+   "typeId": "db9d02a6-11f1-4b6e-86ce-95df2352c3a2",
+   "typeName": "SurveyReport",
+   "typeVersion": 1
+  },
+  "versions": {
+   "createTime": "2026-10-15T00:15:29.206+00:00",
+   "createdBy": "resourceexplorernpa",
+   "lastRequestId": "ae64d3d3-8334-4ea0-982e-f4e13e34fca2",
+   "maintainedBy": [
+    "resourceexplorernpa"
+   ],
+   "updateTime": "2026-10-15T00:15:29.206+00:00",
+   "updatedBy": "resourceexplorernpa",
+   "version": 1
+  }
+ }
+}

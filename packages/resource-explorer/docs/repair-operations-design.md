@@ -1,5 +1,7 @@
 # Repair operations — design note
 
+**Status:** implemented. Four repo-repair operations (2026-08-28), built.
+
 RE's repo inventory had two operations before this: `add` and `remove`. This
 adds four repair operations that came up in practice this week — see the
 originating brief for the incident that motivated each one. This note covers

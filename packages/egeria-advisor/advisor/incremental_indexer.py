@@ -9,14 +9,14 @@ import hashlib
 import json
 import time
 from pathlib import Path
-from typing import List, Dict, Set, Tuple, Optional, NamedTuple
+from typing import List, Dict, Sequence, Set, Tuple, Optional, NamedTuple
 from dataclasses import dataclass
 from loguru import logger
 
 from advisor.config import get_full_config
 from advisor.vector_store import get_vector_store
 from advisor.embeddings import get_embedding_generator
-from advisor.ingest import CodeIngester
+from advisor.ingest import CodeIngester, existing_chunk_count, path_is_excluded
 from advisor.mlflow_tracking import track_operation
 from advisor.db_consolidated import get_db_manager
 
@@ -243,7 +243,8 @@ class IncrementalIndexer:
         source_paths: List[Path],
         file_patterns: List[str],
         chunk_size: int = 1000,
-        chunk_overlap: int = 200
+        chunk_overlap: int = 200,
+        exclude_patterns: Optional[Sequence[str]] = None
     ):
         """
         Initialize incremental indexer.
@@ -254,12 +255,17 @@ class IncrementalIndexer:
             file_patterns: List of file patterns to match (e.g., ["*.py"])
             chunk_size: Size of text chunks
             chunk_overlap: Overlap between chunks
+            exclude_patterns: Glob patterns to skip, i.e. a collection's
+                CollectionMetadata.exclude_patterns. Without these an
+                incremental run re-adds exactly the files a full ingest
+                excludes -- see path_is_excluded() in advisor/ingest.py.
         """
         self.collection_name = collection_name
         self.source_paths = source_paths
         self.file_patterns = file_patterns
         self.chunk_size = chunk_size
         self.chunk_overlap = chunk_overlap
+        self.exclude_patterns = list(exclude_patterns or [])
         
         # Initialize components. db_path is unused by FileTracker (it tracks
         # state in Postgres now, not sqlite — see FileTracker.__init__'s
@@ -286,16 +292,20 @@ class IncrementalIndexer:
         Returns:
             Set of file paths
         """
-        import fnmatch
-        
         files = set()
         for source_path in self.source_paths:
             if source_path.is_file():
-                files.add(source_path)
+                if not path_is_excluded(source_path, self.exclude_patterns):
+                    files.add(source_path)
             elif source_path.is_dir():
                 for pattern in self.file_patterns:
                     try:
-                        files.update(source_path.rglob(pattern))
+                        files.update(
+                            f for f in source_path.rglob(pattern)
+                            if not path_is_excluded(
+                                f, self.exclude_patterns, root=source_path
+                            )
+                        )
                     except (PermissionError, OSError) as e:
                         logger.warning(f"Skipping inaccessible path {source_path}: {e}")
         
@@ -489,3 +499,160 @@ class IncrementalIndexer:
                 success=False,
                 error=str(e)
             )
+
+def build_indexer(collection_name: str) -> "IncrementalIndexer":
+    """Construct an IncrementalIndexer for a configured collection.
+
+    Resolves source paths and file patterns through
+    advisor/collection_sources.py -- the same resolution
+    scripts/ingest_collections.py uses -- and carries the collection's
+    chunking and exclude_patterns across.
+
+    Raises:
+        KeyError: unknown collection name
+        FileNotFoundError: the repo is not cloned, or no source path exists
+    """
+    from advisor.collection_config import ALL_COLLECTIONS
+    from advisor.collection_sources import (
+        get_collection_source_paths,
+        get_file_patterns,
+        get_repos_dir,
+    )
+
+    collection = ALL_COLLECTIONS.get(collection_name)
+    if collection is None:
+        raise KeyError(
+            f"Unknown collection '{collection_name}'. "
+            f"Known: {', '.join(sorted(ALL_COLLECTIONS))}"
+        )
+
+    source_paths = get_collection_source_paths(collection)
+    if not source_paths:
+        raise FileNotFoundError(
+            f"No source paths for '{collection_name}' under {get_repos_dir()} "
+            f"({collection.source_repo} {collection.source_paths}) — "
+            f"run scripts/clone_repos.py"
+        )
+
+    return IncrementalIndexer(
+        collection_name=collection.name,
+        source_paths=source_paths,
+        file_patterns=get_file_patterns(collection),
+        chunk_size=collection.chunk_size,
+        chunk_overlap=collection.chunk_overlap,
+        exclude_patterns=collection.exclude_patterns,
+    )
+
+
+def would_duplicate_untracked(indexer, collection_name: str) -> bool:
+    """True if an incremental run would re-add a collection that is already
+    populated but has no FileTracker state.
+
+    The full-ingest path (scripts/ingest_collections.py) writes chunks to the
+    vector store but never writes FileTracker rows -- `indexed_files` is only
+    populated by this module. So immediately after a full ingest, every file
+    looks new here and applying updates duplicates the whole collection
+    rather than doing nothing. Observed 2026-09-10: egeria_concepts, freshly
+    ingested at 720 chunks, reported "179 new, 0 unchanged".
+
+    Returns False when the indexer exposes no tracker/store (a stub in
+    tests), so the guard never invents a reason to fail.
+    """
+    tracker = getattr(indexer, "tracker", None)
+    store = getattr(indexer, "vector_store", None)
+    if tracker is None or store is None:
+        return False
+
+    try:
+        if tracker.get_tracked_files(collection_name):
+            return False  # tracked: a normal incremental run
+        return bool(existing_chunk_count(store, collection_name))
+    except Exception as exc:  # nothing here is worth failing the run over
+        logger.debug(f"untracked-duplication check skipped: {exc}")
+        return False
+
+
+def main(argv: Optional[Sequence[str]] = None) -> int:
+    """CLI entry point: `python -m advisor.incremental_indexer --collection X`.
+
+    This module had no __main__ block until 2026-09-10, so that command --
+    documented in CLAUDE.md and issued by the Admin panel's "Incremental
+    re-index" button (advisor/web/admin.py) -- imported the module, ran
+    nothing and exited 0. The caller reads exit 0 as success and stamps
+    ingest_log, so egeria_concepts/egeria_types/egeria_general sat empty
+    while the UI reported them freshly indexed.
+
+    Exit codes: 0 on success (including "no changes"), 1 on failure.
+    """
+    import argparse
+
+    parser = argparse.ArgumentParser(
+        prog="python -m advisor.incremental_indexer",
+        description="Incrementally re-index a collection (changed files only)",
+    )
+    parser.add_argument("--collection", required=True, help="Collection to index")
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Detect and report changes without writing to the vector store",
+    )
+    parser.add_argument(
+        "--allow-untracked",
+        action="store_true",
+        help=(
+            "Index even when the collection is already populated but has no "
+            "file-tracking state. Duplicates existing chunks — see "
+            "would_duplicate_untracked()"
+        ),
+    )
+    args = parser.parse_args(argv)
+
+    try:
+        indexer = build_indexer(args.collection)
+    except (KeyError, FileNotFoundError) as exc:
+        logger.error(str(exc))
+        return 1
+
+    changeset = indexer.detect_changes()
+    logger.info(
+        f"{args.collection}: {len(changeset.new_files)} new, "
+        f"{len(changeset.modified_files)} modified, "
+        f"{len(changeset.deleted_files)} deleted, "
+        f"{len(changeset.unchanged_files)} unchanged"
+    )
+
+    if not changeset.has_changes:
+        logger.info(f"{args.collection}: nothing to do")
+        return 0
+
+    if (
+        not args.dry_run
+        and not args.allow_untracked
+        and would_duplicate_untracked(indexer, args.collection)
+    ):
+        logger.error(
+            f"{args.collection} already holds chunks but has no file-tracking "
+            f"state, so every file reads as new and indexing would duplicate "
+            f"the collection. Re-run the full ingest instead "
+            f"(scripts/ingest_collections.py --collection {args.collection} "
+            f"--force), or pass --allow-untracked if duplication is intended."
+        )
+        return 1
+
+    result = indexer.apply_updates(changeset, dry_run=args.dry_run)
+    if not result.success:
+        logger.error(f"{args.collection}: incremental update failed — {result.error}")
+        return 1
+
+    logger.info(
+        f"{args.collection}: +{result.chunks_added} / -{result.chunks_removed} "
+        f"chunks in {result.duration:.2f}s"
+        + (" (dry run — nothing written)" if args.dry_run else "")
+    )
+    return 0
+
+
+if __name__ == "__main__":
+    import sys as _sys
+
+    _sys.exit(main())

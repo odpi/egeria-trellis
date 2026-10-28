@@ -1,5 +1,7 @@
 # Depth and cost across the tiers — measured
 
+**Status:** live. Measured funnel cost (2026-09-12/13); re-derivable from the committed resolver.
+
 Answers the designer's *Funnel Cost Measurement Spec* (rev 2, 2026-09-09) and applies the
 rulings from their reply of 2026-09-13. Numbers re-run read-only against the live registry on
 2026-09-12/13 (1,287 `activity_log` rows, 87 `runs` rows). The resolver is committed code —

@@ -716,12 +716,21 @@ class TestBackfill:
         assert columns["ward_id"]["foreign_key_json"]["foreign_table"] == "ward"
 
     def test_database_blob_unmeasured_fields_stay_none(self):
-        """The old blob carried no view counts or schema sizes. None, not 0."""
+        """The old blob carried no view counts. None, not 0. (The schema size
+        stopped being unmeasured in Brief D 7f.2: it is the sum of the tables'
+        sizes -- see test_schema_size_is_a_sum_only_when_every_table_was_sized.)"""
         rows = database_rows_from_survey_data(local_database_blob())
         schema = rows["database_schemas"][0]
         assert schema["view_count"] is None
         assert schema["mat_view_count"] is None
-        assert schema["total_table_size_bytes"] is None
+
+    def test_schema_size_is_a_sum_only_when_every_table_was_sized(self):
+        blob = local_database_blob()
+        rows = database_rows_from_survey_data(blob)
+        assert rows["database_schemas"][0]["total_table_size_bytes"] == 81920
+        blob["schema_info"]["schemas"][0]["tables"][0]["size_bytes"] = None
+        rows = database_rows_from_survey_data(blob)
+        assert rows["database_schemas"][0]["total_table_size_bytes"] is None
 
     def test_grants_are_not_measured_when_privilege_audit_did_not_run(self):
         """No `operations` key in the blob at all (a schema_inventory-only

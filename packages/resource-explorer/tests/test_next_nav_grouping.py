@@ -1,5 +1,5 @@
 """Nav grouping: three classes, declared in the data
-(docs/design-notes/RULING-NAV-GROUPING.md).
+(docs/design-notes/rulings/RULING-NAV-GROUPING.md).
 
 The ruling answers a peer critique of the nine-item intent row: Understanding
 leaves the run (project owner, 2026-09-18 — it will become a per-user
@@ -16,7 +16,7 @@ Same source-text-assertion pattern as test_next_sidebar_group_collapse.py and
 test_next_curate_section_nav.py -- there is no jsdom/browser harness here, so
 live rendering (actual chevron/middot glyphs, numbering on screen) was
 verified manually in a browser; see
-docs/design-notes/NAV-GROUPING-IMPLEMENTED.md.
+NAV-GROUPING-IMPLEMENTED.md.
 """
 from __future__ import annotations
 
@@ -151,11 +151,13 @@ class TestInvestigationHeaderScopeVisibility:
 
     def test_scope_badge_is_hidden_on_narrow_screens_like_the_name(self):
         html = (NEXT / "index.html").read_text(encoding="utf-8")
-        assert "#investigation-name, #investigation-scope, #switch-ui { display: none; }" in html
+        assert "#investigation-name, #investigation-scope { display: none; }" in html
+        # the Classic link stays visible: Classic-only features must stay reachable on a phone
+        assert "#switch-ui { display: none; }" not in html
 
     def test_render_top_bar_sets_scope_text_from_egeria_binding(self):
         app = _app()
-        fn = app[app.index("function renderTopBar()") : app.index("function renderTopBar()") + 2000]
+        fn = app[app.index("function renderTopBar()") : app.index("function renderTopBar()") + 4000]
         assert "investigation-scope" in fn
         # registry.py's ProjectRegistry.BINDING_LOCAL/BINDING_EGERIA: "egeria"
         # means "has [a Project], or is meant to" -- so this must key off

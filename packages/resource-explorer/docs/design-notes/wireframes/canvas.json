@@ -51,6 +51,42 @@
   {
    "id": "page-13",
    "name": "Relationship graph (real edges)"
+  },
+  {
+   "id": "page-14",
+   "name": "Enrichment: the Context tab"
+  },
+  {
+   "id": "page-15",
+   "name": "Work lists and scope"
+  },
+  {
+   "id": "page-16",
+   "name": "Curate, Understanding, Find (all kinds)"
+  },
+  {
+   "id": "page-17",
+   "name": "Resource controls placement"
+  },
+  {
+   "id": "page-18",
+   "name": "Curate: what gets catalogued (databases)"
+  },
+  {
+   "id": "page-19",
+   "name": "State as a visual cue"
+  },
+  {
+   "id": "page-20",
+   "name": "Curate and Understanding split by job (proposal)"
+  },
+  {
+   "id": "page-21",
+   "name": "Cataloguing at scale: rules and arrivals"
+  },
+  {
+   "id": "page-22",
+   "name": "Runs and registration"
   }
  ],
  "artboards": [
@@ -238,6 +274,102 @@
    "w": 1460,
    "h": 3060,
    "page": "page-13"
+  },
+  {
+   "file": "EnrichmentContext.dc.html",
+   "x": 0,
+   "y": 0,
+   "w": 1400,
+   "h": 2460,
+   "page": "page-14"
+  },
+  {
+   "file": "WorkListsAndScope.dc.html",
+   "x": 0,
+   "y": 0,
+   "w": 1560,
+   "h": 1540,
+   "page": "page-15"
+  },
+  {
+   "file": "InvestigationLensFitPairs.dc.html",
+   "x": 0,
+   "y": 1640,
+   "w": 1560,
+   "h": 2120,
+   "page": "page-15"
+  },
+  {
+   "file": "CurateAndUnderstanding.dc.html",
+   "x": 0,
+   "y": 0,
+   "w": 1560,
+   "h": 1220,
+   "page": "page-16"
+  },
+  {
+   "file": "FindAndImport.dc.html",
+   "x": 0,
+   "y": 1320,
+   "w": 1560,
+   "h": 1040,
+   "page": "page-16"
+  },
+  {
+   "file": "ResourceControls.dc.html",
+   "x": 0,
+   "y": 0,
+   "w": 1560,
+   "h": 970,
+   "page": "page-17"
+  },
+  {
+   "file": "CatalogueScope.dc.html",
+   "x": 0,
+   "y": 0,
+   "w": 1560,
+   "h": 1100,
+   "page": "page-18"
+  },
+  {
+   "file": "CatalogueScopeRound2.dc.html",
+   "x": 0,
+   "y": 1200,
+   "w": 1560,
+   "h": 1140,
+   "page": "page-18"
+  },
+  {
+   "file": "StateCues.dc.html",
+   "x": 0,
+   "y": 0,
+   "w": 1560,
+   "h": 1150,
+   "page": "page-19"
+  },
+  {
+   "file": "SplitByJob.dc.html",
+   "x": 0,
+   "y": 0,
+   "w": 1560,
+   "h": 930,
+   "page": "page-20"
+  },
+  {
+   "file": "CatalogueAtScale.dc.html",
+   "x": 0,
+   "y": 0,
+   "w": 1560,
+   "h": 1360,
+   "page": "page-21"
+  },
+  {
+   "file": "RunsAndRegistration.dc.html",
+   "x": 0,
+   "y": 0,
+   "w": 1560,
+   "h": 1000,
+   "page": "page-22"
   }
  ],
  "annotations": [
@@ -360,10 +492,82 @@
    "w": 300,
    "page": "page-13",
    "text": "Drawn from the 91 real AdventureWorks edges, fetched 2026-09-28 from the running /next through the owner's session. Laid out with Graphviz dot; nothing illustrative.\n\nThree zoom levels: the schema map (always legible), the whole database (reads at 68 tables thanks to clusters, hub weight and darker cross-schema keys; falls back to map + hubs above ~100), and one schema opened with its outgoing keys drawn.\n\nFinding: the analysis's by_schema result calls sales.salestaxrate and sales.shoppingcartitem isolated and sales '3 components'. Both have keys that leave the schema; only production.transactionhistoryarchive is isolated in the database. A per-schema sentence must say 'no keys inside sales', never 'isolated'.\n\nIn /next: emit Graphviz rather than Mermaid (Kroki renders both; Mermaid has no cluster layout comparable to dot)."
+  },
+  {
+   "id": "enrichment-brief",
+   "x": 1500,
+   "y": 0,
+   "w": 300,
+   "page": "page-14",
+   "text": "Reply to ASK-DESIGNER-ENRICHMENT-STAGE-IA, read against main at 3d078072 and PR #348.\n\nEnrichment opens on a new Context tab: everything a person supplied, signed and dated, each row saying what it feeds. No separate 'What it changed' tab \u2014 cause and effect on one line.\n\nNo analysis in the catalog has intent: enrichment, so Survey & analyses is empty by construction; it stays, and becomes the map of which analyses elsewhere read what is supplied here.\n\nA survey may propose only an observation, and only when it measured the same fact the field asks for. Licence yes; last backup no (archiving isn't a tested restore). Judgements are never proposed.\n\nThe lens belongs to the investigation, not the resource.\n\nPrerequisite: answers to the human questions carry no author and are entered via window.prompt()."
+  },
+  {
+   "id": "worklists-brief",
+   "x": 1660,
+   "y": 0,
+   "w": 300,
+   "page": "page-15",
+   "text": "Reply to ASK-DESIGNER-WORK-LISTS-VS-INVESTIGATIONS (#354), read against main at 8c6f1845.\n\nNot one mechanism: an investigation's scope is a Folio (working_sets); a work list is a separate table (work_lists), one resource type, published as a WorkingSet.\n\n'Work list' names four things: the bench, its shortlists, a one-resource list minted by 'add to work list' on reports and member lists (the owner's trigger), and the suggested-to-* inboxes.\n\nRuling: investigation = why; scope = which (any type; 'Members' becomes 'Scope'); work list = the bench only. 'Working set' never on screen.\n\nTwo actions on the list: add to <investigation>, start an investigation from this list. The list stays, linked, and says '7 of 9 in scope' live.\n\nThe investigation page carries the grid, one per resource type; a scope narrows by verdict, a list by shortlist.\n\nQuestions 5-8 (addendum, against fffcc3a0), lower artboard:\n5. A stage click: run stages keep the list and re-scope its questions; Investigation, Understanding and Automate close it into 'back to'; Investigation with a linked list opens that investigation.\n6. The data lens sits between purposes and scope; rows signed, literal-or-reference in words; undeclared dimensions on one line.\n7. Fit row = one equal-width cell per declared dimension. Fits \u2713, doesn't fit \u2205 (not \u2715), couldn't check ?, no reader yet \u25cc. Headline counts sum to the declared number. Verdicts are the existing dispositions; 'archive' is a finding, not a verdict.\n8. Pair questions in their own 'Between resources' section, one row per pair, both names bracketed; parity per question."
+  },
+  {
+   "id": "allkinds-brief",
+   "x": 1660,
+   "y": 0,
+   "w": 300,
+   "page": "page-16",
+   "text": "Replies to ASK-DESIGNER-CURATE-AND-UNDERSTANDING-ALL-KINDS and ASK-DESIGNER-DISCOVERY-SOURCES-ALL-KINDS, against main at 524f1c7f.\n\nCurate, every kind: Findable (group, tags) \u2192 the kind's own work \u2192 what people say (ratings as counts, never an average; the signed journal as notes, Classic's unsigned curator notes read-only beneath). Tags, feedback and notes record no author today: add one.\n\nUnderstanding, database: Now (schemas, largest tables by rows, column types) and Over time (since last run as a sentence, structure over runs, activity per table). The chart routes read the old blob and turn unestablished row counts into 0: rebuild on database_tables.\n\nChart kinds per kind; per-chart Save image with provenance in the image.\n\nFind: three surfaces and a CSV contract already exist (Admin sources, Find repos, Find databases, batch_io). One Find dialog per kind: Saved sources, one-off search/discover, From a file; one confirm that can add to an investigation. Non-connectable databases listed, not filtered. CSV rows name a server, never a credential."
+  },
+  {
+   "id": "controls-brief",
+   "x": 1660,
+   "y": 0,
+   "w": 300,
+   "page": "page-17",
+   "text": "Reply to ASK-DESIGNER-RESOURCE-CONTROLS-PLACEMENT, against main at cf52f4a9.\n\nThe top bar's resource name is drawn like a control (accent border) and isn't one: make it the resource's menu (hide, remove). Remove is last, after a rule, in ink; its confirmation opens under the bar and the commit button names the resource.\n\nThe header keeps the disposition pill; hide and remove leave it.\n\nSelect: a labeled control, shift/\u2318-click entry, 'select these N' on a filtered list. The bar is grouped by weight: scope, judgement and lists, view, then remove after a rule.\n\nOne word: 'Remove from Resource Explorer'; 'delete' retired. Find gets a word: '\uff0b Find databases'."
+  },
+  {
+   "id": "catscope-brief",
+   "x": 1660,
+   "y": 0,
+   "w": 300,
+   "page": "page-18",
+   "text": "Reply to ASK-DESIGNER-CURATE-CATALOGUE-SCOPE-DATABASES (and the coco_pharma addendum), against main at 45f4671b.\n\nThe scope is a declared, signed, dated choice stored in RE; the commit compiles it into the cataloguer target's include/exclude lists every time, so a reset and re-commit restores it.\n\nBand 2 order: what gets catalogued, then glossary terms, then schema match. Depth before the tree; the column-depth offer after commit, once.\n\nProposals only when the decision follows from a measurement alone: 0 tables, no writes since, a lens match. PII is a mark; a staging-like name is a note. Four observation states fit. Undecided keeps what's in Egeria; only an explicit leave-out removes.\n\nPer-node state from proof: catalogued (read back), attached \u00b7 waiting, queued, failed, left out. Name-filter conflicts block the commit before the press. The manifest names RE's publish, the cataloguer, and the native survey (which measures what you left out too).\n\nRound 2 (lower artboard, against e1770aec): facts only from stored rows, each sourced and dated; activity is active / dormant / can't tell from the cumulative counters since stats_reset, with the window printed, and can't-tell proposes nothing. A filter offers a bulk choice now or a rule that keeps deciding; precedence hand > rule > schema > undecided, each row says which. Return visits open on what changed since the last commit. No survey records 'worth cataloguing'; the Schema Inventory tab on any stage writes the same scope events. Lens terms in names become a suggested rule, not a proposal."
+  },
+  {
+   "id": "cues-brief",
+   "x": 1660,
+   "y": 0,
+   "w": 300,
+   "page": "page-19",
+   "text": "Replies to ASK-DESIGNER-STATE-AS-VISUAL-CUE and ASK-DESIGNER-VERBS-UNMAPPED-CONTROLS Q7, against main at f1f679eb.\n\nThe cue sits where the decision was made; the sentence is one gesture away; a pressed control looks pending and ignores a second press; a control that changes nothing visible is not a control.\n\nTwo lanes: your choice (fill = chosen value in ink, lowered row = not included, tag = source, edge rule = needs you) and in Egeria (glyph + word). Strike-through means superseded text only.\n\nScope row choice is a selector, Include | Leave out, under 'Include in catalog?'; Catalog appears only on the commit button. Steps become a numbered stepper with 'step n of 9 \u00b7 running \u00b7 failed'. The manifest becomes a table per mechanism with the Catalog button on top and blockers under it."
+  },
+  {
+   "id": "split-brief",
+   "x": 1660,
+   "y": 0,
+   "w": 300,
+   "page": "page-20",
+   "text": "Reply to ASK-DESIGNER-CURATE-SPLIT-BY-JOB (a proposal), against main at 62bcd4ad.\n\nThree jobs as Curate's stage-specific leading tabs on the existing sub-tab rail (the Context precedent), not a third level of tabs: Describe and publish \u00b7 Contents \u00b7 Structure. 'What it is' moves to Structure. No mode; a saved landing tab; counts on tab names.\n\nA running commit shows as one line on every tab, the stepper only where pressed. Tab 1 is the non-expert seed; Forget links, project bind and copy GUID move to Contents. A database has one press (Catalog) on Contents; tab 1 shows its state.\n\nUnderstanding: same positions (whole / parts / detail), names At a glance \u00b7 Contents \u00b7 Over time; both stages say 'Contents' at position 2."
+  },
+  {
+   "id": "scale-brief",
+   "x": 1660,
+   "y": 0,
+   "w": 300,
+   "page": "page-21",
+   "text": "Reply to ASK-DESIGNER-CATALOGUING-AT-SCALE, against main at 08390160.\n\nEgeria catalogs whole schemas today (one schema-kind target per schema, no lists: S1, S11), so a schema rule acts and a table or column rule is kept for when Egeria can (owner, 2026-10-15).\n\nRules are signed events in the scope record, listed in a strip with their match counts; the filter bar is the editor; a hand choice overrides one row and says it differs from the rule.\n\nArrivals: a new schema waits for Publish; a new table in a published schema is added by Egeria's cataloguer on its own refresh, said in Egeria's name; a gone table stays, lowered, until read back."
+  },
+  {
+   "id": "runs-brief",
+   "x": 1660,
+   "y": 0,
+   "w": 300,
+   "page": "page-22",
+   "text": "Reply to ASK-DESIGNER-RUNS-REGISTRATION, against main at df5dbc91.\n\nOne survey definition, one card: its runs (whoever coordinated them) move onto the definition card; RE definitions leave \"Egeria's own surveys\". One verb, Run, with the coordinator named: \"Re-run\u2026\" and \"Re-run \u00b7 coordinated by Egeria \u2192\". A definition Egeria cannot start shows the control off, with the step named.\n\nA refusal the person can fix says how on the run line; \u25cb not run replaces \u2298 refused. Registration states come from what Egeria answered: will change, couldn't connect (naming the address), no longer in Egeria (one press to register again). The signed-in user is never truncated."
   }
  ],
  "launch": {
   "view": "canvas",
-  "page": "page-13"
+  "page": "page-22"
  }
 }

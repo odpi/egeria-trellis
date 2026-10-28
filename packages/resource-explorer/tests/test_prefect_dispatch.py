@@ -58,15 +58,23 @@ class TestTheApiPathIsReachable:
 
         async def fake_api(entity_type, slug, step_name, runner_kwargs):
             called["yes"] = step_name
-            return {"via": "api"}
+            return {"via": "api"}, "flow-run-123"
 
         with patch.object(adapter, "get_config", lambda: _cfg(enabled=True)), \
              patch.object(adapter, "_run_prefect_step_api", fake_api), \
              patch.object(adapter.run_surveyor_step_task, "fn", return_value={"via": "local"}):
-            out = adapter.run_prefect_step("repo", "s", "repo_health", {})
+            dispatch_info: dict = {}
+            out = adapter.run_prefect_step("repo", "s", "repo_health", {},
+                                           dispatch_info=dispatch_info)
 
         assert called.get("yes") == "repo_health"
         assert out == {"via": "api"}
+        # dispatch honesty (2026-09-28): a genuine Prefect dispatch records
+        # its real flow-run id, so a step_runs row can be checked against
+        # Prefect's own API rather than merely trusted.
+        assert dispatch_info == {
+            "engine": "prefect", "flow_run_id": "flow-run-123", "dispatch_failed": "",
+        }
 
     def test_disabled_runs_locally_without_touching_the_api(self):
         with patch.object(adapter, "get_config", lambda: _cfg(enabled=False)), \

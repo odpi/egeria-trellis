@@ -71,7 +71,7 @@ server" path was retired on 2026-09-04 (project owner's decision; see
 a supported deployment mode.
 
 ```bash
-git clone https://github.com/dwolfson/trellis.git
+git clone https://github.com/odpi/egeria-trellis.git
 cd trellis
 uv sync
 ```

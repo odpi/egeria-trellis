@@ -28,7 +28,7 @@ def _fake_tree(total, accepted):
 
 class TestNotAGateNorANag:
     def test_no_catalogue_record_means_layer_one_is_not_done(self, registry, monkeypatch):
-        monkeypatch.setattr("resource_explorer.component_tree.component_tree",
+        monkeypatch.setattr("resource_explorer.component_tree.totals",
                             lambda *a, **k: _fake_tree(10, 0))
         offer = build_catalogue_depth_offer(registry, "p")
         assert offer["layer1_done"] is False and offer["curation_id"] is None
@@ -36,7 +36,7 @@ class TestNotAGateNorANag:
         assert offer["remaining_components"] == 10
 
     def test_a_finished_catalogue_commit_is_layer_one_done(self, registry, monkeypatch):
-        monkeypatch.setattr("resource_explorer.component_tree.component_tree",
+        monkeypatch.setattr("resource_explorer.component_tree.totals",
                             lambda *a, **k: _fake_tree(10, 2))
         rec = Curations(registry).create("repo", "p", author="peterprofile", selection={},
                                          manifest={}, steps=["publish_asset"])
@@ -49,7 +49,7 @@ class TestNotAGateNorANag:
         assert offer["remaining_components"] == 8
 
     def test_offered_once_per_catalogue_record_not_per_verdict(self, registry, monkeypatch):
-        monkeypatch.setattr("resource_explorer.component_tree.component_tree",
+        monkeypatch.setattr("resource_explorer.component_tree.totals",
                             lambda *a, **k: _fake_tree(10, 2))
         rec = Curations(registry).create("repo", "p", author="peterprofile", selection={},
                                          manifest={}, steps=["publish_asset"])
@@ -64,7 +64,7 @@ class TestNotAScold:
         """The offer states total/accepted/remaining; composing "N recovered,
         M not catalogued" into an imperative sentence is the caller's job,
         not this module's -- so there is no field here that reads as one."""
-        monkeypatch.setattr("resource_explorer.component_tree.component_tree",
+        monkeypatch.setattr("resource_explorer.component_tree.totals",
                             lambda *a, **k: _fake_tree(64, 0))
         offer = build_catalogue_depth_offer(registry, "p")
         assert offer["total_components"] == 64 and offer["remaining_components"] == 64
@@ -74,14 +74,14 @@ class TestNotAScold:
 
 class TestThePriceHasABasis:
     def test_no_timing_recorded_is_the_honest_fallback(self, registry, monkeypatch):
-        monkeypatch.setattr("resource_explorer.component_tree.component_tree",
+        monkeypatch.setattr("resource_explorer.component_tree.totals",
                             lambda *a, **k: _fake_tree(5, 0))
         cost = build_catalogue_depth_offer(registry, "p")["cost"]
         assert cost["basis"] == "unknown" and cost["seconds"] is None
         assert "not yet measured" in cost["sentence"]
 
     def test_real_timing_produces_a_real_number_and_names_its_basis(self, registry, monkeypatch):
-        monkeypatch.setattr("resource_explorer.component_tree.component_tree",
+        monkeypatch.setattr("resource_explorer.component_tree.totals",
                             lambda *a, **k: _fake_tree(5, 0))
         for s in [1.0, 1.0, 2.0]:
             registry.record_egeria_call_timing("create_solution_component", "write", s)
@@ -91,7 +91,7 @@ class TestThePriceHasABasis:
         assert "measured" in cost["sentence"] and "median" in cost["sentence"]
 
     def test_zero_remaining_never_claims_a_price(self, registry, monkeypatch):
-        monkeypatch.setattr("resource_explorer.component_tree.component_tree",
+        monkeypatch.setattr("resource_explorer.component_tree.totals",
                             lambda *a, **k: _fake_tree(3, 3))
         registry.record_egeria_call_timing("create_solution_component", "write", 1.0)
         cost = build_catalogue_depth_offer(registry, "p")["cost"]
@@ -133,7 +133,7 @@ class TestTheRoutes:
     def client(self, registry, monkeypatch):
         from fastapi.testclient import TestClient
 
-        monkeypatch.setattr("resource_explorer.component_tree.component_tree",
+        monkeypatch.setattr("resource_explorer.component_tree.totals",
                             lambda *a, **k: _fake_tree(9, 1))
         monkeypatch.setattr("resource_explorer.registry.ProjectRegistry.__init__",
                             lambda self, db_path=None: setattr(self, "__dict__", registry.__dict__) or None)

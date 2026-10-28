@@ -101,6 +101,7 @@ const Auth = (() => {
     if (loginRequired && !isAuthenticated()) return;
     const overlay = document.getElementById('login-overlay');
     if (overlay) overlay.style.display = 'none';
+    document.dispatchEvent(new CustomEvent('re:login-closed'));
     document.getElementById('login-message')?.classList.add('hidden');
     const err = document.getElementById('login-error');
     if (err) { err.textContent = ''; err.classList.add('hidden'); }

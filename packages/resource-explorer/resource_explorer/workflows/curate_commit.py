@@ -9,9 +9,10 @@ record. Nothing here raises past a step: a step that fails is a failed
 step on the record, and the next step runs unless it depends on it.
 
 Steps, in order:
-  publish_asset     survey + publish, the existing publish path -- creates
-                    or finds the repository's own Asset and links a
-                    SurveyReport (measurements LINKED, not copied)
+  publish_asset     publish the survey already kept (never a survey run by
+                    the press; an optional box re-surveys the stale steps
+                    first) -- creates or finds the repository's own Asset and
+                    links a SurveyReport (measurements LINKED, not copied)
   classifications   enrichment judgements COPIED onto the asset as
                     Confidentiality / Criticality / Retention, with the
                     author as steward and the date in the notes -- they
@@ -72,11 +73,13 @@ than trying to prove up front that it is unnecessary.
 """
 from __future__ import annotations
 
+import json
 import logging
-from datetime import datetime, timezone
+import re
 
-from resource_explorer.curate_plan import CONFIDENTIALITY_LEVELS, CRITICALITY_LEVELS, Curations
+from resource_explorer.curate_plan import Curations, classification_writes
 from resource_explorer.registry import ProjectRegistry
+from resource_explorer.secret_redaction import scrub_text
 
 log = logging.getLogger(__name__)
 
@@ -84,41 +87,42 @@ STEPS = ("publish_asset", "classifications", "sub_resources", "components")
 
 
 def _classification_bodies(enrichment: dict) -> list[tuple[str, str, dict]]:
-    """(step-method name, human name, body) for each judgement that maps to a
-    governance classification. A value outside the level map is not
-    dropped -- it goes into `notes` with level 0, because testimony is
+    """(step-method name, human name, body) for each judgement that maps to a governance classification.
+
+    Brief F §9 (one source): these are read through `curate_plan.classification_writes`, the SAME function the
+    plan's "what gets written" is drawn from, which decides from `context_facts()` whether each classification is
+    written. A value outside the level map is not dropped -- it goes into `notes` with level 0, because testimony is
     copied, not normalised away."""
-    out = []
-    stamp = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    return [c["write"] for c in classification_writes(enrichment) if c["write"]]
 
-    def common(f):
-        return {"steward": f.get("author", "") or "", "stewardTypeName": "UserIdentity",
-                "stewardPropertyName": "userId", "source": "resource-explorer enrichment",
-                "confidence": 100,
-                "notes": f"{f.get('value','')} — set by {f.get('author','?')} on {(f.get('set_at') or '')[:10]}"
-                         f"{' · interim' if f.get('interim') else ''}; copied to the catalogue {stamp}"}
 
-    f = enrichment.get("sensitivity") or {}
-    if f.get("value"):
-        out.append(("set_confidentiality_classification", f"Confidentiality · {f['value']}", {
-            "class": "NewClassificationRequestBody",
-            "properties": {"class": "ConfidentialityProperties",
-                           "confidentialityLevel": CONFIDENTIALITY_LEVELS.get(str(f["value"]).lower(), 0),
-                           "statusIdentifier": 0, **common(f)}}))
-    f = enrichment.get("criticality") or {}
-    if f.get("value"):
-        out.append(("set_criticality_classification", f"Criticality · {f['value']}", {
-            "class": "NewClassificationRequestBody",
-            "properties": {"class": "CriticalityProperties",
-                           "criticalityLevel": CRITICALITY_LEVELS.get(str(f["value"]).lower(), 0),
-                           "statusIdentifier": 0, **common(f)}}))
-    f = enrichment.get("retention") or {}
-    if f.get("value"):
-        out.append(("set_retention_classification", f"Retention · {f['value']}", {
-            "class": "NewClassificationRequestBody",
-            "properties": {"class": "RetentionClassificationProperties",
-                           "retentionBasis": str(f["value"]), "status": "ACTIVE", **common(f)}}))
-    return out
+NO_RETENTION_BASIS = "skipped · no retention basis picked"
+
+
+def _retention_skipped(enrichment: dict) -> bool:
+    """A retention field exists (a note, say) but no basis resolves from it. Nothing stored at all is not
+    this: that is 'not set', and the step says nothing about it. Read from the same `classification_writes`
+    item the plan shows as "skipped · no retention basis picked" (Brief F §9)."""
+    return any(c["key"] == "retention" and c["skipped"] for c in classification_writes(enrichment))
+
+
+def _exc_text(exc: Exception) -> tuple[str, str, str]:
+    """(short readable text, full text for the log, Egeria's reason). The reason is the response body
+    pyegeria keeps in additional_info['reason']; its message field is preferred when it parses."""
+    full = f"{type(exc).__name__}: {exc}"
+    reason = ""
+    info = getattr(exc, "additional_info", None)
+    if isinstance(info, dict) and info.get("reason"):
+        reason = str(info["reason"])
+        try:
+            parsed = json.loads(reason)
+            if isinstance(parsed, dict):
+                reason = str(parsed.get("exceptionErrorMessage") or parsed.get("userMessage") or reason)
+        except ValueError:
+            pass
+    full, reason = scrub_text(full), scrub_text(reason)
+    short = f"{reason[:200]}" if reason else full[:200]
+    return short, full, reason
 
 
 def _resurvey_plan(registry: ProjectRegistry, slug: str) -> tuple[list[str] | None, str]:
@@ -162,7 +166,7 @@ def _resurvey_plan(registry: ProjectRegistry, slug: str) -> tuple[list[str] | No
 
     history = registry.get_analysis_last_run("repo", slug)
     if not history:
-        return None, "no run history for this repo yet — running a full survey for the first catalogue"
+        return None, "no run history for this repo yet — running a full survey for the first publish"
 
     stale_ids, fresh_ids = [], []
     for analysis_id in sorted(history):
@@ -212,65 +216,76 @@ def execute_curation(registry: ProjectRegistry, curation_id: str) -> dict:
         return cur.finish(curation_id)
 
     # ── 1. the asset and its survey report ─────────────────────────────
+    #
+    # Brief section 1 (owner, 2026-10-07): the commit PUBLISHES THE SURVEY THE PERSON DECIDED ON. It
+    # does not refresh stale surveys on its own and then publish; re-surveying is a separate act that
+    # the commit offers as a box, off by default. Unchecked, nothing is surveyed here. Checked, exactly
+    # the stale steps run, and then the survey is published. With nothing surveyed yet the commit is
+    # blocked (the route says so before the record exists; this is the same sentence if it is reached).
     asset_guid = ""
-    cur.set_step(curation_id, "publish_asset", "running",
-                 "checking which analyses are already fresh before publishing — see module docstring")
+    cur.set_step(curation_id, "publish_asset", "running", "publishing the survey already kept")
     try:
-        context = registry.get_project_context("repo", slug)
-        if not context or context.get("status") == "unset":
-            inherited = registry.inherited_egeria_project_context("repo", slug)
-            if not inherited:
-                raise RuntimeError("no Egeria Project context — decide it on the Scouting pane (or bind the investigation) and press Catalogue again")
-            registry.set_project_context(
-                "repo", slug, status="linked",
-                egeria_project_guid=inherited["egeria_project_guid"],
-                egeria_project_qualified_name=inherited["egeria_project_qualified_name"],
-                free_text_name=f"inherited from investigation '{inherited['_inherited_from_name']}'")
-        from resource_explorer.surveyors.egeria_publisher import EgeriaPublisher
-        from resource_explorer.surveyors.survey_orchestrator import SurveyOrchestrator
+        from resource_explorer import repo_publish
+        from resource_explorer.surveyors import survey_snapshot
 
-        steps, note = _resurvey_plan(registry, slug)
-        existing_guid = registry.get_egeria_asset_guid(slug) or ""
+        context = repo_publish.resolve_project_context(registry, slug)
+        if context is None:
+            raise RuntimeError("no Egeria Project context — decide it on the Scouting pane (or bind the investigation) and press Publish again")
+        snap = survey_snapshot.latest(registry, slug)
+        if snap is None:
+            raise RuntimeError(survey_snapshot.no_kept_survey_sentence(registry, slug))
+        resurveyed = ""
+        if sel.get("resurvey_stale"):
+            stale = repo_publish.stale_step_keys(registry, slug, snap)
+            if stale:
+                from resource_explorer.surveyors.survey_orchestrator import SurveyOrchestrator
 
-        if steps is not None and not steps and existing_guid:
-            # Nothing stale to re-survey, and the asset already exists in
-            # Egeria — no reason to touch Egeria at all this time.
-            asset_guid = existing_guid
-            cur.set_step(curation_id, "publish_asset", "done",
-                         f"{note}; asset {asset_guid} already published — nothing re-published")
-        else:
-            # Either something is stale (steps is a non-empty list),
-            # nothing has ever run for this repo (steps is None — full
-            # survey), or everything is fresh but this repo has no cached
-            # asset yet (steps == [] with no existing_guid — an empty
-            # survey purely so publish() can find-or-create the asset).
-            survey = SurveyOrchestrator(registry=registry).run(slug, steps=steps)
-            import asyncio
-            loop = asyncio.new_event_loop(); asyncio.set_event_loop(loop)
-            try:
-                report_guid = EgeriaPublisher(registry=registry).publish(survey)
-            finally:
-                loop.close(); asyncio.set_event_loop(None)
-            asset_guid = registry.get_egeria_asset_guid(slug) or ""
-            cur.set_step(curation_id, "publish_asset", "done",
-                         f"{note} · asset {asset_guid or '?'} · survey report {report_guid} · "
-                         f"{len(survey.annotations)} annotations linked")
+                cur.set_step(curation_id, "publish_asset", "running",
+                             f"re-surveying {len(stale)} stale step(s) first: {', '.join(stale)}")
+                res = SurveyOrchestrator(registry=registry).run(slug, steps=stale)
+                problems = list(res.errors) + ([res.snapshot_error] if res.snapshot_error else [])
+                snap = survey_snapshot.latest(registry, slug) or snap
+                resurveyed = (f"re-surveyed {len(stale)} stale step(s) first"
+                              + (f" ({len(problems)} problem(s): {scrub_text('; '.join(problems))[:300]})" if problems else "")
+                              + " · ")
+            else:
+                resurveyed = "nothing was stale · "
+        import asyncio
+        loop = asyncio.new_event_loop(); asyncio.set_event_loop(loop)
+        try:
+            out = repo_publish.publish_snapshot(registry, slug, rec.get("author") or "", context, snap)
+        finally:
+            loop.close(); asyncio.set_event_loop(None)
+        if not out["ok"]:
+            raise RuntimeError(out["error"])
+        asset_guid = out["asset_guid"]
+        cur.set_step(curation_id, "publish_asset", "done",
+                     f"{resurveyed}{'published' if out['read_back'] else 'sent, not yet read back'}"
+                     f" · from the survey of {out['surveyed_at'][:10]}"
+                     f"{' · reused the report already in Egeria' if out['reused'] else ''}"
+                     f" · asset {asset_guid or '?'} · survey report {out['report_guid']} · "
+                     f"{out['annotation_count']} annotations linked")
     except Exception as exc:
-        log.warning("curation %s: publish failed for %s: %s", curation_id, slug, exc)
-        cur.set_step(curation_id, "publish_asset", "failed", f"{type(exc).__name__}: {exc}")
+        short, full, _reason = _exc_text(exc)
+        log.warning("curation %s: publish failed for %s: %s", curation_id, slug, full[:2000])
+        cur.set_step(curation_id, "publish_asset", "failed", short, more=full[:2000] if len(full) > 200 else "")
         asset_guid = registry.get_egeria_asset_guid(slug) or ""
 
     # ── 2. testimony, copied ───────────────────────────────────────────
     ctx = registry.get_context("repo", slug) or {}
     bodies = _classification_bodies(ctx.get("enrichment") or {})
-    if not bodies:
+    if not bodies and _retention_skipped(ctx.get("enrichment") or {}):
+        cur.set_step(curation_id, "classifications", "skipped", f"skipped: Retention · {NO_RETENTION_BASIS}")
+    elif not bodies:
         cur.set_step(curation_id, "classifications", "skipped", "no sensitivity, criticality or retention set on the Enrichment pane")
     elif not asset_guid:
         cur.set_step(curation_id, "classifications", "failed", "no asset to classify — the publish step did not produce one")
     else:
         cur.set_step(curation_id, "classifications", "running")
         from resource_explorer.egeria_identity import classification_client
-        done, failed = [], []
+        done, failed, skipped, more = [], [], [], []
+        if _retention_skipped(ctx.get("enrichment") or {}):
+            skipped.append(f"Retention · {NO_RETENTION_BASIS}")
         try:
             client = classification_client()
             for method, name, body in bodies:
@@ -278,11 +293,20 @@ def execute_curation(registry: ProjectRegistry, curation_id: str) -> dict:
                     getattr(client, method)(asset_guid, body)
                     done.append(name)
                 except Exception as exc:
-                    failed.append(f"{name}: {type(exc).__name__}: {exc}"[:200])
+                    short, full, reason = _exc_text(exc)
+                    log.warning("curation %s: %s failed for %s: %s | egeria reason: %s",
+                                curation_id, name, slug, full[:2000], reason[:2000] or "(none)")
+                    failed.append(f"{name}: {short}" + (" (full text in the log)" if reason or len(full) > 200 else ""))
+                    more.append(f"{name}\n{full[:1000]}" + (f"\nEgeria: {reason[:1000]}" if reason else ""))
         except Exception as exc:
-            failed.append(f"no classification client: {exc}"[:200])
-        cur.set_step(curation_id, "classifications", "failed" if failed else "done",
-                     " · ".join(done + failed))
+            short, full, _r = _exc_text(exc)
+            log.warning("curation %s: no classification client for %s: %s", curation_id, slug, full[:2000])
+            failed.append(f"no classification client: {short}")
+        parts = ([f"done: {', '.join(done)}"] if done else []) + \
+                ([f"skipped: {', '.join(skipped)}"] if skipped else []) + \
+                ([f"failed: {' | '.join(failed)}"] if failed else [])
+        state = "failed" if failed else ("done" if done else "skipped")
+        cur.set_step(curation_id, "classifications", state, " · ".join(parts), more="\n\n".join(more))
 
     # ── 3. what it holds ───────────────────────────────────────────────
     locators = list(sel.get("sub_resources") or [])
@@ -293,37 +317,30 @@ def execute_curation(registry: ProjectRegistry, curation_id: str) -> dict:
     else:
         cur.set_step(curation_id, "sub_resources", "running")
         try:
-            from resource_explorer.surveyors.egeria_publisher import EgeriaPublisher
-            # Local cataloguing first: publish_sub_resources publishes only
-            # rows already in the local sub_resources table, and NestedFile
-            # needs every ancestor folder catalogued too -- the same two
-            # rules the catalog route (routes/projects.py) enforces.
-            from resource_explorer.surveyors.sub_surveyors import ancestor_folder_paths
-            import json as _json
-            kinds: dict[str, str] = {}
-            for f in registry.query_findings(slug, "repo_sub_resource_survey"):
-                try:
-                    kinds[f["check_name"]] = (_json.loads(f.get("detail_json") or "{}").get("kind") or "folder")
-                except ValueError:
-                    kinds[f["check_name"]] = "folder"
-            want: dict[str, str] = {loc: kinds.get(loc, "folder") for loc in locators}
-            for loc, kind in list(want.items()):
-                if kind == "file":
-                    for anc in ancestor_folder_paths(loc):
-                        want.setdefault(anc, "folder")
-            for loc in sorted(want):
-                registry.catalog_sub_resource("repo", slug, loc, want[loc], source_finding="repo_sub_resource_survey")
-            guids = EgeriaPublisher(registry=registry).publish_sub_resources(slug, project.github_url, asset_guid, sorted(want))
-            missing = [l for l in locators if l not in guids]
-            ancestors = len(want) - len(locators)
+            from resource_explorer.surveyors.egeria_publisher import rename_sentence
+            # The list is the selection RECORD as it stood at the press (the route froze it into the
+            # selection); this step never reads a request's list. Local cataloguing, the ancestor folders a
+            # NestedFile needs, the publish and a proof row per element by GUID are one shared function.
+            from resource_explorer import resource_scope
+            out = resource_scope.publish_chosen(
+                registry, slug, github_url=project.github_url, asset_guid=asset_guid, curation_id=curation_id,
+                author=rec.get("author") or "", locators=locators)
+            guids, proof_counts = out["guids"], out["counts"]
+            missing = out["missing"]
+            ancestors = out["ancestors"]
             # Count against what was SELECTED; the ancestor folders NestedFile
             # needs are named separately ("32 of 31" on the first live press).
-            cur.set_step(curation_id, "sub_resources", "failed" if missing else "done",
+            cur.set_step(curation_id, "sub_resources", "failed" if missing or proof_counts["failed"] else "done",
                          f"{len(locators) - len(missing)} of {len(locators)} published"
+                         f" · {proof_counts['read_back']} read back"
+                         + (f" · {proof_counts['sent']} sent, not yet read back" if proof_counts["sent"] else "")
                          + (f" · plus {ancestors} ancestor folder{'s' if ancestors != 1 else ''}" if ancestors else "")
-                         + (f" · not published: {', '.join(missing[:8])}" if missing else ""))
+                         + (f" · not published: {', '.join(missing[:8])}" if missing else "")
+                         + rename_sentence(out.get("rename_counts")))
         except Exception as exc:
-            cur.set_step(curation_id, "sub_resources", "failed", f"{type(exc).__name__}: {exc}")
+            short, full, _reason = _exc_text(exc)
+            log.warning("curation %s: sub-resources failed for %s: %s", curation_id, slug, full[:2000])
+            cur.set_step(curation_id, "sub_resources", "failed", short, more=full[:2000] if len(full) > 200 else "")
 
     # ── 4. what it is made of ──────────────────────────────────────────
     cur.set_step(curation_id, "components", "skipped",

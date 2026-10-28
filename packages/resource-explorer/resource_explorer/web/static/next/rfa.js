@@ -16,23 +16,33 @@
  *     action requested/target — the fields the classic drawer already
  *     reads off the flattened `/api/activity/rfas` row, `activity.py`'s
  *     `_emit_rfa`);
- *   - take the three LOCAL response actions that already exist server-side:
+ *   - take the three response actions that already exist server-side (recorded locally,
+ *     then synced to Egeria best-effort):
  *     defer / reassign / complete (plus reopen, which is the same PATCH
  *     with `status: 'open'` — `RFA_STATUSES` in `web/routes/activity.py`).
  *
- * NOT in scope here, deliberately: the dismissal flow (not-applicable /
- * won't-do — `docs/rfa-dismissals.md`), the free-text notes field, and any
- * of that is real Egeria ToDo integration. All three response actions
- * stay local-only — `resource_explorer/registry.py`'s `rfa_actions` table
- * docstring and `docs/egeria-integration.md` §11 cover why (a real pyegeria
- * actor-GUID story is the blocker, not a design choice this file makes).
- * `rfa_egeria_sync.py` already attempts a best-effort Egeria ToDo write
- * behind `PATCH /api/activity/rfas/{id}` server-side; this drawer neither
- * knows nor needs to know that happened — its job ends at the local write
+ * ALSO (parity PI-112/113/114): dismiss a request as not applicable / won't do
+ * with an optional note (`docs/rfa-dismissals.md`), restore a dismissal, and a
+ * free-text note on any request. A dismissal is a RECORD: the row stays in the
+ * list behind "show suppressed (N)" with its reason, who and when, and a restore
+ * keeps the record, marked cleared. Dismiss and restore write only to Resource
+ * Explorer's registry. A status change or a note is different: the local write is
+ * authoritative, and `rfa_egeria_sync.py` then makes a best-effort Egeria write
+ * server-side (a ToDo for a status change; an ActivityEntry note on that ToDo for a
+ * note, only once the ToDo exists). A failed sync never fails the local write.
+ * The note form says so when the request already has a ToDo (`egeria_todo_guid`).
+ *
+ * NOT in scope here, deliberately: a real actor-GUID story for the ToDo
+ * (`resource_explorer/registry.py`'s `rfa_actions` table docstring and
+ * `docs/egeria-integration.md` §11); this drawer's job ends at the local write
  * succeeding.
  */
 
-import { listRfas, updateRfaAction } from '/static/re-api.js';
+import { listRfas, updateRfaAction, dismissRfa, restoreRfaDismissal, saveRfaNote } from '/static/re-api.js';
+import { ago } from '/static/next/format.js';
+import { stateEntry } from '/static/next/glyphs.js';
+import { cue } from '/static/next/stages/repo-manifest.js';
+import { inPagePrompt } from '/static/next/confirm-dialog.js';
 
 function esc(s) {
   return String(s ?? '')
@@ -63,6 +73,10 @@ let _loadTicket = 0;     // guards against a slow fetch landing after a newer on
 let _scopeSlug = '';     // '' = all resources; set from the caller at open time
 let _scopeOnly = true;   // "this resource" vs "all" — only meaningful when _scopeSlug is set
 let _showClosed = false; // include completed alongside open/deferred/reassigned
+let _showSuppressed = false; // include dismissed requests (always counted, never silently dropped)
+
+const DISMISS_REASONS = [['not_applicable', 'Not applicable'], ['wont_do', "Won't do"]];
+const reasonLabel = (r) => (DISMISS_REASONS.find(([k]) => k === r) || [r, r])[1];
 
 function _buildShell() {
   const el = document.createElement('aside');
@@ -85,7 +99,12 @@ function _buildShell() {
         <input type="checkbox" id="next-rfa-show-closed">
         <span>show completed</span>
       </label>
+      <label class="flex cursor-pointer items-center gap-[6px]">
+        <input type="checkbox" id="next-rfa-show-suppressed">
+        <span id="next-rfa-suppressed-label">show suppressed</span>
+      </label>
     </div>
+    <div id="next-rfa-flash" class="px-s3 text-provenance text-chrome-muted" aria-live="polite"></div>
     <div id="next-rfa-list" class="flex-1 overflow-y-auto px-s3 py-s2 text-resource">reading…</div>
   `;
   document.body.appendChild(el);
@@ -99,6 +118,10 @@ function _buildShell() {
     _showClosed = e.target.checked;
     _renderList();
   });
+  el.querySelector('#next-rfa-show-suppressed').addEventListener('change', (e) => {
+    _showSuppressed = e.target.checked;
+    _renderList();
+  });
   el.querySelector('#next-rfa-list').addEventListener('click', _onListClick);
 
   document.addEventListener('keydown', (e) => {
@@ -108,29 +131,43 @@ function _buildShell() {
   return el;
 }
 
+/** Rows in scope (this resource, or all) before the closed/suppressed filters, so the counts are honest. */
+function _scopedRows() {
+  return (_scopeSlug && _scopeOnly) ? _rfas.filter((r) => r.entity_slug === _scopeSlug) : _rfas;
+}
+
 function _visibleRows() {
-  let rows = _rfas;
-  if (_scopeSlug && _scopeOnly) rows = rows.filter((r) => r.entity_slug === _scopeSlug);
+  let rows = _scopedRows();
   if (!_showClosed) rows = rows.filter((r) => r.rfa_status !== 'completed');
+  if (!_showSuppressed) rows = rows.filter((r) => !r.dismissed);
   // Newest first — matches the classic drawer and the activity log's own convention.
   return [...rows].sort((a, b) => String(b.ts || '').localeCompare(String(a.ts || '')));
 }
 
 function _rowHtml(rfa) {
-  const tone = STATUS_TONE[rfa.rfa_status] || 'text-chrome-muted';
-  const label = STATUS_LABEL[rfa.rfa_status] || rfa.rfa_status;
+  // The corner shows the request's real state: a dismissed one reads "dismissed" with its reason
+  // word, never the underlying status ("Open") it had before it was dismissed.
+  const tone = rfa.dismissed ? 'text-chrome-muted' : (STATUS_TONE[rfa.rfa_status] || 'text-chrome-muted');
+  const label = rfa.dismissed
+    ? `dismissed · ${reasonLabel((rfa.dismissal || {}).reason)}`
+    : (STATUS_LABEL[rfa.rfa_status] || rfa.rfa_status);
   const who = rfa.entity_name || rfa.entity_slug || 'unknown resource';
   const what = rfa.analysis_name || rfa.annotation_type || 'RFA';
+  const d = rfa.dismissal || {};
   const dismissedNote = rfa.dismissed
-    ? `<div class="mt-[2px] text-provenance text-chrome-muted">suppressed — ${esc((rfa.dismissal || {}).reason || '')}</div>`
+    ? `<div data-rfa-dismissed class="mt-[2px] text-provenance text-chrome-muted"><span class="font-glyph" aria-hidden="true">${stateEntry('unrun').glyph}</span>
+        dismissed · ${esc(reasonLabel(d.reason))}${d.note ? ` · ${esc(d.note)}` : ''}${
+          d.created_by ? ` · ${esc(d.created_by)}` : ''}${d.created_at ? ` · ${esc(ago(d.created_at))}` : ''}</div>`
     : '';
+  const noteLine = rfa.notes
+    ? `<div data-rfa-note class="mt-[2px] whitespace-pre-wrap text-provenance text-chrome-ink">note: ${esc(rfa.notes)}</div>` : '';
   const assigneeNote = rfa.assignee
     ? ` · assigned to <span class="text-chrome-ink">${esc(rfa.assignee)}</span>`
     : '';
   const deferNote = rfa.rfa_status === 'deferred' && rfa.defer_until
     ? ` · until <span class="tnum">${esc(rfa.defer_until)}</span>`
     : '';
-  const canAct = rfa.rfa_status !== 'completed';
+  const canAct = rfa.rfa_status !== 'completed' && !rfa.dismissed;
   const actions = `
     ${canAct ? `<button type="button" data-rfa-act="deferred" data-rfa-id="${esc(rfa.id)}"
         class="cursor-pointer bg-transparent text-accent-ink underline">Defer</button>` : ''}
@@ -138,8 +175,15 @@ function _rowHtml(rfa) {
         class="cursor-pointer bg-transparent text-accent-ink underline">Reassign</button>` : ''}
     ${canAct ? `<button type="button" data-rfa-act="completed" data-rfa-id="${esc(rfa.id)}"
         class="cursor-pointer bg-transparent text-accent-ink underline">Complete</button>` : ''}
-    ${rfa.rfa_status !== 'open' ? `<button type="button" data-rfa-act="open" data-rfa-id="${esc(rfa.id)}"
+    ${rfa.rfa_status !== 'open' && !rfa.dismissed ? `<button type="button" data-rfa-act="open" data-rfa-id="${esc(rfa.id)}"
         class="cursor-pointer bg-transparent text-chrome-muted underline">Reopen</button>` : ''}
+    ${rfa.dismissed
+      ? `<button type="button" data-rfa-restore="${esc(d.id || '')}" data-rfa-id="${esc(rfa.id)}"
+          class="cursor-pointer bg-transparent text-accent-ink underline">Restore</button>`
+      : `<button type="button" data-rfa-dismiss="${esc(rfa.id)}"
+          class="cursor-pointer bg-transparent text-chrome-muted underline">Dismiss…</button>`}
+    <button type="button" data-rfa-note-open="${esc(rfa.id)}"
+      class="cursor-pointer bg-transparent text-chrome-muted underline">${rfa.notes ? 'Edit note' : 'Add note'}</button>
   `;
   return `
     <div class="border-b border-chrome-line py-s2" data-rfa-row="${esc(rfa.id)}">
@@ -151,11 +195,12 @@ function _rowHtml(rfa) {
           ${rfa.action_requested ? `<div class="mt-[2px] text-provenance text-chrome-muted">requested: ${esc(rfa.action_requested)}${
             rfa.action_target_name ? ` — ${esc(rfa.action_target_name)}` : ''}</div>` : ''}
         </div>
-        <span class="shrink-0 whitespace-nowrap text-provenance ${tone}">${esc(label)}</span>
+        <span data-rfa-corner class="shrink-0 whitespace-nowrap text-provenance ${tone}">${rfa.dismissed ? `<span class="font-glyph" aria-hidden="true">${stateEntry('unrun').glyph}</span> ` : ''}${esc(label)}</span>
       </div>
       <div class="mt-[2px] text-provenance text-chrome-muted">${assigneeNote}${deferNote}</div>
-      ${dismissedNote}
+      ${dismissedNote}${noteLine}
       <div class="mt-s2 flex flex-wrap gap-s3 text-chip" data-rfa-actions>${actions}</div>
+      <div data-rfa-form class="mt-s2"></div>
     </div>
   `;
 }
@@ -168,6 +213,10 @@ function _renderList() {
   if (scopeLabel) scopeLabel.textContent = _scopeSlug ? `this resource only (${_scopeSlug})` : 'this resource only';
   if (scopeOnlyBox) scopeOnlyBox.disabled = !_scopeSlug;
 
+  const suppressed = _scopedRows().filter((r) => r.dismissed).length;
+  const supLabel = _drawerEl.querySelector('#next-rfa-suppressed-label');
+  if (supLabel) supLabel.textContent = `show suppressed (${suppressed})`;
+
   const rows = _visibleRows();
   if (!rows.length) {
     host.innerHTML = `<p class="text-caveat text-chrome-muted">
@@ -178,7 +227,99 @@ function _renderList() {
   host.innerHTML = rows.map(_rowHtml).join('');
 }
 
+const rowEl = (rfaId) => [..._drawerEl.querySelectorAll('[data-rfa-row]')].find((n) => n.dataset.rfaRow === rfaId);
+const flash = (msg) => { const f = _drawerEl && _drawerEl.querySelector('#next-rfa-flash'); if (f) f.textContent = msg; };
+const formBtn = (attr, label) => `<button type="button" ${attr} class="cursor-pointer rounded-sm border border-chrome-line bg-transparent px-2 py-[1px] text-chip text-chrome-ink disabled:cursor-default disabled:opacity-60">${label}</button>`;
+
+/** The dismiss form: a reason (required) and an optional note, inline under the row. */
+function _openDismissForm(rfaId) {
+  const slot = rowEl(rfaId)?.querySelector('[data-rfa-form]');
+  if (!slot) return;
+  slot.innerHTML = `<div data-rfa-dismiss-form class="flex flex-wrap items-center gap-s2">
+    <select data-rfa-reason class="rounded-sm border border-chrome-line bg-transparent px-[6px] py-[2px] text-provenance text-chrome-ink placeholder:text-chrome-muted"><option value="">Why?</option>${
+      DISMISS_REASONS.map(([k, l]) => `<option value="${k}">${esc(l)}</option>`).join('')}</select>
+    <input data-rfa-dismiss-note type="text" placeholder="note (optional)" class="min-w-0 flex-1 rounded-sm border border-chrome-line bg-transparent px-[6px] py-[2px] text-provenance text-chrome-ink placeholder:text-chrome-muted">
+    ${formBtn('data-rfa-dismiss-go disabled', 'Dismiss')}${formBtn('data-rfa-form-cancel', 'Cancel')}
+    <span data-rfa-form-status class="text-provenance text-chrome-muted"></span></div>`;
+  const reason = slot.querySelector('[data-rfa-reason]');
+  const go = slot.querySelector('[data-rfa-dismiss-go]');
+  reason.addEventListener('change', () => { go.disabled = !reason.value; });
+  slot.querySelector('[data-rfa-form-cancel]').addEventListener('click', () => { slot.innerHTML = ''; });
+  go.addEventListener('click', async () => {
+    if (go.disabled) return;
+    go.disabled = true;
+    const status = slot.querySelector('[data-rfa-form-status]');
+    status.textContent = 'saving…';
+    try {
+      const out = await dismissRfa(rfaId, { reason: reason.value, note: slot.querySelector('[data-rfa-dismiss-note]').value.trim() });
+      const key = (_rfas.find((r) => r.id === rfaId) || {}).dismissal_key;
+      let hidden = 0;
+      _rfas.forEach((r) => { if (r.dismissal_key === key) { r.dismissed = true; r.dismissal = out.dismissal; hidden += 1; } });
+      flash(`dismissed · ${reasonLabel(out.dismissal && out.dismissal.reason)}${_showSuppressed ? '' : ` · ${hidden} hidden, shown under "show suppressed"`}`);
+      _renderList();
+    } catch (err) {
+      go.disabled = false;
+      status.textContent = `not recorded: ${err && err.message ? err.message : 'could not reach the server'}`;
+    }
+  });
+}
+
+/** Restore: the dismissal row is kept (marked cleared), the request returns to the list. */
+async function _restore(btn) {
+  const rfaId = btn.dataset.rfaId;
+  const did = btn.dataset.rfaRestore;
+  if (!did || btn.disabled) return;
+  btn.disabled = true;
+  btn.textContent = 'restoring…';
+  try {
+    await restoreRfaDismissal(did);
+    _rfas.forEach((r) => { if (r.dismissal && r.dismissal.id === did) { r.dismissed = false; r.dismissal = null; } });
+    flash('restored · the dismissal is kept as history');
+    _renderList();
+  } catch (err) {
+    btn.disabled = false;
+    btn.textContent = 'Restore';
+    const slot = rowEl(rfaId)?.querySelector('[data-rfa-form]');
+    if (slot) slot.innerHTML = `<span class="text-state-warn">not restored: ${esc(err && err.message ? err.message : 'could not reach the server')}</span>`;
+  }
+}
+
+/** The note form: free text, independent of the status. Saving an empty box clears the note. */
+function _openNoteForm(rfaId) {
+  const row = _rfas.find((r) => r.id === rfaId);
+  const slot = rowEl(rfaId)?.querySelector('[data-rfa-form]');
+  if (!row || !slot) return;
+  slot.innerHTML = `<div data-rfa-note-form class="flex flex-col gap-s2">
+    <textarea data-rfa-note-text rows="2" placeholder="note" class="w-full rounded-sm border border-chrome-line bg-transparent px-[6px] py-[2px] text-provenance text-chrome-ink placeholder:text-chrome-muted">${esc(row.notes || '')}</textarea>
+    ${row.egeria_todo_guid ? '<div data-rfa-note-egeria class="text-provenance text-chrome-muted">also sent to Egeria, as a note on this request\'s ToDo</div>' : ''}
+    <div class="flex items-center gap-s2">${formBtn('data-rfa-note-save', 'Save note')}${formBtn('data-rfa-form-cancel', 'Cancel')}
+      <span data-rfa-form-status class="text-provenance text-chrome-muted"></span></div></div>`;
+  slot.querySelector('[data-rfa-form-cancel]').addEventListener('click', () => { slot.innerHTML = ''; });
+  const save = slot.querySelector('[data-rfa-note-save]');
+  save.addEventListener('click', async () => {
+    if (save.disabled) return;
+    save.disabled = true;
+    const status = slot.querySelector('[data-rfa-form-status]');
+    status.textContent = 'saving…';
+    const text = slot.querySelector('[data-rfa-note-text]').value.trim();
+    try {
+      await saveRfaNote(rfaId, text);
+      row.notes = text;
+      _renderList();
+    } catch (err) {
+      save.disabled = false;
+      status.textContent = `not saved: ${err && err.message ? err.message : 'could not reach the server'}`;
+    }
+  });
+}
+
 async function _onListClick(e) {
+  const dismiss = e.target.closest('[data-rfa-dismiss]');
+  if (dismiss) { _openDismissForm(dismiss.dataset.rfaDismiss); return; }
+  const restore = e.target.closest('[data-rfa-restore]');
+  if (restore) { await _restore(restore); return; }
+  const noteOpen = e.target.closest('[data-rfa-note-open]');
+  if (noteOpen) { _openNoteForm(noteOpen.dataset.rfaNoteOpen); return; }
   const btn = e.target.closest('[data-rfa-act]');
   if (!btn) return;
   const status = btn.dataset.rfaAct;
@@ -191,15 +332,15 @@ async function _onListClick(e) {
   let resolutionNote = row.resolution_note || '';
 
   if (status === 'reassigned') {
-    const typed = window.prompt('Assign to (name or email):', assignee);
+    const typed = await inPagePrompt({ title: 'Assign', message: 'Assign to (name or email):', label: 'Assign to', defaultValue: assignee, confirmLabel: 'Assign' });
     if (typed === null) return;      // cancelled — nothing recorded
     assignee = typed.trim();
   } else if (status === 'deferred') {
-    const typed = window.prompt('Defer until (any text — a date, "next survey", etc.):', deferUntil);
+    const typed = await inPagePrompt({ title: 'Defer', message: 'Defer until (any text — a date, "next survey", etc.):', label: 'Defer until', defaultValue: deferUntil, confirmLabel: 'Defer' });
     if (typed === null) return;
     deferUntil = typed.trim();
   } else if (status === 'completed') {
-    const typed = window.prompt('Resolution note (optional):', resolutionNote);
+    const typed = await inPagePrompt({ title: 'Complete', message: 'Resolution note (optional):', label: 'Resolution note', defaultValue: resolutionNote, confirmLabel: 'Complete' });
     if (typed === null) return;
     resolutionNote = typed.trim();
   }
@@ -218,7 +359,11 @@ async function _onListClick(e) {
     _renderList();
   } catch (err) {
     if (actionsHost) {
-      actionsHost.innerHTML = `<span class="text-state-warn">not recorded: ${esc(err && err.message ? err.message : 'could not reach the server')}</span>`;
+      // Brief Z3: refused by the zone check on its Egeria ToDo (403): nothing was recorded in either place; the
+      // cue says so, the reason is on hover.
+      actionsHost.innerHTML = err && err.status === 403
+        ? `<span data-rfa-not-permitted>${cue('no_access', 'not permitted', err.message)}</span>`
+        : `<span class="text-state-warn">not recorded: ${esc(err && err.message ? err.message : 'could not reach the server')}</span>`;
     }
   }
 }
@@ -247,6 +392,7 @@ async function _load() {
 export function openRfaDrawer(slug = '') {
   if (!_drawerEl) _drawerEl = _buildShell();
   _scopeSlug = slug || '';
+  flash('');
   const scopeOnlyBox = _drawerEl.querySelector('#next-rfa-scope-only');
   if (scopeOnlyBox) scopeOnlyBox.checked = _scopeOnly && !!_scopeSlug;
   _drawerEl.style.display = 'flex';

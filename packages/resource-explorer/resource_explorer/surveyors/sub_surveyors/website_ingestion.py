@@ -87,6 +87,31 @@ class WebsiteIngestionSurveyor(BaseSurveyor):
             log.debug("website fetch failed for %s: %s", url, exc)
             return None
 
+    def _choose_target(self) -> str:
+        """docs_url when it is set and was found reachable, else homepage_url.
+
+        A vendor homepage (datakitchen.io for dataops-testgen) is not the
+        documentation; ingesting it defeats the point. Unreachable or unchecked
+        docs fall back to the homepage, and the record says which and why.
+        """
+        from resource_explorer.ingestion.docs_discovery import read_summary
+
+        docs = (getattr(self.project, "docs_url", "") or "").strip()
+        home = (self.project.homepage_url or "").strip()
+        if docs:
+            state = read_summary(self.registry, self.project.slug, docs)["docs_state"]
+            if state == "reachable":
+                self._target_record = {"target_field": "docs_url",
+                                       "target_why": "docs_url is set and was reachable"}
+                return docs
+            self._target_record = {
+                "target_field": "homepage_url",
+                "target_why": f"docs_url set but {state or 'not checked'}; fell back to homepage_url"}
+            return home
+        self._target_record = {"target_field": "homepage_url",
+                               "target_why": "no docs_url recorded" if home else "no URL recorded"}
+        return home
+
     def _note(self, summary: str, explanation: str, props: dict, confidence: int = 100,
               outcome: "StepOutcome | None" = None) -> list[Annotation]:
         """Build this step's single annotation, and persist the same numbers as a
@@ -106,6 +131,8 @@ class WebsiteIngestionSurveyor(BaseSurveyor):
         # hazard is worth naming at the point it bites.
         detail = {k: v for k, v in props.items()
                   if k in _DETAIL_FIELDS}
+        # Which stored URL was targeted and why, on every terminal path.
+        detail.update(getattr(self, "_target_record", {}))
         if outcome is not None:
             # The shared vocabulary (resource_explorer/step_outcome.py) alongside
             # this step's own `reason`. Both are kept: the outcome is queryable
@@ -143,7 +170,7 @@ class WebsiteIngestionSurveyor(BaseSurveyor):
         )
         from resource_explorer.ingestion.site_profile import profile_site
 
-        url = (self.project.homepage_url or "").strip()
+        url = self._choose_target()
         if not url:
             return self._note(
                 "No website to ingest", "This project has no external site recorded. Run "

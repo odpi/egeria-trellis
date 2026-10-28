@@ -25,8 +25,90 @@ class BaseExplorerAgent(ABC):
         text = result.output[0].text
     """
 
+    #: The CompiledContext behind the most recent handle() call, or None. The
+    #: HTTP route reads it after handle() to show the user the manifest that
+    #: shaped the answer (see ConversationAgent._last_compiled).
+    _last_compiled = None
+
+    #: Whether this agent may be given the tool that files a RequestForAction. The in-app chat does;
+    #: the A2A surface sets it False because its tools are read-only (see agents/rfa_tools.py).
+    allow_writes = True
+
+    #: Appended to a prompt that names the RFA tool when ``allow_writes`` is False.
+    NO_WRITES_NOTE = (
+        "\n\nYou cannot file RequestForActions in this session. If you find an actionable issue, "
+        "describe it and say it should be raised in the Resource Explorer."
+    )
+
+    def _write_tools(self) -> list:
+        """The tools that write, or none when this agent is read-only."""
+        if not self.allow_writes:
+            return []
+        from resource_explorer.agents.rfa_tools import create_rfa_from_finding
+
+        return [create_rfa_from_finding]
+
     def __init__(self, config: ExplorerConfig | None = None) -> None:
         self.config = config or get_config()
+
+    def _multi_resource_evidence(
+        self, query: str, slugs: list[str], perspectives=None, budget: int = 6000
+    ) -> list[str]:
+        """Prompt lines of compiled evidence across several resources, plus what is missing.
+
+        The multi-resource counterpart of ConversationAgent._compiled_evidence:
+        one deterministic compile over every named resource, with the coverage
+        matrix that says which dimensions were measured for which resource.
+        Gaps are named per resource, because "no stored result" for one side of
+        a comparison must not read as "nothing found" on that side.
+
+        Fail-soft: a compiler that cannot compile returns nothing and the agent
+        proceeds with its tools, as it did before.
+        """
+        self._last_compiled = None
+        try:
+            from resource_explorer.context_compile import compile_multi_resource_context
+            from resource_explorer.registry import ProjectRegistry
+
+            compiled = compile_multi_resource_context(
+                ProjectRegistry(),
+                slugs,
+                query,
+                budget=budget,
+                perspectives=list(perspectives or []),
+                session_id=getattr(self, "session_id", None) or "",
+            )
+        except Exception:
+            import logging
+
+            logging.getLogger(__name__).debug(
+                "multi-resource evidence unavailable for %s", slugs, exc_info=True
+            )
+            return []
+
+        self._last_compiled = compiled
+
+        out: list[str] = []
+        if compiled.text.strip():
+            out.append("Evidence (compiled from stored analysis results):")
+            out.append(compiled.text)
+        by_resource: dict[str, dict[str, list[str]]] = {}
+        for gap in compiled.manifest.get("gaps", []):
+            reason = gap.get("reason", "no stored result")
+            by_resource.setdefault(gap.get("resource_slug", ""), {}).setdefault(
+                reason, []
+            ).append(gap["key"])
+        for slug, by_state in sorted(by_resource.items()):
+            for reason, keys in sorted(by_state.items()):
+                out.append(f"[{slug}] Analyses that {reason}: " + ", ".join(sorted(keys)) + ".")
+        if by_resource:
+            out.append(
+                "Say so if the question depends on one of them, and say which resource it is "
+                "missing for. An analysis that ran and found nothing has answered; one that has "
+                "not run has not. Do not read the first as the second, and do not compare a "
+                "measured value on one side with an unmeasured one on the other as if both were known."
+            )
+        return out
 
     @abstractmethod
     def system_prompt(self) -> str:
@@ -228,6 +310,8 @@ class BaseExplorerAgent(ABC):
             # six ad hoc pools became one.
             from resource_explorer.concurrency import run_sync
 
+            # The shared pool carries the caller into its thread (concurrency._CallersContextPool),
+            # so an A2A or chat request's agent reads the registry and Egeria as the caller.
             return run_sync(lambda: asyncio.run(_inner()))
         except RuntimeError:
             # No running event loop — safe to call asyncio.run directly

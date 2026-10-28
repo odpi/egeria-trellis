@@ -16,6 +16,9 @@ from resource_explorer.surveyors.arch_recovery.materializer import (
     ComponentMaterializer, MaterializationError,
 )
 
+# Brief I: these tests fake the Egeria clients; the code under test runs as a signed-in caller, as on a route.
+pytestmark = pytest.mark.usefixtures("signed_in_caller")
+
 
 @pytest.fixture(autouse=True)
 def _no_live_classification(monkeypatch):
@@ -67,8 +70,10 @@ class TestFreshMaterialization:
         # Egeria's security connector 403s a zone change whose before and
         # after are equal, which is what writing the publish zones here
         # produced (live, 2026-09-04).
-        assert governance["zones"] == ["resource-explorer-draft"]
-        assert governance["ownership"] is True and governance["zone_membership"] is True
+        # No default draft zone since 2026-10-08 (owner: DRAFT is a status, not a zone): NOTHING is
+        # sent. The configured case is `test_a_configured_draft_zone_is_stamped` below.
+        assert governance["zones"] == []
+        assert governance["ownership"] is True and governance["zone_membership"] is False
         m._connect.assert_called_once()
         body = m._solution_architect.create_solution_component.call_args[0][0]
         assert body["class"] == "NewElementRequestBody"

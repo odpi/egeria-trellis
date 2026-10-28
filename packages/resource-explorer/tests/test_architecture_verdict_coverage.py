@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import json
 
+from tests.recovery_fake_support import RecoveryBulkSurface
 from resource_explorer.surveyors.repo_survey_definition_adapter import (
     _architecture_diagram_results,
     _architecture_recovery_headline,
@@ -27,7 +28,7 @@ from resource_explorer.surveyors.repo_survey_definition_adapter import (
 )
 
 
-class _Reg:
+class _Reg(RecoveryBulkSurface):
     """Enough of ProjectRegistry's surface for the coverage function and
     the two call sites that splice its sentence in."""
 
@@ -38,6 +39,13 @@ class _Reg:
         self._blueprint_rows = list(blueprint_rows)
         self._recovery_rows_by_scope = recovery_rows_by_scope or {}
         self._diagram_rows = list(diagram_rows)
+
+    def _bulk_scopes(self, slug, kind):
+        return list(self._recovery_rows_by_scope) if kind == "architecture_recovery" else []
+
+    def list_settings_with_prefix(self, prefix):
+        # The diagram asks which services are referenced-only (ports on the edge); nothing was reclassified.
+        return []
 
     def query_finding_scopes(self, slug, kind, check_name=None):
         if kind == "architecture_recovery" and check_name == "component":

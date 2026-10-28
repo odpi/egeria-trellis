@@ -1,0 +1,382 @@
+{
+ "captured": "2026-10-15",
+ "platform": "Egeria 6.2 quickstart (qs-view-server), pyegeria 6.2.3",
+ "identity": "RE daemon (DaemonReason.ENGINE_HOST), read-only (engine-host step 4, M2)",
+ "route": "MetadataExpert.get_metadata_element_by_guid",
+ "call": "get_metadata_element_by_guid('a07a11e2-...')",
+ "secrets": "keys matching token|password|secret|credential|apikey replaced by <removed>; mermaidGraph dropped",
+ "note": "Step3 (Stewardship print-survey-report), the step after the survey in a native PostgreSQLDatabase:CreateAndSurveyGovernanceActionProcess run (RE's catalog_and_survey) on laz_local_usda, 2026-10-13; same processName and Anchors as Step2, requesterUserId copied",
+ "answer": {
+  "classifications": [
+   {
+    "class": "AttachedClassification",
+    "classificationName": "Anchors",
+    "classificationOrigin": "ASSIGNED",
+    "classificationProperties": {
+     "propertiesAsStrings": {
+      "anchorDomainName": "Asset",
+      "anchorGUID": "06994d5d-a228-408c-8842-fd6256db4c34",
+      "anchorTypeName": "GovernanceActionProcessInstance"
+     },
+     "propertyCount": 3,
+     "propertyNames": [
+      "anchorTypeName",
+      "anchorDomainName",
+      "anchorGUID"
+     ],
+     "propertyValueMap": {
+      "anchorDomainName": {
+       "class": "PrimitiveTypePropertyValue",
+       "primitiveTypeCategory": "OM_PRIMITIVE_TYPE_STRING",
+       "primitiveValue": "Asset",
+       "typeName": "string"
+      },
+      "anchorGUID": {
+       "class": "PrimitiveTypePropertyValue",
+       "primitiveTypeCategory": "OM_PRIMITIVE_TYPE_STRING",
+       "primitiveValue": "06994d5d-a228-408c-8842-fd6256db4c34",
+       "typeName": "string"
+      },
+      "anchorTypeName": {
+       "class": "PrimitiveTypePropertyValue",
+       "primitiveTypeCategory": "OM_PRIMITIVE_TYPE_STRING",
+       "primitiveValue": "GovernanceActionProcessInstance",
+       "typeName": "string"
+      }
+     }
+    },
+    "headerVersion": 0,
+    "origin": {
+     "homeMetadataCollectionId": "9905c3cb-94c5-4494-9229-0d6f69c0b842",
+     "homeMetadataCollectionName": "qs-metadata-store",
+     "originCategory": "LOCAL_COHORT",
+     "sourceServer": "qs-metadata-store"
+    },
+    "status": "ACTIVE",
+    "type": {
+     "typeCategory": "CLASSIFICATION_DEF",
+     "typeDescription": "Identifies the anchor entity for an element that is part of a large composite object such as an asset.",
+     "typeId": "aa44f302-2e43-4669-a1e7-edaae414fc6e",
+     "typeName": "Anchors",
+     "typeVersion": 1
+    },
+    "versions": {
+     "createTime": "2026-10-13T01:12:26.362+00:00",
+     "createdBy": "postgresqlsurveyengine",
+     "lastRequestId": "452789a8-153c-4d82-bd19-4d6f563ddeb2",
+     "maintainedBy": [
+      "postgresqlsurveyengine"
+     ],
+     "updateTime": "2026-10-13T01:12:26.362+00:00",
+     "updatedBy": "postgresqlsurveyengine",
+     "version": 1
+    }
+   }
+  ],
+  "elementGUID": "a07a11e2-b6aa-45ec-9dcb-687d69a8ee1c",
+  "elementProperties": {
+   "propertiesAsStrings": {
+    "activityStatus": "COMPLETED",
+    "completionGuards": "{0=service-completed}",
+    "completionMessage": "REPORT-GENERATORS-0002 The report generating service print-survey-report-governance-action-service created report Survey Report for 304152cf-fa47-4496-9a14-27a7f5b35df2-Tue Oct 13 01:10:27 GMT 2026.md",
+    "completionTime": "1791853953554",
+    "description": "Print a survey report detailing the contents of the PostgreSQL Relational Database.",
+    "displayName": "Print the survey report.",
+    "domainIdentifier": "0",
+    "executorEngineGUID": "c79ada2b-15ae-4194-b47e-6171591cf5fd",
+    "executorEngineName": "Stewardship",
+    "processName": "PostgreSQLDatabase:CreateAndSurveyGovernanceActionProcess@1791853850864::982691e5-90d7-41ca-93e9-3e8f566b6e79",
+    "processStepGUID": "68ff6ee3-12c1-44ed-ab01-f731546b3db6",
+    "processStepName": "PostgreSQLDatabase::CreateAndSurvey::Step3",
+    "processingEngineUserId": "stewardshipengine",
+    "qualifiedName": "PostgreSQLDatabase::CreateAndSurvey::Step3::0e170009-71a1-4a60-9709-f4fa68528cd9",
+    "receivedGuards": "{0=survey-completed}",
+    "requestParameters": "{versionIdentifier=not recorded, hostIdentifier=host.docker.internal, databaseName=usda, secretsStorePathName=/deployments/secrets/resource-explorer.omsecrets, secretsCollectionName=laz_local_usda::PostgreSQL Secret, serverName=host.docker.internal:5432, databaseDescription=PostgreSQL database usda, portNumber=5432, templateGUID=3d398b3f-7ae6-4713-952a-409f3dea8520}",
+    "requestType": "print-survey-report",
+    "requestedStartTime": "1791853946297",
+    "requesterUserId": "peterprofile",
+    "startTime": "1791853947312"
+   },
+   "propertyCount": 20,
+   "propertyNames": [
+    "completionGuards",
+    "domainIdentifier",
+    "requestType",
+    "displayName",
+    "qualifiedName",
+    "requesterUserId",
+    "requestParameters",
+    "description",
+    "processStepGUID",
+    "completionTime",
+    "executorEngineGUID",
+    "requestedStartTime",
+    "executorEngineName",
+    "processName",
+    "receivedGuards",
+    "activityStatus",
+    "completionMessage",
+    "startTime",
+    "processingEngineUserId",
+    "processStepName"
+   ],
+   "propertyValueMap": {
+    "activityStatus": {
+     "class": "EnumTypePropertyValue",
+     "symbolicName": "COMPLETED",
+     "typeName": "ActivityStatus"
+    },
+    "completionGuards": {
+     "arrayCount": 1,
+     "arrayValues": {
+      "propertiesAsStrings": {
+       "0": "service-completed"
+      },
+      "propertyCount": 1,
+      "propertyNames": [
+       "0"
+      ],
+      "propertyValueMap": {
+       "0": {
+        "class": "PrimitiveTypePropertyValue",
+        "primitiveTypeCategory": "OM_PRIMITIVE_TYPE_STRING",
+        "primitiveValue": "service-completed",
+        "typeName": "string"
+       }
+      }
+     },
+     "class": "ArrayTypePropertyValue",
+     "typeName": "array<string>"
+    },
+    "completionMessage": {
+     "class": "PrimitiveTypePropertyValue",
+     "primitiveTypeCategory": "OM_PRIMITIVE_TYPE_STRING",
+     "primitiveValue": "REPORT-GENERATORS-0002 The report generating service print-survey-report-governance-action-service created report Survey Report for 304152cf-fa47-4496-9a14-27a7f5b35df2-Tue Oct 13 01:10:27 GMT 2026.md",
+     "typeName": "string"
+    },
+    "completionTime": {
+     "class": "PrimitiveTypePropertyValue",
+     "primitiveTypeCategory": "OM_PRIMITIVE_TYPE_DATE",
+     "primitiveValue": 1791853953554,
+     "typeName": "date"
+    },
+    "description": {
+     "class": "PrimitiveTypePropertyValue",
+     "primitiveTypeCategory": "OM_PRIMITIVE_TYPE_STRING",
+     "primitiveValue": "Print a survey report detailing the contents of the PostgreSQL Relational Database.",
+     "typeName": "string"
+    },
+    "displayName": {
+     "class": "PrimitiveTypePropertyValue",
+     "primitiveTypeCategory": "OM_PRIMITIVE_TYPE_STRING",
+     "primitiveValue": "Print the survey report.",
+     "typeName": "string"
+    },
+    "domainIdentifier": {
+     "class": "PrimitiveTypePropertyValue",
+     "primitiveTypeCategory": "OM_PRIMITIVE_TYPE_INT",
+     "primitiveValue": 0,
+     "typeName": "int"
+    },
+    "executorEngineGUID": {
+     "class": "PrimitiveTypePropertyValue",
+     "primitiveTypeCategory": "OM_PRIMITIVE_TYPE_STRING",
+     "primitiveValue": "c79ada2b-15ae-4194-b47e-6171591cf5fd",
+     "typeName": "string"
+    },
+    "executorEngineName": {
+     "class": "PrimitiveTypePropertyValue",
+     "primitiveTypeCategory": "OM_PRIMITIVE_TYPE_STRING",
+     "primitiveValue": "Stewardship",
+     "typeName": "string"
+    },
+    "processName": {
+     "class": "PrimitiveTypePropertyValue",
+     "primitiveTypeCategory": "OM_PRIMITIVE_TYPE_STRING",
+     "primitiveValue": "PostgreSQLDatabase:CreateAndSurveyGovernanceActionProcess@1791853850864::982691e5-90d7-41ca-93e9-3e8f566b6e79",
+     "typeName": "string"
+    },
+    "processStepGUID": {
+     "class": "PrimitiveTypePropertyValue",
+     "primitiveTypeCategory": "OM_PRIMITIVE_TYPE_STRING",
+     "primitiveValue": "68ff6ee3-12c1-44ed-ab01-f731546b3db6",
+     "typeName": "string"
+    },
+    "processStepName": {
+     "class": "PrimitiveTypePropertyValue",
+     "primitiveTypeCategory": "OM_PRIMITIVE_TYPE_STRING",
+     "primitiveValue": "PostgreSQLDatabase::CreateAndSurvey::Step3",
+     "typeName": "string"
+    },
+    "processingEngineUserId": {
+     "class": "PrimitiveTypePropertyValue",
+     "primitiveTypeCategory": "OM_PRIMITIVE_TYPE_STRING",
+     "primitiveValue": "stewardshipengine",
+     "typeName": "string"
+    },
+    "qualifiedName": {
+     "class": "PrimitiveTypePropertyValue",
+     "primitiveTypeCategory": "OM_PRIMITIVE_TYPE_STRING",
+     "primitiveValue": "PostgreSQLDatabase::CreateAndSurvey::Step3::0e170009-71a1-4a60-9709-f4fa68528cd9",
+     "typeName": "string"
+    },
+    "receivedGuards": {
+     "arrayCount": 1,
+     "arrayValues": {
+      "propertiesAsStrings": {
+       "0": "survey-completed"
+      },
+      "propertyCount": 1,
+      "propertyNames": [
+       "0"
+      ],
+      "propertyValueMap": {
+       "0": {
+        "class": "PrimitiveTypePropertyValue",
+        "primitiveTypeCategory": "OM_PRIMITIVE_TYPE_STRING",
+        "primitiveValue": "survey-completed",
+        "typeName": "string"
+       }
+      }
+     },
+     "class": "ArrayTypePropertyValue",
+     "typeName": "array<string>"
+    },
+    "requestParameters": {
+     "class": "MapTypePropertyValue",
+     "mapElementCount": 9,
+     "mapValues": {
+      "propertiesAsStrings": {
+       "databaseDescription": "PostgreSQL database usda",
+       "databaseName": "usda",
+       "hostIdentifier": "host.docker.internal",
+       "portNumber": "5432",
+       "secretsCollectionName": "<removed>",
+       "secretsStorePathName": "<removed>",
+       "serverName": "host.docker.internal:5432",
+       "templateGUID": "3d398b3f-7ae6-4713-952a-409f3dea8520",
+       "versionIdentifier": "not recorded"
+      },
+      "propertyCount": 9,
+      "propertyNames": [
+       "versionIdentifier",
+       "hostIdentifier",
+       "databaseName",
+       "secretsStorePathName",
+       "secretsCollectionName",
+       "serverName",
+       "databaseDescription",
+       "portNumber",
+       "templateGUID"
+      ],
+      "propertyValueMap": {
+       "databaseDescription": {
+        "class": "PrimitiveTypePropertyValue",
+        "primitiveTypeCategory": "OM_PRIMITIVE_TYPE_STRING",
+        "primitiveValue": "PostgreSQL database usda",
+        "typeName": "string"
+       },
+       "databaseName": {
+        "class": "PrimitiveTypePropertyValue",
+        "primitiveTypeCategory": "OM_PRIMITIVE_TYPE_STRING",
+        "primitiveValue": "usda",
+        "typeName": "string"
+       },
+       "hostIdentifier": {
+        "class": "PrimitiveTypePropertyValue",
+        "primitiveTypeCategory": "OM_PRIMITIVE_TYPE_STRING",
+        "primitiveValue": "host.docker.internal",
+        "typeName": "string"
+       },
+       "portNumber": {
+        "class": "PrimitiveTypePropertyValue",
+        "primitiveTypeCategory": "OM_PRIMITIVE_TYPE_STRING",
+        "primitiveValue": "5432",
+        "typeName": "string"
+       },
+       "secretsCollectionName": "<removed>",
+       "secretsStorePathName": "<removed>",
+       "serverName": {
+        "class": "PrimitiveTypePropertyValue",
+        "primitiveTypeCategory": "OM_PRIMITIVE_TYPE_STRING",
+        "primitiveValue": "host.docker.internal:5432",
+        "typeName": "string"
+       },
+       "templateGUID": {
+        "class": "PrimitiveTypePropertyValue",
+        "primitiveTypeCategory": "OM_PRIMITIVE_TYPE_STRING",
+        "primitiveValue": "3d398b3f-7ae6-4713-952a-409f3dea8520",
+        "typeName": "string"
+       },
+       "versionIdentifier": {
+        "class": "PrimitiveTypePropertyValue",
+        "primitiveTypeCategory": "OM_PRIMITIVE_TYPE_STRING",
+        "primitiveValue": "not recorded",
+        "typeName": "string"
+       }
+      }
+     },
+     "typeName": "map<string,string>"
+    },
+    "requestType": {
+     "class": "PrimitiveTypePropertyValue",
+     "primitiveTypeCategory": "OM_PRIMITIVE_TYPE_STRING",
+     "primitiveValue": "print-survey-report",
+     "typeName": "string"
+    },
+    "requestedStartTime": {
+     "class": "PrimitiveTypePropertyValue",
+     "primitiveTypeCategory": "OM_PRIMITIVE_TYPE_DATE",
+     "primitiveValue": 1791853946297,
+     "typeName": "date"
+    },
+    "requesterUserId": {
+     "class": "PrimitiveTypePropertyValue",
+     "primitiveTypeCategory": "OM_PRIMITIVE_TYPE_STRING",
+     "primitiveValue": "peterprofile",
+     "typeName": "string"
+    },
+    "startTime": {
+     "class": "PrimitiveTypePropertyValue",
+     "primitiveTypeCategory": "OM_PRIMITIVE_TYPE_DATE",
+     "primitiveValue": 1791853947312,
+     "typeName": "date"
+    }
+   }
+  },
+  "headerVersion": 0,
+  "origin": {
+   "homeMetadataCollectionId": "9905c3cb-94c5-4494-9229-0d6f69c0b842",
+   "homeMetadataCollectionName": "qs-metadata-store",
+   "originCategory": "LOCAL_COHORT",
+   "sourceServer": "qs-metadata-store"
+  },
+  "status": "ACTIVE",
+  "type": {
+   "superTypeNames": [
+    "Action",
+    "Process",
+    "Asset",
+    "Referenceable",
+    "OpenMetadataRoot"
+   ],
+   "typeCategory": "ENTITY_DEF",
+   "typeDescription": "An engine action that has been created to support the active governance of the open metadata ecosystem and/or digital landscape.",
+   "typeId": "c976d88a-2b11-4b40-b972-c38d41bfc6be",
+   "typeName": "EngineAction",
+   "typeVersion": 2
+  },
+  "versions": {
+   "createTime": "2026-10-13T01:12:26.366+00:00",
+   "createdBy": "postgresqlsurveyengine",
+   "lastRequestId": "22df8e46-1f0f-485a-87cc-1b248c7b91ff",
+   "maintainedBy": [
+    "postgresqlsurveyengine",
+    "stewardshipengine"
+   ],
+   "updateTime": "2026-10-13T01:12:33.563+00:00",
+   "updatedBy": "stewardshipengine",
+   "version": 5
+  }
+ }
+}

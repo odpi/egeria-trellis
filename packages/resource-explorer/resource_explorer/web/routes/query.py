@@ -4,6 +4,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+import logging
 import time
 from collections.abc import AsyncIterator
 
@@ -12,6 +13,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field
 
 router = APIRouter()
+log = logging.getLogger(__name__)
 
 # ── session store ──────────────────────────────────────────────────────────────
 # Maps session_id → (ConversationAgent, last_used_timestamp)
@@ -100,6 +102,10 @@ class QueryRequest(BaseModel):
     #: chat question pulls that type's own catalog and analyses instead of
     #: always compiling against repo's.
     entity_type: str = "repo"
+    #: True when the person has already answered "this question names another
+    #: resource": they chose to keep the scoped one. The stream then skips the
+    #: names-another-resource check and answers on the scope as asked.
+    skip_resource_check: bool = False
     #: Active Perspective chips. Empty means no perspective filter, which is a
     #: real state and not a missing value -- the compile still runs.
     perspectives: list[str] = []
@@ -118,6 +124,7 @@ class QueryResponse(BaseModel):
     #: fewer for the frontend to special-case. None when there was no
     #: resource in scope, or the compile itself produced nothing.
     compiled: dict | None = None
+    disambiguation_chips: list[dict] | None = None
 
 
 def _compiled_payload(agent) -> dict | None:
@@ -232,12 +239,17 @@ async def ask(request: QueryRequest) -> QueryResponse:
         )
 
     chart = _pick_chart(request.query, intent.value, request.resource_slug or "")
+    chips = None
+    if intent.value in ("comparison", "integration"):
+        chips = _disambiguation_chips(request.query, request.resource_slug or request.database_slug)
+
     return QueryResponse(
         response=response,
         intent=intent.value,
         query_hash=query_hash,
         chart=chart,
         compiled=compiled,
+        disambiguation_chips=chips,
     )
 
 
@@ -260,6 +272,27 @@ async def stream(request: QueryRequest) -> StreamingResponse:
 
     async def _generate() -> AsyncIterator[str]:
         loop = asyncio.get_event_loop()
+
+        # A scoped question that names a DIFFERENT resource is held, not answered:
+        # an LLM answer about the scoped resource would be the wrong answer, and
+        # switching silently would be a different wrong one. The person chooses.
+        checked: dict | None = None
+        if request.resource_slug and not request.skip_resource_check:
+            checked = await asyncio.to_thread(
+                _named_resource_check, request.query, request.resource_slug)
+            if checked and ("resource_question" in checked or "alias_suggestion" in checked):
+                if "resource_question" in checked:
+                    rq = checked["resource_question"]
+                    held_text = (f"This question names {rq['named_name']}, but this chat is on "
+                                 f"{rq['scoped_slug']}. Choose which one to ask about.")
+                else:
+                    a = checked["alias_suggestion"]
+                    held_text = (f"“{a['term']}” is not a known name. Did you mean {a['candidate_name']}? "
+                                 f"This chat is on {a['scoped_slug']}.")
+                yield _sse({"t": "chunk", "v": held_text})
+                yield _sse({"t": "done", "intent": "", "hash": "", "cached": False, "chart": None,
+                            "compiled": None, "compile_id": None, "held": True, **checked})
+                return
 
         queue: asyncio.Queue = asyncio.Queue()
 
@@ -322,6 +355,13 @@ async def stream(request: QueryRequest) -> StreamingResponse:
                 # Side-by-side symbol comparison for comparison queries about API surface
                 if intent_val == "comparison":
                     done["compare_symbols"] = _compare_symbols_table(request.query)
+                # Disambiguation chips for cross-resource queries with missing or ambiguous targets
+                if intent_val in ("comparison", "integration"):
+                    chips = _disambiguation_chips(request.query, request.resource_slug or request.database_slug)
+                    if chips:
+                        done["disambiguation_chips"] = chips
+                if checked and "resource_check_error" in checked:
+                    done["resource_check_error"] = checked["resource_check_error"]
                 # Suggest an alias when no project was resolved but a fuzzy match exists
                 if not request.resource_slug:
                     alias_hint = _fuzzy_alias_suggestion(request.query)
@@ -498,6 +538,79 @@ def _compare_symbols_table(query: str) -> dict | None:
         return None
 
 
+class _NameProbe:
+    """Built lazily: BaseExplorerAgent pulls in the agent stack, and the
+    detection reuses its matcher (`_infer_all_project_slugs`) rather than a
+    second one. That matcher already covers repos, databases and file systems,
+    then falls back to the alias table."""
+
+    @staticmethod
+    def make():
+        from resource_explorer.agents.base import BaseExplorerAgent
+
+        class _Probe(BaseExplorerAgent):
+            def system_prompt(self): return ""
+            def tools(self): return []
+            def handle(self, *a, **kw): return ""
+        return _Probe()
+
+
+def _resource_identity(registry, slug: str) -> tuple[str, str]:
+    """(display_name, type) for a slug in any of the three resource tables."""
+    p = registry.get(slug)
+    if p:
+        return (p.display_name or slug), "repo"
+    d = registry.get_database(slug, allow_unreadable=True)
+    if d:
+        return (d.display_name or slug), "database"
+    f = registry.get_filesystem(slug)
+    if f:
+        return (f.display_name or slug), "filesystem"
+    return slug, "repo"
+
+
+def _named_resource_check(query: str, scoped_slug: str) -> dict | None:
+    """For a question asked ON a resource: does it name a different one?
+
+    Returns one of
+      {"resource_question": {kind: "other_resource", named_slug, named_name, named_type, scoped_slug}}
+        -- the question exactly names a known resource (slug, alias or display name)
+           that is not the scoped one;
+      {"alias_suggestion": {term, candidate_slug, candidate_name, candidate_type, scoped_slug}}
+        -- it names nothing known but a phrase fuzzy-matches a resource that is not the scoped one;
+      {"resource_check_error": "<why>"}
+        -- the check itself failed (logged, and surfaced to the person rather than read as "names nothing");
+      None -- it names nothing, or names the scoped resource.
+    """
+    try:
+        from resource_explorer.registry import ProjectRegistry
+
+        registry = ProjectRegistry()
+        scoped = registry._normalize_slug(scoped_slug)
+        named = _NameProbe.make()._infer_all_project_slugs(query)
+        if named:
+            if scoped in named:
+                return None
+            name, kind = _resource_identity(registry, named[0])
+            return {"resource_question": {
+                "kind": "other_resource", "named_slug": named[0], "named_name": name,
+                "named_type": kind, "scoped_slug": scoped,
+            }}
+        # Short words match too loosely against a name once every question is scoped.
+        result = registry.fuzzy_candidate(query, exclude_slug=scoped, min_term_len=5)
+        if not result:
+            return None
+        term, slug = result
+        name, kind = _resource_identity(registry, slug)
+        return {"alias_suggestion": {
+            "term": term, "candidate_slug": slug, "candidate_name": name,
+            "candidate_type": kind, "scoped_slug": scoped,
+        }}
+    except Exception as exc:
+        log.warning("resource-name check failed for scope %r: %s", scoped_slug, exc, exc_info=True)
+        return {"resource_check_error": f"{type(exc).__name__}: {exc}"}
+
+
 def _fuzzy_alias_suggestion(query: str) -> dict | None:
     """
     Return {term, candidate_slug, candidate_name} if a fuzzy match exists for the query
@@ -525,5 +638,25 @@ def _fuzzy_alias_suggestion(query: str) -> dict | None:
             "candidate_slug": slug,
             "candidate_name": project.display_name if project else slug,
         }
-    except Exception:
+    except Exception as exc:
+        # Observable, not swallowed: a registry error here used to read as "nothing to suggest".
+        log.warning("alias suggestion failed: %s", exc, exc_info=True)
+        return None
+
+
+def _disambiguation_chips(query: str, scope_slug: str | None = None) -> list[dict] | None:
+    """Candidate resource chips when a cross-resource question names fewer than 2 resources.
+
+    The agents infer their targets from the question text alone, so the resource open in the UI
+    does not count as named -- it is only ranked first.
+    """
+    try:
+        from resource_explorer.resource_chips import candidate_chips
+
+        named = _NameProbe.make()._infer_all_project_slugs(query)
+        if len(named) >= 2:
+            return None
+        return candidate_chips(query, named, scope_slug) or None
+    except Exception as exc:
+        log.warning("disambiguation chips lookup failed: %s", exc, exc_info=True)
         return None

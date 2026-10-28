@@ -304,3 +304,103 @@ def diff_scopes(live: list[dict], expected: set[str]) -> ScopeReconcileResult:
 
     result.missing = sorted(expected - seen_display_names)
     return result
+
+
+# ── executor reconciliation (engine host case 3, decision 2) ─────────────────
+#
+# docs/design-notes/SLICE-ENGINE-HOST-CASE3-RE-DEFINITIONS-DISPATCHED-BY-EGERIA.md: every step of a published
+# Survey Definition that RE runs (`executes_at: resource-explorer`) carries exactly ONE `GovernanceActionExecutor`,
+# to RE's engine, with the request type of its step key. "Link Action to Action Executor" is not idempotent, so a
+# republish can leave two; an old definition has none. Both, a wrong request type, a wrong engine, and an executor to
+# RE's engine on a step that says it runs elsewhere (`executes_at` and the executor disagree, design §4.1) are DRIFT:
+# reported, never repaired silently (no write path here at all).
+
+EXECUTOR_RELATIONSHIP = "GovernanceActionExecutor"
+
+
+@dataclass
+class StepExecutor:
+    """One `GovernanceActionExecutor` of a process step, as Egeria answered it."""
+    relationship_guid: str = ""
+    engine_guid: str = ""
+    engine_qualified_name: str = ""
+    request_type: str = ""
+
+
+@dataclass
+class ExecutorDrift:
+    step_qualified_name: str
+    step_key: str
+    #: "missing" | "several" | "wrong_engine" | "wrong_request_type" | "executes_at_disagrees"
+    problem: str
+    detail: str
+
+
+def _prop(element: dict, name: str) -> str:
+    props = (element or {}).get("elementProperties") or {}
+    value = (props.get("propertiesAsStrings") or {}).get(name)
+    if value is None:
+        entry = (props.get("propertyValueMap") or {}).get(name) or {}
+        value = entry.get("primitiveValue") if isinstance(entry, dict) else None
+    return str(value or "")
+
+
+def executors_from_related(answer) -> list[StepExecutor]:
+    """Pure: the executors of a process step from `MetadataExpert.get_all_related_elements(step guid,
+    graph_query_depth=1)` (the step is end 1 of `GovernanceActionExecutor`, the engine end 2). Egeria's exact "No
+    elements found" for a step with no relationships is no executor; any other non-graph answer raises."""
+    if isinstance(answer, str):
+        if " ".join(answer.split()).lower().rstrip(".") == "no elements found":
+            return []
+        raise ValueError(f"Egeria answered the step's relationships with {answer[:200]!r}")
+    if not isinstance(answer, dict):
+        raise TypeError(f"Egeria answered the step's relationships with {type(answer).__name__}")
+    out = []
+    for entry in answer.get("elementList") or []:
+        if ((entry.get("type") or {}).get("typeName")) != EXECUTOR_RELATIONSHIP or entry.get("elementAtEnd1"):
+            continue
+        engine = entry.get("element") or {}
+        rp = ((entry.get("relationshipProperties") or {}).get("propertiesAsStrings") or {})
+        out.append(StepExecutor(relationship_guid=str(entry.get("relationshipGUID") or ""),
+                                engine_guid=str(engine.get("elementGUID") or ""),
+                                engine_qualified_name=_prop(engine, "qualifiedName"),
+                                request_type=str(rp.get("requestType") or "")))
+    return out
+
+
+def diff_executors(step_qualified_name: str, step_key: str, executes_at: str, executors: list[StepExecutor], *,
+                   engine_qualified_name: str, engine_guid: str = "", expected_request_type: str) -> list[ExecutorDrift]:
+    """Pure: the drift of ONE step's executors against decision 2. Empty when the step is as published.
+
+    A step RE runs (`executes_at == "resource-explorer"`): exactly one executor, to RE's engine (by qualifiedName,
+    or by GUID when the engine element answered without one), with `expected_request_type`. A step that runs
+    elsewhere: no executor to RE's engine (its own engines are not RE's to check)."""
+    def is_re(e: StepExecutor) -> bool:
+        return bool((e.engine_qualified_name and e.engine_qualified_name == engine_qualified_name)
+                    or (engine_guid and e.engine_guid == engine_guid))
+
+    out: list[ExecutorDrift] = []
+    if executes_at != "resource-explorer":
+        if any(is_re(e) for e in executors):
+            out.append(ExecutorDrift(step_qualified_name, step_key, "executes_at_disagrees",
+                                     f"executes_at is {executes_at!r} but the step has an executor to "
+                                     f"{engine_qualified_name}"))
+        return out
+    if not executors:
+        return [ExecutorDrift(step_qualified_name, step_key, "missing",
+                              f"no executor: Egeria cannot dispatch it (expected {engine_qualified_name}, "
+                              f"{expected_request_type})")]
+    if len(executors) > 1:
+        out.append(ExecutorDrift(step_qualified_name, step_key, "several",
+                                 f"{len(executors)} executors, expected one (a repeated 'Link Action to Action "
+                                 "Executor'): " + "; ".join(f"{e.engine_qualified_name or e.engine_guid} "
+                                                            f"{e.request_type}" for e in executors)))
+    for e in executors:
+        if not is_re(e):
+            out.append(ExecutorDrift(step_qualified_name, step_key, "wrong_engine",
+                                     f"executor to {e.engine_qualified_name or e.engine_guid or 'an unnamed engine'}"
+                                     f", not {engine_qualified_name}"))
+        elif e.request_type != expected_request_type:
+            out.append(ExecutorDrift(step_qualified_name, step_key, "wrong_request_type",
+                                     f"request type {e.request_type or '(none)'}, expected {expected_request_type}"))
+    return out

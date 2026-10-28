@@ -118,13 +118,15 @@ class TestApiWrappers:
 class TestServerListAndRegistration:
     def test_empty_state_offers_registration(self):
         src = _db_discovery_src()
-        assert "No database servers are registered yet" in src
+        # Slice 1 of the Find dialog (FIND-DATABASES-DIALOG-IMPLEMENTED.md): the
+        # registered servers are the "Saved sources" tab.
+        assert "No saved sources yet" in src
         assert 'data-act="new-server"' in src
 
     def test_registered_server_row_offers_test_discover_remove(self):
         src = _db_discovery_src()
         assert "data-test=" in src
-        assert "data-discover=" in src
+        assert "data-run=" in src          # was data-discover: Run is the saved source's act now
         assert "data-remove=" in src
 
     def test_missing_credentials_are_flagged(self):
@@ -144,9 +146,12 @@ class TestServerListAndRegistration:
         for field in (
             "slug", "display_name", "db_type", "host", "port", "description",
             "db_user", "db_password", "egeria_host", "egeria_url",
-            "egeria_server", "egeria_user", "egeria_password", "group_slug",
+            "egeria_server", "group_slug",
         ):
             assert f"{field}:" in src
+        # Per-resource Egeria credentials are no longer offered (owner, 2026-10-09).
+        for field in ("egeria_user", "egeria_password"):
+            assert f"{field}:" not in src
 
     def test_egeria_section_is_collapsed_by_default(self):
         src = _db_discovery_src()
@@ -161,44 +166,49 @@ class TestServerListAndRegistration:
         src = _db_discovery_src()
         fn = src[src.index("async function removeServerRow"):]
         fn = fn[:fn.index("\n}\n")]
-        assert "window.confirm" in fn
+        assert "inPageConfirm" in fn
         assert "deleteDbServer(slug)" in fn
 
 
 class TestDiscoverAndAddFlow:
     def test_discover_calls_the_real_discover_endpoint(self):
         src = _db_discovery_src()
-        fn = src[src.index("async function openDiscover"):]
-        fn = fn[:fn.index("\n}\n")]
-        assert "discoverDatabases(slug)" in fn
+        # A saved source's Run is POST /api/db-servers/{slug}/run (discover +
+        # the stored last-run comparison); the one-off tab is _discover-inline.
+        src_fn = src[src.index("async function runSource"):]
+        src_fn = src_fn[:src_fn.index("\n}\n")]
+        assert "runDatabaseSource(slug)" in src_fn
+        api = _reapi_src()
+        assert "/api/db-servers/${encodeURIComponent(slug)}/run" in api
+        assert "/api/db-servers/_discover-inline" in api
 
     def test_already_registered_rows_are_disabled_and_pre_checked(self):
         # Classic's own rule (index.html's _fetchDiscoverDatabases): a
         # database already in the databases table shows greyed-out and
         # checked, not silently re-addable.
         src = _db_discovery_src()
-        assert "db.is_registered" in src
+        assert "r.is_registered" in src
         assert "disabled checked" in src
 
     def test_nothing_is_added_until_add_selected_is_pressed(self):
         src = _db_discovery_src()
-        assert 'data-act="add-selected"' in src
-        assert "addSelected" in src
+        assert 'data-act="confirm"' in src
+        assert "confirmAdd" in src
 
     def test_add_selected_calls_the_real_endpoint_per_database(self):
         src = _db_discovery_src()
-        fn = src[src.index("async function addSelected"):]
+        fn = src[src.index("async function confirmAdd"):]
         fn = fn[:fn.index("refreshGroupsAndSidebar")]
-        assert "addDiscoveredDatabase(slug, db.name)" in fn
+        assert "addDiscoveredDatabase(slug, r.name)" in fn
         # Loops rather than assuming a single bulk endpoint -- the backend
         # route only ever registers one database name at a time.
-        assert "for (const db of chosen)" in fn
+        assert "for (const r of chosen)" in fn
 
     def test_add_selected_reports_partial_failures_not_just_a_count(self):
         # find-absence-as-answer-style check: a failure per database must
         # not be silently swallowed by only counting successes.
         src = _db_discovery_src()
-        fn = src[src.index("async function addSelected"):]
+        fn = src[src.index("async function confirmAdd"):]
         fn = fn[:fn.index("refreshGroupsAndSidebar")]
         assert "failures" in fn
         assert "catch (err)" in fn
@@ -210,7 +220,7 @@ class TestSidebarRefreshAfterAdding:
 
     def test_add_selected_refreshes_the_sidebar(self):
         src = _db_discovery_src()
-        fn = src[src.index("async function addSelected"):]
+        fn = src[src.index("async function confirmAdd"):]
         fn = fn[:fn.index("\n}\n")]
         assert "refreshGroupsAndSidebar()" in fn
 

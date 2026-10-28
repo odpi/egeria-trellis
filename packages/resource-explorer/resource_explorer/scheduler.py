@@ -66,6 +66,8 @@ isn't a SurveyOrchestrator step at all).
 """
 from __future__ import annotations
 
+from contextlib import contextmanager
+
 import logging
 import threading
 import time
@@ -141,18 +143,36 @@ def _scheduler_loop(stop: threading.Event | None = None) -> None:
             time.sleep(_CHECK_INTERVAL_SECONDS)
         elif stop.wait(_CHECK_INTERVAL_SECONDS):
             break
-        try:
-            _run_due()
-        except Exception:
-            log.exception("Scheduler iteration failed")
-        try:
-            _reconcile_rfa_actions()
-        except Exception:
-            log.exception("RFA reconciliation iteration failed")
-        try:
-            _drain_egeria_outbox()
-        except Exception:
-            log.exception("Egeria outbox drain iteration failed")
+        _tick()
+
+
+def _tick() -> None:
+    """One scheduler pass, declared as RE's daemon identity (Brief I): scheduled surveys, RFA
+    reconciliation and the native-survey sweep run as `Daemon(SCHEDULER)`; the outbox drain
+    declares its own `Daemon(OUTBOX)`."""
+    from resource_explorer.egeria_clients import Daemon, DaemonReason, acting_as
+
+    with acting_as(Daemon(DaemonReason.SCHEDULER)):
+        _tick_body()
+
+
+def _tick_body() -> None:
+    try:
+        _run_due()
+    except Exception:
+        log.exception("Scheduler iteration failed")
+    try:
+        _reconcile_rfa_actions()
+    except Exception:
+        log.exception("RFA reconciliation iteration failed")
+    try:
+        _drain_egeria_outbox()
+    except Exception:
+        log.exception("Egeria outbox drain iteration failed")
+    try:
+        _sweep_native_surveys()
+    except Exception:
+        log.exception("Native Egeria survey read-back iteration failed")
 
 
 def _reconcile_rfa_actions() -> None:
@@ -165,6 +185,31 @@ def _reconcile_rfa_actions() -> None:
 
     registry = ProjectRegistry()
     reconcile_rfa_actions(registry)
+
+
+def _sweep_native_surveys() -> None:
+    """BRIEF-NATIVE-EGERIA-SURVEY-LAUNCH.md gate point 3 -- "the row moves to
+    complete on its own". A native survey takes minutes (a 157-table database
+    took ~14), so a browser tab cannot be the only thing that reads it back.
+    Reuses this loop, as the RFA and outbox passes above do.
+
+    Runs in a raw scheduler thread with NO signed-in caller, and that is
+    correct here rather than a leak: it reads Egeria read-only and writes the
+    proof rows of runs somebody else submitted. It never decides visibility
+    or attribution from the caller (`sweep_in_flight` takes no identity), which
+    is the one safe shape for code that runs on nobody's behalf. With nothing
+    in flight it is a single registry query and no Egeria call."""
+    from resource_explorer import catalog_and_survey, native_survey_run
+    from resource_explorer.registry import ProjectRegistry
+
+    registry = ProjectRegistry()
+    if not registry.list_in_flight_native_survey_runs(limit=1):
+        return
+    # The registration port is the survey port plus the reads a registration run needs.
+    with native_survey_run.port_session(catalog_and_survey.PyegeriaRegistrationPort()) as port:
+        n = native_survey_run.sweep_in_flight(registry, port)
+    if n:
+        log.info("Native Egeria survey read-back: read %d in-flight run(s)", n)
 
 
 def _drain_egeria_outbox() -> None:
@@ -180,8 +225,18 @@ def _drain_egeria_outbox() -> None:
     from resource_explorer.egeria_outbox import drain_outbox
     from resource_explorer.registry import ProjectRegistry
 
+    from resource_explorer.egeria_clients import Daemon, DaemonReason
+
     registry = ProjectRegistry()
-    summary = drain_outbox(registry)
+    # Runs from before the read-back existed get one, so their word can reach its proof (bounded per pass).
+    try:
+        backfilled = registry.queue_missing_read_backs()
+        if backfilled:
+            log.info("Egeria outbox: queued %d read-back(s) for earlier publish runs", backfilled)
+    except Exception:
+        log.exception("Egeria outbox: read-back backfill failed")
+    # The background loop is the one drain that runs as the daemon (Brief I).
+    summary = drain_outbox(registry, identity=Daemon(DaemonReason.OUTBOX))
     if summary.get("claimed"):
         log.info("Egeria outbox drain: %s", summary)
 
@@ -289,6 +344,29 @@ def _coalesce_repo_surveys(due: list[dict], registry) -> dict[tuple[str, str], l
     return results
 
 
+@contextmanager
+def _as_schedule_creator(sched: dict):
+    """Brief Z2 round 3: a timer run runs as the person who created (or last enabled) the schedule, as run_queue
+    runs a queued row as its requester: the caller ContextVar names them (so the run-time access re-check,
+    `workflows.curate.person_write_refusal`, judges THEIR rights), and Egeria is reached as
+    `Daemon(SCHEDULER, requested_by=<them>)`. A schedule with no `created_by` (every one from before the column)
+    runs with no requester, which writes only while no zone is in use."""
+    from resource_explorer.a2a_auth import CallerIdentity, current_caller
+    from resource_explorer.egeria_clients import Daemon, DaemonReason, acting_as
+
+    creator = (sched.get("created_by") or "").strip()
+    if not creator:
+        yield
+        return
+    reset = current_caller.set(CallerIdentity(user_id=creator, egeria_token=None, auth_source="scheduled-run",
+                                              role="user"))
+    try:
+        with acting_as(Daemon(DaemonReason.SCHEDULER, requested_by=creator)):
+            yield
+    finally:
+        current_caller.reset(reset)
+
+
 def _run_due() -> None:
     from resource_explorer.activity_logger import log_survey
     from resource_explorer.registry import ProjectRegistry
@@ -323,9 +401,10 @@ def _run_due() -> None:
                 entity_location = project.github_url if project else ""
                 errors = batched[batch_key]
             else:
-                entity_name, entity_location, errors = _execute(
-                    entity_type, entity_slug, analysis_id, registry, next_run,
-                    target_kind=sched.get("target_kind") or TARGET_ANALYSIS)
+                with _as_schedule_creator(sched):
+                    entity_name, entity_location, errors = _execute(
+                        entity_type, entity_slug, analysis_id, registry, next_run,
+                        target_kind=sched.get("target_kind") or TARGET_ANALYSIS)
             status = "error" if errors else "ok"
             detail = "; ".join(errors) if errors else ""
         except Exception as exc:
@@ -484,7 +563,7 @@ def _run_scheduled_survey(
     )
 
     entity = (registry.get(entity_slug) if entity_type == "repo"
-              else registry.get_database(entity_slug))
+              else registry.get_database(entity_slug, allow_unreadable=True))
     name = getattr(entity, "display_name", "") or entity_slug
     location = getattr(entity, "github_url", "") or ""
     try:
@@ -628,7 +707,7 @@ def _run_repo_survey_definition(project, analysis_id: str, registry) -> tuple[st
 
 
 def _run_db_survey(slug: str, analysis_id: str, registry, next_run: str = "") -> tuple[str, str, list[str]]:
-    db = registry.get_database(slug)
+    db = registry.get_database(slug, allow_unreadable=True)
     if not db:
         return (slug, "", [f"Database '{slug}' not found — schedule may be stale"])
 
@@ -648,6 +727,11 @@ def _run_db_survey(slug: str, analysis_id: str, registry, next_run: str = "") ->
         DB_DERIVED_ANALYSES,
         run_db_derived,
     )
+
+    if analysis_id not in DB_DERIVED_ANALYSES and getattr(db, "credential_status", "") == "unreadable":
+        # One database with an undecryptable credential fails honestly for
+        # itself only; db_derived (no credentials) still runs above.
+        return (db.display_name, db.host, [f"credential unreadable: re-enter credentials for {slug}"])
 
     if analysis_id in DB_DERIVED_ANALYSES:
         try:
@@ -723,8 +807,8 @@ def _run_local_db_survey(db, registry, analysis_id: str = "") -> tuple[str, str,
 def _run_egeria_native_db_survey(db, next_run: str) -> tuple[str, str, list[str]]:
     if not db.egeria_asset_guid:
         return (db.display_name, db.host, [
-            "Database is not yet cataloged in Egeria (no stored egeria_asset_guid) — "
-            "catalog/publish it first (Scouting's survey report or Curate), or run this "
+            "Database is not yet published to Egeria (no stored egeria_asset_guid) — "
+            "publish it first (Scouting's survey report or Curate), or run this "
             "survey manually, before scheduling the native re-survey."
         ])
 

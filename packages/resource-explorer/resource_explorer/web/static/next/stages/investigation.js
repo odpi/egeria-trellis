@@ -23,32 +23,72 @@
  * way classic's nav-level Investigations tab and its per-repo "add to
  * investigation" toggle always have.
  */
-import { ago } from '/static/next/format.js';
+import { ago, readBackAt } from '/static/next/format.js';
+
+/** A sentence on the element it is about (the owner's rule: state on the element, not a pop-up): a small
+ *  warning span right after `el`, replaced by the next one. */
+function inlineNote(el, text) {
+  let n = el.nextElementSibling;
+  if (!n || !n.hasAttribute('data-inline-note')) {
+    n = document.createElement('span');
+    n.setAttribute('data-inline-note', '1');
+    n.setAttribute('role', 'status');
+    n.className = 'ml-s1 text-provenance text-state-warn';
+    el.insertAdjacentElement('afterend', n);
+  }
+  n.textContent = text;
+}
 import {
-  listInvestigations, getInvestigationPurposes, getInvestigationClassifications,
+  listInvestigations, getInvestigationClassifications,
   getInvestigation, createInvestigation, updateInvestigation,
   listInvestigationMembers, addInvestigationMember, removeInvestigationMember,
   closeInvestigation, suspendInvestigation, reopenInvestigation,
   bindInvestigationEgeriaProject, promoteInvestigation, reclassifyInvestigation,
-  relinkInvestigationMembers, syncInvestigationEgeria,
+  relinkInvestigationMembers, syncInvestigationEgeria, getInvestigationLinkStatus,
   getInvestigationDispositions, setInvestigationDisposition, getInvestigationNextSteps,
+  fetchScopeCsv,
 } from '/static/re-api.js';
 import {
   state, esc, $, icon, setInvestigation, refreshInvestigationsAndSidebar,
   ensureResourceListLoaded,
 } from '/static/next/app.js';
+import {
+  loadPurposes, purposesNow, purposePickerHtml, readPurposePicker, wirePurposePicker, purposesSummaryHtml,
+} from '/static/next/purposes.js';
 import { openDialog, closeCellDetail } from '/static/next/worklist.js';
+import { saveCsv } from '/static/next/download.js';
+import { inPageConfirm } from '/static/next/confirm-dialog.js';
+import { cue } from '/static/next/stages/repo-manifest.js';
+
+/** Brief Z3: a refusal by the zone check (403) is the no_access cue plus "not permitted", the reason on hover;
+ *  any other failure keeps its own words. */
+const refusalHtml = (err) => (err && err.status === 403
+  ? cue('no_access', 'not permitted', err.message)
+  : `<span class="text-state-warn">${esc(err?.message || '')}</span>`);
+
+/** A member line of a promote/relink result: a member the check refused carries the cue, its reason on hover. */
+const memberLine = (m) => {
+  const name = esc(m.entity_slug || m.entity_type || '?');
+  const reason = String(m.reason || '');
+  if (reason.startsWith('not permitted')) {
+    return `<span data-member-not-permitted="${name}">${cue('no_access', 'not permitted', reason.replace(/^not permitted · /, ''))} ${name}</span>`;
+  }
+  return esc(`${m.entity_slug || m.entity_type || '?'}${reason ? ` (${reason})` : ''}`);
+};
 
 // Module-local view state — which investigation (if any) is open, and
 // whether the list includes closed ones. Not on `state`: nothing outside
 // this pane reads it, same reasoning as automate.js's `_tab`.
 let _detailSlug = null;
+// Bumped by every renderDetail(); a response that arrives after a newer
+// render, a different investigation, or leaving the stage is dropped.
+let _detailSeq = 0;
 let _includeClosed = false;
 
-// Vocabularies are server-served (registry.py's PROJECT_CLASSIFICATIONS /
-// VALID_PURPOSES / dispositions) and cached here for the life of the page —
-// they change when someone edits Python, not per click.
-let _purposes = null;
+// Vocabularies are server-served and cached here for the life of the page. Classifications are
+// registry.py's PROJECT_CLASSIFICATIONS. Purposes are Egeria's list (owner ruling 2026-10-13), loaded once
+// through purposes.js, which every purpose picker shares; the answer carries where it came from (Egeria,
+// a labelled cache, or RE's shipped seed).
 let _classifications = null;
 
 const DISPOSITION_GLYPH = {
@@ -56,21 +96,32 @@ const DISPOSITION_GLYPH = {
   using: '✅', abandoned: '🪦', ignored: '🚫',
 };
 
-async function vocab() {
-  if (!_purposes) {
-    try { _purposes = (await getInvestigationPurposes()).purposes || []; } catch { _purposes = []; }
-  }
+export async function investigationVocab() {
+  const purposeVocab = await loadPurposes();
   if (!_classifications) {
     try { _classifications = await getInvestigationClassifications(); } catch {
       _classifications = { classifications: [], bindings: [], default_classification: 'StudyProject', default_binding: 'egeria' };
     }
   }
-  return { purposes: _purposes, classifications: _classifications };
+  return { purposes: purposeVocab.purposes, purposeVocab, classifications: _classifications };
 }
 
 export async function renderInvestigation() {
   if (_detailSlug) return renderDetail(_detailSlug);
   return renderList();
+}
+
+/** THE refresh mechanism for the open investigation page. Every writer that
+ *  changes an investigation's members from outside this pane (the Find
+ *  databases dialog's confirm, the sidebar's "＋ scope" / "− scope") calls
+ *  this once after its writes. It re-fetches and re-renders only when that
+ *  investigation's detail is the pane the person is looking at; otherwise it
+ *  does nothing, and the next open fetches fresh (this file caches nothing). */
+export function refreshOpenInvestigation(slug) {
+  if (state.stage === 'investigation' && _detailSlug && _detailSlug === slug) {
+    return renderDetail(slug);
+  }
+  return Promise.resolve();
 }
 
 /** Called from app.js's resource header ("Open Investigation →", the /next
@@ -94,6 +145,10 @@ function bindingGlyph(inv) {
   // not a display string — {status, egeria_project_guid,
   // egeria_project_qualified_name, free_text_name}. Use the qualified name
   // straight off the row, same as the detail view does.
+  if (!inv.egeria_project_guid && inv.egeria_context && inv.egeria_context.status === 'unbound') {
+    // After an Egeria reset: the project it named is gone. Not "local" (a choice) and not "Egeria" (a project).
+    return '<span class="text-state-warn" title="unbound by reset \u00b7 rebind to recreate">unbound by reset</span>';
+  }
   return inv.egeria_project_guid
     ? `<span title="${esc(inv.egeria_project_qualified_name || 'bound to an Egeria Project')}">☁ Egeria</span>`
     : '<span class="text-ink-muted" title="no Egeria Project">🏠 local</span>';
@@ -105,6 +160,9 @@ async function renderList() {
   bindListHeader();
 
   let rows;
+  // The list is drawn without waiting for the purposes list (a slow Egeria read must not hold the page);
+  // the cells are filled with their cues once it arrives. Until then no cue is drawn: no list, no claim.
+  const purposeNames = purposesNow()?.purposes || [];
   try {
     rows = await listInvestigations({ includeClosed: _includeClosed });
   } catch (err) {
@@ -119,17 +177,17 @@ async function renderList() {
         <th class="pb-s2 pr-s3 font-normal">Investigation</th>
         <th class="pb-s2 pr-s3 font-normal">Purposes</th>
         <th class="pb-s2 pr-s3 font-normal">Status</th>
-        <th class="pb-s2 pr-s3 font-normal">Members</th>
+        <th class="pb-s2 pr-s3 font-normal">Scope</th>
         <th class="pb-s2 font-normal">Egeria</th>
       </tr></thead>
       <tbody>${rows.map((inv) => `
-        <tr class="cursor-pointer border-b border-rule hover:bg-paper-alt" data-open-inv="${esc(inv.slug)}">
+        <tr class="cursor-pointer border-b border-rule hover:bg-paper-surface" data-open-inv="${esc(inv.slug)}">
           <td class="py-s2 pr-s3 text-answer text-ink">
             ${inv.slug === state.investigation ? '<span title="current investigation">★ </span>' : ''}
             ${esc(inv.display_name || inv.slug)}
             ${inv.visibility === 'private' ? `<span class="ml-[4px] text-caveat text-ink-muted" title="${esc(inv.visibility_note || 'visible only to its creator')}">🔒</span>` : ''}
           </td>
-          <td class="py-s2 pr-s3 text-caveat text-ink-muted">${(inv.purposes || []).map(esc).join(', ') || '—'}</td>
+          <td class="py-s2 pr-s3 text-caveat text-ink-muted" data-inv-purposes-cell="${esc(inv.slug)}">${purposesSummaryHtml(inv, purposeNames) || '—'}</td>
           <td class="py-s2 pr-s3 text-caveat">${statusGlyph(inv.status)}</td>
           <td class="py-s2 pr-s3 text-caveat tnum text-ink-muted">${inv.member_count ?? 0}</td>
           <td class="py-s2 text-caveat">${bindingGlyph(inv)}</td>
@@ -143,6 +201,15 @@ async function renderList() {
     _detailSlug = tr.dataset.openInv;
     renderInvestigation();
   }));
+  if (!purposeNames.length) {
+    loadPurposes().then((vocab) => {
+      const bySlug = new Map(rows.map((inv) => [inv.slug, inv]));
+      el.querySelectorAll('[data-inv-purposes-cell]').forEach((cell) => {
+        const inv = bySlug.get(cell.dataset.invPurposesCell);
+        if (inv) cell.innerHTML = purposesSummaryHtml(inv, vocab.purposes) || '—';
+      });
+    });
+  }
 }
 
 function listHeaderHtml() {
@@ -170,13 +237,17 @@ function bindListHeader() {
     _includeClosed = e.target.checked;
     renderList();
   });
-  el.querySelector('[data-act="inv-new"]')?.addEventListener('click', openCreateDialog);
+  el.querySelector('[data-act="inv-new"]')?.addEventListener('click', () => openCreateDialog());
 }
 
 /* ── Create ───────────────────────────────────────────────────────────── */
 
-async function openCreateDialog() {
-  const { purposes, classifications } = await vocab();
+/** The one "New investigation" dialog. From the Investigations list it
+ *  navigates to the new investigation's page. The picker (investigation-
+ *  picker.js) passes `onCreated(inv)` instead, so "start a new one" reuses this
+ *  form and carries on with whatever the person was doing, not a page change. */
+export async function openCreateDialog({ onCreated = null } = {}) {
+  const { purposeVocab, classifications } = await investigationVocab();
   const d = openDialog('New investigation', '');
   const body = d.querySelector('#wl-detail-body');
   body.innerHTML = `
@@ -185,10 +256,7 @@ async function openCreateDialog() {
     <label class="mb-[3px] block text-caveat text-ink-muted">Description</label>
     <textarea id="inv-new-desc" rows="2" class="mb-s2 w-full rounded-sm border border-rule bg-paper px-2 py-1 text-caveat text-ink"></textarea>
     <label class="mb-[3px] block text-caveat text-ink-muted">Purposes</label>
-    <div class="mb-s2 flex flex-wrap gap-s2">
-      ${purposes.map((p) => `<label class="inline-flex cursor-pointer items-center gap-[4px] text-caveat text-ink">
-        <input type="checkbox" class="inv-new-purpose" value="${esc(p)}"> ${esc(p)}</label>`).join('')}
-    </div>
+    <div class="mb-s2">${purposePickerHtml({ prefix: 'inv-new', vocab: purposeVocab })}</div>
     <label class="mb-[3px] block text-caveat text-ink-muted">Kind</label>
     <select id="inv-new-class" class="mb-s2 w-full rounded-sm border border-rule bg-paper px-2 py-1 text-caveat text-ink">
       ${classifications.classifications.map((c) => `<option value="${esc(c.name)}" ${
@@ -223,12 +291,13 @@ async function openCreateDialog() {
   };
   classSel.addEventListener('change', syncHyp);
   syncHyp();
+  wirePurposePicker(body, 'inv-new');
 
   body.querySelector('#inv-new-submit').addEventListener('click', async () => {
     const name = body.querySelector('#inv-new-name').value.trim();
     const errEl = body.querySelector('#inv-new-error');
     if (!name) { errEl.textContent = 'Name is required.'; return; }
-    const selectedPurposes = [...body.querySelectorAll('.inv-new-purpose:checked')].map((c) => c.value);
+    const picked = readPurposePicker(body, 'inv-new');
     const projectClassification = classSel.value;
     const hypothesis = body.querySelector('#inv-new-hyp').value.trim();
     if (requiresHyp(projectClassification) && !hypothesis) {
@@ -237,18 +306,20 @@ async function openCreateDialog() {
     }
     const btn = body.querySelector('#inv-new-submit');
     btn.disabled = true;
-    btn.textContent = 'Creating…';
+    btn.textContent = 'Publishing…';
     try {
       const inv = await createInvestigation({
         displayName: name,
         description: body.querySelector('#inv-new-desc').value.trim(),
-        purposes: selectedPurposes,
+        purposes: picked.purposes,
+        purposeText: picked.purpose_text,
         projectClassification,
         egeriaBinding: body.querySelector('#inv-new-binding').value,
         hypothesis,
       });
       closeCellDetail();
       await refreshInvestigationsAndSidebar();
+      if (onCreated) { await onCreated(inv); return; }
       _detailSlug = inv.slug;
       await renderInvestigation();
     } catch (err) {
@@ -272,6 +343,8 @@ function detailHeaderHtml(inv) {
 
 async function renderDetail(slug) {
   const el = $('content');
+  const seq = ++_detailSeq;
+  const stale = () => seq !== _detailSeq || _detailSlug !== slug || state.stage !== 'investigation';
   el.innerHTML = `<p class="text-answer text-ink-muted">Loading…</p>`;
 
   let inv, members, dispositions, nextSteps;
@@ -283,6 +356,7 @@ async function renderDetail(slug) {
       getInvestigationNextSteps(slug),
     ]);
   } catch (err) {
+    if (stale()) return;
     el.innerHTML = `<button data-act="inv-back" type="button"
         class="mb-s3 cursor-pointer bg-transparent text-caveat text-accent-ink underline">← Investigations</button>
       <p class="max-w-[70ch] text-answer text-state-warn">Could not load '${esc(slug)}': ${esc(err.message)}</p>`;
@@ -290,15 +364,29 @@ async function renderDetail(slug) {
     return;
   }
 
-  const { classifications } = await vocab();
+  if (stale()) return;
+  // Link status is a read of what relink recorded; a failed read is "unavailable", never a zero.
+  _linkStatus[slug] = null;
+  _linkMembers[slug] = null;
+  if (inv.egeria_project_guid) {
+    try {
+      const ls = await getInvestigationLinkStatus(slug);
+      if (ls && ls.counts) _linkStatus[slug] = ls.counts;
+      // The per-member rows come from the SAME response: state (linked | not_linked | could_not_tell) and reason.
+      if (ls && Array.isArray(ls.members)) _linkMembers[slug] = ls.members;
+    } catch { /* leaves null: shown as unavailable */ }
+    if (stale()) return;
+  }
+  const { classifications, purposes: purposeNames } = await investigationVocab();
+  if (stale()) return;
   const classLabel = classifications.classifications.find((c) => c.name === inv.project_classification)?.label
     || inv.project_classification;
 
   const isCurrent = inv.slug === state.investigation;
   const lifecycleButtons = inv.status === 'open'
-    ? `<button data-act="inv-suspend" class="${btnCls()}">Suspend</button>
-       <button data-act="inv-close" class="${btnCls()}">Close</button>`
-    : `<button data-act="inv-reopen" class="${btnCls()}">Reopen</button>`;
+    ? `<button data-act="inv-suspend" class="cursor-pointer rounded-sm border border-rule-strong bg-transparent px-2 py-[2px] text-caveat text-ink hover:border-accent disabled:cursor-default disabled:opacity-60">Suspend</button>
+       <button data-act="inv-close" class="cursor-pointer rounded-sm border border-rule-strong bg-transparent px-2 py-[2px] text-caveat text-ink hover:border-accent disabled:cursor-default disabled:opacity-60">Close</button>`
+    : `<button data-act="inv-reopen" class="cursor-pointer rounded-sm border border-rule-strong bg-transparent px-2 py-[2px] text-caveat text-ink hover:border-accent disabled:cursor-default disabled:opacity-60">Reopen</button>`;
 
   el.innerHTML = `${detailHeaderHtml(inv)}
     <div class="mb-s3 flex flex-wrap items-center gap-s2 text-caveat text-ink-muted">
@@ -307,15 +395,15 @@ async function renderDetail(slug) {
         ? `<span title="${esc(inv.hypothesis)}">· hypothesis set</span>` : ''}
       <span>·</span>
       ${bindingGlyph(inv)}
-      ${(inv.purposes || []).length ? `<span>· ${inv.purposes.map(esc).join(', ')}</span>` : ''}
+      ${purposesSummaryHtml(inv, purposeNames) ? `<span data-inv-purposes>· ${purposesSummaryHtml(inv, purposeNames)}</span>` : ''}
       ${inv.visibility === 'private' ? `<span title="${esc(inv.visibility_note || '')}">· 🔒 private</span>` : ''}
     </div>
     <p class="max-w-[70ch] text-answer text-ink">${esc(inv.description || 'No description.')}</p>
     <div class="mb-s3 flex flex-wrap gap-s2">
-      <button data-act="inv-make-current" class="${btnCls()}" ${isCurrent ? 'disabled' : ''}>${
+      <button data-act="inv-make-current" class="cursor-pointer rounded-sm border border-rule-strong bg-transparent px-2 py-[2px] text-caveat text-ink hover:border-accent disabled:cursor-default disabled:opacity-60" ${isCurrent ? 'disabled' : ''}>${
         isCurrent ? 'Current investigation' : 'Make current'}</button>
-      <button data-act="inv-edit" class="${btnCls()}">Edit</button>
-      <button data-act="inv-reclassify" class="${btnCls()}">Reclassify…</button>
+      <button data-act="inv-edit" class="cursor-pointer rounded-sm border border-rule-strong bg-transparent px-2 py-[2px] text-caveat text-ink hover:border-accent disabled:cursor-default disabled:opacity-60">Edit</button>
+      <button data-act="inv-reclassify" class="cursor-pointer rounded-sm border border-rule-strong bg-transparent px-2 py-[2px] text-caveat text-ink hover:border-accent disabled:cursor-default disabled:opacity-60">Reclassify…</button>
       ${lifecycleButtons}
     </div>
     <div id="inv-edit-form"></div>
@@ -327,7 +415,7 @@ async function renderDetail(slug) {
       <li class="mb-s2 rounded-sm border border-rule p-s2">
         <div class="text-answer text-ink">${esc(s.title)}</div>
         <div class="text-caveat text-ink-muted">${esc(s.detail || '')}</div>
-        ${s.action ? `<button data-next-step="${esc(s.action)}" class="${btnCls()} mt-s1">Go</button>` : ''}
+        ${s.action ? `<button data-next-step="${esc(s.action)}" class="cursor-pointer rounded-sm border border-rule-strong bg-transparent px-2 py-[2px] text-caveat text-ink hover:border-accent disabled:cursor-default disabled:opacity-60 mt-s1">Go</button>` : ''}
       </li>`).join('')}</ul>`
       : `<p class="mb-s3 text-caveat text-ink-muted">${nextSteps.complete ? 'Nothing outstanding.' : 'No next steps offered.'}</p>`}
 
@@ -339,27 +427,82 @@ async function renderDetail(slug) {
     <div id="inv-egeria-form"></div>
 
     <div class="my-s3 h-px bg-rule"></div>
-    <h4 class="m-0 mb-s2 font-heading text-subtab font-normal text-ink">Members (${members.length})</h4>
+    <div id="inv-scope" class="mb-s2 flex items-center gap-s3">
+      <h4 class="m-0 font-heading text-subtab font-normal text-ink">Scope · <span class="tnum">${members.length}</span></h4>
+      <button data-act="inv-add-menu" type="button" class="cursor-pointer rounded-sm border border-rule-strong bg-transparent px-2 py-[2px] text-caveat text-ink hover:border-accent disabled:cursor-default disabled:opacity-60">＋ add…</button>
+      <button data-act="inv-export-scope" type="button"
+        class="cursor-pointer bg-transparent text-caveat text-accent-ink underline"
+        title="Download the in-scope members as CSV. Loading it into another investigation adds the resources; the status_ columns are for a reader and are never read back."
+        >Export CSV</button>
+      <span id="inv-scope-note" class="text-caveat text-ink-muted"></span>
+    </div>
+    <div id="inv-add-menu"></div>
     ${addMemberFormHtml()}
     ${membersTableHtml(inv, members, dispositions)}`;
 
   bindDetail(inv, members);
 }
 
-function btnCls() {
-  return 'cursor-pointer rounded-sm border border-rule-strong bg-transparent px-2 py-[2px] '
-    + 'text-caveat text-ink hover:border-accent disabled:cursor-default disabled:opacity-60';
+/** A write failed: a pop-up with the reason (Escape or the backdrop closes it). The button carries its own cue. */
+function failurePopup(title, reason) {
+  const el = openDialog(title, '');
+  const body = el.querySelector('#wl-detail-body');
+  body.setAttribute('data-inv-failure-popup', '');
+  body.innerHTML = `<p class="text-state-warn">${esc(reason || 'no reason given')}</p>`;
+}
+
+// Link status per slug: the counts from GET /link-status (read on every detail render), or null when that read
+// failed. `_unlinked` is the fallback from the last promote/relink result. Unknown never shows as "0".
+const _linkStatus = {};
+const _unlinked = {};
+// Per-member link rows from the same /link-status response (null: not read).
+const _linkMembers = {};
+
+/** One member's link cell: a cue and a short word, the reason on hover. Linked / not linked / could not tell; a
+ *  status that was never read is "not read", never "not linked". Exported for the tests. */
+export function memberLinkCellHtml(inv, m, rows) {
+  if (!inv.egeria_project_guid) return '<span data-inv-member-link="unbound" class="text-ink-muted" title="Not bound to an Egeria Project">—</span>';
+  const r = Array.isArray(rows) ? rows.find((x) => x.entity_type === m.entity_type && x.entity_slug === m.entity_slug) : null;
+  if (!r) return `<span data-inv-member-link="unread">${cue('not_established', 'not read', 'The link status could not be read for this member.')}</span>`;
+  const why = r.reason || '';
+  if (r.state === 'linked') return `<span data-inv-member-link="linked">${cue('measured', 'linked', why || 'Attached to the working set in Egeria.')}</span>`;
+  if (r.state === 'not_linked') return `<span data-inv-member-link="not_linked">${cue('unrun', 'not linked', why || 'Not attached yet.')}</span>`;
+  return `<span data-inv-member-link="could_not_tell">${cue('not_established', 'could not tell', why || 'The link could not be established either way.')}</span>`;
+}
+
+function linkStatusHtml(slug) {
+  const c = _linkStatus[slug];
+  const plural = (k) => `${k} member${k === 1 ? '' : 's'}`;
+  if (c) {
+    const parts = [];
+    if (c.not_linked > 0) {
+      parts.push(`<span data-inv-not-linked class="ml-s2 text-state-warn">${plural(c.not_linked)} not linked</span>`);
+    }
+    if (c.could_not_tell > 0) {
+      parts.push(`<span data-inv-link-unknown class="ml-s2 text-ink-muted">could not tell for ${plural(c.could_not_tell)}</span>`);
+    }
+    // linkable comes from link-status (the members relink would attach); an older server lacks it.
+    const linkable = c.linkable ?? c.not_linked;
+    return { html: parts.join(''), n: linkable, counted: c.linkable != null };
+  }
+  const n = _unlinked[slug];
+  if (n > 0) {
+    return { html: `<span data-inv-not-linked class="ml-s2 text-state-warn">${plural(n)} not linked</span>`, n };
+  }
+  return { html: `<span data-inv-link-unknown class="ml-s2 text-ink-muted">link status unavailable</span>`, n };
 }
 
 function egeriaSectionHtml(inv) {
   if (inv.egeria_project_guid) {
+    const { html: notLinked, n, counted } = linkStatusHtml(inv.slug);
     return `<p class="max-w-[70ch] text-caveat text-ink-muted">
-        Bound to <span class="font-mono">${esc(inv.egeria_project_qualified_name || inv.egeria_project_guid)}</span>.
+        <span data-inv-bound-cue class="text-state-ok" title="bound to an Egeria Project">● bound</span>
+        · <span class="font-mono">${esc(inv.egeria_project_qualified_name || inv.egeria_project_guid)}</span>${notLinked}
       </p>
       <div class="flex flex-wrap gap-s2">
-        <button data-act="inv-sync" class="${btnCls()}">Sync now</button>
-        <button data-act="inv-relink" class="${btnCls()}">Relink members</button>
-        <button data-act="inv-unbind" class="${btnCls()}">Unbind</button>
+        <button data-act="inv-sync" class="cursor-pointer rounded-sm border border-rule-strong bg-transparent px-2 py-[2px] text-caveat text-ink hover:border-accent disabled:cursor-default disabled:opacity-60">Publish again</button>
+        <button data-act="inv-relink" class="cursor-pointer rounded-sm border border-rule-strong bg-transparent px-2 py-[2px] text-caveat text-ink hover:border-accent disabled:cursor-default disabled:opacity-60">${n > 0 ? `Link members${counted ? ` (${n})` : ''}` : 'Relink members'}</button>
+        <button data-act="inv-unbind" class="cursor-pointer rounded-sm border border-rule-strong bg-transparent px-2 py-[2px] text-caveat text-ink hover:border-accent disabled:cursor-default disabled:opacity-60">Unbind</button>
       </div>`;
   }
   return `<p class="max-w-[70ch] text-caveat text-ink-muted">
@@ -367,8 +510,8 @@ function egeriaSectionHtml(inv) {
       (Project + Folio + ResourceList) from this investigation's current members.
     </p>
     <div class="flex flex-wrap gap-s2">
-      <button data-act="inv-bind" class="${btnCls()}">Bind existing project…</button>
-      <button data-act="inv-promote" class="${btnCls()}">Create in Egeria →</button>
+      <button data-act="inv-bind" class="cursor-pointer rounded-sm border border-rule-strong bg-transparent px-2 py-[2px] text-caveat text-ink hover:border-accent disabled:cursor-default disabled:opacity-60">Bind existing project…</button>
+      <button data-act="inv-promote" class="cursor-pointer rounded-sm border border-rule-strong bg-transparent px-2 py-[2px] text-caveat text-ink hover:border-accent disabled:cursor-default disabled:opacity-60">Publish to Egeria →</button>
     </div>`;
 }
 
@@ -405,7 +548,7 @@ function addMemberFormHtml() {
     </datalist>
     <input id="inv-add-rationale" type="text" placeholder="why (optional)"
       class="flex-1 min-w-[160px] rounded-sm border border-rule bg-paper px-2 py-1 text-caveat text-ink">
-    <button data-act="inv-add-member" class="${btnCls()}">Add</button>
+    <button data-act="inv-add-member" class="cursor-pointer rounded-sm border border-rule-strong bg-transparent px-2 py-[2px] text-caveat text-ink hover:border-accent disabled:cursor-default disabled:opacity-60">Add</button>
     <span id="inv-add-error" class="text-caveat text-state-warn"></span>
   </div>`;
 }
@@ -424,6 +567,7 @@ function membersTableHtml(inv, members, dispositions) {
       <th class="pb-s2 pr-s3 font-normal">Type</th>
       <th class="pb-s2 pr-s3 font-normal">Resource</th>
       <th class="pb-s2 pr-s3 font-normal">Disposition</th>
+      <th class="pb-s2 pr-s3 font-normal">In the working set</th>
       <th class="pb-s2 font-normal"></th>
     </tr></thead>
     <tbody>${members.map((m) => {
@@ -440,6 +584,7 @@ function membersTableHtml(inv, members, dispositions) {
               current === d ? 'selected' : ''}>${g} ${d}</option>`).join('')}
           </select>
         </td>
+        <td class="py-s2 pr-s3 text-caveat" data-inv-member-link-cell>${memberLinkCellHtml(inv, m, _linkMembers[inv.slug])}</td>
         <td class="py-s2">
           <button data-remove-member="${esc(m.entity_type)}|${esc(m.entity_slug)}"
             class="cursor-pointer bg-transparent text-caveat text-state-warn underline">Remove</button>
@@ -454,12 +599,43 @@ function bindDetail(inv, members) {
   const back = () => { _detailSlug = null; renderInvestigation(); };
   el.querySelectorAll('[data-act="inv-back"]').forEach((b) => b.addEventListener('click', back));
 
+  // Scope's "＋ add…": the ways to put resources in scope other than the slug
+  // form below. "from a file" opens the Find dialog on its From-a-file tab with
+  // THIS investigation already chosen as the destination: one dialog, two doors.
+  el.querySelector('[data-act="inv-add-menu"]')?.addEventListener('click', () => {
+    const host = $('inv-add-menu');
+    if (host.innerHTML.trim()) { host.innerHTML = ''; return; }
+    host.innerHTML = `<div class="mb-s2 flex flex-wrap items-center gap-s3 text-caveat" data-add-menu>
+      <button data-act="inv-add-from-file" type="button"
+        class="cursor-pointer bg-transparent text-accent-ink underline">from a file</button>
+      <span class="text-ink-muted">or by slug, in the form below</span>
+    </div>`;
+    host.querySelector('[data-act="inv-add-from-file"]').addEventListener('click', async () => {
+      host.innerHTML = '';
+      // Imported on use: the Find dialog imports this module (to refresh the
+      // open page after a confirm), and a static import here would be a cycle.
+      const mod = await import('/static/next/db-server-discovery.js');
+      mod.openFindDbServersDialog({ tab: 'file', investigation: inv.slug });
+    });
+  });
+  el.querySelector('[data-act="inv-export-scope"]')?.addEventListener('click', async () => {
+    const note = $('inv-scope-note');
+    try {
+      const { text, filename } = await fetchScopeCsv(inv.slug);
+      saveCsv(text, filename);
+      note.textContent = `Downloaded ${filename}.`;
+    } catch (err) {
+      note.textContent = `Could not export: ${err.message}`;
+    }
+  });
+
   el.querySelector('[data-act="inv-make-current"]')?.addEventListener('click', async () => {
     await setInvestigation(inv.slug);
     renderDetail(inv.slug);
   });
 
-  el.querySelector('[data-act="inv-edit"]')?.addEventListener('click', () => {
+  el.querySelector('[data-act="inv-edit"]')?.addEventListener('click', async () => {
+    const { purposeVocab } = await investigationVocab();
     const host = $('inv-edit-form');
     host.innerHTML = `<div class="mb-s3 rounded-sm border border-rule p-s2">
       <label class="mb-[3px] block text-caveat text-ink-muted">Name</label>
@@ -468,12 +644,16 @@ function bindDetail(inv, members) {
       <label class="mb-[3px] block text-caveat text-ink-muted">Description</label>
       <textarea id="inv-edit-desc" rows="2"
         class="mb-s2 w-full rounded-sm border border-rule bg-paper px-2 py-1 text-caveat text-ink">${esc(inv.description || '')}</textarea>
+      <label class="mb-[3px] block text-caveat text-ink-muted">Purposes</label>
+      <div class="mb-s2">${purposePickerHtml({
+        prefix: 'inv-edit', vocab: purposeVocab, selected: inv.purposes || [], text: inv.purpose_text || '' })}</div>
       <div class="flex gap-s2">
-        <button id="inv-edit-save" class="${btnCls()}">Save</button>
+        <button id="inv-edit-save" class="cursor-pointer rounded-sm border border-rule-strong bg-transparent px-2 py-[2px] text-caveat text-ink hover:border-accent disabled:cursor-default disabled:opacity-60">Save</button>
         <button id="inv-edit-cancel" class="cursor-pointer bg-transparent text-caveat text-ink-muted underline">Cancel</button>
       </div>
       <span id="inv-edit-error" class="text-caveat text-state-warn"></span>
     </div>`;
+    wirePurposePicker(host, 'inv-edit');
     host.querySelector('#inv-edit-cancel').addEventListener('click', () => { host.innerHTML = ''; });
     host.querySelector('#inv-edit-save').addEventListener('click', async () => {
       const btn = host.querySelector('#inv-edit-save');
@@ -482,6 +662,7 @@ function bindDetail(inv, members) {
         await updateInvestigation(inv.slug, {
           display_name: host.querySelector('#inv-edit-name').value.trim(),
           description: host.querySelector('#inv-edit-desc').value.trim(),
+          ...readPurposePicker(host, 'inv-edit'),
         });
         await refreshInvestigationsAndSidebar();
         renderDetail(inv.slug);
@@ -493,7 +674,7 @@ function bindDetail(inv, members) {
   });
 
   el.querySelector('[data-act="inv-reclassify"]')?.addEventListener('click', async () => {
-    const { classifications } = await vocab();
+    const { classifications } = await investigationVocab();
     const host = $('inv-reclass-form');
     host.innerHTML = `<div class="mb-s3 rounded-sm border border-rule p-s2">
       <label class="mb-[3px] block text-caveat text-ink-muted">New kind</label>
@@ -512,7 +693,7 @@ function bindDetail(inv, members) {
         exactly which elements moved and which did not.
       </p>
       <div class="flex gap-s2">
-        <button id="inv-reclass-save" class="${btnCls()}">Reclassify</button>
+        <button id="inv-reclass-save" class="cursor-pointer rounded-sm border border-rule-strong bg-transparent px-2 py-[2px] text-caveat text-ink hover:border-accent disabled:cursor-default disabled:opacity-60">Reclassify</button>
         <button id="inv-reclass-cancel" class="cursor-pointer bg-transparent text-caveat text-ink-muted underline">Cancel</button>
       </div>
       <div id="inv-reclass-result" class="mt-s2 text-caveat"></div>
@@ -546,19 +727,19 @@ function bindDetail(inv, members) {
               esc(String(result.local_applied))}.${result.still_public.length
                 ? ` Still public: ${result.still_public.map(esc).join(', ')}.` : ''}${
               result.errors.length ? ` Errors: ${result.errors.map(esc).join('; ')}.` : ''}</span>`)
-          + `<div class="mt-s2"><button id="inv-reclass-reload" class="${btnCls()}">Reload</button></div>`;
+          + `<div class="mt-s2"><button id="inv-reclass-reload" class="cursor-pointer rounded-sm border border-rule-strong bg-transparent px-2 py-[2px] text-caveat text-ink hover:border-accent disabled:cursor-default disabled:opacity-60">Reload</button></div>`;
         resultEl.querySelector('#inv-reclass-reload').addEventListener('click', () => renderDetail(inv.slug));
         await refreshInvestigationsAndSidebar();
       } catch (err) {
         btn.disabled = false;
         btn.textContent = 'Reclassify';
-        resultEl.innerHTML = `<span class="text-state-warn">${esc(err.message)}</span>`;
+        resultEl.innerHTML = refusalHtml(err);
       }
     });
   });
 
   el.querySelector('[data-act="inv-close"]')?.addEventListener('click', async () => {
-    if (!window.confirm(`Close '${inv.display_name || inv.slug}'? Its findings stay queryable; it just drops out of the default scope. Nothing is deleted.`)) return;
+    if (!(await inPageConfirm({ title: 'Close investigation?', message: `Close '${inv.display_name || inv.slug}'? Its findings stay queryable; it just drops out of the default scope. Nothing is deleted.`, confirmLabel: 'Close' }))) return;
     await closeInvestigation(inv.slug);
     await refreshInvestigationsAndSidebar();
     renderDetail(inv.slug);
@@ -582,7 +763,7 @@ function bindDetail(inv, members) {
       <label class="mb-[3px] block text-caveat text-ink-muted">Qualified name (optional)</label>
       <input id="inv-bind-qn" type="text" class="mb-s2 w-full rounded-sm border border-rule bg-paper px-2 py-1 text-caveat text-ink">
       <div class="flex gap-s2">
-        <button id="inv-bind-save" class="${btnCls()}">Bind</button>
+        <button id="inv-bind-save" class="cursor-pointer rounded-sm border border-rule-strong bg-transparent px-2 py-[2px] text-caveat text-ink hover:border-accent disabled:cursor-default disabled:opacity-60">Bind</button>
         <button id="inv-bind-cancel" class="cursor-pointer bg-transparent text-caveat text-ink-muted underline">Cancel</button>
       </div>
       <span id="inv-bind-error" class="text-caveat text-state-warn"></span>
@@ -602,13 +783,13 @@ function bindDetail(inv, members) {
         renderDetail(inv.slug);
       } catch (err) {
         btn.disabled = false;
-        host.querySelector('#inv-bind-error').textContent = err.message;
+        host.querySelector('#inv-bind-error').innerHTML = refusalHtml(err);
       }
     });
   });
 
   el.querySelector('[data-act="inv-unbind"]')?.addEventListener('click', async () => {
-    if (!window.confirm('Unbind this investigation from its Egeria Project? The Egeria Project itself is not deleted.')) return;
+    if (!(await inPageConfirm({ title: 'Unbind?', message: 'Unbind this investigation from its Egeria Project? The Egeria Project itself is not deleted.', confirmLabel: 'Unbind' }))) return;
     await bindInvestigationEgeriaProject(inv.slug, { status: 'unset' });
     await refreshInvestigationsAndSidebar();
     renderDetail(inv.slug);
@@ -620,59 +801,99 @@ function bindDetail(inv, members) {
     btn.textContent = 'Creating…';
     const host = $('inv-egeria-form');
     try {
-      const result = await promoteInvestigation(inv.slug);
+      let result;
+      try {
+        result = await promoteInvestigation(inv.slug);
+      } catch (err) {
+        // The write failed: reset the button, keep a cue on it, and say why in a pop-up.
+        btn.disabled = false;
+        if (err.status === 403) btn.innerHTML = cue('no_access', 'not permitted', err.message);
+        else {
+          btn.innerHTML = `Publish to Egeria → ${cue('error', 'not published', err.message)}`;
+          failurePopup('Not published', err.message);
+        }
+        host.innerHTML = `<div class="mt-s2 text-caveat" data-inv-promote-refused>${refusalHtml(err)}</div>`;
+        return;
+      }
+      // The write is done: the button is reset now, whatever the re-read below does.
+      btn.disabled = false;
+      btn.textContent = 'Publish to Egeria →';
       const confirmedLine = result.classification_confirmed === result.classification_requested
         ? `confirmed as ${esc(result.classification_confirmed)}`
         : result.classification_confirmed === null || result.classification_confirmed === undefined
           ? 'could not verify the classification took'
           : `requested ${esc(result.classification_requested)}, Egeria reports ${esc(result.classification_confirmed)}`;
       host.innerHTML = `<div class="mt-s2 text-caveat ${result.ok ? 'text-state-ok' : 'text-state-warn'}">
-        ${result.ok ? 'Created.' : 'Partial — see below.'} ${confirmedLine}.
+        ${result.ok ? (result.classification_confirmed != null ? `published · ${readBackAt()}` : 'sent · waiting for Egeria') : 'Partial — see below.'} ${confirmedLine}.
         ${result.members_linked?.length ? ` Linked: ${result.members_linked.map(esc).join(', ')}.` : ''}
-        ${result.members_unlinkable?.length ? ` Could not link: ${result.members_unlinkable.map(
-          m => esc(`${m.entity_slug || m.entity_type || '?'}${m.reason ? ` (${m.reason})` : ''}`)
-        ).join('; ')}.` : ''}
+        ${result.members_unlinkable?.length ? ` Could not link: ${result.members_unlinkable.map(memberLine).join('; ')}.` : ''}
         ${result.errors?.length ? ` Errors: ${result.errors.map(esc).join('; ')}.` : ''}
-        <div class="mt-s2"><button id="inv-promote-reload" class="${btnCls()}">Reload</button></div>
+        <div class="mt-s2"><button id="inv-promote-reload" class="cursor-pointer rounded-sm border border-rule-strong bg-transparent px-2 py-[2px] text-caveat text-ink hover:border-accent disabled:cursor-default disabled:opacity-60">Reload</button></div>
       </div>`;
-      // Left on screen rather than an immediate renderDetail() -- see the
-      // reclassify handler's identical reasoning: a partial promote's
-      // members_unlinkable/errors matter more than snapping back to a
-      // clean view that would otherwise erase them before they're read.
-      host.querySelector('#inv-promote-reload').addEventListener('click', () => renderDetail(inv.slug));
+      // The result stays on screen (a partial promote's members_unlinkable/errors matter more than a clean
+      // view), but the section above is redrawn as bound -- the 'Creating…' button must not outlive the write.
+      const resultHtml = host.innerHTML;
+      _unlinked[inv.slug] = result.members_unlinkable?.length ?? 0;
       await refreshInvestigationsAndSidebar();
+      await renderDetail(inv.slug);
+      const host2 = $('inv-egeria-form');
+      if (host2) {
+        host2.innerHTML = resultHtml;
+        host2.querySelector('#inv-promote-reload')?.addEventListener('click', () => renderDetail(inv.slug));
+      }
     } catch (err) {
+      // Only the re-read after a finished write lands here: the result stays on screen, the button is reset.
       btn.disabled = false;
-      btn.textContent = 'Create in Egeria →';
-      host.innerHTML = `<div class="mt-s2 text-caveat text-state-warn">${esc(err.message)}</div>`;
+      btn.textContent = 'Publish to Egeria →';
+      host.insertAdjacentHTML('beforeend', `<div class="mt-s2 text-caveat" data-inv-promote-refused>${refusalHtml(err)}</div>`);
     }
   });
 
   el.querySelector('[data-act="inv-sync"]')?.addEventListener('click', async () => {
     const btn = el.querySelector('[data-act="inv-sync"]');
     btn.disabled = true;
-    btn.textContent = 'Syncing…';
+    btn.textContent = 'Publishing…';
     try {
       await syncInvestigationEgeria(inv.slug);
       btn.disabled = false;
-      btn.textContent = 'Synced';
-      setTimeout(() => { btn.textContent = 'Sync now'; }, 3000);
+      btn.textContent = 'Sent · waiting for Egeria';
+      setTimeout(() => { btn.textContent = 'Publish again'; }, 3000);
     } catch (err) {
       btn.disabled = false;
-      btn.textContent = `Not synced: ${err.message}`;
+      if (err.status === 403) btn.innerHTML = cue('no_access', 'not permitted', err.message);
+      else btn.textContent = `Not published: ${err.message}`;
     }
   });
 
   el.querySelector('[data-act="inv-relink"]')?.addEventListener('click', async () => {
     const btn = el.querySelector('[data-act="inv-relink"]');
     btn.disabled = true;
-    btn.textContent = 'Relinking…';
+    btn.innerHTML = cue('running', 'linking…');
     try {
-      await relinkInvestigationMembers(inv.slug);
-      renderDetail(inv.slug);
+      const res = await relinkInvestigationMembers(inv.slug);
+      btn.disabled = false;
+      if (res && Array.isArray(res.members_unlinkable)) _unlinked[inv.slug] = res.members_unlinkable.length;
+      const linkedN = Array.isArray(res?.members_linked) ? res.members_linked.length : 0;
+      const errs = Array.isArray(res?.errors) ? res.errors : [];
+      await renderDetail(inv.slug);
+      const host0 = $('inv-egeria-form');
+      if (host0) {
+        host0.innerHTML = `<div class="mt-s2 text-caveat" data-inv-relink-result>${cue('measured', `${linkedN} linked`)}</div>`;
+      }
+      if (errs.length) failurePopup('Some members were not linked', errs.join('; '));
+      // Brief Z3: members the check refused stay named under the button, each with the cue.
+      const refused = (res?.members_unlinkable || []).filter((m) => String(m.reason || '').startsWith('not permitted'));
+      const host = $('inv-egeria-form');
+      if (refused.length && host) {
+        host.insertAdjacentHTML('beforeend', `<div class="mt-s2 text-caveat" data-inv-relink-refused>${refused.map(memberLine).join('; ')}</div>`);
+      }
     } catch (err) {
       btn.disabled = false;
-      btn.textContent = `Not relinked: ${err.message}`;
+      if (err.status === 403) btn.innerHTML = cue('no_access', 'not permitted', err.message);
+      else {
+        btn.innerHTML = `Link members ${cue('error', 'not linked', err.message)}`;
+        failurePopup('Not linked', err.message);
+      }
     }
   });
 
@@ -706,13 +927,13 @@ function bindDetail(inv, members) {
 
   el.querySelectorAll('[data-remove-member]').forEach((b) => b.addEventListener('click', async () => {
     const [entityType, entitySlug] = b.dataset.removeMember.split('|');
-    if (!window.confirm(`Remove ${entitySlug} from this investigation's scope?`)) return;
+    if (!(await inPageConfirm({ title: 'Remove from scope?', message: `Remove ${entitySlug} from this investigation's scope?`, confirmLabel: 'Remove' }))) return;
     try {
       await removeInvestigationMember(inv.slug, entityType, entitySlug);
       if (inv.slug === state.investigation) await refreshInvestigationsAndSidebar();
       renderDetail(inv.slug);
     } catch (err) {
-      window.alert(`Not removed: ${err.message}`);
+      inlineNote(b, `not removed: ${err.message}`);
     }
   }));
 
@@ -723,7 +944,7 @@ function bindDetail(inv, members) {
     try {
       await setInvestigationDisposition(inv.slug, entityType, entitySlug, disposition);
     } catch (err) {
-      window.alert(`Not saved: ${err.message}`);
+      inlineNote(sel, `not saved: ${err.message}`);
     } finally {
       sel.disabled = false;
     }
@@ -736,6 +957,6 @@ function bindDetail(inv, members) {
     if (action === 'edit') { el.querySelector('[data-act="inv-edit"]')?.click(); return; }
     // 'scouting' -- and anything else unrecognised -- has no in-pane target;
     // naming it beats a button that silently does nothing.
-    window.alert(`This step points at ${action}, which this pane does not deep-link to yet.`);
+    inlineNote(b, `This step points at ${action}, which this pane does not deep-link to yet.`);
   }));
 }

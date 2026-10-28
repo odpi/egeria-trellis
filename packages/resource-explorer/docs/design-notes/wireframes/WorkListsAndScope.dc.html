@@ -1,0 +1,225 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;600&amp;family=Lora:wght@400;500&amp;display=swap">
+  <style>
+    :root{
+      --paper:#f3f2f2; --rule:rgba(32,31,29,.16); --rule-strong:#8e8a8a;
+      --ink:#201f1d; --ink-muted:#4a463e;
+      --accent:#b68235; --accent-ink:#7d5411;
+      --ok:#1d6b3f; --warn:#9c4212; --gap:#5b4a9c;
+      --chrome:#1b1a19; --chrome-surface:#2d2b2b; --chrome-line:#444141;
+      --chrome-ink:#f3f2f2; --chrome-muted:#9b9797; --accent-on-dark:#e1ad66; --ok-on-dark:#74c68d;
+      --s1:4.6px; --s2:9.2px; --s3:13.8px; --s4:18.4px; --s6:27.6px;
+      --heading:"Cormorant Garamond",Georgia,serif;
+      --body:"Lora",Georgia,serif;
+      --mono:ui-monospace,"SF Mono",Menlo,monospace;
+    }
+    *{box-sizing:border-box}
+    body{margin:0;font-family:var(--body);background:var(--paper);color:var(--ink);font-size:15px;line-height:1.55}
+    .tnum{font-variant-numeric:tabular-nums}
+    .mono{font-family:var(--mono);font-size:.87em}
+    .caps{font-family:var(--heading);font-weight:600;font-size:12px;letter-spacing:.09em;text-transform:uppercase}
+    .h{font-family:var(--heading);font-weight:600}
+    .muted{color:var(--ink-muted)}
+    .lnk{color:var(--accent-ink);text-decoration:underline;text-underline-offset:3px}
+    .g{font-family:"DejaVu Sans","Apple Symbols","Segoe UI Symbol",sans-serif;font-weight:600;display:inline-block;width:1.3em;text-align:center}
+    .ok{color:var(--ok)} .warn{color:var(--warn)} .gapc{color:var(--gap)}
+    .panel-t{font-family:var(--heading);font-weight:600;font-size:21px;margin:0 0 var(--s1)}
+    .panel-s{font-size:13px;color:var(--ink-muted);margin:0 0 var(--s3);max-width:62ch}
+    /* sidebar, on chrome */
+    .side{background:var(--chrome);color:var(--chrome-ink);width:300px;padding:var(--s3);border-radius:3px;font-size:13px;line-height:1.45}
+    .side .lab{font-family:var(--heading);font-weight:600;font-size:12px;letter-spacing:.09em;text-transform:uppercase;color:var(--chrome-muted);margin:var(--s3) 0 4px}
+    .side .sel{border:1px solid var(--chrome-line);border-radius:2px;padding:3px 6px}
+    .side .row{padding:4px 8px;border-left:2px solid transparent;display:flex;justify-content:space-between;gap:8px}
+    .side .row.on{border-left-color:var(--accent);background:var(--chrome-surface)}
+    .side .n{color:var(--chrome-muted)}
+    .side .fold{color:var(--chrome-muted);padding:4px 8px;text-decoration:underline;text-underline-offset:3px}
+    .side .btn{display:inline-block;border:1px solid var(--accent);color:var(--accent-on-dark);border-radius:2px;padding:1px 7px;font-size:12px;margin:0 4px 4px 0}
+    .side .btn.quiet{border-color:var(--chrome-line);color:var(--chrome-ink)}
+    .side .btn.off{border-style:dashed;color:var(--chrome-muted);border-color:var(--chrome-line)}
+    .side .why{color:var(--chrome-muted);font-size:12px}
+    .side .res{padding:3px 8px;display:flex;gap:6px}
+    .side .res input{margin:0}
+    .note{border-left:2px solid var(--chrome-line);padding-left:8px;margin-top:6px;color:var(--chrome-ink);font-size:12px}
+    /* paper panes */
+    .pane{background:#fff;border:1px solid var(--rule);padding:var(--s4);border-radius:2px}
+    .btn2{display:inline-block;border:1px solid var(--rule-strong);border-radius:2px;padding:1px 8px;font-size:12.5px;margin-right:6px}
+    .btn2.primary{border-color:var(--accent);color:var(--accent-ink)}
+    table.grid{border-collapse:collapse;font-size:13px;width:100%}
+    table.grid th{font-family:var(--heading);font-weight:600;text-align:left;font-size:13px;border-bottom:1px solid var(--rule-strong);padding:4px 8px;vertical-align:bottom}
+    table.grid td{border-bottom:1px solid var(--rule);padding:4px 8px;vertical-align:baseline}
+    table.grid td.c{text-align:center}
+    .tabs{display:flex;gap:var(--s4);border-bottom:1px solid var(--rule);font-size:14px;margin:var(--s2) 0 var(--s2)}
+    .tabs span{padding-bottom:3px}
+    .tabs .on{border-bottom:2px solid var(--accent)}
+    .tabs .zero{color:var(--ink-muted);border-bottom:1px dashed var(--rule-strong)}
+    .call{font-size:12.5px;color:var(--ink-muted);border-left:3px solid var(--gap);padding-left:var(--s2);margin-top:var(--s2);max-width:58ch}
+    .strike{text-decoration:line-through;color:var(--ink-muted)}
+  </style>
+</helmet>
+<div style="width:1500px;padding:var(--s6) var(--s6) 60px">
+  <div style="border-bottom:1px solid var(--rule-strong);padding-bottom:var(--s4)">
+    <div class="caps" style="color:var(--accent-ink)">Work lists and scope &middot; reply to ASK-DESIGNER-WORK-LISTS-VS-INVESTIGATIONS (#354) &middot; against main at 8c6f1845</div>
+    <h1 class="h" style="font-weight:400;font-size:38px;margin:var(--s3) 0 var(--s2);max-width:46ch">An investigation says why; its scope says which; a work list is the bench</h1>
+    <p style="max-width:96ch;margin:0">Three words, one thing each. <em>Scope</em> is already the word on screen everywhere except the investigation page's &ldquo;Members&rdquo;. <em>Work list</em> keeps its name and means only the bench (one resource type, rows &times; questions, narrowed by shortlist). The report act that says &ldquo;add to work list&rdquo; &mdash; the owner's trigger &mdash; becomes &ldquo;add to <em>investigation</em>&rdquo;. Values are illustrative.</p>
+  </div>
+
+  <!-- ─────────────── A: sidebar ─────────────── -->
+  <div style="display:flex;gap:var(--s6);margin-top:var(--s6);align-items:flex-start">
+    <div>
+      <p class="panel-t">A1 &middot; Sidebar, an investigation current</p>
+      <p class="panel-s" style="max-width:300px">Scope and this investigation's lists sit under the selector. Other lists fold to one line. Suggestions are not work lists.</p>
+      <div class="side">
+        <div class="lab" style="margin-top:0">Investigation</div>
+        <div class="sel">Customer 360 &#9662;</div>
+        <div class="row" style="margin-top:6px"><span>Scope</span><span class="n tnum">7</span></div>
+        <div class="lab">Work lists for Customer 360 &middot; 2</div>
+        <div class="row on"><span>Sales databases</span><span class="n tnum">9</span></div>
+        <div class="row"><span>Sales databases &mdash; shortlist</span><span class="n tnum">4 <span style="color:var(--ok-on-dark)">&#9729;</span></span></div>
+        <div class="fold">Other work lists &middot; 3</div>
+        <div class="fold">Suggestions &middot; 1</div>
+        <div class="lab">&#9745; Selecting &middot; databases</div>
+        <div>
+          <span class="btn">＋ add to Customer 360</span>
+          <span class="btn quiet">− remove from Customer 360</span>
+          <span class="btn quiet">save as work list&hellip;</span>
+        </div>
+        <div class="res"><input type="checkbox" checked><span>laz_local_adventureworks</span></div>
+        <div class="res"><input type="checkbox" checked><span>crm_prod</span></div>
+        <div class="res"><input type="checkbox"><span>hr_payroll</span></div>
+        <div class="note">Added 2 to Customer 360. 1 was already in scope; its reason was kept.</div>
+      </div>
+    </div>
+
+    <div>
+      <p class="panel-t">A2 &middot; Sidebar, no investigation</p>
+      <p class="panel-s" style="max-width:300px">&ldquo;Add&rdquo; is enabled and asks which. Remove says why it can't, in text.</p>
+      <div class="side">
+        <div class="lab" style="margin-top:0">Investigation</div>
+        <div class="sel">&mdash; none &mdash; &#9662;</div>
+        <div class="lab">Work lists &middot; 4</div>
+        <div class="row"><span>Sales databases</span><span class="n tnum">9</span></div>
+        <div class="row"><span>Sales databases &mdash; shortlist</span><span class="n tnum">4</span></div>
+        <div class="row"><span>Candidate repos</span><span class="n tnum">12</span></div>
+        <div class="row"><span>Old Postgres</span><span class="n tnum">5</span></div>
+        <div class="fold">Suggestions &middot; 1</div>
+        <div class="lab">&#9745; Selecting &middot; databases</div>
+        <div>
+          <span class="btn">＋ add to an investigation&hellip;</span>
+          <span class="btn off">− remove</span>
+          <span class="btn quiet">save as work list&hellip;</span>
+        </div>
+        <div class="why">no investigation selected &mdash; nothing to remove from</div>
+        <div style="margin-top:8px;border:1px solid var(--chrome-line);border-radius:2px;padding:6px 8px;background:var(--chrome-surface)">
+          <div class="why" style="margin-bottom:4px">Add 2 databases to&hellip;</div>
+          <div>Customer 360</div>
+          <div>Retire legacy HR</div>
+          <div style="color:var(--accent-on-dark);text-decoration:underline">start a new investigation&hellip;</div>
+          <div class="why" style="margin-top:4px">The one you pick becomes current.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ─────────────── B: the work list pane ─────────────── -->
+    <div style="flex:1;min-width:0">
+      <p class="panel-t">B &middot; A work list, linked to an investigation</p>
+      <p class="panel-s">The two actions live on the list's action row. After &ldquo;Start an investigation&rdquo; the list stays &mdash; it is the evidence for how the scope was chosen &mdash; and says, live, how much of it is in scope.</p>
+      <div class="pane">
+        <div class="caps muted">Scouting &middot; Work list</div>
+        <div style="display:flex;gap:var(--s3);align-items:baseline;flex-wrap:wrap">
+          <span class="h" style="font-size:26px;font-weight:400">Sales databases</span>
+          <span class="muted" style="font-size:13.5px"><span class="tnum">9</span> databases &middot; not published</span>
+        </div>
+        <div style="font-size:14px;margin-top:4px"><span class="tnum">7</span> of <span class="tnum">9</span> in scope for <span class="lnk">Customer 360</span> &middot; <span class="tnum">2</span> not added</div>
+        <div style="margin-top:var(--s3);display:flex;flex-wrap:wrap;gap:6px;align-items:baseline;font-size:12.5px">
+          <span class="btn2">Run across <span class="tnum">9</span></span>
+          <span class="btn2">mark selected as&hellip;</span>
+          <span class="lnk">promote 0 &rarr;</span>
+          <span style="margin-left:auto"></span>
+          <span class="btn2 primary">Add 2 selected to Customer 360</span>
+          <span class="lnk">publish to Egeria</span>
+        </div>
+        <div class="muted" style="font-size:12px;margin-top:4px">Unlinked, the row reads: <span class="btn2 primary">Add these 9 to&hellip;</span> <span class="btn2 primary">Start an investigation from this list&hellip;</span></div>
+        <table class="grid" style="margin-top:var(--s3)">
+          <tr><th style="width:26px"></th><th>Database</th><th>Scope</th><th>Owner declared?</th><th>Has PII columns?</th><th>Last backup tested?</th></tr>
+          <tr><td>&#9744;</td><td class="mono">laz_local_adventureworks</td><td>in scope</td><td><span class="g ok">&#10003;</span> yes</td><td><span class="g ok">&#10003;</span> 14 columns</td><td><span class="g warn">&#9888;</span> needs a person</td></tr>
+          <tr><td>&#9745;</td><td class="mono">crm_prod</td><td class="muted">not in scope</td><td><span class="g ok">&#10003;</span> yes</td><td><span class="g">&#9680;</span> limited</td><td><span class="g muted">&#9675;</span> not run</td></tr>
+          <tr><td>&#9745;</td><td class="mono">sales_dw</td><td class="muted">not in scope</td><td><span class="g">&#8709;</span> none found</td><td><span class="g ok">&#10003;</span> 3 columns</td><td><span class="g muted">&#9675;</span> not run</td></tr>
+          <tr><td>&#9744;</td><td class="mono">orders_eu</td><td>in scope</td><td><span class="g">?</span> not established</td><td><span class="g">&#9684;</span> running</td><td><span class="g muted">&#9675;</span> not run</td></tr>
+        </table>
+        <div class="call">&ldquo;in scope / not in scope&rdquo; is words in ink, computed from the investigation's scope on every render &mdash; never stored, so drift shows (&ldquo;6 of 9&rdquo;) instead of hiding. No new glyph.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ─────────────── C: the investigation page ─────────────── -->
+  <div style="display:flex;gap:var(--s6);margin-top:var(--s6);align-items:flex-start">
+    <div style="flex:1;min-width:0">
+      <p class="panel-t">C &middot; The investigation page: &ldquo;Members&rdquo; becomes Scope, and Scope is the grid</p>
+      <p class="panel-s" style="max-width:90ch">One grid per resource type (each type has its own questions), stage chosen above it. The old members table's columns &mdash; disposition, reason, remove &mdash; are the grid's left columns: one table, not two. A scope narrows by verdict (&ldquo;mark as&hellip;&rdquo;), not by promote.</p>
+      <div class="pane">
+        <div class="caps muted">Investigation</div>
+        <div class="h" style="font-size:26px;font-weight:400">Customer 360</div>
+        <div class="muted" style="font-size:13.5px">StudyProject &middot; bound to Egeria &middot; Assess, Select</div>
+        <div style="margin-top:var(--s4);border-top:1px solid var(--rule-strong);padding-top:var(--s2);display:flex;gap:var(--s2);align-items:baseline">
+          <span class="h" style="font-size:19px">Scope &middot; <span class="tnum">7</span></span>
+          <span class="strike" style="font-size:13px">Members (7)</span>
+          <span class="muted" style="font-size:13px;margin-left:auto">work lists: <span class="lnk">Sales databases</span>, <span class="lnk">Candidate repos</span></span>
+        </div>
+        <div class="tabs">
+          <span>Repos <span class="tnum">4</span></span>
+          <span class="on">Databases <span class="tnum">3</span></span>
+          <span class="zero">Filesystems <span class="tnum">0</span></span>
+        </div>
+        <div style="font-size:12.5px;display:flex;gap:var(--s3);align-items:baseline;flex-wrap:wrap">
+          <span class="muted">questions from</span>
+          <span class="lnk">Scouting</span><span style="border-bottom:2px solid var(--accent)">Assessment</span><span class="lnk">Curate</span>
+          <span style="margin-left:auto"></span>
+          <span class="btn2">Run across <span class="tnum">3</span></span>
+          <span class="btn2">mark selected as&hellip;</span>
+          <span class="btn2">＋ add&hellip;</span>
+        </div>
+        <table class="grid" style="margin-top:var(--s2)">
+          <tr><th style="width:26px"></th><th>Database</th><th>Verdict</th><th>Why in scope</th><th>Has PII columns?</th><th>Retention declared?</th><th></th></tr>
+          <tr><td>&#9744;</td><td class="mono">laz_local_adventureworks</td><td>recommended</td><td style="font-size:12.5px">Per &ldquo;PII sweep&rdquo; (09-24): 14 columns</td><td><span class="g ok">&#10003;</span> 14 columns</td><td><span class="g warn">&#9888;</span> needs a person</td><td class="lnk" style="font-size:12px">remove</td></tr>
+          <tr><td>&#9744;</td><td class="mono">orders_eu</td><td class="muted">no verdict yet</td><td style="font-size:12.5px">from <span class="lnk">Sales databases</span></td><td><span class="g">&#9684;</span> running</td><td><span class="g">&#8709;</span> none found</td><td class="lnk" style="font-size:12px">remove</td></tr>
+          <tr><td>&#9744;</td><td class="mono">hr_payroll</td><td>investigating</td><td style="font-size:12.5px">added by hand</td><td><span class="g muted">&#9675;</span> not run</td><td><span class="g">&#9676;</span> no answer here</td><td class="lnk" style="font-size:12px">remove</td></tr>
+        </table>
+        <div class="muted" style="font-size:12.5px;margin-top:var(--s2)">Filesystems tab, when chosen: &ldquo;Nothing of this kind in scope.&rdquo; &mdash; present and explained.</div>
+      </div>
+    </div>
+
+    <!-- ─────────────── D: the report act ─────────────── -->
+    <div style="width:470px">
+      <p class="panel-t">D &middot; The trigger: a database report's acts</p>
+      <p class="panel-s">Today &ldquo;add to work list&rdquo; mints a new one-resource list on every click and keeps the rows only as prose. It becomes &ldquo;add to <em>investigation</em>&rdquo;, with the provenance line as the reason.</p>
+      <div class="pane" style="font-size:13px">
+        <div class="muted" style="font-size:12px">Today</div>
+        <div>The whole report &middot; <span class="tnum">14</span> rows <span class="muted">&middot; as recorded 2026-09-24</span></div>
+        <div style="margin-top:3px"><span class="lnk">add to work list</span> &nbsp; <span class="lnk">raise RFA</span> &nbsp; <span class="lnk">note in journal</span></div>
+        <div style="height:1px;background:var(--rule);margin:var(--s3) 0"></div>
+        <div class="muted" style="font-size:12px">Proposed &mdash; investigation current</div>
+        <div>The whole report &middot; <span class="tnum">14</span> rows <span class="muted">&middot; as recorded 2026-09-24</span></div>
+        <div style="margin-top:3px"><span class="lnk">add to Customer 360</span> &nbsp; <span class="lnk">raise RFA</span> &nbsp; <span class="lnk">note in journal</span></div>
+        <div class="ok" style="margin-top:3px">&rarr; in Customer 360's scope, reason: &ldquo;Per &lsquo;PII sweep&rsquo; (09-24): 14 columns&rdquo;</div>
+        <div style="height:1px;background:var(--rule);margin:var(--s3) 0"></div>
+        <div class="muted" style="font-size:12px">Proposed &mdash; already in scope</div>
+        <div style="margin-top:3px"><span class="muted">already in Customer 360's scope</span> &nbsp; <span class="lnk">raise RFA</span> &nbsp; <span class="lnk">note in journal</span></div>
+        <div class="call">Not re-added: re-adding overwrites the member's reason (<span class="mono">ON CONFLICT &hellip; DO UPDATE</span>). The journal is where a second finding goes.</div>
+        <div style="height:1px;background:var(--rule);margin:var(--s3) 0"></div>
+        <div class="muted" style="font-size:12px">Proposed &mdash; no investigation</div>
+        <div style="margin-top:3px"><span class="lnk">add to an investigation&hellip;</span> &nbsp; <span class="lnk">raise RFA</span> &nbsp; <span class="lnk">note in journal</span></div>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>

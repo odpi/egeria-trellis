@@ -52,6 +52,7 @@ from resource_explorer.leader_election import (
     LOCK_BOOTSTRAP,
     LOCK_DRAFT_ZONE,
     LOCK_EGERIA_RESYNC,
+    LOCK_ENGINE_HOST,
     LOCK_SCHEDULER,
     LeaderLock,
 )
@@ -106,10 +107,32 @@ def _resync_spec() -> LoopSpec:
     )
 
 
+def _engine_host_spec() -> LoopSpec:
+    from resource_explorer import engine_host
+
+    return LoopSpec(
+        name="engine-host",
+        lock_name=LOCK_ENGINE_HOST,
+        interval_seconds=engine_host.SWEEP_INTERVAL_SECONDS,
+        start=engine_host.start_engine_host,
+        stop=engine_host.stop_engine_host,
+    )
+
+
 def loop_specs() -> list[LoopSpec]:
-    """The three leader-elected loops, imported lazily so that importing
-    this module does not drag in Egeria clients or the registry."""
-    return [_scheduler_spec(), _bootstrap_spec(), _resync_spec()]
+    """The leader-elected loops, imported lazily so that importing
+    this module does not drag in Egeria clients or the registry.
+
+    Three by default. The engine-host claim sweep is a fourth only when
+    RE_ENGINE_HOST_ENABLED is on: off means the loop is never started, never
+    elects, and makes no Egeria call (DESIGN-RE-ENGINE-HOST-BY-EQUIVALENCE §5.2
+    test 10)."""
+    specs = [_scheduler_spec(), _bootstrap_spec(), _resync_spec()]
+    from resource_explorer.engine_host import engine_host_enabled
+
+    if engine_host_enabled():
+        specs.append(_engine_host_spec())
+    return specs
 
 
 # ── one-shots ───────────────────────────────────────────────────────────
@@ -221,7 +244,10 @@ def _warm_survey_definition_cache() -> None:
                 SurveyDefinitionReader,
             )
 
-            SurveyDefinitionReader().warm_question_guid_cache()
+            from resource_explorer.egeria_clients import Daemon, DaemonReason
+
+            # Its own thread, so its identity is declared here (Brief I): the daemon.
+            SurveyDefinitionReader(identity=Daemon(DaemonReason.STARTUP_WARM)).warm_question_guid_cache()
         except Exception as exc:  # never let an optimisation take a process down
             log.debug("survey-definition cache warm skipped: %s", exc)
 
@@ -229,7 +255,8 @@ def _warm_survey_definition_cache() -> None:
 
 
 def _ensure_draft_zone() -> None:
-    """Create RE's draft `GovernanceZone` once, if Egeria does not have one.
+    """Create RE's draft `GovernanceZone` once, if one is CONFIGURED and Egeria lacks it.
+    (By default none is configured and nothing is created; the private-zone bootstrap still runs.)
 
     Leader-elected and one-shot, not a loop: the zone either exists or it does
     not, and asking Egeria about it every 60 seconds would be a round trip
@@ -250,6 +277,11 @@ def _ensure_draft_zone() -> None:
     zone element exists.
     """
 
+    from resource_explorer.egeria_identity import draft_zone as _dz
+
+    # Every process says which mode it is in (a zone NAME is not a secret).
+    log.info("draft zone: %s", _dz() or "none (default)")
+
     def _run() -> None:
         lock = LeaderLock(LOCK_DRAFT_ZONE)
         if not lock.acquire():
@@ -260,8 +292,13 @@ def _ensure_draft_zone() -> None:
                 ensure_draft_zone_exists, ensure_private_zone_exists,
             )
 
-            outcome = ensure_draft_zone_exists()
-            log.info("draft-zone bootstrap: %s", outcome)
+            # Only when a draft zone was CONFIGURED (EXPLORER_DRAFT_ZONE). By default RE stamps
+            # no draft zone and creates no GovernanceZone for it (owner ruling 2026-10-08).
+            from resource_explorer.egeria_identity import draft_zone
+
+            if draft_zone():
+                outcome = ensure_draft_zone_exists()
+                log.info("draft-zone bootstrap: %s", outcome)
 
             # The private zone, under the same lock and in the same one-shot.
             # Different mechanism from the draft zone though — that one creates
@@ -282,12 +319,58 @@ def _ensure_draft_zone() -> None:
                     "private-zone bootstrap: %s — private investigations will NOT "
                     "publish to Egeria until this is resolved. %s",
                     private, private.get("remedy") or "")
+
+            # Every OTHER zone RE stamps (a configured draft or publish zone): its control read, three facts
+            # recorded per zone, and one line for all of them, the private zone's entry included. WARNING when
+            # any zone would lock everyone out once Egeria e9fd817f4c ships, warns, or could not be checked.
+            from resource_explorer.egeria_identity import check_zone_controls, zone_controls_line
+
+            report = check_zone_controls()
+            if all(e.get("verdict") == "ok" for e in report):
+                log.info(zone_controls_line(report))
+            else:
+                log.warning(zone_controls_line(report)
+                            + " — publishing into a zone that would lock out everyone, or could not be "
+                              "checked, is refused until its control is fixed.")
+
+            # Read-only check of the ConnectorType RE's secrets store uses; a mismatch is named, never repaired.
+            from resource_explorer.connector_type_check import check_connector_type, connector_type_line
+
+            ct = check_connector_type()
+            if ct.get("status") in ("ok", "absent"):
+                log.info(connector_type_line(ct))
+            else:
+                log.warning(connector_type_line(ct))
         except Exception as exc:  # pragma: no cover - defensive
             log.warning("draft-zone bootstrap failed: %s", exc)
+        try:
+            _bootstrap_re_identity()
         finally:
             lock.release()
 
     threading.Thread(target=_run, name="draft-zone-bootstrap", daemon=True).start()
+
+
+def _bootstrap_re_identity() -> dict:
+    """RE's own place in Egeria's actor graph (7h): ITProfile, UserIdentity, ProfileIdentity.
+    Adopt-or-create, as the daemon; never raises, never blocks start. One log line, the same
+    words the connection popover shows ("RE identity in Egeria: present / created / could not
+    check (reason)"); WARNING when it could not check."""
+    from resource_explorer.egeria_actors import (
+        COULD_NOT_CHECK_WORD, ensure_re_identity_in_egeria, identity_words,
+    )
+
+    try:
+        state = ensure_re_identity_in_egeria()
+    except Exception as exc:  # pragma: no cover - ensure_re_identity_in_egeria never raises
+        state = {"status": COULD_NOT_CHECK_WORD, "reason": f"{type(exc).__name__}: {exc}"}
+    line = "RE identity in Egeria: %s"
+    if state.get("status") == COULD_NOT_CHECK_WORD:
+        log.warning(line, identity_words(state))
+    else:
+        log.info(line + " (ITProfile %s, UserIdentity %s)", identity_words(state),
+                 state.get("it_profile_guid"), state.get("user_identity_guid"))
+    return state
 
 
 # ── the leader-gated supervisor ─────────────────────────────────────────
@@ -381,6 +464,10 @@ def run_worker(
         "draft/private-zone bootstrap",
         embedded, len(loop_specs()),
     )
+
+    from resource_explorer.surveyors.prefect_adapter import log_prefect_reachability_at_startup
+
+    log_prefect_reachability_at_startup()
 
     _reconcile_orphaned_runs()
     _warm_survey_definition_cache()

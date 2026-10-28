@@ -20,6 +20,7 @@ resolution-markers = [
 members = [
     "egeria-advisor",
     "resource-explorer",
+    "trellis-analytics",
     "trellis-artifact-tree",
     "trellis-auth",
     "trellis-context",
@@ -290,7 +291,7 @@ wheels = [
 
 [[package]]
 name = "altair"
-version = "6.2.2"
+version = "6.3.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "jinja2" },
@@ -299,9 +300,9 @@ dependencies = [
     { name = "packaging" },
     { name = "typing-extensions", marker = "python_full_version < '3.15'" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/06/a1/5e6cc638a66da48cfc89a79c2f4810dfec00b63385f9b009ab1f069779bb/altair-6.2.2.tar.gz", hash = "sha256:a1ff9d9cfe81c75414641826312b9471780e19d39293ba0b012933f6b6cba0fe", size = 766606, upload-time = "2026-06-23T12:47:13.384Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/e8/de/9731304fae332b5783fdc3ed18531dfaf4a3cc62a66aaaa74c047355b70f/altair-6.3.0.tar.gz", hash = "sha256:fa632121aca6d0fcb198a3d8a9f7d937fa5b7518ec947951cfffb44e736d97c8", size = 766362, upload-time = "2026-09-15T06:38:03.623Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/e3/99/d6031f4f146298951c46b1bf1cc160c2a63f6e44b3c13a30054add100d5f/altair-6.2.2-py3-none-any.whl", hash = "sha256:94014f8ad8617c3cb163d1137359cd6db5ba134b9b46d93cfd8b609fd245a583", size = 797613, upload-time = "2026-06-23T12:47:11.451Z" },
+    { url = "https://files.pythonhosted.org/packages/ca/b9/10a8bb13a0462e0bc4e02c0b7b8237dc24ab590f5bb4be94bec5e8f1d532/altair-6.3.0-py3-none-any.whl", hash = "sha256:7defb6ca730676dfc99a299768e2769f51585fcb3dc960ea71aacc368929d65e", size = 797192, upload-time = "2026-09-15T06:38:01.791Z" },
 ]
 
 [[package]]
@@ -2188,6 +2189,15 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/a2/78/0d2db9382c92a163d7095fc08efff7800880f830a152cfced40161e7638d/emoji-2.15.0.tar.gz", hash = "sha256:eae4ab7d86456a70a00a985125a03263a5eac54cd55e51d7e184b1ed3b6757e4", size = 615483, upload-time = "2025-09-21T12:13:02.755Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/e1/5e/4b5aaaabddfacfe36ba7768817bd1f71a7a810a43705e531f3ae4c690767/emoji-2.15.0-py3-none-any.whl", hash = "sha256:205296793d66a89d88af4688fa57fd6496732eb48917a87175a023c8138995eb", size = 608433, upload-time = "2025-09-21T12:13:01.197Z" },
+]
+
+[[package]]
+name = "entrypoints"
+version = "0.4"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/ea/8d/a7121ffe5f402dc015277d2d31eb82d2187334503a011c18f2e78ecbb9b2/entrypoints-0.4.tar.gz", hash = "sha256:b706eddaa9218a19ebcd67b56818f05bb27589b1ca9e8d797b74affad4ccacd4", size = 13974, upload-time = "2022-02-02T21:30:28.172Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/35/a8/365059bbcd4572cbc41de17fd5b682be5868b218c3c5479071865cab9078/entrypoints-0.4-py3-none-any.whl", hash = "sha256:f174b5ff827504fd3cd97cc3f8649f3693f51538c7e4bdf3ef002c8429d42f9f", size = 5294, upload-time = "2022-02-02T21:30:26.024Z" },
 ]
 
 [[package]]
@@ -6310,6 +6320,26 @@ wheels = [
 ]
 
 [[package]]
+name = "papermill"
+version = "2.7.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "aiohttp", marker = "python_full_version < '3.13'" },
+    { name = "click" },
+    { name = "entrypoints" },
+    { name = "nbclient" },
+    { name = "nbformat" },
+    { name = "pyyaml" },
+    { name = "requests" },
+    { name = "tenacity" },
+    { name = "tqdm" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/f8/b6/92d770c5ced66ed0134256f8de781e98c824d3a0662af1643a91fcc36663/papermill-2.7.0.tar.gz", hash = "sha256:ec10b37594a060662f57269e1ebd108c209d204450f00fdfeb70a1c7cfb7fbc8", size = 77961, upload-time = "2026-02-27T19:07:30.548Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/95/9f/f9fd57a727dcc89c54e84455d8317bff7db05ef21bb6d05b03705111f7c0/papermill-2.7.0-py3-none-any.whl", hash = "sha256:e1855e6670100a02bb4f8a6870484a5c10b84a8d2e49c49921c90209940c7514", size = 88858, upload-time = "2026-02-27T19:07:28.862Z" },
+]
+
+[[package]]
 name = "parso"
 version = "0.8.7"
 source = { registry = "https://pypi.org/simple" }
@@ -7255,11 +7285,12 @@ wheels = [
 
 [[package]]
 name = "pyegeria"
-version = "6.1.15"
+version = "6.2.5"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "altair" },
     { name = "click" },
+    { name = "fastapi" },
     { name = "httpx" },
     { name = "inflect" },
     { name = "jupyter" },
@@ -7287,9 +7318,9 @@ dependencies = [
     { name = "validators" },
     { name = "wcwidth" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/7c/99/c7ab51cfafedd9cb1578978ef00e8a68309e1b301a9f7e4651a621563be1/pyegeria-6.1.15.tar.gz", hash = "sha256:23b0fdd922eee3fd4abe6faa78cb15e01f7c26df18adc7c3e62dae88b9614aa9", size = 2035198, upload-time = "2026-09-13T21:14:09.655Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/68/56/0b9a5391239100bdf05bfa699a5c4ad43296191be3f59513a873e91a1ba0/pyegeria-6.2.5.tar.gz", hash = "sha256:03b9dea8b46d8eb5e91097fbe27b45489b695186eb03c047ba97e7eca6a6010b", size = 2201639, upload-time = "2026-10-16T21:50:00.412Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/6e/03/3d3f60f83efd6316f53dfb96e24af8af2823cd4c49b733546eb3f9d67a15/pyegeria-6.1.15-py3-none-any.whl", hash = "sha256:f4da9310f86b546a875078d3c8e213e77968e2e3514686489a48682d6993bc1e", size = 2008963, upload-time = "2026-09-13T21:14:07.59Z" },
+    { url = "https://files.pythonhosted.org/packages/43/9a/6c81329579c1bbab9cd0ec801138d12c6f82bc7f510000e8e2d1f4de651a/pyegeria-6.2.5-py3-none-any.whl", hash = "sha256:da0702e525bd1e702da33e7ecfbbd208ff1ef13ea3b2cd4bf1e44fe21f4ce467", size = 2107548, upload-time = "2026-10-16T21:49:57.233Z" },
 ]
 
 [[package]]
@@ -8282,6 +8313,7 @@ dependencies = [
     { name = "textual" },
     { name = "tree-sitter" },
     { name = "tree-sitter-java" },
+    { name = "trellis-analytics" },
     { name = "trellis-artifact-tree" },
     { name = "trellis-auth" },
     { name = "trellis-context" },
@@ -8350,7 +8382,7 @@ requires-dist = [
     { name = "pyarrow", specifier = ">=23.0.1" },
     { name = "pydantic", specifier = ">=2.10.0" },
     { name = "pydantic-settings", specifier = ">=2.7.0" },
-    { name = "pyegeria", specifier = ">=6.1.10" },
+    { name = "pyegeria", specifier = ">=6.2.5" },
     { name = "pygithub", specifier = ">=2.5.0" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.3.0" },
     { name = "pytest-asyncio", marker = "extra == 'dev'", specifier = ">=0.24.0" },
@@ -8371,6 +8403,7 @@ requires-dist = [
     { name = "tree-sitter-java", specifier = ">=0.21" },
     { name = "tree-sitter-javascript", marker = "extra == 'ast'", specifier = ">=0.21" },
     { name = "tree-sitter-python", marker = "extra == 'ast'", specifier = ">=0.21" },
+    { name = "trellis-analytics", editable = "packages/trellis-analytics" },
     { name = "trellis-artifact-tree", editable = "packages/trellis-artifact-tree" },
     { name = "trellis-auth", editable = "packages/trellis-auth" },
     { name = "trellis-context", editable = "packages/trellis-context" },
@@ -9820,6 +9853,44 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/8b/ab/dd84f0e2337296a5f09749f7b5483215d75c8fa9e33738522e5ed81f7254/tree_sitter_typescript-0.23.2-cp39-abi3-win_amd64.whl", hash = "sha256:3f730b66396bc3e11811e4465c41ee45d9e9edd6de355a58bbbc49fa770da8f9", size = 278015, upload-time = "2024-11-11T02:36:07.631Z" },
     { url = "https://files.pythonhosted.org/packages/9f/e4/81f9a935789233cf412a0ed5fe04c883841d2c8fb0b7e075958a35c65032/tree_sitter_typescript-0.23.2-cp39-abi3-win_arm64.whl", hash = "sha256:05db58f70b95ef0ea126db5560f3775692f609589ed6f8dd0af84b7f19f1cbb7", size = 274052, upload-time = "2024-11-11T02:36:09.514Z" },
 ]
+
+[[package]]
+name = "trellis-analytics"
+version = "0.1.0"
+source = { editable = "packages/trellis-analytics" }
+dependencies = [
+    { name = "pyegeria" },
+]
+
+[package.optional-dependencies]
+dev = [
+    { name = "ipykernel" },
+    { name = "nbformat" },
+    { name = "papermill" },
+    { name = "pytest" },
+]
+dotenv = [
+    { name = "python-dotenv" },
+]
+postgres = [
+    { name = "psycopg2-binary" },
+]
+re = [
+    { name = "resource-explorer" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "ipykernel", marker = "extra == 'dev'" },
+    { name = "nbformat", marker = "extra == 'dev'" },
+    { name = "papermill", marker = "extra == 'dev'" },
+    { name = "psycopg2-binary", marker = "extra == 'postgres'" },
+    { name = "pyegeria", specifier = ">=6.2.3" },
+    { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.3.0" },
+    { name = "python-dotenv", marker = "extra == 'dotenv'" },
+    { name = "resource-explorer", marker = "extra == 're'", editable = "packages/resource-explorer" },
+]
+provides-extras = ["postgres", "dotenv", "re", "dev"]
 
 [[package]]
 name = "trellis-artifact-tree"

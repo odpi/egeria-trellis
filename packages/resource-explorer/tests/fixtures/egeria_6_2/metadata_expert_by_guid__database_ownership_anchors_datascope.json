@@ -1,0 +1,417 @@
+{
+ "captured": "2026-10-14",
+ "platform": "Egeria 6.2 quickstart (qs-view-server), pyegeria 6.2.3",
+ "identity": "RE daemon (DaemonReason.ACCESS_CHECK), read-only",
+ "route": "MetadataExpert.get_metadata_element_by_guid",
+ "call": "get_metadata_element_by_guid(guid) (no body), as zone_access/egeria_identity/catalogue_gateway.read_zones/set_owner call it",
+ "secrets": "keys matching token|password|secret|credential|apikey replaced by <removed>",
+ "graph_keys_dropped": [],
+ "answer": {
+  "classifications": [
+   {
+    "class": "AttachedClassification",
+    "classificationName": "Anchors",
+    "classificationOrigin": "ASSIGNED",
+    "classificationProperties": {
+     "propertiesAsStrings": {
+      "anchorDomainName": "Asset",
+      "anchorTypeName": "RelationalDatabase"
+     },
+     "propertyCount": 2,
+     "propertyNames": [
+      "anchorTypeName",
+      "anchorDomainName"
+     ],
+     "propertyValueMap": {
+      "anchorDomainName": {
+       "class": "PrimitiveTypePropertyValue",
+       "primitiveTypeCategory": "OM_PRIMITIVE_TYPE_STRING",
+       "primitiveValue": "Asset",
+       "typeName": "string"
+      },
+      "anchorTypeName": {
+       "class": "PrimitiveTypePropertyValue",
+       "primitiveTypeCategory": "OM_PRIMITIVE_TYPE_STRING",
+       "primitiveValue": "RelationalDatabase",
+       "typeName": "string"
+      }
+     }
+    },
+    "headerVersion": 0,
+    "origin": {
+     "homeMetadataCollectionId": "9905c3cb-94c5-4494-9229-0d6f69c0b842",
+     "homeMetadataCollectionName": "qs-metadata-store",
+     "originCategory": "LOCAL_COHORT",
+     "sourceServer": "qs-metadata-store"
+    },
+    "status": "ACTIVE",
+    "type": {
+     "typeCategory": "CLASSIFICATION_DEF",
+     "typeDescription": "Identifies the anchor entity for an element that is part of a large composite object such as an asset.",
+     "typeId": "aa44f302-2e43-4669-a1e7-edaae414fc6e",
+     "typeName": "Anchors",
+     "typeVersion": 1
+    },
+    "versions": {
+     "createTime": "2026-10-09T01:42:00.926+00:00",
+     "createdBy": "postgresqlgovernanceengine",
+     "lastRequestId": "1bb22c99-625b-4b9c-b5e4-353a42a7eb9c",
+     "maintainedBy": [
+      "postgresqlgovernanceengine"
+     ],
+     "updateTime": "2026-10-09T01:42:00.926+00:00",
+     "updatedBy": "postgresqlgovernanceengine",
+     "version": 1
+    }
+   },
+   {
+    "class": "AttachedClassification",
+    "classificationName": "DataScope",
+    "classificationOrigin": "ASSIGNED",
+    "classificationProperties": {
+     "propertiesAsStrings": {
+      "additionalProperties": "{lastReadByRunId=5be7cc2c-8985-4fb7-9102-b4534b4cbf0c, lastReadAt=2026-10-09T02:08:41.111Z, analysisTime=2026-10-15T00:31:50Z, lastReadInWindow=2026-10-15T00:15:42Z, readersInWindow=4, readsPerDay=0.40, analysisWindowEnd=2026-10-15T00:31:50Z, readsInWindow=12, analysisService=open-lineage-data-scope-governance-service, readCount=3, analysisWindowStart=2026-09-15T00:31:50Z}",
+      "maxHeight": "0.0",
+      "maxLatitude": "0.0",
+      "maxLongitude": "0.0",
+      "minHeight": "0.0",
+      "minLatitude": "0.0",
+      "minLongitude": "0.0"
+     },
+     "propertyCount": 7,
+     "propertyNames": [
+      "minHeight",
+      "maxLongitude",
+      "minLatitude",
+      "maxHeight",
+      "additionalProperties",
+      "minLongitude",
+      "maxLatitude"
+     ],
+     "propertyValueMap": {
+      "additionalProperties": {
+       "class": "MapTypePropertyValue",
+       "mapElementCount": 11,
+       "mapValues": {
+        "propertiesAsStrings": {
+         "analysisService": "open-lineage-data-scope-governance-service",
+         "analysisTime": "2026-10-15T00:31:50Z",
+         "analysisWindowEnd": "2026-10-15T00:31:50Z",
+         "analysisWindowStart": "2026-09-15T00:31:50Z",
+         "lastReadAt": "2026-10-09T02:08:41.111Z",
+         "lastReadByRunId": "5be7cc2c-8985-4fb7-9102-b4534b4cbf0c",
+         "lastReadInWindow": "2026-10-15T00:15:42Z",
+         "readCount": "3",
+         "readersInWindow": "4",
+         "readsInWindow": "12",
+         "readsPerDay": "0.40"
+        },
+        "propertyCount": 11,
+        "propertyNames": [
+         "lastReadByRunId",
+         "lastReadAt",
+         "analysisTime",
+         "lastReadInWindow",
+         "readersInWindow",
+         "readsPerDay",
+         "analysisWindowEnd",
+         "readsInWindow",
+         "analysisService",
+         "readCount",
+         "analysisWindowStart"
+        ],
+        "propertyValueMap": {
+         "analysisService": {
+          "class": "PrimitiveTypePropertyValue",
+          "primitiveTypeCategory": "OM_PRIMITIVE_TYPE_STRING",
+          "primitiveValue": "open-lineage-data-scope-governance-service",
+          "typeName": "string"
+         },
+         "analysisTime": {
+          "class": "PrimitiveTypePropertyValue",
+          "primitiveTypeCategory": "OM_PRIMITIVE_TYPE_STRING",
+          "primitiveValue": "2026-10-15T00:31:50Z",
+          "typeName": "string"
+         },
+         "analysisWindowEnd": {
+          "class": "PrimitiveTypePropertyValue",
+          "primitiveTypeCategory": "OM_PRIMITIVE_TYPE_STRING",
+          "primitiveValue": "2026-10-15T00:31:50Z",
+          "typeName": "string"
+         },
+         "analysisWindowStart": {
+          "class": "PrimitiveTypePropertyValue",
+          "primitiveTypeCategory": "OM_PRIMITIVE_TYPE_STRING",
+          "primitiveValue": "2026-09-15T00:31:50Z",
+          "typeName": "string"
+         },
+         "lastReadAt": {
+          "class": "PrimitiveTypePropertyValue",
+          "primitiveTypeCategory": "OM_PRIMITIVE_TYPE_STRING",
+          "primitiveValue": "2026-10-09T02:08:41.111Z",
+          "typeName": "string"
+         },
+         "lastReadByRunId": {
+          "class": "PrimitiveTypePropertyValue",
+          "primitiveTypeCategory": "OM_PRIMITIVE_TYPE_STRING",
+          "primitiveValue": "5be7cc2c-8985-4fb7-9102-b4534b4cbf0c",
+          "typeName": "string"
+         },
+         "lastReadInWindow": {
+          "class": "PrimitiveTypePropertyValue",
+          "primitiveTypeCategory": "OM_PRIMITIVE_TYPE_STRING",
+          "primitiveValue": "2026-10-15T00:15:42Z",
+          "typeName": "string"
+         },
+         "readCount": {
+          "class": "PrimitiveTypePropertyValue",
+          "primitiveTypeCategory": "OM_PRIMITIVE_TYPE_STRING",
+          "primitiveValue": "3",
+          "typeName": "string"
+         },
+         "readersInWindow": {
+          "class": "PrimitiveTypePropertyValue",
+          "primitiveTypeCategory": "OM_PRIMITIVE_TYPE_STRING",
+          "primitiveValue": "4",
+          "typeName": "string"
+         },
+         "readsInWindow": {
+          "class": "PrimitiveTypePropertyValue",
+          "primitiveTypeCategory": "OM_PRIMITIVE_TYPE_STRING",
+          "primitiveValue": "12",
+          "typeName": "string"
+         },
+         "readsPerDay": {
+          "class": "PrimitiveTypePropertyValue",
+          "primitiveTypeCategory": "OM_PRIMITIVE_TYPE_STRING",
+          "primitiveValue": "0.40",
+          "typeName": "string"
+         }
+        }
+       },
+       "typeName": "map<string,string>"
+      },
+      "maxHeight": {
+       "class": "PrimitiveTypePropertyValue",
+       "primitiveTypeCategory": "OM_PRIMITIVE_TYPE_FLOAT",
+       "primitiveValue": 0.0,
+       "typeName": "float"
+      },
+      "maxLatitude": {
+       "class": "PrimitiveTypePropertyValue",
+       "primitiveTypeCategory": "OM_PRIMITIVE_TYPE_FLOAT",
+       "primitiveValue": 0.0,
+       "typeName": "float"
+      },
+      "maxLongitude": {
+       "class": "PrimitiveTypePropertyValue",
+       "primitiveTypeCategory": "OM_PRIMITIVE_TYPE_FLOAT",
+       "primitiveValue": 0.0,
+       "typeName": "float"
+      },
+      "minHeight": {
+       "class": "PrimitiveTypePropertyValue",
+       "primitiveTypeCategory": "OM_PRIMITIVE_TYPE_FLOAT",
+       "primitiveValue": 0.0,
+       "typeName": "float"
+      },
+      "minLatitude": {
+       "class": "PrimitiveTypePropertyValue",
+       "primitiveTypeCategory": "OM_PRIMITIVE_TYPE_FLOAT",
+       "primitiveValue": 0.0,
+       "typeName": "float"
+      },
+      "minLongitude": {
+       "class": "PrimitiveTypePropertyValue",
+       "primitiveTypeCategory": "OM_PRIMITIVE_TYPE_FLOAT",
+       "primitiveValue": 0.0,
+       "typeName": "float"
+      }
+     }
+    },
+    "headerVersion": 0,
+    "origin": {
+     "homeMetadataCollectionId": "9905c3cb-94c5-4494-9229-0d6f69c0b842",
+     "homeMetadataCollectionName": "qs-metadata-store",
+     "originCategory": "LOCAL_COHORT",
+     "sourceServer": "qs-metadata-store"
+    },
+    "status": "ACTIVE",
+    "type": {
+     "typeCategory": "CLASSIFICATION_DEF",
+     "typeDescription": "Identifies the scope of the data stored in the digital resource(s).",
+     "typeId": "22f996d0-c4b7-433a-af0b-6a3e9478e488",
+     "typeName": "DataScope",
+     "typeVersion": 2
+    },
+    "versions": {
+     "createTime": "2026-10-09T02:06:39.439+00:00",
+     "createdBy": "olcatnpa",
+     "lastRequestId": "4d3cfe15-b4e0-4acf-af29-0c029018e243",
+     "maintainedBy": [
+      "olcatnpa",
+      "egeriagovernanceengine"
+     ],
+     "updateTime": "2026-10-15T00:32:11.679+00:00",
+     "updatedBy": "egeriagovernanceengine",
+     "version": 223
+    }
+   },
+   {
+    "class": "AttachedClassification",
+    "classificationName": "Ownership",
+    "classificationOrigin": "ASSIGNED",
+    "classificationProperties": {
+     "propertiesAsStrings": {
+      "owner": "Jules",
+      "ownerPropertyName": "userId",
+      "ownerTypeName": "UserIdentity"
+     },
+     "propertyCount": 3,
+     "propertyNames": [
+      "owner",
+      "ownerPropertyName",
+      "ownerTypeName"
+     ],
+     "propertyValueMap": {
+      "owner": {
+       "class": "PrimitiveTypePropertyValue",
+       "primitiveTypeCategory": "OM_PRIMITIVE_TYPE_STRING",
+       "primitiveValue": "Jules",
+       "typeName": "string"
+      },
+      "ownerPropertyName": {
+       "class": "PrimitiveTypePropertyValue",
+       "primitiveTypeCategory": "OM_PRIMITIVE_TYPE_STRING",
+       "primitiveValue": "userId",
+       "typeName": "string"
+      },
+      "ownerTypeName": {
+       "class": "PrimitiveTypePropertyValue",
+       "primitiveTypeCategory": "OM_PRIMITIVE_TYPE_STRING",
+       "primitiveValue": "UserIdentity",
+       "typeName": "string"
+      }
+     }
+    },
+    "headerVersion": 0,
+    "origin": {
+     "homeMetadataCollectionId": "9905c3cb-94c5-4494-9229-0d6f69c0b842",
+     "homeMetadataCollectionName": "qs-metadata-store",
+     "originCategory": "LOCAL_COHORT",
+     "sourceServer": "qs-metadata-store"
+    },
+    "status": "ACTIVE",
+    "type": {
+     "typeCategory": "CLASSIFICATION_DEF",
+     "typeDescription": "Who is responsible for making decisions on the management and governance of this element.",
+     "typeId": "8139a911-a4bd-432b-a9f4-f6d11c511abe",
+     "typeName": "Ownership",
+     "typeVersion": 2
+    },
+    "versions": {
+     "createTime": "2026-10-09T01:56:23.844+00:00",
+     "createdBy": "erinoverview",
+     "lastRequestId": "e1c46006-14a0-4c10-bd11-c4b3aee28643",
+     "maintainedBy": [
+      "erinoverview"
+     ],
+     "updateTime": "2026-10-09T01:56:23.844+00:00",
+     "updatedBy": "erinoverview",
+     "version": 1
+    }
+   }
+  ],
+  "elementGUID": "0ff72014-8936-4bea-b3d1-6a4493b99b30",
+  "elementProperties": {
+   "propertiesAsStrings": {
+    "contentStatus": "ACTIVE",
+    "deployedImplementationType": "PostgreSQL Relational Database",
+    "description": "PostgreSQL database coco_pharma",
+    "displayName": "coco_pharma",
+    "qualifiedName": "PostgreSQL Relational Database::host.docker.internal:5442::coco_pharma",
+    "versionIdentifier": "not recorded"
+   },
+   "propertyCount": 6,
+   "propertyNames": [
+    "description",
+    "versionIdentifier",
+    "displayName",
+    "qualifiedName",
+    "contentStatus",
+    "deployedImplementationType"
+   ],
+   "propertyValueMap": {
+    "contentStatus": {
+     "class": "EnumTypePropertyValue",
+     "symbolicName": "ACTIVE",
+     "typeName": "ContentStatus"
+    },
+    "deployedImplementationType": {
+     "class": "PrimitiveTypePropertyValue",
+     "primitiveTypeCategory": "OM_PRIMITIVE_TYPE_STRING",
+     "primitiveValue": "PostgreSQL Relational Database",
+     "typeName": "string"
+    },
+    "description": {
+     "class": "PrimitiveTypePropertyValue",
+     "primitiveTypeCategory": "OM_PRIMITIVE_TYPE_STRING",
+     "primitiveValue": "PostgreSQL database coco_pharma",
+     "typeName": "string"
+    },
+    "displayName": {
+     "class": "PrimitiveTypePropertyValue",
+     "primitiveTypeCategory": "OM_PRIMITIVE_TYPE_STRING",
+     "primitiveValue": "coco_pharma",
+     "typeName": "string"
+    },
+    "qualifiedName": {
+     "class": "PrimitiveTypePropertyValue",
+     "primitiveTypeCategory": "OM_PRIMITIVE_TYPE_STRING",
+     "primitiveValue": "PostgreSQL Relational Database::host.docker.internal:5442::coco_pharma",
+     "typeName": "string"
+    },
+    "versionIdentifier": {
+     "class": "PrimitiveTypePropertyValue",
+     "primitiveTypeCategory": "OM_PRIMITIVE_TYPE_STRING",
+     "primitiveValue": "not recorded",
+     "typeName": "string"
+    }
+   }
+  },
+  "headerVersion": 0,
+  "origin": {
+   "homeMetadataCollectionId": "9905c3cb-94c5-4494-9229-0d6f69c0b842",
+   "homeMetadataCollectionName": "qs-metadata-store",
+   "originCategory": "LOCAL_COHORT",
+   "sourceServer": "qs-metadata-store"
+  },
+  "status": "ACTIVE",
+  "type": {
+   "superTypeNames": [
+    "Database",
+    "DataStore",
+    "DataAsset",
+    "Asset",
+    "Referenceable",
+    "OpenMetadataRoot"
+   ],
+   "typeCategory": "ENTITY_DEF",
+   "typeDescription": "A data store organized to facilitate a relational data model.",
+   "typeId": "6a28e242-4eca-4664-81cb-e2096d769568",
+   "typeName": "RelationalDatabase",
+   "typeVersion": 1
+  },
+  "versions": {
+   "createTime": "2026-10-09T01:42:00.942+00:00",
+   "createdBy": "postgresqlgovernanceengine",
+   "lastRequestId": "1bb22c99-625b-4b9c-b5e4-353a42a7eb9c",
+   "maintainedBy": [
+    "postgresqlgovernanceengine"
+   ],
+   "updateTime": "2026-10-09T01:42:00.942+00:00",
+   "updatedBy": "postgresqlgovernanceengine",
+   "version": 1
+  }
+ }
+}

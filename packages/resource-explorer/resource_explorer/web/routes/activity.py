@@ -3,12 +3,16 @@ from __future__ import annotations
 
 import logging
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel
 
+from resource_explorer.auth import get_current_user
 from resource_explorer.registry import ProjectRegistry
+from resource_explorer.rfas import flatten_rfas
 
 log = logging.getLogger(__name__)
+
+#: Activity rows Curate writes as bookkeeping (who added or removed a tag, the typed spelling): never RFAs.
 
 router = APIRouter()
 
@@ -56,9 +60,33 @@ def _registry() -> ProjectRegistry:
     return ProjectRegistry()
 
 
+def _split_rfa_id(rfa_id: str) -> tuple[str, int, int | None]:
+    """`{entry_id}::{annotation_index}` or, for one of several requests grouped under an annotation,
+    `{entry_id}::{annotation_index}::{sub}` (`_emit_rfa`). The routes used to `rsplit('::', 1)`, which read
+    the sub-index as the annotation index and the annotation index as part of the entry id: every action on
+    a grouped request (the common SecurityHygieneCheck case) answered 404 or hit the wrong annotation."""
+    parts = rfa_id.split("::")
+    try:
+        if len(parts) == 2:
+            return parts[0], int(parts[1]), None
+        if len(parts) == 3:
+            return parts[0], int(parts[1]), int(parts[2])
+    except ValueError:
+        pass
+    raise HTTPException(status_code=400,
+                        detail="Malformed rfa_id — expected '{entry_id}::{annotation_index}[::{sub}]'")
+
+
+def _acting_user(request: Request, supplied: str = "") -> str:
+    """Who did it: the signed-in user, else what the caller named, else nobody. Never a guess."""
+    user = get_current_user(request) or {}
+    return user.get("user_id") or user.get("sub") or user.get("username") or supplied or ""
+
+
 @router.get("/")
 def list_activity(
     entity_type: str | None = Query(None),
+    entity_slug: str | None = Query(None),
     intent: str | None = Query(None),
     operation: str | None = Query(None),
     status: str | None = Query(None),
@@ -67,6 +95,7 @@ def list_activity(
 ) -> list[dict]:
     return _registry().list_activity(
         entity_type=entity_type,
+        entity_slug=entity_slug,
         intent=intent,
         operation=operation,
         status=status,
@@ -81,123 +110,13 @@ def list_rfas(
     entity_slug: str | None = Query(None),
     limit: int = Query(500, le=2000),
 ) -> list[dict]:
-    """Return all RequestForAction annotations across all activity log entries.
-
-    Each RFA gets a stable `id` (f"{entry_id}::{annotation_index}", minted
-    positionally the same way every time this flattens the same entry's
-    annotations) and has any locally-recorded response action
-    (see PATCH /rfas/{rfa_id}) overlaid onto it: `rfa_status` (defaults to
-    "open" if nothing's been recorded yet), `assignee`, `defer_until`,
-    `resolution_note`, `action_updated_at`. `status` (Egeria/local
-    provenance, e.g. "local") is unrelated and untouched — don't confuse
-    the two."""
-    registry = _registry()
-    entries = registry.list_activity(entity_type=entity_type, entity_slug=entity_slug, limit=limit)
-    overrides = registry.list_rfa_action_overrides()
-    # Dismissed RFAs are returned like every other one, carrying `dismissed`
-    # and the dismissal record — NEVER filtered out here. Dan asked for
-    # "suppress with visibility": the drawer collapses them behind an
-    # explicit "N suppressed" toggle, which it can only do if it is told
-    # they exist. A server-side filter would make a suppressed finding
-    # indistinguishable from one that never occurred, which is precisely the
-    # absence-as-answer shape this codebase keeps getting bitten by.
-    dismissals = registry.active_rfa_dismissals()
-    rfas = []
-    for entry in entries:
-        for idx, ann in enumerate(entry.get("annotations") or []):
-            if "RequestForAction" in (ann.get("annotation_type") or ""):
-                # One row per REQUEST, not one per group.
-                #
-                # survey_report.summarise_annotations groups by
-                # (step, annotation_type) — right for a compact activity
-                # preview, wrong here. Three distinct requests from
-                # SecurityHygieneCheck (no SECURITY.md, no CI config, no
-                # licence) share both keys, so this used to emit ONE row
-                # carrying count=3 and the first one's text: "Security
-                # HygieneCheck 3 / No SECURITY.md found", with the other two
-                # unreachable. That is Dan's original report, and the reason
-                # the group now carries `items`.
-                #
-                # The sub-index is appended to rfa_id so each request keeps a
-                # stable identity for PATCH and for dismissal. A group with
-                # no items (an entry written before this change) still
-                # yields its single row, so old entries do not vanish.
-                members = ann.get("items") or [None]
-                for sub, member in enumerate(members):
-                    _emit_rfa(rfas, entry, ann, idx, sub, member,
-                              len(members), overrides, dismissals, registry)
-    return rfas
+    """Return all RequestForAction annotations across all activity log entries, with response actions
+    overlaid and dismissals marked -- see `resource_explorer.rfas.flatten_rfas`."""
+    return flatten_rfas(_registry(), entity_type, entity_slug, limit)
 
 
-def _emit_rfa(rfas, entry, ann, idx, sub, member, n_members,
-              overrides, dismissals, registry) -> None:
-    """One RFA row. `member` is this request's own text when the group
-    carried per-item detail, None when it did not."""
-    rfa_id = f"{entry['id']}::{idx}" if n_members == 1 else f"{entry['id']}::{idx}::{sub}"
-    override = overrides.get(rfa_id)
-    # Content key, not rfa_id: a dismissal has to keep matching
-    # across future survey runs, which mint new entry ids (see
-    # the rfa_dismissals DDL in registry.py).
-    dismissal_key = registry.rfa_dismissal_key(
-        entry.get("entity_type", ""),
-        entry.get("entity_slug", ""),
-        ann.get("analysis_name", ""),
-        # This request's OWN summary, not the group's first. Keying on the
-        # group would make one dismissal suppress every sibling: marking
-        # "No CI configuration detected" not-applicable would silently hide
-        # "No SECURITY.md found" too.
-        (member or ann).get("summary", "") or ann.get("summary", ""),
-    )
-    dismissal = dismissals.get(dismissal_key)
-    rfas.append({
-        "id": rfa_id,
-        "entry_id": entry["id"],
-        "annotation_index": idx,
-        "ts": entry["ts"],
-        "entity_type": entry.get("entity_type", ""),
-        "entity_slug": entry.get("entity_slug", ""),
-        "entity_name": entry.get("entity_name", ""),
-        "annotation_type": ann.get("annotation_type", ""),
-        "analysis_name": ann.get("analysis_name", ""),
-        "count": 1 if n_members > 1 else ann.get("count", 1),
-        "summary": (member or ann).get("summary", "") or ann.get("summary", ""),
-        # Carried from the annotation the summary came from
-        # (survey_orchestrator.py's by_step grouping) — the
-        # drawer showed only `summary` before this, and with ten
-        # "SecurityHygieneCheck" RFAs sharing near-identical
-        # summaries, that read as ten identical, unexplained
-        # items. `explanation` says why it matters;
-        # `action_requested`/`action_target_name` say what to do
-        # and to what — RequestForActionAnnotation always carries
-        # them (security_hygiene.py, file_size.py, etc.), they
-        # just were never forwarded past the activity log.
-        "explanation": (member or ann).get("explanation", ""),
-        "action_requested": (member or ann).get("action_requested", ""),
-        "action_target_name": (member or ann).get("action_target_name", ""),
-        "status": ann.get("status", "local"),
-        "rfa_status": override["rfa_status"] if override else "open",
-        "assignee": override["assignee"] if override else "",
-        "defer_until": override["defer_until"] if override else "",
-        "resolution_note": override["resolution_note"] if override else "",
-        "notes": (override.get("notes") if override else "") or "",
-        "action_updated_at": override["updated_at"] if override else "",
-        # Egeria ToDo sync state (docs/rfa-egeria-todo-followup.md)
-        # — "" guid means never synced yet (or no response action
-        # taken at all); sync_error non-empty means the last
-        # attempt failed and scheduler.py's reconciliation pass
-        # will retry it.
-        "egeria_todo_guid": override["egeria_todo_guid"] if override else "",
-        "synced_at": override["synced_at"] if override else "",
-        "sync_error": override["sync_error"] if override else "",
-        # Suppression state (docs/rfa-dismissals.md). `dismissal`
-        # carries the whole record — reason, note, who, when —
-        # so the drawer can say what was decided and by whom
-        # rather than just hiding the row.
-        "dismissal_key": dismissal_key,
-        "dismissed": dismissal is not None,
-        "dismissal": dismissal,
-    })
-    return rfas
+def _dismissal_subject(registry, entry, ann, member) -> tuple[str, str, str, str]:
+    return registry.rfa_dismissal_subject(entry, ann, member)
 
 
 @router.get("/rfas/dismissals")
@@ -210,7 +129,7 @@ def list_rfa_dismissals(include_cleared: bool = Query(False)) -> list[dict]:
 
 
 @router.post("/rfas/{rfa_id}/dismiss")
-def dismiss_rfa(rfa_id: str, body: RfaDismissRequest) -> dict:
+def dismiss_rfa(rfa_id: str, body: RfaDismissRequest, request: Request) -> dict:
     """Suppress a finding as not-applicable / won't-do.
 
     Takes an `rfa_id` because that is what the drawer has in hand, but
@@ -218,13 +137,14 @@ def dismiss_rfa(rfa_id: str, body: RfaDismissRequest) -> dict:
     resolved here from the activity entry the id points at. That asymmetry
     is deliberate and is the whole point: the user dismisses the row in
     front of them, and the same finding stays dismissed when the next survey
-    run produces it again under a new id."""
+    run produces it again under a new id.
+
+    The summary is THIS request's own (the sub-indexed member of a grouped
+    annotation), the same one `_emit_rfa` keys the listing on; keying on the
+    group's first summary would dismiss a sibling and leave the dismissed
+    row showing."""
     registry = _registry()
-    try:
-        entry_id, idx_str = rfa_id.rsplit("::", 1)
-        idx = int(idx_str)
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Malformed rfa_id — expected '{entry_id}::{annotation_index}'")
+    entry_id, idx, sub = _split_rfa_id(rfa_id)
 
     entry = registry.get_activity(entry_id)
     if entry is None:
@@ -236,16 +156,19 @@ def dismiss_rfa(rfa_id: str, body: RfaDismissRequest) -> dict:
             detail=f"Activity entry {entry_id} has no annotation at index {idx}",
         )
     ann = annotations[idx]
+    members = ann.get("items") or [None]
+    member = members[sub] if sub is not None and sub < len(members) else None
 
     try:
+        d_type, d_slug, d_analysis, d_summary = _dismissal_subject(registry, entry, ann, member)
         row = registry.dismiss_rfa(
-            entity_type=entry.get("entity_type", ""),
-            entity_slug=entry.get("entity_slug", ""),
-            analysis_name=ann.get("analysis_name", ""),
-            summary_key=ann.get("summary", ""),
+            entity_type=d_type,
+            entity_slug=d_slug,
+            analysis_name=d_analysis,
+            summary_key=d_summary,
             reason=body.reason,
             note=body.note,
-            created_by=body.dismissed_by,
+            created_by=_acting_user(request, body.dismissed_by),
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
@@ -253,14 +176,30 @@ def dismiss_rfa(rfa_id: str, body: RfaDismissRequest) -> dict:
 
 
 @router.post("/rfas/dismissals/{dismissal_id}/clear")
-def clear_rfa_dismissal(dismissal_id: str, body: RfaDismissalClearRequest) -> dict:
+def clear_rfa_dismissal(dismissal_id: str, body: RfaDismissalClearRequest, request: Request) -> dict:
     """Reverse a dismissal. The row survives with cleared_at/cleared_by set,
     so "we decided this was not applicable, then changed our mind" stays
     readable — an undelete would lose both halves of that."""
-    row = _registry().clear_rfa_dismissal(dismissal_id, cleared_by=body.cleared_by)
+    row = _registry().clear_rfa_dismissal(dismissal_id, cleared_by=_acting_user(request, body.cleared_by))
     if row is None:
         raise HTTPException(status_code=404, detail=f"No dismissal {dismissal_id}")
     return {"status": "success", "dismissal": row}
+
+
+def _todo_write_check(registry, writes) -> str:
+    """Brief Z3: the zone check for an RFA's ToDo write, as the caller. A refusal is a 403 before anything is
+    recorded. Round 2 (F2, prepared): when the check could not be READ (Egeria down), the route stays local-first
+    as its docstring promises: "" is not returned; the words come back so the caller records the local change,
+    skips the sync and keeps the words as the row's sync error (the reconcile pass retries it later)."""
+    from resource_explorer.workflows.curate import BASIS_UNREADABLE
+    from resource_explorer.workflows.egeria_work_access import writes_access
+
+    d = writes_access(registry, writes)
+    if d.allowed:
+        return ""
+    if d.basis == BASIS_UNREADABLE:
+        return f"not permitted · {d.reason}"
+    raise HTTPException(status_code=403, detail=d.reason)
 
 
 @router.patch("/rfas/{rfa_id}")
@@ -274,15 +213,18 @@ def update_rfa_action(rfa_id: str, body: RfaActionUpdateRequest) -> dict:
     retry."""
     if body.status not in RFA_STATUSES:
         raise HTTPException(status_code=400, detail=f"status must be one of {sorted(RFA_STATUSES)}")
-    try:
-        entry_id, idx_str = rfa_id.rsplit("::", 1)
-        annotation_index = int(idx_str)
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Malformed rfa_id — expected '{entry_id}::{annotation_index}'")
+    entry_id, annotation_index, _sub = _split_rfa_id(rfa_id)
 
     registry = _registry()
     if registry.get_activity(entry_id) is None:
         raise HTTPException(status_code=404, detail="No activity entry backs this RFA id")
+
+    # Brief Z3: the Egeria ToDo this creates (CREATE) or updates (UPDATE_PROPERTIES on its own zones), checked as
+    # the caller BEFORE the local write, so a refusal changes nothing in either place (RE and Egeria would
+    # otherwise disagree, and the reconciliation pass would pull Egeria's state back over RE's).
+    from resource_explorer.workflows.egeria_work_access import todo_writes
+
+    unchecked = _todo_write_check(registry, todo_writes(registry.get_rfa_action(rfa_id)))
 
     registry.upsert_rfa_action(
         rfa_id=rfa_id,
@@ -294,6 +236,11 @@ def update_rfa_action(rfa_id: str, body: RfaActionUpdateRequest) -> dict:
         defer_until=body.defer_until,
         resolution_note=body.resolution_note,
     )
+
+    if unchecked:
+        # Egeria could not be asked: recorded locally, not synced, the words kept as the row's sync error.
+        registry.mark_rfa_sync_error(rfa_id, unchecked)
+        return {"status": "success", "id": rfa_id, "rfa_status": body.status, "egeria_sync": unchecked}
 
     try:
         from resource_explorer.rfa_egeria_sync import sync_rfa_action
@@ -317,17 +264,23 @@ def update_rfa_note(rfa_id: str, body: RfaNoteRequest) -> dict:
     "Record answer" button previously never called this (or any) backend
     endpoint — it only wrote to a purely client-side, in-memory log, so
     nothing survived a page reload."""
-    try:
-        entry_id, idx_str = rfa_id.rsplit("::", 1)
-        annotation_index = int(idx_str)
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Malformed rfa_id — expected '{entry_id}::{annotation_index}'")
+    entry_id, annotation_index, _sub = _split_rfa_id(rfa_id)
 
     registry = _registry()
     if registry.get_activity(entry_id) is None:
         raise HTTPException(status_code=404, detail="No activity entry backs this RFA id")
 
+    # Brief Z3 round 2 (F3): the NoteLog and Note this creates on the RFA's ToDo (CREATE, judged on the ToDo as
+    # their anchor), checked as the caller before the local write, the same shape as the status route.
+    from resource_explorer.workflows.egeria_work_access import note_writes
+
+    unchecked = _todo_write_check(registry, note_writes(registry.get_rfa_action(rfa_id)))
+
     registry.upsert_rfa_note(rfa_id=rfa_id, entry_id=entry_id, annotation_index=annotation_index, notes=body.notes)
+
+    if unchecked:
+        registry.mark_rfa_note_sync_error(rfa_id, unchecked)
+        return {"status": "success", "id": rfa_id, "notes": body.notes, "egeria_sync": unchecked}
 
     try:
         from resource_explorer.rfa_egeria_sync import sync_rfa_note

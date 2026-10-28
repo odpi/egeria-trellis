@@ -6,8 +6,7 @@
  * correctly, the same as Scouting/Enrichment/Curate, because the catalog
  * carries 15 real Assessment-tagged questions (question_catalog.yaml)
  * backed by 15 `intent: assessment` analyses (analysis_catalog.yaml) --
- * see docs/design-notes/
- * ITEM-11-DISCOVERY-ASSESSMENT-ANALYSIS-IMPLEMENTED.md for how this was
+ * see ITEM-11-DISCOVERY-ASSESSMENT-ANALYSIS-IMPLEMENTED.md for how this was
  * verified. Classic has no bespoke Assessment UI or backend either -- it
  * reuses the same generic catalog-card/dashboard shell as Discovery and
  * Analysis, pointed at `intent: assessment` catalog entries -- so there is

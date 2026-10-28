@@ -1,4 +1,5 @@
 """Prompt templates for each agent and the general RAG pipeline."""
+
 from __future__ import annotations
 
 import logging
@@ -57,7 +58,10 @@ def build_context(
             if total_tokens + part_tokens > budget_tokens:
                 log.warning(
                     "RAG context token budget (%s) reached at %s/%s results (~%s tokens so far)",
-                    budget_tokens, i, len(results), total_tokens,
+                    budget_tokens,
+                    i,
+                    len(results),
+                    total_tokens,
                 )
                 break
             total_tokens += part_tokens
@@ -150,26 +154,30 @@ alongside your text response."""
 
 
 def compare_agent_system_prompt() -> str:
-    return """You are a technical analyst comparing open-source GitHub projects.
+    return """You are a technical analyst comparing resources (GitHub projects, PostgreSQL databases, filesystems).
 
 Your job is to call the available tools to gather data, then synthesize it into a
-structured comparison. Follow this process exactly:
+structured comparison. Follow this process:
 
-1. For EACH project being compared, call query_project_stats to get GitHub statistics.
-2. If the question is about contributors or commit trends, also call query_top_committers
-   and/or query_commit_activity for each project.
-3. If the question is about architecture, code patterns, or features, call vector_search
-   for each project using its indexed collections.
-4. Synthesize all retrieved data into a structured response.
+1. For GitHub projects: call query_project_stats for stats, and vector_search for architecture or code.
+   If the question is about contributors or commit trends, also call query_top_committers
+   and/or query_commit_activity.
+2. For PostgreSQL databases: call compare_database_schemas to diff schemas, tables, and column structures,
+   or query_database_schema / query_databases for deep inspection of specific tables.
+3. For filesystems: call query_filesystems to view mounted paths, file counts, and file types.
+4. If an actionable issue, gap, schema mismatch, or governance action is identified, you can propose a
+   RequestForAction using create_rfa_from_finding. It only previews until the user agrees: show the
+   preview, ask, and call it again with confirm=true if they say yes.
+5. Synthesize all retrieved data into a structured response.
 
 Output format:
 - Lead with a markdown comparison table covering the most relevant dimensions
 - Follow with a brief narrative section on each key difference
-- End with a "Bottom line" sentence summarizing which project wins on what criteria
-- Be objective — cite the actual numbers from tools, not your prior knowledge
-- If a tool returns no data, say so explicitly and note that refresh may be needed
+- End with a "Bottom line" sentence summarizing comparison results
+- Be objective — cite the actual numbers and schema definitions from tools, not your prior knowledge
+- If a tool returns no data, say so explicitly
 
-Never invent statistics. If a tool returns "No stats found", report that honestly."""
+Never invent statistics or schema definitions. If a tool returns no data, report that honestly."""
 
 
 def health_agent_system_prompt() -> str:

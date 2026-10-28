@@ -26,7 +26,8 @@ def test_each_step_key_delegates_to_orchestrator_with_itself_as_the_only_step():
     registry = MagicMock()
 
     for key, runner in steps.items():
-        fake_result = MagicMock(annotations=[f"ann-for-{key}"])
+        fake_result = MagicMock(annotations=[f"ann-for-{key}"], survey_commit_sha="sha1",
+                                commit_by_step={key: "sha1"})
         with patch("resource_explorer.surveyors.survey_orchestrator.SurveyOrchestrator") as MockOrch:
             MockOrch.return_value.run.return_value = fake_result
             output = runner(project, registry)
@@ -36,7 +37,8 @@ def test_each_step_key_delegates_to_orchestrator_with_itself_as_the_only_step():
         # unconditionally to SurveyOrchestrator.run(), which itself only
         # actually applies it to steps whose StepInfo.accepts_fast is True.
         MockOrch.return_value.run.assert_called_once_with(project.slug, steps=[key], fast=False)
-        assert output == {"annotations": [f"ann-for-{key}"]}
+        # survey_commit_sha: the commit the run read, for the executor's step_runs row (artifacts slice 1).
+        assert output == {"annotations": [f"ann-for-{key}"], "survey_commit_sha": "sha1"}
 
 
 def test_all_step_keys_are_registered():
@@ -166,7 +168,9 @@ class TestStepCostTiers:
             k for k, info in STEP_REGISTRY.items() if "zipball_root" in info.requires_resources
         }
         assert zipball_steps == {
-            "repo_file_inventory", "repo_homepage", "repo_data_profiling", "repo_symbol_extraction",
+            # repo_homepage left this set (2026-10-14): it reads a handful of small
+            # files through the contents API instead, so Scouting can run it.
+            "repo_file_inventory", "repo_data_profiling", "repo_symbol_extraction",
             "repo_arch_detect", "repo_arch_coupling",
             # repo_manifest_parse (2026-08-23) — parses dependency manifests, CI
             # workflow content and convention signals from the SAME extraction
@@ -370,7 +374,7 @@ class TestRunBatch:
 
         project = _project()
         registry = MagicMock()
-        fake_result = MagicMock(annotations=["a1", "a2"], errors=[])
+        fake_result = MagicMock(annotations=["a1", "a2"], errors=[], survey_commit_sha=None, commit_by_step={})
         with patch("resource_explorer.surveyors.survey_orchestrator.SurveyOrchestrator") as MockOrch:
             MockOrch.return_value.run.return_value = fake_result
             output = _run_batch(project, registry, ["repo_language", "repo_file_classification"])
@@ -378,7 +382,7 @@ class TestRunBatch:
         MockOrch.return_value.run.assert_called_once_with(
             project.slug, steps=["repo_language", "repo_file_classification"], fast=False,
         )
-        assert output == {"annotations": ["a1", "a2"], "errors": []}
+        assert output == {"annotations": ["a1", "a2"], "errors": [], "survey_commit_sha": None}
 
     def test_forwards_fast_flag(self):
         from resource_explorer.surveyors.repo_survey_definition_adapter import _run_batch
@@ -457,10 +461,13 @@ def test_assessment_and_analysis_surveys_are_self_sufficient():
         assert steps[1] == "repo_file_inventory", f"{group} must refresh the inventory second"
 
 
-def test_analysis_survey_carries_the_expensive_steps_and_assessment_does_not():
-    """Assessment is cheap apart from its prerequisites; Analysis is deliberately
-    the expensive tier. If that inverts, the cost tiers are telling us the
-    membership is wrong."""
+def test_analysis_survey_carries_the_expensive_steps_and_assessment_only_the_owner_decided_ones():
+    """Analysis is deliberately the expensive tier. Assessment was all-low until
+    2026-10-02, when the project owner decided it should also include the four
+    compliance steps (secret_scan is compute_cost=high, telemetry_scan medium).
+    Those two are the ONLY exceptions: any other step above `low` entering
+    Assessment is a different decision and fails here. See
+    tests/test_assessment_includes_compliance.py for the membership itself."""
     import csv
     from pathlib import Path
 
@@ -475,7 +482,9 @@ def test_analysis_survey_carries_the_expensive_steps_and_assessment_does_not():
             steps = steps[2:]
         return {s: STEP_REGISTRY[s].compute_cost for s in steps}
 
-    assert set(costs("RepoAssessmentSurvey").values()) == {"low"}
+    assessment = costs("RepoAssessmentSurvey")
+    assert {k for k, v in assessment.items() if v != "low"} == {
+        "repo_secret_scan", "repo_telemetry_scan"}
     assert "high" in costs("RepoAnalysisSurvey").values()
 
 

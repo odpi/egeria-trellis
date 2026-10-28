@@ -132,6 +132,14 @@ class _FakeSamplingConnection:
             return [{"value": v, "value_count": c} for v, c in counts.items()]
         return [{"value": v} for v in values]
 
+    def execute_query_isolated(self, query, params=()):
+        """§F: `column_profile_step.py` calls this instead of `execute_query`
+        now — proxied straight through here since this fake has no real
+        transaction to protect (unlike `PostgreSQLConnection`'s SAVEPOINT-
+        wrapped override, exercised separately in
+        `TestExecuteQueryIsolatedSavepoints` below)."""
+        return self.execute_query(query, params)
+
 
 def _column_from_sql(query: str) -> str:
     match = re.search(r'SELECT "([^"]+)" AS value', query)
@@ -155,8 +163,8 @@ class _FakeDesigner:
             raise RuntimeError("view server unreachable")
         return self.elements
 
-    def get_guid_for_name(self, name):
-        return self.existing_guids.get(name, "")
+    def get_guid_for_name(self, name, property_name=None, type_name=None):   # pyegeria's signature
+        return self.existing_guids.get(name, "No elements found")
 
     def create_data_class(self, body):
         self.created.append(body)
@@ -176,8 +184,8 @@ class _FakeRefManager:
             raise RuntimeError("view server unreachable")
         return self.elements
 
-    def get_guid_for_name(self, name):
-        return self.existing_guids.get(name, "")
+    def get_guid_for_name(self, name, property_name=None, type_name=None):   # pyegeria's signature
+        return self.existing_guids.get(name, "No elements found")
 
     def create_valid_value_definition(self, body):
         self.created.append(body)
@@ -942,7 +950,9 @@ class TestDraftProposalPath:
         # There is no `create_valid_value_set` and no `ValidValueSetProperties`
         # in pyegeria — a set is created through create_valid_value_definition.
         assert props["class"] == "ValidValueDefinitionProperties"
-        assert props["typeName"] == "ValidValueSet"
+        # No typeName: Egeria 6.2 knows no `ValidValueSet` type (OMAG-COMMON-400-018); a set is a plain
+        # ValidValueDefinition, as bootstrap_data_classes creates its sets.
+        assert "typeName" not in props
 
     def test_publishing_a_data_class_proposal_creates_and_links_it(self):
         designer, discovery = _FakeDesigner(), _FakeDiscovery()
@@ -974,10 +984,10 @@ class TestDraftProposalPath:
             proposed_data_class_qualified_name,
         )
         qn = proposed_data_class_qualified_name(match)
-        designer = _FakeDesigner(existing_guids={qn: "guid-existing"})
+        designer = _FakeDesigner(existing_guids={qn: "eeeeeeee-0000-4000-8000-000000000001"})
         result = publish_proposed_data_class(designer, match)
         assert result.created is False
-        assert result.guid == "guid-existing"
+        assert result.guid == "eeeeeeee-0000-4000-8000-000000000001"
         assert designer.created == []
 
     def test_a_miss_reading_as_pyegerias_sentinel_string_still_creates(self):
@@ -993,7 +1003,7 @@ class TestDraftProposalPath:
         match = _proposal_match()
 
         class _SentinelDesigner(_FakeDesigner):
-            def get_guid_for_name(self, name):
+            def get_guid_for_name(self, name, property_name=None, type_name=None):
                 return "No elements found"
 
         designer = _SentinelDesigner()
@@ -1621,3 +1631,241 @@ class TestContentStatusIsSurfaced:
         # An empty contentStatus must NOT draw a badge: "not stated" is what
         # every pre-slice-10 annotation carries and is not "confirmed".
         assert "cs\n" in renderer or "cs ?" in renderer or "cs ?" in renderer
+
+
+# ── §F, 2026-09-28: one column'''s failure can'''t cascade, and a view is never
+#    offered to TABLESAMPLE at all ──────────────────────────────────────────
+#
+# The live incident (`laz_local_adventureworks`): `TABLESAMPLE` on a view
+# raised a real Postgres error, and — because nothing released the
+# connection'''s aborted transaction — every column sampled AFTER it in the
+# same run failed too, silently, while the step still reported "ok". These
+# pin the fix at the `run_column_profile` level: `execute_query_isolated` is
+# used instead of `execute_query` (so a real Postgres connection cannot
+# cascade — see `TestExecuteQueryIsolatedSavepoints` for that half), a view'''s
+# columns are never offered to TABLESAMPLE in the first place, and the
+# step'''s own status/counts say what actually happened rather than "ok".
+
+from resource_explorer.registry import STATE_NOT_APPLICABLE  # noqa: E402
+from resource_explorer.surveyors.database.column_profile_step import (  # noqa: E402
+    STEP_STATUS_OK,
+    STEP_STATUS_PARTIAL,
+)
+
+
+class _FakeIsolatingConnection(_FakeSamplingConnection):
+    """Simulates a connection whose isolation actually works (the contract
+    `PostgreSQLConnection.execute_query_isolated`'''s SAVEPOINT provides): a
+    poisoned column'''s query raises, but nothing about that leaks into the
+    NEXT call — exactly what `execute_query` alone could not guarantee on a
+    real Postgres connection. Only `execute_query_isolated` is overridden;
+    `column_profile_step.py` must call it, not `execute_query`, or these
+    tests would see every call route through the (non-isolating) parent
+    implementation and never notice the difference.
+    """
+
+    def __init__(self, *args, poison=(), **kwargs):
+        super().__init__(*args, **kwargs)
+        self.poison = set(poison)
+
+    def execute_query_isolated(self, query, params=()):
+        column = _column_from_sql(query)
+        self.executed.append(query)
+        if column in self.poison:
+            raise RuntimeError(
+                "TABLESAMPLE clause can only be applied to tables and "
+                "materialized views"
+            )
+        values = self.values_by_column.get(column, [])
+        if "GROUP BY value" in query:
+            counts: dict = {}
+            for v in values:
+                counts[v] = counts.get(v, 0) + 1
+            return [{"value": v, "value_count": c} for v, c in counts.items()]
+        return [{"value": v} for v in values]
+
+    def execute_query(self, query, params=()):
+        raise AssertionError(
+            "column_profile_step.py must call execute_query_isolated, not "
+            "execute_query, so one column'''s failure cannot cascade to the "
+            "next on a real connection"
+        )
+
+
+class TestOneColumnsFailureDoesNotCascade:
+    def test_a_poisoned_column_does_not_stop_the_next_column_from_sampling(self):
+        conn = _FakeIsolatingConnection(
+            {"email": _EMAILS, "country": ["GB"] * 20 + ["US"] * 15 + ["FR"] * 5,
+             "avatar": []},
+            poison={"email"},
+        )
+        _, result = _run(conn=conn)
+        rows = {r["column_name"]: r for r in result["column_profile_rows"]}
+        assert rows["email"]["state"] != STATE_MEASURED
+        assert rows["country"]["state"] == STATE_MEASURED
+
+    def test_the_steps_own_status_is_partial_and_names_the_first_error(self):
+        conn = _FakeIsolatingConnection(
+            {"email": _EMAILS, "country": ["GB"] * 20 + ["US"] * 15 + ["FR"] * 5,
+             "avatar": []},
+            poison={"email"},
+        )
+        _, result = _run(conn=conn)
+        assert result["status"] == STEP_STATUS_PARTIAL
+        assert result["counts"]["errored"] == 1
+        assert result["counts"]["sampled"] >= 1
+        assert "TABLESAMPLE" in result["first_error"]
+
+    def test_no_error_at_all_keeps_the_status_ok(self):
+        conn = _FakeIsolatingConnection(
+            {"email": _EMAILS, "country": ["GB"] * 20 + ["US"] * 15 + ["FR"] * 5,
+             "avatar": []},
+        )
+        _, result = _run(conn=conn)
+        assert result["status"] == STEP_STATUS_OK
+        assert result["counts"]["errored"] == 0
+
+
+_VIEW_SCHEMA_INFO = {
+    "schemas": [{
+        "name": "sales",
+        "tables": [{
+            "name": "vcustomer_summary",
+            "type": "VIEW",
+            "columns": [{"name": "email", "data_type": "text"}],
+        }],
+    }],
+}
+
+_MATVIEW_SCHEMA_INFO = {
+    "schemas": [{
+        "name": "sales",
+        "tables": [{
+            "name": "mv_customer_summary",
+            "type": "MATERIALIZED VIEW",
+            "columns": [{"name": "email", "data_type": "text"}],
+        }],
+    }],
+}
+
+
+class TestViewsAndMaterializedViews:
+    def test_a_views_column_is_never_offered_to_tablesample(self):
+        conn = _FakeIsolatingConnection({"email": _EMAILS})
+        result = run_column_profile(
+            conn, conn.capabilities, _VIEW_SCHEMA_INFO,
+            {"row_stats": []}, [], resource_slug="coco_ods", reference_catalog=_CATALOG,
+        )
+        assert not any("TABLESAMPLE" in q for q in conn.executed), (
+            "a view'''s column must never reach TABLESAMPLE — Postgres rejects "
+            "it outright and (before this fix) that rejection cascaded"
+        )
+        row = result["column_profile_rows"][0]
+        assert row["state"] == STATE_NOT_APPLICABLE
+        assert result["counts"]["skipped_not_applicable"] == 1
+        assert result["status"] == STEP_STATUS_OK
+
+    def test_a_materialized_views_column_is_sampled_normally(self):
+        conn = _FakeIsolatingConnection({"email": _EMAILS})
+        result = run_column_profile(
+            conn, conn.capabilities, _MATVIEW_SCHEMA_INFO,
+            {"row_stats": []}, [], resource_slug="coco_ods", reference_catalog=_CATALOG,
+        )
+        assert any("TABLESAMPLE" in q for q in conn.executed), (
+            "a materialized view IS TABLESAMPLE-able and must be sampled "
+            "exactly like a base table"
+        )
+        row = result["column_profile_rows"][0]
+        assert row["state"] == STATE_MEASURED
+        assert result["counts"]["sampled"] == 1
+        assert result["counts"]["skipped_not_applicable"] == 0
+
+
+class TestExecuteQueryIsolatedSavepoints:
+    """`PostgreSQLConnection.execute_query_isolated` — the real SAVEPOINT
+    mechanism, characterised the same way this file already characterises
+    TABLESAMPLE: by asserting the SQL/command SHAPE issued to a fake cursor,
+    since there is no live Postgres in this environment.
+    """
+
+    def _connection_with_fake_cursor(self, *, fail: bool):
+        from resource_explorer.surveyors.database.connection import PostgreSQLConnection
+
+        executed: list = []
+
+        class _FakeCursor:
+            description = [("value",)]
+
+            def execute(self, sql, params=()):
+                executed.append(sql)
+                if fail and sql.startswith("SELECT"):
+                    raise RuntimeError(
+                        "TABLESAMPLE clause can only be applied to tables "
+                        "and materialized views"
+                    )
+
+            def fetchall(self):
+                return [("x",)]
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *a):
+                return False
+
+        class _FakeConn:
+            def cursor(self):
+                return _FakeCursor()
+
+        conn = PostgreSQLConnection("h", 5432, "d", "u", "p")
+        conn._conn = _FakeConn()
+        return conn, executed
+
+    def test_success_issues_savepoint_then_release(self):
+        conn, executed = self._connection_with_fake_cursor(fail=False)
+        rows = conn.execute_query_isolated("SELECT 1")
+        assert rows == [{"value": "x"}]
+        assert executed[0].startswith("SAVEPOINT ")
+        assert executed[1] == "SELECT 1"
+        assert executed[2].startswith("RELEASE SAVEPOINT ")
+
+    def test_failure_issues_savepoint_then_rollback_to_savepoint_and_reraises(self):
+        conn, executed = self._connection_with_fake_cursor(fail=True)
+        with pytest.raises(RuntimeError, match="TABLESAMPLE"):
+            conn.execute_query_isolated("SELECT 1")
+        assert executed[0].startswith("SAVEPOINT ")
+        assert executed[1] == "SELECT 1"
+        assert executed[2].startswith("ROLLBACK TO SAVEPOINT ")
+        assert executed[2] != "ROLLBACK"
+
+    def test_execute_query_itself_is_unchanged_no_savepoint_commands(self):
+        conn, executed = self._connection_with_fake_cursor(fail=False)
+        conn.execute_query("SELECT 1")
+        assert executed == ["SELECT 1"]
+
+    def test_not_connected_raises_the_same_error_as_execute_query(self):
+        from resource_explorer.surveyors.database.connection import PostgreSQLConnection
+
+        conn = PostgreSQLConnection("h", 5432, "d", "u", "p")
+        with pytest.raises(RuntimeError, match="Not connected"):
+            conn.execute_query_isolated("SELECT 1")
+
+
+class TestExecuteQueryIsolatedDefaultsToExecuteQuery:
+    def test_default_implementation_just_calls_execute_query(self):
+        from resource_explorer.surveyors.database.connection import DatabaseConnection
+
+        calls = []
+
+        class _Bare(DatabaseConnection):
+            def connect(self): return None
+            def execute_query(self, query, params=()):
+                calls.append(query)
+                return [{"ok": True}]
+            def get_schema_info(self): return {}
+            def get_statistics(self): return {}
+            def close(self): pass
+
+        conn = _Bare()
+        assert conn.execute_query_isolated("SELECT 1") == [{"ok": True}]
+        assert calls == ["SELECT 1"]

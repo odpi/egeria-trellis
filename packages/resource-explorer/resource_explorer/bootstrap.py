@@ -176,11 +176,101 @@ class BatchStatus:
     consecutive_failures: int = 0
 
 
+@dataclass
+class PrefectPoolStatus:
+    """Worker liveness for the `resource-explorer-pool` work pool (2026-09-28,
+    part of the whole-definition-Prefect-default change — see
+    PREFECT-DEFAULT-WHOLE-DEFINITION-IMPLEMENTED.md).
+
+    Same tri-state shape as `BatchStatus`: `reachable` says whether the last
+    attempt could actually reach the Prefect API at all, independent of
+    whether a worker was found — a real incident earlier tonight was
+    `prefect_up.sh` starting a worker on the wrong pool, silent until a run
+    degraded; this exists so that shows up here, before anyone hits it in a
+    run.
+    """
+
+    reachable: bool | None = None
+    worker_count: int = 0
+    last_heartbeat: str = ""
+    last_checked_at: str = ""
+    last_check_error: str = ""
+
+
 _status: dict[str, BatchStatus] = {}
 _status_lock = threading.Lock()
 _reinitializing = False
+#: Held for the whole of a check_and_heal pass (see there).
+_heal_lock = threading.Lock()
 _stop_event: threading.Event | None = None
 _thread: threading.Thread | None = None
+
+_prefect_pool_status = PrefectPoolStatus()
+_prefect_pool_status_lock = threading.Lock()
+
+
+def check_prefect_pool_workers(pool: str | None = None) -> PrefectPoolStatus:
+    """Query Prefect's own API for `pool`'s registered workers — the same
+    `work_pools/{pool}/workers/filter` data `prefect_up.sh` and the
+    dispatch-honesty live gate checked by hand — and update/return the
+    module-level status.
+
+    Fails open like the batch canary checks above: an unreachable Prefect
+    API reports `reachable=False` with the error text, never a false
+    "0 workers" that would look identical to a real empty pool. `pool`
+    defaults to `config.prefect.work_pool`.
+    """
+    from resource_explorer.config import get_config
+
+    pool = pool or get_config().prefect.work_pool
+    status = PrefectPoolStatus(last_checked_at=_now())
+    try:
+        import asyncio
+
+        from resource_explorer.surveyors.prefect_adapter import re_prefect_client
+
+        async def _fetch():
+            async with re_prefect_client() as client:
+                return await client.read_workers_for_work_pool(pool)
+
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            loop = None
+        if loop and loop.is_running():
+            from resource_explorer.concurrency import run_sync
+
+            workers = run_sync(lambda: asyncio.run(_fetch()))
+        else:
+            workers = asyncio.run(_fetch())
+
+        status.reachable = True
+        status.worker_count = len(workers)
+        heartbeats = [
+            str(w.last_heartbeat_time) for w in workers if getattr(w, "last_heartbeat_time", None)
+        ]
+        status.last_heartbeat = max(heartbeats) if heartbeats else ""
+        if status.worker_count == 0:
+            log.warning(
+                "bootstrap: Prefect work pool %r has NO registered workers — a "
+                "default whole-definition run will find the API reachable but "
+                "have nothing to dispatch to; see the design note "
+                "PREFECT-DEFAULT-WHOLE-DEFINITION-IMPLEMENTED.md", pool,
+            )
+        else:
+            log.info(
+                "bootstrap: Prefect work pool %r has %d worker(s), last "
+                "heartbeat %s", pool, status.worker_count, status.last_heartbeat or "unknown",
+            )
+    except Exception as exc:
+        status.reachable = False
+        status.last_check_error = str(exc)
+        log.warning("bootstrap: could not check Prefect pool %r workers: %s", pool, exc)
+
+    with _prefect_pool_status_lock:
+        global _prefect_pool_status
+        _prefect_pool_status = status
+    return status
 
 
 def _now() -> str:
@@ -343,16 +433,35 @@ def _resolve_dr_egeria_executable() -> str | None:
     return shutil.which("dr_egeria")
 
 
-def _run_dr_egeria(doc: Path) -> tuple[bool, str]:
-    """Execute one document. Runs `dr_egeria` as a subprocess from the
-    document's own directory, matching how these documents are run by hand and
-    keeping relative paths resolving the same way."""
+@dataclass
+class DrEgeriaProcess:
+    """What one `dr_egeria --process` run of one document returned. `ok` is the process's own answer (exit 0);
+    it is NOT a per-command result: the CLI exits 0 even when commands fail or the client raises, so a caller
+    that needs per-command results reads `stdout` (the summary table), as `dr_egeria_runner` does."""
+
+    ok: bool
+    detail: str
+    stdout: str = ""
+    stderr: str = ""
+
+
+def run_dr_egeria_document(doc: Path, *, env: dict | None = None) -> DrEgeriaProcess:
+    """THE Dr.Egeria processor: run one document through the `dr_egeria` CLI, `--process --summary-only`.
+
+    Used by the bootstrap heal (`_run_dr_egeria`) and by the ad-hoc runner (`dr_egeria_runner`), so there is
+    one way RE executes a Dr.Egeria document. Runs as a subprocess from the document's own directory, matching
+    how these documents are run by hand and keeping relative paths resolving the same way.
+
+    `env` replaces the child's environment when given (the ad-hoc runner passes RE's daemon credential and
+    platform explicitly); None inherits this process's environment, which is what the bootstrap has always done.
+    """
     executable = _resolve_dr_egeria_executable()
     if executable is None:
         venv_candidate = Path(sys.executable).parent / "dr_egeria"
-        return False, f"dr_egeria CLI not found next to {venv_candidate} or on PATH"
+        return DrEgeriaProcess(False, f"dr_egeria CLI not found next to {venv_candidate} or on PATH")
 
     log.info("bootstrap: running dr_egeria via %s", executable)
+    kwargs = {"env": env} if env is not None else {}
     try:
         proc = subprocess.run(
             [executable, "--process", "--summary-only", doc.name],
@@ -360,18 +469,27 @@ def _run_dr_egeria(doc: Path) -> tuple[bool, str]:
             capture_output=True,
             text=True,
             timeout=HEAL_TIMEOUT_SECONDS,
+            **kwargs,
         )
     except FileNotFoundError:
-        return False, "dr_egeria CLI not found on PATH"
+        return DrEgeriaProcess(False, "dr_egeria CLI not found on PATH")
     except subprocess.TimeoutExpired:
-        return False, f"timed out after {HEAL_TIMEOUT_SECONDS}s"
+        return DrEgeriaProcess(False, f"timed out after {HEAL_TIMEOUT_SECONDS}s")
     except Exception as exc:  # pragma: no cover - defensive
-        return False, f"{type(exc).__name__}: {exc}"
+        return DrEgeriaProcess(False, f"{type(exc).__name__}: {exc}")
 
+    stdout, stderr = proc.stdout or "", proc.stderr or ""
     if proc.returncode != 0:
-        tail = (proc.stderr or proc.stdout or "").strip().splitlines()
-        return False, f"exit {proc.returncode}: {tail[-1] if tail else 'no output'}"
-    return True, "ok"
+        tail = (stderr or stdout).strip().splitlines()
+        return DrEgeriaProcess(False, f"exit {proc.returncode}: {tail[-1] if tail else 'no output'}",
+                               stdout, stderr)
+    return DrEgeriaProcess(True, "ok", stdout, stderr)
+
+
+def _run_dr_egeria(doc: Path) -> tuple[bool, str]:
+    """Execute one document for a heal (inherits this process's environment)."""
+    result = run_dr_egeria_document(doc)
+    return result.ok, result.detail
 
 
 def _run_post_heal(batch: Batch) -> tuple[bool, str]:
@@ -493,6 +611,20 @@ def check_and_heal(docs_dir: Path = DOCS_DIR, force: bool = False) -> dict:
     """
     global _reinitializing
 
+    # One pass at a time in this process, whoever calls (the route, the automatic loop, the CLI). Non-blocking: a
+    # pass that finds it held does nothing and says so, and must not touch `_reinitializing`, which belongs to the
+    # winner (the loser used to clear it in its finally).
+    if not _heal_lock.acquire(blocking=False):
+        return {"batches": {}, "running": True}
+    try:
+        return _check_and_heal_locked(docs_dir, force)
+    finally:
+        _heal_lock.release()
+
+
+def _check_and_heal_locked(docs_dir: Path, force: bool) -> dict:
+    global _reinitializing
+
     batches = discover_batches(docs_dir)
     results: dict[str, dict] = {}
     _reinitializing = True
@@ -604,23 +736,89 @@ def get_status(docs_dir: Path = DOCS_DIR) -> dict:
             "idempotent": batch.idempotent,
             "file_count": len(batch.files),
         }
+    with _prefect_pool_status_lock:
+        pool_st = _prefect_pool_status
+
+    from resource_explorer.investigation_purposes import status as _purposes_status
+    from resource_explorer.surveyors.database.bootstrap_data_classes import status as _dc_status
+
     return {
         "reinitializing": _reinitializing,
         "egeria_reachable": not any_unreachable,
         "batches": out,
+        # The data-class seed's last outcome ("data classes: present, 6 sets" / "created, …" /
+        # "could not check · why").
+        "data_classes": _dc_status(),
+        # The investigation-purpose seed's last outcome (`investigation_purposes.py`).
+        "investigation_purposes": _purposes_status(),
+        # 2026-09-28 — resource-explorer-pool worker liveness, reported
+        # alongside the Dr.Egeria batch status the admin banner already
+        # reads, so a missing/offline Prefect worker is a monitored
+        # condition rather than something discovered by a confusing run
+        # failure or silent local fallback.
+        "prefect_pool": {
+            "reachable": pool_st.reachable,
+            "worker_count": pool_st.worker_count,
+            "last_heartbeat": pool_st.last_heartbeat,
+            "last_checked_at": pool_st.last_checked_at,
+            "last_check_error": pool_st.last_check_error,
+        },
     }
+
+
+# ── data classes ────────────────────────────────────────────────────────────
+
+def _data_class_pass(registry=None):
+    """RE's data-class seed (`surveyors/database/bootstrap_data_classes.py`): its own canary (one
+    typed read), healed only when absent, outcome logged and recorded as an activity row when it
+    changes. Never raises."""
+    try:
+        from resource_explorer.surveyors.database.bootstrap_data_classes import (
+            check_and_heal_data_classes,
+        )
+
+        return check_and_heal_data_classes(registry=registry)
+    except Exception:  # pragma: no cover - check_and_heal_data_classes never raises
+        log.exception("bootstrap: data-class pass failed")
+        return None
+
+
+def _purposes_pass(registry=None):
+    """The investigation-purposes list (`investigation_purposes.py`): Egeria holds it (owner ruling
+    2026-10-13); this pass creates the set and its values when missing, under its own canary, and refreshes
+    the reader's cache. Never raises."""
+    try:
+        from resource_explorer.investigation_purposes import check_and_heal_purposes
+
+        return check_and_heal_purposes(registry=registry)
+    except Exception:  # pragma: no cover - check_and_heal_purposes never raises
+        log.exception("bootstrap: investigation-purposes pass failed")
+        return None
 
 
 # ── scheduler ───────────────────────────────────────────────────────────────
 
 def _loop(docs_dir: Path, interval: int, stop: threading.Event) -> None:
+    from resource_explorer.egeria_clients import Daemon, DaemonReason, acting_as
+
     while not stop.is_set():
         try:
-            check_and_heal(docs_dir)
+            with acting_as(Daemon(DaemonReason.BOOTSTRAP)):
+                check_and_heal(docs_dir)
         except Exception:
             # Never let a bad pass kill the loop — the next tick should still
             # get a chance to notice and repair a reset.
             log.exception("bootstrap: check pass failed")
+        # After the Dr.Egeria batches: the data-class seed. Leader-elected with this loop
+        # (LOCK_BOOTSTRAP), so it runs at start and after every Egeria reset, once per deployment.
+        _data_class_pass()
+        _purposes_pass()
+        try:
+            check_prefect_pool_workers()
+        except Exception:
+            # Same tolerance as the batch-heal pass above — a worker-liveness
+            # check that itself throws must not stop future ticks either.
+            log.exception("bootstrap: Prefect pool worker check failed")
         stop.wait(interval)
 
 

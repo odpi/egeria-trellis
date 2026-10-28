@@ -124,3 +124,130 @@ class TestTreeShape:
         system_row = next(s for s in tree["schemas"] if s["classification"] == "system")
         assert system_row["system_count"] == 1
         assert "tables" not in system_row
+
+
+class TestEmptyIsThreeDistinctStates:
+    """REPLY-DESIGNER-ROUND2-DATABASE-SCREENS.md §3.3: `_schema_inventory_
+    container_rows` used to fold "no tables at all", "never measured" and
+    "measured, and zero" into one `"empty"` classification, storing
+    `row_total or 0` for the never-measured case too — a genuine unknown
+    rendered identically to a confirmed zero. Each of these three tests
+    would fail if any two of the three states collapsed back into the same
+    classification/`row_total`.
+    """
+
+    def _row_for(self, registry, slug, schema):
+        from resource_explorer.surveyors.database.survey_definition_adapter import (
+            _schema_inventory_container_rows,
+        )
+        rows = _schema_inventory_container_rows(registry, slug)
+        return next(r for r in rows if r["schema"] == schema)
+
+    def test_zero_tables_renders_no_tables_not_empty(self, registry):
+        # A schema the credential probe knows about (USAGE granted) with
+        # zero tables never appears in `database_tables` at all -- the
+        # `states`/`by_schema` backfill (Slice 21a follow-up) is what gives
+        # it a row here, with `table_count: 0`. Needs a credential-capability
+        # probe recorded via `record_database_survey`, at an EARLIER
+        # `surveyed_at` than the detail-row write below -- recording a
+        # survey backfills placeholder `database_tables` rows from its own
+        # (empty, in this fixture) schema info, and doing that at the SAME
+        # `surveyed_at` as the real detail rows silently displaces them
+        # (`query_detail_rows`'s own "latest wins" pick between two writes
+        # under one key) -- registry.py's own docstring on
+        # `record_database_survey` warns of exactly this collision.
+        registry.record_database_survey(
+            "db", schema_count=2, table_count=1, column_count=1,
+            survey_data={"credential_capability": {"by_schema": {
+                "other": {"usage_granted": True, "table_total": 1, "table_select": 1},
+                "empty_schema": {"usage_granted": True, "table_total": 0, "table_select": 0},
+            }}},
+            surveyed_at="2026-09-26T00:00:00",
+        )
+        registry.write_detail_rows("database_tables", "db", "2026-09-27T00:00:00",
+            rows=[_table("other", "a", row_count=5)])
+        row = self._row_for(registry, "db", "empty_schema")
+        assert row["classification"] == "no_tables"
+        assert row["table_count"] == 0
+        assert row["row_total"] is None
+
+    def test_row_total_none_renders_rows_not_measured(self, registry):
+        registry.write_detail_rows("database_tables", "db", "2026-09-27T00:00:00",
+            rows=[_table("unmeasured", "t", row_count=None)])
+        row = self._row_for(registry, "db", "unmeasured")
+        assert row["classification"] == "not_measured"
+        assert row["row_total"] is None
+
+    def test_row_total_zero_renders_measured_zero(self, registry):
+        registry.write_detail_rows("database_tables", "db", "2026-09-27T00:00:00",
+            rows=[_table("counted_empty", "t", row_count=0)])
+        row = self._row_for(registry, "db", "counted_empty")
+        assert row["classification"] == "empty"
+        assert row["row_total"] == 0
+
+    def test_the_three_states_are_pairwise_distinguishable(self, registry):
+        registry.write_detail_rows("database_tables", "db", "2026-09-27T00:00:00", rows=[
+            _table("unmeasured", "t", row_count=None),
+            _table("counted_empty", "t", row_count=0),
+        ])
+        unmeasured = self._row_for(registry, "db", "unmeasured")
+        counted_empty = self._row_for(registry, "db", "counted_empty")
+        assert unmeasured["classification"] != counted_empty["classification"]
+        assert unmeasured["row_total"] != counted_empty["row_total"]
+
+    def test_headline_uses_three_distinct_phrases(self, registry):
+        from resource_explorer.surveyors.database.survey_definition_adapter import (
+            _schema_inventory_container_headline,
+        )
+        registry.write_detail_rows("database_tables", "db", "2026-09-27T00:00:00", rows=[
+            _table("unmeasured", "t", row_count=None),
+            _table("counted_empty", "t", row_count=0),
+        ])
+        headline = _schema_inventory_container_headline(registry, "db")
+        assert "rows not measured" in headline["label"]
+        assert "0 row(s) — empty" in headline["label"]
+
+    def test_measurements_note_uses_three_distinct_phrases(self, registry):
+        from resource_explorer.surveyors.database.survey_definition_adapter import (
+            _schema_inventory_container_measurements,
+        )
+        registry.write_detail_rows("database_tables", "db", "2026-09-27T00:00:00", rows=[
+            _table("unmeasured", "t", row_count=None),
+            _table("counted_empty", "t", row_count=0),
+        ])
+        rows = _schema_inventory_container_measurements(registry, "db")
+        notes = {r["name"]: r["note"] for r in rows}
+        assert notes["unmeasured"] == "rows not measured"
+        assert notes["counted_empty"] == "empty"
+
+
+class TestCocoPharmaSalesSchemasLiveRegression:
+    """Live-checked 2026-09-27 against the shared registry
+    (`localhost_docker_coco_pharma`): `eu_sales`, `target_sales` and
+    `us_sales` each hold exactly one table, and the credential the survey
+    ran as has `usage_granted=True` and `table_select == table_total == 1`
+    for all three (SCOPE_READABLE, not a visibility gap) -- yet every one of
+    those tables' `database_tables.row_count` is stored `NULL` with
+    `state == "measured"` (never went through `pg_stat_user_tables`, i.e.
+    never ANALYZEd/VACUUMed -- the classic way to get Postgres's `reltuples
+    == -1` "never analyzed" sentinel, per `database_surveyor.py`'s own
+    `NEVER_ANALYZED` docstring). Before this fix, `_schema_inventory_
+    container_rows` folded that into `row_total or 0` and reported these
+    three schemas as measured, confirmed-empty ("0 row(s) — empty"). They
+    are NOT genuine zeros -- they were never measured. This regression test
+    pins the corrected reading using the exact shape found live."""
+
+    def test_pins_never_measured_not_confirmed_zero(self, registry):
+        registry.write_detail_rows("database_tables", "db", "2026-09-27T00:00:00", rows=[
+            _table("eu_sales", "eu_sales_forecast", row_count=None, state="measured"),
+            _table("target_sales", "consolidated_forecast", row_count=None, state="measured"),
+            _table("us_sales", "us_sales_forecast", row_count=None, state="measured"),
+        ])
+        from resource_explorer.surveyors.database.survey_definition_adapter import (
+            _schema_inventory_container_rows,
+        )
+        rows = {r["schema"]: r for r in _schema_inventory_container_rows(registry, "db")}
+        for schema in ("eu_sales", "target_sales", "us_sales"):
+            assert rows[schema]["classification"] == "not_measured", schema
+            assert rows[schema]["row_total"] is None, schema
+            assert rows[schema]["table_count"] == 1, schema

@@ -44,7 +44,6 @@ from starlette.requests import Request
 
 from resource_explorer.config import _ENV_FILE_CONFIG
 from trellis_auth import AuthConfig
-from trellis_auth import apply_token  # re-exported for live call sites
 from trellis_auth import create_access_token as _create_access_token
 from trellis_auth import decode_token as _decode_token
 from trellis_auth import exchange_portal_token as _exchange_portal_token
@@ -59,7 +58,6 @@ __all__ = [
     "APP_NAME",
     "POLICY_ENV_PREFIX",
     "RE_PUBLIC_PATHS",
-    "apply_token",
     "auth_config",
     "create_access_token",
     "decode_token",
@@ -99,7 +97,9 @@ POLICY_ENV_PREFIX = "EXPLORER"
 #: separately-mounted A2A app).
 #:
 #: `/healthz` is RE's second liveness name, used by the A2A role.
-#: `/next` is the experimental UI's shell, and is public for exactly the same
+#: `/classic` is the Classic shell (explicit since Next became the default at `/`)
+#: and is public for the same reason.
+#: `/next` is the Next UI's shell, and is public for exactly the same
 #: reason `/` is: the shell has to load in order to render the login form that
 #: obtains the token. It is a bare HTML document that names no data — every
 #: `/api/*` call it makes is gated exactly as the current UI's are. Listed as
@@ -109,6 +109,7 @@ RE_PUBLIC_PATHS = (
     "/",
     "/index.html",
     "/next",
+    "/classic",
     "/healthz",
     "/api/auth/me",
     "/api/auth/defaults",

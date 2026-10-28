@@ -120,7 +120,7 @@ class GitHubClient:
 
         return repo_root
 
-    def fetch_zipball(self, repo: Repository, zip_path: "Path") -> "Path":
+    def fetch_zipball(self, repo: Repository, zip_path: "Path", ref: str | None = None) -> "Path":
         """Download `repo`'s zipball to `zip_path`, with retries. No extraction.
 
         Split out of `download_zipball` so `SourceCache` can fill an entry with
@@ -134,7 +134,9 @@ class GitHubClient:
         from requests.exceptions import ConnectionError, SSLError, Timeout
 
         cfg = get_config().github
-        branch = repo.default_branch
+        # `ref` is a commit SHA when the caller has one (zipball_root's cache key): the archive is then
+        # exactly that commit, not whatever the branch points at by the time the download starts.
+        branch = ref or repo.default_branch
         url = f"{self._base_url}/repos/{repo.full_name}/zipball/{branch}"
         headers = {"Authorization": f"token {cfg.token}"} if cfg.token else {}
         zip_path = Path(zip_path)
@@ -230,6 +232,11 @@ class GitHubClient:
                 # Handing out a shared extracted tree would let concurrent
                 # surveys see each other's mutations.
                 sha = self._default_branch_sha(repo)
+                # The commit this zipball IS, for the run's step_runs rows: the cache key, and on a miss
+                # the download is fetched BY that SHA (fetch_zipball ref=), so a push between the lookup
+                # and the download cannot make the two differ. None on the uncached fallback: the SHA
+                # could not be established, so it is not recorded rather than guessed.
+                self.last_served_sha = sha
                 if sha is None:
                     yield self.download_zipball(repo, Path(tmp), subproject_path)
                     return
@@ -237,7 +244,7 @@ class GitHubClient:
                 zip_path = cache.get("zipball", repo.full_name, sha)
                 if zip_path is None:
                     def _produce(target: Path) -> None:
-                        self.fetch_zipball(repo, target)
+                        self.fetch_zipball(repo, target, ref=sha)
                     zip_path = cache.put("zipball", repo.full_name, sha, _produce)
                 extract_to = Path(tmp) / "x"
                 with zipfile.ZipFile(zip_path) as z:
@@ -384,7 +391,9 @@ class GitHubClient:
                 # CONTAINS, so it must not share a key with an unbounded one.
                 sha = self._default_branch_sha(repo)
                 if sha is None or shallow_since:
-                    yield self.clone_git_root(repo, dest, shallow_since=shallow_since)
+                    root = self.clone_git_root(repo, dest, shallow_since=shallow_since)
+                    self.last_served_sha = _clone_head(root)
+                    yield root
                     return
                 cache = SourceCache()
                 cached = cache.get("gitclone", repo.full_name, sha)
@@ -392,7 +401,12 @@ class GitHubClient:
                     def _produce(target: Path) -> None:
                         self.clone_git_root(repo, target, shallow_since=None)
                     cached = cache.put("gitclone", repo.full_name, sha, _produce)
-                yield local_clone(cached, dest)
+                root = local_clone(cached, dest)
+                # The clone's own HEAD, not the cache key: the cached clone was made from the branch, and
+                # a push between the SHA lookup and the clone would make the key name a commit the clone
+                # does not have checked out as HEAD.
+                self.last_served_sha = _clone_head(root)
+                yield root
 
         return _cm()
 
@@ -467,6 +481,15 @@ class GitHubClient:
         except GithubException:
             return None
 
+    def list_root_file_names(self, repo: Repository) -> list[str]:
+        """Names of the files (not directories) at the repo root: ONE contents-API call.
+
+        Scouting uses this to fetch only the manifests and README that actually
+        exist, instead of probing for each name and paying a 404 per absent one.
+        Raises on API failure; callers must tell "could not list" from "empty".
+        """
+        return [c.name for c in repo.get_contents("") if getattr(c, "type", "file") == "file"]
+
     def get_default_branch(self, repo: Repository) -> str:
         return repo.default_branch
 
@@ -490,3 +513,15 @@ class GitHubClient:
         if "github.com/" in url:
             return url.split("github.com/")[-1]
         return url
+
+
+def _clone_head(root) -> str | None:
+    """HEAD of a clone RE just made, or None when it cannot be read (then "not recorded")."""
+    import subprocess
+    try:
+        out = subprocess.run(["git", "-C", str(root), "rev-parse", "HEAD"], capture_output=True,
+                             text=True, timeout=30)
+        sha = out.stdout.strip()
+        return sha if out.returncode == 0 and len(sha) >= 40 else None
+    except Exception:
+        return None

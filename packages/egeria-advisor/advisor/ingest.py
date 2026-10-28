@@ -8,9 +8,10 @@ Also provides CodeIngester for directly ingesting code files from repositories.
 """
 
 import json
+import fnmatch
 import hashlib
 from pathlib import Path
-from typing import List, Dict, Any, Tuple, Optional
+from typing import List, Dict, Any, Optional, Sequence, Tuple
 from loguru import logger
 import sys
 
@@ -18,6 +19,80 @@ from advisor.config import settings
 from advisor.vector_store import get_vector_store
 from advisor.embeddings import get_embedding_generator
 from advisor.mlflow_tracking import track_operation
+
+
+def path_is_excluded(
+    path: Path,
+    exclude_patterns: Optional[Sequence[str]] = None,
+    root: Optional[Path] = None,
+) -> bool:
+    """True if `path` matches any of `exclude_patterns`.
+
+    Patterns are the glob forms used by CollectionMetadata.exclude_patterns
+    (advisor/collection_config.py) -- e.g. "**/node_modules/**",
+    "**/concepts/**", "**/*.egg-info/**".
+
+    Matching is fnmatch against the path string, NOT pathlib's
+    PurePath.match(). PurePath.match() does not treat a leading "**" as a
+    recursive wildcard before Python 3.13, so "**/concepts/**" silently
+    matches nothing there -- which is how these patterns came to be
+    declared in config and never actually applied. fnmatch's "*" spans "/",
+    so "**/concepts/**" matches any path with a "concepts" directory
+    component.
+
+    The absolute path is tested first; the path relative to `root` (with and
+    without a leading "/") is tested too, so a pattern anchored at the scan
+    root rather than at "**" still matches.
+
+    Args:
+        path: File path to test
+        exclude_patterns: Glob patterns to exclude; None/empty excludes nothing
+        root: Optional directory the scan started from, for relative matching
+
+    Returns:
+        True if the path should be excluded
+    """
+    if not exclude_patterns:
+        return False
+
+    candidates = [Path(path).as_posix()]
+    if root is not None:
+        try:
+            relative = Path(path).relative_to(root).as_posix()
+        except ValueError:
+            pass
+        else:
+            candidates.append(relative)
+            candidates.append("/" + relative)
+
+    return any(
+        fnmatch.fnmatch(candidate, pattern)
+        for pattern in exclude_patterns
+        for candidate in candidates
+    )
+
+
+def existing_chunk_count(vector_store, collection_name: str) -> Optional[int]:
+    """How many rows the collection's table already holds, or None if the
+    table does not exist.
+
+    Two traps this deliberately avoids (both bit trevor on 2026-09-04):
+
+    * `collection_name in vector_store.list_collections()` compares the
+      *collection* name with *table* names. `pyegeria_drE` is stored as the
+      table `pyegeria_dre` (see _TABLE_NAME_MAP in advisor/vector_store_pg.py),
+      so that check never matched drE — and always matched `pyegeria` and
+      `pyegeria_cli`. `collection_exists()` resolves the mapping.
+    * Existence alone says nothing about content. The web app's startup hook
+      (advisor/web/app.py `_startup` -> `provision_schema()`) creates every
+      collection table *empty* the moment the container starts, so on a fresh
+      deployment the tables already exist before the first ingest runs. An
+      empty table must be ingested into, not reported as "already exists".
+    """
+    if not vector_store.collection_exists(collection_name):
+        return None
+    stats = vector_store.get_collection_stats(collection_name) or {}
+    return int(stats.get("num_entities") or 0)
 
 
 class DataIngester:
@@ -769,7 +844,8 @@ class CodeIngester:
         dir_path: Path,
         file_pattern: str = "*.py",
         recursive: bool = True,
-        batch_size: int = 50
+        batch_size: int = 50,
+        exclude_patterns: Optional[Sequence[str]] = None
     ) -> Tuple[int, int]:
         """
         Ingest all files in a directory with batching for performance.
@@ -779,6 +855,11 @@ class CodeIngester:
             file_pattern: File pattern to match
             recursive: Search recursively
             batch_size: Number of files to batch before inserting
+            exclude_patterns: Glob patterns to skip (a collection's
+                CollectionMetadata.exclude_patterns). Callers that do not
+                pass these get every matching file, which is what let
+                egeria_general ingest the concepts/ and types/ trees it is
+                configured to exclude -- see path_is_excluded().
             
         Returns:
             Tuple of (files_processed, chunks_created)
@@ -796,7 +877,19 @@ class CodeIngester:
         except (PermissionError, OSError) as e:
             logger.warning(f"Permission error accessing {dir_path}: {e}")
             logger.warning("Continuing with accessible files only")
-        
+
+        if exclude_patterns:
+            kept = [
+                f for f in files
+                if not path_is_excluded(f, exclude_patterns, root=dir_path)
+            ]
+            excluded_count = len(files) - len(kept)
+            files = kept
+            if excluded_count:
+                logger.info(
+                    f"Excluded {excluded_count} file(s) matching {list(exclude_patterns)}"
+                )
+
         logger.info(f"Found {len(files)} files matching {file_pattern}")
 
         # NOTE: symbol-table clearing is done once per *collection* by the caller

@@ -212,10 +212,10 @@ def add_question_catalog_entry(body: QuestionCatalogAddRequest) -> dict:
     an edit form is not enough on its own; this route refuses one even if
     called directly."""
     from resource_explorer.surveyors.question_catalog_writer import (
-        QuestionCatalogWriteError, add_question,
+        QuestionCatalogWriteError, add_question_with_id,
     )
     try:
-        add_question(
+        warnings, question_id = add_question_with_id(
             body.question,
             stage=body.stage,
             perspectives=body.perspectives,
@@ -226,7 +226,8 @@ def add_question_catalog_entry(body: QuestionCatalogAddRequest) -> dict:
         )
     except QuestionCatalogWriteError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
-    return {"status": "success"}
+    # Purposes are suggestive (owner ruling 2026-10-13): an off-list one is added and named here.
+    return {"status": "success", "warnings": warnings, "question_id": question_id}
 
 
 @router.post("/question-catalog/questions/retire")
@@ -459,8 +460,10 @@ def resource_facts(
 
 
 @router.get("/facts/{slug}/answer")
-def answer_question(slug: str, question: str = Query(...),
-                     entity_type: str = Query("repo")) -> dict:
+def answer_question(slug: str, question: str = Query(""),
+                     entity_type: str = Query("repo"),
+                     question_id: str = Query("", description="the question's stable id (Q-0001); "
+                                              "accepted instead of the text, and wins when both are given")) -> dict:
     """An answer envelope for one catalogued question.
 
     The question is matched by its text, which is what the catalog keys on and
@@ -494,11 +497,22 @@ def answer_question(slug: str, question: str = Query(...),
     `FactLayer` which resource type's maps to use.
     """
     from resource_explorer.facts import FactLayer
-    from resource_explorer.surveyors.question_catalog_reader import get_questions
+    from resource_explorer.surveyors.question_catalog_reader import find_question_by_id, get_questions
 
-    match = next((q for q in get_questions(entity_type) if q.get("question") == question), None)
-    if not match:
-        raise HTTPException(status_code=404, detail=f"Question not in the catalog: {question!r}")
+    # The stable id is the durable key; the text still resolves, because URLs and saved state carry it.
+    # Called in-process (no FastAPI), an omitted parameter is its `Query(...)` default object, not a string.
+    question_id = question_id if isinstance(question_id, str) else ""
+    question = question if isinstance(question, str) else ""
+    if question_id.strip():
+        match = find_question_by_id(question_id, entity_type)
+        if not match:
+            raise HTTPException(status_code=404, detail=f"Question id not in the catalog: {question_id!r}")
+    else:
+        if not question:
+            raise HTTPException(status_code=422, detail="question or question_id is required")
+        match = next((q for q in get_questions(entity_type) if q.get("question") == question), None)
+        if not match:
+            raise HTTPException(status_code=404, detail=f"Question not in the catalog: {question!r}")
     return FactLayer(resource_type=entity_type).answer(slug, match).as_dict()
 
 

@@ -1,5 +1,7 @@
 # Coverage audit — questions ↔ analyses ↔ steps ↔ surveys
 
+**Status:** historical findings. Dated audit (2026-09-11); numbers are as of that date.
+
 Measured 2026-09-11 against the live registry (61 repos) and the committed
 catalogs at `004cb66`. Every number came from a query, not a read.
 

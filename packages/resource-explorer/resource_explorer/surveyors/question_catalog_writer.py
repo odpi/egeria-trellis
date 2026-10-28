@@ -132,7 +132,7 @@ def _regenerate_yaml(rows: list[dict]) -> None:
 
     Called with the CANDIDATE row set before anything is written to disk —
     `generate()` raises ValueError on the same problems it always has
-    (unknown Purpose, unknown check ref), which this module surfaces as
+    (an unknown check ref; an unknown Purpose only warns since 2026-10-13), which this module surfaces as
     QuestionCatalogWriteError so a bad add/retire fails before either file
     is touched, not after the CSV already changed."""
     generator = _load_generator_module()
@@ -147,7 +147,12 @@ def _is_retired(row: dict) -> bool:
     return (row.get("Status") or "").strip().lower() == STATUS_RETIRED.lower()
 
 
-def add_question(
+def add_question(question: str, **fields) -> list[str]:
+    """`add_question_with_id` for a caller that wants only the warnings."""
+    return add_question_with_id(question, **fields)[0]
+
+
+def add_question_with_id(
     question: str,
     *,
     stage: str = "",
@@ -156,8 +161,10 @@ def add_question(
     why_important: str = "",
     rationale: str = "",
     answering_mechanism: str = "",
-) -> None:
-    """Append a new question. Refuses (does not upsert) if `question`
+) -> tuple[list[str], str]:
+    """Append a new question, assigning it the next free stable id. Returns `(warnings, question_id)`.
+    The warnings: each purpose outside the investigation-purposes list,
+    kept as given (owner ruling 2026-10-13, suggestive everywhere — no longer a refusal). Refuses (does not upsert) if `question`
     already appears in the CSV — active or retired — because accepting a
     second call with the same text and different other fields IS an edit
     wearing an add's clothes, and append-only means that path does not
@@ -172,6 +179,10 @@ def add_question(
         fieldnames, rows = _read_rows()
         if "Status" not in fieldnames:
             fieldnames = fieldnames + ["Status"]
+        if "Question ID" not in fieldnames:
+            raise QuestionCatalogWriteError(
+                "the catalog CSV has no `Question ID` column; assign every existing question an id first"
+            )
         if any((r.get("Question") or "").strip() == question for r in rows):
             raise QuestionCatalogWriteError(
                 f"question {question!r} already exists in the catalog — "
@@ -181,7 +192,7 @@ def add_question(
 
         perspective_cols = [
             c for c in fieldnames
-            if c not in {"Question", "Funnel Stage", "Why is this important?",
+            if c not in {"Question ID", "Question", "Funnel Stage", "Why is this important?",
                          "Rationale/Source", "Answering Analysis",
                          "Answering Mechanism", "Purposes", "Catalog History",
                          "Status"}
@@ -194,6 +205,9 @@ def add_question(
             )
 
         new_row = {c: "" for c in fieldnames}
+        # The next free id, one past the highest ever issued (retired rows count), so an id is never reused.
+        question_id = _load_generator_module().next_question_id(rows)
+        new_row["Question ID"] = question_id
         new_row["Question"] = question
         new_row["Funnel Stage"] = stage
         new_row["Why is this important?"] = why_important
@@ -211,6 +225,11 @@ def add_question(
         _write_csv(fieldnames, candidate_rows)
 
     question_catalog_reader.clear_cache()
+    # The new question's own purposes only: rows already in the catalog (Remediate, Attest, pending the
+    # owner's ruling) are the generator's stderr, not this caller's business.
+    from resource_explorer.investigation_purposes import known_purpose_names, unknown_purpose_warnings
+
+    return unknown_purpose_warnings(purposes, known_purpose_names()), question_id
 
 
 def retire_question(question: str) -> None:
@@ -227,8 +246,11 @@ def retire_question(question: str) -> None:
         if "Status" not in fieldnames:
             fieldnames = fieldnames + ["Status"]
 
+        # Text or stable id: a caller holding only the id (a manifest, a stored key) can retire by it.
         match_idx = next(
-            (i for i, r in enumerate(rows) if (r.get("Question") or "").strip() == question),
+            (i for i, r in enumerate(rows)
+             if (r.get("Question") or "").strip() == question
+             or (r.get("Question ID") or "").strip() == question),
             None,
         )
         if match_idx is None:

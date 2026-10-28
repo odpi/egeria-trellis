@@ -4,7 +4,7 @@ browser test runner wired in (see test_next_chat_pane.py's own docstring and
 test_fact_answer_rendering.py's `_fn` helper, reproduced here).
 
 Bug 2 — clicking "Wrong" and then cancelling the optional-comment prompt
-(`window.prompt`) left `feedback.js`'s `_sendAnswerVerdict()` returning with
+(`inPagePrompt`) left `feedback.js`'s `_sendAnswerVerdict()` returning with
 NOTHING shown: the "Was this right?" bar's own design principle (stated in
 `_said()`'s doc comment) is that every outcome must say what happened. A
 bare `return` inside the cancel branch is exactly the failure that comment
@@ -154,11 +154,11 @@ class TestBug3SharedFeedbackRenderer:
 
     def test_feedback_js_still_prompts_for_a_disagree_comment(self):
         """feedback.js's own extra behavior beyond the shared button markup
-        -- the window.prompt() for a comment on "Wrong" -- must survive the
+        -- the inPagePrompt() for a comment on "Wrong" -- must survive the
         consolidation unchanged."""
         fb = _read("feedback.js")
         fn = _fn(fb, "_sendAnswerVerdict")
-        assert "window.prompt(" in fn
+        assert "inPagePrompt(" in fn
 
     def test_chat_js_vote_recording_is_unchanged(self):
         """chat.js's own recording logic (sendFeedback + join-to-gaps-loop)

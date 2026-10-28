@@ -212,9 +212,14 @@ def _registrations(marker_rows: list[dict] | None,
     interfaces count for that SAME kind is skipped rather than duplicated —
     project_code_markers is the general-purpose, multi-framework source."""
     out: dict[str, list[dict]] = {}
+    from resource_explorer.ingestion.test_paths import is_test_path
     for row in marker_rows or []:
         kind = row.get("interface_kind")
         if not kind:
+            continue
+        # Rows stored before extraction learned to skip test files still sit in
+        # the table until the next survey: a test's mock patch is not a route.
+        if is_test_path(row.get("file_path", "")):
             continue
         value = row.get("detail") or row.get("qualified_name") or row.get("file_path", "")
         out.setdefault(kind, []).append({

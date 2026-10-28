@@ -1,0 +1,153 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;600&amp;family=Lora:wght@400;500&amp;display=swap">
+  <style>
+    :root{
+      --paper:#f3f2f2; --rule:rgba(32,31,29,.16); --rule-strong:#8e8a8a;
+      --ink:#201f1d; --ink-muted:#4a463e;
+      --accent:#b68235; --accent-ink:#7d5411;
+      --ok:#1d6b3f; --warn:#9c4212; --gap:#5b4a9c;
+      --chrome:#1b1a19; --chrome-surface:#2d2b2b; --chrome-line:#444141;
+      --chrome-ink:#f3f2f2; --chrome-muted:#9b9797; --accent-on-dark:#e1ad66; --ok-on-dark:#74c68d;
+      --s1:4.6px; --s2:9.2px; --s3:13.8px; --s4:18.4px; --s6:27.6px;
+      --heading:"Cormorant Garamond",Georgia,serif;
+      --body:"Lora",Georgia,serif;
+      --mono:ui-monospace,"SF Mono",Menlo,monospace;
+    }
+    *{box-sizing:border-box}
+    body{margin:0;font-family:var(--body);background:var(--paper);color:var(--ink);font-size:15px;line-height:1.55}
+    .tnum{font-variant-numeric:tabular-nums}
+    .mono{font-family:var(--mono);font-size:.87em}
+    .caps{font-family:var(--heading);font-weight:600;font-size:12px;letter-spacing:.09em;text-transform:uppercase}
+    .h{font-family:var(--heading);font-weight:600}
+    .muted{color:var(--ink-muted)}
+    .lnk{color:var(--accent-ink);text-decoration:underline;text-underline-offset:3px}
+    .g{font-family:"DejaVu Sans","Apple Symbols","Segoe UI Symbol",sans-serif;font-weight:600;display:inline-block;width:1.3em;text-align:center}
+    .ok{color:var(--ok)} .warn{color:var(--warn)} .gapc{color:var(--gap)}
+    .panel-t{font-family:var(--heading);font-weight:600;font-size:21px;margin:0 0 var(--s1)}
+    .panel-s{font-size:13px;color:var(--ink-muted);margin:0 0 var(--s3);max-width:62ch}
+    /* sidebar, on chrome */
+    .side{background:var(--chrome);color:var(--chrome-ink);width:300px;padding:var(--s3);border-radius:3px;font-size:13px;line-height:1.45}
+    .side .lab{font-family:var(--heading);font-weight:600;font-size:12px;letter-spacing:.09em;text-transform:uppercase;color:var(--chrome-muted);margin:var(--s3) 0 4px}
+    .side .sel{border:1px solid var(--chrome-line);border-radius:2px;padding:3px 6px}
+    .side .row{padding:4px 8px;border-left:2px solid transparent;display:flex;justify-content:space-between;gap:8px}
+    .side .row.on{border-left-color:var(--accent);background:var(--chrome-surface)}
+    .side .n{color:var(--chrome-muted)}
+    .side .fold{color:var(--chrome-muted);padding:4px 8px;text-decoration:underline;text-underline-offset:3px}
+    .side .btn{display:inline-block;border:1px solid var(--accent);color:var(--accent-on-dark);border-radius:2px;padding:1px 7px;font-size:12px;margin:0 4px 4px 0}
+    .side .btn.quiet{border-color:var(--chrome-line);color:var(--chrome-ink)}
+    .side .btn.off{border-style:dashed;color:var(--chrome-muted);border-color:var(--chrome-line)}
+    .side .why{color:var(--chrome-muted);font-size:12px}
+    .side .res{padding:3px 8px;display:flex;gap:6px}
+    .side .res input{margin:0}
+    .note{border-left:2px solid var(--chrome-line);padding-left:8px;margin-top:6px;color:var(--chrome-ink);font-size:12px}
+    /* paper panes */
+    .pane{background:#fff;border:1px solid var(--rule);padding:var(--s4);border-radius:2px}
+    .btn2{display:inline-block;border:1px solid var(--rule-strong);border-radius:2px;padding:1px 8px;font-size:12.5px;margin-right:6px}
+    .btn2.primary{border-color:var(--accent);color:var(--accent-ink)}
+    table.grid{border-collapse:collapse;font-size:13px;width:100%}
+    table.grid th{font-family:var(--heading);font-weight:600;text-align:left;font-size:13px;border-bottom:1px solid var(--rule-strong);padding:4px 8px;vertical-align:bottom}
+    table.grid td{border-bottom:1px solid var(--rule);padding:4px 8px;vertical-align:baseline}
+    table.grid td.c{text-align:center}
+    .tabs{display:flex;gap:var(--s4);border-bottom:1px solid var(--rule);font-size:14px;margin:var(--s2) 0 var(--s2)}
+    .tabs span{padding-bottom:3px}
+    .tabs .on{border-bottom:2px solid var(--accent)}
+    .tabs .zero{color:var(--ink-muted);border-bottom:1px dashed var(--rule-strong)}
+    .call{font-size:12.5px;color:var(--ink-muted);border-left:3px solid var(--gap);padding-left:var(--s2);margin-top:var(--s2);max-width:58ch}
+    .strike{text-decoration:line-through;color:var(--ink-muted)}
+  </style>
+</helmet>
+<style>
+  .seg{display:inline-flex;border:1px solid var(--ink);border-radius:2px;overflow:hidden;font-size:12px}
+  .seg span{padding:1px 8px}
+  .seg .on{background:var(--ink);color:var(--paper)}
+  .seg.pend{opacity:.45}
+  .seg .div{border-left:1px solid var(--ink)}
+  .x{font-size:12px;color:var(--ink-muted);margin-left:4px}
+  table.st{border-collapse:collapse;width:100%;font-size:12.5px}
+  table.st th{font-family:var(--heading);font-weight:600;font-size:13px;text-align:left;border-bottom:1px solid var(--rule-strong);padding:4px 6px}
+  table.st td{border-bottom:1px solid var(--rule);padding:6px 6px;vertical-align:top}
+  tr.low td{color:#8e8a8a}
+  tr.low td .mono{color:#8e8a8a}
+  tr.need td:first-child{box-shadow:inset 3px 0 0 var(--ink)}
+  .w{font-size:12px}
+  .tg{display:inline-block;border:1px solid var(--rule-strong);border-radius:2px;padding:0 5px;font-size:11px}
+  .step{display:grid;grid-template-columns:22px 22px 190px 1fr;gap:4px;font-size:13px;padding:3px 0;color:var(--ink-muted)}
+  .step.now{color:var(--ink);font-weight:600}
+  .step.bad{color:var(--ink);box-shadow:inset 3px 0 0 var(--ink);padding-left:6px}
+  table.mf{border-collapse:collapse;width:100%;font-size:13px}
+  table.mf td,table.mf th{border-bottom:1px solid var(--rule);padding:5px 8px;text-align:left}
+  table.mf th{font-family:var(--heading);font-weight:600;border-bottom:1px solid var(--rule-strong)}
+  .bigbtn{display:inline-block;border:1px solid var(--accent);color:var(--accent-ink);border-radius:2px;padding:4px 14px;font-size:14px}
+</style>
+<div style="width:1500px;padding:var(--s6) var(--s6) 60px">
+  <div style="border-bottom:1px solid var(--rule-strong);padding-bottom:var(--s4)">
+    <div class="caps" style="color:var(--accent-ink)">State as a visual cue &middot; reply to ASK-DESIGNER-STATE-AS-VISUAL-CUE (and verbs Q7) &middot; against main at f1f679eb</div>
+    <h1 class="h" style="font-weight:400;font-size:38px;margin:var(--s3) 0 var(--s2);max-width:56ch">The cue sits where the decision was made; the sentence is one gesture away</h1>
+    <p style="max-width:100ch;margin:0">Two lanes: <em>your choice</em> (RE&rsquo;s record: fill, lowering, tag) and <em>in Egeria</em> (the proof rows: glyph + word). A pressed control looks pending until the record answers, and ignores a second press. Values illustrative (coco_pharma at the gate).</p>
+  </div>
+
+  <div style="display:flex;gap:var(--s6);margin-top:var(--s6);align-items:flex-start">
+    <div style="flex:1.35;min-width:0">
+      <p class="panel-t">A &middot; The scope tree: the choice cell answers the press</p>
+      <div class="pane">
+        <div class="w muted" style="margin-bottom:6px">Legend: <span class="seg"><span class="on">filled</span></span> your choice, saved &middot; <span style="color:#8e8a8a">lowered row</span> left out &middot; <span class="tg">tag</span> where a choice came from &middot; <span style="box-shadow:inset 3px 0 0 var(--ink);padding-left:6px">edge</span> needs you</div>
+        <table class="st">
+          <tr><th style="width:300px">Include in catalog?</th><th>Schema</th><th style="text-align:right">Tables</th><th style="width:230px">In Egeria</th></tr>
+          <tr><td><span class="seg"><span class="on">Include</span><span class="div">Leave out</span></span><span class="x">&times;</span><div class="w">saved &middot; you &middot; yesterday</div></td><td class="mono">coco_sus</td><td style="text-align:right">30</td><td><span class="g ok">&#10003;</span>cataloged</td></tr>
+          <tr><td><span class="seg pend"><span>Include</span><span class="div on">Leave out</span></span><span class="x">&times;</span><div class="w">saving&hellip;</div></td><td class="mono">eu_sales</td><td style="text-align:right">1</td><td class="muted">&mdash;</td></tr>
+          <tr class="low"><td><span class="seg" style="border-color:#8e8a8a"><span>Include</span><span class="div on" style="background:#8e8a8a;border-color:#8e8a8a">Leave out</span></span><span class="x">&times;</span><div class="w">saved &middot; you &middot; just now &middot; not yet cataloged</div></td><td class="mono">archive_2019</td><td style="text-align:right">14</td><td><span class="g">&#9888;</span>will archive<div class="w">at the next commit &middot; <span class="lnk">details</span></div></td></tr>
+          <tr><td><span class="seg"><span>Include</span><span class="div">Leave out</span></span><div class="w muted">undecided</div></td><td class="mono">demo_auth</td><td style="text-align:right">4</td><td class="muted">&mdash;</td></tr>
+          <tr><td><span class="seg"><span class="on">Include</span><span class="div">Leave out</span></span><span class="x">&times;</span> <span class="tg">Sales tables</span><div class="w">saved by rule</div></td><td class="mono">us_sales</td><td style="text-align:right">1</td><td><span class="g">&#9684;</span>sent</td></tr>
+          <tr class="need"><td><span class="seg"><span class="on">Include</span><span class="div">Leave out</span></span><span class="x">&times;</span><div class="w">refused: can&rsquo;t be re-included until Egeria restores archived elements</div></td><td class="mono">coco_old</td><td style="text-align:right">3</td><td><span class="g">&#9633;</span>archived</td></tr>
+        </table>
+        <div class="call">The second row: pressed, dimmed, &ldquo;saving&hellip;&rdquo; in place; a second press does nothing. When the record answers, the segment fills and the row lowers if left out. The right column is Egeria&rsquo;s lane only.</div>
+      </div>
+    </div>
+
+    <div style="flex:1;min-width:0">
+      <p class="panel-t">B &middot; The commit steps: a stepper, not sentences</p>
+      <div class="pane">
+        <div style="font-size:14px"><strong>Catalog &middot; commit a3f2</strong> &middot; step 6 of 9 &middot; running: Egeria&rsquo;s survey &middot; 0 failed</div>
+        <div style="margin-top:8px">
+          <div class="step"><span>1</span><span class="g ok">&#10003;</span><span>publish server + database</span><span>done</span></div>
+          <div class="step"><span>2</span><span class="g ok">&#10003;</span><span>zones</span><span>done</span></div>
+          <div class="step"><span>3</span><span class="g ok">&#10003;</span><span>owner from Context</span><span>done</span></div>
+          <div class="step"><span>4</span><span class="g ok">&#10003;</span><span>attach schemas</span><span>done</span></div>
+          <div class="step"><span>5</span><span class="g ok">&#10003;</span><span>RE&rsquo;s survey report</span><span>done</span></div>
+          <div class="step now"><span>6</span><span class="g">&#9684;</span><span>Egeria&rsquo;s survey</span><span>running</span></div>
+          <div class="step"><span>7</span><span class="g">&#9675;</span><span>leave outs</span><span>waiting</span></div>
+          <div class="step"><span>8</span><span class="g">&#9675;</span><span>refresh cataloger</span><span>waiting</span></div>
+          <div class="step"><span>9</span><span class="g">&#9675;</span><span>read Egeria back</span><span>waiting</span></div>
+        </div>
+        <div class="w muted" style="margin-top:6px">Each step&rsquo;s sentence: <span class="lnk">details</span>. A failed step shows its first sentence at once:</div>
+        <div class="step bad" style="margin-top:4px"><span>7</span><span class="g warn">&#10005;</span><span>leave outs</span><span>failed &middot; in use by a running survey &middot; wait or cancel</span></div>
+      </div>
+
+      <p class="panel-t" style="margin-top:var(--s6)">C &middot; The manifest: counts per mechanism, the button on top</p>
+      <div class="pane">
+        <div style="display:flex;align-items:baseline;gap:10px"><span class="h" style="font-size:18px">What this commit does</span><span style="margin-left:auto" class="bigbtn">Catalog 2 schemas</span></div>
+        <div class="w" style="text-align:right;margin-top:4px">&#9745; refresh Egeria&rsquo;s cataloger now (about 16 s)</div>
+        <table class="mf" style="margin-top:6px">
+          <tr><th></th><th>what</th><th>how many</th><th>when</th></tr>
+          <tr><td>RE publishes</td><td>server and database</td><td>2 elements</td><td>now</td></tr>
+          <tr><td>Egeria catalogs</td><td>your included schemas</td><td>2 &middot; coco_sus, coco_ods</td><td>this refresh</td></tr>
+          <tr><td>Egeria surveys</td><td>the same schemas</td><td>2</td><td>after attach</td></tr>
+          <tr style="color:#8e8a8a"><td>Left out</td><td>nothing in Egeria to change</td><td>1 &middot; eu_sales</td><td>&mdash;</td></tr>
+          <tr style="color:#8e8a8a"><td>Undecided</td><td>Egeria stays as it is</td><td>26</td><td>&mdash;</td></tr>
+        </table>
+        <div class="w muted" style="margin-top:6px">When blocked, the reasons sit directly under the button: <span class="g">&#9888;</span> 1 name Egeria&rsquo;s listing can&rsquo;t tell apart &middot; <span class="lnk">show</span></div>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>

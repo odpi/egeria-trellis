@@ -4,7 +4,7 @@ enforces, plus the no-data/error/stale messaging and chart selection, so a
 later edit that erodes one of these fails a test instead of a screenshot.
 
 No browser verification happened for this file — see
-docs/design-notes/ITEM-2-UNDERSTANDING-IMPLEMENTED.md for what was and was
+ITEM-2-UNDERSTANDING-IMPLEMENTED.md for what was and was
 not checked live. These tests grep/slice function bodies out of the
 concatenated source, the established pattern for /next JS modules without a
 browser -- see test_next_curate_pane.py, test_next_rail_states.py, and
@@ -116,7 +116,7 @@ class TestChartSelectionActuallyDraws:
         src = _understanding_src()
         assert "const select = (kind) => {" in src
         body = src[src.index("const select = (kind) => {"):src.index("index.querySelectorAll('[data-chart]').forEach((b) =>")]
-        assert "drawChart(results.find((r) => r.kind === kind));" in body
+        assert "drawChart(results.find((r) => r.kind === kind), { bodyId });" in body
         wiring = src[src.index("index.querySelectorAll('[data-chart]').forEach((b) =>"):src.index("const first = results.find")]
         assert "b.addEventListener('click', () => select(b.dataset.chart)));" in wiring
 
@@ -146,5 +146,5 @@ class TestEveryCatalogedChartHasAWorkingProbe:
 
         src = _understanding_src()
         assert "REPO_CHARTS.map(([kind, label]) => getChart(slug, kind)" not in src  # not the literal shape
-        assert "REPO_CHARTS.map(async ([kind, label]) => {" in src
+        assert "wanted.map(async ([kind, label]) => {" in src  # wanted = REPO_CHARTS, or one tab's kinds
         assert "await getChart(slug, kind)" in src

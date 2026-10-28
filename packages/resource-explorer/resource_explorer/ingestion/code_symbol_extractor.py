@@ -29,6 +29,9 @@ class CodeSymbol:
     is_async: bool = False
     complexity: int = 0         # cyclomatic complexity; 0 for non-function symbols (classes/interfaces)
     bases: list[str] = field(default_factory=list)  # class-kind only: raw base-class expressions, not FQN-resolved
+    #: core | test | generated | vendored | docs (ingestion/file_role.py), stamped by
+    #: CodeSymbolExtractor.extract. None = not classified, stored as NULL ("not recorded").
+    file_role: str | None = None
 
 
 @dataclass
@@ -52,6 +55,7 @@ class CodeMarker:
     detail: str             # "GET /assets/{guid}", topic name, etc. — '' if none
     qualified_name: str     # the decorated/annotated symbol, or '' when there is none
                             # (e.g. a Django urls.py path() call)
+    file_role: str | None = None  # as CodeSymbol.file_role; stamped by extract_markers
 
 
 #: Languages whose marker extraction is real — Python via `ast.decorator_list`
@@ -65,6 +69,18 @@ class CodeMarker:
 #: language absent here must be NAMED as uncovered, never silently reported
 #: as a measured zero.
 MARKER_CAPABLE_LANGUAGES = frozenset({"python", "java"})
+
+
+def _stamp_role(file_path: str, rows: list) -> list:
+    """Every symbol and marker row carries the role of the file it came from
+    (DESIGN-ARTIFACTS-VIEW-AND-DOC-LINKS.md §3). One call per file: the role is
+    a fact about the path, decided by the one shared classifier."""
+    if rows:
+        from resource_explorer.ingestion.file_role import classify_file_role
+        role = classify_file_role(file_path)
+        for row in rows:
+            row.file_role = role
+    return rows
 
 
 class CodeSymbolExtractor:
@@ -84,6 +100,11 @@ class CodeSymbolExtractor:
     """
 
     def extract(
+        self, file_path: str, content: str, resource_slug: str, language: str
+    ) -> list[CodeSymbol]:
+        return _stamp_role(file_path, self._extract_symbols(file_path, content, resource_slug, language))
+
+    def _extract_symbols(
         self, file_path: str, content: str, resource_slug: str, language: str
     ) -> list[CodeSymbol]:
         try:
@@ -107,12 +128,18 @@ class CodeSymbolExtractor:
         §3.1). Only languages in MARKER_CAPABLE_LANGUAGES are attempted;
         anything else returns [] and the caller is responsible for recording
         the language as uncovered rather than reading the empty list as a
-        measured zero."""
+        measured zero.
+
+        A test file registers nothing the product exposes (its ``patch(...)``
+        calls and sample routes are mocks), so it yields no markers."""
+        from resource_explorer.ingestion.test_paths import is_test_path
+        if is_test_path(file_path):
+            return []
         try:
             if language == "python":
-                return self._extract_python_markers(file_path, content, resource_slug)
+                return _stamp_role(file_path, self._extract_python_markers(file_path, content, resource_slug))
             if language == "java":
-                return self._extract_java_markers(file_path, content, resource_slug)
+                return _stamp_role(file_path, self._extract_java_markers(file_path, content, resource_slug))
         except Exception:
             pass
         return []
@@ -447,6 +474,32 @@ class _PythonMarkerVisitor(ast.NodeVisitor):
         self._is_urls_file = file_path.rsplit("/", 1)[-1] == "urls.py"
         self.markers: list[CodeMarker] = []
         self._class_stack: list[str] = []
+        # Celery's `@task`/`@shared_task` only means a celery task when the file
+        # is in celery's world; invoke's `@task` is a build-script command.
+        self._celery_file = False
+        #: names bound to a Celery app or imported from a module named *celery*
+        self._celery_names: set[str] = set()
+
+    #: Receivers that are mocking helpers, never an app or router.
+    _MOCK_RECEIVER_TAILS = frozenset({"mock", "mocker", "monkeypatch", "patch"})
+
+    def visit_Module(self, node: ast.Module) -> None:
+        for n in ast.walk(node):
+            if isinstance(n, ast.Import) and any(
+                    a.name.split(".")[0] == "celery" for a in n.names):
+                self._celery_file = True
+            elif isinstance(n, ast.ImportFrom):
+                mod = n.module or ""
+                if mod.split(".")[0] == "celery":
+                    self._celery_file = True
+                if "celery" in mod.lower():
+                    self._celery_names.update(a.asname or a.name for a in n.names)
+            elif isinstance(n, ast.Assign) and isinstance(n.value, ast.Call):
+                callee = self._dotted(n.value.func).rsplit(".", 1)[-1]
+                if callee == "Celery":
+                    self._celery_names.update(
+                        t.id for t in n.targets if isinstance(t, ast.Name))
+        self.generic_visit(node)
 
     # ── helpers ─────────────────────────────────────────────────────────────
 
@@ -540,13 +593,29 @@ class _PythonMarkerVisitor(ast.NodeVisitor):
         else:
             return None
 
+        if attr in self._HTTP_VERBS or attr == "route":
+            # A route decorator is a CALL on an app/router, with a path that is
+            # absolute (or empty, or computed). `@patch("pkg.mod.name")` and
+            # `@mock.patch(...)` are mock patches, not registrations.
+            if call is None:
+                return None
+            if receiver.rsplit(".", 1)[-1].lower() in self._MOCK_RECEIVER_TAILS:
+                return None
+            first = args[0] if args else kwargs.get("path")
+            if isinstance(first, ast.Constant) and isinstance(first.value, str) \
+                    and first.value and not first.value.startswith("/"):
+                return None
+            if isinstance(func, ast.Name) and not (
+                    isinstance(first, ast.Constant) and isinstance(first.value, str)):
+                return None  # bare `get(...)`/`patch(...)` needs a literal "/path"
+
         if attr in self._HTTP_VERBS:
-            path = self._const_str(args[0]) if args else ""
+            path = self._const_str(args[0] if args else kwargs.get("path"))
             detail = f"{attr.upper()} {path}".strip()
             return self._marker(node, "route", "fastapi", "http_api", detail, node.name)
 
         if attr == "route":
-            path = self._const_str(args[0]) if args else ""
+            path = self._const_str(args[0] if args else kwargs.get("path"))
             methods = self._const_list_str(kwargs.get("methods"))
             verb = methods[0] if methods else "GET"
             detail = f"{verb} {path}".strip()
@@ -558,7 +627,9 @@ class _PythonMarkerVisitor(ast.NodeVisitor):
             return self._marker(node, "route", "django-rest-framework",
                                  "http_api", verb, node.name)
 
-        if attr in ("task", "shared_task"):
+        if attr in ("task", "shared_task") and (
+                self._celery_file or receiver.split(".")[0] in self._celery_names
+                or (not receiver and attr in self._celery_names)):
             return self._marker(node, "message_handler", "celery",
                                  "messaging", "", node.name)
 

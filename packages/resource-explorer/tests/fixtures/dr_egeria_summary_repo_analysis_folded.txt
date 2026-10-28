@@ -1,0 +1,206 @@
+v2: Processing Markdown File: /private/tmp/claude-501/-Users-dwolfson/2fb2ad27-0b9c-4faa-8cb3-c62b533f34d5/scratchpad/dr2/repo-survey-definition-analysis.md
+
+*** INFO: PROCESS MODE ***
+Dr. Egeria will EXECUTE these commands and make PERMANENT CHANGES to Egeria.
+
+
+
+                                                                                     Dr. Egeria v2 Processing Summary                                                                                   
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━┳━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+┃ Markdown Command                  ┃ Canonical Command                 ┃ Status  ┃ Found ┃ Display Name / End 1              ┃ Qualified Name / End2             ┃ Message                             
+┡━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━╇━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+│ Create Governance Action Process  │ Create Governance Action Process  │ SUCCESS │ No    │ Analysis Survey — Repo Git        │ GovActionProcessStep::RepoAnalysi │ Executed Create Governance Action   
+│ Step                              │ Step                              │         │       │ Statistics                        │ sSurvey::repo_git_statistics      │ Process Step (GUID:                 
+│                                   │                                   │         │       │                                   │                                   │ 0a1b2c3d-0000-4000-8000-000000000001
+│                                   │                                   │         │       │                                   │                                   │ )                                   
+├···································┼···································┼·········┼·······┼···································┼···································┼·····································
+│ Create Governance Action Process  │ Create Governance Action Process  │ SUCCESS │ No    │ Analysis Survey — Repo File       │ GovActionProcessStep::RepoAnalysi │ Executed Create Governance Action   
+│ Step                              │ Step                              │         │       │ Inventory                         │ sSurvey::repo_file_inventory      │ Process Step (GUID:                 
+│                                   │                                   │         │       │                                   │                                   │ 0a1b2c3d-0000-4000-8000-000000000001
+│                                   │                                   │         │       │                                   │                                   │ )                                   
+├···································┼···································┼·········┼·······┼···································┼···································┼·····································
+│ Create Governance Action Process  │ Create Governance Action Process  │ SUCCESS │ No    │ Analysis Survey — Repo Homepage   │ GovActionProcessStep::RepoAnalysi │ Executed Create Governance Action   
+│ Step                              │ Step                              │         │       │                                   │ sSurvey::repo_homepage            │ Process Step (GUID:                 
+│                                   │                                   │         │       │                                   │                                   │ 0a1b2c3d-0000-4000-8000-000000000001
+│                                   │                                   │         │       │                                   │                                   │ )                                   
+├···································┼···································┼·········┼·······┼···································┼···································┼·····································
+│ Create Governance Action Process  │ Create Governance Action Process  │ SUCCESS │ No    │ Analysis Survey — Repo Dependency │ GovActionProcessStep::RepoAnalysi │ Executed Create Governance Action   
+│ Step                              │ Step                              │         │       │                                   │ sSurvey::repo_dependency          │ Process Step (GUID:                 
+│                                   │                                   │         │       │                                   │                                   │ 0a1b2c3d-0000-4000-8000-000000000001
+│                                   │                                   │         │       │                                   │                                   │ )                                   
+├···································┼···································┼·········┼·······┼···································┼···································┼·····································
+│ Create Governance Action Process  │ Create Governance Action Process  │ SUCCESS │ No    │ Analysis Survey — Repo Symbol     │ GovActionProcessStep::RepoAnalysi │ Executed Create Governance Action   
+│ Step                              │ Step                              │         │       │ Extraction                        │ sSurvey::repo_symbol_extraction   │ Process Step (GUID:                 
+│                                   │                                   │         │       │                                   │                                   │ 0a1b2c3d-0000-4000-8000-000000000001
+│                                   │                                   │         │       │                                   │                                   │ )                                   
+├···································┼···································┼·········┼·······┼···································┼···································┼·····································
+│ Create Governance Action Process  │ Create Governance Action Process  │ SUCCESS │ No    │ Analysis Survey — Repo Api        │ GovActionProcessStep::RepoAnalysi │ Executed Create Governance Action   
+│ Step                              │ Step                              │         │       │ Structure                         │ sSurvey::repo_api_structure       │ Process Step (GUID:                 
+│                                   │                                   │         │       │                                   │                                   │ 0a1b2c3d-0000-4000-8000-000000000001
+│                                   │                                   │         │       │                                   │                                   │ )                                   
+├···································┼···································┼·········┼·······┼···································┼···································┼·····································
+│ Create Governance Action Process  │ Create Governance Action Process  │ SUCCESS │ No    │ Analysis Survey — Repo Data       │ GovActionProcessStep::RepoAnalysi │ Executed Create Governance Action   
+│ Step                              │ Step                              │         │       │ Profiling                         │ sSurvey::repo_data_profiling      │ Process Step (GUID:                 
+│                                   │                                   │         │       │                                   │                                   │ 0a1b2c3d-0000-4000-8000-000000000001
+│                                   │                                   │         │       │                                   │                                   │ )                                   
+├···································┼···································┼·········┼·······┼···································┼···································┼·····································
+│ Create Governance Action Process  │ Create Governance Action Process  │ SUCCESS │ No    │ Analysis Survey — Repo Sub        │ GovActionProcessStep::RepoAnalysi │ Executed Create Governance Action   
+│ Step                              │ Step                              │         │       │ Resource Survey                   │ sSurvey::repo_sub_resource_survey │ Process Step (GUID:                 
+│                                   │                                   │         │       │                                   │                                   │ 0a1b2c3d-0000-4000-8000-000000000001
+│                                   │                                   │         │       │                                   │                                   │ )                                   
+├···································┼···································┼·········┼·······┼···································┼···································┼·····································
+│ Create Governance Action Process  │ Create Governance Action Process  │ SUCCESS │ No    │ Analysis Survey — Repo Rag        │ GovActionProcessStep::RepoAnalysi │ Executed Create Governance Action   
+│ Step                              │ Step                              │         │       │ Ingestion                         │ sSurvey::repo_rag_ingestion       │ Process Step (GUID:                 
+│                                   │                                   │         │       │                                   │                                   │ 0a1b2c3d-0000-4000-8000-000000000001
+│                                   │                                   │         │       │                                   │                                   │ )                                   
+├···································┼···································┼·········┼·······┼···································┼···································┼·····································
+│ Create Governance Action Process  │ Create Governance Action Process  │ SUCCESS │ No    │ Analysis Survey — Repo Website    │ GovActionProcessStep::RepoAnalysi │ Executed Create Governance Action   
+│ Step                              │ Step                              │         │       │ Ingestion                         │ sSurvey::repo_website_ingestion   │ Process Step (GUID:                 
+│                                   │                                   │         │       │                                   │                                   │ 0a1b2c3d-0000-4000-8000-000000000001
+│                                   │                                   │         │       │                                   │                                   │ )                                   
+├···································┼···································┼·········┼·······┼···································┼···································┼·····································
+│ Create Governance Action Process  │ Create Governance Action Process  │ SUCCESS │ No    │ Analysis Survey — Repo Chaoss     │ GovActionProcessStep::RepoAnalysi │ Executed Create Governance Action   
+│ Step                              │ Step                              │         │       │ Metrics                           │ sSurvey::repo_chaoss_metrics      │ Process Step (GUID:                 
+│                                   │                                   │         │       │                                   │                                   │ 0a1b2c3d-0000-4000-8000-000000000001
+│                                   │                                   │         │       │                                   │                                   │ )                                   
+├···································┼···································┼·········┼·······┼···································┼···································┼·····································
+│ Create Governance Action Process  │ Create Governance Action Process  │ SUCCESS │ No    │ Analysis Survey                   │ GovActionProcess::RepoAnalysisSur │ Executed Create Governance Action   
+│                                   │                                   │         │       │                                   │ vey                               │ Process (GUID:                      
+│                                   │                                   │         │       │                                   │                                   │ 0a1b2c3d-0000-4000-8000-000000000001
+│                                   │                                   │         │       │                                   │                                   │ )                                   
+├···································┼···································┼·········┼·······┼···································┼···································┼·····································
+│ Link First Process Step           │ Link First Process Step           │ SUCCESS │ No    │                                   │                                   │ Executed Link First Process Step    
+├···································┼···································┼·········┼·······┼···································┼···································┼·····································
+│ Link Next Process Step            │ Link Next Process Step            │ SUCCESS │ No    │                                   │                                   │ Executed Link Next Process Step     
+│                                   │                                   │         │       │                                   │                                   │ (GUID:                              
+│                                   │                                   │         │       │                                   │                                   │ 0a1b2c3d-0000-4000-8000-000000000001
+│                                   │                                   │         │       │                                   │                                   │ )                                   
+├···································┼···································┼·········┼·······┼···································┼···································┼·····································
+│ Link Next Process Step            │ Link Next Process Step            │ SUCCESS │ No    │                                   │                                   │ Executed Link Next Process Step     
+│                                   │                                   │         │       │                                   │                                   │ (GUID:                              
+│                                   │                                   │         │       │                                   │                                   │ 0a1b2c3d-0000-4000-8000-000000000001
+│                                   │                                   │         │       │                                   │                                   │ )                                   
+├···································┼···································┼·········┼·······┼···································┼···································┼·····································
+│ Link Next Process Step            │ Link Next Process Step            │ SUCCESS │ No    │                                   │                                   │ Executed Link Next Process Step     
+│                                   │                                   │         │       │                                   │                                   │ (GUID:                              
+│                                   │                                   │         │       │                                   │                                   │ 0a1b2c3d-0000-4000-8000-000000000001
+│                                   │                                   │         │       │                                   │                                   │ )                                   
+├···································┼···································┼·········┼·······┼···································┼···································┼·····································
+│ Link Next Process Step            │ Link Next Process Step            │ SUCCESS │ No    │                                   │                                   │ Executed Link Next Process Step     
+│                                   │                                   │         │       │                                   │                                   │ (GUID:                              
+│                                   │                                   │         │       │                                   │                                   │ 0a1b2c3d-0000-4000-8000-000000000001
+│                                   │                                   │         │       │                                   │                                   │ )                                   
+├···································┼···································┼·········┼·······┼···································┼···································┼·····································
+│ Link Next Process Step            │ Link Next Process Step            │ SUCCESS │ No    │                                   │                                   │ Executed Link Next Process Step     
+│                                   │                                   │         │       │                                   │                                   │ (GUID:                              
+│                                   │                                   │         │       │                                   │                                   │ 0a1b2c3d-0000-4000-8000-000000000001
+│                                   │                                   │         │       │                                   │                                   │ )                                   
+├···································┼···································┼·········┼·······┼···································┼···································┼·····································
+│ Link Next Process Step            │ Link Next Process Step            │ SUCCESS │ No    │                                   │                                   │ Executed Link Next Process Step     
+│                                   │                                   │         │       │                                   │                                   │ (GUID:                              
+│                                   │                                   │         │       │                                   │                                   │ 0a1b2c3d-0000-4000-8000-000000000001
+│                                   │                                   │         │       │                                   │                                   │ )                                   
+├···································┼···································┼·········┼·······┼···································┼···································┼·····································
+│ Link Next Process Step            │ Link Next Process Step            │ SUCCESS │ No    │                                   │                                   │ Executed Link Next Process Step     
+│                                   │                                   │         │       │                                   │                                   │ (GUID:                              
+│                                   │                                   │         │       │                                   │                                   │ 0a1b2c3d-0000-4000-8000-000000000001
+│                                   │                                   │         │       │                                   │                                   │ )                                   
+├···································┼···································┼·········┼·······┼···································┼···································┼·····································
+│ Link Next Process Step            │ Link Next Process Step            │ SUCCESS │ No    │                                   │                                   │ Executed Link Next Process Step     
+│                                   │                                   │         │       │                                   │                                   │ (GUID:                              
+│                                   │                                   │         │       │                                   │                                   │ 0a1b2c3d-0000-4000-8000-000000000001
+│                                   │                                   │         │       │                                   │                                   │ )                                   
+├···································┼···································┼·········┼·······┼···································┼···································┼·····································
+│ Link Next Process Step            │ Link Next Process Step            │ SUCCESS │ No    │                                   │                                   │ Executed Link Next Process Step     
+│                                   │                                   │         │       │                                   │                                   │ (GUID:                              
+│                                   │                                   │         │       │                                   │                                   │ 0a1b2c3d-0000-4000-8000-000000000001
+│                                   │                                   │         │       │                                   │                                   │ )                                   
+├···································┼···································┼·········┼·······┼···································┼···································┼·····································
+│ Link Next Process Step            │ Link Next Process Step            │ SUCCESS │ No    │                                   │                                   │ Executed Link Next Process Step     
+│                                   │                                   │         │       │                                   │                                   │ (GUID:                              
+│                                   │                                   │         │       │                                   │                                   │ 0a1b2c3d-0000-4000-8000-000000000001
+│                                   │                                   │         │       │                                   │                                   │ )                                   
+├···································┼···································┼·········┼·······┼···································┼···································┼·····································
+│ Link Action to Action Executor    │ Link Action to Action Executor    │ SUCCESS │ No    │                                   │                                   │ Executed Link Action to Action      
+│                                   │                                   │         │       │                                   │                                   │ Executor                            
+├···································┼···································┼·········┼·······┼···································┼···································┼·····································
+│ Link Action to Action Executor    │ Link Action to Action Executor    │ SUCCESS │ No    │                                   │                                   │ Executed Link Action to Action      
+│                                   │                                   │         │       │                                   │                                   │ Executor                            
+├···································┼···································┼·········┼·······┼···································┼···································┼·····································
+│ Link Action to Action Executor    │ Link Action to Action Executor    │ SUCCESS │ No    │                                   │                                   │ Executed Link Action to Action      
+│                                   │                                   │         │       │                                   │                                   │ Executor                            
+├···································┼···································┼·········┼·······┼···································┼···································┼·····································
+│ Link Action to Action Executor    │ Link Action to Action Executor    │ SUCCESS │ No    │                                   │                                   │ Executed Link Action to Action      
+│                                   │                                   │         │       │                                   │                                   │ Executor                            
+├···································┼···································┼·········┼·······┼···································┼···································┼·····································
+│ Link Action to Action Executor    │ Link Action to Action Executor    │ SUCCESS │ No    │                                   │                                   │ Executed Link Action to Action      
+│                                   │                                   │         │       │                                   │                                   │ Executor                            
+├···································┼···································┼·········┼·······┼···································┼···································┼·····································
+│ Link Action to Action Executor    │ Link Action to Action Executor    │ SUCCESS │ No    │                                   │                                   │ Executed Link Action to Action      
+│                                   │                                   │         │       │                                   │                                   │ Executor                            
+├···································┼···································┼·········┼·······┼···································┼···································┼·····································
+│ Link Action to Action Executor    │ Link Action to Action Executor    │ SUCCESS │ No    │                                   │                                   │ Executed Link Action to Action      
+│                                   │                                   │         │       │                                   │                                   │ Executor                            
+├···································┼···································┼·········┼·······┼···································┼···································┼·····································
+│ Link Action to Action Executor    │ Link Action to Action Executor    │ SUCCESS │ No    │                                   │                                   │ Executed Link Action to Action      
+│                                   │                                   │         │       │                                   │                                   │ Executor                            
+├···································┼···································┼·········┼·······┼···································┼···································┼·····································
+│ Link Action to Action Executor    │ Link Action to Action Executor    │ SUCCESS │ No    │                                   │                                   │ Executed Link Action to Action      
+│                                   │                                   │         │       │                                   │                                   │ Executor                            
+├···································┼···································┼·········┼·······┼···································┼···································┼·····································
+│ Link Action to Action Executor    │ Link Action to Action Executor    │ SUCCESS │ No    │                                   │                                   │ Executed Link Action to Action      
+│                                   │                                   │         │       │                                   │                                   │ Executor                            
+├···································┼···································┼·········┼·······┼···································┼···································┼·····································
+│ Link Element To Scope             │ Link Element To Scope             │ FAILURE │ No    │                                   │                                   │ Execution blocked: Referenced       
+│                                   │                                   │         │       │                                   │                                   │ element 'What dependencies does this
+│                                   │                                   │         │       │                                   │                                   │ require?' for attribute 'Scope      
+│                                   │                                   │         │       │                                   │                                   │ Reference' not found.               
+├···································┼···································┼·········┼·······┼···································┼···································┼·····································
+│ Link Element To Scope             │ Link Element To Scope             │ FAILURE │ No    │                                   │                                   │ Execution blocked: Referenced       
+│                                   │                                   │         │       │                                   │                                   │ element 'What APIs and code symbols 
+│                                   │                                   │         │       │                                   │                                   │ does it expose to callers?' for     
+│                                   │                                   │         │       │                                   │                                   │ attribute 'Scope Reference' not     
+│                                   │                                   │         │       │                                   │                                   │ found.                              
+├···································┼···································┼·········┼·······┼···································┼···································┼·····································
+│ Link Element To Scope             │ Link Element To Scope             │ FAILURE │ No    │                                   │                                   │ Execution blocked: Referenced       
+│                                   │                                   │         │       │                                   │                                   │ element 'How much code is there? How
+│                                   │                                   │         │       │                                   │                                   │ complex?' for attribute 'Scope      
+│                                   │                                   │         │       │                                   │                                   │ Reference' not found.               
+├···································┼···································┼·········┼·······┼···································┼···································┼·····································
+│ Link Element To Scope             │ Link Element To Scope             │ FAILURE │ No    │                                   │                                   │ Execution blocked: Referenced       
+│                                   │                                   │         │       │                                   │                                   │ element 'What data files does it    
+│                                   │                                   │         │       │                                   │                                   │ ship, and what shape are they?' for 
+│                                   │                                   │         │       │                                   │                                   │ attribute 'Scope Reference' not     
+│                                   │                                   │         │       │                                   │                                   │ found.                              
+├···································┼···································┼·········┼·······┼···································┼···································┼·····································
+│ Link Element To Scope             │ Link Element To Scope             │ FAILURE │ No    │                                   │                                   │ Execution blocked: Referenced       
+│                                   │                                   │         │       │                                   │                                   │ element 'Who owns this resource     
+│                                   │                                   │         │       │                                   │                                   │ (accountable owner), and who        
+│                                   │                                   │         │       │                                   │                                   │ administers it?' for attribute      
+│                                   │                                   │         │       │                                   │                                   │ 'Scope Reference' not found.        
+├···································┼···································┼·········┼·······┼···································┼···································┼·····································
+│ Link Element To Scope             │ Link Element To Scope             │ FAILURE │ No    │                                   │                                   │ Execution blocked: Referenced       
+│                                   │                                   │         │       │                                   │                                   │ element 'How widely adopted and     
+│                                   │                                   │         │       │                                   │                                   │ active is the community around this 
+│                                   │                                   │         │       │                                   │                                   │ repository?' for attribute 'Scope   
+│                                   │                                   │         │       │                                   │                                   │ Reference' not found.               
+├···································┼···································┼·········┼·······┼···································┼···································┼·····································
+│ Link Element To Scope             │ Link Element To Scope             │ FAILURE │ No    │                                   │                                   │ Execution blocked: Referenced       
+│                                   │                                   │         │       │                                   │                                   │ element 'Is there a current,        
+│                                   │                                   │         │       │                                   │                                   │ published, security analysis?' for  
+│                                   │                                   │         │       │                                   │                                   │ attribute 'Scope Reference' not     
+│                                   │                                   │         │       │                                   │                                   │ found.                              
+├···································┼···································┼·········┼·······┼···································┼···································┼·····································
+│ Link Element To Scope             │ Link Element To Scope             │ FAILURE │ No    │                                   │                                   │ Execution blocked: Referenced       
+│                                   │                                   │         │       │                                   │                                   │ element 'How concentrated is        
+│                                   │                                   │         │       │                                   │                                   │ authorship — would the project      
+│                                   │                                   │         │       │                                   │                                   │ survive losing its top              
+│                                   │                                   │         │       │                                   │                                   │ contributors?' for attribute 'Scope 
+│                                   │                                   │         │       │                                   │                                   │ Reference' not found.               
+└───────────────────────────────────┴───────────────────────────────────┴─────────┴───────┴───────────────────────────────────┴───────────────────────────────────┴─────────────────────────────────────
+
+
+==> COMPLETED WITH ERRORS: Output written to /private/tmp/claude-501/-Users-dwolfson/2fb2ad27-0b9c-4faa-8cb3-c62b533f34d5/scratchpad/dr2/out/processed-2026-10-15 
+15:51-repo-survey-definition-analysis.md
+
+v2: Processing complete for '/private/tmp/claude-501/-Users-dwolfson/2fb2ad27-0b9c-4faa-8cb3-c62b533f34d5/scratchpad/dr2/repo-survey-definition-analysis.md'

@@ -26,6 +26,8 @@ from resource_explorer.surveyors.survey_report import (
 )
 
 from .connection import EngineCapabilities, NO_CAPABILITIES, database_connection
+from .table_statistics_metrics import database_activity_properties
+from resource_explorer.config import egeria_platform_url, egeria_view_server  # noqa: E402,F401
 
 # analysis_catalog.yaml database entry id -> DatabaseSurveyor.survey() steps,
 # for the subset of database analyses that need an open connection to run at
@@ -65,7 +67,7 @@ from .connection import EngineCapabilities, NO_CAPABILITIES, database_connection
 # rather than hand-listed a second time, for exactly that reason).
 #
 # Renamed from `DATABASE_ANALYSIS_STEP_MAP` (slice 17,
-# docs/design-notes/SLICE-17-RUNNABILITY-FROM-CATALOG-IMPLEMENTED.md) — that
+# SLICE-17-RUNNABILITY-FROM-CATALOG-IMPLEMENTED.md) — that
 # name was shared, coincidentally, with a SEPARATE hand-maintained dict in
 # `survey_definition_adapter.py` with a different shape (re_analysis_step
 # keys, not DatabaseSurveyor.survey() step names) and a different set of
@@ -99,6 +101,17 @@ DATABASE_SURVEYOR_STEP_MAP: dict[str, list[str]] = {
     # this map an honest description of what actually runs.
     "credential_capability": ["schema", "credential_capability"],
 }
+
+
+def database_analysis_has_runner(analysis_id: str) -> bool:
+    """True when the per-card Run route can dispatch `analysis_id` for a
+    database: it is a zero-fetch `db_derived` analysis or has step(s) in
+    `DATABASE_SURVEYOR_STEP_MAP`. The single predicate BOTH the run route's
+    validation and the Enrichment map's "offer a Run control?" use, so a
+    button can never be offered for an analysis the route would 400."""
+    from resource_explorer.surveyors.database.db_derived import DB_DERIVED_ANALYSES
+
+    return analysis_id in DB_DERIVED_ANALYSES or analysis_id in DATABASE_SURVEYOR_STEP_MAP
 
 
 def _parse_pg_array(value) -> list | None:
@@ -250,6 +263,23 @@ def _resolve_n_distinct(
     return NDistinctResolution(abs(n_distinct) * reltuples, None)
 
 
+def _quoted_table_key(schema: str, table: str) -> str:
+    """An unambiguous item key for a table: both names quoted as Postgres
+    identifiers (embedded quotes doubled), so no choice of dots in either name
+    can make two different tables share a key."""
+    def q(name: str) -> str:
+        return '"' + name.replace('"', '""') + '"'
+    return f"{q(schema)}.{q(table)}"
+
+
+
+def _reset_of(activity: dict):
+    """The stats-reset time as evidence (timestamp / 'never' / None)."""
+    if "stats_reset_evidence" in activity:
+        return activity["stats_reset_evidence"]
+    return activity.get("stats_reset") or None
+
+
 class DatabaseSurveyor:
     """Custom surveyor for databases when Egeria can't access them directly."""
 
@@ -267,6 +297,7 @@ class DatabaseSurveyor:
             registry: ProjectRegistry for storing results
         """
         self.db_entity = db_entity
+        self.last_views_not_read: dict = {}
         self.credentials = credentials
         self.registry = registry
 
@@ -296,8 +327,16 @@ class DatabaseSurveyor:
         sampling_overrides: dict | None = None,
         reference_catalog=None,
         read_egeria_catalog: bool = True,
+        surveyed_at: str | None = None,
     ) -> dict:
         """Run a database survey.
+
+        surveyed_at : the scan time to stamp this run's rows with (Brief D
+            7f.1). A Survey Definition dispatches each step as its own
+            `survey()` call; the executor hands every step of ONE scan the
+            same value so they merge into one snapshot instead of leaving a
+            row per step. `None` (a lone per-card run) keeps the old
+            behaviour: stamp "now", one row for the run.
 
         steps : optional subset of {"schema", "statistics", "views",
             "operations", "column_profile", "nested_columns",
@@ -391,7 +430,7 @@ class DatabaseSurveyor:
 
         results = {
             "database_slug": self.db_entity.slug,
-            "surveyed_at": datetime.utcnow().isoformat(),
+            "surveyed_at": surveyed_at or datetime.utcnow().isoformat(),
             "source": "custom",
             "annotations": [],
             "schema_info": {},
@@ -420,6 +459,9 @@ class DatabaseSurveyor:
             #: "credential_capability" runs — see
             #: _survey_credential_capability().
             "credential_capability": {},
+            #: `pg_database.datdba` of the connected database (ENRICHMENT-E3),
+            #: read in the always-running schema step; {} = not measured.
+            "database_owner": {},
         }
         if catalog_load_error:
             results["errors"].append(
@@ -435,6 +477,22 @@ class DatabaseSurveyor:
                 # Survey schema — always runs, see _ALL_STEPS's comment.
                 schema_info = self._survey_schema(conn)
                 results["schema_info"] = schema_info
+                # The connected database's owner role: a server-level fact this
+                # connection can read for free. Non-fatal and engine-optional.
+                owner_reader = getattr(conn, "get_database_owner", None)
+                if callable(owner_reader):
+                    try:
+                        owner = owner_reader() or {}
+                        if owner.get("owner"):
+                            results["database_owner"] = {
+                                **owner, "measured_at": results["surveyed_at"],
+                            }
+                    except Exception as exc:  # noqa: BLE001
+                        log.warning("Could not read the database owner for %s: %s",
+                                    self.db_entity.slug, exc)
+                        results["errors"].append(
+                            f"Could not read the database owner role (non-fatal): {exc}"
+                        )
                 results["annotations"].extend(
                     self._create_schema_annotations(schema_info)
                 )
@@ -470,8 +528,13 @@ class DatabaseSurveyor:
                     try:
                         views_info = self._survey_views(conn, schema_info)
                         results["views"] = views_info
+                        results["views_not_read"] = dict(self.last_views_not_read)
+                        # Which PII keyword source this run used, stored with the views it
+                        # describes and shown by the survey report (one load, one label).
+                        keyword_load = self._load_pii_keywords()
+                        results["pii_keyword_source"] = keyword_load.as_dict()
                         results["annotations"].extend(
-                            self._create_views_annotations(views_info)
+                            self._create_views_annotations(views_info, keywords=keyword_load)
                         )
                     except Exception as views_err:
                         results["errors"].append(f"SQL view static analysis failed (non-fatal): {views_err}")
@@ -628,6 +691,14 @@ class DatabaseSurveyor:
         annotations: list = []
 
         stats_reset = stats_info.get("stats_reset") or None
+        #: What the STORED column carries (Brief D 7f.3): a timestamp, the
+        #: `STATS_NEVER_RESET` word, or None for "not read". A stats dict from
+        #: a connection that predates the evidence read falls back to the old
+        #: value (its "" is "not read", never "never reset").
+        stats_reset_stored = (
+            stats_info["stats_reset_evidence"]
+            if "stats_reset_evidence" in stats_info else stats_reset
+        )
 
         column_stats_by_key = {
             (r.get("schemaname", ""), r.get("tablename", ""), r.get("attname", "")): r
@@ -698,7 +769,7 @@ class DatabaseSurveyor:
                             "last_analyze": activity.get("last_analyze", ""),
                             "last_autoanalyze": activity.get("last_autoanalyze", ""),
                             "pending_changes": activity.get("pending_changes"),
-                            "stats_reset": stats_reset,
+                            "stats_reset": stats_reset_stored,
                             "state": STATE_MEASURED,
                         })
                         annotations.append(
@@ -919,9 +990,28 @@ class DatabaseSurveyor:
         )
 
         if capabilities.tuple_counters:
+            activity_rows = conn.get_table_activity()
             info["activity_signals"] = {
-                "table_activity": conn.get_table_activity(),
+                "table_activity": activity_rows,
+                #: Set only when the read RAISED: an empty list that failed is
+                #: not an empty list that was read.
+                **({"table_activity_error": activity_rows.error}
+                   if getattr(activity_rows, "error", None) else {}),
                 "stats_reset": conn.get_stats_reset(),
+                # The reset time as EVIDENCE (timestamp / "never" / None for
+                # not read) -- `stats_reset` above folds the last two into "".
+                # Read by `_create_table_statistics_annotations`.
+                # A connection without the evidence read (an older or non-Postgres
+                # one) must not cost the whole operations step: the key is left
+                # out and the consumer falls back to `stats_reset`.
+                **({"stats_reset_evidence": conn.get_stats_reset_evidence()}
+                   if hasattr(conn, "get_stats_reset_evidence") else {}),
+                #: pg_stat_database counters (fetched/inserted/updated/deleted,
+                #: session and active time), cumulative since the reset above.
+                #: Left out when the connection cannot read them: the consumer
+                #: then says "not read" for every figure.
+                **({"database_activity": conn.get_database_activity()}
+                   if hasattr(conn, "get_database_activity") else {}),
                 "table_count": schema_info.get("total_tables", 0),
             }
         else:
@@ -942,6 +1032,111 @@ class DatabaseSurveyor:
         )
 
         return info
+
+    def _create_table_statistics_annotations(
+        self, operations_info: dict, schema_info: dict | None = None,
+    ) -> list:
+        """One "Capture Database Table Measurements" annotation per table
+        carrying its statistics-currency metrics (backlog 7i).
+
+        The owner's rule: last analyze / autoanalyze / vacuum / autovacuum,
+        changes since the last analyze, live and dead rows and the database's
+        stats-reset time "provide a notion of currency and correctness on the
+        other statistics", so they ride on the table's measurement annotation.
+        Names and the never-versus-not-read rule live in
+        `table_statistics_metrics` (the one place; proposed for upstream).
+
+        Reads the SAME fetched `activity_signals` dict the database-wide
+        roll-up reads. A table the catalog (`schema_info`) knows but
+        `pg_stat_user_tables` has no row for still gets an annotation, with
+        every metric named in `metricsNotRead` -- absence a reader can see.
+        Returns [] when activity was not collected (capability absent): that
+        case is already stated by the roll-up's own confidence-0 annotation.
+        """
+        from resource_explorer.surveyors.database.db_derived import _is_base_table
+        from resource_explorer.surveyors.database.table_statistics_metrics import (
+            TABLE_NAME, TABLE_QNAME, NOT_READ_KEY, read_failed_reason,
+            table_flag_properties, table_statistics_properties,
+        )
+        from resource_explorer.surveyors.result_materializer import ANN_TABLE_MEASUREMENTS
+
+        activity = (operations_info or {}).get("activity_signals")
+        if not activity:
+            return []
+        if "stats_reset_evidence" in activity:
+            reset = activity["stats_reset_evidence"]
+        else:
+            # A stored snapshot that predates the evidence read: a timestamp is
+            # still a stated value, "" is "not read" (never "never reset").
+            reset = activity.get("stats_reset") or None
+        error = activity.get("table_activity_error")
+        no_row_reason = read_failed_reason(error) if error else None
+
+        by_key = {
+            (r.get("schemaname", ""), r.get("tablename", "")): r
+            for r in (activity.get("table_activity") or [])
+        }
+        # Views and other non-base tables get no table-statistics annotation
+        # (the same filter the freshness analysis applies).
+        skip = set()
+        keys = list(by_key)
+        if schema_info:
+            known = set(keys)
+            for schema in schema_info.get("schemas", []):
+                for table in schema.get("tables", []):
+                    key = (schema.get("name", ""), table.get("name", ""))
+                    if not _is_base_table({"table_type": table.get("type")}):
+                        skip.add(key)
+                    if key not in known:
+                        keys.append(key)
+                        known.add(key)
+
+        database = getattr(self.db_entity, "database_name", "") or ""
+        annotations: list = []
+        tables_by_key = {
+            (schema.get("name", ""), table.get("name", "")): table
+            for schema in (schema_info or {}).get("schemas", [])
+            for table in schema.get("tables", [])
+        }
+        for schema_name, table_name in keys:
+            if (schema_name, table_name) in skip:
+                continue
+            kwargs = {"no_row_reason": no_row_reason} if no_row_reason else {}
+            props = table_statistics_properties(by_key.get((schema_name, table_name)), reset, **kwargs)
+            read = NOT_READ_KEY not in props
+            # Triggers / rules / row security (Egeria's names), from the
+            # catalog read that built schema_info. A flag not read is named
+            # in metricsNotRead, never published as false.
+            flag_props, flag_not_read = table_flag_properties(tables_by_key.get((schema_name, table_name)))
+            props.update(flag_props)
+            if flag_not_read:
+                props[NOT_READ_KEY] = {**(props.get(NOT_READ_KEY) or {}), **flag_not_read}
+            annotations.append(ResourceMeasureAnnotation(
+                summary=f"Table {schema_name}.{table_name} statistics currency",
+                analysis_step="DatabaseOperations",
+                annotation_type_name=ANN_TABLE_MEASUREMENTS,
+                check_name="table_statistics",
+                #: Both parts quoted, so `a.b`+`c` and `a`+`b.c` cannot collide.
+                item_key=_quoted_table_key(schema_name, table_name),
+                confidence=100 if read else (50 if len(props) > 1 else 0),
+                resource_properties={
+                    TABLE_NAME.display_name: table_name,
+                    TABLE_QNAME.display_name: ".".join(
+                        p for p in (database, schema_name, table_name) if p),
+                    **props,
+                },
+                explanation=(
+                    "When this table's planner statistics were last refreshed "
+                    "(analyze) and its dead rows last reclaimed (vacuum), how "
+                    "many rows have changed since, and when the database's "
+                    "counters were reset, read from pg_stat_user_tables and "
+                    "pg_stat_database. Keys are Egeria's display names. 'never' "
+                    "is Postgres's own NULL -- it has not happened; a metric "
+                    "listed in metricsNotRead was not read, which says nothing "
+                    "about whether it happened."
+                ),
+            ))
+        return annotations
 
     def _create_operations_annotations(self, operations_info: dict) -> list:
         """Turn `_survey_operations()`'s fetched dict into annotations.
@@ -1059,16 +1254,27 @@ class DatabaseSurveyor:
                 # stats not yet accumulated for any table, not zero
                 # activity. Same "run ANALYZE"-shaped distinction slice 7
                 # draws per-column; here it applies database-wide.
+                read_error = activity.get("table_activity_error")
                 annotations.append(
                     ResourceMeasureAnnotation(
                         summary=(
+                            f"pg_stat_user_tables read failed ({read_error}); "
+                            f"{table_count} table(s) in the catalog"
+                            if read_error else
                             f"No pg_stat_user_tables rows despite {table_count} "
                             "table(s) in the catalog — activity not yet accumulated"
                         ),
                         analysis_step="DatabaseOperations",
                         confidence=0,
-                        resource_properties={"table_count": table_count, "rows_found": 0},
+                        resource_properties={
+                            "table_count": table_count, "rows_found": 0,
+                            **database_activity_properties(
+                                activity.get("database_activity"), _reset_of(activity)),
+                        },
                         explanation=(
+                            "The read itself failed, so nothing is known about "
+                            "activity — absence of measurement, not zero activity."
+                            if read_error else
                             "The statistics collector has not produced a row for any "
                             "table yet (recent stats reset, or the collector has not "
                             "run) — this is absence of measurement, not a measurement "
@@ -1107,6 +1313,9 @@ class DatabaseSurveyor:
                             "tables_with_no_reads": never_read,
                             "tables_with_writes": len(tables_with_writes),
                             "stats_reset": activity.get("stats_reset") or "",
+                            #: pg_stat_database, Egeria's names; cumulative.
+                            **database_activity_properties(
+                                activity.get("database_activity"), _reset_of(activity)),
                         },
                         explanation=(
                             "Database-wide roll-up of pg_stat_user_tables tuple "
@@ -1325,8 +1534,16 @@ class DatabaseSurveyor:
         connected_as = info.get("connected_as") or "(unknown)"
         schema_total = info.get("schema_total", 0)
         schema_visible = info.get("schema_visible", 0)
-        table_total = info.get("table_total", 0)
-        table_select = info.get("table_select", 0)
+        # `relation_total`/`relation_select` (renamed from `table_total`/
+        # `table_select`, REPLY-DESIGNER-ROUND2-DATABASE-SCREENS.md §2.3):
+        # the whole-database figure counts base tables + views + matviews
+        # + foreign tables, never tables alone. `info` is normally this
+        # run's own fresh probe result, but `publish_step_annotations` can
+        # also call this on a Survey-Definition step's own stored output —
+        # the old key is read as a fallback so a pre-rename blob still
+        # produces a real annotation instead of "0 of 0".
+        table_total = info.get("relation_total", info.get("table_total", 0))
+        table_select = info.get("relation_select", info.get("table_select", 0))
         by_schema = info.get("by_schema") or {}
         stats_role = bool(info.get("stats_role"))
         write_capable = bool(info.get("write_capable"))
@@ -1336,7 +1553,7 @@ class DatabaseSurveyor:
                 summary=(
                     f"Connected as {connected_as}: visible {schema_visible} of "
                     f"{schema_total} schema(s), SELECT on {table_select} of "
-                    f"{table_total} table(s)"
+                    f"{table_total} relation(s)"
                 ),
                 analysis_step="DatabaseCredentialCapability",
                 confidence=100,
@@ -1344,8 +1561,8 @@ class DatabaseSurveyor:
                     "connected_as": connected_as,
                     "schema_total": schema_total,
                     "schema_visible": schema_visible,
-                    "table_total": table_total,
-                    "table_select": table_select,
+                    "relation_total": table_total,
+                    "relation_select": table_select,
                     "by_schema": by_schema,
                     "stats_role": stats_role,
                     "write_probed": True,
@@ -1407,7 +1624,7 @@ class DatabaseSurveyor:
             )
             fraction_phrase = (
                 shortfall["phrase"] if shortfall
-                else f"SELECT on {table_select} of {table_total} table(s)"
+                else f"SELECT on {table_select} of {table_total} relation(s)"
             )
             short_clause = (
                 f" Short on: " + ", ".join(
@@ -1648,9 +1865,33 @@ class DatabaseSurveyor:
                     # zero this run never looked at.
                     prior = prior_by_key.get(key)
                     table["row_count"] = prior.get("row_count") if prior else None
-                table["last_analyzed"]  = rs.get("last_analyzed", "")
-                table["last_vacuumed"]  = rs.get("last_vacuumed", "")
-                table["pending_changes"] = rs.get("pending_changes", 0)
+                # BRIEF-KEYS-AND-ACTIVITY-CLOBBER.md §B: only stamp these
+                # fields when `rs` is a REAL pg_stat_user_tables row for this
+                # table. The old unconditional `rs.get(..., "")`/`rs.get(...,
+                # 0)` defaults made every table look "measured, and idle"
+                # (`pending_changes: 0` is a genuine int, not an absence) even
+                # on a run that never requested "statistics" at all — and
+                # `record_database_survey`'s own internal `backfill_database_
+                # survey()` call (registry.py) reads exactly these three
+                # fields off `schema_info` to decide whether to write a
+                # `database_table_activity` row via `database_rows_from_
+                # survey_data()`'s `if last_analyzed or last_vacuumed or
+                # pending is not None:` check — a fabricated `0` made that
+                # check true on EVERY run, writing a full table of NULL-
+                # counter activity rows that then shadowed the real ones a
+                # genuine "statistics" run had written moments earlier
+                # (`db_derived.load_inputs()` picked whichever `surveyed_at`
+                # was newest). Leaving these three keys entirely UNSET when
+                # `rs` is empty makes that check correctly read "nothing to
+                # report" for this table, this run — no placeholder row, no
+                # clobber; `_survey_extended_statistics`'s own
+                # `table_activity_rows` (written by the explicit
+                # `write_detail_rows` call below, when "statistics" ran) is
+                # what real activity rows for this run come from.
+                if rs:
+                    table["last_analyzed"] = rs.get("last_analyzed", "")
+                    table["last_vacuumed"] = rs.get("last_vacuumed", "")
+                    table["pending_changes"] = rs.get("pending_changes", 0)
 
         # Also enrich size data from table_stats
         size_lookup: dict[tuple, dict] = {
@@ -1662,18 +1903,28 @@ class DatabaseSurveyor:
                 key = (schema["name"], table["name"])
                 ts = size_lookup.get(key, {})
                 if ts:
-                    table["size_bytes"] = ts.get("total_bytes", 0) or 0
+                    # Brief D 7f.2: a size Postgres would not give is NULL
+                    # ("not read"), never the 0 an `or 0` used to invent.
+                    table["size_bytes"] = ts.get("total_bytes")
+                    # Brief D: heap and index sizes beside the total; NULL
+                    # when the database did not give them.
+                    table["table_bytes"] = ts.get("relation_bytes")
+                    table["index_bytes"] = ts.get("index_bytes")
                 elif table.get("source") == "catalog_fallback":
                     # Same reasoning as row_count above: pg_tables (the
                     # source of table_stats) is schema-USAGE-filtered, and a
                     # catalog-fallback table has no size measurement to fall
                     # back to at all — leave it unmeasured rather than 0.
                     table["size_bytes"] = None
+                    table["table_bytes"] = None
+                    table["index_bytes"] = None
                 else:
                     # Same stopgap as row_count above -- this run collected
                     # no size data at all, so keep the prior value.
                     prior = prior_by_key.get(key)
                     table["size_bytes"] = prior.get("size_bytes") if prior else None
+                    table["table_bytes"] = prior.get("table_bytes") if prior else None
+                    table["index_bytes"] = prior.get("index_bytes") if prior else None
                 table["size_pretty"] = ts.get("total_size", "")
 
         # `operations`/`credential_capability` preserve-prior, same stopgap
@@ -1699,14 +1950,22 @@ class DatabaseSurveyor:
         # "did this run cover it" flag, so we fall back to a permissive
         # "keep the value if THIS run's own value is empty" rule.
         import json
+        prior_statistics: dict = {}
+        prior_views: list = []
         prior_operations: dict = {}
         prior_credential_capability: dict = {}
+        prior_database_owner: dict = {}
+        prior_pii_keyword_source: dict = {}
         try:
             prior_survey = self.registry.get_latest_database_survey(self.db_entity.slug)
             if prior_survey:
                 prior_data = json.loads(prior_survey.get("survey_data") or "{}")
+                prior_statistics = prior_data.get("statistics") or {}
+                prior_views = prior_data.get("views") or []
                 prior_operations = prior_data.get("operations") or {}
                 prior_credential_capability = prior_data.get("credential_capability") or {}
+                prior_database_owner = prior_data.get("database_owner") or {}
+                prior_pii_keyword_source = prior_data.get("pii_keyword_source") or {}
         except Exception:
             pass
 
@@ -1722,9 +1981,35 @@ class DatabaseSurveyor:
             column_count=schema_info.get("total_columns", 0),
             survey_data={
                 "schema_info": schema_info,
-                "statistics": statistics,
+                #: `statistics` — BRIEF-KEYS-AND-ACTIVITY-CLOBBER.md §B's
+                #: generic rule ("write only what was collected... merge-in
+                #: this run's sections over the prior row's, never replace
+                #: with empties"), applied here the same way row_count/
+                #: size_bytes already are: a run whose own requested steps
+                #: never included "statistics" leaves `statistics` as `{}` at
+                #: the top of this method — fall back to whatever the last
+                #: run that DID collect it stored, rather than writing that
+                #: emptiness as this run's own answer. `annotation_count`
+                #: below still counts only THIS run's own annotations — that
+                #: is a fact about this run, not a stored section to preserve.
+                "statistics": statistics or prior_statistics,
                 "annotation_count": len(results["annotations"]),
-                "views": results.get("views", []),
+                #: `views` — same rule: a run that did not request "views"
+                #: (results.get("views") defaults to `[]` from the initial
+                #: `results` dict) preserves the prior run's view list rather
+                #: than reporting "no views" for a database this run never
+                #: looked at.
+                "views": results.get("views") or prior_views,
+                #: What the views step could NOT read (e.g. pg_matviews), so an
+                #: empty list is never mistaken for "no materialized views".
+                #: Only this run's own answer; empty when the step did not run.
+                "views_not_read": results.get("views_not_read") or {},
+                #: The PII keyword source of the run whose `views` are stored above, so the
+                #: label always describes the views shown beside it.
+                "pii_keyword_source": (
+                    results.get("pii_keyword_source") if results.get("views")
+                    else prior_pii_keyword_source or results.get("pii_keyword_source")
+                ) or {},
                 #: postgres_operations (Phase 1 slice 8) — falls back to the
                 #: prior stored value when THIS run's own results have none,
                 #: same "don't manufacture an empty answer" rule row_count/
@@ -1736,6 +2021,8 @@ class DatabaseSurveyor:
                 "credential_capability": (
                     results.get("credential_capability") or prior_credential_capability
                 ),
+                #: database_owner (ENRICHMENT-E3) -- preserve-prior, same rule.
+                "database_owner": results.get("database_owner") or prior_database_owner,
             },
             surveyed_at=results["surveyed_at"],
             # `surveyed_as`: the credential identity this run connected as
@@ -1792,6 +2079,16 @@ class DatabaseSurveyor:
             ORDER BY table_schema, table_name
         """
         rows = conn.execute_query(query)
+        for r in rows:
+            r["kind"] = "view"
+        # Materialized views are not in information_schema.views. A failed read
+        # is recorded in `last_views_not_read` (stored beside the list), never
+        # taken for "no materialized views", and never aborts the survey.
+        self.last_views_not_read = {}
+        matviews, matview_error = self._read_matviews(conn)
+        if matview_error:
+            self.last_views_not_read["materialized_views"] = matview_error
+        rows = list(rows) + matviews
         if not rows:
             return []
 
@@ -1814,6 +2111,10 @@ class DatabaseSurveyor:
             view_name = r["table_name"]
             view_def = r["view_definition"]
             if not view_def:
+                if r["kind"] == "materialized_view":
+                    # Not analysable, and said so rather than dropped silently.
+                    self.last_views_not_read.setdefault("materialized_view_definitions", []).append(
+                        f"{schema_name}.{view_name}")
                 continue
 
             qualified_view_name = f"{schema_name}.{view_name}"
@@ -1845,7 +2146,20 @@ class DatabaseSurveyor:
                 if lineage_res:
                     col_lineage[col] = lineage_res
 
+            matview_facts = {}
+            if r["kind"] == "materialized_view":
+                matview_facts = {
+                    "has_indexes": r.get("has_indexes"), "is_populated": r.get("is_populated"),
+                }
+                # The table row for this object carries the same two facts.
+                for schema in schema_info.get("schemas", []):
+                    if schema["name"] == schema_name:
+                        for table in schema["tables"]:
+                            if table["name"] == view_name:
+                                table.update(matview_facts)
             analyzed_views.append({
+                "kind": r["kind"],
+                **matview_facts,
                 "schema": schema_name,
                 "name": view_name,
                 "qualified_name": qualified_view_name,
@@ -1857,9 +2171,76 @@ class DatabaseSurveyor:
 
         return analyzed_views
 
-    def _create_views_annotations(self, views_info: list[dict]) -> list:
-        """Create annotations for parsed view dependencies, complexity, and lineage."""
-        import os
+    def _read_matviews(self, conn) -> tuple[list[dict], str | None]:
+        """Materialized views from `pg_matviews`: `(rows, error)`.
+
+        Rows are shaped like the `information_schema.views` rows beside them,
+        plus `kind='materialized_view'`, `has_indexes` and `is_populated`
+        (bools). `error` is the failure text when the read raised (then rows is
+        []): not read, which says nothing about whether any exist.
+        """
+        query = """
+            SELECT schemaname AS table_schema, matviewname AS table_name,
+                   definition AS view_definition, hasindexes, ispopulated
+            FROM pg_matviews
+            WHERE schemaname NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
+            ORDER BY schemaname, matviewname
+        """
+        try:
+            reader = getattr(conn, "execute_query_isolated", conn.execute_query)
+            found = reader(query)
+        except Exception as exc:  # noqa: BLE001
+            log.warning("Could not read pg_matviews for %s: %s", self.db_entity.slug, exc)
+            return [], f"{type(exc).__name__}: {exc}"[:300]
+        out = []
+        for r in found:
+            out.append({
+                "table_schema": r.get("table_schema"),
+                "table_name": r.get("table_name"),
+                "view_definition": r.get("view_definition"),
+                "kind": "materialized_view",
+                "has_indexes": r["hasindexes"] if isinstance(r.get("hasindexes"), bool) else None,
+                "is_populated": r["ispopulated"] if isinstance(r.get("ispopulated"), bool) else None,
+            })
+        return out, None
+
+    def _load_pii_keywords(self):
+        """The PII keywords for this run and their source, as one `KeywordLoad`.
+
+        The data classes asked for are the data-class seed (configdata/data_classes.yaml).
+
+        Egeria's keyword sets (a typed find per data class) when the platform holds any; otherwise
+        the built-in list, and the load says whether Egeria had none or could not be read.
+        """
+        from resource_explorer.surveyors.database.egeria_reference_catalog import (
+            KEYWORDS_NOT_CONFIGURED, KEYWORDS_UNREADABLE, KeywordLoad, load_data_class_keywords,
+        )
+
+        platform_url = egeria_platform_url()
+        if not platform_url:
+            return KeywordLoad(KEYWORDS_NOT_CONFIGURED)
+        try:
+            from pyegeria.omvs.reference_data import ReferenceDataManager
+            from resource_explorer.egeria_clients import current_principal, egeria_client
+
+            # The survey's own identity (Brief I): Caller on a route, the daemon in a run.
+            ref_manager = egeria_client(current_principal(), purpose="PII keywords",
+                                        view_server=egeria_view_server(),
+                                        platform_url=platform_url).of(ReferenceDataManager)
+        except Exception as exc:  # noqa: BLE001 - recorded on the load, never "Egeria had none"
+            from resource_explorer.egeria_clients import NoCallerIdentity
+
+            why = "not signed in" if isinstance(exc, NoCallerIdentity) else str(exc)[:200]
+            return KeywordLoad(KEYWORDS_UNREADABLE, reason=why)
+        from resource_explorer.surveyors.database.bootstrap_data_classes import current_seed
+
+        return load_data_class_keywords(ref_manager, [dc["name"] for dc in current_seed()])
+
+    def _create_views_annotations(self, views_info: list[dict], keywords=None) -> list:
+        """Create annotations for parsed view dependencies, complexity, and lineage.
+
+        `keywords` is the run's `KeywordLoad` (`_load_pii_keywords`); loaded here when not given.
+        """
         from resource_explorer.surveyors.survey_report import (
             SchemaAnalysisAnnotation,
             RelationshipAnnotation,
@@ -1869,44 +2250,15 @@ class DatabaseSurveyor:
         )
         annotations = []
 
-        # Default fallback PII classification keywords
-        pii_keywords = ["email", "phone", "ssn", "socialsec", "creditcard", "password", "dob", "dateofbirth"]
+        if keywords is None:
+            keywords = self._load_pii_keywords()
+        # Class by class: Egeria's keywords where they were read, else the data-class seed's
+        # `dataPatterns` (configdata/data_classes.yaml, the one built-in list). A partial read
+        # never narrows detection to the classes that loaded.
+        from resource_explorer.surveyors.database.bootstrap_data_classes import current_seed
 
-        # Dynamically load PII keywords from Egeria Valid Value Sets if platform connection is configured
-        platform_url = os.getenv("EGERIA_PLATFORM_URL")
-        if platform_url:
-            try:
-                from pyegeria.omvs.reference_data import ReferenceDataManager
-                view_server = os.getenv("EGERIA_VIEW_SERVER", "view-server")
-                user_id = os.getenv("EGERIA_USER", "steward")
-                user_pwd = os.getenv("EGERIA_USER_PASSWORD", "steward")
-
-                ref_manager = ReferenceDataManager(view_server, platform_url, user_id, user_pwd)
-                ref_manager.create_egeria_bearer_token(user_id, user_pwd)
-
-                egeria_keywords = []
-                for dc_name in ["EmailAddress", "PhoneNumber", "SocialSecurityNumber", "CreditCardNumber", "Password", "DateOfBirth"]:
-                    try:
-                        # Find all ValidValueDefinitions starting with the data class's keyword prefix
-                        results = ref_manager.find_valid_value_definitions(
-                            search_string=f"ValidValueDefinition::{dc_name}Keyword::",
-                            starts_with=True,
-                            output_format="JSON"
-                        )
-                        if isinstance(results, list):
-                            for item in results:
-                                if isinstance(item, dict):
-                                    props = item.get("properties", {})
-                                    val = props.get("preferredValue") or props.get("displayName")
-                                    if val:
-                                        egeria_keywords.append(val.strip().lower())
-                    except Exception:
-                        pass
-
-                if egeria_keywords:
-                    pii_keywords = list(set(egeria_keywords))
-            except Exception:
-                pass
+        pii_keywords = sorted({kw for dc in current_seed()
+                               for kw in keywords.keywords_for(dc["name"], dc["dataPatterns"])})
 
         def is_pii_column(col_name: str) -> bool:
             name_clean = col_name.lower().replace("_", "").replace("-", "")
@@ -2044,7 +2396,8 @@ class DatabaseSurveyor:
                             f"Static analysis of column-level lineage traced PII/sensitive attributes "
                             f"flowing from physical tables to the view's output attributes."
                         ),
-                        json_properties={"pii_propagations": pii_propagations}
+                        json_properties={"pii_propagations": pii_propagations,
+                                         "keyword_source": keywords.label}
                     )
                 )
 

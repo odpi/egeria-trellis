@@ -81,6 +81,9 @@ KNOWN_EXCLUSIVE = {
     ("sub_surveyors/file_structure.py", "language_breakdown"),
     ("sub_surveyors/git_statistics.py", "git_statistics"),
     ("sub_surveyors/homepage.py", "homepage"),
+    # Three returns (found / repo unreadable / none found), chosen by `state`,
+    # which is one of exactly three values -- they cannot both run in one survey.
+    ("sub_surveyors/homepage.py", "documentation_site"),
     ("sub_surveyors/interface_surface.py", "interface_surface"),
     ("sub_surveyors/manifest_parse.py", "ci_workflow_manifest"),
     ("sub_surveyors/manifest_parse.py", "dependency_manifest"),
@@ -143,6 +146,13 @@ KNOWN_EXCLUSIVE = {
     #                                    measured under the same name.
     ("database/db_derived.py", "subject_signals"),
     ("database/db_derived.py", "coverage_signals_temporal"),
+    # Added 2026-10-02 with `db_hub_tables`. `_hub_annotations`' absence branch
+    # is the same early `return [...]` as `_subject_annotations`, verified by
+    # reading it rather than assumed.
+    ("database/db_derived.py", "db_hub_tables"),
+    # Added 2026-10-10 with `db_statistics_freshness`; `_freshness_annotations` absence
+    # branch is the same early `return [...]` as `_hub_annotations`.
+    ("database/db_derived.py", "db_statistics_freshness"),
 }
 
 

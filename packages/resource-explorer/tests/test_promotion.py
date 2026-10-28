@@ -66,7 +66,7 @@ SEL = {"metric": "advisories", "members": ["GHSA-1", "GHSA-2", "GHSA-3"], "total
 
 class TestThreeActs:
     def test_work_list_keeps_provenance_as_rationale_and_the_resource_as_member(self, client, registry):
-        r = client.post("/api/projects/p/members/cve_scan/promote", json={"action": "work_list", **SEL})
+        r = client.post("/api/projects/p/members/cve_scan/promote?entity_type=repo", json={"action": "work_list", **SEL})
         assert r.status_code == 200, r.text
         out = r.json()
         wl = WorkLists(registry).get(out["work_list"])
@@ -76,11 +76,11 @@ class TestThreeActs:
         assert m["rationale"].startswith("3 of 18 advisories · high · from cve_scan, run 2026-09-03: GHSA-1")
 
     def test_a_given_name_wins_over_the_proposal(self, client, registry):
-        r = client.post("/api/projects/p/members/cve_scan/promote", json={"action": "work_list", "name": "  fix these  ", **SEL})
+        r = client.post("/api/projects/p/members/cve_scan/promote?entity_type=repo", json={"action": "work_list", "name": "  fix these  ", **SEL})
         assert WorkLists(registry).get(r.json()["work_list"])["display_name"] == "fix these"
 
     def test_journal_entry_carries_the_line_and_routes_a_suggestion(self, client, registry):
-        r = client.post("/api/projects/p/members/cve_scan/promote",
+        r = client.post("/api/projects/p/members/cve_scan/promote?entity_type=repo",
                         json={"action": "journal", "suggest_to": ["Security"], **SEL})
         assert r.status_code == 200, r.text
         e = Journal(registry).entries("repo", "p")[0]
@@ -89,10 +89,10 @@ class TestThreeActs:
         assert r.json()["work_lists"] == [{"target": "Security", "work_list": "suggested-to-security", "name": "Suggested to Security"}]
 
     def test_suggest_to_is_a_perspective_or_a_user_id_not_any_string(self, client, registry):
-        r = client.post("/api/projects/p/members/cve_scan/promote",
+        r = client.post("/api/projects/p/members/cve_scan/promote?entity_type=repo",
                         json={"action": "journal", "suggest_to": ["../../etc; drop"], **SEL})
         assert r.status_code == 400 and "suggest_to" in r.json()["detail"]
-        ok = client.post("/api/projects/p/members/cve_scan/promote",
+        ok = client.post("/api/projects/p/members/cve_scan/promote?entity_type=repo",
                          json={"action": "journal", "suggest_to": ["Data Owner", "peterprofile"], **SEL})
         assert ok.status_code == 200
 
@@ -101,7 +101,7 @@ class TestThreeActs:
         came from the browser, which was never populated off one path."""
         from resource_explorer.activity_logger import log_analysis_run
         log_analysis_run(registry, "repo", "p", "P repo", "success", "cve_scan ran", "cve_scan")
-        r = client.post("/api/projects/p/members/cve_scan/promote",
+        r = client.post("/api/projects/p/members/cve_scan/promote?entity_type=repo",
                         json={"action": "work_list", **{**SEL, "run_at": "1999-01-01T00:00:00"}})
         wl = WorkLists(registry).get(r.json()["work_list"])
         rationale = next(x for x in wl["members"] if x["entity_slug"] == "p")["rationale"]
@@ -111,7 +111,7 @@ class TestThreeActs:
         assert members_for(registry, "p", "cve_scan").to_dict()["run_at"].startswith("20")
 
     def test_rfa_is_raised_with_the_line_as_detail(self, client, registry):
-        r = client.post("/api/projects/p/members/cve_scan/promote", json={"action": "rfa", **SEL})
+        r = client.post("/api/projects/p/members/cve_scan/promote?entity_type=repo", json={"action": "rfa", **SEL})
         assert r.status_code == 200, r.text
         assert r.json()["rfa"]
         rfas = client.get("/api/activity/rfas").json()
@@ -119,9 +119,9 @@ class TestThreeActs:
         assert mine, rfas[:2]
 
     def test_empty_selection_and_bad_action_are_refused(self, client):
-        assert client.post("/api/projects/p/members/cve_scan/promote", json={"action": "work_list", "members": []}).status_code == 422
-        assert client.post("/api/projects/p/members/cve_scan/promote", json={"action": "ignore", **SEL}).status_code == 422
+        assert client.post("/api/projects/p/members/cve_scan/promote?entity_type=repo", json={"action": "work_list", "members": []}).status_code == 422
+        assert client.post("/api/projects/p/members/cve_scan/promote?entity_type=repo", json={"action": "ignore", **SEL}).status_code == 422
 
     def test_anonymous_is_refused(self, client, monkeypatch):
         monkeypatch.setattr("resource_explorer.auth.get_current_user", lambda request: None)
-        assert client.post("/api/projects/p/members/cve_scan/promote", json={"action": "journal", **SEL}).status_code == 401
+        assert client.post("/api/projects/p/members/cve_scan/promote?entity_type=repo", json={"action": "journal", **SEL}).status_code == 401

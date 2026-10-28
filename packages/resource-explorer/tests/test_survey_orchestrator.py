@@ -63,6 +63,10 @@ def project(registry):
             ("myproj", "example:lib", "1.0", "runtime", "java", "pom.xml",
              "2026-09-01T00:00:00"),
         )
+        # And a stored symbol, so `repo_api_structure`'s `has_code_symbols` is met for the same reason.
+        conn.execute(
+            "INSERT INTO project_code_symbols (project_slug, file_path, language, kind, name, "
+            "qualified_name) VALUES ('myproj', 'a.py', 'python', 'function', 'f', 'a.f')")
     return "myproj"
 
 
@@ -478,6 +482,56 @@ class TestCostTierFilter:
                 )
                 mocks["repo_health"].return_value.run.assert_called_once()
                 mocks["repo_rag_ingestion"].return_value.run.assert_not_called()
+        finally:
+            for p in patchers:
+                p.stop()
+
+
+class TestApiStructureNeedsSymbols:
+    """`repo_api_structure` (api/low) declares `has_code_symbols`. Its producer downloads and extracts, so
+    at this step's own tier the resolver proposes it and the step is skipped: a lone or scoped request never
+    pulls a zipball, whatever ceiling the caller set, because a download the run has not acquired is its own
+    consent reason."""
+
+    @pytest.fixture
+    def bare(self, registry):
+        registry.add(Project(slug="bare", display_name="Bare",
+                             github_url="https://github.com/test/bare", description=""))
+        return "bare"
+
+    @pytest.mark.parametrize("kwargs", [
+        {}, {"scope_locator": "src"},
+        {"scope_locator": "src", "max_fetch_cost": "download", "max_compute_cost": "medium"},
+    ])
+    def test_a_lone_or_scoped_request_is_skipped_with_a_proposal_and_downloads_nothing(
+            self, registry, bare, kwargs):
+        mocks, patchers = _patch_all_surveyors()
+        try:
+            with patch("resource_explorer.surveyors.survey_orchestrator.log_survey"):
+                result = SurveyOrchestrator(registry).run(bare, steps=["repo_api_structure"], **kwargs)
+            mocks["repo_symbol_extraction"].assert_not_called()
+            mocks["repo_api_structure"].return_value.run.assert_not_called()
+            assert "repo_api_structure" in result.skipped_steps
+            assert "repo_symbol_extraction" in result.skipped_steps["repo_api_structure"]
+            assert result.proposals["repo_api_structure"]["steps"] == ["repo_symbol_extraction"]
+            assert not result.auto_ran_steps
+            # The skip is a ROW, not an omission: a step_skipped annotation saying why, in plain words.
+            skips = [a for a in result.annotations
+                     if getattr(a, "check_name", "") == "step_skipped"]
+            assert len(skips) == 1
+            assert "repo_symbol_extraction" in skips[0].summary and "Skipped" in skips[0].summary
+        finally:
+            for p in patchers:
+                p.stop()
+
+    def test_with_symbols_present_extraction_is_not_run_and_the_step_runs(self, registry, project):
+        mocks, patchers = _patch_all_surveyors()
+        try:
+            with patch("resource_explorer.surveyors.survey_orchestrator.log_survey"):
+                result = SurveyOrchestrator(registry).run(project, steps=["repo_api_structure"])
+            mocks["repo_symbol_extraction"].assert_not_called()
+            mocks["repo_api_structure"].return_value.run.assert_called_once()
+            assert "repo_api_structure" not in result.skipped_steps
         finally:
             for p in patchers:
                 p.stop()

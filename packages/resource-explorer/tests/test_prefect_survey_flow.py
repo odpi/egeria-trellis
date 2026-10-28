@@ -15,11 +15,20 @@ import pytest
 
 from resource_explorer.prefect import flows
 
-# Prefect's own run logs are noise here and drown the assertions on failure.
-logging.disable(logging.INFO)
-
-
 pytestmark = pytest.mark.usefixtures("ephemeral_prefect")
+
+
+@pytest.fixture(autouse=True, scope="module")
+def _quiet_prefect_logs():
+    """Prefect's own run logs are noise here and drown the assertions on failure.
+
+    Scoped to this module: a bare `logging.disable` at import time silenced INFO
+    for every test collected after this file, so a later test reading logs off a
+    module-logger handler passed alone and failed in the full suite.
+    """
+    logging.disable(logging.INFO)
+    yield
+    logging.disable(logging.NOTSET)
 
 
 def _plan(*rows):
@@ -122,3 +131,22 @@ def test_the_report_reads_in_plan_order_not_completion_order():
     report = _run(_plan(("a", [], {}), ("b", ["a"], {}), ("c", ["a"], {})),
                   lambda **kw: {})
     assert [r["step_key"] for r in report] == ["a", "b", "c"]
+
+
+def test_a_planner_added_step_runs_through_prefect_and_is_marked_in_the_report():
+    """Prefect dispatches by step key, so a step the planner added (one the
+    definition never authored) schedules like any other and reports why."""
+    ran = []
+
+    def step(entity_type, slug, step_name, runner_kwargs):
+        ran.append(step_name)
+        return {}
+
+    note = "added producer: needed for needs_thing; no fresh result"
+    plan = _plan(("producer", [], {}), ("consumer", ["producer"], {}))
+    plan[0].update(added_because=note, demanded_by="consumer")
+    report = _run(plan, step)
+    assert ran == ["producer", "consumer"]
+    assert report[0]["added_because"] == note and report[0]["detail"] == note
+    assert report[0]["auto_run"] is True and report[0]["demanded_by"] == "consumer"
+    assert "added_because" not in report[1]

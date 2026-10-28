@@ -1,0 +1,188 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;600&amp;family=Lora:wght@400;500&amp;display=swap">
+  <style>
+    :root{
+      --paper:#f3f2f2; --rule:rgba(32,31,29,.16); --rule-strong:#8e8a8a;
+      --ink:#201f1d; --ink-muted:#4a463e;
+      --accent:#b68235; --accent-ink:#7d5411;
+      --ok:#1d6b3f; --warn:#9c4212; --gap:#5b4a9c;
+      --chrome:#1b1a19; --chrome-surface:#2d2b2b; --chrome-line:#444141;
+      --chrome-ink:#f3f2f2; --chrome-muted:#9b9797; --accent-on-dark:#e1ad66; --ok-on-dark:#74c68d;
+      --s1:4.6px; --s2:9.2px; --s3:13.8px; --s4:18.4px; --s6:27.6px;
+      --heading:"Cormorant Garamond",Georgia,serif;
+      --body:"Lora",Georgia,serif;
+      --mono:ui-monospace,"SF Mono",Menlo,monospace;
+    }
+    *{box-sizing:border-box}
+    body{margin:0;font-family:var(--body);background:var(--paper);color:var(--ink);font-size:15px;line-height:1.55}
+    .tnum{font-variant-numeric:tabular-nums}
+    .mono{font-family:var(--mono);font-size:.87em}
+    .caps{font-family:var(--heading);font-weight:600;font-size:12px;letter-spacing:.09em;text-transform:uppercase}
+    .h{font-family:var(--heading);font-weight:600}
+    .muted{color:var(--ink-muted)}
+    .lnk{color:var(--accent-ink);text-decoration:underline;text-underline-offset:3px}
+    .g{font-family:"DejaVu Sans","Apple Symbols","Segoe UI Symbol",sans-serif;font-weight:600;display:inline-block;width:1.3em;text-align:center}
+    .ok{color:var(--ok)} .warn{color:var(--warn)} .gapc{color:var(--gap)}
+    .panel-t{font-family:var(--heading);font-weight:600;font-size:21px;margin:0 0 var(--s1)}
+    .panel-s{font-size:13px;color:var(--ink-muted);margin:0 0 var(--s3);max-width:62ch}
+    /* sidebar, on chrome */
+    .side{background:var(--chrome);color:var(--chrome-ink);width:300px;padding:var(--s3);border-radius:3px;font-size:13px;line-height:1.45}
+    .side .lab{font-family:var(--heading);font-weight:600;font-size:12px;letter-spacing:.09em;text-transform:uppercase;color:var(--chrome-muted);margin:var(--s3) 0 4px}
+    .side .sel{border:1px solid var(--chrome-line);border-radius:2px;padding:3px 6px}
+    .side .row{padding:4px 8px;border-left:2px solid transparent;display:flex;justify-content:space-between;gap:8px}
+    .side .row.on{border-left-color:var(--accent);background:var(--chrome-surface)}
+    .side .n{color:var(--chrome-muted)}
+    .side .fold{color:var(--chrome-muted);padding:4px 8px;text-decoration:underline;text-underline-offset:3px}
+    .side .btn{display:inline-block;border:1px solid var(--accent);color:var(--accent-on-dark);border-radius:2px;padding:1px 7px;font-size:12px;margin:0 4px 4px 0}
+    .side .btn.quiet{border-color:var(--chrome-line);color:var(--chrome-ink)}
+    .side .btn.off{border-style:dashed;color:var(--chrome-muted);border-color:var(--chrome-line)}
+    .side .why{color:var(--chrome-muted);font-size:12px}
+    .side .res{padding:3px 8px;display:flex;gap:6px}
+    .side .res input{margin:0}
+    .note{border-left:2px solid var(--chrome-line);padding-left:8px;margin-top:6px;color:var(--chrome-ink);font-size:12px}
+    /* paper panes */
+    .pane{background:#fff;border:1px solid var(--rule);padding:var(--s4);border-radius:2px}
+    .btn2{display:inline-block;border:1px solid var(--rule-strong);border-radius:2px;padding:1px 8px;font-size:12.5px;margin-right:6px}
+    .btn2.primary{border-color:var(--accent);color:var(--accent-ink)}
+    table.grid{border-collapse:collapse;font-size:13px;width:100%}
+    table.grid th{font-family:var(--heading);font-weight:600;text-align:left;font-size:13px;border-bottom:1px solid var(--rule-strong);padding:4px 8px;vertical-align:bottom}
+    table.grid td{border-bottom:1px solid var(--rule);padding:4px 8px;vertical-align:baseline}
+    table.grid td.c{text-align:center}
+    .tabs{display:flex;gap:var(--s4);border-bottom:1px solid var(--rule);font-size:14px;margin:var(--s2) 0 var(--s2)}
+    .tabs span{padding-bottom:3px}
+    .tabs .on{border-bottom:2px solid var(--accent)}
+    .tabs .zero{color:var(--ink-muted);border-bottom:1px dashed var(--rule-strong)}
+    .call{font-size:12.5px;color:var(--ink-muted);border-left:3px solid var(--gap);padding-left:var(--s2);margin-top:var(--s2);max-width:58ch}
+    .strike{text-decoration:line-through;color:var(--ink-muted)}
+  </style>
+</helmet>
+<style>
+  .lensrow{display:grid;grid-template-columns:120px minmax(0,1.3fr) minmax(0,1.2fr) 110px 70px;gap:0 12px;border-bottom:1px solid var(--rule);padding:5px 0;font-size:13.5px;align-items:baseline}
+  .lensrow .k{color:var(--ink-muted)}
+  .fitgrid{display:grid;grid-template-columns:112px 170px 170px repeat(6,minmax(0,1fr));font-size:12.5px}
+  .fitgrid>div{border-bottom:1px solid var(--rule);padding:5px 6px;line-height:1.35}
+  .fitgrid .hd{font-family:var(--heading);font-weight:600;font-size:13px;border-bottom:1px solid var(--rule-strong);align-self:end}
+  .pair{display:grid;grid-template-columns:250px repeat(3,minmax(0,1fr));font-size:12.5px}
+  .pair>div{border-bottom:1px solid var(--rule);padding:6px 8px;line-height:1.35}
+  .pair .hd{font-family:var(--heading);font-weight:600;font-size:13px;border-bottom:1px solid var(--rule-strong)}
+  .both{border-left:2px solid var(--ink-muted);padding-left:8px}
+  .sec2{margin-top:var(--s4);border-top:1px solid var(--rule-strong);padding-top:var(--s2);display:flex;gap:var(--s2);align-items:baseline}
+  .sec2 .t{font-family:var(--heading);font-weight:600;font-size:19px}
+  .q5{border-collapse:collapse;font-size:13px;width:100%}
+  .q5 td,.q5 th{border-bottom:1px solid var(--rule);padding:6px 8px;text-align:left;vertical-align:top}
+  .q5 th{font-family:var(--heading);font-weight:600;border-bottom:1px solid var(--rule-strong)}
+</style>
+<div style="width:1500px;padding:var(--s6) var(--s6) 60px">
+  <div style="border-bottom:1px solid var(--rule-strong);padding-bottom:var(--s4)">
+    <div class="caps" style="color:var(--accent-ink)">Investigation page &middot; reply to #354 questions 5&ndash;8 &middot; against main at fffcc3a0 and DESIGN-FIND-AND-INTEGRATE-PURPOSES-AND-THE-DATA-LENS</div>
+    <h1 class="h" style="font-weight:400;font-size:38px;margin:var(--s3) 0 var(--s2);max-width:52ch">Why, what we&rsquo;re looking for, which, and between them</h1>
+    <p style="max-width:96ch;margin:0">The data lens sits between the purposes and the scope, because the scope is measured against it. Under Find, the fit columns are the lens rows in the same order: one cell per declared dimension, equal width, so silence takes as much room as a match. Pair questions get their own section, one row per pair. Values are illustrative; the regional databases are the planned synthetic corpus.</p>
+  </div>
+
+  <div style="display:flex;gap:var(--s6);margin-top:var(--s6);align-items:flex-start">
+  <div style="flex:1;min-width:0">
+    <p class="panel-t">E &middot; The page, top to bottom: why &rarr; data lens &rarr; scope (Fit view)</p>
+    <p class="panel-s" style="max-width:100ch">Next steps move below Scope and Between; Egeria goes last. The lens rows say literal or reference in words, signed and dated. Undeclared dimensions are one line, each name a link.</p>
+    <div class="pane">
+      <div class="caps muted">Investigation</div>
+      <div class="h" style="font-size:26px;font-weight:400">Regional sales forecast</div>
+      <div class="muted" style="font-size:13.5px">StudyProject &middot; bound to Egeria &middot; purposes: <span style="color:var(--ink)">Find, Integrate</span></div>
+      <p style="margin:6px 0 0;font-size:14px;max-width:80ch">Find each region&rsquo;s forecasting data and decide which two can be compared for one integrated forecast.</p>
+
+      <div class="sec2" id="data-lens"><span class="t">What we&rsquo;re looking for</span><span class="muted" style="font-size:13px">data lens &middot; 9 dimensions &middot; <span class="tnum">6</span> declared &middot; local, not yet a DataLens in Egeria</span><span class="lnk" style="margin-left:auto;font-size:12.5px">publish with the investigation</span></div>
+      <div class="lensrow"><span class="k">subject</span><span>Sales; Forecast</span><span>Egeria GlossaryTerm &middot; Forecast: <span class="muted">literal &middot; not in the glossary</span></span><span class="muted" style="font-size:12px">dwolfson &middot; 09-30</span><span class="lnk" style="font-size:12px">edit</span></div>
+      <div class="lensrow"><span class="k">data classes</span><span>Currency amount; Calendar date</span><span>Egeria DataClass</span><span class="muted" style="font-size:12px">dwolfson &middot; 09-30</span><span class="lnk" style="font-size:12px">edit</span></div>
+      <div class="lensrow"><span class="k">time range</span><span>2024-01 onward</span><span class="muted">literal</span><span class="muted" style="font-size:12px">dwolfson &middot; 09-30</span><span class="lnk" style="font-size:12px">edit</span></div>
+      <div class="lensrow"><span class="k">grain</span><span>monthly, per region</span><span class="muted">literal</span><span class="muted" style="font-size:12px">mchessell &middot; 10-01</span><span class="lnk" style="font-size:12px">edit</span></div>
+      <div class="lensrow"><span class="k">currency</span><span>written to within 30 days</span><span class="muted">literal</span><span class="muted" style="font-size:12px">dwolfson &middot; 09-30</span><span class="lnk" style="font-size:12px">edit</span></div>
+      <div class="lensrow"><span class="k">terms of use</span><span>Internal use</span><span>Egeria LicenseType</span><span class="muted" style="font-size:12px">dwolfson &middot; 10-01</span><span class="lnk" style="font-size:12px">edit</span></div>
+      <div style="font-size:13px;margin-top:6px">Not declared: <span class="lnk">location</span>, <span class="lnk">organization</span>, <span class="lnk">quality</span>. <span class="muted">Find won&rsquo;t rank on these.</span></div>
+
+      <div class="sec2"><span class="t">Scope &middot; <span class="tnum">7</span></span><span class="muted" style="font-size:13px;margin-left:auto">work lists: <span class="lnk">Regional candidates</span></span></div>
+      <div class="tabs"><span>Repos <span class="tnum">2</span></span><span class="on">Databases <span class="tnum">5</span></span><span class="zero">Filesystems <span class="tnum">0</span></span></div>
+      <div style="font-size:12.5px;display:flex;gap:var(--s3);align-items:baseline;flex-wrap:wrap">
+        <span class="muted">view</span><span style="border-bottom:2px solid var(--accent)">Fit against the data lens</span><span class="lnk">Scouting&rsquo;s questions</span><span class="lnk">Assessment&rsquo;s questions</span><span class="lnk">&hellip;</span>
+        <span style="margin-left:auto"></span><span class="btn2">mark selected as&hellip;</span>
+      </div>
+      <div class="muted" style="font-size:12.5px;margin:6px 0 4px">Ordered by dimensions that fit, then fewest that don&rsquo;t, then most recently written to.</div>
+      <div class="fitgrid">
+        <div class="hd">Verdict</div><div class="hd">Database</div><div class="hd">Fit</div>
+        <div class="hd">subject</div><div class="hd">data classes</div><div class="hd">time range</div><div class="hd">grain</div><div class="hd">currency</div><div class="hd">terms of use</div>
+
+        <div>&#9744; <span style="border-bottom:1px solid var(--rule-strong)">recommended &#9662;</span></div><div class="mono">region_north_forecast</div><div><strong class="tnum">5 of 6 fit</strong> &middot; 1 no reader yet</div>
+        <div><span class="g ok">&#10003;</span>fits <span class="muted">Sales &larr; orders, forecast</span></div><div><span class="g ok">&#10003;</span>fits</div><div><span class="g ok">&#10003;</span>fits <span class="muted">2022&ndash;2026</span></div><div><span class="g ok">&#10003;</span>fits <span class="muted">month</span></div><div><span class="g ok">&#10003;</span>fits <span class="muted">3 days ago</span></div><div><span class="g gapc">&#9676;</span>no reader yet</div>
+
+        <div>&#9744; <span style="border-bottom:1px solid var(--rule-strong)">investigating &#9662;</span></div><div class="mono">region_west_forecast</div><div><strong class="tnum">3 of 6 fit</strong> &middot; 1 doesn&rsquo;t &middot; 1 couldn&rsquo;t check &middot; 1 no reader yet</div>
+        <div><span class="g ok">&#10003;</span>fits</div><div><span class="g">?</span>couldn&rsquo;t check <span class="muted">no column profiles</span></div><div><span class="g ok">&#10003;</span>fits</div><div><span class="g ok">&#8709;</span>doesn&rsquo;t fit <span class="muted">week</span></div><div><span class="g ok">&#10003;</span>fits</div><div><span class="g gapc">&#9676;</span>no reader yet</div>
+
+        <div>&#9744; <span class="muted" style="border-bottom:1px solid var(--rule-strong)">undecided &#9662;</span></div><div class="mono">laz_local_adventureworks</div><div><strong class="tnum">2 of 6 fit</strong> &middot; 3 don&rsquo;t &middot; 1 no reader yet</div>
+        <div><span class="g ok">&#10003;</span>fits <span class="muted">Sales</span></div><div><span class="g ok">&#10003;</span>fits</div><div><span class="g ok">&#8709;</span>doesn&rsquo;t fit <span class="muted">2011&ndash;2014</span></div><div><span class="g ok">&#8709;</span>doesn&rsquo;t fit <span class="muted">order line</span></div><div><span class="g ok">&#8709;</span>doesn&rsquo;t fit <span class="muted">no writes since 2014 &middot; probably an archive</span></div><div><span class="g gapc">&#9676;</span>no reader yet</div>
+
+        <div>&#9744; <span class="muted" style="border-bottom:1px solid var(--rule-strong)">undecided &#9662;</span></div><div class="mono">region_east_forecast</div><div><strong class="tnum">1 of 6 fit</strong> &middot; 1 couldn&rsquo;t check &middot; 4 no reader yet</div>
+        <div><span class="g ok">&#10003;</span>fits</div><div><span class="g">?</span>couldn&rsquo;t check <span class="muted">row counts not established</span></div><div><span class="g gapc">&#9676;</span>no reader yet</div><div><span class="g gapc">&#9676;</span>no reader yet</div><div><span class="g gapc">&#9676;</span>no reader yet</div><div><span class="g gapc">&#9676;</span>no reader yet</div>
+      </div>
+      <div style="font-size:13px;margin-top:6px" class="muted">Ignored &middot; <span class="tnum">1</span> &mdash; <span class="lnk">show</span></div>
+      <div class="muted" style="font-size:12.5px;margin-top:6px">Repos tab, same view: one line in the header, &ldquo;<span class="g gapc">&#9676;</span> fit is measured for databases only&rdquo; &mdash; not six &#9676; per row.</div>
+      <div class="call">Verdict on the left, beside the name: a decision about the resource. The headline is a measurement and sits apart from it. Counts always sum to the declared six; every nonzero state is named. &ldquo;Probably an archive&rdquo; is evidence in the currency cell, not a verdict.</div>
+    </div>
+  </div>
+
+  <div style="width:360px">
+    <p class="panel-t">Four states, existing glyphs</p>
+    <p class="panel-s">No new glyph table. &ldquo;Doesn&rsquo;t fit&rdquo; is &empty; (measured, none of the ask there), never &#10005; (error). &ldquo;Not measured&rdquo; can&rsquo;t be the word: glyphs.js already gives <span class="mono">not_measured</span> to the ? family.</p>
+    <div class="pane" style="font-size:13.5px">
+      <div><span class="g ok">&#10003;</span> fits <span class="muted">&mdash; measured</span></div>
+      <div><span class="g ok">&#8709;</span> doesn&rsquo;t fit <span class="muted">&mdash; measured nothing</span></div>
+      <div><span class="g">?</span> couldn&rsquo;t check <span class="muted">&mdash; not established</span></div>
+      <div><span class="g gapc">&#9676;</span> no reader yet <span class="muted">&mdash; no answer here</span></div>
+      <div style="height:1px;background:var(--rule);margin:var(--s3) 0"></div>
+      <div class="muted" style="font-size:12.5px">No data lens declared, the section reads:</div>
+      <div style="margin-top:4px">Nothing declared. Find can&rsquo;t rank candidates until a data lens says what you&rsquo;re looking for. <span class="lnk">Declare a data lens &rsaquo;</span></div>
+      <div class="muted" style="font-size:12.5px;margin-top:var(--s2)">and the view switch shows <span style="border-bottom:1px dashed var(--rule-strong)">Fit &mdash; no data lens declared</span></div>
+    </div>
+
+    <p class="panel-t" style="margin-top:var(--s6)">H &middot; Question 5: a stage click with a list open</p>
+    <table class="q5">
+      <tr><th>Stage clicked</th><th>The open work list</th></tr>
+      <tr><td>Run stage<br><span class="muted" style="font-size:12px">Scouting &hellip; Curate</span></td><td>stays, re-scoped: &ldquo;Sales databases &middot; 9 databases &middot; <strong>Assessment&rsquo;s questions</strong>&rdquo;</td></tr>
+      <tr><td>Investigation, Understanding, Automate</td><td>closes into &ldquo;&#9638; back to Sales databases&rdquo;</td></tr>
+      <tr><td>Investigation, list linked</td><td>opens <em>that</em> investigation, Scope in view</td></tr>
+    </table>
+  </div>
+  </div>
+
+  <div style="margin-top:var(--s6)">
+    <p class="panel-t">G &middot; Between resources: a question about a pair</p>
+    <p class="panel-s" style="max-width:100ch">Its own section under Scope, never a column of the per-resource grid (that would put it on two rows, as if about each). One row per pair; the subject cell holds both names, bracketed together. Parity is per question: a blocked cell is &#9675; &ldquo;can&rsquo;t compare yet&rdquo; and names what to run.</p>
+    <div class="pane" style="max-width:1200px">
+      <div class="sec2" style="margin-top:0;border-top:0;padding-top:0"><span class="t">Between resources</span><span class="muted" style="font-size:13px">pairs in alphabetical order &middot; Integrate</span></div>
+      <div class="tabs"><span class="on">Databases &times; databases <span class="tnum">10</span> pairs</span><span>Repos &times; databases <span class="tnum">10</span></span><span class="zero">Repos &times; repos <span class="tnum">1</span></span></div>
+      <div style="font-size:12.5px;margin-bottom:6px"><span class="muted">pairs with</span> <span style="border-bottom:1px solid var(--rule-strong)">every resource &#9662;</span></div>
+      <div class="caps muted" style="margin:8px 0 2px">Comparable on at least one question &middot; 2</div>
+      <div class="pair">
+        <div class="hd">Pair</div><div class="hd">Do they share identifiers?</div><div class="hd">Are their grains compatible?</div><div class="hd">Do their time ranges overlap?</div>
+        <div><div class="both"><div class="mono">region_north_forecast</div><div class="mono">region_south_forecast</div></div></div>
+        <div><span class="g ok">&#10003;</span>2 keys agree <span class="muted">region_id, product_id</span></div><div><span class="g ok">&#10003;</span>same: month</div><div><span class="g ok">&#10003;</span>overlaps 2023&ndash;2026</div>
+        <div><div class="both"><div class="mono">region_north_forecast</div><div class="mono">region_west_forecast</div></div></div>
+        <div><span class="g ok">&#10003;</span>1 key agrees <span class="muted">product_id</span></div><div><span class="g ok">&#8709;</span>month vs week <span class="muted">week rolls up</span></div><div><span class="g">&#9675;</span>can&rsquo;t compare yet <span class="muted">west lacks date-column profiles &middot; </span><span class="lnk">run column profile on region_west_forecast &rsaquo;</span></div>
+      </div>
+      <div class="caps muted" style="margin:12px 0 2px">Can&rsquo;t compare yet &middot; 1 <span style="text-transform:none;letter-spacing:0;font-family:var(--body);font-weight:400">&mdash; waits on column profiles for region_east_forecast</span></div>
+      <div class="pair">
+        <div><div class="both"><div class="mono">region_east_forecast</div><div class="mono">region_north_forecast</div></div></div>
+        <div style="grid-column:2 / span 3"><span class="g">&#9675;</span>can&rsquo;t compare yet: region_east_forecast has no column profiles; every question here needs them. <span class="lnk">run column profile on region_east_forecast &rsaquo;</span></div>
+      </div>
+      <div class="call">The merged sentence is the only merge allowed: every cell blocked by the same gap, said once. A pair question never appears on a single resource&rsquo;s pages; its Questions tab says one line, with a link, only when the resource is in a scope that has pairs.</div>
+    </div>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>

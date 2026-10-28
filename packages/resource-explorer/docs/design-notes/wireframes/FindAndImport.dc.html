@@ -1,0 +1,136 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;600&amp;family=Lora:wght@400;500&amp;display=swap">
+  <style>
+    :root{
+      --paper:#f3f2f2; --rule:rgba(32,31,29,.16); --rule-strong:#8e8a8a;
+      --ink:#201f1d; --ink-muted:#4a463e;
+      --accent:#b68235; --accent-ink:#7d5411;
+      --ok:#1d6b3f; --warn:#9c4212; --gap:#5b4a9c;
+      --chrome:#1b1a19; --chrome-surface:#2d2b2b; --chrome-line:#444141;
+      --chrome-ink:#f3f2f2; --chrome-muted:#9b9797; --accent-on-dark:#e1ad66; --ok-on-dark:#74c68d;
+      --s1:4.6px; --s2:9.2px; --s3:13.8px; --s4:18.4px; --s6:27.6px;
+      --heading:"Cormorant Garamond",Georgia,serif;
+      --body:"Lora",Georgia,serif;
+      --mono:ui-monospace,"SF Mono",Menlo,monospace;
+    }
+    *{box-sizing:border-box}
+    body{margin:0;font-family:var(--body);background:var(--paper);color:var(--ink);font-size:15px;line-height:1.55}
+    .tnum{font-variant-numeric:tabular-nums}
+    .mono{font-family:var(--mono);font-size:.87em}
+    .caps{font-family:var(--heading);font-weight:600;font-size:12px;letter-spacing:.09em;text-transform:uppercase}
+    .h{font-family:var(--heading);font-weight:600}
+    .muted{color:var(--ink-muted)}
+    .lnk{color:var(--accent-ink);text-decoration:underline;text-underline-offset:3px}
+    .g{font-family:"DejaVu Sans","Apple Symbols","Segoe UI Symbol",sans-serif;font-weight:600;display:inline-block;width:1.3em;text-align:center}
+    .ok{color:var(--ok)} .warn{color:var(--warn)} .gapc{color:var(--gap)}
+    .panel-t{font-family:var(--heading);font-weight:600;font-size:21px;margin:0 0 var(--s1)}
+    .panel-s{font-size:13px;color:var(--ink-muted);margin:0 0 var(--s3);max-width:62ch}
+    /* sidebar, on chrome */
+    .side{background:var(--chrome);color:var(--chrome-ink);width:300px;padding:var(--s3);border-radius:3px;font-size:13px;line-height:1.45}
+    .side .lab{font-family:var(--heading);font-weight:600;font-size:12px;letter-spacing:.09em;text-transform:uppercase;color:var(--chrome-muted);margin:var(--s3) 0 4px}
+    .side .sel{border:1px solid var(--chrome-line);border-radius:2px;padding:3px 6px}
+    .side .row{padding:4px 8px;border-left:2px solid transparent;display:flex;justify-content:space-between;gap:8px}
+    .side .row.on{border-left-color:var(--accent);background:var(--chrome-surface)}
+    .side .n{color:var(--chrome-muted)}
+    .side .fold{color:var(--chrome-muted);padding:4px 8px;text-decoration:underline;text-underline-offset:3px}
+    .side .btn{display:inline-block;border:1px solid var(--accent);color:var(--accent-on-dark);border-radius:2px;padding:1px 7px;font-size:12px;margin:0 4px 4px 0}
+    .side .btn.quiet{border-color:var(--chrome-line);color:var(--chrome-ink)}
+    .side .btn.off{border-style:dashed;color:var(--chrome-muted);border-color:var(--chrome-line)}
+    .side .why{color:var(--chrome-muted);font-size:12px}
+    .side .res{padding:3px 8px;display:flex;gap:6px}
+    .side .res input{margin:0}
+    .note{border-left:2px solid var(--chrome-line);padding-left:8px;margin-top:6px;color:var(--chrome-ink);font-size:12px}
+    /* paper panes */
+    .pane{background:#fff;border:1px solid var(--rule);padding:var(--s4);border-radius:2px}
+    .btn2{display:inline-block;border:1px solid var(--rule-strong);border-radius:2px;padding:1px 8px;font-size:12.5px;margin-right:6px}
+    .btn2.primary{border-color:var(--accent);color:var(--accent-ink)}
+    table.grid{border-collapse:collapse;font-size:13px;width:100%}
+    table.grid th{font-family:var(--heading);font-weight:600;text-align:left;font-size:13px;border-bottom:1px solid var(--rule-strong);padding:4px 8px;vertical-align:bottom}
+    table.grid td{border-bottom:1px solid var(--rule);padding:4px 8px;vertical-align:baseline}
+    table.grid td.c{text-align:center}
+    .tabs{display:flex;gap:var(--s4);border-bottom:1px solid var(--rule);font-size:14px;margin:var(--s2) 0 var(--s2)}
+    .tabs span{padding-bottom:3px}
+    .tabs .on{border-bottom:2px solid var(--accent)}
+    .tabs .zero{color:var(--ink-muted);border-bottom:1px dashed var(--rule-strong)}
+    .call{font-size:12.5px;color:var(--ink-muted);border-left:3px solid var(--gap);padding-left:var(--s2);margin-top:var(--s2);max-width:58ch}
+    .strike{text-decoration:line-through;color:var(--ink-muted)}
+  </style>
+</helmet>
+<style>
+  .tabs2{display:flex;gap:var(--s4);border-bottom:1px solid var(--rule);font-size:14px;margin:var(--s2) 0}
+  .tabs2 span{padding-bottom:3px}
+  .tabs2 .on{border-bottom:2px solid var(--accent)}
+  table.cand{border-collapse:collapse;font-size:12.5px;width:100%}
+  table.cand th{font-family:var(--heading);font-weight:600;text-align:left;border-bottom:1px solid var(--rule-strong);padding:4px 6px;font-size:13px}
+  table.cand td{border-bottom:1px solid var(--rule);padding:4px 6px;vertical-align:baseline}
+  .nr{color:var(--ink-muted);font-style:italic}
+  .dim td{color:var(--ink-muted)}
+  .cnt{font-size:14px;line-height:1.7}
+</style>
+<div style="width:1500px;padding:var(--s6) var(--s6) 60px">
+  <div style="border-bottom:1px solid var(--rule-strong);padding-bottom:var(--s4)">
+    <div class="caps" style="color:var(--accent-ink)">Find and import &middot; reply to ASK-DESIGNER-DISCOVERY-SOURCES-ALL-KINDS &middot; against main at 524f1c7f</div>
+    <h1 class="h" style="font-weight:400;font-size:38px;margin:var(--s3) 0 var(--s2);max-width:52ch">One Find dialog per kind, three ways in, one confirm</h1>
+    <p style="max-width:96ch;margin:0">The sidebar&rsquo;s Find action already exists for repos and databases. Each kind&rsquo;s dialog gets Saved sources (for databases: the registered servers), a one-off search or discover, and From a file; all end in that kind&rsquo;s candidate table and the same confirm, which can add the rows to an investigation&rsquo;s scope. Values are illustrative.</p>
+  </div>
+
+  <div style="display:flex;gap:var(--s6);margin-top:var(--s6);align-items:flex-start">
+    <div style="flex:1.35;min-width:0">
+      <p class="panel-t">A &middot; Find databases &mdash; a saved source run</p>
+      <p class="panel-s">Databases the credential can&rsquo;t connect to are listed, not filtered out. Nothing the source didn&rsquo;t return is blank or 0. Activity isn&rsquo;t guessed before registration.</p>
+      <div class="pane">
+        <div class="h" style="font-size:22px;font-weight:400">Find databases</div>
+        <div class="tabs2"><span class="on">Saved sources <span class="tnum">2</span></span><span>Discover on a server</span><span>From a file</span></div>
+        <div style="font-size:13px;margin-bottom:6px"><strong>regional-pg</strong> <span class="muted">&middot; pg.regional.coco:5432 &middot; credential: scout_ro &middot; run 10-01 09:12</span> <span class="lnk">run again</span></div>
+        <table class="cand">
+          <tr><th style="width:22px"></th><th>Database</th><th>Size</th><th>Owner role</th><th>Description</th><th>Connect with this credential</th><th>Prior verdict</th><th>Activity</th></tr>
+          <tr><td>&#9745;</td><td class="mono">region_north_forecast</td><td class="tnum">2.1 GB</td><td>forecast_owner</td><td>Monthly forecast, north</td><td><span class="g ok">&#10003;</span>yes</td><td class="muted">undecided</td><td class="nr">after registration</td></tr>
+          <tr><td>&#9745;</td><td class="mono">region_west_forecast</td><td class="tnum">640 MB</td><td>west_dba</td><td class="muted">none set</td><td><span class="g ok">&#10003;</span>yes</td><td class="muted">undecided</td><td class="nr">after registration</td></tr>
+          <tr><td>&#9744;</td><td class="mono">region_east_forecast</td><td><span class="g">?</span>not readable with this credential</td><td>east_dba</td><td class="muted">none set</td><td><span class="g">?</span>can&rsquo;t connect</td><td class="muted">undecided</td><td class="nr">after registration</td></tr>
+          <tr><td>&#9744;</td><td class="mono">hr_archive_2014</td><td class="tnum">88 MB</td><td>postgres</td><td>Old HR system</td><td><span class="g ok">&#10003;</span>yes</td><td>ignored <span class="muted">&middot; 09-30 &ldquo;archive&rdquo;</span></td><td class="nr">after registration</td></tr>
+          <tr class="dim"><td>&#9745;</td><td class="mono">laz_local_adventureworks</td><td class="tnum">22 MB</td><td>postgres</td><td>AdventureWorks sample</td><td>yes</td><td>recommended</td><td>already registered</td></tr>
+        </table>
+        <div style="display:flex;gap:10px;align-items:baseline;margin-top:var(--s3);font-size:13px;flex-wrap:wrap">
+          <span><span class="tnum">2</span> selected &middot; 1 already registered</span>
+          <span style="margin-left:auto"></span>
+          <span class="muted">group</span><span style="border-bottom:1px solid var(--rule-strong)">Regional sales &#9662;</span>
+          <span class="btn2 primary">Register 2 and add to Regional sales forecast</span>
+        </div>
+        <div class="muted" style="font-size:12px;margin-top:6px">region_east_forecast can be registered with a different credential: it stays a candidate, marked, until one is given.</div>
+      </div>
+    </div>
+
+    <div style="flex:1;min-width:0">
+      <p class="panel-t">B &middot; From a file &mdash; the preview</p>
+      <p class="panel-s">batch_io&rsquo;s import plan, as five counts that open their lines. No credential in the file: a database row names a registered server.</p>
+      <div class="pane">
+        <div class="tabs2" style="margin-top:0"><span>Saved sources</span><span>Discover on a server</span><span class="on">From a file</span></div>
+        <div style="font-size:13px" class="muted">regional-systems.csv &middot; read 10-01 09:20</div>
+        <div class="cnt" style="margin-top:6px"><strong class="tnum">15</strong> rows &middot; <span class="lnk">3 new</span> &middot; <span class="lnk">12 already registered</span> &middot; 0 duplicates in the file &middot; <span class="lnk">1 invalid</span> &middot; <span class="lnk">2 of a kind not importable yet</span></div>
+        <div style="font-size:12.5px;margin-top:6px" class="muted">Ignored columns: region, cost_centre &middot; 8 <span class="mono">status_</span> columns ignored &mdash; written by RE, never read</div>
+        <div style="font-size:12.5px;margin-top:2px">3 already-registered rows would change group &mdash; <span class="lnk">review</span></div>
+        <table class="cand" style="margin-top:var(--s3)">
+          <tr><th style="width:22px"></th><th>address</th><th>server</th><th>size</th><th>state</th></tr>
+          <tr><td>&#9745;</td><td class="mono">pg.regional.coco:5432/region_south_forecast</td><td>regional-pg</td><td class="nr">not reported by this file</td><td>ready</td></tr>
+          <tr><td>&#9745;</td><td class="mono">pg.regional.coco:5432/region_central_forecast</td><td>regional-pg</td><td class="nr">not reported by this file</td><td>ready</td></tr>
+          <tr><td>&#9744;</td><td class="mono">10.4.2.17:5432/acq_sales</td><td class="muted">&mdash;</td><td class="nr">not reported by this file</td><td><span class="g">&#9888;</span>needs a person: name a server or a credential <span class="lnk">choose</span></td></tr>
+        </table>
+        <div style="display:flex;gap:10px;align-items:baseline;margin-top:var(--s3);font-size:13px;flex-wrap:wrap">
+          <span style="margin-left:auto"></span><span class="btn2 primary">Register 2 and add to Regional sales forecast</span>
+        </div>
+        <div class="call">Re-importing the same file: &ldquo;15 rows &middot; 0 new &middot; 15 already registered&rdquo;. Exports use the same columns; state goes out as words in <span class="mono">status_</span> columns, never read back.</div>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>

@@ -89,11 +89,14 @@ def _identity_from(record: SessionRecord) -> EgeriaIdentity:
     """
     from resource_explorer.auth import decode_token
 
+    from resource_explorer.egeria_clients import refuse_daemon_sign_in
+
     claims = decode_token(record.token)
-    return EgeriaIdentity(
-        user_id=claims.get("user_id") or claims.get("sub") or record.user_id,
-        token=claims.get("egeria_token") or None,
-    )
+    user_id = claims.get("user_id") or claims.get("sub") or record.user_id
+    # A cached session for RE's daemon account (a pre-merge login) is refused: raises
+    # DaemonSignInRefused (Brief L round 2).
+    refuse_daemon_sign_in(user_id)
+    return EgeriaIdentity(user_id=user_id, token=claims.get("egeria_token") or None)
 
 
 def resolve_identity(
@@ -110,10 +113,15 @@ def resolve_identity(
     `(None, None)` when nothing is signed in. A lapsed session is reported by
     the caller that actually needs one, not here.
     """
+    from resource_explorer.egeria_clients import DaemonSignInRefused
+
     record = load_session()
     if record is None or record.is_expired:
         return explicit_user, None
-    identity = _identity_from(record)
+    try:
+        identity = _identity_from(record)
+    except DaemonSignInRefused:
+        return explicit_user, None          # treated as not signed in; require_identity says why
     return explicit_user or identity.user_id, identity
 
 
@@ -125,9 +133,19 @@ def require_identity(console=None) -> EgeriaIdentity:
     *when* a session lapsed, because "expired at 09:14" tells a person whether
     they were idle for an hour or whether the platform restarted under them.
     """
+    from resource_explorer.egeria_clients import DaemonSignInRefused
+
     record = load_session()
     if record is not None and not record.is_expired:
-        return _identity_from(record)
+        try:
+            return _identity_from(record)
+        except DaemonSignInRefused as exc:
+            message = f"{exc} (run `{LOGIN_COMMAND}`)"
+            if console is not None:
+                console.print(f"[red]{message}[/red]")
+            else:  # pragma: no cover - every CLI caller passes a console
+                print(message, file=sys.stderr)
+            sys.exit(EXIT_NOT_SIGNED_IN)
     message = session_file.expired_message(record, LOGIN_COMMAND)
     if console is not None:
         console.print(f"[red]{message}[/red]")

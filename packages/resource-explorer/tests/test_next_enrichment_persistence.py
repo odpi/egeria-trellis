@@ -155,6 +155,10 @@ class TestSaveWiresTheLiveSnapshotIn:
     def test_facts_are_fetched_before_the_rows_that_read_them_are_built(self):
         src = ENRICHMENT_JS.read_text(encoding="utf-8")
         render = src[src.index("export async function renderEnrichment("):src.index("export function renderEnrichmentEvidence(")]
-        fetch_at = render.index("state.enrichmentFacts = Object.fromEntries")
+        # The fetch is `fetchEnrichmentEvidence` (extracted so Context shares
+        # it); it must still be awaited before the rows are built, and it
+        # must be what assigns state.enrichmentFacts.
+        assert "state.enrichmentFacts = facts" in src[src.index("export async function fetchEnrichmentEvidence("):]
+        fetch_at = render.index("await fetchEnrichmentEvidence(slug)")
         rows_at = render.index("JUDGEMENTS.map((d) => fieldRowHtml(d, 'judgement'))")
         assert fetch_at < rows_at, "facts must be loaded before movedSince (via fieldRowHtml) reads them"

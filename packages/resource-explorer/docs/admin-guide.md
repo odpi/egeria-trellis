@@ -1,6 +1,8 @@
 # Resource Explorer — Admin Guide
 
-**Last revised:** 2026-08-21
+**Status:** live. Operator guide; the best-maintained user-facing document.
+
+**Last revised:** 2026-10-14
 
 This guide covers installation, configuration, Egeria integration, scheduled analyses, and troubleshooting.
 
@@ -63,6 +65,24 @@ ANTHROPIC_API_KEY=sk-ant-...
 ANTHROPIC_MODEL=claude-opus-4-8
 ```
 
+### Which UI `/` serves
+
+```bash
+# Optional. `next` (default) or `classic`. Read once at startup; restart to change.
+# /next always serves Next and /classic always serves Classic, whatever this says.
+RE_DEFAULT_UI=next
+```
+
+An unrecognised value falls back to `next` with a warning in the log.
+
+```bash
+# Optional. The URL a browser on another machine uses to reach this RE (the same value as the
+# Portal's EGERIA_RESOURCE_EXPLORER_URL). A published work list's WorkingSet carries
+# additionalProperties.resourceExplorerUrl = <this>/next?worklist=<slug>, so the Portal can link back.
+# Unset: no link is written (there is no localhost default).
+RE_PUBLIC_URL=http://<box-hostname>:8810
+```
+
 ### pgvector / registry
 
 ```bash
@@ -87,8 +107,15 @@ REGISTRY_DATABASE_URL=sqlite:///data/registry.db
 EGERIA_PLATFORM_URL=https://localhost:9443
 EGERIA_VIEW_SERVER=view-server
 EGERIA_ENGINE_HOST=engine-host
-EGERIA_USER_ID=garygeeke
-EGERIA_USER_PASSWORD=secret
+# RE's daemon identity: RE's own Egeria account (see "RE's daemon account" below).
+# Development bootstrap; not for a shipped product.
+EGERIA_USER_ID=resourceexplorernpa
+EGERIA_USER_PASSWORD=…
+# Optional login-form prefill; never the daemon's userId (which is never offered or accepted)
+RE_LOGIN_DEFAULT_USER=
+# Further Egeria platforms RE may send a credential to (comma separated); the platform above is
+# always allowed, any other URL a resource names is refused before a request is made
+EGERIA_ALLOWED_PLATFORM_URLS=
 EGERIA_KAFKA_ENDPOINT=localhost:9092
 
 # Default governance zones assigned to new assets when cataloging (JSON list)
@@ -106,6 +133,76 @@ Zone names can also be specified per-operation via the Egeria publish panel in t
 - Egeria-native database survey
 - RFA lifecycle management
 - Reading Egeria annotation results back into the survey report
+
+### Who RE calls Egeria as
+
+**Decision (project owner, 2026-10-09):** a person's direct actions run as that person; queued and
+background work runs as RE's daemon identity, with the requester recorded.
+
+- **Inside a browser request** (bulk operations, link repairs, reads, publishes, inline outbox
+  drains): the signed-in person, on their Egeria bearer token. With no sign-in, or an expired one,
+  the call is refused (401), never retried as anyone else. An Egeria security refusal is shown as
+  "refused by Egeria" with Egeria's own sentence.
+- **Queued work** (surveys, analyses, a queued Publish, Curate commit or catalog commit): RE's
+  daemon identity (see "RE's daemon account" below), with the person recorded as the run's `requested_by`, in the
+  element's `additionalProperties.requestedBy`, and in its Ownership classification (the owner
+  declared on the resource's Context when there is one, otherwise the requester). A queued
+  person-action with no requester recorded fails rather than writing anonymously.
+- **Background loops** (scheduler, the outbox drain loop, bootstrap, resync, reachability): RE's
+  daemon identity. The **outbox drain loop runs as the daemon**.
+- **Per-resource Egeria credentials are no longer used.** The Egeria user/password once typed into
+  the database-server, database and file-system registration dialogs are neither accepted, stored
+  nor read; a request that still sends them has them ignored, with a log warning that names the
+  fields (never the values). A resource's Egeria URL and view server still choose *which* Egeria,
+  under the allowed-platforms rule above. Values stored before 2026-10-09 remain in the registry's
+  columns until the owner decides how to clear them.
+
+### RE's daemon account (Brief L)
+
+Background and queued work runs as RE's own Egeria account, `resourceexplorernpa`: a DIGITAL
+account in Egeria's platform user directory, in its `governanceEngine` and `omagServer` lists
+(ITProfile `ITProfile::ResourceExplorer`). Egeria's administrator creates and maintains the
+account; RE holds only the credential it presents.
+
+- **Today: `.env`.** `EGERIA_USER_ID` / `EGERIA_USER_PASSWORD`. **Development bootstrap; not for a
+  shipped product.** RE logs one INFO line at startup naming the source, e.g. `daemon identity:
+  'resourceexplorernpa' from .env (EGERIA_USER_ID) — development bootstrap; not for a shipped
+  product` (never a password).
+- **The product source is an open decision**, pending a discussion with the Egeria lead. The
+  options: an RE-side secret store or file, or an Egeria API path (being researched). Whatever is
+  chosen replaces one function, `egeria_clients._daemon_credential()`, and nothing else.
+- **The password in `.env` and the account's password in Egeria's user directory must be the
+  same.** Egeria 6.2 caches users: editing an EXISTING user (its password or its lists) takes
+  effect only after a platform restart (pyegeria ISSUE-130).
+- **The daemon is a service account, not a person.** An interactive sign-in as its userId (the
+  login form, a Portal token, or a raw Egeria bearer on the agent endpoint) is refused with "this
+  is Resource Explorer's own service account; sign in as yourself", and the public login-form
+  defaults (`GET /api/auth/defaults`) never offer it: they return `RE_LOGIN_DEFAULT_USER` when
+  set, else nothing. Anyone who used to sign in with the old shared persona in `EGERIA_USER_ID`
+  now signs in as themselves.
+- **Where to see it.** The connection popover's "Background work as" row and `GET
+  /api/egeria/whoami` (`daemon: {user_id, source}`).
+
+### RE in Egeria's actor graph (7h)
+
+- **At startup** (the worker's one-shot bootstrap, as the daemon) RE ensures the ITProfile
+  `ITProfile::ResourceExplorer`, a UserIdentity `UserIdentity::<EGERIA_USER_ID>` and their
+  ProfileIdentity link. It adopts existing ones by qualifiedName, creates only when Egeria says
+  they are absent, and refuses (creating nothing) on duplicates, on a UserIdentity for the same
+  userId under another qualifiedName, or on a link to another profile. A changed daemon userId
+  gets its own UserIdentity on the same ITProfile; the old link stays (RE has no delete path).
+  The outcome is one log line and the popover's "RE identity in Egeria" row: `present`,
+  `created (...)` or `could not check (reason)`. Startup never waits on it.
+- **Ownership for a person** names their profile (owner = the profile's qualifiedName,
+  ownerTypeName = its type, ownerPropertyName `qualifiedName`, as Egeria's own OpenLineage
+  cataloguer writes it) when their UserIdentity is linked to one, else their userId
+  (`UserIdentity`/`userId`). The lookup is read-only, cached (5 minutes; a failure 1 minute),
+  memoized per press and bounded (15 s); a failure falls back to the userId form and shows in the
+  popover. RE never creates an identity for a person, and never sets `Ownership.userIds`.
+- **Known limits.** Two RE deployments with separate registries pointed at one Egeria could both
+  create on a first run (Egeria has no upsert by qualifiedName; the next start refuses the
+  duplicate and reports it). An ITProfile or UserIdentity in a zone the daemon cannot read comes
+  back as no element, so it reads as absent. Both are open questions for the Egeria lead.
 
 ### Authentication
 
@@ -147,18 +244,214 @@ when the platform restarts (the quickstart leaves `rsa.key-id` empty, so the sig
 per restart). Browsers re-log-in; the CLI caches a session (`resource-explorer login`) and says
 `session expired at HH:MM` when it lapses.
 
-### Governance zones
+### Admin gating (who may do admin actions)
 
-Everything RE publishes lands in a **draft zone** and is promoted on curate-accept:
+There is no admin role in the Egeria sign-in. RE has one small, separate admin check, configured in `.env`
+(`FeedbackConfig` in `config.py`):
 
 ```bash
-# The zone unreviewed publishes land in. The worker creates it at startup if absent.
-EXPLORER_DRAFT_ZONE=resource-explorer-draft
-
-# Where curate-accept promotes an element. Default: egeria-runtime, which is what the
-# quickstart deployment configures.
-EXPLORER_PUBLISH_ZONES=egeria-runtime
+# Either or both. Unset = no admin configured.
+FEEDBACK_ADMIN_TOKEN=<a long random string>   # a shared secret, sent by the browser as the X-Admin-Token header
+FEEDBACK_ADMIN_USERS=alice,bob                # signed-in user ids (the session JWT's `sub`) that are admins; also accepts a JSON list ["alice","bob"], a single name, or empty (no admins)
+# Local dev only: with no admin configured, let any signed-in user do the require_admin actions below.
+# RE_ADMIN_OPEN_WHEN_UNCONFIGURED=true
 ```
+
+An admin is a signed-in request whose session `sub` is listed in `FEEDBACK_ADMIN_USERS`, or one that presents a
+matching `X-Admin-Token`. The browser sends `X-Admin-Token` from the token you enter once in **Admin → Feedback**
+(held in `sessionStorage` under `re_admin_token`, for that tab only, and shared with the Classic UI and
+`/admin/feedback`). A client-sent `X-Admin-User` header is ignored: until 2026-10-14 it was trusted as sent, so any
+signed-in user who knew an admin's name could claim to be them.
+
+**Decision (project owner, 2026-10-14):** with no admin configured, admin actions fail closed; the open behaviour
+of 2026-10-09 survives only behind `RE_ADMIN_OPEN_WHEN_UNCONFIGURED=true`, for local dev.
+
+| Gate | What it protects | When no admin is configured |
+|---|---|---|
+| `is_admin_request` | Curate's feedback listing, Admin → Feedback | **Denies everyone** (the dev flag does not apply) |
+| `require_admin` | Publish Queue **Retry**, **Run bootstrap now**, **bulk** Egeria Links resolve | **Denies everyone** ("no admin configured"), unless `RE_ADMIN_OPEN_WHEN_UNCONFIGURED=true`, which lets any signed-in user act |
+
+An anonymous caller is always refused by `require_admin`. Once an admin is configured the dev flag is ignored. The
+Next controls read `GET /api/egeria/admin-status` (`{admin, configured, open}`) and show **admin only** on a control
+whenever the server would refuse the caller: not an admin, and either an admin is configured or the deployment is
+not `open`.
+Resolving a single resource's stale Egeria link (the banner on a repo) is open to any signed-in user either way, and
+**Delete in Egeria** is not an RE admin action at all: it keeps only the ISSUE-117 archive/delete block.
+
+Deletes, for the record:
+
+| Action | RE's rule |
+|---|---|
+| **Delete locally** (Classic's bulk delete, `/linkage/delete-local`) | Signed-in users only. RE records no creator on a resource, so it cannot yet say "only the creator"; a creator rule needs a column (DDL) and is a later change. |
+| **Delete in Egeria** (`/linkage/delete-in-egeria`) | No RE gate: Egeria decides, and the ISSUE-117 block still refuses every archive/delete while it is ON. RE calls Egeria as the **signed-in person**, so Egeria's decision is theirs; a refusal is shown as "refused by Egeria" and never retried as the service account. |
+
+### Governance zones
+
+RE stamps **no zone by default** (owner ruling 2026-10-08: draft is a content status, not a zone). A draft zone exists only if you configure one, and then it is promoted out of on curate-accept:
+
+```bash
+# OPTIONAL, no default. When set, unreviewed publishes land in this zone and the worker creates
+# it at startup if absent. When unset, RE sends no ZoneMembership at all.
+# EXPLORER_DRAFT_ZONE=resource-explorer-draft
+
+# Where curate-accept promotes an element. NO default (configured-only, 2026-10-07): when unset,
+# accept clears RE's draft zone and writes no zone ("zones left to Egeria"). Set it only on purpose.
+# EXPLORER_PUBLISH_ZONES=<zone>[,<zone>]
+# A Curate catalogue commit for a database writes this zone only when it is set, and as its last
+# write. Unverified for a second commit (it may lock the service identity, the survey engine and
+# the cataloguer out of the element): first use on a throwaway database, with TWO commits.
+```
+
+### Who may curate and publish (zones decide)
+
+**Decision (project owner, 2026-10-10):** "rely on Egeria's security model and emulate it - so if zones are used
+they can control access - if zones aren't being used then it is open". One check
+(`workflows/curate.curation_access`) answers every verdict route (Next branch and blueprint, Classic component and
+blueprint, dependency confirmations, node reclassify), every Publish item, the CLI's `curate materialize` and A2A:
+
+1. **Not signed in:** refused.
+2. **Portal `curator` or `admin` role claim:** allowed. An interim override until Egeria role appointments are
+   read; it skips the zone check.
+3. **Zones not in use:** allowed for any signed-in user. "Not in use" means the element, when it is in Egeria,
+   carries no `ZoneMembership`, and RE configures no draft, publish or private zone for it
+   (`EXPLORER_DRAFT_ZONE`, `EXPLORER_PUBLISH_ZONES` / `egeria.default_catalog_zones`, a private investigation).
+   With nothing configured and the element not yet in Egeria, RE reads nothing from Egeria to decide.
+4. **Zones in use:** RE asks what Egeria's own access connector would answer
+   (`OpenMetadataAccessSecurityConnector.validateZoneAccess`; mirrored in `zone_access.py`, with file and line
+   cited) for **every operation the action performs**: a verdict or a scope decision needs `UPDATE_PROPERTIES`;
+   a Publish item needs `CREATE` (new) or `UPDATE_PROPERTIES` (existing), `CLASSIFY` (Ownership and requestedBy)
+   and `PUBLISH` (the zone change of promotion), and a blueprint also `ATTACH` on itself and on each member
+   component and child blueprint. RE reads the element's zones (or, for an element not in Egeria yet, the zones
+   RE will give it), the caller's user account first (an unknown or disabled account is refused, as Egeria
+   does), and each zone's security access control. A zone named after the caller grants; a zone with no control
+   is ignored; a secured zone grants only through its list (`allUsers`, the account-type group, the account's
+   groups or roles, `instanceOwner`, maintainer groups). Reads run as RE's daemon account (reason
+   `access_check`), which needs the same platform-operator rights the private-zone setup already needs.
+5. **Could not check** (Egeria unreachable, or a zone, control or account read failed): refused, with
+   "could not check access in Egeria (<reason>)". RE never opens by default when zones might apply.
+   This is stricter than the connector, which treats an unreadable control as an unsecured zone.
+
+A verdict's `decided_by` is attribution only: who made the call. It no longer decides who may change the element
+next, so two people's decisions on one plan never lock each other out.
+
+**Publish checks each item, twice.** At the press, an item the presser may not publish is skipped and reported as
+its own result row, "not permitted · <reason>"; the rest of the press is written. The queued run checks again, as
+the requester, immediately before each write and against the element it actually resolved (a component adopted
+from Egeria's content pack, an element found already in Egeria, members adopted mid-write), so a zone secured
+after the press, or an element the press could not see, is refused rather than written. A Portal curator or
+admin role seen at the press is carried to the run.
+
+**Database catalog and publish.** The Catalog commit, every catalog-scope decision (depth, include or leave
+out, confirm, override, clear, redeclare), the database publish and the repository publish use the same check
+on the resource's own element. The schema and table elements a commit writes are not yet checked one by one. Only a press where nothing is permitted is refused
+as a whole (HTTP 403 with the reason). Verdicts are checked before anything is recorded, so a refused branch
+batch records nothing. The reason appears on refused rows only.
+
+### Tags and groups in Egeria (Brief T)
+
+**Decision (project owner, 2026-10-10):** "tags should be public", "Use Folio", "Yes, removing a tag removes it in
+Egeria". `resource_explorer/curation_egeria.py` owns the mapping; every write goes through the outbox.
+
+| In RE | In Egeria | Outbox kind | Destructive |
+|---|---|---|---|
+| a tag on a resource in Egeria | a public `InformalTag` (found by display name first; created with qualifiedName `InformalTag::<tag>` only when absent) linked by `AttachedTag` | `informal_tag_link` | no |
+| removing the tag | the tag removed from the element (`remove_tag_from_element`): Egeria's `removeTagFromElement` deletes EVERY `AttachedTag` between the two ends, including copies added directly in Egeria | `informal_tag_detach` | yes |
+| the resource's group | a `Folio`, qualifiedName `Folio::RE::group::<slug>` (found first, created when absent), the asset a member by `CollectionMembership` | `group_folio_membership` | no |
+| leaving or changing the group, or deleting it | the membership removed (`remove_from_collection`) | `group_folio_membership_detach` | yes |
+
+- **RE never deletes an InformalTag or a Folio.** Those are element deletes under the ISSUE-117 block; the owner
+  deletes them by hand. A group delete answers with the Folio's qualifiedName and "left in Egeria".
+- **Sent with the page's Publish (Brief F, 2026-10-11):** a tag or group change is saved in RE and checked for
+  access when it is made; nothing is sent until the resource's Publish (repository, database or file system), which
+  sends it as the presser. The Findable band has no send control; `POST /api/curate/egeria-sync` only takes a
+  person's `retry` of one dead row (409 otherwise).
+- **Only a person's press sends (round 2):** `EgeriaPublisher.publish` no longer sends tags or groups, so analysis
+  auto-publish, bulk operations, resync and the CLI (all as the Daemon) never send them, nor an unlink. The presser
+  is checked per item for the operations Egeria checks (curation check above); a refused item is retired unsent
+  and reads "not permitted · <reason>"; the next Publish asks again. A gated report (no kept survey, no project)
+  still lets the rest of the press go when the resource is already in Egeria.
+- **Tag spelling:** RE keeps tags lower-case; the spelling as typed is kept in the `curate_tag_added` activity entry
+  (no column), and the Publish uses the newest one as the InformalTag's displayName. The qualifiedName is
+  `InformalTag::<tag>`; an existing tag is found ignoring case. A qualifiedName already taken under another
+  displayName is adopted rather than failing the row.
+- **Order:** a link and an unlink of the same tag (or membership) on the same asset apply in the order queued: a
+  row waits (pending, no attempt counted) while an earlier opposite row is pending, being sent or retrying, so
+  "unlinked" never shows while the tag is still on the asset. A change that loses a race with the drain re-reads
+  the plan instead of trusting it.
+- **Unlinks follow the destructive-kind rules**: a failed or lapsed unlink is dead at once
+  ("not retried: destructive write · …"), the drain never re-sends it, a later sync never re-queues it, and Admin
+  → Publish Queue shows no Retry on it. The person presses **retry** on the Findable band, which queues a new row.
+- **Who writes:** a change in a person's request is sent inline as that person (the Caller); a left-over row is
+  drained in the background as `Daemon(OUTBOX, requested_by=<the row's by>)`. Each row records its own requester
+  when it is queued: a publish records its own requester, or none (then nothing is stamped); it is never borrowed
+  from another decision's author.
+- **Access:** the curation check (above) for each change: `UPDATE_PROPERTIES` on the resource's element plus the
+  operation Egeria checks: `ADD_FEEDBACK` to tag and `DELETE_FEEDBACK` to untag
+  (`validateUserForElementAddFeedback`/`DeleteFeedback`), `ATTACH` to join a group's Folio and `DETACH` to leave
+  one. A refusal records nothing in RE. A group delete checks DETACH on every member first and is refused as a
+  whole (403, naming the members) if any is refused; it needs a signed-in person.
+- **Not yet in Egeria:** tags and the group stay in RE and are sent by the next repository, database or file
+  system publish. Group changes made from the CLI (`group assign` / `unassign` / `remove`) or a CSV import take
+  the same access check (the CLI refuses without a signed-in session; an import row fails with "not permitted ·
+  …") and reach Egeria at the resource's next Publish.
+- **Public:** Egeria 6's InformalTag has no public/private flag; "private" is only a filter on the creator. RE's
+  tags are public because RE reuses a tag by name instead of creating one per person.
+
+### Ratings and notes in Egeria (Brief F)
+
+**Decision (project owner, 2026-10-11):** "It goes under the user who is logged in and entering the ratings etc. It
+is also possible for another user to login and evaluate the same resource and put in different feedback." /
+"Ratings and notes should be public too." / notes are never edited (a correction is a later note). A per-user
+public/private choice is backlog. `resource_explorer/feedback_egeria.py` owns the mapping;
+`resource_explorer/single_publish.py` is what the page's ONE Publish sends besides the report.
+
+| In RE | In Egeria | Outbox kind | Destructive |
+|---|---|---|---|
+| a person's newest rated entry (stars, message) | that person's `Rating` on the asset (`add_rating_to_element`, public): StarRating by name (`FIVE_STARS` …), the message as `review`. Egeria keeps ONE rating per user per element and updates the caller's own (FeedbackHandler) | `feedback_rating` | no |
+| each journal entry | one `Note` (qualifiedName `Note::RE::journal::<entry id>`, anchored to the asset) in the asset's `NoteLog` (`NoteLog::RE::<asset GUID>`, found by qualifiedName, created attached to the asset only when absent; a duplicate-name refusal adopts the existing one) | `feedback_note` | no |
+
+- **Authorship.** Egeria records the calling user as the author, so a feedback row is sent only in its author's own
+  Publish request, as that person (Caller). Rows carry `by` and live under the run id
+  `Feedback::<type>::<slug>::<user>`. The background (Daemon) drain never claims a feedback row; a Caller drain
+  applies one only when the row's `by` is that caller (otherwise it is handed back untouched: "waiting for its
+  author's own Publish"). An admin "Retry" in Publish Queue only returns the row to pending: it still waits for its
+  author's next Publish.
+- **Failures are not re-sent on their own.** A failed feedback row is dead at once with Egeria's words; Egeria
+  unreachable leaves "Egeria could not be reached; nothing was sent". The person's next Publish queues a new row.
+- **Never an update or a delete.** RE never calls update/remove for a Note, a NoteLog or a Rating, and never
+  deletes an InformalTag, Folio, Rating or Note element: those are the owner's, by hand.
+- **Access.** Brief Z's curation check with the operations Egeria checks for feedback, judged on the asset as the
+  anchor with the person as maintainer (egeria af400039c2): a new Rating, NoteLog or Note is an anchored member
+  (`validateUserForAnchorMemberCreate`, CREATE, OpenMetadataAccessSecurityConnector.java:1965-1990, called from
+  OpenMetadataAPIAnchorHandler.java:357; the parent link is unchecked, MetadataElementHandler.java:2229-2313); an
+  update of the caller's own Rating is feedback (`validateUserForAnchorAddFeedback`, ADD_FEEDBACK, :2224-2250, via
+  OpenMetadataAPIGenericHandler.java:670-686). NoteLog and Note are not feedback types to Egeria
+  (OpenMetadataAPIGenericHandler.java:672-675). So a rating asks CREATE + ADD_FEEDBACK, a note CREATE; no
+  UPDATE_PROPERTIES. A refusal is a dead row "not permitted · <reason>" for that item only.
+- **Documentation sources** declared on a repository are sent by its Publish too (`publish_local_doc_sources`, as
+  the database and file system publishes already did).
+- **Confirmed.** Line 1 of the Publish band says "confirmed" only when the publish proof's read-back found the
+  report with the same annotation count (`repo_publish.confirmation`, the one "same result" function). While that
+  report's own outbox rows (by the run id the proof records) are still pending, sending or backing off, it reads
+  "not yet confirmed · N sending". Once they are settled the rows decide: none dead and every annotation done is
+  "confirmed"; dead rows read "Egeria shows N" (N = the annotations that landed). A proof with no run rows falls
+  back to the count read at publish time.
+- **Counting a run (round 4):** a re-publish of the same kept survey reuses the run id, so the newest row per
+  annotation stands, and "confirmed" is judged against what was queued (the outbox may cap a run), not the survey
+  size. A tag or group row with no recorded requester follows the no-requester rule (open only with no zone in
+  use). An access re-check Egeria cannot answer keeps the row pending ("waiting to re-check access") and is not
+  tried again for five minutes; at press time it is queued, not refused. Refused feedback rows are born cancelled,
+  so no retry or revive brings them back.
+- **Round 5:** per annotation, done anywhere is done (the qualifiedName is the key); a lone cancelled row is "not
+  sent"; a capped run reads "confirmed · N not sent (capped)" with both counts. A no-requester tag/group row waits
+  during an outage like any other. A Portal curator/admin seen at the press is carried on the row (`portal_role`,
+  from the verified caller only) and the drain re-check honours it. Feedback whose access cannot be read at the
+  press reads "not sent · couldn't check access" and goes with the next Publish.
+- **Refusals are decided before any row exists** (round 3): a refused tag or group change is recorded as a row
+  born cancelled with its words, so no drain can send it; the drain also re-checks each tag and group row as its
+  requester before sending it. One press per resource runs at a time, gated or not (409 otherwise).
+- **Replaced ratings.** A person's older rating reads "replaced" only once their newer one is in Egeria; until then
+  the older one still reads "published MM-DD".
 
 ### Observability (optional)
 
@@ -253,7 +546,7 @@ Repeat searches are worth saving as a **discovery source** (⚙ Admin → Discov
 - **search** — the same structured filters as the ad-hoc form, saved under a name.
 - **list** — a manually-curated set of `github_url`s. Needed for foundations that don't fit the "one org, one search" model — Eclipse spreads 450+ projects across hundreds of distinct GitHub orgs, and LF AI & Data curates a *member list* of projects living in unrelated orgs (Egeria itself is `odpi/egeria`, nothing to do with the `lfai` org's own governance repos). A `list` source is also how you'd register your own enterprise/internal repos the same way. There's no auto-fetching of an external structured list (CNCF's `landscape.yml`, LFX Insights' API, Eclipse's own project index) yet — paste the URLs in by hand.
 
-If you're pointed at an Enterprise GitHub instance rather than public GitHub, set the base URL once via the inline "GitHub source: … [edit]" control on the Discover tab — it's a runtime override on top of `.env`'s `GITHUB_BASE_URL`, stored in the registry, no restart needed.
+If you're pointed at an Enterprise GitHub instance rather than public GitHub, set `GITHUB_BASE_URL` in `.env` (for example `https://ghe.example.com/api/v3`) and restart. It is the single source: discovery, surveys and ingestion all use it, and there is no runtime override.
 
 ### Disposition and working set
 
@@ -382,6 +675,93 @@ When a survey produces `RequestForAction` annotations, they appear in the **RFAs
 ### Question catalog (Scouting "Questions" tab)
 
 The questions shown in Scouting's **Questions** checklist tab, and the corresponding `Question` elements published to Egeria, are both generated from `docs/dr-egeria/resource_questions.csv`. See [`docs/dr-egeria/resource_questions_guide.md`](dr-egeria/resource_questions_guide.md) for the full column reference, editing workflow, and regeneration commands.
+
+### Engine host: Resource Explorer as an Egeria SurveyActionEngine
+
+Resource Explorer's worker can act as an Egeria **engine host**. Egeria then sees RE's Python engine as a
+`SurveyActionEngine` named `ResourceExplorerSurvey`, with one request type per step RE can run (today the
+database step `db_derived`, as request type `re-db-derived`). When Egeria creates an engine action for that
+engine, the worker discovers it, claims it, runs the step and tells Egeria the result, the way a native engine
+host does. Design: [`design-notes/DESIGN-RE-ENGINE-HOST-BY-EQUIVALENCE.md`](design-notes/DESIGN-RE-ENGINE-HOST-BY-EQUIVALENCE.md).
+
+- **It is off unless you turn it on.** Set `RE_ENGINE_HOST_ENABLED=true` for the worker. Unset or false (the
+  default), the worker starts no loop and makes no engine-host call to Egeria. Only one worker runs the loop at
+  a time (the `engine-host` leader lock).
+- **It acts as a daemon, never as the requester.** Every Egeria call the engine host makes runs under RE's own
+  service account. The user who asked for the action is recorded on the run row as a name and is never used as
+  a credential.
+- **Private work is left alone.** An action whose target is a database in somebody's private investigation is
+  left **unclaimed**. The engine host is unattended, so private work never runs as the service account; its
+  owner runs it from RE while signed in.
+- **What it claims.** Only actions that are approved, not yet claimed, and for a request type RE declares. An
+  action with no target, or a target that is not a registered database, is claimed and then completed as
+  "survey-invalid" with the reason. If another host claims first, RE skips it quietly.
+- **Declaring the engine in Egeria** is a one-off step, run by an admin with the Dr.Egeria runner (next
+  section): `resource-explorer dr-egeria run engine-host/resource-explorer-survey-engine.md`. The document is
+  generated; do not edit it. Make sure no Java engine host lists `ResourceExplorerSurvey`, or it will race RE
+  for every claim.
+
+### The Dr.Egeria runner (ad hoc)
+
+Besides the documents RE applies itself at startup (the bootstrap heal), an admin can run **one** Dr.Egeria
+document on request:
+
+```bash
+uv run resource-explorer dr-egeria run <path.md>             # run it
+uv run resource-explorer dr-egeria run <path.md> --dry-run   # parse and validate; list the commands; write nothing
+uv run resource-explorer dr-egeria run <path.md> --force     # run a document already applied
+```
+
+`<path.md>` is a Markdown file under `docs/dr-egeria/` (or under `RE_DR_EGERIA_DOCS_DIR` if you set it). Any
+other path is refused. There is also an admin route, `POST /api/bootstrap/dr-egeria/run`, with the body
+`{"path": ..., "dry_run": false, "force": false}`.
+
+- **Who may use the route.** The signed-in user must be listed in `FEEDBACK_ADMIN_USERS`. The shared
+  `FEEDBACK_ADMIN_TOKEN` alone is not enough, and a dry run needs the same right. With no admin list
+  configured, nobody passes. The CLI needs shell access to the host instead.
+- **It runs as RE's service account**, and one activity-log row (operation `dr_egeria`) records the run, with
+  one item per command and Egeria's words for each. A dry run writes nothing.
+- **A repeat guard.** Dr.Egeria's *Create* and *Update* commands can be repeated safely, but link commands add a
+  second relationship each time. RE names the commands that are not safe to repeat and refuses a second run of a
+  document whose content it has already applied (409 from the route). `--force` (or `"force": true`) runs it on
+  purpose; confirm first.
+- **A verb allow-list.** Only *Create, Update, Display, View, Search, Find, Validate, Link, Attach, Add,
+  Classify, Reclassify, Setup* and *Set* commands run. Everything else (Delete, Remove, Unlink, Detach,
+  Declassify, Publish, Run, Process, Import and any verb added later) is refused, whatever the document says.
+
+### Admin settings at a glance
+
+| Setting | What it does |
+|---|---|
+| `FEEDBACK_ADMIN_USERS` | Egeria user ids who count as admin: comma-separated (`alice,bob`), a JSON list (`["alice","bob"]`), a single name, or empty for none. Whitespace is trimmed. A value that cannot be read logs one warning at startup and counts as empty (no admins); it never stops the server. Required for the Dr.Egeria runner route. |
+| `FEEDBACK_ADMIN_TOKEN` | A shared secret an admin pastes once in Admin → Feedback (sent as `X-Admin-Token`). Counts as admin for the gates in "Admin gating", but not for the Dr.Egeria runner route. |
+| `RE_ENGINE_HOST_ENABLED` | Turns the engine host on (see above). Default off. |
+| `RE_DR_EGERIA_DOCS_DIR` | Moves the folder the Dr.Egeria runner reads documents from. |
+| `EXPLORER_DRAFT_ZONE`, `EXPLORER_PUBLISH_ZONES` | Optional zones RE stamps; see "Governance zones". |
+
+`RE_ADMIN_OPEN_WHEN_UNCONFIGURED` is **not on main**. It belongs to PR #665 (`re/admin-auth-strict`), which was
+still open when this was written. What main does today is what "Admin gating" above says: the admin gate reads
+`X-Admin-Token` or a client-sent `X-Admin-User` header, and the Dr.Egeria route requires a listed user. Once
+#665 merges, identity comes from the signed-in session only and the client-sent header is ignored; check that
+PR's description for the final behaviour of the unconfigured case before relying on it.
+
+### Startup log lines
+
+When the worker starts it checks the zones it stamps and writes one line for all of them:
+
+```
+zone controls: <zone> · control present · lists READ, UPDATE_PROPERTIES · DEFAULT yes · ok; <zone> · ...
+```
+
+It is logged at INFO when every zone is `ok`. If any zone's access control would lock everyone out, only
+allows reading, or could not be read, the same line is logged at WARNING with a note that publishing into that
+zone is refused until its control is fixed. With no zone stamped the line reads `zone controls: no zone
+stamped`. The private zone is always checked, so the line normally names `resource-explorer-private`.
+
+**Coming (not on main when this was written):** a `connector type: ok` line, from the branch
+`re/connector-check-coverage-bar`. It checks that the connector type RE writes secrets through is still on the
+expected provider class, and reads Egeria without changing anything. It will also say `MISMATCH`, `not created
+yet` or `could not check`. Until that branch merges, no such line appears; do not look for it in the log.
 
 ---
 

@@ -404,6 +404,8 @@ Primary config: `config/advisor.yaml`. Key sections:
 - **rag**: chunk_size, top_k, min_score thresholds
 - **observability**: MLflow tracking URI and experiment name
 
+- **Service accounts**: `RE_DAEMON_USER_ID` and `TRELLIS_SERVICE_ACCOUNTS` (comma-separated) list Egeria user ids no human may sign in as; EA answers HTTP 403 "this is a service account; sign in as yourself" before any Egeria call (case-insensitive, trimmed; unset refuses nobody).
+
 Settings are managed via Pydantic models in `advisor/config.py`.
 
 ## Monitoring & Observability

@@ -72,6 +72,10 @@ UNGUARDED_BY_DESIGN: dict[str, str] = {
         "Same class as project_published_annotation_types. Narrower follow-up "
         "worth having: a sub-resource with NO egeria_guid is pure orphan debris "
         "on removal, and remove() cleans neither.",
+    "resource_scope_events":
+        "append-only audit log of what a person decided to publish or leave out "
+        "(who, when, which locator). The rows are the record of that decision and "
+        "may outlive the resource; nothing updates or deletes them, ever.",
     "query_log":
         "observability history -- what was asked about a resource is analytics "
         "that outlives the resource, and feedback tuning reads it. Deliberate.",

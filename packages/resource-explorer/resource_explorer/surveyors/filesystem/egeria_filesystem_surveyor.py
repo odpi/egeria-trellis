@@ -6,6 +6,7 @@ import asyncio
 from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
+from resource_explorer.config import egeria_platform_url, egeria_view_server  # noqa: E402,F401
 
 if TYPE_CHECKING:
     from resource_explorer.registry import FileSystemEntity, ProjectRegistry
@@ -18,8 +19,8 @@ class EgeriaFileSystemSurveyorError(RuntimeError):
 
 
 # Investigated 2026-09-20 alongside the database-side "catalog_and_survey never
-# refreshes an existing element's connection" fix (docs/design-notes/
-# CATALOG-AND-SURVEY-REFRESH-FIX.md) — this surveyor does NOT have the same
+# refreshes an existing element's connection" fix (CATALOG-AND-SURVEY-REFRESH-FIX.md) — this
+# surveyor does NOT have the same
 # bug, verified rather than assumed symmetric:
 #
 # catalog_and_survey() below takes no db_user/db_pwd (or any credential) at
@@ -36,6 +37,11 @@ class EgeriaFileSystemSurveyorError(RuntimeError):
 # that's a different, unverified concern from the one this fix addresses.
 
 
+def _published_count(made):
+    """How many annotations Egeria returned a GUID for; None when no per-annotation answer came back."""
+    return sum(1 for g in made if g) if isinstance(made, list) else None
+
+
 class EgeriaFileSystemSurveyor:
     """Catalog filesystems and files in Egeria and publish survey reports."""
 
@@ -45,11 +51,14 @@ class EgeriaFileSystemSurveyor:
         view_server: str | None = None,
         user_id: str | None = None,
         user_password: str | None = None,
+        *,
+        identity=None,
     ) -> None:
-        self.platform_url = platform_url or os.getenv("EGERIA_PLATFORM_URL", "")
-        self.view_server = view_server or os.getenv("EGERIA_VIEW_SERVER", "qs-view-server")
+        self.platform_url = platform_url or egeria_platform_url()
+        self.view_server = view_server or egeria_view_server()
         self.user_id = user_id or os.getenv("EGERIA_USER", "erinoverview")
-        self.user_password = user_password or os.getenv("EGERIA_USER_PASSWORD", "secret")
+        self.user_password = user_password or ""   # not used to authenticate (Brief I)
+        self._identity = identity
         self._automated_curation = None
         self._asset_maker = None
         self._discovery = None
@@ -69,21 +78,17 @@ class EgeriaFileSystemSurveyor:
             from pyegeria import AutomatedCuration, AssetMaker
             from pyegeria.omvs.data_discovery import DataDiscovery
 
-            self._automated_curation = AutomatedCuration(
-                self.view_server, self.platform_url, self.user_id, self.user_password
-            )
-            self._automated_curation.create_egeria_bearer_token(self.user_id, self.user_password)
+            from resource_explorer.egeria_clients import current_principal, egeria_client
 
-            self._asset_maker = AssetMaker(
-                self.view_server, self.platform_url, self.user_id, self.user_password
-            )
-            self._asset_maker.create_egeria_bearer_token(self.user_id, self.user_password)
-
-            self._discovery = DataDiscovery(
-                self.view_server, self.platform_url, self.user_id, self.user_password
-            )
-            self._discovery.create_egeria_bearer_token(self.user_id, self.user_password)
-
+            # Who (Brief I): the identity handed in, else the signed-in Caller on a route or the
+            # declared daemon job in the worker — never the entity's stored credential.
+            clients = egeria_client(self._identity or current_principal(), purpose="file system survey",
+                                    view_server=self.view_server, platform_url=self.platform_url)
+            self._automated_curation = clients.of(AutomatedCuration)
+            self._asset_maker = clients.of(AssetMaker)
+            self._discovery = clients.of(DataDiscovery)
+        except PermissionError:
+            raise
         except ImportError as exc:
             raise EgeriaFileSystemSurveyorError("pyegeria is not installed.") from exc
         except Exception as exc:
@@ -98,6 +103,12 @@ class EgeriaFileSystemSurveyor:
         registry: ProjectRegistry | None = None,
     ) -> dict:
         """Catalog the filesystem root folder and data files in Egeria, then publish the survey report."""
+        # Interim (2026-10-13 review): no private (born-private) publish exists for file systems yet, so a file system
+        # in a private investigation is refused here, before anything is written, recorded once per state.
+        from resource_explorer.private_publish import refuse_unsupported_private
+
+        refuse_unsupported_private(registry, "filesystem", fs_entity.slug,
+                                   name=fs_entity.display_name or fs_entity.slug)
         self.connect()
 
         local_mount = fs_entity.local_mount_point.rstrip("/")
@@ -128,6 +139,9 @@ class EgeriaFileSystemSurveyor:
 
         # 2. Catalog data files
         file_guids = {}
+        #: rel_path -> why its look-up could not be made, so nothing was created for it. One file that
+        #: cannot be checked is skipped and listed; it does not end the run (as `publish_sub_resources`).
+        files_not_checked: dict[str, str] = {}
         inventory = survey_data.get("inventory", [])
         for file_info in inventory:
             if not file_info.get("is_data_file"):
@@ -137,7 +151,12 @@ class EgeriaFileSystemSurveyor:
             canonical_path = f"{canonical_mount}/{rel_path}"
             
             # Catalog/find the file asset
-            file_guid = self._find_element_guid(canonical_path)
+            try:
+                file_guid = self._find_element_guid(canonical_path)
+            except EgeriaFileSystemSurveyorError as exc:
+                files_not_checked[rel_path] = str(exc)
+                log.warning("Data file %s not cataloged: %s", rel_path, exc)
+                continue
             if not file_guid:
                 try:
                     file_guid = self._create_data_file_asset(file_info, canonical_path, fs_entity.slug)
@@ -230,12 +249,13 @@ class EgeriaFileSystemSurveyor:
         }
 
         report_guid = ""
+        made = []
         try:
             report_guid = self._asset_maker.create_asset(body=body)
             log.info(f"Published SurveyReport in Egeria: {report_guid}")
             
             # Push annotations under the SurveyReport
-            self._create_annotations(annotations, report_guid, fs_entity.slug, surveyed_at)
+            made = self._create_annotations(annotations, report_guid, fs_entity.slug, surveyed_at)
         except Exception as exc:
             log.warning(f"Failed to publish SurveyReport to Egeria: {exc}")
 
@@ -255,7 +275,11 @@ class EgeriaFileSystemSurveyor:
             "filesystem_guid": fs_guid,
             "report_guid": effective_report_guid,
             "file_guids": file_guids,
+            "files_not_checked": files_not_checked,
+            # RE's own count (built and sent); Egeria's is `annotations_in_egeria` (GUIDs returned, None
+            # when RE cannot tell), the same two names every producer uses.
             "annotation_count": len(annotations),
+            "annotations_in_egeria": _published_count(made),
         }
 
     def publish_step_annotations(
@@ -295,6 +319,12 @@ class EgeriaFileSystemSurveyor:
         Egeria (fs_entity.egeria_asset_guid set, or findable by canonical mount
         point); this method does not auto-catalog it.
         """
+        # Interim (2026-10-13 review): no private (born-private) publish exists for file systems yet, so a file system
+        # in a private investigation is refused here, before anything is written, recorded once per state.
+        from resource_explorer.private_publish import refuse_unsupported_private
+
+        refuse_unsupported_private(registry, "filesystem", fs_entity.slug,
+                                   name=fs_entity.display_name or fs_entity.slug)
         self.connect()
 
         canonical_mount = (fs_entity.canonical_mount_point or fs_entity.local_mount_point).rstrip("/")
@@ -302,7 +332,7 @@ class EgeriaFileSystemSurveyor:
         fs_guid = fs_entity.egeria_asset_guid or self._find_element_guid(canonical_mount)
         if not fs_guid:
             raise EgeriaFileSystemSurveyorError(
-                f"FileSystem '{fs_name}' is not yet cataloged in Egeria — cannot "
+                f"FileSystem '{fs_name}' is not yet published to Egeria — cannot "
                 "publish a Survey Definition step's results without an existing "
                 "asset to attach the SurveyReport to."
             )
@@ -463,7 +493,7 @@ class EgeriaFileSystemSurveyor:
         }
         report_guid = self._asset_maker.create_asset(body=body)
         log.info(f"Published SurveyReport in Egeria: {report_guid}")
-        self._create_annotations(annotations, report_guid, fs_entity.slug, surveyed_at)
+        made = self._create_annotations(annotations, report_guid, fs_entity.slug, surveyed_at)
 
         if registry:
             registry.add_filesystem_survey(
@@ -474,7 +504,8 @@ class EgeriaFileSystemSurveyor:
                 source="egeria-published",
             )
 
-        return {"filesystem_guid": fs_guid, "report_guid": report_guid, "annotation_count": len(annotations)}
+        return {"filesystem_guid": fs_guid, "report_guid": report_guid,
+                "annotation_count": len(annotations), "annotations_in_egeria": _published_count(made)}
 
     def get_survey_reports_by_guid(self, fs_guid: str) -> list[dict]:
         """All SurveyReports linked to this filesystem's asset GUID via the real
@@ -599,7 +630,7 @@ class EgeriaFileSystemSurveyor:
         from resource_explorer.surveyors.annotation_props import publish_annotations
 
         qualified_name_prefix = f"Annotation::FileSystem::{fs_slug}::{surveyed_at}"
-        publish_annotations(
+        return publish_annotations(
             self._discovery, self._find_element_guid,
             annotations, report_guid, qualified_name_prefix,
         )
@@ -618,14 +649,20 @@ class EgeriaFileSystemSurveyor:
 
         return to_string_map(d)
     def _find_element_guid(self, name: str) -> str:
-        """Return the GUID of an existing Egeria element by display/qualified name, or '' if not found."""
+        """Return the GUID of an existing Egeria element by display/qualified name, or '' if not found.
+
+        '' is the callers' cue to create, so only a real miss returns it ("No elements found", or a typed
+        not-found: `egeria_absence.is_absent`). A look-up that raised for any other reason, or gave no
+        answer, could not be checked: `EgeriaFileSystemSurveyorError` says so and nothing is created. It
+        used to swallow every exception and return '' (AUDIT-PYEGERIA-6.2.2.md, "Not in scope")."""
+        from resource_explorer.egeria_absence import lookup_could_not_be_made, lookup_exception_is_absent
+
         try:
             result = self._automated_curation.get_guid_for_name(name)
-            if isinstance(result, list) and result:
-                candidate = result[0] if isinstance(result[0], str) else result[0].get("guid", "")
-                return candidate if self._UUID_RE.match(candidate or "") else ""
-            if isinstance(result, str) and self._UUID_RE.match(result):
-                return result
-        except Exception:
-            pass
-        return ""
+        except Exception as exc:
+            if lookup_exception_is_absent(exc):
+                return ""
+            raise EgeriaFileSystemSurveyorError(lookup_could_not_be_made(name, exc)) from exc
+        from resource_explorer.egeria_absence import guid_from_answer
+
+        return guid_from_answer(result, name, EgeriaFileSystemSurveyorError)

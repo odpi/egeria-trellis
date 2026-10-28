@@ -175,7 +175,7 @@ class TestAHypotheticalDatabaseRow:
 
     def _generated(self, generator, extra: dict):
         fieldnames, rows = _rows()
-        row = {c: "" for c in fieldnames}
+        row = {c: "" for c in fieldnames} | {"Question ID": "Q-9001"}   # every row needs a stable id
         row.update(extra)
         return yaml.safe_load(generator.generate(rows + [row])), rows
 
@@ -238,7 +238,10 @@ class TestAHypotheticalDatabaseRow:
             "Question": "What is the grain of each table (hypothetical)?",
             "Funnel Stage": "Discovery",
             "Resource Types": "database;filesystem",
-            "Answering Analysis": "GAP: grain_determination not built",
+            # Not a registered analysis/step id (gap guard, §C): a real one
+            # here would now fail generation as a false gap. This fixture's
+            # own point is cross-type row placement, not the answering note.
+            "Answering Analysis": "GAP: grain_ranking_hypothetical not built",
         })
         target = "What is the grain of each table (hypothetical)?"
         assert any(e["question"] == target for e in raw["database_questions"])
@@ -252,7 +255,7 @@ class TestAHypotheticalDatabaseRow:
         """`yaml.safe_dump` emits `&id001`/`*id001` for a repeated object, and
         two resource types would then share one mutable entry."""
         fieldnames, rows = _rows()
-        row = {c: "" for c in fieldnames}
+        row = {c: "" for c in fieldnames} | {"Question ID": "Q-9001"}   # every row needs a stable id
         row.update({
             "Question": "Who owns this data?",
             "Funnel Stage": "Scouting",
@@ -264,7 +267,7 @@ class TestAHypotheticalDatabaseRow:
 
     def test_an_unknown_resource_type_fails_loudly(self, generator):
         fieldnames, rows = _rows()
-        row = {c: "" for c in fieldnames}
+        row = {c: "" for c in fieldnames} | {"Question ID": "Q-9001"}   # every row needs a stable id
         row.update({"Question": "Q?", "Funnel Stage": "Scouting", "Resource Types": "databse"})
         with pytest.raises(ValueError, match="databse"):
             generator.generate(rows + [row])
@@ -275,7 +278,7 @@ class TestAHypotheticalDatabaseRow:
         from resource_explorer.surveyors import question_catalog_reader as qcr
 
         fieldnames, rows = _rows()
-        row = {c: "" for c in fieldnames}
+        row = {c: "" for c in fieldnames} | {"Question ID": "Q-9001"}   # every row needs a stable id
         row.update({
             "Question": "Which schemas carry the data (hypothetical)?",
             "Funnel Stage": "Scouting",
@@ -327,7 +330,7 @@ class TestPerTypeAnalysisValidation:
 
     def _generated_for(self, generator, extra: dict):
         fieldnames, rows = _rows()
-        row = {c: "" for c in fieldnames}
+        row = {c: "" for c in fieldnames} | {"Question ID": "Q-9001"}   # every row needs a stable id
         row.update(extra)
         return yaml.safe_load(generator.generate(rows + [row]))
 

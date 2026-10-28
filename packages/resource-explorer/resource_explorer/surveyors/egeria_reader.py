@@ -15,6 +15,7 @@ import json
 import logging
 import os
 from typing import TYPE_CHECKING
+from resource_explorer.config import egeria_platform_url, egeria_view_server  # noqa: E402,F401
 
 if TYPE_CHECKING:
     from resource_explorer.registry import ProjectRegistry
@@ -24,7 +25,6 @@ log = logging.getLogger(__name__)
 _DEFAULT_PLATFORM_URL = "https://localhost:9443"
 _DEFAULT_VIEW_SERVER = "qs-view-server"
 _DEFAULT_USER = "erinoverview"
-_DEFAULT_PASSWORD = "secret"
 
 
 class EgeriaReaderError(RuntimeError):
@@ -51,10 +51,10 @@ class EgeriaReader:
         user_password: str | None = None,
         registry: "ProjectRegistry | None" = None,
     ) -> None:
-        self.platform_url = platform_url or os.getenv("EGERIA_PLATFORM_URL", _DEFAULT_PLATFORM_URL)
-        self.view_server = view_server or os.getenv("EGERIA_VIEW_SERVER", _DEFAULT_VIEW_SERVER)
+        self.platform_url = platform_url or egeria_platform_url()
+        self.view_server = view_server or egeria_view_server()
         self.user_id = user_id or os.getenv("EGERIA_USER", _DEFAULT_USER)
-        self.user_password = user_password or os.getenv("EGERIA_USER_PASSWORD", _DEFAULT_PASSWORD)
+        self.user_password = user_password or ""   # not used to authenticate (Brief I)
         self.registry = registry
         self._asset_maker = None
         self._discovery = None
@@ -74,15 +74,15 @@ class EgeriaReader:
             from pyegeria import AssetMaker
             from pyegeria.omvs.data_discovery import DataDiscovery
 
-            self._asset_maker = AssetMaker(
-                self.view_server, self.platform_url, self.user_id, self.user_password
-            )
-            self._asset_maker.create_egeria_bearer_token(self.user_id, self.user_password)
+            from resource_explorer.egeria_clients import current_principal, egeria_client
 
-            self._discovery = DataDiscovery(
-                self.view_server, self.platform_url, self.user_id, self.user_password
-            )
-            self._discovery.create_egeria_bearer_token(self.user_id, self.user_password)
+            # Who (Brief I): the signed-in Caller on a route, the declared daemon job otherwise.
+            clients = egeria_client(current_principal(), purpose="egeria read",
+                                    view_server=self.view_server, platform_url=self.platform_url)
+            self._asset_maker = clients.of(AssetMaker)
+            self._discovery = clients.of(DataDiscovery)
+        except PermissionError:
+            raise
         except ImportError as exc:
             raise EgeriaReaderError("pyegeria is not installed.") from exc
         except Exception as exc:
@@ -223,18 +223,16 @@ def _safe_int(value) -> int | None:
 
 def _parse_annotation(header: dict, props: dict) -> dict:
     """Normalise a raw Egeria annotation element into a plain dict."""
-    json_props = {}
-    raw_jp = props.get("jsonProperties")
-    if raw_jp:
-        try:
-            json_props = json.loads(raw_jp)
-        except (json.JSONDecodeError, TypeError):
-            json_props = {"raw": raw_jp}
+    from resource_explorer.surveyors.egeria_survey_reader import parse_json_properties
+    json_props = parse_json_properties(props.get("jsonProperties"))
 
     # Subtype-specific native fields gathered into a single dict
     subtype_data: dict = {}
     for field in (
         "candidateClassifications",
+        # ClassificationAnnotation's own Egeria fields (6.2): the proposed classification and its values.
+        "classificationName",
+        "properties",
         "resourceProperties",
         "qualityScores",
         "candidateDataClassGUIDs",
@@ -249,6 +247,24 @@ def _parse_annotation(header: dict, props: dict) -> dict:
         if val is not None:
             subtype_data[field] = val
 
+    # A proposal published in Egeria's own fields reads back as the candidates it is, for readers of the old key:
+    # the whole ordered list from `properties` when it proposed several, else its one `classificationName`
+    # (annotation_props.classification_fields writes both).
+    if "candidateClassifications" not in subtype_data:
+        from resource_explorer.surveyors.annotation_props import CANDIDATES_KEY
+
+        values = subtype_data.get("properties")
+        listed = values.get(CANDIDATES_KEY) if isinstance(values, dict) else None
+        if isinstance(listed, str):
+            try:
+                listed = json.loads(listed)
+            except ValueError:
+                listed = None
+        if isinstance(listed, list) and listed:
+            subtype_data["candidateClassifications"] = [str(c) for c in listed]
+        elif subtype_data.get("classificationName"):
+            subtype_data["candidateClassifications"] = [subtype_data["classificationName"]]
+
     return {
         "guid": header.get("guid", ""),
         "type_name": header.get("type", {}).get("typeName", ""),
@@ -256,6 +272,7 @@ def _parse_annotation(header: dict, props: dict) -> dict:
         "summary": props.get("summary", ""),
         "confidence": props.get("confidence"),
         "analysis_step": props.get("analysisStep", ""),
+        "additional_properties": props.get("additionalProperties") or {},
         "explanation": props.get("explanation", ""),
         "expression": props.get("expression", ""),
         "json_properties": json_props,

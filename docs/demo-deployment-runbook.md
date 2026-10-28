@@ -126,7 +126,7 @@ docker exec -w /app/packages/egeria-advisor trellis-ea-web python scripts/clone_
 docker exec -w /app/packages/egeria-advisor trellis-ea-web python scripts/ingest_collections.py --phase 1
 ```
 
-Verified on trevor 2026-09-04 21:19: the asset (`SourceControlLibrary`) and the `SurveyReport` both read back
+Verified on trevor 2026-09-04 21:19 (the zone shown was the then-default draft zone, retired 2026-10-08; RE now imposes none unless `EXPLORER_DRAFT_ZONE` is set): the asset (`SourceControlLibrary`) and the `SurveyReport` both read back
 with `createdBy=erinoverview`, `Ownership.owner=erinoverview`, `ZoneMembership=['resource-explorer-draft']`
 via `MetadataExpert.get_metadata_element_by_guid` as the same user. The survey CLI ends with an interactive
 "Trigger governance action process?" prompt; under `-T` it aborts harmlessly after the publish. Do **not** send

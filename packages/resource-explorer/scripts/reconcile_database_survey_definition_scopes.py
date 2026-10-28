@@ -87,7 +87,7 @@ def _emit_missing_document(path: Path, entries: list[tuple], generated_date: str
     path.write_text(header + "\n---\n\n" + "\n___\n\n".join(blocks) + ("\n" if blocks else ""))
 
 
-def main() -> None:
+def _main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument(
         "--remove-extra", action="store_true",
@@ -208,6 +208,15 @@ def main() -> None:
         print(f"\nWrote {total_missing} missing scope link(s) to {out_path}")
 
     sys.exit(exit_code)
+
+
+def main() -> None:
+    """Run as RE's daemon: SurveyDefinitionReader resolves its principal from the calling context, and
+    a CLI has no signed-in person (NoCallerIdentity otherwise)."""
+    from resource_explorer.egeria_clients import Daemon, DaemonReason, acting_as
+
+    with acting_as(Daemon(DaemonReason.BOOTSTRAP)):
+        return _main()
 
 
 if __name__ == "__main__":

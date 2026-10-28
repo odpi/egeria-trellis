@@ -30,7 +30,7 @@ genuinely different causes, and three of them are not answers:
   which is the only one of the four that is a *finding*.
 
 Collapsing those into "no match found" is the defect
-`docs/design-notes/DEFECT-UNBUILT-STAGES-RENDER-AS-BUILT.md` and the
+`DEFECT-UNBUILT-STAGES-RENDER-AS-BUILT.md` and the
 `find-absence-as-answer` skill are both about, in the one place a column-level
 PII claim would be read as reassurance.
 

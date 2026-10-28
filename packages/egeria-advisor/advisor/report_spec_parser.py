@@ -121,7 +121,14 @@ def parse_report_spec_markdown(content: str) -> FormatSet:
     # Action Parameter parsing
     action_function = attrs.get("Action Function")
     action_obj = None
-    if action_function:
+    analytic_function = attrs.get("Analytic Function") or None      # a Python dotted path (extra_find)
+    analytic_spec_params = _parse_spec_params(attrs.get("Analytic Spec Params", ""))
+    if analytic_function and not action_function:
+        # an analytic-only spec (no find method), as pyegeria's analytic demo specs are
+        # (pyegeria 6.2.2, ISSUE-141: `function` is optional when `analytic_function` is set)
+        action_obj = ActionParameter(analytic_function=analytic_function,
+                                     analytic_spec_params=analytic_spec_params)
+    elif action_function:
         required_params = [p.strip() for p in attrs.get("Required Params", "").split(",") if p.strip()]
         optional_params = [p.strip() for p in attrs.get("Optional Params", "").split(",") if p.strip()]
         # Legacy Spec Params (flat key=value)
@@ -137,7 +144,9 @@ def parse_report_spec_markdown(content: str) -> FormatSet:
             function=action_function,
             required_params=required_params,
             optional_params=optional_params,
-            spec_params=spec_params
+            spec_params=spec_params,
+            analytic_function=analytic_function,
+            analytic_spec_params=analytic_spec_params,
         )
         
     # Perspectives and Questions parsing
@@ -181,11 +190,15 @@ def parse_report_spec_markdown(content: str) -> FormatSet:
                 format_columns[f] = []
             format_columns[f].append(col_obj)
             
+    # Output Types names the types of a single Format with no attributes (an analytic result has none to list)
+    output_types = [t.strip() for t in attrs.get("Output Types", "").split(",") if t.strip()]
     # Default to ALL if no columns/formats were added
-    if not format_columns:
+    if not format_columns and not output_types:
         format_columns["ALL"] = []
         
     formats = []
+    if output_types and not format_columns:
+        formats.append(Format(types=output_types, attributes=[]))
     for fmt_type, attributes in format_columns.items():
         formats.append(Format(
             types=[fmt_type],
@@ -209,6 +222,9 @@ def parse_report_spec_markdown(content: str) -> FormatSet:
 def validate_report_spec(spec: FormatSet) -> List[str]:
     """Validate a parsed FormatSet against Egeria class/method conventions."""
     warnings = []
+    if spec.action and not spec.action.function and spec.action.analytic_function:
+        # An analytic-only spec has no find method by design (pyegeria ISSUE-141): nothing to warn about.
+        return warnings
     if not spec.action or not spec.action.function:
         warnings.append("No Action Function defined.")
         return warnings

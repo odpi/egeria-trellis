@@ -82,7 +82,6 @@ import logging
 import time
 from typing import Any
 
-from resource_explorer.rfa_egeria_sync import _egeria_connection_kwargs
 from resource_explorer.surveyors.base_surveyor import BaseSurveyor
 from resource_explorer.surveyors.survey_report import (
     Annotation,
@@ -125,12 +124,12 @@ def _get_clients():
     modules otherwise have no coupling."""
     from pyegeria import AutomatedCuration, MetadataExpert
 
-    view_server, platform_url, user_id, user_password = _egeria_connection_kwargs()
-    automated_curation = AutomatedCuration(view_server, platform_url, user_id, user_password)
-    automated_curation.create_egeria_bearer_token(user_id, user_password)
-    metadata_expert = MetadataExpert(view_server, platform_url, user_id, user_password)
-    metadata_expert.create_egeria_bearer_token(user_id, user_password)
-    return automated_curation, metadata_expert
+    from resource_explorer.egeria_clients import current_principal, egeria_client
+
+    # Who (Brief I): the survey's own identity — the signed-in Caller from a route, the queued
+    # run's Daemon(RUN_QUEUE, requested_by) in the worker, Daemon(SCHEDULER) from a scheduled survey.
+    clients = egeria_client(current_principal(), purpose="egeria delegated step")
+    return clients.of(AutomatedCuration), clients.of(MetadataExpert)
 
 
 def _poll_action_status(

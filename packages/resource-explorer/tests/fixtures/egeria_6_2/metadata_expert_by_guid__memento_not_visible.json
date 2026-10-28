@@ -1,0 +1,13 @@
+{
+ "captured": "2026-10-14",
+ "platform": "Egeria 6.2 quickstart (qs-view-server), pyegeria 6.2.3",
+ "identity": "RE daemon (DaemonReason.ACCESS_CHECK), read-only",
+ "route": "MetadataExpert.get_metadata_element_by_guid",
+ "call": "get_metadata_element_by_guid(guid) on a Memento element, no forLineage: raises",
+ "secrets": "keys matching token|password|secret|credential|apikey replaced by <removed>",
+ "graph_keys_dropped": [],
+ "answer": {
+  "__exception__": "PyegeriaAPIException",
+  "message": "=> SERVER_ERROR_500 => Egeria detected error: `https://localhost:9443/servers/qs-view-server/api/open-metadata/metadata-expert/metadata-elements/ad2724e6-40e9-46a9-aaff-e3352c6b04bb`. * Context: * class name=`BaseServerClient` * caller method=`_async_get_guid_request` * Egeria error information: * class= `OpenMetadataElementResponse` * requestId= `61c5bb24-d9f4-40e2-b18a-3f6b680efd59` * relatedHTTPCode= `400` * exceptionClassName= `org.odpi.openmetadata.frameworks.openmetadata.ffdc.InvalidParameterException` * exceptionSubclassName= `org.odpi.openmetadata.frameworks.openmetadata.ffdc.InvalidPa"
+ }
+}

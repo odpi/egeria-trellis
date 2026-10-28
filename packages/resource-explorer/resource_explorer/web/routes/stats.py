@@ -193,138 +193,75 @@ async def health_chart(slug: str) -> dict:
 
 # ── database charts ───────────────────────────────────────────────────────────
 
+def _database_or_404(registry: ProjectRegistry, slug: str) -> None:
+    if not registry.get_database(slug, allow_unreadable=True):
+        raise HTTPException(status_code=404, detail=f"Database '{slug}' not found")
+
+
+# The four database chart routes read the structured `database_tables` /
+# `database_columns` / `database_schemas` rows (as `/api/databases/{slug}/diff`
+# does), not the `survey_data` blob, and return: a Plotly `figure`, the `run` it
+# read, and a `state` (measured / partial / not_measured). The pre-2026-10-01
+# array fields are kept alongside, additively, for Classic. Logic lives in
+# `resource_explorer.db_chart_data`. A never-surveyed database is a 200 with
+# state `not_measured`, not a 404 and not zeros.
+
 @router.get("/databases/{slug}/schema_distribution")
 async def database_schema_distribution(slug: str) -> dict:
-    """Return schema size distribution for a database."""
+    """Tables and columns per schema, with the run and state it came from."""
+    from resource_explorer import db_chart_data
     registry = ProjectRegistry()
-    database = registry.get_database(slug)
-    if not database:
-        raise HTTPException(status_code=404, detail=f"Database '{slug}' not found")
-    
-    surveys = registry.get_database_surveys(slug)
-    if not surveys:
-        raise HTTPException(status_code=404, detail=f"No surveys for '{slug}' — run survey first")
-    
-    latest = surveys[0]
-    survey_data = json.loads(latest.get("survey_data", "{}"))
-    schemas = survey_data.get("schema_info", {}).get("schemas", [])
-
-    if not schemas:
-        return {"schemas": [], "table_counts": [], "column_counts": []}
-
-    return {
-        "schemas": [s["name"] for s in schemas],
-        "table_counts": [len(s.get("tables", [])) for s in schemas],
-        "column_counts": [sum(len(t.get("columns", [])) for t in s.get("tables", [])) for s in schemas],
-    }
+    _database_or_404(registry, slug)
+    return db_chart_data.schema_distribution(registry, slug)
 
 
 @router.get("/databases/{slug}/table_sizes")
-async def database_table_sizes(slug: str, limit: int = 20) -> dict:
-    """Return top N tables by row count."""
+async def database_table_sizes(slug: str, limit: int = 20, measure: str = "rows") -> dict:
+    """Largest tables. `measure=rows` (default) never switches to size on its
+    own; tables with no established count are listed, counted, not ranked."""
+    from resource_explorer import db_chart_data
+    if measure not in ("rows", "size"):
+        raise HTTPException(status_code=400, detail="measure must be 'rows' or 'size'")
     registry = ProjectRegistry()
-    database = registry.get_database(slug)
-    if not database:
-        raise HTTPException(status_code=404, detail=f"Database '{slug}' not found")
-    
-    surveys = registry.get_database_surveys(slug)
-    if not surveys:
-        raise HTTPException(status_code=404, detail=f"No surveys for '{slug}' — run survey first")
-    
-    latest = surveys[0]
-    survey_data = json.loads(latest.get("survey_data", "{}"))
-
-    # schema_info.schemas has table/column names; statistics.table_stats has sizes
-    schemas = survey_data.get("schema_info", {}).get("schemas", [])
-    # Build a size lookup from statistics: {schema.table -> {total_bytes, total_size}}
-    stat_lookup: dict[str, dict] = {}
-    for ts in survey_data.get("statistics", {}).get("table_stats", []):
-        key = f"{ts.get('schemaname', '')}.{ts.get('tablename', '')}"
-        stat_lookup[key] = ts
-
-    all_tables = []
-    for schema in schemas:
-        for table in schema.get("tables", []):
-            key = f"{schema['name']}.{table['name']}"
-            ts = stat_lookup.get(key, {})
-            size_bytes = table.get("size_bytes") or ts.get("total_bytes", 0) or 0
-            row_count  = table.get("row_count", 0)
-            all_tables.append({
-                "schema": schema["name"],
-                "table": table["name"],
-                "rows": row_count,
-                "size_mb": round(size_bytes / 1_048_576, 2) if size_bytes else 0,
-            })
-
-    # Sort by row count; fall back to size when all rows are 0
-    all_tables.sort(
-        key=lambda t: (t["rows"], t["size_mb"]),
-        reverse=True,
-    )
-    top_tables = all_tables[:limit]
-
-    return {
-        "tables": [f"{t['schema']}.{t['table']}" for t in top_tables],
-        "row_counts": [t["rows"] for t in top_tables],
-        "sizes_mb": [t["size_mb"] for t in top_tables],
-    }
+    _database_or_404(registry, slug)
+    return db_chart_data.table_sizes(registry, slug, limit=limit, measure=measure)
 
 
 @router.get("/databases/{slug}/column_types")
 async def database_column_types(slug: str) -> dict:
-    """Return distribution of column data types."""
+    """Columns per declared type; a missing type is `type_not_recorded`."""
+    from resource_explorer import db_chart_data
     registry = ProjectRegistry()
-    database = registry.get_database(slug)
-    if not database:
-        raise HTTPException(status_code=404, detail=f"Database '{slug}' not found")
-    
-    surveys = registry.get_database_surveys(slug)
-    if not surveys:
-        raise HTTPException(status_code=404, detail=f"No surveys for '{slug}' — run survey first")
-    
-    latest = surveys[0]
-    survey_data = json.loads(latest.get("survey_data", "{}"))
-    
-    # Count column types across all schemas and tables
-    # connection.py stores field as "type"; fall back to "data_type" for safety
-    type_counts: dict[str, int] = {}
-    for schema in survey_data.get("schema_info", {}).get("schemas", []):
-        for table in schema.get("tables", []):
-            for column in table.get("columns", []):
-                col_type = column.get("type") or column.get("data_type") or "unknown"
-                type_counts[col_type] = type_counts.get(col_type, 0) + 1
-    
-    # Sort by count
-    sorted_types = sorted(type_counts.items(), key=lambda x: x[1], reverse=True)
-    
-    return {
-        "types": [t[0] for t in sorted_types],
-        "counts": [t[1] for t in sorted_types],
-    }
+    _database_or_404(registry, slug)
+    return db_chart_data.column_types(registry, slug)
 
 
 @router.get("/databases/{slug}/survey_history")
 async def database_survey_history(slug: str, limit: int = 30) -> dict:
-    """Return survey history timeline."""
+    """One point per run (full timestamp); unmeasured counts are null."""
+    from resource_explorer import db_chart_data
     registry = ProjectRegistry()
-    database = registry.get_database(slug)
-    if not database:
-        raise HTTPException(status_code=404, detail=f"Database '{slug}' not found")
-    
-    surveys = registry.get_database_surveys(slug)
-    if not surveys:
-        return {"dates": [], "schema_counts": [], "table_counts": [], "column_counts": []}
-    
-    # Take most recent N surveys
-    recent = surveys[:limit]
-    recent.reverse()  # Oldest first for timeline
-    
-    return {
-        "dates": [s.get("surveyed_at", "")[:10] for s in recent],
-        "schema_counts": [s.get("schema_count", 0) for s in recent],
-        "table_counts": [s.get("table_count", 0) for s in recent],
-        "column_counts": [s.get("column_count", 0) for s in recent],
-    }
+    _database_or_404(registry, slug)
+    return db_chart_data.survey_history(registry, slug, limit=limit)
+
+
+@router.get("/databases/{slug}/table_growth")
+async def database_table_growth(slug: str, top: int = 10, limit: int = 30) -> dict:
+    """Established row count per run for the largest tables (growth over time)."""
+    from resource_explorer import db_chart_data
+    registry = ProjectRegistry()
+    _database_or_404(registry, slug)
+    return db_chart_data.table_growth(registry, slug, top=top, limit=limit)
+
+
+@router.get("/databases/{slug}/statistics_currency")
+async def database_statistics_currency(slug: str, limit: int = 12) -> dict:
+    """How current the planner statistics are: database line, schema rollups,
+    per-table state, and the counts across earlier surveys. Stored rows only."""
+    from resource_explorer import db_chart_data
+    registry = ProjectRegistry()
+    _database_or_404(registry, slug)
+    return db_chart_data.statistics_currency(registry, slug, limit=limit)
 
 
 # ── helpers ───────────────────────────────────────────────────────────────────

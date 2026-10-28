@@ -148,6 +148,9 @@ def _children_of(components: list) -> dict[str, list]:
     return kids
 
 
+UNTYPED_LABEL = "type not assigned · boundary only"
+
+
 def _component_line(c, structural: bool, enclosing_blueprint: str = "") -> str:
     """One node. Structural grouping nodes must be visibly distinct from
     components — `scope_hierarchy` refuses to emit them as components because
@@ -156,8 +159,12 @@ def _component_line(c, structural: bool, enclosing_blueprint: str = "") -> str:
     if structural:
         # Rounded, no type, explicitly labelled as grouping.
         return f'{_nid(c.slug)}("{_label(c.name)}<br/><i>grouping only</i>")'
-    kind = _label(c.type or "unclassified")
-    conf = f"{c.confidence}%"
+    # No type means "boundary only": coupling proposes a boundary, never a
+    # SolutionComponentType (coupling.py leaves type=None by design), so this is
+    # not a failed classification. The percentage is per-node confidence, never
+    # a share of components — say so on every node.
+    kind = _label(c.type or UNTYPED_LABEL)
+    conf = f"confidence {c.confidence}%"
     marker = " ⚠" if c.confidence <= LOW_CONFIDENCE else ""
     # Blueprint membership is Collection membership, which is independent of
     # composition: a nested component may belong to a different blueprint from
@@ -220,7 +227,8 @@ def _resolve_endpoint(value: str, by_slug: dict[str, Component],
 
 
 def render(ir: IR, max_depth: int | None = projection.DEFAULT_PROJECTION_DEPTH,
-           component_verdicts: dict[str, str] | None = None) -> str:
+           component_verdicts: dict[str, str] | None = None,
+           edge_ports: frozenset[str] | set[str] | None = None) -> str:
     """The proposal as a Mermaid flowchart.
 
     `max_depth` is the projection level (`projection.project`), not a filter on
@@ -242,6 +250,12 @@ def render(ir: IR, max_depth: int | None = projection.DEFAULT_PROJECTION_DEPTH,
     been curator-reviewed — with a dashed border for anything not yet
     `accepted`/`retyped`, the same visual language `classDef structural`
     already uses for "this is not itself a finding".
+
+    `edge_ports` (DESIGN-DEPENDENCY-ROW-TWO-ENDS.md): the names of services the deployment artifacts RUN but
+    the repository does not build (referenced-only, per node admission). A wire to one of them is drawn to a
+    PORT on the blueprint's edge, labelled with the service's name, not to a box inside the blueprint and not
+    to the "outside this analysis" box a service nobody knows would get. The default (None) is every earlier
+    caller's output, unchanged.
     """
     projected = projection.project(ir.components, max_depth)
     structural = _structural_slugs(ir.components)
@@ -363,6 +377,8 @@ def render(ir: IR, max_depth: int | None = projection.DEFAULT_PROJECTION_DEPTH,
     # the weaker claim is drawn as the plain arrow and a two-way wire is
     # explicit.
     external: set[str] = set()
+    ports_on_edge: set[str] = set()
+    edge_ports = set(edge_ports or ())
     edges: list[str] = []
     for w in sorted(ir.wires, key=lambda w: (str(w.get("source", "")), str(w.get("target", "")))):
         src = _resolve_endpoint(str(w.get("source") or ""), by_slug, by_name)
@@ -370,15 +386,19 @@ def render(ir: IR, max_depth: int | None = projection.DEFAULT_PROJECTION_DEPTH,
         if src is None and dst is None:
             continue
         if src is None:
-            src = str(w.get("source") or "?"); external.add(src)
+            src = str(w.get("source") or "?")
+            (ports_on_edge if src in edge_ports else external).add(src)
         if dst is None:
-            dst = str(w.get("target") or "?"); external.add(dst)
+            dst = str(w.get("target") or "?")
+            (ports_on_edge if dst in edge_ports else external).add(dst)
         label = _label(str(w.get("label") or w.get("integrationStyle") or ""))
         arrow = "-->" if w.get("oneWay", True) else "<-->"
         edges.append(f'{_nid(src)} {arrow}|"{label}"| {_nid(dst)}' if label
                      else f"{_nid(src)} {arrow} {_nid(dst)}")
     for ext in sorted(external):
         lines.append(f'{_nid(ext)}["{_label(ext)}<br/><small>outside this analysis</small>"]')
+    for port in sorted(ports_on_edge):
+        lines.append(f'{_nid(port)}(["{_label(port)}<br/><small>port on the edge · referenced only</small>"])')
     lines.extend(edges)
 
     lines.append("classDef structural stroke-dasharray:4 3,fill:none;")

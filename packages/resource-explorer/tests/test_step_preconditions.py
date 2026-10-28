@@ -189,3 +189,186 @@ def test_a_skip_actually_executes_end_to_end_through_the_orchestrator(monkeypatc
         "a skipped step was recorded as an error"
     )
 
+
+# ── freshness window (BRIEF-KEYS-AND-ACTIVITY-CLOBBER.md §E) ────────────────
+#
+# `_needs_rows` (the checks above) treats any row, of any age, as satisfying a
+# precondition — right for "does anything exist", the wrong question for
+# "is this stored answer current enough to stand in for a fresh run of its
+# producer". `fresh_hit`/`Precondition.freshness` answer the second question,
+# used by the Prefect plan builder (`survey_execution_plan._add_produces_edges`)
+# to decide whether an out-of-definition producer's output can be trusted
+# without running it — design §19.5's principle applied on the Prefect path.
+
+
+def _iso_hours_ago(hours: float) -> str:
+    from datetime import datetime, timedelta, timezone
+    return (datetime.now(timezone.utc) - timedelta(hours=hours)).isoformat()
+
+
+def _seed_schema_inventory(registry, surveyed_at):
+    with registry._conn() as conn:
+        conn.execute(
+            "INSERT INTO database_tables (database_slug, surveyed_at, "
+            "schema_name, table_name) VALUES ('p', ?, 'public', 't')",
+            (surveyed_at,))
+
+
+def test_a_recent_row_is_a_fresh_hit(tmp_path):
+    reg = _real_registry(tmp_path)
+    _seed_schema_inventory(reg, _iso_hours_ago(0.33))  # 20 minutes ago
+    within, surveyed_at = sp.fresh_hit(reg, _P, "has_schema_inventory")
+    assert within is True
+    assert surveyed_at is not None
+
+
+def test_a_row_older_than_the_window_is_not_a_fresh_hit_but_still_reports_when(tmp_path):
+    reg = _real_registry(tmp_path)
+    _seed_schema_inventory(reg, _iso_hours_ago(48))
+    within, surveyed_at = sp.fresh_hit(reg, _P, "has_schema_inventory",
+                                       window_hours=24)
+    assert within is False
+    assert surveyed_at is not None, (
+        "a stale row still has a timestamp worth reporting as provenance, "
+        "even though it does not satisfy the window"
+    )
+
+
+def test_no_row_at_all_is_not_a_fresh_hit_and_reports_no_timestamp(tmp_path):
+    within, surveyed_at = sp.fresh_hit(_real_registry(tmp_path), _P,
+                                       "has_schema_inventory")
+    assert within is False
+    assert surveyed_at is None
+
+
+def test_an_unparseable_timestamp_is_treated_as_not_fresh_not_as_fresh(tmp_path):
+    """Can't tell must not be read as 'therefore fresh' -- the conservative
+    direction still asks a producer to run rather than trusting an unreadable
+    stamp."""
+    reg = _real_registry(tmp_path)
+    _seed_schema_inventory(reg, "not-a-timestamp")
+    within, surveyed_at = sp.fresh_hit(reg, _P, "has_schema_inventory")
+    assert within is False
+    assert surveyed_at == "not-a-timestamp"
+
+
+def test_an_unknown_precondition_name_is_not_a_fresh_hit(tmp_path):
+    within, surveyed_at = sp.fresh_hit(_real_registry(tmp_path), _P,
+                                       "no_such_precondition")
+    assert within is False
+    assert surveyed_at is None
+
+
+# ── Freshness must be satisfiable for EVERY precondition (2026-10-14) ───────
+#
+# `freshness()` used to ask every table for `MAX(surveyed_at)`. Only
+# `database_tables` has that column; `project_dependencies` and
+# `project_file_inventory` have `indexed_at` and `project_code_symbols` has no
+# timestamp. The query raised, was swallowed at debug level, and four of the
+# five preconditions could never be fresh -- so the Prefect planner refused
+# `dataops_testgen`'s Assessment although `repo_manifest_parse` had run and
+# stored 126 versioned dependencies. These run against a REAL registry schema:
+# a hand-written fake that answers any query is how this stayed hidden.
+
+_ROW_SQL = {
+    "project_dependencies": (
+        "INSERT INTO project_dependencies (project_slug, dep_name, dep_version, "
+        "indexed_at) VALUES (?, 'requests', '2.31.0', '2026-10-14T21:18:40')"),
+    "project_file_inventory": (
+        "INSERT INTO project_file_inventory (project_slug, file_path, indexed_at) "
+        "VALUES (?, 'a.py', '2026-10-14T21:18:40')"),
+    "project_code_symbols": (
+        "INSERT INTO project_code_symbols (project_slug, file_path, language, "
+        "kind, name, qualified_name) VALUES (?, 'a.py', 'python', 'function', "
+        "'f', 'a.f')"),
+}
+
+
+def _real_registry(tmp_path):
+    from resource_explorer.registry import DatabaseEntity, Project, ProjectRegistry
+
+    registry = ProjectRegistry(db_path=str(tmp_path / "t.db"))
+    registry.add(Project(slug="p", display_name="p",
+                         github_url="https://github.com/x/p"))
+    # database_tables rows are keyed by a registered database's slug.
+    registry.register_database(DatabaseEntity(
+        slug="p", display_name="p", db_type="postgresql", host="localhost",
+        port=5432, database_name="p"))
+    return registry
+
+
+def _store_rows_and_producer_run(registry, entry, minutes_ago=10):
+    from datetime import datetime, timedelta, timezone
+
+    table = entry.table
+    with registry._conn() as conn:
+        if table == "database_tables":
+            conn.execute(
+                "INSERT INTO database_tables (database_slug, surveyed_at, "
+                "schema_name, table_name) VALUES ('p', ?, 'public', 't')",
+                (datetime.now(timezone.utc).isoformat(),))
+        else:
+            conn.execute(_ROW_SQL[table], ("p",))
+    when = (datetime.now(timezone.utc) - timedelta(minutes=minutes_ago)).isoformat()
+    registry.record_step_run("p", entry.produced_by(), when)
+
+
+@pytest.mark.parametrize("name", sorted(sp.PRECONDITIONS))
+def test_every_precondition_can_be_fresh_after_its_producer_ran(name, tmp_path):
+    registry = _real_registry(tmp_path)
+    entry = sp.PRECONDITIONS[name]
+    assert entry.produced_by(), f"{name} has no declared producer"
+    _store_rows_and_producer_run(registry, entry)
+    fresh, surveyed_at = sp.fresh_hit(registry, _P, name)
+    assert fresh is True, f"{name} can never be satisfied by stored data"
+    assert surveyed_at
+
+
+@pytest.mark.parametrize("name", sorted(sp.PRECONDITIONS))
+def test_rows_without_a_producer_run_are_not_fresh(name, tmp_path):
+    """Fresh means the producer ran AND the rows exist. Rows alone (hand
+    loaded, or left by something else) are not provenance."""
+    registry = _real_registry(tmp_path)
+    entry = sp.PRECONDITIONS[name]
+    if entry.table == "database_tables":
+        pytest.skip("database_tables carries its own timestamp column")
+    with registry._conn() as conn:
+        conn.execute(_ROW_SQL[entry.table], ("p",))
+    assert sp.fresh_hit(registry, _P, name)[0] is False
+
+
+def test_a_producer_run_with_no_rows_is_not_fresh(tmp_path):
+    registry = _real_registry(tmp_path)
+    registry.record_step_run("p", "repo_manifest_parse", _iso_hours_ago(0.1))
+    assert sp.fresh_hit(registry, _P, "has_versioned_dependencies")[0] is False
+
+
+def test_unversioned_rows_do_not_satisfy_versioned_dependencies(tmp_path):
+    """Gradle/BOM: coordinates recovered, no versions. The producer ran, rows
+    exist, and the precondition is still unmet."""
+    registry = _real_registry(tmp_path)
+    with registry._conn() as conn:
+        conn.execute(
+            "INSERT INTO project_dependencies (project_slug, dep_name, dep_version, "
+            "indexed_at) VALUES ('p', 'x', '', '2026-10-14T21:18:40')")
+    registry.record_step_run("p", "repo_manifest_parse", _iso_hours_ago(0.1))
+    assert sp.fresh_hit(registry, _P, "has_dependencies")[0] is True
+    assert sp.fresh_hit(registry, _P, "has_versioned_dependencies")[0] is False
+
+
+def test_a_producer_run_outside_the_window_is_not_fresh(tmp_path):
+    registry = _real_registry(tmp_path)
+    entry = sp.PRECONDITIONS["has_dependencies"]
+    _store_rows_and_producer_run(registry, entry, minutes_ago=60 * 48)
+    fresh, surveyed_at = sp.fresh_hit(registry, _P, "has_dependencies")
+    assert fresh is False and surveyed_at
+
+
+def test_an_unreadable_timestamp_source_is_logged_at_warning(caplog):
+    import logging
+
+    caplog.set_level(logging.DEBUG, logger=sp.log.name)
+    fresh, _ = sp.fresh_hit(_Reg({}, broken=True), _P, "has_dependencies")
+    assert fresh is False
+    assert [r for r in caplog.records if r.levelno >= logging.WARNING], (
+        "freshness could not read its source and said nothing above debug")

@@ -58,6 +58,12 @@ class AnnotationType(str, Enum):
     #: present, and no probe has sent one), so its payload travels as
     #: `additionalProperties` — see `annotation_props.py`.
     FINGERPRINT = "FingerprintAnnotation"
+    #: Added 2026-10-07 (file types as annotations ruling). Egeria's real
+    #: `ResourceProfileAnnotationProperties` / `ResourceProfileLogAnnotationProperties`,
+    #: the types its own folder survey writes ("Profile File Extensions",
+    #: "Profile File Types", "Profile Asset Types", "Profile File Names to External Log").
+    RESOURCE_PROFILE = "ResourceProfileAnnotation"
+    RESOURCE_PROFILE_LOG = "ResourceProfileLogAnnotation"
 
 
 @dataclass
@@ -141,7 +147,7 @@ class Annotation:
     #: round-trips cleanly on both an element and an annotation — replacing
     #: the earlier plan to carry proposals as an RFA convention or to ask
     #: Egeria for new `candidate…Specification` fields. Verified live the same
-    #: day (probes 4/5, `docs/design-notes/PROBES-2026-09-21.md`):
+    #: day (probes 4/5, `PROBES-2026-09-21.md`):
     #: `contentStatus: DRAFT` inside `properties` round-trips as `DRAFT` on
     #: read-back, while the element's `ElementStatus` stays `ACTIVE`
     #: throughout — the two are independent.
@@ -174,10 +180,37 @@ class ResourceMeasureAnnotation(Annotation):
 
 
 @dataclass
+class ResourceProfileAnnotation(Annotation):
+    """A profile of a resource: a count per value (per extension, per file type,
+    per asset type). Egeria's `ResourceProfileAnnotationProperties`; the counts
+    travel in its `valueCount` map. The annotation NAME (Egeria's own, verbatim:
+    "Profile File Extensions" ...) is carried by `annotation_type_name`."""
+    annotation_type: AnnotationType = field(default=AnnotationType.RESOURCE_PROFILE, init=False)
+    value_count: dict[str, int] = field(default_factory=dict)
+
+
+@dataclass
+class ResourceProfileLogAnnotation(Annotation):
+    """A profile too large to hold in the report, logged to a file the annotation
+    points at ("Profile File Names": per-name counts, a CSV). Published only when
+    a person asks for it."""
+    annotation_type: AnnotationType = field(default=AnnotationType.RESOURCE_PROFILE_LOG, init=False)
+    log_file: str = ""
+
+
+@dataclass
 class ClassificationAnnotation(Annotation):
     """Category or label assignments (language, project type, doc presence, etc.)."""
     annotation_type: AnnotationType = field(default=AnnotationType.CLASSIFICATION, init=False)
     candidate_classifications: list[str] = field(default_factory=list)
+    #: Published in Egeria 6.2's own fields for this type (ClassificationAnnotationProperties: `classificationName`,
+    #: String, and `properties`, map<string,string>; typedef OpenMetadataTypesArchive1_2 CLASSIFICATION_NAME,
+    #: PROPERTIES), by annotation_props.classification_fields: `classificationName` is `classification_name`, else the
+    #: first candidate; `properties` holds `classification_properties` and, when more than one classification is
+    #: proposed, the whole ordered list (name first) as a JSON list under "candidateClassifications". Egeria has no
+    #: top-level `candidateClassifications` on this type and its bean drops one (found 2026-10-15).
+    classification_name: str = ""
+    classification_properties: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
@@ -262,8 +295,15 @@ class DataGrainAnnotation(Annotation):
     #: WHAT the statement was derived from — "primary_key", "unique_column",
     #: "temporal_key" — so a reader can weigh it without re-deriving it.
     granularity_basis: str = ""
-    #: The temporal interval, when the grain has one (daily, monthly).
-    interval: str = ""
+    #: Egeria's own `interval`: a Java `long`, "the granularity of the data expressed in
+    #: the units of the grain" (OpenMetadataProperty.INTERVAL, DataType.LONG, example "60").
+    #: None = not known, and then nothing is sent. Only a whole number may go here: a word
+    #: was refused live (400, Jackson "Cannot deserialize value of type `long`", 2026-10-14).
+    interval: int | None = None
+    #: RE's name for the period ("per-date", "daily", "monthly", ...), which is a word, not
+    #: Egeria's count; published as additionalProperties.intervalName (a named departure:
+    #: Egeria has no string field for it).
+    interval_name: str = ""
     candidate_data_grain_guids: list[str] = field(default_factory=list)
 
 
@@ -301,6 +341,10 @@ class SurveyResult:
     project_display_name: str
     github_url: str
     surveyed_at: datetime = field(default_factory=datetime.utcnow)
+    #: The commit of the zipball/clone this run read (artifacts slice 1); None when it read no code.
+    survey_commit_sha: str | None = None
+    #: step_key -> that SHA, for each step that COMPLETED having read it (step_cost_observer.completed).
+    commit_by_step: dict = field(default_factory=dict)
     annotations: list[Annotation] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)   # non-fatal issues during survey
     #: The re_analysis_step keys this run actually executed, set by
@@ -340,6 +384,15 @@ class SurveyResult:
     # failure into several false ones. `errors` stays the flat list every
     # existing caller reads.
     step_errors: dict[str, str] = field(default_factory=dict)
+    #: {step_key: [annotations]} for every step that RAN to completion in this run (including a step
+    #: that found nothing: an empty list, which is "ran, nothing found" and not "never ran"). The
+    #: orchestrator keeps these as the repository's latest survey (surveyors/survey_snapshot.py,
+    #: brief section 1) so a publish can send the survey a person decided on without running one.
+    step_annotations: dict[str, list] = field(default_factory=dict)
+    #: Why the survey could not be kept for later publishing, or "" (brief section 1). A survey that ran
+    #: but could not be kept is reported, not hidden: the next publish would otherwise say there is no
+    #: survey, with no word of why.
+    snapshot_error: str = ""
 
     def add(self, annotation: Annotation) -> None:
         self.annotations.append(annotation)
@@ -361,10 +414,28 @@ ANNOTATION_TYPES_REGISTRY = [
         "python_class": "ResourceMeasureAnnotation",
     },
     {
+        "type": "ResourceProfileAnnotation",
+        "display_name": "Resource Profile",
+        "description": "Represents a count per value over a resource (e.g. files per extension, per file type, assets per asset type), as Egeria's own folder survey writes it.",
+        "properties": ["value_count (dict[str, int])"],
+        "egeria_type": "ResourceProfileAnnotationProperties",
+        "python_class": "ResourceProfileAnnotation",
+    },
+    {
+        "type": "ResourceProfileLogAnnotation",
+        "display_name": "Resource Profile Log",
+        "description": "Represents a profile too large to hold in the report (e.g. a count per file name), logged to a CSV the annotation points at. Published only on request.",
+        "properties": ["log_file (str)"],
+        "egeria_type": "ResourceProfileLogAnnotationProperties",
+        "python_class": "ResourceProfileLogAnnotation",
+    },
+    {
         "type": "ClassificationAnnotation",
         "display_name": "Classification",
         "description": "Represents categorization or labels assigned to a resource (e.g. language name, framework/technology detected, project type, file format, etc.).",
-        "properties": ["candidate_classifications (list[str])"],
+        "properties": ["classificationName (str: the proposed classification, the first candidate)",
+                       "properties (map<string,string>; candidateClassifications = JSON list of every candidate, "
+                       "name first, when more than one)"],
         "egeria_type": "ClassificationAnnotationProperties",
         "python_class": "ClassificationAnnotation",
     },
@@ -422,7 +493,7 @@ ANNOTATION_TYPES_REGISTRY = [
         "description": "Represents the granularity of a data collection — what one row means (e.g. one row per customer, one row per account per day). Produced as a PROPOSAL (contentStatus DRAFT) where no DataGrain element exists yet.",
         "properties": [
             "grain_statement (str)", "granularity_basis (str)",
-            "interval (str)", "candidate_data_grain_guids (list[str])",
+            "interval (int | None)", "interval_name (str)", "candidate_data_grain_guids (list[str])",
         ],
         "egeria_type": "DataGrainAnnotationProperties",
         "python_class": "DataGrainAnnotation",
@@ -439,6 +510,18 @@ ANNOTATION_TYPES_REGISTRY = [
 
 
 _MAX_GROUP_ITEMS = 25
+
+
+def step_of(annotation) -> str:
+    """The step an annotation is attributed to: RE's `producingStep` first (additionalProperties),
+    then `analysis_step`, so annotations written before producingStep existed keep working.
+    Accepts an Annotation or the flat dict a reader returns."""
+    if isinstance(annotation, dict):
+        extra, step = annotation.get("additional_properties"), annotation.get("analysis_step")
+    else:
+        extra, step = getattr(annotation, "additional_properties", None), getattr(annotation, "analysis_step", "")
+    produced = extra.get("producingStep") if isinstance(extra, dict) else ""
+    return (produced or step or "")
 
 
 def summarise_annotations(annotations, limit: int = 20) -> list[dict]:
@@ -477,7 +560,7 @@ def summarise_annotations(annotations, limit: int = 20) -> list[dict]:
         value = getattr(ann_type, "value", None)
         if not value:
             continue
-        step = getattr(a, "analysis_step", None) or value
+        step = step_of(a) or value
         group = by_step[(step, value)]
         group["count"] += 1
         # Every member kept, not just the first (2026-09-02).
@@ -487,7 +570,7 @@ def summarise_annotations(annotations, limit: int = 20) -> list[dict]:
         # ACTIONABLE list, and a request for action that was summarised away
         # cannot be acted on. Measured on `workshops`: SecurityHygieneCheck
         # emits three RequestForActions — no SECURITY.md, no CI config, no
-        # licence — which share a step and a type, so the group carried
+        # license — which share a step and a type, so the group carried
         # count=3 and the text of the first. The drawer rendered
         # "SecurityHygieneCheck 3 / No SECURITY.md found", which is exactly
         # Dan's original report: "they all seem to be SecurityHygieneCheck 3
@@ -536,16 +619,40 @@ def disambiguate_shared_check_names(annotations) -> int:
     for ann in annotations:
         check = getattr(ann, "check_name", "") or ""
         if check and not (getattr(ann, "item_key", "") or ""):
-            steps_by_check.setdefault(check, set()).add(getattr(ann, "analysis_step", "") or "")
+            steps_by_check.setdefault(check, set()).add(step_of(ann))
     shared = {c for c, steps in steps_by_check.items() if len(steps) > 1}
     stamped = 0
     for ann in annotations:
         check = getattr(ann, "check_name", "") or ""
         if check in shared and not (getattr(ann, "item_key", "") or "") and hasattr(ann, "item_key"):
-            step = getattr(ann, "analysis_step", "") or ""
+            step = step_of(ann)
             if step:
                 ann.item_key = step
                 stamped += 1
+    # Second pass: the executor stamps every keyless annotation with the
+    # Survey Definition's qualified name (survey_definition_executor
+    # `_stamp_definition_provenance`), which runs BEFORE this and so made the
+    # pass above inert on that path: scan steps' `scan_summary` all arrived
+    # carrying the same definition key (found 2026-10-08, egeria_workspaces_git
+    # Full Survey). Where one (check_name, item_key) is shared by annotations
+    # from DIFFERENT steps, qualify the key with the step. Only that ambiguous
+    # case changes: a key held by a single step is left exactly as it was, and
+    # two annotations from the SAME step with the same key are left alone so
+    # assert_unique_qualified_names still refuses them.
+    steps_by_key: dict[tuple[str, str], set[str]] = {}
+    for ann in annotations:
+        check = getattr(ann, "check_name", "") or ""
+        key = getattr(ann, "item_key", "") or ""
+        if check and key:
+            steps_by_key.setdefault((check, key), set()).add(step_of(ann))
+    ambiguous = {k for k, steps in steps_by_key.items() if len(steps) > 1}
+    for ann in annotations:
+        check = getattr(ann, "check_name", "") or ""
+        key = getattr(ann, "item_key", "") or ""
+        step = step_of(ann)
+        if (check, key) in ambiguous and step and hasattr(ann, "item_key"):
+            ann.item_key = f"{key}::{step}"
+            stamped += 1
     return stamped
 
 

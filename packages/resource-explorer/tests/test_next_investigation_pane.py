@@ -261,6 +261,10 @@ class TestEgeriaFlow:
             "regression: mapping members_unlinkable straight through esc() "
             "renders '[object Object]' for each entry"
         )
+        if "members_unlinkable.map(memberLine)" in unlinkable_line:
+            # Brief Z3: one helper renders a member line (with the not-permitted cue); it reads the fields.
+            helper = src[src.index("const memberLine"):]
+            unlinkable_line = helper[:helper.index("};")]
         assert "entity_slug" in unlinkable_line
         assert "reason" in unlinkable_line
 
@@ -301,7 +305,7 @@ class TestLifecycle:
         src = _inv_src()
         fn = src[src.index("'[data-act=\"inv-close\"]'"):]
         fn = fn[:fn.index("'[data-act=\"inv-suspend\"]'")]
-        assert "window.confirm" in fn
+        assert "inPageConfirm" in fn
         assert "Nothing is deleted" in fn
 
     def test_suspend_and_reopen_do_not_require_confirmation(self):
@@ -310,7 +314,7 @@ class TestLifecycle:
         src = _inv_src()
         suspend_fn = src[src.index("'[data-act=\"inv-suspend\"]'"):]
         suspend_fn = suspend_fn[:suspend_fn.index("'[data-act=\"inv-reopen\"]'")]
-        assert "window.confirm" not in suspend_fn
+        assert "inPageConfirm" not in suspend_fn
 
 
 class TestOpenInvestigationLinkFromResourceHeader:
@@ -339,8 +343,11 @@ class TestVocabularyIsServedNotHardcoded:
     server-served valid-value-sets, not a second hardcoded RE vocabulary."""
 
     def test_purposes_and_classifications_come_from_the_api(self):
+        """Purposes load through the shared purposes.js (one fetch of
+        /api/investigations/purposes for every picker, Egeria's list behind it)."""
         src = _inv_src()
-        assert "getInvestigationPurposes" in src
+        purposes = (NEXT / "purposes.js").read_text(encoding="utf-8")
+        assert "loadPurposes" in src and "from '/static/next/purposes.js'" in src
+        assert "getInvestigationPurposes" in purposes
         assert "getInvestigationClassifications" in src
-        assert "_purposes = null;" in src
         assert "_classifications = null;" in src

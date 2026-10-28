@@ -1,5 +1,7 @@
 # Resource Explorer — the A2A surface
 
+**Status:** live. The A2A server surface (one service, routed by path).
+
 **The `a2a` process role** (`docs/runtime-architecture-plan.md` §2). One service,
 one port, every agent routed by path, a bearer token required on every call.
 
@@ -79,23 +81,36 @@ The cards carry no project data.
 ### What the caller's identity reaches
 
 The middleware puts a `CallerIdentity` in a ContextVar
-(`resource_explorer.a2a_auth.current_caller`) for the life of the request, which
-every task and thread the request spawns inherits — the same shape the Portal
-uses. Agent code builds a per-caller pyegeria client with:
+(`resource_explorer.a2a_auth.current_caller`) for the life of the request — the
+same ContextVar the web login's `_identity_middleware` sets from RE's session
+JWT, so both doors reach identical code. Asyncio tasks, `asyncio.to_thread` and
+RE's shared pool (`concurrency.run_sync` / `submit`, which copy the submitter's
+context) carry it. A bare `threading.Thread` does **not**: copy the context
+explicitly (`ctx = contextvars.copy_context(); Thread(target=ctx.run, args=(fn,))`)
+or hand the resolved identity in. A read that finds no caller is not safe: the
+registry reads `''` as the service identity, which sees every private
+investigation.
+Agent code gets a pyegeria client for the caller from RE's one factory:
 
 ```python
-from resource_explorer.a2a_auth import apply_caller_token
+from pyegeria import EgeriaTech
 
-client = EgeriaTech(view_server=..., platform_url=..., user_id=...)
-apply_caller_token(client)     # the caller's token, or the client's own creds
+from resource_explorer.egeria_clients import Caller, egeria_client
+
+client = egeria_client(Caller(), purpose="what this read is for").of(EgeriaTech)
+# The caller's Egeria token is set on the client. With nobody signed in Caller() raises
+# NoCallerIdentity (401); it never falls back to the service account.
 ```
 
-**Scope note, honestly stated:** the role makes the caller's token *available*.
-RE's existing pyegeria construction sites still build service-account clients —
-converting them is RE's trellis-auth adoption (plan §4, "Isolation matrix"), a
-larger change than this role and not attempted here. So today an A2A call is
-authenticated as the caller, and any Egeria write it causes is still attributed
-to `erinoverview`.
+**Who Egeria sees (owner's decision, 2026-10-14, option 2 of
+`docs/design-notes/DESIGN-MCP-SERVER-AND-A2A-GAPS.md`):** everything
+synchronous that serves a signed-in request runs as the caller, so a read
+returns only what the caller's zones allow. Queued writes (the outbox, the
+scheduler, heals, bootstrap) stay on RE's service account with the requester
+recorded; the engine host stays a daemon. The read side is inventoried in
+`docs/design-notes/evidence/IDENTITY-INVENTORY-2026-10-14.md`; in-request
+writes are converted in a following change. The A2A agents themselves make no
+Egeria call today.
 
 ---
 

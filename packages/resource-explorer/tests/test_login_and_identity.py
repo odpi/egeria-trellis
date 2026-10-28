@@ -262,10 +262,10 @@ class TestAuthRoutes:
 
         portal_token = jwt.encode(
             {
-                "sub": "erinoverview",
+                "sub": "garygeeke",
                 "role": "curator",
-                "display_name": "Erin Overview",
-                "egeria_token": _egeria_token("erinoverview"),
+                "display_name": "Gary Geeke",
+                "egeria_token": _egeria_token("garygeeke"),
                 "exp": 9999999999,
             },
             "test-portal-secret", algorithm="HS256",
@@ -273,9 +273,9 @@ class TestAuthRoutes:
         r = client.post("/api/auth/portal", json={"portal_token": portal_token})
         assert r.status_code == 200
         claims = jwt.decode(r.json()["access_token"], SECRET, algorithms=["HS256"])
-        assert claims["user_id"] == "erinoverview"
+        assert claims["user_id"] == "garygeeke"
         assert claims["role"] == "curator"
-        assert claims["egeria_token"] == _egeria_token("erinoverview")
+        assert claims["egeria_token"] == _egeria_token("garygeeke")
 
     def test_portal_rejects_the_retired_password_contract_by_name(self, client):
         portal_token = jwt.encode(
@@ -424,7 +424,8 @@ class _FakeClient:
 class TestPerRequestClient:
     def test_a_signed_in_caller_reuses_their_own_token(self):
         from resource_explorer.a2a_auth import CallerIdentity, current_caller
-        from resource_explorer.egeria_identity import apply_identity, caller_credentials
+        from resource_explorer.egeria_clients import egeria_client
+        from resource_explorer.egeria_identity import caller_credentials
 
         reset = current_caller.set(
             CallerIdentity(user_id="dan", egeria_token="dan-token", auth_source="app-jwt")
@@ -432,8 +433,7 @@ class TestPerRequestClient:
         try:
             identity = caller_credentials()
             assert identity.user_id == "dan"
-            client = _FakeClient()
-            apply_identity(client, identity)
+            client = egeria_client(identity, purpose="test").of(_FakeClient)
             # The whole change in one assertion: Egeria sees Dan's credential,
             # so Egeria's own provenance records Dan.
             assert client.bearer == "dan-token"
@@ -442,31 +442,31 @@ class TestPerRequestClient:
             current_caller.reset(reset)
 
     def test_the_worker_role_still_mints_its_own_service_account_token(self):
-        from resource_explorer.egeria_identity import apply_identity, service_credentials
+        from resource_explorer.egeria_clients import Daemon, DaemonReason, egeria_client
 
-        client = _FakeClient()
-        apply_identity(client, service_credentials())
+        client = egeria_client(Daemon(DaemonReason.SCHEDULER), purpose="test").of(_FakeClient)
         assert client.bearer is None
         assert client.minted is True
 
-    def test_a_required_call_refuses_to_fall_back_to_the_service_account(self):
+    def test_no_caller_refuses_rather_than_falling_back_to_the_service_account(self):
+        """Brief I: nothing falls back. With no caller and no declared daemon job, it is a 401."""
+        from resource_explorer.egeria_clients import NoCallerIdentity
         from resource_explorer.egeria_identity import caller_credentials
 
-        with pytest.raises(PermissionError) as exc:
-            caller_credentials(required=True)
-        assert "resource-explorer login" in str(exc.value)
+        with pytest.raises(NoCallerIdentity) as exc:
+            caller_credentials()
+        assert "sign in" in str(exc.value)
 
     def test_a_queued_run_owns_as_the_requester_but_authenticates_as_the_worker(self):
         """The documented interim shape. A token does not survive the queue
-        (one-hour lifetime, dies on platform restart), so the worker
+        (one-hour lifetime, dies on platform restart), so the daemon
         authenticates as itself and `Ownership` carries the requester."""
-        from resource_explorer.egeria_identity import apply_identity, identity_for_user
+        from resource_explorer.egeria_clients import Daemon, DaemonReason, egeria_client
 
-        identity = identity_for_user("dan")
+        identity = Daemon(DaemonReason.RUN_QUEUE, requested_by="dan")
         assert identity.user_id == "dan"          # what Ownership will say
         assert identity.is_person is False        # how the call authenticates
-        client = _FakeClient()
-        apply_identity(client, identity)
+        client = egeria_client(identity, purpose="test").of(_FakeClient)
         assert client.minted is True
 
     def test_the_publisher_builds_its_clients_from_the_caller(self, monkeypatch):
@@ -550,9 +550,10 @@ class TestOwnershipAndZones:
             "zoneMembership": ["resource-explorer-draft"],
         }
 
-    def test_stamp_published_sets_both_on_one_client(self):
+    def test_stamp_published_sets_both_on_one_client(self, monkeypatch):
         from resource_explorer.egeria_identity import stamp_published
 
+        monkeypatch.setenv("EXPLORER_DRAFT_ZONE", "resource-explorer-draft")   # the configured case
         spy = _ClassificationSpy()
         out = stamp_published("guid-1", "dan", client=spy)
         assert out["ownership"] is True and out["zone_membership"] is True
@@ -588,28 +589,43 @@ class TestOwnershipAndZones:
 
         assert [g for g, _ in spy.ownership] == ["asset-guid", "report-guid"]
         assert all(b["properties"]["owner"] == "dan" for _, b in spy.ownership)
-        assert all(
-            b["properties"]["zoneMembership"] == ["resource-explorer-draft"]
-            for _, b in spy.zones
+        # Default (2026-10-08): no draft zone, so NO ZoneMembership call at all.
+        assert spy.zones == []
+
+    def test_publish_stamps_a_configured_draft_zone(self, monkeypatch):
+        from resource_explorer.egeria_identity import EgeriaIdentity
+        from resource_explorer.surveyors.egeria_publisher import EgeriaPublisher
+
+        monkeypatch.setenv("EXPLORER_DRAFT_ZONE", "resource-explorer-draft")
+        spy = _ClassificationSpy()
+        publisher = EgeriaPublisher(
+            platform_url="https://localhost:9443",
+            identity=EgeriaIdentity(user_id="dan", token="dan-token"),
         )
+        monkeypatch.setattr(
+            "resource_explorer.egeria_identity.classification_client", lambda i=None: spy,
+        )
+        publisher._stamp_governance("asset-guid", "report-guid")
+        assert [b["properties"]["zoneMembership"] for _, b in spy.zones] == [
+            ["resource-explorer-draft"]] * 2
 
     def test_the_draft_zone_and_publish_zones_are_configurable(self, monkeypatch):
-        from resource_explorer.egeria_identity import draft_zone, publish_zones
+        from resource_explorer.egeria_identity import configured_publish_zones, draft_zone
 
-        assert draft_zone() == "resource-explorer-draft"
-        # The default is what the quickstart actually configures, not a
-        # placeholder from a docstring example.
+        monkeypatch.delenv("EXPLORER_DRAFT_ZONE", raising=False)
+        assert draft_zone() is None                    # no default draft zone (2026-10-08)
+        # Configured-only (owner, 2026-10-07): with nothing configured there is NO publish zone.
         monkeypatch.delenv("EXPLORER_PUBLISH_ZONES", raising=False)
         monkeypatch.setattr(
             "resource_explorer.config.get_config",
             lambda: type("c", (), {"egeria": type("e", (), {"default_catalog_zones": []})()})(),
         )
-        assert publish_zones() == ["egeria-runtime"]
+        assert configured_publish_zones() == []
 
         monkeypatch.setenv("EXPLORER_DRAFT_ZONE", "re-draft-2")
         monkeypatch.setenv("EXPLORER_PUBLISH_ZONES", "alpha, beta")
         assert draft_zone() == "re-draft-2"
-        assert publish_zones() == ["alpha", "beta"]
+        assert configured_publish_zones() == ["alpha", "beta"]
 
 
 # ---------------------------------------------------------------------------
@@ -617,6 +633,9 @@ class TestOwnershipAndZones:
 # ---------------------------------------------------------------------------
 
 class TestCurateAuthorization:
+    """Brief Z (2026-10-10): the old "owner = last decided_by" gate is gone; access follows Egeria's zones.
+    The full matrix is tests/test_curation_access_by_zone.py; these pin the entry points' shape."""
+
     @staticmethod
     def _as(user_id, role="user"):
         from resource_explorer.a2a_auth import CallerIdentity, current_caller
@@ -626,64 +645,37 @@ class TestCurateAuthorization:
                            role=role)
         )
 
-    def test_the_owner_may_curate_with_no_further_grant(self):
+    @pytest.fixture()
+    def reg(self, tmp_path, monkeypatch):
+        monkeypatch.delenv("EXPLORER_DRAFT_ZONE", raising=False)
+        monkeypatch.setattr("resource_explorer.egeria_identity.configured_publish_zones", lambda: [])
+        r = ProjectRegistry(db_path=str(tmp_path / "auth.db"))
+        r.add(Project(slug="p", display_name="p", github_url="https://github.com/o/p"))
+        return r
+
+    def test_someone_elses_decision_no_longer_locks_an_element(self, reg):
         from resource_explorer.a2a_auth import current_caller
         from resource_explorer.workflows.curate import may_curate
 
-        reset = self._as("dan")
-        try:
-            assert may_curate("dan") == (True, "")
-        finally:
-            current_caller.reset(reset)
-
-    def test_a_curator_role_may_curate_someone_elses_element(self):
-        from resource_explorer.a2a_auth import current_caller
-        from resource_explorer.workflows.curate import may_curate
-
-        for role in ("curator", "admin", "CURATOR"):
-            reset = self._as("erin", role=role)
-            try:
-                assert may_curate("dan")[0] is True, role
-            finally:
-                current_caller.reset(reset)
-
-    def test_a_stranger_may_not(self):
-        from resource_explorer.a2a_auth import current_caller
-        from resource_explorer.workflows.curate import may_curate
-
+        reg.record_component_verdict("repo", "p", "src/a", "accepted", "", "", decided_by="dan")
         reset = self._as("mallory")
         try:
-            allowed, why = may_curate("dan")
-            assert allowed is False
-            assert "'dan'" in why and "mallory" in why
+            assert may_curate(reg, "repo", "p", "src/a") == (True, "")
         finally:
             current_caller.reset(reset)
 
-    def test_nobody_signed_in_may_not(self):
+    def test_nobody_signed_in_may_not(self, reg):
         from resource_explorer.workflows.curate import may_curate
 
-        allowed, why = may_curate("dan")
+        allowed, why = may_curate(reg, "repo", "p", "src/a")
         assert allowed is False
-        assert "Authentication required" in why
+        assert "sign in" in why
 
-    def test_an_unowned_legacy_element_stays_curatable_by_any_signed_in_user(self):
-        """Every verdict recorded before this change has no owner. Locking all
-        of them behind a role nobody has been appointed to would make the
-        existing corpus uncurateable overnight."""
-        from resource_explorer.a2a_auth import current_caller
-        from resource_explorer.workflows.curate import may_curate
-
-        reset = self._as("anyone")
-        try:
-            assert may_curate("") == (True, "")
-        finally:
-            current_caller.reset(reset)
-
-    def test_require_curation_rights_raises_the_type_routes_turn_into_403(self):
+    def test_require_curation_rights_raises_the_type_routes_turn_into_403(self, reg):
         from resource_explorer.workflows.curate import CurationDenied, require_curation_rights
 
         with pytest.raises(CurationDenied):
-            require_curation_rights("dan")
+            require_curation_rights(reg, "repo", "p", "src/a")
 
 
 class TestCurateRoutes:
@@ -698,10 +690,7 @@ class TestCurateRoutes:
         import resource_explorer.web.routes.curate as curate_routes
         monkeypatch.setattr(curate_routes, "_registry",
                             lambda: ProjectRegistry(database_url=db_url))
-        # Materialization is a live Egeria write; this test is about the gate
-        # in front of it, so it is stubbed out entirely.
-        monkeypatch.setattr(curate_routes, "_materialize_if_accepted",
-                            lambda *a, **k: None)
+        # The verdict routes are decisions only (Brief A): no Egeria write to stub here.
 
         app = _app_under(monkeypatch, EXPLORER_REQUIRE_LOGIN="true")
         return TestClient(app), ProjectRegistry(database_url=db_url)
@@ -714,7 +703,10 @@ class TestCurateRoutes:
         assert r.status_code == 200
         assert r.json()["decided_by"] == "dan"
 
-    def test_a_stranger_gets_403_on_someone_elses_element(self, client):
+    def test_another_person_may_re_decide_when_zones_are_not_in_use(self, client, monkeypatch):
+        """Brief Z: `decided_by` is attribution, not ownership. With no zone anywhere, it is open."""
+        monkeypatch.delenv("EXPLORER_DRAFT_ZONE", raising=False)
+        monkeypatch.setattr("resource_explorer.egeria_identity.configured_publish_zones", lambda: [])
         api, reg = client
         api.post("/api/curate/component-verdicts/repo/p",
                  json={"scope_locator": "src/a", "verdict": "accepted"},
@@ -722,8 +714,8 @@ class TestCurateRoutes:
         r = api.post("/api/curate/component-verdicts/repo/p",
                      json={"scope_locator": "src/a", "verdict": "rejected"},
                      headers={"Authorization": f"Bearer {_app_token('mallory')}"})
-        assert r.status_code == 403
-        assert "owned by 'dan'" in r.json()["detail"]
+        assert r.status_code == 200
+        assert r.json()["decided_by"] == "mallory"
 
     def test_a_curator_role_gets_through(self, client):
         api, reg = client
@@ -735,42 +727,26 @@ class TestCurateRoutes:
                      headers={"Authorization": f"Bearer {_app_token('erin', role='curator')}"})
         assert r.status_code == 200
 
-    def test_accept_promotes_the_materialized_element_out_of_the_draft_zone(
-        self, client, monkeypatch,
-    ):
+    def test_accept_does_not_promote_anything_publish_does(self, client, monkeypatch):
+        """Accept is a decision only (Brief A follow-up 1): no materialization and no zone change from the
+        verdict route. The promotion now happens in Publish (architecture_publish._publish_component)."""
         api, reg = client
-        import resource_explorer.web.routes.curate as curate_routes
-        monkeypatch.setattr(curate_routes, "_materialize_if_accepted",
-                            lambda *a, **k: {"status": "materialized", "guid": "comp-guid"})
+        monkeypatch.setenv("EXPLORER_DRAFT_ZONE", "resource-explorer-draft")
+        # Zones are configured, so the verdict asks Egeria about them (Brief Z): neither zone has a control.
+        monkeypatch.setattr("resource_explorer.zone_access._platform", lambda: ("plat", "g"))
+        monkeypatch.setattr("resource_explorer.zone_access._security_officer",
+                            lambda: type("SO", (), {"get_security_access_control": lambda self, *a, **k: None,
+                                                    "get_user_account": lambda self, *a, **k: {
+                                                        "userAccountStatus": "AVAILABLE"}})())
         spy = _ClassificationSpy()
-        monkeypatch.setattr(
-            "resource_explorer.egeria_identity.classification_client", lambda i=None: spy,
-        )
-        monkeypatch.setattr(
-            "resource_explorer.egeria_identity.current_zones",
-            lambda guid, identity=None: ["resource-explorer-draft"],
-        )
+        monkeypatch.setattr("resource_explorer.egeria_identity.classification_client", lambda i=None: spy)
         monkeypatch.setenv("EXPLORER_PUBLISH_ZONES", "egeria-runtime")
-
         r = api.post("/api/curate/component-verdicts/repo/p",
                      json={"scope_locator": "src/a", "verdict": "accepted"},
                      headers={"Authorization": f"Bearer {_app_token('dan')}"})
         assert r.status_code == 200
-        promotion = r.json()["promotion"]
-        assert promotion["status"] == "promoted"
-        assert promotion["zones"] == ["egeria-runtime"]
-        # The transition, both ends of it — "promoted" alone cannot tell a real
-        # move from a no-op.
-        assert promotion["from_zones"] == ["resource-explorer-draft"]
-        # The zone transition IS the Egeria-visible effect of accepting, and
-        # `add_zone_membership` replaces rather than appends, so the element is
-        # never briefly in both zones.
-        assert spy.zones == [
-            ("comp-guid",
-             {"class": "NewClassificationRequestBody",
-              "properties": {"class": "ZoneMembershipProperties",
-                             "zoneMembership": ["egeria-runtime"]}}),
-        ]
+        assert "promotion" not in r.json() and "materialization" not in r.json()
+        assert spy.zones == []
 
     def test_an_already_promoted_element_is_not_promoted_again(self, monkeypatch):
         """A no-op zone change is an ERROR in Egeria, not a nothing.
@@ -802,7 +778,9 @@ class TestCurateRoutes:
         be read as "in no zones, nothing to do" — an unreachable Egeria would
         then silently skip every promotion."""
         from resource_explorer.workflows import curate as curate_wf
+        from tests.zone_fakes import zone_controls_grant_all
 
+        zone_controls_grant_all(monkeypatch)      # the zone's control admits everyone (start-up zone check)
         monkeypatch.setenv("EXPLORER_PUBLISH_ZONES", "egeria-runtime")
         monkeypatch.setattr(
             "resource_explorer.egeria_identity.current_zones",
@@ -812,13 +790,12 @@ class TestCurateRoutes:
             "resource_explorer.egeria_identity.set_zone_membership",
             lambda *a, **k: True,
         )
+        monkeypatch.setattr("resource_explorer.egeria_identity.read_zones",
+                            lambda guid, identity=None: ["egeria-runtime"])
         assert curate_wf.promote_to_publish_zones("g")["status"] == "promoted"
 
     def test_reject_does_not_promote_anything(self, client, monkeypatch):
         api, reg = client
-        import resource_explorer.web.routes.curate as curate_routes
-        monkeypatch.setattr(curate_routes, "_materialize_if_accepted",
-                            lambda *a, **k: {"status": "materialized", "guid": "comp-guid"})
         r = api.post("/api/curate/component-verdicts/repo/p",
                      json={"scope_locator": "src/b", "verdict": "rejected"},
                      headers={"Authorization": f"Bearer {_app_token('dan')}"})
@@ -1001,7 +978,13 @@ class TestDraftZoneBootstrap:
         client = type("c", (), {
             "get_metadata_element_by_unique_name": lambda self, qn: miss,
         })()
-        assert _existing_guid(client, "GovernanceZone::x") == ""
+        if miss in ("No elements found", "No element found"):
+            assert _existing_guid(client, "GovernanceZone::x") == ""
+        else:
+            # Neither a GUID nor pyegeria's miss sentence: never a GUID, and never a miss either
+            # (re/lookup-failure-never-creates round 3): could not check, so no zone is created on it.
+            with pytest.raises(RuntimeError, match="could not be made"):
+                _existing_guid(client, "GovernanceZone::x")
 
     def test_a_real_guid_is_recognised_in_either_return_shape(self):
         guid = "502438ae-3503-4481-b370-cb9c9b75f030"
@@ -1022,8 +1005,9 @@ class TestDraftZoneBootstrap:
         names it in its ZoneMembership."""
         from resource_explorer import egeria_identity
 
+        monkeypatch.setenv("EXPLORER_DRAFT_ZONE", "resource-explorer-draft")   # configured: it tries
         monkeypatch.setattr(
-            egeria_identity, "service_credentials",
+            "resource_explorer.egeria_clients._daemon_credential",
             lambda: (_ for _ in ()).throw(RuntimeError("no platform")),
         )
         out = egeria_identity.ensure_draft_zone_exists()

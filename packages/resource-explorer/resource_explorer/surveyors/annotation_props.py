@@ -102,26 +102,87 @@ def _annotation_type_name(ann, atype) -> str:
     return resolve_annotation_type(getattr(ann, "analysis_step", "")) or atype.value
 
 
+# Map our AnnotationType enum to the Egeria Jackson subtype class name.
+# Note: RequestForActionAnnotationProperties is NOT valid — use RequestForActionProperties.
+#: The strict test fakes (tests/egeria_annotation_beans.py) check every class here against Egeria's beans.
+EGERIA_PROPERTIES_CLASSES = {
+    AnnotationType.RESOURCE_MEASURE:   "ResourceMeasureAnnotationProperties",
+    AnnotationType.CLASSIFICATION:     "ClassificationAnnotationProperties",
+    AnnotationType.QUALITY_SCORE:      "QualityAnnotationProperties",
+    AnnotationType.DATA_CLASS:         "DataClassAnnotationProperties",
+    AnnotationType.REQUEST_FOR_ACTION: "RequestForActionProperties",
+    AnnotationType.SCHEMA_ANALYSIS:    "SchemaAnalysisAnnotationProperties",
+    AnnotationType.RELATIONSHIP:       "RelationshipAdviceAnnotationProperties",
+    AnnotationType.RESOURCE_PHYSICAL_STATUS: "ResourcePhysicalStatusAnnotationProperties",
+    AnnotationType.DATA_GRAIN:         "DataGrainAnnotationProperties",
+    AnnotationType.FINGERPRINT:        "FingerprintAnnotationProperties",
+    AnnotationType.RESOURCE_PROFILE:   "ResourceProfileAnnotationProperties",
+    AnnotationType.RESOURCE_PROFILE_LOG: "ResourceProfileLogAnnotationProperties",
+}
+
+
+#: The key, inside a ClassificationAnnotation's `properties`, that holds every classification it proposes (a JSON
+#: list, first = `classificationName`) when it proposes more than one. Read back by egeria_reader.
+CANDIDATES_KEY = "candidateClassifications"
+
+
+def classification_fields(ann) -> dict:
+    """A ClassificationAnnotation's proposal in the only fields Egeria 6.2 keeps for it.
+
+    `ClassificationAnnotationProperties` has `classificationName` (String) and `properties` (map<string,string>) of
+    its own, and the typedef agrees (OpenMetadataTypesArchive1_2.getClassificationAnnotationEntity). The bean ignores
+    unknown fields, so the `candidateClassifications` RE sent until 2026-10-15 was dropped on every annotation with
+    no error: the proposal never reached Egeria.
+
+    One annotation names one classification. When RE proposes several (a ranked list, or a set of labels), the
+    first is `classificationName` and the whole list, in order, goes in `properties` under CANDIDATES_KEY. The
+    alternatives are evidence for this one proposal, not proposals of their own, and splitting them would change the
+    annotation count, the per-index qualifiedNames and every reader that counts by them. An explicit
+    `classification_name` (an Analytic Library step) wins; its `classification_properties` ride in `properties`.
+    A proposal of nothing sends neither field.
+    """
+    candidates = [str(c) for c in (getattr(ann, "candidate_classifications", None) or [])]
+    name = getattr(ann, "classification_name", "") or (candidates[0] if candidates else "")
+    if name and candidates and candidates[0] != name:
+        # The list reads back with its first entry as the proposal: an explicit name leads it.
+        candidates = [name] + [c for c in candidates if c != name]
+    values = dict(getattr(ann, "classification_properties", None) or {})
+    if candidates and candidates != [name]:
+        values[CANDIDATES_KEY] = candidates
+    out: dict = {}
+    if name:
+        out["classificationName"] = name
+    if values:
+        out["properties"] = to_string_map(values)
+    return out
+
+
+def upgrade_classification_payload(body: dict) -> dict:
+    """An annotation body enqueued before 2026-10-15, rewritten into Egeria's fields for the drain.
+
+    The outbox replays the body built at enqueue time, so a ClassificationAnnotation queued before
+    `classification_fields` existed still carries `candidateClassifications`, which Egeria drops. That key is
+    removed and the proposal rebuilt through `classification_fields`. Any other body is returned unchanged.
+    """
+    props = body.get("properties") if isinstance(body, dict) else None
+    if (not isinstance(props, dict) or props.get("class") != EGERIA_PROPERTIES_CLASSES[AnnotationType.CLASSIFICATION]
+            or CANDIDATES_KEY not in props or props.get("classificationName")):
+        return body
+    props = dict(props)
+    candidates = props.pop(CANDIDATES_KEY) or []
+    from types import SimpleNamespace
+
+    old = props.get("properties") if isinstance(props.get("properties"), dict) else {}
+    props.update(classification_fields(SimpleNamespace(candidate_classifications=list(candidates),
+                                                       classification_name="", classification_properties=old)))
+    return {**body, "properties": props}
+
+
 def build_annotation_props(ann, qualified_name: str) -> dict:
-    """Map an Annotation dataclass to the correct Egeria subtype properties body."""
     """Map an Annotation dataclass to the correct Egeria subtype properties body."""
     atype = ann.annotation_type
 
-    # Map our AnnotationType enum to the Egeria Jackson subtype class name.
-    # Note: RequestForActionAnnotationProperties is NOT valid — use RequestForActionProperties.
-    _class_map = {
-        AnnotationType.RESOURCE_MEASURE:   "ResourceMeasureAnnotationProperties",
-        AnnotationType.CLASSIFICATION:     "ClassificationAnnotationProperties",
-        AnnotationType.QUALITY_SCORE:      "QualityAnnotationProperties",
-        AnnotationType.DATA_CLASS:         "DataClassAnnotationProperties",
-        AnnotationType.REQUEST_FOR_ACTION: "RequestForActionProperties",
-        AnnotationType.SCHEMA_ANALYSIS:    "SchemaAnalysisAnnotationProperties",
-        AnnotationType.RELATIONSHIP:       "RelationshipAdviceAnnotationProperties",
-        AnnotationType.RESOURCE_PHYSICAL_STATUS: "ResourcePhysicalStatusAnnotationProperties",
-        AnnotationType.DATA_GRAIN:         "DataGrainAnnotationProperties",
-        AnnotationType.FINGERPRINT:        "FingerprintAnnotationProperties",
-    }
-    egeria_class = _class_map.get(atype, "AnnotationProperties")
+    egeria_class = EGERIA_PROPERTIES_CLASSES.get(atype, "AnnotationProperties")
 
     props: dict = {
         "class": egeria_class,
@@ -159,11 +220,20 @@ def build_annotation_props(ann, qualified_name: str) -> dict:
         rp = getattr(ann, "resource_properties", {})
         if rp:
             props["resourceProperties"] = to_string_map(rp)
+        # The annotation envelope (resultState, measuredAt, producingRun, scope) rides here.
+        # Guarded on truthiness: every measure that sets none is byte-identical on the wire.
+        ap = getattr(ann, "additional_properties", {})
+        if ap:
+            props["additionalProperties"] = to_string_map(ap)
 
     elif atype == AnnotationType.CLASSIFICATION:
-        cc = getattr(ann, "candidate_classifications", [])
-        if cc:
-            props["candidateClassifications"] = cc
+        props.update(classification_fields(ann))
+        # The annotation envelope (resultState, measuredAt, producingRun, scope) of a library step's proposal rides
+        # here, as on a ResourceMeasureAnnotation. Only an annotation that carries an envelope: every other
+        # classification annotation stays byte-identical on the wire.
+        ap = getattr(ann, "additional_properties", {}) or {}
+        if "resultState" in ap:
+            props["additionalProperties"] = to_string_map(ap)
 
     elif atype == AnnotationType.QUALITY_SCORE:
         qs = getattr(ann, "quality_scores", {})
@@ -215,16 +285,47 @@ def build_annotation_props(ann, qualified_name: str) -> dict:
         # these do NOT go through additionalProperties.
         gs = getattr(ann, "grain_statement", "")
         gb = getattr(ann, "granularity_basis", "")
-        iv = getattr(ann, "interval", "")
+        iv = getattr(ann, "interval", None)
+        name = getattr(ann, "interval_name", "")
         cg = getattr(ann, "candidate_data_grain_guids", [])
         if gs:
             props["grainStatement"] = gs
         if gb:
             props["granularityBasis"] = gb
-        if iv:
+        # Egeria's `interval` is a Java `long` (DataGrainAnnotationProperties, OpenMetadataProperty.INTERVAL
+        # DataType.LONG): anything but a whole number is a 400 for the whole annotation (live 2026-10-14:
+        # "Cannot deserialize value of type `long` from String \"per-date\""). Refused here, loudly, rather
+        # than sent; 0 is a real value and is sent. None means not known: nothing is sent.
+        if iv is not None:
+            if isinstance(iv, bool) or not isinstance(iv, int):
+                raise TypeError(
+                    f"DataGrainAnnotation.interval must be a whole number (Egeria's long) or None, got {iv!r}; "
+                    "a period word belongs in interval_name")
             props["interval"] = iv
+        if name:
+            # No string field for a period word on Egeria's type: a named departure, in additionalProperties.
+            props["additionalProperties"] = {"intervalName": str(name)}
         if cg:
             props["candidateDataGrainGUIDs"] = cg
+
+    elif atype == AnnotationType.RESOURCE_PROFILE:
+        # Egeria's own field: valueCount, Map<String,Integer>. Counts stay integers.
+        vc = getattr(ann, "value_count", {})
+        if vc:
+            props["valueCount"] = {str(k): int(v) for k, v in vc.items()}
+        ap = getattr(ann, "additional_properties", {})
+        if ap:
+            props["additionalProperties"] = to_string_map(ap)
+
+    elif atype == AnnotationType.RESOURCE_PROFILE_LOG:
+        # The CSV's name travels in additionalProperties: the native field name for the
+        # log file was not verified against Egeria's Java source in this environment.
+        ap = dict(getattr(ann, "additional_properties", {}) or {})
+        lf = getattr(ann, "log_file", "")
+        if lf:
+            ap["logFile"] = lf
+        if ap:
+            props["additionalProperties"] = to_string_map(ap)
 
     elif atype == AnnotationType.FINGERPRINT:
         # The native field names for this subtype are NOT known in this
@@ -314,8 +415,9 @@ def publish_annotations(
     exactly this lookup for the identical purpose on sub-resources
     (`EgeriaPublisher.publish_sub_resources`, D8) and on ExternalReferences
     (`_publish_homepage_reference`) — reusing it means one fewer live call
-    path to test and maintain, and it already returns "" (never raises) when
-    nothing matches or the lookup itself fails.
+    path to test and maintain. It returns "" for a real miss and RAISES when
+    the look-up could not be made; that annotation is then skipped (None in
+    the result), never created blind.
     `DataDiscovery.find_annotations(search_string=qn, starts_with=False)`
     would also work, but it is a second, narrower search purely for
     Annotation-typed elements where the existing generic-name lookup is
@@ -340,9 +442,16 @@ def publish_annotations(
 
         try:
             existing_guid = find_element_guid(qualified_name)
-        except Exception as exc:  # defensive — real _find_element_guid never raises
-            log.debug("Annotation lookup failed for %s (will attempt create): %s",
-                      qualified_name, exc)
+        except Exception as exc:
+            # Could not check is not "not there": this annotation is NOT created (it used to be, with only
+            # Egeria's duplicate refusal as the backstop). Counted like a failed create, so the caller's
+            # count of what landed is what Egeria holds.
+            from resource_explorer.egeria_absence import lookup_could_not_be_made, lookup_exception_is_absent
+
+            if not lookup_exception_is_absent(exc):
+                log.warning("Annotation %d not published: %s", i, lookup_could_not_be_made(qualified_name, exc))
+                guids.append(None)
+                continue
             existing_guid = ""
         if existing_guid:
             log.debug("Annotation %s already exists (GUID %s) — not re-creating",
@@ -354,9 +463,14 @@ def publish_annotations(
         try:
             guid = discovery.create_annotation(body=body)
         except Exception as exc:
+            # pyegeria's text for a 400 names only the URL; Egeria's own reason is in the response body.
+            from resource_explorer.egeria_absence import egeria_error_detail
+
+            said = egeria_error_detail(exc)
             log.warning(
-                "Failed to create annotation %d (%s): %s",
-                i, ann.annotation_type.value, exc,
+                "Failed to create annotation %d (%s, %s): %s%s",
+                i, ann.annotation_type.value, qualified_name, exc,
+                f"\n  Egeria said: {said}" if said else "",
             )
             guids.append(None)
             continue

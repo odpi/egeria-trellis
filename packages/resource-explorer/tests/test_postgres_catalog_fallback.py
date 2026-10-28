@@ -511,7 +511,7 @@ class TestSchemaInventoryResultsSurfaceTheEstimate:
         ])
 
         value = _schema_inventory_results(registry, slug)
-        assert value["table_count"] == 2
+        assert value["relation_count"] == 2
         assert value["catalog_only_table_count"] == 1
         by_name = {t["table_name"]: t for t in value["tables"]}
         assert by_name["customers"]["row_count_is_estimate"] is False
@@ -532,7 +532,8 @@ class TestSchemaInventoryResultsNameRelationKindsSeparately:
     """Design ruling (security-model.md §2.1/§3.4, 2026-09-26): relation
     kinds are reported separately and named, never blended into one "table
     count" -- base_table_count stays the stable field the comparators
-    already diff `table_count` as if it meant."""
+    already diff `relation_count` (renamed from `table_count`,
+    REPLY-DESIGNER-ROUND2-DATABASE-SCREENS.md §2.3) as if it meant."""
 
     def test_mixed_relation_kinds_are_each_counted(self, registry, db_entity):
         slug = db_entity.slug
@@ -547,7 +548,7 @@ class TestSchemaInventoryResultsNameRelationKindsSeparately:
              "table_type": "FOREIGN", "state": STATE_MEASURED},
         ])
         value = _schema_inventory_results(registry, slug)
-        assert value["table_count"] == 4
+        assert value["relation_count"] == 4
         assert value["base_table_count"] == 1
         assert value["view_count"] == 1
         assert value["materialized_view_count"] == 1
@@ -562,7 +563,7 @@ class TestSchemaInventoryResultsNameRelationKindsSeparately:
              "table_type": "BASE TABLE", "state": STATE_MEASURED},
         ])
         value = _schema_inventory_results(registry, slug)
-        assert value["table_count"] == value["base_table_count"] == 2
+        assert value["relation_count"] == value["base_table_count"] == 2
         assert value["view_count"] == 0
         assert value["materialized_view_count"] == 0
         assert value["foreign_table_count"] == 0
@@ -596,7 +597,7 @@ class TestFactsNoteCarriesTheCatalogCaveat:
         from resource_explorer.surveyors.result_status import MEASURED_WITHIN_CREDENTIAL_SCOPE
 
         value = {
-            "table_count": 23,
+            "relation_count": 23,
             "catalog_only_table_count": 20,
             "_status": {
                 "state": MEASURED_WITHIN_CREDENTIAL_SCOPE,
@@ -620,7 +621,7 @@ class TestFactsNoteCarriesTheCatalogCaveat:
         from resource_explorer.surveyors.result_status import MEASURED_WITHIN_CREDENTIAL_SCOPE
 
         value = {
-            "table_count": 3,
+            "relation_count": 3,
             "catalog_only_table_count": 0,
             "_status": {
                 "state": MEASURED_WITHIN_CREDENTIAL_SCOPE,

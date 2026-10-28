@@ -16,7 +16,7 @@ it ("How much has changed since the last time this was surveyed…") is now
 subscriptions are managed, which is a different thing from a stage. This
 ruling is **contested** as of 2026-09-20 — a designer review raised
 `RULING-NAV-GROUPING.md`, which places Automate in the navigation; see
-`docs/design-notes/QUESTION-CATALOG-MULTI-TYPE-IMPLEMENTED.md` for the open
+`QUESTION-CATALOG-MULTI-TYPE-IMPLEMENTED.md` for the open
 question and exactly what would be reverted.
 
 **The CSV is no longer repo-only** (2026-09-20). A `Resource Types` column
@@ -64,6 +64,7 @@ script runs.
 
 | Column | Required? | Meaning |
 |---|---|---|
+| `Question ID` | Yes | The question's **stable id** (`Q-0001`), the first column. *Decision (project owner, 2026-10-07 extensibility rulings; built 2026-10-13)*: a manifest names the questions it answers by id, so the id never changes when the wording does. Assigned once, sequential and opaque (it names no resource type and no wording, both of which change); never derived from the text; never reused, so a retired row keeps its id and the next free id is one past the highest ever issued. A shared question (`*` or several types) has ONE id. The generator **refuses a missing, malformed or duplicate id**; the Admin add-question route assigns the next free one. Sent to Egeria as an `Additional Properties` entry (`question_id`) on the term, not as its Qualified Name — the term's join key stays its Display Name. |
 | `Question` | Yes | The question text, verbatim. This becomes the Egeria GlossaryTerm's **Display Name** — case- and punctuation-sensitive, since it's also the join key back to Egeria's own `Question` elements. Keep it phrased as an actual question a user would ask. |
 | `Funnel Stage` | Yes | Which funnel stage(s) this question belongs to: `Scouting`, `Discovery`, `Analysis`, `Assessment`, or `Enrichment`. **`Automate` is not one of them** as of 2026-09-20 — see the note at the top of this guide. May be **slash-combined** (e.g. `Analysis/Enrichment`) to signal an Analysis-first, Enrichment-fallback pattern (see `docs/repo-analysis-funnel.md (§14)`) — the question then shows up under both stages' checklists. |
 | `Resource Types` | Yes | Which resource types this question applies to: `;`-separated values from `repo`, `database`, `filesystem`, `dataset`, `model`, or `*` for all of them. *Decision (project owner, 2026-09-20)*: one CSV, one column, rather than a CSV per type — a question like "who owns this data?" is the same question whichever resource asks it, and authoring it five times is five chances to drift. The vocabulary lives in `resource_explorer/resource_types.py`; an unrecognized value **fails the generator loudly** rather than silently producing no catalog section, because a typo'd `databse` and a resource type nobody has authored for would otherwise look identical. Not published to Egeria — the Egeria side of the question model is resource-type-agnostic by design (one *User Questions* glossary, one *Funnel Stages* glossary, twelve Perspectives). Rows authored before this column existed were backfilled to `repo`; a blank cell means `repo` so a new row cannot vanish from every catalog. |

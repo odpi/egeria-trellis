@@ -37,6 +37,18 @@ The build outputs are checked into the repo like any other static asset —
 `npm`/`node_modules` are a build-time-only dependency, not a runtime one.
 `index.html` just links/scripts against the built files.
 
+## Running the /next render harness
+
+```bash
+cd frontend-build
+npm install
+npm run test:harness   # requires Node 20 or newer
+```
+
+The harness needs **Node 20+**. On Node 18 every test fails at load (12 of 12
+in the first suite), which looks like a broken test but is a Node-version
+mismatch: switch runtimes (`nvm use 20`) before debugging anything else.
+
 ## When to re-run
 
 - `build:css`: any time a new Tailwind utility class is added to `index.html`

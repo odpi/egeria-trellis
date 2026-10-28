@@ -1,6 +1,6 @@
 """Sub-Resources in /next (re/next-analysis-subresources).
 
-docs/design-notes/RULING-SUBRESOURCES-PLACEMENT.md (merged, PR #214) found
+docs/design-notes/rulings/RULING-SUBRESOURCES-PLACEMENT.md (merged, PR #214) found
 classic's Sub-Resources sub-tab (index.html's loadAnalysisSubResourcesView,
 ~380 lines) decomposes into two features with two different, already-
 existing homes -- nothing joins /next's four-tab sub-strip:
@@ -66,16 +66,23 @@ class TestNoFifthTabIsAdded:
     SUB_TABS — see `test_no_sub_resources_tab_id_anywhere_in_sub_tabs`
     below, the actual guard. Slice 22 (2026-09-27) added a genuinely new,
     unrelated tab (`schema_inventory`, database-only — see `resourceTypes`
-    filtering in `subTabsHtml()`), so the exact count this test pins is
-    "the current canonical set," not "four forever"; the ruling this class
-    is named for was never about a hard cap on tab count."""
+    filtering in `subTabsHtml()`); ENRICHMENT-E1-CONTEXT-TAB (2026-09-29)
+    added a second, `context`, gated to the Enrichment stage via the new
+    `stages` filter in `subTabsHtml()` (the same shape `resourceTypes`
+    gates Schema Inventory to databases — the designer's reply §1: "Schema
+    Inventory is a type-specific extra tab, and Context follows the same
+    pattern"). So the exact count this test pins is "the current canonical
+    set," not "four forever" or "five forever"; the ruling this class is
+    named for was never about a hard cap on tab count — only that
+    `sub-resources` specifically must never be one of them, which
+    `test_no_sub_resources_tab_id_anywhere_in_sub_tabs` below still checks."""
 
     def test_sub_tabs_are_the_current_canonical_set(self):
         app = _app()
         start = app.index("const SUB_TABS = [")
         end = app.index("];", start)
         block = app[start:end]
-        ids = ["questions", "survey", "by_analysis", "disposition", "schema_inventory"]
+        ids = ["context", "questions", "survey", "by_analysis", "disposition", "schema_inventory"]
         for i in ids:
             assert f"id: '{i}'" in block
         assert block.count("id: '") == len(ids)
@@ -175,7 +182,7 @@ class TestRunConfigurationAttachedToTheAnalysisRow:
         start = app.index("async function renderAnalysesIndexSection(")
         end = app.index("\n}", app.index("data-analysis-run", start))
         body = app[start:end]
-        assert "runAnalysis(slug, aid, apiEntityType(state.resourceType))" in body
+        assert "runAnalysis(slug, aid, apiEntityType(state.resourceType), { force })" in body
 
 
 class TestSubResourcePanelPortsClassicsRealBehaviour:
@@ -195,20 +202,24 @@ class TestSubResourcePanelPortsClassicsRealBehaviour:
         assert "listAnalyses('repo')" in src
 
     def test_selection_filter_and_sort_affordances_are_present(self):
+        """Brief 2a: the checkbox and "select all worthy" are gone; each row has the two-part selector under
+        "Publish to Egeria?" and the toolbar acts on the filtered rows."""
         src = _analysis_src()
-        assert "data-subres-pick" in src
         assert "data-subres-filter" in src
         assert "data-subres-sort" in src
-        assert "data-subres-select-all" in src
+        assert "data-subres-pick" not in src and "data-subres-select-all" not in src
+        assert "SCOPE_HEAD" in src and "toolbarHtml(s.scope, rows)" in src
 
-    def test_cataloging_posts_with_the_publish_toggle(self):
+    def test_publishing_posts_nothing_the_server_reads_the_record(self):
         src = _analysis_src()
-        assert "catalogSubResources(slug, items, publishToEgeria)" in src
-        assert "data-subres-publish" in src
+        assert "await catalogSubResources(slug)" in src
+        assert "data-subres-publish" not in src, "the sandbox flag is retired"
+        assert "publishToEgeria" not in src
 
-    def test_already_cataloged_items_are_shown_disabled_not_re_selectable(self):
+    def test_published_items_are_shown_in_the_egeria_lane_and_stay_choosable(self):
         src = _analysis_src()
-        assert 'disabled checked title="Already catalogued"' in src
+        assert "egeriaCellHtml(r)" in src
+        assert "Already cataloged" not in src
 
     def test_scoped_analysis_dispatch_uses_the_shape_gate(self):
         src = _analysis_src()
@@ -220,7 +231,7 @@ class TestSubResourcePanelPortsClassicsRealBehaviour:
         # Cataloging changes what "already catalogued" means, so the panel
         # must re-fetch rather than keep showing pre-write selection state.
         src = _analysis_src()
-        assert "await reload(panel);" in src
+        assert "await s.scope.load()" in src
 
 
 class TestNoSilentTabFallbackWasPorted:
@@ -295,9 +306,14 @@ class TestResultsAlreadyReachByAnalysisGenerically:
     the data_profile Survey Result dashboard alongside data_file_profiling."""
 
     def test_by_analysis_pane_handles_any_findings_array_generically(self):
+        # BY-ANALYSIS-PROGRESSIVE-AND-GRAPH (2026-09-28): the per-board
+        # findings loop moved out of loadByAnalysisPane's own body and into
+        # boardFindingsHtml(board), one card body renderer called for every
+        # board generically -- same behavior (still no analysis-id special
+        # case), different function.
         app = _app()
-        start = app.index("async function loadByAnalysisPane() {")
-        end = app.index("\n}", start + 2000)
+        start = app.index("function boardFindingsHtml(board)")
+        end = app.index("\n}", start)
         body = app[start:end]
         assert "Array.isArray(res.findings)" in body
         # No analysis-id special case -- the loop is generic across every

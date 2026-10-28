@@ -14,6 +14,12 @@ from dataclasses import dataclass
 
 log = logging.getLogger(__name__)
 
+#: The step that finds the homepage and the documentation site (and checks the
+#: docs answer). It belongs to the Scouting definition, but the definition lives in
+#: Egeria and an Egeria that has not been re-authored still chains only the old
+#: steps. See _ensure_homepage_step.
+HOMEPAGE_STEP = "repo_homepage"
+
 
 @dataclass
 class ScoutingScanResult:
@@ -68,7 +74,7 @@ def run_scouting_scan(slug: str, registry=None) -> ScoutingScanResult:
             from resource_explorer.surveyors.survey_orchestrator import SurveyOrchestrator
 
             survey_result = SurveyOrchestrator(registry).run(
-                slug, steps=["repo_health", "repo_language"], fast=True,
+                slug, steps=["repo_health", "repo_language", HOMEPAGE_STEP], fast=True,
             )
         except Exception as fallback_exc:
             return ScoutingScanResult(
@@ -91,7 +97,32 @@ def run_scouting_scan(slug: str, registry=None) -> ScoutingScanResult:
     errors = result.get("errors") or []
     if errors:
         return ScoutingScanResult(status="error", slug=slug, error="; ".join(errors))
-    return ScoutingScanResult(status="ok", slug=slug, message="Coarse scan complete.")
+    note = _ensure_homepage_step(slug, registry, result)
+    return ScoutingScanResult(status="ok", slug=slug, message="Coarse scan complete." + note)
+
+
+def _ensure_homepage_step(slug: str, registry, result: dict) -> str:
+    """Run repo_homepage ourselves when the Egeria-held definition does not chain it.
+
+    Scouting's definition is authored in Egeria, and re-authoring it is the owner's
+    write. Until that happens a scan routed through Egeria would silently skip the
+    docs discovery while the code (and the generated document) say Scouting does it.
+    The step is cheap (a few small API reads and one HTTP request), so run it
+    directly -- and say so, rather than letting the screen imply the definition did.
+    """
+    steps = result.get("steps") or []
+    if any(isinstance(s, dict) and s.get("re_analysis_step") == HOMEPAGE_STEP for s in steps):
+        return ""
+    try:
+        from resource_explorer.surveyors.survey_orchestrator import SurveyOrchestrator
+
+        out = SurveyOrchestrator(registry).run(slug, steps=[HOMEPAGE_STEP], fast=True)
+    except Exception as exc:
+        log.warning("Scouting: homepage/docs step failed for %s: %s", slug, exc)
+        return f" Homepage and docs were not looked for ({type(exc).__name__})."
+    if getattr(out, "errors", None):
+        return " Homepage and docs step reported: " + "; ".join(out.errors)
+    return " Homepage and docs found by running the step directly (Egeria's definition does not list it yet)."
 
 
 def execute_and_record_scouting_scan(slug: str, activity_id: str,
@@ -168,6 +199,30 @@ def question_has_data(registry, slug: str, analysis_ids: list[str], entity_type:
     return False
 
 
+#: The measured half of a `mixed`/`partial` row that names no analysis id,
+#: keyed by (resource type, question text). The database owner question is
+#: `mixed` (RULING-DB-QUESTION-CATALOG-CONSISTENCY.md): the administering role
+#: is the `database_owner` fact (`pg_database.datdba`), which has a results
+#: reader but is not an analysis-catalog id, so the row cannot cite it in
+#: `analysis_ids`. Without this the row's has_data was None ("nothing to
+#: check"), which is false: there IS something to check.
+_MEASURED_HALF_FOR_MIXED: dict[tuple[str, str], list[str]] = {
+    ("database", "Who owns this resource (accountable owner), and who administers it?"):
+        ["database_owner"],
+}
+
+
+def _mixed_has_data(registry, slug: str, entity_type: str, question: str) -> bool:
+    """has_data for a `mixed`/`partial` row with no analysis ids: a real
+    True/False, never None. True when its declared measured half has data;
+    False when it has none, or declares no measured source (nothing measured
+    exists for it, so nothing has been run)."""
+    ids = _MEASURED_HALF_FOR_MIXED.get((entity_type, question), [])
+    if not ids:
+        return False
+    return bool(question_has_data(registry, slug, ids, entity_type=entity_type))
+
+
 def build_question_checklist(
     registry, entity_type: str, slug: str,
     phase: str = "scouting", perspectives: list[str] | None = None, purposes: list[str] | None = None,
@@ -195,7 +250,10 @@ def build_question_checklist(
             if answering["kind"] in ("analysis", "partial", "mixed")
             else None
         )
+        if has_data is None and answering["kind"] in ("partial", "mixed"):
+            has_data = _mixed_has_data(registry, slug, entity_type, e["question"])
         questions.append({
+            "id": e.get("id", ""),
             "question": e["question"],
             "stage": e["stage"],
             "perspectives": e["perspectives"],

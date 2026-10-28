@@ -93,9 +93,9 @@ def _c_license(stats, findings, paths) -> tuple:
         return PASS, f"{spdx}"
     if name:
         # GitHub found a LICENSE file it could not identify. Not nothing, but
-        # not a usable licence declaration either.
-        return PARTIAL, f"A licence file exists but was not identified ({name})."
-    return FAIL, "No licence detected."
+        # not a usable license declaration either.
+        return PARTIAL, f"A license file exists but was not identified ({name})."
+    return FAIL, "No license detected."
 
 
 def _c_ci_tests(stats, findings, paths) -> tuple:

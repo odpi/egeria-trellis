@@ -5,12 +5,15 @@ import asyncio
 import json
 import os
 
-from fastapi import APIRouter, BackgroundTasks, HTTPException
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
+from resource_explorer.web.routes._annotation_items import build_annotation_items
+from resource_explorer.auth import get_current_user
 from resource_explorer.registry import ProjectRegistry
 from resource_explorer.resource_types import SURVEYED_RESOURCE_TYPES
+from resource_explorer.config import egeria_platform_url, egeria_view_server  # noqa: E402,F401
 
 router = APIRouter()
 
@@ -23,15 +26,95 @@ router = APIRouter()
 # deliberately NOT a login mechanism. Real per-user login was raised and
 # explicitly deferred as its own, larger piece of scope — see the Trellis
 # design docs before building an actual auth flow against this.
+@router.get("/admin-status")
+def admin_status(request: Request) -> dict:
+    """`admin`: this request carries a valid admin credential. `configured`: this deployment has any admin at all.
+    `open`: no admin is configured AND RE_ADMIN_OPEN_WHEN_UNCONFIGURED is set, so any signed-in user may act.
+
+    The Next controls draw "admin only" when not `admin` and either `configured` or not `open`, the same decision
+    admin_auth.require_admin makes (owner ruling 2026-10-14: unconfigured fails closed unless the dev flag is set).
+    """
+    from resource_explorer.config import get_config
+    from resource_explorer.web import admin_auth
+
+    cfg = get_config().feedback
+    configured = bool(admin_auth.admin_configured())
+    return {"admin": bool(admin_auth.is_admin_request(request, cfg)),
+            "configured": configured,
+            "open": (not configured) and bool(cfg.admin_open_when_unconfigured)}
+
+
+_BUILD_SHA: str | None = None
+_BUILD_SHA_READ = False
+
+
+def build_sha() -> str | None:
+    """The git commit this process was started from, or None when it cannot be read.
+
+    `RE_BUILD_SHA` wins when set (an image build that has no .git directory). Otherwise `git rev-parse HEAD` in the
+    package's own directory, read once per process: the serving worktree is detached at the tip it was started
+    from, and a restart is what changes it. None is "not read", never an empty string a caller could print as a sha.
+    """
+    global _BUILD_SHA, _BUILD_SHA_READ
+    if _BUILD_SHA_READ:
+        return _BUILD_SHA
+    import os
+    import subprocess
+    from pathlib import Path
+
+    sha = (os.environ.get("RE_BUILD_SHA") or "").strip()
+    if not sha:
+        try:
+            out = subprocess.run(
+                ["git", "rev-parse", "HEAD"], cwd=Path(__file__).resolve().parent,
+                capture_output=True, text=True, timeout=5, check=True,
+            )
+            sha = out.stdout.strip()
+        except Exception:  # noqa: BLE001 - no git, no repo, a timeout: all mean "not read"
+            sha = ""
+    _BUILD_SHA = sha or None
+    _BUILD_SHA_READ = True
+    return _BUILD_SHA
+
+
 @router.get("/whoami")
 def whoami() -> dict:
+    """The configured Egeria connection, plus `last_egeria_call`: what THIS process recorded for
+    the signed-in user's most recent Egeria client — `{"as": "you" | "service account
+    (background)", purpose, at}` — or None when nothing was recorded here (a restart clears it).
+    Recorded by the factory as each client is handed out, never inferred (Brief I).
+
+    `daemon`: who background and queued work runs as (Brief L) — `{user_id, source}` from the
+    daemon credential seam (`egeria_clients._daemon_credential`), not inferred.
+
+    `identity_in_egeria` (7h): this process's last startup check of RE's ITProfile/UserIdentity
+    (`{status: present|created|could not check|not checked, reason?, words}`), and
+    `owner_lookup`: the signed-in user's outstanding failed person-profile lookup here, or None
+    (always None with no signed-in user: never another user's failure)."""
     from resource_explorer.config import get_config
+    from resource_explorer.egeria_actors import actor_lookup_status
+    from resource_explorer.egeria_clients import daemon_identity_status, last_egeria_identity
+    from resource_explorer.egeria_identity import caller_user_id
+
     cfg = get_config().egeria
     return {
         "user_id": cfg.user_id,
         "view_server": cfg.view_server,
         "platform_url": cfg.platform_url,
+        "build_sha": build_sha(),
+        "last_egeria_call": last_egeria_identity(caller_user_id()),
+        "daemon": daemon_identity_status(),
+        "identity_in_egeria": _identity_in_egeria(),
+        "owner_lookup": actor_lookup_status(caller_user_id()),
     }
+
+
+def _identity_in_egeria() -> dict:
+    from resource_explorer.egeria_actors import identity_words, re_identity_status
+
+    state = re_identity_status()
+    return {"status": state.get("status"), "reason": state.get("reason") or "",
+            "words": identity_words(state), "at": state.get("at") or ""}
 
 
 # ── response models ───────────────────────────────────────────────────────────
@@ -58,6 +141,12 @@ class PublishResult(BaseModel):
     surveyed_at: str | None = None
     error: str | None = None
     stage: str | None = None       # "survey" | "publish"
+    #: The publish word, from the run's proof rows (registry.publish_proofs), never from this route returning:
+    #: "read_back" ("published · read back"), "queued" ("queued for publish"), "failed" ("publish failed",
+    #: `publish_words` carries Egeria's), "unverified" ("could not verify"), or "nothing" ("nothing to publish").
+    publish_state: str | None = None
+    publish_word: str | None = None
+    publish_words: str | None = None
 
 
 class AnnotationItem(BaseModel):
@@ -123,7 +212,9 @@ class FileTypeSummary(BaseModel):
 class DependencySummary(BaseModel):
     ecosystem: str
     count: int
-    direct: int
+    # None = direct-ness was not determined for this ecosystem (absence is not 0). Only go.mod records the
+    # transitive marker ("// indirect"); no other parser says whether a row is direct, and dep_type is scope.
+    direct: int | None = None
 
 
 class DataProfileSummary(BaseModel):
@@ -135,6 +226,24 @@ class DataProfileSummary(BaseModel):
     null_summary: str = ""
     file_size_bytes: int = 0
     profiled_at: str | None = None
+
+
+#: Ecosystems whose parser marks transitive rows (dep_type "indirect"), so "direct" can be derived there.
+_DIRECT_DETERMINED = frozenset({"go"})
+
+
+def summarise_dependencies(deps: list[dict]) -> list[dict]:
+    """Group dependency rows by ecosystem. `direct` is count minus "indirect" where the ecosystem's parser
+    records that marker; elsewhere it is None (not determined), never 0."""
+    dep_map: dict[str, dict] = {}
+    for d in deps:
+        eco = d.get("ecosystem") or "unknown"
+        row = dep_map.setdefault(eco, {"ecosystem": eco, "count": 0, "direct": 0 if eco in _DIRECT_DETERMINED else None})
+        row["count"] += 1
+        if row["direct"] is not None and d.get("dep_type") != "indirect":
+            row["direct"] += 1
+    return sorted(dep_map.values(), key=lambda x: -x["count"])
+
 
 
 class SurveyReportData(BaseModel):
@@ -150,16 +259,9 @@ class SurveyReportData(BaseModel):
     has_egeria_annotations: bool
     data_profiles: list[DataProfileSummary] = []
     local_surveyed_at: str = ""   # timestamp of the most recent local survey run
-
-
-class CatalogElement(BaseModel):
-    label: str
-    file_count: int
-    extensions: list[str] = []
-
-
-class CatalogRequest(BaseModel):
-    elements: list[CatalogElement]
+    # False when no project_stats row exists: `health` then carries zeros that were never measured, and
+    # the Next report view draws them as "not read" (PI-053).
+    health_read: bool = False
 
 
 class CatalogItemResult(BaseModel):
@@ -177,7 +279,7 @@ class CatalogResult(BaseModel):
 # ── helpers ───────────────────────────────────────────────────────────────────
 
 def _platform_url() -> str:
-    return os.getenv("EGERIA_PLATFORM_URL", "https://localhost:9443")
+    return egeria_platform_url()
 
 
 def _get_project_or_404(slug: str):
@@ -196,6 +298,10 @@ class DataClassRule(BaseModel):
     description: str
     keywords: list[str]
     source: str
+    #: Which keyword source this read used, the same words on every rule ("keywords: Egeria, N
+    #: sets" / "keywords: built-in list · Egeria had none" / "... · could not read Egeria"), from
+    #: `egeria_reference_catalog.KeywordLoad.label`.
+    keyword_source: str = ""
 
 
 @router.get("/private-zone")
@@ -221,80 +327,110 @@ async def private_zone_state() -> dict:
         # Nothing has asked in this process yet. Ask now rather than reporting
         # "unknown" to a person who opened this page precisely to find out —
         # `ensure_private_zone_exists` is idempotent and never raises.
-        status = ensure_private_zone_exists()
+        ensure_private_zone_exists()
+        status = private_zone_status()
+    if any(e.get("verdict") == "unknown" for e in status.get("zone_controls") or []):
+        # The draft/publish zones' controls, likewise asked now rather than shown as "not checked yet".
+        from resource_explorer.egeria_identity import check_zone_controls
+
+        check_zone_controls()
+        status = private_zone_status()
     return status
+
+
+#: Per data class: the same bound the survey-definition reader puts on this pyegeria call.
+_DATACLASS_GUID_TIMEOUT_SECONDS = 15
 
 
 @router.get("/rules/dataclasses", response_model=list[DataClassRule])
 async def get_dataclass_rules() -> list[DataClassRule]:
     """Fetch the active PII Data Classes and their corresponding keyword matching rules.
 
-    Queries Egeria's Valid Value sets if online; falls back to local rules if offline.
+    Queries Egeria's Valid Value sets if online; falls back to local rules if offline. Every rule
+    carries `keyword_source`, the one label for which source this read used.
     """
+    # The built-in rules are the data-class seed (configdata/data_classes.yaml), the same entries
+    # the start-up bootstrap creates in Egeria.
+    from resource_explorer.surveyors.database.bootstrap_data_classes import current_seed
+
     fallback_rules = [
-        {"name": "EmailAddress", "display_name": "Email Address", "description": "Electronic mail address identifier.", "keywords": ["email", "email_address", "mail_addr", "emailaddr"], "source": "Local Fallback"},
-        {"name": "PhoneNumber", "display_name": "Phone Number", "description": "Telephone contact number.", "keywords": ["phone", "phone_number", "telephone", "mobile", "tel_num"], "source": "Local Fallback"},
-        {"name": "SocialSecurityNumber", "display_name": "Social Security Number", "description": "Government issued social security identification number.", "keywords": ["ssn", "socialsec", "social_security", "ssn_num"], "source": "Local Fallback"},
-        {"name": "CreditCardNumber", "display_name": "Credit Card Number", "description": "Financial credit or debit card identifier.", "keywords": ["creditcard", "credit_card", "cc_num", "card_number"], "source": "Local Fallback"},
-        {"name": "Password", "display_name": "Password", "description": "Credential or secret authentication passkey.", "keywords": ["password", "passkey", "passwd", "pwd"], "source": "Local Fallback"},
-        {"name": "DateOfBirth", "display_name": "Date of Birth", "description": "Individual date or anniversary of birth.", "keywords": ["dob", "dateofbirth", "birth_date", "birthdate"], "source": "Local Fallback"},
+        {"name": dc["name"], "display_name": dc["displayName"], "description": dc["description"],
+         "keywords": list(dc["dataPatterns"]), "source": "Local Fallback"}
+        for dc in current_seed()
     ]
 
-    platform_url = os.getenv("EGERIA_PLATFORM_URL")
+    from resource_explorer.surveyors.database.egeria_reference_catalog import (
+        KEYWORDS_NOT_CONFIGURED, KEYWORDS_UNREADABLE, KeywordLoad,
+    )
+
+    def _built_in(load: KeywordLoad) -> list[DataClassRule]:
+        return [DataClassRule(**r, keyword_source=load.label) for r in fallback_rules]
+
+    platform_url = egeria_platform_url()
     if not platform_url:
-        return [DataClassRule(**r) for r in fallback_rules]
+        return _built_in(KeywordLoad(KEYWORDS_NOT_CONFIGURED))
 
     try:
         from pyegeria.omvs.reference_data import ReferenceDataManager
         from pyegeria.omvs.data_designer import DataDesigner
 
-        view_server = os.getenv("EGERIA_VIEW_SERVER", "view-server")
-        user_id = os.getenv("EGERIA_USER", "steward")
-        user_pwd = os.getenv("EGERIA_USER_PASSWORD", "steward")
+        from resource_explorer.concurrency import run_sync
+        from resource_explorer.egeria_clients import Caller, NoCallerIdentity, egeria_client
+
+        view_server = egeria_view_server()
+        # The signed-in reader (Brief I), resolved here in the request, not the env's user. With
+        # nobody signed in this read answers the LOCAL rules, as it always did (round 5): it is a
+        # read with a documented fallback, not an Egeria action someone is refused.
+        try:
+            reader = Caller()
+        except NoCallerIdentity:
+            return _built_in(KeywordLoad(KEYWORDS_UNREADABLE, reason="not signed in"))
+        clients = egeria_client(reader, purpose="data class rules",
+                                view_server=view_server, platform_url=platform_url)
+
+        def _guid_for(qname: str):
+            """`get_guid_for_name` is the known hang site: bounded through the shared pool, on a
+            client built in the pool thread itself (pyegeria binds a client to its thread's loop)."""
+            def _lookup():
+                designer = egeria_client(reader, purpose="data class rules", view_server=view_server,
+                                         platform_url=platform_url, shared=False).of(DataDesigner)
+                try:
+                    return designer.get_guid_for_name(qname)
+                finally:                       # its own client, used once: closed after use (round 6)
+                    close = getattr(designer, "close_session", None)
+                    if callable(close):
+                        try:
+                            close()
+                        except Exception:  # noqa: BLE001 - closing is tidy-up, never the answer
+                            pass
+            return run_sync(_lookup, timeout=_DATACLASS_GUID_TIMEOUT_SECONDS)
 
         def _fetch():
-            ref_manager = ReferenceDataManager(view_server, platform_url, user_id, user_pwd)
-            ref_manager.create_egeria_bearer_token(user_id, user_pwd)
-            designer = DataDesigner(view_server, platform_url, user_id, user_pwd)
-            designer.create_egeria_bearer_token(user_id, user_pwd)
+            from resource_explorer.surveyors.database.egeria_reference_catalog import (
+                load_data_class_keywords,
+            )
+            from resource_explorer.surveyors.survey_definition_reader import _as_guid
 
-            rules = []
-            for dc in fallback_rules:
-                name = dc["name"]
-                qname = f"DataClass::{name}"
-                keywords = []
-                try:
-                    guid = designer.get_guid_for_name(qname)
-                    if guid:
-                        results = ref_manager.find_valid_value_definitions(
-                            search_string=f"ValidValueDefinition::{name}Keyword::",
-                            starts_with=True,
-                            output_format="JSON"
-                        )
-                        if isinstance(results, list):
-                            for item in results:
-                                if isinstance(item, dict):
-                                    props = item.get("properties", {})
-                                    val = props.get("preferredValue") or props.get("displayName")
-                                    if val:
-                                        keywords.append(val.strip().lower())
-                except Exception:
-                    pass
-
-                rules.append(
-                    DataClassRule(
-                        name=name,
-                        display_name=dc["display_name"],
-                        description=dc["description"],
-                        keywords=list(set(keywords)) if keywords else dc["keywords"],
-                        source="Egeria (Active)" if keywords else "Local Fallback"
-                    )
-                )
-            return rules
+            ref_manager = clients.of(ReferenceDataManager)
+            # A DataClass Egeria does not hold has no keywords there. `_as_guid` rejects pyegeria's
+            # truthy "No elements found" miss sentinel; a timed-out lookup (`TimeoutError`) stops
+            # every later one inside the loader (round 6).
+            load = load_data_class_keywords(
+                ref_manager, [dc["name"] for dc in fallback_rules],
+                data_class_exists=lambda name: bool(_as_guid(_guid_for(f"DataClass::{name}"))),
+            )
+            return [
+                DataClassRule(**{**dc, "keywords": load.by_class.get(dc["name"]) or dc["keywords"],
+                                 "source": "Egeria (Active)" if dc["name"] in load.by_class else "Local Fallback",
+                                 "keyword_source": load.label})
+                for dc in fallback_rules
+            ]
 
         return await asyncio.to_thread(_fetch)
-    except Exception:
-        return [DataClassRule(**r) for r in fallback_rules]
+    except PermissionError:
+        raise      # no caller / expired sign-in: 401, never the local fallback rules
+    except Exception as exc:  # noqa: BLE001 - the built-in rules, labelled as "could not read"
+        return _built_in(KeywordLoad(KEYWORDS_UNREADABLE, reason=str(exc)[:200]))
 
 
 @router.get("/{slug}/status", response_model=EgeriaStatus)
@@ -398,7 +534,7 @@ async def get_repo_egeria_annotations(slug: str, report_guid: str) -> list[Egeri
         annotations = await asyncio.to_thread(publisher.get_annotations_by_report_guid, report_guid)
     except EgeriaConnectionError as exc:
         raise HTTPException(status_code=503, detail=str(exc))
-    return [EgeriaAnnotationItem(**a) for a in annotations]
+    return build_annotation_items(EgeriaAnnotationItem, annotations)
 
 
 class ResetResult(BaseModel):
@@ -484,7 +620,7 @@ class BulkResolveRequest(BulkRequest):
 
 
 @router.post("/linkage/resolve-all")
-async def resolve_all_linkages(req: BulkResolveRequest) -> dict:
+async def resolve_all_linkages(req: BulkResolveRequest, request: Request) -> dict:
     """Apply one resolution to many diverged resources.
 
     Republish is the usual choice after an Egeria reset — it re-publishes what RE
@@ -493,7 +629,9 @@ async def resolve_all_linkages(req: BulkResolveRequest) -> dict:
     milliseconds.
     """
     from resource_explorer.bulk_ops import resolve_all
+    from resource_explorer.web import admin_auth
 
+    admin_auth.require_admin(request)     # bulk republish writes to Egeria: admin only (one resource stays open)
     registry = ProjectRegistry()
     targets = [t.model_dump() for t in req.targets]
     try:
@@ -572,6 +710,11 @@ async def resolve_stale_linkage(
         raise HTTPException(
             status_code=404,
             detail=f"No stale Egeria linkage recorded for {entity_type} '{slug}'")
+    # Brief Z2: the link is stale (Egeria no longer holds that GUID), so the element is checked as not in
+    # Egeria: a republish creates it in the zones RE gives it; discard only clears RE's record (a decision).
+    await _authorize(registry, entity_type, slug,
+                     "publish" if entity_type == "repo" and req.action != "discard" else "decision",
+                     element_guid="")
 
     cleared, deleted = False, 0
     if entity_type == "repo":
@@ -613,7 +756,9 @@ async def resolve_stale_linkage(
                 # so this is the "fast, no re-scan" path the choice promises.
                 survey = await asyncio.to_thread(
                     lambda: SurveyOrchestrator(registry).run(slug, max_fetch_cost="none"))
-            guid = await asyncio.to_thread(lambda: EgeriaPublisher(registry=registry).publish(survey))
+            # An explicit re-create waits for Egeria (RUNS_PUBLISH_INLINE governs a run's auto-publish only).
+            guid = await asyncio.to_thread(
+                lambda: EgeriaPublisher(registry=registry).publish(survey, defer_drain=False))
             next_step = f"Re-created in Egeria as SurveyReport {guid}."
         except Exception as exc:
             # The link is already cleared, so this is recoverable by retrying the
@@ -677,6 +822,7 @@ async def reset_egeria(slug: str) -> ResetResult:
     the project from scratch instead of referencing stale GUIDs.
     """
     project, registry = _get_project_or_404(slug)
+    await _authorize(registry, "repo", slug, "decision")        # Brief Z2: RE's record of the element
     result = registry.clear_egeria_registration(slug)
     return ResetResult(
         status="ok",
@@ -742,6 +888,9 @@ async def publish_survey(slug: str, req: PublishRequest | None = None) -> Publis
     steps are offloaded to a thread pool via asyncio.to_thread().
     """
     project, registry = _get_project_or_404(slug)
+    # Brief Z round 2: the repository's own element, every operation a publish performs.
+    from resource_explorer.web.routes.curate import authorize_resource_write
+    await authorize_resource_write(registry, "repo", slug, publish=True)
 
     # ── Egeria Project context gate (Part 5) ──────────────────────────────────
     # The first real Egeria write for a resource is exactly this route — every
@@ -750,41 +899,22 @@ async def publish_survey(slug: str, req: PublishRequest | None = None) -> Publis
     # through here with different `steps`. Gating here once, rather than in
     # each frontend button handler, means a future publish surface can't
     # forget the check. status "unset" (never decided, including no row at
-    # all) blocks; every other status (personal/linked/deferred/declined —
-    # all deliberate answers) proceeds.
-    context = registry.get_project_context("repo", slug)
-    if not context or context.get("status") == "unset":
-        # Before prompting, see whether an investigation already answers this.
-        # An investigation is "the context everything else runs inside" (design
-        # §1); if this repo is in the working set of one that is bound to an
-        # Egeria Project, that binding IS the answer, and asking again per
-        # resource asks a question already answered.
-        #
-        # The inherited context is WRITTEN, not just used: an inheritance that
-        # leaves no row would make the resource's context depend on membership
-        # at read time, so removing it from the working set later would silently
-        # un-answer a question the user considers settled. Recorded with the
-        # investigation that supplied it, so it is inspectable rather than
-        # magic.
-        inherited = registry.inherited_egeria_project_context("repo", slug)
-        if inherited:
-            registry.set_project_context(
-                "repo", slug,
-                status="linked",
-                egeria_project_guid=inherited["egeria_project_guid"],
-                egeria_project_qualified_name=inherited["egeria_project_qualified_name"],
-                free_text_name=f"inherited from investigation '{inherited['_inherited_from_name']}'",
-            )
-            context = registry.get_project_context("repo", slug)
-        else:
-            return JSONResponse(
-                status_code=428,
-                content={
-                    "detail": "egeria_project_context_required",
-                    "entity_type": "repo",
-                    "entity_slug": slug,
-                },
-            )
+    # all) and "unbound" (the project it named is gone after an Egeria reset) block; every other status
+    # (personal/linked/deferred/declined — all deliberate answers) proceeds.
+    # The shared rule (repo_publish.resolve_project_context): a decided context proceeds; otherwise an
+    # investigation bound to an Egeria Project answers (and the answer is WRITTEN, with the investigation
+    # that supplied it); otherwise 428.
+    from resource_explorer import repo_publish as _rp
+    context = _rp.resolve_project_context(registry, slug)
+    if context is None:
+        return JSONResponse(
+            status_code=428,
+            content={
+                "detail": "egeria_project_context_required",
+                "entity_type": "repo",
+                "entity_slug": slug,
+            },
+        )
 
     steps = req.steps if req else None
 
@@ -815,12 +945,14 @@ async def publish_survey(slug: str, req: PublishRequest | None = None) -> Publis
             loop = _aio.new_event_loop()
             _aio.set_event_loop(loop)
             try:
-                return EgeriaPublisher(registry=registry, zone_names=zone_names).publish(result)
+                # The manual Publish waits for Egeria (RUNS_PUBLISH_INLINE governs a run's auto-publish only).
+                publisher = EgeriaPublisher(registry=registry, zone_names=zone_names)
+                return publisher.publish(result, defer_drain=False), publisher
             finally:
                 loop.close()
                 _aio.set_event_loop(None)
 
-        report_guid = await asyncio.to_thread(_run_publish)
+        report_guid, publisher = await asyncio.to_thread(_run_publish)
     except Exception as exc:
         return PublishResult(
             status="error",
@@ -834,23 +966,166 @@ async def publish_survey(slug: str, req: PublishRequest | None = None) -> Publis
     # shares) — only written when this publish came from a Survey Definition
     # candidate's own "☁ Publish" button, so its last-published badge
     # (registry.get_survey_definition_last_activity) has something to find.
+    run_id = getattr(publisher, "publish_run_id", "")
+    run_id = run_id if isinstance(run_id, str) else ""
+    proof = manual_publish_proof(registry, run_id)
     if req and req.survey_definition_ref:
         from resource_explorer.activity_logger import log_catalog
 
-        log_catalog(
+        entry = log_catalog(
             registry, entity_type="repo", entity_slug=slug,
             entity_name=project.display_name, entity_location=project.github_url,
             status="ok",
-            summary=f"Published '{req.survey_definition_ref}' findings ({len(result.annotations)} annotations)",
+            summary=(f"'{req.survey_definition_ref}' findings ({len(result.annotations)} annotations): "
+                     f"{proof['word']}"),
             detail=json.dumps({"survey_definition_ref": req.survey_definition_ref}),
         )
+        if run_id and entry:
+            # Its badge (get_survey_definition_last_activity) follows the run's proof, not this row existing.
+            registry.tag_activity_publish_run(entry, run_id)
 
     return PublishResult(
         status="ok",
         report_guid=report_guid,
         annotation_count=len(result.annotations),
         surveyed_at=result.surveyed_at.isoformat(),
+        publish_state=proof["state"],
+        publish_word=proof["word"],
+        publish_words=proof.get("words") or "",
     )
+
+
+def manual_publish_proof(registry, publish_run_id: str) -> dict:
+    """The manual Publish's word, from the run's proof rows. No run id means nothing was queued: "nothing to
+    publish". A run id whose rows cannot be read is "publish not established", never "published"."""
+    if not publish_run_id:
+        return {"state": "nothing", "word": "nothing to publish", "words": ""}
+    try:
+        proof = registry.publish_proofs([publish_run_id]).get(publish_run_id)
+    except Exception as exc:  # noqa: BLE001 - said, never guessed
+        return {"state": "unknown", "word": "publish not established", "words": f"the outbox could not be read: {exc}"}
+    return proof or {"state": "unknown", "word": "publish not established", "words": "no outbox rows for this run"}
+
+
+async def _authorize(registry: ProjectRegistry, entity_type: str, slug: str, write: str, *,
+                     element_guid: str | None = None) -> None:
+    """Brief Z2: the one curation decision (`workflows.curate.resource_access`, via the route form
+    `authorize_resource_write`), on the resource's own element: 403 with the reason when refused."""
+    from resource_explorer.web.routes.curate import authorize_resource_write
+
+    await authorize_resource_write(registry, entity_type, slug, write=write, element_guid=element_guid)
+
+
+# ── Egeria on a repository (parity slice G1, PI-001..PI-006) ─────────────────
+# The Next UI's "Publish" section calls these. Every state word comes from proof rows
+# (resource_explorer/repo_publish.py); nothing below archives or deletes in Egeria.
+
+def _publish_author(request: Request, action: str) -> str:
+    user = get_current_user(request)
+    author = (user or {}).get("user_id") or (user or {}).get("sub") or (user or {}).get("username") or ""
+    if not author:
+        raise HTTPException(status_code=401, detail=f"Sign in to {action}: the record needs an author.")
+    return author
+
+
+class PublishReportRequest(BaseModel):
+    #: "Publish without one" (PI-006): records the choice (status "declined") and proceeds. There is no
+    #: zones field: zones are never a per-press choice (they come from EXPLORER_PUBLISH_ZONES).
+    without_project: bool = False
+
+
+@router.get("/{slug}/publish-state")
+def get_publish_state(slug: str, request: Request) -> dict:
+    """In Egeria or not, the asset GUID, the last report row and the project: RE's own records only. Brief F:
+    plus what the signed-in viewer's Publish sends besides the report (`goes_out`; "" = signed out, who sends no
+    feedback)."""
+    from resource_explorer import repo_publish
+    _project, registry = _get_project_or_404(slug)
+    user = get_current_user(request)
+    viewer = (user or {}).get("user_id") or (user or {}).get("sub") or (user or {}).get("username") or ""
+    return repo_publish.publish_state(registry, slug, viewer=viewer)
+
+
+@router.post("/{slug}/publish-report")
+async def publish_report(slug: str, request: Request, req: PublishReportRequest | None = None):
+    """Publish RE's survey report WHOLE, read it back, record the proof row (PI-001, PI-006)."""
+    from resource_explorer import repo_publish
+    _project, registry = _get_project_or_404(slug)
+    author = _publish_author(request, "publish to Egeria")
+    await _authorize(registry, "repo", slug, "publish")         # Brief Z2
+    # to_thread copies the caller's context, so the project answer (per caller) is read as the caller.
+    try:
+        out = await asyncio.to_thread(
+            repo_publish.publish_report, registry, slug, author,
+            without_project=bool(req and req.without_project))
+    except repo_publish.AlreadyRunning as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+    if out.get("gate") == "context_required":
+        return JSONResponse(status_code=428, content={
+            "detail": "egeria_project_context_required", "entity_type": "repo", "entity_slug": slug,
+            "sentence": out["sentence"], "sent": out.get("sent") or {}})
+    if out.get("gate") == "no_survey":
+        # Publish never surveys (brief section 1): with nothing kept it sends no REPORT and says so; Brief F round
+        # 2: the rest of the press (tags, group, feedback) still went when the resource is in Egeria (`sent`).
+        return JSONResponse(status_code=409, content={"detail": out["sentence"], "sent": out.get("sent") or {}})
+    return out
+
+
+class ResurveyRequest(BaseModel):
+    #: Step keys to run (the stale ones). Omitted runs every step. Never a publish.
+    steps: list[str] | None = None
+
+
+@router.post("/{slug}/resurvey")
+async def resurvey_repo(slug: str, request: Request, req: ResurveyRequest | None = None):
+    """Run the survey and nothing else (brief section 1): no publish, no Egeria write. The band then
+    shows the new age. A survey already running for this resource is a 409, not a second one."""
+    from resource_explorer import repo_publish
+    _project, registry = _get_project_or_404(slug)
+    author = _publish_author(request, "re-survey")
+    try:
+        return await asyncio.to_thread(
+            repo_publish.resurvey, registry, slug, author, (req.steps if req else None) or None)
+    except repo_publish.AlreadyRunning as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+
+
+@router.post("/{slug}/forget-links")
+async def forget_links(slug: str, request: Request) -> dict:
+    """"Forget Egeria links": RE drops its cached GUIDs and survey history for this resource (PI-005).
+    Nothing is sent to Egeria; nothing there is archived or deleted. Brief Z2: the same access check as every
+    other change to the resource (a decision: an update), before anything is forgotten."""
+    from resource_explorer import repo_publish
+    _project, registry = _get_project_or_404(slug)
+    author = _publish_author(request, "forget Egeria links")
+    await _authorize(registry, "repo", slug, "decision")
+    return await asyncio.to_thread(repo_publish.forget_links, registry, slug, author)
+
+
+def _file_types_retired() -> HTTPException:
+    from resource_explorer import repo_publish
+    return HTTPException(status_code=410, detail=repo_publish.FILE_TYPES_RETIRED_SENTENCE)
+
+
+@router.get("/{slug}/file-types")
+def get_file_types(slug: str) -> dict:
+    """RETIRED (ruling 2026-10-07): the DataSet-per-file-type preview. Answers 410 for any old caller."""
+    raise _file_types_retired()
+
+
+@router.post("/{slug}/file-types/commit")
+async def commit_file_types(slug: str, request: Request) -> dict:
+    """RETIRED (ruling 2026-10-07): the DataSet-per-file-type press. Answers 410; nothing is created."""
+    raise _file_types_retired()
+
+
+@router.get("/{slug}/file-type-measurements")
+def get_file_type_measurements(slug: str) -> dict:
+    """Read only: the file-type annotations the survey report carries, and the DataSets earlier presses
+    made (shown as "retired mechanism · kept in Egeria"). Sends nothing to Egeria."""
+    from resource_explorer import repo_publish
+    project, registry = _get_project_or_404(slug)
+    return repo_publish.file_type_measurements(registry, project, slug)
 
 
 @router.post("/{slug}/materialize-annotations")
@@ -977,11 +1252,12 @@ async def get_survey_report(slug: str) -> SurveyReportData:
 
     # Project stats (stars, forks, language, license…)
     stats = registry.get_latest_project_stats(slug) or {}
+    # NULL stays null: "not read" is not 0 (the Next report view draws null as "not read").
     health = {
-        "stars":            stats.get("stars", 0),
-        "forks":            stats.get("forks", 0),
-        "open_issues":      stats.get("open_issues", 0),
-        "contributors":     stats.get("contributors", 0),
+        "stars":            stats.get("stars"),
+        "forks":            stats.get("forks"),
+        "open_issues":      stats.get("open_issues"),
+        "contributors":     stats.get("contributors_count"),  # the column is contributors_count; "contributors" was never a key, so this always read 0
         "last_push":        stats.get("last_push", ""),
         "primary_language": stats.get("primary_language", ""),
         "license":          stats.get("license", ""),
@@ -990,18 +1266,7 @@ async def get_survey_report(slug: str) -> SurveyReportData:
 
     # Dependencies grouped by ecosystem
     deps = registry.query_dependencies(slug)
-    dep_map: dict[str, dict] = {}
-    for d in deps:
-        eco = d.get("ecosystem") or "unknown"
-        if eco not in dep_map:
-            dep_map[eco] = {"ecosystem": eco, "count": 0, "direct": 0}
-        dep_map[eco]["count"] += 1
-        if d.get("dep_type") == "direct":
-            dep_map[eco]["direct"] += 1
-    dep_summary = [
-        DependencySummary(**v)
-        for v in sorted(dep_map.values(), key=lambda x: -x["count"])
-    ]
+    dep_summary = [DependencySummary(**v) for v in summarise_dependencies(deps)]
 
     # Data profiles from project_data_profiles
     raw_profiles = registry.get_data_profiles(slug)
@@ -1043,141 +1308,20 @@ async def get_survey_report(slug: str) -> SurveyReportData:
         file_types=file_types,
         total_files=total_files,
         health=health,
-        primary_language=stats.get("primary_language", ""),
+        primary_language=stats.get("primary_language") or "",  # a NULL column is not a str: it 500ed the route
         dependencies=dep_summary,
         has_egeria_annotations=latest_survey is not None,
         data_profiles=data_profiles,
         local_surveyed_at=local_surveyed_at,
+        health_read=bool(stats),
     )
 
 
-@router.post("/{slug}/catalog-elements", response_model=CatalogResult)
-async def catalog_elements(slug: str, request: CatalogRequest) -> CatalogResult:
-    """Create Egeria DataSet assets for selected file type categories.
-
-    Each selected category becomes a DataSet asset linked to the project's
-    own Asset via a CapabilityAssetUse relationship.  The project must have
-    been published to Egeria first (egeria_asset_guid must be cached).
-
-    **Known gap, not fixed here (2026-09-14 SourceControlLibrary
-    correction, egeria_publisher.py's module docstring):** CapabilityAssetUse
-    requires its `software_capability_guid` end to be a genuine
-    SoftwareCapability, which the project's own asset (`egeria_asset_guid`)
-    no longer is — it is a plain Asset. The DataSet element below still
-    creates fine; only the link call is expected to fail, per-item, until
-    the right relationship (or a real SoftwareCapability to hang it from) is
-    picked against a live Egeria server rather than guessed at here. The
-    per-item try/except below already surfaces that failure as a real error
-    on the affected `CatalogItemResult` rather than swallowing it.
-
-    Runs in a thread to avoid event loop conflict with pyegeria sync wrappers.
-    """
-    project, registry = _get_project_or_404(slug)
-
-    if not request.elements:
-        return CatalogResult(status="ok", cataloged=[])
-
-    def _do_catalog() -> list[CatalogItemResult]:
-        import asyncio as _aio
-        from pyegeria import AssetMaker
-        # pyegeria sync wrappers call asyncio.get_event_loop() — set one for this thread
-        loop = _aio.new_event_loop()
-        _aio.set_event_loop(loop)
-
-        view_server  = os.getenv("EGERIA_VIEW_SERVER", "qs-view-server")
-        user_id      = os.getenv("EGERIA_USER", "erinoverview")
-        user_pwd     = os.getenv("EGERIA_USER_PASSWORD", "secret")
-
-        asset_guid = registry.get_egeria_asset_guid(slug)
-        if not asset_guid:
-            raise ValueError(
-                "Project not yet registered in Egeria — publish a survey first."
-            )
-
-        am = AssetMaker(view_server, _platform_url(), user_id, user_pwd)
-        am.create_egeria_bearer_token(user_id, user_pwd)
-
-        results: list[CatalogItemResult] = []
-        for elem in request.elements:
-            try:
-                dataset_body = {
-                    "class": "NewElementRequestBody",
-                    "properties": {
-                        "class": "DataSetProperties",
-                        "typeName": "DataSet",
-                        "qualifiedName": f"DataSet::{slug}::{elem.label}",
-                        "displayName": f"{elem.label} — {project.display_name}",
-                        "description": (
-                            f"{elem.file_count} {elem.label} file(s) in "
-                            f"{project.github_url}. "
-                            + (f"Extensions: {', '.join(elem.extensions)}." if elem.extensions else "")
-                        ),
-                        "additionalProperties": {
-                            "project_slug":     slug,
-                            "file_type_label":  elem.label,
-                            "file_count":       str(elem.file_count),
-                            "extensions":       ", ".join(elem.extensions),
-                            "github_url":       project.github_url,
-                        },
-                    },
-                }
-                dataset_guid = am.create_asset(body=dataset_body)
-
-                link_body = {
-                    "class": "NewRelationshipRequestBody",
-                    "properties": {
-                        "class": "CapabilityAssetUseProperties",
-                        "useType": "GOVERNS",
-                        "description": f"{elem.label} files managed by this repository",
-                    },
-                }
-                am.add_capability_asset_use(
-                    software_capability_guid=asset_guid,
-                    asset_guid=dataset_guid,
-                    body=link_body,
-                )
-                results.append(CatalogItemResult(label=elem.label, guid=dataset_guid, status="created"))
-            except Exception as exc:
-                results.append(CatalogItemResult(label=elem.label, status="error", error=str(exc)[:140]))
-
-        am.close_session()
-        loop.close()
-        _aio.set_event_loop(None)
-        return results
-
-    try:
-        cataloged = await asyncio.to_thread(_do_catalog)
-    except Exception as exc:
-        return CatalogResult(
-            status="error",
-            cataloged=[CatalogItemResult(label="(all)", status="error", error=str(exc)[:200])],
-        )
-
-    errors = [c for c in cataloged if c.status == "error"]
-    overall = "ok" if not errors else ("partial" if len(errors) < len(cataloged) else "error")
-
-    try:
-        from resource_explorer.activity_logger import log_catalog
-        ok_items = [c for c in cataloged if c.status == "created"]
-        log_catalog(
-            ProjectRegistry(),
-            entity_type="repo",
-            entity_slug=slug,
-            entity_name=project.display_name,
-            entity_location=project.github_url,
-            status=overall,
-            summary=f"Cataloged {len(ok_items)}/{len(cataloged)} element(s) in Egeria",
-            items=[
-                {"kind": "DataSet", "display_name": c.label,
-                 "qualified_name": f"DataSet::{slug}::{c.label}",
-                 "guid": c.guid or "", "location": ""}
-                for c in ok_items
-            ],
-        )
-    except Exception:
-        pass
-
-    return CatalogResult(status=overall, cataloged=cataloged)
+@router.post("/{slug}/catalog-elements")
+async def catalog_elements(slug: str) -> CatalogResult:
+    """RETIRED (ruling 2026-10-07, DESIGN-FILE-TYPES-AS-ANNOTATIONS.md): this created one DataSet per
+    file type. It answers 410 and creates nothing; DataSets it made earlier stay in Egeria as history."""
+    raise _file_types_retired()
 
 
 @router.get("/{slug}/diff")

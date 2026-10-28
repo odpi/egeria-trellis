@@ -235,3 +235,13 @@ class TestRunsApi:
         resp = client.post(f"/api/runs/{run_id}/cancel")
         assert resp.status_code == 409
         assert registry.get_run(run_id)["state"] == "claimed"
+
+
+def test_cancelling_a_held_engine_action_row_is_a_409(client, registry):
+    """A held kind's row stands for an Egeria engine action RE has claimed; cancelling it locally would leave
+    that action claimed with no one to complete it."""
+    run_id = registry.enqueue_run("engine_action", {"engine_action_guid": "a-1"})
+    resp = client.post(f"/api/runs/{run_id}/cancel")
+    assert resp.status_code == 409
+    assert "engine_action" in resp.json()["detail"]
+    assert registry.get_run(run_id)["state"] == "queued"

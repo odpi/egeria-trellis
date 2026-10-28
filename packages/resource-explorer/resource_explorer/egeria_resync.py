@@ -42,6 +42,7 @@ REPAIR_STEPS = (
     "clear_stale_assets",
     "clear_orphan_publish_claims",
     "flag_vanished_publishes",
+    "flag_stale_dbfs_assets",
     "clear_stale_investigations",
     "clear_stale_contexts",
     "catalog_assets",
@@ -102,10 +103,23 @@ REGISTRATION_ONLY_ANALYSES = frozenset({"repository_health"})
 #: it was (§4's "flag, do not delete"). A false positive here costs a reader
 #: one wrong badge state until the next pass corrects it, not a decision
 #: silently unmade.
+#:
+#: `flag_stale_dbfs_assets` added 2026-10-03 for the same reason as
+#: `flag_vanished_publishes`: it only WRITES a flag, and never deletes. It is
+#: the databases/filesystems half of what `clear_stale_assets` does for repos,
+#: but deliberately weaker — `clear_stale_assets` clears a repo's GUID, whereas
+#: this flags a database/filesystem row in `egeria_linkage_status` and leaves
+#: `egeria_asset_guid` alone, so "published once" history survives and a row
+#: that resolves again has its flag cleared. Found live 2026-10-03: two
+#: databases kept GUIDs Egeria no longer held and read as published, because
+#: no scheduled step looked at anything but the `projects` table. Clearing a
+#: database/filesystem GUID stays a human's call (republish / re-survey /
+#: discard from Admin > Egeria Links). Writes nothing to Egeria.
 SAFE_SCHEDULED_STEPS = (
     "clear_stale_assets",
     "clear_orphan_publish_claims",
     "flag_vanished_publishes",
+    "flag_stale_dbfs_assets",
 )
 
 
@@ -182,20 +196,20 @@ class EgeriaResync:
         try:
             from pyegeria import AssetMaker, ClassificationExplorer, CollectionManager, ProjectManager
 
-            from resource_explorer.config import get_config
+            from resource_explorer.egeria_clients import current_principal, egeria_client
 
-            cfg = get_config().egeria
-            am = AssetMaker(cfg.view_server, cfg.platform_url, cfg.user_id, cfg.user_password)
-            pm = ProjectManager(cfg.view_server, cfg.platform_url, cfg.user_id, cfg.user_password)
-            cm = CollectionManager(cfg.view_server, cfg.platform_url, cfg.user_id, cfg.user_password)
-            # ClassificationExplorer, not MetadataExpert — PUBLISH-STATE-AFTER-
-            # REDEPLOY-CORRECTIONS.md / REPLY-PUBLISH-STATE-GO-AHEAD.md §1:
+            # Who (Brief I): the scheduled pass runs inside acting_as(Daemon(RESYNC)) (`_loop`);
+            # the admin's Scan/Apply routes run as the signed-in admin.
+            clients = egeria_client(current_principal(), purpose="egeria resync")
+            am = clients.of(AssetMaker)
+            pm = clients.of(ProjectManager)
+            cm = clients.of(CollectionManager)
+            # ClassificationExplorer, not MetadataExpert —
+            # PUBLISH-STATE-AFTER-REDEPLOY-CORRECTIONS.md / REPLY-PUBLISH-STATE-GO-AHEAD.md §1:
             # MetadataExpert is for special situations with a differently-
             # shaped response; ClassificationExplorer.get_element_by_guid is
             # the plain existence check.
-            ce = ClassificationExplorer(cfg.view_server, cfg.platform_url, cfg.user_id, cfg.user_password)
-            for c in (am, pm, cm, ce):
-                c.create_egeria_bearer_token()
+            ce = clients.of(ClassificationExplorer)
             self._clients = {"asset": am, "project": pm, "collection": cm, "classification": ce}
             return True, ""
         except Exception as exc:
@@ -216,6 +230,9 @@ class EgeriaResync:
             if "NotFound" in name or "404" in str(exc):
                 return False
             return None
+        if found is None:
+            # No answer is not "gone" (pyegeria ISSUE-134: up to 6.2.1 a swallowed failure returned None).
+            return None
         if isinstance(found, str):
             return "No elements" not in found and bool(found.strip())
         return bool(found)
@@ -232,12 +249,16 @@ class EgeriaResync:
         res.findings.append(self._scan_assets(res))
         res.findings.append(self._scan_orphan_publish_claims())
         res.findings.append(self._scan_vanished_publishes(res))
+        res.findings.append(self._scan_flagged_publish_rows())
+        res.findings.append(self._scan_dbfs_assets(res))
+        res.findings.append(self._scan_flagged_dbfs_rows())
         res.findings.append(self._scan_investigation_guids(res))
         res.findings.append(self._scan_contexts(res))
         res.findings.append(self._scan_unlinked_members(res))
         res.findings.append(self._scan_unpublished_but_expected())
         res.findings.append(self._scan_unpublishable())
         res.findings.append(self._scan_registration_only())
+        res.findings.append(self._scan_registration_blocked())
         res.findings.append(self._scan_local_investigations())
         res.findings.append(self._scan_definition_drift(res))
         res.findings.append(self._scan_specification_gap())
@@ -274,6 +295,11 @@ class EgeriaResync:
                     "reason": f"{type(exc).__name__}: {str(exc)[:80]}",
                 })
                 continue
+            if check is None:
+                # No answer is not "not live" (pyegeria ISSUE-134): undetermined, never cleared.
+                res.undetermined.append({"kind": "asset", "ref": r["slug"],
+                                         "reason": "Egeria gave no answer (the client returned nothing)"})
+                continue
             live = isinstance(check, list) and any(
                 (e.get("elementHeader") or {}).get("guid") == r["egeria_asset_guid"]
                 for e in check
@@ -283,7 +309,7 @@ class EgeriaResync:
         return Finding(
             key="stale_assets",
             title="Cached asset GUIDs pointing at nothing",
-            detail="These repos render as Published while their catalog entry is gone. "
+            detail="These repos render as Published while their Egeria entry is gone. "
                    "Clearing also drops their survey records and publish claims, which "
                    "are local claims about what Egeria holds.",
             items=stale, repair_step="clear_stale_assets",
@@ -339,7 +365,7 @@ class EgeriaResync:
             key="orphan_publish_claims",
             title="Publish claims with no asset behind them",
             detail="The Analyses cards' Published badge is derived from these. "
-                   "Nothing points at a catalog entry, so the badge is false.",
+                   "Nothing points at an Egeria entry, so the badge is false.",
             items=[{"slug": r["slug"], "claims": r["n"]} for r in rows],
             repair_step="clear_orphan_publish_claims",
         )
@@ -375,6 +401,95 @@ class EgeriaResync:
                    "— flagged on the record, not deleted.",
             items=vanished,
             repair_step="flag_vanished_publishes",
+        )
+
+    def _scan_flagged_publish_rows(self) -> Finding:
+        """Existing publish flags that need re-checking, keyed on the ROWS.
+
+        Exists because `scan()` drops empty findings: once a republish
+        resolves, `vanished_publishes` is empty and nothing would ever offer
+        (or schedule) the heal step. A flag that is still on the record is a
+        reason to run `flag_vanished_publishes` whatever the vanished finding
+        says. 'uncatalogued' rows count only once a report exists to re-read —
+        otherwise the pass has nothing to do for them.
+        """
+        latest = self._registry.get_latest_egeria_surveys_all_projects()
+        items = []
+        for row in self._registry.list_egeria_linkages("repo_publish"):
+            if row["status"] == "stale" or row["entity_slug"] in latest:
+                items.append({"slug": row["entity_slug"], "status": row["status"]})
+        return Finding(
+            key="flagged_publish_rows",
+            title="Publish flags awaiting re-check",
+            detail="These repos carry a publish flag. Re-checking reads each "
+                   "repo's latest report and clears the flag if it resolves.",
+            items=items,
+            repair_step="flag_vanished_publishes",
+        )
+
+    #: entity_type -> registry lister, for the databases/filesystems scan.
+    _DBFS_TYPES = (("database", "list_databases"), ("filesystem", "list_filesystems"))
+
+    def _dbfs_with_guid(self):
+        """(entity_type, slug, guid) for every database/filesystem that carries
+        a cached GUID. One with NO GUID is never yielded: there is nothing to
+        verify, and flagging it would claim it was published once."""
+        for etype, lister in self._DBFS_TYPES:
+            for ent in getattr(self._registry, lister)():
+                guid = getattr(ent, "egeria_asset_guid", "") or ""
+                if guid:
+                    yield etype, ent.slug, guid
+
+    def _resolve_dbfs(self, guid: str) -> bool | None:
+        ce = self._clients["classification"]
+        return self._resolves(
+            lambda g: ce.get_element_by_guid(g, graph_query_depth=0), guid)
+
+    def _scan_dbfs_assets(self, res: ScanResult) -> Finding:
+        """Databases and filesystems whose cached asset GUID no longer resolves.
+
+        The databases/filesystems counterpart of `_scan_assets` (which reads the
+        `projects` table only, and so never saw these). Uses the type-agnostic
+        element read, as `_scan_vanished_publishes` does. Re-verifies every
+        cached GUID every pass — flagged AND published — so a flag can also be
+        cleared. Undetermined is never gone.
+        """
+        dead = []
+        for etype, slug, guid in self._dbfs_with_guid():
+            v = self._resolve_dbfs(guid)
+            if v is False:
+                dead.append({"entity_type": etype, "slug": slug, "guid": guid})
+            elif v is None:
+                res.undetermined.append({
+                    "kind": etype, "ref": slug, "reason": "lookup failed"})
+        return Finding(
+            key="stale_dbfs_assets",
+            title="Database/filesystem asset GUIDs pointing at nothing",
+            detail="These render as published while their Egeria entry is gone. "
+                   "Flagged stale in the linkage table, never cleared: the GUID "
+                   "stays so the history survives, and the flag is removed if the "
+                   "element resolves again.",
+            items=dead, repair_step="flag_stale_dbfs_assets",
+        )
+
+    def _scan_flagged_dbfs_rows(self) -> Finding:
+        """Existing database/filesystem stale flags, keyed on the ROWS.
+
+        `scan()` drops empty findings, so once a flagged GUID resolves again
+        `stale_dbfs_assets` is empty and nothing would offer (or schedule) the
+        step that clears the flag. Same shape as `_scan_flagged_publish_rows`.
+        """
+        items = []
+        for etype, _ in self._DBFS_TYPES:
+            for row in self._registry.list_egeria_linkages(etype, statuses=("stale",)):
+                items.append({"entity_type": etype, "slug": row["entity_slug"],
+                              "status": row["status"]})
+        return Finding(
+            key="flagged_dbfs_rows",
+            title="Database/filesystem stale flags awaiting re-check",
+            detail="These carry a stale flag. Re-checking clears it if the "
+                   "asset resolves again.",
+            items=items, repair_step="flag_stale_dbfs_assets",
         )
 
     def _scan_investigation_guids(self, res: ScanResult) -> Finding:
@@ -530,7 +645,7 @@ class EgeriaResync:
         """Every unpublished repo, with the SAME readiness question the gate asks.
 
         The publish route (`web/routes/egeria.py`, Part 5 gate) accepts a repo
-        when its own context is anything but `unset` **or** when an investigation
+        when its own context is anything but `unset`/`unbound` **or** when an investigation
         it is in scope for supplies one by inheritance. An earlier version of
         this scan answered only the first half — `publish_ready = status !=
         "unset"` — and the two answers agreed right up until they did not.
@@ -579,32 +694,36 @@ class EgeriaResync:
                     # regression caught by the test written for the original
                     # distinction — the counts alone cannot tell a reader that
                     # the repo in front of them never had an asset to lose.
-                    "cause": ("asset lost — it was catalogued before"
+                    "cause": ("asset lost — it was published before"
                               if published_before else
-                              "never catalogued — no publish has run for it"),
+                              "never published — no publish has run for it"),
                 })
 
         # Inheritance is asked OUTSIDE the connection above: it opens its own.
         for item in out:
-            if item["context"] not in ("", "none", "unset"):
-                item["publish_ready"] = True
-                item["ready_via"] = f"context '{item['context']}'"
-                continue
-            try:
-                inherited = self._registry.inherited_egeria_project_context(
-                    "repo", item["slug"])
-            except Exception as exc:
-                # Could not ask is never "not ready" — the same rule the rest of
-                # this module runs on. A repo we cannot answer for is offered no
-                # button and says why.
-                item["publish_ready"] = None
-                item["ready_via"] = f"undetermined ({type(exc).__name__})"
-                continue
-            item["publish_ready"] = bool(inherited)
-            item["ready_via"] = (
-                f"inherits from '{inherited['_inherited_from_name']}'"
-                if inherited else "")
+            item["publish_ready"], item["ready_via"] = self._ready_via(
+                item["slug"], item["context"])
         return out
+
+    def _ready_via(self, slug: str, context: str) -> tuple:
+        """(publish_ready, ready_via) for one repo: the gate's own question.
+
+        `context` is the repo's own context status ('' / 'none' / 'unset' mean
+        none was decided). Shared by `_publish_readiness` and
+        `_scan_registration_only` so the two cannot answer differently.
+        """
+        if context not in ("", "none", "unset", "unbound"):
+            return True, f"context '{context}'"
+        try:
+            inherited = self._registry.inherited_egeria_project_context("repo", slug)
+        except Exception as exc:
+            # Could not ask is never "not ready" — the same rule the rest of
+            # this module runs on. A repo we cannot answer for is offered no
+            # button and says why.
+            return None, f"undetermined ({type(exc).__name__})"
+        if inherited:
+            return True, f"inherits from '{inherited['_inherited_from_name']}'"
+        return False, ""
 
     def _scan_unpublished_but_expected(self) -> Finding:
         """Repos with no Egeria asset that CAN be catalogued now.
@@ -630,7 +749,7 @@ class EgeriaResync:
         lost = sum(1 for i in items if i["was_published"])
         return Finding(
             key="needs_catalog",
-            title=(f"Repos with no Egeria asset that can be catalogued "
+            title=(f"Repos with no Egeria asset that can be published "
                    f"({lost} lost an asset, {len(items) - lost} never had one)"),
             detail=("Publishes " + "/".join(CATALOG_STEPS) + " for each — enough to "
                     "register the asset, and deliberately nothing that downloads an "
@@ -678,56 +797,31 @@ class EgeriaResync:
         )
 
     def _scan_registration_only(self) -> Finding:
-        """Assets that exist but carry no real survey report.
+        """Assets that exist but carry no real survey report, and CAN be published.
 
         The sequel to `catalog_assets`: cataloguing registers the asset with one
         cheap step, which is the right trade when the goal is to make relinking
         possible, but it leaves the catalog holding an asset and almost nothing
         about it. This finds those and offers the full survey publish.
 
-        Membership is a subset test against `REGISTRATION_ONLY_ANALYSES`, not a
-        row count. "Fewer than N published analyses" would be a threshold whose
-        meaning changes silently the next time the analysis catalog grows.
+        Two rules decide membership, both about proof rather than claims:
+
+        * READY. A repo the publish gate would refuse (no Egeria Project
+          context, none inherited) is NOT listed here: a tick-box over a row the
+          repair is guaranteed to fail on is what `_scan_unpublishable` exists
+          to prevent. Those go to `_scan_registration_blocked` as a sentence.
+        * PUBLISHED. A repo is published when `project_egeria_surveys` holds a
+          row for it — the real proof, written by EVERY publish path. It used
+          to be `project_published_analyses`, which only the full-survey path
+          writes, so the scheduled refresh published a repo and this scan kept
+          offering it (docling and egeria_docs, 2026-10-01). Where claims exist
+          they are still read, because a catalog-step publish also leaves a
+          survey row and only the claims say it covered nothing but
+          registration.
         """
-        items = []
-        with self._registry._conn() as conn:
-            rows = conn.execute(
-                "SELECT slug FROM projects WHERE coalesce(egeria_asset_guid, '') <> '' "
-                "ORDER BY slug").fetchall()
-            for r in rows:
-                # JOINed to project_egeria_surveys, not read on its own. A row
-                # in project_published_analyses is a CLAIM that something was
-                # published; it does not stop being a row when the report it
-                # names is destroyed. After the 2026-08-31 redeploy this table
-                # held 64 rows of which 36 pointed at SurveyReports that no
-                # longer existed — a record that outlived what it described,
-                # and indistinguishable from a live one by inspection.
-                #
-                # Read raw, it excluded 5 repos from this finding on the
-                # strength of claims dated 27-31 August: the scan said "these
-                # already have survey results" about repos whose results the
-                # redeploy had destroyed. The exclusion was silent, which is
-                # the dangerous part — a repo dropping out of a worklist looks
-                # exactly like a repo that did not need to be on it.
-                #
-                # The join is the whole fix: project_egeria_surveys is cleared
-                # alongside the asset by clear_egeria_registration, so a claim
-                # whose report_guid is absent from it is one nothing stands
-                # behind.
-                published = {x["analysis_id"] for x in conn.execute(
-                    "SELECT DISTINCT a.analysis_id FROM project_published_analyses a "
-                    "JOIN project_egeria_surveys s "
-                    "  ON s.egeria_report_guid = a.egeria_report_guid "
-                    "WHERE a.project_slug = ?", (r["slug"],)).fetchall()}
-                if published and not published <= REGISTRATION_ONLY_ANALYSES:
-                    continue
-                items.append({
-                    "slug": r["slug"],
-                    "published_analyses": ", ".join(sorted(published)) or "none",
-                })
         return Finding(
             key="registration_only",
-            title=("Catalogued assets with no survey results published"),
+            title=("Egeria assets with no survey results published"),
             detail=("Runs the FULL survey for each and publishes it as a SurveyReport. "
                     "This is the slow path: it includes steps that download the "
                     "repository archive, so across a large corpus it is minutes and "
@@ -735,8 +829,75 @@ class EgeriaResync:
                     "Left unticked for that reason. The assets are already registered "
                     "and investigation members can already be attached to them — this "
                     "adds what is known ABOUT each repo, and nothing depends on it."),
-            items=items, repair_step="republish_survey_results",
+            items=[i for i in self._registration_only_rows() if i["publish_ready"] is True],
+            repair_step="republish_survey_results",
         )
+
+    def _scan_registration_blocked(self) -> Finding:
+        """Catalogued repos that lack survey results but cannot be published.
+
+        Plain sentence, no tick-box: the publish gate refuses a repo with no
+        Egeria Project context, so offering the repair would only fail.
+        """
+        items = []
+        for i in self._registration_only_rows():
+            if i["publish_ready"] is True:
+                continue
+            i["blocked_reason"] = (
+                "could not determine whether an Egeria Project applies"
+                if i["publish_ready"] is None else
+                f"{i['slug']} has no Egeria Project, and no investigation supplies one, "
+                "so its survey results cannot be published until one is set")
+            items.append(i)
+        return Finding(
+            key="registration_blocked",
+            title="Egeria assets with no survey results and no Project to publish under",
+            detail=("Assign an Egeria Project to these, or add them to an investigation "
+                    "that has one. No button: the publish is refused (428) until then."),
+            items=items, repair_step="", needs_decision=True,
+        )
+
+    def _registration_only_rows(self) -> list:
+        items = []
+        with self._registry._conn() as conn:
+            rows = conn.execute(
+                "SELECT p.slug AS slug, coalesce(c.status, '') AS status "
+                "FROM projects p "
+                "LEFT JOIN entity_egeria_project_context c "
+                "  ON c.entity_type = 'repo' AND c.entity_slug = p.slug "
+                "WHERE coalesce(p.egeria_asset_guid, '') <> '' "
+                "ORDER BY p.slug").fetchall()
+            for r in rows:
+                # JOINed to project_egeria_surveys, not read on its own. A row
+                # in project_published_analyses is a CLAIM that something was
+                # published; it does not stop being a row when the report it
+                # names is destroyed (36 of 64 after the 2026-08-31 redeploy).
+                # Read raw, it silently excluded 5 repos from this finding.
+                # project_egeria_surveys is cleared alongside the asset by
+                # clear_egeria_registration, so a claim whose report_guid is
+                # absent from it is one nothing stands behind.
+                published = {x["analysis_id"] for x in conn.execute(
+                    "SELECT DISTINCT a.analysis_id FROM project_published_analyses a "
+                    "JOIN project_egeria_surveys s "
+                    "  ON s.egeria_report_guid = a.egeria_report_guid "
+                    "WHERE a.project_slug = ?", (r["slug"],)).fetchall()}
+                has_survey_row = conn.execute(
+                    "SELECT 1 FROM project_egeria_surveys WHERE project_slug = ? LIMIT 1",
+                    (r["slug"],)).fetchone() is not None
+                if published and not published <= REGISTRATION_ONLY_ANALYSES:
+                    continue
+                if not published and has_survey_row:
+                    # Published by a path that records no per-analysis claims
+                    # (the scheduled refresh). The survey row is the proof.
+                    continue
+                items.append({
+                    "slug": r["slug"], "context": r["status"] or "none",
+                    "published_analyses": ", ".join(sorted(published)) or "none",
+                })
+        for item in items:
+            item["publish_ready"], item["ready_via"] = self._ready_via(
+                item["slug"], item["context"])
+        return items
 
     def _scan_local_investigations(self) -> Finding:
         items = [
@@ -748,7 +909,7 @@ class EgeriaResync:
             key="local_investigations",
             title="Investigations with no Egeria Project",
             detail="Creating a Project is a write into a shared system and names a real "
-                   "catalog object, so it stays your decision — bind an existing Project "
+                   "Egeria object, so it stays your decision — bind an existing Project "
                    "or create one from the investigation's own card.",
             items=items, repair_step="", needs_decision=True,
         )
@@ -998,9 +1159,17 @@ class EgeriaResync:
 
     def _do_flag_vanished_publishes(self) -> dict:
         """Flag, never delete — the counterpart to `_do_clear_orphan_publish_
-        claims` for the row that IS locally coherent. Also self-heals: a
-        project whose latest publish now resolves has its flag cleared, so
-        a republish is not stuck showing "no longer in the store" forever.
+        claims` for the row that IS locally coherent.
+
+        Also self-heals, keyed on the FLAGGED ROWS themselves (not on whether
+        this scan happens to contain a vanished finding — `scan()` drops empty
+        findings, so a heal gated on one is unreachable exactly when the thing
+        it heals has resolved). Every pass, for each existing 'repo_publish'
+        flag (stale or uncatalogued), re-read that slug's CURRENT latest
+        report: resolves -> flag cleared; still absent -> flag kept with
+        `last_checked_at` advanced; no report at all -> 'uncatalogued'
+        ("not catalogued, publish needed"). A republish is therefore not stuck
+        showing "no longer in the store" forever.
         """
         res = ScanResult()
         finding = self._scan_vanished_publishes(res)
@@ -1010,15 +1179,97 @@ class EgeriaResync:
                 "repo_publish", item["slug"], stale_guid=item["guid"],
                 detail="the published report no longer resolves in Egeria",
             )
-        healed = 0
-        for slug in self._registry.get_latest_egeria_surveys_all_projects():
+        latest = self._registry.get_latest_egeria_surveys_all_projects()
+        ce = self._clients["classification"]
+        healed_slugs: list[str] = []
+        uncatalogued = 0
+        for row in self._registry.list_egeria_linkages("repo_publish"):
+            slug = row["entity_slug"]
             if slug in vanished_slugs:
+                continue  # just re-flagged above, last_checked_at already advanced
+            survey = latest.get(slug)
+            if not survey:
+                self._registry.mark_egeria_linkage_uncatalogued(
+                    "repo_publish", slug,
+                    detail="no survey report has been published for this repo",
+                )
+                uncatalogued += 1
                 continue
-            if self._registry.get_egeria_linkage("repo_publish", slug):
+            guid = survey["egeria_report_guid"]
+            v = self._resolves(
+                lambda g: ce.get_element_by_guid(g, graph_query_depth=0), guid)
+            if v is True:
                 self._registry.clear_egeria_linkage_status("repo_publish", slug)
-                healed += 1
-        return {"flagged": len(finding.items), "healed": healed,
+                healed_slugs.append(slug)
+                self._log_heal(slug, row, guid)
+                log.info("egeria_resync: cleared publish flag for %s at %s "
+                         "(latest report %s resolves)", slug, _now(), guid)
+            elif v is False:
+                self._registry.mark_egeria_linkage_stale(
+                    "repo_publish", slug, stale_guid=guid,
+                    detail="the published report no longer resolves in Egeria",
+                )
+            else:
+                res.undetermined.append(
+                    {"kind": "publish", "ref": slug, "reason": "lookup failed"})
+        return {"flagged": len(finding.items), "healed": len(healed_slugs),
+                "healed_slugs": healed_slugs, "healed_at": _now() if healed_slugs else "",
+                "uncatalogued": uncatalogued,
                 "undetermined": len(res.undetermined)}
+
+    def _do_flag_stale_dbfs_assets(self) -> dict:
+        """Flag, never delete — the databases/filesystems counterpart of
+        `_do_flag_vanished_publishes`.
+
+        Re-verifies every database/filesystem that has a cached GUID against
+        Egeria. Gone -> `egeria_linkage_status` flagged stale (GUID untouched).
+        Resolves -> any flag cleared. Undetermined (unreachable, auth, missing
+        method) -> row left exactly as it was and counted. No GUID -> skipped.
+        Writes nothing to Egeria and deletes no GUID. The write half is
+        `egeria_linkage.record_linkage_verdict`, shared with
+        `recheck_all_linkages`.
+        """
+        from resource_explorer.egeria_linkage import record_linkage_verdict
+
+        flagged, cleared, undetermined = [], [], []
+        for etype, slug, guid in self._dbfs_with_guid():
+            v = self._resolve_dbfs(guid)
+            if v is None:
+                undetermined.append({"entity_type": etype, "slug": slug})
+                continue
+            outcome = record_linkage_verdict(
+                self._registry, etype, slug, guid, v,
+                detail="the cached asset no longer resolves in Egeria")
+            if outcome == "flagged":
+                flagged.append({"entity_type": etype, "slug": slug})
+            elif outcome == "cleared":
+                cleared.append({"entity_type": etype, "slug": slug})
+                log.info("egeria_resync: cleared %s stale flag for %s at %s "
+                         "(asset %s resolves)", etype, slug, _now(), guid)
+        return {"flagged": len(flagged), "flagged_items": flagged,
+                "healed": len(cleared), "healed_items": cleared,
+                "undetermined": len(undetermined)}
+
+    def _log_heal(self, slug: str, row: dict, report_guid: str) -> None:
+        """Visible evidence that a publish flag was cleared (the row itself is
+        deleted — absence means healthy — so without this nothing shows it
+        happened). One activity-log entry per healed slug."""
+        import uuid
+        from resource_explorer.registry import ActivityEntry
+        try:
+            self._registry.write_activity(ActivityEntry(
+                id=str(uuid.uuid4()), ts=_now(), operation="refresh",
+                intent="enrichment", entity_type="repo", entity_slug=slug,
+                status="ok",
+                summary=f"Cleared the '{row.get('status', 'stale')}' publish flag: "
+                        f"latest report {report_guid} resolves in Egeria",
+                detail=f"Resync heal (flag_vanished_publishes). Flag had been set "
+                       f"{row.get('detected_at', '')}; previously flagged guid "
+                       f"{row.get('stale_guid', '')}.",
+                items=[{"report_guid": report_guid}],
+            ))
+        except Exception:
+            log.exception("egeria_resync: could not write heal activity for %s", slug)
 
     def _do_clear_stale_investigations(self) -> dict:
         res = ScanResult()
@@ -1045,7 +1296,9 @@ class EgeriaResync:
                 etype, _, eslug = item["ref"].partition(":")
                 # Back to 'unset', not 'personal' or 'declined': the decision
                 # that was made pointed at something gone, so it must be asked
-                # again rather than reinterpreted as an answer never given.
+                # again rather than reinterpreted as an answer never given. ('unset', not 'unbound': this
+                # heal is for a GUID that went stale WITHOUT a reset marker; 'unbound' is only what the
+                # post-reset clean-up script writes. Both gate a publish identically.)
                 conn.execute(
                     "UPDATE entity_egeria_project_context SET egeria_project_guid = '', "
                     "egeria_project_qualified_name = '', status = 'unset' "
@@ -1053,7 +1306,45 @@ class EgeriaResync:
         return {"contexts_cleared": len(finding.items),
                 "undetermined": len(res.undetermined)}
 
+    def _refusal(self, entity_type: str, slug: str, write: str = "publish") -> str:
+        """Brief Z2 round 2: the per-resource access check every repair write asks, as the person who pressed
+        Apply (`resource_access`), or, run unattended by the scheduler, the no-requester rule (open only with no
+        zone in use). "" = proceed, else the resource's own words "not permitted · <reason>"."""
+        from resource_explorer.workflows.curate import person_write_refusal
+
+        return person_write_refusal(self._registry, entity_type, slug, write)
+
     def _publish_one(self, slug: str, steps) -> dict:
+        """`_publish_one_unlogged`, plus a durable record of any failure.
+
+        Refusals at the gate and failures before the orchestrator runs never
+        reach the publisher, so nothing else writes an activity_log row for
+        them: an Apply that failed on every repo left no trace anywhere a
+        person looks (rule 16). Every not-ok outcome is logged here.
+        """
+        out = self._publish_one_unlogged(slug, steps)
+        if out.get("not_permitted"):
+            return out                    # a refusal, not a failure: said by _publish_many, never logged as one
+        if not out.get("ok"):
+            self._log_publish_failure(slug, out.get("error", "unknown error"))
+        return out
+
+    def _log_publish_failure(self, slug: str, error: str) -> None:
+        import uuid
+        from resource_explorer.registry import ActivityEntry
+        try:
+            self._registry.write_activity(ActivityEntry(
+                id=str(uuid.uuid4()), ts=_now(), operation="publish",
+                intent="enrichment", entity_type="repo", entity_slug=slug,
+                status="error",
+                summary=f"Resync publish failed: {error}",
+                detail="Resync apply (republish). The repo was not published.",
+                items=[{"error": error}],
+            ))
+        except Exception:
+            log.exception("egeria_resync: could not write failure activity for %s", slug)
+
+    def _publish_one_unlogged(self, slug: str, steps) -> dict:
         """Survey then publish one repo, mirroring the publish route's own order.
 
         Deliberately reimplements the route's sequence rather than calling it:
@@ -1072,12 +1363,13 @@ class EgeriaResync:
 
         reg = self._registry
         context = reg.get_project_context("repo", slug)
-        if not context or context.get("status") == "unset":
+        if not context or context.get("status") in ("unset", "unbound"):
             inherited = reg.inherited_egeria_project_context("repo", slug)
             if not inherited:
-                # The scan promised this would not happen — say so plainly
-                # rather than raising, so one repo that drifted between scan and
-                # apply cannot abort the other twenty-six.
+                # Reached only if the context changed between scan and apply:
+                # the scans no longer offer a repo the gate would refuse. Say
+                # so plainly rather than raising, so one repo that drifted
+                # cannot abort the other twenty-six.
                 return {"slug": slug, "ok": False,
                         "error": "no Egeria Project context (428) — re-scan"}
             reg.set_project_context(
@@ -1098,8 +1390,19 @@ class EgeriaResync:
         import asyncio as _aio
         loop = _aio.new_event_loop()
         _aio.set_event_loop(loop)
+        from resource_explorer.private_publish import PrivateAwaitsOwner, record_waiting
+        from resource_explorer.workflows.curate import WriteNotPermitted
+
         try:
-            guid = EgeriaPublisher(registry=reg).publish(survey)
+            # A repair re-publish waits for Egeria (RUNS_PUBLISH_INLINE governs a run's auto-publish only).
+            guid = EgeriaPublisher(registry=reg).publish(survey, defer_drain=False)
+        except WriteNotPermitted as exc:
+            # Round 3: an adopted asset the caller may not change is a refusal, reported with its words.
+            return {"slug": slug, "ok": False, "not_permitted": str(exc)}
+        except PrivateAwaitsOwner as exc:
+            # Waiting, not failed (2026-10-13 review): only the private investigation's owner can publish it.
+            record_waiting(reg, exc, run_key=survey.surveyed_at.isoformat(), source="resync")
+            return {"slug": slug, "ok": False, "awaits_owner": str(exc)}
         except Exception as exc:
             return {"slug": slug, "ok": False, "error": f"publish failed: {exc}"}
         finally:
@@ -1117,12 +1420,27 @@ class EgeriaResync:
         only what actually succeeded — a repair that says it did 27 when it did
         9 is the exact class of claim this module exists to stop making.
         """
-        results = [self._publish_one(s, steps) for s in slugs]
+        results, skipped, waiting = [], [], []
+        for s in slugs:
+            why = self._refusal("repo", s)
+            if why:                       # Brief Z2 round 2: skipped with its own words, the rest proceed
+                skipped.append({"slug": s, "words": why})
+                continue
+            out = self._publish_one(s, steps)
+            if out.get("not_permitted"):
+                skipped.append({"slug": s, "words": out["not_permitted"]})
+                continue
+            if out.get("awaits_owner"):
+                waiting.append({"slug": s, "words": out["awaits_owner"]})
+                continue
+            results.append(out)
         failed = [r for r in results if not r["ok"]]
         return {
             "attempted": len(results),
             "published": len(results) - len(failed),
             "failed": len(failed),
+            "not_permitted": skipped,
+            "awaits_owner": waiting,
             "steps": list(steps) if steps else "full survey",
             "errors": [{"slug": r["slug"], "error": r["error"]} for r in failed][:20],
         }
@@ -1142,17 +1460,25 @@ class EgeriaResync:
             EgeriaInvestigationPublisher,
         )
 
+        from resource_explorer.workflows.egeria_work_access import investigation_member_refusal
+
         pub = EgeriaInvestigationPublisher(self._registry)
         linked, unlinkable, per_inv = 0, 0, {}
         for inv in self._registry.list_investigations():
             if not inv.get("egeria_project_guid"):
                 continue
-            r = pub.relink_members(inv["slug"])
+            # Brief Z3: the same per-member check the relink route asks, both ends (the member's asset and the
+            # Folio, judged on its Project), as the person who pressed Apply or, unattended, the no-requester rule.
+            r = pub.relink_members(inv["slug"], refusal=investigation_member_refusal(
+                self._registry, inv["slug"], unattended=True))
             linked += len(r.members_linked)
             unlinkable += len(r.members_unlinkable)
             per_inv[inv["slug"]] = {
                 "linked": len(r.members_linked),
                 "unlinkable": len(r.members_unlinkable),
+                "not_permitted": [{"entity_type": m.get("entity_type"), "slug": m.get("entity_slug"),
+                                   "words": m["reason"]} for m in r.members_unlinkable
+                                  if str(m.get("reason", "")).startswith("not permitted")],
                 "errors": r.errors,
             }
         return {"members_linked": linked, "members_unlinkable": unlinkable,
@@ -1318,8 +1644,15 @@ def scan_and_clear(registry: "ProjectRegistry | None" = None) -> dict:
 
 def _loop(interval: int, stop: threading.Event) -> None:
     while not stop.is_set():
+        # Before the scan and outside every lock: heal a missing secrets file.
+        from resource_explorer.omsecrets_reproject import heal_missing
+
+        heal_missing()
         try:
-            result = scan_and_clear()
+            from resource_explorer.egeria_clients import Daemon, DaemonReason, acting_as
+
+            with acting_as(Daemon(DaemonReason.RESYNC)):
+                result = scan_and_clear()
             with _status_lock:
                 _status["last_run_at"] = _now()
                 _status["last_reachable"] = result.get("reachable", True)

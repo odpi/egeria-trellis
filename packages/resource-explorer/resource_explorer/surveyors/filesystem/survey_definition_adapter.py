@@ -17,7 +17,7 @@ result-retrieval build, this now also waits for the triggered engine action
 to reach a terminal status and reads back its real result — see
 egeria_async_survey_result.py, shared with the database adapter's identical
 function above it, and
-docs/design-notes/EGERIA-ASYNC-RESULT-RETRIEVAL-IMPLEMENTED.md.
+EGERIA-ASYNC-RESULT-RETRIEVAL-IMPLEMENTED.md.
 
 A step tagged executes_at="egeria-adaptive" is a third, separate
 other_engine_handlers entry: the folded-in run_hybrid_filesystem_survey
@@ -31,6 +31,8 @@ import logging
 from datetime import datetime, timezone
 
 from resource_explorer.surveyors.survey_definition_executor import (
+    PUBLISH_NOT_CHOSEN,
+    PUBLISHED,
     ResourceTypeAdapter,
     register_adapter,
 )
@@ -109,7 +111,7 @@ def _trigger_egeria_native_survey(fs_entity, registry, step, **_) -> dict:
     if not fs_guid:
         raise RuntimeError(
             f"Filesystem '{fs_entity.slug}' has no stored Egeria asset guid — "
-            "cannot trigger Egeria's native survey for an uncataloged filesystem."
+            "cannot trigger Egeria's native survey for an unpublished filesystem."
         )
     surveyor = EgeriaFileSystemSurveyor()
     triggered_at = datetime.now(timezone.utc)
@@ -128,10 +130,15 @@ def _trigger_egeria_native_survey(fs_entity, registry, step, **_) -> dict:
     return {"status": "ok", **result}
 
 
+#: The words a run's outcome carries about Egeria (Brief I round 5): a run that did not publish
+#: must never read like one whose publish failed. `PUBLISH_NOT_CHOSEN` and `PUBLISHED` now live in
+#: survey_definition_executor (imported above, still importable from here), so the database run's
+#: publish word is the same vocabulary.
+
+
 def _run_egeria_adaptive(
-    fs_entity, registry, step, force_egeria_publish: bool = False,
+    fs_entity, registry, step, force_egeria_publish: "bool | None" = None,
     egeria_url: str | None = None, egeria_server: str | None = None,
-    egeria_user: str | None = None, egeria_password: str | None = None,
     **_,
 ) -> dict:
     """Strategy selector for a step tagged executes_at="egeria-adaptive".
@@ -174,16 +181,16 @@ def _run_egeria_adaptive(
         run_hybrid_filesystem_survey,
     )
 
-    has_creds = bool(
-        (egeria_url or fs_entity.egeria_url) and (egeria_server or fs_entity.egeria_server)
-        and (egeria_user or fs_entity.egeria_user) and (egeria_password or fs_entity.egeria_password)
-    )
-
+    # Who chose to publish (Brief I round 5). A person's route, Classic or the CLI passes True or
+    # False explicitly. A Survey Definition run passes nothing: its step targeting Egeria
+    # (`egeria-adaptive`) IS the choice, so a scheduled or queued definition publishes as before
+    # whenever the file system names which Egeria (URL and view server).
+    if force_egeria_publish is None:
+        force_egeria_publish = bool((egeria_url or fs_entity.egeria_url) and (egeria_server or fs_entity.egeria_server))
     try:
         survey_data = run_hybrid_filesystem_survey(
             fs_entity.slug, registry=registry, force_egeria_publish=force_egeria_publish,
             egeria_url=egeria_url, egeria_server=egeria_server,
-            egeria_user=egeria_user, egeria_password=egeria_password,
         )
     except Exception as exc:
         log.error("egeria-adaptive: filesystem survey failed for %s: %s", fs_entity.slug, exc)
@@ -196,9 +203,13 @@ def _run_egeria_adaptive(
         }
 
     egeria_publish = survey_data.pop("egeria_publish", None)
+    publish_error = survey_data.pop("egeria_publish_error", "")
     source = "egeria-custom" if egeria_publish is not None else "custom"
 
-    outcome = {"source": source, "status": "ok", **survey_data}
+    outcome = {"source": source, "status": "ok", **survey_data,
+               "publish_state": (PUBLISHED if egeria_publish is not None
+                                 else f"publish failed · {publish_error}" if publish_error
+                                 else PUBLISH_NOT_CHOSEN)}
     # Kept out of any top-level key `_publish` below recognizes (it looks
     # for "survey_data", which this handler's local-scan fields are not, so
     # they're actually safe at the top level as-is) — nested under "result"
@@ -274,8 +285,8 @@ register_adapter(_ADAPTER)
 #: analysis_id -> the re_analysis_step key(s) that produce it — the
 #: filesystem equivalent of database/survey_definition_adapter's
 #: DATABASE_ANALYSIS_RE_STEP_MAP (see that constant's docstring for the full
-#: reasoning, and slice 17's fix — docs/design-notes/SLICE-17-RUNNABILITY-
-#: FROM-CATALOG-IMPLEMENTED.md — for the bug a hand-maintained, un-derived
+#: reasoning, and slice 17's fix — SLICE-17-RUNNABILITY-FROM-CATALOG-IMPLEMENTED.md — for the bug a
+#: hand-maintained, un-derived
 #: copy of a map like this one can develop). Filesystem has exactly one
 #: local re_analysis_step and one analysis_catalog.yaml entry today, so this
 #: is a 1:1 map rather than a fan-out — kept as its own named constant

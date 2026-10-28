@@ -5,7 +5,7 @@
 Deferred by the project owner on 2026-09-21 ("defer the resource_
 reachability table until further tests -- do not build it yet"); un-deferred
 by the project owner on 2026-09-22, who asked for this slice to proceed
-now. See `docs/design-notes/RESOURCE-REACHABILITY-IMPLEMENTED.md` for the
+now. See `RESOURCE-REACHABILITY-IMPLEMENTED.md` for the
 full write-up, including the live probe 7/8 results this module's mapping
 is built from -- not guessed at.
 
@@ -240,14 +240,12 @@ def _get_clients():
     (trigger + poll a single engine action by GUID)."""
     from pyegeria import AutomatedCuration, MetadataExpert
 
-    from resource_explorer.rfa_egeria_sync import _egeria_connection_kwargs
+    from resource_explorer.egeria_clients import Daemon, DaemonReason, egeria_client
 
-    view_server, platform_url, user_id, user_password = _egeria_connection_kwargs()
-    automated_curation = AutomatedCuration(view_server, platform_url, user_id, user_password)
-    automated_curation.create_egeria_bearer_token(user_id, user_password)
-    metadata_expert = MetadataExpert(view_server, platform_url, user_id, user_password)
-    metadata_expert.create_egeria_bearer_token(user_id, user_password)
-    return automated_curation, metadata_expert
+    # Who (Brief I): reachability is a named system job — the CHECK_ASSET probe runs as the
+    # service account whether the page or a pass asked for it.
+    clients = egeria_client(Daemon(DaemonReason.REACHABILITY), purpose="reachability probe")
+    return clients.of(AutomatedCuration), clients.of(MetadataExpert)
 
 
 def _poll_action_status(
@@ -315,7 +313,7 @@ def check_filesystem_reachability(
             outcome="unknown",
             error_code="NOT_CATALOGED",
             error_detail=(
-                "This filesystem has not been cataloged in Egeria yet (no "
+                "This filesystem has not been published to Egeria yet (no "
                 "egeria_asset_guid) -- there is no Asset to run CHECK_ASSET "
                 "against."
             ),

@@ -1,0 +1,723 @@
+== plan (DRY RUN, nothing is sent) 2026-10-06T18:50:46+00:00 ==
+== 0. READ-ONLY BEFORE-STATE ==
+  old elements read: 149 ok, 0 read errors
+  Memento yes/no: Counter({True: 149})
+  by type: {'ResourceMeasureAnnotation': 120, 'RelationalDatabase': 1, 'VirtualConnection': 2, 'Endpoint': 4, 'Connection': 2, 'DeployedDatabaseSchema': 3, 'RelationalDBSchemaType': 1, 'RelationalTable': 1, 'RelationalColumn': 11, 'SurveyReport': 4}
+  type differs from before-state JSON: []
+  qualifiedName with _archivedOn_ suffix: 148; none (not renamed): [('87271b37', 'DeployedDatabaseSchema')]
+  suffix count histogram (how many times renamed): {0: 1, 1: 131, 3: 4, 12: 13}
+  name changed since the before-state JSON: 0
+  old elements whose stripped names COLLIDE with each other: 0
+  old database plain read (no forLineage): ERROR PyegeriaAPIException => SERVER_ERROR_500 => Egeria detected error: `https://localhost:9443/servers/qs-view-server/api/open-metadata/metadata-expert/me
+  NEW database def55997: RelationalDatabase 'PostgreSQL Relational Database::host.docker.internal:5442::coco_pharma' Memento=False
+  connection element by exact name ...::Connection: [('d98b8ad5', 'VirtualConnection')]
+  connection element by exact name ...::Endpoint: [('06de3907', 'Endpoint')]
+  connection element by exact name ...::SecretsStoreConnection: [('541e08c2', 'Connection')]
+  connection element by exact name ...::SecretStoreEndpoint: [('566d76a3', 'Endpoint')]
+  new database direct relationships: {('ActionTarget', 'EngineAction'): 1, ('AssociatedAnnotation', 'ResourceMeasureAnnotation'): 56, ('DataFlow', 'DeployedSoftwareComponent'): 1, ('ReportSubject', 'SurveyReport'): 1, ('SourcedFrom', 'RelationalDatabase'): 1, ('ResourceConnection', 'VirtualConnection'): 1}
+    ResourceConnection -> VirtualConnection d98b8ad5 PostgreSQL Relational Database::host.docker.internal:5442::coco_pharma::Connection
+  NEW schema coco_sus 4079a1d5: DeployedDatabaseSchema 'PostgreSQL Relational Database Schema::host.docker.internal:5442::coco_pharma.coco_sus' Memento=False
+  NEW schema coco_ods 1f31b602: DeployedDatabaseSchema 'PostgreSQL Relational Database Schema::host.docker.internal:5442::coco_pharma.coco_ods' Memento=False
+  searching the exact stripped name of each old element for a live holder (149 reads, forLineage true) ...
+  NEW/other elements that hold an original name: 7
+    RelationalDatabase         def55997 holds 'PostgreSQL Relational Database::host.docker.internal:5442::coco_pharma' (old 17f0a963)
+    VirtualConnection          d98b8ad5 holds 'PostgreSQL Relational Database::host.docker.internal:5442::coco_pharma::Connection' (old 24197efb)
+    Endpoint                   06de3907 holds 'PostgreSQL Relational Database::host.docker.internal:5442::coco_pharma::Endpoint' (old 488c2d41)
+    Connection                 541e08c2 holds 'L Relational Database::host.docker.internal:5442::coco_pharma::SecretsStoreConnection' (old ea97d270)
+    Endpoint                   566d76a3 holds 'eSQL Relational Database::host.docker.internal:5442::coco_pharma::SecretStoreEndpoint' (old dcb04040)
+    DeployedDatabaseSchema     1f31b602 holds 'ostgreSQL Relational Database Schema::host.docker.internal:5442::coco_pharma.coco_ods' (old a358abb3)
+    DeployedDatabaseSchema     4079a1d5 holds 'ostgreSQL Relational Database Schema::host.docker.internal:5442::coco_pharma.coco_sus' (old 28bbde37)
+  new database's related: 56 ResourceMeasureAnnotation, 1 SurveyReport (by traversal)
+  new SurveyReport(s) related annotations: 56
+  new annotations+reports reached by traversal: 56 annotations, 1 reports; of these collide by name with an old element: 0
+  name-holders of type annotation/SurveyReport found by exact-name search: 0 (traversal found 0); the other 7 are the database, its 4 connection elements and 2 schemas
+  Ownership old database: {"owner": "Jules", "ownerPropertyName": "userId", "ownerTypeName": "UserIdentity"}
+  Ownership new database: {"owner": "Jules", "ownerPropertyName": "userId", "ownerTypeName": "UserIdentity"}
+  catalog targets on the JDBC cataloguer (read): 2
+  CatalogTarget relationships on OLD coco_sus 28bbde37 (relatedElements read): [('606bda18', '70dcd0b7', 'IntegrationConnector')]
+     same via targets(): []
+  CatalogTarget relationships on OLD coco_ods a358abb3 (relatedElements read): [('8e3118be', '70dcd0b7', 'IntegrationConnector')]
+     same via targets(): []
+  SemanticAssignment on table us_sales_forecast 9863e995: [('70a086fc', 'GlossaryTerm', 'GlossaryTerm::SalesForecast')]
+  catalog targets of NEW schema coco_sus 4079a1d5: via targets() [('5289479c-e68f-44f4-ae22-03f78bf53a7b', 'coco_pharma.coco_sus')]; via related ['5289479c-e68f-44f4-ae22-03f78bf53a7b']
+  catalog targets of NEW schema coco_ods 1f31b602: via targets() [('e261ff9d-41dc-41e1-89c3-27a7e633a955', 'coco_pharma.coco_ods')]; via related ['e261ff9d-41dc-41e1-89c3-27a7e633a955']
+
+== STEP 1 detach-new-targets ==
+  catalog targets whose element is a NEW schema: 2
+  WOULD SEND remove_catalog_target  rel=e261ff9d element=1f31b602 coco_ods target 'coco_pharma.coco_ods'
+      body={"class": "DeleteRelationshipRequestBody"}
+  WOULD SEND remove_catalog_target  rel=5289479c element=4079a1d5 coco_sus target 'coco_pharma.coco_sus'
+      body={"class": "DeleteRelationshipRequestBody"}
+  TOTAL writes in step: 2
+
+== STEP 2 rename-aside ==
+  WOULD SEND update qualifiedName   def55997 [database] RelationalDatabase
+      body={"class": "UpdatePropertiesRequestBody", "forLineage": true, "forDuplicateProcessing": true, "replaceProperties": false, "properties": {"class": "ElementProperties", "propertyValueMap": {"qualifiedName": {"class": "PrimitiveTypePropertyValue", "typeName": "string", "primitiveValue": "PostgreSQL Relational Database::host.docker.internal:5442::coco_pharma_rolledforward_202610061850"}}}}
+  WOULD SEND update qualifiedName   d98b8ad5 [connection ::Connection] VirtualConnection
+      body={"class": "UpdatePropertiesRequestBody", "forLineage": true, "forDuplicateProcessing": true, "replaceProperties": false, "properties": {"class": "ElementProperties", "propertyValueMap": {"qualifiedName": {"class": "PrimitiveTypePropertyValue", "typeName": "string", "primitiveValue": "PostgreSQL Relational Database::host.docker.internal:5442::coco_pharma::Connection_rolledforward_202610061850"}}}}
+  WOULD SEND update qualifiedName   06de3907 [connection ::Endpoint] Endpoint
+      body={"class": "UpdatePropertiesRequestBody", "forLineage": true, "forDuplicateProcessing": true, "replaceProperties": false, "properties": {"class": "ElementProperties", "propertyValueMap": {"qualifiedName": {"class": "PrimitiveTypePropertyValue", "typeName": "string", "primitiveValue": "PostgreSQL Relational Database::host.docker.internal:5442::coco_pharma::Endpoint_rolledforward_202610061850"}}}}
+  WOULD SEND update qualifiedName   541e08c2 [connection ::SecretsStoreConnection] Connection
+      body={"class": "UpdatePropertiesRequestBody", "forLineage": true, "forDuplicateProcessing": true, "replaceProperties": false, "properties": {"class": "ElementProperties", "propertyValueMap": {"qualifiedName": {"class": "PrimitiveTypePropertyValue", "typeName": "string", "primitiveValue": "PostgreSQL Relational Database::host.docker.internal:5442::coco_pharma::SecretsStoreConnection_rolledforward_202610061850"}}}}
+  WOULD SEND update qualifiedName   566d76a3 [connection ::SecretStoreEndpoint] Endpoint
+      body={"class": "UpdatePropertiesRequestBody", "forLineage": true, "forDuplicateProcessing": true, "replaceProperties": false, "properties": {"class": "ElementProperties", "propertyValueMap": {"qualifiedName": {"class": "PrimitiveTypePropertyValue", "typeName": "string", "primitiveValue": "PostgreSQL Relational Database::host.docker.internal:5442::coco_pharma::SecretStoreEndpoint_rolledforward_202610061850"}}}}
+  WOULD SEND update qualifiedName   4079a1d5 [schema coco_sus] DeployedDatabaseSchema
+      body={"class": "UpdatePropertiesRequestBody", "forLineage": true, "forDuplicateProcessing": true, "replaceProperties": false, "properties": {"class": "ElementProperties", "propertyValueMap": {"qualifiedName": {"class": "PrimitiveTypePropertyValue", "typeName": "string", "primitiveValue": "PostgreSQL Relational Database Schema::host.docker.internal:5442::coco_pharma.coco_sus_rolledforward_202610061850"}}}}
+  WOULD SEND update qualifiedName   1f31b602 [schema coco_ods] DeployedDatabaseSchema
+      body={"class": "UpdatePropertiesRequestBody", "forLineage": true, "forDuplicateProcessing": true, "replaceProperties": false, "properties": {"class": "ElementProperties", "propertyValueMap": {"qualifiedName": {"class": "PrimitiveTypePropertyValue", "typeName": "string", "primitiveValue": "PostgreSQL Relational Database Schema::host.docker.internal:5442::coco_pharma.coco_ods_rolledforward_202610061850"}}}}
+  TOTAL writes in step: 7
+
+== STEP 3 restore-old ==
+  WOULD SEND declassify Memento     17f0a963 #0 RelationalDatabase (DATABASE, alone)
+      body={"class": "MetadataSourceRequestBody", "forLineage": true, "forDuplicateProcessing": true}
+      (dry) would plain-read the database now and stop if it still errors
+      (dry) NOTE name still held now by [('def55997', 'RelationalDatabase')] (rename-aside not yet run)
+  WOULD SEND update qualifiedName   17f0a963 1 suffix(es) stripped
+      body={"class": "UpdatePropertiesRequestBody", "forLineage": true, "forDuplicateProcessing": true, "replaceProperties": false, "properties": {"class": "ElementProperties", "propertyValueMap": {"qualifiedName": {"class": "PrimitiveTypePropertyValue", "typeName": "string", "primitiveValue": "PostgreSQL Relational Database::host.docker.internal:5442::coco_pharma"}}}}
+  WOULD SEND declassify Memento     24197efb #1 VirtualConnection
+      body={"class": "MetadataSourceRequestBody", "forLineage": true, "forDuplicateProcessing": true}
+      (dry) NOTE name still held now by [('d98b8ad5', 'VirtualConnection')] (rename-aside not yet run)
+  WOULD SEND update qualifiedName   24197efb 1 suffix(es) stripped
+      body={"class": "UpdatePropertiesRequestBody", "forLineage": true, "forDuplicateProcessing": true, "replaceProperties": false, "properties": {"class": "ElementProperties", "propertyValueMap": {"qualifiedName": {"class": "PrimitiveTypePropertyValue", "typeName": "string", "primitiveValue": "PostgreSQL Relational Database::host.docker.internal:5442::coco_pharma::Connection"}}}}
+  WOULD SEND declassify Memento     8065e349 #2 VirtualConnection
+      body={"class": "MetadataSourceRequestBody", "forLineage": true, "forDuplicateProcessing": true}
+  WOULD SEND update qualifiedName   8065e349 3 suffix(es) stripped
+      body={"class": "UpdatePropertiesRequestBody", "forLineage": true, "forDuplicateProcessing": true, "replaceProperties": false, "properties": {"class": "ElementProperties", "propertyValueMap": {"qualifiedName": {"class": "PrimitiveTypePropertyValue", "typeName": "string", "primitiveValue": "PostgreSQL Relational Database Schema::host.docker.internal:5442::coco_pharma.us_sales::Connection"}}}}
+  WOULD SEND declassify Memento     ea97d270 #3 Connection
+      body={"class": "MetadataSourceRequestBody", "forLineage": true, "forDuplicateProcessing": true}
+      (dry) NOTE name still held now by [('541e08c2', 'Connection')] (rename-aside not yet run)
+  WOULD SEND update qualifiedName   ea97d270 1 suffix(es) stripped
+      body={"class": "UpdatePropertiesRequestBody", "forLineage": true, "forDuplicateProcessing": true, "replaceProperties": false, "properties": {"class": "ElementProperties", "propertyValueMap": {"qualifiedName": {"class": "PrimitiveTypePropertyValue", "typeName": "string", "primitiveValue": "PostgreSQL Relational Database::host.docker.internal:5442::coco_pharma::SecretsStoreConnection"}}}}
+  WOULD SEND declassify Memento     9d27f7f8 #4 Connection
+      body={"class": "MetadataSourceRequestBody", "forLineage": true, "forDuplicateProcessing": true}
+  WOULD SEND update qualifiedName   9d27f7f8 3 suffix(es) stripped
+      body={"class": "UpdatePropertiesRequestBody", "forLineage": true, "forDuplicateProcessing": true, "replaceProperties": false, "properties": {"class": "ElementProperties", "propertyValueMap": {"qualifiedName": {"class": "PrimitiveTypePropertyValue", "typeName": "string", "primitiveValue": "PostgreSQL Relational Database Schema::host.docker.internal:5442::coco_pharma.us_sales::SecretsStoreConnection"}}}}
+  WOULD SEND declassify Memento     488c2d41 #5 Endpoint
+      body={"class": "MetadataSourceRequestBody", "forLineage": true, "forDuplicateProcessing": true}
+      (dry) NOTE name still held now by [('06de3907', 'Endpoint')] (rename-aside not yet run)
+  WOULD SEND update qualifiedName   488c2d41 1 suffix(es) stripped
+      body={"class": "UpdatePropertiesRequestBody", "forLineage": true, "forDuplicateProcessing": true, "replaceProperties": false, "properties": {"class": "ElementProperties", "propertyValueMap": {"qualifiedName": {"class": "PrimitiveTypePropertyValue", "typeName": "string", "primitiveValue": "PostgreSQL Relational Database::host.docker.internal:5442::coco_pharma::Endpoint"}}}}
+  WOULD SEND declassify Memento     dcb04040 #6 Endpoint
+      body={"class": "MetadataSourceRequestBody", "forLineage": true, "forDuplicateProcessing": true}
+      (dry) NOTE name still held now by [('566d76a3', 'Endpoint')] (rename-aside not yet run)
+  WOULD SEND update qualifiedName   dcb04040 1 suffix(es) stripped
+      body={"class": "UpdatePropertiesRequestBody", "forLineage": true, "forDuplicateProcessing": true, "replaceProperties": false, "properties": {"class": "ElementProperties", "propertyValueMap": {"qualifiedName": {"class": "PrimitiveTypePropertyValue", "typeName": "string", "primitiveValue": "PostgreSQL Relational Database::host.docker.internal:5442::coco_pharma::SecretStoreEndpoint"}}}}
+  WOULD SEND declassify Memento     73169ef5 #7 Endpoint
+      body={"class": "MetadataSourceRequestBody", "forLineage": true, "forDuplicateProcessing": true}
+  WOULD SEND update qualifiedName   73169ef5 3 suffix(es) stripped
+      body={"class": "UpdatePropertiesRequestBody", "forLineage": true, "forDuplicateProcessing": true, "replaceProperties": false, "properties": {"class": "ElementProperties", "propertyValueMap": {"qualifiedName": {"class": "PrimitiveTypePropertyValue", "typeName": "string", "primitiveValue": "PostgreSQL Relational Database Schema::host.docker.internal:5442::coco_pharma.us_sales::Endpoint"}}}}
+  WOULD SEND declassify Memento     3e48e7f3 #8 Endpoint
+      body={"class": "MetadataSourceRequestBody", "forLineage": true, "forDuplicateProcessing": true}
+  WOULD SEND update qualifiedName   3e48e7f3 3 suffix(es) stripped
+      body={"class": "UpdatePropertiesRequestBody", "forLineage": true, "forDuplicateProcessing": true, "replaceProperties": false, "properties": {"class": "ElementProperties", "propertyValueMap": {"qualifiedName": {"class": "PrimitiveTypePropertyValue", "typeName": "string", "primitiveValue": "PostgreSQL Relational Database Schema::host.docker.internal:5442::coco_pharma.us_sales::SecretStoreEndpoint"}}}}
+  WOULD SEND declassify Memento     a358abb3 #9 DeployedDatabaseSchema
+      body={"class": "MetadataSourceRequestBody", "forLineage": true, "forDuplicateProcessing": true}
+      (dry) NOTE name still held now by [('1f31b602', 'DeployedDatabaseSchema')] (rename-aside not yet run)
+  WOULD SEND update qualifiedName   a358abb3 1 suffix(es) stripped
+      body={"class": "UpdatePropertiesRequestBody", "forLineage": true, "forDuplicateProcessing": true, "replaceProperties": false, "properties": {"class": "ElementProperties", "propertyValueMap": {"qualifiedName": {"class": "PrimitiveTypePropertyValue", "typeName": "string", "primitiveValue": "PostgreSQL Relational Database Schema::host.docker.internal:5442::coco_pharma.coco_ods"}}}}
+  WOULD SEND declassify Memento     28bbde37 #10 DeployedDatabaseSchema
+      body={"class": "MetadataSourceRequestBody", "forLineage": true, "forDuplicateProcessing": true}
+      (dry) NOTE name still held now by [('4079a1d5', 'DeployedDatabaseSchema')] (rename-aside not yet run)
+  WOULD SEND update qualifiedName   28bbde37 1 suffix(es) stripped
+      body={"class": "UpdatePropertiesRequestBody", "forLineage": true, "forDuplicateProcessing": true, "replaceProperties": false, "properties": {"class": "ElementProperties", "propertyValueMap": {"qualifiedName": {"class": "PrimitiveTypePropertyValue", "typeName": "string", "primitiveValue": "PostgreSQL Relational Database Schema::host.docker.internal:5442::coco_pharma.coco_sus"}}}}
+  WOULD SEND declassify Memento     87271b37 #11 DeployedDatabaseSchema
+      body={"class": "MetadataSourceRequestBody", "forLineage": true, "forDuplicateProcessing": true}
+      (name has no suffix, not renamed) 87271b37 us_sales: declassify only, as planned
+  WOULD SEND declassify Memento     f34ed759 #12 RelationalDBSchemaType
+      body={"class": "MetadataSourceRequestBody", "forLineage": true, "forDuplicateProcessing": true}
+  WOULD SEND update qualifiedName   f34ed759 12 suffix(es) stripped
+      body={"class": "UpdatePropertiesRequestBody", "forLineage": true, "forDuplicateProcessing": true, "replaceProperties": false, "properties": {"class": "ElementProperties", "propertyValueMap": {"qualifiedName": {"class": "PrimitiveTypePropertyValue", "typeName": "string", "primitiveValue": "PostgreSQL Relational Database Schema::host.docker.internal:5442::coco_pharma.us_sales_schemaType"}}}}
+  WOULD SEND declassify Memento     9863e995 #13 RelationalTable
+      body={"class": "MetadataSourceRequestBody", "forLineage": true, "forDuplicateProcessing": true}
+  WOULD SEND update qualifiedName   9863e995 12 suffix(es) stripped
+      body={"class": "UpdatePropertiesRequestBody", "forLineage": true, "forDuplicateProcessing": true, "replaceProperties": false, "properties": {"class": "ElementProperties", "propertyValueMap": {"qualifiedName": {"class": "PrimitiveTypePropertyValue", "typeName": "string", "primitiveValue": "PostgreSQL Relational Database Schema::host.docker.internal:5442::coco_pharma.us_sales::us_sales_forecast"}}}}
+  WOULD SEND declassify Memento     247bad56 #14 RelationalColumn
+      body={"class": "MetadataSourceRequestBody", "forLineage": true, "forDuplicateProcessing": true}
+  WOULD SEND update qualifiedName   247bad56 12 suffix(es) stripped
+      body={"class": "UpdatePropertiesRequestBody", "forLineage": true, "forDuplicateProcessing": true, "replaceProperties": false, "properties": {"class": "ElementProperties", "propertyValueMap": {"qualifiedName": {"class": "PrimitiveTypePropertyValue", "typeName": "string", "primitiveValue": "PostgreSQL Relational Database Schema::host.docker.internal:5442::coco_pharma.us_sales::us_sales_forecast::closedate"}}}}
+  WOULD SEND declassify Memento     4e246eb2 #15 RelationalColumn
+      body={"class": "MetadataSourceRequestBody", "forLineage": true, "forDuplicateProcessing": true}
+  WOULD SEND update qualifiedName   4e246eb2 12 suffix(es) stripped
+      body={"class": "UpdatePropertiesRequestBody", "forLineage": true, "forDuplicateProcessing": true, "replaceProperties": false, "properties": {"class": "ElementProperties", "propertyValueMap": {"qualifiedName": {"class": "PrimitiveTypePropertyValue", "typeName": "string", "primitiveValue": "PostgreSQL Relational Database Schema::host.docker.internal:5442::coco_pharma.us_sales::us_sales_forecast::confidencelevel"}}}}
+  WOULD SEND declassify Memento     0bdbdcad #16 RelationalColumn
+      body={"class": "MetadataSourceRequestBody", "forLineage": true, "forDuplicateProcessing": true}
+  WOULD SEND update qualifiedName   0bdbdcad 12 suffix(es) stripped
+      body={"class": "UpdatePropertiesRequestBody", "forLineage": true, "forDuplicateProcessing": true, "replaceProperties": false, "properties": {"class": "ElementProperties", "propertyValueMap": {"qualifiedName": {"class": "PrimitiveTypePropertyValue", "typeName": "string", "primitiveValue": "PostgreSQL Relational Database Schema::host.docker.internal:5442::coco_pharma.us_sales::us_sales_forecast::createddate"}}}}
+  WOULD SEND declassify Memento     4009f894 #17 RelationalColumn
+      body={"class": "MetadataSourceRequestBody", "forLineage": true, "forDuplicateProcessing": true}
+  WOULD SEND update qualifiedName   4009f894 12 suffix(es) stripped
+      body={"class": "UpdatePropertiesRequestBody", "forLineage": true, "forDuplicateProcessing": true, "replaceProperties": false, "properties": {"class": "ElementProperties", "propertyValueMap": {"qualifiedName": {"class": "PrimitiveTypePropertyValue", "typeName": "string", "primitiveValue": "PostgreSQL Relational Database Schema::host.docker.internal:5442::coco_pharma.us_sales::us_sales_forecast::currency"}}}}
+  WOULD SEND declassify Memento     04baabeb #18 RelationalColumn
+      body={"class": "MetadataSourceRequestBody", "forLineage": true, "forDuplicateProcessing": true}
+  WOULD SEND update qualifiedName   04baabeb 12 suffix(es) stripped
+      body={"class": "UpdatePropertiesRequestBody", "forLineage": true, "forDuplicateProcessing": true, "replaceProperties": false, "properties": {"class": "ElementProperties", "propertyValueMap": {"qualifiedName": {"class": "PrimitiveTypePropertyValue", "typeName": "string", "primitiveValue": "PostgreSQL Relational Database Schema::host.docker.internal:5442::coco_pharma.us_sales::us_sales_forecast::date"}}}}
+  WOULD SEND declassify Memento     46680585 #19 RelationalColumn
+      body={"class": "MetadataSourceRequestBody", "forLineage": true, "forDuplicateProcessing": true}
+  WOULD SEND update qualifiedName   46680585 12 suffix(es) stripped
+      body={"class": "UpdatePropertiesRequestBody", "forLineage": true, "forDuplicateProcessing": true, "replaceProperties": false, "properties": {"class": "ElementProperties", "propertyValueMap": {"qualifiedName": {"class": "PrimitiveTypePropertyValue", "typeName": "string", "primitiveValue": "PostgreSQL Relational Database Schema::host.docker.internal:5442::coco_pharma.us_sales::us_sales_forecast::forecastamount"}}}}
+  WOULD SEND declassify Memento     13eefcea #20 RelationalColumn
+      body={"class": "MetadataSourceRequestBody", "forLineage": true, "forDuplicateProcessing": true}
+  WOULD SEND update qualifiedName   13eefcea 12 suffix(es) stripped
+      body={"class": "UpdatePropertiesRequestBody", "forLineage": true, "forDuplicateProcessing": true, "replaceProperties": false, "properties": {"class": "ElementProperties", "propertyValueMap": {"qualifiedName": {"class": "PrimitiveTypePropertyValue", "typeName": "string", "primitiveValue": "PostgreSQL Relational Database Schema::host.docker.internal:5442::coco_pharma.us_sales::us_sales_forecast::opportunityid"}}}}
+  WOULD SEND declassify Memento     94becf71 #21 RelationalColumn
+      body={"class": "MetadataSourceRequestBody", "forLineage": true, "forDuplicateProcessing": true}
+  WOULD SEND update qualifiedName   94becf71 12 suffix(es) stripped
+      body={"class": "UpdatePropertiesRequestBody", "forLineage": true, "forDuplicateProcessing": true, "replaceProperties": false, "properties": {"class": "ElementProperties", "propertyValueMap": {"qualifiedName": {"class": "PrimitiveTypePropertyValue", "typeName": "string", "primitiveValue": "PostgreSQL Relational Database Schema::host.docker.internal:5442::coco_pharma.us_sales::us_sales_forecast::productline"}}}}
+  WOULD SEND declassify Memento     ab42c627 #22 RelationalColumn
+      body={"class": "MetadataSourceRequestBody", "forLineage": true, "forDuplicateProcessing": true}
+  WOULD SEND update qualifiedName   ab42c627 12 suffix(es) stripped
+      body={"class": "UpdatePropertiesRequestBody", "forLineage": true, "forDuplicateProcessing": true, "replaceProperties": false, "properties": {"class": "ElementProperties", "propertyValueMap": {"qualifiedName": {"class": "PrimitiveTypePropertyValue", "typeName": "string", "primitiveValue": "PostgreSQL Relational Database Schema::host.docker.internal:5442::coco_pharma.us_sales::us_sales_forecast::recordid"}}}}
+  WOULD SEND declassify Memento     9a9c8449 #23 RelationalColumn
+      body={"class": "MetadataSourceRequestBody", "forLineage": true, "forDuplicateProcessing": true}
+  WOULD SEND update qualifiedName   9a9c8449 12 suffix(es) stripped
+      body={"class": "UpdatePropertiesRequestBody", "forLineage": true, "forDuplicateProcessing": true, "replaceProperties": false, "properties": {"class": "ElementProperties", "propertyValueMap": {"qualifiedName": {"class": "PrimitiveTypePropertyValue", "typeName": "string", "primitiveValue": "PostgreSQL Relational Database Schema::host.docker.internal:5442::coco_pharma.us_sales::us_sales_forecast::repid"}}}}
+  WOULD SEND declassify Memento     6b38b5c6 #24 RelationalColumn
+      body={"class": "MetadataSourceRequestBody", "forLineage": true, "forDuplicateProcessing": true}
+  WOULD SEND update qualifiedName   6b38b5c6 12 suffix(es) stripped
+      body={"class": "UpdatePropertiesRequestBody", "forLineage": true, "forDuplicateProcessing": true, "replaceProperties": false, "properties": {"class": "ElementProperties", "propertyValueMap": {"qualifiedName": {"class": "PrimitiveTypePropertyValue", "typeName": "string", "primitiveValue": "PostgreSQL Relational Database Schema::host.docker.internal:5442::coco_pharma.us_sales::us_sales_forecast::salesstage"}}}}
+  WOULD SEND declassify Memento     4d7dcb9f #25 SurveyReport
+      body={"class": "MetadataSourceRequestBody", "forLineage": true, "forDuplicateProcessing": true}
+  WOULD SEND update qualifiedName   4d7dcb9f 1 suffix(es) stripped
+      body={"class": "UpdatePropertiesRequestBody", "forLineage": true, "forDuplicateProcessing": true, "replaceProperties": false, "properties": {"class": "ElementProperties", "propertyValueMap": {"qualifiedName": {"class": "PrimitiveTypePropertyValue", "typeName": "string", "primitiveValue": "SurveyReport::survey-postgres-database::17f0a963-e96f-4726-86a2-e721fd0a38b1::Sun Oct 04 15:22:55 GMT 2026"}}}}
+  WOULD SEND declassify Memento     03b908a5 #26 SurveyReport
+      body={"class": "MetadataSourceRequestBody", "forLineage": true, "forDuplicateProcessing": true}
+  WOULD SEND update qualifiedName   03b908a5 1 suffix(es) stripped
+      body={"class": "UpdatePropertiesRequestBody", "forLineage": true, "forDuplicateProcessing": true, "replaceProperties": false, "properties": {"class": "ElementProperties", "propertyValueMap": {"qualifiedName": {"class": "PrimitiveTypePropertyValue", "typeName": "string", "primitiveValue": "SurveyReport::survey-postgres-database::17f0a963-e96f-4726-86a2-e721fd0a38b1::Sun Oct 04 15:31:57 GMT 2026"}}}}
+  WOULD SEND declassify Memento     b99463ea #27 SurveyReport
+      body={"class": "MetadataSourceRequestBody", "forLineage": true, "forDuplicateProcessing": true}
+  WOULD SEND update qualifiedName   b99463ea 1 suffix(es) stripped
+      body={"class": "UpdatePropertiesRequestBody", "forLineage": true, "forDuplicateProcessing": true, "replaceProperties": false, "properties": {"class": "ElementProperties", "propertyValueMap": {"qualifiedName": {"class": "PrimitiveTypePropertyValue", "typeName": "string", "primitiveValue": "SurveyReport::survey-postgres-database::17f0a963-e96f-4726-86a2-e721fd0a38b1::Tue Oct 06 13:25:55 GMT 2026"}}}}
+  WOULD SEND declassify Memento     bf44a57c #28 SurveyReport
+      body={"class": "MetadataSourceRequestBody", "forLineage": true, "forDuplicateProcessing": true}
+  WOULD SEND update qualifiedName   bf44a57c 1 suffix(es) stripped
+      body={"class": "UpdatePropertiesRequestBody", "forLineage": true, "forDuplicateProcessing": true, "replaceProperties": false, "properties": {"class": "ElementProperties", "propertyValueMap": {"qualifiedName": {"class": "PrimitiveTypePropertyValue", "typeName": "string", "primitiveValue": "SurveyReport::survey-postgres-database::17f0a963-e96f-4726-86a2-e721fd0a38b1::Tue Oct 06 13:55:51 GMT 2026"}}}}
+  WOULD SEND declassify Memento     d7e3b590 #29 ResourceMeasureAnnotation
+      body={"class": "MetadataSourceRequestBody", "forLineage": true, "forDuplicateProcessing": true}
+  WOULD SEND update qualifiedName   d7e3b590 1 suffix(es) stripped
+      body={"class": "UpdatePropertiesRequestBody", "forLineage": true, "forDuplicateProcessing": true, "replaceProperties": false, "properties": {"class": "ElementProperties", "propertyValueMap": {"qualifiedName": {"class": "PrimitiveTypePropertyValue", "typeName": "string", "primitiveValue": "Annotation::Capture Database Column Measurements::coco_pharma.us_sales.us_sales_forecast.closedate::3c9f922b-14db-424f-8ea8-548b4838eb4
+  WOULD SEND declassify Memento     2bd512d9 #30 ResourceMeasureAnnotation
+      body={"class": "MetadataSourceRequestBody", "forLineage": true, "forDuplicateProcessing": true}
+  WOULD SEND update qualifiedName   2bd512d9 1 suffix(es) stripped
+      body={"class": "UpdatePropertiesRequestBody", "forLineage": true, "forDuplicateProcessing": true, "replaceProperties": false, "properties": {"class": "ElementProperties", "propertyValueMap": {"qualifiedName": {"class": "PrimitiveTypePropertyValue", "typeName": "string", "primitiveValue": "Annotation::Capture Database Column Measurements::coco_pharma.us_sales.us_sales_forecast.confidencelevel::aa570254-3246-481d-9bbe-963f4
+  WOULD SEND declassify Memento     f50a603a #31 ResourceMeasureAnnotation
+      body={"class": "MetadataSourceRequestBody", "forLineage": true, "forDuplicateProcessing": true}
+  WOULD SEND update qualifiedName   f50a603a 1 suffix(es) stripped
+      body={"class": "UpdatePropertiesRequestBody", "forLineage": true, "forDuplicateProcessing": true, "replaceProperties": false, "properties": {"class": "ElementProperties", "propertyValueMap": {"qualifiedName": {"class": "PrimitiveTypePropertyValue", "typeName": "string", "primitiveValue": "Annotation::Capture Database Column Measurements::coco_pharma.us_sales.us_sales_forecast.createddate::34c6d7cf-e821-403f-9596-b554c50d8
+  WOULD SEND declassify Memento     003dd9f0 #32 ResourceMeasureAnnotation
+      body={"class": "MetadataSourceRequestBody", "forLineage": true, "forDuplicateProcessing": true}
+  WOULD SEND update qualifiedName   003dd9f0 1 suffix(es) stripped
+      body={"class": "UpdatePropertiesRequestBody", "forLineage": true, "forDuplicateProcessing": true, "replaceProperties": false, "properties": {"class": "ElementProperties", "propertyValueMap": {"qualifiedName": {"class": "PrimitiveTypePropertyValue", "typeName": "string", "primitiveValue": "Annotation::Capture Database Column Measurements::coco_pharma.us_sales.us_sales_forecast.currency::881ec79b-aab6-4a83-988b-6b6b5324ee16
+  WOULD SEND declassify Memento     d0c7af2d #33 ResourceMeasureAnnotation
+      body={"class": "MetadataSourceRequestBody", "forLineage": true, "forDuplicateProcessing": true}
+  WOULD SEND update qualifiedName   d0c7af2d 1 suffix(es) stripped
+      body={"class": "UpdatePropertiesRequestBody", "forLineage": true, "forDuplicateProcessing": true, "replaceProperties": false, "properties": {"class": "ElementProperties", "propertyValueMap": {"qualifiedName": {"class": "PrimitiveTypePropertyValue", "typeName": "string", "primitiveValue": "Annotation::Capture Database Column Measurements::coco_pharma.us_sales.us_sales_forecast.date::923c3afd-7907-4b85-bffe-56e627e6e19f"}}}
+  WOULD SEND declassify Memento     be9c67c2 #34 ResourceMeasureAnnotation
+      body={"class": "MetadataSourceRequestBody", "forLineage": true, "forDuplicateProcessing": true}
+  WOULD SEND update qualifiedName   be9c67c2 1 suffix(es) stripped
+      body={"class": "UpdatePropertiesRequestBody", "forLineage": true, "forDuplicateProcessing": true, "replaceProperties": false, "properties": {"class": "ElementProperties", "propertyValueMap": {"qualifiedName": {"class": "PrimitiveTypePropertyValue", "typeName": "string", "primitiveValue": "Annotation::Capture Database Column Measurements::coco_pharma.us_sales.us_sales_forecast.forecastamount::58c1ce64-7094-409e-8901-1e7e94
+  WOULD SEND declassify Memento     08277a04 #35 ResourceMeasureAnnotation
+      body={"class": "MetadataSourceRequestBody", "forLineage": true, "forDuplicateProcessing": true}
+  WOULD SEND update qualifiedName   08277a04 1 suffix(es) stripped
+      body={"class": "UpdatePropertiesRequestBody", "forLineage": true, "forDuplicateProcessing": true, "replaceProperties": false, "properties": {"class": "ElementProperties", "propertyValueMap": {"qualifiedName": {"class": "PrimitiveTypePropertyValue", "typeName": "string", "primitiveValue": "Annotation::Capture Database Column Measurements::coco_pharma.us_sales.us_sales_forecast.opportunityid::ddeaed51-85df-4145-bfe4-ff1aea4
+  WOULD SEND declassify Memento     9bbef810 #36 ResourceMeasureAnnotation
+      body={"class": "MetadataSourceRequestBody", "forLineage": true, "forDuplicateProcessing": true}
+  WOULD SEND update qualifiedName   9bbef810 1 suffix(es) stripped
+      body={"class": "UpdatePropertiesRequestBody", "forLineage": true, "forDuplicateProcessing": true, "replaceProperties": false, "properties": {"class": "ElementProperties", "propertyValueMap": {"qualifiedName": {"class": "PrimitiveTypePropertyValue", "typeName": "string", "primitiveValue": "Annotation::Capture Database Column Measurements::coco_pharma.us_sales.us_sales_forecast.productline::92443571-0f93-4b62-b14b-3e6ef596b
+  WOULD SEND declassify Memento     d08fc75a #37 ResourceMeasureAnnotation
+      body={"class": "MetadataSourceRequestBody", "forLineage": true, "forDuplicateProcessing": true}
+  WOULD SEND update qualifiedName   d08fc75a 1 suffix(es) stripped
+      body={"class": "UpdatePropertiesRequestBody", "forLineage": true, "forDuplicateProcessing": true, "replaceProperties": false, "properties": {"class": "ElementProperties", "propertyValueMap": {"qualifiedName": {"class": "PrimitiveTypePropertyValue", "typeName": "string", "primitiveValue": "Annotation::Capture Database Column Measurements::coco_pharma.us_sales.us_sales_forecast.recordid::7a604031-bb60-491d-bdf1-85ae709d0daa
+  WOULD SEND declassify Memento     378e4bfc #38 ResourceMeasureAnnotation
+      body={"class": "MetadataSourceRequestBody", "forLineage": true, "forDuplicateProcessing": true}
+  WOULD SEND update qualifiedName   378e4bfc 1 suffix(es) stripped
+      body={"class": "UpdatePropertiesRequestBody", "forLineage": true, "forDuplicateProcessing": true, "replaceProperties": false, "properties": {"class": "ElementProperties", "propertyValueMap": {"qualifiedName": {"class": "PrimitiveTypePropertyValue", "typeName": "string", "primitiveValue": "Annotation::Capture Database Column Measurements::coco_pharma.us_sales.us_sales_forecast.repid::93d38364-173f-4394-8089-d8aae1c29024"}}
+  WOULD SEND declassify Memento     65b9ef26 #39 ResourceMeasureAnnotation
+      body={"class": "MetadataSourceRequestBody", "forLineage": true, "forDuplicateProcessing": true}
+  WOULD SEND update qualifiedName   65b9ef26 1 suffix(es) stripped
+      body={"class": "UpdatePropertiesRequestBody", "forLineage": true, "forDuplicateProcessing": true, "replaceProperties": false, "properties": {"class": "ElementProperties", "propertyValueMap": {"qualifiedName": {"class": "PrimitiveTypePropertyValue", "typeName": "string", "primitiveValue": "Annotation::Capture Database Column Measurements::coco_pharma.us_sales.us_sales_forecast.salesstage::026d3008-dfff-441d-a158-2ec33265a2
+  WOULD SEND declassify Memento     ebd8f769 #40 ResourceMeasureAnnotation
+      body={"class": "MetadataSourceRequestBody", "forLineage": true, "forDuplicateProcessing": true}
+  WOULD SEND update qualifiedName   ebd8f769 1 suffix(es) stripped
+      body={"class": "UpdatePropertiesRequestBody", "forLineage": true, "forDuplicateProcessing": true, "replaceProperties": false, "properties": {"class": "ElementProperties", "propertyValueMap": {"qualifiedName": {"class": "PrimitiveTypePropertyValue", "typeName": "string", "primitiveValue": "Annotation::Capture Database Measurements::coco_pharma::0706858a-1172-476a-a7a3-1967341ba01b"}}}}
+  WOULD SEND declassify Memento     9770444f #41 ResourceMeasureAnnotation
+      body={"class": "MetadataSourceRequestBody", "forLineage": true, "forDuplicateProcessing": true}
+  WOULD SEND update qualifiedName   9770444f 1 suffix(es) stripped
+      body={"class": "UpdatePropertiesRequestBody", "forLineage": true, "forDuplicateProcessing": true, "replaceProperties": false, "properties": {"class": "ElementProperties", "propertyValueMap": {"qualifiedName": {"class": "PrimitiveTypePropertyValue", "typeName": "string", "primitiveValue": "Annotation::Capture Database Measurements::coco_pharma::8983cc68-da5c-4ae1-9265-2bb4801202e2"}}}}
+  WOULD SEND declassify Memento     1e638d01 #42 ResourceMeasureAnnotation
+      body={"class": "MetadataSourceRequestBody", "forLineage": true, "forDuplicateProcessing": true}
+  WOULD SEND update qualifiedName   1e638d01 1 suffix(es) stripped
+      body={"class": "UpdatePropertiesRequestBody", "forLineage": true, "forDuplicateProcessing": true, "replaceProperties": false, "properties": {"class": "ElementProperties", "propertyValueMap": {"qualifiedName": {"class": "PrimitiveTypePropertyValue", "typeName": "string", "primitiveValue": "Annotation::Capture Database Schema Measurements::coco_pharma.coco_ods::27206001-73ee-4721-8104-d4ee2ad945f6"}}}}
+  WOULD SEND declassify Memento     f548c883 #43 ResourceMeasureAnnotation
+      body={"class": "MetadataSourceRequestBody", "forLineage": true, "forDuplicateProcessing": true}
+  WOULD SEND update qualifiedName   f548c883 1 suffix(es) stripped
+      body={"class": "UpdatePropertiesRequestBody", "forLineage": true, "forDuplicateProcessing": true, "replaceProperties": false, "properties": {"class": "ElementProperties", "propertyValueMap": {"qualifiedName": {"class": "PrimitiveTypePropertyValue", "typeName": "string", "primitiveValue": "Annotation::Capture Database Schema Measurements::coco_pharma.coco_sus::e3a27ce3-070b-4949-9379-a55a3ce9d772"}}}}
+  WOULD SEND declassify Memento     34a4862f #44 ResourceMeasureAnnotation
+      body={"class": "MetadataSourceRequestBody", "forLineage": true, "forDuplicateProcessing": true}
+  WOULD SEND update qualifiedName   34a4862f 1 suffix(es) stripped
+      body={"class": "UpdatePropertiesRequestBody", "forLineage": true, "forDuplicateProcessing": true, "replaceProperties": false, "properties": {"class": "ElementProperties", "propertyValueMap": {"qualifiedName": {"class": "PrimitiveTypePropertyValue", "typeName": "string", "primitiveValue": "Annotation::Capture Database Schema Measurements::coco_pharma.us_sales::77fac49c-1732-4ac9-af70-5ef2a7af67da"}}}}
+  WOULD SEND declassify Memento     649e0238 #45 ResourceMeasureAnnotation
+      body={"class": "MetadataSourceRequestBody", "forLineage": true, "forDuplicateProcessing": true}
+  WOULD SEND update qualifiedName   649e0238 1 suffix(es) stripped
+      body={"class": "UpdatePropertiesRequestBody", "forLineage": true, "forDuplicateProcessing": true, "replaceProperties": false, "properties": {"class": "ElementProperties", "propertyValueMap": {"qualifiedName": {"class": "PrimitiveTypePropertyValue", "typeName": "string", "primitiveValue": "Annotation::Capture Database Table Measurements::coco_pharma.coco_ods.categories::9bb5ea82-d394-4670-a70e-530156867df1"}}}}
+  WOULD SEND declassify Memento     2dcdc51a #46 ResourceMeasureAnnotation
+      body={"class": "MetadataSourceRequestBody", "forLineage": true, "forDuplicateProcessing": true}
+  WOULD SEND update qualifiedName   2dcdc51a 1 suffix(es) stripped
+      body={"class": "UpdatePropertiesRequestBody", "forLineage": true, "forDuplicateProcessing": true, "replaceProperties": false, "properties": {"class": "ElementProperties", "propertyValueMap": {"qualifiedName": {"class": "PrimitiveTypePropertyValue", "typeName": "string", "primitiveValue": "Annotation::Capture Database Table Measurements::coco_pharma.coco_ods.categories::9fa66caf-6095-4a22-acfb-4cfdfa16b8c5"}}}}
+  WOULD SEND declassify Memento     99316248 #47 ResourceMeasureAnnotation
+      body={"class": "MetadataSourceRequestBody", "forLineage": true, "forDuplicateProcessing": true}
+  WOULD SEND update qualifiedName   99316248 1 suffix(es) stripped
+      body={"class": "UpdatePropertiesRequestBody", "forLineage": true, "forDuplicateProcessing": true, "replaceProperties": false, "properties": {"class": "ElementProperties", "propertyValueMap": {"qualifiedName": {"class": "PrimitiveTypePropertyValue", "typeName": "string", "primitiveValue": "Annotation::Capture Database Table Measurements::coco_pharma.coco_ods.coco_locations::6fbeb550-7138-430b-be6b-597895f4d5bf"}}}}
+  WOULD SEND declassify Memento     89443f44 #48 ResourceMeasureAnnotation
+      body={"class": "MetadataSourceRequestBody", "forLineage": true, "forDuplicateProcessing": true}
+  WOULD SEND update qualifiedName   89443f44 1 suffix(es) stripped
+      body={"class": "UpdatePropertiesRequestBody", "forLineage": true, "forDuplicateProcessing": true, "replaceProperties": false, "properties": {"class": "ElementProperties", "propertyValueMap": {"qualifiedName": {"class": "PrimitiveTypePropertyValue", "typeName": "string", "primitiveValue": "Annotation::Capture Database Table Measurements::coco_pharma.coco_ods.coco_locations::c3f7612b-3aa4-4fc9-8b51-63e9e8be6841"}}}}
+  WOULD SEND declassify Memento     13ea5a5f #49 ResourceMeasureAnnotation
+      body={"class": "MetadataSourceRequestBody", "forLineage": true, "forDuplicateProcessing": true}
+  WOULD SEND update qualifiedName   13ea5a5f 1 suffix(es) stripped
+      body={"class": "UpdatePropertiesRequestBody", "forLineage": true, "forDuplicateProcessing": true, "replaceProperties": false, "properties": {"class": "ElementProperties", "propertyValueMap": {"qualifiedName": {"class": "PrimitiveTypePropertyValue", "typeName": "string", "primitiveValue": "Annotation::Capture Database Table Measurements::coco_pharma.coco_ods.customer_customer_demo::504fa082-37ff-4b08-8131-1de32efe7beb"}}}}
+  WOULD SEND declassify Memento     f30e878a #50 ResourceMeasureAnnotation
+      body={"class": "MetadataSourceRequestBody", "forLineage": true, "forDuplicateProcessing": true}
+  WOULD SEND update qualifiedName   f30e878a 1 suffix(es) stripped
+      body={"class": "UpdatePropertiesRequestBody", "forLineage": true, "forDuplicateProcessing": true, "replaceProperties": false, "properties": {"class": "ElementProperties", "propertyValueMap": {"qualifiedName": {"class": "PrimitiveTypePropertyValue", "typeName": "string", "primitiveValue": "Annotation::Capture Database Table Measurements::coco_pharma.coco_ods.customer_customer_demo::f9b36386-c474-4de8-a32a-e8780e215d85"}}}}
+  WOULD SEND declassify Memento     a033954b #51 ResourceMeasureAnnotation
+      body={"class": "MetadataSourceRequestBody", "forLineage": true, "forDuplicateProcessing": true}
+  WOULD SEND update qualifiedName   a033954b 1 suffix(es) stripped
+      body={"class": "UpdatePropertiesRequestBody", "forLineage": true, "forDuplicateProcessing": true, "replaceProperties": false, "properties": {"class": "ElementProperties", "propertyValueMap": {"qualifiedName": {"class": "PrimitiveTypePropertyValue", "typeName": "string", "primitiveValue": "Annotation::Capture Database Table Measurements::coco_pharma.coco_ods.customer_demographics::596048ba-86ca-4fe3-b423-708cfb152a43"}}}}
+  WOULD SEND declassify Memento     24fe5afe #52 ResourceMeasureAnnotation
+      body={"class": "MetadataSourceRequestBody", "forLineage": true, "forDuplicateProcessing": true}
+  WOULD SEND update qualifiedName   24fe5afe 1 suffix(es) stripped
+      body={"class": "UpdatePropertiesRequestBody", "forLineage": true, "forDuplicateProcessing": true, "replaceProperties": false, "properties": {"class": "ElementProperties", "propertyValueMap": {"qualifiedName": {"class": "PrimitiveTypePropertyValue", "typeName": "string", "primitiveValue": "Annotation::Capture Database Table Measurements::coco_pharma.coco_ods.customer_demographics::f26ecf6f-8dd6-41d9-89b2-04510bc8fb22"}}}}
+  WOULD SEND declassify Memento     dbdcd585 #53 ResourceMeasureAnnotation
+      body={"class": "MetadataSourceRequestBody", "forLineage": true, "forDuplicateProcessing": true}
+  WOULD SEND update qualifiedName   dbdcd585 1 suffix(es) stripped
+      body={"class": "UpdatePropertiesRequestBody", "forLineage": true, "forDuplicateProcessing": true, "replaceProperties": false, "properties": {"class": "ElementProperties", "propertyValueMap": {"qualifiedName": {"class": "PrimitiveTypePropertyValue", "typeName": "string", "primitiveValue": "Annotation::Capture Database Table Measurements::coco_pharma.coco_ods.customers::5efc7c1a-78cf-4d25-9009-62723547e8b1"}}}}
+  WOULD SEND declassify Memento     94afd9f0 #54 ResourceMeasureAnnotation
+      body={"class": "MetadataSourceRequestBody", "forLineage": true, "forDuplicateProcessing": true}
+  WOULD SEND update qualifiedName   94afd9f0 1 suffix(es) stripped
+      body={"class": "UpdatePropertiesRequestBody", "forLineage": true, "forDuplicateProcessing": true, "replaceProperties": false, "properties": {"class": "ElementProperties", "propertyValueMap": {"qualifiedName": {"class": "PrimitiveTypePropertyValue", "typeName": "string", "primitiveValue": "Annotation::Capture Database Table Measurements::coco_pharma.coco_ods.customers::c157d4ab-28c2-42c0-87d2-1aee429c1029"}}}}
+  WOULD SEND declassify Memento     c811b2d8 #55 ResourceMeasureAnnotation
+      body={"class": "MetadataSourceRequestBody", "forLineage": true, "forDuplicateProcessing": true}
+  WOULD SEND update qualifiedName   c811b2d8 1 suffix(es) stripped
+      body={"class": "UpdatePropertiesRequestBody", "forLineage": true, "forDuplicateProcessing": true, "replaceProperties": false, "properties": {"class": "ElementProperties", "propertyValueMap": {"qualifiedName": {"class": "PrimitiveTypePropertyValue", "typeName": "string", "primitiveValue": "Annotation::Capture Database Table Measurements::coco_pharma.coco_ods.customer_travel::1c73f56d-b826-4863-bb65-e7811246ff5e"}}}}
+  WOULD SEND declassify Memento     40e57566 #56 ResourceMeasureAnnotation
+      body={"class": "MetadataSourceRequestBody", "forLineage": true, "forDuplicateProcessing": true}
+  WOULD SEND update qualifiedName   40e57566 1 suffix(es) stripped
+      body={"class": "UpdatePropertiesRequestBody", "forLineage": true, "forDuplicateProcessing": true, "replaceProperties": false, "properties": {"class": "ElementProperties", "propertyValueMap": {"qualifiedName": {"class": "PrimitiveTypePropertyValue", "typeName": "string", "primitiveValue": "Annotation::Capture Database Table Measurements::coco_pharma.coco_ods.customer_travel::8505dc37-bd0f-4ed4-bf6a-37d3e1cd8ec9"}}}}
+  WOULD SEND declassify Memento     f3e4e21e #57 ResourceMeasureAnnotation
+      body={"class": "MetadataSourceRequestBody", "forLineage": true, "forDuplicateProcessing": true}
+  WOULD SEND update qualifiedName   f3e4e21e 1 suffix(es) stripped
+      body={"class": "UpdatePropertiesRequestBody", "forLineage": true, "forDuplicateProcessing": true, "replaceProperties": false, "properties": {"class": "ElementProperties", "propertyValueMap": {"qualifiedName": {"class": "PrimitiveTypePropertyValue", "typeName": "string", "primitiveValue": "Annotation::Capture Database Table Measurements::coco_pharma.coco_ods.employees::11ed8fcb-ef78-43ac-a6bc-b01160012e84"}}}}
+  WOULD SEND declassify Memento     e06f411f #58 ResourceMeasureAnnotation
+      body={"class": "MetadataSourceRequestBody", "forLineage": true, "forDuplicateProcessing": true}
+  WOULD SEND update qualifiedName   e06f411f 1 suffix(es) stripped
+      body={"class": "UpdatePropertiesRequestBody", "forLineage": true, "forDuplicateProcessing": true, "replaceProperties": false, "properties": {"class": "ElementProperties", "propertyValueMap": {"qualifiedName": {"class": "PrimitiveTypePropertyValue", "typeName": "string", "primitiveValue": "Annotation::Capture Database Table Measurements::coco_pharma.coco_ods.employees::edc4048d-6bbc-40b4-be69-5302704e76b5"}}}}
+  WOULD SEND declassify Memento     c2333ac7 #59 ResourceMeasureAnnotation
+      body={"class": "MetadataSourceRequestBody", "forLineage": true, "forDuplicateProcessing": true}
+  WOULD SEND update qualifiedName   c2333ac7 1 suffix(es) stripped
+      body={"class": "UpdatePropertiesRequestBody", "forLineage": true, "forDuplicateProcessing": true, "replaceProperties": false, "properties": {"class": "ElementProperties", "propertyValueMap": {"qualifiedName": {"class": "PrimitiveTypePropertyValue", "typeName": "string", "primitiveValue": "Annotation::Capture Database Table Measurements::coco_pharma.coco_ods.employee_territories::0a980de2-da62-4ee7-952c-294f48b533f5"}}}}
+  WOULD SEND declassify Memento     09699073 #60 ResourceMeasureAnnotation
+      body={"class": "MetadataSourceRequestBody", "forLineage": true, "forDuplicateProcessing": true}
+  WOULD SEND update qualifiedName   09699073 1 suffix(es) stripped
+      body={"class": "UpdatePropertiesRequestBody", "forLineage": true, "forDuplicateProcessing": true, "replaceProperties": false, "properties": {"class": "ElementProperties", "propertyValueMap": {"qualifiedName": {"class": "PrimitiveTypePropertyValue", "typeName": "string", "primitiveValue": "Annotation::Capture Database Table Measurements::coco_pharma.coco_ods.employee_territories::a50603dc-28a5-45f3-8223-d38d46f9d94e"}}}}
+  WOULD SEND declassify Memento     ab6971c3 #61 ResourceMeasureAnnotation
+      body={"class": "MetadataSourceRequestBody", "forLineage": true, "forDuplicateProcessing": true}
+  WOULD SEND update qualifiedName   ab6971c3 1 suffix(es) stripped
+      body={"class": "UpdatePropertiesRequestBody", "forLineage": true, "forDuplicateProcessing": true, "replaceProperties": false, "properties": {"class": "ElementProperties", "propertyValueMap": {"qualifiedName": {"class": "PrimitiveTypePropertyValue", "typeName": "string", "primitiveValue": "Annotation::Capture Database Table Measurements::coco_pharma.coco_ods.order_details::121f778a-c3b4-4eaa-a130-c51305c81817"}}}}
+  WOULD SEND declassify Memento     214ed086 #62 ResourceMeasureAnnotation
+      body={"class": "MetadataSourceRequestBody", "forLineage": true, "forDuplicateProcessing": true}
+  WOULD SEND update qualifiedName   214ed086 1 suffix(es) stripped
+      body={"class": "UpdatePropertiesRequestBody", "forLineage": true, "forDuplicateProcessing": true, "replaceProperties": false, "properties": {"class": "ElementProperties", "propertyValueMap": {"qualifiedName": {"class": "PrimitiveTypePropertyValue", "typeName": "string", "primitiveValue": "Annotation::Capture Database Table Measurements::coco_pharma.coco_ods.order_details::606d46a2-dcfb-41dd-b1e1-9dc3d683b3df"}}}}
+  WOULD SEND declassify Memento     eea51559 #63 ResourceMeasureAnnotation
+      body={"class": "MetadataSourceRequestBody", "forLineage": true, "forDuplicateProcessing": true}
+  WOULD SEND update qualifiedName   eea51559 1 suffix(es) stripped
+      body={"class": "UpdatePropertiesRequestBody", "forLineage": true, "forDuplicateProcessing": true, "replaceProperties": false, "properties": {"class": "ElementProperties", "propertyValueMap": {"qualifiedName": {"class": "PrimitiveTypePropertyValue", "typeName": "string", "primitiveValue": "Annotation::Capture Database Table Measurements::coco_pharma.coco_ods.orders::34464fde-509a-4d1d-9b57-fa0f5e434d44"}}}}
+  WOULD SEND declassify Memento     4884a2ce #64 ResourceMeasureAnnotation
+      body={"class": "MetadataSourceRequestBody", "forLineage": true, "forDuplicateProcessing": true}
+  WOULD SEND update qualifiedName   4884a2ce 1 suffix(es) stripped
+      body={"class": "UpdatePropertiesRequestBody", "forLineage": true, "forDuplicateProcessing": true, "replaceProperties": false, "properties": {"class": "ElementProperties", "propertyValueMap": {"qualifiedName": {"class": "PrimitiveTypePropertyValue", "typeName": "string", "primitiveValue": "Annotation::Capture Database Table Measurements::coco_pharma.coco_ods.orders::34ea461e-8951-4516-9315-7e1faedf3f84"}}}}
+  WOULD SEND declassify Memento     13307305 #65 ResourceMeasureAnnotation
+      body={"class": "MetadataSourceRequestBody", "forLineage": true, "forDuplicateProcessing": true}
+  WOULD SEND update qualifiedName   13307305 1 suffix(es) stripped
+      body={"class": "UpdatePropertiesRequestBody", "forLineage": true, "forDuplicateProcessing": true, "replaceProperties": false, "properties": {"class": "ElementProperties", "propertyValueMap": {"qualifiedName": {"class": "PrimitiveTypePropertyValue", "typeName": "string", "primitiveValue": "Annotation::Capture Database Table Measurements::coco_pharma.coco_ods.products::7c68c0f0-616e-4a5d-b667-110347dd56d3"}}}}
+  WOULD SEND declassify Memento     57a225ac #66 ResourceMeasureAnnotation
+      body={"class": "MetadataSourceRequestBody", "forLineage": true, "forDuplicateProcessing": true}
+  WOULD SEND update qualifiedName   57a225ac 1 suffix(es) stripped
+      body={"class": "UpdatePropertiesRequestBody", "forLineage": true, "forDuplicateProcessing": true, "replaceProperties": false, "properties": {"class": "ElementProperties", "propertyValueMap": {"qualifiedName": {"class": "PrimitiveTypePropertyValue", "typeName": "string", "primitiveValue": "Annotation::Capture Database Table Measurements::coco_pharma.coco_ods.products::dedb8ab7-c30a-4e7f-a7c7-591b8e44e2ff"}}}}
+  WOULD SEND declassify Memento     5492ead1 #67 ResourceMeasureAnnotation
+      body={"class": "MetadataSourceRequestBody", "forLineage": true, "forDuplicateProcessing": true}
+  WOULD SEND update qualifiedName   5492ead1 1 suffix(es) stripped
+      body={"class": "UpdatePropertiesRequestBody", "forLineage": true, "forDuplicateProcessing": true, "replaceProperties": false, "properties": {"class": "ElementProperties", "propertyValueMap": {"qualifiedName": {"class": "PrimitiveTypePropertyValue", "typeName": "string", "primitiveValue": "Annotation::Capture Database Table Measurements::coco_pharma.coco_ods.region::4ee8154f-97d4-4574-8a9f-31674df4816f"}}}}
+  WOULD SEND declassify Memento     3886544e #68 ResourceMeasureAnnotation
+      body={"class": "MetadataSourceRequestBody", "forLineage": true, "forDuplicateProcessing": true}
+  WOULD SEND update qualifiedName   3886544e 1 suffix(es) stripped
+      body={"class": "UpdatePropertiesRequestBody", "forLineage": true, "forDuplicateProcessing": true, "replaceProperties": false, "properties": {"class": "ElementProperties", "propertyValueMap": {"qualifiedName": {"class": "PrimitiveTypePropertyValue", "typeName": "string", "primitiveValue": "Annotation::Capture Database Table Measurements::coco_pharma.coco_ods.region::714c1471-0312-40d7-9854-b26d69212eac"}}}}
+  WOULD SEND declassify Memento     0a45a209 #69 ResourceMeasureAnnotation
+      body={"class": "MetadataSourceRequestBody", "forLineage": true, "forDuplicateProcessing": true}
+  WOULD SEND update qualifiedName   0a45a209 1 suffix(es) stripped
+      body={"class": "UpdatePropertiesRequestBody", "forLineage": true, "forDuplicateProcessing": true, "replaceProperties": false, "properties": {"class": "ElementProperties", "propertyValueMap": {"qualifiedName": {"class": "PrimitiveTypePropertyValue", "typeName": "string", "primitiveValue": "Annotation::Capture Database Table Measurements::coco_pharma.coco_ods.shippers::7c0677ad-9fd6-4259-b249-26089dd0f32e"}}}}
+  WOULD SEND declassify Memento     d0e7cb1e #70 ResourceMeasureAnnotation
+      body={"class": "MetadataSourceRequestBody", "forLineage": true, "forDuplicateProcessing": true}
+  WOULD SEND update qualifiedName   d0e7cb1e 1 suffix(es) stripped
+      body={"class": "UpdatePropertiesRequestBody", "forLineage": true, "forDuplicateProcessing": true, "replaceProperties": false, "properties": {"class": "ElementProperties", "propertyValueMap": {"qualifiedName": {"class": "PrimitiveTypePropertyValue", "typeName": "string", "primitiveValue": "Annotation::Capture Database Table Measurements::coco_pharma.coco_ods.shippers::9203df23-624e-4f64-b844-028e012e95d6"}}}}
+  WOULD SEND declassify Memento     83049b84 #71 ResourceMeasureAnnotation
+      body={"class": "MetadataSourceRequestBody", "forLineage": true, "forDuplicateProcessing": true}
+  WOULD SEND update qualifiedName   83049b84 1 suffix(es) stripped
+      body={"class": "UpdatePropertiesRequestBody", "forLineage": true, "forDuplicateProcessing": true, "replaceProperties": false, "properties": {"class": "ElementProperties", "propertyValueMap": {"qualifiedName": {"class": "PrimitiveTypePropertyValue", "typeName": "string", "primitiveValue": "Annotation::Capture Database Table Measurements::coco_pharma.coco_ods.sites::84938f8f-213e-413f-9c4d-d662730ad09e"}}}}
+  WOULD SEND declassify Memento     cb21c5d0 #72 ResourceMeasureAnnotation
+      body={"class": "MetadataSourceRequestBody", "forLineage": true, "forDuplicateProcessing": true}
+  WOULD SEND update qualifiedName   cb21c5d0 1 suffix(es) stripped
+      body={"class": "UpdatePropertiesRequestBody", "forLineage": true, "forDuplicateProcessing": true, "replaceProperties": false, "properties": {"class": "ElementProperties", "propertyValueMap": {"qualifiedName": {"class": "PrimitiveTypePropertyValue", "typeName": "string", "primitiveValue": "Annotation::Capture Database Table Measurements::coco_pharma.coco_ods.sites::a5013008-4a7b-469c-8ad8-cdcb3d782588"}}}}
+  WOULD SEND declassify Memento     e62ec25c #73 ResourceMeasureAnnotation
+      body={"class": "MetadataSourceRequestBody", "forLineage": true, "forDuplicateProcessing": true}
+  WOULD SEND update qualifiedName   e62ec25c 1 suffix(es) stripped
+      body={"class": "UpdatePropertiesRequestBody", "forLineage": true, "forDuplicateProcessing": true, "replaceProperties": false, "properties": {"class": "ElementProperties", "propertyValueMap": {"qualifiedName": {"class": "PrimitiveTypePropertyValue", "typeName": "string", "primitiveValue": "Annotation::Capture Database Table Measurements::coco_pharma.coco_ods.supplier_invoice_details::720d5497-0675-41cd-b2e3-a805ad7ba18d"}}
+  WOULD SEND declassify Memento     74041ff5 #74 ResourceMeasureAnnotation
+      body={"class": "MetadataSourceRequestBody", "forLineage": true, "forDuplicateProcessing": true}
+  WOULD SEND update qualifiedName   74041ff5 1 suffix(es) stripped
+      body={"class": "UpdatePropertiesRequestBody", "forLineage": true, "forDuplicateProcessing": true, "replaceProperties": false, "properties": {"class": "ElementProperties", "propertyValueMap": {"qualifiedName": {"class": "PrimitiveTypePropertyValue", "typeName": "string", "primitiveValue": "Annotation::Capture Database Table Measurements::coco_pharma.coco_ods.supplier_invoice_details::8272c252-1824-4b1d-997d-449fd60cbb57"}}
+  WOULD SEND declassify Memento     16d6f52e #75 ResourceMeasureAnnotation
+      body={"class": "MetadataSourceRequestBody", "forLineage": true, "forDuplicateProcessing": true}
+  WOULD SEND update qualifiedName   16d6f52e 1 suffix(es) stripped
+      body={"class": "UpdatePropertiesRequestBody", "forLineage": true, "forDuplicateProcessing": true, "replaceProperties": false, "properties": {"class": "ElementProperties", "propertyValueMap": {"qualifiedName": {"class": "PrimitiveTypePropertyValue", "typeName": "string", "primitiveValue": "Annotation::Capture Database Table Measurements::coco_pharma.coco_ods.supplier_invoices::3744b46c-5381-412f-818a-1398cdca4e19"}}}}
+  WOULD SEND declassify Memento     5b189fb2 #76 ResourceMeasureAnnotation
+      body={"class": "MetadataSourceRequestBody", "forLineage": true, "forDuplicateProcessing": true}
+  WOULD SEND update qualifiedName   5b189fb2 1 suffix(es) stripped
+      body={"class": "UpdatePropertiesRequestBody", "forLineage": true, "forDuplicateProcessing": true, "replaceProperties": false, "properties": {"class": "ElementProperties", "propertyValueMap": {"qualifiedName": {"class": "PrimitiveTypePropertyValue", "typeName": "string", "primitiveValue": "Annotation::Capture Database Table Measurements::coco_pharma.coco_ods.supplier_invoices::ef83de62-d5ed-4cd1-ab00-d321525e3438"}}}}
+  WOULD SEND declassify Memento     20e95279 #77 ResourceMeasureAnnotation
+      body={"class": "MetadataSourceRequestBody", "forLineage": true, "forDuplicateProcessing": true}
+  WOULD SEND update qualifiedName   20e95279 1 suffix(es) stripped
+      body={"class": "UpdatePropertiesRequestBody", "forLineage": true, "forDuplicateProcessing": true, "replaceProperties": false, "properties": {"class": "ElementProperties", "propertyValueMap": {"qualifiedName": {"class": "PrimitiveTypePropertyValue", "typeName": "string", "primitiveValue": "Annotation::Capture Database Table Measurements::coco_pharma.coco_ods.suppliers::2daed785-9cd8-47f8-9908-266aa212c97e"}}}}
+  WOULD SEND declassify Memento     329f820c #78 ResourceMeasureAnnotation
+      body={"class": "MetadataSourceRequestBody", "forLineage": true, "forDuplicateProcessing": true}
+  WOULD SEND update qualifiedName   329f820c 1 suffix(es) stripped
+      body={"class": "UpdatePropertiesRequestBody", "forLineage": true, "forDuplicateProcessing": true, "replaceProperties": false, "properties": {"class": "ElementProperties", "propertyValueMap": {"qualifiedName": {"class": "PrimitiveTypePropertyValue", "typeName": "string", "primitiveValue": "Annotation::Capture Database Table Measurements::coco_pharma.coco_ods.suppliers::b8cb27b3-aa05-41ca-a2b8-54c346ed72a8"}}}}
+  WOULD SEND declassify Memento     6b8fee07 #79 ResourceMeasureAnnotation
+      body={"class": "MetadataSourceRequestBody", "forLineage": true, "forDuplicateProcessing": true}
+  WOULD SEND update qualifiedName   6b8fee07 1 suffix(es) stripped
+      body={"class": "UpdatePropertiesRequestBody", "forLineage": true, "forDuplicateProcessing": true, "replaceProperties": false, "properties": {"class": "ElementProperties", "propertyValueMap": {"qualifiedName": {"class": "PrimitiveTypePropertyValue", "typeName": "string", "primitiveValue": "Annotation::Capture Database Table Measurements::coco_pharma.coco_ods.supplies::4484643a-086a-4817-9f70-d61ab6976cef"}}}}
+  WOULD SEND declassify Memento     5258d2d3 #80 ResourceMeasureAnnotation
+      body={"class": "MetadataSourceRequestBody", "forLineage": true, "forDuplicateProcessing": true}
+  WOULD SEND update qualifiedName   5258d2d3 1 suffix(es) stripped
+      body={"class": "UpdatePropertiesRequestBody", "forLineage": true, "forDuplicateProcessing": true, "replaceProperties": false, "properties": {"class": "ElementProperties", "propertyValueMap": {"qualifiedName": {"class": "PrimitiveTypePropertyValue", "typeName": "string", "primitiveValue": "Annotation::Capture Database Table Measurements::coco_pharma.coco_ods.supplies::ba2ae2d5-16b0-4ecd-9721-66ab2be81a67"}}}}
+  WOULD SEND declassify Memento     7a09e4f0 #81 ResourceMeasureAnnotation
+      body={"class": "MetadataSourceRequestBody", "forLineage": true, "forDuplicateProcessing": true}
+  WOULD SEND update qualifiedName   7a09e4f0 1 suffix(es) stripped
+      body={"class": "UpdatePropertiesRequestBody", "forLineage": true, "forDuplicateProcessing": true, "replaceProperties": false, "properties": {"class": "ElementProperties", "propertyValueMap": {"qualifiedName": {"class": "PrimitiveTypePropertyValue", "typeName": "string", "primitiveValue": "Annotation::Capture Database Table Measurements::coco_pharma.coco_ods.supply_order_details::c0c1a992-053a-4bbf-9d5c-8bb23f457119"}}}}
+  WOULD SEND declassify Memento     4c69edb4 #82 ResourceMeasureAnnotation
+      body={"class": "MetadataSourceRequestBody", "forLineage": true, "forDuplicateProcessing": true}
+  WOULD SEND update qualifiedName   4c69edb4 1 suffix(es) stripped
+      body={"class": "UpdatePropertiesRequestBody", "forLineage": true, "forDuplicateProcessing": true, "replaceProperties": false, "properties": {"class": "ElementProperties", "propertyValueMap": {"qualifiedName": {"class": "PrimitiveTypePropertyValue", "typeName": "string", "primitiveValue": "Annotation::Capture Database Table Measurements::coco_pharma.coco_ods.supply_order_details::e1bdd1dd-eb1e-4ff4-8f4e-799fdff453a8"}}}}
+  WOULD SEND declassify Memento     348afc66 #83 ResourceMeasureAnnotation
+      body={"class": "MetadataSourceRequestBody", "forLineage": true, "forDuplicateProcessing": true}
+  WOULD SEND update qualifiedName   348afc66 1 suffix(es) stripped
+      body={"class": "UpdatePropertiesRequestBody", "forLineage": true, "forDuplicateProcessing": true, "replaceProperties": false, "properties": {"class": "ElementProperties", "propertyValueMap": {"qualifiedName": {"class": "PrimitiveTypePropertyValue", "typeName": "string", "primitiveValue": "Annotation::Capture Database Table Measurements::coco_pharma.coco_ods.supply_orders::1e200d38-7ad7-4a0a-b9db-a0c35ac0fc45"}}}}
+  WOULD SEND declassify Memento     b6b6823f #84 ResourceMeasureAnnotation
+      body={"class": "MetadataSourceRequestBody", "forLineage": true, "forDuplicateProcessing": true}
+  WOULD SEND update qualifiedName   b6b6823f 1 suffix(es) stripped
+      body={"class": "UpdatePropertiesRequestBody", "forLineage": true, "forDuplicateProcessing": true, "replaceProperties": false, "properties": {"class": "ElementProperties", "propertyValueMap": {"qualifiedName": {"class": "PrimitiveTypePropertyValue", "typeName": "string", "primitiveValue": "Annotation::Capture Database Table Measurements::coco_pharma.coco_ods.supply_orders::a588df8a-35ce-43e0-945e-522fb1e6fccd"}}}}
+  WOULD SEND declassify Memento     f293a717 #85 ResourceMeasureAnnotation
+      body={"class": "MetadataSourceRequestBody", "forLineage": true, "forDuplicateProcessing": true}
+  WOULD SEND update qualifiedName   f293a717 1 suffix(es) stripped
+      body={"class": "UpdatePropertiesRequestBody", "forLineage": true, "forDuplicateProcessing": true, "replaceProperties": false, "properties": {"class": "ElementProperties", "propertyValueMap": {"qualifiedName": {"class": "PrimitiveTypePropertyValue", "typeName": "string", "primitiveValue": "Annotation::Capture Database Table Measurements::coco_pharma.coco_ods.territories::02bcc067-e125-4918-ab1c-6aa68d6196f7"}}}}
+  WOULD SEND declassify Memento     310dc04d #86 ResourceMeasureAnnotation
+      body={"class": "MetadataSourceRequestBody", "forLineage": true, "forDuplicateProcessing": true}
+  WOULD SEND update qualifiedName   310dc04d 1 suffix(es) stripped
+      body={"class": "UpdatePropertiesRequestBody", "forLineage": true, "forDuplicateProcessing": true, "replaceProperties": false, "properties": {"class": "ElementProperties", "propertyValueMap": {"qualifiedName": {"class": "PrimitiveTypePropertyValue", "typeName": "string", "primitiveValue": "Annotation::Capture Database Table Measurements::coco_pharma.coco_ods.territories::0b9894c9-ea48-407a-b7db-afee509c0def"}}}}
+  WOULD SEND declassify Memento     04657725 #87 ResourceMeasureAnnotation
+      body={"class": "MetadataSourceRequestBody", "forLineage": true, "forDuplicateProcessing": true}
+  WOULD SEND update qualifiedName   04657725 1 suffix(es) stripped
+      body={"class": "UpdatePropertiesRequestBody", "forLineage": true, "forDuplicateProcessing": true, "replaceProperties": false, "properties": {"class": "ElementProperties", "propertyValueMap": {"qualifiedName": {"class": "PrimitiveTypePropertyValue", "typeName": "string", "primitiveValue": "Annotation::Capture Database Table Measurements::coco_pharma.coco_ods.units_by_location::0f7b9d11-dab8-4f33-83f3-080f3914eef9"}}}}
+  WOULD SEND declassify Memento     5ea599d3 #88 ResourceMeasureAnnotation
+      body={"class": "MetadataSourceRequestBody", "forLineage": true, "forDuplicateProcessing": true}
+  WOULD SEND update qualifiedName   5ea599d3 1 suffix(es) stripped
+      body={"class": "UpdatePropertiesRequestBody", "forLineage": true, "forDuplicateProcessing": true, "replaceProperties": false, "properties": {"class": "ElementProperties", "propertyValueMap": {"qualifiedName": {"class": "PrimitiveTypePropertyValue", "typeName": "string", "primitiveValue": "Annotation::Capture Database Table Measurements::coco_pharma.coco_ods.units_by_location::7bbd2677-df40-4544-abe9-0c79cc7600e6"}}}}
+  WOULD SEND declassify Memento     1f17815c #89 ResourceMeasureAnnotation
+      body={"class": "MetadataSourceRequestBody", "forLineage": true, "forDuplicateProcessing": true}
+  WOULD SEND update qualifiedName   1f17815c 1 suffix(es) stripped
+      body={"class": "UpdatePropertiesRequestBody", "forLineage": true, "forDuplicateProcessing": true, "replaceProperties": false, "properties": {"class": "ElementProperties", "propertyValueMap": {"qualifiedName": {"class": "PrimitiveTypePropertyValue", "typeName": "string", "primitiveValue": "Annotation::Capture Database Table Measurements::coco_pharma.coco_ods.us_states::bdf99e5b-619d-4b19-8392-833296c2a159"}}}}
+  WOULD SEND declassify Memento     87b5a180 #90 ResourceMeasureAnnotation
+      body={"class": "MetadataSourceRequestBody", "forLineage": true, "forDuplicateProcessing": true}
+  WOULD SEND update qualifiedName   87b5a180 1 suffix(es) stripped
+      body={"class": "UpdatePropertiesRequestBody", "forLineage": true, "forDuplicateProcessing": true, "replaceProperties": false, "properties": {"class": "ElementProperties", "propertyValueMap": {"qualifiedName": {"class": "PrimitiveTypePropertyValue", "typeName": "string", "primitiveValue": "Annotation::Capture Database Table Measurements::coco_pharma.coco_ods.us_states::d87d07fd-15f4-4be7-9cb5-b5d8f2330c91"}}}}
+  WOULD SEND declassify Memento     a3cf4de0 #91 ResourceMeasureAnnotation
+      body={"class": "MetadataSourceRequestBody", "forLineage": true, "forDuplicateProcessing": true}
+  WOULD SEND update qualifiedName   a3cf4de0 1 suffix(es) stripped
+      body={"class": "UpdatePropertiesRequestBody", "forLineage": true, "forDuplicateProcessing": true, "replaceProperties": false, "properties": {"class": "ElementProperties", "propertyValueMap": {"qualifiedName": {"class": "PrimitiveTypePropertyValue", "typeName": "string", "primitiveValue": "Annotation::Capture Database Table Measurements::coco_pharma.coco_sus.categories::1c7acb57-d666-4b36-936a-613276294df9"}}}}
+  WOULD SEND declassify Memento     327bbe20 #92 ResourceMeasureAnnotation
+      body={"class": "MetadataSourceRequestBody", "forLineage": true, "forDuplicateProcessing": true}
+  WOULD SEND update qualifiedName   327bbe20 1 suffix(es) stripped
+      body={"class": "UpdatePropertiesRequestBody", "forLineage": true, "forDuplicateProcessing": true, "replaceProperties": false, "properties": {"class": "ElementProperties", "propertyValueMap": {"qualifiedName": {"class": "PrimitiveTypePropertyValue", "typeName": "string", "primitiveValue": "Annotation::Capture Database Table Measurements::coco_pharma.coco_sus.categories::ecc1f566-3909-4426-9522-6c5b0e871ff5"}}}}
+  WOULD SEND declassify Memento     6988dec9 #93 ResourceMeasureAnnotation
+      body={"class": "MetadataSourceRequestBody", "forLineage": true, "forDuplicateProcessing": true}
+  WOULD SEND update qualifiedName   6988dec9 1 suffix(es) stripped
+      body={"class": "UpdatePropertiesRequestBody", "forLineage": true, "forDuplicateProcessing": true, "replaceProperties": false, "properties": {"class": "ElementProperties", "propertyValueMap": {"qualifiedName": {"class": "PrimitiveTypePropertyValue", "typeName": "string", "primitiveValue": "Annotation::Capture Database Table Measurements::coco_pharma.coco_sus.coco_locations::474ecbf8-1582-4282-99fe-d2a3ec299293"}}}}
+  WOULD SEND declassify Memento     1ed87ecf #94 ResourceMeasureAnnotation
+      body={"class": "MetadataSourceRequestBody", "forLineage": true, "forDuplicateProcessing": true}
+  WOULD SEND update qualifiedName   1ed87ecf 1 suffix(es) stripped
+      body={"class": "UpdatePropertiesRequestBody", "forLineage": true, "forDuplicateProcessing": true, "replaceProperties": false, "properties": {"class": "ElementProperties", "propertyValueMap": {"qualifiedName": {"class": "PrimitiveTypePropertyValue", "typeName": "string", "primitiveValue": "Annotation::Capture Database Table Measurements::coco_pharma.coco_sus.coco_locations::9162dedb-e399-488e-a5c0-37e3595b35dd"}}}}
+  WOULD SEND declassify Memento     ea4e4187 #95 ResourceMeasureAnnotation
+      body={"class": "MetadataSourceRequestBody", "forLineage": true, "forDuplicateProcessing": true}
+  WOULD SEND update qualifiedName   ea4e4187 1 suffix(es) stripped
+      body={"class": "UpdatePropertiesRequestBody", "forLineage": true, "forDuplicateProcessing": true, "replaceProperties": false, "properties": {"class": "ElementProperties", "propertyValueMap": {"qualifiedName": {"class": "PrimitiveTypePropertyValue", "typeName": "string", "primitiveValue": "Annotation::Capture Database Table Measurements::coco_pharma.coco_sus.ctry_scope_emissions::d07fd849-e135-4286-a178-18261bcb07a0"}}}}
+  WOULD SEND declassify Memento     996b9bf2 #96 ResourceMeasureAnnotation
+      body={"class": "MetadataSourceRequestBody", "forLineage": true, "forDuplicateProcessing": true}
+  WOULD SEND update qualifiedName   996b9bf2 1 suffix(es) stripped
+      body={"class": "UpdatePropertiesRequestBody", "forLineage": true, "forDuplicateProcessing": true, "replaceProperties": false, "properties": {"class": "ElementProperties", "propertyValueMap": {"qualifiedName": {"class": "PrimitiveTypePropertyValue", "typeName": "string", "primitiveValue": "Annotation::Capture Database Table Measurements::coco_pharma.coco_sus.customer_customer_demo::6e99bc6b-b90c-41b5-a66c-3da479e72e6c"}}}}
+  WOULD SEND declassify Memento     24ef2467 #97 ResourceMeasureAnnotation
+      body={"class": "MetadataSourceRequestBody", "forLineage": true, "forDuplicateProcessing": true}
+  WOULD SEND update qualifiedName   24ef2467 1 suffix(es) stripped
+      body={"class": "UpdatePropertiesRequestBody", "forLineage": true, "forDuplicateProcessing": true, "replaceProperties": false, "properties": {"class": "ElementProperties", "propertyValueMap": {"qualifiedName": {"class": "PrimitiveTypePropertyValue", "typeName": "string", "primitiveValue": "Annotation::Capture Database Table Measurements::coco_pharma.coco_sus.customer_customer_demo::a6124ce2-e81b-4251-927f-d40a766b823e"}}}}
+  WOULD SEND declassify Memento     17accacb #98 ResourceMeasureAnnotation
+      body={"class": "MetadataSourceRequestBody", "forLineage": true, "forDuplicateProcessing": true}
+  WOULD SEND update qualifiedName   17accacb 1 suffix(es) stripped
+      body={"class": "UpdatePropertiesRequestBody", "forLineage": true, "forDuplicateProcessing": true, "replaceProperties": false, "properties": {"class": "ElementProperties", "propertyValueMap": {"qualifiedName": {"class": "PrimitiveTypePropertyValue", "typeName": "string", "primitiveValue": "Annotation::Capture Database Table Measurements::coco_pharma.coco_sus.customer_demographics::9a43858e-4cbd-4c77-a6bf-816d81d19d62"}}}}
+  WOULD SEND declassify Memento     be038b30 #99 ResourceMeasureAnnotation
+      body={"class": "MetadataSourceRequestBody", "forLineage": true, "forDuplicateProcessing": true}
+  WOULD SEND update qualifiedName   be038b30 1 suffix(es) stripped
+      body={"class": "UpdatePropertiesRequestBody", "forLineage": true, "forDuplicateProcessing": true, "replaceProperties": false, "properties": {"class": "ElementProperties", "propertyValueMap": {"qualifiedName": {"class": "PrimitiveTypePropertyValue", "typeName": "string", "primitiveValue": "Annotation::Capture Database Table Measurements::coco_pharma.coco_sus.customer_demographics::bdc158a8-1968-475b-a52c-31df0ac0438e"}}}}
+  WOULD SEND declassify Memento     87924416 #100 ResourceMeasureAnnotation
+      body={"class": "MetadataSourceRequestBody", "forLineage": true, "forDuplicateProcessing": true}
+  WOULD SEND update qualifiedName   87924416 1 suffix(es) stripped
+      body={"class": "UpdatePropertiesRequestBody", "forLineage": true, "forDuplicateProcessing": true, "replaceProperties": false, "properties": {"class": "ElementProperties", "propertyValueMap": {"qualifiedName": {"class": "PrimitiveTypePropertyValue", "typeName": "string", "primitiveValue": "Annotation::Capture Database Table Measurements::coco_pharma.coco_sus.customers::0dcd265a-aff3-4b3a-9565-aee251c2d6af"}}}}
+  WOULD SEND declassify Memento     cffb2b1c #101 ResourceMeasureAnnotation
+      body={"class": "MetadataSourceRequestBody", "forLineage": true, "forDuplicateProcessing": true}
+  WOULD SEND update qualifiedName   cffb2b1c 1 suffix(es) stripped
+      body={"class": "UpdatePropertiesRequestBody", "forLineage": true, "forDuplicateProcessing": true, "replaceProperties": false, "properties": {"class": "ElementProperties", "propertyValueMap": {"qualifiedName": {"class": "PrimitiveTypePropertyValue", "typeName": "string", "primitiveValue": "Annotation::Capture Database Table Measurements::coco_pharma.coco_sus.customers::72797f71-9805-47c3-afa6-0596a75a5465"}}}}
+  WOULD SEND declassify Memento     9a68b763 #102 ResourceMeasureAnnotation
+      body={"class": "MetadataSourceRequestBody", "forLineage": true, "forDuplicateProcessing": true}
+  WOULD SEND update qualifiedName   9a68b763 1 suffix(es) stripped
+      body={"class": "UpdatePropertiesRequestBody", "forLineage": true, "forDuplicateProcessing": true, "replaceProperties": false, "properties": {"class": "ElementProperties", "propertyValueMap": {"qualifiedName": {"class": "PrimitiveTypePropertyValue", "typeName": "string", "primitiveValue": "Annotation::Capture Database Table Measurements::coco_pharma.coco_sus.customer_travel::b53d6f99-e5aa-4ff4-84ac-ef2786aa82f1"}}}}
+  WOULD SEND declassify Memento     24db3f39 #103 ResourceMeasureAnnotation
+      body={"class": "MetadataSourceRequestBody", "forLineage": true, "forDuplicateProcessing": true}
+  WOULD SEND update qualifiedName   24db3f39 1 suffix(es) stripped
+      body={"class": "UpdatePropertiesRequestBody", "forLineage": true, "forDuplicateProcessing": true, "replaceProperties": false, "properties": {"class": "ElementProperties", "propertyValueMap": {"qualifiedName": {"class": "PrimitiveTypePropertyValue", "typeName": "string", "primitiveValue": "Annotation::Capture Database Table Measurements::coco_pharma.coco_sus.customer_travel::cd8bb5cc-9fda-402f-ba6f-7020f3d14cb2"}}}}
+  WOULD SEND declassify Memento     cc48e704 #104 ResourceMeasureAnnotation
+      body={"class": "MetadataSourceRequestBody", "forLineage": true, "forDuplicateProcessing": true}
+  WOULD SEND update qualifiedName   cc48e704 1 suffix(es) stripped
+      body={"class": "UpdatePropertiesRequestBody", "forLineage": true, "forDuplicateProcessing": true, "replaceProperties": false, "properties": {"class": "ElementProperties", "propertyValueMap": {"qualifiedName": {"class": "PrimitiveTypePropertyValue", "typeName": "string", "primitiveValue": "Annotation::Capture Database Table Measurements::coco_pharma.coco_sus.employees::7e794175-e8aa-4c6a-8b5e-176f85fa0b09"}}}}
+  WOULD SEND declassify Memento     7540b892 #105 ResourceMeasureAnnotation
+      body={"class": "MetadataSourceRequestBody", "forLineage": true, "forDuplicateProcessing": true}
+  WOULD SEND update qualifiedName   7540b892 1 suffix(es) stripped
+      body={"class": "UpdatePropertiesRequestBody", "forLineage": true, "forDuplicateProcessing": true, "replaceProperties": false, "properties": {"class": "ElementProperties", "propertyValueMap": {"qualifiedName": {"class": "PrimitiveTypePropertyValue", "typeName": "string", "primitiveValue": "Annotation::Capture Database Table Measurements::coco_pharma.coco_sus.employees::fb2bb826-d698-46d0-b6ac-62153fa8dee0"}}}}
+  WOULD SEND declassify Memento     6605d38e #106 ResourceMeasureAnnotation
+      body={"class": "MetadataSourceRequestBody", "forLineage": true, "forDuplicateProcessing": true}
+  WOULD SEND update qualifiedName   6605d38e 1 suffix(es) stripped
+      body={"class": "UpdatePropertiesRequestBody", "forLineage": true, "forDuplicateProcessing": true, "replaceProperties": false, "properties": {"class": "ElementProperties", "propertyValueMap": {"qualifiedName": {"class": "PrimitiveTypePropertyValue", "typeName": "string", "primitiveValue": "Annotation::Capture Database Table Measurements::coco_pharma.coco_sus.employee_territories::d3fa326b-9d1e-4256-a773-52b97b4c642e"}}}}
+  WOULD SEND declassify Memento     08e8f21e #107 ResourceMeasureAnnotation
+      body={"class": "MetadataSourceRequestBody", "forLineage": true, "forDuplicateProcessing": true}
+  WOULD SEND update qualifiedName   08e8f21e 1 suffix(es) stripped
+      body={"class": "UpdatePropertiesRequestBody", "forLineage": true, "forDuplicateProcessing": true, "replaceProperties": false, "properties": {"class": "ElementProperties", "propertyValueMap": {"qualifiedName": {"class": "PrimitiveTypePropertyValue", "typeName": "string", "primitiveValue": "Annotation::Capture Database Table Measurements::coco_pharma.coco_sus.employee_territories::f69a1aa9-dee4-4c07-aeb1-69c538f788a8"}}}}
+  WOULD SEND declassify Memento     5a53779e #108 ResourceMeasureAnnotation
+      body={"class": "MetadataSourceRequestBody", "forLineage": true, "forDuplicateProcessing": true}
+  WOULD SEND update qualifiedName   5a53779e 1 suffix(es) stripped
+      body={"class": "UpdatePropertiesRequestBody", "forLineage": true, "forDuplicateProcessing": true, "replaceProperties": false, "properties": {"class": "ElementProperties", "propertyValueMap": {"qualifiedName": {"class": "PrimitiveTypePropertyValue", "typeName": "string", "primitiveValue": "Annotation::Capture Database Table Measurements::coco_pharma.coco_sus.ghg_emissions::02c9109d-23d5-4bb6-a1e3-160fecd0c2cd"}}}}
+  WOULD SEND declassify Memento     9a692770 #109 ResourceMeasureAnnotation
+      body={"class": "MetadataSourceRequestBody", "forLineage": true, "forDuplicateProcessing": true}
+  WOULD SEND update qualifiedName   9a692770 1 suffix(es) stripped
+      body={"class": "UpdatePropertiesRequestBody", "forLineage": true, "forDuplicateProcessing": true, "replaceProperties": false, "properties": {"class": "ElementProperties", "propertyValueMap": {"qualifiedName": {"class": "PrimitiveTypePropertyValue", "typeName": "string", "primitiveValue": "Annotation::Capture Database Table Measurements::coco_pharma.coco_sus.ghg_emissions::2cf36a80-5b2b-49f7-9456-1af0c4a284ae"}}}}
+  WOULD SEND declassify Memento     7079f4a5 #110 ResourceMeasureAnnotation
+      body={"class": "MetadataSourceRequestBody", "forLineage": true, "forDuplicateProcessing": true}
+  WOULD SEND update qualifiedName   7079f4a5 1 suffix(es) stripped
+      body={"class": "UpdatePropertiesRequestBody", "forLineage": true, "forDuplicateProcessing": true, "replaceProperties": false, "properties": {"class": "ElementProperties", "propertyValueMap": {"qualifiedName": {"class": "PrimitiveTypePropertyValue", "typeName": "string", "primitiveValue": "Annotation::Capture Database Table Measurements::coco_pharma.coco_sus.order_details::67bca51e-1396-4c2d-97dc-a88c5c3a8fc1"}}}}
+  WOULD SEND declassify Memento     b5d42d59 #111 ResourceMeasureAnnotation
+      body={"class": "MetadataSourceRequestBody", "forLineage": true, "forDuplicateProcessing": true}
+  WOULD SEND update qualifiedName   b5d42d59 1 suffix(es) stripped
+      body={"class": "UpdatePropertiesRequestBody", "forLineage": true, "forDuplicateProcessing": true, "replaceProperties": false, "properties": {"class": "ElementProperties", "propertyValueMap": {"qualifiedName": {"class": "PrimitiveTypePropertyValue", "typeName": "string", "primitiveValue": "Annotation::Capture Database Table Measurements::coco_pharma.coco_sus.order_details::e163f5c1-6873-4c75-a62e-fd6b4046ebf9"}}}}
+  WOULD SEND declassify Memento     c6d8b4d4 #112 ResourceMeasureAnnotation
+      body={"class": "MetadataSourceRequestBody", "forLineage": true, "forDuplicateProcessing": true}
+  WOULD SEND update qualifiedName   c6d8b4d4 1 suffix(es) stripped
+      body={"class": "UpdatePropertiesRequestBody", "forLineage": true, "forDuplicateProcessing": true, "replaceProperties": false, "properties": {"class": "ElementProperties", "propertyValueMap": {"qualifiedName": {"class": "PrimitiveTypePropertyValue", "typeName": "string", "primitiveValue": "Annotation::Capture Database Table Measurements::coco_pharma.coco_sus.orders::7ed9f8f1-bb81-4f09-bcb8-9b7b9284b955"}}}}
+  WOULD SEND declassify Memento     66ee7287 #113 ResourceMeasureAnnotation
+      body={"class": "MetadataSourceRequestBody", "forLineage": true, "forDuplicateProcessing": true}
+  WOULD SEND update qualifiedName   66ee7287 1 suffix(es) stripped
+      body={"class": "UpdatePropertiesRequestBody", "forLineage": true, "forDuplicateProcessing": true, "replaceProperties": false, "properties": {"class": "ElementProperties", "propertyValueMap": {"qualifiedName": {"class": "PrimitiveTypePropertyValue", "typeName": "string", "primitiveValue": "Annotation::Capture Database Table Measurements::coco_pharma.coco_sus.orders::b1bd5ee5-cab9-4a71-8ecd-b461a161b1c0"}}}}
+  WOULD SEND declassify Memento     917cbdb6 #114 ResourceMeasureAnnotation
+      body={"class": "MetadataSourceRequestBody", "forLineage": true, "forDuplicateProcessing": true}
+  WOULD SEND update qualifiedName   917cbdb6 1 suffix(es) stripped
+      body={"class": "UpdatePropertiesRequestBody", "forLineage": true, "forDuplicateProcessing": true, "replaceProperties": false, "properties": {"class": "ElementProperties", "propertyValueMap": {"qualifiedName": {"class": "PrimitiveTypePropertyValue", "typeName": "string", "primitiveValue": "Annotation::Capture Database Table Measurements::coco_pharma.coco_sus.products::3444bc02-992e-41fd-aaeb-1eab583524de"}}}}
+  WOULD SEND declassify Memento     d9076bb1 #115 ResourceMeasureAnnotation
+      body={"class": "MetadataSourceRequestBody", "forLineage": true, "forDuplicateProcessing": true}
+  WOULD SEND update qualifiedName   d9076bb1 1 suffix(es) stripped
+      body={"class": "UpdatePropertiesRequestBody", "forLineage": true, "forDuplicateProcessing": true, "replaceProperties": false, "properties": {"class": "ElementProperties", "propertyValueMap": {"qualifiedName": {"class": "PrimitiveTypePropertyValue", "typeName": "string", "primitiveValue": "Annotation::Capture Database Table Measurements::coco_pharma.coco_sus.products::a4365696-7bf5-4ca9-8dd8-b2df3d0c67f1"}}}}
+  WOULD SEND declassify Memento     dce92cf9 #116 ResourceMeasureAnnotation
+      body={"class": "MetadataSourceRequestBody", "forLineage": true, "forDuplicateProcessing": true}
+  WOULD SEND update qualifiedName   dce92cf9 1 suffix(es) stripped
+      body={"class": "UpdatePropertiesRequestBody", "forLineage": true, "forDuplicateProcessing": true, "replaceProperties": false, "properties": {"class": "ElementProperties", "propertyValueMap": {"qualifiedName": {"class": "PrimitiveTypePropertyValue", "typeName": "string", "primitiveValue": "Annotation::Capture Database Table Measurements::coco_pharma.coco_sus.region::66c0c871-5eae-40b6-bae4-5a224e4c55fc"}}}}
+  WOULD SEND declassify Memento     cc239e7a #117 ResourceMeasureAnnotation
+      body={"class": "MetadataSourceRequestBody", "forLineage": true, "forDuplicateProcessing": true}
+  WOULD SEND update qualifiedName   cc239e7a 1 suffix(es) stripped
+      body={"class": "UpdatePropertiesRequestBody", "forLineage": true, "forDuplicateProcessing": true, "replaceProperties": false, "properties": {"class": "ElementProperties", "propertyValueMap": {"qualifiedName": {"class": "PrimitiveTypePropertyValue", "typeName": "string", "primitiveValue": "Annotation::Capture Database Table Measurements::coco_pharma.coco_sus.region::f7e45e51-6a90-4a12-ad1f-5f8f1559fa3f"}}}}
+  WOULD SEND declassify Memento     2672d931 #118 ResourceMeasureAnnotation
+      body={"class": "MetadataSourceRequestBody", "forLineage": true, "forDuplicateProcessing": true}
+  WOULD SEND update qualifiedName   2672d931 1 suffix(es) stripped
+      body={"class": "UpdatePropertiesRequestBody", "forLineage": true, "forDuplicateProcessing": true, "replaceProperties": false, "properties": {"class": "ElementProperties", "propertyValueMap": {"qualifiedName": {"class": "PrimitiveTypePropertyValue", "typeName": "string", "primitiveValue": "Annotation::Capture Database Table Measurements::coco_pharma.coco_sus.scope_emissions::67c4fbcf-b5c7-4078-ac4a-87451132c3e7"}}}}
+  WOULD SEND declassify Memento     e31e1442 #119 ResourceMeasureAnnotation
+      body={"class": "MetadataSourceRequestBody", "forLineage": true, "forDuplicateProcessing": true}
+  WOULD SEND update qualifiedName   e31e1442 1 suffix(es) stripped
+      body={"class": "UpdatePropertiesRequestBody", "forLineage": true, "forDuplicateProcessing": true, "replaceProperties": false, "properties": {"class": "ElementProperties", "propertyValueMap": {"qualifiedName": {"class": "PrimitiveTypePropertyValue", "typeName": "string", "primitiveValue": "Annotation::Capture Database Table Measurements::coco_pharma.coco_sus.shippers::331b0525-5315-429a-a3da-b3862264f926"}}}}
+  WOULD SEND declassify Memento     1dfeaa03 #120 ResourceMeasureAnnotation
+      body={"class": "MetadataSourceRequestBody", "forLineage": true, "forDuplicateProcessing": true}
+  WOULD SEND update qualifiedName   1dfeaa03 1 suffix(es) stripped
+      body={"class": "UpdatePropertiesRequestBody", "forLineage": true, "forDuplicateProcessing": true, "replaceProperties": false, "properties": {"class": "ElementProperties", "propertyValueMap": {"qualifiedName": {"class": "PrimitiveTypePropertyValue", "typeName": "string", "primitiveValue": "Annotation::Capture Database Table Measurements::coco_pharma.coco_sus.shippers::bd8364ef-fb80-43ce-b388-1e66cc3c94f3"}}}}
+  WOULD SEND declassify Memento     47a9e609 #121 ResourceMeasureAnnotation
+      body={"class": "MetadataSourceRequestBody", "forLineage": true, "forDuplicateProcessing": true}
+  WOULD SEND update qualifiedName   47a9e609 1 suffix(es) stripped
+      body={"class": "UpdatePropertiesRequestBody", "forLineage": true, "forDuplicateProcessing": true, "replaceProperties": false, "properties": {"class": "ElementProperties", "propertyValueMap": {"qualifiedName": {"class": "PrimitiveTypePropertyValue", "typeName": "string", "primitiveValue": "Annotation::Capture Database Table Measurements::coco_pharma.coco_sus.sites2::05815b59-579c-44ec-b29a-69ad90ce75b1"}}}}
+  WOULD SEND declassify Memento     d5131d8d #122 ResourceMeasureAnnotation
+      body={"class": "MetadataSourceRequestBody", "forLineage": true, "forDuplicateProcessing": true}
+  WOULD SEND update qualifiedName   d5131d8d 1 suffix(es) stripped
+      body={"class": "UpdatePropertiesRequestBody", "forLineage": true, "forDuplicateProcessing": true, "replaceProperties": false, "properties": {"class": "ElementProperties", "propertyValueMap": {"qualifiedName": {"class": "PrimitiveTypePropertyValue", "typeName": "string", "primitiveValue": "Annotation::Capture Database Table Measurements::coco_pharma.coco_sus.sites2::3fe9a108-330f-4c77-9597-634c21c22328"}}}}
+  WOULD SEND declassify Memento     7c4edd48 #123 ResourceMeasureAnnotation
+      body={"class": "MetadataSourceRequestBody", "forLineage": true, "forDuplicateProcessing": true}
+  WOULD SEND update qualifiedName   7c4edd48 1 suffix(es) stripped
+      body={"class": "UpdatePropertiesRequestBody", "forLineage": true, "forDuplicateProcessing": true, "replaceProperties": false, "properties": {"class": "ElementProperties", "propertyValueMap": {"qualifiedName": {"class": "PrimitiveTypePropertyValue", "typeName": "string", "primitiveValue": "Annotation::Capture Database Table Measurements::coco_pharma.coco_sus.sites::6decc7fc-10e1-4fe8-b9b4-54ce42697f15"}}}}
+  WOULD SEND declassify Memento     4595f55e #124 ResourceMeasureAnnotation
+      body={"class": "MetadataSourceRequestBody", "forLineage": true, "forDuplicateProcessing": true}
+  WOULD SEND update qualifiedName   4595f55e 1 suffix(es) stripped
+      body={"class": "UpdatePropertiesRequestBody", "forLineage": true, "forDuplicateProcessing": true, "replaceProperties": false, "properties": {"class": "ElementProperties", "propertyValueMap": {"qualifiedName": {"class": "PrimitiveTypePropertyValue", "typeName": "string", "primitiveValue": "Annotation::Capture Database Table Measurements::coco_pharma.coco_sus.sites::f04dcac2-981a-4477-8c11-8cf083a7d0e3"}}}}
+  WOULD SEND declassify Memento     cb4a9b34 #125 ResourceMeasureAnnotation
+      body={"class": "MetadataSourceRequestBody", "forLineage": true, "forDuplicateProcessing": true}
+  WOULD SEND update qualifiedName   cb4a9b34 1 suffix(es) stripped
+      body={"class": "UpdatePropertiesRequestBody", "forLineage": true, "forDuplicateProcessing": true, "replaceProperties": false, "properties": {"class": "ElementProperties", "propertyValueMap": {"qualifiedName": {"class": "PrimitiveTypePropertyValue", "typeName": "string", "primitiveValue": "Annotation::Capture Database Table Measurements::coco_pharma.coco_sus.summary_emissions::39cea4de-80c3-434f-bc7f-06d7f6f858f9"}}}}
+  WOULD SEND declassify Memento     ebe23762 #126 ResourceMeasureAnnotation
+      body={"class": "MetadataSourceRequestBody", "forLineage": true, "forDuplicateProcessing": true}
+  WOULD SEND update qualifiedName   ebe23762 1 suffix(es) stripped
+      body={"class": "UpdatePropertiesRequestBody", "forLineage": true, "forDuplicateProcessing": true, "replaceProperties": false, "properties": {"class": "ElementProperties", "propertyValueMap": {"qualifiedName": {"class": "PrimitiveTypePropertyValue", "typeName": "string", "primitiveValue": "Annotation::Capture Database Table Measurements::coco_pharma.coco_sus.supplier_invoice_details::125dc46b-ec01-44f5-a5b1-046cdb8d7d8c"}}
+  WOULD SEND declassify Memento     62fbf0c0 #127 ResourceMeasureAnnotation
+      body={"class": "MetadataSourceRequestBody", "forLineage": true, "forDuplicateProcessing": true}
+  WOULD SEND update qualifiedName   62fbf0c0 1 suffix(es) stripped
+      body={"class": "UpdatePropertiesRequestBody", "forLineage": true, "forDuplicateProcessing": true, "replaceProperties": false, "properties": {"class": "ElementProperties", "propertyValueMap": {"qualifiedName": {"class": "PrimitiveTypePropertyValue", "typeName": "string", "primitiveValue": "Annotation::Capture Database Table Measurements::coco_pharma.coco_sus.supplier_invoice_details::24f96268-1afe-4c6d-b7cf-f51cf9d3fa19"}}
+  WOULD SEND declassify Memento     aeec960f #128 ResourceMeasureAnnotation
+      body={"class": "MetadataSourceRequestBody", "forLineage": true, "forDuplicateProcessing": true}
+  WOULD SEND update qualifiedName   aeec960f 1 suffix(es) stripped
+      body={"class": "UpdatePropertiesRequestBody", "forLineage": true, "forDuplicateProcessing": true, "replaceProperties": false, "properties": {"class": "ElementProperties", "propertyValueMap": {"qualifiedName": {"class": "PrimitiveTypePropertyValue", "typeName": "string", "primitiveValue": "Annotation::Capture Database Table Measurements::coco_pharma.coco_sus.supplier_invoices::1eadb7e9-0766-4847-9e1c-45de4ce9ee60"}}}}
+  WOULD SEND declassify Memento     3686d087 #129 ResourceMeasureAnnotation
+      body={"class": "MetadataSourceRequestBody", "forLineage": true, "forDuplicateProcessing": true}
+  WOULD SEND update qualifiedName   3686d087 1 suffix(es) stripped
+      body={"class": "UpdatePropertiesRequestBody", "forLineage": true, "forDuplicateProcessing": true, "replaceProperties": false, "properties": {"class": "ElementProperties", "propertyValueMap": {"qualifiedName": {"class": "PrimitiveTypePropertyValue", "typeName": "string", "primitiveValue": "Annotation::Capture Database Table Measurements::coco_pharma.coco_sus.supplier_invoices::d6924e14-fcb3-4f2e-8f01-852d2e5163bd"}}}}
+  WOULD SEND declassify Memento     8b91fab5 #130 ResourceMeasureAnnotation
+      body={"class": "MetadataSourceRequestBody", "forLineage": true, "forDuplicateProcessing": true}
+  WOULD SEND update qualifiedName   8b91fab5 1 suffix(es) stripped
+      body={"class": "UpdatePropertiesRequestBody", "forLineage": true, "forDuplicateProcessing": true, "replaceProperties": false, "properties": {"class": "ElementProperties", "propertyValueMap": {"qualifiedName": {"class": "PrimitiveTypePropertyValue", "typeName": "string", "primitiveValue": "Annotation::Capture Database Table Measurements::coco_pharma.coco_sus.suppliers::1964b379-24e0-45fb-b0b3-7948a23b4dfd"}}}}
+  WOULD SEND declassify Memento     7e39d692 #131 ResourceMeasureAnnotation
+      body={"class": "MetadataSourceRequestBody", "forLineage": true, "forDuplicateProcessing": true}
+  WOULD SEND update qualifiedName   7e39d692 1 suffix(es) stripped
+      body={"class": "UpdatePropertiesRequestBody", "forLineage": true, "forDuplicateProcessing": true, "replaceProperties": false, "properties": {"class": "ElementProperties", "propertyValueMap": {"qualifiedName": {"class": "PrimitiveTypePropertyValue", "typeName": "string", "primitiveValue": "Annotation::Capture Database Table Measurements::coco_pharma.coco_sus.suppliers::2267f0f4-5cc7-4a9f-954b-ace1ce61f21a"}}}}
+  WOULD SEND declassify Memento     77c71dd3 #132 ResourceMeasureAnnotation
+      body={"class": "MetadataSourceRequestBody", "forLineage": true, "forDuplicateProcessing": true}
+  WOULD SEND update qualifiedName   77c71dd3 1 suffix(es) stripped
+      body={"class": "UpdatePropertiesRequestBody", "forLineage": true, "forDuplicateProcessing": true, "replaceProperties": false, "properties": {"class": "ElementProperties", "propertyValueMap": {"qualifiedName": {"class": "PrimitiveTypePropertyValue", "typeName": "string", "primitiveValue": "Annotation::Capture Database Table Measurements::coco_pharma.coco_sus.supplies::77310204-b66c-4ab8-9c34-2c61a11ecb9b"}}}}
+  WOULD SEND declassify Memento     36253535 #133 ResourceMeasureAnnotation
+      body={"class": "MetadataSourceRequestBody", "forLineage": true, "forDuplicateProcessing": true}
+  WOULD SEND update qualifiedName   36253535 1 suffix(es) stripped
+      body={"class": "UpdatePropertiesRequestBody", "forLineage": true, "forDuplicateProcessing": true, "replaceProperties": false, "properties": {"class": "ElementProperties", "propertyValueMap": {"qualifiedName": {"class": "PrimitiveTypePropertyValue", "typeName": "string", "primitiveValue": "Annotation::Capture Database Table Measurements::coco_pharma.coco_sus.supplies::7bcb2819-4838-4e02-af18-de9a00080744"}}}}
+  WOULD SEND declassify Memento     6fbeb9bf #134 ResourceMeasureAnnotation
+      body={"class": "MetadataSourceRequestBody", "forLineage": true, "forDuplicateProcessing": true}
+  WOULD SEND update qualifiedName   6fbeb9bf 1 suffix(es) stripped
+      body={"class": "UpdatePropertiesRequestBody", "forLineage": true, "forDuplicateProcessing": true, "replaceProperties": false, "properties": {"class": "ElementProperties", "propertyValueMap": {"qualifiedName": {"class": "PrimitiveTypePropertyValue", "typeName": "string", "primitiveValue": "Annotation::Capture Database Table Measurements::coco_pharma.coco_sus.supply_order_details::22a92014-a071-4454-97c9-959237896602"}}}}
+  WOULD SEND declassify Memento     42a7a645 #135 ResourceMeasureAnnotation
+      body={"class": "MetadataSourceRequestBody", "forLineage": true, "forDuplicateProcessing": true}
+  WOULD SEND update qualifiedName   42a7a645 1 suffix(es) stripped
+      body={"class": "UpdatePropertiesRequestBody", "forLineage": true, "forDuplicateProcessing": true, "replaceProperties": false, "properties": {"class": "ElementProperties", "propertyValueMap": {"qualifiedName": {"class": "PrimitiveTypePropertyValue", "typeName": "string", "primitiveValue": "Annotation::Capture Database Table Measurements::coco_pharma.coco_sus.supply_order_details::458a30d6-92e3-470f-9d22-169a4a5545a9"}}}}
+  WOULD SEND declassify Memento     ac73df92 #136 ResourceMeasureAnnotation
+      body={"class": "MetadataSourceRequestBody", "forLineage": true, "forDuplicateProcessing": true}
+  WOULD SEND update qualifiedName   ac73df92 1 suffix(es) stripped
+      body={"class": "UpdatePropertiesRequestBody", "forLineage": true, "forDuplicateProcessing": true, "replaceProperties": false, "properties": {"class": "ElementProperties", "propertyValueMap": {"qualifiedName": {"class": "PrimitiveTypePropertyValue", "typeName": "string", "primitiveValue": "Annotation::Capture Database Table Measurements::coco_pharma.coco_sus.supply_orders::126bd6ca-249b-46bc-b787-e5e4fa1c68ae"}}}}
+  WOULD SEND declassify Memento     f56f02c3 #137 ResourceMeasureAnnotation
+      body={"class": "MetadataSourceRequestBody", "forLineage": true, "forDuplicateProcessing": true}
+  WOULD SEND update qualifiedName   f56f02c3 1 suffix(es) stripped
+      body={"class": "UpdatePropertiesRequestBody", "forLineage": true, "forDuplicateProcessing": true, "replaceProperties": false, "properties": {"class": "ElementProperties", "propertyValueMap": {"qualifiedName": {"class": "PrimitiveTypePropertyValue", "typeName": "string", "primitiveValue": "Annotation::Capture Database Table Measurements::coco_pharma.coco_sus.supply_orders::42850ec4-b198-4fb8-bc95-441ea699c4b4"}}}}
+  WOULD SEND declassify Memento     1b9a7ea6 #138 ResourceMeasureAnnotation
+      body={"class": "MetadataSourceRequestBody", "forLineage": true, "forDuplicateProcessing": true}
+  WOULD SEND update qualifiedName   1b9a7ea6 1 suffix(es) stripped
+      body={"class": "UpdatePropertiesRequestBody", "forLineage": true, "forDuplicateProcessing": true, "replaceProperties": false, "properties": {"class": "ElementProperties", "propertyValueMap": {"qualifiedName": {"class": "PrimitiveTypePropertyValue", "typeName": "string", "primitiveValue": "Annotation::Capture Database Table Measurements::coco_pharma.coco_sus.territories::8861215e-389f-4f9b-b943-ea939622e559"}}}}
+  WOULD SEND declassify Memento     cd46b581 #139 ResourceMeasureAnnotation
+      body={"class": "MetadataSourceRequestBody", "forLineage": true, "forDuplicateProcessing": true}
+  WOULD SEND update qualifiedName   cd46b581 1 suffix(es) stripped
+      body={"class": "UpdatePropertiesRequestBody", "forLineage": true, "forDuplicateProcessing": true, "replaceProperties": false, "properties": {"class": "ElementProperties", "propertyValueMap": {"qualifiedName": {"class": "PrimitiveTypePropertyValue", "typeName": "string", "primitiveValue": "Annotation::Capture Database Table Measurements::coco_pharma.coco_sus.territories::ed8be58e-6990-41de-9a69-686dc18f3e0f"}}}}
+  WOULD SEND declassify Memento     63d692df #140 ResourceMeasureAnnotation
+      body={"class": "MetadataSourceRequestBody", "forLineage": true, "forDuplicateProcessing": true}
+  WOULD SEND update qualifiedName   63d692df 1 suffix(es) stripped
+      body={"class": "UpdatePropertiesRequestBody", "forLineage": true, "forDuplicateProcessing": true, "replaceProperties": false, "properties": {"class": "ElementProperties", "propertyValueMap": {"qualifiedName": {"class": "PrimitiveTypePropertyValue", "typeName": "string", "primitiveValue": "Annotation::Capture Database Table Measurements::coco_pharma.coco_sus.unit_prefixes::0fdc23b0-9d49-49c5-b8ed-7bc1022151e8"}}}}
+  WOULD SEND declassify Memento     97b760ed #141 ResourceMeasureAnnotation
+      body={"class": "MetadataSourceRequestBody", "forLineage": true, "forDuplicateProcessing": true}
+  WOULD SEND update qualifiedName   97b760ed 1 suffix(es) stripped
+      body={"class": "UpdatePropertiesRequestBody", "forLineage": true, "forDuplicateProcessing": true, "replaceProperties": false, "properties": {"class": "ElementProperties", "propertyValueMap": {"qualifiedName": {"class": "PrimitiveTypePropertyValue", "typeName": "string", "primitiveValue": "Annotation::Capture Database Table Measurements::coco_pharma.coco_sus.unit_prefixes::1f855b50-3f8c-4da9-a1c4-32686b898233"}}}}
+  WOULD SEND declassify Memento     94eafc7b #142 ResourceMeasureAnnotation
+      body={"class": "MetadataSourceRequestBody", "forLineage": true, "forDuplicateProcessing": true}
+  WOULD SEND update qualifiedName   94eafc7b 1 suffix(es) stripped
+      body={"class": "UpdatePropertiesRequestBody", "forLineage": true, "forDuplicateProcessing": true, "replaceProperties": false, "properties": {"class": "ElementProperties", "propertyValueMap": {"qualifiedName": {"class": "PrimitiveTypePropertyValue", "typeName": "string", "primitiveValue": "Annotation::Capture Database Table Measurements::coco_pharma.coco_sus.units_by_location::203d8673-967f-4754-81fe-649c0bfb553b"}}}}
+  WOULD SEND declassify Memento     2e8c2a13 #143 ResourceMeasureAnnotation
+      body={"class": "MetadataSourceRequestBody", "forLineage": true, "forDuplicateProcessing": true}
+  WOULD SEND update qualifiedName   2e8c2a13 1 suffix(es) stripped
+      body={"class": "UpdatePropertiesRequestBody", "forLineage": true, "forDuplicateProcessing": true, "replaceProperties": false, "properties": {"class": "ElementProperties", "propertyValueMap": {"qualifiedName": {"class": "PrimitiveTypePropertyValue", "typeName": "string", "primitiveValue": "Annotation::Capture Database Table Measurements::coco_pharma.coco_sus.units_by_location::5946d771-ce7b-43be-b2ab-525c53b04e2b"}}}}
+  WOULD SEND declassify Memento     34e58707 #144 ResourceMeasureAnnotation
+      body={"class": "MetadataSourceRequestBody", "forLineage": true, "forDuplicateProcessing": true}
+  WOULD SEND update qualifiedName   34e58707 1 suffix(es) stripped
+      body={"class": "UpdatePropertiesRequestBody", "forLineage": true, "forDuplicateProcessing": true, "replaceProperties": false, "properties": {"class": "ElementProperties", "propertyValueMap": {"qualifiedName": {"class": "PrimitiveTypePropertyValue", "typeName": "string", "primitiveValue": "Annotation::Capture Database Table Measurements::coco_pharma.coco_sus.unit_units::1f3a2873-6d74-4509-aba0-d84bf36c38fe"}}}}
+  WOULD SEND declassify Memento     ad776792 #145 ResourceMeasureAnnotation
+      body={"class": "MetadataSourceRequestBody", "forLineage": true, "forDuplicateProcessing": true}
+  WOULD SEND update qualifiedName   ad776792 1 suffix(es) stripped
+      body={"class": "UpdatePropertiesRequestBody", "forLineage": true, "forDuplicateProcessing": true, "replaceProperties": false, "properties": {"class": "ElementProperties", "propertyValueMap": {"qualifiedName": {"class": "PrimitiveTypePropertyValue", "typeName": "string", "primitiveValue": "Annotation::Capture Database Table Measurements::coco_pharma.coco_sus.unit_units::9684eb1d-6714-4672-b429-85f24c72a598"}}}}
+  WOULD SEND declassify Memento     0d5bfcf8 #146 ResourceMeasureAnnotation
+      body={"class": "MetadataSourceRequestBody", "forLineage": true, "forDuplicateProcessing": true}
+  WOULD SEND update qualifiedName   0d5bfcf8 1 suffix(es) stripped
+      body={"class": "UpdatePropertiesRequestBody", "forLineage": true, "forDuplicateProcessing": true, "replaceProperties": false, "properties": {"class": "ElementProperties", "propertyValueMap": {"qualifiedName": {"class": "PrimitiveTypePropertyValue", "typeName": "string", "primitiveValue": "Annotation::Capture Database Table Measurements::coco_pharma.coco_sus.us_states::041f7a99-b3f1-404e-9d74-34db6552fae2"}}}}
+  WOULD SEND declassify Memento     a14b1719 #147 ResourceMeasureAnnotation
+      body={"class": "MetadataSourceRequestBody", "forLineage": true, "forDuplicateProcessing": true}
+  WOULD SEND update qualifiedName   a14b1719 1 suffix(es) stripped
+      body={"class": "UpdatePropertiesRequestBody", "forLineage": true, "forDuplicateProcessing": true, "replaceProperties": false, "properties": {"class": "ElementProperties", "propertyValueMap": {"qualifiedName": {"class": "PrimitiveTypePropertyValue", "typeName": "string", "primitiveValue": "Annotation::Capture Database Table Measurements::coco_pharma.coco_sus.us_states::3422d3ca-678e-4071-985f-356207160206"}}}}
+  WOULD SEND declassify Memento     f724d2fc #148 ResourceMeasureAnnotation
+      body={"class": "MetadataSourceRequestBody", "forLineage": true, "forDuplicateProcessing": true}
+  WOULD SEND update qualifiedName   f724d2fc 1 suffix(es) stripped
+      body={"class": "UpdatePropertiesRequestBody", "forLineage": true, "forDuplicateProcessing": true, "replaceProperties": false, "properties": {"class": "ElementProperties", "propertyValueMap": {"qualifiedName": {"class": "PrimitiveTypePropertyValue", "typeName": "string", "primitiveValue": "Annotation::Capture Database Table Measurements::coco_pharma.us_sales.us_sales_forecast::6eadba7d-366e-4bd6-a5e2-d46f94e9186d"}}}}
+  TOTAL writes in step: 297  (elements: 149)
+
+== STEP 4 verify (plain reads, no forLineage) ==
+  FAIL  149 old elements visible by plain read (0/149)
+  FAIL  149 with original names (no _archivedOn_) (0/149)
+  FAIL  no old element still Memento (149 still Memento)
+  PASS  Anchors classification present on the non-root elements (148 of 148 carry Anchors; types that need not: not asserted by the plan)
+  PASS  SemanticAssignment on us_sales_forecast (1)
+  PASS  CatalogTarget relationship on restored coco_sus (element's related read) (1; also listed by the connector's get_catalog_targets: 0)
+  PASS  CatalogTarget relationship on restored coco_ods (element's related read) (1; also listed by the connector's get_catalog_targets: 0)
+  PASS  ownership on the old database ({"owner": "Jules", "ownerPropertyName": "userId", "ownerTypeName": "UserIdentity"})
+
+== STEP 5 registry-proof (PRINT-ONLY unless --go and RESTORE_CLEARED) ==
+  Read from RE's own code (resource_explorer/registry.py, catalogue_commit.py):
+   - catalogue_commit_proofs.proof is free TEXT (DDL ~registry.py:2942, no CHECK); the constants P_* in catalogue_commit.py:88-105 are the kinds in use
+     (database_published, zones_set, zones_read, attach_requested, survey_result, owner_result, report_published, target_attached,
+      elements_read_back, target_detached, removed, archived, survey_started, connector_read, read_failed).
+   - NONE means 'restored'. STATE_PROOFS = (attach_requested, target_attached, elements_read_back, removed, archived) decides the schema state words.
+     A row with proof='restored' is stored fine (no schema change) but counts as CONTEXT only. For the page's words to derive from it a new
+     kind constant P_RESTORED (and its place in STATE_PROOFS and _schema_state) is a CODE change, not a schema change. Not invented here; say so to the owner.
+   - the proof text has no column of its own; it goes in detail_json['text'] (the kind goes in proof). The sentence below is the text.
+   - the database record's pointer is databases.egeria_asset_guid (VERIFIED: registry.py:143 dataclass field, :1666 DDL, :10176 set_database_egeria_guid(slug, guid)).
+     catalogue_commit.py:1341 is the call that set it to def55997 on the roll-forward commit. Also check egeria_linkage_status for a row on this slug.
+  Slug assumed: 'coco_pharma' (registry normalises '-' to '_' and lowercases); confirm against the registry before a real run.
+    reg = ProjectRegistry()   # must be pointed at the SHARED registry deliberately (REGISTRY_DATABASE_URL); not done here
+    reg.append_catalogue_commit_proof('coco_pharma', proof='restored', node_kind='database', element_guid='17f0a963-e96f-4726-86a2-e721fd0a38b1', qualified_name='<restored database qualifiedName, read back>', detail={'text': 'restored · 17f0a963 · from def55997 · <UTC> · by <who>', 'from_guid': 'def55997-fd1c-4e97-8c63-65cef443247a', 'steps': 'detach-new-targets,rename-aside,restore-old,verify'}, recorded_by='<who>', read_at='<UTC>')
+    reg.set_database_egeria_guid('coco_pharma', '17f0a963-e96f-4726-86a2-e721fd0a38b1')
+  TOTAL registry writes if run: 2 (0 Egeria writes)
+
+== STEP 6 retire-new-tree ==
+  snapshot of 149 old GUIDs taken (Memento, qualifiedName)
+  WOULD SEND ARCHIVE new database   def55997 def55997 own anchor
+      body={"class": "DeleteElementRequestBody", "deleteMethod": "ARCHIVE", "forLineage": true, "forDuplicateProcessing": true}
+  (dry) would then read every new element and re-snapshot the 149 old GUIDs; any difference = the walk left the new tree
+  TOTAL writes in step: 1
+
+== STEP 7 cataloguer-check ==
+  would call: ServerOps.refresh_integration_connectors("JDBCDatabaseCataloguer", "qs-integration-daemon", 120)  (lib5.refresh polls jdbc_status.lastRefreshTime until WAITING)
+  writes in step: 0 Egeria metadata writes, 1 integration-daemon refresh trigger (needs --go + RESTORE_CLEARED)
+  read (now): related elements of old coco_sus: {('Schema', 'RelationalDBSchemaType'): 1, ('ActionTarget', 'EngineAction'): 1, ('DataFlow', 'DeployedSoftwareComponent'): 1, ('CatalogTarget', 'IntegrationConnector'): 1, ('DataSetContent', 'RelationalDatabase'): 1, ('SourcedFrom', 'DeployedDatabaseSchema'): 1, ('ResourceConnection', 'VirtualConnection'): 1}
+  tables under restored coco_sus (via its schema type) read now: 30 [':coco_pharma.coco_sus::summary_emissions', '2::coco_pharma.coco_sus::scope_emissions', 'co_pharma.coco_sus::ctry_scope_emissions', 'al:5442::coco_pharma.coco_sus::us_states', ':coco_pharma.coco_sus::units_by_location', 'l:5442::coco_pharma.coco_sus::unit_units', '442::coco_pharma.coco_sus::unit_prefixes', ':5442::coco_pharma.coco_sus::territories', '442::coco_pharma.coco_sus::supply_orders', 'co_pharma.coco_sus::supply_order_details']
+
+== TOTAL WRITES PER STEP (dry-run counts, from the reads above) ==
+  detach-new-targets   2
+  rename-aside         7
+  restore-old          297
+  retire-new-tree      1
+  verify               0
+  registry-proof       2 registry writes, 0 Egeria
+  cataloguer-check     1 daemon refresh trigger

@@ -131,7 +131,10 @@ VALID_VERDICTS = {AGREE, PARTLY, DISAGREE}
 
 class AnswerFeedback(BaseModel):
     slug: str
-    question: str
+    #: The question's text, or blank when `question_id` names it. Text still works: URLs and saved state carry it.
+    question: str = ""
+    #: The question's stable id (Q-0001), which survives a rewording of the text. Wins over `question`.
+    question_id: str = ""
     verdict: str
     comment: str = ""
     # The analysis the person is disputing. Normally omitted — the server
@@ -188,12 +191,22 @@ async def submit_answer_feedback(payload: AnswerFeedback) -> dict:
             status_code=400,
             detail=f"verdict must be one of {sorted(VALID_VERDICTS)}, got {payload.verdict!r}",
         )
+    from resource_explorer.surveyors.question_catalog_reader import find_question, find_question_by_id
+
+    entity_type = (payload.entity_type or "repo").strip()
     question = (payload.question or "").strip()
+    question_id = (payload.question_id or "").strip()
+    if question_id:
+        by_id = find_question_by_id(question_id, entity_type)
+        if by_id is None:
+            raise HTTPException(status_code=400, detail=f"question_id {question_id!r} is not in the catalog")
+        question = by_id["question"]
+    elif question:
+        question_id = (find_question(question, entity_type) or {}).get("id", "")
     if not question:
-        raise HTTPException(status_code=400, detail="question is required")
+        raise HTTPException(status_code=400, detail="question or question_id is required")
 
     registry = ProjectRegistry()
-    entity_type = (payload.entity_type or "repo").strip()
     if get_adapter(entity_type).get_entity(registry, payload.slug) is None:
         raise HTTPException(
             status_code=404, detail=f"{entity_type} '{payload.slug}' not found"
@@ -225,7 +238,8 @@ async def submit_answer_feedback(payload: AnswerFeedback) -> dict:
     store.add(FeedbackEntry(
         session_id=payload.session_id,
         page=payload.page,
-        element_guid=f"answer:{payload.slug}:{question}",
+        # The stable id when the catalog has one, so a reworded question does not orphan the row.
+        element_guid=f"answer:{payload.slug}:{question_id or question}",
         message=f"[{verdict}] {(payload.comment or '').strip()}".strip(),
     ))
 
@@ -238,7 +252,7 @@ async def submit_answer_feedback(payload: AnswerFeedback) -> dict:
     gap = record_disagreement(
         registry, payload.slug, question, analysis_id,
         comment=payload.comment, who=payload.session_id,
-        extra_evidence={"catalogued_analyses": catalogued},
+        extra_evidence={"catalogued_analyses": catalogued}, question_id=question_id,
     )
     return {
         "status": "ok", "gap": gap,

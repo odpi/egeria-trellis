@@ -43,9 +43,6 @@ __pycache__
 **/models/*.onnx
 **/models/*.optimized.onnx
 
-# Incident evidence and other docs not needed inside the image.
-docs/incident-evidence
-
 # Node / frontend tooling artifacts, if any package grows them later.
 node_modules
 **/node_modules

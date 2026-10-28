@@ -1,0 +1,155 @@
+{
+ "captured": "2026-10-15",
+ "platform": "Egeria 6.2 quickstart (qs-view-server), pyegeria 6.2.3",
+ "identity": "RE daemon (DaemonReason.ENGINE_HOST), read-only (engine-host step 4, M2)",
+ "route": "MetadataExpert.get_metadata_element_by_guid",
+ "call": "get_metadata_element_by_guid('06994d5d-...')",
+ "secrets": "keys matching token|password|secret|credential|apikey replaced by <removed>; mermaidGraph dropped",
+ "note": "The GovernanceActionProcessInstance every action of the run is anchored to; its qualifiedName is each action's processName",
+ "answer": {
+  "classifications": [
+   {
+    "class": "AttachedClassification",
+    "classificationName": "Anchors",
+    "classificationOrigin": "ASSIGNED",
+    "classificationProperties": {
+     "propertiesAsStrings": {
+      "anchorDomainName": "AuthoredReferenceable",
+      "anchorGUID": "bef8fa02-cc76-42b9-9b48-c6d10ec889d2",
+      "anchorTypeName": "SurveyingActionProcess"
+     },
+     "propertyCount": 3,
+     "propertyNames": [
+      "anchorTypeName",
+      "anchorDomainName",
+      "anchorGUID"
+     ],
+     "propertyValueMap": {
+      "anchorDomainName": {
+       "class": "PrimitiveTypePropertyValue",
+       "primitiveTypeCategory": "OM_PRIMITIVE_TYPE_STRING",
+       "primitiveValue": "AuthoredReferenceable",
+       "typeName": "string"
+      },
+      "anchorGUID": {
+       "class": "PrimitiveTypePropertyValue",
+       "primitiveTypeCategory": "OM_PRIMITIVE_TYPE_STRING",
+       "primitiveValue": "bef8fa02-cc76-42b9-9b48-c6d10ec889d2",
+       "typeName": "string"
+      },
+      "anchorTypeName": {
+       "class": "PrimitiveTypePropertyValue",
+       "primitiveTypeCategory": "OM_PRIMITIVE_TYPE_STRING",
+       "primitiveValue": "SurveyingActionProcess",
+       "typeName": "string"
+      }
+     }
+    },
+    "headerVersion": 0,
+    "origin": {
+     "homeMetadataCollectionId": "9905c3cb-94c5-4494-9229-0d6f69c0b842",
+     "homeMetadataCollectionName": "qs-metadata-store",
+     "originCategory": "LOCAL_COHORT",
+     "sourceServer": "qs-metadata-store"
+    },
+    "status": "ACTIVE",
+    "type": {
+     "typeCategory": "CLASSIFICATION_DEF",
+     "typeDescription": "Identifies the anchor entity for an element that is part of a large composite object such as an asset.",
+     "typeId": "aa44f302-2e43-4669-a1e7-edaae414fc6e",
+     "typeName": "Anchors",
+     "typeVersion": 1
+    },
+    "versions": {
+     "createTime": "2026-10-13T01:10:50.870+00:00",
+     "createdBy": "peterprofile",
+     "lastRequestId": "b0c4bbd0-e277-4a85-925a-e636e31f9bf4",
+     "maintainedBy": [
+      "peterprofile"
+     ],
+     "updateTime": "2026-10-13T01:10:50.870+00:00",
+     "updatedBy": "peterprofile",
+     "version": 1
+    }
+   }
+  ],
+  "elementGUID": "06994d5d-a228-408c-8842-fd6256db4c34",
+  "elementProperties": {
+   "propertiesAsStrings": {
+    "completionTime": "1791853953685",
+    "displayName": "PostgreSQLDatabase:CreateAndSurvey@Tue Oct 13 01:10:50 GMT 2026",
+    "qualifiedName": "PostgreSQLDatabase:CreateAndSurveyGovernanceActionProcess@1791853850864::982691e5-90d7-41ca-93e9-3e8f566b6e79",
+    "startTime": "1791853850864"
+   },
+   "propertyCount": 4,
+   "propertyNames": [
+    "completionTime",
+    "startTime",
+    "displayName",
+    "qualifiedName"
+   ],
+   "propertyValueMap": {
+    "completionTime": {
+     "class": "PrimitiveTypePropertyValue",
+     "primitiveTypeCategory": "OM_PRIMITIVE_TYPE_DATE",
+     "primitiveValue": 1791853953685,
+     "typeName": "date"
+    },
+    "displayName": {
+     "class": "PrimitiveTypePropertyValue",
+     "primitiveTypeCategory": "OM_PRIMITIVE_TYPE_STRING",
+     "primitiveValue": "PostgreSQLDatabase:CreateAndSurvey@Tue Oct 13 01:10:50 GMT 2026",
+     "typeName": "string"
+    },
+    "qualifiedName": {
+     "class": "PrimitiveTypePropertyValue",
+     "primitiveTypeCategory": "OM_PRIMITIVE_TYPE_STRING",
+     "primitiveValue": "PostgreSQLDatabase:CreateAndSurveyGovernanceActionProcess@1791853850864::982691e5-90d7-41ca-93e9-3e8f566b6e79",
+     "typeName": "string"
+    },
+    "startTime": {
+     "class": "PrimitiveTypePropertyValue",
+     "primitiveTypeCategory": "OM_PRIMITIVE_TYPE_DATE",
+     "primitiveValue": 1791853850864,
+     "typeName": "date"
+    }
+   }
+  },
+  "headerVersion": 0,
+  "origin": {
+   "homeMetadataCollectionId": "9905c3cb-94c5-4494-9229-0d6f69c0b842",
+   "homeMetadataCollectionName": "qs-metadata-store",
+   "originCategory": "LOCAL_COHORT",
+   "sourceServer": "qs-metadata-store"
+  },
+  "status": "ACTIVE",
+  "type": {
+   "superTypeNames": [
+    "TransientEmbeddedProcess",
+    "EmbeddedProcess",
+    "Action",
+    "Process",
+    "Asset",
+    "Referenceable",
+    "OpenMetadataRoot"
+   ],
+   "typeCategory": "ENTITY_DEF",
+   "typeDescription": "Represents a single run of a governance action process.  It is linked to the parent governance action process using the GovernedBy relationship.",
+   "typeId": "206a6e44-ffe7-408b-8e59-79842d362776",
+   "typeName": "GovernanceActionProcessInstance",
+   "typeVersion": 1
+  },
+  "versions": {
+   "createTime": "2026-10-13T01:10:50.874+00:00",
+   "createdBy": "peterprofile",
+   "lastRequestId": "22df8e46-1f0f-485a-87cc-1b248c7b91ff",
+   "maintainedBy": [
+    "peterprofile",
+    "stewardshipengine"
+   ],
+   "updateTime": "2026-10-13T01:12:33.701+00:00",
+   "updatedBy": "stewardshipengine",
+   "version": 2
+  }
+ }
+}

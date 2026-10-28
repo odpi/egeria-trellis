@@ -22,6 +22,19 @@ pytestmark = pytest.mark.usefixtures("mock_egeria_client_connections")
 
 
 @pytest.fixture(autouse=True)
+def _open_access(monkeypatch):
+    """Brief Z3: the investigation routes and the outbox drain check zone access; no zone in use here (the access
+    reads faked open at the client boundary), so these tests stay about what they test."""
+    import sys
+    from pathlib import Path
+
+    sys.path.insert(0, str(Path(__file__).parent))
+    from tests.zone_fakes import open_access
+
+    open_access(monkeypatch, caller_if_none="tester")
+
+
+@pytest.fixture(autouse=True)
 def _isolated_registry(pg_test_schema, monkeypatch):
     """Point the investigation routes at the throwaway schema, never the shared
     `resource_explorer` one.
@@ -68,8 +81,18 @@ def client():
 def made(client, _isolated_registry):
     created = []
 
-    def _make(**kw):
+    def _make(*, as_user: str = "", **kw):
+        """`as_user`: create it as that signed-in caller, through the registry under `_as` (the identity
+        mechanism every other test here uses), for a private kind — the route's TestClient carries no caller,
+        and a Personal/Experiment investigation with no owner is refused at creation (ruling 2026-10-13)."""
         body = {"display_name": "Test Investigation", **kw}
+        if as_user:
+            from resource_explorer.registry import ProjectRegistry
+
+            with _as(as_user):
+                inv = ProjectRegistry().create_investigation(body.pop("display_name"), **body)
+            created.append(inv["slug"])
+            return inv
         r = client.post("/api/investigations/", json=body)
         assert r.status_code == 200, r.text
         created.append(r.json()["slug"])
@@ -102,15 +125,20 @@ def made(client, _isolated_registry):
 def test_purposes_are_served_not_hardcoded_in_the_spa(client):
     """The UI must not carry its own copy of this vocabulary.
 
-    Purpose is ProjectCharter.purposes (§2), and the same eight values all 41
-    catalog questions are tagged with. A second copy in the SPA is exactly the
+    Purpose is ProjectCharter.purposes (§2). Egeria holds the list (owner ruling
+    2026-10-13); with no signed-in caller here the route answers from RE's cache
+    or its shipped seed, and says which. A second copy in the SPA is exactly the
     frontend/backend mirror that has drifted twice in this codebase already.
     """
+    from resource_explorer import investigation_purposes as ip
+
+    ip.reset_memo()
     r = client.get("/api/investigations/purposes")
     assert r.status_code == 200
-    assert r.json()["purposes"] == [
-        "Assess", "Certify", "Deploy", "Explore", "Learn", "Maintain", "Select", "Share",
+    assert sorted(r.json()["purposes"]) == [
+        "Assess", "Certify", "Deploy", "Explore", "Find", "Integrate", "Learn", "Maintain", "Select", "Share",
     ]
+    assert r.json()["source"] in ("cache", "seed") and r.json()["words"]
 
 
 from contextlib import contextmanager
@@ -420,7 +448,7 @@ def test_an_experiment_carries_its_hypothesis_all_the_way_into_egeria(made):
     )
 
     inv = made(display_name="Does caching help", project_classification="Experiment",
-               hypothesis="Warm source cache cuts survey wall-clock by >50%")
+               hypothesis="Warm source cache cuts survey wall-clock by >50%", as_user="alice")
     assert inv["hypothesis"] == "Warm source cache cuts survey wall-clock by >50%"
 
     pm = _StubPM()
@@ -540,13 +568,12 @@ def test_an_investigation_starts_local_with_no_egeria_write(made):
     assert inv["purposes"] == ["Explore"]
 
 
-def test_an_unknown_purpose_is_rejected_rather_than_stored(client):
-    """A purpose outside the vocabulary would rank nothing and look like an
-    empty result — indistinguishable from 'nothing matched'."""
-    r = client.post("/api/investigations/",
-                    json={"display_name": "Bad", "purposes": ["Nonsense"]})
-    assert r.status_code == 400
-    assert "Nonsense" in r.json()["detail"]
+def test_an_unknown_purpose_is_kept_and_named_never_rejected(client, made):
+    """Owner ruling 2026-10-13, "warn only - suggestive everywhere": a purpose
+    outside the list is stored as given, and the answer names it."""
+    inv = made(display_name="Odd", purposes=["Nonsense"])
+    assert inv["purposes"] == ["Nonsense"]
+    assert any("'Nonsense'" in w for w in inv["purpose_warnings"])
 
 
 def test_membership_goes_through_a_working_set(client, made):
@@ -768,14 +795,21 @@ def test_every_classification_in_the_vocabulary_maps_to_a_properties_class(made)
     for name in reg.PROJECT_CLASSIFICATIONS:
         assert _initial_classifications(name) == {name: {"class": f"{name}Properties"}}
 
-    inv = made(display_name="Personal One", project_classification="PersonalProject")
-    pm = _StubPM()
-    EgeriaInvestigationPublisher(
-        reg, project_manager=pm, collection_manager=_StubCM()
-    ).promote(inv["slug"])
-    assert pm.calls[0][3]["initialClassifications"] == {
-        "PersonalProject": {"class": "PersonalProjectProperties"}
-    }
+    # Every classification, private kinds included, actually SENT — each created with an owner, so a private
+    # kind is promoted (and zoned) rather than refused for having nobody to be private to.
+    for name in reg.PROJECT_CLASSIFICATIONS:
+        hypothesis = "h" if name in reg.HYPOTHESIS_REQUIRED_FOR else ""
+        inv = made(display_name=f"{name} One", project_classification=name, hypothesis=hypothesis,
+                   as_user="alice")
+        assert inv["created_by"] == "alice"
+        pm = _StubPM()
+        res = EgeriaInvestigationPublisher(
+            reg, project_manager=pm, collection_manager=_StubCM()
+        ).promote(inv["slug"])
+        assert res.not_published == "", res.errors
+        sent = pm.calls[0][3]["initialClassifications"]
+        expected = _initial_classifications(name, hypothesis)
+        assert sent == expected and sent[name]["class"] == f"{name}Properties", (name, sent)
 
 
 def test_a_classification_egeria_drops_is_reported_not_assumed(made):
@@ -965,7 +999,7 @@ def test_promote_route_does_not_call_pyegeria_on_the_event_loop(client, made, mo
         def __init__(self, registry, **kw):
             pass
 
-        def promote(self, slug):
+        def promote(self, slug, **kw):        # Brief Z3: the route passes the per-member `refusal`
             try:
                 asyncio.get_running_loop()
             except RuntimeError:
@@ -1878,3 +1912,130 @@ def test_the_marker_is_not_a_kind_and_so_survives_reclassification(made):
         "the marker is in the kind vocabulary — a reclassification would strip it")
     assert INVESTIGATION_MARKER not in ProjectRegistry.PRIVATE_CLASSIFICATIONS, (
         "the marker would drive zoning, which the owner said it must not")
+
+
+# ── link-status: which members are linked, read from what relink writes ───
+
+def _bound_with_members(made, slug_prefix, repos):
+    """A bound investigation whose members are real registry repos; only the
+    Egeria managers (the outermost boundary) are stubbed by callers."""
+    from resource_explorer.registry import Project, ProjectRegistry
+
+    inv = made(display_name=slug_prefix)
+    reg = ProjectRegistry()
+    ws = reg.get_or_create_working_set(inv["slug"])
+    for slug, guid in repos:
+        reg.add(Project(slug=slug, display_name=slug,
+                        github_url=f"https://github.com/o/{slug}", description=""))
+        if guid:
+            reg.set_egeria_asset_guid(slug, guid)
+        reg.add_working_set_member(ws["slug"], "repo", slug)
+    reg.set_investigation_egeria_project(inv["slug"], {"status": "linked", "egeria_project_guid": "g"})
+    return inv["slug"], reg
+
+
+def _states(client, slug):
+    body = client.get(f"/api/investigations/{slug}/link-status").json()
+    return body, {m["entity_slug"]: m for m in body["members"]}
+
+
+def test_link_status_404s_on_an_unknown_investigation(client):
+    assert client.get("/api/investigations/nope-nope/link-status").status_code == 404
+
+
+def test_link_status_unbound_is_could_not_tell_never_zero(client, made):
+    """No Project, no Collection: nothing can be said, and the count of
+    not-linked members must not read as 0 because of it."""
+    from resource_explorer.registry import ProjectRegistry
+
+    inv = made(display_name="Unbound Status")
+    reg = ProjectRegistry()
+    ws = reg.get_or_create_working_set(inv["slug"])
+    reg.add_working_set_member(ws["slug"], "repo", "whatever")
+    body, by = _states(client, inv["slug"])
+    assert body["bound"] is False
+    assert by["whatever"]["state"] == "could_not_tell"
+    assert body["counts"] == {"linked": 0, "not_linked": 0, "could_not_tell": 1, "linkable": 0}
+
+
+def test_link_status_bound_without_a_collection_is_could_not_tell(client, made):
+    slug, _ = _bound_with_members(made, "No Collection Status", [("lk-a", "asset-a")])
+    body, by = _states(client, slug)
+    assert body["bound"] is True
+    assert by["lk-a"]["state"] == "could_not_tell"
+    assert "Collection" in by["lk-a"]["reason"]
+    assert body["counts"]["not_linked"] == 0
+
+
+def test_link_status_end_to_end_after_a_promotion_with_stubbed_egeria(client, made):
+    """Each state, produced by the real promote/relink and read back by the
+    route. Only the Egeria managers are faked."""
+    from resource_explorer.surveyors.egeria_investigation_publisher import (
+        EgeriaInvestigationPublisher,
+    )
+
+    slug, reg = _bound_with_members(
+        made, "E2E Status", [("lk-ok", "asset-ok"), ("lk-bad", "asset-bad"), ("lk-none", "")])
+    reg.set_investigation_egeria_project(slug, {"status": "linked", "egeria_project_guid": "g"})
+    ws = reg.get_or_create_working_set(slug)
+    reg.set_working_set_egeria_collection(ws["slug"], "coll-1")
+
+    class FailingForOne(_StubCM):
+        def add_to_collection(self, collection_guid, element_guid, body=None):
+            if element_guid == "asset-bad":
+                raise RuntimeError("boom")
+            super().add_to_collection(collection_guid, element_guid, body)
+
+    # Before any relink: assets exist but nothing was attached.
+    body, by = _states(client, slug)
+    assert by["lk-ok"]["state"] == "not_linked" and "Link members" in by["lk-ok"]["reason"]
+    assert by["lk-none"]["state"] == "not_linked" and "no asset GUID" in by["lk-none"]["reason"]
+    # linkable counts what relink would attach: the two published members, not the one with no asset GUID.
+    assert body["counts"]["linkable"] == 2
+
+    pub = EgeriaInvestigationPublisher(reg, project_manager=_StubPM(), collection_manager=FailingForOne())
+    pub.relink_members(slug)
+
+    body, by = _states(client, slug)
+    assert by["lk-ok"]["state"] == "linked"
+    assert by["lk-bad"]["state"] == "not_linked" and "attach failed" in by["lk-bad"]["reason"]
+    assert by["lk-none"]["state"] == "not_linked"
+    assert body["counts"] == {"linked": 1, "not_linked": 2, "could_not_tell": 0, "linkable": 1}
+
+    # The status agrees with what relink itself reports.
+    res = pub.relink_members(slug)
+    assert sorted(u["entity_slug"] for u in res.members_unlinkable) == ["lk-bad", "lk-none"]
+
+
+def test_link_status_get_does_not_create_a_working_set(client, made):
+    """A GET must not write: no Folio row appears for a bound investigation."""
+    from resource_explorer.registry import ProjectRegistry
+
+    inv = made(display_name="Read Only Status")
+    reg = ProjectRegistry()
+    reg.set_investigation_egeria_project(inv["slug"], {"status": "linked", "egeria_project_guid": "g"})
+    before = reg.investigation_working_set_slug(inv["slug"])
+    if before:
+        pytest.skip("investigation creation already made a working set")
+    body = client.get(f"/api/investigations/{inv['slug']}/link-status").json()
+    assert reg.investigation_working_set_slug(inv["slug"]) == ""
+    assert body["bound"] is True
+
+
+def test_link_status_cancelled_or_superseded_rows_are_not_called_queued(client, made):
+    slug, reg = _bound_with_members(made, "Cancelled Status", [("lk-c", "asset-c"), ("lk-s", "asset-s"), ("lk-p", "asset-p")])
+    ws = reg.get_or_create_working_set(slug)
+    reg.set_working_set_egeria_collection(ws["slug"], "coll-1")
+    from resource_explorer.egeria_outbox import collection_membership_qn
+    for guid, status in (("asset-c", "cancelled"), ("asset-s", "superseded"), ("asset-p", "pending")):
+        rid = reg.enqueue_outbox_element_once(
+            "investigation", slug, "collection_membership",
+            collection_membership_qn("coll-1", guid),
+            {"collection_guid": "coll-1", "member_guid": guid}, run_id="r")
+        with reg._conn() as conn:
+            conn.execute("UPDATE egeria_outbox SET status = ? WHERE id = ?", (status, rid))
+    _, by = _states(client, slug)
+    for s in ("lk-c", "lk-s"):
+        assert by[s]["state"] == "not_linked"
+        assert "queued for retry" not in by[s]["reason"] and "Link members" in by[s]["reason"]
+    assert "queued for retry" in by["lk-p"]["reason"]

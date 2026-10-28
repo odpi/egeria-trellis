@@ -1,0 +1,25 @@
+[project]
+name = "trellis-step-hub-tables"
+dynamic = ["version"]
+description = "Analytic Library step: foreign-key degree in and out per table, and the hub tables it proposes, from the keys RE stored. Installable on its own; installing it is registering it."
+requires-python = ">=3.12,<4.0"
+dependencies = ["trellis-analytics>=0.1.0"]
+
+# Installation is registration: Resource Explorer finds the step through this entry point.
+[project.entry-points."trellis.analytics"]
+hub_tables = "hub_tables.manifest:MANIFEST"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.version]
+path = "src/hub_tables/__init__.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/hub_tables"]
+
+# In this repo the library is the sibling package, three levels up; outside it, trellis-analytics comes from
+# wherever the host installed it. pip ignores this table.
+[tool.uv.sources]
+trellis-analytics = { path = "../../..", editable = true }

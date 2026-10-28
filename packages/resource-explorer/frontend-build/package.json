@@ -7,10 +7,12 @@
     "build:css": "tailwindcss -c tailwind.config.js -i ./input.css -o ../resource_explorer/web/static/tailwind.css --minify",
     "build:css:next": "tailwindcss -c tailwind-next.config.js -i ./input.css -o ../resource_explorer/web/static/next/tailwind-next.css --minify",
     "build:vendor": "node build-vendor.js",
-    "build": "npm run build:css && npm run build:css:next && npm run build:vendor"
+    "build": "npm run build:css && npm run build:css:next && npm run build:vendor",
+    "test:harness": "node --test test-harness/*.test.mjs"
   },
   "devDependencies": {
     "@tailwindcss/typography": "^0.5.15",
+    "jsdom": "^25.0.1",
     "marked": "^18.0.9",
     "plotly.js-dist-min": "^3.7.0",
     "svg-pan-zoom": "^3.6.2",

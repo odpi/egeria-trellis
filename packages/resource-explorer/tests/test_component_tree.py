@@ -100,6 +100,30 @@ class TestVerdictsInherit:
         assert resolve_verdict("z", v) is None
 
 
+class TestALeafWithComponentsBeneathIt:
+    """Brief A follow-up 2: a leaf row that is itself a component with children carries the branch row's choice,
+    so the leaf rows say how far a verdict on them reaches (the same counts a branch row carries)."""
+
+    def test_a_leaf_says_how_many_components_sit_beneath_it(self, seeded):
+        lv = {l["path"]: l for l in leaves(seeded, "p", "pyegeria")}
+        assert lv["pyegeria/commands"]["children"] == 1          # cat
+        assert lv["pyegeria/commands"]["reach_low"] == 1         # cat at 40%
+        assert lv["pyegeria"]["children"] == 3
+        assert lv["pyegeria/utils"]["children"] == 0
+        tr = {b["path"]: b for b in component_tree(seeded, "p")["branches"]}
+        assert lv["pyegeria"]["children"] == tr["pyegeria"]["children"], "the leaf and its branch row agree"
+        assert lv["pyegeria"]["reach_low"] == tr["pyegeria"]["low_confidence"]
+
+    def test_already_accepted_counts_follow_the_resolved_verdicts(self, seeded):
+        from resource_explorer.component_tree import ONLY_THIS
+        seeded.record_component_verdict("repo", "p", "pyegeria/commands", "accepted", ONLY_THIS, decided_by="a")
+        lv = {l["path"]: l for l in leaves(seeded, "p", "pyegeria")}
+        assert lv["pyegeria/commands"]["reach_accepted"] == 1, "its own; cat does not inherit an 'only' row"
+        seeded.record_component_verdict("repo", "p", "pyegeria/commands", "accepted", "", decided_by="a")
+        lv = {l["path"]: l for l in leaves(seeded, "p", "pyegeria")}
+        assert lv["pyegeria/commands"]["reach_accepted"] == 2
+
+
 class TestAgreementAndWithdrawal:
     """RULING-WHAT-A-VERDICT-IS-ABOUT.md §2a-§2c: a component is proposals
     kept together by path, not one proposal chosen over the other."""
@@ -182,12 +206,13 @@ class TestLeafGrouping:
 
 
 class TestTheRoute:
-    def test_a_branch_verdict_is_one_row_and_materialisation_is_queued(self, client, seeded):
+    def test_a_branch_verdict_is_one_row_and_nothing_is_queued(self, client, seeded):
         r = client.post("/api/projects/p/components/verdicts", json={"scope_locators": ["pyegeria/"], "verdict": "accepted"})
         assert r.status_code == 200, r.text
         out = r.json()
         assert len(out["verdicts"]) == 1 and out["verdicts"][0]["scope_locator"] == "pyegeria"
-        assert out["queued"] == 4 and out["run_id"] and out["activity_id"]
+        assert out["queued"] == 0 and out["run_id"] is None and out["activity_id"] is None
+        assert seeded.list_runs() == []                 # Accept is a decision; Publish writes
         tree = client.get("/api/projects/p/components/tree").json()
         p = next(b for b in tree["branches"] if b["path"] == "pyegeria")
         assert p["verdict"]["verdict"] == "accepted" and p["accepted"] == 4

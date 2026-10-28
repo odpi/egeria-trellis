@@ -240,10 +240,29 @@ class TestProposalHasItsOwnGlyphAndTone:
     would misdescribe a pending decision as one of those other states."""
 
     def test_glyph_table_has_a_proposal_entry(self):
+        """`GLYPH` (app.js) is now a thin view over the one glyph table in
+        glyphs.js (REPLY-DESIGNER-ROUND2-DATABASE-SCREENS.md §1, G1) --
+        `const GLYPH = {...}` as a literal object no longer exists. `proposal`
+        must still be one of the keys `GLYPH` derives, and glyphs.js must
+        still declare its own glyph for it (not reused from `unrun` or
+        `human`)."""
         src = _app_js_source()
-        glyph_start = src.index("const GLYPH = {")
-        glyph_block = _balanced(src, src.index("{", glyph_start))
-        assert "proposal:" in glyph_block
+        keys_start = src.index("const GLYPH_KEYS = [")
+        keys_block = _balanced(src, src.index("[", keys_start))
+        assert "'proposal'" in keys_block
+
+        glyphs_js = (NEXT_DIR / "glyphs.js").read_text(encoding="utf-8")
+        states_start = glyphs_js.index("export const STATES = {")
+        states_block = _balanced(glyphs_js, glyphs_js.index("{", states_start))
+        proposal_entry = states_block[states_block.index("proposal:"):]
+        proposal_entry = proposal_entry[:proposal_entry.index("},") + 1]
+        assert "family: 'proposal'" in proposal_entry
+        unrun_glyph = states_block[states_block.index("unrun:"):states_block.index("unrun:") + 80]
+        human_glyph = states_block[states_block.index("human:"):states_block.index("human:") + 80]
+        assert "'○'" in unrun_glyph
+        assert "'⚠'" in human_glyph
+        assert "'○'" not in proposal_entry
+        assert "'⚠'" not in proposal_entry
 
     def test_state_tone_table_has_a_proposal_entry(self):
         src = _app_js_source()

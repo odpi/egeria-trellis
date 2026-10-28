@@ -10,7 +10,45 @@ This is a list, not a design doc — keep entries short. Link to a full design d
 
 ---
 
+## Admin → Discovery Sources is repo-only by name and by behaviour; generalize or rename, and add CSV import/export (logged 2026-10-01, owner)
+
+**Observed (owner, 2026-10-01):** Admin has a panel called "Discovery Sources". It reads as general, but it only manages saved GitHub search and list configs. Per `resource_explorer/web/static/next/admin/discovery_sources.js` and `web/routes/discovery.py`: "Run" returns candidate `DiscoveredRepo` rows (read-only), and a second step, `POST /discovery/import`, imports repositories. The backing `discovery_sources` table has no link to `projects`; deleting a source removes only the saved config. Nothing in it can describe a database, file share, schema or any other resource kind. Classic (`index.html`, label "Discovery Sources" at the Admin tab list and in the Scouting → Discover view) shows the same name.
+
+**Two asks, not yet designed:**
+1. **Name vs scope.** Owner direction (2026-10-01): generalize. Similar discovery functionality is wanted for other resource kinds anyway, so the target is a source that says where candidates of kind K come from, "Run" yields candidates of that kind, and import creates the right resource. Renaming to "Repo discovery sources" is only a stopgap if the label has to be honest before the generalization lands. Overlaps the work-lists/investigations slice (W1) and the "Publish for every resource kind" parity row; the shape (one pane with a kind selector vs one pane per kind, and what a candidate row carries per kind) is a design question for the designer first.
+2. **CSV import and export** of the source list and of the candidate set, as a way to jump-start an investigation: export a source's candidates (and saved sources) to CSV, import a CSV of resources (and sources) to seed a work list or investigation without searching. Open questions: column set per resource kind; whether an imported row is a candidate (needs the preview-then-import confirmation the pane already enforces) or a direct import; how it ties to an investigation's scope; what a re-import of the same file does (idempotent by key, not a second set of rows).
+
+**Not checked:** how many saved sources exist in the live registry, whether any non-repo kind already has a discovery path elsewhere, and whether an import/export endpoint pair exists (none found in the files read above).
+**Status:** design question first (generalized discovery across resource kinds), then slice. Not scheduled.
+
+## Two more per-resource screen-state slots are not reset when the resource or stage changes (found 2026-10-01 while fixing the stale evidence rail)
+
+Same bug shape as the stale rail (`STALE-RAIL-CLEAR-IMPLEMENTED.md`): state keyed to the wrong thing, so it survives a change it should not. Read from the code in `next/app.js`, not reproduced in a browser:
+
+* `state.runsInFlight`, `pendingProposals` and `autoRanNotes` (`app.js` ~231-253) are keyed by **question text**, not by resource. Only `state.answers.clear()` resets anything on a resource change. A run in flight for resource A's "Q1" would show B's identical "Q1" row as running. Not a one-line fix: the keys need the resource slug (and stage) in them, and a test that goes through the real router.
+* `loadAnswer` (~7764-7785) guards a late answer by slug only, then `replaceRow` writes to `qrow-<i>` by **row index**. After a same-resource stage change, a response that belongs to one stage's Questions pane can land in the new pane's row `i`.
+
+Not affected (checked): `state.analysisRunFailures`, `state.overview`, the doc-sources poll, the RFA drawer scope, the chat transcript, `state.promoted`, `state.enrichment`/`contextAnswers`/`_humanQuestions`, and `investigation.js` `_detailSlug`.
+
+Status: logged, not scheduled. The behaviour test should use the harness the stale-rail fix added (`rail-clears-on-change.test.mjs`) as its pattern.
+
+## Small items logged 2026-10-02 (from the Compliance trial, the incidents and the gates)
+
+Each is small and none is scheduled; the owner's decisions are marked.
+
+* **`step_runs` executor label.** On the egeria_docs trial the row for `repo_secret_scan` said executor `local` with an empty `flow_run_id`, although a real Prefect flow run executed it (the inverse of the earlier "prefect means attempted" issue). A real dispatch must be recorded as one, with its flow run id.
+* **The /next Run button gives no feedback**, so the owner clicked it twice and queued a duplicate full Compliance run. Disable it after the click and show queued or running.
+* **No cancel control for a queued run in /next** (only `POST /api/runs/{id}/cancel`, unclaimed rows only).
+* **`/next/` and `/next/index.html` answer with raw 401 JSON.** `RE_PUBLIC_PATHS` lists `/next` as an exact match on purpose (auth.py:108); redirect the two to `/next`, never add a `/next/` prefix.
+* **Stale schedule.** `localhost_docker_coco_ods` has an `index_health` schedule but is not in `databases`, so the scheduler errors on it every cycle. Owner decision: remove it.
+* **A foreign Egeria SurveyReport is invisible in RE.** "Also known to Egeria" lists only RE's own proof rows, so a failed survey run by another client vanishes. Read back Egeria's SurveyReports for the asset and mark each "submitted elsewhere" with Egeria's status and time (design ruling 2026-10-02, medium).
+* **Republish `RepoAssessmentSurvey` to Egeria** after #431: Admin, Egeria Alignment, `reauthor_survey_definitions`, then the link reconciler (not by hand; the link command is not idempotent). A shared Egeria write: peer check and the owner's go first.
+* **A repo-wide guard so no test reaches the shared registry** (branch `re/test-registry-guard`, held: its red evidence is tainted, it exempts CI by `GITHUB_ACTIONS`, and a raw connection with no `search_path` is allowed). Two test runs on 2026-10-02 touched the shared registry or live Egeria by accident; every test command should exclude `requires_egeria` and `live_egeria_writes`.
+* **The Egeria secrets file went missing again** (second time in three days; `resource-explorer.omsecrets` did not exist). `re/reproject-secrets` now rebuilds it at startup; check after the next restart that the collections exist.
+
 ## A per-card database analysis run clobbers every OTHER table's row_count/size_bytes
+
+> **Closed 2026-10-01** (backlog closure pass, from `BACKLOG-TRIAGE-2026-09-30`, bucket 1): done in `e22f9602`, `32409a83`; each cited commit checked present on `main`. Any residual the body below still describes is not closed by this line.
 
 **Found while gating** the enumeration-floor + collector-honesty PR
 (2026-09-26), while re-verifying the never-analyzed row-count fix live
@@ -97,7 +135,7 @@ prior reading (before this bug fired on a fresh local re-survey) showed
 `n_live_tup` is zero AND no `ANALYZE` has ever run — a genuine nonzero
 count is still trusted regardless of `ANALYZE` history, since DML
 tracking alone would have produced it. See
-`docs/design-notes/ENUMERATION-FLOOR-AND-COLLECTOR-HONESTY-IMPLEMENTED.md`
+`ENUMERATION-FLOOR-AND-COLLECTOR-HONESTY-IMPLEMENTED.md`
 for the full trace and `tests/test_table_row_stats_never_analyzed.py` for
 coverage.
 
@@ -244,6 +282,10 @@ other three inputs (row counts, comments, read activity) are all in the same
 stored rows this step already reads. A later slice could add it as a seventh
 zero-fetch check for very little work rather than as a new step.
 
+**Done 2026-10-02** as `db_hub_tables` in `db_derived` (the step already had eleven
+other checks by then, so "seventh" is stale): see
+`docs/design-notes/implemented/DB-HUB-TABLES-AND-OWNER-TEXT-IMPLEMENTED.md`.
+
 ---
 
 ## Change rates difference two snapshots, and nothing charts the series
@@ -321,10 +363,12 @@ current selection if one exists.
 
 ## Path B3 — repo `executes_at: egeria` handler built (2026-09-20)
 
+> **Closed 2026-10-01** (backlog closure pass, from `BACKLOG-TRIAGE-2026-09-30`, bucket 1): done in `664e4013`, `128ecb1d`; each cited commit checked present on `main`. Any residual the body below still describes is not closed by this line.
+
 **Decision (project owner, 2026-09-20):** build the repo-side `executes_at: "egeria"`
 plumbing now, even though no live repo survey action service may exist in Egeria
 yet ("we will probably have some surveys that execute there at some point") —
-close `docs/design-notes/PLAN-EXECUTION-MODES-VERIFICATION.md` §1 Path B /
+close `PLAN-EXECUTION-MODES-VERIFICATION.md` §1 Path B /
 item 8 (Path B3) rather than waiting for Egeria's side to be ready first.
 
 Built: `EgeriaPublisher.trigger_survey_by_guid` (+ `_initiate_survey`/
@@ -367,6 +411,8 @@ generic failure mode against a synthetic adapter instead, since it's no longer
 true of repos.
 
 ## Cataloguing in layers — layer 1 evidence and consumed-Egeria-interfaces built
+
+> **Closed 2026-10-01** (backlog closure pass, from `BACKLOG-TRIAGE-2026-09-30`, bucket 1): done in `911ba73c`; each cited commit checked present on `main`. Any residual the body below still describes is not closed by this line.
 
 **Decision (project owner, 2026-09-14):** catalogue in layers — coarse top-level
 components first (for egeria-trellis: RE, EA, Trellis core), a finer layer only
@@ -500,6 +546,8 @@ deferred wire-enqueueing follow-up**, whenever that's picked up. Backlog item 5 
 related `AnnotationReview` measurement gap a peer session surfaced reviewing Phase A.5, also not
 yet done.
 
+> **Closed 2026-10-01** (backlog closure pass, from `BACKLOG-TRIAGE-2026-09-30`, bucket 1): done in `a059e01d`, `f958f3df`; each cited commit checked present on `main`. Any residual the body below still describes is not closed by this line.
+
 **2. `security_features` should report `skipped_by_design` — DONE, already on `main`.** Picked up
 2026-09-03 and found already fully shipped, in two commits from before this Backlog entry was
 even opened: `a059e01` (2026-08-31, surveyor — emits a confidence-0 `skipped_by_design` annotation
@@ -513,6 +561,8 @@ the stated reason, not as a failure. `tests/test_security_features_visibility.py
 causes but is `pytest.mark.corpus`-gated (one of its 7 tests touches the real shared registry) —
 not re-run live this session per the coordinate-shared-writes convention; the code was read and
 independently confirmed correct rather than re-verified against the shared corpus.
+
+> **Closed 2026-10-01** (backlog closure pass, from `BACKLOG-TRIAGE-2026-09-30`, bucket 1): done in `05466bbb`, `5fc8bbfd`, `3c995c4b`, `79f06abb`, `567770b`; each cited commit checked present on `main`. Any residual the body below still describes is not closed by this line.
 
 **3. The silent field-allowlist pattern — partially closed, 2026-09-03.** Finding 118's other two
 named same-day instances checked and confirmed correct: `arch_recovery/persist.py`'s port/wire
@@ -601,6 +651,8 @@ Full suite green after every commit, confirmed with a final clean run at the end
 skipped (corpus/live-Egeria-gated), 0 failed — excluding the one test needing a currently-
 unreachable local Egeria platform (unrelated to this sweep).
 
+> **Closed 2026-10-01** (backlog closure pass, from `BACKLOG-TRIAGE-2026-09-30`, bucket 1): done in `6c044278`, `acaca131`; each cited commit checked present on `main`. Any residual the body below still describes is not closed by this line.
+
 **4. Split `architecture-recovery.md` — DONE, 2026-09-03.** §5 *Extraction design* (913 of 2,720
 lines) moved verbatim to `architecture-recovery-extraction-design.md`, keeping its original §5.x
 numbering (not renumbered — every existing cross-reference still names the same subsection it
@@ -609,9 +661,9 @@ where §5 was. Every cross-reference that would otherwise have gone stale was fo
 requalified with the new filename, not just the ones this entry originally predicted: 16 lines in
 `architecture-recovery.md` itself (some hand-written, not the mechanical first-token pass, where
 a line mixed a moving §5.x reference with a staying §6.x one), 17 in `Backlog.md`, and one
-verbatim-quoted title in `consolidation-2026-08-24.md`. The four other RE docs flagged as
+verbatim-quoted title in `archive/snapshots/consolidation-2026-08-24.md`. The four other RE docs flagged as
 candidates (`investigation-framing-design.md`, `feedback-and-curation.md`,
-`question-answering-and-context.md`, plus `consolidation-2026-08-24.md`'s own non-quoted `§5`s)
+`question-answering-and-context.md`, plus `archive/snapshots/consolidation-2026-08-24.md`'s own non-quoted `§5`s)
 turned out to reference their **own** local §5 heading, not architecture-recovery's — checked
 each doc's own heading list before touching anything, left all four alone. Dr.Egeria
 survey-definition/outbox files and `archive/` were out of scope by the existing exclusion
@@ -626,6 +678,8 @@ docstring says to re-measure before relying on that for *any other* relationship
 nothing currently calls it, so there's no live bug — but it's the next candidate for exactly the
 `scripts/arch-spike/measure_wire_multi_link.py` treatment (the return-value test, one call)
 **before** anything in Phase 3 adds it to the outbox, not after.
+
+> **Closed 2026-10-01** (backlog closure pass, from `BACKLOG-TRIAGE-2026-09-30`, bucket 1): done in `690a552a`, `a86c31d4`; each cited commit checked present on `main`. Any residual the body below still describes is not closed by this line.
 
 **6. `BlueprintMaterializer.materialize_blueprint_element` failed Egeria's request-body
 validation on a real accept — found 2026-09-03 live-verifying Phase C above against `sqlglot`
@@ -712,6 +766,8 @@ larger than a quick fix (touches detector design: is a benchmark harness a compo
 happens to be untyped, or a different KIND of thing that shouldn't be proposed as one?). Not
 scoped further here.
 
+> **Closed 2026-10-01** (backlog closure pass, from `BACKLOG-TRIAGE-2026-09-30`, bucket 1): done in `fc729788`; each cited commit checked present on `main`. Any residual the body below still describes is not closed by this line.
+
 **8. `SolutionArchitect` has no `create_solution_port` — real Egeria SolutionPort materialization
 is blocked at the SERVER, confirmed live, not just unmeasured on the client side — found
 2026-09-03, scoping the port/wire work named in the Curate redesign conversation.** Checked the
@@ -792,6 +848,8 @@ clearing has no data-loss risk. **Not fixed at the code level** — `_resolve_pr
 has no staleness check, so this can recur after any future full re-seed; worth a real fix
 (verify-before-trust, or a TTL) if platform re-seeds become routine rather than rare.
 
+> **Closed 2026-10-01** (backlog closure pass, from `BACKLOG-TRIAGE-2026-09-30`, bucket 1): done in `48c789b7`; each cited commit checked present on `main`. Any residual the body below still describes is not closed by this line.
+
 **11. Survey Results Dashboards — Security Overview's Discovery placement, project-owner decision
 2026-09-04: "both."** A dashboard's stage placement is derived (never hand-authored) from its
 input analyses' own catalog intents, and `security_overview` genuinely spans Discovery
@@ -810,6 +868,8 @@ scorecard renders exactly as before. `stage` is threaded down from `_loadSurveyR
 own request param through `renderSurveyResultsPanel`, not re-derived — the same value the server
 was already asked for.
 
+> **Closed 2026-10-01** (backlog closure pass, from `BACKLOG-TRIAGE-2026-09-30`, bucket 1): done in `cc75f382`; each cited commit checked present on `main`. Any residual the body below still describes is not closed by this line.
+
 **12. Dashboard trend charts — real feature, cheap because the plumbing already exists.**
 Every `AnalysisKindResults` already carries a `trend_reader` (`GET /{slug}/analyses/{analysis_id}
 /trend` already serves raw JSON, already consumed by Understanding's charts) — `SURVEY_RESULT_
@@ -818,6 +878,8 @@ Extending dashboards to also chart each input's trend (matching `loadRepoSurveyH
 existing client-side chart-building convention) is wiring existing infrastructure together, not
 building new plumbing. Not scoped or built yet — named here so the next pass doesn't have to
 rediscover that the hard part is already done.
+
+> **Closed 2026-10-01** (backlog closure pass, from `BACKLOG-TRIAGE-2026-09-30`, bucket 1): done in `b481c3dc`, `2b38e159`; each cited commit checked present on `main`. Any residual the body below still describes is not closed by this line.
 
 **13. Detailed survey data reachable from chat — corrected scope, 2026-09-04 (an earlier claim
 in this session that chat has "zero access to structured findings" was wrong).** Chat already
@@ -848,6 +910,8 @@ filesystem question catalogs, or any other DB/FS-specific feature work, until Re
 signaled complete. Surfacing a DB/FS gap for the backlog (as this item already does) is fine;
 starting to build it is not.
 
+> **Closed 2026-10-01** (backlog closure pass, from `BACKLOG-TRIAGE-2026-09-30`, bucket 1): done in `48c789b7`, `82e22231`; each cited commit checked present on `main`. Any residual the body below still describes is not closed by this line.
+
 **14. "Run all &lt;Stage&gt;" — built 2026-09-04, direct feedback: "make it first and separate so
 a user can easily just select that and be confident that all the surveys are being run."** Not a
 re-labeling of the existing per-stage Egeria Survey Definitions (`RepoScoutingSurvey`/
@@ -874,6 +938,8 @@ click time, only whether the surrounding script is syntactically valid). Live-ve
 after the fix on a real repo: POST fired, toast showed correct step/analysis counts, run
 completed.
 
+> **Closed 2026-10-01** (backlog closure pass, from `BACKLOG-TRIAGE-2026-09-30`, bucket 1): done in `48c789b7`; each cited commit checked present on `main`. Any residual the body below still describes is not closed by this line.
+
 **15. Sub-Resources tab moved from Assessment to Analysis — built 2026-09-04, direct feedback.**
 `sub_resource_survey` is catalog-tagged `intent: analysis` ("produces a structural recommendation,
 not an evaluation against criteria") but its only interactive UI (select/catalog) lived in
@@ -883,6 +949,8 @@ affordance. Moved the whole sub-tab (view container, nav entry, dispatch) to Ana
 routes (`/api/projects/{slug}/sub-resources*`) are resource-type-generic and needed no changes.
 `docs/assessment-sub-resource-cataloging.md` keeps its old filename — the content moved, the name
 didn't (not worth a doc rename for this).
+
+> **Closed 2026-10-01** (backlog closure pass, from `BACKLOG-TRIAGE-2026-09-30`, bucket 1): done in `48c789b7`; each cited commit checked present on `main`. Any residual the body below still describes is not closed by this line.
 
 **16. Curate blueprint accept blocked until every member is materialized, with a one-click fix —
 built 2026-09-04, direct feedback:** accepting a proposed blueprint could fail on unpublished
@@ -901,6 +969,8 @@ link. **Deliberately left the backend's permissive partial-accept (Decision 2) u
 UI now defaults to blocking the common accidental case, but the API still allows a genuinely
 intentional partial accept (e.g. a child that will never materialize because it was rejected) if
 called directly.
+
+> **Closed 2026-10-01** (backlog closure pass, from `BACKLOG-TRIAGE-2026-09-30`, bucket 1): done in `7b237618`, `2f25f4f4`, `8758f248`, `a24aced9`; each cited commit checked present on `main`. Any residual the body below still describes is not closed by this line.
 
 **17. Stale-Egeria-pointer scan-and-clear is now scheduled — built 2026-09-04, after the
 2026-09-04 full repository-store wipe.** The human-driven recovery path (`EgeriaResync.scan()`/
@@ -960,6 +1030,8 @@ choosing what to dispatch:
 
 ### TIER 1 — FIXED 2026-09-19: whole-definition Prefect orchestration bypassed per-step `executes_at` routing
 
+> **Closed 2026-10-01** (backlog closure pass, from `BACKLOG-TRIAGE-2026-09-30`, bucket 1): done in `9615fc2c`; each cited commit checked present on `main`. Any residual the body below still describes is not closed by this line.
+
 **Found live, the day `PREFECT_ENABLED` defaulted to `true` for the first time with a real
 reachable server** (`PLAN-PREFECT-OR-ALTERNATIVE.md` §5 phase 3): CI failed on a database Survey
 Definition fixture, tracing back to `SurveyDefinitionExecutor.run()`'s `_run_via_prefect` path —
@@ -1003,11 +1075,13 @@ Not scoped here; the guard above is the safe, correct behavior until it is.
 
 ### The outbox drain does not serialise, and its docstring says it does — FIXED 2026-09-19
 
+> **Closed 2026-10-01** (backlog closure pass, from `BACKLOG-TRIAGE-2026-09-30`, bucket 1): done in `472f83c5`, `9546afd1`; each cited commit checked present on `main`. Any residual the body below still describes is not closed by this line.
+
 **Resolved:** `claim_due_outbox_elements()` (`resource_explorer/registry.py`)
 now performs the select and the `status='running'` transition in one
 transaction, with `FOR UPDATE SKIP LOCKED` added to the `SELECT` on Postgres —
 so two concurrent drainers provably cannot claim the same row (see
-`docs/design-notes/OUTBOX-DRAIN-RACE-FIXED.md`). A stranded claim (drainer
+`OUTBOX-DRAIN-RACE-FIXED.md`). A stranded claim (drainer
 died before marking the row done/failed) self-heals via `CLAIM_LEASE_SECONDS`;
 a claim that could not even be attempted (no Egeria client reachable) is
 released immediately by `drain_outbox`'s no-client branch calling
@@ -1077,8 +1151,10 @@ for one run rather than a fix.
 
 ### TIER 1 — `catalog_and_survey` never refreshes an existing element's credentials/connection
 
+> **Closed 2026-10-01** (backlog closure pass, from `BACKLOG-TRIAGE-2026-09-30`, bucket 1): done in `8fb2a6bb`; each cited commit checked present on `main`. Any residual the body below still describes is not closed by this line.
+
 > **Fixed for fresh catalogs, 2026-09-20 — see
-> `docs/design-notes/CATALOG-AND-SURVEY-REFRESH-FIX.md` for the full investigation.**
+> `CATALOG-AND-SURVEY-REFRESH-FIX.md` for the full investigation.**
 > The root cause was not the guard this entry originally suspected: Egeria's
 > create-from-template calls ARE upsert-safe by qualifiedName (confirmed live —
 > re-issuing one for an existing element returns the same GUID, not a
@@ -1165,7 +1241,9 @@ The `0` annotation counts read back were independently confirmed accurate given 
 
 ### TIER 1 — "Three execution modes" don't map onto one verified mechanism, and two of the paths are untested
 
-> **Planned 2026-09-18 — see `docs/design-notes/PLAN-EXECUTION-MODES-VERIFICATION.md`.** Two
+> **Closed 2026-10-01** (backlog closure pass, from `BACKLOG-TRIAGE-2026-09-30`, bucket 1): done in `6fc82494`, `553c566a`, `4da212aa`; each cited commit checked present on `main`. Any residual the body below still describes is not closed by this line.
+
+> **Planned 2026-09-18 — see `PLAN-EXECUTION-MODES-VERIFICATION.md`.** Two
 > corrections to this entry, found while planning against it: the global-override concern below
 > (`config.prefect.enabled` rerouting every `resource-explorer` step) is already fixed —
 > `survey_definition_executor.py:317-332` honours `executes_at`, and rerouting needs the separate
@@ -1281,6 +1359,8 @@ whether Prefect remains the right choice at all versus an equivalent tool, which
 not attempt to answer.
 
 ### Survey execution
+
+> **Closed 2026-10-01** (backlog closure pass, from `BACKLOG-TRIAGE-2026-09-30`, bucket 1): done in `2aa0296b`; each cited commit checked present on `main`. Any residual the body below still describes is not closed by this line.
 
 > **STATUS 2026-09-01, later the same day: the precondition half of this is BUILT and this entry is
 > stale where it says otherwise.** `survey_orchestrator.py:226-241` evaluates a step's
@@ -1577,6 +1657,8 @@ If it recurs, capture the assertion text — not a `tail` of the run, which buri
 Prefect's teardown logging.
 
 
+> **Closed 2026-10-01** (backlog closure pass, from `BACKLOG-TRIAGE-2026-09-30`, bucket 1): done in `5496dd89`; each cited commit checked present on `main`. Any residual the body below still describes is not closed by this line.
+
 **`test_a_loop_that_loses_the_election_is_never_started` — FIXED 2026-09-08, and
 the diagnosis below was wrong.** The fix is fix (1): the test now polls for the
 `standby` line instead of sleeping a fixed 0.2s. Six consecutive runs pass.
@@ -1636,6 +1718,8 @@ repo `CLAUDE.md`.
 
 
 ### Private zoning — what Phase 5 left open
+
+> **Closed 2026-10-01** (backlog closure pass, from `BACKLOG-TRIAGE-2026-09-30`, bucket 1): done in `5496dd89`; each cited commit checked present on `main`. Any residual the body below still describes is not closed by this line.
 
 **Anchoring (design Phase 4) is DONE — 2026-09-08.** Annotations now anchor to
 their SurveyReport and inherit its zones. Measured: enforcement reads the LIVE
@@ -1705,6 +1789,8 @@ Nothing decided; the owner should pick. (3) is worth doing regardless.
 
 ### The Investigation marker — decided and BUILT 2026-09-08
 
+> **Closed 2026-10-01** (backlog closure pass, from `BACKLOG-TRIAGE-2026-09-30`, bucket 1): done in `b182a309`, `8ac00832`; each cited commit checked present on `main`. Any residual the body below still describes is not closed by this line.
+
 **Approved by the project owner directly** ("RE should apply the Investigation
 marker itself") and built once the redeploy made the type available. RE stamps it
 on every Project it promotes, as a separate classify call after the create so a
@@ -1748,6 +1834,8 @@ owner redeploys with the latest Egeria ("when everyone is ready"). Applying the
 marker before that redeploy would fail every create.
 
 ### The private zone does not survive a redeploy — FIXED 2026-09-08
+
+> **Closed 2026-10-01** (backlog closure pass, from `BACKLOG-TRIAGE-2026-09-30`, bucket 1): done in `egeria-workspaces-fs@e507cf16` (a commit in the `egeria-workspaces-fs` repo, not this one; checked present on its `main`). Any residual the body below still describes is not closed by this line.
 
 **Resolved:** the `resource-explorer-private` control is now in BOTH compose-config
 seeds, so it is recreated on any redeploy and exists on a fresh machine. This is
@@ -1797,6 +1885,8 @@ config file in another repo, so it is written down here rather than done.
 
 Existing zoned artifacts need no sweep: a metadata-store wipe removes the
 Projects and reports outright, and RE republishes and zones fresh.
+
+> **Closed 2026-10-01** (backlog closure pass, from `BACKLOG-TRIAGE-2026-09-30`, bucket 1): done in `8fcb8760` (the sync merge `de1a576d` carried it onto this repo's main); each cited commit checked present on `main`. Any residual the body below still describes is not closed by this line.
 
 **`test_the_real_egeria_checkout_yields_dependencies` asserts against a checkout
 that moves.** Started failing 2026-09-08 between two full-suite runs an hour
@@ -1863,6 +1953,8 @@ disagree, and the span copy is the one that expires.
 
 #### ~~HIGH — take architecture results into Curate~~ — DECIDED AND BUILT 2026-08-30
 
+> **Closed 2026-10-01** (backlog closure pass, from `BACKLOG-TRIAGE-2026-09-30`, bucket 1): done in `6f3afeb4`, `2a22c99f`, `f34d3c50`; each cited commit checked present on `main`. Any residual the body below still describes is not closed by this line.
+
 *(Opened 2026-08-30 listing four candidate shapes and saying "none of this is designed yet".
 The project owner chose the first and S1 built it the same day. This entry was left stale for several hours and
 was still being reported as an open design question when it was neither — corrected on the project owner
@@ -1901,6 +1993,8 @@ See also the reflexion-vocabulary entry below: convergence/divergence/absence is
 for the verdict axis, and worth reading before the next slice invents its own.
 
 #### HIGH — `architecture_recovery` costs 110s to fetch and 5.9s to run — fix the acquisition
+
+> **Closed 2026-10-01** (backlog closure pass, from `BACKLOG-TRIAGE-2026-09-30`, bucket 1): done in `63e7ec60`, `f8710eff`, `a7e53645`, `79eaf5b9`, `9bdd7f6f`; each cited commit checked present on `main`. Any residual the body below still describes is not closed by this line.
 
 *(Opened 2026-08-30 as a tier question; **reframed the same day by profiling**, which killed three of
 the four options it originally listed. The project owner's steer: the work likely goes into the analysis
@@ -2046,6 +2140,8 @@ re-run against the full corpus).
 
 #### ~~MEDIUM — acquisition is now the whole cost~~ — SOLVED 2026-08-30
 
+> **Closed 2026-10-01** (backlog closure pass, from `BACKLOG-TRIAGE-2026-09-30`, bucket 1): done in `f8710eff`, `a7e53645`; each cited commit checked present on `main`. Any residual the body below still describes is not closed by this line.
+
 *(Restored: this entry and the one below were lost when a `--theirs` conflict resolution on this
 file during the `ui/architecture-focus` merge dropped both. Second casualty of the same
 cherry-pick-then-merge; found only by going looking for one of them.)*
@@ -2116,6 +2212,8 @@ differently. If anyone revisits this, a per-repo cap (that repo's own p90) is th
 a corpus that is not four repos from one family.
 
 #### MEDIUM — the analysis-card Run gives no prompt and no progress for slow work
+
+> **Closed 2026-10-01** (backlog closure pass, from `BACKLOG-TRIAGE-2026-09-30`, bucket 1): done in `a505d6e0`; each cited commit checked present on `main`. Any residual the body below still describes is not closed by this line.
 
 *(Opened 2026-08-30, live-reported: "pressing the architecture survey button does seem to start the
 task but it doesn't bring up the pop-up that asks if we should run this in the background so it's
@@ -2213,6 +2311,8 @@ Deliberately measured and not designed: presentation is a product decision, and 
 treats a symptom when the problem is that they are the wrong 20.
 
 #### MEDIUM — tombstoning step 4: backfill the orphans no run can ever withdraw
+
+> **Closed 2026-10-01** (backlog closure pass, from `BACKLOG-TRIAGE-2026-09-30`, bucket 1): done in `5ad469d5`; each cited commit checked present on `main`. Any residual the body below still describes is not closed by this line.
 
 *(Opened 2026-08-30. Steps 1–3 are built; see `architecture-recovery.md (§16)`.)*
 
@@ -2591,6 +2691,8 @@ directories containing a file called `main.go` — Kubernetes's are `scheduler.g
 
 #### Location-valued artifacts: 31% are NOT in the repo — the corpus number
 
+> **Closed 2026-10-01** (backlog closure pass, from `BACKLOG-TRIAGE-2026-09-30`, bucket 1): done in `144a9230`; each cited commit checked present on `main`. Any residual the body below still describes is not closed by this line.
+
 Measured 2026-08-24, first full run of `repo_classification` across all 60 registered repos
 (26.7 min, 0 failures, on the post-`fd2e5a7` path). Recorded here because it answers a question
 the architecture-recovery design could previously only answer from five hand-picked projects,
@@ -2663,6 +2765,8 @@ Two things worth someone's attention:
 
 #### Repo classification — what the repo *represents*, before what its architecture is
 
+> **Closed 2026-10-01** (backlog closure pass, from `BACKLOG-TRIAGE-2026-09-30`, bucket 1): done in `c83bb5df`, `874a476b`, `870bc180`; each cited commit checked present on `main`. Any residual the body below still describes is not closed by this line.
+
 **Maintainer direction, 2026-08-22; design `architecture-recovery-extraction-design.md` §5.5b.** Classify a repo (or each member of a repo family)
 as library / application / middleware / tutorial / samples / documentation / tooling, **because the
 classification decides which analyses and which questions are relevant.** Recovering a blueprint from
@@ -2725,6 +2829,8 @@ location-valued lookup already produces the candidate list, so the question is "
 * **Classification first** — "missing" is only defined relative to role; a library is *expected* to
   have no deployment artifacts.
 * **Reuse RFA and `projects.parent_slug`/`group_slug`** — a new question, not new plumbing.
+
+> **Closed 2026-10-01** (backlog closure pass, from `BACKLOG-TRIAGE-2026-09-30`, bucket 1): done in `144a9230`, `874a476b`; each cited commit checked present on `main`. Any residual the body below still describes is not closed by this line.
 
 **Built and verified: `resource_explorer/github/doc_locations.py`.** Resolution + location-valued
 lookup, checked live against all five measured topologies — Kubernetes `docs/` correctly reported as
@@ -2809,6 +2915,8 @@ dated a stale description at ~17 months old without reading any Go. Should run o
 architecture we consume *and on our own recovered blueprints*, with the dates carried in `architecture-recovery-extraction-design.md` §5.4
 evidence. Cheap to build; the only real design choice is where unresolvable paths surface, and the
 answer is probably "as their own outcome", never silently as detector misses.
+
+> **Closed 2026-10-01** (backlog closure pass, from `BACKLOG-TRIAGE-2026-09-30`, bucket 1): done in `144a9230`; each cited commit checked present on `main`. Any residual the body below still describes is not closed by this line.
 
 **2a. Resolving where the docs live is a PREREQUISITE for item 3, not a sibling of it.** Measured
 over twelve repos (spike finding 68), five of five checked keep documentation in a *separate,
@@ -2909,6 +3017,9 @@ adopter. Recording only — nothing routes on these labels.
 4. **`Produced Request Parameters` as the carrier if a cause ever needs to reach a *later*
    step** rather than only be recorded. Read in the docs, **not exercised** — do not build on
    it as verified.
+
+> **Closed 2026-10-01** (backlog closure pass, from `BACKLOG-TRIAGE-2026-09-30`, bucket 1): done in `b483e586`; each cited commit checked present on `main`. Any residual the body below still describes is not closed by this line.
+
 5. ~~**Adopting the vocabulary in the other 23 steps.**~~ **PARTLY RESOLVED 2026-08-22 — the
    file-inventory readers are done.** `step_outcome.from_upstream_table()` is the shared
    three-way derivation for a step that reads a table an earlier step was meant to fill:
@@ -2966,6 +3077,8 @@ adopter. Recording only — nothing routes on these labels.
 ---
 
 #### ~~Re-parent / persist ancestors to make depth control work~~ — BUILT, MEASURED, AND IT DOES NOT DELIVER THE COLLAPSE
+
+> **Closed 2026-10-01** (backlog closure pass, from `BACKLOG-TRIAGE-2026-09-30`, bucket 1): done in `927db5f6`, `082be2f6`; each cited commit checked present on `main`. Any residual the body below still describes is not closed by this line.
 
 **Live re-survey of milvus, 2026-08-24 (`repo_arch_detect`, 24.5s):**
 
@@ -3154,6 +3267,8 @@ contract for a run — and it is the one that touches surveyor output size.
 
 #### Build the Investigation tab — nothing tracks this, and the design assumes it
 
+> **Closed 2026-10-01** (backlog closure pass, from `BACKLOG-TRIAGE-2026-09-30`, bucket 1): done in `8cf4512a`; each cited commit checked present on `main`. Any residual the body below still describes is not closed by this line.
+
 **The goal, in the design's own words** (`docs/investigation-framing-design.md` §Context, §1):
 
 > RE today has no concept of *the piece of work you are currently doing*. You land on a
@@ -3227,6 +3342,8 @@ not block this work.
 Full design: `docs/investigation-framing-design.md` (design only, nothing built). These are the
 pieces that design deliberately left out of its own first pass.
 
+> **Closed 2026-10-01** (backlog closure pass, from `BACKLOG-TRIAGE-2026-09-30`, bucket 1): done in `bbbbee77`, `e050a7ca`; each cited commit checked present on `main`. Any residual the body below still describes is not closed by this line.
+
 1. **Promote a local investigation to an Egeria Project.** Create the `Project` (+ `ProjectCharter`),
    then replay each local membership row as a `ResourceList` relationship carrying its `resourceUse`.
    Design the local membership table shaped like the target relationships from day one so this stays
@@ -3255,12 +3372,16 @@ pieces that design deliberately left out of its own first pass.
    adding a verdict field to the `Certification` relationship (considered and rejected; see the
    design doc §4). Not a blocker: nothing in the failure path needs it.
 
+> **Closed 2026-10-01** (backlog closure pass, from `BACKLOG-TRIAGE-2026-09-30`, bucket 1): done in `6caaf39c`; each cited commit checked present on `main`. Any residual the body below still describes is not closed by this line.
+
 5. **Two undeclared scores.** `documentation.py:151-167` (`score = len(present) + len(found)`, then
    hardcoded thresholds to a quality label) and `health.py:118-159` ("Overall health score: X/100")
    both emit numbers RE authored, with no `GovernanceMetric` behind them. Under the rule agreed
    2026-08-24 — *no metric, no number* — each needs either a declared `GovernanceMetric` with
    `measurement`/`target` (following the Portal's Governance Metrics pattern) or removal.
    `sql_analyzer.py:145-153`'s `complexity_score` needs the same check.
+
+> **Closed 2026-10-01** (backlog closure pass, from `BACKLOG-TRIAGE-2026-09-30`, bucket 1): done in `341d2f5`, `852955f`; each cited commit checked present on `main`. Any residual the body below still describes is not closed by this line.
 
 6. **~~Tag Purpose, and add the check-granularity join~~ — BOTH DONE; entry was stale.**
    `341d2f5` tagged all 41 questions with Purpose (not the ~10-question pilot this entry
@@ -3699,6 +3820,8 @@ listener is actually attached to the node the click lands on.
 
 #### MEDIUM — `tailwind-next.css` has no build-freshness check and will silently go stale again
 
+> **Closed 2026-10-01** (backlog closure pass, from `BACKLOG-TRIAGE-2026-09-30`, bucket 1): done in `7df0de0e`, `2efc7001`, `e816d92b`; each cited commit checked present on `main`. Any residual the body below still describes is not closed by this line.
+
 Found 2026-09-17/18, live: the RFA drawer (`next/rfa.js`) rendered as an unstyled block at the
 bottom of the page instead of a fixed right-hand panel — `inset-y-0`/`z-[80]`/`w-[26rem]` were
 absent from the compiled `next/tailwind-next.css`, which hadn't been rebuilt
@@ -3714,7 +3837,8 @@ Two ways to close it, not mutually exclusive:
    `test_every_findings_producing_analysis_has_a_dashboard` elsewhere in this backlog.
 2. **Make it part of the item-completion checklist** alongside the already-required
    `*-IMPLEMENTED.md` doc — a `/next` item isn't done until `build:css:next` has been re-run
-   against its own changes.
+   against its own changes. (Since 2026-10-01 the `*-IMPLEMENTED.md` notes live in
+   `docs/design-notes/implemented/`; the done-ness convention is unchanged, only the directory.)
 
 ---
 
@@ -4076,6 +4200,8 @@ produced a finding for `dependabot_security_updates: enabled` and silently didn'
 
 #### Gradle versions come from the BOM, so CVE scanning still cannot answer for Egeria
 
+> **Closed 2026-10-01** (backlog closure pass, from `BACKLOG-TRIAGE-2026-09-30`, bucket 1): done in `46a77c28`; each cited commit checked present on `main`. Any residual the body below still describes is not closed by this line.
+
 Follow-on from the entry below, which is now fixed: Gradle *is* parsed (2026-08-31), and
 `egeria_git` went from 0 dependency rows to 85. But **84 of those 85 have no version**, because
 Egeria resolves them through a BOM (`bom/build.gradle`) rather than inline. Measured, not assumed.
@@ -4105,6 +4231,8 @@ produces a *confident* CVE answer about the wrong version — which is worse tha
 "cannot answer".
 
 #### No Gradle support in the dependency parser — Egeria itself has zero dependency data, so CVE scanning cannot run on it
+
+> **Closed 2026-10-01** (backlog closure pass, from `BACKLOG-TRIAGE-2026-09-30`, bucket 1): done in `946a1b39`; each cited commit checked present on `main`. Any residual the body below still describes is not closed by this line.
 
 Found 2026-08-31 while trying to take `egeria_git`'s security summary from 7 of 8 inputs to 8.
 
@@ -4198,6 +4326,8 @@ class and is exactly what the entry below already built the machinery for.
 
 #### FIXED — a server restart mid-survey left activity_log rows stuck at 'running' forever
 
+> **Closed 2026-10-01** (backlog closure pass, from `BACKLOG-TRIAGE-2026-09-30`, bucket 1): done in `4e91ba2`; each cited commit checked present on `main`. Any residual the body below still describes is not closed by this line.
+
 Confirmed live 2026-08-26: restarting the web server to pick up a git pull killed two
 in-flight Survey Definition runs (`RepoFullSurvey` and `RepoArchitectureDiscovery` on
 `deep_causality`) mid-flight. Each survey's individual steps had genuinely completed and
@@ -4252,6 +4382,8 @@ off?), and if not, whether `docs/Architecture.md`/external-facing descriptions s
 to say "optional, off by default" rather than implying it's the normal execution path. This is a
 decision item, not a bug fix — record the review's outcome here once done, with a
 `**Decision (project owner, <date>):**` callout per this repo's convention.
+
+> **Closed 2026-10-01** (backlog closure pass, from `BACKLOG-TRIAGE-2026-09-30`, bucket 1): done in `fe6242a3`; each cited commit checked present on `main`. Any residual the body below still describes is not closed by this line.
 
 **Measured 2026-09-18 — Prefect per-step dispatch overhead (`PLAN-PREFECT-OR-ALTERNATIVE.md` §5
 phase 4).** This section's headline (and the plan doc's own §6 risk item) called this "unmeasured."
@@ -4784,6 +4916,8 @@ there yet).
 
 #### HIGH — extract a shared query cache into a Trellis package; it fixes a live bug in Egeria Advisor
 
+> **Closed 2026-10-01** (backlog closure pass, from `BACKLOG-TRIAGE-2026-09-30`, bucket 1): done in `e734241a`; each cited commit checked present on `main`. Any residual the body below still describes is not closed by this line.
+
 Full detail: `docs/re-ea-consolidation-audit.md` item 1.
 
 RE's `query_cache.py` (124 lines) is genuine LRU (`OrderedDict` + `move_to_end()` on access) with
@@ -4863,6 +4997,17 @@ same commit.
 ## Closed
 
 Kept rather than deleted: a recorded negative — *we checked, and it genuinely isn't there* — is what stops the next person re-investigating. Three entries were re-derived from scratch on 2026-08-24 because nobody could tell a closed question from an unasked one. Entries here are fully closed; anything still carrying live work stayed above, however its heading reads.
+
+#### CLOSED 2026-10-01 — the night of 2026-09-30 / 2026-10-01
+
+Four slices merged to `main` overnight; each has its own IMPLEMENTED note under `docs/design-notes/implemented/`.
+
+- **Entity-type sweep on the repo-only routes** — PR #391, merge `739e16a8` (`REPO-ONLY-ROUTES-DROP-DEFAULT-IMPLEMENTED.md`; builds on `603015b5`, `REPO-ONLY-ROUTES-ENTITY-TYPE-IMPLEMENTED.md`).
+- **App entry-points grouped by kind** in the Application card, with the `console_script` display fix — PR #392, merge `0d116d50` (`APP-ENTRY-POINTS-GROUP-BY-KIND-IMPLEMENTED.md`).
+- **Architecture diagram relabelled for boundary confidence** — PR #393, merge `b29dc0fe` (`ARCH-DIAGRAM-RELABEL-BOUNDARY-CONFIDENCE-IMPLEMENTED.md`).
+- **Resync heal keyed on flagged rows** — PR #394, merge `72041e77` (`RESYNC-HEAL-KEYED-ON-FLAGGED-ROWS-IMPLEMENTED.md`).
+
+---
 
 #### ~~`project_dependencies` has no survey-step writer~~ — RESOLVED 2026-08-23
 
@@ -5357,6 +5502,8 @@ duplicate `qualifiedName` now means "already created", not "failed" — see
 
 ### 1. One Egeria element per finding, with no cap
 
+> **Closed 2026-10-01** (backlog closure pass, from `BACKLOG-TRIAGE-2026-09-30`, bucket 1): done in `26c5d953`; each cited commit checked present on `main`. Any residual the body below still describes is not closed by this line.
+
 `enqueue_annotations` writes one outbox row — and therefore one catalog
 element — per annotation. The secret scan produced **48,583 findings in a
 single run**, so 48,583 elements were queued for one repo. Two runs of it left
@@ -5381,6 +5528,8 @@ Worth considering together, not separately:
   the decision has already been made.
 
 ### 2. No purge path for queued work
+
+> **Closed 2026-10-01** (backlog closure pass, from `BACKLOG-TRIAGE-2026-09-30`, bucket 1): done in `bb3ee6cf`; each cited commit checked present on `main`. Any residual the body below still describes is not closed by this line.
 
 `registry.purge_outbox_completed()` deletes `done` rows past a retention
 window, and deliberately nothing else: *"'dead' rows are the ones a human still
@@ -5409,6 +5558,8 @@ live data. That is the part to fix.
 ---
 
 ## `architecture_recovery` answers `not_established` on 37 of 53 repos that have its findings — FIXED 2026-09-09 (re-measured first; the original example was a typo)
+
+> **Closed 2026-10-01** (backlog closure pass, from `BACKLOG-TRIAGE-2026-09-30`, bucket 1): done in `dcb89de1`, `4db2cf99`, `701413cc`; each cited commit checked present on `main`. Any residual the body below still describes is not closed by this line.
 
 Found 2026-09-08 while verifying the new verdict-coverage feature
 (`docs/curated-architecture-answers-design.md` §6 item 1) against
@@ -5536,6 +5687,8 @@ that found X missing.
 
 ## Phoenix: RE traces into its own project — FIXED 2026-09-09
 
+> **Closed 2026-10-01** (backlog closure pass, from `BACKLOG-TRIAGE-2026-09-30`, bucket 1): done in `31713df2`; each cited commit checked present on `main`. Any residual the body below still describes is not closed by this line.
+
 Phoenix buckets spans by project and anything that does not name one lands in
 `default`, which is shared. Measured 2026-09-09: this machine's `default` held
 106 spans from an unrelated BeeAI **tutorial** run in December 2025
@@ -5550,6 +5703,8 @@ collector went from `['default']` to `['default', 'resource-explorer']`. Nobody'
 history is deleted; the two simply stop sharing a bucket.
 
 ## "Do we already support these dependencies?" — `dependency_support`, BUILT 2026-09-12
+
+> **Closed 2026-10-01** (backlog closure pass, from `BACKLOG-TRIAGE-2026-09-30`, bucket 1): done in `e3ffab38`; each cited commit checked present on `main`. Any residual the body below still describes is not closed by this line.
 
 The first of the coverage audit's three gap questions to get an analytic, on
 the project owner's direction: Egeria may hold "a starting point that would
@@ -5621,6 +5776,8 @@ four under ruff, and one module-level line fixed them.
 
 ## Funnel tier vocabulary — resolved from the catalog, §2 and §4 answered 2026-09-10
 
+> **Closed 2026-10-01** (backlog closure pass, from `BACKLOG-TRIAGE-2026-09-30`, bucket 1): done in `004cb667`; each cited commit checked present on `main`. Any residual the body below still describes is not closed by this line.
+
 **`activity_log.intent` cannot be used to tier a run.** It is stamped at write
 time and never revisited, so it holds what the catalog said that day; the
 catalog has been retagged twice (rule 17: three analyses `assessment` →
@@ -5680,6 +5837,8 @@ analysis/assessment depth. The spec's prediction about rationales is
 
 ## Source-acquisition accounting — cold vs warm per run, DONE 2026-09-10
 
+> **Closed 2026-10-01** (backlog closure pass, from `BACKLOG-TRIAGE-2026-09-30`, bucket 1): done in `5907a508`; each cited commit checked present on `main`. Any residual the body below still describes is not closed by this line.
+
 The cheap half of the funnel-cost spec's §6. That section asks for *bytes
 fetched*; the thing it actually needs bytes FOR — separating "slow because it
 downloaded" from "slow because it worked" — is settled by one bit, and
@@ -5724,6 +5883,8 @@ confounder it was wanted for is handled. It remains the honest answer if two
 tiers ever come out indistinguishable *within* the same acquisition state.
 
 ## LLM token accounting — complete() and streaming both counted
+
+> **Closed 2026-10-01** (backlog closure pass, from `BACKLOG-TRIAGE-2026-09-30`, bucket 1): done in `cb9ceefa`, `b35f6512`, `31713df2`; each cited commit checked present on `main`. Any residual the body below still describes is not closed by this line.
 
 Built 2026-09-09 at the project owner's direction, closing half of the
 funnel-cost spec's §6 ("the instrumentation that doesn't exist").
@@ -5813,6 +5974,8 @@ itself, with a test pinning the ordering and another pinning the trap.
 
 ## Running a derived analysis refreshes its source's data but not its source's last-run, and nothing checks freshness first — ATTRIBUTION FIXED 2026-09-09, freshness still open
 
+> **Closed 2026-10-01** (backlog closure pass, from `BACKLOG-TRIAGE-2026-09-30`, bucket 1): done in `157c3ae5`; each cited commit checked present on `main`. Any residual the body below still describes is not closed by this line.
+
 Raised 2026-09-09 by the project owner, after a `architecture_diagram` Run took
 ~90s: *"do we check to see if there was a recent architecture survey with the
 correct results before we redo that survey from architecture_diagram?"*
@@ -5874,6 +6037,9 @@ Three things, in dependency order, none done:
    owns and derives a key, so it passed with the guard removed; it now
    constructs the case via monkeypatch, with a separate test asserting the real
    catalogue has no such entry.
+
+> **Closed 2026-10-01** (backlog closure pass, from `BACKLOG-TRIAGE-2026-09-30`, bucket 1): done in `cc5fb380`; each cited commit checked present on `main`. Any residual the body below still describes is not closed by this line.
+
 2. ~~**Consult the freshness that is already known** before dispatching~~ **DONE
    2026-09-10, skip-by-default, user-initiated runs only.** Two decisions from
    the project owner: *skip by default* (not warn-and-run), and *leave the
@@ -5978,6 +6144,8 @@ reference, not treat this as "copy admin.html."
 
 ## `architecture_diagram` collides with `architecture_recovery`'s steps, and has no dashboard — FIXED 2026-09-08
 
+> **Closed 2026-10-01** (backlog closure pass, from `BACKLOG-TRIAGE-2026-09-30`, bucket 1): done in `4db2cf99`, `5ec22da4`; each cited commit checked present on `main`. Any residual the body below still describes is not closed by this line.
+
 Two tests have been failing since `b3b0500` added the read-time
 `architecture_diagram` AnalysisKind (2026-09-08), and both became easier to
 notice on 2026-09-08 when the kind finally reached the UI (`e20dd93` added its
@@ -6055,6 +6223,8 @@ survey attribution, so re-measure that entry now the ownership is correct
 before acting on it.
 
 ## The silent-success ratchet is red on one site — FIXED 2026-09-08 by `a254f29`, and better than this entry advised
+
+> **Closed 2026-10-01** (backlog closure pass, from `BACKLOG-TRIAGE-2026-09-30`, bucket 1): done in `a254f29c`; each cited commit checked present on `main`. Any residual the body below still describes is not closed by this line.
 
 `tests/test_no_silent_success.py` has been failing since 2026-09-08. Three new
 sites appeared; two were fixed the same day (`egeria_identity.py::
@@ -6234,8 +6404,19 @@ Two things follow, and one decision:
   `RUNS_PUBLISH_INLINE`), default `True` = today's behaviour, on the same branch. The designer
   (FUNNEL-COST-STATUS, 2026-09-13) asked for the state vocabulary to gain *queued for publish* if it
   flips — a fact about the mechanism that must not read as a fact about the catalog.
+- **Decision (project owner, 2026-10-14):** "A synchronous survey or analysis does NOT wait for its
+  publish." Built on `re/publish-queued-not-inline`: `RUNS_PUBLISH_INLINE` defaults to `False`
+  (`true` keeps the wait). Every outbox publish run now also queues one `publish_read_back` row; the
+  run's word comes from its outbox rows (`registry.publish_proofs`): *queued for publish*,
+  *published · read back* (the read-back row is done: `get_new_annotations` on the report answers
+  every annotation the run wrote), or *publish failed* with Egeria's words. Explicit publish actions
+  (Curate's Publish, the manual publish routes, CLI publish, bulk re-publish, resync) pass
+  `defer_drain=False` and still wait. The engine host is unaffected: its publisher takes no
+  `defer_drain` and completes in its own handler.
 
 ### Question-GUID lookup fails on pool threads — pyegeria cross-loop bug (ISSUE-96 drafted)
+
+> **Closed 2026-10-01** (backlog closure pass, from `BACKLOG-TRIAGE-2026-09-30`, bucket 1): done in `b7579928`, `2b7a9ec0`; each cited commit checked present on `main`. Any residual the body below still describes is not closed by this line.
 
 `SurveyDefinitionReader._lookup_question_guid` shares one pyegeria client across `run_sync` pool
 threads. pyegeria imports `nest_asyncio` at import time, so each thread silently gets its own event
@@ -6251,6 +6432,8 @@ patch) on branch `re/question-guid-client-per-thread`. The pyegeria issue text i
 not filed; filing is the owner's call per the pyegeria-gaps rule.
 
 ### Superseded Question term — unlinked and deleted 2026-09-13; the reconciler gap it exposed stays open
+
+> **Closed 2026-10-01** (backlog closure pass, from `BACKLOG-TRIAGE-2026-09-30`, bucket 1): done in `221dd665`; each cited commit checked present on `main`. Any residual the body below still describes is not closed by this line.
 
 "What is its internal architecture — what components exist and how do they relate?" was split into
 four questions in the CSV (2026-09-08); the four were created 2026-09-12. The old term stayed on the
@@ -6271,8 +6454,10 @@ Two things the enumeration taught, kept here so the next deletion is faster:
   the distinction is direction, not count.
 - `RepoArchitectureDiscovery` had **only** the dead term as a scope, because the 2026-09-12
   re-authoring ran the discovery and full documents and not this one. Repaired the same day from its
-  own document's scope blocks (`docs/dr-egeria/questions/arch-discovery-scope-links-2026-09-13.md`,
+  own document's scope blocks (`docs/archive/dr-egeria-batches/arch-discovery-scope-links-2026-09-13.md`,
   0 → 2). Verified through the app's own scoped lookup.
+
+> **Closed 2026-10-01** (backlog closure pass, from `BACKLOG-TRIAGE-2026-09-30`, bucket 1): done in `ae4b7c23`; each cited commit checked present on `main`. Any residual the body below still describes is not closed by this line.
 
 **Still open — the reconciler does not see scope links.** `scripts/reconcile_survey_definition_links.py`
 compares step edges to STEP_REGISTRY order; nothing compares a definition's `ScopedBy` links to the
@@ -6285,13 +6470,17 @@ only write it would ever need.
 
 ### Question term descriptions on the platform now match the CSV (2026-09-13)
 
+> **Closed 2026-10-01** (backlog closure pass, from `BACKLOG-TRIAGE-2026-09-30`, bucket 1): done in `c3d6d841`; each cited commit checked present on `main`. Any residual the body below still describes is not closed by this line.
+
 19 of 52 terms had Description/Usage text from an older CSV. No "Update Term" command exists;
 `Create Glossary Term` is a verified upsert (tested on a throwaway term first — same GUID, fields
-updated in place). `docs/dr-egeria/questions/update-questions-2026-09-13.md` holds the 19 blocks,
+updated in place). `docs/archive/dr-egeria-batches/update-questions-2026-09-13.md` holds the 19 blocks,
 executed once (19/19), all 52 verified matching afterwards, GUIDs unchanged. Contains no Link
 commands, so it cannot duplicate anything; not in `_batch.json`.
 
 ### Catalogue in layers — and two Egeria-type corrections (2026-09-14)
+
+> **Closed 2026-10-01** (backlog closure pass, from `BACKLOG-TRIAGE-2026-09-30`, bucket 1): done in `c14d9fb9`, `911ba73c`; each cited commit checked present on `main`. Any residual the body below still describes is not closed by this line.
 
 **Decision (project owner, 2026-09-14):** catalogue a repository in layers. Layer 1: the top-level
 components it delivers (for egeria-trellis: RE, EA, Trellis core — coarse). Layer 2, only when
@@ -6315,6 +6504,9 @@ Two things the current model gets wrong, both the same misreading of 0056 Resour
   labelling every distribution `SoftwareLibrary`. Not yet committed to Egeria either way: the
   `components` curate-commit step is still `skipped` (`workflows/curate_commit.py`), so this was a
   UI-only proposal never actually published — nothing to retract.
+
+> **Closed 2026-10-01** (backlog closure pass, from `BACKLOG-TRIAGE-2026-09-30`, bucket 1): done in `d514c884`; each cited commit checked present on `main`. Any residual the body below still describes is not closed by this line.
+
 - **Repository-as-`SourceControlLibrary` is the same misreading one level up.** The publisher
   creates one `SourceControlLibrary` per repository (`egeria_publisher.py`, since August); the
   classification names the *service* (GitHub), and the repository is what the service manages.
@@ -6330,6 +6522,8 @@ Two things the current model gets wrong, both the same misreading of 0056 Resour
   redeploy is the publisher fix itself (`egeria_publisher.py`), or the fresh database is
   repopulated with the same wrong structure. Not yet fixed — still open.
 
+> **Closed 2026-10-01** (backlog closure pass, from `BACKLOG-TRIAGE-2026-09-30`, bucket 1): done in `911ba73c`; each cited commit checked present on `main`. Any residual the body below still describes is not closed by this line.
+
 Two Discovery-tier, zero-fetch analyses to build (measuring session): `deployment_evidence` —
 which distributions carry a console entry point / Dockerfile / compose service, hence which are
 applications; and `egeria_interfaces` — which pyegeria client classes (→ Egeria view services) and
@@ -6342,8 +6536,7 @@ DepthOffer pane offers deeper surveys, recorded on the catalogue record.
 ### Open /next items after the stage-page and layers rounds (2026-09-14)
 
 One place to find everything still open across the two most recent rounds, so nothing gets lost
-between sessions. Not new work — a consolidation of items already named in `REPLY-CATALOGUE-IN-
-LAYERS.md`, `SPEC-THE-STAGE-PAGE.md`, and `REPLY-PORTS-SCARCITY-CORRECTED.md`.
+between sessions. Not new work — a consolidation of items already named in `REPLY-CATALOGUE-IN-LAYERS.md`, `SPEC-THE-STAGE-PAGE.md`, and `REPLY-PORTS-SCARCITY-CORRECTED.md`.
 
 **Stage-page round (`#93`/`#90` shipped the spine; these are the deferred follow-ups):**
 - Survey & analyses' *analyses* listing — rows, description popovers (stage, declared run time,
@@ -6365,6 +6558,8 @@ LAYERS.md`, `SPEC-THE-STAGE-PAGE.md`, and `REPLY-PORTS-SCARCITY-CORRECTED.md`.
   a verdict keyed by scope lands on both, so an accepted component under one proposal reads as
   accepted under a proposal its curator never saw. Waiting on a SPEC from the designer, not on
   engineering capacity.
+
+> **Closed 2026-10-01** (backlog closure pass, from `BACKLOG-TRIAGE-2026-09-30`, bucket 1): done in `c14d9fb9`, `d514c884`; each cited commit checked present on `main`. Any residual the body below still describes is not closed by this line.
 
 **Catalogue-in-layers round (`REPLY-CATALOGUE-IN-LAYERS.md`, 2026-09-14):**
 - `SoftwareLibrary`/package type error — **fixed**, this session (see the entry above).
@@ -6450,7 +6645,7 @@ blocker for probe 9 (a genuine native annotation-type/metric-key dump) and
 for Phase 1 more broadly, not a one-off.
 
 **Root-caused and fixed for fresh catalog runs, same day (PR #185,
-`docs/design-notes/PROBES-2026-09-21.md`):** the templated
+`PROBES-2026-09-21.md`):** the templated
 `SecretsStoreConnection`'s `secretsCollectionName`/`secretsStorePathName`
 configuration properties were themselves left as Egeria's own literal,
 unsubstituted placeholder text — nothing had ever supplied real values.
@@ -6518,7 +6713,7 @@ for rows whose source blob genuinely carries no success/failure signal.
 ## Phase 1 slice 8 (`postgres_operations`) — follow-ups logged, not fixed here
 
 Three items surfaced building the `postgres_operations` step (design
-§5.5/§5.7, `docs/design-notes/DB-OPERATIONS-STEP-IMPLEMENTED.md`), each
+§5.5/§5.7, `DB-OPERATIONS-STEP-IMPLEMENTED.md`), each
 deliberately scoped out rather than half-built:
 
 1. **Patroni-via-REST clustering detection is not attempted.** Design §5.5
@@ -6556,6 +6751,8 @@ deliberately scoped out rather than half-built:
    `postgres_operations` against it once and diffing the result against a
    hand-checked `psql` session would close this gap.
 
+> **Closed 2026-10-01** (backlog closure pass, from `BACKLOG-TRIAGE-2026-09-30`, bucket 1): done in `b0d678bc`, `7788990c`; each cited commit checked present on `main`. Any residual the body below still describes is not closed by this line.
+
 4. **`docs/dr-egeria/resource_questions.csv`'s prose is now stale for the
    three rows this slice's `analysis_catalog.yaml` additions resolved.**
    Regenerating `question_catalog.yaml` (required — see
@@ -6566,6 +6763,8 @@ deliberately scoped out rather than half-built:
    `answering.kind` is still `gap`/`human`. The CSV is stream 4's ownership
    and not touched by this slice; whoever next edits it should reword those
    three rows' notes (and reconsider `kind`) now that the analyses exist.
+
+> **Closed 2026-10-01** (backlog closure pass, from `BACKLOG-TRIAGE-2026-09-30`, bucket 1): done in `b0d678bc`, `7788990c`; each cited commit checked present on `main`. Any residual the body below still describes is not closed by this line.
 
    **Extended 2026-09-21 by Phase 1 slice 9 (`db_derived`), same shape, six
    more rows.** Regenerating the YAML again populated `analysis_ids` for
@@ -6585,7 +6784,7 @@ deliberately scoped out rather than half-built:
 
 Found 2026-09-21, running Phase 1 slice #6 (probe 9, properly, against
 freshly-recatalogued `coco_ods`/`coco_pharma` post-redeploy —
-`docs/design-notes/PROBES-2026-09-21.md` has the full write-up under "Probe
+`PROBES-2026-09-21.md` has the full write-up under "Probe
 9 done properly"). Two separate `Connection` elements this session — RE's
 own admin secrets-store `Connection` and the per-database
 `SecretsStoreConnection` embedded by the PostgreSQL template — both came
@@ -6731,7 +6930,7 @@ this entry first.
 
 **Found while building** `postgres_column_profile` / `data_class_match` /
 `reference_data_match` (Phase 1 slice 10,
-`docs/design-notes/POSTGRES-COLUMN-PROFILE-IMPLEMENTED.md`). Logged, not
+`POSTGRES-COLUMN-PROFILE-IMPLEMENTED.md`). Logged, not
 fixed — each is outside that slice's scope.
 
 **1. No curator accept/reject surface for a DRAFT proposal — the largest gap.**
@@ -6765,6 +6964,8 @@ to import. **If slice 9 lands its own, reconcile the two to one** before both
 are in the tree — two copies of a sign-convention correction is exactly the
 shape that drifts.
 
+> **Closed 2026-10-01** (backlog closure pass, from `BACKLOG-TRIAGE-2026-09-30`, bucket 1): done in `ef95e38e`; each cited commit checked present on `main`. Any residual the body below still describes is not closed by this line.
+
 **5. Two live bugs in `bootstrap_data_classes.py`, deliberately not copied by
 slice 10.** (a) Its `create_data_class` body's `properties` omits the
 `"class": "DataClassProperties"` discriminator that every other create path in
@@ -6791,6 +6992,8 @@ exercised nowhere in either repo); and that
 never been called from Python**, so the evidence links are the least-verified
 part of the slice.
 
+> **Closed 2026-10-01** (backlog closure pass, from `BACKLOG-TRIAGE-2026-09-30`, bucket 1): done in `b0d678bc`, `7788990c`; each cited commit checked present on `main`. Any residual the body below still describes is not closed by this line.
+
 **Also:** the regenerated `question_catalog.yaml` rows for `data_class_match`
 and `reference_data_match` still carry `GAP: … (proposed)` prose although both
 analyses now exist — the same staleness slice 8 flagged for its own three ids.
@@ -6799,7 +7002,7 @@ The CSV's prose is its owner's call (stream 4), not a consumer's.
 ## Slice 14 (database change comparators, design §9.1) — what remains open
 
 **Found while building** `db_change_comparator.py` (Phase 1 slice 14,
-`docs/design-notes/DB-CHANGE-RATES-DELIVERY-IMPLEMENTED.md`). The real gap
+`DB-CHANGE-RATES-DELIVERY-IMPLEMENTED.md`). The real gap
 this slice closed was structural, not computational: `db_derived`'s six
 checks (slice 9) never persisted through `project_analysis_findings`/
 `project_analysis_metrics` — both FK'd to `projects(slug)`, repos only — so
@@ -6810,6 +7013,8 @@ already existed as a UI concept (`automate.py`'s `RESOURCE_ICON` includes
 `database`) with no way to ever fire. Fixed for `db_change_rates` only, by
 bridging `derive_change_rates`'s already-computed per-table deltas/schema
 churn into a `ChangeResult`. Logged, not fixed here:
+
+> **Closed 2026-10-01** (backlog closure pass, from `BACKLOG-TRIAGE-2026-09-30`, bucket 1): done in `82594932`; each cited commit checked present on `main`. Any residual the body below still describes is not closed by this line.
 
 **1. Design §9.1's other six database comparators have no bridge yet:**
 `schema_diff` (column/constraint-level — today's fix only covers the
@@ -6856,7 +7061,7 @@ the same gap a third way.
 
 Filed while building the slice (`resource_explorer/reachability.py`,
 `resource_reachability` table, launcher sentence — see
-`docs/design-notes/RESOURCE-REACHABILITY-IMPLEMENTED.md`). This slice was
+`RESOURCE-REACHABILITY-IMPLEMENTED.md`). This slice was
 deferred by the project owner 2026-09-21 ("do not build it yet ... further
 tests") and the deferral was reversed by the project owner 2026-09-22, who
 asked for it to proceed.
@@ -6897,6 +7102,8 @@ slice's changes, and this session did not touch that database or its
 Egeria elements.
 
 ## Database/filesystem Analyses cards: run attribution fixed, publish attribution still not established
+
+> **Closed 2026-10-01** (backlog closure pass, from `BACKLOG-TRIAGE-2026-09-30`, bucket 1): done in `6de4fd72`; each cited commit checked present on `main`. Any residual the body below still describes is not closed by this line.
 
 Live-reproduced in classic (`coco_pharma @ local-docker`): running a real
 database survey (`POST /api/databases/{slug}/survey` -> 200 OK, confirmed via
@@ -7001,6 +7208,8 @@ touches the intent list should check this entry first.
 
 ## filesystem_inventory had zero question coverage in resource_questions.csv
 
+> **Closed 2026-10-01** (backlog closure pass, from `BACKLOG-TRIAGE-2026-09-30`, bucket 1): done in `b0d678bc`, `7788990c`; each cited commit checked present on `main`. Any residual the body below still describes is not closed by this line.
+
 Found while investigating a related but separate active review
 (`FALSE-GAPS-2026-09-22.md`, not authored by this session, tracking 18
 rows where `Answering Analysis` still says `GAP: ... (proposed)` for
@@ -7022,6 +7231,8 @@ there is permanent (see `coordinate-shared-writes` skill). Do the
 authoring as a separate, single, coordinated run once clear.
 
 ## Phase 1 done-test verification (2026-09-22): NOT satisfied — Phase 2 held
+
+> **Closed 2026-10-01** (backlog closure pass, from `BACKLOG-TRIAGE-2026-09-30`, bucket 1): done in `ef95e38e`, `e5e79ce7`; each cited commit checked present on `main`. Any residual the body below still describes is not closed by this line.
 
 `COORDINATOR-BRIEF-MULTI-RESOURCE.md`'s own gate for starting Phase 2
 (filesystems) is its done-test: "`coco_ods` answers 'which columns conform
@@ -7062,6 +7273,8 @@ needed to actually close Phase 1, tracked as separate slices: (a) fix the
 `grant_change` and a column-level `schema_diff` comparator.
 
 ## `data_class_match`'s "Run" button was wired to a `ReferenceCatalog` that no caller ever loaded, and the bootstrap script that seeds Data Classes never actually created any (2026-09-22)
+
+> **Closed 2026-10-01** (backlog closure pass, from `BACKLOG-TRIAGE-2026-09-30`, bucket 1): done in `ef95e38e`; each cited commit checked present on `main`. Any residual the body below still describes is not closed by this line.
 
 Two layered bugs, both on branch `re/data-class-seed-and-wiring`, found and
 fixed in the same session as a live check of whether "which columns conform
@@ -7160,6 +7373,8 @@ one of them, so whoever merges next should check for an overlapping edit to
 the same CSV row rather than assume this change is the only one in flight.
 
 ## grant_change and column-level schema_diff comparators, plus two real
+
+> **Closed 2026-10-01** (backlog closure pass, from `BACKLOG-TRIAGE-2026-09-30`, bucket 1): done in `e5e79ce7`; each cited commit checked present on `main`. Any residual the body below still describes is not closed by this line.
 ## bugs found live-verifying them (2026-09-22)
 
 Phase 1 slice 14 follow-up (design §9.1). Built `grant_change` and the
@@ -7219,10 +7434,12 @@ already in `db_change_comparator.py`'s own module docstring.
 
 ## Decision reversal: DB and FS now in scope for `/next` (2026-09-22)
 
+> **Closed 2026-10-01** (backlog closure pass, from `BACKLOG-TRIAGE-2026-09-30`, bucket 1): done in `029c450b`, `b18886f2`, `51adf88c`; each cited commit checked present on `main`. Any residual the body below still describes is not closed by this line.
+
 **Decision (project owner, 2026-09-22):** `/next` should reach parity with
 classic across all three resource types (repo, database, filesystem), not
 just repos — reversing the earlier ruling logged in
-`docs/design-notes/COORDINATOR-BRIEF-MULTI-RESOURCE.md` ("DB and FS stay out
+`docs/design-notes/exchange/COORDINATOR-BRIEF-MULTI-RESOURCE.md` ("DB and FS stay out
 of `/next`. Project owner, 2026-09-20. They land in the classic UI..."; see
 that file's "What is different from the repo work" section for the original
 wording). The one-session-at-a-time rule on `next/app.js` that ruling had
@@ -7244,6 +7461,11 @@ and filesystem-specific views — file inventory browsing, data-file
 profiling — stay out of scope, unchanged by this reversal).
 
 ## By analysis / scouting-questions were repo-only; Disposition's `github_url` keying is not fixed here (2026-09-22)
+
+> **Closed 2026-10-01** (backlog closure pass, from `BACKLOG-TRIAGE-2026-09-30`, bucket 1); each cited commit checked present on `main`. Any residual the body below still describes is not closed by these lines:
+> - Server-side entity_type on the four repo-only routes: `739e16a8`, `603015b5`
+> - By analysis for database/filesystem (survey-results): `b18886f2`
+> - Questions checklist (scouting-questions) for database/filesystem: `b18886f2`
 
 Three more real, separate backend gaps found continuing the audit above (on
 `re/next-generalize-byanalysis-disposition-questions`) — all genuinely
@@ -7351,6 +7573,8 @@ can stay keyed as-is under a widened key) belongs to its own reviewed slice.
 therefore left exactly as the prior agent built it — unchanged by this PR.
 
 ## Disposition generalized to `(entity_type, entity_slug)` — the schema gap above is now closed (2026-09-22)
+
+> **Closed 2026-10-01** (backlog closure pass, from `BACKLOG-TRIAGE-2026-09-30`, bucket 1): done in `51adf88c`; each cited commit checked present on `main`. Any residual the body below still describes is not closed by this line.
 
 `re/generalize-disposition` picks up exactly the decision the entry above
 deliberately deferred. Investigated both options concretely before
@@ -7552,6 +7776,8 @@ do it) rather than have it applied ad hoc from a subagent session.
 
 ## Prefect-orchestrated survey definitions don't get §17.1's prerequisite resolution
 
+> **Closed 2026-10-01** (backlog closure pass, from `BACKLOG-TRIAGE-2026-09-30`, bucket 1): done in `87bb3161`, `ca4ff4aa`; each cited commit checked present on `main`. Any residual the body below still describes is not closed by this line.
+
 **Found while building** §17.1 (prerequisite auto-run, PR #241).
 
 The design doc says the Prefect path already expresses step dependencies as
@@ -7612,6 +7838,8 @@ panel's views meaningful rather than speculative.
 
 ## `/next`'s prerequisite-proposal UI doesn't exist yet — classic-only for now
 
+> **Closed 2026-10-01** (backlog closure pass, from `BACKLOG-TRIAGE-2026-09-30`, bucket 1): done in `cdb00fa2`, `c342b915`; each cited commit checked present on `main`. Any residual the body below still describes is not closed by this line.
+
 **Found while building** §17.1 (PR #241).
 
 `POST /api/prerequisites/plan`/`run` work over HTTP (verified live against a
@@ -7656,6 +7884,8 @@ visibly wherever `step_runs` metrics are displayed.
 ---
 
 ## `/next`'s "Survey & analyses" tab silently drops Egeria's own native, technology-specific survey processes — classic already shows them
+
+> **Closed 2026-10-01** (backlog closure pass, from `BACKLOG-TRIAGE-2026-09-30`, bucket 1): done in `9a075414`, `46653b28`, `5f152c74`; each cited commit checked present on `main`. Any residual the body below still describes is not closed by this line.
 
 **Found live** (project owner, 2026-09-24): opened `/next`'s "Survey & analyses"
 sub-tab on a real database (`coco_ods`, PostgreSQL) and got "No survey
@@ -7842,6 +8072,8 @@ framework-marker coverage together.
 
 ## Database credential-capability model — item 2 BUILT, items 1 and 3 still awaiting the project owner's ruling
 
+> **Closed 2026-10-01** (backlog closure pass, from `BACKLOG-TRIAGE-2026-09-30`, bucket 1): done in `450e7b91`, `280fa825`, `69d9871b`, `86dd8a0b`; each cited commit checked present on `main`. Any residual the body below still describes is not closed by this line.
+
 **Decision (project owner, 2026-09-24):** build item 2 below
 (`requires_capability` on `StepInfo` and the launcher gate) now, ahead of
 item 1, on the strength of §7.1 of the reply doc — which the architecture
@@ -7879,7 +8111,7 @@ the launcher shows one combined reason."
 merged to `main`** — `main` carries the doc through §6 only (`98e8c137`,
 PR #255). Anyone reading the doc from `main` will not find the §7 this build
 implements; read it with `git show 990d7d61:packages/resource-explorer/docs/
-design-notes/REPLY-DATABASE-CREDENTIAL-CAPABILITY-VISIBILITY.md` until that
+design-notes/exchange/REPLY-DATABASE-CREDENTIAL-CAPABILITY-VISIBILITY.md` until that
 branch lands. Not cherry-picked onto the build branch on purpose: the doc
 commit belongs to its own PR and duplicating it would give one design note
 two histories.
@@ -7888,7 +8120,7 @@ two histories.
 
 ## Database credential-capability model — awaiting the project owner's ruling
 
-**From:** `docs/design-notes/REPLY-DATABASE-CREDENTIAL-CAPABILITY-VISIBILITY.md`
+**From:** `docs/design-notes/exchange/REPLY-DATABASE-CREDENTIAL-CAPABILITY-VISIBILITY.md`
 (architecture session, 2026-09-24), replying to
 `ASK-DATABASE-CREDENTIAL-CAPABILITY-VISIBILITY.md` (`#251`). Read both in
 full before picking this up — this entry is a pointer, not a substitute.
@@ -8005,6 +8237,8 @@ don't need a second design pass.
 
 ## `stats` capability tier's `pg_monitor` premise was wrong for per-table/per-database counters — corrected (2026-09-24/25)
 
+> **Closed 2026-10-01** (backlog closure pass, from `BACKLOG-TRIAGE-2026-09-30`, bucket 1): done in `a56acf3f`, `dd44d6a8`; each cited commit checked present on `main`. Any residual the body below still describes is not closed by this line.
+
 `DATABASE-STEP-CAPABILITY-AUDIT.md`'s original classification (`#262`'s
 basis for the `requires_capability` field) said `pg_stat_user_tables`/`pg_
 stat_user_indexes` need `pg_monitor` membership. **Live-verified by the
@@ -8044,6 +8278,8 @@ wording — not edited here since that doc is a point-in-time transcript of
 what shipped, not living copy.
 
 ## Slice 22's per-schema VIEW should consume Slice 21a's `_schema_inventory_container_rows` (2026-09-26)
+
+> **Closed 2026-10-01** (backlog closure pass, from `BACKLOG-TRIAGE-2026-09-30`, bucket 1): done in `da7cdefd`; each cited commit checked present on `main`. Any residual the body below still describes is not closed by this line.
 
 Slice 21a (`re/slice21a-level-headlines`) built the per-schema classification
 (data/empty/staging/no-access/structure-only/system, ordered data-rows-desc
@@ -8281,7 +8517,22 @@ already in place are each individually correct and this is a design
 change to the writer's contract, not a live-visible bug in its own right
 right now.
 
+**Partially closed** (`re/structured-table-clobber`, BRIEF-KEYS-AND-ACTIVITY-CLOBBER.md §B, 2026-09-28): the two remaining un-patched
+`survey_data` sections, `statistics` and `views`, now use the identical
+preserve-prior fallback `operations`/`credential_capability` already had —
+`"statistics": statistics or prior_statistics` / `"views": results.get
+("views") or prior_views` in `_store_results`. `schema_info` needs no such
+fallback ("schema" always runs — see `_ALL_STEPS`'s own comment). This still
+is not the single generic mechanism the note above asks for (a per-field
+`or prior_X` fallback each time a field is added, not `results.get(key,
+_SENTINEL)` skipped from the write) — a future field still needs the same
+manual treatment — but every currently-known `survey_data` section is now
+covered, and `tests/test_store_results_preserves_prior_survey_data_sections.py`
+pins `statistics`/`views` the same way the operations test pins those two.
+
 ## The Scouting Survey Definition's own "Run"/"Re-run" button does not follow the analyses-list rule (found live, Slice 22 gate, `laz_local_adventureworks`, 2026-09-27)
+
+> **Closed 2026-10-01** (backlog closure pass, from `BACKLOG-TRIAGE-2026-09-30`, bucket 1): done in `76fbecfa`, `e6cde62c`; each cited commit checked present on `main`. Any residual the body below still describes is not closed by this line.
 
 After the Database Scouting Scan has run at least once, the analyses list
 further down the Survey pane correctly switches its own per-analysis
@@ -8340,7 +8591,48 @@ exactly the chart's inputs — no new backend read needed, just a small bar
 (or two, rows and columns) per schema rendered above the existing tree,
 sorted the same data-first order the tree itself already uses.
 
-## `database_table_activity` rows are clobbered at the STRUCTURED-TABLE layer by a multi-step survey run's later steps — not fixed here, deferred for a fresh session (found live, `adventureworks`, 2026-09-27)
+## `database_table_activity` rows are clobbered at the STRUCTURED-TABLE layer by a multi-step survey run's later steps — FIXED (`re/structured-table-clobber`, BRIEF-KEYS-AND-ACTIVITY-CLOBBER.md §B, 2026-09-28)
+
+> **Closed 2026-10-01** (backlog closure pass, from `BACKLOG-TRIAGE-2026-09-30`, bucket 1): done in `32409a83`, `fa77116a`; each cited commit checked present on `main`. Any residual the body below still describes is not closed by this line.
+
+**Root cause found**, more specific than "deferred, fix direction below" left
+it: `_store_results` (`database_surveyor.py`) stamped
+`table["last_analyzed"] = rs.get("last_analyzed", "")` /
+`table["pending_changes"] = rs.get("pending_changes", 0)` on EVERY table in
+`schema_info` unconditionally, even when `rs` (that table's
+`pg_stat_user_tables` row) was empty because the run never requested
+`"statistics"` at all. `record_database_survey()`'s own internal
+`backfill_database_survey()` call (`registry.py`, runs on every survey
+regardless of what the caller requested) reads exactly those three fields off
+`schema_info` via `database_rows_from_survey_data()`'s
+`if last_analyzed or last_vacuumed or pending is not None:` check to decide
+whether to write a placeholder `database_table_activity` row — and a
+fabricated `pending_changes: 0` (a real int, not an absence) made that check
+true on every single run, writing a full table of NULL-counter rows that then
+shadowed whichever earlier run's `write_detail_rows` call had the real
+counters, because `db_derived.load_inputs()` picked one global latest
+`surveyed_at` for the whole snapshot.
+
+**Fix, both halves the direction below asked for:**
+1. **Write side** (`database_surveyor.py::_store_results`): those three
+   fields are now left entirely unset when `rs` is empty, instead of
+   defaulted to `""`/`0` — so a statistics-free run's schema_info blob
+   correctly reads as "nothing to report" and the auto-backfill writes no
+   placeholder row for that `surveyed_at`.
+2. **Read side** (`db_derived.py::load_inputs`): with no explicit
+   `surveyed_at` (the "what do we currently know" call every consumer here
+   uses), each structured table now resolves its OWN newest non-empty
+   `surveyed_at` independently via `_resolve_table_surveyed_at` — activity
+   additionally requires at least one row with a real (non-NULL) counter, not
+   just a non-empty row set. Per-table provenance is carried on the new
+   `DerivedInputs.table_surveyed_at` and surfaced in `db_classification`'s
+   `signal_provenance`/explanation text ("activity from ..., structure from
+   ...").
+
+See `STRUCTURED-TABLE-CLOBBER-IMPLEMENTED.md` for the
+before/after numbers and what was/wasn't live-verified.
+
+Original finding, kept for the record:
 
 The same class of bug as `_store_results`'s survey_data-blob clobber
 (above), but discovered one layer down, in the structured tables
@@ -8378,6 +8670,8 @@ ITS newer data; a table only an earlier run touched should fall back to
 that earlier row instead of reading NULL.
 
 ## PRIMARY-path PK/FK queries in `connection.py` drop real foreign/primary keys that a table is referenced from (or claims) MANY TIMES — not fixed here, deferred for a fresh session (found live, `adventureworks`, 2026-09-27)
+
+> **Closed 2026-10-01** (backlog closure pass, from `BACKLOG-TRIAGE-2026-09-30`, bucket 1): done in `fe6ee5a8`, `85a359a0`; each cited commit checked present on `main`. Any residual the body below still describes is not closed by this line.
 
 Verified against `pg_constraint`/ground truth via direct `psql` on the
 newly-registered `adventureworks` database (68 tables, dense FKs, full
@@ -8475,3 +8769,826 @@ matches exactly one table still opens it — the existing single-match
 tests (`test_a_self_match_opens_its_own_details`) must keep passing
 alongside the new one, since the rule only changes behavior when there
 is more than one table-level match.
+
+## `/next` probes `scouting-overview` for database slugs and always gets a 404 (Section D agent's live-render check, 2026-09-28)
+
+> **Closed 2026-10-01** (backlog closure pass, from `BACKLOG-TRIAGE-2026-09-30`, bucket 1): done in `f46b769c`, `e0fe4e19`; each cited commit checked present on `main`. Any residual the body below still describes is not closed by this line.
+
+Every `/next` page load calls `GET /api/projects/{slug}/scouting-overview`
+regardless of resource type. For a database slug this 404s every time —
+`scouting-overview` is a repo-only endpoint. Same class of bug as the
+earlier `'db'` vs `'database'` resourceType mismatch: a call written
+against one resource type and never gated for the others.
+
+**Fix direction, not attempted here**: gate the call on
+`resourceType === 'repo'` before issuing it, the same way other repo-only
+probes are already gated elsewhere in `app.js`. No design question here —
+purely "don't call an endpoint that doesn't apply to this resource type."
+
+## `postgres_column_profile` silently samples nothing on `laz_local_adventureworks` — an aborted-transaction cascade masked as `status: "ok"` (Section E agent, 2026-09-28)
+
+> **Closed 2026-10-01** (backlog closure pass, from `BACKLOG-TRIAGE-2026-09-30`, bucket 1): done in `10d73930`; each cited commit checked present on `main`. Any residual the body below still describes is not closed by this line.
+
+The unchanged 468/768 `measured`/`not_collected` split in `database_column_profiles`
+across every run today (BRIEF-KEYS-AND-ACTIVITY-CLOBBER.md's original evidence, and
+still true after Section E's Prefect fix) has a concrete cause, not just an unclear
+one: the 468 `measured` rows come entirely from `pg_stats`, read by
+`postgres_schema_and_stats`; `postgres_column_profile`'s own per-value sampling has
+not added anything observable in any run today, on either the Prefect or local
+execution path (pre-dates Section E's fix, identical on both).
+
+**Mechanism**: a sampling query hits `TABLESAMPLE clause can only be applied to
+tables and materialized views` on a *view* in the schema. Postgres then aborts the
+surrounding transaction, and every subsequent sampling attempt in that same
+transaction fails with `current transaction is aborted, commands ignored until end
+of transaction block` — cascading silently across the rest of the profile run. The
+step still reports `status: "ok"`, so nothing surfaces the failure; it reads as "ran,
+nothing more to add" rather than "one view broke the whole batch."
+
+**Fix direction, not attempted here** (flagged as background task `task_3ce22015`
+for a dedicated session): either skip/guard views before issuing `TABLESAMPLE`
+against them, or give each table/view its own transaction (or savepoint) so one
+view's failure doesn't abort sampling for every table that follows it in the same
+run. Whichever fix lands, `status: "ok"` must stop being possible when a sampling
+attempt failed — that's the same silent-success shape `test_no_silent_success.py`
+already guards other steps against.
+
+## Three order-dependent flaky tests in `test_survey_definitions_routes.py` — root cause identified, fix on `re/tests-clear-candidates-cache` (found by Section E agent, bisected 2026-09-28)
+
+> **Closed 2026-10-01** (backlog closure pass, from `BACKLOG-TRIAGE-2026-09-30`, bucket 1): done in `ba223e2f`; each cited commit checked present on `main`. Any residual the body below still describes is not closed by this line.
+
+Pre-existing, unrelated to any of the BRIEF-KEYS-AND-ACTIVITY-CLOBBER.md fixes.
+Confirmed to fail only under a specific run order and to pass individually — not
+touched by any of Sections A–E:
+
+- `tests/test_survey_definitions_routes.py::TestListCandidates::test_returns_step_detail_for_valid_candidate` —
+  `assert 'SchemaAnalysisAnnotation' in step_out["annotation_types"]` →
+  `AssertionError: assert 'SchemaAnalysisAnnotation' in []` (candidate returned but its step detail is empty).
+- `tests/test_survey_definitions_routes.py::TestListCandidates::test_egeria_step_enriched_with_produced_annotation_types` —
+  `assert step_out["egeria_produced_annotation_types"] == fake_produced` →
+  `KeyError: 'egeria_produced_annotation_types'` (the key does not exist on the response; the enrichment branch never ran).
+- `tests/test_survey_definitions_routes.py::TestListCandidates::test_egeria_native_processes_excludes_delete_kind` —
+  `assert "survey_existing" in kinds` → `AssertionError: assert 'survey_existing' in set()` (native-processes kind set empty).
+
+**Root cause, bisected**: all three patch `SurveyDefinitionReader.find_candidate_process_guids` /
+`find_candidate_process_guids_by_questions` and hit `GET /api/survey-definitions/database/mydb/candidates`;
+the route behaves as if the patched method returned nothing in every failure. `survey_definition_reader.py`'s
+module-level `_candidates_cache` (keyed `(full_scan, technology_type, survey_kind)`, TTL-bounded) is populated
+by an earlier real call elsewhere in the suite with `technology_type="PostgreSQL Database"`, and that cached
+result wins over the patch — `patch()` on the reader's own method cannot see a hit already served from the
+cache. Not bisected to the specific populating test, but not needed: the mechanism is general (any prior real
+call with matching cache-key fields poisons any later patched test).
+
+**Fixed** on `re/tests-clear-candidates-cache`: an autouse fixture in `tests/conftest.py`
+(`clear_survey_definition_reader_caches`) calls the reader's existing `clear_caches()` testing hook (already
+used by hand in `test_survey_definition_reader.py`'s own tests, but never applied suite-wide) before and after
+every test — same pattern as the existing `ephemeral_prefect` autouse fixture just above it. Verified by a full
+suite run confirming all three pass in-suite (run details in that branch's commit).
+
+## Curate stage on a repo "takes a very long time to load" and shows no tasks (project owner, 2026-09-28)
+
+The project owner reports opening the Curate stage on a repo resource takes a very long time to
+load and, once it does, shows no tasks. On a database resource, the page instead says Curate isn't
+available yet — a separate, and apparently honest, state (no capability declared for that resource
+type) rather than the same slow-then-empty behavior.
+
+**Not investigated or fixed here** — logged as a usability item per the project owner's own
+instruction, pending a timing capture rather than a guessed fix. Whoever picks this up should
+first capture which request is actually slow (browser network tab or server-side timing on the
+Curate-stage endpoint for a repo resource) before changing anything — "slow" and "shows nothing"
+could be the same root cause (a request that times out or errors silently, rendering as empty) or
+two unrelated ones (a genuinely slow query, and a separate reason the task list comes back empty).
+
+## `survey_definition_executor._ADAPTERS` has no test reset — a real-key registration in one test clobbers the real adapter for every test after it in the same process (found bisecting Section E's CI-red, 2026-09-28)
+
+`_ADAPTERS` is a module-level, process-lifetime registry mapping `entity_type` → adapter. Every
+existing test in this area registers its fixtures under `entity_type="fake"`, by convention, never
+under a real key — but nothing enforces that convention, and Section E's own
+`TestProposeProducerDefinition` broke it: it registered a zero-step stub adapter under the REAL
+`entity_type="database"` key, permanently overwriting the real database adapter for the rest of
+that pytest process. Three unrelated `/candidates` route tests two files away then failed with
+symptoms (`TestListCandidates`'s trio, already fixed once for a different reason on
+`re/tests-clear-candidates-cache`) that looked exactly like the earlier `_candidates_cache`
+staleness bug, costing real time before the two were told apart. The actual fix on Section E's own
+branch was a one-line change — using `entity_type="fake"` like every other test in that file — not
+a shared-infrastructure problem.
+
+**Fix direction, not attempted here**: an autouse fixture that snapshots and restores `_ADAPTERS`
+around every test (the same shape as `survey_definition_reader.py`'s own `clear_caches()` autouse
+fixture on `re/tests-clear-candidates-cache`), plus a `register_adapter()` guard that refuses to
+overwrite an existing REAL key unless explicitly forced (`force=True` or similar) — so registering
+under a real key by mistake fails loudly at registration time instead of silently corrupting every
+test that runs afterward. With that guard in place, the existing "always use `entity_type=\"fake\"`"
+convention becomes a safety net other tests can rely on, rather than the only defence against this
+exact failure mode.
+
+**Worth noting as a debugging technique, not just a bug**: what actually found this was
+correlating one branch's red CI against sibling branches' clean full-suite runs pushed the same
+night (F 6615/0, G3 6612/0, G2 6621/0, the cache fix itself 6605/0) — only Section E's branch still
+failed the trio after merging `main`, which narrowed the polluter to that branch's own diff in
+minutes. Two hours of infrastructure hypotheses (Prefect server reachability, shared-registry
+state, a genuine semantic merge conflict) had been chased first without success.
+
+## Hand-written pyegeria mocks can encode the same wrong assumption they're testing against — sweep existing tests against a fixture-from-real-response rule (found 2026-09-29, doc-sources declare-and-probe slice)
+
+`read_back_doc_sources` (new, `resource_explorer/doc_source_egeria.py`) had a response-shape bug:
+its unit test mocked pyegeria's `get_related_metadata_elements` with the wrong shape
+(`{"elements": [...]}`), the code under test made the identical wrong assumption, and the mocked
+test passed — only the live gate check against a real Egeria platform caught that the real shape
+is `{"elementList": [{"element": {...}}]}` and the function was silently returning 0 references
+every time.
+
+**Decision (design session, 2026-09-29):** mocks of pyegeria response shapes must be captured from
+a real response and stored as fixtures under `tests/fixtures/pyegeria/`, never hand-written from
+memory or documentation. A hand-written mock and the code it tests can share the same wrong belief
+about an external API's shape, and then agree with each other forever.
+
+**Not done here**: a sweep of this codebase's existing hand-written pyegeria-response mocks against
+this rule, replacing any that were guessed rather than captured. Whoever picks this up should start
+by grepping test files for mocked pyegeria method return values (`get_related_metadata_elements`,
+`get_guid_for_name`, and similar) and checking each mock's shape against a real captured response
+before trusting it.
+
+## Enrichment stage IA — designer ask #350 pending
+
+Owner feedback during the #348 doc-sources gate (2026-09-29): does "Survey & analyses" belong as
+an Enrichment sub-tab, or should Enrichment's sub-tabs be organized around what a person supplies
+(lens, cost, ownership, documentation sources, confirmed glossary terms) and what consumes it?
+Written up for the designer as `ASK-DESIGNER-ENRICHMENT-STAGE-IA.md` (PR #350). #348 ships its
+Documentation sources block under the current sub-tabs regardless — the re-seating, if any, comes
+with the designer's reply, not before.
+
+## `database_surveys.survey_data` stored as TEXT, not JSONB — measured 8x cost, rejected for now (per-request-latency round 3, 2026-09-29)
+
+`ProjectRegistry.find_latest_database_survey_with_key`'s `jsonb_exists(survey_data::jsonb, %s)`
+query (per-request-latency round 2) costs ~340-490ms on `laz_local_adventureworks` (57 rows for
+that slug) even with a purpose-built GIN index on the cast expression — measured directly with
+`EXPLAIN ANALYZE`, the index does not help, because Postgres always rechecks the jsonb condition
+against the actual heap tuple for a bitmap scan, which means re-parsing the same large `TEXT`
+value regardless of the index (full evidence in `PER-REQUEST-SERVER-LATENCY-ROUND-3-IMPLEMENTED.md`, item 1).
+
+**Measured the real fix directly, via a throwaway `TEMP TABLE`** — same data, same query, same
+slug filter, `survey_data` stored as native `jsonb` instead of `TEXT`: **47ms vs 342-391ms, ~8x
+faster**, with no GIN index at all (a plain btree on `database_slug` was enough). There is
+genuinely nothing left to parse at query time once the value is stored pre-parsed.
+
+**Rejected for this round, not implemented — design's ruling (2026-09-29):** a `TEXT` → `JSONB`
+column type migration would only speed the recompute-when-missing path and the one-shot
+`backfill-board-summaries` CLI (per-request-latency round 3's diagnostic-0 established the
+steady-state board read never touches `survey_data` at all, via PR #349's persisted-summary fast
+path) — real, but not on a path a person's click takes directly. It is also **breaking**:
+psycopg2 returns a native `jsonb` column as an already-parsed Python `dict`, not a string, so
+every call site currently doing `json.loads(row.get("survey_data") or "{}")` would raise
+`TypeError: the JSON object must be str, bytes or bytearray, not dict` the moment the column
+stopped being `TEXT`. Affected call sites (`grep -rn 'survey_data' resource_explorer/ --
+include=*.py`, non-exhaustive but the real ones): `registry.py`'s own `record_database_survey`
+(the write side, `json.dumps`) and `get_database_surveys`/`get_latest_database_survey`/`find_
+latest_database_survey_with_key` (the read side); `surveyors/database/survey_definition_adapter.
+py`'s `_credential_capability_results` and every other `_operations_section_reader`-shaped
+results reader that pulls a section out of the stored blob; `web/routes/databases.py`'s
+`_to_summary`; `db_derived.py` does NOT read `survey_data` directly (it reads the structured
+detail tables instead, unaffected).
+
+**Take this together with the `_store_results` generic-mechanism consolidation above (same
+document, "clobbers a survey_data section" entry) — one migration, not two.** That entry already
+proposes rewriting how `survey_data`'s sections are read and written (a `requested_sections`-aware
+mechanism replacing the current per-field preserve-prior fallbacks); whoever picks that up will
+already be touching every one of the read call sites listed above, so folding the column-type
+change into that same pass avoids two separate migrations each touching the same reader set.
+
+## `db_classification`'s remaining cost after per-request-latency round 3: `apply_container_grain`'s own 89-query N+1, and no per-field-scoped read path
+
+Per-request-latency round 3 fixed the 398-query pattern in `db_derived.py`'s `load_inputs`
+(`_resolve_table_surveyed_at`'s walk → one `MAX(surveyed_at)` query per structured table) —
+`load_inputs` itself: 2.4s → 0.24-0.47s, fixture-verified identical output. Accepted as that
+item's deliverable, per design's ruling (2026-09-29) — no further work needed on `load_inputs`.
+
+**Two real, separate contributors remain, measured but not fixed, because they run at run
+completion and backfill time, not on a person's click** (design's own framing for deferring
+these — they wait behind the user-facing queue):
+
+1. **`apply_container_grain`** (`db_derived.py`, ~line 4552) — computes per-container breakdowns
+   for `db_relationship_graph`/`schema_conventions`/`subject_signals`/`coverage_signals`/
+   `preliminary_fit` via `fingerprint_by_container`/`relationship_graph_by_container`/
+   `conventions_by_container`, and makes 89 of its own `query_detail_rows` calls, independent of
+   (and not touched by) `load_inputs`'s fix. Same shape of problem — per-item queries where a
+   set-based read could likely do — in different functions.
+2. **`_raw_derived_field`** (`survey_definition_adapter.py`) — the reader every `db_derived`-owned
+   board analysis goes through (`db_classification` included) calls `run_db_derived` in FULL and
+   extracts just the one requested field. There is no per-field-scoped computation path at all:
+   asking for `db_classification` alone still pays for computing `db_relationship_graph`,
+   `grain_determination`, `schema_conventions`, and everything else `run_db_derived` produces.
+
+**Measured (combined round 1+2+3, `laz_local_adventureworks`):** `run_db_derived` overall,
+516-1036ms — over the 300ms target for a single field, with `apply_container_grain` as the
+dominant remaining cost once `load_inputs` stopped being it. Whoever picks this up next should
+start by checking whether `apply_container_grain`'s 89 queries have the same "walk one candidate
+at a time" shape `_resolve_table_surveyed_at` had (in which case the same set-based-query
+technique likely applies directly) before assuming a bigger redesign is needed.
+
+## Work list vs. investigation — the mechanism already unifies them, the UI doesn't say so (owner question, 2026-09-29, tagged for design)
+
+Owner's question while adding a database to an investigation from the left sidebar: "what is
+the difference, really, between a work list and an investigation? Should an investigation use a
+work list for its resources?"
+
+Design's answer: in the registry they are already one mechanism — `working_sets` +
+`working_set_members` — and an investigation owns exactly one working set
+(`investigation_working_set_slug`, `get_or_create_working_set`). A sidebar "work list" is a
+working set with no investigation attached. So an investigation already USES a work list for its
+resources; what's actually missing is the UI saying so, plus two actions that follow from taking
+that unification seriously:
+
+- "Start an investigation from this work list" — the list becomes the new investigation's scope.
+- "Add this work list's members to investigation X" — merge an existing list's members into an
+  investigation's working set.
+
+Small slice. Sent to the designer as `ASK-DESIGNER-WORK-LISTS-VS-INVESTIGATIONS.md` (PR #354),
+same shape as the Enrichment IA ask (`ASK-DESIGNER-ENRICHMENT-STAGE-IA.md`, PR #350) — scheduled
+after that reply, same sidebar/IA territory, no need to design it twice in two passes.
+
+## Questions-envelope latency slice — cancelled, the number decided it (2026-09-29)
+
+Scoped as a follow-on to the per-request-latency rounds (same mechanism as `board_summary`:
+persist each question's resolved envelope at run completion, one-shot backfill at merge, 30s
+degrade rule) on the strength of `getQuestions()` measuring 48-52s on adventureworks under load.
+Measured directly against the fully-merged main before dispatching it: **0.8-1.3s cold load**,
+a ~25-65x improvement, even though nothing in rounds 1-3 targeted this endpoint directly. The
+48-52s was the PER-REQUEST cost (schema-verification-per-construction, an undersized connection
+pool, event-loop-blocking N+1 queries) that rounds 1-3 fixed, not a problem with the readers
+themselves. Full measurement: `QUESTIONS-TAB-COLD-LOAD-MEASUREMENT-2026-09-29.md`.
+
+**One line kept open**: the Assessment-stage's first call (a larger question set) measured 4.1s
+in the same session — not part of the gate (not a controlled cold-restart), but worth watching.
+Revisit if a stage tab exceeds 2s on coco_pharma or a bigger database.
+
+## Serve provenance: no way to see what commit a build is running (2026-09-30, E1 gate)
+
+During E1's (`re/enrichment-e1-context-tab`) repeated gate/re-check cycle on 8813, the owner
+asked whether the build was stable because the branch kept moving under him mid-check, and had
+no way to confirm what he was looking at. Separately, a worktree directory name mismatch
+(`wt-relgraph`, a leftover name from an earlier gate, reused as the one detached-checkout
+worktree for every serve) triggered a false alarm that every re-check result that day might be
+void — resolved only by pulling process-level proof (cwd, `git rev-parse HEAD`, import
+resolution) by hand.
+
+There's no `/api/version` or equivalent: `app.py` and `routes/` have no `api/version`,
+`git_sha`, or `health` endpoint. The only commit sha anywhere is a repo resource's
+`last_commit_sha`, which is resource data, not build metadata.
+
+Add a `/api/version` endpoint that returns the served commit (`git rev-parse HEAD` at server
+start, or read from an env var set at deploy time), and surface it in the `/next` footer so
+anyone looking at a served build can independently confirm what they're gating, without needing
+someone to pull process-level proof for them.
+
+## No evidence trail for a slow request (2026-09-30, E1 gate)
+
+During E1's gate, the owner reported "Reading the analyses…" on adventureworks Scouting hanging
+for over a minute. In-process measurement (main vs. the E1 branch, real adventureworks data)
+found no code-path cost that could explain it — `build_analyses_index` and
+`build_question_checklist` both completed in under a second, cold or warm, on both branches. The
+stall could not be reproduced outside the live server, and the live server's own logs showed
+nothing: no request-timing evidence survives a slow request today.
+
+Add a server-side log line for any request whose handling exceeds a threshold (e.g. 5s), naming
+the route and the elapsed time, so the next stall — whether it's thread-pool saturation, registry
+contention, or something else live-only — leaves evidence instead of being unreproducible after
+the fact. Logged here rather than fixed as part of E1, since the in-process numbers ruled out an
+E1 code-path regression; this is investigation infrastructure, not a fix for a known bug.
+
+## Stale evidence rail outside the Context tab (2026-09-30, E1 gate)
+
+**Status: fixed by branch `re/stale-rail-clear` (2026-10-01)** -- see `docs/design-notes/implemented/STALE-RAIL-CLEAR-IMPLEMENTED.md`. Not yet merged; the entry below is the original report.
+
+E1 fixed the Enrichment evidence rail (`#rail-evidence`) carrying over a previously-viewed
+resource's measurements when rendering the Context tab — it now clears on slug change and shows
+a loading frame until the new fetch lands. That fix only covers Context's own render path.
+
+The same slot is shared across the whole app (written by `renderEnrichment`, `showEvidence`, and
+`openMembers`) and nothing clears it on a plain tab or resource change outside Context — only the
+user's own "close" button clears it. This was caught live during E1's gate: main's Schema
+Inventory pane showed a stale "Evidence · enrichment" panel left over from an earlier Enrichment
+visit, which briefly looked like a missing feature on the E1 branch (E1 correctly shows nothing
+there, since Schema Inventory has no rail-writing path of its own) before being traced back to
+main's pre-existing staleness bug.
+
+Apply the same clear-on-change rule the Context fix uses (clear the rail's state and show a
+loading frame) to every stage/tab transition and resource-slug change, not only Context renders
+— a rail showing another resource's evidence anywhere is a false claim on screen. Pre-existing on
+main; not part of E1's scope, follow-up PR after E1 merges.
+
+## Old Enrichment form is dead code (2026-09-30, found during E2)
+
+`renderEnrichmentForm`/`renderEnrichment` (`resource_explorer/web/static/next/stages/enrichment.js`,
+mount at line 246 as of E1) have no callers anywhere under `resource_explorer/web/static` — E1
+already rewired everything onto the Context tab, so the old form's own mount is unreachable. This
+is the same dead path that caused E1's own doc-sources-unreachable bug (design's own comments in
+`app.js` claimed the form "now lives on the Context tab instead," and that claim is what hid the
+bug until a fix agent traced call paths by hand).
+
+Delete `renderEnrichmentForm` and `renderEnrichment`, move anything still imported from them
+elsewhere in the module, and let the existing routing-level tests (the ones that go through real
+stage/tab navigation rather than calling render functions directly) prove nothing was lost —
+exactly the kind of check that would have caught the original bug immediately. Small, mechanical
+cleanup. **Sequencing:** do this after the native Egeria survey slice merges, since that slice
+also edits Survey & analyses in the same file — landing the cleanup first would create needless
+merge overlap.
+
+## No self-heal for a dead database/filesystem Egeria GUID (2026-09-30, native survey slice)
+
+Found tracing why coco_pharma's stale Egeria asset GUID didn't quietly show as "catalogued": it
+doesn't — `describe_publish_status` already reads the linkage row honestly ("published to
+Egeria · link stale since ... — element not found"). The status half of self-heal already works.
+The heal half doesn't exist for databases or filesystems:
+
+- `recheck_all_linkages` is CLI-only, no scheduled caller found.
+- `guard_linkage` only runs reactively, when a publish or survey happens to hit the dead GUID.
+- The scheduled `egeria_resync` scan (`clear_stale_assets`, `flag_vanished_publishes`) covers
+  **repos only** — its `stale_assets` scan reads the `projects` table, so it never looks at
+  databases or filesystems at all. It had been cycling for four days past coco_pharma's dead GUID
+  without ever seeing it.
+- `catalog_assets` is deliberately manual, and the outbox has no enqueue kind for a database or
+  filesystem asset publish at all — only repos have one.
+
+Same shape as this project's other "configured for one kind, never the other" bugs (E2's
+publish-hook finding earlier tonight is the same pattern). Fix: add an outbox enqueue kind for
+database/filesystem asset publishes, and extend `egeria_resync`'s stale-assets scan to cover
+databases and filesystems, not only the `projects` table. Until then, a dead database/filesystem
+GUID stays dead until someone manually republishes it.
+
+**Update 2026-10-03, after the Egeria reset: this moves up.** Two databases (`laz_local_adventureworks`,
+`localhost_docker_coco_pharma`) kept reading `is_published: True` against asset GUIDs Egeria no longer held;
+the Alignment scan reported nothing for them because `stale_assets` covers repos only. Only a manual
+`recheck_all_linkages` (databases only, owner-approved, after a peer check) flagged them stale. Design's ask
+(2026-10-03): the resync pass should re-verify flagged and published database rows against Egeria on every
+pass, as it now does for repositories, and the same for filesystems.
+
+**Status 2026-10-04: scan and flag fixed, PR #453** (`DB-FS-ASSET-SELFHEAL-IMPLEMENTED.md`). The scheduled pass re-verifies and flags (never deletes) database and filesystem GUIDs. Still not built: the outbox enqueue kind for database and filesystem asset publishes, and live proof that `ClassificationExplorer.get_element_by_guid` returns the expected shape for those asset types (a surprise shape fails safe as 'undetermined'). The registry held no filesystems on 2026-10-03, so the filesystem half has only stub tests.
+
+## A failed "Find databases" load shows "Try again" and no reason (2026-10-03, post-reset walk)
+
+Right after the Egeria reset, opening Find databases showed the Saved sources tab with no count and only a
+"Try again" button; the second try loaded both saved sources and all 15 of their registered databases (13 and
+2). So nothing was lost and the first failure was transient. The defect is that nothing said why: `loadServers`
+(`db-server-discovery.js`) sets `view.status` to the failure text and `render` prints it under the tabs, yet the
+screenshot showed no line there. Not diagnosed: whether the text was cleared by another handler, or the call
+failed in a way that produced an empty message. Reproduce by making `/api/db-servers/` fail once, check the
+message appears, and keep the failure text until the next successful load.
+
+## Dead outbox rows cannot be purged, and the retention purge never touches them (2026-10-03, post-reset check)
+
+After the reset the Publish Queue held 10 dead rows, all `collection_membership` for the investigation
+`egeria-understanding`, all the same "collection not found" error (see the "outbox retries a permanent target
+not found" entry). `purge_outbox_completed` deletes only `status='done'` rows (`registry.py` ~:7900), so these
+stay until a person acts, and the only control found is per-row retry, which would fail again. Needed: a way to
+discard a dead row deliberately (with a reason, and a visible record that it was discarded), or have the repair
+that clears a stale investigation GUID also close the dead rows that named it. The investigation itself now has
+no Egeria Project, which is the owner's decision (Alignment, "Investigations with no Egeria Project").
+
+## Do the 1,880 `done` outbox rows hold pre-reset GUIDs that a republish would trust? (2026-10-03, open question)
+
+`egeria-operations.md` §8 says a `done` row asserts a completed publish, `apply_element` short-circuits on a
+recorded GUID and a `done` row is never claimed again, so after a reset those rows point at elements that are
+gone. On 2026-10-03 the outbox held 1,880 `done` rows. `registry.reopen_outbox_row` (~:4614) exists to reopen a
+row instead of minting a second one, but who calls it, and whether it fires for these rows when a repo is
+republished, is not checked. Answer before the next republish: republish ONE repo and prove, from Egeria, that
+its annotations were written (not just that the outbox says `done`). If they were not, the fix is to reopen or
+retire `done` rows whose recorded GUID no longer resolves, in the same pass that clears stale assets.
+
+## Egeria's projected secrets file doesn't survive a redeploy (2026-09-30, native survey slice)
+
+A real submission on adventureworks failed with `FATAL: role "default" does not exist` — traced
+to `/deployments/secrets/resource-explorer.omsecrets` (RE's projection of credentials it already
+holds, via `omsecrets_store.py`, into the directory Egeria's YAMLFile secrets-store connector
+reads) being missing from both the container and the bind-mounted host directory. The three files
+that do survive are all stamped the same time as the 2026-09-29 redeploy — that redeploy reset
+`/deployments/secrets` to its shipped defaults and silently wiped RE's own projected file. With no
+secret, Egeria's JDBC connector falls back to the container's OS user, literally named "default",
+which doesn't exist as a Postgres role — hence the error. RE's own registry still holds the real
+credentials the whole time; nothing was lost, just not re-projected after the reset.
+
+Two follow-ups (project owner decision, 2026-09-30 — not this slice, not tonight):
+1. Add a `database reproject-secrets <slug>` command that projects the credentials RE already
+   holds — decrypted via RE's own existing decryption path, the same one the survey runner itself
+   uses when it connects — into the secrets file, so nobody has to type a password again to
+   recover from a redeploy. Call the same projection at RE startup and on each `egeria_resync`
+   pass whenever a database/filesystem's collection is found missing from the file, so a redeploy
+   heals itself instead of silently failing every native survey until someone re-traces it by
+   hand (as was done once, manually, the night this was found).
+2. Add a line to the setup docs noting that a quickstart redeploy resets `/deployments/secrets`,
+   so the next person who hits this recognizes it immediately instead of re-tracing it from an
+   opaque Postgres role error.
+
+A same-slice fix already adds a Run precondition that checks for the projected collection before
+submitting and refuses with a clear message if it's missing — this backlog item is only the two
+follow-ups beyond that (auto-heal, and the docs line), not the immediate symptom.
+
+**Done 2026-10-02:** follow-up 1 (`database reproject-secrets`, plus automatic projection at startup and on each resync pass) — `docs/design-notes/implemented/REPROJECT-SECRETS-IMPLEMENTED.md`. Follow-up 2 (the setup-docs line) is not done.
+
+## `database update-credentials` takes the password as a bare CLI argument (2026-09-30, native survey slice)
+
+Found while working out how Dan should safely run it tomorrow: `--password` is a required Typer
+option with no interactive prompt (`hide_input=True` never takes effect, since nothing prompts).
+Passing it plainly puts the password on the command line and in shell history unless the caller
+works around it (e.g. `read -rs PW; ... --password "$PW"; unset PW`). The `PATCH
+/api/databases/{slug}/credentials` route has the same exposure via its JSON body.
+
+Make `--password` optional with a hidden interactive prompt when omitted (Typer supports this
+directly), and document that the PATCH route's body can come from stdin/a file, so a credential
+never has to sit in a command line or a request made visible in a shell history or process list.
+
+## Gate servers must run under the served configuration (2026-09-30, native survey gate)
+
+**Decision (project owner's design session, 2026-09-30):** a gate server (8813, or whichever port
+serves a branch under test) must load the same `.env` the production/dev server (8810) reads, not
+whatever configuration happens to fall out of the worktree's own directory layout. Found live:
+8813 imports from a worktree with no `.env` of its own, so every 8813 gate to date silently ran
+with Prefect off, a different JWT secret, and no GitHub token — none of it chosen, all of it
+invisible until this slice's gate needed Prefect dispatch (item 6, whole-definition run storing a
+`flow_run_id`) to actually exercise the real path.
+
+Fixed for tonight by having the 8813 launch script explicitly load the main checkout's `.env`
+rather than symlinking (a symlink inside a worktree PR/CI recreates would silently vanish). Follow-up:
+the `/api/version` endpoint already logged above (see "Serve provenance") should show the env file
+path it loaded, next to the commit, so this stays visible rather than needing to be re-discovered.
+
+## `database update-credentials` never proves the credential works (2026-09-30, project owner design session)
+
+Found the hard way: the project owner ran `update-credentials` for coco_pharma with his own
+Egeria sign-in name and a placeholder password (following an ambiguous instruction — "--user
+<role>" with an example that looked like a person's name rather than a database login), and the
+command accepted it with no complaint. The database's real credential was silently replaced by
+one that had never been shown to work, and the drift check (which only compares the registry
+against the projected secrets file) had no way to catch it, since both sides agreed on the wrong
+value.
+
+**Decision (project owner's design session, 2026-09-30):** `update-credentials` should test the
+connection with the supplied values BEFORE saving, and refuse with the server's own error if the
+test fails. A credential that has never been proven to connect should never replace one that
+was — even if the new one is what the caller intended, silent acceptance of an unproven value is
+the actual defect, not just this one instance of a wrong value.
+
+## Wire "Catalog and Survey" for one-click execution (2026-09-30, native survey gate)
+
+Raised by the project owner while gating the native Egeria survey slice: on coco_pharma's
+Enrichment → Survey & analyses (and every other stage's Survey & analyses), "Catalog and Survey"
+shows locked with "RE cannot run this one: it creates the catalogue entry from a connection
+template (host, port, credentials) before surveying it, and RE does not collect those template
+placeholder properties." RE already has all of that data for a registered database — it's not a
+missing-information problem, it's that Egeria's `PostgreSQLDatabase:CreateAndSurveyGovernanceActionProcess`
+expects the values supplied as template placeholder parameters at submission time, a different
+shape than the connection info RE already stores and uses for publishing.
+
+This was explicitly scoped out of tonight's native-survey slice (see
+`config/technology_type_processes.yaml`'s own comment: "Not (yet) wired for one-click execution
+from RE, since that needs template placeholder parameters rather than an existing GUID — shown as
+informational only") — correctly out of scope there, since every database gated tonight already
+had an Egeria asset, so "Survey PostgreSQL Database" (survey an *existing* cataloged asset) was
+the right tool regardless. But it's a real gap for the case this doesn't cover: a database that
+has never been catalogued in Egeria at all, where this process would be the one-click path to
+both create and survey it in one step.
+
+Follow-up: map RE's already-stored connection fields (host, port, credentials via the existing
+secrets-projection mechanism) onto this process's expected template placeholder parameters, and
+wire it for one-click execution the same way "Survey PostgreSQL Database" already works.
+
+## Sidebar filter box doesn't clear on resource-type tab switch (2026-09-30, found during E3 gate)
+
+Found by the project owner while walking E3's gate: typing a search string into the left
+sidebar's filter box under one resource-type tab (Repos, DBs, FS) and then switching to a
+different tab leaves the old string in the box, filtering a list it was never typed against.
+Small UI fix: clear (or at least re-scope) the filter input's value when the active sidebar tab
+changes.
+
+## The outbox retries a permanent "target not found" eight times before dead-lettering it (2026-10-03, owner's pre-reset check)
+
+Before an Egeria reset the owner's Publish Queue showed 10 dead rows, all the same error: attaching a
+member to a collection whose GUID Egeria no longer holds (HTTP 404, `OMAG-REPOSITORY-HANDLER-404-007`,
+wrapped by pyegeria as a 400 `PyegeriaNotFoundException`). The outbox cannot tell that from an outage,
+so each row burned its 8 attempts with exponential backoff and then needed a human. A 404 on the
+*referent* is permanent: the investigation's stored Egeria GUID is stale, which is exactly what
+`egeria_resync`'s `stale_investigation_guids` finding reports.
+
+Fix, in `egeria_outbox.drain_outbox`: classify a not-found on the referent as non-retryable, dead-letter
+it on the first attempt with a plain-language reason, and flag the owning investigation's linkage as stale
+(`flag_vanished_publishes` already writes that kind of flag). Open points: confirm all 10 rows named the
+same collection GUID, and whether the purge removes dead rows (the retention purge only removes `done`).
+
+## Run the resync scan, and read the Publish Queue, before and after every Egeria reset (2026-10-03, runbook)
+
+The owner resets Egeria every few days. `egeria-operations.md` §8 now has a "before the reset" checklist
+(stop RE, empty the outbox, read any dead rows' errors) because the reset erases the Egeria state that
+explains them. Its §2.3 repair table lists 8 steps; `REPAIR_STEPS` in `egeria_resync.py` has 9
+(`flag_vanished_publishes` is missing from the table). Bring the table back in line with the code, ideally
+by a test that fails when they differ.
+
+## Resource controls: scope buttons still read "＋ scope" / "− scope" (2026-10-03, #445 walk)
+
+The owner's walk of #445 passed five of design's six checks. Check 5 (the grouped Select bar) is partial:
+`app.js` `selectActionsHtml` (~:2272, :2275) still says "＋ scope" / "− scope", where
+`REPLY-DESIGNER-RESOURCE-CONTROLS-PLACEMENT.md` §5 rules "＋ add to <investigation>" / "− remove from
+<investigation>". "save as work list" also lacks the ruled ellipsis and keeps the accent border. The
+ruling does not say what the buttons read when no investigation is selected (they are disabled then):
+ask design for that one line before the slice.
+
+**Status 2026-10-04: mostly fixed, PR #451** (`SCOPE-WORDING-IMPLEMENTED.md`). Wording, truncation, the ellipsis and the visible 'no investigation selected' text are in and walked. Still open: with no investigation selected design wants '＋ add to an investigation…' ENABLED and opening a picker (open investigations plus 'start a new one', REPLY-DESIGNER-WORK-LISTS-VS-INVESTIGATIONS §4); no picker exists, so it stays disabled. That picker is design's W1 item 4.
+
+**Status 2026-10-04: the picker is built, PR #458** (`W1-PICKER-AND-ACTS-IMPLEMENTED.md`): with no investigation selected the add button is enabled and opens the picker, as design ruled; W1-C (#459) and W1-B (#460) finished the rest of work-lists-vs-investigations §1, §2, §4 and §5. Design's W1 item 4 is done.
+
+## CSV import: the confirm re-offers rows already in the investigation, and re-confirming overwrites their state (2026-10-03, #441 walk)
+
+Re-importing the same file previews "0 new · 3 already registered", which is right, but the confirm still
+offers "Add these 3 to <investigation>". `fileSelection()` (`db-server-discovery.js` ~:794) counts every
+already-registered line whenever an investigation is chosen, deliberately, so a scope export can be
+imported into a second investigation (the walk's check 4 passed). It never subtracts rows already in
+*that* investigation. Clicking is not a duplicate (`add_working_set_member`, `registry.py` ~:9182, is an
+upsert) but its `DO UPDATE` overwrites `membership_rationale` and `state`, silently resetting anything the
+owner set since.
+
+Fix: split the preview into "already in <investigation>" (not counted, not offered) and "registered, not
+yet in it" (counted). Also consider making `add_working_set_member` keep an existing member's rationale and
+state, which fixes it for every caller but touches shared registry code.
+
+**Status 2026-10-04: fixed, PR #452** (`CSV-RECONFIRM-MEMBERS-IMPLEMENTED.md`), walked on 8810. Only the CSV import passes the new `keep_existing`; the other callers of `add_working_set_member` still overwrite, deliberately.
+
+## Findings supersession: what is not done (2026-10-03, `FINDINGS-SUPERSESSION-IMPLEMENTED.md`)
+
+- `scripts/repair_findings_supersession.py` exists and has not been run against anything real; applying
+  it to the shared registry is the owner's decision after a peer check (64, 91 and 50 stale rows were
+  counted for telemetry, provenance and SLA on 2026-10-02).
+- 15 single-call finding kinds are still not opted in (the audit table in that note).
+- `architecture_recovery` needs run-keyed supersession using `run_label`; a plain flag would retire sibling
+  calls' still-valid rows.
+
+## Deployment docs say nothing about `RE_DB_CREDENTIAL_KEY` (2026-10-03, credential-safety slice)
+
+Stored database passwords are encrypted with a key from the environment, and a registry restored or
+moved without the same key cannot read them: the list marks those rows "credential unreadable" and
+disables their runs (`LIST-TOLERATES-BAD-CREDENTIAL`). No deployment document names the variable, where
+it must live, or that losing it makes every stored password unrecoverable. Add that to the deployment
+guide and to the reset checklist in `egeria-operations.md`. (The code reads `RE_DB_CREDENTIAL_KEY`, then falls back to
+`TRELLIS_DB_CREDENTIAL_KEY`: `credential_crypto.py` ~:36.)
+
+Also after the next Egeria reset: the first bullet of the small-items list above ("Republish
+`RepoAssessmentSurvey`") is covered by bootstrap's unattended heal, which re-authors every definition
+whose canary is missing; do not also run `reauthor_survey_definitions` by hand (`egeria-operations.md`
+§2.1).
+
+## `DatabaseAssessmentSurvey` has no authored document, so its reconciler checks it against a guessed chain (2026-10-03, post-reset checks)
+
+After the 2026-10-03 Egeria reset, `scripts/reconcile_database_survey_definition_links.py --dry-run` printed
+"no authored document found for DatabaseAssessmentSurvey — reconciling against a linear chain derived from
+its step list, which would treat any branch as stale" (`survey_definition_reader.py` ~:1125) and reported
+`kept 0 edge(s)` for it, while `DatabaseScoutingSurvey` and `DatabaseAnalysisSurvey` kept 2 and 3. The
+dry run removes nothing; the risk is a real run on a definition that does branch, which would delete the
+branch's edges as stale. Not diagnosed: whether this predates the reset (it reads like a standing gap, not a
+heal failure), and whether a definition with 0 edges is a single step or a missing chain.
+
+Fix: author the `DatabaseAssessmentSurvey` document so the reconciler diffs against what was authored, or have
+the reconciler refuse to remove anything on a definition with no authored document.
+
+## `sql_analysis` has no Survey Type in `database_survey_types.csv` (2026-10-03, post-reset checks)
+
+Both database reconcilers warn: "DATABASE_STEP_REGISTRY step(s) with no Survey Type reference in
+database_survey_types.csv: ['sql_analysis']". The step is registered in
+`surveyors/database/survey_definition_adapter.py` (~:644, with no Survey Type) and runs RE's own SQL analysis,
+but the CSV that the database survey definitions are generated from (`generate_database_survey_definition.py`,
+"edit the CSV and regenerate") has no row for it, so it is in no authored definition and no Question term
+scopes it. Decide whether it needs a row (and which Question it answers) or is deliberately outside the
+generated definitions, and say so in the CSV's header if the latter. Likely the same gap as the item above.
+
+## Publish starts Egeria surveys and records no proof row (2026-10-04, post-reset watch by the PR/CI session)
+
+The database "Catalog & Survey in Egeria" path (`POST /api/databases/{slug}/publish`) calls
+`_initiate_survey` for the server and the database (`egeria_database_surveyor.py` ~:562-585) and only
+`log.info`s the engine-action GUIDs. `record_native_survey_submission` (`registry.py` ~:6712) is called only from
+`native_survey_run.py` (~:640, ~:645), so a survey started from Publish has no row, never shows in the
+native-survey list, and the UI can say it started with nothing to prove it. Fix dispatched 2026-10-04
+(`re/publish-records-survey-actions`): record the initiated actions through the same proof path, and make the
+"started" wording derive from what was recorded.
+
+**Status 2026-10-04: fixed, PR #455** (`PUBLISH-RECORDS-SURVEY-ACTIONS-IMPLEMENTED.md`). Not covered: see "Other Egeria surveys are started without a proof row" below.
+
+## The classic "Run Survey" confirm does nothing when browser dialogs are suppressed (2026-10-04, owner's marquez walk)
+
+The owner's first click on Run Survey for the never-surveyed `marquez` did nothing: no request reached 8810, and
+the likely cause is the `window.confirm()` under "Try Egeria first" being suppressed or dismissed without a
+visible sign. The retry worked (local survey ok, then publish and catalog ok). A `confirm()` that silently
+no-ops is invisible: replace it with an in-page confirmation (as /next does) or at least show a message when the
+call is skipped. Found only because the PR/CI session was watching requests; not diagnosed beyond that.
+
+## The first classic publish of `coco_pharma` after the reset did not write a GUID; cause unknown (2026-10-04)
+
+The owner reported "published coco_pharma from classic, it worked" on 2026-10-03 evening, but read-only checks at
+~02:20Z showed `egeria_asset_guid` still the dead `651d96af…`, no new native survey run and no activity row. The
+next publish (15:22Z) did work: a "link is stale" row, then the GUID moved to `17f0a963…` (exists) and the catalog
+write succeeded, so the stale-GUID path is fine. What the first attempt did is unknown (the UI reported success
+with no proof row, the failure this repo keeps hitting). Separately, `databases.status` stays `error` from RE's
+LOCAL connect ("password authentication failed for user surveyor" on `localhost (::1):5442`) although Egeria's own
+survey with the same projected credential via `host.docker.internal:5442` succeeded. Owner's rule: the Postgres
+on 5442 should accept the surveyor credentials and the one on 5432 uses `dwolfson`. So suspect an IPv6/`pg_hba`
+difference for RE's local connect, not a wrong password; unverified.
+
+## `/next` has no database Publish control (2026-10-04, parity gap, tagged for design)
+
+The database "Catalog & Survey in Egeria" / "Re-survey in Egeria" Publish button exists only in the classic UI
+(`static/index.html` ~:13379-13391 and its modal ~:1127, posting to `/api/databases/{slug}/publish`); nothing in
+`static/next` calls it. After a platform reset it is the only way to re-catalogue a database, so `/next` cannot
+yet do what a reset requires. Related to "Wire Catalog and Survey for one-click execution" above. Design
+question: where the control lives in /next (Curate's catalogue scope tree, the header, Survey & analyses), and
+what it says while publishing, with the Publish-proof-row fix above as the source of its status words.
+
+## Other Egeria surveys are started without a proof row, and the native-survey list hides the server survey (2026-10-04, #455 builder)
+
+PR #455 records the surveys that Publish starts. These still start surveys and record nothing:
+`scheduler.py` ~:780 (`trigger_survey_by_guid` for a database, no `step_runs` row),
+`surveyors/database/survey_definition_adapter.py` ~:275 (what it persists was not checked), the repo equivalents
+(`repo_survey_definition_adapter.py` ~:5150 and `egeria_publisher.py` ~:480-515), `EgeriaDatabaseSurveyor.trigger_survey_by_guid`
+(~:592, takes no registry), and `hybrid_filesystem_surveyor.py` ~:66 (a different class, not inspected). The hybrid
+database surveyor now records but passes no `submitted_by`, so those rows carry an empty identity. Separately,
+`native_survey_rows` lists only the "PostgreSQL Relational Database" process, so the server-survey row Publish now
+records (and a discovered Survey Definition process row) is stored and swept but never listed. Also seen, not
+changed: `_initiate_native_survey` calls `asyncio.get_event_loop()` inside a worker thread and works only because the
+route sets a loop.
+
+## Egeria 6.2 reuses survey annotations: what it means for RE (2026-10-04, from the egeria-workspaces PR notice)
+
+A coming egeria-workspaces PR says Egeria 6.2 reuses annotations when a repeat survey finds an unchanged resource, so
+one annotation is reported by many survey reports, and the annotation bean's single `fromSurveyReport` property
+becomes the list `fromSurveyReports` (the Portal's Tech Catalog handler is being switched to it). RE does not read
+that property: a grep of `packages/resource-explorer` finds no `fromSurveyReport`, and the read-back takes
+annotations from the report side (`egeria_survey_reader.annotations_from_report` reads `reportedAnnotations` of
+`get_asset_by_guid(report_guid, graphQueryDepth=1)`; `native_survey_annotations` is keyed on report GUID plus
+annotation GUID). So the rename needs no RE change. Not checked, and worth one look after the first repeat native
+survey of an unchanged database on a 6.2 Egeria: (1) the new report's `reportedAnnotations` still lists the reused
+annotations (if it lists only NEW ones, RE would store 0 and `derive_native_state` could read a clean repeat as
+empty); (2) any RE code that counts or de-duplicates by annotation GUID alone, not by report plus GUID; (3) whether
+the recreated Egeria is already 6.2: the jump from 91 to 318 annotations on `coco_pharma` after the reset
+(2026-10-03) may be the content pack or this change, and nobody has compared the types. pyegeria's reading of
+`fromSurveyReports` is a separate question for the egeria-python repo.
+
+**Update 2026-10-04: measured, annotation reuse did not fire.** The platform reports "Egeria OMAG Server Platform
+(version 6.2-SNAPSHOT)" and runs the local image `egeria-quickstart-platform:local`, built 2026-10-03 13:46 CDT, about
+two hours before the reset; the previous image was overwritten, so what ran before is unknown. A repeat native survey
+of the unchanged `marquez` (report `d66412c4`, 17:50Z) against the first (`ba7634bb`, 15:29Z) produced 49 stored
+annotations in both, identical type, summary and step, with ZERO shared annotation GUIDs: Egeria created 49 new
+annotations and reused none. RE read back the full report (stored equals recorded). The `coco_pharma` element holds 636
+associated annotations, which is two surveys of 318 each with nothing reused. Check (1) above (a report listing only
+reused annotations) is therefore still untested because the case never occurred; check (3) is answered by the next
+entry, not by reuse. To pin the build down, record the commit the image was built from.
+
+## `coco_pharma` was deliberately extended from 7 schemas to 29; RE should have surfaced the change and did not (2026-10-04, CORRECTED twice the same day)
+
+**Corrections.** This entry first read the jump from 61 to 266 tables as a schema filter the reset erased (PR #457), then
+as a change "nobody chose". Both were inferences and both were wrong. Cause, from the owner and read-only evidence: the
+Coco data owner (Mandy Chessell) extended `coco_pharma` deliberately as the Coco scenarios grew. Her commit `250cb8a8`
+("Add databases and Airflow DAGs for Coco data mesh", 2026-10-03 19:33 +0100, 602 files) adds 22 schema SQL files under
+`compose-configs/egeria-quickstart/docker-entrypoint-initdb.d/data/coco_systems/coco_pharma/` (`aus_inventory`,
+`austin_haz_mat`, `ca_payroll`, `coco_expenses`, `coco_haz_mat`, `coco_hrim`, `coco_inventory`, `coco_ledgers`,
+`coco_products`, `cocopages`, `ed_mfg_control`, `eddepot01`, `global_crm`, `kcdepot01`, `manufacturing_planning`,
+`mfctrl9482`, `nl_payroll`, `procurement01`, `sec_admin`, `uk_payroll`, `winch_mfg_control`, `winchdepot01`: exactly the
+22 schemas the survey gained), and arrived in dwolfson/egeria-workspaces as PR #598 (`mandy-chessell/oak2026`), merged
+2026-10-03 13:36 CDT. The platform image was built 13:46 CDT, the container recreated 15:36 CDT, and the new tables'
+files in Postgres were written 20:29 to 20:51 UTC the same day. An earlier commit `f4c6725d` (2026-09-27, "New Coco
+database fore digital products") is a different set of databases.
+
+What the measurements establish: all 79 recorded surveys of `localhost_docker_coco_pharma` (2026-09-02 to 10-03) saw at
+most 8 schemas, 61 tables and 479 columns, including four run as the superuser `egeria_admin`, so credential visibility
+does not explain it; `surveyor` has USAGE on 28 schemas and none on `demo` and `demo_auth`, which the old set included,
+so the old set does not track its grants; the old 61 was 58 base tables plus 3 views, the new 266 is 263 base tables
+plus 3 views (58 + 205), matching the native survey (29 schemas, 266 tables, 318 annotations: 266 table, 29 schema, 22
+column, 1 database).
+
+What it shows for RE: an intentional extension of a database RE tracks changed what Egeria's survey measures (it cannot
+be limited: every non-system schema is surveyed) and what the JDBC cataloguer would create, and RE did not surface it.
+Nothing on screen said "22 schemas are new since you last looked". The live element's connection is configured with only
+`databaseName`; `databaseSchema` is a recognised property that nothing sets. Egeria's catalogue also holds two table
+counts for this one database (61 in RE's own SurveyReport on the element, 266 from the native survey), and `surveyor` can
+SELECT only 208 of the 266 relations (25 of 29 schemas), which may limit column profiling (22 column annotations in both
+surveys); neither was looked into. Owner's pending 7-versus-29 question: 29 is the status quo and now the intended
+state; declaring a smaller scope would be a new decision to leave some of the new schemas out.
+
+Design consequences, recorded for the Curate scope slice and the next designer round:
+1. Nodes that appear after a scope was declared read "new since your scope was declared · undecided" on the scope tree,
+   and the commit's manifest lists them as "N new schemas not in your scope" (in the slice).
+2. A medium design row, not in the slice: the three views of the same change should agree, the scope tree's "new since",
+   Understanding's "since the last run" sentence, and Automate's change subscriptions, citing the source commit when
+   the change traces to one (the A5 git-as-provenance idea applied to data).
+3. Process lesson (the architect's): when a measurement shows a change in something people own, the next step is to ask
+   who changed it, not to name a cause.
+This remains the concrete example for `ASK-DESIGNER-CURATE-CATALOGUE-SCOPE-DATABASES.md` and
+`REPLY-DESIGNER-CURATE-CATALOGUE-SCOPE-DATABASES.md`.
+
+## W1 is built; what is left of the work-lists-vs-investigations ruling (2026-10-04)
+
+W1-A (#458), W1-C (#459) and W1-B (#460) cover design's §1, §2, §4 and §5. Left: §3, the investigation page's
+comparison grid and its "work lists: …" link back to its benches (design's W2). Known limits recorded by the builders:
+`work_lists.investigation` holds ONE investigation, so a list links to one at a time; there is no UI to tag an existing
+list by hand (only "Start an investigation from this list…" and the new PUT route do it); W1-C's special case (clicking
+Investigation on a linked list opens that investigation's Scope) therefore fires only for lists saved while an
+investigation was current; the sidebar's "Scope · N" counts every kind but the In scope chip it sets filters repos only,
+so on a database view the click changes nothing visible; the server still accepts the old `work_list` act action though
+no UI offers it, and the old report and member-list acts' to-do belongs in `WorkItemList` (design: separate ask, not
+built); `SPEC-REPORT-ACTS.md`, `ReportActs.dc.html` and `Report.dc.html` still say "add to work list". None of W1 has
+been run in a browser by its builders; the owner walked A and C on 8810 (pass), B is not walked yet.
+
+## "Add these to <investigation>" is hard to find from a finding's numbers (2026-10-04, design row for the next designer round)
+
+Owner's walk of W1-A on 8810: the member-list act "add to <investigation>" works, but it is reachable only through
+Assessment or Analysis "the numbers behind this ›", the right-column count link, then the Members rail, and only
+`cve_scan`, `manifest_parse`, `architecture_*`, symbol and data-file analyses have readers (`stage_page._opens_for`).
+The owner first looked under By analysis and in Scouting answers, where no member lists exist; Scouting's "numbers
+behind this" tables never open members. Not a build defect. Design's framing (the four-level model: resource,
+container, member, field): a count on any stage that counts members should open the same Members rail with the same
+acts, and a database's schema and table counts on Scouting are member counts too, which is also what the Curate scope
+tree wants to show. Design is folding it into its reply handling for
+`ASK-DESIGNER-CURATE-CATALOGUE-SCOPE-DATABASES.md` instead of a new ask. (`BACKLOG-TRIAGE-2026-09-30.md` is a dated
+snapshot with fixed counts, so this row lives here, not there.)
+
+## The CI `test` job's 30-minute cap cancelled two otherwise-green runs on 2026-10-04 (2026-10-04)
+
+`.github/workflows/resource-explorer.yml:50` sets `timeout-minutes: 30`. Of the 22 most recent push-run `test` jobs,
+20 took 15 to 22 minutes (the full-suite step 12.7 to 19.6), and two ran to the cap: main `974ac3e0` (01:48Z, 27.8 min
+in the suite step) and W1-A's `547110b4` (19:23Z, 27.4 min; 7626 passed, 0 failed, cancelled during Prefect
+temporary-server teardown, "Stopping temporary server on http://127.0.0.1:8101"). A re-run passed. No steady slowdown
+shows, so it reads as an intermittently slow runner or a slow teardown; which one is not known (the logs need
+authentication, per-test durations were not compared). A false red costs a re-run of about 20 minutes. Options:
+raise the cap to 45; or investigate whether teardown hangs. Owner's call pending.
+
+## Curate catalogue scope, slice A: what the owner's first look on `coco_pharma` found (2026-10-05, 8810 at 074869f0)
+
+PR #467 is live. Defects (small slice A2, no designer needed): (1) the tree shows 8 schemas and 61 tables because it
+reads RE's own LOCAL survey of 2026-10-03, which is credential-scoped (the page says "sees 6 of 8 schema(s), SELECT on 3
+of 61 relation(s)") and older than the 22 schemas Mandy added, so 21 of the 29 schemas are not on screen and "new since
+your scope was declared" cannot flag them; (2) the header reads "Egeria's latest survey: not measured yet" although the
+post-reset native survey (report `03b908a5`, 29 schemas, 266 tables) exists: the builder read `database_surveys` rows with
+`source = egeria`, and native surveys live in the native-survey rows (`step_runs`, `native_survey_annotations`); (3) there
+is no select-all, so declaring 29 schemas takes 29 clicks (needs "catalogue all schemas" and "all except…"); (4) the
+column title "Name" should read "Schema / table"; (5) the STATE column is cut off at the right edge (not established
+whether the table scrolls); (6) the "proposed: leave out · no writes since 09-30" rule fired on `coco_ods`, `eu_sales`,
+`target_sales` and `us_sales` from two surveys three days apart, which shows dormant, not unimportant.
+
+## The scope tree should show reused facts with an as-of date, an activity word and honest staleness (2026-10-05, owner)
+
+Owner: the facts a steward needs (row counts, size, whether a table is active) are results RE and Egeria have ALREADY
+produced (the stored survey annotations, e.g. a table annotation's tableSize and row counters), so reuse them rather than
+query Postgres again. Every number carries its source and as-of date, because `pg_catalog` statistics lag: `reltuples` and
+`n_live_tup` update on analyze or vacuum, and the write counters are in memory and reset on crash recovery. Measured on
+2026-10-05 (read-only): in `coco_pharma` the 7 old schemas (57 tables) show 0 live rows and 0 writes in `pg_stat`, while
+RE's own survey estimated about 3,413 rows in `coco_sus`, so for those tables "no writes" only means none since a reset;
+the 22 newly loaded schemas (205 tables) show 15 to 193 rows each and the same number of inserts, so counters do mark
+recent loading. Postgres keeps no per-table "last write" time; the usable signal is the change in counters between two
+surveys. Proposal: rows ("estimate" or "counted"), size, writes with the counter window stated ("12 writes since 10-03,
+window 1 day"), and an activity word, active / dormant / can't tell, where "dormant" requires a known window of at least
+a threshold (30 days suggested, owner to set) and otherwise reads "can't tell: counters only cover N days". The "no
+writes since" proposal must carry the same window rule.
+
+## Choosing among hundreds of tables: filter, sort and decide by criterion (2026-10-05, owner; design question)
+
+With hundreds of tables, and columns, a per-row choice does not scale. Owner: filters and sorts for tables (and columns),
+and decisions on a group that fits a criterion, for example "catalogue every table with Sales in its name". Open question
+for the designer: is a rule a stored, signed, dated object in the scope record (so a table that arrives later and matches
+is picked up and shown as matched by that rule), compiled to plain names at commit because Egeria's include and exclude
+lists match exact names only? Select-all and "all except…" are the degenerate case of the same control.
+
+## Cataloguing is incremental over time, not a one-time operation (2026-10-05, owner; design question)
+
+Users add schemas and tables as needs grow; the scope is a living record and every commit is a diff (design's §3 already
+says so). Owner wants that explicit in the drawing, including "new since your scope was declared" arriving on its own
+(slice A has the row; it needs the native-survey source above to see new schemas at all) and a rule-matched arrival (above)
+distinct from an unmatched one.
+
+## Decide earlier, finalise in Curate: should earlier stages propose or record "worth cataloguing"? (2026-10-05, owner; design question)
+
+Owner: some of the decisions about what to publish could be made in earlier stages (Scouting, Discovery, Assessment,
+Analysis), with Curate finalising and adjusting them instead of deciding from scratch. Design question: where does an
+earlier stage record such a decision, as a proposal from measurements or as a person's verdict, and how does Curate show
+its provenance? Related to design's rule that only measurements that decide alone may propose.
+
+## The Portal Overview reads `error_count` on RE's SurveyReports (2026-10-05, Portal session FYI)
+
+The Portal's Overview classifies survey reports by outcome: RE's reports ("Survey: <name> @ <host>") count as completed
+only when their `additionalProperties` carry `error_count=0`; the database reports record only table and column counts, so
+they show as "unknown outcome". Writing an `error_count` on those reports would make the Overview pick them up with no
+Portal code change.
+
+
+## Child module or component as a resource (2026-10-07, owner; backlog, not now)
+
+Compartmentalise a large repository behind clear boundaries: a selected module or component becomes its own top-tier
+resource, nested under its ancestor in the left-hand hierarchy and processed independently by surveys and curation (the
+owner's example: the Trellis monorepo viewed as Trellis itself, Egeria-Advisor and Resource-Explorer). Purpose: deeply
+nested structures become confusing and error-prone. Design seed: `docs/design-notes/DESIGN-CURATE-NESTING-SELECTION-AND-DEPENDENCY-KINDS.md` §2. It must not stand in the way of completing the work at the current level.
+
+## Zone configuration in the Admin panel (2026-10-07, architect; backlog)
+
+Deployment-set defaults for publish zones, later per kind or group, replacing the `EXPLORER_PUBLISH_ZONES` environment
+variable. Context: promotion of accepted blueprints and components is moving to the catalog commit's configured-only rule
+(no zone unless one is configured); see the same design note.
+
+## Refine the ingestion rules; make ingesting code optional (2026-10-07, owner)
+
+On the owner's egeria_git survey, the RAG-ingestion step produced 51,729 chunks (outcome "recovered") from code. The owner's
+direction: refine the ingestion rules, or at least make ingesting code optional per resource, so a survey of a code
+repository does not ingest all of its code by default. Not designed; the rules (what is ingested, by kind and path) and
+where the choice is made (resource, investigation or Admin default) are open.

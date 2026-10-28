@@ -33,6 +33,21 @@
      spans — it is a manual pass, so the class is deliberately short. */
   .tnum { font-feature-settings: "tnum"; font-variant-numeric: tabular-nums; }
 
+  /* Resizable table columns (next/colresize.js): a thin vertical bar at a header cell's right
+     edge, drawn on hover, on keyboard focus and while dragging. currentColor, so it follows the
+     theme; the cursor says what a drag does. */
+  .rc-handle {
+    position: absolute; top: 0; right: 0; bottom: 0; width: 7px;
+    cursor: col-resize; touch-action: none; user-select: none;
+  }
+  .rc-handle::after {
+    content: ""; position: absolute; top: 2px; bottom: 2px; right: 2px; width: 2px;
+    background: currentColor; opacity: 0; border-radius: 1px;
+  }
+  *:hover > .rc-handle::after { opacity: 0.25; }
+  .rc-handle:hover::after, .rc-handle:focus-visible::after, .rc-handle[data-rc-active]::after { opacity: 0.8; }
+  .rc-handle:focus-visible { outline: none; }
+
   /* Never the browser default. */
   :focus { outline: none; }
   :focus-visible { outline: 2px solid #b68235; outline-offset: 2px; }
@@ -275,11 +290,11 @@
     .seam { display: none; }
   }
   /* The header is a two-line masthead on a phone, not a six-line one. The
-     investigation name and the cross-link to the current UI are context, and
+     investigation name is context, and
      context is what a 375px screen has least room for — the content is why
      anyone opened it. */
   @media (max-width: 780px) {
-    #investigation-name, #investigation-scope, #switch-ui { display: none; }
+    #investigation-name, #investigation-scope { display: none; }
     #intent-nav { overflow-x: auto; white-space: nowrap; }
     #perspective-row { max-height: 2.4em; overflow: hidden; }
   }
@@ -342,7 +357,7 @@
 <div class="flex h-full flex-col">
 
   <!-- ── Top bar ───────────────────────────────────────────────────────── -->
-  <header class="flex flex-wrap items-center gap-s4 border-b border-chrome-line px-4 py-[10px]">
+  <header class="relative flex flex-wrap items-center gap-s4 border-b border-chrome-line px-4 py-[10px]">
     <!-- Below 780px the sidebar is a drawer and this is the way in. It lives
          in the MASTHEAD, not in the nav row below: that row overflows
          horizontally at this width, which put the button at x=882 on a 375px
@@ -363,13 +378,20 @@
         title="Largest text">A</button>
     </span>
     <span class="font-heading text-brand font-semibold">Resource Explorer</span>
-    <span id="scope-slug"
-          class="rounded-sm border border-accent-deep px-2 py-[2px] font-mono text-provenance text-accent-on-dark"></span>
+    <!-- The resource's own menu (REPLY-DESIGNER-RESOURCE-CONTROLS-PLACEMENT.md
+         §1): the name is bordered in the accent-deep colour, which is how a
+         control looks, so it IS one. Hide/unhide and Remove live behind it
+         because this is the one element that names the current resource on
+         every stage and sub-tab. app.js renderTopBar() fills it and binds it. -->
+    <button id="scope-slug" type="button" aria-haspopup="menu" aria-expanded="false"
+            title="This resource's menu: hide, remove"
+            class="cursor-pointer rounded-sm border border-accent-deep bg-transparent px-2 py-[2px] font-mono text-provenance text-accent-on-dark disabled:cursor-default"></button>
     <span class="ml-auto flex items-center gap-s4 text-[12px] text-chrome-muted">
-      <button id="activity-open-btn" type="button" title="Recent activity — scouting, survey, catalog, publish, RFA"
+      <button id="activity-open-btn" type="button" title="Recent activity — scouting, survey, publish, RFA"
         class="cursor-pointer bg-transparent text-chrome-muted hover:text-chrome-ink">📋 Activity
-        <span id="activity-count" class="tnum text-accent-on-dark">–</span></button>
-      <button id="admin-open-btn" type="button" title="System/catalog configuration — annotation types, question catalog, logs, feedback, Prefect, plus links to the rest in the current UI"
+        <span id="activity-count" class="tnum text-accent-on-dark">–</span>
+        <span id="activity-unread" class="tnum hidden rounded-sm border border-accent px-[5px] text-accent-on-dark"></span></button>
+      <button id="admin-open-btn" type="button" title="System configuration — annotation types, question catalog, logs, feedback, Prefect, plus links to the rest in the current UI"
         class="cursor-pointer bg-transparent text-chrome-muted hover:text-chrome-ink">⚙ Admin</button>
       <span id="investigation-name">No investigation</span>
       <!-- RULING-NAV-GROUPING.md §3: "Investigation additionally becomes a
@@ -385,13 +407,14 @@
            binding step) and is deliberately NOT built here — see
            NAV-GROUPING-IMPLEMENTED.md for why it's deferred. -->
       <span id="investigation-scope" class="text-chrome-muted"></span>
-      <span id="whoami">–</span>
+      <button id="whoami" type="button" aria-haspopup="dialog" title="Connection details: who you are signed in as, which Egeria, which build"
+        class="shrink-0 cursor-pointer whitespace-nowrap border-0 bg-transparent p-0 text-chrome-muted underline decoration-dotted hover:text-chrome-ink">–</button>
       <!-- Make switching one click, and say which UI you are in. Testers
            comparing one repo in both shells in one session is what produces
            usable feedback. -->
-      <a id="switch-ui" href="/"
+      <a id="switch-ui" href="/classic"
          class="rounded-sm border border-chrome-line px-2 py-[2px] text-chrome-ink no-underline hover:border-accent hover:text-accent-on-dark">
-        /next · switch to current UI
+        Classic
       </a>
       <button id="logout-btn" class="cursor-pointer bg-transparent text-chrome-muted hover:text-chrome-ink">
         Sign out

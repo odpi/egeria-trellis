@@ -1,0 +1,10 @@
+{
+ "captured": "2026-10-14",
+ "platform": "Egeria 6.2 quickstart (qs-view-server), pyegeria 6.2.3",
+ "identity": "RE daemon (DaemonReason.ACCESS_CHECK), read-only",
+ "route": "MetadataExpert.get_metadata_element_by_unique_name",
+ "call": "read_element(<qn before archive>, for_lineage=True) body: S19's lookup",
+ "secrets": "keys matching token|password|secret|credential|apikey replaced by <removed>",
+ "graph_keys_dropped": [],
+ "answer": "No elements found"
+}

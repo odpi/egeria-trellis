@@ -55,6 +55,15 @@ class PublishableStep:
     # blanket switch. See docs/re-ea-consolidation-audit.md and the Prefect
     # entry in docs/Backlog.md for which steps and why.
     executes_at: str = "resource-explorer"
+    #: The step's authored options, as the request parameters its GovernanceActionExecutor carries (engine host
+    #: case 3, decision 2). (name, value) pairs; none are authored today, so the executor carries none.
+    request_parameters: tuple = ()
+
+    @property
+    def runs_on_re_engine(self) -> bool:
+        """Engine host case 3: a step RE runs is dispatched by Egeria to RE's engine (its executor). A step routed to
+        Prefect or Egeria's own engines gets no executor here (design §4.1: `executes_at` and the executor agree)."""
+        return self.executes_at == "resource-explorer"
 
 
 def _step_qualified_name(survey_group: str, step_key: str) -> str:
@@ -84,12 +93,51 @@ def render_step_block(survey_group: str, survey_display_name: str, step: Publish
         f"### Display Name\n{_step_display_name(survey_display_name, step.step_key)}\n\n"
         f"### Qualified Name\n{qn}\n\n"
         f"### Description\n{step.description}\n\n"
-        "### Additional Properties\n"
+        + _produced_guards_section(step)
+        # Engine host case 3 (H1): `NextGovernanceActionProcessStep` is MULTI_LINK and Dr.Egeria's Link Next only
+        # adds, so a republish can leave two identical links into this step. With Egeria coordinating, each one
+        # would start this step again (EngineActionHandler.initiateNextEngineActions, one engine action per matching
+        # link). `ignoreMultipleTriggers` makes Egeria start it once per process run, whatever the duplicates.
+        + "### Ignore Multiple Triggers\ntrue\n\n"
+        + "### Additional Properties\n"
         "| Parameter Name | Parameter Value |\n"
         "|---|---|\n"
         f"| executes_at | {step.executes_at} |\n"
         f"| supported_technology_type | {step.technology_type} |\n"
         f"| re_analysis_step | {step.step_key} |\n"
+    )
+
+
+def _produced_guards_section(step: PublishableStep) -> str:
+    """`### Produced Guards` for a step RE's engine runs: what it can complete with when Egeria coordinates the
+    definition (`step_outcome.produced_guards`, the same mapping the engine host completes with). None otherwise."""
+    if not step.runs_on_re_engine:
+        return ""
+    from resource_explorer.step_outcome import produced_guards
+
+    return f"### Produced Guards\n{', '.join(produced_guards(step.step_key))}\n\n"
+
+
+def render_executor_block(survey_group: str, step: PublishableStep) -> str:
+    """The step's "Link Action to Action Executor" (engine host case 3, decision 2): Egeria dispatches this process
+    step to Resource Explorer's engine under the request type of its step key, with the step's request parameters.
+    Part of the published definition, never a manual link. NOT safe to repeat in Egeria (Dr.Egeria's Link commands
+    are not idempotent); the reconciler reports a second executor as drift."""
+    from resource_explorer.engine_host import ENGINE_QUALIFIED_NAME, request_type_for_step
+
+    qn = _step_qualified_name(survey_group, step.step_key)
+    params = ""
+    if step.request_parameters:
+        rows = "".join(f"| {k} | {v} |\n" for k, v in step.request_parameters)
+        params = f"### Request Parameters\n| Parameter Name | Parameter Value |\n|---|---|\n{rows}\n"
+    return (
+        "## Link Action to Action Executor\n"
+        f"### Governance Action Type\n{qn}\n\n"
+        f"### Governance Engine\n{ENGINE_QUALIFIED_NAME}\n\n"
+        f"### Request Type\n{request_type_for_step(step.step_key)}\n\n"
+        f"{params}"
+        f"### Description\nEgeria dispatches {qn} to Resource Explorer's engine, which claims it and runs RE step "
+        f"{step.step_key}.\n"
     )
 
 
@@ -201,6 +249,11 @@ def generate_survey_definition_markdown(
     blocks.append(render_link_first_block(survey_group, steps[0].step_key))
     for prev, nxt in zip(steps, steps[1:]):
         blocks.append(render_link_next_block(survey_group, prev.step_key, nxt.step_key))
+    # Engine host case 3, decision 2: every step RE runs carries its executor to RE's engine, so Egeria can run the
+    # definition. Needs RE's engine and its request types declared first (engine-host/steps/).
+    for step in steps:
+        if step.runs_on_re_engine:
+            blocks.append(render_executor_block(survey_group, step))
     for question in answers_questions or []:
         blocks.append(render_scope_link_block(survey_display_name, question))
 

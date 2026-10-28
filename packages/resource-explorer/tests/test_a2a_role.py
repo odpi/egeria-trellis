@@ -76,7 +76,8 @@ def _app_jwt(user_id: str = "peterprofile", egeria_token: str = "egeria-abc") ->
     )
 
 
-def _egeria_jwt(user_id: str = "erinoverview", ttl: int = 3600) -> str:
+# Not the configured daemon (EGERIA_USER_ID defaults to erinoverview), which may not sign in (Brief L).
+def _egeria_jwt(user_id: str = "garygeeke", ttl: int = 3600) -> str:
     """A token shaped like Egeria's own: RS256 in life, but only its claims
     matter here — nothing verifies its signature, by design."""
     return jwt.encode(
@@ -176,7 +177,7 @@ class TestAuthentication:
                               headers={"Authorization": f"Bearer {token}"})
         assert r.status_code == 200
         assert r.json()["auth_source"] == "egeria-token"
-        assert r.json()["user_id"] == "erinoverview"
+        assert r.json()["user_id"] == "garygeeke"
         assert v.call_count == 1
 
     def test_a_rejected_egeria_token_is_401(self):
@@ -288,7 +289,13 @@ class TestDiscovery:
         body = _client().get("/.well-known/agents.json").json()
         assert body["version"] == __version__
         assert body["egeria"]["view_server"] == "qs-view-server"
-        assert body["egeria"]["platform_url"] == "https://localhost:9443"
+        # The index reports the platform from RE's own config (get_config()), not from the
+        # A2AAuthSettings handed to build_app, so the expected value is whatever the run
+        # configures (EGERIA_PLATFORM_URL); a hard-coded localhost only held on a bare machine.
+        from resource_explorer.config import get_config
+
+        assert body["egeria"]["platform_url"] == get_config().egeria.platform_url
+        assert body["egeria"]["platform_url"]
 
     def test_exactly_one_default_agent_and_it_is_the_orchestrator(self):
         body = _client().get("/.well-known/agents.json").json()
@@ -340,34 +347,38 @@ class TestServeCommand:
 
 
 class TestCallerPropagation:
-    def test_apply_caller_token_uses_the_callers_token(self):
-        """The downstream half of §4: whatever pyegeria client agent code
-        builds gets the *caller's* token, not the service account's."""
-        from unittest.mock import MagicMock
+    def test_the_factory_uses_the_a2a_callers_token(self):
+        """The downstream half of §4, through Brief I's one factory: a client built for the
+        A2A caller carries the *caller's* token, not the service account's."""
+        from resource_explorer.a2a_auth import CallerIdentity, current_caller
+        from resource_explorer.egeria_clients import Caller, egeria_client
 
-        from resource_explorer.a2a_auth import (
-            CallerIdentity,
-            apply_caller_token,
-            current_caller,
-        )
+        class FakeClient:
+            def __init__(self, *a):
+                self.user = a[2]
+                self.tokens = []
+                self.minted = 0
 
-        client = MagicMock()
+            def set_bearer_token(self, t):
+                self.tokens.append(t)
+
+            def create_egeria_bearer_token(self, *a):
+                self.minted += 1
+
         reset = current_caller.set(
             CallerIdentity(user_id="peterprofile", egeria_token="tok-123",
                            auth_source="app-jwt")
         )
         try:
-            apply_caller_token(client)
+            client = egeria_client(Caller(), purpose="test").of(FakeClient)
         finally:
             current_caller.reset(reset)
-        client.set_bearer_token.assert_called_once_with("tok-123")
-        client.create_egeria_bearer_token.assert_not_called()
+        assert (client.user, client.tokens, client.minted) == ("peterprofile", ["tok-123"], 0)
 
-    def test_with_no_caller_the_client_falls_back_to_its_own_credentials(self):
-        from unittest.mock import MagicMock
+    def test_with_no_caller_the_factory_refuses_rather_than_using_the_service_account(self):
+        import pytest
 
-        from resource_explorer.a2a_auth import apply_caller_token
+        from resource_explorer.egeria_clients import Caller, NoCallerIdentity
 
-        client = MagicMock()
-        apply_caller_token(client)
-        client.create_egeria_bearer_token.assert_called_once()
+        with pytest.raises(NoCallerIdentity):
+            Caller()

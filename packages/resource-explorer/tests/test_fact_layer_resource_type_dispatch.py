@@ -176,9 +176,13 @@ class TestTheDatabaseAdapterNowDeclaresResults:
     `/facts/{slug}/answer` route (`web/routes/analyses.py`).
 
     `analysis_source_steps`/`analysis_kinds` are declared too, as of the
-    follow-up below -- see TestTheDatabaseAdapterDeclaresLiveRead. `state_sources`
-    stays undeclared: no database question is answered directly off a
-    state-source table the way repo's "actively maintained?" is.
+    follow-up below -- see TestTheDatabaseAdapterDeclaresLiveRead.
+
+    `state_sources` is declared too now (DATABASE-DIRECT-FIELD-ROWS-IMPLEMENTED.md, 2026-09-29): 10
+    of the 11 database questions with no
+    analysis behind them at all are now answered directly off a
+    state-source table, the same way repo's "actively maintained?" is --
+    see TestTheDatabaseAdapterDeclaresStateSources below.
     """
 
     def test_the_results_map_is_the_database_one(self):
@@ -243,7 +247,7 @@ class TestTheDatabaseAdapterDeclaresLiveRead:
         f = FactLayer(registry_with_tables, resource_type="database").fact(
             "coco_ods", "schema_inventory")
         assert f.state == MEASURED
-        assert f.value["table_count"] == 1
+        assert f.value["relation_count"] == 1
 
 
 class TestAnUnknownResourceType:
@@ -269,7 +273,17 @@ class TestDispatchGoesThroughTheAdapter:
             entity_type="_fake_for_test",
             technology_type="Fake",
             re_analysis_steps={},
-            get_entity=lambda reg, slug: None,
+            # "a resource exists, nothing more" -- same contract as the
+            # `registry` fixture's own `get()` stub above, and as real
+            # `get_entity` implementations (`_get_project_entity`,
+            # `_get_database_entity`). `_resource_state_fact` now calls
+            # THIS (via `get_adapter(resource_type).get_entity`) instead of
+            # the hardcoded `self._registry.get(slug)` it used before
+            # (DATABASE-DIRECT-FIELD-ROWS-IMPLEMENTED.md) -- returning None
+            # here would make every resource-state question report "no
+            # resource named ... is registered", which is not what this
+            # fixture is testing.
+            get_entity=lambda reg, slug: object(),
             publish=lambda *a, **k: "",
             analysis_results_map=lambda: {"fake_analysis": (_results_reader, None)},
             analysis_source_steps=lambda: {"fake_analysis": ["fake_step"]},

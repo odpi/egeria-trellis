@@ -11,6 +11,7 @@ creating or editing a list — see `work_lists.WorkLists.publish`.
 from __future__ import annotations
 
 import logging
+from typing import Any
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
@@ -44,7 +45,20 @@ class WorkListCreate(BaseModel):
 class MemberUpdate(BaseModel):
     entity_slug: str
     rationale: str = ""
-    confidence: int | None = None
+    #: Published as CollectionMembership `confidence` (0-100). Taken as sent and checked by
+    #: `WorkLists.set_member` with the outbox's own `membership_confidence`: one rule, a 422 with its words.
+    confidence: Any = None
+
+
+class LinkInvestigation(BaseModel):
+    #: '' unlinks. Anything else must name an existing investigation.
+    investigation: str = ""
+
+
+class AddToInvestigation(BaseModel):
+    investigation: str
+    #: Omit for every member of the list; give a subset for the rows ticked.
+    entity_slugs: list[str] | None = None
 
 
 class PromoteRequest(BaseModel):
@@ -139,10 +153,24 @@ async def enqueue_batch(body: BatchRunRequest) -> dict:
             status_code=400,
             detail=f"unknown analysis {body.analysis_id!r}: {exc}") from exc
 
-    return wls.enqueue_batch(
-        body.analysis_id, slugs,
-        work_list_slug=body.work_list_slug, requested_by=_requested_by(),
-        entity_type=entity_type)
+    # Brief Z3: each member's Egeria write is checked as the caller (`egeria_work_access.batch_refusal`, the one
+    # decision); a refused member gets no run and comes back in `not_permitted` with its words, the rest run.
+    # Nothing permitted at all is a 403. Off the event loop: the check may read Egeria (bounded).
+    import asyncio
+
+    from resource_explorer.workflows.curate import CurationDenied
+    from resource_explorer.workflows.egeria_work_access import batch_refusal
+    from resource_explorer.zone_access import EgeriaAccessReader
+
+    registry = wls.registry
+    reader = EgeriaAccessReader()      # one batch: controls and accounts read once
+    try:
+        return await asyncio.to_thread(
+            wls.enqueue_batch, body.analysis_id, slugs,
+            work_list_slug=body.work_list_slug, requested_by=_requested_by(),
+            entity_type=entity_type, refusal=lambda s: batch_refusal(registry, entity_type, s, reader=reader))
+    except CurationDenied as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
 
 
 @router.get("/runs/sets/{set_id}")
@@ -167,6 +195,24 @@ async def get_work_list(slug: str) -> dict:
     return wl
 
 
+@router.get("/{slug}/export.csv")
+async def export_work_list(slug: str):
+    """A work list's members as the shared CSV contract, named
+    `re-work-list-<name>-<date>.csv`."""
+    from fastapi.responses import Response
+
+    from resource_explorer.batch_io import export_filename, rows_to_csv_text, work_list_export_rows
+
+    wls = WorkLists()
+    wl = wls.get(slug)
+    if not wl:
+        raise HTTPException(status_code=404, detail=f"work list {slug!r} not found")
+    name = export_filename("work-list", wl.get("display_name") or slug)
+    return Response(content=rows_to_csv_text(work_list_export_rows(wls.registry, wl)),
+                    media_type="text/csv",
+                    headers={"Content-Disposition": f'attachment; filename="{name}"'})
+
+
 @router.delete("/{slug}")
 async def delete_work_list(slug: str) -> dict:
     """Remove the list locally. Any Egeria Collection it published stays."""
@@ -184,8 +230,11 @@ async def set_member(slug: str, body: MemberUpdate) -> dict:
     wls = WorkLists()
     if not wls.get(slug):
         raise HTTPException(status_code=404, detail=f"work list {slug!r} not found")
-    wls.set_member(slug, body.entity_slug,
-                   rationale=body.rationale, confidence=body.confidence)
+    try:
+        wls.set_member(slug, body.entity_slug,
+                       rationale=body.rationale, confidence=body.confidence)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from None
     return wls.get(slug)
 
 
@@ -196,6 +245,78 @@ async def remove_member(slug: str, entity_slug: str) -> dict:
         raise HTTPException(status_code=404, detail=f"work list {slug!r} not found")
     wls.remove_member(slug, entity_slug)
     return wls.get(slug)
+
+
+@router.put("/{slug}/investigation")
+async def link_investigation(slug: str, body: LinkInvestigation) -> dict:
+    """Tag a saved list with the investigation it belongs to (or untag it).
+
+    `work_lists.investigation` was only ever set at save time, and only when an
+    investigation happened to be current; nothing could set it afterwards.
+    """
+    wls = WorkLists()
+    if not wls.get(slug):
+        raise HTTPException(status_code=404, detail=f"work list {slug!r} not found")
+    if body.investigation and not wls.registry.get_investigation(body.investigation):
+        raise HTTPException(status_code=404,
+                            detail=f"Investigation {body.investigation!r} not found")
+    wls.set_investigation(slug, body.investigation)
+    return wls.get(slug)
+
+
+@router.post("/{slug}/add-to-investigation")
+async def add_to_investigation(slug: str, body: AddToInvestigation) -> dict:
+    """Put this list's members (or the ticked subset) in an investigation's scope.
+
+    Each member's `rationale` becomes its `membership_rationale`; a member with
+    none gets "from work list <name>". A member already in scope is SKIPPED,
+    not re-added, because re-adding overwrites the reason it was added for
+    (and the registry call is `keep_existing` besides, a second guard against a
+    race). Nothing is linked here: tagging the list is `PUT .../investigation`.
+    """
+    wls = WorkLists()
+    wl = wls.get(slug)
+    if not wl:
+        raise HTTPException(status_code=404, detail=f"work list {slug!r} not found")
+    if not body.investigation:
+        raise HTTPException(status_code=422, detail="an investigation is needed")
+    reg = wls.registry
+    inv = reg.get_investigation(body.investigation)
+    if not inv:
+        raise HTTPException(status_code=404,
+                            detail=f"Investigation {body.investigation!r} not found")
+    if inv.get("status") not in (None, "", "open"):
+        raise HTTPException(
+            status_code=409,
+            detail=f"Investigation '{inv.get('display_name') or body.investigation}' "
+                   f"is {inv.get('status')}, not open")
+    by_slug = {m["entity_slug"]: m for m in wl["members"]}
+    wanted = list(dict.fromkeys(body.entity_slugs)) if body.entity_slugs is not None \
+        else list(by_slug)
+    stray = [s for s in wanted if s not in by_slug]
+    if stray:
+        raise HTTPException(status_code=422,
+                            detail=f"not members of this list: {', '.join(stray)}")
+    kind = wl["entity_type"]
+    in_scope = {(m["entity_type"], m["entity_slug"])
+                for m in reg.list_investigation_members(body.investigation)}
+    added: list[str] = []
+    already: list[str] = []
+    ws_slug = ""
+    for s in wanted:
+        if (kind, s) in in_scope:
+            already.append(s)
+            continue
+        if not ws_slug:
+            ws_slug = reg.get_or_create_working_set(body.investigation)["slug"]
+        reason = (by_slug[s].get("rationale") or "").strip() \
+            or f"from work list {wl['display_name']}"
+        reg.add_working_set_member(ws_slug, kind, s, membership_rationale=reason,
+                                   state="in-scope", keep_existing=True)
+        added.append(s)
+    return {"investigation": body.investigation,
+            "investigation_name": inv.get("display_name") or body.investigation,
+            "added": added, "already_in_scope": already}
 
 
 @router.post("/{slug}/promote")
@@ -217,11 +338,21 @@ async def publish(slug: str) -> dict:
     GUID is needed to attach anything); the memberships are queued to the
     outbox and applied by whichever worker drains it, each carrying its
     `membershipRationale`.
+
+    Brief Z3: the collection and each member are checked as the caller first
+    (`WorkLists.publish`); a refused member is in `not_permitted` with its
+    words and the rest are queued; 403 when nothing is permitted.
     """
+    import asyncio
+
+    from resource_explorer.workflows.curate import CurationDenied
+
     try:
-        return WorkLists().publish(slug)
+        return await asyncio.to_thread(WorkLists().publish, slug)
     except KeyError:
         raise HTTPException(status_code=404, detail=f"work list {slug!r} not found")
+    except CurationDenied as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
     except Exception as exc:
         log.exception("publishing work list %s failed", slug)
         raise HTTPException(status_code=502,

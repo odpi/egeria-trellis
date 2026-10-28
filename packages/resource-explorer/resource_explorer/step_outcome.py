@@ -185,3 +185,80 @@ def from_upstream_table(
                          rows_available=rows_available, **detail)
     return StepOutcome(RECOVERED, cause="", known_positive=True,
                        detail={"rows_available": rows_available, "matched": matched, **detail})
+
+
+# ── the guards a step completes with when Egeria coordinates the run (engine host case 3) ─────────────────────────
+#
+# docs/design-notes/SLICE-ENGINE-HOST-CASE3-RE-DEFINITIONS-DISPATCHED-BY-EGERIA.md, decision 3: "Guards stay
+# authored." RE's Survey Definitions chain their steps with `NextGovernanceActionProcessStep` links whose guard is
+# `Any` (`dr_egeria_survey_publisher.render_link_next_block`), and RE's own executor reads `Any` as "always follow
+# this edge". Egeria does not: it creates the next engine action only when one of the completing action's output
+# guards EQUALS the link's guard (`EngineActionHandler.initiateNextEngineActions`, egeria `af400039c2`, the
+# `outputGuard.equals(guard)` loop). A step that completes with `survey-completed` alone therefore ends the process
+# after its first step.
+#
+# So a step of an RE definition completes with its standard survey guard (`SurveyActionGuard`, what every survey
+# reader understands) AND the routing guard its authored links carry, whatever its outcome: `Any` means "always follow
+# this edge" in RE's own executor, and an Egeria-coordinated run must read the same way (review of case 3, M1: the
+# same steps run, with the same words, both ways). A step that is `survey-invalid` or `survey-failed` therefore does
+# not stop the process; the next step runs, as RE's executor would run it. An authored link with any OTHER guard is
+# taken only when the step produces that guard, and when none of a step's links is taken the engine host says the
+# process ended there.
+#
+# One mapping, three readers: the engine host's completion (`completion_guards`), the GovernanceActionType and
+# GovernanceActionProcessStep declarations (`produced_guards`, scripts/generate_engine_host_declaration.py and
+# dr_egeria_survey_publisher), and the tests that hold both to it.
+
+#: `SurveyActionGuard`'s standard guards (`SurveyActionGuard.java:18-20`); engine_host re-exports them.
+SURVEY_COMPLETED = "survey-completed"
+SURVEY_INVALID = "survey-invalid"
+SURVEY_FAILED = "survey-failed"
+SURVEY_GUARDS = (SURVEY_COMPLETED, SURVEY_INVALID, SURVEY_FAILED)
+
+#: The guard RE's generated next-step links carry (`dr_egeria_survey_publisher.render_link_next_block`).
+ROUTING_GUARD = "Any"
+
+#: Which standard guards also emit the routing guard, so Egeria starts the next step: all of them (M1).
+CONTINUES_PROCESS = frozenset(SURVEY_GUARDS)
+
+#: Per-step departures from the default mapping, {step_key: {survey guard: completion guards}}. Empty: no step
+#: routes differently today. A step added here changes its declaration and its completion together.
+STEP_GUARD_OVERRIDES: dict[str, dict[str, tuple[str, ...]]] = {}
+
+
+def guard_mapping(step_key: str) -> dict[str, tuple[str, ...]]:
+    """{standard survey guard: the guards a step of an RE definition completes with} for one step."""
+    out = {g: ((g, ROUTING_GUARD) if g in CONTINUES_PROCESS else (g,)) for g in SURVEY_GUARDS}
+    out.update(STEP_GUARD_OVERRIDES.get(step_key, {}))
+    return out
+
+
+def completion_guards(step_key: str, survey_guard: str) -> tuple[str, ...]:
+    """The output guards an engine action of `step_key` completes with, for its standard survey guard."""
+    mapping = guard_mapping(step_key)
+    if survey_guard not in mapping:
+        raise ValueError(f"{survey_guard!r} is not one of the standard survey guards {SURVEY_GUARDS}")
+    return mapping[survey_guard]
+
+
+def produced_guards(step_key: str) -> tuple[str, ...]:
+    """Every guard `step_key` can complete with, in a stable order (the standard survey guards, then any routing
+    guard): what its declarations' `producedGuards` say."""
+    seen: list[str] = [g for g in SURVEY_GUARDS if any(g in gs for gs in guard_mapping(step_key).values())]
+    for guards in guard_mapping(step_key).values():
+        for g in guards:
+            if g not in seen:
+                seen.append(g)
+    return tuple(seen)
+
+
+#: Case 3 (H1): an engine action RE's engine host refused as a second start of a process step already run in the same
+#: process run (duplicate next-step links each fire). Completed survey-invalid with this, never run, no routing guard;
+#: readers of a process run skip it (`mixed_process.is_duplicate_trigger`).
+TRIGGERED_TWICE_SENTENCE = "triggered twice in this run; the first ran"
+
+
+#: Case 3 (negative 4): how the engine host says a process ended at a step because none of its authored next-step links
+#: takes the guards it completed with ("process ended after <step>: guard <g> has no next step"). A reader of the run
+#: treats a run whose last step says this as ended, never as waiting for a step that will not come.
+PROCESS_ENDED_PREFIX = "process ended after"

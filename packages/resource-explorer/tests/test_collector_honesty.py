@@ -1,5 +1,4 @@
-"""Collector-honesty design ruling (2026-09-26, docs/design-notes/SLICE-17C-
-RENDERABLE-ANSWER-GATE-IMPLEMENTED.md's "Live gate follow-ups" section): a
+"""Collector-honesty design ruling (2026-09-26, SLICE-17C-RENDERABLE-ANSWER-GATE-IMPLEMENTED.md's "Live gate follow-ups" section): a
 collector that catches an exception records it on its own section
 (`_errors`), rather than only silently degrading to an empty list or a
 zero -- and a reader renders a recorded error as "collection failed:

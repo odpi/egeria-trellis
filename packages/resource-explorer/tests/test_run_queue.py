@@ -175,6 +175,13 @@ class TestHeartbeat:
 
 
 class TestCancel:
+    def test_a_held_kind_row_is_never_cancelled(self, reg):
+        """engine_action rows stand for Egeria engine actions RE has claimed: cancelling one locally would
+        leave the action claimed with nothing to complete it. Refused here, so every caller gets it."""
+        run_id = reg.enqueue_run("engine_action", {"engine_action_guid": "a-1"})
+        assert reg.cancel_queued_run(run_id) is False
+        assert reg.get_run(run_id)["state"] == "queued"
+
     def test_a_queued_row_cancels(self, reg):
         run_id = reg.enqueue_run("scouting_scan", {"slug": "a"})
         assert reg.cancel_queued_run(run_id) is True

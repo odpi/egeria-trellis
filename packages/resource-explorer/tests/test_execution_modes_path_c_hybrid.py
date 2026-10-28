@@ -221,7 +221,8 @@ class TestHybridFilesystemSurvey:
                 lambda *a, **kw: call_order.append("egeria_publish") or {"report_guid": "g1"}
             )
 
-            survey_data = run_hybrid_filesystem_survey("my-fs", registry=registry)
+            survey_data = run_hybrid_filesystem_survey("my-fs", registry=registry,
+                                                       force_egeria_publish=True)  # Brief I round 4: publishing is an explicit choice, never implied by a URL
 
         registry.add_filesystem_survey.assert_called_once()
         _, kwargs = registry.add_filesystem_survey.call_args
@@ -251,7 +252,8 @@ class TestHybridFilesystemSurvey:
             }
             mock_egeria_cls.return_value.catalog_and_survey.side_effect = RuntimeError("Egeria unreachable")
 
-            survey_data = run_hybrid_filesystem_survey("my-fs", registry=registry)
+            survey_data = run_hybrid_filesystem_survey("my-fs", registry=registry,
+                                                       force_egeria_publish=True)  # Brief I round 4: publishing is an explicit choice, never implied by a URL
 
         # The survey is not lost — the caller still gets the local result.
         assert survey_data["file_count"] == 7

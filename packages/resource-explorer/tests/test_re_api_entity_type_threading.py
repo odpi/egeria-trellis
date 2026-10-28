@@ -1,156 +1,148 @@
-"""Source-level regression tests for re-api.js's entity-type threading fixes
-(Tier 1 audit, 2026-09-23) -- no JS test runner is wired into this suite, so
-these pin the fix at the source level, the same technique
-test_fact_answer_rendering.py uses for index.html.
+"""Source-level regression tests for re-api.js's entity-kind contract.
 
-Covers:
-  * saveEnrichmentField -- hardcoded `PATCH /api/context/repo/{slug}/field`
-    even though the backend route is already generic. The highest-severity
-    fix in this pass: a real silent wrong-bucket WRITE, not just a wrong read.
-  * runAnalysis -- hardcoded `POST /api/projects/{slug}/analyses/{id}/run`
-    even though databases.py exposes the equivalent generic route.
-  * getResourceFacts/getBulkFacts/getBulkStates -- did not send `entity_type`
-    at all, so the backend (fixed separately, see
-    test_analyses_facts_resource_type_dispatch.py) always saw its "repo"
-    default regardless of what the caller actually knew.
+No JS test runner is wired into this suite, so these pin the contract at the
+source level (same technique as test_fact_answer_rendering.py).
+
+The contract (2026-09-30 entity-type sweep): the resource kind is NEVER
+defaulted. A silent `entityType = 'repo'` once resolved database/filesystem
+slugs as repo Projects ("Project 'X' not found") three separate times, and
+saveEnrichmentField's default was a real wrong-bucket WRITE. So:
+
+  * no helper parameter named entityType/resourceType carries a default
+    (listSubscriptions' `entityType = ''` is a *filter*, not a kind -- it is
+    the one explicit exception);
+  * every kind-taking helper calls `requireKind('<helperName>', <param>)`
+    (param `resourceType` for assignGroup and listQuestionCatalog) so an
+    omitted kind throws instead of silently becoming 'repo';
+  * the kind is still threaded into the request path / query / body;
+  * getResourceFacts was dead code and is intentionally deleted.
 """
 from __future__ import annotations
 
+import re
 from pathlib import Path
+
+import pytest
 
 RE_API = Path(__file__).resolve().parents[1] / "resource_explorer" / "web" / "static" / "re-api.js"
 
+# Helpers whose kind parameter is `resourceType`, not `entityType`.
+RESOURCE_TYPE_HELPERS = {"assignGroup", "listQuestionCatalog"}
 
-def _fn(js: str, name: str) -> str:
-    """Extract one `export const NAME = (...) => ...;` or `export const NAME
-    = (...) => { ... };` definition through its terminating `;` at paren/brace
-    depth 0 -- mirrors test_fact_answer_rendering.py's brace-matching
-    technique, adapted for an arrow-function const rather than a `function`
-    declaration. Includes an immediately-preceding `/** ... */` doc comment,
-    if there is one directly above the marker with only whitespace between --
-    several of this pass's fixes document a found-but-deferred gap there
-    rather than inside the arrow function body itself."""
-    marker = f"export const {name} ="
-    start = js.index(marker)
-    doc_end = js.rfind("*/", 0, start)
-    if doc_end != -1 and js[doc_end + 2:start].strip() == "":
-        doc_start = js.rfind("/**", 0, doc_end)
-        if doc_start != -1:
-            start = doc_start
-    i = js.index(marker) + len(f"export const {name} =")
-    depth = 0
-    started = False
-    while True:
-        ch = js[i]
-        if ch in "([{":
-            depth += 1
-            started = True
-        elif ch in ")]}":
-            depth -= 1
-        elif ch == ";" and depth == 0 and started:
-            i += 1
-            break
-        i += 1
-    return js[start:i]
+# Verified against re-api.js at the time of the sweep.
+# 32: G1 added egeriaReportsPath (the Egeria reports component's per-kind route base; it requires its kind).
+EXPECTED_HELPER_COUNT = 36   # +registerWithEgeria, +checkNativeSurveyPointers (catalog-and-survey), +compileContext (parity P3), +cancelNativeAction (Egeria action cancel)
+
+_DEF = r"^export (?:async )?(?:const|function\*?) {name}\b"
 
 
 def _source() -> str:
     return RE_API.read_text()
 
 
-class TestSaveEnrichmentFieldIsEntityGeneric:
-    def test_no_longer_hardcodes_the_repo_bucket(self):
-        fn = _fn(_source(), "saveEnrichmentField")
-        assert "/api/context/repo/" not in fn, (
-            "saveEnrichmentField must not hardcode the repo context bucket -- "
-            "a database/filesystem save must land in ITS OWN bucket"
-        )
-
-    def test_builds_the_path_from_an_entity_type_parameter(self):
-        fn = _fn(_source(), "saveEnrichmentField")
-        assert "entityType" in fn
-        assert "/api/context/${encodeURIComponent(entityType)}/" in fn
-
-    def test_entity_type_defaults_to_repo_for_existing_callers(self):
-        fn = _fn(_source(), "saveEnrichmentField")
-        assert "entityType = 'repo'" in fn
+def _helper_names(js: str) -> list[str]:
+    return sorted(set(re.findall(r"requireKind\('([A-Za-z0-9_]+)'", js)))
 
 
-class TestRunAnalysisDispatchesByEntityType:
-    def test_no_longer_always_posts_to_the_projects_path(self):
-        fn = _fn(_source(), "runAnalysis")
-        # The literal repo path must not be the ONLY path constructed --
-        # it's still the fallback default, but a database entityType must
-        # route elsewhere.
-        assert "_runAnalysisPath" in fn
+def _def(js: str, name: str) -> str:
+    """Source of `export const|function NAME` up to the next top-level export."""
+    m = re.search(_DEF.format(name=re.escape(name)), js, re.M)
+    assert m, f"{name} is not exported from re-api.js"
+    nxt = re.search(r"^export ", js[m.end():], re.M)
+    end = m.end() + nxt.start() if nxt else len(js)
+    return js[m.start():end]
 
-    def test_database_routes_to_the_databases_path(self):
+
+def _code(fn: str) -> str:
+    """The definition with /* */ and // comments stripped (docs mention the old default)."""
+    fn = re.sub(r"/\*.*?\*/", "", fn, flags=re.S)
+    return re.sub(r"(?m)^\s*//.*$", "", fn)
+
+
+def _doc_above(js: str, name: str) -> str:
+    """The text directly above `export ... NAME` (its doc comment)."""
+    start = re.search(_DEF.format(name=re.escape(name)), js, re.M).start()
+    return js[max(0, start - 1500):start]
+
+
+HELPERS = _helper_names(_source())
+
+
+def test_helper_count_is_pinned():
+    assert len(HELPERS) == EXPECTED_HELPER_COUNT, (
+        f"{len(HELPERS)} helpers call requireKind, expected {EXPECTED_HELPER_COUNT}: {HELPERS}. "
+        "If a helper was legitimately added/removed, update EXPECTED_HELPER_COUNT."
+    )
+
+
+def test_no_kind_parameter_has_a_default_anywhere():
+    js = _source()
+    offenders = re.findall(r"\b(?:entityType|resourceType)\s*=\s*['\"`][^,)}\n]*['\"`]", js)
+    # listSubscriptions' `entityType = ''` is a filter ("any kind"), not a kind.
+    offenders = [o for o in offenders if re.sub(r"\s", "", o) != "entityType=''"]
+    assert not offenders, f"silent kind default reintroduced: {offenders}"
+
+
+def test_get_resource_facts_stays_deleted():
+    assert "getResourceFacts" not in _source(), (
+        "getResourceFacts was dead code (zero callers) removed by the sweep"
+    )
+
+
+@pytest.mark.parametrize("name", HELPERS)
+def test_helper_requires_its_kind_and_has_no_default(name):
+    fn = _code(_def(_source(), name))
+    param = "resourceType" if name in RESOURCE_TYPE_HELPERS else "entityType"
+    assert re.search(rf"requireKind\('{name}', {param}\b", fn), (
+        f"{name} must call requireKind('{name}', {param}...) before using the kind"
+    )
+    # The kind must be a bare parameter (destructured or positional), no default.
+    assert not re.search(rf"\b{param}\s*=[^=>]", fn), f"{name} gives {param} a default"
+    assert re.search(rf"\b{param}\b", fn.split("requireKind", 1)[0]), (
+        f"{name} must declare {param} as a parameter"
+    )
+
+
+class TestKindIsThreadedIntoRequests:
+    def test_save_enrichment_field_builds_path_from_kind(self):
+        fn = _def(_source(), "saveEnrichmentField")
+        assert "/api/context/repo/" not in fn
+        assert "/api/context/${encodeURIComponent(requireKind('saveEnrichmentField', entityType))}/" in fn
+
+    def test_get_analyses_index_sends_entity_type_query_param(self):
+        fn = _def(_source(), "getAnalysesIndex")
+        assert "entity_type=${encodeURIComponent(requireKind('getAnalysesIndex', entityType))}" in fn
+
+    @pytest.mark.parametrize("name", ["getBulkFacts", "getBulkStates"])
+    def test_bulk_helpers_send_entity_type(self, name):
+        fn = _def(_source(), name)
+        assert f"entity_type: requireKind('{name}', entityType)" in fn
+
+    def test_run_analysis_dispatches_by_validated_kind(self):
         js = _source()
-        path_fn_start = js.index("function _runAnalysisPath(")
-        brace = js.index("{", path_fn_start)
-        depth = 1
-        i = brace + 1
-        while depth:
-            if js[i] == "{":
-                depth += 1
-            elif js[i] == "}":
-                depth -= 1
-            i += 1
-        path_fn = js[path_fn_start:i]
+        fn = _def(js, "runAnalysis")
+        assert "_runAnalysisPath(requireKind('runAnalysis', entityType)" in fn
+        path_fn = js[js.index("function _runAnalysisPath("):]
+        path_fn = path_fn[: path_fn.index("\n}\n")]
         assert "/api/databases/" in path_fn
         assert "entityType === 'database'" in path_fn
 
-    def test_entity_type_defaults_to_repo(self):
-        fn = _fn(_source(), "runAnalysis")
-        assert "entityType = 'repo'" in fn
+    @pytest.mark.parametrize("name", ["getJournal", "writeJournal"])
+    def test_journal_path_uses_kind(self, name):
+        fn = _def(_source(), name)
+        assert f"/api/journal/${{encodeURIComponent(requireKind('{name}', entityType))}}/" in fn
 
-
-class TestGetAnalysesIndexSendsEntityType:
-    """Fixed upstream by re/measurements-feedback-fix (PR #237), merged ahead
-    of this branch -- pinned here since this file otherwise only documents
-    what this Tier 1 pass itself changed."""
-
-    def test_sends_entity_type_as_a_query_param(self):
-        fn = _fn(_source(), "getAnalysesIndex")
-        assert "entity_type=${encodeURIComponent(entityType)}" in fn
-        assert "entityType = 'repo'" in fn
-
-
-class TestBulkAndPerResourceFactsSendEntityType:
-    def test_get_resource_facts_sends_entity_type(self):
-        fn = _fn(_source(), "getResourceFacts")
-        assert "entity_type=" in fn
-        assert "entityType = 'repo'" in fn
-
-    def test_get_bulk_facts_sends_entity_type(self):
-        fn = _fn(_source(), "getBulkFacts")
-        assert "entity_type" in fn
-        assert "entityType = 'repo'" in fn
-
-    def test_get_bulk_states_sends_entity_type(self):
-        fn = _fn(_source(), "getBulkStates")
-        assert "entity_type" in fn
-        assert "entityType = 'repo'" in fn
+    def test_assign_group_sends_resource_type(self):
+        fn = _def(_source(), "assignGroup")
+        assert "resource_type: requireKind('assignGroup', resourceType, 'resourceType')" in fn
 
 
 class TestFoundNotFixedGapsAreDocumented:
-    """The Tier 1 audit found getAnalysesIndex/getAnalysisTrend/getMembers/
-    getMemberChildren/promoteMembers had no database/filesystem backend
-    route at all -- these must say so in-source (not be silently left as
-    hardcoded 'repo' with no explanation), per the PR's own found-but-
-    deferred accounting.
-
-    getAnalysesIndex is no longer one of them: `re/measurements-feedback-fix`
-    (PR #237) landed a real fix for it (entity_type dispatch built into
-    `build_analyses_index()` itself) ahead of this branch, superseding the
-    Tier 1 audit's finding for that one function -- see the comment left in
-    its place in re-api.js. getAnalysisTrend/getMembers/getMemberChildren/
-    promoteMembers remain unfixed as of this branch."""
+    """getAnalysisTrend/getMembers must keep saying in-source that their
+    backend route gap was found and not fixed."""
 
     def test_get_analysis_trend_names_the_gap(self):
-        fn = _fn(_source(), "getAnalysisTrend")
-        assert "FOUND, NOT FIXED" in fn
+        assert "FOUND, NOT FIXED" in _doc_above(_source(), "getAnalysisTrend")
 
     def test_get_members_names_the_gap(self):
-        fn = _fn(_source(), "getMembers")
-        assert "found, not fixed" in fn.lower()
+        assert "found, not fixed" in _doc_above(_source(), "getMembers").lower()

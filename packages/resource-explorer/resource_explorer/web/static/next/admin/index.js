@@ -9,7 +9,7 @@
  * SCOPE. Classic's Admin (index.html, `_ADMIN_GROUPS`) groups eleven panes
  * into three groups by "what a person came to do" (commit 4fb48071/26320f89):
  *
- *   Configure  Annotation Types, Groups, Discovery Sources, Question Catalog
+ *   Configure  Annotation Types, Groups, Repository discovery sources, Question Catalog
  *   Reconcile  Egeria Alignment, Egeria Links, Publish Queue, Repair
  *   Observe    Prefect, Feedback, Logs
  *
@@ -26,7 +26,7 @@
  * next/admin/groups.js and GROUPS-ADMIN-IMPLEMENTED.md); Discovery Sources
  * gained full CRUD + preview-then-apply refresh + preview-then-import run
  * (see discovery_sources.js's own header and
- * docs/design-notes/DISCOVERY-SOURCES-ADMIN-IMPLEMENTED.md); Egeria
+ * DISCOVERY-SOURCES-ADMIN-IMPLEMENTED.md); Egeria
  * Alignment and Repair (§1) are built as TWO separate panes because classic
  * has them as two separate screens doing different jobs — see
  * admin/resync.js and admin/repair.js's own header comments for why folding
@@ -37,14 +37,13 @@
  * append-only add/retire backend (question_catalog_writer.py) alongside its
  * UI — see that spec and ADMIN-REGISTRIES-IMPLEMENTED.md for what changed
  * and why editing a question's own text is refused rather than offered.
- * Two remain DELIBERATE, NAMED deferrals: Egeria Links and Publish Queue are
- * reconciliation/config-mutation surfaces whose classic implementations run
- * 200-1000+ lines each (a divergence-repair flow for Egeria Links; retry
- * semantics tied to outbox internals for Publish Queue) — see each tab's
- * own `defer` block below for the per-pane reason, linking out to classic
- * via the shared `oldUiHref()` helper.
+ * Egeria Links (PI-130) and Publish Queue (PI-131) were the two named
+ * deferrals; both are built now (admin/egeria_links.js, admin/outbox.js). The
+ * Publish Queue never offers a retry on a write that archives, deletes or
+ * detaches, and Egeria Links offers no delete at all. Every tab has a `render`;
+ * the not-built page that served a tab without one was removed as unreachable.
  */
-import { $, esc, icon, oldUiHref } from '/static/next/app.js';
+import { $, esc } from '/static/next/app.js';
 import { renderAnnotationTypes } from '/static/next/admin/annotation_types.js';
 import { renderQuestionCatalog } from '/static/next/admin/question_catalog.js';
 import { renderLogs } from '/static/next/admin/logs.js';
@@ -54,35 +53,27 @@ import { renderGroups } from '/static/next/admin/groups.js';
 import { renderResync } from '/static/next/admin/resync.js';
 import { renderRepair } from '/static/next/admin/repair.js';
 import { renderDiscoverySources } from '/static/next/admin/discovery_sources.js';
+import { renderEgeriaLinks } from '/static/next/admin/egeria_links.js';
+import { renderOutbox } from '/static/next/admin/outbox.js';
+import { renderApiFetch } from '/static/next/admin/api_fetch.js';
 
 const PANEL_ID = 'admin-panel';
 
 /** Same grouping and order as classic's `_ADMIN_GROUPS` — a person who knows
  *  the current UI should find the same three groups here, not a reshuffled
- *  version of them. `render` is set only for the seven built panes; a
- *  deferred one carries `defer` naming exactly what and why instead. */
+ *  version of them. Every tab carries its own `render`. */
 const GROUPS = [
   { name: 'Configure', tabs: [
     { id: 'annotations', label: '📝 Annotation Types', render: renderAnnotationTypes },
     { id: 'admin-groups', label: '🗂 Groups', render: renderGroups },
-    { id: 'admin-discovery-sources', label: '🔍 Discovery Sources', render: renderDiscoverySources },
+    { id: 'admin-discovery-sources', label: '🔍 Repository discovery sources', render: renderDiscoverySources },
     { id: 'admin-question-catalog', label: '❓ Question Catalog', render: renderQuestionCatalog },
+    { id: 'admin-api-fetch', label: '🌐 API fetch addresses', render: renderApiFetch },
   ]},
   { name: 'Reconcile', tabs: [
     { id: 'admin-resync', label: '🔄 Egeria Alignment', render: renderResync },
-    { id: 'admin-egeria-links', label: '🔗 Egeria Links', defer: {
-      does: "Reconcile a resource's local record against the Egeria asset(s) it "
-        + 'should be linked to, and repair a missing or wrong link',
-      why: 'same shape as Egeria Alignment above — a reconciliation surface whose '
-        + 'repair actions write to the shared Egeria catalog, not a read-only view',
-    } },
-    { id: 'admin-outbox', label: '📤 Publish Queue', defer: {
-      does: 'Show queued/failed publish attempts to Egeria and retry them',
-      why: "retry semantics are tied to the outbox's own internal state machine "
-        + '(routes/outbox.py) in a way a read-only port would misrepresent — a '
-        + 'queue view that cannot retry is not the pane, and one that can needs '
-        + 'the same live-write caution as the two panes above',
-    } },
+    { id: 'admin-egeria-links', label: '🔗 Egeria Links', render: renderEgeriaLinks },
+    { id: 'admin-outbox', label: '📤 Publish Queue', render: renderOutbox },
     { id: 'admin-repair', label: '🔧 Repair', render: renderRepair },
   ]},
   { name: 'Observe', tabs: [
@@ -106,19 +97,6 @@ function closeAdminPanel() {
 
 function onPanelKeydown(e) {
   if (e.key === 'Escape') closeAdminPanel();
-}
-
-function deferredHtml(tab) {
-  return `
-    <h3 class="m-0 font-heading text-name font-normal text-ink">${esc(tab.label)} · not built in /next</h3>
-    <div class="my-s3 h-px bg-rule"></div>
-    <p class="max-w-[70ch] text-answer text-ink">${esc(tab.defer.does)}.</p>
-    <p class="max-w-[70ch] text-caveat text-ink-muted">Deferred, deliberately: ${esc(tab.defer.why)}.</p>
-    <p class="max-w-[70ch] text-answer text-ink">
-      <a href="${esc(oldUiHref())}" class="text-accent-ink underline"
-        >Open Admin → ${esc(tab.label.replace(/^\S+\s/, ''))} in the current UI</a>
-      ${icon('external-link', { size: 13, cls: 'text-accent-ink' })}
-    </p>`;
 }
 
 function groupSelectHtml(group) {
@@ -153,7 +131,6 @@ async function renderBody() {
   if (!host) return;
   const tab = ALL_TABS.find((t) => t.id === panel.tab);
   if (!tab) { host.innerHTML = '<p class="text-answer text-ink-muted">Unknown pane.</p>'; return; }
-  if (!tab.render) { host.innerHTML = deferredHtml(tab); return; }
   host.innerHTML = '<p class="text-answer text-ink-muted">Loading…</p>';
   try {
     await tab.render(host);
@@ -180,7 +157,7 @@ export async function openAdminPanel() {
       <div class="flex items-start justify-between gap-s3">
         <div>
           <div class="font-heading text-name text-ink">⚙ Admin</div>
-          <div class="mt-[2px] text-caveat text-ink-muted">System and catalog configuration — not
+          <div class="mt-[2px] text-caveat text-ink-muted">System configuration — not
             something a user does to curate a specific resource, so it lives here rather than
             under one of the eight intents.</div>
         </div>

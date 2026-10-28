@@ -61,7 +61,17 @@ class TestShape:
         out = mermaid.render(_ir([_c("svc", name="Gateway", type="Software Service", confidence=80)]))
         assert "Gateway" in out
         assert "Software Service" in out
-        assert "80%" in out
+        assert "confidence 80%" in out
+
+    def test_typed_and_boundary_only_nodes_label_type_and_confidence(self):
+        out = mermaid.render(_ir([
+            _c("ui", name="Web UI", type="User Interface", confidence=80),
+            _c("edge", name="Edge", type=None, confidence=60),
+        ]))
+        assert "<small>User Interface · confidence 80%</small>" in out
+        assert "<small>type not assigned · boundary only · confidence 60%</small>" in out
+        assert "unclassified" not in out
+        assert " · 60%" not in out and " · 80%" not in out
 
     def test_a_parent_becomes_a_subgraph_containing_its_child(self):
         """SolutionComposition nests components natively (design §3.3a), so the

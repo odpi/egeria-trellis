@@ -44,6 +44,7 @@ import re
 from typing import TYPE_CHECKING
 
 from resource_explorer.egeria_timing import time_egeria_call
+from resource_explorer.config import egeria_platform_url, egeria_view_server  # noqa: E402,F401
 
 if TYPE_CHECKING:
     from resource_explorer.registry import ProjectRegistry
@@ -56,7 +57,6 @@ log = logging.getLogger(__name__)
 _DEFAULT_PLATFORM_URL = "https://localhost:9443"
 _DEFAULT_VIEW_SERVER = "qs-view-server"
 _DEFAULT_USER = "erinoverview"
-_DEFAULT_PASSWORD = "secret"
 _DEFAULT_TIMEOUT = 30
 
 _UUID_RE = re.compile(
@@ -96,10 +96,10 @@ class ComponentMaterializer:
         # and used in another, and the identity that matters is the one in
         # force when Egeria is actually written to.
         self._identity = identity
-        self.platform_url = platform_url or os.getenv("EGERIA_PLATFORM_URL", _DEFAULT_PLATFORM_URL)
-        self.view_server = view_server or os.getenv("EGERIA_VIEW_SERVER", _DEFAULT_VIEW_SERVER)
+        self.platform_url = platform_url or egeria_platform_url()
+        self.view_server = view_server or egeria_view_server()
         self.user_id = user_id or os.getenv("EGERIA_USER", _DEFAULT_USER)
-        self.user_password = user_password or os.getenv("EGERIA_USER_PASSWORD", _DEFAULT_PASSWORD)
+        self.user_password = user_password or ""   # not used to authenticate (Brief I)
         self.timeout = timeout or int(os.getenv("PYEGERIA_TIMEOUT_SECONDS", str(_DEFAULT_TIMEOUT)))
         self._registry = registry
         self._solution_architect = None
@@ -115,9 +115,11 @@ class ComponentMaterializer:
         """
         if self._identity is not None:
             return self._identity
-        from resource_explorer.egeria_identity import caller_credentials
+        from resource_explorer.egeria_clients import current_principal
 
-        self._identity = caller_credentials()
+        # The declared daemon job (a queued run), else the signed-in Caller; never a silent
+        # service-account fallback (Brief I).
+        self._identity = current_principal()
         return self._identity
 
     def _connect(self) -> None:
@@ -127,26 +129,23 @@ class ComponentMaterializer:
                 "Add it to your .env file or pass platform_url= to ComponentMaterializer."
             )
         identity = self.resolve_identity()
-        if identity.is_person:
-            self.user_id = identity.user_id
         try:
             from pyegeria import AutomatedCuration
             from pyegeria.omvs.solution_architect import SolutionArchitect
 
-            from resource_explorer.egeria_identity import apply_identity
+            from resource_explorer.egeria_clients import egeria_client
 
-            self._solution_architect = SolutionArchitect(
-                self.view_server, self.platform_url, self.user_id, self.user_password
-            )
-            apply_identity(self._solution_architect, identity)
+            clients = egeria_client(identity, purpose="materialize components",
+                                    view_server=self.view_server, platform_url=self.platform_url)
+            self.user_id = clients.user_id
+            self._solution_architect = clients.of(SolutionArchitect)
 
             # Used only for the qualifiedName idempotency check
             # (get_guid_for_name) — same helper EgeriaPublisher uses, same
             # reason: search before create, never create blind.
-            self._automated_curation = AutomatedCuration(
-                self.view_server, self.platform_url, self.user_id, self.user_password
-            )
-            apply_identity(self._automated_curation, identity)
+            self._automated_curation = clients.of(AutomatedCuration)
+        except PermissionError:
+            raise
         except ImportError as exc:
             raise MaterializationError(
                 "pyegeria is not installed. Add it to your dependencies."
@@ -256,6 +255,15 @@ class ComponentMaterializer:
                                "nothing was written to Egeria"),
                     "scope_locator": scope_locator,
                     "qualified_name": qualified_name}
+        # The same question for the draft zone it would be born in: never one that grants nobody once Egeria
+        # e9fd817f4c ships (or whose control could not be read). At the top for the reason above.
+        if not private_owner:
+            from resource_explorer.egeria_identity import draft_zones, zone_lockout_refusal
+
+            refusal = zone_lockout_refusal(draft_zones())
+            if refusal:
+                return {"status": "skipped", "reason": f"{refusal}; nothing was written to Egeria",
+                        "scope_locator": scope_locator, "qualified_name": qualified_name}
 
         # Local cache first — same shape as _find_or_create_asset's cached-
         # GUID check, and for the same reason: a repeat accept (re-running
@@ -301,6 +309,12 @@ class ComponentMaterializer:
         # dropping that provenance entirely would be a worse default than an
         # untyped string.
         additional = {"recoveredBy": "architecture_recovery"}
+        # Whose write this is (Brief I): `requestedBy` beside the other provenance keys, and the
+        # Ownership owner (= the requester), from the one on-behalf helper.
+        from resource_explorer.egeria_identity import on_behalf_of
+
+        behalf = on_behalf_of(self.resolve_identity())
+        additional.update(behalf.provenance())
         if perspective:
             additional["perspective"] = perspective
         if confidence:
@@ -339,10 +353,10 @@ class ComponentMaterializer:
         # The security connector refuses a *no-op* zone change, so the accept
         # path's promotion then 403'd on an element that was already where it
         # belonged. One rule is both simpler and what the plan actually asks
-        # for: **everything RE creates is born in the draft zone, and
-        # acceptance is what moves it.** That makes the transition real and
+        # for: **everything RE creates is born in the CONFIGURED draft zone
+        # (if any; none by default since 2026-10-08), and acceptance is what moves it.** That makes the transition real and
         # observable rather than something one code path skips.
-        from resource_explorer.egeria_identity import draft_zone, stamp_published
+        from resource_explorer.egeria_identity import draft_zones, stamp_published
 
         identity = self.resolve_identity()
         # Decided at the top of this method, before anything was created.
@@ -350,8 +364,9 @@ class ComponentMaterializer:
         # investigation is derived from their private work: born in the draft
         # zone with the publishing identity as owner it would be visible to
         # every curator, and owned by whoever happened to run the analysis.
-        owner = private_owner or identity.user_id
-        zones = private_zones_for_owner or [draft_zone()]
+        # Private-zone handling is unchanged: a private investigation's owner owns its component.
+        owner = private_owner or behalf.owner
+        zones = private_zones_for_owner or draft_zones()
 
         governance = stamp_published(guid, owner, identity=identity, zones=zones)
 
@@ -359,5 +374,8 @@ class ComponentMaterializer:
             self._registry.record_materialized_component(
                 entity_type, entity_slug, scope_locator, qualified_name, guid,
             )
-        return {"status": "materialized", "guid": guid, "qualified_name": qualified_name,
-                "governance": governance}
+        result = {"status": "materialized", "guid": guid, "qualified_name": qualified_name,
+                  "governance": governance}
+        if owner and not governance.get("ownership"):
+            result["requester_not_recorded"] = "requester not recorded (Ownership was not set; see the log)"
+        return result

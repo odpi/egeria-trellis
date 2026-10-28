@@ -201,6 +201,20 @@ class HybridDatabaseSurveyor:
                         "errors": [],
                     }
         except Exception as exc:
+            from .egeria_database_surveyor import ArchivedDatabaseNeedsConfirmation
+            if isinstance(exc, ArchivedDatabaseNeedsConfirmation):
+                # S19: the database is archived in Egeria. Nothing was created; a survey never re-includes it.
+                # The local result (if any) stands, and the outcome says what the person must confirm, and where.
+                log.warning("Egeria publish held for %s: %s", db_entity.slug, exc)
+                out = local_result or {"database_slug": db_entity.slug,
+                                       "surveyed_at": datetime.utcnow().isoformat(), "errors": []}
+                out["source"] = "custom" if local_result else "egeria"
+                out["egeria_status"] = "needs_confirmation"
+                out["needs_confirmation"] = {"node": "database", "archived_guid": exc.archived_guid,
+                                             "date": exc.date, "state": exc.state}
+                out["message"] = str(exc)
+                out["errors"] = out.get("errors", []) + [str(exc)]
+                return out
             log.error(f"Egeria publish/survey failed for {db_entity.slug}: {exc}")
             if local_result:
                 local_result["source"] = "custom"

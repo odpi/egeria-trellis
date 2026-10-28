@@ -47,6 +47,9 @@ from datetime import datetime, timezone
 
 from resource_explorer.registry import ProjectRegistry
 
+#: What a press says when nothing the person chose would be sent (brief section 2): blocked, nothing written.
+NOTHING_SELECTED_SENTENCE = "nothing selected · confirm a line under what it is, or choose folders and files"
+
 #: Curate's population, by disposition (Repo Handoff, model statement 5).
 CURATE_POPULATION = ("tracking", "using")
 
@@ -60,6 +63,30 @@ CRITICALITY_LEVELS = {"low": 1, "important": 2, "critical": 3}
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+class _GapsOncePerPlan:
+    """A FactLayer view for ONE `build_plan` call: `facts()` records the gaps once, not once per
+    analysis. Each fact read used to run `record_gaps_for` (about 111 statements); the plan reads
+    several analyses, so one plan paid for it several times (90% of a small fixture's plan, measured).
+    `gap_passes` is what the test counts."""
+
+    def __init__(self, layer):
+        self._layer = layer
+        self.gap_passes = 0
+        self.resource_type = getattr(layer, "resource_type", "repo")
+
+    def facts(self, slug: str, analysis_ids: list, level: str = "resource") -> list:
+        results = [self._layer.fact(slug, a, level) for a in analysis_ids]
+        if results and not self.gap_passes:
+            from resource_explorer.gaps import record_gaps_for
+
+            self.gap_passes += 1
+            try:
+                record_gaps_for(self._layer._registry, slug, self._layer.resource_type)
+            except ValueError:
+                pass
+        return results
 
 
 def _fact(layer, slug: str, analysis_id: str) -> dict:
@@ -94,13 +121,131 @@ def _row(kind: str, label: str, *, evidence: str, source: str, state: str, count
             "detail": detail or {}}
 
 
+def awaiting_counts(comps: list, comp_verdicts: dict) -> dict:
+    """What Structure still waits on a person for. ONE function: it marks the made-of row's `awaiting`
+    figure AND is the plan's top-level `awaiting` (the Structure tab's count), so the two cannot drift.
+    A component awaits a decision when the survey found it and no verdict row exists for its path. Absence
+    of a verdict is "awaiting", never "reviewed"; the count says nothing about whether the caller may decide
+    it (refusals stay per item). Blueprints and dependency rows are read lazily by their own sections and
+    are not part of this figure yet."""
+    unreviewed = sum(1 for c in comps
+                     if (c.get("path") or c.get("scope_locator") or "") not in comp_verdicts)
+    return {"components": unreviewed}
+
+
+#: The Context facts a repository's Curate page shows and the commit carries, in the order they are shown.
+CONTEXT_FACTS = (("owner", "Owner"), ("sensitivity", "Confidentiality"), ("criticality", "Criticality"),
+                 ("retention", "Retention"), ("licence", "License"))
+
+
+def context_facts(enrichment: dict, doc_sources: list[dict] | None = None) -> list[dict]:
+    """The Context facts, one dict each, from the Enrichment record. The single source for both the
+    "What we know" block (plan["know"]) and the plan's "what gets written" (build_plan derives its
+    classifications, owner and licence from these dicts). `shown` is the words the plan has always shown for
+    the value ("" = not declared); an interim or unsigned fact says so (`interim`, `unsigned`).
+    Documentation sources come from the doc_sources table (declared by `added_by`), each with `published` (Brief F
+    §10: the repository's single Publish sends them; they are not part of the Contents commit's writes)."""
+    out = []
+    for key, label in CONTEXT_FACTS:
+        f = enrichment.get(key) or {}
+        shown, skipped = f.get("value") or "", False
+        if key == "retention":
+            from resource_explorer import retention_basis
+            rb = retention_basis.resolve(f)
+            shown = retention_basis.LABELS.get(rb["basis"], "") + (" (from existing text)" if rb["carried"] else "")
+            if not rb["basis"] and (f.get("value") or f.get("note")):
+                # the plan previews what the commit will do: the same words as the step's skip
+                shown, skipped = "skipped · no retention basis picked", True
+        author = f.get("author", "") or ""
+        out.append({"key": key, "label": label, "shown": shown or "", "declared": bool(shown),
+                    "skipped": skipped, "author": author, "set_at": f.get("set_at", "") or "",
+                    "interim": bool(f.get("interim")), "review": bool(f.get("review")),
+                    "unsigned": bool(shown) and not author})
+    docs = [{"label": d.get("label") or d.get("url") or "", "url": d.get("url", ""),
+             "source_type": d.get("source_type", ""), "author": d.get("added_by", "") or "",
+             "set_at": d.get("added_at", "") or "",
+             # Brief F §10: a repository's single Publish sends each source as an ExternalReference; the row's own
+             # Egeria reference says whether it is there (the same test `single_publish.unpublished_doc_sources` uses).
+             "published": bool(d.get("egeria_external_ref_guid"))} for d in (doc_sources or [])]
+    out.append({"key": "documentation", "label": "Documentation sources",
+                "shown": ", ".join(d["label"] for d in docs), "declared": bool(docs), "skipped": False,
+                "author": docs[0]["author"] if docs else "", "set_at": docs[0]["set_at"] if docs else "",
+                "interim": False, "review": False,
+                "unsigned": bool(docs) and not all(d["author"] for d in docs), "sources": docs})
+    return out
+
+
+#: The Context facts a commit copies onto the asset as governance classifications, in order.
+CLASSIFIED_FACTS = ("sensitivity", "criticality", "retention")
+
+
+def _classification_write(key: str, f: dict) -> tuple[str, str, dict]:
+    """(pyegeria method, human name, body) for one judgement. A value outside the level map is not dropped -- it
+    goes into `notes` with level 0, because testimony is copied, not normalised away."""
+    from resource_explorer import retention_basis
+
+    stamp = datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+    def common(notes=None):
+        return {"steward": f.get("author", "") or "", "stewardTypeName": "UserIdentity",
+                "stewardPropertyName": "userId", "source": "resource-explorer enrichment",
+                "confidence": 100,
+                "notes": notes if notes is not None else f"{f.get('value','')} — set by {f.get('author','?')} on {(f.get('set_at') or '')[:10]}"
+                         f"{' · interim' if f.get('interim') else ''}; copied to Egeria {stamp}"}
+
+    if key == "sensitivity":
+        return ("set_confidentiality_classification", f"Confidentiality · {f['value']}", {
+            "class": "NewClassificationRequestBody",
+            "properties": {"class": "ConfidentialityProperties",
+                           "confidentialityLevel": CONFIDENTIALITY_LEVELS.get(str(f["value"]).lower(), 0),
+                           "statusIdentifier": 0, **common()}})
+    if key == "criticality":
+        return ("set_criticality_classification", f"Criticality · {f['value']}", {
+            "class": "NewClassificationRequestBody",
+            "properties": {"class": "CriticalityProperties",
+                           "criticalityLevel": CRITICALITY_LEVELS.get(str(f["value"]).lower(), 0),
+                           "statusIdentifier": 0, **common()}})
+    rb = retention_basis.resolve(f)
+    # `status` is not sent: pyegeria ISSUE-22 -- the server ignores `status` on these classifications
+    # (the real key is `statusIdentifier`), and Dr.Egeria's live-confirmed Retention path sends neither.
+    label = retention_basis.LABELS[rb["basis"]]
+    notes = (f"{label}{' — ' + rb['note'] if rb['note'] else ''} — set by {f.get('author','?')} on "
+             f"{(f.get('set_at') or '')[:10]}{' · interim' if f.get('interim') else ''}; copied to Egeria {stamp}")
+    # common() first, then the two fields this classification owns, so nothing spread can override them
+    return ("set_retention_classification", f"Retention · {label}", {
+        "class": "NewClassificationRequestBody",
+        "properties": {**common(notes), "class": "RetentionClassificationProperties",
+                       "retentionBasis": retention_basis.ordinal(rb["basis"])}})
+
+
+def classification_writes(enrichment: dict, facts: list[dict] | None = None) -> list[dict]:
+    """THE classifications a repository commit writes, one dict each (Brief F §9: one source). What the plan shows
+    ("what gets written", the Publish list) AND what `workflows/curate_commit` writes both come from here, and
+    whether a classification is written at all is decided from `context_facts()`: a fact that is declared and not
+    skipped is written; a skipped one (retention with no basis) is shown with its skip words and `write` None.
+    `write` is (pyegeria method, human name, body)."""
+    facts = facts if facts is not None else context_facts(enrichment)
+    by_key = {f["key"]: f for f in facts}
+    out = []
+    for key in CLASSIFIED_FACTS:
+        f = by_key[key]
+        if not f["shown"]:
+            continue
+        out.append({"key": key, "classification": f["label"], "value": f["shown"], "skipped": f["skipped"],
+                    "author": f["author"], "set_at": f["set_at"], "interim": f["interim"], "review": f["review"],
+                    "write": None if f["skipped"] else _classification_write(key, enrichment.get(key) or {})})
+    return out
+
+
 def build_plan(registry: ProjectRegistry, slug: str) -> dict:
+    from resource_explorer.blueprint_kinds import kind_word
     from resource_explorer.facts import FactLayer
+    from resource_explorer.repo_publish import project_state, survey_state
 
     project = registry.get(slug)
     if not project:
         raise KeyError(slug)
-    layer = FactLayer(registry)
+    layer = _GapsOncePerPlan(FactLayer(registry))
     disp = registry.get_disposition(project.github_url) if project.github_url else None
     disposition = (disp or {}).get("disposition") or "undecided"
 
@@ -138,7 +283,7 @@ def build_plan(registry: ProjectRegistry, slug: str) -> dict:
             else:  # "library" -- importable, no deployment evidence
                 what_it_is.append(_row(
                     f"SoftwareComponentCandidate::{name}",
-                    f"Component, not catalogued by default · {name} — importable {ecosystem} "
+                    f"Component, not published by default · {name} — importable {ecosystem} "
                     "distribution, no deployment evidence",
                     evidence=d.get("summary", ""), source="deployment_evidence",
                     state="measured", candidate=False, detail=det))
@@ -214,11 +359,13 @@ def build_plan(registry: ProjectRegistry, slug: str) -> dict:
     subs = _findings(srs)
     worthy = [f for f in subs if f.get("label") == "worthy"]
     rejected = [f for f in subs if f.get("label") == "not_worthy"]
-    holds.append(_row("SubResource", f"{len(worthy)} of {len(subs)} sub-resources worth cataloguing · {len(rejected)} not",
+    holds.append(_row("SubResource", f"{len(worthy)} of {len(subs)} files and folders worth including · {len(rejected)} not",
                       evidence="each becomes its own asset, related to this one",
                       source="sub_resource_survey", state=srs.get("state", ""), count=len(worthy),
                       members={"analysis_id": "sub_resource_survey"}, candidate=len(worthy) > 0,
-                      detail={"worthy": [f["check_name"] for f in worthy]}))
+                      detail={"worthy": [f["check_name"] for f in worthy],
+                              # locator -> file|folder, so the commit table can say "N files · M folders"
+                              "kinds": {f["check_name"]: (_detail(f).get("kind") or "folder") for f in worthy}}))
 
     # ── what it is made of ─────────────────────────────────────────────
     verdicts = registry.get_component_verdicts("repo", slug)
@@ -227,6 +374,7 @@ def build_plan(registry: ProjectRegistry, slug: str) -> dict:
     arch = _fact(layer, slug, "architecture_recovery")
     comps = (arch.get("value") or {}).get("components") or []
     accepted = sum(1 for v in comp_v.values() if v.get("verdict") == "accepted")
+    awaiting = awaiting_counts(comps, comp_v)
     made_of = [
         _row("Component", f"{accepted} of {len(comps):,} components accepted · {len(comp_v)} reviewed",
              # True today, and no more (designer, 2026-09-14): interfaces.propose()
@@ -239,39 +387,43 @@ def build_plan(registry: ProjectRegistry, slug: str) -> dict:
                       "(current UI) until it moves here",
              source="architecture_recovery", state=arch.get("state", ""), count=accepted,
              members={"analysis_id": "architecture_recovery"}, candidate=accepted > 0,
-             detail={"reviewed": len(comp_v), "blueprints_reviewed": len(bp_v),
-                     "blueprints_accepted": sum(1 for v in bp_v.values() if v.get("verdict") == "accepted")}),
+             detail={"reviewed": len(comp_v), "blueprints_reviewed": len(bp_v), "awaiting": awaiting,
+                     "blueprints_accepted": sum(1 for v in bp_v.values() if v.get("verdict") == "accepted"),
+                     # the kinds of the blueprints accepted ("Deployment Blueprint"), named in the table
+                     "blueprint_kinds": sorted({kind_word(k.split("::", 1)[0]) + " Blueprint"
+                                                for k, v in bp_v.items() if v.get("verdict") == "accepted"})}),
     ]
 
     # ── how it relates ─────────────────────────────────────────────────
     deps = _fact(layer, slug, "dependency_analysis")
     n_deps = sum(len(v) for v in ((deps.get("value") or {}).get("by_ecosystem") or {}).values())
     relates = [
-        _row("Dependency", f"{n_deps} dependencies · already-catalogued ones not looked up",
-             evidence="which of these are already assets in the catalogue is an Egeria search, not a local fact; not built yet",
+        _row("Dependency", f"{n_deps} dependencies · already-published ones not looked up",
+             evidence="which of these are already assets in Egeria is an Egeria search, not a local fact; not built yet",
              source="dependency_analysis", state=deps.get("state", ""), count=n_deps,
              members={"analysis_id": "dependency_analysis"}, candidate=False),
     ]
 
     # ── what gets written ──────────────────────────────────────────────
-    classifications = []
-    for key, name in (("sensitivity", "Confidentiality"), ("criticality", "Criticality"), ("retention", "Retention")):
-        f = enrichment.get(key) or {}
-        if f.get("value"):
-            classifications.append({"key": key, "classification": name, "value": f["value"],
-                                    "author": f.get("author", ""), "set_at": f.get("set_at", ""),
-                                    "interim": bool(f.get("interim")), "review": bool(f.get("review"))})
-    owner = enrichment.get("owner") or {}
-    licence = enrichment.get("licence") or {}
+    # ONE source for the Context facts: "What we know" (plan["know"]) and "what gets written" (writes below)
+    # both come from context_facts(), so the two never disagree.
+    know = context_facts(enrichment, registry.list_doc_sources("repo", slug))
+    by_key = {f["key"]: f for f in know}
+    # Brief F §9: the commit writes exactly these (classification_writes is the one function both read).
+    classifications = [{k: v for k, v in c.items() if k != "write"} for c in classification_writes(enrichment, know)]
+    owner = by_key["owner"]
+    licence = by_key["licence"]
+    from resource_explorer.catalogue_commit import _ts, publish_fields
     published = registry.get_last_published_annotation_types(slug) or {}
     writes = {
         "entities": [r["kind"] for r in what_it_is if r["candidate"]],
         "contained": {"data_files": len(profiles), "sub_resources": len(worthy)},
         "classifications": classifications,
-        "owner": {"value": owner.get("value", ""), "interim": bool(owner.get("interim")), "author": owner.get("author", "")},
-        "licence": licence.get("value", ""),
+        "owner": {"value": owner["shown"], "interim": owner["interim"], "author": owner["author"]},
+        "licence": licence["shown"],
         "survey_reports_linked": len(published),
-        "last_published_at": max(published.values(), default=""),
+        "last_published_at": max(published.values(), key=_ts, default=""),
+        **publish_fields(registry, slug, max(published.values(), key=_ts, default="")),
         "catalogued": bool(getattr(project, "egeria_asset_guid", "")),
         "asset_guid": getattr(project, "egeria_asset_guid", "") or "",
     }
@@ -284,11 +436,19 @@ def build_plan(registry: ProjectRegistry, slug: str) -> dict:
         "in_population": disposition in CURATE_POPULATION,
         "population": list(CURATE_POPULATION),
         "last_surveyed_at": getattr(project, "last_surveyed_at", "") or "",
+        # The kept survey a commit would publish (brief sections 1 and 2): its date, age, size, stale steps.
+        "survey": survey_state(registry, slug),
+        # The Egeria project answer ("unset" blocks a press until it is answered), read without writing it.
+        "project": project_state(registry, slug),
         "what_it_is": what_it_is,
         "what_it_holds": holds,
         "made_of": made_of,
+        # Structure's tab count: the SAME figure the made-of row carries in its detail (awaiting_counts).
+        "awaiting": awaiting,
         "relates": relates,
         "writes": writes,
+        # Tab 1's read-only "What we know" block: the confirmed Context facts, each with who declared it and when.
+        "know": know,
         "keeps_current": "Resource Explorer surveys, on the Automate schedule. No integration connector exists for this type.",
         "commits": Curations(registry).for_resource("repo", slug),
     }
@@ -296,67 +456,8 @@ def build_plan(registry: ProjectRegistry, slug: str) -> dict:
 
 # ── the record of the act ──────────────────────────────────────────────
 
-def _ensure_schema(conn) -> None:
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS resource_curation (
-            id            TEXT PRIMARY KEY,
-            entity_type   TEXT NOT NULL,
-            entity_slug   TEXT NOT NULL,
-            author        TEXT NOT NULL,
-            requested_at  TEXT NOT NULL,
-            selection     TEXT NOT NULL DEFAULT '{}',
-            manifest      TEXT NOT NULL DEFAULT '{}',
-            state         TEXT NOT NULL DEFAULT 'queued',
-            steps         TEXT NOT NULL DEFAULT '[]',
-            finished_at   TEXT NOT NULL DEFAULT '',
-            activity_id   TEXT NOT NULL DEFAULT ''
-        )
-    """)
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_resource_curation_entity "
-                 "ON resource_curation(entity_type, entity_slug, requested_at)")
-    # One table, two kinds (REPORT-RECORD-AND-TWO-CALLS C1, 2026-09-13). A
-    # report is a catalogue record with no steps: a named, dated, authored
-    # record of what was true about a selection at a moment, with its
-    # provenance attached. `kind` and `name` were added after the table
-    # shipped; every pre-existing row is a catalogue.
-    cols = _columns(conn, "resource_curation")
-    if "kind" not in cols:
-        conn.execute("ALTER TABLE resource_curation ADD COLUMN kind TEXT NOT NULL DEFAULT 'catalogue'")
-    if "name" not in cols:
-        conn.execute("ALTER TABLE resource_curation ADD COLUMN name TEXT NOT NULL DEFAULT ''")
-    if "report" not in cols:
-        conn.execute("ALTER TABLE resource_curation ADD COLUMN report TEXT NOT NULL DEFAULT '{}'")
-    # The three acts on a report (REPORT-ACTS, 2026-09-14): a record's USES
-    # are a separate append-only list attached to it, not an edit of it --
-    # the content stays frozen while what it caused accumulates beside it.
-    # A correction is a new record that names what it corrects; the old one
-    # learns who corrected it, in the same place its uses appear.
-    if "uses" not in cols:
-        conn.execute("ALTER TABLE resource_curation ADD COLUMN uses TEXT NOT NULL DEFAULT '[]'")
-    if "corrects" not in cols:
-        conn.execute("ALTER TABLE resource_curation ADD COLUMN corrects TEXT NOT NULL DEFAULT ''")
-    if "corrected_by" not in cols:
-        conn.execute("ALTER TABLE resource_curation ADD COLUMN corrected_by TEXT NOT NULL DEFAULT '{}'")
-    # The layer-2 catalogue-depth offer (owner's ruling, 2026-09-15): the
-    # same shape as DepthOffer's outcome, but recorded on the catalogue
-    # record rather than a disposition-history row -- the layer-2 act is
-    # component materialization, which belongs to a curate commit, not to a
-    # disposition verdict. '{}' means "not yet offered", same convention
-    # DepthOffer's own null column uses.
-    if "layer2_offer" not in cols:
-        conn.execute("ALTER TABLE resource_curation ADD COLUMN layer2_offer TEXT NOT NULL DEFAULT '{}'")
-
-
-def _columns(conn, table: str) -> set[str]:
-    try:
-        if getattr(conn, "is_postgres", False):
-            rows = conn.execute("SELECT column_name FROM information_schema.columns "
-                                "WHERE table_name = ? AND table_schema = current_schema()", (table,)).fetchall()
-            return {r["column_name"] for r in rows}
-        rows = conn.execute(f"PRAGMA table_info({table})").fetchall()
-        return {r["name"] for r in rows}
-    except Exception:
-        return set()
+# The resource_curation table is created by ProjectRegistry._init_schema (a migration),
+# not here: DDL on a GET fails under a read-only session.
 
 
 @dataclass
@@ -387,7 +488,6 @@ class Curations:
         now = _now()
         rows = [CurationStep(s).__dict__ for s in steps]
         with self._conn() as conn:
-            _ensure_schema(conn)
             conn.execute(
                 "INSERT INTO resource_curation (id, entity_type, entity_slug, author, requested_at, selection, manifest, state, steps, activity_id) "
                 "VALUES (?, ?, ?, ?, ?, ?, ?, 'queued', ?, ?)",
@@ -412,7 +512,6 @@ class Curations:
         if corrects and (not old or old["entity_slug"] != slug or old.get("kind") != "report"):
             raise ValueError("a correction must name a report record on the same resource")
         with self._conn() as conn:
-            _ensure_schema(conn)
             conn.execute(
                 "INSERT INTO resource_curation (id, entity_type, entity_slug, author, requested_at, selection, manifest, "
                 "state, steps, activity_id, kind, name, report, finished_at, corrects) "
@@ -459,7 +558,7 @@ class Curations:
         if not rec:
             raise LookupError(cid)
         if rec.get("layer2_offer"):
-            raise ValueError(f"catalogue record {cid} already carries a layer-2 offer outcome")
+            raise ValueError(f"publish record {cid} already carries a layer-2 offer outcome")
         payload = {"outcome": outcome, "decided_by": decided_by, "at": _now()}
         with self._conn() as conn:
             conn.execute("UPDATE resource_curation SET layer2_offer = ? WHERE id = ?",
@@ -468,19 +567,28 @@ class Curations:
 
     def get(self, cid: str) -> dict | None:
         with self._conn() as conn:
-            _ensure_schema(conn)
             row = conn.execute("SELECT * FROM resource_curation WHERE id = ?", (cid,)).fetchone()
+        return self._decode(row) if row else None
+
+    def latest(self, entity_type: str, slug: str) -> dict | None:
+        """The newest record for a resource, one cheap read (the commit line survives a reload without the
+        plan, which can take half a minute)."""
+        with self._conn() as conn:
+            row = conn.execute(
+                "SELECT * FROM resource_curation WHERE entity_type = ? AND entity_slug = ? "
+                "ORDER BY requested_at DESC LIMIT 1", (entity_type, slug)).fetchone()
         return self._decode(row) if row else None
 
     def for_resource(self, entity_type: str, slug: str) -> list[dict]:
         with self._conn() as conn:
-            _ensure_schema(conn)
             rows = conn.execute(
                 "SELECT * FROM resource_curation WHERE entity_type = ? AND entity_slug = ? ORDER BY requested_at DESC",
                 (entity_type, slug)).fetchall()
         return [self._decode(r) for r in rows]
 
-    def set_step(self, cid: str, name: str, state: str, detail: str = "") -> None:
+    def set_step(self, cid: str, name: str, state: str, detail: str = "", more: str = "") -> None:
+        """Record a step's state. `more` is the long tail of Egeria's own message, kept apart so
+        the screen can show the first sentence and fold the rest under "details"."""
         cur = self.get(cid)
         if not cur:
             return
@@ -488,9 +596,31 @@ class Curations:
         for s in steps:
             if s["name"] == name:
                 s.update({"state": state, "detail": detail[:2000], "at": _now()})
+                if more:
+                    s["more"] = more[:4000]
+                else:
+                    s.pop("more", None)
         with self._conn() as conn:
             conn.execute("UPDATE resource_curation SET steps = ?, state = 'running' WHERE id = ?",
                          (json.dumps(steps), cid))
+
+    def settle_step(self, cid: str, name: str, state: str, detail: str = "", more: str = "") -> None:
+        """Update one step of a record that may already be finished, WITHOUT reopening it:
+        `set_step` marks the record running, which is wrong for a later read-back that only
+        learns how an earlier step turned out."""
+        cur = self.get(cid)
+        if not cur:
+            return
+        steps = cur["steps"]
+        for s in steps:
+            if s["name"] == name:
+                s.update({"state": state, "detail": detail[:2000], "at": _now()})
+                if more:
+                    s["more"] = more[:4000]
+                else:
+                    s.pop("more", None)
+        with self._conn() as conn:
+            conn.execute("UPDATE resource_curation SET steps = ? WHERE id = ?", (json.dumps(steps), cid))
 
     def finish(self, cid: str) -> dict:
         cur = self.get(cid)

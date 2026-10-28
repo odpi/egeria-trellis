@@ -473,6 +473,53 @@ class TestRelationshipGraph:
         assert result["edge_count"] == 1
         assert len(result["dangling_references"]) == 1
 
+    def test_most_referenced_ties_are_broken_deterministically_by_table_name(self, registry):
+        """2026-09-29 round 3 (PER-REQUEST-SERVER-LATENCY-ROUND-3-IMPLEMENTED.md): found live comparing round 3's fixture
+        output against an UNMODIFIED baseline run twice — `most_referenced`
+        sorted only by `referenced_by` descending, with no tiebreaker, so
+        entries tied on that count ordered by `in_degree.items()`'s
+        iteration order, itself dependent on dict insertion order from
+        whatever order edges came back from the database. Two runs of the
+        SAME unmodified code on the SAME data produced two different
+        orderings. Design's ruling: nondeterministic evidence text is a
+        correctness bug, fixed here (not Backlogged) with a deterministic
+        `table` name tiebreaker.
+
+        Three hub tables (`z_hub`, `a_hub`, `m_hub` — named out of
+        alphabetical order on purpose, so a name-based tiebreak is
+        distinguishable from insertion order) are each referenced by
+        exactly one leaf table — a genuine tie on `referenced_by`. Expected
+        order is alphabetical by table name: `a_hub`, `m_hub`, `z_hub`."""
+        tables = [
+            _table("z_hub"), _table("a_hub"), _table("m_hub"), _table("leaf", cols=4),
+        ]
+        columns = [
+            _column("z_hub", "id", pk=True),
+            _column("a_hub", "id", pk=True),
+            _column("m_hub", "id", pk=True),
+            _column("leaf", "id", pk=True),
+            _column("leaf", "z_hub_id", fk={
+                "foreign_schema": "public", "foreign_table": "z_hub", "foreign_column": "id"}),
+            _column("leaf", "a_hub_id", fk={
+                "foreign_schema": "public", "foreign_table": "a_hub", "foreign_column": "id"}),
+            _column("leaf", "m_hub_id", fk={
+                "foreign_schema": "public", "foreign_table": "m_hub", "foreign_column": "id"}),
+        ]
+        _store(registry, "coco_ods", NOW, tables=tables, columns=columns)
+
+        results = [
+            derive_relationship_graph(load_inputs(registry, "coco_ods"))
+            for _ in range(2)
+        ]
+        assert results[0]["most_referenced"] == results[1]["most_referenced"], (
+            "most_referenced order differed across two identical calls — "
+            "the tie-order nondeterminism this test exists to pin"
+        )
+        tied = [h for h in results[0]["most_referenced"] if h["referenced_by"] == 1]
+        assert [h["table"] for h in tied] == [
+            "public.a_hub", "public.m_hub", "public.z_hub",
+        ]
+
 
 # ═══════════════════════════════════════════════════════════════════════════
 # 3. grain_determination
@@ -529,6 +576,30 @@ class TestGrain:
         grain = determine_grain(load_inputs(registry, "coco_ods"))["grains"][0]
         assert grain["grain_statement"] == "one row per account_id + balance_date"
         assert grain["interval"] == "per-date"
+
+    def test_a_named_period_never_reaches_egerias_long_interval(self, registry):
+        """Egeria's DataGrainAnnotationProperties.interval is a Java `long` (a count in the
+        grain's units; OpenMetadataProperty.INTERVAL is DataType.LONG). RE's period is a
+        word ("per-date"), and the live gate (2026-10-14) had 157 of 157 grain annotations
+        refused with Jackson's "Cannot deserialize value of type `long` from String
+        \"per-date\"". The word travels as additionalProperties.intervalName instead."""
+        from resource_explorer.surveyors.annotation_props import build_annotation_props
+
+        tables = [_table("account_balance_daily")]
+        columns = [
+            _column("account_balance_daily", "account_id", pk=True),
+            _column("account_balance_daily", "balance_date", pk=True, dtype="date"),
+            _column("account_balance_daily", "balance", dtype="numeric"),
+        ]
+        _store(registry, "coco_ods", NOW, tables=tables, columns=columns)
+        grains = [a for a in run_db_derived(registry, "coco_ods")["annotations"]
+                  if isinstance(a, DataGrainAnnotation)]
+        assert len(grains) == 1
+        assert grains[0].interval is None
+        assert grains[0].interval_name == "per-date"
+        props = build_annotation_props(grains[0], "q")
+        assert "interval" not in props
+        assert props["additionalProperties"] == {"intervalName": "per-date"}
 
     def test_a_unique_column_stands_in_for_a_missing_primary_key(self, registry):
         tables = [_table("event", rows=1_000)]
@@ -1048,7 +1119,7 @@ class TestPublishMapping:
         ann = DataGrainAnnotation(
             summary="s", analysis_step="x",
             grain_statement="one row per customer_id",
-            granularity_basis="primary_key", interval="per-date",
+            granularity_basis="primary_key", interval_name="per-date",
             content_status="DRAFT",
         )
         props = build_annotation_props(ann, "q")
@@ -1056,7 +1127,9 @@ class TestPublishMapping:
         # The Egeria type's own field names, per support doc §3.
         assert props["grainStatement"] == "one row per customer_id"
         assert props["granularityBasis"] == "primary_key"
-        assert props["interval"] == "per-date"
+        # Egeria's `interval` is a long; the period word is not one (live 400, 2026-10-14).
+        assert "interval" not in props
+        assert props["additionalProperties"] == {"intervalName": "per-date"}
         assert props["contentStatus"] == "DRAFT"
 
     def test_fingerprint_payload_travels_as_additional_properties(self):
@@ -1426,3 +1499,129 @@ def _scoped(result: dict, check_prefix: str) -> list:
         a for a in result["annotations"]
         if (a.annotation_type_name or "") == check_prefix
     ]
+
+
+class TestSharedCoverageBar:
+    """One bar (result_status.COVERAGE_BAR, 80% of tables) for the seven analyses."""
+
+    SEVEN = ("db_classification", "db_relationship_graph", "grain_determination",
+             "schema_conventions", "subject_signals", "coverage_signals", "preliminary_fit")
+
+    @staticmethod
+    def _payload(field, measured, total):
+        from resource_explorer.registry import STATE_MEASURED, STATE_NOT_MEASURED
+        if field == "db_relationship_graph":
+            return {"table_count": measured, "unmeasured_table_count": total - measured}, None
+        if field == "grain_determination":
+            return {"grains": [{"state": STATE_MEASURED if i < measured else STATE_NOT_MEASURED}
+                               for i in range(total)]}, None
+        return {"state": STATE_MEASURED}, {"keys": {"measured": measured, "total": total},
+                                          "catalog": {"measured": measured, "total": total}}
+
+    @pytest.mark.parametrize("field", SEVEN)
+    def test_79_percent_is_not_established_with_the_exact_words(self, field):
+        from resource_explorer.surveyors.database.survey_definition_adapter import _attach_coverage_status
+        from resource_explorer.surveyors.result_status import NOT_ESTABLISHED
+        data, cov = self._payload(field, 79, 100)
+        _attach_coverage_status(field, data, cov)
+        assert data["_status"]["state"] == NOT_ESTABLISHED
+        words = "tables read" if field in ("db_classification", "schema_conventions", "subject_signals",
+                                           "coverage_signals", "preliminary_fit") else "tables"
+        assert data["_status"]["detail"] == f"measured on 79 of 100 {words} (below the 80% bar)"
+
+    @pytest.mark.parametrize("field", SEVEN)
+    def test_80_percent_is_measured(self, field):
+        from resource_explorer.surveyors.database.survey_definition_adapter import _attach_coverage_status
+        data, cov = self._payload(field, 80, 100)
+        _attach_coverage_status(field, data, cov)
+        assert "_status" not in data
+
+    def test_per_analysis_override_works_and_others_keep_the_shared_bar(self, monkeypatch):
+        from resource_explorer.surveyors import result_status
+        from resource_explorer.surveyors.database.survey_definition_adapter import _attach_coverage_status
+        monkeypatch.setitem(result_status.COVERAGE_BAR_OVERRIDES, "coverage_signals", 0.5)
+        mine, cov = self._payload("coverage_signals", 60, 100)
+        _attach_coverage_status("coverage_signals", mine, cov)
+        assert "_status" not in mine
+        other, cov = self._payload("subject_signals", 60, 100)
+        _attach_coverage_status("subject_signals", other, cov)
+        assert other["_status"]["detail"] == "measured on 60 of 100 tables read (below the 80% bar)"
+        monkeypatch.setitem(result_status.COVERAGE_BAR_OVERRIDES, "subject_signals", 0.9)
+        strict, cov = self._payload("subject_signals", 85, 100)
+        _attach_coverage_status("subject_signals", strict, cov)
+        assert strict["_status"]["detail"] == "measured on 85 of 100 tables read (below the 90% bar)"
+
+    def test_all_seven_read_the_shared_constant(self, monkeypatch):
+        from resource_explorer.surveyors import result_status
+        from resource_explorer.surveyors.database.survey_definition_adapter import (
+            COVERAGE_BAR_FIELDS, _attach_coverage_status)
+        assert set(COVERAGE_BAR_FIELDS) == set(self.SEVEN)
+        monkeypatch.setattr(result_status, "COVERAGE_BAR", 0.95)
+        for field in self.SEVEN:
+            data, cov = self._payload(field, 90, 100)
+            _attach_coverage_status(field, data, cov)
+            assert data["_status"]["detail"].endswith("(below the 95% bar)"), field
+
+    def test_end_to_end_through_the_reader_at_the_boundary(self, registry):
+        from resource_explorer.facts import FactLayer
+        from resource_explorer.surveyors.result_status import MEASURED, NOT_ESTABLISHED
+        for day, (measured, expected) in enumerate(((79, NOT_ESTABLISHED), (80, MEASURED)), start=22):
+            slug = "coco_ods"
+            tables = [_table(f"t{i}") for i in range(100)]
+            columns = [_column(f"t{i}", "id", pk=True) for i in range(measured)]
+            columns += [_column(f"t{i}", "id", keys_captured=False) for i in range(measured, 100)]
+            _store(registry, slug, f"2026-09-{day}T12:00:00", tables=tables, columns=columns)
+            registry.write_detail_rows("database_schemas", slug, f"2026-09-{day}T12:00:00",
+                                       rows=[{"schema_name": "public"}], source="local")
+            fl = FactLayer(registry=registry, resource_type="database")
+            # keys notion: the graph is under the bar at 79 keyed tables
+            assert fl.fact(slug, "db_relationship_graph").state == expected, measured
+            # catalog notion: all 100 tables were read, so conventions is measured either way
+            assert fl.fact(slug, "schema_conventions").state == MEASURED, measured
+
+
+class TestCatalogTierNotion:
+    """The four name/comment-level analyses measure by catalog read, not keys."""
+
+    FOUR = ("db_classification", "schema_conventions", "subject_signals", "coverage_signals", "preliminary_fit")
+
+    def _store_db(self, registry, day, read, total=100):
+        tables = [_table(f"t{i}") for i in range(total)]
+        # every table has column rows; none has keys captured (no foreign keys either)
+        columns = [_column(f"t{i}", "id", keys_captured=False) for i in range(read)]
+        _store(registry, "coco_ods", f"2026-09-{day}T12:00:00", tables=tables, columns=columns)
+        registry.write_detail_rows("database_schemas", "coco_ods", f"2026-09-{day}T12:00:00",
+                                   rows=[{"schema_name": "public"}], source="local")
+
+    def test_fully_read_database_without_keys_is_measured_for_the_four(self, registry):
+        from resource_explorer.surveyors.database.survey_definition_adapter import _db_derived_field_reader
+        self._store_db(registry, 22, read=100)
+        for field in self.FOUR:
+            data = _db_derived_field_reader(field)(registry, "coco_ods")
+            assert (data.get("_status") or {}).get("reason") != "thin_table_coverage", field
+        # the keys notion still marks the graph below the bar on the same data
+        graph = _db_derived_field_reader("db_relationship_graph")(registry, "coco_ods")
+        assert not graph or graph["_status"]["detail"].endswith("tables (below the 80% bar)")
+
+    def test_partially_read_database_is_not_established_with_tables_read_words(self, registry):
+        from resource_explorer.surveyors.database.db_derived import run_db_derived
+        from resource_explorer.surveyors.database.survey_definition_adapter import _attach_coverage_status
+        self._store_db(registry, 23, read=79)
+        cov = run_db_derived(registry, "coco_ods")["table_coverage"]
+        assert cov["catalog"] == {"measured": 79, "total": 100}
+        for field in self.FOUR:
+            data = {"state": "measured"}
+            _attach_coverage_status(field, data, cov)
+            assert data["_status"]["state"] == "not_established"
+            assert data["_status"]["detail"] == "measured on 79 of 100 tables read (below the 80% bar)"
+
+    def test_fully_read_no_keys_counts_catalog_full_and_keys_zero(self, registry):
+        from resource_explorer.surveyors.database.db_derived import run_db_derived
+        from resource_explorer.surveyors.database.survey_definition_adapter import _attach_coverage_status
+        self._store_db(registry, 24, read=100)
+        cov = run_db_derived(registry, "coco_ods")["table_coverage"]
+        assert cov["catalog"]["measured"] == 100 and cov["keys"]["measured"] == 0
+        for field in self.FOUR:
+            data = {"state": "measured"}
+            _attach_coverage_status(field, data, cov)
+            assert "_status" not in data, field

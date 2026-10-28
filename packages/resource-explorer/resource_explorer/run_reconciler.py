@@ -167,18 +167,7 @@ def reconcile(registry: "ProjectRegistry | None" = None, *, now=None) -> dict:
         left_alone.append(row["id"])
 
     for row, reason in resolved:
-        registry.update_activity_status(
-            row["id"], INTERRUPTED,
-            summary=(f"Interrupted — {reason}. Findings written before it stopped "
-                     "are kept; whether it completed is not known."),
-            detail=json.dumps({
-                **(_as_dict(row.get("detail"))),
-                "reconciled_at": now.isoformat(),
-                "reconcile_reason": reason,
-            }),
-        )
-        log.info("reconciled orphaned run %s (%s): %s",
-                 row["id"], row.get("entity_slug"), reason)
+        _resolve(registry, row, reason, now)
 
     return {
         "resolved": len(resolved),
@@ -186,6 +175,38 @@ def reconcile(registry: "ProjectRegistry | None" = None, *, now=None) -> dict:
         "left_alone": len(left_alone),
         "resolved_ids": [r["id"] for r, _ in resolved],
     }
+
+
+def _resolve(registry, row: dict, reason: str, now: datetime) -> None:
+    registry.update_activity_status(
+        row["id"], INTERRUPTED,
+        summary=(f"Interrupted — {reason}. Findings written before it stopped "
+                 "are kept; whether it completed is not known."),
+        detail=json.dumps({
+            **(_as_dict(row.get("detail"))),
+            "reconciled_at": now.isoformat(),
+            "reconcile_reason": reason,
+        }),
+    )
+    log.info("reconciled orphaned run %s (%s): %s",
+             row["id"], row.get("entity_slug"), reason)
+
+
+def reconcile_one(registry: "ProjectRegistry", row: dict, *, now=None) -> bool | None:
+    """Judge ONE running activity row the way `reconcile` does, by its recorded owner only.
+
+    True: its owner is provably gone and the row is now `interrupted`. False: its owner is alive (left running).
+    None: no owner recorded or not verifiable (left running; never treated as dead). The age fallback for rows
+    with no owner is NOT applied here: a caller deciding whether to proceed must not guess."""
+    if row.get("status") != "running":
+        return None
+    owner = owner_of(row.get("detail"))
+    alive = _is_alive(owner) if owner else None
+    if alive is False:
+        _resolve(registry, row, "its process is no longer running",
+                 now or datetime.now(timezone.utc).replace(tzinfo=None))
+        return True
+    return False if alive else None
 
 
 def reconcile_runs(

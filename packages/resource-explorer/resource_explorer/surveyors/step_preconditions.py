@@ -63,8 +63,109 @@ def _row_count(registry, table: str, slug: str, where: str = "",
             ).fetchone()
         return int(row["n"] or 0)
     except Exception as exc:
-        log.debug("precondition: cannot count %s for %s: %s", table, slug, exc)
+        log.warning("precondition: cannot count %s for %s: %s", table, slug, exc)
         return -1
+
+
+#: How long a producer's stored result stands in for a fresh run of it, when
+#: the resolver is asked whether a precondition is satisfied — brief
+#: BRIEF-KEYS-AND-ACTIVITY-CLOBBER.md §E, "the resolver checks the registry
+#: for a prior result ... within a freshness window (see design §5.1a for the
+#: window definition)". §5.1a itself (multi-resource-questions-design.md)
+#: defines freshness for *catalog statistics* (pg_stats: fresh/stale/
+#: never_collected/not_visible, judged by modification count and age), not a
+#: single numeric window for "does a structural inventory still count" — this
+#: is a different question (a table/column *inventory* row, not a stats
+#: estimate) that the design does not give a number for. 24 hours is this
+#: change's own judgement call, chosen so a same-day Scouting → Analysis
+#: sequence (the brief's own worked example: 20 minutes apart) is always
+#: satisfied, while a schema inventory from last week is treated as stale
+#: enough to be worth refreshing rather than silently reused forever — the
+#: `_row_count`-only check this replaces had no upper bound at all. Recorded
+#: here, explicitly, rather than left as an unstated constant, so a later
+#: reader can find and revisit it with one grep.
+DEFAULT_FRESHNESS_WINDOW_HOURS = 24
+
+
+def _latest_surveyed_at(registry, table: str, slug: str,
+                        slug_column: str = "project_slug",
+                        ts_column: str = "surveyed_at") -> str | None:
+    """The newest `ts_column` for `table`/`slug`, or None if there is none or
+    the table cannot be read. Only tables that really carry such a column may
+    be asked (`Precondition.ts_column` says which); an unreadable one is
+    logged at WARNING, because a swallowed failure here made four of five
+    preconditions unsatisfiable by stored data (2026-10-14).
+    """
+    try:
+        with registry._conn() as conn:
+            row = conn.execute(
+                f"SELECT MAX({ts_column}) AS ts FROM {table} WHERE {slug_column} = ?",
+                (slug,),
+            ).fetchone()
+        ts = row["ts"] if row else None
+        return str(ts) if ts else None
+    except Exception as exc:
+        log.warning("precondition: cannot read %s from %s for %s: %s",
+                    ts_column, table, slug, exc)
+        return None
+
+
+def _latest_producer_run(registry, step_key: str, slug: str) -> str | None:
+    """When `step_key` last ran successfully on `slug`, from `step_runs`.
+
+    The one provenance source every precondition shares: whichever table a
+    producer fills, it leaves a `step_runs` row (`step_cost_observer.record`,
+    written by the local loop, the Prefect task and the auto-run alike). A row
+    whose `dispatch_failed` is set is a dispatch that did not run, so it does
+    not count. None when there is no such row or `step_runs` cannot be read
+    (the latter logged at WARNING).
+    """
+    if not step_key:
+        return None
+    try:
+        with registry._conn() as conn:
+            row = conn.execute(
+                "SELECT MAX(surveyed_at) AS ts FROM step_runs "
+                "WHERE slug = ? AND step_key = ? "
+                "AND (dispatch_failed IS NULL OR dispatch_failed = '')",
+                (slug, step_key),
+            ).fetchone()
+        ts = row["ts"] if row else None
+        return str(ts) if ts else None
+    except Exception as exc:
+        log.warning("precondition: cannot read step_runs for %s/%s: %s",
+                    slug, step_key, exc)
+        return None
+
+
+def _parse_ts(value: str):
+    from datetime import datetime, timezone
+
+    for candidate in (value, value.replace(" ", "T")):
+        try:
+            ts = datetime.fromisoformat(candidate)
+        except ValueError:
+            continue
+        return ts if ts.tzinfo else ts.replace(tzinfo=timezone.utc)
+    return None
+
+
+def _hours_since(surveyed_at: str) -> float | None:
+    """Hours between `surveyed_at` (an ISO-ish timestamp as stored by this
+    registry) and now, or None if it cannot be parsed — treated as "can't
+    tell freshness" by the caller, not as "definitely stale"."""
+    from datetime import datetime, timezone
+
+    for candidate in (surveyed_at, surveyed_at.replace(" ", "T")):
+        try:
+            ts = datetime.fromisoformat(candidate)
+        except ValueError:
+            continue
+        if ts.tzinfo is None:
+            ts = ts.replace(tzinfo=timezone.utc)
+        return (datetime.now(timezone.utc) - ts).total_seconds() / 3600.0
+    log.debug("precondition: could not parse surveyed_at %r", surveyed_at)
+    return None
 
 
 def _needs_rows(table: str, what: str, where: str = "",
@@ -90,6 +191,11 @@ class Precondition:
     `step_produces.producer_of()` inverts to a step key. The producer is
     therefore never written down twice.
 
+    `slug_column` is carried separately from `check` (whose closure already
+    knows it) so `freshness()` below can run the same "which table, keyed by
+    what" lookup `_needs_rows` uses, without re-deriving it or asking the
+    check to expose its own closure.
+
     `caveat` carries the part of a remedy that is NOT "run this step" — the
     Gradle/BOM case below is the whole reason the field exists: running
     `repo_manifest_parse` is necessary and, on that repository, not
@@ -97,7 +203,15 @@ class Precondition:
     """
     check: Callable
     table: str
+    slug_column: str = "project_slug"
     caveat: str = ""
+    #: The same filter `check` applies, so `freshness()` counts the rows the
+    #: check counts (has_versioned_dependencies is not has_dependencies).
+    where: str = ""
+    #: A timestamp column on `table` itself, when it really has one
+    #: (`database_tables.surveyed_at`). Optional corroboration only: the
+    #: producer's `step_runs` row is the source every precondition has.
+    ts_column: str = ""
 
     def produced_by(self) -> str:
         """The step that fills `self.table`, from its own `produces`."""
@@ -117,6 +231,49 @@ class Precondition:
             )
         return f"Run {step}{f' ({self.caveat})' if self.caveat else ''} first."
 
+    def freshness(self, registry, project,
+                 window_hours: float = DEFAULT_FRESHNESS_WINDOW_HOURS
+                 ) -> tuple[bool, str | None]:
+        """(fresh, surveyed_at).
+
+        Fresh means BOTH: the rows exist (the same count `check` makes), AND
+        the producer step ran successfully on this resource inside the
+        window. The run time comes from the producer's `step_runs` row, which
+        every precondition has; a table that also carries its own timestamp
+        (`ts_column`) may supply a newer one.
+
+        `surveyed_at` is the newest run time found (None when there is none),
+        returned whether or not it falls inside the window, as provenance.
+        An unreadable count or an unparseable stamp is NOT fresh: the
+        conservative direction, which asks the producer to run rather than
+        trusting what could not be read. Unreadable is logged at WARNING.
+        """
+        candidates = [_latest_producer_run(registry, self.produced_by(),
+                                           project.slug)]
+        if self.ts_column:
+            candidates.append(_latest_surveyed_at(
+                registry, self.table, project.slug, self.slug_column,
+                self.ts_column))
+        stamps = [c for c in candidates if c]
+        if not stamps:
+            return False, None
+        parsed = [(_parse_ts(c), c) for c in stamps]
+        usable = [(t, c) for t, c in parsed if t is not None]
+        if not usable:
+            log.warning("precondition: could not parse %r as a time", stamps)
+            return False, stamps[0]
+        newest_ts, newest = max(usable, key=lambda tc: tc[0])
+        n = _row_count(registry, self.table, project.slug, self.where,
+                       self.slug_column)
+        if n <= 0:
+            # The producer ran but nothing is stored (or it cannot be read):
+            # a run is not an answer when its rows are not there.
+            return False, newest
+        age_hours = _hours_since(newest)
+        if age_hours is None:
+            return False, newest
+        return age_hours <= window_hours, newest
+
 
 #: name → the condition. No producer string: see this module's docstring and
 #: `Precondition.produced_by`.
@@ -135,6 +292,7 @@ PRECONDITIONS: dict[str, Precondition] = {
         _needs_rows("project_dependencies", "dependencies with a resolved version",
                     where="dep_version IS NOT NULL AND dep_version != ''"),
         table="project_dependencies",
+        where="dep_version IS NOT NULL AND dep_version != ''",
         caveat="and version resolution — see Backlog, Gradle/BOM"),
     "has_file_inventory": Precondition(
         _needs_rows("project_file_inventory", "file inventory"),
@@ -152,8 +310,128 @@ PRECONDITIONS: dict[str, Precondition] = {
     "has_schema_inventory": Precondition(
         _needs_rows("database_tables", "schema inventory",
                     slug_column="database_slug"),
-        table="database_tables"),
+        table="database_tables",
+        slug_column="database_slug",
+        ts_column="surveyed_at"),
 }
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# Human-input preconditions (ENRICHMENT-E1-CONTEXT-TAB, 2026-09-29 — the
+# project owner's amendment to the designer's reply §0.2: analyses whose
+# prerequisite is a HUMAN INPUT, not a survey read, do run at the Enrichment
+# stage). This module's own docstring says its vocabulary "is deliberately
+# about stored data" — that holds here unchanged: a declared documentation
+# source, a declared lens and a confirmed glossary term are all stored
+# facts, just ones a PERSON writes rather than a survey. Kept as a separate
+# dict rather than folded into `PRECONDITIONS` because the two answer
+# different questions for a caller — `PRECONDITIONS` says "may a SURVEY STEP
+# run" (and its `Precondition.remedy()`/`produced_by()` assume a step
+# produces the missing table); this dict says "is a human input PRESENT",
+# with no step to name as a remedy — the remedy is a person, told in
+# `_needs_human_input`'s own reason text.
+#
+# Every check below reads real stored data where a real table exists, and
+# is deliberately CONSERVATIVE where one does not: an unreadable or missing
+# table (`confirmed_glossary_terms` does not exist — no glossary-confirmation
+# mechanism is built at all; documentation sources read #348's `doc_sources`)
+# reads as NOT SATISFIED, never as "cannot tell, so allow it" the way
+# `_needs_rows` treats an unreadable table for a SURVEY step. Reversed on
+# purpose from `_needs_rows`: there, "cannot tell" defers to running the
+# step, which will itself report an honest absence; here, "cannot tell"
+# must not be indistinguishable from "a person declared this and we lost
+# it" — the direction that matters for a human input is never to claim one
+# exists when it might not.
+def _needs_human_input(kind: str) -> Callable:
+    def check(registry, project) -> tuple[bool, str]:
+        try:
+            if kind == "lens":
+                # No stored, investigation-level DataLens exists yet (§16.5
+                # points 3-5 of the design are explicitly out of scope —
+                # see db_derived.py's own header comment on preliminary_fit).
+                # The one real, already-stored signal is preliminary_fit's
+                # OWN last-read `lens_declared` flag — a resource-scoped
+                # proxy for what should be investigation-scoped. Documented
+                # limitation, not silently assumed: see ENRICHMENT-E1-CONTEXT-TAB-IMPLEMENTED.md.
+                from resource_explorer.facts import FactLayer
+
+                fl = FactLayer(registry, resource_type="database")
+                fact = fl.fact(project.slug, "preliminary_fit")
+                value = getattr(fact, "value", None) or {}
+                if isinstance(value, dict) and value.get("lens_declared"):
+                    return True, "a lens is declared (from preliminary_fit's own last read)"
+                return False, "declare a lens on the investigation"
+            if kind == "documentation_source":
+                # The table #348 actually created (`doc_sources`), read by
+                # slug alone -- no entity_type filter -- exactly as Context's
+                # block reads it (Context lists by the resource's own slug),
+                # so the unlock and the Context tab cannot disagree.
+                n = _row_count(registry, "doc_sources", project.slug,
+                                slug_column="entity_slug")
+                if n > 0:
+                    return True, f"{n} documentation source(s) declared"
+                return False, "no documentation source declared yet"
+            if kind == "ingested_documentation":
+                n = _row_count(registry, "doc_sources", project.slug,
+                                where="ingested_at IS NOT NULL AND ingested_at != ''",
+                                slug_column="entity_slug")
+                if n > 0:
+                    return True, f"{n} documentation source(s) ingested"
+                return False, "no documentation has been ingested yet"
+            if kind == "confirmed_glossary_term":
+                n = _row_count(registry, "confirmed_glossary_terms", project.slug,
+                                slug_column="database_slug")
+                if n > 0:
+                    return True, f"{n} glossary term(s) confirmed"
+                return False, "no glossary term confirmed yet"
+        except Exception as exc:
+            log.debug("human-input precondition %r could not be checked: %s", kind, exc)
+        return False, f"could not establish whether a {kind.replace('_', ' ')} is present yet"
+    return check
+
+
+#: name (the catalog's `requires_input` vocabulary) → checker. Not
+#: `Precondition` instances — no survey step produces any of these, so
+#: `produced_by()`/`remedy()`'s "run this step" shape does not apply; the
+#: reason string returned by the check IS the remedy.
+HUMAN_INPUT_CHECKS: dict[str, Callable] = {
+    "lens": _needs_human_input("lens"),
+    "documentation_source": _needs_human_input("documentation_source"),
+    "ingested_documentation": _needs_human_input("ingested_documentation"),
+    "confirmed_glossary_term": _needs_human_input("confirmed_glossary_term"),
+}
+
+
+def human_input_state(registry, project, requires_input: str) -> tuple[bool, str]:
+    """(present, reason) for a catalog entry's `requires_input` value.
+
+    An unknown `requires_input` string reads as NOT satisfied rather than
+    raising or silently passing — same conservative direction as every check
+    above, for a caller (the Enrichment "Survey & analyses" map) that must
+    never render "unlocked" for a kind this module does not recognize."""
+    checker = HUMAN_INPUT_CHECKS.get(requires_input)
+    if checker is None:
+        return False, f"unrecognized human-input kind {requires_input!r}"
+    return checker(registry, project)
+
+
+def fresh_hit(registry, project, name: str,
+             window_hours: float = DEFAULT_FRESHNESS_WINDOW_HOURS
+             ) -> tuple[bool, str | None]:
+    """(within_window, surveyed_at) for a named precondition, or (False, None)
+    for a name this module does not know.
+
+    Shared by `prerequisite_resolver` (the runtime, per-entity check) and
+    `survey_execution_plan._add_produces_edges` (the Prefect plan builder,
+    §E) so "does this precondition already have a fresh stored answer" has
+    exactly one implementation — design §19.5's principle ("a fresh answer
+    satisfies the prerequisite") applied consistently rather than
+    re-derived once per engine.
+    """
+    entry = PRECONDITIONS.get(name)
+    if entry is None:
+        return False, None
+    return entry.freshness(registry, project, window_hours)
 
 
 def evaluate(registry, project, requires_context: dict[str, str]) -> tuple[bool, str, str]:

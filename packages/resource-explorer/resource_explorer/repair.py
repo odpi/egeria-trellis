@@ -321,3 +321,69 @@ def repoint_investigation_member(slug: str, from_investigation: str, to_investig
     members = reg.add_working_set_member(to_ws, "repo", slug, membership_rationale=membership_rationale)
     return {"slug": slug, "from_investigation": from_investigation, "to_investigation": to_investigation,
             "to_folio_members": members}
+
+
+# ── false-zero database survey rows (hotfix 2026-09-30) ───────────────────────
+#
+# A publish step used to write a database_surveys row (source
+# "egeria-published") even when it had nothing to publish, so an empty
+# schema_info was stored as if it were a measurement and became the newest
+# "survey". This repair MARKS such rows invalid (never deletes them) so every
+# reader excludes them. It is keyed on the damage itself — source is a publish
+# source AND schema_info is empty — for ANY slug, not on a slug or timestamp.
+
+def _publish_activity_id(reg: ProjectRegistry, slug: str, surveyed_at: str) -> str:
+    """Best-effort: the survey activity_log row written within seconds of the
+    false row (the step-run record for these rows does not exist)."""
+    from datetime import datetime, timedelta
+
+    try:
+        t0 = datetime.fromisoformat(surveyed_at)
+    except ValueError:
+        return ""
+    lo, hi = t0.isoformat(), (t0 + timedelta(seconds=10)).isoformat()
+    with reg._conn() as conn:
+        row = conn.execute(
+            "SELECT id FROM activity_log WHERE entity_slug = ? AND operation = 'survey' "
+            "AND intent = 'discovery' AND ts >= ? AND ts <= ? ORDER BY ts LIMIT 1",
+            (slug, lo, hi),
+        ).fetchone()
+    return row[0] if row else ""
+
+
+def plan_false_zero_survey_repair(registry: ProjectRegistry | None = None) -> list[dict]:
+    """Read-only: every unmarked row showing the false-zero damage, any slug.
+
+    Each item: {slug, surveyed_at, source, reason}. Writes nothing.
+    """
+    from resource_explorer.registry import FALSE_ZERO_REASON
+
+    reg = registry or ProjectRegistry()
+    plan = []
+    for row in reg.find_false_zero_database_surveys():
+        act = _publish_activity_id(reg, row["database_slug"], row["surveyed_at"])
+        reason = FALSE_ZERO_REASON + (f" (activity {act})" if act else "")
+        plan.append({"slug": row["database_slug"], "surveyed_at": row["surveyed_at"],
+                     "source": row["source"], "reason": reason})
+    return plan
+
+
+def apply_false_zero_survey_repair(plan: list[dict],
+                                   registry: ProjectRegistry | None = None) -> int:
+    """Mark each planned row invalid. Returns rows marked. Never deletes."""
+    reg = registry or ProjectRegistry()
+    return sum(
+        reg.mark_database_survey_invalid(p["slug"], p["surveyed_at"], p["source"], p["reason"])
+        for p in plan
+    )
+
+
+def format_false_zero_plan(plan: list[dict], *, apply: bool) -> str:
+    """The text the CLI prints (also what tests pin)."""
+    verb = "MARKED INVALID" if apply else "WOULD MARK INVALID (dry run, nothing written)"
+    lines = [f"{verb}: {len(plan)} row(s)"]
+    for p in plan:
+        lines.append(f"  {p['slug']}  {p['surveyed_at']}  source={p['source']}  reason={p['reason']}")
+    slugs = sorted({p["slug"] for p in plan})
+    lines.append(f"slugs: {', '.join(slugs) if slugs else '(none)'}")
+    return "\n".join(lines)

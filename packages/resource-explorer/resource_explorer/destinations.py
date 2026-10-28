@@ -106,7 +106,7 @@ def resolve_destination(kind: str, check_name: str, label: str, state: str) -> t
     Resolution order (never revisited once a rule matches):
 
     1. `state == DISAGREEMENT`, or `state`/`label` is NOT_ESTABLISHED (ran,
-       but this analysis cannot be credited with the result — result_status's
+       but nothing shows this analysis produced the result — result_status's
        own vocabulary) -> `ours`, computed. This is the one destination a
        check must never declare statically: whether a finding is a
        disagreement or unestablished is discovered per-resource, per-run, and

@@ -119,7 +119,11 @@ REQUIRED_COLUMNS = ["Question", "Funnel Stage"]
 # "Level" (2026-09-25, design §18.3) is RE-internal like Purposes: the
 # granularity the answer is a single value at. Not published to Egeria yet —
 # it will ride the same valid-value-set mechanism as Purposes (§10).
-OPTIONAL_LEAD_COLUMNS = ["Why is this important?", "Rationale/Source", "Answering Analysis", "Answering Mechanism", "Purposes", "Catalog History", "Status", "Resource Types", "Level"]
+# "Question ID" (2026-10-13) is the stable id RE's manifests name a question by. It IS sent to Egeria, but as an
+# Additional Properties entry (`question_id`) on the Create Glossary Term block, never as a column read by the
+# perspective scan, and never as the Qualified Name: the term's join key stays its Display Name for now, and a
+# changed Qualified Name would make Dr.Egeria create a second term rather than find the first.
+OPTIONAL_LEAD_COLUMNS = ["Question ID", "Why is this important?", "Rationale/Source", "Answering Analysis", "Answering Mechanism", "Purposes", "Catalog History", "Status", "Resource Types", "Level"]
 
 
 def _block(command: str, **fields: str) -> str:
@@ -136,6 +140,15 @@ def _block(command: str, **fields: str) -> str:
         lines.append(value)
         lines.append("")
     return "\n".join(lines).rstrip() + "\n\n___\n"
+
+
+def _question_properties(question_id: str) -> str:
+    """The Additional Properties table carrying the stable id, in the table form the survey-definition
+    documents already use (`| Parameter Name | Parameter Value |`). Empty when the row has no id."""
+    qid = (question_id or "").strip()
+    if not qid:
+        return ""
+    return "| Parameter Name | Parameter Value |\n|---|---|\n" + f"| question_id | {qid} |"
 
 
 def _question_summary(why: str, rationale: str) -> str:
@@ -226,6 +239,7 @@ def generate(
                 "Description": description,
                 "Summary": summary,
                 "Usage": usage,
+                "Additional Properties": _question_properties(row.get("Question ID", "")),
             },
         ))
         out.append(_block("Classify Term as Question", **{"Term Name": question}))

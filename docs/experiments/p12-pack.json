@@ -1,0 +1,882 @@
+{
+ "subject": "0ff72014-8936-4bea-b3d1-6a4493b99b30",
+ "subject_guid": "0ff72014-8936-4bea-b3d1-6a4493b99b30",
+ "consumer_kind": "data scientist",
+ "identity": "resourceexplorernpa",
+ "version": "1",
+ "as_of": "2026-10-14T00:50:42Z",
+ "envelope": {
+  "result_state": "measured",
+  "result_state_reason": "",
+  "producing_run": "",
+  "measured_at": "2026-10-14T00:50:42Z",
+  "producer_version": "0.1.0",
+  "scope": "database:0ff72014-8936-4bea-b3d1-6a4493b99b30"
+ },
+ "tabular": [
+  {
+   "schema_name": "target_sales",
+   "table": "consolidated_forecast",
+   "qualified_name": "PostgreSQL Relational Database Schema::host.docker.internal:5442::coco_pharma.target_sales::consolidated_forecast",
+   "element_guid": "a587207f-56ce-49c2-b5b4-c6a3297c050c",
+   "columns": {
+    "state": "recorded",
+    "value": 10,
+    "reason": "",
+    "note": "columns the cataloguer recorded under the table",
+    "provenance": {
+     "element_guid": "a587207f-56ce-49c2-b5b4-c6a3297c050c",
+     "source": "dbcatnpa",
+     "as_of": "2026-10-09T02:00:11.582+00:00"
+    }
+   },
+   "column_names": [
+    "amountusd",
+    "closedate",
+    "confidencepercent",
+    "consolidatedid",
+    "createddate",
+    "date",
+    "opportunityid",
+    "productline",
+    "region",
+    "salesstage"
+   ],
+   "column_detail": [
+    {
+     "name": "amountusd",
+     "element_guid": "24834794-5ca2-4e59-a42f-708bbc73e7bd",
+     "data_type": {
+      "state": "not established",
+      "value": null,
+      "reason": "no Egeria survey annotation profiled this column",
+      "note": "",
+      "provenance": null
+     },
+     "distinct_values": {
+      "state": "not established",
+      "value": null,
+      "reason": "no Egeria survey annotation profiled this column",
+      "note": "",
+      "provenance": null
+     }
+    },
+    {
+     "name": "closedate",
+     "element_guid": "4b4c0daa-6943-4a36-8201-997fe321f659",
+     "data_type": {
+      "state": "not established",
+      "value": null,
+      "reason": "no Egeria survey annotation profiled this column",
+      "note": "",
+      "provenance": null
+     },
+     "distinct_values": {
+      "state": "not established",
+      "value": null,
+      "reason": "no Egeria survey annotation profiled this column",
+      "note": "",
+      "provenance": null
+     }
+    },
+    {
+     "name": "confidencepercent",
+     "element_guid": "4483564a-ae02-4905-89a0-565691602647",
+     "data_type": {
+      "state": "not established",
+      "value": null,
+      "reason": "no Egeria survey annotation profiled this column",
+      "note": "",
+      "provenance": null
+     },
+     "distinct_values": {
+      "state": "not established",
+      "value": null,
+      "reason": "no Egeria survey annotation profiled this column",
+      "note": "",
+      "provenance": null
+     }
+    },
+    {
+     "name": "consolidatedid",
+     "element_guid": "44ef4661-dd66-4a4c-9386-94b861e78bf4",
+     "data_type": {
+      "state": "not established",
+      "value": null,
+      "reason": "no Egeria survey annotation profiled this column",
+      "note": "",
+      "provenance": null
+     },
+     "distinct_values": {
+      "state": "not established",
+      "value": null,
+      "reason": "no Egeria survey annotation profiled this column",
+      "note": "",
+      "provenance": null
+     }
+    },
+    {
+     "name": "createddate",
+     "element_guid": "815fddd1-3f8b-4fe8-bfea-f5bd5b713465",
+     "data_type": {
+      "state": "not established",
+      "value": null,
+      "reason": "no Egeria survey annotation profiled this column",
+      "note": "",
+      "provenance": null
+     },
+     "distinct_values": {
+      "state": "not established",
+      "value": null,
+      "reason": "no Egeria survey annotation profiled this column",
+      "note": "",
+      "provenance": null
+     }
+    },
+    {
+     "name": "date",
+     "element_guid": "78e03747-2dd5-463e-bd30-dde19d6f74e7",
+     "data_type": {
+      "state": "not established",
+      "value": null,
+      "reason": "no Egeria survey annotation profiled this column",
+      "note": "",
+      "provenance": null
+     },
+     "distinct_values": {
+      "state": "not established",
+      "value": null,
+      "reason": "no Egeria survey annotation profiled this column",
+      "note": "",
+      "provenance": null
+     }
+    },
+    {
+     "name": "opportunityid",
+     "element_guid": "1f1d0c64-adaf-4557-8b12-ed8cb8baf207",
+     "data_type": {
+      "state": "not established",
+      "value": null,
+      "reason": "no Egeria survey annotation profiled this column",
+      "note": "",
+      "provenance": null
+     },
+     "distinct_values": {
+      "state": "not established",
+      "value": null,
+      "reason": "no Egeria survey annotation profiled this column",
+      "note": "",
+      "provenance": null
+     }
+    },
+    {
+     "name": "productline",
+     "element_guid": "67656dc3-9920-442e-870e-a248c7c1301e",
+     "data_type": {
+      "state": "not established",
+      "value": null,
+      "reason": "no Egeria survey annotation profiled this column",
+      "note": "",
+      "provenance": null
+     },
+     "distinct_values": {
+      "state": "not established",
+      "value": null,
+      "reason": "no Egeria survey annotation profiled this column",
+      "note": "",
+      "provenance": null
+     }
+    },
+    {
+     "name": "region",
+     "element_guid": "fdc705a8-a876-40ee-8827-eee6e2536a3a",
+     "data_type": {
+      "state": "not established",
+      "value": null,
+      "reason": "no Egeria survey annotation profiled this column",
+      "note": "",
+      "provenance": null
+     },
+     "distinct_values": {
+      "state": "not established",
+      "value": null,
+      "reason": "no Egeria survey annotation profiled this column",
+      "note": "",
+      "provenance": null
+     }
+    },
+    {
+     "name": "salesstage",
+     "element_guid": "e701aa94-7809-49f0-9d8e-04711d2cc529",
+     "data_type": {
+      "state": "not established",
+      "value": null,
+      "reason": "no Egeria survey annotation profiled this column",
+      "note": "",
+      "provenance": null
+     },
+     "distinct_values": {
+      "state": "not established",
+      "value": null,
+      "reason": "no Egeria survey annotation profiled this column",
+      "note": "",
+      "provenance": null
+     }
+    }
+   ],
+   "rows": {
+    "state": "not published",
+    "value": null,
+    "reason": "RE measured the row count and it is not published to Egeria, so this pack does not quote it",
+    "note": "",
+    "provenance": null
+   },
+   "size_bytes": {
+    "state": "measured",
+    "value": 0,
+    "reason": "",
+    "note": "bytes, from Egeria's survey annotation; the survey's column count disagrees with the catalogue's",
+    "provenance": {
+     "element_guid": "1384e810-8457-4ed9-b3b1-4db42b798820",
+     "source": "postgresqlsurveyengine",
+     "as_of": "2026-10-13T03:52:30.158+00:00"
+    }
+   },
+   "populated": {
+    "state": "measured",
+    "value": true,
+    "reason": "",
+    "note": "",
+    "provenance": {
+     "element_guid": "1384e810-8457-4ed9-b3b1-4db42b798820",
+     "source": "postgresqlsurveyengine",
+     "as_of": "2026-10-13T03:52:30.158+00:00"
+    }
+   },
+   "term": {
+    "state": "nothing found",
+    "value": null,
+    "reason": "no SemanticAssignment on the table",
+    "note": "",
+    "provenance": null
+   },
+   "owner": {
+    "state": "recorded",
+    "value": "Jules",
+    "reason": "",
+    "note": "the owner of the database; the table carries no ownership of its own",
+    "provenance": {
+     "element_guid": "0ff72014-8936-4bea-b3d1-6a4493b99b30",
+     "source": "postgresqlgovernanceengine",
+     "as_of": "2026-10-09T01:42:00.942+00:00"
+    }
+   },
+   "licence": {
+    "state": "not established",
+    "value": null,
+    "reason": "no licence classification on the database element; that no licence is recorded does not show that none applies",
+    "note": "",
+    "provenance": null
+   },
+   "lineage": {
+    "state": "not established",
+    "value": null,
+    "reason": "no lineage or dependency is recorded for this table; none confirmed is not none existing",
+    "note": "",
+    "provenance": null
+   },
+   "notes": [
+    "the survey annotation reports 0 columns where the catalogue records 10: the two do not agree, so the measured size is questionable"
+   ]
+  },
+  {
+   "schema_name": "us_sales",
+   "table": "us_sales_forecast",
+   "qualified_name": "PostgreSQL Relational Database Schema::host.docker.internal:5442::coco_pharma.us_sales::us_sales_forecast",
+   "element_guid": "5310e1ab-264e-46c5-bdf9-e005d767afa9",
+   "columns": {
+    "state": "recorded",
+    "value": 11,
+    "reason": "",
+    "note": "columns the cataloguer recorded under the table",
+    "provenance": {
+     "element_guid": "5310e1ab-264e-46c5-bdf9-e005d767afa9",
+     "source": "dbcatnpa",
+     "as_of": "2026-10-09T01:58:40.842+00:00"
+    }
+   },
+   "column_names": [
+    "closedate",
+    "confidencelevel",
+    "createddate",
+    "currency",
+    "date",
+    "forecastamount",
+    "opportunityid",
+    "productline",
+    "recordid",
+    "repid",
+    "salesstage"
+   ],
+   "column_detail": [
+    {
+     "name": "closedate",
+     "element_guid": "c1c1e571-8383-404b-a6be-93c6997bb639",
+     "data_type": {
+      "state": "measured",
+      "value": "date",
+      "reason": "",
+      "note": "",
+      "provenance": {
+       "element_guid": "5bc48fb6-dde1-4d07-a2c3-e0d6893415e2",
+       "source": "postgresqlsurveyengine",
+       "as_of": "2026-10-13T00:46:46.939+00:00"
+      }
+     },
+     "distinct_values": {
+      "state": "measured",
+      "value": 652,
+      "reason": "",
+      "note": "",
+      "provenance": {
+       "element_guid": "5bc48fb6-dde1-4d07-a2c3-e0d6893415e2",
+       "source": "postgresqlsurveyengine",
+       "as_of": "2026-10-13T00:46:46.939+00:00"
+      }
+     }
+    },
+    {
+     "name": "confidencelevel",
+     "element_guid": "dd05a4d3-a72f-4ca1-89d5-44b775146cbe",
+     "data_type": {
+      "state": "not established",
+      "value": null,
+      "reason": "no Egeria survey annotation profiled this column",
+      "note": "",
+      "provenance": null
+     },
+     "distinct_values": {
+      "state": "not established",
+      "value": null,
+      "reason": "no Egeria survey annotation profiled this column",
+      "note": "",
+      "provenance": null
+     }
+    },
+    {
+     "name": "createddate",
+     "element_guid": "5b1e27bb-01df-4932-bc1b-01400051fb62",
+     "data_type": {
+      "state": "not established",
+      "value": null,
+      "reason": "no Egeria survey annotation profiled this column",
+      "note": "",
+      "provenance": null
+     },
+     "distinct_values": {
+      "state": "not established",
+      "value": null,
+      "reason": "no Egeria survey annotation profiled this column",
+      "note": "",
+      "provenance": null
+     }
+    },
+    {
+     "name": "currency",
+     "element_guid": "c552db98-23e5-4c50-93de-bbdaeadf3fe1",
+     "data_type": {
+      "state": "not established",
+      "value": null,
+      "reason": "no Egeria survey annotation profiled this column",
+      "note": "",
+      "provenance": null
+     },
+     "distinct_values": {
+      "state": "not established",
+      "value": null,
+      "reason": "no Egeria survey annotation profiled this column",
+      "note": "",
+      "provenance": null
+     }
+    },
+    {
+     "name": "date",
+     "element_guid": "9402dfa5-38aa-4e74-af7b-64e17f9829dd",
+     "data_type": {
+      "state": "measured",
+      "value": "date",
+      "reason": "",
+      "note": "",
+      "provenance": {
+       "element_guid": "31083e9e-80a8-4e43-a246-83bd8f748f1e",
+       "source": "postgresqlsurveyengine",
+       "as_of": "2026-10-13T00:45:21.806+00:00"
+      }
+     },
+     "distinct_values": {
+      "state": "measured",
+      "value": 647,
+      "reason": "",
+      "note": "",
+      "provenance": {
+       "element_guid": "31083e9e-80a8-4e43-a246-83bd8f748f1e",
+       "source": "postgresqlsurveyengine",
+       "as_of": "2026-10-13T00:45:21.806+00:00"
+      }
+     }
+    },
+    {
+     "name": "forecastamount",
+     "element_guid": "ecdd851e-c561-4337-9993-93e2bfb0e43f",
+     "data_type": {
+      "state": "measured",
+      "value": "numeric",
+      "reason": "",
+      "note": "",
+      "provenance": {
+       "element_guid": "1f8ba3bc-dd10-4ff5-919e-8d78c1b0acac",
+       "source": "postgresqlsurveyengine",
+       "as_of": "2026-10-13T00:48:38.924+00:00"
+      }
+     },
+     "distinct_values": {
+      "state": "measured",
+      "value": 975,
+      "reason": "",
+      "note": "",
+      "provenance": {
+       "element_guid": "1f8ba3bc-dd10-4ff5-919e-8d78c1b0acac",
+       "source": "postgresqlsurveyengine",
+       "as_of": "2026-10-13T00:48:38.924+00:00"
+      }
+     }
+    },
+    {
+     "name": "opportunityid",
+     "element_guid": "99d6d983-805a-429f-8511-0959bea9cd3e",
+     "data_type": {
+      "state": "measured",
+      "value": "varchar",
+      "reason": "",
+      "note": "",
+      "provenance": {
+       "element_guid": "1ac0b7df-13b5-4946-95ff-658b9bfb19f4",
+       "source": "postgresqlsurveyengine",
+       "as_of": "2026-10-13T00:46:25.810+00:00"
+      }
+     },
+     "distinct_values": {
+      "state": "measured",
+      "value": 975,
+      "reason": "",
+      "note": "",
+      "provenance": {
+       "element_guid": "1ac0b7df-13b5-4946-95ff-658b9bfb19f4",
+       "source": "postgresqlsurveyengine",
+       "as_of": "2026-10-13T00:46:25.810+00:00"
+      }
+     }
+    },
+    {
+     "name": "productline",
+     "element_guid": "50eb2b43-727c-4b56-b412-ad2f00db6150",
+     "data_type": {
+      "state": "measured",
+      "value": "varchar",
+      "reason": "",
+      "note": "",
+      "provenance": {
+       "element_guid": "44dad8e1-5e38-47ec-9686-cb4a9d26dad5",
+       "source": "postgresqlsurveyengine",
+       "as_of": "2026-10-09T01:45:46.054+00:00"
+      }
+     },
+     "distinct_values": {
+      "state": "measured",
+      "value": 4,
+      "reason": "",
+      "note": "",
+      "provenance": {
+       "element_guid": "44dad8e1-5e38-47ec-9686-cb4a9d26dad5",
+       "source": "postgresqlsurveyengine",
+       "as_of": "2026-10-09T01:45:46.054+00:00"
+      }
+     }
+    },
+    {
+     "name": "recordid",
+     "element_guid": "3cee5b38-29af-496f-8b2d-90733eb170e1",
+     "data_type": {
+      "state": "measured",
+      "value": "varchar",
+      "reason": "",
+      "note": "",
+      "provenance": {
+       "element_guid": "2f33e40e-b309-4466-ab66-700cabf98b3c",
+       "source": "postgresqlsurveyengine",
+       "as_of": "2026-10-09T02:06:31.302+00:00"
+      }
+     },
+     "distinct_values": {
+      "state": "measured",
+      "value": 0,
+      "reason": "",
+      "note": "",
+      "provenance": {
+       "element_guid": "2f33e40e-b309-4466-ab66-700cabf98b3c",
+       "source": "postgresqlsurveyengine",
+       "as_of": "2026-10-09T02:06:31.302+00:00"
+      }
+     }
+    },
+    {
+     "name": "repid",
+     "element_guid": "ccd244de-20e3-47c8-8ebe-1f4bdc45d1d4",
+     "data_type": {
+      "state": "measured",
+      "value": "varchar",
+      "reason": "",
+      "note": "",
+      "provenance": {
+       "element_guid": "115042e9-0216-4e59-9b20-65925c6a8ec3",
+       "source": "postgresqlsurveyengine",
+       "as_of": "2026-10-09T01:46:08.559+00:00"
+      }
+     },
+     "distinct_values": {
+      "state": "measured",
+      "value": 10,
+      "reason": "",
+      "note": "",
+      "provenance": {
+       "element_guid": "115042e9-0216-4e59-9b20-65925c6a8ec3",
+       "source": "postgresqlsurveyengine",
+       "as_of": "2026-10-09T01:46:08.559+00:00"
+      }
+     }
+    },
+    {
+     "name": "salesstage",
+     "element_guid": "3683a96d-2a6c-4b01-bc75-f0e437d2e727",
+     "data_type": {
+      "state": "measured",
+      "value": "varchar",
+      "reason": "",
+      "note": "",
+      "provenance": {
+       "element_guid": "29d8deb6-8472-45a9-a69a-1ef7dad5d4b5",
+       "source": "postgresqlsurveyengine",
+       "as_of": "2026-10-09T01:46:01.191+00:00"
+      }
+     },
+     "distinct_values": {
+      "state": "measured",
+      "value": 5,
+      "reason": "",
+      "note": "",
+      "provenance": {
+       "element_guid": "29d8deb6-8472-45a9-a69a-1ef7dad5d4b5",
+       "source": "postgresqlsurveyengine",
+       "as_of": "2026-10-09T01:46:01.191+00:00"
+      }
+     }
+    }
+   ],
+   "rows": {
+    "state": "not published",
+    "value": null,
+    "reason": "RE measured the row count and it is not published to Egeria, so this pack does not quote it",
+    "note": "",
+    "provenance": null
+   },
+   "size_bytes": {
+    "state": "measured",
+    "value": 147456,
+    "reason": "",
+    "note": "bytes, from Egeria's survey annotation",
+    "provenance": {
+     "element_guid": "112154b0-5c1b-410f-b8f1-f9955e70ee6a",
+     "source": "postgresqlsurveyengine",
+     "as_of": "2026-10-13T00:44:37.220+00:00"
+    }
+   },
+   "populated": {
+    "state": "measured",
+    "value": true,
+    "reason": "",
+    "note": "",
+    "provenance": {
+     "element_guid": "112154b0-5c1b-410f-b8f1-f9955e70ee6a",
+     "source": "postgresqlsurveyengine",
+     "as_of": "2026-10-13T00:44:37.220+00:00"
+    }
+   },
+   "term": {
+    "state": "nothing found",
+    "value": null,
+    "reason": "no SemanticAssignment on the table",
+    "note": "",
+    "provenance": null
+   },
+   "owner": {
+    "state": "recorded",
+    "value": "Jules",
+    "reason": "",
+    "note": "the owner of the database; the table carries no ownership of its own",
+    "provenance": {
+     "element_guid": "0ff72014-8936-4bea-b3d1-6a4493b99b30",
+     "source": "postgresqlgovernanceengine",
+     "as_of": "2026-10-09T01:42:00.942+00:00"
+    }
+   },
+   "licence": {
+    "state": "not established",
+    "value": null,
+    "reason": "no licence classification on the database element; that no licence is recorded does not show that none applies",
+    "note": "",
+    "provenance": null
+   },
+   "lineage": {
+    "state": "not established",
+    "value": null,
+    "reason": "no lineage or dependency is recorded for this table; none confirmed is not none existing",
+    "note": "",
+    "provenance": null
+   },
+   "notes": []
+  }
+ ],
+ "documents": [
+  {
+   "doc_id": "database:0ff72014-8936-4bea-b3d1-6a4493b99b30",
+   "element_guid": "0ff72014-8936-4bea-b3d1-6a4493b99b30",
+   "kind": "database",
+   "title": "coco_pharma",
+   "text": "Database coco_pharma (element GUID 0ff72014-8936-4bea-b3d1-6a4493b99b30, qualified name PostgreSQL Relational Database::host.docker.internal:5442::coco_pharma).\ndescription: PostgreSQL database coco_pharma\nowner: Jules (recorded; element 0ff72014-8936-4bea-b3d1-6a4493b99b30; postgresqlgovernanceengine; 2026-10-09T01:42:00.942+00:00; the owner of the database; the table carries no ownership of its own)\nlicence: not established (no licence classification on the database element; that no licence is recorded does not show that none applies)\nzones: nothing found (no ZoneMembership classification on the database element (visible to everyone Egeria admits))\nschemas in this pack: target_sales, us_sales\nschemas outside this pack's scope: coco_ods, coco_sus\nsurvey reports: 2; Survey Report for 0ff72014-8936-4bea-b3d1-6a4493b99b30 (element 3717ed40-d64b-486f-91bc-d6ea72b3aa91, 2026-10-12T20:48:06.492+00:00); Survey Report for 0ff72014-8936-4bea-b3d1-6a4493b99b30 (element 4970435f-0475-45fa-9d1c-b064c80ba7d2, 2026-10-12T15:47:44.742+00:00)",
+   "metadata": {
+    "element_guid": "0ff72014-8936-4bea-b3d1-6a4493b99b30",
+    "states": {
+     "owner": "recorded",
+     "licence": "not established",
+     "zones": "nothing found"
+    },
+    "as_of": "2026-10-09T01:42:00.942+00:00",
+    "sources": [
+     "postgresqlgovernanceengine"
+    ]
+   }
+  },
+  {
+   "doc_id": "table:a587207f-56ce-49c2-b5b4-c6a3297c050c",
+   "element_guid": "a587207f-56ce-49c2-b5b4-c6a3297c050c",
+   "kind": "table",
+   "title": "coco_pharma.target_sales.consolidated_forecast",
+   "text": "Table coco_pharma.target_sales.consolidated_forecast (element GUID a587207f-56ce-49c2-b5b4-c6a3297c050c).\ncolumns: 10 (recorded; element a587207f-56ce-49c2-b5b4-c6a3297c050c; dbcatnpa; 2026-10-09T02:00:11.582+00:00; columns the cataloguer recorded under the table) named amountusd, closedate, confidencepercent, consolidatedid, createddate, date, opportunityid, productline, region, salesstage\nrow count: not published (RE measured the row count and it is not published to Egeria, so this pack does not quote it)\nsize in bytes: 0 (measured; element 1384e810-8457-4ed9-b3b1-4db42b798820; postgresqlsurveyengine; 2026-10-13T03:52:30.158+00:00; bytes, from Egeria's survey annotation; the survey's column count disagrees with the catalogue's)\npopulated: True (measured; element 1384e810-8457-4ed9-b3b1-4db42b798820; postgresqlsurveyengine; 2026-10-13T03:52:30.158+00:00)\nterm assignment: nothing found (no SemanticAssignment on the table)\nowner: Jules (recorded; element 0ff72014-8936-4bea-b3d1-6a4493b99b30; postgresqlgovernanceengine; 2026-10-09T01:42:00.942+00:00; the owner of the database; the table carries no ownership of its own)\nlicence: not established (no licence classification on the database element; that no licence is recorded does not show that none applies)\nlineage: not established (no lineage or dependency is recorded for this table; none confirmed is not none existing)\nnote: the survey annotation reports 0 columns where the catalogue records 10: the two do not agree, so the measured size is questionable\ncolumn amountusd (element GUID 24834794-5ca2-4e59-a42f-708bbc73e7bd): data type: not established (no Egeria survey annotation profiled this column); distinct values: not established (no Egeria survey annotation profiled this column)\ncolumn closedate (element GUID 4b4c0daa-6943-4a36-8201-997fe321f659): data type: not established (no Egeria survey annotation profiled this column); distinct values: not established (no Egeria survey annotation profiled this column)\ncolumn confidencepercent (element GUID 4483564a-ae02-4905-89a0-565691602647): data type: not established (no Egeria survey annotation profiled this column); distinct values: not established (no Egeria survey annotation profiled this column)\ncolumn consolidatedid (element GUID 44ef4661-dd66-4a4c-9386-94b861e78bf4): data type: not established (no Egeria survey annotation profiled this column); distinct values: not established (no Egeria survey annotation profiled this column)\ncolumn createddate (element GUID 815fddd1-3f8b-4fe8-bfea-f5bd5b713465): data type: not established (no Egeria survey annotation profiled this column); distinct values: not established (no Egeria survey annotation profiled this column)\ncolumn date (element GUID 78e03747-2dd5-463e-bd30-dde19d6f74e7): data type: not established (no Egeria survey annotation profiled this column); distinct values: not established (no Egeria survey annotation profiled this column)\ncolumn opportunityid (element GUID 1f1d0c64-adaf-4557-8b12-ed8cb8baf207): data type: not established (no Egeria survey annotation profiled this column); distinct values: not established (no Egeria survey annotation profiled this column)\ncolumn productline (element GUID 67656dc3-9920-442e-870e-a248c7c1301e): data type: not established (no Egeria survey annotation profiled this column); distinct values: not established (no Egeria survey annotation profiled this column)\ncolumn region (element GUID fdc705a8-a876-40ee-8827-eee6e2536a3a): data type: not established (no Egeria survey annotation profiled this column); distinct values: not established (no Egeria survey annotation profiled this column)\ncolumn salesstage (element GUID e701aa94-7809-49f0-9d8e-04711d2cc529): data type: not established (no Egeria survey annotation profiled this column); distinct values: not established (no Egeria survey annotation profiled this column)",
+   "metadata": {
+    "element_guid": "a587207f-56ce-49c2-b5b4-c6a3297c050c",
+    "schema": "target_sales",
+    "table": "consolidated_forecast",
+    "states": {
+     "columns": "recorded",
+     "rows": "not published",
+     "size_bytes": "measured",
+     "populated": "measured",
+     "term": "nothing found",
+     "owner": "recorded",
+     "licence": "not established",
+     "lineage": "not established"
+    },
+    "as_of": "2026-10-13T03:52:30.158+00:00",
+    "sources": [
+     "dbcatnpa",
+     "postgresqlgovernanceengine",
+     "postgresqlsurveyengine"
+    ]
+   }
+  },
+  {
+   "doc_id": "table:5310e1ab-264e-46c5-bdf9-e005d767afa9",
+   "element_guid": "5310e1ab-264e-46c5-bdf9-e005d767afa9",
+   "kind": "table",
+   "title": "coco_pharma.us_sales.us_sales_forecast",
+   "text": "Table coco_pharma.us_sales.us_sales_forecast (element GUID 5310e1ab-264e-46c5-bdf9-e005d767afa9).\ncolumns: 11 (recorded; element 5310e1ab-264e-46c5-bdf9-e005d767afa9; dbcatnpa; 2026-10-09T01:58:40.842+00:00; columns the cataloguer recorded under the table) named closedate, confidencelevel, createddate, currency, date, forecastamount, opportunityid, productline, recordid, repid, salesstage\nrow count: not published (RE measured the row count and it is not published to Egeria, so this pack does not quote it)\nsize in bytes: 147456 (measured; element 112154b0-5c1b-410f-b8f1-f9955e70ee6a; postgresqlsurveyengine; 2026-10-13T00:44:37.220+00:00; bytes, from Egeria's survey annotation)\npopulated: True (measured; element 112154b0-5c1b-410f-b8f1-f9955e70ee6a; postgresqlsurveyengine; 2026-10-13T00:44:37.220+00:00)\nterm assignment: nothing found (no SemanticAssignment on the table)\nowner: Jules (recorded; element 0ff72014-8936-4bea-b3d1-6a4493b99b30; postgresqlgovernanceengine; 2026-10-09T01:42:00.942+00:00; the owner of the database; the table carries no ownership of its own)\nlicence: not established (no licence classification on the database element; that no licence is recorded does not show that none applies)\nlineage: not established (no lineage or dependency is recorded for this table; none confirmed is not none existing)\ncolumn closedate (element GUID c1c1e571-8383-404b-a6be-93c6997bb639): data type: date (measured; element 5bc48fb6-dde1-4d07-a2c3-e0d6893415e2; postgresqlsurveyengine; 2026-10-13T00:46:46.939+00:00); distinct values: 652 (measured; element 5bc48fb6-dde1-4d07-a2c3-e0d6893415e2; postgresqlsurveyengine; 2026-10-13T00:46:46.939+00:00)\ncolumn confidencelevel (element GUID dd05a4d3-a72f-4ca1-89d5-44b775146cbe): data type: not established (no Egeria survey annotation profiled this column); distinct values: not established (no Egeria survey annotation profiled this column)\ncolumn createddate (element GUID 5b1e27bb-01df-4932-bc1b-01400051fb62): data type: not established (no Egeria survey annotation profiled this column); distinct values: not established (no Egeria survey annotation profiled this column)\ncolumn currency (element GUID c552db98-23e5-4c50-93de-bbdaeadf3fe1): data type: not established (no Egeria survey annotation profiled this column); distinct values: not established (no Egeria survey annotation profiled this column)\ncolumn date (element GUID 9402dfa5-38aa-4e74-af7b-64e17f9829dd): data type: date (measured; element 31083e9e-80a8-4e43-a246-83bd8f748f1e; postgresqlsurveyengine; 2026-10-13T00:45:21.806+00:00); distinct values: 647 (measured; element 31083e9e-80a8-4e43-a246-83bd8f748f1e; postgresqlsurveyengine; 2026-10-13T00:45:21.806+00:00)\ncolumn forecastamount (element GUID ecdd851e-c561-4337-9993-93e2bfb0e43f): data type: numeric (measured; element 1f8ba3bc-dd10-4ff5-919e-8d78c1b0acac; postgresqlsurveyengine; 2026-10-13T00:48:38.924+00:00); distinct values: 975 (measured; element 1f8ba3bc-dd10-4ff5-919e-8d78c1b0acac; postgresqlsurveyengine; 2026-10-13T00:48:38.924+00:00)\ncolumn opportunityid (element GUID 99d6d983-805a-429f-8511-0959bea9cd3e): data type: varchar (measured; element 1ac0b7df-13b5-4946-95ff-658b9bfb19f4; postgresqlsurveyengine; 2026-10-13T00:46:25.810+00:00); distinct values: 975 (measured; element 1ac0b7df-13b5-4946-95ff-658b9bfb19f4; postgresqlsurveyengine; 2026-10-13T00:46:25.810+00:00)\ncolumn productline (element GUID 50eb2b43-727c-4b56-b412-ad2f00db6150): data type: varchar (measured; element 44dad8e1-5e38-47ec-9686-cb4a9d26dad5; postgresqlsurveyengine; 2026-10-09T01:45:46.054+00:00); distinct values: 4 (measured; element 44dad8e1-5e38-47ec-9686-cb4a9d26dad5; postgresqlsurveyengine; 2026-10-09T01:45:46.054+00:00)\ncolumn recordid (element GUID 3cee5b38-29af-496f-8b2d-90733eb170e1): data type: varchar (measured; element 2f33e40e-b309-4466-ab66-700cabf98b3c; postgresqlsurveyengine; 2026-10-09T02:06:31.302+00:00); distinct values: 0 (measured; element 2f33e40e-b309-4466-ab66-700cabf98b3c; postgresqlsurveyengine; 2026-10-09T02:06:31.302+00:00)\ncolumn repid (element GUID ccd244de-20e3-47c8-8ebe-1f4bdc45d1d4): data type: varchar (measured; element 115042e9-0216-4e59-9b20-65925c6a8ec3; postgresqlsurveyengine; 2026-10-09T01:46:08.559+00:00); distinct values: 10 (measured; element 115042e9-0216-4e59-9b20-65925c6a8ec3; postgresqlsurveyengine; 2026-10-09T01:46:08.559+00:00)\ncolumn salesstage (element GUID 3683a96d-2a6c-4b01-bc75-f0e437d2e727): data type: varchar (measured; element 29d8deb6-8472-45a9-a69a-1ef7dad5d4b5; postgresqlsurveyengine; 2026-10-09T01:46:01.191+00:00); distinct values: 5 (measured; element 29d8deb6-8472-45a9-a69a-1ef7dad5d4b5; postgresqlsurveyengine; 2026-10-09T01:46:01.191+00:00)",
+   "metadata": {
+    "element_guid": "5310e1ab-264e-46c5-bdf9-e005d767afa9",
+    "schema": "us_sales",
+    "table": "us_sales_forecast",
+    "states": {
+     "columns": "recorded",
+     "rows": "not published",
+     "size_bytes": "measured",
+     "populated": "measured",
+     "term": "nothing found",
+     "owner": "recorded",
+     "licence": "not established",
+     "lineage": "not established"
+    },
+    "as_of": "2026-10-13T00:44:37.220+00:00",
+    "sources": [
+     "dbcatnpa",
+     "postgresqlgovernanceengine",
+     "postgresqlsurveyengine"
+    ]
+   }
+  }
+ ],
+ "manifest": {
+  "name": "coco_pharma",
+  "consumer_kind": "data scientist",
+  "version": "1",
+  "as_of": "2026-10-14T00:50:42Z",
+  "built_for": "resourceexplorernpa",
+  "included": [
+   {
+    "what": "databases",
+    "count": 1
+   },
+   {
+    "what": "schemas",
+    "count": 2
+   },
+   {
+    "what": "tables",
+    "count": 2
+   },
+   {
+    "what": "columns",
+    "count": 21
+   },
+   {
+    "what": "term assignments",
+    "count": 0
+   },
+   {
+    "what": "owners",
+    "count": 1
+   },
+   {
+    "what": "survey reports",
+    "count": 2
+   },
+   {
+    "what": "survey annotations used",
+    "count": 10
+   },
+   {
+    "what": "documents",
+    "count": 3
+   }
+  ],
+  "left_out": [
+   {
+    "what": "schemas outside this pack's scope",
+    "count": 2,
+    "why": "Egeria records them; this pack was asked for other schemas",
+    "state": "left out",
+    "names": [
+     "coco_ods",
+     "coco_sus"
+    ]
+   },
+   {
+    "what": "schemas not in Egeria: left out of the scope (no_writes)",
+    "count": 1,
+    "why": "RE knows these schemas; Egeria's record does not hold them (left out of the scope (no_writes))",
+    "state": "not published",
+    "names": [
+     "eu_sales"
+    ]
+   },
+   {
+    "what": "schemas not in Egeria: undecided in the scope",
+    "count": 25,
+    "why": "RE knows these schemas; Egeria's record does not hold them (undecided in the scope)",
+    "state": "not published",
+    "names": [
+     "aus_inventory",
+     "austin_haz_mat",
+     "ca_payroll",
+     "coco_expenses",
+     "coco_haz_mat",
+     "coco_hrim",
+     "coco_inventory",
+     "coco_ledgers",
+     "coco_products",
+     "cocopages",
+     "demo",
+     "demo_auth",
+     "ed_mfg_control",
+     "eddepot01",
+     "global_crm",
+     "kcdepot01",
+     "manufacturing_planning",
+     "mfctrl9482",
+     "nl_payroll",
+     "procurement01",
+     "public",
+     "sec_admin",
+     "uk_payroll",
+     "winch_mfg_control",
+     "winchdepot01"
+    ]
+   },
+   {
+    "what": "row counts",
+    "count": 2,
+    "why": "measured by RE, not published to Egeria; the pack quotes none",
+    "state": "not published",
+    "names": []
+   },
+   {
+    "what": "column profiles",
+    "count": 2,
+    "why": "measured by RE, not published to Egeria",
+    "state": "not published",
+    "names": [
+     "target_sales.consolidated_forecast",
+     "us_sales.us_sales_forecast"
+    ]
+   },
+   {
+    "what": "column data types",
+    "count": 13,
+    "why": "the cataloguer records no data type; only columns an Egeria survey profiled have one",
+    "state": "not established",
+    "names": []
+   },
+   {
+    "what": "licence",
+    "count": 2,
+    "why": "no licence classification on the database element; that no licence is recorded does not show that none applies",
+    "state": "not established",
+    "names": []
+   },
+   {
+    "what": "lineage and dependencies",
+    "count": 2,
+    "why": "no lineage or dependency is recorded for this table; none confirmed is not none existing",
+    "state": "not established",
+    "names": []
+   },
+   {
+    "what": "term assignments",
+    "count": 2,
+    "why": "no SemanticAssignment on these tables",
+    "state": "nothing found",
+    "names": []
+   },
+   {
+    "what": "superseded survey annotations",
+    "count": 12,
+    "why": "an older annotation for a table or column Egeria has measured again; the newest is used",
+    "state": "not applicable",
+    "names": []
+   }
+  ],
+  "identity_note": "read as resourceexplorernpa; zones applied by Egeria: nothing found",
+  "text": "Pack: coco_pharma \u00b7 data scientist \u00b7 v1 \u00b7 as of 2026-10-14T00:50:42Z \u00b7 built for resourceexplorernpa\nIncluded: 1 databases \u00b7 2 schemas \u00b7 2 tables \u00b7 21 columns \u00b7 1 owners \u00b7 2 survey reports \u00b7 10 survey annotations used \u00b7 3 documents\nLeft out and why:\n  2 schemas outside this pack's scope \u00b7 left out \u00b7 Egeria records them; this pack was asked for other schemas\n  1 schemas not in Egeria: left out of the scope (no_writes) \u00b7 not published \u00b7 RE knows these schemas; Egeria's record does not hold them (left out of the scope (no_writes))\n  25 schemas not in Egeria: undecided in the scope \u00b7 not published \u00b7 RE knows these schemas; Egeria's record does not hold them (undecided in the scope)\n  2 row counts \u00b7 not published \u00b7 measured by RE, not published to Egeria; the pack quotes none\n  2 column profiles \u00b7 not published \u00b7 measured by RE, not published to Egeria\n  13 column data types \u00b7 not established \u00b7 the cataloguer records no data type; only columns an Egeria survey profiled have one\n  2 licence \u00b7 not established \u00b7 no licence classification on the database element; that no licence is recorded does not show that none applies\n  2 lineage and dependencies \u00b7 not established \u00b7 no lineage or dependency is recorded for this table; none confirmed is not none existing\n  2 term assignments \u00b7 nothing found \u00b7 no SemanticAssignment on these tables\n  12 superseded survey annotations \u00b7 not applicable \u00b7 an older annotation for a table or column Egeria has measured again; the newest is used\nIdentity: read as resourceexplorernpa; zones applied by Egeria: nothing found"
+ },
+ "notes": [
+  "schema us_sales was not in the database's relationship list; found by name search of its qualified name"
+ ]
+}

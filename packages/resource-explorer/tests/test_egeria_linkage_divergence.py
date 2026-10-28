@@ -22,6 +22,15 @@ from resource_explorer.egeria_linkage import (
 from resource_explorer.registry import Project, ProjectRegistry
 
 
+@pytest.fixture(autouse=True)
+def _zone_access_open(monkeypatch):
+    """Brief Z2: this write path asks `curation_access` (the one decision). These tests are about something else,
+    so no zone is in use: the access reads are faked open at the client boundary (`tests/zone_fakes.open_access`)."""
+    from tests.zone_fakes import open_access
+
+    return open_access(monkeypatch, caller_if_none="zone2-tester")
+
+
 @pytest.fixture
 def registry(tmp_path):
     reg = ProjectRegistry(db_path=str(tmp_path / "t.db"))
@@ -226,6 +235,12 @@ class TestGuardsMatchWhereCachedGuidsAreUsed:
                 f"{cls}.{method} now reads a cached GUID but is not guarded.")
 
 
+def _by_qn(server_guid):
+    """Server and database found by their own qualifiedNames (Brief L round 2: the stored
+    egeria_asset_guid is never reused as the server; the server's guid comes from its own lookup)."""
+    return lambda qn: server_guid if qn.startswith("PostgreSQL Server::") else "db-guid"
+
+
 class TestNonFatalHandlersStillRecord:
     """A divergence swallowed by a deliberately non-fatal handler must still be
     recorded.
@@ -262,7 +277,8 @@ class TestNonFatalHandlersStillRecord:
 
         s = EgeriaDatabaseSurveyor.__new__(EgeriaDatabaseSurveyor)
         with patch.object(EgeriaDatabaseSurveyor, "connect"), \
-             patch.object(EgeriaDatabaseSurveyor, "_find_element_guid", return_value="db-guid"), \
+             patch.object(EgeriaDatabaseSurveyor, "_find_by_qualified_name",
+                          side_effect=_by_qn("00000000-dead-beef-0000-000000000000")), \
              patch.object(EgeriaDatabaseSurveyor, "_initiate_survey", side_effect=_survey):
             out = s._catalog_and_survey(db, "u", "p", registry=registry,
                                         survey_after_catalog=True)
@@ -288,7 +304,7 @@ class TestNonFatalHandlersStillRecord:
                             database_name="mydb", db_type="postgres", egeria_asset_guid="real-guid")
         s = EgeriaDatabaseSurveyor.__new__(EgeriaDatabaseSurveyor)
         with patch.object(EgeriaDatabaseSurveyor, "connect"), \
-             patch.object(EgeriaDatabaseSurveyor, "_find_element_guid", return_value="db-guid"), \
+             patch.object(EgeriaDatabaseSurveyor, "_find_by_qualified_name", side_effect=_by_qn("real-guid")), \
              patch.object(EgeriaDatabaseSurveyor, "_initiate_survey",
                           side_effect=Exception("Governance engine is not running")):
             s._catalog_and_survey(db, "u", "p", registry=registry, survey_after_catalog=True)

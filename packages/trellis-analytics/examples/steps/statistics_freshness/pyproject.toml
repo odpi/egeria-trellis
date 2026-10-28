@@ -1,0 +1,25 @@
+[project]
+name = "trellis-step-statistics-freshness"
+dynamic = ["version"]
+description = "Analytic Library step: how old each table's planner statistics are (last ANALYZE and VACUUM), from the activity snapshot RE stored. Installable on its own; installing it is registering it."
+requires-python = ">=3.12,<4.0"
+dependencies = ["trellis-analytics>=0.1.0"]
+
+# Installation is registration: Resource Explorer finds the step through this entry point.
+[project.entry-points."trellis.analytics"]
+statistics_freshness = "statistics_freshness.manifest:MANIFEST"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.version]
+path = "src/statistics_freshness/__init__.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/statistics_freshness"]
+
+# In this repo the library is the sibling package, three levels up; outside it, trellis-analytics comes from
+# wherever the host installed it. pip ignores this table.
+[tool.uv.sources]
+trellis-analytics = { path = "../../..", editable = true }

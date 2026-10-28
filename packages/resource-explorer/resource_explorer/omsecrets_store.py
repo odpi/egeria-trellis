@@ -1,6 +1,6 @@
 """RE's direct read/write access to the `.omsecrets` YAML file.
 
-Background — docs/design-notes/REPLY-DATABASE-CREDENTIAL-CAPABILITY-
+Background — docs/design-notes/exchange/REPLY-DATABASE-CREDENTIAL-CAPABILITY-
 VISIBILITY.md §7: RE writes a credential to two places in the same
 operation — its own registry (`registry.py`'s `databases.db_password`,
 encrypted at rest via `credential_crypto.py`) and this file, which is the
@@ -79,7 +79,11 @@ def _load(path: str) -> dict:
         with p.open("r") as f:
             data = yaml.safe_load(f) or {}
     except (OSError, yaml.YAMLError) as exc:
-        log.warning("omsecrets_store: could not read %s: %s", path, exc)
+        # Class and line only: a YAML error's text can carry a snippet of the offending line, which in
+        # this file may be a password.
+        mark = getattr(exc, "problem_mark", None)
+        where = f"line {mark.line + 1}" if mark is not None else "an unknown line"
+        log.warning("omsecrets_store: could not read %s: %s at %s", path, type(exc).__name__, where)
         return {"secretsCollections": {}}
     if "secretsCollections" not in data or data["secretsCollections"] is None:
         data["secretsCollections"] = {}
@@ -87,11 +91,37 @@ def _load(path: str) -> dict:
 
 
 def _save(path: str, data: dict) -> None:
+    """Write the file atomically: a temp file in the same directory, then a
+    rename, so Egeria's per-action read never sees a half-written file. The
+    mode matches what the previous in-place writer produced: an existing
+    file keeps its mode, a new one gets the umask default (this writer never
+    set restrictive permissions; the file is bind-mounted into the engine
+    container, whose user must still be able to read it)."""
+    import tempfile
+
     p = Path(path)
     p.parent.mkdir(parents=True, exist_ok=True)
-    with p.open("w") as f:
-        f.write("---\n")
-        yaml.safe_dump(data, f, default_flow_style=False, sort_keys=False)
+    try:
+        mode = p.stat().st_mode & 0o7777
+    except OSError:
+        umask = os.umask(0)
+        os.umask(umask)
+        mode = 0o666 & ~umask
+    fd, tmp = tempfile.mkstemp(dir=str(p.parent), prefix=f".{p.name}.", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w") as f:
+            f.write("---\n")
+            yaml.safe_dump(data, f, default_flow_style=False, sort_keys=False)
+            f.flush()
+            os.fsync(f.fileno())
+        os.chmod(tmp, mode)
+        os.replace(tmp, p)
+    except BaseException:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
 
 
 def write_credential(

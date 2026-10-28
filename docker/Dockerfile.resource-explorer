@@ -49,6 +49,7 @@ COPY packages/trellis-artifact-tree/pyproject.toml packages/trellis-artifact-tre
 COPY packages/trellis-context/pyproject.toml packages/trellis-context/pyproject.toml
 COPY packages/trellis-querycache/pyproject.toml packages/trellis-querycache/pyproject.toml
 COPY packages/trellis-auth/pyproject.toml packages/trellis-auth/pyproject.toml
+COPY packages/trellis-analytics/pyproject.toml packages/trellis-analytics/pyproject.toml
 
 # Dependency layer, cache-mounted. Deliberately no torch swap here yet —
 # see the swap step below the source COPY for why it has to happen AFTER
@@ -65,6 +66,7 @@ COPY packages/trellis-artifact-tree packages/trellis-artifact-tree
 COPY packages/trellis-context packages/trellis-context
 COPY packages/trellis-querycache packages/trellis-querycache
 COPY packages/trellis-auth packages/trellis-auth
+COPY packages/trellis-analytics packages/trellis-analytics
 
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-dev --package resource-explorer
@@ -157,6 +159,7 @@ COPY --chown=trellis:trellis packages/trellis-artifact-tree packages/trellis-art
 COPY --chown=trellis:trellis packages/trellis-context packages/trellis-context
 COPY --chown=trellis:trellis packages/trellis-querycache packages/trellis-querycache
 COPY --chown=trellis:trellis packages/trellis-auth packages/trellis-auth
+COPY --chown=trellis:trellis packages/trellis-analytics packages/trellis-analytics
 COPY --chown=trellis:trellis docker/entrypoint-resource-explorer.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh
 

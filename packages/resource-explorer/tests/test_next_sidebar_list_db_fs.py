@@ -220,7 +220,11 @@ class TestGroupsAndSelectModeAreNoLongerRepoOnly:
         end = src.index("\n}", start)
         body = src[start:end]
         assert "apiEntityType(state.resourceType)" in body
-        assert "addInvestigationMember(state.investigation, entityType, slug)" in body
+        # W1-A: the investigation is a parameter (the picker passes the one it
+        # just chose), defaulting to the current one, so "add" still scopes
+        # into the current investigation when nobody passes one.
+        assert "invSlug = state.investigation" in src[start - 40:start + 120]
+        assert "addInvestigationMember(invSlug, entityType, slug)" in body
 
     def test_bulk_hide_uses_api_entity_type(self):
         src = _app()
@@ -238,9 +242,11 @@ class TestGroupsAndSelectModeAreNoLongerRepoOnly:
         # Repos keep the github_url-keyed endpoint they always used.
         assert "setDisposition(p.github_url, disposition)" in body
 
-    def test_bulk_delete_dispatches_by_entity_type(self):
+    def test_bulk_remove_dispatches_by_entity_type(self):
+        # Renamed from bulkDelete (REPLY-DESIGNER-RESOURCE-CONTROLS-PLACEMENT.md
+        # §4: one word, "Remove"); same dispatch.
         src = _app()
-        start = src.index("async function bulkDelete(")
+        start = src.index("async function bulkRemove(")
         end = src.index("\n}", start)
         body = src[start:end]
         assert "removeEntity(entityType, slug)" in body
@@ -253,17 +259,19 @@ class TestGroupsAndSelectModeAreNoLongerRepoOnly:
         assert "entityType: apiEntityType(state.resourceType)" in body
 
     def test_header_hide_action_no_longer_hardcodes_repo(self):
-        # bindResourceHeader()'s single-resource "hide" button used to call
+        # The single-resource "hide" (now the resource menu's, moved out of
+        # bindResourceHeader() by REPLY-DESIGNER-RESOURCE-CONTROLS-PLACEMENT.md)
+        # used to call
         # setWorkingSetHidden('repo', ...) unconditionally -- silently
         # hiding the wrong row's preference whenever a database/filesystem
         # happened to share a slug with a repo, since resource_working_set
         # is keyed on (entity_type, entity_slug).
         src = _app()
-        start = src.index("export function bindResourceHeader()")
+        start = src.index("async function toggleHiddenFromMenu()")
         end = src.index("\n}", start)
         body = src[start:end]
-        assert "setWorkingSetHidden('repo', state.selectedSlug, hiding)" not in body
-        assert "setWorkingSetHidden(apiEntityType(state.resourceType), state.selectedSlug, hiding)" in body
+        assert "setWorkingSetHidden('repo'," not in body
+        assert "setWorkingSetHidden(apiEntityType(state.resourceType), slug, hiding)" in body
 
 
 class TestReApiAndWorklistGrowEntityTypeSupport:
@@ -294,15 +302,15 @@ class TestReApiAndWorklistGrowEntityTypeSupport:
         start = src.index("export const createWorkList = ")
         end = src.index(";", start)
         body = src[start:end]
-        assert "entityType = 'repo'" in body
-        assert "entity_type: entityType" in body
+        assert "entityType = 'repo'" not in body   # required, never defaulted
+        assert "entity_type: requireKind('createWorkList', entityType)" in body
 
     def test_save_as_work_list_forwards_entity_type(self):
         src = _worklist()
         start = src.index("export async function saveAsWorkList(")
         end = src.index("\n}", start)
         body = src[start:end]
-        assert "entityType = 'repo'" in body
+        assert "entityType = 'repo'" not in body   # required, never defaulted
         assert "entityType" in body[body.index("createWorkList("):]
 
 

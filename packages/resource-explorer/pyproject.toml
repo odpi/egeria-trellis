@@ -40,6 +40,12 @@ dependencies = [
     # in a workspace-wide sync, it does not make it a requirement, so a
     # per-package install would fail on the import.
     "trellis-auth",
+    # The Analytic Library: Curate's By-analysis tab calls
+    # trellis_analytics.routines.curation_coverage (brief 2b). Declared here for the
+    # reason trellis-auth is: a root [tool.uv.sources] entry makes it available, not required.
+    # trellis-analytics' own `re` extra points back at this package; that is an optional
+    # edge, and the route degrades to not_applicable if the import ever fails.
+    "trellis-analytics",
     # Embeddings & LLM
     "sentence-transformers>=3.3.0",
     "ollama>=0.4.0",
@@ -116,7 +122,15 @@ dependencies = [
     # live platform through the client. Note pyegeria moved MetadataExpert from
     # pyegeria.omvs.metadata_explorer to pyegeria.omvs.metadata_expert in this
     # release; RE is unaffected because it imports from the top-level package.
-    "pyegeria>=6.1.10",
+    # Raised to 6.2.1 for the ISSUE-131 fix (the *_by_name finds now send the
+    # type filter when no body is given). 6.2.1 also pins altair==6.3.0 and
+    # needs fastapi>=0.141.1; the lock moved altair 6.2.2 -> 6.3.0 with it.
+    # Raised to 6.2.3: AssetMaker's action/process queries default activity_status_list to None (ISSUE-148), and
+    # AutomatedCuration.get_engine_actions is gone (ISSUE-151); neither is called by RE (AUDIT-PYEGERIA-6.2.3.md).
+    # Raised to 6.2.5 (2026-10-16): Egeria main (odpi/egeria#9371) moved the engine-action claim/status/completion/
+    # active-claimed calls to the Governance Engine view service; 6.2.5 adds the GovernanceEngine client and routes
+    # the old AutomatedCuration methods there (ISSUE-153). Without it the engine host's calls 404.
+    "pyegeria>=6.2.5",
     "mcp>=2.0.0",
     # nest-asyncio removed 2026-09-04 with the shared-pool refactor: RE no
     # longer imports it anywhere. Its one site, surveyors/prefect_adapter.py's
@@ -139,7 +153,7 @@ dependencies = [
     "tree-sitter>=0.21",
     "tree-sitter-java>=0.21",
     # Structural code-marker detection engine for architecture recovery
-    # (docs/architecture-recovery-design.md §5.1). A pip dependency rather
+    # (docs/architecture-recovery.md §5.1, Detectors first). A pip dependency rather
     # than a system prerequisite on purpose: `ast-grep-cli` publishes
     # prebuilt wheels for macOS arm64/x86_64, manylinux aarch64/x86_64 and
     # Windows, at version parity with Homebrew, so `uv sync` provisions the

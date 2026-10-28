@@ -145,7 +145,7 @@ repo_analyses:
     # The id stays `security_scan` deliberately: it keys existing schedules
     # and stored findings. Real scanning belongs in new entries under the
     # same `family="security"`, not by widening this one's claims again.
-    description: "Presence of three security-hygiene artifacts: a security policy (SECURITY.md), a CI configuration, and a licence. File presence only -- this does not scan code, detect secrets, or check CVEs. For GitHub's actual security toggles see Security Features."
+    description: "Presence of three security-hygiene artifacts: a security policy (SECURITY.md), a CI configuration, and a license. File presence only -- this does not scan code, detect secrets, or check CVEs. For GitHub's actual security toggles see Security Features."
     resource_types: ["repo"]
     intent: assessment  # true scoring against criteria — unchanged
     perspectives: ["Security", "Steward"]
@@ -389,7 +389,7 @@ repo_analyses:
 
   - id: foss_scorecard
     name: FOSS Scorecard
-    description: "OpenSSF-Scorecard-shaped checks computed from data already collected — maintenance, licence, CI tests, releases, contributors, SAST settings. A check that cannot be evaluated reports unknown and is EXCLUDED from the score, rather than scored zero as OpenSSF's own tool does, and the coverage is reported alongside the number: 8.0 over five checks and 8.0 over twelve are different claims. Not comparable with a published OpenSSF score, by design."
+    description: "OpenSSF-Scorecard-shaped checks computed from data already collected — maintenance, license, CI tests, releases, contributors, SAST settings. A check that cannot be evaluated reports unknown and is EXCLUDED from the score, rather than scored zero as OpenSSF's own tool does, and the coverage is reported alongside the number: 8.0 over five checks and 8.0 over twelve are different claims. Not comparable with a published OpenSSF score, by design."
     resource_types: ["repo"]
     intent: assessment
     perspectives: ["Security", "Steward", "Governance", "Consumer"]
@@ -1035,6 +1035,59 @@ database_analyses:
       candidate: false
       native_process_ref: null
 
+  - id: db_hub_tables
+    name: "Starting Tables"
+    description: >
+      Which tables would a consumer start with? A short ranking over four
+      signals already stored for the other zero-fetch checks: how many other
+      tables reference the table by foreign key, its row count, whether it
+      carries a comment, and its read counters. No connection is opened. A
+      signal that was never established for a table (keys not captured, no
+      row count, statistics never collected) is left out of the ranking and
+      named, never scored as zero — "no foreign keys captured" is not "nothing
+      depends on this table".
+    resource_types: ["database"]
+    intent: discovery
+    perspectives: ["Consumer", "App/AI Builder", "Data Expert"]
+    annotation_types: ["ResourceMeasureAnnotation"]
+    source: local
+    run_time: fast
+    availability: inline
+    action: survey
+    target_shape: whole_resource_only
+    recommended: true
+    egeria_registration:
+      candidate: false
+      native_process_ref: null
+
+  - id: db_statistics_freshness
+    name: "Statistics Freshness"
+    description: >
+      Are this database's planner statistics current? Per table: never
+      analyzed, last analyzed N days ago, and the rows changed since that
+      analyze as a share of live rows, flagged when above the point at which
+      Postgres's autovacuum would itself analyze the table
+      (autovacuum_analyze_threshold 50 + autovacuum_analyze_scale_factor 0.1
+      times the row estimate), with a per-schema roll-up. Reads only the
+      stored table-activity and table rows; no connection is opened. This
+      database's own autovacuum settings are not stored, so Postgres's
+      defaults are used and the result says so. "Never analyzed" is Postgres's
+      own NULL and is a finding; a table whose statistics could not be read is
+      "not read" and is never counted as current or as never analyzed.
+    resource_types: ["database"]
+    intent: analysis
+    perspectives: ["Steward", "Admin", "Data Expert"]
+    annotation_types: ["ResourceMeasureAnnotation"]
+    source: local
+    run_time: fast
+    availability: inline
+    action: survey
+    target_shape: whole_resource_only
+    recommended: true
+    egeria_registration:
+      candidate: false
+      native_process_ref: null
+
   - id: grain_determination
     name: "Table Grain"
     description: >
@@ -1281,7 +1334,17 @@ database_analyses:
       carried through as deferred criteria naming the analysis that answers
       them, never scored here.
     resource_types: ["database"]
-    intent: discovery
+    # Retagged discovery -> enrichment, 2026-09-29 (ENRICHMENT-E1-CONTEXT-TAB,
+    # project owner's amendment to the designer's reply §0.2): the reply said
+    # no analysis runs at Enrichment; the owner's correction is that a class
+    # does, when its prerequisite is a human input rather than a survey read.
+    # This is that case — it already took a `lens` as a runtime parameter
+    # (`db_derived.compute_preliminary_fit`), and a declared lens is exactly
+    # the human input this class is gated on. Discovery's own zero-fetch tier
+    # is unaffected: `test_discovery_is_the_zero_fetch_derivation_tier`
+    # iterates repo analyses only, and this entry is database-only.
+    intent: enrichment
+    requires_input: lens
     perspectives: ["Consumer", "Financial"]
     annotation_types: ["ResourceMeasureAnnotation"]
     source: local
@@ -1290,6 +1353,88 @@ database_analyses:
     action: survey
     target_shape: whole_resource_only
     recommended: true
+    egeria_registration:
+      candidate: false
+      native_process_ref: null
+
+  # ── Enrichment-tier stubs (2026-09-29, ENRICHMENT-E1-CONTEXT-TAB) ────────
+  #
+  # Referenced by Enrichment's "Survey & analyses" map (the amendment above)
+  # but NOT implemented here — each is a placeholder registration only, so
+  # the map has a real catalog id to point at and the gap guard
+  # (test_analysis_catalog_reader.py::test_enrichment_and_automate_have_no_
+  # entries_by_design) can tell "declared, not yet built" apart from "nobody
+  # registered this yet". `availability: queued` and no runner exists for
+  # any of the three — clicking Run on one of these is expected to fail
+  # until its own slice builds it. Scoped to `database_analyses` only for
+  # now (matching every worked example in the reply and the amendment);
+  # broadening to repo/filesystem is a follow-on once #348 and the
+  # glossary-confirmation mechanism exist there too.
+
+  - id: doc_source_ingestion
+    name: "Documentation Source Ingestion"
+    description: >
+      Not built. Placeholder registration only (ENRICHMENT-E1-CONTEXT-TAB).
+      #348's slice 2: once a documentation source is declared and reachable
+      (PR #348, re/doc-sources-declare-and-probe), this ingests its content
+      for doc_evidence_check to read. Unlocked by a declared, reachable
+      documentation source — a human input, not a survey read.
+    resource_types: ["database"]
+    intent: enrichment
+    requires_input: documentation_source
+    perspectives: ["Data Expert", "Steward"]
+    annotation_types: []
+    source: local
+    run_time: fast
+    availability: queued
+    action: survey
+    target_shape: whole_resource_only
+    recommended: false
+    egeria_registration:
+      candidate: false
+      native_process_ref: null
+
+  - id: doc_evidence_check
+    name: "Documentation Evidence Check"
+    description: >
+      Not built. Placeholder registration only (ENRICHMENT-E1-CONTEXT-TAB).
+      Reads ingested documentation (doc_source_ingestion's output) for
+      evidence bearing on the catalog's human questions. Unlocked by
+      ingested documentation — a human input's downstream artifact, not a
+      survey read.
+    resource_types: ["database"]
+    intent: enrichment
+    requires_input: ingested_documentation
+    perspectives: ["Data Expert", "Steward"]
+    annotation_types: []
+    source: local
+    run_time: fast
+    availability: queued
+    action: survey
+    target_shape: whole_resource_only
+    recommended: false
+    egeria_registration:
+      candidate: false
+      native_process_ref: null
+
+  - id: semantic_suggestions
+    name: "Semantic Suggestions"
+    description: >
+      Not built. Placeholder registration only (ENRICHMENT-E1-CONTEXT-TAB).
+      Suggests glossary-term matches once a person has confirmed at least
+      one term for this resource. Unlocked by a confirmed glossary term — a
+      human input, not a survey read.
+    resource_types: ["database"]
+    intent: enrichment
+    requires_input: confirmed_glossary_term
+    perspectives: ["Data Expert", "Steward"]
+    annotation_types: []
+    source: local
+    run_time: fast
+    availability: queued
+    action: survey
+    target_shape: whole_resource_only
+    recommended: false
     egeria_registration:
       candidate: false
       native_process_ref: null
@@ -1346,6 +1491,154 @@ database_analyses:
     egeria_registration:
       candidate: true
       native_process_ref: ["database", "PostgreSQL Relational Database"]
+
+  # BEGIN GENERATED user steps (database): scripts/generate_external_step_entries.py. Do not hand-edit.
+  - id: change_rates
+    name: Table Change Rates
+    description: Rows inserted, updated and deleted per day per table between the latest two table activity
+      snapshots Resource Explorer stored, over their interval; a counter reset between them gives no rate,
+      never a negative one. Opens no connection to the database. With one activity snapshot, or a table
+      missing from one, it is shown as "not measured", never as a rate of zero.
+    resource_types:
+    - database
+    intent: analysis
+    perspectives:
+    - Steward
+    - Data Expert
+    annotation_types:
+    - ResourceMeasureAnnotation
+    source: local
+    run_time: fast
+    availability: queued
+    action: survey
+    target_shape: whole_resource_only
+    recommended: false
+    egeria_registration:
+      candidate: true
+      native_process_ref: null
+    provided_by:
+      package: trellis-step-change-rates
+      entry_point: change_rates
+      step: change_rates
+      version: 0.1.0
+      kind: step
+      source: ods
+      credential_tier: none
+      questions:
+      - Q-0086
+      purposes:
+      - Maintain
+      - Assess
+  - id: database_staleness
+    name: Database Staleness
+    description: 'Rows changed per table since the last survey: compares the latest two row-count snapshots
+      Resource Explorer stored for the database. Reads only what RE already stored; opens no connection
+      to the database. Shown as "not measured", never as zero, when fewer than two row-count snapshots exist,
+      or a table or its count is missing from one.'
+    resource_types:
+    - database
+    intent: analysis
+    perspectives:
+    - Steward
+    - Data Expert
+    annotation_types:
+    - ResourceMeasureAnnotation
+    source: local
+    run_time: fast
+    availability: queued
+    action: survey
+    target_shape: whole_resource_only
+    recommended: false
+    egeria_registration:
+      candidate: true
+      native_process_ref: null
+    provided_by:
+      package: trellis-step-database-staleness
+      entry_point: database_staleness
+      step: database_staleness
+      version: 0.2.1
+      kind: step
+      source: ods
+      credential_tier: none
+      questions:
+      - Q-0041
+      purposes:
+      - Maintain
+  - id: hub_tables
+    name: Hub Tables
+    description: Foreign-key degree in and out per table, from the keys Resource Explorer stored, and the
+      tables it proposes as hubs (referenced by at least hub_min_referencing other tables, a declared parameter;
+      a count from partly captured keys is a lower bound, reported as at least N). The proposal is an annotation,
+      never a classification on the table. Opens no connection to the database. With no foreign keys stored
+      it is shown as "not measured", never as a database with no hubs.
+    resource_types:
+    - database
+    intent: analysis
+    perspectives:
+    - Data Expert
+    - Steward
+    annotation_types:
+    - ResourceMeasureAnnotation
+    source: local
+    run_time: fast
+    availability: queued
+    action: survey
+    target_shape: whole_resource_only
+    recommended: false
+    egeria_registration:
+      candidate: true
+      native_process_ref: null
+    provided_by:
+      package: trellis-step-hub-tables
+      entry_point: hub_tables
+      step: hub_tables
+      version: 0.2.0
+      kind: step
+      source: ods
+      credential_tier: none
+      questions:
+      - Q-0072
+      - Q-0068
+      purposes:
+      - Explore
+      - Integrate
+  - id: statistics_freshness
+    name: Table Statistics Freshness
+    description: 'How old each table''s planner statistics are: the age of the last ANALYZE and VACUUM,
+      tables never analysed, and tables changed past autovacuum''s analyse trigger, as of the newest table
+      activity snapshot Resource Explorer stored. Opens no connection to the database. A table whose statistics
+      were not read, or a database with none stored, is shown as "not measured", never as fresh.'
+    resource_types:
+    - database
+    intent: analysis
+    perspectives:
+    - Steward
+    - Data Expert
+    annotation_types:
+    - ResourceMeasureAnnotation
+    source: local
+    run_time: fast
+    availability: queued
+    action: survey
+    target_shape: whole_resource_only
+    recommended: false
+    egeria_registration:
+      candidate: true
+      native_process_ref: null
+    provided_by:
+      package: trellis-step-statistics-freshness
+      entry_point: statistics_freshness
+      step: statistics_freshness
+      version: 0.1.0
+      kind: step
+      source: ods
+      credential_tier: none
+      questions:
+      - Q-0073
+      - Q-0062
+      purposes:
+      - Maintain
+  # END GENERATED user steps (database)
 
 filesystem_analyses:
   - id: filesystem_inventory

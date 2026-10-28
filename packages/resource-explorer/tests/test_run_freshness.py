@@ -56,8 +56,9 @@ class TestTheThreeStates:
         _log_run(reg, slug, "security_scan", minutes_ago=5)
         f = assess_freshness(reg, "repo", slug, "security_scan")
         assert f.fresh and f.state == "fresh"
-        assert "not running it again" in f.reason("security_scan")
-        assert "force=true" in f.reason("security_scan")
+        assert "has data from" in f.reason("security_scan")
+        assert "force=true" not in f.reason("security_scan")
+        assert "not running it again" not in f.reason("security_scan")
 
     def test_an_old_run_is_stale(self, reg, slug):
         _log_run(reg, slug, "security_scan", minutes_ago=180)

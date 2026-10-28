@@ -26,6 +26,7 @@ import {
   listAllPerspectives,
 } from '/static/re-api.js';
 import { esc } from '/static/next/app.js';
+import { inPageConfirm, inPageNotice } from '/static/next/confirm-dialog.js';
 
 const STATUS = {
   direct: { icon: '●', tone: 'text-state-ok', label: 'Answered directly from stored data' },
@@ -174,13 +175,13 @@ async function confirmRetire(question) {
   const message = `Retire "${question}"? This does not delete it or any past survey answer that `
     + 'references it — it stops appearing as an open question and is kept in the catalog, shown '
     + 'dimmed, so old answers stay traceable to exactly the question they answered.';
-  if (!window.confirm(message)) return;
+  if (!(await inPageConfirm({ message: message, confirmLabel: 'Confirm' }))) return;
   try {
     await retireQuestionCatalogEntry(question);
-    _data = await listQuestionCatalog('repo');
+    _data = await listQuestionCatalog('repo'); // explicit: this admin editor edits the repo catalog only
     render();
   } catch (err) {
-    window.alert(err.message || 'Failed to retire question.');
+    await inPageNotice({ message: err.message || 'Failed to retire question.' });
   }
 }
 
@@ -270,7 +271,7 @@ async function openAddModal() {
         answeringMechanism: f('answering_mechanism'),
       });
       closeAddModal();
-      _data = await listQuestionCatalog('repo');
+      _data = await listQuestionCatalog('repo'); // explicit: this admin editor edits the repo catalog only
       render();
     } catch (err) {
       errorEl.textContent = err.message || 'Save failed.';
@@ -283,6 +284,6 @@ export async function renderQuestionCatalog(host) {
   state.stage = '';
   state.perspectives = new Set();
   state.search = '';
-  _data = await listQuestionCatalog('repo');
+  _data = await listQuestionCatalog('repo'); // explicit: this admin editor edits the repo catalog only
   render();
 }

@@ -11,6 +11,9 @@ from resource_explorer.surveyors.survey_definition_reader import (
     UnsupportedSurveyDefinitionError,
 )
 
+# Brief I: these tests fake the Egeria clients; the code under test runs as a signed-in caller, as on a route.
+pytestmark = pytest.mark.usefixtures("signed_in_caller")
+
 # Fixtures below match the real GovernanceOfficer.get_governance_action_process_graph
 # (renamed from get_governance_process_graph in an upcoming pyegeria release)
 # response shape, confirmed against a live qs-view-server for both a single-step
@@ -420,6 +423,7 @@ class TestThreadLocalClassificationExplorer:
         factory = _CountingClassificationExplorerFactory()
         reader = _reader()
         reader._new_classification_explorer = factory
+        reader.principal()   # Brief I: resolved in the calling thread, as the pooled path does
 
         seen = {}
 
@@ -440,6 +444,7 @@ class TestThreadLocalClassificationExplorer:
         factory = _CountingClassificationExplorerFactory()
         reader = _reader()
         reader._new_classification_explorer = factory
+        reader.principal()   # Brief I: resolved in the calling thread, as the pooled path does
 
         seen = []
 
@@ -491,6 +496,7 @@ class TestThreadLocalClassificationExplorer:
 
         reader = _reader()
         reader._new_classification_explorer = _FlakyThenFine
+        reader.principal()   # Brief I: resolved in the calling thread, as the pooled path does
 
         results = {}
 

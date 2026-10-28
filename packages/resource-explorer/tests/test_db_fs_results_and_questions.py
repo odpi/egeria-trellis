@@ -69,8 +69,8 @@ class TestDatabaseResultsMapCoverage:
         # `db_derived` step and so all three with a reader from the start.
         #
         # `DATABASE_ANALYSIS_RE_STEP_MAP` (renamed from `DATABASE_ANALYSIS_
-        # STEP_MAP` — slice 17, docs/design-notes/SLICE-17-RUNNABILITY-FROM-
-        # CATALOG-IMPLEMENTED.md) maps an analysis id to a `re_analysis_step`
+        # STEP_MAP` — slice 17, SLICE-17-RUNNABILITY-FROM-CATALOG-IMPLEMENTED.md) maps an analysis
+        # id to a `re_analysis_step`
         # key, `db_derived` for all eleven zero-fetch ids including these
         # three — it is now DERIVED from `db_derived.DB_DERIVED_ANALYSES`
         # rather than hand-listed a second time, which is exactly the fix:
@@ -89,7 +89,21 @@ class TestDatabaseResultsMapCoverage:
             "egeria_db_survey",
         }
         assert set(DATABASE_ANALYSIS_RE_STEP_MAP) - set(DATABASE_ANALYSIS_RESULTS_MAP) == expected_absent
-        assert len(DATABASE_ANALYSIS_RESULTS_MAP) == 18
+        # Nineteen: ENRICHMENT-E3 added `database_owner` (the measured datdba,
+        # its own fact with its own measured_at).
+        # Twenty: `db_hub_tables` (2026-10-02), a `db_derived` check with the
+        # same shared reader as the others.
+        # Twenty-one: `db_statistics_freshness` (2026-10-10, backlog 7i), same
+        # shared reader.
+        # Twenty-two: `database_staleness` (2026-10-13, extensibility brief
+        # 2c), the first user step: its catalog entry is generated from its
+        # manifest and `survey_step_host` attaches the generic
+        # ResourceMeasureAnnotation reader for it, installed or not.
+        # Twenty-five (2026-10-15): the catalog cards for the first three
+        # library steps, `statistics_freshness`, `hub_tables` and
+        # `change_rates`, get the same generic reader from their generated
+        # entries, installed or not.
+        assert len(DATABASE_ANALYSIS_RESULTS_MAP) == 25
 
     def test_every_entry_is_a_reader_pair(self):
         from resource_explorer.surveyors.database.survey_definition_adapter import (
@@ -163,7 +177,7 @@ class TestDatabaseResultsReadersReadStoredRows:
         ])
         reader, _ = DATABASE_ANALYSIS_RESULTS_MAP["schema_inventory"]
         result = reader(db_reg, slug)
-        assert result["table_count"] == 1
+        assert result["relation_count"] == 1
         assert result["column_count"] == 1
         assert result["tables"][0]["table_name"] == "orders"
         assert result["tables"][0]["row_count"] == 42
@@ -179,7 +193,7 @@ class TestDatabaseResultsReadersReadStoredRows:
         ])
         reader, _ = DATABASE_ANALYSIS_RESULTS_MAP["row_count_snapshot"]
         result = reader(db_reg, slug)
-        assert result["table_count"] == 2
+        assert result["relation_count"] == 2
         assert result["measured_count"] == 1  # the NULL row_count is not "measured as 0"
 
     def test_operations_sections_read_the_latest_survey_blob(self, db_reg, slug):

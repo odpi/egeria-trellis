@@ -217,7 +217,7 @@ class SubResourceSurveyor(BaseSurveyor):
                     check_name="sub_resource_survey",
                     summary=(
                         f"Sub-resource survey: {len(findings)} considered, "
-                        f"{len(worthy)} recommended for cataloging"
+                        f"{len(worthy)} recommended for publishing"
                     ),
                     analysis_step=STEP,
                     candidate_classifications=[f["path"] or "(root)" for f in worthy],

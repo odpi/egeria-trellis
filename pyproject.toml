@@ -21,6 +21,7 @@ trellis-artifact-tree = { workspace = true }
 trellis-context = { workspace = true }
 trellis-querycache = { workspace = true }
 trellis-auth = { workspace = true }
+trellis-analytics = { workspace = true }
 
 [tool.uv]
 # Combining both members' constraints in one resolution otherwise pulls an

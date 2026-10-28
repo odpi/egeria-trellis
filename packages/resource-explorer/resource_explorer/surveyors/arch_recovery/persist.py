@@ -183,6 +183,37 @@ def _persist_decisions(registry, slug: str, notes: list, surveyed_at: str,
         log.exception("%s: could not persist %s decision notes", slug, run_label)
 
 
+#: What the detectors found and did NOT admit as components: services running other projects' images
+#: (referenced only), directories with a Dockerfile but no first-party source, fixtures. One
+#: whole-resource row per run, replaced each run, so a service that left the compose file leaves the list.
+ADMISSION_KIND = "architecture_admission"
+
+
+def persist_admission(registry, slug: str, referenced: list, left_out: list[str], published: list[str],
+                      admitted_count: int, surveyed_at: str, run_scope: str = "") -> None:
+    """Write the not-admitted record. `referenced` are Components classed referenced_only; they become
+    runtime dependency rows (dependency_table) and, when RE knows the repository that builds the image,
+    the Environment Deployment Blueprint's nodes. `published` are the normalised image names THIS
+    repository builds or publishes, kept so another repository's referenced-only service can be linked
+    to the repository that builds it."""
+    from .admission import ZERO_COMPONENT_SENTENCE
+    items = [{"scope": scope_locator_for(c), "name": c.name, "slug": c.slug, "image": c.image,
+              "evidence": c.admission_evidence,
+              "unit": c.identity.deployment_context or ""} for c in referenced]
+    registry.upsert_finding(
+        slug, ADMISSION_KIND,
+        [{
+            "check_name": "admission", "label": "referenced" if referenced else "all_admitted",
+            "summary": f"{len(referenced)} referenced only · {admitted_count} admitted",
+            "confidence": 100,
+            "detail": {"referenced": items, "left_out": left_out, "published_images": sorted(published),
+                       "admitted": admitted_count, "run_scope": run_scope,
+                       "sentence": ZERO_COMPONENT_SENTENCE if (referenced and not admitted_count) else ""},
+        }],
+        surveyed_at=surveyed_at, scope_locator="", supersedes_previous=True,
+    )
+
+
 #: Cap. A note list is prose for a human; an unbounded one is a log file in a
 #: findings row. Measured: egeria 2, dataflow 5, atlas 20.
 _MAX_DECISION_NOTES = 200
@@ -409,6 +440,11 @@ def persist_ir(
                     # level, so a consumer can project (projection.py) rather
                     # than the generator having chosen a depth for them.
                     "parent_slug": c.parent_slug, "depth": c.depth,
+                    # Whose boundary this is, and the short sentence shown on the node
+                    # (DESIGN-BLUEPRINT-NODE-ADMISSION.md). Persisted on the row so a reader never
+                    # re-derives the class.
+                    "admission": c.admission, "admission_evidence": c.admission_evidence,
+                    "image": c.image,
                 },
             }],
             surveyed_at=surveyed_at, scope_locator=loc,

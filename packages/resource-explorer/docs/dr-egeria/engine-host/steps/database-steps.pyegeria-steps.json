@@ -1,0 +1,92 @@
+{
+  "$comment": [
+    "GENERATED with database-steps.md by packages/resource-explorer/scripts/generate_engine_host_declaration.py from the database step registry. Do not hand-edit; regenerate.",
+    "resource_explorer.dr_egeria_runner runs these find-or-create pyegeria steps, in this order, before the document (docs/dr-egeria-engine-host-gaps.md): the engine, one service per step, one link per step."
+  ],
+  "steps": [
+    {
+      "command": "Create Survey Action Engine",
+      "qualified_name": "ResourceExplorerSurvey",
+      "display_name": "Resource Explorer Survey Engine",
+      "description": "Resource Explorer's survey engine. It is hosted by Resource Explorer's worker, outside any Egeria engine host (Q-M4): no Java engine host configuration may list it, or a JVM host races Resource Explorer for every claim."
+    },
+    {
+      "command": "Create Survey Action Service",
+      "qualified_name": "SurveyActionService::ResourceExplorerSurvey::postgres_schema_and_stats",
+      "display_name": "Resource Explorer Survey Service — postgres_schema_and_stats",
+      "description": "Schema, table and column inventory plus row-count/size statistics."
+    },
+    {
+      "command": "Create Survey Action Service",
+      "qualified_name": "SurveyActionService::ResourceExplorerSurvey::postgres_operations",
+      "display_name": "Resource Explorer Survey Service — postgres_operations",
+      "description": "privilege_audit, db_activity_signals, db_resilience, db_external_dependencies."
+    },
+    {
+      "command": "Create Survey Action Service",
+      "qualified_name": "SurveyActionService::ResourceExplorerSurvey::postgres_column_profile",
+      "display_name": "Resource Explorer Survey Service — postgres_column_profile",
+      "description": "Bounded value sampling, data_class_match, reference_data_match."
+    },
+    {
+      "command": "Create Survey Action Service",
+      "qualified_name": "SurveyActionService::ResourceExplorerSurvey::postgres_nested_columns",
+      "display_name": "Resource Explorer Survey Service — postgres_nested_columns",
+      "description": "Bounded sampling and nested-schema inference for JSON/JSONB/XML columns."
+    },
+    {
+      "command": "Create Survey Action Service",
+      "qualified_name": "SurveyActionService::ResourceExplorerSurvey::sql_analysis",
+      "display_name": "Resource Explorer Survey Service — sql_analysis",
+      "description": "SQL view dependencies, column-level lineage and complexity scores."
+    },
+    {
+      "command": "Create Survey Action Service",
+      "qualified_name": "SurveyActionService::ResourceExplorerSurvey::credential_capability",
+      "display_name": "Resource Explorer Survey Service — credential_capability",
+      "description": "Read-only catalog/privilege introspection: what this credential can see and do."
+    },
+    {
+      "command": "Link Supported Governance Service",
+      "governance_engine": "ResourceExplorerSurvey",
+      "governance_service": "SurveyActionService::ResourceExplorerSurvey::postgres_schema_and_stats",
+      "request_type": "re-postgres-schema-and-stats",
+      "service_request_type": "re-postgres-schema-and-stats"
+    },
+    {
+      "command": "Link Supported Governance Service",
+      "governance_engine": "ResourceExplorerSurvey",
+      "governance_service": "SurveyActionService::ResourceExplorerSurvey::postgres_operations",
+      "request_type": "re-postgres-operations",
+      "service_request_type": "re-postgres-operations"
+    },
+    {
+      "command": "Link Supported Governance Service",
+      "governance_engine": "ResourceExplorerSurvey",
+      "governance_service": "SurveyActionService::ResourceExplorerSurvey::postgres_column_profile",
+      "request_type": "re-postgres-column-profile",
+      "service_request_type": "re-postgres-column-profile"
+    },
+    {
+      "command": "Link Supported Governance Service",
+      "governance_engine": "ResourceExplorerSurvey",
+      "governance_service": "SurveyActionService::ResourceExplorerSurvey::postgres_nested_columns",
+      "request_type": "re-postgres-nested-columns",
+      "service_request_type": "re-postgres-nested-columns"
+    },
+    {
+      "command": "Link Supported Governance Service",
+      "governance_engine": "ResourceExplorerSurvey",
+      "governance_service": "SurveyActionService::ResourceExplorerSurvey::sql_analysis",
+      "request_type": "re-sql-analysis",
+      "service_request_type": "re-sql-analysis"
+    },
+    {
+      "command": "Link Supported Governance Service",
+      "governance_engine": "ResourceExplorerSurvey",
+      "governance_service": "SurveyActionService::ResourceExplorerSurvey::credential_capability",
+      "request_type": "re-credential-capability",
+      "service_request_type": "re-credential-capability"
+    }
+  ]
+}

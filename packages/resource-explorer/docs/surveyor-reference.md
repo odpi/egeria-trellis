@@ -1,5 +1,7 @@
 # Resource Explorer — Surveyor Reference Guide
 
+**Status:** stale. Oldest unrevised reference (2026-08-07); predates the database surveyors and Prefect. Check against the code.
+
 The survey framework produces an **Egeria-aligned annotation report** for any indexed project.
 Surveys run entirely from SQLite (no Egeria connection needed); publishing to Egeria is optional.
 

@@ -52,6 +52,9 @@ from resource_explorer.registry import (
     STATE_NOT_MEASURED,
 )
 from resource_explorer.surveyors.database import schema_scope
+from resource_explorer.surveyors.database.relationship_dot import (
+    build_relationship_diagrams,
+)
 from resource_explorer.surveyors.survey_report import (
     ClassificationAnnotation,
     DataGrainAnnotation,
@@ -94,6 +97,17 @@ DB_DERIVED_ANALYSES: tuple[str, ...] = (
     "subject_signals",
     "coverage_signals",
     "preliminary_fit",
+    # Design §5.3's `db_hub_tables` (Backlog: "`db_hub_tables` is most of the
+    # way there for free"): which tables would a consumer start with. A
+    # ranking over four signals already stored for the checks above — FK
+    # in-degree (the same edges `db_relationship_graph` reads), row counts,
+    # table comments, and the read counters — so it opens no connection and
+    # belongs to this step rather than a new one.
+    "db_hub_tables",
+    # Backlog 7i(b): are the planner statistics current? Per-table analyze age
+    # and changes-since-analyze against autovacuum's own trigger, read from the
+    # stored activity rows -- zero fetch.
+    "db_statistics_freshness",
 )
 
 #: NOTE on the two annotation sites that carry this check's name: they spell
@@ -234,6 +248,16 @@ class DerivedInputs:
     columns: list[dict] = field(default_factory=list)
     profiles: list[dict] = field(default_factory=list)
     activity: list[dict] = field(default_factory=list)
+    #: BRIEF-KEYS-AND-ACTIVITY-CLOBBER.md §B — per-structured-table
+    #: provenance. `surveyed_at` above is a single "as of" summary (the
+    #: newest of the values below); this dict is what actually answers "which
+    #: run did THIS table's rows come from" when two structured tables were
+    #: last measured by different runs (e.g. "activity from 19:24:00,
+    #: structure from 19:24:03"). Keyed by table name
+    #: (`database_schemas`/`database_tables`/`database_columns`/
+    #: `database_column_profiles`/`database_table_activity`); a table this
+    #: slug has never had rows for is simply absent, not mapped to `None`.
+    table_surveyed_at: dict[str, str] = field(default_factory=dict)
 
     @property
     def has_schema_rows(self) -> bool:
@@ -287,29 +311,169 @@ class DerivedInputs:
         )
 
 
+#: Counters `_activity_evidence` and `_has_measured_counter` both treat as
+#: "this row carries a real measurement" — kept as one list so the write-time
+#: shape (`_survey_extended_statistics`, `database_surveyor.py`) and this
+#: read-time check agree on what "measured" means.
+_ACTIVITY_COUNTER_FIELDS = (
+    "rows_inserted", "rows_updated", "rows_deleted", "seq_scan", "idx_scan",
+)
+
+
+def _has_measured_counter(rows: list[dict]) -> bool:
+    """Does any row in this `database_table_activity` snapshot carry a real
+    tuple counter, rather than every row being `state=not_collected`/
+    `not_supported` with every counter NULL?
+
+    A run that requests `"statistics"` still writes one activity row per
+    table even when `pg_stat_user_tables` has nothing for that table (or the
+    engine capability is absent) — see `_survey_extended_statistics`'s
+    `STATE_NOT_COLLECTED`/`STATE_NOT_SUPPORTED` branches. That is a real,
+    honest "ran, found nothing" answer for THAT run, but it must not shadow
+    an earlier run that genuinely measured activity — BRIEF-KEYS-AND-ACTIVITY-CLOBBER.md §B's exact
+    finding on `laz_local_adventureworks`.
+    """
+    return any(
+        any(row.get(field) is not None for field in _ACTIVITY_COUNTER_FIELDS)
+        for row in rows
+    )
+
+
+def _resolve_table_surveyed_at(
+    registry,
+    slug: str,
+    table: str,
+    source: str | None,
+    *,
+    require_measured_counter: bool = False,
+) -> tuple[str | None, list[dict]]:
+    """The newest `(surveyed_at, rows)` for `table` that actually has rows.
+
+    Answers the same question a later run's OWN steps can genuinely never
+    touch a structured table at all (a `schema_inventory`-only run writes no
+    `database_table_activity` rows for its `surveyed_at`) while an earlier
+    run in the same history did — see BRIEF-KEYS-AND-ACTIVITY-CLOBBER.md §B.
+    `require_measured_counter` (activity only) additionally skips a run
+    whose rows exist but carry no real counter at all (every row
+    `not_collected`/`not_supported`) — present-but-unmeasured must not count
+    as "this run has the answer" either.
+
+    Set-based as of 2026-09-29 round 3 (PER-REQUEST-SERVER-LATENCY-ROUND-3-IMPLEMENTED.md) —
+    `registry.
+    find_latest_detail_surveyed_at` answers this in ONE query
+    (`MAX(surveyed_at)` on `table` itself, optionally requiring a non-NULL
+    counter), then one more to fetch the winning row(s). This used to walk
+    survey history newest-first (`_snapshot_keys`, itself a
+    `get_database_surveys` call) and issue a SEPARATE `query_detail_rows`
+    call per candidate `surveyed_at` until one came back non-empty — for a
+    table whose data lives in an old snapshot, that walk visited dozens of
+    candidates. Measured on `laz_local_adventureworks`
+    (`db_classification`, which calls `load_inputs` — 5 of these calls,
+    one per structured table): 398 total `cursor.execute()` calls, ~2.4s,
+    down to a handful of queries and well under 300ms after this change.
+    See `find_latest_detail_surveyed_at`'s own docstring for why this is
+    PROVABLY equivalent to the walk, not just faster in practice.
+    """
+    at = registry.find_latest_detail_surveyed_at(
+        table, slug, source=source,
+        require_any_non_null=_ACTIVITY_COUNTER_FIELDS if require_measured_counter else None,
+    )
+    if at is None:
+        return None, []
+    try:
+        rows = registry.query_detail_rows(table, slug, at, source)
+    except Exception as exc:  # pragma: no cover - defensive
+        log.warning(
+            "db_derived: could not read %s for %s at %s: %s", table, slug, at, exc
+        )
+        return None, []
+    return at, rows
+
+
 def load_inputs(
     registry,
     slug: str,
     surveyed_at: str | None = None,
     source: str | None = None,
 ) -> DerivedInputs:
-    """Read one snapshot's stored rows. No fetch, no connection."""
-    def _rows(table: str) -> list[dict]:
-        try:
-            return registry.query_detail_rows(table, slug, surveyed_at, source)
-        except Exception as exc:  # pragma: no cover - defensive
-            log.warning("db_derived: could not read %s for %s: %s", table, slug, exc)
-            return []
+    """Read stored rows for every structured table `db_derived` uses.
+
+    With an explicit `surveyed_at`, this is exactly one snapshot — every table
+    read at that same run, as before (a caller asking for a specific historical
+    run wants that run's own picture, clobbered sections and all).
+
+    With `surveyed_at=None` (the common "what do we currently know" case, and
+    what `run_db_derived`'s default caller uses), each structured table
+    resolves its OWN newest non-empty `surveyed_at` independently rather than
+    all sharing one global "latest" pick — BRIEF-KEYS-AND-ACTIVITY-CLOBBER.md
+    §B: a run whose own steps never touched `database_table_activity` (or
+    touched it and found nothing) must not make an earlier run's real
+    activity unreadable just because it is a newer row for `database_tables`.
+    See `DerivedInputs.table_surveyed_at` for the per-table provenance this
+    produces, and `_resolve_table_surveyed_at` for the resolution rule.
+    """
+    if surveyed_at is not None:
+        def _rows(table: str) -> list[dict]:
+            try:
+                return registry.query_detail_rows(table, slug, surveyed_at, source)
+            except Exception as exc:  # pragma: no cover - defensive
+                log.warning("db_derived: could not read %s for %s: %s", table, slug, exc)
+                return []
+
+        rows_by_table = {
+            "database_schemas": _rows("database_schemas"),
+            "database_tables": _rows("database_tables"),
+            "database_columns": _rows("database_columns"),
+            "database_column_profiles": _rows("database_column_profiles"),
+            "database_table_activity": _rows("database_table_activity"),
+        }
+        return DerivedInputs(
+            slug=slug,
+            surveyed_at=surveyed_at,
+            source=source,
+            schemas=rows_by_table["database_schemas"],
+            tables=rows_by_table["database_tables"],
+            columns=rows_by_table["database_columns"],
+            profiles=rows_by_table["database_column_profiles"],
+            activity=rows_by_table["database_table_activity"],
+            table_surveyed_at={
+                table: surveyed_at for table, rows in rows_by_table.items() if rows
+            },
+        )
+
+    schemas_at, schemas = _resolve_table_surveyed_at(registry, slug, "database_schemas", source)
+    tables_at, tables = _resolve_table_surveyed_at(registry, slug, "database_tables", source)
+    columns_at, columns = _resolve_table_surveyed_at(registry, slug, "database_columns", source)
+    profiles_at, profiles = _resolve_table_surveyed_at(
+        registry, slug, "database_column_profiles", source
+    )
+    activity_at, activity = _resolve_table_surveyed_at(
+        registry, slug, "database_table_activity", source, require_measured_counter=True
+    )
+
+    table_surveyed_at = {
+        table: at
+        for table, at in (
+            ("database_schemas", schemas_at),
+            ("database_tables", tables_at),
+            ("database_columns", columns_at),
+            ("database_column_profiles", profiles_at),
+            ("database_table_activity", activity_at),
+        )
+        if at is not None
+    }
+    latest_at = max(table_surveyed_at.values(), default=None)
 
     return DerivedInputs(
         slug=slug,
-        surveyed_at=surveyed_at,
+        surveyed_at=latest_at,
         source=source,
-        schemas=_rows("database_schemas"),
-        tables=_rows("database_tables"),
-        columns=_rows("database_columns"),
-        profiles=_rows("database_column_profiles"),
-        activity=_rows("database_table_activity"),
+        schemas=schemas,
+        tables=tables,
+        columns=columns,
+        profiles=profiles,
+        activity=activity,
+        table_surveyed_at=table_surveyed_at,
     )
 
 
@@ -337,7 +501,7 @@ def _is_base_table(row: dict) -> bool:
         # Not recorded — treat as a base table rather than dropping it
         # silently. An unrecorded type is not evidence of a view.
         return True
-    return ttype in {"BASE_TABLE", "TABLE", "LOCAL_TEMPORARY", "FOREIGN"}
+    return ttype in {"BASE_TABLE", "PARTITIONED_TABLE", "TABLE", "LOCAL_TEMPORARY", "FOREIGN"}
 
 
 def _foreign_key_edges(columns: list[dict]) -> list[dict]:
@@ -624,6 +788,23 @@ def _fingerprint_evidence(fingerprint: dict) -> dict[str, float] | None:
     return evidence
 
 
+#: Which structured table each classification family's evidence is actually
+#: read from — BRIEF-KEYS-AND-ACTIVITY-CLOBBER.md §B's "the evidence panel
+#: must show which run each family came from". `structure`/`naming` both read
+#: `inputs.tables`/`inputs.columns` (see `_structure_evidence`/
+#: `_naming_evidence`); `database_tables` is used as the representative
+#: surveyed_at since a schema/table/column catalog is always written together
+#: by the same run. `fingerprint` has no structured-table source of its own —
+#: it also reads `inputs.tables`/`inputs.columns` (via `_signature`), so it
+#: shares the same provenance.
+_FAMILY_SOURCE_TABLE = {
+    "structure": "database_tables",
+    "naming": "database_tables",
+    "activity": "database_table_activity",
+    "fingerprint": "database_tables",
+}
+
+
 def classify_database(inputs: DerivedInputs, fingerprint: dict) -> dict:
     """Derive what kind of database this is, with a confidence that reflects
     how much signal was available (design §5.3, §5.1's `not_established`).
@@ -636,6 +817,13 @@ def classify_database(inputs: DerivedInputs, fingerprint: dict) -> dict:
     }
     available = {name: ev for name, ev in families.items() if ev is not None}
     missing = sorted(name for name, ev in families.items() if ev is None)
+    # Per-family provenance: which run's rows this family's evidence actually
+    # came from, so a caller/UI can say "activity from 19:24:00, structure
+    # from 19:24:03" instead of one blended "as of" timestamp.
+    signal_provenance = {
+        name: inputs.table_surveyed_at.get(_FAMILY_SOURCE_TABLE[name])
+        for name in available
+    }
 
     if not available:
         return {
@@ -645,6 +833,7 @@ def classify_database(inputs: DerivedInputs, fingerprint: dict) -> dict:
             "scores": {},
             "signals_used": [],
             "signals_missing": missing,
+            "signal_provenance": {},
             "explanation": (
                 "No stored rows carry a classification signal for this "
                 "database: no table/column catalog, no tuple counters, and "
@@ -680,9 +869,13 @@ def classify_database(inputs: DerivedInputs, fingerprint: dict) -> dict:
     confidence = max(0, min(_MAX_INFERRED_CONFIDENCE, confidence))
 
     undecided = best_score <= 0 or confidence < _MIN_CLASSIFICATION_CONFIDENCE
+    provenance_bits = ", ".join(
+        f"{name} from {signal_provenance[name]}" if signal_provenance.get(name) else name
+        for name in sorted(available)
+    )
     explanation_parts = [
         (f"Derived from {len(available)} of {len(families)} signal families "
-         f"({', '.join(sorted(available))})."),
+         f"({provenance_bits})."),
     ]
     if missing:
         explanation_parts.append(
@@ -711,6 +904,7 @@ def classify_database(inputs: DerivedInputs, fingerprint: dict) -> dict:
         "ranked": [k for k, _ in ranked],
         "signals_used": sorted(available),
         "signals_missing": missing,
+        "signal_provenance": signal_provenance,
         "coverage": round(coverage, 3),
         "explanation": " ".join(explanation_parts),
     }
@@ -854,9 +1048,21 @@ def derive_relationship_graph(inputs: DerivedInputs) -> dict:
             f"not.{unmeasured_note}"
         )
 
+    # Sorted by `referenced_by` descending, `table` ascending as a
+    # deterministic tiebreaker (2026-09-29 round 3,
+    # PER-REQUEST-SERVER-LATENCY-ROUND-3-IMPLEMENTED.md) — without the
+    # tiebreaker, two tables with the SAME referenced_by count sort by
+    # whatever order `in_degree.items()` happens to iterate in, which
+    # depends on dict insertion order, which depends on the order edges
+    # came back from the database — not guaranteed stable across two
+    # identical calls without an explicit `ORDER BY` upstream. Found live:
+    # running `derive_relationship_graph` twice in a row on the SAME
+    # unmodified data produced two different orderings among tied entries.
+    # Design's ruling: nondeterministic evidence text is a correctness bug,
+    # not a Backlog item — fixed here, not deferred.
     hubs = sorted(
         ({"table": f"{s}.{t}", "referenced_by": d} for (s, t), d in in_degree.items() if d),
-        key=lambda h: h["referenced_by"], reverse=True,
+        key=lambda h: (-h["referenced_by"], h["table"]),
     )[:10]
 
     return {
@@ -873,6 +1079,478 @@ def derive_relationship_graph(inputs: DerivedInputs) -> dict:
         "most_referenced": hubs,
         "edges": edges,
         "explanation": explanation,
+    }
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 2b. db_hub_tables  (design §5.3; Backlog "most of the way there for free")
+# ═══════════════════════════════════════════════════════════════════════════
+
+#: Weight of each signal in a table's hub score. FK in-degree counts most: it
+#: is a declared constraint, the strongest statement the schema makes that
+#: other tables depend on this one. Reads and rows are measures of use and
+#: size, a comment is the weakest (somebody wrote something down).
+_HUB_SIGNAL_WEIGHTS: dict[str, float] = {
+    "fk_in_degree": 3.0,
+    "reads": 2.0,
+    "rows": 2.0,
+    "comment": 1.0,
+}
+#: How many tables the starting list carries.
+_HUB_LIST_LENGTH = 10
+
+HUB_REASON_NO_ROWS = "no_schema_rows"
+HUB_REASON_NO_COMPARABLE_SIGNAL = "no_comparable_signal"
+
+
+def _log_scaled(value: float, ceiling: float) -> float:
+    """`log(1+value)/log(1+ceiling)` in [0, 1]; 0 when the ceiling is 0.
+    Counts span orders of magnitude, so a linear share would let one giant
+    table flatten every other table's score to nothing."""
+    if ceiling <= 0:
+        return 0.0
+    import math
+
+    return math.log1p(value) / math.log1p(ceiling)
+
+
+def derive_hub_tables(inputs: DerivedInputs) -> dict:
+    """Which tables would a consumer start with? Zero fetch.
+
+    A ranking over four per-table signals, every one read from rows already
+    stored: FK in-degree (distinct OTHER tables that reference this one, from
+    the same `foreign_key_json` edges `db_relationship_graph` reads), row
+    count, whether the table carries a comment, and its read counters
+    (`seq_scan + idx_scan`).
+
+    **NULL stays NULL.** A signal that was never established for a table is
+    not scored as zero for it:
+
+    - FK in-degree is established only when EVERY base table's own keys were
+      captured — a referencing table whose keys were never captured could be
+      referencing this one, so 0 is only a finding when nothing was left
+      unread.
+    - A comment signal exists only when some table or column anywhere carries
+      a description; a database where none does has most likely never had its
+      comments captured, and "undocumented" would be a guess.
+    - `row_count` NULL and counters NULL (never ANALYZEd, no stats row) are
+      unknown, not 0 rows and 0 reads.
+
+    Tables are only comparable on the same evidence, so a signal takes part in
+    the ranking only when it is established for ALL base tables. The signals
+    left out are named, with the number of tables that lacked them, in
+    `signals_not_used`; per-table values that were never established appear as
+    `None` in `hubs`, never `0`.
+    """
+    tables = [t for t in inputs.tables if _is_base_table(t)]
+    provenance = {
+        "read_snapshot": inputs.surveyed_at,
+        "table_surveyed_at": dict(inputs.table_surveyed_at),
+    }
+    if not tables:
+        return {
+            "state": STATE_NOT_MEASURED,
+            "reason": HUB_REASON_NO_ROWS,
+            "table_count": 0,
+            "hubs": [],
+            "provenance": provenance,
+            "explanation": (
+                "No stored table rows for this database, so no table can be "
+                "ranked. NOT a finding that no table stands out — run the "
+                "schema step."
+            ),
+        }
+
+    keys = [_table_key(t) for t in tables]
+    key_set = set(keys)
+
+    # ── FK in-degree: distinct other tables referencing each table ──────────
+    referencing: dict[tuple[str, str], set] = {k: set() for k in keys}
+    for edge in _foreign_key_edges(inputs.columns):
+        src = (edge["from_schema"], edge["from_table"])
+        dst = (edge["to_schema"], edge["to_table"])
+        if src in key_set and dst in key_set and src != dst:
+            referencing[dst].add(src)
+    fk_complete = all(inputs.keys_captured_for_table(k) for k in keys)
+    fk_values: dict[tuple[str, str], int | None] = {
+        k: (len(referencing[k]) if fk_complete else None) for k in keys
+    }
+
+    # ── rows ────────────────────────────────────────────────────────────────
+    row_values: dict[tuple[str, str], int | None] = {}
+    for t in tables:
+        rc = t.get("row_count")
+        row_values[_table_key(t)] = int(rc) if rc is not None else None
+
+    # ── comments ────────────────────────────────────────────────────────────
+    any_comment = any((t.get("description") or "").strip() for t in tables) or any(
+        (c.get("description") or "").strip() for c in inputs.columns
+    )
+    comment_values: dict[tuple[str, str], bool | None] = {
+        _table_key(t): (bool((t.get("description") or "").strip()) if any_comment else None)
+        for t in tables
+    }
+
+    # ── reads ───────────────────────────────────────────────────────────────
+    activity_by_table = {_table_key(a): a for a in inputs.activity}
+    read_values: dict[tuple[str, str], int | None] = {}
+    for k in keys:
+        row = activity_by_table.get(k) or {}
+        seq, idx = row.get("seq_scan"), row.get("idx_scan")
+        read_values[k] = (
+            None if seq is None and idx is None else int(seq or 0) + int(idx or 0)
+        )
+
+    raw = {
+        "fk_in_degree": fk_values, "reads": read_values,
+        "rows": row_values, "comment": comment_values,
+    }
+    reasons_missing = {
+        "fk_in_degree": (
+            "key information was not captured for every table"
+            if not fk_complete else ""
+        ),
+        "comment": "no table or column carries a comment, so comments look uncaptured",
+        "rows": "row counts are missing",
+        "reads": "read counters are missing (statistics never collected)",
+    }
+    used: list[str] = []
+    not_used: list[dict] = []
+    for name in _HUB_SIGNAL_WEIGHTS:
+        missing = sum(1 for k in keys if raw[name][k] is None)
+        if missing == 0:
+            used.append(name)
+        else:
+            not_used.append({
+                "signal": name,
+                "tables_without": missing,
+                "of": len(keys),
+                "why": reasons_missing[name],
+            })
+
+    if not used:
+        return {
+            "state": STATE_NOT_MEASURED,
+            "reason": HUB_REASON_NO_COMPARABLE_SIGNAL,
+            "table_count": len(tables),
+            "hubs": [],
+            "signals_used": [],
+            "signals_not_used": not_used,
+            "provenance": provenance,
+            "explanation": (
+                f"{len(tables)} tables are stored, but no ranking signal was "
+                "established for every one of them (" + "; ".join(
+                    f"{n['signal']}: {n['why']}" for n in not_used
+                ) + "), so the tables cannot be compared yet. NOT a finding "
+                "that none of them is a natural starting point."
+            ),
+        }
+
+    ceilings = {
+        "fk_in_degree": max((v for v in fk_values.values() if v is not None), default=0),
+        "reads": max((v for v in read_values.values() if v is not None), default=0),
+        "rows": max((v for v in row_values.values() if v is not None), default=0),
+    }
+
+    def _component(name: str, key) -> float:
+        value = raw[name][key]
+        if name == "comment":
+            return 1.0 if value else 0.0
+        if name == "fk_in_degree":
+            return (value / ceilings[name]) if ceilings[name] else 0.0
+        return _log_scaled(value, ceilings[name])
+
+    total_weight = sum(_HUB_SIGNAL_WEIGHTS[n] for n in used)
+    ranked: list[dict] = []
+    for t in tables:
+        key = _table_key(t)
+        score = sum(_HUB_SIGNAL_WEIGHTS[n] * _component(n, key) for n in used) / total_weight
+        ranked.append({
+            "table": f"{key[0]}.{key[1]}",
+            "score": round(score, 3),
+            "fk_in_degree": fk_values[key],
+            "row_count": row_values[key],
+            "has_comment": comment_values[key],
+            "reads": read_values[key],
+        })
+    ranked.sort(key=lambda h: (-h["score"], h["table"]))
+    hubs = [h for h in ranked if h["score"] > 0][:_HUB_LIST_LENGTH]
+
+    def _describe(h: dict) -> str:
+        bits = []
+        if "fk_in_degree" in used:
+            bits.append(f"referenced by {h['fk_in_degree']} table(s)")
+        if "rows" in used:
+            bits.append(f"{h['row_count']:,} rows")
+        if "reads" in used:
+            bits.append(f"{h['reads']:,} reads")
+        if "comment" in used:
+            bits.append("commented" if h["has_comment"] else "no comment")
+        return f"{h['table']} ({', '.join(bits)})"
+
+    left_out = ""
+    if not_used:
+        left_out = " Not used for ranking: " + "; ".join(
+            f"{n['signal']} ({n['tables_without']} of {n['of']} tables lack it — "
+            f"{n['why']})" for n in not_used
+        ) + "; they are left out, never counted as zero."
+    if hubs:
+        explanation = (
+            f"Start with: " + "; ".join(_describe(h) for h in hubs[:5])
+            + f". Ranked {len(tables)} table(s) on "
+            + ", ".join(used) + "." + left_out
+        )
+    else:
+        explanation = (
+            f"Measured: all {len(tables)} table(s) were compared on "
+            + ", ".join(used) + " and none stands out — every one scored zero "
+            "on every established signal." + left_out
+        )
+    return {
+        "state": STATE_MEASURED,
+        "table_count": len(tables),
+        "ranked_count": len(ranked),
+        "signals_used": used,
+        "signals_not_used": not_used,
+        "hubs": hubs,
+        "provenance": provenance,
+        "explanation": explanation,
+    }
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 2c. db_statistics_freshness  (backlog 7i(b))
+# ═══════════════════════════════════════════════════════════════════════════
+
+#: PostgreSQL's own defaults for the two settings autovacuum's ANALYZE trigger
+#: reads. No survey stores this database's actual `pg_settings`, and this
+#: check reads stored rows only (no new collection), so the defaults are used
+#: and SAID to be used (`settings_source`). A server or per-table override is
+#: not reflected.
+AUTOVACUUM_ANALYZE_THRESHOLD = 50
+AUTOVACUUM_ANALYZE_SCALE_FACTOR = 0.1
+FRESHNESS_SETTINGS_SOURCE = (
+    "PostgreSQL defaults (autovacuum_analyze_threshold 50, "
+    "autovacuum_analyze_scale_factor 0.1): this database's own settings are "
+    "not stored by any survey, so a server or per-table override is not "
+    "reflected"
+)
+
+FRESH_CURRENT = "current"
+FRESH_STALE = "stale"                  # more changes than autovacuum waits for
+FRESH_NEVER = "never_analyzed"         # Postgres NULL for both analyze times
+FRESH_NOT_READ = "not_read"            # RE could not read this table's statistics
+FRESHNESS_STATUSES = (FRESH_STALE, FRESH_NEVER, FRESH_NOT_READ, FRESH_CURRENT)
+
+FRESH_REASON_NO_ROWS = "no_schema_rows"
+FRESH_REASON_NO_STATISTICS = "no_pg_stat_user_tables_rows"
+
+#: Annotation size guard: only tables that need attention are listed in full.
+_FRESHNESS_LIST_LIMIT = 100
+
+
+def _parse_stat_time(value) -> datetime | None:
+    """A stored `last_analyze` string as a naive UTC datetime, or None when it
+    is not a parseable timestamp ("never" and "" are both None here -- the
+    caller has already told those apart)."""
+    if not value or not isinstance(value, str):
+        return None
+    try:
+        parsed = datetime.fromisoformat(value.strip().replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if parsed.tzinfo is not None:
+        from datetime import timezone
+
+        parsed = parsed.astimezone(timezone.utc).replace(tzinfo=None)
+    return parsed
+
+
+def _stat_time_sort_key(value) -> datetime:
+    return _parse_stat_time(value) or datetime.min
+
+
+def derive_statistics_freshness(inputs: DerivedInputs) -> dict:
+    """Are this database's planner statistics current? Zero fetch.
+
+    Per base table, from the stored `database_table_activity` row only:
+
+    - ``never_analyzed``: Postgres reports NULL for both `last_analyze` and
+      `last_autoanalyze`. A finding, stated as such.
+    - ``stale``: changes since the last analyze exceed autovacuum's own trigger,
+      ``autovacuum_analyze_threshold + autovacuum_analyze_scale_factor *
+      reltuples`` (defaults 50 and 0.1; see `FRESHNESS_SETTINGS_SOURCE`).
+    - ``current``: analysed, and fewer changes than that.
+    - ``not_read``: no `pg_stat_user_tables` row was read for the table. Says
+      nothing about whether it was ever analysed, and is never counted in any
+      of the other three.
+
+    ``pg_class.reltuples`` is not stored. A never-analysed table's reltuples
+    is unusable and autovacuum treats it as 0 (threshold = 50), which is
+    exact; otherwise the collector's live-row count stands in, and the table
+    says so (`threshold_basis`).
+
+    "Last analyzed N days ago" is relative to the snapshot the activity row
+    came from (`as_of`), never to the moment this is read.
+    """
+    tables = [t for t in inputs.tables if _is_base_table(t)]
+    activity_at = inputs.table_surveyed_at.get("database_table_activity")
+    provenance = {
+        "read_snapshot": inputs.surveyed_at,
+        "table_surveyed_at": dict(inputs.table_surveyed_at),
+    }
+    if not tables:
+        return {
+            "state": STATE_NOT_MEASURED, "reason": FRESH_REASON_NO_ROWS,
+            "table_count": 0, "tables": [], "schemas": [], "provenance": provenance,
+            "settings_source": FRESHNESS_SETTINGS_SOURCE,
+            "explanation": (
+                "No stored table rows for this database, so statistics "
+                "currency cannot be assessed. NOT a finding that they are "
+                "current -- run the schema step."
+            ),
+        }
+
+    from resource_explorer.surveyors.database.table_statistics_metrics import (
+        LAST_ANALYZE, NOT_READ_KEY, NUMBER_OF_ROWS_CHANGED_SINCE_ANALYZE,
+        row_was_read_from_pg_stat, table_statistics_properties,
+    )
+
+    activity_by_table = {_table_key(a): a for a in inputs.activity}
+    reset_values = [a.get("stats_reset") for a in inputs.activity if a.get("stats_reset")]
+    stats_reset = reset_values[0] if reset_values else None
+    as_of = _parse_stat_time(activity_at) or _parse_stat_time(inputs.surveyed_at)
+
+    entries: list[dict] = []
+    for t in tables:
+        key = _table_key(t)
+        row = activity_by_table.get(key)
+        props = table_statistics_properties(row, stats_reset)
+        entry: dict = {
+            "schema": key[0], "table": key[1],
+            "metrics": props,
+        }
+        if not row_was_read_from_pg_stat(row):
+            entry.update(status=FRESH_NOT_READ, last_analyzed=None,
+                         days_since_analyze=None, changes_since_analyze=None,
+                         live_rows=None, threshold=None, above_threshold=None,
+                         changes_share=None, threshold_basis="",
+                         reason=props.get(NOT_READ_KEY, {}).get(
+                             LAST_ANALYZE.display_name, ""))
+            entries.append(entry)
+            continue
+
+        analyzed = [v for v in (row.get("last_analyze"), row.get("last_autoanalyze")) if v]
+        last_analyzed = max(analyzed, key=_stat_time_sort_key) if analyzed else None
+        live = row.get("live_tuples")
+        changes = row.get("pending_changes")
+        if not analyzed:
+            reltuples, basis = 0, "never analyzed: reltuples taken as 0, as autovacuum does"
+        elif live is not None:
+            reltuples, basis = int(live), "live-row count stands in for pg_class.reltuples (not stored)"
+        else:
+            reltuples, basis = None, "no live-row count was read"
+        threshold = (
+            None if reltuples is None else
+            AUTOVACUUM_ANALYZE_THRESHOLD + AUTOVACUUM_ANALYZE_SCALE_FACTOR * reltuples
+        )
+        above = (None if changes is None or threshold is None else int(changes) > threshold)
+        parsed = _parse_stat_time(last_analyzed)
+        days = (
+            round((as_of - parsed).total_seconds() / 86400.0, 1)
+            if parsed and as_of else None
+        )
+        share = (
+            round(int(changes) / int(live), 4)
+            if changes is not None and live else None
+        )
+        if not analyzed:
+            status = FRESH_NEVER
+        elif above:
+            status = FRESH_STALE
+        elif above is None:
+            # Analysed, but the change count was not read: currency cannot be
+            # claimed.
+            status = FRESH_NOT_READ
+        else:
+            status = FRESH_CURRENT
+        entry.update(
+            status=status, last_analyzed=last_analyzed, days_since_analyze=days,
+            changes_since_analyze=changes, live_rows=live,
+            threshold=None if threshold is None else round(threshold, 1),
+            above_threshold=above, changes_share=share, threshold_basis=basis,
+            reason=(props.get(NOT_READ_KEY, {}).get(
+                NUMBER_OF_ROWS_CHANGED_SINCE_ANALYZE.display_name, "") if status == FRESH_NOT_READ else ""),
+        )
+        entries.append(entry)
+
+    if all(e["status"] == FRESH_NOT_READ for e in entries) and not any(
+        row_was_read_from_pg_stat(a) for a in inputs.activity
+    ):
+        return {
+            "state": STATE_NOT_MEASURED, "reason": FRESH_REASON_NO_STATISTICS,
+            "table_count": len(tables), "tables": entries, "schemas": [],
+            "provenance": provenance, "as_of": activity_at,
+            "settings_source": FRESHNESS_SETTINGS_SOURCE,
+            "explanation": (
+                f"{len(tables)} tables are stored but no pg_stat_user_tables "
+                "row was read for any of them, so statistics currency cannot "
+                "be assessed. NOT a finding that the statistics are current "
+                "or that nothing was ever analyzed."
+            ),
+        }
+
+    def _count(rows, status):
+        return sum(1 for e in rows if e["status"] == status)
+
+    by_schema: dict[str, list[dict]] = {}
+    for e in entries:
+        by_schema.setdefault(e["schema"], []).append(e)
+    schemas = []
+    for name in sorted(by_schema):
+        rows = by_schema[name]
+        ages = [e["days_since_analyze"] for e in rows if e["days_since_analyze"] is not None]
+        known_changes = [e["changes_since_analyze"] for e in rows
+                         if e["changes_since_analyze"] is not None]
+        schemas.append({
+            "schema": name, "tables": len(rows),
+            "current": _count(rows, FRESH_CURRENT), "stale": _count(rows, FRESH_STALE),
+            "never_analyzed": _count(rows, FRESH_NEVER),
+            "not_read": _count(rows, FRESH_NOT_READ),
+            # None, not 0, when no table in the schema had an age/change count.
+            "oldest_analyze_days": max(ages) if ages else None,
+            "changes_since_analyze": sum(known_changes) if known_changes else None,
+        })
+
+    n_stale, n_never = _count(entries, FRESH_STALE), _count(entries, FRESH_NEVER)
+    n_current, n_unread = _count(entries, FRESH_CURRENT), _count(entries, FRESH_NOT_READ)
+    parts = [f"{n_never} never analyzed", f"{n_stale} past autovacuum's analyze threshold",
+             f"{n_current} current"]
+    if n_unread:
+        parts.append(f"{n_unread} not read")
+    attention = [e for e in entries if e["status"] != FRESH_CURRENT]
+    attention.sort(key=lambda e: (FRESHNESS_STATUSES.index(e["status"]),
+                                  -(e["changes_since_analyze"] or 0), e["schema"], e["table"]))
+    return {
+        "state": STATE_MEASURED,
+        "table_count": len(tables),
+        "counts": {FRESH_CURRENT: n_current, FRESH_STALE: n_stale,
+                   FRESH_NEVER: n_never, FRESH_NOT_READ: n_unread},
+        "tables": entries,
+        "attention": attention,
+        "schemas": schemas,
+        "as_of": activity_at,
+        "stats_reset": stats_reset,
+        "settings": {"autovacuum_analyze_threshold": AUTOVACUUM_ANALYZE_THRESHOLD,
+                     "autovacuum_analyze_scale_factor": AUTOVACUUM_ANALYZE_SCALE_FACTOR},
+        "settings_source": FRESHNESS_SETTINGS_SOURCE,
+        "provenance": provenance,
+        "explanation": (
+            f"Of {len(tables)} table(s): " + ", ".join(parts) + ". "
+            "'Never analyzed' is Postgres's own NULL, a finding; 'not read' "
+            "means no statistics were read for the table and says nothing "
+            "about it. Settings: " + FRESHNESS_SETTINGS_SOURCE + "."
+        ),
     }
 
 
@@ -1925,6 +2603,15 @@ def derive_change_rates(registry, inputs: DerivedInputs) -> dict:
             if new_rows is not None and old_rows is not None else None
         )
 
+        old_idx = (old_tbl.get(key) or {}).get("index_bytes")
+        new_idx = (new_tbl.get(key) or {}).get("index_bytes")
+        #: Brief D: index size drift shown beside, not folded into, size drift;
+        #: None when either snapshot did not read it.
+        index_delta = (
+            int(new_idx) - int(old_idx)
+            if new_idx is not None and old_idx is not None else None
+        )
+
         entry.update({
             "state": STATE_MEASURED,
             "change": "idle" if total == 0 else "active",
@@ -1932,6 +2619,7 @@ def derive_change_rates(registry, inputs: DerivedInputs) -> dict:
             "per_day": per_day,
             "unmeasured_counters": unmeasured,
             "size_bytes_delta": size_delta,
+            "index_bytes_delta": index_delta,
             "row_count_delta": row_delta,
             "explanation": (
                 f"Measured over {interval_days:.2f} day(s): "
@@ -3587,6 +4275,9 @@ def scope_inputs(inputs: DerivedInputs, container: str) -> DerivedInputs:
         columns=schema_scope.rows_in_container(inputs.columns, container),
         profiles=schema_scope.rows_in_container(inputs.profiles, container),
         activity=schema_scope.rows_in_container(inputs.activity, container),
+        # Same underlying survey rows, just row-filtered — the provenance
+        # per table is unchanged by scoping to one container.
+        table_surveyed_at=dict(inputs.table_surveyed_at),
     )
 
 
@@ -3901,7 +4592,90 @@ def classify_by_container(
 
 # ── db_relationship_graph, per container ────────────────────────────────────
 
-def relationship_graph_by_container(inputs: DerivedInputs, containment) -> dict:
+def _read_credential_capability(registry, slug: str) -> dict:
+    """The stored `credential_capability` probe result for `slug`, read
+    straight from the survey_data blob — the same stored-row read every
+    other `db_derived` check does, never a live connection (this module's
+    own "opens no connection" rule). A self-contained copy of
+    `survey_definition_adapter.py`'s `_credential_capability_results`
+    rather than an import of it: that module already imports FROM
+    `db_derived` (`run_db_derived`, `load_inputs`, `scope_inputs`), so the
+    reverse import would be circular, and the read itself is a few lines —
+    searches every stored survey newest-first for one that carries the
+    probe, same as the adapter's own reader, so a plain schema-only run
+    after the probe ran does not silently hide it. Returns `{}` when there
+    is no probe yet (nothing to say), the same "stay silent" contract every
+    caller of this data follows.
+    """
+    import json as _json
+
+    get_surveys = getattr(registry, "get_database_surveys", None)
+    if not callable(get_surveys):
+        return {}
+    for survey in get_surveys(slug) or []:
+        try:
+            survey_data = _json.loads(survey.get("survey_data") or "{}")
+        except (ValueError, TypeError):
+            continue
+        cap = survey_data.get("credential_capability")
+        if cap:
+            return cap
+    return {}
+
+
+#: Caption for a schema whose credential grant is uniformly SCOPE_STRUCTURE_
+#: ONLY/SCOPE_NOT_VISIBLE (schema_scope.py) — every not-captured table in it
+#: gets this instead of the generic "keys not captured", since the reason is
+#: known and uniform across the whole schema. Not attempted for
+#: SCOPE_PARTIALLY_READABLE: which SPECIFIC tables within it lack SELECT is
+#: not stored anywhere (`credential_capability`'s `by_schema` entries carry
+#: only a per-schema `table_select` COUNT, not per-table booleans) — see
+#: `full_database_dot`'s own docstring on `not_captured_reason_by_schema`.
+_SCOPE_CAPTION = {
+    "structure_only": "structure only — no SELECT",
+    "not_visible": "not visible — no USAGE",
+}
+
+
+def _credential_scope_for_graph(registry, slug: str) -> tuple[dict | None, dict[str, str]]:
+    """`(credential_scope, not_captured_reason_by_schema)` for the
+    relationship-graph drawing, from the SAME stored source the header
+    banner and the 21b coverage headline already read
+    (`survey_definition_adapter.py`'s `_credential_scope_status`) — no new
+    vocabulary, no second probe.
+
+    `credential_scope` is `None` when there is no probe, or the probe found
+    full visibility — nothing to caveat, same "stay silent" contract
+    `_credential_scope_status` follows. Otherwise `{"connected_as",
+    "measured", "total"}`, the exact relation-select/relation-total pair the
+    header's "sees N of M schema(s), SELECT on X of Y relation(s)" banner
+    already shows, so the graph's title never disagrees with the banner
+    sitting right above it.
+    """
+    cap = _read_credential_capability(registry, slug)
+    if not cap:
+        return None, {}
+    relation_total = cap.get("relation_total", cap.get("table_total", 0))
+    relation_select = cap.get("relation_select", cap.get("table_select", 0))
+    schema_total = cap.get("schema_total", 0)
+    schema_visible = cap.get("schema_visible", 0)
+    if not relation_total:
+        return None, {}
+    fully_visible = relation_select >= relation_total and schema_visible >= schema_total
+    scope = None if fully_visible else {
+        "connected_as": cap.get("connected_as", ""),
+        "measured": relation_select,
+        "total": relation_total,
+    }
+    reasons = {
+        name: _SCOPE_CAPTION[state["state"]]
+        for name, state in schema_scope.container_scope_states(cap).items()
+        if state["state"] in _SCOPE_CAPTION
+    }
+    return scope, reasons
+
+
+def relationship_graph_by_container(inputs: DerivedInputs, containment, registry=None) -> dict:
     """Components and FK density WITHIN each container, plus cross-container FK
     edges as a database-level fact in their own right.
 
@@ -3955,6 +4729,7 @@ def relationship_graph_by_container(inputs: DerivedInputs, containment) -> dict:
                 source=scoped.source, schemas=scoped.schemas,
                 tables=scoped.tables, columns=internal_columns,
                 profiles=scoped.profiles, activity=scoped.activity,
+                table_surveyed_at=dict(scoped.table_surveyed_at),
             )
         )
         result["cross_container_references"] = crossing
@@ -4022,8 +4797,55 @@ def relationship_graph_by_container(inputs: DerivedInputs, containment) -> dict:
         )
     )
 
+    # ── Graphviz DOT for the three zoom levels ──────────────────────────
+    #
+    # Built from exactly the rows already computed above — `per_container`
+    # (internal edges + the withheld outgoing/`cross_container_references`
+    # per schema), `summaries` and `pairs` — no second query path, per the
+    # design note's own instruction ("emit Graphviz ... through the existing
+    # Kroki path"). `relationship_dot.py` renders it; this just gathers the
+    # inputs it needs, including which tables were never key-captured, so a
+    # table nobody looked at is drawn dashed rather than as a measured
+    # negative it never was (this module's own absence-discipline rule).
+    all_base_tables = [t for t in inputs.tables if _is_base_table(t)]
+    tables_by_schema: dict[str, list[str]] = {}
+    not_captured_by_schema: dict[str, list[str]] = {}
+    for table in all_base_tables:
+        schema = table.get("schema_name") or ""
+        if schema not in containers:
+            continue
+        name = table.get("table_name") or ""
+        tables_by_schema.setdefault(schema, []).append(name)
+        if not inputs.keys_captured_for_table((schema, name)):
+            not_captured_by_schema.setdefault(schema, []).append(name)
+
+    all_edges = [
+        e for e in _foreign_key_edges(inputs.columns)
+        if e["from_schema"] in containers and e["to_schema"] in containers
+    ]
+    # Credential-scope title + per-schema "why" captions (structure only /
+    # not visible), from the SAME stored `credential_capability` probe the
+    # header banner and the 21b coverage headline already read — a scoped
+    # survey's graph must say so, in that same vocabulary, rather than
+    # lumping every not-captured table under one generic caption regardless
+    # of why. `registry` is optional (defaults to None) purely so this
+    # function stays callable the old way for any direct caller that has no
+    # registry handy; without one there is simply nothing to attach.
+    credential_scope, not_captured_reasons = (
+        _credential_scope_for_graph(registry, inputs.slug) if registry is not None
+        else (None, {})
+    )
+    diagrams = build_relationship_diagrams(
+        tables_by_schema, all_edges, summaries, per_container, pairs,
+        table_count=sum(len(ts) for ts in tables_by_schema.values()),
+        not_captured_by_schema=not_captured_by_schema or None,
+        credential_scope=credential_scope,
+        not_captured_reason_by_schema=not_captured_reasons or None,
+    )
+
     return {
         f"by_{grain_name}": per_container,
+        "graphviz": diagrams,
         "aggregation": schema_scope.rollup_envelope(
             containment,
             rollup_kind="per_container_summaries_plus_cross_edges",
@@ -4272,7 +5094,7 @@ def apply_container_grain(registry, inputs: DerivedInputs, derived: dict) -> dic
         classify_by_container(inputs, containment, per_container_fingerprints)
     )
     derived["db_relationship_graph"].update(
-        relationship_graph_by_container(inputs, containment)
+        relationship_graph_by_container(inputs, containment, registry)
     )
     derived["schema_conventions"].update(
         conventions_by_container(inputs, containment)
@@ -4331,6 +5153,27 @@ def apply_container_grain(registry, inputs: DerivedInputs, derived: dict) -> dic
 # The step
 # ═══════════════════════════════════════════════════════════════════════════
 
+def table_coverage(inputs: DerivedInputs) -> dict:
+    """Per-notion table counts for the shared coverage bar. Views are not counted.
+
+    * `keys`: tables whose OWN keys were captured (`keys_captured_for_table`);
+      the notion the relationship graph, grain and classification use.
+    * `catalog`: tables whose catalog metadata was read -- a schema row, a
+      table row and at least one column row for that table; the notion the
+      four name/comment-level analyses (conventions, subject_signals,
+      coverage_signals, preliminary_fit) use. A fully read database whose
+      tables have no foreign keys is fully measured here.
+    """
+    tables = [t for t in inputs.tables if _is_base_table(t)]
+    schemas = {r.get("schema_name") or "" for r in inputs.schemas}
+    with_columns = {_table_key(c) for c in inputs.columns}
+    keys = sum(1 for t in tables if inputs.keys_captured_for_table(_table_key(t)))
+    catalog = sum(1 for t in tables
+                  if (t.get("schema_name") or "") in schemas and _table_key(t) in with_columns)
+    return {"keys": {"measured": keys, "total": len(tables)},
+            "catalog": {"measured": catalog, "total": len(tables)}}
+
+
 def run_db_derived(
     registry,
     slug: str,
@@ -4357,6 +5200,8 @@ def run_db_derived(
     fingerprint = fingerprint_database(registry, inputs)
     classification = classify_database(inputs, fingerprint)
     graph = derive_relationship_graph(inputs)
+    hub_tables = derive_hub_tables(inputs)
+    freshness = derive_statistics_freshness(inputs)
     grain = determine_grain(inputs)
     conventions = check_conventions(inputs)
     change_rates = derive_change_rates(registry, inputs)
@@ -4380,6 +5225,8 @@ def run_db_derived(
         "subject_signals": subject,
         "coverage_signals": coverage,
         "preliminary_fit": fit,
+        "db_hub_tables": hub_tables,
+        "db_statistics_freshness": freshness,
     }
 
     # REPLY-SCHEMA-AS-SUB-RESOURCE.md shape 1: the four structural checks above
@@ -4395,6 +5242,7 @@ def run_db_derived(
         "read_snapshot": inputs.surveyed_at,
         "source": source,
         "derived": derived,
+        "table_coverage": table_coverage(inputs),
         "annotations": build_annotations(derived),
         "errors": [],
     }
@@ -4421,6 +5269,8 @@ def build_annotations(derived: dict) -> list:
     annotations.extend(_subject_annotations(derived["subject_signals"]))
     annotations.extend(_coverage_annotations(derived["coverage_signals"]))
     annotations.extend(_fit_annotations(derived["preliminary_fit"]))
+    annotations.extend(_hub_annotations(derived["db_hub_tables"]))
+    annotations.extend(_freshness_annotations(derived["db_statistics_freshness"]))
     return annotations
 
 
@@ -4454,6 +5304,11 @@ def _classification_annotations(result: dict) -> list:
             "coverage": result.get("coverage"),
             "signals_used": result.get("signals_used"),
             "signals_missing": result.get("signals_missing"),
+            #: BRIEF-KEYS-AND-ACTIVITY-CLOBBER.md §B — which run each
+            #: signal family's evidence actually came from, so the evidence
+            #: panel can show "activity from 19:24:00, structure from
+            #: 19:24:03" rather than one blended timestamp.
+            "signal_provenance": result.get("signal_provenance") or {},
         },
     )]
 
@@ -4495,6 +5350,97 @@ def _graph_annotations(result: dict) -> list:
     )]
 
 
+def _hub_annotations(result: dict) -> list:
+    """One annotation for `db_hub_tables`. Two mutually exclusive branches (the
+    absence branch `return`s immediately), so it is in
+    `tests/test_annotation_check_names.py`'s `KNOWN_EXCLUSIVE` on the same
+    grounds as the checks above it."""
+    if result["state"] != STATE_MEASURED:
+        return [ResourceMeasureAnnotation(
+            summary="Starting tables not established",
+            analysis_step=ANALYSIS_STEP,
+            annotation_type_name="db_hub_tables",
+            check_name="db_hub_tables",
+            label="unverified",
+            confidence=0,
+            explanation=result["explanation"],
+            resource_properties={"reason": result.get("reason") or ""},
+        )]
+    hubs = result["hubs"]
+    return [ResourceMeasureAnnotation(
+        summary=(
+            "Starting tables: " + ", ".join(h["table"] for h in hubs[:5])
+            if hubs else "No table stands out as a starting point"
+        ),
+        analysis_step=ANALYSIS_STEP,
+        annotation_type_name="db_hub_tables",
+        check_name="db_hub_tables",
+        label="info",
+        # A ranking over stored measurements, not a measurement itself.
+        confidence=60,
+        explanation=result["explanation"],
+        resource_properties={
+            "table_count": result["table_count"],
+            "signals_used": ", ".join(result["signals_used"]),
+        },
+        json_properties={
+            "hubs": hubs,
+            "signals_not_used": result["signals_not_used"],
+        },
+    )]
+
+
+def _freshness_annotations(result: dict) -> list:
+    """One annotation for `db_statistics_freshness`. Two mutually exclusive
+    branches (the absence branch `return`s immediately): in
+    `tests/test_annotation_check_names.py`'s `KNOWN_EXCLUSIVE`, same as
+    `_hub_annotations`."""
+    if result["state"] != STATE_MEASURED:
+        return [ResourceMeasureAnnotation(
+            summary="Statistics currency not established",
+            analysis_step=ANALYSIS_STEP,
+            annotation_type_name="db_statistics_freshness",
+            check_name="db_statistics_freshness",
+            label="unverified",
+            confidence=0,
+            explanation=result["explanation"],
+            resource_properties={"reason": result.get("reason") or ""},
+        )]
+    counts = result["counts"]
+    attention = result["attention"]
+    return [ResourceMeasureAnnotation(
+        summary=(
+            f"Planner statistics: {counts[FRESH_NEVER]} never analyzed, "
+            f"{counts[FRESH_STALE]} stale, {counts[FRESH_CURRENT]} current"
+            + (f", {counts[FRESH_NOT_READ]} not read" if counts[FRESH_NOT_READ] else "")
+        ),
+        analysis_step=ANALYSIS_STEP,
+        annotation_type_name="db_statistics_freshness",
+        check_name="db_statistics_freshness",
+        label="info" if not (counts[FRESH_NEVER] or counts[FRESH_STALE]) else "gap",
+        # A comparison of stored measurements against a threshold (defaults,
+        # not this server's settings), not a measurement itself.
+        confidence=70,
+        explanation=result["explanation"],
+        resource_properties={
+            "table_count": result["table_count"],
+            **{k: v for k, v in counts.items()},
+            "settings_source": result["settings_source"],
+        },
+        json_properties={
+            "schemas": result["schemas"],
+            "attention_total": len(attention),
+            "attention": [
+                {k: e[k] for k in ("schema", "table", "status", "last_analyzed",
+                                   "days_since_analyze", "changes_since_analyze",
+                                   "live_rows", "threshold", "above_threshold",
+                                   "changes_share", "reason")}
+                for e in attention[:_FRESHNESS_LIST_LIMIT]
+            ],
+        },
+    )]
+
+
 def _grain_annotations(result: dict) -> list:
     if result["state"] != STATE_MEASURED:
         return [ResourceMeasureAnnotation(
@@ -4527,7 +5473,9 @@ def _grain_annotations(result: dict) -> list:
                 expression=item_key,
                 grain_statement=grain["grain_statement"],
                 granularity_basis=grain["basis"],
-                interval=grain.get("interval") or "",
+                # RE's period is a word; Egeria's `interval` is a long count, so the word
+                # travels as interval_name (additionalProperties.intervalName).
+                interval_name=grain.get("interval") or "",
                 # A PROPOSAL: no DataGrain element exists for this yet, and a
                 # curator must declare it (support doc §3's decision).
                 content_status="DRAFT",

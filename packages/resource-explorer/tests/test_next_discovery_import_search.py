@@ -7,7 +7,7 @@ that finding/importing repos is corpus-level work, not a Discovery-stage
 affordance.
 
 No browser verification with a signed-in session is asserted by these
-tests -- see docs/design-notes/NEXT-DISCOVERY-IMPORT-SEARCH-IMPLEMENTED.md
+tests -- see NEXT-DISCOVERY-IMPORT-SEARCH-IMPLEMENTED.md
 for what was checked live. These tests grep/slice the concatenated source,
 the established pattern for /next JS modules without a browser -- see
 test_next_automate_pane.py / test_next_curate_pane.py's identical `_app()`
@@ -99,7 +99,9 @@ class TestApiWrappers:
         body = body[:body.index("\n}\n")]
         assert "/api/discovery/inventory.csv" in body
         assert "res.ok" in body
-        assert "throw new ApiError" in body
+        # The failure is raised through the shared helper, which builds the ApiError.
+        assert "throw await apiErrorFrom(res" in body
+        assert "new ApiError(res.status, detail, path)" in api
         assert "content-disposition" in body.lower()
 
     def test_csv_export_wrapper_does_not_touch_the_dom(self):
@@ -230,7 +232,7 @@ class TestDispositionCanBeSetBeforeImport:
         fn = src[src.index("async function setRowDisposition"):]
         fn = fn[:fn.index("\n}\n")]
         assert "HIDDEN_DISPOSITIONS.has(disposition)" in fn
-        assert "window.prompt" in fn
+        assert "inPagePrompt" in fn
 
     def test_disposition_write_goes_through_the_shared_endpoint(self):
         src = _discovery_import_src()

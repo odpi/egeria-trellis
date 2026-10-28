@@ -184,6 +184,11 @@ class TestDocumentationIsPlural:
         assert len(lens.sources) == 2, "both located"
         assert lens.read_sources == [("in-repo", "a.md")], "only one readable"
 
+    # apply() looks each located site up as an ingested pgvector collection, and with no
+    # Postgres it reports "could not read ingested collection" instead of the site count.
+    # requires_pgvector skips (naming pgvector) off a Postgres machine and is a hard error
+    # under RE_REQUIRE_POSTGRES, so GitHub CI still runs it.
+    @pytest.mark.requires_pgvector
     def test_a_site_only_project_reports_every_site_it_found(self, monkeypatch):
         arts = [_Art(outcome="doc-site", evidence="https://a"),
                 _Art(outcome="doc-site", evidence="https://b")]

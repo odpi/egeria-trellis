@@ -1,0 +1,573 @@
+{
+  "$comment": [
+    "GENERATED with repo-steps.md by packages/resource-explorer/scripts/generate_engine_host_declaration.py from the repo step registry. Do not hand-edit; regenerate.",
+    "resource_explorer.dr_egeria_runner runs these find-or-create pyegeria steps, in this order, before the document (docs/dr-egeria-engine-host-gaps.md): the engine, one service per step, one link per step."
+  ],
+  "steps": [
+    {
+      "command": "Create Survey Action Engine",
+      "qualified_name": "ResourceExplorerSurvey",
+      "display_name": "Resource Explorer Survey Engine",
+      "description": "Resource Explorer's survey engine. It is hosted by Resource Explorer's worker, outside any Egeria engine host (Q-M4): no Java engine host configuration may list it, or a JVM host races Resource Explorer for every claim."
+    },
+    {
+      "command": "Create Survey Action Service",
+      "qualified_name": "SurveyActionService::ResourceExplorerSurvey::repo_refresh_plan",
+      "display_name": "Resource Explorer Survey Service — repo_refresh_plan",
+      "description": "What a refresh would actually need to do: which targets have never run, which are stale against the current head commit, and which are current. One GitHub call, no archive download. ADVISORY — the executor runs every step regardless, so this records the decision rather than enforcing it."
+    },
+    {
+      "command": "Create Survey Action Service",
+      "qualified_name": "SurveyActionService::ResourceExplorerSurvey::repo_git_statistics",
+      "display_name": "Resource Explorer Survey Service — repo_git_statistics",
+      "description": "Refreshes project_stats (stars, forks, contributors, commit activity, releases, security config, deployments) from the GitHub API — the table eight other steps read. Replaces five independent StatsFetcher calls that each refreshed it separately in the same run."
+    },
+    {
+      "command": "Create Survey Action Service",
+      "qualified_name": "SurveyActionService::ResourceExplorerSurvey::repo_file_inventory",
+      "display_name": "Resource Explorer Survey Service — repo_file_inventory",
+      "description": "Refreshes project_file_inventory from a fresh zipball — the table every file-shape step reads. Closes the gap where the inventory was written only by RAG ingestion/refresh_profile and never by a survey step, so a survey reported whatever an earlier, unrelated run had left behind."
+    },
+    {
+      "command": "Create Survey Action Service",
+      "qualified_name": "SurveyActionService::ResourceExplorerSurvey::repo_manifest_parse",
+      "display_name": "Resource Explorer Survey Service — repo_manifest_parse",
+      "description": "Parses dependency manifests, CI workflow content, supply-chain signals and repo-convention signals from a freshly extracted zipball, refreshing project_dependencies and project_analysis_findings (kind=\"ci_quality\"/\"repo_conventions\"/\"supply_chain\") — the three tables previously written only by full ingestion (and, for the latter two, refresh_profile), never by a survey step."
+    },
+    {
+      "command": "Create Survey Action Service",
+      "qualified_name": "SurveyActionService::ResourceExplorerSurvey::repo_file_structure",
+      "display_name": "Resource Explorer Survey Service — repo_file_structure",
+      "description": "File counts, per-language breakdown, and top-level directory structure."
+    },
+    {
+      "command": "Create Survey Action Service",
+      "qualified_name": "SurveyActionService::ResourceExplorerSurvey::repo_file_size",
+      "display_name": "Resource Explorer Survey Service — repo_file_size",
+      "description": "Per-file sizes, total footprint, size-by-type, top-10 largest files."
+    },
+    {
+      "command": "Create Survey Action Service",
+      "qualified_name": "SurveyActionService::ResourceExplorerSurvey::repo_language",
+      "display_name": "Resource Explorer Survey Service — repo_language",
+      "description": "Primary/secondary language and coarse project-type classification."
+    },
+    {
+      "command": "Create Survey Action Service",
+      "qualified_name": "SurveyActionService::ResourceExplorerSurvey::repo_health",
+      "display_name": "Resource Explorer Survey Service — repo_health",
+      "description": "Activity, community, release-cadence, and freshness scoring from GitHub stats."
+    },
+    {
+      "command": "Create Survey Action Service",
+      "qualified_name": "SurveyActionService::ResourceExplorerSurvey::repo_homepage",
+      "display_name": "Resource Explorer Survey Service — repo_homepage",
+      "description": "Finds where the project's homepage and its documentation are, and whether the documentation answers. Reads GitHub's homepage field, the packaging manifests (pyproject.toml, package.json, setup.cfg, Cargo.toml, pom.xml) and the README -- small files only, through the GitHub contents API, never a download -- and keeps the source and the other candidates for each answer. An entry labelled Documentation wins; placeholders such as example.com are rejected. One bounded request records whether the docs URL is reachable. Surfaced in Scouting as links with a short cue; the homepage is published to Egeria as an ExternalReference linked to the repo."
+    },
+    {
+      "command": "Create Survey Action Service",
+      "qualified_name": "SurveyActionService::ResourceExplorerSurvey::repo_website_ingestion",
+      "display_name": "Resource Explorer Survey Service — repo_website_ingestion",
+      "description": "Ingests the project's documentation site into pgvector as web_docs_{host}, so Chat and Understanding can answer from the project's own documentation rather than only its source tree. Keyed on the site's host, not the repo slug — several repos in one project share one site and therefore one collection. Uses the site repo_homepage derived, collapsing versioned docs to the current release; skips entirely when the repo builds that site itself, since the source is already ingested in a better form."
+    },
+    {
+      "command": "Create Survey Action Service",
+      "qualified_name": "SurveyActionService::ResourceExplorerSurvey::repo_dependency",
+      "display_name": "Resource Explorer Survey Service — repo_dependency",
+      "description": "Package dependencies per ecosystem (PyPI/npm/Maven)."
+    },
+    {
+      "command": "Create Survey Action Service",
+      "qualified_name": "SurveyActionService::ResourceExplorerSurvey::repo_documentation",
+      "display_name": "Resource Explorer Survey Service — repo_documentation",
+      "description": "Presence of README/CHANGELOG/CONTRIBUTING/SECURITY and overall doc-quality label."
+    },
+    {
+      "command": "Create Survey Action Service",
+      "qualified_name": "SurveyActionService::ResourceExplorerSurvey::repo_security",
+      "display_name": "Resource Explorer Survey Service — repo_security",
+      "description": "Presence of SECURITY.md, CI config, LICENSE — flags gaps as RFAs."
+    },
+    {
+      "command": "Create Survey Action Service",
+      "qualified_name": "SurveyActionService::ResourceExplorerSurvey::repo_classification",
+      "display_name": "Resource Explorer Survey Service — repo_classification",
+      "description": "What the repo represents (7 roles, ranked, multi-valued), where each artifact its role implies actually lives, and whether architecture recovery is worth running at all (design §5.5b)."
+    },
+    {
+      "command": "Create Survey Action Service",
+      "qualified_name": "SurveyActionService::ResourceExplorerSurvey::repo_license_classification",
+      "display_name": "Resource Explorer Survey Service — repo_license_classification",
+      "description": "Classifies the repo's SPDX license id into a risk tier (permissive/weak copyleft/strong copyleft/source-available/unknown)."
+    },
+    {
+      "command": "Create Survey Action Service",
+      "qualified_name": "SurveyActionService::ResourceExplorerSurvey::repo_security_features",
+      "display_name": "Resource Explorer Survey Service — repo_security_features",
+      "description": "GitHub's native security feature toggles (Dependabot, secret scanning, etc.) — configuration state, not artifact presence."
+    },
+    {
+      "command": "Create Survey Action Service",
+      "qualified_name": "SurveyActionService::ResourceExplorerSurvey::repo_ci_quality",
+      "display_name": "Resource Explorer Survey Service — repo_ci_quality",
+      "description": "Whether CI workflows actually run tests/lint/build, via a keyword scan of workflow content — not just whether a CI config exists."
+    },
+    {
+      "command": "Create Survey Action Service",
+      "qualified_name": "SurveyActionService::ResourceExplorerSurvey::repo_interface_surface",
+      "display_name": "Resource Explorer Survey Service — repo_interface_surface",
+      "description": "What can be talked to, and whether the contract is written down — three rungs: 'declared' (a committed contract, or an entry point the packaging declares), 'implemented' (the code runs as one, from stored evidence such as a distribution's own __main__.py), and 'implied' (a dependency name only, e.g. fastapi) — read from the file inventory, declared dependencies, and the distribution/deployment-evidence facts other steps already recorded. None of the first two rungs counts as a published API on its own."
+    },
+    {
+      "command": "Create Survey Action Service",
+      "qualified_name": "SurveyActionService::ResourceExplorerSurvey::repo_chaoss_metrics",
+      "display_name": "Resource Explorer Survey Service — repo_chaoss_metrics",
+      "description": "CHAOSS community-health metrics over recorded commits — chiefly the elephant factor, the fewest contributors accounting for half the commits. Contributor COUNT calls deep_causality a five-person project; the distribution says one person wrote 98% of it."
+    },
+    {
+      "command": "Create Survey Action Service",
+      "qualified_name": "SurveyActionService::ResourceExplorerSurvey::repo_cii_badge",
+      "display_name": "Resource Explorer Survey Service — repo_cii_badge",
+      "description": "The real OpenSSF Best Practices (CII) badge, read from bestpractices.dev rather than estimated. Reports the level with the age of the self-assessment behind it, and keeps 'no badge' apart from 'could not ask'."
+    },
+    {
+      "command": "Create Survey Action Service",
+      "qualified_name": "SurveyActionService::ResourceExplorerSurvey::repo_community_support",
+      "display_name": "Resource Explorer Survey Service — repo_community_support",
+      "description": "Community support as separate dimensions — attention, participation, channels — rather than one number. repository_health's community_score is dominated by stars and forks, and scores a four-contributor project 100/100; this reports the weakest dimension instead of averaging it away."
+    },
+    {
+      "command": "Create Survey Action Service",
+      "qualified_name": "SurveyActionService::ResourceExplorerSurvey::repo_cve_scan",
+      "display_name": "Resource Explorer Survey Service — repo_cve_scan",
+      "description": "Dependency advisories from OSV.dev, over dependencies the manifest parser already recorded. Reports coverage with the count: declared dependencies only, and only those with a pinned, parseable version."
+    },
+    {
+      "command": "Create Survey Action Service",
+      "qualified_name": "SurveyActionService::ResourceExplorerSurvey::repo_secret_scan",
+      "display_name": "Resource Explorer Survey Service — repo_secret_scan",
+      "description": "Committed-credential scan over HEAD content, using a VENDORED gitleaks ruleset (222 rules, MIT, provenance recorded). Reports what it matched AND which ruleset version it matched with — never 'no secrets', only 'no matches against this ruleset in HEAD'."
+    },
+    {
+      "command": "Create Survey Action Service",
+      "qualified_name": "SurveyActionService::ResourceExplorerSurvey::repo_telemetry_scan",
+      "display_name": "Resource Explorer Survey Service — repo_telemetry_scan",
+      "description": "Telemetry / phone-home indicators: known SDK imports and literal outbound endpoints, paired with whether the project discloses them. Never labels an ordinary API client as telemetry."
+    },
+    {
+      "command": "Create Survey Action Service",
+      "qualified_name": "SurveyActionService::ResourceExplorerSurvey::repo_contribution_provenance",
+      "display_name": "Resource Explorer Survey Service — repo_contribution_provenance",
+      "description": "CLA/DCO provenance, kept as two separate questions: whether sign-off is STATED, and whether it is ENFORCED. Config presence alone is reported `partial`, never `pass`."
+    },
+    {
+      "command": "Create Survey Action Service",
+      "qualified_name": "SurveyActionService::ResourceExplorerSurvey::repo_sla_content",
+      "display_name": "Resource Explorer Survey Service — repo_sla_content",
+      "description": "Whether the project publishes support or service-level commitments. Deliberately NEUTRAL (present/absent, not pass/gap): most repositories legitimately publish none, and absence alone never raises an action."
+    },
+    {
+      "command": "Create Survey Action Service",
+      "qualified_name": "SurveyActionService::ResourceExplorerSurvey::repo_foss_scorecard",
+      "display_name": "Resource Explorer Survey Service — repo_foss_scorecard",
+      "description": "OpenSSF-Scorecard-shaped checks computed from data already held — an unevaluable check reports unknown and is excluded from the score, rather than scored zero as OpenSSF's own tool does."
+    },
+    {
+      "command": "Create Survey Action Service",
+      "qualified_name": "SurveyActionService::ResourceExplorerSurvey::repo_maturity",
+      "display_name": "Resource Explorer Survey Service — repo_maturity",
+      "description": "Project age/lifecycle stage (nascent/emerging/established/mature), from repo_created_at — a CHAOSS-informed Discovery-tier signal."
+    },
+    {
+      "command": "Create Survey Action Service",
+      "qualified_name": "SurveyActionService::ResourceExplorerSurvey::repo_dependency_support",
+      "display_name": "Resource Explorer Survey Service — repo_dependency_support",
+      "description": "Which curated technologies the dependency list indicates (psycopg2 -> PostgreSQL, kafka-python -> Apache Kafka), and whether Egeria already holds a technology type for each. A starting point for people, not an answer: a match says the repo indicates X, not that X is supported, and an unmatched dependency has simply not been classified yet."
+    },
+    {
+      "command": "Create Survey Action Service",
+      "qualified_name": "SurveyActionService::ResourceExplorerSurvey::repo_deployment_evidence",
+      "display_name": "Resource Explorer Survey Service — repo_deployment_evidence",
+      "description": "Per declared distribution (repo_manifest_parse's output): which deployment evidence exists — a console entry point, a __main__.py, an (unambiguous) Dockerfile/compose/Helm chart, a web-framework dependency — and the verdict that evidence supports: application (evidence found), library (importable, none found), or unknown (no manifest read yet). Layer 1 of 'Cataloging in layers' (project owner, 2026-09-14): before a distribution is proposed to Egeria as a SoftwareCapability classified Application, this is the evidence that verdict rests on."
+    },
+    {
+      "command": "Create Survey Action Service",
+      "qualified_name": "SurveyActionService::ResourceExplorerSurvey::repo_egeria_interfaces",
+      "display_name": "Resource Explorer Survey Service — repo_egeria_interfaces",
+      "description": "Which Egeria view services this repository consumes — one per pyegeria client class its code symbols reference (signature/return-type/base-class text; imports are not captured anywhere in this codebase, so this is a lower bound, not a count) — mapped via the curated configdata/egeria_view_services.yaml, plus Dr.Egeria doc-path evidence and a best-effort command-family guess from filenames. A repo with no pyegeria dependency reads nothing_found, not never-run."
+    },
+    {
+      "command": "Create Survey Action Service",
+      "qualified_name": "SurveyActionService::ResourceExplorerSurvey::repo_conventions",
+      "display_name": "Resource Explorer Survey Service — repo_conventions",
+      "description": "Discovery-tier repo conventions: security policy content, build automation, deployment/Docker evidence, catalog self-description (Backstage-style), documentation breadth."
+    },
+    {
+      "command": "Create Survey Action Service",
+      "qualified_name": "SurveyActionService::ResourceExplorerSurvey::repo_data_profiling",
+      "display_name": "Resource Explorer Survey Service — repo_data_profiling",
+      "description": "Inventories data files and profiles their schema (rows/columns/dtypes/nulls)."
+    },
+    {
+      "command": "Create Survey Action Service",
+      "qualified_name": "SurveyActionService::ResourceExplorerSurvey::repo_file_classification",
+      "display_name": "Resource Explorer Survey Service — repo_file_classification",
+      "description": "Classifies every file by type using filename/extension mapping (Egeria-enrichable)."
+    },
+    {
+      "command": "Create Survey Action Service",
+      "qualified_name": "SurveyActionService::ResourceExplorerSurvey::repo_symbol_extraction",
+      "display_name": "Resource Explorer Survey Service — repo_symbol_extraction",
+      "description": "Extracts class/function/method symbols (tree-sitter/ast) for every supported language, refreshing project_code_symbols/project_code_relationships — D5's self-contained microflow closing the bug where those tables were only ever populated by RAG ingestion, never by a survey step. Also extracts decorator/annotation registrations (route/rpc/resolver/message-handler) for Python and Java into project_code_markers, and parses any committed OpenAPI/Swagger file from the same checkout into the API reference."
+    },
+    {
+      "command": "Create Survey Action Service",
+      "qualified_name": "SurveyActionService::ResourceExplorerSurvey::repo_api_structure",
+      "display_name": "Resource Explorer Survey Service — repo_api_structure",
+      "description": "Public API surface (functions/classes/methods) per language."
+    },
+    {
+      "command": "Create Survey Action Service",
+      "qualified_name": "SurveyActionService::ResourceExplorerSurvey::repo_arch_detect",
+      "display_name": "Resource Explorer Survey Service — repo_arch_detect",
+      "description": "Recovers candidate architecture components from package manifests, deployment units (Dockerfile/compose), and ast-grep code markers — the deterministic half of architecture recovery (design doc §5.1)."
+    },
+    {
+      "command": "Create Survey Action Service",
+      "qualified_name": "SurveyActionService::ResourceExplorerSurvey::repo_arch_coupling",
+      "display_name": "Resource Explorer Survey Service — repo_arch_coupling",
+      "description": "Proposes additional architecture-component boundaries from import coupling and co-change coupling — the conventional, undeclared components (Agents, Core, Surveyors, ...) that manifests and code markers structurally cannot see (design doc §5.5, Phase 1 plan §4.1). Needs real git history, not just a checkout."
+    },
+    {
+      "command": "Create Survey Action Service",
+      "qualified_name": "SurveyActionService::ResourceExplorerSurvey::repo_arch_lens",
+      "display_name": "Resource Explorer Survey Service — repo_arch_lens",
+      "description": "Labels recovered components against the project's own architecture document, wherever it lives — in-repo, a sibling repository, or a documentation site. A LENS: it adds no component, removes none and assigns no type. Milvus goes from 206 candidates to 15 the authors actually name (finding 102)."
+    },
+    {
+      "command": "Create Survey Action Service",
+      "qualified_name": "SurveyActionService::ResourceExplorerSurvey::repo_arch_summary",
+      "display_name": "Resource Explorer Survey Service — repo_arch_summary",
+      "description": "Collapses architecture-recovery findings to the depth the question asked for — the summarising half nothing owned. Milvus recovers 218 candidate components where its own authors describe eight; a suitability answer is 'serves gRPC (297 operations), 24 runnable units, 31 third-party'."
+    },
+    {
+      "command": "Create Survey Action Service",
+      "qualified_name": "SurveyActionService::ResourceExplorerSurvey::repo_sub_resource_survey",
+      "display_name": "Resource Explorer Survey Service — repo_sub_resource_survey",
+      "description": "Surveys file/folder characteristics to recommend which sub-resources are worthy of cataloging as their own Egeria assets (Assessment sub-resource cataloging plan) — survey only, does not catalog."
+    },
+    {
+      "command": "Create Survey Action Service",
+      "qualified_name": "SurveyActionService::ResourceExplorerSurvey::repo_security_summary",
+      "display_name": "Resource Explorer Survey Service — repo_security_summary",
+      "description": "Reduces the security family's stored findings to one topic summary. Measures nothing itself — it reads what the other security steps wrote, so it belongs LAST in any survey that runs them. Reports coverage and the age of its oldest input alongside the verdict, and refuses a verdict at all below four inputs."
+    },
+    {
+      "command": "Create Survey Action Service",
+      "qualified_name": "SurveyActionService::ResourceExplorerSurvey::repo_rag_ingestion",
+      "display_name": "Resource Explorer Survey Service — repo_rag_ingestion",
+      "description": "Refreshes the project's pgvector collections via IncrementalIndexer — the queryable representation Chat, the query router and every RAG-backed answer read, previously built only at registration, on webhook or from a bespoke route branch and never by a survey step. A no-op when the repository's last indexed commit is unchanged."
+    },
+    {
+      "command": "Link Supported Governance Service",
+      "governance_engine": "ResourceExplorerSurvey",
+      "governance_service": "SurveyActionService::ResourceExplorerSurvey::repo_refresh_plan",
+      "request_type": "re-repo-refresh-plan",
+      "service_request_type": "re-repo-refresh-plan"
+    },
+    {
+      "command": "Link Supported Governance Service",
+      "governance_engine": "ResourceExplorerSurvey",
+      "governance_service": "SurveyActionService::ResourceExplorerSurvey::repo_git_statistics",
+      "request_type": "re-repo-git-statistics",
+      "service_request_type": "re-repo-git-statistics"
+    },
+    {
+      "command": "Link Supported Governance Service",
+      "governance_engine": "ResourceExplorerSurvey",
+      "governance_service": "SurveyActionService::ResourceExplorerSurvey::repo_file_inventory",
+      "request_type": "re-repo-file-inventory",
+      "service_request_type": "re-repo-file-inventory"
+    },
+    {
+      "command": "Link Supported Governance Service",
+      "governance_engine": "ResourceExplorerSurvey",
+      "governance_service": "SurveyActionService::ResourceExplorerSurvey::repo_manifest_parse",
+      "request_type": "re-repo-manifest-parse",
+      "service_request_type": "re-repo-manifest-parse"
+    },
+    {
+      "command": "Link Supported Governance Service",
+      "governance_engine": "ResourceExplorerSurvey",
+      "governance_service": "SurveyActionService::ResourceExplorerSurvey::repo_file_structure",
+      "request_type": "re-repo-file-structure",
+      "service_request_type": "re-repo-file-structure"
+    },
+    {
+      "command": "Link Supported Governance Service",
+      "governance_engine": "ResourceExplorerSurvey",
+      "governance_service": "SurveyActionService::ResourceExplorerSurvey::repo_file_size",
+      "request_type": "re-repo-file-size",
+      "service_request_type": "re-repo-file-size"
+    },
+    {
+      "command": "Link Supported Governance Service",
+      "governance_engine": "ResourceExplorerSurvey",
+      "governance_service": "SurveyActionService::ResourceExplorerSurvey::repo_language",
+      "request_type": "re-repo-language",
+      "service_request_type": "re-repo-language"
+    },
+    {
+      "command": "Link Supported Governance Service",
+      "governance_engine": "ResourceExplorerSurvey",
+      "governance_service": "SurveyActionService::ResourceExplorerSurvey::repo_health",
+      "request_type": "re-repo-health",
+      "service_request_type": "re-repo-health"
+    },
+    {
+      "command": "Link Supported Governance Service",
+      "governance_engine": "ResourceExplorerSurvey",
+      "governance_service": "SurveyActionService::ResourceExplorerSurvey::repo_homepage",
+      "request_type": "re-repo-homepage",
+      "service_request_type": "re-repo-homepage"
+    },
+    {
+      "command": "Link Supported Governance Service",
+      "governance_engine": "ResourceExplorerSurvey",
+      "governance_service": "SurveyActionService::ResourceExplorerSurvey::repo_website_ingestion",
+      "request_type": "re-repo-website-ingestion",
+      "service_request_type": "re-repo-website-ingestion"
+    },
+    {
+      "command": "Link Supported Governance Service",
+      "governance_engine": "ResourceExplorerSurvey",
+      "governance_service": "SurveyActionService::ResourceExplorerSurvey::repo_dependency",
+      "request_type": "re-repo-dependency",
+      "service_request_type": "re-repo-dependency"
+    },
+    {
+      "command": "Link Supported Governance Service",
+      "governance_engine": "ResourceExplorerSurvey",
+      "governance_service": "SurveyActionService::ResourceExplorerSurvey::repo_documentation",
+      "request_type": "re-repo-documentation",
+      "service_request_type": "re-repo-documentation"
+    },
+    {
+      "command": "Link Supported Governance Service",
+      "governance_engine": "ResourceExplorerSurvey",
+      "governance_service": "SurveyActionService::ResourceExplorerSurvey::repo_security",
+      "request_type": "re-repo-security",
+      "service_request_type": "re-repo-security"
+    },
+    {
+      "command": "Link Supported Governance Service",
+      "governance_engine": "ResourceExplorerSurvey",
+      "governance_service": "SurveyActionService::ResourceExplorerSurvey::repo_classification",
+      "request_type": "re-repo-classification",
+      "service_request_type": "re-repo-classification"
+    },
+    {
+      "command": "Link Supported Governance Service",
+      "governance_engine": "ResourceExplorerSurvey",
+      "governance_service": "SurveyActionService::ResourceExplorerSurvey::repo_license_classification",
+      "request_type": "re-repo-license-classification",
+      "service_request_type": "re-repo-license-classification"
+    },
+    {
+      "command": "Link Supported Governance Service",
+      "governance_engine": "ResourceExplorerSurvey",
+      "governance_service": "SurveyActionService::ResourceExplorerSurvey::repo_security_features",
+      "request_type": "re-repo-security-features",
+      "service_request_type": "re-repo-security-features"
+    },
+    {
+      "command": "Link Supported Governance Service",
+      "governance_engine": "ResourceExplorerSurvey",
+      "governance_service": "SurveyActionService::ResourceExplorerSurvey::repo_ci_quality",
+      "request_type": "re-repo-ci-quality",
+      "service_request_type": "re-repo-ci-quality"
+    },
+    {
+      "command": "Link Supported Governance Service",
+      "governance_engine": "ResourceExplorerSurvey",
+      "governance_service": "SurveyActionService::ResourceExplorerSurvey::repo_interface_surface",
+      "request_type": "re-repo-interface-surface",
+      "service_request_type": "re-repo-interface-surface"
+    },
+    {
+      "command": "Link Supported Governance Service",
+      "governance_engine": "ResourceExplorerSurvey",
+      "governance_service": "SurveyActionService::ResourceExplorerSurvey::repo_chaoss_metrics",
+      "request_type": "re-repo-chaoss-metrics",
+      "service_request_type": "re-repo-chaoss-metrics"
+    },
+    {
+      "command": "Link Supported Governance Service",
+      "governance_engine": "ResourceExplorerSurvey",
+      "governance_service": "SurveyActionService::ResourceExplorerSurvey::repo_cii_badge",
+      "request_type": "re-repo-cii-badge",
+      "service_request_type": "re-repo-cii-badge"
+    },
+    {
+      "command": "Link Supported Governance Service",
+      "governance_engine": "ResourceExplorerSurvey",
+      "governance_service": "SurveyActionService::ResourceExplorerSurvey::repo_community_support",
+      "request_type": "re-repo-community-support",
+      "service_request_type": "re-repo-community-support"
+    },
+    {
+      "command": "Link Supported Governance Service",
+      "governance_engine": "ResourceExplorerSurvey",
+      "governance_service": "SurveyActionService::ResourceExplorerSurvey::repo_cve_scan",
+      "request_type": "re-repo-cve-scan",
+      "service_request_type": "re-repo-cve-scan"
+    },
+    {
+      "command": "Link Supported Governance Service",
+      "governance_engine": "ResourceExplorerSurvey",
+      "governance_service": "SurveyActionService::ResourceExplorerSurvey::repo_secret_scan",
+      "request_type": "re-repo-secret-scan",
+      "service_request_type": "re-repo-secret-scan"
+    },
+    {
+      "command": "Link Supported Governance Service",
+      "governance_engine": "ResourceExplorerSurvey",
+      "governance_service": "SurveyActionService::ResourceExplorerSurvey::repo_telemetry_scan",
+      "request_type": "re-repo-telemetry-scan",
+      "service_request_type": "re-repo-telemetry-scan"
+    },
+    {
+      "command": "Link Supported Governance Service",
+      "governance_engine": "ResourceExplorerSurvey",
+      "governance_service": "SurveyActionService::ResourceExplorerSurvey::repo_contribution_provenance",
+      "request_type": "re-repo-contribution-provenance",
+      "service_request_type": "re-repo-contribution-provenance"
+    },
+    {
+      "command": "Link Supported Governance Service",
+      "governance_engine": "ResourceExplorerSurvey",
+      "governance_service": "SurveyActionService::ResourceExplorerSurvey::repo_sla_content",
+      "request_type": "re-repo-sla-content",
+      "service_request_type": "re-repo-sla-content"
+    },
+    {
+      "command": "Link Supported Governance Service",
+      "governance_engine": "ResourceExplorerSurvey",
+      "governance_service": "SurveyActionService::ResourceExplorerSurvey::repo_foss_scorecard",
+      "request_type": "re-repo-foss-scorecard",
+      "service_request_type": "re-repo-foss-scorecard"
+    },
+    {
+      "command": "Link Supported Governance Service",
+      "governance_engine": "ResourceExplorerSurvey",
+      "governance_service": "SurveyActionService::ResourceExplorerSurvey::repo_maturity",
+      "request_type": "re-repo-maturity",
+      "service_request_type": "re-repo-maturity"
+    },
+    {
+      "command": "Link Supported Governance Service",
+      "governance_engine": "ResourceExplorerSurvey",
+      "governance_service": "SurveyActionService::ResourceExplorerSurvey::repo_dependency_support",
+      "request_type": "re-repo-dependency-support",
+      "service_request_type": "re-repo-dependency-support"
+    },
+    {
+      "command": "Link Supported Governance Service",
+      "governance_engine": "ResourceExplorerSurvey",
+      "governance_service": "SurveyActionService::ResourceExplorerSurvey::repo_deployment_evidence",
+      "request_type": "re-repo-deployment-evidence",
+      "service_request_type": "re-repo-deployment-evidence"
+    },
+    {
+      "command": "Link Supported Governance Service",
+      "governance_engine": "ResourceExplorerSurvey",
+      "governance_service": "SurveyActionService::ResourceExplorerSurvey::repo_egeria_interfaces",
+      "request_type": "re-repo-egeria-interfaces",
+      "service_request_type": "re-repo-egeria-interfaces"
+    },
+    {
+      "command": "Link Supported Governance Service",
+      "governance_engine": "ResourceExplorerSurvey",
+      "governance_service": "SurveyActionService::ResourceExplorerSurvey::repo_conventions",
+      "request_type": "re-repo-conventions",
+      "service_request_type": "re-repo-conventions"
+    },
+    {
+      "command": "Link Supported Governance Service",
+      "governance_engine": "ResourceExplorerSurvey",
+      "governance_service": "SurveyActionService::ResourceExplorerSurvey::repo_data_profiling",
+      "request_type": "re-repo-data-profiling",
+      "service_request_type": "re-repo-data-profiling"
+    },
+    {
+      "command": "Link Supported Governance Service",
+      "governance_engine": "ResourceExplorerSurvey",
+      "governance_service": "SurveyActionService::ResourceExplorerSurvey::repo_file_classification",
+      "request_type": "re-repo-file-classification",
+      "service_request_type": "re-repo-file-classification"
+    },
+    {
+      "command": "Link Supported Governance Service",
+      "governance_engine": "ResourceExplorerSurvey",
+      "governance_service": "SurveyActionService::ResourceExplorerSurvey::repo_symbol_extraction",
+      "request_type": "re-repo-symbol-extraction",
+      "service_request_type": "re-repo-symbol-extraction"
+    },
+    {
+      "command": "Link Supported Governance Service",
+      "governance_engine": "ResourceExplorerSurvey",
+      "governance_service": "SurveyActionService::ResourceExplorerSurvey::repo_api_structure",
+      "request_type": "re-repo-api-structure",
+      "service_request_type": "re-repo-api-structure"
+    },
+    {
+      "command": "Link Supported Governance Service",
+      "governance_engine": "ResourceExplorerSurvey",
+      "governance_service": "SurveyActionService::ResourceExplorerSurvey::repo_arch_detect",
+      "request_type": "re-repo-arch-detect",
+      "service_request_type": "re-repo-arch-detect"
+    },
+    {
+      "command": "Link Supported Governance Service",
+      "governance_engine": "ResourceExplorerSurvey",
+      "governance_service": "SurveyActionService::ResourceExplorerSurvey::repo_arch_coupling",
+      "request_type": "re-repo-arch-coupling",
+      "service_request_type": "re-repo-arch-coupling"
+    },
+    {
+      "command": "Link Supported Governance Service",
+      "governance_engine": "ResourceExplorerSurvey",
+      "governance_service": "SurveyActionService::ResourceExplorerSurvey::repo_arch_lens",
+      "request_type": "re-repo-arch-lens",
+      "service_request_type": "re-repo-arch-lens"
+    },
+    {
+      "command": "Link Supported Governance Service",
+      "governance_engine": "ResourceExplorerSurvey",
+      "governance_service": "SurveyActionService::ResourceExplorerSurvey::repo_arch_summary",
+      "request_type": "re-repo-arch-summary",
+      "service_request_type": "re-repo-arch-summary"
+    },
+    {
+      "command": "Link Supported Governance Service",
+      "governance_engine": "ResourceExplorerSurvey",
+      "governance_service": "SurveyActionService::ResourceExplorerSurvey::repo_sub_resource_survey",
+      "request_type": "re-repo-sub-resource-survey",
+      "service_request_type": "re-repo-sub-resource-survey"
+    },
+    {
+      "command": "Link Supported Governance Service",
+      "governance_engine": "ResourceExplorerSurvey",
+      "governance_service": "SurveyActionService::ResourceExplorerSurvey::repo_security_summary",
+      "request_type": "re-repo-security-summary",
+      "service_request_type": "re-repo-security-summary"
+    },
+    {
+      "command": "Link Supported Governance Service",
+      "governance_engine": "ResourceExplorerSurvey",
+      "governance_service": "SurveyActionService::ResourceExplorerSurvey::repo_rag_ingestion",
+      "request_type": "re-repo-rag-ingestion",
+      "service_request_type": "re-repo-rag-ingestion"
+    }
+  ]
+}

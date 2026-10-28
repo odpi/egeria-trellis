@@ -196,31 +196,65 @@ class TestCurateCommand:
         assert result.exit_code == 2
         assert "resource-explorer login" in result.output
 
-    def test_a_component_id_routes_to_the_component_materializer(self, runner, registry):
-        with patch("resource_explorer.workflows.curate.materialize_component_if_accepted",
-                   return_value={"status": "ok", "guid": "g1"}) as comp, \
-             patch("resource_explorer.workflows.curate.materialize_blueprint_if_accepted") as bp:
-            result = runner.invoke(app, ["curate", "materialize", "myproj", "src/api"])
-        assert result.exit_code == 0, result.output
-        comp.assert_called_once()
-        bp.assert_not_called()
+    # Round 2 of the Brief A follow-ups: the command used to call the materializers directly, bypassing the
+    # Publish plan (no hold-back, no attached record) and promoting on its own. It now queues the same
+    # publish_architecture run the web press does, for the target only, and only when the plan lists it.
 
-    def test_a_double_colon_id_routes_to_the_blueprint_materializer(self, runner, registry):
-        """`perspective::cluster_name` is the key add_blueprint_verdict already
-        builds, not a new convention invented for the CLI."""
-        with patch("resource_explorer.workflows.curate.materialize_component_if_accepted") as comp, \
-             patch("resource_explorer.workflows.curate.materialize_blueprint_if_accepted",
-                   return_value={"status": "ok", "guid": "g2"}) as bp:
-            result = runner.invoke(app, ["curate", "materialize", "myproj", "runtime::Ingest"])
-        assert result.exit_code == 0, result.output
-        bp.assert_called_once_with(registry, "repo", "myproj", "runtime", "Ingest", "accepted")
-        comp.assert_not_called()
+    @pytest.fixture
+    def no_direct_write(self, monkeypatch):
+        def boom(*a, **k):
+            raise AssertionError("the CLI wrote directly instead of going through Publish")
+        for name in ("materialize_component_if_accepted", "materialize_blueprint_if_accepted", "promote_to_publish_zones"):
+            monkeypatch.setattr(f"resource_explorer.workflows.curate.{name}", boom)
 
-    def test_a_materialization_error_exits_nonzero(self, runner, registry):
-        with patch("resource_explorer.workflows.curate.materialize_component_if_accepted",
-                   return_value={"status": "error", "error": "no component finding"}):
-            result = runner.invoke(app, ["curate", "materialize", "myproj", "src/api"])
+    @staticmethod
+    def _accept_component(registry, scope="src/api"):
+        registry.upsert_finding("myproj", "architecture_recovery", [{
+            "check_name": "component", "label": "x", "detail": {"name": "api", "slug": "api", "type": "Service"}}],
+            surveyed_at="2026-10-09T00:00:00", scope_locator=scope)
+        registry.record_component_verdict("repo", "myproj", scope, "accepted", "", "", decided_by="dan")
+
+    @staticmethod
+    def _accept_blueprint(registry, name="Ingest", perspective="runtime", choices=""):
+        registry.upsert_finding("myproj", "architecture_blueprints", [{
+            "check_name": "candidate_blueprint", "label": name,
+            "detail": {"name": name, "perspective": perspective, "members": [], "children": [], "parent": "",
+                       "oversized": False, "composed_into": ""}}], surveyed_at="2026-10-09T00:00:00")
+        registry.record_component_verdict("repo", "myproj", f"{perspective}::{name}", "accepted", choices, "",
+                                          verdict_target="blueprint", decided_by="dan")
+
+    def test_a_component_id_queues_a_publish_for_exactly_that_component(self, runner, registry, no_direct_write):
+        import json as _json
+        self._accept_component(registry)
+        self._accept_component(registry, "src/other")
+        result = runner.invoke(app, ["curate", "materialize", "myproj", "src/api"])
+        assert result.exit_code == 0, result.output
+        runs = registry.list_runs(kind="publish_architecture")
+        assert len(runs) == 1 and _json.loads(runs[0]["target"]) == {"slug": "myproj", "paths": ["src/api"], "blueprints": []}
+        assert runs[0]["requested_by"] == "dan"
+
+    def test_a_double_colon_id_queues_a_publish_for_that_blueprint(self, runner, registry, no_direct_write):
+        """`perspective::cluster_name` is the key add_blueprint_verdict already builds."""
+        import json as _json
+        self._accept_blueprint(registry)
+        result = runner.invoke(app, ["curate", "materialize", "myproj", "runtime::Ingest"])
+        assert result.exit_code == 0, result.output
+        runs = registry.list_runs(kind="publish_architecture")
+        assert _json.loads(runs[0]["target"])["blueprints"] == ["runtime::Ingest"]
+
+    def test_a_target_not_in_the_plan_queues_nothing_and_says_why(self, runner, registry, no_direct_write):
+        result = runner.invoke(app, ["curate", "materialize", "myproj", "src/api"])
         assert result.exit_code == 1
+        assert "Nothing queued" in result.output and "not in the Publish plan" in result.output
+        assert registry.list_runs(kind="publish_architecture") == []
+
+    def test_a_held_back_blueprint_is_refused_with_the_identifier_sentence(self, runner, registry, no_direct_write):
+        self._accept_blueprint(registry, name="A")
+        self._accept_blueprint(registry, name="B")             # a second of the kind, no identifier
+        result = runner.invoke(app, ["curate", "materialize", "myproj", "runtime::B"])
+        assert result.exit_code == 1
+        assert "give this one an identifier" in " ".join(result.output.split())
+        assert registry.list_runs(kind="publish_architecture") == []
 
 
 class TestRunsCommands:
@@ -268,7 +302,20 @@ class TestRunsCommands:
         assert "nothing was" in result.output
         assert registry.get_run(run_id)["state"] == "claimed"
 
-    def test_enqueue_queues_arbitrary_work(self, runner, registry):
+    def test_cancel_refuses_a_held_engine_action_row(self, runner, registry):
+        run_id = registry.enqueue_run("engine_action", {"engine_action_guid": "a-1"})
+        result = runner.invoke(app, ["runs", "cancel", run_id])
+        assert result.exit_code == 1
+        assert "held" in result.output
+        assert registry.get_run(run_id)["state"] == "queued"
+
+    def test_enqueue_queues_arbitrary_work(self, runner, registry, monkeypatch):
+        # Brief Z2 round 2: a run that may publish (analysis_run) is attributed to the signed-in person only.
+        from unittest.mock import MagicMock
+
+        from resource_explorer.cli import session as cli_session
+
+        monkeypatch.setattr(cli_session, "require_and_activate", lambda console=None: MagicMock(user_id="alice"))
         result = runner.invoke(app, [
             "runs", "enqueue", "analysis_run",
             '{"slug": "myproj", "analysis_id": "security_scan"}',
@@ -276,6 +323,7 @@ class TestRunsCommands:
         assert result.exit_code == 0, result.output
         rows = registry.list_runs(state="queued")
         assert rows[0]["kind"] == "analysis_run"
+        assert rows[0]["requested_by"] == "alice"            # the signed-in person, never unattributed
 
     def test_enqueue_rejects_an_unknown_kind(self, runner, registry):
         result = runner.invoke(app, ["runs", "enqueue", "teleport", "{}"])

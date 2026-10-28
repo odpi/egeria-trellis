@@ -415,7 +415,7 @@ class TestResourceStateSources:
             "commit -- these keys match on exact text. Four such rewordings are "
             "expected from the multi-resource question-authoring stream; the "
             "old -> new mapping is in RESOURCE_STATE_SOURCES' own docstring and "
-            "in docs/design-notes/QUESTION-CATALOG-MULTI-TYPE-IMPLEMENTED.md."
+            "in QUESTION-CATALOG-MULTI-TYPE-IMPLEMENTED.md."
         )
 
     def test_an_absent_value_is_a_measured_zero_not_an_unrun_analysis(self):
@@ -680,3 +680,296 @@ class TestResourceStateHeadlines:
         fact = fl._resource_state_fact("hl", resolver, subject)
         assert fact.headline
         assert "platform" in fact.headline
+
+
+class TestDatabaseResourceStateSources:
+    """DATABASE-DIRECT-FIELD-ROWS-IMPLEMENTED.md: porting #309's repo
+    resource-state pattern to the 10 (of 11 found live on
+    `laz_local_adventureworks`, 2026-09-29, #8810) database questions with
+    no analysis behind them at all. Each reader is exercised for both a
+    "yes" and a "no/not-yet" case, against a real (throwaway-schema)
+    registry, the same `pg_registry` fixture `TestResourceStateHeadlines`
+    above already uses."""
+
+    def _db(self, reg, slug, **kw):
+        from resource_explorer.registry import DatabaseEntity
+
+        entity = DatabaseEntity(
+            slug=slug, display_name=slug, db_type="postgresql",
+            host="localhost", port=5432, database_name=kw.pop("database_name", slug),
+            **kw,
+        )
+        reg.register_database(entity)
+        return reg.get_database(slug)
+
+    def test_the_state_sources_are_declared_on_the_database_adapter(self):
+        from resource_explorer.facts import DATABASE_RESOURCE_STATE_SOURCES
+        from resource_explorer.surveyors.survey_definition_executor import get_adapter
+
+        assert get_adapter("database").state_sources() is DATABASE_RESOURCE_STATE_SOURCES
+        assert len(DATABASE_RESOURCE_STATE_SOURCES) == 10
+
+    def test_every_declared_question_is_a_real_direct_kind_database_question(self):
+        """Same guard `test_every_declared_question_is_in_the_real_catalog`
+        pins for the repo table: a key matching nothing in the real catalog
+        is a resolver that never runs and looks exactly like a question we
+        chose not to answer."""
+        import yaml
+
+        from resource_explorer.facts import DATABASE_RESOURCE_STATE_SOURCES
+
+        catalog_path = (
+            __import__("pathlib").Path(__file__).resolve().parents[1]
+            / "resource_explorer" / "configdata" / "question_catalog.yaml"
+        )
+        catalog = yaml.safe_load(catalog_path.read_text())
+        db_rows = catalog["database_questions"]
+        direct_texts = {
+            r["question"] for r in db_rows
+            if (r.get("answering") or {}).get("kind") == "direct"
+        }
+        for question in DATABASE_RESOURCE_STATE_SOURCES:
+            assert question in direct_texts, question
+
+    def test_description_is_measured_when_set_and_nothing_found_when_not(self, pg_registry):
+        from resource_explorer.facts import DATABASE_RESOURCE_STATE_SOURCES
+
+        reg = pg_registry
+        self._db(reg, "db_desc_yes", description="A customer-facing OLTP database.")
+        self._db(reg, "db_desc_no", description="")
+        resolver, subject = DATABASE_RESOURCE_STATE_SOURCES[
+            "What is this resource, and what is it for?"]
+        fl = FactLayer(registry=reg, resource_type="database")
+
+        yes = fl._resource_state_fact("db_desc_yes", resolver, subject)
+        assert yes.state == MEASURED
+        assert "customer-facing" in yes.headline
+
+        no = fl._resource_state_fact("db_desc_no", resolver, subject)
+        assert no.state == NOTHING_FOUND
+        assert "no description" in no.headline.lower()
+
+    def test_catalogued_reports_guid_and_when_from_activity_log(self, pg_registry):
+        from resource_explorer.facts import DATABASE_RESOURCE_STATE_SOURCES
+        from resource_explorer.registry import ActivityEntry
+
+        reg = pg_registry
+        self._db(reg, "db_cat_yes")
+        reg.set_database_egeria_guid("db_cat_yes", "guid-123")
+        reg.write_activity(ActivityEntry(
+            id="act-1", ts="2026-09-15T00:00:00", operation="publish",
+            intent="discovery", entity_type="database", entity_slug="db_cat_yes",
+        ))
+        self._db(reg, "db_cat_no")
+        resolver, subject = DATABASE_RESOURCE_STATE_SOURCES[
+            "Has this resource already been catalogued in Egeria, and when?"]
+        fl = FactLayer(registry=reg, resource_type="database")
+
+        yes = fl._resource_state_fact("db_cat_yes", resolver, subject)
+        assert yes.state == MEASURED
+        assert "2026-09-15" in yes.headline
+
+        no = fl._resource_state_fact("db_cat_no", resolver, subject)
+        assert no.state == NOTHING_FOUND
+        assert "not yet published" in no.headline.lower()
+
+    def test_existing_use_names_the_group_and_investigation(self, pg_registry):
+        from resource_explorer.facts import DATABASE_RESOURCE_STATE_SOURCES
+
+        reg = pg_registry
+        self._db(reg, "db_use_a", group_slug="finance")
+        self._db(reg, "db_use_b", group_slug="finance")
+        inv = reg.create_investigation(
+            "Q3 Finance Review", egeria_binding=reg.BINDING_LOCAL)
+        folio = reg.get_or_create_folio(inv["slug"])
+        reg.add_working_set_member(folio["slug"], "database", "db_use_a")
+
+        resolver, subject = DATABASE_RESOURCE_STATE_SOURCES[
+            "Is there any existing use within our organization?"]
+        fl = FactLayer(registry=reg, resource_type="database")
+        fact = fl._resource_state_fact("db_use_a", resolver, subject)
+        assert fact.state == MEASURED
+        assert fact.value["siblings_in_group"] == 1
+        assert fact.value["investigation_count"] == 1
+        assert "finance" in fact.headline.lower()
+        assert "1 investigation" in fact.headline.lower()
+
+    def test_feedback_counts_recorded_items(self, pg_registry):
+        from resource_explorer.facts import DATABASE_RESOURCE_STATE_SOURCES
+
+        reg = pg_registry
+        self._db(reg, "db_fb_yes")
+        self._db(reg, "db_fb_no")
+        reg.add_resource_feedback("database", "db_fb_yes", 4, "quality", "Looks solid.")
+        resolver, subject = DATABASE_RESOURCE_STATE_SOURCES["Any known feedback?"]
+        fl = FactLayer(registry=reg, resource_type="database")
+
+        yes = fl._resource_state_fact("db_fb_yes", resolver, subject)
+        assert yes.state == MEASURED
+        assert "1 feedback" in yes.headline
+
+        no = fl._resource_state_fact("db_fb_no", resolver, subject)
+        assert no.state == NOTHING_FOUND
+
+    def test_related_finds_same_server_and_same_name_candidates(self, pg_registry):
+        from resource_explorer.facts import DATABASE_RESOURCE_STATE_SOURCES
+
+        reg = pg_registry
+        self._db(reg, "db_rel_a", server_slug="pg-prod-1", database_name="orders")
+        self._db(reg, "db_rel_b", server_slug="pg-prod-1", database_name="widgets")
+        self._db(reg, "db_rel_c", server_slug="pg-prod-2", database_name="orders")
+        self._db(reg, "db_rel_lonely", server_slug="pg-standalone", database_name="unique_db")
+
+        resolver, subject = DATABASE_RESOURCE_STATE_SOURCES[
+            "Does it replace or extend something we already have?"]
+        fl = FactLayer(registry=reg, resource_type="database")
+
+        found = fl._resource_state_fact("db_rel_a", resolver, subject)
+        assert found.state == MEASURED
+        assert found.value["same_server_count"] == 1
+        assert found.value["same_name_count"] == 1
+
+        lonely = fl._resource_state_fact("db_rel_lonely", resolver, subject)
+        assert lonely.state == NOTHING_FOUND
+        assert "no candidate overlap" in lonely.headline.lower()
+
+    def test_surveyed_reports_the_last_survey_timestamp(self, pg_registry):
+        from resource_explorer.facts import DATABASE_RESOURCE_STATE_SOURCES
+
+        reg = pg_registry
+        self._db(reg, "db_surv_yes")
+        reg.update_database_surveyed_at("db_surv_yes")
+        self._db(reg, "db_surv_no")
+
+        resolver, subject = DATABASE_RESOURCE_STATE_SOURCES[
+            "Has this resource already been surveyed at any tier, and what did earlier signals reveal?"]
+        fl = FactLayer(registry=reg, resource_type="database")
+
+        yes = fl._resource_state_fact("db_surv_yes", resolver, subject)
+        assert yes.state == MEASURED
+        assert "last surveyed" in yes.headline.lower()
+
+        no = fl._resource_state_fact("db_surv_no", resolver, subject)
+        assert no.state == NOTHING_FOUND
+        assert "never surveyed" in no.headline.lower()
+
+    def test_disposition_reads_the_current_verdict(self, pg_registry):
+        from resource_explorer.facts import DATABASE_RESOURCE_STATE_SOURCES
+
+        reg = pg_registry
+        self._db(reg, "db_disp_yes")
+        reg.set_disposition_for_entity("database", "db_disp_yes", "investigate",
+                                       reason="Looks promising.")
+        self._db(reg, "db_disp_no")
+
+        resolver, subject = DATABASE_RESOURCE_STATE_SOURCES[
+            "Based on what's already known, is this worth investigating further, or should it be deprioritized?"]
+        fl = FactLayer(registry=reg, resource_type="database")
+
+        yes = fl._resource_state_fact("db_disp_yes", resolver, subject)
+        assert yes.state == MEASURED
+        assert "investigate" in yes.headline.lower()
+
+        no = fl._resource_state_fact("db_disp_no", resolver, subject)
+        assert no.state == NOTHING_FOUND
+        assert "undecided" in no.headline.lower()
+
+    def test_changed_since_survey_reports_nothing_found_with_no_history(self, pg_registry):
+        """Every `DATABASE_ANALYSIS_RESULTS_MAP` id with zero history reports
+        `ChangeResult(changed=False)` (`notification_detector._detect_
+        metrics_change`'s own "no metric names -> changed=False" branch,
+        the exact same shared mechanism the repo reader uses unmodified) --
+        so a database that has never been surveyed at all still compares as
+        "nothing changed" across every id, the same behaviour repo's own
+        `_r_changed_since_survey` has always had. NOT_ESTABLISHED is
+        reserved for the case nothing is comparable AT ALL (no ids), which
+        cannot happen here since `DATABASE_ANALYSIS_RESULTS_MAP` is never
+        empty."""
+        from resource_explorer.facts import DATABASE_RESOURCE_STATE_SOURCES
+        from resource_explorer.surveyors.database.survey_definition_adapter import (
+            DATABASE_ANALYSIS_RESULTS_MAP,
+        )
+
+        reg = pg_registry
+        self._db(reg, "db_chg_none")
+        resolver, subject = DATABASE_RESOURCE_STATE_SOURCES[
+            "How much has changed since the last time this was surveyed — is it worth re-running now?"]
+        fl = FactLayer(registry=reg, resource_type="database")
+        fact = fl._resource_state_fact("db_chg_none", resolver, subject)
+        assert fact.state == NOTHING_FOUND
+        assert fact.value["changed_count"] == 0
+        assert fact.value["unchanged_count"] == len(DATABASE_ANALYSIS_RESULTS_MAP)
+        assert "nothing has changed" in fact.headline.lower()
+
+    def test_which_survey_reports_candidates_and_the_empty_and_unreachable_cases(self, monkeypatch):
+        """`_db_survey_candidates` (and so both `_db_r_which_survey`/
+        `_db_r_survey_definition_exists`) calls Egeria's `SurveyDefinitionReader`
+        -- this environment happens to reach a real platform, so rather than
+        depending on what is or is not authored there right now, the reader
+        is monkeypatched to pin all three shapes deterministically: found,
+        genuinely empty (a real catalog gap), and unreachable."""
+        import resource_explorer.facts as facts_mod
+
+        class _FakeDb:
+            slug = "db_survey_x"
+
+        class _Candidates:
+            def __init__(self, items):
+                self._items = items
+
+            def find_candidate_process_guids(self, technology_type):
+                assert technology_type == "PostgreSQL Database"
+                return self._items
+
+        class _Unreachable:
+            def find_candidate_process_guids(self, technology_type):
+                raise RuntimeError("platform unreachable")
+
+        # Found: named, not just counted.
+        monkeypatch.setattr(
+            facts_mod, "_db_survey_candidates",
+            lambda db: ([{"qualified_name": "x::PostgresQuickSurvey"}], True))
+        value, state = facts_mod._db_r_which_survey(None, _FakeDb())
+        assert state == MEASURED
+        assert "PostgresQuickSurvey" in value["candidates"]
+        value, state = facts_mod._db_r_survey_definition_exists(None, _FakeDb())
+        assert state == MEASURED
+        assert value["authored"] is True
+
+        # Genuinely empty -- a real catalog gap, not an unreachable platform.
+        monkeypatch.setattr(facts_mod, "_db_survey_candidates", lambda db: ([], True))
+        value, state = facts_mod._db_r_which_survey(None, _FakeDb())
+        assert state == NOTHING_FOUND
+        value, state = facts_mod._db_r_survey_definition_exists(None, _FakeDb())
+        assert state == NOTHING_FOUND
+        assert value["authored"] is False
+
+        # Unreachable -- NOT_ESTABLISHED, never reported as "nothing authored".
+        monkeypatch.setattr(facts_mod, "_db_survey_candidates", lambda db: ([], False))
+        value, state = facts_mod._db_r_which_survey(None, _FakeDb())
+        assert state == NOT_ESTABLISHED
+        assert "could not be reached" in value["detail"].lower()
+        value, state = facts_mod._db_r_survey_definition_exists(None, _FakeDb())
+        assert state == NOT_ESTABLISHED
+
+        # And the underlying helper itself really does degrade to the
+        # unreachable case when the reader raises (not just when a test
+        # mocks the helper directly, as above).
+        monkeypatch.setattr(
+            "resource_explorer.surveyors.survey_definition_reader.SurveyDefinitionReader",
+            _Unreachable)
+        candidates, reachable = facts_mod._db_survey_candidates(_FakeDb())
+        assert reachable is False
+        assert candidates == []
+
+    def test_the_licence_row_is_a_documented_gap_not_guessed_at(self):
+        """`DatabaseEntity` has no licence field -- the catalog's own note
+        for this database question is a stale copy-paste of the repo
+        wording ("GitHub license field"), which does not exist for a
+        PostgreSQL database. This is the one row of the 11 NOT ported; it
+        must stay absent from the table rather than backed by an invented
+        reader."""
+        from resource_explorer.facts import DATABASE_RESOURCE_STATE_SOURCES
+
+        assert "Under what license or agreement may this resource be used?" \
+            not in DATABASE_RESOURCE_STATE_SOURCES

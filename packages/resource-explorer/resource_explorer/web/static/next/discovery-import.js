@@ -29,11 +29,13 @@
  * keys on `github_url`, not on a registered project.
  */
 import { openDialog } from '/static/next/worklist.js';
+import { inPagePrompt } from '/static/next/confirm-dialog.js';
 import {
   searchDiscoveryRepos, discoverFromList, fetchInventoryCsv, importDiscoveredRepos,
-  setDisposition, listGroups,
+  setDisposition, listGroups, listFoundations, getImportStatus,
 } from '/static/re-api.js';
 import { esc, icon, refreshGroupsAndSidebar } from '/static/next/app.js';
+import { noticeActivity } from '/static/next/stages/activity.js';
 
 // Module-local view state for the one dialog this file renders — mirrors
 // classic's own module-level `_scout*` globals, scoped here instead of
@@ -49,11 +51,25 @@ const view = {
   selected: new Set(),     // indices into `results`
   filterText: '',
   groups: [],
+  foundations: null,       // {key: {label, org?, topic?}} once read; null = not read
+  foundationsError: '',
   status: '',              // feedback line above the results table
   statusIsError: false,
   listStatus: '',          // separate feedback line for the from-list panel
   listStatusIsError: false,
   busy: false,
+  importing: false,        // a batch is in flight: Import is pressed and disabled
+  importState: new Map(),  // github_url -> importing | imported | already_registered | failed
+};
+
+/** How often an in-flight batch is re-read, and the most ticks it is followed for. Tests shorten it. */
+export const importPollConfig = { intervalMs: 2000, maxTicks: 900 };
+
+const STATE_WORD = {
+  importing: '◔ importing',
+  imported: '✓ imported',
+  already_registered: '✓ already registered',
+  failed: '✗ failed',
 };
 
 const DISPOSITION_EMOJI = {
@@ -69,6 +85,8 @@ export async function openFindReposDialog() {
     'Search GitHub or load a list — nothing is registered until you select rows below',
     { wide: true });
   try { view.groups = await listGroups(); } catch { view.groups = []; }
+  try { view.foundations = await listFoundations(); view.foundationsError = ''; }
+  catch (err) { view.foundations = null; view.foundationsError = err.message || 'could not be read'; }
   render(el);
 }
 
@@ -111,6 +129,7 @@ function searchFormHtml() {
     `<input data-f="${key}" type="${type}" placeholder="${esc(placeholder)}" value="${esc(f[key] ?? '')}"
        class="w-full rounded-sm border border-rule bg-transparent px-2 py-[3px] text-caveat text-ink">`;
   return `
+    ${foundationChipsHtml()}
     <p class="mb-s2 max-w-[70ch] text-caveat text-ink-muted">
       A general GitHub search for candidate repos — independent of any specific org. To pull in a
       whole account's repos, put an org/user search filter here, or paste an account URL
@@ -132,6 +151,33 @@ function searchFormHtml() {
       <button data-act="search" class="ml-auto cursor-pointer rounded-sm border border-accent bg-transparent px-s3 py-[3px] text-caveat text-accent-ink" ${view.busy ? 'disabled' : ''}
         >${view.busy ? 'Searching…' : 'Search'}</button>
     </div>`;
+}
+
+/** A foundation pre-filter fills the Org and Topic the foundation is known by. It is a starting point for the
+ *  search form, not a separate search: the fields stay editable, and pressing the chip runs the search
+ *  (classic's behaviour). A foundation that has not been read says so; an empty list says none are configured. */
+function foundationChipsHtml() {
+  const f = view.filters;
+  const label = '<span class="text-caps uppercase tracking-caps text-ink-muted">Foundation</span>';
+  if (view.foundations === null) {
+    return `<div data-foundations class="mb-s2 flex flex-wrap items-baseline gap-s2 text-caveat">${label}
+      <span data-foundations-unread class="text-state-warn" title="${esc(view.foundationsError)}"><span class="font-glyph" aria-hidden="true">?</span> not read</span>
+      <span class="text-ink-muted">${esc(view.foundationsError ? `the foundation list could not be read: ${view.foundationsError}` : 'the foundation list has not been read')}</span></div>`;
+  }
+  const entries = Object.entries(view.foundations);
+  if (!entries.length) {
+    return `<div data-foundations class="mb-s2 flex flex-wrap items-baseline gap-s2 text-caveat">${label}
+      <span class="text-ink-muted">none configured</span></div>`;
+  }
+  return `<div data-foundations class="mb-s2 flex flex-wrap items-baseline gap-s2 text-caveat">${label}
+    ${entries.map(([key, fd]) => {
+      const on = (fd.org || '') === (f.org || '') && (fd.topic || '') === (f.topic || '') && !!(fd.org || fd.topic);
+      return `<button type="button" data-foundation="${esc(key)}" aria-pressed="${on ? 'true' : 'false'}"
+        title="${on ? 'Filling the Org and Topic fields with this foundation. Press again to clear them.' : 'Fill Org and Topic with this foundation and search'}"
+        class="cursor-pointer rounded-pill border bg-transparent px-[8px] py-[1px] ${on ? 'border-accent text-ink' : 'border-rule text-accent-ink'}">${on ? '● ' : ''}${esc(fd.label || key)}</button>`;
+    }).join('')}
+    ${f.org || f.topic ? '' : '<span class="text-ink-muted">press one to fill Org and Topic and search</span>'}
+  </div>`;
 }
 
 function readFiltersFromDom(el) {
@@ -288,6 +334,16 @@ function visibleResults() {
       .some((v) => (v || '').toLowerCase().includes(term)));
 }
 
+/** The Status cell: the persisted import state first, else the registered cue from the search, else the disposition. */
+function rowStatusHtml(r) {
+  const st = view.importState.get(r.html_url);
+  if (st) {
+    return `<span data-import-state="${esc(st)}" class="${st === 'failed' ? 'text-state-warn' : 'text-accent-ink'}">${STATE_WORD[st] || esc(st)}</span>`;
+  }
+  if (r.already_registered) return '<span data-registered class="text-accent-ink">✓ registered</span>';
+  return r.disposition && r.disposition !== 'undecided' ? esc(r.disposition) : '';
+}
+
 function resultsHtml() {
   if (!view.results.length) return '';
   const visible = visibleResults();
@@ -297,12 +353,13 @@ function resultsHtml() {
     && !HIDDEN_DISPOSITIONS.has(r.disposition)).length;
 
   const rows = visible.map(({ r, i }) => {
-    const dimmed = r.already_registered || HIDDEN_DISPOSITIONS.has(r.disposition);
+    const st = view.importState.get(r.html_url);
+    const dimmed = (r.already_registered && st !== 'imported') || HIDDEN_DISPOSITIONS.has(r.disposition);
     const dispTitle = r.disposition_reason
       ? `${r.disposition}${r.disposition_decided_at ? ' — ' + r.disposition_decided_at : ''}: ${r.disposition_reason}`
       : r.disposition;
     return `<tr class="border-b border-rule ${dimmed ? 'opacity-50' : ''}">
-      <td class="py-s1 pr-s2"><input type="checkbox" data-row="${i}" ${r.already_registered ? 'disabled' : ''} ${view.selected.has(i) ? 'checked' : ''}></td>
+      <td class="py-s1 pr-s2"><input type="checkbox" data-row="${i}" ${r.already_registered || st === 'importing' ? 'disabled' : ''} ${view.selected.has(i) ? 'checked' : ''}></td>
       <td class="py-s1 pr-s2 max-w-[220px] truncate font-mono text-caveat text-ink">
         <a href="${esc(r.html_url)}" target="_blank" rel="noopener noreferrer" class="hover:text-accent-ink">${esc(r.full_name)}</a>
       </td>
@@ -310,9 +367,7 @@ function resultsHtml() {
       <td class="py-s1 pr-s2 text-caveat text-ink-muted">★ ${r.stars}</td>
       <td class="py-s1 pr-s2 text-caveat text-ink-muted">${esc(r.language) || '—'}</td>
       <td class="py-s1 pr-s2 text-caveat text-ink-muted">${esc(r.license) || '—'}</td>
-      <td class="py-s1 pr-s2 text-caveat" title="${esc(dispTitle)}">${r.already_registered
-        ? '<span class="text-ink-muted">already registered</span>'
-        : (r.disposition && r.disposition !== 'undecided' ? esc(r.disposition) : '')}</td>
+      <td class="py-s1 pr-s2 text-caveat" title="${esc(dispTitle)}">${rowStatusHtml(r)}</td>
       <td class="py-s1 whitespace-nowrap text-caveat">
         ${Object.entries(DISPOSITION_EMOJI).map(([d, glyph]) =>
           `<button data-set-disp="${i}|${d}" title="${esc(d)}" class="cursor-pointer bg-transparent px-[2px] hover:opacity-70">${glyph}</button>`).join('')}
@@ -331,8 +386,8 @@ function resultsHtml() {
       <select data-act="group" class="ml-auto rounded-sm border border-rule bg-transparent px-2 py-[2px] text-caveat text-ink">
         <option value="">No group</option>${groupOptions}
       </select>
-      <button data-act="import-selected" class="cursor-pointer rounded-sm border border-accent bg-transparent px-s3 py-[3px] text-caveat text-accent-ink" ${view.busy ? 'disabled' : ''}
-        >Import Selected</button>
+      <button data-act="import-selected" aria-busy="${view.importing ? 'true' : 'false'}" class="${view.importing ? 'cursor-wait opacity-60' : 'cursor-pointer'} rounded-sm border border-accent bg-transparent px-s3 py-[3px] text-caveat text-accent-ink" ${view.busy || view.importing ? 'disabled' : ''}
+        >${view.importing ? 'Importing…' : 'Import Selected'}</button>
     </div>
     <div class="max-h-[40vh] overflow-auto rounded-sm border border-rule">
       <table class="w-full text-left">
@@ -358,7 +413,14 @@ async function setRowDisposition(el, i, disposition) {
   if (!r) return;
   let reason = '';
   if (HIDDEN_DISPOSITIONS.has(disposition)) {
-    reason = window.prompt(`Why ${disposition === 'abandoned' ? 'abandon' : 'ignore'} ${r.full_name}? (optional)`, '') || '';
+    const typed = await inPagePrompt({
+      title: disposition === 'abandoned' ? 'Abandon' : 'Ignore',
+      message: `Why ${disposition === 'abandoned' ? 'abandon' : 'ignore'} ${r.full_name}? (optional)`,
+      label: 'Reason (optional)',
+      confirmLabel: disposition === 'abandoned' ? 'Abandon' : 'Ignore',
+    });
+    if (typed === null) return;      // cancelled -- not marked
+    reason = typed;
   }
   try {
     await setDisposition(r.html_url, disposition, reason);
@@ -373,38 +435,86 @@ async function setRowDisposition(el, i, disposition) {
 }
 
 async function importSelected(el) {
+  if (view.importing) return;          // a second press while a batch runs does nothing
   const groupSlug = el.querySelector('[data-act="group"]')?.value || '';
-  const selected = [...view.selected].map((i) => view.results[i]).filter((r) => r && !r.already_registered);
+  const selected = [...view.selected].map((i) => view.results[i])
+    .filter((r) => r && !r.already_registered && view.importState.get(r.html_url) !== 'importing');
   if (!selected.length) {
     view.status = 'No new repos selected.';
     view.statusIsError = true;
     render(el);
     return;
   }
-  view.busy = true;
+  view.importing = true;
+  selected.forEach((r) => view.importState.set(r.html_url, 'importing'));
   render(el);
+  let batchId = '';
   try {
     const sourceLabel = view.mode === 'search'
       ? `search: ${view.filters.keyword || 'discover repos'}`
       : `list: ${view.resultsSource || 'from-list'}`;
     const data = await importDiscoveredRepos(selected, { groupSlug, sourceLabel });
-    view.status = `Import started for ${data.queued} repo(s) — check the Activity log for progress.`
-      + (data.skipped.length ? ` (${data.skipped.length} already registered, skipped.)` : '');
+    const mark = (urls, state) => (urls || []).forEach((u) => {
+      const row = view.results.find((r) => r.html_url === u);
+      view.importState.set(u, state);
+      if (row && state === 'already_registered') row.already_registered = true;
+    });
+    mark(data.skipped, 'already_registered');
+    // Refused because another batch has them: left as importing, which that batch will settle.
+    (data.in_flight || []).forEach((u) => view.importState.set(u, 'importing'));
+    view.status = `Importing ${data.queued} repo(s) — watch the Activity log.`
+      + (data.skipped.length ? ` ${data.skipped.length} already registered, skipped.` : '')
+      + ((data.in_flight || []).length ? ` ${data.in_flight.length} already importing in another batch, left alone.` : '');
     view.statusIsError = false;
-    view.results = [];
     view.selected.clear();
-    // Import runs in a background thread (POST /api/discovery/import returns
-    // as soon as it's queued), same as classic — an immediate refresh would
-    // almost always race it, so give it a moment before pulling the sidebar
-    // up to date. Not a full poll loop: the dialog's own status line already
-    // told the user where to watch progress (the Activity log).
-    if (data.queued > 0) setTimeout(() => { refreshGroupsAndSidebar(); }, 4000);
+    batchId = data.batch_id || '';
+    if (batchId) noticeActivity([{ id: batchId, status: 'running' }]);
   } catch (err) {
+    selected.forEach((r) => view.importState.delete(r.html_url));
     view.status = `Failed to start import: ${err.message}`;
     view.statusIsError = true;
-  } finally {
-    view.busy = false;
+  }
+  if (!batchId) {
+    view.importing = false;
     render(el);
+    if (!view.statusIsError) refreshGroupsAndSidebar();
+    return;
+  }
+  render(el);
+  await followBatch(el, batchId);
+}
+
+/** Re-read the batch's persisted rows until it is done. Every time a repo finishes the sidebar's project list is
+ *  re-read (once per tick), and again when the batch ends — a single timed refresh used to fire before most repos
+ *  had registered. A failed read is retried on the next tick. */
+async function followBatch(el, batchId) {
+  const finished = new Set();
+  let finalRead = false;
+  for (let tick = 0; tick < importPollConfig.maxTicks && !finalRead; tick += 1) {
+    await new Promise((r) => setTimeout(r, importPollConfig.intervalMs));
+    let st;
+    try { st = await getImportStatus(batchId); } catch { continue; }
+    let newlyDone = false;
+    for (const [url, info] of Object.entries(st.repos || {})) {
+      view.importState.set(url, info.state);
+      if (info.state === 'imported' || info.state === 'already_registered') {
+        const row = view.results.find((r) => r.html_url === url);
+        if (row) row.already_registered = true;
+      }
+      if (info.state !== 'importing' && !finished.has(url)) { finished.add(url); newlyDone = true; }
+    }
+    finalRead = !!st.done;
+    if (finalRead) view.importing = false;
+    if (finalRead) view.status = st.summary || view.status;
+    if (finalRead) view.statusIsError = st.status === 'error';
+    if (el.isConnected) render(el);
+    if (newlyDone || finalRead) { try { await refreshGroupsAndSidebar(); } catch { /* the next tick retries */ } }
+  }
+  if (!finalRead) {                       // gave up following: say so, free the button
+    view.importing = false;
+    view.status = 'Still importing — see the Activity log for progress.';
+    view.statusIsError = false;
+    if (el.isConnected) render(el);
   }
 }
 
@@ -417,6 +527,21 @@ function bind(el) {
   }));
 
   el.querySelector('[data-act="search"]')?.addEventListener('click', () => runSearch(el));
+  el.querySelectorAll('[data-foundation]').forEach((b) => b.addEventListener('click', () => {
+    readFiltersFromDom(el);                       // keep what was typed in the other fields
+    const fd = (view.foundations || {})[b.dataset.foundation];
+    if (!fd) return;
+    if (b.getAttribute('aria-pressed') === 'true') {   // pressed again: clear what it filled, search nothing
+      view.filters.org = ''; view.filters.topic = '';
+      render(el);
+      return;
+    }
+    view.filters.org = fd.org || '';
+    view.filters.topic = fd.topic || '';
+    // runSearch reads the form back, so the form must hold the foundation's values first.
+    ['org', 'topic'].forEach((k) => { const inp = el.querySelector(`[data-f="${k}"]`); if (inp) inp.value = view.filters[k]; });
+    runSearch(el);
+  }));
 
   el.querySelector('[data-list-file]')?.addEventListener('change', async (e) => {
     const file = e.target.files && e.target.files[0];

@@ -202,6 +202,16 @@ class TestEndToEndIntegration:
 
         monkeypatch.setattr(vsp, "_shared_store", PgVectorStore(schema=pg_test_schema))
 
+        # RAGSystem._init_observability opens a MetricsCollector, whose
+        # METRICS_DATABASE_URL defaults to the SHARED Postgres (its own
+        # setting, separate from the registry's). Until 2026-10-05 this test
+        # wrote 'fixtureproj' rows into the shared query_log on every run.
+        # conftest now isolates the setting too; this is the explicit,
+        # test-local statement of it.
+        import resource_explorer.config as config_mod
+        monkeypatch.setenv("METRICS_DATABASE_URL", f"sqlite:///{tmp_path}/metrics.db")
+        config_mod._config = None
+
         cfg = get_config().pgvector
         test_url = (
             f"postgresql://{cfg.db_user}:{cfg.password}@{cfg.host}:{cfg.port}/{cfg.dbname}"

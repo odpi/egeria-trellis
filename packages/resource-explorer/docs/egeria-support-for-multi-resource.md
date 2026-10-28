@@ -233,7 +233,10 @@ curator must *declare* (design doc §14, "measured is not declared").
 `DataClassAnnotationProperties` has `specification` and
 `candidateDataClassGUIDs` (`:22-25`); `DataGrainAnnotationProperties` has
 `granularityBasis`, `grainStatement`, `interval`, `candidateDataGrainGUIDs`
-(`:22-27`). `RequestForActionProperties` (note: not
+(`:22-27`); `interval` is a Java `long` (a count in the grain's units), so
+RE's period word ("per-date", "monthly") goes in
+`additionalProperties.intervalName` instead (a word there was a 400, live
+2026-10-14). `RequestForActionProperties` (note: not
 `RequestForActionAnnotationProperties`) has `actionSourceName`,
 `actionRequested`, `actionProperties: Map<String,String>` (`:24-28`) plus
 inherited `dataType`, `matchingValues`, `nonMatchingValues`; its target
@@ -316,7 +319,7 @@ section's "type ask" tier did not account for:
   real-world counterpart." This is the direct element↔annotation link the
   `candidate…GUIDs` fields were working around with a plain property list.
 
-**Probes 4 and 5 run 2026-09-21 — see `docs/design-notes/PROBES-2026-09-21.md`
+**Probes 4 and 5 run 2026-09-21 — see `PROBES-2026-09-21.md`
 for the full write-up.** Answer: **yes** for probe 4 (corrected — see
 below), **yes** for probe 5.
 
@@ -459,7 +462,7 @@ it. `ConnectorActivityReport` (model 0457, `:4232`) records a connector's
 start, refresh and disconnect times and element counts, but **no outcome or
 error field**. `IntegrationReport` no longer exists.
 
-**Learned from probe 9 (2026-09-21, `design-notes/PROBES-2026-09-21.md`):**
+**Learned from probe 9 (2026-09-21, `PROBES-2026-09-21.md`):**
 a connection's existence says nothing about whether its secret resolves on
 the engine host. `coco_pharma`'s asset had a real `VirtualConnection` whose
 embedded `SecretsStoreConnection` still carried the literal
@@ -497,13 +500,13 @@ reversed — the project owner asked for this slice (Phase 1 slice #13) to
 proceed now. Probe 7/8 (below) are the "further tests" the deferral was
 waiting for; both ran live 2026-09-22. Built: `resource_reachability`
 (filesystem-scoped, not the fully polymorphic shape sketched above — see
-`docs/design-notes/RESOURCE-REACHABILITY-IMPLEMENTED.md` for why), the
+`RESOURCE-REACHABILITY-IMPLEMENTED.md` for why), the
 check (`resource_explorer/reachability.py`), and the classic-UI launcher
 sentence. The live run also surfaced a real, previously-unconfirmed gap:
 RE's own folder-cataloging path attaches no Connection to the Asset it
 creates, so this check reports `no_connection` for essentially every
 filesystem RE has cataloged today — see the design notes doc and
-`docs/design-notes/PROBES-2026-09-21.md`'s "Probes 7 and 8, run live"
+`PROBES-2026-09-21.md`'s "Probes 7 and 8, run live"
 section for the live evidence. Database reachability remains out of scope
 (not probed as part of this slice).
 

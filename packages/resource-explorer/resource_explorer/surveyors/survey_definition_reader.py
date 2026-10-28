@@ -25,13 +25,13 @@ import os
 import threading
 import time
 from dataclasses import dataclass, field
+from resource_explorer.config import egeria_platform_url, egeria_view_server  # noqa: E402,F401
 
 log = logging.getLogger(__name__)
 
 _DEFAULT_PLATFORM_URL = "https://localhost:9443"
 _DEFAULT_VIEW_SERVER = "qs-view-server"
 _DEFAULT_USER = "erinoverview"
-_DEFAULT_PASSWORD = "secret"
 
 # ── D2/D3 (docs/survey-question-context-plan.md): short-TTL, module-level
 # caches — SurveyDefinitionReader is constructed fresh per HTTP request
@@ -68,14 +68,36 @@ _CANDIDATES_CACHE_TTL_SECONDS = 300
 # find_candidate_process_guids_by_questions) — forever.
 _QUESTION_GUID_CALL_TIMEOUT_SECONDS = 15
 _question_guid_cache: dict[str, tuple[float, str | None]] = {}
+#: A `None` (not found, or not visible to THIS reader) is kept only briefly: the cache is shared, so one
+#: reader who cannot see a term must not take scoping away from everyone for an hour (caller identity round 3).
+_QUESTION_GUID_MISS_TTL_SECONDS = 60
+
+
+def _question_guid_fresh(cached, now: float) -> bool:
+    if cached is None:
+        return False
+    ttl = _QUESTION_GUID_CACHE_TTL_SECONDS if cached[1] else _QUESTION_GUID_MISS_TTL_SECONDS
+    return now - cached[0] < ttl
+# Keyed PER READER (caller identity, 2026-10-14): the first element of every candidates key, and of every
+# fetch / process-GUID key, is `SurveyDefinitionReader._reader_key()` (who Egeria answered). The full scan
+# lists every GovernanceActionProcess, including user-authored ones a deployment may zone, so one person's
+# answer is never served to another. The question-GUID cache stays shared: it holds only the GUIDs of RE's
+# own question glossary terms, seeded from RE's Dr.Egeria documents and never zoned.
 _candidates_cache: dict[tuple, tuple[float, list]] = {}
-_fetch_cache: dict[str, tuple[float, object]] = {}  # process_guid -> (cached_at, SurveyDefinition)
+_fetch_cache: dict[tuple, tuple[float, object]] = {}  # (reader, process_guid) -> (cached_at, SurveyDefinition)
 # qualified_name -> (cached_at, guid or None). A definition's GUID changes only
 # when it is re-published, and a None is cached too: "not published" is an
 # answer, and re-asking Egeria for it on every candidates call would put the
 # round trips back that the local lookup below removed.
-_process_guid_cache: dict[str, tuple[float, str | None]] = {}
+_process_guid_cache: dict[tuple, tuple[float, str | None]] = {}   # (reader, qualified_name) -> ...
 _PROCESS_GUID_CACHE_TTL_SECONDS = 3600
+
+
+def _bust_fetch_cache(process_guid: str) -> None:
+    """Drop every reader's cached graph for `process_guid` (and a bare-GUID key, if one was set)."""
+    for key in [k for k in list(_fetch_cache) if k == process_guid
+                or (isinstance(k, tuple) and len(k) == 2 and k[1] == process_guid)]:
+        _fetch_cache.pop(key, None)
 
 
 def clear_caches() -> None:
@@ -286,11 +308,15 @@ class SurveyDefinitionReader:
         view_server: str | None = None,
         user_id: str | None = None,
         user_password: str | None = None,
+        *,
+        identity=None,
     ) -> None:
-        self.platform_url = platform_url or os.getenv("EGERIA_PLATFORM_URL", _DEFAULT_PLATFORM_URL)
-        self.view_server = view_server or os.getenv("EGERIA_VIEW_SERVER", _DEFAULT_VIEW_SERVER)
+        self.platform_url = platform_url or egeria_platform_url()
+        self.view_server = view_server or egeria_view_server()
         self.user_id = user_id or os.getenv("EGERIA_USER", _DEFAULT_USER)
-        self.user_password = user_password or os.getenv("EGERIA_USER_PASSWORD", _DEFAULT_PASSWORD)
+        # Not used to authenticate (Brief I): who acts is `self.principal()`, via the factory.
+        self.user_password = user_password or ""
+        self._identity = identity
         self._governance_officer = None
         self._automated_curation = None
         self._classification_explorer = None
@@ -312,6 +338,29 @@ class SurveyDefinitionReader:
 
     # ── connection ────────────────────────────────────────────────────────────
 
+    def principal(self):
+        """Who this reader acts as: the identity it was given, else `current_principal()`,
+        resolved ONCE in the calling thread — the pooled lookups run on threads that carry no
+        ContextVar, so they read it from here."""
+        if self._identity is None:
+            from resource_explorer.egeria_clients import current_principal
+
+            self._identity = current_principal()
+        return self._identity
+
+    def _reader_key(self) -> tuple:
+        """Who Egeria answers for this reader: (kind, the account the client is built for). The first
+        element of every per-reader cache key (see the cache declarations)."""
+        p = self.principal()
+        return (p.kind, p.client_user or p.user_id)
+
+    def _clients(self, *, shared: bool = True):
+        from resource_explorer.egeria_clients import egeria_client
+
+        return egeria_client(self.principal(), purpose="survey definitions",
+                             view_server=self.view_server, platform_url=self.platform_url,
+                             shared=shared)
+
     def connect(self) -> None:
         """Establish pyegeria client connections (lazy)."""
         if self._governance_officer is not None:
@@ -325,15 +374,11 @@ class SurveyDefinitionReader:
             from pyegeria import AutomatedCuration
             from pyegeria.omvs.governance_officer import GovernanceOfficer
 
-            self._governance_officer = GovernanceOfficer(
-                self.view_server, self.platform_url, self.user_id, self.user_password
-            )
-            self._governance_officer.create_egeria_bearer_token(self.user_id, self.user_password)
-
-            self._automated_curation = AutomatedCuration(
-                self.view_server, self.platform_url, self.user_id, self.user_password
-            )
-            self._automated_curation.create_egeria_bearer_token(self.user_id, self.user_password)
+            clients = self._clients()
+            self._governance_officer = clients.of(GovernanceOfficer)
+            self._automated_curation = clients.of(AutomatedCuration)
+        except PermissionError:
+            raise
         except ImportError as exc:
             raise SurveyDefinitionReaderError("pyegeria is not installed.") from exc
         except Exception as exc:
@@ -350,9 +395,8 @@ class SurveyDefinitionReader:
         no matter which thread ends up constructing it."""
         from pyegeria.omvs.classification_explorer import ClassificationExplorer
 
-        client = ClassificationExplorer(self.view_server, self.platform_url, self.user_id, self.user_password)
-        client.create_egeria_bearer_token(self.user_id, self.user_password)
-        return client
+        # Its own (unshared) client: one per thread, per pyegeria ISSUE-96.
+        return self._clients(shared=False).of(ClassificationExplorer)
 
     def _connect_classification_explorer(self):
         """Lazy, separate from connect() — only the D2 scoped-query path
@@ -382,11 +426,17 @@ class SurveyDefinitionReader:
         ``_connect_classification_explorer`` — those callers are never
         invoked from the shared pool, so they never hit the cross-loop bug.
         """
-        client = getattr(self._thread_local_explorer, "client", None)
-        if client is not None:
-            return client
+        from resource_explorer.egeria_clients import identity_key
+
+        # Keyed by identity too: a pool thread serves many readers, and one person's client
+        # must never answer for another (Brief I).
+        key = identity_key(self.principal())
+        cached = getattr(self._thread_local_explorer, "client", None)
+        if cached is not None and getattr(self._thread_local_explorer, "key", None) == key:
+            return cached
         client = self._new_classification_explorer()
         self._thread_local_explorer.client = client
+        self._thread_local_explorer.key = key
         return client
 
     def _connect_metadata_expert(self):
@@ -398,8 +448,7 @@ class SurveyDefinitionReader:
             return self._metadata_expert
         from pyegeria.omvs.metadata_expert import MetadataExpert
 
-        client = MetadataExpert(self.view_server, self.platform_url, self.user_id, self.user_password)
-        client.create_egeria_bearer_token(self.user_id, self.user_password)
+        client = self._clients().of(MetadataExpert)
         self._metadata_expert = client
         return client
 
@@ -445,7 +494,7 @@ class SurveyDefinitionReader:
         it still deserves the same short-TTL cache rather than re-scanning
         every GovernanceActionProcess on every call.
         """
-        cache_key = ("full_scan", technology_type, survey_kind)
+        cache_key = (self._reader_key(), "full_scan", technology_type, survey_kind)
         now = time.monotonic()
         cached = _candidates_cache.get(cache_key)
         if cached is not None and now - cached[0] < _CANDIDATES_CACHE_TTL_SECONDS:
@@ -521,7 +570,7 @@ class SurveyDefinitionReader:
         hard failure — the caller falls back to the full scan)."""
         now = time.monotonic()
         cached = _question_guid_cache.get(question_display_name)
-        if cached is not None and now - cached[0] < _QUESTION_GUID_CACHE_TTL_SECONDS:
+        if _question_guid_fresh(cached, now):
             return cached[1]
 
         guid = self._lookup_question_guid(question_display_name)
@@ -570,6 +619,10 @@ class SurveyDefinitionReader:
         from concurrent.futures import TimeoutError as _FutureTimeoutError
 
         from resource_explorer.concurrency import run_sync
+
+        # Who, resolved HERE in the caller's thread (the pool thread has no ContextVar), and
+        # outside the swallow below: no caller is a 401, never "no such question".
+        self.principal()
 
         def _call():
             try:
@@ -767,6 +820,7 @@ class SurveyDefinitionReader:
         # pooled task never re-enters the pool. Concurrency is now the shared
         # pool's size (EXPLORER_SYNC_POOL_SIZE, default 8, which is what
         # _GUID_RESOLVE_WORKERS was) rather than a per-call ceiling.
+        self.principal()   # resolved in this thread; the pooled leaves read it from self
         futures = submit_all(self._resolve_one_pooled, rest)
 
         # Bounded overall, not per-future: the pool is shared and its size is
@@ -812,7 +866,7 @@ class SurveyDefinitionReader:
         """
         now = time.monotonic()
         cached = _question_guid_cache.get(question_display_name)
-        if cached is not None and now - cached[0] < _QUESTION_GUID_CACHE_TTL_SECONDS:
+        if _question_guid_fresh(cached, now):
             return cached[1]
         guid = self._lookup_question_guid(question_display_name)
         _question_guid_cache[question_display_name] = (now, guid)
@@ -858,11 +912,9 @@ class SurveyDefinitionReader:
             return self._find_candidates_via_egeria(questions, technology_type, survey_kind)
 
         wanted = list(dict.fromkeys(q for q in questions if q))
-        cache_key = ("local", tuple(wanted), technology_type, survey_kind)
-        now = time.monotonic()
-        cached = _candidates_cache.get(cache_key)
-        if cached is not None and now - cached[0] < _CANDIDATES_CACHE_TTL_SECONDS:
-            return cached[1]
+        # No candidates-level cache on this path (caller identity, 2026-10-14): the list is local documents
+        # filtered in memory, and the only Egeria answer in it (each definition's GUID) is already cached PER
+        # READER by `_process_guid_cached`. A reader is needed only when a document matches.
 
         candidates: list = []
         for name, doc in sorted(docs.items()):
@@ -889,16 +941,16 @@ class SurveyDefinitionReader:
                 "guid": guid,
                 "matched_questions": matched,
             })
-        _candidates_cache[cache_key] = (now, candidates)
         return candidates
 
     def _process_guid_cached(self, qualified_name: str) -> str | None:
         now = time.monotonic()
-        hit = _process_guid_cache.get(qualified_name)
+        key = (self._reader_key(), qualified_name)
+        hit = _process_guid_cache.get(key)
         if hit is not None and now - hit[0] < _PROCESS_GUID_CACHE_TTL_SECONDS:
             return hit[1]
         guid = self.find_process_guid_by_name(qualified_name)
-        _process_guid_cache[qualified_name] = (now, guid)
+        _process_guid_cache[key] = (now, guid)
         return guid
 
     def _find_candidates_via_egeria(
@@ -937,7 +989,7 @@ class SurveyDefinitionReader:
         if not question_guids:
             return []
 
-        cache_key = (tuple(sorted(g for _, g in question_guids)), technology_type, survey_kind)
+        cache_key = (self._reader_key(), tuple(sorted(g for _, g in question_guids)), technology_type, survey_kind)
         now = time.monotonic()
         cached = _candidates_cache.get(cache_key)
         if cached is not None and now - cached[0] < _CANDIDATES_CACHE_TTL_SECONDS:
@@ -1068,7 +1120,8 @@ class SurveyDefinitionReader:
         root cause.
         """
         now = time.monotonic()
-        cached = _fetch_cache.get(process_guid)
+        fetch_key = (self._reader_key(), process_guid)
+        cached = _fetch_cache.get(fetch_key)
         if cached is not None and now - cached[0] < _CANDIDATES_CACHE_TTL_SECONDS:
             return cached[1]
 
@@ -1085,7 +1138,7 @@ class SurveyDefinitionReader:
                 f"Unexpected response fetching Survey Definition graph for {process_guid}"
             )
         survey_def = self._parse_graph(graph)
-        _fetch_cache[process_guid] = (now, survey_def)
+        _fetch_cache[fetch_key] = (now, survey_def)
         return survey_def
 
     # ── reconciliation: fix Dr.Egeria's non-idempotent Link commands ──────────
@@ -1171,9 +1224,40 @@ class SurveyDefinitionReader:
                         "reconcile_step_links: failed to delete %s link %s -> %s (guid=%s): %s",
                         entry.reason, entry.prev_qualified_name, entry.next_qualified_name, entry.link_guid, exc,
                     )
-            _fetch_cache.pop(process_guid, None)
+            _bust_fetch_cache(process_guid)
 
         return result
+
+    # ── reconciliation: each step's executor (engine host case 3, decision 2) ──
+
+    def executor_drift(self, process_guid: str) -> list:
+        """REPORT-ONLY: each step's `GovernanceActionExecutor` against decision 2 of the case-3 slice (a step RE runs
+        has exactly one executor, to RE's engine, with its step key's request type). Reads live (bypasses the fetch
+        cache), writes nothing, never repairs: drift is a finding for a person. A step whose relationships cannot be
+        read is reported as such ("unreadable"), never as "missing"."""
+        from resource_explorer import engine_host
+        from resource_explorer.surveyors.survey_definition_reconciler import (
+            ExecutorDrift,
+            diff_executors,
+            executors_from_related,
+        )
+
+        _bust_fetch_cache(process_guid)
+        survey_def = self.fetch(process_guid)
+        expert = self._connect_metadata_expert()
+        out: list = []
+        for step in survey_def.steps:
+            key = step.re_analysis_step or step.qualified_name.rsplit("::", 1)[-1]
+            try:
+                executors = executors_from_related(expert.get_all_related_elements(step.guid, graph_query_depth=1))
+            except Exception as exc:  # noqa: BLE001 -- "could not tell" is its own finding, never "missing"
+                out.append(ExecutorDrift(step.qualified_name, key, "unreadable",
+                                         " ".join(f"{type(exc).__name__}: {exc}".split())[:200]))
+                continue
+            out.extend(diff_executors(step.qualified_name, key, step.executes_at, executors,
+                                      engine_qualified_name=engine_host.ENGINE_QUALIFIED_NAME,
+                                      expected_request_type=engine_host.request_type_for_step(key)))
+        return out
 
     # ── reconciliation: ScopedBy links vs. an authored document ─────────────
 

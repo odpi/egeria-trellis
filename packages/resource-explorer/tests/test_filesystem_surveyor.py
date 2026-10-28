@@ -8,6 +8,9 @@ from resource_explorer.registry import FileSystemEntity, ProjectRegistry, Projec
 from resource_explorer.surveyors.filesystem.local_filesystem_surveyor import LocalFileSystemSurveyor
 from resource_explorer.surveyors.filesystem.egeria_filesystem_surveyor import EgeriaFileSystemSurveyor
 
+# Brief I: these tests fake the Egeria clients; the code under test runs as a signed-in caller, as on a route.
+pytestmark = pytest.mark.usefixtures("signed_in_caller")
+
 
 def test_local_filesystem_surveyor_walk():
     # Setup temporary directory inside workspace for scanning
@@ -79,7 +82,7 @@ def test_egeria_filesystem_surveyor(mock_discovery_cls, mock_asset_maker_cls, mo
     mock_asset_maker = mock_asset_maker_cls.return_value
     mock_discovery = mock_discovery_cls.return_value
 
-    mock_autoc.get_guid_for_name.return_value = []
+    mock_autoc.get_guid_for_name.return_value = "No elements found"   # pyegeria's real miss
     mock_autoc.create_folder_element_from_template.return_value = "fs-folder-guid-123"
     mock_autoc.create_elem_from_template.return_value = "file-guid-456"
     mock_asset_maker.create_asset.return_value = "report-guid-789"

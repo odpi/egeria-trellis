@@ -178,8 +178,14 @@ logger = logging.getLogger(__name__)
 _GAP_PHRASING = {
     "never_run": "has not run",
     "nothing_found": "ran and found nothing — a real zero, not a missing result",
-    "not_established": "ran, but cannot be credited with this result",
+    "not_established": "ran · result not attributable",
     "partial": "ran over only part of what it covers",
+}
+
+#: The sentence offered on hover beside a gap's short cue word. The cue stays short
+#: ("ran · result not attributable"); the explanation is on demand.
+_GAP_EXPLANATION = {
+    "not_established": "it ran, but nothing shows this analysis produced the result",
 }
 
 
@@ -248,6 +254,21 @@ _STOPWORDS = frozenset({
 })
 
 
+#: Words that name the same thing as a catalog analysis's own vocabulary. "Are there outstanding CVEs?" is the
+#: catalog's question for cve_scan, so an asker who says "known security vulnerabilities" shared no token with it:
+#: cve_scan ranked on catalog position alone, fell below the section cap and was deferred (walk 2026-10-12).
+#: Applied to BOTH sides of the overlap, so the entries that already say "vulnerabilities" keep matching.
+_TOKEN_ALIASES = {
+    "vulnerability": "cve", "vulnerabilities": "cve", "vulnerable": "cve", "cves": "cve",
+    "advisory": "cve", "advisories": "cve",
+}
+
+
+def _tokens(text: str) -> set[str]:
+    import re
+    return {_TOKEN_ALIASES.get(t, t) for t in re.findall(r"[a-z0-9]+", text.lower())}
+
+
 def _question_relevance(question: str, catalog_question: str, analysis_ids: list[str]) -> float:
     """How much a catalog entry's own question and analysis ids overlap the
     free-text question actually asked, as a fraction of the asked question's
@@ -287,12 +308,12 @@ def _question_relevance(question: str, catalog_question: str, analysis_ids: list
     if re.sub(r"[^a-z0-9]+", " ", question.lower()).strip() == \
             re.sub(r"[^a-z0-9]+", " ", catalog_question.lower()).strip():
         return 1.0
-    q_tokens = set(re.findall(r"[a-z0-9]+", question.lower())) - _STOPWORDS
+    q_tokens = _tokens(question) - _STOPWORDS
     if not q_tokens:
         return 0.0
-    candidate_tokens = set(re.findall(r"[a-z0-9]+", catalog_question.lower()))
+    candidate_tokens = _tokens(catalog_question)
     for aid in analysis_ids:
-        candidate_tokens |= set(aid.split("_"))
+        candidate_tokens |= _tokens(aid.replace("_", " "))
     candidate_tokens -= _STOPWORDS
     return len(q_tokens & candidate_tokens) / len(q_tokens)
 
@@ -694,6 +715,127 @@ def _results_to_rungs(results: dict, analysis_id: str) -> dict[Rung, str]:
     return rungs
 
 
+#: Endpoint lines the model sees per rung. The FULL cap is generous (a service
+#: has tens of endpoints, not thousands; egeria_git has 1,596 and is cut with
+#: the extent said); SUMMARY is a visible prefix.
+MAX_ENDPOINTS_FULL = 120
+MAX_ENDPOINTS_SUMMARY = 20
+
+
+def _with_endpoints(rungs: dict[Rung, str], registry, slug: str):
+    """Add the endpoint LIST to interface_surface's rungs.
+
+    The findings give the model counts ("1869 registration(s) found"), and
+    the 1869 is mostly test mocks; the endpoints themselves are in
+    project_code_markers (resource_explorer/endpoints.py). Returns (rungs,
+    extents): extents is `{"endpoints": {"total", "shown"}}` for
+    manifest["lists"], only when there is a list to be partly shown.
+    A reader that fails adds a note-line, not silence."""
+    from resource_explorer.endpoints import read_endpoints, render_lines
+
+    spec = _spec_endpoints(rungs, registry, slug)
+    if spec is not None:
+        return spec
+    es = read_endpoints(registry, slug)
+    if es is None:
+        return rungs, {}
+    if not es.measured and not rungs:
+        return rungs, {}
+    heading = ("endpoint list (non-test code registrations from the code markers; derived from code, not a "
+               "published contract; it replaces the registration counts in the findings above, which include "
+               "test-path mocks)")
+    full = "\n".join([heading] + render_lines(es, MAX_ENDPOINTS_FULL))
+    summ = "\n".join([heading] + render_lines(es, MAX_ENDPOINTS_SUMMARY))
+    out = dict(rungs)
+    out[Rung.FULL] = (out[Rung.FULL] + "\n" + full) if Rung.FULL in out else f"## interface_surface\n{full}"
+    out[Rung.SUMMARY] = (out[Rung.SUMMARY] + "\n" + summ) if Rung.SUMMARY in out else f"## interface_surface\n{summ}"
+    out.setdefault(Rung.IDENTIFIERS, "## interface_surface\nchecks: endpoints")
+    extents = {}
+    if es.measured:
+        n = es.total
+        extents["endpoints"] = {"total": n, "shown": {
+            "FULL": min(n, MAX_ENDPOINTS_FULL), "SUMMARY": min(n, MAX_ENDPOINTS_SUMMARY)}}
+    return out, extents
+
+
+def _spec_endpoints(rungs: dict[Rung, str], registry, slug: str):
+    """interface_surface's endpoint block from the best DESCRIBED source (a committed spec, else a registered
+    running instance), saying which; None when only code (or nothing) is known, so the code path above runs.
+    The code-derived routes are then a one-line comparison, not a second list competing with the first."""
+    from resource_explorer.api_reference.compare import compare_interfaces
+    from resource_explorer.api_reference.derived import derive_from_code
+    from resource_explorer.api_reference.service import best_spec_interface, render_spec_lines, spec_heading
+    from resource_explorer.endpoints import read_endpoints
+
+    iface = best_spec_interface(registry, slug)      # stored reads; unreadable parts are logged and skipped there
+    if iface is None:
+        return None
+    derived = derive_from_code(registry, slug)
+    others = [compare_interfaces(iface, derived)] if derived is not None else []
+
+    def block(limit: int) -> str:
+        lines = [spec_heading(iface)] + render_spec_lines(iface, limit, others)
+        es = read_endpoints(registry, slug)
+        kinds: dict = {}
+        for e in (es.rows if es else []):
+            if e.kind != "http_api":
+                kinds[e.kind] = kinds.get(e.kind, 0) + 1
+        if kinds:
+            lines.append("- other registrations in code (not part of the HTTP API): "
+                         + ", ".join(f"{k} {v}" for k, v in sorted(kinds.items())))
+        return "\n".join(lines)
+
+    out = dict(rungs)
+    full, summ = block(MAX_ENDPOINTS_FULL), block(MAX_ENDPOINTS_SUMMARY)
+    out[Rung.FULL] = (out[Rung.FULL] + "\n" + full) if Rung.FULL in out else f"## interface_surface\n{full}"
+    out[Rung.SUMMARY] = (out[Rung.SUMMARY] + "\n" + summ) if Rung.SUMMARY in out else f"## interface_surface\n{summ}"
+    out.setdefault(Rung.IDENTIFIERS, "## interface_surface\nchecks: endpoints")
+    n = len(iface.operations)
+    return out, {"endpoints": {"total": n, "shown": {"FULL": min(n, MAX_ENDPOINTS_FULL),
+                                                      "SUMMARY": min(n, MAX_ENDPOINTS_SUMMARY)}}}
+
+
+MAX_CLASSES_FULL, MAX_CLASSES_SUMMARY = 60, 15
+MAX_FUNCTIONS_FULL, MAX_FUNCTIONS_SUMMARY = 40, 10
+
+
+def _with_symbols(rungs: dict[Rung, str], registry, slug: str, question: str):
+    """Add the symbol lists to api_structure's rungs: the question-matched
+    block first (classes the question names with their methods, or the
+    symbols under a module it names, or one line saying nothing matched),
+    then the public classes and top-level functions with N-of-M extents.
+    Counts alone ("5,937 symbols") gave the model nothing to list from
+    (resource_explorer/code_symbols.py)."""
+    from resource_explorer.code_symbols import TYPE_KINDS, left_out_tail, list_line, read_symbols, render_matched
+
+    ss = read_symbols(registry, slug)
+    if ss is None or not ss.measured:
+        return rungs, {}
+    classes = [s for s in ss.rows if s.kind in TYPE_KINDS]
+    funcs = [s for s in ss.rows if s.kind == "function" and not s.parent_class]
+    heading = ("symbol lists (public, non-test symbols from the stored code symbols; ordered by file then line; "
+               "public is inferred from naming)")
+    matched = render_matched(question, ss, ss.rows)
+    tail = left_out_tail(ss)
+
+    def block(nc: int, nf: int) -> str:
+        return "\n".join([heading] + matched + list_line("classes", classes, nc, tail)
+                         + list_line("top-level functions", funcs, nf))
+
+    out = dict(rungs)
+    full, summ = block(MAX_CLASSES_FULL, MAX_FUNCTIONS_FULL), block(MAX_CLASSES_SUMMARY, MAX_FUNCTIONS_SUMMARY)
+    out[Rung.FULL] = (out[Rung.FULL] + "\n" + full) if Rung.FULL in out else f"## api_structure\n{full}"
+    out[Rung.SUMMARY] = (out[Rung.SUMMARY] + "\n" + summ) if Rung.SUMMARY in out else f"## api_structure\n{summ}"
+    out.setdefault(Rung.IDENTIFIERS, "## api_structure\nreports: classes, top-level functions")
+    extents = {
+        "classes": {"total": len(classes), "shown": {"FULL": min(len(classes), MAX_CLASSES_FULL),
+                                                      "SUMMARY": min(len(classes), MAX_CLASSES_SUMMARY)}},
+        "functions": {"total": len(funcs), "shown": {"FULL": min(len(funcs), MAX_FUNCTIONS_FULL),
+                                                      "SUMMARY": min(len(funcs), MAX_FUNCTIONS_SUMMARY)}},
+    }
+    return out, extents
+
+
 #: Which analyses have a real, addressable view to point at. Deliberately
 #: narrow: Backlog "a compiled answer should be able to POINT at a view" notes
 #: deep-linking to a perspective/scope is the *prerequisite* work, and today
@@ -749,6 +891,8 @@ def _judge_gap(fact_layer, slug: str, analysis_id: str) -> dict:
         return gap
     gap["state"] = fact.state
     gap["reason"] = phrasing
+    if fact.state in _GAP_EXPLANATION:
+        gap["explanation"] = _GAP_EXPLANATION[fact.state]
     if fact.last_run_at:
         gap["last_run_at"] = fact.last_run_at
     if fact.can_run:
@@ -1002,6 +1146,7 @@ def compile_context(
         for analysis_id in ids:
             weights[analysis_id] = max(weights.get(analysis_id, 0.0), weight)
         derivation.append({
+            "question_id": entry.get("id", ""),
             "question": entry["question"],
             "matched_purposes": d.get("matched_purposes", []),
             "matched_perspectives": d.get("matched_perspectives", []),
@@ -1131,6 +1276,20 @@ def compile_context(
                         if extents:
                             list_extents[analysis_id] = extents
 
+        if analysis_id == "interface_surface":
+            rungs, ep_extent = _with_endpoints(rungs, registry, slug)
+            if ep_extent:
+                list_extents.setdefault(analysis_id, {}).update(ep_extent)
+            if rungs and not provenance:
+                provenance = ({"analysis_id": analysis_id, "check": None, "surveyed_at": None},)
+
+        if analysis_id == "api_structure":
+            rungs, sym_extent = _with_symbols(rungs, registry, slug, question)
+            if sym_extent:
+                list_extents.setdefault(analysis_id, {}).update(sym_extent)
+            if rungs and not provenance:
+                provenance = ({"analysis_id": analysis_id, "check": None, "surveyed_at": None},)
+
         if rungs and analysis_id in caveat_ids:
             rungs = _with_caveat(rungs, coverage["caveat"])
         sections.append(Section(analysis_id, role="evidence", weight=weight))
@@ -1223,3 +1382,272 @@ def compile_context(
         else:
             compiled.manifest["recorded"] = True
     return compiled
+
+
+def build_epistemological_matrix(
+    registry: ProjectRegistry,
+    slugs: list[str],
+    analyses: list[str] | None = None,
+) -> tuple[str, list[dict]]:
+    """Build an epistemological comparison matrix across multiple resource slugs.
+
+    Surfaces survey coverage and asymmetry explicitly using FactLayer states
+    (measured, nothing_found, never_run, partial, not_established).
+    Returns (markdown_table, matrix_records).
+    """
+    from resource_explorer.facts import (
+        FactLayer,
+        MEASURED,
+        NOTHING_FOUND,
+        NEVER_RUN,
+        PARTIAL,
+        NOT_ESTABLISHED,
+    )
+
+    if not slugs:
+        return "", []
+
+    slug_types: dict[str, str] = {}
+    for s in slugs:
+        norm = registry._normalize_slug(s)
+        if registry.get(norm):
+            slug_types[norm] = "repo"
+        elif registry.get_database(norm, allow_unreadable=True):
+            slug_types[norm] = "database"
+        elif registry.get_filesystem(norm):
+            slug_types[norm] = "filesystem"
+        else:
+            slug_types[norm] = "repo"
+
+    normalized_slugs = [registry._normalize_slug(s) for s in slugs]
+
+    if not analyses:
+        # Default core set covering repos, databases, and general health
+        analyses = [
+            "security_scan",
+            "license_classification",
+            "dependencies",
+            "project_stats",
+            "ci_quality",
+            "repo_conventions",
+            "architecture_recovery",
+            "schema_inventory",
+            "data_profiling",
+            "data_quality",
+        ]
+
+    matrix_records: list[dict] = []
+    lines: list[str] = []
+
+    # Markdown table header
+    header_cols = ["Dimension"] + [f"{s} ({slug_types[s]})" for s in normalized_slugs]
+    lines.append("| " + " | ".join(header_cols) + " |")
+    lines.append("| " + " | ".join(["---"] * len(header_cols)) + " |")
+
+    for analysis_id in analyses:
+        row_slugs: dict[str, dict] = {}
+        row_values: list[str] = []
+        has_any_data = False
+
+        for s in normalized_slugs:
+            rtype = slug_types[s]
+            fl = FactLayer(registry, resource_type=rtype)
+            fact = fl.fact(s, analysis_id)
+            state = fact.state
+            headline = fact.headline or fact.note
+
+            display_state = state.upper()
+            if state == MEASURED:
+                display_state = f"KNOWN ({headline[:35]}...)" if headline and len(headline) > 35 else f"KNOWN ({headline})" if headline else "KNOWN"
+                has_any_data = True
+            elif state == NOTHING_FOUND:
+                display_state = "KNOWN (0 / None found)"
+                has_any_data = True
+            elif state == NEVER_RUN:
+                display_state = "NEVER_RUN"
+            elif state == PARTIAL:
+                display_state = f"PARTIAL ({headline[:25]})" if headline else "PARTIAL"
+                has_any_data = True
+            elif state == NOT_ESTABLISHED:
+                display_state = "NOT_ESTABLISHED"
+
+            row_slugs[s] = {
+                "state": state,
+                "display": display_state,
+                "headline": headline,
+                "is_known": fact.is_known,
+            }
+            row_values.append(display_state.replace("|", "/"))
+
+        # Format dimension name
+        dim_name = analysis_id.replace("_", " ").title()
+        matrix_records.append({
+            "analysis_id": analysis_id,
+            "dimension": dim_name,
+            "slugs": row_slugs,
+        })
+        lines.append(f"| {dim_name} | " + " | ".join(row_values) + " |")
+
+    markdown_table = "\n".join(lines)
+    return markdown_table, matrix_records
+
+
+def compile_multi_resource_context(
+    registry: ProjectRegistry,
+    slugs: list[str],
+    question: str,
+    budget: int = 8000,
+    perspectives: list[str] | None = None,
+    purposes: list[str] | None = None,
+    target_model: str = "default",
+    session_id: str = "",
+    instructions_variant: str = "default",
+    max_sections_per_resource: int | None = None,
+) -> CompiledContext:
+    """Compile structured comparative context across two or more resources.
+
+    Partitions the prompt token budget proportionally across resources and
+    generates an epistemological asymmetry matrix comparing survey coverage.
+    """
+    if not slugs:
+        raise ValueError("At least one resource slug is required for context compilation.")
+
+    normalized_slugs = [registry._normalize_slug(s) for s in slugs]
+
+    # Single-resource fast path
+    if len(normalized_slugs) == 1:
+        slug = normalized_slugs[0]
+        rtype = "repo"
+        if registry.get_database(slug, allow_unreadable=True):
+            rtype = "database"
+        elif registry.get_filesystem(slug):
+            rtype = "filesystem"
+        return compile_context(
+            registry=registry,
+            slug=slug,
+            question=question,
+            budget=budget,
+            resource_type=rtype,
+            perspectives=perspectives,
+            purposes=purposes,
+            target_model=target_model,
+            session_id=session_id,
+            instructions_variant=instructions_variant,
+            max_sections=max_sections_per_resource,
+        )
+
+    # Multi-resource compilation
+    matrix_md, matrix_records = build_epistemological_matrix(registry, normalized_slugs)
+
+    # Allocate budget: reserve 20% for matrix, preamble, and cross-resource synthesis
+    reserved_budget = max(200, int(budget * 0.20))
+    evidence_budget = max(100, budget - reserved_budget)
+    per_resource_budget = max(100, evidence_budget // len(normalized_slugs))
+
+    compiled_list: list[CompiledContext] = []
+    slug_types: dict[str, str] = {}
+
+    for slug in normalized_slugs:
+        rtype = "repo"
+        if registry.get_database(slug, allow_unreadable=True):
+            rtype = "database"
+        elif registry.get_filesystem(slug):
+            rtype = "filesystem"
+        slug_types[slug] = rtype
+
+        c = compile_context(
+            registry=registry,
+            slug=slug,
+            question=question,
+            budget=per_resource_budget,
+            resource_type=rtype,
+            perspectives=perspectives,
+            purposes=purposes,
+            target_model=target_model,
+            session_id=session_id,
+            instructions_variant=instructions_variant,
+            max_sections=max_sections_per_resource,
+        )
+        compiled_list.append(c)
+
+    # Assemble combined text
+    text_parts: list[str] = [
+        "=== MULTI-RESOURCE EVIDENCE COMPILATION ===",
+        f"Target Resources: {', '.join(normalized_slugs)}\n",
+        "## Epistemological Coverage & Asymmetry Matrix",
+        "The following table compares survey findings and knowledge states across resources.",
+        "A state of 'KNOWN' indicates measured facts; 'NEVER_RUN' indicates unmeasured dimensions (do not assume absence).",
+        matrix_md,
+        "",
+    ]
+
+    for slug, c in zip(normalized_slugs, compiled_list):
+        text_parts.append(f"=== RESOURCE EVIDENCE: {slug} ({slug_types[slug]}) ===")
+        text_parts.append(c.text)
+        text_parts.append("")
+
+    combined_text = "\n".join(text_parts).strip()
+
+    # Create multi-resource compile ID
+    id_input = f"{':'.join(normalized_slugs)}|{budget}|" + "|".join(c.compile_id for c in compiled_list)
+    import hashlib
+
+    multi_compile_id = hashlib.sha256(id_input.encode("utf-8")).hexdigest()[:16]
+
+    total_used = sum(c.manifest.get("used", 0) for c in compiled_list) + len(matrix_md) // 4
+    all_gaps = []
+    for slug, c in zip(normalized_slugs, compiled_list):
+        for g in c.manifest.get("gaps", []):
+            gap_copy = dict(g)
+            gap_copy["resource_slug"] = slug
+            all_gaps.append(gap_copy)
+
+    all_notes = []
+    for slug, c in zip(normalized_slugs, compiled_list):
+        for n in c.manifest.get("notes", []):
+            all_notes.append(f"[{slug}] {n}")
+
+    combined_derivation = []
+    for slug, c in zip(normalized_slugs, compiled_list):
+        for d in c.derivation:
+            d_copy = dict(d)
+            d_copy["resource_slug"] = slug
+            combined_derivation.append(d_copy)
+
+    manifest = {
+        "compile_id": multi_compile_id,
+        "mode": "multi_resource",
+        "slugs": normalized_slugs,
+        "budget": budget,
+        "used": total_used,
+        "headroom": max(0, budget - total_used),
+        "coverage_matrix": matrix_records,
+        "per_resource": {slug: c.manifest for slug, c in zip(normalized_slugs, compiled_list)},
+        "gaps": all_gaps,
+        "notes": all_notes,
+        "instructions_variant": instructions_variant,
+    }
+
+    record = getattr(registry, "record_compile", None)
+    if callable(record):
+        try:
+            record(
+                multi_compile_id,
+                ",".join(normalized_slugs),
+                question,
+                manifest,
+                combined_derivation,
+                session_id=session_id,
+            )
+            manifest["recorded"] = True
+        except Exception as exc:
+            log.warning("could not record multi-compile %s: %s", multi_compile_id, exc)
+            manifest["notes"].append(f"compile not recorded ({type(exc).__name__})")
+            manifest["recorded"] = False
+
+    return CompiledContext(
+        text=combined_text,
+        compile_id=multi_compile_id,
+        manifest=manifest,
+        derivation=combined_derivation,
+    )

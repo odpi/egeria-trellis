@@ -25,7 +25,23 @@
 // and it goes when the experiment goes.
 import { listWorkLists, openWorkList, saveAsWorkList, openDialog, closeCellDetail, CELL }
   from '/static/next/worklist.js';
-import { ago, whenMs, verdictLineHtml, changedTimesHtml } from '/static/next/format.js';
+import { ago, whenMs, verdictLineHtml, changedTimesHtml, savedLine, readBackAt, PUBLISHED_EARLIER_SENTENCE, PUBLISHED_EARLIER_WORD } from '/static/next/format.js';
+// The one glyph table (REPLY-DESIGNER-ROUND2-DATABASE-SCREENS.md §1). `GLYPH`
+// and `factGlyph` below are thin views over `GLYPH_STATES` -- this file
+// declares no glyph-to-meaning mapping of its own any more.
+import { STATES as GLYPH_STATES, stateEntry } from '/static/next/glyphs.js';
+import { publishProofHtml } from '/static/next/publish-proof.js';
+// `readEnvelope` and its own private helpers used to live here directly;
+// split into their own module (BRIEF-KEYS-AND-ACTIVITY-CLOBBER.md §D,
+// 2026-09-27) so a node-run test can import `readEnvelope` and check it
+// against `facts.py`'s `_renders_text` without dragging in this file's own
+// top-level DOM/auth side effects. `esc`/`tnum` stay defined here and are
+// passed into `readEnvelope`/`answerHtml` as parameters, not imported back
+// (that would be circular) — see envelope.js's header comment.
+import {
+  readEnvelope, factMermaid, factGraphviz, prose, scalarMeasures, cap,
+  firstSentence, leadAnalysisId, answerHtml,
+} from '/static/next/envelope.js';
 // One module per stage (PLAN-FINISH-REPOS.md, Part 2 §1) — each exports its
 // own pane renderer(s); app.js keeps routing, shared state and the chrome.
 // Enrichment, Understanding, Curate, Automate, Investigation and (item 11)
@@ -36,15 +52,44 @@ import { ago, whenMs, verdictLineHtml, changedTimesHtml } from '/static/next/for
 // stage-specific code; Scouting for other reasons — see its own stub
 // header comment). Building one of them means adding real exports to its
 // stub file and one import line here — see
-// docs/design-notes/APP-JS-SPLIT-IMPLEMENTED.md. Investigation's stub
+// APP-JS-SPLIT-IMPLEMENTED.md. Investigation's stub
 // (`stages/investigation.js`) is no longer empty — it now ports classic's
 // Investigations tab (list/create/detail: members, dispositions,
 // next-steps, purposes, classification, Egeria bind/promote/sync/
 // reclassify) into /next; see that file's own header comment.
-import { renderEnrichment } from '/static/next/stages/enrichment.js';
-import { renderInvestigation, openInvestigationDetail } from '/static/next/stages/investigation.js';
-import { loadChartsPane } from '/static/next/stages/understanding.js';
-import { renderCurate } from '/static/next/stages/curate.js';
+// Enrichment's Context tab (ENRICHMENT-E1-CONTEXT-TAB) — the new first
+// sub-tab. The judgement/observation form (`renderEnrichment`,
+// `stages/enrichment.js`) used to render inline on the Questions tab
+// whenever `state.stage === 'enrichment'`; it now lives here instead (see
+// loadPane()'s `context` branch below and the Questions branch's own
+// comment on why `renderEnrichment` is no longer called from there).
+// `renderEnrichment`/`renderEnrichmentForm` stay exported from that module
+// (still called from within it, via `context.js`'s shared pieces) even
+// though app.js itself no longer calls `renderEnrichment` directly.
+import { renderContext } from '/static/next/stages/context.js';
+import { openApiReference } from '/static/next/stages/api-reference.js';
+import { inPageConfirm, inPageNotice, inPagePrompt } from '/static/next/confirm-dialog.js';
+import { scoutingTilesHtml, scoutingSignalHtml, staleLinkBannerHtml, bindStaleLinkBanner } from '/static/next/stages/repo-header.js';
+import { contextRecordedSpec, contextRecordedState } from '/static/next/context-recorded.js';
+import { followUntil, ACTIVITY_LIVE } from '/static/next/live-status.js';
+import { nativeSurveysSectionHtml, nativeSurveysUnreadableHtml, bindNativeSurveys, coordinateControlHtml, coordinateOffNoteHtml, bindCoordinateControls, definitionRunLineHtml, definitionRunsListHtml, bindRunLineControls, ownSurveyRows } from '/static/next/stages/native-surveys.js';
+// The row anatomy shared with Enrichment's judgements/observations rows
+// (ENRICHMENT-E0-ROW-ANATOMY, docs/design-notes/exchange/REPLY-DESIGNER-ENRICHMENT-
+// STAGE-IA.md §0.3/§6 item 1) — who + when + the evidence-moved flag, one
+// function, called from both stores' rows rather than reimplemented here.
+import { personRowLineHtml } from '/static/next/row-anatomy.js';
+import { renderInvestigation, openInvestigationDetail, refreshOpenInvestigation, openCreateDialog as openNewInvestigationDialog } from '/static/next/stages/investigation.js';
+import { openInvestigationPicker, scopeActWording } from '/static/next/investigation-picker.js';
+import { addActWording, addListToInvestigation, openStartFromList, START_LABEL } from '/static/next/worklist-actions.js';
+import { loadChartsPane, renderUnderstandingTabs } from '/static/next/stages/understanding.js';
+import { renderCurate, jumpToCurateSection } from '/static/next/stages/curate.js';
+import { coverageHtml } from '/static/next/stages/curate-coverage.js';
+// Stage-specific leading tabs (Brief S0, dormant): the gate and ids are a leaf module, the label counts and the
+// running-commit line need `state`.
+import { STAGE_TAB_ENTRIES, STAGE_TAB_IDS, isStageTabId, stageTabsOn } from '/static/next/stages/stage-tabs.js';
+import { tabCountsHtml, commitLineHtml, bindCommitLine } from '/static/next/stages/curate-tabs.js';
+import { inventoryHeaderText, nodeSourceLine, credentialLineText } from '/static/next/stages/scope-sources.js';
+import { surveySourceWord, threeNumberLine, fkTarget } from '/static/next/stages/db-report.js';
 // Analysis (RULING-SUBRESOURCES-PLACEMENT.md, 2026-09-22) -- Sub-Resources'
 // candidate-selection/catalogue UI, attached to sub_resource_survey's own
 // row in the Survey & analyses list below (analysisIndexRowHtml /
@@ -57,6 +102,9 @@ import { mountSubResourcePanel } from '/static/next/stages/analysis.js';
 // comment for why it lives at this level rather than under stages/.
 import { toggleRfaDrawer } from '/static/next/rfa.js';
 import { openActivityPanel } from '/static/next/stages/activity.js';
+import { noticeActivity } from '/static/next/stages/activity.js';
+import { startActivityWatch } from '/static/next/activity-unread.js';
+import { installHealthBanner, installBootstrapBanner, openConnectionPopover } from '/static/next/shell-status.js';
 import { renderAutomate } from '/static/next/stages/automate.js';
 // Admin (PLAN-FINISH-REPOS.md item 5) — chrome-level, same pattern as
 // Activity: reachable from the header's own ⚙ Admin button, decoupled from
@@ -83,7 +131,7 @@ import { openFindDbServersDialog } from '/static/next/db-server-discovery.js';
 // stage is active rather than one of the eight itself. See next/chat.js's
 // own header comment for the placement rule this follows and why it (unlike
 // rfa.js) imports state/esc/$ back from app.js.
-import { renderRail, renderRailScope } from '/static/next/chat.js';
+import { renderRail, renderRailScope, openQuestionTurn } from '/static/next/chat.js';
 import {
   ApiError,
   VALID_DISPOSITIONS,
@@ -98,9 +146,12 @@ import {
   getDeclaredVsReceived,
   getResourceRuns,
   getSurveyCandidates,
+  getNativeSurveys,
   listSurveyDefinitions,
   getAnalysesIndex,
   getSurveyDashboards,
+  listSurveyResultBoards,
+  getCurationCoverage,
   runSurveyDefinition,
   getMe,
   getMemberChildren,
@@ -116,7 +167,11 @@ import {
   promoteMembers,
   getQuestions,
   createSubscription,
+  saveSchedule,
+  getSchedules,
   getScoutingOverview,
+  getSurveySummary,
+  resolveEgeriaLink, listStaleLinkages,
   listActivity,
   listAnalyses,
   listDatabases,
@@ -131,23 +186,33 @@ import {
   listRfas,
   clearCache,
   pollActivity,
+  getActivityEntry,
+  activityFailure,
+  failureText,
   planPrerequisites,
   runPrerequisites,
   raiseCapabilityRfa,
   removeInvestigationMember,
-  removeProject,
   removeEntity,
-  runAnalysis,
+  runAnalysis, runAnalysisWithCredential,
   setDisposition,
   setEntityDisposition,
   getEntityDispositionHistory,
   setWorkingSetHidden,
   getContext,
+  getEnrichmentAnalysesMap,
   getJournal,
   questionKey,
+  requireKind,
   writeJournal,
   saveQuestionAnswer,
 } from '/static/re-api.js';
+import { CREDENTIAL_UNREADABLE_TEXT, credentialMarkHtml, isCredentialUnreadable } from '/static/next/credential.js';
+import { rememberedCredential, setRemembered } from '/static/next/run-credential.js';
+import { mountDependencyTable } from '/static/next/stages/dependencies.js';
+import { credentialChangeHtml, bindCredentialChange } from '/static/next/credential-change.js';
+import { installSessionBanner } from '/static/next/session-banner.js';
+import { isFreshnessSkip, offerRunAnyway, UP_TO_DATE_WORD } from '/static/next/run-anyway.js';
 
 /* ════════════════════════════════════════════════════════════════════════
  * State
@@ -155,6 +220,9 @@ import {
 
 export const state = {
   resourceType: 'repo',        // repo | db | filesystem
+  // The last survey launch's note ({slug, html}). Derived data, not a DOM append:
+  // loadSurveyPane() replaces #survey-note wholesale, so the note is drawn from here.
+  launchNote: null,
   projects: [],
   // Databases/filesystems are fetched lazily -- on first switch to that
   // sidebar chip, or on boot when the URL already names that type -- not
@@ -188,6 +256,9 @@ export const state = {
   questions: [],              // the stage's questions AFTER perspective filtering
   allQuestions: null,         // the stage's questions UNFILTERED; null = unknown
   answers: new Map(),          // question text -> envelope | {error} | 'loading'
+  // `${slug}|${analysisId}` -> failure text persisted by the finished run's own
+  // activity row; shown in the Survey & analyses row until the next run.
+  analysisRunFailures: new Map(),
   runsInFlight: new Map(),     // question text -> {analysisId, activityId}
   // §17.1 prerequisite proposals -- a run the resolver would not let start
   // unasked because it crosses the budget's tier. question -> {analysisId,
@@ -201,6 +272,8 @@ export const state = {
   // read once by `bodyLines` on the next render and deleted, so it reads as
   // what just happened rather than persisting as a stale caveat.
   autoRanNotes: new Map(),
+  // Questions whose "why is this here" disclosure the person opened (kept across a row redraw).
+  whyOpen: new Set(),
   me: null,
   counts: { activity: null, rfas: null },
   chat: [],                    // the transcript: one entry per turn
@@ -210,6 +283,17 @@ export const state = {
   workListSlug: null,          // the open one; the pane takes over when set
   lastWorkListSlug: null,      // the one you were last in, for the way back
   workListIndex: false,        // showing the list OF work lists
+  workListIndexNote: '',       // what the last add/start on the index said, shown once
+  lastRunStage: 'scouting',    // the run stage a list re-opens on after a frame-stage click closed it
+  scopeCount: null,            // members in the current investigation's scope, ALL kinds; null = unknown
+  // The question (its full text, the same key `wireHumanAnswers` already
+  // uses to look up `contextAnswers`) currently open for inline editing on
+  // the Questions tab -- '' means none. Replaces `window.prompt()`
+  // (ENRICHMENT-E0-ROW-ANATOMY): "Answer this ->"/"change" now open an
+  // inline control on the row itself, the same input+save pattern
+  // `stages/enrichment.js`'s judgement/observation fields already use,
+  // rather than a blocking popup with no author.
+  editingAnswer: '',
 };
 
 /** Three classes of nav item — RULING-NAV-GROUPING.md, answering a peer
@@ -223,8 +307,8 @@ export const state = {
  *  everywhere else) from this field rather than hardcoding a second list of
  *  which ids go where. The ruling is explicit that regrouping in the
  *  renderer while this array still called them "eight ordered intents"
- *  would be the same class of bug as `unbuilt` (DEFECT-UNBUILT-STAGES-
- *  RENDER-AS-BUILT.md — read in three places, set in none) and #130's
+ *  would be the same class of bug as `unbuilt` (DEFECT-UNBUILT-STAGES-RENDER-AS-BUILT.md — read in
+ *  three places, set in none) and #130's
  *  dashed-styling-independent-of-its-flag bug: declare the fact once,
  *  derive appearance from it.
  *
@@ -336,6 +420,22 @@ const RUN_ORDER = new Map(
  * unchanged in what it can say: still "not built in /next", just no longer
  * pretending to be a ninth stage's affordance. */
 const SUB_TABS = [
+  // Context (ENRICHMENT-E1-CONTEXT-TAB, 2026-09-29): Enrichment's new FIRST
+  // sub-tab and its default — everything a person has supplied about the
+  // resource, each row signed, dated, and saying what it feeds. Gated to
+  // the Enrichment stage via `stages`, the same shape `resourceTypes` gates
+  // Schema Inventory to databases below — a stage-specific LEADING tab, per
+  // the designer's reply §1 ("Schema Inventory is a type-specific extra
+  // tab, and Context follows the same pattern"). Every other stage's strip
+  // is unaffected: `subTabsHtml()`'s filter hides this tab entirely rather
+  // than greying it out, since it names something that literally does not
+  // exist off Enrichment (there is no per-stage "Context" content to defer
+  // to), unlike the dashed/deferred tabs below which name a real, just
+  // unbuilt, capability.
+  { id: 'context', label: 'Context', does: "Everything a person has supplied about this resource, each row signed, dated, and saying what it feeds", built: true, stages: ['enrichment'] },
+  // Curate's and Understanding's leading tabs (Brief S0). Hidden by visibleSubTabs() until stage-tabs.js's gate
+  // (STAGE_TABS_KINDS) names the resource kind, so the strip is unchanged while the gate is empty.
+  ...STAGE_TAB_ENTRIES,
   { id: 'questions', label: 'Questions', does: 'The question checklist', built: true },
   { id: 'survey', label: 'Survey & analyses', does: 'Survey definitions, with their fetch-step counts, and the analyses they run', built: true },
   { id: 'by_analysis', label: 'By analysis', does: 'Survey results grouped by analysis rather than by question', built: true },
@@ -553,14 +653,6 @@ export function feedbackVotesHtml({ theme = 'paper', dataAttr = '', dataValue = 
  * Reading an envelope — the honest part
  * ════════════════════════════════════════════════════════════════════════ */
 
-/** Fact states, from surveyors/result_status.py. */
-const MEASURED = 'measured';
-const NOTHING_FOUND = 'nothing_found';
-const NOT_ESTABLISHED = 'not_established';
-const NEVER_RUN = 'never_run';
-const NO_READER = 'no_reader';
-const PARTIAL = 'partial';
-
 /**
  * The row states from the design's legend. Each is a different SENTENCE,
  * never a different shade of the same one.
@@ -579,43 +671,93 @@ const PARTIAL = 'partial';
  * `no-surveyor` — nothing has run AND nothing can; no surveyor exists
  * `unclassified` — the catalog does not say how this would be answered
  */
-function rowState(entry, env) {
+export function rowState(entry, env) {
   const kind = entry.kind || 'unknown';
   if (kind === 'gap') return 'no-surveyor';
   if (kind === 'human') return 'human';
   if (kind === 'unknown') return 'unclassified';
   if (env && env.answerable) {
     if (env.level_mismatch) return 'partial';
+    if (needsLensDeclaration(env)) return 'needs-lens';
+    // A direct-field answer that is a known "nothing there" (every known
+    // fact `nothing_found`, e.g. an empty description) is ∅, not ✓.
+    const known = (env.facts || []).filter((f) => f.is_known);
+    if (kind === 'direct' && known.length && known.every((f) => f.state === 'nothing_found')) return 'nothing';
     return ['direct', 'registry', 'chart'].includes(kind) ? 'automatic' : 'answered';
   }
+  // A `direct`/`chart` row with no declared reader is NOT "not run" --
+  // `unrun` promises a real analysis exists and just has not been
+  // triggered yet, which is false here: nothing was ever built to answer
+  // this one. DATABASE-DIRECT-FIELD-ROWS-IMPLEMENTED.md (2026-09-29, owner
+  // live on laz_local_adventureworks / #8810): 11 database rows read
+  // `○ not run` for exactly this reason before this fix -- none of them
+  // had a surveyor at all. Mirrors facts.py's own `UNDECLARED_KINDS` table
+  // (`direct`, `chart`) -- the backend's "answerable from a field, but the
+  // catalog does not say which one machine-readably yet" classification.
+  // Apply this generally: any `direct`/`chart` row that is not answerable
+  // shows `◌ no reader`, never `○ not run` -- not only the 11 named above.
+  if (['direct', 'chart'].includes(kind)) return 'no_reader';
   return 'unrun';
+}
+
+/** REPLY-DESIGNER-ROUND2-DATABASE-SCREENS.md §2.4: `preliminary_fit`'s
+ *  `no_requirement_declared` verdict (`lens_declared: false`) is a real,
+ *  measured answer -- no lens was supplied, so fit is not a question this
+ *  credential can settle -- but it is a statement ABOUT THE LENS, not about
+ *  the resource (`compute_preliminary_fit`'s own docstring). Before this, a
+ *  question backed by `preliminary_fit` ticked ✓ on exactly this case: a
+ *  known fact with a real headline, `env.answerable` true, no level
+ *  mismatch -- indistinguishable from a genuine answer to `rowState`'s
+ *  existing checks. Checked directly against the fact's own value rather
+ *  than against `verdict === 'no_requirement_declared'` (a string this
+ *  module would otherwise have to keep in sync with db_derived.py's own
+ *  constant) -- `lens_declared` is the one field `compute_preliminary_fit`
+ *  sets specifically to answer "was there a lens to check against at all". */
+function needsLensDeclaration(env) {
+  return (env && env.facts ? env.facts : []).some(
+    (f) => f.analysis_id === 'preliminary_fit' && f.value && f.value.lens_declared === false,
+  );
 }
 
 /** Fully answered = a checkmark's worth of answer, not merely "something ran".
  *  A `level_mismatch` envelope has `answerable === true` (a real analysis DID
  *  run) but withholds the tick (design §18.3) -- callers that count or gate
  *  on "answered" must use this, not `env.answerable` alone, or the counter
- *  and the row glyph would disagree about the same envelope. */
+ *  and the row glyph would disagree about the same envelope.
+ *
+ *  The `preliminary_fit`/`lens_declared` check below is `needsLensDeclaration`'s
+ *  own predicate, inlined rather than called: `test_next_renders_text_cross_
+ *  check.py` extracts this function's source verbatim and runs it standalone
+ *  in node, so a call to a sibling helper defined elsewhere in this file
+ *  would be a dangling reference there. Keep both in sync by hand (same
+ *  reasoning `_renders_text`'s own docstring gives for its Python/JS pair). */
 function isFullyAnswered(env) {
-  return !!(env && env.answerable && !env.level_mismatch);
+  return !!(env && env.answerable && !env.level_mismatch && !(env.facts || []).some(
+    (f) => f.analysis_id === 'preliminary_fit' && f.value && f.value.lens_declared === false,
+  ));
 }
 
-const GLYPH = {
-  answered: '✓',
-  automatic: '✓',
-  unrun: '○',
-  partial: '◐',
-  human: '⚠',
-  'no-surveyor': '○',
-  unclassified: '·',
-  running: '◔',
-  error: '✕',
-  // §17.1 -- "this needs something else first, and it costs enough that it
-  // needs your yes." Same glyph classic uses (⏵) for the same reason: a
-  // proposal is a decision point, not a state of the world, so it earns its
-  // own mark rather than borrowing unrun's ○ or human's ⚠.
-  proposal: '⏵',
-};
+// The row states this screen distinguishes -- keys into `GLYPH_STATES`
+// (glyphs.js), which is where the glyph for each one is actually declared.
+// `no-surveyor` reads ◌ here now, not ○ -- REPLY-DESIGNER-ROUND2-DATABASE-
+// SCREENS.md §1: it used to share ○ with `unrun`, which the work-list grid
+// could only tell apart by colour, breaking the "colour is never the only
+// channel" rule. Any key missing from `GLYPH_STATES` would throw here on
+// module load, by design -- see `test_one_glyph_table.py`'s "no independent
+// literal glyph-to-meaning mapping" bar. `needs-lens` (§2.4) is the fit row's
+// own honest state -- same ⚠ family as `human`, its own word.
+const GLYPH_KEYS = [
+  'answered', 'automatic', 'nothing', 'unrun', 'partial', 'human', 'needs-lens', 'no-surveyor',
+  // `no_reader` (glyphs.js's RESERVED-for-G2/G3 entry, now claimed here):
+  // same ◌ glyph/family as `no-surveyor` ("no answer here"), its own word
+  // ("no reader") -- `no-surveyor` means no MECHANISM exists at all (a
+  // catalog `gap`); `no_reader` means a mechanism kind is declared
+  // (`direct`/`chart`) but no reader has been wired up for it yet. Distinct
+  // states, same reasoning as `unrun` vs `no-surveyor` already had.
+  'no_reader',
+  'unclassified', 'running', 'error', 'proposal',
+];
+const GLYPH = Object.fromEntries(GLYPH_KEYS.map((k) => [k, GLYPH_STATES[k].glyph]));
 
 /**
  * State colour, per ground.
@@ -628,15 +770,22 @@ const GLYPH = {
  * Two variants per role because one value cannot hold 4.5:1 against both a
  * paper and a chrome ground — see the measurement in tailwind-next.config.js.
  */
-const STATE_TONE = {
+// GLYPH-STATE-TONE-COLOR-FIX-IMPLEMENTED.md: the accent color means "you can
+// click this" (a control), and must never be used for a STATE. `partial`,
+// `human`/`needs-lens`, and `running` used to violate that here.
+export const STATE_TONE = {
   answered:      { paper: 'text-state-ok',    chrome: 'text-state-ok-on-dark' },
-  partial:       { paper: 'text-accent-ink',  chrome: 'text-accent-on-dark' },
+  partial:       { paper: 'text-state-warn',  chrome: 'text-state-warn-on-dark' },
   automatic:     { paper: 'text-state-ok',    chrome: 'text-state-ok-on-dark' },
+  nothing: { paper: 'text-state-ok', chrome: 'text-state-ok-on-dark' },
   unrun:         { paper: 'text-state-warn',  chrome: 'text-state-warn-on-dark' },
-  human:         { paper: 'text-accent-ink',  chrome: 'text-accent-on-dark' },
+  human:         { paper: 'text-ink',         chrome: 'text-chrome-ink' },
+  // Same role as `human` -- "needs your attention" -- §2.4's fit row.
+  'needs-lens':  { paper: 'text-ink',         chrome: 'text-chrome-ink' },
   'no-surveyor': { paper: 'text-state-gap',   chrome: 'text-state-gap-on-dark' },
+  no_reader:     { paper: 'text-state-gap',   chrome: 'text-state-gap-on-dark' },
   unclassified:  { paper: 'text-ink-muted',   chrome: 'text-chrome-muted' },
-  running:       { paper: 'text-accent-ink',  chrome: 'text-accent-on-dark' },
+  running:       { paper: 'text-ink-muted',   chrome: 'text-chrome-muted' },
   error:         { paper: 'text-state-warn',  chrome: 'text-state-warn-on-dark' },
   // Same role as `unrun`/`error` -- "needs your attention" -- because a
   // proposal IS an attention-needing decision, not a different flavour of
@@ -647,190 +796,31 @@ const STATE_TONE = {
 const tone = (st, ground = 'paper') =>
   (STATE_TONE[st] || STATE_TONE.unclassified)[ground];
 
-/** Verdict words the design sets at weight 600. Matched only at the head of
- *  a sentence and only when a separator follows, so a headline that merely
- *  starts with "No" as part of a phrase is left alone. Bolding the wrong
- *  word would assert a verdict the analysis did not make. */
-const VERDICT = /^(Yes|No|Partly|Partially|Likely|Unlikely|Mixed|Narrowly maintained|Actively maintained)(\s*[—–,-]\s+)/;
-
-/** Sentence case for a verdict word an analysis wrote in lower case. */
-function cap(s) { return s ? s.charAt(0).toUpperCase() + s.slice(1) : s; }
-
-function answerHtml(headline) {
-  const m = VERDICT.exec(headline);
-  if (!m) return tnum(esc(headline));
-  const rest = headline.slice(m[0].length);
-  return `<strong class="font-semibold">${esc(m[1])}</strong>${esc(m[2])}${tnum(esc(rest))}`;
-}
-
-/** The analysis's own prose, if it wrote any. Never assembled here. */
-function prose(f) {
-  const v = f.value || {};
-  const text = v.detail || v.summary || v.description || '';
-  return typeof text === 'string' ? text.trim() : '';
-}
-
-/** The scalar measures, relayed as `key value` pairs.
- *
- *  Deliberately last-resort. Structured fields (lists, objects) are NOT
- *  flattened into this line — they belong in `evidence`, where they can be
- *  read rather than skimmed. */
-function scalarMeasures(value, max = 6) {
-  if (!value || typeof value !== 'object') return '';
-  const pairs = [];
-  for (const [k, v] of Object.entries(value)) {
-    if (v === null || v === undefined || v === '') continue;
-    if (typeof v === 'object') continue;
-    if (k === 'verdict') continue;   // already used as the verdict word
-    const shown = typeof v === 'boolean' ? (v ? 'yes' : 'no') : String(v);
-    if (shown.length > 60) continue;
-    pairs.push(`${k.replace(/_/g, ' ')} ${shown}`);
-    if (pairs.length >= max) break;
-  }
-  return pairs.join(' · ');
-}
-
-/**
- * Turn an envelope into the lines a row shows.
- *
- * The rule this function exists to keep: a fact's state decides the SENTENCE,
- * not just an icon. `nothing_found` is knowledge — a measured zero — and says
- * so. `never_run` says nothing ran. `not_established` says the method could
- * not settle it. Folding any two of those together is the failure the
- * FactLayer was built to prevent, and it would be undone here.
- */
-function readEnvelope(entry, env) {
-  const facts = (env && env.facts) || [];
-  const known = facts.filter((f) => f.is_known);
-  const lines = {
-    answer: '', caveat: '', sources: [], lastRun: '', canRun: [],
-    // Analyses that measured something but have no written summary, so the
-    // answer line above is raw measures. Named, because the fix is a
-    // headline_reader on that analysis and nobody can act on "somewhere".
-    unwritten: [],
-    // True when at least one fact is known but no fact recorded WHEN it ran.
-    // Missing timestamp is a gap in the record, NOT evidence that nothing
-    // ran — printing "never run" here would report a fact about the row as
-    // a fact about the repository.
-    runTimeUnrecorded: false,
-  };
-
-  for (const f of facts) {
-    if (f.can_run && f.can_run.length) lines.canRun.push(...f.can_run);
-    if (f.analysis_id) lines.sources.push(f.analysis_id);
-    if (f.last_run_at && (!lines.lastRun || whenMs(f.last_run_at) > whenMs(lines.lastRun))) lines.lastRun = f.last_run_at;
-  }
-  lines.sources = [...new Set(lines.sources)];
-  lines.canRun = [...new Set(lines.canRun)];
-
-  // The answer, in preference order. Every rung RELAYS something the
-  // analysis wrote; none of them composes a verdict here.
-  //
-  //   1. `headline`  — the analysis's own summary sentence.
-  //   2. `value.detail` / `value.summary` — also its own prose, with
-  //      `value.verdict` as the bolded verdict word when it states one.
-  //   3. the scalar measures themselves, plus a caveat saying the analysis
-  //      has no written summary.
-  //
-  // Rung 3 exists because most analyses do not have a headline_reader wired
-  // up yet, and a row that shows a tick with nothing beside it is the exact
-  // shape this screen was built to stop: a claim of "answered" with no
-  // answer under it.
-  const sentences = [];
-  for (const f of known) {
-    if (f.state === NOTHING_FOUND && !f.headline && !prose(f)) {
-      // A measured zero. Said in words, because the bare number reads as
-      // "we didn't look".
-      sentences.push(tnum(esc(`${f.analysis_id} ran and found nothing.`)));
-      continue;
-    }
-    if (f.headline) { sentences.push(answerHtml(f.headline)); continue; }
-    const p = prose(f);
-    if (p) {
-      // The analysis's own verdict word, set at weight 600 like the design's
-      // "Yes". Marked up here rather than re-detected from the joined string
-      // downstream: this is the one place that knows the word came from a
-      // `verdict` field rather than from the first word of a sentence.
-      const verdict = f.value && f.value.verdict;
-      sentences.push(verdict
-        ? `<strong class="font-semibold">${esc(cap(String(verdict)))}</strong> — ${tnum(esc(p))}`
-        : tnum(esc(p)));
-      continue;
-    }
-    const scalars = scalarMeasures(f.value);
-    if (scalars) {
-      sentences.push(tnum(esc(scalars)));
-      lines.unwritten.push(f.analysis_id);
-    }
-  }
-  // NOTE: `lines.answer` is HTML, already escaped by each branch above.
-  // Do not run it through esc() or answerHtml() again downstream.
-  // Joined on ' · ', not ' '. Six analyses' sentences run together read as
-  // one broken sentence — "all 3 checks pass one contributor writes most of
-  // the code" — and a reader cannot tell where one claim ends. The separator
-  // makes the boundaries visible without deciding how the claims combine,
-  // which is the judgement still owed (Dashboard Round Three).
-  lines.answer = sentences.join(' · ');
-
-  // The caveat — the most important content on the screen. These sentences
-  // already exist in the survey output; they used to sit three panes away in
-  // the chat rail, which is not where the decision is made.
-  // A caveat on a multi-analysis row names its analysis, or it does not
-  // render (designer, SPEC-ACTIONABLE-AND-HONEST.md point 5): "This
-  // analysis ran and found nothing" reads as a claim about whichever
-  // number sits above it when three analyses answer one question, and it
-  // is usually a claim about a DIFFERENT one. `f.note` is the analysis's
-  // own prose, written as if it would be read alone -- attributed here,
-  // not rewritten, since the sentence itself is correct and only its
-  // referent was ambiguous.
-  const attribute = (f, text) => (facts.length > 1 ? `${f.analysis_id} — ${text}` : text);
-  const caveats = [];
-  for (const f of facts) {
-    if (f.note) caveats.push(attribute(f, f.note));
-    if (f.state === PARTIAL && !f.note) {
-      caveats.push(`${f.analysis_id} covered only part of what it measures.`);
-    }
-    if (f.state === NOT_ESTABLISHED && !f.note) {
-      caveats.push(`${f.analysis_id} ran but could not establish a result.`);
-    }
-  }
-  // A fact offered as evidence rather than as the answer says so, because
-  // whether a resource REPLACES something you already have is a decision
-  // about intent that no query settles.
-  if (known.some((f) => f.evidence_only)) {
-    caveats.push('Offered as evidence for a judgement, not as the judgement.');
-  }
-  lines.caveat = [...new Set(caveats)].join(' ');
-
-  // Which facts have NOT run, when some have. A partly-answered row that
-  // shows only the answered half is the confident-wrong-answer shape.
-  const unrun = facts.filter((f) => f.state === NEVER_RUN).map((f) => f.analysis_id);
-  if (known.length && unrun.length) {
-    lines.caveat = `${lines.caveat} ${unrun.join(', ')} ${unrun.length === 1 ? 'has' : 'have'} not run, so this answer is partial.`.trim();
-  }
-  if (lines.unwritten.length) {
-    lines.caveat = `${lines.caveat} ${lines.unwritten.join(', ')} ${
-      lines.unwritten.length === 1 ? 'has' : 'have'} no written summary — the figures above are the raw measures.`.trim();
-  }
-
-  lines.runTimeUnrecorded = known.length > 0 && !lines.lastRun;
-  lines.mermaid = factMermaid(env);
-
-  return lines;
-}
-
 /* ════════════════════════════════════════════════════════════════════════
  * Chrome
  * ════════════════════════════════════════════════════════════════════════ */
 
-function renderTopBar() {
-  $('scope-slug').textContent = state.selectedSlug || 'no resource selected';
+export function renderTopBar() {
+  // The name is the resource's menu button (REPLY-DESIGNER-RESOURCE-CONTROLS-
+  // PLACEMENT.md §1). `data-slug` carries the bare slug for feedback.js, which
+  // used to read it from the text; the text now also shows the "▾".
+  const slugEl = $('scope-slug');
+  slugEl.dataset.slug = state.selectedSlug || '';
+  slugEl.textContent = state.selectedSlug ? `${state.selectedSlug} ▾` : 'no resource selected';
+  slugEl.disabled = !state.selectedSlug;
+  slugEl.onclick = state.selectedSlug ? (e) => { e.stopPropagation(); toggleResourceMenu(); } : null;
+  // Whatever the menu or its panel was about is no longer on screen once the
+  // selection moves: a confirmation naming resource A must never outlive the
+  // switch to B.
+  if (!state.selectedSlug || $('resource-menu')?.dataset.slug !== state.selectedSlug) closeResourceMenu();
+  const panel = $('resource-controls-panel');
+  if (panel && panel.dataset.slug !== (state.selectedSlug || '')) panel.remove();
   // `data-entity-type` lets feedback.js's Questions-checklist "Was this
   // right?" bar (deliberately independent of this module, plain DOM reads
   // only) attribute an answer-feedback POST to the right resource type
   // without importing state itself. Kept alongside the slug it already reads
   // off this same element so the two can never fall out of sync.
-  $('scope-slug').dataset.entityType = apiEntityType(state.resourceType) || 'repo';
+  $('scope-slug').dataset.entityType = requireKind('renderTopBar', apiEntityType(state.resourceType));
   const inv = state.investigations.find((i) => i.slug === state.investigation);
   $('investigation-name').textContent = state.investigation
     ? (inv?.display_name || state.investigation)
@@ -858,14 +848,25 @@ function renderTopBar() {
   $('activity-count').textContent =
     state.counts.activity === null ? '–' : state.counts.activity;
   const link = $('switch-ui');
-  // Same resource in the other UI. index.html has no deep link for a
-  // selected repo, so this is the app root — named, so nobody thinks the
-  // selection carried over when it did not.
-  link.textContent = state.selectedSlug
-    ? '/next · open current UI'
-    : '/next · open current UI';
+  // Same resource in the Classic UI (`/classic?resource=` is read there).
+  link.textContent = 'Classic';
+  link.href = oldUiHref();
+  link.title = state.selectedSlug
+    ? 'Open this resource in the Classic UI'
+    : 'Open the Classic UI';
   wireActivityButton();
   wireAdminButton();
+  wireWhoamiButton();
+}
+
+/** The connection-details popover (PI-137): the signed-in user, which Egeria, and which build is serving. */
+let whoamiButtonWired = false;
+function wireWhoamiButton() {
+  if (whoamiButtonWired) return;
+  const btn = $('whoami');
+  if (!btn) return;
+  whoamiButtonWired = true;
+  btn.addEventListener('click', () => openConnectionPopover(document, btn, { me: state.me }));
 }
 
 /** Activity is a persistent header surface, not a STAGES entry (see
@@ -979,7 +980,7 @@ function navItemHtml(s, { number } = {}) {
     >${label}</button>`;
 }
 
-function renderIntentNav() {
+export function renderIntentNav() {
   const nav = $('intent-nav');
 
   // Three groups, read off `STAGES.class` — never a second hardcoded list of
@@ -1034,7 +1035,17 @@ function renderIntentNav() {
 
   nav.querySelectorAll('button[data-stage]').forEach((b) => {
     b.addEventListener('click', () => {
+      // A stage with leading tabs (stage-tabs.js) always opens on its first one, never on a sub-tab carried
+      // over from another stage (owner, 2026-10-11: no landing preference).
+      const enteringTabbed = b.dataset.stage !== state.stage && stageTabsOn(b.dataset.stage, state.resourceType);
       state.stage = b.dataset.stage;
+      if (stageClassOf(state.stage) === 'run') state.lastRunStage = state.stage;
+      // ENRICHMENT-E1-CONTEXT-TAB: "Enrichment opens on Context, Context tab
+      // is the default." Only redirects the module-level default
+      // ('questions') — a subTab the person deliberately chose on another
+      // stage (Survey & analyses, Disposition, ...) survives the switch
+      // unchanged, same as every other stage-to-stage navigation today.
+      if (enteringTabbed || state.subTab === 'questions') state.subTab = stageDefaultSubTab();
       writeUrl();
       renderIntentNav();
       loadPane();
@@ -1042,32 +1053,108 @@ function renderIntentNav() {
   });
 }
 
+/** A stage's class, read from `STAGES` — the one place it is declared. */
+function stageClassOf(id) {
+  return STAGES.find((s) => s.id === id)?.class;
+}
+
+/** A work list is a bench against one STAGE's questions, so it can only be
+ *  open on a run stage (REPLY-DESIGNER-WORK-LISTS-VS-INVESTIGATIONS.md §5).
+ *  Opening one while a frame or cross-cutting stage is showing moves to the
+ *  last run stage first; without that, `loadPane()` would close the list
+ *  again the moment it opened. */
+function ensureRunStageForList() {
+  if (stageClassOf(state.stage) === 'run') return;
+  state.stage = state.lastRunStage || 'scouting';
+  renderIntentNav();
+}
+
 /** The list OF work lists — the front door the matrix never had. */
+const WORK_LIST_DEFINITION =
+  'An investigation says why, and its scope says which resources, of any kind; '
+  + 'a work list is a bench: one kind of resource, laid out against one stage’s '
+  + 'questions, so you can decide which belong in a scope.';
+
+/** An investigation's name for display; the slug only when it is not loaded. */
+function investigationName(slug) {
+  if (!slug) return '';
+  return (state.investigations.find((i) => i.slug === slug) || {}).display_name || slug;
+}
+
+/** What the work-list actions need from the shell (worklist-actions.js). */
+function workListHost() {
+  return {
+    currentInvestigation: () => state.investigation,
+    investigations: () => state.investigations,
+    investigationName,
+    chooseInvestigationThen,
+    makeCurrent: (slug) => setInvestigation(slug),
+    refreshScope: async () => { await loadWorkingSet(); await refreshOpenInvestigation(state.investigation); renderSidebar(); },
+    refreshAfterStart: async () => {
+      await refreshInvestigationsAndSidebar();
+      try { state.workLists = await listWorkLists(); } catch { /* the sidebar keeps what it had */ }
+    },
+  };
+}
+
+/** The index's row actions: add the list's members, or start an investigation from it. */
+function bindWorkListIndexActions(el) {
+  const done = async (out) => {
+    try { state.workLists = await listWorkLists(); } catch { /* keep */ }
+    state.workListIndexNote = out.noteHtml;
+    renderSidebar();
+    await loadPane();
+  };
+  el.querySelectorAll('[data-wl-add]').forEach((b) => b.addEventListener('click', () => {
+    const list = state.workLists.find((w) => w.slug === b.dataset.wlAdd);
+    if (list) addListToInvestigation({ list, host: workListHost(), onDone: done });
+  }));
+  el.querySelectorAll('[data-wl-start]').forEach((b) => b.addEventListener('click', () => {
+    const list = state.workLists.find((w) => w.slug === b.dataset.wlStart);
+    if (list) openStartFromList({ list, host: workListHost(), onDone: done });
+  }));
+}
+
 function workListIndexHtml() {
-  if (!state.workLists.length) {
+  const { benches } = splitWorkLists();
+  const definition = `<p class="mb-s3 max-w-[70ch] text-answer text-ink" data-wl-definition>${esc(WORK_LIST_DEFINITION)}</p>`;
+  if (!benches.length) {
     return `${subTabsHtml()}
       <h3 class="m-0 font-heading text-name font-normal">No work lists yet</h3>
       <div class="my-s3 h-px bg-rule"></div>
+      ${definition}
       <p class="max-w-[70ch] text-answer text-ink">
-        A work list is a set of resources you compare as rows x questions, run a
-        survey across, and narrow down. Make one from the sidebar:
-        <strong>Select</strong>, tick some repos, then <strong>save as work list</strong>.
+        Make one from the sidebar:
+        <strong>Select</strong>, tick some resources, then <strong>save as work list</strong>.
       </p>`;
   }
   return `${subTabsHtml()}
     <h3 class="m-0 font-heading text-name font-normal">Work lists</h3>
     <div class="my-s3 h-px bg-rule"></div>
+    ${definition}
+    <div id="wl-index-note" class="mb-s2 text-caveat text-ink">${state.workListIndexNote || ''}</div>
     <div class="flex flex-col">
-      ${state.workLists.map((w) => `<button data-open-wl="${esc(w.slug)}"
-        class="cursor-pointer border-b border-rule bg-transparent py-s3 text-left hover:bg-accent-tint">
-        <div class="font-heading text-question font-semibold text-ink">${esc(w.display_name)}</div>
-        <div class="text-provenance text-ink-muted">
-          <span class="tnum">${w.member_count}</span> resources
-          ${w.investigation ? ` · ${esc(w.investigation)}` : ''}
-          ${w.derived_from ? ` · narrowed from ${esc(w.derived_from)}` : ''}
-          · ${w.egeria_guid ? 'published to Egeria' : 'not published'}
+      ${benches.map((w) => {
+        const wording = addActWording({ invName: investigationName(state.investigation), count: w.member_count });
+        return `<div class="border-b border-rule py-s3 hover:bg-accent-tint">
+        <button data-open-wl="${esc(w.slug)}"
+          class="block w-full cursor-pointer bg-transparent p-0 text-left">
+          <div class="font-heading text-question font-semibold text-ink">${esc(w.display_name)}</div>
+          <div class="text-provenance text-ink-muted">
+            <span class="tnum">${w.member_count}</span> resources
+            ${w.investigation ? ` · ${esc(investigationName(w.investigation))}` : ''}
+            ${w.derived_from ? ` · narrowed from ${esc(w.derived_from)}` : ''}
+            · ${w.egeria_guid ? 'published to Egeria' : 'not published'}
+          </div>
+        </button>
+        <div class="mt-s2 flex flex-wrap gap-s3 text-caveat">
+          <button data-wl-add="${esc(w.slug)}" title="${esc(wording.title)}"
+            class="cursor-pointer bg-transparent p-0 text-accent-ink underline">${esc(wording.label)}</button>
+          <button data-wl-start="${esc(w.slug)}"
+            class="cursor-pointer bg-transparent p-0 text-accent-ink underline">${esc(START_LABEL)}</button>
         </div>
-      </button>`).join('')}
+      </div>`;
+      }).join('')}
     </div>`;
 }
 
@@ -1091,7 +1178,7 @@ function renderWorkListNav() {
   const byslug = (sl) => state.workLists.find((w) => w.slug === sl);
   const open = state.workListSlug ? byslug(state.workListSlug) : null;
   const last = !open && state.lastWorkListSlug ? byslug(state.lastWorkListSlug) : null;
-  const n = state.workLists.length;
+  const n = splitWorkLists().benches.length;
   const active = Boolean(state.workListSlug || state.workListIndex);
 
   // TWO controls, because they are two jobs — not one control with two
@@ -1117,6 +1204,7 @@ function renderWorkListNav() {
   el.querySelector('[data-act="back-to-matrix"]')?.addEventListener('click', () => {
     state.workListSlug = state.lastWorkListSlug;
     state.workListIndex = false;
+    ensureRunStageForList();
     writeUrl(); renderSidebar(); loadPane();
   });
 }
@@ -1247,7 +1335,7 @@ export function tokens() {
 
 /** Load a vendored script once. Both are already in static/vendor. */
 const _scripts = new Map();
-function loadScript(src) {
+export function loadScript(src) {
   if (_scripts.has(src)) return _scripts.get(src);
   const p = new Promise((resolve, reject) => {
     const el = document.createElement('script');
@@ -1273,7 +1361,7 @@ function loadScript(src) {
  * graph there is unreadable. So the rail shows a marker and promotes.
  */
 export function answerForm(turn) {
-  if (turn.mermaid) return 'diagram';
+  if (turn.mermaid || turn.graphviz) return 'diagram';
   if (turn.chart) return 'chart';
   if (turn.listSources && turn.listSources.length) return 'list';
   return 'inline';
@@ -1436,13 +1524,14 @@ export function chartIsStale(dateStr) {
 // Part 2 §1) — imported below, alongside the other stage modules.
 
 /** Render one figure into the pane, themed from the token layer. */
-export async function drawChart(entry) {
-  const body = $('chart-body');
+export async function drawChart(entry, { bodyId = 'chart-body' } = {}) {
+  const body = $(bodyId);
+  const canvasId = bodyId === 'chart-body' ? 'chart-canvas' : `${bodyId}-canvas`;
   if (!body || !entry) return;
   body.innerHTML = `<div class="text-caveat text-ink-muted">Drawing ${esc(entry.label)}…</div>`;
   try {
     await loadScript('/static/vendor/plotly.min.js');
-    body.innerHTML = `<div id="chart-canvas" style="height:min(62vh,560px)"></div>
+    body.innerHTML = `<div id="${canvasId}" style="height:min(62vh,560px)"></div>
       <div class="mt-s2 text-provenance text-ink-muted">${esc(entry.label)} ·
         <span class="tnum">${entry.points}</span> observation(s) in
         <span class="tnum">${entry.traces}</span> series${
@@ -1455,7 +1544,7 @@ export async function drawChart(entry) {
       ${CHART_CAVEATS[entry.kind]
         ? `<div class="mt-s1 max-w-[70ch] text-caveat text-accent-ink">${esc(CHART_CAVEATS[entry.kind])}</div>`
         : ''}`;
-    await window.Plotly.newPlot($('chart-canvas'), timeAxisData(entry),
+    await window.Plotly.newPlot($(canvasId), timeAxisData(entry),
                                 chartLayout(chartAxes(entry)),
                                 { displaylogo: false, responsive: true });
   } catch (err) {
@@ -1472,7 +1561,7 @@ export async function drawChart(entry) {
  * sits in. `template: undefined` drops that default rather than fighting it
  * property by property.
  */
-function chartLayout(layout = {}) {
+export function chartLayout(layout = {}) {
   const t = tokens();
   const axis = (a = {}) => Object.assign({
     gridcolor: t.rule, zerolinecolor: t.rule, linecolor: t.rule,
@@ -1492,22 +1581,177 @@ function chartLayout(layout = {}) {
   });
 }
 
-/** The Mermaid source a fact carries, if it carries any.
- *
- *  `architecture_diagram` writes its source into the fact value, so the
- *  relationship question ("How do its components relate to each other?") has
- *  a real diagram sitting behind it. This is the product path to a diagram —
- *  a chat answer is not the only one, and wiring promotion ONLY to chat left
- *  the feature unreachable for anyone who had not asked a question first.
+/** Kroki (egeria-shared-kroki, port 6002) is an optional dependency for
+ *  every diagram this app renders — never assumed up. When it cannot be
+ *  reached, or answers with anything but 200, the diagram SOURCE (DOT or
+ *  Mermaid) is still real evidence and is offered as copyable text rather
+ *  than leaving a broken image or a bare error where a picture should be.
  */
-function factMermaid(env) {
-  for (const f of (env && env.facts) || []) {
-    const src = f.value && (f.value.mermaid || f.value.diagram);
-    if (typeof src === 'string' && src.trim()) {
-      return { source: src.trim(), analysisId: f.analysis_id, lastRun: f.last_run_at || '' };
+function renderRendererUnavailable(source, detail) {
+  const id = `diagram-src-${Math.random().toString(36).slice(2, 8)}`;
+  return `<div class="rounded-sm border border-rule-strong p-s3">
+      <div class="text-answer text-state-warn">renderer unavailable
+        — Kroki could not be reached${detail ? `: ${esc(String(detail))}` : ''}</div>
+      <div class="mt-s2 text-provenance text-ink-muted">The diagram source below is
+        unchanged and can still be read, or pasted into any Graphviz/Mermaid viewer.</div>
+      <button data-copy-target="${id}"
+        class="mt-s2 cursor-pointer rounded-sm border border-rule-strong bg-transparent
+               px-[10px] py-[4px] text-chip text-ink">copy as evidence</button>
+      <pre id="${id}" class="mt-s2 max-h-[40vh] overflow-auto whitespace-pre-wrap
+        text-provenance text-ink-muted">${esc(source)}</pre>
+    </div>`;
+}
+
+/** Wires up every `[data-copy-target]` button rendered by
+ *  `renderRendererUnavailable` inside `root` — copies the named element's
+ *  text to the clipboard, falling back silently (the text is already
+ *  visible and selectable) if the Clipboard API is unavailable. */
+function bindCopyTargets(root) {
+  root.querySelectorAll('[data-copy-target]').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const pre = root.querySelector(`#${btn.dataset.copyTarget}`);
+      if (!pre) return;
+      try {
+        await navigator.clipboard.writeText(pre.textContent || '');
+        const original = btn.textContent;
+        btn.textContent = 'copied';
+        setTimeout(() => { btn.textContent = original; }, 1500);
+      } catch { /* clipboard unavailable — text is still visible/selectable */ }
+    });
+  });
+}
+
+/**
+ * Fetch and render a Mermaid or Graphviz diagram (`turn.mermaid` /
+ * `turn.graphviz`) into `container` — server-side render via Kroki, pan/zoom
+ * wired up, extreme-aspect framing, dropped-style note. Extracted out of
+ * `promoteToPane`'s own diagram branch (BY-ANALYSIS-PROGRESSIVE-AND-GRAPH,
+ * 2026-09-28) so the By-analysis card body's inline Relationship Graph
+ * rendering and the Questions-tab Evidence rail's "open diagram in pane"
+ * path go through the exact same renderer — one implementation, two mount
+ * points — rather than the card growing its own copy of this logic.
+ * `uid` namespaces the inner `#<uid>-svg`/`#<uid>-note` ids so two mounts
+ * (e.g. a promoted pane behind a By-analysis card) never collide. */
+async function renderDiagramInto(container, turn, uid = 'promoted') {
+  const t = tokens();
+  // A Graphviz DOT source (the relationship graph) skips mermaidForKroki
+  // entirely — those transforms are Mermaid-specific escaping/cap rules
+  // that do not apply to DOT — and hits the sibling /graphviz endpoint.
+  const isGraphviz = !!turn.graphviz;
+  const endpoint = isGraphviz ? '/api/diagrams/graphviz' : '/api/diagrams/mermaid';
+  const source = isGraphviz ? turn.graphviz : mermaidForKroki(turn.mermaid).source;
+  const prepped = isGraphviz ? { source, droppedStyles: 0 } : mermaidForKroki(turn.mermaid);
+  // Server-side render via Kroki — the browser never loads mermaid.js
+  // (or a graphviz.js equivalent).
+  let res;
+  try {
+    res = await fetch(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ source }),
+    });
+  } catch (networkErr) {
+    // Kroki (or the network path to it) is down — not a bad diagram.
+    // The DOT/Mermaid source itself is still real evidence, so offer it
+    // as text rather than showing a blank/broken image.
+    container.innerHTML = renderRendererUnavailable(source, networkErr.message);
+    bindCopyTargets(container);
+    return;
+  }
+  if (!res.ok) {
+    let detail = res.statusText;
+    try { detail = (await res.json()).detail || detail; } catch { /* not JSON */ }
+    if (res.status === 502) {
+      // The backend's own "could not reach Kroki" / non-200-from-Kroki
+      // signal — same "renderer unavailable, not a broken diagram"
+      // treatment as a network-level failure above.
+      container.innerHTML = renderRendererUnavailable(source, detail);
+      bindCopyTargets(container);
+      return;
+    }
+    throw new ApiError(res.status, detail, endpoint);
+  }
+  // The endpoint returns the RAW SVG body as image/svg+xml, not JSON —
+  // it is a thin proxy to Kroki and hands back exactly what Kroki sent.
+  const raw = await res.text();
+  if (!raw.includes('<svg')) throw new Error('the renderer returned no SVG');
+
+  container.innerHTML = `
+    <div id="${uid}-svg" class="w-full overflow-hidden rounded-sm border border-rule-strong"
+      style="height:min(70vh,640px);background:${t.paper}">${raw}</div>
+    <div id="${uid}-note" class="mt-s2 text-provenance text-ink-muted"></div>`;
+
+  await loadScript('/static/vendor/svg-pan-zoom.min.js');
+  const svgEl = container.querySelector(`#${uid}-svg svg`);
+  const note = [];
+  if (svgEl) {
+    themeSvgElement(svgEl, t);
+    // Read the INTRINSIC size before touching it. These diagrams are
+    // extreme strips — the real one measures 14102 x 193, a 73:1 ratio —
+    // and forcing width AND height to 100% squashed it to an invisible
+    // sliver, which is what "blank space where the diagram should be"
+    // was. Let svg-pan-zoom own the sizing instead, and say how big the
+    // thing actually is so a flat-looking strip is not a surprise.
+    const vb = (svgEl.getAttribute('viewBox') || '').split(/[\s,]+/).map(Number);
+    const w = Math.round(vb[2] || svgEl.getBoundingClientRect().width);
+    const h = Math.round(vb[3] || svgEl.getBoundingClientRect().height);
+    svgEl.removeAttribute('width');
+    svgEl.removeAttribute('height');
+    svgEl.style.width = '100%';
+    svgEl.style.height = '100%';
+    svgEl.style.maxWidth = 'none';       // mermaid sets an inline max-width
+    if (window.svgPanZoom) {
+      const pz = window.svgPanZoom(svgEl, {
+        controlIconsEnabled: true, fit: true, contain: true, center: true,
+        minZoom: 0.05, maxZoom: 60,
+      });
+      // `fit` fits the LIMITING dimension, which for a 73:1 strip means
+      // fitting the width and leaving the diagram 8px tall — visually
+      // indistinguishable from an empty box, and exactly what "blank
+      // space where the diagram should be" looked like.
+      //
+      // For an extreme aspect the useful opening view is fit-to-HEIGHT
+      // with the left edge in view: nodes are legible and you pan
+      // sideways. Capped, so a pathological ratio cannot zoom to a pixel.
+      try {
+        const sz = pz.getSizes();
+        const vbW = sz.viewBox.width;
+        const vbH = sz.viewBox.height;
+        if (vbW && vbH && vbW / vbH > 4) {
+          const shownH = sz.width * (vbH / vbW);       // height after fit-to-width
+          const factor = Math.min(sz.height / shownH, 12);
+          if (factor > 1.2) {
+            pz.zoom(pz.getZoom() * factor);
+            // Let the library do the arithmetic. Computing the pan by
+            // hand put the content at y = -609 — above the box, zero
+            // nodes on screen, which measures as "53 nodes rendered at
+            // 96x39" and looks like an empty white panel. Centre, then
+            // move only the horizontal axis to the left edge.
+            pz.center();
+            pz.pan({ x: 0, y: pz.getPan().y });
+          }
+        }
+      } catch (e) {
+        // Pan/zoom tuning is a nicety; a diagram that opened badly
+        // framed still beats one that threw on the way in.
+        console.warn('could not frame the diagram:', e);
+      }
+    }
+    if (w && h) {
+      note.push(`<span class="tnum">${w}</span> × <span class="tnum">${h}</span> at full size`
+        + (w / h > 6 ? ' — a wide strip; scroll-zoom or use the controls' : ''));
     }
   }
-  return null;
+  if (prepped.droppedStyles) {
+    // Say what was given up, and why. A silently unstyled node is the
+    // kind of small loss this project keeps finding months later.
+    note.push(`<span class="text-accent-ink">the dashed “pending” styling on
+      <span class="tnum">${prepped.droppedStyles}</span> node(s) was dropped —
+      this renderer refuses a diagram that styles more than
+      <span class="tnum">${KROKI_MAX_CLASSED_NODES}</span></span>`);
+  }
+  const noteEl = container.querySelector(`#${uid}-note`);
+  if (noteEl) noteEl.innerHTML = note.join(' · ');
 }
 
 /** Render a promoted artefact in the content pane, at full width. */
@@ -1542,100 +1786,7 @@ export async function promoteToPane(turn) {
       await window.Plotly.newPlot(body, fig.data || [], chartLayout(fig.layout || {}),
                                   { displaylogo: false, responsive: true });
     } else if (form === 'diagram') {
-      const t = tokens();
-      const prepped = mermaidForKroki(turn.mermaid);
-      // Server-side render via Kroki — the browser never loads mermaid.js.
-      const res = await fetch('/api/diagrams/mermaid', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ source: prepped.source }),
-      });
-      if (!res.ok) {
-        let detail = res.statusText;
-        try { detail = (await res.json()).detail || detail; } catch { /* not JSON */ }
-        throw new ApiError(res.status, detail, '/api/diagrams/mermaid');
-      }
-      // The endpoint returns the RAW SVG body as image/svg+xml, not JSON —
-      // it is a thin proxy to Kroki and hands back exactly what Kroki sent.
-      const raw = await res.text();
-      if (!raw.includes('<svg')) throw new Error('the renderer returned no SVG');
-
-      body.innerHTML = `
-        <div id="promoted-svg" class="w-full overflow-hidden rounded-sm border border-rule-strong"
-          style="height:min(70vh,640px);background:${t.paper}">${raw}</div>
-        <div id="diagram-note" class="mt-s2 text-provenance text-ink-muted"></div>`;
-
-      await loadScript('/static/vendor/svg-pan-zoom.min.js');
-      const svgEl = body.querySelector('#promoted-svg svg');
-      const note = [];
-      if (svgEl) {
-        themeSvgElement(svgEl, t);
-        // Read the INTRINSIC size before touching it. These diagrams are
-        // extreme strips — the real one measures 14102 x 193, a 73:1 ratio —
-        // and forcing width AND height to 100% squashed it to an invisible
-        // sliver, which is what "blank space where the diagram should be"
-        // was. Let svg-pan-zoom own the sizing instead, and say how big the
-        // thing actually is so a flat-looking strip is not a surprise.
-        const vb = (svgEl.getAttribute('viewBox') || '').split(/[\s,]+/).map(Number);
-        const w = Math.round(vb[2] || svgEl.getBoundingClientRect().width);
-        const h = Math.round(vb[3] || svgEl.getBoundingClientRect().height);
-        svgEl.removeAttribute('width');
-        svgEl.removeAttribute('height');
-        svgEl.style.width = '100%';
-        svgEl.style.height = '100%';
-        svgEl.style.maxWidth = 'none';       // mermaid sets an inline max-width
-        if (window.svgPanZoom) {
-          const pz = window.svgPanZoom(svgEl, {
-            controlIconsEnabled: true, fit: true, contain: true, center: true,
-            minZoom: 0.05, maxZoom: 60,
-          });
-          // `fit` fits the LIMITING dimension, which for a 73:1 strip means
-          // fitting the width and leaving the diagram 8px tall — visually
-          // indistinguishable from an empty box, and exactly what "blank
-          // space where the diagram should be" looked like.
-          //
-          // For an extreme aspect the useful opening view is fit-to-HEIGHT
-          // with the left edge in view: nodes are legible and you pan
-          // sideways. Capped, so a pathological ratio cannot zoom to a pixel.
-          try {
-            const sz = pz.getSizes();
-            const vbW = sz.viewBox.width;
-            const vbH = sz.viewBox.height;
-            if (vbW && vbH && vbW / vbH > 4) {
-              const shownH = sz.width * (vbH / vbW);       // height after fit-to-width
-              const factor = Math.min(sz.height / shownH, 12);
-              if (factor > 1.2) {
-                pz.zoom(pz.getZoom() * factor);
-                // Let the library do the arithmetic. Computing the pan by
-                // hand put the content at y = -609 — above the box, zero
-                // nodes on screen, which measures as "53 nodes rendered at
-                // 96x39" and looks like an empty white panel. Centre, then
-                // move only the horizontal axis to the left edge.
-                pz.center();
-                pz.pan({ x: 0, y: pz.getPan().y });
-              }
-            }
-          } catch (e) {
-            // Pan/zoom tuning is a nicety; a diagram that opened badly
-            // framed still beats one that threw on the way in.
-            console.warn('could not frame the diagram:', e);
-          }
-        }
-        if (w && h) {
-          note.push(`<span class="tnum">${w}</span> × <span class="tnum">${h}</span> at full size`
-            + (w / h > 6 ? ' — a wide strip; scroll-zoom or use the controls' : ''));
-        }
-      }
-      if (prepped.droppedStyles) {
-        // Say what was given up, and why. A silently unstyled node is the
-        // kind of small loss this project keeps finding months later.
-        note.push(`<span class="text-accent-ink">the dashed “pending” styling on
-          <span class="tnum">${prepped.droppedStyles}</span> node(s) was dropped —
-          this renderer refuses a diagram that styles more than
-          <span class="tnum">${KROKI_MAX_CLASSED_NODES}</span></span>`);
-      }
-      const noteEl = $('diagram-note');
-      if (noteEl) noteEl.innerHTML = note.join(' · ');
+      await renderDiagramInto(body, turn, 'promoted');
     } else {
       body.innerHTML = `<div class="whitespace-pre-wrap text-answer text-ink">${tnum(esc(turn.answer || ''))}</div>`;
     }
@@ -1828,7 +1979,7 @@ function markKeyHtml() {
     <div class="mb-[4px] uppercase tracking-caps text-chrome-muted">Lifecycle</div>
     ${row('sparkles', 'new', 'registered, not surveyed')}
     ${row('bar-chart-2', 'surveyed', 'has survey results')}
-    ${row('cloud', 'published', 'in the Egeria catalog')}
+    ${row('cloud', 'published', 'in Egeria')}
     <div class="mb-[4px] mt-s2 uppercase tracking-caps text-chrome-muted">Disposition</div>
     ${Object.entries(DISPOSITION_ICON).map(([d, ic]) => row(ic, d, '')).join('')}
     <div class="mt-[3px] text-chrome-muted">undecided has no mark</div>
@@ -1845,9 +1996,26 @@ function markKeyHtml() {
 // to the old-UI-link stub below (see Backlog.md).
 const FIND_TITLE = {
   repo: 'Find and import candidate repos',
-  db: 'Discover databases on a registered server',
+  db: 'Find databases',
   filesystem: 'Register a filesystem path',
 };
+
+/** The Find action's visible words, by the kind shown (REPLY-DESIGNER-
+ *  RESOURCE-CONTROLS-PLACEMENT.md §6). Find is rare and its meaning changes
+ *  with the chip beside it, so it carries a label. "File system", never "file
+ *  share". File systems have no discovery yet, so the button says what it does
+ *  today: add one by hand. */
+const FIND_LABEL = {
+  repo: '＋ Find repos',
+  db: '＋ Find databases',
+  filesystem: '＋ Add a file system',
+};
+function findButtonHtml(inRow = false) {
+  const title = FIND_TITLE[state.resourceType] || FIND_TITLE.repo;
+  return `<button data-act="find-repos" title="${esc(title)}"
+    class="${inRow ? 'ml-auto' : ''} cursor-pointer rounded-sm border border-accent bg-transparent px-2 py-[1px] text-accent-on-dark"
+    >${esc(FIND_LABEL[state.resourceType] || FIND_LABEL.repo)}</button>`;
+}
 
 // Sidebar group collapse — persisted the same way classic's does (a JSON
 // array of collapsed group slugs in localStorage), but under its own key so
@@ -1934,7 +2102,13 @@ function visibleRows() {
   return state.resourceType === 'repo' ? visibleProjects() : visibleNonRepoRows();
 }
 
-function renderSidebar() {
+/** True when the currently selected resource is a database whose stored
+ *  credential cannot be read: its survey/Run controls are disabled. */
+function selectedCredentialUnreadable() {
+  return state.resourceType === 'db' && isCredentialUnreadable(selectedProject());
+}
+
+export function renderSidebar() {
   const el = $('sidebar');
   const types = [
     { id: 'repo', label: 'Repos' },
@@ -1970,6 +2144,12 @@ function renderSidebar() {
   const loaded = state.resourceType === 'repo' ? true
     : state.resourceType === 'db' ? state.databasesLoaded : state.filesystemsLoaded;
   const nonRepoLabel = state.resourceType === 'db' ? 'database' : 'filesystem';
+  // The list is narrowed to a facet (a disposition chip, "In scope") or a text
+  // filter: the most common reason to act on many is "everything I marked
+  // ignored", so the count line offers to select exactly those.
+  const facetFiltered = state.dispositionFacet !== 'all'
+    || !!state.filter.trim()
+    || (state.resourceType === 'repo' && !!state.scope);
 
   // Grouped by the resource's group. Group display names come from the
   // groups endpoint; a resource with no group lands in Ungrouped. Generic
@@ -1997,10 +2177,7 @@ function renderSidebar() {
   el.innerHTML = `
     <div class="mb-s2 flex items-center gap-[5px] text-chip">
       ${types.map((t) => `<button data-type="${t.id}" class="${chip(state.resourceType === t.id).replace('rounded-pill', 'rounded-sm')}">${t.label}</button>`).join('')}
-      <button data-act="find-repos" title="${esc(FIND_TITLE[state.resourceType] || FIND_TITLE.repo)}"
-        aria-label="${esc(FIND_TITLE[state.resourceType] || FIND_TITLE.repo)}"
-        class="ml-auto cursor-pointer bg-transparent text-chrome-muted hover:text-chrome-ink"
-        >${icon('circle-plus', { size: 14 })}</button>
+      ${findButtonHtml(true)}
       <button data-act="mark-key" title="What the marks in this list mean"
         aria-label="What the marks in this list mean"
         class="cursor-pointer bg-transparent text-chrome-muted hover:text-chrome-ink"
@@ -2009,6 +2186,7 @@ function renderSidebar() {
     ${state.showMarkKey ? markKeyHtml() : ''}
 
     ${investigationBarHtml()}
+    ${workListsSidebarHtml()}
 
     <input id="resource-filter" placeholder="Filter ${
       state.resourceType === 'repo' ? 'repos' : state.resourceType === 'db' ? 'databases' : 'filesystems'}…" value="${esc(state.filter)}"
@@ -2044,30 +2222,21 @@ function renderSidebar() {
     </div>
 
     <div class="mb-s3 flex flex-wrap items-baseline gap-s2 text-caps text-chrome-muted">
-      <button data-act="select-mode" class="cursor-pointer bg-transparent ${
-        state.selectMode ? 'text-accent-on-dark' : 'text-chrome-muted hover:text-chrome-ink'}"
-        >${state.selectMode ? '☑ Selecting' : '☐ Select'}</button>
+      <button data-act="select-mode" class="cursor-pointer rounded-sm border bg-transparent px-2 py-[1px] ${
+        state.selectMode ? 'border-accent text-accent-on-dark' : 'border-chrome-line text-chrome-ink hover:border-accent'}"
+        title="Tick several resources and act on all of them. Shift-click or ⌘/Ctrl-click a row to start."
+        >${state.selectMode ? 'Done selecting' : 'Select several…'}</button>
       ${hiddenCount ? `<button data-act="show-hidden" class="cursor-pointer bg-transparent ${
         state.showHidden ? 'text-accent-on-dark' : 'text-chrome-muted hover:text-chrome-ink'}"
         >Show hidden <span class="tnum">${hiddenCount}</span></button>` : ''}
-      <span class="ml-auto"><span class="tnum">${visible.length}</span> shown</span>
+      <span class="ml-auto"><span class="tnum">${visible.length}</span> shown${
+        facetFiltered && visible.length
+          ? ` · <button data-act="select-these" class="cursor-pointer bg-transparent p-0 text-chrome-ink underline"
+              >select these <span class="tnum">${visible.length}</span></button>` : ''}</span>
     </div>
 
     ${state.selectMode ? selectActionsHtml() : ''}
 
-    ${state.workLists.length ? `
-      <div class="mb-[7px] font-heading uppercase tracking-caps text-caps text-chrome-muted">
-        Work lists · <span class="tnum">${state.workLists.length}</span>
-      </div>
-      <div class="mb-s4 flex flex-col gap-[1px]">
-        ${state.workLists.map((w) => `<button data-worklist="${esc(w.slug)}"
-          class="cursor-pointer truncate bg-transparent px-2 py-[5px] text-left ${
-            w.slug === state.workListSlug
-              ? 'border-l-2 border-accent bg-chrome-surface text-chrome-ink'
-              : 'border-l-2 border-transparent text-chrome-ink hover:bg-chrome-surface'}"
-          >${esc(w.display_name)} <span class="tnum text-chrome-muted">${w.member_count}</span>${
-            w.egeria_guid ? ` ${icon('cloud', { size: 12, cls: 'text-state-ok-on-dark', title: 'Published to Egeria' })}` : ''}</button>`).join('')}
-      </div>` : ''}
 
     ${!loaded ? `
       <div class="text-chip text-chrome-ink">Loading ${nonRepoLabel}s…</div>`
@@ -2075,7 +2244,8 @@ function renderSidebar() {
       <div class="text-chip text-chrome-ink">${
         currentResourceRows().length
           ? 'Nothing matches these filters.'
-          : state.resourceType === 'repo' ? 'Nothing matches these filters.' : `No ${nonRepoLabel}s registered.`}</div>`
+          : state.resourceType === 'repo' ? 'Nothing matches these filters.'
+          : `No ${nonRepoLabel}s registered. ${findButtonHtml()}`}</div>`
     : [...groups.entries()].sort((a, b) => groupName(a[0]).localeCompare(groupName(b[0]))).map(([g, rows]) => {
         const memberSlugs = rows.map((p) => p.slug);
         const selectedHere = memberSlugs.filter((sl) => state.selected.has(sl)).length;
@@ -2101,7 +2271,7 @@ function renderSidebar() {
             ${lifecycleMark(p)}${dispositionMark(p)}
             <button data-slug="${esc(p.slug)}"
               class="min-w-0 flex-1 cursor-pointer truncate bg-transparent text-left text-chrome-ink"
-              >${esc(p.display_name || p.slug)}</button>
+              >${esc(p.display_name || p.slug)}${credentialMarkHtml(p, 'block text-provenance')}</button>
             ${p.working_set_hidden
               ? icon('eye-off', { size: 13, cls: 'text-chrome-muted', title: 'Hidden from your list — a view preference, not a verdict' })
               : ''}
@@ -2116,6 +2286,23 @@ function renderSidebar() {
   `;
 
   bindSidebar();
+}
+
+/** Select ONE resource of a given type from outside the sidebar (chat's "Ask about <other resource>").
+ *  Switches the type first when it differs, then selects the slug, and returns whether the selection
+ *  is now what was asked for -- read back from `state`, so the caller never assumes the switch took. */
+export async function selectResourceFromChat(type, slug) {
+  if (state.resourceType !== type) await switchResourceType(type);
+  const rows = currentResourceRows();
+  if (!rows.some((r) => r.slug === slug)) return false;
+  state.workListSlug = null;
+  state.selectedSlug = slug;
+  renderSidebar();
+  writeUrl();
+  renderTopBar();
+  renderRailScope();
+  loadPane();
+  return state.selectedSlug === slug && state.resourceType === type;
 }
 
 /** Switch the sidebar's resource-type chip: fetches that type's list on
@@ -2140,6 +2327,13 @@ async function switchResourceType(type) {
   renderSidebar();
   writeUrl();
   await ensureResourceListLoaded(type);
+  // state.analyses is otherwise only ever fetched once, in start() -- for the
+  // type it happened to be at boot. Same bug class as boot's own
+  // listAnalyses('repo') hardcode just above: without this, switching from
+  // repo to database/filesystem (or back) leaves trendSupport()/openWorkList()
+  // reading the WRONG entity type's analysis catalog after the very first
+  // switch, silently, since analysis ids can collide across catalogs.
+  state.analyses = await listAnalyses(apiEntityType(type)).catch(() => state.analyses);
   const rows = currentResourceRows();
   if (!rows.some((r) => r.slug === state.selectedSlug)) {
     state.selectedSlug = rows[0]?.slug || null;
@@ -2158,7 +2352,7 @@ async function switchResourceType(type) {
  * create/delete/assign, all real writes to group_slug) needs the sidebar's
  * grouping to reflect what it just changed rather than staying stale until
  * a full page reload, so it imports and calls this after each write. See
- * docs/design-notes/GROUPS-ADMIN-IMPLEMENTED.md. Admin → Groups assigns
+ * GROUPS-ADMIN-IMPLEMENTED.md. Admin → Groups assigns
  * groups to databases and filesystems too (admin/groups.js's own
  * listDatabases()/listFilesystems() calls), so this also refreshes
  * whichever of those two this session has already fetched -- not
@@ -2179,38 +2373,83 @@ export async function refreshGroupsAndSidebar() {
   renderSidebar();
 }
 
-/** The Select-mode action bar. Every action here is a bulk write, so each
- *  says plainly what it touches — "remove from scope" and "delete" differ by
- *  everything, and the current UI's own tooltips are the wording. */
+/** What a kind is called on screen, singular and plural (REPLY-DESIGNER-
+ *  RESOURCE-CONTROLS-PLACEMENT.md §4/§6). "File system", never "file share". */
+const KIND_NOUN = {
+  repo: ['repo', 'repos'],
+  database: ['database', 'databases'],
+  filesystem: ['file system', 'file systems'],
+};
+function kindNoun(entityType, n = 1) {
+  const [one, many] = KIND_NOUN[entityType] || KIND_NOUN.repo;
+  return n === 1 ? one : many;
+}
+
+/** Select-bar scope wording (REPLY-DESIGNER-RESOURCE-CONTROLS-PLACEMENT.md §5,
+ *  WORK-LISTS-VS-INVESTIGATIONS §4). Current investigation: "＋ add to <name>" /
+ *  "− remove from <name>" (name cut at 24 chars, full name in the title). None
+ *  current: add reads "add to an investigation…", ENABLED, and opens the
+ *  investigation picker (investigation-picker.js); remove stays visible,
+ *  disabled, with the reason as visible text. */
+const SCOPE_WORDING = {
+  add: (name) => `＋ add to ${name}`,
+  remove: (name) => `− remove from ${name}`,
+  addNone: { label: '＋ add to an investigation…', title: 'Choose an investigation, or start a new one' },
+  removeNone: { label: '− remove from investigation', title: 'Choose an investigation first' },
+  noneReason: 'no investigation selected',
+};
+
+/** The Select-mode action bar, grouped by weight, one group per line
+ *  (REPLY-DESIGNER-RESOURCE-CONTROLS-PLACEMENT.md §5): scope; judgement and
+ *  lists; view; then a rule and "remove…". Every action is a bulk write, so
+ *  each says plainly what it touches. Removal is the quiet last control; only
+ *  the confirmation's commit button carries the accent. */
 function selectActionsHtml() {
   const n = state.selected.size;
-  return `<div class="mb-s3 flex flex-wrap items-baseline gap-s2 text-caps">
-    <button data-act="sel-all" class="cursor-pointer bg-transparent text-chrome-ink underline">All shown</button>
-    <button data-act="sel-none" class="cursor-pointer bg-transparent text-chrome-ink underline">None</button>
-    <span class="text-chrome-muted"><span class="tnum">${n}</span> selected</span>
-    <div class="flex w-full flex-wrap gap-s2 pt-s1">
-      <button data-act="sel-scope-add" ${state.investigation ? '' : 'disabled'}
-        title="${state.investigation ? 'Add to the current investigation’s scope' : 'Needs a current investigation'}"
-        class="cursor-pointer rounded-sm border border-accent bg-transparent px-2 py-[2px] text-accent-on-dark ${
-          state.investigation ? '' : 'border-dashed opacity-100'}">＋ scope</button>
-      <button data-act="sel-scope-remove" ${state.investigation ? '' : 'disabled'}
-        title="Remove from scope — the repo itself is untouched"
-        class="cursor-pointer rounded-sm border border-chrome-line bg-transparent px-2 py-[2px] text-chrome-ink">− scope</button>
-      <button data-act="sel-hide"
-        title="Hide from your own list. A view preference, not a judgement"
-        class="cursor-pointer rounded-sm border border-chrome-line bg-transparent px-2 py-[2px] text-chrome-ink">hide</button>
+  const entityType = apiEntityType(state.resourceType);
+  const inv = state.investigations.find((i) => i.slug === state.investigation);
+  const invName = state.investigation ? (inv?.display_name || state.investigation) : '';
+  const shortInv = invName.length > 24 ? `${invName.slice(0, 23)}…` : invName;
+  return `<div class="mb-s3 text-caps" data-select-bar>
+    <div class="flex flex-wrap items-baseline gap-s2">
+      <button data-act="sel-all" class="cursor-pointer bg-transparent text-chrome-ink underline">All shown</button>
+      <button data-act="sel-none" class="cursor-pointer bg-transparent text-chrome-ink underline">None</button>
+      <span class="text-chrome-muted"><span class="tnum">${n}</span> selected</span>
+    </div>
+    <div class="mt-[2px] text-chrome-muted" data-select-hint>Tick resources, then act on all of them.</div>
+    <div class="mt-s1 flex flex-wrap items-baseline gap-s2" data-bar-group="scope">
+      <button data-act="sel-scope-add"
+        title="${esc(invName ? `Add to ${invName}’s scope` : SCOPE_WORDING.addNone.title)}"
+        class="cursor-pointer rounded-sm border border-chrome-line bg-transparent px-2 py-[2px] text-chrome-ink">${esc(invName ? SCOPE_WORDING.add(shortInv) : SCOPE_WORDING.addNone.label)}</button>
+      <button data-act="sel-scope-remove" ${invName ? '' : 'disabled'}
+        title="${esc(invName ? `Remove from ${invName}’s scope — the ${kindNoun(entityType)} itself is untouched` : SCOPE_WORDING.removeNone.title)}"
+        class="cursor-pointer rounded-sm border border-chrome-line bg-transparent px-2 py-[2px] text-chrome-ink ${
+          invName ? '' : 'border-dashed'}">${esc(invName ? SCOPE_WORDING.remove(shortInv) : SCOPE_WORDING.removeNone.label)}</button>
+      ${invName ? '' : `<span class="text-chrome-muted" data-scope-reason>${SCOPE_WORDING.noneReason}</span>`}
+    </div>
+    <div class="mt-s1 flex flex-wrap gap-s2" data-bar-group="judgement">
       <select data-act="sel-disposition"
-        title="Set the disposition on every selected repo"
+        title="Set the disposition on every selected ${kindNoun(entityType)}"
         class="rounded-sm border border-chrome-line bg-chrome px-2 py-[2px] text-chrome-ink">
         <option value="">mark as…</option>
         ${VALID_DISPOSITIONS.map((d) => `<option value="${esc(d)}">${esc(d)}</option>`).join('')}
       </select>
       <button data-act="sel-worklist"
         title="Save the selected resources as a work list you can run, compare and narrow"
-        class="cursor-pointer rounded-sm border border-accent bg-transparent px-2 py-[2px] text-accent-on-dark">save as work list</button>
-      <button data-act="sel-delete"
-        title="Unregister entirely and delete all local survey data"
-        class="cursor-pointer rounded-sm border border-accent bg-transparent px-2 py-[2px] text-accent-on-dark">delete…</button>
+        class="cursor-pointer rounded-sm border border-chrome-line bg-transparent px-2 py-[2px] text-chrome-ink">save as work list…</button>
+    </div>
+    <div class="mt-s1 flex flex-wrap gap-s2" data-bar-group="view">
+      <button data-act="sel-hide"
+        title="Hide from your own list. A view preference, not a judgement"
+        class="cursor-pointer rounded-sm border border-chrome-line bg-transparent px-2 py-[2px] text-chrome-ink">hide</button>
+    </div>
+    <div class="mt-s2 flex flex-wrap items-baseline gap-s2 border-t border-chrome-line pt-s2" data-bar-group="remove">
+      <button data-act="sel-remove" ${n ? '' : 'disabled'}
+        title="${n ? 'Remove from Resource Explorer: unregisters these and drops RE’s own records about them. The sources themselves are not touched.'
+          : 'Tick resources first'}"
+        class="cursor-pointer rounded-sm border border-chrome-line bg-transparent px-2 py-[2px] text-chrome-ink ${n ? '' : 'opacity-60'}">${n
+          ? `Remove <span class="tnum">${n}</span> ${kindNoun(entityType, n)}…` : 'remove…'}</button>
+      <span class="text-chrome-muted">from Resource Explorer</span>
     </div>
     <div id="sidebar-action" class="w-full"></div>
   </div>`;
@@ -2234,6 +2473,74 @@ function investigationBarHtml() {
         inv.slug === state.investigation ? 'selected' : ''}>${esc(inv.display_name || inv.slug)}</option>`).join('')}
     </select>
   </div>`;
+}
+
+/** A saved list that is somebody's inbox, not a bench: the journal's
+ *  "suggest to…" writes one `suggested-to-<audience>` list per audience
+ *  (`journal.py` SUGGESTION_PREFIX). Same prefix, one place. */
+const SUGGESTION_PREFIX = 'suggested-to-';
+
+/** The saved lists, split into the two things they are
+ *  (REPLY-DESIGNER-WORK-LISTS-VS-INVESTIGATIONS.md §1). `linked` is the
+ *  benches tagged to the current investigation: the same rows
+ *  `list_all(investigation=)` would return, filtered here because the page
+ *  already holds every row and each carries its `investigation`, so a second
+ *  request could only disagree with this one. Counts are `.length` of these
+ *  arrays, never a stored number. */
+export function splitWorkLists() {
+  const benches = state.workLists.filter((w) => !String(w.slug).startsWith(SUGGESTION_PREFIX));
+  const suggestions = state.workLists.filter((w) => String(w.slug).startsWith(SUGGESTION_PREFIX));
+  const linked = state.investigation ? benches.filter((w) => w.investigation === state.investigation) : [];
+  const other = state.investigation ? benches.filter((w) => w.investigation !== state.investigation) : benches;
+  return { benches, suggestions, linked, other };
+}
+
+function workListRowHtml(w) {
+  return `<button data-worklist="${esc(w.slug)}"
+    class="cursor-pointer truncate bg-transparent px-2 py-[5px] text-left ${
+      w.slug === state.workListSlug
+        ? 'border-l-2 border-accent bg-chrome-surface text-chrome-ink'
+        : 'border-l-2 border-transparent text-chrome-ink hover:bg-chrome-surface'}"
+    >${esc(w.display_name)} <span class="tnum text-chrome-muted">${w.member_count}</span>${
+      w.egeria_guid ? ` ${icon('cloud', { size: 12, cls: 'text-state-ok-on-dark', title: 'Published to Egeria' })}` : ''}</button>`;
+}
+
+/** Panel A of the work-lists reply: under the investigation selector,
+ *  top to bottom, the scope line and the lists for this investigation; the
+ *  other lists folded to one line; the suggestions on their own line. With
+ *  no investigation current the section reads "Work lists · N" and lists
+ *  them all. */
+function workListsSidebarHtml() {
+  const { benches, suggestions, linked, other } = splitWorkLists();
+  const inv = state.investigations.find((i) => i.slug === state.investigation);
+  const invName = state.investigation ? (inv?.display_name || state.investigation) : '';
+  const rows = (arr) => `<div class="mb-s2 flex flex-col gap-[1px]">${arr.map(workListRowHtml).join('')}</div>`;
+  let html = '';
+  if (invName) {
+    html += `<button data-act="sidebar-scope" type="button"
+        title="Show the repos in ${esc(invName)}’s scope (the In scope filter). The count is every kind of resource in the scope."
+        class="mb-[7px] block w-full cursor-pointer bg-transparent px-0 text-left font-heading uppercase tracking-caps text-caps text-chrome-muted"
+        >Scope · <span class="tnum" data-scope-count>${state.scopeCount === null ? '–' : state.scopeCount}</span></button>
+      <div class="mb-[7px] font-heading uppercase tracking-caps text-caps text-chrome-muted" data-linked-lists-head>Work lists for ${esc(invName)} · <span class="tnum">${linked.length}</span></div>
+      ${linked.length ? rows(linked) : ''}`;
+    if (other.length) {
+      html += `<details class="mb-s2" data-other-lists>
+        <summary class="mb-[7px] cursor-pointer font-heading uppercase tracking-caps text-caps text-chrome-muted">Other work lists · <span class="tnum">${other.length}</span></summary>
+        ${rows(other)}
+      </details>`;
+    }
+  } else if (benches.length) {
+    html += `<div class="mb-[7px] font-heading uppercase tracking-caps text-caps text-chrome-muted" data-all-lists-head>Work lists · <span class="tnum">${benches.length}</span></div>
+      ${rows(benches)}`;
+  }
+  if (suggestions.length) {
+    html += `<details class="mb-s2" data-suggestions>
+        <summary class="mb-[7px] cursor-pointer font-heading uppercase tracking-caps text-caps text-chrome-muted">Suggestions · <span class="tnum">${suggestions.length}</span></summary>
+        <div class="mb-s2 px-2 text-provenance text-chrome-muted">Entries other people were pointed at from the journal’s “suggest to…”. They are inboxes, not work lists.</div>
+        ${rows(suggestions)}
+      </details>`;
+  }
+  return html ? `<div class="mb-s3">${html}</div>` : '';
 }
 
 function bindSidebar() {
@@ -2274,12 +2581,30 @@ function bindSidebar() {
       toggleGroupCollapsed(summary.closest('details').dataset.group);
     });
   });
+  el.querySelector('[data-act="sidebar-scope"]')?.addEventListener('click', () => {
+    state.scope = 'working-set';
+    rerender();
+  });
   el.querySelectorAll('button[data-worklist]').forEach((b) => b.addEventListener('click', () => {
     state.workListSlug = b.dataset.worklist;
+    ensureRunStageForList();
     renderSidebar();
     loadPane();
   }));
-  el.querySelectorAll('button[data-slug]').forEach((b) => b.addEventListener('click', () => {
+  el.querySelectorAll('button[data-slug]').forEach((b) => b.addEventListener('click', (e) => {
+    // Shift-click or ⌘/Ctrl-click is the convention every list teaches: it
+    // turns Select mode on with that row ticked (and, once on, toggles the
+    // row) instead of opening it.
+    if (e.shiftKey || e.metaKey || e.ctrlKey) {
+      e.preventDefault();
+      const slug = b.dataset.slug;
+      const wasOn = state.selectMode;
+      state.selectMode = true;
+      if (wasOn && state.selected.has(slug)) state.selected.delete(slug);
+      else state.selected.add(slug);
+      renderSidebar();
+      return;
+    }
     // Leaving the matrix is remembered, so the way back is one click rather
     // than a hunt. Losing a 12x27 grid to a stray click on a repo, with no
     // visible route back, is what "I somehow got off the matrix view and
@@ -2333,16 +2658,24 @@ function bindSidebar() {
       if (!state.selectMode) state.selected.clear();
       renderSidebar();
     },
+    // "select these N" on a facet-filtered list: enters Select mode with
+    // exactly the rows the filters leave visible ticked.
+    'select-these': () => {
+      state.selectMode = true;
+      visibleRows().forEach((p) => state.selected.add(p.slug));
+      renderSidebar();
+    },
     'sel-all': () => { visibleRows().forEach((p) => state.selected.add(p.slug)); renderSidebar(); },
     'sel-none': () => { state.selected.clear(); renderSidebar(); },
     'sel-scope-add': () => bulkScope(true),
     'sel-scope-remove': () => bulkScope(false),
     'sel-hide': () => bulkHide(),
-    'sel-delete': () => confirmBulkDelete(),
+    'sel-remove': () => confirmBulkRemove(),
     'sel-worklist': () => saveSelectionAsWorkList(),
   };
   for (const [name, fn] of Object.entries(acts)) {
-    el.querySelector(`[data-act="${name}"]`)?.addEventListener('click', fn);
+    // All, not first: "find-repos" is also offered inline in an empty list.
+    el.querySelectorAll(`[data-act="${name}"]`).forEach((b) => b.addEventListener('click', fn));
   }
 
   const filter = el.querySelector('#resource-filter');
@@ -2362,26 +2695,56 @@ function sidebarNote(html) {
   if (el) el.innerHTML = `<div class="mt-s2 text-chip text-chrome-ink">${html}</div>`;
 }
 
-async function bulkScope(add) {
-  if (!state.investigation || !state.selected.size) return;
+/** Open the investigation picker and run `then(slug)` with the chosen one.
+ *  "Start a new one…" reuses the existing New investigation dialog; the new
+ *  investigation is handed straight on, and the person is not moved to its
+ *  page (they were in the middle of something else). */
+function chooseInvestigationThen(then) {
+  openInvestigationPicker({
+    investigations: state.investigations,
+    onChoose: (slug) => then(slug),
+    onNew: () => openNewInvestigationDialog({ onCreated: (inv) => then(inv.slug) }),
+  });
+}
+
+async function bulkScope(add, invSlug = state.investigation) {
+  if (!state.selected.size) { sidebarNote('Tick resources first.'); return; }
+  if (!invSlug) {
+    // None current: only "add" can be offered, and it asks which one first.
+    if (add) chooseInvestigationThen((slug) => bulkScope(true, slug));
+    return;
+  }
   const slugs = [...state.selected];
   const entityType = apiEntityType(state.resourceType);
   const failed = [];
   for (const slug of slugs) {
     try {
-      if (add) await addInvestigationMember(state.investigation, entityType, slug);
-      else await removeInvestigationMember(state.investigation, entityType, slug);
+      if (add) await addInvestigationMember(invSlug, entityType, slug);
+      else await removeInvestigationMember(invSlug, entityType, slug);
     } catch (err) { failed.push(`${slug}: ${err.message}`); }
   }
-  await loadWorkingSet();
+  // The chosen investigation becomes the current one (it is the one the person
+  // just worked in); setInvestigation also reloads its scope and repaints.
+  const becameCurrent = invSlug !== state.investigation;
+  if (becameCurrent) await setInvestigation(invSlug);
+  else await loadWorkingSet();
+  // The open investigation page lists these members too; re-fetch it.
+  await refreshOpenInvestigation(invSlug);
+  // Repaint first, THEN write the note: renderSidebar rebuilds the bar and
+  // the note's host with it, so a note written before it is wiped at once.
+  renderSidebar();
+  const inv = state.investigations.find((i) => i.slug === invSlug);
+  const invName = inv?.display_name || invSlug;
+  const done = slugs.length - failed.length;
   // Report per-resource, never "done": a bulk write where some calls failed
   // and the banner says success is how a partial write becomes invisible.
   sidebarNote(failed.length
-    ? `<span class="text-accent-on-dark"><span class="tnum">${slugs.length - failed.length}</span>
+    ? `<span class="text-accent-on-dark"><span class="tnum">${done}</span>
        of <span class="tnum">${slugs.length}</span> ${add ? 'added' : 'removed'};
        ${esc(failed.join('; '))}</span>`
-    : `<span class="tnum">${slugs.length}</span> ${add ? 'added to' : 'removed from'} scope.`);
-  renderSidebar();
+    : add && becameCurrent
+      ? `Added <span class="tnum">${slugs.length}</span> to ${esc(invName)}, now your current investigation.`
+      : `<span class="tnum">${slugs.length}</span> ${add ? 'added to' : 'removed from'} scope.`);
 }
 
 async function bulkHide() {
@@ -2435,40 +2798,43 @@ async function bulkDisposition(disposition) {
 }
 
 /**
- * Delete is the one action with no undo anywhere in the stack: the endpoint
+ * Removal is the one action with no undo anywhere in the stack: the endpoint
  * takes no confirmation flag, drops the resource's pgvector collections and
  * removes the registry row. So the confirmation has to be here, it has to
- * name what is going, and it must not be a one-click button.
+ * name what is going, and it must not be a one-click button. One word
+ * everywhere: "Remove from Resource Explorer" (REPLY-DESIGNER-RESOURCE-CONTROLS-
+ * PLACEMENT.md §4) -- nothing here deletes a database or a file.
  *
- * Repo/database/filesystem deletion are three genuinely different registry
+ * Repo/database/filesystem removal are three genuinely different registry
  * operations (`removeProject`/`removeDatabase`/`removeFilesystem` in
- * re-api.js, each hitting its own DELETE route) — `removeEntity()` dispatches
+ * re-api.js, each hitting its own HTTP route) -- `removeEntity()` dispatches
  * by `apiEntityType()`-translated type, the same pattern `POST /{slug}/group`
- * already uses server-side (projects.py).
+ * already uses server-side (projects.py). The sentence is the single
+ * resource's, worded for N (`removeConfirmationHtml` takes a list); the sidebar
+ * is scoped to one kind, so a bulk removal is always one kind.
  */
-function confirmBulkDelete() {
+function confirmBulkRemove() {
   const slugs = [...state.selected];
   if (!slugs.length) return;
-  const noun = state.resourceType === 'repo' ? 'repo'
-    : state.resourceType === 'db' ? 'database' : 'filesystem';
+  const entityType = apiEntityType(state.resourceType);
+  const n = slugs.length;
   sidebarNote(`
-    <div class="text-accent-on-dark">Unregister <span class="tnum">${slugs.length}</span>
-      ${noun}${slugs.length === 1 ? '' : 's'} and delete all local survey data?
-      This cannot be undone.</div>
+    <div class="text-chrome-ink" data-remove-sentence>${removeConfirmationHtml(entityType, slugs)}</div>
     <div class="mt-s1 break-words text-chrome-muted">${esc(slugs.join(', '))}</div>
     <div class="mt-s2 flex gap-s2">
-      <button data-act="sel-delete-confirm"
-        class="cursor-pointer rounded-sm border border-accent bg-transparent px-2 py-[2px] text-accent-on-dark">Delete</button>
-      <button data-act="sel-delete-cancel"
+      <button data-act="sel-remove-confirm"
+        class="cursor-pointer rounded-sm border border-accent bg-transparent px-2 py-[2px] text-accent-on-dark"
+        >Remove ${n} ${kindNoun(entityType, n)}</button>
+      <button data-act="sel-remove-cancel"
         class="cursor-pointer bg-transparent text-chrome-ink underline">Cancel</button>
     </div>`);
-  $('sidebar-action').querySelector('[data-act="sel-delete-confirm"]')
-    .addEventListener('click', () => bulkDelete(slugs));
-  $('sidebar-action').querySelector('[data-act="sel-delete-cancel"]')
+  $('sidebar-action').querySelector('[data-act="sel-remove-confirm"]')
+    .addEventListener('click', () => bulkRemove(slugs));
+  $('sidebar-action').querySelector('[data-act="sel-remove-cancel"]')
     .addEventListener('click', () => { $('sidebar-action').innerHTML = ''; });
 }
 
-async function bulkDelete(slugs) {
+async function bulkRemove(slugs) {
   const entityType = apiEntityType(state.resourceType);
   const listKey = state.resourceType === 'repo' ? 'projects'
     : state.resourceType === 'db' ? 'databases' : 'filesystems';
@@ -2497,9 +2863,13 @@ async function bulkDelete(slugs) {
 async function saveSelectionAsWorkList() {
   const slugs = [...state.selected];
   if (!slugs.length) return;
-  const name = window.prompt(
-    `Name for a work list of ${slugs.length} resource(s):`,
-    state.investigation ? `${state.investigation} candidates` : 'Candidates');
+  const name = await inPagePrompt({
+    title: 'Save as work list',
+    message: `Name for a work list of ${slugs.length} resource(s):`,
+    label: 'Work list name',
+    defaultValue: state.investigation ? `${state.investigation} candidates` : 'Candidates',
+    confirmLabel: 'Save',
+  });
   if (name === null) return;
   sidebarNote('Saving…');
   try {
@@ -2510,6 +2880,7 @@ async function saveSelectionAsWorkList() {
     });
     state.workLists = await listWorkLists();
     state.workListSlug = wl.slug;
+    ensureRunStageForList();
     state.selectMode = false;
     state.selected.clear();
     renderSidebar();
@@ -2534,6 +2905,7 @@ export async function setInvestigation(slug) {
   if (!slug) {
     try { localStorage.removeItem(INVESTIGATION_KEY); } catch { /* private mode */ }
     state.workingSet = new Set();
+    state.scopeCount = null;
     if (state.scope === 'working-set') state.scope = '';
   } else {
     await loadWorkingSet();
@@ -2557,17 +2929,19 @@ export async function refreshInvestigationsAndSidebar() {
 }
 
 async function loadWorkingSet() {
-  if (!state.investigation) { state.workingSet = new Set(); return; }
+  if (!state.investigation) { state.workingSet = new Set(); state.scopeCount = null; return; }
   try {
     const members = await listInvestigationMembers(state.investigation);
+    state.scopeCount = (members || []).length;
     state.workingSet = new Set(
-      (members || []).filter((m) => (m.entity_type || 'repo') === 'repo')
+      (members || []).filter((m) => requireKind('loadWorkingSet', m.entity_type, 'member.entity_type') === 'repo')
                      .map((m) => m.entity_slug));
   } catch {
     // Unknown, and kept unknown: an empty working set and an unreadable one
     // are different, and "In scope" showing nothing because a call failed
     // would read as "this investigation has no members".
     state.workingSet = new Set();
+    state.scopeCount = null;
     state.workingSetUnknown = true;
   }
 }
@@ -2702,11 +3076,52 @@ export function ensureRailShowing() {
  *     Last CLICK wins, not last response. */
 let railTicket = 0;
 export function railClaim() { return ++railTicket; }
-function railStale(ticket) { return ticket !== railTicket; }
+export function railStale(ticket) { return ticket !== railTicket; }
+
+/* WHAT THE RAIL IS A FUNCTION OF. The evidence slot belongs to one
+ * (resource type, resource, stage, sub-tab, work list) at a time. Before this,
+ * only Context's own render cleared it, and only on a slug change; a plain
+ * stage, sub-tab or resource change left the previous pane's evidence on
+ * screen under the new pane -- owner screenshot, 8810: viewing egeria_git,
+ * the rail read "for laz_local_adventureworks".
+ *
+ * ONE place enforces it: `syncRailToSelection()`, called by loadPane() (every
+ * stage click, sub-tab click, resource click, URL restore and delete funnels
+ * through it). When the key changed it (1) takes a ticket, so any writer that
+ * was awaiting a fetch for the OLD key stands down, and (2) empties the slot.
+ * A writer that has no ticket (Context's) compares `railKeyOf()` itself before
+ * it writes. Same key => nothing happens, so a rail deliberately open on this
+ * resource's evidence survives a re-render of the same pane. */
+let railKey = null;
+export function railKeyOf() {
+  return [state.resourceType, state.selectedSlug || '', state.stage, state.subTab, state.workListSlug || ''].join('\u0001');
+}
+export function syncRailToSelection() {
+  const key = railKeyOf();
+  if (key === railKey) return false;
+  railKey = key;
+  railClaim();
+  const out = $('rail-evidence');
+  if (out) {
+    out.innerHTML = '';
+    delete out.dataset.railFor;
+    delete out.dataset.railKey;
+  }
+  renderRailScope();
+  return true;
+}
+/** Every rail writer tags what it wrote: the resource it is FOR and the key it
+ *  was written under, so "what does the rail claim" is checkable from the DOM. */
+export function railTag(out, forWhat) {
+  if (!out) return;
+  out.dataset.railFor = String(forWhat ?? '');
+  out.dataset.railKey = railKey ?? railKeyOf();
+}
 
 export function railFrame(kind, forWhat, bodyHtml, { sub = '', actions = '' } = {}) {
   const out = $('rail-evidence');
   if (!out) return null;
+  railTag(out, forWhat);
   out.innerHTML = `
     <div class="mb-s1 flex items-baseline gap-s2">
       <span class="font-heading uppercase tracking-caps text-caps text-accent-on-dark">${esc(kind)}</span>
@@ -2718,6 +3133,7 @@ export function railFrame(kind, forWhat, bodyHtml, { sub = '', actions = '' } = 
   out.querySelector('[data-act="rail-clear"]')?.addEventListener('click', () => {
     railClaim();
     out.innerHTML = '';
+    delete out.dataset.railFor;
   });
   return out.querySelector('[data-rail-body]');
 }
@@ -2757,13 +3173,70 @@ function setRailOpen(open, { persist = true } = {}) {
 
 let _restoringUrl = false;
 
+/** Go to Enrichment's Context tab (the `data-goto-context` links: the questions rows, Curate's "What we know"). */
+export function openContext() {
+  state.stage = 'enrichment';
+  state.subTab = 'context';
+  writeUrl();
+  renderIntentNav();
+  return loadPane();
+}
+
+/** Go to the Curate stage (where the Publish band and the commit table live). Used by a blocker that says
+ *  "publish the repository first →" from another pane. */
+export function openCurateStage() {
+  return openCurate({ tab: 'curate_describe' });
+}
+
+/** Go to Curate, on a tab and optionally a section. While the stage-tabs gate is off for this kind the tab is
+ *  ignored and Curate opens as it always has (on the Questions frame); with it on, an unknown tab opens tab 1.
+ *  A section is jumped to once the pane is drawn (jumpToCurateSection queues it if the plan is still loading). */
+export function openCurate({ tab, section } = {}) {
+  // From one of Curate's own tabs to another, the panels are already in the document: switch in place (the plan
+  // is not read again, a running commit keeps its line).
+  const inPlace = curatePanelsMounted();
+  state.stage = 'curate';
+  state.subTab = stageTabsOn('curate', state.resourceType)
+    ? (STAGE_TAB_IDS.curate.includes(tab) ? tab : STAGE_TAB_IDS.curate[0])
+    : 'questions';
+  if (inPlace && STAGE_TAB_IDS.curate.includes(state.subTab)) {
+    switchCurateTab(state.subTab);
+    renderIntentNav();
+    return section ? Promise.resolve(jumpToCurateSection(section)) : Promise.resolve();
+  }
+  writeUrl();
+  renderIntentNav();
+  const loading = loadPane();
+  if (section) return Promise.resolve(loading).then(() => jumpToCurateSection(section));
+  return loading;
+}
+
+/** Switch to the Investigation stage on the current investigation's detail, for the publish gate's
+ *  "Bind this investigation to a project" (G1). The header's own "Open Investigation →" handler keeps its
+ *  inline body (a source-scanning test pins it). With no current investigation the stage still opens:
+ *  its list is where one is made. */
+export function openCurrentInvestigationStage() {
+  if (state.investigation) openInvestigationDetail(state.investigation);
+  state.stage = 'investigation';
+  writeUrl();
+  renderIntentNav();
+  loadPane();
+}
+
 function writeUrl() {
   if (_restoringUrl) return;
   const p = new URLSearchParams();
   if (state.resourceType !== 'repo') p.set('type', state.resourceType);
   if (state.selectedSlug) p.set('resource', state.selectedSlug);
   if (state.stage !== 'scouting') p.set('stage', state.stage);
-  if (state.subTab !== 'questions') p.set('tab', state.subTab);
+  // ENRICHMENT-E1-CONTEXT-TAB: Context is Enrichment's own default, not
+  // 'questions' — omit `tab=` only when subTab already matches whichever
+  // one is the default FOR THIS STAGE, so a bookmarked Enrichment URL
+  // doesn't carry a redundant `tab=context` while still correctly carrying
+  // `tab=questions` if that's what was deliberately chosen instead.
+  // A stage with leading tabs always writes `tab=`, so a shared link names the sender's tab, not "the default".
+  const defaultSubTab = stageDefaultSubTab();
+  if (state.subTab !== defaultSubTab || stageTabsOn(state.stage, state.resourceType)) p.set('tab', state.subTab);
   if (state.workListSlug) p.set('worklist', state.workListSlug);
   if (state.activePerspectives.size) p.set('perspectives', [...state.activePerspectives].join(','));
   const url = `${location.pathname}${p.toString() ? `?${p}` : ''}`;
@@ -2771,20 +3244,34 @@ function writeUrl() {
 }
 
 /** Read the URL into state. Returns true if it named a resource. */
-function readUrl() {
+export function readUrl() {
   const p = new URLSearchParams(location.search);
+  let rewriteUrl = false;
   _restoringUrl = true;
   try {
     if (p.get('type')) state.resourceType = p.get('type');
     if (p.get('resource')) state.selectedSlug = p.get('resource');
     if (p.get('stage')) state.stage = p.get('stage');
-    if (p.get('tab')) state.subTab = p.get('tab');
+    // A `tab=` is kept only when the strip for THIS stage and kind offers it (visibleSubTabs()); a hand-edited
+    // or stale id falls to the stage's landing tab, same as no `tab=`. 'dashboard' is the retired id loadPane()
+    // aliases to By analysis. The URL is rewritten below so the bad id does not stick.
+    const wantTab = p.get('tab');
+    const tabOk = Boolean(wantTab) && (wantTab === 'dashboard' || visibleSubTabs().some((t) => t.id === wantTab));
+    if (tabOk) state.subTab = wantTab;
+    else if (wantTab) { state.subTab = stageDefaultSubTab(); rewriteUrl = true; }
+    // A bookmarked/shared `?stage=enrichment` with no `?tab=` should open on
+    // Context, same as clicking into Enrichment from the nav (see that
+    // click handler's own comment) — the URL restore path was the one place
+    // this default did not reach.
+    // A stage with leading tabs and no `tab=` opens on tab 1.
+    else if (state.subTab === 'questions' || stageTabsOn(state.stage, state.resourceType)) state.subTab = stageDefaultSubTab();
     if (p.get('worklist')) state.workListSlug = p.get('worklist');
     const persp = p.get('perspectives');
     if (persp) state.activePerspectives = new Set(persp.split(',').filter(Boolean));
   } finally {
     _restoringUrl = false;
   }
+  if (rewriteUrl) writeUrl();
   return Boolean(p.get('resource'));
 }
 
@@ -2804,7 +3291,11 @@ function selectedProject() {
 }
 
 /**
- * Name, external links, provenance, and the write paths.
+ * Name, external links, provenance and the disposition pill. Hide and Remove
+ * are NOT here any more: they live in the resource's menu on its name in the
+ * top bar (REPLY-DESIGNER-RESOURCE-CONTROLS-PLACEMENT.md §1) -- a verdict
+ * belongs beside the content it judges, a view preference and an unregister do
+ * not.
  *
  * The external links are here because they were missing, and they are marked
  * as external (`↗`, `rel="noopener"`, a new tab) so they read differently
@@ -2828,20 +3319,39 @@ export function resourceHeaderHtml(slug) {
   // `homepage` is NOT on the summary row — it comes from the scouting
   // overview, and it is already the derived best link (GitHub's declared
   // homepage, then the packaging manifest, then the README), doing duty as
-  // both project site and docs. There is no separate docs field to show.
+  // project site; the documentation site is its own field (docs_url) and is drawn below.
   const homepage = state.overview?.slug === slug ? state.overview.homepage : '';
   if (homepage) {
     links.push(`<a href="${esc(homepage)}" target="_blank" rel="noopener noreferrer"
       class="text-accent-ink underline">Project site ↗</a>`);
   }
+  // Documentation beside it, with the short cue from the server (docs ✓ / docs unreachable /
+  // no docs found / docs not checked). Nothing is drawn until the Homepage step has run.
+  const docsOv = state.overview?.slug === slug ? state.overview : null;
+  if (docsOv?.docs_cue) {
+    links.push(docsOv.docs_url
+      ? `<a href="${esc(docsOv.docs_url)}" data-docs-cue="${esc(docsOv.docs_state || '')}" target="_blank" rel="noopener noreferrer"
+      class="text-accent-ink underline">${esc(docsOv.docs_cue)} ↗</a>`
+      : `<span data-docs-cue="${esc(docsOv.docs_state || '')}" class="text-ink-muted">${esc(docsOv.docs_cue)}</span>`);
+  }
 
+  // PI-030: the source word comes from the summary row's `last_survey_source`, which the server
+  // takes from the same latest valid survey row the Understanding history table lists first. A row
+  // with no source says nothing rather than guessing one.
+  const sourceWord = p?.last_surveyed_at ? surveySourceWord(p.last_survey_source) : '';
   const surveyed = p?.last_surveyed_at
-    ? `surveyed <span class="tnum">${esc(ago(p.last_surveyed_at))}</span>`
+    ? `surveyed <span class="tnum">${esc(ago(p.last_surveyed_at))}</span>${sourceWord
+      ? ` · <span data-survey-source>${esc(sourceWord)}</span>` : ''}`
     : 'never surveyed';
   const ov = state.overview?.slug === slug ? state.overview : null;
   let published = p?.is_published ? 'published to Egeria' : 'not published to Egeria';
   if (ov?.last_published_at && p?.is_published) {
     published += ` <span class="tnum">${esc(ago(ov.last_published_at))}</span>`;
+    // The row's existence is not proof: a publish that predates an Egeria reset says so, short word on the
+    // element, the sentence on demand.
+    if (ov.published_state === 'published_earlier') {
+      published += ` · <span title="${esc(PUBLISHED_EARLIER_SENTENCE)}">${esc(PUBLISHED_EARLIER_WORD)}</span>`;
+    }
   }
   // A "published" badge is actively misleading while the link is broken: it
   // reports a catalog entry RE can no longer reach. `p?.egeria_publish_note`
@@ -2858,18 +3368,21 @@ export function resourceHeaderHtml(slug) {
   }
   if (ov?.egeria_link_stale) {
     published = `<span class="text-accent-ink">published, but the Egeria link is stale —`
-      + ` the catalog entry cannot be reached</span>`;
+      + ` the Egeria entry cannot be reached</span>`;
   }
   // Fourth publish state (PUBLISH-STATE-AFTER-REDEPLOY-CORRECTIONS.md /
   // REPLY-PUBLISH-STATE-GO-AHEAD.md §4): the DATE stays — the row is the only
   // evidence a publish happened — and the sentence states what was observed
   // (a failed resolve), never why (a wipe and an individual deletion look
   // identical from here). No "publish again" button here: /next has no
-  // publish trigger of its own yet to wire it to; the Analysis pane's
-  // existing publish action is where that stands until one exists.
+  // publish trigger of its own yet to wire it to, and its Analysis pane has
+  // no publish control either, so the sentence below must not point there.
+  if (ov?.publish_uncatalogued) {
+    published += ` <span class="text-accent-ink">⚠ not published, publish needed</span>`;
+  }
   if (ov?.publish_stale) {
     published += ` <span class="text-accent-ink">⚠ these elements are no longer in the store —`
-      + ` publish again from the Analysis pane</span>`;
+      + ` this view has no publish control, so they are not republished from here</span>`;
   }
 
   // Persistent credential-visibility banner (design REPLY-DATABASE-
@@ -2885,18 +3398,31 @@ export function resourceHeaderHtml(slug) {
   // answer among many.
   let credentialBanner = '';
   const cap = p?.credential_capability;
-  if (cap && (cap.table_total || cap.schema_total)) {
-    const thin = (cap.table_select ?? 0) < (cap.table_total ?? 0)
-      || (cap.schema_visible ?? 0) < (cap.schema_total ?? 0);
+  // `relation_total`/`relation_select` (renamed from `table_total`/
+  // `table_select`, REPLY-DESIGNER-ROUND2-DATABASE-SCREENS.md §2.3): the
+  // whole-database figure counts base tables + views + matviews, never
+  // tables alone. `cap` is a stored probe blob that can predate this
+  // rename, so the old key is read as a fallback -- without it every
+  // database surveyed before this rename would show "SELECT on 0 of 0
+  // table(s)" until re-surveyed.
+  const relTotal = cap?.relation_total ?? cap?.table_total;
+  const relSelect = cap?.relation_select ?? cap?.table_select;
+  if (cap && (relTotal || cap.schema_total)) {
+    // Slice A2.1: this line is about ONE survey, RE's own local one, and says so
+    // (with its date). The Schema Inventory and Curate trees may read a fuller
+    // Egeria survey, so a sentence about "this page" would speak for counts it
+    // does not describe.
+    const line = credentialLineText(cap, p?.credential_capability_at, relTotal, relSelect);
     credentialBanner = `
-      <div class="mt-s1 text-provenance ${thin ? 'text-accent-ink' : 'text-ink-muted'}">
-        connected as <span class="font-mono">${esc(cap.connected_as || '(unknown)')}</span> —
-        sees ${esc(String(cap.schema_visible ?? 0))} of ${esc(String(cap.schema_total ?? 0))} schema(s),
-        SELECT on ${esc(String(cap.table_select ?? 0))} of ${esc(String(cap.table_total ?? 0))} table(s)
-        ${thin ? '· every count on this page is scoped to this credential, not the whole database' : ''}
-      </div>`;
+      <div data-credential-scope-line class="mt-s1 text-provenance ${line.thin ? 'text-accent-ink' : 'text-ink-muted'}">${esc(line.text)}</div>`;
   }
 
+  // The stale-link banner (PI-052) for ANY resource type. It shows only when the stale-link read Admin → Egeria
+  // Links uses (`GET /api/egeria/linkage/stale`) lists this resource; a repository's own scouting-overview flag
+  // (which also carries the dead GUID) counts too. Neither read: no banner.
+  const staleRow = state.staleLink?.slug === slug ? state.staleLink.row : null;
+  const staleOv = ov?.egeria_link_stale ? ov
+    : staleRow ? { egeria_link_stale: true, egeria_link_stale_guid: staleRow.stale_guid || '', published_state: ov?.published_state } : null;
   return `
     <div class="flex flex-wrap items-baseline gap-s3">
       <h3 class="m-0 font-heading text-name font-normal">${esc(name)}</h3>
@@ -2912,15 +3438,26 @@ export function resourceHeaderHtml(slug) {
         <button data-act="disposition" class="cursor-pointer rounded-pill border border-rule-strong bg-transparent px-2 py-[1px] text-ink hover:border-accent">
           ${esc(p?.disposition || 'undecided')} ▾
         </button>
-        <button data-act="hide" class="cursor-pointer bg-transparent text-accent-ink underline">
-          ${p?.working_set_hidden ? 'unhide' : 'hide'}
-        </button>
-        <button data-act="remove" class="cursor-pointer bg-transparent text-accent-ink underline">remove</button>
       </span>
     </div>
     <div class="mt-s1 text-provenance text-ink-muted">${surveyed} · ${published}</div>
     ${credentialBanner}
+    ${staleLinkBannerHtml(staleOv)}${state.resourceType === 'repo' ? scoutingTilesHtml(ov) + scoutingSignalHtml(state.scoutingSignal?.slug === slug ? state.scoutingSignal : null) : ''}
+    ${state.resourceType === 'db' ? changeCredentialsLineHtml(p) : ''}
+    ${isCredentialUnreadable(p) ? `<div class="mt-s1 text-provenance" data-credential-banner>${credentialMarkHtml(p)} — surveys and runs are disabled until the credential is re-entered.</div>` : ''}
     <div id="resource-action" class="mt-s2"></div>`;
+}
+
+/** Parity G2, PI-021: the header's door to the stored credential. It names when
+ *  the credential last changed (the registry's own `credential_changed_at`, or
+ *  says it predates that being recorded) and opens the test-before-save form. */
+function changeCredentialsLineHtml(p) {
+  const changed = p && p.credential_changed_at
+    ? `credential changed ${esc(ago(p.credential_changed_at))}`
+    : 'credential change date not recorded';
+  return `<div class="mt-s1 text-provenance text-ink-muted">${changed} ·
+    <button type="button" data-act="change-credentials"
+      class="cursor-pointer bg-transparent p-0 text-accent-ink underline">Change credentials…</button></div>`;
 }
 
 /** The dated verdict trail for one repo. */
@@ -3053,7 +3590,7 @@ async function renderDepthOffer(p, host, { afterVerdict = false } = {}) {
   const finish = async (outcome, ids) => {
     const runIds = [];
     for (const id of ids) {
-      try { const started = await runAnalysis(p.slug, id); if (started?.run_id) runIds.push(started.run_id); }
+      try { const started = await runAnalysis(p.slug, id, 'repo' /* the depth offer is repo-only: renderDepthOffer gates on github_url */); if (started?.run_id) runIds.push(started.run_id); }
       catch (err) { status.innerHTML = `<span class="text-accent-ink">${esc(id)}: ${esc(err.message)}</span>`; }
     }
     try {
@@ -3089,7 +3626,8 @@ async function renderDepthOffer(p, host, { afterVerdict = false } = {}) {
 // (the header popover, and the pane before it took database/filesystem)
 // already uses. A database/filesystem caller passes both explicitly — its
 // slug IS its stable identity, unlike a repo's github_url-keyed write path.
-function wireDispositionPicker(host, p, { note, onSet }, entityType = 'repo', entitySlug = '') {
+function wireDispositionPicker(host, p, { note, onSet }, entityType, entitySlug = '') {
+  requireKind('wireDispositionPicker', entityType);
   const commit = async (value, reason = '') => {
     note('Saving…');
     try {
@@ -3141,8 +3679,8 @@ function wireDispositionPicker(host, p, { note, onSet }, entityType = 'repo', en
   }));
 }
 
-/** The header's three write paths. `hide` is reversible, `disposition` is a
- *  judgement, `remove` is neither — so only one of them asks. */
+/** The header's write path: the disposition pill. (`hide` and `remove` moved
+ *  to the resource menu, `toggleResourceMenu` below.) */
 export function bindResourceHeader() {
   const el = $('resource-header') || $('content');
   const slot = $('resource-action');
@@ -3164,6 +3702,47 @@ export function bindResourceHeader() {
     writeUrl();
     renderIntentNav();
     loadPane();
+  });
+
+  // PI-052: the stale-link banner's three repairs. Each ends by re-reading the overview so the header
+  // shows what the server now says, not what the click implied.
+  bindStaleLinkBanner(el, {
+    resolve: (action) => resolveEgeriaLink(apiEntityType(state.resourceType), state.selectedSlug, action),
+    confirmWrite: (choice) => inPageConfirm({ title: `${choice.label} ${state.selectedSlug}?`, message: choice.sentence, confirmLabel: choice.label }),
+    onDone: async (_result, error) => {
+      const slug = state.selectedSlug;
+      if (state.resourceType === 'repo') {
+        try { state.overview = await getScoutingOverview(slug); } catch { state.overview = null; }
+      }
+      // Re-read the stale list too: a resolved link is gone from it, so the banner leaves.
+      try {
+        const rows = await listStaleLinkages();
+        const et = apiEntityType(state.resourceType);
+        state.staleLink = { slug, row: (rows || []).find((r) => r.entity_slug === slug && r.entity_type === et) || null };
+      } catch { state.staleLink = null; }
+      const host = $('resource-header');
+      if (host && state.selectedSlug === slug) { host.innerHTML = resourceHeaderHtml(slug); bindResourceHeader(); }
+      if (error && state.selectedSlug === slug && $('resource-action')) {
+        // The repair clears the dead link before it publishes, so a failure leaves the link gone: say what is true now.
+        $('resource-action').innerHTML = `<div data-repair-failed class="text-caveat text-ink">${esc(error.message || 'The repair did not finish')}.
+          The old link is already forgotten, so Publish to Egeria (Curate) can create a fresh one.</div>`;
+      }
+      if (error) inPageNotice({ title: 'The repair did not finish', message: `${error.message || 'The server could not be reached'}. The old link is already forgotten, so Publish to Egeria (Curate) can create a fresh one.` });
+    },
+  });
+
+  el.querySelector('[data-act="change-credentials"]')?.addEventListener('click', () => {
+    if (!p) return;
+    slot.innerHTML = credentialChangeHtml(p);
+    bindCredentialChange(slot, p.slug, {
+      onSaved: (summary) => {
+        // The list row follows what the server saved (never a password).
+        p.db_user = summary.db_user || p.db_user;
+        p.credential_changed_at = summary.credential_changed_at || p.credential_changed_at;
+        p.credential_status = 'ok';
+      },
+      onCancel: () => { slot.innerHTML = ''; },
+    });
   });
 
   el.querySelector('[data-act="disposition"]')?.addEventListener('click', () => {
@@ -3203,60 +3782,194 @@ export function bindResourceHeader() {
         `<div class="text-caveat text-ink">Disposition is now <strong>${esc(value)}</strong>.</div>`;
     } }, entityType, state.selectedSlug);
   });
+}
 
-  el.querySelector('[data-act="hide"]')?.addEventListener('click', async () => {
-    const hiding = !p?.working_set_hidden;
-    note(hiding ? 'Hiding…' : 'Unhiding…');
-    try {
-      // Generalized alongside the sidebar's bulk "hide" action -- this used
-      // to hard-code 'repo' regardless of the selected resource type, which
-      // silently hid the WRONG row whenever a database/filesystem happened
-      // to share a slug with a repo (`resource_working_set` is keyed on
-      // (entity_type, entity_slug), so a wrong entity_type is a wrong key,
-      // not a 404).
-      await setWorkingSetHidden(apiEntityType(state.resourceType), state.selectedSlug, hiding);
-      if (p) p.working_set_hidden = hiding;
-      renderSidebar();
-      await loadPane();
-      $('resource-action').innerHTML = `<div class="text-caveat text-ink">${
-        hiding
-          ? 'Hidden from your list. Still registered, and nothing was deleted — “Show hidden” in the sidebar brings it back.'
-          : 'Back in your list.'}</div>`;
-    } catch (err) {
-      note(`<span class="text-accent-ink">Not saved: ${esc(err.message)}</span>`);
-    }
-  });
+/* ────────────────────────────────────────────────────────────────────────
+ * The resource's menu (hide, remove) and the panel under the top bar
+ * ──────────────────────────────────────────────────────────────────────── */
 
-  el.querySelector('[data-act="remove"]')?.addEventListener('click', () => {
-    slot.innerHTML = `
-      <div class="text-caveat text-accent-ink">
-        Unregister <span class="font-mono">${esc(state.selectedSlug)}</span> and delete all its
-        local survey data? This cannot be undone, and it is not the same as marking it
-        <em>ignored</em> — an ignored repo stays registered and can come back.
-      </div>
-      <div class="mt-s2 flex gap-s3 text-caveat">
-        <button data-act="remove-confirm"
-          class="cursor-pointer rounded-sm border border-accent bg-transparent px-2 py-[2px] text-accent-ink">Remove</button>
-        <button data-act="remove-cancel" class="cursor-pointer bg-transparent text-ink underline">Cancel</button>
-      </div>`;
-    slot.querySelector('[data-act="remove-cancel"]')
-      .addEventListener('click', () => { slot.innerHTML = ''; });
-    slot.querySelector('[data-act="remove-confirm"]').addEventListener('click', async () => {
-      const slug = state.selectedSlug;
-      note('Removing…');
-      try {
-        await removeProject(slug);
-        state.projects = state.projects.filter((x) => x.slug !== slug);
-        state.selectedSlug = state.projects[0]?.slug || null;
-        renderSidebar();
-        renderTopBar();
-        renderRailScope();
-        await loadPane();
-      } catch (err) {
-        note(`<span class="text-accent-ink">Not removed: ${esc(err.message)}</span>`);
-      }
-    });
-  });
+function closeResourceMenu() {
+  const menu = $('resource-menu');
+  if (menu) menu.remove();
+  const btn = $('scope-slug');
+  if (btn) btn.setAttribute('aria-expanded', 'false');
+  document.removeEventListener('click', onDocClickCloseMenu, true);
+  document.removeEventListener('keydown', onKeyCloseMenu, true);
+}
+function onDocClickCloseMenu(e) {
+  const menu = $('resource-menu');
+  if (menu && !menu.contains(e.target) && !$('scope-slug')?.contains(e.target)) closeResourceMenu();
+}
+function onKeyCloseMenu(e) {
+  if (e.key === 'Escape') { closeResourceMenu(); $('scope-slug')?.focus(); }
+}
+
+/** The menu on the top bar's resource name. It sits there because the bar is
+ *  the one place that names the current resource on every stage and sub-tab
+ *  (the content header is redrawn per pane). Hide/Unhide first, a rule, then
+ *  Remove last, in ink: the accent is reserved for the control that commits. */
+function toggleResourceMenu() {
+  if ($('resource-menu')) { closeResourceMenu(); return; }
+  const btn = $('scope-slug');
+  const slug = state.selectedSlug;
+  if (!btn || !slug) return;
+  const hidden = !!selectedProject()?.working_set_hidden;
+  const menu = document.createElement('div');
+  menu.id = 'resource-menu';
+  menu.dataset.slug = slug;
+  menu.setAttribute('role', 'menu');
+  menu.className = 'absolute z-20 w-[290px] rounded-sm border border-rule-strong bg-paper text-caveat text-ink shadow-lg';
+  menu.style.left = `${btn.offsetLeft || 0}px`;
+  menu.style.top = `${(btn.offsetTop || 0) + (btn.offsetHeight || 0) + 4}px`;
+  menu.innerHTML = `
+    <button type="button" role="menuitem" data-act="menu-hide" class="block w-full cursor-pointer bg-transparent px-3 py-2 text-left text-ink hover:bg-chrome-surface hover:text-chrome-ink">
+      ${hidden ? 'Unhide' : 'Hide from my list'}
+      <span class="mt-[2px] block text-provenance text-ink-muted">${hidden
+        ? 'Put it back in your list. It was only ever hidden from your view.'
+        : 'A view preference: it changes only your list. The resource stays registered.'}</span>
+    </button>
+    <div class="border-t border-rule" role="separator"></div>
+    <button type="button" role="menuitem" data-act="menu-remove" class="block w-full cursor-pointer bg-transparent px-3 py-2 text-left text-ink hover:bg-chrome-surface hover:text-chrome-ink">Remove from Resource Explorer…</button>`;
+  (btn.closest('header') || btn.parentElement || document.body).appendChild(menu);
+  btn.setAttribute('aria-expanded', 'true');
+  menu.querySelector('[data-act="menu-hide"]').addEventListener('click', () => { closeResourceMenu(); toggleHiddenFromMenu(); });
+  menu.querySelector('[data-act="menu-remove"]').addEventListener('click', () => { closeResourceMenu(); openRemovePanel(); });
+  document.addEventListener('click', onDocClickCloseMenu, true);
+  document.addEventListener('keydown', onKeyCloseMenu, true);
+  menu.querySelector('[data-act="menu-hide"]').focus();
+}
+
+/** The panel directly under the top bar. Both the removal confirmation and the
+ *  one-line outcome of a hide land here, never in the content pane's
+ *  `#resource-action` slot, which can be scrolled off-screen. Stamped with the
+ *  resource it is about so `renderTopBar` can drop it when the selection moves. */
+function showControlsPanel(html, slug = state.selectedSlug) {
+  let panel = $('resource-controls-panel');
+  if (!panel) {
+    panel = document.createElement('section');
+    panel.id = 'resource-controls-panel';
+    panel.className = 'border-b border-rule-strong bg-paper px-4 py-s3 text-caveat text-ink';
+    const header = $('scope-slug')?.closest('header');
+    if (header) header.after(panel);
+    else ($('scope-slug')?.parentElement || document.body).appendChild(panel);
+  }
+  panel.dataset.slug = slug || '';
+  panel.innerHTML = html;
+  return panel;
+}
+function closeControlsPanel() { $('resource-controls-panel')?.remove(); }
+
+async function toggleHiddenFromMenu() {
+  const slug = state.selectedSlug;
+  const p = selectedProject();
+  const hiding = !p?.working_set_hidden;
+  const panel = showControlsPanel(hiding ? 'Hiding…' : 'Unhiding…', slug);
+  try {
+    // `resource_working_set` is keyed on (entity_type, entity_slug): the
+    // entity type must follow the selected kind, or a database sharing a slug
+    // with a repo hides the wrong row.
+    await setWorkingSetHidden(apiEntityType(state.resourceType), slug, hiding);
+    if (p) p.working_set_hidden = hiding;
+    renderSidebar();
+    await loadPane();
+    showControlsPanel(`${hiding
+      ? 'Hidden from your list. Still registered, and nothing was lost — “Show hidden” in the sidebar brings it back.'
+      : 'Back in your list.'} <button type="button" data-act="panel-close" class="cursor-pointer bg-transparent text-ink underline">Close</button>`, slug)
+      .querySelector('[data-act="panel-close"]').addEventListener('click', closeControlsPanel);
+  } catch (err) {
+    panel.innerHTML = `<span class="text-state-warn">Not saved: ${esc(err.message)}</span>`;
+  }
+}
+
+/** Remove from Resource Explorer: the per-kind confirmation as a panel under
+ *  the top bar. Its commit button is the only accent in it and names what goes. */
+function openRemovePanel() {
+  const entityType = apiEntityType(state.resourceType);
+  const slug = state.selectedSlug;
+  if (!slug) return;
+  const panel = showControlsPanel(`
+    <div class="text-ink" data-remove-sentence>${removeConfirmationHtml(entityType, slug)}</div>
+    <div class="mt-s3 flex items-baseline gap-s3">
+      <button type="button" data-act="remove-confirm"
+        class="cursor-pointer rounded-sm border border-accent bg-transparent px-2 py-[2px] text-accent-ink"
+        >Remove the ${kindNoun(entityType)} ${esc(slug)}</button>
+      <button type="button" data-act="remove-cancel" class="cursor-pointer bg-transparent text-ink underline">Cancel</button>
+    </div>`, slug);
+  panel.querySelector('[data-act="remove-cancel"]').addEventListener('click', closeControlsPanel);
+  panel.querySelector('[data-act="remove-confirm"]').addEventListener('click', () => commitResourceRemoval(entityType, slug));
+}
+
+async function commitResourceRemoval(entityType, slug) {
+  // Dispatch by kind (DB-REMOVE-BUTTON-IMPLEMENTED.md). This used to call
+  // `removeProject` for every kind, which hits the repo-only
+  // `DELETE /api/projects/{slug}` (404 for a database or filesystem).
+  // `removeEntity` picks the route that exists for each kind.
+  const listKey = state.resourceType === 'db' ? 'databases'
+    : state.resourceType === 'filesystem' ? 'filesystems' : 'projects';
+  const panel = showControlsPanel('Removing…', slug);
+  try {
+    await removeEntity(entityType, slug);
+    state[listKey] = state[listKey].filter((x) => x.slug !== slug);
+    state.selected.delete(slug);
+    state.selectedSlug = state[listKey][0]?.slug || null;
+    renderSidebar();
+    renderTopBar();
+    renderRailScope();
+    await loadPane();
+    showControlsPanel(`Removed the ${kindNoun(entityType)} ${esc(slug)} from Resource Explorer. <button type="button" data-act="panel-close" class="cursor-pointer bg-transparent text-ink underline">Close</button>`,
+      state.selectedSlug)
+      .querySelector('[data-act="panel-close"]').addEventListener('click', closeControlsPanel);
+  } catch (err) {
+    panel.innerHTML = `<span class="text-state-warn">Not removed: ${esc(err.message)}</span>`;
+  }
+}
+
+/** What the remove confirmation says, per kind, for one resource or for a list
+ *  (the Select bar's bulk removal uses the same sentence; the sidebar is scoped
+ *  to one kind, so a list is always one kind). Worded from what each DELETE
+ *  route does: repo drops its pgvector collections and registry row
+ *  (projects.py `remove_project`); database and filesystem delete the registry
+ *  row and survey records only (`registry.remove_database` / `remove_filesystem`)
+ *  and make no Egeria call. Plain ink: the accent is for the control that
+ *  commits, never for a sentence. "This cannot be undone" is said in words. */
+export function removeConfirmationHtml(entityType, target) {
+  const slugs = Array.isArray(target) ? target : [target];
+  const many = slugs.length > 1;
+  const name = many
+    ? `these <span class="tnum">${slugs.length}</span> ${kindNoun(entityType, slugs.length)}`
+    : `<span class="font-mono">${esc(slugs[0])}</span>`;
+  const notIgnored = many
+    ? `It is not the same as marking them <em>ignored</em> — an ignored
+    resource stays registered and can come back.`
+    : `It is not the same as marking it <em>ignored</em> — an ignored
+    resource stays registered and can come back.`;
+  if (entityType === 'database') {
+    return many
+      ? `Unregister ${name} and delete their local survey records
+      (surveys, schema, table and column detail, coverage)? This cannot be undone.
+      Not touched: the source databases themselves, anything already published to Egeria,
+      and the server registrations they were discovered from. ${notIgnored}`
+      : `Unregister the database ${name} and delete its local survey records
+      (surveys, schema, table and column detail, coverage)? This cannot be undone.
+      Not touched: the source database itself, anything already published to Egeria,
+      and the server registration it was discovered from. ${notIgnored}`;
+  }
+  if (entityType === 'filesystem') {
+    return many
+      ? `Unregister ${name} and delete their local survey records?
+      This cannot be undone. Not touched: the files on disk and anything already
+      published to Egeria. ${notIgnored}`
+      : `Unregister the file system ${name} and delete its local survey records?
+      This cannot be undone. Not touched: the files on disk and anything already
+      published to Egeria. ${notIgnored}`;
+  }
+  return many
+    ? `Unregister ${name} and delete all their local survey data? This cannot be
+    undone. Not touched: the GitHub repositories and anything already published to
+    Egeria. ${notIgnored}`
+    : `Unregister ${name} and delete all its local survey data? This cannot be
+    undone. Not touched: the GitHub repository and anything already published to
+    Egeria. ${notIgnored}`;
 }
 
 /**
@@ -3268,44 +3981,131 @@ export function bindResourceHeader() {
  * dashed rule the unbuilt intent uses, and clicking one says so and links
  * out rather than doing nothing.
  */
-function subTabsHtml() {
-  return `<div class="mb-s4 flex flex-wrap items-baseline gap-s3 font-heading text-subtab">
-    ${SUB_TABS.filter((t) => !t.resourceTypes || t.resourceTypes.includes(state.resourceType)).map((t) => {
+/** The sub-tabs the strip shows for the current resource type and stage.
+ *  The ONE list: subTabsHtml() renders it and loadPane()'s
+ *  reconcileSubTabForStage() validates against it, so the tab bar and the
+ *  router cannot disagree about which sub-tab exists where. */
+export function visibleSubTabs() {
+  return SUB_TABS.filter((t) => !t.resourceTypes || t.resourceTypes.includes(state.resourceType))
+    .filter((t) => !t.stages || t.stages.includes(state.stage))
+    // A leading tab is also gated on the resource kind (stage-tabs.js STAGE_TABS_KINDS; empty = dormant).
+    .filter((t) => !t.stageTab || stageTabsOn(state.stage, state.resourceType));
+}
+
+/** The ONE place a stage's default sub-tab is decided (it replaces four "enrichment ? context : questions"
+ *  ternaries): Enrichment opens on Context; a stage whose leading tabs are on for this kind opens on its first
+ *  (no landing preference); every other stage on Questions. */
+export function stageDefaultSubTab(stage = state.stage, kind = state.resourceType) {
+  if (stage === 'enrichment') return 'context';
+  return stageTabsOn(stage, kind) ? STAGE_TAB_IDS[stage][0] : 'questions';
+}
+
+/** Is `id` one of the leading tabs AND on the strip right now? (A stale `curate_*` id off Curate, or with the
+ *  gate off, is not: reconcileSubTabForStage() reverts it.) */
+export function isStageTabActive(id) {
+  return isStageTabId(id) && visibleSubTabs().some((t) => t.id === id);
+}
+
+/** The inputs the leading tabs' counts read. The Curate slices (S1/S2) fill `state.curate.counts` with
+ *  { view, plan } as they load; until then every count says "reading", never 0. */
+function stageTabCountCtx() {
+  const c = (state.curate && state.curate.counts) || {};
+  return { kind: state.resourceType, view: c.view || null, plan: c.plan || null, planFailed: !!c.planFailed, viewFailed: !!c.viewFailed };
+}
+
+/** A known sub-tab that is absent from the current strip (Context outside
+ *  Enrichment, Schema Inventory on a non-database) reverts to the stage's
+ *  default, the same default writeUrl() omits from the URL. Sub-tabs present
+ *  on the new stage survive a stage switch untouched; retired/unknown ids
+ *  are left for loadPane()'s own alias and not-built handling. Returns true
+ *  when it changed state.subTab. */
+export function reconcileSubTabForStage() {
+  const known = SUB_TABS.some((t) => t.id === state.subTab);
+  if (!known || visibleSubTabs().some((t) => t.id === state.subTab)) return false;
+  state.subTab = stageDefaultSubTab();
+  return true;
+}
+
+export function subTabsHtml() {
+  // The leading tabs' extras (rail marker, running-commit line, label counts) exist only while the gate is on
+  // for this stage and kind, so the rail is byte-identical to before otherwise.
+  const tabbed = stageTabsOn(state.stage, state.resourceType);
+  const labelOf = (t) => (t.stageTab ? `${t.label}${tabCountsHtml(t.id, stageTabCountCtx())}` : t.label);
+  const commitLine = tabbed && state.stage === 'curate' ? commitLineHtml(state.curate && state.curate.commitLine) : '';
+  return `<div class="mb-s4 flex flex-wrap items-baseline gap-s3 font-heading text-subtab"${tabbed ? ' data-subtab-rail' : ''}>
+    ${visibleSubTabs().map((t) => {
       if (t.id === state.subTab) {
-        return `<span class="border-b border-accent pb-[2px] text-ink">${t.label}</span>`;
+        return `<span class="border-b border-accent pb-[2px] text-ink">${labelOf(t)}</span>`;
       }
-      // DEFECT-UNBUILT-STAGES-RENDER-AS-BUILT.md §3: a sub-tab's own `built`
-      // flag said nothing about whether the STAGE it's shown under is
-      // built, so all four module-level built:true SUB_TABS advertised
-      // working panes on all six unbuilt stages too. Live only when the tab
-      // AND the current stage are built.
-      const stageDef = STAGES.find((s) => s.id === state.stage);
-      if (stageDef?.built && (t.id === 'questions' || t.built)) {
-        return `<button data-subtab="${t.id}" class="cursor-pointer bg-transparent text-ink hover:text-accent-ink">${t.label}</button>`;
-      }
-      return `<button data-deferred="${t.id}"${deferredAttrs(false, { title: `${t.does} — not built in /next`, extraStyle: 'padding-bottom:1px' })}
-        class="cursor-pointer bg-transparent text-ink-muted">${t.label}</button>`;
+      return `<button data-subtab="${t.id}" class="cursor-pointer bg-transparent text-ink hover:text-accent-ink">${labelOf(t)}</button>`;
     }).join('')}
-  </div>`;
+  </div>${commitLine}`;
 }
 
 /* The header no longer says "N of these are not built in /next". That
  * sentence was review-speak — correct in a handoff, unreadable in the
  * product to anyone who was not in the conversation — and the dashed
  * underline on a deferred tab already carries the fact (design rule 6). */
-/** Sub-tab clicks: the real one switches, a deferred one says it is deferred. */
+/** Is Curate's tabbed pane on screen (its three panels in the document), so a switch between its tabs can be
+ *  done in place without reading the plan again? */
+function curatePanelsMounted() {
+  return state.stage === 'curate' && stageTabsOn('curate', state.resourceType)
+    && isStageTabId(state.subTab) && !!$('content')?.querySelector('[data-curate-tab-panel]');
+}
+
+/** Is Understanding's tabbed pane on screen (its three panels in the document)? */
+function understandingPanelsMounted() {
+  return state.stage === 'understanding' && stageTabsOn('understanding', state.resourceType)
+    && isStageTabId(state.subTab) && !!$('content')?.querySelector('[data-understanding-tab-panel]');
+}
+
+/** Show one of Understanding's tabs: swap which panel is hidden, redraw the rail, and let the pane start the
+ *  reads that tab owns (once). Nothing already read is read again. Exported so a link inside the pane (the
+ *  section index) can reveal the tab that holds its target. */
+export function switchUnderstandingTab(tab) {
+  state.subTab = tab;
+  writeUrl();
+  const want = tab.replace(/^understanding_/, '');
+  $('content').querySelectorAll('[data-understanding-tab-panel]').forEach((p) => { p.hidden = p.dataset.understandingTabPanel !== want; });
+  refreshStageRail();
+  if (state.understandingTabs && state.understandingTabs.onTabShown) state.understandingTabs.onTabShown(want);
+}
+
+/** Redraw the rail (labels, counts, the running-commit line) in place. A no-op when the tabbed pane is not
+ *  what is on screen. */
+export function refreshStageRail() {
+  const host = $('content')?.querySelector('[data-rail-host]');
+  if (!host) return;
+  host.innerHTML = subTabsHtml();
+  bindSubTabsIn(host);
+}
+
+/** Show one of Curate's tabs: swap which panel is hidden, redraw the rail, start what the newly shown tab's open
+ *  sections own. Nothing is fetched here that a visible tab did not already have. */
+function switchCurateTab(tab) {
+  state.subTab = tab;
+  writeUrl();
+  const want = tab.replace(/^curate_/, '');
+  $('content').querySelectorAll('[data-curate-tab-panel]').forEach((p) => { p.hidden = p.dataset.curateTabPanel !== want; });
+  refreshStageRail();
+  if (state.curate && state.curate.onTabShown) state.curate.onTabShown();
+}
+
+/** Sub-tab clicks: a click switches. Between Curate's own tabs the
+ *  switch is in place. */
 export function bindSubTabs() {
-  const el = $('content');
-  el.querySelectorAll('[data-subtab]').forEach((b) => b.addEventListener('click', () => {
+  bindSubTabsIn($('content'));
+}
+
+function bindSubTabsIn(el) {
+  el.querySelectorAll('[data-subtab]').forEach((b) => { b.onclick = () => {
+    if (curatePanelsMounted() && STAGE_TAB_IDS.curate.includes(b.dataset.subtab)) { switchCurateTab(b.dataset.subtab); return; }
+    if (understandingPanelsMounted() && STAGE_TAB_IDS.understanding.includes(b.dataset.subtab)) { switchUnderstandingTab(b.dataset.subtab); return; }
     state.subTab = b.dataset.subtab;
     writeUrl();
     loadPane();
-  }));
-  el.querySelectorAll('[data-deferred]').forEach((b) => b.addEventListener('click', () => {
-    state.subTab = b.dataset.deferred;
-    writeUrl();
-    loadPane();
-  }));
+  }; });
+  bindCommitLine(el);
 }
 
 /* ════════════════════════════════════════════════════════════════════════
@@ -3362,9 +4162,8 @@ export function bindSubTabs() {
 async function loadSchemaInventoryPane() {
   const el = $('content');
   if (state.resourceType !== 'db') {
-    el.innerHTML = deferredPaneHtml(
-      { label: 'Schema Inventory', does: 'Only databases have a schema tree to show' });
-    bindSubTabs();
+    // Unreachable through loadPane() (reconcileSubTabForStage() reverts it first); kept as a safe landing.
+    state.subTab = stageDefaultSubTab(); writeUrl(); await loadPane();
     return;
   }
   const slug = state.selectedSlug;
@@ -3378,8 +4177,11 @@ async function loadSchemaInventoryPane() {
         class="absolute right-[6px] top-1/2 hidden -translate-y-1/2 cursor-pointer text-ink-muted hover:text-ink"
       >×</button>
     </div>
+    <div data-schema-counts class="mb-[2px] text-answer text-ink"></div>
+    <div id="schema-tree-sources" data-schema-tree-sources class="mb-s2 text-provenance text-ink-muted"></div>
     <div id="schema-tree">Reading the schema tree…</div>`;
   bindSubTabs();
+  bindResourceHeader();
 
   let tree;
   try {
@@ -3391,6 +4193,10 @@ async function loadSchemaInventoryPane() {
   }
   if (slug !== state.selectedSlug) return;
   $('schema-tree').innerHTML = schemaTreeHtml(tree.schemas || []);
+  const srcLine = $('schema-tree-sources');
+  if (srcLine) srcLine.textContent = inventoryHeaderText(tree.sources);
+  const countsLine = el.querySelector('[data-schema-counts]');
+  if (countsLine) countsLine.textContent = threeNumberLine(tree);
   bindSchemaTreeFilter();
 }
 
@@ -3416,27 +4222,52 @@ function bindSchemaTreeFilter() {
 
 const _SCHEMA_SHORTFALL_LABELS = {
   no_access: 'no access', structure_only: 'structure only', staging: 'staging (by name)',
-  empty: 'empty',
+  empty: 'empty', no_tables: 'no tables', not_measured: 'rows not measured',
+  views_only: 'views only',
 };
+
+/** Any classification word the table above does not know: never the raw snake_case code on screen. */
+function schemaShortfallWord(c) { return _SCHEMA_SHORTFALL_LABELS[c] || String(c ?? '').replace(/_/g, ' '); }
+
+/** Size tail of a schema stamp, from the one field the size comes from (`bytes_total`). A size never read says
+ *  so; it is not left out. The index share keeps its own words. */
+function schemaSizeTail(s) {
+  return `${s.bytes_total != null ? ` · ${fmtBytes(s.bytes_total)}` : ' · size not read'}${'index_bytes_total' in s ? (s.index_bytes_total == null ? ' · index not read' : ` (index ${fmtBytes(s.index_bytes_total)})`) : ''}`;
+}
 
 //: Table-kind labels -- quiet, muted words distinguishing a base table from
 //: a view/materialized view (Dan's gate, 2026-09-27: he asked for a way to
 //: tell them apart at a glance without being didactic about it).
 const _TABLE_KIND_LABELS = {
-  'BASE TABLE': 'table', 'VIEW': 'view', 'MATERIALIZED VIEW': 'matview',
+  'BASE TABLE': 'table', 'PARTITIONED TABLE': 'table', 'VIEW': 'view', 'MATERIALIZED VIEW': 'matview',
   'FOREIGN': 'foreign table',
 };
 
-function schemaTreeHtml(schemas) {
+// `schemaTreeHtml`/`tableHtml`/`filterSchemaTree` are exported (no logic
+// change -- these three lines add the `export` keyword only) so the node/
+// jsdom render harness (frontend-build/test-harness/) can import and call
+// the REAL functions directly, rather than re-extracting/re-executing their
+// source text as a string (the pattern every other app.js-adjacent test
+// uses -- see tests/test_next_schema_inventory_filter.py's own docstring).
+// See NEXT-RENDER-HARNESS-IMPLEMENTED.md.
+export function schemaTreeHtml(schemas) {
   if (!schemas.length) return `<div class="text-caveat text-ink-muted">No stored schema rows yet — run a survey first.</div>`;
   const parts = schemas.map((s) => {
     if (s.classification === 'system') {
       return `<div class="mb-s1 text-caveat text-ink-muted" data-tree-node data-tree-text="system">
         ${esc(String(s.system_count))} system schema(s) folded (pg_catalog, information_schema, pg_toast*, pg_temp*)</div>`;
     }
+    // `measured` is a schema the Egeria native survey listed: it carries no row total
+    // of its own, so the stamp says tables and, when known, size -- never a made-up 0.
     const stamp = s.classification === 'data'
-      ? `${s.table_count} table(s) · ${Number(s.row_total || 0).toLocaleString('en-US')} row(s)${s.is_estimate ? ' (est.)' : ''}`
-      : `${s.table_count} table(s) — ${_SCHEMA_SHORTFALL_LABELS[s.classification] || s.classification}`;
+      ? `${s.table_count} table(s) · ${Number(s.row_total || 0).toLocaleString('en-US')} row(s)${s.is_estimate ? ' (est.)' : ''}${schemaSizeTail(s)}`
+      : s.classification === 'measured'
+        ? `${s.table_count ?? '?'} table(s)${s.row_total != null ? ` · ${Number(s.row_total).toLocaleString('en-US')} row(s)${s.is_estimate ? ' (est.)' : ''}` : ''}${schemaSizeTail(s)}`
+        : s.classification === 'views_only'
+          // Views hold no storage, so there is no size to read: say so rather than leave the tail off.
+          ? `${s.table_count} view(s) · views only · no storage`
+          : `${s.table_count} table(s) — ${schemaShortfallWord(s.classification)}`;
+    const schemaSrc = nodeSourceLine(s);
     // Found live, `laz_local_adventureworks`, 2026-09-27 (Dan's gate):
     // this used to be the schema name PLUS every table/column name
     // concatenated, so a node's own displayed match state was really "does
@@ -3452,6 +4283,7 @@ function schemaTreeHtml(schemas) {
         <span class="font-semibold">${esc(s.schema)}</span>
         <span class="text-caveat text-ink-muted"> schema</span>
         <span class="text-provenance text-ink-muted"> — ${esc(stamp)}</span>
+        ${schemaSrc ? `<span data-tree-source class="text-provenance text-ink-muted"> · ${esc(schemaSrc)}</span>` : ''}
       </summary>
       ${s.reason ? `<div class="ml-s3 mt-[4px] text-provenance text-ink-muted">${esc(s.reason)}</div>` : ''}
       <div class="ml-s3 mt-s2">${(s.tables || []).map(tableHtml).join('') || '<span class="text-caveat text-ink-muted">No tables.</span>'}</div>
@@ -3460,26 +4292,40 @@ function schemaTreeHtml(schemas) {
   return parts.join('');
 }
 
-function tableHtml(t) {
+export function tableHtml(t) {
   const rowStamp = t.row_count == null
     ? 'not measured'
     : `${Number(t.row_count).toLocaleString('en-US')} row(s)${t.row_count_state === 'catalog_estimate' ? ' (est.)' : ''}`;
   const byteStamp = t.size_bytes == null ? 'not measured' : fmtBytes(t.size_bytes);
+  // Brief D: the index share beside the total. Drawn only when the server sent
+  // the field at all (an older payload says nothing); a NULL is "index not
+  // read", never 0 B.
+  const indexStamp = !('index_bytes' in t) ? ''
+    : t.index_bytes == null ? ' · index not read' : ` · index ${fmtBytes(t.index_bytes)}`;
   const kindLabel = _TABLE_KIND_LABELS[t.table_type] || 'table';
+  const tableSrc = nodeSourceLine(t);
   // Own name only -- see schemaTreeHtml's comment above on why this is no
   // longer the table+columns concatenation it used to be.
   return `<details class="mb-s1" data-tree-node data-tree-text="${esc(t.name.toLowerCase())}">
     <summary class="cursor-pointer text-ink">
       ${esc(t.name)}
       <span class="text-caveat text-ink-muted"> ${esc(kindLabel)}</span>
-      <span class="text-provenance text-ink-muted"> — ${esc(rowStamp)} · ${esc(byteStamp)} · ${t.column_count} column(s)</span>
+      <span class="text-provenance text-ink-muted"> — ${esc(rowStamp)} · ${esc(byteStamp)}${esc(indexStamp)} · ${t.column_count == null ? 'columns not measured' : `${t.column_count} column(s)`}</span>
+      ${tableSrc ? `<span data-tree-source class="text-provenance text-ink-muted"> · ${esc(tableSrc)}</span>` : ''}
     </summary>
-    <table class="ml-s3 mt-[4px] w-full max-w-[70ch] border-collapse text-caveat">
+    <table class="ml-s3 mt-[4px] w-full max-w-[110ch] border-collapse text-caveat">
+      ${(t.columns || []).length ? `<thead><tr class="border-b border-rule text-provenance text-ink-muted">
+        <th class="py-[3px] pr-s2 text-left font-normal">Column</th><th class="py-[3px] pr-s2 text-left font-normal">Type</th>
+        <th class="py-[3px] pr-s2 text-left font-normal">Null</th><th class="py-[3px] pr-s2 text-left font-normal">Key</th>
+        <th class="py-[3px] pr-s2 text-left font-normal">Default</th><th class="py-[3px] pr-s2 text-left font-normal">References</th>
+        <th class="py-[3px] text-left font-normal">Comment</th></tr></thead>` : ''}
       ${(t.columns || []).map((c) => `<tr class="border-b border-rule" data-tree-node data-tree-text="${esc(c.name.toLowerCase())}">
         <td class="py-[3px] pr-s2 font-mono text-ink">${esc(c.name)}</td>
         <td class="py-[3px] pr-s2 text-ink-muted">${esc(c.type)}</td>
         <td class="py-[3px] pr-s2 text-ink-muted">${c.nullable === null ? 'nullable unknown' : (c.nullable ? 'nullable' : 'not null')}</td>
         <td class="py-[3px] pr-s2 text-accent-ink">${esc(c.key_role || '')}</td>
+        <td data-col-default class="py-[3px] pr-s2 font-mono text-ink-muted">${c.default ? esc(c.default) : '<span class="font-sans">none recorded</span>'}</td>
+        <td data-col-fk class="py-[3px] pr-s2 font-mono text-ink-muted">${fkTarget(c.foreign_key) ? `→ ${esc(fkTarget(c.foreign_key))}` : '—'}</td>
         <td class="py-[3px] text-ink-muted">${c.comment ? esc(c.comment) : 'comments not captured'}</td>
       </tr>`).join('')}
     </table>
@@ -3515,7 +4361,7 @@ function tableHtml(t) {
  * Clearing the filter leaves every node exactly as it was (no
  * saved-collapse-state clobbering, unlike the sidebar's persistent one —
  * this tree has no cross-session collapse preference to protect). */
-function filterSchemaTree(raw) {
+export function filterSchemaTree(raw) {
   const q = raw.trim().toLowerCase();
   const root = $('schema-tree');
   if (!root) return;
@@ -3590,7 +4436,7 @@ async function loadDispositionPane() {
     <div id="depth-offer" class="mb-s4"></div>
     <div class="mb-s1 flex items-baseline gap-s2">
       <span class="text-caps uppercase tracking-caps text-ink">Records</span>
-      <span class="text-provenance text-ink-muted">what was catalogued, and what was written down · a snapshot, not a query</span>
+      <span class="text-provenance text-ink-muted">what was published, and what was written down · a snapshot, not a query</span>
     </div>
     <div id="records" class="mb-s4 text-caveat text-ink-muted">Reading the records…</div>
     <div class="mb-s1 flex items-baseline gap-s2">
@@ -3641,14 +4487,17 @@ async function loadDispositionPane() {
  *  thirty-two-row table fights. A catalogue record shows its steps inline
  *  as Curate draws them; a report shows its header sentence. Same row
  *  grammar, same date, same author (REPORT-RECORD-AND-TWO-CALLS C4). */
-async function renderRecords(slug, entityType = 'repo') {
+export async function renderRecords(slug, entityType) {
+  requireKind('renderRecords', entityType);
   const host = $('records');
   if (!host) return;
   let recs;
   try { recs = (await listRecords(slug, entityType)).records || []; }
   catch (err) { host.innerHTML = `<span class="text-state-warn">The records could not be read: ${esc(err.message)}</span>`; return; }
   if (slug !== state.selectedSlug) return;
-  if (!recs.length) { host.textContent = 'No record has been written for this resource yet — nothing catalogued, nothing written down.'; return; }
+  if (!recs.length) { host.textContent = 'No record has been written for this resource yet — nothing published, nothing written down.'; return; }
+  const scopeAct = await scopeActState(entityType, slug);
+  if (slug !== state.selectedSlug) return;
   host.innerHTML = recs.map((r) => {
     const when = `<span class="tnum">${esc(ago(r.requested_at))}</span> <span class="tnum">(${esc(String(r.requested_at).slice(0, 10))})</span>`;
     if (r.kind === 'report') {
@@ -3668,13 +4517,13 @@ async function renderRecords(slug, entityType = 'repo') {
           <ul class="m-0 list-none p-0 pl-s2">${g.rows.map((row) => `<li class="flex items-baseline gap-s2 font-mono text-ink">
             <input type="checkbox" data-record-row="${esc(row.name)}" class="shrink-0">${esc(row.name)}${row.detail ? ` <span class="font-body text-ink-muted">${esc(row.detail)}</span>` : ''}</li>`).join('')}${
             g.truncated ? `<li class="text-ink-muted">and more — the first ${g.rows.length} are shown</li>` : ''}</ul>`).join('')}</div>
-        ${recordActsHtml(r, rowCount(rep))}
+        ${recordActsHtml(r, rowCount(rep), scopeAct)}
         ${recordUsesHtml(r)}
       </div>`;
     }
     // curateRecordHtml carries the author, date and state line itself.
     return `<div class="border-t border-rule py-s2" data-record="${esc(r.id)}">
-      <div class="text-answer text-ink">catalogued${r.manifest?.entities?.length ? ` · ${esc(r.manifest.entities.join(', '))}` : ''}</div>
+      <div class="text-answer text-ink">published${r.manifest?.entities?.length ? ` · ${esc(r.manifest.entities.join(', '))}` : ''}</div>
       ${curateRecordHtml(r)}
     </div>`;
   }).join('');
@@ -3700,13 +4549,44 @@ function rowCount(rep) {
  * acts on the snapshot and never re-derives; the journal opens seeded with
  * a citation, not a sentence; a stale record keeps all three live and what
  * they create carries the staleness; the record learns it was used. */
-function recordActsHtml(r, n) {
+/** What the "add to <investigation>" act should say for this resource: which
+ *  investigation is current and whether the resource is already in its scope.
+ *  The scope is read from the server (it holds every kind; `state.workingSet`
+ *  holds repos only). If it cannot be read the act is offered as "add" -- the
+ *  server refuses to overwrite an existing member's reason either way. */
+async function scopeActState(entityType, slug) {
+  const invSlug = state.investigation;
+  if (!invSlug) return { invName: '', inScope: false };
+  const inv = state.investigations.find((i) => i.slug === invSlug);
+  const invName = inv?.display_name || invSlug;
+  let inScope = false;
+  try {
+    inScope = ((await listInvestigationMembers(invSlug)) || [])
+      .some((m) => m.entity_type === entityType && m.entity_slug === slug);
+  } catch { /* unknown: offer the act */ }
+  return { invName, inScope };
+}
+
+/** The current investigation's display name, '' when none is current. */
+function curInvName() {
+  if (!state.investigation) return '';
+  const inv = state.investigations.find((i) => i.slug === state.investigation);
+  return inv?.display_name || state.investigation;
+}
+
+function scopeActHtml(scopeAct, attr, cls) {
+  const w = scopeActWording(scopeAct.invName, scopeAct.inScope);
+  if (w.mode === 'text') return `<span data-scope-act-text class="text-ink-muted" title="${esc(w.title)}">${esc(w.label)}</span>`;
+  return `<button ${attr} title="${esc(w.title)}" class="${cls}">${esc(w.label)}</button>`;
+}
+
+function recordActsHtml(r, n, scopeAct = { invName: '', inScope: false }) {
   const me = (state.me && (state.me.user_id || state.me.username || state.me.egeria_user)) || '';
   return `<div data-record-acts class="mt-s2 text-caveat">
     <div class="text-ink"><span data-record-scope>The whole report · <span class="tnum">${n}</span> row${n === 1 ? '' : 's'}</span>
       <span class="text-ink-muted">· as recorded ${esc(String(r.requested_at).slice(0, 10))}${r.out_of_date ? ' · its evidence has since moved — what these create will say so' : ''}</span></div>
     <div class="mt-[3px] flex flex-wrap items-baseline gap-x-s3 gap-y-[2px] text-provenance">
-      <button data-record-act="work_list" ${me ? '' : 'disabled'} class="cursor-pointer bg-transparent p-0 text-accent-ink underline">add to work list</button>
+      ${scopeActHtml(scopeAct, `data-record-act="scope" ${me ? '' : 'disabled'}`, 'cursor-pointer bg-transparent p-0 text-accent-ink underline')}
       <button data-record-act="rfa" ${me ? '' : 'disabled'} class="cursor-pointer bg-transparent p-0 text-accent-ink underline">raise RFA</button>
       <button data-record-act="journal" ${me ? '' : 'disabled'} class="cursor-pointer bg-transparent p-0 text-accent-ink underline">note in journal</button>
       ${r.out_of_date && !r.corrected_by?.id ? `<button data-record-correct ${me ? '' : 'disabled'} class="cursor-pointer bg-transparent p-0 text-accent-ink underline">write a correction</button>` : ''}
@@ -3721,7 +4601,8 @@ function recordActsHtml(r, n) {
  *  in the same place. */
 function recordUsesHtml(r) {
   const uses = (r.uses || []).map((u) => {
-    const what = u.act === 'work_list' ? `added to work list “${esc(u.target_name)}”`
+    const what = u.act === 'scope' ? `added to ${esc(u.target_name)}’s scope`
+      : u.act === 'work_list' ? `added to work list “${esc(u.target_name)}”`
       : u.act === 'rfa' ? `raised RFA “${esc(u.target_name)}”`
       : u.act === 'journal' ? 'cited in the journal' : esc(u.act);
     return `<div class="text-provenance text-ink-muted">Used · ${what} · <span class="tnum">${esc(String(u.at).slice(5, 16).replace('T', ' '))}</span> · ${esc(u.by)}</div>`;
@@ -3732,7 +4613,8 @@ function recordUsesHtml(r) {
   return uses.length ? `<div class="mt-s1">${uses.join('')}</div>` : '';
 }
 
-function wireRecordActs(host, slug, recs, entityType = 'repo') {
+function wireRecordActs(host, slug, recs, entityType) {
+  requireKind('wireRecordActs', entityType);
   host.querySelectorAll('[data-record]').forEach((box) => {
     const id = box.dataset.record;
     const rec = recs.find((x) => x.id === id);
@@ -3761,16 +4643,39 @@ function wireRecordActs(host, slug, recs, entityType = 'repo') {
         status.textContent = '→ the journal, below — write the thought after the citation';
         return;
       }
-      b.disabled = true; status.textContent = '…';
-      try {
-        const out = await actOnRecord(slug, id, { action, rows }, entityType);
-        const where = action === 'work_list' ? `now in “${out.name}”` : `RFA ${String(out.rfa).slice(0, 8)} raised, pointing at this record`;
-        status.innerHTML = `<span class="text-state-ok">→ ${esc(where)}</span>`;
-        await renderRecords(slug, entityType);
-      } catch (err) {
-        b.disabled = false;
-        status.innerHTML = `<span class="text-accent-ink">not recorded${err.status === 401 ? ' — sign in to act on a report' : `: ${esc(err.message)}`}</span>`;
+      const perform = async (investigation = '') => {
+        b.disabled = true; status.textContent = '…';
+        try {
+          const out = await actOnRecord(slug, id, { action, rows, investigation }, entityType);
+          let becameCurrent = false;
+          if (action === 'scope') {
+            // The chosen investigation becomes the current one, as in the
+            // Select bar; either way its scope is re-read for the member count.
+            becameCurrent = investigation !== state.investigation;
+            if (becameCurrent) await setInvestigation(investigation);
+            else await loadWorkingSet();
+            await refreshOpenInvestigation(investigation);
+          }
+          await renderRecords(slug, entityType);
+          // renderRecords rebuilt the box; say where it went in the new one.
+          const fresh = $('records')?.querySelector(`[data-record="${id}"] [data-record-status]`);
+          const where = action === 'scope'
+            ? (out.already_in_scope ? `already in ${out.investigation_name}’s scope, left as it was` : `added to ${out.investigation_name}’s scope${becameCurrent ? ', now your current investigation' : ''}`)
+            : `RFA ${String(out.rfa).slice(0, 8)} raised, pointing at this record`;
+          if (fresh) fresh.innerHTML = `<span class="text-state-ok">→ ${esc(where)}</span>`;
+        } catch (err) {
+          b.disabled = false;
+          status.innerHTML = `<span class="text-accent-ink">not recorded${err.status === 401 ? ' — sign in to act on a report' : `: ${esc(err.message)}`}</span>`;
+        }
+      };
+      if (action === 'scope') {
+        // With none current, ask which investigation first; the act continues
+        // in the picker's callback.
+        if (state.investigation) await perform(state.investigation);
+        else chooseInvestigationThen((chosen) => perform(chosen));
+        return;
       }
+      await perform();
     }));
     box.querySelector('[data-record-correct]')?.addEventListener('click', async (ev) => {
       // A correction is save-as-report with the superseded record's id
@@ -3793,7 +4698,8 @@ function wireRecordActs(host, slug, recs, entityType = 'repo') {
   });
 }
 
-function renderJournalWrite(slug, entityType = 'repo') {
+export function renderJournalWrite(slug, entityType) {
+  requireKind('renderJournalWrite', entityType);
   const host = $('journal-write');
   if (!host) return;
   const who = (state.me && (state.me.user_id || state.me.username || state.me.egeria_user)) || '';
@@ -3813,9 +4719,10 @@ function renderJournalWrite(slug, entityType = 'repo') {
         class="w-[12ch] rounded-sm border border-rule-strong bg-transparent px-[4px] text-caveat text-ink placeholder:text-ink-muted"></label>
     </div>
     <div class="mt-s2 flex items-baseline gap-s3">
-      <button id="journal-save" type="button"
-        class="cursor-pointer rounded-sm border border-accent bg-transparent px-2 py-[2px] text-answer text-accent-ink">Write</button>
-      <span class="text-provenance text-ink-muted">${who ? `as ${esc(who)}` : 'sign in to write — an entry needs an author'}
+      <button id="journal-save" type="button" ${who ? '' : 'disabled title="sign in to save — an entry needs an author"'}
+        class="${who ? 'cursor-pointer' : 'opacity-60'} rounded-sm border border-accent bg-transparent px-2 py-[2px] text-answer text-accent-ink">Save entry</button>
+      <span class="text-provenance text-ink-muted">saved entries are permanent: no edit, no delete
+        · ${who ? `as ${esc(who)}` : 'sign in to save — an entry needs an author'}
         · a suggestion is a work-list entry for them, not a notification</span>
     </div>`;
   $('journal-save').addEventListener('click', async () => {
@@ -3824,7 +4731,7 @@ function renderJournalWrite(slug, entityType = 'repo') {
     const targets = [...host.querySelectorAll('[data-suggest]:checked')].map((c) => c.dataset.suggest);
     const person = ($('journal-person').value || '').trim();
     if (person) targets.push(person);
-    const b = $('journal-save'); b.disabled = true; b.textContent = 'writing…';
+    const b = $('journal-save'); b.disabled = true; b.textContent = 'saving…';
     try {
       const out = await writeJournal(slug, body, targets, entityType);
       const cites = $('journal-body').dataset.citesRecord;
@@ -3837,7 +4744,7 @@ function renderJournalWrite(slug, entityType = 'repo') {
       }
       $('journal-body').value = ''; $('journal-person').value = '';
       host.querySelectorAll('[data-suggest]').forEach((c) => { c.checked = false; });
-      b.disabled = false; b.textContent = 'Write';
+      b.disabled = false; b.textContent = 'Save entry';
       // Where it landed, by the list's NAME -- "Suggested to Data Expert"
       // is what was created; the slug is how the server finds it. And it
       // stays until the next write replaces it: this is the only record
@@ -3847,38 +4754,46 @@ function renderJournalWrite(slug, entityType = 'repo') {
       const note = document.createElement('div');
       note.className = 'mt-s1 text-provenance text-ink';
       note.setAttribute('data-journal-note', '1');
-      note.textContent = where ? `written · suggested — now in “${where}”` : 'written';
       host.appendChild(note);
-      await renderJournalEntries(slug, entityType);
+      // "saved · who · when" comes from the RE-READ entry, never from the click.
+      const entries = await renderJournalEntries(slug, entityType);
+      const mine = (entries || []).find((e) => out.id && e.id === out.id);
+      note.textContent = mine
+        ? `${savedLine(mine.author, mine.written_at)}${where ? ` · suggested — now in “${where}”` : ''}`
+        : 'the save returned, but the entry is not in the re-read list';
     } catch (err) {
       b.disabled = false;
-      b.textContent = err.status === 401 ? 'sign in to write' : `not written: ${err.message}`;
+      b.textContent = err.status === 401 ? 'sign in to save' : `not saved: ${err.message}`;
     }
   });
 }
 
-async function renderJournalEntries(slug, entityType = 'repo') {
+export async function renderJournalEntries(slug, entityType) {
+  requireKind('renderJournalEntries', entityType);
   const host = $('journal-entries');
   if (!host) return;
   let data;
   try { data = await getJournal(slug, entityType); }
-  catch (err) { host.innerHTML = `<span class="text-state-warn">The journal could not be read: ${esc(err.message)}</span>`; return; }
-  if (slug !== state.selectedSlug) return;
+  catch (err) { host.innerHTML = `<span class="text-state-warn">The journal could not be read: ${esc(err.message)}</span>`; return []; }
+  if (slug !== state.selectedSlug) return [];
   const entries = data.entries || [];
   if (!entries.length) {
     // Visible, and a fair thing for a corpus view to count: catalogued,
     // never written about.
     host.innerHTML = `<span class="text-ink-muted">Nobody has written about this resource yet.</span>`;
-    return;
+    return entries;
   }
   host.innerHTML = `
     <div class="mb-s1 text-caps uppercase tracking-caps text-ink-muted">Earlier entries · <span class="tnum">${entries.length}</span>${
       data.suggested_to?.length ? ` · suggested to ${esc(data.suggested_to.join(', '))}` : ''}</div>
-    ${entries.map((e) => `<div class="border-t border-rule py-s2">
+    ${entries.map((e) => `<div class="border-t border-rule py-s2" data-journal-entry="${esc(e.id || '')}">
       <p class="m-0 max-w-[70ch] text-answer text-ink">${tnum(esc(e.body))}</p>
-      <div class="text-provenance text-ink-muted">${esc(e.author)} · <span class="tnum">${esc(ago(e.written_at))}</span>${
-        e.suggested_to?.length ? ` · suggested to ${esc(e.suggested_to.join(', '))}` : ''}</div>
+      <div class="text-provenance text-ink-muted">${esc(e.author || 'unsigned · from before authors were recorded')} · <span class="tnum">${esc(ago(e.written_at))}</span>${
+        e.suggested_to?.length ? ` · suggested to ${esc(e.suggested_to.join(', '))}` : ''}<span data-journal-cue="${esc(e.id || '')}"></span></div>
     </div>`).join('')}`;
+  // Brief F: Curate's notes band fills each entry's Egeria state (a cue and a word) into its slot.
+  host.ownerDocument.dispatchEvent(new CustomEvent('re:journal-drawn', { detail: { slug, entityType } }));
+  return entries;
 }
 
 function paneNeedsRepo() {
@@ -3936,23 +4851,92 @@ function onePurpose(text) {
  *  and their message(s) — the tooltip (this function's own `title`) already
  *  named the bare status word, which stays as the fallback when there is
  *  nothing more specific to show. */
-function lastRunHtml(c) {
+const RUN_LIVE = ACTIVITY_LIVE;
+export function lastRunHtml(c) {
   const when = c.last_run_at || '';
   if (!when) return '<span class="text-ink-muted">never run</span>';
   const days = (Date.now() - Date.parse(when)) / 86400000;
   const stale = Number.isFinite(days) && days >= SURVEY_STALE_DAYS;
   const ok = (c.last_run_status || '') === 'ok';
+  if (RUN_LIVE.has(String(c.last_run_status || '').toLowerCase())) {
+    // Still going: the cue and one word, from the persisted row. The pane follows it to its end.
+    return `<span data-run-live title="${esc(when)} · ${esc(c.last_run_status)}"><span class="text-ink-muted" aria-hidden="true">◔</span> running · started ${esc(ago(when))}</span>`;
+  }
   const errors = c.last_run_errors || [];
-  const warn = !ok && c.last_run_status
+  // "recorded" = a step_runs row proves it ran, not that it succeeded: no
+  // success cue, but not a failure either, so no warning glyph.
+  const warn = !ok && c.last_run_status && c.last_run_status !== 'recorded'
     ? (errors.length
         ? `<button type="button" data-run-errors="${esc(c.qualified_name || '')}"
              class="cursor-pointer bg-transparent text-state-warn underline decoration-dotted"
              title="Click to see what failed">⚠</button> `
         : `<span class="text-state-warn" title="${esc(c.last_run_status)}">⚠</span> `)
     : '';
+  // Engine host case 3 (C4): who coordinated the run and who pressed Run, as the run itself recorded it.
+  const by = c.last_run_by ? ` · started by ${esc(c.last_run_by)}` : '';
+  const startedIn = c.last_run_coordinated_by === 'egeria'
+    ? ` <span data-run-started-in class="text-ink-muted">· coordinated by Egeria${by}</span>`
+    : (c.last_run_started_by === 're' && c.last_run_by
+      ? ` <span data-run-started-in class="text-ink-muted">· run by RE${by}</span>` : '');
   return `<span title="${esc(when)}${c.last_run_status ? ` · ${esc(c.last_run_status)}` : ''}">
     ${ok ? '<span class="text-state-ok">✓</span> ' : warn}
-    <span class="${stale ? 'wl-age-text' : ''}">ran ${esc(ago(when))}</span></span>`;
+    <span class="${stale ? 'wl-age-text' : ''}">ran ${esc(ago(when))}</span>${startedIn}</span>${
+    c.last_publish_proof ? ` ${publishProofHtml(c.last_publish_proof)}` : ''}`;
+}
+
+/** Which engine actually ran a definition's last run, rendered ON THE ROW
+ *  itself -- sourced from `last_run_engine_note` (persisted in the
+ *  activity_log detail SurveyDefinitionExecutor already writes, carried
+ *  through by registry.get_survey_definition_last_activity /
+ *  survey_definitions.py), not from a page-lifetime DOM node.
+ *
+ *  Design bug this closes (2026-09-28,
+ *  ENGINE-NOTE-PERSISTENCE-IMPLEMENTED.md): launchSurvey()
+ *  used to append this as a transient `#survey-note` div and then, a few
+ *  lines later, call loadSurveyPane() -- which re-renders the whole pane,
+ *  including a fresh, empty `#survey-note`, wiping the note out right after
+ *  writing it. A live check confirmed dispatch itself worked correctly
+ *  (flow-run completed, step_runs recorded) -- only the UI signal was lost.
+ *  Deriving the line from data instead of a transient write means it
+ *  survives any re-render, and shows up for past runs too, not only the one
+ *  just launched.
+ *
+ *  Exact display text per design sign-off:
+ *    success:  "ran via Prefect (flow-run <id-prefix>…, <HH:MM>Z)"
+ *    fallback: "ran locally: Prefect dispatch failed — <reason>"
+ */
+function engineNoteHtml(c) {
+  const note = c.last_run_engine_note || '';
+  if (!note) return '';
+  const fellBack = /unreachable|dispatch failed/i.test(note);
+  let text;
+  if (fellBack) {
+    // Two whole-definition fallback shapes the executor writes into
+    // `engine_note` (survey_definition_executor.py):
+    //   "Prefect API unreachable at <detail>: ran locally"  -- has a reason
+    //   "Prefect dispatch failed: ran locally"               -- no reason at all
+    // Strip the boilerplate on both ends; an empty remainder (the second
+    // shape) means there is nothing to name after the dash, so leave it off
+    // rather than rendering "... — ran locally", a reason that names no
+    // reason.
+    const reason = note
+      .replace(/^Prefect API unreachable at\s*/i, '')
+      .replace(/^Prefect dispatch failed:?\s*/i, '')
+      .replace(/:\s*ran locally\s*$/i, '')
+      .replace(/^ran locally$/i, '')
+      .trim();
+    text = reason
+      ? `ran locally: Prefect dispatch failed — ${reason}`
+      : 'ran locally: Prefect dispatch failed';
+  } else {
+    const m = note.match(/flow-run\s+([^\s)]+)/i);
+    const idPart = m ? `flow-run ${m[1].slice(0, 8)}…` : 'flow-run';
+    const ms = whenMs(c.last_run_at);
+    const whenPart = Number.isFinite(ms)
+      ? `, ${new Date(ms).toISOString().slice(11, 16)}Z` : '';
+    text = `ran via Prefect (${idPart}${whenPart})`;
+  }
+  return `<div class="mt-[2px] text-provenance ${fellBack ? 'text-state-warn' : 'text-ink-muted'}">${esc(text)}</div>`;
 }
 
 /** The union of annotation types a definition's steps declare — RE steps carry
@@ -3968,11 +4952,88 @@ function producesTypes(c) {
   return [...seen];
 }
 
-function surveyRowHtml(c) {
+/** A run that failed because the database is not cataloged in Egeria (the
+ *  executor's own two sentences, the same ones Classic matched). */
+const NOT_CATALOGED_RE = /no stored Egeria asset guid|is not yet cataloged in Egeria|is not yet published to Egeria|uncataloged database|unpublished database/i;
+
+/** Parity G2, PI-019. On a database definition whose last run failed because
+ *  the database is not cataloged: "Catalog now →" (Curate's own Catalog button
+ *  is the one place that writes to Egeria, so this only routes there) and, once
+ *  the resource's publish-state line reads cataloged, "Retry →" on the SAME
+ *  row. Retry opens the usual run plan; nothing is retried automatically. */
+function catalogRetryHtml(c) {
+  if (state.resourceType !== 'db') return '';
+  if ((c.last_run_status || '') === 'ok') return '';
+  if (!(c.last_run_errors || []).some((e) => NOT_CATALOGED_RE.test(String(e)))) return '';
+  const cataloged = !!selectedProject()?.is_published;
+  return cataloged
+    ? `<button type="button" data-retry-run="${esc(c.qualified_name || c.guid)}"
+        class="shrink-0 cursor-pointer rounded-sm border border-accent bg-transparent px-2 py-[2px] text-caveat text-accent-ink"
+        >Retry →</button>`
+    : `<button type="button" data-catalog-now="${esc(c.qualified_name || c.guid)}"
+        class="shrink-0 cursor-pointer rounded-sm border border-accent bg-transparent px-2 py-[2px] text-caveat text-accent-ink"
+        title="not published to Egeria · the Publish button on Curate writes it">Publish now →</button>`;
+}
+
+/** The run buttons of the survey pane's rows: plan a run, retry, catalog now. */
+export function bindSurveyRowActions(el, all, slug) {
+  el.querySelectorAll('[data-run-survey], [data-plan-survey], [data-retry-run]').forEach((b) =>
+    b.addEventListener('click', () => {
+      const ref = b.dataset.runSurvey || b.dataset.planSurvey || b.dataset.retryRun;
+      planSurveyRun(all.find((x) => (x.qualified_name || x.guid) === ref), slug);
+    }));
+  el.querySelectorAll('[data-catalog-now]').forEach((b) =>
+    b.addEventListener('click', () => {
+      // Curate holds the Catalog button; this only goes there (Contents, once the tabs are on).
+      openCurate({ tab: 'curate_contents' });
+    }));
+  // Engine host case 3: "coordinated by Egeria", beside each definition's Run. After a start the pane re-reads, so
+  // the Egeria-coordinated run appears in "Egeria's own surveys" from its persisted row.
+  bindCoordinateControls(el, slug, { after: () => { if (slug === state.selectedSlug) loadSurveyPane(); } });
+  // The run line on a definition card carries the same controls as any run line: report links, "why", the credential
+  // link of a fixable refusal and "check now" (one read, then the pane repaints from the server's rows).
+  bindRunLineControls(el, slug, { checkNow: async () => { if (slug === state.selectedSlug) await loadSurveyPane(); } });
+}
+
+/** The definition row's button. It OPENS A DIALOG (the run plan, which since G2 offers "Use different
+ *  credentials for this run"), so the word ends in an ellipsis, the opener cue every other dialog
+ *  opener uses; "Re-run →" stays on the analyses rows below, whose button runs at once (brief
+ *  section 8: same word, same effect). */
+export const DEFINITION_RUN_WORD = (c) => (c.last_run_at ? 'Re-run…' : 'Run…');
+
+/** "runs 5 analyses" beside the step count (brief section 9), from the definition's own steps mapped
+ *  through the adapter on the server; the list is one gesture away. Nothing when the server did not
+ *  say (a count the server did not give is not a zero). */
+export function definitionRunsHtml(c) {
+  const own = c.runs_analyses && Array.isArray(c.runs_analyses.own) ? c.runs_analyses.own : null;
+  if (!own) return '';
+  const also = c.runs_analyses.also || [];
+  const list = (xs) => xs.map((a) => `<li>${esc(a.name || a.analysis_id)} <span class="font-mono text-ink-muted">${esc(a.analysis_id)}</span></li>`).join('');
+  return ` · <details data-runs-analyses class="inline"><summary class="inline cursor-pointer underline">runs <span class="tnum">${own.length}</span> analys${own.length === 1 ? 'is' : 'es'}</summary>
+    <ul class="ml-s3 list-disc text-provenance text-ink-muted">${list(own)}</ul>${also.length
+      ? `<div class="text-provenance text-ink-muted">also produces, from the same steps:</div><ul class="ml-s3 list-disc text-provenance text-ink-muted">${list(also)}</ul>` : ''}</details>`;
+}
+
+/** Whether the card's run line is the Egeria-coordinated run's (the latest run, per the server's merge of the two
+ *  sources) and the server gave that run's derived row. Else the short "ran 2 days ago" cell stands. */
+function coordinatedRunShown(c) {
+  return !!(c.coordinated_row && c.coordinated_row.run && c.last_run_coordinated_by === 'egeria');
+}
+
+/** The run line and the run history, on the definition's own card (designer 2026-10-16, Q1: one thing, one card). */
+function definitionRunBlockHtml(c) {
+  const line = coordinatedRunShown(c) ? definitionRunLineHtml(c.coordinated_row, { stopped: !!c._stopped }) : '';
+  return `${line}${definitionRunsListHtml(c)}`;
+}
+
+export function surveyRowHtml(c) {
   const steps = (c.steps || []).length || c.step_count || 0;
   const produces = producesTypes(c);
-  return `<div class="flex flex-wrap items-baseline gap-s3 border-b border-rule py-s2">
-    <div class="min-w-0 flex-1">
+  // The text column asks for a 24rem basis (flex: 1 1 24rem), not 0: with a zero basis it was never wrapped onto its
+  // own line, it was squeezed to a sliver at ~800 px (one word per line, the title over "6 steps"). Now the
+  // step count, last run and button drop to the next line once the pane is too narrow for the text beside them.
+  return `<div data-def-row="${esc(c.qualified_name || '')}" class="flex flex-wrap items-baseline gap-s3 border-b border-rule py-s2">
+    <div data-def-text class="min-w-0 flex-1" style="flex:1 1 24rem">
       <div class="text-answer text-ink">${esc(c.display_name || c.qualified_name)}</div>
       ${c.description ? `<div class="text-caveat text-ink-muted">${esc(onePurpose(c.description))}</div>` : ''}
       <div class="mt-[2px] font-mono text-provenance text-ink-muted">${esc(c.qualified_name || '')}${
@@ -3980,6 +5041,8 @@ function surveyRowHtml(c) {
           class="cursor-pointer bg-transparent underline">definition history</button>` : ''}</div>
       <div class="mt-[2px] text-provenance text-ink-muted">produces · ${
         produces.length ? `<span class="font-mono">${produces.map((t) => esc(t)).join(', ')}</span>` : 'nothing declared'}</div>
+      ${engineNoteHtml(c)}
+      ${definitionRunBlockHtml(c)}
     </div>
     <div class="tnum shrink-0 text-caveat text-ink-muted">${steps} step${steps === 1 ? '' : 's'}${
       // Point 2 (SPEC-THE-STAGE-PAGE.md): the axis tiering itself turns on --
@@ -3987,11 +5050,17 @@ function surveyRowHtml(c) {
       // one that fetches twice and one that doesn't. `fetch_steps` is not on
       // every definition row yet (re/stage-page-backend); say nothing rather
       // than a false zero until it is.
-      c.fetch_steps == null ? '' : ` · ${c.fetch_steps ? `<span class="tnum">${c.fetch_steps}</span> fetch` : 'none fetch'}`}</div>
-    <div class="tnum shrink-0 text-caveat">${lastRunHtml(c)}</div>
-    <button data-run-survey="${esc(c.qualified_name || c.guid)}"
+      c.fetch_steps == null ? '' : ` · ${c.fetch_steps ? `<span class="tnum">${c.fetch_steps}</span> fetch` : 'none fetch'}`}${definitionRunsHtml(c)}</div>
+    ${coordinatedRunShown(c) ? '' : `<div class="tnum shrink-0 text-caveat">${lastRunHtml(c)}</div>`}
+    ${catalogRetryHtml(c)}
+    ${selectedCredentialUnreadable()
+      ? `<button data-run-survey="${esc(c.qualified_name || c.guid)}" disabled title="${CREDENTIAL_UNREADABLE_TEXT}"
+      class="shrink-0 cursor-not-allowed rounded-sm border border-rule bg-transparent px-2 py-[2px] text-caveat text-ink-muted"
+      >${DEFINITION_RUN_WORD(c)}</button>`
+      : `<button data-run-survey="${esc(c.qualified_name || c.guid)}"
       class="shrink-0 cursor-pointer rounded-sm border border-accent bg-transparent px-2 py-[2px] text-caveat text-accent-ink"
-      >Run →</button>
+      >${DEFINITION_RUN_WORD(c)}</button>`}
+    ${coordinateControlHtml(c)}
   </div>`;
 }
 
@@ -4002,9 +5071,9 @@ function surveyRowHtml(c) {
 // fallback keeps an unmapped or future kind from disappearing rather than
 // crashing the render.
 const NATIVE_PROCESS_KIND_LABELS = {
-  survey_existing: 'surveys an existing catalog entry',
-  catalog_and_survey: 'catalogues, then surveys',
-  delete: 'deletes a catalog entry',
+  survey_existing: 'surveys an existing Egeria entry',
+  catalog_and_survey: 'publishes, then surveys',
+  delete: 'deletes an Egeria entry',
 };
 function nativeProcessKindLabel(kind) {
   return NATIVE_PROCESS_KIND_LABELS[kind] || `Egeria process kind: ${kind}`;
@@ -4042,7 +5111,392 @@ function nativeProcessesSectionHtml(nativeProcesses) {
   </div>`;
 }
 
-async function loadSurveyPane() {
+/* ── Enrichment: Context, and the "Survey & analyses" map ─────────────────
+ *
+ * ENRICHMENT-E1-CONTEXT-TAB (2026-09-29). Context is its own pane (not a
+ * Questions-engine variant): it fetches the checklist itself so
+ * `stages/context.js`'s `renderContext` can filter to `kind === 'human'`
+ * rows for its own "What only you can answer" section, then hands off.
+ *
+ * Survey & analyses and By analysis on Enrichment are NOT the generic
+ * per-stage panes every other stage uses — the designer's reply (§1,
+ * corrected by the project owner's amendment the same day) makes this
+ * stage's version of both tabs say something different: which
+ * human-input-gated analyses this stage's own inputs unlock, and their
+ * live state, rather than a list of survey definitions or a per-intent
+ * results board.
+ */
+/** The reads a repository's resource header waits on: the scouting overview (homepage, last published, the
+ *  stale-link flag) and the scouting signal chips. Fired once per selection; the header redraws in place as they land
+ *  and is fine without them. Shared by the Questions frame and the Curate tabs. */
+function primeRepoHeaderReads(slug) {
+  // The overview carries `homepage`, `last_published_at` and the stale-link
+  // flag, none of which are on the summary row. Fetched per selection, and
+  // its absence is survivable — the header renders without it.
+  // `/api/projects/{slug}/scouting-overview` is a repo-only endpoint (docs/
+  // Backlog.md, "/next probes scouting-overview for database slugs and
+  // always gets a 404") -- same class of bug as the earlier 'db'/'database'
+  // resourceType mismatch: gate the call so it is never issued for a
+  // resource type it doesn't apply to.
+  // The stale-link read Admin → Egeria Links uses, for ANY resource type: the banner with the three repairs shows
+  // only when it lists this resource. Failing to read it shows no banner (never a guessed one).
+  if (state.staleLink?.slug !== slug) {
+    state.staleLink = null;
+    listStaleLinkages()
+      .then((rows) => {
+        if (state.selectedSlug !== slug) return;
+        const et = apiEntityType(state.resourceType);
+        state.staleLink = { slug, row: (rows || []).find((r) => r.entity_slug === slug && r.entity_type === et) || null };
+        const host = $('resource-header');
+        if (host && state.staleLink.row) { host.innerHTML = resourceHeaderHtml(slug); bindResourceHeader(); }
+      })
+      .catch(() => { /* no banner without the read */ });
+  }
+  if (state.resourceType === 'repo' && state.overview?.slug !== slug) {
+    state.overview = null;
+    getScoutingOverview(slug)
+      .then((ov) => {
+        if (state.selectedSlug !== ov.slug) return;
+        state.overview = ov;
+        // Replace the header IN PLACE, by its own id, so the rows already on
+        // screen stay put. An earlier version matched the header by its class
+        // list and inserted a second copy — the resource name rendered twice.
+        const host = $('resource-header');
+        if (host) {
+          host.innerHTML = resourceHeaderHtml(slug);
+          bindResourceHeader();
+        }
+      })
+      .catch(() => { /* the header is fine without it */ });
+    // PI-051: the scouting signal chips ride on the same selection; "could not read" is kept distinct from "none yet".
+    state.scoutingSignal = null;
+    getSurveySummary(slug, 'scouting')
+      .then((r) => { state.scoutingSignal = { slug, tiles: r.tiles || [] }; })
+      .catch((err) => { state.scoutingSignal = { slug, error: err && err.message ? err.message : 'unknown error' }; })
+      .finally(() => {
+        const host = $('resource-header');
+        if (host && state.selectedSlug === slug) { host.innerHTML = resourceHeaderHtml(slug); bindResourceHeader(); }
+      });
+  }
+
+}
+
+/** The leading tabs' pane. Curate on a repository or a database draws its three panels (stages/curate.js `renderCurate` fills
+ *  them); Understanding's tabs are still a stub (S4). The rail sits in its own host so a tab click can redraw
+ *  it in place, and the resource header reads what it always read. */
+async function loadStageTabPane() {
+  const el = $('content');
+  const slug = state.selectedSlug;
+  if (state.stage === 'curate' && slug && (state.resourceType === 'repo' || state.resourceType === 'db')) {
+    primeRepoHeaderReads(slug);
+    el.innerHTML = `<div data-rail-host>${subTabsHtml()}</div>
+      <div id="resource-header">${resourceHeaderHtml(slug)}</div>
+      <div class="my-s3 h-px bg-rule"></div>
+      <div id="curate-host"></div>`;
+    bindSubTabs();
+    bindResourceHeader();
+    renderCurate(slug).catch((err) => {
+      if (slug !== state.selectedSlug) return;
+      const box = $('curate-host');
+      if (box) box.innerHTML = `<div class="py-s3 text-answer text-accent-ink">Curate could not be drawn: ${esc(err.message)}</div>`;
+    });
+    return;
+  }
+  if (state.stage === 'understanding' && slug && (state.resourceType === 'repo' || state.resourceType === 'db')) {
+    el.innerHTML = `<div data-rail-host>${subTabsHtml()}</div>
+      <div id="resource-header">${resourceHeaderHtml(slug)}</div>
+      <div class="my-s3 h-px bg-rule"></div>
+      <div id="understanding-tabs-host"></div>`;
+    bindSubTabs();
+    bindResourceHeader();
+    await renderUnderstandingTabs(slug, state.resourceType === 'db' ? 'database' : 'repo');
+    return;
+  }
+  if (state.stage === 'understanding' && !slug) {
+    el.innerHTML = `${subTabsHtml()}${paneMessage('Select a resource', 'Pick a resource from the sidebar to see what it holds and how it has changed.')}`;
+    bindSubTabs();
+    return;
+  }
+  el.innerHTML = `${subTabsHtml()}
+    ${slug ? `<div id="resource-header">${resourceHeaderHtml(slug)}</div>
+    <div class="my-s3 h-px bg-rule"></div>` : ''}
+    <div data-stage-tab-panel="${esc(state.subTab)}" class="text-caveat text-ink-muted">not built yet</div>`;
+  bindSubTabs();
+  if (slug) bindResourceHeader();
+}
+
+async function loadContextPane() {
+  const el = $('content');
+  const blocked = paneNeedsRepo();
+  if (blocked) { el.innerHTML = subTabsHtml() + blocked; bindSubTabs(); return; }
+  const slug = state.selectedSlug;
+
+  el.innerHTML = `${subTabsHtml()}
+    <div id="resource-header">${resourceHeaderHtml(slug)}</div>
+    <div class="my-s3 h-px bg-rule"></div>
+    <div id="context-form"></div>`;
+  bindSubTabs();
+  bindResourceHeader();
+
+  let checklist;
+  try {
+    checklist = await getQuestions(slug, {
+      phase: 'enrichment',
+      perspectives: [...state.activePerspectives],
+      purposes: currentPurposes(),
+      entityType: apiEntityType(state.resourceType),
+    });
+  } catch (err) {
+    $('context-form').innerHTML = `<div class="py-s3 text-answer text-accent-ink">
+      The checklist could not be loaded: ${esc(err.message)}</div>`;
+    return;
+  }
+  if (slug !== state.selectedSlug || state.subTab !== 'context') return;   // a faster click won
+  state.questions = checklist.questions || [];
+  await renderContext(slug);
+}
+
+/** In words: what unlocks an Enrichment-tier analysis, from its catalog
+ *  `requires_input` value — the same vocabulary `analysis_catalog.yaml`'s
+ *  own comments use, said as a sentence rather than a snake_case token. */
+export function requiresInputInWords(requiresInput) {
+  const WORDS = {
+    lens: 'a declared lens',
+    documentation_source: 'a declared, reachable documentation source',
+    ingested_documentation: 'ingested documentation',
+    confirmed_glossary_term: 'a confirmed glossary term',
+  };
+  return WORDS[requiresInput] || (requiresInput ? requiresInput.replace(/_/g, ' ') : 'an unnamed human input');
+}
+
+/** locked | unrun (unlocked, Run available) | measured — the existing
+ *  glyph vocabulary (glyphs.js's STATES, via `stateEntry`), not a new one,
+ *  per the brief's own instruction to reuse "the existing analysis-card
+ *  state rendering this codebase already has." `no-surveyor` (◌) is the
+ *  closest existing meaning to "cannot be answered here yet" for locked;
+ *  `unrun` (○) already means "a surveyor exists, nothing has run" and
+ *  reads correctly for "unlocked, Run available". */
+export function enrichmentAnalysisCardStateKey(row) {
+  if (row.state === 'measured') return 'measured';
+  // Unlocked, but no runner is mapped for it (`runnable === false`, computed
+  // server-side from the run maps): nothing can answer it yet, so ◌ -- not
+  // ○ "not run", which promises a runner exists.
+  if (row.unlocked && row.runnable === false) return 'no-surveyor';
+  if (row.unlocked) return 'unrun';
+  return 'no-surveyor';
+}
+
+export function enrichmentAnalysisRowHtml(row) {
+  const key = enrichmentAnalysisCardStateKey(row);
+  const g = stateEntry(key);
+  const runBtn = row.unlocked && row.runnable !== false && row.state !== 'measured'
+    ? `<button type="button" data-run-enrichment-analysis="${esc(row.id)}" ${selectedCredentialUnreadable() ? `disabled title="${CREDENTIAL_UNREADABLE_TEXT}"` : ''}
+        class="cursor-pointer rounded-sm border border-accent bg-transparent px-2 py-[1px] text-provenance text-accent-ink">Run</button>`
+    : '';
+  return `<div class="border-b border-rule py-s2">
+    <div class="flex items-baseline gap-s2 text-answer text-ink">
+      <span class="${g.tone}">${g.glyph}</span>
+      <span class="min-w-0 flex-1 font-mono">${esc(row.name || row.id)}</span>
+      ${runBtn}
+    </div>
+    <div class="pl-[20px] text-provenance text-ink-muted">
+      unlocked by: ${esc(requiresInputInWords(row.requires_input))} ·
+      ${row.unlocked ? esc(row.reason) : `<span class="text-state-warn">${esc(row.reason)}</span>`}
+      ${row.unlocked && row.runnable === false
+        ? `<div class="text-ink-muted">unlocked · ${row.id === 'doc_source_ingestion' ? 'ingestion' : 'this analysis'} not built yet</div>` : ''}
+    </div>
+  </div>`;
+}
+
+/** Egeria-native survey rows for the resource in view: `{rows}` on success,
+ *  `{rows: null}` when this kind has none (not applicable), `{failed: true}`
+ *  when the read failed -- which the caller must DRAW, not drop. SHARED by every
+ *  stage's Survey & analyses render (loadSurveyPane and, on Enrichment,
+ *  loadEnrichmentAnalysesMapPane): the section lives on that tab on every
+ *  stage, so no stage-special render path may skip it. */
+async function fetchNativeSurveyRows(slug) {
+  const entityType = apiEntityType(state.resourceType);
+  if (entityType !== 'database' && entityType !== 'filesystem') return { rows: null };
+  try {
+    return { rows: (await getNativeSurveys(slug, { entityType })).surveys };
+  } catch { return { rows: null, failed: true }; }
+}
+
+/** The section's markup for a fetchNativeSurveyRows result, or '' when the kind
+ *  has no native surveys or has none to show. */
+function nativeSurveysPaneHtml(res) {
+  if (res.failed) return nativeSurveysUnreadableHtml();
+  return res.rows && res.rows.length ? nativeSurveysSectionHtml(res.rows) : '';
+}
+
+/** Wire a rendered section (rows or the unreadable line). `reload` re-runs the pane. */
+function bindNativeSurveysPane(root, slug, res, reload) {
+  root.querySelector('[data-native-recheck]')?.addEventListener('click', () => reload());
+  if (res.rows && res.rows.length) {
+    // The definition cards follow the same rows: while one's run is in flight its run line is repainted in place from
+    // each read, and when it ends the pane reloads once so the card, its controls and its history agree.
+    let wasLive = res.rows.some((r) => r.kind === 're_definition' && r.in_flight);
+    bindNativeSurveys(root, slug, res.rows, {
+      onRows: (rows, { stopped }) => {
+        for (const r of rows.filter((x) => x.kind === 're_definition')) {
+          const slot = [...root.querySelectorAll('[data-def-run-line]')].find((e) => e.dataset.defRunLine === r.qualified_name);
+          if (!slot) continue;
+          slot.outerHTML = definitionRunLineHtml(r, { stopped });
+        }
+        const card = root.querySelector('[data-def-run-line]');
+        if (card) bindRunLineControls(root, slug, { checkNow: async () => { await loadSurveyPane(); } });
+        const live = rows.some((r) => r.kind === 're_definition' && r.in_flight);
+        if (wasLive && !live) { wasLive = false; if (slug === state.selectedSlug) loadSurveyPane(); }
+        wasLive = wasLive || live;
+      },
+    });
+  }
+}
+
+/** Survey & analyses, on Enrichment: the amendment's map. */
+async function loadEnrichmentAnalysesMapPane() {
+  const el = $('content');
+  const blocked = paneNeedsRepo();
+  if (blocked) { el.innerHTML = subTabsHtml() + blocked; bindSubTabs(); return; }
+  const slug = state.selectedSlug;
+  el.innerHTML = `${subTabsHtml()}
+    <div id="resource-header">${resourceHeaderHtml(slug)}</div>
+    <div class="my-s3 h-px bg-rule"></div>
+    <div id="enrichment-analyses-map" class="text-caveat text-ink-muted">Reading what's unlocked…</div>
+    <div id="enrichment-native-surveys"></div>`;
+  bindSubTabs();
+  bindResourceHeader();
+
+  let rows = [];
+  try {
+    const res = await getEnrichmentAnalysesMap(apiEntityType(state.resourceType), slug);
+    rows = res.analyses || [];
+  } catch (err) {
+    $('enrichment-analyses-map').innerHTML = `<div class="text-answer text-accent-ink">
+      The map could not be read: ${esc(err.message)}</div>`;
+    return;
+  }
+  if (slug !== state.selectedSlug || state.subTab !== 'survey') return;
+
+  // Egeria's own surveys are surveys: the section renders here too, beneath
+  // the map. A failed read is drawn (heading + "couldn't read"), and the map
+  // above it is untouched.
+  const nativeRes = await fetchNativeSurveyRows(slug);
+  if (slug !== state.selectedSlug || state.subTab !== 'survey') return;
+
+  const host = $('enrichment-analyses-map');
+  host.innerHTML = `
+    <p class="mb-s3 max-w-[70ch] text-answer text-ink">No analysis runs at the Enrichment stage from a
+      survey read. What you supply here unlocks:</p>
+    ${rows.length ? rows.map(enrichmentAnalysisRowHtml).join('')
+      : `<div class="text-caveat text-ink-muted">No analyses declare an Enrichment-tier prerequisite for
+          ${esc(state.resourceType === 'db' ? 'databases' : state.resourceType)} yet.</div>`}`;
+
+  const nativeHost = $('enrichment-native-surveys');
+  if (nativeHost) {
+    nativeHost.innerHTML = nativeSurveysPaneHtml(nativeRes);
+    bindNativeSurveysPane(nativeHost, slug, nativeRes, () => loadEnrichmentAnalysesMapPane());
+  }
+
+  host.querySelectorAll('[data-run-enrichment-analysis]').forEach((b) => b.addEventListener('click', async () => {
+    const analysisId = b.dataset.runEnrichmentAnalysis;
+    const label = b.textContent;
+    b.disabled = true; b.textContent = 'running…';
+    try {
+      const started = await runAnalysis(slug, analysisId, apiEntityType(state.resourceType));
+      if (isFreshnessSkip(started)) {
+        b.disabled = false; b.textContent = UP_TO_DATE_WORD;
+        setTimeout(() => { b.textContent = label; }, 4000);
+        offerRunAnyway(started, { slug, analysisId, onForce: async () => {
+          await runAnalysis(slug, analysisId, apiEntityType(state.resourceType), { force: true });
+          await loadEnrichmentAnalysesMapPane();
+        } });
+        return;
+      }
+      await loadEnrichmentAnalysesMapPane();
+    } catch (err) {
+      b.disabled = false;
+      // A stub id (doc_source_ingestion, doc_evidence_check,
+      // semantic_suggestions) has no runner behind it yet — see
+      // analysis_catalog.yaml's own comment on those three entries. This is
+      // the honest degradation for that expected case, not a bug.
+      b.textContent = `not built yet: ${err.message}`;
+      setTimeout(() => { b.textContent = label; b.disabled = false; }, 4000);
+    }
+  }));
+}
+
+/** By analysis, on Enrichment: one summary line, per the reply §1. */
+async function loadEnrichmentByAnalysisSummaryPane() {
+  const el = $('content');
+  const blocked = paneNeedsRepo();
+  if (blocked) { el.innerHTML = subTabsHtml() + blocked; bindSubTabs(); return; }
+  const slug = state.selectedSlug;
+  el.innerHTML = `${subTabsHtml()}
+    <div id="resource-header">${resourceHeaderHtml(slug)}</div>
+    <div class="my-s3 h-px bg-rule"></div>
+    <div id="enrichment-by-analysis-summary" class="text-caveat text-ink-muted">Reading…</div>`;
+  bindSubTabs();
+  bindResourceHeader();
+
+  let rows = [];
+  try {
+    const res = await getEnrichmentAnalysesMap(apiEntityType(state.resourceType), slug);
+    rows = res.analyses || [];
+  } catch { rows = []; }
+  if (slug !== state.selectedSlug || state.subTab !== 'by_analysis') return;
+
+  const unlocked = rows.filter((r) => r.unlocked).length;
+  const host = $('enrichment-by-analysis-summary');
+  host.innerHTML = `<p class="max-w-[70ch] text-answer text-ink">
+    No analysis runs at the Enrichment stage from a survey read; what you supply here unlocks
+    <span class="tnum">${unlocked}</span> of <span class="tnum">${rows.length}</span> analyses today —
+    <button type="button" data-goto-enrichment-survey class="cursor-pointer bg-transparent p-0 text-accent-ink underline">see Survey & analyses ›</button></p>`;
+  host.querySelector('[data-goto-enrichment-survey]')?.addEventListener('click', () => {
+    state.subTab = 'survey';
+    writeUrl();
+    loadPane();
+  });
+}
+
+/** Why the survey list is not narrowed to the stage, in short words, from the route's own `scoping_reason`.
+ *  `no_questions`: the question catalog has none for this kind of resource at this stage (nothing to retry).
+ *  `none_resolved`: questions exist, no published survey is scoped to them (a retry can change that).
+ *  No reason (an older server): the old words, which claimed more than the response shows. */
+export function scopeFallbackHtml(data, stage) {
+  const retry = `<button type="button" data-act="rescope" class="cursor-pointer bg-transparent underline">retry</button>`;
+  const kind = esc(apiEntityType(state.resourceType) || 'this kind');
+  if (data.scoping_reason === 'no_questions') {
+    return `<span data-scope-reason="no_questions">all stages — no ${esc(stage)} questions for a ${kind} yet</span>`;
+  }
+  if (data.scoping_reason === 'none_resolved') {
+    return `<span data-scope-reason="none_resolved">all stages — no published survey is scoped to ${esc(stage)} · ${retry}</span>`;
+  }
+  return `all tiers — stage filter unavailable · ${retry}`;
+}
+
+/** Survey definition runs still going (per the persisted activity row) are followed to their end, then the pane is
+ *  re-read once. One follower per activity id; a launch from this page reloads the pane itself and is skipped. */
+const _runFollowers = new Map();
+const _launchOwned = new Set();
+function followRunningDefinitions(all, slug) {
+  for (const c of all) {
+    const id = c.last_run_activity_id;
+    if (!id || !RUN_LIVE.has(String(c.last_run_status || '').toLowerCase()) || _runFollowers.has(id)) continue;
+    _runFollowers.set(id, followUntil({
+      read: () => getActivityEntry(id),
+      isDone: (e) => !RUN_LIVE.has(String(e?.status || '').toLowerCase()),
+      alive: () => slug === state.selectedSlug && state.subTab === 'survey',
+      onUpdate: (e) => {
+        if (RUN_LIVE.has(String(e?.status || '').toLowerCase())) return;
+        _runFollowers.delete(id);
+        if (!_launchOwned.has(id) && slug === state.selectedSlug && state.subTab === 'survey') loadSurveyPane();
+      },
+    }));
+  }
+}
+
+export async function loadSurveyPane() {
   const el = $('content');
   const blocked = paneNeedsRepo();
   if (blocked) { el.innerHTML = subTabsHtml() + blocked; bindSubTabs(); return; }
@@ -4085,7 +5539,24 @@ async function loadSurveyPane() {
   // Survey Definition candidate here. That is a separate fact from
   // `candidates` (RE-authored definitions) and is shown regardless of whether
   // `candidates` is empty -- not a fallback for the empty state.
-  const nativeProcessesHtml = nativeProcessesSectionHtml(data.egeria_native_processes);
+  //
+  // For a database or filesystem, the Egeria-native surveys are RUNNABLE rows
+  // (BRIEF-NATIVE-EGERIA-SURVEY-LAUNCH.md): what RE can run, why it cannot run
+  // the rest, and the state derived from persisted proof. If that read fails
+  // the pane falls back to the informational block, so a failure of the new
+  // read never blanks the list Egeria already reported.
+  const nativeRes = await fetchNativeSurveyRows(slug);
+  // Each definition card takes its run line from the server's row for that definition (the latest run, whoever
+  // coordinated it); nothing about the run is re-derived here.
+  const defRows = new Map((nativeRes.rows || []).filter((r) => r.kind === 're_definition').map((r) => [r.qualified_name, r]));
+  for (const c of all) c.coordinated_row = defRows.get(c.qualified_name) || null;
+  // A failed read shows the unreadable line AND keeps the informational block
+  // Egeria already reported, so the new read's failure blanks nothing.
+  const nativeProcessesHtml = nativeRes.failed
+    ? nativeSurveysUnreadableHtml() + nativeProcessesSectionHtml(data.egeria_native_processes)
+    : ownSurveyRows(nativeRes.rows).length
+      ? nativeSurveysSectionHtml(nativeRes.rows)
+      : nativeProcessesSectionHtml(data.egeria_native_processes) + nativeSurveysSectionHtml(nativeRes.rows);
 
   const heavy = all.filter((c) => c.survey_kind === 'automate_full');
   const rest = all.filter((c) => c.survey_kind !== 'automate_full');
@@ -4107,13 +5578,11 @@ async function loadSurveyPane() {
       <span class="ml-auto rounded-sm border ${
         data.scoping === 'full-scan' && all.length ? 'border-state-warn text-state-warn' : 'border-rule-strong text-ink-muted'}
         px-2 py-[1px] text-provenance">
-        Scope: ${data.scoping === 'full-scan' && all.length
-          ? `all tiers — stage filter unavailable · <button type="button" data-act="rescope"
-              class="cursor-pointer bg-transparent underline">retry</button>`
-          : esc(stage)}</span>
+        Scope: ${data.scoping === 'full-scan' && all.length ? scopeFallbackHtml(data, stage) : esc(stage)}</span>
     </div>
 
     ${nativeProcessesHtml}
+    ${coordinateOffNoteHtml(all)}
 
     ${here.map((t) => `
       <div class="mt-s3 text-caps uppercase tracking-caps text-ink-muted">${esc(t)} ·
@@ -4143,7 +5612,7 @@ async function loadSurveyPane() {
           <span class="text-answer text-ink">${esc(c.display_name)}</span>
           <span class="tnum rounded-sm border border-state-warn px-2 py-[1px] text-provenance text-state-warn"
             >${steps} steps · all tiers</span>
-          <button data-plan-survey="${esc(c.qualified_name)}"
+          <button data-plan-survey="${esc(c.qualified_name)}" ${selectedCredentialUnreadable() ? `disabled title="${CREDENTIAL_UNREADABLE_TEXT}"` : ''}
             class="ml-auto cursor-pointer rounded-sm border border-rule-strong bg-transparent px-2 py-[2px] text-caveat text-ink"
             >Plan a run…</button>
         </div>
@@ -4155,13 +5624,15 @@ async function loadSurveyPane() {
         `No Survey Definitions have been authored for ${data.technology_type || 'this technology'} yet`,
         'The analyses below still run individually; a Survey Definition only bundles them into an '
         + 'Egeria-launchable process.') : ''}
-    <div id="survey-note" class="mt-s3 text-caveat text-ink"></div>
+    <div id="survey-note" class="mt-s3 text-caveat text-ink">${launchNoteHtml(slug)}</div>
 
     <div class="mt-s5 border-t border-rule-strong pt-s3" id="analyses-index-section">
       <div class="text-caveat text-ink-muted">Reading the analyses…</div>
     </div>`;
   bindSubTabs();
 
+  bindNativeSurveysPane(el, slug, nativeRes, () => loadSurveyPane());
+  followRunningDefinitions(all, slug);
   el.querySelector('[data-act="rescope"]')?.addEventListener('click', () => loadSurveyPane());
   el.querySelectorAll('[data-defhist]').forEach((b) => b.addEventListener('click', () => {
     const c = all.find((x) => x.qualified_name === b.dataset.defhist);
@@ -4183,11 +5654,7 @@ async function loadSurveyPane() {
             .map((e) => `<li class="whitespace-pre-line text-state-warn">${esc(String(e))}</li>`).join('')}</ul>`
         : '<p class="max-w-[70ch] text-ink-muted">No step-level error detail was recorded for this run.</p>'}`;
   }));
-  el.querySelectorAll('[data-run-survey], [data-plan-survey]').forEach((b) =>
-    b.addEventListener('click', () => {
-      const ref = b.dataset.runSurvey || b.dataset.planSurvey;
-      planSurveyRun(all.find((x) => (x.qualified_name || x.guid) === ref), slug);
-    }));
+  bindSurveyRowActions(el, all, slug);
 
   renderAnalysesIndexSection(slug, stage);
 }
@@ -4213,11 +5680,12 @@ function analysesIndexSort() {
 /** State glyph from last_run_status/last_run_at -- the same vocabulary as
  *  factGlyph, not re-derived: `success` -> measured, an explicit failure ->
  *  error, nothing recorded -> unrun. */
-function analysisRowGlyph(row) {
+export function analysisRowGlyph(row) {
   if (!row.last_run_at) return factGlyph('unrun');
   const s = String(row.last_run_status || '').toLowerCase();
   if (s === 'success' || s === 'ok' || s === '') return factGlyph('measured');
   if (s === 'failure' || s === 'error' || s === 'failed') return factGlyph('error');
+  if (s === 'recorded') return factGlyph('unclassified');   // ran; outcome not on record
   return factGlyph('measured');
 }
 
@@ -4239,7 +5707,58 @@ function analysisRowPrice(cost) {
 // RULING-SUBRESOURCES-PLACEMENT.md: attached to this row, not a fifth tab.
 const SUBRES_ANALYSIS_ID = 'sub_resource_survey';
 
-function analysisIndexRowHtml(row) {
+/** Which definitions run this analysis, and in which step (brief section 9). Words come from the
+ *  server's `definitions` block, which derives them from each definition's `re_analysis_step`
+ *  properties; nothing here keeps a list. Several definitions: "in N definitions" with the list one
+ *  gesture away. */
+export function analysisCoverageHtml(row) {
+  const cov = row.definitions || {};
+  const runs = cov.runs_in || [];
+  const also = cov.also_in || [];
+  const notIn = cov.not_in || [];
+  const names = (xs) => xs.map((d) => esc(d.display_name)).join(', ');
+  const bits = [];
+  if (runs.length === 1) {
+    bits.push(`in ${esc(runs[0].display_name)} · step <span class="font-mono">${esc(runs[0].step)}</span>`);
+  } else if (runs.length > 1) {
+    bits.push(`<details class="inline"><summary class="inline cursor-pointer underline">in <span class="tnum">${runs.length}</span> definitions</summary>
+      <span class="block">${runs.map((d) => `${esc(d.display_name)} · step <span class="font-mono">${esc(d.step)}</span>`).join('<br>')}</span></details>`);
+  } else if (notIn.length) {
+    bits.push(`not part of ${names(notIn)} · runs on its own`);
+  }
+  if (also.length) {
+    bits.push(`also runs when ${names(also)} runs (<span class="font-mono">${[...new Set(also.map((d) => d.step))].map(esc).join(', ')}</span>)`);
+  }
+  return bits.length ? `<span data-analysis-coverage class="text-ink-muted">${bits.join(' · ')}</span>` : '';
+}
+
+/** The credential word beside a database analysis row's button (brief section 8). Only said where it
+ *  is TRUE: an analysis that opens a connection uses the credential saved for the database; a
+ *  zero-fetch one (db_derived) reads stored rows and uses none. The sentence is one hover away. */
+export const STORED_CREDENTIAL_SENTENCE =
+  'runs in the background with the credential saved for this database; Re-run… runs it once, in this process, '
+  + 'with another credential (nothing is stored and it is not retried)';
+export function analysisCredentialHtml(row) {
+  if (row.uses_credential === 'stored') {
+    return `<span data-analysis-credential="stored" title="${esc(STORED_CREDENTIAL_SENTENCE)}" class="text-provenance text-ink-muted">uses stored credential</span>`;
+  }
+  if (row.uses_credential === 'none') {
+    return `<span data-analysis-credential="none" title="This analysis reads rows already stored; it opens no connection." class="text-provenance text-ink-muted">needs no credential</span>`;
+  }
+  return '';
+}
+
+/** "ran as <user> (this run)" and the row's own statement that it was not retried: from the last
+ *  run's activity row, never from the browser's memory of having sent a credential. */
+export function analysisRanAsHtml(row) {
+  const a = row.last_run_ran_as;
+  if (!a || !a.user) return '';
+  return `<span data-analysis-ran-as class="text-ink-muted">· ran as <span class="font-mono">${esc(a.user)}</span> (${esc(a.scope || 'this run')})${
+    row.last_run_not_retried ? ` · ${esc(row.last_run_not_retried)}` : ''}</span>`;
+}
+
+export function analysisIndexRowHtml(row) {
+  const failed = state.analysisRunFailures.get(`${state.selectedSlug}|${row.analysis_id}`);
   const g = analysisRowGlyph(row);
   const qn = (row.questions || []).length;
   const isSubRes = row.analysis_id === SUBRES_ANALYSIS_ID;
@@ -4259,16 +5778,27 @@ function analysisIndexRowHtml(row) {
           : row.serves === 'chat-only' ? 'chat-only — no question asks' : 'nothing-yet — no question asks, no reader either'}
         · ${row.last_run_at ? `<span class="tnum">${esc(ago(row.last_run_at))}</span>${row.last_run_via ? ` · via ${esc(row.last_run_via.replace(/_/g, ' '))}` : ''}` : 'never run'}
         · ${analysisRowPrice(row.cost)}
+        ${row.last_publish_proof ? `· ${publishProofHtml(row.last_publish_proof)}` : ''}
+        ${analysisRanAsHtml(row)}
       </div>
+      <div class="mt-[2px] text-provenance">${analysisCoverageHtml(row)}</div>
     </div>
     ${isSubRes ? `<button type="button" data-subres-toggle aria-expanded="false"
       class="shrink-0 cursor-pointer rounded-sm border border-rule-strong bg-transparent px-2 py-[2px] text-caveat text-ink-muted"
-      >🗂 select &amp; catalog</button>` : ''}
+      >🗂 select &amp; publish</button>` : ''}
+    ${analysisCredentialHtml(row)}
     <button data-analysis-run="${esc(row.analysis_id)}" ${row.runnable ? '' : 'disabled title="' + esc(row.runnable_reason) + '"'}
       class="shrink-0 cursor-pointer rounded-sm border ${row.runnable ? 'border-accent text-accent-ink' : 'border-rule-strong text-ink-muted'} bg-transparent px-2 py-[2px] text-caveat"
-      >${row.last_run_at ? 're-run' : 'run'} →</button>
+      >${row.last_run_at ? 'Re-run' : 'Run'} →</button>
+    ${row.runnable && row.uses_credential === 'stored'
+      ? `<button type="button" data-analysis-override="${esc(row.analysis_id)}"
+      title="Opens a dialog: run this one analysis once with another credential"
+      class="shrink-0 cursor-pointer border-0 bg-transparent p-0 text-caveat text-ink-muted underline"
+      >with options…</button>` : ''}
     <span data-analysis-run-error="${esc(row.analysis_id)}"
       class="hidden w-full text-provenance text-state-warn"></span>
+    ${failed ? `<span data-analysis-run-failed="${esc(row.analysis_id)}" role="alert"
+      class="w-full text-provenance text-state-warn">${esc(failed)}</span>` : ''}
   </div>
   ${isSubRes ? '<div id="subres-panel" class="hidden mb-s3 border-b border-rule pb-s3"></div>' : ''}`;
 }
@@ -4376,31 +5906,49 @@ async function renderAnalysesIndexSection(slug, stage) {
     const opening = subresPanel.classList.contains('hidden');
     subresPanel.classList.toggle('hidden', !opening);
     subresToggle.setAttribute('aria-expanded', String(opening));
-    subresToggle.textContent = opening ? '🗂 select & catalog ▲' : '🗂 select & catalog';
+    subresToggle.textContent = opening ? '🗂 select & publish ▲' : '🗂 select & publish';
     if (opening) await mountSubResourcePanel(slug, subresPanel);
   });
-  host.querySelectorAll('[data-analysis-run]').forEach((b) => b.addEventListener('click', async () => {
-    const aid = b.dataset.analysisRun;
+  const startRun = async (b, aid, credential = null, force = false) => {
     const errEl = host.querySelector(`[data-analysis-run-error="${CSS.escape(aid)}"]`);
     if (errEl) { errEl.classList.add('hidden'); errEl.textContent = ''; }
     b.disabled = true;
     const original = b.textContent;
     b.textContent = 'Queueing…';
     try {
-      const started = await runAnalysis(slug, aid, apiEntityType(state.resourceType));
+      // A credential typed for this one run goes ONLY into this call's body (browser memory ->
+      // request -> the server's in-process run); the plain call is unchanged.
+      const started = credential
+        ? await runAnalysisWithCredential(slug, aid, credential)
+        : await runAnalysis(slug, aid, apiEntityType(state.resourceType), { force });
+      if (isFreshnessSkip(started)) {
+        // The server declined: the last run is still fresh. The button is usable again at once; the dialog says
+        // "Already up to date" and offers the forced run.
+        b.disabled = false;
+        b.textContent = original;
+        offerRunAnyway(started, { slug, analysisId: aid, onForce: () => startRun(b, aid, null, true) });
+        return;
+      }
       // Watch it rather than tell the user to reload — pollActivity is the
       // same mechanism the Questions checklist's run button already uses
       // (rerun(), above). A five-minute timeout still redraws the section
       // once so a slow run's real state (whatever it reaches) is on screen
       // instead of the stale pre-run row.
       b.textContent = 'Running…';
+      const failKey = `${slug}|${aid}`;
+      state.analysisRunFailures.delete(failKey);
       try {
-        await pollActivity(started.activity_id, {
+        const finished = await pollActivity(started.activity_id, {
           onTick: (e) => {
             const s = (e?.status || '').toLowerCase();
             b.textContent = s === 'queued' || s === 'pending' ? 'Queued…' : 'Running…';
           },
         });
+        // pollActivity resolves with the finished row whatever it ended as;
+        // keep a failure on screen (the redraw below would otherwise show
+        // only a glyph from last_run_status).
+        const failure = activityFailure(finished);
+        if (failure) state.analysisRunFailures.set(failKey, failureText(failure));
       } catch (err) {
         if (err.name !== 'PollTimeout') throw err;
         // Not a failure — this browser stopped watching, the run itself
@@ -4419,7 +5967,70 @@ async function renderAnalysesIndexSection(slug, stage) {
       // to run → the instant the request fails, with nothing else on screen.
       if (errEl) { errEl.textContent = msg; errEl.classList.remove('hidden'); }
     }
+  };
+  host.querySelectorAll('[data-analysis-run]').forEach((b) => b.addEventListener('click', () =>
+    startRun(b, b.dataset.analysisRun)));
+  host.querySelectorAll('[data-analysis-override]').forEach((b) => b.addEventListener('click', () => {
+    const row = rows.find((r) => r.analysis_id === b.dataset.analysisOverride);
+    if (row) openAnalysisOverrideDialog(row, slug, (credential) => {
+      const runBtn = host.querySelector(`[data-analysis-run="${CSS.escape(row.analysis_id)}"]`);
+      if (runBtn) startRun(runBtn, row.analysis_id, credential);
+    });
   }));
+}
+
+/** "Re-run…" on a database analysis row (brief section 8, optional slice, owner-approved): the same
+ *  credential dialog the definition run offers, for ONE analysis. The credential is held in browser
+ *  memory (run-credential.js, per database), sent in the body of this one call, and the server runs
+ *  the analysis in its own process: not queued, not stored, not retried. */
+export function openAnalysisOverrideDialog(row, slug, onGo) {
+  const el = openDialog(row.name || row.analysis_id, `${slug} · run once with another credential`);
+  const body = el.querySelector('#wl-detail-body');
+  body.innerHTML = `
+    <p class="max-w-[70ch]">Runs <span class="font-mono">${esc(row.analysis_id)}</span> once, here, with the credential below
+      instead of the one saved for this database. It is not queued and not retried, and nothing is stored.</p>
+    <div class="mt-s2 flex flex-wrap items-center gap-s2">
+      <input data-run-override-user type="text" autocomplete="off" placeholder="user"
+        class="rounded-sm border border-rule bg-transparent px-2 py-[3px] text-caveat text-ink">
+      <input data-run-override-password type="password" autocomplete="off" placeholder="password"
+        class="rounded-sm border border-rule bg-transparent px-2 py-[3px] text-caveat text-ink">
+    </div>
+    <label class="mt-s1 flex items-baseline gap-s2 text-caveat text-ink-muted">
+      <input type="checkbox" data-run-override-remember>
+      <span>remember for this session</span>
+    </label>
+    <div class="text-caveat text-ink-muted">Used for this run only; never written to the registry. It is forgotten when this tab reloads.</div>
+    <div data-run-override-error class="text-caveat text-state-warn"></div>
+    <div class="mt-s3 flex gap-s3 border-t border-rule pt-s2">
+      <button type="button" data-act="go"
+        class="cursor-pointer rounded-sm border border-accent px-2 py-[2px] text-accent-ink">Run once</button>
+      <button type="button" data-act="close"
+        class="cursor-pointer bg-transparent text-ink-muted underline">Cancel</button>
+    </div>`;
+  // Values go in as PROPERTIES: a password is never an attribute or markup.
+  const mem = rememberedCredential(slug);
+  if (mem) {
+    body.querySelector('[data-run-override-user]').value = mem.user;
+    body.querySelector('[data-run-override-password]').value = mem.password;
+    body.querySelector('[data-run-override-remember]').checked = true;
+  }
+  body.querySelector('[data-act="go"]').addEventListener('click', (ev) => {
+    const go = ev.currentTarget;
+    if (go.disabled) return;                       // a pressed control ignores a second press
+    const user = body.querySelector('[data-run-override-user]').value.trim();
+    const password = body.querySelector('[data-run-override-password]').value;
+    if (!user || !password) {
+      body.querySelector('[data-run-override-error]').textContent =
+        'A credential for this run needs both a user and a password.';
+      return;
+    }
+    setRemembered(slug, { user, password }, body.querySelector('[data-run-override-remember]').checked);
+    go.disabled = true;
+    go.textContent = 'Starting…';
+    closeCellDetail();
+    onGo({ user, password });
+  });
+  return el;
 }
 
 /** RUN GOES THROUGH THE SAME PREVIEW as the matrix's two plans.
@@ -4427,8 +6038,9 @@ async function renderAnalysesIndexSection(slug, stage) {
  * This is the third and most expensive of them, and if they answer "what am I
  * about to spend" in three shapes people learn to read one and skim the rest.
  */
-function planSurveyRun(c, slug) {
+export function planSurveyRun(c, slug) {
   if (!c) return;
+  if (selectedCredentialUnreadable()) return;   // the buttons are disabled; this guards any other caller
   const steps = (c.steps || []).length;
   const el = openDialog(c.display_name || c.qualified_name, `${slug} · ${c.survey_kind || 'unclassified'}`);
   const body = el.querySelector('#wl-detail-body');
@@ -4450,6 +6062,7 @@ function planSurveyRun(c, slug) {
       ${c.auto_publishes ? '<li>publishes its results to Egeria when it finishes</li>' : ''}
     </ul>
     <div id="plan-movement" class="mt-s2 text-caveat text-ink-muted"></div>
+    ${state.resourceType === 'db' ? runOptionsHtml(slug) : ''}
     <p class="mt-s3 text-ink">Nothing runs until you confirm.</p>
     <div class="mt-s3 flex gap-s3 border-t border-rule pt-s2">
       <button type="button" data-act="go"
@@ -4458,9 +6071,16 @@ function planSurveyRun(c, slug) {
       <button type="button" data-act="close"
         class="cursor-pointer bg-transparent text-ink-muted underline">Cancel</button>
     </div>`;
-  body.querySelector('[data-act="go"]').addEventListener('click', () => {
+  const options = state.resourceType === 'db' ? bindRunOptions(body, slug) : null;
+  body.querySelector('[data-act="go"]').addEventListener('click', (ev) => {
+    const go = ev.currentTarget;
+    if (go.disabled) return;                       // a pressed control ignores a second press
+    const chosen = options ? options.read() : { credential: null, forceCustom: false };
+    if (chosen.error) return;                      // the dialog said why; nothing is sent
+    go.disabled = true;
+    go.textContent = 'Starting…';
     closeCellDetail();
-    launchSurvey(slug, c.qualified_name || c.guid);
+    launchSurvey(slug, c.qualified_name || c.guid, chosen);
   });
 
   // WHAT MOVED LAST TIME, HERE, WHERE IT CHANGES A DECISION.
@@ -4470,6 +6090,88 @@ function planSurveyRun(c, slug) {
   // runs is a survey whose cadence is costing more than it returns, and this
   // is the moment that matters — before paying for it again rather than after.
   reportPlanMovement(slug, c);
+}
+
+/** Parity G2, PI-016/PI-018: what a database run can be told. Markup only; the
+ *  credential fields are built on demand and never carry a value attribute. */
+function runOptionsHtml(slug) {
+  const cataloged = !!selectedProject()?.is_published;
+  return `<div class="mt-s3 border-t border-rule pt-s2" data-run-options>
+    <label class="flex items-baseline gap-s2 text-caveat ${cataloged ? 'text-ink' : 'text-ink-muted'}">
+      <input type="checkbox" data-run-hybrid ${cataloged ? 'checked' : 'disabled'}>
+      <span>Try Egeria first (hybrid)</span>
+    </label>
+    <div data-run-hybrid-note class="ml-s5 max-w-[70ch] text-caveat text-ink-muted"></div>
+    <label class="mt-s2 flex items-baseline gap-s2 text-caveat text-ink">
+      <input type="checkbox" data-run-override>
+      <span>Use different credentials for this run</span>
+    </label>
+    <div data-run-override-fields class="ml-s5"></div>
+  </div>`;
+}
+
+/** Wires the options and returns `read()`, the choice the Run press acts on:
+ *  `{credential, forceCustom}` or `{error}` after saying why in the dialog. */
+function bindRunOptions(body, slug) {
+  const cataloged = !!selectedProject()?.is_published;
+  const hybrid = body.querySelector('[data-run-hybrid]');
+  const hybridNote = body.querySelector('[data-run-hybrid-note]');
+  const override = body.querySelector('[data-run-override]');
+  const fields = body.querySelector('[data-run-override-fields]');
+
+  const sayHybrid = () => {
+    hybridNote.textContent = !cataloged
+      ? 'not published to Egeria · publish it on Curate first'
+      : hybrid.checked
+        ? 'Egeria is tried first. The run publishes to Egeria when it finishes (a SurveyReport is written to Egeria). Untick for a local-only run.'
+        : 'Local only: nothing is asked of Egeria in the steps that would try it first.';
+  };
+  hybrid.addEventListener('change', sayHybrid);
+  sayHybrid();
+
+  const showFields = () => {
+    if (!override.checked) { fields.innerHTML = ''; return; }
+    fields.innerHTML = `
+      <div class="mt-s1 flex flex-wrap items-center gap-s2">
+        <input data-run-override-user type="text" autocomplete="off" placeholder="user"
+          class="rounded-sm border border-rule bg-transparent px-2 py-[3px] text-caveat text-ink">
+        <input data-run-override-password type="password" autocomplete="off" placeholder="password"
+          class="rounded-sm border border-rule bg-transparent px-2 py-[3px] text-caveat text-ink">
+      </div>
+      <label class="mt-s1 flex items-baseline gap-s2 text-caveat text-ink-muted">
+        <input type="checkbox" data-run-override-remember>
+        <span>remember for this session</span>
+      </label>
+      <div class="text-caveat text-ink-muted">Used for this run only; never written to the registry. It is forgotten when this tab reloads.</div>
+      <div data-run-override-error class="text-caveat text-state-warn"></div>`;
+    const mem = rememberedCredential(slug);
+    if (mem) {
+      // Values go in as PROPERTIES: a password is never an attribute or markup.
+      fields.querySelector('[data-run-override-user]').value = mem.user;
+      fields.querySelector('[data-run-override-password]').value = mem.password;
+      fields.querySelector('[data-run-override-remember]').checked = true;
+    }
+  };
+  override.addEventListener('change', showFields);
+  if (rememberedCredential(slug)) { override.checked = true; showFields(); }
+
+  return {
+    read() {
+      const forceCustom = !(cataloged && hybrid.checked);
+      if (!override.checked) { setRemembered(slug, null, false); return { credential: null, forceCustom }; }
+      const user = fields.querySelector('[data-run-override-user]').value.trim();
+      const password = fields.querySelector('[data-run-override-password]').value;
+      const keep = fields.querySelector('[data-run-override-remember]').checked;
+      if (!user || !password) {
+        fields.querySelector('[data-run-override-error]').textContent =
+          'A credential for this run needs both a user and a password.';
+        return { error: true };
+      }
+      const credential = { user, password };
+      setRemembered(slug, credential, keep);
+      return { credential, forceCustom };
+    },
+  };
 }
 
 async function reportPlanMovement(slug, c) {
@@ -4491,16 +6193,53 @@ async function reportPlanMovement(slug, c) {
       last time: ${esc(moved.map((d) => `${d.a} ${d.text}`).join(' · '))}.</div>` : ''}`;
 }
 
-async function launchSurvey(slug, ref) {
+/** The launch note, drawn from state so a pane re-render cannot wipe it. */
+export function launchNoteHtml(slug) {
+  return state.launchNote && state.launchNote.slug === slug ? state.launchNote.html : '';
+}
+function setLaunchNote(slug, html) {
+  state.launchNote = { slug, html };
   const note = $('survey-note');
-  if (note) note.innerHTML = `Launching <span class="font-mono">${esc(ref)}</span>…`;
+  if (note) note.innerHTML = html;
+}
+
+/** The first sentence of a run's first failure, or '' when it recorded none.
+ *  From the persisted entry (errors, then a failed step's detail, then the
+ *  row's own reason), never from which branch the caller took. */
+export function firstFailureSentence(entry) {
+  let d = entry && entry.detail;
+  if (typeof d === 'string') { try { d = JSON.parse(d); } catch { d = null; } }
+  let msg = '';
+  if (d && Array.isArray(d.errors) && d.errors.length) msg = String(d.errors[0]);
+  if (!msg && d && Array.isArray(d.steps)) {
+    const bad = d.steps.find((st) => st.status && st.status !== 'ok' && typeof st.detail === 'string');
+    if (bad) msg = bad.detail;
+  }
+  if (!msg) { const f = activityFailure(entry); msg = f ? f.reason : ''; }
+  msg = msg.replace(/\s+/g, ' ').trim();
+  const m = msg.match(/^(.*?[.!?])(\s|$)/);
+  return (m ? m[1] : msg).slice(0, 240);
+}
+
+export async function launchSurvey(slug, ref, { credential = null, forceCustom = false } = {}) {
+  setLaunchNote(slug, `Launching <span class="font-mono">${esc(ref)}</span>…`);
   try {
-    const res = await runSurveyDefinition(slug, ref, { entityType: apiEntityType(state.resourceType) });
-    if (note) note.innerHTML = `Launched <span class="font-mono">${esc(ref)}</span>.
+    // The plain call is kept in its original shape (a source pin in
+    // test_next_db_fs_gate_removal.py names it); the options call only differs
+    // by the two things this run was told.
+    const res = (credential || forceCustom)
+      ? await runSurveyDefinition(slug, ref, { entityType: apiEntityType(state.resourceType), credential, forceCustom })
+      : await runSurveyDefinition(slug, ref, { entityType: apiEntityType(state.resourceType) });
+    // "ran as" is the SERVER's statement about the run, never this browser's
+    // belief that it sent a credential.
+    const ranAs = res && res.ran_as && res.ran_as.user
+      ? ` · ran as <span class="font-mono">${esc(res.ran_as.user)}</span> (${esc(res.ran_as.scope || 'this run')}).` : '';
+    let html = `Launched <span class="font-mono">${esc(ref)}</span>${ranAs || '.'}
       ${res && (res.guid || res.engine_action_guid)
         ? `Egeria action <span class="font-mono">${esc(res.guid || res.engine_action_guid)}</span>.` : ''}
       It runs asynchronously — its results appear in Dashboard and in the question rows
       as each step lands, not when this line changes.`;
+    setLaunchNote(slug, html);
     // Found live, `adventureworks`, 2026-09-27: a Survey Definition run
     // that had genuinely completed (three survey rows written) still left
     // this pane reading "never run" — nothing here ever re-fetched. Watch
@@ -4510,8 +6249,12 @@ async function launchSurvey(slug, ref) {
     // everything else `getSurveyCandidates` returns, reflects what
     // actually happened rather than the stale pre-run snapshot.
     if (res && res.activity_id) {
+      _launchOwned.add(res.activity_id);
+      // The row turns "running" now, from the persisted row, rather than staying as it was until the end.
+      if (slug === state.selectedSlug && state.subTab === 'survey') loadSurveyPane();
+      let finishedEntry = null;
       try {
-        await pollActivity(res.activity_id, {});
+        finishedEntry = await pollActivity(res.activity_id, {});
       } catch (err) {
         if (err.name !== 'PollTimeout') throw err;
         // Not a failure — this browser stopped watching; the run itself
@@ -4519,18 +6262,60 @@ async function launchSurvey(slug, ref) {
         // the run has reached by now, which is still more current than a
         // note that never changes.
       }
+      // Prefect dispatch honesty (2026-09-28,
+      // PREFECT-DISPATCH-HONESTY-IMPLEMENTED.md): a step
+      // that silently fell back to local execution still reports
+      // status "ok" (the work genuinely got done) — so it would otherwise
+      // look identical to a step that was always local-by-design. Its
+      // steps_report entry carries a "ran locally: Prefect dispatch
+      // failed — <reason>" detail specifically to make that distinguishable
+      // here, on the same line a person is already watching.
+      if (finishedEntry) {
+        let steps = [];
+        try {
+          const d = typeof finishedEntry.detail === 'string'
+            ? JSON.parse(finishedEntry.detail) : (finishedEntry.detail || {});
+          steps = d.steps || [];
+        } catch (_) { /* a detail we cannot parse has nothing to report here */ }
+        // Whole-definition engine choice (which engine actually ran this
+        // run — Prefect, or a local fallback and why) is NOT appended here
+        // any more (engine-note persistence, 2026-09-28,
+        // ENGINE-NOTE-PERSISTENCE-IMPLEMENTED.md): it renders on the
+        // definition's own row (surveyRowHtml -> engineNoteHtml), sourced
+        // from the run detail persisted to the activity log, so it survives
+        // the reload this function is about to trigger.
+        const fellBack = steps.filter((s) =>
+          typeof s.detail === 'string' && s.detail.startsWith('ran locally: Prefect dispatch failed'));
+        if (fellBack.length) {
+          html += `<div class="mt-s1 text-state-warn">${
+            fellBack.map((s) => esc(`${String(s.step || '').split('::').pop()} — ${s.detail}`)).join('<br>')
+          }</div>`;
+        }
+        // PI-020: a failed run shows its first sentence AT ONCE, unasked (cue
+        // rule), on the note itself. The note is derived from state, so the
+        // reload below cannot wipe it.
+        const failed = activityFailure(finishedEntry) || (steps.some((s) => s.status === 'error' || s.status === 'failed')
+          ? { reason: '' } : null);
+        const sentence = failed ? firstFailureSentence(finishedEntry) : '';
+        if (sentence) {
+          html += `<div data-launch-failure class="mt-s1 text-state-warn"><span aria-hidden="true">${GLYPH_STATES.error.glyph}</span>
+            failed · ${esc(sentence)}${/authenticat|FATAL|password|credential/i.test(sentence)
+              ? ' <span class="text-ink-muted">Use different credentials for this run, or change the stored credential.</span>' : ''}</div>`;
+        }
+        setLaunchNote(slug, html);
+      }
+      _launchOwned.delete(res.activity_id);
       if (slug === state.selectedSlug && state.subTab === 'survey') {
         await loadSurveyPane();
       }
     }
   } catch (err) {
-    if (!note) return;
     // 401 is not a failure of the survey, it is a fact about this session.
-    note.innerHTML = err.status === 401
+    setLaunchNote(slug, err.status === 401
       ? `<span class="text-accent-ink">Not launched — running a survey is a write, and
          this session is not signed in. Sign in with an Egeria user id to launch it;
          everything else on this pane is readable without one.</span>`
-      : `<span class="text-state-warn">It was not launched: ${esc(err.message)}</span>`;
+      : `<span class="text-state-warn">It was not launched: ${esc(err.message)}</span>`);
   }
 }
 
@@ -4574,7 +6359,7 @@ async function historyHtml(slug, analysisId, metric = '') {
 
   let series;
   try {
-    const res = await getAnalysisTrend(slug, analysisId, metric);
+    const res = await getAnalysisTrend(slug, analysisId, metric, apiEntityType(state.resourceType));
     series = (res.runs || res.series || []).filter((r) => r && r.surveyed_at);
   } catch (err) {
     // A 400 here is an ANSWER, not a failure: the endpoint says this analysis
@@ -4632,7 +6417,7 @@ async function historyHtml(slug, analysisId, metric = '') {
 async function deltaFor(slug, analysisId, metric = '') {
   if (trendSupport(analysisId) === 'not_tracked') return '';
   try {
-    const res = await getAnalysisTrend(slug, analysisId, metric);
+    const res = await getAnalysisTrend(slug, analysisId, metric, apiEntityType(state.resourceType));
     const series = (res.runs || res.series || []).filter((r) => r && r.surveyed_at);
     if (series.length < 2) return series.length === 1 ? 'first measurement' : '';
     series.sort((a, b) => String(a.surveyed_at).localeCompare(String(b.surveyed_at)));
@@ -4840,12 +6625,89 @@ function declaredVsReceivedHtml(data) {
     <ul class="m-0 mt-s1 list-none p-0 text-caveat">${rows}</ul>`;
 }
 
-async function openRunsList(slug) {
+/** Which source answered a step (the run's own `answered_by`), and, when a
+ *  credential was typed for the run, who the step ran as. Both are the run's
+ *  persisted statements; a step that recorded neither says nothing. */
+const ANSWERED_BY = {
+  local: 'local',
+  custom: 'local scan',
+  'egeria-custom': 'local scan, published to Egeria',
+  egeria: 'Egeria',
+  prefect: 'Prefect',
+};
+export function stepSourceHtml(s) {
+  const word = ANSWERED_BY[s && s.answered_by];
+  const publish = stepPublishHtml(s);
+  if (!word) return publish;
+  const ranAs = s.ran_as && s.ran_as.user
+    ? ` · ran as ${esc(s.ran_as.user)} (${esc(s.ran_as.scope || 'this run')})` : '';
+  return `<span class="text-provenance text-ink-muted" data-step-source>answered by ${esc(word)}${ranAs}</span>${publish}`;
+}
+
+/** Brief D 7f.8: what happened to the publish, as a cue plus a short word.
+ *  The step records one `publish_state` sentence in its detail ("published to
+ *  Egeria" / "publish failed · <why>" / "local only · publish not chosen");
+ *  `answered_by` says only which scan answered, so a failed publish and a
+ *  publish nobody chose both read "local scan". The sentence stays on demand
+ *  (title); the screen gets the glyph and one word. A step with no
+ *  `publish_state` (every step but the adaptive one) draws nothing. */
+export function stepPublishHtml(s) {
+  const d = s && s.detail && typeof s.detail === 'object' ? s.detail : {};
+  const state = String((s && s.publish_state) || d.publish_state || '');
+  if (!state) return '';
+  let kind = 'unclassified';
+  let word = 'not published';
+  if (/^published\b/i.test(state)) { kind = 'measured'; word = 'published'; }
+  else if (/^publish failed\b/i.test(state)) { kind = 'error'; word = 'publish failed'; }
+  else if (/^nothing to publish\b/i.test(state)) { kind = 'nothing'; word = 'nothing to publish'; }
+  else if (/^publish not established\b/i.test(state)) { word = 'not established'; }
+  const g = GLYPH_STATES[kind];
+  const title = `title="${esc(state)}"`;
+  const glyph = esc(g.glyph);
+  if (kind === 'error') {
+    return `<span class="text-provenance" data-step-publish="error" ${title}>`
+      + `<span class="text-state-warn font-glyph" aria-hidden="true">${glyph}</span> `
+      + `<span class="text-state-warn">${esc(word)}</span></span>`;
+  }
+  if (kind === 'measured') {
+    return `<span class="text-provenance" data-step-publish="measured" ${title}>`
+      + `<span class="text-state-ok font-glyph" aria-hidden="true">${glyph}</span> `
+      + `<span class="text-ink-muted">${esc(word)}</span></span>`;
+  }
+  return `<span class="text-provenance" data-step-publish="${kind}" ${title}>`
+    + `<span class="text-ink-muted font-glyph" aria-hidden="true">${glyph}</span> `
+    + `<span class="text-ink-muted">${esc(word)}</span></span>`;
+}
+
+/** Backlog 7f.8: a database run's own publish word. It publishes once, after
+ *  its steps, so the word is the run's `publish_state`; "published" is drawn
+ *  only with the run's `egeria_report_guid` beside it (the proof), never from
+ *  the sentence alone. A run that recorded no word draws nothing. */
+export function runPublishHtml(d) {
+  const state = String((d && d.publish_state) || '');
+  if (!state) return '';
+  if (/^published\b/i.test(state) && !String((d && d.egeria_report_guid) || '').trim()) {
+    return stepPublishHtml({ publish_state: `publish not established · the run says "${state}" but recorded no report guid` });
+  }
+  return stepPublishHtml({ publish_state: state });
+}
+
+/** Backlog 7f.6: the header activity watch's page reader. The same page also tells an open Activity list that is
+ *  not polling that something started or ended (`noticeActivity`). Exported so the harness drives the real wiring. */
+export function activityWatchEntries(list = listActivity) {
+  return async () => {
+    const entries = await list(50);
+    noticeActivity(entries).catch(() => { /* the list keeps what it shows */ });
+    return entries;
+  };
+}
+
+export async function openRunsList(slug) {
   const el = openDialog('Runs', slug);
   const body = el.querySelector('#wl-detail-body');
   let rows;
   try {
-    rows = await getResourceRuns(slug);
+    rows = await getResourceRuns(slug, 40, apiEntityType(state.resourceType));
   } catch (err) {
     body.innerHTML = `<p class="text-state-warn">The runs could not be read: ${esc(err.message)}</p>`;
     return;
@@ -4857,9 +6719,12 @@ async function openRunsList(slug) {
   }
   body.innerHTML = runs.slice(0, 12).map((r) => {
     let steps = [];
+    let runPublish = '';
     try {
       const d = typeof r.detail === 'string' ? JSON.parse(r.detail) : (r.detail || {});
       steps = d.steps || [];
+      // A run that published through the outbox carries its proof-derived word; a database run its own word.
+      runPublish = r.publish_proof ? publishProofHtml(r.publish_proof) : runPublishHtml(d);
     } catch (_) { /* a detail we cannot parse is a run with no step list */ }
     const ok = steps.filter((s) => s.status === 'ok').length;
     const bad = steps.filter((s) => s.status && s.status !== 'ok');
@@ -4871,18 +6736,28 @@ async function openRunsList(slug) {
       ${steps.length ? `
         <div class="mt-s1 text-provenance text-ink-muted">
           <span class="text-state-ok">${ok} ran</span>${
-          bad.length ? ` · <span class="text-state-warn">${bad.length} did not</span>` : ''}</div>
+          bad.length ? ` · <span class="text-state-warn">${bad.length} did not</span>` : ''}${
+          runPublish ? ` · <span data-run-publish>${runPublish}</span>` : ''}</div>
         <ul class="m-0 mt-s1 list-none p-0 text-caveat">
-          ${steps.map((s) => `<li class="flex gap-s2">
-            <span class="${s.status === 'ok' ? 'text-state-ok' : 'text-state-warn'}">${
-              s.status === 'ok' ? '✓' : '⚠'}</span>
+          ${steps.map((s) => {
+            // A step that did not complete `ok` FAILED -- that is `✕`
+            // (GLYPH_STATES.error), not `⚠`. Before this pass this used ⚠
+            // for a non-ok step, but per REPLY-DESIGNER-ROUND2-DATABASE-
+            // SCREENS.md §1, ⚠ now means ONLY "needs a person"; an error
+            // uses ✕, so it does not collide with the human-attention glyph.
+            const ok = s.status === 'ok';
+            const g = ok ? GLYPH_STATES.measured : GLYPH_STATES.error;
+            return `<li class="flex gap-s2">
+            <span class="${g.tone} font-glyph" title="${esc(g.word)}" aria-label="${esc(g.word)}">${g.glyph}</span>
             <span class="min-w-0 font-mono text-provenance">${
               esc(String(s.step || '').split('::').pop())}</span>
-            ${s.status !== 'ok' && s.detail
+            ${stepSourceHtml(s)}
+            ${!ok && s.detail
               ? `<span class="text-ink-muted">— ${esc(String(s.detail).slice(0, 120))}</span>` : ''}
-          </li>`).join('')}
+          </li>`;
+          }).join('')}
         </ul>`
-        : '<p class="mt-s1 text-caveat text-ink-muted">This run recorded no step list.</p>'}
+        : `${runPublish ? `<div class="mt-s1 text-provenance text-ink-muted"><span data-run-publish>${runPublish}</span></div>` : ''}<p class="mt-s1 text-caveat text-ink-muted">This run recorded no step list.</p>`}
       <div data-dvr="${esc(r.id)}"></div>
     </details>`;
   }).join('');
@@ -4910,7 +6785,49 @@ async function openRunsList(slug) {
         return;
       }
       holder.innerHTML = declaredVsReceivedHtml(dvr);
+      attachRunReport(holder, apiEntityType(state.resourceType), slug, dvr);
     });
+  });
+}
+
+/** PI-046: link a finished run to the Egeria report it published. The report GUID is the run's own
+ *  (`egeria_report_guid` from declared-vs-received, which reads it off the run record); nothing is
+ *  read from Egeria until the person presses the button, and a report that is no longer in Egeria
+ *  says so instead of showing an empty list. A run with no report says that too. */
+export function attachRunReport(holder, entityType, slug, dvr) {
+  const guid = dvr && dvr.published ? String(dvr.egeria_report_guid || '') : '';
+  if (!guid) {
+    holder.insertAdjacentHTML('beforeend', `<p data-run-report="none" class="mt-s2 text-provenance text-ink-muted">
+      <span class="font-glyph" aria-hidden="true">${stateEntry('unrun').glyph}</span> no Egeria report: this run was not published</p>`);
+    return;
+  }
+  holder.insertAdjacentHTML('beforeend', `<div data-run-report="${esc(guid)}" class="mt-s2">
+    <div class="flex flex-wrap items-baseline gap-s2 text-provenance text-ink-muted">
+      <span>Egeria report</span> <span class="font-mono text-ink" data-run-report-guid>${esc(guid)}</span>
+      <button type="button" data-run-report-open class="cursor-pointer bg-transparent p-0 text-accent-ink underline">Show the report and its annotations</button>
+      <span data-run-report-status aria-live="polite"></span></div>
+    <div data-run-report-host class="mt-s1"></div></div>`);
+  const wrap = holder.lastElementChild;
+  const btn = wrap.querySelector('[data-run-report-open]');
+  const status = wrap.querySelector('[data-run-report-status]');
+  btn.addEventListener('click', async () => {
+    if (btn.disabled) return;
+    btn.disabled = true;
+    status.textContent = 'reading Egeria…';
+    try {
+      const { mountEgeriaReports } = await import('/static/next/stages/publish.js');
+      const host = wrap.querySelector('[data-run-report-host]');
+      const reports = mountEgeriaReports(host, { entityType, slug, inEgeria: true });
+      const read = await reports.ready;
+      await reports.expand(guid);
+      const there = [...host.querySelectorAll('[data-egeria-report]')].some((n) => n.dataset.egeriaReport === guid);
+      // "Not in Egeria now" is a statement about a SUCCESSFUL read; a failed read says it could not be read.
+      status.textContent = read === false ? 'Egeria could not be read, so this report was not checked'
+        : (there || read !== true) ? '' : 'this report is not in Egeria now';
+    } catch (err) {
+      status.textContent = `could not be read: ${err && err.message ? err.message : 'unknown error'}`;
+    }
+    btn.disabled = false;
   });
 }
 
@@ -4941,6 +6858,10 @@ const UNRESOLVED_LABELS = new Set([
  * `— PERIODIC` — as machine tokens welded to a title. They are the same kind
  * of fact the matrix encodes as glyphs, and someone who has learned the grid
  * should not have to learn a second language one click away.
+ *
+ * Reads `CELL` (worklist.js), itself now a thin view over the one glyph
+ * table in glyphs.js -- see that module's docstring
+ * (REPLY-DESIGNER-ROUND2-DATABASE-SCREENS.md §1).
  */
 function findingGlyph(label) {
   const l = String(label || '').toLowerCase();
@@ -4961,15 +6882,22 @@ const humanLabel = (l) => String(l || '').replace(/_/g, ' ').toLowerCase();
  * yet; `by_analysis` (loadByAnalysisPane) still carries those. */
 
 /** A measured/error/unrun/unknown analysis state as one glyph, for the
- *  members rail and the run-history list -- the same vocabulary the matrix
- *  and the questions row use, spelled out here since state-as-glyph is a
- *  cross-cutting need, not a "by analysis" or "by question" one. */
+ *  members rail, the run-history list, and Curate's task/step rows -- the
+ *  same vocabulary the matrix and the questions row use, spelled out here
+ *  since state-as-glyph is a cross-cutting need, not a "by analysis" or "by
+ *  question" one.
+ *
+ *  The glyph for each case now comes from `GLYPH_STATES` (glyphs.js) --
+ *  this function declares no glyph of its own any more, only which of the
+ *  canonical states each of ITS OWN four input states maps to. Tones are
+ *  unchanged from before this pass (see glyphs.js's docstring on why a
+ *  colour pass is a separate, unreviewed change this one does not make). */
 export function factGlyph(state) {
   switch (state) {
-    case 'measured': return { glyph: '✓', tone: 'text-state-ok' };
-    case 'error': return { glyph: '✕', tone: 'text-state-warn' };
-    case 'unrun': return { glyph: '○', tone: 'text-ink-muted' };
-    default: return { glyph: '·', tone: 'text-ink-muted' };
+    case 'measured': return { glyph: GLYPH_STATES.measured.glyph, tone: 'text-state-ok' };
+    case 'error': return { glyph: GLYPH_STATES.error.glyph, tone: 'text-state-warn' };
+    case 'unrun': return { glyph: GLYPH_STATES.unrun.glyph, tone: 'text-ink-muted' };
+    default: return { glyph: GLYPH_STATES.unclassified.glyph, tone: 'text-ink-muted' };
   }
 }
 
@@ -5016,8 +6944,9 @@ function memberScope() {
  * fix" is not one here — cve_scan does not record fix availability, and a
  * facet the data cannot back would select nothing and look broken.
  *
- * Three acts, and they are different: add to work list (I will deal with
- * this), raise RFA (someone must), note in journal (worth knowing — no
+ * Three acts, and they are different: add to <investigation> (this belongs
+ * in my investigation's scope; W1-A, it used to mint a one-resource work
+ * list), raise RFA (someone must), note in journal (worth knowing — no
  * obligation, so the likeliest used). One provenance line, composed on the
  * server, travels with all three. The selection is a SNAPSHOT of names,
  * never a query: a work item that changes what it refers to when the scan
@@ -5061,7 +6990,7 @@ function facetsHtml(groups, data) {
   </div>`;
 }
 
-function wireSelection(out, { slug, analysisId, metric, data }) {
+export function wireSelection(out, { slug, analysisId, metric, data }) {
   const picks = () => [...out.querySelectorAll('[data-pick]:checked')];
   const footer = out.querySelector('#member-selection');
   const project = state.projects.find((x) => x.slug === slug);
@@ -5160,7 +7089,8 @@ function wireSelection(out, { slug, analysisId, metric, data }) {
       <input id="promote-name" type="text" value="${esc(touched && typed ? typed : proposed(sel.length))}"
         class="mb-[4px] w-full rounded-sm border border-chrome-line bg-transparent px-[6px] py-[2px] text-caps text-chrome-ink">
       <div class="flex flex-wrap items-baseline gap-x-s3 gap-y-[2px] text-caps">
-        <button data-promote="work_list" class="cursor-pointer bg-transparent p-0 text-accent-on-dark underline">add to work list</button>
+        ${scopeActHtml({ invName: curInvName(), inScope: !!state.investigation && state.workingSet.has(slug) },
+          'data-promote="scope"', 'cursor-pointer bg-transparent p-0 text-accent-on-dark underline').replace('text-ink-muted', 'text-chrome-muted')}
         <button data-promote="rfa" class="cursor-pointer bg-transparent p-0 text-accent-on-dark underline">raise RFA</button>
         <button data-promote="journal" class="cursor-pointer bg-transparent p-0 text-accent-on-dark underline">note in journal</button>
         <button data-report-sel class="cursor-pointer bg-transparent p-0 text-accent-on-dark underline">save as report</button>
@@ -5171,21 +7101,41 @@ function wireSelection(out, { slug, analysisId, metric, data }) {
       save(picks().map((c) => c.dataset.pick), facetLabel(), nameEl.value.trim(), footer.querySelector('#promote-status')));
     nameEl.addEventListener('input', () => { typed = nameEl.value; touched = typed.trim().length > 0; });
     footer.querySelectorAll('[data-promote]').forEach((b) => b.addEventListener('click', async () => {
-      const status = footer.querySelector('#promote-status');
-      const members = picks().map((c) => c.dataset.pick);
-      b.disabled = true; status.textContent = '…';
-      try {
-        const out2 = await promoteMembers(slug, analysisId, {
-          action: b.dataset.promote, metric: metric || data.metric || '', members, total, facet: facetLabel(), runAt,
-          name: nameEl.value.trim(),
-        });
-        // Say where it went, not "sent".
-        const where = out2.work_list ? `work list ${out2.work_list}` : out2.rfa ? `RFA ${String(out2.rfa).slice(0, 8)}` : 'the journal';
-        status.innerHTML = `<span class="text-state-ok-on-dark">→ ${esc(where)}</span>`;
-      } catch (err) {
-        b.disabled = false;
-        status.innerHTML = `<span class="text-state-warn-on-dark">${esc(err.status === 401 ? 'sign in to promote' : err.message)}</span>`;
+      const action = b.dataset.promote;
+      const perform = async (investigation = '') => {
+        const status = footer.querySelector('#promote-status');
+        const members = picks().map((c) => c.dataset.pick);
+        b.disabled = true; status.textContent = '…';
+        try {
+          const out2 = await promoteMembers(slug, analysisId, {
+            action, metric: metric || data.metric || '', members, total, facet: facetLabel(), runAt,
+            name: nameEl.value.trim(), investigation,
+          }, apiEntityType(state.resourceType));
+          // Say where it went, not "sent".
+          let where = out2.rfa ? `RFA ${String(out2.rfa).slice(0, 8)}` : 'the journal';
+          if (action === 'scope') {
+            const becameCurrent = investigation !== state.investigation;
+            if (becameCurrent) await setInvestigation(investigation);
+            else await loadWorkingSet();
+            await refreshOpenInvestigation(investigation);
+            where = out2.already_in_scope
+              ? `already in ${out2.investigation_name}’s scope, left as it was`
+              : `added to ${out2.investigation_name}’s scope${becameCurrent ? ', now your current investigation' : ''}`;
+            render();   // the act now reads "already in …’s scope"
+          }
+          const st = footer.querySelector('#promote-status');
+          if (st) st.innerHTML = `<span class="text-state-ok-on-dark">→ ${esc(where)}</span>`;
+        } catch (err) {
+          b.disabled = false;
+          status.innerHTML = `<span class="text-state-warn-on-dark">${esc(err.status === 401 ? 'sign in to promote' : err.message)}</span>`;
+        }
+      };
+      if (action === 'scope') {
+        if (state.investigation) await perform(state.investigation);
+        else chooseInvestigationThen((chosen) => perform(chosen));
+        return;
       }
+      await perform();
     }));
   }
   render();   // the whole-list state, before any pick
@@ -5200,13 +7150,20 @@ export async function openMembers({ slug, analysisId, metric = '', title = '' })
   railFrame('Members', slug, `<div class="text-caps text-chrome-muted">Reading the members of ${esc(title || analysisId)}…</div>`, { sub: 'loading' });
   let data;
   try {
-    data = await getMembers(slug, analysisId, { metric, scope });
+    data = await getMembers(slug, analysisId, { metric, scope }, apiEntityType(state.resourceType));
   } catch (err) {
     if (railStale(ticket)) return;   // a later click owns the slot now
+    // A 400 is an ANSWER ("members aren't built for databases yet"), not a
+    // fault in the reader: render the server's sentence as written.
+    if (err.status === 400) {
+      railFrame('Members', slug, `<div class="text-caps text-chrome-muted" data-members-not-built>${esc(err.message)}</div>`, { sub: 'not built yet' });
+      return;
+    }
     railFrame('Members', slug, `<div class="text-caps text-state-warn-on-dark">The members of ${esc(title || analysisId)} could not be read: ${esc(err.message)}</div>`, { sub: 'failed' });
     return;
   }
   if (railStale(ticket)) return;
+  railTag(out, slug);
   if (data.not_applicable) {
     // Metrics-only analysis (repository_health, and the like): the list
     // slot holds one sentence, not a zero from the wrong table — and no
@@ -5225,6 +7182,10 @@ export async function openMembers({ slug, analysisId, metric = '', title = '' })
   }
   const groups = data.groups || [];
   const shown = groups.reduce((n, g) => n + g.members.length, 0);
+  // The sub-resource survey's members are CANDIDATES. Ticks here would be a one-off browser selection that
+  // saves nothing; what is published is chosen with Include in "what's in it", so this list is read-only
+  // and points there.
+  const readOnly = analysisId === 'sub_resource_survey' && state.resourceType === 'repo';
   out.innerHTML = `
     <div class="mb-s1 flex items-baseline gap-s2">
       <span class="font-heading uppercase tracking-caps text-caps text-accent-on-dark">Members</span>
@@ -5234,26 +7195,29 @@ export async function openMembers({ slug, analysisId, metric = '', title = '' })
     </div>
     <div class="mb-s2 text-caps text-chrome-muted">
       <span class="font-mono">${esc(data.analysis_id)}</span>
-      · <button data-act="member-history" class="cursor-pointer bg-transparent text-accent-on-dark underline">measurement ›</button>
+      · <button data-act="member-history" class="cursor-pointer bg-transparent text-accent-on-dark underline">measurement ›</button>${analysisId === 'interface_surface' && state.resourceType === 'repo'
+        ? `
+      · <button data-act="api-reference" class="cursor-pointer bg-transparent text-accent-on-dark underline">API reference ›</button>` : ''}
       · scope
       <button data-scope="public" aria-pressed="${scope === 'public'}" class="wl-chartchip cursor-pointer bg-transparent px-[4px] text-chrome-muted">use</button>
       <button data-scope="all" aria-pressed="${scope === 'all'}" class="wl-chartchip cursor-pointer bg-transparent px-[4px] text-chrome-muted">maintain</button>
       ${data.scope_honoured ? '' : `<span class="text-chrome-muted">· scope not applicable to this set</span>`}
     </div>
     ${data.note ? `<div class="mb-s2 text-caps text-chrome-muted">${esc(data.note)}</div>` : ''}
-    ${facetsHtml(groups, data)}
-    ${groups.length ? '' : `<div class="text-caps text-chrome-muted">Nothing listed — <span class="font-mono">${esc(data.source)}</span> holds no rows for this analysis on this resource.</div>`}
+    ${readOnly ? `<div data-members-not-saved class="mb-s2 text-caps text-chrome-ink"><span class="font-glyph" aria-hidden="true">○</span> not saved here · choose what is published with Include in what's in it
+      ${state.stage === 'curate' ? `· <button data-members-goto-scope class="cursor-pointer bg-transparent p-0 text-accent-on-dark underline">go to what's in it ›</button>` : ''}</div>` : facetsHtml(groups, data)}
+    ${groups.length ? '' : `<div data-members-empty class="text-caps text-chrome-muted"><span class="font-glyph" aria-hidden="true">○</span> ${esc(data.reason || `nothing stored by ${data.analysis_id} for this repo`)} · read from <span class="font-mono">${esc(data.source)}</span></div>`}
     <div class="flex flex-col gap-s1">
       ${groups.map((g, gi) => `<details class="border-b border-chrome-line-soft pb-s1" ${gi < 3 ? 'open' : ''}>
         <summary class="cursor-pointer text-subtab text-chrome-ink"><span class="tnum">${g.count}</span> · ${esc(g.name)}</summary>
         <ul class="m-0 mt-[2px] list-none p-0 pl-s2">
-          ${g.members.map((m) => `<li class="flex items-baseline gap-s2 py-[2px] text-caps">
-            ${m.children_key ? '' : `<input type="checkbox" data-pick="${esc(m.name)}" data-group="${esc(g.name)}" data-detail="${esc(m.detail || '')}" class="shrink-0">`}
+          ${g.members.map((m) => `<li data-member-row class="flex flex-wrap items-baseline gap-x-s2 py-[2px] text-caps">
+            ${m.children_key || readOnly ? '' : `<input type="checkbox" data-pick="${esc(m.name)}" data-group="${esc(g.name)}" data-detail="${esc(m.detail || '')}" class="shrink-0">`}
             ${m.children_key
               ? `<button data-children="${esc(m.children_key)}" class="cursor-pointer bg-transparent p-0 text-left font-mono text-chrome-ink underline">${esc(m.name)}</button>
                  <span class="text-chrome-muted tnum">${m.count ?? ''}</span>`
-              : `<span class="min-w-0 break-words font-mono text-chrome-ink">${esc(m.name)}</span>`}
-            ${m.detail ? `<span class="shrink-0 text-chrome-muted">${esc(m.detail)}</span>` : ''}
+              : `<span data-member-name class="min-w-[12ch] max-w-full break-words font-mono text-chrome-ink [overflow-wrap:anywhere]">${esc(m.name)}</span>`}
+            ${m.detail ? `<span data-member-detail class="min-w-0 max-w-full break-words text-chrome-muted [overflow-wrap:anywhere]">${esc(m.detail)}</span>` : ''}
           </li>`).join('')}
           ${g.truncated ? `<li class="text-caps text-chrome-muted">and more — the first ${g.members.length} are shown</li>` : ''}
         </ul>
@@ -5265,7 +7229,13 @@ export async function openMembers({ slug, analysisId, metric = '', title = '' })
     <div id="member-selection" class="mt-s2 border-t border-chrome-line pt-s2"></div>`;
 
   out.querySelector('[data-act="close-members"]')?.addEventListener('click', () => { out.innerHTML = ''; });
-  wireSelection(out, { slug, analysisId, metric, data });
+  if (readOnly) {
+    out.querySelector('#member-selection')?.remove();
+    out.querySelector('[data-members-goto-scope]')?.addEventListener('click', () => jumpToCurateSection('curate-sec-what-holds'));
+  } else {
+    wireSelection(out, { slug, analysisId, metric, data });
+  }
+  out.querySelector('[data-act="api-reference"]')?.addEventListener('click', () => openApiReference({ slug }));
   out.querySelector('[data-act="member-history"]')?.addEventListener('click', () => openMeasurementDetail({
     slug, analysisId, title: title || analysisId, metric,
   }));
@@ -5273,213 +7243,945 @@ export async function openMembers({ slug, analysisId, metric = '', title = '' })
     state.memberScope = b.dataset.scope;
     openMembers({ slug, analysisId, metric, title });
   }));
-  // One level down, on demand: a file opens its symbols in place.
-  out.querySelectorAll('[data-children]').forEach((b) => b.addEventListener('click', async () => {
+  // One level down, on demand: a file opens its symbols in place, and a class opens its methods.
+  const wireChildren = (root) => root.querySelectorAll('[data-children]').forEach((b) => b.addEventListener('click', async () => {
     const li = b.closest('li');
-    if (li.querySelector('ul')) { li.querySelector('ul').remove(); return; }
+    if (li.querySelector(':scope > ul')) { li.querySelector(':scope > ul').remove(); return; }
     b.textContent = `${b.textContent} …`;
     let rows;
-    try { rows = (await getMemberChildren(slug, analysisId, b.dataset.children, { scope })).members || []; }
+    try { rows = (await getMemberChildren(slug, analysisId, b.dataset.children, { scope }, apiEntityType(state.resourceType))).members || []; }
     catch (err) { rows = [{ name: `could not read: ${err.message}`, detail: '' }]; }
     b.textContent = b.textContent.replace(/ …$/, '');
     const ul = document.createElement('ul');
     ul.className = 'm-0 mt-[2px] w-full list-none p-0 pl-s3';
-    ul.innerHTML = rows.map((m) => `<li class="flex items-baseline gap-s2 py-[1px] text-caps">
-        <span class="min-w-0 break-all font-mono text-chrome-ink">${esc(m.name)}</span>
-        ${m.detail ? `<span class="shrink-0 text-chrome-muted">${esc(m.detail)}</span>` : ''}</li>`).join('')
+    ul.innerHTML = rows.map((m) => `<li class="flex flex-wrap items-baseline gap-x-s2 py-[1px] text-caps">
+        ${m.children_key
+          ? `<button data-children="${esc(m.children_key)}" class="cursor-pointer bg-transparent p-0 text-left font-mono text-chrome-ink underline">${esc(m.name)}</button>`
+          : `<span class="min-w-0 break-all font-mono text-chrome-ink">${esc(m.name)}</span>`}
+        ${m.detail ? `<span class="min-w-0 break-words text-chrome-muted">${esc(m.detail)}</span>` : ''}</li>`).join('')
       || `<li class="text-caps text-chrome-muted">nothing at this level</li>`;
     li.appendChild(ul);
+    wireChildren(ul);
   }));
+  wireChildren(out);
   // The rail may be closed on a narrow shell; a members request opens it.
   if (typeof setRailOpen === 'function') setRailOpen(true);
 }
 
-async function loadByAnalysisPane() {
-  const el = $('content');
-  const blocked = paneNeedsRepo();
-  if (blocked) { el.innerHTML = subTabsHtml() + blocked; bindSubTabs(); return; }
-  const slug = state.selectedSlug;
-  const stage = state.stage;
+/**
+ * By-analysis, rebuilt (BRIEF-BY-ANALYSIS-PANEL-USABILITY.md +
+ * REPLY-DESIGNER-ROUND2-DATABASE-SCREENS.md §2, 2026-09-28).
+ *
+ * Two problems this rebuild exists for, both live-confirmed by the project
+ * owner: (1) the pane rendered nothing but "Reading the dashboards…" for up
+ * to 109s -- the ORIGINAL comment above the old single `getSurveyDashboards`
+ * call named this cost and did nothing about it; (2) the Relationship
+ * Graph card showed only numbers, never the graph `factGraphviz` already
+ * knows how to render (the Questions-tab Evidence rail's own path).
+ *
+ * THE FIX FOR (1) IS NOT "make the reader faster" -- `build_survey_results`'s
+ * own results/headline readers are genuinely expensive (db_derived-backed);
+ * this pane stops BLOCKING ON THEM AS ONE BATCH instead:
+ *
+ *   - The contents board (glyph + headline + run time per board) paints from
+ *     `state.analyses` -- already fetched at boot (`start()`'s
+ *     `listAnalyses(...)` call) -- with NO network call at all when the
+ *     current entity type is database/filesystem (board id === analysis_id
+ *     there, so state.analyses IS the board list). repo's dashboards group
+ *     several analyses under one id state.analyses doesn't carry, so repo
+ *     falls back to the new cheap `listSurveyResultBoards`/`/survey-results/
+ *     boards` endpoint (catalog metadata only, no results/headline reader
+ *     -- see `workflows.analysis.list_survey_result_boards`'s docstring).
+ *     Either way this is visible before ANY board's own data has been
+ *     fetched.
+ *   - Each board's real data is then fetched ONE AT A TIME, in parallel,
+ *     via `getSurveyDashboards(..., { boardId })` (the new `board_id` query
+ *     param `build_survey_results` now takes) -- not the old single call
+ *     that read every board in one sweep. A card fills in as its own read
+ *     lands; a slow board no longer holds up a fast one.
+ *   - `dashToken`'s existing stale-read-cancellation pattern still applies
+ *     (`live()` below), scoped to the whole pane load exactly as before.
+ */
 
-  // Its own token: an earlier click's slow read must not overwrite a
-  // later one's -- the dashboards read has cost 109s on Analysis.
-  const token = ++dashToken;
-  el.innerHTML = subTabsHtml() + `
-    <div class="mb-s3 flex flex-wrap items-baseline gap-s3">
-      <span class="text-caps uppercase tracking-caps text-ink-muted">Survey results, by analysis · ${esc(stage)}</span>
-    </div>
-    <div id="dash-boards" class="text-caveat text-ink-muted">Reading the dashboards…</div>`;
-  bindSubTabs();
+/** How many board reads run at once -- found necessary live (not merely
+ *  theoretical): switching stages quickly left several `db_derived`-backed
+ *  board reads from the ABANDONED stage still running server-side (their
+ *  RESULT was ignored via `live()`, but the request itself kept the thread
+ *  pool busy), which starved even the cheap boards-catalog call for the new
+ *  stage behind them. Small and fixed rather than tuned -- this pane's job
+ *  is "don't block on one 109s sweep", not "find the server's exact
+ *  concurrency ceiling". */
+const BY_ANALYSIS_MAX_CONCURRENT_READS = 3;
 
-  const live = () => token === dashToken && state.subTab === 'by_analysis';
+/** How long a single board's fetch may sit 'loading' before the pane gives
+ *  up spinning on it and offers a manual "open to load" trigger instead
+ *  (design requirement added 2026-09-28, owner gate check on
+ *  laz_local_adventureworks: pane settle ran 5+ minutes on an un-warmed
+ *  board_summary, deemed unacceptable even as an interim while the
+ *  board_summary read-cost fix lands). This is a SAFETY NET independent of
+ *  that fix's effectiveness -- it applies whether a board's summary is
+ *  missing/stale and the fallback recompute is fast or still slow, so the
+ *  pane never hangs indefinitely on one card. The underlying fetch is not
+ *  cancelled (no AbortController here -- the same reasoning `live()`
+ *  already applies to an abandoned stage's in-flight reads: the request
+ *  keeps running server-side either way, only the UI's wait for it ends);
+ *  if it does resolve after the timeout, the card still updates to its
+ *  real state then. */
+export const BY_ANALYSIS_BOARD_TIMEOUT_MS = 30000;
 
-  // database/filesystem now have a real (if partial -- see docs/Backlog.md,
-  // "By analysis" was repo-only) survey-results route of their own
-  // (workflows.analysis.build_survey_results) -- apiEntityType() translates
-  // state.resourceType at this boundary the same way getSurveyCandidates/
-  // runSurveyDefinition already do, so 'db' never reaches the server
-  // untranslated.
-  let data;
+/** localStorage convenience: whether this board's card was left open on
+ *  this resource, on this browser. Per-viewer only -- never read back by
+ *  this session, never shared. */
+function byAnalysisOpenKey(slug, boardId) { return `re-next:by-analysis-open:${slug}:${boardId}`; }
+function byAnalysisCardOpen(slug, boardId, defaultOpen) {
   try {
-    data = await getSurveyDashboards(slug, stage, { includeEmpty: true, entityType: apiEntityType(state.resourceType) });
-  } catch (err) {
-    if (live()) $('dash-boards').innerHTML =
-      `<span class="text-state-warn">The dashboards could not be read: ${esc(err.message)}</span>`;
-    return;
-  }
-  if (!live()) return;
-  const boards = data.dashboards || [];
-  if (!boards.length) {
-    $('dash-boards').innerHTML = `No dashboard is registered for ${esc(stage)}.`;
-    return;
-  }
+    const v = window.localStorage.getItem(byAnalysisOpenKey(slug, boardId));
+    return v === null ? defaultOpen : v === '1';
+  } catch { return defaultOpen; }
+}
+function setByAnalysisCardOpen(slug, boardId, open) {
+  try { window.localStorage.setItem(byAnalysisOpenKey(slug, boardId), open ? '1' : '0'); } catch { /* fine without */ }
+}
 
-  // Every measurement on the pane, so a NAME REPORTED TWICE WITH DIFFERENT
-  // VALUES can be marked where it is displayed rather than left for a reader
-  // to notice or not.
+/**
+ * Order boards the way the brief's "Order" section asks for: the order the
+ * stage's own questions ask for them (the first question that names the
+ * board's id, in the questions list's own order); a board no question names
+ * keeps its catalog position, appended after every named board.
+ *
+ * `leadAnalysisId` (envelope.js) is reused here rather than reading
+ * `analysis_ids[0]` -- the same reasoning that function's own docstring
+ * gives for the Questions row: a question's note can name an analysis OTHER
+ * than `analysis_ids[0]` as the one it is actually asking for.
+ */
+function orderBoardsByQuestions(boards, questions) {
+  const boardIds = new Set(boards.map((b) => b.id));
+  const named = [];
+  const namedIds = new Set();
+  for (const q of questions || []) {
+    const ids = q.analysis_ids || [];
+    const lead = leadAnalysisId(q);
+    const preferred = [...(lead ? [lead] : []), ...ids];
+    for (const id of preferred) {
+      if (boardIds.has(id) && !namedIds.has(id)) { named.push(id); namedIds.add(id); }
+    }
+  }
+  const rest = boards.filter((b) => !namedIds.has(b.id));
+  const byId = new Map(boards.map((b) => [b.id, b]));
+  return [...named.map((id) => byId.get(id)), ...rest];
+}
+
+/** Never-run boards last, stable otherwise -- the brief's own rule, applied
+ *  once real state is known (a board whose fetch hasn't settled yet is left
+ *  where it is; only a SETTLED, genuinely-never-run board moves). */
+function neverRunLast(boards, boardState) {
+  const scored = boards.map((b, i) => {
+    const entry = boardState.get(b.id);
+    const settledNeverRun = entry && entry.status === 'done' && entry.board && !entry.board.has_results;
+    return { b, i, last: !!settledNeverRun };
+  });
+  scored.sort((x, y) => (x.last === y.last ? x.i - y.i : x.last ? 1 : -1));
+  return scored.map((s) => s.b);
+}
+
+/** One STATES key (glyphs.js) for a board's current read state. Coarser
+ *  than the Questions row's own `rowState` -- the by-analysis payload
+ *  carries `has_results`/`results`, not a per-fact `result_status.py`
+ *  state -- but reads the one honest signal that IS in that payload
+ *  (`needs-lens`, via `preliminary_fit`'s own `lens_declared` marker,
+ *  same check `needsLensDeclaration` above makes on the Questions
+ *  envelope) rather than collapsing every "ran" case to a flat tick. */
+export function boardStateKey(entry) {
+  if (entry.status === 'loading') return null;   // rendered separately -- no STATES entry fits "still fetching"
+  if (entry.status === 'timeout') return null;    // rendered separately -- "still reading -- open to load"
+  if (entry.status === 'error') return 'error';
+  const board = entry.board;
+  if (!board) return 'error';
+  const needsLens = (board.analyses || []).some(
+    (a) => a.analysis_id === 'preliminary_fit' && a.results && a.results.lens_declared === false);
+  if (needsLens) return 'needs-lens';
+  // `result_status.py`'s NOT_ESTABLISHED, surfaced here for the first time
+  // (BRIEF-BY-ANALYSIS-PANEL-USABILITY.md gate task 4: "the not-established
+  // cards must read as such in the table of contents"). Before this, a
+  // board whose analysis measured something but could not settle a result
+  // -- `has_results: true`, `results.state === 'not_established'` -- fell
+  // straight through to `measured` below and showed a plain ✓, the exact
+  // "confident wrong answer" shape: a real read, but not a settled one.
+  // Neither gate database (laz_local_adventureworks,
+  // localhost_docker_coco_pharma) has a not-established analysis today, so
+  // this is covered by a harness fixture test instead of a live screenshot
+  // -- see frontend-build/test-harness's by-analysis-not-established test.
+  const notEstablished = (board.analyses || []).some(
+    (a) => a.results && a.results.state === 'not_established');
+  if (notEstablished) return 'not_established';
+  if (!board.has_results) return 'unrun';
+  return 'measured';
+}
+
+/** The board's own headline, one sentence, per REPLY-DESIGNER-ROUND2-
+ *  DATABASE-SCREENS.md §2.4 -- `a.headline` in the payload is `head` from
+ *  `_headline_for`'s OWN `headline_reader(registry, slug)` call
+ *  (`workflows.analysis._read_analyses`'s `headline_map.get(analysis_id)`
+ *  is literally the same function object `facts.py`'s FactLayer resolves
+ *  for the Questions tab's lead question on this analysis -- see
+ *  `test_by_analysis_headline_matches_questions.py`), so this is the exact
+ *  same sentence the Questions tab would show, run through the same
+ *  one-sentence truncation rule (`firstSentence`) that slot uses. */
+function boardHeadlineHtml(board) {
+  if (!board) return '';
+  const lead = (board.analyses || []).find((a) => a.headline && a.headline.label);
+  if (!lead) return '';
+  return answerHtml(firstSentence(lead.headline.label), esc, tnum);
+}
+function boardHeadlineText(board) {
+  if (!board) return '';
+  const lead = (board.analyses || []).find((a) => a.headline && a.headline.label);
+  return lead ? firstSentence(lead.headline.label) : '';
+}
+
+/**
+ * Match each board to the question that names it, the same "lead analysis,
+ * then any analysis_id" preference `orderBoardsByQuestions` already applies
+ * -- pulled out so the headline fallback below can use the identical
+ * matching rule rather than a second guess at it.
+ */
+export function boardQuestionMap(boards, questions) {
+  const boardIds = new Set(boards.map((b) => b.id));
+  const map = new Map();
+  for (const q of questions || []) {
+    const ids = q.analysis_ids || [];
+    const lead = leadAnalysisId(q);
+    const preferred = [...(lead ? [lead] : []), ...ids];
+    for (const id of preferred) {
+      if (boardIds.has(id) && !map.has(id)) map.set(id, q);
+    }
+  }
+  return map;
+}
+
+/**
+ * The row's headline BEFORE the board's own (slow) read has landed --
+ * BRIEF-BY-ANALYSIS-PANEL-USABILITY.md's "Progressive render" addendum:
+ * "the contents board... reads only the per-analysis state already resolved
+ * for the Questions tab, no dashboard fetch required."
+ *
+ * Genuinely free: this makes NO new network call. `answers` is `state.
+ * answers` -- the Questions tab's own per-question envelope cache
+ * (`loadAnswer`, `getAnswer`) -- so this only has something to show when the
+ * Questions tab has already resolved the matching question's envelope for
+ * this slug/stage, in this browser session. When it hasn't (a cold load
+ * that goes straight to By-analysis without visiting Questions first), this
+ * returns '' and the row shows the same "reading…" placeholder it always
+ * did -- an honest floor, not a manufactured line. (`getQuestions()` itself,
+ * fetched for board ordering just above this function's one call site, was
+ * checked and does NOT carry a resolved headline of its own -- its
+ * `has_data` field is a boolean, and the headline readers
+ * `DATABASE_ANALYSIS_HEADLINE_MAP`/etc. name are each their own registry
+ * read, not free -- see this branch's IMPLEMENTED doc for the full trace.)
+ *
+ * Reuses `leadAnalysisId`/`firstSentence` -- the same pair `boardHeadlineText`
+ * and `readEnvelope` (envelope.js) both already use -- rather than a third,
+ * bespoke extraction of "the one sentence this row shows".
+ */
+export function envelopeHeadlineText(question, answers) {
+  if (!question) return '';
+  const env = answers.get(question.question);
+  if (!env || typeof env !== 'object' || env.__error) return '';
+  const facts = (env.facts || []).filter((f) => f.is_known);
+  if (!facts.length) return '';
+  const lead = leadAnalysisId(question);
+  const preferred = [
+    ...(lead ? [lead] : []),
+    ...(question.analysis_ids || []),
+    ...facts.map((f) => f.analysis_id),
+  ];
+  const seen = new Set();
+  for (const id of preferred) {
+    if (seen.has(id) || !id) continue;
+    seen.add(id);
+    const f = facts.find((x) => x.analysis_id === id);
+    if (!f) continue;
+    if (f.headline) return firstSentence(f.headline);
+    const p = prose(f);
+    if (p) return firstSentence(p);
+  }
+  return '';
+}
+
+/** Every numeric measure across every SETTLED board, grouped by name --
+ *  same "a name reported twice" detection the old per-card COUNTS table
+ *  did, now computed once for the whole pane so the Shared Names block
+ *  (REPLY §2.3, reworded per the owner's 2026-09-28 gate feedback -- see
+ *  `sharedNamesHtml`'s own doc) can render each shared name ONCE instead of
+ *  inside every card that carries it.
+ *
+ *  Two derived sets, kept separate on purpose:
+ *   - `shared` -- every name carried by more than one analysis, whether or
+ *     not their values agree. This, not "disagree", is the Shared Names
+ *     block's own inclusion criterion (the owner: "I don't know what '1
+ *     DISAGREE' means" -- a count that conflated "shared" with "shared and
+ *     different" was the confusion).
+ *   - `disagreeing` -- the subset of `shared` whose comparable values
+ *     actually differ. Still the right (and only) set for the per-card `≠`
+ *     mark (`boardCountsHtml`), whose own title text says "reported with
+ *     different values elsewhere" -- broadening ITS set to plain "shared"
+ *     would make the mark lie for a name two analyses happen to agree on.
+ *
+ *  `preliminary_fit`'s `confidence: 0` is marked `noLens` and excluded from
+ *  the VALUES compared for disagreement (REPLY §2.3: "no lens was supplied,
+ *  so there was nothing to be confident about... leave it out of the
+ *  comparison") but still carried in the row for display, rendered as
+ *  "— (no lens declared)" rather than a bare, misleading zero. */
+export function collectMeasures(boards, boardState) {
   const seen = new Map();
   for (const b of boards) {
-    for (const a of b.analyses || []) {
+    const entry = boardState.get(b.id);
+    if (!entry || entry.status !== 'done' || !entry.board) continue;
+    for (const a of entry.board.analyses || []) {
       for (const [k, v] of Object.entries(a.results || {})) {
         if (typeof v !== 'number') continue;
+        const noLens = a.analysis_id === 'preliminary_fit' && k === 'confidence' && v === 0;
         const rec = seen.get(k) || [];
-        rec.push({ analysis: a.analysis_id, value: v });
+        rec.push({ analysis: a.analysis_id, value: v, when: a.last_surveyed_at, noLens });
         seen.set(k, rec);
       }
     }
   }
-  const disputed = new Map();
+  const shared = new Map();
+  const disagreeing = new Set();
   for (const [k, rec] of seen) {
-    if (rec.length > 1 && new Set(rec.map((x) => x.value)).size > 1) disputed.set(k, rec);
+    if (rec.length > 1) shared.set(k, rec);
+    const comparable = rec.filter((x) => !x.noLens);
+    if (comparable.length > 1 && new Set(comparable.map((x) => x.value)).size > 1) disagreeing.add(k);
   }
+  return { seen, shared, disagreeing };
+}
 
-  $('dash-boards').innerHTML = boards.map((b) => {
-    const analyses = b.analyses || [];
-    // THE GROUP HEADER CARRIES NO DATE. "Health & Maturity — measured 12h ago"
-    // over cards from three analyses is the per-resource as-of date deleted
-    // from the matrix, returned one level up. Dates belong on measurements.
-    const headline = analyses.find((a) => typeof (a.results || {}).overall === 'number');
-    const findings = [];
-    const counts = [];
-    for (const a of analyses) {
-      const res = a.results || {};
-      if (a === headline) continue;
-      if (Array.isArray(res.findings) && res.findings.length) {
-        for (const f of res.findings) findings.push({ ...f, analysis_id: a.analysis_id, when: a.last_surveyed_at });
-        continue;
-      }
-      for (const [k, v] of Object.entries(res)) {
-        if (typeof v === 'number' || typeof v === 'boolean') {
-          counts.push({ key: k, value: v, analysis_id: a.analysis_id, when: a.last_surveyed_at });
-        }
-      }
+/** A shared measure's display text -- the no-lens placeholder, or the
+ *  ordinary formatted number. Used both by the Shared Names block and by
+ *  `boardCountsHtml`'s own per-card row for the exact same value, so the
+ *  two never disagree about how `preliminary_fit`'s no-lens 0 reads (the
+ *  owner's 2026-09-28 coco_pharma finding: the Shared Names block already
+ *  said "— (no lens declared)" while the card's own COUNTS table, computing
+ *  its display text separately, still showed a bare "0" for the identical
+ *  value). */
+export function measureDisplay(x, key) {
+  return x.noLens ? '— (no lens declared)' : fmtScalar(x.value, key);
+}
+
+/** COUNTS grouping (REPLY-DESIGNER-ROUND2-DATABASE-SCREENS.md §2, the
+ *  brief's own "Result / Coverage / Diagnostics" split): Result = the
+ *  scalars a person quotes as the analysis's own headline numbers (edge/
+ *  component/table counts, determined counts, confidence); Coverage =
+ *  how much of the resource this reading covers (table/schema/column
+ *  counts, measured/estimated/unmeasured, keys captured); everything else
+ *  is Diagnostics. A heuristic on the NAME, same spirit as `fmtScalar`'s
+ *  own suffix-only rule -- deliberately conservative rather than guessing
+ *  from magnitude. */
+function countGroupFor(key) {
+  const k = key.toLowerCase();
+  if (/table|schema|column|coverage|captured|measured|estimated|unmeasured|readable/.test(k)) return 'coverage';
+  if (/edge|component|isolated|determined|grain|confidence|overall|count$/.test(k)) return 'result';
+  return 'diagnostics';
+}
+const COUNT_GROUP_LABELS = { result: 'Result', coverage: 'Coverage', diagnostics: 'Diagnostics' };
+const COUNT_GROUP_ORDER = ['result', 'coverage', 'diagnostics'];
+
+/** Grouped COUNTS table for one board -- the non-headline scalar/boolean
+ *  fields across its analyses, three groups instead of one flat list.
+ *  Shared names are still shown HERE too (a reader looking at one card
+ *  should not have to leave it to see the number this card itself
+ *  measured), with a `≠` mark linking to the Shared Names block for the
+ *  ones that actually disagree, per REPLY §2's "each card's COUNTS keeps
+ *  its own value with a small ≠ mark".
+ *
+ *  `disagreeing` is `collectMeasures`'s disagreeing SET (names whose
+ *  comparable values actually differ) -- not its `shared` map, which would
+ *  mark every merely-shared name with `≠` even when they agree.
+ *
+ *  `noLens` is tracked per row exactly the way `collectMeasures` tracks it
+ *  for the Shared Names block, and rendered through the same `measureDisplay`
+ *  helper -- found 2026-09-28 on coco_pharma: this table used to format
+ *  every value with a bare `fmtScalar`, so `preliminary_fit`'s no-lens
+ *  `confidence: 0` showed as a plain "0" here while the Shared Names block,
+ *  right next to it on the same screen, correctly said "— (no lens
+ *  declared)" for the identical value -- two renderings of one number,
+ *  disagreeing with each other. */
+export function boardCountsHtml(board, disagreeing) {
+  if (!board) return '';
+  const groups = { result: [], coverage: [], diagnostics: [] };
+  for (const a of board.analyses || []) {
+    const res = a.results || {};
+    for (const [k, v] of Object.entries(res)) {
+      if (k === 'graphviz' || k === 'headline' || typeof v === 'object') continue;
+      if (typeof v !== 'number' && typeof v !== 'boolean') continue;
+      const noLens = a.analysis_id === 'preliminary_fit' && k === 'confidence' && v === 0;
+      groups[countGroupFor(k)].push({
+        key: k, value: v, analysisId: a.analysis_id, when: a.last_surveyed_at, noLens,
+      });
     }
-    findings.sort((x, y) => {
-      const ux = UNRESOLVED_LABELS.has(String(x.label || '').toLowerCase()) ? 0 : 1;
-      const uy = UNRESOLVED_LABELS.has(String(y.label || '').toLowerCase()) ? 0 : 1;
-      return ux - uy;
-    });
-
-    return `
-      <section class="mb-s5">
-        <div class="text-answer text-ink">${esc(b.title || b.id)}</div>
-        ${b.description ? `<p class="mt-[2px] max-w-[70ch] text-caveat text-ink-muted">${esc(b.description)}</p>` : ''}
-        ${!b.has_results ? `<p class="mt-s1 text-caveat text-state-warn">Registered, never run.</p>` : ''}
-
-        ${headline ? headlineHtml(headline) : ''}
-
-        ${findings.length ? `
-          <div class="mt-s3 text-caps uppercase tracking-caps text-ink-muted">Findings · unresolved first</div>
-          ${findings.map((f) => {
-            const c = findingGlyph(f.label);
-            return `<button type="button" class="flex w-full items-baseline gap-s2 border-0 border-b border-rule bg-transparent px-0 py-s2 text-left"
-              data-measure="${esc(f.analysis_id)}" data-check="${esc(f.check_name || '')}"
-              data-title="${esc((f.check_name || f.analysis_id).replace(/_/g, ' '))}"
-              data-summary="${esc(f.summary || '')}" data-when="${esc(f.when || '')}">
-              <span class="w-[16px] shrink-0 ${c.tone}" title="${esc(c.label)}">${c.glyph}</span>
-              <span class="min-w-0 flex-1 text-ink">
-                <strong class="font-semibold">${
-                  f.check_name
-                    ? `${esc(f.check_name.replace(/_/g, ' '))}${
-                        f.label ? ` — ${esc(humanLabel(f.label))}` : ''}`
-                    : esc(humanLabel(f.label) || f.analysis_id)}.</strong>
-                ${f.summary ? ` ${tnum(esc(f.summary))}` : ''}
-                <span class="block text-provenance text-ink-muted"
-                  data-delta="${esc(f.analysis_id)}|${esc(f.check_name || '')}">·</span></span>
-              <span class="shrink-0 font-mono text-provenance text-ink-muted">${esc(f.analysis_id)}${
-                f.when ? ` · ${esc(ago(f.when))}` : ''} ›</span>
-            </button>`;
-          }).join('')}` : ''}
-
-        ${counts.length ? `
-          <div class="mt-s3 text-caps uppercase tracking-caps text-ink-muted">Counts</div>
-          <table class="w-full border-collapse text-caveat">
-            ${(() => {
-              // A disputed name is ONE row carrying every value, not one row
-              // per analysis saying the same thing mirrored.
-              const shown = new Set();
-              return counts.map((c) => {
-                const rec = disputed.get(c.key);
-                if (rec) {
-                  if (shown.has(c.key)) return '';
-                  shown.add(c.key);
-                  return `<tr class="border-b border-rule bg-[rgba(168,113,42,.07)]">
-                    <td class="py-[5px] pr-s3 text-ink"><span class="text-state-warn">⚠</span>
-                      ${esc(c.key.replace(/_/g, ' '))}
-                      <span class="text-provenance text-ink-muted">— <span class="tnum">${
-                        rec.length}</span> analyses report this name with different values;
-                        they may not be measuring the same thing</span></td>
-                    <td class="tnum py-[5px] pr-s3 text-right text-ink">${
-                      esc(rec.map((x) => fmtScalar(x.value, c.key)).join(' / '))}</td>
-                    <td class="py-[5px] text-right font-mono text-provenance text-ink-muted">${
-                      esc(rec.map((x) => x.analysis).join(' / '))}</td>
-                  </tr>`;
-                }
-                // Two analyses AGREEING on a name is one fact, not two rows.
-                // Both are named, so the agreement itself stays visible.
-                if (shown.has(c.key)) return '';
-                shown.add(c.key);
-                const agree = (seen.get(c.key) || []).filter((x) => x.analysis !== c.analysis_id);
-                return `<tr class="wl-countrow cursor-pointer border-b border-rule"
-                  data-measure="${esc(c.analysis_id)}" data-metric="${esc(c.key)}"
-                  data-title="${esc(c.key.replace(/_/g, ' '))}" data-when="${esc(c.when || '')}">
-                  <td class="py-[5px] pr-s3 text-ink">${esc(c.key.replace(/_/g, ' '))}</td>
-                  <td class="tnum py-[5px] pr-s3 text-right text-ink">${esc(fmtScalar(c.value, c.key))}</td>
-                  <td class="py-[5px] text-right font-mono text-provenance text-ink-muted">${
-                    esc([c.analysis_id, ...agree.map((x) => x.analysis)].join(' · '))}${
-                    c.when ? ` · ${esc(ago(c.when))}` : ''}</td>
-                </tr>`;
-              }).join('');
-            })()}
-          </table>` : ''}
-      </section>`;
-  }).join('');
-
-  // EVERY MEASUREMENT OPENS THE SAME DETAIL. Three entry points, one
-  // component — a dashboard finding, a count, and the matrix cell popup.
-  $('dash-boards').querySelectorAll('[data-measure]').forEach((n) => {
-    n.addEventListener('click', () => openMeasurementDetail({
-      slug,
-      analysisId: n.dataset.measure,
-      title: n.dataset.title || n.dataset.measure,
-      metric: n.dataset.metric || '',
-      summary: n.dataset.summary || '',
-      when: n.dataset.when || '',
-    }));
-  });
-
-  // Inline deltas, from the same series the detail uses. Filled after render
-  // so a slow trend read never delays the pane.
-  for (const n of $('dash-boards').querySelectorAll('[data-delta]')) {
-    const [analysisId] = n.dataset.delta.split('|');
-    deltaFor(slug, analysisId).then((text) => {
-      if (!live()) return;
-      n.textContent = text || '';
-      n.className = text === 'first measurement'
-        ? 'block text-provenance text-ink-muted'
-        : 'block text-provenance text-ink';
-    });
   }
+  const anyRows = COUNT_GROUP_ORDER.some((g) => groups[g].length);
+  if (!anyRows) return '';
+  return COUNT_GROUP_ORDER.filter((g) => groups[g].length).map((g) => `
+    <div class="mt-s3 text-caps uppercase tracking-caps text-ink-muted">${esc(COUNT_GROUP_LABELS[g])}</div>
+    <table class="w-full border-collapse text-caveat">
+      ${groups[g].map((c) => {
+        const disagree = disagreeing.has(c.key);
+        return `<tr class="wl-countrow cursor-pointer border-b border-rule ${disagree ? 'bg-[rgba(168,113,42,.07)]' : ''}"
+          data-measure="${esc(c.analysisId)}" data-metric="${esc(c.key)}"
+          data-title="${esc(c.key.replace(/_/g, ' '))}" data-when="${esc(c.when || '')}">
+          <td class="py-[5px] pr-s3 text-ink">${esc(c.key.replace(/_/g, ' '))}${
+            disagree ? ' <span class="text-state-warn" title="reported with different values elsewhere -- see Shared names above">≠</span>' : ''}</td>
+          <td class="tnum py-[5px] pr-s3 text-right text-ink">${esc(measureDisplay(c, c.key))}</td>
+          <td class="py-[5px] text-right font-mono text-provenance text-ink-muted">${esc(c.analysisId)}${
+            c.when ? ` · ${esc(ago(c.when))}` : ''}</td>
+        </tr>`;
+      }).join('')}
+    </table>`).join('');
+}
+
+/** Findings (repo-only groupings carry these; database/filesystem's one-
+ *  analysis-per-board synthesis rarely does) -- unresolved first, same
+ *  glyph vocabulary as before. */
+function boardFindingsHtml(board) {
+  const findings = [];
+  for (const a of board.analyses || []) {
+    const res = a.results || {};
+    if (Array.isArray(res.findings) && res.findings.length) {
+      for (const f of res.findings) findings.push({ ...f, analysis_id: a.analysis_id, when: a.last_surveyed_at });
+    }
+  }
+  if (!findings.length) return '';
+  findings.sort((x, y) => {
+    const ux = UNRESOLVED_LABELS.has(String(x.label || '').toLowerCase()) ? 0 : 1;
+    const uy = UNRESOLVED_LABELS.has(String(y.label || '').toLowerCase()) ? 0 : 1;
+    return ux - uy;
+  });
+  return `
+    <div class="mt-s3 text-caps uppercase tracking-caps text-ink-muted">Findings · unresolved first</div>
+    ${findings.map((f) => {
+      const c = findingGlyph(f.label);
+      return `<button type="button" class="flex w-full items-baseline gap-s2 border-0 border-b border-rule bg-transparent px-0 py-s2 text-left"
+        data-measure="${esc(f.analysis_id)}" data-check="${esc(f.check_name || '')}"
+        data-title="${esc((f.check_name || f.analysis_id).replace(/_/g, ' '))}"
+        data-summary="${esc(f.summary || '')}" data-when="${esc(f.when || '')}">
+        <span class="w-[16px] shrink-0 ${c.tone}" title="${esc(c.label)}">${c.glyph}</span>
+        <span class="min-w-0 flex-1 text-ink">
+          <strong class="font-semibold">${
+            f.check_name
+              ? `${esc(f.check_name.replace(/_/g, ' '))}${f.label ? ` — ${esc(humanLabel(f.label))}` : ''}`
+              : esc(humanLabel(f.label) || f.analysis_id)}.</strong>
+          ${f.summary ? ` ${tnum(esc(f.summary))}` : ''}
+          <span class="block text-provenance text-ink-muted"
+            data-delta="${esc(f.analysis_id)}|${esc(f.check_name || '')}">·</span></span>
+        <span class="shrink-0 font-mono text-provenance text-ink-muted">${esc(f.analysis_id)}${
+          f.when ? ` · ${esc(ago(f.when))}` : ''} ›</span>
+      </button>`;
+    }).join('')}`;
+}
+
+/**
+ * The Relationship Graph (and, generalized, any other) card body's inline
+ * diagram -- reuses `factGraphviz`/`factMermaid` (envelope.js) UNCHANGED,
+ * by wrapping the board's own `a.results` in the same `{facts: [{value}]}`
+ * shape those functions already read from a Questions-tab envelope. Those
+ * two functions read `f.value.graphviz`/`f.value.mermaid`; `a.results` IS
+ * that `value` -- the SAME results_reader backs both the Questions
+ * envelope's fact and this board's `a.results` (`facts.py`'s `_read_
+ * results` and `workflows.analysis._read_analyses` both call the entry in
+ * `*_ANALYSIS_RESULTS_MAP`) -- so no backend change or duplicate reader was
+ * needed for this. Not hardcoded to `db_relationship_graph`: any analysis
+ * in the board whose results carry a `graphviz` or `mermaid` field gets the
+ * same treatment, first one found.
+ */
+function boardDiagramHtml(board) {
+  if (!board) return { html: '', mount: null };
+  for (const a of board.analyses || []) {
+    const envelope = { facts: [{ value: a.results, analysis_id: a.analysis_id, last_run_at: board.last_surveyed_at }] };
+    const gv = factGraphviz(envelope);
+    if (gv) return { html: graphvizCardHtml(board.id, gv), mount: (root) => bindGraphvizCard(root, board.id, gv) };
+    const mm = factMermaid(envelope);
+    if (mm) {
+      const uid = `ba-diagram-${esc(board.id)}`;
+      return {
+        html: `<div class="mt-s3 rounded-sm border border-rule-strong p-s3">
+          <div class="mb-s2 text-caps uppercase tracking-caps text-ink-muted">Diagram</div>
+          <div id="${uid}" class="min-h-[220px]"></div>
+        </div>`,
+        mount: (root) => {
+          const container = root.querySelector(`#${uid}`);
+          if (container) renderDiagramInto(container, { mermaid: mm.source }, uid).catch((err) => {
+            container.innerHTML = `<div class="text-caveat text-state-warn">This could not be rendered: ${esc(err.message)}</div>`;
+          });
+        },
+      };
+    }
+  }
+  return { html: '', mount: null };
+}
+
+/** The three-zoom-level Relationship Graph card body -- schema map / whole
+ *  database (or its own named fallback state) / a per-schema select --
+ *  the SAME affordances the Questions-tab Evidence rail offers
+ *  (`showEvidence`'s `graphvizBlock`, ~line 7200), rendered inline instead
+ *  of behind a rail button since the gate asks this card's BODY to show the
+ *  graph, not merely link to it. The schema map renders immediately on
+ *  mount (no extra click) since it "always renders, any database size"
+ *  (that function's own comment); the other two levels swap the same
+ *  mount point's content in place via `renderDiagramInto` -- the identical
+ *  renderer the Evidence rail's own "open diagram in pane" path uses (see
+ *  that function's header comment), so this is not a second implementation
+ *  of diagram rendering. */
+function graphvizCardHtml(boardId, gv) {
+  const schemaNames = Object.keys(gv.bySchema).sort();
+  const uid = `ba-graphviz-${esc(boardId)}`;
+  return `
+    <div class="mt-s3 rounded-sm border border-rule-strong p-s3" data-graphviz-card="${esc(boardId)}">
+      <div class="mb-s2 flex flex-wrap items-center gap-s2">
+        <span class="text-caps uppercase tracking-caps text-ink-muted">Relationship graph
+          ${gv.tableCount != null ? `· <span class="tnum">${gv.tableCount}</span> tables` : ''}</span>
+        <div class="ml-auto flex flex-wrap gap-s2">
+          <button type="button" data-graphviz-level="schema_map"
+            class="cursor-pointer rounded-sm border border-accent bg-transparent px-[10px] py-[2px] text-chip text-accent-ink"
+            >${icon('maximize-2', { size: 13 })} Schema map</button>
+          ${gv.full
+            ? `<button type="button" data-graphviz-level="full"
+                 class="cursor-pointer rounded-sm border border-accent bg-transparent px-[10px] py-[2px] text-chip text-accent-ink"
+                 >${icon('maximize-2', { size: 13 })} Whole database</button>`
+            : gv.fallbackReason
+              ? `<span class="text-chip text-state-warn">${esc(gv.fallbackReason)}</span>`
+              : ''}
+          ${schemaNames.length ? `<div class="relative">
+              <select data-graphviz-schema
+                   class="w-full cursor-pointer appearance-none rounded-sm border border-accent bg-transparent px-[10px] py-[2px] pr-[26px]
+                          text-chip text-accent-ink hover:bg-accent-tint focus:outline-none focus:ring-1 focus:ring-accent">
+                <option value="">Open a schema…</option>
+                ${schemaNames.map((s) => `<option value="${esc(s)}">${esc(s)}</option>`).join('')}
+              </select>
+              <span class="pointer-events-none absolute right-[8px] top-1/2 -translate-y-1/2 text-accent-ink">${icon('chevron-down', { size: 13 })}</span>
+            </div>` : ''}
+        </div>
+      </div>
+      <div id="${uid}" class="min-h-[220px] overflow-hidden rounded-sm border border-rule" style="height:min(50vh,480px)"></div>
+      <div class="mt-s1 text-provenance text-ink-muted">${esc(gv.analysisId)}${
+        gv.lastRun ? ` · run ${esc(ago(gv.lastRun))}` : ''} · rendered by Kroki, no retrieval</div>
+    </div>`;
+}
+function bindGraphvizCard(root, boardId, gv) {
+  const card = root.querySelector(`[data-graphviz-card="${boardId}"]`);
+  if (!card) return;
+  const uid = `ba-graphviz-${boardId}`;
+  const mount = card.querySelector(`#${uid}`);
+  const render = (source) => {
+    if (!mount) return;
+    renderDiagramInto(mount, { graphviz: source }, uid).catch((err) => {
+      mount.innerHTML = `<div class="p-s2 text-caveat text-state-warn">This could not be rendered: ${esc(err.message)}</div>`;
+    });
+  };
+  render(gv.schemaMap);   // the schema map "always renders, any database size" -- open by default
+  card.querySelectorAll('[data-graphviz-level]').forEach((btn) => {
+    btn.addEventListener('click', () => render(btn.dataset.graphvizLevel === 'full' ? gv.full : gv.schemaMap));
+  });
+  card.querySelector('[data-graphviz-schema]')?.addEventListener('change', (e) => {
+    if (e.target.value) render(gv.bySchema[e.target.value]);
+  });
+}
+
+/** The header time of a By-analysis card, from the analysis's OWN run.
+ *  "run <when>" only when this card has a result row; otherwise "not run",
+ *  or -- when the resource's survey ran but this step produced nothing --
+ *  "survey ran <when> · no result for this step". The resource-wide survey
+ *  time is never shown as this card's run (it contradicted the body's
+ *  "Not run yet." cue). */
+export function boardRunWords(board) {
+  if (!board) return '';
+  if (board.has_results) {
+    const when = board.last_run_at || board.last_surveyed_at;
+    return when ? `run ${ago(when)}` : 'run';
+  }
+  return board.last_surveyed_at
+    ? `survey ran ${ago(board.last_surveyed_at)} · no result for this step`
+    : 'not run';
+}
+
+/** One card's body -- headline first, description collapsed, findings,
+ *  grouped COUNTS, and (REPLY §2's card-anatomy) a band boundary rather
+ *  than a box: space above, a strong top rule, name-size heading. */
+export function byAnalysisCardHtml(slug, boardId, catalogTitle, catalogDescription, entry, disagreeing, defaultOpen) {
+  const board = entry.status === 'done' ? entry.board : null;
+  const open = byAnalysisCardOpen(slug, boardId, defaultOpen);
+  const glyphKey = boardStateKey(entry);
+  const glyph = glyphKey ? stateEntry(glyphKey)
+    : entry.status === 'timeout' ? { glyph: '⏸', tone: 'text-state-warn', word: 'still reading' }
+    : { glyph: '◔', tone: 'text-ink-muted', word: 'reading' };
+  const headline = entry.status === 'loading'
+    ? '<span class="text-ink-muted">reading…</span>'
+    : entry.status === 'timeout'
+      ? `<span class="text-state-warn">still reading — <button type="button" class="underline" data-retry-board="${esc(boardId)}">open to load</button></span>`
+      : entry.status === 'error'
+      ? `<span class="text-state-warn">This could not be read: ${esc(entry.error || '')}</span>`
+      : (boardHeadlineHtml(board) || (board && board.has_results
+          ? '<span class="text-ink-muted">ran; no summary reader yet.</span>'
+          : '<span class="text-ink-muted">Not run yet.</span>'));
+  const runWhen = boardRunWords(board);
+  const overall = board && (board.analyses || []).find((a) => typeof (a.results || {}).overall === 'number');
+  const { html: diagramHtml } = board ? boardDiagramHtml(board) : { html: '' };
+  return `
+    <details data-by-analysis-card="${esc(boardId)}" class="mt-s6 border-t-2 border-rule-strong pt-s3" ${open ? 'open' : ''}>
+      <summary class="flex cursor-pointer list-none flex-wrap items-baseline gap-s2">
+        <span class="${glyph.tone} font-glyph" title="${esc(glyph.word)}" aria-label="${esc(glyph.word)}">${glyph.glyph}</span>
+        <span class="font-heading text-name font-normal text-ink">${esc(catalogTitle)}</span>
+        <span class="ml-auto text-provenance text-ink-muted">${esc(runWhen)}</span>
+      </summary>
+      <div class="mt-s2 max-w-[70ch] text-answer text-ink">${headline}</div>
+      ${catalogDescription ? `
+        <details class="mt-s2">
+          <summary class="cursor-pointer text-caveat text-accent-ink">what it does ▸</summary>
+          <p class="mt-s1 max-w-[70ch] text-caveat text-ink-muted">${esc(catalogDescription)}</p>
+        </details>` : ''}
+      ${overall ? headlineHtml(overall) : ''}
+      ${boardId === 'dependencies' ? '<div class="mt-s2" data-dependency-table-host></div>' : ''}
+      ${board ? boardFindingsHtml(board) : ''}
+      ${board ? boardCountsHtml(board, disagreeing) : ''}
+      ${diagramHtml}
+    </details>`;
+}
+
+/** The Shared Names block (REPLY-DESIGNER-ROUND2-DATABASE-SCREENS.md §2.3):
+ *  every shared name, once, not per card.
+ *
+ *  Reworded 2026-09-28 per the owner's live coco_pharma gate feedback ("I
+ *  don't know what '1 DISAGREE' means"): the header used to read "N
+ *  DISAGREE", a count that read as a verdict on its own. The inclusion
+ *  criterion was always "carried by more than one analysis" (`shared`,
+ *  `collectMeasures`) -- whether those analyses' values actually differ is
+ *  now said in words, per row, not folded into a header count. No "DISAGREE"
+ *  string appears anywhere in this block any more. */
+export function sharedNamesHtml(shared, disagreeing) {
+  if (!shared.size) return '';
+  return `
+    <div class="mb-s5 rounded-sm border border-rule-strong p-s3" data-shared-names>
+      <div class="mb-s2 text-caps uppercase tracking-caps text-ink-muted">Shared names ·
+        <span class="tnum">${shared.size}</span> name${shared.size === 1 ? '' : 's'} carried by more than one analysis</div>
+      ${[...shared.entries()].map(([key, rec]) => {
+        const differs = disagreeing.has(key);
+        return `
+        <div class="mb-s1 text-caveat text-ink">
+          <span class="${differs ? 'text-state-warn' : 'text-ink-muted'}">${differs ? '⚠' : '·'}</span> <strong class="font-semibold">${esc(key.replace(/_/g, ' '))}</strong>
+          · ${rec.map((x) => `${esc(x.analysis)} <span class="tnum">${esc(measureDisplay(x, key))}</span>`).join(' · ')}
+          <span class="block text-provenance text-ink-muted">${differs
+            ? 'different measures share a name -- not necessarily wrong, likely worth a rename'
+            : 'these measures share a name and agree'}</span>
+        </div>`;
+      }).join('')}
+    </div>`;
+}
+
+/** The contents board / table of contents -- sticky, click-to-jump, and
+ *  (BRIEF's "Progressive render") the ONE line that says how much is still
+ *  outstanding. Re-rendered on every board settling, so the "still reading
+ *  N of M" count and each row's glyph/headline stay live. */
+export function renderByAnalysisContents(slug, boards, boardState, settled, total, boardQuestions) {
+  const contentsEl = $('by-analysis-contents');
+  if (!contentsEl) return;
+  const ran = boards.filter((b) => (boardState.get(b.id) || {}).board && boardState.get(b.id).board.has_results).length;
+  const neverRun = boards.filter((b) => {
+    const e = boardState.get(b.id);
+    return e && e.status === 'done' && e.board && !e.board.has_results;
+  }).length;
+  const stillReading = total - settled;
+  const rows = boards.map((b) => {
+    const entry = boardState.get(b.id) || { status: 'loading' };
+    const glyphKey = boardStateKey(entry);
+    const glyph = glyphKey ? stateEntry(glyphKey)
+      : entry.status === 'timeout' ? { glyph: '⏸', tone: 'text-state-warn', word: 'still reading' }
+      : { glyph: '◔', tone: 'text-ink-muted', word: 'reading' };
+    // The board's own headline once its read has landed; before that, the
+    // matching question's ALREADY-RESOLVED envelope, if one is sitting in
+    // state.answers -- see envelopeHeadlineText's own doc for exactly when
+    // that is (and isn't) the case. Never a fresh fetch either way. A board
+    // that has given up waiting (status 'timeout') has nothing new to show
+    // either, so it falls through to the same envelope fallback a loading
+    // board uses.
+    const headlineText = entry.status === 'done'
+      ? boardHeadlineText(entry.board)
+      : envelopeHeadlineText(boardQuestions.get(b.id), state.answers);
+    const board = entry.status === 'done' ? entry.board : null;
+    const runWhen = board ? boardRunWords(board)
+      : entry.status === 'loading' ? 'reading…'
+      : entry.status === 'timeout' ? 'still reading — open to load' : '';
+    return `<button type="button" data-jump-board="${esc(b.id)}"
+      class="flex w-full items-baseline gap-s2 border-0 border-b border-rule bg-transparent px-0 py-[3px] text-left">
+      <span class="w-[16px] shrink-0 ${glyph.tone} font-glyph" title="${esc(glyph.word)}" aria-label="${esc(glyph.word)}">${glyph.glyph}</span>
+      <span class="shrink-0 text-caveat text-ink">${esc(b.title)}</span>
+      <span class="min-w-0 flex-1 truncate text-caveat text-ink-muted">${headlineText ? tnum(esc(headlineText)) : ''}</span>
+      <span class="shrink-0 text-provenance text-ink-muted">${esc(runWhen)}</span>
+    </button>`;
+  }).join('');
+  contentsEl.innerHTML = `
+    <div class="sticky top-0 z-10 -mx-s1 border-b border-rule-strong bg-paper px-s1 pb-s2">
+      <div class="mb-s1 text-caveat text-ink-muted">
+        <span class="tnum">${boards.length}</span> analyses ·
+        <span class="tnum">${ran}</span> ran ·
+        <span class="tnum">${neverRun}</span> never run
+        ${stillReading > 0
+          ? ` · <span class="text-accent-ink">still reading <span class="tnum">${stillReading}</span> of <span class="tnum">${total}</span></span>`
+          : ''}
+      </div>
+      <div>${rows}</div>
+    </div>`;
+  contentsEl.querySelectorAll('[data-jump-board]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const card = document.querySelector(`[data-by-analysis-card="${btn.dataset.jumpBoard}"]`);
+      if (!card) return;
+      card.open = true;
+      card.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  });
+}
+
+// Exported (no logic change -- `export` keyword only) so the node/jsdom
+// render harness (frontend-build/test-harness/) can drive the REAL By-
+// analysis pane -- including its 30s give-up timer and `retryBoard` click
+// handler -- against a stubbed fetch, rather than asserting against the
+// source text (BOARD-SUMMARY-READ-COST-IMPLEMENTED.md's own flagged gap).
+// See NEXT-RENDER-HARNESS-IMPLEMENTED.md for the pattern.
+export async function loadByAnalysisPane() {
+  const el = $('content');
+  // Curate's By analysis is the Analytic Library's curation_coverage (extensibility brief 2b): one read, and the
+  // routine's own groups drawn as it returned them. A failed read is "could not read", never a table of zeros.
+  if (state.stage === 'curate') {
+    const slug = state.selectedSlug;
+    const entityType = apiEntityType(state.resourceType);
+    const token = ++dashToken;
+    const live = () => token === dashToken && state.subTab === 'by_analysis' && slug === state.selectedSlug;
+    el.innerHTML = `${subTabsHtml()}<div id="curate-coverage" data-curate-coverage class="text-caveat text-ink-muted">Reading…</div>`;
+    bindSubTabs();
+    let result = null;
+    try { result = await getCurationCoverage(entityType, slug); } catch (err) { result = null; }
+    if (!live()) return;
+    $('curate-coverage').innerHTML = coverageHtml(result);
+    return;
+  }
+  const blocked = paneNeedsRepo();
+  if (blocked) { el.innerHTML = subTabsHtml() + blocked; bindSubTabs(); return; }
+  const slug = state.selectedSlug;
+  const stage = state.stage;
+  const entityType = apiEntityType(state.resourceType);
+
+  // Its own token: an earlier click's slow read must not overwrite a
+  // later one's -- the OLD single dashboards read cost 109s on Analysis;
+  // now every board fetches independently, so this guards each one.
+  const token = ++dashToken;
+  const live = () => token === dashToken && state.subTab === 'by_analysis';
+
+  el.innerHTML = subTabsHtml() + `
+    <div class="mb-s3 flex flex-wrap items-baseline gap-s3">
+      <span class="text-caps uppercase tracking-caps text-ink-muted">Survey results, by analysis · ${esc(stage)}</span>
+    </div>
+    <div id="by-analysis-contents" class="text-caveat text-ink-muted">Reading the analysis catalog…</div>
+    <div id="by-analysis-shared"></div>
+    <div id="by-analysis-cards"></div>`;
+  bindSubTabs();
+
+  // THE FAST PATH: for database/filesystem, a board's id IS its
+  // analysis_id, so `state.analyses` (fetched at boot, `listAnalyses` --
+  // see `start()`) already names every board with no network call at all.
+  // repo's dashboards group several analyses under one id state.analyses
+  // doesn't carry, so repo alone falls back to the cheap boards-catalog
+  // endpoint below.
+  let catalogBoards = null;
+  if (entityType !== 'repo' && Array.isArray(state.analyses) && state.analyses.length) {
+    catalogBoards = state.analyses
+      .filter((a) => (a.intent || '').toLowerCase() === stage)
+      .map((a) => ({ id: a.id, title: a.name || a.id, description: a.description || '' }));
+  }
+  if (!catalogBoards || !catalogBoards.length) {
+    try {
+      const catalog = await listSurveyResultBoards(slug, stage, { entityType });
+      if (!live()) return;
+      catalogBoards = (catalog.boards || []).map((b) => ({ id: b.id, title: b.title, description: b.description }));
+    } catch (err) {
+      if (live()) $('by-analysis-contents').innerHTML =
+        `<span class="text-state-warn">The analysis catalog could not be read: ${esc(err.message)}</span>`;
+      return;
+    }
+  }
+  if (!live()) return;
+  if (!catalogBoards.length) {
+    $('by-analysis-contents').innerHTML = `No dashboard is registered for ${esc(stage)}.`;
+    return;
+  }
+
+  // Per-board state, keyed by board id -- 'loading' until its own fetch
+  // settles. Paint the contents board and every card's skeleton NOW, before
+  // a single board's own data has been requested.
+  const boardState = new Map(catalogBoards.map((b) => [b.id, { status: 'loading', board: null }]));
+  let orderedBoards = catalogBoards;
+  // Which question names each board -- filled in once getQuestions() (below)
+  // resolves. Empty until then, which is fine: envelopeHeadlineText just has
+  // nothing to look up yet, same as any other board with no matching
+  // question.
+  let boardQuestions = new Map();
+  const paintAll = (final = false) => {
+    if (!live()) return;
+    const { shared, disagreeing } = collectMeasures(orderedBoards, boardState);
+    const settled = [...boardState.values()].filter((e) => e.status !== 'loading').length;
+    renderByAnalysisContents(slug, orderedBoards, boardState, settled, orderedBoards.length, boardQuestions);
+    $('by-analysis-shared').innerHTML = sharedNamesHtml(shared, disagreeing);
+    const cardsEl = $('by-analysis-cards');
+    cardsEl.innerHTML = orderedBoards.map((b, i) => byAnalysisCardHtml(
+      slug, b.id, b.title, b.description, boardState.get(b.id), disagreeing,
+      i === 0 || orderedBoards.length <= 3,
+    )).join('');
+    cardsEl.querySelectorAll('[data-by-analysis-card]').forEach((card) => {
+      card.addEventListener('toggle', () => setByAnalysisCardOpen(slug, card.dataset.byAnalysisCard, card.open));
+    });
+    // Brief section 3: the dependencies board carries ONE table with a kind column (read-only here;
+    // confirming a runtime row happens under Curate's "how it relates").
+    cardsEl.querySelectorAll('[data-dependency-table-host]').forEach((h) => {
+      mountDependencyTable(h, slug, { confirmable: false, me: '' });
+    });
+    cardsEl.querySelectorAll('[data-measure]').forEach((n) => {
+      n.addEventListener('click', () => openMeasurementDetail({
+        slug,
+        analysisId: n.dataset.measure,
+        title: n.dataset.title || n.dataset.measure,
+        metric: n.dataset.metric || '',
+        summary: n.dataset.summary || '',
+        when: n.dataset.when || '',
+      }));
+    });
+    for (const n of cardsEl.querySelectorAll('[data-delta]')) {
+      const [analysisId] = n.dataset.delta.split('|');
+      deltaFor(slug, analysisId).then((text) => {
+        if (!live()) return;
+        n.textContent = text || '';
+        n.className = text === 'first measurement' ? 'block text-provenance text-ink-muted' : 'block text-provenance text-ink';
+      });
+    }
+    orderedBoards.forEach((b) => {
+      const entry = boardState.get(b.id);
+      if (entry.status === 'done' && entry.board) {
+        const { mount } = boardDiagramHtml(entry.board);
+        if (mount) mount(cardsEl);
+      }
+    });
+    cardsEl.querySelectorAll('[data-retry-board]').forEach((n) => {
+      n.addEventListener('click', () => retryBoard(n.dataset.retryBoard));
+    });
+  };
+  paintAll();   // visible now -- no dashboards call has been made yet.
+
+  // Refine the order in the background (question order, per the brief's
+  // "Order" rule) -- a fast, catalog-only call, so this rarely changes what
+  // the reader already sees, but nothing above depended on waiting for it.
+  getQuestions(slug, { phase: stage, entityType }).then((checklist) => {
+    if (!live()) return;
+    const questions = checklist.questions || [];
+    orderedBoards = orderBoardsByQuestions(orderedBoards, questions);
+    // Same board/question matching `orderBoardsByQuestions` just used, kept
+    // around so the contents row's headline fallback (envelopeHeadlineText)
+    // can look up each board's question too -- see renderByAnalysisContents.
+    boardQuestions = boardQuestionMap(orderedBoards, questions);
+    paintAll();
+  }).catch(() => { /* ordering is a nicety -- catalog order stands without it */ });
+
+  // Now the slow part -- one fetch per board, in parallel, each filling its
+  // own card the moment it lands. No board's fetch waits on another's --
+  // but each board's own read is genuinely expensive (`db_derived`-backed
+  // readers recompute from stored rows on every call, same cost the OLD
+  // single sweep paid per analysis_id), so firing every board at once would
+  // trade "one 109s block" for "N concurrent heavy reads fighting over the
+  // same thread pool" -- measured live switching stages quickly: an
+  // abandoned stage's in-flight board reads kept running server-side (this
+  // pane only ignores their RESULT via `live()`, it does not cancel the
+  // request) and starved even the cheap boards-catalog call behind them.
+  // BY_ANALYSIS_MAX_CONCURRENT_READS bounds how many board reads run at
+  // once, and `live()` is checked before EACH one starts (not just before
+  // using its result), so switching away stops new reads from being
+  // queued at all rather than merely discarding their answers.
+  const queue = [...catalogBoards];
+
+  // Manual "open to load" trigger for a card the automatic worker gave up
+  // spinning on (BY_ANALYSIS_BOARD_TIMEOUT_MS) -- an independent fetch for
+  // just this one board, outside the bounded queue above, so it isn't
+  // waiting on a BY_ANALYSIS_MAX_CONCURRENT_READS slot the abandoned
+  // worker read may still be holding. If that original read does
+  // eventually resolve too, whichever of the two settles LAST simply
+  // overwrites boardState with its own (equally correct) answer -- both
+  // fetch the same board_id. Bound to `[data-retry-board]` clicks in
+  // paintAll above (referenced there only lazily, at click time, so
+  // declaring it here rather than earlier changes nothing about when a
+  // click can actually reach it).
+  const retryBoard = async (boardId) => {
+    if (!live()) return;
+    boardState.set(boardId, { status: 'loading', board: null });
+    paintAll();
+    let already = false;
+    const giveUpTimer = setTimeout(() => {
+      if (already || !live()) return;
+      boardState.set(boardId, { status: 'timeout', board: null });
+      paintAll();
+    }, BY_ANALYSIS_BOARD_TIMEOUT_MS);
+    try {
+      const data = await getSurveyDashboards(slug, stage, { includeEmpty: true, entityType, boardId });
+      already = true;
+      clearTimeout(giveUpTimer);
+      if (!live()) return;
+      const board = (data.dashboards || [])[0] || null;
+      boardState.set(boardId, { status: 'done', board });
+    } catch (err) {
+      already = true;
+      clearTimeout(giveUpTimer);
+      if (!live()) return;
+      boardState.set(boardId, { status: 'error', board: null, error: err.message });
+    }
+    paintAll();
+  };
+
+  const worker = async () => {
+    while (queue.length) {
+      if (!live()) return;
+      const b = queue.shift();
+      // BY_ANALYSIS_BOARD_TIMEOUT_MS: give up SPINNING on this one card if
+      // it hasn't settled in time -- the safety net for "board_summary
+      // missing/stale AND the fallback recompute is still slow". The fetch
+      // itself is not cancelled (see that constant's own comment); a
+      // settled `already` flag stops the timeout from clobbering a result
+      // that arrived just as it fired.
+      let already = false;
+      const giveUpTimer = setTimeout(() => {
+        if (already || !live()) return;
+        boardState.set(b.id, { status: 'timeout', board: null });
+        paintAll();
+      }, BY_ANALYSIS_BOARD_TIMEOUT_MS);
+      try {
+        const data = await getSurveyDashboards(slug, stage, { includeEmpty: true, entityType, boardId: b.id });
+        already = true;
+        clearTimeout(giveUpTimer);
+        if (!live()) return;
+        const board = (data.dashboards || [])[0] || null;
+        boardState.set(b.id, { status: 'done', board });
+      } catch (err) {
+        already = true;
+        clearTimeout(giveUpTimer);
+        if (!live()) return;
+        boardState.set(b.id, { status: 'error', board: null, error: err.message });
+      }
+      paintAll();
+    }
+  };
+  await Promise.all(
+    Array.from({ length: Math.min(BY_ANALYSIS_MAX_CONCURRENT_READS, catalogBoards.length) }, worker),
+  );
+  if (!live()) return;
+
+  // Everything has settled -- apply the "never-run last" ordering rule now
+  // that real state is known, once, so cards don't reshuffle mid-read.
+  orderedBoards = neverRunLast(orderedBoards, boardState);
+  paintAll(true);
 }
 
 /** The composed score, once, at size — with its own sub-scores beside it.
@@ -5555,8 +8257,7 @@ function fmtBytes(n) {
   return `${n < 0 ? '-' : ''}${shown} ${units[i]}`;
 }
 
-/** What a deferred sub-tab shows when you click it. */
-/** A link into the current UI, on the same resource.
+/** A link into the Classic UI (`/classic`), on the same resource.
  *
  *  `index.html` gained a `?resource=` reader for this — it had no deep link
  *  of any kind, so "links out preserving the resource" was not satisfiable
@@ -5564,20 +8265,8 @@ function fmtBytes(n) {
  *  the app starts exactly as before. */
 export function oldUiHref() {
   return state.selectedSlug
-    ? `/?resource=${encodeURIComponent(state.selectedSlug)}`
-    : '/';
-}
-
-function deferredPaneHtml(tab) {
-  return `${subTabsHtml()}
-    <h3 class="m-0 font-heading text-name font-normal">${esc(tab.label)} · not built in /next</h3>
-    <div class="my-s3 h-px bg-rule"></div>
-    <p class="max-w-[70ch] text-answer text-ink">${esc(tab.does)}.</p>
-    <p class="max-w-[70ch] text-answer text-ink">
-      <a href="${esc(oldUiHref())}" class="text-accent-ink underline"
-        >Open ${state.selectedSlug ? `<span class="font-mono">${esc(state.selectedSlug)}</span>` : 'this'}
-        in the current UI</a> ${icon('external-link', { size: 13, cls: 'text-accent-ink' })}
-    </p>`;
+    ? `/classic?resource=${encodeURIComponent(state.selectedSlug)}`
+    : '/classic';
 }
 
 /**
@@ -5592,20 +8281,28 @@ function deferredPaneHtml(tab) {
  * fixed key does not — and only states actually present are listed, since a
  * key to a glyph that is not on screen is noise. Rows arriving is what moves
  * these numbers, so it re-renders with them.
+ *
+ * Words come from `GLYPH_STATES` (glyphs.js), not a second copy declared
+ * here -- REPLY-DESIGNER-ROUND2-DATABASE-SCREENS.md §1: "the count line at
+ * the top of each surface is the legend", and every surface's legend reads
+ * the same table. Before this pass `partial` read "ran, but not at this
+ * level" here (◐'s OLD, Questions-only meaning) while the work-list grid's
+ * own legend called the very same glyph "partial" -- exactly the
+ * disagreement the reply names. Only the ORDER is declared here; it is a
+ * reading order, not a second vocabulary.
  */
-const LEGEND = [
-  ['answered',     'answered'],
-  ['automatic',    'automatic'],
-  ['partial',      'ran, but not at this level'],
-  ['unrun',        'not run'],
-  ['human',        'needs you'],
-  ['no-surveyor',  'no surveyor'],
-  ['unclassified', 'unclassified'],
-  ['running',      'running'],
-  ['error',        'could not load'],
+const LEGEND_ORDER = [
+  'answered', 'automatic', 'nothing', 'partial', 'unrun', 'human', 'needs-lens', 'no-surveyor',
+  // `no_reader` counted separately from `unrun` -- DATABASE-DIRECT-FIELD-ROWS-IMPLEMENTED.md: the
+  // whole point of the vocabulary fix is that a
+  // reader-less direct/chart row must not be folded into the "not run"
+  // count, on the legend line same as on the row glyph.
+  'no_reader',
+  'unclassified', 'running', 'error',
 ];
+const LEGEND = LEGEND_ORDER.map((k) => [k, GLYPH_STATES[k].word]);
 
-function renderLegend() {
+export function renderLegend() {
   const el = $('state-legend');
   if (!el) return;
 
@@ -5616,15 +8313,25 @@ function renderLegend() {
     if (env === undefined || env === 'loading') { pending += 1; continue; }
     const st = state.runsInFlight.has(q.question) ? 'running'
       : env.__error ? 'error'
-      : rowState(q, env);
+      : effectiveRowState(q, env);
     counts[st] = (counts[st] || 0) + 1;
   }
 
-  const items = LEGEND.filter(([k]) => counts[k]).map(([k, label]) => `
+  // States that share one glyph AND one word (`no-surveyor`, `no_reader`)
+  // are one legend entry with their counts summed -- one word per glyph.
+  const merged = [];
+  for (const [k, label] of LEGEND) {
+    if (!counts[k]) continue;
+    const prior = merged.find((m) => m.label === label);
+    if (prior) prior.n += counts[k];
+    else merged.push({ k, label, n: counts[k] });
+  }
+  const items = merged.map(({ k, label, n }) => `
     <span class="inline-flex items-baseline gap-[5px]">
-      <span class="${tone(k, 'paper')}">${GLYPH[k]}</span>
+      <span class="${tone(k, 'paper')} font-glyph" title="${esc(label)}" aria-label="${esc(label)}"
+        >${GLYPH[k]}</span>
       <span class="text-ink">${esc(label)}</span>
-      <span class="tnum text-ink">${counts[k]}</span>
+      <span class="tnum text-ink">${n}</span>
     </span>`);
 
   if (pending) {
@@ -5652,6 +8359,10 @@ export function paneMessage(title, body) {
 
 async function loadPane() {
   const el = $('content');
+  let scopeIntoView = false;
+  // The rail is a function of (resource, stage, sub-tab): empty it, and stand
+  // down its in-flight writers, the moment any of those changed.
+  syncRailToSelection();
 
   // The perspective row is re-rendered HERE, once, for every branch below.
   //
@@ -5669,26 +8380,55 @@ async function loadPane() {
   // resource at a time; this is the one surface that does not.
   if (state.workListIndex && !state.workListSlug) {
     el.innerHTML = workListIndexHtml();
+    state.workListIndexNote = '';
     bindSubTabs();
+    bindWorkListIndexActions(el);
     el.querySelectorAll('[data-open-wl]').forEach((b) => b.addEventListener('click', () => {
       state.workListSlug = b.dataset.openWl;
       state.workListIndex = false;
+      ensureRunStageForList();
       writeUrl(); renderSidebar(); loadPane();
     }));
     writeUrl();
     return;
   }
 
+  // §5 of REPLY-DESIGNER-WORK-LISTS-VS-INVESTIGATIONS.md: a work list is a
+  // bench against one stage's questions. On a RUN stage it stays open and
+  // re-scopes to that stage (the branch below). A FRAME or CROSS-CUTTING
+  // stage (Investigation, Understanding, Automate) asks no questions, so the
+  // click goes to the stage and the list closes into the "↩ <list>" link
+  // `lastWorkListSlug` drives. The class is read from `STAGES`.
+  if (state.workListSlug && stageClassOf(state.stage) !== 'run') {
+    const closing = state.workLists.find((w) => w.slug === state.workListSlug);
+    state.lastWorkListSlug = state.workListSlug;
+    state.workListSlug = null;
+    state.workListIndex = false;
+    // Special case: Investigation while the list is linked to an
+    // investigation opens THAT investigation, its Scope section in view,
+    // current or not. Only `work_lists.investigation` links them today.
+    if (state.stage === 'investigation' && closing?.investigation
+        && state.investigations.some((i) => i.slug === closing.investigation)) {
+      openInvestigationDetail(closing.investigation);
+      scopeIntoView = true;
+    }
+    writeUrl(); renderSidebar(); renderWorkListNav();
+  }
+
   if (state.workListSlug) {
     state.workListIndex = false;
+    if (stageClassOf(state.stage) === 'run') state.lastRunStage = state.stage;
     try {
       await openWorkList({
         el,
-        subTabs: SUB_TABS.map((t) => ({ id: t.id, label: t.label })),
+        // The leading tabs (stage-tabs.js) are not columns of the work-list grid.
+        subTabs: SUB_TABS.filter((t) => !t.stageTab).map((t) => ({ id: t.id, label: t.label })),
         stage: state.stage,
+        stageLabel: STAGES.find((s) => s.id === state.stage)?.label || state.stage,
         perspectives: state.activePerspectives,
         projects: state.projects,
         analyses: state.analyses || [],
+        host: workListHost(),
         onExit: () => {
           state.lastWorkListSlug = state.workListSlug;
           state.workListSlug = null;
@@ -5717,34 +8457,16 @@ async function loadPane() {
     return;
   }
 
-  if (state.subTab === 'schema_inventory') { await loadSchemaInventoryPane(); return; }
-  if (state.subTab === 'survey') { await loadSurveyPane(); return; }
-  // 'dashboard' is a retired tab id -- a bookmarked/shared URL from before
-  // the stage-page round lands on its nearest surviving surface rather than
-  // the deferred-pane message a stranger id would get.
-  if (state.subTab === 'dashboard') { state.subTab = 'by_analysis'; writeUrl(); }
-  if (state.subTab === 'by_analysis') { await loadByAnalysisPane(); return; }
-  if (state.subTab === 'disposition') { await loadDispositionPane(); return; }
-
-  if (state.subTab !== 'questions') {
-    const tab = SUB_TABS.find((t) => t.id === state.subTab)
-      || { id: state.subTab, label: state.subTab, does: 'Not a pane /next knows about' };
-    el.innerHTML = deferredPaneHtml(tab);
-    bindSubTabs();
-    return;
-  }
-
-  // ONE pane, parameterised by stage — not eight panes.
+  // FRAME-CLASS STAGES ROUTE FIRST, before any subTab branch.
   //
-  // The questions endpoint already takes `phase`, so serving every stage from
-  // this one pane costs a query parameter. It is also the only way the state
-  // vocabulary gets exercised at all: Scouting's five questions are `analysis`
-  // and `direct` only, while `gap`, `human`, `mixed`, `partial` and `chart`
-  // all live in the Analysis and Enrichment stages. Building Scouting alone
-  // would have shipped a screen whose whole argument — that six states are
-  // scannable as glyph plus sentence — could not be looked at.
-  const stageDef = STAGES.find((s) => s.id === state.stage);
-
+  // Understanding, Automate and Investigation have no sub-tabs of their own,
+  // but a stage click deliberately leaves state.subTab alone (a subTab chosen
+  // on another real stage survives the switch). With these checks AFTER the
+  // subTab branches, Enrichment -> Context then a click on Investigation left
+  // state.subTab === 'context', loadContextPane() returned early, and the
+  // frame never rendered. Only the CHECK ORDER is the fix; state.subTab is
+  // intentionally not reset. Work-list branches above stay first: they replace
+  // the pane for any stage and a stage click does not clear them (unchanged).
   // Understanding is CHARTS.
   //
   // It was marked "not built" on the strength of having zero rows in the
@@ -5755,9 +8477,14 @@ async function loadPane() {
   // live, and leaving the marker up would have been marking a surface as
   // absent while its data sat one GET away.
   if (state.stage === 'understanding') {
-    await loadChartsPane();
-    renderPerspectiveRow();
-    return;
+    if (isStageTabActive(state.subTab)) { await loadStageTabPane(); renderPerspectiveRow(); return; }
+    // With the leading tabs on for this kind, a shared tab (Questions, Survey & analyses, ...) is a real pane
+    // on the same rail and falls through to the sub-tab branches below, as on Curate.
+    if (!stageTabsOn('understanding', state.resourceType)) {
+      await loadChartsPane();
+      renderPerspectiveRow();
+      return;
+    }
   }
 
   // Automate is subscriptions/schedules, not questions -- its own two-tab
@@ -5780,8 +8507,54 @@ async function loadPane() {
   if (state.stage === 'investigation') {
     await renderInvestigation();
     renderPerspectiveRow();
+    if (scopeIntoView) $('inv-scope')?.scrollIntoView?.({ block: 'start' });
     return;
   }
+
+  // A sub-tab left over from a stage/resource where it exists (Context from
+  // Enrichment, Schema Inventory from a database) must not drive the pane
+  // here: revert it to this stage's default and make the URL say so.
+  if (reconcileSubTabForStage()) writeUrl();
+  syncRailToSelection();   // the reconcile may have moved the sub-tab
+  if (state.subTab === 'schema_inventory') { await loadSchemaInventoryPane(); return; }
+  // Curate's and Understanding's leading tabs (Brief S0): loader stubs until the slices put the sections in.
+  if (isStageTabActive(state.subTab)) { await loadStageTabPane(); return; }
+  // ENRICHMENT-E1-CONTEXT-TAB: Context is its own pane, not a Questions-
+  // engine variant — see loadContextPane() below.
+  if (state.subTab === 'context') { await loadContextPane(); return; }
+  // Survey & analyses on Enrichment is the amendment's MAP (project owner,
+  // 2026-09-29), not the generic per-stage survey-candidates pane every
+  // other stage uses: "No analysis runs at the Enrichment stage from a
+  // survey read. What you supply here unlocks: ..." — see
+  // loadEnrichmentAnalysesMapPane() below.
+  if (state.subTab === 'survey' && state.stage === 'enrichment') { await loadEnrichmentAnalysesMapPane(); return; }
+  if (state.subTab === 'survey') { await loadSurveyPane(); return; }
+  // 'dashboard' is a retired tab id -- a bookmarked/shared URL from before
+  // the stage-page round lands on its nearest surviving surface rather than
+  // the deferred-pane message a stranger id would get.
+  if (state.subTab === 'dashboard') { state.subTab = 'by_analysis'; writeUrl(); syncRailToSelection(); }
+  // By analysis on Enrichment says the same thing as the map, in one line,
+  // and links there (reply §1) — not the generic per-intent board.
+  if (state.subTab === 'by_analysis' && state.stage === 'enrichment') { await loadEnrichmentByAnalysisSummaryPane(); return; }
+  if (state.subTab === 'by_analysis') { await loadByAnalysisPane(); return; }
+  if (state.subTab === 'disposition') { await loadDispositionPane(); return; }
+
+  if (state.subTab !== 'questions') {
+    // readUrl() keeps only ids the strip offers, so this is a safe landing, not a stub pane.
+    state.subTab = stageDefaultSubTab(); writeUrl(); await loadPane();
+    return;
+  }
+
+  // ONE pane, parameterised by stage — not eight panes.
+  //
+  // The questions endpoint already takes `phase`, so serving every stage from
+  // this one pane costs a query parameter. It is also the only way the state
+  // vocabulary gets exercised at all: Scouting's five questions are `analysis`
+  // and `direct` only, while `gap`, `human`, `mixed`, `partial` and `chart`
+  // all live in the Analysis and Enrichment stages. Building Scouting alone
+  // would have shipped a screen whose whole argument — that six states are
+  // scannable as glyph plus sentence — could not be looked at.
+  const stageDef = STAGES.find((s) => s.id === state.stage);
 
   // DEFECT-UNBUILT-STAGES-RENDER-AS-BUILT.md §3: same read-vs-write gap as
   // the nav item above — inverted to read `built`, which actually exists.
@@ -5824,26 +8597,7 @@ async function loadPane() {
 
   const slug = state.selectedSlug;
 
-  // The overview carries `homepage`, `last_published_at` and the stale-link
-  // flag, none of which are on the summary row. Fetched per selection, and
-  // its absence is survivable — the header renders without it.
-  if (state.overview?.slug !== slug) {
-    state.overview = null;
-    getScoutingOverview(slug)
-      .then((ov) => {
-        if (state.selectedSlug !== ov.slug) return;
-        state.overview = ov;
-        // Replace the header IN PLACE, by its own id, so the rows already on
-        // screen stay put. An earlier version matched the header by its class
-        // list and inserted a second copy — the resource name rendered twice.
-        const host = $('resource-header');
-        if (host) {
-          host.innerHTML = resourceHeaderHtml(slug);
-          bindResourceHeader();
-        }
-      })
-      .catch(() => { /* the header is fine without it */ });
-  }
+  primeRepoHeaderReads(slug);
 
   // The frame first, then per-row skeletons — rows arrive independently, and
   // a centred spinner would hide the ones that are already here.
@@ -5854,10 +8608,25 @@ async function loadPane() {
     </div>
     <div id="state-legend" class="mt-s2 flex flex-wrap items-baseline gap-s3 text-caveat"></div>
     <div class="my-s3 h-px bg-rule"></div>
-    <div id="enrichment-form"></div>
     <div id="question-rows"></div>`;
   bindSubTabs();
   bindResourceHeader();
+
+  // Curate uses none of the checklist reads below, so it starts NOW and does not wait behind them
+  // (getQuestions, getContext and the unfiltered getQuestions run in series and cost seconds). The
+  // other stages are unchanged: they need `checklist` and render after it.
+  // A repository's or a database's Curate draws on its own tabs (loadStageTabPane); the Questions tab is then the shared one.
+  // A file system still draws Curate in this frame.
+  const curateInFrame = state.stage === 'curate' && !stageTabsOn('curate', state.resourceType);
+  let curateStarted = false;
+  if (curateInFrame) {
+    curateStarted = true;
+    renderCurate(slug).catch((err) => {
+      if (slug !== state.selectedSlug) return;
+      const box = $('question-rows');
+      if (box) box.innerHTML = `<div class="py-s3 text-answer text-accent-ink">Curate could not be drawn: ${esc(err.message)}</div>`;
+    });
+  }
 
   let checklist;
   try {
@@ -5911,23 +8680,37 @@ async function loadPane() {
   const rows = $('question-rows');
   // Curate's screen is a review-and-commit, not a question list; it renders
   // whether or not the catalog has rows for the stage (today it has none).
-  if (state.stage === 'curate') renderCurate(slug);
+  // A failed render must be visible, never an empty body: the pane used to
+  // go blank here when its host element had been deleted.
+  if (curateInFrame && !curateStarted) {
+    renderCurate(slug).catch((err) => {
+      if (slug !== state.selectedSlug) return;
+      const box = $('question-rows');
+      if (box) box.innerHTML = `<div class="py-s3 text-answer text-accent-ink">Curate could not be drawn: ${esc(err.message)}</div>`;
+    });
+  }
   // Analysis has real catalog rows (unlike Curate), so it renders through
   // the generic engine below like any other built stage, with no bypass
   // branch here -- classic's Sub-Resources sub-tab is now ported onto the
   // Survey & analyses pane's sub_resource_survey row instead of a stage-
   // level note (RULING-SUBRESOURCES-PLACEMENT.md; next/stages/analysis.js).
   if (!state.questions.length) {
-    rows.innerHTML = state.stage === 'curate' ? '' : `<div class="py-s3 text-answer text-ink">
-      No catalogued questions match this stage and this perspective set.
+    rows.innerHTML = curateInFrame ? '' : `<div class="py-s3 text-answer text-ink">
+      No questions match this stage and this perspective set.
       That is a fact about the filter, not about the repository.</div>`;
-    $('answered-count').textContent = state.stage === 'curate' ? 'review and commit · Curate' : `0 questions · ${stageLabel()}`;
+    $('answered-count').textContent = curateInFrame ? 'review and commit · Curate' : `0 questions · ${stageLabel()}`;
     return;
   }
 
   rows.innerHTML = state.questions.map((q, i) => rowShell(q, i)).join('');
   wireHumanAnswers(rows, slug);
-  if (state.stage === 'enrichment') renderEnrichment(slug);
+  // The judgement/observation form used to render inline here
+  // (`renderEnrichment`, writing to `#enrichment-form`) whenever
+  // `state.stage === 'enrichment'`, regardless of sub-tab — the pre-E1
+  // merged Enrichment/Questions pane E0's own doc describes. It now lives
+  // on the Context tab instead (`loadContextPane()`, `stages/context.js`'s
+  // `renderContext`), so this branch is gone; the Questions tab under
+  // Enrichment renders exactly like every other stage's Questions tab.
   updateAnsweredCount();
   renderLegend();
 
@@ -5951,37 +8734,77 @@ async function loadPane() {
  * perspective toggle and a second listener would save twice per click — the
  * same stacked-listener bug the sidebar toggle had.
  */
-function wireHumanAnswers(host, slug) {
+/** Redraw one question's row in place, the way an arriving answer already
+ *  does elsewhere in this file. A whole-pane reload would refetch every
+ *  other answer to show one that is already in hand. */
+function redrawQuestionRow(question) {
+  const i = state.questions.findIndex((q) => q.question === question);
+  if (i >= 0) replaceRow(state.questions[i], i, state.answers.get(question));
+}
+
+// Exported for the render harness (frontend-build/test-harness/) -- same
+// minimal-change pattern as `rowInner`'s own export above: only the
+// `export` keyword changed, no logic. Used by
+// human-question-answer-row-anatomy.test.mjs to drive the REAL click ->
+// textarea -> save -> PATCH -> re-render flow, not a parallel simulation
+// of it.
+export function wireHumanAnswers(host, slug) {
   if (host.dataset.humanWired === '1') return;
   host.dataset.humanWired = '1';
   host.addEventListener('click', async (ev) => {
-    const btn = ev.target.closest('[data-human-edit]');
-    if (!btn) return;
-    const question = btn.getAttribute('data-human-edit');
-    const key = questionKey(question);
-    const prior = (state.contextAnswers || {})[key]?.answer || '';
-    const next = window.prompt(question, prior);
-    if (next === null) return;              // cancelled — not an empty answer
-    const label = btn.textContent;
-    btn.disabled = true;
-    btn.textContent = 'Saving…';
-    try {
-      await saveQuestionAnswer('repo', slug, question, next.trim());
-      state.contextAnswers = {
-        ...(state.contextAnswers || {}),
-        [key]: { question, answer: next.trim(), answered_at: new Date().toISOString() },
-      };
-      // Redraw just this row, the way an arriving answer does. A whole-pane
-      // reload would refetch every other answer to show one that is already
-      // in hand.
-      const i = state.questions.findIndex((q) => q.question === question);
-      if (i >= 0) replaceRow(state.questions[i], i, state.answers.get(question));
-    } catch (err) {
-      // Left on the button rather than raised as a page error: the failure is
-      // this one save, and the rest of the checklist is unaffected.
-      btn.disabled = false;
-      btn.textContent = err.status === 401 ? 'Not signed in' : `Not saved: ${err.message}`;
-      setTimeout(() => { btn.textContent = label; }, 4000);
+    // Open the inline editor. No `window.prompt()` — see `bodyLines`'s
+    // `st === 'human'` branch: the "Answer this →"/"change" button now
+    // toggles `state.editingAnswer` and re-renders this row with an
+    // input+save control on it, the same shape `stages/enrichment.js`
+    // already uses for judgements/observations.
+    if (ev.target.closest('[data-goto-context]')) {
+      openContext();
+      return;
+    }
+    const editBtn = ev.target.closest('[data-human-edit]');
+    if (editBtn) {
+      state.editingAnswer = editBtn.getAttribute('data-human-edit');
+      redrawQuestionRow(state.editingAnswer);
+      const row = host.querySelector('[data-answer-input]');
+      row?.focus();
+      return;
+    }
+    if (ev.target.closest('[data-answer-cancel]')) {
+      const q = state.editingAnswer;
+      state.editingAnswer = '';
+      if (q) redrawQuestionRow(q);
+      return;
+    }
+    const saveBtn = ev.target.closest('[data-answer-save]');
+    if (saveBtn) {
+      const question = saveBtn.getAttribute('data-answer-save');
+      const row = saveBtn.closest('[id^="qrow-"]') || host;
+      const input = row.querySelector('[data-answer-input]');
+      const answer = (input?.value || '').trim();
+      const label = saveBtn.textContent;
+      saveBtn.disabled = true;
+      saveBtn.textContent = 'saving…';
+      try {
+        // Same bug class as openNotifyDialog's 'repo' hardcode (found live
+        // 2026-09-28): this handler is wired inside the same Questions-engine
+        // pane, reachable for database/filesystem resources since the repo-only
+        // gate lifted, and must send the real entity_type.
+        const out = await saveQuestionAnswer(apiEntityType(state.resourceType), slug, question, answer);
+        const key = questionKey(question);
+        // The server stamps `answered_by`/`answered_at` from the signed-in
+        // identity (context.py's new PATCH .../answer, mirroring
+        // save_field's author-stamping for enrichment fields) — the field
+        // is never taken from the client, same reasoning as `saveEnrichmentField`.
+        state.contextAnswers = { ...(state.contextAnswers || {}), [key]: out.answer };
+        state.editingAnswer = '';
+        redrawQuestionRow(question);
+      } catch (err) {
+        // Left on the button rather than raised as a page error: the failure
+        // is this one save, and the rest of the checklist is unaffected.
+        saveBtn.disabled = false;
+        saveBtn.textContent = err.status === 401 ? 'sign in to answer' : `not saved: ${err.message}`;
+        setTimeout(() => { saveBtn.textContent = label; saveBtn.disabled = false; }, 4000);
+      }
     }
   });
 }
@@ -6064,7 +8887,28 @@ function rowShell(entry, i) {
 
 /** One question row. The layout is fixed across states so a column of rows
  *  scans: glyph at 22px, everything below indented to match. */
-function rowInner(entry, i, env) {
+// Exported for the render harness (frontend-build/test-harness/) — same
+// pattern as `surveyRowHtml`/`schemaTreeHtml`/`tableHtml`/`filterSchemaTree`
+// above: only the `export` keyword changed, no logic. Used by
+// human-question-answer-row-anatomy.test.mjs to render a real question row
+// through the exact function `loadPane()` uses.
+/** Catalogued questions whose answer now has a READER: a Context observation
+ *  row a person fills (ENRICHMENT-E3 §4). The mapping and the state word live
+ *  in context-recorded.js so every surface says the same thing. */
+function contextRecorded(entry) {
+  return contextRecordedSpec(entry.question, apiEntityType(state.resourceType));
+}
+
+/** The ONE state function every Questions-pane consumer reads (row glyph,
+ *  the KEY/legend counts, the markdown copy): `rowState`, except that a row
+ *  Context records is `answered`/`human`, never `no_reader`. */
+function effectiveRowState(entry, env) {
+  const st = rowState(entry, env);
+  if (st !== 'no_reader') return st;
+  return contextRecordedState(entry.question, apiEntityType(state.resourceType), state.enrichment || {}) || st;
+}
+
+export function rowInner(entry, i, env) {
   // ALL of them, wrapping — not just the first. Seeing that a question
   // carries four perspectives is how you learn the axis barely filters, and
   // the first-only version hid exactly that.
@@ -6078,7 +8922,7 @@ function rowInner(entry, i, env) {
     : pending ? 'proposal'
     : env === 'loading' ? 'loading'
     : env && env.__error ? 'error'
-    : rowState(entry, env);
+    : effectiveRowState(entry, env);
 
   const glyph = GLYPH[st] || '·';
   // Glyph AND colour. The glyph survives printing, greyscale and colour
@@ -6097,27 +8941,94 @@ function rowInner(entry, i, env) {
     : '';
   const tag = st === 'no-surveyor'
     ? `<span class="ml-auto flex flex-wrap justify-end gap-[4px]">
-        <span class="rounded-pill border border-dashed border-state-gap px-2 py-[1px] text-caps text-state-gap">no surveyor yet</span>
+        <span class="rounded-pill border border-dashed border-state-gap px-2 py-[1px] text-caps text-state-gap">no reader yet</span>
+        ${perspectives.map((pv) => `<span class="rounded-pill border border-rule-strong px-2 py-[1px] text-caps text-ink-muted"
+          >${esc(pv)}</span>`).join('')}
+      </span>`
+    : st === 'no_reader'
+    ? `<span class="ml-auto flex flex-wrap justify-end gap-[4px]">
+        <span class="rounded-pill border border-dashed border-state-gap px-2 py-[1px] text-caps text-state-gap">no reader yet</span>
         ${perspectives.map((pv) => `<span class="rounded-pill border border-rule-strong px-2 py-[1px] text-caps text-ink-muted"
           >${esc(pv)}</span>`).join('')}
       </span>`
     : perspectiveTags;
 
+  const glyphWord = (GLYPH_STATES[st] || {}).word || '';
   const head = `<div class="flex flex-wrap items-baseline gap-[9px]">
-      <span class="w-[13px] ${glyphColor} text-question">${st === 'loading' ? '' : glyph}</span>
-      <span class="font-heading text-question font-semibold text-ink">${esc(entry.question)}</span>
+      <span class="w-[13px] ${glyphColor} font-glyph text-question"${
+        st === 'loading' ? '' : ` title="${esc(glyphWord)}" aria-label="${esc(glyphWord)}"`
+      }>${st === 'loading' ? '' : glyph}</span>
+      <span ${st === 'loading' ? '' : `data-ask-chat="${i}" title="Answer this in the chat panel"`}
+        class="font-heading text-question font-semibold text-ink ${st === 'loading' ? '' : 'cursor-pointer'}">${esc(entry.question)}</span>
+      ${st === 'loading' ? '' : `<button type="button" data-ask-chat="${i}" title="Answer this in the chat panel, from the same answer this row shows"
+        class="cursor-pointer bg-transparent p-0 text-provenance text-accent-ink underline">ask in chat ›</button>`}
       ${tag}
     </div>`;
 
-  return head + bodyLines(entry, i, st, env);
+  return head + (st === 'loading' ? '' : whyHereHtml(entry, i)) + bodyLines(entry, i, st, env);
+}
+
+/** "Why is this question here": the chain Perspective + Purpose -> question -> the analyses that answer it,
+ *  every line read from the catalog entry the row was drawn from (the server computes `derivation` in
+ *  question_catalog_reader.get_questions). A line that the entry does not carry says "not reported", never
+ *  a guess; "no analysis answers this" is a stated catalog fact, not an empty section. */
+export function whyHereHtml(entry, i) {
+  const open = state.whyOpen.has(entry.question);
+  const d = entry.derivation || {};
+  const active = [...state.activePerspectives];
+  const carries = entry.perspectives || [];
+  const matched = carries.filter((p) => state.activePerspectives.has(p));
+  const line = (label, value) => `<div><span class="text-ink-muted">${esc(label)}</span> <span class="text-ink">${value}</span></div>`;
+  const bits = [];
+  if (entry.stage) bits.push(line('Stage:', esc(entry.stage)));
+  if (matched.length) bits.push(line('Shown because of perspective:', matched.map(esc).join(', ')));
+  else if (active.length) bits.push(line('Perspective:', 'none of the chosen perspectives match it, yet it is shown'));
+  else bits.push(line('Perspective:', `no filter is on; it carries ${carries.length ? carries.map(esc).join(', ') : 'none'}`));
+  if (Array.isArray(entry.purposes)) {
+    const mine = entry.purposes;
+    const inv = currentPurposes();
+    bits.push(line('Serves purpose:', mine.length ? mine.map(esc).join(', ') : 'none stated in the question list'));
+    if (inv.length) {
+      bits.push(line('This investigation:', d.purpose_ranked
+        ? `leads, because it serves ${(d.matched_purposes || []).map(esc).join(', ')}`
+        : `${esc(inv.join(', '))} — it serves none of these, so it follows in the list's own order`));
+    }
+  } else {
+    bits.push(line('Serves purpose:', 'not reported'));
+  }
+  const ids = d.analysis_ids || entry.analysis_ids || [];
+  const checks = d.checks || [];
+  bits.push(ids.length
+    ? line('Answered by:', ids.map(esc).join(', '))
+    : `<div class="text-state-warn">No analysis answers this yet${entry.answering_mechanism ? ` — ${esc(entry.answering_mechanism)}` : ''}</div>`);
+  if (checks.length) bits.push(line('Checks:', checks.map(esc).join(', ')));
+  return `<details data-why="${i}" ${open ? 'open' : ''} class="ml-[22px] mt-[4px] text-provenance text-ink-muted">
+    <summary class="cursor-pointer" title="Why this question is on this list, and what answers it">why is this here</summary>
+    <div data-why-body class="mt-[2px] space-y-[1px] border-l border-rule pl-s2">${bits.join('')}</div>
+  </details>`;
+}
+
+function contextRecordedBodyHtml(entry, indent) {
+  const c = contextRecorded(entry);
+  const held = (state.enrichment || {})[c.key];
+  const link = `<button type="button" data-goto-context
+    class="cursor-pointer bg-transparent p-0 text-accent-ink underline">${held?.value ? 'Enrichment › Context ›' : 'record it on Context ›'}</button>`;
+  return held?.value
+    ? `<div class="ml-[22px] mt-[6px] text-answer text-ink" data-context-recorded>recorded on ${link}</div>`
+    : `<div class="ml-[22px] mt-[6px] text-answer text-ink" data-context-recorded>no survey measures this for databases · ${link}</div>`;
 }
 
 function bodyLines(entry, i, st, env) {
   const indent = 'ml-[22px] mt-[6px]';
 
+  if ((st === 'answered' || st === 'human') && contextRecorded(entry)
+      && rowState(entry, env) === 'no_reader') {
+    return contextRecordedBodyHtml(entry, indent);
+  }
+
   if (st === 'loading') {
     // A skeleton, not a spinner, and not a claim.
-    return `<div class="${indent} h-[14px] w-[42%] rounded-sm bg-paper-surface"></div>`;
+    return `<div class="ml-[22px] mt-[6px] h-[14px] w-[42%] rounded-sm bg-paper-surface"></div>`;
   }
 
   if (st === 'proposal') {
@@ -6126,14 +9037,14 @@ function bodyLines(entry, i, st, env) {
 
   if (st === 'running') {
     const r = state.runsInFlight.get(entry.question);
-    return `<div class="${indent} text-answer text-accent-ink">${esc(r.label)}</div>`
+    return `<div class="ml-[22px] mt-[6px] text-answer text-accent-ink">${esc(r.label)}</div>`
       + provenanceLine(entry, i, { canRun: [], sources: r.analysisId ? [r.analysisId] : [] }, st);
   }
 
   if (st === 'error') {
     // Per-row failure, per-row retry. Never a page-level error.
-    return `<div class="${indent} text-answer text-accent-ink">${esc(env.__error)}</div>
-      <div class="${indent} text-provenance text-ink-muted">
+    return `<div class="ml-[22px] mt-[6px] text-answer text-accent-ink">${esc(env.__error)}</div>
+      <div class="ml-[22px] mt-[6px] text-provenance text-ink-muted">
         <button data-retry="${i}" class="cursor-pointer bg-transparent text-accent-ink underline">retry</button>
       </div>`;
   }
@@ -6142,7 +9053,17 @@ function bodyLines(entry, i, st, env) {
     const why = (env && env.blocked_reason)
       || entry.note
       || 'No surveyor exists for this question. Nothing has run and nothing can.';
-    return `<div class="${indent} text-answer text-ink">${tnum(esc(why))}</div>`;
+    return `<div class="ml-[22px] mt-[6px] text-answer text-ink">${tnum(esc(why))}</div>`;
+  }
+
+  // The catalog names a mechanism (`direct`/`chart`), but no reader has been
+  // wired up for it yet -- distinct from `no-surveyor` (no mechanism exists
+  // at all). DATABASE-DIRECT-FIELD-ROWS-IMPLEMENTED.md.
+  if (st === 'no_reader') {
+    const why = (env && env.blocked_reason)
+      || entry.note
+      || 'Answerable from a stored field, but no reader has been wired up for it yet.';
+    return `<div class="ml-[22px] mt-[6px] text-answer text-ink">${tnum(esc(why))}</div>`;
   }
 
   if (st === 'human') {
@@ -6156,26 +9077,58 @@ function bodyLines(entry, i, st, env) {
     // says what it looked in, per this round's own rule. Claiming a query
     // ran, or silently offering only the text box, would both misdescribe it.
     const wanted = /egeria quer/i.test(declared) && !(entry.analysis_ids || []).length;
-    return `<div class="${indent} text-answer text-ink">${tnum(esc(why))}</div>
+    // Row anatomy shared with Enrichment's judgements/observations
+    // (ENRICHMENT-E0-ROW-ANATOMY, row-anatomy.js): who + when, through the
+    // SAME function that file's rows call. `held.answered_by` is absent on
+    // an answer recorded before this change (no author was ever stored) --
+    // that degrades to the old "answered <when>" wording rather than a
+    // blank "· 2d ago", since `personRowLineHtml` returns '' with no author.
+    const provenance = held?.answer
+      ? (held.answered_by
+          ? personRowLineHtml({ author: held.answered_by, whenIso: held.answered_at, verb: 'answered by' })
+          : `answered ${esc(ago(held.answered_at))}`)
+      : '';
+    // Inline control, not a popup (ENRICHMENT-E0-ROW-ANATOMY §0.3/§6 item 1
+    // of the designer's reply): `window.prompt()` blocked the whole page,
+    // took one line, and recorded no author. This is the same input+save
+    // shape `stages/enrichment.js`'s `fieldControlHtml` already uses for
+    // judgements/observations, reused here rather than invented fresh —
+    // there is no general Context tab yet (that's slice E1, a separate,
+    // larger IA restructure), so the control opens on this row itself,
+    // which is the narrower, in-scope place for it today.
+    const editing = state.editingAnswer === entry.question;
+    const editorHtml = editing ? `<div class="ml-[22px] mt-[6px] mt-s1 flex items-start gap-s2">
+         <textarea data-answer-input rows="2"
+           class="w-full max-w-[60ch] rounded-sm border border-rule-strong bg-transparent px-[6px] py-[2px] text-answer text-ink"
+           placeholder="${esc(why)}">${esc(held?.answer || '')}</textarea>
+         <div class="flex shrink-0 flex-col gap-[2px]">
+           <button type="button" data-answer-save="${esc(entry.question)}"
+             class="cursor-pointer rounded-sm border border-accent bg-transparent px-2 py-[1px] text-provenance text-accent-ink">Save</button>
+           <button type="button" data-answer-cancel="1"
+             class="cursor-pointer bg-transparent p-0 text-provenance text-ink-muted underline">cancel</button>
+         </div>
+       </div>` : '';
+    return `<div class="ml-[22px] mt-[6px] text-answer text-ink">${tnum(esc(why))}</div>
       ${held?.answer
-        ? `<div class="${indent} mt-s1 text-answer text-ink">${tnum(esc(held.answer))}</div>
-           <div class="${indent} text-provenance text-ink-muted">answered ${esc(ago(held.answered_at))}
+        ? `<div class="ml-[22px] mt-[6px] mt-s1 text-answer text-ink">${tnum(esc(held.answer))}</div>
+           <div class="ml-[22px] mt-[6px] text-provenance text-ink-muted">${provenance}
              · <button type="button" data-human-edit="${esc(entry.question)}"
                  class="cursor-pointer bg-transparent text-accent-ink underline">change</button></div>`
-        : `<div class="${indent} mt-s1">
+        : (editing ? '' : `<div class="ml-[22px] mt-[6px] mt-s1">
              <button type="button" data-human-edit="${esc(entry.question)}"
                class="cursor-pointer rounded-sm border border-accent px-2 py-[2px] text-accent-ink"
                >Answer this →</button>
-           </div>`}
+           </div>`)}
+      ${editorHtml}
       ${wanted
-        ? `<div class="${indent} text-provenance text-ink-muted">The catalog says
+        ? `<div class="ml-[22px] mt-[6px] text-provenance text-ink-muted">The catalog says
              ${esc(declared)}, but no analysis is attached to this question, so
              nothing was queried — the answer here is yours alone.</div>`
         : ''}`;
   }
 
   if (st === 'unclassified') {
-    return `<div class="${indent} text-answer text-ink">The catalog does not state how this
+    return `<div class="ml-[22px] mt-[6px] text-answer text-ink">The catalog does not state how this
       question would be answered.</div>`;
   }
 
@@ -6183,17 +9136,17 @@ function bodyLines(entry, i, st, env) {
     // NO answer line. Not a zero, not an empty string — the absence of the
     // line is the statement.
     const why = (env && env.blocked_reason) || 'Not run yet.';
-    const lines = readEnvelope(entry, env);
+    const lines = readEnvelope(entry, env, esc, tnum);
     return autoRanNoteHtml(entry, indent)
-      + `<div class="${indent} text-answer text-ink">${tnum(esc(why))}</div>`
+      + `<div class="ml-[22px] mt-[6px] text-answer text-ink">${tnum(esc(why))}</div>`
       + provenanceLine(entry, i, lines, st);
   }
 
   // answered | automatic | partial
-  const lines = readEnvelope(entry, env);
+  const lines = readEnvelope(entry, env, esc, tnum);
   let html = autoRanNoteHtml(entry, indent);
   if (lines.answer) {
-    html += `<div class="${indent} text-answer text-ink">${lines.answer}</div>`;
+    html += `<div class="ml-[22px] mt-[6px] text-answer text-ink">${lines.answer}</div>`;
   }
   // §18.3's own caveat, ahead of the analysis's own (below): a rollup with
   // no schema/table/column named is the more important thing to say here,
@@ -6223,7 +9176,7 @@ function autoRanNoteHtml(entry, indent) {
   const note = state.autoRanNotes.get(entry.question);
   if (!note) return '';
   state.autoRanNotes.delete(entry.question);
-  return `<div class="${indent} text-caveat text-ink-muted">${tnum(esc(note))}</div>`;
+  return `<div class="ml-[22px] mt-[6px] text-caveat text-ink-muted">${tnum(esc(note))}</div>`;
 }
 
 /** §17.1's crossing-tier half: the resolver would not start the run unasked.
@@ -6285,12 +9238,12 @@ function prerequisiteProposalHtml(entry, i, indent) {
         title="Raise a request to the database owner naming this step and the privilege it needs"
         >ask for broader access</button>`
     : '';
-  return `<div class="${indent} text-answer text-ink">${lead}</div>
-    ${reasons ? `<ul class="${indent} mt-[4px] list-disc list-inside text-caveat text-ink-muted">${reasons}</ul>` : ''}
-    ${partial ? `<div class="${indent} mt-[4px] text-caveat text-ink-muted">Running it anyway is not wrong —
+  return `<div class="ml-[22px] mt-[6px] text-answer text-ink">${lead}</div>
+    ${reasons ? `<ul class="ml-[22px] mt-[6px] mt-[4px] list-disc list-inside text-caveat text-ink-muted">${reasons}</ul>` : ''}
+    ${partial ? `<div class="ml-[22px] mt-[6px] mt-[4px] text-caveat text-ink-muted">Running it anyway is not wrong —
       the result is marked as measured within this credential's scope, never as a
       measurement of the whole database.</div>` : ''}
-    <div class="${indent} mt-s2 flex flex-wrap items-center gap-s2">
+    <div class="ml-[22px] mt-[6px] mt-s2 flex flex-wrap items-center gap-s2">
       <button type="button" data-prereq-accept="${i}"
         class="cursor-pointer rounded-sm border border-accent px-2 py-[1px] text-caveat text-accent-ink"
         >${accept}</button>
@@ -6340,13 +9293,13 @@ function provenanceLine(entry, i, lines, st) {
 
   // How it was known, when it was not a survey. A direct field and a survey
   // result are different kinds of claim and must not read alike.
-  if (st === 'automatic') {
+  if (st === 'automatic' || st === 'nothing') {
     const how = { direct: 'direct field', registry: 'from the registry', chart: 'chart' }[entry.kind];
     if (how) bits.push(how);
   }
 
   const actions = [];
-  if (st === 'answered' || st === 'automatic' || st === 'partial') {
+  if (st === 'answered' || st === 'automatic' || st === 'partial' || st === 'needs-lens' || st === 'nothing') {
     actions.push(`<button data-evidence="${i}" class="cursor-pointer bg-transparent text-accent-ink underline">evidence</button>`);
   }
   // A relationship answer has a diagram behind it. It cannot be read in a
@@ -6371,7 +9324,7 @@ function provenanceLine(entry, i, lines, st) {
   // "sources" names first) -- a question naming several analyses gets the
   // rest via that analysis's own row on `by_analysis`, not duplicated here.
   const primaryId = (entry.analysis_ids || [])[0];
-  if (primaryId && (st === 'answered' || st === 'automatic' || st === 'partial')) {
+  if (primaryId && (st === 'answered' || st === 'automatic' || st === 'partial' || st === 'needs-lens' || st === 'nothing')) {
     actions.push(`<button data-numbers="${i}" data-numbers-for="${esc(primaryId)}"
       data-numbers-level="${esc(primaryQuestionLevel(entry))}"
       class="cursor-pointer bg-transparent text-accent-ink underline">the numbers behind this ›</button>`);
@@ -6450,6 +9403,10 @@ function bindRowActions(el, entry, i) {
     loadAnswer(entry, i, state.selectedSlug);
   });
   el.querySelector(`[data-rerun="${i}"]`)?.addEventListener('click', (ev) => openRunChoice(entry, i, ev.currentTarget));
+  el.querySelectorAll(`[data-ask-chat="${i}"]`).forEach((b) => b.addEventListener('click', () => askQuestionInChat(entry, i)));
+  el.querySelector(`[data-why="${i}"]`)?.addEventListener('toggle', (ev) => {
+    if (ev.currentTarget.open) state.whyOpen.add(entry.question); else state.whyOpen.delete(entry.question);
+  });
   el.querySelector(`[data-evidence="${i}"]`)?.addEventListener('click', () => showEvidence(entry));
   el.querySelector(`[data-diagram="${i}"]`)?.addEventListener('click', () => showDiagram(entry));
   el.querySelector(`[data-copy="${i}"]`)?.addEventListener('click', (e) =>
@@ -6568,13 +9525,24 @@ async function openNotifyDialog(entry) {
   const slug = state.selectedSlug;
   if (!ids.length || !slug) return;
 
+  // The Questions engine this dialog hangs off used to be gated to
+  // `state.resourceType === 'repo'` — that gate is gone (loadPane()'s "Repos
+  // only, in /next" branch was lifted by the database/filesystem
+  // generalization), so a question row can now legitimately be open on a
+  // database or filesystem resource. `apiEntityType()` is the same
+  // translation every other /next boundary crossing already uses; the
+  // literal 'repo' this used to send unconditionally is what produced
+  // "Repo 'laz_local_adventureworks' not found" for a database's own notify
+  // dialog (found live 2026-09-28).
+  const entityType = apiEntityType(state.resourceType);
+
   // Friendly names when available, same source `openAnalysisPopover` and the
   // "By analysis" section use (`getAnalysesIndex`) — falls back to the raw
   // id for any id that index doesn't carry (e.g. a not-yet-run analysis),
   // never blocks the dialog on this fetch failing.
   let namesById = {};
   try {
-    const idx = await getAnalysesIndex(slug);
+    const idx = await getAnalysesIndex(slug, '', apiEntityType(state.resourceType));
     namesById = Object.fromEntries(
       (idx.analyses || []).map((r) => [r.analysis_id, r.name || r.analysis_id]));
   } catch { /* names are a nicety; the ids alone still work */ }
@@ -6600,9 +9568,30 @@ async function openNotifyDialog(entry) {
     <label class="mb-[3px] block text-caveat text-ink-muted">Label</label>
     <input id="notify-label" type="text" value="${esc(`${nameOf(ids[0])} changed`)}"
       class="mb-s2 w-full rounded-sm border border-rule bg-paper px-2 py-1 text-answer text-ink">
-    <p class="mb-s2 max-w-[60ch] text-caveat text-ink-muted">Delivered as an RFA the next time a
-      <em>scheduled</em> run of that analysis detects a change — set ⏱ Schedule for it on this
-      resource in Automate, or this never fires.</p>
+
+    <div class="mb-s2 flex flex-wrap items-center gap-s2">
+      <span class="text-caveat text-ink-muted">Schedule this analysis:</span>
+      <select id="notify-schedule-cadence"
+        class="rounded-sm border border-rule bg-paper px-2 py-[2px] text-caveat text-ink">
+        <option value="manual">manual</option>
+        <option value="daily" selected>daily</option>
+        <option value="weekly">weekly</option>
+        <option value="monthly">monthly</option>
+      </select>
+      <button id="notify-schedule-save" type="button"
+        class="cursor-pointer rounded-sm border border-rule bg-transparent px-2 py-[2px] text-caveat text-ink">Set</button>
+      <span id="notify-schedule-status" class="text-caveat text-ink-muted"></span>
+    </div>
+
+    <p class="mb-s2 max-w-[60ch] text-caveat text-ink-muted">
+      Detection runs locally, against this app's own registry — the next time a
+      <em>scheduled</em> run of that analysis detects a change, it writes an
+      RFA straight into this app's drawer. No schedule above means this never
+      fires. Separately, the scheduler's own background loop also creates a
+      personal Egeria ToDo for each RFA it delivers — unlinked to
+      <span class="font-mono">${esc(slug)}</span> itself, whatever this
+      resource's publish state — so that half happens whether or not it has
+      ever been published to Egeria.</p>
     <div id="notify-error" class="mb-s2 text-caveat text-state-warn"></div>
     <div class="flex gap-s2">
       <button id="notify-submit" type="button"
@@ -6616,10 +9605,45 @@ async function openNotifyDialog(entry) {
     }));
   }
 
+  const currentAnalysisId = () => (ids.length > 1
+    ? body.querySelector('input[name="notify-analysis"]:checked')?.value
+    : body.querySelector('#notify-analysis-only').value);
+
+  // Inline scheduling (§4's copy above literally says "no schedule above" —
+  // this is that "above"). Reuses the exact same backend call the per-card
+  // "⏱ Schedule" action and chat's inline scheduling form both make
+  // (saveSchedule(), POST /api/schedules/{entityType}/{slug} — see
+  // `_chatSubmitSchedule()` in index.html for the identical pattern this
+  // follows), rather than sending the reader to Automate to do it there.
+  // Reads back what was actually stored (cadence + next_run) via
+  // getSchedules() rather than trusting the POST body it just sent, so the
+  // confirmation shows what the server did, not what the client asked for.
+  body.querySelector('#notify-schedule-save').addEventListener('click', async () => {
+    const analysisId = currentAnalysisId();
+    const statusEl = body.querySelector('#notify-schedule-status');
+    if (!analysisId) { statusEl.textContent = 'Pick an analysis first.'; return; }
+    const cadence = body.querySelector('#notify-schedule-cadence').value;
+    const btn = body.querySelector('#notify-schedule-save');
+    btn.disabled = true;
+    statusEl.textContent = 'saving…';
+    try {
+      await saveSchedule(entityType, slug, analysisId, cadence, true);
+      const rows = await getSchedules(entityType, slug);
+      const saved = rows.find((r) => r.analysis_id === analysisId);
+      statusEl.textContent = cadence === 'manual'
+        ? '✓ manual — runs only when pressed; a notification needs daily, weekly or monthly'
+        : saved?.next_run
+        ? `✓ ${esc(saved.schedule || cadence)} — next run ${esc(ago(saved.next_run))}`
+        : `✓ ${esc(cadence)} scheduled`;
+    } catch (err) {
+      statusEl.textContent = `could not schedule: ${err.message}`;
+    } finally {
+      btn.disabled = false;
+    }
+  });
+
   body.querySelector('#notify-submit').addEventListener('click', async () => {
-    const chosen = ids.length > 1
-      ? body.querySelector('input[name="notify-analysis"]:checked')?.value
-      : body.querySelector('#notify-analysis-only').value;
+    const chosen = currentAnalysisId();
     const errEl = body.querySelector('#notify-error');
     if (!chosen) { errEl.textContent = 'Pick an analysis to watch.'; return; }
     const label = body.querySelector('#notify-label').value.trim();
@@ -6627,11 +9651,7 @@ async function openNotifyDialog(entry) {
     btn.disabled = true;
     btn.textContent = 'Subscribing…';
     try {
-      // entity_type is 'repo' unconditionally: the Questions engine this
-      // dialog is attached to is itself gated to `state.resourceType ===
-      // 'repo'` a few lines up in loadPane() — there is no other value this
-      // row could carry today. See createSubscription's own doc comment.
-      await createSubscription('repo', slug, chosen, label);
+      await createSubscription(entityType, slug, chosen, label);
       closeCellDetail();
     } catch (err) {
       btn.disabled = false;
@@ -6689,6 +9709,10 @@ async function toggleMeasurementsInPlace(i, analysisId, btn, level) {
             ? `<button data-numbers-open="${esc(m.opens.analysis_id || analysisId)}" data-numbers-metric="${esc(m.opens.metric || m.name)}"
                  data-numbers-title="${esc(String(m.name || '').replace(/_/g, ' '))}"
                  class="cursor-pointer bg-transparent text-accent-ink underline">the ${tnum(esc(String(m.value)))} ${esc(String(m.name || '').replace(/_/g, ' '))} ›</button>`
+            // A row read from an annotation carries its envelope's state words (the reader derives them from
+            // the envelope, never from the value): the word, then why when it is not a measurement.
+            : m.state_words ? `<span class="text-ink">${esc(m.state_words)}</span>${
+              m.reason ? `<span class="text-ink-muted"> · ${esc(m.reason)}</span>` : ''}`
             : m.note ? `<span class="text-ink-muted">${esc(m.note)}</span>` : ''
         }</td>
       </tr>`).join('')}
@@ -6829,7 +9853,7 @@ async function checkPrerequisitePlan(entry, i, analysisId, { background }) {
   return false;
 }
 
-async function rerun(entry, i, { background = false, skipPlanCheck = false } = {}) {
+async function rerun(entry, i, { background = false, skipPlanCheck = false, force = false } = {}) {
   const analysisId = (entry.analysis_ids || [])[0];
   if (!analysisId) return;
   const slug = state.selectedSlug;
@@ -6845,7 +9869,14 @@ async function rerun(entry, i, { background = false, skipPlanCheck = false } = {
     // Enqueue and stop watching. The row says it is queued in the worker
     // and how to see the result; nothing here pretends to know when.
     try {
-      await runAnalysis(slug, analysisId, apiEntityType(state.resourceType));
+      const queued = await runAnalysis(slug, analysisId, apiEntityType(state.resourceType), { force });
+      if (isFreshnessSkip(queued)) {
+        state.runsInFlight.delete(entry.question);
+        replaceRow(entry, i, state.answers.get(entry.question));
+        offerRunAnyway(queued, { slug, analysisId, onForce: () =>
+          rerun(entry, i, { background: true, skipPlanCheck: true, force: true }) });
+        return;
+      }
       state.runsInFlight.set(entry.question, { analysisId, label: `In background · ${analysisId} · reload to read the result` });
     } catch (err) {
       state.runsInFlight.delete(entry.question);
@@ -6855,13 +9886,21 @@ async function rerun(entry, i, { background = false, skipPlanCheck = false } = {
     return;
   }
 
+  let finishedRun = null;
   try {
-    const started = await runAnalysis(slug, analysisId, apiEntityType(state.resourceType));
+    const started = await runAnalysis(slug, analysisId, apiEntityType(state.resourceType), { force });
+    if (isFreshnessSkip(started)) {
+      state.runsInFlight.delete(entry.question);
+      replaceRow(entry, i, state.answers.get(entry.question));
+      offerRunAnyway(started, { slug, analysisId, onForce: () =>
+        rerun(entry, i, { skipPlanCheck: true, force: true }) });
+      return;
+    }
     const activityId = started.activity_id;
     state.runsInFlight.set(entry.question, { analysisId, activityId, label: `Running · ${analysisId}` });
     replaceRow(entry, i, state.answers.get(entry.question));
 
-    await pollActivity(activityId, {
+    finishedRun = await pollActivity(activityId, {
       onTick: (e) => {
         const s = (e?.status || '').toLowerCase();
         const label = s === 'running' ? `Running · ${analysisId}`
@@ -6889,6 +9928,17 @@ async function rerun(entry, i, { background = false, skipPlanCheck = false } = {
   }
 
   state.runsInFlight.delete(entry.question);
+  // The finished row's own status decides, not the path taken to get here:
+  // a run that ended in error stays visible on this row instead of being
+  // replaced by a re-read of the previous answer.
+  const failure = activityFailure(finishedRun);
+  if (failure) {
+    state.answers.set(entry.question, { __error: failureText(failure).replace('Failed — ', 'The run failed: ') });
+    replaceRow(entry, i, state.answers.get(entry.question));
+    updateAnsweredCount();
+    renderLegend();
+    return;
+  }
   await loadAnswer(entry, i, state.selectedSlug);
 }
 
@@ -6990,14 +10040,14 @@ export async function copyAsEvidence(markdown, btn) {
   }
 }
 
-/** One question row, as markdown with its provenance. */
-function rowAsMarkdown(entry, i) {
+/** One question row's answer in parts: the sentence(s) it says, its caveat, and the provenance bits. The ONE
+ *  place a row's answer is turned into text: "copy as evidence" and "ask in chat" both read it, so the chat
+ *  answer cannot differ from the row it was asked from. */
+function rowAnswerParts(entry) {
   const env = state.answers.get(entry.question);
-  const st = rowState(entry, env);
+  const st = effectiveRowState(entry, env);
   const lines = (env && env !== 'loading' && !env.__error)
-    ? readEnvelope(entry, env) : null;
-
-  const out = [`**${entry.question}**`, ''];
+    ? readEnvelope(entry, env, esc, tnum) : null;
 
   // The answer, as text. `lines.answer` is HTML by the time it reaches a row,
   // so it is rebuilt from the facts here rather than stripped of tags — a
@@ -7008,14 +10058,9 @@ function rowAsMarkdown(entry, i) {
     else if (prose(f)) said.push(f.value?.verdict ? `${cap(String(f.value.verdict))} — ${prose(f)}` : prose(f));
     else if (scalarMeasures(f.value)) said.push(scalarMeasures(f.value));
   }
-  if (said.length) out.push(said.join(' '), '');
-  else out.push(`_${(env && env.blocked_reason) || STATE_SENTENCE[st] || 'No answer recorded.'}_`, '');
-
-  if (lines && lines.caveat) {
-    // The caveat as a blockquote — it is the part a reader most needs to
-    // carry across, and a quote survives being pasted into a thread.
-    out.push(...lines.caveat.split('\n').map((l) => `> ${l}`), '');
-  }
+  const answer = said.length
+    ? said.join(' ')
+    : `${(env && env.__error) || (env && env.blocked_reason) || STATE_SENTENCE[st] || 'No answer recorded.'}`;
 
   const bits = [state.selectedSlug];
   const sources = (lines && lines.sources.length ? lines.sources : entry.analysis_ids) || [];
@@ -7026,24 +10071,83 @@ function rowAsMarkdown(entry, i) {
   bits.push(env && env.answerable
     ? 'answered from survey metadata, no retrieval'
     : `state: ${STATE_LABEL[st] || st}`);
-  out.push(`— ${bits.filter(Boolean).join(' · ')}`);
+  return { st, said: said.length > 0, answer, caveat: lines && lines.caveat ? lines.caveat : '', bits, lines, sources };
+}
 
+/** One question row, as markdown with its provenance. */
+function rowAsMarkdown(entry, i) {
+  const p = rowAnswerParts(entry);
+  const out = [`**${entry.question}**`, ''];
+  out.push(p.said ? p.answer : `_${p.answer}_`, '');
+  if (p.caveat) {
+    // The caveat as a blockquote — it is the part a reader most needs to
+    // carry across, and a quote survives being pasted into a thread.
+    out.push(...p.caveat.split('\n').map((l) => `> ${l}`), '');
+  }
+  out.push(`— ${p.bits.filter(Boolean).join(' · ')}`);
   return out.join('\n');
+}
+
+/** The chat turn for a question row: the row's own answer text, its provenance line, and the analyses behind
+ *  it (what "run" and "schedule" in the chat act on). `ran` is read from the same envelope the row drew. */
+function rowChatTurn(entry) {
+  const p = rowAnswerParts(entry);
+  // Per analysis, from the envelope's own facts: an analysis with nothing recorded is "not run" even when a
+  // sibling analysis behind the same question has run.
+  const env = state.answers.get(entry.question);
+  const facts = (env && env !== 'loading' && !env.__error && env.facts) || [];
+  // `analyses_behind` is the server's read of the analyses the catalog lists behind a question answered from the
+  // resource's own state, where `facts` holds only that one state fact.
+  const behind = (env && env !== 'loading' && !env.__error && env.analyses_behind) || [];
+  const hasRun = (id) => [...facts, ...behind].some((f) => f.analysis_id === id && (f.is_known || f.last_run_at));
+  const text = p.caveat ? `${p.answer}\n\n${p.caveat}` : p.answer;
+  return {
+    answer: text,
+    source: p.bits.filter(Boolean).join(' · '),
+    runnable: (entry.analysis_ids || []).map((id) => ({ id, ran: hasRun(id) })),
+  };
+}
+
+/** "Ask in chat" on a question row: opens the chat on the SAME answer the row shows (read again if the row
+ *  has not loaded it), with the analyses behind it to run or schedule. Nothing is retyped at a model. */
+async function askQuestionInChat(entry, i) {
+  const slug = state.selectedSlug;
+  if (!slug) return;
+  const entityType = apiEntityType(state.resourceType);
+  const read = async () => {
+    let env = state.answers.get(entry.question);
+    if (!env || env === 'loading' || env.__error) {
+      try { env = await getAnswer(slug, entry.question, entityType); }
+      catch (err) { env = { __error: `The answer could not be loaded: ${err.message}` }; }
+      state.answers.set(entry.question, env);
+    }
+    return rowChatTurn(entry);
+  };
+  const first = await read();
+  await openQuestionTurn({
+    question: entry.question, slug, entityType, ...first,
+    // After a run: read the answer again from the same endpoint and hand back the new text.
+    refresh: async () => {
+      state.answers.delete(entry.question);
+      return read();
+    },
+  });
 }
 
 // `turnAsMarkdown` moved to next/chat.js (item 9) — it was chat-only and
 // every call site went with it.
 
 const STATE_LABEL = {
-  answered: 'answered', automatic: 'automatic', unrun: 'not run',
+  answered: 'answered', automatic: 'automatic', nothing: 'nothing found', unrun: 'not run',
   partial: 'ran, but not at this level',
-  human: 'needs human input', 'no-surveyor': 'no surveyor exists yet',
+  human: 'needs human input', 'needs-lens': 'needs a person: declare a lens',
+  'no-surveyor': 'no reader yet',
   unclassified: 'unclassified',
 };
 const STATE_SENTENCE = {
   unrun: 'Not run yet.',
   human: 'Answered by a person, not by a survey.',
-  'no-surveyor': 'No surveyor exists for this question.',
+  'no-surveyor': 'No reader yet for this question.',
   unclassified: 'The catalog does not state how this would be answered.',
 };
 
@@ -7057,6 +10161,41 @@ function showDiagram(entry) {
     question: entry.question,
     mermaid: found.source,
     source: `${found.analysisId}`
+      + (found.lastRun ? ` · run ${ago(found.lastRun)}` : ' · run time not recorded')
+      + ' · rendered by Kroki, no retrieval',
+  });
+}
+
+/** Promote one zoom level of a question's relationship graph into the
+ *  content pane. `level` is 'schema_map', 'full', or a schema name (looked
+ *  up in `bySchema`). Mirrors `showDiagram` above but for the Graphviz path
+ *  (three views instead of one, a possible fallback state instead of an
+ *  always-available diagram). */
+function showGraphvizPane(entry, level) {
+  const env = state.answers.get(entry.question);
+  if (!env || env === 'loading' || env.__error) return;
+  const found = factGraphviz(env);
+  if (!found) return;
+
+  let source;
+  let levelLabel;
+  if (level === 'schema_map') {
+    source = found.schemaMap;
+    levelLabel = 'schema map';
+  } else if (level === 'full') {
+    if (!found.full) return;  // fallback state — the button is hidden for this case
+    source = found.full;
+    levelLabel = 'whole database';
+  } else {
+    source = found.bySchema[level];
+    levelLabel = `schema: ${level}`;
+    if (!source) return;
+  }
+
+  promoteToPane({
+    question: entry.question,
+    graphviz: source,
+    source: `${found.analysisId} · ${levelLabel}`
       + (found.lastRun ? ` · run ${ago(found.lastRun)}` : ' · run time not recorded')
       + ' · rendered by Kroki, no retrieval',
   });
@@ -7093,10 +10232,16 @@ function showEvidence(entry) {
   // field name for the same underlying number (schema_inventory's and
   // row_count_snapshot's readers both read the same stored `database_
   // tables` rows, and both happen to call their own fields "tables"/
-  // "table_count"). Each fact block used to render every key in its own
-  // `.value` with no awareness of the others, so the same number appeared
-  // once per fact that happened to carry it — found live, "How big is
-  // this database"'s evidence panel listing `tables`/`table_count` twice.
+  // "relation_count" -- was "table_count" on both until REPLY-DESIGNER-
+  // ROUND2-DATABASE-SCREENS.md §2.3: an all-relation-kinds count named
+  // "table_count" is a different population from a base-tables-only count
+  // of the same name elsewhere on screen, e.g. the Relationship Graph
+  // card's own "68" -- renamed at the source in both readers so the name
+  // states what it counts). Each fact block used to render every key in
+  // its own `.value` with no awareness of the others, so the same number
+  // appeared once per fact that happened to carry it — found live, "How
+  // big is this database"'s evidence panel listing `tables`/`relation_
+  // count` twice.
   // Deduped by key, first fact in `env.facts` order wins — that ordering
   // already follows the question catalog's own `analysis_ids` list, so an
   // earlier entry is the one a reader would name first anyway.
@@ -7109,9 +10254,19 @@ function showEvidence(entry) {
       ? `<div class="mt-[4px] leading-[1.95]">${fresh
           .map(([k, v]) => measureHtml(k, v)).join('')}</div>`
       : '';
+    // REPLY-DESIGNER-ROUND2-DATABASE-SCREENS.md §2.3: `f.provenance`
+    // defaults to the SAME string as `f.state` ("measured" -- `Fact.
+    // provenance`'s own default is `PROVENANCE_MEASURED = "measured"`,
+    // identical to `result_status.MEASURED`), so this line printed the
+    // state twice -- "measured · measured · run 2m ago" -- for the common
+    // case of a plain local measurement. Provenance only earns its own
+    // word when it says something `state` doesn't (☁ Egeria vs. 🏠 local
+    // vs. ⏳ pending, per this file's own "Survey source display" table).
+    const stateWord = esc(f.state);
+    const provenanceWord = f.provenance && f.provenance !== f.state ? ` · ${esc(f.provenance)}` : '';
     return `<div class="mb-s2 border-b border-chrome-line-soft pb-s2 last:border-0">
       <div class="text-chip text-accent-on-dark">${esc(f.analysis_id)}</div>
-      <div class="text-caps text-chrome-muted">${esc(f.state)} · ${esc(f.provenance)} · ${
+      <div class="text-caps text-chrome-muted">${stateWord}${provenanceWord} · ${
         f.last_run_at ? `run ${esc(ago(f.last_run_at))}`
           : f.is_known ? 'run time not recorded' : 'never run'}</div>
       ${f.headline ? `<div class="mt-[4px] text-subtab">${tnum(esc(f.headline))}</div>` : ''}
@@ -7120,11 +10275,44 @@ function showEvidence(entry) {
     </div>`;
   }).join('');
 
+  const gv = factGraphviz(env);
+  // Three zoom levels, per the relationship-graph design note: the schema
+  // map always renders (any database size); "whole database" is either a
+  // button or, above the ~100-table threshold, a named state rather than a
+  // blank panel (`gv.fallbackReason`, `db_derived.py`'s `full_database_dot`);
+  // "open a schema" is a select over every schema this question covers.
+  const schemaNames = gv ? Object.keys(gv.bySchema).sort() : [];
+  const graphvizBlock = gv ? `
+    <div class="mb-s2 rounded-sm border border-rule-strong p-s2">
+      <div class="mb-[6px] text-chip text-ink-muted">Relationship graph
+        ${gv.tableCount != null ? `· <span class="tnum">${gv.tableCount}</span> tables` : ''}</div>
+      <button data-act="evidence-graphviz" data-level="schema_map"
+        class="mb-[6px] w-full cursor-pointer rounded-sm border border-accent bg-transparent px-[10px] py-[4px]
+               text-chip text-accent-on-dark">${icon('maximize-2', { size: 13 })} Schema map</button>
+      ${gv.full
+        ? `<button data-act="evidence-graphviz" data-level="full"
+             class="mb-[6px] w-full cursor-pointer rounded-sm border border-accent bg-transparent px-[10px] py-[4px]
+                    text-chip text-accent-on-dark">${icon('maximize-2', { size: 13 })} Whole database</button>`
+        : gv.fallbackReason
+          ? `<div class="mb-[6px] text-chip text-state-warn">${esc(gv.fallbackReason)}</div>`
+          : ''}
+      ${schemaNames.length ? `<div class="relative">
+          <select data-act="evidence-graphviz-schema"
+               class="w-full cursor-pointer appearance-none rounded-sm border border-accent bg-transparent px-[10px] py-[4px] pr-[26px]
+                      text-chip text-accent-on-dark hover:bg-accent-tint focus:outline-none focus:ring-1 focus:ring-accent">
+            <option value="">Open a schema…</option>
+            ${schemaNames.map((s) => `<option value="${esc(s)}">${esc(s)}</option>`).join('')}
+          </select>
+          <span class="pointer-events-none absolute right-[8px] top-1/2 -translate-y-1/2 text-accent-on-dark">${icon('chevron-down', { size: 13 })}</span>
+        </div>` : ''}
+    </div>` : '';
+
   const body = railFrame('Evidence', forWhat, '', { sub: esc(String(entry.question).slice(0, 48)) });
   body.innerHTML = `
     <div class="rounded-sm border border-chrome-line p-s3">
       <div class="mb-s3 text-subtab">${esc(entry.question)}</div>
       ${facts || '<div class="text-chip text-chrome-muted">No facts on this envelope — the answer names no measurements.</div>'}
+      ${graphvizBlock}
       ${factMermaid(env) ? `<button data-act="evidence-diagram"
         class="mb-s2 w-full cursor-pointer rounded-sm border border-accent bg-transparent px-[10px] py-[4px]
                text-chip text-accent-on-dark">${icon('maximize-2', { size: 13 })} Open diagram in pane</button>` : ''}
@@ -7136,6 +10324,12 @@ function showEvidence(entry) {
     </div>`;
   out.querySelector('[data-act="evidence-diagram"]')
     ?.addEventListener('click', () => showDiagram(entry));
+  out.querySelectorAll('[data-act="evidence-graphviz"]').forEach((btn) => {
+    btn.addEventListener('click', () => showGraphvizPane(entry, btn.dataset.level));
+  });
+  out.querySelector('[data-act="evidence-graphviz-schema"]')?.addEventListener('change', (e) => {
+    if (e.target.value) showGraphvizPane(entry, e.target.value);
+  });
 }
 
 /* ════════════════════════════════════════════════════════════════════════
@@ -7155,6 +10349,8 @@ function countOf(settled, limit, key) {
 }
 
 async function start() {
+  // One banner for a dead session; the header stops saying "signed in" (session-banner.js).
+  installSessionBanner(document, { onDead: () => { state.me = null; renderTopBar(); } });
   await loadIcons();
   applyWidths();
   initSeams();
@@ -7176,7 +10372,15 @@ async function start() {
       // make the `ignored`, `abandoned` and hidden facets permanently empty.
       listProjects({ includeIgnored: true, includeHidden: true }),
       listPerspectives(), listActivity(ACTIVITY_LIMIT), listRfas(),
-      listGroups(), listInvestigations(), listWorkLists(), listAnalyses('repo'),
+      listGroups(), listInvestigations(), listWorkLists(),
+      // Same bug class as openNotifyDialog's 'repo' hardcode (found live
+      // 2026-09-28): `readUrl()` above may already have set
+      // `state.resourceType` to 'db'/'filesystem' from a `?type=` URL param,
+      // and analysis_catalog.yaml's `resource_types` genuinely differs per
+      // entity type -- a repo-only fetch here leaves `state.analyses`
+      // (read by trendSupport() and passed into openWorkList()) permanently
+      // wrong for a session that starts on a non-repo resource.
+      listAnalyses(apiEntityType(state.resourceType)),
       listAllPerspectives(),
     ]);
 
@@ -7227,6 +10431,15 @@ async function start() {
   renderPerspectiveRow();
   renderSidebar();
   renderRail();
+  // The unread badge and the toast that jumps to an entry (PI-124). A failed first read leaves the badge empty.
+  installHealthBanner(document);
+  installBootstrapBanner(document);
+  startActivityWatch({
+    doc: document,
+    first: activity.status === 'fulfilled' && Array.isArray(activity.value) ? activity.value : [],
+    fetchEntries: activityWatchEntries(),
+    openPanel: (opts) => openActivityPanel(opts),
+  });
   await loadPane();
 }
 

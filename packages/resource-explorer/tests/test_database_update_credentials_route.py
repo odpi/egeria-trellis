@@ -10,6 +10,21 @@ from fastapi.testclient import TestClient
 from resource_explorer.registry import DatabaseEntity, ProjectRegistry
 
 
+@pytest.fixture(autouse=True)
+def _stub_connect(monkeypatch):
+    """The route now connect-tests before saving: stub the lowest connect
+    helper (succeeds) and make the real driver raise if ever reached."""
+    import psycopg2
+
+    from resource_explorer.surveyors.database.connection import PostgreSQLConnection
+
+    def _no_driver(*a, **k):
+        raise AssertionError("real psycopg2.connect reached")
+
+    monkeypatch.setattr(psycopg2, "connect", _no_driver)
+    monkeypatch.setattr(PostgreSQLConnection, "connect", lambda self: None)
+
+
 @pytest.fixture
 def registry(tmp_path):
     r = ProjectRegistry(db_path=str(tmp_path / "test.db"))

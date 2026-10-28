@@ -4,15 +4,18 @@ from __future__ import annotations
 
 import logging
 import os
+import uuid
 from pathlib import Path
+from typing import Optional
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
+from resource_explorer.config import WebUIConfig
 from resource_explorer.web.routes import work_lists as work_lists_routes
-from resource_explorer.web.routes import activity, aliases, auth as auth_routes, compile_context as compile_context_routes, analyses, automate, bootstrap as bootstrap_routes, context, curate, databases, db_servers as db_servers_routes, diagrams, discovery, egeria, feedback, investigations, journal, logs as logs_routes, prefect_status, prerequisites as prerequisite_routes, project_context, outbox, projects, query, repair, runs as runs_routes, schedules, stats, webhook, filesystems, survey_definitions
+from resource_explorer.web.routes import api_reference as api_reference_routes, analytics as analytics_routes, activity, aliases, auth as auth_routes, compile_context as compile_context_routes, analyses, automate, bootstrap as bootstrap_routes, context, catalogue_scope, curate, databases, db_servers as db_servers_routes, diagrams, discovery, doc_sources, egeria, feedback, investigations, journal, logs as logs_routes, prefect_status, prerequisites as prerequisite_routes, project_context, outbox, projects, query, repair, runs as runs_routes, schedules, stats, webhook, filesystems, survey_definitions, native_surveys
 
 
 log = logging.getLogger(__name__)
@@ -58,6 +61,20 @@ async def _lifespan(app: FastAPI):
 
     get_llm_tier_config()  # logs the resolved tier/model/num_ctx/budget once
 
+    from resource_explorer.surveyors.prefect_adapter import alog_prefect_reachability_at_startup
+
+    await alog_prefect_reachability_at_startup()
+    from resource_explorer.catalogue_gateway import issue_117_state_line
+    logging.getLogger(__name__).info("%s", issue_117_state_line())   # on, or off with the clearance text
+    from resource_explorer.egeria_clients import log_daemon_identity_at_startup
+    log_daemon_identity_at_startup()        # INFO: which source the daemon identity came from (Brief L)
+
+    # Re-project stored credentials if a redeploy deleted the secrets file.
+    # Non-fatal by construction (heal_missing never raises) and no network.
+    from resource_explorer.omsecrets_reproject import heal_missing
+
+    heal_missing()
+
     worker_stop = None
     if _embed_worker_enabled():
         from resource_explorer.worker import start_embedded_worker
@@ -87,6 +104,75 @@ app = FastAPI(
     version="0.1.0",
     lifespan=_lifespan,
 )
+
+
+def _egeria_identity_refused(request, exc):
+    """Brief I: no caller, or an expired caller token, is a 401 with the sentence — never the
+    service account. `refused_by` lets the page show it as a sign-in cue rather than an error."""
+    return JSONResponse(status_code=401, content={"detail": str(exc), "refused_by": "sign-in"})
+
+
+def _egeria_refused(request, exc):
+    """Brief I: Egeria's security refused the signed-in person. Shown as a refusal (403, Egeria's
+    own sentence, `refused_by: egeria`), never retried as the service account. Raised by a route
+    as `egeria_clients.EgeriaRefused` — pyegeria's own exception types are not registered here,
+    because importing pyegeria at app load breaks the uvloop boot."""
+    return JSONResponse(status_code=403, content={"detail": str(exc), "refused_by": "egeria"})
+
+
+def _platform_not_allowed(request, exc):
+    """Brief I: a resource names an Egeria platform RE is not configured for; nothing was sent."""
+    return JSONResponse(status_code=403, content={"detail": str(exc), "refused_by": "platform"})
+
+
+def _install_egeria_identity_handlers() -> None:
+    from resource_explorer.egeria_clients import (
+        CallerTokenExpired, EgeriaRefused, NoCallerIdentity, PlatformNotAllowed,
+    )
+
+    app.add_exception_handler(NoCallerIdentity, _egeria_identity_refused)
+    app.add_exception_handler(CallerTokenExpired, _egeria_identity_refused)
+    app.add_exception_handler(EgeriaRefused, _egeria_refused)
+    app.add_exception_handler(PlatformNotAllowed, _platform_not_allowed)
+
+
+_install_egeria_identity_handlers()
+
+
+@app.middleware("http")
+async def _phase_timing_middleware(request, call_next):
+    """Per-request total wall time, logged at INFO as `phase_timing`.
+
+    Diagnostic only — added for the 2026-09-29 per-request-latency
+    investigation (PER-REQUEST-SERVER-LATENCY-IMPLEMENTED.md)
+    and left in place since it is cheap (one perf_counter pair, one log
+    line) and the next regression in this class needs exactly this data.
+    Registered ahead of `_identity_middleware` below, which — per
+    `_install_login_required_middleware`'s docstring on `add_middleware`'s
+    `insert(0, ...)` + `reversed()` build order — makes `_identity_middleware`
+    the OUTER layer and this one INNER: this timer starts after identity
+    resolution, not before, so `total_ms` covers the route handler only
+    (identity resolution is one JWT decode, negligible either way — see
+    `_identity_middleware`'s own docstring). The pure-ASGI login gate and
+    CORS wrap everything added via `@app.middleware`/`add_middleware` here
+    regardless, so neither is included either way. The per-phase breakdown
+    that actually found the root cause (`ProjectRegistry.__init__`
+    re-running full schema verification on every construction) came from
+    direct, isolated timing of that constructor, not from subdividing this
+    middleware further — logged separately, see `ProjectRegistry.__init__`'s
+    own timing below.
+    """
+    import time
+
+    t0 = time.perf_counter()
+    response = await call_next(request)
+    elapsed_ms = (time.perf_counter() - t0) * 1000
+    log.info(
+        "phase_timing path=%s method=%s status=%s total_ms=%.1f",
+        request.url.path, request.method, response.status_code, elapsed_ms,
+    )
+    return response
+
 
 @app.middleware("http")
 async def _identity_middleware(request, call_next):
@@ -120,9 +206,25 @@ async def _identity_middleware(request, call_next):
     claims = get_current_user(request)
     identity = identity_from_claims(claims) if claims is not None else None
 
+    # A session for RE's daemon account is refused wherever it was minted (EA shares the JWT
+    # secret; a pre-merge session may name it) — Brief L round 2, at identity RESOLUTION.
+    from resource_explorer.egeria_clients import DaemonSignInRefused, refuse_daemon_sign_in
+
+    if identity is not None:
+        try:
+            refuse_daemon_sign_in(identity.user_id)
+        except DaemonSignInRefused as exc:
+            from fastapi.responses import JSONResponse
+
+            return JSONResponse(status_code=403, content={"detail": str(exc)})
+
+    from resource_explorer.egeria_clients import client_scope
+
     reset = current_caller.set(identity)
     try:
-        return await call_next(request)
+        # One Egeria client per identity for this request (Brief I): sub-clients share one token.
+        with client_scope():
+            return await call_next(request)
     finally:
         current_caller.reset(reset)
 
@@ -186,11 +288,16 @@ app.include_router(webhook.router, prefix="/api", tags=["webhook"])
 app.include_router(activity.router, prefix="/api/activity", tags=["activity"])
 app.include_router(bootstrap_routes.router, prefix="/api/bootstrap", tags=["bootstrap"])
 app.include_router(analyses.router, prefix="/api/analyses", tags=["analyses"])
+app.include_router(analytics_routes.router, prefix="/api/analytics", tags=["analytics"])
 app.include_router(context.router, prefix="/api/context", tags=["context"])
 app.include_router(compile_context_routes.router, prefix="/api/context", tags=["context-compile"])
 app.include_router(project_context.router, prefix="/api/project-context", tags=["project-context"])
 app.include_router(automate.router, prefix="/api/automate", tags=["automate"])
 app.include_router(curate.router, prefix="/api/curate", tags=["curate"])
+app.include_router(catalogue_scope.router, prefix="/api/catalogue-scope", tags=["catalogue-scope"])
+app.include_router(doc_sources.router, prefix="/api/doc-sources", tags=["doc-sources"])
+app.include_router(api_reference_routes.router, prefix="/api/api-reference", tags=["api-reference"])
+app.include_router(native_surveys.router, prefix="/api/native-surveys", tags=["native-surveys"])
 app.include_router(schedules.router, prefix="/api/schedules", tags=["schedules"])
 app.include_router(prefect_status.router, prefix="/api/prefect", tags=["prefect"])
 app.include_router(survey_definitions.router, prefix="/api/survey-definitions", tags=["survey-definitions"])
@@ -225,6 +332,11 @@ async def health() -> dict:
     return {"status": "ok"}
 
 
+# A fresh token per server process: a page that sees it change knows the server restarted (and so what it can
+# do may have changed: config flags, engine host) and re-reads what it shows. Not a secret, not an identity.
+_BOOT_ID = uuid.uuid4().hex
+
+
 @app.get("/health/ready")
 async def health_ready() -> JSONResponse:
     """Readiness check — actually exercises the registry's database
@@ -240,14 +352,42 @@ async def health_ready() -> JSONResponse:
     except Exception as exc:
         return JSONResponse(
             status_code=503,
-            content={"status": "error", "database": "unreachable", "detail": str(exc)},
+            content={"status": "error", "database": "unreachable", "detail": str(exc), "boot_id": _BOOT_ID},
         )
-    return JSONResponse(content={"status": "ok", "database": "ok"})
+    return JSONResponse(content={"status": "ok", "database": "ok", "boot_id": _BOOT_ID})
+
+
+def _resolve_default_ui(raw: Optional[str]) -> str:
+    """`next` unless the operator explicitly chose `classic`. An unrecognised
+    value falls back to `next` with a warning rather than failing startup."""
+    value = (raw or "").strip().lower()
+    if value in ("", "next"):
+        return "next"
+    if value == "classic":
+        return "classic"
+    logging.getLogger(__name__).warning(
+        "RE_DEFAULT_UI=%r is not 'next' or 'classic'; serving the Next UI at /", raw
+    )
+    return "next"
+
+
+#: Read once at startup (RE_DEFAULT_UI, via config.WebUIConfig so `.env` counts).
+_DEFAULT_UI = _resolve_default_ui(WebUIConfig().default_ui)
+
+_CLASSIC_SHELL = _STATIC / "index.html"
+_NEXT_SHELL = _STATIC / "next" / "index.html"
 
 
 @app.get("/")
 async def index() -> FileResponse:
-    return FileResponse(_STATIC / "index.html")
+    """The default UI: Next, unless RE_DEFAULT_UI=classic."""
+    return FileResponse(_NEXT_SHELL if _DEFAULT_UI == "next" else _CLASSIC_SHELL)
+
+
+@app.get("/classic")
+async def classic_ui() -> FileResponse:
+    """The Classic UI, explicitly. Same shell `/` served before Next became the default."""
+    return FileResponse(_CLASSIC_SHELL)
 
 
 @app.get("/admin/feedback")
@@ -284,10 +424,12 @@ async def _revalidate_experimental_assets(request, call_next):
 
 @app.get("/next")
 async def next_ui() -> FileResponse:
-    """The experimental `/next` UI — skin 1c, and the Questions pane rebuilt
-    to report the ANSWER rather than the mechanism.
+    """The Next UI at its original path, kept so existing bookmarks and links
+    work. Served directly (not redirected) so query state and a Portal `#sso=`
+    fragment arrive untouched; it also stays Next when RE_DEFAULT_UI=classic.
 
-    Served alongside `/`, not instead of it. The whole UI is a consumer of
+    Skin 1c, and the Questions pane rebuilt to report the ANSWER rather than
+    the mechanism. The whole UI is a consumer of
     `/api/*`: this route adds no endpoint, touches no schema, and shares this
     app's session, so the experiment is additive and reversible — if it is a
     dead end, this function and `static/next/` go away together.
@@ -297,4 +439,4 @@ async def next_ui() -> FileResponse:
     the shared `/static/` prefix; the shell itself is listed in
     `RE_PUBLIC_PATHS` for the same reason `/` is.
     """
-    return FileResponse(_STATIC / "next" / "index.html")
+    return FileResponse(_NEXT_SHELL)

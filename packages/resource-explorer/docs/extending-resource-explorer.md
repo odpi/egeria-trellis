@@ -1,5 +1,7 @@
 # Extending Resource Explorer
 
+**Status:** live. How to add a question, analysis step, annotation type or survey type.
+
 How to add a **question**, an **analysis step**, an **annotation type**, or a
 **survey type** — and, more usefully, what breaks when you miss a step.
 

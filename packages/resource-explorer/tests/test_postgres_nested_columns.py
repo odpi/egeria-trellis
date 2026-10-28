@@ -72,6 +72,12 @@ class _FakeSamplingConnection:
         values = self.values_by_column.get(column, [])
         return [{"value": v} for v in values]
 
+    def execute_query_isolated(self, query, params=()):
+        """§F: `column_profile_step.py` calls this instead of `execute_query`
+        now; proxied straight through since this fake has no transaction to
+        protect."""
+        return self.execute_query(query, params)
+
 
 def _column_from_sql(query: str) -> str:
     match = re.search(r'SELECT "([^"]+)" AS value', query)

@@ -107,7 +107,7 @@ Seed set, consolidated from this session and from what the corpus already implie
 | Purpose | Notes |
 |---|---|
 | Explore / Research | the default; no commitment implied |
-| Select | find and choose resources to adopt; subsumes "compare alternatives" |
+| Select | choose among resources already found, and decide whether to adopt them; subsumes "compare alternatives" (Find comes first: you find, then may or may not select) |
 | Assess | review resources already in use |
 | Maintain | track change and risk over time; version-change impact |
 | Share | produce blueprints/docs so others can find and reuse |

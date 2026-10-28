@@ -44,6 +44,21 @@ from typing import Any, Callable
 log = logging.getLogger(__name__)
 
 ACTIONS = ("republish", "resurvey", "discard")
+NO_LONGER_STALE = "no longer stale - nothing to resolve"
+NOT_PERMITTED_WORDS = "not permitted"
+
+
+def _refused(registry, entity_type: str, slug: str, write: str, element_guid: str | None = None) -> str:
+    """Brief Z2: the one curation decision (`workflows.curate.resource_access`) for one item: "" when the caller
+    may make this write, else the item's own result words "not permitted · <reason>". An unexpected failure is
+    a refusal with its reason, never a pass."""
+    from resource_explorer.workflows.curate import resource_access
+
+    try:
+        d = resource_access(registry, entity_type, slug, write, element_guid=element_guid)
+    except Exception as exc:  # noqa: BLE001
+        return f"{NOT_PERMITTED_WORDS} · could not check access ({type(exc).__name__}: {exc})"[:300]
+    return "" if d.allowed else f"{NOT_PERMITTED_WORDS} · {d.reason}"
 
 
 @dataclass
@@ -98,10 +113,28 @@ def resolve_all(registry, targets: list[dict], action: str, *,
 
     result = BulkResult(action=action, dry_run=dry_run)
     total = len(targets)
+    from datetime import UTC, datetime
+
+    from resource_explorer.private_publish import PrivateAwaitsOwner, record_waiting
+
+    run_key = f"bulk {action} · {datetime.now(UTC).isoformat()}"     # one waiting row per (slug, this run)
     for t in _each(targets, progress, total):
         entity_type, slug = t.get("entity_type", "repo"), t.get("slug", "")
         if not slug:
             result.record(entity_type, slug, "skipped", "no slug given")
+            continue
+        # Only a link still recorded as stale may be resolved. A resource republished since the list was read has no
+        # stale record left, and resolving it would clear a GOOD link and publish a second element to Egeria.
+        link = registry.get_egeria_linkage(entity_type, slug)
+        if not link or link.get("status") != "stale":      # an 'uncatalogued' row is not a stale link
+            result.record(entity_type, slug, "skipped", NO_LONGER_STALE)
+            continue
+        # Brief Z2: the same check the single-resource resolve makes (the stale element is checked as not in
+        # Egeria). An item the caller may not change is skipped with its own words; the rest proceed.
+        why = _refused(registry, entity_type, slug,
+                       "publish" if entity_type == "repo" and action != "discard" else "decision", element_guid="")
+        if why:
+            result.record(entity_type, slug, "skipped", why)
             continue
         if dry_run:
             result.record(entity_type, slug, "ok", f"would {action}")
@@ -109,6 +142,10 @@ def resolve_all(registry, targets: list[dict], action: str, *,
         try:
             _resolve_one(registry, entity_type, slug, action)
             result.record(entity_type, slug, "ok", action)
+        except PrivateAwaitsOwner as exc:
+            # Waiting, not failed (2026-10-13 review): only the private investigation's owner can publish it.
+            record_waiting(registry, exc, run_key=run_key, source="bulk")
+            result.record(entity_type, slug, "skipped", str(exc)[:300])
         except Exception as exc:
             # Isolated deliberately: nineteen resources must not be abandoned
             # because the twentieth failed.
@@ -145,7 +182,8 @@ def _resolve_one(registry, entity_type: str, slug: str, action: str) -> None:
     # keeps it to stored data, which is what makes it the fast, no-re-scan option.
     survey = (orch.run(slug) if action == "resurvey"
               else orch.run(slug, max_fetch_cost="none"))
-    EgeriaPublisher(registry=registry).publish(survey)
+    # An explicit (re)publish waits for Egeria, as before: RUNS_PUBLISH_INLINE governs a run's auto-publish only.
+    EgeriaPublisher(registry=registry).publish(survey, defer_drain=False)
 
 
 def delete_local(registry, targets: list[dict], *, dry_run: bool = False,
@@ -222,19 +260,39 @@ def delete_in_egeria(registry, targets: list[dict], *, dry_run: bool = False,
     This does not touch RE's own data. The local registry row, survey results and
     collections all survive; only the catalog element goes.
     """
-    from resource_explorer.config import get_config
 
     result = BulkResult(action="delete_in_egeria", dry_run=dry_run)
+
+    # Brief Z2: the access check stands IN FRONT of the ISSUE-117 block (unchanged below): an item the caller may
+    # not delete is said as "not permitted · <reason>" before the block would be. Dry run too.
+    permitted = []
+    for t in targets:
+        why = _refused(registry, t.get("entity_type", "repo"), t.get("slug", ""), "delete")
+        if why:
+            result.record(t.get("entity_type", "repo"), t.get("slug", ""), "skipped", why)
+        else:
+            permitted.append(t)
+    targets = permitted
     total = len(targets)
+
+    # ISSUE-117: a delete in Egeria is an archive/delete write, and while the block is ON none may be sent. Refused
+    # before any client is built, in dry run too, so a preview never promises what apply would refuse.
+    from resource_explorer.catalogue_gateway import ISSUE_117_WORDS, issue_117_blocked
+
+    if issue_117_blocked():
+        for t in targets:
+            result.record(t.get("entity_type", "repo"), t.get("slug", ""), "failed", ISSUE_117_WORDS)
+        return result
 
     asset_maker = None
     if not dry_run:
         from pyegeria import AssetMaker
 
-        cfg = get_config().egeria
-        asset_maker = AssetMaker(cfg.view_server, cfg.platform_url,
-                                 cfg.user_id, cfg.user_password)
-        asset_maker.create_egeria_bearer_token()
+        from resource_explorer.egeria_clients import Caller, egeria_client
+
+        # The signed-in person, never the service account (Brief I): Egeria authorizes the
+        # delete per person, and a refusal is reported as Egeria's, not retried as anyone else.
+        asset_maker = egeria_client(Caller(), purpose="bulk delete in Egeria").of(AssetMaker)
 
     for t in _each(targets, progress, total):
         entity_type, slug = t.get("entity_type", "repo"), t.get("slug", "")
@@ -259,7 +317,13 @@ def delete_in_egeria(registry, targets: list[dict], *, dry_run: bool = False,
         except Exception as exc:
             log.warning("bulk delete_in_egeria failed for %s/%s (%s): %s",
                         entity_type, slug, guid, exc)
-            result.record(entity_type, slug, "failed", str(exc)[:300])
+            from resource_explorer.egeria_outbox import _refusal_sentence, is_security_refusal
+
+            # Egeria refused THIS person: said as a refusal, with Egeria's sentence, and never
+            # retried as the service account (Brief I).
+            message = (f"refused by Egeria: {_refusal_sentence(exc)}" if is_security_refusal(exc)
+                       else str(exc)[:300])
+            result.record(entity_type, slug, "failed", message)
     return result
 
 

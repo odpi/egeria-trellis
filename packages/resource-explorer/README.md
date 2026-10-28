@@ -18,7 +18,7 @@ uv sync
 cp .env.example .env          # set GITHUB_TOKEN, EGERIA_*, LLM_BACKEND, …
 
 # Start the web UI
-uv run resource-explorer web  # → http://localhost:8810
+uv run resource-explorer web  # → http://localhost:8810  (Next UI; Classic at /classic)
 ```
 
 Start the external services required for RAG and Egeria integration:
@@ -57,12 +57,21 @@ run the explicit command above so it's there from the start.
 
 ## What it does
 
+Work is organised by **intent**. There are eight canonical intents (the strings used in the activity
+log, UI filters and analysis catalog; the count is checked against `configdata/analysis_catalog.yaml`
+and `CLAUDE.md` rule 17). The Next UI also has a framing stage, **Investigation**, which is not an
+intent.
+
 | Intent | Description |
 |--------|-------------|
 | **Scouting** | Fast broad inventory across many resources |
-| **Assessment** | Deep analysis of a specific resource (schema, security, quality) |
-| **Discovery** | Find resources by what surveys revealed |
+| **Discovery** | Cheap derivation over what Scouting collected, to decide what is worth a deeper look |
+| **Assessment** | Scored evaluation of a resource against criteria (security, documentation, CI quality) |
+| **Analysis** | Structural and quantitative results a person can look at (architecture recovery, schema, dependencies) |
 | **Enrichment** | Provide human context; answer open RequestForAction annotations |
+| **Understanding** | Visualise and explain what the surveys revealed |
+| **Curate** | Ongoing curatorial work: tags, feedback, publishing to Egeria |
+| **Automate** | Recurring watch-for-changes and notifications |
 
 ---
 
@@ -70,18 +79,24 @@ run the explicit command above so it's there from the start.
 
 | Document | Audience |
 |----------|----------|
-| [docs/user-guide.md](docs/user-guide.md) | Daily users — web UI walkthrough, chat, intents |
-| [docs/architecture.md](docs/Architecture.md) | Developers — module map, query/survey flows, key design decisions |
-| [docs/admin-guide.md](docs/admin-guide.md) | Operators — installation, Egeria setup, scheduling, troubleshooting |
-| [docs/survey-activity-design.md](docs/survey-activity-design.md) | Architects — full design specification for survey/activity/annotation system |
-| [docs/surveyor-reference.md](docs/surveyor-reference.md) | Developers — surveyor API reference |
-| [docs/database-surveyor-design.md](docs/database-surveyor-design.md) | Developers — PostgreSQL surveyor internals |
-| [docs/Backlog.md](docs/Backlog.md) | Anyone — what is being worked on and what is deliberately closed |
-| [docs/archive/](docs/archive/README.md) | Historians — finished work, and the test used to decide it was finished |
+| [docs/user-guide.md](docs/user-guide.md) | Daily users: web UI walkthrough, chat, intents |
+| [docs/Architecture.md](docs/Architecture.md) | Developers: module map, query/survey flows, key design decisions |
+| [docs/admin-guide.md](docs/admin-guide.md) | Operators: installation, Egeria setup, scheduling, troubleshooting |
+| [docs/survey-model.md](docs/survey-model.md) | Architects: the survey/activity/annotation model (read before architectural changes) |
+| [docs/surveyor-reference.md](docs/surveyor-reference.md) | Developers: surveyor API reference |
+| [docs/architecture-recovery.md](docs/architecture-recovery.md) | Developers: architecture recovery design (consolidated 2026-09-03) |
+| [docs/filesystem-and-database-surveying.md](docs/filesystem-and-database-surveying.md) | Developers: file-system and PostgreSQL surveying |
+| [docs/README.md](docs/README.md) | Everyone: index of all documents under `docs/` |
+| [docs/Backlog.md](docs/Backlog.md) | Anyone: what is being worked on and what is deliberately closed |
+| [docs/archive/](docs/archive/README.md) | Historians: finished work, and the test used to decide it was finished |
 
 ---
 
 ## CLI reference
+
+The post-reset clean-up script is run from this directory as
+`uv run python scripts/clear_egeria_pointers_after_reset.py …` (dry run first; it prints the exact `to apply:` line).
+A bare `python scripts/…` call fails with ModuleNotFoundError on the `catalogue_commit` import.
 
 ```bash
 uv run resource-explorer --help

@@ -22,7 +22,7 @@ client = TestClient(app)
 
 class TestStatus:
     def test_reports_unreachable_without_raising(self):
-        with patch("resource_explorer.web.routes.prefect_status.get_client",
+        with patch("resource_explorer.web.routes.prefect_status.re_prefect_client",
                     side_effect=ConnectionError("no server")):
             r = client.get("/api/prefect/status")
         assert r.status_code == 200
@@ -35,7 +35,7 @@ class TestStatus:
         mock_client.api_healthcheck = AsyncMock(return_value=None)
         mock_client.__aenter__.return_value = mock_client
         mock_client.__aexit__.return_value = None
-        with patch("resource_explorer.web.routes.prefect_status.get_client", return_value=mock_client):
+        with patch("resource_explorer.web.routes.prefect_status.re_prefect_client", return_value=mock_client):
             r = client.get("/api/prefect/status")
         assert r.status_code == 200
         assert r.json()["reachable"] is True
@@ -43,7 +43,7 @@ class TestStatus:
 
 class TestFlowRuns:
     def test_unreachable_server_returns_empty_list_not_500(self):
-        with patch("resource_explorer.web.routes.prefect_status.get_client",
+        with patch("resource_explorer.web.routes.prefect_status.re_prefect_client",
                     side_effect=ConnectionError("no server")):
             r = client.get("/api/prefect/flow-runs")
         assert r.status_code == 200
@@ -67,7 +67,7 @@ class TestFlowRuns:
         mock_client.read_flow_runs = AsyncMock(return_value=[fake_run])
         mock_client.__aenter__.return_value = mock_client
         mock_client.__aexit__.return_value = None
-        with patch("resource_explorer.web.routes.prefect_status.get_client", return_value=mock_client):
+        with patch("resource_explorer.web.routes.prefect_status.re_prefect_client", return_value=mock_client):
             r = client.get("/api/prefect/flow-runs")
 
         assert r.status_code == 200
@@ -80,7 +80,7 @@ class TestFlowRuns:
 
 class TestCancel:
     def test_unreachable_server_returns_502_not_500(self):
-        with patch("resource_explorer.web.routes.prefect_status.get_client",
+        with patch("resource_explorer.web.routes.prefect_status.re_prefect_client",
                     side_effect=ConnectionError("no server")):
             r = client.post("/api/prefect/flow-runs/11111111-1111-1111-1111-111111111111/cancel")
         assert r.status_code == 502
@@ -90,7 +90,7 @@ class TestCancel:
         mock_client.set_flow_run_state = AsyncMock(return_value=None)
         mock_client.__aenter__.return_value = mock_client
         mock_client.__aexit__.return_value = None
-        with patch("resource_explorer.web.routes.prefect_status.get_client", return_value=mock_client):
+        with patch("resource_explorer.web.routes.prefect_status.re_prefect_client", return_value=mock_client):
             r = client.post("/api/prefect/flow-runs/11111111-1111-1111-1111-111111111111/cancel")
 
         assert r.status_code == 200

@@ -6,7 +6,7 @@ outbound "opens the current UI" link it replaces, plus the honesty rules
 no reference to Activity as a STAGES entry).
 
 No browser verification of a signed-in session happened for this file — see
-docs/design-notes/ITEM-6-ACTIVITY-IMPLEMENTED.md for what was and was not
+ITEM-6-ACTIVITY-IMPLEMENTED.md for what was and was not
 checked live. These tests grep/slice function bodies out of the concatenated
 source, the established pattern for /next JS modules without a browser --
 see test_next_curate_pane.py and test_next_understanding_pane.py.
@@ -105,7 +105,7 @@ class TestThePanelReadsTheRealActivityLog:
         # A stale cached page would show a finished run as still "running" --
         # openActivityPanel must reset panel.entries and refetch every call.
         src = _activity_src()
-        body = src[src.index("export async function openActivityPanel()"):src.index("function renderControls()")]
+        body = src[src.index("export async function openActivityPanel("):src.index("function renderControls()")]
         assert "panel.entries = null;" in body
         assert "panel.entries = await listActivity(FETCH_LIMIT);" in body
 

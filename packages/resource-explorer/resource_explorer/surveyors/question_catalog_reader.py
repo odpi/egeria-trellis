@@ -66,6 +66,10 @@ class QuestionCatalogEntry:
     stage: str
     perspectives: list[str]
     answering: QuestionAnswering
+    #: The question's stable id (`Q-0001`): assigned once in the CSV's `Question ID` column, never derived
+    #: from the text, one id across every resource type a shared question appears under. The text can be
+    #: reworded; the id cannot change, which is what lets a manifest or a stored row name a question.
+    id: str = ""
     purposes: list[str] = field(default_factory=list)
     #: Granularity the answer is a single value at (design §18.3): one or more
     #: of resource / container / member / field. Asked above its level a
@@ -92,6 +96,7 @@ class QuestionCatalogEntry:
 
     def to_dict(self) -> dict:
         return {
+            "id": self.id,
             "question": self.question,
             "stage": self.stage,
             "perspectives": self.perspectives,
@@ -108,6 +113,7 @@ class QuestionCatalogEntry:
 def _entry_from_yaml(raw: dict) -> QuestionCatalogEntry:
     answering_raw = raw.get("answering") or {}
     return QuestionCatalogEntry(
+        id=str(raw.get("id") or ""),
         question=raw["question"],
         stage=raw.get("stage", ""),
         perspectives=list(raw.get("perspectives") or []),
@@ -345,3 +351,44 @@ def get_questions(
     else:
         result.absence = FILTERED_TO_NOTHING
     return result
+
+
+
+def all_question_ids() -> set[str]:
+    """Every question id in the catalog, across all resource types, retired questions included (a retired
+    question keeps its id, so a manifest naming one is still naming something real)."""
+    return {e.id for entries in _load().values() for e in entries if e.id}
+
+
+def find_question(key: str, resource_type: str | None = None) -> dict | None:
+    """One catalog entry (as `get_questions` returns it, minus `derivation`) by its stable id OR its
+    display text, or None. The id is tried first; the text is matched exactly as the text-keyed routes
+    always have, so existing URLs and stored keys that carry the wording keep resolving.
+
+    With `resource_type` the search is confined to that type's section (the same text can be authored
+    under two types with different answering). Without it, the first type in catalog order that has the
+    key wins; for an id that is always the same question, since one id is one question."""
+    key = (key or "").strip()
+    if not key:
+        return None
+    catalog = _load()
+    sections = [resource_type] if resource_type else list(catalog)
+    for attr in ("id", "question"):
+        for rt in sections:
+            for e in catalog.get(rt, []):
+                if getattr(e, attr) == key:
+                    return e.to_dict()
+    return None
+
+
+def find_question_by_id(question_id: str, resource_type: str | None = None) -> dict | None:
+    """Like `find_question`, but the key must be an id; a text that merely looks like one is not matched."""
+    question_id = (question_id or "").strip()
+    if not question_id:
+        return None
+    catalog = _load()
+    for rt in ([resource_type] if resource_type else list(catalog)):
+        for e in catalog.get(rt, []):
+            if e.id == question_id:
+                return e.to_dict()
+    return None

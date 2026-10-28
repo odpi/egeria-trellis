@@ -19,6 +19,14 @@ export function whenMs(iso) {
   return Date.parse(zoned ? s : `${s}Z`);
 }
 
+/** A stamp as the READER's local time ("Oct 16, 10:42 AM"), never the UTC date the server stored. Empty when the
+ *  stamp cannot be read. */
+export function localTime(iso) {
+  const ms = whenMs(iso);
+  if (Number.isNaN(ms)) return '';
+  return new Date(ms).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+}
+
 export function ago(iso) {
   if (!iso) return '';
   const then = whenMs(iso);
@@ -73,4 +81,50 @@ export function depthOfferText(d, esc) {
 export function changedTimesHtml(n) {
   if (n < 1) return '';
   return n === 1 ? 'changed once' : `changed <span class="tnum">${n}</span> times`;
+}
+
+/** The result line for something saved in RE's own record: "saved · who · when" (REPLY-DESIGNER-SAVE-AND-PUBLISH-VERBS.md).
+ *  It is built from the re-read row (or the route's own answer), never from the click. A missing author is said, not
+ *  skipped: "who isn't recorded". The Egeria family's lines are different words ("cataloged · read back when",
+ *  "published · read back when", "sent · waiting for Egeria") and only after a read-back proves them. */
+export function savedLine(who, whenIso) {
+  const w = String(whenIso || '');
+  const when = w.length >= 16 ? `${w.slice(5, 10)} ${w.slice(11, 16)}` : '';
+  return ['saved', who || "who isn't recorded", when].filter(Boolean).join(' · ');
+}
+
+/** "read back 09:12": the time the read-back was done, for the Egeria family's result lines. */
+export function readBackAt(date = new Date()) {
+  return `read back ${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
+}
+
+/* ── Egeria reset: words that read the `egeria_reset` marker (never decided here) ──────────────────────────
+ * The server derives `published_state` ('published' | 'published_earlier' | '') and `egeria_reset_at` from the
+ * marker row; these functions only choose how to say it. A short word on the element, the sentence on demand
+ * (the title). */
+
+export const PUBLISHED_EARLIER_WORD = 'published earlier';
+export const PUBLISHED_EARLIER_SENTENCE = 'published earlier \u00b7 Egeria was reset';
+export const STORED_COPY_RESET_LINE = 'Egeria was reset since \u00b7 the element is not in Egeria now';
+export const UNBOUND_WORDS = 'unbound by reset \u00b7 rebind to recreate';
+
+/** The Published badge for something with `last_published_at`: {text, title, earlier}. Empty text when never
+ *  published. `earlier` is true only when the server says the publish predates the reset. */
+export function publishedBadge(item) {
+  const at = item && item.last_published_at;
+  if (!at) return { text: '', title: '', earlier: false };
+  if (item.published_state === 'published_earlier') {
+    return { text: PUBLISHED_EARLIER_WORD, title: `${PUBLISHED_EARLIER_SENTENCE} (${at}; reset ${item.egeria_reset_at || ''})`, earlier: true };
+  }
+  return { text: 'Published', title: `Last published: ${at}`, earlier: false };
+}
+
+/** The heading of RE's own stored copy of a survey report, and the ONE added line when the reset postdates the
+ *  read. `rep.reset_since` comes from the server. Returns {head, resetLine} (resetLine '' when none). */
+export function storedCopyWords(rep) {
+  const read = rep && (rep.stored_copy_read_at || rep.read_at) || '';
+  return {
+    head: `stored copy \u00b7 read from Egeria ${read || 'at an unrecorded time'}`,
+    resetLine: rep && rep.reset_since ? STORED_COPY_RESET_LINE : '',
+  };
 }

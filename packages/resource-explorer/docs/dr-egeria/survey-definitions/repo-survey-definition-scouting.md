@@ -8,6 +8,12 @@ GovActionProcessStep::RepoCoarseScout::repo_git_statistics
 ### Description
 Refreshes project_stats (stars, forks, contributors, commit activity, releases, security config, deployments) from the GitHub API — the table eight other steps read. Replaces five independent StatsFetcher calls that each refreshed it separately in the same run.
 
+### Produced Guards
+survey-completed, survey-invalid, survey-failed, Any
+
+### Ignore Multiple Triggers
+true
+
 ### Additional Properties
 | Parameter Name | Parameter Value |
 |---|---|
@@ -26,6 +32,12 @@ GovActionProcessStep::RepoCoarseScout::repo_health
 
 ### Description
 Activity, community, release-cadence, and freshness scoring from GitHub stats.
+
+### Produced Guards
+survey-completed, survey-invalid, survey-failed, Any
+
+### Ignore Multiple Triggers
+true
 
 ### Additional Properties
 | Parameter Name | Parameter Value |
@@ -46,12 +58,43 @@ GovActionProcessStep::RepoCoarseScout::repo_language
 ### Description
 Primary/secondary language and coarse project-type classification.
 
+### Produced Guards
+survey-completed, survey-invalid, survey-failed, Any
+
+### Ignore Multiple Triggers
+true
+
 ### Additional Properties
 | Parameter Name | Parameter Value |
 |---|---|
 | executes_at | resource-explorer |
 | supported_technology_type | Git Repository |
 | re_analysis_step | repo_language |
+
+___
+
+## Create Governance Action Process Step
+### Display Name
+Repo Scouting Scan — Repo Homepage
+
+### Qualified Name
+GovActionProcessStep::RepoCoarseScout::repo_homepage
+
+### Description
+Finds where the project's homepage and its documentation are, and whether the documentation answers. Reads GitHub's homepage field, the packaging manifests (pyproject.toml, package.json, setup.cfg, Cargo.toml, pom.xml) and the README -- small files only, through the GitHub contents API, never a download -- and keeps the source and the other candidates for each answer. An entry labelled Documentation wins; placeholders such as example.com are rejected. One bounded request records whether the docs URL is reachable. Surfaced in Scouting as links with a short cue; the homepage is published to Egeria as an ExternalReference linked to the repo.
+
+### Produced Guards
+survey-completed, survey-invalid, survey-failed, Any
+
+### Ignore Multiple Triggers
+true
+
+### Additional Properties
+| Parameter Name | Parameter Value |
+|---|---|
+| executes_at | resource-explorer |
+| supported_technology_type | Git Repository |
+| re_analysis_step | repo_homepage |
 
 ___
 
@@ -103,6 +146,78 @@ GovActionProcessStep::RepoCoarseScout::repo_language
 
 ### Guard
 Any
+
+___
+
+## Link Next Process Step
+### Governance Action Process Step
+GovActionProcessStep::RepoCoarseScout::repo_language
+
+### Next Governance Action Process Step
+GovActionProcessStep::RepoCoarseScout::repo_homepage
+
+### Guard
+Any
+
+___
+
+## Link Action to Action Executor
+### Governance Action Type
+GovActionProcessStep::RepoCoarseScout::repo_git_statistics
+
+### Governance Engine
+ResourceExplorerSurvey
+
+### Request Type
+re-repo-git-statistics
+
+### Description
+Egeria dispatches GovActionProcessStep::RepoCoarseScout::repo_git_statistics to Resource Explorer's engine, which claims it and runs RE step repo_git_statistics.
+
+___
+
+## Link Action to Action Executor
+### Governance Action Type
+GovActionProcessStep::RepoCoarseScout::repo_health
+
+### Governance Engine
+ResourceExplorerSurvey
+
+### Request Type
+re-repo-health
+
+### Description
+Egeria dispatches GovActionProcessStep::RepoCoarseScout::repo_health to Resource Explorer's engine, which claims it and runs RE step repo_health.
+
+___
+
+## Link Action to Action Executor
+### Governance Action Type
+GovActionProcessStep::RepoCoarseScout::repo_language
+
+### Governance Engine
+ResourceExplorerSurvey
+
+### Request Type
+re-repo-language
+
+### Description
+Egeria dispatches GovActionProcessStep::RepoCoarseScout::repo_language to Resource Explorer's engine, which claims it and runs RE step repo_language.
+
+___
+
+## Link Action to Action Executor
+### Governance Action Type
+GovActionProcessStep::RepoCoarseScout::repo_homepage
+
+### Governance Engine
+ResourceExplorerSurvey
+
+### Request Type
+re-repo-homepage
+
+### Description
+Egeria dispatches GovActionProcessStep::RepoCoarseScout::repo_homepage to Resource Explorer's engine, which claims it and runs RE step repo_homepage.
 
 ___
 

@@ -109,7 +109,10 @@ class TestValidation:
         p = _write(tmp_path, "resource_type,address\nfilesystem,/mnt/data\n")
         plan = plan_import(registry, parse_csv(p))
         assert len(plan.unsupported_type) == 1
-        assert "credentials" in plan.unsupported_type[0].errors[0]
+        # CSV in/out slice: file systems still have no import path, and the
+        # reason is the real one now (databases are importable through `server`
+        # / `connection_ref`; their old "needs credentials" reason is gone).
+        assert "no file-system import path" in plan.unsupported_type[0].errors[0]
 
     def test_a_file_with_no_address_column_fails_loudly(self, tmp_path):
         p = _write(tmp_path, "name,url\nfoo,bar\n")

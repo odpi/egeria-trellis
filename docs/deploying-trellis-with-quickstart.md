@@ -73,10 +73,12 @@ platform tokens last one hour; an app session is the shorter of that and the app
 | Key | Meaning | Source |
 |---|---|---|
 | `TRELLIS_JWT_SECRET` | signs the apps' own session tokens; every RE/EA process on a box must share it | generate once per box: `openssl rand -hex 32` |
+| `RE_DAEMON_USER_ID` / `TRELLIS_SERVICE_ACCOUNTS` | Egeria user ids no human may sign in as (RE's background account; comma-separated list); EA refuses them with 403 because it shares `TRELLIS_JWT_SECRET` with RE | RE's `EGERIA_USER_ID`; unset refuses nobody |
 | `ADVISOR_PORTAL_SECRET` / `TRELLIS_PORTAL_SECRET` | lets the Portal hand a signed-in user to EA and RE | the same value as the QuickStart's `EGERIA_ADVISOR_SSO_SECRET` |
 | `PGVECTOR_PASSWORD` | the `egeria_advisor` Postgres role | `shared-infra/docker-entrypoint-initdb.d/init_egeria.sql` (default `advisor`) |
 | `GITHUB_TOKEN` | RE's GitHub API access for surveys and discovery | a personal token with read scope; without it GitHub's 60 calls/hour are gone in one survey |
 | `EGERIA_USER` / `EGERIA_USER_PASSWORD` | the service account above | `erinoverview` / `secret` |
+| `EGERIA_USER_ID` / `EGERIA_USER_PASSWORD` for RE | RE's daemon identity, RE's own account `resourceexplorernpa` (not a person: RE refuses an interactive sign-in as it). Development bootstrap; not for a shipped product | the account's password in Egeria's user directory; see RE's `docs/admin-guide.md`, "RE's daemon account" |
 
 Never commit any of these, and never bake them into an image (the trellis `.dockerignore`
 excludes `.env` files for that reason).
@@ -228,8 +230,8 @@ echo secret | $C run --rm --no-deps -T --entrypoint sh trellis-re-web -c \
 ```
 
 The published asset and its survey report read back from Egeria with `createdBy` and
-`Ownership.owner` equal to the user who logged in, and zone `resource-explorer-draft` until a
-curator accepts it.
+`Ownership.owner` equal to the user who logged in, and no RE-imposed zone (since 2026-10-08
+draft is a content status, not a zone; a draft zone appears only if `EXPLORER_DRAFT_ZONE` is set).
 
 Load EA's retrieval corpus once per box (clones the Egeria repositories into the container's data
 volume and indexes them into pgvector):

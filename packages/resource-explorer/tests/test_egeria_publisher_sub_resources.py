@@ -38,7 +38,7 @@ def _publisher(registry):
     pub._discovery = MagicMock()
     pub._connect = MagicMock()  # publish_sub_resources() connects itself; short-circuit to the mocks above
     # Nothing pre-exists in Egeria by default.
-    pub._automated_curation.get_guid_for_name.return_value = []
+    pub._automated_curation.get_guid_for_name.return_value = "No elements found"   # pyegeria's real miss
 
     async def _fake_async_template(type_name):
         return f"template-{type_name}"
@@ -164,6 +164,9 @@ class TestOrderingAndParentResolution:
         expected_qn = f"GitHubRepository::{GITHUB_URL}::docs"
         assert body["replacementProperties"] == {
             "class": "AssetProperties", "qualifiedName": expected_qn,
+            # The naming rule (ruling 2026-10-07): path and repository; MagicMock registry
+            # has no project, so the repository reads as the slug.
+            "displayName": "docs/ \u00b7 myproj",
         }
 
 
@@ -193,7 +196,7 @@ class TestIdempotency:
         def _lookup(qn):
             if qn.endswith("::docs"):
                 return ["22222222-2222-2222-2222-222222222222"]
-            return []
+            return "No elements found"          # pyegeria's real miss ([] is not an answer pyegeria gives)
 
         pub._automated_curation.get_guid_for_name.side_effect = _lookup
         pub.publish_sub_resources("myproj", GITHUB_URL, "asset-guid", ["docs", "docs/SECURITY.md"])

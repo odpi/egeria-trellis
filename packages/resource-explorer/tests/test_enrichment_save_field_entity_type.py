@@ -33,5 +33,5 @@ def test_every_save_call_site_passes_the_entity_type():
     # Three call sites in this module (judgement/observation save, the
     # owner-interim button, the licence-confirm button) -- every one of them
     # must thread the real entity type through, not just the import existing.
-    assert calls == 3, f"expected 3 call sites, found {calls} -- update this test if that changes"
+    assert calls == 4, f"expected 4 call sites, found {calls} -- update this test if that changes"
     assert threaded >= 3

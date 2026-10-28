@@ -1,4 +1,4 @@
-"""Slice 17c (docs/design-notes/SLICE-17B-RENDER-BOUND-LEVEL-GATE-IMPLEMENTED.md's
+"""Slice 17c (SLICE-17B-RENDER-BOUND-LEVEL-GATE-IMPLEMENTED.md's
 follow-up): the render-bound rule slice 17b applied only to sub-resource-level
 questions is generalized to every level. A known fact with nothing renderable
 -- no `headline`, no `value.detail`/`summary`/`description` prose, and a

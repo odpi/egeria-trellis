@@ -46,9 +46,11 @@ What the caller's identity is *for*
 `current_caller` is a ContextVar, set by the middleware for the duration of the
 request and inherited by every task and thread the request spawns — the same
 shape the Portal uses (``egeria_auth.py``'s contextvar middleware) so both
-sides look alike. `apply_caller_token(client)` is the downstream half: build a
-pyegeria client, hand it the caller's token, and the Egeria write is attributed
-to the person rather than to `erinoverview`.
+sides look alike. The downstream half is `egeria_clients.egeria_client(Caller())`
+(Brief I, 2026-10-09): the one factory reads this ContextVar, hands every
+sub-client the caller's token, and the Egeria write is attributed to the person
+rather than to the service account. With no caller it refuses (401); it never
+falls back.
 
 **Scope note.** This module makes the caller's token *available* to agent code.
 It does not rewrite RE's existing pyegeria client construction sites, which
@@ -201,19 +203,6 @@ def caller() -> CallerIdentity | None:
     return current_caller.get()
 
 
-def apply_caller_token(client: Any) -> None:
-    """Give a freshly-built pyegeria client the caller's Egeria bearer token.
-
-    Falls through to `trellis_auth.apply_token`'s own behaviour when there is
-    no caller token (the client mints one from its own configured credentials),
-    which is what the legitimately service-account-backed paths already do.
-    """
-    from trellis_auth import apply_token
-
-    identity = current_caller.get()
-    apply_token(client, identity.egeria_token if identity else None)
-
-
 # ── the Egeria-token validation cache ───────────────────────────────────
 
 
@@ -335,7 +324,8 @@ def authenticate(
     settings: A2AAuthSettings,
     validator: Callable[..., bool] | None = None,
 ) -> CallerIdentity | None:
-    """Resolve the caller, or None if the credential is missing or rejected."""
+    """Resolve the caller, or None if the credential is missing or rejected. Raises
+    `egeria_clients.DaemonSignInRefused` for a credential naming RE's own daemon account."""
     token = bearer_token(request.headers)
     if not token:
         return None
@@ -348,6 +338,12 @@ def authenticate(
 
         payload = get_current_user(request, config)
         if payload is not None:
+            # A session for RE's daemon is refused wherever it was minted (EA shares the secret; a
+            # pre-merge session or CLI file may name it) — Brief L round 2. Raises
+            # DaemonSignInRefused, which the middleware answers with 403.
+            from resource_explorer.egeria_clients import refuse_daemon_sign_in
+
+            refuse_daemon_sign_in(str(payload.get("user_id") or payload.get("sub") or ""))
             return CallerIdentity(
                 user_id=str(payload.get("user_id") or payload.get("sub") or "unknown"),
                 egeria_token=payload.get("egeria_token") or None,
@@ -356,10 +352,16 @@ def authenticate(
                 display_name=str(payload.get("display_name") or ""),
             )
 
-    # 2. A raw Egeria bearer token — validated against the view server, once.
+    # 2. A raw Egeria bearer token — validated against the view server, once. RE's own daemon
+    #    account presented as a person is refused BEFORE any Egeria call (Brief L round 2): the
+    #    subject is read first, and DaemonSignInRefused is raised (403 from the middleware).
+    from resource_explorer.egeria_clients import refuse_daemon_sign_in
+
+    subject = _subject_of(token)
+    refuse_daemon_sign_in(subject)
     if validate_egeria_bearer(token, settings, validator=validator):
         return CallerIdentity(
-            user_id=_subject_of(token),
+            user_id=subject,
             egeria_token=token,
             auth_source="egeria-token",
         )
@@ -412,13 +414,21 @@ class A2AAuthMiddleware:
 
         request = Request(scope)
 
+        from resource_explorer.egeria_clients import DaemonSignInRefused
+
+        try:
+            offered = await self._authenticate(request)
+        except DaemonSignInRefused as exc:
+            # RE's daemon presented as a caller: 403 in every mode — never anonymous instead.
+            await self._forbidden(send, str(exc))
+            return
         if self.settings.allow_anonymous:
             # Still resolve an identity when one was offered — anonymous mode
             # lowers the gate, it does not throw away a credential the caller
             # took the trouble to send.
-            identity = await self._authenticate(request) or ANONYMOUS
+            identity = offered or ANONYMOUS
         else:
-            identity = await self._authenticate(request)
+            identity = offered
             if identity is None:
                 await self._unauthorized(scope, send, path)
                 return
@@ -436,6 +446,15 @@ class A2AAuthMiddleware:
         # cache miss. Off the event loop, or one unauthenticated caller stalls
         # every in-flight agent run.
         return await asyncio.to_thread(authenticate, request, self.settings)
+
+    async def _forbidden(self, send, detail: str) -> None:
+        import json
+
+        body = json.dumps({"error": "forbidden", "detail": detail}).encode("utf-8")
+        await send({"type": "http.response.start", "status": 403,
+                    "headers": [(b"content-type", b"application/json"),
+                                (b"content-length", str(len(body)).encode("latin-1"))]})
+        await send({"type": "http.response.body", "body": body})
 
     async def _unauthorized(self, scope, send, path: str) -> None:
         import json

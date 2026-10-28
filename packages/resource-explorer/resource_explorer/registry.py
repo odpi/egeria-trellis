@@ -7,6 +7,7 @@ import logging
 import math
 import re
 import sqlite3
+import threading
 import uuid
 from contextlib import contextmanager
 from dataclasses import asdict, dataclass, field
@@ -113,6 +114,16 @@ class DatabaseServer:
     registered_at: str = field(default_factory=lambda: datetime.utcnow().isoformat())
     error_message: str = ""
     group_slug: str = ""  # slug of the umbrella project group this server belongs to
+    # A saved source remembers its last run (owner ruling 2026-10-01, FIND-
+    # DATABASES-DIALOG-IMPLEMENTED.md): when it ran, and the resource_keys
+    # ('host:port/name') it returned, so the next Run can say "n new since".
+    # None = never run, which is NOT the same as "ran and found nothing" ([]).
+    last_run_at: str | None = None
+    last_run_candidates: list[str] | None = None
+
+
+#: slugs already warned about this process (one WARNING per slug).
+_UNREADABLE_LOGGED: set[str] = set()
 
 
 @dataclass
@@ -145,6 +156,13 @@ class DatabaseEntity:
     server_slug: str = ""
     governance_state: str = "certified"
     group_slug: str = ""  # slug of the umbrella project group this database belongs to
+    # Derived on read, never stored: "ok" | "none" | "unreadable". "unreadable"
+    # = a stored password exists but cannot be decrypted (wrong/rotated key);
+    # db_password is then "" and MUST NOT be used to connect.
+    credential_status: str = "none"
+    # UTC ISO seconds of the last recorded credential CHANGE (db_user or
+    # password differing from what was stored). None = before this was recorded.
+    credential_changed_at: str | None = None
 
 
 @dataclass
@@ -315,6 +333,173 @@ class SQLiteCursorWrapper:
         return self.raw_cursor.rowcount
 
 
+#: DDL for the repository (and later file-system) selection record, brief 2a. ONE additive, idempotent block:
+#: CREATE ... IF NOT EXISTS only, no ALTER of an existing table, no data migration, no foreign keys. The text
+#: carries no question mark and no colon-name token because the Postgres translator rewrites both (and
+#: AUTOINCREMENT to SERIAL). Append-only: nothing in RE updates or deletes a row of it.
+RESOURCE_SCOPE_EVENTS_DDL = (
+    """
+    CREATE TABLE IF NOT EXISTS resource_scope_events (
+        id              INTEGER PRIMARY KEY AUTOINCREMENT,
+        resource_type   TEXT NOT NULL,
+        resource_slug   TEXT NOT NULL,
+        locator         TEXT NOT NULL DEFAULT '',
+        kind            TEXT NOT NULL DEFAULT 'file',
+        choice          TEXT NOT NULL DEFAULT '',
+        action          TEXT NOT NULL DEFAULT 'set',
+        source          TEXT NOT NULL DEFAULT 'person',
+        proposal_rule   TEXT NOT NULL DEFAULT '',
+        reason          TEXT NOT NULL DEFAULT '',
+        author          TEXT NOT NULL,
+        changed_at      TEXT NOT NULL
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_resource_scope_events_locator "
+    "ON resource_scope_events(resource_type, resource_slug, locator, id)",
+)
+
+#: DDL for the annotations of a user step run by RE (extensibility brief 2c; the project owner chose a dedicated
+#: table, 2026-10-13). Same rules as RESOURCE_SCOPE_EVENTS_DDL: ONE additive, idempotent block, CREATE ... IF
+#: NOT EXISTS only, no ALTER of an existing table, no data migration, no foreign keys, no question mark or
+#: colon-name token (the Postgres translator rewrites both; AUTOINCREMENT becomes SERIAL).
+#:
+#: One row per annotation. `run_id` is the run's own time, the executor's `surveyed_at`, so the run's
+#: `step_runs` row is (entity_type, slug, step_key, surveyed_at = run_id): that is the step_runs link (the
+#: step_runs row is written after the step returns, so no id exists to store when these rows are written).
+#: `result_state` is the envelope's state, a column so a reader can filter on it; the whole envelope stays in
+#: `detail_json.additionalProperties`. The unique key makes a re-run of the same run write nothing new.
+STEP_ANNOTATIONS_DDL = (
+    """
+    CREATE TABLE IF NOT EXISTS step_annotations (
+        id               INTEGER PRIMARY KEY AUTOINCREMENT,
+        entity_type      TEXT NOT NULL,
+        slug             TEXT NOT NULL,
+        step_key         TEXT NOT NULL,
+        package          TEXT NOT NULL DEFAULT '',
+        producer_version TEXT NOT NULL DEFAULT '',
+        run_id           TEXT NOT NULL,
+        annotation_type  TEXT NOT NULL DEFAULT '',
+        scope            TEXT NOT NULL,
+        result_state     TEXT NOT NULL DEFAULT '',
+        summary          TEXT NOT NULL DEFAULT '',
+        explanation      TEXT NOT NULL DEFAULT '',
+        measured_at      TEXT NOT NULL DEFAULT '',
+        detail_json      TEXT NOT NULL DEFAULT '{}',
+        created_at       TEXT NOT NULL,
+        UNIQUE (entity_type, slug, step_key, run_id, scope)
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_step_annotations_latest "
+    "ON step_annotations(entity_type, slug, step_key, measured_at)",
+    "CREATE INDEX IF NOT EXISTS idx_step_annotations_state "
+    "ON step_annotations(entity_type, slug, step_key, result_state)",
+)
+
+
+#: DDL for the API reference of a repository (owner ruling 2026-10-15: the fetched and committed specs live in
+#: proper tables so elements can be filtered and analysed by path and string). Same rules as the two blocks
+#: above: ONE additive, idempotent block, CREATE ... IF NOT EXISTS only, no ALTER of an existing table, no data
+#: migration, no foreign keys (children are deleted by document id in the same transaction that replaces them),
+#: no question mark or colon-name token (the Postgres translator rewrites both; AUTOINCREMENT becomes SERIAL).
+#:
+#: api_reference_documents  one row per described document: a committed spec file (`source` committed_spec), the
+#:     registered running instance (`running_instance`: at most one current row per repository, its `origin` is
+#:     the registered URL; `registered_by/at`, `cleared_by/at` and `status` cleared keep the audit), or a capture
+#:     marker (`status` captured, origin __capture__, so "never looked" and "looked, found none" differ).
+#:     `superseded_at` IS NULL marks the current rows. `meta_json` carries the document-level facts that are not
+#:     rows (base paths, security schemes, tag descriptions, notes).
+#: api_reference_operations one row per operation (an HTTP operation now; an MCP tool/prompt/resource later via
+#:     `kind`/`kind_detail`), with the filterable columns lifted out (`path`, `normalised_path`, `method`,
+#:     `operation_id`, `summary`, `tags_json`, `search_text` lower-cased) and the structured parts as JSON.
+#: api_reference_schemas    one row per named schema of a document (capped per schema before it is stored).
+#: Code-derived routes are NOT stored here: they are read live from project_code_markers.
+API_REFERENCE_DDL = (
+    """
+    CREATE TABLE IF NOT EXISTS api_reference_documents (
+        id             TEXT PRIMARY KEY,
+        resource_type  TEXT NOT NULL DEFAULT 'repo',
+        slug           TEXT NOT NULL,
+        source         TEXT NOT NULL,
+        origin         TEXT NOT NULL DEFAULT '',
+        kind           TEXT NOT NULL DEFAULT 'http_api',
+        status         TEXT NOT NULL DEFAULT 'ok',
+        reason         TEXT NOT NULL DEFAULT '',
+        spec_version   TEXT NOT NULL DEFAULT '',
+        title          TEXT NOT NULL DEFAULT '',
+        api_version    TEXT NOT NULL DEFAULT '',
+        description    TEXT NOT NULL DEFAULT '',
+        operation_count INTEGER NOT NULL DEFAULT 0,
+        total_operations INTEGER NOT NULL DEFAULT 0,
+        content_type   TEXT NOT NULL DEFAULT '',
+        byte_count     BIGINT DEFAULT NULL,
+        captured_at    TEXT NOT NULL,
+        attempted_at   TEXT NOT NULL DEFAULT '',
+        attempted_by   TEXT NOT NULL DEFAULT '',
+        captured_by    TEXT NOT NULL DEFAULT '',
+        registered_by  TEXT NOT NULL DEFAULT '',
+        registered_at  TEXT NOT NULL DEFAULT '',
+        cleared_by     TEXT NOT NULL DEFAULT '',
+        cleared_at     TEXT NOT NULL DEFAULT '',
+        superseded_at  TEXT DEFAULT NULL,
+        meta_json      TEXT NOT NULL DEFAULT '{}'
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_api_ref_documents_current "
+    "ON api_reference_documents(resource_type, slug, source, superseded_at)",
+    """
+    CREATE TABLE IF NOT EXISTS api_reference_operations (
+        id               INTEGER PRIMARY KEY AUTOINCREMENT,
+        document_id      TEXT NOT NULL,
+        resource_type    TEXT NOT NULL DEFAULT 'repo',
+        slug             TEXT NOT NULL,
+        source           TEXT NOT NULL,
+        seq              INTEGER NOT NULL DEFAULT 0,
+        kind             TEXT NOT NULL DEFAULT 'http_api',
+        kind_detail      TEXT NOT NULL DEFAULT '',
+        op_key           TEXT NOT NULL,
+        name             TEXT NOT NULL DEFAULT '',
+        method           TEXT NOT NULL DEFAULT '',
+        path             TEXT NOT NULL DEFAULT '',
+        normalised_path  TEXT NOT NULL DEFAULT '',
+        operation_id     TEXT NOT NULL DEFAULT '',
+        summary          TEXT NOT NULL DEFAULT '',
+        description      TEXT NOT NULL DEFAULT '',
+        tags_json        TEXT NOT NULL DEFAULT '[]',
+        deprecated       INTEGER NOT NULL DEFAULT 0,
+        security_json    TEXT NOT NULL DEFAULT '[]',
+        parameters_json  TEXT NOT NULL DEFAULT '[]',
+        request_body_json TEXT DEFAULT NULL,
+        request_schema   TEXT NOT NULL DEFAULT '',
+        responses_json   TEXT NOT NULL DEFAULT '[]',
+        response_schemas TEXT NOT NULL DEFAULT '',
+        input_schema_json TEXT DEFAULT NULL,
+        handler          TEXT NOT NULL DEFAULT '',
+        handler_signature TEXT NOT NULL DEFAULT '',
+        location         TEXT NOT NULL DEFAULT '',
+        search_text      TEXT NOT NULL DEFAULT ''
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_api_ref_operations_slug_source "
+    "ON api_reference_operations(resource_type, slug, source)",
+    "CREATE INDEX IF NOT EXISTS idx_api_ref_operations_path "
+    "ON api_reference_operations(normalised_path)",
+    "CREATE INDEX IF NOT EXISTS idx_api_ref_operations_document "
+    "ON api_reference_operations(document_id, seq)",
+    "CREATE INDEX IF NOT EXISTS idx_api_ref_operations_operation_id "
+    "ON api_reference_operations(operation_id)",
+    """
+    CREATE TABLE IF NOT EXISTS api_reference_schemas (
+        id           INTEGER PRIMARY KEY AUTOINCREMENT,
+        document_id  TEXT NOT NULL,
+        name         TEXT NOT NULL,
+        schema_json  TEXT NOT NULL DEFAULT '{}'
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_api_ref_schemas_document "
+    "ON api_reference_schemas(document_id, name)",
+)
+
+
 class PostgresCursorWrapper:
     def __init__(self, raw_cursor):
         self.raw_cursor = raw_cursor
@@ -369,6 +554,15 @@ class PostgresCursorWrapper:
         return self.raw_cursor.rowcount
 
 
+#: `step_runs.step_key` prefix for a native Egeria survey launch -- the rest is
+#: the Egeria process's qualifiedName (`configdata/technology_type_processes.yaml`).
+#: A distinct namespace so no RE analysis step key can ever collide with one.
+NATIVE_SURVEY_STEP_PREFIX = "egeria-native:"
+
+#: runs ids already warned about as an unreadable engine_action target (once per process, not every sweep).
+_UNREADABLE_ENGINE_ROWS_WARNED: set = set()
+
+
 #: What a schedule row's `analysis_id` refers to. Running always goes through a
 #: survey type by preference (a single analysis gets a single-step survey type,
 #: so there is one way to run things rather than two) — TARGET_ANALYSIS remains
@@ -392,6 +586,12 @@ TARGET_SURVEY = "survey"
 #: them, and `query_findings_all_runs` is untouched — the provenance view must
 #: keep answering "who proposed what, ever" after the current answer changes.
 WITHDRAWN_LABEL = "withdrawn"
+
+#: Findings kinds that are read ACROSS runs on purpose (several independent
+#: steps contribute rows at different times, via query_findings_all_runs), so
+#: "latest run wins" must not be applied to their counts. Everything else is
+#: current-run-only. See FINDINGS-SUPERSESSION-IMPLEMENTED.md.
+ALL_RUNS_FINDING_KINDS = ("architecture_recovery", "architecture_decisions")
 
 
 # ── Structured DB/FS detail tables: provenance and measurement state ────────
@@ -430,6 +630,23 @@ STATE_NOT_COLLECTED = "not_collected"
 #: The engine cannot provide this at all (design §5.1's capability
 #: declaration): a DuckDB connection asked for `pg_stat_replication`.
 STATE_NOT_SUPPORTED = "not_supported"
+#: This measurement does not apply to what this row IS, regardless of engine
+#: or capability — a view or foreign table's column, asked for a
+#: `postgres_column_profile` sample. `TABLESAMPLE` is only valid against a
+#: plain table or a materialized view (Postgres rejects it outright on a
+#: view or foreign table), so there is no version of this engine, this
+#: capability set, or this budget under which the measurement could ever be
+#: taken. Distinct from `STATE_NOT_COLLECTED` on purpose: that state says
+#: "nothing has read this yet, but could" (run ANALYZE, raise the budget);
+#: this one says the underlying question has no answer for this kind of
+#: relation, so re-running the same step again would not help. Found live
+#: 2026-09-27/28 on `laz_local_adventureworks`: `postgres_column_profile`
+#: attempted `TABLESAMPLE` on a view, Postgres rejected it, and — before
+#: this state existed — the resulting SQL error aborted the connection's
+#: transaction and silently failed every column sampled after it in the
+#: same run (see `column_profile_step.py` and
+#: `connection.py::execute_query_isolated`).
+STATE_NOT_APPLICABLE = "not_applicable"
 #: The step that would have measured this did not run in this survey — the
 #: commonest case for a back-filled row, where the old blob simply never
 #: carried the field.
@@ -461,6 +678,7 @@ STATES_WITHOUT_A_MEASUREMENT = frozenset({
     STATE_NOT_COLLECTED,
     STATE_NOT_SUPPORTED,
     STATE_NOT_MEASURED,
+    STATE_NOT_APPLICABLE,
 })
 
 # ── whose statistics, and as of when ───────────────────────────────────────
@@ -547,7 +765,7 @@ _DB_FS_DETAIL_TABLE_DDL: tuple[str, ...] = (
         view_count            INTEGER DEFAULT NULL,
         mat_view_count        INTEGER DEFAULT NULL,
         column_count          INTEGER DEFAULT NULL,
-        total_table_size_bytes INTEGER DEFAULT NULL,
+        total_table_size_bytes BIGINT DEFAULT NULL,
         state                 TEXT NOT NULL DEFAULT 'measured',
         UNIQUE(database_slug, surveyed_at, source, schema_name),
         FOREIGN KEY (database_slug) REFERENCES databases(slug)
@@ -566,8 +784,11 @@ _DB_FS_DETAIL_TABLE_DDL: tuple[str, ...] = (
         table_owner          TEXT DEFAULT '',
         description          TEXT DEFAULT '',
         column_count         INTEGER DEFAULT NULL,
-        row_count            INTEGER DEFAULT NULL,
-        size_bytes           INTEGER DEFAULT NULL,
+        row_count            BIGINT DEFAULT NULL,
+        size_bytes           BIGINT DEFAULT NULL,
+        -- Brief D: total = table_bytes + index_bytes (+ TOAST). NULL = not read.
+        table_bytes          BIGINT DEFAULT NULL,
+        index_bytes          BIGINT DEFAULT NULL,
         is_populated         INTEGER DEFAULT NULL,
         has_indexes          INTEGER DEFAULT NULL,
         has_rules            INTEGER DEFAULT NULL,
@@ -663,7 +884,7 @@ _DB_FS_DETAIL_TABLE_DDL: tuple[str, ...] = (
         -- only thing that makes it interpretable. NULL means the total was
         -- not established (the statistics collector had no row for the
         -- table), which is distinct from 0.
-        sample_total_rows         INTEGER DEFAULT NULL,
+        sample_total_rows         BIGINT DEFAULT NULL,
         state                     TEXT NOT NULL DEFAULT 'measured',
         UNIQUE(database_slug, surveyed_at, source, schema_name, table_name, column_name),
         FOREIGN KEY (database_slug) REFERENCES databases(slug)
@@ -677,19 +898,19 @@ _DB_FS_DETAIL_TABLE_DDL: tuple[str, ...] = (
         source            TEXT NOT NULL DEFAULT 'local',
         schema_name       TEXT NOT NULL,
         table_name        TEXT NOT NULL,
-        rows_inserted     INTEGER DEFAULT NULL,
-        rows_updated      INTEGER DEFAULT NULL,
-        rows_deleted      INTEGER DEFAULT NULL,
-        hot_updates       INTEGER DEFAULT NULL,
-        live_tuples       INTEGER DEFAULT NULL,
-        dead_tuples       INTEGER DEFAULT NULL,
-        seq_scan          INTEGER DEFAULT NULL,
-        idx_scan          INTEGER DEFAULT NULL,
+        rows_inserted     BIGINT DEFAULT NULL,
+        rows_updated      BIGINT DEFAULT NULL,
+        rows_deleted      BIGINT DEFAULT NULL,
+        hot_updates       BIGINT DEFAULT NULL,
+        live_tuples       BIGINT DEFAULT NULL,
+        dead_tuples       BIGINT DEFAULT NULL,
+        seq_scan          BIGINT DEFAULT NULL,
+        idx_scan          BIGINT DEFAULT NULL,
         last_vacuum       TEXT DEFAULT '',
         last_autovacuum   TEXT DEFAULT '',
         last_analyze      TEXT DEFAULT '',
         last_autoanalyze  TEXT DEFAULT '',
-        pending_changes   INTEGER DEFAULT NULL,
+        pending_changes   BIGINT DEFAULT NULL,
         -- When Postgres last reset the counters above. Designer review,
         -- 2026-09-20: `pg_stat_user_tables` counters are cumulative since
         -- the last stats reset, and a change *rate* is the difference
@@ -772,7 +993,7 @@ _DB_FS_DETAIL_TABLE_DDL: tuple[str, ...] = (
         entry_path          TEXT NOT NULL,
         entry_name          TEXT DEFAULT '',
         entry_type          TEXT NOT NULL DEFAULT 'file',
-        size_bytes          INTEGER DEFAULT NULL,
+        size_bytes          BIGINT DEFAULT NULL,
         file_extension      TEXT DEFAULT '',
         file_type           TEXT DEFAULT '',
         asset_type          TEXT DEFAULT '',
@@ -785,7 +1006,7 @@ _DB_FS_DETAIL_TABLE_DDL: tuple[str, ...] = (
         created_at          TEXT DEFAULT '',
         modified_at         TEXT DEFAULT '',
         accessed_at         TEXT DEFAULT '',
-        record_count        INTEGER DEFAULT NULL,
+        record_count        BIGINT DEFAULT NULL,
         state               TEXT NOT NULL DEFAULT 'measured',
         UNIQUE(filesystem_slug, surveyed_at, source, entry_path),
         FOREIGN KEY (filesystem_slug) REFERENCES file_systems(slug)
@@ -799,11 +1020,11 @@ _DB_FS_DETAIL_TABLE_DDL: tuple[str, ...] = (
         source          TEXT NOT NULL DEFAULT 'local',
         file_path       TEXT NOT NULL,
         format          TEXT DEFAULT '',
-        row_count       INTEGER DEFAULT NULL,
+        row_count       BIGINT DEFAULT NULL,
         column_count    INTEGER DEFAULT NULL,
         schema_json     TEXT DEFAULT NULL,
         null_summary    TEXT DEFAULT '',
-        file_size_bytes INTEGER DEFAULT NULL,
+        file_size_bytes BIGINT DEFAULT NULL,
         -- Same pair as database_column_profiles, for the same reason. A file
         -- profile is normally computed by RE at survey time
         -- (STATS_SOURCE_RESOURCE_EXPLORER), so stats_computed_at is usually
@@ -867,8 +1088,8 @@ _DB_FS_DETAIL_TABLE_DDL: tuple[str, ...] = (
     # the resource_reachability table until further tests -- do not build it
     # yet") pending live confirmation of probe 7's premise and of what a
     # CHECK_ASSET result actually looks like. Un-deferred by the project
-    # owner 2026-09-22 -- see docs/design-notes/RESOURCE-REACHABILITY-
-    # IMPLEMENTED.md and PROBES-2026-09-21.md's "Probes 7 and 8, run live"
+    # owner 2026-09-22 -- see RESOURCE-REACHABILITY-IMPLEMENTED.md and PROBES-2026-09-21.md's
+    # "Probes 7 and 8, run live"
     # section for the live evidence this table's shape is built from.
     #
     # Scoped to filesystem/folder resources only, per the same live evidence:
@@ -941,13 +1162,53 @@ _DB_FS_DETAIL_TABLE_INDEXES: tuple[str, ...] = (
     "ON resource_reachability(filesystem_slug, probed_at)",
 )
 
+#: Byte sizes and row/tuple counters that were created as 32-bit INTEGER and
+#: are widened to BIGINT on Postgres at registry start (2026-10-10, owner
+#: approved). A table or schema over ~2 GiB, or over 2.1bn rows/tuples, made
+#: the detail executemany raise "integer out of range". SQLite INTEGER is
+#: already 64-bit, so this is Postgres-only. See `_widen_int4_size_columns`.
+_PG_INT4_TO_BIGINT_COLUMNS: tuple[tuple[str, str], ...] = (
+    ("database_schemas", "total_table_size_bytes"),
+    ("database_tables", "row_count"),
+    ("database_tables", "size_bytes"),
+    ("database_column_profiles", "sample_total_rows"),
+    ("database_table_activity", "rows_inserted"),
+    ("database_table_activity", "rows_updated"),
+    ("database_table_activity", "rows_deleted"),
+    ("database_table_activity", "hot_updates"),
+    ("database_table_activity", "live_tuples"),
+    ("database_table_activity", "dead_tuples"),
+    ("database_table_activity", "seq_scan"),
+    ("database_table_activity", "idx_scan"),
+    ("database_table_activity", "pending_changes"),
+    ("filesystem_entries", "size_bytes"),
+    ("filesystem_entries", "record_count"),
+    ("filesystem_data_files", "row_count"),
+    ("filesystem_data_files", "file_size_bytes"),
+    ("filesystem_surveys", "total_size_bytes"),
+    ("project_data_profiles", "row_count"),
+    ("project_data_profiles", "file_size_bytes"),
+    ("project_file_inventory", "file_size_bytes"),
+    # probe_byte_count is the remote document's Content-Length, not a bounded
+    # probe size (doc_source_probe.py), so a large file URL can exceed int4.
+    ("doc_sources", "probe_byte_count"),
+    ("doc_sources", "ingested_bytes"),
+)
+
 #: Columns added after the tables above first shipped. Empty at introduction;
 #: this is the seam so a later column lands on existing checkouts the same way
 #: `database_surveys.source` and the `file_systems` columns did, rather than
 #: being silently absent on any registry created before it.
 _DB_FS_DETAIL_TABLE_MIGRATIONS: tuple[tuple[str, tuple[tuple[str, str], ...]], ...] = (
     ("database_schemas", ()),
-    ("database_tables", ()),
+    # Brief D: per-table heap and index sizes (pg_relation_size /
+    # pg_indexes_size). Added by the same startup loop as every other column
+    # here (`ProjectRegistry._init_schema`): checked against the live column
+    # list, so idempotent and a no-op once present.
+    ("database_tables", (
+        ("table_bytes", "BIGINT DEFAULT NULL"),
+        ("index_bytes", "BIGINT DEFAULT NULL"),
+    )),
     ("database_columns", ()),
     # stats_source/stats_computed_at (designer review, 2026-09-20) were added
     # to this table's CREATE TABLE after it had already been created against
@@ -1105,7 +1366,104 @@ def _decode_detail_row(row: dict) -> dict:
     return row
 
 
+#: `database_table_activity.stats_reset` words (Brief D 7f.3). The column is a
+#: TEXT with three honest states and no room for a fourth column: a timestamp
+#: is "Postgres reset the counters then"; NULL is "this survey did not read
+#: it" (never "never reset"); and this word is "Postgres said NULL: the
+#: counters have never been reset". Both words are truthy-or-None on purpose:
+#: Change Rates compares them, and `never -> timestamp` IS a reset.
+STATS_NEVER_RESET = "never"
+
+#: A `database_surveys.source` that records a publish, never a measurement.
+#: Rows carrying it were written by publish steps that copied (or, in the
+#: false-zero bug, invented) numbers; the string is never evidence.
+NOT_A_MEASUREMENT_SOURCES = frozenset({"egeria-published"})
+
+#: Reason stamped on rows the false-zero repair marks.
+FALSE_ZERO_REASON = "no measurement: publish step ran without a schema step"
+
+
+def _survey_schema_info(row: dict) -> dict:
+    data = row.get("survey_data") or {}
+    if isinstance(data, str):
+        try:
+            data = json.loads(data or "{}")
+        except (ValueError, TypeError):
+            return {}
+    info = data.get("schema_info") if isinstance(data, dict) else None
+    return info if isinstance(info, dict) else {}
+
+
+def is_measured_survey(row: dict | None) -> bool:
+    """THE single definition of "this database_surveys row is a measurement".
+
+    A survey row is a claim that something was measured. It is measured when
+    (1) it is not marked invalid, (2) its source is an actual surveyor —
+    never "egeria-published", which records a publish — and (3) its
+    survey_data carries a non-empty schema_info. Used by the classic Publish
+    route and the Survey Definition publish step; nothing else may re-derive
+    it. `survey_data` may be the raw JSON text (as stored) or a dict.
+    """
+    if not row:
+        return False
+    if row.get("invalid_at"):
+        return False
+    if (row.get("source") or "") in NOT_A_MEASUREMENT_SOURCES:
+        return False
+    return bool(_survey_schema_info(row))
+
+
+def is_false_zero_survey(row: dict) -> bool:
+    """The DAMAGE itself: a publish-sourced row with no schema_info."""
+    return ((row.get("source") or "") in NOT_A_MEASUREMENT_SOURCES
+            and not _survey_schema_info(row))
+
+
+def _target_request_type(target_json) -> str:
+    """The top-level `request_type` of a runs row's target JSON, or "" when unreadable."""
+    try:
+        target = json.loads(target_json or "{}")
+    except (TypeError, ValueError):
+        return ""
+    return str(target.get("request_type") or "") if isinstance(target, dict) else ""
+
+
 class ProjectRegistry:
+    # Process-wide cache: a Postgres `Engine` (connection pool) and whether
+    # `_init_schema` has already run, keyed by `database_url`. Added
+    # 2026-09-29 (PER-REQUEST-SERVER-LATENCY-IMPLEMENTED.md)
+    # after live timing showed `ProjectRegistry()` costing 250-470ms on a
+    # *warm* Postgres — every one of ~150 CREATE TABLE/ALTER TABLE/CREATE
+    # INDEX statements in `_init_schema` round-tripping to Postgres, on
+    # EVERY construction, because almost every route does
+    # `registry = ProjectRegistry()` fresh rather than sharing one. Most of
+    # those call sites are synchronous code running directly in an
+    # `async def` route handler (not `asyncio.to_thread`-wrapped, the same
+    # bug class `_init_schema`'s own `/questions` cousin was fixed for in
+    # BY-ANALYSIS-PROGRESSIVE-AND-GRAPH-IMPLEMENTED.md §2a) — so this cost
+    # was landing on the event loop thread itself, stalling every other
+    # in-flight request (including ones touching no database at all, like
+    # `/api/auth/me`) for as long as the schema re-verification took.
+    #
+    # The schema does not change while a process is running, so re-running
+    # `_init_schema` on every construction was pure waste, not safety — the
+    # real fix is "verify once per process", not "verify off the event
+    # loop" (which would still pay the cost, just less visibly). Scoped to
+    # Postgres URLs only: SQLite is test/dev-fallback only, tests construct
+    # many distinct `tmp_path`-backed registries per session, and caching
+    # those engines for the process lifetime would hold file descriptors
+    # open long after each test is done with them for no benefit — the
+    # actual shared-registry problem this fixes is exclusively Postgres.
+    # `:memory:` is excluded on principle even though no current caller
+    # uses it for `ProjectRegistry`: two independent in-memory databases
+    # sharing a cached engine would silently merge their data.
+    _pg_engine_cache: dict[str, Any] = {}
+    _pg_schema_ready: set[str] = set()
+    _pg_cache_lock = threading.Lock()
+    # Registries already announced in this process (see `_log_open`). Keyed on
+    # the full URL internally; only the credential-free label is ever logged.
+    _opened_logged: set[str] = set()
+
     def __init__(self, db_path: str = "data/registry.db", database_url: str | None = None) -> None:
         """database_url, when given, is used verbatim — bypassing the
         db_path sentinel/config-lookup logic below entirely. Added for the
@@ -1156,10 +1514,100 @@ class ProjectRegistry:
         # pool_recycle bounds how long a connection may live regardless, so a
         # half-open connection that still answers a ping cannot linger forever.
         # Both are no-ops for SQLite, which is why they are not conditional.
-        self.engine = create_engine(
-            self.database_url, pool_pre_ping=True, pool_recycle=1800,
+        is_cacheable_pg = (
+            self.database_url.startswith("postgresql")
+            and ":memory:" not in self.database_url
         )
-        self._init_schema()
+        # Diagnostic timing only (see PER-REQUEST-SERVER-LATENCY-IMPLEMENTED.md)
+        # — this is the phase that turned out to dominate per-request cost
+        # before the engine/schema cache above existed. Logged whenever it
+        # is non-trivial, not gated behind a debug flag, since a construction
+        # that is suddenly slow again is exactly what the next regression in
+        # this class looks like.
+        import time as _time
+
+        _t0 = _time.perf_counter()
+        ran_schema_init = False
+        if is_cacheable_pg:
+            # Reuse one Engine (and its connection pool) per database_url for
+            # the life of the process, and run `_init_schema` at most once
+            # per database_url — see the class docstring above. Double-
+            # checked under the lock so two threads racing to construct the
+            # first `ProjectRegistry()` for a URL don't both pay full init
+            # cost (harmless — every statement is idempotent — but pointless).
+            engine = ProjectRegistry._pg_engine_cache.get(self.database_url)
+            if engine is None:
+                with ProjectRegistry._pg_cache_lock:
+                    engine = ProjectRegistry._pg_engine_cache.get(self.database_url)
+                    if engine is None:
+                        # pool_size/max_overflow raised from SQLAlchemy's
+                        # defaults (5/10) 2026-09-29, alongside the caching
+                        # above: caching means every `ProjectRegistry()` in
+                        # this process now shares ONE pool rather than each
+                        # getting its own, so a small pool that used to be
+                        # merely wasteful (many short-lived per-request
+                        # pools) became a real concurrency bottleneck.
+                        # Measured directly: a concurrent burst of the
+                        # by-analysis pane's boot requests (auth/me,
+                        # projects, activity, databases, ~7 board reads) hit
+                        # requests queued for a connection for 8-60+s at the
+                        # old default. Postgres here allows 1000
+                        # connections (`SHOW max_connections`), so 15+25 is
+                        # nowhere near a real ceiling.
+                        engine = create_engine(
+                            self.database_url, pool_pre_ping=True, pool_recycle=1800,
+                            pool_size=15, max_overflow=25,
+                        )
+                        ProjectRegistry._pg_engine_cache[self.database_url] = engine
+            self.engine = engine
+            if self.database_url not in ProjectRegistry._pg_schema_ready:
+                with ProjectRegistry._pg_cache_lock:
+                    if self.database_url not in ProjectRegistry._pg_schema_ready:
+                        self._init_schema()
+                        ProjectRegistry._pg_schema_ready.add(self.database_url)
+                        ran_schema_init = True
+        else:
+            self.engine = create_engine(
+                self.database_url, pool_pre_ping=True, pool_recycle=1800,
+            )
+            self._init_schema()
+            ran_schema_init = True
+        _elapsed_ms = (_time.perf_counter() - _t0) * 1000
+        if _elapsed_ms > 5:
+            from resource_explorer.registry_label import describe_registry
+            # The label, never the URL: the default URL carries a password.
+            logging.getLogger(__name__).info(
+                "registry_init %s ran_schema_init=%s elapsed_ms=%.1f",
+                describe_registry(self.database_url), ran_schema_init, _elapsed_ms,
+            )
+        self._log_open()
+        # Per-INSTANCE, self-invalidating cache for `get_database_surveys` —
+        # see that method's docstring
+        # (PER-REQUEST-SERVER-LATENCY-IMPLEMENTED.md's
+        # "Registry cache staleness" addendum). Each entry is keyed on a
+        # cheap freshness signature (`(max(surveyed_at), count(*))` for the
+        # slug), not just the slug — so a stale entry is detected and
+        # refetched automatically, regardless of WHICH `ProjectRegistry`
+        # instance or process wrote the newer survey. This protects every
+        # holder, including the three long-lived ones found 2026-09-29
+        # (`run_queue.py`'s worker loop, `egeria_resync.EgeriaResync`) that
+        # construct one instance and reuse it beyond a single request —
+        # the original write-through-this-instance-only invalidation could
+        # never see a survey a DIFFERENT instance or process wrote.
+        self._database_surveys_cache: dict[str, tuple[tuple, list[dict]]] = {}
+
+    def _log_open(self) -> None:
+        """One INFO line per distinct registry opened in this process.
+
+        Names host and database (or the SQLite basename) only. Servers build a
+        `ProjectRegistry()` per request, so this is once per URL per process,
+        not per construction or per query.
+        """
+        if self.database_url in ProjectRegistry._opened_logged:
+            return
+        ProjectRegistry._opened_logged.add(self.database_url)
+        from resource_explorer.registry_label import describe_registry
+        logging.getLogger(__name__).info("%s", describe_registry(self.database_url))
 
     @contextmanager
     def _conn(self):
@@ -1190,6 +1638,117 @@ class ProjectRegistry:
             conn.commit()
         finally:
             conn.close()
+
+    def _add_author_column(self, conn, table_name: str) -> None:
+        """Idempotent `author TEXT DEFAULT NULL` on a Curate table.
+
+        Same SQL on SQLite and Postgres (`ADD COLUMN` with a NULL default is a
+        metadata-only change on Postgres, no table rewrite). NULL, never `''`:
+        rows written before authors were recorded have no author, and that must
+        stay distinguishable from a row someone signed. Re-runs are no-ops
+        because the column list is read first (`_get_table_columns`, same
+        transaction).
+        """
+        if "author" not in self._get_table_columns(conn, table_name):
+            conn.execute(f"ALTER TABLE {table_name} ADD COLUMN author TEXT DEFAULT NULL")
+
+    def _add_credential_changed_at_column(self, conn) -> None:
+        """Idempotent, additive, nullable `credential_changed_at` on `databases`.
+
+        Same pattern and same SQL on SQLite and Postgres as `_add_author_column`
+        (metadata-only on Postgres; column list read first so a re-run is a
+        no-op). NULL = "before this was recorded", never ''.
+        """
+        if "credential_changed_at" not in self._get_table_columns(conn, "databases"):
+            conn.execute("ALTER TABLE databases ADD COLUMN credential_changed_at TEXT DEFAULT NULL")
+
+    def _add_server_last_run_columns(self, conn) -> None:
+        """Idempotent, additive, nullable `last_run_at` / `last_run_candidates`
+        on `db_servers` (a saved database source remembers its last run).
+
+        Same pattern and same SQL on SQLite and Postgres as `_add_author_column`:
+        `ADD COLUMN ... DEFAULT NULL` is metadata-only on Postgres, NULL (never
+        '') keeps "never run" distinct from "ran, found nothing" (a stored
+        '[]'), and the column list is read first so a re-run is a no-op.
+        """
+        existing = self._get_table_columns(conn, "db_servers")
+        for col in ("last_run_at", "last_run_candidates"):
+            if col not in existing:
+                conn.execute(f"ALTER TABLE db_servers ADD COLUMN {col} TEXT DEFAULT NULL")
+
+    def _widen_int4_size_columns(self, conn) -> None:
+        """Postgres only: ALTER each `_PG_INT4_TO_BIGINT_COLUMNS` column from
+        INTEGER to BIGINT. Idempotent (a column already bigint is skipped) and
+        runs inside the caller's init transaction, so one failure rolls back
+        the whole init. Each ALTER takes ACCESS EXCLUSIVE on its table and
+        rewrites it (int4 -> int8 changes the on-disk width)."""
+        if not conn.is_postgres:
+            return
+        # One catalog read for every listed table, by position (a substituted
+        # connection/cursor need not carry column names). Anything unexpected
+        # in what comes back means "skip", never "raise".
+        wanted = set(_PG_INT4_TO_BIGINT_COLUMNS)
+        tables = sorted({t for t, _ in wanted})
+        rows = conn.execute(
+            "SELECT table_name, column_name, data_type "
+            "FROM information_schema.columns "
+            "WHERE table_schema = current_schema() AND table_name IN ("
+            + ", ".join("?" for _ in tables) + ")",
+            tuple(tables),
+        ).fetchall()
+        found: set[tuple[str, str]] = set()
+        for r in rows or []:
+            try:
+                key, dtype = (r[0], r[1]), r[2]
+            except Exception:
+                continue
+            if key in wanted and isinstance(dtype, str) and dtype == "integer":
+                found.add(key)
+        pending = [k for k in _PG_INT4_TO_BIGINT_COLUMNS if k in found]
+        if not pending:
+            return
+        # Scoped to this init transaction (SET LOCAL), so it cannot leak to
+        # the pool. A table another process holds a lock on fails fast
+        # instead of queueing behind it and blocking every later reader.
+        conn.execute("SET LOCAL lock_timeout = '10s'")
+        for _table, _col in pending:
+            log.info("Widening %s.%s INTEGER -> BIGINT", _table, _col)
+            try:
+                conn.execute(
+                    f"ALTER TABLE {_table} ALTER COLUMN {_col} TYPE BIGINT"
+                )
+            except Exception as exc:
+                if getattr(exc, "pgcode", None) == "55P03" or "lock timeout" in str(exc).lower():
+                    raise RuntimeError(
+                        f"Could not widen {_table}.{_col} to BIGINT: another "
+                        f"process holds a lock on {_table}; stop other "
+                        f"Resource Explorer processes and restart."
+                    ) from exc
+                raise
+
+    #: How long an ADD COLUMN waits for its table's lock before failing the start (a class attribute so a
+    #: test can shorten it; production is 10 s).
+    _DDL_LOCK_TIMEOUT = "10s"
+
+    def _add_nullable_text_column(self, conn, table: str, column: str, existing: set[str]) -> None:
+        """Additive, nullable, no default: an ADD COLUMN that rewrites nothing, and every older row reads
+        NULL ("not recorded"). The same shape as resource_schedules.created_by and step_runs'
+        engine_action_* columns: IF NOT EXISTS on Postgres so two processes starting together cannot fail
+        each other; lock_timeout so a table another process holds fails fast instead of queueing every
+        later reader behind it. SQLite has no IF NOT EXISTS here (single writer)."""
+        if not existing or column in existing:
+            return
+        if conn.is_postgres:
+            conn.execute(f"SET LOCAL lock_timeout = '{self._DDL_LOCK_TIMEOUT}'")
+        try:
+            conn.execute(f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS {column} TEXT"
+                         if conn.is_postgres else f"ALTER TABLE {table} ADD COLUMN {column} TEXT")
+        except Exception as exc:
+            if getattr(exc, "pgcode", None) == "55P03" or "lock timeout" in str(exc).lower():
+                raise RuntimeError(
+                    f"Could not add {table}.{column}: another process holds a lock on {table}; "
+                    "stop other Resource Explorer processes and restart.") from exc
+            raise
 
     def _get_table_columns(self, conn, table_name: str) -> set[str]:
         """Columns currently on table_name, read through the SAME open
@@ -1834,7 +2393,7 @@ class ProjectRegistry:
                     id               INTEGER PRIMARY KEY AUTOINCREMENT,
                     project_slug     TEXT NOT NULL,
                     file_path        TEXT NOT NULL,
-                    file_size_bytes  INTEGER DEFAULT 0,
+                    file_size_bytes  BIGINT DEFAULT 0,
                     indexed_at       TEXT NOT NULL,
                     UNIQUE(project_slug, file_path),
                     FOREIGN KEY (project_slug) REFERENCES projects(slug)
@@ -1969,11 +2528,11 @@ class ProjectRegistry:
                     file_path        TEXT NOT NULL,
                     profiled_at      TEXT NOT NULL,
                     format           TEXT NOT NULL,
-                    row_count        INTEGER DEFAULT NULL,
+                    row_count        BIGINT DEFAULT NULL,
                     col_count        INTEGER DEFAULT NULL,
                     schema_json      TEXT DEFAULT NULL,
                     null_summary     TEXT DEFAULT '',
-                    file_size_bytes  INTEGER DEFAULT 0,
+                    file_size_bytes  BIGINT DEFAULT 0,
                     UNIQUE(project_slug, file_path),
                     FOREIGN KEY (project_slug) REFERENCES projects(slug)
                 )
@@ -2135,7 +2694,20 @@ class ProjectRegistry:
                     metrics       TEXT DEFAULT '{}',
                     declared      TEXT DEFAULT '{}',
                     disagreement  TEXT DEFAULT '',
-                    surveyed_as   TEXT DEFAULT ''
+                    surveyed_as   TEXT DEFAULT '',
+                    flow_run_id   TEXT DEFAULT '',
+                    dispatch_failed TEXT DEFAULT '',
+                    engine_action_guid        TEXT DEFAULT '',
+                    engine_action_status      TEXT DEFAULT '',
+                    engine_action_message     TEXT DEFAULT '',
+                    engine_action_read_at     TEXT DEFAULT '',
+                    engine_action_read_error  TEXT DEFAULT '',
+                    survey_report_guid        TEXT DEFAULT '',
+                    survey_report_at          TEXT DEFAULT '',
+                    report_read_at            TEXT DEFAULT '',
+                    report_annotation_count    INTEGER DEFAULT NULL,
+                    submit_error              TEXT DEFAULT '',
+                    submitted_by              TEXT DEFAULT ''
                 )
             """)
             # `entity_type` and `executor_ref` post-date the first shape this
@@ -2152,9 +2724,67 @@ class ProjectRegistry:
                 # §4 — which credential identity this run executed as;
                 # `source`/`executor` already say WHO ran it.
                 ("surveyed_as", "TEXT DEFAULT ''"),
+                # Prefect dispatch honesty (2026-09-28,
+                # PREFECT-DISPATCH-HONESTY-IMPLEMENTED.md).
+                # ADD-only, existing rows untouched: `executor`/`executor_ref`
+                # keep their exact prior meaning ('local'/'prefect' strings).
+                # `flow_run_id` is the real Prefect flow-run id, populated
+                # only when `executor='prefect'` genuinely dispatched —
+                # checkable against Prefect's own `POST /api/flow_runs/filter`
+                # rather than merely asserted. `dispatch_failed` is the
+                # exception text when a Prefect dispatch was ATTEMPTED and
+                # fell back to local execution, so a row can distinguish
+                # "never tried Prefect" (both empty, `executor='local'` by
+                # design) from "tried Prefect and it failed" (`dispatch_failed`
+                # non-empty, `executor='local'` because the work still ran,
+                # just not through Prefect).
+                ("flow_run_id", "TEXT DEFAULT ''"),
+                ("dispatch_failed", "TEXT DEFAULT ''"),
+                # Native Egeria survey launch (2026-09-30,
+                # NATIVE-EGERIA-SURVEY-LAUNCH-IMPLEMENTED.md).
+                # ADD-only and entirely separate from the Prefect columns
+                # above: a whole-definition run still stores `flow_run_id`
+                # and never touches these. These are the PROOF a native
+                # survey row's status words derive from --
+                # `engine_action_guid` (Egeria accepted the submission),
+                # `engine_action_status`/`_message`/`_read_at` (Egeria's OWN
+                # status word, message and the moment RE read them back),
+                # `survey_report_guid`/`survey_report_at` (the report Egeria
+                # says the action originated), `report_read_at`/
+                # `report_annotation_count` (the report was read into RE).
+                # `submit_error` is a submission that never got a GUID.
+                ("engine_action_guid", "TEXT DEFAULT ''"),
+                ("engine_action_status", "TEXT DEFAULT ''"),
+                ("engine_action_message", "TEXT DEFAULT ''"),
+                ("engine_action_read_at", "TEXT DEFAULT ''"),
+                ("engine_action_read_error", "TEXT DEFAULT ''"),
+                ("survey_report_guid", "TEXT DEFAULT ''"),
+                ("survey_report_at", "TEXT DEFAULT ''"),
+                ("report_read_at", "TEXT DEFAULT ''"),
+                ("report_annotation_count", "INTEGER DEFAULT NULL"),
+                ("submit_error", "TEXT DEFAULT ''"),
+                ("submitted_by", "TEXT DEFAULT ''"),
             ):
                 if _step_run_cols and _col not in _step_run_cols:
                     conn.execute(f"ALTER TABLE step_runs ADD COLUMN {_col} {_ddl}")
+            # Migration: Egeria's own request and start times for a native survey's engine action (owner,
+            # 2026-10-12, "yes on the start time"). ISO UTC strings, nullable, no default: an ADD COLUMN
+            # that rewrites nothing; NULL = Egeria did not state it (or the row predates the column).
+            # IF NOT EXISTS on Postgres so two processes starting together cannot fail each other; lock_timeout
+            # as the created_by / BIGINT migrations, so a held table fails fast instead of queueing readers.
+            for _col in ("engine_action_requested_at", "engine_action_started_at"):
+                if _step_run_cols and _col not in _step_run_cols:
+                    if conn.is_postgres:
+                        conn.execute("SET LOCAL lock_timeout = '10s'")
+                    try:
+                        conn.execute(f"ALTER TABLE step_runs ADD COLUMN IF NOT EXISTS {_col} TEXT"
+                                     if conn.is_postgres else f"ALTER TABLE step_runs ADD COLUMN {_col} TEXT")
+                    except Exception as exc:
+                        if getattr(exc, "pgcode", None) == "55P03" or "lock timeout" in str(exc).lower():
+                            raise RuntimeError(
+                                f"Could not add step_runs.{_col}: another process holds a lock on "
+                                "step_runs; stop other Resource Explorer processes and restart.") from exc
+                        raise
             conn.execute(
                 "CREATE INDEX IF NOT EXISTS idx_step_runs_step "
                 "ON step_runs(step_key, surveyed_at)"
@@ -2163,6 +2793,97 @@ class ProjectRegistry:
                 "CREATE INDEX IF NOT EXISTS idx_step_runs_slug "
                 "ON step_runs(slug, surveyed_at)"
             )
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_step_runs_engine_action "
+                "ON step_runs(engine_action_guid)"
+            )
+            # ── native_survey_annotations — the annotations of an Egeria
+            # SurveyReport read back into RE (native Egeria survey launch).
+            #
+            # **Idempotent by the key that survives a re-read: the report's
+            # own GUID plus the annotation's GUID.** Reading the same report
+            # twice (a retried refresh, a second browser polling) must never
+            # write a second copy, and a count keyed on anything Egeria can
+            # merge would be blind to a collision (reference: egeria dedup
+            # and link patterns). A SECOND RUN produces a NEW report with new
+            # GUIDs, so its rows sit beside the first run's, dated by
+            # `report_at` -- the same append-and-read-the-latest shape
+            # `database_surveys` and `query_findings` already use.
+            # No FOREIGN KEY on the slug: databases and filesystems are
+            # different parent tables (same reasoning as `step_runs`).
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS native_survey_annotations (
+                    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                    entity_type     TEXT NOT NULL,
+                    slug            TEXT NOT NULL,
+                    process_qualified_name TEXT NOT NULL DEFAULT '',
+                    engine_action_guid TEXT NOT NULL DEFAULT '',
+                    report_guid     TEXT NOT NULL,
+                    report_at       TEXT NOT NULL DEFAULT '',
+                    annotation_guid TEXT NOT NULL,
+                    annotation_type TEXT DEFAULT '',
+                    analysis_step   TEXT DEFAULT '',
+                    summary         TEXT DEFAULT '',
+                    explanation     TEXT DEFAULT '',
+                    confidence      INTEGER DEFAULT NULL,
+                    detail_json     TEXT DEFAULT '{}',
+                    read_at         TEXT NOT NULL DEFAULT '',
+                    UNIQUE (report_guid, annotation_guid)
+                )
+            """)
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_native_survey_annotations_res "
+                "ON native_survey_annotations(entity_type, slug, report_at)"
+            )
+            # ── board_summary — one row per (entity_type, slug, board_id):
+            # the persisted headline/state/COUNTS a By-analysis board fetch
+            # reads, instead of recomputing on every GET
+            # (BOARD-SUMMARY-READ-COST-IMPLEMENTED.md).
+            #
+            # The problem this exists for: `build_survey_results(board_id=…)`
+            # measured 10-26s PER BOARD on adventureworks discovery boards,
+            # read fresh on every By-analysis pane load, with 7 boards firing
+            # in parallel against the same registry — nothing settled within
+            # 60+s on a real gate check even after PR #346's progressive
+            # render made the ORDER of that wait bearable.
+            #
+            # Written once, at run completion, by the same code path that
+            # already has the run's results in hand
+            # (`execute_and_record_database_analysis`,
+            # `execute_and_record_analysis` — see workflows/analysis.py's
+            # `_persist_board_summary`). Additive: a registry with no rows
+            # here just always falls back to the pre-existing expensive read
+            # path (`build_survey_results`'s own recompute), so this table
+            # shipping empty is invisible until a writer populates it — no
+            # migration of historical data, no behavior change until the
+            # first run after this lands.
+            #
+            # `summary_json` is the EXACT dashboard dict `build_survey_
+            # results(..., board_id=X)` would return for this one board — not
+            # a redesigned shape — so the read path can hand it back verbatim
+            # instead of re-deriving a smaller projection that then has to be
+            # kept in sync with the full shape by hand.
+            #
+            # `source_run_at` is the `last_run_at` of the analysis run that
+            # produced this summary (from `get_analysis_last_run`), NOT
+            # `computed_at` (when this row was written) — staleness compares
+            # against the former: a summary is stale when the analysis has a
+            # NEWER run than the one this summary reflects, regardless of how
+            # recently the row itself was written (a lazy-recompute-and-
+            # persist on a stale read writes a fresh row whose `computed_at`
+            # is "just now" but whose `source_run_at` is still the old run,
+            # if that old run is genuinely the latest one on record).
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS board_summary (
+                    entity_type   TEXT NOT NULL,
+                    slug          TEXT NOT NULL,
+                    board_id      TEXT NOT NULL,
+                    summary_json  TEXT NOT NULL DEFAULT '{}',
+                    source_run_at TEXT DEFAULT '',
+                    computed_at   TEXT NOT NULL,
+                    PRIMARY KEY (entity_type, slug, board_id)
+                )
+            """)
             # One-time repair for project_dependencies rows written before
             # this Phase B change: upsert_dependencies() used to compute
             # datetime.utcnow() inside its per-row list comprehension, so
@@ -2239,6 +2960,7 @@ class ProjectRegistry:
                 if col not in existing_db:
                     deftype = "INTEGER" if defval == "0" else "TEXT"
                     conn.execute(f"ALTER TABLE databases ADD COLUMN {col} {deftype} DEFAULT {defval}")
+            self._add_credential_changed_at_column(conn)
             # Database servers table
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS db_servers (
@@ -2265,6 +2987,7 @@ class ProjectRegistry:
             existing_srv = self._get_table_columns(conn, "db_servers")
             if "group_slug" not in existing_srv:
                 conn.execute("ALTER TABLE db_servers ADD COLUMN group_slug TEXT DEFAULT ''")
+            self._add_server_last_run_columns(conn)
             # Database survey results table
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS database_surveys (
@@ -2292,6 +3015,19 @@ class ProjectRegistry:
             # CREDENTIAL it ran as).
             if "surveyed_as" not in existing_ds:
                 conn.execute("ALTER TABLE database_surveys ADD COLUMN surveyed_as TEXT DEFAULT ''")
+            # Migration: soft-invalid marker (false-zero publish hotfix,
+            # 2026-09-30). Follows project_analysis_findings.superseded_at:
+            # a row that is not a real measurement is MARKED, never deleted,
+            # and every reader excludes it. `published_at` is where a publish
+            # records its outcome ON the measured row it published, instead of
+            # writing a new survey row (a publish measures nothing).
+            for _col, _ddl in (
+                ("invalid_at", "TEXT DEFAULT NULL"),
+                ("invalid_reason", "TEXT DEFAULT ''"),
+                ("published_at", "TEXT DEFAULT NULL"),
+            ):
+                if _col not in existing_ds:
+                    conn.execute(f"ALTER TABLE database_surveys ADD COLUMN {_col} {_ddl}")
             conn.execute(
                 "CREATE INDEX IF NOT EXISTS idx_database_surveys_slug "
                 "ON database_surveys(database_slug)"
@@ -2344,7 +3080,7 @@ class ProjectRegistry:
                     egeria_report_guid TEXT DEFAULT '',
                     file_count INTEGER DEFAULT 0,
                     data_file_count INTEGER DEFAULT 0,
-                    total_size_bytes INTEGER DEFAULT 0,
+                    total_size_bytes BIGINT DEFAULT 0,
                     survey_data TEXT DEFAULT '{}',
                     source TEXT DEFAULT 'local',
                     FOREIGN KEY (filesystem_slug) REFERENCES file_systems(slug)
@@ -2392,6 +3128,7 @@ class ProjectRegistry:
                 for _col, _defn in _cols:
                     if _col not in _existing:
                         conn.execute(f"ALTER TABLE {_table} ADD COLUMN {_col} {_defn}")
+            self._widen_int4_size_columns(conn)
 
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS activity_log (
@@ -2455,6 +3192,178 @@ class ProjectRegistry:
             conn.execute(
                 "CREATE INDEX IF NOT EXISTS idx_resource_tags_tag ON resource_tags(tag)"
             )
+            self._add_author_column(conn, "resource_tags")
+            # ── Catalogue scope (Curate for a database: what gets catalogued) ──
+            #
+            # A declared, signed, dated choice stored in RE, not in Egeria.
+            # Slice A of CURATE-CATALOGUE-SCOPE: nothing here is ever sent to
+            # Egeria. Two APPEND-ONLY tables, additive and idempotent (CREATE
+            # TABLE IF NOT EXISTS), no foreign keys, no colons in this text
+            # because the Postgres translator rewrites colon-name tokens.
+            #
+            # catalogue_scope_events: one row per change. The current state of
+            # a node is its newest row (highest id); a cleared choice is a row
+            # with choice = '' so who cleared it and when is kept. node_kind is
+            # schema, table or depth (a depth change carries the depth id in
+            # choice). source is person, or the id of the proposal rule that
+            # was confirmed; proposal_rule/proposal_choice/reason/measured_at/
+            # measured_json keep the proposal and the measurement under it, so
+            # an overridden proposal can still be shown struck through and a
+            # survey that now disagrees can be detected.
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS catalogue_scope_events (
+                    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                    database_slug   TEXT NOT NULL,
+                    node_kind       TEXT NOT NULL,
+                    schema_name     TEXT NOT NULL DEFAULT '',
+                    table_name      TEXT NOT NULL DEFAULT '',
+                    choice          TEXT NOT NULL DEFAULT '',
+                    action          TEXT NOT NULL DEFAULT 'set',
+                    source          TEXT NOT NULL DEFAULT 'person',
+                    proposal_rule   TEXT NOT NULL DEFAULT '',
+                    proposal_choice TEXT NOT NULL DEFAULT '',
+                    reason          TEXT NOT NULL DEFAULT '',
+                    measured_at     TEXT NOT NULL DEFAULT '',
+                    measured_json   TEXT NOT NULL DEFAULT '{}',
+                    author          TEXT NOT NULL,
+                    changed_at      TEXT NOT NULL
+                )
+            """)
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_catalogue_scope_events_node "
+                "ON catalogue_scope_events(database_slug, node_kind, schema_name, table_name, id)"
+            )
+            # catalogue_scope_baselines: the set of schema and table node keys
+            # the latest survey knew when the scope was first declared and on
+            # each re-declaration. The newest row is the baseline "new since
+            # your scope was declared" is measured against.
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS catalogue_scope_baselines (
+                    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                    database_slug   TEXT NOT NULL,
+                    kind            TEXT NOT NULL DEFAULT 'first',
+                    baseline_json   TEXT NOT NULL DEFAULT '{}',
+                    survey_at       TEXT NOT NULL DEFAULT '',
+                    declared_by     TEXT NOT NULL,
+                    declared_at     TEXT NOT NULL
+                )
+            """)
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_catalogue_scope_baselines_slug "
+                "ON catalogue_scope_baselines(database_slug, id)"
+            )
+            # catalogue_commit_proofs: what a catalogue commit READ BACK from
+            # Egeria, one row per observation, append-only. Slice B of the
+            # catalogue-scope work. Every state word the scope tree shows after
+            # a commit (catalogued, attached and waiting, failed, removed,
+            # archived) derives from these rows plus the outbox rows, never
+            # from the branch the code took. Additive, no foreign keys, and no
+            # colons in this text because the Postgres translator rewrites
+            # colon-name tokens. proof names the observation; element_guid and
+            # target_guid are what was read back; read_at is when Egeria was
+            # read, not when the commit was pressed.
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS catalogue_commit_proofs (
+                    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                    database_slug   TEXT NOT NULL,
+                    curation_id     TEXT NOT NULL DEFAULT '',
+                    node_kind       TEXT NOT NULL DEFAULT 'schema',
+                    schema_name     TEXT NOT NULL DEFAULT '',
+                    table_name      TEXT NOT NULL DEFAULT '',
+                    proof           TEXT NOT NULL,
+                    element_guid    TEXT NOT NULL DEFAULT '',
+                    target_guid     TEXT NOT NULL DEFAULT '',
+                    qualified_name  TEXT NOT NULL DEFAULT '',
+                    outbox_id       INTEGER DEFAULT NULL,
+                    detail_json     TEXT NOT NULL DEFAULT '{}',
+                    recorded_by     TEXT NOT NULL DEFAULT '',
+                    read_at         TEXT NOT NULL
+                )
+            """)
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_catalogue_commit_proofs_node "
+                "ON catalogue_commit_proofs(database_slug, node_kind, schema_name, table_name, id)"
+            )
+            # group_changes: who put a resource in which group, and when. Append-only history of what
+            # HAPPENED (Curate's "saved · who · when" for the group line), additive, no foreign keys; the
+            # resource's current group stays where it was (the group_slug column on its own table).
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS group_changes (
+                    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+                    entity_type  TEXT NOT NULL,
+                    entity_slug  TEXT NOT NULL,
+                    group_slug   TEXT NOT NULL DEFAULT '',
+                    author       TEXT NOT NULL,
+                    changed_at   TEXT NOT NULL
+                )
+            """)
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_group_changes_entity "
+                "ON group_changes(entity_type, entity_slug, id)"
+            )
+            # resource_scope_events: ONE additive, idempotent block (see RESOURCE_SCOPE_EVENTS_DDL below).
+            for _ddl in RESOURCE_SCOPE_EVENTS_DDL:
+                conn.execute(_ddl)
+            # step_annotations: ONE additive, idempotent block (see STEP_ANNOTATIONS_DDL).
+            for _ddl in STEP_ANNOTATIONS_DDL:
+                conn.execute(_ddl)
+            # api_reference_*: ONE additive, idempotent block (see API_REFERENCE_DDL).
+            for _ddl in API_REFERENCE_DDL:
+                conn.execute(_ddl)
+            # ── doc_sources — declared documentation sources (Enrichment) ──
+            #
+            # `BRIEF-DATABASE-DOCUMENTATION-SOURCES.md`, slice 1 ("Declare
+            # and probe"). One row per URL a person points RE at for a
+            # database (or filesystem) — a wiki page, a data dictionary, a
+            # runbook — plus the last read-only reachability probe against
+            # it. Keyed the same way `resource_tags`/`egeria_linkage_status`
+            # are (`entity_type`/`entity_slug`, no FK) because it spans two
+            # parent tables (`databases`, `filesystems`) and neither a
+            # cross-table FK nor two near-identical tables was worth it for
+            # what is, at this slice, five declared fields and four probe
+            # fields.
+            #
+            # `id` is a short random token (see `add_doc_source`), not an
+            # AUTOINCREMENT int — it is used in URL paths
+            # (`DELETE /api/doc-sources/{entity_type}/{slug}/{source_id}`)
+            # and as the tag on the pgvector rows Slice 2 will write, so it
+            # needs to be stable and opaque rather than reused across
+            # entities the way a small int would invite.
+            #
+            # Ingestion fields (`ingested_pages`/`ingested_bytes`/
+            # `ingested_at`) are declared now, ahead of Slice 2, so that
+            # slice is an ADD-only migration rather than a second pass over
+            # this table — same reasoning as `step_runs`' `flow_run_id`
+            # above. Nothing in Slice 1 writes them.
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS doc_sources (
+                    id                    TEXT PRIMARY KEY,
+                    entity_type           TEXT NOT NULL,
+                    entity_slug           TEXT NOT NULL,
+                    url                   TEXT NOT NULL,
+                    label                 TEXT NOT NULL DEFAULT '',
+                    source_type           TEXT NOT NULL DEFAULT 'other',
+                    added_at              TEXT NOT NULL,
+                    added_by              TEXT DEFAULT '',
+                    probe_state           TEXT DEFAULT '',
+                    probe_status_code     INTEGER DEFAULT NULL,
+                    probe_ms              INTEGER DEFAULT NULL,
+                    probe_title           TEXT DEFAULT '',
+                    probe_byte_count      BIGINT DEFAULT NULL,
+                    probe_error           TEXT DEFAULT '',
+                    probed_at             TEXT DEFAULT '',
+                    egeria_external_ref_guid TEXT DEFAULT '',
+                    egeria_link_relationship_guid TEXT DEFAULT '',
+                    origin                TEXT NOT NULL DEFAULT 'local',
+                    ingested_pages        INTEGER DEFAULT NULL,
+                    ingested_bytes        BIGINT DEFAULT NULL,
+                    ingested_at           TEXT DEFAULT ''
+                )
+            """)
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_doc_sources_entity "
+                "ON doc_sources(entity_type, entity_slug)"
+            )
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS resource_feedback (
                     id           TEXT PRIMARY KEY,
@@ -2471,6 +3380,7 @@ class ProjectRegistry:
                 conn.execute(
                     "ALTER TABLE resource_feedback ADD COLUMN compile_id TEXT DEFAULT NULL"
                 )
+            self._add_author_column(conn, "resource_feedback")
             conn.execute(
                 "CREATE INDEX IF NOT EXISTS idx_resource_feedback_entity "
                 "ON resource_feedback(entity_type, entity_slug)"
@@ -2484,9 +3394,120 @@ class ProjectRegistry:
                     created_at   TEXT NOT NULL
                 )
             """)
+            self._add_author_column(conn, "resource_curator_notes")
             conn.execute(
                 "CREATE INDEX IF NOT EXISTS idx_resource_curator_notes_entity "
                 "ON resource_curator_notes(entity_type, entity_slug)"
+            )
+            # resource_curation: the record of each Catalogue press and each
+            # report (curate_plan.Curations). Moved here from curate_plan's
+            # per-call _ensure_schema, which ran this DDL on every GET (and
+            # failed under a read-only session). Column order is the order
+            # the real registry already has (the original 11, then the seven
+            # later ADDs), so applying this there is a no-op. `kind`/`name`/
+            # `report` (REPORT-RECORD-AND-TWO-CALLS C1), `uses`/`corrects`/
+            # `corrected_by` (REPORT-ACTS) and `layer2_offer` (2026-09-15)
+            # were added after the table shipped; the guarded ALTERs below
+            # carry a registry that still has the original shape.
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS resource_curation (
+                    id            TEXT PRIMARY KEY,
+                    entity_type   TEXT NOT NULL,
+                    entity_slug   TEXT NOT NULL,
+                    author        TEXT NOT NULL,
+                    requested_at  TEXT NOT NULL,
+                    selection     TEXT NOT NULL DEFAULT '{}',
+                    manifest      TEXT NOT NULL DEFAULT '{}',
+                    state         TEXT NOT NULL DEFAULT 'queued',
+                    steps         TEXT NOT NULL DEFAULT '[]',
+                    finished_at   TEXT NOT NULL DEFAULT '',
+                    activity_id   TEXT NOT NULL DEFAULT '',
+                    kind          TEXT NOT NULL DEFAULT 'catalogue',
+                    name          TEXT NOT NULL DEFAULT '',
+                    report        TEXT NOT NULL DEFAULT '{}',
+                    uses          TEXT NOT NULL DEFAULT '[]',
+                    corrects      TEXT NOT NULL DEFAULT '',
+                    corrected_by  TEXT NOT NULL DEFAULT '{}',
+                    layer2_offer  TEXT NOT NULL DEFAULT '{}'
+                )
+            """)
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_resource_curation_entity "
+                "ON resource_curation(entity_type, entity_slug, requested_at)"
+            )
+            existing_curation = self._get_table_columns(conn, "resource_curation")
+            for col, defn in [
+                ("kind", "TEXT NOT NULL DEFAULT 'catalogue'"),
+                ("name", "TEXT NOT NULL DEFAULT ''"),
+                ("report", "TEXT NOT NULL DEFAULT '{}'"),
+                ("uses", "TEXT NOT NULL DEFAULT '[]'"),
+                ("corrects", "TEXT NOT NULL DEFAULT ''"),
+                ("corrected_by", "TEXT NOT NULL DEFAULT '{}'"),
+                ("layer2_offer", "TEXT NOT NULL DEFAULT '{}'"),
+            ]:
+                if col not in existing_curation:
+                    conn.execute(f"ALTER TABLE resource_curation ADD COLUMN {col} {defn}")
+            # resource_journal: the append-only curator journal (journal.Journal).
+            # Moved here from journal.py's per-call _ensure_schema, which ran
+            # this DDL on every read and write. Shape is the real registry's
+            # (7 columns, no later ADDs), so applying it there is a no-op.
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS resource_journal (
+                    id            TEXT PRIMARY KEY,
+                    entity_type   TEXT NOT NULL,
+                    entity_slug   TEXT NOT NULL,
+                    author        TEXT NOT NULL,
+                    written_at    TEXT NOT NULL,
+                    body          TEXT NOT NULL,
+                    suggested_to  TEXT NOT NULL DEFAULT '[]'
+                )
+            """)
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_resource_journal_entity "
+                "ON resource_journal(entity_type, entity_slug, written_at)"
+            )
+            # Work lists (work_lists.WorkLists). Moved here from work_lists.py's
+            # per-method _ensure_schema, which ran this DDL on every read and
+            # write. Shapes are the real registry's (no later ADDs), so applying
+            # this there is a no-op.
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS work_lists (
+                    slug            TEXT PRIMARY KEY,
+                    display_name    TEXT NOT NULL,
+                    description     TEXT NOT NULL DEFAULT '',
+                    entity_type     TEXT NOT NULL DEFAULT 'repo',
+                    investigation   TEXT NOT NULL DEFAULT '',
+                    created_by      TEXT NOT NULL DEFAULT '',
+                    created_at      TEXT NOT NULL,
+                    derived_from    TEXT NOT NULL DEFAULT '',
+                    egeria_guid     TEXT NOT NULL DEFAULT '',
+                    published_at    TEXT NOT NULL DEFAULT ''
+                )
+            """)
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS work_list_members (
+                    work_list_slug  TEXT NOT NULL,
+                    entity_slug     TEXT NOT NULL,
+                    rationale       TEXT NOT NULL DEFAULT '',
+                    confidence      INTEGER,
+                    added_at        TEXT NOT NULL,
+                    PRIMARY KEY (work_list_slug, entity_slug)
+                )
+            """)
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS work_list_runs (
+                    set_id          TEXT NOT NULL,
+                    run_id          TEXT NOT NULL,
+                    work_list_slug  TEXT NOT NULL DEFAULT '',
+                    entity_slug     TEXT NOT NULL,
+                    analysis_id     TEXT NOT NULL,
+                    enqueued_at     TEXT NOT NULL,
+                    PRIMARY KEY (set_id, run_id)
+                )
+            """)
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_work_list_runs_set "
+                "ON work_list_runs(set_id)"
             )
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS architecture_component_verdicts (
@@ -2644,6 +3665,27 @@ class ProjectRegistry:
                 conn.execute(
                     "ALTER TABLE resource_schedules ADD COLUMN target_kind "
                     "TEXT NOT NULL DEFAULT 'analysis'")
+            # Migration: created_by — who created (or last enabled) the schedule. Brief Z2 round 3; the
+            # project owner approved the column in chat on 2026-10-11 ("Yes to column"). A timer run runs as
+            # this person (scheduler._run_due), so the run-time access re-check judges THEM; NULL (every
+            # schedule from before) follows the no-requester rule (open only with no zone in use).
+            # Nullable, no default: an ADD COLUMN that rewrites nothing. lock_timeout as the BIGINT widening:
+            # a table another process holds fails fast instead of queueing every later reader behind it.
+            if "created_by" not in existing_sched:
+                if conn.is_postgres:
+                    conn.execute("SET LOCAL lock_timeout = '10s'")
+                try:
+                    # IF NOT EXISTS on Postgres (round 4): two processes starting together both see the column
+                    # missing; the second must not fail. SQLite has no IF NOT EXISTS here (single writer).
+                    conn.execute("ALTER TABLE resource_schedules ADD COLUMN IF NOT EXISTS created_by TEXT"
+                                 if conn.is_postgres else
+                                 "ALTER TABLE resource_schedules ADD COLUMN created_by TEXT")
+                except Exception as exc:
+                    if getattr(exc, "pgcode", None) == "55P03" or "lock timeout" in str(exc).lower():
+                        raise RuntimeError(
+                            "Could not add resource_schedules.created_by: another process holds a lock on "
+                            "resource_schedules; stop other Resource Explorer processes and restart.") from exc
+                    raise
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS survey_definition_cache (
                     entity_type            TEXT NOT NULL,
@@ -2763,7 +3805,19 @@ class ProjectRegistry:
             # same transaction as the select, so a second drainer cannot take
             # it. Nullable because every pre-existing row predates claiming.
             existing_outbox = self._get_table_columns(conn, "egeria_outbox")
-            for col, defn in [("claimed_at", "TEXT DEFAULT ''")]:
+            for col, defn in [
+                ("claimed_at", "TEXT DEFAULT ''"),
+                # Doc-sources self-heal fix, round 6 (2026-09-29): a `done`
+                # row can be REOPENED (rather than a fresh row minted
+                # alongside it) once its proof no longer holds — see
+                # `reopen_outbox_row` below. These two columns are the
+                # audit trail for that: when it last happened and why,
+                # kept distinct from `last_error` (a drain failure) and
+                # `completed_at` (which a reopen clears, since the row is
+                # no longer done).
+                ("reopened_at", "TEXT DEFAULT ''"),
+                ("reopen_reason", "TEXT DEFAULT ''"),
+            ]:
                 if col not in existing_outbox:
                     conn.execute(f"ALTER TABLE egeria_outbox ADD COLUMN {col} {defn}")
             conn.execute("""
@@ -3210,10 +4264,10 @@ class ProjectRegistry:
             # makes promotion to Egeria a fill-in rather than a migration.
             #
             # `purposes` is `ProjectCharter.purposes` (§2) — deliberately NOT
-            # a new RE vocabulary. Stored as a JSON array of the 8 values the
-            # question corpus is already tagged with (Assess, Certify, Deploy,
-            # Explore, Learn, Maintain, Select, Share) so it replays into a
-            # real ProjectCharter unchanged.
+            # a new RE vocabulary. Stored as a JSON array of purpose values, or
+            # (2026-10-13, owner ruling) `{"values": [...], "free_text": "..."}`
+            # when free text was given, so it stays apart from the values. The
+            # list itself is Egeria's (`investigation_purposes.py`), suggestive.
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS investigations (
                     slug                           TEXT PRIMARY KEY,
@@ -3477,6 +4531,24 @@ class ProjectRegistry:
             conn.execute(
                 "CREATE INDEX IF NOT EXISTS idx_runs_result_ref ON runs(result_ref)"
             )
+        self._migrate_artifact_columns()
+
+    #: Artifacts slice 1 (DESIGN-ARTIFACTS-VIEW-AND-DOC-LINKS.md §3; owner's go 2026-10-15; DDL record
+    #: docs/ddl-artifact-columns.md). file_role: core | test | generated | vendored | docs from
+    #: ingestion/file_role.py, set at extraction. survey_commit_sha: the commit of the zipball or clone a
+    #: repo step run READ, written only for a step that completed (record_step_run's caller decides); never
+    #: projects.last_commit_sha. NULL in either = "not recorded".
+    ARTIFACT_COLUMNS = (("project_code_symbols", "file_role"),
+                        ("project_code_markers", "file_role"),
+                        ("step_runs", "survey_commit_sha"))
+
+    def _migrate_artifact_columns(self) -> None:
+        """Each ADD COLUMN in its OWN short transaction, after the main init has committed, so one
+        table's ACCESS EXCLUSIVE lock is never held while waiting for the next table's (each wait is
+        bounded by its own 10 s lock_timeout)."""
+        for table, column in self.ARTIFACT_COLUMNS:
+            with self._conn() as conn:
+                self._add_nullable_text_column(conn, table, column, self._get_table_columns(conn, table))
 
     # ── the run queue ─────────────────────────────────────────────────────────
     #
@@ -3503,6 +4575,12 @@ class ProjectRegistry:
         "discovery_expand",
         "curate_commit",
         "materialize_components",
+        "publish_architecture",
+        "catalogue_commit",
+        # An Egeria engine action RE claimed as an engine host (engine_host.py). Run by
+        # run_queue._handle_engine_action (E4 of DESIGN-RE-ENGINE-HOST-BY-EQUIVALENCE §5.1); never cancellable
+        # from RE (run_queue.UNCANCELLABLE_KINDS).
+        "engine_action",
     )
 
     #: States that occupy a user's one fairness slot.
@@ -3546,9 +4624,18 @@ class ProjectRegistry:
         runner: dict | None = None,
         *,
         kinds: "list[str] | None" = None,
+        engine_request_types: "Collection[str] | None" = None,
         now: str | None = None,
     ) -> dict | None:
         """Take the oldest queued row this worker is allowed to run, or None.
+
+        **Engine actions this worker can run.** With `engine_request_types` given, an `engine_action` row is
+        taken only when its target's `request_type` is one of them (the worker's own
+        `engine_host.supported_request_types()`): a worker without an Analytic Library step's package leaves
+        that row queued for a worker that has it, rather than claiming it and failing the action closed. A text
+        prefilter on the target JSON narrows the candidates; the parsed target's TOP-LEVEL `request_type` then
+        decides (a supported type mentioned inside `request_parameters`, which the requester controls, never
+        makes a row claimable).
 
         **Concurrency.** Select-and-mark happen in one transaction, and on
         Postgres the SELECT carries `FOR UPDATE SKIP LOCKED` so a second
@@ -3587,15 +4674,26 @@ class ProjectRegistry:
         if kinds:
             sql += f"  AND r.kind IN ({','.join('?' * len(kinds))}) "
             params.extend(kinds)
-        sql += "ORDER BY r.enqueued_at ASC, r.id ASC LIMIT 1"
+        types: set[str] | None = None
+        if engine_request_types is not None:
+            types = set(engine_request_types)
+            runnable = " OR ".join("r.target LIKE ?" for _ in sorted(types)) or "1 = 0"
+            sql += f"  AND (r.kind <> 'engine_action' OR ({runnable})) "
+            params.extend(f'%"request_type": {json.dumps(t)}%' for t in sorted(types))
+        # With the request-type prefilter, a few candidates are read and the first exact one is taken.
+        sql = sql.replace("SELECT r.id FROM", "SELECT r.id, r.kind, r.target FROM", 1)
+        sql += f"ORDER BY r.enqueued_at ASC, r.id ASC LIMIT {1 if types is None else self._CLAIM_CANDIDATES}"
 
         with self._conn() as conn:
             if conn.is_postgres:
                 sql += " FOR UPDATE SKIP LOCKED"
-            row = conn.execute(sql, tuple(params)).fetchone()
-            if row is None:
+            run_id = None
+            for row in conn.execute(sql, tuple(params)).fetchall():
+                if types is None or row["kind"] != "engine_action" or _target_request_type(row["target"]) in types:
+                    run_id = row["id"]
+                    break
+            if run_id is None:
                 return None
-            run_id = row["id"]
             conn.execute(
                 """UPDATE runs SET state='claimed', claimed_by=?, runner=?,
                                    claimed_at=?, heartbeat_at=?
@@ -3640,6 +4738,9 @@ class ProjectRegistry:
         if state not in ("succeeded", "failed", "cancelled"):
             raise ValueError(f"{state!r} is not a terminal run state")
         now = now or datetime.now(timezone.utc).isoformat()
+        from resource_explorer.secret_redaction import scrub_text
+
+        error = scrub_text(error)           # the stored run error is shown to people; scrub by shape at the boundary
         sql = "UPDATE runs SET state=?, finished_at=?, error=?"
         params: list = [state, now, error]
         if result_ref is not None:
@@ -3681,6 +4782,18 @@ class ProjectRegistry:
         with self._conn() as conn:
             return [dict(r) for r in conn.execute(sql, tuple(params)).fetchall()]
 
+    #: How many prefiltered candidates `claim_next_run` reads when it must confirm an engine action's request type.
+    _CLAIM_CANDIDATES = 25
+
+    def fail_queued_run(self, run_id: str, error: str, *, now: str | None = None) -> bool:
+        """Mark a row that has NOT been claimed yet `failed`, with `error`. False when it is no longer queued
+        (a worker claimed it meanwhile). The engine host's bound on an engine action no worker here can run."""
+        now = now or datetime.now(timezone.utc).isoformat()
+        with self._conn() as conn:
+            cur = conn.execute("UPDATE runs SET state='failed', finished_at=?, error=? WHERE id=? AND state='queued'",
+                               (now, error, run_id))
+            return bool(getattr(cur, "rowcount", 0))
+
     def cancel_queued_run(self, run_id: str, *, now: str | None = None) -> bool:
         """Cancel a row that has NOT been claimed yet. Returns False otherwise.
 
@@ -3691,14 +4804,23 @@ class ProjectRegistry:
         answer-shaped-non-answer `run_reconciler.py` exists to remove. If that
         worker dies, reconciliation resolves the row as failed with the reason;
         if it lives, the run finishes normally.
+
+        A row of an uncancellable kind (`run_queue.UNCANCELLABLE_KINDS`: `engine_action`, and any held kind)
+        is refused too (False), whatever its state: it stands for an Egeria engine action RE has already
+        claimed, and cancelling it here would leave that action claimed with nothing to complete it. Refused
+        HERE so every caller (web, CLI) gets it.
         """
+        from resource_explorer.run_queue import UNCANCELLABLE_KINDS
+
         now = now or datetime.now(timezone.utc).isoformat()
+        held = sorted(UNCANCELLABLE_KINDS)
+        held_clause = f" AND kind NOT IN ({','.join('?' * len(held))})" if held else ""
         with self._conn() as conn:
             cur = conn.execute(
                 "UPDATE runs SET state='cancelled', finished_at=?, "
                 "error='cancelled before it was claimed' "
-                "WHERE id=? AND state='queued'",
-                (now, run_id),
+                "WHERE id=? AND state='queued'" + held_clause,
+                (now, run_id, *held),
             )
             return bool(getattr(cur, "rowcount", 0))
 
@@ -3826,6 +4948,58 @@ class ProjectRegistry:
                 (key, value, datetime.utcnow().isoformat()),
             )
 
+    def add_setting_once(self, key: str, value: str) -> None:
+        """Insert a setting that must never be updated: raises if the key exists. Used where each entry is
+        its own key (an append-only trail), so two writers can never lose each other's entry."""
+        with self._conn() as conn:
+            conn.execute("INSERT INTO app_settings (key, value, updated_at) VALUES (?, ?, ?)",
+                         (key, value, datetime.utcnow().isoformat()))
+
+    def take_claim(self, key: str, holder: str, *, stale_after_seconds: int = 900) -> bool:
+        """Take a short-lived claim on `key`: True when THIS holder now holds it, False when another does.
+        One `INSERT ... ON CONFLICT DO NOTHING` in `app_settings` decides it (rowcount 1 = taken), so two
+        processes can never both win. A claim older than `stale_after_seconds` (a crashed holder) is cleared
+        first. No new table."""
+        now = datetime.utcnow()
+        cutoff = (now - timedelta(seconds=stale_after_seconds)).isoformat()
+        with self._conn() as conn:
+            conn.execute("DELETE FROM app_settings WHERE key = ? AND updated_at < ?", (key, cutoff))
+            cur = conn.execute(
+                """INSERT INTO app_settings (key, value, updated_at) VALUES (?, ?, ?)
+                   ON CONFLICT(key) DO NOTHING""", (key, holder, now.isoformat()))
+            return bool(getattr(cur, "rowcount", 0) == 1)
+
+    def refresh_claim(self, key: str, holder: str) -> bool:
+        """Heartbeat: re-stamp a claim's `updated_at` (its lease clock) ONLY while this holder still holds it.
+        True when the claim is still ours and was renewed; False when it is gone or another holder took it
+        (the caller must then stop writing). The lease rule is unchanged: a claim whose stamp is older than
+        `stale_after_seconds` is reclaimable by `take_claim`; a live holder simply keeps the stamp fresh."""
+        with self._conn() as conn:
+            cur = conn.execute("UPDATE app_settings SET updated_at = ? WHERE key = ? AND value = ?",
+                               (datetime.utcnow().isoformat(), key, holder))
+            return bool(getattr(cur, "rowcount", 0) == 1)
+
+    def get_claim(self, key: str) -> tuple[str, str] | None:
+        """(holder, taken_at ISO) of a live claim, or None. Read-only."""
+        with self._conn() as conn:
+            row = conn.execute("SELECT value, updated_at FROM app_settings WHERE key = ?", (key,)).fetchone()
+        return (row["value"], row["updated_at"]) if row else None
+
+    def release_claim(self, key: str, holder: str) -> None:
+        """Release a claim, ONLY if this holder still holds it."""
+        with self._conn() as conn:
+            conn.execute("DELETE FROM app_settings WHERE key = ? AND value = ?", (key, holder))
+
+    def list_settings_with_prefix(self, prefix: str) -> list[tuple[str, str]]:
+        """[(key, value)] for every setting whose key starts with `prefix`, ordered by key."""
+        like = prefix.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
+        with self._conn() as conn:
+            rows = conn.execute(
+                "SELECT key, value FROM app_settings WHERE key LIKE ? ESCAPE '\\' ORDER BY key", (like,)
+            ).fetchall()
+        # SQLite's LIKE ignores case; a key is case-sensitive, so the prefix is matched again exactly.
+        return [(r["key"], r["value"]) for r in rows if r["key"].startswith(prefix)]
+
     # ── per-call Egeria timing ────────────────────────────────────────────
 
     def record_egeria_call_timing(
@@ -3913,15 +5087,45 @@ class ProjectRegistry:
     # Discoverability/reuse-readiness for a resource, distinct from Enrichment's
     # resource_context (facts about the resource). See web/routes/curate.py.
 
-    def add_resource_tag(self, entity_type: str, entity_slug: str, tag: str) -> None:
+    #: Shown wherever a Curate row has no author. Rows written before
+    #: 2026-10-01 carry NULL; the API says so in words instead of a blank.
+    UNSIGNED_AUTHOR_LABEL = "unsigned · from before authors were recorded"
+
+    @classmethod
+    def _with_author(cls, row: dict) -> dict:
+        """Normalise a Curate row's author: `author` is the user id or None
+        (NULL and '' both mean unsigned), `authored` says which, and
+        `author_label` is the text a UI shows (never blank)."""
+        out = dict(row)
+        author = out.get("author") or None
+        out["author"] = author
+        out["authored"] = author is not None
+        out["author_label"] = author if author else cls.UNSIGNED_AUTHOR_LABEL
+        return out
+
+    def add_resource_tag(self, entity_type: str, entity_slug: str, tag: str,
+                         *, author: str | None = None) -> None:
+        """Add a tag. `author` is the signed-in user id (the route supplies it
+        and refuses anonymous callers); None writes a legacy unsigned row.
+        Re-adding an existing tag keeps the original author."""
         from datetime import timezone
         with self._conn() as conn:
             conn.execute(
-                """INSERT INTO resource_tags (entity_type, entity_slug, tag, created_at)
-                   VALUES (?, ?, ?, ?)
+                """INSERT INTO resource_tags (entity_type, entity_slug, tag, created_at, author)
+                   VALUES (?, ?, ?, ?, ?)
                    ON CONFLICT(entity_type, entity_slug, tag) DO NOTHING""",
-                (entity_type, entity_slug, tag, datetime.now(timezone.utc).isoformat()),
+                (entity_type, entity_slug, tag, datetime.now(timezone.utc).isoformat(),
+                 author or None),
             )
+
+    def list_resource_tags_with_authors(self, entity_type: str, entity_slug: str) -> list[dict]:
+        with self._conn() as conn:
+            rows = conn.execute(
+                "SELECT tag, created_at, author FROM resource_tags "
+                "WHERE entity_type=? AND entity_slug=? ORDER BY tag",
+                (entity_type, entity_slug),
+            ).fetchall()
+        return [self._with_author(dict(r)) for r in rows]
 
     def remove_resource_tag(self, entity_type: str, entity_slug: str, tag: str) -> None:
         with self._conn() as conn:
@@ -3947,6 +5151,262 @@ class ProjectRegistry:
             ).fetchall()
         return [{"tag": r["tag"], "count": r["count"]} for r in rows]
 
+    # ── Documentation sources (Enrichment) ──────────────────────────────────
+    # BRIEF-DATABASE-DOCUMENTATION-SOURCES.md slice 1. See doc_sources' table
+    # docstring above for the shape; this is CRUD plus the probe-result write.
+
+    DOC_SOURCE_TYPES = (
+        "data_dictionary", "design_notes", "runbook", "wiki",
+        "installation_guide", "user_manual", "api_reference", "release_notes",
+        "other",
+    )
+
+    def add_doc_source(self, entity_type: str, entity_slug: str, url: str,
+                        label: str = "", source_type: str = "other",
+                        added_by: str = "") -> dict:
+        """Declare a new documentation source. Returns the stored row (no
+        probe result yet — the caller runs the probe and calls
+        `record_doc_source_probe` next; kept as two steps so the probe, which
+        makes a network call, is not inside the registry's write path)."""
+        import secrets
+
+        if source_type not in self.DOC_SOURCE_TYPES:
+            source_type = "other"
+        source_id = secrets.token_hex(8)
+        now = datetime.now(timezone.utc).isoformat()
+        with self._conn() as conn:
+            conn.execute(
+                """INSERT INTO doc_sources
+                   (id, entity_type, entity_slug, url, label, source_type, added_at, added_by, origin)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'local')""",
+                (source_id, entity_type, entity_slug, url.strip(), label.strip(),
+                 source_type, now, added_by),
+            )
+        return self.get_doc_source(entity_type, entity_slug, source_id)
+
+    def get_doc_source(self, entity_type: str, entity_slug: str, source_id: str) -> dict | None:
+        with self._conn() as conn:
+            row = conn.execute(
+                "SELECT * FROM doc_sources WHERE entity_type=? AND entity_slug=? AND id=?",
+                (entity_type, entity_slug, source_id),
+            ).fetchone()
+        return dict(row) if row else None
+
+    def list_doc_sources(self, entity_type: str, entity_slug: str) -> list[dict]:
+        with self._conn() as conn:
+            rows = conn.execute(
+                "SELECT * FROM doc_sources WHERE entity_type=? AND entity_slug=? ORDER BY added_at",
+                (entity_type, entity_slug),
+            ).fetchall()
+        return [dict(r) for r in rows]
+
+    def record_doc_source_probe(self, entity_type: str, entity_slug: str, source_id: str, *,
+                                 state: str, status_code: int | None, elapsed_ms: int | None,
+                                 title: str = "", byte_count: int | None = None,
+                                 error: str = "") -> dict | None:
+        """Store the result of a read-only reachability probe. Overwrites the
+        previous probe unconditionally — this is a re-check, not a history —
+        Slice 3 ("Freshness") is what adds a schedule/staleness story on top."""
+        now = datetime.now(timezone.utc).isoformat()
+        with self._conn() as conn:
+            conn.execute(
+                """UPDATE doc_sources SET probe_state=?, probe_status_code=?, probe_ms=?,
+                   probe_title=?, probe_byte_count=?, probe_error=?, probed_at=?
+                   WHERE entity_type=? AND entity_slug=? AND id=?""",
+                (state, status_code, elapsed_ms, title, byte_count, error, now,
+                 entity_type, entity_slug, source_id),
+            )
+        return self.get_doc_source(entity_type, entity_slug, source_id)
+
+    def set_doc_source_egeria_ref(self, entity_type: str, entity_slug: str, source_id: str,
+                                   ref_guid: str, link_relationship_guid: str = "") -> None:
+        with self._conn() as conn:
+            conn.execute(
+                """UPDATE doc_sources SET egeria_external_ref_guid=?, egeria_link_relationship_guid=?
+                   WHERE entity_type=? AND entity_slug=? AND id=?""",
+                (ref_guid, link_relationship_guid, entity_type, entity_slug, source_id),
+            )
+
+    def remove_doc_source(self, entity_type: str, entity_slug: str, source_id: str) -> dict | None:
+        """Delete the row and return it (so the caller — which also needs to
+        detach/delete the ExternalReference, if any — knows the GUID without
+        a second read after it is gone)."""
+        row = self.get_doc_source(entity_type, entity_slug, source_id)
+        if not row:
+            return None
+        with self._conn() as conn:
+            conn.execute(
+                "DELETE FROM doc_sources WHERE entity_type=? AND entity_slug=? AND id=?",
+                (entity_type, entity_slug, source_id),
+            )
+        return row
+
+    def upsert_doc_source_from_egeria(self, entity_type: str, entity_slug: str, *,
+                                       url: str, ref_guid: str, label: str = "",
+                                       source_type: str = "other") -> dict:
+        """A source read back from Egeria's ExternalReferences on this asset
+        that RE has no local row for — declared by someone else, or in a
+        prior/different RE install. Matched on `egeria_external_ref_guid`
+        first (stable across a URL edit in Egeria), falling back to `url`
+        for a reference this table has never seen. Upsert, not insert-only:
+        called on every read-back, so a repeat read of the same reference
+        must not grow duplicate rows."""
+        # Returning must happen AFTER the `with` block exits and commits —
+        # `get_doc_source` opens its own connection, and returning from
+        # inside this block (as an earlier version of this method did) read
+        # back the row before its own write was committed, so a matched
+        # existing row came back with the OLD `egeria_external_ref_guid`
+        # (empty, on a source never published) rather than the one just set.
+        # Caught by test_upsert_from_egeria_matches_existing_local_row_by_url.
+        matched_id: str | None = None
+        source_id: str | None = None
+        with self._conn() as conn:
+            row = conn.execute(
+                "SELECT id FROM doc_sources WHERE entity_type=? AND entity_slug=? "
+                "AND (egeria_external_ref_guid=? OR url=?)",
+                (entity_type, entity_slug, ref_guid, url),
+            ).fetchone()
+            if row:
+                matched_id = row["id"]
+                conn.execute(
+                    "UPDATE doc_sources SET egeria_external_ref_guid=? "
+                    "WHERE entity_type=? AND entity_slug=? AND id=?",
+                    (ref_guid, entity_type, entity_slug, matched_id),
+                )
+            else:
+                import secrets
+                source_id = secrets.token_hex(8)
+                now = datetime.now(timezone.utc).isoformat()
+                if source_type not in self.DOC_SOURCE_TYPES:
+                    source_type = "other"
+                conn.execute(
+                    """INSERT INTO doc_sources
+                       (id, entity_type, entity_slug, url, label, source_type, added_at,
+                        added_by, origin, egeria_external_ref_guid)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, '', 'egeria', ?)""",
+                    (source_id, entity_type, entity_slug, url, label, source_type, now, ref_guid),
+                )
+        return self.get_doc_source(entity_type, entity_slug, matched_id or source_id)
+
+    def get_doc_source_outbox_row(self, entity_type: str, entity_slug: str, source_id: str,
+                                   element_kind: str = "doc_source_publish") -> dict | None:
+        """Most recent `egeria_outbox` row for one declared source's publish
+        attempt — Egeria publish-state fix (2026-09-29). Backs the per-row
+        state `web/routes/doc_sources.py` renders (`catalogued` / `local —
+        publishing…` / `local — publish failed: ..., retrying` / `local
+        only`).
+
+        Matched on the payload's `source_id` (JSON, not indexed) rather than
+        `qualified_name` alone: `qualified_name` is `ExternalReference::
+        <url>`, and `doc_source_egeria.py` notes two sources could in
+        principle share a URL, so `qualified_name` alone would not tell them
+        apart. `entity_type`/`entity_slug` are real indexed columns and
+        narrow this to one resource's own rows first; the outbox table is
+        small per resource, so a Python-side filter over what is left costs
+        nothing worth a new index for.
+        """
+        with self._conn() as conn:
+            rows = conn.execute(
+                "SELECT * FROM egeria_outbox WHERE entity_type=? AND entity_slug=? "
+                "AND element_kind=? ORDER BY id DESC",
+                (entity_type, entity_slug, element_kind),
+            ).fetchall()
+        for r in rows:
+            row = dict(r)
+            try:
+                payload = json.loads(row.get("payload_json") or "{}")
+            except ValueError:
+                continue
+            if payload.get("source_id") == source_id:
+                return row
+        return None
+
+    def reopen_outbox_row(self, row_id: int, reason: str) -> None:
+        """Re-open one outbox row whose `done` (or `failed`/`dead`) claim no
+        longer holds — round 6 (2026-09-29), the fix for the self-heal
+        no-op loop `DOC-SOURCES-DECLARE-AND-PROBE-IMPLEMENTED.md`'s round 5
+        section documents: a `doc_source_publish` row reached `done` (before
+        round 5's verify-before-trust fix existed) carrying a ref guid that
+        was later deleted from Egeria by an unrelated unpublish. Round 5
+        fixed the CREATOR to verify a reused guid before trusting it, but
+        that fix never ran for the stuck row, because whatever found "an
+        outbox row already exists for this element" (`get_doc_source_
+        outbox_row`, `web/routes/doc_sources.py`'s self-heal) treated a
+        `done` row identically to a `pending`/`running` one — "something is
+        already tracking this" — and never re-queued anything. The row sat
+        `done` with a dead guid forever, silently re-triggering self-heal on
+        every render with nothing actually happening.
+
+        **Reopens the SAME row rather than inserting a fresh one alongside
+        it** — design's explicit preference (round 6 design session,
+        2026-09-29): history stays one row per element instead of
+        accumulating dead `done` rows next to their live retry. `attempts`
+        resets to 0 (this is a fresh attempt at fixing a stale claim, not a
+        continuation of whatever attempt history produced the bad `done`),
+        `egeria_guid` is cleared (it was the dead/unverified guid — a stale
+        "proof" must not linger on a row that is no longer claiming
+        anything), `next_attempt_at` is set to now so the very next drain
+        pass picks it up rather than waiting out whatever backoff an
+        earlier, unrelated attempt left behind, and `completed_at`/
+        `last_error` are cleared since the row is no longer done or failed.
+
+        `reopened_at`/`reason` are kept SEPARATE from `last_error` — a
+        drain failure and a self-heal reopening are different events, and a
+        row that later fails a NEW attempt should not lose the record of
+        why it was reopened in the first place under an overwritten
+        `last_error`.
+
+        Kind-agnostic by design: nothing here is specific to
+        `doc_source_publish`. A future `doc_source_unpublish` self-heal call
+        site (none exists yet — see that kind's own docstring) can reuse
+        this exact mechanism rather than inventing a parallel one; the
+        proof-validity JUDGMENT (what makes a `done` row's claim stale) is
+        the caller's, not this method's.
+        """
+        now = datetime.utcnow().isoformat()
+        with self._conn() as conn:
+            conn.execute(
+                "UPDATE egeria_outbox SET status='pending', egeria_guid='', attempts=0, "
+                "next_attempt_at=?, claimed_at='', last_error='', completed_at='', "
+                "reopened_at=?, reopen_reason=? WHERE id=?",
+                (now, now, (reason or "")[:2000], row_id),
+            )
+
+    def has_pending_unpublish_for_ref(self, entity_type: str, entity_slug: str,
+                                       ref_guid: str) -> bool:
+        """True when a `doc_source_unpublish` outbox row targeting exactly
+        this `ExternalReference` GUID is still `pending`/`running` for this
+        entity — the adoption-race guard (found live 2026-09-29: a source
+        removed at 15:21:41 enqueued an unpublish for `b9925119…`; a
+        DIFFERENT source declared a second later, at the same URL, adopted
+        that SAME reference — concurrently being deleted — via the read-back
+        `url` fallback in `upsert_doc_source_from_egeria`, ending up with a
+        ref guid and no link guid, no outbox row of its own).
+
+        Callers (`web/routes/doc_sources.py`'s `_sync_egeria_read_back`,
+        `doc_source_egeria.publish_doc_source`'s reuse-by-qualifiedName step
+        via the `is_ref_unpublishing` hook) must check this BEFORE adopting
+        or reusing a found `ExternalReference` GUID — a reference with an
+        in-flight unpublish is not safe to adopt no matter how it was found,
+        since the unpublish may delete it (and, per `unpublish_doc_source`'s
+        own contract, only detaches+deletes — never re-creates)."""
+        if not ref_guid:
+            return False
+        with self._conn() as conn:
+            rows = conn.execute(
+                "SELECT payload_json FROM egeria_outbox WHERE entity_type=? AND entity_slug=? "
+                "AND element_kind='doc_source_unpublish' AND status IN ('pending', 'running')",
+                (entity_type, entity_slug),
+            ).fetchall()
+        for r in rows:
+            try:
+                payload = json.loads(r["payload_json"] or "{}")
+            except ValueError:
+                continue
+            if payload.get("ref_guid") == ref_guid:
+                return True
+        return False
+
     def list_resources_by_tag(self, tag: str) -> list[dict]:
         with self._conn() as conn:
             rows = conn.execute(
@@ -3957,7 +5417,7 @@ class ProjectRegistry:
 
     def add_resource_feedback(
         self, entity_type: str, entity_slug: str, rating: int | None, category: str, message: str,
-        *, compile_id: str | None = None,
+        *, compile_id: str | None = None, author: str | None = None,
     ) -> dict:
         from datetime import timezone
         entry = {
@@ -3969,15 +5429,16 @@ class ProjectRegistry:
             "message": message,
             "compile_id": compile_id,
             "created_at": datetime.now(timezone.utc).isoformat(),
+            "author": author or None,
         }
         with self._conn() as conn:
             conn.execute(
                 """INSERT INTO resource_feedback
-                   (id, entity_type, entity_slug, rating, category, message, compile_id, created_at)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                   (id, entity_type, entity_slug, rating, category, message, compile_id, created_at, author)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 tuple(entry.values()),
             )
-        return entry
+        return self._with_author(entry)
 
     def list_resource_feedback(self, entity_type: str, entity_slug: str) -> list[dict]:
         with self._conn() as conn:
@@ -3986,7 +5447,7 @@ class ProjectRegistry:
                    ORDER BY created_at DESC""",
                 (entity_type, entity_slug),
             ).fetchall()
-        return [dict(r) for r in rows]
+        return [self._with_author(dict(r)) for r in rows]
 
     def list_all_resource_feedback(self, limit: int = 200,
                                    entity_type: str = "",
@@ -4019,7 +5480,7 @@ class ProjectRegistry:
                 "ORDER BY created_at DESC LIMIT ?",
                 tuple(params),
             ).fetchall()
-        return [dict(r) for r in rows]
+        return [self._with_author(dict(r)) for r in rows]
 
     def count_all_resource_feedback(self) -> dict:
         """Totals for the Admin header: how much feedback exists, and on how
@@ -4033,7 +5494,8 @@ class ProjectRegistry:
             ).fetchone()
         return {"total": row["total"] or 0, "resources": row["resources"] or 0}
 
-    def add_curator_note(self, entity_type: str, entity_slug: str, note: str) -> dict:
+    def add_curator_note(self, entity_type: str, entity_slug: str, note: str,
+                         *, author: str | None = None) -> dict:
         """Ongoing curator commentary (discoverability, quality, readiness) —
         deliberately a separate stream from resource_context's 'notes' field,
         which is a one-time context-gathering fact, not a running log."""
@@ -4044,14 +5506,15 @@ class ProjectRegistry:
             "entity_slug": entity_slug,
             "note": note,
             "created_at": datetime.now(timezone.utc).isoformat(),
+            "author": author or None,
         }
         with self._conn() as conn:
             conn.execute(
-                """INSERT INTO resource_curator_notes (id, entity_type, entity_slug, note, created_at)
-                   VALUES (?, ?, ?, ?, ?)""",
+                """INSERT INTO resource_curator_notes (id, entity_type, entity_slug, note, created_at, author)
+                   VALUES (?, ?, ?, ?, ?, ?)""",
                 tuple(entry.values()),
             )
-        return entry
+        return self._with_author(entry)
 
     def list_curator_notes(self, entity_type: str, entity_slug: str) -> list[dict]:
         with self._conn() as conn:
@@ -4060,11 +5523,26 @@ class ProjectRegistry:
                    ORDER BY created_at DESC""",
                 (entity_type, entity_slug),
             ).fetchall()
-        return [dict(r) for r in rows]
+        return [self._with_author(dict(r)) for r in rows]
+
+    def get_curator_note(self, note_id: str) -> dict | None:
+        with self._conn() as conn:
+            row = conn.execute(
+                "SELECT * FROM resource_curator_notes WHERE id=?", (note_id,)
+            ).fetchone()
+        return self._with_author(dict(row)) if row else None
 
     def delete_curator_note(self, note_id: str) -> bool:
+        """Delete a note. Only a legacy UNSIGNED note can be deleted: the
+        journal rule (append-only, amended by a later entry) applies to every
+        signed note, so the `author IS NULL` guard is in the SQL itself and a
+        caller that forgets to check cannot delete one."""
         with self._conn() as conn:
-            cur = conn.execute("DELETE FROM resource_curator_notes WHERE id=?", (note_id,))
+            cur = conn.execute(
+                "DELETE FROM resource_curator_notes "
+                "WHERE id=? AND (author IS NULL OR author = '')",
+                (note_id,),
+            )
         return cur.rowcount > 0
 
     #: Valid architecture_component_verdicts.verdict values — kept here
@@ -4267,6 +5745,46 @@ class ProjectRegistry:
             ).fetchone()
         return dict(row) if row else None
 
+    def get_materialized_blueprint_by_identity(
+        self, entity_type: str, entity_slug: str, qualified_name: str,
+    ) -> dict | None:
+        """The blueprint recorded under an Egeria IDENTITY (the qualifiedName, `SolutionBlueprint::<type>::
+        <slug>::<kind>[::<identifier>]`), whichever cluster it was recorded for. The cache key
+        (entity_type, slug, kind, identifier) is that string, held in the existing `qualified_name` column
+        (no DDL); `perspective`/`cluster_name` stay on the row as RE's own key for the cluster and as the
+        legacy key of rows written before the identity was kind + repository."""
+        with self._conn() as conn:
+            row = conn.execute(
+                """SELECT * FROM architecture_materialized_blueprints
+                   WHERE entity_type=? AND entity_slug=? AND qualified_name=?
+                   ORDER BY materialized_at DESC""",
+                (entity_type, entity_slug, qualified_name),
+            ).fetchone()
+        return dict(row) if row else None
+
+    def get_materialized_blueprint_lookups(self, entity_type: str, entity_slug: str) -> tuple[dict, dict]:
+        """(by_key, by_identity) from ONE read, each answering what the per-row method it replaces answered:
+        by_key[f"{perspective}::{cluster_name}"] is the FIRST row get_materialized_blueprint's fetchone would
+        return, and by_identity[qualified_name] the newest row by materialized_at, as
+        get_materialized_blueprint_by_identity's ORDER BY gives. Read only."""
+        with self._conn() as conn:
+            rows = [dict(r) for r in conn.execute(
+                """SELECT * FROM architecture_materialized_blueprints
+                   WHERE entity_type=? AND entity_slug=?""",
+                (entity_type, entity_slug),
+            ).fetchall()]
+        by_key: dict[str, dict] = {}
+        for r in rows:
+            by_key.setdefault(f"{r['perspective']}::{r['cluster_name']}", r)
+        by_identity: dict[str, dict] = {}
+        for r in sorted(rows, key=lambda x: x["materialized_at"], reverse=True):   # stable: ties keep read order
+            by_identity.setdefault(r["qualified_name"], r)
+        return by_key, by_identity
+
+    def get_materialized_blueprints_by_identity(self, entity_type: str, entity_slug: str) -> dict[str, dict]:
+        """{qualified_name: newest row}: the bulk form of get_materialized_blueprint_by_identity."""
+        return self.get_materialized_blueprint_lookups(entity_type, entity_slug)[1]
+
     def get_materialized_blueprints(self, entity_type: str, entity_slug: str) -> dict[str, dict]:
         """{f"{perspective}::{cluster_name}": row} for every blueprint this
         resource has ever materialized — mirrors get_materialized_components'
@@ -4301,10 +5819,23 @@ class ProjectRegistry:
             "materialized_at": datetime.now(timezone.utc).isoformat(),
         }
         with self._conn() as conn:
+            # Another cluster's cache row under this same qualifiedName is about to be replaced: say whose.
+            displaced = [r["cluster_name"] for r in conn.execute(
+                """SELECT cluster_name, perspective FROM architecture_materialized_blueprints
+                   WHERE entity_type=? AND entity_slug=? AND qualified_name=?""",
+                (entity_type, entity_slug, qualified_name)).fetchall()
+                if not (r["cluster_name"] == cluster_name and r["perspective"] == perspective)]
             conn.execute(
                 """DELETE FROM architecture_materialized_blueprints
                    WHERE entity_type=? AND entity_slug=? AND perspective=? AND cluster_name=?""",
                 (entity_type, entity_slug, perspective, cluster_name),
+            )
+            # One Egeria identity has one row: a row another cluster name left under this same
+            # qualifiedName (the cluster was renamed by a re-clustering) is the same blueprint, re-keyed.
+            conn.execute(
+                """DELETE FROM architecture_materialized_blueprints
+                   WHERE entity_type=? AND entity_slug=? AND qualified_name=?""",
+                (entity_type, entity_slug, qualified_name),
             )
             conn.execute(
                 """INSERT INTO architecture_materialized_blueprints
@@ -4312,7 +5843,10 @@ class ProjectRegistry:
                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
                 tuple(entry.values()),
             )
-        return entry
+        if displaced:
+            log.warning("blueprint cache: %s/%s %s re-keyed to cluster %r, displacing %s",
+                        entity_type, entity_slug, qualified_name, cluster_name, displaced)
+        return {**entry, "displaced": displaced}
 
     def get_materialized_port(
         self, entity_type: str, entity_slug: str, scope_locator: str, port_name: str,
@@ -4394,8 +5928,13 @@ class ProjectRegistry:
         schedule: str,
         enabled: bool = True,
         target_kind: str = TARGET_ANALYSIS,
+        created_by: str | None = None,
     ) -> None:
         """Schedule an analysis or a Survey Definition.
+
+        `created_by` (Brief Z2 round 3): the signed-in person creating or enabling it; a timer run runs as them.
+        Recorded on creation, and replaced when the schedule is saved enabled (whoever turns it on owns what it
+        writes); a save that disables it keeps the earlier one.
 
         `analysis_id` is the target reference either way — an analysis id, or a
         survey's qualified name when target_kind is "survey". Named for its
@@ -4412,14 +5951,16 @@ class ProjectRegistry:
             conn.execute(
                 """INSERT INTO resource_schedules
                    (entity_type, entity_slug, analysis_id, schedule, enabled,
-                    next_run, target_kind)
-                   VALUES (?, ?, ?, ?, ?, ?, ?)
+                    next_run, target_kind, created_by)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                    ON CONFLICT(entity_type, entity_slug, analysis_id) DO UPDATE SET
                      schedule=excluded.schedule, enabled=excluded.enabled,
                      next_run=excluded.next_run,
-                     target_kind=excluded.target_kind""",
+                     target_kind=excluded.target_kind,
+                     created_by=CASE WHEN excluded.enabled = 1 THEN excluded.created_by
+                                     ELSE resource_schedules.created_by END""",
                 (entity_type, entity_slug, analysis_id, schedule, int(enabled),
-                 next_run, target_kind),
+                 next_run, target_kind, (created_by or "").strip() or None),
             )
 
     def update_schedule_after_run(
@@ -4711,6 +6252,21 @@ class ProjectRegistry:
                 (homepage_url, slug),
             )
 
+    def update_project_docs_url(self, slug: str, docs_url: str) -> None:
+        """Record the project's documentation site -- set by HomepageSurveyor.
+
+        Sits beside update_project_homepage and for the same reason: it writes
+        `projects.docs_url`, which a stats refresh never touches. An empty string
+        is a real value (the sources were read and none names documentation) and
+        clears an earlier answer; the caller must not pass "" for "could not read".
+        """
+        slug = self._normalize_slug(slug)
+        with self._conn() as conn:
+            conn.execute(
+                "UPDATE projects SET docs_url = ? WHERE slug = ?",
+                (docs_url, slug),
+            )
+
     def update_github_url(self, slug: str, github_url: str) -> None:
         """Change which repository this slug points at.
 
@@ -4782,6 +6338,7 @@ class ProjectRegistry:
                 slug, s.file_path, s.language, s.kind, s.name, s.qualified_name,
                 s.signature, s.docstring, "", s.start_line, s.end_line,
                 s.parent_class, s.return_type, int(s.is_private), int(s.is_async), s.complexity,
+                getattr(s, "file_role", None),
             )
             for s in symbols
         ]
@@ -4795,8 +6352,8 @@ class ProjectRegistry:
                 """INSERT INTO project_code_symbols
                    (project_slug, file_path, language, kind, name, qualified_name,
                     signature, docstring, summary, start_line, end_line,
-                    parent_class, return_type, is_private, is_async, complexity)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    parent_class, return_type, is_private, is_async, complexity, file_role)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                    ON CONFLICT(project_slug, file_path, qualified_name)
                    DO UPDATE SET
                      language=excluded.language, kind=excluded.kind, name=excluded.name,
@@ -4804,7 +6361,7 @@ class ProjectRegistry:
                      start_line=excluded.start_line, end_line=excluded.end_line,
                      parent_class=excluded.parent_class, return_type=excluded.return_type,
                      is_private=excluded.is_private, is_async=excluded.is_async,
-                     complexity=excluded.complexity""",
+                     complexity=excluded.complexity, file_role=excluded.file_role""",
                 rows,
             )
             if relationships:
@@ -4856,6 +6413,7 @@ class ProjectRegistry:
             (
                 slug, m.file_path, m.start_line, m.language, m.marker_kind,
                 m.framework, m.interface_kind, m.detail, m.qualified_name,
+                getattr(m, "file_role", None),
             )
             for m in markers
         ]
@@ -4863,8 +6421,8 @@ class ProjectRegistry:
             conn.executemany(
                 """INSERT INTO project_code_markers
                    (project_slug, file_path, start_line, language, marker_kind,
-                    framework, interface_kind, detail, qualified_name)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    framework, interface_kind, detail, qualified_name, file_role)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 rows,
             )
 
@@ -5181,29 +6739,44 @@ class ProjectRegistry:
                 ).fetchall()
         return [dict(r) for r in rows]
 
-    def fuzzy_candidate(self, query: str) -> tuple[str, str] | None:
+    def fuzzy_candidate(self, query: str, *, exclude_slug: str | None = None,
+                        min_term_len: int = 0) -> tuple[str, str] | None:
         """
-        Return (display_term, project_slug) if a phrase in the query fuzzy-matches a project.
-        Uses difflib at 0.70 cutoff. Tries 1–4-word ngrams ordered longest-first.
-        Returns None when no confident match exists.
+        Return (display_term, resource_slug) if a phrase in the query fuzzy-matches a resource
+        (repo, database or file system). Uses difflib at 0.70 cutoff. Tries 1–4-word ngrams
+        ordered longest-first. Returns None when no confident match exists.
+
+        exclude_slug: a phrase whose best match is this resource is skipped (a chat scoped to
+        that resource is not told it meant itself). min_term_len: ignore shorter phrases.
         """
         import difflib
         q = query.lower()
-        projects = self.list_all()
         candidates: dict[str, str] = {}  # normalized_name → slug
-        for p in projects:
-            candidates[p.slug.lower()] = p.slug
-            if p.display_name:
-                key = p.display_name.lower().replace("-", "_").replace(" ", "_")
-                candidates[key] = p.slug
+
+        def _add(slug: str, display_name: str) -> None:
+            candidates[slug.lower()] = slug
+            if display_name:
+                key = display_name.lower().replace("-", "_").replace(" ", "_")
+                candidates[key] = slug
+
+        for p in self.list_all():
+            _add(p.slug, p.display_name)
+        for d in self.list_databases():
+            _add(d.slug, d.display_name)
+        for f in self.list_filesystems():
+            _add(f.slug, f.display_name)
         if not candidates:
             return None
         words = q.split()
         for n in range(min(4, len(words)), 0, -1):
             for i in range(len(words) - n + 1):
                 term = "_".join(words[i:i + n])
+                if len(term) < min_term_len:
+                    continue
                 matches = difflib.get_close_matches(term, list(candidates.keys()), n=1, cutoff=0.70)
                 if matches:
+                    if exclude_slug and candidates[matches[0]] == exclude_slug:
+                        continue
                     display_term = " ".join(words[i:i + n])
                     return display_term, candidates[matches[0]]
         return None
@@ -5754,10 +7327,41 @@ class ProjectRegistry:
                     f"GROUP BY project_slug, kind",
                     (*slugs, *kinds, "____-__-__%"),
                 ).fetchall()
+                current = None
+                if table == "project_analysis_findings":
+                    # CURRENT rows only: the newest run per (resource, kind,
+                    # scope), and not superseded. A bare COUNT(*) here added
+                    # every run ever written, so a resource surveyed six times
+                    # reported six runs' findings as the current answer
+                    # (FINDINGS-SUPERSESSION-IMPLEMENTED.md). Same rule as
+                    # query_findings(). Kinds in ALL_RUNS_FINDING_KINDS are read
+                    # across runs by design, so only the superseded filter
+                    # applies to them.
+                    all_runs = tuple(ALL_RUNS_FINDING_KINDS)
+                    current = {}
+                    for c in conn.execute(
+                        f"SELECT f.project_slug, f.kind, COUNT(*) AS n "
+                        f"FROM {table} f "
+                        f"JOIN (SELECT project_slug, kind, COALESCE(scope_locator, '') AS sl, "
+                        f"             MAX(surveyed_at) AS ts "
+                        f"      FROM {table} "
+                        f"      WHERE project_slug IN ({','.join('?' * len(slugs))}) "
+                        f"        AND kind IN ({','.join('?' * len(kinds))}) "
+                        f"        AND surveyed_at LIKE ? "
+                        f"      GROUP BY project_slug, kind, COALESCE(scope_locator, '')) l "
+                        f"  ON f.project_slug = l.project_slug AND f.kind = l.kind "
+                        f"  AND COALESCE(f.scope_locator, '') = l.sl "
+                        f"WHERE f.superseded_at IS NULL "
+                        f"  AND (f.surveyed_at = l.ts OR f.kind IN ({','.join('?' * len(all_runs))})) "
+                        f"GROUP BY f.project_slug, f.kind",
+                        (*slugs, *kinds, "____-__-__%", *all_runs),
+                    ).fetchall():
+                        current[(c["project_slug"], c["kind"])] = c["n"] or 0
                 for r in rows:
                     key = (r["project_slug"], r["kind"])
                     prev = out.get(key) or {"rows": 0, "measured_at": ""}
-                    prev["rows"] += r["n"] or 0
+                    prev["rows"] += (current.get(key, 0) if current is not None
+                                     else (r["n"] or 0))
                     # The LATER of the two tables' timestamps: an analysis that
                     # wrote metrics after findings was measured at the later
                     # moment, and reporting the earlier one would age it.
@@ -5829,6 +7433,8 @@ class ProjectRegistry:
         executor_ref: str = "", demanded_by: str = "",
         metrics: dict | None = None, declared: dict | None = None,
         disagreement: str = "", surveyed_as: str = "",
+        flow_run_id: str = "", dispatch_failed: str = "",
+        survey_commit_sha: str | None = None,
     ) -> None:
         """One row per step EXECUTION. Append-only: a step run twice in one
         snapshot (once as a prerequisite, once on its own request) is two
@@ -5838,16 +7444,33 @@ class ProjectRegistry:
         `demanded_by` is empty for a directly-requested step and carries the
         requesting step's key for an auto-run prerequisite — the field that
         answers "why did Scouting take three minutes".
+
+        `flow_run_id`/`dispatch_failed` (2026-09-28, Prefect dispatch
+        honesty — PREFECT-DISPATCH-HONESTY-IMPLEMENTED.md):
+        `executor` must only ever be `'prefect'` when a real flow-run exists
+        — `flow_run_id` then carries its id, checkable against Prefect's own
+        `POST /api/flow_runs/filter`. A dispatch that was attempted and fell
+        back to local execution records `executor='local'` and a non-empty
+        `dispatch_failed` naming why, rather than the two being
+        indistinguishable from a step that was never routed to Prefect at
+        all.
         """
         with self._conn() as conn:
+            # `survey_commit_sha` (artifacts slice 1): the commit of the code this run READ, as the caller
+            # got it from the zipball or clone it acquired (SurveyOrchestrator, via the run's resources).
+            # Never projects.last_commit_sha: that moves only on a re-index and can be older than the tree
+            # the survey read. A run that read no code passes nothing and stores NULL ("not recorded").
+            commit_sha = survey_commit_sha or None
             conn.execute(
                 "INSERT INTO step_runs (slug, entity_type, step_key, surveyed_at, "
                 "source, executor, executor_ref, demanded_by, metrics, declared, "
-                "disagreement, surveyed_as) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "disagreement, surveyed_as, flow_run_id, dispatch_failed, survey_commit_sha) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (slug, entity_type, step_key, surveyed_at, source, executor,
                  executor_ref or "", demanded_by or "",
                  json.dumps(metrics or {}), json.dumps(declared or {}),
-                 disagreement or "", surveyed_as or ""),
+                 disagreement or "", surveyed_as or "",
+                 flow_run_id or "", dispatch_failed or "", commit_sha),
             )
 
     def query_step_runs(
@@ -5889,6 +7512,322 @@ class ProjectRegistry:
                     record[column] = {}
             out.append(record)
         return out
+
+    # ── native Egeria survey launch (step_runs + native_survey_annotations) ──
+    #
+    # Every method here is keyed on Egeria's engine-action GUID, never on which
+    # branch of RE's code ran: the GUID is the proof the row exists on
+    # (BRIEF-NATIVE-EGERIA-SURVEY-LAUNCH.md). Nothing in this
+    # block touches `flow_run_id`/`dispatch_failed` -- the Prefect path.
+
+    def record_native_survey_submission(
+        self, entity_type: str, slug: str, process_qualified_name: str,
+        surveyed_at: str, *, engine_action_guid: str = "", submit_error: str = "",
+        submitted_by: str = "", started_as: str = "", started_by: str = "", started_in: str = "",
+        declared_extra: dict | None = None,
+    ) -> None:
+        """One step_runs row per SUBMISSION attempt. With a GUID it is proof
+        Egeria accepted the action; without one it records that the attempt
+        failed (`submit_error`), which is a different, honest state -- not a
+        row that quietly claims a submission.
+
+        `started_by` / `started_in` (engine host case 3, no DDL: the `declared` JSON beside `started_as`): who
+        coordinates the run ("egeria") and where it was started ("re": RE's "coordinated by Egeria" control;
+        "egeria": initiated in Egeria, recorded by RE's engine host when it ran the first step)."""
+        declared = {k: v for k, v in (("started_as", started_as), ("started_by", started_by),
+                                      ("started_in", started_in)) if v}
+        declared.update(declared_extra or {})
+        with self._conn() as conn:
+            conn.execute(
+                "INSERT INTO step_runs (slug, entity_type, step_key, surveyed_at, "
+                "source, executor, executor_ref, metrics, declared, "
+                "engine_action_guid, submit_error, submitted_by) "
+                "VALUES (?, ?, ?, ?, 'egeria', 'egeria', ?, '{}', ?, ?, ?, ?)",
+                (self._normalize_slug(slug), entity_type,
+                 NATIVE_SURVEY_STEP_PREFIX + process_qualified_name, surveyed_at,
+                 process_qualified_name, json.dumps(declared) if declared else "{}",
+                 engine_action_guid or "",
+                 submit_error or "", submitted_by or ""),
+            )
+
+    def record_native_survey_submission_once(
+        self, entity_type: str, slug: str, process_qualified_name: str, surveyed_at: str, *,
+        engine_action_guid: str, submitted_by: str = "", started_as: str = "", started_by: str = "",
+        started_in: str = "", declared_extra: dict | None = None,
+    ) -> bool:
+        """Engine host case 3 (review L5): one native-survey row per process instance. Inserts the row only when no
+        row holds `engine_action_guid` yet, so the Run press and the engine host's first step cannot both write a run
+        line for the same instance. True when this call wrote it; False when a row was already there (the caller then
+        adopts it with `adopt_native_survey_submission`).
+
+        The insert-if-absent is one statement, but that alone is not atomic on Postgres: under READ COMMITTED two
+        transactions can both see no row (`idx_step_runs_engine_action` is not unique, and making it so is DDL). So on
+        Postgres the transaction first takes `pg_advisory_xact_lock(hashtext(<guid>))`, released at its commit; the
+        second writer waits, then sees the first's row. SQLite serialises writers itself."""
+        declared = {k: v for k, v in (("started_as", started_as), ("started_by", started_by),
+                                      ("started_in", started_in)) if v}
+        declared.update(declared_extra or {})
+        with self._conn() as conn:
+            if getattr(conn, "is_postgres", False):
+                conn.execute("SELECT pg_advisory_xact_lock(hashtext(?))", (engine_action_guid,))
+            cur = conn.execute(
+                "INSERT INTO step_runs (slug, entity_type, step_key, surveyed_at, "
+                "source, executor, executor_ref, metrics, declared, "
+                "engine_action_guid, submit_error, submitted_by) "
+                "SELECT ?, ?, ?, ?, 'egeria', 'egeria', ?, '{}', ?, ?, '', ? "
+                "WHERE NOT EXISTS (SELECT 1 FROM step_runs WHERE engine_action_guid = ?)",
+                (self._normalize_slug(slug), entity_type,
+                 NATIVE_SURVEY_STEP_PREFIX + process_qualified_name, surveyed_at,
+                 process_qualified_name, json.dumps(declared) if declared else "{}",
+                 engine_action_guid, submitted_by or "", engine_action_guid),
+            )
+            return bool(getattr(cur, "rowcount", 0))
+
+    def adopt_native_survey_submission(self, engine_action_guid: str, *, submitted_by: str,
+                                       declared_patch: dict) -> None:
+        """The person who pressed Run, on the run line the engine host wrote first for the same process instance
+        (review L5): their name and where it was started are recorded on that one row, never on a second."""
+        with self._conn() as conn:
+            conn.execute("UPDATE step_runs SET submitted_by = ? WHERE engine_action_guid = ?",
+                         (submitted_by or "", engine_action_guid))
+        self.merge_native_survey_declared(engine_action_guid, declared_patch)
+
+    def record_native_survey_readback(
+        self, engine_action_guid: str, *, read_at: str, status: str = "",
+        message: str = "", error: str = "",
+        requested_at: str | None = None, started_at: str | None = None,
+    ) -> None:
+        """Persist what Egeria said about the engine action, and when RE read it.
+
+        A read that FAILED (`error`) records the error and the attempt time and
+        leaves the last good status/message alone: "Egeria was unreachable just
+        now" must not overwrite "Egeria said IN_PROGRESS at 10:02", nor pose as
+        a status of its own."""
+        with self._conn() as conn:
+            if error:
+                conn.execute(
+                    "UPDATE step_runs SET engine_action_read_error = ?, "
+                    "engine_action_read_at = ? WHERE engine_action_guid = ?",
+                    (error, read_at, engine_action_guid),
+                )
+            else:
+                conn.execute(
+                    "UPDATE step_runs SET engine_action_status = ?, "
+                    "engine_action_message = ?, engine_action_read_at = ?, "
+                    "engine_action_read_error = '', "
+                    # Egeria's own times (ISO UTC). A read that states none leaves what is stored: NULL stays NULL.
+                    "engine_action_requested_at = COALESCE(?, engine_action_requested_at), "
+                    "engine_action_started_at = COALESCE(?, engine_action_started_at) "
+                    "WHERE engine_action_guid = ?",
+                    (status, message, read_at, requested_at, started_at, engine_action_guid),
+                )
+
+    def merge_native_survey_declared(self, engine_action_guid: str, patch: dict) -> None:
+        """Merge `patch` into the `declared` JSON of the native-survey row(s) holding this GUID. No DDL: a
+        process run (engine host step 4) keeps what it last read of each of its steps here, beside `started_as`."""
+        with self._conn() as conn:
+            rows = conn.execute("SELECT id, declared FROM step_runs WHERE engine_action_guid = ?",
+                                (engine_action_guid,)).fetchall()
+            for row in rows:
+                try:
+                    current = json.loads(dict(row).get("declared") or "{}")
+                except (TypeError, ValueError):
+                    current = {}
+                if not isinstance(current, dict):
+                    current = {}
+                current.update(patch)
+                conn.execute("UPDATE step_runs SET declared = ? WHERE id = ?",
+                             (json.dumps(current, default=str), dict(row)["id"]))
+
+    def record_native_survey_report(
+        self, engine_action_guid: str, *, entity_type: str, slug: str,
+        process_qualified_name: str, report_guid: str, report_at: str,
+        read_at: str, annotations: list[dict],
+    ) -> int:
+        """Read one Egeria SurveyReport into RE, idempotently, and stamp the
+        step_runs row that originated it.
+
+        Annotations are keyed on (report GUID, annotation GUID) with
+        ON CONFLICT DO NOTHING, so reading the same report again writes
+        nothing new. The row's `report_annotation_count` is then set from the
+        rows that are ACTUALLY THERE for that report, not from `len(annotations)`
+        -- the count is what a status derivation later checks the stored rows
+        against, so it has to come from the store. Returns that count.
+        """
+        slug = self._normalize_slug(slug)
+        with self._conn() as conn:
+            for a in annotations:
+                guid = a.get("guid") or ""
+                if not guid:
+                    continue
+                conf = a.get("confidence")
+                conn.execute(
+                    "INSERT INTO native_survey_annotations (entity_type, slug, "
+                    "process_qualified_name, engine_action_guid, report_guid, "
+                    "report_at, annotation_guid, annotation_type, analysis_step, "
+                    "summary, explanation, confidence, detail_json, read_at) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
+                    "ON CONFLICT(report_guid, annotation_guid) DO NOTHING",
+                    (entity_type, slug, process_qualified_name, engine_action_guid,
+                     report_guid, report_at, guid, a.get("annotation_type") or "",
+                     a.get("analysis_step") or "", a.get("summary") or "",
+                     a.get("explanation") or "",
+                     conf if isinstance(conf, int) and not isinstance(conf, bool) else None,
+                     json.dumps(a.get("detail") or {}, default=str), read_at),
+                )
+            count = conn.execute(
+                "SELECT COUNT(*) FROM native_survey_annotations WHERE report_guid = ?",
+                (report_guid,),
+            ).fetchone()[0]
+            conn.execute(
+                "UPDATE step_runs SET survey_report_guid = ?, survey_report_at = ?, "
+                "report_read_at = ?, report_annotation_count = ? "
+                "WHERE engine_action_guid = ?",
+                (report_guid, report_at, read_at, count, engine_action_guid),
+            )
+        return int(count)
+
+    def list_native_survey_runs(
+        self, entity_type: str, slug: str, process_qualified_name: str | None = None,
+    ) -> list[dict]:
+        """Native-survey step_runs rows for one resource, newest first."""
+        sql = ("SELECT * FROM step_runs WHERE entity_type = ? AND slug = ? "
+               "AND step_key LIKE ?")
+        params: list = [entity_type, self._normalize_slug(slug),
+                        NATIVE_SURVEY_STEP_PREFIX + "%"]
+        if process_qualified_name:
+            sql += " AND step_key = ?"
+            params.append(NATIVE_SURVEY_STEP_PREFIX + process_qualified_name)
+        sql += " ORDER BY surveyed_at DESC, id DESC"
+        with self._conn() as conn:
+            rows = conn.execute(sql, tuple(params)).fetchall()
+        return [dict(r) for r in rows]
+
+    def list_in_flight_native_survey_runs(self, limit: int = 200) -> list[dict]:
+        """Rows with an engine-action GUID whose proof is not yet terminal:
+        no status read yet, or a read that was not terminal, or a completed
+        action whose report is not yet read in. Used by the read-back sweep;
+        deriving 'in flight' from the proof columns (not a flag) so a row
+        that a crashed sweep left half-done is picked up again."""
+        # Egeria's "still going" and "succeeded" words are the two that leave
+        # work to do; any other terminal word (FAILED, INVALID, ...) is final.
+        pending = ("REQUESTED", "APPROVED", "WAITING", "ACTIVATING", "IN_PROGRESS")
+        succeeded = ("COMPLETED", "ACTIONED")
+        marks = lambda seq: ", ".join("?" for _ in seq)  # noqa: E731
+        with self._conn() as conn:
+            rows = conn.execute(
+                "SELECT * FROM step_runs WHERE step_key LIKE ? "
+                "AND engine_action_guid <> '' AND ("
+                "engine_action_status = '' "
+                f"OR engine_action_status IN ({marks(pending)}) "
+                f"OR (engine_action_status IN ({marks(succeeded)}) "
+                "    AND (report_read_at = '' OR report_annotation_count IS NULL))) "
+                "ORDER BY surveyed_at DESC, id DESC LIMIT " + str(int(limit)),
+                (NATIVE_SURVEY_STEP_PREFIX + "%", *pending, *succeeded),
+            ).fetchall()
+        return [dict(r) for r in rows]
+
+    def query_native_survey_annotations(
+        self, report_guid: str,
+    ) -> list[dict]:
+        """The stored annotations of one report, decoded."""
+        with self._conn() as conn:
+            rows = conn.execute(
+                "SELECT annotation_guid, annotation_type, analysis_step, summary, "
+                "explanation, confidence, detail_json, report_at, read_at "
+                "FROM native_survey_annotations WHERE report_guid = ? "
+                "ORDER BY annotation_type, summary, annotation_guid",
+                (report_guid,),
+            ).fetchall()
+        out = []
+        for r in rows:
+            d = dict(r)
+            try:
+                d["detail"] = json.loads(d.pop("detail_json") or "{}")
+            except (ValueError, TypeError):
+                d["detail"] = {}
+            out.append(d)
+        return out
+
+    def count_native_survey_annotations(self, report_guid: str) -> int:
+        with self._conn() as conn:
+            return int(conn.execute(
+                "SELECT COUNT(*) FROM native_survey_annotations WHERE report_guid = ?",
+                (report_guid,),
+            ).fetchone()[0])
+
+    # ── annotations of a user step run by RE (extensibility brief 2c) ────────
+    #
+    # Their own table, `step_annotations` (STEP_ANNOTATIONS_DDL), never
+    # `native_survey_annotations`, which holds Egeria's read-back only.
+
+    def record_step_annotations(self, entity_type: str, slug: str, step_key: str, *,
+                                run: str, measured_at: str, annotations: list[dict],
+                                package: str = "", producer_version: str = "") -> int:
+        """Keep one run's annotations of one step, idempotently (a re-run of
+        the same run writes nothing new). Each annotation is `StepAnnotation.
+        to_record()`'s shape. Returns how many rows the run has."""
+        slug = self._normalize_slug(slug)
+        created_at = datetime.utcnow().isoformat()
+        with self._conn() as conn:
+            for a in annotations:
+                env = a.get("additionalProperties") or {}
+                conn.execute(
+                    "INSERT INTO step_annotations (entity_type, slug, step_key, package, "
+                    "producer_version, run_id, annotation_type, scope, result_state, summary, "
+                    "explanation, measured_at, detail_json, created_at) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
+                    "ON CONFLICT(entity_type, slug, step_key, run_id, scope) DO NOTHING",
+                    (entity_type, slug, step_key, package or "",
+                     producer_version or env.get("producerVersion") or "", run,
+                     a.get("annotation_type") or "", a.get("scope") or "",
+                     env.get("resultState") or "", a.get("summary") or "",
+                     a.get("explanation") or "", measured_at,
+                     json.dumps({"scope": a.get("scope") or "",
+                                 "resourceProperties": a.get("resourceProperties") or {},
+                                 "additionalProperties": env,
+                                 # a library step's proposal (ClassificationAnnotation), kept as it was proposed
+                                 **({"candidateClassifications": list(a["candidateClassifications"])}
+                                    if a.get("candidateClassifications") else {})}, default=str),
+                     created_at),
+                )
+            return int(conn.execute(
+                "SELECT COUNT(*) FROM step_annotations WHERE entity_type = ? AND slug = ? "
+                "AND step_key = ? AND run_id = ?", (entity_type, slug, step_key, run)).fetchone()[0])
+
+    def query_step_annotations(self, entity_type: str, slug: str, step_key: str,
+                               state: str | None = None) -> tuple[str, list[dict]]:
+        """(run, rows) for the latest stored run of one step on one resource;
+        ("", []) when it has never stored one. `state` keeps only the rows
+        whose envelope states it. Rows are decoded, in scope order."""
+        slug = self._normalize_slug(slug)
+        with self._conn() as conn:
+            latest = conn.execute(
+                "SELECT run_id FROM step_annotations WHERE entity_type = ? AND slug = ? "
+                "AND step_key = ? ORDER BY measured_at DESC, id DESC LIMIT 1",
+                (entity_type, slug, step_key),
+            ).fetchone()
+            if latest is None:
+                return "", []
+            run = dict(latest)["run_id"]
+            sql = ("SELECT scope, annotation_type, step_key, package, producer_version, run_id, "
+                   "result_state, summary, explanation, measured_at, detail_json, created_at "
+                   "FROM step_annotations WHERE entity_type = ? AND slug = ? AND step_key = ? "
+                   "AND run_id = ?")
+            params: list = [entity_type, slug, step_key, run]
+            if state is not None:
+                sql += " AND result_state = ?"
+                params.append(state)
+            rows = conn.execute(sql + " ORDER BY scope", tuple(params)).fetchall()
+        out = []
+        for r in rows:
+            d = dict(r)
+            try:
+                d["detail"] = json.loads(d.pop("detail_json") or "{}")
+            except (ValueError, TypeError):
+                d["detail"] = {}
+            out.append(d)
+        return run, out
 
     def median_step_wall_ms(self, step_key: str) -> float | None:
         """Median observed `wall_ms` for a step across every resource, or None
@@ -6110,6 +8049,154 @@ class ProjectRegistry:
             ).fetchall()
         return [dict(r) for r in rows]
 
+    def query_findings_all_runs_by_scope(
+        self, slug: str, kind: str, order_class=None,
+    ) -> dict[str, list[dict]]:
+        """`query_findings_all_runs` for EVERY scope of one (slug, kind) in one
+        statement (plus a re-read of the few scopes named below): {scope_locator:
+        rows}, each list identical to what `query_findings_all_runs(slug, kind,
+        scope)` returns for that scope -- same keys, same order (`scope_locator`
+        is the grouping key and is not repeated on the rows).
+
+        Exists because architecture recovery has ~1000 scopes on `egeria_git`
+        and the per-scope form paid one round trip each, several times per
+        rebuild, eight rebuilds per Curate open.
+
+        **Why "same order" needs a second step.** The per-scope query orders by
+        `surveyed_at` only. Rows written in one batch share a `surveyed_at`
+        (a detect row and a coupling row of one survey), and the order among
+        equal keys is whatever Postgres' sort returns for that scope's rows --
+        deterministic for given physical data, not defined by any column. One
+        bulk query cannot reproduce it, and measured on `egeria_git` it differs
+        for 105 of 1,094 components (evidence listed in another order; for one,
+        a different one of two equal-timestamp component rows read as "latest").
+        So a scope whose tie group holds rows that are NOT interchangeable is
+        re-read with the per-scope query itself, which is exact by construction.
+
+        `order_class(row)` says which rows' relative order the caller can see:
+        ties are only looked for among rows of the SAME class (the caller reads
+        components and evidence as two separate lists, so a component row
+        swapping places with an evidence row is invisible). Default: one class.
+        Rows within a tie that are field-for-field identical are interchangeable
+        and do not trigger the re-read.
+        """
+        slug = self._normalize_slug(slug)
+        with self._conn() as conn:
+            rows = conn.execute(
+                "SELECT scope_locator, check_name, label, summary, confidence, detail_json, surveyed_at "
+                "FROM project_analysis_findings "
+                "WHERE project_slug = ? AND kind = ? "
+                "ORDER BY scope_locator, surveyed_at ASC, id ASC",
+                (slug, kind),
+            ).fetchall()
+        out: dict[str, list[dict]] = {}
+        for r in rows:
+            d = dict(r)
+            out.setdefault(d.pop("scope_locator"), []).append(d)
+        cls = order_class or (lambda _row: None)
+        for scope, scope_rows in list(out.items()):
+            seen: dict[tuple, dict] = {}
+            ambiguous = False
+            for row in scope_rows:
+                key = (cls(row), row["surveyed_at"])
+                prior = seen.get(key)
+                if prior is None:
+                    seen[key] = row
+                elif prior != row:
+                    ambiguous = True
+                    break
+            if ambiguous:
+                out[scope] = self.query_findings_all_runs(slug, kind, scope)
+        return out
+
+    def query_metrics_by_scope(self, slug: str, kind: str) -> dict[str, dict]:
+        """`query_metrics` for EVERY scope of one (slug, kind) in one statement
+        (plus a re-read of the few scopes named below): {scope_locator: the dict
+        query_metrics(slug, kind, scope) returns}. A scope with no metric rows is
+        absent here and `{}` there.
+
+        Two survey steps that run in one batch share a `surveyed_at`, so a scope
+        can hold the same `metric_name` twice at its latest instant (measured on
+        `genaiexamples`: 45 of them, 44 with different values). `query_metrics`
+        has no ORDER BY, so which of the two it reports is whichever the database
+        returns last -- physical order, which is not `id` order for a row that was
+        ever moved. A scope with such a conflict is therefore re-read with the
+        per-scope query itself; a duplicate with identical value and detail is
+        interchangeable and is not.
+        """
+        slug = self._normalize_slug(slug)
+        with self._conn() as conn:
+            rows = conn.execute(
+                "SELECT m.scope_locator, m.surveyed_at, m.metric_name, m.metric_value, m.detail_json "
+                "FROM project_analysis_metrics m "
+                "JOIN (SELECT scope_locator, MAX(surveyed_at) AS ts FROM project_analysis_metrics "
+                "      WHERE project_slug = ? AND kind = ? GROUP BY scope_locator) latest "
+                "  ON m.scope_locator = latest.scope_locator AND m.surveyed_at = latest.ts "
+                "WHERE m.project_slug = ? AND m.kind = ? "
+                # metric_name before id: the per-scope form has no ORDER BY and, on the live Postgres,
+                # the planner serves it from the (slug, kind, metric_name) index, i.e. alphabetically --
+                # and the key order of the dict built below reaches the JSON the UI receives.
+                "ORDER BY m.scope_locator, m.metric_name, m.id",
+                (slug, kind, slug, kind),
+            ).fetchall()
+        out: dict[str, dict] = {}
+        first_seen: dict[tuple, tuple] = {}
+        conflicted: set[str] = set()
+        for r in rows:
+            scope, name = r["scope_locator"], r["metric_name"]
+            m = out.setdefault(scope, {"surveyed_at": r["surveyed_at"]})
+            m[name] = r["metric_value"]
+            if r["detail_json"]:
+                m["detail"] = json.loads(r["detail_json"])
+            seen = first_seen.setdefault((scope, name), (r["metric_value"], r["detail_json"]))
+            if seen != (r["metric_value"], r["detail_json"]):
+                conflicted.add(scope)
+        for scope in conflicted:
+            out[scope] = self.query_metrics(slug, kind, scope)
+        return out
+
+    def analysis_data_fingerprint(self, slug: str, kinds: tuple[str, ...]) -> tuple:
+        """A cheap signature of everything `project_analysis_findings` and
+        `project_analysis_metrics` hold for (slug, kinds) — what a cache of a
+        derived view must key on so that it is DATA-keyed, not process-keyed.
+
+        Both tables are append-only for these readers, with two exceptions this
+        covers: `superseded_at` is stamped in place (so it is counted), and a
+        project removal deletes rows (the count and max `id` both move). Any
+        insert raises `MAX(id)`; any delete lowers `COUNT(*)` or the max, and a
+        delete-then-reinsert still raises `MAX(id)` because ids never recycle.
+        The signature is read from the database on every call, so a write by
+        ANY process or registry instance changes it.
+
+        **Known blind spots** (none reachable by a write path today, per review):
+        an in-place UPDATE of `label`/`summary`/`detail_json`/`confidence` on an
+        existing row changes none of the terms (RE only ever UPDATEs `superseded_at`
+        and `egeria_annotation_guid`, and the latter is not read by these readers);
+        and a SQLite file deleted and recreated at the same path with identical
+        counts, ids and timestamps would look unchanged (a test-only hazard; the
+        cache is also keyed on the database URL). `MAX(superseded_at)` is included
+        so two different supersede stamps cannot cancel in the count.
+        """
+        slug = self._normalize_slug(slug)
+        marks = ",".join("?" for _ in kinds)
+        with self._conn() as conn:
+            f = conn.execute(
+                "SELECT kind, COUNT(*), COALESCE(MAX(id), 0), COALESCE(MAX(surveyed_at), ''), "
+                "COALESCE(SUM(CASE WHEN superseded_at IS NULL THEN 0 ELSE 1 END), 0), COALESCE(MAX(superseded_at), '') "
+                f"FROM project_analysis_findings WHERE project_slug = ? AND kind IN ({marks}) "
+                "GROUP BY kind ORDER BY kind",
+                (slug, *kinds),
+            ).fetchall()
+            m = conn.execute(
+                "SELECT kind, COUNT(*), COALESCE(MAX(id), 0), COALESCE(MAX(surveyed_at), '') "
+                f"FROM project_analysis_metrics WHERE project_slug = ? AND kind IN ({marks}) "
+                "GROUP BY kind ORDER BY kind",
+                (slug, *kinds),
+            ).fetchall()
+        # Index access, not tuple(row): RowWrapper iterates its KEYS, sqlite3.Row its values.
+        return (tuple(tuple(r[i] for i in range(6)) for r in f),
+                tuple(tuple(r[i] for i in range(4)) for r in m))
+
     def get_file_inventory_with_sizes(self, slug: str, *, include_vendored: bool = False) -> list[dict]:
         """Return file paths, sizes, and git mode bits from the inventory for a project.
 
@@ -6203,6 +8290,49 @@ class ProjectRegistry:
                 (entity_type, entity_slug, stale_guid, now, now, detail),
             )
 
+    def mark_egeria_linkage_uncatalogued(
+        self, entity_type: str, entity_slug: str, detail: str = "",
+    ) -> None:
+        """Re-word a flag for an entity that has NO publish at all.
+
+        'stale' says something once resolved and no longer does; for a slug
+        with no survey/report there was never anything to go stale. The honest
+        status is 'uncatalogued' ("not catalogued, publish needed").
+        `detected_at` is preserved while the row stays uncatalogued;
+        `last_checked_at` always advances.
+        """
+        from datetime import timezone
+        now = datetime.now(timezone.utc).isoformat()
+        with self._conn() as conn:
+            conn.execute(
+                """INSERT INTO egeria_linkage_status
+                       (entity_type, entity_slug, status, stale_guid, detected_at,
+                        last_checked_at, detail)
+                   VALUES (?, ?, 'uncatalogued', '', ?, ?, ?)
+                   ON CONFLICT (entity_type, entity_slug) DO UPDATE SET
+                       status='uncatalogued', stale_guid='',
+                       detected_at=CASE WHEN egeria_linkage_status.status='uncatalogued'
+                                        THEN egeria_linkage_status.detected_at
+                                        ELSE excluded.detected_at END,
+                       last_checked_at=excluded.last_checked_at,
+                       detail=excluded.detail""",
+                (entity_type, entity_slug, now, now, detail),
+            )
+
+    def list_egeria_linkages(
+        self, entity_type: str, statuses: tuple[str, ...] = ("stale", "uncatalogued"),
+    ) -> list[dict]:
+        """Every flagged row of one entity_type, whatever the current scan
+        happens to contain — the heal pass keys on THESE rows."""
+        placeholders = ",".join(["?"] * len(statuses))
+        with self._conn() as conn:
+            rows = conn.execute(
+                f"SELECT * FROM egeria_linkage_status WHERE entity_type=? "
+                f"AND status IN ({placeholders}) ORDER BY entity_slug",
+                (entity_type, *statuses),
+            ).fetchall()
+        return [dict(r) for r in rows]
+
     def get_egeria_linkage(self, entity_type: str, entity_slug: str) -> dict | None:
         with self._conn() as conn:
             row = conn.execute(
@@ -6210,6 +8340,29 @@ class ProjectRegistry:
                 (entity_type, entity_slug),
             ).fetchone()
         return dict(row) if row else None
+
+    def get_egeria_linkages_for_entities(
+        self, entity_type: str, entity_slugs: list[str],
+    ) -> dict[str, dict]:
+        """The batch form of `get_egeria_linkage`, one query for every slug
+        instead of one per entity. Added 2026-09-29 round 2 for
+        `list_projects`'s N+1 fix, used via `egeria_linkage.describe_publish_
+        status` through a small prefetched-dict shim (`web/routes/projects.py`'s
+        `_PrefetchedLinkageRegistry`) rather than duplicating that function's
+        logic — `describe_publish_status` only ever calls `get_egeria_linkage`
+        on whatever `registry` it's given, so a shim backed by this batch
+        result runs the exact same, already-tested code path."""
+        if not entity_slugs:
+            return {}
+        slugs = list(dict.fromkeys(entity_slugs))
+        placeholders = ",".join(["?"] * len(slugs))
+        with self._conn() as conn:
+            rows = conn.execute(
+                f"SELECT * FROM egeria_linkage_status WHERE entity_type=? "
+                f"AND entity_slug IN ({placeholders})",
+                tuple([entity_type, *slugs]),
+            ).fetchall()
+        return {r["entity_slug"]: dict(r) for r in rows}
 
     def list_stale_egeria_linkages(self) -> list[dict]:
         with self._conn() as conn:
@@ -6243,12 +8396,15 @@ class ProjectRegistry:
 
     #: Terminal states. 'done' succeeded; 'dead' exhausted its attempts and
     #: needs a human. Neither is ever picked up again by the drain.
-    OUTBOX_TERMINAL = ("done", "dead")
+    #: 'superseded' (2026-10-07) is a third terminal state: the row's own write did NOT succeed and is not
+    #: wanted any more because other row(s) carry the same intent. It is not 'done' (that claims the write
+    #: succeeded) and not 'dead' (that asks a human to look). The status column is TEXT, so no migration.
+    OUTBOX_TERMINAL = ("done", "dead", "superseded")
 
     def enqueue_outbox_element(
         self, entity_type: str, entity_slug: str, element_kind: str,
         qualified_name: str, payload: dict, *, run_id: str = "",
-        depends_on_id: int | None = None,
+        depends_on_id: int | None = None, retired: "tuple[str, str] | None" = None,
     ) -> int:
         """Record one pending Egeria element write. Returns its row id.
 
@@ -6266,7 +8422,92 @@ class ProjectRegistry:
         if not qualified_name:
             raise ValueError("qualified_name is the idempotency key and cannot be empty")
         now = datetime.utcnow().isoformat()
+        # Brief F round 3: `retired=(status, note)` records a decision that was NEVER to be sent (a refusal) as a
+        # row that is born terminal ('cancelled' or 'dead', with its words), so no drain can claim it in between.
+        status, note, next_at, completed = "pending", "", now, ""
+        if retired is not None:
+            status, note = retired
+            if status not in ("cancelled", "dead"):
+                raise ValueError(f"a retired outbox row is 'cancelled' or 'dead', not {status!r}")
+            next_at, completed = "", now
         with self._conn() as conn:
+            cur = conn.execute(
+                "INSERT INTO egeria_outbox "
+                "(entity_type, entity_slug, run_id, element_kind, qualified_name, "
+                " payload_json, depends_on_id, status, attempts, next_attempt_at, created_at, "
+                " last_error, completed_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?)",
+                (entity_type, entity_slug, run_id, element_kind, qualified_name,
+                 json.dumps(payload), depends_on_id, status, next_at, now, note[:2000], completed),
+            )
+            row_id = getattr(cur, "lastrowid", None)
+            if row_id is None:
+                row_id = conn.execute(
+                    "SELECT id FROM egeria_outbox WHERE qualified_name=? "
+                    "ORDER BY id DESC LIMIT 1", (qualified_name,),
+                ).fetchone()["id"]
+        return int(row_id)
+
+    #: States in which a row for the same (entity, kind, qualified_name) already stands for the intent.
+    OUTBOX_LIVE_OR_DONE = ("pending", "failed", "running", "done")
+
+    #: The payload keys that name who asked for a queued write (Brief Z2/Z3: `egeria_outbox.requester_fields`).
+    OUTBOX_REQUESTER_KEYS = ("by", "portal_role")
+
+    def enqueue_outbox_element_once(
+        self, entity_type: str, entity_slug: str, element_kind: str,
+        qualified_name: str, payload: dict, *, run_id: str = "",
+        depends_on_id: int | None = None,
+    ) -> int:
+        """Idempotent `enqueue_outbox_element`: returns the existing row's id instead of adding a second.
+
+        For kinds whose qualified_name is a synthetic identity key (collection memberships), a repeated
+        request (the owner pressing a verdict twice, 2026-10-07) must not queue a second full set. The
+        lookup is by (entity_type, entity_slug, element_kind, qualified_name):
+
+        * a pending / failed / running / done row exists -> return the newest, add nothing;
+        * the newest row is 'dead' -> revive THAT row (attempts reset, same as `retry_outbox_element`) and
+          return it. A repeated request after a dead row is an explicit "try again", and one row per key
+          keeps the history on the row rather than stacking identical dead rows;
+        * only 'cancelled' / 'superseded' rows (deliberately retired) or none -> insert a new row.
+
+        There is no unique index to lean on (the table has none and this adds no DDL), so the check and the
+        insert share one connection/transaction.
+        """
+        if not qualified_name:
+            raise ValueError("qualified_name is the idempotency key and cannot be empty")
+        now = datetime.utcnow().isoformat()
+        with self._conn() as conn:
+            rows = conn.execute(
+                "SELECT id, status FROM egeria_outbox WHERE entity_type=? AND entity_slug=? "
+                "AND element_kind=? AND qualified_name=? ORDER BY id DESC",
+                (entity_type, entity_slug, element_kind, qualified_name),
+            ).fetchall()
+            for r in rows:
+                if r["status"] in self.OUTBOX_LIVE_OR_DONE:
+                    return int(r["id"])
+            if rows and rows[0]["status"] == "dead":
+                # Brief Z3 round 2: a revived row is now THIS request's write. Its requester (`by`, and a
+                # `portal_role` recorded from the verified caller) is the reviver's, never the old one's, so the
+                # drain re-checks and stamps the person who asked again. Other payload keys are kept.
+                old = conn.execute("SELECT payload_json FROM egeria_outbox WHERE id=?",
+                                   (rows[0]["id"],)).fetchone()
+                try:
+                    merged = json.loads((old["payload_json"] if old else "") or "{}")
+                except (TypeError, ValueError):
+                    merged = {}
+                if not isinstance(merged, dict):
+                    merged = {}
+                for key in self.OUTBOX_REQUESTER_KEYS:
+                    merged.pop(key, None)
+                    if key in payload:
+                        merged[key] = payload[key]
+                conn.execute(
+                    "UPDATE egeria_outbox SET status='pending', claimed_at='', attempts=0, "
+                    "next_attempt_at=?, last_error='', payload_json=? WHERE id=? AND status='dead'",
+                    (now, json.dumps(merged), rows[0]["id"]),
+                )
+                return int(rows[0]["id"])
             cur = conn.execute(
                 "INSERT INTO egeria_outbox "
                 "(entity_type, entity_slug, run_id, element_kind, qualified_name, "
@@ -6285,6 +8526,7 @@ class ProjectRegistry:
 
     def claim_due_outbox_elements(
         self, limit: int = 200, now: str | None = None, run_id: str | None = None,
+        element_id: int | None = None, exclude_kinds: "tuple[str, ...] | list[str] | frozenset | None" = None,
     ) -> list[dict]:
         """Rows ready to attempt, oldest first.
 
@@ -6294,10 +8536,21 @@ class ProjectRegistry:
         they hang off, so a partial drain leaves a coherent prefix rather than
         orphans.
 
+        `element_id` scopes the claim to exactly one row — the "attempt this
+        one write immediately" case (`doc_sources.py`'s add/remove routes,
+        Egeria publish-state fix round 3, 2026-09-29): `run_id` scoping isn't
+        precise enough there, since doc-source publish/unpublish rows are
+        enqueued with no `run_id` at all (there is no "publish run" they
+        belong to the way an annotation batch has one), so an unscoped or
+        run_id-scoped claim could take a batch of unrelated pending rows
+        instead of just the one just enqueued. Still due-gated (backoff,
+        dependency) same as any other claim — this is a precise scope, not a
+        bypass of the ordinary claim rules.
+
         **This is a real claim.** Select and status transition happen in ONE
         transaction (`self._conn()` below), so two drainers cannot both take
         the same row — fixed 2026-09-19, see
-        `docs/design-notes/OUTBOX-DRAIN-RACE-FIXED.md`. A claimed row moves to
+        `OUTBOX-DRAIN-RACE-FIXED.md`. A claimed row moves to
         `status='running'` with `claimed_at` set to `now`; on Postgres the
         `SELECT` additionally carries `FOR UPDATE SKIP LOCKED`, so a second,
         concurrent transaction skips rows the first is mid-claim on rather
@@ -6321,6 +8574,9 @@ class ProjectRegistry:
         reachable) should call `release_outbox_claim()` immediately rather
         than wait out the lease — see `drain_outbox`'s no-client branch.
 
+        `exclude_kinds` (Brief F) leaves rows of those kinds unclaimed: the background drain passes the feedback
+        kinds, which only their author's own Publish may send.
+
         `run_id` scopes the claim to one publish's rows. A publisher that
         enqueues and then drains inline needs its OWN annotations written
         before it returns; an unscoped claim takes the oldest due rows in the
@@ -6332,6 +8588,7 @@ class ProjectRegistry:
         lease_cutoff = (
             datetime.fromisoformat(now) - timedelta(seconds=CLAIM_LEASE_SECONDS)
         ).isoformat()
+        _nd_clause, _nd_params = self._non_destructive_sql()
         sql = (
             "SELECT o.id FROM egeria_outbox o "
             # A correlated EXISTS rather than a LEFT JOIN: Postgres rejects
@@ -6339,16 +8596,25 @@ class ProjectRegistry:
             # SQLite unit tests cannot see that — they were green while this
             # raised FeatureNotSupported against the real backend.
             "WHERE (o.status IN ('pending', 'failed') "
-            "       OR (o.status = 'running' AND o.claimed_at <= ?)) "
+            f"       OR (o.status = 'running' AND o.claimed_at <= ? AND {_nd_clause})) "
             "  AND o.next_attempt_at <= ? "
             "  AND (o.depends_on_id IS NULL OR EXISTS ("
             "        SELECT 1 FROM egeria_outbox dep "
             "        WHERE dep.id = o.depends_on_id AND dep.status = 'done')) "
         )
-        params: list = [lease_cutoff, now]
+        params: list = [lease_cutoff, *_nd_params, now]
         if run_id is not None:
             sql += "  AND o.run_id = ? "
             params.append(run_id)
+        if element_id is not None:
+            sql += "  AND o.id = ? "
+            params.append(element_id)
+        if exclude_kinds:
+            # Brief F: kinds only their author may send (feedback) are never claimed by a drain that is not that
+            # person's own request (the background Daemon drain passes them here).
+            kinds = sorted(exclude_kinds)
+            sql += f"  AND o.element_kind NOT IN ({','.join('?' * len(kinds))}) "
+            params.extend(kinds)
         sql += "ORDER BY o.id ASC LIMIT ?"
         params.append(limit)
 
@@ -6357,6 +8623,7 @@ class ProjectRegistry:
         # claimer skip the locked rows outright instead of blocking on them;
         # SQLite serialises writers itself, so the same transaction suffices.
         with self._conn() as conn:
+            self._kill_lapsed_destructive_claims(conn, lease_cutoff)
             if conn.is_postgres:
                 sql += " FOR UPDATE SKIP LOCKED"
             ids = [r["id"] for r in conn.execute(sql, tuple(params)).fetchall()]
@@ -6374,6 +8641,40 @@ class ProjectRegistry:
             ).fetchall()
         return [dict(r) for r in rows]
 
+    @staticmethod
+    def _non_destructive_sql() -> tuple[str, list]:
+        """SQL (and params) that is true for an outbox row whose kind does not archive, delete or detach. A lapsed
+        lease may only be reclaimed for such a row: the first send of a destructive write may have landed."""
+        from resource_explorer.egeria_outbox import DESTRUCTIVE_KIND_WORDS, DESTRUCTIVE_OUTBOX_KINDS
+
+        kinds = sorted(DESTRUCTIVE_OUTBOX_KINDS)
+        clause = f"o.element_kind NOT IN ({','.join('?' * len(kinds))})"
+        params: list = list(kinds)
+        for w in DESTRUCTIVE_KIND_WORDS:
+            # ESCAPE: `_` is a LIKE wildcard ('leave_out' would match 'leaveXout'). Same text on SQLite and Postgres.
+            clause += " AND LOWER(o.element_kind) NOT LIKE ? ESCAPE '\\'"
+            params.append("%" + w.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%")
+        return clause, params
+
+    def _kill_lapsed_destructive_claims(self, conn, lease_cutoff: str) -> list[int]:
+        """A destructive row whose claim lapsed is dead, not due again: the drain never re-sends a destructive write
+        (the claimer may have sent it and died before recording it). Returns the ids it killed."""
+        from resource_explorer.egeria_outbox import CLAIM_LAPSED_DESTRUCTIVE
+
+        clause, params = self._non_destructive_sql()
+        rows = conn.execute(
+            "SELECT o.id FROM egeria_outbox o WHERE o.status = 'running' AND o.claimed_at <= ? "
+            f"AND NOT ({clause})", (lease_cutoff, *params)).fetchall()
+        ids = [r["id"] for r in rows]
+        if ids:
+            marks = ",".join("?" * len(ids))
+            conn.execute(
+                f"UPDATE egeria_outbox SET status='dead', claimed_at='', next_attempt_at='', last_error=? "  # noqa: S608
+                # Re-checked at the write: a slow claimer may have marked the row done since the SELECT.
+                f"WHERE id IN ({marks}) AND status='running' AND claimed_at <= ?",
+                (CLAIM_LAPSED_DESTRUCTIVE, *ids, lease_cutoff))
+        return ids
+
     def peek_due_outbox_elements(self, *, limit: int = 200, run_id: str | None = None,
                                  now: str | None = None) -> list[dict]:
         """Which rows a drain WOULD take, without taking them.
@@ -6387,6 +8688,7 @@ class ProjectRegistry:
         lease_cutoff = (
             datetime.fromisoformat(now) - timedelta(seconds=CLAIM_LEASE_SECONDS)
         ).isoformat()
+        _nd_clause, _nd_params = self._non_destructive_sql()
         sql = (
             "SELECT o.* FROM egeria_outbox o "
             # A correlated EXISTS rather than a LEFT JOIN: Postgres rejects
@@ -6394,13 +8696,13 @@ class ProjectRegistry:
             # SQLite unit tests cannot see that — they were green while this
             # raised FeatureNotSupported against the real backend.
             "WHERE (o.status IN ('pending', 'failed') "
-            "       OR (o.status = 'running' AND o.claimed_at <= ?)) "
+            f"       OR (o.status = 'running' AND o.claimed_at <= ? AND {_nd_clause})) "
             "  AND o.next_attempt_at <= ? "
             "  AND (o.depends_on_id IS NULL OR EXISTS ("
             "        SELECT 1 FROM egeria_outbox dep "
             "        WHERE dep.id = o.depends_on_id AND dep.status = 'done')) "
         )
-        params: list = [lease_cutoff, now]
+        params: list = [lease_cutoff, *_nd_params, now]
         if run_id is not None:
             sql += "  AND o.run_id = ? "
             params.append(run_id)
@@ -6429,22 +8731,50 @@ class ProjectRegistry:
                 tuple(row_ids),
             )
 
-    def mark_outbox_done(self, row_id: int, egeria_guid: str = "") -> None:
+    def mark_outbox_done(self, row_id: int, egeria_guid: str = "", *, note: str = "") -> None:
         """Record the element as written, with the GUID it resolved to.
 
         Once egeria_guid is set, a later retry of this row needs no
         qualifiedName search at all — the GUID is Egeria's primary identity,
         and the search is only how a row that never recorded one discovers it
         nonetheless landed.
+
+        `note` is kept in last_error on the done row (as `mark_outbox_superseded` keeps its words), for a
+        write that succeeded with something still to say, e.g. "written; properties not confirmed: …".
+        Without one, last_error is cleared as before.
         """
         with self._conn() as conn:
             conn.execute(
                 "UPDATE egeria_outbox SET status='done', claimed_at='', egeria_guid=?, "
-                "completed_at=?, last_error='' WHERE id=?",
-                (egeria_guid, datetime.utcnow().isoformat(), row_id),
+                "completed_at=?, last_error=? WHERE id=?",
+                (egeria_guid, datetime.utcnow().isoformat(), (note or "")[:2000], row_id),
             )
 
-    def mark_outbox_deferred(self, row_id: int, note: str) -> None:
+    def mark_outbox_superseded(self, row_id: int, by_ids: "list[int]", note: str) -> bool:
+        """Retire a row whose own write did not succeed and is no longer wanted because other row(s) carry
+        the same intent. Terminal: the drain never claims it, `retry_outbox_element` (dead only) leaves it.
+
+        Honest where 'done' was not: 'done' says the row's write succeeded. last_error records the note and
+        the superseding row ids. Only a row that is not already done/superseded is changed; returns whether
+        it changed one. `by_ids` must be non-empty (a supersede with no superseder is a lie) and must not
+        contain the row itself.
+        """
+        ids = [int(i) for i in by_ids or []]
+        if not ids:
+            raise ValueError("mark_outbox_superseded needs the id(s) of the row(s) that supersede it")
+        if int(row_id) in ids:
+            raise ValueError("a row cannot supersede itself")
+        text = f"superseded by outbox row(s) {', '.join(str(i) for i in ids)}: {note}".strip()
+        with self._conn() as conn:
+            cur = conn.execute(
+                "UPDATE egeria_outbox SET status='superseded', claimed_at='', next_attempt_at='', "
+                "last_error=?, completed_at=? WHERE id=? AND status NOT IN ('done', 'superseded')",
+                (text[:2000], datetime.utcnow().isoformat(), int(row_id)),
+            )
+        return (cur.rowcount or 0) > 0
+
+    def mark_outbox_deferred(self, row_id: int, note: str, *, claimed_at: str | None = None,
+                             delay_seconds: int = 0) -> None:
         """Hand one claimed row back to 'pending' without burning an attempt,
         recording WHY: its referent(s) — another annotation this row's
         `AnnotationExtension` link points at — have not been applied yet.
@@ -6461,19 +8791,35 @@ class ProjectRegistry:
         than a bare 'pending' with no explanation.
         """
         with self._conn() as conn:
-            conn.execute(
-                "UPDATE egeria_outbox SET status='pending', claimed_at='', last_error=? "
-                "WHERE id=?",
-                (note[:2000], row_id),
-            )
+            # Only the claim being handed back (Brief T round 3): a row the lapse rule killed as dead in between, or
+            # one a later claimer re-took after the lease, is left exactly as it is. Dead stays terminal.
+            # Brief F round 4: `delay_seconds` pushes the next attempt out (an access re-check Egeria could not
+            # answer is not retried on every drain); 0 keeps the row due at once, as before.
+            if delay_seconds:
+                due = (datetime.utcnow() + timedelta(seconds=int(delay_seconds))).isoformat()
+                sql = ("UPDATE egeria_outbox SET status='pending', claimed_at='', last_error=?, next_attempt_at=? "
+                       "WHERE id=? AND status='running'")
+                params: list = [note[:2000], due, row_id]
+            else:
+                sql = ("UPDATE egeria_outbox SET status='pending', claimed_at='', last_error=? "
+                       "WHERE id=? AND status='running'")
+                params = [note[:2000], row_id]
+            if claimed_at:
+                sql += " AND claimed_at=?"
+                params.append(claimed_at)
+            conn.execute(sql, tuple(params))
 
     def complete_publish_run_if_done(self, publish_run_id: str) -> bool:
-        """When every `egeria_outbox` row belonging to `publish_run_id` — its
-        annotations AND its evidence-link companion run (`f"{publish_run_id}
-        ::links"`, see egeria_publisher.py's `_link_evidence_outbox`/
-        `_create_annotations`) — has reached a terminal state (done or dead;
-        neither is retried again), resolve the activity row that reported
-        this run as `published: "queued"`:
+        """Resolve the activity row that reported this run as `published: "queued"`, by the run's proof
+        (`publish_proofs`, from its outbox rows: annotations, `::links`, `::read_back`), never by "all writes
+        done": since 2026-10-14 a run is published only once its `publish_read_back` row is done.
+
+        * proof `read_back` — flips to `published: True` (below, "All done");
+        * proof `failed` — flips to `published: False` (below, "Any dead");
+        * proof `queued` — untouched; a run with no read-back row whose writes are all done gets one queued
+          (`_queue_missing_read_back`: runs enqueued before the read-back existed).
+
+        The original contract, with "done" now meaning "read back":
 
         * **All done, none dead** — the honest success case. Flips to
           `published: True`, appends "Published at <ts>." to the summary,
@@ -6504,40 +8850,36 @@ class ProjectRegistry:
         """
         if not publish_run_id:
             return False
-        links_run_id = f"{publish_run_id}::links"
+        proof = self.publish_proofs([publish_run_id]).get(publish_run_id)
+        if proof is None:
+            return False
+        # The newest entry of this run that still says queued: a run can name more than one entry (its run row and
+        # the publisher's own catalog entry), and only the one that reported "queued" is flipped.
+        row, detail = None, {}
         with self._conn() as conn:
-            remaining = conn.execute(
-                "SELECT COUNT(*) AS n FROM egeria_outbox "
-                "WHERE run_id IN (?, ?) AND status IN ('pending', 'failed', 'running')",
-                (publish_run_id, links_run_id),
-            ).fetchone()["n"]
-            if remaining:
-                return False
-            dead = conn.execute(
-                "SELECT COUNT(*) AS n FROM egeria_outbox "
-                "WHERE run_id IN (?, ?) AND status = 'dead'",
-                (publish_run_id, links_run_id),
-            ).fetchone()["n"]
-            total = conn.execute(
-                "SELECT COUNT(*) AS n FROM egeria_outbox WHERE run_id IN (?, ?)",
-                (publish_run_id, links_run_id),
-            ).fetchone()["n"]
-            if not total:
-                return False
-            row = conn.execute(
+            for cand in conn.execute(
                 "SELECT id, summary, detail FROM activity_log "
-                "WHERE publish_run_id = ? ORDER BY ts DESC LIMIT 1",
+                "WHERE publish_run_id = ? ORDER BY ts DESC",
                 (publish_run_id,),
-            ).fetchone()
-            if row is None:
-                return False
-            try:
-                detail = json.loads(row["detail"] or "{}")
-            except (TypeError, ValueError):
-                return False
-            if detail.get("published") != "queued":
-                return False
-
+            ).fetchall():
+                try:
+                    cand_detail = json.loads(cand["detail"] or "{}")
+                except (TypeError, ValueError):
+                    continue
+                if isinstance(cand_detail, dict) and cand_detail.get("published") == "queued":
+                    row, detail = cand, cand_detail
+                    break
+        if row is None:
+            return False
+        if proof["state"] not in ("read_back", "failed"):
+            if proof["state"] != "queued":
+                return False          # "could not verify" (or unreadable): never flipped either way
+            # A run queued before the read-back existed (2026-10-14) has none: once its writes are all done, queue
+            # it, so it can still become "published · read back" — never by being assumed.
+            self._queue_missing_read_back(publish_run_id, detail)
+            return False
+        dead = proof.get("failed", 0) if proof["state"] == "failed" else 0
+        with self._conn() as conn:
             pending_record = detail.pop("pending_published_record", None)
             base_summary = row["summary"] or ""
             if dead:
@@ -6547,12 +8889,15 @@ class ProjectRegistry:
                 # button is the correct behaviour here, not a new state.
                 detail["published"] = False
                 detail["published_failed_count"] = dead
-                summary = f"{base_summary} {dead} Egeria write(s) failed permanently — see the Publish Queue."
+                summary = (f"{base_summary} {self.PUBLISH_FAILED_WORD}: {dead} Egeria write(s) failed "
+                           f"permanently — see the Publish Queue.")
             else:
-                now = datetime.utcnow().isoformat()
+                # Only the read-back proof gets here (proof state `read_back`): every write landed AND Egeria
+                # answered them under the report.
+                now = proof.get("at") or datetime.utcnow().isoformat()
                 detail["published"] = True
                 detail["published_at"] = now
-                summary = f"{base_summary} Published at {now}."
+                summary = f"{base_summary} {self.PUBLISH_READ_BACK_WORD} at {now}."
                 if pending_record:
                     # Best-effort, same contract as the inline call site in
                     # egeria_publisher.py's publish() — a bookkeeping failure
@@ -6584,6 +8929,67 @@ class ProjectRegistry:
                 (json.dumps(detail), summary, row["id"]),
             )
         return True
+
+    def _queue_missing_read_back(self, publish_run_id: str, detail: dict) -> int | None:
+        """Queue the read-back of a run that has none, once all of its writes are done (a run enqueued before the
+        read-back existed). The report GUID comes from the run's own record (`pending_published_record`) or, failing
+        that, from its annotation rows' `parentGUID`. Returns the row id, or None when nothing was queued."""
+        from resource_explorer.egeria_outbox import (
+            LINKS_SUFFIX, PUBLISH_READ_BACK, READ_BACK_SUFFIX, enqueue_publish_read_back,
+        )
+
+        rows = self.list_outbox_rows_for_runs(
+            [publish_run_id, f"{publish_run_id}{LINKS_SUFFIX}", f"{publish_run_id}{READ_BACK_SUFFIX}"])
+        if not rows or any(r["element_kind"] == PUBLISH_READ_BACK for r in rows):
+            return None
+        if any(r["status"] != "done" for r in rows):
+            return None
+        report_guid = str(((detail or {}).get("pending_published_record") or {}).get("report_guid") or "")
+        if not report_guid:
+            for r in rows:
+                try:
+                    report_guid = str((json.loads(r.get("payload_json") or "{}") or {}).get("parentGUID") or "")
+                except (TypeError, ValueError):
+                    report_guid = ""
+                if report_guid:
+                    break
+        if not report_guid:
+            return None
+        return enqueue_publish_read_back(self, rows[0]["entity_type"], rows[0]["entity_slug"],
+                                         publish_run_id, report_guid)
+
+    def queue_missing_read_backs(self, limit: int = 50) -> int:
+        """Queue a read-back for runs that name a publish run, still have its outbox rows, and have no read-back row:
+        runs from before the read-back existed (2026-10-14), including ones already flipped to `published: True`,
+        which would otherwise read "queued for publish" for ever. Bounded like `_queue_missing_read_back` (every
+        write done, a report GUID found, one row per run by its key) and by `limit` runs per call, newest first.
+        Returns how many were queued. Called from the scheduler's drain loop before the drain."""
+        from resource_explorer.egeria_outbox import LINKS_SUFFIX, READ_BACK_SUFFIX
+
+        with self._conn() as conn:
+            rows = conn.execute(
+                "SELECT a.publish_run_id AS run_id, a.detail AS detail FROM activity_log a "
+                "WHERE a.publish_run_id <> '' "
+                "AND EXISTS (SELECT 1 FROM egeria_outbox o WHERE o.run_id = a.publish_run_id) "
+                "AND NOT EXISTS (SELECT 1 FROM egeria_outbox r WHERE r.run_id = a.publish_run_id || ?) "
+                # A run with a dead row is already "publish failed": it never takes a slot (no starvation).
+                "AND NOT EXISTS (SELECT 1 FROM egeria_outbox d WHERE d.status = 'dead' "
+                "                AND d.run_id IN (a.publish_run_id, a.publish_run_id || ?)) "
+                "ORDER BY a.ts DESC LIMIT ?",
+                (READ_BACK_SUFFIX, LINKS_SUFFIX, int(limit)),
+            ).fetchall()
+        queued, seen = 0, set()
+        for r in rows:
+            if r["run_id"] in seen:
+                continue
+            seen.add(r["run_id"])
+            try:
+                detail = json.loads(r["detail"] or "{}")
+            except (TypeError, ValueError):
+                detail = {}
+            if self._queue_missing_read_back(r["run_id"], detail if isinstance(detail, dict) else {}):
+                queued += 1
+        return queued
 
     def get_outbox_guids(self, row_ids: list[int]) -> dict[int, str]:
         """Map row id -> the GUID it resolved to, for rows that reached
@@ -6688,6 +9094,139 @@ class ProjectRegistry:
             rows = conn.execute(sql, tuple(params)).fetchall()
         return [dict(r) for r in rows]
 
+    def list_outbox_rows_for_runs(self, run_ids: "list[str] | tuple[str, ...]") -> list[dict]:
+        """Every outbox row whose run_id is one of `run_ids`, oldest first. Read-only."""
+        ids = [r for r in (run_ids or []) if r]
+        if not ids:
+            return []
+        with self._conn() as conn:
+            rows = conn.execute(
+                f"SELECT * FROM egeria_outbox WHERE run_id IN ({','.join('?' * len(ids))}) ORDER BY id",  # noqa: S608
+                tuple(ids),
+            ).fetchall()
+        return [dict(r) for r in rows]
+
+    #: The three publish words (designer, REPLY-COST-LADDER-AND-PUBLISH-STATE.md §2, 2026-09-13).
+    PUBLISH_QUEUED_WORD = "queued for publish"
+    PUBLISH_READ_BACK_WORD = "published · read back"
+    PUBLISH_FAILED_WORD = "publish failed"
+
+    def publish_proofs(self, publish_run_ids: "list[str] | tuple[str, ...]") -> dict[str, dict]:
+        """A publish run's state, from its own outbox rows (annotations, `::links`, `::read_back`), never from
+        which code branch ran or from the `published` flag an activity row carries:
+
+        * `read_back` · "published · read back": the run's `publish_read_back` row is done (`at` is when);
+        * `failed` · "publish failed": a row of the run is dead; `words` are that row's (Egeria's) words;
+        * `unverified` · "could not verify": the read-back read every page it may and did not see every annotation
+          (neither published nor failed);
+        * `queued` · "queued for publish": anything else with rows: a write or the read-back is still to land.
+          A run whose writes are all done but whose read-back has not succeeded is queued, not published.
+
+        A run_id with no rows at all is left out (no proof, no word: never assumed queued or published)."""
+        from resource_explorer.egeria_outbox import (
+            PUBLISH_READ_BACK, READ_BACK_UNVERIFIED, RUN_COMPANION_SUFFIXES, base_run_id,
+        )
+
+        bases = sorted({r for r in (publish_run_ids or []) if r})
+        if not bases:
+            return {}
+        wanted = [b + suffix for b in bases for suffix in ("", *RUN_COMPANION_SUFFIXES)]
+        by_run: dict[str, list[dict]] = {}
+        for row in self.list_outbox_rows_for_runs(wanted):
+            by_run.setdefault(base_run_id(row.get("run_id") or ""), []).append(row)
+        out: dict[str, dict] = {}
+        for base, rows in by_run.items():
+            done_reads = [r for r in rows if r["element_kind"] == PUBLISH_READ_BACK and r["status"] == "done"]
+            unverified = [r for r in done_reads
+                          if (r.get("last_error") or "").startswith(READ_BACK_UNVERIFIED)]
+            read_back = [r for r in done_reads if r not in unverified]
+            dead = [r for r in rows if r["status"] == "dead"]
+            if unverified and not read_back:
+                out[base] = {"state": "unverified", "word": READ_BACK_UNVERIFIED, "at": "",
+                             "words": unverified[-1].get("last_error") or ""}
+            elif read_back:
+                out[base] = {"state": "read_back", "word": self.PUBLISH_READ_BACK_WORD,
+                             "at": read_back[-1].get("completed_at") or "", "words": ""}
+            elif dead:
+                first = next((r for r in dead if r["element_kind"] != PUBLISH_READ_BACK), dead[0])
+                out[base] = {"state": "failed", "word": self.PUBLISH_FAILED_WORD, "at": "",
+                             "words": (first.get("last_error") or "").strip() or "Egeria gave no words",
+                             "failed": len(dead)}
+            else:
+                pending = sum(1 for r in rows if r["status"] in ("pending", "failed", "running"))
+                out[base] = {"state": "queued", "word": self.PUBLISH_QUEUED_WORD, "at": "", "words": "",
+                             "waiting": pending}
+        return out
+
+    def _attach_publish_proofs(self, entries: list[dict]) -> list[dict]:
+        """Put `publish_proof` on every activity entry that names a publish run with outbox rows."""
+        runs = [e.get("publish_run_id") for e in entries if e.get("publish_run_id")]
+        if not runs:
+            return entries
+        try:
+            proofs = self.publish_proofs(runs)
+        except Exception as exc:  # noqa: BLE001 - a proof that could not be read is said, never a guessed word
+            log.warning("publish proofs could not be read: %s", exc)
+            proofs = {r: {"state": "unknown", "word": "publish not established", "at": "",
+                          "words": f"the outbox could not be read: {exc}"} for r in runs}
+        for e in entries:
+            proof = proofs.get(e.get("publish_run_id") or "")
+            if proof:
+                e["publish_proof"] = proof
+        return entries
+
+    def list_outbox_rows_for_kinds(self, entity_type: str, entity_slug: str,
+                                   kinds: "tuple[str, ...] | list[str]") -> list[dict]:
+        """Every outbox row of these kinds for one resource, newest first (Brief T: the tag and group states are
+        read from these rows). Read-only; no limit, since one resource's curation rows are few."""
+        kinds = list(kinds or [])
+        if not kinds:
+            return []
+        marks = ",".join("?" * len(kinds))
+        with self._conn() as conn:
+            rows = conn.execute(
+                f"SELECT * FROM egeria_outbox WHERE entity_type = ? AND entity_slug = ? "  # noqa: S608
+                f"AND element_kind IN ({marks}) ORDER BY id DESC",
+                (entity_type, entity_slug, *kinds),
+            ).fetchall()
+        return [dict(r) for r in rows]
+
+    def list_outbox_payloads(self, element_kind: str, payload_contains: str) -> list[dict]:
+        """Every outbox row of one kind whose payload contains `payload_contains`, any status, oldest first.
+
+        Read-only. For a repair that needs what RE asked Egeria to write (scripts/
+        backfill_classification_annotations.py: the ClassificationAnnotation bodies), keyed by the row's
+        `egeria_guid` and `qualified_name`. No limit: the substring is the filter, matched literally (LIKE's
+        wildcards in it are escaped)."""
+        literal = payload_contains.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        with self._conn() as conn:
+            rows = conn.execute(
+                "SELECT id, entity_type, entity_slug, run_id, element_kind, qualified_name, payload_json, status, "
+                "egeria_guid, created_at, completed_at FROM egeria_outbox "
+                "WHERE element_kind = ? AND payload_json LIKE ? ESCAPE '\\' ORDER BY id",
+                (element_kind, f"%{literal}%"),
+            ).fetchall()
+        return [dict(r) for r in rows]
+
+    def cancel_outbox_row(self, row_id: int, reason: str) -> bool:
+        """Retire ONE row that was never applied (pending, or failed and backing off) because a later decision in
+        RE supersedes it. `running`, `done` and `dead` rows are never changed: a running row may be landing now,
+        a done one already landed, and a dead one is for a person. Returns whether it changed the row."""
+        note = f"cancelled: {reason}" if reason else "cancelled"
+        with self._conn() as conn:
+            cur = conn.execute(
+                "UPDATE egeria_outbox SET status = 'cancelled', claimed_at = '', last_error = ?, completed_at = ? "
+                "WHERE id = ? AND status IN ('pending', 'failed')",
+                (note[:2000], datetime.now(timezone.utc).isoformat(), int(row_id)),
+            )
+        return (cur.rowcount or 0) > 0
+
+    def get_outbox_element(self, row_id: int) -> dict | None:
+        """One outbox row by id, or None. Read-only."""
+        with self._conn() as conn:
+            row = conn.execute("SELECT * FROM egeria_outbox WHERE id=?", (row_id,)).fetchone()
+        return dict(row) if row else None
+
     def retry_outbox_element(self, row_id: int) -> bool:
         """Return a dead row to the queue, attempts reset. Returns whether it
         was actually revived.
@@ -6705,11 +9244,35 @@ class ProjectRegistry:
                 "next_attempt_at=?, last_error='' WHERE id=? AND status='dead'",
                 (datetime.utcnow().isoformat(), row_id),
             )
+            revived = (cur.rowcount or 0) > 0
+            if revived:
+                # Brief F round 6: a revived row is re-checked as an ordinary user. A Portal curator/admin role is
+                # recorded at a person's press (`portal_role`) and honoured only for the row that press queued.
+                row = conn.execute("SELECT payload_json FROM egeria_outbox WHERE id=?", (row_id,)).fetchone()
+                try:
+                    payload = json.loads((row["payload_json"] if row else "") or "{}")
+                except (TypeError, ValueError):
+                    payload = None
+                if isinstance(payload, dict) and "portal_role" in payload:
+                    payload.pop("portal_role")
+                    conn.execute("UPDATE egeria_outbox SET payload_json=? WHERE id=?", (json.dumps(payload), row_id))
+        return revived
+
+    def make_outbox_row_due(self, row_id: int) -> bool:
+        """Make one pending or backing-off row due now, attempts and words untouched. For a person's explicit
+        retry of their OWN row (a private investigation's owner pressing Relink: `OutboxAwaitsOwner` parked it for
+        an hour so the background drain would not keep re-taking it). Never a running, done, dead, cancelled or
+        superseded row. Returns whether it changed the row. No schema change."""
+        with self._conn() as conn:
+            cur = conn.execute(
+                "UPDATE egeria_outbox SET next_attempt_at=? WHERE id=? AND status IN ('pending', 'failed')",
+                (datetime.utcnow().isoformat(), int(row_id)),
+            )
         return (cur.rowcount or 0) > 0
 
     def outbox_counts(self) -> dict[str, int]:
         """Row count per status — what a health endpoint or the drain's own
-        log line reports."""
+        log line reports. 'superseded' is its own key, never folded into done or dead."""
         with self._conn() as conn:
             rows = conn.execute(
                 "SELECT status, COUNT(*) AS n FROM egeria_outbox GROUP BY status"
@@ -6826,10 +9389,16 @@ class ProjectRegistry:
     def purge_outbox_completed(self, older_than_days: int = 14) -> int:
         """Drop 'done' rows past the retention window. Returns rows removed.
 
-        Only 'done' — 'dead' rows are the ones a human still has to look at,
+        'superseded' rows are deliberately KEPT (decided 2026-10-07): they are the record of why a write
+        never happened and what carries its intent, they are rare (hand-retired), and purging them would
+        erase the only trace that the intent was handled elsewhere. Only 'done' — 'dead' rows are the ones a human still has to look at,
         and failed/pending rows are live work. Retention exists from day one
         because one proposal publish on egeria_git is ~2,100 rows at the
         largest run observed, not because today's 831-row total needs it.
+
+        A run's `publish_read_back` row (its proof) has the same retention as the run's other rows: once past the
+        window the run carries no publish word (no proof, no word), and `queue_missing_read_backs` does not
+        re-queue a run whose rows are gone.
         """
         cutoff = (datetime.utcnow() - timedelta(days=older_than_days)).isoformat()
         with self._conn() as conn:
@@ -7005,7 +9574,11 @@ class ProjectRegistry:
         """{annotation_type: latest published_at} for this project — the
         Survey Results route joins this against each dashboard's own
         analysis_ids' known annotation_types (analysis_catalog.yaml) to
-        derive a real per-dashboard last-published timestamp."""
+        derive a real per-dashboard last-published timestamp.
+
+        This is HISTORY: a row says a publish happened, not that Egeria holds it now. After an Egeria reset
+        a badge made from these rows alone would say Published for elements that no longer exist, so every
+        reader passes the timestamp through catalogue_commit.publish_fields() (the `egeria_reset` marker)."""
         slug = self._normalize_slug(slug)
         with self._conn() as conn:
             rows = conn.execute(
@@ -7444,6 +10017,43 @@ class ProjectRegistry:
             ).fetchone()
         return dict(row) if row else None
 
+    def get_dispositions_for_entities(
+        self, entity_type: str, entity_slugs: list[str],
+    ) -> dict[str, dict]:
+        """Every current disposition for `entity_slugs`, in ONE query,
+        keyed by entity_slug — the batch form of `get_disposition_for_entity`
+        for a caller building many summaries at once. Added 2026-09-29
+        round 2 (PER-REQUEST-SERVER-LATENCY-ROUND-2-IMPLEMENTED.md) for `list_projects`, which used
+        to call
+        `get_disposition(p.github_url)` — itself `resolve_repo_entity_slug`
+        → `get_by_github_url`, a **full `SELECT * FROM projects` table
+        scan searched in Python**, per project. Profiled directly: 0.93s
+        of a 1.42s `list_projects` call, dominant over
+        `is_working_set_hidden`'s own per-project round trips. For an
+        already-imported project (this method's only real caller today),
+        `entity_slug` IS `p.slug` — dispositions are reconciled onto the
+        real slug at import time (see `resolve_repo_entity_slug`'s
+        docstring) — so this needs no per-project slug resolution at all,
+        unlike the singular `get_disposition(github_url)` form this
+        replaces for that call site specifically (that form still exists,
+        unchanged, for callers with only a github_url in hand).
+
+        A slug with no row (nobody has ever decided) is simply absent from
+        the returned dict — same "undecided" contract as the singular
+        form's `None`.
+        """
+        if not entity_slugs:
+            return {}
+        slugs = list(dict.fromkeys(entity_slugs))  # de-dup, preserve order
+        placeholders = ",".join(["?"] * len(slugs))
+        with self._conn() as conn:
+            rows = conn.execute(
+                f"SELECT * FROM repo_dispositions WHERE entity_type = ? "
+                f"AND entity_slug IN ({placeholders})",
+                tuple([entity_type, *slugs]),
+            ).fetchall()
+        return {r["entity_slug"]: dict(r) for r in rows}
+
     def get_disposition_history_for_entity(self, entity_type: str, entity_slug: str) -> list[dict]:
         """Every disposition ever set for this entity, oldest first — backs
         the Disposition sub-tab's timeline view. `depth_offer` comes back
@@ -7683,15 +10293,87 @@ class ProjectRegistry:
         row = by_user.get(user_id) or by_user.get(SHARED_USER_ID)
         return bool(row["hidden"]) if row else False
 
+    def get_working_set_hidden_for_entities(
+        self, entity_type: str, entity_slugs: list[str], *, user_id: str | None = None,
+    ) -> dict[str, bool]:
+        """The batch form of `is_working_set_hidden`, one query for every
+        slug in `entity_slugs` instead of one round trip per slug. Added
+        2026-09-29 round 2 for `list_projects`'s N+1 fix — same per-user/
+        shared-bucket resolution as the singular form, just fetched and
+        resolved once for the whole batch rather than per project. A slug
+        with no row for either user_id resolves to `False`, same as the
+        singular form's fallback."""
+        if not entity_slugs:
+            return {}
+        slugs = list(dict.fromkeys(entity_slugs))
+        user_id = current_user_id() if user_id is None else user_id
+        placeholders = ",".join(["?"] * len(slugs))
+        with self._conn() as conn:
+            rows = conn.execute(
+                f"SELECT entity_slug, user_id, hidden FROM resource_working_set "
+                f"WHERE entity_type = ? AND entity_slug IN ({placeholders}) "
+                f"AND user_id IN (?, ?)",
+                tuple([entity_type, *slugs, user_id, SHARED_USER_ID]),
+            ).fetchall()
+        by_slug: dict[str, dict] = {}
+        for r in rows:
+            by_slug.setdefault(r["entity_slug"], {})[r["user_id"]] = r
+        result: dict[str, bool] = {}
+        for slug in slugs:
+            by_user = by_slug.get(slug) or {}
+            row = by_user.get(user_id) or by_user.get(SHARED_USER_ID)
+            result[slug] = bool(row["hidden"]) if row else False
+        return result
+
     # ── Investigations (docs/investigation-framing-design.md §1) ──────────
     #
     # The framing step ahead of Scouting. Deliberately local-first with a
     # nullable egeria_project_guid so an investigation can exist before, or
     # without, any Egeria write — promotion is then a fill-in, not a migration.
 
-    VALID_PURPOSES = (
-        "Assess", "Certify", "Deploy", "Explore", "Learn", "Maintain", "Select", "Share",
-    )
+    # Purposes are NOT a vocabulary held here. Decision (project owner, 2026-10-13): "Egeria holds the set
+    # of record" — an Egeria valid-value list, read through `investigation_purposes.current_purposes` (a
+    # labelled, stale-aware cache when Egeria cannot be read). And "warn only - suggestive everywhere": a
+    # purpose outside the list is kept and warned about, never refused. The tuple that used to sit here was
+    # the authority; it is gone.
+
+    @staticmethod
+    def _purposes_from_json(raw) -> tuple[list[str], str]:
+        """(purposes, purpose_text) from `purposes_json`. A JSON array is the shape every row had before
+        2026-10-13; an object `{"values": [...], "free_text": "..."}` keeps free text apart from the
+        values (owner ruling: free text is stored as entered, separately, so it can be mined)."""
+        import json as _json
+        try:
+            data = _json.loads(raw or "[]")
+        except (TypeError, ValueError):
+            return [], ""
+        if isinstance(data, list):
+            return [str(p) for p in data if p], ""
+        if isinstance(data, dict):
+            return ([str(p) for p in (data.get("values") or []) if p], str(data.get("free_text") or ""))
+        return [], ""
+
+    @staticmethod
+    def _purposes_to_json(purposes: list[str], purpose_text: str) -> str:
+        import json as _json
+        purposes = [p.strip() for p in purposes if p and p.strip()]
+        purpose_text = (purpose_text or "").strip()
+        if not purpose_text:
+            return _json.dumps(purposes)        # the old shape when there is no free text: nothing to migrate
+        return _json.dumps({"values": purposes, "free_text": purpose_text})
+
+    def _purpose_warnings(self, purposes: list[str]) -> list[str]:
+        """Words naming each purpose outside the list (cache or shipped seed — never an Egeria call from
+        here). Logged; returned on the investigation; never raised."""
+        from resource_explorer.investigation_purposes import (
+            known_purpose_names,
+            unknown_purpose_warnings,
+        )
+
+        warnings = unknown_purpose_warnings(purposes, known_purpose_names(self))
+        for w in warnings:
+            log.warning("investigation: %s", w)
+        return warnings
 
     #: §1 mode 2's classifications — Egeria's own, mirrored exactly, because
     #: they are sent as `initialClassifications` on the Project and a value
@@ -7784,6 +10466,7 @@ class ProjectRegistry:
 
     def create_investigation(self, display_name: str, *, description: str = "",
                              purposes: list[str] | None = None,
+                             purpose_text: str = "",
                              project_classification: str = "StudyProject",
                              egeria_binding: str = "egeria",
                              hypothesis: str = "",
@@ -7791,11 +10474,12 @@ class ProjectRegistry:
                              egeria_project_qualified_name: str = "") -> dict:
         """Create one investigation.
 
-        Every vocabulary here is validated rather than accepting free text.
-        `purposes` because an unrecognised purpose would silently fail to rank
-        anything later; `project_classification` because it is sent to Egeria
-        as a type name; `egeria_binding` because it decides whether anything is
-        sent at all.
+        `purposes` is SUGGESTIVE (owner ruling 2026-10-13, "warn only - suggestive
+        everywhere"): a value outside Egeria's purposes list is kept, and the
+        returned investigation carries `purpose_warnings` naming it. `purpose_text`
+        is free text as entered, stored apart from the values so it can be mined.
+        `project_classification` and `egeria_binding` stay validated: the first is
+        sent to Egeria as a type name, the second decides whether anything is sent.
 
         `hypothesis` is required for the classifications in
         `HYPOTHESIS_REQUIRED_FOR` and refused for the others — an `Experiment`
@@ -7803,14 +10487,9 @@ class ProjectRegistry:
         and a hypothesis on a `Task` would be silently discarded at publish
         time, which is worse than being told.
         """
-        import json as _json
         import re as _re
-        purposes = purposes or []
-        bad = [p for p in purposes if p not in self.VALID_PURPOSES]
-        if bad:
-            raise ValueError(
-                f"unknown purpose(s) {bad}; valid: {list(self.VALID_PURPOSES)}"
-            )
+        purposes = [p.strip() for p in (purposes or []) if p and p.strip()]
+        warnings = self._purpose_warnings(purposes)
         if project_classification not in self.PROJECT_CLASSIFICATIONS:
             raise ValueError(
                 f"unknown classification {project_classification!r}; "
@@ -7832,6 +10511,16 @@ class ProjectRegistry:
                 f"hypothesis is only meaningful for "
                 f"{list(self.HYPOTHESIS_REQUIRED_FOR)}, not {project_classification!r}"
             )
+        owner = current_user_id()
+        if project_classification in self.PRIVATE_CLASSIFICATIONS and not owner:
+            # Design ruling 2026-10-13: a private kind is zoned `[PRIVATE_ZONE, owner]`, so with no signed-in
+            # caller (anonymous, or a bare thread that dropped the ContextVar) it would be born ownerless:
+            # visible to everyone in RE and refused by every publish. Refused here, where it can be fixed.
+            raise ValueError(
+                f"{project_classification} needs an owner, and there is no signed-in caller — this "
+                "investigation would have no owner, so it could not be made private. Sign in, or choose "
+                "a shared kind."
+            )
         base = _re.sub(r"[^a-z0-9]+", "-", display_name.lower()).strip("-") or "investigation"
         slug, n = base, 1
         while self.get_investigation(slug):
@@ -7846,16 +10535,19 @@ class ProjectRegistry:
                     created_by, egeria_project_guid,
                     egeria_project_qualified_name, status, created_at, updated_at)
                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'open', ?, ?)""",
-                (slug, display_name, description, _json.dumps(purposes),
+                (slug, display_name, description, self._purposes_to_json(purposes, purpose_text),
                  project_classification, egeria_binding, hypothesis,
                  # Resolved here, not taken from the caller — the same reason
                  # `current_user_id`'s docstring gives: a method that resolves
                  # it cannot be called without scoping; a route that has to
                  # remember can forget.
-                 current_user_id(), egeria_project_guid,
+                 owner, egeria_project_guid,
                  egeria_project_qualified_name, now, now),
             )
-        return self.get_investigation(slug)
+        inv = self.get_investigation(slug)
+        if inv is not None:
+            inv["purpose_warnings"] = warnings
+        return inv
 
     def get_investigation(self, slug: str, *,
                           user_id: str | None = None) -> dict | None:
@@ -7875,7 +10567,6 @@ class ProjectRegistry:
         new route is exactly the place a per-route check gets forgotten. Routes
         then 404 with no change of their own.
         """
-        import json as _json
         user_id = current_user_id() if user_id is None else user_id
         with self._conn() as conn:
             row = conn.execute(
@@ -7886,7 +10577,7 @@ class ProjectRegistry:
         d = dict(row)
         if not self._may_see_investigation(d, user_id):
             return None
-        d["purposes"] = _json.loads(d.pop("purposes_json") or "[]")
+        d["purposes"], d["purpose_text"] = self._purposes_from_json(d.pop("purposes_json"))
         # Say what the visibility actually IS, rather than leaving the caller
         # to re-derive it from classification + created_by. `private` here
         # means "RE does not show this to other people" — not that Egeria is
@@ -8044,15 +10735,29 @@ class ProjectRegistry:
 
     def add_working_set_member(self, ws_slug: str, entity_type: str, entity_slug: str,
                                *, membership_rationale: str = "",
-                               state: str = "in-scope") -> list[dict]:
+                               state: str = "in-scope",
+                               keep_existing: bool = False) -> list[dict]:
+        """Add a member (an upsert). By default a repeat add overwrites the
+        member's rationale and state with the arguments (an explicit edit).
+        With `keep_existing=True` a member that is already there keeps what it
+        has: the arguments only fill a rationale or state that is empty. A
+        first-time add writes the arguments either way."""
+        if keep_existing:
+            conflict = """DO UPDATE SET
+                   membership_rationale = CASE WHEN COALESCE(working_set_members.membership_rationale, '') = ''
+                       THEN EXCLUDED.membership_rationale ELSE working_set_members.membership_rationale END,
+                   state = CASE WHEN COALESCE(working_set_members.state, '') = ''
+                       THEN EXCLUDED.state ELSE working_set_members.state END"""
+        else:
+            conflict = """DO UPDATE SET membership_rationale = EXCLUDED.membership_rationale,
+                                 state = EXCLUDED.state"""
         with self._conn() as conn:
             conn.execute(
                 """INSERT INTO working_set_members
                    (working_set_slug, entity_type, entity_slug, membership_rationale, state, added_at)
                    VALUES (?, ?, ?, ?, ?, ?)
                    ON CONFLICT (working_set_slug, entity_type, entity_slug)
-                   DO UPDATE SET membership_rationale = EXCLUDED.membership_rationale,
-                                 state = EXCLUDED.state""",
+                   """ + conflict,
                 (ws_slug, entity_type, entity_slug, membership_rationale, state,
                  datetime.utcnow().isoformat()),
             )
@@ -8193,6 +10898,7 @@ class ProjectRegistry:
     def update_investigation(self, slug: str, *, display_name: str | None = None,
                              description: str | None = None,
                              purposes: list[str] | None = None,
+                             purpose_text: str | None = None,
                              hypothesis: str | None = None) -> dict | None:
         """Rename, re-describe, or refine the hypothesis. The slug never
         changes — members, the Egeria binding and inherited context rows
@@ -8203,14 +10909,13 @@ class ProjectRegistry:
         not an UPDATE (design §5). Sharpening an Experiment's hypothesis is a
         different thing — it stays within one classification.
         """
-        import json as _json
         inv = self.get_investigation(slug)
         if not inv:
             return None
+        warnings: list[str] = []
         if purposes is not None:
-            bad = [p for p in purposes if p not in self.VALID_PURPOSES]
-            if bad:
-                raise ValueError(f"unknown purpose(s) {bad}; valid: {list(self.VALID_PURPOSES)}")
+            purposes = [p.strip() for p in purposes if p and p.strip()]
+            warnings = self._purpose_warnings(purposes)
         if hypothesis is not None:
             hypothesis = hypothesis.strip()
             cls = inv.get("project_classification")
@@ -8231,15 +10936,84 @@ class ProjectRegistry:
             if description is not None:
                 conn.execute("UPDATE investigations SET description = ? WHERE slug = ?",
                              (description, slug))
-            if purposes is not None:
+            if purposes is not None or purpose_text is not None:
+                # Either half may be sent alone; the other keeps what is stored.
+                new_purposes = purposes if purposes is not None else inv.get("purposes") or []
+                new_text = purpose_text if purpose_text is not None else inv.get("purpose_text") or ""
                 conn.execute("UPDATE investigations SET purposes_json = ? WHERE slug = ?",
-                             (_json.dumps(purposes), slug))
+                             (self._purposes_to_json(new_purposes, new_text), slug))
             if hypothesis is not None:
                 conn.execute("UPDATE investigations SET hypothesis = ? WHERE slug = ?",
                              (hypothesis, slug))
             conn.execute("UPDATE investigations SET updated_at = ? WHERE slug = ?",
                          (datetime.utcnow().isoformat(), slug))
-        return self.get_investigation(slug)
+        out = self.get_investigation(slug)
+        if out is not None:
+            out["purpose_warnings"] = warnings
+        return out
+
+    def purpose_free_text(self, *, user_id: str | None = None) -> dict:
+        """Purposes people wrote rather than picked, with counts — for mining.
+
+        Owner ruling 2026-10-13: "we will want to mine the text in real situations to see if we can
+        codify more purposes." Two sources, each grouped on the text with case and spacing folded (the
+        first spelling seen is shown), most frequent first:
+
+        * `investigation_purposes`: each investigation's free text (`purpose_text`) and any purpose value
+          outside the list;
+        * `intended_use`: Enrichment's Intended use free text, a picked value outside the list, and, for
+          rows written before the split (or by Classic's flat `purpose` field), a value outside the list.
+
+        "Outside the list" is judged against the cached list (or the shipped seed), never an Egeria call.
+        Nothing here adds to the list: a person adds a value to Egeria's list.
+        Investigations are filtered by what the caller may see (`get_investigation`'s rule).
+        """
+        import json as _json
+
+        from resource_explorer.investigation_purposes import _fold, is_listed, known_purpose_names
+
+        names = known_purpose_names(self)
+
+        def tally(bucket: dict, text: str, kind: str, where: str) -> None:
+            text = " ".join((text or "").split())
+            if not text:
+                return
+            row = bucket.setdefault((_fold(text), kind), {"text": text, "kind": kind, "count": 0, "where": []})
+            row["count"] += 1
+            if len(row["where"]) < 20:
+                row["where"].append(where)
+
+        inv_bucket: dict = {}
+        for inv in self.list_investigations(include_closed=True, user_id=user_id):
+            tally(inv_bucket, inv.get("purpose_text") or "", "free text", inv["slug"])
+            for p in inv.get("purposes") or []:
+                if not is_listed(p, names):
+                    tally(inv_bucket, p, "not in the list", inv["slug"])
+
+        use_bucket: dict = {}
+        with self._conn() as conn:
+            rows = conn.execute("SELECT entity_type, entity_slug, context_json FROM resource_context").fetchall()
+        for r in rows:
+            try:
+                ctx = _json.loads(r["context_json"] or "{}")
+            except (TypeError, ValueError):
+                continue
+            where = f"{r['entity_type']}/{r['entity_slug']}"
+            field = ((ctx.get("enrichment") or {}).get("intended_use")) or None
+            if isinstance(field, dict) and ("free_text" in field or "picked" in field):
+                tally(use_bucket, field.get("free_text") or "", "free text", where)
+                picked = field.get("picked") or ""
+                if picked and not is_listed(picked, names):
+                    tally(use_bucket, picked, "not in the list", where)
+                continue
+            legacy = (field or {}).get("value") if isinstance(field, dict) else ctx.get("purpose")
+            if legacy and not is_listed(legacy, names):
+                tally(use_bucket, legacy, "free text", where)
+
+        def ranked(bucket: dict) -> list[dict]:
+            return sorted(bucket.values(), key=lambda x: (-x["count"], x["text"].casefold()))
+
+        return {"known": names, "investigation_purposes": ranked(inv_bucket), "intended_use": ranked(use_bucket)}
 
     def set_investigation_classification(self, slug: str, classification: str, *,
                                          hypothesis: str = "") -> dict | None:
@@ -8579,9 +11353,10 @@ class ProjectRegistry:
         investigation membership at read time, so leaving the investigation's
         working set later would silently un-answer a question already settled.
         """
+        from resource_explorer.catalogue_commit import PROJECT_UNANSWERED
         entity_slug = self._normalize_slug(entity_slug)
         context = self.get_project_context(entity_type, entity_slug)
-        if not context or context.get("status") == "unset":
+        if not context or context.get("status") in PROJECT_UNANSWERED:
             inherited = self.inherited_egeria_project_context(entity_type, entity_slug)
             if not inherited:
                 return False
@@ -8713,12 +11488,27 @@ class ProjectRegistry:
                 data,
             )
 
-    def get_database(self, slug: str) -> DatabaseEntity | None:
-        """Retrieve a database entity by slug."""
+    def get_database(self, slug: str, *, allow_unreadable: bool = False) -> DatabaseEntity | None:
+        """Retrieve a database entity by slug.
+
+        A row whose stored password cannot be decrypted raises
+        `CredentialUnreadableError` (for THAT slug only) unless
+        `allow_unreadable=True`, which returns the row with
+        `credential_status == "unreadable"` and an empty `db_password`.
+        Callers that only need existence/metadata pass True; anything that
+        may connect with the credential must not, so it never connects with
+        an empty password.
+        """
         normalized = self._normalize_slug(slug)
         with self._conn() as conn:
             row = conn.execute("SELECT * FROM databases WHERE slug = ?", (normalized,)).fetchone()
-        return self._row_to_database(row) if row else None
+        if not row:
+            return None
+        entity = self._row_to_database(row)
+        if entity.credential_status == "unreadable" and not allow_unreadable:
+            from resource_explorer.credential_crypto import CredentialUnreadableError
+            raise CredentialUnreadableError(entity.slug)
+        return entity
 
     def list_databases(self, db_type: str | None = None, server_slug: str | None = None, governance_state: str | None = None) -> list[DatabaseEntity]:
         """List all registered databases, optionally filtered by type, server slug, or governance state."""
@@ -8766,16 +11556,57 @@ class ProjectRegistry:
         cli/main.py) via `omsecrets_store.write_credential`, since this
         method only knows about the registry, not the deployment's
         `.omsecrets` path.
+
+        Every change is recorded: an activity-log row naming the slug and the
+        NEW user name (never the password or any value of it), and
+        `credential_changed_at` set to now (UTC, seconds). A call that
+        rewrites the same user and the same plaintext (the lazy re-encrypt in
+        `_row_to_database`) still stores the new ciphertext but writes no row
+        and leaves `credential_changed_at` alone: nothing changed.
         """
-        from resource_explorer.credential_crypto import encrypt_db_password
+        from resource_explorer.credential_crypto import (
+            decrypt_db_password,
+            encrypt_db_password,
+        )
 
         slug = self._normalize_slug(slug)
         encrypted = encrypt_db_password(db_password or "")
         with self._conn() as conn:
-            conn.execute(
-                "UPDATE databases SET db_user = ?, db_password = ? WHERE slug = ?",
-                (db_user, encrypted, slug),
-            )
+            prev = conn.execute(
+                "SELECT db_user, db_password, display_name FROM databases WHERE slug = ?",
+                (slug,),
+            ).fetchone()
+            changed = True
+            display_name = ""
+            if prev is not None:
+                display_name = prev["display_name"] or ""
+                try:
+                    prev_plain = decrypt_db_password(prev["db_password"] or "")
+                except ValueError:
+                    prev_plain = None  # unreadable: cannot be "the same"
+                changed = not (
+                    (prev["db_user"] or "") == (db_user or "")
+                    and prev_plain == (db_password or "")
+                )
+            if changed:
+                now = datetime.now(timezone.utc).isoformat(timespec="seconds")
+                conn.execute(
+                    "UPDATE databases SET db_user = ?, db_password = ?, "
+                    "credential_changed_at = ? WHERE slug = ?",
+                    (db_user, encrypted, now, slug),
+                )
+            else:
+                conn.execute(
+                    "UPDATE databases SET db_user = ?, db_password = ? WHERE slug = ?",
+                    (db_user, encrypted, slug),
+                )
+        if changed and prev is not None:
+            self.write_activity(ActivityEntry(
+                id=str(uuid.uuid4()), ts=now, operation="credential_change",
+                intent="enrichment", entity_type="database", entity_slug=slug,
+                entity_name=display_name, status="ok",
+                summary=f"Credentials for {slug} changed: user is now {db_user}",
+            ))
 
     def check_credential_drift(self, slug: str) -> dict:
         """Compare RE's registry against the `.omsecrets` file for one
@@ -8838,6 +11669,116 @@ class ProjectRegistry:
                 (datetime.utcnow().isoformat(), slug),
             )
 
+    def database_slug_for_asset_guid(self, guid: str) -> str:
+        """The slug of the registered database whose Egeria Asset is `guid`, or `""` for none.
+
+        Unscoped, like `private_owner_for_entity`: the engine host asks it as a daemon, before it may
+        claim an action, to find the resource the action targets and whether it is privately owned."""
+        guid = (guid or "").strip()
+        if not guid:
+            return ""
+        with self._conn() as conn:
+            row = conn.execute(
+                "SELECT slug FROM databases WHERE egeria_asset_guid = ? ORDER BY slug LIMIT 1", (guid,)
+            ).fetchone()
+        return row["slug"] if row else ""
+
+    def repo_slug_for_asset_guid(self, guid: str) -> str:
+        """The slug of the registered repository whose Egeria Asset is `guid`, or `""` for none. Unscoped, like
+        `database_slug_for_asset_guid`: the engine host asks it before it may claim an action (case 3 claims
+        repository request types), to leave a privately owned target unclaimed."""
+        guid = (guid or "").strip()
+        if not guid:
+            return ""
+        with self._conn() as conn:
+            row = conn.execute(
+                "SELECT slug FROM projects WHERE egeria_asset_guid = ? ORDER BY slug LIMIT 1", (guid,)
+            ).fetchone()
+        return row["slug"] if row else ""
+
+    def engine_action_runs(self, engine_action_guid: str) -> list[dict]:
+        """Every `engine_action` runs row (any state) whose target names this Egeria engine action, newest
+        first. Parsed, not matched as text: the target is JSON."""
+        guid = (engine_action_guid or "").strip()
+        if not guid:
+            return []
+        with self._conn() as conn:
+            # Text prefilter (parameterised), then the exact JSON compare below decides.
+            rows = conn.execute("SELECT * FROM runs WHERE kind = 'engine_action' AND target LIKE ? "
+                                "ORDER BY enqueued_at DESC", (f"%{guid}%",)).fetchall()
+        out = []
+        for row in rows:
+            try:
+                target = json.loads(row["target"] or "{}")
+            except (TypeError, ValueError):
+                target = None
+            if not isinstance(target, dict):
+                # It names the GUID (the prefilter) but cannot be read: it counts as existing, so the action is
+                # never adopted a second time (and given a second report); the caller leaves it alone.
+                if row["id"] not in _UNREADABLE_ENGINE_ROWS_WARNED:
+                    _UNREADABLE_ENGINE_ROWS_WARNED.add(row["id"])
+                    log.warning("runs row %s names engine action %s but its target is not readable JSON; it "
+                                "counts as that action's run and is left alone", row["id"], guid)
+                out.append({**dict(row), "target_unreadable": True})
+            elif target.get("engine_action_guid") == guid:
+                out.append(dict(row))
+        return out
+
+    def engine_action_runs_for_process_step(self, instance_guid: str, process_step_guid: str) -> list[dict]:
+        """Every `engine_action` runs row (any state) for this step of this process run: its target names the same
+        GovernanceActionProcessInstance and GovernanceActionProcessStep. Engine host case 3: a step Egeria started
+        twice in one run (duplicate next-step links) is run once. Parsed, not matched as text."""
+        instance_guid, process_step_guid = (instance_guid or "").strip(), (process_step_guid or "").strip()
+        if not instance_guid or not process_step_guid:
+            return []
+        with self._conn() as conn:
+            rows = conn.execute("SELECT * FROM runs WHERE kind = 'engine_action' AND target LIKE ? "
+                                "ORDER BY enqueued_at", (f"%{instance_guid}%",)).fetchall()
+        out = []
+        for row in rows:
+            try:
+                target = json.loads(row["target"] or "{}")
+            except (TypeError, ValueError):
+                continue
+            if (isinstance(target, dict) and target.get("process_instance_guid") == instance_guid
+                    and target.get("process_step_guid") == process_step_guid):
+                out.append(dict(row))
+        return out
+
+    def resource_kind_for_asset_guid(self, guid: str) -> str:
+        """`"repo"` or `"filesystem"` when a resource of that kind is registered with this Egeria Asset GUID,
+        else `""`. Unscoped, like `database_slug_for_asset_guid`: the engine host says which kind of thing an
+        action's target is when it is not a database."""
+        guid = (guid or "").strip()
+        if not guid:
+            return ""
+        with self._conn() as conn:
+            for kind, table in (("repo", "projects"), ("filesystem", "file_systems")):
+                if conn.execute(f"SELECT 1 FROM {table} WHERE egeria_asset_guid = ? LIMIT 1",  # noqa: S608
+                                (guid,)).fetchone():
+                    return kind
+        return ""
+
+    def engine_action_run_exists(self, engine_action_guid: str) -> bool:
+        """Any `engine_action` runs row (in any state) whose target names this Egeria engine action."""
+        return bool(self.engine_action_runs(engine_action_guid))
+
+    def merge_run_target(self, run_id: str, patch: dict) -> dict:
+        """Merge `patch` into a runs row's `target` JSON and return the merged target. No DDL: the engine host
+        keeps its outcome and its "completion recorded in Egeria" marker here (engine_host.py, E4/E5). Raises
+        when the row is missing or its target is not a JSON object: an outcome that could not be stored must
+        never be reported to Egeria as if it were."""
+        with self._conn() as conn:
+            row = conn.execute("SELECT target FROM runs WHERE id = ?", (run_id,)).fetchone()
+            if row is None:
+                raise KeyError(f"no runs row {run_id!r}")
+            target = json.loads(row["target"] or "{}")
+            if not isinstance(target, dict):
+                raise ValueError(f"runs row {run_id!r} has a target that is not a JSON object")
+            target.update(patch)
+            conn.execute("UPDATE runs SET target = ? WHERE id = ?", (json.dumps(target, default=str), run_id))
+        return target
+
     def set_database_egeria_guid(self, slug: str, guid: str) -> None:
         """Set the Egeria asset GUID for a database."""
         slug = self._normalize_slug(slug)
@@ -8850,11 +11791,20 @@ class ProjectRegistry:
     def remove_database(self, slug: str) -> None:
         """Remove a database entity and all its survey records."""
         normalized = self._normalize_slug(slug)
+        # No manual cache pop needed here (2026-09-29 hardening) —
+        # `get_database_surveys`'s freshness-keyed cache detects this
+        # delete on its own next read, from any instance, via
+        # `_database_surveys_freshness`'s `count(*)` half. See that
+        # method's docstring for why a single self-invalidating mechanism
+        # replaced the old same-instance-only manual pop.
         with self._conn() as conn:
             # Child before parent — database_surveys has a real FK to
             # databases.slug; SQLite silently allows the reverse order
             # (foreign_keys pragma off by default), Postgres does not.
             conn.execute("DELETE FROM database_surveys WHERE database_slug = ?", (normalized,))
+            conn.execute("DELETE FROM catalogue_scope_events WHERE database_slug = ?", (normalized,))
+            conn.execute("DELETE FROM catalogue_scope_baselines WHERE database_slug = ?", (normalized,))
+            conn.execute("DELETE FROM catalogue_commit_proofs WHERE database_slug = ?", (normalized,))
             # The structured detail tables are children too, and every one of
             # them has a real FK. Missing them here does not strand rows — it
             # makes the parent delete fail outright, on Postgres and on
@@ -8904,15 +11854,45 @@ class ProjectRegistry:
         """
         slug = self._normalize_slug(slug)
         surveyed_at = surveyed_at or datetime.utcnow().isoformat()
+        merged = False
         with self._conn() as conn:
+            # One scan, one snapshot (Brief D 7f.1): the steps of a scan share
+            # a `surveyed_at`, so a second write under the same
+            # (slug, surveyed_at, source) MERGES into the row the scan already
+            # has instead of adding a near-identical one. The caller's blob is
+            # already cumulative (each step folds the prior row's sections in),
+            # so the new blob replaces the old. The row is replaced rather than
+            # UPDATEd so its id moves -- the freshness signature below sees an
+            # in-place merge from any process, which `(max(surveyed_at),
+            # count)` alone could not -- and the publish marks the old row
+            # already carried (published_at, report guid, invalid marks) are
+            # carried forward, never dropped.
+            prior = conn.execute(
+                """SELECT egeria_report_guid, published_at, invalid_at, invalid_reason
+                   FROM database_surveys
+                   WHERE database_slug = ? AND surveyed_at = ? AND source = ?""",
+                (slug, surveyed_at, source),
+            ).fetchall()
+            carried = dict(prior[0]) if prior else {}
+            if prior:
+                merged = True
+                conn.execute(
+                    "DELETE FROM database_surveys "
+                    "WHERE database_slug = ? AND surveyed_at = ? AND source = ?",
+                    (slug, surveyed_at, source),
+                )
             conn.execute(
                 """INSERT INTO database_surveys
                    (database_slug, surveyed_at, egeria_report_guid, schema_count,
-                    table_count, column_count, survey_data, source, surveyed_as)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                (slug, surveyed_at, egeria_report_guid, schema_count,
-                 table_count, column_count, json.dumps(survey_data), source,
-                 surveyed_as or ""),
+                    table_count, column_count, survey_data, source, surveyed_as,
+                    published_at, invalid_at, invalid_reason)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (slug, surveyed_at,
+                 egeria_report_guid or carried.get("egeria_report_guid") or "",
+                 schema_count, table_count, column_count,
+                 json.dumps(survey_data), source, surveyed_as or "",
+                 carried.get("published_at"), carried.get("invalid_at"),
+                 carried.get("invalid_reason") or ""),
             )
             # Keep the databases row in sync so API responses reflect current counts
             conn.execute(
@@ -8922,6 +11902,14 @@ class ProjectRegistry:
                    WHERE slug=?""",
                 (schema_count, table_count, column_count, surveyed_at, slug),
             )
+        if merged:
+            # The signature moves for other processes (the row id changes);
+            # this instance simply drops its own copy too.
+            self._database_surveys_cache.pop(slug, None)
+        # No manual cache pop needed here (2026-09-29 hardening) — see
+        # `remove_database`'s comment and `get_database_surveys`'s
+        # docstring: the freshness-keyed cache detects this insert on its
+        # own, from any instance.
         # Materialise the structured detail rows from the same blob, so a
         # survey run today is queryable without waiting for a back-fill
         # (design §5.7). Done here rather than in each surveyor because every
@@ -8939,7 +11927,8 @@ class ProjectRegistry:
             from resource_explorer.surveyors.result_materializer import (
                 backfill_database_survey,
             )
-            backfill_database_survey(self, slug, surveyed_at, survey_data, source=source)
+            backfill_database_survey(self, slug, surveyed_at, survey_data, source=source,
+                                     merge=merged)
         except Exception as exc:
             log.warning(
                 "Structured detail rows not written for database %s @ %s (%s): %s. "
@@ -8948,8 +11937,127 @@ class ProjectRegistry:
                 slug, surveyed_at, source, exc,
             )
 
-    def get_database_surveys(self, slug: str) -> list[dict]:
-        """Return all survey records for a database, newest first."""
+    def _database_surveys_freshness(self, slug: str) -> tuple:
+        """A cheap freshness signature for `slug`'s stored surveys.
+
+        `(max(surveyed_at), count(*))` rather than just a row count: a
+        row count alone cannot distinguish "the newest survey got replaced"
+        from "nothing changed" when the total stays the same (it can't —
+        `record_database_survey` only ever inserts, never updates or
+        deletes, but `remove_database` deletes and a future write path
+        could too), and `max(surveyed_at)` alone cannot distinguish
+        "unchanged" from "a row was added/removed elsewhere with an older
+        timestamp" (backfills, imports). The pair is the smallest signature
+        that is wrong only if two writes land with an identical
+        `(max(surveyed_at), count)` pair, which `record_database_survey`'s
+        own `datetime.utcnow().isoformat()` (microsecond precision) makes
+        vanishingly unlikely for two real writes.
+
+        Measured directly against Postgres on a 57-row/61MB survey history
+        (the same fixture `PER-REQUEST-SERVER-LATENCY-IMPLEMENTED.md`
+        profiled): 0.4-1.2ms — negligible next to the ~500-600ms full fetch
+        it guards, so paying it on every `get_database_surveys` call (cache
+        hit or miss) does not reintroduce the latency problem this cache
+        exists to fix.
+        """
+        with self._conn() as conn:
+            row = conn.execute(
+                "SELECT max(surveyed_at), count(*), max(id) FROM database_surveys "
+                "WHERE database_slug = ? AND invalid_at IS NULL",
+                (slug,),
+            ).fetchone()
+        # `max(id)` (Brief D): a scan's later steps merge into its row by
+        # replacing it, which keeps `(max(surveyed_at), count)` identical.
+        return (row[0], row[1], row[2]) if row else (None, 0, None)
+
+    def get_database_surveys(self, slug: str, include_invalid: bool = False,
+                             with_survey_data: bool = True) -> list[dict]:
+        """Return all survey records for a database, newest first.
+
+        Rows marked invalid (`invalid_at IS NOT NULL` — see
+        `mark_database_survey_invalid`) are excluded unless
+        `include_invalid=True`, which bypasses the cache.
+
+        Cached per-instance, keyed on a freshness signature (2026-09-29,
+        PER-REQUEST-SERVER-LATENCY-IMPLEMENTED.md; hardened
+        2026-09-29 against cross-instance/cross-process staleness — see that
+        doc's "Registry cache staleness" addendum): this fetches every
+        historical survey's full `survey_data` blob — for
+        `laz_local_adventureworks`, 57 rows totalling ~61MB — and callers
+        that legitimately re-read the same slug more than once within one
+        `ProjectRegistry` instance's lifetime (e.g.
+        `prerequisite_resolver.resolve()`'s per-step loop, via
+        `credential_capability.stored_probe`, re-checking a database's
+        `credential_capability` probe for each of a survey run's
+        `requires_context` steps) would otherwise pay the full ~500-600ms
+        fetch again on every repeat read — measured directly: 6 back-to-back
+        uncached reads of the same slug cost ~3.4s versus ~0ms for cached
+        repeats.
+
+        The cache entry is `(freshness_signature, result)`, not just
+        `result` — see `_database_surveys_freshness`'s docstring for why a
+        `(max(surveyed_at), count(*))` pair, and why that check (0.4-1.2ms)
+        is cheap enough to pay unconditionally. This is what makes the
+        cache self-invalidating rather than only correct for writes that
+        happen to go through THIS SAME instance: a stale entry is detected
+        and refetched the moment its freshness signature no longer matches
+        the table, no matter which `ProjectRegistry` instance or process
+        wrote the newer row. The query and its "search every stored survey"
+        semantics are otherwise unchanged.
+        """
+        slug = self._normalize_slug(slug)
+        if include_invalid:
+            # `with_survey_data=False` (the history table, G3 / PI-037) leaves the
+            # blob out of the SELECT: a database with 57 surveys holds ~61MB of it,
+            # and a table of dates and counts needs none of it.
+            blob = "survey_data, " if with_survey_data else ""
+            with self._conn() as conn:
+                rows = conn.execute(
+                    f"""SELECT database_slug, surveyed_at, egeria_report_guid,
+                              schema_count, table_count, column_count, {blob}source,
+                              surveyed_as, invalid_at, invalid_reason, published_at
+                       FROM database_surveys
+                       WHERE database_slug = ?
+                       ORDER BY surveyed_at DESC""",
+                    (slug,),
+                ).fetchall()
+            return [dict(r) for r in rows]
+        freshness = self._database_surveys_freshness(slug)
+        cached = self._database_surveys_cache.get(slug)
+        if cached is not None and cached[0] == freshness:
+            return cached[1]
+        with self._conn() as conn:
+            rows = conn.execute(
+                """SELECT database_slug, surveyed_at, egeria_report_guid,
+                          schema_count, table_count, column_count, survey_data, source,
+                          surveyed_as, published_at
+                   FROM database_surveys
+                   WHERE database_slug = ? AND invalid_at IS NULL
+                   ORDER BY surveyed_at DESC""",
+                (slug,),
+            ).fetchall()
+        result = [dict(r) for r in rows]
+        self._database_surveys_cache[slug] = (freshness, result)
+        return result
+
+    def get_latest_database_survey(self, slug: str) -> dict | None:
+        """Return the most recent survey record for a database, or None.
+
+        A dedicated `LIMIT 1` query as of 2026-09-29
+        (PER-REQUEST-SERVER-LATENCY-IMPLEMENTED.md) —
+        this used to delegate to `get_database_surveys` and take `[0]`,
+        which fetches (and JSON-decodes) `survey_data` for EVERY historical
+        survey of this database, not just the one actually used. Profiled
+        directly: for `laz_local_adventureworks` (57 accumulated survey
+        rows, ~61MB of `survey_data` combined) a single board's
+        `build_survey_results` calls this method 5 times via
+        `_credential_capability_results`/`_credential_scope_status`, each
+        paying the full 57-row/61MB fetch — 1.85s of a 1.94s total board
+        read, ~95%, per `cProfile`. `get_database_surveys` itself is left
+        untouched: several real callers (survey-history views, trend
+        stats) genuinely want every row, so this is a second, narrower
+        query for the one caller that only ever wanted the first.
+        """
         slug = self._normalize_slug(slug)
         with self._conn() as conn:
             rows = conn.execute(
@@ -8957,16 +12065,407 @@ class ProjectRegistry:
                           schema_count, table_count, column_count, survey_data, source,
                           surveyed_as
                    FROM database_surveys
-                   WHERE database_slug = ?
-                   ORDER BY surveyed_at DESC""",
+                   WHERE database_slug = ? AND invalid_at IS NULL
+                   ORDER BY surveyed_at DESC
+                   LIMIT 1""",
                 (slug,),
             ).fetchall()
-        return [dict(r) for r in rows]
+        return dict(rows[0]) if rows else None
 
-    def get_latest_database_survey(self, slug: str) -> dict | None:
-        """Return the most recent survey record for a database, or None."""
-        surveys = self.get_database_surveys(slug)
-        return surveys[0] if surveys else None
+    # ── Catalogue scope storage (append-only; see the DDL for the shape) ──
+
+    def append_catalogue_scope_event(self, slug: str, *, node_kind: str, author: str,
+                                     schema_name: str = "", table_name: str = "",
+                                     choice: str = "", action: str = "set",
+                                     source: str = "person", proposal_rule: str = "",
+                                     proposal_choice: str = "", reason: str = "",
+                                     measured_at: str = "", measured: dict | None = None,
+                                     changed_at: str | None = None) -> None:
+        """Append one scope change. Never updates or removes a row."""
+        slug = self._normalize_slug(slug)
+        if not author:
+            raise ValueError("a catalog scope change needs an author")
+        with self._conn() as conn:
+            conn.execute(
+                """INSERT INTO catalogue_scope_events
+                   (database_slug, node_kind, schema_name, table_name, choice, action,
+                    source, proposal_rule, proposal_choice, reason, measured_at,
+                    measured_json, author, changed_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (slug, node_kind, schema_name or "", table_name or "", choice or "", action,
+                 source, proposal_rule, proposal_choice, reason, measured_at or "",
+                 json.dumps(measured or {}), author,
+                 changed_at or datetime.utcnow().isoformat()),
+            )
+
+    def list_catalogue_scope_events(self, slug: str) -> list[dict]:
+        """Every scope change for a database, oldest first."""
+        slug = self._normalize_slug(slug)
+        with self._conn() as conn:
+            rows = conn.execute(
+                """SELECT id, database_slug, node_kind, schema_name, table_name, choice,
+                          action, source, proposal_rule, proposal_choice, reason,
+                          measured_at, measured_json, author, changed_at
+                   FROM catalogue_scope_events WHERE database_slug = ? ORDER BY id""",
+                (slug,),
+            ).fetchall()
+        out = []
+        for r in rows:
+            d = dict(r)
+            try:
+                d["measured"] = json.loads(d.pop("measured_json") or "{}")
+            except (ValueError, TypeError):
+                d["measured"] = {}
+            out.append(d)
+        return out
+
+    # ── Catalogue commit proofs (append-only; see the DDL for the shape) ──
+
+    def append_catalogue_commit_proof(self, slug: str, *, proof: str, node_kind: str = "schema",
+                                      schema_name: str = "", table_name: str = "",
+                                      curation_id: str = "", element_guid: str = "",
+                                      target_guid: str = "", qualified_name: str = "",
+                                      outbox_id: int | None = None, detail: dict | None = None,
+                                      recorded_by: str = "", read_at: str | None = None) -> int:
+        """Append one read-back observation. Never updates or removes a row."""
+        slug = self._normalize_slug(slug)
+        if not proof:
+            raise ValueError("a commit proof row needs a proof kind")
+        with self._conn() as conn:
+            cur = conn.execute(
+                """INSERT INTO catalogue_commit_proofs
+                   (database_slug, curation_id, node_kind, schema_name, table_name, proof,
+                    element_guid, target_guid, qualified_name, outbox_id, detail_json,
+                    recorded_by, read_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (slug, curation_id or "", node_kind, schema_name or "", table_name or "", proof,
+                 element_guid or "", target_guid or "", qualified_name or "", outbox_id,
+                 json.dumps(detail or {}), recorded_by or "",
+                 read_at or datetime.utcnow().isoformat()),
+            )
+            row_id = getattr(cur, "lastrowid", None)
+            if row_id is None:
+                row_id = conn.execute(
+                    "SELECT MAX(id) AS id FROM catalogue_commit_proofs WHERE database_slug = ?",
+                    (slug,)).fetchone()["id"]
+        return int(row_id)
+
+    def list_catalogue_commit_proofs(self, slug: str) -> list[dict]:
+        """Every commit proof row for a database, oldest first."""
+        slug = self._normalize_slug(slug)
+        with self._conn() as conn:
+            rows = conn.execute(
+                """SELECT id, database_slug, curation_id, node_kind, schema_name, table_name,
+                          proof, element_guid, target_guid, qualified_name, outbox_id,
+                          detail_json, recorded_by, read_at
+                   FROM catalogue_commit_proofs WHERE database_slug = ? ORDER BY id""",
+                (slug,),
+            ).fetchall()
+        out = []
+        for r in rows:
+            d = dict(r)
+            try:
+                d["detail"] = json.loads(d.pop("detail_json") or "{}")
+            except (ValueError, TypeError):
+                d["detail"] = {}
+            out.append(d)
+        return out
+
+    def get_egeria_reset_at(self, slug: str) -> str:
+        """When Egeria was last reset, for this resource: the newest `egeria_reset` marker's `read_at`
+        (the reset time, not the time the marker was written), or '' when there is no marker.
+        One small read, so list routes can afford it per resource."""
+        slug = self._normalize_slug(slug)
+        from resource_explorer.catalogue_commit import _ts
+        with self._conn() as conn:
+            rows = conn.execute(
+                "SELECT read_at FROM catalogue_commit_proofs "
+                "WHERE database_slug = ? AND proof = 'egeria_reset'", (slug,)).fetchall()
+        # the newest by PARSED time (not MAX() over text, which orders 'Z', '+00:00' and spaces wrongly)
+        return max((r["read_at"] or "" for r in rows), key=_ts, default="")
+
+    def list_catalogue_outbox_rows(self, slug: str) -> list[dict]:
+        """The outbox rows a catalogue commit queued for one database, oldest first.
+
+        Read straight from egeria_outbox so a "queued" or "failed" word on the
+        scope tree is the row's own status, never a flag kept beside it."""
+        slug = self._normalize_slug(slug)
+        with self._conn() as conn:
+            rows = conn.execute(
+                """SELECT id, run_id, element_kind, qualified_name, payload_json, status,
+                          attempts, last_error, egeria_guid, created_at, completed_at
+                   FROM egeria_outbox
+                   WHERE entity_type = 'database' AND entity_slug = ?
+                     AND element_kind IN ('catalogue_schema_attach', 'catalogue_schema_leave_out')
+                   ORDER BY id""",
+                (slug,),
+            ).fetchall()
+        out = []
+        for r in rows:
+            d = dict(r)
+            try:
+                d["payload"] = json.loads(d.pop("payload_json") or "{}")
+            except (ValueError, TypeError):
+                d["payload"] = {}
+            out.append(d)
+        return out
+
+    def append_catalogue_scope_baseline(self, slug: str, *, baseline: dict, survey_at: str,
+                                        author: str, kind: str = "first",
+                                        declared_at: str | None = None) -> None:
+        slug = self._normalize_slug(slug)
+        if not author:
+            raise ValueError("a catalog scope declaration needs an author")
+        with self._conn() as conn:
+            conn.execute(
+                """INSERT INTO catalogue_scope_baselines
+                   (database_slug, kind, baseline_json, survey_at, declared_by, declared_at)
+                   VALUES (?, ?, ?, ?, ?, ?)""",
+                (slug, kind, json.dumps(baseline), survey_at or "", author,
+                 declared_at or datetime.utcnow().isoformat()),
+            )
+
+    def list_catalogue_scope_baselines(self, slug: str) -> list[dict]:
+        """Every declaration baseline for a database, oldest first."""
+        slug = self._normalize_slug(slug)
+        with self._conn() as conn:
+            rows = conn.execute(
+                """SELECT id, database_slug, kind, baseline_json, survey_at,
+                          declared_by, declared_at
+                   FROM catalogue_scope_baselines WHERE database_slug = ? ORDER BY id""",
+                (slug,),
+            ).fetchall()
+        out = []
+        for r in rows:
+            d = dict(r)
+            try:
+                d["baseline"] = json.loads(d.pop("baseline_json") or "{}")
+            except (ValueError, TypeError):
+                d["baseline"] = {}
+            out.append(d)
+        return out
+
+    def latest_measured_database_survey(self, slug: str) -> dict | None:
+        """Newest row of `slug` that `is_measured_survey` accepts, or None.
+
+        Newest-first over the valid rows: a newer empty/egeria-published row
+        never hides an older real measurement.
+        """
+        for row in self.get_database_surveys(slug) or []:
+            if is_measured_survey(row):
+                return row
+        return None
+
+    def mark_database_survey_invalid(self, slug: str, surveyed_at: str, source: str,
+                                     reason: str) -> int:
+        """Soft-mark one survey row invalid (never deletes). Returns rows marked.
+
+        Idempotent: an already-marked row is left alone. Re-syncs the
+        `databases` summary counts/last_surveyed_at to the newest valid row,
+        because `record_database_survey` copied the false values there.
+        """
+        slug = self._normalize_slug(slug)
+        with self._conn() as conn:
+            cur = conn.execute(
+                "UPDATE database_surveys SET invalid_at = ?, invalid_reason = ? "
+                "WHERE database_slug = ? AND surveyed_at = ? AND source = ? "
+                "AND invalid_at IS NULL",
+                (datetime.utcnow().isoformat(), reason, slug, surveyed_at, source),
+            )
+            n = cur.rowcount or 0
+        if n:
+            self.resync_database_summary_from_surveys(slug)
+        return n
+
+    def resync_database_summary_from_surveys(self, slug: str) -> None:
+        """Point the `databases` row's counts/last_surveyed_at at the newest
+        valid survey (or clear them if none is left)."""
+        slug = self._normalize_slug(slug)
+        latest = self.get_latest_database_survey(slug)
+        with self._conn() as conn:
+            if latest:
+                conn.execute(
+                    "UPDATE databases SET schema_count=?, table_count=?, column_count=?, "
+                    "last_surveyed_at=? WHERE slug=?",
+                    (latest["schema_count"], latest["table_count"],
+                     latest["column_count"], latest["surveyed_at"], slug),
+                )
+            else:
+                conn.execute(
+                    "UPDATE databases SET schema_count=0, table_count=0, column_count=0, "
+                    "last_surveyed_at=NULL WHERE slug=?", (slug,))
+
+    def find_false_zero_database_surveys(self) -> list[dict]:
+        """Every not-yet-marked row showing the false-zero damage, ANY slug.
+
+        Keyed on the damage itself (source is a publish source AND empty
+        schema_info), not on a slug or a timestamp.
+        """
+        with self._conn() as conn:
+            rows = conn.execute(
+                "SELECT database_slug, surveyed_at, source, egeria_report_guid, survey_data "
+                "FROM database_surveys WHERE invalid_at IS NULL AND source = ? "
+                "ORDER BY database_slug, surveyed_at",
+                ("egeria-published",),
+            ).fetchall()
+        return [dict(r) for r in rows if is_false_zero_survey(dict(r))]
+
+    def record_database_survey_published(self, slug: str, surveyed_at: str,
+                                         report_guid: str) -> int:
+        """Record a publish OUTCOME on the measured row it published.
+
+        A publish measures nothing, so it never inserts a survey row; it
+        stamps `published_at` and `egeria_report_guid` on the existing
+        measured row identified by (slug, surveyed_at). Never touches a
+        publish-sourced row. Returns rows updated (0 = no such measured row).
+        """
+        slug = self._normalize_slug(slug)
+        with self._conn() as conn:
+            cur = conn.execute(
+                "UPDATE database_surveys SET published_at = ?, egeria_report_guid = ? "
+                "WHERE database_slug = ? AND surveyed_at = ? AND source <> ? "
+                "AND invalid_at IS NULL",
+                (datetime.utcnow().isoformat(), report_guid or "", slug, surveyed_at,
+                 "egeria-published"),
+            )
+            n = cur.rowcount or 0
+        # The freshness signature (max(surveyed_at), count) does not move on
+        # an UPDATE, so drop this instance's cached list explicitly.
+        self._database_surveys_cache.pop(slug, None)
+        return n
+
+    def find_latest_database_survey_with_key(self, slug: str, key: str) -> dict | None:
+        """The most recent stored survey for `slug` whose `survey_data` JSON
+        has a truthy top-level `key`, or None if none do.
+
+        The query-pushed-to-Postgres version of "search every stored survey
+        newest-first for one that has X" — `_credential_capability_results`'s
+        own deliberate pattern (`surveyors/database/survey_definition_adapter.py`),
+        kept correct by `tests/test_schema_inventory_headline.py`'s
+        `test_credential_totals_from_an_older_survey_still_show_when_the_latest_run_omits_the_probe`
+        (the 2026-09-26 fix this exists not to regress). Added 2026-09-29
+        round 2 (PER-REQUEST-SERVER-LATENCY-ROUND-2-IMPLEMENTED.md)
+        after the round-1 per-instance cache (`get_database_surveys`'s
+        docstring) removed the *redundant* repeat fetches within one board
+        read but left the one real fetch — 688-905ms on a 57-row/61MB
+        history — as the dominant remaining cost.
+
+        On Postgres this uses `jsonb_exists(survey_data::jsonb, %s)` as a
+        WHERE filter with `LIMIT 1`, pushing the scan into Postgres instead
+        of transferring every historical blob to filter in Python (measured
+        directly: ~300-500ms vs ~700-900ms). Deliberately NOT the `?`
+        operator: `PostgresCursorWrapper._translate_sql` does a blind
+        `sql.replace('?', '%s')` for this codebase's `?`-as-bind-placeholder
+        convention, which would corrupt a literal `?` operator in the SQL
+        text itself — `jsonb_exists(...)` is the operator's function form
+        and uses no `?` character at all, sidestepping that collision
+        entirely rather than working around it.
+
+        Every write to `database_surveys` goes through `record_database_
+        survey`'s `json.dumps`, so the `::jsonb` cast is safe by
+        construction — there is no other write path (verified: `grep -n
+        "INSERT INTO database_surveys" resource_explorer/registry.py`
+        finds exactly one). Even so, this can never be LESS correct than
+        the linear scan it replaces: the fast path's single candidate is
+        verified truthy in Python before being trusted, and both a query
+        error and a falsy/missing candidate fall through to the same
+        newest-first Python loop over `get_database_surveys` that
+        `_credential_capability_results` used before this method existed —
+        so SQLite (no native jsonb) and any registry stub that only
+        implements `get_database_surveys` (e.g. tests' `_FakeRegistry`)
+        both keep working unchanged via that fallback.
+
+        Cached per-instance, per `(slug, key)` — a single board read calls
+        this up to 5 times (`_credential_capability_results` has that many
+        distinct call sites: `_schema_inventory_results`, `_schema_
+        inventory_headline`, `_schema_inventory_container_rows`, and
+        `_credential_scope_status`'s own two callers), each paying the full
+        query without it. Deliberately a SEPARATE cache attribute from
+        `get_database_surveys`'s own (`_database_surveys_cache`) — lazily
+        created here via `self.__dict__.setdefault(...)` rather than a line
+        in `__init__`, and with no write-path invalidation hook in
+        `record_database_survey` — both to avoid touching either of those
+        while a separate, concurrent fix addresses THAT cache's staleness
+        for the long-lived-registry holders (`run_queue.py`, `egeria_
+        resync.py`). Confirmed safe on its own terms, not just by avoidance:
+        `grep` finds neither file calling into this method, `_credential_
+        capability_results`, or any of its board-reader callers at all —
+        every real caller is a request handler that constructs a fresh
+        `ProjectRegistry()` per request, so this cache's worst case is
+        "possibly stale for the remainder of one HTTP request that both
+        reads and writes the same database's surveys," not the
+        cross-process/long-lived staleness the other fix addresses.
+        """
+        slug = self._normalize_slug(slug)
+        cache = self.__dict__.setdefault("_survey_with_key_cache", {})
+        cache_key = (slug, key)
+        if cache_key in cache:
+            return cache[cache_key]
+        result = self._find_latest_database_survey_with_key_uncached(slug, key)
+        cache[cache_key] = result
+        return result
+
+    def _find_latest_database_survey_with_key_uncached(self, slug: str, key: str) -> dict | None:
+        if self.database_url.startswith("postgresql"):
+            import psycopg2
+            import sqlalchemy.exc
+
+            try:
+                with self._conn() as conn:
+                    rows = conn.execute(
+                        """SELECT database_slug, surveyed_at, egeria_report_guid,
+                                  schema_count, table_count, column_count, survey_data, source,
+                                  surveyed_as
+                           FROM database_surveys
+                           WHERE database_slug = ? AND invalid_at IS NULL
+                             AND jsonb_exists(survey_data::jsonb, ?)
+                           ORDER BY surveyed_at DESC
+                           LIMIT 1""",
+                        (slug, key),
+                    ).fetchall()
+                if rows:
+                    candidate = dict(rows[0])
+                    try:
+                        survey_data = json.loads(candidate.get("survey_data") or "{}")
+                    except (ValueError, TypeError):
+                        survey_data = None
+                    if survey_data and survey_data.get(key):
+                        return candidate
+                    # Candidate had the key but a falsy value (e.g. `{}`) —
+                    # extremely unlikely in practice (the surveyor either
+                    # omits the key or writes a real reading) but fall
+                    # through to the exhaustive scan rather than assume.
+            except (psycopg2.Error, sqlalchemy.exc.SQLAlchemyError):
+                # Narrowed from a bare `except Exception` (test_no_silent_
+                # success.py's ratchet correctly flagged the broad form as
+                # a new silent-success site) to exactly the DB-layer errors
+                # this fallback exists for: `psycopg2.Error` for a query
+                # that fails once it reaches Postgres (a genuinely
+                # malformed `survey_data` cast — expected to be rare, every
+                # write goes through `record_database_survey`'s
+                # `json.dumps`, so the cast is safe by construction, see
+                # this method's own docstring) and `sqlalchemy.exc.
+                # SQLAlchemyError` for a connection-acquisition failure
+                # (`self._conn()`'s `raw_connection()` checkout, which can
+                # raise SQLAlchemy's own wrapper types rather than a bare
+                # psycopg2 error on a pool/pre_ping failure). A bug in
+                # unrelated Python code above (a `TypeError`/`AttributeError`
+                # from a caller mistake) must still raise and be visible,
+                # not be silently absorbed into "fall back to the slow path
+                # and carry on".
+                logging.getLogger(__name__).warning(
+                    "find_latest_database_survey_with_key: fast path failed "
+                    "for %s/%s, falling back to a full scan", slug, key,
+                    exc_info=True,
+                )
+        for survey in self.get_database_surveys(slug) or []:
+            try:
+                survey_data = json.loads(survey.get("survey_data") or "{}")
+            except (ValueError, TypeError):
+                continue
+            if survey_data.get(key):
+                return survey
+        return None
 
     # ── structured DB/FS detail rows (design §5.7, §6) ────────────────────────
     #
@@ -9099,6 +12598,56 @@ class ProjectRegistry:
             ).fetchall()
         return [_decode_detail_row(dict(r)) for r in rows]
 
+    def find_latest_detail_surveyed_at(
+        self, table: str, slug: str, *, source: str | None = None,
+        require_any_non_null: tuple[str, ...] | None = None,
+    ) -> str | None:
+        """`MAX(surveyed_at)` for `table`/`slug` [/`source`], one query —
+        the set-based replacement for "walk survey history newest-first,
+        calling `query_detail_rows` for each candidate until one comes back
+        non-empty" (`db_derived.py`'s `_resolve_table_surveyed_at`, before
+        2026-09-29 round 3, PER-REQUEST-SERVER-LATENCY-ROUND-3-IMPLEMENTED.md).
+
+        Provably equivalent to that walk, not just usually faster: the only
+        `surveyed_at` values that can ever appear as a row in `table` are
+        ones some run actually wrote there, so `MAX(surveyed_at)` computed
+        directly on `table` can never return a value the walk would have
+        skipped for being absent — the walk's entire purpose (skip a run
+        that touched a DIFFERENT table but not this one) is already what
+        aggregating over `table`'s own rows does, for free, by construction.
+
+        `require_any_non_null`, when given, additionally requires at least
+        one of the named columns be non-NULL on the winning row — the
+        `database_table_activity`-specific case where a row can exist for a
+        `surveyed_at` (the step ran) with every counter NULL (nothing was
+        actually measured, e.g. `pg_stat_user_tables` had nothing), which
+        must not count as "this run has the answer" either
+        (`_has_measured_counter`'s own docstring). This is the one piece
+        the walk needed real per-row inspection for, still expressed as one
+        query (an `OR ... IS NOT NULL` predicate) rather than N.
+        """
+        if table not in _DETAIL_TABLE_SPECS:
+            raise ValueError(
+                f"{table!r} is not a structured detail table — expected one of "
+                f"{sorted(_DETAIL_TABLE_SPECS)}"
+            )
+        spec = _DETAIL_TABLE_SPECS[table]
+        slug = self._normalize_slug(slug)
+        where = [f"{spec.slug_column} = ?"]
+        params: list = [slug]
+        if source is not None:
+            where.append("source = ?")
+            params.append(source)
+        if require_any_non_null:
+            clause = " OR ".join(f"{col} IS NOT NULL" for col in require_any_non_null)
+            where.append(f"({clause})")
+        with self._conn() as conn:
+            row = conn.execute(
+                f"SELECT MAX(surveyed_at) AS latest FROM {table} WHERE {' AND '.join(where)}",
+                tuple(params),
+            ).fetchone()
+        return (dict(row).get("latest") if row else None) or None
+
     def record_section_coverage(
         self,
         resource_type: str,
@@ -9209,7 +12758,7 @@ class ProjectRegistry:
 
     def database_exists(self, slug: str) -> bool:
         """Check if a database entity exists."""
-        return self.get_database(slug) is not None
+        return self.get_database(slug, allow_unreadable=True) is not None
 
     def _row_to_database(self, row: sqlite3.Row) -> DatabaseEntity:
         """Convert a database row to a DatabaseEntity dataclass.
@@ -9263,8 +12812,23 @@ class ProjectRegistry:
                     "encrypted storage for database slug=%r: %s", d.get("slug"), exc
                 )
             d["db_password"] = plaintext
+            d["credential_status"] = "ok"
         else:
-            d["db_password"] = decrypt_db_password(raw_password)
+            try:
+                d["db_password"] = decrypt_db_password(raw_password)
+                d["credential_status"] = "ok" if raw_password else "none"
+            except ValueError as exc:
+                # Per-row tolerance: one undecryptable row must not take down
+                # every list. Never the password, ciphertext or exc text (it
+                # names the key env vars): slug and class name only, once.
+                d["db_password"] = ""
+                d["credential_status"] = "unreadable"
+                slug = d.get("slug") or ""
+                if slug not in _UNREADABLE_LOGGED:
+                    _UNREADABLE_LOGGED.add(slug)
+                    log.warning(
+                        "registry: stored credential for database slug=%r is unreadable (%s); "
+                        "listing it as 'credential unreadable'", slug, type(exc).__name__)
         # Filter to only known DatabaseEntity fields
         known = {f.name for f in dataclasses.fields(DatabaseEntity)}
         return DatabaseEntity(**{k: v for k, v in d.items() if k in known})
@@ -9276,6 +12840,9 @@ class ProjectRegistry:
         data = asdict(server)
         data["slug"] = self._normalize_slug(data["slug"])
         data["status"] = data["status"] if isinstance(data["status"], str) else data["status"]
+        # A new registration has never run; the INSERT leaves both columns NULL.
+        data.pop("last_run_at", None)
+        data.pop("last_run_candidates", None)
         with self._conn() as conn:
             conn.execute("""INSERT INTO db_servers (
                 slug, display_name, db_type, host, port, description,
@@ -9289,6 +12856,13 @@ class ProjectRegistry:
                 :status, :registered_at, :error_message, :group_slug
             )""", data)
 
+    def update_egeria_host(self, entity_type: str, slug: str, egeria_host: str) -> None:
+        """Set ONLY egeria_host on a database or a server (no other field, no history touched)."""
+        table = {"database": "databases", "server": "db_servers"}[entity_type]
+        with self._conn() as conn:
+            conn.execute(f"UPDATE {table} SET egeria_host = ? WHERE slug = ?",
+                         (egeria_host, self._normalize_slug(slug)))
+
     def get_server(self, slug: str) -> DatabaseServer | None:
         """Retrieve a database server by slug."""
         normalized = self._normalize_slug(slug)
@@ -9301,6 +12875,18 @@ class ProjectRegistry:
         with self._conn() as conn:
             rows = conn.execute("SELECT * FROM db_servers ORDER BY display_name").fetchall()
         return [self._row_to_server(r) for r in rows]
+
+    def record_server_run(self, slug: str, run_at: str, candidate_keys: list[str]) -> None:
+        """Remember this run's candidate set (resource_keys) and when it ran,
+        replacing the previous run's. Called by the Run route AFTER it has
+        compared against the previous set, so "n new since" always means "since
+        the run before this one"."""
+        import json
+        with self._conn() as conn:
+            conn.execute(
+                "UPDATE db_servers SET last_run_at = ?, last_run_candidates = ? WHERE slug = ?",
+                (run_at, json.dumps(sorted(set(candidate_keys))), self._normalize_slug(slug)),
+            )
 
     def remove_server(self, slug: str) -> None:
         """Remove a database server and all its linked databases."""
@@ -9319,6 +12905,16 @@ class ProjectRegistry:
         import dataclasses
         d = dict(row)
         d["status"] = ProjectStatus(d.get("status", "active"))
+        raw = d.get("last_run_candidates")
+        if raw is None or raw == "":
+            d["last_run_candidates"] = None
+        else:
+            import json
+            try:
+                d["last_run_candidates"] = [str(k) for k in json.loads(raw)]
+            except (TypeError, ValueError):
+                d["last_run_candidates"] = None
+        d["last_run_at"] = d.get("last_run_at") or None
         known = {f.name for f in dataclasses.fields(DatabaseServer)}
         return DatabaseServer(**{k: v for k, v in d.items() if k in known})
 
@@ -9629,9 +13225,13 @@ class ProjectRegistry:
         status: str | None = None,
         since: str | None = None,
         limit: int = 200,
+        exclude_operations: "tuple[str, ...] | list[str] | None" = None,
     ) -> list[dict]:
         filters: list[str] = []
         params: list = []
+        if exclude_operations:
+            filters.append(f"operation NOT IN ({','.join('?' * len(exclude_operations))})")
+            params.extend(exclude_operations)
         if entity_type:
             filters.append("entity_type = ?")
             params.append(entity_type)
@@ -9663,7 +13263,7 @@ class ProjectRegistry:
             d["items"] = json.loads(d.pop("items_json") or "[]")
             d["annotations"] = json.loads(d.pop("annotations_json") or "[]")
             result.append(d)
-        return result
+        return self._attach_publish_proofs(result)
 
     def get_activity(self, entry_id: str) -> dict | None:
         with self._conn() as conn:
@@ -9675,7 +13275,7 @@ class ProjectRegistry:
         d = dict(row)
         d["items"] = json.loads(d.pop("items_json") or "[]")
         d["annotations"] = json.loads(d.pop("annotations_json") or "[]")
-        return d
+        return self._attach_publish_proofs([d])[0]
 
     def get_survey_definition_last_activity(
         self, entity_type: str, entity_slug: str, limit: int = 500,
@@ -9719,11 +13319,14 @@ class ProjectRegistry:
         result: dict[str, dict] = {}
         with self._conn() as conn:
             rows = conn.execute(
-                "SELECT operation, ts, status, detail FROM activity_log "
+                "SELECT id, operation, ts, status, detail, publish_run_id FROM activity_log "
                 "WHERE entity_type = ? AND entity_slug = ? AND operation IN ('survey', 'catalog') "
                 "ORDER BY ts DESC LIMIT ?",
                 (entity_type, entity_slug, limit),
             ).fetchall()
+        # A row that names a publish run is a publish only once that run is read back (2026-10-14): its word, and
+        # whether it counts as a publish at all, come from the run's proof rows.
+        proofs = self.publish_proofs([r["publish_run_id"] for r in rows if r["publish_run_id"]])
         repo_wide_publish_at = ""  # most recent catalog row with no ref at all
         for row in rows:
             try:
@@ -9732,15 +13335,18 @@ class ProjectRegistry:
                 continue
             if not isinstance(detail, dict):
                 continue
+            proof = proofs.get(row["publish_run_id"] or "")
             ref = detail.get("survey_definition_ref") or detail.get("process_qualified_name")
             if not ref:
-                if row["operation"] == "catalog" and not repo_wide_publish_at:
+                if (row["operation"] == "catalog" and not repo_wide_publish_at
+                        and (not row["publish_run_id"] or (proof or {}).get("state") == "read_back")):
                     repo_wide_publish_at = row["ts"]
                 continue
             entry = result.setdefault(ref, {})
             if row["operation"] == "survey" and "last_run_at" not in entry:
                 entry["last_run_at"] = row["ts"]
                 entry["last_run_status"] = row["status"]
+                entry["last_run_activity_id"] = row["id"]   # lets the page follow a run that is still going
                 # The run's own step report — carried so the UI's "ran but
                 # something failed" indicator can open what actually failed
                 # instead of only flagging that something did (found live
@@ -9749,6 +13355,23 @@ class ProjectRegistry:
                 # clean run, never absent, so the frontend can tell
                 # "no errors" from "not fetched yet".
                 entry["last_run_errors"] = detail.get("errors") or []
+                # Engine-note persistence (2026-09-28, ENGINE-NOTE-PERSISTENCE-IMPLEMENTED.md):
+                # SurveyDefinitionExecutor
+                # already writes `engine_note` into this same `detail` JSON
+                # (which engine actually ran the definition — Prefect, or a
+                # local fallback and why). The /next pane used to render it as
+                # a transient DOM write appended after the run and then
+                # immediately wipe it by reloading the pane. Carrying it here,
+                # on the same row this function already reconstructs from the
+                # activity log, means the engine line is derived from
+                # persisted data — it survives any re-render and shows up for
+                # historical runs too, not only the one just launched.
+                entry["last_run_engine_note"] = detail.get("engine_note") or ""
+                # Engine host case 3 (C4): who coordinated the run and who pressed Run, as the run wrote them.
+                entry["last_run_started_by"] = detail.get("started_by") or ""
+                entry["last_run_by"] = detail.get("started_by_person") or ""
+                if proof:
+                    entry["last_publish_proof"] = proof
                 # SurveyDefinitionExecutor.run() (added 2026-08-27) publishes
                 # BEFORE it logs the 'survey' row that records the run itself
                 # — adapter.publish() runs first, its own untagged 'catalog'
@@ -9766,7 +13389,10 @@ class ProjectRegistry:
                 if detail.get("published") is True:
                     entry["last_published_at"] = row["ts"]
                     entry["last_published_scope"] = "candidate"
-            elif row["operation"] == "catalog" and "last_published_at" not in entry:
+            elif (row["operation"] == "catalog" and "last_published_at" not in entry
+                  and (not row["publish_run_id"] or (proof or {}).get("state") == "read_back")):
+                # A ref-tagged catalog row is a publish only once its run is read back (same gate as the
+                # untagged branch above); an older row with no run id keeps its old meaning.
                 entry["last_published_at"] = row["ts"]
                 entry["last_published_scope"] = "candidate"
         if repo_wide_publish_at:
@@ -9786,6 +13412,101 @@ class ProjectRegistry:
                     entry["last_published_at"] = repo_wide_publish_at
                     entry["last_published_scope"] = "repo"
         return result
+
+    def list_survey_definition_runs(self, entity_type: str, entity_slug: str, limit: int = 500) -> list[dict]:
+        """Every run RE's own executor logged for a Survey Definition on this resource, newest first, from the same
+        activity rows `get_survey_definition_last_activity` reads (the 'survey' operation, tagged with the
+        definition's ref): {ref, when, status, activity_id, started_by, by}. A read; the Egeria-coordinated runs
+        live in the native-survey rows and are merged on top by `native_survey_run.definition_run_history`."""
+        with self._conn() as conn:
+            rows = conn.execute(
+                "SELECT id, ts, status, detail FROM activity_log "
+                "WHERE entity_type = ? AND entity_slug = ? AND operation = 'survey' ORDER BY ts DESC LIMIT ?",
+                (entity_type, entity_slug, limit)).fetchall()
+        out = []
+        for row in rows:
+            try:
+                detail = json.loads(row["detail"] or "{}")
+            except (TypeError, ValueError):
+                continue
+            if not isinstance(detail, dict):
+                continue
+            ref = detail.get("survey_definition_ref") or detail.get("process_qualified_name")
+            if not ref:
+                continue
+            out.append({"ref": ref, "when": row["ts"], "status": row["status"], "activity_id": row["id"],
+                        "started_by": detail.get("started_by") or "", "by": detail.get("started_by_person") or ""})
+        return out
+
+    # ── board_summary — the By-analysis fast-read path ──────────────────
+    #
+    # See board_summary's CREATE TABLE comment above for the full design.
+    # These two methods are the entire interface: a writer calls
+    # `write_board_summary` once, at run completion, with the exact
+    # dashboard dict `build_survey_results` would otherwise have to
+    # recompute; a reader calls `get_board_summary` and gets that dict back
+    # verbatim, or `None` when no summary has ever been written for this
+    # board (the pre-existing expensive path is the only fallback then).
+    def write_board_summary(
+        self, entity_type: str, slug: str, board_id: str, summary: dict,
+        source_run_at: str = "",
+    ) -> None:
+        """Persist `summary` (the exact dict `build_survey_results(...,
+        board_id=board_id)` would return for this one board) as the fast-read
+        row for (entity_type, slug, board_id).
+
+        `source_run_at` is the `last_run_at` of the analysis run this summary
+        reflects (from `get_analysis_last_run`) — the staleness anchor a
+        reader compares against, NOT when this row was written. Callers that
+        don't have a run timestamp handy (e.g. a lazy recompute-and-persist
+        on the read path, which already has a fresh answer but has not
+        necessarily also re-derived a run timestamp) may pass `""`; a reader
+        then treats the summary as always-fresh-enough-to-use-once-written
+        rather than comparing against a run it cannot name — see
+        `get_board_summary`'s docstring.
+        """
+        slug = self._normalize_slug(slug)
+        with self._conn() as conn:
+            conn.execute(
+                """INSERT INTO board_summary
+                   (entity_type, slug, board_id, summary_json, source_run_at, computed_at)
+                   VALUES (?, ?, ?, ?, ?, ?)
+                   ON CONFLICT(entity_type, slug, board_id) DO UPDATE SET
+                     summary_json=excluded.summary_json,
+                     source_run_at=excluded.source_run_at,
+                     computed_at=excluded.computed_at""",
+                (entity_type, slug, board_id, json.dumps(summary),
+                 source_run_at or "", datetime.utcnow().isoformat()),
+            )
+
+    def get_board_summary(self, entity_type: str, slug: str, board_id: str) -> dict | None:
+        """{"summary": dict, "source_run_at": str, "computed_at": str} for
+        this board, or `None` if nothing has ever been written.
+
+        Returns the raw row rather than deciding freshness itself — that
+        comparison needs `get_analysis_last_run`'s answer for the board's own
+        analysis_id(s), which is a different query this method has no
+        opinion about; `build_survey_results` (workflows/analysis.py) is
+        where the two are compared.
+        """
+        slug = self._normalize_slug(slug)
+        with self._conn() as conn:
+            row = conn.execute(
+                "SELECT summary_json, source_run_at, computed_at FROM board_summary "
+                "WHERE entity_type = ? AND slug = ? AND board_id = ?",
+                (entity_type, slug, board_id),
+            ).fetchone()
+        if not row:
+            return None
+        try:
+            summary = json.loads(row["summary_json"] or "{}")
+        except (TypeError, ValueError):
+            return None
+        return {
+            "summary": summary,
+            "source_run_at": row["source_run_at"] or "",
+            "computed_at": row["computed_at"] or "",
+        }
 
     def get_analysis_last_run(
         self, entity_type: str, entity_slug: str, limit: int = 500,
@@ -9843,13 +13564,23 @@ class ProjectRegistry:
 
         with self._conn() as conn:
             rows = conn.execute(
-                "SELECT ts, status, detail, operation FROM activity_log "
+                "SELECT ts, status, detail, operation, publish_run_id FROM activity_log "
                 "WHERE entity_type = ? AND entity_slug = ? "
                 "AND operation IN ('analysis_run', 'survey') "
                 "ORDER BY ts DESC LIMIT ?",
                 (entity_type, entity_slug, limit),
             ).fetchall()
+        # The last run's publish word, from that run's proof rows (2026-10-14).
+        proofs = self.publish_proofs([r["publish_run_id"] for r in rows if r["publish_run_id"]])
 
+        # step_runs: one row per step EXECUTION, written by the step-cost
+        # observer on every path (survey, Run button, Prefect or local). It is
+        # the record that exists when the activity_log survey row carries no
+        # `steps` (measured 2026-10-13 on marquez: both 2026-10-11 surveys had
+        # empty detail, so the card said "never run" / "predate per-step
+        # recording" for cve_scan and dependency_support while the compile --
+        # which reads the stored findings -- packed their real results).
+        step_runs = self._step_run_times(entity_type, entity_slug)
         unattributable = 0
         for row in rows:
             try:
@@ -9859,9 +13590,12 @@ class ProjectRegistry:
             if not isinstance(detail, dict):
                 detail = {}
             if row["operation"] == "survey" and not (detail.get("steps") or []):
-                # A real survey happened; it just predates step recording. That
-                # is "we cannot say which analyses ran", not "none did".
-                unattributable += 1
+                # A real survey happened; its row names no steps. That is "we
+                # cannot say which analyses ran", not "none did" -- UNLESS
+                # step_runs recorded steps starting shortly before it ended,
+                # in which case step_runs is the attribution (credited below).
+                if not self._covered_by_step_runs(row["ts"], step_runs):
+                    unattributable += 1
                 continue
 
             if row["operation"] == "analysis_run":
@@ -9902,7 +13636,13 @@ class ProjectRegistry:
                         # frontend's ☁ Publish button uses this to decide
                         # whether it's a recovery action worth showing.
                         "last_publish_failed": detail.get("published") is False,
+                        # Who a credential-override run (brief section 8) ran as, and the
+                        # row's own statement that it is not retried; None for every other run.
+                        "ran_as": detail.get("ran_as") or None,
+                        "not_retried": detail.get("not_retried") or "",
                     }
+                    if proofs.get(row["publish_run_id"] or ""):
+                        result[analysis_id]["last_publish_proof"] = proofs[row["publish_run_id"]]
                 continue
 
             ran: dict[str, list] = {}
@@ -9924,6 +13664,31 @@ class ProjectRegistry:
                     "last_run_via": "survey",
                     "last_run_partial": len(statuses) < owned_counts.get(analysis_id, 0),
                 }
+                if proofs.get(row["publish_run_id"] or ""):
+                    result[analysis_id]["last_publish_proof"] = proofs[row["publish_run_id"]]
+        # Credit analyses whose steps have a step_runs row newer than (or
+        # missing from) what the activity_log gave. Same ownership map, same
+        # "any owned step ran counts" rule as the survey branch above.
+        newest: dict[str, str] = {}
+        for step_key, ts in step_runs:
+            for owner in step_owner.get(step_key, []):
+                newest.setdefault(owner, ts)   # step_runs is newest-first
+        for analysis_id, ts in newest.items():
+            have = result.get(analysis_id)
+            if have and str(have.get("last_run_at") or "")[:19] >= ts[:19]:
+                continue
+            ran_keys = {k for k, t in step_runs
+                        if t == ts and analysis_id in step_owner.get(k, [])}
+            result[analysis_id] = {
+                "last_run_at": ts,
+                # step_runs rows are also written for a step that RAISED
+                # (survey_orchestrator.py: record() sits outside the try, "a
+                # step that RAISED is still measured") and carry no outcome, so
+                # success is not claimed: the distinct word is "recorded".
+                "last_run_status": "recorded",
+                "last_run_via": "step_runs",
+                "last_run_partial": len(ran_keys) < owned_counts.get(analysis_id, 0),
+            }
         if unattributable:
             # Recorded against a reserved key rather than spread across every
             # analysis: the point is that we do not know which ones ran, and
@@ -9935,6 +13700,46 @@ class ProjectRegistry:
                 "last_run_via": "", "last_run_partial": False,
             }
         return result
+
+    def _step_run_times(self, entity_type: str, slug: str,
+                        limit: int = 3000) -> list[tuple[str, str]]:
+        """[(step_key, surveyed_at)] newest first from step_runs, [] if the
+        table cannot be read (an older registry): absence of this source must
+        fall back to the activity_log, never raise."""
+        try:
+            with self._conn() as conn:
+                rows = conn.execute(
+                    "SELECT step_key, surveyed_at FROM step_runs "
+                    "WHERE entity_type = ? AND slug = ? "
+                    "ORDER BY surveyed_at DESC LIMIT ?",
+                    (entity_type, slug, limit),
+                ).fetchall()
+        except Exception:
+            return []
+        return [(r["step_key"], str(r["surveyed_at"])) for r in rows if r["surveyed_at"]]
+
+    @staticmethod
+    def _covered_by_step_runs(survey_ts: str, step_runs: list[tuple[str, str]],
+                              window_s: int = 7200) -> bool:
+        """Whether some step_runs snapshot started within `window_s` before this
+        survey row was written -- i.e. the survey's steps are on record."""
+        from datetime import datetime, timezone
+
+        def _t(v: str):
+            try:
+                d = datetime.fromisoformat(v)
+            except ValueError:
+                return None
+            return d if d.tzinfo else d.replace(tzinfo=timezone.utc)
+
+        end = _t(str(survey_ts))
+        if end is None:
+            return False
+        for _, ts in step_runs:
+            start = _t(ts)
+            if start is not None and 0 <= (end - start).total_seconds() <= window_s:
+                return True
+        return False
 
     def analysis_run_activity_seconds(
         self, analysis_ids: list[str], *, status: str = "ok", limit: int = 2000,
@@ -10063,6 +13868,31 @@ class ProjectRegistry:
                  anns_json, anns_json, publish_run_id, publish_run_id, entry_id),
             )
 
+    def tag_activity_publish_run(self, entry_id: str, publish_run_id: str) -> None:
+        """Name the publish run an activity entry is about, so its publish word is read from that run's proof rows
+        (`publish_proofs`). Never clears a tag."""
+        if not entry_id or not publish_run_id:
+            return
+        with self._conn() as conn:
+            conn.execute("UPDATE activity_log SET publish_run_id = ? WHERE id = ?", (publish_run_id, entry_id))
+
+    def close_activity_if_running(self, entry_id: str, status: str, summary: str) -> bool:
+        """Finalise an activity entry ONLY if it is still 'running'. Returns whether it closed one.
+
+        For the queue worker, which closes the entry of any run it finishes: a handler that already wrote
+        its own terminal status (analysis runs do) is left exactly as it wrote it, and an entry that was
+        reconciled or finished elsewhere is never overwritten. The condition is in the UPDATE itself, so a
+        concurrent finisher cannot be clobbered between a read and a write. `detail` is not touched.
+        """
+        if not entry_id:
+            return False
+        with self._conn() as conn:
+            cur = conn.execute(
+                "UPDATE activity_log SET status = ?, summary = ? WHERE id = ? AND status = 'running'",
+                (status, summary, entry_id),
+            )
+        return (cur.rowcount or 0) > 0
+
     # reconcile_orphaned_running_activity() lived here briefly (2026-08-26) —
     # removed in favor of resource_explorer/run_reconciler.py's
     # ownership-based (pid + process-start-time) reconciliation, wired into
@@ -10188,6 +14018,30 @@ class ProjectRegistry:
 
     RFA_DISMISSAL_REASONS = ("not_applicable", "wont_do")
 
+    # Subject of a dismissal for an RFA that belongs to no resource (a sweep
+    # summary, a publish-queue alert). It is an explicit marker, never an
+    # empty slug: the key still carries the RFA's producer (analysis_name) and
+    # its own summary, so it matches that one finding and nothing else.
+    RFA_SYSTEM_SCOPE = "__system__"
+
+    @classmethod
+    def rfa_dismissal_subject(cls, entry: dict, ann: dict, member: dict | None) -> tuple[str, str, str, str]:
+        """(entity_type, entity_slug, analysis_name, summary_key) for an RFA's dismissal.
+
+        The one place the listing, the dismiss route and the sweep derive it, so
+        they cannot drift. An RFA that belongs to a resource keys on that
+        resource. One that belongs to none (empty slug) is keyed under the
+        explicit system scope marker plus its producer (the entry's operation
+        and analysis name) and its own summary, so it matches only that finding:
+        never every resource-less RFA, and never any resource's RFA."""
+        slug = entry.get("entity_slug", "") or ""
+        analysis = ann.get("analysis_name", "") or ""
+        summary = (member or ann).get("summary", "") or ann.get("summary", "") or ""
+        if not slug.strip():
+            slug = cls.RFA_SYSTEM_SCOPE
+            analysis = f"{entry.get('operation', '') or 'rfa'}:{analysis}"
+        return entry.get("entity_type", ""), slug, analysis, summary
+
     @staticmethod
     def rfa_dismissal_key(
         entity_type: str, entity_slug: str, analysis_name: str, summary_key: str
@@ -10239,6 +14093,15 @@ class ProjectRegistry:
             )
         if not (entity_slug or "").strip():
             raise ValueError("entity_slug is required — a dismissal with no subject matches everything")
+        if entity_slug.strip() == self.RFA_SYSTEM_SCOPE and not (
+            (analysis_name or "").strip() and (summary_key or "").strip()
+        ):
+            # A system-scope dismissal is only specific because of its producer and summary;
+            # without both it would suppress every resource-less RFA.
+            raise ValueError(
+                "a system-scope dismissal needs both analysis_name and summary_key "
+                "— without them it matches every RFA that has no resource"
+            )
         did = self.rfa_dismissal_key(entity_type, entity_slug, analysis_name, summary_key)
         now = datetime.now(timezone.utc).isoformat()
         with self._conn() as conn:
@@ -10534,16 +14397,134 @@ class ProjectRegistry:
             rows = conn.execute("SELECT * FROM project_groups ORDER BY display_name").fetchall()
         return [ProjectGroup(**dict(r)) for r in rows]
 
-    def delete_group(self, slug: str) -> int:
-        """Delete a group. Member resources are ungrouped, not removed."""
+    class GroupMembersChanged(ValueError):
+        """`delete_group(expected_members=...)` found members other than the ones the caller checked."""
+
+        def __init__(self, added: set, gone: set):
+            self.added, self.gone = added, gone
+            super().__init__(f"the group's members changed: added {sorted(added)}, gone {sorted(gone)}")
+
+    def delete_group(self, slug: str, expected_members: "set[tuple[str, str]] | None" = None) -> int:
+        """Delete a group. Member resources are ungrouped, not removed.
+
+        `expected_members` ({(entity_type, slug)}) is the set the caller checked (Brief T round 3: a group delete
+        detaches each member's Folio membership, so each is access-checked first). Read again in the SAME
+        transaction as the delete; any difference raises `GroupMembersChanged` and nothing changes, so a member
+        added after the check is never ungrouped unchecked."""
         slug = self._normalize_slug(slug)
         with self._conn() as conn:
-            # Ungroup all resources in this group
-            conn.execute("UPDATE projects SET group_slug = '' WHERE group_slug = ?", (slug,))
-            conn.execute("UPDATE databases SET group_slug = '' WHERE group_slug = ?", (slug,))
-            conn.execute("UPDATE file_systems SET group_slug = '' WHERE group_slug = ?", (slug,))
+            if expected_members is not None:
+                now = {(t, r["slug"]) for t, table in (("repo", "projects"), ("database", "databases"),
+                                                       ("filesystem", "file_systems"))
+                       for r in conn.execute(f"SELECT slug FROM {table} WHERE group_slug = ?",  # noqa: S608
+                                             (slug,)).fetchall()}
+                expected = {(t, self._normalize_slug(s)) for t, s in expected_members}
+                if now != expected:
+                    raise self.GroupMembersChanged(now - expected, expected - now)
+            # Ungroup the resources in this group. With `expected_members`, ONLY those: on Postgres a member committed
+            # by another transaction after the check above would otherwise be swept up by these UPDATEs (READ
+            # COMMITTED re-evaluates the WHERE), ungrouped without its check.
+            for t, table in (("repo", "projects"), ("database", "databases"), ("filesystem", "file_systems")):
+                if expected_members is None:
+                    conn.execute(f"UPDATE {table} SET group_slug = '' WHERE group_slug = ?", (slug,))  # noqa: S608
+                    continue
+                for s_ in sorted(m for k, m in expected if k == t):
+                    conn.execute(f"UPDATE {table} SET group_slug = '' WHERE group_slug = ? AND slug = ?",  # noqa: S608
+                                 (slug, s_))
             cursor = conn.execute("DELETE FROM project_groups WHERE slug = ?", (slug,))
             return cursor.rowcount
+
+    def record_group_change(self, entity_type: str, entity_slug: str, group_slug: str, author: str,
+                            changed_at: str | None = None) -> str:
+        """Append who changed a resource's group and when; returns the timestamp. The author is the
+        signed-in person, resolved by the route from the session (never the request body)."""
+        if not author:
+            raise ValueError("a group change needs an author")
+        now = changed_at or datetime.utcnow().isoformat(timespec="seconds")
+        with self._conn() as conn:
+            conn.execute(
+                "INSERT INTO group_changes (entity_type, entity_slug, group_slug, author, changed_at) "
+                "VALUES (?, ?, ?, ?, ?)",
+                (entity_type, self._normalize_slug(entity_slug), group_slug or "", author, now))
+        return now
+
+    def list_group_changes(self, entity_type: str, entity_slug: str) -> list[dict]:
+        """Every group change recorded for one resource, oldest first."""
+        with self._conn() as conn:
+            rows = conn.execute(
+                "SELECT id, entity_type, entity_slug, group_slug, author, changed_at FROM group_changes "
+                "WHERE entity_type = ? AND entity_slug = ? ORDER BY id",
+                (entity_type, self._normalize_slug(entity_slug))).fetchall()
+        return [dict(r) for r in rows]
+
+    # ── Resource scope events (append-only; the selection record, brief 2a) ──
+
+    SCOPE_KINDS = ("folder", "file")        # file types are a measurement, not a choice
+    SCOPE_CHOICES = ("include", "leave_out", "")
+
+    def append_resource_scope_event(self, resource_type: str, slug: str, *, locator: str, kind: str,
+                                    choice: str = "", action: str = "set", source: str = "person",
+                                    proposal_rule: str = "", reason: str = "", author: str,
+                                    changed_at: str | None = None) -> None:
+        """Append one choice (or its clearing) for one locator; see `append_resource_scope_events`."""
+        self.append_resource_scope_events(resource_type, slug, author=author, events=[{
+            "locator": locator, "kind": kind, "choice": choice, "action": action, "source": source,
+            "proposal_rule": proposal_rule, "reason": reason, "changed_at": changed_at}])
+
+    def append_resource_scope_events(self, resource_type: str, slug: str, *, author: str,
+                                     events: list[dict]) -> int:
+        """Append a batch of choices in ONE transaction: all of them or none. Never updates or removes a
+        row; the newest row for a locator is the current choice. A clear is a row with action 'clear' and
+        choice '', so who cleared it and when is kept. Every event is checked before the first insert, and
+        a failure during the writes discards the connection's uncommitted work. Returns how many were
+        written."""
+        if not author:
+            raise ValueError("a scope choice needs an author")
+        slug = self._normalize_slug(slug)
+        rows = []
+        for e in events:
+            kind, action, source = e.get("kind", ""), e.get("action") or "set", e.get("source") or "person"
+            choice = e.get("choice") or ""
+            if kind not in self.SCOPE_KINDS:
+                raise ValueError(f"unknown kind {kind!r}")
+            if action not in ("set", "clear"):
+                raise ValueError(f"unknown action {action!r}")
+            if action == "set" and choice not in ("include", "leave_out"):
+                raise ValueError(f"unknown choice {choice!r}")
+            if source not in ("person", "proposal"):
+                raise ValueError(f"unknown source {source!r}")
+            rows.append((resource_type, slug, e.get("locator") or "", kind, "" if action == "clear" else choice,
+                         action, source, e.get("proposal_rule") or "", e.get("reason") or "", author,
+                         e.get("changed_at") or datetime.utcnow().isoformat(timespec="seconds")))
+        with self._conn() as conn:
+            for r in rows:
+                conn.execute(
+                    """INSERT INTO resource_scope_events
+                       (resource_type, resource_slug, locator, kind, choice, action, source,
+                        proposal_rule, reason, author, changed_at)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""", r)
+        return len(rows)
+
+    def list_resource_scope_events(self, resource_type: str, slug: str) -> list[dict]:
+        """Every scope event for one resource, oldest first."""
+        slug = self._normalize_slug(slug)
+        with self._conn() as conn:
+            rows = conn.execute(
+                """SELECT id, resource_type, resource_slug, locator, kind, choice, action, source,
+                          proposal_rule, reason, author, changed_at
+                   FROM resource_scope_events WHERE resource_type = ? AND resource_slug = ? ORDER BY id""",
+                (resource_type, slug)).fetchall()
+        return [dict(r) for r in rows]
+
+    def current_resource_scope(self, resource_type: str, slug: str) -> dict[str, dict]:
+        """locator -> its newest event. A cleared locator is present with choice '' (so the screen can say
+        who cleared it); a locator never touched is absent."""
+        out: dict[str, dict] = {}
+        for ev in self.list_resource_scope_events(resource_type, slug):
+            if ev["kind"] not in self.SCOPE_KINDS:
+                continue     # legacy rows (e.g. file_type) are ignored: nothing writes them, none can be counted or published
+            out[ev["locator"]] = ev
+        return out
 
     def set_project_group(self, resource_slug: str, group_slug: str) -> None:
         """Assign a repository to a group."""

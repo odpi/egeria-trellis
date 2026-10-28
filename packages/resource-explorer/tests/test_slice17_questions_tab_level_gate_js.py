@@ -52,17 +52,38 @@ class TestRowStateWithholdsTheTickOnLevelMismatch:
 
 class TestPartialIsARealState:
     def test_partial_has_a_glyph_and_a_tone(self):
+        """`GLYPH` is now a thin view over the one glyph table in glyphs.js
+        (REPLY-DESIGNER-ROUND2-DATABASE-SCREENS.md §1, G1) -- `const GLYPH =
+        {...}` as a literal object no longer exists. `partial` must still be
+        one of the keys `GLYPH` derives, and glyphs.js must still declare a
+        glyph and tone for it."""
         app = _app()
-        glyph_block = _function_body(app, "const GLYPH = {", 700)
-        assert "partial:" in glyph_block
+        keys_block = _function_body(app, "const GLYPH_KEYS = [", 400)
+        assert "'partial'" in keys_block
         tone_block = _function_body(app, "const STATE_TONE = {", 900)
         assert "partial:" in tone_block
 
+        glyphs_js = (NEXT / "glyphs.js").read_text(encoding="utf-8")
+        states_block = _function_body(glyphs_js, "export const STATES = {", 4000)
+        assert "partial:" in states_block
+
     def test_partial_is_in_the_legend_with_its_own_label(self):
+        """The legend's words now come from glyphs.js's `STATES`, not a
+        second copy in `LEGEND` -- REPLY-DESIGNER-ROUND2-DATABASE-SCREENS.md
+        §1 names this exact disagreement: the Questions legend used to call
+        `partial` "ran, but not at this level" (◐'s OLD, Questions-only
+        meaning) while the work-list grid's own legend called the same glyph
+        "partial". `LEGEND_ORDER` now declares only the reading order; the
+        word is `glyphs.js`'s canonical one, "partial", on every surface."""
         app = _app()
-        legend_block = _function_body(app, "const LEGEND = [", 500)
-        assert "['partial'," in legend_block
-        assert "ran, but not at this level" in legend_block
+        order_block = _function_body(app, "const LEGEND_ORDER = [", 300)
+        assert "'partial'" in order_block
+
+        glyphs_js = (NEXT / "glyphs.js").read_text(encoding="utf-8")
+        states_block = _function_body(glyphs_js, "export const STATES = {", 4000)
+        partial_entry = states_block[states_block.index("partial:"):]
+        partial_entry = partial_entry[:partial_entry.index("},") + 1]
+        assert "word: 'partial'" in partial_entry
 
     def test_partial_rows_still_offer_evidence_and_the_numbers_behind_this(self):
         """A level-mismatch row is still a REAL answer (design §18.3: the

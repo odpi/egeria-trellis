@@ -1,5 +1,7 @@
 # The vendored-walk guard, and the record of it failing
 
+**Status:** implemented. The vendored-walk guard and the record of it failing (2026-09-12).
+
 **2026-09-12.** `tests/test_vendored.py::TestEveryWalkReadsTheRule`
 exists because PR #36 fixed the ingestion pipeline's tree walks and missed
 the survey step's duplicate of one of them, which put 20,654 vendored

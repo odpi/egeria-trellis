@@ -1,6 +1,6 @@
 """Enumeration-floor design ruling (security-model.md §2.1/§3.4, 2026-09-26,
-recorded as a Decision in docs/design-notes/SLICE-17B-RENDER-BOUND-LEVEL-GATE-
-IMPLEMENTED.md): on an engine whose structural floor is unprivileged
+recorded as a Decision in SLICE-17B-RENDER-BOUND-LEVEL-GATE-IMPLEMENTED.md): on an engine whose
+structural floor is unprivileged
 (Postgres), every enumeration RE does -- the credential-capability probe,
 `get_schema_info()`'s inventory, row counts -- reads that floor
 (`pg_namespace`/`pg_class`), never a privilege-filtered view, so there is
@@ -150,8 +150,8 @@ class TestGetCredentialCapabilityUsesTheSharedFloor:
         result = conn.get_credential_capability()
         assert result["schema_total"] == 2
         assert result["schema_visible"] == 1
-        assert result["table_total"] == 2
-        assert result["table_select"] == 1
+        assert result["relation_total"] == 2
+        assert result["relation_select"] == 1
         assert "_errors" not in result
 
     def test_records_an_error_when_enumeration_fails(self):
@@ -169,7 +169,7 @@ class TestGetCredentialCapabilityUsesTheSharedFloor:
         conn = _BrokenConnection()
         result = conn.get_credential_capability()
         assert result["schema_total"] == 0
-        assert result["table_total"] == 0
+        assert result["relation_total"] == 0
         assert "_errors" in result
         assert "enumeration" in result["_errors"]
 
@@ -268,9 +268,9 @@ class TestGetSchemaInfoFillsInZeroPrivilegeSchemas:
         assert "_errors" in info
         assert "enumeration_floor" in info["_errors"]
 
-    def test_credential_capability_and_schema_info_agree_on_table_total(self):
+    def test_credential_capability_and_schema_info_agree_on_relation_total(self):
         """The end-to-end convergence claim: with the same floor data, the
-        probe's table_total and the inventory's total_tables must match."""
+        probe's relation_total and the inventory's total_tables must match."""
         floor_schemas = [
             {"schema_name": "coco_ods", "usage_granted": True},
             {"schema_name": "demo", "usage_granted": False},
@@ -304,4 +304,4 @@ class TestGetSchemaInfoFillsInZeroPrivilegeSchemas:
         )
         cap = conn.get_credential_capability()
         info = conn.get_schema_info()
-        assert cap["table_total"] == info["total_tables"]
+        assert cap["relation_total"] == info["total_tables"]

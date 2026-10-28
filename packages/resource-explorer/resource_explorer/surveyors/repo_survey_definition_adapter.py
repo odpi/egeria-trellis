@@ -91,6 +91,10 @@ from __future__ import annotations
 
 import json
 import logging
+import threading
+from collections import OrderedDict
+from collections.abc import Mapping
+from types import MappingProxyType
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -98,6 +102,7 @@ from typing import Callable
 
 from trellis_microflow import ResourceProvider
 
+from resource_explorer import read_memo
 from resource_explorer.registry import WITHDRAWN_LABEL
 from resource_explorer.step_outcome import PARTIAL, UNVERIFIED
 from resource_explorer.surveyors import result_status
@@ -273,6 +278,40 @@ class StepInfo:
     #: the inverse map cannot answer "run which one?" and
     #: `step_produces.validate()` raises rather than picking.
     produces: tuple[str, ...] = ()
+
+    @property
+    def requires(self) -> tuple[str, ...]:
+        """The step keys this step's `requires_context` preconditions are
+        produced by — the symmetric declaration to `produces`
+        (BRIEF-KEYS-AND-ACTIVITY-CLOBBER.md §E item 4).
+
+        A **property**, not a second hand-typed field: it is derived from
+        `requires_context` via `step_preconditions.PRECONDITIONS[name].
+        produced_by()`, the same inversion `produces`'s own docstring
+        describes for the opposite direction. A separately-maintained
+        `requires` tuple would drift from `requires_context` exactly the way
+        this module's docstring warns a hardcoded producer string drifts
+        from `produces` — two names for the same fact, edited in only one
+        place when the step changes. Empty for a precondition naming no
+        known producer (a genuine dead end — `step_preconditions.Precondition.
+        remedy()` already says so honestly) or no `requires_context` at all.
+
+        This is what a generator walks to list a Survey Definition's
+        unmet-by-design prerequisites at authoring time: for each of the
+        definition's own steps, is every one of its `requires` also one of
+        the definition's own steps? See `survey_execution_plan.
+        authoring_gaps()`, which asks exactly that question without needing
+        a registry or an entity.
+        """
+        from resource_explorer.surveyors import step_preconditions
+
+        keys: list[str] = []
+        for name in self.requires_context:
+            entry = step_preconditions.PRECONDITIONS.get(name)
+            producer = entry.produced_by() if entry else ""
+            if producer and producer not in keys:
+                keys.append(producer)
+        return tuple(keys)
     requires_resources: dict[str, str] = field(default_factory=dict)
     # {resource_name: view} — what this step actually READS from that
     # resource. Checked against the provider's `provides` at import by
@@ -331,7 +370,7 @@ class StepInfo:
 # get one. See that package's README for why the split exists.
 
 @contextmanager
-def _acquire_zipball_root(project, registry):
+def _acquire_zipball_root(project, registry, served: dict | None = None):
     """Download `project`'s repo zipball into a fresh tempdir and yield the
     extracted root. One real network call + one extraction per invocation —
     trellis_microflow.resolve_resources is what guarantees this only gets
@@ -348,11 +387,13 @@ def _acquire_zipball_root(project, registry):
     client = GitHubClient()
     repo = client.get_repo(project.github_url)
     with client.zipball_root(repo) as root:
+        if served is not None:
+            served["zipball_root"] = getattr(client, "last_served_sha", None)
         yield root
 
 
 @contextmanager
-def _acquire_git_clone_root(project, registry):
+def _acquire_git_clone_root(project, registry, served: dict | None = None):
     """Treeless-clone `project`'s repo into a fresh tempdir and yield the
     clone root. Mirrors _acquire_zipball_root exactly — a plain function,
     not a StepInfo/surveyor, resolved once per SurveyOrchestrator.run() no
@@ -374,10 +415,12 @@ def _acquire_git_clone_root(project, registry):
     client = GitHubClient()
     repo = client.get_repo(project.github_url)
     with client.git_clone_root(repo) as root:
+        if served is not None:
+            served["git_clone_root"] = getattr(client, "last_served_sha", None)
         yield root
 
 
-def _resource_providers_for(project, registry) -> dict[str, ResourceProvider]:
+def _resource_providers_for(project, registry, served: dict | None = None) -> dict[str, ResourceProvider]:
     """Builds this run's RESOURCE_PROVIDERS, binding `project`/`registry`
     into each provider's zero-argument `acquire` via a closure — see
     ResourceProvider's own docstring for why the binding happens here,
@@ -387,7 +430,7 @@ def _resource_providers_for(project, registry) -> dict[str, ResourceProvider]:
             name="zipball_root",
             # Files, no history: a zipball has no `.git` at all.
             provides=frozenset({VIEW_SOURCE}),
-            acquire=lambda: _acquire_zipball_root(project, registry),
+            acquire=lambda: _acquire_zipball_root(project, registry, served=served),
         ),
         "git_clone_root": ResourceProvider(
             name="git_clone_root",
@@ -395,7 +438,7 @@ def _resource_providers_for(project, registry) -> dict[str, ResourceProvider]:
             # root containing only `.git`. Declaring VIEW_SOURCE here would be
             # a lie, and it is the lie that cost finding 52.
             provides=frozenset({VIEW_HISTORY}),
-            acquire=lambda: _acquire_git_clone_root(project, registry),
+            acquire=lambda: _acquire_git_clone_root(project, registry, served=served),
         ),
     }
 
@@ -454,7 +497,7 @@ STEP_REGISTRY: dict[str, StepInfo] = {
         "file-shape step reads. Closes the gap where the inventory was written "
         "only by RAG ingestion/refresh_profile and never by a survey step, so a "
         "survey reported whatever an earlier, unrelated run had left behind.",
-        ["ResourceMeasureAnnotation"],
+        ["ResourceMeasureAnnotation", "ResourceProfileAnnotation"],
         accepts_surveyed_at=True,
         requires_resources={"zipball_root": "local_path"},
         requires_views={"zipball_root": VIEW_SOURCE},
@@ -563,24 +606,22 @@ STEP_REGISTRY: dict[str, StepInfo] = {
     ),
     "repo_homepage": StepInfo(
         "repo_homepage", HomepageSurveyor,
-        "Finds the project's external website — GitHub's declared homepage first, "
-        "falling back to pyproject.toml [project.urls], package.json or the README "
-        "when that is empty (measured: 11 of 24 registered repos have no declared "
-        "homepage). Surfaced in Scouting as a clickable link and published to "
-        "Egeria as an ExternalReference linked to the repo.",
+        "Finds where the project's homepage and its documentation are, and whether "
+        "the documentation answers. Reads GitHub's homepage field, the packaging "
+        "manifests (pyproject.toml, package.json, setup.cfg, Cargo.toml, pom.xml) and "
+        "the README -- small files only, through the GitHub contents API, never a "
+        "download -- and keeps the source and the other candidates for each answer. "
+        "An entry labelled Documentation wins; placeholders such as example.com are "
+        "rejected. One bounded request records whether the docs URL is reachable. "
+        "Surfaced in Scouting as links with a short cue; the homepage is published "
+        "to Egeria as an ExternalReference linked to the repo.",
         ["ClassificationAnnotation"],
         accepts_surveyed_at=True,
-        # Optional, not required: tier 1 reads project_stats and needs no repo
-        # contents at all, so this step still produces an answer when run without
-        # a zipball. Declaring it means the fallback tiers work for free whenever
-        # another step in the same run has already paid for the download.
-        requires_resources={"zipball_root": "local_path"},
-        requires_views={"zipball_root": VIEW_SOURCE},
-        # Optional zipball (see the constructor comment above) but still
-        # one of the 4 steps that declare it — "download", not "none",
-        # per D3. Parsing pyproject.toml/package.json/README for a URL is
-        # cheap.
-        fetch_cost="download",
+        # No requires_resources: the files it needs are a handful of small ones
+        # fetched through the contents API (one listing call plus one per file
+        # that exists), so this step is Scouting-cheap and no longer triggers a
+        # zipball. A caller that already holds the contents passes local_path.
+        fetch_cost="api",
         compute_cost="low",
     ),
     # Directly after repo_homepage, which is what populates projects.homepage_url
@@ -913,7 +954,7 @@ STEP_REGISTRY: dict[str, StepInfo] = {
         "an (unambiguous) Dockerfile/compose/Helm chart, a web-framework "
         "dependency — and the verdict that evidence supports: application "
         "(evidence found), library (importable, none found), or unknown (no "
-        "manifest read yet). Layer 1 of 'Cataloguing in layers' (project "
+        "manifest read yet). Layer 1 of 'Cataloging in layers' (project "
         "owner, 2026-09-14): before a distribution is proposed to Egeria as "
         "a SoftwareCapability classified Application, this is the evidence "
         "that verdict rests on.",
@@ -944,16 +985,6 @@ STEP_REGISTRY: dict[str, StepInfo] = {
         # Read-only at survey time over already-parsed findings (same
         # ingest-time-parsing relationship as repo_ci_quality) — no fetch
         # here.
-    ),
-    "repo_api_structure": StepInfo(
-        "repo_api_structure", ApiStructureSurveyor,
-        "Public API surface (functions/classes/methods) per language.",
-        ["SchemaAnalysisAnnotation", "ResourceMeasureAnnotation"],
-        accepts_surveyed_at=True,
-        accepts_scope_locator=True,
-        # Reads project_code_symbols — doesn't extract itself (that's
-        # repo_symbol_extraction's job), per this surveyor's own
-        # docstring. No fetch, no re-parsing.
     ),
     "repo_data_profiling": StepInfo(
         "repo_data_profiling", DataProfilerSurveyor,
@@ -1013,7 +1044,8 @@ STEP_REGISTRY: dict[str, StepInfo] = {
         "the bug where those tables were only ever populated by RAG "
         "ingestion, never by a survey step. Also extracts decorator/"
         "annotation registrations (route/rpc/resolver/message-handler) for "
-        "Python and Java into project_code_markers.",
+        "Python and Java into project_code_markers, and parses any committed "
+        "OpenAPI/Swagger file from the same checkout into the API reference.",
         ["ResourceMeasureAnnotation"],
         accepts_surveyed_at=True,
         requires_resources={"zipball_root": "local_path"},
@@ -1031,6 +1063,37 @@ STEP_REGISTRY: dict[str, StepInfo] = {
         # every supported-language file in the zipball.
         fetch_cost="download",
         compute_cost="medium",
+    ),
+    # ORDER MATTERS, and registry order generates the Full chain: repo_api_structure
+    # sits AFTER repo_symbol_extraction because it summarises the symbols that step
+    # writes (a run stored the previous run's count when it ran first). Nothing
+    # enforces this in the planner; the generated definitions carry the order.
+    "repo_api_structure": StepInfo(
+        "repo_api_structure", ApiStructureSurveyor,
+        "Public API surface (functions/classes/methods) per language.",
+        ["SchemaAnalysisAnnotation", "ResourceMeasureAnnotation"],
+        accepts_surveyed_at=True,
+        accepts_scope_locator=True,
+        # Reads project_code_symbols — doesn't extract itself (that's
+        # repo_symbol_extraction's job), per this surveyor's own
+        # docstring. No fetch, no re-parsing.
+        #
+        # The declared dependency is also the ordering and the "never summarise
+        # last run's symbols" guarantee: a definition that authors this step but
+        # not repo_symbol_extraction gets extraction added when the symbols are
+        # missing or stale (survey_execution_plan, prerequisite_resolver). The
+        # tier stays api/low ON PURPOSE -- this step only reads the registry. The
+        # budget is the consent: the resolver PROPOSES the download-tier producer
+        # to a run at this step's own tier, and (separately) treats a zipball the
+        # run has not acquired as its own consent reason, so a lone or scoped
+        # request is skipped with that proposal and never downloads. Only a
+        # planner given a download ceiling (a full-scope Prefect run) adds it.
+        requires_context={
+            "has_code_symbols":
+                "api_structure summarises project_code_symbols, so a run that "
+                "has not extracted symbols yet would report the previous run's "
+                "count as this run's",
+        },
     ),
     # Architecture recovery — Phase 1 plan §4.2 (docs/architecture-recovery-
     # phase1-plan.md), ported from scripts/arch-spike (44 findings recorded
@@ -1224,7 +1287,9 @@ def _run_step(step_key: str, **orchestrator_kwargs):
         # every other step, so forwarding it unconditionally here is safe
         # for any step_key, not just the ones that care.
         result = orch.run(project.slug, steps=[step_key], fast=fast)
-        return {"annotations": result.annotations}
+        # The commit this step read, only if it completed (SurveyResult.commit_by_step); the executor's
+        # and Prefect's step_runs rows take it from here.
+        return {"annotations": result.annotations, "survey_commit_sha": result.commit_by_step.get(step_key)}
 
     return runner
 
@@ -1242,7 +1307,9 @@ def _run_batch(project, registry, step_keys: list[str], fast: bool = False, **_)
 
     orch = SurveyOrchestrator(registry)
     result = orch.run(project.slug, steps=step_keys, fast=fast)
-    return {"annotations": result.annotations, "errors": result.errors}
+    done = all(k in result.commit_by_step for k in step_keys)
+    return {"annotations": result.annotations, "errors": result.errors,
+            "survey_commit_sha": result.survey_commit_sha if step_keys and done else None}
 
 
 def validate_resource_views(registry: dict | None = None,
@@ -2856,7 +2923,7 @@ def _doc_ingestion_state(registry, slug: str) -> dict:
         return {"state": "", "detail": ""}
 
 
-def _architecture_verdict_coverage(registry, slug: str) -> dict:
+def _architecture_verdict_coverage(registry, slug: str, snapshot: dict | None = None) -> dict:
     """How much of what's been proposed has actually been curator-reviewed —
     `docs/curated-architecture-answers-design.md` §6 item 1, the first piece
     of that design to ship.
@@ -2915,8 +2982,7 @@ def _architecture_verdict_coverage(registry, slug: str) -> dict:
                 "retyped": retyped, "reviewed": reviewed,
                 "pending": total - reviewed}
 
-    component_scopes = set(
-        registry.query_finding_scopes(slug, "architecture_recovery", check_name="component"))
+    component_scopes = set(_recovery_scopes(registry, slug, "component", snapshot))
 
     bp_rows = [r for r in (registry.query_findings_all_runs(slug, BLUEPRINT_KIND, "") or [])
                if r.get("check_name") == "candidate_blueprint"]
@@ -3022,8 +3088,117 @@ def _materialized_view(row: dict | None) -> dict | None:
             "materialized_at": row.get("materialized_at", "")}
 
 
+#: The data-keyed cache behind `_recovery_snapshot`. Class-of-process state, not
+#: per-registry-instance state, on purpose: the web layer builds a fresh
+#: `ProjectRegistry()` per request, so an instance cache is empty on every
+#: request, while the long-lived holders (run_queue's worker loop, its
+#: reconciler, egeria_resync) keep ONE instance for the process lifetime. Neither
+#: works. What does is a key derived from the DATA: every read first asks the
+#: database for `analysis_data_fingerprint` (two cheap aggregate statements) and
+#: a stored snapshot is served only when the fingerprint it was built under is
+#: unchanged — so a write by any process, through any instance, invalidates it.
+#:
+#: Only the two findings/metrics tables are cached. Verdicts, materialization,
+#: promotions, reclassifications and dependency data are NEVER cached here: they
+#: are re-read on every call, which is why a verdict/scope/reclassify/dependency
+#: write needs no invalidation hook (and cannot be forgotten by a new write path).
+_RECOVERY_SNAPSHOT_CACHE_MAX = 6
+_recovery_snapshot_cache: "OrderedDict[tuple, tuple]" = OrderedDict()
+_recovery_snapshot_lock = threading.Lock()
+_recovery_snapshot_build_locks: dict[tuple, threading.Lock] = {}
+#: Counters for tests and for the timing script ("how many rebuilds read the DB").
+recovery_snapshot_stats = {"hits": 0, "misses": 0}
+
+
+def _freeze_snapshot(snapshot: dict) -> Mapping:
+    """Make the shared snapshot read-only: every dict a `MappingProxyType`, every list a tuple.
+
+    Every caller of `_recovery_snapshot` gets the SAME objects while the fingerprint holds, so one
+    reader writing `row["label"] = ...` would corrupt every later request in the process until the next
+    survey write. A write now raises TypeError instead. Readers only index, `.get`, iterate and
+    compare, all of which a proxy/tuple supports unchanged."""
+    def freeze(o):
+        if isinstance(o, dict):
+            return MappingProxyType({k: freeze(v) for k, v in o.items()})
+        if isinstance(o, (list, tuple)):
+            return tuple(freeze(v) for v in o)
+        return o
+    return freeze(snapshot)
+
+
+def _recovery_snapshot(registry, slug: str) -> dict:
+    """Every `architecture_recovery` finding row (all runs, grouped by scope) and
+    each scope's latest metrics, in a few statements rather than ~2 per scope.
+
+    The returned structure is READ-ONLY by construction (`_freeze_snapshot`): it is shared between
+    callers while the fingerprint holds. Not to be confused with `read_memo`, which is a different,
+    per-`FactLayer.fact()` memo that deep-copies. At most `_RECOVERY_SNAPSHOT_CACHE_MAX` (6) slugs are held."""
+    key = (registry.database_url, registry._normalize_slug(slug))
+    fp = registry.analysis_data_fingerprint(slug, ("architecture_recovery",))
+    hit = _recovery_snapshot_lookup(key, fp)
+    if hit is not None:
+        return hit
+    # A page open fires several requests at once, all cold after a survey: one builds, the rest
+    # wait for it and then find it in the cache instead of each reading the same ~30k rows.
+    with _recovery_snapshot_lock:
+        build_lock = _recovery_snapshot_build_locks.setdefault(key, threading.Lock())
+    with build_lock:
+        # Re-read the fingerprint after waiting: the snapshot another thread just stored may have
+        # been built under a fingerprint that is already out of date, and it is compared against fresh data.
+        fp = registry.analysis_data_fingerprint(slug, ("architecture_recovery",))
+        hit = _recovery_snapshot_lookup(key, fp)
+        if hit is not None:
+            return hit
+        snapshot = _freeze_snapshot({
+            # Component rows and evidence rows are read as two separate lists, so only ties WITHIN
+            # a class are observable (see the registry method's docstring).
+            "rows": registry.query_findings_all_runs_by_scope(
+                slug, "architecture_recovery", order_class=lambda r: r["check_name"] == "component"),
+            "metrics": registry.query_metrics_by_scope(slug, "architecture_recovery"),
+            # The live-scope lists, from the registry's own method (its withdrawal rule is the
+            # definition); they read the same table the fingerprint covers.
+            "scopes": {
+                check_name: tuple(registry.query_finding_scopes(
+                    slug, "architecture_recovery", check_name=check_name))
+                for check_name in ("component", "structural_node")
+            },
+        })
+        # The fingerprint was read BEFORE the data. A write landing between the two means the
+        # snapshot holds newer data than the fingerprint says: the next call sees a different
+        # fingerprint and rebuilds. The reverse (snapshot older than its fingerprint) cannot
+        # happen -- that is why the order matters.
+        with _recovery_snapshot_lock:
+            recovery_snapshot_stats["misses"] += 1
+            _recovery_snapshot_cache[key] = (fp, snapshot)
+            _recovery_snapshot_cache.move_to_end(key)
+            while len(_recovery_snapshot_cache) > _RECOVERY_SNAPSHOT_CACHE_MAX:
+                # Popping the evicted key's build lock while another thread still waits on it can let
+                # a second build of that key run. Harmless: same data, stored again.
+                evicted, _ = _recovery_snapshot_cache.popitem(last=False)
+                _recovery_snapshot_build_locks.pop(evicted, None)
+        return snapshot
+
+
+def _recovery_scopes(registry, slug: str, check_name: str, snapshot: dict | None = None) -> tuple:
+    """`registry.query_finding_scopes(slug, "architecture_recovery", check_name=...)`, served from
+    the same data-keyed snapshot as the rows it is used with (and therefore consistent with them)."""
+    return (snapshot if snapshot is not None else _recovery_snapshot(registry, slug))["scopes"][check_name]
+
+
+def _recovery_snapshot_lookup(key: tuple, fp: tuple) -> dict | None:
+    with _recovery_snapshot_lock:
+        hit = _recovery_snapshot_cache.get(key)
+        if hit is not None and hit[0] == fp:
+            _recovery_snapshot_cache.move_to_end(key)
+            recovery_snapshot_stats["hits"] += 1
+            return hit[1]
+    return None
+
+
+@read_memo.memoize
 def _architecture_recovery_results(
     registry, slug: str, max_depth: int | None = arch_projection.DEFAULT_PROJECTION_DEPTH,
+    snapshot: dict | None = None,
 ) -> dict:
     """Phase 1 plan §4.4 — the results view. Reads back what
     repo_arch_detect/repo_arch_coupling wrote into the generic findings/
@@ -3048,7 +3223,8 @@ def _architecture_recovery_results(
     `max_depth=None` for the full, unprojected hierarchy (e.g. component-
     scoped analytics, design §6, which wants the fine-grained partition).
     """
-    scopes = registry.query_finding_scopes(slug, "architecture_recovery", check_name="component")
+    snapshot = snapshot if snapshot is not None else _recovery_snapshot(registry, slug)
+    scopes = _recovery_scopes(registry, slug, "component", snapshot)
     components = []
     slug_to_path: dict[str, str] = {}
     # A curator's accept/reject/retype call (docs/Backlog.md "take
@@ -3059,8 +3235,9 @@ def _architecture_recovery_results(
     # reasoning as everything else here that avoids a per-scope round trip.
     verdicts = registry.get_component_verdicts("repo", slug)
     materialized = registry.get_materialized_components("repo", slug)
+    rows_by_scope, metrics_by_scope = snapshot["rows"], snapshot["metrics"]
     for scope in scopes:
-        rows = registry.query_findings_all_runs(slug, "architecture_recovery", scope)
+        rows = rows_by_scope.get(scope, [])
         comp_rows = [r for r in rows if r["check_name"] == "component"]
         evidence_rows = [r for r in rows if r["check_name"] != "component"]
         if not comp_rows:
@@ -3125,7 +3302,7 @@ def _architecture_recovery_results(
         # rows showed `spring, withdrawn` on their provenance line.
         approaches = sorted({r["label"] for r in evidence_rows
                              if r["label"] and r["label"] != WITHDRAWN_LABEL})
-        metrics = registry.query_metrics(slug, "architecture_recovery", scope)
+        metrics = metrics_by_scope.get(scope, {})
         if detail.get("slug"):
             slug_to_path[detail["slug"]] = scope
         components.append({
@@ -3137,6 +3314,11 @@ def _architecture_recovery_results(
             "outcome": detail.get("outcome", ""),
             "run_scope": detail.get("run_scope", ""),
             "proposed_by": approaches or (detail.get("proposed_by") or []),
+            # Whose boundary this is (DESIGN-BLUEPRINT-NODE-ADMISSION.md). A row written before the
+            # class existed has none, and "built here" is what every such row was admitted as.
+            "admission": detail.get("admission") or "built_here",
+            "admission_evidence": detail.get("admission_evidence", ""),
+            "image": detail.get("image", ""),
             # §2a/§2b/§2c — see the block above. `proposals` carries one entry
             # per extractor CURRENTLY proposing this path; `agreement` is true
             # when two or more do; `withdrawn_by` names an extractor that used
@@ -3194,9 +3376,8 @@ def _architecture_recovery_results(
     # They carry no type and no confidence by design — they have no evidence of
     # their own — so they are marked `structural` and a consumer can render
     # them as grouping rather than as a recovered component.
-    for scope in registry.query_finding_scopes(
-            slug, "architecture_recovery", check_name="structural_node"):
-        rows = [r for r in registry.query_findings_all_runs(slug, "architecture_recovery", scope)
+    for scope in _recovery_scopes(registry, slug, "structural_node", snapshot):
+        rows = [r for r in rows_by_scope.get(scope, [])
                 if r["check_name"] == "structural_node"]
         if not rows:
             continue
@@ -3326,7 +3507,7 @@ def _architecture_recovery_results(
     # scope_locator is correct regardless of how many perspectives claim
     # it, and needs no persist-time fix — the blueprints list is already
     # the source of truth clustering.py itself writes.
-    blueprints = _candidate_blueprints_results(registry, slug)
+    blueprints = _candidate_blueprints_results(registry, slug, snapshot)
     scope_to_blueprints: dict[str, list[dict]] = {}
     for bp in blueprints:
         for member_slug in bp["members"]:
@@ -3338,7 +3519,7 @@ def _architecture_recovery_results(
     for c in displayed:
         c["candidate_blueprints"] = scope_to_blueprints.get(c["path"], [])
 
-    _verdict_coverage = _architecture_verdict_coverage(registry, slug)
+    _verdict_coverage = _architecture_verdict_coverage(registry, slug, snapshot)
 
     return {
         # Carried so the renderer can call the curator-verdict endpoints
@@ -3420,7 +3601,7 @@ def _json_or_empty(raw) -> dict:
         return {}
 
 
-def _candidate_blueprints_results(registry, slug: str) -> list[dict]:
+def _candidate_blueprints_results(registry, slug: str, snapshot: dict | None = None) -> list[dict]:
     """The `data.blueprints` key for `_architecture_recovery_results` —
     Phase C's frontend-facing read of clustering.py's proposals (Backlog.md
     item 1 / blueprint-materialization-plan.md), so Curate can offer an
@@ -3473,7 +3654,60 @@ def _candidate_blueprints_results(registry, slug: str) -> list[dict]:
     verdicts = registry.get_component_verdicts("repo", slug)
     materialized_components = registry.get_materialized_components("repo", slug)
     materialized_blueprints = registry.get_materialized_blueprints("repo", slug)
-    slug_to_scope = _blueprint_slug_to_scope_map(registry, slug)
+    first_by_key, materialized_by_identity = registry.get_materialized_blueprint_lookups("repo", slug)
+    slug_to_scope = _blueprint_slug_to_scope_map(registry, slug, snapshot)
+    # The shape each cluster WOULD be written in (container or contents, and why), so the accept dialog
+    # can name it before the write. Content-pack elements are only knowable from Egeria at the write.
+    from resource_explorer.blueprint_shape import component_nodes, plan_with_alternatives
+    shape_nodes = component_nodes(registry, slug, snapshot)
+    from resource_explorer.workflows.curate import NODE_PROMOTION_BLUEPRINT, promotion_by_scope
+    promotions = promotion_by_scope(registry, slug, NODE_PROMOTION_BLUEPRINT)
+
+    from resource_explorer.blueprint_kinds import (
+        identifier_needed_sentence,
+        identifier_planned_sentence,
+        identity_qualified_name,
+        kind_key,
+        kind_word,
+    )
+    live_by_perspective: dict[str, set[str]] = {}
+    for (persp, nm) in by_key:
+        live_by_perspective.setdefault(persp, set()).add(nm)
+
+    # Accept is a decision only (Brief A), so two blueprints of one kind can both be accepted before either is
+    # written, and neither then has a cache row to say the kind's plain identity is taken. The one that WILL
+    # take it at the next Publish is named here, so the accept pane asks the other for an identifier and the
+    # Publish plan (architecture_publish.publish_plan, which reads this view) holds the other back. The top
+    # blueprint of a reading takes the plain identity (blueprint_kinds.blueprint_display_name); among several,
+    # the first by name. A child written first never takes it from its parent.
+    from resource_explorer.architecture_publish import blueprint_choices
+    planned_holder: dict[str, str] = {}
+    for (persp, nm), entry in sorted(by_key.items(), key=lambda kv: (bool(kv[1]["detail"].get("parent")), kv[0][1])):
+        v = verdicts.get(f"{persp}::{nm}") or {}
+        if v.get("verdict") == "accepted" and v.get("verdict_target") == "blueprint" \
+                and not blueprint_choices(v)["identifier"] \
+                and not (materialized_blueprints.get(f"{persp}::{nm}") or {}).get("guid"):   # it has its element
+            planned_holder.setdefault(kind_key(persp), nm)
+
+    def _identity_view(perspective: str, name: str) -> dict:
+        """What the accept pane needs to know about the blueprint's Egeria identity: whether it must ask
+        for an identifier (another LIVE cluster of this kind already holds the repository's identity, or is
+        accepted and will take it at the next Publish)."""
+        base = identity_qualified_name("repo", slug, perspective)
+        # Both lookups are served from rows read once above (no per-blueprint query): `own` is the row
+        # for this (perspective, name) and `other` the newest row recorded under the identity.
+        own = first_by_key.get(f"{perspective}::{name}")
+        if own and own.get("guid"):
+            return {"needs_identifier": False, "kind_word": kind_word(perspective), "sentence": ""}
+        other = materialized_by_identity.get(base)
+        if other and other.get("cluster_name") in live_by_perspective.get(perspective, set()):
+            needs = other.get("cluster_name") != name
+            return {"needs_identifier": needs, "kind_word": kind_word(perspective),
+                    "sentence": identifier_needed_sentence(perspective, slug, other["cluster_name"]) if needs else ""}
+        holder = planned_holder.get(kind_key(perspective), "")
+        needs = bool(holder and holder != name)
+        return {"needs_identifier": needs, "kind_word": kind_word(perspective), "planned_holder": holder if needs else "",
+                "sentence": identifier_planned_sentence(perspective, slug, holder) if needs else ""}
 
     blueprints = []
     for (perspective, name), entry in sorted(by_key.items()):
@@ -3516,11 +3750,19 @@ def _candidate_blueprints_results(registry, slug: str) -> list[dict]:
             "surveyed_at": r.get("surveyed_at", ""),
             "verdict": _verdict_view(verdicts.get(vkey)),
             "materialized": _materialized_view(materialized_blueprints.get(vkey)),
+            "identity": _identity_view(perspective, name),
+            "promotion": promotions.get(vkey),
+            "shape_plan": plan_with_alternatives(
+                name, [shape_nodes[m] for m in (detail.get("members") or []) if m in shape_nodes],
+                composed_into=detail.get("composed_into") or "",
+                # The stored flip (carried forward by the verdict route): the pane shows what Publish will write.
+                requested=blueprint_choices(verdicts.get(vkey))["shape"])
+            if (detail.get("members") or []) else None,
         })
     return blueprints
 
 
-def _blueprint_slug_to_scope_map(registry, slug: str) -> dict[str, str]:
+def _blueprint_slug_to_scope_map(registry, slug: str, snapshot: dict | None = None) -> dict[str, str]:
     """component slug -> scope_locator, for every currently-live
     architecture_recovery component finding — byte-for-byte the same walk
     `curate.py`'s `_slug_to_scope_map` does, and `_architecture_recovery_
@@ -3535,8 +3777,10 @@ def _blueprint_slug_to_scope_map(registry, slug: str) -> dict[str, str]:
     first silently finds nothing for every member.
     """
     out: dict[str, str] = {}
-    for scope in registry.query_finding_scopes(slug, "architecture_recovery", check_name="component"):
-        rows = [r for r in registry.query_findings_all_runs(slug, "architecture_recovery", scope)
+    snapshot = snapshot if snapshot is not None else _recovery_snapshot(registry, slug)
+    rows_by_scope = snapshot["rows"]
+    for scope in _recovery_scopes(registry, slug, "component", snapshot):
+        rows = [r for r in rows_by_scope.get(scope, [])
                 if r["check_name"] == "component"]
         if not rows:
             continue
@@ -3590,7 +3834,7 @@ def _architecture_recovery_headline(registry, slug: str) -> dict | None:
 _DIAGRAM_PERSPECTIVE_PREFERENCE = ("coupling", "detect")
 
 
-def _read_arch_recovery_ir(registry, slug: str, run_label: str):
+def _read_arch_recovery_ir(registry, slug: str, run_label: str, snapshot: dict | None = None):
     """Reconstruct ONE survey step's IR from the generic findings tables —
     the same `Component`/ports/wires shape `persist_ir` held in memory when
     `_persist_diagram` used to render from it directly, read back instead of
@@ -3632,12 +3876,14 @@ def _read_arch_recovery_ir(registry, slug: str, run_label: str):
     """
     from resource_explorer.surveyors.arch_recovery.ir import IR, Component, Identity
 
-    live_scopes = registry.query_finding_scopes(slug, "architecture_recovery", check_name="component")
+    snapshot = snapshot if snapshot is not None else _recovery_snapshot(registry, slug)
+    live_scopes = _recovery_scopes(registry, slug, "component", snapshot)
     components: list = []
     slug_to_scope: dict[str, str] = {}
     latest_surveyed_at = ""
+    rows_by_scope = snapshot["rows"]
     for scope in live_scopes:
-        rows = registry.query_findings_all_runs(slug, "architecture_recovery", scope)
+        rows = rows_by_scope.get(scope, [])
         own_rows = [r for r in rows if r["check_name"] == "component"
                    and _json_or_empty(r.get("detail_json")).get("run_label") == run_label]
         if not own_rows:
@@ -3715,6 +3961,7 @@ def _read_arch_recovery_ir(registry, slug: str, run_label: str):
     return ir, slug_to_scope, latest_surveyed_at
 
 
+@read_memo.memoize
 def _architecture_diagram_results(registry, slug: str) -> dict:
     """The architecture Mermaid diagram, rendered fresh on every read.
 
@@ -3749,9 +3996,10 @@ def _architecture_diagram_results(registry, slug: str) -> dict:
     """
     from resource_explorer.surveyors.arch_recovery import mermaid
 
+    snapshot = _recovery_snapshot(registry, slug)
     available: dict[str, tuple] = {}
     for run_label in _DIAGRAM_PERSPECTIVE_PREFERENCE:
-        ir, slug_to_scope, surveyed_at = _read_arch_recovery_ir(registry, slug, run_label)
+        ir, slug_to_scope, surveyed_at = _read_arch_recovery_ir(registry, slug, run_label, snapshot)
         if ir is not None:
             available[run_label] = (ir, slug_to_scope, surveyed_at)
 
@@ -3804,7 +4052,11 @@ def _architecture_diagram_results(registry, slug: str) -> dict:
     ir.components = kept
 
     max_depth = arch_projection.DEFAULT_PROJECTION_DEPTH
-    diagram = mermaid.render(ir, max_depth, component_verdicts=component_verdicts)
+    # Services the repository runs but does not build are ports on the blueprint's edge, not boxes
+    # (DESIGN-DEPENDENCY-ROW-TWO-ENDS.md): the same names the dependency table's `edge port` rows use.
+    from resource_explorer import dependency_table
+    diagram = mermaid.render(ir, max_depth, component_verdicts=component_verdicts,
+                             edge_ports=dependency_table.diagram_edge_ports(registry, slug))
     caption_text = mermaid.caption(ir, max_depth, component_verdicts=component_verdicts)
 
     # docs/curated-architecture-answers-design.md §6 item 1 (2026-09-08,
@@ -3817,7 +4069,7 @@ def _architecture_diagram_results(registry, slug: str) -> dict:
     # once non-empty) — the diagram's own description would silently drop
     # out of the visible answer, leaving only the coverage clause.
     coverage_sentence = _architecture_verdict_coverage_sentence(
-        _architecture_verdict_coverage(registry, slug))
+        _architecture_verdict_coverage(registry, slug, snapshot))
     if coverage_sentence:
         caption_text = f"{caption_text} {coverage_sentence}."
 
@@ -4186,7 +4438,7 @@ def _sub_resource_survey_headline(registry, slug: str) -> dict | None:
         return None
     worthy = sum(1 for f in findings if f.get("label") == "worthy")
     n = len(findings)
-    return {"label": f"{worthy} of {n} {_plural('sub-resource', n)} worth cataloging",
+    return {"label": f"{worthy} of {n} files and folders worth including",
             "status": "info"}
 
 
@@ -5109,7 +5361,7 @@ def _trigger_egeria_native_survey(project, registry, step, **_) -> dict:
     if not repo_guid:
         raise RuntimeError(
             f"Repository '{project.slug}' has no stored Egeria asset guid — "
-            "cannot trigger Egeria's native survey for an uncataloged repository."
+            "cannot trigger Egeria's native survey for an unpublished repository."
         )
     publisher = EgeriaPublisher(registry=registry)
     triggered_at = datetime.now(timezone.utc)
@@ -5129,7 +5381,7 @@ def _trigger_egeria_native_survey(project, registry, step, **_) -> dict:
 
 
 def _publish(project, step_outputs: list, surveyed_at: str, registry, *,
-            defer_drain: bool = False) -> str:
+            defer_drain: bool = False, publish_out: dict | None = None) -> str:
     """`defer_drain` is the run-in-background choice (see
     survey_definition_executor.py's `SurveyDefinitionExecutor.run`,
     `publish` parameter) — threaded straight through to EgeriaPublisher,
@@ -5148,7 +5400,14 @@ def _publish(project, step_outputs: list, surveyed_at: str, registry, *,
             result.add(ann)
 
     publisher = EgeriaPublisher(registry=registry)
-    return publisher.publish(result, defer_drain=defer_drain)
+    report_guid = publisher.publish(result, defer_drain=defer_drain)
+    if publish_out is not None:
+        # What the executor's run words are derived from: the outbox run whose proof rows decide "queued for
+        # publish" / "published · read back" / "publish failed", and whether it was read back before returning.
+        publish_out["publish_run_id"] = publisher.publish_run_id
+        publish_out["read_back"] = bool(publisher.publish_read_back)
+        publish_out["deferred"] = bool(publisher.publish_deferred)
+    return report_guid
 
 
 _ADAPTER = ResourceTypeAdapter(

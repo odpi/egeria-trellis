@@ -1,0 +1,25 @@
+[project]
+name = "trellis-step-database-staleness"
+dynamic = ["version"]
+description = "Example user step for the Analytic Library: rows changed per table since the last survey (extensibility brief 2c). Installable on its own; installing it is registering it."
+requires-python = ">=3.12,<4.0"
+dependencies = ["trellis-analytics>=0.1.0"]
+
+# Installation is registration: Resource Explorer finds the step through this entry point.
+[project.entry-points."trellis.analytics"]
+database_staleness = "database_staleness.manifest:MANIFEST"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.version]
+path = "src/database_staleness/__init__.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/database_staleness"]
+
+# In this repo the library is the sibling package, three levels up; outside it, trellis-analytics comes from
+# wherever the host installed it. pip ignores this table.
+[tool.uv.sources]
+trellis-analytics = { path = "../../..", editable = true }

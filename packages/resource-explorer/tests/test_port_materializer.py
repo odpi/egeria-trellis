@@ -18,6 +18,9 @@ from resource_explorer.surveyors.arch_recovery.port_materializer import (
     PortMaterializationError, PortMaterializer, _direction_symbolic_name,
 )
 
+# Brief I: a blueprint or port is written by a queued publish: RE's daemon on the requester's behalf.
+pytestmark = pytest.mark.usefixtures("as_daemon")
+
 
 def _materializer(registry=None):
     m = PortMaterializer(platform_url="https://fake", registry=registry)

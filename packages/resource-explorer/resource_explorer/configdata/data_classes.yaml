@@ -1,0 +1,54 @@
+# The Data Classes RE seeds into Egeria, each with its keyword set (the column-name keywords that
+# match it). Read by surveyors/database/bootstrap_data_classes.py, which runs once at worker start
+# (leader-elected) and by hand (`python -m resource_explorer.surveyors.database.bootstrap_data_classes`).
+#
+# Adding a data class, or a keyword to one, is an edit here, not a code change. What the bootstrap
+# creates in Egeria for each entry:
+#   DataClass::<name>                                  the DataClass (dataPatterns = keywords)
+#   ValidValuesSet::<name>Keywords                     a plain ValidValueDefinition, the keyword set
+#   ValidValueDefinition::<name>Keyword::<keyword>     one plain ValidValueDefinition per keyword,
+#                                                      linked to the set as a member
+#
+# An element already present by qualifiedName is never re-created; a missing keyword is added to an
+# existing set. Nothing is ever deleted or changed: removing a keyword here does not remove it from
+# Egeria.
+#
+# Every entry needs:
+#   name          - letters and digits only (it is part of every qualifiedName above)
+#   displayName   - shown in Egeria and on the Curate data-class rules
+#   description   - one sentence
+#   dataPatterns  - one or more keywords: lower case, letters, digits and underscores
+#
+# A second file may add entries without editing this one: set RE_DATA_CLASSES_FILE to its path (the
+# same shape). A name in both files is an error, not an override.
+
+data_classes:
+  - name: EmailAddress
+    displayName: Email Address
+    description: Electronic mail address identifier.
+    dataPatterns: [email, email_address, mail_addr, emailaddr]
+
+  - name: PhoneNumber
+    displayName: Phone Number
+    description: Telephone contact number.
+    dataPatterns: [phone, phone_number, telephone, mobile, tel_num]
+
+  - name: SocialSecurityNumber
+    displayName: Social Security Number
+    description: Government issued social security identification number.
+    dataPatterns: [ssn, socialsec, social_security, ssn_num]
+
+  - name: CreditCardNumber
+    displayName: Credit Card Number
+    description: Financial credit or debit card identifier.
+    dataPatterns: [creditcard, credit_card, cc_num, card_number]
+
+  - name: Password
+    displayName: Password
+    description: Credential or secret authentication passkey.
+    dataPatterns: [password, passkey, passwd, pwd]
+
+  - name: DateOfBirth
+    displayName: Date of Birth
+    description: Individual date or anniversary of birth.
+    dataPatterns: [dob, dateofbirth, birth_date, birthdate]

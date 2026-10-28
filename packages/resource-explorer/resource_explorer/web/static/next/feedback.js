@@ -18,6 +18,7 @@
 // FeedbackSubmission model — verify there before changing any key.
 
 import { feedbackVotesHtml } from '/static/next/app.js';
+import { inPagePrompt } from '/static/next/confirm-dialog.js';
 
 const CATEGORIES = [
   { value: '', label: 'Category (optional)' },
@@ -273,17 +274,21 @@ function _rowQuestion(row) {
 
 function _currentSlug() {
   const el = document.getElementById('scope-slug');
-  const s = el ? el.textContent.trim() : '';
+  // `data-slug` first: #scope-slug is the resource's menu button and its text
+  // reads "<slug> ▾", so the text is no longer the bare slug.
+  const s = el ? (el.dataset.slug !== undefined ? el.dataset.slug : el.textContent).trim() : '';
   return s && s !== 'no resource selected' ? s : '';
 }
 
 /** `#scope-slug`'s `data-entity-type`, set by app.js's `renderTopBar()`
  *  alongside the slug it already reads from that same element — a plain DOM
  *  read, not an app.js import, matching this module's stated independence
- *  above. Defaults to 'repo': existing pages predate this attribute. */
+ *  above. No default: a missing attribute throws rather than filing the vote against 'repo'. */
 function _currentEntityType() {
   const el = document.getElementById('scope-slug');
-  return (el && el.dataset.entityType) || 'repo';
+  const kind = el && el.dataset.entityType;
+  if (!kind) throw new Error('feedback: entityType is required (no data-entity-type on #scope-slug)');
+  return kind;
 }
 
 function _attachTo(row) {
@@ -339,7 +344,7 @@ async function _sendAnswerVerdict(bar, vote) {
   // "wrong" what they know is the one case where the words are the point.
   let comment = '';
   if (verdict === 'disagree') {
-    const typed = window.prompt('What is wrong with this answer? (optional)', '');
+    const typed = await inPagePrompt({ title: 'What is wrong?', message: 'What is wrong with this answer? (optional)', label: 'What is wrong', confirmLabel: 'Record' });
     if (typed === null) {
       // Cancelled. This function's own design principle (see `_said`'s doc
       // comment above) is that every path through it ends in a visible,

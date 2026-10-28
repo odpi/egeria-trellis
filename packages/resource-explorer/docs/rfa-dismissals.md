@@ -1,5 +1,7 @@
 # Suppressing an RFA: "not applicable" and "won't do"
 
+**Status:** implemented. Not applicable and won't do dismissals for RFAs, built.
+
 ## Where this came from
 
 Looking at the live RFA drawer on 2026-08-31, the project owner reported ten items they could
