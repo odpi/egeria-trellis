@@ -7,10 +7,11 @@ Each step's Egeria declaration is the engine host's, written by `scripts/generat
 `docs/dr-egeria/analytic-functions/<step>.md` (a GovernanceActionType with no executor); that document is retired.
 
 Manifests are read from the `pyegeria.analytics` entry point, so the step's package must be installed where this
-runs, for example:
+runs. The reference steps are workspace members, so after a `uv sync` at the repo root:
 
-    uv run --with-editable packages/trellis-analytics/examples/steps/database_staleness \\
-        python packages/resource-explorer/scripts/generate_external_step_entries.py
+    uv run python packages/resource-explorer/scripts/generate_external_step_entries.py
+
+(for a step outside the workspace, `uv run --with-editable <its package> python ...`).
 
 `--check` writes nothing and exits 1 when a committed file differs from what would be generated.
 tests/test_database_staleness_step.py (trellis-analytics) holds the committed files to the generator.

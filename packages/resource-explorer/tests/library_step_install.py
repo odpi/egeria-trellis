@@ -1,7 +1,8 @@
 """Install the Analytic Library's example steps the way pip would, for one test.
 
-Each step is a package outside RE (packages/trellis-analytics/examples/steps/<name>) and is not installed in RE's
-environment, which is this suite's normal state. `install(tmp_path, name)` writes a dist-info that carries the entry
+Each step is a package outside RE (packages/trellis-analytics/examples/steps/<name>). Since R19 the steps are workspace
+members, so a root `uv sync` installs them; CI still syncs only RE, where none is installed, and the tests below must
+hold either way: installing a step the venv already has is the same entry point under the same name. `install(tmp_path, name)` writes a dist-info that carries the entry
 points the step's own pyproject declares, and returns the two path entries that make it importable and discoverable.
 `staleness_installed` puts database_staleness on sys.path and re-attaches RE's user steps; `library_installed` does
 the same for every example step; `install_steps` is the same for any chosen steps. Each puts everything back

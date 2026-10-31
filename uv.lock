@@ -26,6 +26,16 @@ members = [
     "trellis-context",
     "trellis-microflow",
     "trellis-querycache",
+    "trellis-step-change-rates",
+    "trellis-step-database-staleness",
+    "trellis-step-fs-activity",
+    "trellis-step-fs-change-rates",
+    "trellis-step-fs-duplicates",
+    "trellis-step-fs-layout-signals",
+    "trellis-step-fs-permissions",
+    "trellis-step-hub-tables",
+    "trellis-step-schema-comparison",
+    "trellis-step-statistics-freshness",
     "trellis-vectorstore",
     "trellis-workspace",
 ]
@@ -10050,6 +10060,106 @@ requires-dist = [
 provides-extras = ["redis", "dev"]
 
 [[package]]
+name = "trellis-step-change-rates"
+source = { editable = "packages/trellis-analytics/examples/steps/change_rates" }
+dependencies = [
+    { name = "trellis-analytics" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "trellis-analytics", editable = "packages/trellis-analytics" }]
+
+[[package]]
+name = "trellis-step-database-staleness"
+source = { editable = "packages/trellis-analytics/examples/steps/database_staleness" }
+dependencies = [
+    { name = "trellis-analytics" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "trellis-analytics", editable = "packages/trellis-analytics" }]
+
+[[package]]
+name = "trellis-step-fs-activity"
+source = { editable = "packages/trellis-analytics/examples/steps/fs_activity" }
+dependencies = [
+    { name = "trellis-analytics" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "trellis-analytics", editable = "packages/trellis-analytics" }]
+
+[[package]]
+name = "trellis-step-fs-change-rates"
+source = { editable = "packages/trellis-analytics/examples/steps/fs_change_rates" }
+dependencies = [
+    { name = "trellis-analytics" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "trellis-analytics", editable = "packages/trellis-analytics" }]
+
+[[package]]
+name = "trellis-step-fs-duplicates"
+source = { editable = "packages/trellis-analytics/examples/steps/fs_duplicates" }
+dependencies = [
+    { name = "trellis-analytics" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "trellis-analytics", editable = "packages/trellis-analytics" }]
+
+[[package]]
+name = "trellis-step-fs-layout-signals"
+source = { editable = "packages/trellis-analytics/examples/steps/fs_layout_signals" }
+dependencies = [
+    { name = "trellis-analytics" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "trellis-analytics", editable = "packages/trellis-analytics" }]
+
+[[package]]
+name = "trellis-step-fs-permissions"
+source = { editable = "packages/trellis-analytics/examples/steps/fs_permissions" }
+dependencies = [
+    { name = "trellis-analytics" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "trellis-analytics", editable = "packages/trellis-analytics" }]
+
+[[package]]
+name = "trellis-step-hub-tables"
+source = { editable = "packages/trellis-analytics/examples/steps/hub_tables" }
+dependencies = [
+    { name = "trellis-analytics" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "trellis-analytics", editable = "packages/trellis-analytics" }]
+
+[[package]]
+name = "trellis-step-schema-comparison"
+source = { editable = "packages/trellis-analytics/examples/steps/schema_comparison" }
+dependencies = [
+    { name = "trellis-analytics" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "trellis-analytics", editable = "packages/trellis-analytics" }]
+
+[[package]]
+name = "trellis-step-statistics-freshness"
+source = { editable = "packages/trellis-analytics/examples/steps/statistics_freshness" }
+dependencies = [
+    { name = "trellis-analytics" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "trellis-analytics", editable = "packages/trellis-analytics" }]
+
+[[package]]
 name = "trellis-vectorstore"
 version = "0.1.0"
 source = { editable = "packages/trellis-vectorstore" }
@@ -10079,6 +10189,54 @@ provides-extras = ["dev"]
 name = "trellis-workspace"
 version = "0.0.0"
 source = { virtual = "." }
+
+[package.dev-dependencies]
+dev = [
+    { name = "egeria-advisor" },
+    { name = "resource-explorer", extra = ["dev"] },
+    { name = "trellis-analytics", extra = ["dev"] },
+    { name = "trellis-artifact-tree" },
+    { name = "trellis-auth" },
+    { name = "trellis-context" },
+    { name = "trellis-microflow" },
+    { name = "trellis-querycache" },
+    { name = "trellis-step-change-rates" },
+    { name = "trellis-step-database-staleness" },
+    { name = "trellis-step-fs-activity" },
+    { name = "trellis-step-fs-change-rates" },
+    { name = "trellis-step-fs-duplicates" },
+    { name = "trellis-step-fs-layout-signals" },
+    { name = "trellis-step-fs-permissions" },
+    { name = "trellis-step-hub-tables" },
+    { name = "trellis-step-schema-comparison" },
+    { name = "trellis-step-statistics-freshness" },
+    { name = "trellis-vectorstore" },
+]
+
+[package.metadata]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "egeria-advisor", editable = "packages/egeria-advisor" },
+    { name = "resource-explorer", extras = ["dev"], editable = "packages/resource-explorer" },
+    { name = "trellis-analytics", extras = ["dev"], editable = "packages/trellis-analytics" },
+    { name = "trellis-artifact-tree", editable = "packages/trellis-artifact-tree" },
+    { name = "trellis-auth", editable = "packages/trellis-auth" },
+    { name = "trellis-context", editable = "packages/trellis-context" },
+    { name = "trellis-microflow", editable = "packages/trellis-microflow" },
+    { name = "trellis-querycache", editable = "packages/trellis-querycache" },
+    { name = "trellis-step-change-rates", editable = "packages/trellis-analytics/examples/steps/change_rates" },
+    { name = "trellis-step-database-staleness", editable = "packages/trellis-analytics/examples/steps/database_staleness" },
+    { name = "trellis-step-fs-activity", editable = "packages/trellis-analytics/examples/steps/fs_activity" },
+    { name = "trellis-step-fs-change-rates", editable = "packages/trellis-analytics/examples/steps/fs_change_rates" },
+    { name = "trellis-step-fs-duplicates", editable = "packages/trellis-analytics/examples/steps/fs_duplicates" },
+    { name = "trellis-step-fs-layout-signals", editable = "packages/trellis-analytics/examples/steps/fs_layout_signals" },
+    { name = "trellis-step-fs-permissions", editable = "packages/trellis-analytics/examples/steps/fs_permissions" },
+    { name = "trellis-step-hub-tables", editable = "packages/trellis-analytics/examples/steps/hub_tables" },
+    { name = "trellis-step-schema-comparison", editable = "packages/trellis-analytics/examples/steps/schema_comparison" },
+    { name = "trellis-step-statistics-freshness", editable = "packages/trellis-analytics/examples/steps/statistics_freshness" },
+    { name = "trellis-vectorstore", editable = "packages/trellis-vectorstore" },
+]
 
 [[package]]
 name = "triton"
