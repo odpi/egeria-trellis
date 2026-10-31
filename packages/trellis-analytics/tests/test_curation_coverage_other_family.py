@@ -145,3 +145,18 @@ def test_two_other_families_give_two_lines(node_set):
     assert [(l.label, l.count) for l in held] == [(f"in Egeria under '{PACK}' · not RE's", 20),
                                                     (f"in Egeria under '{other}' · not RE's", 2)]
     assert lines(r)["undecided"].count == 3
+
+
+def test_each_familys_tile_kpi_has_its_own_stable_key(node_set, monkeypatch):
+    """The D1-e finding: one KPI per family line, keyed by the family's slug, the same key with one family or two."""
+    import trellis_analytics.portal as portal
+    other = "Coco PostgreSQL Server 2"
+    two = world(node_set, {"resolution": resolution({PACK: PACK_SCHEMAS[:20], other: PACK_SCHEMAS[20:]}), "plan": None})
+    one = world(node_set, {"resolution": resolution({PACK: PACK_SCHEMAS}), "plan": None})
+    keys = lambda r: [k["key"] for k in portal._kpis(r)]
+    assert len(set(keys(two))) == len(keys(two)), "no two KPIs share a key"
+    held = [k for k in portal._kpis(two) if k["key"].startswith("not_yet.in_other_family")]
+    assert [(k["key"], k["value"]) for k in held] == [
+        ("not_yet.in_other_family.coco_postgresql_server_1", 20), ("not_yet.in_other_family.coco_postgresql_server_2", 2)]
+    assert "not_yet.in_other_family.coco_postgresql_server_1" in keys(one)
+    assert "not_yet.undecided" in keys(one), "lines that name no family keep their key"

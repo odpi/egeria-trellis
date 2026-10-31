@@ -85,7 +85,7 @@ SURVEY_LINE = "Egeria's survey is limited to your chosen schemas"
 #: Each commit starts an Egeria survey (an engine action) whose own report is separate from RE's survey report, where RE's
 #: measures go. Said wherever the survey is named, so a "0 annotations" report at the top of Egeria's list is not read as RE's.
 ENGINE_REPORT_WORDS = "its own report is separate from RE's survey report, where RE's measures went, and fills when Egeria's survey finishes"
-LINGERING_LINE = ("Egeria's cataloguer still lists this schema until its connector restarts "
+LINGERING_LINE = ("Egeria's cataloger still lists this schema until its connector restarts "
                   "· nothing is recreated")
 # The archive-cascade block (ISSUE-117) lives in catalogue_gateway (`issue_117_blocked(slug, scope=)`, `ISSUE_117_WORDS`).
 # Since 2026-10-23 it is OFF for the leave-out ARCHIVE (`gw.LEAVE_OUT_ARCHIVE`) unless RE_ISSUE_117_BLOCK re-arms it, and
@@ -172,13 +172,18 @@ P_ENDPOINT = endpoint_identity.PROOF_KIND
 P_REANCHOR = endpoint_identity.APPLIED_KIND
 
 
+_READ_BACK_AT = re.compile(r"read back (\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2})(?::\d{2}(?:\.\d+)?)?")
+
+
 def _press_summary(row: dict | None) -> dict | None:
     """The newest D1-b press, as Contents shows it on the plan's database row: its words, time, who, its counts and
     the schemas it could not link."""
     if row is None:
         return None
     d = row.get("detail") or {}
-    return {"at": row["read_at"], "by": row.get("recorded_by") or "", "words": d.get("words", ""),
+    # the press stored "read back YYYY-MM-DD HH:MM"; the page has one time form, `_stamp`'s "MM-DD HH:MM" (W25)
+    words = _READ_BACK_AT.sub(lambda m: f"read back {_stamp(m.group(1))}", d.get("words", ""))
+    return {"at": row["read_at"], "by": row.get("recorded_by") or "", "words": words,
             "counts": d.get("counts") or {}, "members_after": d.get("members_after"),
             "failed": [{"schema": o.get("schema", ""), "error": o.get("error", "")}
                        for o in d.get("outcomes") or [] if o.get("outcome") == endpoint_identity.FAILED],
@@ -702,7 +707,7 @@ def _schema_state(rows: list[dict], ob: dict | None, effective: str | None, conn
     if kind == P_ATTACH_REQUESTED:
         guid = str(last["detail"].get("engine_action") or "")
         second = "scope says leave out · still being attached" if effective == LEAVE_OUT else \
-            "Egeria's attach action was started; its target is not in the cataloguer's list yet"
+            "Egeria's attach action was started; its target is not in the cataloger's list yet"
         return {"state": "sent", "words": f"sent to Egeria · attach action {guid[:8]} · waiting for the target",
                 "second": second, "proof": proof}
     adopted = _latest([r for r in rows if r["element_guid"] == last["element_guid"]], (P_ADOPTED,))
@@ -981,7 +986,7 @@ def _header(published, counts, conn_d, failed_read, view, anything: bool, zones_
     if blocked:
         parts.append(f"{len(blocked)} left out, {KEPT_NOT_SENT} · {n_gone} archived or deleted in Egeria")
     if conn_d and conn_d.get("last_refresh_time"):
-        parts.append(f"cataloguer connector's last refresh {_stamp(conn_d['last_refresh_time'])} (the connector's, not a schema's)")
+        parts.append(f"cataloger connector's last refresh {_stamp(conn_d['last_refresh_time'])} (the connector's, not a schema's)")
     if failed_read:
         parts.append(f"last read of Egeria failed {_stamp(failed_read['read_at'])}: {failed_read['detail'].get('error', '')}")
     return {"state": "committed", "text": " · ".join(parts)}
@@ -1070,13 +1075,13 @@ def read_back_chips(published: dict | None, schema_states: dict[str, dict], last
         {"key": "attached", "word": "attached", "count": len(attached), "unit": _schemas_unit(len(attached)),
          "cue": "pending" if att_behind else ("read_back" if attached else "none"),
          "read_at": att_at, "not_checked_since": "",
-         "hover": ((f"chosen schemas attached to Egeria's cataloguer as targets · read {_stamp(att_at)}" if attached
-                    else "no chosen schema is attached to Egeria's cataloguer")
+         "hover": ((f"chosen schemas attached to Egeria's cataloger as targets · read {_stamp(att_at)}" if attached
+                    else "no chosen schema is attached to Egeria's cataloger")
                    + (f" · {pre_words}: {', '.join(att_behind)}" if att_behind else ""))},
         {"key": "catalogued", "word": "cataloged by Egeria", "count": len(built), "unit": _schemas_unit(len(built)),
          "cue": cat_cue,
          "read_at": built_at or read_at, "not_checked_since": stale,
-         "hover": ("chosen schemas whose tables Egeria's cataloguer built"
+         "hover": ("chosen schemas whose tables Egeria's cataloger built"
                    + (f" · read {_stamp(built_at)}" if built_at else "")
                    + (f" · no tree yet: {', '.join(waiting)}" if waiting else "")
                    + (f" · last read {_stamp(read_at)}" if read_at and read_at != built_at else "")
@@ -1479,7 +1484,7 @@ def build_preview(registry, slug: str, view: dict, gateway: CatalogueGateway | N
                      "RE writes no ZoneMembership: zones left to Egeria (EXPLORER_PUBLISH_ZONES is not configured). ")
                   + (f"Owner from Context: {owner}." if owner else "Not carried: owner, not declared on Context."))},
         {"id": "cataloguer_creates", "mechanism": 2,
-         "text": (f"Egeria's cataloguer creates tables and columns for {len(attach)} schema target"
+         "text": (f"Egeria's cataloger creates tables and columns for {len(attach)} schema target"
                   f"{'s' if len(attach) != 1 else ''} ({n_new} to attach now). Each is a schema-kind target, "
                   "never the database or the server. The elements arrive on the daemon's next refresh, not now.")},
         {"id": "survey_measures", "mechanism": 3,
@@ -1946,7 +1951,7 @@ def apply_attach(registry, gateway: CatalogueGateway, payload: dict, *, outbox_i
                 if not mine:
                     raise GatewayError(
                         f"Egeria's attach action {action_guid[:8]} is {st.status or 'status not stated'} but the target for "
-                        f"{schema} is not in the cataloguer's list yet (still waiting; not attaching a second time)")
+                        f"{schema} is not in the cataloger's list yet (still waiting; not attaching a second time)")
         if not mine and req is None:
             # Prefer Egeria's own attach: its GovernanceActionType takes the EXISTING schema element as
             # action target `newAsset`. Fall back to add_catalog_target only when that is refused or
@@ -1969,18 +1974,18 @@ def apply_attach(registry, gateway: CatalogueGateway, payload: dict, *, outbox_i
                     else:
                         raise GatewayError(
                             f"Egeria's attach action {action_guid[:8]} is {st.status or 'status not stated'} but the target for "
-                            f"{schema} is not in the cataloguer's list yet (still waiting; not attaching a second time)")
+                            f"{schema} is not in the cataloger's list yet (still waiting; not attaching a second time)")
             if not mine and fallback:
                 mechanism = "add_catalog_target"
                 gateway.add_catalog_target(guid, target_name(e, schema))
                 mine = _targets_for(gateway.list_catalog_targets(), guid, e, schema)
         if not mine:
-            raise GatewayError(f"the target for {schema} was added but is not in the cataloguer's list on read-back")
+            raise GatewayError(f"the target for {schema} was added but is not in the cataloger's list on read-back")
     # A proof row proves ONE element: the target must be readable as a relationship ON that element's GUID.
     # (The cataloguer's target list hides a target whose element is archived, and matches by name too.)
     own = _own_catalog_targets(gateway, guid)
     if not own:
-        raise GatewayError(f"the target for {schema} is in the cataloguer's list but the element {guid[:8]} "
+        raise GatewayError(f"the target for {schema} is in the cataloger's list but the element {guid[:8]} "
                            f"shows no CatalogTarget relationship when read by its own GUID")
     status = None
     try:
@@ -2149,7 +2154,7 @@ def apply_leave_out(registry, gateway: CatalogueGateway, payload: dict, *, outbo
                               typ="CatalogTarget", relationship_guid=t.relationship_guid, qualified_name=qn,
                               curation_id=cid, outbox_id=outbox_id, by=payload.get("by", ""))
         if any(t.element_guid == guid for t in gateway.list_catalog_targets()):
-            raise GatewayError(f"the target for {schema} is still in the cataloguer's list after removal")
+            raise GatewayError(f"the target for {schema} is still in the cataloger's list after removal")
         _proof(registry, slug, P_DETACHED, schema=schema, element_guid=guid, qualified_name=qn,
                curation_id=cid, outbox_id=outbox_id, recorded_by=payload.get("by", ""),
                detail={"note": "target gone from the cataloguer's list on read-back"})
@@ -2291,7 +2296,7 @@ def read_back(registry, gateway: CatalogueGateway, slug: str, schemas: list[str]
         _proof(registry, slug, P_READ_FAILED, node_kind="database", curation_id=curation_id,
                detail={"error": str(exc), "what": "the cataloguer's connector"})
         summary["read_failed"] += 1
-        summary["errors"].append(f"the cataloguer's connector: {exc}")
+        summary["errors"].append(f"the cataloger's connector: {exc}")
         return summary
     if status is not None:
         _proof(registry, slug, P_CONNECTOR, node_kind="database", curation_id=curation_id,
@@ -3344,14 +3349,14 @@ def execute_commit(registry, curation_id: str, *, gateway: CatalogueGateway | No
     # 5 ── optional forced refresh (never a restart). "refreshed" only when the connector's own
     # last-refresh time moved on a status read; otherwise "refresh requested".
     if not sel.get("refresh_now"):
-        cur.set_step(curation_id, "refresh", "skipped", "not asked: the cataloguer's own cycle will pick the targets up")
+        cur.set_step(curation_id, "refresh", "skipped", "not asked: the cataloger's own cycle will pick the targets up")
     elif not attach:
         cur.set_step(curation_id, "refresh", "skipped", "no target to refresh")
     else:
         before = _try_status(gateway)
         t_start = time.monotonic()
         log.info("catalog commit %s: asking the daemon to refresh %s (status %s)", curation_id,
-                 getattr(before, "name", "") or "the cataloguer connector", (before.status if before else "") or "unreadable")
+                 getattr(before, "name", "") or "the cataloger connector", (before.status if before else "") or "unreadable")
         try:
             gateway.refresh_connector(120)
         except Exception as exc:
@@ -3363,7 +3368,7 @@ def execute_commit(registry, curation_id: str, *, gateway: CatalogueGateway | No
             if timed_out and "REFRESHING" in seen:
                 log.info("catalog commit %s: refresh timed out after %.0f s while the connector was REFRESHING: not a failure", curation_id, took)
                 cur.set_step(curation_id, "refresh", "skipped",
-                             "the cataloguer was already refreshing · elements arrive on its pass")
+                             "the cataloger was already refreshing · elements arrive on its pass")
             else:
                 log.info("catalog commit %s: refresh %s: %s", curation_id,
                          f"timed out after {took:.0f} s (connector status {', '.join(seen) or 'unreadable'})" if timed_out else "refused", first)
@@ -3376,7 +3381,7 @@ def execute_commit(registry, curation_id: str, *, gateway: CatalogueGateway | No
             if t0 and t1 and t1 != t0:
                 cur.set_step(curation_id, "refresh", "done",
                              f"refreshed · connector time moved {_stamp(t0)} → {_stamp(t1)} "
-                             "(the JDBC cataloguer connector's own time, not a schema's)")
+                             "(the JDBC cataloger connector's own time, not a schema's)")
             else:
                 why = ("the connector's status could not be read before and after, so a move cannot be shown"
                        if not (t0 and t1) else "the connector's last refresh time did not move on the status read")

@@ -40,7 +40,7 @@ def test_counts_published_not_yet_blocked(make_ods):
     # every count carries the ids it counts
     assert all(l.rows or l.count == 0 for g in r.groups for l in g.lines)
     assert r.group("published").lines[0].rows["catalogue_commit_proofs"]
-    assert "read back 2026-10-05T10:02:00Z" in r.group("published").words
+    assert r.group("published").words.endswith(" · read back 10-05 10:02")   # the page's one form (W24)
 
 
 def test_a_later_removal_unpublishes_and_a_reset_forgets(make_ods):
@@ -212,3 +212,14 @@ def test_not_yet_words_separate_the_total_from_its_parts(make_ods):
                    events=[("a", "catalogue", "person"), ("d", "leave_out", "rule-1")])
     r = curation_coverage(OdsReader(url), "database", "demo")
     assert r.group("not_yet").words == "not yet published · 3: 2 undecided · 1 left out by a confirmed proposal"
+
+
+def test_the_read_back_stamp_is_the_pages_form_never_raw_iso(make_ods):
+    """W24: as_of stays raw (it is compared); the words say "MM-DD HH:MM": no "T", no seconds, no microseconds."""
+    url = make_ods(schemas=["s1"], proofs=[("schema", "s1", "elements_read_back", "2026-10-31T12:23:33.754429",
+                                             els("a"))])
+    r = curation_coverage(OdsReader(url), "database", "demo")
+    assert r.as_of == "2026-10-31T12:23:33.754429"
+    words = r.group("published").words
+    assert words.endswith(" · read back 10-31 12:23") and "T12" not in words and ".754" not in words
+    assert "read back 10-31 12:23" in r.summary

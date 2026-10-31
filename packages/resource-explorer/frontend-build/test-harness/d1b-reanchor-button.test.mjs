@@ -48,14 +48,31 @@ test('signed out, the press is off and says why; nothing is sent', async () => {
   assert.equal(server.calls.filter((c) => c.url.endsWith('/reanchor')).length, 0);
 });
 
-test('off, with the reason, when there is nothing to add or the type or ends were not read', async () => {
-  for (const [row, why] of [[dbRow(0, 26), /nothing to add/], [{ ...dbRow(22), members_after: null, link_type: 'not read', words: 'relationship type not read · nothing proposed' }, /not read/]]) {
-    const { document } = await setUp(view(endpoint(row)));
-    const b = btn(document);
-    assert.ok(b && b.disabled);
-    assert.match(b.getAttribute('title'), why);
-    assert.match(flat(document.querySelector('[data-scope-reanchor-why]')), why);
-  }
+test('off, with the reason, when the type or ends were not read', async () => {
+  const { document } = await setUp(view(endpoint({ ...dbRow(22), members_after: null, link_type: 'not read', words: 'relationship type not read · nothing proposed' })));
+  const b = btn(document);
+  assert.ok(b && b.disabled);
+  assert.match(b.getAttribute('title'), /not read/);
+  assert.match(flat(document.querySelector('[data-scope-reanchor-why]')), /not read/);
+});
+
+test('spent (W26): nothing left to add reads "nothing to link", off, title "nothing to add", never "0 schemas"', async () => {
+  const { document } = await setUp(view(endpoint(dbRow(0, 26))));
+  const b = btn(document);
+  assert.ok(b && b.disabled);
+  assert.equal(flat(b), 'nothing to link');
+  assert.equal(b.getAttribute('title'), 'nothing to add');
+  assert.doesNotMatch(flat(document.querySelector('[data-scope-plan-database]')), /0 schemas/);
+  assert.equal(document.querySelector('[data-scope-reanchor-why]'), null, 'the label already says it');
+});
+
+test('W25: the result line and its "pressed" time use the one form, MM-DD HH:MM', async () => {
+  const words = '26 members · 22 added · read back 10-31 20:38';
+  const press = { at: '2026-10-31T20:38:31.104512', by: 'dan', words, counts: { added: 22, already_linked: 0, failed: 0 }, failed: [], members_after: 26 };
+  const { document } = await setUp(view(endpoint(dbRow(0, 26), press)));
+  const line = flat(document.querySelector('[data-scope-reanchor-result]'));
+  assert.equal(line, '26 members · 22 added · read back 10-31 20:38 · pressed 10-31 20:38 · dan');
+  assert.doesNotMatch(line, /2026-|T20|\.104/);
 });
 
 test('cancel at the confirm sends nothing', async () => {
@@ -73,7 +90,7 @@ test('confirm, "linking…" while it runs, press once, then the row acknowledges
   const ctx = await setUp(view(endpoint(dbRow(22))));
   const { document, server } = ctx;
   const base = globalThis.fetch;
-  const words = '26 members · 22 added · read back 2026-10-31 09:05';
+  const words = '26 members · 22 added · read back 10-31 09:05';
   let release;
   const held = new Promise((r) => { release = r; });
   globalThis.fetch = async (url, opts = {}) => {
@@ -103,14 +120,14 @@ test('confirm, "linking…" while it runs, press once, then the row acknowledges
   assert.match(asked[0], /nothing is deleted/);
   assert.equal(server.calls.filter((c) => c.url.endsWith('/reanchor')).length, 1, 'one press');
   assert.equal(flat(document.querySelector('[data-scope-status]')), words);
-  assert.match(flat(document.querySelector('[data-scope-reanchor-result]')), /^26 members · 22 added · read back 2026-10-31 09:05/);
+  assert.match(flat(document.querySelector('[data-scope-reanchor-result]')), /^26 members · 22 added · read back 10-31 09:05 · pressed 10-31 09:05/);
   const after = btn(document);
-  assert.ok(after.disabled && /nothing to add/.test(after.getAttribute('title')), 'nothing left to press');
+  assert.ok(after.disabled && /nothing to add/.test(after.getAttribute('title')) && flat(after) === 'nothing to link', 'nothing left to press');
   assert.doesNotMatch(flat(document.querySelector('[data-scope-plan-database]')), /after the press/);
 });
 
 test('a partial press lists what was not linked, muted, and is never worded as failed for all', async () => {
-  const words = '25 members · 21 added · 1 not linked: sec_admin (not authorized) · read back 2026-10-31 09:05';
+  const words = '25 members · 21 added · 1 not linked: sec_admin (not authorized) · read back 10-31 09:05';
   const press = { at: '2026-10-31T09:05:00', by: 'me', words, counts: { added: 21, already_linked: 0, failed: 1 }, failed: [{ schema: 'sec_admin', error: 'not authorized' }], members_after: 25 };
   const { document } = await setUp(view(endpoint(dbRow(1, 25), press)));
   const line = document.querySelector('[data-scope-reanchor-result]');
