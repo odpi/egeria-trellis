@@ -1,5 +1,7 @@
 # Review — where extensibility stands, against egeria-workspaces#603 (2026-10-30)
 
+> Superseded in part by Q2(b) (#956) and pyegeria 6.2.18 (#959): analytics register through `pyegeria.analytics`, report specs through `pyegeria.report_specs`; `PYEGERIA_REPORT_SPEC_MODULES` is deprecated in 6.2.18 and removed in 6.2.19; dotted function paths are refused in 6.2.19 (pyegeria side: [ISSUE-173](https://github.com/odpi/egeria-python/blob/main/PYEGERIA_ISSUES.md) in egeria-python's PYEGERIA_ISSUES.md, [odpi/egeria-python#523](https://github.com/odpi/egeria-python/pull/523)). This review was read against pyegeria 6.2.16; the registry-only resolver §2.3 calls still open was closed by 6.2.17 (#516).
+
 Owner's words (architect chat, 2026-10-30): "lets review where we are on extensibility - there was an original design
 note in egeria-workspaces#603 that was one proposal for extensibility in the portal - please review that as well as
 your own extensibility designs and see if we need to update or change anything" … "and perhaps close #603".

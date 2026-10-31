@@ -8,7 +8,7 @@ decision is written here.
 ## 1. What changed
 
 `analysis_catalog_reader._load` still reads `configdata/analysis_catalog.yaml`. It now also reads the installed
-`trellis.analytics` step manifests (`survey_step_host.discover_steps`, per resource type) and merges them in, using the
+`pyegeria.analytics` step manifests (`trellis.analytics` is only read as an alias) (`survey_step_host.discover_steps`, per resource type) and merges them in, using the
 same function that writes the generated block (`survey_step_host.catalog_entry`), so a merged entry and a generated one
 cannot differ in shape:
 

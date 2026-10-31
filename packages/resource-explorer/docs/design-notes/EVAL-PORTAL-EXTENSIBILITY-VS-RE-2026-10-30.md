@@ -1,5 +1,7 @@
 # Evaluation — the Portal's extension model vs RE's: what it has, what is missing, how to keep them coordinated (2026-10-30)
 
+> Superseded in part by Q2(b) (#956) and pyegeria 6.2.18 (#959): analytics register through `pyegeria.analytics`, report specs through `pyegeria.report_specs`; `PYEGERIA_REPORT_SPEC_MODULES` is deprecated in 6.2.18 and removed in 6.2.19; dotted function paths are refused in 6.2.19 (pyegeria side: [ISSUE-173](https://github.com/odpi/egeria-python/blob/main/PYEGERIA_ISSUES.md) in egeria-python's PYEGERIA_ISSUES.md, [odpi/egeria-python#523](https://github.com/odpi/egeria-python/pull/523)). This evaluation was read against pyegeria 6.2.16.
+
 Owner's words (architect chat, 2026-10-30): "We also need to evaluate what (if anything) of RE's approach makes sense
 to integrate into the portal environment - so we need to both evaluate what it has, what is missing and how to keep
 these extensions coordinated...we also did a small tutorial on the existing extensions that can be found in the

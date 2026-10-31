@@ -84,8 +84,8 @@ rank order; a candidate that fails its gate does not block the next.
 
 ## Built (first three, branch `re/library-steps-first-three`, 2026-10-15)
 
-Each is a package under `packages/trellis-analytics/examples/steps/<name>/`, found through the `trellis.analytics`
-entry point, declared by `generate_engine_host_declaration.py` in `docs/dr-egeria/engine-host/library/<name>.md`.
+Each is a package under `packages/trellis-analytics/examples/steps/<name>/`, found through the `pyegeria.analytics`
+entry point (`trellis.analytics` is only read as an alias; nothing declares it), declared by `generate_engine_host_declaration.py` in `docs/dr-egeria/engine-host/library/<name>.md`.
 
 | Step | Request type | Typed read | Measures (Egeria type) |
 |---|---|---|---|
