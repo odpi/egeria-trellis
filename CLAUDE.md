@@ -110,7 +110,7 @@ checkout first. `git merge --abort` is a legitimate thing for the merge's owner 
 takes unstaged changes with it — yours included, with no warning that they were there.
 
 The same shape appears in any whole-repository operation whose blast radius is invisible in its
-name. A bare `uv sync` is the other one people hit.
+name. `uv sync` run from a package directory is the other one people hit.
 
 **3. Worktrees are not currently a usable isolation mechanism here — know why before relying on
 one.**
@@ -174,31 +174,36 @@ actually load-bearing.*
 **Before committing, read `git status` and confirm every staged path is yours.** An unexpected file
 is a signal that another session is mid-write, not something to sweep in.
 
-## uv: `uv sync` is destructive in this workspace
+## uv: run `uv sync` from the workspace root, never from a package directory
 
 Same failure mode as the git rules above, in a different tool — and harder to suspect, because the
-command's name suggests "make consistent" and its effect here is "remove".
+command's name suggests "make consistent" and its effect can be "remove".
 
-**Use `uv sync --all-packages --extra dev`. Never a bare `uv sync`.**
+**From the workspace root, a bare `uv sync` installs the whole workspace** (since R19, 2026-10-31).
+The root is a *virtual* project — `pyproject.toml` declares `dependencies = []` and has no
+`[build-system]`, deliberately, so that it exists only to hold workspace membership. Until R19 that
+made a bare `uv sync` resolve to nothing and uninstall the entire venv (observed 2026-08-29). The
+root now has a `[dependency-groups] dev` group listing every member — the packages with their `dev`
+extras and the ten reference steps under `packages/trellis-analytics/examples/steps/` — and uv
+installs the `dev` group by default, so a bare sync gives the same venv as
+`uv sync --all-packages --extra dev`. Either form is fine from the root.
 
-Two ways the short form goes wrong, both observed on 2026-08-29:
-
-**From the workspace root, a bare `uv sync` uninstalls the entire venv.** The root is a *virtual*
-project — `pyproject.toml` declares `dependencies = []` and has no `[build-system]`, deliberately, so
-that it exists only to hold workspace membership. `uv sync` therefore resolves the root's
-dependencies, correctly concludes that nothing should be installed, and removes everything.
+**Adding a reference step:** put its package under `examples/steps/` (the members glob picks it up)
+**and** add its distribution name to the root `dev` group. A step that is a member but not in the
+group is uninstalled by the next sync. Third-party steps stay outside the lock: install them with
+`uv pip install -e <path>` and expect any sync to remove them.
 
 **From a package directory, it re-resolves the shared venv down to that one package.** All sessions
 here share one `.venv`, so `uv sync` run inside `packages/resource-explorer/` uninstalled
 `trellis_context` — leaving another session's `tests/test_context_compile.py` unable to collect at
 all, in a file that session had not touched. Adding `--extra dev` to a package-scoped sync does not
-save you; the scope is the problem.
+save you; the scope is the problem. This is unchanged by R19.
 
 `--all-extras` does **not** work as a substitute on macOS: it pulls `onnxruntime-gpu`, which ships no
 arm64 wheel, and the sync fails outright.
 
 If you only need one package's dependencies installed, scope it explicitly with `--package <name>`
-rather than by changing directory — but in a shared checkout, prefer `--all-packages` and leave the
+rather than by changing directory — but in a shared checkout, prefer a root sync and leave the
 venv in a state the next session can use.
 
 ## DCO sign-off
