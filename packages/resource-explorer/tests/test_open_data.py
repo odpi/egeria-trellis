@@ -969,3 +969,11 @@ def test_http_transport_names_the_content_type_and_refuses_an_oversized_answer(m
     with pytest.raises(TransportError, match="read limit"):
         HttpTransport().get_json("https://x.example/a")
     monkeypatch.setattr(httpx, "stream", real)
+
+
+def test_the_canadian_open_government_licence_has_its_three_flags():
+    """W30: open.canada.ca's "ca-ogl-lgo" rows showed three "?"; the OGL-Canada needs attribution, has no
+    share-alike, and allows commercial use."""
+    from resource_explorer.open_data.licences import licence_flags
+    assert licence_flags("ca-ogl-lgo") == {"attribution": True, "share_alike": False, "commercial": True}
+    assert licence_flags("CA-OGL-LGO ") == licence_flags("ca-ogl-lgo")

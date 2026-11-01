@@ -1317,6 +1317,13 @@ def native_survey_rows(registry, entity_type: str, slug: str, technology_type: s
     return rows
 
 
+def _asset_kind(entity_type: str, entity) -> str:
+    """The words for the element the pointer names: a database's is its database asset, a file system's its folder."""
+    if entity is not None and hasattr(entity, "db_type"):
+        return "database asset"
+    return "folder asset" if entity_type == "filesystem" else "asset"
+
+
 def _catalog_row(registry, entity_type, slug, technology_type, entity, process, latest, *,
                  stale: bool = False, name_taken: bool = False,
                  registered_again: bool = False) -> dict:
@@ -1352,6 +1359,7 @@ def _catalog_row(registry, entity_type, slug, technology_type, entity, process, 
         "reach_note": cas.reach_note_for(derived),
         "notes": cas.catalog_notes(registry, entity_type, entity, latest, derived, in_flight) if live else [],
         "asset_guid": (getattr(entity, "egeria_asset_guid", "") or "") if entity is not None else "",
+        "asset_kind": _asset_kind(entity_type, entity),    # what the element is, in words (W27): never guessed
         "register": ({"available": False, "label": cas.REGISTER_LABEL, "why_not": cas.NAME_TAKEN_WORDS,
                       "start_again": False, "confirm": ""} if name_taken
                      else cas.register_control(registry, entity, derived, in_flight, wiring,

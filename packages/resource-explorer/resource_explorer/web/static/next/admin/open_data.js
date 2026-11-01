@@ -143,7 +143,7 @@ export async function openPortalPane(host, slug, { lens = null, investigation = 
     </form>
     <p data-od-price class="mb-s2 text-provenance text-ink-muted tnum"></p>
     ${suggested && suggested.source ? `<p class="mb-s2 text-provenance text-ink-muted">terms from the ${esc(suggested.source)}; edit them</p>` : ''}
-    <div data-od-results></div>`;
+    <div data-od-results class="overflow-x-auto"></div>`;
   const form = q(pane, '[data-od-search]');
   const price = q(pane, '[data-od-price]');
   const refreshPrice = async () => {
@@ -182,14 +182,14 @@ export function noCandidatesWords(res, licence) {
   return 'No candidates: the portal has no datasets for these terms and filters.';
 }
 
-function drawCandidates(pane, out, slug, res, terms, requestName, investigation, licence = null) {
+export function drawCandidates(pane, out, slug, res, terms, requestName, investigation, licence = null) {
   const rows = res.rows;
   out.innerHTML = `
     <p class="mb-s2 text-provenance text-ink-muted tnum">${rows.length} row${rows.length === 1 ? '' : 's'} of ${show(res.total)} · ${res.calls_made} call${res.calls_made === 1 ? '' : 's'} made
       ${res.licence_dropped ? ` · ${res.licence_dropped} dropped on license` : ''}</p>
-    ${rows.length ? `<table class="w-full text-left" data-rc-id="od-candidates">
+    ${rows.length ? `<table class="w-full min-w-[56rem] table-fixed text-left" data-rc-id="od-candidates">
       <thead><tr class="border-b border-rule text-caps uppercase tracking-caps text-ink-muted">
-        <th class="pb-s2 pr-s3 font-normal"></th><th class="pb-s2 pr-s3 font-normal">Title</th><th class="pb-s2 pr-s3 font-normal">Publisher</th><th class="pb-s2 pr-s3 font-normal">License</th>
+        <th class="w-[2rem] pb-s2 pr-s3 font-normal"></th><th class="w-[14rem] pb-s2 pr-s3 font-normal">Title</th><th class="pb-s2 pr-s3 font-normal">Publisher</th><th class="pb-s2 pr-s3 font-normal">License</th>
         <th class="pb-s2 pr-s3 font-normal">Flags</th><th class="pb-s2 pr-s3 font-normal">Modified</th><th class="pb-s2 pr-s3 font-normal">Formats</th><th class="pb-s2 pr-s3 font-normal">Size</th>
         <th class="pb-s2 pr-s3 font-normal">Identifier</th><th class="pb-s2 pr-s3 font-normal">Portal</th></tr></thead>
       <tbody>${rows.map((r, i) => `<tr class="border-b border-rule" data-od-row="${i}">
@@ -198,7 +198,7 @@ function drawCandidates(pane, out, slug, res, terms, requestName, investigation,
         <td class="py-s2 pr-s3 text-caveat align-top">${show(r.licence_id)}</td>
         <td class="py-s2 pr-s3 text-caveat align-top text-ink-muted">${r.licence_check ? `<span class="text-state-warn">${esc(r.licence_check)}</span>` : flagsCue(r.licence)}</td>
         <td class="py-s2 pr-s3 text-caveat align-top">${modifiedWords(r.modified)}</td><td class="py-s2 pr-s3 text-caveat align-top">${show(r.formats)}</td><td class="py-s2 pr-s3 text-caveat align-top tnum">${bytes(r.size)}</td>
-        <td class="py-s2 pr-s3 text-caveat align-top font-mono text-provenance">${show(r.identifier)}${r.doi === NOT_REPORTED ? ' <span class="text-ink-muted">· no DOI reported</span>' : ''}</td>
+        <td class="py-s2 pr-s3 text-caveat align-top font-mono text-provenance break-all" data-od-identifier>${show(r.identifier)}${r.doi === NOT_REPORTED ? ' <span class="text-ink-muted">· no DOI reported</span>' : ''}</td>
         <td class="py-s2 pr-s3 text-caveat align-top text-ink-muted">${esc(r.portal_name)}</td></tr>`).join('')}</tbody></table>
       <form data-od-import class="mt-s3 flex flex-wrap items-end gap-[6px]">
         <label class="text-caveat text-ink-muted">Work list <input name="work_list_name" value="${esc(requestName || terms || 'open data')}" class="rounded-sm border border-rule-strong bg-transparent px-2 py-[2px] text-caveat text-ink" style="width:240px"></label>
@@ -352,7 +352,7 @@ export function datasetPageHtml(d) {
   const dc = d.datacite;
   return `<div data-od-page>
     <h4 class="m-0 mb-s2 font-heading text-name font-normal text-ink">${show(d.title)}</h4>
-    <p class="mb-s2 text-provenance text-ink-muted">${d.identifier_kind === 'doi' ? '' : 'no DOI reported · '}${esc(d.identifier_kind === 'doi' ? 'DOI' : d.identifier_kind === 'dcat_identifier' ? 'publisher id' : 'portal id')} <span class="font-mono">${esc(d.identifier)}</span>
+    <p class="mb-s2 text-provenance text-ink-muted">${d.identifier_kind === 'doi' ? '' : 'no DOI reported · '}${esc(d.identifier_kind === 'doi' ? 'DOI' : d.identifier_kind === 'dcat_identifier' ? 'publisher id' : 'portal id')} <span class="font-mono break-all" data-od-identifier>${esc(d.identifier)}</span>
       · imported ${esc(ago(d.imported_at))}${d.imported_by ? ` by ${esc(d.imported_by)}` : ' (the person who imported it was not recorded)'} into <span class="font-mono">${esc(d.work_list_slug)}</span></p>
     <table class="w-full text-left" data-rc-id="od-fields"><thead><tr class="border-b border-rule text-caps uppercase tracking-caps text-ink-muted">
       <th class="pb-s2 pr-s3 font-normal">Field</th><th class="pb-s2 pr-s3 font-normal">Value</th><th class="pb-s2 pr-s3 font-normal">Source</th></tr></thead><tbody>

@@ -266,7 +266,7 @@ function statusLineHtml(row) {
       const reach = row.reach && row.reach.state !== 'connected' ? row.reach : null;
       return `registered with Egeria${reach
         ? ` · <span data-native-reach-state="${esc(reach.state)}">${esc(reach.words)}${reach.address ? ` (tried <span class="font-mono">${esc(reach.address)}</span>)` : ''}</span>` : ''}${row.asset_guid
-        ? ` · database asset <span class="font-mono" title="Egeria database asset">${esc(row.asset_guid)}</span>` : ''}`;
+        ? ` · ${esc(row.asset_kind || 'asset')} <span class="font-mono" title="Egeria ${esc(row.asset_kind || 'asset')}">${esc(row.asset_guid)}</span>` : ''}`;
     }
     case 'awaiting_registration':
       return `Egeria says <span class="font-mono">${esc(r.egeria_status)}</span> · read ${timeSpan(r.read_at)}`

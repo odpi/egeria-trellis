@@ -13,7 +13,14 @@ Definitions (a database), all derived from persisted rows, never from the branch
   says which source that was. Needs the optional `re` extra; without it the result is `not_applicable`.
 - *not yet*: every other known schema, partitioned by its newest scope choice, so the counts add up:
   undecided; chosen by a person; chosen by a rule a person confirmed; left out by a person; left out by a
-  rule a person confirmed.
+  rule a person confirmed. A schema with no choice that another family holds at this endpoint is not
+  "undecided": it sits on an `in_other_family` line per family, "in Egeria under '<family>' · not RE's"
+  (D1-e). The source is the newest `endpoint_resolved` proof (node `database`, written by RE's read-back):
+  `detail["resolution"]["schemas"][<name>]` is a list of elements, each with `own` (bool) and `family`
+  (str); an element with `own` false puts the schema in that family. Those two fields are the whole
+  contract; nothing of RE's is imported for it. No such row, or a resolution with `error` set, and the
+  line is absent: nothing is guessed. A person's choice outranks it (a chosen or left-out schema keeps
+  its bucket).
 - Proofs read before the newest `egeria_reset` marker are what Egeria once held and are not counted.
 """
 from __future__ import annotations
@@ -31,6 +38,7 @@ _STATE = ("attach_requested", "target_attached", "elements_read_back", "removed"
 _BLOCKED = "leave_out_blocked"
 _REPORT = "report_published"
 _RESET = "egeria_reset"
+_ENDPOINT = "endpoint_resolved"
 
 
 class CountLine(BaseModel):
@@ -39,6 +47,7 @@ class CountLine(BaseModel):
     count: int
     rows: dict[str, list[int]] = Field(default_factory=dict)   # table -> the ids counted
     names: list[str] = Field(default_factory=list)
+    family: str = ""            # in_other_family only: the family the line names (its label says it in words)
 
 
 class Group(BaseModel):
@@ -82,6 +91,13 @@ def _ts(value: str):
     return None
 
 
+def _stamp(value: str) -> str:
+    """The page's one time form, "MM-DD HH:MM", for the words; the raw value when it cannot be read (`as_of` itself
+    stays raw for anything that compares it)."""
+    d = _ts(value)
+    return d.strftime("%m-%d %H:%M") if d else str(value or "")
+
+
 def _result(resource_type, slug, state, reason, **kw) -> CoverageResult:
     env = Envelope(result_state=state, result_state_reason=reason, producer_version=__version__,
                    scope=f"{resource_type}:{slug}")
@@ -99,6 +115,19 @@ def _node_set(ods: OdsReader, slug: str) -> dict:
         return resolve_node_set(view, slug)
     except Exception as exc:  # noqa: BLE001  the registry could not answer: not "no schemas"
         raise OdsUnreadable(f"the node set could not be read: {type(exc).__name__}: {exc}") from exc
+
+
+def _held_elsewhere(resolution: dict, names: list[str]) -> dict[str, str]:
+    """schema name -> the other family holding it at this endpoint, read from an endpoint_resolved proof's
+    `resolution` (each schema's elements carry `own` and `family`)."""
+    schemas = resolution.get("schemas") or {}
+    out = {}
+    for n in names:
+        other = next((e for e in schemas.get(n) or [] if isinstance(e, dict) and e.get("own") is False
+                      and e.get("family")), None)
+        if other is not None:
+            out[n] = other["family"]
+    return out
 
 
 def curation_coverage(ods: OdsReader, resource_type: str, slug: str) -> CoverageResult:
@@ -189,11 +218,17 @@ def curation_coverage(ods: OdsReader, resource_type: str, slug: str) -> Coverage
     as_of = max(read_ats, key=lambda v: _ts(v) or _ts("1970-01-01T00:00:00"), default="")
 
     rest = [n for n in universe if n not in published and n not in blocked]
+    endpoint = next((p for p in reversed(proofs) if p["node_kind"] == "database" and p["proof"] == _ENDPOINT), None)
+    resolution = (endpoint or {}).get("detail", {}).get("resolution") or {}
+    held = {} if endpoint is None or resolution.get("error") else _held_elsewhere(resolution, rest)
     buckets: dict[str, list[str]] = {k: [] for k in
                                      ("undecided", "chosen", "chosen_confirmed", "left_out", "left_out_confirmed")}
+    others: dict[str, list[str]] = {}
     for n in rest:
         ev = choice.get(n)
-        if ev is None:
+        if ev is None and n in held:
+            others.setdefault(held[n], []).append(n)
+        elif ev is None:
             buckets["undecided"].append(n)
         elif ev["choice"] == "catalogue":
             buckets["chosen" if ev["source"] == "person" else "chosen_confirmed"].append(n)
@@ -206,6 +241,10 @@ def curation_coverage(ods: OdsReader, resource_type: str, slug: str) -> Coverage
         CountLine(key=k, label=labels[k], count=len(v), names=v,
                   rows={"catalogue_scope_events": [choice[n]["id"] for n in v if n in choice]})
         for k, v in buckets.items()]
+    not_yet_lines[1:1] = [
+        CountLine(key="in_other_family", label=f"in Egeria under '{family}' · not RE's", count=len(v), names=v, family=family,
+                  rows={"catalogue_commit_proofs": [endpoint["id"]]})
+        for family, v in sorted(others.items())]
     not_yet_total = len(rest)
 
     superseded = outbox.get("superseded", [])
@@ -217,7 +256,7 @@ def curation_coverage(ods: OdsReader, resource_type: str, slug: str) -> Coverage
                                        rows={"egeria_outbox": superseded}))
 
     pub_words = ("published · " + " · ".join(f"{l.count} {l.label}" for l in pub_lines if l.count)
-                 + (f" · read back {as_of}" if as_of else "")) if published or report else "nothing published yet"
+                 + (f" · read back {_stamp(as_of)}" if as_of else "")) if published or report else "nothing published yet"
     ny_words = f"not yet published · {not_yet_total}: " + " · ".join(
         f"{l.count} {l.label}" for l in not_yet_lines if l.count) if not_yet_total else "not yet published · none"
     bl_words = f"blocked · {len(blocked)}" if blocked else "blocked · none"

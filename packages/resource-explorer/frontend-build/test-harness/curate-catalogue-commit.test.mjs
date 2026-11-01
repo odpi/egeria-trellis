@@ -87,7 +87,7 @@ function previewFor(over = {}) {
     manifest: {
       lines: [
         { id: 're_publishes', mechanism: 1, text: "RE publishes the server and database assets and RE's own survey report, supplying the database description and version, and joins the deployment's publish zones: zone-a, zone-b. That is written before any target is attached. Not carried: owner, not declared on Context." },
-        { id: 'cataloguer_creates', mechanism: 2, text: "Egeria's cataloguer creates tables and columns for 2 schema targets (2 to attach now). Each is a schema-kind target, never the database or the server. The elements arrive on the daemon's next refresh, not now." },
+        { id: 'cataloguer_creates', mechanism: 2, text: "Egeria's cataloger creates tables and columns for 2 schema targets (2 to attach now). Each is a schema-kind target, never the database or the server. The elements arrive on the daemon's next refresh, not now." },
         { id: 'survey_measures', mechanism: 3, text: "Egeria's survey is limited to your chosen schemas: sales, archive" },
         { id: 'whole_schemas', mechanism: 0, text: 'Egeria adds whole schemas · table choices are kept for when it can' },
       ],
@@ -202,7 +202,7 @@ test('the manifest lists the three mechanisms in order, the target count, the su
   assert.deepEqual(rows, ['publishes', 'catalogs', 'surveys', 'left_out', 'undecided']);
   assert.match(flat(document.querySelector('[data-scope-manifest-row="catalogs"]')), /Egeria adds your included schemas.*2 · sales, archive.*next refresh/);
   assert.match(flat(lines[0]), /^1\. RE publishes .* before any target is attached/);
-  assert.match(flat(lines[1]), /^2\. Egeria's cataloguer creates tables and columns for 2 schema targets .* never the database or the server/);
+  assert.match(flat(lines[1]), /^2\. Egeria's cataloger creates tables and columns for 2 schema targets .* never the database or the server/);
   assert.match(flat(lines[3]), /^3\. Egeria's survey is limited to your chosen schemas: sales, archive$/);
   assert.match(flat(lines[2]), /^Egeria adds whole schemas · table choices are kept for when it can$/);
   const btnBox = document.querySelector('[data-scope-commit-row]');
@@ -286,7 +286,7 @@ function committedView() {
     schemas: {
       sales: { state: 'catalogued', words: 'published · 2 tables · read back 10-05 09:12', second: 'element · read back from Egeria' },
       archive: { state: 'attached_waiting', words: "attached · waiting for Egeria's next refresh", second: "connector's last refresh 09:05 (the connector's, not this schema's)" },
-      old: { state: 'deleted', words: 'deleted in Egeria · 10-05 09:30', second: "was published · Egeria's cataloguer still lists this schema until its connector restarts · nothing is recreated" },
+      old: { state: 'deleted', words: 'deleted in Egeria · 10-05 09:30', second: "was published · Egeria's cataloger still lists this schema until its connector restarts · nothing is recreated" },
       plain: { state: 'failed', words: 'failed · 500 Egeria says no', second: 'step: attach · outbox #7 · will retry' },
     },
     tables: {
@@ -324,7 +324,7 @@ test('every state word on a schema row is the server\'s, with its glyph and seco
 test('a schema whose attach action was sent reads "sent", between queued and attached (D-C ladder)', async () => {
   const v = committedView();
   v.commit.schemas.q = { state: 'sent', words: 'sent to Egeria · attach action a0008 · waiting for the target',
-    second: "Egeria's attach action was started; its target is not in the cataloguer's list yet" };
+    second: "Egeria's attach action was started; its target is not in the cataloger's list yet" };
   const { document } = await setUp(v, previewFor());
   const w = stateOf(document, 'schema:q');
   assert.equal(w.dataset.scopeEgeriaWord, 'sent');

@@ -12,7 +12,7 @@ const STEPS = (over = {}) => [
   ['publish_elements', 'done', 'published'], ['owner', 'done', 'owner set'], ['schema_targets', 'done', '1 attached · 2 already attached'],
   ['leave_outs', 'skipped', 'no schema to remove or archive'], ['survey_report', 'done', 'already in Egeria · report abcd1234 · 76 annotations in Egeria'],
   ['survey', 'submitted', "submitted · 10-06 13:25 · read back 10-06 13:27: running in Egeria · IN_PROGRESS · 3 annotations so far"],
-  ['refresh', 'skipped', 'the cataloguer was already refreshing · elements arrive on its pass'],
+  ['refresh', 'skipped', 'the cataloger was already refreshing · elements arrive on its pass'],
   ['zone_membership', 'skipped', 'zones left to Egeria'], ['read_back', 'pending', ''],
 ].map(([name, state, detail]) => ({ name, state, detail, ...(over[name] || {}) }));
 const REC = (steps, extra = {}) => ({ id: 'a3f2c001', state: 'running', author: 'me', requested_at: '2026-10-06T13:25:00', steps, ...extra });

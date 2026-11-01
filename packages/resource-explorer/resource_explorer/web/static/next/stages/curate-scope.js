@@ -422,13 +422,16 @@ export function egeriaStateHtml(node, commit) {
  *  newest read-back's `endpoint_resolved` row (`view.commit.endpoint`). One row per RE schema: RE's element, the
  *  other family's element of the same name (or that there is none), and what hangs off RE's copy. Plan only: the
  *  page offers no press for it. A unique endpoint draws nothing; a failed endpoint read says so. */
+/** The page's one time form, "MM-DD HH:MM" (catalogue_commit._stamp's), for a stored ISO time. */
+const stamp = (iso) => `${md(iso)} ${String(iso || '').slice(11, 16)}`.trim();
+
 /** The newest press, from its `reanchor_applied` row: acknowledge + validate ("26 members · 22 added · read back
  *  <time>"), when and by whom, and the schemas it could not link, muted, one per line (§13). */
 function pressHtml(p) {
   if (!p) return '';
   const failed = p.failed || [];
   const list = failed.map((f) => `<div data-scope-reanchor-failed="${esc(f.schema)}" class="text-provenance text-ink-muted">${esc(f.schema)}: not linked · ${esc(f.error)}</div>`).join('');
-  return `<div data-scope-reanchor-result data-added="${esc(String((p.counts || {}).added ?? ''))}" class="text-provenance text-ink">${esc(p.words)}<span class="text-ink-muted"> · pressed ${esc(md(p.at))}${p.by ? ` · ${esc(p.by)}` : ''}</span></div>${list}`;
+  return `<div data-scope-reanchor-result data-added="${esc(String((p.counts || {}).added ?? ''))}" class="text-provenance text-ink">${esc(p.words)}<span class="text-ink-muted"> · pressed ${esc(stamp(p.at))}${p.by ? ` · ${esc(p.by)}` : ''}</span></div>${list}`;
 }
 
 /** D1-b (§13): the database row's one press, "Link the pack's N schemas". Always drawn on a database row; off, with
@@ -441,8 +444,10 @@ export function reanchorButtonHtml(db, me, endpoint = {}) {
     : endpoint.error ? 'the read of this endpoint failed · read Egeria again first'
       : db.members_after === null || db.members_after === undefined ? db.words
         : !n ? 'nothing to add' : '';
-  const label = `Link the pack's ${n} schema${n === 1 ? '' : 's'}`;
-  return `<button type="button" data-scope-reanchor-btn data-to-add="${n}" data-members-after="${esc(String(db.members_after ?? ''))}" data-link-type="${esc(db.link_type)}" data-re-guid="${esc(db.re_guid)}" ${why ? `disabled title="${esc(why)}"` : ''} class="${why ? 'opacity-60 text-ink-muted' : 'cursor-pointer text-accent-ink underline'} bg-transparent p-0 text-caveat">${esc(label)}</button>${why && me ? ` <span data-scope-reanchor-why class="text-provenance text-ink-muted">${esc(why)}</span>` : ''}`;
+  // spent (W26): nothing left to add reads "nothing to link", never "Link the pack's 0 schemas"
+  const spent = !n && why === 'nothing to add';
+  const label = spent ? 'nothing to link' : `Link the pack's ${n} schema${n === 1 ? '' : 's'}`;
+  return `<button type="button" data-scope-reanchor-btn data-to-add="${n}" data-members-after="${esc(String(db.members_after ?? ''))}" data-link-type="${esc(db.link_type)}" data-re-guid="${esc(db.re_guid)}" ${why ? `disabled title="${esc(why)}"` : ''} class="${why ? 'opacity-60 text-ink-muted' : 'cursor-pointer text-accent-ink underline'} bg-transparent p-0 text-caveat">${esc(label)}</button>${why && me && !spent ? ` <span data-scope-reanchor-why class="text-provenance text-ink-muted">${esc(why)}</span>` : ''}`;
 }
 
 /** The confirm's words, from the button's own data: the count, the type read, the result, the undo. */

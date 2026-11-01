@@ -477,7 +477,7 @@ def _link_guids(gateway, schema_guid: str, link_type: str, database_guid: str, s
 
 def apply_words(counts: dict, outcomes: list[dict], members: int | None, read_at: str) -> str:
     """Acknowledge + validate (§13): "26 members · 22 added · read back <time>", with the schemas not linked."""
-    at = str(read_at or "")[:16].replace("T", " ")
+    at = str(read_at or "")[5:16].replace("T", " ")      # the page's one form, "MM-DD HH:MM" (W25)
     parts = [f"{members} members" if members is not None else "members not read back", f"{counts[ADDED]} added"]
     if counts[ALREADY_LINKED]:
         parts.append(f"{counts[ALREADY_LINKED]} already linked")
