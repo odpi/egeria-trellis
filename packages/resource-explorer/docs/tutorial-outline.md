@@ -598,9 +598,10 @@ surveying again. Curate runs no checks; it asks you for a decision.
    - *Explain (design note D1-a):* a database may show as already in Egeria, matched by its endpoint, rather than
      published fresh: Resource Explorer adds to the element Egeria already holds (gap G24).
    - *Explain (design note D1-e, merged as trellis #962, 2026-10-31):* where Egeria already holds a database's
-     schemas under another family, Curate's **By analysis** coverage counts them apart, in words like "22 in Egeria
-     under '<family>' · not RE's". That sentence has not yet been read back on the screen: read the words on the
-     screen before writing them in.
+     schemas under another family, Curate's **By analysis** coverage counts them apart. Read on the screen on
+     2026-11-01 (coco_pharma, Curate › By analysis): "not yet published · 26: 3 undecided · 22 in Egeria under 'Coco PostgreSQL Server 1' · not RE's · 1 left out by a confirmed proposal".
+     The counts and the family name are that screen's, not the reader's: read the words on the screen before
+     writing them in.
 
 **What can go wrong.**
 
@@ -936,7 +937,7 @@ in this outline; each is named where it bites.
 | G21 | This writer's browser was not signed in, so the register dialogs, the new-investigation dialog and the chat rail are outlined from the source code (marked "code"). | 3, 8, 12 | The prose writer reads each on the screen, signed in. |
 | G22 | Steps whose exact screen words nobody has recorded: a wrong password, Egeria down at sign-in, an empty investigation name, "promote" on a work list, the Assessment tab on a database, a step that asks before running a prerequisite. | 2, 5, 6, 11, 12 | Read on the screen during the prose phase; some need a deliberate error to see. |
 | G23 | The overview surveys are uneven across kinds (definitions, 2026-10-29). A database has no Discovery survey. A database's Assessment survey has one step. File-system stage surveys are not yet identified. Names are inconsistent: "Scouting Survey" and "Repo Scouting Scan" are both repository Scouting surveys; "Database Scouting Scan" is the database's overview; "Assessment Survey" and "Analysis Survey" carry no kind in their names, while "Repo Discovery Survey" does. A reader cannot tell from a name which survey is the overview. | 4, 5, 6 | One naming rule (for example "<Kind> <Stage> Survey" for every overview), and the missing overviews either built or explained. |
-| G24 | After design note D1-a, a database can show as already in Egeria, matched by its endpoint, rather than published fresh. A reader who expects "published by RE" sees a different state. | 9, 10 | Explain it at part 10, step 7. D1-e (trellis #962) adds a coverage line, in words like "22 in Egeria under '<family>' · not RE's"; read the words on the screen before writing them in. |
+| G24 | After design note D1-a, a database can show as already in Egeria, matched by its endpoint, rather than published fresh. A reader who expects "published by RE" sees a different state. | 9, 10 | Explain it at part 10, step 7. D1-e (trellis #962) adds a coverage line, read on the screen on 2026-11-01 for coco_pharma as "not yet published · 26: 3 undecided · 22 in Egeria under 'Coco PostgreSQL Server 1' · not RE's · 1 left out by a confirmed proposal"; those counts are that screen's, so read the words on the screen before writing them in. |
 
 ---
 
