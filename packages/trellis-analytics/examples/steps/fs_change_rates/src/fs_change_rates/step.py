@@ -33,6 +33,13 @@ def _parse(value) -> datetime | None:
     return parsed
 
 
+def _stamp(value) -> str:
+    """The page's one time form for words, "MM-DD HH:MM" (W36; fs_activity's W28 copy, as curation_coverage's); the raw
+    value when it cannot be read. `fromAsOf`/`toAsOf` in the value stay raw."""
+    t = _parse(value)
+    return t.strftime("%m-%d %H:%M") if t else str(value)
+
+
 def _interval(days: float) -> str:
     """"3.5 days", "6.2 hours", "14 minutes": the interval in the unit a person reads it in."""
     if days >= 1:
@@ -60,14 +67,14 @@ def run(inputs) -> list[dict]:
         return [_absent(slug, "no walk has kept per-file rows for this file system yet; a change needs two walks",
                         "no walk yet; a change needs two")]
     if len(runs) < 2:
-        return [_absent(slug, f"only one walk has kept per-file rows ({runs[0]['run_id']}); a change needs two",
+        return [_absent(slug, f"only one walk has kept per-file rows ({_stamp(runs[0]['run_id'])}); a change needs two",
                         "one walk only; a change needs two")]
     new, old = runs
     start, end = _parse(old["run_id"]), _parse(new["run_id"])
     days = (end - start).total_seconds() / 86400.0 if start and end else None
     if not days or days <= 0:
-        why = (f"the two walks ({old['run_id']}, {new['run_id']}) have no interval between them" if days is not None
-               else f"a walk's time could not be read ({old['run_id']}, {new['run_id']})")
+        why = (f"the two walks ({_stamp(old['run_id'])}, {_stamp(new['run_id'])}) have no interval between them"
+               if days is not None else f"a walk's time could not be read ({_stamp(old['run_id'])}, {_stamp(new['run_id'])})")
         return [_absent(slug, why, "no interval between the two walks")]
 
     before = {r["file_path"]: r for r in inputs.ods.filesystem_walk_files(slug, old["run_id"])}
@@ -75,7 +82,7 @@ def run(inputs) -> list[dict]:
     common = before.keys() & after.keys()
     modified = sum(1 for p in common if _changed(before[p], after[p]))
     unchanged = len(common) - modified
-    span = f"over {_interval(days)}, {old['run_id']} to {new['run_id']}"
+    span = f"over {_interval(days)}, {_stamp(old['run_id'])} to {_stamp(new['run_id'])}"
     base = {"Files Modified": modified, "Files Unchanged": unchanged, "Interval Days": round(days, 4),
             "fromAsOf": old["run_id"], "toAsOf": new["run_id"], "basis": CAVEAT}
 

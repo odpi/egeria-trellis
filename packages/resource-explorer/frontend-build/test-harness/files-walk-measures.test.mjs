@@ -166,6 +166,11 @@ test('narratives are proposals with their file and modified date as evidence', a
 test('tables are real tables inside a scrolling box, truncating cells, and resize like every /next table', async () => {
   const { host, fs } = await setUp([VIEW(REACH.re_only, EXT())]);
   await fs.mountFolderSurvey(host, 'walkme');
+  // Walk measures holds tables, so it starts collapsed; its tables are made resizable when it first opens.
+  const section = host.querySelector('details[data-fs-section="measures"]');
+  assert.equal(section.open, false);
+  section.open = true;
+  section.dispatchEvent(new host.ownerDocument.defaultView.Event('toggle'));
   const tables = [...host.querySelectorAll('[data-fs-measure-table] table')];
   assert.equal(tables.length, 2);
   for (const t of tables) {

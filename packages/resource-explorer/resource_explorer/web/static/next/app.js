@@ -5571,11 +5571,22 @@ export function enrichmentAnalysisCardStateKey(row) {
   return 'no-surveyor';
 }
 
+/** Hover help for one analysis's Run press (hover help, slice 1): what it does, where to watch it, and for a file
+ *  system what it reads and that it publishes nothing. A disabled press keeps the title that says why it is off. */
+export function analysisRunTitle(kind = state.resourceType, name = runTitleName()) {
+  return `Queues this one analysis on ${name}. Watch it in Activity; the card redraws when it ends.${
+    kind === 'filesystem' ? " Runs over the last walk's kept rows; publishes nothing." : ''}`;
+}
+function runTitleName() {
+  const p = selectedProject();
+  return (p && (p.display_name || p.name)) || state.selectedSlug || 'this resource';
+}
+
 export function enrichmentAnalysisRowHtml(row) {
   const key = enrichmentAnalysisCardStateKey(row);
   const g = stateEntry(key);
   const runBtn = row.unlocked && row.runnable !== false && row.state !== 'measured'
-    ? `<button type="button" data-run-enrichment-analysis="${esc(row.id)}" ${selectedCredentialUnreadable() ? `disabled title="${CREDENTIAL_UNREADABLE_TEXT}"` : ''}
+    ? `<button type="button" data-run-enrichment-analysis="${esc(row.id)}" ${selectedCredentialUnreadable() ? `disabled title="${CREDENTIAL_UNREADABLE_TEXT}"` : `title="${esc(analysisRunTitle())}"`}
         class="cursor-pointer rounded-sm border border-accent bg-transparent px-2 py-[1px] text-provenance text-accent-ink">Run</button>`
     : '';
   return `<div class="border-b border-rule py-s2">
@@ -6086,7 +6097,7 @@ export function analysisIndexRowHtml(row) {
       class="shrink-0 cursor-pointer rounded-sm border border-rule-strong bg-transparent px-2 py-[2px] text-caveat text-ink-muted"
       >🗂 select &amp; publish</button>` : ''}
     ${analysisCredentialHtml(row)}
-    <button data-analysis-run="${esc(row.analysis_id)}" ${row.runnable ? '' : 'disabled title="' + esc(row.runnable_reason) + '"'}
+    <button data-analysis-run="${esc(row.analysis_id)}" ${row.runnable ? `title="${esc(analysisRunTitle())}"` : 'disabled title="' + esc(row.runnable_reason) + '"'}
       class="shrink-0 cursor-pointer rounded-sm border ${row.runnable ? 'border-accent text-accent-ink' : 'border-rule-strong text-ink-muted'} bg-transparent px-2 py-[2px] text-caveat"
       >${row.last_run_at ? 'Re-run' : 'Run'} →</button>
     ${row.runnable && row.uses_credential === 'stored'
