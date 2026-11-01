@@ -147,6 +147,16 @@ def test_change_rates_no_walk_and_one_walk_are_not_measured(fs_steps_installed, 
     walk(reg, "tree", "2026-10-01T00:00:00", [row("a.txt")])
     a = run(url, "fs_change_rates")["fs_change_rates"]
     assert state(a) == "not_established" and a.summary == "not measured · one walk only; a change needs two"
+
+
+def test_change_rates_one_walk_reason_says_the_walk_in_the_one_time_form(fs_steps_installed, fs_registry):
+    """W36: the reason named the walk by its raw ISO run id ("(2026-10-25T23:47:39.704588)"); it says "(10-25 23:47)"."""
+    reg, url = fs_registry
+    walk(reg, "tree", "2026-10-25T23:47:39.704588", [row("a.txt")])
+    a = run(url, "fs_change_rates")["fs_change_rates"]
+    reason = a.envelope.result_state_reason
+    assert "only one walk has kept per-file rows (10-25 23:47); a change needs two" in reason
+    assert "T23" not in reason and ".704588" not in reason
     assert "Files Changed" not in a.resource_properties          # never a zero where nothing was compared
 
 
