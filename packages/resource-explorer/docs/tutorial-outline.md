@@ -597,8 +597,9 @@ surveying again. Curate runs no checks; it asks you for a decision.
    on the screen.
    - *Explain (design note D1-a):* a database may show as already in Egeria, matched by its endpoint, rather than
      published fresh: Resource Explorer adds to the element Egeria already holds (gap G24).
-   - *Pending, once D1-e merges:* coverage will read "22 in Egeria under '<family>' · not RE's". Read the words on
-     the screen before writing them in.
+   - *Explain (design note D1-e, merged as trellis #962):* where Egeria already holds a database's schemas under
+     another family, Curate's **By analysis** coverage counts them apart: "22 in Egeria under '<family>' · not RE's".
+     The count and the family name are the reader's own; read them on the screen.
 
 **What can go wrong.**
 
@@ -934,7 +935,7 @@ in this outline; each is named where it bites.
 | G21 | This writer's browser was not signed in, so the register dialogs, the new-investigation dialog and the chat rail are outlined from the source code (marked "code"). | 3, 8, 12 | The prose writer reads each on the screen, signed in. |
 | G22 | Steps whose exact screen words nobody has recorded: a wrong password, Egeria down at sign-in, an empty investigation name, "promote" on a work list, the Assessment tab on a database, a step that asks before running a prerequisite. | 2, 5, 6, 11, 12 | Read on the screen during the prose phase; some need a deliberate error to see. |
 | G23 | The overview surveys are uneven across kinds (definitions, 2026-10-29). A database has no Discovery survey. A database's Assessment survey has one step. File-system stage surveys are not yet identified. Names are inconsistent: "Scouting Survey" and "Repo Scouting Scan" are both repository Scouting surveys; "Database Scouting Scan" is the database's overview; "Assessment Survey" and "Analysis Survey" carry no kind in their names, while "Repo Discovery Survey" does. A reader cannot tell from a name which survey is the overview. | 4, 5, 6 | One naming rule (for example "<Kind> <Stage> Survey" for every overview), and the missing overviews either built or explained. |
-| G24 | After design note D1-a, a database can show as already in Egeria, matched by its endpoint, rather than published fresh. A reader who expects "published by RE" sees a different state. | 9, 10 | Explain it at part 10, step 7. Pending D1-e: coverage will read "22 in Egeria under '<family>' · not RE's". |
+| G24 | After design note D1-a, a database can show as already in Egeria, matched by its endpoint, rather than published fresh. A reader who expects "published by RE" sees a different state. | 9, 10 | Explain it at part 10, step 7, with D1-e's coverage line (trellis #962): "22 in Egeria under '<family>' · not RE's". |
 
 ---
 

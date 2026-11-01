@@ -27,6 +27,18 @@ export function houseTime(v) {
   return typeof v === 'string' && ISO_TIME.test(v) ? v.slice(0, 16).replace('T', ' ') : null;
 }
 
+/** The page's one read-back time form, "MM-DD HH:MM" (W24; curation_coverage._stamp and catalogue_commit._stamp say
+ *  the same), for a stored time: ISO ("2026-10-09T17:51:36Z") or compact ("20261006T2100Z"). As stored, no zone
+ *  shift, like the routine's words. A date alone is "MM-DD"; anything unreadable comes back as it was. */
+const COMPACT_TIME = /^\d{4}(\d{2})(\d{2})T(\d{2})(\d{2})Z$/;
+export function stamp(v) {
+  const s = String(v ?? '');
+  if (/^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}/.test(s)) return `${s.slice(5, 10)} ${s.slice(11, 16)}`;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s.slice(5, 10);
+  const c = COMPACT_TIME.exec(s);
+  return c ? `${c[1]}-${c[2]} ${c[3]}:${c[4]}` : s;
+}
+
 /** A stamp as the READER's local time ("Oct 16, 10:42 AM"), never the UTC date the server stored. Empty when the
  *  stamp cannot be read. */
 export function localTime(iso) {

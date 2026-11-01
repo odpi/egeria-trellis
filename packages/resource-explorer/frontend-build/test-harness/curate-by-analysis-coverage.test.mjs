@@ -50,7 +50,7 @@ test('measured: the three groups, their counts and the read-back time are drawn 
   const n = (k) => root.querySelector(`[data-coverage-line="${k}"]`).getAttribute('data-count');
   assert.equal(n('schemas'), '2'); assert.equal(n('tables'), '5'); assert.equal(n('undecided'), '2');
   assert.equal(n('blocked'), '1'); assert.equal(n('superseded'), '2');
-  assert.match(root.querySelector('[data-coverage-as-of]').textContent, /read back 2026-10-09/);
+  assert.match(root.querySelector('[data-coverage-as-of]').textContent, /read back 10-09 17:51/);
 });
 
 for (const [state, reason] of [['not_established', 'the registry did not answer'], ['not_applicable', 'curation coverage is measured for databases in this release; repo has no curation record it reads']]) {

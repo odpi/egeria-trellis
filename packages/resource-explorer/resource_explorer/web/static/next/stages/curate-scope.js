@@ -36,7 +36,7 @@ import { glyphSpan, stateEntry } from '/static/next/glyphs.js';
 import { cue } from '/static/next/stages/repo-manifest.js';
 import { SCOPE_COLS, MANIFEST_COLS } from '/static/next/stages/scope-columns.js';
 import { cellStyle, handleHtml, innerStyle, headCellStyle, attachColumnResize } from '/static/next/colresize.js';
-import { savedLine } from '/static/next/format.js';
+import { savedLine, stamp } from '/static/next/format.js';
 import {
   SOURCE_WORD, EGERIA_NOT_MEASURED, md, nodeSourceLine, scopeCollapsedText,
   readScopePref, writeScopePref, scopeStartsOpen,
@@ -422,9 +422,6 @@ export function egeriaStateHtml(node, commit) {
  *  newest read-back's `endpoint_resolved` row (`view.commit.endpoint`). One row per RE schema: RE's element, the
  *  other family's element of the same name (or that there is none), and what hangs off RE's copy. Plan only: the
  *  page offers no press for it. A unique endpoint draws nothing; a failed endpoint read says so. */
-/** The page's one time form, "MM-DD HH:MM" (catalogue_commit._stamp's), for a stored ISO time. */
-const stamp = (iso) => `${md(iso)} ${String(iso || '').slice(11, 16)}`.trim();
-
 /** The newest press, from its `reanchor_applied` row: acknowledge + validate ("26 members · 22 added · read back
  *  <time>"), when and by whom, and the schemas it could not link, muted, one per line (§13). */
 function pressHtml(p) {
