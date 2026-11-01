@@ -59,3 +59,25 @@ def test_w7_the_empty_state_says_why():
 def test_w14_the_open_data_screens_are_visible_entries():
     assert "name: 'Open data', visible: true" in ADMIN
     assert "data-admin-tab" in ADMIN
+
+
+def test_dcat_ap_registration_help_and_refusal_use_us_spelling_and_say_there_is_no_search():
+    import re
+
+    from resource_explorer.open_data.dcat_ap import DcatApAdapter, ProbeRefused
+    from resource_explorer.open_data.transport import TransportError
+
+    assert "<option>DCAT-AP</option>" in OD and "DCAT_AP_HELP" in OD
+    help_text = re.search(r"DCAT_AP_HELP = '([^']*)'", OD).group(1)
+    assert "1 to 3 addresses" in help_text and "has no search" in help_text
+    refusal = ""
+    try:
+        DcatApAdapter.probe("https://nowhere.example", type("T", (), {
+            "get_json": lambda self, url, params=None, headers=None: (_ for _ in ()).throw(TransportError("HTTP 404"))})())
+    except ProbeRefused as exc:
+        refusal = str(exc)
+    cost = DcatApAdapter.manifest.cost_note
+    for words in (help_text, refusal, cost):
+        assert words
+        assert not re.search(r"licen[cs]e|colou?r|catalogue|behaviour|organis", words, re.I), words   # US spelling
+    assert refusal.endswith(").") and ". " not in refusal      # one sentence

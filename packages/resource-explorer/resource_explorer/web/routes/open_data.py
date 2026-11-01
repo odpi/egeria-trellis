@@ -127,7 +127,8 @@ def register_portal(reg: PortalRegistration, request: Request) -> dict:
     store = _store()
     try:
         portal = service.register_portal(store, display_name=reg.display_name, api_kind=reg.api_kind,
-                                         base_url=reg.base_url, api_key=reg.api_key, registered_by=who, slug=reg.slug)
+                                         base_url=reg.base_url, api_key=reg.api_key, registered_by=who, slug=reg.slug,
+                                         transport=_transport())
     except service.OpenDataError as exc:
         raise _http(exc) from exc
     return _portal_summary(portal)
@@ -135,13 +136,16 @@ def register_portal(reg: PortalRegistration, request: Request) -> dict:
 
 @router.post("/portals/check")
 def check_portal(reg: PortalRegistration) -> dict:
-    """Can RE reach this portal? One read-only call (page 1, one row). A warning for the form, never a gate."""
-    from resource_explorer.open_data.adapters import adapter_for_api_kind
+    """Can RE reach this portal? Read-only: one call (page 1), or the adapter's probe (1 to 3 calls). A warning for the form, never a gate."""
+    from resource_explorer.open_data.adapters import Adapter, adapter_for_api_kind
 
     cls = adapter_for_api_kind(reg.api_kind, "portal")
     if cls is None:
         return {"ok": False, "words": f"no adapter for {reg.api_kind} yet"}
     try:
+        if cls.probe.__func__ is not Adapter.probe.__func__:       # an adapter that finds its feed says where
+            found = cls.probe(reg.base_url.rstrip("/"), _transport())
+            return {"ok": True, "words": f"reachable · the feed is {found['feed_url']}", "total": found["total"]}
         got = cls(reg.base_url.rstrip("/"), _transport(), "").search("", {}, 1)
     except Exception as exc:
         return {"ok": False, "words": f"could not reach it · {exc}"[:240]}

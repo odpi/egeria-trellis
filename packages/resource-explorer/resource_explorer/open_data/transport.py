@@ -9,6 +9,8 @@ from typing import Any, Protocol
 
 USER_AGENT = "ResourceExplorer-OpenData/1 (read-only catalog queries)"
 TIMEOUT_SECONDS = 20.0
+#: The most a JSON answer may weigh. A catalog `data.json` can be tens of MB; one past this is refused, not half-read.
+MAX_JSON_BYTES = 64 * 1024 * 1024
 
 
 class TransportError(RuntimeError):
@@ -27,19 +29,31 @@ class HttpTransport:
     """GET JSON over httpx. Read-only; a non-2xx answer or non-JSON body raises `TransportError`."""
 
     def get_json(self, url: str, params: dict | None = None, headers: dict | None = None) -> Any:
+        import json
+
         import httpx
 
         sent = {"User-Agent": USER_AGENT, "Accept": "application/json", **(headers or {})}
         try:
-            resp = httpx.get(url, params=params, headers=sent, timeout=TIMEOUT_SECONDS, follow_redirects=True)
+            with httpx.stream("GET", url, params=params, headers=sent, timeout=TIMEOUT_SECONDS,
+                              follow_redirects=True) as resp:
+                if resp.status_code >= 400:
+                    raise TransportError(f"{url}: HTTP {resp.status_code}")
+                stated = resp.headers.get("content-length")
+                if stated and stated.isdigit() and int(stated) > MAX_JSON_BYTES:
+                    raise TransportError(f"{url}: the answer is {int(stated):,} bytes, over the {MAX_JSON_BYTES:,} byte read limit; not read")
+                buf = bytearray()
+                for chunk in resp.iter_bytes():
+                    buf.extend(chunk)
+                    if len(buf) > MAX_JSON_BYTES:
+                        raise TransportError(f"{url}: the answer is over the {MAX_JSON_BYTES:,} byte read limit; not read")
+                ctype = resp.headers.get("content-type", "").split(";")[0].strip() or "not stated"
         except httpx.HTTPError as exc:
             raise TransportError(f"{url}: {exc}") from exc
-        if resp.status_code >= 400:
-            raise TransportError(f"{url}: HTTP {resp.status_code}")
         try:
-            return resp.json()
+            return json.loads(bytes(buf))
         except ValueError as exc:
-            raise TransportError(f"{url}: the answer was not JSON") from exc
+            raise TransportError(f"{url}: the answer was not JSON (content-type {ctype})") from exc
 
     def get_text(self, url: str, params: dict | None = None, headers: dict | None = None) -> str:
         """GET a text body (re3data answers XML). Same rules as `get_json`: read-only, non-2xx raises."""

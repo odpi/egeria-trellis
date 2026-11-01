@@ -51,6 +51,9 @@ class AdapterManifest:
     needs_key: bool = False
     #: Other spellings of the api_kind a directory may state ("CKAN API"); matched case-insensitively.
     api_kind_aliases: tuple[str, ...] = ()
+    #: One sentence the price line and the portal's cost words carry when the source cannot do what the person
+    #: might assume (a DCAT feed has no search call). `{pages}` is replaced by "N page(s)". Empty = nothing to add.
+    cost_note: str = ""
 
     def validate(self) -> "AdapterManifest":
         if not self.name or not self.api_kind:
@@ -79,6 +82,14 @@ class Adapter:
         self.base_url = (base_url or "").rstrip("/")
         self.transport = transport
         self.api_key = api_key
+        #: The page size this source is read at: the registered row's value when the caller sets it, else the manifest's.
+        self.page_size = self.manifest.page_size
+
+    @classmethod
+    def probe(cls, base_url: str, transport: Transport) -> dict | None:
+        """At registration: look at what `base_url` answers and return what to store (`feed_url`, `page_size`).
+        None (the default) = nothing to probe; the URL as typed is the base URL."""
+        return None
 
     # portal
     def search(self, terms: str, filters: dict | None, page: int) -> dict:
@@ -105,7 +116,9 @@ def _builtins() -> list[type[Adapter]]:
     from resource_explorer.open_data.dataportals import DataPortalsDirectory
     from resource_explorer.open_data.re3data import Re3dataDirectory
 
-    return [CkanAdapter, DataPortalsDirectory, DataCiteResolver, Re3dataDirectory]
+    from resource_explorer.open_data.dcat_ap import DcatApAdapter
+
+    return [CkanAdapter, DcatApAdapter, DataPortalsDirectory, DataCiteResolver, Re3dataDirectory]
 
 
 def _entry_points():

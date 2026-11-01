@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from resource_explorer.open_data import match as match_mod
 from resource_explorer.open_data.absence import NOT_REPORTED
 from resource_explorer.open_data.adapters import (
-    Adapter, adapter_for_api_kind, discover_adapters, price)
+    Adapter, Price, adapter_for_api_kind, discover_adapters, price)
 from resource_explorer.open_data.store import OpenDataStore, normalise_url, now, slugify
 
 log = logging.getLogger(__name__)
@@ -83,18 +83,66 @@ def read_api_key(secret_ref: str) -> str:
 
 
 def register_portal(store: OpenDataStore, *, display_name: str, api_kind: str, base_url: str, api_key: str = "",
-                    origin: str = "hand", registered_by: str = "", slug: str = "") -> dict:
+                    origin: str = "hand", registered_by: str = "", slug: str = "", transport=None) -> dict:
     cls = adapter_for_api_kind(api_kind, "portal")
     if cls is None:
         known = sorted(c.manifest.api_kind for c in discover_adapters().values() if c.manifest.role == "portal")
         raise OpenDataError(f"No adapter speaks {api_kind!r}; the adapters here speak {known}. "
                             f"A portal RE cannot search yet is kept through a directory import, not by hand.")
-    return _insert_portal(store, cls, display_name=display_name, api_kind=cls.manifest.api_kind,
-                          base_url=_check_url(base_url), api_key=api_key, origin=origin,
-                          registered_by=registered_by, slug=slug)
+    typed, page_size = _check_url(base_url), None
+    held = store.portal_by_url(typed)
+    if held:
+        raise OpenDataError(f"Already registered as '{held['display_name']}' ({held['slug']}).")
+    base_url = typed
+    probed = _probe(cls, typed, transport)
+    if probed:
+        base_url = _check_url(probed["feed_url"])
+        page_size = probed["page_size"] if isinstance(probed.get("page_size"), int) else None
+    portal = _insert_portal(store, cls, display_name=display_name, api_kind=cls.manifest.api_kind,
+                            base_url=base_url, api_key=api_key, origin=origin,
+                            registered_by=registered_by, slug=slug, page_size=page_size)
+    _log_registration(store, portal, typed, probed)
+    return portal
 
 
-def _insert_portal(store, cls, *, display_name, api_kind, base_url, api_key="", origin, registered_by, slug=""):
+def _log_registration(store, portal: dict, typed: str, probed: dict | None) -> None:
+    """The activity entry of a registration. The row's `base_url` is the feed the probe found, so what the person
+    typed is kept here. Best effort: the portal is registered whether or not the entry could be written."""
+    import uuid
+    from datetime import datetime, timezone
+
+    from resource_explorer.registry import ActivityEntry
+
+    try:
+        store.registry.write_activity(ActivityEntry(
+            id=str(uuid.uuid4()), ts=datetime.now(timezone.utc).isoformat(), operation="register_portal",
+            intent="discovery", entity_type="open_data_portal", entity_slug=portal["slug"],
+            entity_name=portal["display_name"], entity_location=portal["base_url"],
+            summary=f"registered {portal['display_name']} ({portal['api_kind']})"
+                    + (f"; the feed is {portal['base_url']}" if typed != portal["base_url"] else ""),
+            annotations=[{"typed_url": typed, "feed_url": portal["base_url"], "probe": probed or {},
+                          "registered_by": portal.get("registered_by", "")}]))
+    except Exception:  # noqa: BLE001 - registered; only the note of the typed URL is lost
+        log.warning("Could not record the registration of portal %s", portal.get("slug"), exc_info=True)
+
+
+def _probe(cls, base_url: str, transport) -> dict | None:
+    """What the adapter learns from the URL at registration (1 to 3 read-only calls for DCAT-AP), or None when the
+    adapter has nothing to probe. A URL it cannot read is refused here, in the adapter's one sentence."""
+    if cls.probe.__func__ is Adapter.probe.__func__:
+        return None
+    from resource_explorer.open_data.transport import TransportError
+
+    if transport is None:
+        raise ValueError("registering a portal whose adapter probes needs a transport")
+    try:
+        return cls.probe(base_url, transport)
+    except TransportError as exc:
+        raise OpenDataError(str(exc)) from exc
+
+
+def _insert_portal(store, cls, *, display_name, api_kind, base_url, api_key="", origin, registered_by, slug="",
+                   page_size=None):
     if not display_name.strip():
         raise OpenDataError("A portal needs a name.")
     held = store.portal_by_url(base_url)
@@ -105,7 +153,9 @@ def _insert_portal(store, cls, *, display_name, api_kind, base_url, api_key="", 
     m = cls.manifest if cls else None
     store.add_portal(slug=chosen, display_name=display_name.strip(), api_kind=api_kind, base_url=base_url,
                      secret_ref=ref, origin=origin, registered_by=registered_by, adapter=m.name if m else "",
-                     calls_per_page=m.calls_per_page if m else None, page_size=m.page_size if m else None)
+                     calls_per_page=m.calls_per_page if m else None,
+                     # a CKAN row keeps the manifest's size; a probed feed's own size wins
+                     page_size=page_size if page_size else (m.page_size if m else None))
     return store.get_portal(chosen)
 
 
@@ -127,7 +177,10 @@ def portal_adapter(portal: dict, transport) -> Adapter:
     cls = adapter_for_api_kind(portal["api_kind"], "portal")
     if cls is None:
         raise OpenDataError(f"No adapter for {portal['api_kind']} yet.")
-    return cls(portal["base_url"], transport, read_api_key(portal.get("secret_ref", "")))
+    adapter = cls(portal["base_url"], transport, read_api_key(portal.get("secret_ref", "")))
+    if portal.get("page_size"):
+        adapter.page_size = portal["page_size"]
+    return adapter
 
 
 def directory_adapter(directory: dict, transport) -> Adapter:
@@ -142,7 +195,9 @@ def portal_cost(portal: dict) -> dict:
     if cls is None:
         return {}
     m = cls.manifest
-    return {"calls_per_page": m.calls_per_page, "page_size": m.page_size, "needs_key": m.needs_key}
+    return {"calls_per_page": portal.get("calls_per_page") or m.calls_per_page,
+            "page_size": portal.get("page_size") or m.page_size, "needs_key": m.needs_key,
+            "cost_note": m.cost_note.format(pages="the pages you choose") if m.cost_note else ""}
 
 
 # ── search ───────────────────────────────────────────────────────────────────
@@ -154,8 +209,11 @@ def search_price(portal: dict, pages: int) -> dict:
     if not 1 <= pages <= MAX_SEARCH_PAGES:
         raise OpenDataError(f"A search is 1 to {MAX_SEARCH_PAGES} pages.")
     p = price(cls.manifest, pages)
+    p = Price(pages=p.pages, calls_per_page=portal.get("calls_per_page") or p.calls_per_page,
+              page_size=portal.get("page_size") or p.page_size)
+    note = cls.manifest.cost_note.format(pages=f"{pages} page{'s' if pages != 1 else ''}") if cls.manifest.cost_note else ""
     return {"pages": p.pages, "calls_per_page": p.calls_per_page, "calls": p.calls, "page_size": p.page_size,
-            "line": p.line, "rows_at_most": p.pages * p.page_size}
+            "line": p.line + (f" · {note}" if note else ""), "rows_at_most": p.pages * p.page_size}
 
 
 def _licence_verdict(row: dict, need: dict) -> str:
@@ -184,7 +242,8 @@ def run_search(store: OpenDataStore, portal_slug: str, *, terms: str, filters: d
     rows, dropped, total, calls = [], 0, NOT_REPORTED, 0
     for page in range(1, pages + 1):
         got = adapter.search(terms, filters, page)
-        calls += adapter.manifest.calls_per_page
+        # an adapter that knows what it spent says so (a one-document feed costs one call over many pages)
+        calls += got["calls"] if "calls" in got else adapter.manifest.calls_per_page
         total = got["total"]
         for row in got["rows"]:
             verdict = _licence_verdict(row, need)
@@ -193,10 +252,11 @@ def run_search(store: OpenDataStore, portal_slug: str, *, terms: str, filters: d
                 continue
             row = dict(row, portal_slug=portal["slug"], portal_name=portal["display_name"],
                        licence_check="could not check" if verdict == "unknown" else "")
-            if row["identifier_kind"] == "portal_id":
+            if row["identifier_kind"] == "portal_id" and row["dataset_id"] != NOT_REPORTED:
                 row["identifier"] = f"{portal['slug']}:{row['dataset_id']}"
             rows.append(row)
-        if not got["rows"] or (isinstance(total, int) and page * got["page_size"] >= total):
+        # `read` (when the adapter filters locally) counts the entries the page held: a page that filters to nothing was read
+        if not got.get("read", len(got["rows"])) or (isinstance(total, int) and page * got["page_size"] >= total):
             break
     return {"portal": portal["slug"], "price": priced, "calls_made": calls, "total": total, "rows": rows,
             "licence_dropped": dropped, "retrieved_at": now()}
@@ -427,6 +487,7 @@ def scout_work_list(store: OpenDataStore, work_list_slug: str, *, transport) -> 
     if not datasets:
         raise NotFound(f"No open data in work list '{work_list_slug}'.")
     out = []
+    adapters_by_portal: dict = {}        # one adapter per portal for the run: a one-document feed is read once
     for d in datasets:
         dataset_id = (d["record"] or {}).get("name") or (d["record"] or {}).get("id") or d["identifier"].split(":", 1)[-1]
         outcome = {"slug": d["slug"], "title": d["title"], "outcome": "could_not_scout", "words": ""}
@@ -436,7 +497,9 @@ def scout_work_list(store: OpenDataStore, work_list_slug: str, *, transport) -> 
                 outcome["words"] = f"portal '{portal_slug}' is no longer registered"
                 continue
             try:
-                row = portal_adapter(portal, transport).describe(dataset_id)
+                if portal_slug not in adapters_by_portal:
+                    adapters_by_portal[portal_slug] = portal_adapter(portal, transport)
+                row = adapters_by_portal[portal_slug].describe(dataset_id)
             except Exception as exc:
                 outcome["words"] = f"could not read from {portal['display_name']}: {exc}"[:240]
                 continue

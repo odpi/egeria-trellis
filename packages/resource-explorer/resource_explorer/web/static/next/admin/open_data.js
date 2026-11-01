@@ -68,6 +68,9 @@ export function bytes(n) {
 }
 
 const errText = (e) => esc((e && (e.detail || e.message)) || String(e));
+/** Said under the registration form when the API is DCAT-AP. */
+export const DCAT_AP_HELP = 'DCAT-AP: registering reads 1 to 3 addresses to find the catalog feed (the base URL plus /catalog.jsonld, then /data.json, then the base URL itself). A feed has no search: Resource Explorer reads whole pages and keeps the rows that match.';
+
 const q = (host, sel) => host.querySelector(sel);
 
 // ── Data portals ──────────────────────────────────────────────────────────────
@@ -81,12 +84,13 @@ export async function renderDataPortals(host) {
     </div>
     <form data-od-register class="mb-s3 hidden flex-wrap items-end gap-[6px]">
       <label class="text-caveat text-ink-muted">Name <input name="display_name" required class="rounded-sm border border-rule-strong bg-transparent px-2 py-[2px] text-caveat text-ink"></label>
-      <label class="text-caveat text-ink-muted">API <select name="api_kind" class="rounded-sm border border-rule-strong bg-transparent px-2 py-[2px] text-caveat text-ink"><option>CKAN</option></select></label>
+      <label class="text-caveat text-ink-muted">API <select name="api_kind" class="rounded-sm border border-rule-strong bg-transparent px-2 py-[2px] text-caveat text-ink"><option>CKAN</option><option>DCAT-AP</option></select></label>
       <label class="text-caveat text-ink-muted">Base URL <input name="base_url" required placeholder="https://demo.ckan.org" class="rounded-sm border border-rule-strong bg-transparent px-2 py-[2px] text-caveat text-ink" style="width:260px"></label>
       <label class="text-caveat text-ink-muted">API key <input name="api_key" type="password" autocomplete="off" class="rounded-sm border border-rule-strong bg-transparent px-2 py-[2px] text-caveat text-ink"></label>
       <button type="button" data-od-check class="cursor-pointer rounded-sm border border-rule-strong bg-transparent px-2 py-[2px] text-caveat text-ink hover:border-accent">Check</button>
       <button type="submit" class="cursor-pointer rounded-sm border border-rule-strong bg-transparent px-2 py-[2px] text-caveat text-ink hover:border-accent">Register</button>
       <span data-od-register-state class="text-provenance text-ink-muted"></span>
+      <p data-od-api-help class="m-0 hidden basis-full text-provenance text-ink-muted">${esc(DCAT_AP_HELP)}</p>
     </form>
     ${portals.length ? `<table class="w-full text-left" data-rc-id="od-portals">
       <thead><tr class="border-b border-rule text-caps uppercase tracking-caps text-ink-muted">
@@ -97,7 +101,7 @@ export async function renderDataPortals(host) {
         <td class="py-s2 pr-s3 text-caveat align-top">${esc(p.api_kind)}${p.adapter_available ? '' : ' <span class="text-state-warn">· no adapter yet</span>'}</td>
         <td class="py-s2 pr-s3 text-caveat align-top font-mono text-provenance">${esc(p.base_url)}</td>
         <td class="py-s2 pr-s3 text-caveat align-top text-ink-muted">${esc(p.origin)}</td>
-        <td class="py-s2 pr-s3 text-caveat align-top tnum text-ink-muted">${p.cost && p.cost.calls_per_page ? `${p.cost.calls_per_page} call/page · ${p.cost.page_size} rows` : 'cost not declared by the adapter'}${p.has_key ? ' · key held' : ''}</td>
+        <td class="py-s2 pr-s3 text-caveat align-top tnum text-ink-muted">${p.cost && p.cost.calls_per_page ? `${p.cost.calls_per_page} call/page · ${p.cost.page_size} rows${p.cost.cost_note ? ` · ${esc(p.cost.cost_note)}` : ''}` : 'cost not declared by the adapter'}${p.has_key ? ' · key held' : ''}</td>
         <td class="py-s2 pr-s3 text-caveat align-top text-ink-muted">${esc(ago(p.registered_at))}${p.registered_by ? ` · ${esc(p.registered_by)}` : ' · the person who registered it was not recorded'}</td>
         <td class="py-s2 pr-s3 text-caveat align-top">${p.adapter_available ? `<button type="button" data-od-open="${esc(p.slug)}" class="cursor-pointer rounded-sm border border-rule-strong bg-transparent px-2 py-[2px] text-caveat text-ink hover:border-accent">Search</button>` : '<span class="text-ink-muted">registered for later</span>'}</td>
       </tr>`).join('')}</tbody></table>` : '<p data-od-empty class="text-answer text-ink">No portals registered yet.</p>'}
@@ -105,6 +109,9 @@ export async function renderDataPortals(host) {
   watchTables(host);
   const form = q(host, '[data-od-register]');
   q(host, '[data-od-register-toggle]').addEventListener('click', () => form.classList.toggle('hidden'));
+  const apiHelp = q(host, '[data-od-api-help]');
+  const showApiHelp = () => apiHelp.classList.toggle('hidden', form.elements.api_kind.value !== 'DCAT-AP');
+  form.elements.api_kind.addEventListener('change', showApiHelp);
   const body = () => Object.fromEntries(new FormData(form).entries());
   const state = q(host, '[data-od-register-state]');
   q(host, '[data-od-check]').addEventListener('click', async () => {
@@ -345,7 +352,7 @@ export function datasetPageHtml(d) {
   const dc = d.datacite;
   return `<div data-od-page>
     <h4 class="m-0 mb-s2 font-heading text-name font-normal text-ink">${show(d.title)}</h4>
-    <p class="mb-s2 text-provenance text-ink-muted">${d.identifier_kind === 'doi' ? '' : 'no DOI reported · '}${esc(d.identifier_kind === 'doi' ? 'DOI' : 'portal id')} <span class="font-mono break-all" data-od-identifier>${esc(d.identifier)}</span>
+    <p class="mb-s2 text-provenance text-ink-muted">${d.identifier_kind === 'doi' ? '' : 'no DOI reported · '}${esc(d.identifier_kind === 'doi' ? 'DOI' : d.identifier_kind === 'dcat_identifier' ? 'publisher id' : 'portal id')} <span class="font-mono break-all" data-od-identifier>${esc(d.identifier)}</span>
       · imported ${esc(ago(d.imported_at))}${d.imported_by ? ` by ${esc(d.imported_by)}` : ' (the person who imported it was not recorded)'} into <span class="font-mono">${esc(d.work_list_slug)}</span></p>
     <table class="w-full text-left" data-rc-id="od-fields"><thead><tr class="border-b border-rule text-caps uppercase tracking-caps text-ink-muted">
       <th class="pb-s2 pr-s3 font-normal">Field</th><th class="pb-s2 pr-s3 font-normal">Value</th><th class="pb-s2 pr-s3 font-normal">Source</th></tr></thead><tbody>
