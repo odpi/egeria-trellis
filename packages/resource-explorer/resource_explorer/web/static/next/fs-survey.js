@@ -160,9 +160,11 @@ export function reachLineHtml(reach) {
 }
 
 /** A result section as a native <details>: the summary is the heading plus its one-line answer (`answer`, words), so
- *  it answers while collapsed. `attrs` are the section's own data attributes, kept on the <details>. */
-function sectionHtml(key, open, heading, answer, attrs, body, cls = 'mt-s3') {
-  return `<details data-fs-section="${esc(key)}" ${attrs} class="${cls}"${open ? ' open' : ''}>
+ *  it answers while collapsed. `attrs` are the section's own data attributes, kept on the <details>. `space` is the gap
+ *  above it: 'loose' (mt-s3), 'tight' (mt-s2) or 'none' (its wrapper spaces it); literal branches, so the CSS build
+ *  and test_tailwind_next_class_coverage see each class. */
+function sectionHtml(key, open, heading, answer, attrs, body, space = 'loose') {
+  return `<details data-fs-section="${esc(key)}" ${attrs} class="${space === 'tight' ? 'mt-s2' : space === 'none' ? '' : 'mt-s3'}"${open ? ' open' : ''}>
     <summary class="cursor-pointer" data-fs-section-summary><span class="text-caps uppercase tracking-caps text-ink-muted">${esc(heading)}</span>${
   answer ? `<span class="text-caveat text-ink-muted" data-fs-section-answer> · ${esc(answer)}</span>` : ''}</summary>
     ${body}
@@ -280,7 +282,7 @@ export function folderResultsHtml(view, fold = null) {
   if (fold) {
     const answer = words(c.files == null ? '' : `${num(c.files)} files`, c.total_size_bytes == null ? '' : fmtBytes(c.total_size_bytes),
       c.file_types == null ? '' : `${num(c.file_types)} types`, FOLDER_SURVEY_WORDS.surveyedBy(v.surveyor, day(v.surveyed_at)));
-    return sectionHtml('files', fold.open, FOLDER_SURVEY_WORDS.filesHeading, answer, attrs, body, 'mt-s2');
+    return sectionHtml('files', fold.open, FOLDER_SURVEY_WORDS.filesHeading, answer, attrs, body, 'tight');
   }
   return `<div ${attrs} class="mt-s2">
     ${body}
@@ -421,7 +423,7 @@ export function fileProfilesHtml(fp, fold = null) {
     ${run.files_not_shown ? `<div class="text-provenance text-ink-muted">and ${num(run.files_not_shown)} more</div>` : ''}`;
   const answer = words(W.profiledAt(day(run.run_id)), run.words || '');
   return `<div data-fp data-fp-state="profiled" class="mt-s3">
-    ${sectionHtml('profiles', !fold || fold.open, W.profilesHeading, answer, 'data-fp-section', body, '')}
+    ${sectionHtml('profiles', !fold || fold.open, W.profilesHeading, answer, 'data-fp-section', body, 'none')}
     <div data-fp-price class="text-caveat text-ink">${esc(price.words || '')}</div>
     ${egeriaLines.map((l) => `<div data-fp-egeria class="text-provenance text-state-warn"><span class="font-glyph" aria-hidden="true">⚠</span> ${esc(l)}</div>`).join('')}
   </div>`;
@@ -537,7 +539,7 @@ export function classMatchHtml(cm, fold = null) {
       ${measureTableHtml('class-names', 'Names', ['File', 'Words'], names)}` : ''}`;
   // The price and the stale warning stay outside the fold.
   return `<div data-fs-class data-fs-class-state="matched" class="mt-s3">
-    ${sectionHtml('classes', !fold || fold.open, W.classHeading, words(W.classAt(day(run.ran_at)), run.words || ''), 'data-fs-class-section', body, '')}
+    ${sectionHtml('classes', !fold || fold.open, W.classHeading, words(W.classAt(day(run.ran_at)), run.words || ''), 'data-fs-class-section', body, 'none')}
     <div data-fs-class-price data-fs-class-priced="${price.priced ? 'yes' : 'no'}" class="text-caveat text-ink">${esc(price.words || W.notPriced)}</div>
     ${run.stale ? `<div data-fs-class-stale class="text-provenance text-state-warn"><span class="font-glyph" aria-hidden="true">⚠</span> ${esc(W.classStale)}</div>` : ''}
   </div>`;
