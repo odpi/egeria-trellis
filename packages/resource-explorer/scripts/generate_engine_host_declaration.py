@@ -21,10 +21,11 @@ the GovernanceActionType `ResourceExplorerSurvey::<request type>` with the manif
 (`trellis_analytics.declare.manifest_properties`) and its GovernanceActionExecutor. One document per step, so
 declaring a new step never re-runs another step's "Link Action to Action Executor", which is not safe to repeat.
 The manifests are read from the `pyegeria.analytics` entry point, so the steps' packages must be installed where
-this runs:
+this runs. The reference steps are workspace members, so after a `uv sync` at the repo root:
 
-    uv run --with-editable packages/trellis-analytics/examples/steps/database_staleness \
-        python packages/resource-explorer/scripts/generate_engine_host_declaration.py [--check]
+    uv run python packages/resource-explorer/scripts/generate_engine_host_declaration.py [--check]
+
+(for a step outside the workspace, `uv run --with-editable <its package> python ...`).
 
 A step that the analysis catalog names (generated from its manifest, `provided_by`) but that is not installed
 here is refused with its package's name, never silently left out.

@@ -614,6 +614,42 @@ def issue_117_block_off_for_legacy_delete_path_tests(request, monkeypatch):
     monkeypatch.setattr(_gw, "issue_117_blocked", lambda slug="", *, scope="": not (os.environ.get(_gw.ISSUE_117_ENV) or "").strip())
 
 
+@pytest.fixture(scope="session", autouse=True)
+def workspace_installed_steps_are_not_installed():
+    """The suite's normal state is "no reference step installed", whatever the venv holds.
+
+    Since R19 the reference steps are uv workspace members, so a root `uv sync` installs them (CI syncs only this
+    package and has none). Tests that assert a step is absent, or that install one on the fly (tests/
+    library_step_install.py), must not depend on which of the two venvs they run in: discovery skips any
+    `trellis-step-*` distribution living in the interpreter's own site-packages, and the steps the app attached when it
+    was imported (above) are attached again without them. A step a test installs lives under its tmp_path, so it is
+    still found.
+    """
+    import sysconfig
+    from pathlib import Path
+    from trellis_analytics import discovery
+
+    from resource_explorer.surveyors import survey_step_host
+
+    site = Path(sysconfig.get_paths()["purelib"]).resolve()
+    real = discovery._entry_points
+
+    def _without_workspace_steps():
+        for group, ep in real():
+            dist = getattr(ep, "dist", None)
+            path = getattr(dist, "_path", None)
+            if dist and (dist.name or "").startswith("trellis-step-") and path and Path(path).resolve().parent == site:
+                continue
+            yield group, ep
+
+    mp = pytest.MonkeyPatch()
+    mp.setattr(discovery, "_entry_points", _without_workspace_steps)
+    survey_step_host.refresh("database")
+    survey_step_host.refresh("filesystem")
+    yield
+    mp.undo()
+
+
 _ephemeral_prefect_settings: dict = {}
 
 

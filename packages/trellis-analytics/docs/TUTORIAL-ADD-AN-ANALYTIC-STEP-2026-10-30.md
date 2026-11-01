@@ -226,9 +226,11 @@ library steps 10: … my_row_changes …
 If your step is named with a reason instead, for example *declares request type 're-schema-inventory', which belongs
 to Resource Explorer's own step*, fix the reason and reinstall. A step is never half-loaded.
 
-> **If your step disappears later:** running `uv sync` in that environment can uninstall packages that are not part
-> of the repository's own workspace, and the example steps are not, yet. If the log one day says "1 missing", run the
-> install command again. (This is being fixed; see the lifecycle design note.)
+> **If your step disappears later:** the ten reference steps are members of the repository's uv workspace, so a plain
+> `uv sync` keeps them. A step you copied into `examples/steps/` is picked up as a member too, but the root
+> `pyproject.toml` lists the members `uv sync` installs (its `dev` dependency group), so add your step's name there to
+> keep it across a sync, or `uv sync` will uninstall it. A step kept outside the repository is not a member at all:
+> if the log one day says "1 missing", run the install command again.
 
 ## Step 7. See it
 
@@ -287,7 +289,7 @@ produced them and which version.
 | *declares `connection`* | you asked for a database connection; steps run unattended and get none | measure from `inputs.ods` instead |
 | *nothing from that run is stored* | one result lacked a state or a reason | fix the result; run again |
 | the card says *not installed · provided by trellis-step-my-row-changes* | Resource Explorer remembers your step but the package is gone from its environment | run the install command |
-| the log says *N missing* after someone ran `uv sync` | same cause | same fix |
+| the log says *N missing* after someone ran `uv sync` | the step is not in the root `pyproject.toml`'s `dev` group, or lives outside the workspace | add it to the group, or run the install command |
 
 ## What you did not have to do
 

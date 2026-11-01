@@ -140,7 +140,9 @@ What the wrapper guarantees, so the code does not have to:
   is refused, and **nothing from that run is stored**: a partial store would read as the whole answer.
 
 A complete example, installable on its own, is `examples/steps/database_staleness/`. It registers itself
-through the same `pyegeria.analytics` entry point.
+through the same `pyegeria.analytics` entry point. The ten reference steps under `examples/steps/` are members of the
+repo's uv workspace (R19), so a plain `uv sync` at the repo root installs and keeps them; a step of your own outside
+the repo is installed with `uv pip install -e` or `uv run --with-editable`.
 
 RE merges an installed step's manifest into its analysis catalog when it reads it, so a step needs no commit in RE to
 show a card. To tell Egeria about it, and optionally to refresh the committed fallback entry that keeps a package-less
@@ -150,11 +152,12 @@ declaration into `packages/resource-explorer/docs/dr-egeria/engine-host/library/
 talks to Egeria; running the declaration is a separate, deliberate step.
 
 ```bash
-uv run --with-editable packages/trellis-analytics/examples/steps/database_staleness \
-    python packages/resource-explorer/scripts/generate_external_step_entries.py
-uv run --with-editable packages/trellis-analytics/examples/steps/database_staleness \
-    python packages/resource-explorer/scripts/generate_engine_host_declaration.py
+uv sync    # the reference steps are workspace members; this installs them all
+uv run python packages/resource-explorer/scripts/generate_external_step_entries.py
+uv run python packages/resource-explorer/scripts/generate_engine_host_declaration.py
 ```
+
+For a step outside the workspace, add `--with-editable <its package>` after `uv run`.
 
 ### Dispatched by Egeria
 
