@@ -1,0 +1,19 @@
+Recorded 2026-10-31/11-01 (UTC), read-only, one pass, User-Agent "ResourceExplorer-OpenData/1 (read-only catalog queries)".
+No file is edited by hand; each is the mechanical copy or head-cut named below.
+
+ckan_*, datacite_doi, dataportals_listing, re3data_*: recorded 2026-10-28/29 (see open-data-adapters.md).
+
+dcat_catalog_jsonld_page1.json   https://data.gov.ie/catalog.jsonld?page=1  (Accept: application/ld+json)
+    Whole page, re-indented only. Expanded, FLATTENED JSON-LD: a top-level array of nodes that refer to each other by
+    @id (1598 nodes: 1 dcat:Catalog, 1 hydra:PagedCollection, 100 dcat:Dataset, 400 dcat:Distribution ...).
+    Hydra statement: itemsPerPage 100, totalItems 22920, last page 230. Licence is stated on the distributions (all
+    https://creativecommons.org/licenses/by/4.0/), not on the datasets; no dcat:byteSize anywhere.
+    First tried: https://demo.ckan.org/catalog.jsonld?page=1 -> HTTP 404 (CKAN 2.11.5, ckanext-dcat not installed).
+dcat_dataset_jsonld.json         https://data.gov.ie/dataset/462c3f94-e367-4ef7-ac98-fffa0e168b47.jsonld
+    Compact JSON-LD (@context + @graph, prefixed keys, single values as scalars), re-indented only.
+pod_data_json_head.json          https://data.nasa.gov/data.json  (Project Open Data, dcat:Catalog + conformsTo)
+    HEAD: the catalog envelope plus the first 20 entries of "dataset" (the full file is tens of MB), cut by parsing the
+    first 800 kB of the stream; the 20 entries are verbatim. Recorded 2026-11-01 01:21 UTC.
+    NOT catalog.data.gov: https://catalog.data.gov/data.json -> HTTP 404 (again, as on 2026-10-31);
+    https://data.gov.au/data.json -> 404; https://data.sa.gov.au/data.json -> 404; data.nasa.gov answered on the
+    second attempt after a first connect time-out.
