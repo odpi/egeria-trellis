@@ -177,7 +177,7 @@ export async function openAdminPanel() {
   el.id = PANEL_ID;
   el.className = 'fixed inset-0 z-50 flex items-start justify-center bg-black/40 p-s4 overflow-auto';
   el.innerHTML = `
-    <div class="mt-[3vh] w-full max-w-[920px] rounded bg-paper p-s4 shadow-lg"
+    <div class="mt-[3vh] w-full min-w-0 max-w-[920px] rounded bg-paper p-s4 shadow-lg"
       role="dialog" aria-modal="true" aria-label="Admin">
       <div class="flex items-start justify-between gap-s3">
         <div>

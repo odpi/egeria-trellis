@@ -126,6 +126,8 @@ class TestKindIsThreadedIntoRequests:
         path_fn = path_fn[: path_fn.index("\n}\n")]
         assert "/api/databases/" in path_fn
         assert "entityType === 'database'" in path_fn
+        # F44: a file system's per-analysis Run goes to the Files route, never the repo route's "Project not found"
+        assert "if (entityType === 'filesystem') return `/api/filesystems/${enc}/analyses/${aid}/run`;" in path_fn
 
     @pytest.mark.parametrize("name", ["getJournal", "writeJournal"])
     def test_journal_path_uses_kind(self, name):

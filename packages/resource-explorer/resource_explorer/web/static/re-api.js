@@ -1700,23 +1700,19 @@ export const getBulkFacts = (slugs, analysisIds = [], entityType) => {
  *  action's per-analysis route, same dispatch shape as `_questionsPath`/
  *  `_surveyResultsPath` above.
  *
- *  FILESYSTEM HAS NO EQUIVALENT ROUTE YET (audited 2026-09-23): unlike
- *  database, `web/routes/filesystems.py` has no
- *  `POST /{slug}/analyses/{analysis_id}/run` at all — its only survey
- *  trigger is the whole-resource `POST /{slug}/survey`, not a per-analysis
- *  dispatch the way `databases.py`'s `run_single_database_analysis` and
- *  `run_analysis`/`resolve_analysis_plan` (repo) are. Building one needs a
- *  filesystem-side per-analysis step runner first (there is no
- *  `run_filesystem_survey(..., steps=[...])` equivalent of
- *  `run_database_survey` to call) — a real, separate piece of work, not a
- *  routing fix, so it is named here as found-but-deferred rather than
- *  built. Until it exists, a filesystem's "Run"/"re-run" falls back to the
- *  repo path below, which 404s (`registry.get(slug)` against the repo-only
- *  `projects` table) — a loud failure, not a silent wrong-resource write. */
+ *  FILESYSTEM (F44, 2026-11-01): `web/routes/filesystems.py`'s
+ *  `POST /{slug}/analyses/{analysis_id}/run` (Files build step 6) runs one
+ *  Analytic Library step over the walk's kept rows — the route the Folder
+ *  Survey card's Derive press (`runFilesystemAnalysis`) already uses. Before
+ *  F44 a filesystem fell through to the repo path and 404'd as "Project ...
+ *  not found". An id that route does not run gets its own 400 naming why.
+ *  It takes no `force`: FastAPI ignores the `?force=true` runAnalysis may
+ *  append, and the Files route has no freshness skip to override. */
 function _runAnalysisPath(entityType, slug, analysisId) {
   const enc = encodeURIComponent(slug);
   const aid = encodeURIComponent(analysisId);
   if (entityType === 'database') return `/api/databases/${enc}/analyses/${aid}/run`;
+  if (entityType === 'filesystem') return `/api/filesystems/${enc}/analyses/${aid}/run`;
   return `/api/projects/${enc}/analyses/${aid}/run`;
 }
 

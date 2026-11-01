@@ -20,7 +20,7 @@ import {
   listOpenData, getOpenData, openDataDirectoryPrice,
 } from '/static/re-api.js';
 import { esc } from '/static/next/app.js';
-import { ago, localTime } from '/static/next/format.js';
+import { ago } from '/static/next/format.js';
 import { watchTables } from '/static/next/colresize.js';
 
 export const NOT_REPORTED = 'not_reported';
@@ -46,16 +46,14 @@ export function flagsCue(l) {
   return esc(`${f('attr', l.attribution)} · ${f('share-alike', l.share_alike)} · ${f('commercial', l.commercial)}`);
 }
 
-/** A modified stamp in the house format: a date alone when the portal gave only a date, else date and time to the
- *  minute in the reader's zone. Never the raw ISO string with microseconds. */
+/** A modified stamp as YYYY-MM-DD (W32, the owner: "show the year for that column"): a portal's dates can be years
+ *  old, so the year is the part that matters and the time of day is not. The date is the source's own: a date alone
+ *  stays as given, a date-time is cut to its date (no zone shift). The candidates column and the dataset page say it
+ *  the same way. Never the raw ISO string with microseconds; unreadable text comes back as it was. */
 export function modifiedWords(v) {
   if (v === NOT_REPORTED || v === undefined || v === null || v === '') return show(NOT_REPORTED);
   const text = String(v);
-  if (/^\d{4}-\d{2}-\d{2}$/.test(text)) {
-    const d = new Date(`${text}T00:00:00`);
-    return esc(Number.isNaN(d.getTime()) ? text : d.toLocaleDateString([], { year: 'numeric', month: 'short', day: 'numeric' }));
-  }
-  return esc(localTime(text) || text);
+  return esc(/^\d{4}-\d{2}-\d{2}(?:$|[T ])/.test(text) ? text.slice(0, 10) : text);
 }
 
 export function bytes(n) {
@@ -92,7 +90,7 @@ export async function renderDataPortals(host) {
       <span data-od-register-state class="text-provenance text-ink-muted"></span>
       <p data-od-api-help class="m-0 hidden basis-full text-provenance text-ink-muted">${esc(DCAT_AP_HELP)}</p>
     </form>
-    ${portals.length ? `<table class="w-full text-left" data-rc-id="od-portals">
+    ${portals.length ? `<div class="overflow-x-auto"><table class="w-full text-left" data-rc-id="od-portals">
       <thead><tr class="border-b border-rule text-caps uppercase tracking-caps text-ink-muted">
         <th class="pb-s2 pr-s3 font-normal">Portal</th><th class="pb-s2 pr-s3 font-normal">API</th><th class="pb-s2 pr-s3 font-normal">URL</th><th class="pb-s2 pr-s3 font-normal">Origin</th>
         <th class="pb-s2 pr-s3 font-normal">Cost</th><th class="pb-s2 pr-s3 font-normal">Registered</th><th class="pb-s2 pr-s3 font-normal"></th></tr></thead>
@@ -101,10 +99,10 @@ export async function renderDataPortals(host) {
         <td class="py-s2 pr-s3 text-caveat align-top">${esc(p.api_kind)}${p.adapter_available ? '' : ' <span class="text-state-warn">· no adapter yet</span>'}</td>
         <td class="py-s2 pr-s3 text-caveat align-top font-mono text-provenance">${esc(p.base_url)}</td>
         <td class="py-s2 pr-s3 text-caveat align-top text-ink-muted">${esc(p.origin)}</td>
-        <td class="py-s2 pr-s3 text-caveat align-top tnum text-ink-muted">${p.cost && p.cost.calls_per_page ? `${p.cost.calls_per_page} call/page · ${p.cost.page_size} rows${p.cost.cost_note ? ` · ${esc(p.cost.cost_note)}` : ''}` : 'cost not declared by the adapter'}${p.has_key ? ' · key held' : ''}</td>
+        <td class="py-s2 pr-s3 text-caveat align-top tnum text-ink-muted" data-od-cost><div class="min-w-[12rem]">${p.cost && p.cost.calls_per_page ? `${p.cost.calls_per_page} call/page · ${p.cost.page_size} rows${p.cost.cost_note ? ` · ${esc(p.cost.cost_note)}` : ''}` : 'cost not declared by the adapter'}${p.has_key ? ' · key held' : ''}</div></td>
         <td class="py-s2 pr-s3 text-caveat align-top text-ink-muted">${esc(ago(p.registered_at))}${p.registered_by ? ` · ${esc(p.registered_by)}` : ' · the person who registered it was not recorded'}</td>
         <td class="py-s2 pr-s3 text-caveat align-top">${p.adapter_available ? `<button type="button" data-od-open="${esc(p.slug)}" class="cursor-pointer rounded-sm border border-rule-strong bg-transparent px-2 py-[2px] text-caveat text-ink hover:border-accent">Search</button>` : '<span class="text-ink-muted">registered for later</span>'}</td>
-      </tr>`).join('')}</tbody></table>` : '<p data-od-empty class="text-answer text-ink">No portals registered yet.</p>'}
+      </tr>`).join('')}</tbody></table></div>` : '<p data-od-empty class="text-answer text-ink">No portals registered yet.</p>'}
     <div data-od-pane class="mt-s4"></div>`;
   watchTables(host);
   const form = q(host, '[data-od-register]');

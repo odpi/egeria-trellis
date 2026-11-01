@@ -9,6 +9,7 @@
  *
  * Pure: a result in, HTML out. No DOM, no fetch. */
 import { STATES } from '/static/next/glyphs.js';
+import { stamp } from '/static/next/format.js';
 
 const esc = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
@@ -56,7 +57,7 @@ export function coverageHtml(result) {
   const reason = result.envelope.result_state_reason || '';
   const head = `<div class="flex flex-wrap items-baseline gap-s3">${stateCueHtml(state, reason)}`
     + `<span class="text-caps uppercase tracking-caps text-ink-muted">Curation coverage</span>`
-    + (result.as_of ? `<span class="text-caveat text-ink-muted" data-coverage-as-of>read back ${esc(result.as_of)}</span>` : '')
+    + (result.as_of ? `<span class="text-caveat text-ink-muted" data-coverage-as-of title="${esc(result.as_of)}">read back ${esc(stamp(result.as_of))}</span>` : '')
     + `</div>`;
   const body = (state === 'measured' || state === 'nothing_found')
     ? (result.groups || []).map(groupHtml).join('')
