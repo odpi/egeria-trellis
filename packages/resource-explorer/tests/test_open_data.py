@@ -127,7 +127,8 @@ def test_a_manifest_without_a_cost_shape_is_refused():
 
 def test_the_builtins_are_listed_with_their_manifests():
     found = adapters.discover_adapters()
-    assert {"ckan", "dataportals", "datacite"} <= set(found)
+    assert {"ckan", "dcat_ap", "dataportals", "datacite"} <= set(found)
+    assert found["dcat_ap"].manifest.role == "portal" and found["dcat_ap"].manifest.api_kind == "DCAT-AP"
     assert found["ckan"].manifest.role == "portal" and found["dataportals"].manifest.role == "directory"
     assert found["datacite"].manifest.role == "resolver"
 
@@ -587,3 +588,228 @@ def test_the_directory_price_route_is_the_run_price(client):
     got = client.get(f"/api/open-data/directories/{d['slug']}/price?pages=8").json()
     assert got["pages"] == 8 and got["calls"] == 8 and "8 pages" in got["line"]
     assert client.get("/api/open-data/directories/nope/price").status_code == 404
+
+
+# ── DCAT-AP (recorded 2026-10-31/11-01: data.gov.ie's catalog.jsonld, data.nasa.gov's data.json head) ───────────
+
+from resource_explorer.open_data.dcat_ap import DcatApAdapter, ProbeRefused   # noqa: E402
+
+
+class DcatFake:
+    """Replays the recorded DCAT fixtures by URL; `calls` is every (url, params) asked."""
+
+    def __init__(self, answers=None):
+        self.calls: list[tuple[str, dict | None]] = []
+        self.answers = answers          # url prefix -> body or an Exception, overriding the recordings
+
+    def get_json(self, url, params=None, headers=None):
+        self.calls.append((url, params))
+        for prefix, got in (self.answers or {}).items():
+            if url.startswith(prefix):
+                if isinstance(got, Exception):
+                    raise got
+                return got
+        if url.endswith("/data.json"):
+            return _load("pod_data_json_head.json")
+        if "/dataset/" in url and url.endswith(".jsonld"):
+            return _load("dcat_dataset_jsonld.json")
+        if "catalog.jsonld" in url:
+            return _load("dcat_catalog_jsonld_page1.json")
+        raise TransportError(f"{url}: HTTP 404")
+
+    def get_text(self, url, params=None, headers=None):
+        raise AssertionError(f"unexpected outbound call: {url}")
+
+
+FEED = "https://data.gov.ie/catalog.jsonld"
+POD = "https://data.nasa.gov/data.json"
+
+
+def _feed_rows():
+    return DcatApAdapter(FEED, DcatFake()).search("", {}, 1)["rows"]
+
+
+def _bare(record):
+    return {k: v for k, v in record.items() if not k.startswith("_")}
+
+
+def test_dcat_manifest_has_a_cost_shape_and_speaks_the_aliases():
+    m = DcatApAdapter.manifest.validate()
+    assert (m.calls_per_page, m.page_size, m.needs_key) == (1, 100, False)
+    for kind in ("DCAT-AP", "dcat", "DCAT-AP 3", "data.json", "Project Open Data"):
+        assert m.speaks(kind), kind
+    assert not m.speaks("CKAN")
+    assert adapters.adapter_for_api_kind("dcat", "portal") is DcatApAdapter
+
+
+def test_dcat_jsonld_feed_page_normalises_and_states_absences():
+    t = DcatFake()
+    page = DcatApAdapter(FEED, t).search("", {}, 1)
+    assert len(page["rows"]) == 100 and page["page_size"] == 100 and page["total"] == 22920
+    assert t.calls == [(FEED, {"page": 1})]
+    row = next(r for r in page["rows"] if r["dataset_id"] == "462c3f94-e367-4ef7-ac98-fffa0e168b47")
+    assert row["identifier_kind"] == "dcat_identifier" and row["identifier"] == row["dataset_id"]
+    assert row["doi"] == NOT_REPORTED
+    assert row["title"] == "NAQ09 - Persons in Employment" and row["publisher"] == "Central Statistics Office"
+    assert row["formats"] == ["CSV", "JSON-STAT", "PX", "XLSX"]
+    assert row["size"] == NOT_REPORTED                       # no dcat:byteSize anywhere: not 0 bytes
+    assert row["modified"] == "2026-11-01T01:19:52" and row["url"].startswith("https://ws.cso.ie/")
+    source = next(n for n in _load("dcat_catalog_jsonld_page1.json") if n["@id"].endswith(row["dataset_id"]))
+    assert _bare(row["record"]) == source                    # verbatim; only underscore keys are RE's
+    assert all(r["publisher"] != NOT_REPORTED for r in page["rows"])
+
+
+def test_dcat_compact_dataset_document_and_pod_normalise_the_same_way():
+    t = DcatFake()
+    adapter = DcatApAdapter(FEED, t)
+    row = adapter.describe("462c3f94-e367-4ef7-ac98-fffa0e168b47")
+    assert t.calls[0][0] == "https://data.gov.ie/dataset/462c3f94-e367-4ef7-ac98-fffa0e168b47.jsonld"
+    assert row["title"] == "NAQ09 - Persons in Employment" and row["publisher"] == "Central Statistics Office"
+    assert row["licence_id"] == "cc-by-4.0" and row["formats"] == ["CSV", "JSON-STAT", "PX", "XLSX"]
+    pod = DcatApAdapter(POD, DcatFake()).search("", {}, 1)["rows"][0]
+    assert pod["identifier_kind"] == "doi" and pod["identifier"] == "10.21978/p8863g"
+    assert pod["publisher"] == "VMO" and pod["size"] == NOT_REPORTED and pod["formats"] == ["BIN", "HTML"]
+    assert _bare(pod["record"]) == _load("pod_data_json_head.json")["dataset"][0]
+
+
+def test_dcat_licence_iri_maps_to_flags_and_an_unknown_iri_keeps_the_iri():
+    rows = _feed_rows()
+    assert rows[0]["licence_id"] == "cc-by-4.0"              # stated on the distributions, all agreeing
+    assert rows[0]["licence"] == {"attribution": True, "share_alike": False, "commercial": True}
+    assert "_licence_note" not in rows[0]["record"]
+    nasa = DcatApAdapter(POD, DcatFake()).search("", {}, 1)["rows"][0]
+    assert nasa["licence_id"] == "https://www.usa.gov/government-works"
+    assert nasa["licence"] == {"attribution": NOT_REPORTED, "share_alike": NOT_REPORTED, "commercial": NOT_REPORTED}
+
+    doc = copy.deepcopy(_load("dcat_catalog_jsonld_page1.json"))
+    first = next(n for n in doc if n["@id"].endswith("/462c3f94-e367-4ef7-ac98-fffa0e168b47"))
+    dists = [n for n in doc if n["@id"] in {d["@id"] for d in first["http://www.w3.org/ns/dcat#distribution"]}]
+    dists[0]["http://purl.org/dc/terms/license"] = [{"@id": "https://creativecommons.org/licenses/by-sa/4.0/"}]
+    row = next(r for r in DcatApAdapter(FEED, DcatFake({FEED: doc})).search("", {}, 1)["rows"]
+               if r["dataset_id"] == first["http://purl.org/dc/terms/identifier"][0]["@value"])
+    assert row["licence_id"] == NOT_REPORTED and row["record"]["_licence_note"] == "distributions disagree"
+    assert row["licence"]["commercial"] == NOT_REPORTED
+
+
+def test_dcat_licence_iris_in_the_table():
+    from resource_explorer.open_data.licences import licence_flags, licence_id_from_iri
+    for iri, want in (("http://creativecommons.org/licenses/by/4.0/legalcode", "cc-by-4.0"),
+                      ("https://creativecommons.org/publicdomain/zero/1.0/", "cc0-1.0"),
+                      ("https://creativecommons.org/licenses/by-sa/4.0", "cc-by-sa-4.0"),
+                      ("https://creativecommons.org/licenses/by-nc/4.0/", "cc-by-nc-4.0"),
+                      ("http://opendatacommons.org/licenses/odbl/1.0/", "odc-odbl"),
+                      ("http://publications.europa.eu/resource/authority/licence/CC_BY_4_0", "cc-by-4.0")):
+        assert licence_id_from_iri(iri) == want, iri
+        assert licence_flags(want)["commercial"] in (True, False)       # in the table: flags are stated
+    assert licence_id_from_iri("https://example.org/own-terms") == "https://example.org/own-terms"
+
+
+def test_dcat_search_filters_locally_and_reports_the_page_as_read():
+    a = lambda: DcatApAdapter(FEED, DcatFake())            # noqa: E731
+    everything = a().search("", {}, 1)
+    hit = a().search("employment persons", {}, 1)         # AND over title/description/keyword, whole words
+    assert 0 < len(hit["rows"]) < 100 and hit["page"] == 1 and hit["total"] == 22920   # shorter than a page: still read
+    assert all("employment" in r["title"].lower() and "persons" in r["title"].lower() for r in hit["rows"])
+    assert a().search("employ", {}, 1)["rows"] == []        # a word, not a substring
+    assert [r["dataset_id"] for r in a().search("naq09", {}, 1)["rows"]] == ["462c3f94-e367-4ef7-ac98-fffa0e168b47"]  # a keyword
+    assert len(a().search("", {"format": "csv"}, 1)["rows"]) == len(everything["rows"])
+    assert a().search("", {"format": "geojson"}, 1)["rows"] == []
+    assert a().search("", {"modified_after": "2026-11-02"}, 1)["rows"] == []
+    assert len(a().search("", {"modified_after": "2026-11-01"}, 1)["rows"]) == 100
+
+    doc = copy.deepcopy(_load("dcat_catalog_jsonld_page1.json"))
+    victim = next(n for n in doc if n["@id"].endswith("/462c3f94-e367-4ef7-ac98-fffa0e168b47"))
+    del victim["http://purl.org/dc/terms/modified"], victim["http://purl.org/dc/terms/issued"]
+    got = DcatApAdapter(FEED, DcatFake({FEED: doc})).search("naq09", {"modified_after": "2030-01-01"}, 1)
+    assert [r["modified"] for r in got["rows"]] == [NOT_REPORTED]      # kept, never silently failed
+    assert got["rows"][0]["record"]["_filter_note"] == "modified not reported"
+    # a feed that states no paging: the total is not reported
+    plain = [n for n in doc if "PagedCollection" not in str(n.get("@type"))]
+    assert DcatApAdapter("https://x.example/catalog.jsonld", DcatFake({"https://x.example": plain})).search(
+        "naq09", {}, 1)["total"] == 100
+
+
+def test_pod_data_json_pages_locally_and_one_document_costs_one_call():
+    t = DcatFake()
+    a = DcatApAdapter(POD, t)
+    a.page_size = 8                                          # as a registered row's page_size would set it
+    pages = [a.search("", {}, n) for n in (1, 2, 3)]
+    assert [len(p["rows"]) for p in pages] == [8, 8, 4] and all(p["total"] == 20 for p in pages)
+    assert len({r["dataset_id"] for p in pages for r in p["rows"]}) == 20
+    assert a.search("", {}, 4)["rows"] == []
+    assert len(t.calls) == 1                                 # exactly one call across all pages
+
+
+def test_dcat_probe_tries_three_urls_and_refuses_in_one_sentence():
+    fail = TransportError("HTTP 404")
+    t = DcatFake({"https://nowhere.example": fail})
+    t.answers = {"https://nowhere.example/catalog.jsonld": fail, "https://nowhere.example/data.json": fail,
+                 "https://nowhere.example": "<html>not json</html>"}
+    with pytest.raises(ProbeRefused) as err:
+        DcatApAdapter.probe("https://nowhere.example/", t)
+    words = str(err.value)
+    assert [u for u, _ in t.calls] == ["https://nowhere.example/catalog.jsonld?page=1",
+                                       "https://nowhere.example/data.json", "https://nowhere.example"]
+    for url in ("https://nowhere.example/catalog.jsonld?page=1", "https://nowhere.example/data.json",
+                "https://nowhere.example"):
+        assert url in words
+    assert words.endswith(").") and ". " not in words, words      # one sentence
+    t2 = DcatFake()
+    got = DcatApAdapter.probe("https://data.gov.ie", t2)
+    assert got == {"feed_url": FEED, "shape": "jsonld", "page_size": 100, "total": 22920} and len(t2.calls) == 1
+    t3 = DcatFake({"https://data.nasa.gov/catalog.jsonld": fail})
+    got = DcatApAdapter.probe("https://data.nasa.gov", t3)
+    assert got["feed_url"] == POD and got["shape"] == "pod" and got["page_size"] == 100 and got["total"] == 20
+    assert len(t3.calls) == 2
+
+
+def test_registering_dcat_ap_stores_the_probed_feed_url_and_page_size_and_no_new_column(store):
+    t = DcatFake()
+    p = service.register_portal(store, display_name="Ireland", api_kind="dcat", base_url="https://data.gov.ie/",
+                                registered_by="tester", transport=t)
+    assert (p["api_kind"], p["adapter"], p["base_url"], p["page_size"], p["calls_per_page"]) == (
+        "DCAT-AP", "dcat_ap", FEED, 100, 1)
+    with pytest.raises(service.OpenDataError, match=r"catalog\.jsonld\?page=1.*data\.json"):
+        service.register_portal(store, display_name="Nope", api_kind="DCAT-AP", base_url="https://nowhere.example",
+                                transport=DcatFake({"https://nowhere.example": TransportError("HTTP 404")}))
+    # CKAN rows are unchanged: no probe, the typed URL, the manifest's page size
+    ck = service.register_portal(store, display_name="CKAN", api_kind="CKAN", base_url="https://demo.ckan.org")
+    assert ck["base_url"] == "https://demo.ckan.org" and ck["page_size"] == 20
+
+
+def test_dcat_distributions_mark_access_only_urls():
+    a = DcatApAdapter(FEED, DcatFake())
+    dists = a.distributions("462c3f94-e367-4ef7-ac98-fffa0e168b47")
+    assert len(dists) == 4 and {d["format"] for d in dists} == {"CSV", "JSON-STAT", "PX", "XLSX"}
+    assert all(d["url"].startswith("https://ws.cso.ie/") and d["size"] == NOT_REPORTED for d in dists)
+    assert all("_access_only" not in d["record"] for d in dists)       # a downloadURL is stated
+    doc = copy.deepcopy(_load("dcat_catalog_jsonld_page1.json"))
+    one = next(n for n in doc if "Distribution" in str(n["@type"]) and "/462c3f94-e367-4ef7-ac98-fffa0e168b47/" in n["@id"])
+    del one["http://www.w3.org/ns/dcat#downloadURL"]
+    b = DcatApAdapter(FEED, DcatFake({FEED: doc}))
+    b.search("naq09", {}, 1)
+    flagged = [d for d in b.distributions("462c3f94-e367-4ef7-ac98-fffa0e168b47") if d["record"].get("_access_only")]
+    assert [d["id"] for d in flagged] == [one["@id"]] and flagged[0]["url"] == one["http://www.w3.org/ns/dcat#accessURL"][0]["@id"]
+    pod = DcatApAdapter(POD, DcatFake()).distributions("https://doi.org/10.21978/p8863g")
+    assert len(pod) == 4 and pod[0]["id"] == NOT_REPORTED and pod[0]["format"] == "BIN"
+
+
+def test_the_price_words_say_the_feed_has_no_search(store):
+    p = service.register_portal(store, display_name="Ireland", api_kind="DCAT-AP", base_url="https://data.gov.ie",
+                                transport=DcatFake())
+    assert "this feed has no search" in service.portal_cost(p)["cost_note"]
+    line = service.search_price(p, 1)["line"]
+    assert line == ("1 page × 1 call = 1 call · this feed has no search; "
+                    "Resource Explorer reads 1 page and keeps the rows that match")
+    assert "reads 3 pages" in service.search_price(p, 3)["line"]
+    ck = service.register_portal(store, display_name="CKAN", api_kind="CKAN", base_url="https://demo.ckan.org")
+    assert service.portal_cost(ck)["cost_note"] == "" and "no search" not in service.search_price(ck, 1)["line"]
+
+
+def test_a_dcat_search_through_the_service_reads_the_registered_row(store):
+    t = DcatFake()
+    p = service.register_portal(store, display_name="Ireland", api_kind="DCAT-AP", base_url="https://data.gov.ie",
+                                transport=t)
+    got = service.run_search(store, p["slug"], terms="employment", pages=1, transport=t)
+    assert got["calls_made"] == 1 and got["total"] == 22920 and got["rows"]
+    assert got["rows"][0]["licence_check"] == "" and got["rows"][0]["portal_slug"] == p["slug"]

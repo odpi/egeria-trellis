@@ -5,7 +5,7 @@ class-level `manifest` (`resource_explorer.open_data.adapters.AdapterManifest`) 
 
 | Role | Methods | Built-in |
 |---|---|---|
-| portal | `search(terms, filters, page)`, `describe(dataset_id)`, `distributions(dataset_id)` | `ckan` (CKAN 2.9+, API 3: `package_search`, `package_show`) |
+| portal | `search(terms, filters, page)`, `describe(dataset_id)`, `distributions(dataset_id)` | `ckan` (CKAN 2.9+, API 3: `package_search`, `package_show`); `dcat_ap` (DCAT-AP JSON-LD `catalog.jsonld` feeds and Project Open Data `data.json`) |
 | directory | `list_portals(page)` | `dataportals` (the dataportals.org JSON listing) |
 | resolver | `resolve(doi)` | `datacite` (api.datacite.org/dois/{doi}, no key) |
 
@@ -27,3 +27,18 @@ socrata = "my_package.socrata:SocrataAdapter"
 All outbound HTTP goes through `open_data/transport.py` (`Transport.get_json(url, params, headers)`); tests pass a fake that
 binds that signature. Fixtures in `tests/fixtures/open_data/` were recorded 2026-10-28 from demo.ckan.org, dataportals.org
 and api.datacite.org (read-only).
+
+## The `dcat_ap` adapter
+
+DCAT-AP is a vocabulary, not an API: it defines no search call. The adapter reads a catalog feed (a document, paged with
+hydra `?page=N` when the feed says so, otherwise one document paged locally) and `search` is Resource Explorer keeping
+the rows of the fetched pages that match (whole words, every term, over title, description and keywords; the format and
+modified-after filters are local too). The manifest's `cost_note` puts that on the price line.
+
+Registration probes the typed URL (`/catalog.jsonld?page=1`, then `/data.json`, then the URL itself: 1 to 3 calls) and
+stores the feed URL it found as the portal's `base_url` and the feed's page size in the existing `page_size` column; no
+other column. The reader accepts expanded, flattened JSON-LD (data.gov.ie), compact JSON-LD with a `@graph`
+(ckanext-dcat dataset documents) and plain POD JSON through one lookup that tries the prefixed key, the expanded IRI and the
+bare name. A record carries the source's entry verbatim; keys beginning `_` (`_language`, `_licence_note`,
+`_filter_note`, `_access_only`) are RE's own notes on it. Fixtures and where each was recorded: `tests/fixtures/open_data/README`.
+Not supported: RDF/XML, Turtle, SPARQL.
