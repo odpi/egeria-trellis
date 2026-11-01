@@ -653,8 +653,8 @@ surveying again. Curate runs no checks; it asks you for a decision.
      (ratings and notes), and one Publish band at the foot.
    - *You see:* tabs including "Describe and publish" and "Contents" (seen on a database; gap G14).
 2. On **Contents**, read "What gets published" and the three chips: "published by RE", "attached N schemas" and
-   "cataloged by Egeria N schemas", each with ✓ or "◌ not checked since <MM-DD HH:MM>" (seen; every stamp on
-   screen is in that form).
+   "cataloged by Egeria N schemas", each with ✓ or "◌ not checked since <MM-DD HH:MM>" (seen; the stamp form
+   seen on Curate › By analysis; confirm on the Contents chips).
    - *Explain:* a chip says what Resource Explorer saw the last time it asked Egeria, not what Egeria holds right now.
    - *Explain (design note D1-b, not decision D1 below):* for a database whose schemas a content pack had already
      catalogued in Egeria, "attached" and "cataloged by Egeria" count different schemas until **Link the pack's N
