@@ -37,8 +37,8 @@ test('W32: Modified shows YYYY-MM-DD, year included, for a date and for a date-t
   globalThis.fetch = async () => ({ ok: true, status: 200, json: async () => ({}), text: async () => '{}' });
   const od = await import('/static/next/admin/open_data.js');
   assert.equal(od.modifiedWords('2019-03-04'), '2019-03-04');
-  assert.match(od.modifiedWords('2021-10-17T14:31:00.123456'), /^2021-10-1[678]$/);   // the reader's zone may move the day
-  assert.doesNotMatch(od.modifiedWords('2021-10-17T14:31:00'), /[A-Za-z]|:/);
+  assert.equal(od.modifiedWords('2021-10-17T14:31:00.123456'), '2021-10-17');   // the source's date, cut, no zone shift
+  assert.equal(od.modifiedWords('2021-10-31T23:59:00Z'), '2021-10-31');
   assert.equal(od.modifiedWords('last spring'), 'last spring');
   assert.match(od.modifiedWords('not_reported'), /not reported by this source/);
 });

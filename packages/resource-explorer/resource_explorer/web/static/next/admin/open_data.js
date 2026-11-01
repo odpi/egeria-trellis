@@ -20,7 +20,7 @@ import {
   listOpenData, getOpenData, openDataDirectoryPrice,
 } from '/static/re-api.js';
 import { esc } from '/static/next/app.js';
-import { ago, whenMs } from '/static/next/format.js';
+import { ago } from '/static/next/format.js';
 import { watchTables } from '/static/next/colresize.js';
 
 export const NOT_REPORTED = 'not_reported';
@@ -47,17 +47,13 @@ export function flagsCue(l) {
 }
 
 /** A modified stamp as YYYY-MM-DD (W32, the owner: "show the year for that column"): a portal's dates can be years
- *  old, so the year is the part that matters and the time of day is not. A date alone stays as given; a date-time is
- *  its date in the reader's zone. Never the raw ISO string with microseconds; unreadable text comes back as it was. */
+ *  old, so the year is the part that matters and the time of day is not. The date is the source's own: a date alone
+ *  stays as given, a date-time is cut to its date (no zone shift). The candidates column and the dataset page say it
+ *  the same way. Never the raw ISO string with microseconds; unreadable text comes back as it was. */
 export function modifiedWords(v) {
   if (v === NOT_REPORTED || v === undefined || v === null || v === '') return show(NOT_REPORTED);
   const text = String(v);
-  if (/^\d{4}-\d{2}-\d{2}$/.test(text)) return esc(text);
-  const ms = whenMs(text);
-  if (Number.isNaN(ms)) return esc(text);
-  const d = new Date(ms);
-  const two = (n) => String(n).padStart(2, '0');
-  return esc(`${d.getFullYear()}-${two(d.getMonth() + 1)}-${two(d.getDate())}`);
+  return esc(/^\d{4}-\d{2}-\d{2}(?:$|[T ])/.test(text) ? text.slice(0, 10) : text);
 }
 
 export function bytes(n) {
