@@ -1,5 +1,7 @@
 # DESIGN — Splitting the Analytic Library out of trellis: what moves, versions, loading, and RE's own analyses (2026-10-30)
 
+> Superseded in part by Q2(b) (#956) and pyegeria 6.2.18 (#959): analytics register through `pyegeria.analytics`, report specs through `pyegeria.report_specs`; `PYEGERIA_REPORT_SPEC_MODULES` is deprecated in 6.2.18 and removed in 6.2.19; dotted function paths are refused in 6.2.19 (pyegeria side: [ISSUE-173](https://github.com/odpi/egeria-python/blob/main/PYEGERIA_ISSUES.md) in egeria-python's PYEGERIA_ISSUES.md, [odpi/egeria-python#523](https://github.com/odpi/egeria-python/pull/523)).
+
 Owner's questions (coordinator relay, verbatim):
 "* Does it make the most sense for all steps to move?
 * Why do we need to pin a version? And do you mean pinning a Dr.E definition or do you mean the code? Perhaps the DrE

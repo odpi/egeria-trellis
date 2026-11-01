@@ -543,6 +543,10 @@ surveying again. Curate runs no checks; it asks you for a decision.
 2. On **Contents**, read "What gets published" and the three chips: "published by RE", "attached N schemas" and
    "cataloged by Egeria N schemas", each with ✓ or "◌ not checked since <time>" (seen).
    - *Explain:* a chip says what Resource Explorer saw the last time it asked Egeria, not what Egeria holds right now.
+   - *Explain (design note D1-b, not decision D1 below):* for a database whose schemas a content pack had already
+     catalogued in Egeria, "attached" and "cataloged by Egeria" count different schemas until **Link the pack's N
+     schemas** on Contents links the pack's schemas to the database. For `coco_pharma` that press was made on
+     2026-10-31; after it the database reads "26 members · 22 added".
 3. Choose **Include** for one schema and **Leave out** for another.
    - *You see:* the choice saved at once in Resource Explorer. Nothing goes to Egeria yet (seen, user guide).
 4. On **Describe and publish**, under "FINDABLE", add a tag, for example "learning".
@@ -591,6 +595,10 @@ surveying again. Curate runs no checks; it asks you for a decision.
    and the survey report (owner, 2026-10-29). Egeria Explorer also shows Resource Explorer's questions and
    perspectives as Egeria holds them; one sentence, as a pointer. The exact clicks in Egeria Explorer are to be read
    on the screen.
+   - *Explain (design note D1-a):* a database may show as already in Egeria, matched by its endpoint, rather than
+     published fresh: Resource Explorer adds to the element Egeria already holds (gap G24).
+   - *Pending, once D1-e merges:* coverage will read "22 in Egeria under '<family>' · not RE's". Read the words on
+     the screen before writing them in.
 
 **What can go wrong.**
 
@@ -926,6 +934,7 @@ in this outline; each is named where it bites.
 | G21 | This writer's browser was not signed in, so the register dialogs, the new-investigation dialog and the chat rail are outlined from the source code (marked "code"). | 3, 8, 12 | The prose writer reads each on the screen, signed in. |
 | G22 | Steps whose exact screen words nobody has recorded: a wrong password, Egeria down at sign-in, an empty investigation name, "promote" on a work list, the Assessment tab on a database, a step that asks before running a prerequisite. | 2, 5, 6, 11, 12 | Read on the screen during the prose phase; some need a deliberate error to see. |
 | G23 | The overview surveys are uneven across kinds (definitions, 2026-10-29). A database has no Discovery survey. A database's Assessment survey has one step. File-system stage surveys are not yet identified. Names are inconsistent: "Scouting Survey" and "Repo Scouting Scan" are both repository Scouting surveys; "Database Scouting Scan" is the database's overview; "Assessment Survey" and "Analysis Survey" carry no kind in their names, while "Repo Discovery Survey" does. A reader cannot tell from a name which survey is the overview. | 4, 5, 6 | One naming rule (for example "<Kind> <Stage> Survey" for every overview), and the missing overviews either built or explained. |
+| G24 | After design note D1-a, a database can show as already in Egeria, matched by its endpoint, rather than published fresh. A reader who expects "published by RE" sees a different state. | 9, 10 | Explain it at part 10, step 7. Pending D1-e: coverage will read "22 in Egeria under '<family>' · not RE's". |
 
 ---
 
@@ -945,6 +954,7 @@ in this outline; each is named where it bites.
 | D2c | The two extra repositories for the work list (part 11) | **Decided (project owner, 2026-10-29):** Marquez and Egeria, beside OpenLineage. |
 | D2b | Hosted demo or your own Egeria Workspaces | **Settled by the owner's facts (2026-10-29):** both work. The hosted demo is reset daily and is sometimes a little behind the latest code. Your own Workspaces needs Trellis installed and configured in a separate step, which the Getting Started tutorial covers. The tutorial offers both (section 1). |
 | D8 | Part 1: what Resource Explorer is for, and who it is for | **Reviewed (project owner, 2026-10-29):** the situation is one example of many; surveying catalogs only the entry point; questions decide what runs and the funnel is a guide, not the only path; questions, analyses and surveys can be changed (Advanced); RE explores the frontier of what Egeria does not know and what it does, guided by your needs, recording and sharing what you learn; chat is in part 1. Users: data scientists (including AI), data engineers, curators, security specialists, DevOps engineers, architects, developers. |
+| D9 | Linking a content pack's schemas to RE's database element (design note D1-b; not D1 above) | **Decision (project owner, 2026-10-31):** "yes, database level is what I meant - go". **Done:** pressed 2026-10-31 on `coco_pharma`: 22 added, 26 members (part 9, step 2). |
 
 ---
 

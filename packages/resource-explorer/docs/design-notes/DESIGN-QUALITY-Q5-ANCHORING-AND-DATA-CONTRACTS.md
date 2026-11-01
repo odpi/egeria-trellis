@@ -120,6 +120,8 @@ consistent, and RE never has to reconcile its own writes with a later re-import 
 one, or retire its own because a contract appeared. Curate shows the overlap (below), and the owner decides
 whether that should ever retire RE's rule (question 4).
 
+*See also* [DESIGN-ADOPT-BY-ENDPOINT-D1-2026-10-30.md](DESIGN-ADOPT-BY-ENDPOINT-D1-2026-10-30.md) §8 and §10: the one re-anchor RE has made (D1-b) adds a content pack's schemas to RE's database element and moves no rule.
+
 ### 4.2 In Curate
 
 **A "Contracts" line on the database** (Structure tab, above Quality checks):
@@ -157,6 +159,8 @@ The question therefore becomes a policy for after the gate.
   gain over case A plus `GovernedBy`.
 - A contract that adopts an RE check gets its own rule through the mapper (§6.4). Both elements remain, each with
   its own history.
+- D1 follows the same rule at database level ([DESIGN-ADOPT-BY-ENDPOINT-D1-2026-10-30.md](DESIGN-ADOPT-BY-ENDPOINT-D1-2026-10-30.md) §8 and §10): RE adds relationships to a content pack's elements and
+  re-anchors nothing of its own.
 
 If the owner wants a contract to replace an RE rule, the existing retire path is the way to do it: `DEPRECATED`
 plus unlink, never delete (question 4).
@@ -307,7 +311,8 @@ otherwise.
 1. **Is origin enough to decide the anchor?** RE writes only own-anchored rules, a contract's rules are always
    the mapper's, and there is no anchor chooser (§4.1). *Recommend yes.*
 2. **Should already-published own-anchored rules ever be re-anchored?** None exist yet (§2). *Recommend never:
-   own-anchored rules stay own-anchored. A contract's version of a check is its own element (§5).*
+   own-anchored rules stay own-anchored. A contract's version of a check is its own element (§5).* D1's database-level
+   link (D1-b, [DESIGN-ADOPT-BY-ENDPOINT-D1-2026-10-30.md](DESIGN-ADOPT-BY-ENDPOINT-D1-2026-10-30.md) §8 and §10) is not a rule re-anchor and does not change this.
 3. **Contract versions.** Should RE follow a newer `active` version automatically, or show "v1.1 available" and
    wait for a person? *Recommend wait for a person, as with every other binding.*
 4. **Overlap.** When a bound contract and an RE rule check the same column the same way, should RE retire its own
