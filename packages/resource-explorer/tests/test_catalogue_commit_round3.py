@@ -87,7 +87,7 @@ def test_refresh_timeout_while_the_cataloguer_is_refreshing_is_skipped_not_faile
         _, rec = press(world, fake)
     st = step(rec, "refresh")
     assert st["state"] == "skipped"
-    assert st["detail"] == "the cataloguer was already refreshing · elements arrive on its pass"
+    assert st["detail"] == "the cataloger was already refreshing · elements arrive on its pass"
     assert not [s for s in rec["steps"] if s["state"] == "failed"], "the header's failed count stays 0"
     assert rec["state"] != "failed"
     log = " ".join(r.getMessage() for r in caplog.records)

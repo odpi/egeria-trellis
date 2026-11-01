@@ -14,6 +14,7 @@ states: a sentence in `content`, no `data`, and this dict under `detail`.
 from __future__ import annotations
 
 import os
+import re
 
 from trellis_analytics.readers.ods import OdsReader
 from trellis_analytics.routines import curation_coverage
@@ -23,6 +24,26 @@ TILE_LABEL = "Trellis - Curation Coverage"
 #: point). A report spec names it by this, never by its Python path (Q2(b), project owner 2026-10-31).
 TILE_FUNCTION = "curation_coverage_tile"
 _CHARTED = ("measured", "nothing_found")     # the states that have counts to chart
+
+
+def _family_slug(family: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "_", family.lower()).strip("_") or "unnamed"
+
+
+def _kpis(result) -> list[dict]:
+    """One KPI per line, keyed `<group>.<line>`. A line naming a family (in_other_family: one line per family) is keyed
+    `<group>.<line>.<family slug>`, the same key whether one family or several hold schemas, so no two KPIs share a key."""
+    out, seen = [], set()
+    for g in result.groups:
+        for l in g.lines:
+            key = f"{g.key}.{l.key}" + (f".{_family_slug(l.family)}" if l.family else "")
+            base, n = key, 2
+            while key in seen:              # two family names that slug alike stay apart
+                key, n = f"{base}_{n}", n + 1
+            seen.add(key)
+            out.append({"key": key, "group": g.key, "label": l.label, "value": l.count, "rows": l.rows,
+                        "names": l.names})
+    return out
 
 
 def curation_coverage_tile(slug: str, ods_url: str = "", resource_type: str = "database") -> dict:
@@ -40,8 +61,7 @@ def curation_coverage_tile(slug: str, ods_url: str = "", resource_type: str = "d
                      "scope": env.scope},
         "summary": result.summary,
         "groups": [{"key": g.key, "words": g.words} for g in result.groups],
-        "kpis": [{"key": f"{g.key}.{l.key}", "group": g.key, "label": l.label, "value": l.count,
-                  "rows": l.rows, "names": l.names} for g in result.groups for l in g.lines],
+        "kpis": _kpis(result),
     }
     if state in _CHARTED:
         published = result.count("published", "schemas")

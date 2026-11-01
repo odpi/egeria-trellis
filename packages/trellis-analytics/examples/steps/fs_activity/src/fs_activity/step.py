@@ -63,6 +63,13 @@ def _bands(ages: list[tuple[float, int]], hot: int, cold: int) -> dict:
     return out
 
 
+def _stamp(value) -> str:
+    """The page's one time form for words, "MM-DD HH:MM" (W28; as curation_coverage's); the raw value when it cannot
+    be read. `asOf` in the value stays raw."""
+    t = _parse(value)
+    return t.strftime("%m-%d %H:%M") if t else str(value)
+
+
 def run(inputs) -> list[dict]:
     slug = inputs.slug
     hot = int(inputs.parameters.get("hot_days", 7))
@@ -90,7 +97,7 @@ def run(inputs) -> list[dict]:
         out.append({"scope": slug, "state": "nothing_found", "value": {**common, "basis": MODIFY_BASIS},
                     "summary": "the walk found no files"})
     elif not mod:
-        out.append(_absent(slug, f"no file on the walk of {walk['run_id']} has a modified time", "no modified times"))
+        out.append(_absent(slug, f"no file on the walk of {_stamp(walk['run_id'])} has a modified time", "no modified times"))
     else:
         v = {**common, **_bands(mod, hot, cold), "Files Without A Modified Time": no_mtime, "basis": MODIFY_BASIS}
         out.append({"scope": slug, "state": "measured", "value": v,
@@ -107,7 +114,7 @@ def _access(slug, walk, previous, rows, age, hot, cold, common, inputs) -> dict:
                 "summary": "the walk found no files"}
     timed = [r for r in rows if r.get("accessed_at")]
     if not timed:
-        return _absent(slug, f"access times not recorded on this walk ({walk['run_id']}): it was walked before "
+        return _absent(slug, f"access times not recorded on this walk ({_stamp(walk['run_id'])}): it was walked before "
                              "Resource Explorer kept them, so which files were read cannot be told",
                        "access times not recorded on this walk", ACCESS)
     if not any((r.get("accessed_at") or "") > (r.get("modified_at") or "") for r in timed):

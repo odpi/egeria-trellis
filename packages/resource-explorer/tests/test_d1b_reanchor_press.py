@@ -9,6 +9,7 @@ signatures (asserted below). Temp SQLite; no Egeria.
 from __future__ import annotations
 
 import inspect
+import re
 import sys
 import threading
 from datetime import UTC, datetime, timedelta
@@ -114,7 +115,7 @@ def test_all_22_are_added_with_the_database_at_end_2_and_the_plan_reads_26_and_0
     assert gw.writes() == [("link_data_set_content", f"pack-{s}", "c990f349") for s in PACK_22]   # one call each
     assert all(o["relationship_guid"].startswith("new-") for o in out["outcomes"])
     assert (out["members_after"], out["to_add_after"]) == (26, 0)
-    assert out["words"].startswith("26 members · 22 added · read back ")
+    assert re.fullmatch(r"26 members · 22 added · read back \d\d-\d\d \d\d:\d\d", out["words"]), out["words"]
     rows = _applied(reg)
     assert len(rows) == 1 and rows[0]["element_guid"] == "c990f349" and rows[0]["recorded_by"] == ME
     assert [o["outcome"] for o in rows[0]["detail"]["outcomes"]] == ["added"] * 22
@@ -287,3 +288,22 @@ def test_the_route_presses_after_a_read_and_the_scope_reads_the_result(client, f
     ep = client.get("/api/catalogue-scope/db").json()["commit"]["endpoint"]
     assert (ep["plan"]["database_row"]["members_now"], ep["plan"]["database_row"]["to_add"]) == (3, [])
     assert ep["press"]["words"].startswith("3 members · 2 added")
+
+
+# W25: one time form on the page, "MM-DD HH:MM", in the words the press stores and in the line an older row draws
+def test_the_stored_press_words_use_the_pages_one_time_form(reg):
+    gw = coco_live()
+    _read(reg, gw)
+    out = _press(reg, gw)
+    stored = _applied(reg)[0]["detail"]["words"]
+    assert stored == out["words"]
+    stamp = stored.rsplit(" · read back ", 1)[1]
+    assert re.fullmatch(r"\d\d-\d\d \d\d:\d\d", stamp) and "2026-" not in stored
+
+
+def test_a_row_pressed_before_w25_reads_in_the_pages_form():
+    row = {"read_at": "2026-10-31T20:38:31.123456", "recorded_by": "dan", "detail": {
+        "words": "26 members · 22 added · read back 2026-10-31 20:38", "counts": {"added": 22}, "outcomes": []}}
+    assert cc._press_summary(row)["words"] == "26 members · 22 added · read back 10-31 20:38"
+    row["detail"]["words"] = "26 members · 22 added · read back 2026-10-31T20:38:31.5"
+    assert cc._press_summary(row)["words"] == "26 members · 22 added · read back 10-31 20:38"

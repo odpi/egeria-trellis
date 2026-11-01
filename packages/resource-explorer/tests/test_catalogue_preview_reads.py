@@ -111,7 +111,7 @@ def test_f28_a_failed_read_back_says_it_could_not_read_and_never_leads_with_a_co
     fake.fail["connector_status"] = "TIMEOUT_ERROR_408 after 30 s"
     s = cc.read_back(world["registry"], fake, "db", ["sales"])
     line = cc.read_back_line(s, "published by RE 2 ✓ · attached 1 schema ✓ · cataloged by Egeria 0 ◌")
-    assert line == ("could not read Egeria · the cataloguer's connector: TIMEOUT_ERROR_408 after 30 s · "
+    assert line == ("could not read Egeria · the cataloger's connector: TIMEOUT_ERROR_408 after 30 s · "
                     "nothing changed: the counts are from the last read that worked")
     assert "0" not in line.replace("408", "").replace("30 s", "")
 

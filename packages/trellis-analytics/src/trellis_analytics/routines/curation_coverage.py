@@ -47,6 +47,7 @@ class CountLine(BaseModel):
     count: int
     rows: dict[str, list[int]] = Field(default_factory=dict)   # table -> the ids counted
     names: list[str] = Field(default_factory=list)
+    family: str = ""            # in_other_family only: the family the line names (its label says it in words)
 
 
 class Group(BaseModel):
@@ -88,6 +89,13 @@ def _ts(value: str):
         except ValueError:
             continue
     return None
+
+
+def _stamp(value: str) -> str:
+    """The page's one time form, "MM-DD HH:MM", for the words; the raw value when it cannot be read (`as_of` itself
+    stays raw for anything that compares it)."""
+    d = _ts(value)
+    return d.strftime("%m-%d %H:%M") if d else str(value or "")
 
 
 def _result(resource_type, slug, state, reason, **kw) -> CoverageResult:
@@ -234,7 +242,7 @@ def curation_coverage(ods: OdsReader, resource_type: str, slug: str) -> Coverage
                   rows={"catalogue_scope_events": [choice[n]["id"] for n in v if n in choice]})
         for k, v in buckets.items()]
     not_yet_lines[1:1] = [
-        CountLine(key="in_other_family", label=f"in Egeria under '{family}' · not RE's", count=len(v), names=v,
+        CountLine(key="in_other_family", label=f"in Egeria under '{family}' · not RE's", count=len(v), names=v, family=family,
                   rows={"catalogue_commit_proofs": [endpoint["id"]]})
         for family, v in sorted(others.items())]
     not_yet_total = len(rest)
@@ -248,7 +256,7 @@ def curation_coverage(ods: OdsReader, resource_type: str, slug: str) -> Coverage
                                        rows={"egeria_outbox": superseded}))
 
     pub_words = ("published · " + " · ".join(f"{l.count} {l.label}" for l in pub_lines if l.count)
-                 + (f" · read back {as_of}" if as_of else "")) if published or report else "nothing published yet"
+                 + (f" · read back {_stamp(as_of)}" if as_of else "")) if published or report else "nothing published yet"
     ny_words = f"not yet published · {not_yet_total}: " + " · ".join(
         f"{l.count} {l.label}" for l in not_yet_lines if l.count) if not_yet_total else "not yet published · none"
     bl_words = f"blocked · {len(blocked)}" if blocked else "blocked · none"

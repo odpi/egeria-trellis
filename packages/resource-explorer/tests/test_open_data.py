@@ -587,3 +587,11 @@ def test_the_directory_price_route_is_the_run_price(client):
     got = client.get(f"/api/open-data/directories/{d['slug']}/price?pages=8").json()
     assert got["pages"] == 8 and got["calls"] == 8 and "8 pages" in got["line"]
     assert client.get("/api/open-data/directories/nope/price").status_code == 404
+
+
+def test_the_canadian_open_government_licence_has_its_three_flags():
+    """W30: open.canada.ca's "ca-ogl-lgo" rows showed three "?"; the OGL-Canada needs attribution, has no
+    share-alike, and allows commercial use."""
+    from resource_explorer.open_data.licences import licence_flags
+    assert licence_flags("ca-ogl-lgo") == {"attribution": True, "share_alike": False, "commercial": True}
+    assert licence_flags("CA-OGL-LGO ") == licence_flags("ca-ogl-lgo")

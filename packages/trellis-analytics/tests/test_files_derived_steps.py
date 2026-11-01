@@ -274,6 +274,17 @@ def test_activity_access_times_not_recorded_on_this_walk(fs_steps_installed, fs_
     assert "Cold Files" not in a.resource_properties            # can't tell is never "cold"
 
 
+def test_activity_words_carry_the_walks_time_in_the_pages_form_not_raw_iso(fs_steps_installed, fs_registry):
+    """W28: "(2026-10-25T23:47:39.704588)" on the Survey card and the Curate row reads "(10-25 23:47)"; the
+    value's asOf stays the walk's own id."""
+    reg, url = fs_registry
+    walk(reg, "tree", "2026-10-25T23:47:39.704588", [row("a"), row("b")])
+    a = run(url, "fs_activity")["fs_access_activity"]
+    assert state(a) == "not_established"
+    assert "access times not recorded on this walk (10-25 23:47)" in a.explanation, a.explanation
+    assert "T23" not in a.explanation and ".704" not in a.explanation
+
+
 def test_activity_access_times_not_recorded_on_this_mount(fs_steps_installed, fs_registry):
     reg, url = fs_registry
     walk(reg, "tree", "2026-10-10T00:00:00", [row("a", mtime="2026-01-01T00:00:00", atime="2026-01-01T00:00:00"),
