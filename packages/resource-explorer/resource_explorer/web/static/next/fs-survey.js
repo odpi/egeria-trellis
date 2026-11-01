@@ -18,15 +18,21 @@
  *   - "Personal or sensitive data" (Files build step 8, F7): data_class_match over the file profiles, what the press reads
  *     before it, then the run's counts and the proposals by file and column, with the names that suggest personal data.
  *
+ * The five long result sections (Files, Walk measures, Data-file profiles, Personal or sensitive data, Derived from the
+ * walk) are native <details> (sections.js): the summary is the heading plus its one-line answer, collapsed above 8 rows
+ * or with a table, the person's choice remembered per resource; a press that fills a section opens it once. Every press
+ * carries a title saying what it does, what it reads and what it leaves behind (hover help, slice 1).
+ *
  * Every status here comes from a stored row the server read (the probe row, the run row, the walk's own limits), never
  * from which button was pressed. A number the survey did not carry is "–", never 0.
  */
-import { esc } from '/static/next/app.js';
+import { esc, state } from '/static/next/app.js';
 import { getFolderSurvey, runFolderSurvey, publishFolderSurvey, checkFilesystemReach, runWalkExtensions, publishWalkExtensions,
   runFileProfiles, readFileProfilesFromEgeria, publishFileProfiles, runFilesystemAnalysis, runNarrativeDocs, runClassMatch,
   pollActivity, activityFailure, failureText } from '/static/re-api.js';
 import { enhanceTable } from '/static/next/colresize.js';
 import { fmtBytes } from '/static/next/stages/native-report.js';
+import { readSectionPref, writeSectionPref, sectionStartsOpen, SECTION_ROWS_OPEN } from '/static/next/sections.js';
 
 /** Placeholder words, in one table, for the designer. */
 export const FOLDER_SURVEY_WORDS = {
@@ -34,8 +40,12 @@ export const FOLDER_SURVEY_WORDS = {
   press: 'Survey',
   pressing: 'Surveying…',
   check: 'Check again',
+  checkHelp: 'Reads whether the surveyor can still reach the folder path. Opens no file; writes a reachability row here.',
   checking: 'Checking…',
+  pressHelp: "Runs the folder survey (Egeria's Folder Survey leads when Egeria can read the path). Walks every file; stores the walk here. Publishing is a separate press.",
+  pressOffHelp: 'Off: no one can be named to lead the survey yet. Check again reads whether the path can be reached.',
   publish: 'Publish this walk to Egeria',
+  publishHelp: 'Sends the stored walk to Egeria as a survey report. Reads nothing new; the line under Files says what landed.',
   publishing: 'Publishing…',
   led: (who) => `led by ${who}`,
   noLead: 'no one can be named to lead yet',
@@ -51,8 +61,10 @@ export const FOLDER_SURVEY_WORDS = {
   egeriaList: "the names are in Egeria's own file · not read here",
   // Walk measures (Files build step 1): what Egeria's Folder Survey does not keep.
   measureBeside: "Measure beside Egeria's survey",
+  measureBesideHelp: "Walks the folder again for what Egeria's survey does not keep (per-file rows, owners, hashes). Stores them here; publishes nothing.",
   measuringBeside: 'Measuring…',
   publishMeasures: 'Publish these measures to Egeria',
+  publishMeasuresHelp: 'Sends the stored walk measures to Egeria as a survey report. Reads nothing new.',
   measuresHeading: 'Walk measures',
   measuresBy: (date, led) => `measured by Resource Explorer${date ? ` · ${date}` : ''}${led === 'egeria' ? " · beside Egeria's Folder Survey" : ''}`,
   noMeasures: 'not measured yet',
@@ -69,10 +81,13 @@ export const FOLDER_SURVEY_WORDS = {
   // Data-file profiles (Files build step 5).
   profilesHeading: 'Data-file profiles',
   profilePress: 'Profile data files',
+  profilePressHelp: "Profiles the data files the walk found; CSV files go to Egeria's CSV Survey Service. Reads each data file; stores the profiles here; publishes nothing.",
   profiling: 'Profiling…',
   readEgeria: "Read Egeria's reports",
+  readEgeriaHelp: "Reads back the profiles Egeria's CSV Survey Service has written. Writes nothing to Egeria; the profiles below update.",
   reading: 'Reading…',
   publishProfiles: 'Publish these profiles to Egeria',
+  publishProfilesHelp: 'Sends the stored profiles to Egeria as a survey report. Reads nothing new.',
   noProfiles: 'not profiled yet',
   profiledAt: (date) => `profiled${date ? ` · ${date}` : ''}`,
   sampled: 'sampled',
@@ -91,6 +106,7 @@ export const FOLDER_SURVEY_WORDS = {
   // Files build step 6: the derived steps, and F12's price line.
   derivedHeading: 'Derived from the walk',
   derivePress: 'Derive',
+  deriveHelp: "Runs the installed derived steps over the last walk's kept rows. Opens no file, calls nothing outside; results go under Derived from the walk. Publishes nothing.",
   deriving: 'Deriving…',
   notRun: 'not yet run',
   derivedAt: (date) => `derived${date ? ` · ${date}` : ''}`,
@@ -100,6 +116,7 @@ export const FOLDER_SURVEY_WORDS = {
   // Files build step 7: the narrative files read in full (F11's long form).
   narrativeHeading: 'Narrative files, read in full',
   narrativePress: 'Read narrative files',
+  narrativePressHelp: "Reads the walk's README and markdown files in full into Resource Explorer's search index. Opens those files; publishes nothing.",
   narrativeReading: 'Reading…',
   narrativeNotRead: 'not read yet',
   narrativeReadAt: (date) => `read${date ? ` · ${date}` : ''}`,
@@ -107,11 +124,14 @@ export const FOLDER_SURVEY_WORDS = {
   // Files build step 8: data_class_match over the file profiles (F7).
   classHeading: 'Personal or sensitive data',
   classPress: 'Match data classes',
+  classPressHelp: "Matches the profiled columns to Egeria's data classes. Reads the stored profiles; stores the matches here as proposals; publishes nothing.",
   classMatching: 'Matching…',
   classNotRun: 'not matched yet',
   classAt: (date) => `matched${date ? ` · ${date}` : ''}`,
   classStale: 'newer profiles exist · match again to bring this up to date',
   classNames: (n) => `${num(n)} file${n === 1 ? '' : 's'} whose name suggests personal data · on the name only`,
+  // Collapsed result sections: the heading the summary carries where the section had none of its own.
+  filesHeading: 'Files',
 };
 
 const dash = '–';
@@ -138,6 +158,17 @@ export function reachLineHtml(reach) {
     ${r.why ? `<div class="text-provenance text-ink-muted" data-fs-reach-why>${esc(r.why)}</div>` : ''}
   </div>`;
 }
+
+/** A result section as a native <details>: the summary is the heading plus its one-line answer (`answer`, words), so
+ *  it answers while collapsed. `attrs` are the section's own data attributes, kept on the <details>. */
+function sectionHtml(key, open, heading, answer, attrs, body, cls = 'mt-s3') {
+  return `<details data-fs-section="${esc(key)}" ${attrs} class="${cls}"${open ? ' open' : ''}>
+    <summary class="cursor-pointer" data-fs-section-summary><span class="text-caps uppercase tracking-caps text-ink-muted">${esc(heading)}</span>${
+  answer ? `<span class="text-caveat text-ink-muted" data-fs-section-answer> · ${esc(answer)}</span>` : ''}</summary>
+    ${body}
+  </details>`;
+}
+const words = (...parts) => parts.filter(Boolean).join(' · ');
 
 const statRow = (label, value) =>
   `<div class="flex gap-s2 text-caveat"><span class="w-[16ch] shrink-0 text-ink-muted">${esc(label)}</span><span class="text-ink">${esc(value)}</span></div>`;
@@ -217,8 +248,9 @@ const tailHtml = (line, sentence) => {
   return more ? `<span class="text-ink-muted"> · ${esc(more)}</span>` : '';
 };
 
-/** The results, one shape for both leads. */
-export function folderResultsHtml(view) {
+/** The results, one shape for both leads. With `fold` ({open}) the measured results are the Files section, collapsed or
+ *  open; without it (Understanding) they draw as before. */
+export function folderResultsHtml(view, fold = null) {
   const v = view || {};
   if (v.state !== 'measured') {
     return `<div data-fs-results data-fs-state="none" class="mt-s2 text-caveat text-ink-muted">${esc(FOLDER_SURVEY_WORDS.noSurvey)}</div>`;
@@ -226,8 +258,8 @@ export function folderResultsHtml(view) {
   const r = v.results || {};
   const c = r.counts || {};
   const t = r.times || {};
-  return `<div data-fs-results data-fs-state="measured" data-fs-surveyor="${esc(v.surveyor)}" class="mt-s2">
-    <div data-fs-surveyed-by class="text-caveat text-ink">${esc(FOLDER_SURVEY_WORDS.surveyedBy(v.surveyor, day(v.surveyed_at)))}${
+  const attrs = `data-fs-results data-fs-state="measured" data-fs-surveyor="${esc(v.surveyor)}"`;
+  const body = `<div data-fs-surveyed-by class="text-caveat text-ink">${esc(FOLDER_SURVEY_WORDS.surveyedBy(v.surveyor, day(v.surveyed_at)))}${
   tailHtml(FOLDER_SURVEY_WORDS.surveyedBy(v.surveyor, day(v.surveyed_at)), v.report_sentence)}</div>
     <div class="text-provenance text-ink-muted" data-fs-published>${publishWords(v)}</div>
     ${(v.detail_lines || []).map((l) => `<div class="text-provenance text-ink-muted" data-fs-detail>${esc(l)}</div>`).join('')}
@@ -244,8 +276,23 @@ export function folderResultsHtml(view) {
       ${inaccessibleHtml(r.inaccessible)}
     </div>
     ${typeRows('File types', r.file_types)}
-    ${typeRows('File extensions', r.extensions)}
+    ${typeRows('File extensions', r.extensions)}`;
+  if (fold) {
+    const answer = words(c.files == null ? '' : `${num(c.files)} files`, c.total_size_bytes == null ? '' : fmtBytes(c.total_size_bytes),
+      c.file_types == null ? '' : `${num(c.file_types)} types`, FOLDER_SURVEY_WORDS.surveyedBy(v.surveyor, day(v.surveyed_at)));
+    return sectionHtml('files', fold.open, FOLDER_SURVEY_WORDS.filesHeading, answer, attrs, body, 'mt-s2');
+  }
+  return `<div ${attrs} class="mt-s2">
+    ${body}
   </div>`;
+}
+
+/** The Files section's rows: the type and extension lists and the inaccessible and broken-link names it shows. */
+function filesRows(view) {
+  const r = (view && view.results) || {};
+  const listed = (r.inaccessible && Array.isArray(r.inaccessible.listed)) ? Math.min(r.inaccessible.listed.length, 21) : 0;
+  return Math.min((r.file_types || []).length, 13) + Math.min((r.extensions || []).length, 13) + listed
+    + Math.min(((view && view.broken_symlinks) || []).length, 21);
 }
 
 const th = (t) => `<th scope="col" class="px-2 py-[2px] text-left font-normal text-ink-muted">${esc(t)}</th>`;
@@ -268,7 +315,7 @@ export function measureTableHtml(id, title, headers, rows) {
 
 /** The walk's extensions (Files build step 1): bulk and depth per folder, owner and mode, hashes, noise directories, and each
  *  folder's own narrative as a proposal. What it says about the rows and about publishing comes from the view's stored proof. */
-export function walkMeasuresHtml(ext) {
+export function walkMeasuresHtml(ext, fold = null) {
   const W = FOLDER_SURVEY_WORDS;
   if (!ext) return `<div data-fs-measures data-fs-measures-state="none" class="mt-s3 text-caveat text-ink-muted">${esc(W.measuresHeading)} · ${esc(W.noMeasures)}</div>`;
   const f = ext.folders || {};
@@ -288,8 +335,11 @@ export function walkMeasuresHtml(ext) {
   const notHashed = W.notHashed(h.over_limit_files, h.secret_named_files, h.symlink_files, h.unreadable_files);
   const narr = ext.narratives || [];
   const ns = ext.narratives_summary || {};
-  return `<div data-fs-measures data-fs-measures-state="measured" data-fs-measures-led="${esc(ext.led_by)}" class="mt-s3">
-    <div class="text-caps uppercase tracking-caps text-ink-muted">${esc(W.measuresHeading)}</div>
+  const attrs = `data-fs-measures data-fs-measures-state="measured" data-fs-measures-led="${esc(ext.led_by)}"`;
+  const answer = words(f.folders_with_files == null ? '' : `${num(f.folders_with_files)} folders with files`,
+    f.deepest_folder_depth == null ? '' : `deepest level ${num(f.deepest_folder_depth)}`, ext.capped_words ? 'capped' : '',
+    `measured${day(ext.surveyed_at) ? ` · ${day(ext.surveyed_at)}` : ''}`);
+  return sectionHtml('measures', !fold || fold.open, W.measuresHeading, answer, attrs, `
     <div class="text-caveat text-ink" data-fs-measures-by>${esc(W.measuresBy(day(ext.surveyed_at), ext.led_by))}${
   tailHtml(W.measuresBy(day(ext.surveyed_at), ext.led_by), ext.report_sentence)}</div>
     ${capped}
@@ -319,8 +369,14 @@ export function walkMeasuresHtml(ext) {
       : `<div class="text-provenance text-ink-muted">${esc(W.noNarratives)}</div>`}
       ${ext.narratives_not_shown ? `<div class="text-provenance text-ink-muted">and ${num(ext.narratives_not_shown)} more</div>` : ''}
       ${ns.stopped_at_read_cap ? `<div class="text-provenance text-state-warn">stopped after ${num(ns.read_cap)} files read · not every folder was looked at</div>` : ''}
-    </div>
-  </div>`;
+    </div>`);
+}
+
+/** Walk measures' rows: a table (heaviest folders, by depth) counts as more than a screen; else the narratives. */
+function measuresRows(ext) {
+  const f = (ext && ext.folders) || {};
+  if ((f.largest_folders || []).length || (f.depth_histogram || []).length) return Infinity;
+  return ((ext && ext.narratives) || []).length;
 }
 
 const STATE_WORDS = {
@@ -334,7 +390,7 @@ const STATE_WORDS = {
 const sourceWords = (s) => (String(s || '').startsWith('egeria:') ? `Egeria · report ${String(s).slice(7, 15)}` : s === 'resource-explorer' ? 'RE' : '');
 
 /** The data-file profiles (Files build step 5): the cost line BEFORE the press, then the run's counts, each from stored rows. */
-export function fileProfilesHtml(fp) {
+export function fileProfilesHtml(fp, fold = null) {
   const W = FOLDER_SURVEY_WORDS;
   if (!fp) return '';
   if (fp.error) return `<div data-fp data-fp-state="error" class="mt-s3 text-provenance text-state-warn">${esc(fp.error)}</div>`;
@@ -357,15 +413,22 @@ export function fileProfilesHtml(fp) {
   const rows = (run.files || []).map((f) => [f.file_path, STATE_WORDS[f.state] ? `${STATE_WORDS[f.state]}${f.state === 'not_applicable' ? ` ${f.format || '(none)'}` : ''}` : f.state,
     sourceWords(f.stats_source), f.columns ? num(f.columns) : dash,
     f.sample_ratio != null && f.sample_ratio < 1 ? `${W.sampled} ${(f.sample_ratio * 100).toFixed(1)}%` : '']);
-  return `<div data-fp data-fp-state="profiled" class="mt-s3">${head}
-    <div data-fp-run class="text-caveat text-ink">${esc(W.profiledAt(day(run.run_id)))} · <span data-fp-words>${esc(run.words || '')}</span></div>
-    ${egeriaLines.map((l) => `<div data-fp-egeria class="text-provenance text-state-warn"><span class="font-glyph" aria-hidden="true">⚠</span> ${esc(l)}</div>`).join('')}
+  // The price (before the next press) and Egeria's refusals stay outside the fold: they are answers, not evidence.
+  const body = `<div data-fp-run class="text-caveat text-ink">${esc(W.profiledAt(day(run.run_id)))} · <span data-fp-words>${esc(run.words || '')}</span></div>
     ${other ? `<div data-fp-other class="text-provenance text-ink-muted">${esc(other)}</div>` : ''}
     <div data-fp-published class="text-provenance text-ink-muted">${pub}</div>
     ${rows.length ? measureTableHtml('profiles', 'Files', ['File', 'State', 'Source', 'Columns', 'Sampled'], rows) : ''}
-    ${run.files_not_shown ? `<div class="text-provenance text-ink-muted">and ${num(run.files_not_shown)} more</div>` : ''}
+    ${run.files_not_shown ? `<div class="text-provenance text-ink-muted">and ${num(run.files_not_shown)} more</div>` : ''}`;
+  const answer = words(W.profiledAt(day(run.run_id)), run.words || '');
+  return `<div data-fp data-fp-state="profiled" class="mt-s3">
+    ${sectionHtml('profiles', !fold || fold.open, W.profilesHeading, answer, 'data-fp-section', body, '')}
+    <div data-fp-price class="text-caveat text-ink">${esc(price.words || '')}</div>
+    ${egeriaLines.map((l) => `<div data-fp-egeria class="text-provenance text-state-warn"><span class="font-glyph" aria-hidden="true">⚠</span> ${esc(l)}</div>`).join('')}
   </div>`;
 }
+
+/** Data-file profiles' rows: its files table counts as more than a screen. */
+const profilesRows = (fp) => (fp && fp.run && ((fp.run.files || []).length || fp.run.files_not_shown) ? Infinity : 0);
 
 /** F12: the price line, shown before the Survey press. The server's words, from the stored walk; never a guessed number. */
 export function priceLineHtml(price) {
@@ -377,7 +440,7 @@ const STEP_GLYPH = { measured: '●', nothing_found: '○', not_established: '�
 
 /** Files build step 6: the derived steps' stored results, each in the step's own words (state words, summary, and the
  *  reason when it could not measure). A step never run is "not run yet"; an uninstalled one names its package. */
-export function derivedHtml(derived) {
+export function derivedHtml(derived, fold = null) {
   const W = FOLDER_SURVEY_WORDS;
   if (!derived) return '';
   if (derived.error) return `<div data-fs-derived data-fs-derived-state="error" class="mt-s3 text-provenance text-state-warn">${esc(derived.error)}</div>`;
@@ -399,12 +462,29 @@ export function derivedHtml(derived) {
     }).join('');
     return `<li data-fs-step="${esc(s.step)}" data-fs-step-state="run" class="text-provenance">${head} · <span class="text-ink-muted">${esc(W.derivedAt(day(s.run)))}</span>${results}</li>`;
   }).join('');
-  return `<div data-fs-derived class="mt-s3">
-    <div class="text-caps uppercase tracking-caps text-ink-muted">${esc(W.derivedHeading)}</div>
+  return sectionHtml('derived', !fold || fold.open, W.derivedHeading, derivedAnswer(steps), 'data-fs-derived', `
     <div class="text-provenance text-ink-muted">${esc(W.derivedKept)}</div>
-    <ul class="m-0 list-none p-0">${rows}</ul>
-  </div>`;
+    <ul class="m-0 list-none p-0">${rows}</ul>`);
 }
+
+/** "5 steps · 4 measured · 1 not established · derived · 2026-11-01": the results by their state words, the steps not run
+ *  or not installed said as such, never folded into a count of nothing. */
+function derivedAnswer(steps) {
+  const results = steps.flatMap((s) => (s.installed && s.run ? s.results || [] : []));
+  const by = (st) => results.filter((r) => r.state === st).length;
+  const notRun = steps.filter((s) => s.installed && !s.run).length;
+  const notInstalled = steps.filter((s) => !s.installed).length;
+  const last = steps.map((s) => s.run || '').filter(Boolean).sort().pop();
+  return words(`${num(steps.length)} step${steps.length === 1 ? '' : 's'}`, by('measured') ? `${num(by('measured'))} measured` : '',
+    by('nothing_found') ? `${num(by('nothing_found'))} nothing found` : '',
+    by('not_established') ? `${num(by('not_established'))} not established` : '',
+    by('not_applicable') ? `${num(by('not_applicable'))} not applicable` : '',
+    notRun ? `${num(notRun)} ${FOLDER_SURVEY_WORDS.notRun}` : '', notInstalled ? `${num(notInstalled)} not installed` : '',
+    last ? FOLDER_SURVEY_WORDS.derivedAt(day(last)) : '');
+}
+
+/** Derived from the walk's rows: one per step and one per result line. */
+const derivedRows = (derived) => ((derived && derived.steps) || []).reduce((n, s) => n + 1 + ((s.run && s.results) || []).length, 0);
 
 /** Files build step 7: the narrative files read in full. The price BEFORE the press, then the stored run's own words. */
 export function narrativeDocsHtml(nd) {
@@ -430,7 +510,7 @@ const VERDICT_WORDS = { matched: 'matches', partial_match: 'partly matches', unm
 
 /** Files build step 8: the data-class match over the file profiles. What the press reads BEFORE it, then the stored run's
  *  words, the proposals worth a person's look (privacy-relevant, established, or a pattern no class has), and the names. */
-export function classMatchHtml(cm) {
+export function classMatchHtml(cm, fold = null) {
   const W = FOLDER_SURVEY_WORDS;
   if (!cm) return '';
   if (cm.error) return `<div data-fs-class data-fs-class-state="error" class="mt-s3 text-provenance text-state-warn">${esc(cm.error)}</div>`;
@@ -445,20 +525,38 @@ export function classMatchHtml(cm) {
     m.privacy_relevant ? 'yes' : '', m.statement]);
   const names = (run.name_signals || []).map((n) => [n.file_path, (n.words || []).join(', ')]);
   const notOpened = (run.file_outcomes || {}).egeria_profiled;
-  return `<div data-fs-class data-fs-class-state="matched" class="mt-s3">${head}
-    <div data-fs-class-run class="text-caveat text-ink">${esc(W.classAt(day(run.ran_at)))} · <span data-fs-class-words>${esc(run.words || '')}</span></div>
-    ${run.stale ? `<div data-fs-class-stale class="text-provenance text-state-warn"><span class="font-glyph" aria-hidden="true">⚠</span> ${esc(W.classStale)}</div>` : ''}
+  const body = `<div data-fs-class-run class="text-caveat text-ink">${esc(W.classAt(day(run.ran_at)))} · <span data-fs-class-words>${esc(run.words || '')}</span></div>
     ${notOpened ? `<div data-fs-class-egeria class="text-provenance text-ink-muted">${esc(`${num(notOpened)} file${notOpened === 1 ? '' : 's'} profiled by Egeria · not opened here, so not sampled`)}</div>` : ''}
     <div class="text-provenance text-ink-muted">${esc(run.rule || '')}</div>
     ${rows.length ? measureTableHtml('class-match', 'Proposals', ['File', 'Column', 'Verdict', 'Class or pattern', 'Privacy', 'Statement'], rows) : ''}
     ${names.length ? `<div data-fs-class-names class="text-provenance text-ink">${esc(W.classNames(run.name_signal_files))}</div>
-      ${measureTableHtml('class-names', 'Names', ['File', 'Words'], names)}` : ''}
+      ${measureTableHtml('class-names', 'Names', ['File', 'Words'], names)}` : ''}`;
+  // The price and the stale warning stay outside the fold.
+  return `<div data-fs-class data-fs-class-state="matched" class="mt-s3">
+    ${sectionHtml('classes', !fold || fold.open, W.classHeading, words(W.classAt(day(run.ran_at)), run.words || ''), 'data-fs-class-section', body, '')}
+    <div data-fs-class-price data-fs-class-priced="${price.priced ? 'yes' : 'no'}" class="text-caveat text-ink">${esc(price.words || W.notPriced)}</div>
+    ${run.stale ? `<div data-fs-class-stale class="text-provenance text-state-warn"><span class="font-glyph" aria-hidden="true">⚠</span> ${esc(W.classStale)}</div>` : ''}
   </div>`;
 }
 
+/** Personal or sensitive data's rows: a proposals or names table counts as more than a screen. */
+const classRows = (cm) => (cm && cm.run && ((cm.run.matches || []).some((m) => m.established || m.verdict === 'unmatched_patterned')
+  || (cm.run.name_signals || []).length) ? Infinity : 0);
+
+/** Each section's row count, for whether it starts open. */
+export function sectionRows(view) {
+  const v = view || {};
+  return { files: filesRows(v), measures: measuresRows(v.extensions), profiles: profilesRows(v.file_profiles),
+    classes: classRows(v.class_match), derived: derivedRows(v.derived) };
+}
+export const SECTION_KEYS = ['files', 'measures', 'profiles', 'classes', 'derived'];
+/** The section a press fills, opened once for the paint after it (no preference written). */
+export const PRESS_FILLS = { survey: 'files', measure: 'measures', profile: 'profiles', 'read-egeria': 'profiles',
+  'match-classes': 'classes', derive: 'derived' };
+
 /** The whole card. `busy` is 'survey' | 'check' | 'publish' | 'measure' | 'publish-measures' | 'profile' | 'read-egeria' |
  *  'publish-profiles' | 'derive' | 'read-narratives' | 'match-classes' | ''. */
-export function folderSurveyCardHtml(view, { busy = '', error = '' } = {}) {
+export function folderSurveyCardHtml(view, { busy = '', error = '', open = null } = {}) {
   const W = FOLDER_SURVEY_WORDS;
   const reach = (view && view.reach) || {};
   const canSurvey = !!reach.surveyor;     // a state that names who leads (Egeria expected or verified; RE-led)
@@ -470,34 +568,40 @@ export function folderSurveyCardHtml(view, { busy = '', error = '' } = {}) {
   const needsPublishMeasures = !!(ext && ext.led_by === 'egeria' && !ext.published && ext.rows && ext.rows.kept);
   const fp = view && view.file_profiles;
   const fpRun = fp && fp.run;
-  const btn = (act, label, on) => `<button type="button" data-fs-act="${act}" ${on ? '' : 'disabled'}
+  // `open` says which sections start open; without it each starts by its own rows (more than 8, or a table: collapsed).
+  const rowsBy = sectionRows(view);
+  const fold = (key) => ({ open: open && key in open ? !!open[key] : sectionStartsOpen(rowsBy[key], SECTION_ROWS_OPEN) });
+  const btn = (act, label, on, help) => `<button type="button" data-fs-act="${act}" ${on ? '' : 'disabled'} title="${esc(help)}"
     class="shrink-0 cursor-pointer rounded-sm border ${on ? 'border-accent text-accent-ink' : 'border-rule-strong text-ink-muted'} bg-transparent px-2 py-[2px] text-caveat disabled:cursor-default">${esc(label)}</button>`;
   return `<div id="fs-folder-survey" class="mt-s3 mb-s3" data-fs-card>
     <div class="text-caps uppercase tracking-caps text-ink-muted">${esc(W.heading)}</div>
     <div class="mt-[2px] flex flex-wrap items-baseline gap-s2">
       ${reachLineHtml(reach)}
-      ${btn('check', busy === 'check' ? W.checking : W.check, !busy)}
-      ${btn('survey', busy === 'survey' ? W.pressing : W.press, !busy && canSurvey)}
-      ${needsPublish ? btn('publish', busy === 'publish' ? W.publishing : W.publish, !busy) : ''}
-      ${besideEgeria ? btn('measure', busy === 'measure' ? W.measuringBeside : W.measureBeside, !busy) : ''}
-      ${needsPublishMeasures ? btn('publish-measures', busy === 'publish-measures' ? W.publishing : W.publishMeasures, !busy) : ''}
-      ${fp && fp.price && fp.price.walk ? btn('profile', busy === 'profile' ? W.profiling : W.profilePress, !busy) : ''}
-      ${fpRun && fpRun.counts && fpRun.counts.submitted ? btn('read-egeria', busy === 'read-egeria' ? W.reading : W.readEgeria, !busy) : ''}
-      ${fpRun && !(fpRun.publish && fpRun.publish.complete) && fpRun.counts && fpRun.counts.by_re ? btn('publish-profiles', busy === 'publish-profiles' ? W.publishing : W.publishProfiles, !busy) : ''}
-      ${derivable(view).length ? btn('derive', busy === 'derive' ? W.deriving : W.derivePress, !busy) : ''}
-      ${view && view.narrative_docs && view.narrative_docs.price && view.narrative_docs.price.files ? btn('read-narratives', busy === 'read-narratives' ? W.narrativeReading : W.narrativePress, !busy) : ''}
-      ${view && view.class_match && view.class_match.price && view.class_match.price.columns ? btn('match-classes', busy === 'match-classes' ? W.classMatching : W.classPress, !busy) : ''}
+      ${btn('check', busy === 'check' ? W.checking : W.check, !busy, W.checkHelp)}
+      ${btn('survey', busy === 'survey' ? W.pressing : W.press, !busy && canSurvey, canSurvey ? W.pressHelp : W.pressOffHelp)}
+      ${needsPublish ? btn('publish', busy === 'publish' ? W.publishing : W.publish, !busy, W.publishHelp) : ''}
+      ${besideEgeria ? btn('measure', busy === 'measure' ? W.measuringBeside : W.measureBeside, !busy, W.measureBesideHelp) : ''}
+      ${needsPublishMeasures ? btn('publish-measures', busy === 'publish-measures' ? W.publishing : W.publishMeasures, !busy, W.publishMeasuresHelp) : ''}
+      ${fp && fp.price && fp.price.walk ? btn('profile', busy === 'profile' ? W.profiling : W.profilePress, !busy, W.profilePressHelp) : ''}
+      ${fpRun && fpRun.counts && fpRun.counts.submitted ? btn('read-egeria', busy === 'read-egeria' ? W.reading : W.readEgeria, !busy, W.readEgeriaHelp) : ''}
+      ${fpRun && !(fpRun.publish && fpRun.publish.complete) && fpRun.counts && fpRun.counts.by_re ? btn('publish-profiles', busy === 'publish-profiles' ? W.publishing : W.publishProfiles, !busy, W.publishProfilesHelp) : ''}
+      ${derivable(view).length ? btn('derive', busy === 'derive' ? W.deriving : W.derivePress, !busy, W.deriveHelp) : ''}
+      ${view && view.narrative_docs && view.narrative_docs.price && view.narrative_docs.price.files ? btn('read-narratives', busy === 'read-narratives' ? W.narrativeReading : W.narrativePress, !busy, W.narrativePressHelp) : ''}
+      ${view && view.class_match && view.class_match.price && view.class_match.price.columns ? btn('match-classes', busy === 'match-classes' ? W.classMatching : W.classPress, !busy, W.classPressHelp) : ''}
     </div>
     ${priceLineHtml(view && view.price)}
     ${error ? `<div data-fs-error class="mt-[2px] text-provenance text-state-warn">${esc(error)}</div>` : ''}
-    ${folderResultsHtml(view)}
-    ${walkMeasuresHtml(view && view.extensions)}
+    ${folderResultsHtml(view, fold('files'))}
+    ${walkMeasuresHtml(view && view.extensions, fold('measures'))}
     ${narrativeDocsHtml(view && view.narrative_docs)}
-    ${fileProfilesHtml(view && view.file_profiles)}
-    ${classMatchHtml(view && view.class_match)}
-    ${derivedHtml(view && view.derived)}
+    ${fileProfilesHtml(view && view.file_profiles, fold('profiles'))}
+    ${classMatchHtml(view && view.class_match, fold('classes'))}
+    ${derivedHtml(view && view.derived, fold('derived'))}
   </div>`;
 }
+
+const whoAmI = () => (state.me && (state.me.user_id || state.me.username || state.me.egeria_user)) || '';
+const storage = () => { try { return globalThis.localStorage || null; } catch { return null; } };
 
 /** The installed derived steps, by analysis id: what the Derive press runs. Only once a walk has kept rows to read. */
 function derivable(view) {
@@ -512,10 +616,33 @@ export async function mountFolderSurvey(host, slug, { onChange = () => {} } = {}
   if (!host) return () => {};
   let view = null;
   let error = '';
+  let filled = '';                                 // the section the last press filled: open for one paint
+  const me = whoAmI();
+  // Which sections start open: the press that just filled one, else the person's choice for this resource, else rows.
+  const openMap = () => {
+    const rowsBy = sectionRows(view);
+    return Object.fromEntries(SECTION_KEYS.map((k) => [k,
+      sectionStartsOpen(rowsBy[k], SECTION_ROWS_OPEN, readSectionPref(storage(), me, slug, k), filled === k)]));
+  };
+  // A table in a closed section has no width to measure: it is made resizable when its section first opens.
+  const enhanceOpen = () => host.querySelectorAll('table[data-rc-id]:not([data-rc-auto])').forEach((t) => {
+    const d = t.closest('details');
+    if (!d || d.open) enhanceTable(t);                 // every /next data table resizes (colresize.js)
+  });
   const paint = (busy = '') => {
-    host.innerHTML = folderSurveyCardHtml(view, { busy, error });
+    const open = openMap();
+    host.innerHTML = folderSurveyCardHtml(view, { busy, error, open });
     host.querySelectorAll('[data-fs-act]').forEach((b) => b.addEventListener('click', () => press(b.dataset.fsAct)));
-    host.querySelectorAll('table[data-rc-id]').forEach((t) => enhanceTable(t));     // every /next data table resizes (colresize.js)
+    enhanceOpen();
+    host.querySelectorAll('details[data-fs-section]').forEach((d) => {
+      let was = d.open;                                // a toggle the page made (the open it was drawn with) writes nothing
+      d.addEventListener('toggle', () => {
+        if (d.open === was) return;
+        was = d.open;
+        writeSectionPref(storage(), me, slug, d.dataset.fsSection, d.open);   // best effort: the page works without storage
+        if (d.open) enhanceOpen();
+      });
+    });
   };
   // A successful re-read keeps the press's own error: it is cleared when the next press starts, never by the read
   // that follows a failed press (which used to wipe every press's failure before it was painted).
@@ -524,6 +651,7 @@ export async function mountFolderSurvey(host, slug, { onChange = () => {} } = {}
   };
   const press = async (act) => {
     error = '';
+    filled = '';
     paint(act);
     try {
       if (act === 'check') await checkFilesystemReach(slug);
@@ -550,7 +678,9 @@ export async function mountFolderSurvey(host, slug, { onChange = () => {} } = {}
       error = e.message || String(e);
     }
     await read();
+    filled = PRESS_FILLS[act] || '';
     paint('');
+    filled = '';
     onChange(act);
   };
   await read();
