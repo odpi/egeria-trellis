@@ -14,6 +14,7 @@ _FLAGS = {
     "odc-pddl": (False, False, True), "other-pd": (False, False, True),
     "cc-by": (True, False, True), "cc-by-4.0": (True, False, True), "cc-by-3.0": (True, False, True),
     "odc-by": (True, False, True), "uk-ogl": (True, False, True), "other-open": (True, False, True),
+    "ca-ogl-lgo": (True, False, True),
     "cc-by-sa": (True, True, True), "cc-by-sa-4.0": (True, True, True), "cc-by-sa-3.0": (True, True, True),
     "odc-odbl": (True, True, True), "gfdl": (True, True, True),
     "cc-nc": (True, False, False), "cc-by-nc-4.0": (True, False, False), "cc-by-nc-sa-4.0": (True, True, False),
