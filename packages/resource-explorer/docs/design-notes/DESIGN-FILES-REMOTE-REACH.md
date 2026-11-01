@@ -176,5 +176,5 @@ Not urgent (owner). Two entries:
       pulled with no remote commands, additive fields later, the publish
       sentence.
 - [ ] Which remote host is the gate for outcome 3.
-- [ ] Whether S3 comes before SFTP, if the owner's estates are mostly
-      object storage.
+- [x] Whether S3 comes before SFTP, if the owner's estates are mostly
+      object storage. **Decision (project owner, 2026-11-01):** "S3 first".
