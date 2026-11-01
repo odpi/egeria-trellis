@@ -161,3 +161,46 @@ test('a table in a collapsed section is made resizable when the section first op
   toggle(host, measures, true);
   assert.equal(table.querySelectorAll('[data-rc-handle]').length, 4, 'enhanced once, not again on each open');
 });
+
+test('sectionStartsOpen: a fill opens, a remembered choice wins, else no table and 8 rows or fewer', async () => {
+  ensureLoaderRegistered();
+  const { sectionStartsOpen, SECTION_ROWS_OPEN } = await import('/static/next/sections.js');
+  assert.equal(SECTION_ROWS_OPEN, 8);
+  assert.equal(sectionStartsOpen({ rows: 8 }), true);
+  assert.equal(sectionStartsOpen({ rows: 9 }), false);
+  assert.equal(sectionStartsOpen({ rows: 1, hasTable: true }), false);
+  assert.equal(sectionStartsOpen({ rows: 50, pref: 'open' }), true);
+  assert.equal(sectionStartsOpen({ rows: 1, pref: 'collapsed' }), false);
+  assert.equal(sectionStartsOpen({ rows: 50, hasTable: true, pref: 'collapsed', justFilled: true }), true);
+  assert.equal(sectionStartsOpen(), true, 'nothing known: open');
+});
+
+test('the pref helpers never throw: no person, no storage or a throwing storage reads "" and writes false', async () => {
+  ensureLoaderRegistered();
+  const m = await import('/static/next/sections.js');
+  const d = {};
+  const s = { getItem: (k) => (k in d ? d[k] : null), setItem: (k, v) => { d[k] = v; } };
+  assert.equal(m.writeSectionPref(s, 'alice', 'tree', 'files', true), true);
+  assert.deepEqual(Object.keys(d), ['re-next.section.alice.tree.files']);
+  assert.equal(m.readSectionPref(s, 'alice', 'tree', 'files'), 'open');
+  assert.equal(m.readSectionPref(s, 'alice', 'other', 'files'), '', 'per resource');
+  assert.equal(m.readSectionPref(s, 'bob', 'tree', 'files'), '', 'per person');
+  m.writeSectionPref(s, 'alice', 'tree', 'files', false);
+  assert.equal(m.readSectionPref(s, 'alice', 'tree', 'files'), 'collapsed');
+  const boom = { getItem: () => { throw new Error('denied'); }, setItem: () => { throw new Error('denied'); } };
+  assert.deepEqual([m.readSectionPref(boom, 'a', 'd', 'f'), m.writeSectionPref(boom, 'a', 'd', 'f', true)], ['', false]);
+  assert.deepEqual([m.readSectionPref(null, 'a', 'd', 'f'), m.writeSectionPref(undefined, 'a', 'd', 'f', true)], ['', false]);
+  assert.deepEqual([m.writeSectionPref(s, '', 'd', 'f', true), m.readSectionPref({ getItem: () => 'banana' }, 'a', 'd', 'f')], [false, '']);
+});
+
+test('the card still paints when storage throws', async () => {
+  const { host, fs } = await setUp();
+  const real = Object.getOwnPropertyDescriptor(globalThis, 'localStorage');
+  Object.defineProperty(globalThis, 'localStorage', { configurable: true, get: () => { throw new Error('denied'); } });
+  try {
+    await fs.mountFolderSurvey(host, 'tree');
+    assert.equal(section(host, 'files').open, false, 'drawn by its rows');
+    toggle(host, section(host, 'files'), true);
+    assert.equal(section(host, 'files').open, true);
+  } finally { Object.defineProperty(globalThis, 'localStorage', real); }
+});

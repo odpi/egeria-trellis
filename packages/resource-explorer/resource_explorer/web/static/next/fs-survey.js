@@ -32,7 +32,7 @@ import { getFolderSurvey, runFolderSurvey, publishFolderSurvey, checkFilesystemR
   pollActivity, activityFailure, failureText } from '/static/re-api.js';
 import { enhanceTable } from '/static/next/colresize.js';
 import { fmtBytes } from '/static/next/stages/native-report.js';
-import { readSectionPref, writeSectionPref, sectionStartsOpen, SECTION_ROWS_OPEN } from '/static/next/sections.js';
+import { readSectionPref, writeSectionPref, sectionStartsOpen } from '/static/next/sections.js';
 
 /** Placeholder words, in one table, for the designer. */
 export const FOLDER_SURVEY_WORDS = {
@@ -291,8 +291,8 @@ export function folderResultsHtml(view, fold = null) {
 function filesRows(view) {
   const r = (view && view.results) || {};
   const listed = (r.inaccessible && Array.isArray(r.inaccessible.listed)) ? Math.min(r.inaccessible.listed.length, 21) : 0;
-  return Math.min((r.file_types || []).length, 13) + Math.min((r.extensions || []).length, 13) + listed
-    + Math.min(((view && view.broken_symlinks) || []).length, 21);
+  return { rows: Math.min((r.file_types || []).length, 13) + Math.min((r.extensions || []).length, 13) + listed
+    + Math.min(((view && view.broken_symlinks) || []).length, 21), hasTable: false };
 }
 
 const th = (t) => `<th scope="col" class="px-2 py-[2px] text-left font-normal text-ink-muted">${esc(t)}</th>`;
@@ -372,11 +372,11 @@ export function walkMeasuresHtml(ext, fold = null) {
     </div>`);
 }
 
-/** Walk measures' rows: a table (heaviest folders, by depth) counts as more than a screen; else the narratives. */
+/** Walk measures' rows: its narratives; a table (heaviest folders, by depth) collapses it whatever the count. */
 function measuresRows(ext) {
   const f = (ext && ext.folders) || {};
-  if ((f.largest_folders || []).length || (f.depth_histogram || []).length) return Infinity;
-  return ((ext && ext.narratives) || []).length;
+  return { rows: ((ext && ext.narratives) || []).length,
+    hasTable: !!((f.largest_folders || []).length || (f.depth_histogram || []).length) };
 }
 
 const STATE_WORDS = {
@@ -427,8 +427,11 @@ export function fileProfilesHtml(fp, fold = null) {
   </div>`;
 }
 
-/** Data-file profiles' rows: its files table counts as more than a screen. */
-const profilesRows = (fp) => (fp && fp.run && ((fp.run.files || []).length || fp.run.files_not_shown) ? Infinity : 0);
+/** Data-file profiles' rows: the files in its table. */
+function profilesRows(fp) {
+  const n = fp && fp.run ? (fp.run.files || []).length : 0;
+  return { rows: n, hasTable: n > 0 };
+}
 
 /** F12: the price line, shown before the Survey press. The server's words, from the stored walk; never a guessed number. */
 export function priceLineHtml(price) {
@@ -484,7 +487,8 @@ function derivedAnswer(steps) {
 }
 
 /** Derived from the walk's rows: one per step and one per result line. */
-const derivedRows = (derived) => ((derived && derived.steps) || []).reduce((n, s) => n + 1 + ((s.run && s.results) || []).length, 0);
+const derivedRows = (derived) => ({ rows: ((derived && derived.steps) || []).reduce((n, s) => n + 1 + ((s.run && s.results) || []).length, 0),
+  hasTable: false });
 
 /** Files build step 7: the narrative files read in full. The price BEFORE the press, then the stored run's own words. */
 export function narrativeDocsHtml(nd) {
@@ -539,11 +543,15 @@ export function classMatchHtml(cm, fold = null) {
   </div>`;
 }
 
-/** Personal or sensitive data's rows: a proposals or names table counts as more than a screen. */
-const classRows = (cm) => (cm && cm.run && ((cm.run.matches || []).some((m) => m.established || m.verdict === 'unmatched_patterned')
-  || (cm.run.name_signals || []).length) ? Infinity : 0);
+/** Personal or sensitive data's rows: the proposals and names in its tables. */
+function classRows(cm) {
+  const run = cm && cm.run;
+  const n = run ? (run.matches || []).filter((m) => m.established || m.verdict === 'unmatched_patterned').length
+    + (run.name_signals || []).length : 0;
+  return { rows: n, hasTable: n > 0 };
+}
 
-/** Each section's row count, for whether it starts open. */
+/** Each section's {rows, hasTable}, for whether it starts open. */
 export function sectionRows(view) {
   const v = view || {};
   return { files: filesRows(v), measures: measuresRows(v.extensions), profiles: profilesRows(v.file_profiles),
@@ -570,7 +578,7 @@ export function folderSurveyCardHtml(view, { busy = '', error = '', open = null 
   const fpRun = fp && fp.run;
   // `open` says which sections start open; without it each starts by its own rows (more than 8, or a table: collapsed).
   const rowsBy = sectionRows(view);
-  const fold = (key) => ({ open: open && key in open ? !!open[key] : sectionStartsOpen(rowsBy[key], SECTION_ROWS_OPEN) });
+  const fold = (key) => ({ open: open && key in open ? !!open[key] : sectionStartsOpen(rowsBy[key]) });
   const btn = (act, label, on, help) => `<button type="button" data-fs-act="${act}" ${on ? '' : 'disabled'} title="${esc(help)}"
     class="shrink-0 cursor-pointer rounded-sm border ${on ? 'border-accent text-accent-ink' : 'border-rule-strong text-ink-muted'} bg-transparent px-2 py-[2px] text-caveat disabled:cursor-default">${esc(label)}</button>`;
   return `<div id="fs-folder-survey" class="mt-s3 mb-s3" data-fs-card>
@@ -622,7 +630,7 @@ export async function mountFolderSurvey(host, slug, { onChange = () => {} } = {}
   const openMap = () => {
     const rowsBy = sectionRows(view);
     return Object.fromEntries(SECTION_KEYS.map((k) => [k,
-      sectionStartsOpen(rowsBy[k], SECTION_ROWS_OPEN, readSectionPref(storage(), me, slug, k), filled === k)]));
+      sectionStartsOpen({ ...rowsBy[k], pref: readSectionPref(storage(), me, slug, k), justFilled: filled === k })]));
   };
   // A table in a closed section has no width to measure: it is made resizable when its section first opens.
   const enhanceOpen = () => host.querySelectorAll('table[data-rc-id]:not([data-rc-auto])').forEach((t) => {

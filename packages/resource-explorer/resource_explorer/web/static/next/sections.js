@@ -37,11 +37,11 @@ export function writeSectionPref(storage, person, slug, section, open) {
   try { storage.setItem(key, open ? 'open' : 'collapsed'); return true; } catch { return false; }
 }
 
-/** Whether a section starts open. `rows` is its row count (Infinity when it holds a table). A press that just filled
- *  it opens it; otherwise the remembered choice wins; otherwise it is open when it has `threshold` rows or fewer. */
-export function sectionStartsOpen(rows, threshold = SECTION_ROWS_OPEN, pref = '', justFilled = false) {
+/** Whether a section starts open. A press that just filled it opens it; otherwise the remembered choice wins; otherwise
+ *  it is open when it holds no table and `threshold` rows or fewer. */
+export function sectionStartsOpen({ rows = 0, hasTable = false, pref = '', justFilled = false, threshold = SECTION_ROWS_OPEN } = {}) {
   if (justFilled) return true;
   if (pref === 'open') return true;
   if (pref === 'collapsed') return false;
-  return Number(rows) <= threshold;
+  return !hasTable && Number(rows) <= threshold;
 }
