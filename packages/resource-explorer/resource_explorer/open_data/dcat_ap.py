@@ -127,6 +127,8 @@ class _Doc:
         if isinstance(value, dict) and set(value) <= {"@id", "id"}:
             ref = value.get("@id") or value.get("id")
             return self.index.get(ref, value)
+        if isinstance(value, str) and value in self.index:       # compact JSON-LD with "@type": "@id" coercion
+            return self.index[value]
         return value
 
     def stated_int(self, node: Any, ns: str, local: str) -> int | None:
@@ -134,7 +136,7 @@ class _Doc:
             n = _scalar(v)
             try:
                 return int(float(n))
-            except (TypeError, ValueError):
+            except (TypeError, ValueError, OverflowError):
                 continue
         return None
 
@@ -182,13 +184,25 @@ def _iri(value: Any) -> str | None:
     return None
 
 
-def _lang_text(values: list) -> tuple[str | None, str]:
-    """The text of a language map: prefer English, else the first stated; with the language chosen ('' = untagged)."""
-    cands = []
+def _candidates(values: list) -> list[tuple[str, str]]:
+    """(text, language) for every string a property states, including a compact language map ({"en": "..", "de": ".."})."""
+    out = []
     for v in values:
+        if isinstance(v, dict) and "@value" not in v and "@id" not in v and "id" not in v and v:
+            for lang, text in v.items():
+                for t in (text if isinstance(text, list) else [text]):
+                    if isinstance(t, str) and t.strip():
+                        out.append((t.strip(), str(lang)))
+            continue
         t = _text(v)
         if t:
-            cands.append((t, str(v.get("@language", "")) if isinstance(v, dict) else ""))
+            out.append((t, str(v.get("@language", "")) if isinstance(v, dict) else ""))
+    return out
+
+
+def _lang_text(values: list) -> tuple[str | None, str]:
+    """The text of a language map: prefer English, else the first stated; with the language chosen ('' = untagged)."""
+    cands = _candidates(values)
     for t, lang in cands:
         if lang.lower() == "en" or lang.lower().startswith("en-"):
             return t, lang
@@ -210,7 +224,7 @@ def _bytes(values: list) -> int | None:
     for v in values:
         try:
             n = int(float(_scalar(v)))
-        except (TypeError, ValueError):
+        except (TypeError, ValueError, OverflowError):
             continue
         if n >= 0:
             total, seen = total + n, True
@@ -228,7 +242,10 @@ class DcatApAdapter(Adapter):
 
     def __init__(self, base_url: str, transport: Transport, api_key: str = ""):
         super().__init__(base_url, transport, api_key)
-        self._single: _Doc | None = None          # a feed that is one document is fetched once per adapter
+        self.calls = 0                                  # calls actually made by this adapter
+        self._mode: str | None = None                   # "paged" (hydra) or "single" (one document), learned from the first read
+        self._single: _Doc | None = None
+        self._pages: dict[int, _Doc] = {}
         self._seen: dict[str, tuple[dict, _Doc]] = {}   # dataset_id -> (entry, the document it came from)
 
     # -- where things are ----------------------------------------------------
@@ -239,7 +256,8 @@ class DcatApAdapter(Adapter):
 
     @property
     def _paged_url(self) -> bool:
-        """ckanext-dcat's `catalog.jsonld` takes `?page=N`; any other URL is read as given."""
+        """ckanext-dcat's `catalog.jsonld` is known to take `?page=N`; any other URL is read as given until its
+        first document says (hydra) that it pages."""
         return self._path.endswith(FEED_PATH)
 
     @property
@@ -251,6 +269,7 @@ class DcatApAdapter(Adapter):
         return self.base_url
 
     def _get(self, url: str, params: dict | None = None) -> _Doc:
+        self.calls += 1
         body = self.transport.get_json(url, params=params, headers=dict(LD_ACCEPT))
         if not isinstance(body, (dict, list)):
             raise TransportError(f"{url}: the answer was not a catalog document")
@@ -258,18 +277,25 @@ class DcatApAdapter(Adapter):
 
     def _page_doc(self, page: int) -> tuple[_Doc, bool]:
         """(the document for `page`, whether it is a single document paged locally)."""
-        if self._single is not None:
+        page = max(page, 1)
+        if self._mode is None and page > 1:
+            self._page_doc(1)                           # learn from the first document whether the feed pages
+        if self._mode == "single":
             return self._single, True
-        if self._paged_url:
-            doc = self._get(self.base_url, {"page": max(page, 1)})
+        if page in self._pages:
+            return self._pages[page], False
+        use_param = self._paged_url or self._mode == "paged"
+        doc = self._get(self.base_url, {"page": page} if use_param else None)
+        if self._mode is None:
             if doc.paging is not None and (doc.has_next or doc.total != NOT_REPORTED):
-                if doc.page_size:
-                    self.page_size = doc.page_size
-                return doc, False
-            self._single = doc
-            return doc, True
-        self._single = self._get(self.base_url)
-        return self._single, True
+                self._mode = "paged"
+            else:
+                self._mode, self._single = "single", doc
+                return doc, True
+        if doc.page_size:
+            self.page_size = doc.page_size
+        self._pages[page] = doc
+        return doc, False
 
     # -- probe ---------------------------------------------------------------
 
@@ -277,10 +303,14 @@ class DcatApAdapter(Adapter):
     def probe(cls, base_url: str, transport: Transport) -> dict:
         base = (base_url or "").strip().rstrip("/")
         tried = [f"{base}/{FEED_PATH}?page=1", f"{base}/{POD_PATH}", base]
+        other: list[str] = []                            # content types named by answers that were not JSON
         for url in tried:
             try:
                 doc = _Doc(transport.get_json(url, params=None, headers=dict(LD_ACCEPT)))
-            except (TransportError, ValueError):
+            except (TransportError, ValueError) as exc:
+                m = re.search(r"content-type ([\w.+/-]+)", str(exc))
+                if m and m.group(1) not in other:
+                    other.append(m.group(1))
                 continue
             if not doc.is_catalog:
                 continue
@@ -293,8 +323,10 @@ class DcatApAdapter(Adapter):
             size = doc.page_size if shape == "jsonld" else DEFAULT_PAGE_SIZE
             total = doc.total if shape == "jsonld" else len(doc.pod_datasets or [])
             return {"feed_url": feed, "shape": shape, "page_size": size if size else NOT_REPORTED, "total": total}
+        named = [c for c in other if any(k in c for k in ("xml", "turtle", "n3", "n-triples", "rdf"))]
+        why = f"; it answered {named[0]}, which has no adapter yet" if named else ""
         raise ProbeRefused(f"Nothing at {tried[0]}, {tried[1]} or {tried[2]} answered as a DCAT catalog "
-                           f"(JSON-LD or Project Open Data).")
+                           f"(JSON-LD or Project Open Data){why}.")
 
     # -- normalising ----------------------------------------------------------
 
@@ -330,11 +362,14 @@ class DcatApAdapter(Adapter):
         own = stated(entry)
         if own:
             return own, ""
-        distinct = {x for x in (stated(d) for d in dists) if x}
-        if len(distinct) == 1:
-            return distinct.pop(), ""
-        if distinct:
+        per_dist = [stated(d) for d in dists]
+        distinct = {x for x in per_dist if x}
+        if len(distinct) > 1:
             return NOT_REPORTED, "distributions disagree"
+        if distinct and not all(per_dist):
+            return NOT_REPORTED, "only some distributions state a license"
+        if distinct:
+            return distinct.pop(), ""
         return NOT_REPORTED, ""
 
     @staticmethod
@@ -368,7 +403,7 @@ class DcatApAdapter(Adapter):
             adms += [t for t in ([_text(node)] if not isinstance(node, dict) or "@value" in node
                                  else [_text(x) for x in _vals(node, "skos", "notation")]) if t]
         doi = next((d for d in (normalise_doi(c) for c in [*ids, *adms, ident]) if d != NOT_REPORTED), NOT_REPORTED)
-        dataset_id = ids[0] if ids else (ident or "")
+        dataset_id = ids[0] if ids else (ident or NOT_REPORTED)     # a blank node has no id to name it by
         if doi != NOT_REPORTED:
             identifier, kind = doi, "doi"
         elif ids:
@@ -376,15 +411,18 @@ class DcatApAdapter(Adapter):
         else:
             identifier, kind = dataset_id, "portal_id"
         title, lang = _lang_text(_vals(entry, "dct", "title"))
-        if title and lang and not lang.lower().startswith("en"):
-            record["_language"] = lang
+        if title:
+            record["_language"] = lang or "not stated"
         licence_raw, note = self._licence(entry, doc, dist_nodes)
         if note:
             record["_licence_note"] = note
         licence_id = licence_id_from_iri(licence_raw) if licence_raw != NOT_REPORTED else NOT_REPORTED
         modified = next((t for t in (_text(v) for ns_local in (("dct", "modified"), ("dct", "issued"))
                                      for v in _vals(entry, *ns_local)) if t), None)
+        sizes = [_bytes(_vals(d, "dcat", "byteSize")) for d in dist_nodes]
         size = _bytes([v for d in dist_nodes for v in _vals(d, "dcat", "byteSize")])
+        if size is not None and None in sizes:
+            record["_size_note"] = "only some distributions state a size: this is a partial sum"
         landing = next((u for u in (_iri(doc.resolve(v)) or _iri(v) or _text(v)
                                     for v in _vals(entry, "dcat", "landingPage")) if u), None)
         return {
@@ -414,12 +452,15 @@ class DcatApAdapter(Adapter):
             return True
         parts = [v for ns_local in (("dct", "title"), ("dct", "description"), ("dcat", "keyword"))
                  for v in _vals(entry, *ns_local)]
-        have = self._words(" ".join(t for t in (_text(p) for p in parts) if t))
+        have = self._words(" ".join(t for t, _ in _candidates(parts)))      # every language of a language map
         return all(t in have for t in terms)
 
     def search(self, terms: str, filters: dict | None, page: int) -> dict:
+        """One page of the feed, filtered here. `read` is how many entries the page held before the filters: a page
+        that filters to nothing was still read, and the caller must go on to the next one."""
         filters = filters or {}
         page = max(page, 1)
+        before = self.calls
         doc, local = self._page_doc(page)
         entries = doc.datasets
         if local:
@@ -432,9 +473,13 @@ class DcatApAdapter(Adapter):
             if not self._matches(entry, sorted(wanted)):
                 continue
             row = self.normalise(entry, doc)
-            self._seen.setdefault(row["dataset_id"], (entry, doc))
-            if wanted_format and wanted_format not in (row["formats"] if row["formats"] != NOT_REPORTED else []):
-                continue
+            if row["dataset_id"] != NOT_REPORTED:
+                self._seen.setdefault(row["dataset_id"], (entry, doc))
+            if wanted_format:
+                if row["formats"] == NOT_REPORTED:
+                    row["record"]["_filter_note"] = "format not reported"
+                elif wanted_format not in row["formats"]:
+                    continue
             if after:
                 mod = row["modified"]
                 if mod == NOT_REPORTED:
@@ -444,27 +489,40 @@ class DcatApAdapter(Adapter):
                 elif mod[:10] < after:
                     continue
             rows.append(row)
-        # a feed that is one document knows its own count; a hydra feed states one or it is not reported
-        total = len(doc.datasets) if local else doc.total
-        return page_of(rows, page, self.page_size, total)
+        # a POD document knows its own count; a hydra feed states one or it is not reported
+        total = len(doc.datasets) if local and doc.pod_datasets is not None else doc.total
+        got = page_of(rows, page, self.page_size, total)
+        got["read"] = len(entries)
+        got["calls"] = self.calls - before
+        return got
 
     # -- one dataset ----------------------------------------------------------
 
+    @staticmethod
+    def _same(row: dict, wanted: str) -> bool:
+        w = wanted.strip().lower()
+        return w in {str(row["dataset_id"]).lower(), str(row["identifier"]).lower(), str(row["doi"]).lower()} \
+            or (normalise_doi(wanted) != NOT_REPORTED and normalise_doi(wanted) == row["doi"])
+
     def _entry(self, dataset_id: str) -> tuple[dict, _Doc]:
+        """The entry for a dataset id, a DOI, or the identifier a row was stored under."""
         if dataset_id in self._seen:
             return self._seen[dataset_id]
-        if self._paged_url and dataset_id and "/" not in dataset_id:
+        if self._paged_url and dataset_id and "/" not in dataset_id and normalise_doi(dataset_id) == NOT_REPORTED:
             try:
                 doc = self._get(f"{self._site}/dataset/{dataset_id}.jsonld")
                 for entry in doc.datasets:
                     return entry, doc
             except (TransportError, ValueError):
                 pass                                  # fall through to the feed, which is what the brief says
-        doc, _ = self._page_doc(1)
-        for entry in doc.datasets:
-            row_id = self.normalise(entry, doc)["dataset_id"]
-            if row_id == dataset_id:
-                return entry, doc
+        # The document read so far (all of a POD / single document; the pages read for a hydra feed, or its first).
+        docs = [self._single] if self._mode == "single" and self._single else list(self._pages.values())
+        if not docs:
+            docs = [self._page_doc(1)[0]]
+        for doc in docs:
+            for entry in doc.datasets:
+                if self._same(self.normalise(entry, doc), dataset_id):
+                    return entry, doc
         raise TransportError(f"{self.base_url}: no dataset {dataset_id!r} in the document read")
 
     def describe(self, dataset_id: str) -> dict:

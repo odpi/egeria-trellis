@@ -101,7 +101,7 @@ export async function renderDataPortals(host) {
         <td class="py-s2 pr-s3 text-caveat align-top">${esc(p.api_kind)}${p.adapter_available ? '' : ' <span class="text-state-warn">· no adapter yet</span>'}</td>
         <td class="py-s2 pr-s3 text-caveat align-top font-mono text-provenance">${esc(p.base_url)}</td>
         <td class="py-s2 pr-s3 text-caveat align-top text-ink-muted">${esc(p.origin)}</td>
-        <td class="py-s2 pr-s3 text-caveat align-top tnum text-ink-muted">${p.cost && p.cost.calls_per_page ? `${p.cost.calls_per_page} call/page · ${p.cost.page_size} rows${p.cost.cost_note ? ` · ${p.cost.cost_note}` : ''}` : 'cost not declared by the adapter'}${p.has_key ? ' · key held' : ''}</td>
+        <td class="py-s2 pr-s3 text-caveat align-top tnum text-ink-muted">${p.cost && p.cost.calls_per_page ? `${p.cost.calls_per_page} call/page · ${p.cost.page_size} rows${p.cost.cost_note ? ` · ${esc(p.cost.cost_note)}` : ''}` : 'cost not declared by the adapter'}${p.has_key ? ' · key held' : ''}</td>
         <td class="py-s2 pr-s3 text-caveat align-top text-ink-muted">${esc(ago(p.registered_at))}${p.registered_by ? ` · ${esc(p.registered_by)}` : ' · the person who registered it was not recorded'}</td>
         <td class="py-s2 pr-s3 text-caveat align-top">${p.adapter_available ? `<button type="button" data-od-open="${esc(p.slug)}" class="cursor-pointer rounded-sm border border-rule-strong bg-transparent px-2 py-[2px] text-caveat text-ink hover:border-accent">Search</button>` : '<span class="text-ink-muted">registered for later</span>'}</td>
       </tr>`).join('')}</tbody></table>` : '<p data-od-empty class="text-answer text-ink">No portals registered yet.</p>'}
@@ -352,7 +352,7 @@ export function datasetPageHtml(d) {
   const dc = d.datacite;
   return `<div data-od-page>
     <h4 class="m-0 mb-s2 font-heading text-name font-normal text-ink">${show(d.title)}</h4>
-    <p class="mb-s2 text-provenance text-ink-muted">${d.identifier_kind === 'doi' ? '' : 'no DOI reported · '}${esc(d.identifier_kind === 'doi' ? 'DOI' : 'portal id')} <span class="font-mono">${esc(d.identifier)}</span>
+    <p class="mb-s2 text-provenance text-ink-muted">${d.identifier_kind === 'doi' ? '' : 'no DOI reported · '}${esc(d.identifier_kind === 'doi' ? 'DOI' : d.identifier_kind === 'dcat_identifier' ? 'publisher id' : 'portal id')} <span class="font-mono">${esc(d.identifier)}</span>
       · imported ${esc(ago(d.imported_at))}${d.imported_by ? ` by ${esc(d.imported_by)}` : ' (the person who imported it was not recorded)'} into <span class="font-mono">${esc(d.work_list_slug)}</span></p>
     <table class="w-full text-left" data-rc-id="od-fields"><thead><tr class="border-b border-rule text-caps uppercase tracking-caps text-ink-muted">
       <th class="pb-s2 pr-s3 font-normal">Field</th><th class="pb-s2 pr-s3 font-normal">Value</th><th class="pb-s2 pr-s3 font-normal">Source</th></tr></thead><tbody>

@@ -136,7 +136,7 @@ def register_portal(reg: PortalRegistration, request: Request) -> dict:
 
 @router.post("/portals/check")
 def check_portal(reg: PortalRegistration) -> dict:
-    """Can RE reach this portal? One read-only call (page 1, one row). A warning for the form, never a gate."""
+    """Can RE reach this portal? Read-only: one call (page 1), or the adapter's probe (1 to 3 calls). A warning for the form, never a gate."""
     from resource_explorer.open_data.adapters import Adapter, adapter_for_api_kind
 
     cls = adapter_for_api_kind(reg.api_kind, "portal")

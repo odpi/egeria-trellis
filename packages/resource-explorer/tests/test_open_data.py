@@ -645,7 +645,7 @@ def test_dcat_manifest_has_a_cost_shape_and_speaks_the_aliases():
 def test_dcat_jsonld_feed_page_normalises_and_states_absences():
     t = DcatFake()
     page = DcatApAdapter(FEED, t).search("", {}, 1)
-    assert len(page["rows"]) == 100 and page["page_size"] == 100 and page["total"] == 22920
+    assert len(page["rows"]) == 5 and page["page_size"] == 100 and page["total"] == 22920
     assert t.calls == [(FEED, {"page": 1})]
     row = next(r for r in page["rows"] if r["dataset_id"] == "462c3f94-e367-4ef7-ac98-fffa0e168b47")
     assert row["identifier_kind"] == "dcat_identifier" and row["identifier"] == row["dataset_id"]
@@ -656,7 +656,7 @@ def test_dcat_jsonld_feed_page_normalises_and_states_absences():
     assert row["modified"] == "2026-11-01T01:19:52" and row["url"].startswith("https://ws.cso.ie/")
     source = next(n for n in _load("dcat_catalog_jsonld_page1.json") if n["@id"].endswith(row["dataset_id"]))
     assert _bare(row["record"]) == source                    # verbatim; only underscore keys are RE's
-    assert all(r["publisher"] != NOT_REPORTED for r in page["rows"])
+    assert all(r["publisher"] != NOT_REPORTED for r in page["rows"]) and page["read"] == 5 and page["calls"] == 1
 
 
 def test_dcat_compact_dataset_document_and_pod_normalise_the_same_way():
@@ -708,14 +708,14 @@ def test_dcat_search_filters_locally_and_reports_the_page_as_read():
     a = lambda: DcatApAdapter(FEED, DcatFake())            # noqa: E731
     everything = a().search("", {}, 1)
     hit = a().search("employment persons", {}, 1)         # AND over title/description/keyword, whole words
-    assert 0 < len(hit["rows"]) < 100 and hit["page"] == 1 and hit["total"] == 22920   # shorter than a page: still read
+    assert 0 < len(hit["rows"]) < 5 and hit["page"] == 1 and hit["total"] == 22920   # shorter than a page: still read
     assert all("employment" in r["title"].lower() and "persons" in r["title"].lower() for r in hit["rows"])
     assert a().search("employ", {}, 1)["rows"] == []        # a word, not a substring
     assert [r["dataset_id"] for r in a().search("naq09", {}, 1)["rows"]] == ["462c3f94-e367-4ef7-ac98-fffa0e168b47"]  # a keyword
     assert len(a().search("", {"format": "csv"}, 1)["rows"]) == len(everything["rows"])
     assert a().search("", {"format": "geojson"}, 1)["rows"] == []
     assert a().search("", {"modified_after": "2026-11-02"}, 1)["rows"] == []
-    assert len(a().search("", {"modified_after": "2026-11-01"}, 1)["rows"]) == 100
+    assert len(a().search("", {"modified_after": "2026-11-01"}, 1)["rows"]) == 5
 
     doc = copy.deepcopy(_load("dcat_catalog_jsonld_page1.json"))
     victim = next(n for n in doc if n["@id"].endswith("/462c3f94-e367-4ef7-ac98-fffa0e168b47"))
@@ -723,10 +723,10 @@ def test_dcat_search_filters_locally_and_reports_the_page_as_read():
     got = DcatApAdapter(FEED, DcatFake({FEED: doc})).search("naq09", {"modified_after": "2030-01-01"}, 1)
     assert [r["modified"] for r in got["rows"]] == [NOT_REPORTED]      # kept, never silently failed
     assert got["rows"][0]["record"]["_filter_note"] == "modified not reported"
-    # a feed that states no paging: the total is not reported
+    # a JSON-LD page that states no paging: the total is not reported
     plain = [n for n in doc if "PagedCollection" not in str(n.get("@type"))]
     assert DcatApAdapter("https://x.example/catalog.jsonld", DcatFake({"https://x.example": plain})).search(
-        "naq09", {}, 1)["total"] == 100
+        "naq09", {}, 1)["total"] == NOT_REPORTED
 
 
 def test_pod_data_json_pages_locally_and_one_document_costs_one_call():
@@ -813,3 +813,159 @@ def test_a_dcat_search_through_the_service_reads_the_registered_row(store):
     got = service.run_search(store, p["slug"], terms="employment", pages=1, transport=t)
     assert got["calls_made"] == 1 and got["total"] == 22920 and got["rows"]
     assert got["rows"][0]["licence_check"] == "" and got["rows"][0]["portal_slug"] == p["slug"]
+
+
+# ── DCAT-AP: the review's fixes (2026-10-31) ──────────────────────────────────
+
+def _doc():
+    return copy.deepcopy(_load("dcat_catalog_jsonld_page1.json"))
+
+
+def _naq09(doc):
+    return next(n for n in doc if n["@id"].endswith("/462c3f94-e367-4ef7-ac98-fffa0e168b47"))
+
+
+def test_a_page_that_filters_to_nothing_was_read_and_the_search_goes_on(store):
+    t = DcatFake()
+    p = service.register_portal(store, display_name="Ireland", api_kind="DCAT-AP", base_url="https://data.gov.ie",
+                                transport=t)
+    got = service.run_search(store, p["slug"], terms="zzzznomatch", pages=3, transport=t)
+    assert got["rows"] == [] and got["total"] == 22920
+    assert got["calls_made"] == 3                              # three pages read, none stopped early
+    assert [c[1] for c in t.calls[-3:]] == [{"page": 1}, {"page": 2}, {"page": 3}]
+
+
+def test_a_one_document_feed_reports_one_call_over_many_pages(store):
+    t = DcatFake({"https://data.nasa.gov/catalog.jsonld": TransportError("HTTP 404")})
+    p = service.register_portal(store, display_name="NASA", api_kind="data.json", base_url="https://data.nasa.gov",
+                                transport=t)
+    assert p["base_url"] == POD
+    before = len(t.calls)
+    got = service.run_search(store, p["slug"], terms="", pages=3, transport=t)
+    assert got["calls_made"] == 1 and len(t.calls) - before == 1 and len(got["rows"]) == 20
+
+
+def test_a_hydra_feed_at_a_url_not_named_catalog_jsonld_is_still_paged():
+    t = DcatFake({"https://x.example/dcat": _load("dcat_catalog_jsonld_page1.json")})
+    a = DcatApAdapter("https://x.example/dcat", t)
+    first = a.search("", {}, 1)
+    assert first["total"] == 22920 and t.calls == [("https://x.example/dcat", None)]
+    a.search("", {}, 2)
+    assert t.calls[-1] == ("https://x.example/dcat", {"page": 2})
+
+
+def test_a_format_filter_keeps_a_row_that_states_no_format_with_a_note():
+    doc = _doc()
+    ids = {d["@id"] for d in _naq09(doc)["http://www.w3.org/ns/dcat#distribution"]}
+    for n in doc:
+        if n["@id"] in ids:
+            del n["http://purl.org/dc/terms/format"]
+    got = DcatApAdapter(FEED, DcatFake({FEED: doc})).search("", {"format": "csv"}, 1)["rows"]
+    kept = next(r for r in got if r["dataset_id"] == "462c3f94-e367-4ef7-ac98-fffa0e168b47")
+    assert kept["formats"] == NOT_REPORTED and kept["record"]["_filter_note"] == "format not reported"
+    assert len(got) == 5          # the others state CSV
+
+
+def test_one_distribution_stating_a_license_is_not_the_datasets_license():
+    doc = _doc()
+    ids = {d["@id"] for d in _naq09(doc)["http://www.w3.org/ns/dcat#distribution"]}
+    stated = [n for n in doc if n["@id"] in ids]
+    for n in stated[1:]:
+        del n["http://purl.org/dc/terms/license"]
+    row = next(r for r in DcatApAdapter(FEED, DcatFake({FEED: doc})).search("naq09", {}, 1)["rows"])
+    assert row["licence_id"] == NOT_REPORTED and row["record"]["_licence_note"] == "only some distributions state a license"
+
+
+def test_compact_jsonld_with_string_references_and_language_maps_is_read():
+    doc = {"@context": {}, "@graph": [
+        {"@id": "https://p.example/org/1", "@type": "foaf:Agent", "foaf:name": "Ministry"},
+        {"@id": "https://p.example/d/1/r1", "@type": "dcat:Distribution", "dct:format": "text/csv",
+         "dcat:byteSize": 10, "dcat:downloadURL": "https://p.example/f.csv"},
+        {"@id": "https://p.example/d/1", "@type": "dcat:Dataset", "dct:identifier": "d1",
+         "dct:title": {"de": "Verkehr", "en": "Traffic"}, "dct:publisher": "https://p.example/org/1",
+         "dcat:distribution": ["https://p.example/d/1/r1"]},
+        {"@id": "https://p.example/d/2", "@type": "dcat:Dataset", "dct:identifier": "d2",
+         "dct:title": {"de": "Nur deutsch"}}]}
+    rows = {r["dataset_id"]: r for r in DcatApAdapter("https://p.example/c", DcatFake({"https://p.example": doc})).search("", {}, 1)["rows"]}
+    assert rows["d1"]["title"] == "Traffic" and rows["d1"]["record"]["_language"] == "en"
+    assert rows["d1"]["publisher"] == "Ministry" and rows["d1"]["formats"] == ["CSV"] and rows["d1"]["size"] == 10
+    assert rows["d2"]["title"] == "Nur deutsch" and rows["d2"]["record"]["_language"] == "de"
+    t = DcatFake({"https://p.example": doc})
+    assert [r["dataset_id"] for r in DcatApAdapter("https://p.example/c", t).search("verkehr", {}, 1)["rows"]] == ["d1"]
+
+
+def test_a_dataset_with_no_identifier_and_a_blank_node_id_has_no_dataset_id():
+    doc = {"@graph": [{"@id": "_:b0", "@type": "dcat:Dataset", "dct:title": "Anonymous"},
+                      {"@id": "_:b1", "@type": "dcat:Dataset", "dct:title": "Other"}]}
+    rows = DcatApAdapter("https://p.example/c", DcatFake({"https://p.example": doc})).search("", {}, 1)["rows"]
+    assert [r["dataset_id"] for r in rows] == [NOT_REPORTED, NOT_REPORTED]
+    assert rows[0]["identifier"] == NOT_REPORTED and rows[0]["identifier_kind"] == "portal_id"
+
+
+def test_a_pod_doi_row_is_found_again_by_its_doi_and_the_scout_reads_the_document_once(store):
+    t = DcatFake()
+    a = DcatApAdapter(POD, t)
+    assert a.describe("10.21978/p8863g")["title"].startswith("IMP-8")
+    assert a.describe("https://doi.org/10.21978/p8863g")["doi"] == "10.21978/p8863g"
+    assert len(t.calls) == 1
+
+
+def test_non_finite_sizes_and_a_partial_size_sum_are_stated_not_crashed_on():
+    doc = _doc()
+    ds = [n for n in doc if n["@id"] in {d["@id"] for d in _naq09(doc)["http://www.w3.org/ns/dcat#distribution"]}]
+    ds[0]["http://www.w3.org/ns/dcat#byteSize"] = [{"@value": "inf"}]
+    ds[1]["http://www.w3.org/ns/dcat#byteSize"] = [{"@value": 100}]
+    row = next(r for r in DcatApAdapter(FEED, DcatFake({FEED: doc})).search("naq09", {}, 1)["rows"])
+    assert row["size"] == 100 and "partial" in row["record"]["_size_note"]
+
+
+def test_the_probe_names_the_content_type_of_a_feed_it_cannot_read():
+    err = TransportError("https://x.example/data.json: the answer was not JSON (content-type application/rdf+xml)")
+    t = DcatFake({"https://x.example": err})
+    with pytest.raises(ProbeRefused) as got:
+        DcatApAdapter.probe("https://x.example", t)
+    assert "application/rdf+xml, which has no adapter yet" in str(got.value) and "). " not in str(got.value)
+
+
+def test_registration_keeps_the_typed_url_on_an_activity_entry_and_checks_duplicates_before_probing(store, reg):
+    t = DcatFake()
+    p = service.register_portal(store, display_name="Ireland", api_kind="DCAT-AP", base_url="https://data.gov.ie/",
+                                transport=t)
+    with reg._conn() as conn:
+        entries = [dict(r) for r in conn.execute(
+            "SELECT * FROM activity_log WHERE operation = 'register_portal'").fetchall()]
+    assert entries and "https://data.gov.ie" in json.dumps(entries[0], default=str) and FEED in json.dumps(entries[0], default=str)
+    calls = len(t.calls)
+    with pytest.raises(service.OpenDataError, match="Already registered"):
+        service.register_portal(store, display_name="Again", api_kind="CKAN", base_url=FEED, transport=t)
+    assert len(t.calls) == calls
+    with pytest.raises(ValueError, match="needs a transport"):
+        service.register_portal(store, display_name="X", api_kind="DCAT-AP", base_url="https://other.example")
+
+
+def test_http_transport_names_the_content_type_and_refuses_an_oversized_answer(monkeypatch):
+    import httpx
+
+    real = httpx.stream
+
+    class _Stream:
+        def __enter__(self):
+            return httpx.Response(200, headers=state["headers"], content=state["body"])
+
+        def __exit__(self, *exc):
+            return False
+
+    def stream(method, url, **kw):
+        return _Stream()
+
+    state = {"headers": {"content-type": "application/rdf+xml"}, "body": b"<rdf/>"}
+    monkeypatch.setattr(httpx, "stream", stream)
+    with pytest.raises(TransportError, match=r"content-type application/rdf\+xml"):
+        HttpTransport().get_json("https://x.example/data.json")
+    from resource_explorer.open_data import transport as tr
+    state.update(headers={"content-type": "application/json"}, body=b"[1,2,3]")
+    assert HttpTransport().get_json("https://x.example/a") == [1, 2, 3]
+    monkeypatch.setattr(tr, "MAX_JSON_BYTES", 4)
+    with pytest.raises(TransportError, match="read limit"):
+        HttpTransport().get_json("https://x.example/a")
+    monkeypatch.setattr(httpx, "stream", real)
