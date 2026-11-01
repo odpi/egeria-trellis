@@ -265,7 +265,10 @@ def claim_held(registry, slug: str) -> str:
 
 
 def server_pointer(registry, entity) -> str:
-    """The server element's GUID RE stored after reading it back ('' when it never has)."""
+    """The server element's GUID RE stored after reading it back ('' when it never has). Only a database has a server
+    (host:port); a file folder has none, so it has no server pointer (F42: `server_name_for` raised on one)."""
+    if not hasattr(entity, "db_type"):
+        return ""
     return (registry.get_setting(server_pointer_key(server_name_for(entity)), "") or "").strip()
 
 

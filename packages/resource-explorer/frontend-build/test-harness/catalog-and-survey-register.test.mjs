@@ -219,7 +219,7 @@ test('pressing the control changes at once, and the result is the server rows, n
       return { registered: {}, surveys: [
         surveyRow({ cannot_run_reason: '', runnable: true, neutral: false, register: { available: false, label: REGISTER, why_not: '' } }),
         catalogRow({ run: { ...blankRun, state: 'registered' }, in_flight: false,
-          asset_guid: 'dddddddd-0000-0000-0000-000000000001',
+          asset_guid: 'dddddddd-0000-0000-0000-000000000001', asset_kind: 'database asset',
           register: { available: false, label: REGISTER, why_not: '' } })] };
     },
   }));
