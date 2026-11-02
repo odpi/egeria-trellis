@@ -1,7 +1,7 @@
 # Resource Explorer tutorial — outline for review
 
 **Status:** the outline the prose is written from. Prose is being written one part at a time in
-[`tutorial/`](tutorial/README.md#the-core-tutorial); part 1 is written.
+[`tutorial/`](tutorial/README.md#the-core-tutorial); parts 1 and 2 are written.
 **Date:** 2026-11-01.
 **Changes:**
 - 2026-10-29: the outline, with decisions D1–D9.
@@ -10,6 +10,8 @@
   documents; drift since 10-29; the D1-e coverage sentence as read on screen.
 - 2026-11-02: part 1 written. Screenshots at 1600 × 900, not 1920 × 1080 (sections 6 and 9); narration drafted with
   each part (section 9); the glossary moved to [`tutorial/glossary.md`](tutorial/glossary.md) (section 4); S1 drawn.
+- 2026-11-02: part 2 written; S2–S4 taken. Read on screen: the strip's stages are joined by "›"; **Chat** carries a
+  panel icon, not "Chat ×"; the PERSPECTIVE row added to the tour; the Activity panel's words; G9 not seen.
 **Replaces, once written:** the six walks in [`tutorial/`](tutorial/README.md), which stay on `main` until then.
 
 ## How to read this outline
@@ -280,7 +282,7 @@ survey engines or where surveys run; one sentence and the glossary are enough. D
    and **Chat** (seen; confirm at screenshot width).
    - *Explain in one line:* 1 to 6 are the stages a data source goes through, left to right (part 4). Work lists and
      Investigation come in parts 11 and 12. Understanding and Automate are for the Advanced tutorial. **RFAs** comes in
-     part 7. **Chat** opens and closes the chat rail (step 5); it reads "Chat ×" while the rail is open (code).
+     part 7. **Chat** opens and closes the chat rail (step 5); it carries a panel icon, not "Chat ×" (read on screen 2026-11-02).
 4. Look at the left sidebar: **Repos**, **DBs**, **FS** and **Open data** (repositories, databases, file systems,
    open data portals) and a filter box (seen). Point out that the **INVESTIGATION** picker and **Work lists** can be
    ignored until parts 11 and 12.
@@ -948,9 +950,9 @@ stamps recur from part to part. Take them in order, in one Quickstart, without r
 | # | Part · step | Story beat | Screen | Shows | Reuse |
 |---|---|---|---|---|---|
 | S1 | 1 | why not catalog everything the trial touches | Diagram, not a screenshot | Data source → survey → answers → your knowledge → curate → publish → Egeria | **Drawn, 2026-11-02:** [`tutorial-media/look-then-catalog.svg`](tutorial-media/look-then-catalog.svg), rendered at 1600 × 900 as `tutorial/images/01-what-for/S01-look-then-catalog.webp`. Same palette as the funnel. |
-| S2 | 2 · 1 | Peter gets in | Sign-in panel | The panel, empty boxes | `01-sign-in-panel.webp` if unchanged |
-| S3 | 2 · 3–6 | Peter's screen, Peter's name at top right | Whole screen, labelled | Strip, sidebar, main panel, chat rail, header, each numbered | new (labelled version of `01-stage-strip-and-sidebar.webp`) |
-| S4 | 2 · 7 | what has run so far | Activity log | The latest entries and the filter buttons | new |
+| S2 | 2 · 1 | Peter gets in | Sign-in panel | The panel, empty boxes | **Taken, 2026-11-02:** `tutorial/images/02-sign-in/S02-sign-in-panel.webp`. The user id box held "peterprofile": the Quickstart on 8813 sets a default sign-in user. |
+| S3 | 2 · 3–6 | Peter's screen, Peter's name at top right | Whole screen, labelled | Strip, sidebar, main panel, chat rail, header, each numbered | new (labelled version of `01-stage-strip-and-sidebar.webp`) **Taken, 2026-11-02:** `S03-peters-screen.webp` and `S03-peters-screen-labelled.webp`, six numbered areas (header, strip, perspectives, sidebar, main panel, chat rail). |
+| S4 | 2 · 7 | what has run so far | Activity log | The latest entries and the filter buttons | **Taken, 2026-11-02:** `S04-activity.webp`. |
 | S5 | 3a · 1 | registering `coco_pharma` | Find databases dialog | The three tabs and **Register one database…** | new |
 | S6 | 3a · 3–4 | `coco_pharma`, filled in | Register one database, filled | Fields filled, test passed, Register enabled | new |
 | S7 | 3a · 5 | `coco_pharma` registered, nothing in Egeria | After Register | "It is in the database list now. Nothing was sent to Egeria." | new |
@@ -1025,7 +1027,7 @@ in this outline; each is named where it bites.
 | G6 | "Slug *" is a required field on both register forms. Dashes are silently turned into underscores. | 3a, 3b | A plain label ("Short name"), or a hint under the box. |
 | G7 | "Egeria connection (optional)" on the database form asks for "Egeria-visible host", "Egeria platform URL" and "View server". Most readers cannot know these. | 3a | Hide it from non-admins, or say when it is needed. |
 | G8 | File-system survey says "a proposal · confirm it on Curate"; Curate says "Nothing to review for file systems yet." A dead end. Curate now also shows the "Publish · declared measures" table, but that is for measures, not for the survey's proposals, so this gap is about the sentence only. | 5, 9 | Build the review, or remove the pointer. |
-| G9 | Header can read "not signed in" while signed in (no investigation chosen). With investigations moved to part 12, the reader sees this for most of the tutorial. | 2–11 | Already queued as a defect. More urgent now. Re-check with no investigation chosen: on 2026-11-01 it could not be re-checked, because an investigation was chosen in the pane. |
+| G9 | Header can read "not signed in" while signed in (no investigation chosen). With investigations moved to part 12, the reader sees this for most of the tutorial. | 2–11 | Already queued as a defect. More urgent now. Re-check with no investigation chosen: on 2026-11-01 it could not be re-checked, because an investigation was chosen in the pane. **Re-checked 2026-11-02** with no investigation chosen: the header read "No investigation" and "peterprofile", not "not signed in". Not seen, so part 2 does not mention it. |
 | G10 | Slow panes say "still loading" for 9–15 seconds without saying what they wait for (Discovery, Analysis, Enrichment). | 4, 6, 7 | Already queued as a defect. |
 | G11 | A published database's header reads "never surveyed · not published to Egeria" while Curate says it is in Egeria; the sentence above the chips and a chip can disagree. | 9 | Already queued as defects. |
 | G12 | "unbound by reset" is explained only by reference to an internal event. | 12 | A word that describes the state, not its history. |
