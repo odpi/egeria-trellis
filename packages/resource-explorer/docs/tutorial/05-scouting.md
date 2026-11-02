@@ -54,22 +54,22 @@ does not have; ignore them (gap G25).
    Scouting". The header reads "surveyed just now · local survey · not published to Egeria". "local survey" means
    Resource Explorer ran it and kept the results. Nothing went to Egeria.
 
-   Under it, a line says what the survey could see: which account it connected as, how many schemas that account
-   can see, and how many tables it can read ("SELECT on 261 of 266 relations"). The total number of schemas on that
-   line is not shown here: it currently counts PostgreSQL's own temporary schemas as well (defect F46). Your numbers
-   depend on your account. Every count on this page is "within what this account can see".
+   Under it, a line says what the survey could see: which account it connected as, how many of the 30 schemas that
+   account can see, and how many tables it can read ("sees 28 of 30 schemas, SELECT on 261 of 266 relations"). Your
+   numbers depend on your account. Every count on this page is "within what this account can see".
 
 5. **Read one answered question.**
 
-   The screenshot of the answered rows is not shown here: its schema total is wrong until F46 is fixed, and it will
-   be re-taken then.
+   ![What is in coco_pharma: three answered question rows. "How big is this database — schemas, tables, views, columns, rows and bytes?" answers "30 schema(s), 29 with tables, 28 visible to this credential", with a source line and the links evidence, copy as evidence, re-run, the numbers behind this ›, and notify me. "Which schemas carry the data, and which are system, empty or staging?" answers "aus_inventory 16 tables". "Is this database alive — writes since the statistics were reset, last vacuum or analyse, and is anything reading it?" answers "34,207 writes and 2,989,434 reads since statistics collection began (never reset)."](images/05-scouting/S18-answers.webp)
+
+   *Is it alive? "34,207 writes and 2,989,434 reads since statistics collection began."*
 
    Each row has the same parts:
 
    - **The mark and the question.** ✓ means it was measured and checked.
    - **why is this here**, which opens to say why the question is asked.
    - **The answer**, in plain words. "How big is this database" gives the schemas with tables, 29, and the schemas
-     this account can see, 28. "Is this database alive" answers "33,369 writes and 2,924,917 reads since
+     this account can see, 28. "Is this database alive" answers "34,207 writes and 2,989,434 reads since
      statistics collection began (never reset)." So yes: something writes to it and something reads it.
    - **A note in blue** under some answers, with a limit on the answer. Here: "row counts for the other 5 are
      planner estimates, not exact", because the account can read 261 of the 266 tables.
@@ -83,9 +83,12 @@ does not have; ignore them (gap G25).
 6. **Click the numbers behind this › on "How big is this database".**
 
    A table opens under the answer, with each number the answer is built from: "relation count 266", "column count
-   1,916", "base table count 263", "view count 3", and so on. Under it: "Read from schema_inventory, run less than a
-   minute ago". Click the link again to close it. (Its
-   screenshot is not shown here, for the same reason as step 5: defect F46.)
+   1,916", "schema total 30", "schemas visible 28", "base table count 263", "view count 3", and so on. Under it:
+   "Read from schema_inventory", and when it ran. Click the link again to close it.
+
+   ![The numbers behind "How big is this database": a table under the answer. relation count 266, column count 1,916, schemas with tables 29, schema total 30, schemas visible 28, base table count 263, view count 3, materialized view count 0, foreign table count 0, catalog only table count 5. Under it: "Read from schema_inventory, run 3 minutes ago".](images/05-scouting/S18b-numbers-behind.webp)
+
+   *The numbers behind the answer, and where they were read.*
 
 7. **Find a question this survey did not answer, and read its mark.**
 

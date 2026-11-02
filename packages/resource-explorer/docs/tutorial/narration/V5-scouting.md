@@ -24,19 +24,19 @@ Nothing runs until you confirm. Leave both boxes unticked, and click Run.
 The card shows the running mark, and the results arrive in the question rows as each step lands.
 On the Quickstart, it takes a few seconds.
 
-[SLIDE: S18 — the answers; held until it is re-taken after F46]
+[SLIDE: S18 — the answers]
 
 Back on Questions, the count has gone from one of nine answered to five of nine.
-Is it alive? Thirty-three thousand writes and nearly three million reads. So yes.
+Is it alive? Thirty-four thousand writes and nearly three million reads. So yes.
 Each answer says where it came from, and when.
 Some carry a note in blue. Here, the account could read 261 of the 266 tables, so five of the counts are estimates.
 Every count on this page is within what this account can see.
 
-[SLIDE: S18b — the numbers behind this; held until it is re-taken after F46]
+[SLIDE: S18b — the numbers behind this]
 
 Click the numbers behind this, and you see each number the answer is built from.
 
-[SLIDE: S18, re-taken after F46, with "statistics_freshness has not run" highlighted]
+[SLIDE: S18, with "statistics_freshness has not run" highlighted]
 
 Read the words, not only the mark. This answer has a tick, but it says one part has not run, so it is partial.
 And the questions this survey did not answer still say so. Not run means nobody has looked yet.
@@ -71,6 +71,6 @@ A first look at all three. Next, Peter asks whether coco pharma is already in th
 **Pronunciation, beyond the outline's list:** "GovActionProcess::DatabaseScoutingSurvey" on screen in S17 is not read
 aloud. "coco_pharma_trial" and "loading_bay_trial" are read "coco pharma" and "loading bay".
 
-**Slides still to make:** the title and closing slides; S18 and S18b, re-taken after F46 (the schema total counts
-PostgreSQL's temporary schemas until then), and a highlighted version of S18 for the partial answer.
-Sidebar-wide frames (S16, S17, S19, S20, S20a, S20b) are marked "re-shoot after W38" (gap G25).
+**Slides still to make:** the title and closing slides, and a highlighted version of S18 for the partial answer.
+S18 and S18b were re-shot after F46 merged (#973).
+Sidebar-wide frames (S16, S17, S18, S18b, S19, S20, S20a, S20b) are marked "re-shoot after W38" (gap G25).

@@ -21,7 +21,8 @@
   `/deployments/loading-bay` (owner and Architect); S5 and S9 not taken (G25, G26); G26–G28 added.
 - 2026-11-02: part 5 written; S16, S17, S19, S20, S20a and S20b taken. **S18 and S18b are held, to be re-shot after
   F46** (the schema total counts PostgreSQL's temporary schemas; ruling by the Architect, 2026-11-02), once F46 merges
-  and `coco_pharma_trial` is surveyed again. Read on screen: the database's run dialog and running card; the answers
+  and `coco_pharma_trial` is surveyed again. Later the same day: S18 and S18b re-shot after F46 merged (#973) and
+  `coco_pharma_trial` was surveyed again; part 5 now gives the schema total, 30. Read on screen: the database's run dialog and running card; the answers
   after one Scouting survey; the folder survey needs the root folder attached first (Curate › Publish, "attaches the
   root folder only"), then Egeria leads the survey and writes a survey report. G11, G16 and G28 extended; G29 and G30
   added. Reader-facing `8813` replaced: the tutorial's address is `http://localhost:8810/` (project owner, via the
@@ -990,7 +991,7 @@ stamps recur from part to part. Take them in order, in one Quickstart, without r
 | S15 | 4 · steps 3 | how to read an answer | The marks | The key, or a drawn table | **Drawn, 2026-11-02:** [`tutorial-media/marks.svg`](tutorial-media/marks.svg) as `S15-marks.webp`; the real key is in S13. |
 | S16 | 5 · 1 | is `coco_pharma` alive? | Survey & analyses on a never-surveyed database | The overview survey's run button | **Taken 2026-11-02:** `tutorial/images/05-scouting/S16-run-dialog.webp`, the "Database Scouting Scan" dialog, "Nothing runs until you confirm." Re-shoot after W38. |
 | S17 | 5 · 2 | `coco_pharma` being surveyed | Running | "◔ running" and the notice with View | **Taken 2026-11-02:** `S17-running.webp`, "◔ running · started just now". No notice with **View** was seen; the Activity entry was read instead. Re-shoot after W38. |
-| S18 | 5 · 3–4 | what is in `coco_pharma` (read on screen) | Questions after the survey, one row labelled | Answer, source line, buttons | **Held: re-shoot after F46.** The answer reads a schema total that counts PostgreSQL's temporary schemas. S18b (the numbers behind this) held for the same reason. |
+| S18 | 5 · 3–4 | what is in `coco_pharma` (read on screen) | Questions after the survey, one row labelled | Answer, source line, buttons | **Taken 2026-11-02, re-shot after F46 merged (#973):** `S18-answers.webp`, "30 schema(s), 29 with tables, 28 visible to this credential" and "34,207 writes and 2,989,434 reads"; with `S18b-numbers-behind.webp` (schema total 30). Re-shoot after W38. |
 | S19 | 5 · note | OpenLineage, first look | Repository header tiles | Tiles incl. "? not read" | **Taken 2026-11-02:** `S19-openlineage-header.webp`, the stored survey ("surveyed 27d ago"); not run again. Re-shoot after W38. |
 | S20 | 5 · note | `loading_bay`: the weekly files, summary lines, sections closed | File-system survey | Reach line, the presses, the closed sections with their summary lines | **Taken 2026-11-02:** `S20-folder-survey.webp` after Egeria's Folder Survey; with `S20a-root-folder-attached.webp` (Curate's publish band) and `S20b-files-open.webp` (Files open). Files reads "analysis level: top level only", so no `.restatement.csv` is listed; that moves to the part that walks the files. Re-shoot after W38. |
 | S21 | 6 · 1 | is `coco_pharma` already catalogued? | Discovery | "Nothing is recorded for this — a real absence…" | new |
