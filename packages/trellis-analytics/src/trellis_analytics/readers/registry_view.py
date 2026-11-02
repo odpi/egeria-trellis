@@ -18,14 +18,12 @@ import sqlite3
 from contextlib import contextmanager
 from typing import Any, Iterator
 
+from trellis_analytics.readers import ResourceExplorerMissing  # noqa: F401 - defined by the seam; stays importable
+
 COVERED_METHODS = (
     "_conn", "_normalize_slug", "query_detail_rows", "get_database_surveys",
     "list_native_survey_runs", "count_native_survey_annotations", "query_native_survey_annotations",
 )
-
-
-class ResourceExplorerMissing(ImportError):
-    """resource_explorer is not installed (install trellis-analytics[re])."""
 
 
 def _registry_module():

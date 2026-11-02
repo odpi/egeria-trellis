@@ -11,9 +11,7 @@ import sqlite3
 from contextlib import contextmanager
 from typing import Any, Iterator
 
-
-class OdsUnreadable(Exception):
-    """The registry could not be read; the cause is the message."""
+from trellis_analytics.readers import OdsUnreadable  # noqa: F401 - defined by the seam; this name stays importable
 
 
 def normalize_slug(slug: str) -> str:

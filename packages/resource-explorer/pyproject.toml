@@ -247,6 +247,13 @@ ast = [
 [project.scripts]
 resource-explorer = "resource_explorer.cli.main:app"
 
+# The Analytic Library's reader seam (LS2): the library owns what a routine may read (trellis_analytics.readers.OdsRead)
+# and finds who answers it through this group. RE is the one implementation of the registry reads; without RE installed
+# (the Portal) a routine that asks for `ods` answers not_established with "no reader installed for ods here".
+# The implementation still lives in the library's tree until the library leaves trellis (LS2 step 3), then here.
+[project.entry-points."trellis_analytics.readers"]
+ods = "trellis_analytics.readers.ods:OdsReader"
+
 [tool.hatch.build.targets.wheel]
 packages = ["resource_explorer"]
 

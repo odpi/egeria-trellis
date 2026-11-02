@@ -29,8 +29,7 @@ from pydantic import BaseModel, Field
 
 from trellis_analytics import __version__
 from trellis_analytics.envelope import Envelope, ResultState
-from trellis_analytics.readers.ods import OdsReader, OdsUnreadable
-from trellis_analytics.readers.registry_view import ResourceExplorerMissing
+from trellis_analytics.readers import OdsRead, OdsUnreadable, ReaderMissing, ResourceExplorerMissing
 
 _DB_NODES = {"database", "schema", "table", "column"}
 _PUBLISHED = ("elements_read_back", "restored")
@@ -104,7 +103,7 @@ def _result(resource_type, slug, state, reason, **kw) -> CoverageResult:
     return CoverageResult(resource_type=resource_type, slug=slug, envelope=env, **kw)
 
 
-def _node_set(ods: OdsReader, slug: str) -> dict:
+def _node_set(ods: OdsRead, slug: str) -> dict:
     """Curate's node set for this database, read-only. Raises ResourceExplorerMissing, or OdsUnreadable."""
     view = ods.registry_view()
     try:
@@ -130,7 +129,13 @@ def _held_elsewhere(resolution: dict, names: list[str]) -> dict[str, str]:
     return out
 
 
-def curation_coverage(ods: OdsReader, resource_type: str, slug: str) -> CoverageResult:
+def no_reader(resource_type: str, slug: str, exc: ReaderMissing) -> CoverageResult:
+    """The result when no registry reader is installed here (the Portal without RE): not established, and the
+    sentence says which reader is missing."""
+    return _result(resource_type, slug, ResultState.NOT_ESTABLISHED, str(exc))
+
+
+def curation_coverage(ods: OdsRead, resource_type: str, slug: str) -> CoverageResult:
     if resource_type != "database":
         return _result(resource_type, slug, ResultState.NOT_APPLICABLE,
                        f"curation coverage is measured for databases in this release; {resource_type} has no curation record it reads")

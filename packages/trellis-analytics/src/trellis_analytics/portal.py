@@ -16,8 +16,9 @@ from __future__ import annotations
 import os
 import re
 
-from trellis_analytics.readers.ods import OdsReader
+from trellis_analytics.readers import ODS, ReaderMissing, open_reader
 from trellis_analytics.routines import curation_coverage
+from trellis_analytics.routines.curation_coverage import no_reader
 
 TILE_LABEL = "Trellis - Curation Coverage"
 #: The tile function's registered name (manifests.CURATION_COVERAGE_TILE, installed through the pyegeria.analytics entry
@@ -48,7 +49,12 @@ def _kpis(result) -> list[dict]:
 
 def curation_coverage_tile(slug: str, ods_url: str = "", resource_type: str = "database") -> dict:
     """The tile for one resource: KPI rows, the two bar values, the envelope's state as subtitle, provenance."""
-    result = curation_coverage(OdsReader(ods_url or os.environ.get("REGISTRY_DATABASE_URL", "")), resource_type, slug)
+    try:
+        ods = open_reader(ODS, ods_url or os.environ.get("REGISTRY_DATABASE_URL", ""))
+    except ReaderMissing as exc:            # no registry reader installed here: said, not a chart of zeros
+        result = no_reader(resource_type, slug, exc)
+    else:
+        result = curation_coverage(ods, resource_type, slug)
     env = result.envelope
     state = env.result_state.value
     tile: dict = {
