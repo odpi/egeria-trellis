@@ -186,4 +186,4 @@ to stop. A sign-in lasts about an hour, so you will be asked to sign in again at
 adding your own analyses, questions or surveys, and Admin are in the Advanced tutorial. So is the command line. Part 13
 points to each.
 
-**Next:** [Part 2 — Sign in and find your way around](README.md#the-core-tutorial). Peter gets in.
+**Next:** [Part 2 — Sign in and find your way around](02-sign-in-and-find-your-way.md). Peter gets in.
