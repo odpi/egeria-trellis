@@ -73,6 +73,7 @@ import {
 import { renderContext } from '/static/next/stages/context.js';
 import { openApiReference } from '/static/next/stages/api-reference.js';
 import { inPageConfirm, inPageNotice, inPagePrompt } from '/static/next/confirm-dialog.js';
+import { setWorkListHidden } from '/static/re-api.js';
 import { scoutingTilesHtml, scoutingSignalHtml, staleLinkBannerHtml, bindStaleLinkBanner, indexStateCueHtml } from '/static/next/stages/repo-header.js';
 import { bindFirstIndexDoor, ensureFirstIndexFresh } from '/static/next/first-index.js';
 import { contextRecordedSpec, contextRecordedState } from '/static/next/context-recorded.js';
@@ -257,6 +258,7 @@ export const state = {
   scope: 'working-set',        // lifecycle scope chip; '' means All
   dispositionFacet: 'all',
   showHidden: false,
+  showHiddenLists: false,      // W38: hidden work lists drawn under "Show hidden N"
   showEmptyFacets: false,
   showMarkKey: false,
   selectMode: false,
@@ -1134,6 +1136,15 @@ function workListHost() {
     chooseInvestigationThen,
     makeCurrent: (slug) => setInvestigation(slug),
     refreshScope: async () => { await loadWorkingSet(); await refreshOpenInvestigation(state.investigation); renderSidebar(); },
+    // W38: the open list was deleted: the sidebar redraws and the page goes to the first visible list, else the empty state.
+    afterDelete: async () => {
+      try { state.workLists = await listWorkLists(); } catch { /* keep */ }
+      const next = splitWorkLists().benches[0];
+      state.workListSlug = next ? next.slug : null;
+      renderSidebar();
+      writeUrl();
+      await loadPane();
+    },
     refreshAfterStart: async () => {
       await refreshInvestigationsAndSidebar();
       try { state.workLists = await listWorkLists(); } catch { /* the sidebar keeps what it had */ }
@@ -2601,16 +2612,28 @@ const SUGGESTION_PREFIX = 'suggested-to-';
  *  request could only disagree with this one. Counts are `.length` of these
  *  arrays, never a stored number. */
 export function splitWorkLists() {
-  const benches = state.workLists.filter((w) => !String(w.slug).startsWith(SUGGESTION_PREFIX));
-  const suggestions = state.workLists.filter((w) => String(w.slug).startsWith(SUGGESTION_PREFIX));
+  // W38: `hidden` is this person's own view preference. The counts follow the lists shown, and "Show hidden N" carries
+  // the rest, so visible + hidden = all on screen.
+  const shown = (w) => state.showHiddenLists || !w.hidden;
+  const all = state.workLists.filter((w) => !String(w.slug).startsWith(SUGGESTION_PREFIX));
+  const benches = all.filter(shown);
+  const hiddenCount = all.filter((w) => w.hidden).length;
+  const suggestions = state.workLists.filter((w) => String(w.slug).startsWith(SUGGESTION_PREFIX)).filter(shown);
   const linked = state.investigation ? benches.filter((w) => w.investigation === state.investigation) : [];
   const other = state.investigation ? benches.filter((w) => w.investigation !== state.investigation) : benches;
-  return { benches, suggestions, linked, other };
+  return { benches, suggestions, linked, other, hiddenCount };
 }
 
 function workListRowHtml(w) {
+  return `<div class="flex items-baseline gap-[2px]">${workListOpenButtonHtml(w)}<button type="button" data-wl-hide="${esc(w.slug)}" data-wl-hidden="${w.hidden ? 'yes' : 'no'}"
+    title="${w.hidden ? 'Show this list in your sidebar again. A view preference: nothing else changes.' : 'Hide this list from your sidebar. Only you stop seeing it; it is not deleted, and Show hidden brings it back.'}"
+    class="shrink-0 cursor-pointer bg-transparent px-1 text-caps text-chrome-muted hover:text-chrome-ink"
+    >${w.hidden ? 'unhide' : 'hide'}</button></div>`;
+}
+
+function workListOpenButtonHtml(w) {
   return `<button data-worklist="${esc(w.slug)}"
-    class="cursor-pointer truncate bg-transparent px-2 py-[5px] text-left ${
+    class="min-w-0 flex-1 cursor-pointer truncate bg-transparent px-2 py-[5px] text-left ${
       w.slug === state.workListSlug
         ? 'border-l-2 border-accent bg-chrome-surface text-chrome-ink'
         : 'border-l-2 border-transparent text-chrome-ink hover:bg-chrome-surface'}"
@@ -2624,7 +2647,7 @@ function workListRowHtml(w) {
  *  no investigation current the section reads "Work lists · N" and lists
  *  them all. */
 function workListsSidebarHtml() {
-  const { benches, suggestions, linked, other } = splitWorkLists();
+  const { benches, suggestions, linked, other, hiddenCount } = splitWorkLists();
   const inv = state.investigations.find((i) => i.slug === state.investigation);
   const invName = state.investigation ? (inv?.display_name || state.investigation) : '';
   const rows = (arr) => `<div class="mb-s2 flex flex-col gap-[1px]">${arr.map(workListRowHtml).join('')}</div>`;
@@ -2645,6 +2668,14 @@ function workListsSidebarHtml() {
   } else if (benches.length) {
     html += `<div class="mb-[7px] font-heading uppercase tracking-caps text-caps text-chrome-muted" data-all-lists-head>Work lists · <span class="tnum">${benches.length}</span></div>
       ${rows(benches)}`;
+  }
+  if (!benches.length && hiddenCount) {
+    html += `<div class="mb-[7px] text-provenance text-chrome-muted" data-all-lists-hidden>no work lists shown</div>`;
+  }
+  if (hiddenCount) {
+    html += `<button type="button" data-act="show-hidden-lists" class="mb-s2 block cursor-pointer bg-transparent px-0 text-caps ${
+      state.showHiddenLists ? 'text-accent-on-dark' : 'text-chrome-muted hover:text-chrome-ink'}"
+      >Show hidden <span class="tnum">${hiddenCount}</span></button>`;
   }
   if (suggestions.length) {
     html += `<details class="mb-s2" data-suggestions>
@@ -2697,6 +2728,21 @@ function bindSidebar() {
   el.querySelector('[data-act="sidebar-scope"]')?.addEventListener('click', () => {
     state.scope = 'working-set';
     rerender();
+  });
+  el.querySelectorAll('button[data-wl-hide]').forEach((b) => b.addEventListener('click', async () => {
+    const hide = b.dataset.wlHidden !== 'yes';
+    try {
+      await setWorkListHidden(b.dataset.wlHide, hide);
+      state.workLists = await listWorkLists();
+    } catch (err) {
+      inPageNotice({ title: hide ? 'Could not hide the list' : 'Could not show the list', message: err.message });
+      return;
+    }
+    renderSidebar();
+  }));
+  el.querySelector('[data-act="show-hidden-lists"]')?.addEventListener('click', () => {
+    state.showHiddenLists = !state.showHiddenLists;
+    renderSidebar();
   });
   el.querySelectorAll('button[data-worklist]').forEach((b) => b.addEventListener('click', () => {
     state.workListSlug = b.dataset.worklist;
