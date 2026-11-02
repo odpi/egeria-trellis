@@ -246,6 +246,55 @@ step's results can be read as:
 `order`, never both. Keep `order` for an order no key can express, such as "PUBLIC grantees first,
 then by table". The owner chose this on 2026-10-28.
 
+**Tables: rows about the members of a resource (B1, 2026-11-02).** When a result is one row per
+column, file or dataset, declare `result_kind="table"`, `scope="member"` and a `TableDeclaration`.
+The design is `~/.re-gate/DESIGN-B1-MEMBER-SCOPED-TABLE-RESULT-2026-11-02.md`.
+
+| field | meaning |
+|---|---|
+| `columns` | `TableColumn(name, type, unit, absence, states, measure_ref)`. A bare string is a `text` column with no absence word yet |
+| `key_fields` | the columns that make a row one member. Required at `member` and `field` scope |
+| `max_rows` | how many rows are **shown**. The default and the ceiling is 1,000 (owner's cap, 2026-11-02). Every row is stored |
+| `order` | the order rows are shown in, in words |
+| `truncation` | must contain `{shown}` and `{total}`; it is the table's summary line |
+| `summary` | the measures, declared beside the table, that say the whole of it. Required at `member` scope |
+
+A column's `type` is one of `text`, `integer`, `number`, `boolean`, `date`, `datetime`, `bytes`,
+`duration` or `state`. A `number`, `bytes` or `duration` column needs a `unit`. A `state` column
+lists its `states`. Every column that is not a key needs an `absence` word, the word an empty cell
+reads as: "not counted" is not "none found" is not "not permitted". `measure_ref` names the summary
+measure a column is the per-member value of, so the rows and the summary agree.
+
+**A table's extent is its table.** Do not declare `extents` beside a table: Chat's extent is
+derived from the table (its key and columns, `max_rows`, `order`, `truncation`), and a declaration
+that writes one too is refused. The summary measures are computed by the step over **all** rows,
+never added up from the shown slice. Only the summary goes to Egeria: no row leaves Resource Explorer.
+
+The `truncation` sentence is what makes a table a table result. A few of RE's own analyses declared
+a `table` before B1, with bare columns, no truncation and hand-written extents; they keep that shape
+until each converts (convert-as-touched). A `member`-scoped table must declare its truncation.
+
+```python
+Declaration(
+    result_kind="table",
+    result_kind_note="one row per column: about forty facts for each of up to thousands of columns",
+    scope="member",
+    table=TableDeclaration(
+        key_fields=["schema", "table", "column"],
+        columns=["schema", "table", "column",
+                 TableColumn(name="state", type="state", absence="not profiled",
+                             states=["measured", "not_measured", "not_permitted", "measured_nothing"]),
+                 TableColumn(name="declared_type", absence="type not recorded"),
+                 TableColumn(name="null_count", type="integer", absence="not counted", measure_ref="nulls_total"),
+                 TableColumn(name="distinct_estimate", type="integer", absence="not estimated")],
+        order="schema, table, column as the catalog lists them",
+        truncation="the first {shown} of {total} columns; every column is stored and the summary counts them all",
+        summary=["columns_total", "columns_measured", "nulls_total"]),
+    measures=[...],    # columns_total, columns_measured, nulls_total, each scope="resource"
+    ...
+)
+```
+
 **`answers`: one list of questions, not two.** For a library step, leave `answers` out. It is filled
 from the manifest's `questions`, and an `answers` list that differs from `questions` is refused.
 For RE's own built-in analyses, `answers` is generated from the question catalog's `analysis_ids`. That
