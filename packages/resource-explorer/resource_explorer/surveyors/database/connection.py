@@ -651,6 +651,8 @@ class PostgreSQLConnection(DatabaseConnection):
             SELECT schema_name
             FROM information_schema.schemata
             WHERE schema_name NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
+            AND left(schema_name, 8) <> 'pg_temp_'
+            AND left(schema_name, 14) <> 'pg_toast_temp_'
             ORDER BY schema_name
         """
         try:
@@ -798,6 +800,8 @@ class PostgreSQLConnection(DatabaseConnection):
                    has_schema_privilege(current_user, n.nspname, 'USAGE') AS usage_granted
             FROM pg_namespace n
             WHERE n.nspname NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
+            AND left(n.nspname, 8) <> 'pg_temp_'
+            AND left(n.nspname, 14) <> 'pg_toast_temp_'
             ORDER BY n.nspname
         """)
         tables = self.execute_query("""
@@ -808,6 +812,8 @@ class PostgreSQLConnection(DatabaseConnection):
             JOIN pg_namespace n ON n.oid = c.relnamespace
             WHERE c.relkind IN ('r', 'v', 'm', 'f', 'p')
               AND n.nspname NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
+              AND left(n.nspname, 8) <> 'pg_temp_'
+              AND left(n.nspname, 14) <> 'pg_toast_temp_'
             ORDER BY n.nspname, c.relname
         """)
         return schemas, tables
@@ -820,6 +826,8 @@ class PostgreSQLConnection(DatabaseConnection):
                        obj_description(n.oid, 'pg_namespace') AS description
                 FROM pg_namespace n
                 WHERE n.nspname NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
+                AND left(n.nspname, 8) <> 'pg_temp_'
+                AND left(n.nspname, 14) <> 'pg_toast_temp_'
                 ORDER BY n.nspname
             """)
             return {r["schema_name"]: r.get("description") or "" for r in rows}
