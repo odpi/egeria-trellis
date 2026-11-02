@@ -90,5 +90,5 @@ nothing.
 - **On the hosted demo, the data is reset every day.** If you stop and come back the next day, the data sources you
   added are gone. Each part says what it needs, so you can add them again. Or do parts 3 to 10 in one sitting.
 
-**Next:** [Part 3 — Add data sources, and find them again](README.md#the-core-tutorial). Peter registers the
+**Next:** [Part 3 — Add data sources, and find them again](03-add-data-sources.md). Peter registers the
 trial's three sources.
