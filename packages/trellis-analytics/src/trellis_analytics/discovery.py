@@ -12,6 +12,7 @@ import warnings
 from importlib.metadata import entry_points
 
 from trellis_analytics.manifest import _TrellisManifest, purpose_warnings, question_warnings
+from trellis_analytics.readers import INVESTIGATION_PURPOSES, QUESTION_IDS, ReaderMissing, reader_factory
 
 GROUP = "pyegeria.analytics"
 #: Read during the library split so a step package built before Q2(b) is still found; nothing in trellis declares it.
@@ -26,8 +27,8 @@ def known_purposes(registry=None) -> list[str] | None:
     one: RE's shipped seed. Never calls Egeria, and never opens a registry itself (constructing one connects
     to the shared registry and migrates it)."""
     try:
-        from resource_explorer.investigation_purposes import known_purpose_names
-    except ImportError:
+        known_purpose_names = reader_factory(INVESTIGATION_PURPOSES)     # RE registers it (trellis_analytics.readers)
+    except ReaderMissing:
         return None
     return known_purpose_names(registry)
 
@@ -55,8 +56,8 @@ def known_question_ids() -> set[str] | None:
     shipped YAML through the catalog reader; no registry is constructed, so nothing connects to the shared
     registry or migrates it."""
     try:
-        from resource_explorer.surveyors.question_catalog_reader import all_question_ids
-    except ImportError:
+        all_question_ids = reader_factory(QUESTION_IDS)                  # RE registers it (trellis_analytics.readers)
+    except ReaderMissing:
         return None
     return all_question_ids()
 

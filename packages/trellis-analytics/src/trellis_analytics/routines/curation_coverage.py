@@ -10,7 +10,8 @@ Definitions (a database), all derived from persisted rows, never from the branch
 - *blocked*: a schema whose newest state-or-blocked proof is `leave_out_blocked` (ISSUE-117, kept not sent).
 - *known schemas* (the universe) are the non-system schemas of `resolve_node_set(registry, slug)`, the same
   function Curate's scope tree takes its nodes from, so this counts what Curate shows. `counted_against`
-  says which source that was. Needs the optional `re` extra; without it the result is `not_applicable`.
+  says which source that was. Read through the `catalogue_scope` reader RE registers (trellis_analytics.readers);
+  without one installed the result is `not_established`, "no reader for Resource Explorer's catalogue is installed here".
 - *not yet*: every other known schema, partitioned by its newest scope choice, so the counts add up:
   undecided; chosen by a person; chosen by a rule a person confirmed; left out by a person; left out by a
   rule a person confirmed. A schema with no choice that another family holds at this endpoint is not
@@ -29,7 +30,7 @@ from pydantic import BaseModel, Field
 
 from trellis_analytics import __version__
 from trellis_analytics.envelope import Envelope, ResultState
-from trellis_analytics.readers import OdsRead, OdsUnreadable, ReaderMissing, ResourceExplorerMissing
+from trellis_analytics.readers import CATALOGUE_SCOPE, CatalogueScopeRead, OdsRead, OdsUnreadable, ReaderMissing, open_reader
 
 _DB_NODES = {"database", "schema", "table", "column"}
 _PUBLISHED = ("elements_read_back", "restored")
@@ -103,17 +104,9 @@ def _result(resource_type, slug, state, reason, **kw) -> CoverageResult:
     return CoverageResult(resource_type=resource_type, slug=slug, envelope=env, **kw)
 
 
-def _node_set(ods: OdsRead, slug: str) -> dict:
-    """Curate's node set for this database, read-only. Raises ResourceExplorerMissing, or OdsUnreadable."""
-    view = ods.registry_view()
-    try:
-        from resource_explorer.catalogue_scope import resolve_node_set    # lazy: RE is an optional dependency
-    except ImportError as exc:
-        raise ResourceExplorerMissing(str(exc)) from exc
-    try:
-        return resolve_node_set(view, slug)
-    except Exception as exc:  # noqa: BLE001  the registry could not answer: not "no schemas"
-        raise OdsUnreadable(f"the node set could not be read: {type(exc).__name__}: {exc}") from exc
+def _node_set(catalogue: CatalogueScopeRead, slug: str) -> dict:
+    """Curate's node set for this database, read-only, through the seam. Raises ReaderMissing, or OdsUnreadable."""
+    return catalogue.node_set(slug)
 
 
 def _held_elsewhere(resolution: dict, names: list[str]) -> dict[str, str]:
@@ -130,26 +123,29 @@ def _held_elsewhere(resolution: dict, names: list[str]) -> dict[str, str]:
 
 
 def no_reader(resource_type: str, slug: str, exc: ReaderMissing) -> CoverageResult:
-    """The result when no registry reader is installed here (the Portal without RE): not established, and the
-    sentence says which reader is missing."""
+    """The result when a reader it needs is not installed here (the Portal without RE): not established, and the
+    sentence says which reader is missing. An absence, never an error and never a zero."""
     return _result(resource_type, slug, ResultState.NOT_ESTABLISHED, str(exc))
 
 
-def curation_coverage(ods: OdsRead, resource_type: str, slug: str) -> CoverageResult:
+def curation_coverage(ods: OdsRead, resource_type: str, slug: str,
+                      catalogue: CatalogueScopeRead | None = None) -> CoverageResult:
+    """`catalogue` is Curate's node set reader; by default the installed `catalogue_scope` reader over the same registry
+    as `ods`, resolved here on the run (never at import)."""
     if resource_type != "database":
         return _result(resource_type, slug, ResultState.NOT_APPLICABLE,
                        f"curation coverage is measured for databases in this release; {resource_type} has no curation record it reads")
     try:
+        if catalogue is None:
+            catalogue = open_reader(CATALOGUE_SCOPE, ods)
         proofs_all = [p for p in ods.commit_proofs(slug) if p["node_kind"] in _DB_NODES or p["proof"] == _RESET]
         events = ods.catalogue_scope_events(slug)
         outbox = ods.outbox_status_counts("database", slug)
-        node_set = _node_set(ods, slug)
+        node_set = _node_set(catalogue, slug)
+    except ReaderMissing as exc:
+        return no_reader(resource_type, slug, exc)
     except OdsUnreadable as exc:
         return _result(resource_type, slug, ResultState.NOT_ESTABLISHED, str(exc))
-    except ResourceExplorerMissing as exc:
-        return _result(resource_type, slug, ResultState.NOT_APPLICABLE,
-                       f"curation coverage counts against Resource Explorer's node set and it is not installed "
-                       f"(install trellis-analytics[re]): {exc}")
     surveyed = sorted({s["schema"] for s in node_set["schemas"]
                        if s.get("schema") and s.get("classification") != "system"})
     counted_against = {k: node_set.get(k) for k in ("chosen", "egeria", "local", "disagree")}

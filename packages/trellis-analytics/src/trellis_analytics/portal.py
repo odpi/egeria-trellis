@@ -16,7 +16,7 @@ from __future__ import annotations
 import os
 import re
 
-from trellis_analytics.readers import ODS, ReaderMissing, open_reader
+from trellis_analytics.readers import CATALOGUE_SCOPE, ODS, ReaderMissing, open_reader
 from trellis_analytics.routines import curation_coverage
 from trellis_analytics.routines.curation_coverage import no_reader
 
@@ -49,12 +49,15 @@ def _kpis(result) -> list[dict]:
 
 def curation_coverage_tile(slug: str, ods_url: str = "", resource_type: str = "database") -> dict:
     """The tile for one resource: KPI rows, the two bar values, the envelope's state as subtitle, provenance."""
+    url = ods_url or os.environ.get("REGISTRY_DATABASE_URL", "")
     try:
-        ods = open_reader(ODS, ods_url or os.environ.get("REGISTRY_DATABASE_URL", ""))
-    except ReaderMissing as exc:            # no registry reader installed here: said, not a chart of zeros
+        # RE's catalogue first: without RE neither reader is here, and the catalogue is the absence worth naming.
+        catalogue = open_reader(CATALOGUE_SCOPE, url)
+        ods = open_reader(ODS, url)
+    except ReaderMissing as exc:            # a reader is not installed here: said, never a chart of zeros
         result = no_reader(resource_type, slug, exc)
     else:
-        result = curation_coverage(ods, resource_type, slug)
+        result = curation_coverage(ods, resource_type, slug, catalogue)
     env = result.envelope
     state = env.result_state.value
     tile: dict = {
