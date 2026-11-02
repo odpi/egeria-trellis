@@ -1570,6 +1570,13 @@ export const getDeclaredVsReceived = (entryId) =>
 export const listWorkLists = (investigation = '') =>
   get(`/api/work-lists/${investigation ? `?investigation=${encodeURIComponent(investigation)}` : ''}`);
 
+/** Hide or unhide a work list for the signed-in person only (W38): a view preference, nothing else changes. */
+export const setWorkListHidden = (slug, hidden) =>
+  put(`/api/work-lists/${encodeURIComponent(slug)}/hidden`, { hidden: !!hidden });
+
+/** Delete a work list (its creator or an admin; the server's 403 says who may). An Egeria Collection it published stays. */
+export const deleteWorkList = (slug) => del(`/api/work-lists/${encodeURIComponent(slug)}`);
+
 export const getWorkList = (slug) => get(`/api/work-lists/${encodeURIComponent(slug)}`);
 
 export const createWorkList = (displayName, entitySlugs, { investigation = '', rationale = '', description = '', entityType } = {}) =>

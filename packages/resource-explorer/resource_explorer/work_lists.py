@@ -407,8 +407,14 @@ class WorkLists:
             except Exception:                               # pragma: no cover
                 continue
 
-    def list_all(self, *, investigation: str = "") -> list[dict]:
+    def list_all(self, *, investigation: str = "", user_id: str | None = None) -> list[dict]:
+        """Every list (or an investigation's), each with `hidden`: this caller's own view preference (W38)."""
+        from resource_explorer.registry import current_user_id
+
+        user_id = current_user_id() if user_id is None else user_id
         with self._conn() as conn:
+            hidden_slugs = {r["work_list_slug"] for r in conn.execute(
+                "SELECT work_list_slug FROM work_list_view WHERE user_id = ? AND hidden = 1", (user_id,)).fetchall()}
             if investigation:
                 rows = conn.execute(
                     "SELECT * FROM work_lists WHERE investigation = ?"
@@ -427,8 +433,21 @@ class WorkLists:
                 d["stored_entity_type"] = d.get("entity_type") or ""
                 d["entity_type"] = list_kind(d["stored_entity_type"], d["kinds"])
                 d.pop("filter_json", None)
+                d["hidden"] = d["slug"] in hidden_slugs
                 out.append(d)
         return out
+
+    def set_hidden(self, slug: str, hidden: bool, *, user_id: str | None = None) -> None:
+        """Hide or unhide a list for ONE person (W38). A view preference: the list, its members and everyone else's
+        sidebar are untouched, and nothing reaches Egeria."""
+        from resource_explorer.registry import current_user_id
+
+        user_id = current_user_id() if user_id is None else user_id
+        with self._conn() as conn:
+            conn.execute(
+                "INSERT INTO work_list_view (work_list_slug, user_id, hidden, updated_at) VALUES (?, ?, ?, ?)"
+                " ON CONFLICT(work_list_slug, user_id) DO UPDATE SET hidden = excluded.hidden,"
+                " updated_at = excluded.updated_at", (slug, user_id, int(bool(hidden)), _now()))
 
     def set_investigation(self, slug: str, investigation: str) -> None:
         """Link a saved list to an investigation (or, with '', unlink it).
@@ -524,6 +543,7 @@ class WorkLists:
         """
         with self._conn() as conn:
             conn.execute("DELETE FROM work_list_members WHERE work_list_slug = ?", (slug,))
+            conn.execute("DELETE FROM work_list_view WHERE work_list_slug = ?", (slug,))
             conn.execute("DELETE FROM work_lists WHERE slug = ?", (slug,))
 
     # ── Promotion ───────────────────────────────────────────────────────

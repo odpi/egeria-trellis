@@ -13,7 +13,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
 from resource_explorer.work_lists import WorkLists
@@ -350,16 +350,72 @@ async def export_work_list(slug: str):
                     headers={"Content-Disposition": f'attachment; filename="{name}"'})
 
 
+class HiddenBody(BaseModel):
+    hidden: bool
+
+
+@router.put("/{slug}/hidden")
+async def set_work_list_hidden(slug: str, body: HiddenBody) -> dict:
+    """Hide or unhide the list for the signed-in person only (W38). Anyone may, for themselves."""
+    wls = WorkLists()
+    if not wls.get(slug):
+        raise HTTPException(status_code=404, detail=f"work list {slug!r} not found")
+    wls.set_hidden(slug, body.hidden)
+    return {"slug": slug, "hidden": body.hidden}
+
+
+SUGGESTION_PREFIX = "suggested-to-"
+
+
+def _may_delete(request: Request, wl: dict, caller: str) -> bool:
+    """The list's creator, an admin, or (for a `suggested-to-<person>` pointer) the person it was suggested to."""
+    from resource_explorer.config import get_config
+    from resource_explorer.web.admin_auth import is_admin_request
+
+    if is_admin_request(request, get_config().feedback):
+        return True
+    if not caller:
+        return False
+    if caller == (wl.get("created_by") or ""):
+        return True
+    slug = str(wl.get("slug") or "")
+    return slug.startswith(SUGGESTION_PREFIX) and slug[len(SUGGESTION_PREFIX):] == caller
+
+
 @router.delete("/{slug}")
-async def delete_work_list(slug: str) -> dict:
-    """Remove the list locally. Any Egeria Collection it published stays."""
-    wl = WorkLists().get(slug)
+async def delete_work_list(slug: str, request: Request) -> dict:
+    """Remove the list locally. Any Egeria Collection it published stays.
+
+    Only the list's creator, an admin, or (for a suggestion) the person it was suggested to may delete it; anyone
+    else may hide it for themselves (`PUT /{slug}/hidden`). One Activity entry says who deleted what."""
+    wls = WorkLists()
+    wl = wls.get(slug)
     if not wl:
         raise HTTPException(status_code=404, detail=f"work list {slug!r} not found")
-    WorkLists().delete(slug)
+    caller = _requested_by()
+    if not _may_delete(request, wl, caller):
+        raise HTTPException(
+            status_code=403,
+            detail=("Only the person who created this work list"
+                    f"{' (' + wl['created_by'] + ')' if wl.get('created_by') else ''}, or an admin, can delete it. "
+                    "You can hide it for yourself instead."))
+    wls.delete(slug)
+    name = wl.get("display_name") or slug
+    activity_error = ""
+    try:
+        from resource_explorer.activity_logger import log_catalog
+
+        log_catalog(wls.registry, "work_list", slug, name, "", "ok",
+                    f"work list '{name}' deleted by {caller or 'an admin'}",
+                    detail=f"Removed locally. {'The Egeria Collection ' + wl['egeria_guid'] + ' stays in Egeria.' if wl.get('egeria_guid') else 'It was never published to Egeria.'}")
+    except Exception as exc:  # noqa: BLE001 -- the delete is done; the failure is returned, not hidden
+        log.warning("could not write the activity entry for deleting work list %s: %s", slug, exc)
+        activity_error = f"{type(exc).__name__}: {exc}"
     return {"removed": slug,
             "egeria_collection_kept": bool(wl.get("egeria_guid")),
-            "egeria_guid": wl.get("egeria_guid", "")}
+            "egeria_guid": wl.get("egeria_guid", ""),
+            "deleted_by": caller,
+            "activity_logged": not activity_error, "activity_error": activity_error}
 
 
 @router.post("/{slug}/members")

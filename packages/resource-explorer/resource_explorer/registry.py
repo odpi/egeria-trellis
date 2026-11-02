@@ -4044,6 +4044,18 @@ class ProjectRegistry:
                 )
             """)
             self._migrate_work_list_members_to_member_kind(conn)
+            # W38: a person's own view preference for a work list (hidden from their sidebar). Same shape as
+            # `resource_working_set`: per person, reversible, writes nothing to Egeria and nothing for anyone else.
+            # `''` is the signed-out bucket. Additive and self-contained.
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS work_list_view (
+                    work_list_slug  TEXT NOT NULL,
+                    user_id         TEXT NOT NULL DEFAULT '',
+                    hidden          INTEGER NOT NULL DEFAULT 0,
+                    updated_at      TEXT NOT NULL,
+                    PRIMARY KEY (work_list_slug, user_id)
+                )
+            """)
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS work_list_runs (
                     set_id          TEXT NOT NULL,

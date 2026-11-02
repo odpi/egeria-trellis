@@ -49,7 +49,14 @@ export function credentialLineText(cap, at, relTotal, relSelect) {
   const thin = (relSelect ?? 0) < (relTotal ?? 0)
     || (cap.schema_visible ?? 0) < (cap.schema_total ?? 0);
   const when = md(at) ? ` ${md(at)}` : '';
-  const text = `RE's own survey${when}: connected as ${cap.connected_as || '(unknown)'}, `
+  // W40: said only when both logins are known and differ; never a password or key.
+  const who = cap.connected_as || '(unknown)';
+  const stored = cap.stored_login || '';
+  const differs = !!cap.connected_as && !!stored && cap.connected_as !== stored;
+  const whoWords = !differs ? who
+    : cap.credential_typed ? `${who} (a credential typed for that run; the stored login is ${stored})`
+      : `${who} (not the stored login, ${stored}; the login may have changed since)`;
+  const text = `RE's own survey${when}: connected as ${whoWords}, `
     + `sees ${cap.schema_visible ?? 0} of ${cap.schema_total ?? 0} schemas, `
     + `SELECT on ${relSelect ?? 0} of ${relTotal ?? 0} relations`
     + (thin ? '; counts from that survey are scoped to this credential' : '');

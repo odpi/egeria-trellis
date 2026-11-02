@@ -862,6 +862,23 @@ _NEEDS_CATALOGUING = (
     "asset, and this resource has none. Publish it to Egeria first.")
 
 
+#: A file system's Egeria asset is its ROOT FOLDER asset, made by the Folder survey card's attach-root press (W39).
+FS_NEEDS_ROOT_ASSET = (
+    "Egeria has no asset for this folder yet, so its Folder Survey has nothing to act on. "
+    "Attach the root folder to Egeria first (the press above), then Survey.")
+
+
+def _no_asset_words(entity) -> str:
+    """The refusal for a resource with no Egeria asset, in the words of its own kind (database / file system / other)."""
+    from resource_explorer import catalog_and_survey as cas
+
+    if hasattr(entity, "db_type"):
+        return cas.NOT_REGISTERED_WORDS
+    if hasattr(entity, "local_mount_point"):
+        return FS_NEEDS_ROOT_ASSET
+    return _NEEDS_CATALOGUING
+
+
 def _resource_entity(registry, entity_type: str, slug: str):
     if entity_type == "database":
         return registry.get_database(slug)
@@ -904,7 +921,7 @@ def cannot_run_reason(process: NativeProcess, entity, *, registry=None, technolo
             return cas.SERVER_NOT_REGISTERED_WORDS
         return _missing_credentials_reason(entity)
     if not (getattr(entity, "egeria_asset_guid", "") or "").strip():
-        return cas.NOT_REGISTERED_WORDS if hasattr(entity, "db_type") else _NEEDS_CATALOGUING
+        return _no_asset_words(entity)
     if process.qualified_name == FOLDER_SURVEY_QN and not hasattr(entity, "db_type"):
         # Files step 2: Egeria's Folder Survey leads only where the stored probe proves Egeria's engine host can read
         # the canonical mount. Registry-only (the newest probe row), so it is safe on a list read.
@@ -952,7 +969,7 @@ def _mixed_cannot_run_reason(process: NativeProcess, entity) -> str:
     if entity is None:
         return "This resource is not registered."
     if not (getattr(entity, "egeria_asset_guid", "") or "").strip():
-        return cas.NOT_REGISTERED_WORDS if hasattr(entity, "db_type") else _NEEDS_CATALOGUING
+        return _no_asset_words(entity)
     supported = engine_host.supported_request_types()
     for step in declared.re_steps:
         if step.request_type not in supported:
@@ -993,7 +1010,7 @@ def _definition_cannot_run_reason(process: NativeProcess, entity) -> str:
     if entity is None:
         return "This resource is not registered."
     if not (getattr(entity, "egeria_asset_guid", "") or "").strip():
-        return cas.NOT_REGISTERED_WORDS if hasattr(entity, "db_type") else _NEEDS_CATALOGUING
+        return _no_asset_words(entity)
     return ""
 
 
