@@ -1,7 +1,7 @@
 # Resource Explorer tutorial — outline for review
 
 **Status:** the outline the prose is written from. Prose is being written one part at a time in
-[`tutorial/`](tutorial/README.md#the-core-tutorial); parts 1 to 4 are written.
+[`tutorial/`](tutorial/README.md#the-core-tutorial); parts 1 to 5 are written.
 **Date:** 2026-11-01.
 **Changes:**
 - 2026-10-29: the outline, with decisions D1–D9.
@@ -19,6 +19,13 @@
 - 2026-11-02: part 3 written; story slugs `coco_pharma_trial` and `loading_bay_trial` registered, OpenLineage's
   existing row reused (owner §3). Read on screen: the dialog words (3a–3d); the canonical mount is
   `/deployments/loading-bay` (owner and Architect); S5 and S9 not taken (G25, G26); G26–G28 added.
+- 2026-11-02: part 5 written; S16, S17, S19, S20, S20a and S20b taken. **S18 and S18b are held, to be re-shot after
+  F46** (the schema total counts PostgreSQL's temporary schemas; ruling by the Architect, 2026-11-02), once F46 merges
+  and `coco_pharma_trial` is surveyed again. Read on screen: the database's run dialog and running card; the answers
+  after one Scouting survey; the folder survey needs the root folder attached first (Curate › Publish, "attaches the
+  root folder only"), then Egeria leads the survey and writes a survey report. G11, G16 and G28 extended; G29 and G30
+  added. Reader-facing `8813` replaced: the tutorial's address is `http://localhost:8810/` (project owner, via the
+  Coordinator, 2026-11-02); walks 1–6 now say their screens were read "on a test server".
 **Replaces, once written:** the six walks in [`tutorial/`](tutorial/README.md), which stay on `main` until then.
 
 ## How to read this outline
@@ -981,11 +988,11 @@ stamps recur from part to part. Take them in order, in one Quickstart, without r
 | S13 | 4 · 2 | a stage on `coco_pharma` | A stage's tabs, labelled | Questions, Survey & analyses, By analysis, Disposition | **Taken, 2026-11-02:** `S13-a-stage.webp` and `-labelled`: the tabs, the count line, the key, one row (∅). On 8813 the database's slug is `localhost_docker_coco_pharma`. |
 | S14 | 4 · steps 2 | the overview survey for `coco_pharma` | Survey & analyses, labelled | The overview survey and a narrower one marked | **Taken, 2026-11-02, on `openlineage`, not the database:** the database's Scouting has only one survey, so it cannot show an overview beside a narrower one. `S14-survey-and-analyses.webp` and `-labelled`. |
 | S15 | 4 · steps 3 | how to read an answer | The marks | The key, or a drawn table | **Drawn, 2026-11-02:** [`tutorial-media/marks.svg`](tutorial-media/marks.svg) as `S15-marks.webp`; the real key is in S13. |
-| S16 | 5 · 1 | is `coco_pharma` alive? | Survey & analyses on a never-surveyed database | The overview survey's run button | new |
-| S17 | 5 · 2 | `coco_pharma` being surveyed | Running | "◔ running" and the notice with View | new |
-| S18 | 5 · 3–4 | what is in `coco_pharma` (read on screen) | Questions after the survey, one row labelled | Answer, source line, buttons | new |
-| S19 | 5 · note | OpenLineage, first look | Repository header tiles | Tiles incl. "? not read" | `02-scouting-questions-docling.webp` if unchanged |
-| S20 | 5 · note | `loading_bay`: the weekly files, summary lines, sections closed | File-system survey | Reach line, the presses, the closed sections with their summary lines | new: the card has changed since `04-folder-survey.webp` |
+| S16 | 5 · 1 | is `coco_pharma` alive? | Survey & analyses on a never-surveyed database | The overview survey's run button | **Taken 2026-11-02:** `tutorial/images/05-scouting/S16-run-dialog.webp`, the "Database Scouting Scan" dialog, "Nothing runs until you confirm." Re-shoot after W38. |
+| S17 | 5 · 2 | `coco_pharma` being surveyed | Running | "◔ running" and the notice with View | **Taken 2026-11-02:** `S17-running.webp`, "◔ running · started just now". No notice with **View** was seen; the Activity entry was read instead. Re-shoot after W38. |
+| S18 | 5 · 3–4 | what is in `coco_pharma` (read on screen) | Questions after the survey, one row labelled | Answer, source line, buttons | **Held: re-shoot after F46.** The answer reads a schema total that counts PostgreSQL's temporary schemas. S18b (the numbers behind this) held for the same reason. |
+| S19 | 5 · note | OpenLineage, first look | Repository header tiles | Tiles incl. "? not read" | **Taken 2026-11-02:** `S19-openlineage-header.webp`, the stored survey ("surveyed 27d ago"); not run again. Re-shoot after W38. |
+| S20 | 5 · note | `loading_bay`: the weekly files, summary lines, sections closed | File-system survey | Reach line, the presses, the closed sections with their summary lines | **Taken 2026-11-02:** `S20-folder-survey.webp` after Egeria's Folder Survey; with `S20a-root-folder-attached.webp` (Curate's publish band) and `S20b-files-open.webp` (Files open). Files reads "analysis level: top level only", so no `.restatement.csv` is listed; that moves to the part that walks the files. Re-shoot after W38. |
 | S21 | 6 · 1 | is `coco_pharma` already catalogued? | Discovery | "Nothing is recorded for this — a real absence…" | new |
 | S22 | 6 · 4 | what has not been looked at yet | Analysis, a ○ row | "Nothing has been measured for this yet." | new on the database |
 | S23 | 6 · 5 | the deeper look, one analysis at a time | One analysis run on its own | The row after its run | new |
@@ -1046,12 +1053,12 @@ in this outline; each is named where it bites.
 | G8 | File-system survey says "a proposal · confirm it on Curate"; Curate says "Nothing to review for file systems yet." A dead end. Curate now also shows the "Publish · declared measures" table, but that is for measures, not for the survey's proposals, so this gap is about the sentence only. | 5, 9 | Build the review, or remove the pointer. |
 | G9 | Header can read "not signed in" while signed in (no investigation chosen). With investigations moved to part 12, the reader sees this for most of the tutorial. | 2–11 | Already queued as a defect. More urgent now. Re-check with no investigation chosen: on 2026-11-01 it could not be re-checked, because an investigation was chosen in the pane. **Re-checked 2026-11-02** with no investigation chosen: the header read "No investigation" and "peterprofile", not "not signed in". Not seen, so part 2 does not mention it. |
 | G10 | Slow panes say "still loading" for 9–15 seconds without saying what they wait for (Discovery, Analysis, Enrichment). | 4, 6, 7 | Already queued as a defect. |
-| G11 | A published database's header reads "never surveyed · not published to Egeria" while Curate says it is in Egeria; the sentence above the chips and a chip can disagree. | 9 | Already queued as defects. |
+| G11 | A published database's header reads "never surveyed · not published to Egeria" while Curate says it is in Egeria; the sentence above the chips and a chip can disagree. A file system too (read 2026-11-02): after its root folder is attached and Egeria's Folder Survey has run, its header still reads "never surveyed · not published to Egeria". | 5, 9 | Already queued as defects. |
 | G12 | "unbound by reset" is explained only by reference to an internal event. | 12 | A word that describes the state, not its history. |
 | G13 | A ✓ beside an answer that says nothing could be checked ("not checked: 0 of 65 … could be queried"). | 5 | Already queued as a defect. |
 | G14 | The user guide says a database's Curate is one page; walk 3 shows tabs ("Describe and publish · Contents · Structure · …") on a database. One of them is out of date. | 9 | Read the screen and correct the guide. |
 | G15 | "RFAs" is an unexplained abbreviation in the strip. | 7 | Spell it out on hover, or rename. |
-| G16 | Internal words on screen: "ran via Prefect"; "compile" in the chat rail ("a compile reads one resource's stored results"); chat source lines list raw analysis ids ("fs_permissions, fs_activity"). The Activity panel too (read 2026-11-02): its subtitle "…read from the same log the current UI's Activity tab shows" and its entries ("fs_permissions (per-card run): 1 step: ran"). Part 2 does not quote either. Survey & analyses cards (read 2026-11-02): "produces · ResourceMeasureAnnotation, …" and "GovActionProcess::RepoCoarseProfile · definition history"; the "Who owns this resource" row's developer parenthesis ("MIXED: two halves …"). One glyph, two meanings: ⚠ is "needs you" in the key but marks staleness on survey cards ("⚠ ran 70d ago"). | 2, 5, 8 | Plain words, or analysis display names. |
+| G16 | Internal words on screen: "ran via Prefect"; "compile" in the chat rail ("a compile reads one resource's stored results"); chat source lines list raw analysis ids ("fs_permissions, fs_activity"). The Activity panel too (read 2026-11-02): its subtitle "…read from the same log the current UI's Activity tab shows" and its entries ("fs_permissions (per-card run): 1 step: ran"). Part 2 does not quote either. Survey & analyses cards (read 2026-11-02): "produces · ResourceMeasureAnnotation, …" and "GovActionProcess::RepoCoarseProfile · definition history"; the "Who owns this resource" row's developer parenthesis ("MIXED: two halves …"). A running survey (read 2026-11-02): "Launched GovActionProcess::DatabaseScoutingSurvey." The folder survey's **Survey** and Egeria's own "Survey Folder › Run in Egeria →" are one run shown as two buttons; pressing both surveys the folder twice (read 2026-11-02; in the W39 brief). One glyph, two meanings: ⚠ is "needs you" in the key but marks staleness on survey cards ("⚠ ran 70d ago"). | 2, 5, 8 | Plain words, or analysis display names. |
 | G17 | No single named place in Egeria for the reader to check that a publish arrived. | 10 | **Settled (owner, 2026-10-29):** Egeria Explorer. Still worth having: a link from Resource Explorer's "Show in Egeria" that opens Egeria Explorer on the element. |
 | G18 | Publish-band words a new user cannot read: "kept survey", "◐ behind · 76 annotations", "◐ stale 9 of 12 steps are stale", "◐ partly committed · 4 queued". | 10 | Plain sentences, or a hover that explains each. |
 | G19 | The Admin dialog says "the eight intents"; the word appears nowhere else on screen. | Advanced tutorial | Say "the stages". |
@@ -1063,7 +1070,9 @@ in this outline; each is named where it bites.
 | G25 | Screenshot hygiene. The Quickstart on 8813 carries the project's own test work: the sidebar's WORK LISTS show "OD1 probe 2026-10-29", "Concurrency test — twelve re…", "dts-treasury-data candidates" and "egeria-understanding arch"; the repository list is 73 long; and the screen landed on a repository marked "abandoned", "Repository is archived". A reader's Quickstart shows none of this. Seen in S03, S13, S14, and in every part 3 shot with the sidebar. Also a file system's mount path that names a real account's home folder (S9 not taken). | 2, 3–13 | **For the owner (proposed 2026-11-02):** hide the test work lists before part 3's captures, or crop the sidebar where it is not the subject. If S03 is re-taken, land on a healthier repository. |
 | G26 | Saved database sources are listed to every person with their credential user name: "Find databases" opens on "Saved sources", and on a shared instance shows one person's dev servers and login to everyone. | 3a | A per-person hide (W38's pattern) or an owner-only listing. (Architect, 2026-11-02; to be briefed as W39 once the owner grades it.) |
 | G27 | "Find by passages" result line starts mid-sentence: "read, and no passage matched this question. The files may still say it in other words · 4 file systems not read yet, not searched" (read 2026-11-02, with no file system's narratives matching). The words before "read," are missing. | 3d | Name what was read and searched before "read,". |
-| G28 | Registering a file system writes no Activity entry; registering a database writes "Registered database <slug>" (read 2026-11-02). Part 2 tells the reader Activity logs everything that has run. | 2, 3b | An Activity entry for every registration. |
+| G28 | Registering a file system writes no Activity entry; registering a database writes "Registered database <slug>" (read 2026-11-02). Part 2 tells the reader Activity logs everything that has run. The folder survey card's **Check again** writes none either (read 2026-11-02). | 2, 3b, 5 | An Activity entry for every registration and every press. |
+| G29 | The folder survey's **Survey**, on a file system Egeria leads but has no asset for, is refused with nothing on screen ("Not published to Egeria yet", 422, seen only in the log; F45). The step that makes it work is on another stage: Curate › PUBLISH TO EGERIA › **Publish**, "attaches the root folder only". A reader has no way to find that. | 5c | W39: say "attach the root folder first" on the card, and disable **Survey** until it is attached. Part 5c tells the reader to attach first. |
+| G30 | One survey report, two counts (read 2026-11-02): the folder survey card says "7 annotations on the report; 6 read into RE", while Curate's "Egeria reports" lists the same report with "0 annotations". | 5, 10 | One count, or say what each one counts. |
 
 ---
 

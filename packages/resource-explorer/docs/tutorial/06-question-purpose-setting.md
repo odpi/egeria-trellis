@@ -1,6 +1,6 @@
 # Walk 6 — Add a question and a purpose, change a setting
 
-*Screens read on 2026-10-29, Explorer on port 8813, `origin/main` at `afdac240`.*
+*Screens read on 2026-10-29 on a test server, `origin/main` at `afdac240`.*
 
 Three things a person can change without touching Resource Explorer's code: a question, a purpose and a setting. This walk reads each place; it presses nothing that writes.
 

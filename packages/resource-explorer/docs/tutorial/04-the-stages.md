@@ -150,5 +150,5 @@ reads, what it stores and what it publishes. Part 5 uses it.
 - **Your new data source shows nothing.** A data source you registered in part 3 has no answers until it is
   surveyed. Most of its questions show ○. That is expected; part 5 runs its first survey.
 
-**Next:** [Part 5 — Scouting: run the overview survey and read the answers](README.md#the-core-tutorial). Peter asks
+**Next:** [Part 5 — Scouting: run the overview survey and read the answers](05-scouting.md). Peter asks
 whether `coco_pharma` is alive, and what is in it.
