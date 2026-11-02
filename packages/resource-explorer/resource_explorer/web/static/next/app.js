@@ -5639,7 +5639,7 @@ function bindNativeSurveysPane(root, slug, res, reload) {
       if (section && section.parentElement && section.parentElement !== root) section.parentElement.before(host);
       else root.append(host);
     }
-    mountFolderSurvey(host, slug, { onChange: (act) => { if (act === 'survey') reload(); } });
+    mountFolderSurvey(host, slug, { onChange: (act, { failed } = {}) => { if (act === 'survey' && !failed) reload(); } });
   }
   if (res.rows && res.rows.length) {
     // The definition cards follow the same rows: while one's run is in flight its run line is repainted in place from

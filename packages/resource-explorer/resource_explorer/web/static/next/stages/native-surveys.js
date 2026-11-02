@@ -407,6 +407,11 @@ export function stoppedFollowingHtml(row) {
  *  "refresh to retry": that is the button beside them. */
 const gaveUpLead = (words) => String(words || '').replace(/\s*\u00b7\s*refresh to retry\s*$/, '');
 
+/** G16: on a file-system page the Folder Survey row's Run and the Folder survey card's Survey launch the same engine
+ *  action, so the row's Run is drawn off and points at the card (one press per act on one page). */
+export const FOLDER_SURVEY_QN = 'FileSurvey::survey-folder';
+export const RUN_FROM_CARD = 'Run from the Folder survey card above (Survey)';
+
 /** One survey row: glyph, name, kind, status, and Run when RE can run it. `stopped`: RE gave up following it. */
 export function nativeSurveyRowHtml(row, opts = {}) {
   const run = row.run || { state: 'not_run' };
@@ -440,7 +445,11 @@ export function nativeSurveyRowHtml(row, opts = {}) {
       class="shrink-0 cursor-pointer rounded-sm border border-accent bg-transparent px-2 py-[2px] text-caveat text-accent-ink"
       >${esc(row.register.label)}</button>` : ''}
     ${row.kind === 're_definition' ? coordinateControlHtml(row, { ran }) : ''}
-    ${row.runnable && row.kind !== 're_definition' ? `<button type="button" data-native-run="${esc(row.qualified_name)}" ${busy ? 'disabled' : ''}
+    ${row.runnable && row.kind !== 're_definition' && row.qualified_name === FOLDER_SURVEY_QN && state.resourceType === 'filesystem'
+      ? `<button type="button" disabled data-native-run-from-card title="${esc(RUN_FROM_CARD)}"
+      class="shrink-0 cursor-default rounded-sm border border-rule-strong bg-transparent px-2 py-[2px] text-caveat text-ink-muted"
+      >${esc(RUN_FROM_CARD)}</button>`
+      : row.runnable && row.kind !== 're_definition' ? `<button type="button" data-native-run="${esc(row.qualified_name)}" ${busy ? 'disabled' : ''}
       class="shrink-0 cursor-pointer rounded-sm border ${busy ? 'border-rule-strong text-ink-muted' : 'border-accent text-accent-ink'} bg-transparent px-2 py-[2px] text-caveat"
       >${busy ? 'in flight' : (ran ? 'Run again in Egeria →' : 'Run in Egeria →')}</button>` : ''}
     <span data-native-info="${esc(row.qualified_name)}" class="hidden w-full text-provenance text-ink-muted"></span>

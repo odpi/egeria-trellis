@@ -38,8 +38,8 @@ def test_tutorial_quotes_the_d1e_sentence_as_seen_and_keeps_the_readers_own_coun
 def test_hover_help_every_folder_survey_press_carries_its_words():
     # btn(act, label, on, help) renders the title; every call passes a fourth argument from the words table
     assert 'const btn = (act, label, on, help) => `<button type="button" data-fs-act="${act}" ${on ? \'\' : \'disabled\'} title="${esc(help)}"' in FS
-    calls = re.findall(r"btn\('([a-z-]+)', .*?, (W\.\w+|canSurvey \? W\.\w+ : W\.\w+)\)", FS)
-    assert {act for act, _ in calls} == {"check", "survey", "publish", "measure", "publish-measures", "profile",
+    calls = re.findall(r"btn\('([a-z-]+)', .*?, (W\.\w+|surveyHelp)\)", FS)
+    assert {act for act, _ in calls} == {"check", "attach", "survey", "publish", "measure", "publish-measures", "profile",
                                           "read-egeria", "publish-profiles", "derive", "read-narratives", "match-classes"}
     helps = set(re.findall(r"W\.(\w+Help)\b", FS))
     assert len(helps) >= 12
