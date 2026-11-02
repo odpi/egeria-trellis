@@ -1,7 +1,7 @@
 # Resource Explorer tutorial — outline for review
 
 **Status:** the outline the prose is written from. Prose is being written one part at a time in
-[`tutorial/`](tutorial/README.md#the-core-tutorial); parts 1, 2 and 4 are written.
+[`tutorial/`](tutorial/README.md#the-core-tutorial); parts 1 to 4 are written.
 **Date:** 2026-11-01.
 **Changes:**
 - 2026-10-29: the outline, with decisions D1–D9.
@@ -16,6 +16,9 @@
   survey table (names and step counts); a database's three extra tabs; By analysis and Disposition described; a
   database's Assessment shows no survey of its own (G23). The optional measured example (13 seconds) left out: not
   read on screen.
+- 2026-11-02: part 3 written; story slugs `coco_pharma_trial` and `loading_bay_trial` registered, OpenLineage's
+  existing row reused (owner §3). Read on screen: the dialog words (3a–3d); the canonical mount is
+  `/deployments/loading-bay` (owner and Architect); S5 and S9 not taken (G25, G26); G26–G28 added.
 **Replaces, once written:** the six walks in [`tutorial/`](tutorial/README.md), which stay on `main` until then.
 
 ## How to read this outline
@@ -359,7 +362,8 @@ Quickstart folder's path (`loading_bay`). The OpenLineage repository's GitHub ad
    - *You see:* "Add a file system" and "Registering stores it here. Nothing is sent to Egeria." (code).
 2. Fill in **Slug**, **Display name** and **Mount (local path)** (code).
    - *You see:* beside the path, "◔ checking", then "✓ readable here", or a warning (code).
-3. Leave **Canonical mount (blank = the mount)** empty (code). See gap G5.
+3. **Canonical mount:** the folder's path inside Egeria's container, `/deployments/loading-bay`; Getting Started lists
+   it (owner and Architect, 2026-11-02; the form's label reads "CANONICAL MOUNT (BLANK = THE MOUNT)"). See gap G5.
 4. Click **Register**, then find the file system in the **FS** list.
    - *Say, in one line:* inside `loading_bay` you will also see a `Sustainability Files` folder and NAICS reference
      data. Those belong to Coco Pharmaceuticals' Sustainability project, which has its own tutorials. This tutorial
@@ -374,8 +378,11 @@ Quickstart folder's path (`loading_bay`). The OpenLineage repository's GitHub ad
 **3c. A repository.**
 
 1. Click **Repos**, then **＋ Find repos** (seen).
-   - *You see:* two ways in, a search and "From a list" (seen, user guide).
-2. Choose **From a list** and paste the OpenLineage repository's GitHub address.
+   - *You see:* "Find and import candidate repos", with the tabs "🔍 Search GitHub" and "📄 From a list" (read on screen
+     2026-11-02).
+2. Choose **📄 From a list**, paste the OpenLineage repository's GitHub address and click **Load pasted list** (read on
+   screen 2026-11-02). On 8813 it reported "1 already registered", and the row's box could not be ticked, so the story
+   reuses the existing `openlineage` row (owner §3).
 3. Tick the row and click **Import Selected**.
    - *You see:* the button reads "Importing…", the row shows its own state, and the repository appears in the sidebar
      (seen, user guide). Nothing is registered until you click Import Selected.
@@ -963,13 +970,13 @@ stamps recur from part to part. Take them in order, in one Quickstart, without r
 | S2 | 2 · 1 | Peter gets in | Sign-in panel | The panel, empty boxes | **Taken, 2026-11-02:** `tutorial/images/02-sign-in/S02-sign-in-panel.webp`. The user id box held "peterprofile": the Quickstart on 8813 sets a default sign-in user. |
 | S3 | 2 · 3–6 | Peter's screen, Peter's name at top right | Whole screen, labelled | Strip, sidebar, main panel, chat rail, header, each numbered | new (labelled version of `01-stage-strip-and-sidebar.webp`) **Taken, 2026-11-02:** `S03-peters-screen.webp` and `S03-peters-screen-labelled.webp`, six numbered areas (header, strip, perspectives, sidebar, main panel, chat rail). |
 | S4 | 2 · 7 | what has run so far | Activity log | The latest entries and the filter buttons | **Taken, 2026-11-02:** `S04-activity.webp`. |
-| S5 | 3a · 1 | registering `coco_pharma` | Find databases dialog | The three tabs and **Register one database…** | new |
-| S6 | 3a · 3–4 | `coco_pharma`, filled in | Register one database, filled | Fields filled, test passed, Register enabled | new |
-| S7 | 3a · 5 | `coco_pharma` registered, nothing in Egeria | After Register | "It is in the database list now. Nothing was sent to Egeria." | new |
-| S8 | 3a · 6 | `coco_pharma`, never surveyed | The new database page | "never surveyed" | new |
-| S9 | 3b · 2 | registering `loading_bay` | Add a file system | Path field with "✓ readable here" | new |
-| S10 | 3c · 3 | importing OpenLineage | Find repos, From a list | One row ticked, Import Selected | new |
-| S11 | 3d | the three, found again | Sidebar filters | Filter box and chips | `01-repos-filter-chips.webp` if unchanged |
+| S5 | 3a · 1 | registering `coco_pharma` | Find databases dialog | The three tabs and **Register one database…** | **Not taken (2026-11-02):** the Saved sources tab lists the owner's dev server with its credential user name (G26); the other two tabs do not show **Register one database…**. Re-shoot after a saved-sources hide. The prose quotes the dialog. |
+| S6 | 3a · 3–4 | `coco_pharma`, filled in | Register one database, filled | Fields filled, test passed, Register enabled | **Taken 2026-11-02, before the test:** `S06-register-one-database.webp`, password empty, "○ not tested". The test and Register were pressed with the password typed by the owner, so the passed state was not captured. Re-shoot after W38 (sidebar visible). |
+| S7 | 3a · 5 | `coco_pharma` registered, nothing in Egeria | After Register | "It is in the database list now. Nothing was sent to Egeria." | **Taken 2026-11-02:** `S07-registered.webp`. Re-shoot after W38. |
+| S8 | 3a · 6 | `coco_pharma`, never surveyed | The new database page | "never surveyed" | **Taken 2026-11-02:** `S08-never-surveyed.webp`, "1 of 9 answered · Scouting". Re-shoot after W38. |
+| S9 | 3b · 2 | registering `loading_bay` | Add a file system | Path field with "✓ readable here" | **Not taken (2026-11-02):** the mount path on 8813 starts with a real account's home folder (G25). "✓ readable here" was read on screen. |
+| S10 | 3c · 3 | importing OpenLineage | Find repos, From a list | One row ticked, Import Selected | **Taken 2026-11-02:** `S10-from-a-list.webp`, the row "✓ registered" and not tickable (the existing row reused). Re-shoot after W38. |
+| S11 | 3d | the three, found again | Sidebar filters | Filter box and chips | **Taken 2026-11-02:** `S11-filter.webp` ("lineage" in the filter) and `S11b-find-by-passages.webp` (new). Re-shoot after W38. |
 | S12 | 4 · 1 | the time before the next drop | Diagram, the funnel | Six stages, cost rising left to right, many sources narrowing to few | **Taken, 2026-11-02:** `funnel.svg` rendered at 1600 × 900 as `tutorial/images/04-stages/S12-funnel.webp`. |
 | S13 | 4 · 2 | a stage on `coco_pharma` | A stage's tabs, labelled | Questions, Survey & analyses, By analysis, Disposition | **Taken, 2026-11-02:** `S13-a-stage.webp` and `-labelled`: the tabs, the count line, the key, one row (∅). On 8813 the database's slug is `localhost_docker_coco_pharma`. |
 | S14 | 4 · steps 2 | the overview survey for `coco_pharma` | Survey & analyses, labelled | The overview survey and a narrower one marked | **Taken, 2026-11-02, on `openlineage`, not the database:** the database's Scouting has only one survey, so it cannot show an overview beside a narrower one. `S14-survey-and-analyses.webp` and `-labelled`. |
@@ -1033,7 +1040,7 @@ in this outline; each is named where it bites.
 | G2 | The merged walks pressed nothing that writes, so every step that runs, saves or publishes was described, not shown. That is the main reason they "skip steps". | 3, 5–12 | **Settled by D6:** the Quickstart is throwaway, so the prose writer presses for real. |
 | G3 | "Where it lives" defaults to "Create in Egeria". "Ad-hoc" (dialog) and "🏠 local" (table) are two words for one thing. | 12 | Choose one word. The tutorial tells the reader to change the default (D3a); changing the app's default is still worth considering. |
 | G4 | A file system's "Folder survey" card offers up to eleven presses (Check again, Survey, Publish this walk to Egeria, Measure beside Egeria's survey, Publish these measures to Egeria, Profile data files, Read Egeria's reports, Publish these profiles to Egeria, Derive, Read narrative files, Match data classes). A repository's and a database's overview survey is not marked either. | 4, 5 | **For the file system, settled by hover help (trellis #967, 2026-11-01):** each press says on hover what it reads, stores and publishes, and the overview is **Survey**; part 5 says so. Still open for repositories and databases: mark each stage's overview survey on the screen. |
-| G5 | File-system registration says "Mount (local path)" and "Canonical mount (blank = the mount)". The user guide says "host and container path". The survey then reports the path Egeria reads ("/deployments/loading-bay"). A reader cannot tell which path to type. | 3b | One explanation of the paths, on the form. |
+| G5 | File-system registration says "Mount (local path)" and "Canonical mount (blank = the mount)". The user guide says "host and container path". The survey then reports the path Egeria reads ("/deployments/loading-bay"). A reader cannot tell which path to type. **Amended 2026-11-02:** the tutorial now gives both paths and says not to leave the canonical mount blank (part 3b, step 3). Still open for the label words: "(BLANK = THE MOUNT)" invites the wrong choice. | 3b | One explanation of the paths, on the form. |
 | G6 | "Slug *" is a required field on both register forms. Dashes are silently turned into underscores. | 3a, 3b | A plain label ("Short name"), or a hint under the box. |
 | G7 | "Egeria connection (optional)" on the database form asks for "Egeria-visible host", "Egeria platform URL" and "View server". Most readers cannot know these. | 3a | Hide it from non-admins, or say when it is needed. |
 | G8 | File-system survey says "a proposal · confirm it on Curate"; Curate says "Nothing to review for file systems yet." A dead end. Curate now also shows the "Publish · declared measures" table, but that is for measures, not for the survey's proposals, so this gap is about the sentence only. | 5, 9 | Build the review, or remove the pointer. |
@@ -1044,7 +1051,7 @@ in this outline; each is named where it bites.
 | G13 | A ✓ beside an answer that says nothing could be checked ("not checked: 0 of 65 … could be queried"). | 5 | Already queued as a defect. |
 | G14 | The user guide says a database's Curate is one page; walk 3 shows tabs ("Describe and publish · Contents · Structure · …") on a database. One of them is out of date. | 9 | Read the screen and correct the guide. |
 | G15 | "RFAs" is an unexplained abbreviation in the strip. | 7 | Spell it out on hover, or rename. |
-| G16 | Internal words on screen: "ran via Prefect"; "compile" in the chat rail ("a compile reads one resource's stored results"); chat source lines list raw analysis ids ("fs_permissions, fs_activity"). The Activity panel too (read 2026-11-02): its subtitle "…read from the same log the current UI's Activity tab shows" and its entries ("fs_permissions (per-card run): 1 step: ran"). Part 2 does not quote either. | 2, 5, 8 | Plain words, or analysis display names. |
+| G16 | Internal words on screen: "ran via Prefect"; "compile" in the chat rail ("a compile reads one resource's stored results"); chat source lines list raw analysis ids ("fs_permissions, fs_activity"). The Activity panel too (read 2026-11-02): its subtitle "…read from the same log the current UI's Activity tab shows" and its entries ("fs_permissions (per-card run): 1 step: ran"). Part 2 does not quote either. Survey & analyses cards (read 2026-11-02): "produces · ResourceMeasureAnnotation, …" and "GovActionProcess::RepoCoarseProfile · definition history"; the "Who owns this resource" row's developer parenthesis ("MIXED: two halves …"). One glyph, two meanings: ⚠ is "needs you" in the key but marks staleness on survey cards ("⚠ ran 70d ago"). | 2, 5, 8 | Plain words, or analysis display names. |
 | G17 | No single named place in Egeria for the reader to check that a publish arrived. | 10 | **Settled (owner, 2026-10-29):** Egeria Explorer. Still worth having: a link from Resource Explorer's "Show in Egeria" that opens Egeria Explorer on the element. |
 | G18 | Publish-band words a new user cannot read: "kept survey", "◐ behind · 76 annotations", "◐ stale 9 of 12 steps are stale", "◐ partly committed · 4 queued". | 10 | Plain sentences, or a hover that explains each. |
 | G19 | The Admin dialog says "the eight intents"; the word appears nowhere else on screen. | Advanced tutorial | Say "the stages". |
@@ -1053,7 +1060,10 @@ in this outline; each is named where it bites.
 | G22 | Steps whose exact screen words nobody has recorded: a wrong password, Egeria down at sign-in, an empty investigation name, "promote" on a work list, the Assessment tab on a database, a step that asks before running a prerequisite. | 2, 5, 6, 11, 12 | Read on the screen during the prose phase; some need a deliberate error to see. |
 | G23 | The overview surveys are uneven across kinds (definitions, 2026-10-29). A database has no Discovery survey. A database's Assessment survey has one step. File-system stage surveys are not yet identified. Names are inconsistent: "Scouting Survey" and "Repo Scouting Scan" are both repository Scouting surveys; "Database Scouting Scan" is the database's overview; "Assessment Survey" and "Analysis Survey" carry no kind in their names, while "Repo Discovery Survey" does. A reader cannot tell from a name which survey is the overview. **Re-read on screen 2026-11-02:** a database's Assessment stage lists no survey of its own; the repository Assessment Survey has 14 steps, not 11; the file system has one Folder survey card on every stage. Part 4 gives the reader a table. | 4, 5, 6 | One naming rule (for example "<Kind> <Stage> Survey" for every overview), and the missing overviews either built or explained. |
 | G24 | After design note D1-a, a database can show as already in Egeria, matched by its endpoint, rather than published fresh. A reader who expects "published by RE" sees a different state. | 9, 10 | Explain it at part 10, step 7. D1-e (trellis #962) adds a coverage line, read on the screen on 2026-11-01 for coco_pharma as "not yet published · 26: 3 undecided · 22 in Egeria under 'Coco PostgreSQL Server 1' · not RE's · 1 left out by a confirmed proposal"; those counts are that screen's, so read the words on the screen before writing them in. |
-| G25 | Screenshot hygiene. The Quickstart on 8813 carries the project's own test work: the sidebar's WORK LISTS show "OD1 probe 2026-10-29", "Concurrency test — twelve re…", "dts-treasury-data candidates" and "egeria-understanding arch"; the repository list is 73 long; and the screen landed on a repository marked "abandoned", "Repository is archived". A reader's Quickstart shows none of this. Seen in S03, S13, S14. | 2, 3–13 | **For the owner (proposed 2026-11-02):** hide the test work lists before part 3's captures, or crop the sidebar where it is not the subject. If S03 is re-taken, land on a healthier repository. |
+| G25 | Screenshot hygiene. The Quickstart on 8813 carries the project's own test work: the sidebar's WORK LISTS show "OD1 probe 2026-10-29", "Concurrency test — twelve re…", "dts-treasury-data candidates" and "egeria-understanding arch"; the repository list is 73 long; and the screen landed on a repository marked "abandoned", "Repository is archived". A reader's Quickstart shows none of this. Seen in S03, S13, S14, and in every part 3 shot with the sidebar. Also a file system's mount path that names a real account's home folder (S9 not taken). | 2, 3–13 | **For the owner (proposed 2026-11-02):** hide the test work lists before part 3's captures, or crop the sidebar where it is not the subject. If S03 is re-taken, land on a healthier repository. |
+| G26 | Saved database sources are listed to every person with their credential user name: "Find databases" opens on "Saved sources", and on a shared instance shows one person's dev servers and login to everyone. | 3a | A per-person hide (W38's pattern) or an owner-only listing. (Architect, 2026-11-02; to be briefed as W39 once the owner grades it.) |
+| G27 | "Find by passages" result line starts mid-sentence: "read, and no passage matched this question. The files may still say it in other words · 4 file systems not read yet, not searched" (read 2026-11-02, with no file system's narratives matching). The words before "read," are missing. | 3d | Name what was read and searched before "read,". |
+| G28 | Registering a file system writes no Activity entry; registering a database writes "Registered database <slug>" (read 2026-11-02). Part 2 tells the reader Activity logs everything that has run. | 2, 3b | An Activity entry for every registration. |
 
 ---
 

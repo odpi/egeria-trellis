@@ -9,6 +9,7 @@ publishing. Words are defined in the [glossary](glossary.md).
 |---|---|
 | [1. What Resource Explorer is for](01-what-resource-explorer-is-for.md) | Why look before you catalog |
 | [2. Sign in and find your way around](02-sign-in-and-find-your-way.md) | Get in as Peter; the six areas of the screen |
+| [3. Add data sources, and find them again](03-add-data-sources.md) | Register the trial's database, folder and repository |
 | [4. The stages: a funnel from cheap to costly](04-the-stages.md) | Cheap questions first; inside a stage; reading the marks |
 
 ## The six walks

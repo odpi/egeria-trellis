@@ -4,7 +4,7 @@ The next weekly drop sets Peter's deadline, and three data sources need attentio
 where it counts. This part explains how Resource Explorer helps you spend it: cheap questions first, costly ones only
 where they are worth it.
 
-**Before you start.** [Part 3](README.md#the-core-tutorial): you are signed in as Peter, and the trial's three sources
+**Before you start.** [Part 3](03-add-data-sources.md): you are signed in as Peter, and the trial's three sources
 are registered. This part takes about fifteen minutes. You only read in this part; it changes nothing.
 
 *Screens read on 2026-11-02.*
@@ -84,8 +84,8 @@ reads, what it stores and what it publishes. Part 5 uses it.
 1. **Open a database that has already been surveyed, then click 1 Scouting.**
 
    Click **DBs** in the sidebar, then a database that the Getting Started tutorial surveyed. The screenshots show the
-   Quickstart's `coco_pharma` database, which the screen calls "coco_pharma @ local-docker". The `coco_pharma_trial`
-   you registered in part 3 has nothing to show yet; part 5 surveys it.
+   Quickstart's `coco_pharma` database, which the screen calls "coco_pharma @ local-docker". The `coco_pharma` you
+   registered in part 3 (`coco_pharma_trial` in the screenshots) has nothing to show yet; part 5 surveys it.
 
    ![A stage on coco_pharma: the database's Scouting stage, with four numbered areas. 1, the tabs: Questions, Survey & analyses, By analysis, Disposition, Schema Inventory, Value profile, Table preview. 2, the count line "5 of 9 answered · Scouting". 3, the key: answered 4, nothing found 1, partial 1, not run 1, needs you 1, no reader yet 1. 4, one question row: "What is this resource, and what is it for?" with the mark for nothing found, the perspective chips Consumer, Data Expert and Architecture, the answer "No description recorded for this database yet." and "Nothing is recorded for this — a real absence, not an unrun analysis."](images/04-stages/S13-a-stage-labelled.webp)
 
