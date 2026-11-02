@@ -28,7 +28,14 @@ Rules, each with a test (tests/test_file_profiles.py):
   runs is `AlreadyRunning` (409) and submits nothing;
 * a delimited or workbook column whose header looks like data (a number, a date, or a value of its own column) is
   `header_suspect`: kept here, its name never published;
-* nothing is written into the path.
+* nothing is written into the path;
+* Parquet (S3 slice Part B, 2026-11-02): the schema is read from the footer and the values from the row groups that fit
+  the limit, said per file ("schema read from the footer; values profiled from M of N row groups"). On a remote file
+  system the file is read through its reach mechanism by byte range, the footer FIRST (the last 64 KiB), then only the
+  column chunks of the row groups read. A `.parquet` whose first or last four bytes are not `PAR1` is `unreadable`
+  with the words "not a Parquet file after all". A Delta table's parts are profiled as found: the transaction log is not
+  read, so parts a later commit retired may be included, and the run says so; the `_delta_log/` JSON commits are not
+  profiled as data.
 
 The Egeria half rests on three ASSUMPTIONS, each named here, read from the repo's own design notes because the live probe was
 not made by this build (no live calls). The coordinator's probe confirms or corrects them before the gate:
@@ -394,8 +401,6 @@ def profile_file(path: Path, ext: str, size: int | None = None, *, limit: int = 
     file: a parse failure is `unreadable` with the error, a refused open is `not_permitted`. The size, whether the file is
     sampled and its sample ratio come from `os.fstat` on the OPEN descriptor; `size` (the walk row's) is not used for any
     of them, since the file can have changed since the walk."""
-    import pandas as pd
-
     out = {"state": MEASURED, "columns": [], "sample_ratio": 1.0, "bytes_read": 0, "size_bytes": None, "error": ""}
     try:
         fh = _open_plain(path)
@@ -416,40 +421,47 @@ def profile_file(path: Path, ext: str, size: int | None = None, *, limit: int = 
                 return _profile_parquet(fh, size, limit, out)
             if ext in _WHOLE_ONLY and sampled:
                 return {**out, "state": OVER_LIMIT}
-            data = fh.read(limit)
-            out["bytes_read"] = len(data)
-            if sampled:
-                data = _cut_at_line(data)
-            ratio = (len(data) / size) if sampled and size else 1.0
-            state = SAMPLED if sampled else MEASURED
-            if ext in _DELIMITED:
-                try:
-                    df = pd.read_csv(io.BytesIO(data), sep=_DELIMITED[ext], low_memory=False)
-                except UnicodeDecodeError:
-                    df = pd.read_csv(io.BytesIO(data), sep=_DELIMITED[ext], low_memory=False, encoding="latin-1")
-            elif ext in _LINES_JSON:
-                df = pd.read_json(io.BytesIO(data), lines=True)
-            elif ext == "json":
-                df = _json_frame(data, pd)
-                if df is None:
-                    return {**out, "state": NOT_APPLICABLE, "error": "not tabular JSON (no list of records)"}
-            elif ext in ("xlsx", "xlsm", "xls", "ods"):
-                df = pd.read_excel(io.BytesIO(data))
-            elif ext in ("feather", "arrow"):
-                df = pd.read_feather(io.BytesIO(data))
-            elif ext == "avro":
-                import fastavro
-
-                df = pd.DataFrame(list(fastavro.reader(io.BytesIO(data))))
-            else:
-                return {**out, "state": NOT_APPLICABLE}
-            columns = columns_from_frame(df, sample_ratio=ratio, state=state)
-            if ext in _DELIMITED or ext in ("xlsx", "xlsm", "xls", "ods"):
-                columns = flag_header_suspects(df, columns)
-            out.update(state=state, sample_ratio=ratio, columns=columns)
-            return out
+            return _profile_bytes(fh.read(limit), ext, size, limit, out)
     except Exception as exc:  # noqa: BLE001 -- a file that cannot be parsed is a row that says so, never a silent skip
         return {**out, "state": UNREADABLE, "columns": [], "error": f"{type(exc).__name__}: {exc}"[:300]}
+
+
+def _profile_bytes(data: bytes, ext: str, size: int, limit: int, out: dict) -> dict:
+    """The non-Parquet reader over the bytes read (at most `limit` of a file of `size`)."""
+    import pandas as pd
+
+    sampled = size > limit
+    out["bytes_read"] = len(data)
+    if sampled:
+        data = _cut_at_line(data)
+    ratio = (len(data) / size) if sampled and size else 1.0
+    state = SAMPLED if sampled else MEASURED
+    if ext in _DELIMITED:
+        try:
+            df = pd.read_csv(io.BytesIO(data), sep=_DELIMITED[ext], low_memory=False)
+        except UnicodeDecodeError:
+            df = pd.read_csv(io.BytesIO(data), sep=_DELIMITED[ext], low_memory=False, encoding="latin-1")
+    elif ext in _LINES_JSON:
+        df = pd.read_json(io.BytesIO(data), lines=True)
+    elif ext == "json":
+        df = _json_frame(data, pd)
+        if df is None:
+            return {**out, "state": NOT_APPLICABLE, "error": "not tabular JSON (no list of records)"}
+    elif ext in ("xlsx", "xlsm", "xls", "ods"):
+        df = pd.read_excel(io.BytesIO(data))
+    elif ext in ("feather", "arrow"):
+        df = pd.read_feather(io.BytesIO(data))
+    elif ext == "avro":
+        import fastavro
+
+        df = pd.DataFrame(list(fastavro.reader(io.BytesIO(data))))
+    else:
+        return {**out, "state": NOT_APPLICABLE}
+    columns = columns_from_frame(df, sample_ratio=ratio, state=state)
+    if ext in _DELIMITED or ext in ("xlsx", "xlsm", "xls", "ods"):
+        columns = flag_header_suspects(df, columns)
+    out.update(state=state, sample_ratio=ratio, columns=columns)
+    return out
 
 
 def _json_frame(data: bytes, pd):
@@ -462,12 +474,89 @@ def _json_frame(data: bytes, pd):
     return None
 
 
+PARQUET_MAGIC = b"PAR1"
+#: Read first from a remote Parquet file: the footer and its metadata are at the END (the last 8 bytes are the footer's
+#: length and the magic). 64 KiB holds the footer of any ordinary file; a longer footer is read on demand.
+PARQUET_TAIL_BYTES = 64 * 1024
+NOT_PARQUET_WORDS = "not a Parquet file after all · its first or last four bytes are not PAR1"
+DELTA_LOG = "_delta_log"
+DELTA_NOTE = "parts profiled as found; the Delta log was not read, so retired parts may be included"
+
+
+def parquet_note(groups_read: int, groups: int) -> str:
+    return f"schema read from the footer; values profiled from {groups_read:,} of {groups:,} row groups"
+
+
+class RangeFile(io.RawIOBase):
+    """A read-only, seekable file over a reach mechanism's byte-range reads, for pyarrow. The last
+    PARQUET_TAIL_BYTES are fetched first, in one read (the footer), and served from memory; every other read is one
+    ranged GET of exactly the bytes asked for. No byte is fetched twice from the tail."""
+
+    def __init__(self, mechanism, key: str, size: int, *, tail_bytes: int = PARQUET_TAIL_BYTES) -> None:
+        super().__init__()
+        self.mechanism, self.key, self.size = mechanism, key, int(size)
+        self.pos = 0
+        n = min(tail_bytes, self.size)
+        self.tail_start = self.size - n
+        self.tail = mechanism.read(key, n, tail=True) if n else b""
+
+    def readable(self) -> bool:
+        return True
+
+    def seekable(self) -> bool:
+        return True
+
+    def tell(self) -> int:
+        return self.pos
+
+    def seek(self, offset: int, whence: int = io.SEEK_SET) -> int:
+        base = {io.SEEK_SET: 0, io.SEEK_CUR: self.pos, io.SEEK_END: self.size}[whence]
+        self.pos = max(0, min(self.size, base + offset))
+        return self.pos
+
+    def read(self, n: int = -1) -> bytes:
+        if n is None or n < 0:
+            n = self.size - self.pos
+        n = min(n, self.size - self.pos)
+        if n <= 0:
+            return b""
+        start, end = self.pos, self.pos + n
+        if start >= self.tail_start:
+            data = self.tail[start - self.tail_start:end - self.tail_start]
+        elif end > self.tail_start:
+            data = self.mechanism.read_range(self.key, start, self.tail_start - start) + self.tail[:end - self.tail_start]
+        else:
+            data = self.mechanism.read_range(self.key, start, n)
+        self.pos += len(data)
+        return data
+
+    def readinto(self, b) -> int:
+        data = self.read(len(b))
+        b[:len(data)] = data
+        return len(data)
+
+
+def _is_parquet(fh, size: int) -> bool:
+    """The magic bytes at both ends. Leaves the position at 0."""
+    if size < 12:
+        return False
+    fh.seek(0)
+    head = fh.read(4)
+    fh.seek(size - 4)
+    tail = fh.read(4)
+    fh.seek(0)
+    return head == PARQUET_MAGIC and tail == PARQUET_MAGIC
+
+
 def _profile_parquet(fh, size: int, limit: int, out: dict) -> dict:
     """Parquet over the limit: the first row groups whose stored bytes fit the limit, with sample_ratio = rows read /
     rows in the file. When even the first row group is over the limit nothing is read (`over_limit`): a file over the
-    limit is never read whole. The schema's types are the declared types."""
+    limit is never read whole. The schema's types are the declared types. A file without the magic bytes at both ends
+    is `unreadable` in its own words, never parsed."""
     import pyarrow.parquet as pq
 
+    if not _is_parquet(fh, size):
+        return {**out, "state": UNREADABLE, "error": NOT_PARQUET_WORDS}
     pf = pq.ParquetFile(fh)
     meta = pf.metadata
     declared = {pf.schema_arrow.field(i).name: str(pf.schema_arrow.field(i).type) for i in range(len(pf.schema_arrow))}
@@ -475,6 +564,7 @@ def _profile_parquet(fh, size: int, limit: int, out: dict) -> dict:
     if size <= limit:
         table = pf.read()
         read_bytes = size
+        groups = list(range(meta.num_row_groups))
     else:
         groups, used = [], 0
         for g in range(meta.num_row_groups):
@@ -484,15 +574,41 @@ def _profile_parquet(fh, size: int, limit: int, out: dict) -> dict:
             groups.append(g)
             used += b
         if not groups:
-            return {**out, "state": OVER_LIMIT, "error": "its first row group alone is over the limit"}
+            return {**out, "state": OVER_LIMIT, "error": "its first row group alone is over the limit",
+                    "note": parquet_note(0, meta.num_row_groups)}
         table = pf.read_row_groups(groups)
         read_bytes = used
     df = table.to_pandas()
     ratio = (len(df) / total_rows) if total_rows else 1.0
     state = SAMPLED if ratio < 1 else MEASURED
     out.update(state=state, sample_ratio=ratio, bytes_read=min(read_bytes, size),
+               note=parquet_note(len(groups), meta.num_row_groups),
                columns=columns_from_frame(df, declared=declared, sample_ratio=ratio, state=state))
     return out
+
+
+def profile_remote(mechanism, rel: str, ext: str, size: int, *, limit: int = PROFILE_LIMIT_BYTES) -> dict:
+    """Profile one file of a remote file system through its reach mechanism (byte-range reads only). Parquet: the footer
+    first, then the row groups that fit the limit. Any other format: its first `limit` bytes, read once, then the same
+    reader as a local file. A read the source refuses is `unreadable` with its (redacted) words."""
+    from resource_explorer.reach_mechanisms import ReachError
+
+    out = {"state": MEASURED, "columns": [], "sample_ratio": 1.0, "bytes_read": 0, "size_bytes": size, "error": ""}
+    before = mechanism.bytes_read
+    try:
+        if ext == "parquet":
+            res = _profile_parquet(RangeFile(mechanism, rel, size), size, limit, out)
+        elif ext in _WHOLE_ONLY and size > limit:
+            res = {**out, "state": OVER_LIMIT}
+        else:
+            res = _profile_bytes(mechanism.read(rel, limit), ext, size, limit, out)
+    except ReachError as exc:
+        res = {**out, "state": UNREADABLE, "error": str(exc)[:300]}
+    except Exception as exc:  # noqa: BLE001 -- a file that cannot be parsed is a row that says so
+        res = {**out, "state": UNREADABLE, "columns": [], "error": f"{type(exc).__name__}: {exc}"[:300]}
+    # what the source actually sent (the footer read included), not what the reader asked to keep
+    res["bytes_read"] = mechanism.bytes_read - before
+    return res
 
 
 def marker_row(state: str, *, stats_source: str = "", sample_ratio: float | None = None, guid: str = "") -> dict:
@@ -1008,14 +1124,35 @@ def _run(fs_entity, registry, walk: dict, files: list[dict], run_id: str, *, por
     slug = fs_entity.slug
     led_by = walk.get("led_by") or "re"
     root = Path(fs_entity.local_mount_point)
-    reachable = mount_reachable(root)
+    from resource_explorer import reach_mechanisms
+
+    mechanism, remote_error = None, ""
+    if reach_mechanisms.is_remote(fs_entity):
+        # Outcome 3: every file is read through the mechanism by byte range. No path on this disk is looked at, so the
+        # lstat link checks do not apply (an object store has no links); a mechanism that cannot be built reads as the
+        # mount not being reachable, with its redacted reason.
+        try:
+            mechanism = reach_mechanisms.mechanism_for(fs_entity)
+            reachable = True
+        except reach_mechanisms.ReachError as exc:
+            reachable, remote_error = False, str(exc)
+    else:
+        reachable = mount_reachable(root)
     readable = readable_extensions()
+    # The Delta tables among the walk's data files: the folder holding each `_delta_log/` ("" for one at the root).
+    delta_tables = {f["file_path"].partition(f"{DELTA_LOG}/")[0].rstrip("/") for f in files
+                    if _in_delta_log(f["file_path"])}
+    notes: dict[str, str] = {}
 
     all_rows: list[dict] = []
     egeria_files: list[dict] = []
     re_files: list[dict] = []
     for f in files:
-        held = precheck(f, root, reachable)
+        held = precheck(f, root, reachable and mechanism is None)
+        if _in_delta_log(f["file_path"]):
+            # a Delta transaction-log commit: JSON actions, not a data file. Not opened; a later slice reads the log.
+            held = NOT_APPLICABLE
+            notes[f["file_path"]] = "a Delta Lake transaction-log commit · not profiled as data"
         if held:
             all_rows.append({**marker_row(held), "file_path": f["file_path"]})
         elif source_for(f["file_path"], led_by) == SOURCE_EGERIA:
@@ -1052,12 +1189,17 @@ def _run(fs_entity, registry, walk: dict, files: list[dict], run_id: str, *, por
             rows = [marker_row(NOT_REACHABLE)]
         elif ext not in readable:
             rows = [marker_row(NOT_APPLICABLE)]
-        elif not os.access(path, os.R_OK):
+        elif mechanism is None and not os.access(path, os.R_OK):
             rows = [marker_row(NOT_PERMITTED)]
         else:
             if heartbeat() is False:
                 raise ClaimLost(CLAIM_LOST_WORDS.format(slug=slug, submitted=""))
-            res = profile_file(path, ext, limit=limit)
+            if mechanism is not None:
+                res = profile_remote(mechanism, rel, ext, int(f.get("size_bytes") or 0), limit=limit)
+            else:
+                res = profile_file(path, ext, limit=limit)
+            if res.get("note"):
+                notes[rel] = res["note"] + (f" · {DELTA_NOTE}" if _in_delta_table(rel, delta_tables) else "")
             bytes_read += res["bytes_read"]
             if res["error"]:
                 errors[rel] = res["error"]
@@ -1078,12 +1220,24 @@ def _run(fs_entity, registry, walk: dict, files: list[dict], run_id: str, *, por
         "data_files": len(files), "egeria_files": len(egeria_files), "re_files": len(re_files),
         "re_bytes_read": bytes_read, "re_seconds": round(seconds, 3),
         "egeria_half": egeria_state, "egeria_actions": egeria_actions, "egeria_port_error": port_error,
-        "errors": errors,
+        "errors": errors, "notes": notes,
+        **({"protocol": fs_entity.protocol, "list_calls_and_reads": mechanism.calls} if mechanism is not None else {}),
+        **({"mount_error": remote_error} if remote_error else {}),
+        **({"delta_tables": len(delta_tables), "delta_note": DELTA_NOTE} if delta_tables else {}),
         "rows": stored["rows"], "pruned_runs": stored["pruned_runs"],
     }
     registry.record_step_run(slug, STEP_KEY, run_id, entity_type="filesystem", source="file-profiles",
                              executor="local", metrics=metrics)
     return {"run_id": run_id, **metrics}
+
+
+def _in_delta_log(rel: str) -> bool:
+    return rel.startswith(f"{DELTA_LOG}/") or f"/{DELTA_LOG}/" in rel
+
+
+def _in_delta_table(rel: str, tables: set[str]) -> bool:
+    """A part in a Delta table's folder or under it (partition folders); "" is a table at the root."""
+    return any(t == "" or rel.startswith(t + "/") for t in tables)
 
 
 # ── price before the run (X-06) ──────────────────────────────────────────────────────────────────────────────────────
@@ -1174,7 +1328,10 @@ def profiles_view(registry, slug: str) -> dict:
             if r["state"] == HEADER_SUSPECT:   # the header is a value: shown by position, never by the value
                 col.update(column_name=f"column {r['ordinal']}", header_suspect=True)
             by_file.setdefault(r["file_path"], []).append(col)
-    files = [{**s, "format": ext_of(s["file_path"]), "columns_list": by_file.get(s["file_path"], [])[:30]}
+    notes = m.get("notes") or {}
+    files = [{**s, "format": ext_of(s["file_path"]), "columns_list": by_file.get(s["file_path"], [])[:30],
+              **({"note": notes[s["file_path"]]} if s["file_path"] in notes else {}),
+              **({"error": m["errors"][s["file_path"]]} if s["file_path"] in (m.get("errors") or {}) else {})}
              for s in states[:FILES_SHOWN]]
     proof = latest_publish_proof(registry, slug, run_id)
     if proof:
@@ -1188,6 +1345,7 @@ def profiles_view(registry, slug: str) -> dict:
             proof = {**proof, "pre_reset": claim}
     out["run"] = {"run_id": run_id, "counts": counts, "words": card_words(counts), "egeria_half": m.get("egeria_half", ""),
                   "walk_run_id": m.get("walk_run_id", ""), "files": files,
+                  **({"delta_note": m["delta_note"]} if m.get("delta_note") else {}),
                   "files_not_shown": max(0, len(states) - FILES_SHOWN), "publish": proof}
     return out
 
