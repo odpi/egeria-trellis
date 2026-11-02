@@ -4663,7 +4663,11 @@ def _read_credential_capability(registry, slug: str) -> dict:
             continue
         cap = survey_data.get("credential_capability")
         if cap:
-            return cap
+            from resource_explorer.surveyors.credential_capability import with_stored_login
+
+            get_db = getattr(registry, "get_database", None)
+            db = get_db(slug) if callable(get_db) else None
+            return with_stored_login(cap, getattr(db, "db_user", "") or "")
     return {}
 
 

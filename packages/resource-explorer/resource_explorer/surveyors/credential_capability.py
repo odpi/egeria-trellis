@@ -296,3 +296,12 @@ def capability_rfa(slug: str, display_name: str, step_key: str,
               "database."
         ),
     }
+
+
+def with_stored_login(cap: dict | None, stored_login: str) -> dict | None:
+    """W40: the probe's `connected_as` is the login that survey used; the resource's stored login can differ (a
+    credential typed for one run, or a login changed since). Carry the stored login beside it, as words only: never
+    the password, never a key. A blob without a probe stays as it was."""
+    if not cap:
+        return cap
+    return {**cap, "stored_login": (stored_login or "").strip()}
