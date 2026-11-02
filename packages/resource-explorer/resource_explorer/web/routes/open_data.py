@@ -305,6 +305,22 @@ def get_dataset(slug: str) -> dict:
     return d
 
 
+@router.get("/datasets/{slug}/questions")
+def get_dataset_questions(slug: str) -> dict:
+    """The open data questions asked of one dataset, each with its state from the record alone.
+
+    The lead analyses are declared and not built, so a row is `no_reader` (◌ "no reader yet") unless the publisher's
+    record already states something that answers part of it: the licence and its three flags, the modified date and
+    the stated cadence. Those rows are `partial` (◐) and say whose record and when it was retrieved. Nothing here
+    runs an analysis; "none stated" is `no_reader`, never an answer."""
+    from resource_explorer.open_data import dataset_questions
+
+    d = _store().get_dataset(slug)
+    if not d:
+        raise HTTPException(status_code=404, detail=f"No open data '{slug}'.")
+    return dataset_questions.build(d)
+
+
 # ── directories ──────────────────────────────────────────────────────────────
 
 class FitRequest(BaseModel):

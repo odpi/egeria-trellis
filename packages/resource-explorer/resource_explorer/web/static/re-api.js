@@ -246,6 +246,7 @@ export const getDataRequest = (inv) => get(od(`/investigations/${encodeURICompon
 export const runPortalDirectory = (slug, body) => post(od(`/directories/${encodeURIComponent(slug)}/run`), body);
 export const importDirectoryPortals = (slug, body) => post(od(`/directories/${encodeURIComponent(slug)}/import`), body);
 export const listOpenData = () => get(od('/datasets'));
+export const getOpenDataQuestions = (slug) => get(od(`/datasets/${encodeURIComponent(slug)}/questions`));
 export const getOpenData = (slug) => get(od(`/datasets/${encodeURIComponent(slug)}`));
 
 /** Register a file system (Files step 1). The body is the route's own model: slug, display_name,
@@ -480,6 +481,7 @@ function _questionsPath(entityType, slug) {
   const enc = encodeURIComponent(slug);
   if (entityType === 'database') return `/api/databases/${enc}/questions`;
   if (entityType === 'filesystem') return `/api/filesystems/${enc}/questions`;
+  if (entityType === 'open_data') return `/api/open-data/datasets/${enc}/questions`;
   return `/api/projects/${enc}/scouting-questions`;
 }
 

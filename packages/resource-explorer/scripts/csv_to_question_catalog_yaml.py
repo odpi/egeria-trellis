@@ -278,6 +278,21 @@ KNOWN_STEP_IDS = _load_known_step_ids()
 KNOWN_REGISTERED_IDS = set(KNOWN_ANALYSIS_IDS) | KNOWN_STEP_IDS
 
 
+def _load_unbuilt_analysis_ids() -> set[str]:
+    """Analysis ids the catalogue declares with `declaration.built: false` (planned, not measured)."""
+    cat = yaml.safe_load(_ANALYSIS_CATALOG_PATH.read_text()) or {}
+    return {
+        a["id"]
+        for key, section in cat.items()
+        if key.endswith(_ANALYSES_KEY_SUFFIX) and key != _ANALYSES_KEY_SUFFIX
+        for a in (section or [])
+        if a.get("id") and (a.get("declaration") or {}).get("built") is False
+    }
+
+
+UNBUILT_ANALYSIS_IDS = _load_unbuilt_analysis_ids()
+
+
 def _load_catalogue_ids_including_publish() -> set[str]:
     """Every analysis-catalog id in every section, `action: publish` entries included.
 
@@ -546,7 +561,9 @@ def _parse_answering(note: str, known_checks: set[str] | None = None) -> dict:
     # rows whose `analysis_ids` happened to be populated) could not see any
     # of the three.
     if kind == "gap":
-        named = _referenced_registered_ids(note)
+        # A GAP may name an analysis the catalogue DECLARES but has not built (`declaration.built: false`): that
+        # is exactly the claim "this will answer it, and does not yet". It still may not name a built one.
+        named = [n for n in _referenced_registered_ids(note) if n not in UNBUILT_ANALYSIS_IDS]
         if named:
             plural = "is" if len(named) == 1 else "are"
             raise ValueError(
@@ -840,7 +857,10 @@ def expand_resource_types(raw: str, label: str = "") -> list[str]:
     2026-10-22, review §1.1); an unknown name still fails inside `parse_resource_types`."""
     types = parse_resource_types(raw)
     named = [v.strip() for v in (raw or "").split(RESOURCE_TYPES_SEPARATOR) if v.strip()]
-    no_adapter = [v for v in named if v != ALL_RESOURCE_TYPES_MARKER and v not in SURVEYED_RESOURCE_TYPES]
+    # `open_data` is registered-only (OD1) yet carries its own `open_data_questions` section, answered "no reader yet"
+    # until each declared analysis is built (owner, 2026-11-02: "add them now"); it is named, never reached by `*`.
+    no_adapter = [v for v in named if v != ALL_RESOURCE_TYPES_MARKER and v not in SURVEYED_RESOURCE_TYPES
+                  and v != "open_data"]
     if no_adapter:
         raise ValueError(
             f"{label or 'a row'} names Resource Type(s) {no_adapter} with no adapter; only "
