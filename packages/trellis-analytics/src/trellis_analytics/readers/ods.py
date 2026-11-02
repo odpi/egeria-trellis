@@ -42,6 +42,19 @@ def _group_snapshots(rows: list[dict]) -> list[dict]:
     return out
 
 
+#: The day `database_table_activity.table_kind` began to be written. A row older than this reads the absence words below.
+TABLE_KIND_SINCE = "2026-11-02"
+
+
+def _kind_absence(surveyed_at, column_exists: bool) -> str:
+    """What a NULL `table_kind` says: never blank, never assumed to be a base table."""
+    if not column_exists:
+        return "kind not recorded (this registry has no table_kind column yet)"
+    if str(surveyed_at or "")[:10] < TABLE_KIND_SINCE:
+        return f"kind not recorded (snapshot before {TABLE_KIND_SINCE})"
+    return "kind not recorded for this table"
+
+
 class OdsReader:
     def __init__(self, url: str):
         self.url = url
@@ -152,7 +165,11 @@ class OdsReader:
         """The latest `limit` (1..10) `database_table_activity` snapshots for a database, newest first:
         `[{"surveyed_at", "source", "tables": [{schema_name, table_name, rows_inserted, rows_updated, rows_deleted,
         live_tuples, dead_tuples, last_vacuum, last_autovacuum, last_analyze, last_autoanalyze, pending_changes,
-        stats_reset, state}]}]`.
+        stats_reset, table_kind, state}]}]`.
+
+        `table_kind` is one of base table / view / materialized view / foreign table / partitioned table, as the
+        survey stored it. A row that stored none (written before the column, or the type was not read) reads
+        "kind not recorded (...)": never blank and never assumed to be a base table.
 
         A snapshot is one survey's activity rows, keyed by (surveyed_at, source). Only a run that read something is
         one: at least one row carries a counter or a live-row count (a run whose every row is not_collected measured
@@ -160,13 +177,15 @@ class OdsReader:
         snapshot. One parameterised statement."""
         s = normalize_slug(slug)
         n = max(1, min(int(limit), self.MAX_SNAPSHOTS))
+        has_kind = self._has_column("database_table_activity", "table_kind")
         rows = self.query(
             "SELECT a.surveyed_at AS surveyed_at, a.source AS source, a.schema_name AS schema_name, "
             "a.table_name AS table_name, a.rows_inserted AS rows_inserted, a.rows_updated AS rows_updated, "
             "a.rows_deleted AS rows_deleted, a.live_tuples AS live_tuples, a.dead_tuples AS dead_tuples, "
             "a.last_vacuum AS last_vacuum, a.last_autovacuum AS last_autovacuum, a.last_analyze AS last_analyze, "
             "a.last_autoanalyze AS last_autoanalyze, a.pending_changes AS pending_changes, "
-            "a.stats_reset AS stats_reset, a.state AS state "
+            "a.stats_reset AS stats_reset, " + ("a.table_kind" if has_kind else "NULL") + " AS table_kind, "
+            "a.state AS state "
             "FROM database_table_activity a JOIN ("
             "  SELECT x.surveyed_at AS surveyed_at, x.source AS source FROM database_table_activity x "
             "  WHERE x.database_slug = ? AND (x.rows_inserted IS NOT NULL OR x.rows_updated IS NOT NULL "
@@ -178,7 +197,21 @@ class OdsReader:
             ") s ON a.surveyed_at = s.surveyed_at AND a.source = s.source "
             "WHERE a.database_slug = ? ORDER BY a.surveyed_at DESC, a.source, a.schema_name, a.table_name",
             (s, n, s))
-        return _group_snapshots(rows)
+        snapshots = _group_snapshots(rows)
+        for snap in snapshots:
+            for t in snap["tables"]:
+                t["table_kind"] = t["table_kind"] or _kind_absence(snap["surveyed_at"], has_kind)
+        return snapshots
+
+    def _has_column(self, table: str, column: str) -> bool:
+        """Does the registry have this column? A registry that predates an additive column is read, not migrated.
+        Asked by selecting it (no rows): the SQLite reader's authorizer allows nothing but reading, and a failed
+        read on either backend leaves nothing behind."""
+        try:
+            self.query(f"SELECT {column} FROM {table} WHERE 1 = 0")
+        except Exception:  # noqa: BLE001 - the host's reader raises the driver's own error, this one OdsUnreadable
+            return False
+        return True
 
     # ── keys captured per table, as RE stores them ──
 

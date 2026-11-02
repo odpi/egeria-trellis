@@ -407,7 +407,7 @@ def _serve(database_url: str, requests, ready) -> None:
         """RE's typed read methods over this thread's connection. Lives only in this frame."""
 
         def __init__(self):                 # deliberately not OdsReader.__init__: no `url`
-            pass
+            self._is_pg = is_pg
 
         def query(self, sql: str, params: tuple = ()) -> list[dict]:
             return _execute_read_only(conn, is_pg, sql, params)

@@ -49,13 +49,10 @@ def test_every_report_spec_the_library_ships_names_a_registered_function():
     assert all("." not in n and n in registered for n in named)
 
 
-def test_a_report_spec_naming_a_dotted_path_is_warned_a_registered_name_is_not():
-    """pyegeria 6.2.18 (ISSUE-173): a report spec's dotted path still resolves but warns, naming the registered
-    name to use; a registered name resolves silently. pyegeria decides this; the test holds trellis's names to it."""
-    import warnings
+def test_a_report_spec_naming_a_dotted_path_is_refused_a_registered_name_is_not():
+    """pyegeria 6.2.19 (ISSUE-173): a report spec's dotted path is refused, naming the registered name to use; a
+    registered name resolves. pyegeria decides this; the test holds trellis's names to it."""
     resolve = fse.resolve_report_spec_function
-    with warnings.catch_warnings():
-        warnings.simplefilter("error")
-        resolve(TILE_FUNCTION)
-    with pytest.warns(DeprecationWarning, match="curation_coverage_tile"):
+    assert callable(resolve(TILE_FUNCTION))
+    with pytest.raises(fse.AnalyticFunctionRefused, match="curation_coverage_tile"):
         resolve(CURATION_COVERAGE_TILE.function)

@@ -172,9 +172,11 @@ dependencies = [
     # trellis names resolves (trellis-analytics tests/test_pyegeria_6217_allowlist.py), and the advisor's two readers
     # of exec_report_spec show "absent" as its sentence (egeria-advisor tests/unit/test_report_absent_kind.py).
     # Raised to 6.2.18 (2026-10-31, project owner): ISSUE-173 reads the pyegeria.report_specs entry-point group, so
-    # installing trellis-analytics registers the Portal tile's report spec; PYEGERIA_REPORT_SPEC_MODULES is deprecated
-    # and trellis no longer sets it anywhere.
-    "pyegeria>=6.2.18",
+    # installing trellis-analytics registers the Portal tile's report spec; PYEGERIA_REPORT_SPEC_MODULES (removed in 6.2.19)
+    # is no longer set anywhere in trellis.
+    # Raised to 6.2.19 (2026-11-02): the release that removes PYEGERIA_REPORT_SPEC_MODULES and refuses a dotted
+    # analytic_function path, so a 6.2.18 venv can no longer pass tests that the 8813 containers would fail.
+    "pyegeria>=6.2.19",
     "mcp>=2.0.0",
     # nest-asyncio removed 2026-09-04 with the shared-pool refactor: RE no
     # longer imports it anywhere. Its one site, surveyors/prefect_adapter.py's

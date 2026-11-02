@@ -146,6 +146,13 @@ forms on coco_pharma and the throwaway; record the five measures above; keep the
 numbers. If the numbers pass, the rule becomes "every new RE analysis is a library step; existing ones convert as
 touched", which is also how the Portal's and EA's analytics arrive.
 
+**Decision (project owner, 2026-10-31):** "An RE analysis becomes a library step when it is next touched for another reason, never as a batch. Before it converts, (1) the typed read must say every fact the native read uses (table scope: `table_kind`, A1, shipped 2026-11-02), and (2) its per-member detail must have a declarable shape (a per-column result kind, B1, not yet designed)."
+
+The spike (`evidence/SPIKE-RESULT-RE-ANALYSES-AS-LIBRARY-STEPS-2026-10-31.md`) found the two prerequisites: a library twin of
+`statistics_freshness` counted 266 tables where native counted 263 because the typed read did not say base table from
+view (prerequisite 1, closed for table scope by `table_kind`), and `value_profile`'s ~40 measures x 1,916 columns cannot be
+declared as a member result (prerequisite 2, open). Until both hold for an analysis, it stays native.
+
 ## 5. Slices
 
 | Slice | Content | Where | Depends on |
@@ -174,7 +181,7 @@ existing JSON, not a column.
 
 1. Egeria side of §2: is a request parameter the right carrier for `implementationVersion`, or should the step element's
    `versionIdentifier` / an `ImplementedBy` relationship property hold it so Egeria's lineage can show it?
-2. Does the Portal accept an entry-point group as its discovery (replacing `PYEGERIA_REPORT_SPEC_MODULES`), and a
+2. Does the Portal accept an entry-point group as its discovery (replacing `PYEGERIA_REPORT_SPEC_MODULES` (removed in 6.2.19)), and a
    name-only resolver that refuses arbitrary dotted paths?
 3. GovernanceActionService vs EmbeddedProcess for a library step run by Egeria's engine host (lifecycle §16): which does
    the FileSystemSurvey's RE steps declare?

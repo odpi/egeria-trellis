@@ -60,6 +60,7 @@ from __future__ import annotations
 
 import logging
 
+from resource_explorer.table_kind import table_kind_of
 from resource_explorer.registry import (
     SECTION_COLUMNS,
     SECTION_COLUMN_PROFILES,
@@ -395,6 +396,7 @@ def database_rows_from_annotations(annotations: list[dict]) -> dict[str, list[di
                 "rows_updated": updated,
                 "rows_deleted": deleted,
                 "stats_reset": stats_reset,
+                "table_kind": table_kind_of(table_type),
                 "state": STATE_MEASURED,
             })
 
@@ -817,6 +819,7 @@ def database_rows_from_survey_data(survey_data: dict) -> dict[str, list[dict]]:
                     "last_analyze": last_analyzed,
                     "last_vacuum": last_vacuumed,
                     "pending_changes": pending,
+                    "table_kind": table_kind_of(table.get("type"), table.get("relkind")),
                     # The old blob carried no tuple counters at all; the
                     # extension that reads pg_stat_user_tables is design
                     # §5.7's job, not this back-fill's. NULL throughout.

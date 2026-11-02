@@ -29,6 +29,7 @@ from resource_explorer.surveyors.survey_report import (
 from .connection import EngineCapabilities, NO_CAPABILITIES, database_connection
 from .table_statistics_metrics import database_activity_properties
 from resource_explorer.config import egeria_platform_url, egeria_view_server  # noqa: E402,F401
+from resource_explorer.table_kind import table_kind_of
 
 # analysis_catalog.yaml database entry id -> DatabaseSurveyor.survey() steps,
 # for the subset of database analyses that need an open connection to run at
@@ -812,6 +813,7 @@ class DatabaseSurveyor:
             schema_name = schema.get("name", "")
             for table in schema.get("tables", []):
                 table_name = table.get("name", "")
+                table_kind = table_kind_of(table.get("type"), table.get("relkind"))
 
                 # ── table activity (tuple counters, dead/live rows, scans) ──
                 if capabilities.tuple_counters:
@@ -820,6 +822,7 @@ class DatabaseSurveyor:
                         activity_rows.append({
                             "schema_name": schema_name,
                             "table_name": table_name,
+                            "table_kind": table_kind,
                             "state": STATE_NOT_COLLECTED,
                         })
                     else:
@@ -840,6 +843,7 @@ class DatabaseSurveyor:
                             "last_autoanalyze": activity.get("last_autoanalyze", ""),
                             "pending_changes": activity.get("pending_changes"),
                             "stats_reset": stats_reset_stored,
+                            "table_kind": table_kind,
                             "state": STATE_MEASURED,
                         })
                         annotations.append(
@@ -876,6 +880,7 @@ class DatabaseSurveyor:
                     activity_rows.append({
                         "schema_name": schema_name,
                         "table_name": table_name,
+                        "table_kind": table_kind,
                         "state": STATE_NOT_SUPPORTED,
                     })
 

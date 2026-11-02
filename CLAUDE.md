@@ -206,6 +206,10 @@ If you only need one package's dependencies installed, scope it explicitly with 
 rather than by changing directory — but in a shared checkout, prefer a root sync and leave the
 venv in a state the next session can use.
 
+## Converting an RE analysis to a library step
+
+**Decision (project owner, 2026-10-31):** an analysis converts when it is next touched for another reason, never as a batch, and only when the typed read says every fact the native read uses and its per-member detail has a declarable shape. See `packages/resource-explorer/docs/design-notes/DESIGN-ANALYTIC-LIBRARY-SPLIT-2026-10-30.md` §4.
+
 ## DCO sign-off
 
 All commits require sign-off: `git commit -s`, or an explicit `Signed-off-by:` trailer. This repo

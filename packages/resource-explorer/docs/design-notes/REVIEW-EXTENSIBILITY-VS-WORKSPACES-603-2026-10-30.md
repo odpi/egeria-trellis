@@ -54,7 +54,7 @@ matter. Item by item:
 - **A** (decorator next to the function, spec from the signature): trellis does this with manifest subclasses of
   `AnalyticFunctionSpec` living in the step package — the declaration sits with the code. Done, in trellis form.
 - **C** (register through the CONFIG tier, merge into the panel): `discovery.py` registers through pyegeria's registry;
-  `PYEGERIA_REPORT_SPEC_MODULES` / `portal.py` is the CONFIG-tier module for the Portal tile. Done for registration;
+  `PYEGERIA_REPORT_SPEC_MODULES` (removed in 6.2.19) / `portal.py` is the CONFIG-tier module for the Portal tile. Done for registration;
   the *panel merge* half is superseded for RE by the Dashboard Sheet design (RE never targets the Governance Metrics
   panel). For the Portal's own Overview KPIs it remains the Portal's decision.
 - **B** (per-column computed attribute): deferred in #603, never needed since; `re_declared_result` as a generic

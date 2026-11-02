@@ -1324,6 +1324,9 @@ _DB_FS_DETAIL_TABLE_DDL: tuple[str, ...] = (
         -- comparators (design §9.1); this column is the evidence they need,
         -- and without it the information is gone by the time they run.
         stats_reset       TEXT DEFAULT NULL,
+        -- base table / view / materialized view / foreign table / partitioned table (resource_explorer/table_kind.py).
+        -- NULL = not recorded (a row written before this column, or a type the survey did not read), never "base table".
+        table_kind        TEXT DEFAULT NULL,
         state             TEXT NOT NULL DEFAULT 'measured',
         UNIQUE(database_slug, surveyed_at, source, schema_name, table_name),
         FOREIGN KEY (database_slug) REFERENCES databases(slug)
@@ -1633,6 +1636,7 @@ _DB_FS_DETAIL_TABLE_MIGRATIONS: tuple[tuple[str, tuple[tuple[str, str], ...]], .
     # stats_reset: same story, same designer-review addition, same gap.
     ("database_table_activity", (
         ("stats_reset", "TEXT DEFAULT NULL"),
+        ("table_kind", "TEXT DEFAULT NULL"),
     )),
     ("database_grants", ()),
     ("database_sql_objects", ()),

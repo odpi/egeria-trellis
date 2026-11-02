@@ -33,7 +33,7 @@ the rules, not a new model.
   (target_type, heading, description, family, aliases, `formats`, `action`
   or `analytic_function`, `question_spec`) with `Format` (types, columns)
   and `Column` (name, key, format, detail_spec). 150 generated specs plus
-  10 analytic demo specs; a CONFIG tier (`PYEGERIA_REPORT_SPEC_MODULES`)
+  10 analytic demo specs; a CONFIG tier (`PYEGERIA_REPORT_SPEC_MODULES` (removed in 6.2.19))
   loads extra spec modules with no registration call.
 - **Analytic functions** (`pyegeria/view/analytic_registry.py`):
   `AnalyticFunctionSpec` with params, `generic` (what it counts is a

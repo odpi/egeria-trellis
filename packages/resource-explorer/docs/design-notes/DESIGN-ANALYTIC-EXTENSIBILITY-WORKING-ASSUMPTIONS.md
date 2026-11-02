@@ -331,6 +331,46 @@ tile and the first context-spec flavour to build, and the context-as-product
 note (data scientist and engineer first; the non-technical view is a
 separate chat-first Trellis application on the same data).
 
-## Appendix — egeria-workspaces PR #603 (Portal analytic-functions note), status 2026-10-30
+## Convert as touched (project owner, 2026-10-31)
 
-#603 is superseded by the declaration model, not contradicted. Its eight lessons, its options A/B/C and its ten decisions, each with its status on 2026-10-30, are tabulated in `REVIEW-EXTENSIBILITY-VS-WORKSPACES-603-2026-10-30.md` §2.1–§2.4. That note keeps the Portal-era reasoning in trellis after the PR closes. Three contract gaps came out of it (capped, basis, exclusive categories); they are in `BRIEF-DECLARATION-CAPPED-BASIS-CATEGORIES` (being built). One pyegeria item came out of it as well: the analytic-function resolver accepts any importable dotted path. It is logged in egeria-python PYEGERIA_ISSUES.md and blocks dashboards slice D1.
+**Decision (project owner, 2026-10-31):** "An RE analysis becomes a library step when it is next touched for another reason, never as a batch; before it converts, (1) the typed read must say every fact the native read uses, (2) its per-member detail must have a declarable shape." Detail and the spike's evidence: `DESIGN-ANALYTIC-LIBRARY-SPLIT-2026-10-30.md` §4.
+
+## Appendix — egeria-workspaces PR #603 (Portal analytic-functions note): lessons, decisions, and the trellis mechanism that carries each
+
+Status as of 2026-11-02. Source of the verdicts: `REVIEW-EXTENSIBILITY-VS-WORKSPACES-603-2026-10-30.md` §2.1 and §2.4 (read it for the reasoning); this appendix keeps the Portal-era reasoning findable in trellis once #603 is closed, and updates the statuses the review left open (gaps 3/4/5, the resolver allowlist) with what has shipped since.
+
+#603 is superseded by the declaration model, not contradicted.
+
+### A.1 The eight lessons
+
+| # | Lesson | Status | Mechanism in trellis |
+|---|---|---|---|
+| 1 | unknown is not 0 | covered, stronger | five result states (measured / not_measured / not_permitted / not_applicable / measured_nothing), each with a declared sentence (`AbsenceSentences`) |
+| 2 | existence is not outcome | covered for RE; survey-outcome convention still Java-side | step_runs and result states; `ENGINE_REPORT_WORDS` for engine reports |
+| 3 | exclusive categories, `sums_to` | shipped (declaration `categories`), read live 2026-10-30 | `Declaration` for graph/measure kinds |
+| 4 | a capped page is a lower bound | shipped (`capped`, "at least"), read live 2026-10-30 | measure result field; derived figures withheld when set |
+| 5 | a labelled proxy carries its basis | shipped (`basis`), read live 2026-10-30 | `MeasureDeclaration.basis`, so "456 of 1,236" derives from declared fields |
+| 6 | data-model surprises named by source | covered at step level | pyegeria `AnalyticFunctionSpec.source`, `ExtentDeclaration.source` |
+| 7 | identity and scope in the cache key | partial, acceptable | action identity is the initiating user; `context` belongs in the dashboards generator, not in every step |
+| 8 | failure-path fixtures | covered as a gate rule | every brief's end-to-end test covers measured / empty / not-measured / not-applicable; not a manifest field |
+
+### A.2 Options A / B / C
+
+A (declaration beside the code): done, as manifest subclasses of `AnalyticFunctionSpec` in the step package. C (register through the config tier): done for registration (`pyegeria.analytics` entry point; the Portal tile through `pyegeria.report_specs`); the panel-merge half is superseded for RE by the Dashboard Sheet design. B (per-column computed attribute): deferred in #603 and never needed. The B1 per-column *result* shape the Architect is designing is a different thing.
+
+### A.3 The ten decisions
+
+| # | Decision #603 asked | Status | Mechanism in trellis |
+|---|---|---|---|
+| 1 | panel backed by Egeria GovernanceMetric or by a registry | Portal's call | RE uses the Dashboard Sheet and report specs, no panel |
+| 2 | which prose wins | decided | the declaration is the one source for rendering, chat, publish and the tile |
+| 3 | panel entries for generic functions | moot for RE | `re_declared_result` is generic; the tile shows the declaration's words |
+| 4 | is action-level `analytic_function` enough | yes, decided | the dashboards note |
+| 5 | where functions live | decided | step packages outside RE, discovered by the `pyegeria.analytics` entry point (`trellis.analytics` read as an alias); shared ones in trellis-analytics; pyegeria holds the registry only |
+| 6 | adopt the result type and metadata; who reviews | adopted | the Architect's gate reviews semantics; the three gaps above are closed |
+| 7 | who may author specs naming callables; registry-only resolver | closed | pyegeria #516 (ISSUE-169) refuses an unregistered function outside the pyegeria / trellis namespaces; the registered-name route (Q2(b), ISSUE-173) replaced `PYEGERIA_REPORT_SPEC_MODULES`, removed in 6.2.19 |
+| 8 | caps, timeouts, heavy functions | accepted | priced line before a run; budgets in steps; no declared `cost` field (a note for the dashboards generator) |
+| 9 | one survey-outcome standard for RE and engine surveys | open, cross-repo (Java side) | RE reads engine words through `ENGINE_REPORT_WORDS` meanwhile |
+| 10 | persona-dependent metrics on a shared panel | Portal's call | RE tiles run as the viewer (the initiating user) |
+
+Still open on the closing side: closing egeria-workspaces#603 with a comment pointing at the review is the project owner's GitHub act (REVIEW-603 rec 5).

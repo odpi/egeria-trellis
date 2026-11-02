@@ -16,7 +16,8 @@ dependencies = [
     # Q2(b) (project owner, 2026-10-31): this package declares pyegeria.analytics only; trellis.analytics is read as an
     # alias (here and in pyegeria) during the split, so nothing in trellis declares it. 6.2.18 (2026-10-31, ISSUE-173)
     # reads the pyegeria.report_specs group below, so installing this package registers the Portal tile's spec.
-    "pyegeria>=6.2.18",
+    # 6.2.19 (2026-11-02) removes PYEGERIA_REPORT_SPEC_MODULES and refuses a dotted analytic_function path.
+    "pyegeria>=6.2.19",
 ]
 
 [project.optional-dependencies]
@@ -35,7 +36,7 @@ curation_coverage_tile = "trellis_analytics.manifests:CURATION_COVERAGE_TILE"
 
 # The library's report specs (the Portal tile). Decision (project owner, 2026-10-31): "a". pyegeria reads this group
 # (ISSUE-173), so installing the package registers the spec; no PYEGERIA_REPORT_SPEC_MODULES setting is needed, and
-# pyegeria warns about that variable and removes it in 6.2.19.
+# pyegeria removed that variable in 6.2.19.
 [project.entry-points."pyegeria.report_specs"]
 trellis = "trellis_analytics.portal:report_specs"
 
