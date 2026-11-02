@@ -152,6 +152,45 @@ def check_portal(reg: PortalRegistration) -> dict:
     return {"ok": True, "words": "reachable", "total": got["total"]}
 
 
+class SeedAdd(BaseModel):
+    feed_url: str
+
+
+@router.get("/portal-seeds")
+def list_portal_seeds() -> dict:
+    """The shipped suggestions not yet registered (matched on feed host + path, not on name). Offered, never applied."""
+    from resource_explorer.open_data import seeds
+
+    rows = seeds.unregistered(_store().list_portals())
+    return {"rows": rows, "count": len(rows),
+            "all_registered_words": "all suggested portals are registered" if not rows else ""}
+
+
+@router.post("/portal-seeds/add")
+def add_portal_seed(body: SeedAdd, request: Request) -> dict:
+    """Register ONE suggested portal as the person pressing it, origin 'seed'. Reach is checked first; a refusal
+    registers nothing and says why in one sentence."""
+    from resource_explorer.open_data import seeds
+
+    who = _signed_in_user(request)
+    seed = seeds.seed_by_feed(body.feed_url)
+    if seed is None:
+        raise HTTPException(status_code=404, detail="That address is not in the suggested portals.")
+    if not seed["can_add"]:
+        raise HTTPException(status_code=422, detail=f"{seed['display_name']} cannot be added: {seed['words']}.")
+    reg = PortalRegistration(display_name=seed["display_name"], api_kind=seed["api_kind"], base_url=seed["feed_url"])
+    reach = check_portal(reg)
+    if not reach["ok"]:
+        raise HTTPException(status_code=422, detail=f"Not added: {reach['words']}")
+    try:
+        portal = service.register_portal(_store(), display_name=seed["display_name"], api_kind=seed["api_kind"],
+                                         base_url=seed["feed_url"], origin="seed", registered_by=who,
+                                         transport=_transport())
+    except service.OpenDataError as exc:
+        raise _http(exc) from exc
+    return {**_portal_summary(portal), "reach": reach["words"]}
+
+
 @router.delete("/portals/{slug}")
 def remove_portal(slug: str, request: Request) -> dict:
     _signed_in_user(request)

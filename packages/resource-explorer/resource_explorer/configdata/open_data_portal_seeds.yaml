@@ -1,0 +1,120 @@
+# Suggested open-data portals, shipped with Resource Explorer. OFFERED, NEVER APPLIED: Admin › Data portals lists the
+# rows not yet registered under "Suggested portals", each with Add (one portal, as the person pressing it, after a
+# reach check). Nothing here is registered by this file, and there is no bulk Add.
+#
+# To add a row: open a PR with the portal, a `checked` date (the day you last got an HTTP 200 from `feed_url`) and
+# one honest `size_note`. A portal that did not answer is kept with `checked: failed <YYYY-MM-DD>`; it is drawn greyed
+# ("did not answer on <date>") and cannot be added. `add: false` + `not_yet` marks a portal RE cannot read yet.
+# NOT listed on purpose: catalog.data.gov/data.json (one document of hundreds of MB).
+portals:
+  - display_name: data.gov.ie
+    api_kind: DCAT-AP
+    feed_url: https://data.gov.ie/catalog.jsonld
+    publisher: Government of Ireland
+    identifier_scheme: the portal's dataset UUID (dcat:identifier)
+    catalogue_licence: NOT_REPORTED
+    checked: "2026-11-02"
+    size_note: paged, 100 per page (~22,900 datasets, about 1.4 MB a page)
+    why: Proven on 2026-11-01; a flattened ckanext-dcat hydra feed.
+
+  - display_name: opendata.swiss (CKAN)
+    api_kind: CKAN
+    feed_url: https://ckan.opendata.swiss
+    publisher: Swiss Federal Statistical Office (opendata.swiss)
+    identifier_scheme: the CKAN dataset name or UUID
+    catalogue_licence: NOT_REPORTED
+    checked: "2026-11-02"
+    size_note: paged, 20 per page by the CKAN API (~16,200 datasets)
+    why: One portal through two adapters; the CKAN API answers with search. Not an EU member state, but the nearest ckanext-dcat portal that answered on the day.
+
+  - display_name: opendata.swiss (DCAT-AP)
+    api_kind: DCAT-AP
+    feed_url: https://ckan.opendata.swiss/catalog.jsonld
+    publisher: Swiss Federal Statistical Office (opendata.swiss)
+    identifier_scheme: the portal's dataset UUID (dcat:identifier)
+    catalogue_licence: NOT_REPORTED
+    checked: "2026-11-02"
+    size_note: paged, 100 per page (~16,200 datasets, about 1 MB a page)
+    why: The same portal as the CKAN row, read as a DCAT-AP feed; a feed has no search, RE reads whole pages.
+
+  - display_name: data.public.lu (Luxembourg)
+    api_kind: DCAT-AP
+    feed_url: https://data.public.lu/api/1/site/catalog.jsonld
+    publisher: Government of Luxembourg
+    identifier_scheme: the portal's dataset id (dcat:identifier)
+    catalogue_licence: NOT_REPORTED
+    checked: "2026-11-02"
+    size_note: paged, 100 per page (~3,200 datasets)
+    why: A compact JSON-LD @graph feed (a udata portal, not CKAN); the shape data.gov.ie does not exercise.
+
+  - display_name: healthdata.gov (U.S. Department of Health and Human Services)
+    api_kind: DCAT-AP
+    feed_url: https://healthdata.gov/data.json
+    publisher: U.S. Department of Health and Human Services
+    identifier_scheme: the Project Open Data identifier (a URL or a code)
+    catalogue_licence: NOT_REPORTED
+    checked: "2026-11-02"
+    size_note: one document, ~31 MB (Project Open Data data.json; one call reads all of it)
+    why: The HHS data.json that answered; www.hhs.gov/data.json denies access (HTTP 403) to read-only clients.
+
+  - display_name: U.S. Department of Health and Human Services (www.hhs.gov)
+    api_kind: DCAT-AP
+    feed_url: https://www.hhs.gov/data.json
+    publisher: U.S. Department of Health and Human Services
+    identifier_scheme: the Project Open Data identifier
+    catalogue_licence: NOT_REPORTED
+    checked: "failed 2026-11-02"
+    size_note: not read; the host answered HTTP 403 (Access Denied)
+    why: The address the owner named; kept so the failure is visible, not dropped.
+
+  - display_name: Humanitarian Data Exchange
+    api_kind: CKAN
+    feed_url: https://data.humdata.org
+    publisher: UN OCHA Centre for Humanitarian Data
+    identifier_scheme: the CKAN dataset name or UUID
+    catalogue_licence: NOT_REPORTED
+    checked: "2026-11-02"
+    size_note: paged, 20 per page by the CKAN API
+    why: Humanitarian data; a real CKAN with search.
+
+  - display_name: Open Government Canada (CKAN)
+    api_kind: CKAN
+    feed_url: https://open.canada.ca/data
+    publisher: Government of Canada
+    identifier_scheme: the CKAN dataset name or UUID
+    catalogue_licence: NOT_REPORTED
+    checked: "2026-11-02"
+    size_note: paged, 20 per page by the CKAN API (~48,200 datasets)
+    why: The federal portal; one portal through two adapters with the DCAT row below.
+
+  - display_name: Open Government Canada (DCAT-AP)
+    api_kind: DCAT-AP
+    feed_url: https://open.canada.ca/data/catalog.jsonld
+    publisher: Government of Canada
+    identifier_scheme: the portal's dataset UUID (dcat:identifier)
+    catalogue_licence: NOT_REPORTED
+    checked: "2026-11-02"
+    size_note: paged, 100 per page (~48,200 datasets, about 2 MB a page)
+    why: The same portal read as a DCAT-AP feed.
+
+  - display_name: CKAN demo
+    api_kind: CKAN
+    feed_url: https://demo.ckan.org
+    publisher: CKAN project
+    identifier_scheme: the CKAN dataset name
+    catalogue_licence: NOT_REPORTED
+    checked: "2026-11-02"
+    size_note: paged, 20 per page; a handful of datasets
+    why: "The CKAN sandbox. It is reset and small, so it is for trying things, not for real data."
+
+  - display_name: data.europa.eu
+    api_kind: ""
+    feed_url: ""
+    publisher: Publications Office of the European Union
+    identifier_scheme: a dataset IRI
+    catalogue_licence: NOT_REPORTED
+    checked: "2026-11-02"
+    size_note: not read; its catalogue is reached through a SPARQL endpoint
+    why: The European portal. Needs the SPARQL adapter.
+    add: false
+    not_yet: needs the SPARQL adapter

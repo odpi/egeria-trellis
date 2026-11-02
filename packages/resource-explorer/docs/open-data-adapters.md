@@ -42,3 +42,23 @@ other column. The reader accepts expanded, flattened JSON-LD (data.gov.ie), comp
 bare name. A record carries the source's entry verbatim; keys beginning `_` (`_language`, `_licence_note`,
 `_filter_note`, `_access_only`) are RE's own notes on it. Fixtures and where each was recorded: `tests/fixtures/open_data/README`.
 Not supported: RDF/XML, Turtle, SPARQL.
+
+## Suggested portals
+
+Resource Explorer ships a short list of open-data portals worth knowing, in `resource_explorer/configdata/open_data_portal_seeds.yaml`.
+Admin › Data portals shows the rows not yet registered under a folded section, **Suggested portals · N**.
+
+- **Offered, never applied.** Nothing in the list is registered until a person presses **Add** on one row. Add registers
+  that portal for everyone, as the person who pressed it (origin `seed`), and checks reach first: a portal that does
+  not answer stays unregistered and the row says why. There is no bulk Add.
+- A row is matched to a registered portal by its feed address (host and path), never by name; a registered portal drops
+  out of the list, and the section then says "all suggested portals are registered".
+- Each row says what it is: the API (CKAN or DCAT-AP), the feed, the publisher, what the portal uses as a dataset
+  identifier, the licence of the catalogue itself (`NOT_REPORTED` when unknown), the date a maintainer last got an HTTP
+  200 from it, one honest size note, and why it is listed. A portal that did not answer stays listed, greyed, with
+  "did not answer on <date>". A portal Resource Explorer cannot read yet (data.europa.eu: needs the SPARQL adapter) is
+  listed as "not yet", with no Add.
+- One portal can be listed through two adapters (opendata.swiss and Open Government Canada: CKAN and DCAT-AP rows).
+- `catalog.data.gov/data.json` is deliberately absent: one document of hundreds of megabytes.
+
+To add a row, open a PR that adds it to the yaml with a `checked` date (the day you last got a 200 from `feed_url`).

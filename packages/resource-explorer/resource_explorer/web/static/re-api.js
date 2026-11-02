@@ -222,6 +222,8 @@ const od = (path) => `/api/open-data${path}`;
 export const listOpenDataPortals = () => get(od('/portals'));
 export const registerOpenDataPortal = (body) => post(od('/portals'), body);
 export const checkOpenDataPortal = (body) => post(od('/portals/check'), body);
+export const listPortalSeeds = () => get(od('/portal-seeds'));
+export const addPortalSeed = (feed_url) => post(od('/portal-seeds/add'), { feed_url });
 export const openDataPrice = (slug, pages) => get(od(`/portals/${encodeURIComponent(slug)}/price?pages=${pages}`));
 export const searchOpenData = (slug, body) => post(od(`/portals/${encodeURIComponent(slug)}/search`), body);
 export const importOpenData = (slug, body) => post(od(`/portals/${encodeURIComponent(slug)}/import`), body);

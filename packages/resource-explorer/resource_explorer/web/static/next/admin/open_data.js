@@ -17,7 +17,7 @@
 import {
   listOpenDataPortals, registerOpenDataPortal, checkOpenDataPortal, openDataPrice, searchOpenData, importOpenData,
   openDataLensTerms, listPortalDirectories, registerPortalDirectory, runPortalDirectory, importDirectoryPortals,
-  listOpenData, getOpenData, openDataDirectoryPrice,
+  listOpenData, getOpenData, openDataDirectoryPrice, listPortalSeeds, addPortalSeed,
 } from '/static/re-api.js';
 import { esc } from '/static/next/app.js';
 import { ago } from '/static/next/format.js';
@@ -103,8 +103,10 @@ export async function renderDataPortals(host) {
         <td class="py-s2 pr-s3 text-caveat align-top text-ink-muted">${esc(ago(p.registered_at))}${p.registered_by ? ` · ${esc(p.registered_by)}` : ' · the person who registered it was not recorded'}</td>
         <td class="py-s2 pr-s3 text-caveat align-top">${p.adapter_available ? `<button type="button" data-od-open="${esc(p.slug)}" class="cursor-pointer rounded-sm border border-rule-strong bg-transparent px-2 py-[2px] text-caveat text-ink hover:border-accent">Search</button>` : '<span class="text-ink-muted">registered for later</span>'}</td>
       </tr>`).join('')}</tbody></table></div>` : '<p data-od-empty class="text-answer text-ink">No portals registered yet.</p>'}
+    <div data-od-seeds class="mt-s4"></div>
     <div data-od-pane class="mt-s4"></div>`;
   watchTables(host);
+  drawPortalSeeds(host);
   const form = q(host, '[data-od-register]');
   q(host, '[data-od-register-toggle]').addEventListener('click', () => form.classList.toggle('hidden'));
   const apiHelp = q(host, '[data-od-api-help]');
@@ -121,6 +123,41 @@ export async function renderDataPortals(host) {
     try { await registerOpenDataPortal(body()); await renderDataPortals(host); } catch (e) { state.innerHTML = errText(e); }
   });
   host.querySelectorAll('[data-od-open]').forEach((b) => b.addEventListener('click', () => openPortalPane(host, b.dataset.odOpen)));
+}
+
+export const SEED_ADD_HELP = 'Registers this portal for everyone, as you. Checks reach first; nothing is imported.';
+export const SEEDS_ALL_REGISTERED = 'all suggested portals are registered';
+
+/** "Suggested portals · N": the shipped list, folded (a table starts closed). Offered, never applied: one Add per row,
+ *  no bulk. A row that did not answer is greyed with its date; one RE cannot read yet has no Add. */
+export function suggestedPortalsHtml(res) {
+  if (!res.rows.length) return `<p data-od-seeds-none class="text-provenance text-ink-muted">${SEEDS_ALL_REGISTERED}</p>`;
+  return `<details data-od-seeds-fold><summary class="cursor-pointer text-caveat text-ink">Suggested portals · ${res.rows.length}</summary>
+    <div class="mt-s2 overflow-x-auto"><table class="w-full text-left" data-rc-id="od-portal-seeds">
+      <thead><tr class="border-b border-rule text-caps uppercase tracking-caps text-ink-muted">
+        <th class="pb-s2 pr-s3 font-normal">Portal</th><th class="pb-s2 pr-s3 font-normal">API</th><th class="pb-s2 pr-s3 font-normal">Size</th><th class="pb-s2 pr-s3 font-normal">Why</th><th class="pb-s2 pr-s3 font-normal">Checked</th><th class="pb-s2 pr-s3 font-normal"></th></tr></thead>
+      <tbody>${res.rows.map((r) => `<tr class="border-b border-rule${r.status === 'answered' ? '' : ' text-ink-muted'}" data-od-seed="${esc(r.feed_url)}" data-od-seed-status="${esc(r.status)}">
+        <td class="py-s2 pr-s3 text-caveat align-top">${esc(r.display_name)}<div class="font-mono text-provenance text-ink-muted break-all">${esc(r.feed_url)}</div></td>
+        <td class="py-s2 pr-s3 text-caveat align-top">${esc(r.api_kind || 'SPARQL')}</td>
+        <td class="py-s2 pr-s3 text-caveat align-top text-ink-muted">${esc(r.size_note)}</td>
+        <td class="py-s2 pr-s3 text-caveat align-top text-ink-muted">${esc(r.why)}</td>
+        <td class="py-s2 pr-s3 text-caveat align-top text-ink-muted">${esc(r.words)}</td>
+        <td class="py-s2 pr-s3 text-caveat align-top">${r.can_add ? `<button type="button" data-od-seed-add="${esc(r.feed_url)}" title="${esc(SEED_ADD_HELP)}" class="cursor-pointer rounded-sm border border-rule-strong bg-transparent px-2 py-[2px] text-caveat text-ink hover:border-accent">Add</button> <span data-od-seed-state class="text-provenance text-ink-muted"></span>` : ''}</td>
+      </tr>`).join('')}</tbody></table></div></details>`;
+}
+
+async function drawPortalSeeds(host) {
+  const slot = q(host, '[data-od-seeds]');
+  let res;
+  try { res = await listPortalSeeds(); } catch (e) { slot.innerHTML = `<p class="text-state-warn">${errText(e)}</p>`; return; }
+  slot.innerHTML = suggestedPortalsHtml(res);
+  watchTables(slot);
+  slot.querySelectorAll('[data-od-seed-add]').forEach((b) => b.addEventListener('click', async () => {
+    const state = b.parentElement.querySelector('[data-od-seed-state]');
+    b.disabled = true; state.textContent = 'checking reach…';
+    try { await addPortalSeed(b.dataset.odSeedAdd); await renderDataPortals(host); }
+    catch (e) { b.disabled = false; state.innerHTML = `<span class="text-state-warn">${errText(e)}</span>`; }
+  }));
 }
 
 /** The discovery-source pane for one portal: terms, filters, the price line, candidates, preview, Import. */
