@@ -75,3 +75,11 @@ def test_collapsed_sections_are_details_remembered_per_resource():
     assert "derive: 'derived'" in FS                                              # Derive opens what it filled
     assert "writeSectionPref(storage(), me, slug, d.dataset.fsSection, d.open)" in FS
     assert "if (d.open === was) return;" in FS                                    # the page's own open writes nothing
+
+
+def test_w37_the_portal_url_cell_keeps_a_floor_so_a_short_url_is_not_five_fragments():
+    # 220px (~14rem) is a class tailwind-next.css already ships; break-all still bites on a long DCAT feed URL
+    cell = re.search(r'<td class="([^"]*)" data-od-portal-url>', OD)
+    classes = cell.group(1).split()
+    assert {"min-w-[220px]", "break-all"} <= set(classes)
+    assert r"min-w-\[220px\]" in (Path(__file__).resolve().parent.parent / "resource_explorer/web/static/next/tailwind-next.css").read_text(encoding="utf-8")
