@@ -12,6 +12,10 @@
   each part (section 9); the glossary moved to [`tutorial/glossary.md`](tutorial/glossary.md) (section 4); S1 drawn.
 - 2026-11-02: part 2 written; S2–S4 taken. Read on screen: the strip's stages are joined by "›"; **Chat** carries a
   panel icon, not "Chat ×"; the PERSPECTIVE row added to the tour; the Activity panel's words; G9 not seen.
+- 2026-11-02: part 4 written; S12 re-rendered at 1600 × 900, S13–S15 taken or drawn. Read on screen: the overview
+  survey table (names and step counts); a database's three extra tabs; By analysis and Disposition described; a
+  database's Assessment shows no survey of its own (G23). The optional measured example (13 seconds) left out: not
+  read on screen.
 **Replaces, once written:** the six walks in [`tutorial/`](tutorial/README.md), which stay on `main` until then.
 
 ## How to read this outline
@@ -434,7 +438,10 @@ ones later, and inside each stage, questions and the surveys that answer them.
    - **Questions** lists what this stage asks about this data source, and the answers so far.
    - **Survey & analyses** lists the surveys that answer them. A survey is a set of analyses run together. Each
      analysis can also be run on its own.
-   - **By analysis** and **Disposition**: one line each, or left out (owner to confirm).
+   - **By analysis** and **Disposition**: one line each (read on screen 2026-11-02): "SURVEY RESULTS, BY ANALYSIS"
+     shows the stage's results one analysis at a time; Disposition holds the verdicts (undecided, tracking,
+     investigating, recommended, using, abandoned, ignored), their history and a journal.
+   - A database has three more tabs: "Schema Inventory", "Value profile", "Table preview" (read on screen 2026-11-02).
 3. **Overview surveys and narrower ones.** Each of the first four stages has an overview survey that runs all the
    stage's analyses for that kind of data source. It is the good place to start, because it shows what the stage can
    tell you. Narrower surveys run a subset, when you want only some answers or want to keep the cost down. For a
@@ -456,14 +463,17 @@ ones later, and inside each stage, questions and the surveys that answer them.
      ◔ running · ✕ failed (seen, user guide).
    - *Explain:* ∅ means it was measured and there was nothing. ○ means nobody has run it. They are never the same.
 
-**The overview survey for each stage, by kind** (definitions; screen names to confirm):
+**The overview survey for each stage, by kind** (read on screen 2026-11-02, Survey & analyses on `openlineage`,
+coco_pharma and `loading_bay`):
 
 | Stage | Repository | Database | File system |
 |---|---|---|---|
-| Scouting | Scouting Survey (9 steps) | Database Scouting Scan (3 steps) | Folder survey card: **Survey** is the overview (seen; G4) |
-| Discovery | Repo Discovery Survey (9 steps) | **none found** (gap G23) | to confirm |
-| Assessment | Assessment Survey (11 steps) | Database Assessment Survey (1 step) | to confirm |
-| Analysis | Analysis Survey | Database Analysis Survey (8 steps); also Database Quality Survey | to confirm |
+| Scouting | Scouting Survey (9 steps); also Repo Scouting Scan (4), Coarse Profile Survey (7) | Database Scouting Scan (3 steps) | Folder survey card: **Survey** is the overview (G4) |
+| Discovery | Repo Discovery Survey (9 steps); also Repo Architecture Discovery (4) | **none** (gap G23) | the same Folder survey card |
+| Assessment | Assessment Survey (14 steps); also Compliance Survey (14) | **none shown on this stage** (gap G23): "Database Assessment Survey" exists, named on its analyses' rows, but is not listed | the same Folder survey card |
+| Analysis | Analysis Survey (11 steps) | Database Analysis Survey (8 steps) | the same Folder survey card |
+
+Every repository stage also offers "Full Survey (all steps)", 43 steps, under "OTHER STAGES".
 
 **What can go wrong.** Slow panes: "5 of 19 answered · 13 still loading" can stay for many seconds without saying what
 it waits for (seen, gap G10). Wait until "still loading" goes.
@@ -960,10 +970,10 @@ stamps recur from part to part. Take them in order, in one Quickstart, without r
 | S9 | 3b · 2 | registering `loading_bay` | Add a file system | Path field with "✓ readable here" | new |
 | S10 | 3c · 3 | importing OpenLineage | Find repos, From a list | One row ticked, Import Selected | new |
 | S11 | 3d | the three, found again | Sidebar filters | Filter box and chips | `01-repos-filter-chips.webp` if unchanged |
-| S12 | 4 · 1 | the time before the next drop | Diagram, the funnel | Six stages, cost rising left to right, many sources narrowing to few | new |
-| S13 | 4 · 2 | a stage on `coco_pharma` | A stage's tabs, labelled | Questions, Survey & analyses, By analysis, Disposition | new |
-| S14 | 4 · steps 2 | the overview survey for `coco_pharma` | Survey & analyses, labelled | The overview survey and a narrower one marked | new (`02-survey-and-analyses-docling.webp` as a guide) |
-| S15 | 4 · steps 3 | how to read an answer | The marks | The key, or a drawn table | new |
+| S12 | 4 · 1 | the time before the next drop | Diagram, the funnel | Six stages, cost rising left to right, many sources narrowing to few | **Taken, 2026-11-02:** `funnel.svg` rendered at 1600 × 900 as `tutorial/images/04-stages/S12-funnel.webp`. |
+| S13 | 4 · 2 | a stage on `coco_pharma` | A stage's tabs, labelled | Questions, Survey & analyses, By analysis, Disposition | **Taken, 2026-11-02:** `S13-a-stage.webp` and `-labelled`: the tabs, the count line, the key, one row (∅). On 8813 the database's slug is `localhost_docker_coco_pharma`. |
+| S14 | 4 · steps 2 | the overview survey for `coco_pharma` | Survey & analyses, labelled | The overview survey and a narrower one marked | **Taken, 2026-11-02, on `openlineage`, not the database:** the database's Scouting has only one survey, so it cannot show an overview beside a narrower one. `S14-survey-and-analyses.webp` and `-labelled`. |
+| S15 | 4 · steps 3 | how to read an answer | The marks | The key, or a drawn table | **Drawn, 2026-11-02:** [`tutorial-media/marks.svg`](tutorial-media/marks.svg) as `S15-marks.webp`; the real key is in S13. |
 | S16 | 5 · 1 | is `coco_pharma` alive? | Survey & analyses on a never-surveyed database | The overview survey's run button | new |
 | S17 | 5 · 2 | `coco_pharma` being surveyed | Running | "◔ running" and the notice with View | new |
 | S18 | 5 · 3–4 | what is in `coco_pharma` (read on screen) | Questions after the survey, one row labelled | Answer, source line, buttons | new |
@@ -1041,7 +1051,7 @@ in this outline; each is named where it bites.
 | G20 | The sign-in panel says "EXPERIMENTAL UI". | 2 | **Not a defect (project owner, 2026-10-29):** RE is positioned as still experimental, evolving with user feedback. The tutorial explains the label; nothing to fix. |
 | G21 | This writer's browser was not signed in, so the register dialogs, the new-investigation dialog and the chat rail are outlined from the source code (marked "code"). | 3, 8, 12 | The prose writer reads each on the screen, signed in. |
 | G22 | Steps whose exact screen words nobody has recorded: a wrong password, Egeria down at sign-in, an empty investigation name, "promote" on a work list, the Assessment tab on a database, a step that asks before running a prerequisite. | 2, 5, 6, 11, 12 | Read on the screen during the prose phase; some need a deliberate error to see. |
-| G23 | The overview surveys are uneven across kinds (definitions, 2026-10-29). A database has no Discovery survey. A database's Assessment survey has one step. File-system stage surveys are not yet identified. Names are inconsistent: "Scouting Survey" and "Repo Scouting Scan" are both repository Scouting surveys; "Database Scouting Scan" is the database's overview; "Assessment Survey" and "Analysis Survey" carry no kind in their names, while "Repo Discovery Survey" does. A reader cannot tell from a name which survey is the overview. | 4, 5, 6 | One naming rule (for example "<Kind> <Stage> Survey" for every overview), and the missing overviews either built or explained. |
+| G23 | The overview surveys are uneven across kinds (definitions, 2026-10-29). A database has no Discovery survey. A database's Assessment survey has one step. File-system stage surveys are not yet identified. Names are inconsistent: "Scouting Survey" and "Repo Scouting Scan" are both repository Scouting surveys; "Database Scouting Scan" is the database's overview; "Assessment Survey" and "Analysis Survey" carry no kind in their names, while "Repo Discovery Survey" does. A reader cannot tell from a name which survey is the overview. **Re-read on screen 2026-11-02:** a database's Assessment stage lists no survey of its own; the repository Assessment Survey has 14 steps, not 11; the file system has one Folder survey card on every stage. Part 4 gives the reader a table. | 4, 5, 6 | One naming rule (for example "<Kind> <Stage> Survey" for every overview), and the missing overviews either built or explained. |
 | G24 | After design note D1-a, a database can show as already in Egeria, matched by its endpoint, rather than published fresh. A reader who expects "published by RE" sees a different state. | 9, 10 | Explain it at part 10, step 7. D1-e (trellis #962) adds a coverage line, read on the screen on 2026-11-01 for coco_pharma as "not yet published · 26: 3 undecided · 22 in Egeria under 'Coco PostgreSQL Server 1' · not RE's · 1 left out by a confirmed proposal"; those counts are that screen's, so read the words on the screen before writing them in. |
 
 ---
