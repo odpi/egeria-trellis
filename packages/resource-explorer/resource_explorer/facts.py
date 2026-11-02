@@ -1524,13 +1524,32 @@ class FactLayer:
         kind = (self._map("analysis_kinds") or {}).get(analysis_id)
         reader = getattr(getattr(kind, "results", None), "headline_reader", None)
         if reader is None:
-            return {}
+            return self._table_headline(analysis_id, slug)
         try:
             head = reader(self._registry, slug) or {}
         except Exception as exc:
             log.debug("headline read failed for %s/%s: %s", slug, analysis_id, exc)
             return {}
         return head
+
+    def _table_headline(self, analysis_id: str, slug: str) -> dict:
+        """B1: a table result with no headline reader of its own answers with its declared summary measures and
+        cites the table ("1,846 of 1,916 columns · the table lists them"); {} for any other analysis. An analysis
+        that has its own headline reader keeps its own words."""
+        from resource_explorer.declared_context import declarations
+        from resource_explorer.table_result import question_line
+
+        try:
+            dec = declarations(self.resource_type).get(analysis_id)
+            if dec is None or dec.table is None or not dec.table.is_result():
+                return {}
+            entry = (self._map("analysis_results_map") or {}).get(analysis_id)
+            value = self._read_results(slug, analysis_id, entry) if entry is not None else None
+            line = question_line(dec, value or {}, self._last_run(slug).get(analysis_id, {}))
+        except Exception as exc:  # noqa: BLE001 -- best effort, as every headline here
+            log.debug("table headline read failed for %s/%s: %s", slug, analysis_id, exc)
+            return {}
+        return {"label": line, "status": "info"} if line else {}
 
     def _level_specific_headline_exists(self, analysis_id: str, level: str) -> bool:
         """Would `_headline_for(analysis_id, ..., level)` return a GENUINE

@@ -494,6 +494,35 @@ STEP_ANNOTATIONS_DDL = (
 )
 
 
+#: DDL for a table result's rows (B1, DESIGN-B1-MEMBER-SCOPED-TABLE-RESULT-2026-11-02 §4; record:
+#: docs/ddl-analysis-table-rows.md). Same rules as RESOURCE_SCOPE_EVENTS_DDL: ONE additive, idempotent block, CREATE ...
+#: IF NOT EXISTS only, no ALTER of an existing table, no data migration, no foreign keys.
+#:
+#: One row per member of a resource (a column, a file, a dataset) for one run of one analysis whose declaration is a
+#: table result. EVERY row is stored: the declaration's `max_rows` caps what is SHOWN, never what is kept. `run_id` is
+#: the run's own time (the executor's `surveyed_at`), as in step_annotations. `row_key` is the row's declared key
+#: fields as a JSON array, so a reader finds one member without parsing `row_json`; `row_no` is the step's order,
+#: which is the declared order. The key carries the resource and the analysis as well as the run: two analyses of one
+#: survey share its `surveyed_at`.
+ANALYSIS_TABLE_ROWS_DDL = (
+    """
+    CREATE TABLE IF NOT EXISTS analysis_table_rows (
+        run_id         TEXT NOT NULL,
+        analysis_id    TEXT NOT NULL,
+        resource_kind  TEXT NOT NULL,
+        slug           TEXT NOT NULL,
+        row_no         INTEGER NOT NULL,
+        row_key        TEXT NOT NULL,
+        row_json       JSONB NOT NULL,
+        PRIMARY KEY (resource_kind, slug, analysis_id, run_id, row_no)
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_analysis_table_rows_member "
+    "ON analysis_table_rows(analysis_id, slug, row_key)",
+    "CREATE INDEX IF NOT EXISTS idx_analysis_table_rows_run ON analysis_table_rows(run_id)",
+)
+
+
 #: DDL for a repository's contributor lists (REVIEW-QUESTIONS-AND-ANALYTICS-2026-10-22.md, addendum 1 (b); the project owner's go 2026-10-23, "Yes,
 #: build it"). Same rules as RESOURCE_SCOPE_EVENTS_DDL: ONE additive, idempotent CREATE TABLE IF NOT EXISTS, no ALTER of
 #: an existing table, no data migration, no foreign key, no question mark or colon-name token (the Postgres translator
@@ -3831,6 +3860,9 @@ class ProjectRegistry:
                 conn.execute(_ddl)
             # step_annotations: ONE additive, idempotent block (see STEP_ANNOTATIONS_DDL).
             for _ddl in STEP_ANNOTATIONS_DDL:
+                conn.execute(_ddl)
+            # analysis_table_rows: ONE additive, idempotent block (see ANALYSIS_TABLE_ROWS_DDL; B1, owner's go 2026-11-02).
+            for _ddl in ANALYSIS_TABLE_ROWS_DDL:
                 conn.execute(_ddl)
             # api_reference_*: ONE additive, idempotent block (see API_REFERENCE_DDL).
             for _ddl in API_REFERENCE_DDL:
@@ -9035,6 +9067,56 @@ class ProjectRegistry:
                 "SELECT COUNT(*) FROM step_annotations WHERE entity_type = ? AND slug = ? "
                 "AND step_key = ? AND run_id = ?", (entity_type, slug, step_key, run)).fetchone()[0])
 
+    # ── Table results (B1): every row of a member-scoped table, in its declared order ─────────────────────
+    #
+    # `analysis_table_rows` (ANALYSIS_TABLE_ROWS_DDL). Written through `result_materializer.write_table_rows`, which
+    # checks the rows against the declaration; read through `table_result.table_rows`, which applies it.
+
+    def record_table_rows(self, resource_kind: str, slug: str, analysis_id: str, *, run: str,
+                          rows: list[tuple[str, dict]]) -> int:
+        """Keep one run's table rows, as (row_key, row) pairs in the declared order, replacing any the same run stored
+        before (a re-run of one run writes the same rows once). Returns how many rows the run has."""
+        slug = self._normalize_slug(slug)
+        with self._conn() as conn:
+            conn.execute("DELETE FROM analysis_table_rows WHERE resource_kind = ? AND slug = ? AND analysis_id = ? "
+                         "AND run_id = ?", (resource_kind, slug, analysis_id, run))
+            conn.executemany(
+                "INSERT INTO analysis_table_rows (run_id, analysis_id, resource_kind, slug, row_no, row_key, "
+                "row_json) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                [(run, analysis_id, resource_kind, slug, n, key, json.dumps(row, default=str))
+                 for n, (key, row) in enumerate(rows, start=1)])
+            return int(conn.execute(
+                "SELECT COUNT(*) FROM analysis_table_rows WHERE resource_kind = ? AND slug = ? AND analysis_id = ? "
+                "AND run_id = ?", (resource_kind, slug, analysis_id, run)).fetchone()[0])
+
+    def query_table_rows(self, resource_kind: str, slug: str, analysis_id: str, *, run: str | None = None,
+                         limit: int | None = None) -> tuple[str, int, list[dict]]:
+        """(run, total, rows) for one run of a table result (the latest when `run` is None): `total` counts every
+        stored row, `rows` are the first `limit` of them (all when None), decoded, in row order. ("", 0, []) when
+        none is stored."""
+        slug = self._normalize_slug(slug)
+        with self._conn() as conn:
+            if run is None:
+                latest = conn.execute(
+                    "SELECT MAX(run_id) AS run_id FROM analysis_table_rows WHERE resource_kind = ? AND slug = ? "
+                    "AND analysis_id = ?", (resource_kind, slug, analysis_id)).fetchone()
+                run = dict(latest)["run_id"] if latest is not None else None
+                if not run:
+                    return "", 0, []
+            where = ("FROM analysis_table_rows WHERE resource_kind = ? AND slug = ? AND analysis_id = ? "
+                     "AND run_id = ?")
+            params = (resource_kind, slug, analysis_id, run)
+            total = int(conn.execute("SELECT COUNT(*) " + where, params).fetchone()[0])
+            sql = "SELECT row_json " + where + " ORDER BY row_no"
+            if limit is not None:
+                sql += f" LIMIT {int(limit)}"
+            rows = conn.execute(sql, params).fetchall()
+        out = []
+        for r in rows:
+            raw = dict(r)["row_json"]
+            out.append(raw if isinstance(raw, dict) else json.loads(raw or "{}"))
+        return (run, total, out) if total else ("", 0, [])
+
     def query_step_annotations(self, entity_type: str, slug: str, step_key: str,
                                state: str | None = None) -> tuple[str, list[dict]]:
         """(run, rows) for the latest stored run of one step on one resource;
@@ -12618,6 +12700,7 @@ class ProjectRegistry:
         "native_survey_annotations": "per surveyed resource, never an investigation",
         "resource_sampling_settings": "per surveyed resource, never an investigation",
         "resource_scope_events": "per surveyed resource, never an investigation",
+        "analysis_table_rows": "per surveyed resource, never an investigation",
         "step_annotations": "per surveyed resource, never an investigation",
         "step_runs": "per surveyed resource, never an investigation",
         "sub_resources": "per surveyed resource, never an investigation",

@@ -103,7 +103,7 @@ function measuredHtml(r) {
 /** One row; the reason a row cannot publish sits under it, in words. */
 export function rowHtml(r, signedIn, entityType = 'database') {
   return `<tr class="border-b border-rule align-top" data-publish-row="${esc(r.locator)}">
-    <td class="py-[4px] pr-s2 text-left">${esc(r.analysis)}</td>
+    <td class="py-[4px] pr-s2 text-left">${esc(r.analysis)}${r.rows_band ? `<span class="block text-provenance text-ink-muted" data-rows-band>${esc(r.rows_band)}</span>` : ''}</td>
     <td class="py-[4px] pr-s2 text-left">${esc(r.measure)} <span class="text-provenance text-ink-muted">· ${esc(r.unit)}</span></td>
     <td class="py-[4px] pr-s2 text-left">${valueHtml(r)}</td>
     <td class="py-[4px] pr-s2 text-left tnum">${r.as_of ? `${esc(when(r.as_of))}<span class="block text-provenance text-ink-muted" data-as-of-label>as of</span>` : '<span class="text-ink-muted">no as-of</span>'}${

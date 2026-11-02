@@ -302,22 +302,24 @@ def _confidence_line(dec) -> str:
 
 
 def _extent_block(extent, rows: list | None, n: int, as_of: str, scope: str, analysis_id: str,
-                  cite: bool) -> tuple[list[str], dict]:
-    """One extent at `n` rows: its lines, and what was shown (for the manifest)."""
+                  cite: bool, total: int | None = None) -> tuple[list[str], dict]:
+    """One extent at `n` rows: its lines, and what was shown (for the manifest). `total`, when given, is how many rows
+    exist beyond the ones passed (a table result's stored rows, of which only the shown slice is read)."""
     if rows is None:
         return ([f"{extent.name}: not in the stored result"],
                 {"total": None, "shown": 0, "as_of": as_of, "rows": [], "token_cost": extent.token_cost})
     rows = sorted_rows(rows, extent)
+    total = len(rows) if total is None else max(total, len(rows))
     shown = rows[:n]
     lines = [f"{extent.name} ({extent.order_words()}):"]
     joined = len(getattr(extent, "source", None) or []) > 1
     lines += [_row_line(r, extent.fields, joined) for r in shown] or ["- (no rows)"]
-    if len(rows) > len(shown):
-        lines.append(extent.truncation.replace("{shown}", str(len(shown))).replace("{total}", str(len(rows))))
+    if total > len(shown):
+        lines.append(extent.truncation.replace("{shown}", str(len(shown))).replace("{total}", str(total)))
     if cite:
         lines.append("cite as: " + extent.citation.replace("{analysis}", analysis_id).replace("{scope}", scope)
                      .replace("{as_of}", as_of or "as-of not recorded"))
-    return lines, {"total": len(rows), "shown": len(shown), "as_of": as_of,
+    return lines, {"total": total, "shown": len(shown), "as_of": as_of,
                    "rows": [_row_identity(r, extent.fields) for r in shown], "token_cost": extent.token_cost}
 
 
@@ -353,13 +355,16 @@ def absence_lines(absences: dict[str, dict]) -> tuple[str, str]:
     return "\n".join(full) + "\n", summary + "\n"
 
 
-def section_rungs(analysis_id: str, dec, fact: dict, records: dict | None = None) -> tuple[dict, dict]:
+def section_rungs(analysis_id: str, dec, fact: dict, records: dict | None = None, *,
+                  table: dict | None = None) -> tuple[dict, dict]:
     """The rungs of one declared analysis's section, and what each rung shows.
 
     `fact` is `Fact.as_dict()` for a known fact (`KNOWN_STATES`): the measures, the confidence line and the extents
     (FULL at the declared rows, SUMMARY at `SUMMARY_ROWS`, IDENTIFIERS the measures alone). Returns (rungs, seen)
     where seen is {"state", "as_of", "confidence", "extents": {name: {"FULL": ..., "SUMMARY": ...}}}. `records` is
-    `measure_records` for a resource-scoped library step: where each of its measures is stored.
+    `measure_records` for a resource-scoped library step: where each of its measures is stored. `table` is
+    `table_result.table_rows` for a table result (B1): its extent's rows are those stored rows, in the declared order,
+    and the truncation counts every stored row.
     """
     state = fact.get("state", "")
     head = f"## {analysis_id}"
@@ -384,10 +389,15 @@ def section_rungs(analysis_id: str, dec, fact: dict, records: dict | None = None
 
     full, summary = list(lead), list(lead)
     for extent in dec.extents:
-        rows = extent_rows(value, extent)
-        f_lines, f_seen = _extent_block(extent, rows, extent.rows, as_of, scope, analysis_id, cite=True)
+        total = None
+        if table is not None:
+            rows = table["rows"] if table.get("stored") else None
+            total = table.get("total")
+        else:
+            rows = extent_rows(value, extent)
+        f_lines, f_seen = _extent_block(extent, rows, extent.rows, as_of, scope, analysis_id, cite=True, total=total)
         s_lines, s_seen = _extent_block(extent, rows, min(extent.rows, SUMMARY_ROWS), as_of, scope, analysis_id,
-                                        cite=False)
+                                        cite=False, total=total)
         full += f_lines
         summary += s_lines
         seen["extents"][extent.name] = {"FULL": f_seen, "SUMMARY": s_seen}
