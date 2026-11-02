@@ -1961,10 +1961,51 @@ database_analyses:
     declaration:
       result_kind: table
       table:
-        columns: [column_path, record_ct, distinct_value_ct, null_value_ct, zero_length_ct, min_date, max_date]
-        key_fields: [column_path]
-      result_kind_note: 'A dozen different counts per column (records, values, distinct, nulls, empties, dates): not
-        one measure across items, so not a distribution; a grid of measures.'
+        # B1 (DESIGN-B1-MEMBER-SCOPED-TABLE-RESULT-2026-11-02): one row per column, every column stored in
+        # analysis_table_rows; the Value profile tab reads them through this declaration. The columns are the
+        # native row's own names (database_value_profiles), so the typed read and the native read compare field
+        # for field (evidence/B1-VALUE-PROFILE-EQUIVALENCE).
+        key_fields: [schema, table, column]
+        columns:
+        - schema
+        - table
+        - column
+        - {name: state, type: state, absence: 'not profiled', states: [measured, not_measured, not_permitted, not_applicable]}
+        - {name: reason, type: text, absence: 'no reason recorded'}
+        - {name: general_type, type: text, absence: 'type not recorded'}
+        - {name: ran_as, type: text, absence: 'role not recorded'}
+        - {name: frequency_state, type: text, absence: 'most common values not asked for'}
+        - {name: record_ct, type: integer, absence: 'not counted'}
+        - {name: value_ct, type: integer, absence: 'not counted'}
+        - {name: distinct_value_ct, type: integer, absence: 'not counted'}
+        - {name: null_value_ct, type: integer, absence: 'not counted'}
+        - {name: zero_length_ct, type: integer, absence: 'not counted'}
+        - {name: filled_value_ct, type: integer, absence: 'not counted'}
+        - {name: min_date, type: text, absence: 'no date range'}
+        - {name: max_date, type: text, absence: 'no date range'}
+        - {name: future_date_ct, type: integer, absence: 'not counted'}
+        - {name: before_20yr_date_ct, type: integer, absence: 'not counted'}
+        - {name: before_5yr_date_ct, type: integer, absence: 'not counted'}
+        - {name: date_days_present, type: integer, absence: 'not counted'}
+        - {name: min_length, type: integer, absence: 'no lengths taken'}
+        - {name: max_length, type: integer, absence: 'no lengths taken'}
+        - {name: avg_length, type: number, absence: 'no lengths taken', unit: 'characters'}
+        - {name: zero_value_ct, type: integer, absence: 'not counted'}
+        - {name: min_value, type: number, absence: 'no number range', unit: 'in the column''s own unit'}
+        - {name: max_value, type: number, absence: 'no number range', unit: 'in the column''s own unit'}
+        - {name: avg_value, type: number, absence: 'not taken', unit: 'in the column''s own unit'}
+        - {name: stdev_value, type: number, absence: 'not taken', unit: 'in the column''s own unit'}
+        - {name: fractional_sum, type: text, absence: 'not taken'}
+        - {name: sum_value, type: text, absence: 'not taken'}
+        - {name: boolean_true_ct, type: integer, absence: 'not counted'}
+        max_rows: 1000
+        order: 'by schema, table and column name, as the registry sorts them'
+        truncation: 'the first {shown} of {total} columns; every column is stored and the summary counts them
+          all'
+        summary: [profiled_columns, columns]
+      result_kind_note: 'About thirty facts per column (records, values, distinct, nulls, empties, dates, lengths,
+        ranges) for up to thousands of columns: not one measure across items, so not a distribution; a table of
+        members.'
       measures:
       - name: profiled_columns
         unit: columns
@@ -1986,14 +2027,6 @@ database_analyses:
         not_permitted: 'Not permitted: the credential cannot read this table, so it was not profiled.'
         not_applicable: 'Not applicable: a view or foreign table is not profiled.'
         measured_nothing: 'Measured: the table holds no rows.'
-      extents:
-      - name: columns
-        fields: [column_path, record_ct, distinct_value_ct, null_value_ct, zero_length_ct, min_date, max_date]
-        rows: 30
-        sort: [column_path asc]
-        truncation: '{shown} of {total} columns shown, by schema, table and column'
-        token_cost: 1720
-        citation: '{analysis} · {scope} · as of {as_of}'
       confidence:
         form: measured
       scope: field

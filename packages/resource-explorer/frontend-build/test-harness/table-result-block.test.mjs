@@ -70,3 +70,27 @@ test('nothing stored is said in the declared words, never as an empty table', as
   assert.equal(host.querySelector('[data-table-not-stored]').textContent, 'Not profiled yet.');
   assert.equal(host.querySelector('details[data-table-result]'), null);
 });
+
+test('the Value profile tab draws the table result under its header, closed, with its truncation sentence', async () => {
+  makeDomEnvironment();
+  await loadAppModule();
+  const { summaryHtml } = await import('/static/next/value-profile.js');
+  const host = document.createElement('div');
+  host.innerHTML = summaryHtml({ profiled: true, header: 'Value profile · 1,846 of 1,916 columns measured',
+    filters: { states: [], types: [] }, table_result: { ...PAYLOAD, headline: '' } }, { state: '', type: '', text: '' });
+  const block = host.querySelector('[data-vp-table-result] details[data-table-result]');
+  assert.ok(block, 'the table block is drawn');
+  assert.equal(block.open, false);
+  assert.match(block.querySelector('summary').textContent, /^the first 2 of 1,916 columns/);
+  assert.equal(host.querySelector('[data-table-headline]'), null, 'the header line is the headline; not drawn twice');
+});
+
+test('a profile stored before the conversion draws no table block', async () => {
+  makeDomEnvironment();
+  await loadAppModule();
+  const { summaryHtml } = await import('/static/next/value-profile.js');
+  const host = document.createElement('div');
+  host.innerHTML = summaryHtml({ profiled: true, header: 'h', filters: { states: [], types: [] }, table_result: null },
+    { state: '', type: '', text: '' });
+  assert.equal(host.querySelector('[data-table-result]'), null);
+});

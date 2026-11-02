@@ -666,6 +666,7 @@ def run_value_profile(
         _take_keyed_hashes(connect, rows, catalog_types, positions, bounds, clock, hash_gaps)
     registry.write_detail_rows(PROFILE_TABLE, slug, surveyed_at, rows=rows)
     registry.write_detail_rows(FREQUENT_VALUES_TABLE, slug, surveyed_at, rows=frequent_rows)
+    write_typed_rows(registry, slug, surveyed_at)
     states: dict[str, int] = {}
     for row in rows:
         states[row["state"]] = states.get(row["state"], 0) + 1
@@ -691,6 +692,33 @@ def run_value_profile(
         },
         "annotations": build_annotations(rows, table_outcomes, as_of=as_of_text(surveyed_at)),
     }
+
+
+#: The catalogue id whose declaration is this step's table result (B1).
+ANALYSIS_ID = "value_profile"
+
+
+def typed_row(table, stored: dict) -> dict:
+    """One stored profile row as the declared table's row: the three names as the key, then each declared column by
+    its native name. Nothing is computed or renamed beyond the key, so the typed read and the native read compare field
+    for field."""
+    row = {"schema": stored["schema_name"], "table": stored["table_name"], "column": stored["column_name"]}
+    row.update({n: stored.get(n) for n in table.column_names() if n not in table.key_fields})
+    return row
+
+
+def write_typed_rows(registry, slug: str, surveyed_at: str) -> int:
+    """B1: this run's rows as the declared table result (`analysis_table_rows`), every row, in the order the registry
+    reads the native rows back (so the typed table and the native read agree on order on SQLite and Postgres alike).
+    The native rows stay where they are: the checks, the proposals and the publish reshape read them there
+    (convert-as-touched moves only what the Value profile tab reads). Returns how many rows the run has."""
+    from resource_explorer.declared_context import declarations
+    from resource_explorer.surveyors.result_materializer import write_table_rows
+
+    dec = declarations("database")[ANALYSIS_ID]
+    stored = registry.query_detail_rows(PROFILE_TABLE, slug, surveyed_at=surveyed_at)
+    run = {"resource_kind": "database", "slug": slug, "analysis_id": ANALYSIS_ID, "run_id": surveyed_at}
+    return write_table_rows(registry, run, dec, [typed_row(dec.table, r) for r in stored])
 
 
 def measure_key(schema: str, table: str, column: str) -> str:

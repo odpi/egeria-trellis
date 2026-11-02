@@ -18,7 +18,8 @@
  *  a drag fixes the widths from what was drawn, and only then can the table outgrow its panel and scroll. */
 import { esc } from '/static/next/stages/report-tables.js';
 import { enhanceTable } from '/static/next/colresize.js';
-import { stateEntry } from '/static/next/glyphs.js';
+import { stateEntry, glyphOf } from '/static/next/glyphs.js';
+import { tableResultHtml } from '/static/next/envelope.js';
 
 /** The column table's columns, in order. `nowrap` keeps a column name whole (a name has no spaces to wrap at) and the
  *  short counts on one line; Range, Most common, Flags and Checks wrap at their spaces to fit the panel. */
@@ -149,7 +150,9 @@ export function matchLine(shown, all, filtered) {
 
 export function summaryHtml(d, filters) {
   if (!d.profiled) return `<div data-vp-empty class="text-caveat text-ink-muted">${esc(d.sentence)}</div>`;
-  return `<div data-vp-header class="mb-s1 text-answer text-ink">${esc(d.header)}</div>
+  // B1: the declared table result (every column, the first 1,000 shown) under the header, closed until opened.
+  const table = d.table_result ? `<div data-vp-table-result class="mb-s1">${tableResultHtml(d.table_result, esc, glyphOf)}</div>` : '';
+  return `<div data-vp-header class="mb-s1 text-answer text-ink">${esc(d.header)}</div>${table}
     <div class="mb-s1 flex flex-wrap items-baseline gap-x-s3 gap-y-[2px]">
       ${filterSelect('state', 'State', d.filters.states, filters.state)}
       ${filterSelect('type', 'Type', d.filters.types, filters.type)}
@@ -243,6 +246,7 @@ export function mountValueProfile(slot, slug, deps) {
     summary = d;
     slot.innerHTML = `<div data-vp-head>${summaryHtml(d, filters)}</div><div data-vp-tables></div>`;
     if (!d.profiled) return;
+    slot.querySelectorAll('table[data-table-grid]').forEach((tb) => enhanceTable(tb));
     slot.querySelectorAll('select[data-vp-filter]').forEach((sel) => sel.addEventListener('change', () => {
       filters[sel.dataset.vpFilter] = sel.value;
       paintCards();
