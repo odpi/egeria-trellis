@@ -222,8 +222,8 @@ one way to find analytics, and report specs that name only registered functions.
   (its FormatSets) are an entry point too, in the `pyegeria.report_specs` group (`trellis.report_specs` as an
   alias). The value is a callable returning a FormatSetDict. This package declares
   `trellis = "trellis_analytics.portal:report_specs"`, so installing it puts the tile in the Portal's report registry.
-- **No `PYEGERIA_REPORT_SPEC_MODULES`.** This package needs pyegeria 6.2.18 or later, which reads the entry points.
-  Do not set the variable for trellis: pyegeria warns about it and 6.2.19 removes it.
+- **No `PYEGERIA_REPORT_SPEC_MODULES`.** This package needs pyegeria 6.2.19 or later, which reads the entry points
+  and no longer reads that variable (removed in 6.2.19). Do not set it for trellis.
 
 ## Install and test
 

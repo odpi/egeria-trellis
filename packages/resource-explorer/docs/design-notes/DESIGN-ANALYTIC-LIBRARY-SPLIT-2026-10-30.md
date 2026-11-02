@@ -181,7 +181,7 @@ existing JSON, not a column.
 
 1. Egeria side of §2: is a request parameter the right carrier for `implementationVersion`, or should the step element's
    `versionIdentifier` / an `ImplementedBy` relationship property hold it so Egeria's lineage can show it?
-2. Does the Portal accept an entry-point group as its discovery (replacing `PYEGERIA_REPORT_SPEC_MODULES`), and a
+2. Does the Portal accept an entry-point group as its discovery (replacing `PYEGERIA_REPORT_SPEC_MODULES` (removed in 6.2.19)), and a
    name-only resolver that refuses arbitrary dotted paths?
 3. GovernanceActionService vs EmbeddedProcess for a library step run by Egeria's engine host (lifecycle §16): which does
    the FileSystemSurvey's RE steps declare?

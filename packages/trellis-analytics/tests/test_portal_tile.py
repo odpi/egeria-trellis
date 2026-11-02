@@ -114,13 +114,15 @@ def test_nothing_found_is_its_own_word(tile, make_ods):
     assert data["Published"] == 0 and data["Not yet published"] == 2
 
 
-def test_the_deprecated_variable_still_loads_the_spec_and_warns(monkeypatch):
-    """pyegeria 6.2.18 deprecates PYEGERIA_REPORT_SPEC_MODULES and 6.2.19 removes it; trellis sets it nowhere. Until
-    then, a stray setting naming the same loader as the entry point still loads the spec, without a collision."""
+def test_the_removed_variable_changes_nothing(monkeypatch):
+    """pyegeria 6.2.19 removed PYEGERIA_REPORT_SPEC_MODULES; trellis sets it nowhere. A stray setting naming the same
+    loader as the entry point neither warns nor collides: the spec is registered once, by the entry point."""
+    import warnings
     from pyegeria.view import base_report_formats as brf
     monkeypatch.setenv("PYEGERIA_REPORT_SPEC_MODULES", "trellis_analytics.portal:report_specs")
     try:
-        with pytest.warns(DeprecationWarning, match="PYEGERIA_REPORT_SPEC_MODULES"):
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
             skipped = brf.refresh_report_specs()
         assert [s for s in skipped if "trellis_analytics" in s[0]] == []
         assert LABEL in brf.get_report_registry()

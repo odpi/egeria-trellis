@@ -102,7 +102,7 @@ three hosts** (A11's proof): a script in `examples/`; a papermill notebook
 with `slug` as its parameter; a Portal tile as a `FormatSet` with
 `analytic_function="trellis_analytics.routines.curation_coverage"`, output
 a KPI row plus a `BAR` of published versus not-yet-published, loaded
-through `PYEGERIA_REPORT_SPEC_MODULES`; the tile test runs
+through the `pyegeria.report_specs` entry point (`PYEGERIA_REPORT_SPEC_MODULES` did this before 6.2.19, which removed it); the tile test runs
 `exec_report_spec` on a fake ODS and asserts the counts and the envelope's
 state rendered as the chart's subtitle. The live Portal check is the
 owner's.
