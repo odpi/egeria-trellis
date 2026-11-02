@@ -1,7 +1,7 @@
 # Resource Explorer tutorial — outline for review
 
 **Status:** the outline the prose is written from. Prose is being written one part at a time in
-[`tutorial/`](tutorial/README.md#the-core-tutorial); parts 1 and 2 are written.
+[`tutorial/`](tutorial/README.md#the-core-tutorial); parts 1, 2 and 4 are written.
 **Date:** 2026-11-01.
 **Changes:**
 - 2026-10-29: the outline, with decisions D1–D9.
