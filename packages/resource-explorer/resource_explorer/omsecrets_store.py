@@ -131,21 +131,23 @@ def write_credential(
     *,
     path: str | None = None,
     refresh_time_interval: int = 60,
+    extra_secrets: dict[str, str] | None = None,
 ) -> bool:
     """Write/update one secrets collection entry. No-op (returns False) when
     no local path is configured — this is the expected, common case, never
-    logged as an error. Returns True when the file was actually written."""
+    logged as an error. Returns True when the file was actually written.
+    `extra_secrets` adds named secrets beside userId/clearPassword (an S3
+    session token); empty values are not written."""
     target = path if path is not None else local_path()
     if not target:
         return False
     data = _load(target)
+    secrets = {"userId": user_id, "clearPassword": clear_password}
+    secrets.update({k: v for k, v in (extra_secrets or {}).items() if v})
     data["secretsCollections"][collection_name] = {
         "displayName": collection_name,
         "refreshTimeInterval": refresh_time_interval,
-        "secrets": {
-            "userId": user_id,
-            "clearPassword": clear_password,
-        },
+        "secrets": secrets,
     }
     _save(target, data)
     return True
