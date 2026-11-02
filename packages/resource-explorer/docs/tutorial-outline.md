@@ -1,7 +1,12 @@
 # Resource Explorer tutorial — outline for review
 
 **Status:** outline only, for the project owner's review. No prose and no screenshots are written yet.
-**Date:** 2026-10-29.
+**Date:** 2026-11-01.
+**Changes:**
+- 2026-10-29: the outline, with decisions D1–D9.
+- 2026-10-31: Q2(b) (how added analyses are found) in part 13, and design note D1 in parts 9 and 10.
+- 2026-11-01: one scenario followed through every part and screenshot (D10); Open data left to the Sustainability
+  documents; drift since 10-29; the D1-e coverage sentence as read on screen.
 **Replaces, once written:** the six walks in [`tutorial/`](tutorial/README.md), which stay on `main` until then.
 
 ## How to read this outline
@@ -48,6 +53,28 @@ around Coco Pharmaceuticals, a fictitious company. The prose says this at the ve
     from a screenshot.
   - **Your own Egeria Workspaces** from the egeria-workspaces repository. Resource Explorer (part of Trellis) is
     installed and configured in a separate step today; the Getting Started tutorial covers both.
+
+**The story you follow (D10).** You are **Peter Profile**, an information analyst at Coco Pharmaceuticals. You sign
+in as Peter, so the screen shows your name. The **Teddy Bear Drop Foot** clinical trial is running. Three hospitals,
+Oak Dene, Old Market and Hampton, send weekly measurement files. The files land in the `loading_bay` folder and are
+loaded into the `coco_pharma` database. The trial's data is in good order: when a hospital finds an error, it sends
+that week again and the original is kept (the `.restatement.csv` files you will see). What is new is an auditing
+requirement from the regulator: an outsider must be able to see that the data is in good order, without asking the
+team. Each reported figure traces to the file it came from, and superseded files are visibly retired. **Erin
+Overview**, the information architect, asks you to make the trial's three sources ones the catalog can vouch for
+**before the next weekly drop**: the database, the drop folder, and **OpenLineage**, a lineage project the team is
+evaluating to record how files move from drop to database. OpenLineage is a candidate tool, not a data source, which
+is why it gets its own parts (11 and 12). The people you can turn to: **Tessa Tube** (lead researcher), **Callie
+Quartile** (data scientist, who reuses the data) and **Tanya Tidie** (the trial's data steward, accountable for
+provenance).
+
+- The people are Egeria's documented Coco Pharmaceuticals characters, all fictional. The prose links to Egeria's own
+  pages about them (egeria-project.org, Coco Pharmaceuticals) and does not retell their biographies. The data is the
+  Quickstart's.
+- The story never supplies a result. Where a beat needs a number or a name, the prose writer reads it on the screen,
+  marked here "(read on screen)".
+- *For the writer:* no sentence may suggest the trial team was careless. The restated weeks are evidence of care;
+  the new requirement is about letting an outsider see it (D10, section 5).
 
 **What you can do at the end.**
 
@@ -116,16 +143,40 @@ Every part needs the Quickstart running and needs you signed in, except parts 1 
   part 12 can explain the difference with both in front of you.
 - **Where next last (13).**
 
+**The story, part by part.** Each part answers one question that Erin's request raises (section 1, "The story you
+follow"). Each part opens with its beat in one line, and every screenshot is the screen Peter sees at that beat.
+
+| # | The beat |
+|---|---|
+| 1 | Why not just catalog everything the trial touches? |
+| 2 | Get in, as Peter. |
+| 3 | Register the three: `coco_pharma`, `loading_bay` and OpenLineage. |
+| 4 | How to spend the time before the next drop: the funnel. |
+| 5 | Is `coco_pharma` alive, and what is in it? |
+| 6 | Is it already catalogued? Is it worth a closer look? What does the closer look show? |
+| 7 | What only you know: Tanya Tidie as owner, the sensitivity, the intended use "clinical-trial reporting". |
+| 8 | Erin's follow-up questions, asked in chat. |
+| 9 | Which schemas are worth cataloguing today? |
+| 10 | Publish, and show Erin it is in Egeria. |
+| 11 | OpenLineage beside Marquez and Egeria: which one to choose for lineage? |
+| 12 | Record the whole thing as an investigation Erin can read. |
+| 13 | Next week's drop, and what comes after. |
+
 **The setup.** The Egeria Quickstart environment (its fictitious company is Coco Pharmaceuticals), with Resource
 Explorer connected to it, a Quickstart user id and password, and the public OpenLineage repository on GitHub.
 **Decided (D2, D2a):** the tutorial names its sample, so every reader sees the same screens: the Quickstart's
-`coco_pharma` database (the main example), its `loading_bay` folder, and the OpenLineage repository.
+`coco_pharma` database (the main example), its `loading_bay` folder, and the OpenLineage repository. They are the
+trial's three sources in the story: where the figures are held, where the hospitals' files arrive, and the candidate
+tool that would record the path between them (D10).
 
 ---
 
 ## 3. The parts
 
 ### Part 1 — What Resource Explorer is for
+
+**The beat.** Erin has asked Peter to make the Drop Foot trial's three sources ones the catalog can vouch for. The
+first question is why that is not simply "catalog everything the trial touches".
 
 **Goal.** Know what Resource Explorer does, how it relates to Egeria, and when to use it.
 
@@ -139,7 +190,11 @@ Explorer connected to it, a Quickstart user id and password, and the public Open
    repositories, and file shares that have grown for a decade. None of it is in a catalog. Someone is asked which of
    it matters for a new project (an AI project, a migration, a report), and they have a week. *Say plainly that this is
    one example:* others include checking a source the catalog already holds, judging an open-source project before
-   adopting it, or simply finding out what is on a file share.
+   adopting it, or simply finding out what is on a file share. *Then land on the one this tutorial follows:* at Coco
+   Pharmaceuticals, a new auditing requirement means an outsider must be able to see where each figure of the Drop
+   Foot trial came from. Three sources need to be ones the catalog can vouch for before the next weekly drop (section
+   1, "The story you follow"). This situation has all three of the examples above in it: a database the catalog may
+   already hold, a folder the catalog does not describe yet, and an open-source project to judge before adopting.
 2. **Why a catalog alone does not solve it.** Catalogs are built for a purpose and then the organization moves on: new
    priorities, new platforms, acquisitions. Putting everything into the catalog "just in case" fills it with noise and
    stale entries, and people stop trusting it.
@@ -187,7 +242,8 @@ Explorer connected to it, a Quickstart user id and password, and the public Open
     for and are interested in, so screens and surveys change from release to release, and some things are marked as
     not built yet. Feedback shapes what comes next: say how to give it (the Feedback button on every screen).
 12. **The Quickstart reminder:** this tutorial runs in a demonstration environment, the Egeria Quickstart, set up
-    around a fictitious company, Coco Pharmaceuticals, with made-up people. Change anything (section 1).
+    around a fictitious company, Coco Pharmaceuticals, with made-up people. Change anything (section 1). The story
+    (Peter, Erin and the Drop Foot trial) is the Quickstart's own: its people and its data, so the screens match it.
 
 **What can go wrong.** Nothing on screen. The risks are in the writing. Do not explain Egeria's architecture, the
 survey engines or where surveys run; one sentence and the glossary are enough. Do not use the blog's insider words
@@ -197,10 +253,12 @@ survey engines or where surveys run; one sentence and the glossary are enough. D
 
 ### Part 2 — Sign in and find your way around
 
+**The beat.** Before the next drop, Peter needs to get in. Signed in as Peter, the screen shows Peter's name.
+
 **Goal.** Sign in and know what each area of the screen is for.
 
-**Before you start.** The address of your Resource Explorer, and a Quickstart user id and password (the Getting Started
-tutorial names one).
+**Before you start.** The address of your Resource Explorer, and Peter Profile's Quickstart user id and password
+(the Getting Started tutorial gives both).
 
 **Steps.**
 
@@ -209,18 +267,24 @@ tutorial names one).
      continue.", an "Egeria user id" box, a "Password" box and a "Sign in" button (seen).
    - *Explain "EXPERIMENTAL UI":* it means what it says. Resource Explorer is still experimental and evolving with
      user feedback (part 1, item 11).
-2. Type the user id and password, then click **Sign in**.
-   - *You see:* the main screen. Your user id and **Sign out** are at the top right (seen).
+2. Type Peter's user id and password, then click **Sign in**.
+   - *You see:* the main screen. Peter's user id and **Sign out** are at the top right (seen; Peter's id read on
+     screen).
    - *Explain:* there is no separate Resource Explorer account. Egeria checks your password once and Resource Explorer
      does not keep it. Everything you do from now on is recorded in Egeria under your user id.
 3. Look at the strip across the top: "Investigation · 1 Scouting · 2 Discovery · 3 Assessment · 4 Analysis ·
-   5 Enrichment · 6 Curate · Understanding · Automate · ▦ Work lists" (seen).
+   5 Enrichment · 6 Curate · Understanding · Automate · ▦ Work lists", and at its right end **RFAs** with a count
+   and **Chat** (seen; confirm at screenshot width).
    - *Explain in one line:* 1 to 6 are the stages a data source goes through, left to right (part 4). Work lists and
-     Investigation come in parts 11 and 12. Understanding and Automate are for the Advanced tutorial.
-4. Look at the left sidebar: **Repos**, **DBs** and **FS** (repositories, databases, file systems) and a filter box
-   (seen). Point out that the **INVESTIGATION** picker and **Work lists** can be ignored until parts 11 and 12.
+     Investigation come in parts 11 and 12. Understanding and Automate are for the Advanced tutorial. **RFAs** comes in
+     part 7. **Chat** opens and closes the chat rail (step 5); it reads "Chat ×" while the rail is open (code).
+4. Look at the left sidebar: **Repos**, **DBs**, **FS** and **Open data** (repositories, databases, file systems,
+   open data portals) and a filter box (seen). Point out that the **INVESTIGATION** picker and **Work lists** can be
+   ignored until parts 11 and 12.
+   - *Say, in one sentence:* Open data is covered by the Sustainability tutorials (not written yet), not here.
 5. Look at the right-hand rail: "ASK scoped to <data source>", a box, **Ask** and **what would answer this?** (seen).
-   Part 8 uses it.
+   Part 8 uses it. The rail is where chat lives; **Chat** in the strip shows or hides it (seen; confirm at screenshot
+   width).
 6. Look at the header: **Activity** (a log of everything that has run), your user id, **Sign out** (seen).
 7. Click **Activity**, read the latest entries, and close it.
    - *You see:* "the most recent 300 entries, latest first", a filter box and **all / ok / error / running** (seen,
@@ -236,11 +300,15 @@ tutorial names one).
 - On the hosted demo, the data is reset every day. If you stop and come back the next day, the data sources you added
   are gone. Each part says what it needs, so you can add them again; or do parts 3 to 10 in one sitting.
 - The header can read "not signed in" while you are signed in, when no investigation is chosen (gap G9). Until
-  part 12 no investigation is chosen, so the reader will see this. Tell them to ignore it until the fix lands.
+  part 12 no investigation is chosen, so the reader will see this. Tell them to ignore it until the fix lands. The
+  prose writer re-checks this with no investigation chosen before writing it in.
 
 ---
 
 ### Part 3 — Add data sources, and find them again
+
+**The beat.** Erin named three sources. Before Resource Explorer can look at any of them, Peter registers each one:
+`coco_pharma`, `loading_bay` and OpenLineage.
 
 **Goal.** Register a database, a file system and a repository, and find each one in the sidebar.
 
@@ -284,6 +352,9 @@ Quickstart folder's path (`loading_bay`). The OpenLineage repository's GitHub ad
    - *You see:* beside the path, "◔ checking", then "✓ readable here", or a warning (code).
 3. Leave **Canonical mount (blank = the mount)** empty (code). See gap G5.
 4. Click **Register**, then find the file system in the **FS** list.
+   - *Say, in one line:* inside `loading_bay` you will also see a `Sustainability Files` folder and NAICS reference
+     data. Those belong to Coco Pharmaceuticals' Sustainability project, which has its own tutorials. This tutorial
+     reads the `sample-data` hospital folders, where the Drop Foot trial's weekly files arrive.
 
 *What can go wrong (file system).*
 
@@ -308,10 +379,20 @@ Quickstart folder's path (`loading_bay`). The OpenLineage repository's GitHub ad
    belongs to part 12.)
 3. The **PERSPECTIVE** chips (Data Owner, Steward and others) narrow the questions to who is asking (seen). Leave them
    all off for this tutorial.
+4. With **FS** chosen, click **🔎 Find by passages**: it finds file systems by what their narrative files say (seen).
+   Type a question, for example about the Drop Foot trial, and read the file systems that come back, each with the
+   passage that answered and the file it came from (code). (Owner to confirm: one step here, or a pointer to the
+   Advanced tutorial.)
+   - *Explain:* a passage is what a file says, not something measured, so the screen marks it as a proposal (code).
+     A file system whose narrative files have not been read yet is counted as not read, not as "no match" (code);
+     part 5 reads them (**Read narrative files**). Until then, `loading_bay` reads as not read (read on screen).
 
 ---
 
 ### Part 4 — The stages: a funnel from cheap to costly
+
+**The beat.** The next weekly drop sets the deadline, so Peter needs to spend the time where it counts: the
+funnel.
 
 **Goal.** Understand how Resource Explorer is laid out: stages that ask cheap, basic questions first and costlier
 ones later, and inside each stage, questions and the surveys that answer them.
@@ -374,7 +455,7 @@ ones later, and inside each stage, questions and the surveys that answer them.
 
 | Stage | Repository | Database | File system |
 |---|---|---|---|
-| Scouting | Scouting Survey (9 steps) | Database Scouting Scan (3 steps) | Folder Survey (seen; how its seven buttons relate is gap G4) |
+| Scouting | Scouting Survey (9 steps) | Database Scouting Scan (3 steps) | Folder survey card: **Survey** is the overview (seen; G4) |
 | Discovery | Repo Discovery Survey (9 steps) | **none found** (gap G23) | to confirm |
 | Assessment | Assessment Survey (11 steps) | Database Assessment Survey (1 step) | to confirm |
 | Analysis | Analysis Survey | Database Analysis Survey (8 steps); also Database Quality Survey | to confirm |
@@ -385,6 +466,8 @@ it waits for (seen, gap G10). Wait until "still loading" goes.
 ---
 
 ### Part 5 — Scouting: run the overview survey and read the answers
+
+**The beat.** Erin's first question about the database: is `coco_pharma` alive, and what is in it?
 
 **Goal.** Run the Scouting overview survey on your database and read what it found.
 
@@ -419,13 +502,30 @@ it waits for (seen, gap G10). Wait until "still loading" goes.
   could be queried" (seen, on a repository). Read the words, not only the mark (gap G13).
 
 *Repository and file system (short notes).* Run the repository's Scouting Survey. Its header then shows numbers such as
-stars, forks, contributors and size. "? not read" means a step has not run, not zero (seen). For the file system, run
-its Folder Survey. The page then shows whether Egeria can read the folder ("✓ Egeria can read <path>"), counts, the
-deepest folders, and files that describe their folder (seen).
+stars, forks, contributors and size. "? not read" means a step has not run, not zero (seen). For the file system
+(`loading_bay`, where the hospitals' weekly files arrive), the "Folder survey" card does the work:
+
+- **Press Survey.** It is the overview. The card has up to eleven presses (Check again, Survey, Publish this walk to
+  Egeria, Measure beside Egeria's survey, Publish these measures to Egeria, Profile data files, Read Egeria's reports,
+  Publish these profiles to Egeria, Derive, Read narrative files, Match data classes); each appears only when it has
+  something to do (code). The tutorial presses Survey and names the rest in one sentence.
+- **Hover a press to read what it does** before pressing it: each says what it reads, what it stores and whether it
+  publishes, for example "Walks every file; stores the walk here. Publishing is a separate press." (code).
+- **Read the summary lines.** The card shows whether Egeria can read the folder ("✓ Egeria can read <path>"), counts,
+  the deepest folders, and files that describe their folder (seen). Its long sections (Files, Walk measures, Data-file
+  profiles, Personal or sensitive data, Derived from the walk) start closed, each with a one-line summary beside its
+  heading, so the card answers before you open anything (code).
+- **Open a section for detail.** Open Files and look for a `.restatement.csv`: a week a hospital sent again, kept beside
+  the original (read on screen). The card remembers which sections you opened (code).
+- *Say, in one line, as in part 3b:* the `Sustainability Files` folder and the NAICS reference data in the walk belong
+  to the Sustainability project and its own tutorials; this tutorial reads the `sample-data` hospital folders.
 
 ---
 
 ### Part 6 — Discovery, Assessment and Analysis: go further down the funnel
+
+**The beat.** Erin asked whether `coco_pharma` is already in the catalog. If it is worth going deeper, Peter needs to
+know what the deeper look shows.
 
 **Goal.** Run the next stages' overview surveys where they are worth it, and tell a real answer from a gap.
 
@@ -457,6 +557,9 @@ needs to read rows asks for a broader account (part 5).
 
 ### Part 7 — Enrichment: add what only you know
 
+**The beat.** Some of what the auditors will ask, no survey can measure: who answers for the data, how sensitive it
+is, and what it is used for. Peter records what Tanya Tidie, the trial's data steward, says.
+
 **Goal.** Record the owner, the sensitivity and the intended use of your database.
 
 **Before you start.** Part 3.
@@ -466,7 +569,10 @@ needs to read rows asks for a broader account (part 5).
 1. Click **5 Enrichment**, then the **Context** tab.
    - *You see:* "Everything a person has supplied about this resource — each row signed and dated, and each saying what
      it feeds. Nothing here is written to the Egeria until you publish it (Curate)." (seen).
-2. Under "What we judge", set **Sensitivity** to "internal", **Owner** to a name, and **Intended use** to "Explore".
+2. Under "What we judge", set **Sensitivity** to "confidential", **Owner** to "Tanya Tidie", and **Intended use** to
+   "clinical-trial reporting", typed in its "or in your own words" box (code).
+   - *Explain:* these are what Tanya, as the trial's data steward, told Peter. No survey could have measured them.
+     Intended use also offers a list of purposes to pick from; the tutorial types its own words instead (code).
    - *You see:* each field signed with your user id and the date, and a line saying what it feeds, for example
      "feeds → Curate (publish record)" (seen).
 3. Under "What we record", set **Environment** to "dev".
@@ -484,6 +590,9 @@ needs to read rows asks for a broader account (part 5).
 ---
 
 ### Part 8 — Ask in chat, and check the sources
+
+**The beat.** Erin has follow-up questions that no survey planned for. Peter asks them in chat, and checks what each
+answer rests on.
 
 **Goal.** Ask a question in plain words and check which stored results the answer came from.
 
@@ -523,6 +632,9 @@ survey would.
 
 ### Part 9 — Curate: decide what goes to the catalog
 
+**The beat.** Before the next drop, Peter needs to decide which of `coco_pharma`'s schemas are worth cataloguing
+today, and which can wait.
+
 **Goal.** Choose what Resource Explorer will send to Egeria for your database, then see how the Curate page differs
 for a repository and a file system.
 
@@ -541,7 +653,8 @@ surveying again. Curate runs no checks; it asks you for a decision.
      (ratings and notes), and one Publish band at the foot.
    - *You see:* tabs including "Describe and publish" and "Contents" (seen on a database; gap G14).
 2. On **Contents**, read "What gets published" and the three chips: "published by RE", "attached N schemas" and
-   "cataloged by Egeria N schemas", each with ✓ or "◌ not checked since <time>" (seen).
+   "cataloged by Egeria N schemas", each with ✓ or "◌ not checked since <MM-DD HH:MM>" (seen; the stamp form
+   seen on Curate › By analysis; confirm on the Contents chips).
    - *Explain:* a chip says what Resource Explorer saw the last time it asked Egeria, not what Egeria holds right now.
    - *Explain (design note D1-b, not decision D1 below):* for a database whose schemas a content pack had already
      catalogued in Egeria, "attached" and "cataloged by Egeria" count different schemas until **Link the pack's N
@@ -559,18 +672,26 @@ surveying again. Curate runs no checks; it asks you for a decision.
 7. Open your repository's Curate page, then your file system's.
    - *Repository:* three tabs: "Describe and publish", "Contents" (files and folders, Include or Leave out) and
      "Structure" (its parts and dependencies) (seen, user guide).
-   - *File system:* tags, group, ratings and notes, and a Publish that "attaches the root folder only" (seen).
+   - *File system:* tags, group, ratings and notes, and a Publish that "attaches the root folder only" (seen). It
+     also has a table headed "Publish · declared measures": one row per measure the folder survey offers to publish,
+     each with **Publish** or **Keep in RE**, and a count line, for example "0 chosen to publish" (seen). There is
+     no press on the table itself: the rows chosen go to Egeria with the folder survey's own Publish (part 5), and
+     each is read back (code). Explain "declared measures" in plain words, as the glossary does. The old sentence
+     "Nothing to review for file systems yet." still shows beside it (seen; gap G8).
 
 **What can go wrong.**
 
 - "not permitted · <reason>": Egeria's security does not let you change this element (seen, user guide).
 - The sentence above the chips and a chip disagree about a count. Known defect (gap G11).
-- *File system:* Curate reads "Nothing to review for file systems yet." (seen), although the survey page says "a
-  proposal · confirm it on Curate". Gap G8.
+- *File system:* Curate still reads "Nothing to review for file systems yet." (seen), beside the measures table,
+  although the survey page says "a proposal · confirm it on Curate". Gap G8.
 
 ---
 
 ### Part 10 — Publish to Egeria, and check that it arrived
+
+**The beat.** Erin needs to see the result in the catalog itself, not in Resource Explorer. Peter publishes and checks
+that Egeria holds it.
 
 **Goal.** Send your choices to Egeria and confirm that Egeria holds them.
 
@@ -617,6 +738,9 @@ surveying again. Curate runs no checks; it asks you for a decision.
 
 ### Part 11 — Work lists: compare several data sources
 
+**The beat.** Erin asked whether OpenLineage is the right lineage project for recording how files move from drop to
+database. Peter sets it beside Marquez and Egeria to compare.
+
 **Goal.** Put several data sources of one kind side by side against one stage's questions, and narrow them to the
 ones worth more work.
 
@@ -651,6 +775,9 @@ something.
 ---
 
 ### Part 12 — Investigations, and how they relate to work lists
+
+**The beat.** Erin wants to read what was looked at, what was chosen and why, in one place. Peter records the work as
+an investigation.
 
 **Goal.** Start an investigation from your shortlist, make it current, and know when to use an investigation and when
 to use a work list.
@@ -712,6 +839,8 @@ investigation: the sidebar shows "WORK LISTS FOR <NAME>" and "OTHER WORK LISTS" 
 
 ### Part 13 — Where to go next
 
+**The beat.** Next week's drop arrives. Peter knows what to do with it, and where to read further.
+
 **Goal.** Know what to read or do after this tutorial.
 
 **Content (no steps).**
@@ -727,7 +856,15 @@ investigation: the sidebar shows "WORK LISTS FOR <NAME>" and "OTHER WORK LISTS" 
 - The [user guide](user-guide.md) for every screen in detail.
 - The [admin guide](admin-guide.md) for running Resource Explorer.
 - The command line (user guide, section 9).
-- Egeria's own documentation for the catalog itself.
+- Egeria's own documentation for the catalog itself, and its Coco Pharmaceuticals pages for the people and the Drop
+  Foot trial.
+- **Next week's drop** (the story's last beat): when the hospitals' next files land in `loading_bay`, Peter goes back
+  to the parts needed, not to the start: the Folder survey card's **Survey** again (part 5), a look at what changed,
+  and Publish (part 10). Setting that up to run on a schedule is Automate, in the Advanced tutorial.
+- **The Sustainability documents** (planned, not written yet): Coco Pharmaceuticals' Sustainability project, with
+  open data portals (the **Open data** sidebar kind and Admin › Open data), the sites' operational data in files and
+  tables, and the analytics over them. The `Sustainability Files` folder and the NAICS reference data seen in
+  `loading_bay` belong there.
 
 ---
 
@@ -767,6 +904,7 @@ Plain definitions, one or two sentences each. The tutorial links each term to th
 | **Include / Leave out** | The choice, per schema, table, file or folder, of whether it is published. |
 | **Tag** | A public label in Egeria, such as "sales". Everyone's tag of the same name is one tag. |
 | **Group** | A set of data sources that belong together, such as one product's. In Egeria a group becomes a collection. |
+| **Declared measures** | The screen's heading on Curate's "Publish · declared measures" table: the measurements the survey offers to publish. You choose, row by row, which ones go to Egeria. The tutorial says "the measures the survey offers to publish" and explains the screen word once. |
 | **Rating and note** | Your judgment of a data source. Published under your user id; one rating per person. |
 | **Publish** | Send your choices to Egeria. Only a person's press publishes, and only that person's own work. |
 | **Confirmed (read back)** | Resource Explorer read the published item back from Egeria and found it there. |
@@ -800,14 +938,16 @@ DEFINITIONS" is explained as "the surveys you can run").
 - Commit hashes, PR numbers (#899 …), branch names, run ids, activity ids (`3ba02177` …), element GUIDs.
 - "Proposal" as jargon. Say "a suggestion you can accept or reject", unless the screen word must be explained (below).
 - Names of the marks ("half-moon", "dotted circle"). Show the mark and say what it means.
-- "Declared measures", "declaration", "library step", "StepManifest", "entry point", "result kind", "absence
-  sentence", "chat extent", "confidence form".
+- "Declared measures" as the tutorial's own words (it is a screen heading: explain it, table below), "declaration",
+  "library step", "StepManifest", "entry point", "result kind", "absence sentence", "chat extent", "confidence form".
 - Analysis ids as names: `fs_permissions`, `postgres_column_profile`, `db_catalogued`. Use what the screen calls them,
   or a plain description.
 - Question ids (Q-0108) except in "Where to go next".
 - "Classic", "/next", "the reset", "the throwaway", "8813" as a fact about the reader's setup.
 - First names of anyone, other than the Quickstart's made-up users. "Owner decision" callouts belong in project
   records, not the tutorial.
+- Any wording that the trial team was careless. The restated weeks are evidence of care; the new auditing
+  requirement is about letting an outsider see it (D10).
 - "The architect read…", "this walk did not press…". The tutorial is written for doing, not as a record of what a
   writer could check.
 
@@ -825,6 +965,7 @@ DEFINITIONS" is explained as "the surveys you can run").
 | "no reader yet" (◌) | Questions | There is no way to answer this automatically yet. |
 | "answered automatically" | Questions key | Answered from what is already recorded, with no new check run. (Prose writer to confirm meaning.) |
 | "a proposal · confirm it on Curate" | file-system survey | A suggestion found in the files; a person decides if it is right. |
+| "Publish · declared measures" | Curate, file system | The measurements the survey offers to publish; you choose which. (The owner may rename the screen word later.) |
 | "derived" | file-system survey | Worked out from the folder walk Resource Explorer already made. |
 | "unbound by reset" | Investigations | Its link to Egeria was lost when Egeria was set up again; it can be linked again. |
 | "zones: none · everyone visible" | Curate band | Anyone who can use this Egeria can see what you publish. |
@@ -839,54 +980,57 @@ DEFINITIONS" is explained as "the surveys you can run").
 
 ## 6. Screenshots planned
 
-None taken yet. Every screenshot is taken on the Egeria Quickstart, signed in as a Quickstart user, at 1920 × 1080, so the same image serves the written tutorial and the videos (section 9). Existing images
+None taken yet. Every screenshot is taken on the Egeria Quickstart, signed in as Peter Profile, at 1920 × 1080, so the same image serves the written tutorial and the videos (section 9). Existing images
 from the merged walks are listed where one may be reused, after a check that the screen has not changed.
 
-| # | Part · step | Screen | Shows | Reuse |
-|---|---|---|---|---|
-| S1 | 1 | Diagram, not a screenshot | Data source → survey → answers → your knowledge → curate → publish → Egeria | new |
-| S2 | 2 · 1 | Sign-in panel | The panel, empty boxes | `01-sign-in-panel.webp` if unchanged |
-| S3 | 2 · 3–6 | Whole screen, labelled | Strip, sidebar, main panel, chat rail, header, each numbered | new (labelled version of `01-stage-strip-and-sidebar.webp`) |
-| S4 | 2 · 7 | Activity log | The latest entries and the filter buttons | new |
-| S5 | 3a · 1 | Find databases dialog | The three tabs and **Register one database…** | new |
-| S6 | 3a · 3–4 | Register one database, filled | Fields filled, test passed, Register enabled | new |
-| S7 | 3a · 5 | After Register | "It is in the database list now. Nothing was sent to Egeria." | new |
-| S8 | 3a · 6 | The new database page | "never surveyed" | new |
-| S9 | 3b · 2 | Add a file system | Path field with "✓ readable here" | new |
-| S10 | 3c · 3 | Find repos, From a list | One row ticked, Import Selected | new |
-| S11 | 3d | Sidebar filters | Filter box and chips | `01-repos-filter-chips.webp` if unchanged |
-| S12 | 4 · 1 | Diagram, the funnel | Six stages, cost rising left to right, many sources narrowing to few | new |
-| S13 | 4 · 2 | A stage's tabs, labelled | Questions, Survey & analyses, By analysis, Disposition | new |
-| S14 | 4 · steps 2 | Survey & analyses, labelled | The overview survey and a narrower one marked | new (`02-survey-and-analyses-docling.webp` as a guide) |
-| S15 | 4 · steps 3 | The marks | The key, or a drawn table | new |
-| S16 | 5 · 1 | Survey & analyses on a never-surveyed database | The overview survey's run button | new |
-| S17 | 5 · 2 | Running | "◔ running" and the notice with View | new |
-| S18 | 5 · 3–4 | Questions after the survey, one row labelled | Answer, source line, buttons | new |
-| S19 | 5 · note | Repository header tiles | Tiles incl. "? not read" | `02-scouting-questions-docling.webp` if unchanged |
-| S20 | 5 · note | File-system survey | Reach line and counts | `04-folder-survey.webp` if unchanged |
-| S21 | 6 · 1 | Discovery | "Nothing is recorded for this — a real absence…" | new |
-| S22 | 6 · 4 | Analysis, a ○ row | "Nothing has been measured for this yet." | new on the database |
-| S23 | 6 · 5 | One analysis run on its own | The row after its run | new |
-| S24 | 7 · 1–2 | Context tab | Sensitivity, Owner, Intended use set, signed and dated | new |
-| S25 | 7 · 5 | RFAs drawer | One open item | new |
-| S26 | 8 · 2–3 | Chat answer | The answer and the "From N stored results" line | new |
-| S27 | 8 · 5 | what would answer this? | Analyses with and without results, **Run** | new |
-| S28 | 9 · 2 | Contents, the chips | Three chips | new on the reader's database |
-| S29 | 9 · 3 | Include / Leave out | One of each | Keep both: the explainer `tutorial-media/curate-decisions.png` and this capture of the real screen (owner, 2026-10-29). Start from the blog's `curate-decision-table-v2.png`; replace it with a newer capture when one is taken. |
-| S30 | 9 · 4–6 | Findable and What people say | Tag, group, rating, "saved · will publish" | new |
-| S31 | 9 · 7 | Repository Curate page | Its three tabs, labelled with the shared parts | new |
-| S32 | 9 · 7 | File-system Curate page | Tags, group, "attaches the root folder only" | `05-curate-file-system.webp` if unchanged |
-| S33 | 10 · 2 | Publish band before | "next publish" and **Publish** | new |
-| S34 | 10 · 4 | Publish band after | "✓ in Egeria · … · confirmed" | new |
-| S35 | 10 · 5 | Egeria reports | Report rows | `03-curate-publish-to-egeria.webp` if unchanged |
-| S36 | 10 · 7 | Egeria Explorer | The database with the tag and survey report | new |
-| S37 | 11 · 2 | Select several | Three ticked, save as work list… | new |
-| S38 | 11 · 4 | A work list | Rows × questions | new |
-| S39 | 11 · 7 | The shortlist | After promote | new |
-| S40 | 12 · 1 | Start an investigation from this list | The dialog, filled in, Ad-hoc chosen | new |
-| S41 | 12 · 5 | The investigation page | "Current investigation", SCOPE · 3 | new |
-| S42 | 12 · 6 | Questions ordered by purpose | "ordered by purpose · …" and "NOT AMONG …" | new |
-| S43 | 12 · 9 | Investigations table | Every investigation | `01-investigation-stage.webp` if unchanged |
+Every screenshot is a screen Peter sees at one beat of the story (section 2, D10), so the same names, counts and
+stamps recur from part to part. Take them in order, in one Quickstart, without resetting between parts.
+
+| # | Part · step | Story beat | Screen | Shows | Reuse |
+|---|---|---|---|---|---|
+| S1 | 1 | why not catalog everything the trial touches | Diagram, not a screenshot | Data source → survey → answers → your knowledge → curate → publish → Egeria | new |
+| S2 | 2 · 1 | Peter gets in | Sign-in panel | The panel, empty boxes | `01-sign-in-panel.webp` if unchanged |
+| S3 | 2 · 3–6 | Peter's screen, Peter's name at top right | Whole screen, labelled | Strip, sidebar, main panel, chat rail, header, each numbered | new (labelled version of `01-stage-strip-and-sidebar.webp`) |
+| S4 | 2 · 7 | what has run so far | Activity log | The latest entries and the filter buttons | new |
+| S5 | 3a · 1 | registering `coco_pharma` | Find databases dialog | The three tabs and **Register one database…** | new |
+| S6 | 3a · 3–4 | `coco_pharma`, filled in | Register one database, filled | Fields filled, test passed, Register enabled | new |
+| S7 | 3a · 5 | `coco_pharma` registered, nothing in Egeria | After Register | "It is in the database list now. Nothing was sent to Egeria." | new |
+| S8 | 3a · 6 | `coco_pharma`, never surveyed | The new database page | "never surveyed" | new |
+| S9 | 3b · 2 | registering `loading_bay` | Add a file system | Path field with "✓ readable here" | new |
+| S10 | 3c · 3 | importing OpenLineage | Find repos, From a list | One row ticked, Import Selected | new |
+| S11 | 3d | the three, found again | Sidebar filters | Filter box and chips | `01-repos-filter-chips.webp` if unchanged |
+| S12 | 4 · 1 | the time before the next drop | Diagram, the funnel | Six stages, cost rising left to right, many sources narrowing to few | new |
+| S13 | 4 · 2 | a stage on `coco_pharma` | A stage's tabs, labelled | Questions, Survey & analyses, By analysis, Disposition | new |
+| S14 | 4 · steps 2 | the overview survey for `coco_pharma` | Survey & analyses, labelled | The overview survey and a narrower one marked | new (`02-survey-and-analyses-docling.webp` as a guide) |
+| S15 | 4 · steps 3 | how to read an answer | The marks | The key, or a drawn table | new |
+| S16 | 5 · 1 | is `coco_pharma` alive? | Survey & analyses on a never-surveyed database | The overview survey's run button | new |
+| S17 | 5 · 2 | `coco_pharma` being surveyed | Running | "◔ running" and the notice with View | new |
+| S18 | 5 · 3–4 | what is in `coco_pharma` (read on screen) | Questions after the survey, one row labelled | Answer, source line, buttons | new |
+| S19 | 5 · note | OpenLineage, first look | Repository header tiles | Tiles incl. "? not read" | `02-scouting-questions-docling.webp` if unchanged |
+| S20 | 5 · note | `loading_bay`: the weekly files, summary lines, sections closed | File-system survey | Reach line, the presses, the closed sections with their summary lines | new: the card has changed since `04-folder-survey.webp` |
+| S21 | 6 · 1 | is `coco_pharma` already catalogued? | Discovery | "Nothing is recorded for this — a real absence…" | new |
+| S22 | 6 · 4 | what has not been looked at yet | Analysis, a ○ row | "Nothing has been measured for this yet." | new on the database |
+| S23 | 6 · 5 | the deeper look, one analysis at a time | One analysis run on its own | The row after its run | new |
+| S24 | 7 · 1–2 | Tanya as owner, "clinical-trial reporting" | Context tab | Sensitivity, Owner, Intended use set, signed and dated | new |
+| S25 | 7 · 5 | what a person must settle | RFAs drawer | One open item | new |
+| S26 | 8 · 2–3 | Erin's follow-up question, and what the answer rests on | Chat answer | The answer and the "From N stored results" line | new |
+| S27 | 8 · 5 | which survey would answer Erin | what would answer this? | Analyses with and without results, **Run** | new |
+| S28 | 9 · 2 | what Egeria already holds of `coco_pharma` | Contents, the chips | Three chips | new on the reader's database |
+| S29 | 9 · 3 | which schemas today | Include / Leave out | One of each | Keep both: the explainer `tutorial-media/curate-decisions.png` and this capture of the real screen (owner, 2026-10-29). Start from the blog's `curate-decision-table-v2.png`; replace it with a newer capture when one is taken. |
+| S30 | 9 · 4–6 | making `coco_pharma` findable | Findable and What people say | Tag, group, rating, "saved · will publish" | new |
+| S31 | 9 · 7 | OpenLineage's Curate page | Repository Curate page | Its three tabs, labelled with the shared parts | new |
+| S32 | 9 · 7 | `loading_bay`'s Curate page and its measures table | File-system Curate page | Tags, group, "attaches the root folder only", the "Publish · declared measures" table | new: the table is not in `05-curate-file-system.webp` |
+| S33 | 10 · 2 | what the press will send | Publish band before | "next publish" and **Publish** | new |
+| S34 | 10 · 4 | `coco_pharma` confirmed in Egeria | Publish band after | "✓ in Egeria · … · confirmed" | new |
+| S35 | 10 · 5 | the survey report Erin can open | Egeria reports | Report rows | `03-curate-publish-to-egeria.webp` if unchanged |
+| S36 | 10 · 7 | showing Erin, in Egeria | Egeria Explorer | The database with the tag and survey report | new |
+| S37 | 11 · 2 | OpenLineage, Marquez, Egeria | Select several | Three ticked, save as work list… | new |
+| S38 | 11 · 4 | the three, side by side | A work list | Rows × questions | new |
+| S39 | 11 · 7 | the lineage shortlist | The shortlist | After promote | new |
+| S40 | 12 · 1 | recording the work for Erin | Start an investigation from this list | The dialog, filled in, Ad-hoc chosen | new |
+| S41 | 12 · 5 | the Drop Foot investigation, current | The investigation page | "Current investigation", SCOPE · 3 | new |
+| S42 | 12 · 6 | the questions in the investigation's order | Questions ordered by purpose | "ordered by purpose · …" and "NOT AMONG …" | new |
+| S43 | 12 · 9 | every investigation, the Drop Foot one among them | Investigations table | Every investigation | `01-investigation-stage.webp` if unchanged |
 
 **Diagrams and images to reuse from the blog series** (pdr-associates.com, by the owner's leave, 2026-10-29). Most
 carry words the tutorial avoids, so each needs a check, and some a redrawn label, before use.
@@ -914,15 +1058,15 @@ in this outline; each is named where it bites.
 
 | # | Gap or defect | Where it bites | What would fix it, or what the writer needs |
 |---|---|---|---|
-| G1 | No named starter setup. The merged walks used whatever was loaded on the developer's server. | all parts | **Settled by D2 and D6:** the Egeria Quickstart, set up by Getting Started. Named (D2a): `coco_pharma`, `loading_bay`, the OpenLineage repository. |
+| G1 | No named starter setup. The merged walks used whatever was loaded on the developer's server. | all parts | **Settled by D2 and D6:** the Egeria Quickstart, set up by Getting Started. Named (D2a): `coco_pharma`, `loading_bay`, the OpenLineage repository. Note: `loading_bay` holds two storylines' files, the Drop Foot trial's (`sample-data`, this tutorial) and the Sustainability project's (`Sustainability Files`, NAICS reference data; its own tutorials). Parts 3b and 5 say so in one line. |
 | G2 | The merged walks pressed nothing that writes, so every step that runs, saves or publishes was described, not shown. That is the main reason they "skip steps". | 3, 5–12 | **Settled by D6:** the Quickstart is throwaway, so the prose writer presses for real. |
 | G3 | "Where it lives" defaults to "Create in Egeria". "Ad-hoc" (dialog) and "🏠 local" (table) are two words for one thing. | 12 | Choose one word. The tutorial tells the reader to change the default (D3a); changing the app's default is still worth considering. |
-| G4 | A file system's survey page offers seven start buttons (Survey, Measure beside Egeria's survey, Publish these measures to Egeria, Profile data files, Derive, Read narrative files, Match data classes) and no overview survey is marked. A repository's and a database's overview survey is not marked either. | 4, 5 | Mark each stage's overview survey on the screen, and give the file-system buttons an order. |
+| G4 | A file system's "Folder survey" card offers up to eleven presses (Check again, Survey, Publish this walk to Egeria, Measure beside Egeria's survey, Publish these measures to Egeria, Profile data files, Read Egeria's reports, Publish these profiles to Egeria, Derive, Read narrative files, Match data classes). A repository's and a database's overview survey is not marked either. | 4, 5 | **For the file system, settled by hover help (trellis #967, 2026-11-01):** each press says on hover what it reads, stores and publishes, and the overview is **Survey**; part 5 says so. Still open for repositories and databases: mark each stage's overview survey on the screen. |
 | G5 | File-system registration says "Mount (local path)" and "Canonical mount (blank = the mount)". The user guide says "host and container path". The survey then reports the path Egeria reads ("/deployments/loading-bay"). A reader cannot tell which path to type. | 3b | One explanation of the paths, on the form. |
 | G6 | "Slug *" is a required field on both register forms. Dashes are silently turned into underscores. | 3a, 3b | A plain label ("Short name"), or a hint under the box. |
 | G7 | "Egeria connection (optional)" on the database form asks for "Egeria-visible host", "Egeria platform URL" and "View server". Most readers cannot know these. | 3a | Hide it from non-admins, or say when it is needed. |
-| G8 | File-system survey says "a proposal · confirm it on Curate"; Curate says "Nothing to review for file systems yet." A dead end. | 5, 9 | Build the review, or remove the pointer. |
-| G9 | Header can read "not signed in" while signed in (no investigation chosen). With investigations moved to part 12, the reader sees this for most of the tutorial. | 2–11 | Already queued as a defect. More urgent now. |
+| G8 | File-system survey says "a proposal · confirm it on Curate"; Curate says "Nothing to review for file systems yet." A dead end. Curate now also shows the "Publish · declared measures" table, but that is for measures, not for the survey's proposals, so this gap is about the sentence only. | 5, 9 | Build the review, or remove the pointer. |
+| G9 | Header can read "not signed in" while signed in (no investigation chosen). With investigations moved to part 12, the reader sees this for most of the tutorial. | 2–11 | Already queued as a defect. More urgent now. Re-check with no investigation chosen: on 2026-11-01 it could not be re-checked, because an investigation was chosen in the pane. |
 | G10 | Slow panes say "still loading" for 9–15 seconds without saying what they wait for (Discovery, Analysis, Enrichment). | 4, 6, 7 | Already queued as a defect. |
 | G11 | A published database's header reads "never surveyed · not published to Egeria" while Curate says it is in Egeria; the sentence above the chips and a chip can disagree. | 9 | Already queued as defects. |
 | G12 | "unbound by reset" is explained only by reference to an internal event. | 12 | A word that describes the state, not its history. |
@@ -947,7 +1091,7 @@ in this outline; each is named where it bites.
 |---|---|---|
 | D1 | The main example data source | **Decided (project owner, 2026-10-29):** a database. Set the expectation that each kind's Curate page differs but the structure is the same, and show all three Curate pages (part 9, step 7). |
 | D2 | The named sample setup | **Decided (project owner, 2026-10-29):** yes, the Egeria Quickstart, set up by the Getting Started tutorial. |
-| D2a | Which database, folder and repository | **Decided (project owner, 2026-10-29):** the `coco_pharma` database, the `loading_bay` folder and the OpenLineage repository. |
+| D2a | Which database, folder and repository | **Decided (project owner, 2026-10-29):** the `coco_pharma` database, the `loading_bay` folder and the OpenLineage repository. **Why these three (D10):** they are the Drop Foot trial's three sources: the database where the figures are held, the folder where the hospitals' weekly files arrive, and the lineage project that would record the path between them. `loading_bay` also holds the Sustainability project's files, which this tutorial leaves to its own (parts 3b, 5). |
 | D3 | Ad-hoc or "Create in Egeria" for the tutorial's investigation | **Decided (project owner, 2026-10-29):** Ad-hoc, described as the simplest starting point. Investigations come late (part 12), so the choice is not met until then. |
 | D3a | The dialog's default is "Create in Egeria" | **Decided (project owner, 2026-10-29):** the tutorial tells the reader to change it. |
 | D4 | How the first survey is started | **Decided (project owner, 2026-10-29):** explain the funnel first (part 4); then run the stage's overview survey to see what the stage offers, and narrower surveys for subsets. Each of the first four stages has one. G23 notes where the definitions are uneven. |
@@ -958,6 +1102,7 @@ in this outline; each is named where it bites.
 | D2b | Hosted demo or your own Egeria Workspaces | **Settled by the owner's facts (2026-10-29):** both work. The hosted demo is reset daily and is sometimes a little behind the latest code. Your own Workspaces needs Trellis installed and configured in a separate step, which the Getting Started tutorial covers. The tutorial offers both (section 1). |
 | D8 | Part 1: what Resource Explorer is for, and who it is for | **Reviewed (project owner, 2026-10-29):** the situation is one example of many; surveying catalogs only the entry point; questions decide what runs and the funnel is a guide, not the only path; questions, analyses and surveys can be changed (Advanced); RE explores the frontier of what Egeria does not know and what it does, guided by your needs, recording and sharing what you learn; chat is in part 1. Users: data scientists (including AI), data engineers, curators, security specialists, DevOps engineers, architects, developers. |
 | D9 | Linking a content pack's schemas to RE's database element (design note D1-b; not D1 above) | **Decision (project owner, 2026-10-31):** "yes, database level is what I meant - go". **Done:** pressed 2026-10-31 on `coco_pharma`: 22 added, 26 members (part 9, step 2). |
+| D10 | The scenario followed through every part and screenshot | **Decided (project owner, 2026-11-01):** "it is important to set the stage in the beginning with a motivational scenario and then follow that scenario through with the example screenshots that all follow the same scenario". The scenario: the Teddy Bear Drop Foot trial under a **new auditing requirement** from the existing regulator (owner: "Yes, new requirement"), not a lapse and not an additional body; Peter Profile as the reader; Erin Overview asks; Tessa Tube, Callie Quartile and Tanya Tidie as the experts; "before the next weekly drop" as the deadline. **Guardrail:** the trial team is not careless, and no sentence may imply it: the restated weeks are evidence of care (owner: "are you saying that the Coco team is being sloppy …?" — no). The story never invents a result: where a beat needs a number, "(read on screen)". Open data is not in Core: Sustainability "deserves a standalone set of documents and tutorials (which we were already planning to do)" (parts 2, 3b, 5, 13). |
 
 ---
 
@@ -1001,7 +1146,8 @@ with one slide pointing to the written part for "what can go wrong" and to the n
 
 **Pronunciation, set once in Audiate and reused in every episode:** Egeria, Trellis, OpenLineage, Marquez, Coco
 Pharmaceuticals, `coco_pharma` (say "coco pharma"), `loading_bay` (say "loading bay"), Peter Profile, Erin
-Overview, PostgreSQL, GitHub, Quickstart. The prose writer adds any other name that the voice gets wrong.
+Overview, Tessa Tube, Callie Quartile, Tanya Tidie, Drop Foot, Oak Dene, PostgreSQL, GitHub,
+Quickstart. The prose writer adds any other name that the voice gets wrong.
 
 ### Images, for both uses
 
