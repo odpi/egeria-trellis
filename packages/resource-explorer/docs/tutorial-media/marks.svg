@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900" viewBox="0 0 1600 900">
+  <title>How to read an answer: the marks</title>
+  <style>
+    .sans { font-family: "Helvetica Neue", Helvetica, Arial, sans-serif; }
+    .serif { font-family: Georgia, "Times New Roman", serif; }
+    .ink { fill: #2b2119; } .muted { fill: #6b5d50; } .rust { fill: #a8502a; } .teal { fill: #1f6b5c; }
+    .caps { font-weight: 700; letter-spacing: 2px; }
+    .mark { font-family: "Apple Symbols", "Segoe UI Symbol", "DejaVu Sans", sans-serif; font-size: 34px; }
+  </style>
+  <rect width="1600" height="900" fill="#faf7f2"/>
+  <text x="64" y="72" class="sans rust caps" font-size="19">HOW TO READ AN ANSWER</text>
+  <text x="64" y="122" class="serif ink" font-size="40">Each answer carries a mark and a short word</text>
+  <text x="64" y="162" class="sans muted" font-size="21">The mark says what kind of answer it is. Hover over it, or open the details, for the full sentence.</text>
+  <g class="sans">
+    <rect x="64" y="200" width="1472" height="64" rx="10" fill="#e6f0ee"/>
+    <text x="100" y="244" class="mark teal">✓</text><text x="170" y="241" class="ink" font-size="24" font-weight="700">answered</text><text x="480" y="241" class="ink" font-size="22">It was measured and checked. "answered automatically" is answered from what is already recorded.</text>
+    <rect x="64" y="272" width="1472" height="64" rx="10" fill="#e6f0ee"/>
+    <text x="100" y="316" class="mark teal">∅</text><text x="170" y="313" class="ink" font-size="24" font-weight="700">nothing found</text><text x="480" y="313" class="ink" font-size="22">It was measured, and there was nothing. This is an answer.</text>
+    <rect x="64" y="344" width="1472" height="64" rx="10" fill="#f7f2ea"/>
+    <text x="100" y="388" class="mark rust">◐</text><text x="170" y="385" class="ink" font-size="24" font-weight="700">partial</text><text x="480" y="385" class="ink" font-size="22">Measured, but only part of the picture.</text>
+    <rect x="64" y="416" width="1472" height="64" rx="10" fill="#fff3e8" stroke="#a8502a" stroke-width="2"/>
+    <text x="100" y="460" class="mark rust">○</text><text x="170" y="457" class="ink" font-size="24" font-weight="700">not run</text><text x="480" y="457" class="ink" font-size="22">Nobody has looked yet. Not the same as nothing found.</text>
+    <rect x="64" y="488" width="1472" height="64" rx="10" fill="#f7f2ea"/>
+    <text x="100" y="532" class="mark muted">◌</text><text x="170" y="529" class="ink" font-size="24" font-weight="700">no reader yet</text><text x="480" y="529" class="ink" font-size="22">There is no way to answer this automatically yet.</text>
+    <rect x="64" y="560" width="1472" height="64" rx="10" fill="#f7f2ea"/>
+    <text x="104" y="604" class="mark muted">?</text><text x="170" y="601" class="ink" font-size="24" font-weight="700">could not tell</text><text x="480" y="601" class="ink" font-size="22">Resource Explorer could not read it. Not the same as "no".</text>
+    <rect x="64" y="632" width="1472" height="64" rx="10" fill="#f7f2ea"/>
+    <text x="100" y="676" class="mark rust">⚠</text><text x="170" y="673" class="ink" font-size="24" font-weight="700">needs you</text><text x="480" y="673" class="ink" font-size="22">A person has to act or answer.</text>
+    <rect x="64" y="704" width="1472" height="64" rx="10" fill="#f7f2ea"/>
+    <text x="100" y="748" class="mark muted">◔</text><text x="170" y="745" class="ink" font-size="24" font-weight="700">running</text><text x="480" y="745" class="ink" font-size="22">Under way, or waiting its turn.</text>
+    <rect x="64" y="776" width="1472" height="64" rx="10" fill="#f7f2ea"/>
+    <text x="100" y="820" class="mark rust">✕</text><text x="170" y="817" class="ink" font-size="24" font-weight="700">failed</text><text x="480" y="817" class="ink" font-size="22">It failed. The word beside it says why.</text>
+  </g>
+  <text x="64" y="878" class="sans rust" font-size="20" font-weight="700">∅ nothing found and ○ not run are never the same: one is an answer, the other means nobody has looked.</text>
+</svg>
