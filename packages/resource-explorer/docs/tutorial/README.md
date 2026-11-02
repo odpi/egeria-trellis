@@ -1,6 +1,17 @@
-# Resource Explorer tutorial — six walks
+# Resource Explorer tutorial
 
-Six illustrated walks through the running Explorer. Each page follows one job from the [user guide](../user-guide.md), using the words the screen uses.
+## The Core tutorial
+
+Being written, one part at a time. It follows Peter Profile at Coco Pharmaceuticals through one story, from sign-in to
+publishing. Words are defined in the [glossary](glossary.md).
+
+| Part | What you do |
+|---|---|
+| [1. What Resource Explorer is for](01-what-resource-explorer-is-for.md) | Why look before you catalog |
+
+## The six walks
+
+The Core tutorial replaces these when its last part is written. Six illustrated walks through the running Explorer. Each page follows one job from the [user guide](../user-guide.md), using the words the screen uses.
 
 | Walk | Job |
 |---|---|

@@ -1,12 +1,15 @@
 # Resource Explorer tutorial — outline for review
 
-**Status:** outline only, for the project owner's review. No prose and no screenshots are written yet.
+**Status:** the outline the prose is written from. Prose is being written one part at a time in
+[`tutorial/`](tutorial/README.md#the-core-tutorial); part 1 is written.
 **Date:** 2026-11-01.
 **Changes:**
 - 2026-10-29: the outline, with decisions D1–D9.
 - 2026-10-31: Q2(b) (how added analyses are found) in part 13, and design note D1 in parts 9 and 10.
 - 2026-11-01: one scenario followed through every part and screenshot (D10); Open data left to the Sustainability
   documents; drift since 10-29; the D1-e coverage sentence as read on screen.
+- 2026-11-02: part 1 written. Screenshots at 1600 × 900, not 1920 × 1080 (sections 6 and 9); narration drafted with
+  each part (section 9); the glossary moved to [`tutorial/glossary.md`](tutorial/glossary.md) (section 4); S1 drawn.
 **Replaces, once written:** the six walks in [`tutorial/`](tutorial/README.md), which stay on `main` until then.
 
 ## How to read this outline
@@ -870,55 +873,9 @@ investigation: the sidebar shows "WORK LISTS FOR <NAME>" and "OTHER WORK LISTS" 
 
 ## 4. Glossary
 
-Plain definitions, one or two sentences each. The tutorial links each term to this list the first time it appears.
-
-| Term | Definition |
-|---|---|
-| **Resource Explorer** | A web tool that looks at data sources, measures them, records what people know about them, and publishes what it learns to Egeria. |
-| **Egeria** | An open-source metadata catalog: the shared record of what data an organization has. Resource Explorer reads from it and writes to it. |
-| **Egeria Quickstart** | A demonstration environment of Egeria, set up around a fictitious company, Coco Pharmaceuticals, with made-up users. Nothing in it is permanent. |
-| **Coco Pharmaceuticals** | The fictitious company whose data and people fill the Egeria Quickstart. |
-| **Egeria Explorer** | A tool in the Quickstart portal for browsing what Egeria holds, including what you published and Resource Explorer's questions and perspectives. |
-| **Catalog** | The shared record of data sources and what is known about them. Here, the catalog is Egeria. |
-| **Data source (resource)** | Something that holds data: a database, a file system or a code repository. The screen says "resource"; the tutorial says "data source" and notes once that they are the same. |
-| **Repository** | A code repository on GitHub. Resource Explorer reads its files and history. |
-| **Database** | A PostgreSQL database. Resource Explorer reads its catalog first, and its rows only when you allow it. |
-| **File system** | A folder, and everything under it, that this server or Egeria can read. |
-| **Register** | Tell Resource Explorer about a data source so it can look at it. Registering writes nothing to Egeria. |
-| **Slug** | The short name with no spaces that Resource Explorer gives a data source, used in addresses. You choose it when you register. |
-| **Stage** | One of the six steps a data source goes through: Scouting, Discovery, Assessment, Analysis, Enrichment, Curate. |
-| **The funnel** | The idea behind the stages: cheap, basic questions first, costlier ones only for the data sources worth them. |
-| **Question** | One thing Resource Explorer asks about a data source, such as "Is this repository actively maintained?". Each stage has its own. |
-| **Answer** | What Resource Explorer found for a question, with the source it came from. |
-| **Analysis** | One check that measures something, such as counting tables or finding files no one has opened. |
-| **Survey** | A set of analyses run together on one data source. |
-| **Overview survey** | The survey that runs all of a stage's analyses for one kind of data source. The good first run on a stage. |
-| **Survey report** | The results of one survey, as Egeria stores them. |
-| **Measure** | A number an analysis produced, with its unit and the time it was taken. |
-| **Annotation** | One measurement or observation attached to a data source in Egeria. A survey report holds many. |
-| **"as of"** | The time a number was read. Numbers from a source that changes carry one. |
-| **Nothing found / not run** | "Nothing found" means it was measured and there was nothing. "Not run" means nobody has looked. They are never the same. |
-| **Enrichment** | What a person adds that no check can measure: owner, sensitivity, intended use. |
-| **Request for action (RFA)** | Something a check could not settle, so a person must. The **RFAs** drawer lists them. |
-| **Curate** | Decide what Resource Explorer will send to Egeria. Every choice is saved in Resource Explorer only. |
-| **Include / Leave out** | The choice, per schema, table, file or folder, of whether it is published. |
-| **Tag** | A public label in Egeria, such as "sales". Everyone's tag of the same name is one tag. |
-| **Group** | A set of data sources that belong together, such as one product's. In Egeria a group becomes a collection. |
-| **Declared measures** | The screen's heading on Curate's "Publish · declared measures" table: the measurements the survey offers to publish. You choose, row by row, which ones go to Egeria. The tutorial says "the measures the survey offers to publish" and explains the screen word once. |
-| **Rating and note** | Your judgment of a data source. Published under your user id; one rating per person. |
-| **Publish** | Send your choices to Egeria. Only a person's press publishes, and only that person's own work. |
-| **Confirmed (read back)** | Resource Explorer read the published item back from Egeria and found it there. |
-| **Work list** | A set of data sources of one kind, laid out side by side against one stage's questions, to compare and narrow them. |
-| **Investigation** | A record of why you are looking at a set of data sources: a name, a description and its purposes. |
-| **Purpose** | What an investigation is for, such as Explore or Learn. Purposes put the most relevant questions first. |
-| **Scope** | The data sources an investigation covers. It can mix databases, file systems and repositories. |
-| **Current investigation** | The one you are working in now. Questions are ordered by its purposes, and data sources can be added to its scope in one click. |
-| **Journal** | An investigation's running notes, such as chat answers you chose to keep. |
-| **Disposition** | Your verdict on a data source within an investigation, such as tracking, using or abandoned. |
-| **Perspective** | Who is asking, such as Data Owner or Steward. Choosing one narrows the questions. |
-| **Activity** | The log of everything that has run or been published. |
-| **Credential** | The user name and password Resource Explorer uses to read a database. Stored encrypted. |
-| **Mount (local path)** | Where the folder of a file system is found on this server. |
+**Moved, 2026-11-02:** the glossary is now [`tutorial/glossary.md`](tutorial/glossary.md), the page each part links
+to the first time a term appears. Change a definition there; there is one copy. Each term has an anchor (for example
+`glossary.md#survey`).
 
 **Terms the tutorial avoids altogether** (they stay in the user guide): Folio (say "group"), zone, governance zone,
 intent (say "stage"), annotation type names (QualityAnnotation, DataClassMatch and others), GUID, Egeria Project (say
@@ -980,7 +937,9 @@ DEFINITIONS" is explained as "the surveys you can run").
 
 ## 6. Screenshots planned
 
-None taken yet. Every screenshot is taken on the Egeria Quickstart, signed in as Peter Profile, at 1920 × 1080, so the same image serves the written tutorial and the videos (section 9). Existing images
+Every screenshot is taken on the Egeria Quickstart, signed in as Peter Profile, at 1600 × 900 (owner, 2026-11-02: the
+screen the captures are taken on is 1728 × 1117, so 1920 × 1080 is wider than it), so the same image serves the written
+tutorial and the videos (section 9). Existing images
 from the merged walks are listed where one may be reused, after a check that the screen has not changed.
 
 Every screenshot is a screen Peter sees at one beat of the story (section 2, D10), so the same names, counts and
@@ -988,7 +947,7 @@ stamps recur from part to part. Take them in order, in one Quickstart, without r
 
 | # | Part · step | Story beat | Screen | Shows | Reuse |
 |---|---|---|---|---|---|
-| S1 | 1 | why not catalog everything the trial touches | Diagram, not a screenshot | Data source → survey → answers → your knowledge → curate → publish → Egeria | new |
+| S1 | 1 | why not catalog everything the trial touches | Diagram, not a screenshot | Data source → survey → answers → your knowledge → curate → publish → Egeria | **Drawn, 2026-11-02:** [`tutorial-media/look-then-catalog.svg`](tutorial-media/look-then-catalog.svg), rendered at 1600 × 900 as `tutorial/images/01-what-for/S01-look-then-catalog.webp`. Same palette as the funnel. |
 | S2 | 2 · 1 | Peter gets in | Sign-in panel | The panel, empty boxes | `01-sign-in-panel.webp` if unchanged |
 | S3 | 2 · 3–6 | Peter's screen, Peter's name at top right | Whole screen, labelled | Strip, sidebar, main panel, chat rail, header, each numbered | new (labelled version of `01-stage-strip-and-sidebar.webp`) |
 | S4 | 2 · 7 | what has run so far | Activity log | The latest entries and the filter buttons | new |
@@ -1133,6 +1092,9 @@ with one slide pointing to the written part for "what can go wrong" and to the n
 
 ### Narration
 
+**Decision (project owner, 2026-11-02):** each part's narration is drafted with the part, in the same PR, under
+[`tutorial/narration/`](tutorial/narration/).
+
 - **The written step is the source.** The prose writer writes each "Explain" line so it can be read aloud as it
   stands. The script for an episode is its parts' steps and "Explain" lines, in order, adjusted for speech.
 - **Spoken English, short sentences.** One idea per sentence. No parentheses, no "e.g.", no symbols read aloud.
@@ -1151,7 +1113,8 @@ Quickstart. The prose writer adds any other name that the voice gets wrong.
 
 ### Images, for both uses
 
-- **Capture once, at video size.** Take every screenshot with the browser at 1920 × 1080, so each fills a 16:9 frame.
+- **Capture once, at video size.** Take every screenshot with the browser at 1600 × 900, so each fills a 16:9 frame
+  (owner, 2026-11-02; it scales up to a 1080p video frame).
   The written tutorial uses the same images, scaled down. (The merged walks are 1382 px wide and cannot be reused in
   the videos as they are.)
 - **Capture from a local Quickstart at a known version**, not the hosted demo, which is reset daily and can lag the
