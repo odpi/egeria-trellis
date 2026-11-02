@@ -401,18 +401,21 @@ async def delete_work_list(slug: str, request: Request) -> dict:
                     "You can hide it for yourself instead."))
     wls.delete(slug)
     name = wl.get("display_name") or slug
+    activity_error = ""
     try:
         from resource_explorer.activity_logger import log_catalog
 
         log_catalog(wls.registry, "work_list", slug, name, "", "ok",
                     f"work list '{name}' deleted by {caller or 'an admin'}",
                     detail=f"Removed locally. {'The Egeria Collection ' + wl['egeria_guid'] + ' stays in Egeria.' if wl.get('egeria_guid') else 'It was never published to Egeria.'}")
-    except Exception as exc:  # noqa: BLE001 -- best effort: a log failure must not undo a delete the person confirmed
+    except Exception as exc:  # noqa: BLE001 -- the delete is done; the failure is returned, not hidden
         log.warning("could not write the activity entry for deleting work list %s: %s", slug, exc)
+        activity_error = f"{type(exc).__name__}: {exc}"
     return {"removed": slug,
             "egeria_collection_kept": bool(wl.get("egeria_guid")),
             "egeria_guid": wl.get("egeria_guid", ""),
-            "deleted_by": caller}
+            "deleted_by": caller,
+            "activity_logged": not activity_error, "activity_error": activity_error}
 
 
 @router.post("/{slug}/members")

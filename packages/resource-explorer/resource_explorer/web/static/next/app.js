@@ -73,7 +73,6 @@ import {
 import { renderContext } from '/static/next/stages/context.js';
 import { openApiReference } from '/static/next/stages/api-reference.js';
 import { inPageConfirm, inPageNotice, inPagePrompt } from '/static/next/confirm-dialog.js';
-import { setWorkListHidden } from '/static/re-api.js';
 import { scoutingTilesHtml, scoutingSignalHtml, staleLinkBannerHtml, bindStaleLinkBanner, indexStateCueHtml } from '/static/next/stages/repo-header.js';
 import { bindFirstIndexDoor, ensureFirstIndexFresh } from '/static/next/first-index.js';
 import { contextRecordedSpec, contextRecordedState } from '/static/next/context-recorded.js';
@@ -218,6 +217,7 @@ import {
   requireKind,
   writeJournal,
   saveQuestionAnswer, getAnalysisResults,
+  setWorkListHidden,
 } from '/static/re-api.js';
 import { CREDENTIAL_UNREADABLE_TEXT, credentialMarkHtml, isCredentialUnreadable } from '/static/next/credential.js';
 import { rememberedCredential, setRemembered } from '/static/next/run-credential.js';

@@ -90,7 +90,8 @@ def test_creator_deletes_and_the_response_keeps_the_egeria_guid_and_activity_say
         client.put(f"/api/work-lists/{a}/hidden", json={"hidden": True})
         r = client.delete(f"/api/work-lists/{a}")
     assert r.status_code == 200
-    assert r.json() == {"removed": a, "egeria_collection_kept": True, "egeria_guid": "g-1234", "deleted_by": "erin"}
+    assert r.json() == {"removed": a, "egeria_collection_kept": True, "egeria_guid": "g-1234", "deleted_by": "erin",
+                       "activity_logged": True, "activity_error": ""}
     assert wls.get(a) is None
     with wls._conn() as conn:
         assert conn.execute("SELECT COUNT(*) FROM work_list_view WHERE work_list_slug = ?", (a,)).fetchone()[0] == 0
