@@ -331,6 +331,10 @@ tile and the first context-spec flavour to build, and the context-as-product
 note (data scientist and engineer first; the non-technical view is a
 separate chat-first Trellis application on the same data).
 
+## Convert as touched (project owner, 2026-10-31)
+
+**Decision (project owner, 2026-10-31):** "An RE analysis becomes a library step when it is next touched for another reason, never as a batch; before it converts, (1) the typed read must say every fact the native read uses, (2) its per-member detail must have a declarable shape." Detail and the spike's evidence: `DESIGN-ANALYTIC-LIBRARY-SPLIT-2026-10-30.md` §4.
+
 ## Appendix — egeria-workspaces PR #603 (Portal analytic-functions note), status 2026-10-30
 
 #603 is superseded by the declaration model, not contradicted. Its eight lessons, its options A/B/C and its ten decisions, each with its status on 2026-10-30, are tabulated in `REVIEW-EXTENSIBILITY-VS-WORKSPACES-603-2026-10-30.md` §2.1–§2.4. That note keeps the Portal-era reasoning in trellis after the PR closes. Three contract gaps came out of it (capped, basis, exclusive categories); they are in `BRIEF-DECLARATION-CAPPED-BASIS-CATEGORIES` (being built). One pyegeria item came out of it as well: the analytic-function resolver accepts any importable dotted path. It is logged in egeria-python PYEGERIA_ISSUES.md and blocks dashboards slice D1.
