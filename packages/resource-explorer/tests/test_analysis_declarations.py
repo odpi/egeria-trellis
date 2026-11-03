@@ -37,6 +37,23 @@ def test_every_database_and_filesystem_analysis_declares_in_full():
     assert len(_entries()) >= 36
 
 
+#: The member- or field-scoped tables declared before B1 that still owe part of a table result, and what each owes
+#: (Architect ruling, 2026-11-02: reported by `missing()` for one release, closed by convert-as-touched). On main
+#: before B1 there was one, value_profile (field scope, bare columns, a hand extent); this branch's commit 3 converted
+#: it, so none remains. A NEW member or field table may not join this list: it declares in full.
+PRE_B1_TABLE_LACKS: dict[str, list[str]] = {}
+
+
+def test_only_the_pre_b1_member_and_field_tables_owe_anything_and_exactly_what_they_owe():
+    owing = {e.id: [m for m in e.declaration.missing() if m.startswith("table.")]
+             for t in reader._load().values() for e in t
+             if e.declaration is not None and e.declaration.table is not None
+             and e.declaration.scope in ("member", "field")}
+    assert {k: v for k, v in owing.items() if v} == PRE_B1_TABLE_LACKS
+    assert owing["value_profile"] == [] and next(
+        e for e in _entries() if e.id == "value_profile").declaration.is_table_result()
+
+
 def test_every_declared_measure_has_a_unit_and_an_as_of_and_every_absence_a_sentence():
     for e in _entries():
         for m in e.declaration.measures:

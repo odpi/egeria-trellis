@@ -1168,3 +1168,36 @@ def backfill_filesystem_survey(
             coverage_section=sections[table],
         )
     return written
+
+
+# ── Table results (B1) ────────────────────────────────────────────────────────────────────────────────────────────
+
+
+def write_table_rows(registry, run: dict, declaration, rows: list[dict]) -> int:
+    """Store EVERY row of one run's table result, in the order given (the declared order), through its declaration
+    (DESIGN-B1-MEMBER-SCOPED-TABLE-RESULT §4). `run` = {"resource_kind", "slug", "analysis_id", "run_id"}.
+
+    Computes nothing: the step computes its summary measures over all rows and returns them as its result; the cap
+    (`max_rows`) is for showing, never for storing. A row is refused, with a sentence, when it lacks a key field,
+    carries a field the table does not declare, or a state its column does not list, so a stored row always reads
+    through the declaration. Returns how many rows the run has."""
+    from resource_explorer.table_result import row_key
+
+    table = declaration.table
+    if table is None or not declaration.is_table_result():
+        raise ValueError("write_table_rows: this declaration is not a table result (a member- or field-scoped table that owes nothing)")
+    declared = set(table.column_names())
+    states = {c.name: set(c.states) for c in table.columns if c.type == "state"}
+    for n, row in enumerate(rows, start=1):
+        extra = sorted(set(row) - declared)
+        if extra:
+            raise ValueError(f"table row {n} carries {', '.join(extra)}, which the table does not declare")
+        unkeyed = [k for k in table.key_fields if row.get(k) in (None, "")]
+        if unkeyed:
+            raise ValueError(f"table row {n} has no {', '.join(unkeyed)}: a member row is keyed")
+        for col, allowed in states.items():
+            if row.get(col) is not None and row[col] not in allowed:
+                raise ValueError(f"table row {n} has {col} '{row[col]}', which is not one of its states "
+                                 f"({', '.join(sorted(allowed))})")
+    return registry.record_table_rows(run["resource_kind"], run["slug"], run["analysis_id"], run=run["run_id"],
+                                      rows=[(row_key(table, r), r) for r in rows])

@@ -328,7 +328,25 @@ def build_summary(registry, slug: str) -> dict:
              "openable": _table_state(t) == "measured"}
             for t in ordered
         ],
+        "table_result": _table_result(registry, slug, value),
     }
+
+
+def _table_result(registry, slug: str, value: dict) -> dict | None:
+    """B1: the declared table result's block (envelope.js `tableResultHtml`): the first `max_rows` columns, typed and
+    worded, under the truncation sentence, with the summary measures behind it and the publish band. Its headline is
+    left empty: this screen's header line is the headline. None for a profile stored before the conversion (no typed
+    rows): the cards below still read it."""
+    from resource_explorer import table_result
+    from resource_explorer.declared_context import declarations
+
+    dec = declarations("database").get("value_profile")
+    if dec is None or not dec.is_table_result():
+        return None
+    block = table_result.payload(registry, "database", slug, "value_profile", dec, value)
+    if not block["table"]["stored"]:
+        return None
+    return {**block, "headline": ""}
 
 
 def build_table(registry, slug: str, schema: str, table: str) -> dict | None:

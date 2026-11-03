@@ -1271,10 +1271,37 @@ def _column_match_reader(question: str):
 
 def _value_profile_results(registry, slug: str) -> dict:
     """The latest value-profile batch: every column with its measures, and the not-profiled ones with their state
-    and reason (so "not profiled" never reads as "no values"). {} when no profile is stored: never run."""
+    and reason (so "not profiled" never reads as "no values"). {} when no profile is stored: never run.
+
+    B1: read from the declared table result (`analysis_table_rows`, through value_profile's declaration) when the step
+    stored one; a profile stored before the conversion has only native rows and is read from them. The two reads
+    return the same shape (evidence/B1-VALUE-PROFILE-EQUIVALENCE-2026-11-02.md)."""
+    typed = _value_profile_typed_rows(registry, slug)
+    return _value_profile_shape(typed if typed else registry.query_detail_rows("database_value_profiles", slug))
+
+
+def _value_profile_native_results(registry, slug: str) -> dict:
+    """The pre-B1 read, from `database_value_profiles` alone: kept for the equivalence proof."""
+    return _value_profile_shape(registry.query_detail_rows("database_value_profiles", slug))
+
+
+def _value_profile_typed_rows(registry, slug: str) -> list[dict]:
+    """Every stored row of the latest value-profile table result, typed through the declaration (NULLs kept: the
+    screen words them), under the native names; [] when no run stored one."""
+    from resource_explorer.declared_context import declarations
+    from resource_explorer.table_result import stored_rows
+
+    dec = declarations("database").get("value_profile")
+    if dec is None or not dec.is_table_result():
+        return []
+    run_id, rows = stored_rows(registry, "database", slug, "value_profile", dec)
+    return [{"schema_name": r["schema"], "table_name": r["table"], "column_name": r["column"], "surveyed_at": run_id,
+             **{k: v for k, v in r.items() if k not in ("schema", "table", "column")}} for r in rows]
+
+
+def _value_profile_shape(rows: list[dict]) -> dict:
     from resource_explorer.surveyors.database.quality.value_profile import PROFILE_1B_MEASURES
 
-    rows = registry.query_detail_rows("database_value_profiles", slug)
     if not rows:
         return {}
     states: dict[str, int] = {}
