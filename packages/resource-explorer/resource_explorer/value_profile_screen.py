@@ -341,7 +341,7 @@ def _table_result(registry, slug: str, value: dict) -> dict | None:
     from resource_explorer.declared_context import declarations
 
     dec = declarations("database").get("value_profile")
-    if dec is None or dec.table is None or not dec.table.is_result():
+    if dec is None or not dec.is_table_result():
         return None
     block = table_result.payload(registry, "database", slug, "value_profile", dec, value)
     if not block["table"]["stored"]:

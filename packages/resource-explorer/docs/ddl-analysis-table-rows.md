@@ -23,10 +23,9 @@ CREATE TABLE IF NOT EXISTS analysis_table_rows (
         row_no         INTEGER NOT NULL,
         row_key        TEXT NOT NULL,
         row_json       JSONB NOT NULL,
-        PRIMARY KEY (resource_kind, slug, analysis_id, run_id, row_no)
+        PRIMARY KEY (run_id, resource_kind, slug, analysis_id, row_no)
     );
 CREATE INDEX IF NOT EXISTS idx_analysis_table_rows_member ON analysis_table_rows(analysis_id, slug, row_key);
-CREATE INDEX IF NOT EXISTS idx_analysis_table_rows_run ON analysis_table_rows(run_id);
 ```
 
 The table is unqualified, so it lands in the connection's `search_path` schema: `resource_explorer` for RE's registry
@@ -38,7 +37,10 @@ decoded object psycopg2 returns for `JSONB` (Postgres).
 **One change from the brief's key.** The brief's `PRIMARY KEY (run_id, row_no)` would collide: `run_id` is the run's
 own time, the executor's `surveyed_at`, and one survey gives every step it runs the same `surveyed_at`. Two table
 results of one survey (value_profile and, later, the quality check rows) would then share `(run_id, row_no)`. The key
-carries the resource and the analysis as well, and `run_id` keeps an index of its own for the "rows of this run" read.
+carries the resource and the analysis as well, run first, so it also serves the "rows of this run" read.
+
+**Decision (Architect, 2026-11-02):** "(run_id, kind, slug, analysis, row_no): ACCEPTED. Keep the (analysis, slug,
+row_key) index."
 
 ### What the columns are
 
@@ -67,5 +69,5 @@ carrying the change. Test runs create it in their own throwaway schema.
 
 No snapshot script is written for this table yet. The step_annotations snapshot
 (`~/.re-gate/scripts/ddl_step_annotations_snapshot.py`) is the template: check the table is absent before; after,
-that it exists once in `resource_explorer`, its columns equal the DDL's in order, both indexes and the primary key are
+that it exists once in `resource_explorer`, its columns equal the DDL's in order, the member index and the primary key are
 present, and every other count is unchanged apart from ordinary traffic.

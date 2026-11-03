@@ -37,7 +37,7 @@ def _registry(tmp_path, typed=True) -> ProjectRegistry:
 
 def test_the_declaration_is_a_complete_table_result():
     dec = declarations("database")["value_profile"]
-    assert dec.result_kind == "table" and dec.table.is_result() and dec.missing() == []
+    assert dec.result_kind == "table" and dec.is_table_result() and dec.missing() == []
     assert dec.table.key_fields == ["schema", "table", "column"] and dec.table.max_rows == 1000
     assert dec.table.summary == ["profiled_columns", "columns"]
     assert [e.name for e in dec.extents] == ["rows"] and dec.extents[0].rows == 1000

@@ -477,7 +477,7 @@ def build_rows(registry, entity_type: str, slug: str, *, layer=None, entries: li
                        "measured_at": str(measured_at) if known else "",
                        # A derivation is recomputed on read: its second date is the survey it read (F18/item 2).
                        "derived": bool(known and not (record or {}).get("measured_at") and "read_snapshot" in run)}
-                if dec.table is not None and dec.table.is_result():
+                if dec.is_table_result():
                     # A table result publishes its summary measures only (owner, 2026-11-02, "Summary only"): no row
                     # of the table leaves Resource Explorer, and the band says so (table_result.ROWS_STAY).
                     from resource_explorer.table_result import ROWS_STAY

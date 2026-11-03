@@ -265,14 +265,28 @@ lists its `states`. Every column that is not a key needs an `absence` word, the 
 reads as: "not counted" is not "none found" is not "not permitted". `measure_ref` names the summary
 measure a column is the per-member value of, so the rows and the summary agree.
 
-**A table's extent is its table.** Do not declare `extents` beside a table: Chat's extent is
-derived from the table (its key and columns, `max_rows`, `order`, `truncation`), and a declaration
-that writes one too is refused. The summary measures are computed by the step over **all** rows,
+**The gate is the scope.** A table declared at `member` or `field` scope is about the members of a
+resource, and owes its `key_fields`, a typed column with an `absence` word for every non-key column,
+its `truncation`, its `order` and its `summary`. **Decision (Architect, 2026-11-02):** for one release
+a lack is reported by `Declaration.missing()` (`table.key_fields`, `table.columns.<name>.absence`,
+`table.truncation`, `table.order`, `table.summary`), not refused, so a declaration written before B1
+keeps loading until it converts (convert-as-touched). A table that owes nothing is a table result
+(`Declaration.is_table_result()`): only a table result stores its rows, draws the table block,
+publishes its summary alone and quotes its stored rows. A `resource`-scoped or unscoped table keeps
+bare columns and hand-written extents.
+
+**A table result's extent is its table.** Do not declare `extents` beside one: Chat's extent is
+derived from the table (its key and columns, `max_rows`, `order`, `truncation`), priced at about 8
+tokens a cell (`TOKENS_PER_CELL`), with `token_cost_per_row` beside the whole. An answer quotes about
+2,000 tokens of rows per table (2,000 ÷ `token_cost_per_row`, in the declared order, never fewer than
+5), then "N of M rows quoted; the table lists the rest"; the whole-table cost is never spent
+(Architect, 2026-11-02). A declaration that writes an extent different
+from the derived one is refused. The summary measures are computed by the step over **all** rows,
 never added up from the shown slice. Only the summary goes to Egeria: no row leaves Resource Explorer.
 
-The `truncation` sentence is what makes a table a table result. A few of RE's own analyses declared
-a `table` before B1, with bare columns, no truncation and hand-written extents; they keep that shape
-until each converts (convert-as-touched). A `member`-scoped table must declare its truncation.
+**Reading the rows.** A step or renderer that needs the stored rows asks the library's seam,
+`trellis_analytics.readers.table_rows.table_rows_reader().table_rows(run, declaration, limit)`; Resource
+Explorer registers its read (`resource_explorer.table_result.RegistryTableRows`) behind it.
 
 ```python
 Declaration(

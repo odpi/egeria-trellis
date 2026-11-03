@@ -148,5 +148,32 @@ def test_compile_quotes_the_stored_rows_in_order_and_counts_every_row(reg):
     rungs, seen = dc.section_rungs("value_profile", declaration(), fact, {}, table=table)
     full = str(next(iter(rungs.values())))
     assert full.index("c0") < full.index("c4") and "c5" not in full
-    assert "the first 5 of 12 columns; every column is stored" in full
+    assert "5 of 12 rows quoted; the table lists the rest" in full
     assert seen["extents"]["rows"]["FULL"]["total"] == 12 and seen["extents"]["rows"]["FULL"]["shown"] == 5
+
+
+def test_compile_quotes_about_2000_tokens_of_rows_never_fewer_than_five():
+    """Architect, 2026-11-02: rows = about 2,000 tokens / token_cost_per_row, in declared order, at least 5; the
+    extent's whole-table token_cost is the full-quote cost and is never spent."""
+    narrow = declaration(max_rows=1000).extents[0]            # 6 fields x about 8 = 48 tokens a row
+    assert narrow.token_cost_per_row == 48 and narrow.token_cost == 48_000
+    assert dc.table_quote_rows(narrow) == 2000 // 48 == 41
+    wide = narrow.model_copy(update={"token_cost_per_row": 31 * 8})   # value_profile's width
+    assert dc.table_quote_rows(wide) == 8
+    huge = narrow.model_copy(update={"token_cost_per_row": 1000})
+    assert dc.table_quote_rows(huge) == dc.TABLE_QUOTE_MIN_ROWS == 5
+    few = declaration(max_rows=3).extents[0]
+    assert dc.table_quote_rows(few) == 3
+
+
+def test_re_installs_its_read_as_the_table_rows_entry_point(reg):
+    """Found wherever RE is installed, not only in a process that imported it (the LS2 seam's pattern)."""
+    from importlib.metadata import entry_points
+
+    from trellis_analytics.readers.table_rows import TABLE_ROWS
+
+    [ep] = [e for e in entry_points(group="trellis_analytics.readers") if e.name == TABLE_ROWS]
+    assert ep.load() is tr.RegistryTableRows
+    write_table_rows(reg, RUN_OF, declaration(), rows(12))
+    via_seam = ep.load()(reg).table_rows(dict(RUN_OF), declaration())
+    assert via_seam == tr.table_rows(reg, "database", SLUG, "value_profile", declaration(), run=RUN)

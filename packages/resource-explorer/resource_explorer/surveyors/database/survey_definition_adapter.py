@@ -1292,7 +1292,7 @@ def _value_profile_typed_rows(registry, slug: str) -> list[dict]:
     from resource_explorer.table_result import stored_rows
 
     dec = declarations("database").get("value_profile")
-    if dec is None or dec.table is None or not dec.table.is_result():
+    if dec is None or not dec.is_table_result():
         return []
     run_id, rows = stored_rows(registry, "database", slug, "value_profile", dec)
     return [{"schema_name": r["schema"], "table_name": r["table"], "column_name": r["column"], "surveyed_at": run_id,

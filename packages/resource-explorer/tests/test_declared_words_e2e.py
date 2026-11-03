@@ -177,16 +177,24 @@ def test_the_stated_total_is_read_from_its_field_not_summed():
 
 @pytest.mark.skipif(shutil.which("node") is None, reason="node not installed")
 def test_the_graph_renderer_stacks_exclusive_categories_by_the_stated_total_only(tmp_path):
-    (tmp_path / "g.mjs").write_text((NEXT / "graph-renderer.js").read_text(encoding="utf-8"), encoding="utf-8")
+    # The renderer imports the table block (envelope.js, which imports format.js) and the glyphs: copy the four, with
+    # their root-relative imports pointed at the copies, so the registration travels with the renderer.
+    for name in ("graph-renderer.js", "envelope.js", "format.js", "glyphs.js"):
+        src = (NEXT / name).read_text(encoding="utf-8")
+        for dep in ("envelope", "format", "glyphs"):
+            src = src.replace(f"'/static/next/{dep}.js'", f"'./{dep}.mjs'")
+        (tmp_path / name.replace("graph-renderer.js", "g.mjs").replace(".js", ".mjs")).write_text(src, encoding="utf-8")
     script = ("import * as G from '" + (tmp_path / "g.mjs").as_uri() + "';"
               "const items=[{label:'a',count:1500},{label:'b',count:509}];"
               "const ex=G.categoriesHtml(G.categoriesSpec({categories:{exclusive:true,sums_to:'t'}},{t:2098},items));"
               "const ov=G.categoriesHtml(G.categoriesSpec({categories:{exclusive:false}},{t:2098},items));"
-              "console.log(JSON.stringify({ex,ov}));")
+              "const tb=G.renderByKind('table',{table:{stored:false},not_stored:'nothing yet'});"
+              "console.log(JSON.stringify({ex,ov,tb}));")
     out = json.loads(subprocess.run(["node", "--input-type=module", "-e", script], capture_output=True, text=True,
                                     check=True).stdout)
     assert "data-categories-stack" in out["ex"] and "2,098" in out["ex"] and "2,009" not in out["ex"]
     assert "data-categories-stack" not in out["ov"] and "categories overlap" in out["ov"]
+    assert "data-table-not-stored" in out["tb"], "the table block is registered with the renderers"
 
 
 # ── the non-numeric kinds (Part B): one headline each ──────────────────────────────────────────────────────────────

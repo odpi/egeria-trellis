@@ -1184,8 +1184,8 @@ def write_table_rows(registry, run: dict, declaration, rows: list[dict]) -> int:
     from resource_explorer.table_result import row_key
 
     table = declaration.table
-    if table is None or not table.is_result():
-        raise ValueError("write_table_rows: this declaration is not a table result (no table with a truncation)")
+    if table is None or not declaration.is_table_result():
+        raise ValueError("write_table_rows: this declaration is not a table result (a member- or field-scoped table that owes nothing)")
     declared = set(table.column_names())
     states = {c.name: set(c.states) for c in table.columns if c.type == "state"}
     for n, row in enumerate(rows, start=1):

@@ -140,3 +140,20 @@ def payload(registry, resource_kind: str, slug: str, analysis_id: str, declarati
         "table": table_rows(registry, resource_kind, slug, analysis_id, declaration),
         "not_stored": declaration.absence.sentence("not_measured"),
     }
+
+
+class RegistryTableRows:
+    """RE's reader behind the library's table-rows seam (`trellis_analytics.readers.table_rows.TableRowsReader`,
+    Architect ruling 2026-11-02: the protocol is the library's, this read is RE's implementation), installed as the
+    `table_rows` entry point of `trellis_analytics.readers` (pyproject.toml). The registry is a constructor argument;
+    with none it opens RE's own on each call, never at import."""
+
+    def __init__(self, registry=None):
+        self._registry = registry
+
+    def table_rows(self, run: dict, declaration, limit: int | None = -1) -> dict:
+        from resource_explorer.registry import ProjectRegistry
+
+        return table_rows(self._registry or ProjectRegistry(), run["resource_kind"], run["slug"], run["analysis_id"],
+                          declaration, limit=limit, run=run.get("run_id"))
+

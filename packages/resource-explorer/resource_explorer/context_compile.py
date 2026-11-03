@@ -1305,7 +1305,7 @@ def compile_context(
                     log.warning("measure records for declared %s on %s failed: %s", analysis_id, slug, exc)
                     records = {}
                 table = None
-                if dec.table is not None and dec.table.is_result():
+                if dec.is_table_result():
                     # B1: a table result's rows are stored, not in its result; quote them in the declared order.
                     from resource_explorer import table_result
 

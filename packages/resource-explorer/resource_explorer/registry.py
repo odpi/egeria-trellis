@@ -503,7 +503,7 @@ STEP_ANNOTATIONS_DDL = (
 #: the run's own time (the executor's `surveyed_at`), as in step_annotations. `row_key` is the row's declared key
 #: fields as a JSON array, so a reader finds one member without parsing `row_json`; `row_no` is the step's order,
 #: which is the declared order. The key carries the resource and the analysis as well as the run: two analyses of one
-#: survey share its `surveyed_at`.
+#: survey share its `surveyed_at` (Architect, 2026-11-02: accepted, run first so the key also serves "this run's rows").
 ANALYSIS_TABLE_ROWS_DDL = (
     """
     CREATE TABLE IF NOT EXISTS analysis_table_rows (
@@ -514,12 +514,11 @@ ANALYSIS_TABLE_ROWS_DDL = (
         row_no         INTEGER NOT NULL,
         row_key        TEXT NOT NULL,
         row_json       JSONB NOT NULL,
-        PRIMARY KEY (resource_kind, slug, analysis_id, run_id, row_no)
+        PRIMARY KEY (run_id, resource_kind, slug, analysis_id, row_no)
     )
     """,
     "CREATE INDEX IF NOT EXISTS idx_analysis_table_rows_member "
     "ON analysis_table_rows(analysis_id, slug, row_key)",
-    "CREATE INDEX IF NOT EXISTS idx_analysis_table_rows_run ON analysis_table_rows(run_id)",
 )
 
 

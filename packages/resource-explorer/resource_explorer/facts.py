@@ -1541,7 +1541,7 @@ class FactLayer:
 
         try:
             dec = declarations(self.resource_type).get(analysis_id)
-            if dec is None or dec.table is None or not dec.table.is_result():
+            if dec is None or not dec.is_table_result():
                 return {}
             entry = (self._map("analysis_results_map") or {}).get(analysis_id)
             value = self._read_results(slug, analysis_id, entry) if entry is not None else None

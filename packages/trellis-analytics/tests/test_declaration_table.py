@@ -33,6 +33,10 @@ TABLE = {
 }
 
 
+EXTENT = {"name": "status", "fields": ["a"], "rows": 1, "order": "as listed", "truncation": "{shown} of {total}",
+          "token_cost": 10, "citation": "c"}
+
+
 def member_table(table=None, **over):
     return {"result_kind": "table", "result_kind_note": "one row per column", "scope": "member",
             "measures": [measure("columns_total"), measure("columns_measured"), measure("nulls_total", "nulls")],
@@ -111,6 +115,7 @@ def test_a_tables_extent_is_derived_from_the_table():
     assert e.name == "rows" and e.rows == 1000 and e.fields == d.table.fields()
     assert e.order == TABLE["order"] and e.truncation == TABLE["truncation"]
     assert e.token_cost == 1000 * 7 * TOKENS_PER_CELL
+    assert e.token_cost_per_row == 7 * TOKENS_PER_CELL == 56   # about 8 tokens a cell (Architect, 2026-11-02)
     lowered = Declaration.model_validate(member_table({**TABLE, "max_rows": 20}))
     assert lowered.extents[0].rows == 20
 
@@ -127,10 +132,6 @@ def test_the_derived_extent_survives_a_round_trip():
     assert Declaration.model_validate(d.model_dump()) == d
 
 
-def test_a_member_table_without_a_summary_is_refused():
-    assert "a member-scoped table declares no summary" in refused(member_table({**TABLE, "summary": []}))
-
-
 def test_a_summary_or_measure_ref_names_a_declared_measure():
     assert "summary names rows_total, which is not a declared measure" in refused(
         member_table({**TABLE, "summary": ["rows_total"]}))
@@ -140,40 +141,44 @@ def test_a_summary_or_measure_ref_names_a_declared_measure():
         member_table({**TABLE, "columns": cols}))
 
 
+# ── the gate is the scope; for one release a lack is reported, not refused (Architect, 2026-11-02) ─────────────────
+
 @pytest.mark.parametrize("scope", ["member", "field"])
-def test_a_keyed_table_needs_its_key_its_absences_and_its_order(scope):
-    over = {"scope": scope}
-    assert f"a {scope}-scoped table declares no key_fields" in refused(member_table({**TABLE, "key_fields": []}, **over))
-    bare = {**TABLE, "columns": TABLE["columns"] + ["comment"]}
-    assert "declares no absence word for column comment" in refused(member_table(bare, **over))
-    assert "declares no order" in refused(member_table({**TABLE, "order": ""}, **over))
+@pytest.mark.parametrize("change, lack", [
+    ({"key_fields": []}, "table.key_fields"),
+    ({"columns": TABLE["columns"] + ["comment"]}, "table.columns.comment.absence"),
+    ({"truncation": ""}, "table.truncation"),
+    ({"order": ""}, "table.order"),
+    ({"summary": []}, "table.summary"),
+])
+def test_a_member_or_field_table_that_owes_something_loads_and_missing_names_it(scope, change, lack):
+    d = Declaration.model_validate(member_table({**TABLE, **change}, scope=scope))
+    assert lack in d.missing() and not d.is_table_result()
 
 
-def test_a_member_table_needs_its_truncation():
-    assert "a member-scoped table declares no truncation" in refused(member_table({**TABLE, "truncation": ""}))
+@pytest.mark.parametrize("scope", ["member", "field"])
+def test_a_member_or_field_table_that_owes_nothing_is_a_table_result(scope):
+    d = Declaration.model_validate(member_table(scope=scope))
+    assert d.missing() == [] and d.is_table_result()
 
 
-def test_a_field_scoped_table_needs_no_summary():
-    assert Declaration.model_validate(member_table({**TABLE, "summary": []}, scope="field")).missing() == []
+@pytest.mark.parametrize("scope", ["resource", None])
+def test_a_resource_scoped_or_unscoped_table_keeps_bare_columns_and_hand_extents(scope):
+    body = {"result_kind": "table", "result_kind_note": "none fits", "absence": ABSENCE, "extents": [EXTENT],
+            "table": {"columns": ["a", "b"], "key_fields": ["a"], "order": "as listed",
+                      "truncation": "{shown} of {total} rows"}}
+    if scope:
+        body["scope"] = scope
+    d = Declaration.model_validate(body)
+    assert [e.name for e in d.extents] == ["status"] and not d.is_table_result()
+    assert not [m for m in d.missing() if m.startswith("table.")]
 
 
-def test_missing_names_each_absence_of_an_unscoped_table_result():
-    d = Declaration.model_validate({"result_kind": "table", "result_kind_note": "none fits", "absence": ABSENCE,
-                                    "table": {"columns": ["a", "b", "c"], "key_fields": ["a"],
-                                              "truncation": "{shown} of {total} rows"}})
-    assert d.extents == []
-    assert d.missing() == ["extents", "confidence", "answers", "scope", "table.columns.b.absence",
-                           "table.columns.c.absence", "table.order"]
-
-
-EXTENT = {"name": "status", "fields": ["a"], "rows": 1, "order": "as listed", "truncation": "{shown} of {total}",
-          "token_cost": 10, "citation": "c"}
-
-
-def test_the_earlier_table_shape_keeps_its_hand_written_extents():
-    """The catalogue's first tables (no truncation) predate B1 and convert as touched (owner, 2026-10-31)."""
+def test_a_pre_b1_field_table_with_hand_extents_still_loads_and_names_its_lacks():
+    """value_profile's declaration on main (before commit 3 converted it): field scope, bare columns, hand extent."""
     d = Declaration.model_validate({"result_kind": "table", "result_kind_note": "none fits", "absence": ABSENCE,
                                     "scope": "field", "extents": [EXTENT],
                                     "table": {"columns": ["a", "b"], "key_fields": ["a"]}})
-    assert [e.name for e in d.extents] == ["status"] and not d.table.is_result()
-    assert "table.columns.b.absence" not in d.missing()
+    assert [e.name for e in d.extents] == ["status"]
+    assert [m for m in d.missing() if m.startswith("table.")] == [
+        "table.columns.b.absence", "table.truncation", "table.order", "table.summary"]

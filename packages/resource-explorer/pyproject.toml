@@ -247,6 +247,15 @@ ast = [
 [project.scripts]
 resource-explorer = "resource_explorer.cli.main:app"
 
+# The library's reader seam (trellis_analytics.readers): RE's implementations, found wherever RE is installed.
+# B1: the stored rows of a table result (the protocol is trellis_analytics.readers.table_rows.TableRowsReader).
+# claude/re-ls2-seam declares this SAME table (ods, catalogue_scope, investigation_purposes, question_ids). A merge
+# can keep both table headers without a conflict, and TOML refuses a table declared twice, so uv and pip would fail
+# to parse this file: whichever merges second folds the five entries into ONE table here, and adds TABLE_ROWS to
+# test_reader_seam_host.py's tuple.
+[project.entry-points."trellis_analytics.readers"]
+table_rows = "resource_explorer.table_result:RegistryTableRows"
+
 [tool.hatch.build.targets.wheel]
 packages = ["resource_explorer"]
 

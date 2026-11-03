@@ -21,7 +21,7 @@ def build(registry, resource_kind: str, slug: str, analysis_id: str) -> dict | N
     from resource_explorer.publish_table import run_fields
 
     dec = declarations(resource_kind).get(analysis_id)
-    if dec is None or dec.table is None or not dec.table.is_result():
+    if dec is None or not dec.is_table_result():
         return None
     layer = FactLayer(registry, resource_type=resource_kind)
     fact = layer.fact(slug, analysis_id).as_dict()

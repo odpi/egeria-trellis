@@ -94,3 +94,10 @@ test('a profile stored before the conversion draws no table block', async () => 
     { state: '', type: '', text: '' });
   assert.equal(host.querySelector('[data-table-result]'), null);
 });
+
+test('the generic renderers know the table kind', async () => {
+  makeDomEnvironment();
+  await loadAppModule();
+  const { renderByKind } = await import('/static/next/graph-renderer.js');
+  assert.ok(renderByKind('table', PAYLOAD).includes('data-table-result'));
+});
