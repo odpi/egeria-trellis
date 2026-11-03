@@ -252,6 +252,11 @@ export const getOpenData = (slug) => get(od(`/datasets/${encodeURIComponent(slug
 export const registerFilesystem = (payload) => post('/api/filesystems/', payload);
 /** Can the server read this mount path? `{ state: readable | not_a_folder | not_readable | empty }`. A warning only. */
 export const checkFilesystemMount = (path) => post('/api/filesystems/check-mount', { path });
+/** Outcome 3 "Check reach" before Register: one list call under the root. `{ reachable, sentence, error, … }`. Stores
+ *  nothing; a typed key is used for this one call. */
+export const checkS3Reach = (payload) => post('/api/filesystems/check-reach', payload);
+/** The installed reach mechanisms, the skipped ones by name, and whether a secrets store can hold a key. */
+export const listReachMechanisms = () => get('/api/filesystems/reach-mechanisms');
 /** Whether the root folder is attached in Egeria, from the newest read-back proof row. */
 export const getFilesystemRootFolder = (slug) =>
   get(`/api/filesystems/${encodeURIComponent(slug)}/root-folder`);

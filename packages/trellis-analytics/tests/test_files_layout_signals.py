@@ -183,3 +183,29 @@ def test_no_path_reaches_a_result(layout_installed, fs_registry):
     text = json.dumps({"s": a.summary, "e": a.explanation, "v": a.resource_properties})
     for name in ("secret-project", "customer-archive", "hr-backups", "q3.zip", "p.bak", "pyproject.toml"):
         assert name not in text, name
+
+
+# ── a Delta Lake table (S3 slice Part B, 2026-11-02) ─────────────────────────────────────────────────────────────────
+
+def test_a_delta_log_folder_recognises_a_delta_lake_table_and_says_the_log_was_not_read(layout_installed, fs_registry):
+    reg, url = fs_registry
+    rows = [row("demo/sales/_delta_log/00000000000000000000.json"), row("demo/sales/_delta_log/00000000000000000001.json"),
+            row("demo/sales/part-0.parquet"), row("demo/sales/part-1.parquet"),
+            row("demo/loose/part-9.parquet")]                 # Parquet outside any table is not a part of one
+    walk(reg, "2026-11-02T09:00:00", rows, not_walked={})
+    a = run(url)
+    v = a.resource_properties
+    assert state(a) == "measured"
+    assert v["Delta Lake Tables"] == "1" and v["Delta Lake Parquet Parts"] == "2"
+    assert v["Recognised As"] == "a Delta Lake table"
+    assert ("a Delta Lake table (1 table, 2 Parquet parts as found · the Delta log was not read, so retired parts may "
+            "be included)") in a.summary
+    assert "demo/sales" not in json.dumps({"s": a.summary, "v": a.resource_properties})   # no path is published
+
+
+def test_parquet_files_alone_are_not_a_delta_table(layout_installed, fs_registry):
+    reg, url = fs_registry
+    walk(reg, "2026-11-02T09:00:00", [row("x/part-0.parquet"), row("x/_delta_log/README.md")], not_walked={})
+    a = run(url)
+    assert state(a) == "nothing_found" and props(a)["Delta Lake Tables"] == "0"
+    assert "no Delta Lake _delta_log folder" in a.summary
