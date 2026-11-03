@@ -54,3 +54,14 @@ pod_data_json_with_distributions.json   https://healthdata.gov/data.json  HTTP 2
     The owner's "HHS" address https://www.hhs.gov/data.json answered HTTP 403 "Access Denied" (an Akamai block) to
     this client, to curl's default agent and over http; it was not retried with another identity. healthdata.gov is HHS's
     own health data portal and answered 200, so it is the recorded feed; the seeds list www.hhs.gov as failed.
+
+Recorded 2026-11-03 (UTC), read-only GETs, User-Agent "ResourceExplorer-OpenData/1 (read-only catalog queries)", no key
+(anonymous). Zenodo adapter slice (BRIEF-OPEN-DATA-REPO-DATASETS-AND-ZENODO). Each file is a verbatim copy of the answer.
+
+zenodo_search_clinical_trial_dataset_page1.json   https://zenodo.org/api/records?q=clinical trial&type=dataset&size=25&page=1  HTTP 200
+zenodo_search_clinical_trial_dataset_page2.json   the same with page=2  HTTP 200
+    25 hits per page; hits.total 20482 on both. Records without a `license` (8192485, 8046590) and without a concept DOI
+    (12737228 ...) are in page 1; 8046590 has an empty files list. No record states `metadata.publisher`.
+zenodo_record_with_files.json     https://zenodo.org/api/records/18494263  HTTP 200 (one file, VIP_ovary.xlsx, 246814 bytes, md5)
+zenodo_doi_lookup.json            https://zenodo.org/api/records?q=doi:"10.5281/zenodo.18494263"  HTTP 200, hits.total 1
+    `GET /api/records?size=1` answers {hits, aggregations, links} (the InvenioRDM probe); total 7,632,651 on the day.

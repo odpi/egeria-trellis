@@ -107,6 +107,16 @@ portals:
     size_note: paged, 20 per page; a handful of datasets
     why: "The CKAN sandbox. It is reset and small, so it is for trying things, not for real data."
 
+  - display_name: Zenodo
+    api_kind: Zenodo
+    feed_url: https://zenodo.org/api
+    publisher: Zenodo (CERN)
+    identifier_scheme: the DOI (the concept DOI across versions)
+    catalogue_licence: NOT_REPORTED
+    checked: "2026-11-03"
+    size_note: paged, 25 per page (about 7.6 million records; a search with type=dataset narrows it)
+    why: The general research repository; anonymous reads, no key. Every InvenioRDM instance shares the API.
+
   - display_name: data.europa.eu
     api_kind: ""
     feed_url: ""

@@ -5,7 +5,7 @@ class-level `manifest` (`resource_explorer.open_data.adapters.AdapterManifest`) 
 
 | Role | Methods | Built-in |
 |---|---|---|
-| portal | `search(terms, filters, page)`, `describe(dataset_id)`, `distributions(dataset_id)` | `ckan` (CKAN 2.9+, API 3: `package_search`, `package_show`); `dcat_ap` (DCAT-AP JSON-LD `catalog.jsonld` feeds and Project Open Data `data.json`) |
+| portal | `search(terms, filters, page)`, `describe(dataset_id)`, `distributions(dataset_id)` | `ckan` (CKAN 2.9+, API 3: `package_search`, `package_show`); `dcat_ap` (DCAT-AP JSON-LD `catalog.jsonld` feeds and Project Open Data `data.json`); `zenodo` (Zenodo and InvenioRDM: `GET /records`, `GET /records/{id}`) |
 | directory | `list_portals(page)` | `dataportals` (the dataportals.org JSON listing) |
 | resolver | `resolve(doi)` | `datacite` (api.datacite.org/dois/{doi}, no key) |
 
@@ -42,6 +42,25 @@ other column. The reader accepts expanded, flattened JSON-LD (data.gov.ie), comp
 bare name. A record carries the source's entry verbatim; keys beginning `_` (`_language`, `_licence_note`,
 `_filter_note`, `_access_only`) are RE's own notes on it. Fixtures and where each was recorded: `tests/fixtures/open_data/README`.
 Not supported: RDF/XML, Turtle, SPARQL.
+
+## The `zenodo` adapter
+
+Zenodo's records API (`https://zenodo.org/api`), which every InvenioRDM instance shares: a portal registered with another
+base URL and api kind `Zenodo` or `InvenioRDM` works unchanged. **No key**: anonymous reads; a registered `secret_ref` is
+sent as a bearer token for the higher rate limit only and is never required (the manifest says `needs_key=False`).
+
+- `search` is `GET /records?q=<terms>&size=25&page=<n>` (plus `type=dataset` when the filter asks): one call per page, 25
+  rows (Zenodo's default). `hits.total` gives the page count; the price line says "a record's files list costs one more call".
+- A row's identifier is the **concept DOI** when the record states one (so versions are one dataset), else the record DOI
+  (`identifier_kind` `doi`). Publisher is `metadata.publisher` or "Zenodo"; licence is `metadata.license.id` (SPDX-style
+  ids map to the three flags through `licences.py`); modified is `updated`; formats (file-name extensions) and size
+  (sum of `files[].size`) come from the record's `files`. A record with no `license` reads `not_reported`, never "open"; a
+  record with no files has no formats and no size (not 0 bytes).
+- `describe(id)` is `GET /records/{id}`; `distributions(id)` is its `files[]` (key, size, checksum, link);
+  `resolve(doi)` is `GET /records?q=doi:"<doi>"`, so a DOI pasted anywhere finds the record.
+- Registration probes `GET /records?size=1` (and `/api/records?size=1` when the URL was typed without `/api`) and requires
+  `hits` in the answer; the answering root is stored as the portal's base URL.
+- Fixtures: `zenodo_*` in `tests/fixtures/open_data/`, recorded 2026-11-03 (README there has the URLs).
 
 ## Suggested portals
 

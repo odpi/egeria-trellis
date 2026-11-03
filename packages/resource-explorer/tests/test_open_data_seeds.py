@@ -112,7 +112,7 @@ def test_every_seed_row_has_every_field_and_a_checked_date_or_failed_date():
         for f in seeds.FIELDS:
             assert f in r, (r.get("display_name"), f)
         assert re.fullmatch(r"\d{4}-\d{2}-\d{2}|failed \d{4}-\d{2}-\d{2}", str(r["checked"])), r["display_name"]
-        assert r["api_kind"] in ("CKAN", "DCAT-AP", ""), r["display_name"]
+        assert r["api_kind"] in ("CKAN", "DCAT-AP", "Zenodo", ""), r["display_name"]
         assert r["size_note"] and r["why"]
 
 
