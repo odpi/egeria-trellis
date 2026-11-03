@@ -3511,6 +3511,17 @@ function selectedProject() {
 export function resourceHeaderHtml(slug) {
   const p = selectedProject();
   const name = p?.display_name || slug;
+  // W50: before the resource's row is back, nothing below is known. "never surveyed · not published to Egeria" drawn
+  // as a placeholder read as a fact for a second; the header says it is reading until the row answers.
+  if (!p) {
+    return `
+    <div class="flex flex-wrap items-baseline gap-s3">
+      <h3 class="m-0 font-heading text-name font-normal">${esc(name)}</h3>
+      <span class="font-mono text-provenance text-ink-muted">${esc(slug)}</span>
+    </div>
+    <div data-header-reading class="mt-s1 text-provenance text-ink-muted">reading…</div>
+    <div id="resource-action" class="mt-s2"></div>`;
+  }
 
   const links = [];
   if (p?.github_url) {

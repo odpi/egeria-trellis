@@ -26,3 +26,18 @@ for (const [label, second] of [['all never ran', 'never_run'], ['one has no read
     assert.equal((said.match(/not yet run/gi) || []).length, 1, said);
   });
 }
+
+// W50: before the resource's row is back the header says it is reading, never "never surveyed" as a placeholder.
+test('W50 the resource header reads "reading…" until the row answers, then the facts', async () => {
+  const app = await load();
+  app.state.resourceType = 'repo';
+  app.state.projects = [];
+  app.state.selectedSlug = 'laz_local_adventureworks';
+  const before = text(app.resourceHeaderHtml('laz_local_adventureworks'));
+  assert.match(before, /reading…/);
+  assert.doesNotMatch(before, /never surveyed|not published to Egeria|no external links recorded|undecided/);
+  app.state.projects = [{ slug: 'laz_local_adventureworks', display_name: 'adventureworks', last_surveyed_at: '' }];
+  const after = text(app.resourceHeaderHtml('laz_local_adventureworks'));
+  assert.doesNotMatch(after, /reading…/);
+  assert.match(after, /never surveyed · not published to Egeria/);
+});
