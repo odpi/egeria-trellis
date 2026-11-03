@@ -95,3 +95,21 @@ def test_w56_a_per_card_run_is_named_on_the_card_and_a_real_survey_keeps_its_wor
     assert card["last_run_via"] == "per_card" and card["last_run_survey_id"] == wrapper_id
     other = _last_run_info(registry, "d", "change_rates", entity_type="database")
     assert other["last_run_via"] == "survey" and other["last_run_survey_id"] == ""
+
+
+# --- W57: a basis whose numerator counts a part of the whole names what it counts ----------------------------------
+
+def test_w57_a_state_count_is_never_read_as_n_measured():
+    from trellis_analytics.declaration import BasisDeclaration, MeasureDeclaration
+
+    from resource_explorer import declared_words
+
+    basis = BasisDeclaration(denominator_field="Tables", denominator_label="tables")
+    subset = MeasureDeclaration(name="statistics_freshness_summary", unit="tables never analyzed or stale", as_of="asOf",
+                                value_field="Needs Attention", basis=basis)
+    said, _ = declared_words.measure_sentence(subset, {"Needs Attention": 215, "Tables": 266})
+    assert said == "215 tables never analyzed or stale of 266 tables (81% of the tables)"
+    # A numerator in the whole's own words keeps the short form.
+    whole = MeasureDeclaration(name="profiled_columns", unit="columns", as_of="asOf", value_field="n",
+                               basis=BasisDeclaration(denominator_field="t", denominator_label="columns"))
+    assert declared_words.measure_sentence(whole, {"n": 456, "t": 1236})[0] == "456 of 1,236 columns (37%)"
