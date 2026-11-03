@@ -114,6 +114,17 @@ def _newest_walk(registry, slug: str) -> dict | None:
     return None
 
 
+def short_host(name) -> str:
+    """A host name without its domain, lower-cased: "laz.local" and "laz" are one machine."""
+    return str(name or "").strip().split(".")[0].lower()
+
+
+def same_machine(recorded) -> bool:
+    """Was this walk run on the machine reading it? An S3 walk records `re_host()` (the short name) and a local walk
+    `socket.gethostname()` (which may carry ".local"), so both sides are compared short (W45)."""
+    return bool(short_host(recorded)) and short_host(recorded) == short_host(socket.gethostname())
+
+
 def price(registry, slug: str, *, egeria_leads: bool = False) -> dict:
     """The one cost line before the Survey press (F12). Every number comes from a stored walk; none is guessed."""
     sd = _newest_walk(registry, slug)
@@ -129,7 +140,7 @@ def price(registry, slug: str, *, egeria_leads: bool = False) -> dict:
     size = sd.get("total_size_bytes")
     capped = bool(lim.get("capped"))
     seconds = lim.get("walk_seconds")
-    here = lim.get("machine") == socket.gethostname()
+    here = same_machine(lim.get("machine"))
     parts = [f"last walk ({str(sd.get('surveyed_at') or '')[:10]}): {int(files or 0):,} files, "
              f"{_fmt_bytes(int(size or 0))}"]
     if capped:

@@ -201,3 +201,21 @@ def test_w44_an_egeria_led_unattached_file_system_keeps_the_w39_words(monkeypatc
     fork = file_reach.ForkState(state=file_reach.EXPECTED, sentence="expected reachable", surveyor=file_reach.SURVEYOR_EGERIA)
     assert _folder_survey_reason(monkeypatch, fork) == nsr.FS_NEEDS_ROOT_ASSET
     assert _folder_survey_reason(monkeypatch, fork, asset_guid="de51f58d") == ""
+
+
+# --- W45: a walk run on this host is priced for it, whether its machine was recorded short or in full ------------
+
+def test_w45_short_and_full_host_names_are_one_machine(monkeypatch):
+    import socket
+
+    from resource_explorer.surveyors.filesystem import walk_derived
+
+    monkeypatch.setattr(socket, "gethostname", lambda: "laz.local")
+    assert walk_derived.same_machine("laz") and walk_derived.same_machine("laz.local") and walk_derived.same_machine("LAZ")
+    assert not walk_derived.same_machine("hedwig") and not walk_derived.same_machine("") and not walk_derived.same_machine(None)
+
+    sd = {"surveyed_at": "2026-11-03T10:37:00", "total_files": 12, "total_size_bytes": 19600,
+          "walk_limits": {"walk_seconds": 0.2, "machine": "laz"}}
+    monkeypatch.setattr(walk_derived, "_newest_walk", lambda registry, slug: sd)
+    words = walk_derived.price(object(), "dl_minio_datalake")["words"]
+    assert "another machine" not in words and "under a second to walk again on this machine" in words
