@@ -18,14 +18,13 @@ import sqlite3
 from contextlib import contextmanager
 from typing import Any, Iterator
 
+from trellis_analytics.readers import (CATALOGUE_SCOPE, OdsUnreadable, ReaderMissing,
+                                       ResourceExplorerMissing)  # ResourceExplorerMissing: defined by the seam, stays importable
+
 COVERED_METHODS = (
     "_conn", "_normalize_slug", "query_detail_rows", "get_database_surveys",
     "list_native_survey_runs", "count_native_survey_annotations", "query_native_survey_annotations",
 )
-
-
-class ResourceExplorerMissing(ImportError):
-    """resource_explorer is not installed (install trellis-analytics[re])."""
 
 
 def _registry_module():
@@ -79,3 +78,25 @@ class RegistryReadView:
 
     def query_native_survey_annotations(self, *a, **kw):
         return self._reg.ProjectRegistry.query_native_survey_annotations(self, *a, **kw)
+
+
+class CatalogueScopeReader:
+    """RE's implementation of `trellis_analytics.readers.CatalogueScopeRead`, registered as `catalogue_scope`.
+
+    `source` is the registry URL or an ODS reader of it (its `url`). Nothing is opened or imported until `node_set` is
+    asked: a routine resolves the reader before it reads anything, and building it costs nothing."""
+
+    def __init__(self, source):
+        self._source = source
+
+    def node_set(self, slug: str) -> dict:
+        url = self._source if isinstance(self._source, str) else getattr(self._source, "url", "")
+        try:
+            from resource_explorer.catalogue_scope import resolve_node_set
+            view = RegistryReadView(url)
+        except ImportError as exc:      # ResourceExplorerMissing included: the reader is registered, RE will not load
+            raise ReaderMissing(CATALOGUE_SCOPE, str(exc)) from exc
+        try:
+            return resolve_node_set(view, slug)
+        except Exception as exc:  # noqa: BLE001  the registry could not answer: not "no schemas"
+            raise OdsUnreadable(f"the node set could not be read: {type(exc).__name__}: {exc}") from exc
