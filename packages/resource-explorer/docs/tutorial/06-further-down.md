@@ -117,8 +117,9 @@ screenshots were taken, a Database Quality Survey had also been run on this data
    *The same answer, no longer partial.*
 
    The line saying the answer was partial has gone. In its place: "statistics_freshness · measured · 215 of 266
-   tables (81%) · run just now". The "Is this database alive" row on Scouting has changed in the same way, because
-   both rows use this analysis.
+   tables (81%) · run just now". The 215 here is the never-analyzed count again: all 266 relations were measured,
+   and the line's label does not say so (gap G33). The "Is this database alive" row on Scouting has changed in the
+   same way, because both rows use this analysis.
 
    That is the funnel inside a stage: one cheap analysis, run where an answer needed it, instead of a survey of
    eight steps.
