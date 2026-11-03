@@ -31,6 +31,7 @@ import re
 from datetime import datetime
 from pathlib import Path
 
+from resource_explorer.ingestion.vendored import is_vendored_abs
 from resource_explorer.open_data.absence import NOT_REPORTED, reported_or_absent
 from resource_explorer.open_data.ckan import normalise_doi
 from resource_explorer.open_data.licences import licence_flags, licence_id_from_iri
@@ -52,8 +53,6 @@ NAMES_A_DATASET = (KIND_DATAPACKAGE, KIND_CROISSANT, KIND_CFF, KIND_HF_CARD)
 
 ID_DOI, ID_DATAPACKAGE, ID_CROISSANT, ID_HF, ID_NONE = "doi", "datapackage_name", "croissant_name", "hf_repo", "none"
 
-#: Never look inside these (somebody else's checked-in code, not this repository's description).
-_SKIP_DIRS = {".git", "node_modules", "venv", ".venv", "site-packages", "vendor", "__pycache__"}
 _MAX_DEPTH = 3
 _MAX_BYTES = 2 * 1024 * 1024                    # a descriptor larger than this is not read; said, not guessed
 _README_NAMES = ("README.md", "readme.md", "README.MD", "Readme.md")
@@ -302,7 +301,8 @@ def _walk(root: Path):
     """(relative posix path, absolute Path) of files up to `_MAX_DEPTH`, skipping vendored and VCS directories."""
     for p in sorted(root.rglob("*")):
         rel = p.relative_to(root)
-        if len(rel.parts) > _MAX_DEPTH or any(part in _SKIP_DIRS for part in rel.parts[:-1]):
+        # vendored and generated paths are somebody else's files, not this repository's description of itself
+        if len(rel.parts) > _MAX_DEPTH or is_vendored_abs(p, root):
             continue
         if p.is_file():
             yield rel.as_posix(), p

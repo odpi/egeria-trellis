@@ -431,3 +431,25 @@ def test_the_classification_surveyor_adds_the_dataset_kind_finding(reg, tmp_path
     by = {f["check_name"]: f for f in reg.query_findings("acme-data", "repo_classification")}
     assert by["dataset_kind"]["summary"].startswith("a dataset repository · identity datapackage name air-quality")
     assert json.loads(by["repo_role"]["detail_json"])["roles"] == ["dataset"]
+
+
+def test_a_failure_reading_the_descriptors_is_a_visible_finding_not_a_missing_row(reg, tmp_path, monkeypatch):
+    from resource_explorer.github.expectations import ExpectationReport
+    from resource_explorer.surveyors.sub_surveyors.repo_classification import RepoClassificationSurveyor
+
+    report = ExpectationReport(owner_repo="acme/data", primary_role="library", roles=["library"])
+    monkeypatch.setattr("resource_explorer.github.expectations.build_report", lambda owner_repo: report)
+
+    def boom(*a, **k):
+        raise RuntimeError("registry went away")
+
+    monkeypatch.setattr(dd, "kind_finding", boom)
+    RepoClassificationSurveyor(reg.get("acme-data"), reg).run()
+    by = {f["check_name"]: f for f in reg.query_findings("acme-data", "repo_classification")}
+    assert by["dataset_kind"]["label"] == "error" and "registry went away" in by["dataset_kind"]["summary"]
+    assert "repo_role" in by                                              # the classification itself is intact
+
+
+def test_vendored_directories_are_not_searched_for_descriptors(tmp_path):
+    root = _tree(tmp_path, **{"vendor__lib__datapackage.json": DATAPACKAGE, "datapackage.json": DATAPACKAGE})
+    assert [r["path"] for r in dd.read_descriptors(root)] == ["datapackage.json"]
