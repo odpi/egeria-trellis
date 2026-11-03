@@ -546,6 +546,16 @@ export async function ensureResourceListLoaded(type) {
 const stageLabel = () =>
   STAGES.find((s) => s.id === state.stage)?.label || state.stage;
 
+/** How an analysis card's last run happened. A per-card Run → is a one-analysis survey: "via survey" was literally true
+ *  and misleading, so it is named, with the survey row's short id (W56). */
+export function lastRunViaWords(row) {
+  if (row.last_run_via === 'per_card') {
+    const id = String(row.last_run_survey_id || '').slice(0, 8);
+    return `via Run → on this card (a one-analysis survey${id ? `, <span class="font-mono">${esc(id)}</span>` : ''})`;
+  }
+  return `via ${esc(String(row.last_run_via).replace(/_/g, ' '))}`;
+}
+
 /** "4 Analysis": the stage a per-card Run → is pressed on, as the nav numbers it (W55). */
 const pressedOnWords = () => (RUN_ORDER.has(state.stage) ? `${RUN_ORDER.get(state.stage)} ${stageLabel()}` : stageLabel());
 
@@ -6146,7 +6156,7 @@ export function analysisIndexRowHtml(row) {
           ? `<button type="button" data-analysis-questions="${esc(row.analysis_id)}"
                class="cursor-pointer bg-transparent p-0 text-accent-ink underline">${qn} question${qn === 1 ? '' : 's'} ›</button>`
           : row.serves === 'chat-only' ? 'chat-only — no question asks' : 'nothing-yet — no question asks, no reader either'}
-        · ${row.last_run_at ? `<span class="tnum">${esc(ago(row.last_run_at))}</span>${row.last_run_via ? ` · via ${esc(row.last_run_via.replace(/_/g, ' '))}` : ''}` : 'not yet run'}
+        · ${row.last_run_at ? `<span class="tnum">${esc(ago(row.last_run_at))}</span>${row.last_run_via ? ` · ${lastRunViaWords(row)}` : ''}` : 'not yet run'}
         · ${analysisRowPrice(row.cost)}
         ${row.last_publish_proof ? `· ${publishProofHtml(row.last_publish_proof)}` : ''}
         ${analysisRanAsHtml(row)}

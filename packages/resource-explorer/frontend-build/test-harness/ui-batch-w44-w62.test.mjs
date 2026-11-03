@@ -91,3 +91,12 @@ test('W55 the Run → press sends the stage it was pressed on', async () => {
   await api.runAnalysis('coco', 'statistics_freshness', 'database', { force: true, pressedOn: '4 Analysis' });
   assert.match(urls[0], /\/api\/databases\/coco\/analyses\/statistics_freshness\/run\?force=true&pressed_on=4%20Analysis$/);
 });
+
+// W56: "via survey" for a one-analysis Run → was literally true and misleading.
+test('W56 a card run by its own Run → says so, with the survey id; a real survey keeps "via survey"', async () => {
+  const app = await load();
+  const words = app.lastRunViaWords({ last_run_via: 'per_card', last_run_survey_id: '3f19bc70-5e5c-4eed-b22b-47b11a92dfef' });
+  assert.equal(words.replace(/<[^>]*>/g, ''), 'via Run → on this card (a one-analysis survey, 3f19bc70)');
+  assert.equal(text(app.lastRunViaWords({ last_run_via: 'survey' })).trim(), 'via survey');
+  assert.equal(text(app.lastRunViaWords({ last_run_via: 'step_runs' })).trim(), 'via step runs');
+});

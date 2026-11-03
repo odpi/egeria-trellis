@@ -70,3 +70,28 @@ def test_w55_no_pressed_on_outside_a_per_card_handler():
     with pressed_on("4 Analysis"):
         assert PRESSED_ON.get() == "4 Analysis"
     assert PRESSED_ON.get() == ""
+
+
+# --- W56: a card whose last run was its own Run → says so, not "via survey" ---------------------------------------
+
+def test_w56_a_per_card_run_is_named_on_the_card_and_a_real_survey_keeps_its_word(tmp_path):
+    import json
+
+    from resource_explorer.activity_logger import log_survey
+    from resource_explorer.registry import DatabaseEntity, ProjectRegistry
+    from resource_explorer.workflows.stage_page import _last_run_info
+
+    registry = ProjectRegistry(db_path=str(tmp_path / "w56.db"))
+    registry.register_database(DatabaseEntity(slug="d", display_name="D", db_type="postgresql",
+                                              host="localhost", port=5432, database_name="d"))
+    step = lambda key: {"step": f"x::{key}", "re_analysis_step": key, "status": "ok"}  # noqa: E731
+    wrapper_id = log_survey(registry, "database", "d", "D", "", intent="discovery", status="ok", summary="s",
+                            detail=json.dumps({"survey_definition_ref": "synthetic::database::d::statistics_freshness",
+                                               "steps": [step("statistics_freshness")]}))
+    log_survey(registry, "database", "d", "D", "", intent="discovery", status="ok", summary="s",
+               detail=json.dumps({"survey_definition_ref": "RE::db-survey", "steps": [step("change_rates")]}))
+
+    card = _last_run_info(registry, "d", "statistics_freshness", entity_type="database")
+    assert card["last_run_via"] == "per_card" and card["last_run_survey_id"] == wrapper_id
+    other = _last_run_info(registry, "d", "change_rates", entity_type="database")
+    assert other["last_run_via"] == "survey" and other["last_run_survey_id"] == ""

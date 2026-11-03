@@ -15600,7 +15600,7 @@ class ProjectRegistry:
 
         with self._conn() as conn:
             rows = conn.execute(
-                "SELECT ts, status, detail, operation, publish_run_id FROM activity_log "
+                "SELECT id, ts, status, detail, operation, publish_run_id FROM activity_log "
                 "WHERE entity_type = ? AND entity_slug = ? "
                 "AND operation IN ('analysis_run', 'survey') "
                 "ORDER BY ts DESC LIMIT ?",
@@ -15684,6 +15684,7 @@ class ProjectRegistry:
                             proofs[row["publish_run_id"]], entity_slug, row["ts"], reset_cache)
                 continue
 
+            per_card = str(detail.get("survey_definition_ref") or "").startswith("synthetic::")
             ran: dict[str, list] = {}
             for step in (detail.get("steps") or []):
                 # `re_analysis_step` is the real key, recorded directly since
@@ -15700,7 +15701,10 @@ class ProjectRegistry:
                     # The steps' own status, not the survey's: a survey that
                     # errored elsewhere still ran this analysis successfully.
                     "last_run_status": "error" if any(s == "error" for s in statuses) else "ok",
-                    "last_run_via": "survey",
+                    # A per-card Run → runs as a one-analysis survey (`synthetic::` ref): "via survey" was literally
+                    # true and misleading (W56), so it is named, with the survey row's id.
+                    "last_run_via": "per_card" if per_card else "survey",
+                    **({"last_run_survey_id": str(row["id"] or "")} if per_card else {}),
                     "last_run_partial": len(statuses) < owned_counts.get(analysis_id, 0),
                 }
                 if proofs.get(row["publish_run_id"] or ""):
