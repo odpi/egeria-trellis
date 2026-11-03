@@ -254,6 +254,18 @@ const tailHtml = (line, sentence) => {
   return more ? `<span class="text-ink-muted"> · ${esc(more)}</span>` : '';
 };
 
+/** W47: an RE-led walk applies no Egeria file-type reference data, so its file-type count is 0 while it knows the
+ *  deployed implementation types from its own data. Never "0 types" then: the words name what is known and what was not
+ *  applied. Null when the count stands as it is. */
+export function typesKnownOtherwise(v, c) {
+  const n = Number(c && c.deployed_types);
+  if (!(v && v.surveyor === 'Resource Explorer' && c && c.file_types === 0 && n > 0)) return null;
+  const known = `${num(n)} deployed type${n === 1 ? '' : 's'} known`;
+  return { header: `types: ${known} · Egeria file-type reference data not applied (RE-led walk)`,
+    tile: `${known} · file-type reference data not applied`,
+    unclassified: `${num(c.unclassified)} without an Egeria file type (reference data not applied)` };
+}
+
 /** The results, one shape for both leads. With `fold` ({open}) the measured results are the Files section, collapsed or
  *  open; without it (Understanding) they draw as before. */
 export function folderResultsHtml(view, fold = null) {
@@ -265,6 +277,7 @@ export function folderResultsHtml(view, fold = null) {
   const c = r.counts || {};
   const t = r.times || {};
   const attrs = `data-fs-results data-fs-state="measured" data-fs-surveyor="${esc(v.surveyor)}"`;
+  const otherwise = typesKnownOtherwise(v, c);
   const body = `<div data-fs-surveyed-by class="text-caveat text-ink">${esc(FOLDER_SURVEY_WORDS.surveyedBy(v.surveyor, day(v.surveyed_at)))}${
   tailHtml(FOLDER_SURVEY_WORDS.surveyedBy(v.surveyor, day(v.surveyed_at)), v.report_sentence)}</div>
     <div class="text-provenance text-ink-muted" data-fs-published>${publishWords(v)}</div>
@@ -276,16 +289,18 @@ export function folderResultsHtml(view, fold = null) {
       ${statRow('Files', num(c.files))}
       ${statRow('Folders', num(c.subdirectories))}
       ${statRow('Total size', c.total_size_bytes == null ? dash : fmtBytes(c.total_size_bytes))}
-      ${statRow('File types', num(c.file_types))}
-      ${statRow('Unclassified', num(c.unclassified))}
+      ${statRow('File types', otherwise ? otherwise.tile : num(c.file_types))}
+      ${statRow('Unclassified', otherwise && c.unclassified != null ? otherwise.unclassified : num(c.unclassified))}
       ${statRow('Last modified', t.last_modified ? day(t.last_modified) : dash)}
       ${inaccessibleHtml(r.inaccessible)}
     </div>
     ${typeRows('File types', r.file_types)}
+    ${otherwise ? typeRows('Deployed implementation types', r.deployed_types) : ''}
     ${typeRows('File extensions', r.extensions)}`;
   if (fold) {
     const answer = words(c.files == null ? '' : `${num(c.files)} files`, c.total_size_bytes == null ? '' : fmtBytes(c.total_size_bytes),
-      c.file_types == null ? '' : `${num(c.file_types)} types`, FOLDER_SURVEY_WORDS.surveyedBy(v.surveyor, day(v.surveyed_at)));
+      otherwise ? otherwise.header : c.file_types == null ? '' : `${num(c.file_types)} types`,
+      FOLDER_SURVEY_WORDS.surveyedBy(v.surveyor, day(v.surveyed_at)));
     return sectionHtml('files', fold.open, FOLDER_SURVEY_WORDS.filesHeading, answer, attrs, body, 'tight');
   }
   return `<div ${attrs} class="mt-s2">

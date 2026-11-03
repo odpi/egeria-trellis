@@ -112,3 +112,22 @@ test('W51 Egeria counts only: the profiles price says so and points at Measure b
   const plain = fs.fileProfilesHtml({ price: { walk: false, words: 'no walk yet · run the folder survey first' }, run: null });
   assert.doesNotMatch(plain, /data-fp-measure-pointer/);
 });
+
+// W47: an RE-led walk with 0 Egeria file types but deployed types known never reads "0 types".
+test('W47 RE-led FILES header and tiles say the deployed types known, not "0 types"', async () => {
+  await load();
+  const fs = await import('/static/next/fs-survey.js');
+  const view = { state: 'measured', surveyor: 'Resource Explorer', surveyed_at: '2026-11-03T10:37:00',
+    results: { counts: { files: 12, total_size_bytes: 19600, file_types: 0, deployed_types: 3, unclassified: 12 },
+      times: {}, file_types: [], extensions: [],
+      deployed_types: [{ name: 'Parquet Data File', count: 9 }, { name: 'JSON File', count: 2 }, { name: 'Markdown Document', count: 1 }] } };
+  const said = text(fs.folderResultsHtml(view, { open: true }));
+  assert.match(said, /types: 3 deployed types known · Egeria file-type reference data not applied \(RE-led walk\)/);
+  assert.doesNotMatch(said, /\b0 types\b/);
+  assert.match(said, /File types 3 deployed types known · file-type reference data not applied/);
+  assert.match(said, /Unclassified 12 without an Egeria file type/);
+  assert.match(said, /Parquet Data File 9/);
+  // Egeria's own survey, or a walk that applied file types, keeps its count.
+  const egeria = { ...view, surveyor: "Egeria's Folder Survey" };
+  assert.match(text(fs.folderResultsHtml(egeria, { open: true })), /\b0 types\b/);
+});
