@@ -339,25 +339,26 @@ class TestTheCommittedCsvGeneratesTheNumbersInThePrBody:
 
     def test_row_counts(self, generated):
         rows, out, _ = generated
-        # 2026-10-28: +4 rows (Q-0106 to Q-0109, Files build step 6); 2026-10-30: +3 (Q-0110 to Q-0112, CMP1)
-        assert len(rows) == 112
+        # 2026-10-28: +4 rows (Q-0106 to Q-0109, Files build step 6); 2026-10-30: +3 (Q-0110 to Q-0112, CMP1); 2026-11-02: +3 (Q-0113 to Q-0115, open data)
+        assert len(rows) == 115
         statuses = Counter("retired" if r["Status"].startswith("retired") else "merged" if r["Status"].startswith("merged")
                            else "active" for r in rows)
-        assert statuses == {"active": 101, "retired": 2, "merged": 9}
+        assert statuses == {"active": 104, "retired": 2, "merged": 9}
         assert len(out["reserved_question_ids"]) == 11
 
     def test_active_questions_by_kind(self, generated):
         _, out, _ = generated
         assert {k: len(v) for k, v in out.items() if k.endswith("_questions")} == {
-            "repo_questions": 52, "database_questions": 57, "filesystem_questions": 38}
+            "repo_questions": 52, "database_questions": 57, "filesystem_questions": 38,
+            "open_data_questions": 3}
         assert "dataset_questions" not in out and "model_questions" not in out
 
     def test_active_questions_by_stage(self, generated):
         _, out, _ = generated
         by_id = {e["id"]: e for k, v in out.items() if k.endswith("_questions") for e in v}
-        assert len(by_id) == 101
+        assert len(by_id) == 104
         assert dict(Counter(e["stage"] for e in by_id.values())) == {
-            "Analysis": 38, "Discovery": 26, "Scouting": 13, "Assessment": 14, "Enrichment": 5,
+            "Analysis": 38, "Discovery": 27, "Scouting": 14, "Assessment": 15, "Enrichment": 5,
             "Analysis/Enrichment": 1, "Scouting/Assessment": 1, "Discovery/Enrichment": 2, "Discovery/Analysis": 1}
 
     def test_no_answer_is_unclassified(self, generated):

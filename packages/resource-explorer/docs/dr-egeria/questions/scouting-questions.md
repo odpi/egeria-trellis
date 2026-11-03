@@ -7738,3 +7738,215 @@ Asked At
 
 ___
 
+## Create Glossary Term
+
+### Glossary Name
+User Questions
+
+### Display Name
+Is this dataset's licence usable for our purpose, and what does it require of us?
+
+### Description
+What the publisher's record states about the licence: its identifier, and the three flags (attribution, share-alike, commercial use) read from a known licence table. The check will judge those against a stated purpose; it cannot claim legal advice, and a licence the table does not know stays unjudged.
+
+### Summary
+A dataset we cannot lawfully use for our purpose is worth nothing, however good the data.
+
+### Usage
+Typically asked and answerable during Assessment.
+
+### Additional Properties
+| Parameter Name | Parameter Value |
+|---|---|
+| question_id | Q-0113 |
+
+___
+
+## Classify Term as Question
+
+### Term Name
+Is this dataset's licence usable for our purpose, and what does it require of us?
+
+___
+
+## Link Perspective to Question
+
+### Perspective Name
+Perspective::Financial
+
+### Question Name
+Is this dataset's licence usable for our purpose, and what does it require of us?
+
+___
+
+## Link Perspective to Question
+
+### Perspective Name
+Perspective::Governance
+
+### Question Name
+Is this dataset's licence usable for our purpose, and what does it require of us?
+
+___
+
+## Link Perspective to Question
+
+### Perspective Name
+Perspective::Data Owner
+
+### Question Name
+Is this dataset's licence usable for our purpose, and what does it require of us?
+
+___
+
+## Link Perspective to Question
+
+### Perspective Name
+Perspective::Consumer
+
+### Question Name
+Is this dataset's licence usable for our purpose, and what does it require of us?
+
+___
+
+## Link Element To Scope
+
+### Target Element
+Is this dataset's licence usable for our purpose, and what does it require of us?
+
+### Scope Reference
+Assessment
+
+### Scope Category
+Asked At
+
+___
+
+## Create Glossary Term
+
+### Glossary Name
+User Questions
+
+### Display Name
+Is this dataset kept to its stated cadence, and when was it last modified?
+
+### Description
+What the publisher states: the update cadence it gives (accrualPeriodicity) and the modified date. The check will compare them; a publisher that states no cadence leaves the question unanswered, not answered yes.
+
+### Summary
+A dataset that says it is updated monthly and was last touched two years ago cannot be relied on.
+
+### Usage
+Typically asked and answerable during Scouting.
+
+### Additional Properties
+| Parameter Name | Parameter Value |
+|---|---|
+| question_id | Q-0114 |
+
+___
+
+## Classify Term as Question
+
+### Term Name
+Is this dataset kept to its stated cadence, and when was it last modified?
+
+___
+
+## Link Perspective to Question
+
+### Perspective Name
+Perspective::Steward
+
+### Question Name
+Is this dataset kept to its stated cadence, and when was it last modified?
+
+___
+
+## Link Perspective to Question
+
+### Perspective Name
+Perspective::Consumer
+
+### Question Name
+Is this dataset kept to its stated cadence, and when was it last modified?
+
+___
+
+## Link Element To Scope
+
+### Target Element
+Is this dataset kept to its stated cadence, and when was it last modified?
+
+### Scope Reference
+Scouting
+
+### Scope Category
+Asked At
+
+___
+
+## Create Glossary Term
+
+### Glossary Name
+User Questions
+
+### Display Name
+What do we know about the data itself — columns, size, formats — and what has not been read?
+
+### Description
+A summary of what a profile of the dataset's distributions has read, and which were not read (over the size cap, not tabular, not downloaded). It will never report an unread distribution as empty.
+
+### Summary
+A description is not the data: the columns, the size and the formats decide whether it can be used at all.
+
+### Usage
+Typically asked and answerable during Discovery.
+
+### Additional Properties
+| Parameter Name | Parameter Value |
+|---|---|
+| question_id | Q-0115 |
+
+___
+
+## Classify Term as Question
+
+### Term Name
+What do we know about the data itself — columns, size, formats — and what has not been read?
+
+___
+
+## Link Perspective to Question
+
+### Perspective Name
+Perspective::Consumer
+
+### Question Name
+What do we know about the data itself — columns, size, formats — and what has not been read?
+
+___
+
+## Link Perspective to Question
+
+### Perspective Name
+Perspective::Data Expert
+
+### Question Name
+What do we know about the data itself — columns, size, formats — and what has not been read?
+
+___
+
+## Link Element To Scope
+
+### Target Element
+What do we know about the data itself — columns, size, formats — and what has not been read?
+
+### Scope Reference
+Discovery
+
+### Scope Category
+Asked At
+
+___
+
