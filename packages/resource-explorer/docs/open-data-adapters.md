@@ -62,6 +62,27 @@ sent as a bearer token for the higher rate limit only and is never required (the
   `hits` in the answer; the answering root is stored as the portal's base URL.
 - Fixtures: `zenodo_*` in `tests/fixtures/open_data/`, recorded 2026-11-03 (README there has the URLs).
 
+## Open data from a registered repository
+
+A repository can be the dataset. During ingestion (while the checkout is on disk) the `dataset_descriptor` step reads, and
+keeps every one it finds, `datapackage.json` (Frictionless), `croissant.json` / `metadata.json` with `@type: Dataset`,
+`CITATION.cff`, a DOI badge or link in the README and a Hugging Face dataset card (README front matter with `license:` and
+`dataset_info:`), and stores them as `dataset_descriptor` findings. No network call is made then; a field a descriptor does
+not state is `not_reported`.
+
+- **Role.** `repo_classification` gains an eighth role, `dataset` (ranked after `samples`, before `middleware`; no score),
+  supported by a descriptor that names a dataset (a README DOI alone does not, and a `CITATION.cff` only with
+  `type: dataset`), a Hugging Face card, or data files at half or more of the tree's bytes with no build tooling. The
+  repository page's kind row reads "a dataset repository · identity DOI 10.…/… · licence CC-BY-4.0 (from datapackage.json)",
+  or, with data files and no such descriptor, "a repository with data files, not an open dataset by Resource Explorer's rule
+  (no descriptor names it)".
+- **Import.** `POST /api/open-data/import-from-repository {repo_slug, descriptor_path}` files one `open_data` row under the
+  reserved `repository` pseudo-portal (a row, never listed, searched or re-read). The identifier is the DOI when any descriptor
+  holds one, else the datapackage/Croissant name qualified by the repository (`<owner>/<repo>:<name>`); with neither it is
+  refused. The row keeps the descriptor verbatim plus the DataCite record, formats and size from the declared files
+  cross-checked against the tree ("3 of 4 declared files present in the tree"), and `repo_slug`. Cost: the descriptor already
+  on disk, plus one DataCite call when there is a DOI; nothing is written to Egeria. DDL: `ddl-open-data-repo-slug.md`.
+
 ## Suggested portals
 
 Resource Explorer ships a short list of open-data portals worth knowing, in `resource_explorer/configdata/open_data_portal_seeds.yaml`.
