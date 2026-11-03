@@ -261,7 +261,7 @@ def kind_headline(dec, value: dict, run: dict | None = None) -> str:
         return f"{count_words(n)} {label}, {lst.order}"
     if kind == "table" and dec.table:
         t = dec.table
-        rows = kind_rows(dec, value, t.columns[0])
+        rows = kind_rows(dec, value, t.column_names()[0])
         if rows is None:
             return ""
         return f"{_plural_noun(len(rows), 'row', 'rows')} × {_plural_noun(len(t.columns), 'column', 'columns')}"

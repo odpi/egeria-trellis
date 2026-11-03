@@ -258,12 +258,14 @@ resource-explorer = "resource_explorer.cli.main:app"
 # implementation. Without RE installed (the Portal) a routine that asks answers not_established in words: "no reader
 # installed for ods here", "no reader for Resource Explorer's catalogue is installed here"; discovery's two warn-only
 # checks are skipped with a warning. ods and catalogue_scope still live in the library's tree until the library leaves
-# trellis (LS2 step 3), then with RE.
+# trellis (LS2 step 3), then with RE. table_rows (B1) is the stored rows of a table result, read through
+# trellis_analytics.readers.table_rows.TableRowsReader. TOML refuses a table declared twice: add a reader here.
 [project.entry-points."trellis_analytics.readers"]
 ods = "trellis_analytics.readers.ods:OdsReader"
 catalogue_scope = "trellis_analytics.readers.registry_view:CatalogueScopeReader"
 investigation_purposes = "resource_explorer.investigation_purposes:known_purpose_names"
 question_ids = "resource_explorer.surveyors.question_catalog_reader:all_question_ids"
+table_rows = "resource_explorer.table_result:RegistryTableRows"
 
 # Reach mechanisms (DESIGN-FILES-REMOTE-REACH §3): installing a package that names an entry point here registers it.
 # The built-ins are always present whatever this metadata says (a venv installed before it still has them).

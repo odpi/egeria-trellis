@@ -1304,7 +1304,13 @@ def compile_context(
                 except Exception as exc:
                     log.warning("measure records for declared %s on %s failed: %s", analysis_id, slug, exc)
                     records = {}
-                rungs, seen = declared_context.section_rungs(analysis_id, dec, fact, records)
+                table = None
+                if dec.is_table_result():
+                    # B1: a table result's rows are stored, not in its result; quote them in the declared order.
+                    from resource_explorer import table_result
+
+                    table = table_result.table_rows(registry, resource_type, slug, analysis_id, dec)
+                rungs, seen = declared_context.section_rungs(analysis_id, dec, fact, records, table=table)
                 _ids = [r["row_id"] for r in records.values() if r.get("row_id")]
                 if _ids:
                     rows_seen.setdefault(analysis_id, {})["step_annotations"] = _ids

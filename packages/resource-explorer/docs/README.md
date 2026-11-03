@@ -1,6 +1,6 @@
 # Resource Explorer documentation
 
-59 documents, grouped by what they *are* rather than what they are about — the
+60 documents, grouped by what they *are* rather than what they are about — the
 distinction that matters when deciding whether one is still live.
 
 **Generated from each document's own `**Status:**` line**, not from a
@@ -48,6 +48,8 @@ Decisions and models. Cited from source where a comment cannot restate them.
   live. Short checklist for every builder brief
 - **[cross-resource-test-protocols.md](cross-resource-test-protocols.md)** — 2026-10-17  
   Ready for manual and automated verification
+- **[ddl-analysis-table-rows.md](ddl-analysis-table-rows.md)** — 2026-11-02  
+  branch `claude/re-b1-table-result`, not deployed. This is the deployment record for one new tabl
 - **[ddl-artifact-columns.md](ddl-artifact-columns.md)** — 2026-10-28  
   merged to main (PR #700). The columns are added by RE's schema init the first time a process run
 - **[ddl-open-data-data-request.md](ddl-open-data-data-request.md)** — 2026-10-29  

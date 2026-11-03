@@ -7,6 +7,7 @@ library can know about.
 """
 from trellis_analytics.readers import (CATALOGUE_SCOPE, GROUP, INVESTIGATION_PURPOSES, ODS, ODS_READS, QUESTION_IDS,
                                        reader_factory, installed_readers)
+from trellis_analytics.readers.table_rows import TABLE_ROWS
 
 from resource_explorer.surveyors.survey_step_host import STEP_ODS_METHODS
 
@@ -16,7 +17,7 @@ def test_re_serves_exactly_the_reads_the_library_declares():
 
 
 def test_re_registers_every_reader_the_library_asks_for():
-    for name in (ODS, CATALOGUE_SCOPE, INVESTIGATION_PURPOSES, QUESTION_IDS):
+    for name in (ODS, CATALOGUE_SCOPE, INVESTIGATION_PURPOSES, QUESTION_IDS, TABLE_ROWS):
         assert name in installed_readers(), f"resource-explorer declares no '{name}' entry point in group {GROUP}"
 
 

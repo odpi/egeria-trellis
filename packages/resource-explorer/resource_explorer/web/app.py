@@ -18,6 +18,7 @@ from resource_explorer.web.routes import publish_table as publish_table_routes
 from resource_explorer.web.routes import api_reference as api_reference_routes, analytics as analytics_routes, activity, aliases, auth as auth_routes, compile_context as compile_context_routes, analyses, automate, bootstrap as bootstrap_routes, context, catalogue_scope, quality_checks, curate, databases, first_index as first_index_routes, db_servers as db_servers_routes, diagrams, discovery, doc_sources, egeria, feedback, investigations, journal, logs as logs_routes, prefect_status, prerequisites as prerequisite_routes, project_context, outbox, projects, query, repair, runs as runs_routes, schedules, stats, webhook, filesystems, survey_definitions, native_surveys, open_data as open_data_routes
 from resource_explorer.web.routes import table_preview as table_preview_routes
 from resource_explorer.web.routes import value_profile as value_profile_routes
+from resource_explorer.web.routes import table_results as table_results_routes
 
 
 log = logging.getLogger(__name__)
@@ -371,6 +372,7 @@ app.include_router(projects.router, prefix="/api/projects", tags=["projects"])
 app.include_router(databases.router, prefix="/api/databases", tags=["databases"])
 app.include_router(table_preview_routes.router, prefix="/api/databases", tags=["table-preview"])
 app.include_router(value_profile_routes.router, prefix="/api/databases", tags=["value-profile"])
+app.include_router(table_results_routes.router, prefix="/api/table-results", tags=["table-results"])
 app.include_router(filesystems.router, prefix="/api/filesystems", tags=["filesystems"])
 app.include_router(open_data_routes.router, prefix="/api/open-data", tags=["open-data"])
 app.include_router(stats.router, prefix="/api/stats", tags=["stats"])

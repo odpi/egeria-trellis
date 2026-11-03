@@ -197,6 +197,10 @@ class ExtentDeclaration(_Strict):
     truncation: str
     #: The extent's cost at `rows` rows, in tokens, for the compiler's budget (§3 step 4).
     token_cost: int
+    #: About how many tokens ONE row costs, so the compiler can quote a prefix within its budget ("N of M rows
+    #: quoted"). Set on the extent a table derives (fields x `TOKENS_PER_CELL`); 0 on a hand-written extent, which
+    #: is priced whole.
+    token_cost_per_row: int = 0
     #: How an answer cites a row of this extent ("{analysis} · {scope} · as of {as_of}").
     citation: str
     #: Where the rows are in the result, when that is not a field named like the extent: each a dotted path to a
@@ -398,20 +402,147 @@ class ListDeclaration(_Strict):
         return self
 
 
+#: B1 (DESIGN-B1-MEMBER-SCOPED-TABLE-RESULT §2): the types a table column may hold. `state` is a closed vocabulary the
+#: column declares (`states`); `bytes` and `duration` are numbers whose unit is said.
+TABLE_COLUMN_TYPES = ("text", "integer", "number", "boolean", "date", "datetime", "bytes", "duration", "state")
+
+#: The column types that carry a unit, because a number never travels without one.
+UNIT_COLUMN_TYPES = ("number", "bytes", "duration")
+
+#: The owner's cap on the rows a table shows (ruling 2026-11-02, "1,000"): a declaration may lower it, never raise it.
+#: Every row is stored; the cap is for showing.
+TABLE_MAX_ROWS = 1000
+
+#: About how many tokens one cell of a table costs a chat compile, for the extent a table derives
+#: (`TableDeclaration.extent`): the catalogue's hand-priced extents run 7-9 per cell. An estimate, so wherever a cost
+#: derived from it is shown it is said with "about" (Architect ruling, 2026-11-02).
+TOKENS_PER_CELL = 8
+
+#: The scopes at which a table is about MEMBERS of a resource, so its rows need a key (§2 rule 1).
+KEYED_SCOPES = ("member", "field")
+
+
+class TableColumn(_Strict):
+    """One column of a table result: a name, a type, and the word a NULL reads as (§2 rule 2: "not measured" is not
+    "none found" is not "not permitted", so each column says its own)."""
+    name: str
+    type: str = "text"
+    #: In words, for a number, bytes or duration column: "rows", "bytes", "seconds".
+    unit: str = ""
+    #: The word an empty cell reads as ("not counted"). Required on every column that is not a key (checked by the
+    #: table, which knows its keys).
+    absence: str = ""
+    #: A `state` column's closed vocabulary, in words.
+    states: list[str] = Field(default_factory=list)
+    #: The measure this column is the per-member value of ("nulls_total"), so the summary and the rows agree by
+    #: construction; checked against the declaration's measures.
+    measure_ref: str = ""
+
+    @model_validator(mode="after")
+    def _shape(self) -> "TableColumn":
+        if not _words(self.name):
+            raise ValueError("a table column declares no name")
+        label = f"table column '{self.name}'"
+        if self.type not in TABLE_COLUMN_TYPES:
+            raise ValueError(f"{label} type '{self.type}' is not one of the column types "
+                             f"({', '.join(TABLE_COLUMN_TYPES)})")
+        if self.type in UNIT_COLUMN_TYPES and not _words(self.unit):
+            raise ValueError(f"{label} is a {self.type} column with no unit: a number never travels without its unit")
+        states = [s for s in self.states if _words(s)]
+        if self.type == "state" and not states:
+            raise ValueError(f"{label} is a state column and declares no states: list the words it may hold")
+        if self.type != "state" and self.states:
+            raise ValueError(f"{label} declares states and type '{self.type}': states belong to a state column")
+        if len(states) != len(set(states)):
+            raise ValueError(f"{label} declares a state more than once")
+        return self
+
+
 class TableDeclaration(_Strict):
-    """A table: columns, and the columns that make a row one row."""
-    columns: list[str]
-    #: The columns that make a row one row; empty for a table of one row (the resource as a whole).
+    """A table: rows about MEMBERS of a resource (columns, files, datasets), each row keyed by what makes the member one
+    member, with typed columns, a size the declaration caps and a summary it states (DESIGN-B1 §2). A table with no key
+    is a table of one row (the resource as a whole).
+
+    Every row is stored; `max_rows` is how many are SHOWN, and `truncation` says how many were not. The summary measures
+    are computed by the step over all rows and declared beside the table, never added up from the shown slice."""
+    #: A bare string is a `text` column with no absence word yet (`missing()` names it), which keeps the earliest table
+    #: declarations valid.
+    columns: list[TableColumn | str]
+    #: The columns that make a row one row; required at member or field scope, empty for a table of one row.
     key_fields: list[str] = Field(default_factory=list)
+    #: How many rows are shown, at most: the owner's cap, `TABLE_MAX_ROWS`, which a declaration may only lower.
+    max_rows: int = TABLE_MAX_ROWS
+    #: The order rows are shown in, in words ("schema, table, column as the catalog lists them").
+    order: str = ""
+    #: Shown with the table; carries `{shown}` and `{total}` ("the first {shown} of {total} columns; every column is
+    #: stored and the summary counts them all").
+    truncation: str = ""
+    #: The measures, declared beside the table, that say the whole of it in one sentence; required at member scope.
+    summary: list[str] = Field(default_factory=list)
+
+    @field_validator("columns", mode="before")
+    @classmethod
+    def _bare_is_text(cls, v):
+        return [{"name": c} if isinstance(c, str) else c for c in v] if isinstance(v, list) else v
 
     @model_validator(mode="after")
     def _shape(self) -> "TableDeclaration":
-        if not [c for c in self.columns if _words(c)]:
+        names = self.column_names()
+        if not names:
             raise ValueError("a table declares no columns")
-        missing = [k for k in self.key_fields if k not in self.columns]
+        twice = sorted({n for n in names if names.count(n) > 1})
+        if twice:
+            raise ValueError(f"a table declares column {', '.join(twice)} more than once")
+        missing = [k for k in self.key_fields if k not in names]
         if missing:
             raise ValueError(f"a table's key_fields {', '.join(missing)} are not among its columns")
+        if self.max_rows < 1:
+            raise ValueError(f"a table declares max_rows {self.max_rows}: a table shows at least one row")
+        if self.max_rows > TABLE_MAX_ROWS:
+            raise ValueError(f"a table declares max_rows {self.max_rows}: a table shows at most {TABLE_MAX_ROWS:,} "
+                             "rows (owner's cap, 2026-11-02); every row is stored, so lower it or leave it out")
+        lacking = [p for p in TRUNCATION_PLACEHOLDERS if p not in self.truncation]
+        if _words(self.truncation) and lacking:
+            raise ValueError(f"a table's truncation sentence '{self.truncation}' lacks {', '.join(lacking)}: it says "
+                             "how many rows were shown of how many")
+        if len(self.summary) != len(set(self.summary)) or any(not _words(s) for s in self.summary):
+            raise ValueError("a table's summary names a measure twice, or an empty one")
         return self
+
+    def column_names(self) -> list[str]:
+        return [c.name for c in self.columns]
+
+    def column(self, name: str) -> TableColumn | None:
+        return next((c for c in self.columns if c.name == name), None)
+
+    def unworded(self) -> list[str]:
+        """The non-key columns that declare no absence word, in column order."""
+        return [c.name for c in self.columns if c.name not in self.key_fields and not _words(c.absence)]
+
+    def fields(self) -> list[str]:
+        """The key, then the other columns, in declared order: a row's fields as a reader shows them."""
+        return list(self.key_fields) + [n for n in self.column_names() if n not in self.key_fields]
+
+    def lacks(self) -> list[str]:
+        """What a member- or field-scoped table still owes (Architect ruling, 2026-11-02): its key, a typed column with
+        an absence word for every non-key column, its truncation, its order and its summary. [] when it owes nothing."""
+        out = ["table.key_fields"] if not self.key_fields else []
+        out += [f"table.columns.{n}.absence" for n in self.unworded()]
+        out += [f"table.{f}" for f in ("truncation", "order") if not _words(getattr(self, f))]
+        out += ["table.summary"] if not self.summary else []
+        return out
+
+    def extent(self) -> ExtentDeclaration | None:
+        """The extent a table is (§5: "a table result's extent IS its table"): its fields, its cap, its order and
+        truncation words, priced at about `TOKENS_PER_CELL` a cell, with the price of one row beside the whole so the
+        compiler can quote a prefix. None until the table declares an order and a truncation."""
+        if not (_words(self.order) and _words(self.truncation)):
+            return None
+        fields = self.fields()
+        per_row = len(fields) * TOKENS_PER_CELL
+        return ExtentDeclaration(name="rows", fields=fields, rows=self.max_rows, order=self.order,
+                                 truncation=self.truncation, token_cost=self.max_rows * per_row,
+                                 token_cost_per_row=per_row, citation="{analysis} · {scope} · as of {as_of}")
 
 
 #: Each non-numeric kind -> the Declaration field that holds its block.
@@ -471,6 +602,8 @@ class Declaration(_Strict):
             raise ValueError(f"declares no measures: a '{self.result_kind}' reports at least one, with its unit and "
                              "as-of")
         self._kind_blocks()
+        if self.table is not None:
+            self._table()
         names = [m.name for m in self.measures]
         twice = sorted({n for n in names if names.count(n) > 1})
         if twice:
@@ -524,6 +657,40 @@ class Declaration(_Strict):
             raise ValueError(f"declares categories and result_kind '{self.result_kind}': categories belong to "
                              f"{' and '.join(CATEGORY_KINDS)}")
 
+    def _table(self) -> None:
+        """A table's rules that need the rest of the declaration (DESIGN-B1 §2-3; Architect ruling 2026-11-02).
+
+        The gate is the declaration's SCOPE. A table at member or field scope is about the members of a resource and
+        owes its key, typed columns with absence words, truncation, order and summary (`TableDeclaration.lacks`). For
+        one release a lack is REPORTED by `missing()`, never refused, so a pre-B1 declaration keeps loading until it
+        converts (convert-as-touched). Once it owes nothing it is a table result (`is_table_result`): its extent is
+        derived from the table, and an extent written beside a derived one is refused.
+
+        A resource-scoped or unscoped table keeps bare columns and hand-written extents. Whatever the scope, a summary
+        or a measure_ref names a declared measure."""
+        t = self.table
+        declared = {m.name for m in self.measures}
+        unknown = [s for s in t.summary if s not in declared]
+        if unknown:
+            raise ValueError(f"a table's summary names {', '.join(unknown)}, which is not a declared measure")
+        refs = [f"{c.name} -> {c.measure_ref}" for c in t.columns if _words(c.measure_ref) and c.measure_ref not in declared]
+        if refs:
+            raise ValueError(f"a table column's measure_ref names no declared measure ({', '.join(refs)})")
+        if self.scope not in KEYED_SCOPES:
+            return
+        derived = t.extent()
+        if derived is None:
+            return
+        if self.extents and self.extents != [derived]:
+            raise ValueError("declares extents and result_kind 'table': a table's extent is its table, derived from "
+                             "its fields, max_rows, order and truncation, so leave extents out")
+        self.extents = [derived]
+
+    def is_table_result(self) -> bool:
+        """Is this a table result (B1): a member- or field-scoped table that owes nothing? Only a table result stores
+        its rows, draws the table block, publishes its summary alone and quotes its stored rows."""
+        return self.table is not None and self.scope in KEYED_SCOPES and not self.table.lacks()
+
     def confidence_of(self, measure: MeasureDeclaration) -> ConfidenceDeclaration | None:
         """A measure's confidence: its own, else the declaration's."""
         return measure.confidence or self.confidence
@@ -536,9 +703,14 @@ class Declaration(_Strict):
         return next((m for m in self.measures if m.name == name), None)
 
     def missing(self) -> list[str]:
-        """The full-declaration fields this one does not declare yet, in `FULL_FIELDS` order; [] when complete."""
-        return [f for f, absent in (("extents", not self.extents), ("confidence", self.confidence is None),
-                                    ("answers", self.answers is None), ("scope", self.scope is None)) if absent]
+        """The full-declaration fields this one does not declare yet, in `FULL_FIELDS` order, then, for a member- or
+        field-scoped table, what it still owes ("table.key_fields", "table.columns.b.absence", "table.truncation",
+        "table.order", "table.summary"); [] when complete."""
+        out = [f for f, absent in (("extents", not self.extents), ("confidence", self.confidence is None),
+                                   ("answers", self.answers is None), ("scope", self.scope is None)) if absent]
+        if self.table is not None and self.scope in KEYED_SCOPES:
+            out += self.table.lacks()
+        return out
 
     def is_complete(self) -> bool:
         return not self.missing()

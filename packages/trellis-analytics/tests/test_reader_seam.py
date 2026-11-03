@@ -22,6 +22,7 @@ SRC = ROOT / "src" / "trellis_analytics"
 #: What leaves trellis with the library (brief §1, amended 2026-11-02: curation_coverage, its manifests and portal.py move).
 MOVING = ["__init__.py", "declaration.py", "declare.py", "envelope.py", "answer_scoring.py", "manifest.py",
           "manifests.py", "discovery.py", "step.py", "portal.py", "readers/__init__.py", "readers/egeria.py",
+          "readers/table_rows.py",
           "routines/__init__.py", "routines/context_pack.py", "routines/curation_coverage.py"]
 CATALOGUE_WORDS = "no reader for Resource Explorer's catalogue is installed here"
 #: The implementations that stay behind (RE's), which the moving modules must not import.

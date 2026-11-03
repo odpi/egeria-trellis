@@ -19,6 +19,9 @@
  * box; counts are labelled; "nothing declared" is never drawn as a result; every string is escaped.
  */
 
+import { tableResultHtml } from '/static/next/envelope.js';
+import { glyphOf } from '/static/next/glyphs.js';
+
 const esc = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
   .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 
@@ -201,7 +204,8 @@ export function graphHtml(spec) {
 }
 
 /** The renderers, keyed by result_kind. A kind with no renderer here is SAID, never drawn as an empty result. */
-export const RESULT_RENDERERS = { graph: graphHtml };
+// B1: a table result is one block for every kind of member (envelope.js `tableResultHtml`).
+export const RESULT_RENDERERS = { graph: graphHtml, table: (p) => tableResultHtml(p, esc, glyphOf) };
 
 export function renderByKind(kind, payload) {
   const r = RESULT_RENDERERS[kind];

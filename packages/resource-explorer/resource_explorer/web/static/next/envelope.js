@@ -419,3 +419,61 @@ export function readEnvelope(entry, env, esc, tnum) {
 
   return lines;
 }
+
+
+/* ── A table result (B1, DESIGN-B1-MEMBER-SCOPED-TABLE-RESULT §5) ──────────────────────────────────────────────
+ *
+ * One block for every kind of member (columns, files, datasets). The server's typed read
+ * (resource_explorer/table_result.py) supplies the rows already typed and an empty cell already worded; this draws:
+ *   - the summary measures as the headline sentence (the fact's headline);
+ *   - the rows under a <details data-table-result> that starts CLOSED (a table is a collapsed section), its summary
+ *     line the declared truncation sentence ("the first 1,000 of 1,916 columns; ...");
+ *   - the declared order (the rows arrive in it), absence words muted per cell, never a blank cell;
+ *   - a state column as the house marks;
+ *   - "the numbers behind this ›", which opens the summary measures.
+ * The caller makes the <table data-table-grid> resizable with colresize.js's enhanceTable once it is in the page.
+ * `glyphOf` (glyphs.js) is passed in, as `esc` is: this module imports nothing a node-run copy of it cannot resolve. */
+
+/** A declared absence state -> the house mark it is drawn with (glyphs.js). */
+export const TABLE_STATE_MARK = { measured: 'measured', measured_nothing: 'nothing', not_measured: 'not_measured',
+  not_permitted: 'no_access', not_applicable: 'optional' };
+
+/** One cell. `absent` cells read their column's absence word, muted; a state cell is its mark and its word. */
+export function tableCellHtml(col, row, esc, glyphOf = () => '') {
+  const v = row[col.name];
+  const absent = (row.absent || []).includes(col.name);
+  const text = v === null || v === undefined || v === '' ? (col.absence || '') : String(v);
+  if (absent) return `<span data-table-absent class="text-ink-muted">${esc(text)}</span>`;
+  if (col.type === 'state') {
+    const mark = glyphOf(TABLE_STATE_MARK[text] || 'unknown');
+    return `<span data-table-state="${esc(text)}" class="text-ink"><span class="font-glyph" aria-hidden="true">${esc(mark)}</span> ${esc(text.replace(/_/g, ' '))}</span>`;
+  }
+  const num = typeof v === 'number';
+  const words = num ? v.toLocaleString('en-US') : text;
+  return `<span class="${num ? 'tnum text-ink' : 'text-ink'}">${esc(words)}${num && col.unit ? ` <span class="text-ink-muted">${esc(col.unit)}</span>` : ''}</span>`;
+}
+
+/** The table block. `p` = { headline, measures: [{name, words}], table: <table_result.table_rows output>, band? }. */
+export function tableResultHtml(p, esc, glyphOf = () => '') {
+  const t = p.table || {};
+  const head = p.headline ? `<div data-table-headline class="text-answer text-ink">${esc(p.headline)}</div>` : '';
+  if (!t.stored) {
+    return `<div data-table-result-block>${head}<div data-table-not-stored class="text-provenance text-ink-muted">${esc(p.not_stored || 'No rows are stored for this result yet.')}</div></div>`;
+  }
+  const cols = t.columns || [];
+  const th = cols.map((c) => `<th class="py-[3px] pr-s2 text-left font-normal">${esc(c.name.replace(/_/g, ' '))}</th>`).join('');
+  const body = (t.rows || []).map((r) => `<tr class="border-t border-rule">${cols.map((c) =>
+    `<td class="py-[3px] pr-s2 align-top text-left">${tableCellHtml(c, r, esc, glyphOf)}</td>`).join('')}</tr>`).join('');
+  const numbers = (p.measures || []).map((m) => `<li data-table-measure="${esc(m.name)}">${esc(m.words)}</li>`).join('');
+  const behind = numbers ? `<details data-table-numbers class="mt-s1">
+      <summary class="cursor-pointer text-provenance text-accent-ink underline">the numbers behind this ›</summary>
+      <ul class="mt-[2px] text-provenance text-ink">${numbers}</ul></details>` : '';
+  const band = p.band ? `<div data-table-band class="text-provenance text-ink-muted">${esc(p.band)}</div>` : '';
+  return `<div data-table-result-block>${head}${band}
+    <details data-table-result class="mt-s1 border-t border-rule py-[3px]">
+      <summary data-table-truncation class="cursor-pointer text-provenance text-ink-muted">${esc(t.truncation)}</summary>
+      <div data-table-scroll class="mt-s1 min-w-0 max-w-full overflow-x-auto">
+        <table data-table-grid data-rc-id="table-result" class="tnum w-full border-collapse text-caveat text-ink">
+          <thead><tr class="text-provenance text-ink-muted">${th}</tr></thead><tbody>${body}</tbody></table></div>
+    </details>${behind}</div>`;
+}
