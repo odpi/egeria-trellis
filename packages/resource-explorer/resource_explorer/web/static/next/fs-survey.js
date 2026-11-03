@@ -402,8 +402,13 @@ export function fileProfilesHtml(fp, fold = null) {
   if (fp.error) return `<div data-fp data-fp-state="error" class="mt-s3 text-provenance text-state-warn">${esc(fp.error)}</div>`;
   const price = fp.price || {};
   const run = fp.run;
+  // W51: after an Egeria-led survey with no walk of RE's own, the prerequisite is Measure beside: the price says so and
+  // points at the press (the same action as the card's own button).
+  const pointer = price.needs === 'measure_beside'
+    ? ` <button type="button" data-fs-act="measure" data-fp-measure-pointer title="${esc(W.measureBesideHelp)}"
+        class="cursor-pointer bg-transparent p-0 text-caveat text-accent-ink underline">${esc(W.measureBeside)} →</button>` : '';
   const head = `<div class="text-caps uppercase tracking-caps text-ink-muted">${esc(W.profilesHeading)}</div>
-    <div data-fp-price class="text-caveat text-ink">${esc(price.words || '')}</div>`;
+    <div data-fp-price class="text-caveat text-ink">${esc(price.words || '')}${pointer}</div>`;
   if (!run) return `<div data-fp data-fp-state="none" class="mt-s3">${head}<div class="text-provenance text-ink-muted">${esc(W.noProfiles)}</div></div>`;
   const c = run.counts || {};
   const egeriaLines = [c.submitted ? W.submitted(c.submitted) : '', c.not_installed ? W.notInstalled(c.not_installed) : '',

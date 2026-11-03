@@ -1246,13 +1246,20 @@ def _mb(n: int) -> str:
     return f"{n / 1_000_000:,.1f} MB"
 
 
+#: The price before any walk has listed the files.
+NO_WALK_WORDS = "no walk yet · run the folder survey first"
+#: After an Egeria-led Folder Survey and no walk of RE's own: the survey ran, but it keeps counts, not a file list (W51).
+EGERIA_COUNTS_ONLY_WORDS = ("Egeria's survey reports counts, not files · Measure beside Egeria's survey to list them, "
+                            "then profile")
+
+
 def price(registry, slug: str, *, limit: int = PROFILE_LIMIT_BYTES) -> dict:
     """The one cost line, from the walk rows: "N data files, M MB to read; Egeria will profile C CSV files, RE will profile
     R others; about T s". T is from the bytes per second the last run of this step measured ON THIS MACHINE, else "no run
     yet to price from". M counts what will be read: the first `limit` bytes of a file over the limit."""
     walk, files = walk_data_files(registry, slug)
     if walk is None:
-        return {"walk": False, "words": "no walk yet · run the folder survey first"}
+        return {"walk": False, "words": NO_WALK_WORDS}
     led_by = walk.get("led_by") or "re"
     readable = readable_extensions()
     egeria = [f for f in files if source_for(f["file_path"], led_by) == SOURCE_EGERIA]

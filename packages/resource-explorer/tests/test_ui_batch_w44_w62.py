@@ -137,3 +137,24 @@ def test_w52_the_raw_error_stays_on_the_tables_own_line():
     head = header_line({"column_count": 3, "measured_count": 0, "surveyed_at": "2026-11-03T14:53:00"}, [t])
     assert "LINE 429" not in head and "^" not in head and "permission denied (schema demo)" in head
     assert "LINE 429" in table_line(t, "2026-11-03T14:53:00")
+
+
+# --- W51: after an Egeria-led Folder Survey the data-file profiles say the real prerequisite ----------------------
+
+def test_w51_egeria_counts_only_points_at_measure_beside():
+    from resource_explorer.folder_survey_view import _egeria_counts_only
+    from resource_explorer.surveyors.filesystem.file_profiles import EGERIA_COUNTS_ONLY_WORDS, NO_WALK_WORDS
+
+    fp = {"price": {"walk": False, "words": NO_WALK_WORDS}, "run": None}
+    _egeria_counts_only(fp, {"surveyor": "Egeria's Folder Survey", "at": "2026-11-03T14:47:49Z"})
+    assert fp["price"] == {"walk": False, "words": EGERIA_COUNTS_ONLY_WORDS, "needs": "measure_beside"}
+    assert EGERIA_COUNTS_ONLY_WORDS.startswith("Egeria's survey reports counts, not files")
+    # No Egeria survey at all (or only a run that left no report): the words stay "no walk yet".
+    for egeria in (None, {"none": True, "run_state": "failed"}):
+        fp = {"price": {"walk": False, "words": NO_WALK_WORDS}}
+        _egeria_counts_only(fp, egeria)
+        assert fp["price"] == {"walk": False, "words": NO_WALK_WORDS}
+    # A walk exists: the price is the walk's.
+    fp = {"price": {"walk": True, "words": "16 data files, ..."}}
+    _egeria_counts_only(fp, {"surveyor": "x"})
+    assert fp["price"]["words"] == "16 data files, ..."

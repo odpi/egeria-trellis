@@ -100,3 +100,15 @@ test('W56 a card run by its own Run → says so, with the survey id; a real surv
   assert.equal(text(app.lastRunViaWords({ last_run_via: 'survey' })).trim(), 'via survey');
   assert.equal(text(app.lastRunViaWords({ last_run_via: 'step_runs' })).trim(), 'via step runs');
 });
+
+// W51: the data-file profiles point at Measure beside when Egeria's survey left counts and no file list.
+test('W51 Egeria counts only: the profiles price says so and points at Measure beside, with no Profile press', async () => {
+  await load();
+  const fs = await import('/static/next/fs-survey.js');
+  const words = "Egeria's survey reports counts, not files · Measure beside Egeria's survey to list them, then profile";
+  const html = fs.fileProfilesHtml({ price: { walk: false, needs: 'measure_beside', words }, run: null });
+  assert.match(text(html).replace(/&apos;/g, "'"), /Egeria's survey reports counts, not files/);
+  assert.match(html, /data-fs-act="measure"[^>]*data-fp-measure-pointer/);
+  const plain = fs.fileProfilesHtml({ price: { walk: false, words: 'no walk yet · run the folder survey first' }, run: null });
+  assert.doesNotMatch(plain, /data-fp-measure-pointer/);
+});
