@@ -18,13 +18,13 @@ def _between(start: str, end: str) -> str:
 
 def test_enrichment_map_run_offers_run_anyway():
     body = _between("data-run-enrichment-analysis", "By analysis, on Enrichment")
-    assert "isFreshnessSkip(started)" in body and "{ force: true }" in body
+    assert "isFreshnessSkip(started)" in body and "{ force: true, pressedOn: pressedOnWords() }" in body   # W55: the stage too
 
 
 def test_survey_index_run_offers_run_anyway():
     body = _between("const startRun = async", "host.querySelectorAll('[data-analysis-run]')")
     assert "isFreshnessSkip(started)" in body
-    assert "{ force }" in body and "startRun(b, aid, null, true)" in body
+    assert "{ force, pressedOn: pressedOnWords() }" in body and "startRun(b, aid, null, true)" in body   # W55: the stage too
 
 
 def test_question_rerun_offers_run_anyway_foreground_and_background():
