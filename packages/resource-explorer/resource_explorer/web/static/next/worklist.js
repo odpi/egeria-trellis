@@ -54,6 +54,7 @@ import { mountSetSteps } from '/static/next/worklist-set-steps.js';
 import { contextRecordedSpec, contextRecordedState } from '/static/next/context-recorded.js';
 import { cue } from '/static/next/stages/repo-manifest.js';
 import { inPagePrompt } from '/static/next/confirm-dialog.js';
+import { deleteListButtonHtml, bindDeleteList } from '/static/next/work-list-delete.js';
 import {
   STATE_WORDS, OP_WORDS, applyFilter, criterionFor, criterionWords, fieldsFor, opsFor, readCriterion, reapplyDiff,
   sharedColumns, shortlistWords, storedFilter, unrunGroups,
@@ -1026,6 +1027,7 @@ function renderActions(ctx) {
         >${esc(START_LABEL)}</button>
       <button data-act="publish" class="cursor-pointer bg-transparent text-accent-ink underline"
         >${grid.workList.egeria_guid ? 'Publish again' : 'Publish to Egeria'}</button>
+      ${deleteListButtonHtml()}
     </span>`;
 
   host.querySelector('[data-act="run"]')?.addEventListener('click', () => runBatch(ctx));
@@ -1036,6 +1038,7 @@ function renderActions(ctx) {
   host.querySelector('[data-act="add-to-investigation"]')?.addEventListener('click', () => addToInvestigation(ctx));
   host.querySelector('[data-act="start-from-list"]')?.addEventListener('click', () => startFromList(ctx));
   host.querySelector('[data-act="export-csv"]')?.addEventListener('click', () => exportCsv());
+  bindDeleteList(host, () => grid.workList, ctx);
   host.querySelector('[data-act="quality-batch"]')?.addEventListener('click', () => openQualityBatch(ctx));
   host.querySelector('#wl-disposition')?.addEventListener('change', (e) => {
     const value = e.target.value;

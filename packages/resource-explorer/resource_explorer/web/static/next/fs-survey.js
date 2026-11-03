@@ -27,7 +27,7 @@
  * from which button was pressed. A number the survey did not carry is "–", never 0.
  */
 import { esc, state } from '/static/next/app.js';
-import { getFolderSurvey, runFolderSurvey, publishFolderSurvey, checkFilesystemReach, runWalkExtensions, publishWalkExtensions,
+import { getFolderSurvey, attachFilesystemRoot, runFolderSurvey, publishFolderSurvey, checkFilesystemReach, runWalkExtensions, publishWalkExtensions,
   runFileProfiles, readFileProfilesFromEgeria, publishFileProfiles, runFilesystemAnalysis, runNarrativeDocs, runClassMatch,
   pollActivity, activityFailure, failureText } from '/static/re-api.js';
 import { enhanceTable } from '/static/next/colresize.js';
@@ -44,6 +44,10 @@ export const FOLDER_SURVEY_WORDS = {
   checking: 'Checking…',
   pressHelp: "Runs the folder survey (Egeria's Folder Survey leads when Egeria can read the path). Walks every file; stores the walk here. Publishing is a separate press.",
   pressOffHelp: 'Off: no one can be named to lead the survey yet. Check again reads whether the path can be reached.',
+  attach: 'Attach root folder to Egeria',
+  attaching: 'Attaching…',
+  attachHelp: "Creates the root folder's asset in Egeria as you; Egeria's Folder Survey acts on that asset.",
+  pressNoAssetHelp: 'Off: Egeria has no asset for this folder yet, so its Folder Survey has nothing to act on. Attach the root folder to Egeria first, then Survey.',
   publish: 'Publish this walk to Egeria',
   publishHelp: 'Sends the stored walk to Egeria as a survey report. Reads nothing new; the line under Files says what landed.',
   publishing: 'Publishing…',
@@ -570,6 +574,9 @@ export function folderSurveyCardHtml(view, { busy = '', error = '', open = null 
   const W = FOLDER_SURVEY_WORDS;
   const reach = (view && view.reach) || {};
   const canSurvey = !!reach.surveyor;     // a state that names who leads (Egeria expected or verified; RE-led)
+  // Egeria leads and holds no folder asset: its Folder Survey would be refused, so Survey is drawn off, with the reason.
+  const needsAsset = reach.surveyor === "Egeria's Folder Survey" && !!view && view.egeria_asset === false;
+  const surveyHelp = needsAsset ? W.pressNoAssetHelp : canSurvey ? W.pressHelp : W.pressOffHelp;
   const needsPublish = view && view.state === 'measured' && view.surveyor && !view.published
     && view.surveyor !== "Egeria's Folder Survey" && reach.surveyor === 'Resource Explorer';
   // Egeria's Folder Survey leads: Resource Explorer's own walk measures what that survey does not keep, beside it.
@@ -588,7 +595,8 @@ export function folderSurveyCardHtml(view, { busy = '', error = '', open = null 
     <div class="mt-[2px] flex flex-wrap items-baseline gap-s2">
       ${reachLineHtml(reach)}
       ${btn('check', busy === 'check' ? W.checking : W.check, !busy, W.checkHelp)}
-      ${btn('survey', busy === 'survey' ? W.pressing : W.press, !busy && canSurvey, canSurvey ? W.pressHelp : W.pressOffHelp)}
+      ${needsAsset ? btn('attach', busy === 'attach' ? W.attaching : W.attach, !busy, W.attachHelp) : ''}
+      ${btn('survey', busy === 'survey' ? W.pressing : W.press, !busy && canSurvey && !needsAsset, surveyHelp)}
       ${needsPublish ? btn('publish', busy === 'publish' ? W.publishing : W.publish, !busy, W.publishHelp) : ''}
       ${besideEgeria ? btn('measure', busy === 'measure' ? W.measuringBeside : W.measureBeside, !busy, W.measureBesideHelp) : ''}
       ${needsPublishMeasures ? btn('publish-measures', busy === 'publish-measures' ? W.publishing : W.publishMeasures, !busy, W.publishMeasuresHelp) : ''}
@@ -620,8 +628,8 @@ function derivable(view) {
   return ((view.derived && view.derived.steps) || []).filter((s) => s.installed).map((s) => s.analysis_id);
 }
 
-/** Mount the card into `host` and wire its presses. `onChange` runs after a press changed what the pane shows (the
- *  native-survey row below follows an Egeria-led run). Returns the repaint function. */
+/** Mount the card into `host` and wire its presses. `onChange(act, { failed })` runs after a press (the
+ *  native-survey row below follows an Egeria-led run; a failed press changed nothing, so the parent leaves the card). Returns the repaint function. */
 export async function mountFolderSurvey(host, slug, { onChange = () => {} } = {}) {
   if (!host) return () => {};
   let view = null;
@@ -665,6 +673,7 @@ export async function mountFolderSurvey(host, slug, { onChange = () => {} } = {}
     paint(act);
     try {
       if (act === 'check') await checkFilesystemReach(slug);
+      else if (act === 'attach') await attachFilesystemRoot(slug);
       else if (act === 'survey') await runFolderSurvey(slug, { publish: false });
       else if (act === 'publish') await publishFolderSurvey(slug);
       else if (act === 'measure') await runWalkExtensions(slug, { publish: false });
@@ -691,7 +700,7 @@ export async function mountFolderSurvey(host, slug, { onChange = () => {} } = {}
     filled = PRESS_FILLS[act] || '';
     paint('');
     filled = '';
-    onChange(act);
+    onChange(act, { failed: !!error });   // a refused press leaves its sentence on screen: the parent must not re-mount over it
   };
   await read();
   paint('');

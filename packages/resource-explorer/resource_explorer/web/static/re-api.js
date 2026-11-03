@@ -252,6 +252,11 @@ export const getOpenData = (slug) => get(od(`/datasets/${encodeURIComponent(slug
 export const registerFilesystem = (payload) => post('/api/filesystems/', payload);
 /** Can the server read this mount path? `{ state: readable | not_a_folder | not_readable | empty }`. A warning only. */
 export const checkFilesystemMount = (path) => post('/api/filesystems/check-mount', { path });
+/** Outcome 3 "Check reach" before Register: one list call under the root. `{ reachable, sentence, error, … }`. Stores
+ *  nothing; a typed key is used for this one call. */
+export const checkS3Reach = (payload) => post('/api/filesystems/check-reach', payload);
+/** The installed reach mechanisms, the skipped ones by name, and whether a secrets store can hold a key. */
+export const listReachMechanisms = () => get('/api/filesystems/reach-mechanisms');
 /** Whether the root folder is attached in Egeria, from the newest read-back proof row. */
 export const getFilesystemRootFolder = (slug) =>
   get(`/api/filesystems/${encodeURIComponent(slug)}/root-folder`);
@@ -1569,6 +1574,13 @@ export const getDeclaredVsReceived = (entryId) =>
 
 export const listWorkLists = (investigation = '') =>
   get(`/api/work-lists/${investigation ? `?investigation=${encodeURIComponent(investigation)}` : ''}`);
+
+/** Hide or unhide a work list for the signed-in person only (W38): a view preference, nothing else changes. */
+export const setWorkListHidden = (slug, hidden) =>
+  put(`/api/work-lists/${encodeURIComponent(slug)}/hidden`, { hidden: !!hidden });
+
+/** Delete a work list (its creator or an admin; the server's 403 says who may). An Egeria Collection it published stays. */
+export const deleteWorkList = (slug) => del(`/api/work-lists/${encodeURIComponent(slug)}`);
 
 export const getWorkList = (slug) => get(`/api/work-lists/${encodeURIComponent(slug)}`);
 

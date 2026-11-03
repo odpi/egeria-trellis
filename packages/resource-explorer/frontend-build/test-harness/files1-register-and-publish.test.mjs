@@ -111,7 +111,9 @@ test('the Find action on FS opens a real form, not a link to Classic, with the f
   assert.equal(dlg.querySelector('a[href*="classic"]'), null, 'no link to Classic');
   assert.doesNotMatch(text(dlg), /Open in the current UI/);
   const keys = [...dlg.querySelectorAll('[data-fsr]')].map((i) => i.dataset.fsr).sort();
-  assert.deepEqual(keys, ROUTE_MODEL_KEYS);
+  // plus "Where it is" (S3 reach, 2026-11-02): a local mount by default; the local POST stays the five fields (next test)
+  assert.deepEqual(keys, [...ROUTE_MODEL_KEYS, 'protocol'].sort());
+  assert.equal(dlg.querySelector('[data-fsr="protocol"]').value, 'local');
   // the Egeria connection is the platform configuration's: no field, no label, no toggle for it
   assert.doesNotMatch(dlg.innerHTML.toLowerCase(), /egeria[ _-]?(url|server|user|password|host)|platform url|view server/);
   assert.match(text(dlg), /Nothing is sent to Egeria/);

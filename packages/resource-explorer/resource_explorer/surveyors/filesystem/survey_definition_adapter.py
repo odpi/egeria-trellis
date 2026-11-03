@@ -87,11 +87,26 @@ def _run_filesystem_inventory(fs_entity, registry, fork=None, **_) -> dict:
 
     from resource_explorer.surveyors.filesystem import walk_extensions as we
 
-    surveyor = LocalFileSystemSurveyor(fs_entity, registry)
-    survey_data = surveyor.run(profile_contents=False, walk_extensions=True)
+    from resource_explorer import reach_mechanisms
+
+    reader = None
+    if reach_mechanisms.is_remote(fs_entity):
+        # Outcome 3: the same walk through the file system's reach mechanism (S3: list by prefix, no byte read but the
+        # narrative files' capped reads). A refusal of the root is the step's error, in the source's redacted words.
+        from resource_explorer.surveyors.filesystem.remote_filesystem_surveyor import RemoteFileSystemSurveyor
+
+        try:
+            remote = RemoteFileSystemSurveyor(fs_entity, registry, reach_mechanisms.mechanism_for(fs_entity))
+            survey_data = remote.run(walk_extensions=True)
+        except reach_mechanisms.ReachError as exc:
+            raise FolderSurveyNotRunHere(f"{fork.sentence} · the walk could not list the root · {exc}") from None
+        reader = remote.reader
+    else:
+        surveyor = LocalFileSystemSurveyor(fs_entity, registry)
+        survey_data = surveyor.run(profile_contents=False, walk_extensions=True)
     # Files build step 1: the per-file rows are kept for THIS run, the narrative files are read, and the walk_extensions
     # block (counts only for the publish) is added to the result. Before the blob is stored: rows never ride in it.
-    we.attach_extensions(fs_entity, registry, survey_data, led_by=we.LED_BY_RE)
+    we.attach_extensions(fs_entity, registry, survey_data, led_by=we.LED_BY_RE, reader=reader)
     # Who led and what the probe proved, kept WITH the result, so the report's sentence comes from stored proof.
     survey_data["surveyed_by"] = {"surveyor": file_reach.SURVEYOR_RE, "reach": fork.as_dict()}
 

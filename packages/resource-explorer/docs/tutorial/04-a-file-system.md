@@ -1,6 +1,6 @@
 # Walk 4 — A file system
 
-*Screens read on 2026-10-29, Explorer on port 8813, `origin/main` at `afdac240`. Resource: `loading_bay` ("Loading bay (exchange-quickstart)").*
+*Screens read on 2026-10-29 on a test server, `origin/main` at `afdac240`. Resource: `loading_bay` ("Loading bay (exchange-quickstart)").*
 
 Open it from the **FS** list in the sidebar. A file system is registered with a host and a container path (the guide, section 5; not re-verified on 2026-10-29; "+ Add a file system" is the sidebar's button; this walk did not press it).
 
