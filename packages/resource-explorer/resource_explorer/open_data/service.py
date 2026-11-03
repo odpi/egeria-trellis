@@ -259,8 +259,12 @@ def run_search(store: OpenDataStore, portal_slug: str, *, terms: str, filters: d
     need = filters.pop("licence", None) or {}
     adapter = portal_adapter(portal, transport)
     rows, dropped, total, calls = [], 0, NOT_REPORTED, 0
+    read, pages_read, filters_locally = 0, 0, False
     for page in range(1, pages + 1):
         got = adapter.search(terms, filters, page)
+        pages_read = page
+        if "read" in got:     # a feed: no search of its own, so the adapter read whole pages and kept what matched
+            filters_locally, read = True, read + int(got["read"] or 0)
         # an adapter that knows what it spent says so (a one-document feed costs one call over many pages)
         calls += got["calls"] if "calls" in got else adapter.manifest.calls_per_page
         total = got["total"]
@@ -278,7 +282,20 @@ def run_search(store: OpenDataStore, portal_slug: str, *, terms: str, filters: d
         if not got.get("read", len(got["rows"])) or (isinstance(total, int) and page * got["page_size"] >= total):
             break
     return {"portal": portal["slug"], "price": priced, "calls_made": calls, "total": total, "rows": rows,
-            "licence_dropped": dropped, "retrieved_at": now()}
+            "licence_dropped": dropped, "retrieved_at": now(),
+            **({"read": read, "pages_read": pages_read,
+                "words": feed_search_words(len(rows) + dropped, read, pages_read, total, terms)} if filters_locally else {})}
+
+
+def feed_search_words(matched: int, read: int, pages_read: int, total, terms: str) -> str:
+    """What a feed search did (W62): a feed has no search, so 0 rows is "none of the 100 datasets on page 1 match",
+    never a bare 0 beside the feed's total. A portal that searched (CKAN, Zenodo) keeps its own count."""
+    pages = "page 1" if pages_read == 1 else f"pages 1–{pages_read}"
+    what = f"'{terms}'" if (terms or "").strip() else "the filters"
+    head = (f"none of the {read:,} datasets on {pages} match {what}" if not matched
+            else f"{matched:,} of the {read:,} datasets on {pages} match {what}")
+    more = total - read if isinstance(total, int) and total > read else 0
+    return head + (f" · {more:,} more on later pages (a feed has no search)" if more else " · a feed has no search")
 
 
 # ── import ───────────────────────────────────────────────────────────────────

@@ -159,3 +159,18 @@ test('W61 a one-document feed says the reach check reads the whole document; a p
     size_note: 'one document, ~31 MB (Project Open Data data.json; one call reads all of it)' }] });
   assert.match(html, /title="Registers this portal for everyone, as you\. Checks reach first \(reads the whole 31 MB document/);
 });
+
+// W62: a 0-row feed search reads as what it read, not a bare 0; a portal that searched keeps its count.
+test('W62 a feed search with no match says what it read; a CKAN search keeps "0 rows of N"', async () => {
+  await load();
+  const od = await import('/static/next/admin/open_data.js');
+  const words = "none of the 100 datasets on page 1 match 'hospital' · 19,587 more on later pages (a feed has no search)";
+  assert.equal(od.noCandidatesWords({ rows: [], total: 19687, words, licence_dropped: 0 }, null), `No candidates: ${words}.`);
+  assert.equal(od.noCandidatesWords({ rows: [], total: 0, licence_dropped: 0 }, null),
+    'No candidates: the portal has no datasets for these terms and filters.');
+  const { document } = makeDomEnvironment();
+  const out = document.createElement('div');
+  od.drawCandidates(document.createElement('div'), out, 'healthdata_gov', { rows: [], total: 19687, words, calls_made: 1, licence_dropped: 0 }, 'hospital', '', '');
+  assert.match(text(out.innerHTML).replace(/&#39;|&apos;/g, "'"), /none of the 100 datasets on page 1 match 'hospital' · 19,587 more on later pages/);
+  assert.doesNotMatch(text(out.innerHTML), /0 rows of/);
+});

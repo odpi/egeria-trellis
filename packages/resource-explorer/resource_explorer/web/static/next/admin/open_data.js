@@ -223,6 +223,8 @@ export async function openPortalPane(host, slug, { lens = null, investigation = 
 
 /** The empty state says WHY: the portal had none for these terms, or the license needs dropped them all. */
 export function noCandidatesWords(res, licence) {
+  // W62: a feed (no search of its own) says what it read, never a bare 0; a licence drop still says so below.
+  if (res.words && !res.licence_dropped) return `No candidates: ${res.words}.`;
   const needs = [];
   if (licence && licence.commercial) needs.push('commercial use needed');
   if (licence && licence.share_alike === false) needs.push('no share-alike');
@@ -235,7 +237,7 @@ export function noCandidatesWords(res, licence) {
 export function drawCandidates(pane, out, slug, res, terms, requestName, investigation, licence = null) {
   const rows = res.rows;
   out.innerHTML = `
-    <p class="mb-s2 text-provenance text-ink-muted tnum">${rows.length} row${rows.length === 1 ? '' : 's'} of ${show(res.total)} · ${res.calls_made} call${res.calls_made === 1 ? '' : 's'} made
+    <p class="mb-s2 text-provenance text-ink-muted tnum">${res.words ? esc(res.words) : `${rows.length} row${rows.length === 1 ? '' : 's'} of ${show(res.total)}`} · ${res.calls_made} call${res.calls_made === 1 ? '' : 's'} made
       ${res.licence_dropped ? ` · ${res.licence_dropped} dropped on license` : ''}</p>
     ${rows.length ? `<table class="w-full min-w-[56rem] table-fixed text-left" data-rc-id="od-candidates">
       <thead><tr class="border-b border-rule text-caps uppercase tracking-caps text-ink-muted">

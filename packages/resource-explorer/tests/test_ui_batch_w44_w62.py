@@ -273,3 +273,14 @@ def test_w60_host_slug():
     assert host_slug("https://www.data.gov.ie/catalog.jsonld") == "data_gov_ie"
     assert host_slug("https://zenodo.org/api") == "zenodo_org"
     assert host_slug("") == ""
+
+
+# --- W62: a 0-row feed search says what it read; a portal that searched keeps its count --------------------------
+
+def test_w62_feed_search_words():
+    from resource_explorer.open_data.service import feed_search_words
+
+    assert feed_search_words(0, 100, 1, 19687, "hospital") == (
+        "none of the 100 datasets on page 1 match 'hospital' · 19,587 more on later pages (a feed has no search)")
+    assert feed_search_words(3, 100, 1, 100, "care") == "3 of the 100 datasets on page 1 match 'care' · a feed has no search"
+    assert feed_search_words(0, 50, 1, "not reported", "") == "none of the 50 datasets on page 1 match the filters · a feed has no search"
