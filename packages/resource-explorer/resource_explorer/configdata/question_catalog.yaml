@@ -4163,6 +4163,88 @@ filesystem_questions:
   catalog_history: '2026-10-28: added: F12 of the Files brief (§2), the second slice the owner named on
     2026-10-20 ("follow"); built as Files build step 6.'
   retired: false
+open_data_questions:
+- id: Q-0113
+  question: Is this dataset's licence usable for our purpose, and what does it require of us?
+  stage: Assessment
+  perspectives:
+  - Financial
+  - Governance
+  - Data Owner
+  - Consumer
+  purposes:
+  - Select
+  - Use
+  levels:
+  - resource
+  answering:
+    kind: gap
+    analysis_ids:
+    - od_licence_usable
+    checks: []
+    note: 'GAP: od_licence_usable (proposed): judge the publisher''s licence record against the stated
+      purpose and say what it requires. Until it is built the licence and its three flags are shown from
+      the publisher''s record (partial).'
+  answering_mechanism: Direct Field + Gap
+  rationale: 'What the publisher''s record states about the licence: its identifier, and the three flags
+    (attribution, share-alike, commercial use) read from a known licence table. The check will judge those
+    against a stated purpose; it cannot claim legal advice, and a licence the table does not know stays
+    unjudged.'
+  catalog_history: '2026-11-02: added for open data (owner: add them now; answers ''not run yet'' until
+    the check lands). The analysis is declared in analysis_catalog.yaml with built: false, so the row
+    reads no reader yet, not a runnable analysis.'
+  retired: false
+- id: Q-0114
+  question: Is this dataset kept to its stated cadence, and when was it last modified?
+  stage: Scouting
+  perspectives:
+  - Steward
+  - Consumer
+  purposes:
+  - Explore
+  - Select
+  levels:
+  - resource
+  answering:
+    kind: gap
+    analysis_ids:
+    - od_cadence_kept
+    checks: []
+    note: 'GAP: od_cadence_kept (proposed): compare the stated cadence with the modified dates. Until
+      it is built the stated cadence and the modified date are shown when the record gives them (partial).'
+  answering_mechanism: Direct Field + Gap
+  rationale: 'What the publisher states: the update cadence it gives (accrualPeriodicity) and the modified
+    date. The check will compare them; a publisher that states no cadence leaves the question unanswered,
+    not answered yes.'
+  catalog_history: '2026-11-02: added for open data (owner: add them now; answers ''not run yet'' until
+    the check lands). The analysis is declared in analysis_catalog.yaml with built: false, so the row
+    reads no reader yet, not a runnable analysis.'
+  retired: false
+- id: Q-0115
+  question: What do we know about the data itself — columns, size, formats — and what has not been read?
+  stage: Discovery
+  perspectives:
+  - Consumer
+  - Data Expert
+  purposes:
+  - Explore
+  - Select
+  levels:
+  - resource
+  answering:
+    kind: gap
+    analysis_ids:
+    - od_profile
+    checks: []
+    note: 'GAP: od_profile (proposed): summarise what has been read of the dataset''s columns, size and
+      formats, and name what has not. No mechanism produces this summary yet.'
+  answering_mechanism: Gap
+  rationale: A summary of what a profile of the dataset's distributions has read, and which were not read
+    (over the size cap, not tabular, not downloaded). It will never report an unread distribution as empty.
+  catalog_history: '2026-11-02: added for open data (owner: add them now; answers ''not run yet'' until
+    the check lands). The analysis is declared in analysis_catalog.yaml with built: false, so the row
+    reads no reader yet, not a runnable analysis.'
+  retired: false
 reserved_question_ids:
 - Q-0009
 - Q-0010

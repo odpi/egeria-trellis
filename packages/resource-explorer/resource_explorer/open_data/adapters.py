@@ -2,7 +2,7 @@
 
 Same shape as the Analytic Library's (`pyegeria.analytics`) and DESIGN-FILES-REMOTE-REACH §3's: a package ships an
 adapter class carrying a `manifest`, and installing it registers it; RE changes nothing. The built-ins in this
-tree (`ckan`, `dataportals`, `datacite`) are always present, and an entry point of the same name replaces one, so
+tree (`ckan`, `dcat_ap`, `zenodo`, `dataportals`, `datacite`) are always present, and an entry point of the same name replaces one, so
 a venv installed before this slice (whose entry-point metadata has not been regenerated) still has them.
 
 A manifest says what the adapter speaks and what it costs, because the price line is shown BEFORE the press:
@@ -117,8 +117,9 @@ def _builtins() -> list[type[Adapter]]:
     from resource_explorer.open_data.re3data import Re3dataDirectory
 
     from resource_explorer.open_data.dcat_ap import DcatApAdapter
+    from resource_explorer.open_data.zenodo import ZenodoAdapter
 
-    return [CkanAdapter, DcatApAdapter, DataPortalsDirectory, DataCiteResolver, Re3dataDirectory]
+    return [CkanAdapter, DcatApAdapter, ZenodoAdapter, DataPortalsDirectory, DataCiteResolver, Re3dataDirectory]
 
 
 def _entry_points():

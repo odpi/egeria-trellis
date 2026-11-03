@@ -5360,11 +5360,28 @@ class ProjectRegistry:
     def _migrate_open_data_tables(self) -> None:
         """Open data OD1 (docs/ddl-open-data-od1.md): three new tables, each `CREATE TABLE IF NOT EXISTS` in its own
         short transaction. Nothing existing is altered, so no lock on a table another process is using is taken."""
-        from resource_explorer.open_data.schema import STATEMENTS
+        from datetime import datetime, timezone
+
+        from resource_explorer.open_data.schema import (
+            ADD_REPO_SLUG_COLUMN, REPOSITORY_API_KIND, REPOSITORY_PORTAL_ROW, REPOSITORY_PORTAL_SLUG, STATEMENTS)
 
         for statement in STATEMENTS:
             with self._conn() as conn:
                 conn.execute(statement)
+        # open_data.repo_slug (docs/ddl-open-data-repo-slug.md): the one existing table this slice alters. Nullable with
+        # a constant default, so no row is rewritten; IF NOT EXISTS on Postgres, a bounded lock wait, as the other
+        # additive columns here.
+        with self._conn() as conn:
+            if "repo_slug" not in self._get_table_columns(conn, "open_data"):
+                if conn.is_postgres:
+                    conn.execute(f"SET LOCAL lock_timeout = '{self._DDL_LOCK_TIMEOUT}'")
+                    conn.execute(ADD_REPO_SLUG_COLUMN.replace("ADD COLUMN", "ADD COLUMN IF NOT EXISTS"))
+                else:
+                    conn.execute(ADD_REPO_SLUG_COLUMN)
+        with self._conn() as conn:
+            conn.execute(REPOSITORY_PORTAL_ROW, (REPOSITORY_PORTAL_SLUG, REPOSITORY_API_KIND,
+                                                 datetime.now(timezone.utc).isoformat(timespec="seconds"),
+                                                 REPOSITORY_PORTAL_SLUG))
 
     # ── the run queue ─────────────────────────────────────────────────────────
     #

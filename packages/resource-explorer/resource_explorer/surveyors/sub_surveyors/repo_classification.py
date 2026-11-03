@@ -249,6 +249,21 @@ class RepoClassificationSurveyor(BaseSurveyor):
                 "detail": {"kind": item.kind, "outcome": item.outcome},
             })
 
+        # The row "what kind of thing is this repository" gains its dataset sentence from what ingestion stored
+        # (dataset_descriptor.py). Reading it must never cost the classification itself, so a failure is recorded as
+        # a finding of its own (label "error"): visible on the page, distinguishable from "no dataset signal".
+        try:
+            from resource_explorer.surveyors.sub_surveyors.dataset_descriptor import kind_finding
+
+            extra = kind_finding(self.registry, slug, report.dataset_evidence)
+        except Exception as exc:
+            log.warning("%s: could not read the dataset descriptors for the classification row", slug, exc_info=True)
+            extra = {"check_name": "dataset_kind", "label": "error", "confidence": 100,
+                     "summary": f"the dataset descriptors could not be read: {type(exc).__name__}: {exc}"[:240],
+                     "detail": {"state": "error"}}
+        if extra:
+            findings.append(extra)
+
         # Deliberately NOT wrapped in try/except: a write failure here is the
         # exact class of bug the FK work found — an unregistered slug, or a
         # schema mismatch — and absorbing it would hide the thing worth seeing.

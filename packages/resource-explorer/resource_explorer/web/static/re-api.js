@@ -222,6 +222,8 @@ const od = (path) => `/api/open-data${path}`;
 export const listOpenDataPortals = () => get(od('/portals'));
 export const registerOpenDataPortal = (body) => post(od('/portals'), body);
 export const checkOpenDataPortal = (body) => post(od('/portals/check'), body);
+export const listPortalSeeds = () => get(od('/portal-seeds'));
+export const addPortalSeed = (feed_url) => post(od('/portal-seeds/add'), { feed_url });
 export const openDataPrice = (slug, pages) => get(od(`/portals/${encodeURIComponent(slug)}/price?pages=${pages}`));
 export const searchOpenData = (slug, body) => post(od(`/portals/${encodeURIComponent(slug)}/search`), body);
 export const importOpenData = (slug, body) => post(od(`/portals/${encodeURIComponent(slug)}/import`), body);
@@ -241,9 +243,12 @@ export const publishOpenData = (slug) => post(od(`/datasets/${encodeURIComponent
 export const fitOpenData = (wl, request, investigation = '') => post(od(`/work-lists/${encodeURIComponent(wl)}/fit`), { request, investigation });
 export const putDataRequest = (inv, body) => put(od(`/investigations/${encodeURIComponent(inv)}/data-request`), body);
 export const getDataRequest = (inv) => get(od(`/investigations/${encodeURIComponent(inv)}/data-request`));
+export const repositoryDatasetState = (repoSlug) => get(od(`/repositories/${encodeURIComponent(repoSlug)}/dataset`));
+export const importFromRepository = (body) => post(od('/import-from-repository'), body);
 export const runPortalDirectory = (slug, body) => post(od(`/directories/${encodeURIComponent(slug)}/run`), body);
 export const importDirectoryPortals = (slug, body) => post(od(`/directories/${encodeURIComponent(slug)}/import`), body);
 export const listOpenData = () => get(od('/datasets'));
+export const getOpenDataQuestions = (slug) => get(od(`/datasets/${encodeURIComponent(slug)}/questions`));
 export const getOpenData = (slug) => get(od(`/datasets/${encodeURIComponent(slug)}`));
 
 /** Register a file system (Files step 1). The body is the route's own model: slug, display_name,
@@ -483,6 +488,7 @@ function _questionsPath(entityType, slug) {
   const enc = encodeURIComponent(slug);
   if (entityType === 'database') return `/api/databases/${enc}/questions`;
   if (entityType === 'filesystem') return `/api/filesystems/${enc}/questions`;
+  if (entityType === 'open_data') return `/api/open-data/datasets/${enc}/questions`;
   return `/api/projects/${enc}/scouting-questions`;
 }
 

@@ -163,3 +163,62 @@ test('Understanding: a failed read says so rather than drawing an empty view', a
   assert.match(text(document.querySelector('[data-analysis-error="repo_classification"]')), /could not be read/);
   assert.match(text(document.querySelector('[data-dependency-none]')), /run manifest_parse first/);
 });
+
+const KIND_DATASET = { check_name: 'dataset_kind', label: 'dataset repository',
+  summary: 'a dataset repository · identity DOI 10.1234/abc.9 · licence CC-BY-4.0 (from datapackage.json)',
+  detail: { state: 'dataset', can_import: true, price: 'no network · reads the descriptor already on disk (+1 DataCite call if a DOI)',
+    help: "Writes one open-data row to this app's registry and nothing to Egeria.", no_identifier: 'No descriptor carries an identifier.' } };
+const KIND_DATA_ONLY = { check_name: 'dataset_kind', label: 'data files only',
+  summary: "a repository with data files, not an open dataset by Resource Explorer's rule (no descriptor names it)",
+  detail: { state: 'data_files_no_descriptor', can_import: false } };
+const withKind = (kind) => ({ findings: [CLASSIFICATION.findings[0], kind] });
+
+test('dataset kind: the sentence, the Import press with its price and hover help, beside the roles', async () => {
+  const v = await views();
+  const { document } = makeDomEnvironment();
+  document.body.innerHTML = v.repoClassificationHtml(withKind(KIND_DATASET), ENTRY[0]);
+  const row = document.querySelector('[data-dataset-kind="dataset"]');
+  assert.match(text(row.querySelector('[data-dataset-sentence]')), /^a dataset repository · identity DOI 10\.1234\/abc\.9 · licence CC-BY-4\.0 \(from datapackage\.json\)$/);
+  const press = row.querySelector('[data-dataset-import]');
+  assert.equal(text(press), 'Import as open data');
+  assert.equal(press.getAttribute('title'), "Writes one open-data row to this app's registry and nothing to Egeria.");
+  assert.equal(press.hasAttribute('disabled'), false);
+  assert.equal(text(row.querySelector('[data-dataset-import-price]')), 'no network · reads the descriptor already on disk (+1 DataCite call if a DOI)');
+  assert.equal(document.querySelector('[data-classification-other]'), null, 'dataset_kind is not listed twice as an "other" finding');
+});
+
+test('dataset kind: data files with no descriptor get the sentence and no press; no identifier disables it with the reason', async () => {
+  const v = await views();
+  const { document } = makeDomEnvironment();
+  document.body.innerHTML = v.repoClassificationHtml(withKind(KIND_DATA_ONLY), ENTRY[0]);
+  assert.match(text(document.querySelector('[data-dataset-sentence]')), /not an open dataset by Resource Explorer's rule \(no descriptor names it\)/);
+  assert.equal(document.querySelector('[data-dataset-import]'), null);
+  const no = { ...KIND_DATASET, detail: { ...KIND_DATASET.detail, can_import: false } };
+  document.body.innerHTML = v.repoClassificationHtml(withKind(no), ENTRY[0]);
+  assert.equal(document.querySelector('[data-dataset-import]').hasAttribute('disabled'), true);
+  assert.equal(text(document.querySelector('[data-dataset-import-refusal]')), 'No descriptor carries an identifier.');
+});
+
+test('dataset kind: the press posts the repo slug once and shows the answer in words', async () => {
+  const v = await views();
+  const { document } = makeDomEnvironment();
+  document.body.innerHTML = v.repoClassificationHtml(withKind(KIND_DATASET), ENTRY[0]);
+  const calls = [];
+  v.wireDatasetImport(document.body, 'acme-data', async (body) => { calls.push(body); return { outcome: 'imported', words: 'imported · 3 of 4 declared files present in the tree' }; });
+  document.querySelector('[data-dataset-import]').click();
+  await tick();
+  assert.deepEqual(calls, [{ repo_slug: 'acme-data', descriptor_path: '' }]);
+  assert.equal(text(document.querySelector('[data-dataset-import-result]')), 'imported · 3 of 4 declared files present in the tree');
+});
+
+test('dataset kind: a DOI-only repository keeps the press, says when the descriptors were read, and never says "not a dataset"', async () => {
+  const v = await views();
+  const { document } = makeDomEnvironment();
+  const doi = { check_name: 'dataset_kind', label: 'DOI only',
+    summary: 'a DOI names it (10.5281/zenodo.1) · whether it is a dataset is not established until the DOI is resolved (Import resolves it)',
+    detail: { state: 'doi_only', can_import: true, price: 'p', help: 'h', descriptors_read_at: '2026-11-03T10:00:00' } };
+  document.body.innerHTML = v.repoClassificationHtml(withKind(doi), ENTRY[0]);
+  assert.match(text(document.querySelector('[data-dataset-sentence]')), /^a DOI names it \(10\.5281\/zenodo\.1\) · whether it is a dataset is not established until the DOI is resolved \(Import resolves it\)$/);
+  assert.equal(document.querySelector('[data-dataset-import]').hasAttribute('disabled'), false);
+  assert.match(text(document.querySelector('[data-dataset-read-at]')), /^descriptors read /);
+});

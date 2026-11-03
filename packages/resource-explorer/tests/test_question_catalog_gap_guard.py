@@ -44,7 +44,8 @@ def _built_analysis_ids() -> set[str]:
         if not section.endswith("_analyses") or not isinstance(entries, list):
             continue
         for entry in entries:
-            if isinstance(entry, dict) and entry.get("id"):
+            # `declaration.built: false` is declared, not built: a GAP may name it (2026-11-02, open data).
+            if isinstance(entry, dict) and entry.get("id") and (entry.get("declaration") or {}).get("built") is not False:
                 ids.add(entry["id"])
     return ids
 

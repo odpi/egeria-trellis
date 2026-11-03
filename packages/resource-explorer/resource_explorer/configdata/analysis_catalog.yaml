@@ -3922,3 +3922,134 @@ open_data_analyses:
         truncation: '{shown} of {total} datasets shown, those that changed first'
         token_cost: 600
         citation: '{analysis} · {scope} · as of {as_of}'
+
+  # ── Declared, not built (2026-11-02, BRIEF-OPEN-DATA-QUESTIONS): the lead analyses of three open data questions.
+
+  - id: od_licence_usable
+    name: "Open Data Licence Usable"
+    description: >
+      Not built. Declared 2026-11-02 so the open data question it will answer reads "no reader yet" rather than
+      claiming a runnable analysis. Will say whether the dataset's licence fits a stated purpose and what it requires of the user (attribution, share-alike, commercial use), from the publisher's licence record.
+    resource_types: ["open_data"]
+    intent: assessment
+    perspectives: ["all", "Steward"]
+    annotation_types: []
+    source: local
+    run_time: fast
+    availability: queued
+    action: survey
+    target_shape: whole_resource_only
+    recommended: false
+    egeria_registration:
+      candidate: false
+      native_process_ref: null
+    declaration:
+      built: false
+      result_kind: measure
+      measures:
+      - name: licences_read
+        unit: licences
+        as_of: retrieved_at
+        value_field: licences_read
+      absence:
+        not_measured: 'Not built: the licence check has no reader yet, so no licence has been judged against a purpose.'
+        not_permitted: 'Not permitted: the source refused the read.'
+        not_applicable: 'Not applicable: the dataset is not on a portal RE can read yet.'
+        measured_nothing: 'Measured: the source states nothing for this question.'
+      extents:
+      - name: summary
+        fields: [licences_read]
+        rows: 1
+        order: the dataset as a whole
+        truncation: '{shown} of {total} summaries shown'
+        token_cost: 48
+        citation: '{analysis} · {scope} · as of {as_of}'
+      confidence:
+        form: measured
+      scope: resource
+
+  - id: od_cadence_kept
+    name: "Open Data Cadence Kept"
+    description: >
+      Not built. Declared 2026-11-02 so the open data question it will answer reads "no reader yet" rather than
+      claiming a runnable analysis. Will compare the publisher's stated update cadence (accrualPeriodicity) with its modified dates and say whether the dataset is kept to it.
+    resource_types: ["open_data"]
+    intent: scouting
+    perspectives: ["all", "Steward"]
+    annotation_types: []
+    source: local
+    run_time: fast
+    availability: queued
+    action: survey
+    target_shape: whole_resource_only
+    recommended: false
+    egeria_registration:
+      candidate: false
+      native_process_ref: null
+    declaration:
+      built: false
+      result_kind: measure
+      measures:
+      - name: cadence_checks
+        unit: datasets
+        as_of: retrieved_at
+        value_field: cadence_checks
+      absence:
+        not_measured: 'Not built: the cadence check has no reader yet, so no dataset has been compared with its stated cadence.'
+        not_permitted: 'Not permitted: the source refused the read.'
+        not_applicable: 'Not applicable: the dataset is not on a portal RE can read yet.'
+        measured_nothing: 'Measured: the source states nothing for this question.'
+      extents:
+      - name: summary
+        fields: [cadence_checks]
+        rows: 1
+        order: the dataset as a whole
+        truncation: '{shown} of {total} summaries shown'
+        token_cost: 48
+        citation: '{analysis} · {scope} · as of {as_of}'
+      confidence:
+        form: measured
+      scope: resource
+
+  - id: od_profile
+    name: "Open Data Profile"
+    description: >
+      Not built. Declared 2026-11-02 so the open data question it will answer reads "no reader yet" rather than
+      claiming a runnable analysis. Will say what is known about the data itself (columns, size, formats) and what has not been read.
+    resource_types: ["open_data"]
+    intent: discovery
+    perspectives: ["all", "Steward"]
+    annotation_types: []
+    source: local
+    run_time: fast
+    availability: queued
+    action: survey
+    target_shape: whole_resource_only
+    recommended: false
+    egeria_registration:
+      candidate: false
+      native_process_ref: null
+    declaration:
+      built: false
+      result_kind: measure
+      measures:
+      - name: distributions_profiled_summary
+        unit: datasets
+        as_of: retrieved_at
+        value_field: distributions_profiled_summary
+      absence:
+        not_measured: 'Not built: the dataset-level profile summary has no reader yet, so nothing has been summarised.'
+        not_permitted: 'Not permitted: the source refused the read.'
+        not_applicable: 'Not applicable: the dataset is not on a portal RE can read yet.'
+        measured_nothing: 'Measured: the source states nothing for this question.'
+      extents:
+      - name: summary
+        fields: [distributions_profiled_summary]
+        rows: 1
+        order: the dataset as a whole
+        truncation: '{shown} of {total} summaries shown'
+        token_cost: 48
+        citation: '{analysis} · {scope} · as of {as_of}'
+      confidence:
+        form: measured
+      scope: resource
