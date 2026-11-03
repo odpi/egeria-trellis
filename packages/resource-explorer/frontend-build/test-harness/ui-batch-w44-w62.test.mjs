@@ -174,3 +174,25 @@ test('W62 a feed search with no match says what it read; a CKAN search keeps "0 
   assert.match(text(out.innerHTML).replace(/&#39;|&apos;/g, "'"), /none of the 100 datasets on page 1 match 'hospital' · 19,587 more on later pages/);
   assert.doesNotMatch(text(out.innerHTML), /0 rows of/);
 });
+
+// F49: the Folder survey card draws "reading…" while its (slow) read is out, then the card.
+test('F49 the Folder survey card says "reading…" until its read answers', async () => {
+  const { document } = makeDomEnvironment();
+  await loadAppModule();
+  const fs = await import('/static/next/fs-survey.js');
+  let answer;
+  globalThis.fetch = async (url) => {
+    if (!String(url).includes('/folder-survey')) throw new Error(`_UNSTUBBED_FETCH: ${url}`);
+    await new Promise((r) => { answer = r; });
+    return { ok: true, status: 200, json: async () => ({ state: 'none', reach: {}, slug: 'egeria_v6' }) };
+  };
+  const host = document.createElement('div'); document.body.appendChild(host);
+  const mounted = fs.mountFolderSurvey(host, 'egeria_v6');
+  await new Promise((r) => setTimeout(r, 10));
+  assert.ok(host.querySelector('[data-fs-reading]'));
+  assert.match(text(host.innerHTML), /Folder survey reading…/);
+  answer();
+  await mounted;
+  assert.equal(host.querySelector('[data-fs-reading]'), null);
+  assert.ok(host.querySelector('[data-fs-card]'));
+});

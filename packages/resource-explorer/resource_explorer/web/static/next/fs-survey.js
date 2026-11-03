@@ -722,7 +722,18 @@ export async function mountFolderSurvey(host, slug, { onChange = () => {} } = {}
     filled = '';
     onChange(act, { failed: !!error });   // a refused press leaves its sentence on screen: the parent must not re-mount over it
   };
+  // F49: the read can take seconds on a large walk (egeria_v6: 4.1 s quiet, 70.6 s under load on 2026-11-03, most of it
+  // the walk-derived price), so the card says it is reading until it answers (W50's rule), never an empty space.
+  host.innerHTML = folderSurveyReadingHtml();
   await read();
   paint('');
   return () => paint('');
+}
+
+/** The card's place while its read is out: the heading and "reading…", no press and no fact. */
+export function folderSurveyReadingHtml() {
+  return `<div id="fs-folder-survey" class="mt-s3 mb-s3" data-fs-card data-fs-reading>
+    <div class="text-caps uppercase tracking-caps text-ink-muted">${esc(FOLDER_SURVEY_WORDS.heading)}</div>
+    <div class="mt-[2px] text-caveat text-ink-muted">reading…</div>
+  </div>`;
 }
