@@ -82,7 +82,7 @@ export async function renderDataPortals(host) {
     </div>
     <form data-od-register class="mb-s3 hidden flex-wrap items-end gap-[6px]">
       <label class="text-caveat text-ink-muted">Name <input name="display_name" required class="rounded-sm border border-rule-strong bg-transparent px-2 py-[2px] text-caveat text-ink"></label>
-      <label class="text-caveat text-ink-muted">API <select name="api_kind" class="rounded-sm border border-rule-strong bg-transparent px-2 py-[2px] text-caveat text-ink"><option>CKAN</option><option>DCAT-AP</option></select></label>
+      <label class="text-caveat text-ink-muted">API <select name="api_kind" class="rounded-sm border border-rule-strong bg-transparent px-2 py-[2px] text-caveat text-ink"><option>CKAN</option><option>DCAT-AP</option><option>Zenodo</option></select></label>
       <label class="text-caveat text-ink-muted">Base URL <input name="base_url" required placeholder="https://demo.ckan.org" class="rounded-sm border border-rule-strong bg-transparent px-2 py-[2px] text-caveat text-ink" style="width:260px"></label>
       <label class="text-caveat text-ink-muted">API key <input name="api_key" type="password" autocomplete="off" class="rounded-sm border border-rule-strong bg-transparent px-2 py-[2px] text-caveat text-ink"></label>
       <button type="button" data-od-check class="cursor-pointer rounded-sm border border-rule-strong bg-transparent px-2 py-[2px] text-caveat text-ink hover:border-accent">Check</button>
