@@ -68,6 +68,31 @@ def test_the_old_exception_names_are_the_seams():
     assert OdsUnreadable is readers.OdsUnreadable and ResourceExplorerMissing is readers.ResourceExplorerMissing
 
 
+def test_the_routine_and_the_tile_import_and_run_with_re_absent():
+    """The Portal's case on this tree's environment: RE's readers are registered, but RE and trellis_analytics_re cannot
+    be imported. The installed routine and tile still import (their module level names only the seam), and a run answers
+    not_established instead of raising."""
+    import subprocess
+    import sys
+    code = (
+        "import importlib.abc, sys\n"
+        "class _Absent(importlib.abc.MetaPathFinder):\n"
+        "    def find_spec(self, name, path=None, target=None):\n"
+        "        if name.split('.')[0] in ('resource_explorer', 'trellis_analytics_re'):\n"
+        "            raise ModuleNotFoundError(f'No module named {name!r}', name=name)\n"
+        "sys.meta_path.insert(0, _Absent())\n"
+        "from trellis_analytics.routines import curation_coverage\n"
+        "from trellis_analytics.portal import curation_coverage_tile\n"
+        "class Unread:\n"
+        "    def __getattr__(self, name): raise AssertionError(name)\n"
+        "r = curation_coverage(Unread(), 'database', 'demo')\n"
+        "t = curation_coverage_tile('demo', 'sqlite:///never-opened')\n"
+        "print(r.envelope.result_state.value, t['state'])\n")
+    run = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True)
+    assert run.returncode == 0, run.stderr
+    assert run.stdout.split() == ["not_established", "not_established"]
+
+
 def _imports(path: Path):
     """Every module the file imports, at any depth (a lazy import inside a function counts)."""
     for node in ast.walk(ast.parse(path.read_text())):
