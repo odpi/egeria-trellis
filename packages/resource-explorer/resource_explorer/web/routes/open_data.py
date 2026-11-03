@@ -83,6 +83,14 @@ class ImportRequest(BaseModel):
     terms: str = ""
 
 
+class RepositoryImportRequest(BaseModel):
+    repo_slug: str
+    descriptor_path: str = ""
+    work_list_name: str = ""
+    work_list_slug: str = ""
+    investigation: str = ""
+
+
 class DirectoryRunRequest(BaseModel):
     pages: int = 1
     terms: str = ""
@@ -229,6 +237,30 @@ def import_rows(slug: str, req: ImportRequest, request: Request) -> dict:
         return service.import_datasets(
             _store(), chosen, work_list_name=name, transport=_transport(), egeria_lookup=_egeria_lookup(),
             imported_by=who, investigation=req.investigation, work_list_slug=req.work_list_slug)
+    except service.OpenDataError as exc:
+        raise _http(exc) from exc
+
+
+# ── datasets that live in a registered repository ──────────────────────────────
+
+@router.get("/repositories/{repo_slug}/dataset")
+def repository_dataset_state(repo_slug: str) -> dict:
+    """What an import from this repository would do, and what it costs: read before the press."""
+    try:
+        return service.repository_import_state(_store(), repo_slug)
+    except service.OpenDataError as exc:
+        raise _http(exc) from exc
+
+
+@router.post("/import-from-repository")
+def import_from_repository(req: RepositoryImportRequest, request: Request) -> dict:
+    """One `open_data` row from a registered repository's stored dataset descriptor. Writes nothing to Egeria."""
+    who = _signed_in_user(request)
+    try:
+        return service.import_from_repository(
+            _store(), repo_slug=req.repo_slug, descriptor_path=req.descriptor_path, transport=_transport(),
+            imported_by=who, work_list_name=req.work_list_name, work_list_slug=req.work_list_slug,
+            investigation=req.investigation)
     except service.OpenDataError as exc:
         raise _http(exc) from exc
 

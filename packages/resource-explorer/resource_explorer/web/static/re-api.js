@@ -243,6 +243,8 @@ export const publishOpenData = (slug) => post(od(`/datasets/${encodeURIComponent
 export const fitOpenData = (wl, request, investigation = '') => post(od(`/work-lists/${encodeURIComponent(wl)}/fit`), { request, investigation });
 export const putDataRequest = (inv, body) => put(od(`/investigations/${encodeURIComponent(inv)}/data-request`), body);
 export const getDataRequest = (inv) => get(od(`/investigations/${encodeURIComponent(inv)}/data-request`));
+export const repositoryDatasetState = (repoSlug) => get(od(`/repositories/${encodeURIComponent(repoSlug)}/dataset`));
+export const importFromRepository = (body) => post(od('/import-from-repository'), body);
 export const runPortalDirectory = (slug, body) => post(od(`/directories/${encodeURIComponent(slug)}/run`), body);
 export const importDirectoryPortals = (slug, body) => post(od(`/directories/${encodeURIComponent(slug)}/import`), body);
 export const listOpenData = () => get(od('/datasets'));

@@ -65,6 +65,7 @@ EXPECTED: dict[str, tuple[str, ...]] = {
     rr.ROLE_TUTORIAL:      ("readme", "examples", "deployment"),
     rr.ROLE_SAMPLES:       ("readme", "examples"),
     rr.ROLE_DOCUMENTATION: ("readme",),
+    rr.ROLE_DATASET:       ("readme",),
 }
 
 # Deliberate absences. Finding one of these is not a defect, and NOT finding it
@@ -74,11 +75,12 @@ NOT_EXPECTED: dict[str, tuple[str, ...]] = {
     rr.ROLE_DOCUMENTATION: ("deployment", "api-reference"),
     rr.ROLE_SAMPLES:       ("architecture", "changelog"),
     rr.ROLE_TUTORIAL:      ("architecture",),
+    rr.ROLE_DATASET:       ("deployment", "architecture", "api-reference"),
 }
 
 # Roles whose presence means "there may be no architecture here worth
 # recovering" — §5.5b's gate.
-_NON_ARCHITECTURAL_ROLES = frozenset({rr.ROLE_TUTORIAL, rr.ROLE_SAMPLES, rr.ROLE_DOCUMENTATION})
+_NON_ARCHITECTURAL_ROLES = frozenset({rr.ROLE_TUTORIAL, rr.ROLE_SAMPLES, rr.ROLE_DOCUMENTATION, rr.ROLE_DATASET})
 
 # The signals that constitute structural evidence for the gate below.
 _STRUCTURAL_SIGNALS = frozenset({"deployment-artifacts", "entry-points", "package-manifest"})
@@ -130,6 +132,8 @@ class ExpectationReport:
     gate: str = RUN
     gate_reason: str = ""
     notes: list[str] = field(default_factory=list)
+    #: "signal: detail" for each piece of evidence behind the `dataset` role ([] when the role did not fire).
+    dataset_evidence: list[str] = field(default_factory=list)
 
 
 def recovery_gate(classification: rr.RepoRoleClassification) -> tuple[str, str]:
@@ -208,6 +212,8 @@ def build_report(owner_repo: str, client=None) -> ExpectationReport:
         primary_role=primary,
         roles=[r.role for r in classification.roles],
         notes=list(classification.notes),
+        dataset_evidence=[f"{e.signal}: {e.detail}" for r in classification.roles if r.role == rr.ROLE_DATASET
+                          for e in r.evidence],
     )
     report.gate, report.gate_reason = recovery_gate(classification)
 

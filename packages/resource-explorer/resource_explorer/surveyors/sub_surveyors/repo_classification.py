@@ -249,6 +249,18 @@ class RepoClassificationSurveyor(BaseSurveyor):
                 "detail": {"kind": item.kind, "outcome": item.outcome},
             })
 
+        # The row "what kind of thing is this repository" gains its dataset sentence from what ingestion stored
+        # (dataset_descriptor.py). Reading it must never cost the classification itself, and a failure is logged,
+        # not turned into a finding: this is an addition to a row that is complete without it.
+        try:
+            from resource_explorer.surveyors.sub_surveyors.dataset_descriptor import kind_finding
+
+            extra = kind_finding(self.registry, slug, report.dataset_evidence)
+            if extra:
+                findings.append(extra)
+        except Exception:
+            log.warning("%s: could not read the dataset descriptors for the classification row", slug, exc_info=True)
+
         # Deliberately NOT wrapped in try/except: a write failure here is the
         # exact class of bug the FK work found — an unregistered slug, or a
         # schema mismatch — and absorbing it would hide the thing worth seeing.

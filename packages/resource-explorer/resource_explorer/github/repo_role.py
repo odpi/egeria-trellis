@@ -82,13 +82,16 @@ ROLE_TOOL = "tool"
 ROLE_TUTORIAL = "tutorial"
 ROLE_SAMPLES = "samples"
 ROLE_DOCUMENTATION = "documentation"
+#: The eighth role: the repository IS an open dataset (or says so), not software that happens to hold data. Added with
+#: the open-data repository signal (dataset_descriptor.py); see `_dataset_evidence`.
+ROLE_DATASET = "dataset"
 
-# The seven values, order-insensitive. Kept as module-level constants
+# The eight values, order-insensitive. Kept as module-level constants
 # (not an enum) precisely so a future migration to an Egeria valid value
 # set is a data change, not a code change — see the module docstring.
 ROLE_VALUES: tuple[str, ...] = (
     ROLE_LIBRARY, ROLE_APPLICATION, ROLE_MIDDLEWARE, ROLE_TOOL,
-    ROLE_TUTORIAL, ROLE_SAMPLES, ROLE_DOCUMENTATION,
+    ROLE_TUTORIAL, ROLE_SAMPLES, ROLE_DOCUMENTATION, ROLE_DATASET,
 )
 
 # Precedence used ONLY to pick a primary among roles that fired from
@@ -109,7 +112,7 @@ ROLE_VALUES: tuple[str, ...] = (
 # Every role that fires is still reported in `.roles`; this order affects
 # ONLY which one lands at index 0 when more than one fires structurally.
 _PRIMARY_PRECEDENCE: tuple[str, ...] = (
-    ROLE_DOCUMENTATION, ROLE_TUTORIAL, ROLE_SAMPLES,
+    ROLE_DOCUMENTATION, ROLE_TUTORIAL, ROLE_SAMPLES, ROLE_DATASET,
     ROLE_MIDDLEWARE, ROLE_APPLICATION, ROLE_TOOL, ROLE_LIBRARY,
 )
 
@@ -522,6 +525,62 @@ def _apply_absence_evidence(roles: dict[str, RoleResult], has_deployment: bool) 
 
 
 # ---------------------------------------------------------------------------
+# Signal 8: the repository is a dataset
+# ---------------------------------------------------------------------------
+
+_DESCRIPTOR_FILE_NAMES = ("datapackage.json", "croissant.json", "metadata.json", "CITATION.cff")
+_BUILD_TOOLING_NAMES = {"pyproject.toml", "setup.py", "setup.cfg", "package.json", "Makefile", "CMakeLists.txt",
+                        "Cargo.toml", "go.mod", "pom.xml", "build.gradle", "build.gradle.kts"}
+_DATA_BYTES_SHARE = 0.5
+
+
+def _data_byte_share(entries: list[tuple[str, int | None]]) -> tuple[int, int] | None:
+    """(bytes of recognised data files, bytes of every file) over the entries whose size is known, or None when no
+    size is known (a tree that states none says nothing about proportion: absent, not 0%)."""
+    from resource_explorer.surveyors.sub_surveyors.data_profiler import _DATA_EXTENSIONS
+
+    sized = [(p, n) for p, n in entries if n is not None]
+    if not sized:
+        return None
+    total = sum(n for _, n in sized)
+    data = sum(n for p, n in sized if p.rsplit(".", 1)[-1].lower() in _DATA_EXTENSIONS and "." in p.rsplit("/", 1)[-1])
+    return data, total
+
+
+def _dataset_evidence(gh: Github, repo, entries: list[tuple[str, int | None]], readme_text: str | None,
+                      has_deployment: bool, notes: list[str]) -> list[tuple[str, str]]:
+    """(signal, detail) pairs supporting `dataset`: a descriptor that names a dataset (datapackage.json, a Croissant
+    file whose @type is Dataset, a CITATION.cff with `type: dataset`, a Hugging Face dataset card), or data files at
+    or above half of the tree's bytes with no build tooling. A README DOI alone does not (software is archived on
+    Zenodo too). Ranked like the other roles; no score."""
+    from resource_explorer.surveyors.sub_surveyors import dataset_descriptor as dd
+
+    out: list[tuple[str, str]] = []
+    paths = [p for p, _ in entries]
+    parsers = {"datapackage.json": dd.parse_datapackage, "croissant.json": dd.parse_croissant,
+               "metadata.json": dd.parse_croissant, "CITATION.cff": dd.parse_citation_cff}
+    for path in paths:
+        name = path.rsplit("/", 1)[-1]
+        if name not in _DESCRIPTOR_FILE_NAMES or path.count("/") >= dd._MAX_DEPTH:
+            continue
+        text = _fetch_text(gh, repo, path, notes)
+        row = parsers[name](text, path) if text else None
+        if row and row["names_a_dataset"]:
+            ident = row["identifier"] if row["identifier"] != "not_reported" else "no identifier stated"
+            out.append(("dataset-descriptor", f"{path} ({ident})"))
+    card = dd.parse_hf_card(readme_text, "README.md") if readme_text else None
+    if card:
+        out.append(("huggingface-dataset-card", "README.md front matter: license + dataset_info"))
+    share = _data_byte_share(entries)
+    names = {p.rsplit("/", 1)[-1] for p in paths}
+    if share and share[1] and share[0] / share[1] >= _DATA_BYTES_SHARE and not has_deployment \
+            and not (names & _BUILD_TOOLING_NAMES):
+        out.append(("data-bytes-share", f"data files are {share[0]:,} of {share[1]:,} bytes "
+                                        f"({share[0] / share[1]:.0%}), and no build tooling"))
+    return out
+
+
+# ---------------------------------------------------------------------------
 # Network plumbing — thin, and every call independently guarded
 # ---------------------------------------------------------------------------
 
@@ -551,24 +610,32 @@ def _fetch_readme_text(repo, notes: list[str]) -> str | None:
         return None
 
 
-def _fetch_tree_paths(repo, notes: list[str]) -> list[str]:
-    """Full recursive file-tree listing, one API call in the common case.
-    On truncation (very large repos) returns the partial list and records
-    a note rather than doing a full manual walk — a partial-but-honest
-    result over every other signal in this module's graceful-degradation
-    posture, not a crash."""
+def _fetch_tree_entries(repo, notes: list[str]) -> list[tuple[str, int | None]]:
+    """Full recursive file-tree listing, one API call in the common case, as (path, size) with the size the tree
+    states or None when it does not give an integer. On truncation (very large repos) returns the partial list and
+    records a note rather than doing a full manual walk — a partial-but-honest result over every other signal in
+    this module's graceful-degradation posture, not a crash."""
     try:
         tree = repo.get_git_tree(repo.default_branch, recursive=True)
     except Exception as exc:
         _degraded(notes, exc, "could not fetch file tree")
         return []
-    paths = [e.path for e in tree.tree if e.type == "blob"]
+    entries = []
+    for e in tree.tree:
+        if e.type != "blob":
+            continue
+        size = getattr(e, "size", None)
+        entries.append((e.path, size if isinstance(size, int) and not isinstance(size, bool) else None))
     if getattr(tree, "truncated", False):
         notes.append(
-            f"file tree truncated at {len(paths)} entries; deployment/manifest/"
+            f"file tree truncated at {len(entries)} entries; deployment/manifest/"
             f"dominance signals may be incomplete for this large a repo"
         )
-    return paths
+    return entries
+
+
+def _fetch_tree_paths(repo, notes: list[str]) -> list[str]:
+    return [p for p, _ in _fetch_tree_entries(repo, notes)]
 
 
 # ---------------------------------------------------------------------------
@@ -595,7 +662,8 @@ def classify_repo_role(owner_repo: str, client: Github | None = None,
         return RepoRoleClassification(owner_repo=owner_repo, notes=notes)
 
     readme_text = _fetch_readme_text(repo, notes)
-    tree_paths = _fetch_tree_paths(repo, notes)
+    tree_entries = _fetch_tree_entries(repo, notes)
+    tree_paths = [p for p, _ in tree_entries]
 
     # Reuse doc_locations for doc-dir/sibling/homepage signals rather than
     # re-resolving them — a real (non-tombstone) in-repo doc dir, or a
@@ -661,6 +729,10 @@ def classify_repo_role(owner_repo: str, client: Github | None = None,
             f"not treated as documentation-role evidence on its own (§5.5b); "
             f"a docs/ subdirectory is normal for a non-documentation repo"
         )
+
+    # --- Signal 8: the repository is a dataset ---------------------------
+    for signal, detail in _dataset_evidence(gh, repo, tree_entries, readme_text, bool(deployment_paths), notes):
+        _role(ROLE_DATASET).add(signal, detail)
 
     # --- Signal 7: absence as evidence, both directions -----------------
     _apply_absence_evidence(roles, has_deployment=bool(deployment_paths))

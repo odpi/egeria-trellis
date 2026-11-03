@@ -18,6 +18,7 @@ import {
   listOpenDataPortals, registerOpenDataPortal, checkOpenDataPortal, openDataPrice, searchOpenData, importOpenData,
   openDataLensTerms, listPortalDirectories, registerPortalDirectory, runPortalDirectory, importDirectoryPortals,
   listOpenData, getOpenData, openDataDirectoryPrice, listPortalSeeds, addPortalSeed,
+  repositoryDatasetState, importFromRepository,
 } from '/static/re-api.js';
 import { esc } from '/static/next/app.js';
 import { ago } from '/static/next/format.js';
@@ -104,9 +105,11 @@ export async function renderDataPortals(host) {
         <td class="py-s2 pr-s3 text-caveat align-top">${p.adapter_available ? `<button type="button" data-od-open="${esc(p.slug)}" class="cursor-pointer rounded-sm border border-rule-strong bg-transparent px-2 py-[2px] text-caveat text-ink hover:border-accent">Search</button>` : '<span class="text-ink-muted">registered for later</span>'}</td>
       </tr>`).join('')}</tbody></table></div>` : '<p data-od-empty class="text-answer text-ink">No portals registered yet.</p>'}
     <div data-od-seeds class="mt-s4"></div>
+    <div data-od-repo-import class="mt-s4"></div>
     <div data-od-pane class="mt-s4"></div>`;
   watchTables(host);
   drawPortalSeeds(host);
+  drawRepositoryImport(q(host, '[data-od-repo-import]'));
   const form = q(host, '[data-od-register]');
   q(host, '[data-od-register-toggle]').addEventListener('click', () => form.classList.toggle('hidden'));
   const apiHelp = q(host, '[data-od-api-help]');
@@ -261,6 +264,38 @@ export function drawCandidates(pane, out, slug, res, terms, requestName, investi
       document.dispatchEvent(new CustomEvent('re:open-data-imported', { detail: { work_list: r.work_list } }));
       watchTables(result);
     } catch (e) { result.innerHTML = `<p class="text-state-warn">${errText(e)}</p>`; }
+  });
+}
+
+/** Open data › Import › From a registered repository: the repository's slug, what an import would do (the identity it
+ *  would register and the price), and the press. Writes one open-data row and nothing to Egeria. */
+export function drawRepositoryImport(host) {
+  if (!host) return;
+  host.innerHTML = `<details class="rounded-sm border border-rule px-s3 py-s2"><summary class="cursor-pointer text-caveat text-ink">From a registered repository</summary>
+    <form data-od-repo-form class="mt-s2 flex flex-wrap items-end gap-s2">
+      <label class="text-caveat text-ink-muted">Repository slug <input name="repo_slug" required class="rounded-sm border border-rule-strong bg-transparent px-2 py-[2px] text-caveat text-ink" style="width:220px"></label>
+      <button type="button" data-od-repo-check class="cursor-pointer rounded-sm border border-rule-strong bg-transparent px-2 py-[2px] text-caveat text-ink hover:border-accent">Check</button>
+      <button type="submit" data-od-repo-import-press title="Writes one open-data row to this app's registry and nothing to Egeria." class="cursor-pointer rounded-sm border border-rule-strong bg-transparent px-2 py-[2px] text-caveat text-ink hover:border-accent">Import as open data</button>
+      <span data-od-repo-state class="basis-full text-provenance text-ink-muted" aria-live="polite">no network · reads the descriptor already on disk (+1 DataCite call if a DOI)</span>
+    </form></details>`;
+  const form = q(host, '[data-od-repo-form]');
+  const state = q(host, '[data-od-repo-state]');
+  q(host, '[data-od-repo-check]').addEventListener('click', async () => {
+    const slug = form.elements.repo_slug.value.trim();
+    if (!slug) { state.textContent = 'Name a registered repository.'; return; }
+    try {
+      const r = await repositoryDatasetState(slug);
+      state.textContent = r.identifier ? `would register ${r.identifier} (${r.identifier_kind}, from ${r.from}) · ${r.price}${r.words ? ` · ${r.words}` : ''}` : r.words;
+    } catch (e) { state.textContent = e && e.message ? e.message : 'Could not read the repository.'; }
+  });
+  form.addEventListener('submit', async (ev) => {
+    ev.preventDefault();
+    state.textContent = 'Importing…';
+    try {
+      const r = await importFromRepository({ repo_slug: form.elements.repo_slug.value.trim(), descriptor_path: '' });
+      state.textContent = r.words || r.outcome;
+      if (r.outcome === 'imported') document.dispatchEvent(new CustomEvent('re:open-data-imported', { detail: { work_list: r.work_list } }));
+    } catch (e) { state.textContent = e && e.message ? e.message : 'The import did not complete.'; }
   });
 }
 

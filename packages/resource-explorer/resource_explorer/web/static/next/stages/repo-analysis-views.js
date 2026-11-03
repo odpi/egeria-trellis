@@ -12,6 +12,7 @@
  * done, never a blank panel. Every value is escaped.
  */
 import { cue } from '/static/next/stages/repo-manifest.js';
+import { importFromRepository } from '/static/re-api.js';
 
 function esc(s) {
   return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
@@ -71,6 +72,41 @@ const relDays = (iso) => {
   return `${Math.floor(d / 30)}mo ago`;
 };
 
+/** The dataset sentence (server-built: dataset_descriptor.py) and, for a dataset repository, the Import press with its
+ *  price before the press and its hover help. A repository with data files and no descriptor gets the sentence only. */
+export function datasetKindHtml(f) {
+  const d = f.detail || {};
+  const press = d.state === 'dataset'
+    ? `<button type="button" data-dataset-import ${d.can_import ? '' : 'disabled'} title="${esc(d.help || '')}"
+        class="cursor-pointer rounded-sm border border-rule-strong bg-transparent px-2 py-[1px] text-caveat text-ink hover:border-accent disabled:cursor-not-allowed disabled:opacity-60">Import as open data</button>
+      <span data-dataset-import-price class="text-provenance text-ink-muted">${esc(d.price || '')}</span>
+      ${d.can_import ? '' : `<span data-dataset-import-refusal class="text-provenance text-state-warn">${esc(d.no_identifier || '')}</span>`}
+      <span data-dataset-import-result class="text-provenance text-ink-muted" aria-live="polite"></span>`
+    : '';
+  return `<div data-dataset-kind="${esc(d.state || '')}" class="mt-s2 flex flex-wrap items-baseline gap-s2">
+    <span class="text-provenance uppercase text-ink-muted">Kind</span>
+    <span data-dataset-sentence class="text-caveat text-ink break-words [overflow-wrap:anywhere]">${esc(f.summary || '')}</span>${press}</div>`;
+}
+
+/** Wire the Import press drawn by datasetKindHtml: one POST, then the words the server answered with. */
+export function wireDatasetImport(host, slug, post = importFromRepository) {
+  const btn = host.querySelector('[data-dataset-import]');
+  if (!btn) return;
+  const out = host.querySelector('[data-dataset-import-result]');
+  btn.addEventListener('click', async () => {
+    btn.disabled = true;
+    out.textContent = 'Importing…';
+    try {
+      const r = await post({ repo_slug: slug, descriptor_path: '' });
+      out.textContent = r.words || r.outcome || 'done';
+      if (r.outcome === 'imported') document.dispatchEvent(new CustomEvent('re:open-data-imported', { detail: { work_list: r.work_list } }));
+    } catch (err) {
+      out.textContent = err && err.message ? err.message : 'The import did not complete.';
+      btn.disabled = false;
+    }
+  });
+}
+
 export function repoClassificationHtml(data, entry = null) {
   const f = catalogueFields(entry, data);
   const findings = (data && data.findings) || [];
@@ -102,6 +138,10 @@ export function repoClassificationHtml(data, entry = null) {
         notes.map((n) => `<li class="break-words [overflow-wrap:anywhere]">${esc(n)}</li>`).join('')}</ul>`);
     }
   }
+
+  // "What kind of thing is this repository", for a dataset: the sentence, and the press that registers it as open data.
+  const kind = by.dataset_kind;
+  if (kind) out.push(datasetKindHtml(kind));
 
   const gate = by.architecture_recovery_gate;
   if (gate) {
@@ -137,7 +177,7 @@ export function repoClassificationHtml(data, entry = null) {
   }
 
   // Findings that are none of the above are still findings: listed, not silently dropped.
-  const known = new Set(['repo_role', 'architecture_recovery_gate', 'classification_error']);
+  const known = new Set(['repo_role', 'architecture_recovery_gate', 'classification_error', 'dataset_kind']);
   const other = findings.filter((x) => !known.has(x.check_name) && !String(x.check_name || '').startsWith('expected_'));
   if (other.length) {
     out.push(`<table data-classification-other class="mt-s2 w-full"><thead><tr><th class="px-s2 py-[2px] text-left text-provenance font-normal uppercase text-ink-muted">Finding</th><th class="px-s2 py-[2px] text-left text-provenance font-normal uppercase text-ink-muted">Value</th><th class="px-s2 py-[2px] text-left text-provenance font-normal uppercase text-ink-muted">Summary</th></tr></thead><tbody>${
@@ -215,6 +255,7 @@ export async function mountRepoAnalysisView(host, slug, kind, { fetchResults, fe
     if (stale()) return;
     const entry = (Array.isArray(catalogEntries) ? catalogEntries : []).find((e) => e && e.id === kind) || null;
     host.innerHTML = VIEWS[kind](data, entry);
+    if (kind === 'repo_classification') wireDatasetImport(host, slug);
   } catch (err) {
     if (stale()) return;
     host.innerHTML = `<p data-analysis-error="${esc(kind)}" class="mt-s2 text-caveat text-state-warn">The results could not be read: ${esc(err && err.message ? err.message : 'unknown error')}</p>`;
