@@ -120,6 +120,7 @@ These are designs, reviews and evidence from 2026-10-29 and 2026-10-30. Most are
 
 ## Proposals: designed, not built
 
+- [DESIGN-OSI-METRIC-EXCHANGE-2026-11-03.md](DESIGN-OSI-METRIC-EXCHANGE-2026-11-03.md): exchanging the Analytic Library's declared measures as Apache Ossie (OSI) semantic models, and where Egeria would hold them. Queued for discussion, not a brief
 - [DESIGN-AMUNDSEN-MIGRATION-ASSESSMENT.md](DESIGN-AMUNDSEN-MIGRATION-ASSESSMENT.md): Amundsen users and RE/Egeria
 - [DESIGN-BROADER-QUESTIONS-WITHOUT-CONTENT-INGESTION.md](DESIGN-BROADER-QUESTIONS-WITHOUT-CONTENT-INGESTION.md): broader questions without ingesting content
 - [DESIGN-EGERIA-SUGGESTIONS-AND-RE-OWN-CATALOGUING.md](DESIGN-EGERIA-SUGGESTIONS-AND-RE-OWN-CATALOGUING.md): suggestions to Egeria, and RE cataloguing on its own (decision deferred)
