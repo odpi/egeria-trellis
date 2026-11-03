@@ -93,6 +93,17 @@ class FileInventorySurveyor(BaseSurveyor):
                 json_properties=StepOutcome("unverified", cause="file type profile failed",
                                             detail={"error": str(exc)}).as_row())]
 
+    def _read_descriptors(self, local_root: Path) -> str:
+        """Read and store the dataset descriptors; return the words for the step summary."""
+        try:
+            from resource_explorer.surveyors.sub_surveyors.dataset_descriptor import store_descriptors
+
+            found = store_descriptors(self.registry, self.project.slug, local_root, surveyed_at=self._surveyed_at)
+            return f"dataset descriptors: {len(found)} found" if found else "no dataset descriptor"
+        except Exception as exc:
+            log.warning("Dataset descriptors not read for %s: %s", self.project.slug, exc)
+            return f"dataset descriptors not read ({exc})"
+
     def run(self) -> list[Annotation]:
         results: list[Annotation] = []
         try:
@@ -138,10 +149,16 @@ class FileInventorySurveyor(BaseSurveyor):
             # inventory that succeeded.
             IngestionPipeline._record_line_census(shim, self.project.slug, local_root)
 
+            # The dataset descriptors ride the same walk (F51): ingestion and refresh_profile read them, but
+            # neither is reachable from the UI, so no press made a registered repository's descriptors appear.
+            # store_descriptors stays the one writer (it supersedes the previous run and stores "none" as a
+            # fact). A failure is a note on this step, never silent and never a failed inventory.
+            descriptor_words = self._read_descriptors(local_root)
+
             results.append(
                 ResourceMeasureAnnotation(
                     check_name="file_inventory",
-                    summary=f"{file_count} file(s) inventoried",
+                    summary=f"{file_count} file(s) inventoried · {descriptor_words}",
                     analysis_step=STEP,
                     explanation=(
                         "Refreshed project_file_inventory from a fresh zipball extraction. "

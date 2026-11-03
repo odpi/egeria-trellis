@@ -6,6 +6,8 @@ import json
 from pathlib import Path
 from unittest.mock import MagicMock
 
+from types import SimpleNamespace
+
 import pytest
 
 from resource_explorer.github import repo_role as rr
@@ -225,11 +227,43 @@ def test_descriptors_are_stored_as_findings_and_a_removed_descriptor_stops_answe
     assert dd.descriptors_from(stored) == [] and stored[0]["check_name"] == "no_descriptor"      # a measured zero
 
 
-def test_the_surveyor_reads_a_checkout_and_publishes_nothing(reg, tmp_path):
-    root = _tree(tmp_path / "t", **{"datapackage.json": DATAPACKAGE})
-    out = dd.DatasetDescriptorSurveyor(reg.get("acme-data"), reg, local_path=root).run()
-    assert out == [] and dd.descriptors_from(reg.query_findings("acme-data", dd.FINDINGS_KIND))
-    assert dd.DatasetDescriptorSurveyor(reg.get("acme-data"), reg).run() == []                  # no checkout: nothing claimed
+def _inventory_step(reg, root, at="2031-02-03T04:05:06"):
+    from resource_explorer.surveyors.sub_surveyors.file_inventory import FileInventorySurveyor
+    return FileInventorySurveyor(reg.get("acme-data"), reg, local_path=str(root), surveyed_at=at).run()
+
+
+def test_the_coarse_profile_inventory_step_reads_the_descriptors(reg, tmp_path):
+    root = _tree(tmp_path / "t", **{"datapackage.json": DATAPACKAGE, "README.md": "x"})
+    out = _inventory_step(reg, root)
+    stored = reg.query_findings("acme-data", dd.FINDINGS_KIND)
+    assert [d["kind"] for d in dd.descriptors_from(stored)] == ["datapackage"]
+    assert dd.stored_descriptors(reg, "acme-data")[1] == "2031-02-03T04:05:06"        # the step's own run time
+    assert "dataset descriptors: 1 found" in out[0].summary
+
+
+def test_the_inventory_step_over_a_tree_without_a_descriptor_stores_the_one_none(reg, tmp_path):
+    out = _inventory_step(reg, _tree(tmp_path / "t", **{"README.md": "x"}))
+    stored = reg.query_findings("acme-data", dd.FINDINGS_KIND)
+    assert [f["check_name"] for f in stored] == ["no_descriptor"] and "no dataset descriptor" in out[0].summary
+
+
+def test_a_descriptor_reader_that_raises_is_a_note_and_the_inventory_still_stands(reg, tmp_path, monkeypatch):
+    def boom(*a, **k):
+        raise RuntimeError("disk on fire")
+    monkeypatch.setattr(dd, "store_descriptors", boom)
+    out = _inventory_step(reg, _tree(tmp_path / "t", **{"README.md": "x"}))
+    assert "dataset descriptors not read (disk on fire)" in out[0].summary
+    assert len(reg.get_file_inventory_with_sizes("acme-data")) == 1
+
+
+def test_the_served_words_say_not_read_yet_apart_from_no_identifier(reg, tmp_path):
+    from resource_explorer.open_data.service import repository_import_state
+    store = SimpleNamespace(registry=reg, dataset_by_identifier=lambda _i: None)
+    assert dd.NOT_READ_YET_SENTENCE.endswith("run the Coarse Profile survey to read them.")
+    assert repository_import_state(store, "acme-data")["words"] == dd.NOT_READ_YET_SENTENCE
+    _inventory_step(reg, _tree(tmp_path / "t", **{"README.md": "x"}))
+    assert repository_import_state(store, "acme-data")["words"] == dd.NO_IDENTIFIER_SENTENCE
+    assert "(the Coarse Profile survey reads them)" in open(dd.__file__).read()
 
 
 def test_the_kind_row_says_dataset_repository_or_data_files_without_a_descriptor(reg, tmp_path):

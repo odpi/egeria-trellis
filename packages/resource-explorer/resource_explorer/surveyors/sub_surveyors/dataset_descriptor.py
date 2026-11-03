@@ -1,7 +1,7 @@
 """Sub-surveyor: does this repository describe itself as a dataset, and what does the description say?
 
-Discovery-tier, like `repo_classification`, and as cheap: it reads the files already on disk (the ingestion pipeline
-calls it while the checkout exists) and makes no network call. It reads, in this order, and keeps every one found:
+Discovery-tier, like `repo_classification`, and as cheap: it reads the files already on disk (ingestion and the Coarse Profile
+survey's file_inventory step call `store_descriptors` while the tree is on disk) and makes no network call. It reads, in this order, and keeps every one found:
 
     datapackage.json     Frictionless Data Package: name, title, licenses[], resources[] (path, format, bytes)
     croissant.json /     MLCommons Croissant / schema.org: name, license, distribution[], citeAs
@@ -35,13 +35,10 @@ from resource_explorer.ingestion.vendored import is_vendored_abs
 from resource_explorer.open_data.absence import NOT_REPORTED, reported_or_absent
 from resource_explorer.open_data.ckan import normalise_doi
 from resource_explorer.open_data.licences import licence_flags, licence_id_from_iri
-from resource_explorer.registry import Project, ProjectRegistry
-from resource_explorer.surveyors.base_surveyor import BaseSurveyor
-from resource_explorer.surveyors.survey_report import Annotation
+from resource_explorer.registry import ProjectRegistry
 
 log = logging.getLogger(__name__)
 
-STEP = "DatasetDescriptor"
 FINDINGS_KIND = "dataset_descriptor"
 
 KIND_DATAPACKAGE, KIND_CROISSANT, KIND_CFF, KIND_README_DOI, KIND_HF_CARD = (
@@ -385,6 +382,8 @@ IMPORT_PRICE_WORDS = "no network · reads the descriptor already on disk (+1 Dat
 IMPORT_HOVER_HELP = "Writes one open-data row to this app's registry and nothing to Egeria."
 NO_IDENTIFIER_SENTENCE = ("No descriptor in this repository carries an identifier (a DOI, or a datapackage or "
                           "Croissant name), so there is nothing to register it under.")
+NOT_READ_YET_SENTENCE = ("This repository's descriptors have not been read yet \u00b7 run the Coarse Profile survey "
+                         "to read them.")
 
 
 def dataset_sentence(descriptors: list[dict]) -> str:
@@ -456,7 +455,7 @@ def kind_finding(registry: ProjectRegistry, slug: str, role_evidence: list[str] 
             and not read_at:
         state = STATE_DATASET
         sentence = ("a dataset repository · its descriptor was seen on GitHub but its files have not been read here yet "
-                    "(a refresh reads them)")
+                    "(the Coarse Profile survey reads them)")
     elif data_files:
         state, sentence = STATE_DATA_FILES, NO_DESCRIPTOR_SENTENCE
     else:
@@ -515,25 +514,3 @@ def store_descriptors(registry: ProjectRegistry, slug: str, root: str | Path,
     registry.upsert_finding(slug, FINDINGS_KIND, findings_for(found),
                             surveyed_at=surveyed_at or datetime.utcnow().isoformat(), supersedes_previous=True)
     return found
-
-
-class DatasetDescriptorSurveyor(BaseSurveyor):
-    """Reads the dataset descriptors from the checkout at `local_path` and stores them as findings. It returns no
-    annotations: nothing here is published to Egeria."""
-
-    def __init__(self, project: Project, registry: ProjectRegistry, local_path: str | Path | None = None,
-                 surveyed_at: str | None = None) -> None:
-        super().__init__(project, registry)
-        self.local_path = Path(local_path) if local_path else None
-        self._surveyed_at = surveyed_at or datetime.utcnow().isoformat()
-
-    @property
-    def step_name(self) -> str:
-        return STEP
-
-    def run(self) -> list[Annotation]:
-        if not self.local_path or not self.local_path.is_dir():
-            log.info("%s: no checkout on disk — dataset descriptors not read", self.project.slug)
-            return []
-        store_descriptors(self.registry, self.project.slug, self.local_path, self._surveyed_at)
-        return []

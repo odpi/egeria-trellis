@@ -399,7 +399,7 @@ def repository_import_state(store: OpenDataStore, repo_slug: str) -> dict:
     project = registry.get(repo_slug)
     if project is None:
         raise NotFound(f"No repository '{repo_slug}' is registered.")
-    descriptors = repository_descriptors(registry, repo_slug)
+    descriptors, read_at = dd.stored_descriptors(registry, repo_slug)
     ident = dd.chosen_identity(descriptors, _repo_owner_repo(project))
     held = store.dataset_by_identifier(ident["identifier"]) if ident else None
     return {
@@ -410,7 +410,9 @@ def repository_import_state(store: OpenDataStore, repo_slug: str) -> dict:
         "price": dd.IMPORT_PRICE_WORDS, "help": dd.IMPORT_HOVER_HELP,
         "can_import": bool(ident) and held is None,
         "already_imported": held["slug"] if held else "",
-        "words": (dd.NO_IDENTIFIER_SENTENCE if not ident
+        "descriptors_read_at": read_at,
+        "words": (dd.NOT_READ_YET_SENTENCE if not ident and not read_at
+                  else dd.NO_IDENTIFIER_SENTENCE if not ident
                   else f"already imported as {held['slug']}" if held else ""),
     }
 
