@@ -284,3 +284,28 @@ def test_w62_feed_search_words():
         "none of the 100 datasets on page 1 match 'hospital' · 19,587 more on later pages (a feed has no search)")
     assert feed_search_words(3, 100, 1, 100, "care") == "3 of the 100 datasets on page 1 match 'care' · a feed has no search"
     assert feed_search_words(0, 50, 1, "not reported", "") == "none of the 50 datasets on page 1 match the filters · a feed has no search"
+
+
+# --- F50: a results map that gains a reader mid-loop does not break build_survey_results -------------------------
+
+def test_f50_a_reader_attached_during_the_loop_does_not_change_the_dict_being_iterated(tmp_path, monkeypatch):
+    from resource_explorer.registry import DatabaseEntity, ProjectRegistry
+    from resource_explorer.surveyors.database import survey_definition_adapter as db
+    from resource_explorer.workflows import analysis as analysis_mod
+
+    reg = ProjectRegistry(db_path=str(tmp_path / "f50.db"))
+    reg.register_database(DatabaseEntity(slug="d", display_name="D", db_type="postgresql", host="localhost",
+                                         port=5432, database_name="d"))
+    real = analysis_mod._read_analyses
+    added = []
+
+    def attach_mid_loop(*args, **kwargs):
+        if not added:      # what survey_step_host.attach does to the module's map, while the loop is over it
+            added.append("late_step")
+            monkeypatch.setitem(db.DATABASE_ANALYSIS_RESULTS_MAP, "late_step", (lambda registry, slug: {}, None))
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(analysis_mod, "_read_analyses", attach_mid_loop)
+    got = analysis_mod.build_survey_results(reg, "database", "d", include_empty=True)
+    assert added and got["dashboards"]
+    assert analysis_mod._results_map_for("database")[0] is not db.DATABASE_ANALYSIS_RESULTS_MAP
