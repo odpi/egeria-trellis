@@ -210,3 +210,15 @@ test('dataset kind: the press posts the repo slug once and shows the answer in w
   assert.deepEqual(calls, [{ repo_slug: 'acme-data', descriptor_path: '' }]);
   assert.equal(text(document.querySelector('[data-dataset-import-result]')), 'imported · 3 of 4 declared files present in the tree');
 });
+
+test('dataset kind: a DOI-only repository keeps the press, says when the descriptors were read, and never says "not a dataset"', async () => {
+  const v = await views();
+  const { document } = makeDomEnvironment();
+  const doi = { check_name: 'dataset_kind', label: 'DOI only',
+    summary: 'a DOI names it (10.5281/zenodo.1) · whether it is a dataset is not established until the DOI is resolved (Import resolves it)',
+    detail: { state: 'doi_only', can_import: true, price: 'p', help: 'h', descriptors_read_at: '2026-11-03T10:00:00' } };
+  document.body.innerHTML = v.repoClassificationHtml(withKind(doi), ENTRY[0]);
+  assert.match(text(document.querySelector('[data-dataset-sentence]')), /^a DOI names it \(10\.5281\/zenodo\.1\) · whether it is a dataset is not established until the DOI is resolved \(Import resolves it\)$/);
+  assert.equal(document.querySelector('[data-dataset-import]').hasAttribute('disabled'), false);
+  assert.match(text(document.querySelector('[data-dataset-read-at]')), /^descriptors read /);
+});

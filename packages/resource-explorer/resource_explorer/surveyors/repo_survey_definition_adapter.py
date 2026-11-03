@@ -1472,9 +1472,13 @@ def _data_profile_results(registry, slug: str) -> dict:
     # only returns files that were actually profiled), so `formats` is the
     # only place a too-large-to-profile file is counted by format/location
     # at all. It was persisted and silently unreachable through this reader.
+    # What the repository's own dataset descriptors declare, against the files found (Q-0047). [] = none declare files.
+    from resource_explorer.surveyors.sub_surveyors.dataset_descriptor import declared_files_summary
+
     return attach_status(
         {"profiles": profiles, "total": len(profiles),
-         "formats": metric_detail.get("formats", {})},
+         "formats": metric_detail.get("formats", {}),
+         "declared_files": declared_files_summary(registry, slug)},
         metric_detail,
     )
 

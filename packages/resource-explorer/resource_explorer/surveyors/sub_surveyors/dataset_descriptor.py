@@ -403,29 +403,57 @@ def dataset_sentence(descriptors: list[dict]) -> str:
     return f"a dataset repository · {identity} · {licence}"
 
 
-STATE_DATASET, STATE_DATA_FILES = "dataset", "data_files_no_descriptor"
+STATE_DATASET, STATE_DOI_ONLY, STATE_DATA_FILES = "dataset", "doi_only", "data_files_no_descriptor"
+
+DOI_ONLY_SENTENCE = ("a DOI names it ({doi}) · whether it is a dataset is not established until the DOI is resolved "
+                     "(Import resolves it)")
+
+
+def stored_descriptors(registry: ProjectRegistry, slug: str) -> tuple[list[dict], str]:
+    """(the descriptor rows stored at ingestion, when they were read). The time is "" only when nothing was ever stored."""
+    stored = registry.query_findings(slug, FINDINGS_KIND)
+    return descriptors_from(stored), (stored[0].get("surveyed_at") or "") if stored else ""
+
+
+def declared_files_summary(registry: ProjectRegistry, slug: str) -> list[dict]:
+    """What the descriptors declare, against the tier-1 inventory: one entry per descriptor that declares data files.
+    This is what Q-0047 ("what data files does it ship") reads from `data_file_profiling` beside the files found."""
+    descriptors, read_at = stored_descriptors(registry, slug)
+    tree = [r["file_path"] for r in registry.get_file_inventory_with_sizes(slug)]
+    out = []
+    for d in descriptors:
+        if d.get("data_files"):
+            cc = cross_check(d, tree)
+            out.append({"descriptor": d["path"], "kind": d["kind"], "declared": cc["declared"], "present": cc["present"],
+                        "remote": cc["remote"], "words": cc["words"], "missing": cc["missing"], "read_at": read_at})
+    return out
 
 
 def kind_finding(registry: ProjectRegistry, slug: str, role_evidence: list[str] | None = None) -> dict | None:
     """The finding behind the repository page's "what kind of thing" row, from what is stored: the descriptors of the
-    last ingestion and the tier-1 file inventory. None = nothing to say (no descriptor and no data files).
+    last ingestion (and when they were read) and the tier-1 file inventory. None = nothing to say.
 
       descriptor that names a dataset -> "a dataset repository · identity DOI 10.…/… · licence CC-BY-4.0 (from …)"
-      data files, no such descriptor  -> "a repository with data files, not an open dataset by Resource Explorer's rule
+      only a DOI names it             -> "a DOI names it (10.…) · whether it is a dataset is not established until the
+                                          DOI is resolved (Import resolves it)"   (a README DOI, or a CITATION.cff
+                                          without `type: dataset`: not silence, and not "not a dataset")
+      data files, no descriptor       -> "a repository with data files, not an open dataset by Resource Explorer's rule
                                           (no descriptor names it)"
     A descriptor stored before this was read (ingested earlier) is not "no descriptor": the sentence then says so."""
     from resource_explorer.surveyors.sub_surveyors.data_profiler import _DATA_EXTENSIONS
 
-    stored = registry.query_findings(slug, FINDINGS_KIND)
-    descriptors = descriptors_from(stored)
+    descriptors, read_at = stored_descriptors(registry, slug)
     naming = [d for d in descriptors if d["names_a_dataset"]]
+    doi_holder = next((d for d in descriptors if d["doi"] != NOT_REPORTED), None)
     inventory = registry.get_file_inventory_with_sizes(slug)
     data_files = [r for r in inventory if "." in r["file_path"].rsplit("/", 1)[-1]
                   and r["file_path"].rsplit(".", 1)[-1].lower() in _DATA_EXTENSIONS]
     if naming:
         state, sentence = STATE_DATASET, dataset_sentence(descriptors)
+    elif doi_holder:
+        state, sentence = STATE_DOI_ONLY, DOI_ONLY_SENTENCE.format(doi=doi_holder["doi"])
     elif role_evidence and any(e.startswith(("dataset-descriptor", "huggingface-dataset-card")) for e in role_evidence) \
-            and not stored:
+            and not read_at:
         state = STATE_DATASET
         sentence = ("a dataset repository · its descriptor was seen on GitHub but its files have not been read here yet "
                     "(a refresh reads them)")
@@ -434,12 +462,15 @@ def kind_finding(registry: ProjectRegistry, slug: str, role_evidence: list[str] 
     else:
         return None
     return {
-        "check_name": "dataset_kind", "label": "dataset repository" if state == STATE_DATASET else "data files only",
+        "check_name": "dataset_kind", "label": "dataset repository" if state == STATE_DATASET else
+        "DOI only" if state == STATE_DOI_ONLY else "data files only",
         "summary": sentence, "confidence": 60,
         "detail": {"state": state, "descriptors": [{k: d[k] for k in ("kind", "path", "identifier", "identifier_kind", "doi")}
                                                    for d in descriptors],
+                   #: when ingestion read the descriptors (the classification run itself is this result's surveyed_at)
+                   "descriptors_read_at": read_at,
                    "data_files": len(data_files), "price": IMPORT_PRICE_WORDS, "help": IMPORT_HOVER_HELP,
-                   "can_import": state == STATE_DATASET and chosen_identity(descriptors) is not None,
+                   "can_import": state in (STATE_DATASET, STATE_DOI_ONLY) and chosen_identity(descriptors) is not None,
                    "no_identifier": NO_IDENTIFIER_SENTENCE},
     }
 

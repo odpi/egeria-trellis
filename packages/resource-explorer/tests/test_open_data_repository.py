@@ -453,3 +453,63 @@ def test_a_failure_reading_the_descriptors_is_a_visible_finding_not_a_missing_ro
 def test_vendored_directories_are_not_searched_for_descriptors(tmp_path):
     root = _tree(tmp_path, **{"vendor__lib__datapackage.json": DATAPACKAGE, "datapackage.json": DATAPACKAGE})
     assert [r["path"] for r in dd.read_descriptors(root)] == ["datapackage.json"]
+
+
+# ── the Architect's conditions on 15d69356 ──────────────────────────────────────────────────────
+
+README_DOI = "# x\n[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.1234567.svg)](https://doi.org/10.5281/zenodo.1234567)\n"
+
+
+def test_a_doi_alone_is_not_silence_and_not_not_a_dataset(reg, tmp_path):
+    _inventory(reg, "acme-data", {"data/a.csv": 100})
+    for files in ({"README.md": README_DOI}, {"CITATION.cff": CFF_SOFTWARE}):
+        dd.store_descriptors(reg, "acme-data", _tree(tmp_path / ("t" + str(len(files)) + next(iter(files))[:3]), **files))
+        f = dd.kind_finding(reg, "acme-data")
+        assert f["detail"]["state"] == "doi_only" and "is not a dataset" not in f["summary"]
+        assert f["summary"].startswith("a DOI names it (10.")
+        assert f["summary"].endswith("whether it is a dataset is not established until the DOI is resolved (Import resolves it)")
+        assert f["detail"]["can_import"] is True                              # Import is what resolves it
+        assert f["summary"] != dd.NO_DESCRIPTOR_SENTENCE                      # and not the data-files-only sentence
+
+
+def test_the_kind_row_records_when_the_descriptors_were_read(reg, tmp_path):
+    dd.store_descriptors(reg, "acme-data", _tree(tmp_path / "t", **{"datapackage.json": DATAPACKAGE}),
+                         surveyed_at="2026-11-03T10:00:00")
+    assert dd.kind_finding(reg, "acme-data")["detail"]["descriptors_read_at"] == "2026-11-03T10:00:00"
+    js = (JS_ROOT / "next/stages/repo-analysis-views.js").read_text(encoding="utf-8")
+    assert "data-dataset-read-at" in js and "descriptors read" in js
+
+
+def test_the_declared_files_reach_data_file_profiling_the_answer_to_q_0047(reg, tmp_path):
+    from resource_explorer.surveyors.repo_survey_definition_adapter import _data_profile_results
+
+    _inventory(reg, "acme-data", {"data/a.csv": 100, "data/b.csv": 50})
+    dd.store_descriptors(reg, "acme-data", _tree(tmp_path / "t", **{"datapackage.json": DATAPACKAGE}),
+                         surveyed_at="2026-11-03T10:00:00")
+    got = _data_profile_results(reg, "acme-data")["declared_files"]
+    assert got == [{"descriptor": "datapackage.json", "kind": "datapackage", "declared": 3, "present": 2, "remote": 1,
+                    "words": "2 of 3 declared files present in the tree (+1 remote)", "missing": ["data/c.csv"],
+                    "read_at": "2026-11-03T10:00:00"}]
+    reg.add(Project(slug="bare", display_name="bare", github_url="https://github.com/acme/bare", status=ProjectStatus.ACTIVE))
+    assert _data_profile_results(reg, "bare")["declared_files"] == []
+
+
+def test_q_0043_and_q_0047_are_answered_by_the_analyses_that_carry_the_new_facts():
+    import yaml
+
+    doc = yaml.safe_load((Path(__file__).resolve().parents[1] / "resource_explorer/configdata/question_catalog.yaml").read_text())
+    qs = {q["id"]: q for q in doc["repo_questions"]}
+    assert qs["Q-0043"]["answering"]["analysis_ids"] == ["repo_classification"]       # dataset_kind is a finding of it
+    assert qs["Q-0047"]["answering"]["analysis_ids"] == ["data_file_profiling"]       # declared_files is in its results
+
+
+def test_the_suggested_portals_fold_never_offers_or_hides_anything_because_of_the_pseudo_portal(client, reg):
+    from resource_explorer.open_data import seeds
+
+    OpenDataStore(reg).list_portals(include_reserved=True)
+    body = client.get("/api/open-data/portal-seeds").json()
+    assert body["count"] == len(seeds.seed_rows())                       # the reserved row removed nothing from the fold
+    assert not any("repositor" in (r["display_name"] + r["feed_url"]).lower() for r in body["rows"])
+    # even if the reserved row were handed to the matcher, no suggested row matches its address
+    assert seeds.unregistered(OpenDataStore(reg).list_portals(include_reserved=True)) == seeds.unregistered([])
+    assert client.post("/api/open-data/portal-seeds/add", json={"feed_url": "repository://"}).status_code == 404

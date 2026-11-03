@@ -76,7 +76,7 @@ const relDays = (iso) => {
  *  price before the press and its hover help. A repository with data files and no descriptor gets the sentence only. */
 export function datasetKindHtml(f) {
   const d = f.detail || {};
-  const press = d.state === 'dataset'
+  const press = (d.state === 'dataset' || d.state === 'doi_only')
     ? `<button type="button" data-dataset-import ${d.can_import ? '' : 'disabled'} title="${esc(d.help || '')}"
         class="cursor-pointer rounded-sm border border-rule-strong bg-transparent px-2 py-[1px] text-caveat text-ink hover:border-accent disabled:cursor-not-allowed disabled:opacity-60">Import as open data</button>
       <span data-dataset-import-price class="text-provenance text-ink-muted">${esc(d.price || '')}</span>
@@ -85,7 +85,8 @@ export function datasetKindHtml(f) {
     : '';
   return `<div data-dataset-kind="${esc(d.state || '')}" class="mt-s2 flex flex-wrap items-baseline gap-s2">
     <span class="text-provenance uppercase text-ink-muted">Kind</span>
-    <span data-dataset-sentence class="text-caveat text-ink break-words [overflow-wrap:anywhere]">${esc(f.summary || '')}</span>${press}</div>`;
+    <span data-dataset-sentence class="text-caveat text-ink break-words [overflow-wrap:anywhere]">${esc(f.summary || '')}</span>
+    ${d.descriptors_read_at ? `<span data-dataset-read-at class="text-provenance text-ink-muted">descriptors read ${esc(relDays(d.descriptors_read_at))}</span>` : ''}${press}</div>`;
 }
 
 /** Wire the Import press drawn by datasetKindHtml: one POST, then the words the server answered with. */
