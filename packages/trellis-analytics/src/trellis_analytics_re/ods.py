@@ -389,5 +389,5 @@ class OdsReader:
 
     def registry_view(self):
         """A read-only stand-in for ProjectRegistry (needs the optional `re` extra; see registry_view.py)."""
-        from trellis_analytics.readers.registry_view import RegistryReadView
+        from trellis_analytics_re.registry_view import RegistryReadView
         return RegistryReadView(self.url)

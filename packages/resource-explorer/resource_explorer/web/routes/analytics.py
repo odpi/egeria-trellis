@@ -28,7 +28,7 @@ def _unavailable(resource_type: str, slug: str, reason: str) -> dict:
 def curation_coverage_for(resource_type: str, slug: str, url: str | None = None) -> dict:
     """Run the routine and return its result dict. Blocking (a registry read); call off the loop."""
     try:
-        from trellis_analytics.readers.ods import OdsReader
+        from trellis_analytics_re.ods import OdsReader
         from trellis_analytics.routines import curation_coverage
     except ImportError as exc:
         return _unavailable(resource_type, slug, f"the Analytic Library (trellis-analytics) is not installed: {exc}")

@@ -556,7 +556,7 @@ A dashboard is a Dr.Egeria Report and Dashboard Sheet. The design for showing th
 
 ### The Analytic Library
 
-The **Analytic Library** is a set of small, installable analyses that sit beside Resource Explorer's own. Each one is either a **routine** (it reads and counts) or a **step** (it can be part of a survey). Every result carries its own **state word**, one of *measured*, *nothing found*, *not established* or *not applicable*, so "we looked and found nothing" never looks like "we could not look". The library's guide for people who write them is [`../../trellis-analytics/README.md`](../../trellis-analytics/README.md).
+The **Analytic Library** is a set of small, installable analyses that sit beside Resource Explorer's own. Each one is either a **routine** (it reads and counts) or a **step** (it can be part of a survey). Every result carries its own **state word**, one of *measured*, *nothing found*, *not established* or *not applicable*, so "we looked and found nothing" never looks like "we could not look". The library's guide for people who write them is the [egeria-trellis-analytics README](https://github.com/odpi/egeria-trellis-analytics#readme).
 
 Where you meet it:
 

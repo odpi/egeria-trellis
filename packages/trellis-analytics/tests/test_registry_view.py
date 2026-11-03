@@ -5,8 +5,8 @@ import pytest
 
 from conftest import add_curation_rows, write_local_survey, write_native_survey
 
-from trellis_analytics.readers.ods import OdsReader                     # noqa: E402
-from trellis_analytics.readers.registry_view import COVERED_METHODS     # noqa: E402
+from trellis_analytics_re.ods import OdsReader                     # noqa: E402
+from trellis_analytics_re.registry_view import COVERED_METHODS     # noqa: E402
 
 
 @pytest.fixture

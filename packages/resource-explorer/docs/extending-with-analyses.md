@@ -11,7 +11,7 @@ step can declare, what a curator sees, and how Chat uses a step's results.
 A **library step** is a small Python package that adds a measurement to Resource Explorer (RE) without
 changing RE. Changing RE's own built-in analyses is a different job, covered in
 [extending-resource-explorer.md](extending-resource-explorer.md). The library's own reference for
-authors is [`trellis-analytics/README.md`](../../trellis-analytics/README.md). Where this page and that
+authors is [the egeria-trellis-analytics README](https://github.com/odpi/egeria-trellis-analytics#readme). Where this page and that
 README differ, this page was checked against the code. How steps are installed, versioned and retired is in
 [`DESIGN-ANALYTIC-LIFECYCLE-2026-10-30.md`](design-notes/DESIGN-ANALYTIC-LIFECYCLE-2026-10-30.md).
 
@@ -504,7 +504,7 @@ written confidence method, one extent and a question named by id.
 
 ## See also
 
-- [`trellis-analytics/README.md`](../../trellis-analytics/README.md): the library's reference for authors
+- [the egeria-trellis-analytics README](https://github.com/odpi/egeria-trellis-analytics#readme): the library's reference for authors
 - [The tutorial](../../trellis-analytics/docs/TUTORIAL-ADD-AN-ANALYTIC-STEP-2026-10-30.md): build your first step, start to finish
 - [`DESIGN-ANALYTIC-LIFECYCLE-2026-10-30.md`](design-notes/DESIGN-ANALYTIC-LIFECYCLE-2026-10-30.md): where steps live, how they are installed, versioned and retired
 - [user-guide.md](user-guide.md), "The Analytic Library": what users see

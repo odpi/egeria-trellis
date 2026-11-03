@@ -2,7 +2,7 @@
 
 Stored as `database_table_activity.table_kind` (additive, nullable). NULL is never "a base table": a row written
 before the column existed, or whose type the survey did not read, is NULL, and the typed read says so in words
-(`trellis_analytics.readers.ods`).
+(`trellis_analytics_re.ods`).
 """
 from __future__ import annotations
 

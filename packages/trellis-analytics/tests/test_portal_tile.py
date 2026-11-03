@@ -45,7 +45,7 @@ def test_tile_counts_and_subtitle_come_from_the_routine(tile, measured_url, monk
     rendered = []                       # the result the tile itself rendered, so the clock cannot tick between two runs
     real = portal.curation_coverage
     monkeypatch.setattr(portal, "curation_coverage", lambda *a, **k: rendered.append(real(*a, **k)) or rendered[-1])
-    from trellis_analytics.readers.ods import OdsReader
+    from trellis_analytics_re.ods import OdsReader
     from trellis_analytics.routines import curation_coverage
     routine = curation_coverage(OdsReader(measured_url), "database", SLUG)
     out = tile(measured_url)

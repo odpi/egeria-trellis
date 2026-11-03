@@ -395,7 +395,7 @@ def _serve(database_url: str, requests, ready) -> None:
     traceback would lead back to this frame)."""
     import queue
 
-    from trellis_analytics.readers.ods import OdsReader
+    from trellis_analytics_re.ods import OdsReader
 
     try:
         conn, is_pg = _open_read_only(database_url)
@@ -462,7 +462,7 @@ def _slug_first(name: str) -> bool:
     """Is the first parameter of this typed read a resource's slug (so a set step may pass a list of them)?"""
     import inspect
 
-    from trellis_analytics.readers.ods import OdsReader
+    from trellis_analytics_re.ods import OdsReader
 
     params = list(inspect.signature(getattr(OdsReader, name)).parameters)
     return len(params) > 1 and params[1] == "slug"
@@ -475,7 +475,7 @@ MAX_SET_SLUGS = 500
 def _remote(requests, name, allow_slug_lists: bool = False):
     import queue
 
-    from trellis_analytics.readers.ods import OdsReader, OdsUnreadable
+    from trellis_analytics_re.ods import OdsReader, OdsUnreadable
 
     slug_first = allow_slug_lists and _slug_first(name)
 
@@ -539,7 +539,7 @@ def step_reader(database_url: str, *, allow_slug_lists: bool = False):
     problem = ready.get(timeout=READ_TIMEOUT_SECONDS)
     try:
         if problem:
-            from trellis_analytics.readers.ods import OdsUnreadable
+            from trellis_analytics_re.ods import OdsUnreadable
 
             raise OdsUnreadable(problem)
         yield StepOds(requests, allow_slug_lists)

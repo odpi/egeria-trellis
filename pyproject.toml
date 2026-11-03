@@ -23,7 +23,11 @@ trellis-artifact-tree = { workspace = true }
 trellis-context = { workspace = true }
 trellis-querycache = { workspace = true }
 trellis-auth = { workspace = true }
-trellis-analytics = { workspace = true }
+trellis-analytics-re = { workspace = true }
+# The Analytic Library left trellis in LS2 (odpi/egeria-trellis-analytics). Until the owner tags v0.2.0 and it is on
+# PyPI, the lock takes it from the fork's ls2/initial-content commit; then this line goes and the requirement
+# egeria-trellis-analytics>=0.2,<0.3 resolves from PyPI like any other dependency.
+egeria-trellis-analytics = { git = "https://github.com/dwolfson/egeria-trellis-analytics", rev = "3c31f40e1e3ff0aa76fe32cb83b6f64af66a27e4" }
 trellis-step-change-rates = { workspace = true }
 trellis-step-database-staleness = { workspace = true }
 trellis-step-fs-activity = { workspace = true }
@@ -49,7 +53,7 @@ dev = [
     "trellis-context",
     "trellis-querycache",
     "trellis-auth",
-    "trellis-analytics[dev]",
+    "trellis-analytics-re[dev]",
     "trellis-step-change-rates",
     "trellis-step-database-staleness",
     "trellis-step-fs-activity",

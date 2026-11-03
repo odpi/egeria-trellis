@@ -11,7 +11,7 @@ from pathlib import Path
 import pytest
 
 from trellis_analytics import __version__
-from trellis_analytics.readers.ods import OdsReader
+from trellis_analytics_re.ods import OdsReader
 from trellis_analytics.routines import curation_coverage
 
 EX = Path(__file__).resolve().parents[1] / "examples"

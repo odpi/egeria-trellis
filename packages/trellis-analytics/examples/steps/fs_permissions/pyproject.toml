@@ -3,7 +3,7 @@ name = "trellis-step-fs-permissions"
 dynamic = ["version"]
 description = "Analytic Library step: owners, groups and modes as counts, and world-readable files with secret-looking names, from RE's walk rows. Installable on its own; installing it is registering it."
 requires-python = ">=3.12,<4.0"
-dependencies = ["trellis-analytics>=0.1.0"]
+dependencies = ["egeria-trellis-analytics>=0.2,<0.3"]
 
 # Installation is registration: Resource Explorer finds the step through this entry point.
 [project.entry-points."pyegeria.analytics"]
@@ -18,8 +18,3 @@ path = "src/fs_permissions/__init__.py"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/fs_permissions"]
-
-# In this repo the library is the sibling package, three levels up; outside it, trellis-analytics comes from
-# wherever the host installed it. pip ignores this table.
-[tool.uv.sources]
-trellis-analytics = { path = "../../..", editable = true }

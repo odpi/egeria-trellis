@@ -10,8 +10,11 @@ ROOT = Path(__file__).resolve().parents[1]
 
 @pytest.fixture
 def entry_point_dist(tmp_path, monkeypatch):
-    """A dist-info built from the package's own pyproject entry-points, so the declared entry point is what's tested."""
-    eps = tomllib.loads((ROOT / "pyproject.toml").read_text())["project"]["entry-points"]["pyegeria.analytics"]
+    """A dist-info carrying the entry points the installed library declares (egeria-trellis-analytics, since LS2 a
+    wheel rather than this tree), so the declared entry point is what's tested."""
+    from importlib.metadata import distribution
+    eps = {ep.name: ep.value for ep in distribution("egeria-trellis-analytics").entry_points
+           if ep.group == "pyegeria.analytics"}
     d = tmp_path / "trellis_analytics_fixture-0.1.0.dist-info"
     d.mkdir()
     (d / "METADATA").write_text("Metadata-Version: 2.1\nName: trellis-analytics-fixture\nVersion: 0.1.0\n")

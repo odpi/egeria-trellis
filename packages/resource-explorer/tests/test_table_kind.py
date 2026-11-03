@@ -5,7 +5,7 @@ import pytest
 
 from resource_explorer.table_kind import table_kind_of
 from resource_explorer.surveyors.survey_step_host import step_reader
-from trellis_analytics.readers.ods import TABLE_KIND_SINCE
+from trellis_analytics_re.ods import TABLE_KIND_SINCE
 
 COLS = ("database_slug TEXT, surveyed_at TEXT, source TEXT, schema_name TEXT, table_name TEXT, rows_inserted BIGINT, "
         "rows_updated BIGINT, rows_deleted BIGINT, live_tuples BIGINT, dead_tuples BIGINT, seq_scan BIGINT, "
