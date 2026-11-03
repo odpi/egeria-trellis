@@ -131,3 +131,18 @@ test('W47 RE-led FILES header and tiles say the deployed types known, not "0 typ
   const egeria = { ...view, surveyor: "Egeria's Folder Survey" };
   assert.match(text(fs.folderResultsHtml(egeria, { open: true })), /\b0 types\b/);
 });
+
+// W59: the Q-0043 "what kind of thing" row never says nothing about datasets.
+test('W59 a classification without a dataset finding says "not checked"; a stale one says re-run; "none" says none', async () => {
+  await load();
+  const v = await import('/static/next/stages/repo-analysis-views.js');
+  const role = { check_name: 'repo_role', label: 'library', confidence: 80, detail: { roles: ['library'] } };
+  const said = (findings, surveyed_at = '2026-10-01T00:00:00') => text(v.repoClassificationHtml({ findings, surveyed_at }));
+  assert.match(said([role]), /dataset signal: not checked \(classification ran before descriptors were read\) · re-run reads it/);
+  const none = { check_name: 'dataset_kind', label: 'no dataset signal', summary: 'no dataset signal (no descriptor, no data files)',
+    detail: { state: 'none', descriptors_read_at: '2026-09-30T00:00:00' } };
+  assert.match(said([role, none]), /no dataset signal \(no descriptor, no data files\)/);
+  assert.doesNotMatch(said([role, none]), /re-run reads them/);
+  const stale = { ...none, detail: { ...none.detail, descriptors_read_at: '2026-11-03T21:00:00' } };
+  assert.match(said([role, stale]), /descriptors read after this classification ran · re-run reads them/);
+});
