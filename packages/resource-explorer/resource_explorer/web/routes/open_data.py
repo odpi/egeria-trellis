@@ -193,7 +193,7 @@ def add_portal_seed(body: SeedAdd, request: Request) -> dict:
     try:
         portal = service.register_portal(_store(), display_name=seed["display_name"], api_kind=seed["api_kind"],
                                          base_url=seed["feed_url"], origin="seed", registered_by=who,
-                                         transport=_transport())
+                                         slug=service.host_slug(seed["feed_url"]), transport=_transport())
     except service.OpenDataError as exc:
         raise _http(exc) from exc
     return {**_portal_summary(portal), "reach": reach["words"]}

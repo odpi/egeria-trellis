@@ -54,6 +54,17 @@ def unique_slug(exists, base: str) -> str:
     return slug
 
 
+def host_slug(url: str) -> str:
+    """A portal's slug from its feed's host ("https://healthdata.gov/data.json" -> "healthdata_gov"), the way a hand
+    registration names one (W60): a seed's display name ("healthdata.gov (U.S. Department of Health and Human Services)")
+    made "healthdata.gov_u.s._department_of_health_and_human_services"."""
+    from urllib.parse import urlparse
+
+    host = (urlparse(url or "").hostname or "").lower()
+    host = host[4:] if host.startswith("www.") else host
+    return slugify(host.replace(".", "_")) if host else ""
+
+
 def portal_secret_ref(slug: str) -> str:
     return f"{slug}::Open Data Portal Key"
 

@@ -262,3 +262,14 @@ def test_w48_delta_part_partition_columns_from_the_path():
     assert path_partition_columns("kind=a/p.parquet", {""}) == ["kind"]          # a table at the root
     assert partition_note(["kind"]) == "partition column(s) from the path not included: kind"
     assert partition_note([]) == ""
+
+
+# --- W60: a seed-registered portal's slug is its feed host, as a hand registration names one ---------------------
+
+def test_w60_host_slug():
+    from resource_explorer.open_data.service import host_slug
+
+    assert host_slug("https://healthdata.gov/data.json") == "healthdata_gov"
+    assert host_slug("https://www.data.gov.ie/catalog.jsonld") == "data_gov_ie"
+    assert host_slug("https://zenodo.org/api") == "zenodo_org"
+    assert host_slug("") == ""
