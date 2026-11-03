@@ -146,3 +146,16 @@ test('W59 a classification without a dataset finding says "not checked"; a stale
   const stale = { ...none, detail: { ...none.detail, descriptors_read_at: '2026-11-03T21:00:00' } };
   assert.match(said([role, stale]), /descriptors read after this classification ran · re-run reads them/);
 });
+
+// W61: a one-document feed's Add says its reach check reads the whole document.
+test('W61 a one-document feed says the reach check reads the whole document; a paged feed keeps the short help', async () => {
+  await load();
+  const od = await import('/static/next/admin/open_data.js');
+  assert.equal(od.seedAddHelp({ size_note: 'one document, ~31 MB (Project Open Data data.json; one call reads all of it)' }),
+    'Registers this portal for everyone, as you. Checks reach first (reads the whole 31 MB document, about a minute); nothing is imported.');
+  assert.equal(od.seedAddHelp({ size_note: 'paged, 100 per page (~22,900 datasets, about 1.4 MB a page)' }), od.SEED_ADD_HELP);
+  const html = od.suggestedPortalsHtml({ rows: [{ display_name: 'healthdata.gov', feed_url: 'https://healthdata.gov/data.json',
+    api_kind: 'DCAT-AP', status: 'answered', can_add: true, words: 'checked 2026-11-02 by the maintainers', why: '',
+    size_note: 'one document, ~31 MB (Project Open Data data.json; one call reads all of it)' }] });
+  assert.match(html, /title="Registers this portal for everyone, as you\. Checks reach first \(reads the whole 31 MB document/);
+});
