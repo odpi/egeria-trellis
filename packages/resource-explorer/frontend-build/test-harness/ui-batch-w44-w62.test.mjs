@@ -41,3 +41,31 @@ test('W50 the resource header reads "reading…" until the row answers, then the
   assert.doesNotMatch(after, /reading…/);
   assert.match(after, /never surveyed · not published to Egeria/);
 });
+
+// W49: a resource with no Survey Definitions drew the sub-tab strip twice on Survey & analyses.
+test('W49 Survey & analyses with no Survey Definitions draws the sub-tab strip once', async () => {
+  const { document } = makeDomEnvironment();
+  await loadAppModule();
+  const app = await import('/static/next/app.js');
+  Object.assign(app.state, { resourceType: 'db', selectedSlug: 'coco_pharma', stage: 'discovery', subTab: 'survey' });
+  app.state.analysisRunFailures = new Map();
+  const content = document.createElement('div'); content.id = 'content'; document.body.appendChild(content);
+  const routes = {
+    'GET /api/survey-definitions/database/coco_pharma/candidates': { technology_type: 'PostgreSQL', scoping: 'questions',
+      phase: 'discovery', egeria_native_processes: [], candidates: [] },
+    'GET /api/survey-definitions/definitions': [],
+    'GET /api/projects/coco_pharma/analyses-index': { analyses: [], counts: {} },
+    'GET /api/native-surveys/database/coco_pharma': { technology_type: 'x', surveys: [] },
+  };
+  globalThis.fetch = async (url, opts = {}) => {
+    const method = (opts.method || 'GET').toUpperCase();
+    const key = Object.keys(routes).find((k) => { const [m, sub] = k.split(' '); return m === method && String(url).includes(sub); });
+    if (!key) throw new Error(`_UNSTUBBED_FETCH: ${method} ${url}`);
+    return { ok: true, status: 200, json: async () => routes[key] };
+  };
+  await app.loadSurveyPane();
+  await new Promise((r) => setTimeout(r, 30));
+  assert.match(text(content.innerHTML), /No Survey Definitions have been authored for PostgreSQL yet/);
+  const strip = app.subTabsHtml().match(/^<div[^>]*>/)[0];
+  assert.equal(content.innerHTML.split(strip).length - 1, 1, 'the sub-tab strip, once');
+});

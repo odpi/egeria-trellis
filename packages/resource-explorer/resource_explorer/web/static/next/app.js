@@ -5986,7 +5986,7 @@ export async function loadSurveyPane() {
       })}</div>`;
     }).join('')}
 
-    ${!all.length ? paneMessage(
+    ${!all.length ? paneNoteHtml(
         `No Survey Definitions have been authored for ${data.technology_type || 'this technology'} yet`,
         'The analyses below still run individually; a Survey Definition only bundles them into an '
         + 'Egeria-launchable process.') : ''}
@@ -8899,7 +8899,12 @@ export function renderLegend() {
 }
 
 export function paneMessage(title, body) {
-  return `${subTabsHtml()}
+  return `${subTabsHtml()}${paneNoteHtml(title, body)}`;
+}
+
+/** `paneMessage` without the sub-tab strip: for a note inside a pane that has already drawn its strip (W49). */
+export function paneNoteHtml(title, body) {
+  return `
     <h3 class="m-0 font-heading text-name font-normal">${esc(title)}</h3>
     <div class="my-s3 h-px bg-rule"></div>
     <p class="max-w-[70ch] text-answer text-ink">${esc(body)}</p>`;
