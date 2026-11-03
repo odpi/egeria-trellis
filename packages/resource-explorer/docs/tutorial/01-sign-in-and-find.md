@@ -1,10 +1,10 @@
 # Walk 1 — Sign in, pick an investigation, find a repository
 
-*Screens read on 2026-10-29, Explorer on port 8813, `origin/main` at `afdac240`.*
+*Screens read on 2026-10-29 on a test server, `origin/main` at `afdac240`.*
 
 ## 1. Sign in
 
-Open `http://localhost:8813/`. Resource Explorer asks you to sign in before it shows anything. Use your Egeria user id and password: Egeria is the identity provider and there is no separate Explorer account.
+Open `http://localhost:8810/`, the usual address of Resource Explorer. Resource Explorer asks you to sign in before it shows anything. Use your Egeria user id and password: Egeria is the identity provider and there is no separate Explorer account.
 
 ![The sign-in panel: the title "Resource Explorer", the label "EXPERIMENTAL UI", the sentence "Sign in with your Egeria user id to continue.", an "Egeria user id" box, a "Password" box and a single "Sign in" button.](images/01-signin/01-sign-in-panel.webp)
 

@@ -1,6 +1,6 @@
 # Walk 3 — Catalog a database
 
-*Screens read on 2026-10-29, Explorer on port 8813, `origin/main` at `afdac240`. Resource: `coco_pharma @ local-docker` (`localhost_docker_coco_pharma`).*
+*Screens read on 2026-10-29 on a test server, `origin/main` at `afdac240`. Resource: `coco_pharma @ local-docker` (`localhost_docker_coco_pharma`).*
 
 Open the database from the **DBs** list in the sidebar (use the filter box, then the row), or by address in the form `?type=db&resource=<slug>`. Use `type=db`: `?type=database` is not an address the Explorer knows, and it paints the page of the wrong kind of resource.
 

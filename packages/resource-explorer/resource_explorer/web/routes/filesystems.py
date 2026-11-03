@@ -48,13 +48,34 @@ class FileSystemSummary(BaseModel):
     # select-mode "hide" bulk action and "Show hidden" toggle work for
     # filesystems the same way they do for repos.
     working_set_hidden: bool = False
+    # Remote reach (outcome 3). No secret is ever in a summary: only who RE is to the bucket, by name.
+    protocol: str = "local"
+    location: str = ""
+    credential_name: str = ""
 
 
-class FileSystemRegistration(BaseModel):
+class S3Fields(BaseModel):
+    """The S3 registration fields (D-S3 §3). The key's secret is accepted only to be held in the secrets store (or, for
+    "Check reach", in memory for that one call); it is never stored in the registry, logged or answered."""
+    endpoint_url: str = ""
+    region: str = ""
+    bucket: str = ""
+    root_prefix: str = ""
+    path_style: bool = False
+    tls_verify: bool = True
+    credential_kind: str = "none"       # none | secret_ref | profile
+    credential_ref: str = ""            # a profile's name; for a stored key, filled in by the server
+    access_key_id: str = ""
+    secret_access_key: str = ""
+    session_token: str = ""
+
+
+class FileSystemRegistration(S3Fields):
     """Request body for registering a new filesystem."""
     slug: str
     display_name: str
-    local_mount_point: str
+    local_mount_point: str = ""
+    protocol: str = "local"
     canonical_mount_point: str = ""
     description: str = ""
     egeria_url: str = ""
@@ -163,9 +184,82 @@ def list_filesystems():
                 is_published=publish_status["is_published"],
                 egeria_publish_note=publish_status["note"],
                 working_set_hidden=registry.is_working_set_hidden("filesystem", fs.slug),
+                **_remote_summary(fs),
             )
         )
     return result
+
+
+def _remote_summary(fs) -> dict:
+    from resource_explorer import reach_mechanisms
+
+    if not reach_mechanisms.is_remote(fs):
+        return {"protocol": "local", "location": "", "credential_name": ""}
+    from resource_explorer.reach_mechanisms.s3 import S3Settings
+
+    st = S3Settings.from_filesystem(fs)
+    return {"protocol": fs.protocol, "location": st.location, "credential_name": st.credential_name()}
+
+
+def _s3_settings(slug: str, f: S3Fields):
+    """The mechanism settings a form describes. A typed key is named by the ref it WILL be held under."""
+    from resource_explorer.reach_mechanisms import CREDENTIAL_SECRET_REF, ReachError
+    from resource_explorer.reach_mechanisms.s3 import S3Settings, secret_ref
+
+    kind = (f.credential_kind or "none").strip()
+    ref = (f.credential_ref or "").strip()
+    if kind == CREDENTIAL_SECRET_REF:
+        ref = secret_ref(ProjectRegistry._normalize_slug(slug) if slug else "new")
+    try:
+        return S3Settings(bucket=f.bucket.strip(), endpoint_url=f.endpoint_url.strip(), region=f.region.strip(),
+                          root_prefix=f.root_prefix.strip(), path_style=f.path_style, tls_verify=f.tls_verify,
+                          credential_kind=kind, credential_ref=ref,
+                          access_key_id=f.access_key_id.strip()).validate()
+    except ReachError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
+class S3ReachCheck(S3Fields):
+    slug: str = ""
+
+
+@router.get("/reach-mechanisms")
+def list_reach_mechanisms() -> dict:
+    """The installed reach mechanisms' manifests, and every entry point that was skipped, by name with its error."""
+    from resource_explorer import reach_mechanisms
+    from resource_explorer.reach_mechanisms.s3 import secrets_store_configured
+
+    found = reach_mechanisms.discover_mechanisms()
+    return {"mechanisms": [cls.manifest.as_dict() for cls in found.values()],
+            "skipped": reach_mechanisms.mechanism_load_failures(),
+            "secrets_store_configured": secrets_store_configured()}
+
+
+@router.post("/check-reach")
+def check_s3_reach(req: S3ReachCheck) -> dict:
+    """"Check reach" on the register form, before Register: one ListObjectsV2 with MaxKeys=1 under the root, answered
+    with the outcome-3 sentence or the source's refusal. Nothing is stored: a typed key is used for this one call and
+    dropped. Gated like registration (it reaches out from this server)."""
+    from resource_explorer.reach_mechanisms import CREDENTIAL_SECRET_REF, ReachError
+    from resource_explorer.reach_mechanisms.s3 import S3Mechanism, re_host, unreachable_sentence
+
+    _require_registration_right(ProjectRegistry())
+    settings = _s3_settings(req.slug, req)
+    key = None
+    if settings.credential_kind == CREDENTIAL_SECRET_REF:
+        if not (req.access_key_id.strip() and req.secret_access_key.strip()):
+            raise HTTPException(status_code=400, detail="a stored key is checked with the key typed on the form: "
+                                                        "give its access key id and secret access key")
+        key = (req.access_key_id.strip(), req.secret_access_key.strip(), req.session_token.strip())
+    try:
+        return S3Mechanism(settings, key=key).check_reach()
+    except ReachError as exc:
+        from datetime import datetime, timezone
+
+        return {"reachable": False, "error": str(exc), "host": re_host(), "credential_name": settings.credential_name(),
+                "location": settings.location, "protocol": "s3",
+                "sentence": unreachable_sentence(re_host(), settings.credential_name(), str(exc),
+                                                 datetime.now(timezone.utc).isoformat())}
 
 
 @router.post("/", response_model=FileSystemSummary)
@@ -177,6 +271,13 @@ def register_filesystem(registration: FileSystemRegistration):
 
     registry = ProjectRegistry()
     _require_registration_right(registry)
+    protocol = (registration.protocol or "local").strip().lower()
+    if protocol == "s3":
+        return _register_s3(registry, registration)
+    if protocol != "local":
+        raise HTTPException(status_code=400, detail=f"No reach mechanism speaks {protocol!r} on this server.")
+    if not registration.local_mount_point.strip():
+        raise HTTPException(status_code=400, detail="A local file system needs its mount point.")
     for what, mount in (("local mount point", registration.local_mount_point),
                         ("canonical mount point", registration.canonical_mount_point)):
         if mount.strip() and not mount.strip().rstrip("/"):
@@ -229,6 +330,54 @@ def register_filesystem(registration: FileSystemRegistration):
         egeria_server=stored.egeria_server or "",
         group_slug=getattr(stored, "group_slug", "") or "",
     )
+
+
+def _register_s3(registry: ProjectRegistry, registration: FileSystemRegistration) -> FileSystemSummary:
+    """An S3 file system. A typed key goes to the secrets store FIRST (refused when none is configured, before any row is
+    written); the registry keeps only its reference and the key id. Then the reach check runs and is recorded."""
+    from resource_explorer import file_reach
+    from resource_explorer.reach_mechanisms import CREDENTIAL_SECRET_REF, ReachError
+    from resource_explorer.reach_mechanisms.s3 import store_key
+
+    if registry.filesystem_exists(registration.slug):
+        raise HTTPException(status_code=400, detail=f"FileSystem '{registration.slug}' already registered.")
+    settings = _s3_settings(registration.slug, registration)
+    if settings.credential_kind == CREDENTIAL_SECRET_REF:
+        if registration.secret_access_key.strip():
+            try:
+                store_key(ProjectRegistry._normalize_slug(registration.slug), registration.access_key_id,
+                          registration.secret_access_key, registration.session_token)
+            except ReachError as exc:
+                raise HTTPException(status_code=400, detail=str(exc))
+        else:
+            from resource_explorer import omsecrets_store
+
+            if not omsecrets_store.has_collection(settings.credential_ref):
+                raise HTTPException(status_code=400, detail=(
+                    f"the secrets store holds no key named {settings.credential_ref!r}: type the key to hold it"))
+    fs = FileSystemEntity(
+        slug=registration.slug, display_name=registration.display_name,
+        local_mount_point=settings.location, canonical_mount_point=settings.location,
+        description=registration.description, egeria_url=registration.egeria_url,
+        egeria_server=registration.egeria_server, group_slug=registration.group_slug,
+        protocol="s3", endpoint_url=settings.endpoint_url, region=settings.region, bucket=settings.bucket,
+        root_prefix=settings.root, path_style=settings.path_style, tls_verify=settings.tls_verify,
+        credential_kind=settings.credential_kind, credential_ref=settings.credential_ref,
+        access_key_id=settings.access_key_id)
+    try:
+        registry.register_filesystem(fs)
+    except Exception as exc:
+        log.exception("Failed to register filesystem")
+        raise HTTPException(status_code=500, detail=f"Failed to write to registry: {type(exc).__name__}")
+    stored = registry.get_filesystem(fs.slug) or fs
+    # One list call, recorded as the outcome-3 row (a refusal is recorded too: probe_remote catches ReachError).
+    file_reach.probe_filesystem(stored.slug, registry)
+    return FileSystemSummary(
+        slug=stored.slug, display_name=stored.display_name, local_mount_point=stored.local_mount_point,
+        canonical_mount_point=stored.canonical_mount_point or "", description=stored.description,
+        status=stored.status.value, last_surveyed_at="", egeria_asset_guid="", file_count=0, data_file_count=0,
+        egeria_url=stored.egeria_url or "", egeria_server=stored.egeria_server or "",
+        group_slug=stored.group_slug or "", **_remote_summary(stored))
 
 
 class MountCheckRequest(BaseModel):
@@ -621,9 +770,11 @@ def run_filesystem_folder_survey(slug: str, req: FolderSurveyRequest = FolderSur
 
     from resource_explorer.surveyors.filesystem.survey_definition_adapter import _run_filesystem_inventory
 
+    from resource_explorer.surveyors.filesystem.survey_definition_adapter import FolderSurveyNotRunHere
+
     try:
         out = _run_filesystem_inventory(fs, registry, fork=fork)
-    except FileNotFoundError as exc:
+    except (FileNotFoundError, FolderSurveyNotRunHere) as exc:
         raise HTTPException(status_code=422, detail=str(exc))
     sd = out.get("survey_data") or {}
     limits = sd.get("walk_limits") or {}

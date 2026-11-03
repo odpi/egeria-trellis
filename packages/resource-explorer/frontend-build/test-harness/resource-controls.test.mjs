@@ -665,6 +665,7 @@ test('source scan: no resource-removal label or tooltip in static/next says "del
     /^admin\//,                 // other objects: annotation types, groups, discovery sources, repair, resync, prefect
     /^stages\/curate-bands\.js$/, // an unsigned curation note
     /^stages\/automate\.js$/,   // a schedule
+    /^work-list-delete\.js$/, // a work list (W38; owner 2026-11-02: "add a UI process to hide or delete"), not a resource
     /^stages\/investigation-delete\.js$/, // an investigation (owner ruling 2026-10-21: "we need a way to delete an investigation"), not a resource
   ];
   const ALLOW_LINES = [
@@ -675,7 +676,7 @@ test('source scan: no resource-removal label or tooltip in static/next says "del
     /delete: 'deletes an Egeria entry'/,       // Egeria process-kind label (a different object)
     /nothing (is|was) deleted|Nothing is deleted|does not delete|is not deleted|never deletes/i,  // effect sentences
     /delete its local survey records|delete their local survey records|delete all (its|their) local survey data/, // removeConfirmationHtml
-    /investigation-delete\.js|inv-delete|inv-deleted-note/,   // identifiers and attribute names of the investigation Delete control (the words live in investigation-delete.js)
+    /investigation-delete\.js|work-list-delete\.js|inv-delete|inv-deleted-note/,   // identifiers and attribute names of the investigation Delete control (the words live in investigation-delete.js)
     /window\.confirm\(`Close /,                // investigation close: "Nothing is deleted"
     /Unbind this investigation/,
     /The asset can be deleted there|deleted there/, // admin/resync, covered by admin/ anyway

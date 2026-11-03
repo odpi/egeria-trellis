@@ -187,6 +187,18 @@ class FileSystemEntity:
     data_file_count: int = 0
     governance_state: str = "certified"
     group_slug: str = ""  # slug of the umbrella project group this filesystem belongs to
+    # Remote reach (outcome 3, S3 slice 2026-11-02; FILE_SYSTEMS_REMOTE_REACH_COLUMNS). A local mount reads "local".
+    # No secret is ever a column here: a stored key lives in the `.omsecrets` store, named by `credential_ref`.
+    protocol: str = "local"
+    endpoint_url: str = ""
+    region: str = ""
+    bucket: str = ""
+    root_prefix: str = ""
+    path_style: bool = False
+    tls_verify: bool = True
+    credential_kind: str = ""       # none | secret_ref | profile (blank for a local mount)
+    credential_ref: str = ""        # the secrets-store reference, or the host profile's name
+    access_key_id: str = ""         # display only: its last four on the reach line
 
 
 @dataclass
@@ -923,6 +935,9 @@ REACHABILITY_OUTCOMES: frozenset[str] = frozenset({
     "egeria_verified",
     "egeria_cannot_read",
     "egeria_connection_broken",
+    # Outcome 3 (S3 slice): a reach mechanism's own check, file_reach.probe_remote.
+    "remote_reachable",
+    "remote_unreachable",
 })
 
 _DB_FS_DETAIL_TABLE_DDL: tuple[str, ...] = (
@@ -1599,6 +1614,23 @@ _PG_INT4_TO_BIGINT_COLUMNS: tuple[tuple[str, str], ...] = (
     # probe size (doc_source_probe.py), so a large file URL can exceed int4.
     ("doc_sources", "probe_byte_count"),
     ("doc_sources", "ingested_bytes"),
+)
+
+#: Remote reach on `file_systems` (outcome 3, BRIEF-S3-REACH-AND-PARQUET-SLICE-2026-11-02, owner's rulings
+#: 2026-11-01). Additive ADD COLUMNs only, each with a default, so every existing row reads `protocol = 'local'`
+#: and nothing else about it changes. Applied by `_apply_filesystem_remote_reach_columns` at startup (the next
+#: owner-approved restart). No secret column: a key is held in the `.omsecrets` store and named by credential_ref.
+FILE_SYSTEMS_REMOTE_REACH_COLUMNS: tuple[tuple[str, str], ...] = (
+    ("protocol", "TEXT DEFAULT 'local'"),
+    ("endpoint_url", "TEXT DEFAULT ''"),
+    ("region", "TEXT DEFAULT ''"),
+    ("bucket", "TEXT DEFAULT ''"),
+    ("root_prefix", "TEXT DEFAULT ''"),
+    ("path_style", "INTEGER DEFAULT 0"),
+    ("tls_verify", "INTEGER DEFAULT 1"),
+    ("credential_kind", "TEXT DEFAULT ''"),
+    ("credential_ref", "TEXT DEFAULT ''"),
+    ("access_key_id", "TEXT DEFAULT ''"),
 )
 
 #: Columns added after the tables above first shipped. Empty at introduction;
@@ -3590,6 +3622,9 @@ class ProjectRegistry:
                     deftype = "INTEGER" if defval == "0" else "TEXT"
                     conn.execute(f"ALTER TABLE file_systems ADD COLUMN {col} {deftype} DEFAULT {defval}")
 
+            # Remote reach columns (S3 slice): their own block, additive and idempotent.
+            self._apply_filesystem_remote_reach_columns(conn)
+
             # File system survey results table
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS filesystem_surveys (
@@ -4044,6 +4079,18 @@ class ProjectRegistry:
                 )
             """)
             self._migrate_work_list_members_to_member_kind(conn)
+            # W38: a person's own view preference for a work list (hidden from their sidebar). Same shape as
+            # `resource_working_set`: per person, reversible, writes nothing to Egeria and nothing for anyone else.
+            # `''` is the signed-out bucket. Additive and self-contained.
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS work_list_view (
+                    work_list_slug  TEXT NOT NULL,
+                    user_id         TEXT NOT NULL DEFAULT '',
+                    hidden          INTEGER NOT NULL DEFAULT 0,
+                    updated_at      TEXT NOT NULL,
+                    PRIMARY KEY (work_list_slug, user_id)
+                )
+            """)
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS work_list_runs (
                     set_id          TEXT NOT NULL,
@@ -14544,23 +14591,38 @@ class ProjectRegistry:
 
     # ── file system entity management ──────────────────────────────────────────
 
+    def _apply_filesystem_remote_reach_columns(self, conn) -> None:
+        """ALTER TABLE ... ADD COLUMN for each of FILE_SYSTEMS_REMOTE_REACH_COLUMNS not yet present. Checked against the
+        live column list, so it is a no-op once applied."""
+        existing = self._get_table_columns(conn, "file_systems")
+        for col, ddl in FILE_SYSTEMS_REMOTE_REACH_COLUMNS:
+            if col not in existing:
+                conn.execute(f"ALTER TABLE file_systems ADD COLUMN {col} {ddl}")
+
     def register_filesystem(self, fs: FileSystemEntity) -> None:
         """Register a filesystem entity in the registry."""
         data = asdict(fs)
         data["slug"] = self._normalize_slug(data["slug"])
         data["status"] = data["status"].value if not isinstance(data["status"], str) else data["status"]
+        data["path_style"] = 1 if data.get("path_style") else 0
+        data["tls_verify"] = 1 if data.get("tls_verify", True) else 0
+        data["protocol"] = (data.get("protocol") or "local").strip().lower()
         with self._conn() as conn:
             conn.execute(
                 """INSERT INTO file_systems (
                     slug, display_name, local_mount_point, canonical_mount_point,
                     description, status, registered_at, last_surveyed_at,
                     egeria_asset_guid, error_message, egeria_url, egeria_server,
-                    egeria_user, egeria_password, governance_state, group_slug
+                    egeria_user, egeria_password, governance_state, group_slug,
+                    protocol, endpoint_url, region, bucket, root_prefix, path_style, tls_verify,
+                    credential_kind, credential_ref, access_key_id
                 ) VALUES (
                     :slug, :display_name, :local_mount_point, :canonical_mount_point,
                     :description, :status, :registered_at, :last_surveyed_at,
                     :egeria_asset_guid, :error_message, :egeria_url, :egeria_server,
-                    :egeria_user, :egeria_password, :governance_state, :group_slug
+                    :egeria_user, :egeria_password, :governance_state, :group_slug,
+                    :protocol, :endpoint_url, :region, :bucket, :root_prefix, :path_style, :tls_verify,
+                    :credential_kind, :credential_ref, :access_key_id
                 )""",
                 data,
             )
@@ -15052,6 +15114,9 @@ class ProjectRegistry:
         import dataclasses
         d = dict(row)
         d["status"] = ProjectStatus(d["status"])
+        d["protocol"] = d.get("protocol") or "local"
+        for flag, default in (("path_style", False), ("tls_verify", True)):
+            d[flag] = default if d.get(flag) is None else bool(d[flag])
         known = {f.name for f in dataclasses.fields(FileSystemEntity)}
         return FileSystemEntity(**{k: v for k, v in d.items() if k in known})
 

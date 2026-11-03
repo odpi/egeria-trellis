@@ -1,6 +1,6 @@
 # Walk 2 — Judge a repository
 
-*Screens read on 2026-10-29, Explorer on port 8813, `origin/main` at `afdac240`. Resource: `docling-project/docling`.*
+*Screens read on 2026-10-29 on a test server, `origin/main` at `afdac240`. Resource: `docling-project/docling`.*
 
 A resource goes left to right through six stages. This walk reads the first (Scouting) and the fourth (Analysis).
 

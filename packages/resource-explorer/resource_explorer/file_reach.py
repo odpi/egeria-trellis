@@ -1,6 +1,15 @@
 """Who can read a file system's path, and so who leads its folder survey (Files step 2, fix round 1).
 
-Design: `docs/design-notes/DESIGN-FILES-REMOTE-REACH.md` sections 1, 2 and 5 (slice 1). Outcomes 1 and 2 only.
+Design: `docs/design-notes/DESIGN-FILES-REMOTE-REACH.md` sections 1, 2 and 5 (slice 1). Outcomes 1 and 2, and outcome 3
+for a file system registered with a remote protocol (S3 slice, 2026-11-02):
+
+       remote_reachable     "reachable by Resource Explorer over S3 from <RE host> as <credential name> · Egeria has no
+                             reach to this bucket · checked MM-DD HH:MM"   (one list call under the root answered)
+       remote_unreachable   "Resource Explorer could not reach this bucket over S3 from <RE host> as <credential name> ·
+                             <S3's reason> · checked ..."
+
+Outcome 3 is always RE-led (Egeria has no remote file connector): the mechanism's check is the whole probe, and
+nothing is asked of Egeria. The row's detail holds the credential NAME, never a key or secret.
 
 **The probe never launches anything in Egeria.** Read from Egeria's source: the only engine-host call that tests a path is a
 full Folder Survey launch, so a probe by launch would survey (and write a SurveyReport and CSV logs). Verification is in two
@@ -53,6 +62,8 @@ RE_ONLY = "re_only"
 EGERIA_CANNOT = "egeria_cannot"         # an Egeria-led survey failed with 404-001, RE can read it
 NOBODY = "nobody"                       # neither can read it
 CONNECTION_BROKEN = "connection_broken"  # Egeria's 404-001 named an unfilled ~{...}~ placeholder: not a verdict on the path
+REMOTE = "remote"                       # outcome 3: Resource Explorer reaches it through a mechanism; Egeria cannot
+REMOTE_UNREACHABLE = "remote_unreachable"  # outcome 3, and the mechanism's check was refused
 NOT_CHECKED = "not_checked"
 UNDECIDED = "undecided"
 
@@ -105,7 +116,7 @@ UNDECIDED_WORDS = "could not tell whether Egeria can read this path"
 
 #: Outcomes only a settled run writes; a re-check does not overwrite a verified one.
 _VERIFIED = ("egeria_verified", "reachable")
-_RE_LEADS = (RE_ONLY, MOUNTS_UNKNOWN, EGERIA_CANNOT)
+_RE_LEADS = (RE_ONLY, MOUNTS_UNKNOWN, EGERIA_CANNOT, REMOTE)
 _EGERIA_LEADS = (EGERIA, EXPECTED, CONNECTION_BROKEN)   # a broken connection is not a verdict: the lever stays
 
 
@@ -141,7 +152,8 @@ class ForkState:
 
     @property
     def decided(self) -> bool:
-        return self.state in (EGERIA, EXPECTED, MOUNTS_UNKNOWN, RE_ONLY, EGERIA_CANNOT, NOBODY, CONNECTION_BROKEN)
+        return self.state in (EGERIA, EXPECTED, MOUNTS_UNKNOWN, RE_ONLY, EGERIA_CANNOT, NOBODY, CONNECTION_BROKEN,
+                              REMOTE, REMOTE_UNREACHABLE)
 
     @property
     def container_path(self) -> str:       # name kept for older readers
@@ -191,6 +203,17 @@ def fork_from_row(fs, row: dict | None) -> ForkState:
         return ForkState(path=path, path_changed=True,
                          why=f"the canonical mount changed since this was checked ({path})")
     common = dict(checked_at=at, path=path, evidence_action_guid=row.get("engine_action_guid") or "")
+    if outcome == "remote_reachable":
+        from resource_explorer.reach_mechanisms import s3 as s3m
+
+        return ForkState(state=REMOTE, sentence=d.get("sentence") or s3m.reach_sentence(
+                             d.get("host", ""), d.get("credential_name", ""), at),
+                         surveyor=SURVEYOR_RE, why=d.get("write_permission", ""),
+                         report_sentence=s3m.publish_sentence(d.get("host", ""), d.get("credential_name", "")),
+                         **common)
+    if outcome == "remote_unreachable":
+        return ForkState(state=REMOTE_UNREACHABLE, sentence=d.get("sentence") or f"{UNDECIDED_WORDS} · checked {date}",
+                         why=d.get("error", ""), **common)
     if outcome in _VERIFIED:
         return ForkState(state=EGERIA, sentence=f"Egeria can read {path} · verified {date}", surveyor=SURVEYOR_EGERIA,
                          report_sentence=EGERIA_REPORT_SENTENCE, **common)
@@ -266,6 +289,10 @@ def probe_filesystem(slug: str, registry, *, mount_map: list | None = None,
     fs = registry.get_filesystem(slug)
     if fs is None:
         return ForkState()
+    from resource_explorer import reach_mechanisms
+
+    if reach_mechanisms.is_remote(fs):
+        return probe_remote(fs, registry)
     path = container_path_of(fs)
     latest = registry.get_latest_reachability(slug)
     if latest and latest.get("outcome") in _VERIFIED and read_detail(latest).get("path", path) == path:
@@ -284,6 +311,33 @@ def probe_filesystem(slug: str, registry, *, mount_map: list | None = None,
         _record(registry, slug, "re_only", probed_from=FROM_ATTACH, detail=_detail(path=path))
     else:
         _record(registry, slug, "nobody_can_read", probed_from=FROM_ATTACH, detail=_detail(path=path, re_why=why))
+    return fork_for(registry, fs)
+
+
+def probe_remote(fs, registry, *, mechanism=None) -> ForkState:
+    """Outcome 3: the mechanism's own check (S3: one ListObjectsV2 with MaxKeys=1 under the root), recorded as one row.
+    Asks Egeria nothing. A mechanism that cannot even be built (no key in the store, an unknown profile) is recorded
+    as unreachable with its redacted reason."""
+    from resource_explorer import reach_mechanisms
+
+    path = container_path_of(fs)
+    try:
+        mech = mechanism or reach_mechanisms.mechanism_for(fs)
+        check = mech.check_reach()
+    except reach_mechanisms.ReachError as exc:
+        from resource_explorer.reach_mechanisms import s3 as s3m
+
+        settings = s3m.S3Settings.from_filesystem(fs)
+        at = _now()
+        check = {"reachable": False, "error": str(exc), "host": s3m.re_host(),
+                 "credential_name": settings.credential_name(), "protocol": getattr(fs, "protocol", ""),
+                 "sentence": s3m.unreachable_sentence(s3m.re_host(), settings.credential_name(), str(exc), at)}
+    outcome = "remote_reachable" if check.get("reachable") else "remote_unreachable"
+    _record(registry, fs.slug, outcome, probed_from=FROM_ATTACH,
+            error_code="" if check.get("reachable") else "REMOTE-REACH",
+            detail=_detail(path=path, protocol=check.get("protocol"), host=check.get("host"),
+                           credential_name=check.get("credential_name"), sentence=check.get("sentence"),
+                           error=check.get("error"), write_permission=check.get("write_permission")))
     return fork_for(registry, fs)
 
 
@@ -348,8 +402,12 @@ def refusal_words(state: ForkState, *, for_egeria_lead: bool) -> str:
             return ""
         if state.state in _RE_LEADS:
             return state.sentence
-        if state.state in (NOBODY, UNDECIDED, CONNECTION_BROKEN):
-            return state.sentence + (f" · {state.why}" if state.why else "")
+        if state.state == REMOTE:
+            from resource_explorer.reach_mechanisms.s3 import EGERIA_NO_REACH
+
+            return f"{EGERIA_NO_REACH} · Resource Explorer leads"
+        if state.state in (NOBODY, UNDECIDED, CONNECTION_BROKEN, REMOTE_UNREACHABLE):
+            return state.sentence + (f" · {state.why}" if state.why and state.why not in state.sentence else "")
         return NOT_CHECKED_WORDS if not state.path_changed else f"{NOT_CHECKED_WORDS} · {state.why}"
     # Resource Explorer's walk.
     if state.state in _RE_LEADS:
@@ -357,6 +415,6 @@ def refusal_words(state: ForkState, *, for_egeria_lead: bool) -> str:
     if state.state in _EGERIA_LEADS:
         return "Egeria can read this path · its Folder Survey leads" if state.state == EGERIA else (
             state.sentence + " · its Folder Survey leads")
-    if state.state in (NOBODY, UNDECIDED, CONNECTION_BROKEN):
-        return state.sentence + (f" · {state.why}" if state.why else "")
+    if state.state in (NOBODY, UNDECIDED, CONNECTION_BROKEN, REMOTE_UNREACHABLE):
+        return state.sentence + (f" · {state.why}" if state.why and state.why not in state.sentence else "")
     return NOT_CHECKED_WORDS if not state.path_changed else f"{NOT_CHECKED_WORDS} · {state.why}"

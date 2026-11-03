@@ -38,8 +38,8 @@ def test_tutorial_quotes_the_d1e_sentence_as_seen_and_keeps_the_readers_own_coun
 def test_hover_help_every_folder_survey_press_carries_its_words():
     # btn(act, label, on, help) renders the title; every call passes a fourth argument from the words table
     assert 'const btn = (act, label, on, help) => `<button type="button" data-fs-act="${act}" ${on ? \'\' : \'disabled\'} title="${esc(help)}"' in FS
-    calls = re.findall(r"btn\('([a-z-]+)', .*?, (W\.\w+|canSurvey \? W\.\w+ : W\.\w+)\)", FS)
-    assert {act for act, _ in calls} == {"check", "survey", "publish", "measure", "publish-measures", "profile",
+    calls = re.findall(r"btn\('([a-z-]+)', .*?, (W\.\w+|surveyHelp)\)", FS)
+    assert {act for act, _ in calls} == {"check", "attach", "survey", "publish", "measure", "publish-measures", "profile",
                                           "read-egeria", "publish-profiles", "derive", "read-narratives", "match-classes"}
     helps = set(re.findall(r"W\.(\w+Help)\b", FS))
     assert len(helps) >= 12
@@ -75,3 +75,11 @@ def test_collapsed_sections_are_details_remembered_per_resource():
     assert "derive: 'derived'" in FS                                              # Derive opens what it filled
     assert "writeSectionPref(storage(), me, slug, d.dataset.fsSection, d.open)" in FS
     assert "if (d.open === was) return;" in FS                                    # the page's own open writes nothing
+
+
+def test_w37_the_portal_url_cell_keeps_a_floor_so_a_short_url_is_not_five_fragments():
+    # 220px (~14rem) is a class tailwind-next.css already ships; break-all still bites on a long DCAT feed URL
+    cell = re.search(r'<td class="([^"]*)" data-od-portal-url>', OD)
+    classes = cell.group(1).split()
+    assert {"min-w-[220px]", "break-all"} <= set(classes)
+    assert r"min-w-\[220px\]" in (Path(__file__).resolve().parent.parent / "resource_explorer/web/static/next/tailwind-next.css").read_text(encoding="utf-8")

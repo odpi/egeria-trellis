@@ -55,6 +55,12 @@ UNREADABLE = "unreadable"
 HASHING_OFF = "hashing_off"
 NOT_A_FILE = "not_a_file"
 OVER_BUDGET = "over_budget"
+#: A remote object whose etag is a multipart upload's ("<hex>-<parts>"): not a hash of its content (S3 slice).
+MULTIPART_ETAG = "multipart_etag"
+#: The "hash" of a single-part S3 object is its etag, which the source computed: no byte is read for it.
+ETAG_ALGORITHM = "S3 ETag (MD5 of a single-part object, computed by the source)"
+#: Said for a field a remote source does not carry (reach_mechanisms.NOT_REPORTED; repeated so this module imports nothing).
+NOT_REPORTED = "not reported by this source"
 
 #: A total hashing budget per run, so a huge tree cannot hash for hours. Both are environment-overridable (0 = no limit on
 #: that axis is NOT offered: a budget is always set). When either is spent, hashing stops for the rest of the run and the
@@ -347,18 +353,26 @@ def folder_measures(rows: list[dict]) -> dict:
     }
 
 
-def summaries(rows: list[dict], *, hash_limit: int, budget: dict | None = None) -> dict:
-    """Counts only: owners, modes, hashing. Nothing here names a file, a person or a hash, so a publish may read it."""
+def summaries(rows: list[dict], *, hash_limit: int, budget: dict | None = None,
+              algorithm: str = HASH_ALGORITHM) -> dict:
+    """Counts only: owners, modes, hashing. Nothing here names a file, a person or a hash, so a publish may read it.
+    A source that reports no owner, group or mode (an object store) leaves `owners` and `modes` out (None, so the
+    publish omits them) and says so under `not_reported`, never a count of zero."""
     states = Counter(r["hash_state"] for r in rows)
-    owners = {r["owner_name"] for r in rows if r["owner_name"]}
-    groups = {r["group_name"] for r in rows if r["group_name"]}
+    reported = [r for r in rows if r.get("mode_octal") != NOT_REPORTED]
+    owners = {r["owner_name"] for r in reported if r["owner_name"]}
+    groups = {r["group_name"] for r in reported if r["group_name"]}
+    no_stat = bool(rows) and not reported
     return {
         "files": len(rows),
-        "owners": {"distinct_owners": len(owners), "distinct_groups": len(groups),
-                   "world_readable_files": sum(1 for r in rows if r["world_readable"])},
-        "modes": dict(sorted(Counter(r["mode_octal"] for r in rows).items(), key=lambda kv: (-kv[1], kv[0]))),
+        "owners": None if no_stat else {
+            "distinct_owners": len(owners), "distinct_groups": len(groups),
+            "world_readable_files": sum(1 for r in reported if r["world_readable"])},
+        "modes": None if no_stat else dict(sorted(Counter(r["mode_octal"] for r in reported).items(),
+                                                  key=lambda kv: (-kv[1], kv[0]))),
+        **({"not_reported": {"fields": ["owner", "group", "mode"], "words": NOT_REPORTED}} if no_stat else {}),
         "hashing": {
-            "algorithm": HASH_ALGORITHM,
+            "algorithm": algorithm,
             "limit_bytes": hash_limit,
             "off": hash_limit <= 0,
             "hashed_files": states.get(HASHED, 0),
@@ -368,6 +382,7 @@ def summaries(rows: list[dict], *, hash_limit: int, budget: dict | None = None) 
             "symlink_files": states.get(LINK, 0),
             "unreadable_files": states.get(UNREADABLE, 0),
             "over_budget_files": states.get(OVER_BUDGET, 0),
+            **({"multipart_etag_files": states[MULTIPART_ETAG]} if states.get(MULTIPART_ETAG) else {}),
             "budget_stopped_by": (budget or {}).get("stopped_by", ""),
             "budget_words": (budget or {}).get("words", ""),
         },
@@ -504,7 +519,8 @@ def extract_narrative(text: str, file_name: str, folder_files: list[str]) -> dic
 
 
 def folder_narratives(root: Path, rows: list[dict], *, lookup: Callable[[str, str], dict | None] | None = None,
-                      read_bytes: int = NARRATIVE_READ_BYTES) -> dict:
+                      read_bytes: int = NARRATIVE_READ_BYTES,
+                      reader: Callable[[str, int], bytes | None] | None = None) -> dict:
     """The narrative files of each folder, read once each (size-capped), as proposals.
 
     Reads ONLY candidate files: name-matched (README, INDEX, ABOUT, NOTES, MANIFEST, CONTENTS, CHANGELOG, LICENSE, COPYING,
@@ -541,7 +557,8 @@ def folder_narratives(root: Path, rows: list[dict], *, lookup: Callable[[str, st
             if reads >= NARRATIVE_MAX_READS:
                 stopped = True
                 break
-            raw = read_plain_file(root / r["file_path"], read_bytes)
+            # `reader` (a remote mechanism's capped read, by the row's relative path) replaces the local open.
+            raw = reader(r["file_path"], read_bytes) if reader else read_plain_file(root / r["file_path"], read_bytes)
             if raw is None:                  # a link, FIFO or device swapped in after the walk, or unreadable: not read
                 continue
             text = raw.decode("utf-8", errors="replace")
@@ -590,7 +607,7 @@ def classifier_lookup() -> Callable[[str, str], dict | None] | None:
 # ── the block stored in survey_data, and the publish specs ──────────────────────────────────────────────────────────
 
 def extension_block(rows: list[dict], narratives: dict, *, run_id: str, hash_limit: int, led_by: str,
-                    limits: dict | None, budget: dict | None = None) -> dict:
+                    limits: dict | None, budget: dict | None = None, algorithm: str = HASH_ALGORITHM) -> dict:
     """The `walk_extensions` block kept in `survey_data`. Paths are in it (the registry is where paths live); the publish
     reads `extension_specs`, which reads only counts out of it."""
     return {
@@ -598,7 +615,7 @@ def extension_block(rows: list[dict], narratives: dict, *, run_id: str, hash_lim
         "led_by": led_by,
         "capped_words": capped_words(limits),
         "folders": folder_measures(rows),
-        **summaries(rows, hash_limit=hash_limit, budget=budget),
+        **summaries(rows, hash_limit=hash_limit, budget=budget, algorithm=algorithm),
         "narratives": narratives["summary"],
     }
 
@@ -698,6 +715,7 @@ def extension_specs(sd: dict) -> list[dict]:
             "Files not hashed (linked)": hs.get("symlink_files"),
             "Files not hashed (unreadable)": hs.get("unreadable_files"),
             "Files not hashed (hashing budget spent)": hs.get("over_budget_files"),
+            "Files not hashed (multipart etag)": hs.get("multipart_etag_files"),
             "Hashing stopped by": hs.get("budget_stopped_by") or None,
             "Hashing off": str(bool(hs.get("off"))).lower(),
         })
@@ -730,7 +748,7 @@ LED_BY_EGERIA = "egeria"
 
 
 def attach_extensions(fs_entity, registry, survey_data: dict, *, led_by: str = LED_BY_RE,
-                      egeria_report_guid: str = "") -> dict:
+                      egeria_report_guid: str = "", reader: Callable[[str, int], bytes | None] | None = None) -> dict:
     """Finish a walk that ran with `walk_extensions=True`: keep its per-file rows for this run, read the narrative files,
     and put the `walk_extensions` block and `folder_narratives` into `survey_data` (which the caller then stores).
 
@@ -744,9 +762,10 @@ def attach_extensions(fs_entity, registry, survey_data: dict, *, led_by: str = L
         return survey_data
     run_id = survey_data.get("surveyed_at") or ""
     root = Path(fs_entity.local_mount_point)
-    narratives = folder_narratives(root, rows, lookup=classifier_lookup())
+    narratives = folder_narratives(root, rows, lookup=classifier_lookup(), reader=reader)
     block = extension_block(rows, narratives, run_id=run_id, hash_limit=limit, led_by=led_by,
-                            limits=survey_data.get("walk_limits"), budget=budget)
+                            limits=survey_data.get("walk_limits"), budget=budget,
+                            algorithm=survey_data.pop("walk_hash_algorithm", HASH_ALGORITHM))
     try:
         stored = registry.add_filesystem_walk_files(fs_entity.slug, run_id, rows, led_by=led_by,
                                                     egeria_report_guid=egeria_report_guid)

@@ -237,7 +237,8 @@ def folder_survey_view(registry, slug: str) -> dict:
     re_walk = _re_candidate(registry, slug)
     candidates = [c for c in (egeria, re_walk) if c and not c.get("none")]
     base = {"slug": slug, "reach": fork.as_dict(), "leads": fork.surveyor,
-            "egeria_run_state": (egeria or {}).get("run_state", ""), "extensions": extensions_view(registry, slug),
+            "egeria_run_state": (egeria or {}).get("run_state", ""),
+            "egeria_asset": bool((getattr(fs, "egeria_asset_guid", "") or "").strip()), "extensions": extensions_view(registry, slug),
             "file_profiles": _file_profiles(registry, slug), "narrative_docs": _narrative_docs(registry, slug),
             "class_match": _class_match(registry, slug)}
     base["price"], base["derived"] = _walk_derived(registry, slug, fork)

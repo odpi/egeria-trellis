@@ -219,6 +219,8 @@ def _to_summary(db) -> DatabaseSummary:
         except (ValueError, TypeError):
             data = {}
         credential_capability = data.get("credential_capability") or None
+        from resource_explorer.surveyors.credential_capability import with_stored_login
+        credential_capability = with_stored_login(credential_capability, getattr(db, "db_user", "") or "")
         credential_capability_at = str(cap_survey.get("surveyed_at") or "")
 
     from resource_explorer.egeria_linkage import describe_publish_status

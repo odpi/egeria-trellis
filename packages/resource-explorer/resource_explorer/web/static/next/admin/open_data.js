@@ -97,7 +97,7 @@ export async function renderDataPortals(host) {
       <tbody>${portals.map((p) => `<tr class="border-b border-rule" data-od-portal="${esc(p.slug)}">
         <td class="py-s2 pr-s3 text-caveat align-top">${esc(p.display_name)}</td>
         <td class="py-s2 pr-s3 text-caveat align-top">${esc(p.api_kind)}${p.adapter_available ? '' : ' <span class="text-state-warn">· no adapter yet</span>'}</td>
-        <td class="py-s2 pr-s3 text-caveat align-top font-mono text-provenance break-all" data-od-portal-url>${esc(p.base_url)}</td>
+        <td class="py-s2 pr-s3 text-caveat align-top min-w-[220px] font-mono text-provenance break-all" data-od-portal-url>${esc(p.base_url)}</td>
         <td class="py-s2 pr-s3 text-caveat align-top text-ink-muted">${esc(p.origin)}</td>
         <td class="py-s2 pr-s3 text-caveat align-top tnum text-ink-muted" data-od-cost><div class="min-w-[12rem]">${p.cost && p.cost.calls_per_page ? `${p.cost.calls_per_page} call/page · ${p.cost.page_size} rows${p.cost.cost_note ? ` · ${esc(p.cost.cost_note)}` : ''}` : 'cost not declared by the adapter'}${p.has_key ? ' · key held' : ''}</div></td>
         <td class="py-s2 pr-s3 text-caveat align-top text-ink-muted">${esc(ago(p.registered_at))}${p.registered_by ? ` · ${esc(p.registered_by)}` : ' · the person who registered it was not recorded'}</td>

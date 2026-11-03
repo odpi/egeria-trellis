@@ -84,6 +84,10 @@ dependencies = [
     "textual>=8.2.4",
     "openpyxl>=3.1.5",
     "pyarrow>=23.0.1",
+    # S3 reach (outcome 3, BRIEF-S3-REACH-AND-PARQUET-SLICE-2026-11-02): the built-in `s3` reach mechanism lists,
+    # heads and range-reads objects; it never calls a write. Already in the lock as mlflow's transitive; pinned here
+    # because RE now imports it directly.
+    "boto3>=1.43.0,<2",
     # Egeria integration
     # scripts/create_measure_definitions.py's ValidValueMember linking needs
     # pyegeria>=6.0.18.1 (egeria-python PYEGERIA_ISSUES.md ISSUE-56) — not
@@ -224,6 +228,8 @@ dev = [
     "black>=24.10.0",
     "mypy>=1.13.0",
     "watchfiles>=1.0.0",
+    # The S3 mock the reach mechanism's tests run against (no network, no real bucket).
+    "moto[s3]>=5.0.0",
 ]
 phoenix = [
     "arize-phoenix>=5.0.0",
@@ -258,6 +264,11 @@ ods = "trellis_analytics.readers.ods:OdsReader"
 catalogue_scope = "trellis_analytics.readers.registry_view:CatalogueScopeReader"
 investigation_purposes = "resource_explorer.investigation_purposes:known_purpose_names"
 question_ids = "resource_explorer.surveyors.question_catalog_reader:all_question_ids"
+
+# Reach mechanisms (DESIGN-FILES-REMOTE-REACH §3): installing a package that names an entry point here registers it.
+# The built-ins are always present whatever this metadata says (a venv installed before it still has them).
+[project.entry-points."trellis.file_reach"]
+s3 = "resource_explorer.reach_mechanisms.s3:S3Mechanism"
 
 [tool.hatch.build.targets.wheel]
 packages = ["resource_explorer"]

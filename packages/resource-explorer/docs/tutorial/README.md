@@ -11,6 +11,7 @@ publishing. Words are defined in the [glossary](glossary.md).
 | [2. Sign in and find your way around](02-sign-in-and-find-your-way.md) | Get in as Peter; the six areas of the screen |
 | [3. Add data sources, and find them again](03-add-data-sources.md) | Register the trial's database, folder and repository |
 | [4. The stages: a funnel from cheap to costly](04-the-stages.md) | Cheap questions first; inside a stage; reading the marks |
+| [5. Scouting: run the overview survey and read the answers](05-scouting.md) | A first look at the database, the repository and the folder |
 
 ## The six walks
 
@@ -27,7 +28,7 @@ The Core tutorial replaces these when its last part is written. Six illustrated 
 
 ## How these pages were made
 
-- Every screenshot was taken on 2026-10-29 from the Explorer on port 8813 running `origin/main` at `afdac240`, signed in as `peterprofile`, with the "Paper" look and normal text size.
+- Every screenshot was taken on 2026-10-29 from a test server running `origin/main` at `afdac240`, signed in as `peterprofile`, with the "Paper" look and normal text size.
 - Screenshots are 1382 px wide. The browser window the capture ran in could not be made wider than that on the machine used. The brief asked for 1452 px.
 - Nothing was pressed that writes: no Publish, no Re-run, no Ask in the chat rail, no journal entry. A step that needs one of those is described from the guide and marked "not pressed".
 - Every caption uses the words on the screen. Where a surface shows a mark or word that differs from the user guide, the caption follows the screen and the walk says so.

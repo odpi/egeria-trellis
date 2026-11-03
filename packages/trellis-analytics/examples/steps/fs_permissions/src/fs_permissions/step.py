@@ -13,6 +13,8 @@ a result can be published and those stay in Resource Explorer.
 Never a silent zero:
 - no walk: ``not_established``;
 - no stat fields (no row carries a mode): ``not_established``, "no stat fields";
+- a walk of an object store (every row's mode is "not reported by this source", the S3 walk's own words):
+  ``not_established``, "not established · S3 objects carry no POSIX permissions";
 - the walk classifies a name only when hashing is on (a link, or a walk with hashing off, leaves it unclassified):
   with no name classified, the sensitive measure is ``not_established``; unclassified files are counted on it.
 """
@@ -24,6 +26,9 @@ SENSITIVE = "world_readable_sensitive"
 BASIS = "owner, group and mode from the walk's stat of each file, counted; no name is kept in the result"
 SENSITIVE_BASIS = ("world-readable (others may read) files whose names the walk classed as secret-looking and did "
                    "not open; files whose names the walk did not classify (hashing off, links) are counted apart")
+#: What the S3 walk writes for owner, group and mode (resource_explorer.reach_mechanisms.NOT_REPORTED).
+NOT_REPORTED = "not reported by this source"
+NO_POSIX_WORDS = "S3 objects carry no POSIX permissions"
 #: Hash states that mean the walk did NOT apply its secret-name rule to the file.
 UNCLASSIFIED = ("hashing_off", "symlink", "not_attempted")
 
@@ -54,6 +59,11 @@ def run(inputs) -> list[dict]:
     walk = runs[0]
     rows = inputs.ods.filesystem_walk_files(slug, walk["run_id"])
     stat_rows = [(r, b) for r in rows if (b := _bits(r.get("mode_octal") or "")) is not None]
+    if rows and all(r.get("mode_octal") == NOT_REPORTED for r in rows):
+        why = f"the walk of {walk['run_id']} read an object store, whose objects carry no owner, group or mode"
+        out = {"scope": slug, "state": "not_established", "reason": why,
+               "summary": f"not established · {NO_POSIX_WORDS}"}
+        return [out, {**out, "measure": SENSITIVE}]
     if not stat_rows:
         why = (f"no stat fields: no file on the walk of {walk['run_id']} carries an owner, group or mode"
                if rows else f"the walk of {walk['run_id']} found no files")
