@@ -9739,7 +9739,7 @@ function bodyLines(entry, i, st, env) {
   if (st === 'unrun') {
     // NO answer line. Not a zero, not an empty string — the absence of the
     // line is the statement.
-    const why = (env && env.blocked_reason) || 'Not yet run.';
+    const why = (env && env.blocked_reason) || 'Nothing has been measured for this yet.';
     const lines = readEnvelope(entry, env, esc, tnum);
     return autoRanNoteHtml(entry, indent)
       + `<div class="ml-[22px] mt-[6px] text-answer text-ink">${tnum(esc(why))}</div>`
@@ -9894,8 +9894,8 @@ function provenanceLine(entry, i, lines, st) {
     bits.push(`as of <span class="tnum">${esc(String(lines.asOf).slice(0, 16).replace('T', ' '))}</span>`);
   } else if (lines.runTimeUnrecorded) {
     bits.push('run time not recorded');
-  } else if (st !== 'running' && !(st === 'unrun' && lines.allNeverRun)) {
-    // An unrun row whose analyses all never ran already says "Not yet run." as its answer line: not again here (F23).
+  } else if (st !== 'running') {
+    // The one place an unrun row says "not yet run" (F23, W54): its answer line says what is missing, not when.
     bits.push('not yet run');
   }
   // When the row says "not yet run" (here or as its answer), a step that never ran does not say it a second time.

@@ -1770,11 +1770,10 @@ class FactLayer:
             return env
         env.facts = [self._for_question(f, question.get("id", "")) for f in self.facts(slug, ids, self._primary_level(question))]
         if not env.answerable:
-            # Every analysis behind it never ran: said in the owner's words, once (F23, 2026-10-30). Anything else
-            # (one could not be established, say) is not "not yet run", so it keeps the wider sentence.
-            not_yet_run = bool(env.facts) and all(f.state == NEVER_RUN for f in env.facts)
+            # One sentence whatever the facts' states (W54, 2026-11-03): the row's source line says WHEN ("not yet
+            # run", "run 3d ago"), once (F23), so the answer line does not say it again in other words.
             env.blocked_reason = (
-                ("Not yet run." if not_yet_run else "Nothing has been measured for this yet.")
+                "Nothing has been measured for this yet."
                 + (f" Run: {', '.join(env.can_run)}." if env.can_run else "")
             )
         else:
