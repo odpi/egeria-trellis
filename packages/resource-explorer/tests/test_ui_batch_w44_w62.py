@@ -219,3 +219,32 @@ def test_w45_short_and_full_host_names_are_one_machine(monkeypatch):
     monkeypatch.setattr(walk_derived, "_newest_walk", lambda registry, slug: sd)
     words = walk_derived.price(object(), "dl_minio_datalake")["words"]
     assert "another machine" not in words and "under a second to walk again on this machine" in words
+
+
+# --- W46: an S3 walk's access line says object storage keeps no access time, not that the walk predates them -----
+
+def test_w46_fs_activity_on_an_object_store():
+    from fs_activity import step
+
+    from resource_explorer import reach_mechanisms as rm
+
+    assert step.NOT_REPORTED == rm.NOT_REPORTED
+
+    class _Ods:
+        def filesystem_walk_runs(self, slug, limit=2):
+            return [{"run_id": "2026-11-03T10:37:00"}]
+
+        def filesystem_walk_files(self, slug, run_id):
+            return [{"file_path": f"t/{i}.parquet", "size_bytes": 10, "modified_at": "2026-11-01T00:00:00",
+                     "accessed_at": None, "owner_name": rm.NOT_REPORTED, "group_name": rm.NOT_REPORTED,
+                     "mode_octal": rm.NOT_REPORTED, "hash_state": "hashed"} for i in range(3)]
+
+    class _In:
+        slug = "dl_minio_datalake"
+        ods = _Ods()
+        parameters = {}
+
+    access = next(r for r in step.run(_In()) if r.get("measure") == step.ACCESS)
+    assert access["state"] == "not_established"
+    assert access["summary"] == "not measured · S3 objects carry no access time; reads cannot be told"
+    assert "walked before" not in access["reason"]
