@@ -13,7 +13,7 @@ What stays here, because it needs Resource Explorer:
 | `src/trellis_analytics_re/ods.py` | `OdsReader`: the typed reads of RE's registry (the library's `OdsRead`), read-only. Was `trellis_analytics.readers.ods`. |
 | `src/trellis_analytics_re/registry_view.py` | `CatalogueScopeReader`: Curate's node set through RE's own `resolve_node_set` (the library's `CatalogueScopeRead`). Was `trellis_analytics.readers.registry_view`. |
 | `examples/steps/*` | The ten reference steps, R19 workspace members. They depend on `egeria-trellis-analytics` and stay here until LS2b ships them as one distribution, `egeria-trellis-steps`. |
-| `examples/curation_coverage.py`, `.ipynb`, `curation_coverage_tile.md` | The routine's three hosts (script, notebook, Portal tile spec), tested here against RE's readers. The notebook and the tile spec also ship in the library's `examples/`. |
+| `examples/curation_coverage.py` | The routine's script host. Its other two hosts, the notebook and the Portal tile spec, ship in the library itself ([`src/trellis_analytics/examples/`](https://github.com/odpi/egeria-trellis-analytics/tree/main/src/trellis_analytics/examples), the only copy); `tests/test_hosts.py` and `tests/test_spec_document.py` load them from the installed distribution and run all three against RE's readers. |
 | `docs/TUTORIAL-ADD-AN-ANALYTIC-STEP-2026-10-30.md` | The step tutorial, which builds on the reference steps. |
 | `tests/` | What needs RE or the reference steps: the steps, the hosts, curation_coverage over a real registry, the registry view. The library's own tests run in its repository. |
 

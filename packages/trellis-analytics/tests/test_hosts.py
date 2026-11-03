@@ -6,6 +6,7 @@ nothing a host shows is computed beside the routine's result.
 import json
 import subprocess
 import sys
+from importlib.resources import files
 from pathlib import Path
 
 import pytest
@@ -14,7 +15,9 @@ from trellis_analytics import __version__
 from trellis_analytics_re.ods import OdsReader
 from trellis_analytics.routines import curation_coverage
 
-EX = Path(__file__).resolve().parents[1] / "examples"
+EX = Path(__file__).resolve().parents[1] / "examples"                       # the script host, which stays here
+#: The notebook ships in the library (Architect ruling, 2026-11-03: its copy is the only one); run it as installed.
+NOTEBOOK = files("trellis_analytics") / "examples" / "curation_coverage.ipynb"
 SLUG = "demo"
 
 
@@ -44,7 +47,7 @@ def counts_of(result_dict: dict) -> dict:
 def run_notebook(tmp_path, url, slug=SLUG, resource_type="database"):
     import papermill as pm
     out = tmp_path / "out.ipynb"
-    pm.execute_notebook(str(EX / "curation_coverage.ipynb"), str(out),
+    pm.execute_notebook(str(NOTEBOOK), str(out),
                         parameters={"slug": slug, "ods_url": url, "resource_type": resource_type},
                         kernel_name="python3", progress_bar=False)
     import nbformat
@@ -60,7 +63,7 @@ def notebook_result(text):
 
 def test_notebook_has_a_parameters_cell_with_slug_and_ods_url():
     import nbformat
-    nb = nbformat.read(str(EX / "curation_coverage.ipynb"), as_version=4)
+    nb = nbformat.read(str(NOTEBOOK), as_version=4)
     tagged = [c for c in nb.cells if "parameters" in c.metadata.get("tags", [])]
     assert len(tagged) == 1
     assert "slug =" in tagged[0].source and "ods_url =" in tagged[0].source
