@@ -302,3 +302,47 @@ class TestDiffScopes:
     def test_empty_everything_is_clean(self):
         result = diff_scopes([], set())
         assert result.kept == result.missing == [] and result.extra == result.unresolvable == []
+
+    # ── a DEPRECATED term: its own bucket (architect ruling (b), 2026-10-23) ──────────────────────────────
+    # The term batch marks retired and merged questions DEPRECATED (contentStatus) and keeps their links.
+
+    @staticmethod
+    def _deprecated(display_name, guid, description="", status_in="contentStatus"):
+        item = _scope(display_name, guid=guid, qualified_name=f"Org::Term::{guid}::1.0")
+        if status_in == "contentStatus":
+            item["properties"]["contentStatus"] = "DEPRECATED"
+        else:
+            item["elementHeader"]["status"] = "DEPRECATED"
+        if description:
+            item["properties"]["description"] = description
+        return item
+
+    def test_deprecated_term_is_its_own_bucket_never_kept_missing_or_extra(self):
+        """Fail-on-purpose: before the bucket, the named one read "kept" and the unnamed one "extra"."""
+        expected = {"Retired question", "Live question"}
+        live = [
+            self._deprecated("Retired question", "g-ret", "retired 2026-10-22: answered by Q-0044 instead"),
+            self._deprecated("Merged question", "g-mrg", "merged into Q-0016 2026-10-22: same ask"),
+            self._deprecated("Bare question", "g-bare", status_in="header"),
+            _scope("Live question", guid="g-live"),
+        ]
+        result = diff_scopes(live, expected)
+        assert result.kept == ["Live question"]
+        assert result.missing == []
+        assert result.extra == [] and result.unresolvable == []
+        assert [(d.display_name, d.guid, d.label) for d in result.deprecated] == [
+            ("Retired question", "g-ret", "deprecated: retired 2026-10-22"),
+            ("Merged question", "g-mrg", "deprecated: merged into Q-0016 2026-10-22"),
+            ("Bare question", "g-bare", "deprecated: deprecated"),
+        ]
+
+    def test_reconcile_scripts_render_the_deprecated_bucket(self):
+        """Both consumers of diff_scopes print the bucket, and neither counts it as drift or removes it."""
+        from pathlib import Path
+
+        scripts = Path(__file__).resolve().parents[1] / "scripts"
+        for name in ("reconcile_survey_definition_scopes.py", "reconcile_database_survey_definition_scopes.py"):
+            text = (scripts / name).read_text()
+            assert "for d in result.deprecated:" in text and "d.label" in text, name
+            assert "deprecated {len(result.deprecated)}" in text, name
+            assert "if result.missing or result.extra:" in text, name     # drift stays missing/extra only

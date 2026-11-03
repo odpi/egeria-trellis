@@ -11,112 +11,9 @@ fails here rather than being found by eye.
 """
 from __future__ import annotations
 
-from pathlib import Path
-
-INDEX = Path(__file__).resolve().parents[1] / "resource_explorer" / "web" / "static" / "index.html"
-
-#: The renderer function bodies, split out so each assertion names which card
-#: kind it is talking about.
-def _local_card() -> str:
-    html = INDEX.read_text()
-    return html.split("const localCardsHtml = analyses.map(a => {")[1].split("\n  });")[0]
-
-
-def _survey_card() -> str:
-    html = INDEX.read_text()
-    return html.split("function _renderSurveyDefCandidateCard(")[1].split("\nfunction ")[0]
-
-
-def test_both_card_kinds_offer_run_schedule_publish_notify():
-    local, survey = _local_card(), _survey_card()
-    for token, label in (("Run →", "run"), ("⏱", "schedule"),
-                         ("☁ Publish", "publish"), ("🔔 Notify me", "notify")):
-        assert token in local, f"local analysis card lost its {label} action"
-        assert token in survey, f"Egeria survey card lost its {label} action"
-
-
-def test_both_card_kinds_offer_results():
-    local, survey = _local_card(), _survey_card()
-    assert "toggleAnalysisResults(" in local
-    # A survey runs several analyses, so it opens every one that stores
-    # results rather than picking one arbitrarily.
-    assert "_toggleSurveyResults(" in survey
-    assert "_REPO_RESULTS_RENDER_MODE" in survey
-
-
-def test_both_card_kinds_say_when_something_is_unpublished():
-    """"Never published" and "we did not look" must not both render as nothing.
-
-    The survey card used to emit '' for an unpublished survey while the local
-    card beside it said "Not published".
-    """
-    local, survey = _local_card(), _survey_card()
-    assert "☁ Not published" in local
-    assert "☁ Not published" in survey
-
-
-def test_publish_is_scoped_by_step_keys_on_both():
-    """_publishScopedSteps takes re_analysis_step KEYS, never an analysis id.
-
-    Passing the id would publish under a name no step answers to. The local
-    card could not offer Publish at all until the catalog carried the keys;
-    it must use them now rather than the id it has closer to hand.
-    """
-    local = _local_card()
-    assert "a.re_analysis_steps" in local
-    assert "_publishScopedSteps(${JSON.stringify(slug)}, ${JSON.stringify(_localStepKeys)}" in local
-
-
-def test_perspective_filter_applies_to_survey_definitions_too():
-    html = INDEX.read_text()
-    block = html.split("const validCandidates = candidates")[1].split(";")[0]
-    assert "activePerspectives" in block, "perspective filter narrowed only the local cards"
-    # An errored candidate has no steps to derive perspectives from, so it must
-    # not be filtered away by a test it cannot be judged against.
-    assert "!(c.perspectives || []).length" in block
-
-
-def test_perspective_row_is_shown_on_every_card_rendering_intent():
-    """One control, in the header, on every intent it applies to.
-
-    Scouting was excluded while its Questions checklist carried a filter over a
-    different vocabulary -- showing both would have stacked two rows that
-    disagreed on what a perspective is. Both vocabularies are Egeria's twelve
-    now and the in-tab rows are gone, so the exclusion went with them.
-    """
-    html = INDEX.read_text()
-    decl = html.split("const _PERSPECTIVE_AWARE_INTENTS = new Set([")[1].split("]")[0]
-    for intent in ("scouting", "assessment", "analysis", "discovery",
-                   "enrichment", "understanding", "curate"):
-        assert f"'{intent}'" in decl, f"{intent} renders cards but has no perspective row"
-
-
-def test_there_is_exactly_one_perspective_control():
-    """Four existed: the header row, the survey panel's, the Results panel's,
-    and the Questions tab's. The same concept appeared twice on screen at once,
-    and which one you touched decided whether anything happened."""
-    html = INDEX.read_text()
-    # The in-pane rows are gone.
-    assert 'Perspective (filter)</div>' not in html.split("renderAdminQuestionCatalog")[0], \
-        "an in-pane Perspective row survives in the workflow panes"
-    # Their state is gone too -- one Set, owned by the header.
-    for dead in ("_surveyPanelActivePerspectives", "_questionsActivePerspectives",
-                 "_surveyResultsActivePerspectives", "_surveyPanelAvailablePerspectives"):
-        assert dead not in html, f"panel-local perspective state survives: {dead}"
-    # The header toggle refreshes the panes rather than each pane owning a copy.
-    toggle = html.split("function togglePerspective(")[1].split("\n}")[0]
-    for fn in ("_reloadSurveyPanelForPerspective", "_reloadSurveyResultsForPerspective",
-               "_reloadQuestionsForPerspective"):
-        assert fn in toggle, f"togglePerspective does not refresh via {fn}"
-
-
-def test_the_header_row_is_no_longer_hidden_on_the_questions_tab():
-    """It was hidden there specifically because that tab had its own row."""
-    html = INDEX.read_text()
-    assert "classList.toggle('hidden', tab === 'scouting-questions')" not in html
-
 
 # ── the backend halves the cards depend on ──────────────────────────────────
+
 
 def test_catalog_entries_carry_their_step_keys():
     """Without these the local cards can offer no Publish button at all --
@@ -251,36 +148,6 @@ def test_all_does_not_swallow_a_surveys_derived_perspectives():
     # which callers treat as "cannot be judged, so keep it" -- the same visible
     # outcome as matching everything, reached honestly rather than by "all".
     assert _derived_from_steps([{"re_analysis_step": "no_such_step"}])["perspectives"] == []
-
-
-def test_every_panel_that_renders_survey_cards_registers_them():
-    """A Run button that silently does nothing.
-
-    showSurveyDefinitionRunModal resolves the candidate out of
-    _surveyDefCandidatesCache by (viewElId, qualified_name). Only the older
-    renderSurveyPanel() populated that cache, so once Assessment / Analysis /
-    Discovery began rendering these cards through renderAnalysisCatalogCards,
-    their Run buttons looked perfectly enabled and did nothing -- no error, no
-    toast, no console message. Reported live against deep_causality.
-    """
-    html = INDEX.read_text()
-    body = html.split("function renderAnalysisCatalogCards(")[1].split("\nfunction ")[0]
-    assert "_surveyDefCandidatesCache[viewId]" in body, \
-        "the merged panel renders Survey Definition cards without registering them"
-    # Registered from the UNFILTERED list: a perspective filter narrowing the
-    # view must not be able to make a still-visible card unrunnable.
-    assert "_surveyDefCandidatesCache[viewId] = candidates.filter(c => !c.error)" in body
-
-
-def test_an_unresolvable_run_reports_itself():
-    """The bare `return` is what made this invisible for a whole release: the
-    control looked enabled, the click did nothing, and nothing anywhere said
-    why. A wiring bug must announce itself rather than present a dead button."""
-    html = INDEX.read_text()
-    fn = html.split("function showSurveyDefinitionRunModal(")[1].split("\n}")[0]
-    assert "showToast(" in fn, "a cache miss is still silent"
-    assert "console.error(" in fn
-    assert "if (!candidate) return;" not in fn
 
 
 def test_prefect_routed_steps_are_local_not_egeria_native():

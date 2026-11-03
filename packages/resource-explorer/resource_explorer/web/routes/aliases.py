@@ -1,7 +1,7 @@
 """Alias management endpoints."""
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, ConfigDict, Field
 
 router = APIRouter()
@@ -17,16 +17,25 @@ class AliasRequest(BaseModel):
     # API contract are the same edit. index.html still sends the old
     # key; drop the alias when the wire format moves too.
     resource_slug: str = Field(alias="project_slug")
+    #: Moving an alias that already points at ANOTHER resource is a separate, explicit choice.
+    move: bool = False
 
 
 @router.post("/")
-async def add_alias(request: AliasRequest) -> dict:
+async def add_alias(request: AliasRequest, http: Request) -> dict:
     """Store a confirmed alias → project_slug mapping."""
     from resource_explorer.registry import ProjectRegistry
     registry = ProjectRegistry()
     if not registry.exists(request.resource_slug):
         raise HTTPException(status_code=404, detail=f"Project '{request.resource_slug}' not found")
-    registry.add_alias(request.alias, request.resource_slug, confirmed_by="user")
+    held = registry.resolve_alias(request.alias)
+    if held and held != registry._normalize_slug(request.resource_slug) and not request.move:
+        # Never move an alias silently: it would change what a name resolves to in every future question.
+        raise HTTPException(status_code=409, detail=f"alias already used for {held}")
+    from resource_explorer.auth import get_current_user
+    user = get_current_user(http) or {}
+    who = user.get("user_id") or user.get("username") or "user"
+    registry.add_alias(request.alias, request.resource_slug, confirmed_by=who)
     return {"alias": request.alias, "project_slug": request.resource_slug, "saved": True}
 
 

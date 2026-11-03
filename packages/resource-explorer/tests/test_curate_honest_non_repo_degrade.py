@@ -59,15 +59,17 @@ def test_render_curate_checks_entity_type_before_any_repo_only_call():
         "only decorates a failure that already happened")
 
 
-def test_non_repo_curate_message_is_honest_not_a_bare_404():
+def test_non_repo_curate_body_is_the_kinds_band_two_not_a_bare_404():
+    """CURATE-UI-DATABASES: the old 'isn't available' body is replaced by the
+    kind's own band 2 (database: two sections that say what they wait for;
+    file system: one sentence). The honest-about-what-is-unbuilt standard stays."""
     src = CURATE_JS.read_text()
     fn = _fn(src, "nonRepoCurateHtml")
-    assert "isn't available for" in fn or "isn&#39;t available for" in fn or \
-        "not available for" in fn
-    # Must say WHY, not just that it's missing — matching the standard this
-    # codebase holds other deliberately-repo-only panes to (see
-    # understanding.js's CHART_NO_EQUIVALENT_REASON).
-    assert "repo" in fn.lower() and ("git branch" in fn.lower() or "component" in fn.lower())
+    assert "databaseWorkHtml" in fn and "filesystemWorkHtml" in fn
+    bands = (CURATE_JS.parent / "curate-bands.js").read_text()
+    assert "needs data classes per column (data_class_match)" in bands
+    assert "needs the logical schemas Egeria knows to be read" in bands
+    assert "Nothing to review for file systems yet. Group, tags, ratings and notes above and below apply." in bands
 
 
 def test_a_database_slug_never_reaches_getcurateplan():

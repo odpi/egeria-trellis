@@ -13,7 +13,7 @@ from loguru import logger
 
 from advisor.report_spec_docs import get_report_spec_doc_manager
 from advisor.report_spec_parser import parse_report_spec_markdown, register_report_spec, validate_report_spec
-from advisor.report_pipeline import get_report_pipeline
+from advisor.report_pipeline import get_report_pipeline, _conn_is_complete
 
 
 def calculate_required_depth(key: str) -> int:
@@ -129,8 +129,9 @@ class ReportSpecAgent:
             logger.error(f"Failed to read Egeria connection info: {exc}")
             conn = {}
 
-        if not all((conn.get("view_server"), conn.get("platform_url"),
-                    conn.get("user_id"), conn.get("user_pwd"))):
+        # A signed-in caller carries an Egeria bearer token and no password
+        # (since 2026-09-04); only the service-account fallback has a password.
+        if not _conn_is_complete(conn):
             return self._error_result(
                 doc_id,
                 "Egeria connection is not configured (config/mcp_servers.json -> pyegeria.env)"
@@ -195,13 +196,17 @@ class ReportSpecAgent:
                 view_url=conn["platform_url"],
                 user=conn["user_id"],
                 user_pass=conn["user_pwd"],
+                token=conn.get("token") or None,
             )
             # exec_report_spec returns a shaped envelope — unwrap before formatting
             if raw is None or (isinstance(raw, dict) and raw.get("kind") == "empty"):
                 execution_output = "*No results returned.*"
             elif isinstance(raw, dict):
                 kind = raw.get("kind")
-                if kind == "json":
+                if kind == "absent":
+                    # pyegeria 6.2.17 (#518): the sentence, never `detail`'s partial numbers as a table
+                    execution_output = raw.get("content") or "Not established."
+                elif kind == "json":
                     execution_output = pipeline._format_output(raw.get("data"), output_format, spec.heading, spec=spec)
                 elif kind == "text":
                     execution_output = raw.get("content", "")

@@ -115,8 +115,8 @@ class TestTheListSentence:
         assert ls == [{"key": "dependency_analysis", "field": "by_ecosystem", "total": 32, "shown": 10, "parts": 1,
                        "rung": "SUMMARY", "members": True}]
         html = self._run(f"listSentenceHtml(listSentences({__import__('json').dumps(self.BODY)})[0], 'p')", tmp_path)
-        assert '<span class="tnum">32</span> dependencies · in <span class="tnum">1</span> ecosystem' in html
-        assert '<span class="tnum">10</span> shown to the model</span>' in html and "at summary" not in html
+        assert '<span class="tnum">32</span> dependencies (in <span class="tnum">1</span> ecosystem' in html
+        assert '<span class="tnum">10</span> of <span class="tnum">32</span> shown to the model</span>' in html and "at summary" not in html
         assert 'open the full list' in html and 'data-list-source="dependency_analysis"' in html
         assert '›' not in html and 'chevron-right' in html
 
@@ -236,6 +236,6 @@ class TestTheRailScopeFollowsTheSelection:
         i = app.index("state.selectedSlug = b.dataset.slug;")
         assert "renderRailScope();" in app[i:i + 200]
         for anchor in ("if (state.selectedSlug === slug) state.selectedSlug = null;",
-                       "state.selectedSlug = state.projects[0]?.slug || null;"):
+                       "state.selectedSlug = state[listKey][0]?.slug || null;"):
             j = app.index(anchor)
             assert "renderRailScope();" in app[j:j + 260], anchor

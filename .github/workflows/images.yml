@@ -20,6 +20,12 @@ on:
     tags: ["v*"]
   workflow_dispatch:
 
+# A newer push to the same PR/branch cancels the stale run. main and tag
+# runs publish images and are never cancelled.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' && !startsWith(github.ref, 'refs/tags/') }}
+
 env:
   REGISTRY: ghcr.io
 

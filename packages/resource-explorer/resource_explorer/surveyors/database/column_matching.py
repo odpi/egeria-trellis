@@ -30,7 +30,7 @@ genuinely different causes, and three of them are not answers:
   which is the only one of the four that is a *finding*.
 
 Collapsing those into "no match found" is the defect
-`docs/design-notes/DEFECT-UNBUILT-STAGES-RENDER-AS-BUILT.md` and the
+`DEFECT-UNBUILT-STAGES-RENDER-AS-BUILT.md` and the
 `find-absence-as-answer` skill are both about, in the one place a column-level
 PII claim would be read as reassurance.
 
@@ -770,6 +770,7 @@ class ColumnMatch:
             "detected_patterns": list(self.detected_patterns),
             "privacy_relevant": self.privacy_relevant,
             "proposed_specification": self.proposed_specification,
+            "proposed_specification_prose": self.proposed_specification_prose,
             "proposed_values": list(self.proposed_values),
             "other_candidates": list(self.other_candidates),
             "not_established_reason": self.not_established_reason,

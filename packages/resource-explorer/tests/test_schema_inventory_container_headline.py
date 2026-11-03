@@ -51,7 +51,7 @@ class TestSystemSchemasAreFoldedAway:
         result = _schema_inventory_container_headline(registry, "mydb")
         assert "pg_catalog" not in result["label"]
         assert "information_schema" not in result["label"]
-        assert "2 system schema(s) folded" in result["label"]
+        assert "2 system schemas folded" in result["label"]
 
     def test_pg_toast_and_pg_temp_prefixes_are_folded_too(self):
         registry = _FakeRegistry(tables=[
@@ -60,7 +60,7 @@ class TestSystemSchemasAreFoldedAway:
             _table("pg_temp_3", "y", row_count=0),
         ])
         result = _schema_inventory_container_headline(registry, "mydb")
-        assert "2 system schema(s) folded" in result["label"]
+        assert "2 system schemas folded" in result["label"]
 
 
 class TestDataAndEmptyClassification:
@@ -70,7 +70,7 @@ class TestDataAndEmptyClassification:
             _table("coco_ods", "b", row_count=100),
         ])
         result = _schema_inventory_container_headline(registry, "mydb")
-        assert "coco_ods 2 table(s) · 1,100 row(s)" in result["label"]
+        assert "coco_ods 2 tables · 1,100 rows" in result["label"]
 
     def test_estimate_state_adds_the_est_caveat(self):
         from resource_explorer.registry import STATE_CATALOG_ESTIMATE
@@ -78,14 +78,14 @@ class TestDataAndEmptyClassification:
             _table("coco_ods", "a", row_count=50, state=STATE_CATALOG_ESTIMATE),
         ])
         result = _schema_inventory_container_headline(registry, "mydb")
-        assert "50 row(s) (est.)" in result["label"]
+        assert "50 rows (est.)" in result["label"]
 
     def test_zero_measured_rows_across_every_table_is_empty(self):
         registry = _FakeRegistry(tables=[
             _table("eu_sales", "a", row_count=0),
         ])
         result = _schema_inventory_container_headline(registry, "mydb")
-        assert "eu_sales 1 table(s) · 0 row(s) — empty" in result["label"]
+        assert "eu_sales 1 table · 0 rows — empty" in result["label"]
 
     def test_a_schema_with_no_tables_at_all_is_empty(self):
         """A schema can have zero tables entirely — SCOPE_EMPTY's own case,
@@ -106,7 +106,7 @@ class TestDataAndEmptyClassification:
         # `_schema_inventory_results`'s own docstring on `schema_total` vs
         # `schemas_with_tables` for the parallel gap.
         result = _schema_inventory_container_headline(registry, "mydb")
-        assert "public 1 table(s) · 1 row(s)" in result["label"]
+        assert "public 1 table · 1 row" in result["label"]
 
 
 class TestViewOnlySchemasAreDistinctFromEmpty:
@@ -124,7 +124,7 @@ class TestViewOnlySchemasAreDistinctFromEmpty:
         ])
         result = _schema_inventory_container_headline(registry, "mydb")
         assert "empty" not in result["label"]
-        assert "hr 2 view(s)" in result["label"]
+        assert "hr 2 views" in result["label"]
         assert "no base tables" in result["label"]
 
     def test_a_schema_with_at_least_one_base_table_is_not_views_only(self):
@@ -133,8 +133,8 @@ class TestViewOnlySchemasAreDistinctFromEmpty:
             _table("public", "t", table_type="BASE TABLE", row_count=5),
         ])
         result = _schema_inventory_container_headline(registry, "mydb")
-        assert "views only" not in result["label"] and "view(s)" not in result["label"]
-        assert "public 2 table(s) · 5 row(s)" in result["label"]
+        assert "views only" not in result["label"] and " view" not in result["label"]
+        assert "public 2 tables · 5 rows" in result["label"]
 
 
 class TestCredentialScopeClassification:
@@ -144,7 +144,7 @@ class TestCredentialScopeClassification:
             survey_data=_cap({"demo": {"usage_granted": False, "table_total": 1, "table_select": 0}}),
         )
         result = _schema_inventory_container_headline(registry, "mydb")
-        assert "demo 1 table(s) — no access" in result["label"]
+        assert "demo 1 table — no access" in result["label"]
 
     def test_usage_but_no_select_renders_structure_only(self):
         registry = _FakeRegistry(
@@ -152,14 +152,14 @@ class TestCredentialScopeClassification:
             survey_data=_cap({"coco_ods": {"usage_granted": True, "table_total": 2, "table_select": 0}}),
         )
         result = _schema_inventory_container_headline(registry, "mydb")
-        assert "coco_ods 2 table(s) — structure only" in result["label"]
+        assert "coco_ods 2 tables — structure only" in result["label"]
 
 
 class TestStagingIsMarkedAsAHeuristic:
     def test_a_staging_named_schema_says_by_name(self):
         registry = _FakeRegistry(tables=[_table("stg_orders", "a", row_count=5)])
         result = _schema_inventory_container_headline(registry, "mydb")
-        assert "stg_orders 1 table(s) — staging (by name)" in result["label"]
+        assert "stg_orders 1 table — staging (by name)" in result["label"]
 
     def test_tmp_scratch_and_sandbox_all_match(self):
         for name in ("tmp_loads", "scratch_area", "sandbox_dev", "staging"):
@@ -202,7 +202,7 @@ class TestOrdering:
         label = result["label"]
         assert (label.index("real_data") < label.index("tmp_stuff")
                 < label.index("nothing_here") < label.index("locked"))
-        assert label.rstrip(".").endswith("1 system schema(s) folded")
+        assert label.rstrip(".").endswith("1 system schema folded")
 
 
 class TestStructureOnlyOutranksEmptyRegardlessOfSize:
@@ -270,7 +270,12 @@ class TestSlice21aFollowups:
     def test_a_zero_table_schema_the_probe_knows_about_still_appears(self):
         """`public` (USAGE granted, zero tables) never has a `database_
         tables` row to be grouped by, so it was silently missing from a list
-        the header's own schema_total says should have every schema."""
+        the header's own schema_total says should have every schema.
+
+        Renders as "no tables" (REPLY-DESIGNER-ROUND2-DATABASE-SCREENS.md
+        §3.3, 2026-09-28) — a structurally empty schema is a distinct
+        finding from "measured, and zero" or "never measured", not another
+        name for either of them."""
         registry = _FakeRegistry(
             tables=[_table("coco_ods", "a", row_count=5)],
             survey_data=_cap({
@@ -279,7 +284,7 @@ class TestSlice21aFollowups:
             }),
         )
         result = _schema_inventory_container_headline(registry, "mydb")
-        assert "public — empty (no tables)" in result["label"]
+        assert "public — no tables" in result["label"]
 
     def test_structure_only_schema_still_names_its_estimated_row_total(self):
         """A structure-only schema can still carry a real catalog-estimated
@@ -294,18 +299,25 @@ class TestSlice21aFollowups:
             }),
         )
         result = _schema_inventory_container_headline(registry, "mydb")
-        assert "coco_ods 1 table(s) · ~113 row(s) (est.) — structure only" in result["label"]
+        assert "coco_ods 1 table · ~113 rows (est.) — structure only" in result["label"]
 
-    def test_a_schema_whose_only_table_has_no_row_data_is_empty_not_data(self):
+    def test_a_schema_whose_only_table_has_no_row_data_is_not_measured_not_data(self):
         """`row_count IS NULL` (never measured, no catalog-estimate fallback
         either) used to fall through to the "data" branch, where `row_total
         or 0` silently displayed "not measured" as a measured "0 row(s)"
-        under the DATA classification rather than `empty`."""
+        under the DATA classification rather than `empty`.
+
+        Corrected further (REPLY-DESIGNER-ROUND2-DATABASE-SCREENS.md §3.3,
+        2026-09-28): this is not a measured zero either — folding "never
+        measured" into `empty` was exactly the bug the reply called out
+        (the docstring quoted the owner's ruling with "[or, as here, no row
+        data at all]" ADDED inside the quote marks). `row_total is None`
+        now renders as its own "rows not measured" reading."""
         registry = _FakeRegistry(
             tables=[_table("eu_sales", "eu_sales_forecast", row_count=None)],
         )
         result = _schema_inventory_container_headline(registry, "mydb")
-        assert "eu_sales 1 table(s) · 0 row(s) — empty" in result["label"]
+        assert "eu_sales 1 table — rows not measured" in result["label"]
 
     def test_ordering_is_data_then_structure_only_then_empty_then_system(self):
         """Dan's gate, `coco_pharma`, 2026-09-27: `coco_ods` here is
@@ -331,4 +343,4 @@ class TestSlice21aFollowups:
         label = result["label"]
         assert (label.index("real_data") < label.index("coco_ods")
                 < label.index("eu_sales") < label.index("public"))
-        assert label.rstrip(".").endswith("1 system schema(s) folded")
+        assert label.rstrip(".").endswith("1 system schema folded")

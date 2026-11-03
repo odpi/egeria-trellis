@@ -1,4 +1,0 @@
-{"slug": "deep_causality", "annotations": 124, "steps": 40, "asset_guid": "45cd7510-ed01-475e-97b6-3d9032ba60c4", "ok": true, "seconds": 495.6}
-{"slug": "amundsen", "annotations": 157, "steps": 40, "asset_guid": "7d3de6b6-d8b5-40e0-a673-144efca1cfaa", "ok": true, "seconds": 374.6}
-{"slug": "kafka", "annotations": 137, "steps": 40, "asset_guid": "74a2da2e-0f6f-45a5-af78-0a0d7dcf8d81", "ok": true, "seconds": 799.2}
-{"slug": "polaris", "annotations": 125, "steps": 40, "asset_guid": "95b56d37-a35e-45cb-945b-dfa092dfb063", "ok": true, "seconds": 4812.7}

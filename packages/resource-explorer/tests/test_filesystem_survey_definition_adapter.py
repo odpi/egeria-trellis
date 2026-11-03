@@ -119,11 +119,20 @@ def test_run_filesystem_inventory_and_publish_roundtrip():
             egeria_asset_guid="fs-guid-1",
         )
         registry = MagicMock()
+        # The probe row that proves Egeria could not reach the path (Files step 2): the walk leads and may publish.
+        registry.get_latest_reachability.return_value = {
+            "outcome": "re_only", "probed_at": "2026-10-20T10:00:00+00:00", "error_detail": "", "error_code": ""}
+        registry.get_filesystem.return_value = fs_entity
+        from resource_explorer import file_reach
 
-        step_output = fs_adapter._run_filesystem_inventory(fs_entity, registry)
+        with patch.object(file_reach, "probe_filesystem",
+                          lambda slug, reg, **kw: file_reach.fork_for(reg, fs_entity)):
+            step_output = fs_adapter._run_filesystem_inventory(fs_entity, registry)
         survey_data = step_output["survey_data"]
         assert survey_data["total_files"] == 3
-        assert survey_data["profiling_errors"], "malformed CSV should be recorded, not silently dropped"
+        # Files step 2, caution 1: the walk opens no file's contents, so nothing is schema-profiled here
+        # (`file_profiles` is its own later step). The malformed CSV is a file with a name, a size and a time.
+        assert survey_data["profiling_errors"] == []
         assert survey_data["classification"]["unclassified_count"] >= 1
 
         captured_annotations = []
@@ -142,10 +151,16 @@ def test_run_filesystem_inventory_and_publish_roundtrip():
 
         assert report_guid == "report-guid-1"
 
-        summaries = [a.summary for a in captured_annotations]
-        assert any("could not be schema-profiled" in s for s in summaries)
-        assert any("could not be classified" in s for s in summaries)
-        assert any("classified as" in s for s in summaries)
+        # Egeria's own folder-survey annotation names (SurveyFolderAnnotationType), verbatim.
+        names = {a.annotation_type_name for a in captured_annotations}
+        assert "Capture File Counts" in names
+        assert "Profile File Extensions" in names
+        assert "Profile File Types" in names
+        assert "Missing File Reference Data" in names
+        assert "Profile File Names to External Log" not in names
+        assert not any("schema-profiled" in a.summary for a in captured_annotations)
+        body = e._asset_maker.create_asset.call_args.kwargs["body"]
+        assert "surveyed by Resource Explorer · Egeria could not reach the path" in body["properties"]["description"]
 
 
 def test_publish_step_annotations_requires_cataloged_filesystem():
@@ -164,10 +179,10 @@ def test_publish_step_annotations_requires_cataloged_filesystem():
     }
 
     with patch.object(EgeriaFileSystemSurveyor, "connect", lambda self: None), \
-         patch.object(EgeriaFileSystemSurveyor, "_find_element_guid", lambda self, mount: None):
+         patch.object(EgeriaFileSystemSurveyor, "_find_element_guid", lambda self, name, type_name=None, **kw: ""):
         e = EgeriaFileSystemSurveyor()
         try:
             e.publish_step_annotations(fs_entity, minimal_survey_data, MagicMock())
             assert False, "expected EgeriaFileSystemSurveyorError"
         except Exception as exc:
-            assert "not yet cataloged" in str(exc)
+            assert "is not yet published to Egeria" in str(exc)

@@ -11,7 +11,6 @@ and that a short or greedy pattern is how `apache` matched Airflow 105 times.
 """
 from __future__ import annotations
 
-import json
 import textwrap
 
 import pytest
@@ -33,6 +32,7 @@ def _write_mapping(tmp_path, body: str):
 
 
 # ── the mapping file ────────────────────────────────────────────────────────
+
 
 class TestTheMappingIsValidatedLoudly:
     """A mapping that half-loads silently turns every dependency into
@@ -91,6 +91,7 @@ class TestTheMappingIsValidatedLoudly:
 
 # ── matching ────────────────────────────────────────────────────────────────
 
+
 class TestMatching:
     def _t(self, *patterns, ecosystems=()):
         return ds.Technology("T", None, tuple(patterns), frozenset(ecosystems))
@@ -137,6 +138,7 @@ class TestMatching:
 
 
 # ── the three states ────────────────────────────────────────────────────────
+
 
 class TestAZeroSaysWhichZeroItIs:
     def _deps(self, *names):
@@ -206,6 +208,7 @@ class TestEgeriaLookupNeverRaises:
 
 
 # ── the surveyor, against the real registry ─────────────────────────────────
+
 
 class TestTheSurveyor:
     @pytest.fixture
@@ -281,10 +284,11 @@ class TestTheSurveyor:
 
 # ── wiring ──────────────────────────────────────────────────────────────────
 
+
 class TestItIsWiredEverywhere:
     def test_step_kind_and_ownership(self):
         from resource_explorer.surveyors.repo_survey_definition_adapter import (
-            ANALYSIS_KINDS, REPO_ANALYSIS_STEP_MAP, STEP_REGISTRY)
+            REPO_ANALYSIS_STEP_MAP, STEP_REGISTRY)
         assert "repo_dependency_support" in STEP_REGISTRY
         assert REPO_ANALYSIS_STEP_MAP["dependency_support"] == ["repo_dependency_support"]
         from resource_explorer.surveyors.repo_survey_definition_adapter import REPO_ANALYSIS_RESULTS_MAP
@@ -313,14 +317,6 @@ class TestItIsWiredEverywhere:
         p = Path(__file__).resolve().parent.parent / "docs" / "dr-egeria" / "repo_survey_types.csv"
         rows = [r for r in csv.DictReader(p.open()) if r["step_key"] == "repo_dependency_support"]
         assert {r["survey_group"] for r in rows} == {"RepoDiscoverySurvey"}
-
-    def test_the_frontend_has_a_renderer(self):
-        from pathlib import Path
-        html = (Path(__file__).resolve().parent.parent / "resource_explorer" / "web" / "static" / "index.html").read_text()
-        assert "dependency_support: 'custom'" in html
-        assert "function _renderDependencySupportResults" in html
-        assert "dependency_support: _renderDependencySupportResults" in html
-        assert "not yet classified" in html, "the unmatched list must read as unclassified, never unsupported"
 
 
 @pytest.mark.live_egeria
@@ -410,3 +406,25 @@ class TestItsAnnotationsPublish:
         assert all(keys), f"a per-technology annotation has no item_key: {keys}"
         assert len(set(keys)) == len(keys), f"item_keys are not distinct: {keys}"
         assert set(keys) == {"PostgreSQL", "Apache Kafka", "Redis"}
+
+
+def test_a_dependency_records_its_manifest_path_not_just_the_filename(tmp_path):
+    """A workspace member's `pyegeria` row used to read as the root pyproject.toml's."""
+    from resource_explorer.ingestion.dependency_parser import DependencyParser
+
+    (tmp_path / "pyproject.toml").write_text('[project]\nname = "pyegeria"\ndependencies = ["pytest>=8"]\n')
+    member = tmp_path / "my_egeria"
+    member.mkdir()
+    (member / "pyproject.toml").write_text(
+        '[project]\nname = "my-egeria"\ndependencies = ["pyegeria", "pytest>=8"]\n'
+    )
+    (tmp_path / "requirements.txt").write_text("click\n")
+
+    rows = DependencyParser().parse(tmp_path, "x")
+    by = {(d["dep_name"], d["source_file"]) for d in rows}
+
+    assert ("pyegeria", "my_egeria/pyproject.toml") in by
+    assert ("pyegeria", "pyproject.toml") not in by
+    # The same package in two manifests is two rows now, not one collapsed into the first read.
+    assert ("pytest", "pyproject.toml") in by and ("pytest", "my_egeria/pyproject.toml") in by
+    assert ("click", "requirements.txt") in by

@@ -9,6 +9,7 @@ from typing import List, Dict, Any, Optional
 from functools import lru_cache
 import time
 import asyncio
+import concurrent.futures
 from loguru import logger
 
 from advisor.llm_client import OllamaClient, get_ollama_client
@@ -19,6 +20,18 @@ from advisor.analytics import get_analytics_manager
 from advisor.query_patterns import QueryType
 from advisor.tool_augmented_rag import should_use_tools
 from advisor.agents.pyegeria_agent import get_pyegeria_agent
+
+
+def _run_coroutine(make_coro, timeout: float = 60):
+    """Run `make_coro()` to completion from sync code, the way agents/base.py's `_run_agent` does: on a
+    fresh thread when this thread already runs a loop (a bare asyncio.run raises there, and nothing
+    applies nest_asyncio since pyegeria 6.2.16), directly otherwise."""
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        return asyncio.run(make_coro())
+    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as ex:
+        return ex.submit(lambda: asyncio.run(make_coro())).result(timeout=timeout)
 
 
 class ConversationAgent:
@@ -432,7 +445,7 @@ Answer:"""
         
         try:
             # Get available tools
-            tools = asyncio.run(self.mcp_agent.list_tools())
+            tools = _run_coroutine(self.mcp_agent.list_tools)
             
             if query_type == QueryType.REPORT:
                 # Look for report-related tools
@@ -441,7 +454,7 @@ Answer:"""
                     # Use the first matching tool
                     tool = report_tools[0]
                     logger.info(f"Invoking report tool: {tool.name}")
-                    result = asyncio.run(self.mcp_agent.call_tool(tool.name, {}))
+                    result = _run_coroutine(lambda: self.mcp_agent.call_tool(tool.name, {}))
                     return {
                         "tool_name": tool.name,
                         "result": result,
@@ -455,7 +468,7 @@ Answer:"""
                 if command_tools:
                     tool = command_tools[0]
                     logger.info(f"Invoking command tool: {tool.name}")
-                    result = asyncio.run(self.mcp_agent.call_tool(tool.name, {}))
+                    result = _run_coroutine(lambda: self.mcp_agent.call_tool(tool.name, {}))
                     return {
                         "tool_name": tool.name,
                         "result": result,

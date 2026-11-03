@@ -11,6 +11,15 @@ from resource_explorer.surveyors.survey_definition_reader import (
     UnsupportedSurveyDefinitionError,
 )
 
+# Brief I: these tests fake the Egeria clients; the code under test runs as a signed-in caller, as on a route.
+pytestmark = pytest.mark.usefixtures("signed_in_caller")
+
+#: Question term GUIDs (the typed search reads only GUID-shaped element ids).
+Q_GUID_1 = "0a1b2c3d-0000-4000-8000-000000000001"
+Q1_GUID = "0a1b2c3d-0000-4000-8000-0000000000a1"
+Q2_GUID = "0a1b2c3d-0000-4000-8000-0000000000a2"
+Q3_GUID = "0a1b2c3d-0000-4000-8000-0000000000a3"
+
 # Fixtures below match the real GovernanceOfficer.get_governance_action_process_graph
 # (renamed from get_governance_process_graph in an upcoming pyegeria release)
 # response shape, confirmed against a live qs-view-server for both a single-step
@@ -325,30 +334,76 @@ class _FakeClassificationExplorer:
         return self._scoped_elements_by_guid.get(scope_guid, [])
 
 
+def term_element(guid, display_name, status="ACTIVE", type_name="GlossaryTerm"):
+    """A GlossaryTerm as `MetadataExpert.find_metadata_elements_with_string` returns it (LIVE shape,
+    tests/fixtures/egeria_6_2/metadata_expert_find_with_string_for_lineage__memento.json): top-level
+    `elementGUID`, `type.typeName` + `superTypeNames`, `elementProperties.propertiesAsStrings`."""
+    return {"elementGUID": guid, "headerVersion": 0, "status": "ACTIVE",
+            "type": {"typeName": type_name, "typeCategory": "ENTITY_DEF",
+                     "superTypeNames": ["Referenceable", "OpenMetadataRoot"]},
+            "elementProperties": {"propertiesAsStrings": {
+                "displayName": display_name, "qualifiedName": f"GlossaryTerm::{display_name}::{guid[:8]}",
+                "contentStatus": status}}}
+
+
+def question_expert(answers, calls=None):
+    """`create_autospec(MetadataExpert, spec_set=True)` whose typed string search answers from `answers`
+    (display name -> a GUID, a list of elements, an exception, or any other answer as-is). Unlisted names get
+    Egeria's "No elements found". `calls` (a list) records every search string."""
+    from unittest.mock import create_autospec
+
+    from pyegeria import MetadataExpert
+
+    fake = create_autospec(MetadataExpert, instance=True, spec_set=True)
+
+    def _search(search_string="*", **kw):
+        if calls is not None:
+            calls.append((search_string, kw))
+        answer = answers.get(search_string, "No elements found")
+        if isinstance(answer, BaseException):
+            raise answer
+        if isinstance(answer, str) and len(answer) == 36 and answer.count("-") == 4:
+            return [term_element(answer, search_string)]
+        return answer
+
+    fake.find_metadata_elements_with_string.side_effect = _search
+    return fake
+
+
 def _reader_with_fake_classification_explorer(fake) -> SurveyDefinitionReader:
     from resource_explorer.surveyors import survey_definition_reader as sdr
 
     sdr.clear_caches()
     reader = _reader()
     reader._classification_explorer = fake  # short-circuits _connect_classification_explorer()
-    # _lookup_question_guid (unlike other ClassificationExplorer callers) goes
-    # through the thread-local path, which may construct on a shared-pool
-    # worker thread rather than this one (pyegeria ISSUE-96 mitigation) — stub
-    # the single construction seam so the fake is used no matter which thread
-    # asks for it, same as reader._classification_explorer does for the
-    # main-thread-cached path.
-    reader._new_classification_explorer = lambda: fake
+    # _lookup_question_guid goes through the thread-local MetadataExpert path, which may construct on a
+    # shared-pool worker thread rather than this one (pyegeria ISSUE-96 mitigation) — stub the single
+    # construction seam so the fake answers no matter which thread asks for it.
+    calls = fake.question_lookup_calls = []
+    expert = question_expert(fake._guid_by_name, calls)
+    reader._new_question_lookup_client = lambda: expert
     return reader
 
 
 class TestResolveQuestionGuid:
-    """D2 (docs/survey-question-context-plan.md) — Question name -> GUID
-    resolution via ClassificationExplorer.get_guid_for_name, long-TTL cached."""
+    """D2 (docs/survey-question-context-plan.md) — Question name -> GUID, long-TTL cached. Since 2026-10-23 a
+    TYPED string search (MetadataExpert.find_metadata_elements_with_string, GlossaryTerm, exact displayName,
+    DEPRECATED excluded), never `get_guid_for_name` (by-exact-property-value, 30 s on a grown repository)."""
 
     def test_resolves_known_question(self):
-        fake = _FakeClassificationExplorer(guid_by_name={"Is this repository actively maintained?": "q-guid-1"})
+        fake = _FakeClassificationExplorer(guid_by_name={"Is this repository actively maintained?": Q_GUID_1})
         reader = _reader_with_fake_classification_explorer(fake)
-        assert reader.resolve_question_guid("Is this repository actively maintained?") == "q-guid-1"
+        assert reader.resolve_question_guid("Is this repository actively maintained?") == Q_GUID_1
+
+    def test_the_search_is_typed_exact_and_element_local(self):
+        fake = _FakeClassificationExplorer(guid_by_name={"Q?": Q_GUID_1})
+        reader = _reader_with_fake_classification_explorer(fake)
+        assert reader.resolve_question_guid("Q?") == Q_GUID_1
+        (search, kw), = fake.question_lookup_calls
+        assert search == "Q?"
+        assert kw["metadata_element_type"] == "GlossaryTerm"
+        assert kw["starts_with"] is True and kw["ends_with"] is True and kw["ignore_case"] is False
+        assert kw["body"]["metadataElementTypeName"] == "GlossaryTerm" and kw["body"]["graphQueryDepth"] == 0
 
     def test_unknown_question_returns_none_not_raises(self):
         fake = _FakeClassificationExplorer()
@@ -356,43 +411,85 @@ class TestResolveQuestionGuid:
         assert reader.resolve_question_guid("Some question never authored in Egeria") is None
 
     def test_result_is_cached_across_calls(self):
-        fake = _FakeClassificationExplorer(guid_by_name={"Q": "guid-1"})
+        fake = _FakeClassificationExplorer(guid_by_name={"Q": Q_GUID_1})
         reader = _reader_with_fake_classification_explorer(fake)
-        assert reader.resolve_question_guid("Q") == "guid-1"
-        assert reader.resolve_question_guid("Q") == "guid-1"
-        assert fake.get_guid_for_name_calls == 1
+        assert reader.resolve_question_guid("Q") == Q_GUID_1
+        assert reader.resolve_question_guid("Q") == Q_GUID_1
+        assert len(fake.question_lookup_calls) == 1
 
-    def test_lookup_error_returns_none_not_raises(self):
-        class _Raising(_FakeClassificationExplorer):
-            def get_guid_for_name(self, name, **_kw):
-                raise RuntimeError("boom")
+    def test_lookup_error_raises_and_is_not_cached(self):
+        """FAIL-ON-PURPOSE: an Egeria error used to read as "no such question" (None, cached), which licensed
+        "contributes no scoping". It is unreadable: it raises, and the next call asks again."""
+        from pyegeria.core._exceptions import PyegeriaConnectionException
 
-        reader = _reader_with_fake_classification_explorer(_Raising())
+        fake = _FakeClassificationExplorer(guid_by_name={"Q": PyegeriaConnectionException()})
+        reader = _reader_with_fake_classification_explorer(fake)
+        with pytest.raises(sdr.QuestionTermUnreadable, match="could not be read"):
+            reader.resolve_question_guid("Q")
+        assert "Q" not in sdr._question_guid_cache
+        with pytest.raises(sdr.QuestionTermUnreadable):
+            reader.resolve_question_guid("Q")
+        assert len(fake.question_lookup_calls) == 2
+
+    def test_two_live_terms_with_the_name_are_unreadable(self):
+        fake = _FakeClassificationExplorer(guid_by_name={"Q": [term_element(Q1_GUID, "Q"), term_element(Q2_GUID, "Q")]})
+        reader = _reader_with_fake_classification_explorer(fake)
+        with pytest.raises(sdr.QuestionTermUnreadable, match="2 GlossaryTerm elements hold"):
+            reader.resolve_question_guid("Q")
+
+    def test_egeria_paths_skip_a_deprecated_term_and_return_the_active_one_with_the_same_name(self):
+        """FAIL-ON-PURPOSE (architect 2026-10-23, term Update batch prerequisite): the batch marks 11 retired or
+        merged question terms DEPRECATED and KEEPS their links. This filter covers exactly the paths that
+        resolve a question term in Egeria: the no-documents fallback (`_find_candidates_via_egeria`) and the
+        warm-up (`warm_question_guid_cache`). The main path (`find_candidate_process_guids_by_questions` over the
+        authored documents) never reads a term, so it relies on the YAML carrying no retired/merged rows,
+        pinned by test_question_catalog_reader's committed-catalog guard. Through the reader's real code path,
+        with an autospec'd MetadataExpert."""
+        both = [term_element(Q1_GUID, "Q", status="DEPRECATED"), term_element(Q2_GUID, "Q", status="ACTIVE")]
+        reader = _reader_with_fake_classification_explorer(_FakeClassificationExplorer(guid_by_name={"Q": both}))
+        assert reader.resolve_question_guid("Q") == Q2_GUID
+
+    def test_a_term_that_is_only_deprecated_does_not_resolve(self):
+        only = [term_element(Q1_GUID, "Q", status="DEPRECATED")]
+        reader = _reader_with_fake_classification_explorer(_FakeClassificationExplorer(guid_by_name={"Q": only}))
+        assert reader.resolve_question_guid("Q") is None
+
+    def test_a_term_whose_instance_status_is_deprecated_does_not_resolve_either(self):
+        term = term_element(Q1_GUID, "Q")
+        term["status"] = "DEPRECATED"
+        reader = _reader_with_fake_classification_explorer(_FakeClassificationExplorer(guid_by_name={"Q": [term]}))
         assert reader.resolve_question_guid("Q") is None
 
     def test_pyegeria_not_found_sentence_is_not_treated_as_a_guid(self):
-        """Regression: pyegeria signals "no match" by returning the *string*
-        "No elements found", not None — a truthy value that passed straight
-        through the old `or None` guard and was handed onward as if it were a
-        GUID. It then reached get_scoped_elements() as a URL path segment, 404'd,
-        and the caller's broad except swallowed it — silently downgrading the
-        scoped fast path to the full scan on every call.
-
-        This escaped the suite because the fake above returns None on a miss,
-        i.e. it was better behaved than the real library; this test pins the
-        real behavior instead."""
+        """Regression: pyegeria signals "no match" by returning the *string* "No elements found"; it is the miss,
+        never a GUID handed onward to get_scoped_elements()."""
         fake = _FakeClassificationExplorer(guid_by_name={"Q": "No elements found"})
         reader = _reader_with_fake_classification_explorer(fake)
         assert reader.resolve_question_guid("Q") is None
 
-    def test_non_string_lookup_result_is_not_treated_as_a_guid(self):
+    def test_an_answer_of_another_shape_is_unreadable_not_a_miss(self):
         fake = _FakeClassificationExplorer(guid_by_name={"Q": {"guid": "x"}})
         reader = _reader_with_fake_classification_explorer(fake)
+        with pytest.raises(sdr.QuestionTermUnreadable):
+            reader.resolve_question_guid("Q")
+
+    def test_the_value_in_another_property_is_not_a_match(self):
+        """An exact like-match hits ANY string property; only the displayName counts."""
+        term = term_element(Q1_GUID, "something else")
+        term["elementProperties"]["propertiesAsStrings"]["summary"] = "Q"
+        reader = _reader_with_fake_classification_explorer(_FakeClassificationExplorer(guid_by_name={"Q": [term]}))
         assert reader.resolve_question_guid("Q") is None
+
+    def test_get_guid_for_name_is_never_called(self):
+        """The slow by-exact-property-value search: the ClassificationExplorer fake would count it."""
+        fake = _FakeClassificationExplorer(guid_by_name={"Q": Q_GUID_1})
+        reader = _reader_with_fake_classification_explorer(fake)
+        reader.resolve_question_guid("Q")
+        assert fake.get_guid_for_name_calls == 0
 
 
 class _CountingClassificationExplorerFactory:
-    """Records one fresh fake per call to ``_new_classification_explorer``,
+    """Records one fresh fake per call to ``_new_question_lookup_client``,
     and which thread asked for it — for pinning per-thread client identity
     (pyegeria ISSUE-96 mitigation) without touching real pyegeria/network."""
 
@@ -413,18 +510,19 @@ class TestThreadLocalClassificationExplorer:
     one ClassificationExplorer (and so one httpx.AsyncClient / event loop)
     across threads — see the mechanism note on
     SurveyDefinitionReader._thread_local_explorer (__init__) and on
-    _thread_local_classification_explorer for the measured before/after
+    _thread_local_question_lookup_client for the measured before/after
     (100% failure shared -> 0% failure per-thread, 52 names x 2 runs)."""
 
     def test_different_threads_get_different_clients(self):
         factory = _CountingClassificationExplorerFactory()
         reader = _reader()
-        reader._new_classification_explorer = factory
+        reader._new_question_lookup_client = factory
+        reader.principal()   # Brief I: resolved in the calling thread, as the pooled path does
 
         seen = {}
 
         def call(key):
-            seen[key] = reader._thread_local_classification_explorer()
+            seen[key] = reader._thread_local_question_lookup_client()
 
         t1 = threading.Thread(target=call, args=("t1",))
         t2 = threading.Thread(target=call, args=("t2",))
@@ -439,13 +537,14 @@ class TestThreadLocalClassificationExplorer:
     def test_same_thread_reuses_its_own_client(self):
         factory = _CountingClassificationExplorerFactory()
         reader = _reader()
-        reader._new_classification_explorer = factory
+        reader._new_question_lookup_client = factory
+        reader.principal()   # Brief I: resolved in the calling thread, as the pooled path does
 
         seen = []
 
         def call_twice():
-            seen.append(reader._thread_local_classification_explorer())
-            seen.append(reader._thread_local_classification_explorer())
+            seen.append(reader._thread_local_question_lookup_client())
+            seen.append(reader._thread_local_question_lookup_client())
 
         t = threading.Thread(target=call_twice)
         t.start()
@@ -470,42 +569,37 @@ class TestThreadLocalClassificationExplorer:
         assert reader._connect_classification_explorer() is fake
 
     def test_a_lookup_failure_on_one_thread_does_not_poison_another_threads_client(self):
-        class _FlakyThenFine:
-            """First construction raises on every call; every construction
-            after that succeeds — models one thread's client going bad
-            without affecting a client built fresh on another thread."""
+        """First construction's client raises on every call; every construction after that succeeds — one
+        thread's client going bad without affecting a client built fresh on another thread."""
+        constructed = []
 
-            _constructed = 0
-
-            def __init__(self):
-                _FlakyThenFine._constructed += 1
-                self._is_first = _FlakyThenFine._constructed == 1
-
-            def create_egeria_bearer_token(self, *_a, **_kw):
-                pass
-
-            def get_guid_for_name(self, name, **_kw):
-                if self._is_first:
-                    raise RuntimeError("bound to a different event loop")
-                return "guid-from-second-thread"
+        def factory():
+            constructed.append(1)
+            if len(constructed) == 1:
+                return question_expert({"Q": RuntimeError("bound to a different event loop")})
+            return question_expert({"Q": Q_GUID_1})
 
         reader = _reader()
-        reader._new_classification_explorer = _FlakyThenFine
+        reader._new_question_lookup_client = factory
+        reader.principal()   # Brief I: resolved in the calling thread, as the pooled path does
 
         results = {}
 
         def call(key):
-            results[key] = reader._lookup_question_guid("Q")
+            try:
+                results[key] = reader._lookup_question_guid("Q")
+            except sdr.QuestionTermUnreadable as exc:
+                results[key] = exc
 
         t1 = threading.Thread(target=call, args=("t1",))
         t1.start()
         t1.join()
-        assert results["t1"] is None  # failure degrades to not-found, never raises
+        assert isinstance(results["t1"], sdr.QuestionTermUnreadable)  # unreadable, never "not found"
 
         t2 = threading.Thread(target=call, args=("t2",))
         t2.start()
         t2.join()
-        assert results["t2"] == "guid-from-second-thread"  # unaffected by t1's failure
+        assert results["t2"] == Q_GUID_1  # unaffected by t1's failure
 
 
 class TestFindCandidateProcessGuidsByQuestions:
@@ -538,9 +632,9 @@ class TestFindCandidateProcessGuidsByQuestions:
 
     def test_returns_scoped_survey_definitions_matching_technology_type(self):
         fake = _FakeClassificationExplorer(
-            guid_by_name={"Q1": "q1-guid"},
+            guid_by_name={"Q1": Q1_GUID},
             scoped_elements_by_guid={
-                "q1-guid": [
+                Q1_GUID: [
                     self._survey_definition_element("GovActionProcess::A", "Git Repository"),
                     self._survey_definition_element("GovActionProcess::B", "PostgreSQL Database", guid="sd-guid-2"),
                 ]
@@ -552,9 +646,9 @@ class TestFindCandidateProcessGuidsByQuestions:
 
     def test_survey_kind_filter_applied(self):
         fake = _FakeClassificationExplorer(
-            guid_by_name={"Q1": "q1-guid"},
+            guid_by_name={"Q1": Q1_GUID},
             scoped_elements_by_guid={
-                "q1-guid": [
+                Q1_GUID: [
                     self._survey_definition_element("GovActionProcess::A", "Git Repository", survey_kind="discovery"),
                     self._survey_definition_element("GovActionProcess::B", "Git Repository", survey_kind="automate_full", guid="g2"),
                 ]
@@ -566,10 +660,10 @@ class TestFindCandidateProcessGuidsByQuestions:
 
     def test_dedupes_survey_definition_scoped_by_multiple_questions(self):
         fake = _FakeClassificationExplorer(
-            guid_by_name={"Q1": "q1-guid", "Q2": "q2-guid"},
+            guid_by_name={"Q1": Q1_GUID, "Q2": Q2_GUID},
             scoped_elements_by_guid={
-                "q1-guid": [self._survey_definition_element("GovActionProcess::A", "Git Repository")],
-                "q2-guid": [self._survey_definition_element("GovActionProcess::A", "Git Repository")],
+                Q1_GUID: [self._survey_definition_element("GovActionProcess::A", "Git Repository")],
+                Q2_GUID: [self._survey_definition_element("GovActionProcess::A", "Git Repository")],
             },
         )
         reader = _reader_with_fake_classification_explorer(fake)
@@ -578,8 +672,8 @@ class TestFindCandidateProcessGuidsByQuestions:
 
     def test_result_is_cached_across_calls(self):
         fake = _FakeClassificationExplorer(
-            guid_by_name={"Q1": "q1-guid"},
-            scoped_elements_by_guid={"q1-guid": [self._survey_definition_element("GovActionProcess::A", "Git Repository")]},
+            guid_by_name={"Q1": Q1_GUID},
+            scoped_elements_by_guid={Q1_GUID: [self._survey_definition_element("GovActionProcess::A", "Git Repository")]},
         )
         reader = _reader_with_fake_classification_explorer(fake)
         reader._find_candidates_via_egeria(["Q1"], "Git Repository")
@@ -590,7 +684,7 @@ class TestFindCandidateProcessGuidsByQuestions:
         # pyegeria returns a bare string (e.g. "No elements found") instead
         # of a list when a query has no results — must not crash iterating it.
         fake = _FakeClassificationExplorer(
-            guid_by_name={"Q1": "q1-guid"},
+            guid_by_name={"Q1": Q1_GUID},
             scoped_elements_by_guid={},
         )
         fake.get_scoped_elements = lambda scope_guid, **_kw: "No elements found"
@@ -638,7 +732,7 @@ class TestSlowCallInstrumentation:
         from resource_explorer.surveyors import survey_definition_reader as sdr
 
         clock = _FakeClock()
-        fake = _FakeClassificationExplorer(guid_by_name={"Q1": "q1-guid"})
+        fake = _FakeClassificationExplorer(guid_by_name={"Q1": Q1_GUID})
         fake.get_scoped_elements = lambda scope_guid, **_kw: (clock.advance(6.0), [])[1]
         reader = _reader_with_fake_classification_explorer(fake)
 
@@ -654,8 +748,8 @@ class TestSlowCallInstrumentation:
         from resource_explorer.surveyors import survey_definition_reader as sdr
 
         fake = _FakeClassificationExplorer(
-            guid_by_name={"Q1": "q1-guid"},
-            scoped_elements_by_guid={"q1-guid": []},
+            guid_by_name={"Q1": Q1_GUID},
+            scoped_elements_by_guid={Q1_GUID: []},
         )
         reader = _reader_with_fake_classification_explorer(fake)
         with patch.object(sdr, "log") as mock_log:
@@ -674,7 +768,7 @@ class TestSlowCallInstrumentation:
 
         clock = _FakeClock()
         fake = _FakeClassificationExplorer(
-            guid_by_name={"Q1": "q1-guid", "Q2": "q2-guid", "Q3": "q3-guid"},
+            guid_by_name={"Q1": Q1_GUID, "Q2": Q2_GUID, "Q3": Q3_GUID},
         )
         fake.get_scoped_elements = lambda scope_guid, **_kw: (clock.advance(4.0), [])[1]
         reader = _reader_with_fake_classification_explorer(fake)

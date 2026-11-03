@@ -340,7 +340,7 @@ class TestRunDueDispatch:
 
         entries = registry.list_activity(entity_slug="mydb-not-cataloged")
         assert entries[0]["status"] == "error"
-        assert "not yet cataloged in Egeria" in entries[0]["detail"]
+        assert "not yet published to Egeria" in entries[0]["detail"]
 
     def test_discovery_candidate_dispatches_to_run_survey_definition(self, registry, registered_database_with_credentials):
         qualified_name = "PostgreSQLSurvey::custom-candidate"  # not in the local catalog
@@ -629,29 +629,27 @@ class TestRfaReconciliation:
         # confirming both steps run and a failure in one doesn't skip the
         # other (each already wrapped in its own try/except).
         calls = []
-        # _drain_egeria_outbox is patched too, and must be: the loop calls
-        # THREE things and this test patched two. The third makes a real
-        # Egeria call, so with a non-empty outbox the test blocks on the
-        # network — a unit test about call ordering, hanging the suite.
-        # Invisible until an outbox had rows in it, which is why it survived.
+        # The drain (and the read-back sweep) are patched to RECORD, and must not appear: since 2026-10-21 they run
+        # on the 60 s read-back loop, not on this tick (tests/test_readback_loop_and_count_label.py).
         with patch("resource_explorer.scheduler.time.sleep", side_effect=[None, KeyboardInterrupt]), \
              patch("resource_explorer.scheduler._run_due", side_effect=lambda: calls.append("run_due")), \
-             patch("resource_explorer.scheduler._drain_egeria_outbox", side_effect=lambda: calls.append("drain")), \
+             patch("resource_explorer.scheduler._drain_egeria_outbox", side_effect=lambda: calls.append("drain-ON-THE-TICK")), \
+             patch("resource_explorer.scheduler._sweep_native_surveys", side_effect=lambda: calls.append("sweep-ON-THE-TICK")), \
              patch("resource_explorer.scheduler._reconcile_rfa_actions", side_effect=lambda: calls.append("reconcile")):
             try:
                 scheduler._scheduler_loop()
             except KeyboardInterrupt:
                 pass
-        assert calls == ["run_due", "reconcile", "drain"]
+        assert calls == ["run_due", "reconcile"]
 
     def test_run_due_failure_does_not_prevent_reconciliation(self):
         calls = []
         with patch("resource_explorer.scheduler.time.sleep", side_effect=[None, KeyboardInterrupt]), \
              patch("resource_explorer.scheduler._run_due", side_effect=RuntimeError("boom")), \
-             patch("resource_explorer.scheduler._drain_egeria_outbox", side_effect=lambda: calls.append("drain")), \
+             patch("resource_explorer.scheduler._drain_egeria_outbox", side_effect=lambda: calls.append("drain-ON-THE-TICK")), \
              patch("resource_explorer.scheduler._reconcile_rfa_actions", side_effect=lambda: calls.append("reconcile")):
             try:
                 scheduler._scheduler_loop()
             except KeyboardInterrupt:
                 pass
-        assert calls == ["reconcile", "drain"]
+        assert calls == ["reconcile"]

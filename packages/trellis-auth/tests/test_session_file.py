@@ -181,3 +181,30 @@ def test_two_apps_do_not_share_a_session_file():
     session_file.save_session("resource-explorer", "erinoverview", _app_jwt(3600))
     assert session_file.load_session("egeria-advisor").user_id == "peterprofile"
     assert session_file.load_session("resource-explorer").user_id == "erinoverview"
+
+
+# ---------------------------------------------------------------------------
+# egeria_expires_at — is the session's end Egeria's word, or the app's cap?
+# ---------------------------------------------------------------------------
+
+def _app_jwt_carrying(egeria_token: str) -> str:
+    exp = datetime.now(timezone.utc) + timedelta(hours=8)
+    return jwt.encode({"sub": "peterprofile", "exp": exp, "egeria_token": egeria_token},
+                      "test-secret", algorithm="HS256")
+
+
+def test_egeria_expiry_is_read_from_the_carried_egeria_token():
+    egeria_exp = int((datetime.now(timezone.utc) + timedelta(hours=1)).timestamp())
+    egeria = jwt.encode({"sub": "peterprofile", "exp": egeria_exp}, "k", algorithm="HS256")
+    record = session_file.save_session("egeria-advisor", "peterprofile", _app_jwt_carrying(egeria))
+    assert record.egeria_expires_at == egeria_exp
+    assert record.egeria_expiry_known is True
+
+
+def test_an_undated_egeria_token_leaves_the_egeria_expiry_unknown():
+    """The 2026-10-20 case: the app JWT has an 8-hour exp of our own making, the
+    Egeria token inside it has none — expires_at is set, but it is not Egeria's."""
+    record = session_file.save_session("egeria-advisor", "peterprofile", _app_jwt_carrying("opaque-token"))
+    assert record.expires_at is not None
+    assert record.egeria_expires_at is None
+    assert record.egeria_expiry_known is False

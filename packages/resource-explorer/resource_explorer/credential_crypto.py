@@ -2,7 +2,7 @@
 
 Design context
 ---------------
-`docs/design-notes/REPLY-DATABASE-CREDENTIAL-CAPABILITY-VISIBILITY.md` §7
+`docs/design-notes/exchange/REPLY-DATABASE-CREDENTIAL-CAPABILITY-VISIBILITY.md` §7
 (the architecture session's ruling on the `ASK-DATABASE-CREDENTIAL-
 CAPABILITY-VISIBILITY.md` question): pyegeria only exposes
 `save_client_side_secret`/`delete_client_side_secret` — there is no read API
@@ -146,6 +146,30 @@ def encrypt_db_password(plaintext: str) -> str:
 
 def is_encrypted(stored: str) -> bool:
     return bool(stored) and stored.startswith(ENCRYPTED_PREFIX)
+
+
+class CredentialUnreadableError(ValueError):
+    """A stored credential exists but cannot be decrypted (wrong/rotated key).
+
+    The message is fixed and names only the slug: the underlying decrypt
+    error names the key env vars and is never carried here. Subclasses
+    ValueError so existing `except ValueError` callers keep working.
+    """
+
+    def __init__(self, slug: str = ""):
+        self.slug = slug
+        super().__init__(
+            f"credential unreadable: re-enter credentials for {slug}"
+            if slug else "credential unreadable: re-enter credentials"
+        )
+
+
+#: `DatabaseEntity.credential_status` values.
+CREDENTIAL_OK = "ok"
+CREDENTIAL_NONE = "none"
+CREDENTIAL_UNREADABLE = "unreadable"
+#: Fixed, secret-free reason string shown beside an unreadable credential.
+CREDENTIAL_UNREADABLE_REASON = "credential unreadable · re-enter credentials"
 
 
 def decrypt_db_password(stored: str) -> str:

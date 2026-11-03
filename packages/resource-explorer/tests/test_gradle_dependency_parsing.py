@@ -347,7 +347,7 @@ def test_the_real_egeria_checkout_yields_dependencies(tmp_path):
         )
 
     deps = [d for d in DependencyParser().parse(root, "egeria_git")
-            if d["source_file"].startswith("build.gradle")]
+            if d["source_file"].rsplit("/", 1)[-1].startswith("build.gradle")]
     assert len(deps) > 50, f"only {len(deps)} parsed from 229 build.gradle files"
     assert all(not d["dep_name"].startswith(":") for d in deps), "project() refs leaked in"
     assert all("$" not in d["dep_version"] for d in deps), "an unresolved variable reached dep_version"

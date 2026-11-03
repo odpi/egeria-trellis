@@ -2,7 +2,7 @@
 the lazy migration of pre-existing clear-text rows (registry.py), and the
 `.omsecrets` file projection + drift detection (omsecrets_store.py).
 
-Design context: docs/design-notes/REPLY-DATABASE-CREDENTIAL-CAPABILITY-
+Design context: docs/design-notes/exchange/REPLY-DATABASE-CREDENTIAL-CAPABILITY-
 VISIBILITY.md §7.
 """
 from __future__ import annotations

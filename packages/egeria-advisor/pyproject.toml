@@ -10,7 +10,7 @@ readme = "README.md"
 license = {text = "Apache-2.0"}
 
 dependencies = [
-    "pyegeria>=6.1.10",  # matches the Portal's (PyegeriaWebHandler) floor -- avoid client-version drift within the same demo stack
+    "pyegeria>=6.2.18",  # matches the Portal's (PyegeriaWebHandler) floor -- avoid client-version drift within the same demo stack; raised with trellis' floor 2026-10-31 (the Portal is on 6.2.18)
     "psycopg2-binary>=2.9.9",
     "pgvector>=0.3.0",
     "trellis-vectorstore",

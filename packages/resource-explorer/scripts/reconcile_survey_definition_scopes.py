@@ -89,7 +89,7 @@ cannot duplicate a step edge.
 def _emit_missing_document(path: Path, entries: list[tuple], generated_date: str) -> None:
     """Writes one Dr.Egeria subset document containing only the missing
     `Link Element To Scope` blocks, matching the header shape of
-    docs/dr-egeria/questions/arch-discovery-scope-links-2026-09-13.md.
+    docs/archive/dr-egeria-batches/arch-discovery-scope-links-2026-09-13.md.
     `entries` is a list of (survey_display_name, doc_filename, [missing question names])."""
     from resource_explorer.surveyors.dr_egeria_survey_publisher import render_scope_link_block
 
@@ -110,7 +110,7 @@ def _emit_missing_document(path: Path, entries: list[tuple], generated_date: str
     path.write_text(header + "\n---\n\n" + "\n___\n\n".join(blocks) + ("\n" if blocks else ""))
 
 
-def main() -> None:
+def _main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument(
         "--remove-extra", action="store_true",
@@ -198,7 +198,7 @@ def main() -> None:
         print(
             f"[{spec.survey_kind}] {process_qualified_name}: kept {len(result.kept)}, "
             f"missing {len(result.missing)}, extra {len(result.extra)}, "
-            f"unresolvable {len(result.unresolvable)}"
+            f"unresolvable {len(result.unresolvable)}, deprecated {len(result.deprecated)}"
         )
         if result.kept:
             print(f"    kept: {', '.join(result.kept)}")
@@ -206,6 +206,8 @@ def main() -> None:
             print(f"    missing: {', '.join(result.missing)}")
         if result.extra:
             print(f"    extra: {', '.join(e.display_name for e in result.extra)}")
+        for d in result.deprecated:   # reported, never removed, never counted as drift
+            print(f"    {d.label}: {d.display_name} (guid={d.guid})")
         if result.unresolvable:
             for u in result.unresolvable:
                 print(f"    unresolvable: guid={u.guid} type={u.type_name} qn={u.qualified_name} — {u.reason}")
@@ -237,6 +239,15 @@ def main() -> None:
         print(f"\nWrote {total_missing} missing scope link(s) to {out_path}")
 
     sys.exit(exit_code)
+
+
+def main() -> None:
+    """Run as RE's daemon: SurveyDefinitionReader resolves its principal from the calling context, and
+    a CLI has no signed-in person (NoCallerIdentity otherwise)."""
+    from resource_explorer.egeria_clients import Daemon, DaemonReason, acting_as
+
+    with acting_as(Daemon(DaemonReason.BOOTSTRAP)):
+        return _main()
 
 
 if __name__ == "__main__":

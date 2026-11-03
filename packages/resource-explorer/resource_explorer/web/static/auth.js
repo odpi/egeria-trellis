@@ -67,6 +67,9 @@ const Auth = (() => {
   // and being wrong means starting the app into a page where every panel is a
   // failed fetch, which is the broken page this exists to prevent.
   let loginRequired = true;
+  // Also assumed off until the server says otherwise: "Continue without signing in" is only honest where
+  // reading without signing in works.
+  let anonymousRead = false;
 
   async function loadPolicy() {
     try {
@@ -74,6 +77,7 @@ const Auth = (() => {
       if (!r.ok) return;
       const data = await r.json();
       loginRequired = data.login_required !== false;
+      anonymousRead = data.anonymous_read === true;
     } catch {
       // Server unreachable — keep the safe default.
     }
@@ -101,6 +105,7 @@ const Auth = (() => {
     if (loginRequired && !isAuthenticated()) return;
     const overlay = document.getElementById('login-overlay');
     if (overlay) overlay.style.display = 'none';
+    document.dispatchEvent(new CustomEvent('re:login-closed'));
     document.getElementById('login-message')?.classList.add('hidden');
     const err = document.getElementById('login-error');
     if (err) { err.textContent = ''; err.classList.add('hidden'); }
@@ -164,9 +169,15 @@ const Auth = (() => {
     }
   }
 
-  function doLogout() {
+  async function doLogout() {
+    // The server drops what this sign-in held (the table-preview credential) only if the request says who is
+    // signing out, so the bearer goes on the POST BEFORE the token is cleared. The reload waits for the answer
+    // (bounded), or the browser could cancel the request before the server had acted on it.
+    const token = getToken();
+    const headers = token ? { Authorization: `Bearer ${token}` } : {};
+    const sent = _origFetch('/api/auth/logout', { method: 'POST', headers, keepalive: true }).catch(() => {});
     clearToken();
-    _origFetch('/api/auth/logout', { method: 'POST' }).catch(() => {});
+    await Promise.race([sent, new Promise((resolve) => setTimeout(resolve, 1500))]);
     // A full reload rather than a re-render: the page is full of data the
     // signed-out user should no longer be looking at, and clearing it panel by
     // panel is a list nobody keeps up to date.
@@ -297,6 +308,9 @@ const Auth = (() => {
     }
 
     await prefillLoginDefaults();
+    // With anonymous read off the button could only do nothing (hideLogin refuses), so it is not offered.
+    const dismiss = document.getElementById('login-dismiss-btn');
+    if (dismiss) dismiss.style.display = anonymousRead ? '' : 'none';
     if (loginRequired) {
       appStartDeferred = true;
       showLogin('Sign in with your Egeria user id to continue.');

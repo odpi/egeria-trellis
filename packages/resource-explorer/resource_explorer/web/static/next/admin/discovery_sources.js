@@ -1,4 +1,6 @@
-/* Admin → Discovery Sources — "where do we scout," as named, reusable
+/* Admin → Repository discovery sources (renamed 2026-10-01: it is GitHub-only
+ * and the label must not promise databases until the Find dialog's Saved
+ * sources tab takes over; REPLY-DESIGNER-DISCOVERY-SOURCES-ALL-KINDS.md §6) — "where do we scout," as named, reusable
  * configs (SPEC-ADMIN-THE-FOUR-GAPS.md §3).
  *
  * The central point of that spec section: web/routes/discovery.py already
@@ -28,14 +30,14 @@
  * following this spec's own "name what it does NOT touch" rule (classic's
  * "This does not delete your files on disk" line, §0).
  *
- * Classic has three ways to add a source (_saveGithubSource,
+ * Classic had three ways to add a source (_saveGithubSource,
  * _quickAddListSource, _saveCurrentSearchAsSource — index.html's Scouting ->
- * Discover view). Checked against the actual code, not guessed:
- * `_saveGithubSource` does NOT create a discovery source at all — it posts
- * to `/api/discovery/github-base-url`, the GitHub API endpoint override
- * (e.g. for GitHub Enterprise). It is unrelated config that happens to sit
- * on the same panel; porting it here as an "add a source" path would be
- * wrong. The other two are real and both built below:
+ * Discover view). `_saveGithubSource` did not create a discovery source at
+ * all: it set the GitHub API endpoint override (e.g. for GitHub Enterprise),
+ * unrelated config that sat on the same panel. That override is removed
+ * (PI-084): `GITHUB_BASE_URL` in `.env` is the single source, so there is
+ * nothing to port or to add here.
+ * The other two are real and both built below:
  *
  *   - _quickAddListSource -> the "Quick add" tab (one click: create with an
  *     empty URL list + fetch_kind, then refresh-apply to populate it).
@@ -50,6 +52,7 @@
  *     DISCOVERY-SOURCES-ADMIN-IMPLEMENTED.md, not invented here.
  */
 import { esc } from '/static/next/app.js';
+import { inPageConfirm, inPageNotice } from '/static/next/confirm-dialog.js';
 import {
   listDiscoverySources, createDiscoverySource, deleteDiscoverySource,
   runDiscoverySource, previewSourceRefresh, applySourceRefresh,
@@ -107,7 +110,7 @@ function sourcesTableHtml() {
     return '<p class="py-s4 text-center text-caveat text-ink-muted">No discovery sources yet — add one below.</p>';
   }
   const rows = _sources.map((s) => `
-    <tr class="border-b border-rule hover:bg-paper-raised">
+    <tr class="border-b border-rule hover:bg-paper-surface">
       <td class="py-s2 pr-s3 text-caveat text-ink">${esc(s.display_name)}</td>
       <td class="py-s2 pr-s3 font-mono text-provenance text-accent-ink">${esc(s.slug)}</td>
       <td class="py-s2 pr-s3 text-caveat text-ink-muted">${s.source_type === 'list' ? '📋 list' : '🔍 search'}</td>
@@ -149,7 +152,7 @@ function searchFormHtml() {
     : add.previewError
       ? `<p class="mt-s2 text-caveat text-state-warn">${esc(add.previewError)}</p>`
       : add.preview
-        ? `<div class="mt-s2 rounded-sm border border-rule bg-paper-raised p-s2">
+        ? `<div class="mt-s2 rounded-sm border border-rule bg-paper-surface p-s2">
             <p class="text-caveat text-ink">Found ${add.preview.length} repo${add.preview.length === 1 ? '' : 's'}${
               add.preview.length ? ': ' + esc(add.preview.slice(0, 5).map((r) => r.full_name).join(', ')) + (add.preview.length > 5 ? ', …' : '') : ''
             }</p>
@@ -232,7 +235,7 @@ function quickAddHtml() {
 
 function addFormHtml() {
   return `
-    <div class="mt-s4 rounded-sm border border-rule bg-paper-raised p-s3">
+    <div class="mt-s4 rounded-sm border border-rule bg-paper-surface p-s3">
       <div class="mb-s2 flex items-center gap-s2">
         <span class="text-caps uppercase tracking-caps text-ink-muted">+ Add a source</span>
         ${addTabBtn('search', '🔍 Search & save')}
@@ -247,7 +250,7 @@ function addFormHtml() {
 function runPanelHtml() {
   if (!run.slug) return '';
   if (run.busy && run.repos === null) {
-    return `<div class="mt-s4 rounded-sm border border-rule bg-paper-raised p-s3">
+    return `<div class="mt-s4 rounded-sm border border-rule bg-paper-surface p-s3">
       <p class="text-caveat text-ink-muted">Running "${esc(run.displayName)}"…</p></div>`;
   }
   if (run.repos === null) return '';
@@ -262,7 +265,7 @@ function runPanelHtml() {
       <td class="py-s1 pr-s2 text-provenance text-ink-muted">${r.stars}★</td>
       <td class="py-s1 pr-s2 text-provenance text-ink-muted">${r.already_registered ? 'already registered' : esc(r.disposition || '')}</td>
     </tr>`).join('');
-  return `<div class="mt-s4 rounded-sm border border-rule bg-paper-raised p-s3">
+  return `<div class="mt-s4 rounded-sm border border-rule bg-paper-surface p-s3">
     <div class="mb-s2 flex items-center justify-between">
       <span class="text-caveat text-ink">Results for "${esc(run.displayName)}" — ${fresh} new, ${already} already registered</span>
       <button type="button" data-close-run class="cursor-pointer text-provenance text-ink-muted hover:text-ink">✕ close</button>
@@ -285,11 +288,12 @@ function runPanelHtml() {
 function render() {
   if (!_host) return;
   _host.innerHTML = `
-    <h3 class="m-0 font-heading text-name font-normal text-ink">🔍 Discovery Sources</h3>
+    <h3 class="m-0 font-heading text-name font-normal text-ink">🔍 Repository discovery sources</h3>
     <p class="mt-[2px] max-w-[65ch] text-caveat text-ink-muted">Named, reusable "where do we scout" configs —
       a saved GitHub search, or a curated list of repos (for foundations that spread projects across many orgs,
       like Eclipse, or your own enterprise repos). Running a source only shows candidates for review here — it
       does not register anything until you pick which ones and confirm.</p>
+    <p data-github-env-note class="mt-s1 max-w-[65ch] text-caveat text-ink-muted">GitHub's base URL comes from <code class="font-mono">GITHUB_BASE_URL</code> in .env. It is not set here.</p>
     <div class="mt-s3 rounded-sm border border-rule">${sourcesTableHtml()}</div>
     ${addFormHtml()}
     ${runPanelHtml()}`;
@@ -371,8 +375,8 @@ async function doCreateList() {
 async function doQuickAdd(fetchKind, label) {
   const displayName = label || fetchKind;
   const slug = slugify(displayName);
-  if (!window.confirm(`Add "${displayName}"? This creates a discovery source and immediately fetches its `
-    + 'current project list from its own index — no import happens yet, this only populates the saved list.')) return;
+  if (!(await inPageConfirm({ message: `Add "${displayName}"? This creates a discovery source and immediately fetches its `
+    + 'current project list from its own index — no import happens yet, this only populates the saved list.', confirmLabel: 'Confirm' }))) return;
   add.message = `Adding ${displayName}…`;
   render();
   try {
@@ -419,7 +423,7 @@ async function doImportSelected() {
   }
   const group = _groups.find((g) => g.slug === run.groupSlug);
   const dest = group ? `group "${group.display_name}"` : 'no group';
-  if (!window.confirm(`Import ${picked.length} repo${picked.length === 1 ? '' : 's'} into ${dest}?`)) return;
+  if (!(await inPageConfirm({ message: `Import ${picked.length} repo${picked.length === 1 ? '' : 's'} into ${dest}?`, confirmLabel: 'Confirm' }))) return;
   run.busy = true;
   run.message = 'Queuing import…';
   render();
@@ -439,35 +443,35 @@ async function doRefresh(slug) {
   try {
     preview = await previewSourceRefresh(slug);
   } catch (err) {
-    window.alert(`Could not preview refresh: ${err.message}`);
+    await inPageNotice({ message: `Could not preview refresh: ${err.message}` });
     return;
   }
   if (!preview.added.length && !preview.removed.length) {
-    window.alert(`Already up to date (${preview.fetched_count} URLs).`);
+    await inPageNotice({ title: 'Nothing to do', message: `Already up to date (${preview.fetched_count} URLs).` });
     return;
   }
   const msg = `Fetched ${preview.fetched_count} URL(s) (currently ${preview.current_count} saved):\n`
     + `+ ${preview.added.length} added\n- ${preview.removed.length} removed\n\nApply these changes?`;
-  if (!window.confirm(msg)) return;
+  if (!(await inPageConfirm({ message: msg, confirmLabel: 'Confirm' }))) return;
   try {
     await applySourceRefresh(slug);
   } catch (err) {
-    window.alert(`Refresh failed: ${err.message}`);
+    await inPageNotice({ message: `Refresh failed: ${err.message}` });
     return;
   }
   await reload();
 }
 
 async function doDelete(slug, name) {
-  if (!window.confirm(`Remove discovery source "${name}"? This only deletes the saved search/list config — `
+  if (!(await inPageConfirm({ message: `Remove discovery source "${name}"? This only deletes the saved search/list config — `
     + 'it does not affect any repositories already imported from it (they live in the registry independently '
-    + 'of the source that found them).')) return;
+    + 'of the source that found them).', confirmLabel: 'Confirm' }))) return;
   try {
     await deleteDiscoverySource(slug);
     if (run.slug === slug) { run.slug = ''; run.repos = null; }
     await reload();
   } catch (err) {
-    window.alert(`Failed to delete: ${err.message}`);
+    await inPageNotice({ message: `Failed to delete: ${err.message}` });
   }
 }
 

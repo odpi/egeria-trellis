@@ -196,7 +196,7 @@ def note_divergence(
             entity_slug=entity_slug,
             entity_name=entity_name or entity_slug,
             status="error",
-            summary=f"Egeria catalog link for '{entity_name or entity_slug}' is stale",
+            summary=f"Egeria link for '{entity_name or entity_slug}' is stale",
             detail=(
                 f"RE's stored Egeria GUID ({stale_guid or 'unknown'}) is not known to "
                 "the repository, so surveys and publishes for this resource will keep "
@@ -234,10 +234,37 @@ def guard_linkage(registry, entity_type: str, entity_slug: str, entity_name: str
     except StaleEgeriaLinkageError:
         raise
     except Exception as exc:
-        if not is_unknown_guid_error(exc):
+        from resource_explorer.surveyors.egeria_publisher import PrivateReportNotConfirmed
+        from resource_explorer.workflows.curate import WriteNotPermitted
+
+        # Brief Z2 round 3: an access refusal is never a stale link, whatever its words say. Nor is
+        # a private report that could not be confirmed private (2026-10-13), whose reason may quote
+        # a read error about the NEW report, not the cached GUID.
+        if isinstance(exc, (WriteNotPermitted, PrivateReportNotConfirmed)) or not is_unknown_guid_error(exc):
             raise
         raise note_divergence(
             registry, entity_type, entity_slug, entity_name, stale_guid, exc) from exc
+
+
+def record_linkage_verdict(registry, entity_type: str, entity_slug: str, guid: str,
+                           resolves: bool, detail: str = "") -> str:
+    """Write the linkage-table half of a live check, in both directions.
+
+    The one place that turns "does this cached GUID resolve?" into the
+    `egeria_linkage_status` row, shared by `recheck_all_linkages` (CLI sweep)
+    and the scheduled resync pass (`egeria_resync._do_flag_stale_dbfs_assets`)
+    so the two cannot drift apart.
+
+    `resolves=False` flags the row stale and NEVER touches the GUID ("published
+    once" history survives). `resolves=True` clears any recorded flag. There is
+    deliberately no third value: an undetermined lookup (unreachable Egeria,
+    auth failure) must not reach this function at all — callers skip it.
+    Writes nothing to Egeria. Returns "flagged", "cleared" or "unchanged".
+    """
+    if not resolves:
+        registry.mark_egeria_linkage_stale(entity_type, entity_slug, guid, detail)
+        return "flagged"
+    return "cleared" if registry.clear_egeria_linkage_status(entity_type, entity_slug) else "unchanged"
 
 
 def _iter_linked_resources(registry, entity_types):
@@ -263,6 +290,93 @@ def _iter_linked_resources(registry, entity_types):
         for fs in registry.list_filesystems():
             if fs.egeria_asset_guid:
                 yield "filesystem", fs.slug, fs.display_name, fs.egeria_asset_guid
+
+
+
+STALE_LINKS_RFA_NAME = "Egeria links"
+STALE_LINKS_RFA_ANALYSIS = "Egeria stale links"
+_STALE_LINKS_SUMMARY_MARK = "Egeria link(s) are stale"
+
+
+def _open_stale_links_rfas(registry) -> list[tuple[str, int]]:
+    """(entry_id, annotation_index) of every OPEN sweep-summary RFA (not completed, not dismissed).
+
+    Matched on the entity name and the summary wording, not only the analysis
+    name, so the ones raised before the stable name existed count too."""
+    overrides = registry.list_rfa_action_overrides()
+    dismissals = registry.active_rfa_dismissals()
+    found: list[tuple[str, int]] = []
+    for entry in registry.list_activity(operation="rfa", limit=2000):
+        if entry.get("entity_name") != STALE_LINKS_RFA_NAME or (entry.get("entity_slug") or ""):
+            continue
+        for idx, ann in enumerate(entry.get("annotations") or []):
+            if "RequestForAction" not in (ann.get("annotation_type") or ""):
+                continue
+            if _STALE_LINKS_SUMMARY_MARK not in (ann.get("summary") or ""):
+                continue
+            rfa_id = f"{entry['id']}::{idx}"
+            if (overrides.get(rfa_id) or {}).get("rfa_status") == "completed":
+                continue
+            if registry.rfa_dismissal_key(*registry.rfa_dismissal_subject(entry, ann, None)) in dismissals:
+                continue
+            found.append((entry["id"], idx))
+    return found
+
+
+def _sync_stale_links_rfa(registry, counts: dict, *, full_sweep: bool) -> None:
+    """Raise the sweep's summary RFA once, or resolve it when nothing is stale.
+
+    Uses only the existing RFA model (activity entries + rfa_actions), no DDL.
+    Stale found and one is already open: leave it, add nothing (its count may
+    lag; the per-resource verdict rows are the live truth). Stale found and
+    none open: raise one. Nothing stale on a FULL sweep that verified every
+    link (no errors): complete the open ones as the sweep, with a note saying
+    so. A partial or error-bearing sweep proves nothing about the rest, so it
+    resolves nothing."""
+    try:
+        open_rfas = _open_stale_links_rfas(registry)
+        if counts["stale"]:
+            if open_rfas:
+                return
+            from resource_explorer.activity_logger import log_rfa
+
+            names = ", ".join(d["slug"] for d in counts["details"]
+                              if d["result"] == "stale")[:400]
+            log_rfa(
+                registry=registry,
+                entity_type="repo",
+                entity_slug="",
+                entity_name=STALE_LINKS_RFA_NAME,
+                status="error",
+                summary=(f"{counts['stale']} Egeria link(s) are stale "
+                         f"— Egeria was most likely reset"),
+                analysis_name=STALE_LINKS_RFA_ANALYSIS,
+                detail=(
+                    f"A recheck sweep found {counts['stale']} of {counts['checked']} "
+                    f"cached Egeria GUID(s) no longer known to the repository"
+                    + (f", and could not verify {counts['errors']}" if counts["errors"] else "")
+                    + ". Survey results and annotations are kept. Resolve them from "
+                    "Admin \u25b8 Egeria Links — republish is usually right when only "
+                    "Egeria was reset and the resources themselves have not changed.\n\n"
+                    f"Affected: {names}"
+                ),
+            )
+        elif full_sweep and not counts["errors"] and open_rfas:
+            for entry_id, idx in open_rfas:
+                registry.upsert_rfa_action(
+                    rfa_id=f"{entry_id}::{idx}",
+                    entry_id=entry_id,
+                    annotation_index=idx,
+                    status="completed",
+                    activity_status="COMPLETED",
+                    assignee="recheck sweep",
+                    resolution_note=("Resolved by the recheck sweep: every cached Egeria link "
+                                     "verified, none stale."),
+                )
+    except Exception:
+        # Same rule as everywhere else here: failing to announce the finding
+        # must not discard the finding, which is already recorded above.
+        log.exception("Egeria recheck: could not raise or resolve the summary RFA")
 
 
 def recheck_all_linkages(registry, *, entity_types=None, progress=None,
@@ -301,7 +415,7 @@ def recheck_all_linkages(registry, *, entity_types=None, progress=None,
     """
     from pyegeria.omvs.metadata_expert import MetadataExpert
 
-    from resource_explorer.config import get_config
+    from resource_explorer.egeria_clients import current_principal, egeria_client
 
     resources = list(_iter_linked_resources(registry, entity_types))
     total = len(resources)
@@ -323,6 +437,8 @@ def recheck_all_linkages(registry, *, entity_types=None, progress=None,
     )
 
     if not resources:
+        if not dry_run:
+            _sync_stale_links_rfa(registry, counts, full_sweep=entity_types is None)
         return counts
 
     # Built once for the whole sweep — creating a client per resource would
@@ -352,15 +468,18 @@ def recheck_all_linkages(registry, *, entity_types=None, progress=None,
     # throughout — the column `egeria_asset_guid` and the publisher method
     # `_find_or_create_asset` predate the correction and were about a
     # SoftwareCapability, not an Asset. Both names are accurate again now.
-    cfg = get_config().egeria
-    element_client = MetadataExpert(cfg.view_server, cfg.platform_url,
-                                 cfg.user_id, cfg.user_password)
-    element_client.create_egeria_bearer_token()
+    #
+    # Who asks (Brief I): the route and the CLI run as the signed-in person — a GUID this user
+    # cannot see is stale *for them*; a resync pass declares Daemon(RESYNC) at its entry.
+    element_client = egeria_client(current_principal(), purpose="linkage recheck").of(MetadataExpert)
 
     for entity_type, slug, display_name, guid in resources:
         detail = {"entity_type": entity_type, "slug": slug, "guid": guid}
         try:
             element = element_client.get_metadata_element_by_guid(guid)
+            if element is None:
+                # No answer is not "not found" (pyegeria ISSUE-134): an error, never a stale verdict.
+                raise RuntimeError(f"Egeria gave no answer for {guid} (the client returned nothing)")
             # A string result is this client's "not found" sentinel rather than an
             # exception, so an absent element must be turned into one — otherwise
             # a missing GUID reads as a successful check.
@@ -381,8 +500,8 @@ def recheck_all_linkages(registry, *, entity_types=None, progress=None,
                     # there — the drawer is a queue of things a human should act
                     # on, and twenty rows describing one event is one thing to
                     # act on, not twenty. A single summary RFA is raised below.
-                    registry.mark_egeria_linkage_stale(
-                        entity_type, slug, guid, str(exc)[:2000])
+                    record_linkage_verdict(
+                        registry, entity_type, slug, guid, False, str(exc)[:2000])
             else:
                 counts["errors"] += 1
                 detail["result"] = "error"
@@ -397,42 +516,17 @@ def recheck_all_linkages(registry, *, entity_types=None, progress=None,
                 # fixed (republish/resurvey/manual repair, or Egeria's own
                 # recovery). Without this half, the sweep can only ever add
                 # rows, never remove ones that no longer apply.
-                registry.clear_egeria_linkage_status(entity_type, slug)
+                record_linkage_verdict(registry, entity_type, slug, guid, True)
 
         counts["checked"] += 1
         counts["details"].append(detail)
         if progress is not None:
             progress(counts["checked"], total, entity_type, slug)
 
-    # One RFA for the sweep, not one per resource. Raised only when something was
-    # actually found, and only on a real run — a dry run must leave no trace.
-    if counts["stale"] and not dry_run:
-        try:
-            from resource_explorer.activity_logger import log_rfa
-
-            names = ", ".join(d["slug"] for d in counts["details"]
-                              if d["result"] == "stale")[:400]
-            log_rfa(
-                registry=registry,
-                entity_type="repo",
-                entity_slug="",
-                entity_name="Egeria catalog links",
-                status="error",
-                summary=(f"{counts['stale']} Egeria catalog link(s) are stale "
-                         f"— Egeria was most likely reset"),
-                detail=(
-                    f"A recheck sweep found {counts['stale']} of {counts['checked']} "
-                    f"cached Egeria GUID(s) no longer known to the repository"
-                    + (f", and could not verify {counts['errors']}" if counts["errors"] else "")
-                    + ". Survey results and annotations are kept. Resolve them from "
-                    "Admin \u25b8 Egeria Links — republish is usually right when only "
-                    "Egeria was reset and the resources themselves have not changed.\n\n"
-                    f"Affected: {names}"
-                ),
-            )
-        except Exception:
-            # Same rule as everywhere else here: failing to announce the finding
-            # must not discard the finding, which is already recorded above.
-            log.exception("Egeria recheck: could not raise the summary RFA")
+    # One RFA for the sweep, not one per resource, and at most one OPEN one: a
+    # sweep that still sees the same stale links must not stack another identical
+    # request in the drawer. A dry run leaves no trace.
+    if not dry_run:
+        _sync_stale_links_rfa(registry, counts, full_sweep=entity_types is None)
 
     return counts

@@ -178,6 +178,15 @@ class StatsFetcher:
             stats["commits_fetched"] = count
         except Exception as exc:
             stats["commits_fetch_error"] = str(exc)
+        # The two contributor lists (12 months and all time, REVIEW-QUESTIONS-AND-ANALYTICS-2026-10-22.md, addendum 1): their own calls, counted
+        # and capped (contributors.MAX_CALLS per list), each stored whole or not at all.
+        try:
+            from resource_explorer import contributors
+
+            stats["contributors_fetch"] = contributors.fetch_contributors(
+                self.registry, self.client, slug, repo.full_name)
+        except Exception as exc:
+            stats["contributors_fetch_error"] = str(exc)
         return stats
 
     def _fetch_commits(

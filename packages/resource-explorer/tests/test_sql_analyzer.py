@@ -2,6 +2,9 @@ import pytest
 from unittest import mock
 from resource_explorer.surveyors.database.sql_analyzer import SqlAnalyzer
 
+# Brief I: these tests fake the Egeria clients; the code under test runs as a signed-in caller, as on a route.
+pytestmark = pytest.mark.usefixtures("signed_in_caller")
+
 def test_parse_dependencies():
     sql = """
     CREATE VIEW report AS

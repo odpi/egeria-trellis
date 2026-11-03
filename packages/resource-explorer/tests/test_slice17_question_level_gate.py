@@ -1,4 +1,4 @@
-"""Slice 17, item 3 (docs/design-notes/COORDINATOR-BRIEF-MULTI-RESOURCE.md,
+"""Slice 17, item 3 (docs/design-notes/exchange/COORDINATOR-BRIEF-MULTI-RESOURCE.md,
 Phase 1b row 17; docs/multi-resource-questions-design.md §18.3): a checkmark
 is withheld when the question is asked below `resource` level (`container`,
 `member`, `field` — design §18.3's engine-neutral vocabulary) and nothing
@@ -102,8 +102,9 @@ class TestWholeResourceRollupBelowResourceLevel:
         fl._check_level(env, {"levels": ["container", "member"]})
         assert env.answerable is True  # something real WAS measured
         assert env.level_mismatch is True
-        assert "subject_signals" in env.level_note
-        assert "rollup" in env.level_note
+        # Person words: the level named as the resource's own part, no "rollup" and no analysis id (item 6).
+        assert env.level_note == "Answered for the database as a whole, not schema by schema."
+        assert "rollup" not in env.level_note and "subject_signals" not in env.level_note
 
     def test_member_level_question_with_only_a_rollup_withholds_the_tick(self, monkeypatch):
         # coverage_signals's own real levels (question_catalog.yaml): ["member"].
@@ -113,6 +114,7 @@ class TestWholeResourceRollupBelowResourceLevel:
         env = _measured_envelope(["coverage_signals"])
         fl._check_level(env, {"levels": ["member"]})
         assert env.level_mismatch is True
+        assert env.level_note == "Answered for the database as a whole, not table by table."
 
     def test_the_real_preliminary_fit_row_names_all_four_contributing_ids(self, monkeypatch):
         # preliminary_fit's real question row names four analysis_ids, all
@@ -128,8 +130,9 @@ class TestWholeResourceRollupBelowResourceLevel:
         )
         fl._check_level(env, {"levels": ["container"]})
         assert env.level_mismatch is True
+        assert "as a whole" in env.level_note
         for aid in ("grain_determination", "subject_signals", "coverage_signals", "preliminary_fit"):
-            assert aid in env.level_note
+            assert aid not in env.level_note
 
 
 class TestNotGatedWhenItShouldNotBe:
@@ -193,8 +196,10 @@ class TestCapableButUnrenderedStillGates:
         env = _measured_envelope(["schema_inventory"])  # no headline -- the live bug
         fl._check_level(env, {"levels": ["container"]})
         assert env.level_mismatch is True
-        assert "schema_inventory" in env.level_note
-        assert "no reader shows them yet" in env.level_note
+        assert env.level_note == ("Answered for the database as a whole: the figures for each schema are stored but "
+                                  "not shown here yet.")
+        assert "schema_inventory" not in env.level_note  # person words, no analysis id (W16)
+        assert "are stored but not shown here yet" in env.level_note
         assert "rollup" not in env.level_note  # this is NOT the "nothing to show" case
 
     def test_the_note_distinguishes_stored_but_unrendered_from_no_data_at_all(self, monkeypatch):
@@ -208,8 +213,8 @@ class TestCapableButUnrenderedStillGates:
         env = _measured_envelope(["schema_inventory", "db_activity_signals"])
         fl._check_level(env, {"levels": ["container"]})
         assert env.level_mismatch is True
-        assert "schema_inventory" in env.level_note
-        assert "no reader shows them yet" in env.level_note
+        assert "schema_inventory" not in env.level_note  # person words, no analysis id (W16)
+        assert "are stored but not shown here yet" in env.level_note
 
     def test_a_headline_on_one_capable_analysis_is_enough_even_with_others_unrendered(self, monkeypatch):
         fl = _fact_layer(monkeypatch, [
@@ -278,8 +283,7 @@ class TestRealCatalogAgreesWithTheLiveBugReport(object):
 class TestRealCatalogAgreesWithTheSlice17bLiveBugReport:
     """Confirms, against the real catalog on disk, that the coco_pharma
     gate's original regression is now closed: `schema_inventory` was given
-    a real headline_reader (docs/design-notes/
-    ENUMERATION-FLOOR-AND-COLLECTOR-HONESTY-IMPLEMENTED.md's follow-up)
+    a real headline_reader (ENUMERATION-FLOOR-AND-COLLECTOR-HONESTY-IMPLEMENTED.md's follow-up)
     that names actual schemas, not just a count -- see
     `test_schema_inventory_headline.py` for the headline's own content
     tests. The mechanism test below (no headline at all -> gate fires) is
@@ -338,7 +342,7 @@ class TestRealCatalogAgreesWithTheSlice17bLiveBugReport:
         )
         fl._check_level(env, row)
         assert env.level_mismatch is True
-        assert "no reader shows them yet" in env.level_note
+        assert "are stored but not shown here yet" in env.level_note
 
     def test_how_big_is_this_database_still_passes_via_row_count_snapshots_headline(self, monkeypatch):
         """The gate's other half (item c): "How big is this database" must

@@ -6,7 +6,7 @@ per ASSESSMENT-CHAT.md §2), and the three follow-ups from that assessment's
 loop item 8 built.
 
 No browser verification of a signed-in session happened for this file — see
-docs/design-notes/ITEM-9-CHAT-IMPLEMENTED.md for what was and was not
+ITEM-9-CHAT-IMPLEMENTED.md for what was and was not
 checked live. These tests grep/slice function bodies out of the source, the
 established pattern for /next JS modules without a browser — see
 test_next_understanding_pane.py and test_next_admin_pane.py's identical
@@ -30,6 +30,16 @@ def _chat():
 
 def _api():
     return (STATIC / "re-api.js").read_text(encoding="utf-8")
+
+
+class TestRailTurnLabel:
+    """The open turn's caption is a status, not an action: "open in pane" read as a link that did nothing
+    (owner, 2026-10-26), because the turn it labels is already the one the pane shows."""
+
+    def test_the_open_turn_says_it_is_shown_in_the_pane(self):
+        src = _chat()
+        assert "' · shown in pane'" in src
+        assert "' · open in pane'" not in src
 
 
 class TestExtraction:
@@ -106,7 +116,7 @@ class TestPlacementRailKeepsProvenanceOnly:
         because ASSESSMENT-CHAT.md §2 says "prose, chart, diagram, table --
         all four forms get the width they were built for.\""""
         chat = _chat()
-        submit = chat[chat.index("export async function submitAsk()"):]
+        submit = chat[chat.index("export async function submitAsk("):]
         # promoteChatTurn is called once to open the pane immediately, and
         # again after the answer (streamed or not) has fully landed.
         assert submit.count("promoteChatTurn(turn)") >= 2
@@ -154,20 +164,20 @@ class TestUseTheStream:
 
     def test_submitask_consumes_the_stream_by_default(self):
         chat = _chat()
-        submit = chat[chat.index("export async function submitAsk()"):]
+        submit = chat[chat.index("export async function submitAsk("):]
         assert "for await (const evt of askStream(q, opts))" in submit
         assert "evt.t === 'chunk'" in submit
         assert "evt.t === 'done'" in submit
 
     def test_a_stream_failure_before_any_chunk_falls_back_to_the_blocking_ask(self):
         chat = _chat()
-        submit = chat[chat.index("export async function submitAsk()"):]
+        submit = chat[chat.index("export async function submitAsk("):]
         assert "sawChunk" in submit
         assert "await ask(q, opts)" in submit
 
     def test_partial_text_is_kept_rather_than_discarded_on_a_late_failure(self):
         chat = _chat()
-        submit = chat[chat.index("export async function submitAsk()"):]
+        submit = chat[chat.index("export async function submitAsk("):]
         assert "stream ended early" in submit
 
     def test_streaming_text_updates_the_open_pane_without_a_full_rerender(self):
@@ -242,3 +252,21 @@ class TestNotBuildingTheDeferredRecordIdea:
         assert "saveReport" not in chat
         assert "actOnRecord" not in chat
         assert "listRecords" not in chat
+
+
+class TestGapsHeaderSaysNoStoredResultOnce:
+    """The gaps header read "3 with no stored result would answer this, with
+    no stored result": gapsHeadCue's cue already says it, so the trailing
+    caption must not repeat it."""
+
+    def test_the_caption_after_the_gaps_cue_does_not_repeat_no_stored_result(self):
+        chat = _chat()
+        head = chat[chat.index("${gapsHeadCue(gaps)}"):]
+        head = head[:head.index("</div>")]
+        assert "would answer this</span>" in head
+        assert "no stored result" not in head
+
+    def test_the_cue_itself_still_says_no_stored_result(self):
+        chat = _chat()
+        cue_fn = chat[chat.index("function gapsHeadCue("):chat.index("function evidenceStateHtml(")]
+        assert "with no stored result" in cue_fn

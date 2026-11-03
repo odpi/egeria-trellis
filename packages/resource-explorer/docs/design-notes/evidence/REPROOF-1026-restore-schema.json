@@ -1,0 +1,34 @@
+{
+ "mode": "restore",
+ "at": "2026-10-26T21:47:10+00:00",
+ "identity": "resourceexplorernpa",
+ "requested_by": "owner (peterprofile) via the Monday coordinator 2026-10-26: leave-out re-proof",
+ "elements": {
+  "87b8fb6b-3898-4c84-97c0-1b8e7cdb4082": {
+   "before": {
+    "plain": "ERR PyegeriaAPIException: \n\n=> \tSERVER_ERROR_500\n=>\tEgeria detected error: `https://localhost:9443/servers/qs-view-server/api/open-metadata/metadata-expert/metadata-elements/87b8fb6b-389",
+    "lineage": {
+     "type": "DeployedDatabaseSchema",
+     "status": "ACTIVE",
+     "qualifiedName": "PostgreSQL Relational Database Schema::host.docker.internal:5432::re_reproof_postreset_1025.alpha_archivedOn_Mon Oct 26 21:46:02 GMT 2026",
+     "updatedBy": "peterprofile"
+    }
+   },
+   "action": "restored",
+   "after": {
+    "plain": {
+     "type": "DeployedDatabaseSchema",
+     "status": "ACTIVE",
+     "qualifiedName": "PostgreSQL Relational Database Schema::host.docker.internal:5432::re_reproof_postreset_1025.alpha",
+     "updatedBy": "resourceexplorernpa"
+    },
+    "lineage": {
+     "type": "DeployedDatabaseSchema",
+     "status": "ACTIVE",
+     "qualifiedName": "PostgreSQL Relational Database Schema::host.docker.internal:5432::re_reproof_postreset_1025.alpha",
+     "updatedBy": "resourceexplorernpa"
+    }
+   }
+  }
+ }
+}

@@ -74,6 +74,9 @@ _MEASURE_TYPES = {
 }
 
 
+from resource_explorer.surveyors.survey_report import step_of  # noqa: E402
+
+
 class EgeriaAnnotationMaterializer:
     """Reads a SurveyReport's annotations out of Egeria and stores them locally."""
 
@@ -264,7 +267,7 @@ class EgeriaAnnotationMaterializer:
         except ImportError:  # pragma: no cover - defensive
             return UNATTRIBUTED_KIND
 
-        step = (annotation.get("analysis_step") or "").strip()
+        step = step_of(annotation).strip()   # producingStep first; analysisStep for older reports
         if step:
             for analysis_id, step_keys in REPO_ANALYSIS_STEP_MAP.items():
                 if step in step_keys:

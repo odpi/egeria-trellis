@@ -31,8 +31,11 @@ class CompileRequest(BaseModel):
     purposes: list[str] = []
     perspectives: list[str] = []
     #: Characters, not tokens. The caller owns the conversion, because only it
-    #: knows which model the context is for.
-    budget: int = 8000
+    #: knows which model the context is for. Omitted, it is the tier's
+    #: compile_evidence_budget_chars -- the budget the Ask path compiles with,
+    #: so a preview names the evidence the answer will get. (It was a fixed
+    #: 8000 here while Ask used 6000, and the two could list different sections.)
+    budget: int | None = None
     target_model: str = ""
 
 
@@ -47,6 +50,7 @@ class CompileResponse(BaseModel):
 
 @router.post("/compile", response_model=CompileResponse)
 async def compile_endpoint(request: CompileRequest) -> CompileResponse:
+    from resource_explorer.config import get_llm_tier_config
     from resource_explorer.context_compile import compile_context
     from resource_explorer.registry import ProjectRegistry
 
@@ -79,7 +83,8 @@ async def compile_endpoint(request: CompileRequest) -> CompileResponse:
             registry, request.resource_slug, request.question,
             resource_type=request.entity_type,
             purposes=request.purposes, perspectives=request.perspectives,
-            budget=request.budget, target_model=request.target_model,
+            budget=request.budget if request.budget is not None else get_llm_tier_config().compile_evidence_budget_chars,
+            target_model=request.target_model,
         )
     except Exception as exc:
         # A compile that cannot satisfy its own spec is a 422, not a 500: the

@@ -85,7 +85,7 @@ class DependencySurveyor(BaseSurveyor):
             explanation = (
                 "project_dependencies is written only by the ingestion pipeline, "
                 "never by a survey step. A repo that ships a manifest and records no "
-                "dependencies has not been analysed — this is not a finding that it "
+                "dependencies has not been analyzed — this is not a finding that it "
                 "has none. Run a full ingestion/refresh for this repo."
             )
         elif outcome.known_positive:
@@ -162,8 +162,15 @@ class DependencySurveyor(BaseSurveyor):
                         json_properties={
                             "ecosystem": ecosystem,
                             "dep_types": dep_types,
+                            # Each entry is a dependency with TWO ENDS and a kind
+                            # (DESIGN-DEPENDENCY-ROW-TWO-ENDS.md): the manifest's directory
+                            # requires the package; the manifest file is the evidence (its line is
+                            # not recorded, so none is claimed).
                             "dependencies": [
-                                {"name": d["dep_name"], "version": d.get("dep_version", ""), "type": d.get("dep_type", "")}
+                                {"name": d["dep_name"], "version": d.get("dep_version", ""), "type": d.get("dep_type", ""),
+                                 "relation": "requires", "target_type": "package", "kind": "build-time",
+                                 "dependent": (d.get("source_file") or "").rsplit("/", 1)[0] if "/" in (d.get("source_file") or "") else "",
+                                 "evidence": d.get("source_file") or ""}
                                 for d in items
                             ],
                         },

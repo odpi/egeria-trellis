@@ -23,9 +23,17 @@ from resource_explorer.agents.conversation_agent import ConversationAgent
 SLEEP_SECONDS = 2.0
 
 
+_handle_started = threading.Event()
+
+
 def _slow_handle(self, query, resource_slug=None, **kwargs):
+    _handle_started.set()
     time.sleep(SLEEP_SECONDS)
     return "slow answer"
+
+
+def _fast_handle(self, query, resource_slug=None, **kwargs):
+    return "fast answer"
 
 
 @pytest.fixture
@@ -50,6 +58,15 @@ def client(monkeypatch):
 
 class TestAskDoesNotBlockTheLoop:
     def test_a_trivial_endpoint_answers_while_ask_is_still_running(self, client):
+        # Warm the route first: its one-time costs (the first registry open in this process, imports)
+        # are not what this test is about. Under pytest-xdist a fresh worker's first registry open took
+        # 1.9 s (b196x, 2026-10-30) and /health, fired at a fixed delay, landed in it.
+        with patch.object(ConversationAgent, "handle", _fast_handle), \
+             patch("resource_explorer.web.routes.query._persist_turn"):
+            warm = client.post("/api/query/", json={"query": "warm", "session_id": "loop-test-warm"})
+            assert warm.status_code == 200
+
+        _handle_started.clear()
         with patch.object(ConversationAgent, "handle", _slow_handle), \
              patch("resource_explorer.web.routes.query._persist_turn"):
             results: dict[str, float] = {}
@@ -65,9 +82,9 @@ class TestAskDoesNotBlockTheLoop:
 
             asker = threading.Thread(target=_do_ask)
             asker.start()
-            # Give `ask` time to actually start (and, before the fix, to
-            # seize the loop thread) before firing the trivial request.
-            time.sleep(SLEEP_SECONDS / 3)
+            # Fire the trivial request only once the slow handle() is actually running (before the fix,
+            # running on the loop thread), not after a fixed delay that a slow start can outlast.
+            assert _handle_started.wait(timeout=30), "ask never reached ConversationAgent.handle()"
 
             t0 = time.monotonic()
             health_resp = client.get("/health")  # pure liveness — touches nothing slow

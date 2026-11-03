@@ -169,7 +169,7 @@ def test_never_catalogued_is_not_reported_as_a_lost_asset(pg_registry):
     assert by_slug["was_published"]["was_published"] is True
     assert "asset lost" in by_slug["was_published"]["cause"]
     assert by_slug["never_published"]["was_published"] is False
-    assert "never catalogued" in by_slug["never_published"]["cause"]
+    assert "never published" in by_slug["never_published"]["cause"]
     # The title must not assert loss for the ones that never had an asset.
     assert "1 lost an asset, 1 never had one" in finding.title
 

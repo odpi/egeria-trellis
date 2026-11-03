@@ -28,7 +28,9 @@ def client(registry, monkeypatch):
     monkeypatch.setattr("resource_explorer.registry.ProjectRegistry.__init__",
                         lambda self, db_path=None: setattr(self, "__dict__", registry.__dict__) or None)
     monkeypatch.setenv("TRELLIS_ANONYMOUS_READ", "true")
-    monkeypatch.setattr("resource_explorer.auth.get_current_user", lambda request: {"user_id": "peterprofile"})
+    # Brief I: a Curate commit runs as the person, so the signed-in user carries an Egeria token.
+    monkeypatch.setattr("resource_explorer.auth.get_current_user",
+                        lambda request: {"user_id": "peterprofile", "egeria_token": "tok-peterprofile"})
     from resource_explorer.web.app import app
     return TestClient(app)
 
@@ -76,6 +78,49 @@ def _seed(registry):
     }})
 
 
+class TestWhatWeKnowIsWhatGetsWritten:
+    """Brief S1b: tab 1's "What we know" block (plan["know"]) and "what gets written" (plan["writes"]) are built from
+    ONE function (curate_plan.context_facts); they must never disagree."""
+
+    def _declare(self, registry):
+        registry.save_context("repo", "p", {"enrichment": {
+            "sensitivity": {"value": "internal", "kind": "judgement", "author": "mandy", "set_at": "2026-10-03T09:00:00+00:00"},
+            "criticality": {"value": "high", "kind": "judgement", "author": "", "set_at": ""},
+            "retention": {"value": "keep forever", "kind": "judgement", "author": "mandy", "set_at": "2026-10-03T09:00:00+00:00"},
+            "owner": {"value": "dwolfson", "kind": "judgement", "author": "dwolfson", "set_at": "2026-10-02T09:00:00+00:00", "interim": True},
+            "licence": {"value": "Apache-2.0", "kind": "judgement", "author": "dwolfson", "set_at": "2026-10-02T09:00:00+00:00"},
+        }})
+        registry.add_doc_source("repo", "p", "https://x.example/runbook", label="Runbook", source_type="runbook", added_by="dwolfson")
+
+    def test_the_block_and_the_write_plan_agree(self, registry):
+        self._declare(registry)
+        plan = build_plan(registry, "p")
+        know = {f["key"]: f for f in plan["know"]}
+        w = plan["writes"]
+        # every classification the commit writes is the same fact the block shows
+        assert {c["key"] for c in w["classifications"]} == {"sensitivity", "criticality", "retention"}
+        for c in w["classifications"]:
+            f = know[c["key"]]
+            assert (c["value"], c["author"], c["set_at"], c["interim"], c["skipped"], c["classification"]) == \
+                   (f["shown"], f["author"], f["set_at"], f["interim"], f["skipped"], f["label"])
+        assert (w["owner"]["value"], w["owner"]["author"], w["owner"]["interim"]) == \
+               (know["owner"]["shown"], know["owner"]["author"], know["owner"]["interim"]) == ("dwolfson", "dwolfson", True)
+        assert w["licence"] == know["licence"]["shown"] == "Apache-2.0"
+        # retention is shown in the commit's own words (basis carried from the existing text), not the raw value
+        assert know["retention"]["shown"].endswith("(from existing text)") and know["retention"]["skipped"] is False
+        # an unsigned fact is flagged unsigned, a signed one is not
+        assert know["criticality"]["unsigned"] is True and know["sensitivity"]["unsigned"] is False
+        assert know["documentation"]["declared"] and know["documentation"]["sources"][0]["author"] == "dwolfson"
+
+    def test_a_fact_that_is_not_set_is_not_declared_and_is_not_written(self, registry):
+        plan = build_plan(registry, "p")
+        know = {f["key"]: f for f in plan["know"]}
+        assert [f["key"] for f in plan["know"]] == ["owner", "sensitivity", "criticality", "retention", "licence", "documentation"]
+        assert not any(f["declared"] for f in plan["know"])
+        assert plan["writes"]["classifications"] == [] and plan["writes"]["owner"]["value"] == "" and plan["writes"]["licence"] == ""
+        assert know["owner"]["shown"] == "" and know["documentation"]["sources"] == []
+
+
 class TestThePlan:
     def test_the_three_columns_are_candidates_with_evidence(self, registry):
         _seed(registry)
@@ -89,14 +134,14 @@ class TestThePlan:
         assert all(r["candidate"] for r in plan["what_it_is"])
         assert all(r["source"] and r["evidence"] for r in plan["what_it_is"])
         holds = {r["kind"]: r for r in plan["what_it_holds"]}
-        assert holds["SubResource"]["count"] == 2 and holds["SubResource"]["label"].startswith("2 of 3 sub-resources")
+        assert holds["SubResource"]["count"] == 2 and holds["SubResource"]["label"].startswith("2 of 3 files and folders")
         assert holds["DataFile"]["candidate"] is False        # none profiled: a count of zero is not a thing to confirm
         assert plan["relates"][0]["candidate"] is False        # already-catalogued deps: not looked up, said so
 
     def test_the_manifest_copies_testimony_and_links_measurements(self, registry):
         _seed(registry)
         w = build_plan(registry, "p")["writes"]
-        assert w["classifications"] == [{"key": "sensitivity", "classification": "Confidentiality", "value": "internal",
+        assert w["classifications"] == [{"key": "sensitivity", "classification": "Confidentiality", "value": "internal", "skipped": False,
                                          "author": "peterprofile", "set_at": "2026-09-01T00:00:00+00:00", "interim": False, "review": False}]
         assert w["owner"] == {"value": "peterprofile", "interim": True, "author": "peterprofile"}
         assert w["catalogued"] is False and w["survey_reports_linked"] == 0
@@ -131,6 +176,14 @@ class TestTheRecord:
             c.create("repo", "p", author="", selection={}, manifest={}, steps=[])
 
 
+def _keep_a_survey(registry):
+    """A kept survey: the commit publishes it, it does not run one (brief section 1)."""
+    from resource_explorer.surveyors import survey_snapshot
+    from resource_explorer.surveyors.survey_report import ClassificationAnnotation
+    survey_snapshot.record_step(registry, "p", "repo_language", "2026-10-07T01:00:00", [
+        ClassificationAnnotation(summary=t, analysis_step="repo_language", check_name="c", item_key=t) for t in "abc"])
+
+
 class TestTheCommitRoute:
     def test_it_refuses_outside_the_population(self, client, registry):
         _seed(registry)
@@ -139,15 +192,18 @@ class TestTheCommitRoute:
 
     def test_it_records_the_act_and_enqueues_the_run(self, client, registry):
         _seed(registry)
+        _keep_a_survey(registry)
         registry.set_disposition("https://github.com/x/p", "using", resource_slug="p")
+        # the press publishes what the selection RECORD says (brief 2a); a list in the request is not read
+        registry.append_resource_scope_event("repo", "p", locator="docs", kind="folder", choice="include", author="peterprofile")
         r = client.post("/api/projects/p/curate/commit",
-                        json={"confirm": ["SoftwareCapability::pyegeria", "Endpoint"], "sub_resources": ["docs"], "note": "go"})
+                        json={"confirm": ["SoftwareCapability::pyegeria", "Endpoint"], "sub_resources": [".idea"], "note": "go"})
         assert r.status_code == 200, r.text
         body = r.json()
         rec = body["curation"]
         assert rec["author"] == "peterprofile" and rec["state"] == "queued"
         assert rec["manifest"]["entities"] == ["SoftwareCapability::pyegeria", "Endpoint"]
-        assert rec["manifest"]["contained"] == {"data_files": 0, "sub_resources": 1}
+        assert rec["manifest"]["contained"] == {"data_files": 0, "sub_resources": 1, "containers": 0, "files": 0, "folders": 1}
         assert [s["name"] for s in rec["steps"]] == ["publish_asset", "classifications", "sub_resources", "components"]
         run = registry.get_run(body["run_id"]) if hasattr(registry, "get_run") else None
         if run is not None:
@@ -176,18 +232,22 @@ class TestTheCommitSteps:
         registry.set_project_context("repo", "p", status="personal")
         calls = []
 
-        class FakeSurvey:
-            annotations = [1, 2, 3]
+        _keep_a_survey(registry)
 
         class FakeOrch:
             def __init__(self, registry=None): pass
-            def run(self, slug, steps=None): return FakeSurvey()
+            def run(self, slug, steps=None): raise AssertionError("the commit must not run a survey")
 
         class FakePublisher:
-            def __init__(self, registry=None): pass
-            def publish(self, survey):
+            report_reused = False
+            def __init__(self, registry=None):
+                self._asset_maker = type("AM", (), {"get_asset_by_guid": staticmethod(lambda g, **k: {"guid": g})})()
+            def publish(self, result, zone_names=None, *, defer_drain=None):    # the real signature (pinned below)
+                calls.append(("publish", defer_drain))
                 registry.set_egeria_asset_guid("p", "asset-1") if hasattr(registry, "set_egeria_asset_guid") else None
                 return "report-9"
+            def get_survey_reports_by_guid(self, guid):
+                return [{"guid": "report-9", "qualified_name": "x", "annotation_count": 3}]
             def publish_sub_resources(self, slug, url, guid, locators):
                 calls.append(("subs", guid, list(locators)))
                 return {l: f"g-{l}" for l in locators}
@@ -196,6 +256,7 @@ class TestTheCommitSteps:
             def set_confidentiality_classification(self, guid, body):
                 calls.append(("conf", guid, body["properties"]["confidentialityLevel"], body["properties"]["notes"]))
 
+        _same_publish_signature(FakePublisher)
         monkeypatch.setattr("resource_explorer.surveyors.survey_orchestrator.SurveyOrchestrator", FakeOrch)
         monkeypatch.setattr("resource_explorer.surveyors.egeria_publisher.EgeriaPublisher", FakePublisher)
         monkeypatch.setattr("resource_explorer.egeria_identity.classification_client", lambda *a, **k: FakeClient())
@@ -206,21 +267,17 @@ class TestTheCommitSteps:
                                          manifest={}, steps=list(wf.STEPS))
         out = wf.execute_curation(registry, rec["id"])
         by = {s["name"]: s for s in out["steps"]}
-        # _seed() stamps 7 analyses as having JUST run (log_analysis_run,
-        # status "success") and get_egeria_asset_guid is mocked to already
-        # return "asset-1" -- so the 2026-09-20 freshness gate
-        # (curate_commit.py's module docstring) finds nothing stale and an
-        # asset that already exists, and correctly skips re-surveying and
-        # re-publishing altogether rather than manufacturing "report-9".
+        # The commit publishes the kept survey (brief section 1); it surveyed nothing (FakeOrch raises).
         assert by["publish_asset"]["state"] == "done"
         assert "asset-1" in by["publish_asset"]["detail"]
-        assert "already fresh" in by["publish_asset"]["detail"]
-        assert "already published" in by["publish_asset"]["detail"]
+        assert "published · from the survey of 2026-10-07" in by["publish_asset"]["detail"]
+        assert "3 annotations linked" in by["publish_asset"]["detail"]
         assert by["classifications"]["state"] == "done" and "Confidentiality · internal" in by["classifications"]["detail"]
         assert by["sub_resources"]["state"] == "done"
-        assert by["sub_resources"]["detail"] == "1 of 1 published · plus 1 ancestor folder"   # not "2 of 1"
+        assert by["sub_resources"]["detail"] == "1 of 1 published · 2 read back · plus 1 ancestor folder"   # not "2 of 1"
         assert by["components"]["state"] == "skipped"
         assert out["state"] == "done"
+        assert ("publish", False) in calls, "Curate's commit is an explicit publish: it waits (defer_drain=False)"
         conf = next(c for c in calls if c[0] == "conf")
         assert conf[2] == 1 and "set by peterprofile on 2026-09-01" in conf[3]
         subs = next(c for c in calls if c[0] == "subs")
@@ -232,11 +289,14 @@ class TestTheCommitSteps:
         from resource_explorer.workflows import curate_commit as wf
         registry.set_project_context("repo", "p", status="personal")
 
+        _keep_a_survey(registry)
+
         class Boom:
             def __init__(self, registry=None): pass
-            def run(self, slug, steps=None): raise RuntimeError("Egeria unreachable")
+            def publish(self, result, zone_names=None, *, defer_drain=None): raise RuntimeError("Egeria unreachable")
 
-        monkeypatch.setattr("resource_explorer.surveyors.survey_orchestrator.SurveyOrchestrator", Boom)
+        _same_publish_signature(Boom)
+        monkeypatch.setattr("resource_explorer.surveyors.egeria_publisher.EgeriaPublisher", Boom)
         rec = Curations(registry).create("repo", "p", author="peterprofile",
                                          selection={"sub_resources": ["docs"]}, manifest={}, steps=list(wf.STEPS))
         out = wf.execute_curation(registry, rec["id"])
@@ -285,3 +345,50 @@ class TestTheMembersBehindTheCounts:
         ms = members_for(registry, "p", "sub_resource_survey", scope="all")
         assert ms.total == 3
         assert {g.name: g.count for g in ms.groups} == {"worthy": 2, "not_worthy": 1}
+
+
+class TestTheStructureCountComesFromOneFunction:
+    """The Structure tab's "N awaiting you" is the plan's `awaiting`; it is computed by the SAME function
+    (`awaiting_counts`) the made-of row carries in its detail, and absence of a verdict is "awaiting"."""
+
+    def _components(self, registry, names):
+        for n in names:
+            registry.upsert_finding("p", "architecture_recovery", [{
+                "check_name": "component", "label": "x",
+                "detail": {"name": n, "slug": n, "admission": "built_here"}}],
+                surveyed_at="2026-09-03T00:00:00", scope_locator=f"src/{n}")
+
+    def test_awaiting_is_the_unreviewed_components_and_the_made_of_row_carries_the_same_figure(self, registry):
+        from resource_explorer.curate_plan import awaiting_counts
+        _seed(registry)
+        self._components(registry, ["a", "b", "c"])
+        registry.record_component_verdict("repo", "p", "src/a", "accepted", decided_by="peterprofile")
+        plan = build_plan(registry, "p")
+        assert plan["awaiting"] == {"components": 2}
+        assert plan["made_of"][0]["detail"]["awaiting"] == plan["awaiting"]
+        # the plan's figure IS awaiting_counts of the plan's own inputs
+        comps = [{"path": "src/a"}, {"path": "src/b"}, {"path": "src/c"}]
+        assert awaiting_counts(comps, {"src/a": {}}) == plan["awaiting"]
+
+    def test_no_components_is_zero_awaiting_and_a_rejection_is_a_decision(self, registry):
+        from resource_explorer.curate_plan import awaiting_counts
+        assert awaiting_counts([], {}) == {"components": 0}
+        assert awaiting_counts([{"path": "x"}], {"x": {"verdict": "rejected"}}) == {"components": 0}
+
+    def test_latest_commit_route_returns_the_newest_record_or_none(self, client, registry):
+        assert client.get("/api/projects/p/curate/commits/latest").json() == {"curation": None}
+        Curations(registry).create("repo", "p", author="peterprofile", selection={}, manifest={}, steps=["publish_asset"])
+        got = client.get("/api/projects/p/curate/commits/latest").json()["curation"]
+        assert got["entity_slug"] == "p" and "proof_summary" in got
+        assert client.get("/api/projects/nope/curate/commits/latest").status_code == 404
+
+
+def _same_publish_signature(fake) -> None:
+    """A fake publisher binds the real `EgeriaPublisher.publish` signature: a fake that drifts from it hides a
+    TypeError the real code would raise (2026-10-14: the fakes lacked `defer_drain`)."""
+    import inspect
+
+    from resource_explorer.surveyors.egeria_publisher import EgeriaPublisher
+
+    shape = lambda f: [(p.name, p.kind, p.default) for p in inspect.signature(f).parameters.values()]  # noqa: E731
+    assert shape(fake.publish) == shape(EgeriaPublisher.publish), fake

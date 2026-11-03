@@ -4,10 +4,11 @@ from __future__ import annotations
 import logging
 import os
 from pathlib import Path
-from typing import Any, Optional
+import json
+from typing import Annotated, Any, Optional
 
-from pydantic import BaseModel, Field
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import BaseModel, BeforeValidator, Field
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 log = logging.getLogger(__name__)
 
@@ -40,6 +41,53 @@ _ENV_FILES = (_PACKAGE_ENV, ".env")
 _ENV_FILE_CONFIG = SettingsConfigDict(
     populate_by_name=True, env_file=_ENV_FILES, env_file_encoding="utf-8", extra="ignore",
 )
+
+
+def parse_str_list(value: Any, setting: str = "setting") -> list[str]:
+    """Read a list-of-names setting from an env value without ever raising.
+
+    pydantic-settings parses a plain ``list[str]`` from the environment as JSON, so
+    ``FEEDBACK_ADMIN_USERS=peterprofile`` crashed the whole web process at startup (2026-10-14). Accepted:
+    a JSON list, a comma-separated list, a single name, or empty. Entries are trimmed and empties dropped.
+    A value that cannot be read logs ONE warning and gives ``[]`` (fail closed: nothing listed).
+    """
+    if value is None:
+        return []
+    if isinstance(value, (list, tuple, set)):
+        items = list(value)
+    elif isinstance(value, str):
+        text = value.strip()
+        if text.startswith("["):
+            try:
+                items = json.loads(text)
+            except ValueError:
+                log.warning("%s: could not read %r as a JSON list; treating it as empty (no entries)", setting, value)
+                return []
+            if not isinstance(items, list):
+                log.warning("%s: %r is not a list; treating it as empty (no entries)", setting, value)
+                return []
+        elif text.startswith(("{", '"', "'")) or "[" in text or "]" in text:
+            log.warning("%s: could not read %r; use a JSON list or comma-separated names. Treating it as empty.",
+                        setting, value)
+            return []
+        else:
+            items = text.split(",")
+    else:
+        log.warning("%s: could not read a %s value; treating it as empty (no entries)", setting, type(value).__name__)
+        return []
+    out: list[str] = []
+    for item in items:
+        if not isinstance(item, (str, int)) or isinstance(item, bool):
+            log.warning("%s: ignoring an entry that is not a name: %r", setting, item)
+            continue
+        name = str(item).strip()
+        if name:
+            out.append(name)
+    return out
+
+
+#: A list of names that reads JSON, comma-separated, a single name or empty from the environment.
+NameList = Annotated[list[str], NoDecode, BeforeValidator(lambda v, info: parse_str_list(v, info.field_name or "setting"))]
 
 
 class PgVectorConfig(BaseSettings):
@@ -102,6 +150,15 @@ class PgVectorConfig(BaseSettings):
 # preset value. Likewise `rag_context_budget_tokens: None` for dev means no
 # new token-based RAG cutoff is introduced; build_context() joins every
 # retrieved chunk unchanged, exactly as it does today.
+#
+# The compile limits (`compile_evidence_budget_chars`, `compile_max_sections`)
+# are per-tier too: the characters of stored-analysis evidence the chat
+# compiles into a prompt, and how many ranked sections compete for them. Both
+# are 6000 / 12 on every tier today (measured 2026-09-09, see
+# context_compile.MAX_EVIDENCE_SECTIONS). Override with
+# EXPLORER_COMPILE_EVIDENCE_BUDGET_CHARS / EXPLORER_COMPILE_MAX_SECTIONS;
+# 0 for the section cap means no cap. Anyone lowering `num_ctx` should lower
+# the budget with it (docs/admin-guide.md).
 DEFAULT_MODEL_TIER = "dev"
 
 TIER_PRESETS: dict[str, dict[str, Any]] = {
@@ -109,11 +166,15 @@ TIER_PRESETS: dict[str, dict[str, Any]] = {
         "num_ctx": 32768,
         "rag_context_budget_tokens": None,
         "model": None,
+        "compile_evidence_budget_chars": 6000,
+        "compile_max_sections": 12,
     },
     "demo-gpu": {
         "num_ctx": 8192,
         "rag_context_budget_tokens": 2000,
         "model": "llama3.1:8b",
+        "compile_evidence_budget_chars": 6000,
+        "compile_max_sections": 12,
     },
     "demo-cpu": {
         # RE has one model slot (no separate code model the way EA does),
@@ -124,6 +185,8 @@ TIER_PRESETS: dict[str, dict[str, Any]] = {
         "num_ctx": 8192,
         "rag_context_budget_tokens": 2000,
         "model": "llama3.1:8b",
+        "compile_evidence_budget_chars": 6000,
+        "compile_max_sections": 12,
     },
 }
 
@@ -138,6 +201,10 @@ class OllamaConfig(BaseSettings):
     # generate/chat call (resource_explorer/llm_client.py).
     tier: str = DEFAULT_MODEL_TIER
     num_ctx: int = TIER_PRESETS[DEFAULT_MODEL_TIER]["num_ctx"]
+    # Ceiling on generated tokens for the agent path (sent as Ollama's
+    # `num_predict`). The hosted backends are capped at 4096 in llm_client.py;
+    # without a cap here one degenerate answer held the shared Ollama for minutes.
+    max_tokens: int = 4096
 
 
 class OpenAIConfig(BaseSettings):
@@ -188,10 +255,9 @@ class GitHubConfig(BaseSettings):
     requests_per_hour: int = 5000
     clone_timeout_seconds: int = 300
     ssl_verify: bool = True  # set GITHUB__SSL_VERIFY=false in .env to bypass (insecure)
-    # Deployment-wide default (e.g. a GitHub Enterprise install) — a *runtime*
-    # override on top of this lives in the app_settings table via
-    # registry.get_setting("github_base_url"), resolved by callers that want
-    # the per-instance value ("Discover repos to scout" plan, D2).
+    # The single source for the GitHub API base URL (e.g. a GitHub Enterprise
+    # install). There is no runtime override: discovery, surveys and ingestion
+    # all resolve it through GitHubClient().
     base_url: str = Field(default="https://api.github.com", alias="GITHUB_BASE_URL")
 
     model_config = _ENV_FILE_CONFIG
@@ -252,8 +318,32 @@ class EgeriaConfig(BaseSettings):
     platform_url: str = Field(default="https://localhost:9443", alias="EGERIA_PLATFORM_URL")
     view_server: str = Field(default="qs-view-server", alias="EGERIA_VIEW_SERVER")
     engine_host: str = Field(default="engine-host", alias="EGERIA_ENGINE_HOST")
-    user_id: str = Field(default="erinoverview", alias="EGERIA_USER_ID")
-    user_password: str = Field(default="secret", alias="EGERIA_USER_PASSWORD")
+    #: What Egeria's platform container can see (Files step 2): host-prefix -> container-prefix pairs, as a JSON object
+    #: or `host=container,host2=container2`. A pair set here wins over one read from `docker inspect` or the quickstart
+    #: compose file. Empty by default: the map then starts from those two sources, or stays empty (never guessed).
+    mount_map: str = Field(default="", alias="EGERIA_MOUNT_MAP")
+    #: The quickstart compose file whose `egeria-main` service lists the platform container's volumes (read only to
+    #: pre-fill the map; relative host paths are resolved against the file's own directory). Empty: not read.
+    quickstart_compose_file: str = Field(default="", alias="EGERIA_QUICKSTART_COMPOSE_FILE")
+    #: The integration daemon a catalogue commit may ask to refresh the JDBC
+    #: cataloguer (never to restart it). The scratch tests ran against this one.
+    integration_daemon_server: str = Field(default="qs-integration-daemon", alias="EGERIA_INTEGRATION_DAEMON")
+    #: The host names that all mean THIS machine, comma separated (D1-2, owner "Agree", 2026-10-30): a database's
+    #: identity in Egeria is its endpoint (host, port, database), and an endpoint written under one of these names is
+    #: the same endpoint under any other. Declared here only; `endpoint_identity.host_aliases` is its one reader.
+    #: Configured, never guessed: a host not listed compares as itself.
+    host_aliases: str = Field(default="localhost,127.0.0.1,host.docker.internal,laz", alias="EGERIA_HOST_ALIASES")
+    #: RE's own service account. NO default: a code default here was once a person's persona ("erinoverview"), so a
+    #: missing EGERIA_USER_ID silently made RE act as that person. Unset now means every path that needs the
+    #: service account refuses (egeria_clients.NoServiceAccount).
+    user_id: str = Field(default="", alias="EGERIA_USER_ID")
+    user_password: str = Field(default="", alias="EGERIA_USER_PASSWORD")
+    #: Further Egeria platforms a credential may be sent to, comma separated (Brief I). The
+    #: configured `platform_url` is always allowed; any other URL is refused before a request.
+    allowed_platform_urls: str = Field(default="", alias="EGERIA_ALLOWED_PLATFORM_URLS")
+    #: Optional login-form prefill (`GET /api/auth/defaults`). Never the daemon's userId: the
+    #: daemon (EGERIA_USER_ID) is RE's service account, and the endpoint is public (Brief L).
+    login_default_user: str = Field(default="", alias="RE_LOGIN_DEFAULT_USER")
     kafka_endpoint: str = Field(default="localhost:9092", alias="EGERIA_KAFKA_ENDPOINT")
     # Base URL for Egeria Workspaces' "The Catalog" app (egeria-workspaces-fs
     # PyegeriaWebHandler) — supports deep-linking to a specific element via
@@ -263,14 +353,20 @@ class EgeriaConfig(BaseSettings):
     # ServerName localhost:8885) — override if your deployment differs.
     portal_url: str = Field(default="http://localhost:8885", alias="EGERIA_PORTAL_URL")
     # Governance zones assigned by default when cataloging repos (survey) or databases
-    default_catalog_zones: list[str] = Field(default_factory=list)
-    default_survey_zones: list[str] = Field(default_factory=list)
+    # NOTE: nothing on the 2026-10-05 build assigns a default zone (the read-back found none on any element).
+    # A catalogue commit for a database writes a ZoneMembership ONLY when this (or the
+    # EXPLORER_PUBLISH_ZONES environment variable) is set, and then as its LAST write. UNVERIFIED
+    # FOR A SECOND COMMIT: a zone on the database element may lock the service identity, the
+    # survey engine and the cataloguer out of later anchored writes. First live use: a throwaway
+    # database with TWO commits, the second exercising anchored writes under the zone.
+    default_catalog_zones: NameList = Field(default_factory=list)
+    default_survey_zones: NameList = Field(default_factory=list)
     # Secrets store used when Egeria's own native "catalog and survey" processes
     # need credentials. Confirmed live 2026-07-09: secrets are written via
     # AutomatedCuration.save_client_side_secret(secrets_store_guid, body) with
     # secret key names "userId"/"clearPassword" for Postgres resources — but
-    # this was never wired into a caller until docs/design-notes/
-    # PROBES-2026-09-21.md's investigation (2026-09-21) found the reason a
+    # this was never wired into a caller until PROBES-2026-09-21.md's investigation (2026-09-21)
+    # found the reason a
     # freshly-cataloged coco_pharma asset still failed its native survey with
     # a SCRAM/no-password error: its embedded SecretsStoreConnection carried
     # the literal unsubstituted template placeholders "~{secretsCollectionName}~"
@@ -304,7 +400,7 @@ class EgeriaConfig(BaseSettings):
     # mount's host-side path (e.g. .../runtime-volumes/quickstart-platform-
     # data/secrets/resource-explorer.omsecrets) that lets RE read/write the
     # file directly for the credential-storage/drift-detection work in
-    # docs/design-notes/REPLY-DATABASE-CREDENTIAL-CAPABILITY-VISIBILITY.md
+    # docs/design-notes/exchange/REPLY-DATABASE-CREDENTIAL-CAPABILITY-VISIBILITY.md
     # §7 ("one secrets-collection name per (resource, role), written to both
     # places by RE in the same operation"). Empty by default — most
     # deployments (CI, a from-scratch checkout, a remote engine host) have no
@@ -353,6 +449,15 @@ class KrokiConfig(BaseSettings):
     model_config = _ENV_FILE_CONFIG
 
 
+#: Default ceiling (seconds) on waiting for ONE Prefect-dispatched step's flow
+#: run to reach a terminal state. 1200 s = 20 min. Basis: the slowest measured
+#: Prefect-eligible step, assessment/secret_scan (repo_secret_scan), has median
+#: 330.8 s (n=1) in docs/funnel-cost-measured.md (the PR/CI session's own
+#: measurement quoted 277 s / median 331 s), declared compute_cost "minutes";
+#: 1200 s is ~3.6x that median — generous for a slow repo, yet bounded.
+DEFAULT_PREFECT_STEP_TIMEOUT_SECONDS = 1200.0
+
+
 class PrefectConfig(BaseSettings):
     api_url: str = Field(default="http://localhost:4200/api", alias="PREFECT_API_URL")
     ui_url: str = Field(default="http://localhost:4200", alias="PREFECT_UI_URL")
@@ -389,6 +494,11 @@ class PrefectConfig(BaseSettings):
     # of this setting (see route_local_steps).
     enabled: bool = Field(default=True, alias="PREFECT_ENABLED")
     work_pool: str = Field(default="default-agent-pool", alias="PREFECT_WORK_POOL")
+    # Deadline for a dispatched step's flow run (seconds); see
+    # DEFAULT_PREFECT_STEP_TIMEOUT_SECONDS for the basis of the default.
+    step_timeout_seconds: float = Field(
+        default=DEFAULT_PREFECT_STEP_TIMEOUT_SECONDS, gt=0,
+        alias="PREFECT_STEP_TIMEOUT_SECONDS")
     # Route steps that explicitly declare executes_at="resource-explorer" through
     # Prefect as well. Off by default, and deliberately its own setting rather
     # than a second meaning for `enabled`.
@@ -428,6 +538,18 @@ class RegistryConfig(BaseSettings):
     model_config = _ENV_FILE_CONFIG
 
 
+class WebUIConfig(BaseSettings):
+    """Web UI settings. `/` and `/next` both serve the one UI."""
+    #: The URL a browser elsewhere uses to reach this RE web app (e.g. `http://<box-hostname>:8810`), the same
+    #: value the Portal's tile uses (EGERIA_RESOURCE_EXPLORER_URL). Read by a work list's publish to write
+    #: `additionalProperties.resourceExplorerUrl` on its WorkingSet, so the Portal can link back. Empty (the
+    #: default): no link is written. There is deliberately no localhost default: a reader on another machine
+    #: following it would reach its own localhost.
+    public_url: str = Field(default="", alias="RE_PUBLIC_URL")
+
+    model_config = _ENV_FILE_CONFIG
+
+
 class FeedbackConfig(BaseSettings):
     """Product/UI feedback storage + minimal admin gating.
 
@@ -437,7 +559,8 @@ class FeedbackConfig(BaseSettings):
 
     admin_token / admin_users are NOT a general auth system — see
     resource_explorer/web/admin_auth.py. Leaving both unset means every
-    admin-only feedback endpoint denies all requests (fail closed).
+    admin-only endpoint denies all requests (fail closed), unless
+    RE_ADMIN_OPEN_WHEN_UNCONFIGURED is set for local dev.
     """
     #: Defaults to the same shared Postgres instance/schema the registry uses
     #: (2026-08-23), not a local SQLite file. This store was written to be
@@ -453,8 +576,12 @@ class FeedbackConfig(BaseSettings):
         ),
         alias="FEEDBACK_DATABASE_URL",
     )
-    admin_users: list[str] = Field(default_factory=list, alias="FEEDBACK_ADMIN_USERS")
+    admin_users: NameList = Field(default_factory=list, alias="FEEDBACK_ADMIN_USERS")
     admin_token: str = Field(default="", alias="FEEDBACK_ADMIN_TOKEN")
+    #: Local dev only (owner ruling 2026-10-14). With no admin configured, `require_admin` refuses everyone; this
+    #: brings back "any signed-in user may act" for Retry / Run bootstrap / bulk resolve. Ignored once an admin
+    #: is configured; never admits an anonymous caller; never affects `is_admin_request` (Feedback, Curate).
+    admin_open_when_unconfigured: bool = Field(default=False, alias="RE_ADMIN_OPEN_WHEN_UNCONFIGURED")
 
     model_config = _ENV_FILE_CONFIG
 
@@ -513,25 +640,108 @@ class RunsConfig(BaseSettings):
     #: change what "nightly" means, which is a different decision from sparing
     #: someone a redundant click.
     gate_user_runs: bool = True
-    #: Whether `run_analysis`'s auto-publish drains the Egeria outbox inline,
-    #: synchronously, before the run returns (True — unchanged default) or only
-    #: enqueues the annotation outbox rows and leaves draining to the
-    #: scheduler's existing periodic `_drain_egeria_outbox` cycle (False). When
-    #: False, evidence-link rows are deferred entirely rather than enqueued —
-    #: Tier 1 linking needs each annotation's real Egeria GUID, which only
-    #: exists once its own row is applied (see egeria_publisher.py's
-    #: `_create_annotations` docstring).
-    #: Measured 2026-09-13 on a real `language_file_classification` publish
-    #: (`egeria_workspaces_git`, 53 outbox rows): the inline drain cost 546.61s
-    #: of the run's 558.89s total — the run-time cost of auto-publish is almost
-    #: entirely this synchronous drain, not the survey or the asset/report
-    #: setup ahead of it. Turning this off would cut what a user waits for the
-    #: "Run" action to ~15s, at the cost of the "published" state meaning
-    #: "queued for the next drain" rather than "landed in Egeria" at the moment
-    #: the run returns. The default stays True — unchanged behaviour — because
-    #: that trade is the project owner's call to make, not this flag's; it
-    #: exists so they can flip it once made, not to make it for them.
-    publish_inline: bool = Field(default=True, alias="RUNS_PUBLISH_INLINE")
+    #: Whether a run's auto-publish drains the Egeria outbox inline, before the
+    #: run returns (True), or only enqueues the outbox rows and leaves draining
+    #: to the scheduler's periodic `_drain_egeria_outbox` cycle (False, the
+    #: default since 2026-10-14). Both paths enqueue the run's annotations, its
+    #: evidence links (keyed by row id until their referents land) and one
+    #: `publish_read_back` row; the run's publish word is derived from those
+    #: rows (`registry.publish_proofs`): "queued for publish", "published ·
+    #: read back", or "publish failed" with Egeria's words.
+    #:
+    #: Project-owner decision, 2026-10-14: a synchronous survey or analysis
+    #: does NOT wait for its publish. Measured 2026-09-13 on a real
+    #: `language_file_classification` publish (`egeria_workspaces_git`, 53
+    #: outbox rows): the inline drain cost 546.61s of the run's 558.89s total.
+    #: `RUNS_PUBLISH_INLINE=true` keeps the old wait; the per-run "wait" choice
+    #: still overrides either way. The engine host is not governed by this
+    #: flag: its publisher takes no `defer_drain` and completes in its own
+    #: handler, because finishing an engine action needs the report GUID.
+    publish_inline: bool = Field(default=False, alias="RUNS_PUBLISH_INLINE")
+
+
+class SamplingSettings(BaseSettings):
+    """Sampling settings for the value-sampling steps (design §5.8: global → per resource type → per resource
+    → per run, narrowest wins; `surveyors/database/sampling.resolve_sampling_config`).
+
+    The two deployment-wide scopes live here, each a JSON object of SamplingConfig fields (`strategy`,
+    `max_rows`, `max_bytes`, `max_values`, `seed`, `time_budget`, `strata_column`):
+
+        SAMPLING_DEFAULTS='{"strategy": "head", "max_rows": 5000}'
+        SAMPLING_BY_RESOURCE_TYPE='{"database": {"time_budget": 30}}'
+
+    The per-resource scope is a registry row (`ProjectRegistry.set_resource_sampling`), and the per-run scope
+    is a step's `sampling` request parameter. Stored as text and parsed defensively, like `parse_str_list`: a
+    value that is not a JSON object logs one warning and is treated as unset, so a typo never stops the process
+    (a list setting once crashed the web process at startup, 2026-10-14). A JSON object with a bad field is
+    refused later, by `resolve_sampling_config`, when a step uses it: the step reports the error rather than
+    sampling with something nobody configured.
+    """
+
+    defaults_json: str = Field(default="", alias="SAMPLING_DEFAULTS")
+    by_resource_type_json: str = Field(default="", alias="SAMPLING_BY_RESOURCE_TYPE")
+
+    model_config = _ENV_FILE_CONFIG
+
+    @staticmethod
+    def _object(text: str, setting: str) -> dict:
+        if not (text or "").strip():
+            return {}
+        try:
+            value = json.loads(text)
+        except ValueError:
+            value = None
+        if not isinstance(value, dict):
+            logging.getLogger(__name__).warning("%s is not a JSON object; ignored", setting)
+            return {}
+        return value
+
+    def defaults(self) -> dict:
+        """The global scope's overrides ({} when unset or unreadable)."""
+        return self._object(self.defaults_json, "SAMPLING_DEFAULTS")
+
+    def for_resource_type(self, resource_type: str) -> dict:
+        """The overrides for one resource type ({} when unset, unreadable, or not an object)."""
+        value = self._object(self.by_resource_type_json, "SAMPLING_BY_RESOURCE_TYPE").get(resource_type)
+        return value if isinstance(value, dict) else {}
+
+
+class ValueProfileSettings(BaseSettings):
+    """Bounds for the whole-table value profile (`postgres_value_profile`; DESIGN-VALUE-PROFILE-AND-QUALITY-CHECKS.md
+    §4) and for `run_quality_checks`. Slice 1 never samples: a table is profiled whole, or not at all, and there is
+    NO size cap (owner, DESIGN-QUALITY-AT-SCALE-AND-TESTGEN.md 2.3).
+
+    `table_budget_seconds`: the one bound on a table's profile, the total time across its chunks (owner, 2026-10-21:
+    5 minutes per table). Each chunk's statement timeout is what is left of it, so a chunk may take any time inside
+    the budget; past it the table is `not_measured` as "profile incomplete", never partly counted.
+    `statement_timeout_seconds`: the `SET LOCAL statement_timeout` of each QUALITY CHECK statement (`run_checks`); a
+    timeout is an `error` result with Postgres's words. The profile does not read it.
+    `live_write_table_share`: when a repeat publish finds counts moved on MORE than this share of the tables it
+    measured, the run card adds "this database is written live · see change rates" (architect ruling 5,
+    2026-10-24; `profile_publish.written_live`). A share from 0 to 1."""
+
+    statement_timeout_seconds: int = Field(default=60, alias="VALUE_PROFILE_STATEMENT_TIMEOUT_SECONDS")
+    table_budget_seconds: int = Field(default=300, alias="VALUE_PROFILE_TABLE_BUDGET_SECONDS")
+    live_write_table_share: float = Field(default=0.25, ge=0, le=1, alias="VALUE_PROFILE_LIVE_WRITE_TABLE_SHARE")
+    #: Port step 8 (DESIGN-QUALITY-STEP-8-HASHES-AND-FREQUENT-VALUES.md): take each column's value hashes and the date epoch sum, and infer a key
+    #: per table for the keyed hash. Off by default, as TestGen's table comparison is; whole-table reads, each under
+    #: `hash_budget_seconds` (5 minutes) of its own.
+    value_hashes: bool = Field(default=False, alias="VALUE_PROFILE_HASHES")
+
+    model_config = _ENV_FILE_CONFIG
+
+
+class QualityChecksSettings(BaseSettings):
+    """What a proposed quality check starts with (design §4). A person can change any single check's threshold
+    before accepting it; these decide only the proposal.
+
+    `row_ct_pct_default_threshold`: Row_Ct_Pct (row count within N percent of the baseline) is the one check
+    Resource Explorer proposes on its own initiative (the vendored catalogue has no default for it), so its
+    threshold is Resource Explorer's: 10 percent unless set."""
+
+    row_ct_pct_default_threshold: float = Field(default=10, alias="QUALITY_CHECKS_ROW_CT_PCT_DEFAULT_THRESHOLD")
+
+    model_config = _ENV_FILE_CONFIG
 
 
 class RuntimeConfig(BaseSettings):
@@ -569,6 +779,8 @@ class ResolvedLLMTierConfig(BaseModel):
     model: str
     num_ctx: int
     rag_context_budget_tokens: Optional[int]
+    compile_evidence_budget_chars: int = 6000
+    compile_max_sections: int = 12
 
 
 def resolve_model_tier() -> str:
@@ -595,6 +807,22 @@ def resolve_model_tier() -> str:
     return DEFAULT_MODEL_TIER
 
 
+def _int_override(env_name: str, preset_value: int, *, minimum: int) -> int:
+    """The env override if set to an integer >= `minimum`, else the preset value.
+    An unusable value is logged and skipped, like an unknown tier: a typo must not fail startup."""
+    raw = os.environ.get(env_name, "").strip()
+    if raw:
+        try:
+            value = int(raw)
+        except ValueError:
+            value = None
+        if value is not None and value >= minimum:
+            return value
+        log.warning("Ignoring %s=%r (expected an integer >= %d); using the tier's %d",
+                    env_name, raw, minimum, preset_value)
+    return preset_value
+
+
 def resolve_llm_tier_config() -> ResolvedLLMTierConfig:
     """
     Resolve the effective Ollama model, ``num_ctx``, and RAG context budget
@@ -609,6 +837,9 @@ def resolve_llm_tier_config() -> ResolvedLLMTierConfig:
       2. The resolved tier's preset model.
       3. ``OllamaConfig``'s own class default (only reachable for ``dev``,
          whose preset leaves the model alone).
+
+    The compile limits follow the same order: ``EXPLORER_COMPILE_EVIDENCE_BUDGET_CHARS``
+    (>= 1) and ``EXPLORER_COMPILE_MAX_SECTIONS`` (>= 0; 0 is no cap), then the tier's preset.
     """
     tier = resolve_model_tier()
     preset = TIER_PRESETS[tier]
@@ -626,26 +857,81 @@ def resolve_llm_tier_config() -> ResolvedLLMTierConfig:
         model=model,
         num_ctx=preset["num_ctx"],
         rag_context_budget_tokens=preset["rag_context_budget_tokens"],
+        compile_evidence_budget_chars=_int_override(
+            "EXPLORER_COMPILE_EVIDENCE_BUDGET_CHARS", preset["compile_evidence_budget_chars"], minimum=1),
+        compile_max_sections=_int_override(
+            "EXPLORER_COMPILE_MAX_SECTIONS", preset["compile_max_sections"], minimum=0),
     )
 
 
 _llm_tier_config: ResolvedLLMTierConfig | None = None
 
 
+class PublicUrlInvalid(ValueError):
+    """`RE_PUBLIC_URL` is set and is not an http(s) URL; RE refuses to start with it."""
+
+
+def check_public_url(raw: str | None = None) -> str:
+    """`RE_PUBLIC_URL` as a checked URL, or `PublicUrlInvalid` quoting the value. Empty is fine (no link back is
+    written). Set, it must be an http(s) URL with a host and no whitespace anywhere in it: a value run into
+    the next line of a `.env` (`http://localhost:8813git push origin ...`, found live 2026-10-21) otherwise
+    becomes a link that Portal readers follow into the void, so RE refuses to start rather than warn and carry on.
+    Returns the value without surrounding whitespace."""
+    from urllib.parse import urlsplit
+
+    value = WebUIConfig().public_url if raw is None else raw
+    value = value or ""
+    if not value.strip():
+        return ""
+    text = value.strip()
+    problem = ""
+    if any(c.isspace() for c in text):
+        problem = "it contains whitespace"
+    else:
+        try:
+            parts = urlsplit(text)
+            if parts.scheme not in ("http", "https") or not parts.hostname:
+                problem = "it is not an http:// or https:// URL with a host"
+            else:
+                parts.port  # noqa: B018 -- raises ValueError for a port that is not a number in range
+        except ValueError:
+            problem = "its port is not a number"
+    if problem:
+        raise PublicUrlInvalid(
+            f"RE_PUBLIC_URL={value!r} is not a usable URL ({problem}). Set it to the address a browser elsewhere uses "
+            "to reach this web app, such as http://box-hostname:8810, or leave it empty; Resource Explorer will not "
+            "start with it as it is.")
+    return text
+
+
 def get_llm_tier_config(force_refresh: bool = False) -> ResolvedLLMTierConfig:
     """Return the cached resolved tier config, logging it once on first
-    resolution. Call sites (web/app.py's lifespan, worker.py's run_worker())
-    that want a startup log line regardless of import-order timing should
-    call this explicitly rather than relying on the lazy first-call log."""
+    resolution. That first resolution usually happens before logging is
+    configured (the CLI's get_config() runs first), so the lazy line is lost;
+    a start-up line must come from log_llm_tier_config()."""
     global _llm_tier_config
     if _llm_tier_config is None or force_refresh:
         _llm_tier_config = resolve_llm_tier_config()
-        cfg = _llm_tier_config
-        log.info(
-            "LLM tier resolved: tier=%s model=%s num_ctx=%s rag_context_budget_tokens=%s",
-            cfg.tier, cfg.model, cfg.num_ctx, cfg.rag_context_budget_tokens,
-        )
+        _log_llm_tier_config(_llm_tier_config)
     return _llm_tier_config
+
+
+def log_llm_tier_config() -> ResolvedLLMTierConfig:
+    """Log the resolved tier config now, cached or not. For start-up (web/app.py's
+    lifespan), where get_llm_tier_config() is a no-op because something resolved
+    it before logging was set up."""
+    cfg = get_llm_tier_config()
+    _log_llm_tier_config(cfg)
+    return cfg
+
+
+def _log_llm_tier_config(cfg: ResolvedLLMTierConfig) -> None:
+    log.info(
+        "LLM tier resolved: tier=%s model=%s num_ctx=%s rag_context_budget_tokens=%s "
+        "compile_evidence_budget_chars=%s compile_max_sections=%s",
+        cfg.tier, cfg.model, cfg.num_ctx, cfg.rag_context_budget_tokens,
+        cfg.compile_evidence_budget_chars, cfg.compile_max_sections,
+    )
 
 
 class ExplorerConfig(BaseSettings):
@@ -665,6 +951,9 @@ class ExplorerConfig(BaseSettings):
     artifact_tree: ArtifactTreeSettings = Field(default_factory=ArtifactTreeSettings)
     runtime: RuntimeConfig = Field(default_factory=RuntimeConfig)
     runs: RunsConfig = Field(default_factory=RunsConfig)
+    sampling: SamplingSettings = Field(default_factory=SamplingSettings)
+    value_profile: ValueProfileSettings = Field(default_factory=ValueProfileSettings)
+    quality_checks: QualityChecksSettings = Field(default_factory=QualityChecksSettings)
 
     model_config = SettingsConfigDict(
         env_file=_ENV_FILES,
@@ -675,6 +964,19 @@ class ExplorerConfig(BaseSettings):
 
 
 _config: ExplorerConfig | None = None
+
+
+def egeria_platform_url() -> str:
+    """THE Egeria platform URL (Brief I round 4, found live on 8813): `config.egeria.platform_url`
+    — the environment / .env value, else its default. No other module reads EGERIA_PLATFORM_URL
+    from the environment (the ban test enforces it): two sources once disagreed, and a direct read
+    saw '' where the configured default existed."""
+    return get_config().egeria.platform_url
+
+
+def egeria_view_server() -> str:
+    """THE Egeria view server: `config.egeria.view_server` (same reasoning)."""
+    return get_config().egeria.view_server
 
 
 def get_config() -> ExplorerConfig:

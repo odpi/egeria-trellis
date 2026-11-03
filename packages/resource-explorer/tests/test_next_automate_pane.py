@@ -8,7 +8,7 @@ subscription it is real, but lives in app.js's Questions-checklist engine
 test_next_notify_subscription.py for the creation flow itself.
 
 No browser verification happened for this file with a signed-in session --
-see docs/design-notes/ITEM-4-AUTOMATE-IMPLEMENTED.md for what was and was
+see ITEM-4-AUTOMATE-IMPLEMENTED.md for what was and was
 not checked live. These tests grep/slice function bodies out of the
 concatenated source, the established pattern for /next JS modules without a
 browser -- see test_next_curate_pane.py and test_next_understanding_pane.py's
@@ -66,7 +66,7 @@ class TestAutomateIsWiredIn:
         # RULING-NAV-GROUPING.md: the frame check now reads `stageDef.class`
         # (declared once on STAGES) rather than a separate `stageDef.frame`
         # flag -- see NAV-GROUPING-IMPLEMENTED.md.
-        j = app.index("if (stageDef?.class === 'frame' || !stageDef?.built) {")
+        j = app.index("if (stageDef.class === 'frame' || !stageDef.built) {")
         assert i < j
 
 
@@ -114,7 +114,7 @@ class TestSchedulesAreReal:
 
         src = _automate_src()
         body = src[src.index("[data-delete-sched]"):]
-        assert "window.confirm(" in body
+        assert "inPageConfirm(" in body
         assert "deleteSchedule(entityType, entitySlug, analysisId)" in body
 
 
@@ -150,18 +150,15 @@ class TestSubscriptionCreationNowLivesInTheQuestionsEngine:
         assert "🔔 notify me" in body
         assert "question row" in body
 
-    def test_it_still_links_out_via_the_shared_old_ui_href_helper(self):
-        # Kept as the fallback for database/filesystem resources, which the
-        # Questions engine openNotifyDialog hangs off does not cover yet
-        # (state.resourceType !== 'repo' in app.js's loadPane()).
+    def test_it_no_longer_links_out_to_classic(self):
+        # Classic was retired (re/retire-classic, 2026-10-21). The link-out was a fallback for database/filesystem
+        # resources, which the Questions engine's openNotifyDialog has covered since re/next-db-fs-gate-removal
+        # (2026-09-22), so nothing replaces it: the pane must not point at a UI that no longer exists.
         app = _app()
-        assert "export function oldUiHref() {" in app
+        assert "oldUiHref" not in app
         src = _automate_src()
-        # re/next-db-fs-gate-removal (2026-09-22) added `apiEntityType` to
-        # this same import line (see test_next_db_fs_gate_removal.py) --
-        # match on the two names present rather than the exact literal line.
-        assert "state, esc, $, icon, oldUiHref, apiEntityType } from '/static/next/app.js';" in src
-        assert "oldUiHref()" in src
+        assert "oldUiHref" not in src
+        assert "/classic" not in src
 
     def test_no_create_subscription_form_exists_in_this_module(self):
         # The real creation logic lives in app.js (openNotifyDialog) and

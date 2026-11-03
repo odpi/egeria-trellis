@@ -40,6 +40,9 @@ Deliberately NOT here (stays app-specific — see the design note, §4):
 """
 from __future__ import annotations
 
+import base64
+import binascii
+import json
 import logging
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, Optional
@@ -62,6 +65,8 @@ __all__ = [
     "get_egeria_credentials",
     "exchange_portal_token",
     "egeria_token_expiry",
+    "egeria_token_shape",
+    "is_well_formed_egeria_token",
     "login_with_password",
     "validate_egeria_token",
     "validate_egeria_credentials",
@@ -113,6 +118,55 @@ def egeria_token_expiry(egeria_token: str) -> Optional[int]:
         return None
     exp = claims.get("exp")
     return int(exp) if isinstance(exp, (int, float)) else None
+
+
+def egeria_token_shape(value: Any) -> str:
+    """A loggable description of a would-be token: its length and dot count, never its content.
+
+    "442 chars, 6 dots" is enough to tell an error page or a JSON error body from
+    a JWT ("595 chars, 2 dots") without putting a credential in a log.
+    """
+    if not isinstance(value, str):
+        return f"not a string ({type(value).__name__})"
+    return f"{len(value)} chars, {value.count('.')} dots"
+
+
+def _b64url_json(segment: str) -> Optional[Dict[str, Any]]:
+    try:
+        raw = base64.urlsafe_b64decode(segment + "=" * (-len(segment) % 4))
+        decoded = json.loads(raw)
+    except (binascii.Error, ValueError, UnicodeDecodeError):
+        return None
+    return decoded if isinstance(decoded, dict) else None
+
+
+def is_well_formed_egeria_token(token: Any) -> bool:
+    """True when `token` has the shape of the JWT Egeria's view server issues.
+
+    Egeria's `POST /servers/{server}/api/token` answers with the bare token as
+    its body, and pyegeria's `create_egeria_bearer_token` returns
+    `response.text` *without checking the HTTP status* (6.x,
+    `_base_server_client._async_create_egeria_bearer_token`; on a transport error
+    it returns the literal string "FAILED"). So an error body — a 401 for a
+    mistyped password, a 5xx from a platform that is still starting, a proxy's
+    HTML page — comes back looking like a token, and Egeria then refuses every
+    call made with it (2026-10-20: 442 chars, 6 dots, no `exp`). This is the
+    gate that keeps such a value out of a session: three non-empty base64url
+    segments whose first two decode to JSON objects, the header naming an `alg`.
+
+    Shape only — not a signature check (we do not hold the view server's key)
+    and not proof Egeria will honour it; `validate_egeria_token` and RE's
+    `check_token_accepted` answer that.
+    """
+    if not isinstance(token, str) or not token or token != token.strip():
+        return False
+    parts = token.split(".")
+    if len(parts) != 3 or not all(parts):
+        return False
+    header = _b64url_json(parts[0])
+    if header is None or not header.get("alg"):
+        return False
+    return _b64url_json(parts[1]) is not None
 
 
 def create_access_token(
@@ -346,7 +400,8 @@ def login_with_password(user_id: str, password: str, config: AuthConfig) -> Opti
     password; nothing persists it.
 
     Returns the bearer token on success, None on bad credentials, an
-    unreachable Egeria, or a missing `pyegeria` install (same degradation as
+    unreachable Egeria, a reply that is not a well-formed token
+    (`is_well_formed_egeria_token`), or a missing `pyegeria` install (same degradation as
     `validate_egeria_credentials`, deliberately: from the login form's point of
     view all three mean "we could not sign you in").
     """
@@ -367,6 +422,16 @@ def login_with_password(user_id: str, password: str, config: AuthConfig) -> Opti
         token = client.create_egeria_bearer_token(user_id, password)
         if not token:
             logger.info("auth: Egeria returned no bearer token for %r", user_id)
+            return None
+        if not is_well_formed_egeria_token(token):
+            # pyegeria hands back the response body whatever the status, so a
+            # refused or failed token request looks like a token. Never cache
+            # one: Egeria would 401 every call while the session claims to be live.
+            logger.warning(
+                "auth: Egeria's token endpoint answered %r with something that is not a "
+                "bearer token (%s) — sign-in refused",
+                user_id, egeria_token_shape(token),
+            )
             return None
         logger.info("auth: obtained Egeria bearer token for user %r", user_id)
         return token

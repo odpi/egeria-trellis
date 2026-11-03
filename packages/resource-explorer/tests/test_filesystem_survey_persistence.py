@@ -15,9 +15,14 @@ from __future__ import annotations
 
 import pytest
 
+from resource_explorer import file_reach
 from resource_explorer.surveyors.filesystem.survey_definition_adapter import (
     _run_filesystem_inventory,
 )
+
+
+#: Resource Explorer leads (the walk runs); the state is handed in, so this fake registry needs no probe rows.
+_RE_LEADS = file_reach.ForkState(state=file_reach.RE_ONLY, surveyor=file_reach.SURVEYOR_RE)
 
 
 class _Entity:
@@ -43,7 +48,10 @@ def surveyor(monkeypatch):
         def __init__(self, entity, registry):
             pass
 
-        def run(self):
+        def run(self, *, profile_contents=True, walk_extensions=False):
+            # Files step 2: the folder survey's walk opens no data-file contents. Files build step 1: it also measures the
+            # extensions (owner, mode, hash under the limit).
+            assert profile_contents is False and walk_extensions is True
             return {"surveyed_at": "2026-08-25T00:00:00", "file_count": 42}
 
     monkeypatch.setattr(mod, "LocalFileSystemSurveyor", _Fake)
@@ -53,7 +61,7 @@ def surveyor(monkeypatch):
 def test_the_inventory_is_persisted_without_needing_egeria(surveyor):
     """The whole point: no Egeria asset, no publish, and the survey still lands."""
     reg = _Registry()
-    out = _run_filesystem_inventory(_Entity(), reg)
+    out = _run_filesystem_inventory(_Entity(), reg, fork=_RE_LEADS)
 
     assert out["survey_data"]["file_count"] == 42
     assert out["persisted"] is True
@@ -69,7 +77,7 @@ def test_a_persistence_failure_does_not_also_discard_the_inventory(surveyor):
     and the failure must be visible rather than inferred from a missing row.
     """
     reg = _Registry(fail=True)
-    out = _run_filesystem_inventory(_Entity(), reg)
+    out = _run_filesystem_inventory(_Entity(), reg, fork=_RE_LEADS)
 
     assert out["survey_data"]["file_count"] == 42, "inventory was discarded on a write failure"
     assert out["persisted"] is False
@@ -80,5 +88,5 @@ def test_source_marks_which_path_wrote_it(surveyor):
     """The local route writes source='local'; this path must be distinguishable,
     so a stored survey can be traced to how it was produced."""
     reg = _Registry()
-    _run_filesystem_inventory(_Entity(), reg)
+    _run_filesystem_inventory(_Entity(), reg, fork=_RE_LEADS)
     assert reg.calls[0]["source"] == "survey-definition"

@@ -1,0 +1,166 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;600&amp;family=Lora:wght@400;500&amp;display=swap">
+  <style>
+    :root{
+      --paper:#f3f2f2; --rule:rgba(32,31,29,.16); --rule-strong:#8e8a8a;
+      --ink:#201f1d; --ink-muted:#4a463e;
+      --accent:#b68235; --accent-ink:#7d5411;
+      --ok:#1d6b3f; --warn:#9c4212; --gap:#5b4a9c;
+      --s1:4.6px; --s2:9.2px; --s3:13.8px; --s4:18.4px; --s6:27.6px;
+      --heading:"Cormorant Garamond",Georgia,serif;
+      --body:"Lora",Georgia,serif;
+      --mono:ui-monospace,"SF Mono",Menlo,monospace;
+    }
+    *{box-sizing:border-box}
+    body{margin:0;font-family:var(--body);background:var(--paper);color:var(--ink);font-size:15px;line-height:1.55}
+    .tnum{font-feature-settings:"tnum";font-variant-numeric:tabular-nums}
+    .mono{font-family:var(--mono);font-size:.87em}
+    .caps{font-family:var(--heading);font-weight:600;font-size:12px;letter-spacing:.09em;text-transform:uppercase}
+    .prov{font-size:13px;line-height:1.45}
+    .h{font-family:var(--heading);font-weight:600}
+    .lnk{color:var(--accent-ink);text-decoration:underline;text-underline-offset:3px}
+    .card{border:1px solid var(--rule);border-radius:2px;padding:var(--s3);background:#fff}
+    .mine{border-left:3px solid var(--gap);padding-left:var(--s3)}
+    .bad{border-left:3px solid var(--warn);padding-left:var(--s3)}
+    .good{border-left:3px solid var(--ok);padding-left:var(--s3)}
+    .btn{display:inline-block;border:1px solid var(--rule-strong);border-radius:2px;
+         padding:1px var(--s2);font-size:12px;margin-right:var(--s1)}
+    .kv{display:grid;grid-template-columns:118px minmax(0,1fr);gap:var(--s1) var(--s3);font-size:13px}
+    .kv dt{color:var(--ink-muted)}
+    .kv dd{margin:0}
+    .nullbar{height:9px;background:#e6e4e0;border-radius:1px;overflow:hidden;width:190px}
+    .nullbar i{display:block;height:100%;background:var(--accent)}
+    .hatch{background-image:repeating-linear-gradient(45deg,#e6e4e0 0 5px,#f3f2f2 5px 10px);
+           border:1px dashed var(--rule-strong);border-radius:2px}
+    /* classic, as it actually renders: dark slate chrome */
+    .classic{background:#0f172a;color:#cbd5e1;font-family:ui-sans-serif,system-ui,sans-serif;
+             font-size:12px;padding:var(--s3);border-radius:3px;line-height:1.7}
+    .classic .amber{background:rgba(245,158,11,.2);color:#fbbf24;font-size:10px;
+                    text-transform:uppercase;font-weight:600;padding:0 4px;border-radius:3px}
+    .classic .dim{color:#64748b}
+    /* the proposed /next chip: ink outline, not a state colour */
+    .chip{display:inline-block;border:1px solid var(--ink-muted);border-radius:2px;
+          padding:0 5px;font-size:10px;letter-spacing:.08em;text-transform:uppercase;
+          font-family:var(--heading);font-weight:600;color:var(--ink-muted);vertical-align:2px}
+  </style>
+<style>
+    .g,.gi{font-family:"DejaVu Sans","Apple Symbols","Segoe UI Symbol",sans-serif;font-weight:600}
+    .g{display:inline-block;width:1.3em;text-align:center}
+    .ok{color:var(--ok)} .warn{color:var(--warn)} .gapc{color:var(--gap)} .muted{color:var(--ink-muted)}
+    .pane{background:#fff;border:1px solid var(--rule);padding:var(--s4) var(--s4) var(--s6);max-width:980px}
+    .strip{display:flex;gap:var(--s4);font-size:13.5px;border-bottom:1px solid var(--rule);padding-bottom:var(--s1)}
+    .strip span{padding-bottom:3px}
+    .strip .on{border-bottom:2px solid var(--accent);color:var(--ink)}
+    .strip .off{color:var(--ink-muted)}
+    .sec{margin-top:var(--s6);border-top:1px solid var(--rule-strong);padding-top:var(--s2);display:flex;gap:var(--s2);align-items:baseline}
+    .sec .t{font-family:var(--heading);font-weight:600;font-size:19px}
+    .row{display:grid;grid-template-columns:150px minmax(0,1fr);gap:0 var(--s3);border-bottom:1px solid var(--rule);padding:var(--s2) 0;align-items:baseline}
+    .row .lab{font-size:14px}
+    .val{font-size:15px}
+    .prov2{font-size:12.5px;color:var(--ink-muted);margin-top:2px}
+    .act{color:var(--accent-ink);text-decoration:underline;text-underline-offset:3px}
+    .feeds{font-size:12.5px;color:var(--ink-muted)}
+    .state-grid{display:grid;grid-template-columns:130px minmax(0,1fr);gap:var(--s2) var(--s3);font-size:13.5px}
+</style>
+</helmet>
+<div style="width:1340px;padding:var(--s6) var(--s6) 60px">
+  <div style="border-bottom:1px solid var(--rule-strong);padding-bottom:var(--s4)">
+    <div class="caps" style="color:var(--accent-ink)">Enrichment stage &middot; reply to ASK-DESIGNER-ENRICHMENT-STAGE-IA &middot; against main at 3d078072 and PR #348</div>
+    <h1 class="h" style="font-weight:400;font-size:38px;margin:var(--s3) 0 var(--s2);max-width:40ch">What a person told us, in one place, with what it feeds</h1>
+    <p style="max-width:92ch;margin:0">A database's Enrichment stage, Context tab. Values are illustrative. The row states, the glyphs and the
+    wording are the proposal. The sections keep the pane's own settled doctrine, <i>testimony, not paperwork</i>:
+    judgements before observations, author and date on everything, and evidence as material rather than proposals.</p>
+  </div>
+
+  <div style="margin-top:var(--s6)">
+    <div class="caps muted">One &middot; the strip, and the Context tab it opens on</div>
+    <div class="pane" style="margin-top:var(--s2)">
+      <div class="strip"><span class="on">Context</span><span class="off">Questions</span><span class="off">Survey &amp; analyses</span><span class="off">By analysis</span><span class="off">Disposition</span><span class="off">Schema Inventory</span></div>
+      <p class="prov2" style="margin-top:var(--s2);max-width:80ch">Nothing here is written to the catalogue until you catalogue it (Curate). Everything here is testimony: yours, signed and dated.</p>
+
+      <div class="sec"><span class="t">What we judge</span><span class="prov2">3 of 5 set &middot; perishable</span></div>
+      <div class="row"><div class="lab">Sensitivity</div><div>
+        <div class="val">confidential</div>
+        <div class="prov2"><span class="warn">&#9888; review &mdash; evidence moved since you judged: data_class_match (3h ago)</span> &middot; dan &middot; 2d ago &middot; <span class="act">re-confirm</span> &middot; <span class="act">change</span></div>
+        <div class="feeds">feeds &rarr; Curate (Confidentiality classification) &middot; Assessment: &ldquo;is it safe to use&rdquo;</div></div></div>
+      <div class="row"><div class="lab">Owner</div><div>
+        <div class="val">dan <span class="prov2">(interim)</span></div>
+        <div class="prov2">dan &middot; 5d ago &middot; <span class="act">change</span> &nbsp;&middot;&nbsp; administered by <span class="mono">postgres</span> &mdash; the database's own owner role, measured</div>
+        <div class="feeds">feeds &rarr; Curate (Ownership) &middot; Scouting: &ldquo;who owns this resource&rdquo;</div></div></div>
+
+      <div class="sec"><span class="t" style="font-size:16px">What you're looking for</span><span class="prov2">the investigation's, not this resource's</span></div>
+      <div class="row"><div class="lab muted">Lens</div><div>
+        <div class="val muted">no lens declared for <i>A sample db investigation</i></div>
+        <div class="prov2">A lens is one requirement compared across every resource in the investigation, so it's declared there, once. <span class="act">declare it on the investigation &rsaquo;</span> &middot; <span class="act">try one on this resource only</span></div>
+        <div class="feeds">feeds &rarr; Discovery: preliminary_fit, &ldquo;could this be in scope&rdquo;</div></div></div>
+
+      <div class="sec"><span class="t" style="font-size:16px">What we record</span><span class="prov2">facts about the world &middot; durable</span></div>
+      <div class="row"><div class="lab muted">Environment</div><div>
+        <div class="val">prod</div><div class="prov2">dan &middot; 5d ago &middot; source: you</div></div></div>
+      <div class="row"><div class="lab muted">Last backup</div><div>
+        <div class="val muted">not recorded</div>
+        <div class="prov2">material, not an answer: WAL archiving last succeeded 2h ago (db_resilience). Archiving isn't a tested backup, so nothing is proposed. &middot; <span class="act">record</span></div></div></div>
+
+      <div class="sec"><span class="t" style="font-size:16px">What only you can answer</span><span class="prov2">the catalogue's questions for a person &middot; 2 of 5 answered</span></div>
+      <div class="row"><div class="lab muted">Cost to run</div><div>
+        <div class="val">~$1.4k/month, shared cluster</div><div class="prov2">dan &middot; 1d ago &middot; <span class="act">change</span></div>
+        <div class="feeds">feeds &rarr; Assessment: &ldquo;what does it cost to run&rdquo; (&#10003; there)</div></div></div>
+      <div class="row"><div class="lab muted">Monitoring fit</div><div>
+        <div class="val muted">not answered</div><div class="prov2"><span class="act">answer</span></div></div></div>
+
+      <div class="sec"><span class="t" style="font-size:16px">Where it's documented</span><span class="prov2">sources, not answers &middot; 3</span></div>
+      <div class="row"><div class="lab muted">data dictionary</div><div>
+        <div class="val"><span class="act">wiki.corp/coco/dictionary</span></div>
+        <div class="prov2"><span class="g ok">&#10003;</span>reachable &middot; HTTP 200 &middot; probed 1h ago &nbsp;&nbsp;<span class="g muted">&#9675;</span>not ingested yet</div>
+        <div class="prov2">added by dan &middot; 2d ago &middot; <span class="act">re-check</span> &middot; <span class="act">remove</span></div></div></div>
+      <div class="row"><div class="lab muted">runbook</div><div>
+        <div class="val"><span class="act">confluence/COCO/runbook</span></div>
+        <div class="prov2"><span class="g warn">&#9680;</span>reachable behind a sign-in &middot; HTTP 302 &rarr; login &middot; probed 1h ago &nbsp;&nbsp;<span class="g muted">&#9675;</span>can't be ingested without access</div>
+        <div class="prov2">added by dan &middot; 2d ago &middot; <span class="act">re-check</span> &middot; <span class="act">remove</span></div></div></div>
+      <div class="row"><div class="lab muted">design notes</div><div>
+        <div class="val"><span class="act">intranet/old/coco-design.pdf</span></div>
+        <div class="prov2"><span class="g warn">&#10005;</span>not found &middot; HTTP 404 &middot; probed 1h ago &mdash; the link is broken, not the site</div>
+        <div class="prov2">added by maria &middot; 40d ago &middot; <span class="act">re-check</span> &middot; <span class="act">remove</span></div></div></div>
+      <div class="prov2" style="margin-top:var(--s2)"><span class="act">add a source</span></div>
+    </div>
+  </div>
+
+  <div style="margin-top:var(--s6)">
+    <div class="caps muted">Two &middot; one row, four states: when a survey may propose, and how the person's word reads afterwards</div>
+    <div class="card" style="max-width:1000px;margin-top:var(--s2)">
+      <p class="prov" style="margin:0 0 var(--s3);max-width:90ch">The pane's existing rule decides this. <b style="font-weight:500">A survey may propose only an
+      observation, and only when it measured the same fact the field asks for.</b> Licence qualifies today. Last backup doesn't:
+      archiving isn't a tested restore. <b style="font-weight:500">A judgement is never proposed.</b> Its evidence is material in the rail,
+      and it gets <i>evidence moved</i> when that material changes.</p>
+      <div class="state-grid">
+        <div class="muted">proposed</div><div><span class="val muted">Apache License 2.0</span> <span class="prov2">from survey (license_classification, 2d ago) &middot; not confirmed &middot; <span class="act">confirm</span> &middot; <span class="act">enter a different value</span></span><div class="prov2">Muted value; the question stays unanswered, so no &#10003;.</div></div>
+        <div class="muted">confirmed</div><div><span class="val">Apache License 2.0</span> <span class="prov2">confirmed by dan &middot; 2d ago &middot; source: license_classification</span></div>
+        <div class="muted">overridden</div><div><span class="val">Proprietary (vendor terms)</span> <span class="prov2">dan &middot; 2d ago &middot; the survey said: Apache License 2.0</span><div class="prov2">The machine's value stays visible, muted. An override never erases what was measured.</div></div>
+        <div class="muted">survey now disagrees</div><div><span class="val">Apache License 2.0</span> <span class="prov2"><span class="warn">&#9888; review &mdash; the survey now says MIT (license_classification, 3h ago)</span> &middot; confirmed by dan &middot; 9d ago &middot; <span class="act">keep yours</span> &middot; <span class="act">take MIT</span></span><div class="prov2">Same &#9888; wording as a judgement's <i>evidence moved</i>: one perishability vocabulary for both halves. Cleared only by the person, never by time or by a re-run.</div></div>
+      </div>
+    </div>
+  </div>
+
+  <div style="margin-top:var(--s6)">
+    <div class="caps muted">Three &middot; Survey &amp; analyses on Enrichment: present, and doing a job</div>
+    <div class="pane" style="margin-top:var(--s2)">
+      <div class="strip"><span class="off">Context</span><span class="off">Questions</span><span class="on">Survey &amp; analyses</span><span class="off">By analysis</span><span class="off">Disposition</span></div>
+      <p class="val" style="margin-top:var(--s3);max-width:80ch">No analysis runs at the Enrichment stage. What you supply here is read by analyses in other stages:</p>
+      <div class="row"><div class="lab muted">lens</div><div class="prov2" style="font-size:13.5px"><span class="act">preliminary_fit &rsaquo;</span> Discovery &middot; &ldquo;could this be in scope&rdquo; &middot; <span class="g" style="color:var(--ink)">&#9888;</span> needs a person: no lens declared &middot; <span class="act">declare one on the investigation</span></div></div>
+      <div class="row"><div class="lab muted">backup, restore</div><div class="prov2" style="font-size:13.5px"><span class="act">db_resilience &rsaquo;</span> Scouting &middot; its human half is the Last backup row in Context</div></div>
+      <div class="row"><div class="lab muted">sources</div><div class="prov2" style="font-size:13.5px">chat citations now &middot; the three document-read questions once ingestion ships</div></div>
+      <p class="prov2" style="margin-top:var(--s2)">By analysis says the same in one line and links here, rather than showing an empty board.</p>
+    </div>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>

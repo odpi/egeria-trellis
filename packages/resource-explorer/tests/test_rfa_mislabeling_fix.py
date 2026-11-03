@@ -223,6 +223,10 @@ def test_the_rfa_drawer_feed_shows_only_the_real_gap(registry, project):
     is about the RFA feed for one step's mixed pass/gap output, not about
     every precondition in the registry."""
     registry.upsert_file_inventory(project, [("README.md", 100)])
+    with registry._conn() as conn:       # and one stored symbol: repo_api_structure's has_code_symbols
+        conn.execute(
+            "INSERT INTO project_code_symbols (project_slug, file_path, language, kind, name, "
+            "qualified_name) VALUES (?, 'a.py', 'python', 'function', 'f', 'a.f')", (project,))
     mixed = [
         ClassificationAnnotation(
             summary="Security policy file present",

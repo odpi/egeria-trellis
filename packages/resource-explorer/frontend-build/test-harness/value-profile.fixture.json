@@ -1,0 +1,544 @@
+{
+ "_comment": "Generated from tests/test_value_profile_screen.py's registry by value_profile_screen.py (the real builders); regenerate if their words change.",
+ "summary": {
+  "profiled": true,
+  "surveyed_at": "2026-10-30T11:12:58.965452",
+  "ran_as": "surveyor",
+  "header": "Value profile · 7 of 10 columns measured · 2 tables · profiled 2026-10-30 11:12 as surveyor · 3 columns not measured: 1 table over the 5-minute budget, 1 view",
+  "column_count": 10,
+  "measured_count": 7,
+  "filters": {
+   "states": [
+    {
+     "value": "measured",
+     "label": "measured",
+     "count": 7
+    },
+    {
+     "value": "not_measured",
+     "label": "not measured",
+     "count": 2
+    },
+    {
+     "value": "not_applicable",
+     "label": "not applicable",
+     "count": 1
+    }
+   ],
+   "types": [
+    {
+     "value": "text",
+     "label": "text",
+     "count": 3
+    },
+    {
+     "value": "number",
+     "label": "number",
+     "count": 2
+    },
+    {
+     "value": "date",
+     "label": "date",
+     "count": 1
+    },
+    {
+     "value": "boolean",
+     "label": "boolean",
+     "count": 1
+    }
+   ]
+  },
+  "tables": [
+   {
+    "schema_name": "sales",
+    "table_name": "empty_t",
+    "state": "measured",
+    "state_words": "measured",
+    "reason": "",
+    "record_ct": 0,
+    "column_count": 2,
+    "measured_count": 2,
+    "state_counts": {
+     "measured": 2
+    },
+    "type_counts": {
+     "number": 1,
+     "text": 1
+    },
+    "line": "sales.empty_t · 0 rows · empty table · 2 columns measured · profiled 11:12",
+    "kind": "table",
+    "rows_words": "0 rows · empty table",
+    "openable": true
+   },
+   {
+    "schema_name": "sales",
+    "table_name": "orders",
+    "state": "measured",
+    "state_words": "measured",
+    "reason": "",
+    "record_ct": 4,
+    "column_count": 5,
+    "measured_count": 5,
+    "state_counts": {
+     "measured": 5
+    },
+    "type_counts": {
+     "text": 2,
+     "number": 1,
+     "boolean": 1,
+     "date": 1
+    },
+    "line": "sales.orders · 4 rows · 5 columns measured · profiled 11:12",
+    "kind": "table",
+    "rows_words": "4 rows",
+    "openable": true
+   },
+   {
+    "schema_name": "sales",
+    "table_name": "big",
+    "state": "not_measured",
+    "state_words": "not measured",
+    "reason": "profile incomplete · exceeded 5 min · counts not measured",
+    "record_ct": null,
+    "column_count": 2,
+    "measured_count": 0,
+    "state_counts": {
+     "not_measured": 2
+    },
+    "type_counts": {},
+    "line": "sales.big · not measured · profile incomplete · exceeded 5 min · counts not measured",
+    "kind": "table",
+    "rows_words": "rows not counted",
+    "openable": false
+   },
+   {
+    "schema_name": "sales",
+    "table_name": "v_orders",
+    "state": "not_applicable",
+    "state_words": "not applicable",
+    "reason": "a view, not a table: only tables are read",
+    "record_ct": null,
+    "column_count": 1,
+    "measured_count": 0,
+    "state_counts": {
+     "not_applicable": 1
+    },
+    "type_counts": {},
+    "line": "sales.v_orders · not applicable · a view, not a table: only tables are read",
+    "kind": "view",
+    "rows_words": "rows not counted",
+    "openable": false
+   }
+  ]
+ },
+ "tables": {
+  "sales.orders": {
+   "schema_name": "sales",
+   "table_name": "orders",
+   "surveyed_at": "2026-10-30T11:12:58.965452",
+   "line": "sales.orders · 4 rows · 5 columns measured · profiled 11:12",
+   "state": "measured",
+   "columns": [
+    {
+     "column_name": "channel",
+     "state": "measured",
+     "state_words": "measured",
+     "type": "text",
+     "cells": {
+      "type": {
+       "text": "text",
+       "title": "text: character values",
+       "muted": false
+      },
+      "filled": {
+       "text": "4 of 4 · 100%",
+       "title": "",
+       "muted": false
+      },
+      "distinct": {
+       "text": "5",
+       "title": "",
+       "muted": false
+      },
+      "range": {
+       "text": "lengths 0 → 5 (avg 3.2)",
+       "title": "",
+       "muted": false
+      },
+      "common": {
+       "text": "web ×2 · shop ×1 · phone ×1 · +2 more",
+       "title": "",
+       "muted": false,
+       "top": "web ×2 · shop ×1 · phone ×1",
+       "more": 2,
+       "values": [
+        {
+         "value": "web",
+         "count": "2"
+        },
+        {
+         "value": "shop",
+         "count": "1"
+        },
+        {
+         "value": "phone",
+         "count": "1"
+        },
+        {
+         "value": "(empty)",
+         "count": "1"
+        },
+        {
+         "value": "1 other value",
+         "count": "1"
+        }
+       ]
+      },
+      "flags": {
+       "text": "1 empty string",
+       "title": "",
+       "muted": false
+      },
+      "checks": {
+       "text": "—",
+       "title": "no checks proposed for this column",
+       "muted": true
+      }
+     }
+    },
+    {
+     "column_name": "id",
+     "state": "measured",
+     "state_words": "measured",
+     "type": "number",
+     "cells": {
+      "type": {
+       "text": "number",
+       "title": "number: integer and decimal values",
+       "muted": false
+      },
+      "filled": {
+       "text": "4 of 4 · 100%",
+       "title": "",
+       "muted": false
+      },
+      "distinct": {
+       "text": "4 · all distinct",
+       "title": "",
+       "muted": false
+      },
+      "range": {
+       "text": "1 → 4",
+       "title": "",
+       "muted": false
+      },
+      "common": {
+       "text": "—",
+       "title": "most common values are read for text columns only",
+       "muted": true
+      },
+      "flags": {
+       "text": "",
+       "title": "",
+       "muted": false
+      },
+      "checks": {
+       "text": "2 proposed · 1 not established",
+       "title": "the proposals are on Curate › Structure",
+       "muted": false
+      }
+     }
+    },
+    {
+     "column_name": "paid",
+     "state": "measured",
+     "state_words": "measured",
+     "type": "boolean",
+     "cells": {
+      "type": {
+       "text": "boolean",
+       "title": "boolean: true or false",
+       "muted": false
+      },
+      "filled": {
+       "text": "4 of 4 · 100%",
+       "title": "",
+       "muted": false
+      },
+      "distinct": {
+       "text": "2",
+       "title": "",
+       "muted": false
+      },
+      "range": {
+       "text": "true 3 · false 1",
+       "title": "",
+       "muted": false
+      },
+      "common": {
+       "text": "—",
+       "title": "most common values are read for text columns only",
+       "muted": true
+      },
+      "flags": {
+       "text": "",
+       "title": "",
+       "muted": false
+      },
+      "checks": {
+       "text": "—",
+       "title": "no checks proposed for this column",
+       "muted": true
+      }
+     }
+    },
+    {
+     "column_name": "placed",
+     "state": "measured",
+     "state_words": "measured",
+     "type": "date",
+     "cells": {
+      "type": {
+       "text": "date",
+       "title": "date: dates and timestamps",
+       "muted": false
+      },
+      "filled": {
+       "text": "3 of 4 · 75%",
+       "title": "",
+       "muted": false
+      },
+      "distinct": {
+       "text": "3 · all distinct",
+       "title": "",
+       "muted": false
+      },
+      "range": {
+       "text": "2008-04-30 → 2027-02-08",
+       "title": "",
+       "muted": false
+      },
+      "common": {
+       "text": "—",
+       "title": "most common values are read for text columns only",
+       "muted": true
+      },
+      "flags": {
+       "text": "1 future date · 1 before 2006",
+       "title": "",
+       "muted": false
+      },
+      "checks": {
+       "text": "—",
+       "title": "no checks proposed for this column",
+       "muted": true
+      }
+     }
+    },
+    {
+     "column_name": "status",
+     "state": "measured",
+     "state_words": "measured",
+     "type": "text",
+     "cells": {
+      "type": {
+       "text": "text",
+       "title": "text: character values",
+       "muted": false
+      },
+      "filled": {
+       "text": "4 of 4 · 100%",
+       "title": "",
+       "muted": false
+      },
+      "distinct": {
+       "text": "2",
+       "title": "",
+       "muted": false
+      },
+      "range": {
+       "text": "lengths 4 → 7 (avg 5.5)",
+       "title": "",
+       "muted": false
+      },
+      "common": {
+       "text": "not asked for",
+       "title": "most common values were not collected on this run",
+       "muted": true
+      },
+      "flags": {
+       "text": "",
+       "title": "",
+       "muted": false
+      },
+      "checks": {
+       "text": "—",
+       "title": "no checks proposed for this column",
+       "muted": true
+      }
+     }
+    }
+   ]
+  },
+  "sales.empty_t": {
+   "schema_name": "sales",
+   "table_name": "empty_t",
+   "surveyed_at": "2026-10-30T11:12:58.965452",
+   "line": "sales.empty_t · 0 rows · empty table · 2 columns measured · profiled 11:12",
+   "state": "measured",
+   "columns": [
+    {
+     "column_name": "id",
+     "state": "measured",
+     "state_words": "measured",
+     "type": "number",
+     "cells": {
+      "type": {
+       "text": "number",
+       "title": "number: integer and decimal values",
+       "muted": false
+      },
+      "filled": {
+       "text": "0 of 0",
+       "title": "an empty table: there are no values to fill",
+       "muted": false
+      },
+      "distinct": {
+       "text": "0",
+       "title": "",
+       "muted": false
+      },
+      "range": {
+       "text": "no values",
+       "title": "every row is null, or the table is empty",
+       "muted": true
+      },
+      "common": {
+       "text": "—",
+       "title": "most common values are read for text columns only",
+       "muted": true
+      },
+      "flags": {
+       "text": "",
+       "title": "",
+       "muted": false
+      },
+      "checks": {
+       "text": "—",
+       "title": "no checks proposed for this column",
+       "muted": true
+      }
+     }
+    },
+    {
+     "column_name": "label",
+     "state": "measured",
+     "state_words": "measured",
+     "type": "text",
+     "cells": {
+      "type": {
+       "text": "text",
+       "title": "text: character values",
+       "muted": false
+      },
+      "filled": {
+       "text": "0 of 0",
+       "title": "an empty table: there are no values to fill",
+       "muted": false
+      },
+      "distinct": {
+       "text": "0",
+       "title": "",
+       "muted": false
+      },
+      "range": {
+       "text": "no values",
+       "title": "every row is null, or the table is empty",
+       "muted": true
+      },
+      "common": {
+       "text": "not collected",
+       "title": "read only for text columns with 2 to 70 distinct values of at most 70 characters",
+       "muted": true
+      },
+      "flags": {
+       "text": "",
+       "title": "",
+       "muted": false
+      },
+      "checks": {
+       "text": "—",
+       "title": "no checks proposed for this column",
+       "muted": true
+      }
+     }
+    }
+   ]
+  },
+  "sales.big": {
+   "schema_name": "sales",
+   "table_name": "big",
+   "surveyed_at": "2026-10-30T11:12:58.965452",
+   "line": "sales.big · not measured · profile incomplete · exceeded 5 min · counts not measured",
+   "state": "not_measured",
+   "columns": [
+    {
+     "column_name": "amount",
+     "state": "not_measured",
+     "state_words": "not measured",
+     "type": "other",
+     "sentence": "profile incomplete · exceeded 5 min · counts not measured"
+    },
+    {
+     "column_name": "id",
+     "state": "not_measured",
+     "state_words": "not measured",
+     "type": "other",
+     "sentence": "profile incomplete · exceeded 5 min · counts not measured"
+    }
+   ]
+  },
+  "sales.v_orders": {
+   "schema_name": "sales",
+   "table_name": "v_orders",
+   "surveyed_at": "2026-10-30T11:12:58.965452",
+   "line": "sales.v_orders · not applicable · a view, not a table: only tables are read",
+   "state": "not_applicable",
+   "columns": [
+    {
+     "column_name": "id",
+     "state": "not_applicable",
+     "state_words": "not applicable",
+     "type": "other",
+     "sentence": "a view, not a table: only tables are read"
+    }
+   ]
+  }
+ },
+ "container": [
+  {
+   "name": "sales.empty_t",
+   "value": "0 rows · empty table · 2 of 2 columns measured",
+   "note": "",
+   "opens": "/next?type=db&resource=coco_ods&tab=value_profile&table=sales.empty_t"
+  },
+  {
+   "name": "sales.orders",
+   "value": "4 rows · 5 of 5 columns measured",
+   "note": "",
+   "opens": "/next?type=db&resource=coco_ods&tab=value_profile&table=sales.orders"
+  },
+  {
+   "name": "sales.big",
+   "value": "not measured",
+   "note": "profile incomplete · exceeded 5 min · counts not measured",
+   "opens": "/next?type=db&resource=coco_ods&tab=value_profile&table=sales.big"
+  },
+  {
+   "name": "sales.v_orders",
+   "value": "not applicable",
+   "note": "a view, not a table: only tables are read",
+   "opens": "/next?type=db&resource=coco_ods&tab=value_profile&table=sales.v_orders"
+  }
+ ]
+}

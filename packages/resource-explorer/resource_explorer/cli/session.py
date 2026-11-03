@@ -52,6 +52,7 @@ __all__ = [
     "require_identity",
     "resolve_identity",
     "save_login",
+    "describe_live_session",
     "session_status_line",
 ]
 
@@ -89,11 +90,14 @@ def _identity_from(record: SessionRecord) -> EgeriaIdentity:
     """
     from resource_explorer.auth import decode_token
 
+    from resource_explorer.egeria_clients import refuse_daemon_sign_in
+
     claims = decode_token(record.token)
-    return EgeriaIdentity(
-        user_id=claims.get("user_id") or claims.get("sub") or record.user_id,
-        token=claims.get("egeria_token") or None,
-    )
+    user_id = claims.get("user_id") or claims.get("sub") or record.user_id
+    # A cached session for RE's daemon account (a pre-merge login) is refused: raises
+    # DaemonSignInRefused (Brief L round 2).
+    refuse_daemon_sign_in(user_id)
+    return EgeriaIdentity(user_id=user_id, token=claims.get("egeria_token") or None)
 
 
 def resolve_identity(
@@ -110,10 +114,15 @@ def resolve_identity(
     `(None, None)` when nothing is signed in. A lapsed session is reported by
     the caller that actually needs one, not here.
     """
+    from resource_explorer.egeria_clients import DaemonSignInRefused
+
     record = load_session()
     if record is None or record.is_expired:
         return explicit_user, None
-    identity = _identity_from(record)
+    try:
+        identity = _identity_from(record)
+    except DaemonSignInRefused:
+        return explicit_user, None          # treated as not signed in; require_identity says why
     return explicit_user or identity.user_id, identity
 
 
@@ -125,9 +134,19 @@ def require_identity(console=None) -> EgeriaIdentity:
     *when* a session lapsed, because "expired at 09:14" tells a person whether
     they were idle for an hour or whether the platform restarted under them.
     """
+    from resource_explorer.egeria_clients import DaemonSignInRefused
+
     record = load_session()
     if record is not None and not record.is_expired:
-        return _identity_from(record)
+        try:
+            return _identity_from(record)
+        except DaemonSignInRefused as exc:
+            message = f"{exc} (run `{LOGIN_COMMAND}`)"
+            if console is not None:
+                console.print(f"[red]{message}[/red]")
+            else:  # pragma: no cover - every CLI caller passes a console
+                print(message, file=sys.stderr)
+            sys.exit(EXIT_NOT_SIGNED_IN)
     message = session_file.expired_message(record, LOGIN_COMMAND)
     if console is not None:
         console.print(f"[red]{message}[/red]")
@@ -173,13 +192,52 @@ def require_and_activate(console=None) -> EgeriaIdentity:
     return identity
 
 
-def session_status_line() -> str:
-    """One line describing the cached session, for `login`/`logout` output."""
+def describe_live_session(record: SessionRecord) -> str:
+    """"signed in as X until HH:MM" — but only when HH:MM is Egeria's own word.
+
+    `record.expires_at` is the app JWT's `exp`, which falls back to RE's own
+    8-hour cap when the Egeria token carries no readable `exp`. Printing that cap
+    as "until 05:11" vouched for a token Egeria was refusing (2026-10-20), so an
+    undated Egeria token says so, and names our cap as what it is.
+    """
+    if record.egeria_expiry_known and record.expires_at_local is not None:
+        return f"signed in as {record.user_id} until {record.expires_at_local:%H:%M}"
+    if record.expires_at_local is not None:
+        return (f"signed in as {record.user_id}; Egeria's token expiry is unknown "
+                f"(RE ends this session by {record.expires_at_local:%H:%M})")
+    return f"signed in as {record.user_id}; Egeria's token expiry is unknown"
+
+
+def session_status_line(check_with_egeria: bool = False) -> str:
+    """One line describing the cached session, for `login`/`whoami` output.
+
+    `check_with_egeria=True` makes ONE authorized read with the cached token
+    (`check_token_accepted`, the same read web login makes), so a token Egeria
+    refuses is reported as such instead of as a live session. Never raises.
+    """
+    from resource_explorer import egeria_clients
+    from resource_explorer.egeria_clients import DaemonSignInRefused
+
     record = load_session()
     if record is None:
         return f"not signed in — run `{LOGIN_COMMAND}`"
     if record.is_expired:
         return session_file.expired_message(record, LOGIN_COMMAND)
-    if record.expires_at_local is None:
-        return f"signed in as {record.user_id}"
-    return f"signed in as {record.user_id} until {record.expires_at_local:%H:%M}"
+    line = describe_live_session(record)
+    if not check_with_egeria:
+        return line
+    try:
+        identity = _identity_from(record)
+    except DaemonSignInRefused as exc:
+        return f"{exc} (run `{LOGIN_COMMAND}`)"
+    except Exception:                               # noqa: BLE001 - tampered/foreign session file
+        return f"session is no longer valid, run `{LOGIN_COMMAND}`"
+    if not identity.token:
+        return f"session carries no Egeria token, run `{LOGIN_COMMAND}`"
+    verdict = egeria_clients.check_token_accepted(identity.user_id, identity.token)
+    if verdict == egeria_clients.TOKEN_REFUSED:
+        return (f"signed in as {record.user_id}, but Egeria refuses this session's token — "
+                f"run `{LOGIN_COMMAND}`")
+    if verdict == egeria_clients.TOKEN_UNREACHABLE:
+        return f"{line} (could not check with Egeria)"
+    return line

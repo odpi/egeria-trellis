@@ -1,5 +1,7 @@
 # Admin surface: separate site, separate page, or stay inline?
 
+**Status:** implemented. Options survey from 2026-09-03; the admin surface it proposed has been built.
+
 The project owner's observation: "EA has a separate /admin site — which we might need for RE
 as well as admin gets more sophisticated." This is a survey and a proposal
 only. No production code changes.

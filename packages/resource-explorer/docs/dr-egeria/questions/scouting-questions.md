@@ -26,6 +26,11 @@ I don't want to start using something that is a dead-end burden.
 ### Usage
 Typically asked and answerable during Scouting.
 
+### Additional Properties
+| Parameter Name | Parameter Value |
+|---|---|
+| question_id | Q-0001 |
+
 ___
 
 ## Classify Term as Question
@@ -94,6 +99,11 @@ Need to understand it to use it appropriately.
 
 ### Usage
 Typically asked and answerable during Scouting.
+
+### Additional Properties
+| Parameter Name | Parameter Value |
+|---|---|
+| question_id | Q-0002 |
 
 ___
 
@@ -164,6 +174,11 @@ Are they reputable?
 ### Usage
 Typically asked and answerable during Scouting.
 
+### Additional Properties
+| Parameter Name | Parameter Value |
+|---|---|
+| question_id | Q-0003 |
+
 ___
 
 ## Classify Term as Question
@@ -233,6 +248,11 @@ Reduces adoption risk, provides a health proxy, and ensures community support an
 ### Usage
 Typically asked and answerable during Scouting.
 
+### Additional Properties
+| Parameter Name | Parameter Value |
+|---|---|
+| question_id | Q-0004 |
+
 ___
 
 ## Classify Term as Question
@@ -281,7 +301,7 @@ ___
 User Questions
 
 ### Display Name
-Has this resource already been catalogued in Egeria, and when?
+Has this resource already been cataloged in Egeria, and when?
 
 ### Description
 "Known inventory" check — is there already a catalog asset for this repo, independent of whether it's registered in Resource Explorer's own local registry. Ties to the Scouting "shop for data" search work.
@@ -292,12 +312,17 @@ Has someone already done this analysis? What did they learn?
 ### Usage
 Typically asked and answerable during Discovery.
 
+### Additional Properties
+| Parameter Name | Parameter Value |
+|---|---|
+| question_id | Q-0005 |
+
 ___
 
 ## Classify Term as Question
 
 ### Term Name
-Has this resource already been catalogued in Egeria, and when?
+Has this resource already been cataloged in Egeria, and when?
 
 ___
 
@@ -307,7 +332,7 @@ ___
 Perspective::Governance
 
 ### Question Name
-Has this resource already been catalogued in Egeria, and when?
+Has this resource already been cataloged in Egeria, and when?
 
 ___
 
@@ -317,14 +342,14 @@ ___
 Perspective::Steward
 
 ### Question Name
-Has this resource already been catalogued in Egeria, and when?
+Has this resource already been cataloged in Egeria, and when?
 
 ___
 
 ## Link Element To Scope
 
 ### Target Element
-Has this resource already been catalogued in Egeria, and when?
+Has this resource already been cataloged in Egeria, and when?
 
 ### Scope Reference
 Discovery
@@ -350,6 +375,11 @@ Understand the risk.
 
 ### Usage
 Typically asked and answerable during Analysis.
+
+### Additional Properties
+| Parameter Name | Parameter Value |
+|---|---|
+| question_id | Q-0006 |
 
 ___
 
@@ -409,6 +439,11 @@ Other experts, reduces risk if successful. Dependencies already in place, etc.
 
 ### Usage
 Typically asked and answerable during Discovery.
+
+### Additional Properties
+| Parameter Name | Parameter Value |
+|---|---|
+| question_id | Q-0007 |
 
 ___
 
@@ -529,6 +564,11 @@ Other experts, reduces risk if positive.
 ### Usage
 Typically asked and answerable during Discovery.
 
+### Additional Properties
+| Parameter Name | Parameter Value |
+|---|---|
+| question_id | Q-0008 |
+
 ___
 
 ## Classify Term as Question
@@ -627,148 +667,10 @@ ___
 User Questions
 
 ### Display Name
-Does it replace or extend something we already have?
+Which resources overlap with this one — the same data, a subset, a stand-in or a replacement — and how does this one differ?
 
 ### Description
-Answerable locally from RE's own registry/groups, same as "existing use within our organization."
-
-### Summary
-Duplication can be costly - needs to be factored in.
-
-### Usage
-Typically asked and answerable during Discovery.
-
-___
-
-## Classify Term as Question
-
-### Term Name
-Does it replace or extend something we already have?
-
-___
-
-## Link Perspective to Question
-
-### Perspective Name
-Perspective::Financial
-
-### Question Name
-Does it replace or extend something we already have?
-
-___
-
-## Link Perspective to Question
-
-### Perspective Name
-Perspective::Data Expert
-
-### Question Name
-Does it replace or extend something we already have?
-
-___
-
-## Link Perspective to Question
-
-### Perspective Name
-Perspective::Architecture
-
-### Question Name
-Does it replace or extend something we already have?
-
-___
-
-## Link Element To Scope
-
-### Target Element
-Does it replace or extend something we already have?
-
-### Scope Reference
-Discovery
-
-### Scope Category
-Asked At
-
-___
-
-## Create Glossary Term
-
-### Glossary Name
-User Questions
-
-### Display Name
-Which resources have similar content — code, documentation or data values — and how does this one differ?
-
-### Description
-Content similarity over embeddings of code, documents and sampled data (pgvector). Complements scope similarity (which needs declared or measured scope) and structural similarity (which needs a schema). Design §16.7 5′ and the coverage audit's similarity item: content finds candidates; scope fit ranks them.
-
-### Summary
-Finds candidates by what they contain, including resources whose scope and purpose were never declared — the only similarity that works before any curation.
-
-### Usage
-Typically asked and answerable during Analysis.
-
-___
-
-## Classify Term as Question
-
-### Term Name
-Which resources have similar content — code, documentation or data values — and how does this one differ?
-
-___
-
-## Link Perspective to Question
-
-### Perspective Name
-Perspective::Community
-
-### Question Name
-Which resources have similar content — code, documentation or data values — and how does this one differ?
-
-___
-
-## Link Perspective to Question
-
-### Perspective Name
-Perspective::Security
-
-### Question Name
-Which resources have similar content — code, documentation or data values — and how does this one differ?
-
-___
-
-## Link Perspective to Question
-
-### Perspective Name
-Perspective::Admin
-
-### Question Name
-Which resources have similar content — code, documentation or data values — and how does this one differ?
-
-___
-
-## Link Element To Scope
-
-### Target Element
-Which resources have similar content — code, documentation or data values — and how does this one differ?
-
-### Scope Reference
-Analysis
-
-### Scope Category
-Asked At
-
-___
-
-## Create Glossary Term
-
-### Glossary Name
-User Questions
-
-### Display Name
-Which resources cover similar subjects, grain and period or places — could one stand in for this one, or this one for them?
-
-### Description
-Scope similarity is lens fit (design §16.5): derive a lens from this resource's declared or measured DataScope, DataGrain and subject terms and run the fit against every other resource's stored scope — no new survey, a query over stored measurements. Runs both ways, so a resource that fails one investigation's lens can still match another (§16.5 point 5). Also the mechanism behind 'is something like this already productised' (§16.7 5′). The answer is a relation per scope axis — subject, population (which customers: pre-sales vs post-sales), space, time, grain, structure — each same / contains / contained_by / overlaps / disjoint / not_established, with 'can one stand in for the other' and 'is one a subset of the other' derived from them (design §16.8). Two 'customer' databases are never called similar on subject alone: an undeclared population axis renders not_established.
+Scope similarity is lens fit (design §16.5): derive a lens from this resource's declared or measured DataScope, DataGrain and subject terms and run the fit against every other resource's stored scope — no new survey, a query over stored measurements. Runs both ways, so a resource that fails one investigation's lens can still match another (§16.5 point 5). Also the mechanism behind 'is something like this already productised' (§16.7 5′). The answer is a relation per scope axis — subject, population (which customers: pre-sales vs post-sales), space, time, grain, structure — each same / contains / contained_by / overlaps / disjoint / not_established, with 'can one stand in for the other' and 'is one a subset of the other' derived from them (design §16.8). Two 'customer' databases are never called similar on subject alone: an undeclared population axis renders not_established. Absorbs Q-0009 (replace or extend something we already have) as the stand-in and replacement clause, and Q-0010 (similar content) as evidence for the same relation; Q-0070 stays at container level as the structural-signature evidence for databases and file systems.
 
 ### Summary
 Whether a resource can substitute for another is a question of scope — subject, grain, coverage in time and space — not of content; this is what a consumer choosing between two datasets actually asks.
@@ -776,12 +678,17 @@ Whether a resource can substitute for another is a question of scope — subject
 ### Usage
 Typically asked and answerable during Discovery.
 
+### Additional Properties
+| Parameter Name | Parameter Value |
+|---|---|
+| question_id | Q-0011 |
+
 ___
 
 ## Classify Term as Question
 
 ### Term Name
-Which resources cover similar subjects, grain and period or places — could one stand in for this one, or this one for them?
+Which resources overlap with this one — the same data, a subset, a stand-in or a replacement — and how does this one differ?
 
 ___
 
@@ -791,7 +698,7 @@ ___
 Perspective::Community
 
 ### Question Name
-Which resources cover similar subjects, grain and period or places — could one stand in for this one, or this one for them?
+Which resources overlap with this one — the same data, a subset, a stand-in or a replacement — and how does this one differ?
 
 ___
 
@@ -801,7 +708,7 @@ ___
 Perspective::Security
 
 ### Question Name
-Which resources cover similar subjects, grain and period or places — could one stand in for this one, or this one for them?
+Which resources overlap with this one — the same data, a subset, a stand-in or a replacement — and how does this one differ?
 
 ___
 
@@ -811,86 +718,17 @@ ___
 Perspective::Admin
 
 ### Question Name
-Which resources cover similar subjects, grain and period or places — could one stand in for this one, or this one for them?
+Which resources overlap with this one — the same data, a subset, a stand-in or a replacement — and how does this one differ?
 
 ___
 
 ## Link Element To Scope
 
 ### Target Element
-Which resources cover similar subjects, grain and period or places — could one stand in for this one, or this one for them?
+Which resources overlap with this one — the same data, a subset, a stand-in or a replacement — and how does this one differ?
 
 ### Scope Reference
 Discovery
-
-### Scope Category
-Asked At
-
-___
-
-## Create Glossary Term
-
-### Glossary Name
-User Questions
-
-### Display Name
-Under what licence or agreement may this resource be used?
-
-### Description
-License field is cheaply available from the GitHub API — deeper copyleft-risk categorization is Assessment-tier (see the license-specifics row below).
-
-### Summary
-Is this appropriate?
-
-### Usage
-Typically asked and answerable during Scouting.
-
-___
-
-## Classify Term as Question
-
-### Term Name
-Under what licence or agreement may this resource be used?
-
-___
-
-## Link Perspective to Question
-
-### Perspective Name
-Perspective::Security
-
-### Question Name
-Under what licence or agreement may this resource be used?
-
-___
-
-## Link Perspective to Question
-
-### Perspective Name
-Perspective::Architecture
-
-### Question Name
-Under what licence or agreement may this resource be used?
-
-___
-
-## Link Perspective to Question
-
-### Perspective Name
-Perspective::Admin
-
-### Question Name
-Under what licence or agreement may this resource be used?
-
-___
-
-## Link Element To Scope
-
-### Target Element
-Under what licence or agreement may this resource be used?
-
-### Scope Reference
-Scouting
 
 ### Scope Category
 Asked At
@@ -913,6 +751,11 @@ Influences deployment cost and exposes additional transitive risks.
 
 ### Usage
 Typically asked and answerable during Analysis.
+
+### Additional Properties
+| Parameter Name | Parameter Value |
+|---|---|
+| question_id | Q-0013 |
 
 ___
 
@@ -993,6 +836,11 @@ Reduces risk.
 ### Usage
 Typically relevant during Analysis and Enrichment.
 
+### Additional Properties
+| Parameter Name | Parameter Value |
+|---|---|
+| question_id | Q-0014 |
+
 ___
 
 ## Classify Term as Question
@@ -1067,13 +915,18 @@ User Questions
 What deployment styles does this support?
 
 ### Description
-Covers whether a Dockerfile, compose file or Helm chart is present. What the deployment instructions actually say is not read.
+Covers which deployment evidence each declared distribution has — a console entry point, a __main__.py, an unambiguous Dockerfile, compose file or Helm chart, a web-framework dependency — and whether a Dockerfile, compose file or Helm chart is present at all.
 
 ### Summary
 Need to understand if we can deploy it?
 
 ### Usage
 Typically asked and answerable during Analysis.
+
+### Additional Properties
+| Parameter Name | Parameter Value |
+|---|---|
+| question_id | Q-0015 |
 
 ___
 
@@ -1144,6 +997,11 @@ Cost is part of the decision process.
 ### Usage
 Typically asked and answerable during Enrichment.
 
+### Additional Properties
+| Parameter Name | Parameter Value |
+|---|---|
+| question_id | Q-0016 |
+
 ___
 
 ## Classify Term as Question
@@ -1202,6 +1060,11 @@ How do we know if it is working properly once deployed?
 
 ### Usage
 Typically asked and answerable during Analysis.
+
+### Additional Properties
+| Parameter Name | Parameter Value |
+|---|---|
+| question_id | Q-0017 |
 
 ___
 
@@ -1262,6 +1125,11 @@ Is it deployable and maintainable? Are upgrades disruptive?
 ### Usage
 Typically asked and answerable during Analysis.
 
+### Additional Properties
+| Parameter Name | Parameter Value |
+|---|---|
+| question_id | Q-0018 |
+
 ___
 
 ## Classify Term as Question
@@ -1330,195 +1198,7 @@ ___
 User Questions
 
 ### Display Name
-Does it fit into our monitoring infrastructure?
-
-### Description
-Org-internal cross-reference — human-supplied.
-
-### Summary
-Cost, Skills and manageability.
-
-### Usage
-Typically asked and answerable during Enrichment.
-
-___
-
-## Classify Term as Question
-
-### Term Name
-Does it fit into our monitoring infrastructure?
-
-___
-
-## Link Perspective to Question
-
-### Perspective Name
-Perspective::Data Owner
-
-### Question Name
-Does it fit into our monitoring infrastructure?
-
-___
-
-## Link Perspective to Question
-
-### Perspective Name
-Perspective::Consumer
-
-### Question Name
-Does it fit into our monitoring infrastructure?
-
-___
-
-## Link Perspective to Question
-
-### Perspective Name
-Perspective::Architecture
-
-### Question Name
-Does it fit into our monitoring infrastructure?
-
-___
-
-## Link Perspective to Question
-
-### Perspective Name
-Perspective::Admin
-
-### Question Name
-Does it fit into our monitoring infrastructure?
-
-___
-
-## Link Element To Scope
-
-### Target Element
-Does it fit into our monitoring infrastructure?
-
-### Scope Reference
-Enrichment
-
-### Scope Category
-Asked At
-
-___
-
-## Create Glossary Term
-
-### Glossary Name
-User Questions
-
-### Display Name
-Does it fit into our security infrastructure?
-
-### Description
-An organisation-internal cross-reference: the security findings inform it, a person answers it.
-
-### Summary
-Will it be allowed in? What are the risks?
-
-### Usage
-Typically asked and answerable during Enrichment.
-
-___
-
-## Classify Term as Question
-
-### Term Name
-Does it fit into our security infrastructure?
-
-___
-
-## Link Perspective to Question
-
-### Perspective Name
-Perspective::Financial
-
-### Question Name
-Does it fit into our security infrastructure?
-
-___
-
-## Link Perspective to Question
-
-### Perspective Name
-Perspective::Data Owner
-
-### Question Name
-Does it fit into our security infrastructure?
-
-___
-
-## Link Perspective to Question
-
-### Perspective Name
-Perspective::Consumer
-
-### Question Name
-Does it fit into our security infrastructure?
-
-___
-
-## Link Perspective to Question
-
-### Perspective Name
-Perspective::App/AI Builder
-
-### Question Name
-Does it fit into our security infrastructure?
-
-___
-
-## Link Perspective to Question
-
-### Perspective Name
-Perspective::Security
-
-### Question Name
-Does it fit into our security infrastructure?
-
-___
-
-## Link Perspective to Question
-
-### Perspective Name
-Perspective::Architecture
-
-### Question Name
-Does it fit into our security infrastructure?
-
-___
-
-## Link Perspective to Question
-
-### Perspective Name
-Perspective::Admin
-
-### Question Name
-Does it fit into our security infrastructure?
-
-___
-
-## Link Element To Scope
-
-### Target Element
-Does it fit into our security infrastructure?
-
-### Scope Reference
-Enrichment
-
-### Scope Category
-Asked At
-
-___
-
-## Create Glossary Term
-
-### Glossary Name
-User Questions
-
-### Display Name
-Is there any reliability or availability aspects?
+What does it promise (SLA, support terms), and what does its history show?
 
 ### Description
 Trend/uptime signal, if available — Understanding-tier chart, or Analysis if content-derived (SLA docs).
@@ -1529,12 +1209,17 @@ Is it production ready?
 ### Usage
 Typically asked and answerable during Analysis.
 
+### Additional Properties
+| Parameter Name | Parameter Value |
+|---|---|
+| question_id | Q-0021 |
+
 ___
 
 ## Classify Term as Question
 
 ### Term Name
-Is there any reliability or availability aspects?
+What does it promise (SLA, support terms), and what does its history show?
 
 ___
 
@@ -1544,7 +1229,7 @@ ___
 Perspective::Security
 
 ### Question Name
-Is there any reliability or availability aspects?
+What does it promise (SLA, support terms), and what does its history show?
 
 ___
 
@@ -1554,7 +1239,7 @@ ___
 Perspective::Architecture
 
 ### Question Name
-Is there any reliability or availability aspects?
+What does it promise (SLA, support terms), and what does its history show?
 
 ___
 
@@ -1564,14 +1249,14 @@ ___
 Perspective::Admin
 
 ### Question Name
-Is there any reliability or availability aspects?
+What does it promise (SLA, support terms), and what does its history show?
 
 ___
 
 ## Link Element To Scope
 
 ### Target Element
-Is there any reliability or availability aspects?
+What does it promise (SLA, support terms), and what does its history show?
 
 ### Scope Reference
 Analysis
@@ -1587,10 +1272,10 @@ ___
 User Questions
 
 ### Display Name
-What kinds of integrations does it support?
+What does it talk to — Egeria, databases, services, message buses?
 
 ### Description
-Covers which interfaces exist and whether they are documented. Which named third-party systems it integrates with is not read.
+Covers what the repository talks to, outbound: Egeria view services, declared dependencies and deployment evidence. Which other named third-party systems it integrates with is not read.
 
 ### Summary
 Can we connect it to our ecosystem?
@@ -1598,12 +1283,17 @@ Can we connect it to our ecosystem?
 ### Usage
 Typically asked and answerable during Analysis.
 
+### Additional Properties
+| Parameter Name | Parameter Value |
+|---|---|
+| question_id | Q-0022 |
+
 ___
 
 ## Classify Term as Question
 
 ### Term Name
-What kinds of integrations does it support?
+What does it talk to — Egeria, databases, services, message buses?
 
 ___
 
@@ -1613,7 +1303,7 @@ ___
 Perspective::Consumer
 
 ### Question Name
-What kinds of integrations does it support?
+What does it talk to — Egeria, databases, services, message buses?
 
 ___
 
@@ -1623,7 +1313,7 @@ ___
 Perspective::Data Expert
 
 ### Question Name
-What kinds of integrations does it support?
+What does it talk to — Egeria, databases, services, message buses?
 
 ___
 
@@ -1633,7 +1323,7 @@ ___
 Perspective::Security
 
 ### Question Name
-What kinds of integrations does it support?
+What does it talk to — Egeria, databases, services, message buses?
 
 ___
 
@@ -1643,7 +1333,7 @@ ___
 Perspective::Architecture
 
 ### Question Name
-What kinds of integrations does it support?
+What does it talk to — Egeria, databases, services, message buses?
 
 ___
 
@@ -1653,96 +1343,17 @@ ___
 Perspective::Admin
 
 ### Question Name
-What kinds of integrations does it support?
+What does it talk to — Egeria, databases, services, message buses?
 
 ___
 
 ## Link Element To Scope
 
 ### Target Element
-What kinds of integrations does it support?
+What does it talk to — Egeria, databases, services, message buses?
 
 ### Scope Reference
 Analysis
-
-### Scope Category
-Asked At
-
-___
-
-## Create Glossary Term
-
-### Glossary Name
-User Questions
-
-### Display Name
-Does this fit within or need to extend our existing infrastructure estate?
-
-### Description
-Org-internal cross-reference — human-supplied.
-
-### Summary
-Impact on existing architecture and operations.
-
-### Usage
-Typically asked and answerable during Enrichment.
-
-___
-
-## Classify Term as Question
-
-### Term Name
-Does this fit within or need to extend our existing infrastructure estate?
-
-___
-
-## Link Perspective to Question
-
-### Perspective Name
-Perspective::Consumer
-
-### Question Name
-Does this fit within or need to extend our existing infrastructure estate?
-
-___
-
-## Link Perspective to Question
-
-### Perspective Name
-Perspective::Security
-
-### Question Name
-Does this fit within or need to extend our existing infrastructure estate?
-
-___
-
-## Link Perspective to Question
-
-### Perspective Name
-Perspective::Architecture
-
-### Question Name
-Does this fit within or need to extend our existing infrastructure estate?
-
-___
-
-## Link Perspective to Question
-
-### Perspective Name
-Perspective::Admin
-
-### Question Name
-Does this fit within or need to extend our existing infrastructure estate?
-
-___
-
-## Link Element To Scope
-
-### Target Element
-Does this fit within or need to extend our existing infrastructure estate?
-
-### Scope Reference
-Enrichment
 
 ### Scope Category
 Asked At
@@ -1765,6 +1376,11 @@ Stability vs innovation trade-off.
 
 ### Usage
 Typically asked and answerable during Assessment.
+
+### Additional Properties
+| Parameter Name | Parameter Value |
+|---|---|
+| question_id | Q-0024 |
 
 ___
 
@@ -1845,6 +1461,11 @@ Operational readiness and skill gaps.
 ### Usage
 Typically asked and answerable during Enrichment.
 
+### Additional Properties
+| Parameter Name | Parameter Value |
+|---|---|
+| question_id | Q-0025 |
+
 ___
 
 ## Classify Term as Question
@@ -1913,6 +1534,11 @@ Ease of adoption and maintenance.
 
 ### Usage
 Typically asked and answerable during Analysis.
+
+### Additional Properties
+| Parameter Name | Parameter Value |
+|---|---|
+| question_id | Q-0026 |
 
 ___
 
@@ -2003,6 +1629,11 @@ Enterprise fallback and support options.
 ### Usage
 Typically asked and answerable during Analysis.
 
+### Additional Properties
+| Parameter Name | Parameter Value |
+|---|---|
+| question_id | Q-0027 |
+
 ___
 
 ## Classify Term as Question
@@ -2092,6 +1723,11 @@ Third-party audit and security posture.
 ### Usage
 Typically asked and answerable during Analysis.
 
+### Additional Properties
+| Parameter Name | Parameter Value |
+|---|---|
+| question_id | Q-0028 |
+
 ___
 
 ## Classify Term as Question
@@ -2171,6 +1807,11 @@ Compliance and regulatory alignment.
 ### Usage
 Typically asked and answerable during Enrichment.
 
+### Additional Properties
+| Parameter Name | Parameter Value |
+|---|---|
+| question_id | Q-0029 |
+
 ___
 
 ## Classify Term as Question
@@ -2239,23 +1880,28 @@ ___
 User Questions
 
 ### Display Name
-What explicit licence does this resource use, and are there non-standard or copyleft terms?
+What explicit license does this resource use, and are there non-standard or copyleft terms?
 
 ### Description
-GitHub API license field gives the SPDX id cheaply (Scouting); license_classification (Assessment) categorizes it into a risk tier (permissive/weak copyleft/strong copyleft/source-available/unknown) — candidate reference tools for deeper provenance: FOSSology (Linux Foundation compliance workspace), LicenseFinder, ClearlyDefined (crowdsourced licensing/provenance data), Mend, Black Duck. SPDX (ISO/IEC 5962) is the standard schema this conforms to.
+GitHub API license field gives the SPDX id cheaply (Scouting); license_classification (Assessment) categorizes it into a risk tier (permissive/weak copyleft/strong copyleft/source-available/unknown) — candidate reference tools for deeper provenance: FOSSology (Linux Foundation compliance workspace), LicenseFinder, ClearlyDefined (crowdsourced licensing/provenance data), Mend, Black Duck. SPDX (ISO/IEC 5962) is the standard schema this conforms to. Absorbs Q-0012 (the Scouting direct-field read): the GitHub license field answers the standard-license case at Scouting, and license_classification the risk tier at Assessment; a non-standard license still needs the license text interpreted.
 
 ### Summary
 Identifies strict copyleft (GPL/AGPL), source-available shifts (BSL/SSPL), or dual-licensing risks before code integration.
 
 ### Usage
-Typically asked and answerable during Assessment.
+Typically relevant during Scouting and Assessment.
+
+### Additional Properties
+| Parameter Name | Parameter Value |
+|---|---|
+| question_id | Q-0030 |
 
 ___
 
 ## Classify Term as Question
 
 ### Term Name
-What explicit licence does this resource use, and are there non-standard or copyleft terms?
+What explicit license does this resource use, and are there non-standard or copyleft terms?
 
 ___
 
@@ -2265,7 +1911,7 @@ ___
 Perspective::Financial
 
 ### Question Name
-What explicit licence does this resource use, and are there non-standard or copyleft terms?
+What explicit license does this resource use, and are there non-standard or copyleft terms?
 
 ___
 
@@ -2275,7 +1921,7 @@ ___
 Perspective::Data Owner
 
 ### Question Name
-What explicit licence does this resource use, and are there non-standard or copyleft terms?
+What explicit license does this resource use, and are there non-standard or copyleft terms?
 
 ___
 
@@ -2285,7 +1931,7 @@ ___
 Perspective::App/AI Builder
 
 ### Question Name
-What explicit licence does this resource use, and are there non-standard or copyleft terms?
+What explicit license does this resource use, and are there non-standard or copyleft terms?
 
 ___
 
@@ -2295,14 +1941,27 @@ ___
 Perspective::Security
 
 ### Question Name
-What explicit licence does this resource use, and are there non-standard or copyleft terms?
+What explicit license does this resource use, and are there non-standard or copyleft terms?
 
 ___
 
 ## Link Element To Scope
 
 ### Target Element
-What explicit licence does this resource use, and are there non-standard or copyleft terms?
+What explicit license does this resource use, and are there non-standard or copyleft terms?
+
+### Scope Reference
+Scouting
+
+### Scope Category
+Asked At
+
+___
+
+## Link Element To Scope
+
+### Target Element
+What explicit license does this resource use, and are there non-standard or copyleft terms?
 
 ### Scope Reference
 Assessment
@@ -2328,6 +1987,11 @@ Protects the organization from copyright infringement claims from unauthorized t
 
 ### Usage
 Typically asked and answerable during Analysis.
+
+### Additional Properties
+| Parameter Name | Parameter Value |
+|---|---|
+| question_id | Q-0031 |
 
 ___
 
@@ -2418,6 +2082,11 @@ Prevents unauthorized leakage of internal network metadata, system details, or u
 ### Usage
 Typically asked and answerable during Analysis.
 
+### Additional Properties
+| Parameter Name | Parameter Value |
+|---|---|
+| question_id | Q-0032 |
+
 ___
 
 ## Classify Term as Question
@@ -2496,6 +2165,11 @@ Open-source software licenses (e.g., Apache 2.0) often differ from model weights
 
 ### Usage
 Typically asked and answerable during Analysis.
+
+### Additional Properties
+| Parameter Name | Parameter Value |
+|---|---|
+| question_id | Q-0033 |
 
 ___
 
@@ -2576,6 +2250,11 @@ Prevents hardcoded secrets or unencrypted credential passing in containerized an
 ### Usage
 Typically asked and answerable during Analysis.
 
+### Additional Properties
+| Parameter Name | Parameter Value |
+|---|---|
+| question_id | Q-0034 |
+
 ___
 
 ## Classify Term as Question
@@ -2645,6 +2324,11 @@ Knowing how to responsibly disclose a finding — and whether maintainers take s
 ### Usage
 Typically asked and answerable during Analysis.
 
+### Additional Properties
+| Parameter Name | Parameter Value |
+|---|---|
+| question_id | Q-0035 |
+
 ___
 
 ## Classify Term as Question
@@ -2704,6 +2388,11 @@ Independent of CI wiring — a Makefile/build.gradle/pyproject build-system tabl
 ### Usage
 Typically asked and answerable during Analysis.
 
+### Additional Properties
+| Parameter Name | Parameter Value |
+|---|---|
+| question_id | Q-0036 |
+
 ___
 
 ## Classify Term as Question
@@ -2762,6 +2451,11 @@ A strong, cheap signal that this repo is already integrated into some enterprise
 
 ### Usage
 Typically asked and answerable during Assessment.
+
+### Additional Properties
+| Parameter Name | Parameter Value |
+|---|---|
+| question_id | Q-0037 |
 
 ___
 
@@ -2832,6 +2526,11 @@ Avoid re-deriving what's already known; ground the decision in prior signal inst
 ### Usage
 Typically asked and answerable during Discovery.
 
+### Additional Properties
+| Parameter Name | Parameter Value |
+|---|---|
+| question_id | Q-0038 |
+
 ___
 
 ## Classify Term as Question
@@ -2890,86 +2589,7 @@ ___
 User Questions
 
 ### Display Name
-Which Survey Definition should I run — a quick coarse check or the full deep survey?
-
-### Description
-Survey Definitions carry their own step lists/descriptions and survey_kind tag; the Discovery candidates list surfaces exactly this per-step breakdown before committing to run one.
-
-### Summary
-Running the wrong tier wastes time (full survey when a coarse check would do) or leaves real gaps (coarse-only when depth was actually needed) — the choice should be informed, not default.
-
-### Usage
-Typically asked and answerable during Discovery.
-
-___
-
-## Classify Term as Question
-
-### Term Name
-Which Survey Definition should I run — a quick coarse check or the full deep survey?
-
-___
-
-## Link Perspective to Question
-
-### Perspective Name
-Perspective::Steward
-
-### Question Name
-Which Survey Definition should I run — a quick coarse check or the full deep survey?
-
-___
-
-## Link Perspective to Question
-
-### Perspective Name
-Perspective::Data Expert
-
-### Question Name
-Which Survey Definition should I run — a quick coarse check or the full deep survey?
-
-___
-
-## Link Perspective to Question
-
-### Perspective Name
-Perspective::Architecture
-
-### Question Name
-Which Survey Definition should I run — a quick coarse check or the full deep survey?
-
-___
-
-## Link Perspective to Question
-
-### Perspective Name
-Perspective::Admin
-
-### Question Name
-Which Survey Definition should I run — a quick coarse check or the full deep survey?
-
-___
-
-## Link Element To Scope
-
-### Target Element
-Which Survey Definition should I run — a quick coarse check or the full deep survey?
-
-### Scope Reference
-Discovery
-
-### Scope Category
-Asked At
-
-___
-
-## Create Glossary Term
-
-### Glossary Name
-User Questions
-
-### Display Name
-Based on what's already known, is this worth investigating further, or should it be deprioritized?
+Given what is known, is this worth a full survey?
 
 ### Description
 Disposition control (Track/Investigate/Recommend/Abandon/Ignore) plus history — the same repo_dispositions state Scouting already exposes, now reachable directly from Discovery too.
@@ -2980,12 +2600,17 @@ Discovery-tier signal (license risk, maturity, conventions) is exactly the point
 ### Usage
 Typically asked and answerable during Discovery.
 
+### Additional Properties
+| Parameter Name | Parameter Value |
+|---|---|
+| question_id | Q-0040 |
+
 ___
 
 ## Classify Term as Question
 
 ### Term Name
-Based on what's already known, is this worth investigating further, or should it be deprioritized?
+Given what is known, is this worth a full survey?
 
 ___
 
@@ -2995,7 +2620,7 @@ ___
 Perspective::Governance
 
 ### Question Name
-Based on what's already known, is this worth investigating further, or should it be deprioritized?
+Given what is known, is this worth a full survey?
 
 ___
 
@@ -3005,7 +2630,7 @@ ___
 Perspective::Steward
 
 ### Question Name
-Based on what's already known, is this worth investigating further, or should it be deprioritized?
+Given what is known, is this worth a full survey?
 
 ___
 
@@ -3015,14 +2640,14 @@ ___
 Perspective::Data Owner
 
 ### Question Name
-Based on what's already known, is this worth investigating further, or should it be deprioritized?
+Given what is known, is this worth a full survey?
 
 ___
 
 ## Link Element To Scope
 
 ### Target Element
-Based on what's already known, is this worth investigating further, or should it be deprioritized?
+Given what is known, is this worth a full survey?
 
 ### Scope Reference
 Discovery
@@ -3049,6 +2674,11 @@ Re-surveying on a blind schedule wastes cycles; knowing whether anything materia
 ### Usage
 Typically asked and answerable during Discovery.
 
+### Additional Properties
+| Parameter Name | Parameter Value |
+|---|---|
+| question_id | Q-0041 |
+
 ___
 
 ## Classify Term as Question
@@ -3097,65 +2727,6 @@ ___
 User Questions
 
 ### Display Name
-Is there a Survey Definition authored for this resource's technology type at all, or is that a catalog gap?
-
-### Description
-Direct field — the candidates list itself; an empty result for a technology type with real registered resources is the signal.
-
-### Summary
-A resource type with no Survey Definition authored yet is itself a real, actionable finding — a catalog gap someone should close — not a silent empty list.
-
-### Usage
-Typically asked and answerable during Discovery.
-
-___
-
-## Classify Term as Question
-
-### Term Name
-Is there a Survey Definition authored for this resource's technology type at all, or is that a catalog gap?
-
-___
-
-## Link Perspective to Question
-
-### Perspective Name
-Perspective::Governance
-
-### Question Name
-Is there a Survey Definition authored for this resource's technology type at all, or is that a catalog gap?
-
-___
-
-## Link Perspective to Question
-
-### Perspective Name
-Perspective::Admin
-
-### Question Name
-Is there a Survey Definition authored for this resource's technology type at all, or is that a catalog gap?
-
-___
-
-## Link Element To Scope
-
-### Target Element
-Is there a Survey Definition authored for this resource's technology type at all, or is that a catalog gap?
-
-### Scope Reference
-Discovery
-
-### Scope Category
-Asked At
-
-___
-
-## Create Glossary Term
-
-### Glossary Name
-User Questions
-
-### Display Name
 What kind of thing is this repository — a library, an application, a tool, or samples?
 
 ### Description
@@ -3166,6 +2737,11 @@ The same signal means different things depending on what the repo is; a tutorial
 
 ### Usage
 Typically asked and answerable during Discovery.
+
+### Additional Properties
+| Parameter Name | Parameter Value |
+|---|---|
+| question_id | Q-0043 |
 
 ___
 
@@ -3236,6 +2812,11 @@ I need to know what I would be taking on before committing to it, and whether it
 ### Usage
 Typically asked and answerable during Discovery.
 
+### Additional Properties
+| Parameter Name | Parameter Value |
+|---|---|
+| question_id | Q-0044 |
+
 ___
 
 ## Classify Term as Question
@@ -3304,6 +2885,11 @@ I need to know what I would be taking on before committing to it, and whether it
 
 ### Usage
 Typically asked and answerable during Discovery.
+
+### Additional Properties
+| Parameter Name | Parameter Value |
+|---|---|
+| question_id | Q-0045 |
 
 ___
 
@@ -3374,6 +2960,11 @@ Language mix is the cheapest signal of whether this is something we can maintain
 ### Usage
 Typically asked and answerable during Scouting.
 
+### Additional Properties
+| Parameter Name | Parameter Value |
+|---|---|
+| question_id | Q-0046 |
+
 ___
 
 ## Classify Term as Question
@@ -3438,10 +3029,15 @@ What data files does it ship, and what shape are they?
 An inventory and shape profile of the data files shipped in the repository.
 
 ### Summary
-Bundled data can carry licensing and privacy obligations that the repo's own licence does not cover.
+Bundled data can carry licensing and privacy obligations that the repo's own license does not cover.
 
 ### Usage
 Typically asked and answerable during Analysis.
+
+### Additional Properties
+| Parameter Name | Parameter Value |
+|---|---|
+| question_id | Q-0047 |
 
 ___
 
@@ -3501,10 +3097,10 @@ ___
 User Questions
 
 ### Display Name
-What APIs and code symbols does it expose to callers?
+What code symbols — classes, functions, endpoints — does it define, and where?
 
 ### Description
-Covers the extracted code symbols and the interfaces implied by dependencies; a published contract is detected only where a specification file exists.
+Covers the extracted code symbols — classes, functions, endpoints — and where each is defined. The interfaces the repository exposes, and whether a contract is published, are Q-0053's.
 
 ### Summary
 The published surface is what we would actually be coupling to, and what breaks on upgrade.
@@ -3512,12 +3108,17 @@ The published surface is what we would actually be coupling to, and what breaks 
 ### Usage
 Typically asked and answerable during Analysis.
 
+### Additional Properties
+| Parameter Name | Parameter Value |
+|---|---|
+| question_id | Q-0048 |
+
 ___
 
 ## Classify Term as Question
 
 ### Term Name
-What APIs and code symbols does it expose to callers?
+What code symbols — classes, functions, endpoints — does it define, and where?
 
 ___
 
@@ -3527,7 +3128,7 @@ ___
 Perspective::Consumer
 
 ### Question Name
-What APIs and code symbols does it expose to callers?
+What code symbols — classes, functions, endpoints — does it define, and where?
 
 ___
 
@@ -3537,7 +3138,7 @@ ___
 Perspective::App/AI Builder
 
 ### Question Name
-What APIs and code symbols does it expose to callers?
+What code symbols — classes, functions, endpoints — does it define, and where?
 
 ___
 
@@ -3547,7 +3148,7 @@ ___
 Perspective::Data Expert
 
 ### Question Name
-What APIs and code symbols does it expose to callers?
+What code symbols — classes, functions, endpoints — does it define, and where?
 
 ___
 
@@ -3557,14 +3158,14 @@ ___
 Perspective::Architecture
 
 ### Question Name
-What APIs and code symbols does it expose to callers?
+What code symbols — classes, functions, endpoints — does it define, and where?
 
 ___
 
 ## Link Element To Scope
 
 ### Target Element
-What APIs and code symbols does it expose to callers?
+What code symbols — classes, functions, endpoints — does it define, and where?
 
 ### Scope Reference
 Analysis
@@ -3590,6 +3191,11 @@ A named, comparable rubric is what lets me weigh several candidates against each
 
 ### Usage
 Typically asked and answerable during Assessment.
+
+### Additional Properties
+| Parameter Name | Parameter Value |
+|---|---|
+| question_id | Q-0049 |
 
 ___
 
@@ -3659,6 +3265,11 @@ A badge is a public claim by the project about itself; its age tells me how much
 
 ### Usage
 Typically asked and answerable during Assessment.
+
+### Additional Properties
+| Parameter Name | Parameter Value |
+|---|---|
+| question_id | Q-0050 |
 
 ___
 
@@ -3739,6 +3350,11 @@ A healthy commit rate produced by one person is a different risk from the same r
 ### Usage
 Typically asked and answerable during Assessment.
 
+### Additional Properties
+| Parameter Name | Parameter Value |
+|---|---|
+| question_id | Q-0051 |
+
 ___
 
 ## Classify Term as Question
@@ -3797,7 +3413,7 @@ ___
 User Questions
 
 ### Display Name
-How much code is there? How complex?
+How much code is there, and how complex is it?
 
 ### Description
 Both halves are answerable as of 2026-09-02. SIZE: language_file_classification carries a per-language line census — code, comment, docstring and blank — written at ingestion and at Coarse Profile refresh (pipeline.py::_record_line_census). Markdown, JSON, HTML, CSS, SQL and XML are counted as text and excluded from the code total by construction; project_stats.ingestion_lines_of_code, which counted every newline in every text file and reported 1,118,195 against ~156k real code lines on egeria-python, is retired and must not be cited. COMPLEXITY: api_structure carries the per-language max/mean it always computed, python and java only — go and javascript store 0 for every symbol because their extractors never compute it, so they are excluded and named rather than averaged in (0.32 vs 2.69 on milvus). A repo with no census reports no line counts rather than zero: not counted is not the same as no code.
@@ -3808,12 +3424,17 @@ Gives an estimate on cost to maintain.
 ### Usage
 Typically asked and answerable during Assessment.
 
+### Additional Properties
+| Parameter Name | Parameter Value |
+|---|---|
+| question_id | Q-0052 |
+
 ___
 
 ## Classify Term as Question
 
 ### Term Name
-How much code is there? How complex?
+How much code is there, and how complex is it?
 
 ___
 
@@ -3823,7 +3444,7 @@ ___
 Perspective::App/AI Builder
 
 ### Question Name
-How much code is there? How complex?
+How much code is there, and how complex is it?
 
 ___
 
@@ -3833,7 +3454,7 @@ ___
 Perspective::Security
 
 ### Question Name
-How much code is there? How complex?
+How much code is there, and how complex is it?
 
 ___
 
@@ -3843,7 +3464,7 @@ ___
 Perspective::Architecture
 
 ### Question Name
-How much code is there? How complex?
+How much code is there, and how complex is it?
 
 ___
 
@@ -3853,14 +3474,14 @@ ___
 Perspective::Admin
 
 ### Question Name
-How much code is there? How complex?
+How much code is there, and how complex is it?
 
 ___
 
 ## Link Element To Scope
 
 ### Target Element
-How much code is there? How complex?
+How much code is there, and how complex is it?
 
 ### Scope Reference
 Assessment
@@ -3886,6 +3507,11 @@ How do we use this - does it look like it does what we want?
 
 ### Usage
 Typically asked and answerable during Discovery.
+
+### Additional Properties
+| Parameter Name | Parameter Value |
+|---|---|
+| question_id | Q-0053 |
 
 ___
 
@@ -3976,6 +3602,11 @@ Whether a survey can run at all, and where it runs, decides the cost and the pro
 ### Usage
 Typically asked and answerable during Discovery.
 
+### Additional Properties
+| Parameter Name | Parameter Value |
+|---|---|
+| question_id | Q-0054 |
+
 ___
 
 ## Classify Term as Question
@@ -4040,10 +3671,15 @@ Where is this resource physically located, under which jurisdiction, and are the
 Two halves. The machine half reads host and region from the connection endpoint, cloud instance metadata, or the mount and file path. The human half — legal controller, residency rule — comes through Enrichment. The result is published as a proposed Egeria DataScope classification carrying scopeElements {jurisdiction, region, controller}.
 
 ### Summary
-Data sovereignty decides whether we may hold or process this at all, independently of what the licence permits.
+Data sovereignty decides whether we may hold or process this at all, independently of what the license permits.
 
 ### Usage
 Typically asked and answerable during Discovery.
+
+### Additional Properties
+| Parameter Name | Parameter Value |
+|---|---|
+| question_id | Q-0055 |
 
 ___
 
@@ -4124,6 +3760,11 @@ A consumer needs to know which period the data actually covers before trusting a
 ### Usage
 Typically asked and answerable during Analysis.
 
+### Additional Properties
+| Parameter Name | Parameter Value |
+|---|---|
+| question_id | Q-0056 |
+
 ___
 
 ## Classify Term as Question
@@ -4182,23 +3823,28 @@ ___
 User Questions
 
 ### Display Name
-Are there any restrictions for use beyond the licence — classification, zone or terms of use?
+Are there any restrictions for use beyond the license — classification, zone or terms of use?
 
 ### Description
-Separated from the licence question itself when that one became cross-type and moved to Scouting. Reads Egeria governance zones and classifications, the resource's own terms-of-use text, and Enrichment for anything contractual that is not written down machine-readably.
+Separated from the license question itself when that one became cross-type and moved to Scouting. Reads Egeria governance zones and classifications, the resource's own terms-of-use text, and Enrichment for anything contractual that is not written down machine-readably.
 
 ### Summary
-A permissive licence does not mean an internal classification, a governance zone or a contractual term allows the use I have in mind.
+A permissive license does not mean an internal classification, a governance zone or a contractual term allows the use I have in mind.
 
 ### Usage
 Typically asked and answerable during Analysis.
+
+### Additional Properties
+| Parameter Name | Parameter Value |
+|---|---|
+| question_id | Q-0057 |
 
 ___
 
 ## Classify Term as Question
 
 ### Term Name
-Are there any restrictions for use beyond the licence — classification, zone or terms of use?
+Are there any restrictions for use beyond the license — classification, zone or terms of use?
 
 ___
 
@@ -4208,7 +3854,7 @@ ___
 Perspective::Governance
 
 ### Question Name
-Are there any restrictions for use beyond the licence — classification, zone or terms of use?
+Are there any restrictions for use beyond the license — classification, zone or terms of use?
 
 ___
 
@@ -4218,7 +3864,7 @@ ___
 Perspective::Consumer
 
 ### Question Name
-Are there any restrictions for use beyond the licence — classification, zone or terms of use?
+Are there any restrictions for use beyond the license — classification, zone or terms of use?
 
 ___
 
@@ -4228,7 +3874,7 @@ ___
 Perspective::Privacy
 
 ### Question Name
-Are there any restrictions for use beyond the licence — classification, zone or terms of use?
+Are there any restrictions for use beyond the license — classification, zone or terms of use?
 
 ___
 
@@ -4238,14 +3884,14 @@ ___
 Perspective::Security
 
 ### Question Name
-Are there any restrictions for use beyond the licence — classification, zone or terms of use?
+Are there any restrictions for use beyond the license — classification, zone or terms of use?
 
 ___
 
 ## Link Element To Scope
 
 ### Target Element
-Are there any restrictions for use beyond the licence — classification, zone or terms of use?
+Are there any restrictions for use beyond the license — classification, zone or terms of use?
 
 ### Scope Reference
 Analysis
@@ -4261,23 +3907,28 @@ ___
 User Questions
 
 ### Display Name
-Is this resource ready to be offered as a data product — owner, description, licence or agreement, schema, freshness, contact and scope?
+Is this resource ready to be offered as a data product — owner, description, license or agreement, schema, freshness, contact and scope?
 
 ### Description
 A composite over facts other questions already establish — Egeria Ownership, a description, License or DataSharingAgreement, a schema, freshness signals, a contact and a DataScope. Design §4 requires this and the demand question to hold together before a DigitalProduct is proposed.
 
 ### Summary
-The supply half of a data product: one with no accountable owner, no licence and no stated scope cannot responsibly be offered.
+The supply half of a data product: one with no accountable owner, no license and no stated scope cannot responsibly be offered.
 
 ### Usage
 Typically asked and answerable during Assessment.
+
+### Additional Properties
+| Parameter Name | Parameter Value |
+|---|---|
+| question_id | Q-0058 |
 
 ___
 
 ## Classify Term as Question
 
 ### Term Name
-Is this resource ready to be offered as a data product — owner, description, licence or agreement, schema, freshness, contact and scope?
+Is this resource ready to be offered as a data product — owner, description, license or agreement, schema, freshness, contact and scope?
 
 ___
 
@@ -4287,7 +3938,7 @@ ___
 Perspective::Governance
 
 ### Question Name
-Is this resource ready to be offered as a data product — owner, description, licence or agreement, schema, freshness, contact and scope?
+Is this resource ready to be offered as a data product — owner, description, license or agreement, schema, freshness, contact and scope?
 
 ___
 
@@ -4297,7 +3948,7 @@ ___
 Perspective::Steward
 
 ### Question Name
-Is this resource ready to be offered as a data product — owner, description, licence or agreement, schema, freshness, contact and scope?
+Is this resource ready to be offered as a data product — owner, description, license or agreement, schema, freshness, contact and scope?
 
 ___
 
@@ -4307,7 +3958,7 @@ ___
 Perspective::Data Owner
 
 ### Question Name
-Is this resource ready to be offered as a data product — owner, description, licence or agreement, schema, freshness, contact and scope?
+Is this resource ready to be offered as a data product — owner, description, license or agreement, schema, freshness, contact and scope?
 
 ___
 
@@ -4317,14 +3968,14 @@ ___
 Perspective::Consumer
 
 ### Question Name
-Is this resource ready to be offered as a data product — owner, description, licence or agreement, schema, freshness, contact and scope?
+Is this resource ready to be offered as a data product — owner, description, license or agreement, schema, freshness, contact and scope?
 
 ___
 
 ## Link Element To Scope
 
 ### Target Element
-Is this resource ready to be offered as a data product — owner, description, licence or agreement, schema, freshness, contact and scope?
+Is this resource ready to be offered as a data product — owner, description, license or agreement, schema, freshness, contact and scope?
 
 ### Scope Reference
 Assessment
@@ -4340,7 +3991,7 @@ ___
 User Questions
 
 ### Display Name
-Is there a defined need or market for this resource — subscriptions, requests, existing use, feedback or open requests for this kind of data?
+Is there demand for this — subscriptions, requests, feedback or existing use?
 
 ### Description
 Reads Egeria DigitalSubscription, Resource Explorer's own registry of existing use and feedback, similar-resource search hits, and open RFAs asking for this kind of data. Design §4 requires this and the readiness question to hold together before a DigitalProduct is proposed.
@@ -4351,12 +4002,17 @@ The demand half: building a data product nobody asked for costs more than it ret
 ### Usage
 Typically asked and answerable during Assessment.
 
+### Additional Properties
+| Parameter Name | Parameter Value |
+|---|---|
+| question_id | Q-0059 |
+
 ___
 
 ## Classify Term as Question
 
 ### Term Name
-Is there a defined need or market for this resource — subscriptions, requests, existing use, feedback or open requests for this kind of data?
+Is there demand for this — subscriptions, requests, feedback or existing use?
 
 ___
 
@@ -4366,7 +4022,7 @@ ___
 Perspective::Financial
 
 ### Question Name
-Is there a defined need or market for this resource — subscriptions, requests, existing use, feedback or open requests for this kind of data?
+Is there demand for this — subscriptions, requests, feedback or existing use?
 
 ___
 
@@ -4376,7 +4032,7 @@ ___
 Perspective::Governance
 
 ### Question Name
-Is there a defined need or market for this resource — subscriptions, requests, existing use, feedback or open requests for this kind of data?
+Is there demand for this — subscriptions, requests, feedback or existing use?
 
 ___
 
@@ -4386,7 +4042,7 @@ ___
 Perspective::Data Owner
 
 ### Question Name
-Is there a defined need or market for this resource — subscriptions, requests, existing use, feedback or open requests for this kind of data?
+Is there demand for this — subscriptions, requests, feedback or existing use?
 
 ___
 
@@ -4396,14 +4052,14 @@ ___
 Perspective::Consumer
 
 ### Question Name
-Is there a defined need or market for this resource — subscriptions, requests, existing use, feedback or open requests for this kind of data?
+Is there demand for this — subscriptions, requests, feedback or existing use?
 
 ___
 
 ## Link Element To Scope
 
 ### Target Element
-Is there a defined need or market for this resource — subscriptions, requests, existing use, feedback or open requests for this kind of data?
+Is there demand for this — subscriptions, requests, feedback or existing use?
 
 ### Scope Reference
 Assessment
@@ -4429,6 +4085,11 @@ Size sets the cost of every later tier, and is the first thing that says whether
 
 ### Usage
 Typically asked and answerable during Scouting.
+
+### Additional Properties
+| Parameter Name | Parameter Value |
+|---|---|
+| question_id | Q-0060 |
 
 ___
 
@@ -4499,6 +4160,11 @@ Knowing which schemas matter stops every later analysis from paying to profile s
 ### Usage
 Typically asked and answerable during Scouting.
 
+### Additional Properties
+| Parameter Name | Parameter Value |
+|---|---|
+| question_id | Q-0061 |
+
 ___
 
 ## Classify Term as Question
@@ -4558,6 +4224,11 @@ A database nobody writes to and nobody reads is a retirement candidate, not a su
 ### Usage
 Typically asked and answerable during Scouting.
 
+### Additional Properties
+| Parameter Name | Parameter Value |
+|---|---|
+| question_id | Q-0062 |
+
 ___
 
 ## Classify Term as Question
@@ -4616,65 +4287,6 @@ ___
 User Questions
 
 ### Display Name
-Is this database documented — what fraction of its tables and columns carry comments?
-
-### Description
-pg_description via obj_description and col_description gives comments per table and per column; the measure is coverage, not presence. Note rule 13 in the package CLAUDE.md — these need the schema-qualified (schema.table)::regclass form.
-
-### Summary
-Undocumented tables are the single biggest obstacle to anyone reusing a database they did not build.
-
-### Usage
-Typically asked and answerable during Scouting.
-
-___
-
-## Classify Term as Question
-
-### Term Name
-Is this database documented — what fraction of its tables and columns carry comments?
-
-___
-
-## Link Perspective to Question
-
-### Perspective Name
-Perspective::Steward
-
-### Question Name
-Is this database documented — what fraction of its tables and columns carry comments?
-
-___
-
-## Link Perspective to Question
-
-### Perspective Name
-Perspective::Consumer
-
-### Question Name
-Is this database documented — what fraction of its tables and columns carry comments?
-
-___
-
-## Link Element To Scope
-
-### Target Element
-Is this database documented — what fraction of its tables and columns carry comments?
-
-### Scope Reference
-Scouting
-
-### Scope Category
-Asked At
-
-___
-
-## Create Glossary Term
-
-### Glossary Name
-User Questions
-
-### Display Name
 What engine and version is this, which extensions are installed, and is the version still supported?
 
 ### Description
@@ -4685,6 +4297,11 @@ An unsupported engine version is a security and upgrade liability before anythin
 
 ### Usage
 Typically asked and answerable during Scouting.
+
+### Additional Properties
+| Parameter Name | Parameter Value |
+|---|---|
+| question_id | Q-0064 |
 
 ___
 
@@ -4755,6 +4372,11 @@ Whether the data survives a failure is a property of the deployment, not of the 
 ### Usage
 Typically asked and answerable during Scouting.
 
+### Additional Properties
+| Parameter Name | Parameter Value |
+|---|---|
+| question_id | Q-0065 |
+
 ___
 
 ## Classify Term as Question
@@ -4813,6 +4435,11 @@ These are the two resilience questions a data owner actually asks, and the two t
 
 ### Usage
 Typically asked and answerable during Enrichment.
+
+### Additional Properties
+| Parameter Name | Parameter Value |
+|---|---|
+| question_id | Q-0066 |
 
 ___
 
@@ -4883,6 +4510,11 @@ The kind of database decides which later analyses are worth paying for at all.
 ### Usage
 Typically asked and answerable during Discovery.
 
+### Additional Properties
+| Parameter Name | Parameter Value |
+|---|---|
+| question_id | Q-0067 |
+
 ___
 
 ## Classify Term as Question
@@ -4942,6 +4574,11 @@ A database with no declared relationships needs a very different kind of attenti
 ### Usage
 Typically asked and answerable during Discovery.
 
+### Additional Properties
+| Parameter Name | Parameter Value |
+|---|---|
+| question_id | Q-0068 |
+
 ___
 
 ## Classify Term as Question
@@ -5000,6 +4637,11 @@ Grain is the first thing a consumer has to know and the last thing most database
 
 ### Usage
 Typically asked and answerable during Discovery.
+
+### Additional Properties
+| Parameter Name | Parameter Value |
+|---|---|
+| question_id | Q-0069 |
 
 ___
 
@@ -5070,6 +4712,11 @@ Paying to survey, host and govern the third copy of the same database is a cost 
 ### Usage
 Typically asked and answerable during Discovery.
 
+### Additional Properties
+| Parameter Name | Parameter Value |
+|---|---|
+| question_id | Q-0070 |
+
 ___
 
 ## Classify Term as Question
@@ -5131,13 +4778,18 @@ User Questions
 Are there views, materialised views, functions or triggers that encode business logic?
 
 ### Description
-The DDL is already in the catalog (pg_views, pg_matviews, pg_proc, pg_trigger) and Resource Explorer already parses view DDL with SQLGlot for dependencies, column lineage and complexity. What is missing is the link from that step's output back to the question layer.
+The DDL is already in the catalog (pg_views, pg_matviews, pg_proc, pg_trigger) and Resource Explorer already parses view DDL with SQLGlot for dependencies, column lineage and complexity. The catalogue entry added 2026-10-22 is the link from that step's output back to the question layer, for views; functions and triggers are not parsed.
 
 ### Summary
 Logic hidden in views and triggers is logic no application-level survey will ever find.
 
 ### Usage
 Typically asked and answerable during Discovery.
+
+### Additional Properties
+| Parameter Name | Parameter Value |
+|---|---|
+| question_id | Q-0071 |
 
 ___
 
@@ -5208,6 +4860,11 @@ A hundred-table database with no entry point is functionally undiscoverable, how
 ### Usage
 Typically asked and answerable during Discovery.
 
+### Additional Properties
+| Parameter Name | Parameter Value |
+|---|---|
+| question_id | Q-0072 |
+
 ___
 
 ## Classify Term as Question
@@ -5266,33 +4923,38 @@ ___
 User Questions
 
 ### Display Name
-Which columns hold semi-structured data (JSON, JSONB, XML, arrays or hstore), and how much of the data sits in them?
+Are this database's planner statistics current?
 
 ### Description
-Zero new fetch — the column types are already in the catalog read; what is derived is which columns are semi-structured and what share of the stored bytes they account for. The contents themselves are a separate, more expensive Analysis question.
+Per table: never analyzed, last analyzed N days ago, and the rows changed since that analyze as a share of live rows against autovacuum's own trigger (50 + 0.1 x rows by default), with a per-schema roll-up. Read from the stored table-activity rows; no new fetch. Never analyzed (Postgres NULL) and not read are kept apart.
 
 ### Summary
-Data hidden inside JSON columns is invisible to every schema-level question, and is often where the interesting fields live.
+Stale or missing planner statistics make the query planner choose slow plans, and they also qualify every other row estimate this survey reports.
 
 ### Usage
-Typically asked and answerable during Discovery.
+Typically asked and answerable during Analysis.
+
+### Additional Properties
+| Parameter Name | Parameter Value |
+|---|---|
+| question_id | Q-0073 |
 
 ___
 
 ## Classify Term as Question
 
 ### Term Name
-Which columns hold semi-structured data (JSON, JSONB, XML, arrays or hstore), and how much of the data sits in them?
+Are this database's planner statistics current?
 
 ___
 
 ## Link Perspective to Question
 
 ### Perspective Name
-Perspective::App/AI Builder
+Perspective::Steward
 
 ### Question Name
-Which columns hold semi-structured data (JSON, JSONB, XML, arrays or hstore), and how much of the data sits in them?
+Are this database's planner statistics current?
 
 ___
 
@@ -5302,17 +4964,27 @@ ___
 Perspective::Data Expert
 
 ### Question Name
-Which columns hold semi-structured data (JSON, JSONB, XML, arrays or hstore), and how much of the data sits in them?
+Are this database's planner statistics current?
+
+___
+
+## Link Perspective to Question
+
+### Perspective Name
+Perspective::Admin
+
+### Question Name
+Are this database's planner statistics current?
 
 ___
 
 ## Link Element To Scope
 
 ### Target Element
-Which columns hold semi-structured data (JSON, JSONB, XML, arrays or hstore), and how much of the data sits in them?
+Are this database's planner statistics current?
 
 ### Scope Reference
-Discovery
+Analysis
 
 ### Scope Category
 Asked At
@@ -5335,6 +5007,11 @@ A consumer shopping for data searches by subject, not by table name; a resource 
 
 ### Usage
 Typically asked and answerable during Discovery.
+
+### Additional Properties
+| Parameter Name | Parameter Value |
+|---|---|
+| question_id | Q-0075 |
 
 ___
 
@@ -5405,6 +5082,11 @@ Data that does not cover the period or the places being asked about is out of sc
 ### Usage
 Typically asked and answerable during Discovery.
 
+### Additional Properties
+| Parameter Name | Parameter Value |
+|---|---|
+| question_id | Q-0076 |
+
 ___
 
 ## Classify Term as Question
@@ -5462,7 +5144,12 @@ design §16.3's Discovery gate and §16.5 point 2 — fit is a query over stored
 This is the gate: it decides whether the Analysis-tier aggregate pass is worth paying for on this resource, from signals that cost nothing.
 
 ### Usage
-Typically asked and answerable during Discovery.
+Typically relevant during Discovery and Enrichment.
+
+### Additional Properties
+| Parameter Name | Parameter Value |
+|---|---|
+| question_id | Q-0077 |
 
 ___
 
@@ -5506,6 +5193,19 @@ Asked At
 
 ___
 
+## Link Element To Scope
+
+### Target Element
+Could this be in scope for what I am looking for — worth the full pass?
+
+### Scope Reference
+Enrichment
+
+### Scope Category
+Asked At
+
+___
+
 ## Create Glossary Term
 
 ### Glossary Name
@@ -5522,6 +5222,11 @@ The schema is the contract, and every structural question downstream is asked ag
 
 ### Usage
 Typically asked and answerable during Analysis.
+
+### Additional Properties
+| Parameter Name | Parameter Value |
+|---|---|
+| question_id | Q-0078 |
 
 ___
 
@@ -5582,6 +5287,11 @@ Types say what a column may hold; only the values say what it does hold.
 ### Usage
 Typically asked and answerable during Analysis.
 
+### Additional Properties
+| Parameter Name | Parameter Value |
+|---|---|
+| question_id | Q-0079 |
+
 ___
 
 ## Classify Term as Question
@@ -5640,6 +5350,11 @@ Knowing where the sensitive data actually sits is the precondition for every pri
 
 ### Usage
 Typically asked and answerable during Analysis.
+
+### Additional Properties
+| Parameter Name | Parameter Value |
+|---|---|
+| question_id | Q-0080 |
 
 ___
 
@@ -5720,6 +5435,11 @@ Uncontrolled code columns are where data quality quietly fails, and they are che
 ### Usage
 Typically asked and answerable during Analysis.
 
+### Additional Properties
+| Parameter Name | Parameter Value |
+|---|---|
+| question_id | Q-0081 |
+
 ___
 
 ## Classify Term as Question
@@ -5778,23 +5498,28 @@ ___
 User Questions
 
 ### Display Name
-What is inside the JSON, JSONB and XML columns — keys, nesting, types, and consistency across rows?
+Which columns hold semi-structured data (JSON, JSONB, XML, arrays or hstore), and what is inside them — keys, nesting, types and consistency across rows?
 
 ### Description
-JSONB via jsonb_object_keys and jsonb_typeof over a bounded sample, giving key frequency, nesting depth and type consistency across rows; XML via the root element and xpath key sampling. The result is a SchemaAnalysisAnnotation carrying an inferred nested schema, sharing its inference core with the filesystem path's JSON and XML file profiling.
+JSONB via jsonb_object_keys and jsonb_typeof over a bounded sample, giving key frequency, nesting depth and type consistency across rows; XML via the root element and xpath key sampling. The result is a SchemaAnalysisAnnotation carrying an inferred nested schema, sharing its inference core with the filesystem path's JSON and XML file profiling. Absorbs Q-0074's first clause: which columns hold semi-structured data comes from the column types already in the catalog read, at zero new fetch; the share of stored bytes they account for is the part nothing measures.
 
 ### Summary
 A schema that stops at "jsonb" describes the column and says nothing about the data.
 
 ### Usage
-Typically asked and answerable during Analysis.
+Typically relevant during Discovery and Analysis.
+
+### Additional Properties
+| Parameter Name | Parameter Value |
+|---|---|
+| question_id | Q-0082 |
 
 ___
 
 ## Classify Term as Question
 
 ### Term Name
-What is inside the JSON, JSONB and XML columns — keys, nesting, types, and consistency across rows?
+Which columns hold semi-structured data (JSON, JSONB, XML, arrays or hstore), and what is inside them — keys, nesting, types and consistency across rows?
 
 ___
 
@@ -5804,7 +5529,7 @@ ___
 Perspective::App/AI Builder
 
 ### Question Name
-What is inside the JSON, JSONB and XML columns — keys, nesting, types, and consistency across rows?
+Which columns hold semi-structured data (JSON, JSONB, XML, arrays or hstore), and what is inside them — keys, nesting, types and consistency across rows?
 
 ___
 
@@ -5814,14 +5539,27 @@ ___
 Perspective::Data Expert
 
 ### Question Name
-What is inside the JSON, JSONB and XML columns — keys, nesting, types, and consistency across rows?
+Which columns hold semi-structured data (JSON, JSONB, XML, arrays or hstore), and what is inside them — keys, nesting, types and consistency across rows?
 
 ___
 
 ## Link Element To Scope
 
 ### Target Element
-What is inside the JSON, JSONB and XML columns — keys, nesting, types, and consistency across rows?
+Which columns hold semi-structured data (JSON, JSONB, XML, arrays or hstore), and what is inside them — keys, nesting, types and consistency across rows?
+
+### Scope Reference
+Discovery
+
+### Scope Category
+Asked At
+
+___
+
+## Link Element To Scope
+
+### Target Element
+Which columns hold semi-structured data (JSON, JSONB, XML, arrays or hstore), and what is inside them — keys, nesting, types and consistency across rows?
 
 ### Scope Reference
 Analysis
@@ -5847,6 +5585,11 @@ These are the specific, fixable defects behind a vague sense that a database is 
 
 ### Usage
 Typically asked and answerable during Analysis.
+
+### Additional Properties
+| Parameter Name | Parameter Value |
+|---|---|
+| question_id | Q-0083 |
 
 ___
 
@@ -5917,6 +5660,11 @@ An external dependency is a reachability, security and upgrade constraint that t
 ### Usage
 Typically asked and answerable during Analysis.
 
+### Additional Properties
+| Parameter Name | Parameter Value |
+|---|---|
+| question_id | Q-0084 |
+
 ___
 
 ## Classify Term as Question
@@ -5975,10 +5723,10 @@ ___
 User Questions
 
 ### Display Name
-Who can read and write what — roles, grants, superusers, PUBLIC grants, and are sensitive columns readable broadly?
+Who can read and write what — roles, grants, superusers, PUBLIC grants — which sensitive columns can which roles read, and what has changed?
 
 ### Description
-pg_roles, role_table_grants and pg_default_acl give the access half and already have an analysis. The sensitivity half needs column-level Data Class matching, and the question is the cross of the two — which is why a broad PUBLIC grant on an unremarkable table and the same grant on a table of personal data read identically today.
+pg_roles, role_table_grants and pg_default_acl give the access half and already have an analysis. The sensitivity half needs column-level Data Class matching, and the question is the cross of the two — which is why a broad PUBLIC grant on an unremarkable table and the same grant on a table of personal data read identically today. Absorbs Q-0089 (the scored sensitive-data exposure): sensitive columns identified by Data Class matching, crossed with who holds read access to them, weighted by the breadth of the grant.
 
 ### Summary
 Access is only half an answer; access crossed with sensitivity is the half anyone acts on.
@@ -5986,12 +5734,17 @@ Access is only half an answer; access crossed with sensitivity is the half anyon
 ### Usage
 Typically asked and answerable during Analysis.
 
+### Additional Properties
+| Parameter Name | Parameter Value |
+|---|---|
+| question_id | Q-0085 |
+
 ___
 
 ## Classify Term as Question
 
 ### Term Name
-Who can read and write what — roles, grants, superusers, PUBLIC grants, and are sensitive columns readable broadly?
+Who can read and write what — roles, grants, superusers, PUBLIC grants — which sensitive columns can which roles read, and what has changed?
 
 ___
 
@@ -6001,7 +5754,7 @@ ___
 Perspective::Governance
 
 ### Question Name
-Who can read and write what — roles, grants, superusers, PUBLIC grants, and are sensitive columns readable broadly?
+Who can read and write what — roles, grants, superusers, PUBLIC grants — which sensitive columns can which roles read, and what has changed?
 
 ___
 
@@ -6011,7 +5764,7 @@ ___
 Perspective::Privacy
 
 ### Question Name
-Who can read and write what — roles, grants, superusers, PUBLIC grants, and are sensitive columns readable broadly?
+Who can read and write what — roles, grants, superusers, PUBLIC grants — which sensitive columns can which roles read, and what has changed?
 
 ___
 
@@ -6021,7 +5774,7 @@ ___
 Perspective::Security
 
 ### Question Name
-Who can read and write what — roles, grants, superusers, PUBLIC grants, and are sensitive columns readable broadly?
+Who can read and write what — roles, grants, superusers, PUBLIC grants — which sensitive columns can which roles read, and what has changed?
 
 ___
 
@@ -6031,14 +5784,14 @@ ___
 Perspective::Admin
 
 ### Question Name
-Who can read and write what — roles, grants, superusers, PUBLIC grants, and are sensitive columns readable broadly?
+Who can read and write what — roles, grants, superusers, PUBLIC grants — which sensitive columns can which roles read, and what has changed?
 
 ___
 
 ## Link Element To Scope
 
 ### Target Element
-Who can read and write what — roles, grants, superusers, PUBLIC grants, and are sensitive columns readable broadly?
+Who can read and write what — roles, grants, superusers, PUBLIC grants — which sensitive columns can which roles read, and what has changed?
 
 ### Scope Reference
 Analysis
@@ -6064,6 +5817,11 @@ A point-in-time survey cannot distinguish a busy table from an abandoned one; th
 
 ### Usage
 Typically asked and answerable during Analysis.
+
+### Additional Properties
+| Parameter Name | Parameter Value |
+|---|---|
+| question_id | Q-0086 |
 
 ___
 
@@ -6134,6 +5892,11 @@ Columns bound to agreed terms are the difference between a catalogued database a
 ### Usage
 Typically asked and answerable during Analysis.
 
+### Additional Properties
+| Parameter Name | Parameter Value |
+|---|---|
+| question_id | Q-0087 |
+
 ___
 
 ## Classify Term as Question
@@ -6192,7 +5955,7 @@ ___
 User Questions
 
 ### Display Name
-How complete and consistent is this database's documentation?
+How complete and consistent is this database's documentation — what fraction of its tables and columns carry comments?
 
 ### Description
 Scores the coverage measure against criteria and adds the convention checks — a database where every table has a comment but half of them repeat the table name is not well documented.
@@ -6203,12 +5966,17 @@ Documentation coverage is the scored version of the Scouting comment question, a
 ### Usage
 Typically asked and answerable during Assessment.
 
+### Additional Properties
+| Parameter Name | Parameter Value |
+|---|---|
+| question_id | Q-0088 |
+
 ___
 
 ## Classify Term as Question
 
 ### Term Name
-How complete and consistent is this database's documentation?
+How complete and consistent is this database's documentation — what fraction of its tables and columns carry comments?
 
 ___
 
@@ -6218,7 +5986,7 @@ ___
 Perspective::Steward
 
 ### Question Name
-How complete and consistent is this database's documentation?
+How complete and consistent is this database's documentation — what fraction of its tables and columns carry comments?
 
 ___
 
@@ -6228,83 +5996,14 @@ ___
 Perspective::Consumer
 
 ### Question Name
-How complete and consistent is this database's documentation?
+How complete and consistent is this database's documentation — what fraction of its tables and columns carry comments?
 
 ___
 
 ## Link Element To Scope
 
 ### Target Element
-How complete and consistent is this database's documentation?
-
-### Scope Reference
-Assessment
-
-### Scope Category
-Asked At
-
-___
-
-## Create Glossary Term
-
-### Glossary Name
-User Questions
-
-### Display Name
-What is the sensitive-data exposure — which sensitive columns can which roles read?
-
-### Description
-The scored form of the access-and-sensitivity question in Analysis: sensitive columns identified by Data Class matching, crossed with who holds read access to them, weighted by the breadth of the grant. A PUBLIC grant on a column of personal data is the finding this exists to surface.
-
-### Summary
-This is the question a privacy review actually asks, and it is a cross of two analyses rather than either one.
-
-### Usage
-Typically asked and answerable during Assessment.
-
-___
-
-## Classify Term as Question
-
-### Term Name
-What is the sensitive-data exposure — which sensitive columns can which roles read?
-
-___
-
-## Link Perspective to Question
-
-### Perspective Name
-Perspective::Governance
-
-### Question Name
-What is the sensitive-data exposure — which sensitive columns can which roles read?
-
-___
-
-## Link Perspective to Question
-
-### Perspective Name
-Perspective::Privacy
-
-### Question Name
-What is the sensitive-data exposure — which sensitive columns can which roles read?
-
-___
-
-## Link Perspective to Question
-
-### Perspective Name
-Perspective::Security
-
-### Question Name
-What is the sensitive-data exposure — which sensitive columns can which roles read?
-
-___
-
-## Link Element To Scope
-
-### Target Element
-What is the sensitive-data exposure — which sensitive columns can which roles read?
+How complete and consistent is this database's documentation — what fraction of its tables and columns carry comments?
 
 ### Scope Reference
 Assessment
@@ -6330,6 +6029,11 @@ Modelling quality predicts how expensive this database will be to integrate with
 
 ### Usage
 Typically asked and answerable during Assessment.
+
+### Additional Properties
+| Parameter Name | Parameter Value |
+|---|---|
+| question_id | Q-0090 |
 
 ___
 
@@ -6400,6 +6104,11 @@ Reference-data governance is measurable as a share, which makes it one of the fe
 ### Usage
 Typically asked and answerable during Assessment.
 
+### Additional Properties
+| Parameter Name | Parameter Value |
+|---|---|
+| question_id | Q-0091 |
+
 ___
 
 ## Classify Term as Question
@@ -6451,13 +6160,18 @@ User Questions
 Is this database maintained and healthy — vacuum recency, dead-tuple ratio and unused indexes?
 
 ### Description
-Scores the activity signals against thresholds: how long since the last vacuum or analyse, the ratio of dead to live tuples, and indexes that have never been scanned. Remember design §5.1's absence rule — statistics that were never collected must not read as a healthy zero.
+Scores the activity signals against thresholds: how long since the last vacuum or analyze, the ratio of dead to live tuples, and indexes that have never been scanned. Remember design §5.1's absence rule — statistics that were never collected must not read as a healthy zero.
 
 ### Summary
 Operational neglect shows up in the statistics long before it shows up as an outage.
 
 ### Usage
 Typically asked and answerable during Assessment.
+
+### Additional Properties
+| Parameter Name | Parameter Value |
+|---|---|
+| question_id | Q-0092 |
 
 ___
 
@@ -6517,6 +6231,11 @@ A data owner signing off on a database is signing off on its recovery, not its s
 
 ### Usage
 Typically asked and answerable during Assessment.
+
+### Additional Properties
+| Parameter Name | Parameter Value |
+|---|---|
+| question_id | Q-0093 |
 
 ___
 
@@ -6587,6 +6306,11 @@ Need a basic inventory before deciding whether deeper analysis of this filesyste
 ### Usage
 Typically asked and answerable during Scouting.
 
+### Additional Properties
+| Parameter Name | Parameter Value |
+|---|---|
+| question_id | Q-0094 |
+
 ___
 
 ## Classify Term as Question
@@ -6656,6 +6380,11 @@ Whether a filesystem holds usable structured data determines whether it's worth 
 ### Usage
 Typically asked and answerable during Discovery.
 
+### Additional Properties
+| Parameter Name | Parameter Value |
+|---|---|
+| question_id | Q-0095 |
+
 ___
 
 ## Classify Term as Question
@@ -6702,6 +6431,1307 @@ Does this filesystem contain recognizable tabular or structured data files, and 
 
 ### Scope Reference
 Discovery
+
+### Scope Category
+Asked At
+
+___
+
+## Create Glossary Term
+
+### Glossary Name
+User Questions
+
+### Display Name
+Which data-quality checks should this database have?
+
+### Description
+propose_quality_checks reads the measured value profile and, for every column and table, applies the selection rules to propose a check, each in an Egeria quality dimension: Completeness (is the value there: Required, Missing_Pct, Required_No_Placeholder and Row_Ct_Pct), Uniqueness (Unique), Timeliness (Future_Date) and Conformity (Min_Date). A person accepts or rejects each proposal in Curate; a check whose inputs were not measured is listed as not established with the reason, never silently left out.
+
+### Summary
+A data owner cannot ask for quality until someone says what to check, and writing the checks by hand for hundreds of tables never gets done.
+
+### Usage
+Typically asked and answerable during Analysis.
+
+### Additional Properties
+| Parameter Name | Parameter Value |
+|---|---|
+| question_id | Q-0096 |
+
+___
+
+## Classify Term as Question
+
+### Term Name
+Which data-quality checks should this database have?
+
+___
+
+## Link Perspective to Question
+
+### Perspective Name
+Perspective::Steward
+
+### Question Name
+Which data-quality checks should this database have?
+
+___
+
+## Link Perspective to Question
+
+### Perspective Name
+Perspective::Data Owner
+
+### Question Name
+Which data-quality checks should this database have?
+
+___
+
+## Link Element To Scope
+
+### Target Element
+Which data-quality checks should this database have?
+
+### Scope Reference
+Analysis
+
+### Scope Category
+Asked At
+
+___
+
+## Create Glossary Term
+
+### Glossary Name
+User Questions
+
+### Display Name
+Which data-quality checks hold on this database's tables, and which fail?
+
+### Description
+run_quality_checks runs the checks a person accepted, one aggregate query per table, and records pass, warning or fail per check, or not established with the reason (an empty table, a zero baseline, a column that has gone) and never a pass for a measure that is undefined. Each evaluated check is published as one Egeria QualityAnnotation in its dimension: Completeness (is the value there: Required, Missing_Pct, Required_No_Placeholder and Row_Ct_Pct), Uniqueness (Unique), Timeliness (Future_Date) and Conformity (Min_Date). With no accepted check the step is not run ("no accepted checks"), never an empty report.
+
+### Summary
+A check nobody runs is a wish; the steward needs to see which accepted checks pass, warn or fail, and which could not be evaluated.
+
+### Usage
+Typically asked and answerable during Analysis.
+
+### Additional Properties
+| Parameter Name | Parameter Value |
+|---|---|
+| question_id | Q-0097 |
+
+___
+
+## Classify Term as Question
+
+### Term Name
+Which data-quality checks hold on this database's tables, and which fail?
+
+___
+
+## Link Perspective to Question
+
+### Perspective Name
+Perspective::Steward
+
+### Question Name
+Which data-quality checks hold on this database's tables, and which fail?
+
+___
+
+## Link Perspective to Question
+
+### Perspective Name
+Perspective::Data Owner
+
+### Question Name
+Which data-quality checks hold on this database's tables, and which fail?
+
+___
+
+## Link Element To Scope
+
+### Target Element
+Which data-quality checks hold on this database's tables, and which fail?
+
+### Scope Reference
+Analysis
+
+### Scope Category
+Asked At
+
+___
+
+## Create Glossary Term
+
+### Glossary Name
+User Questions
+
+### Display Name
+Does it fit our estate — the platforms we run, our monitoring, our security controls?
+
+### Description
+One Enrichment section: a pre-fill from the dependency-support mapping (Q-0014's dependency_support already matches dependencies to catalogued technology) and Egeria queries, and a person's confirmation. The same question as Q-0019 (monitoring), Q-0020 (security) and Q-0023 (estate) with a different noun, so they are one question with three clauses.
+
+### Summary
+Whether something fits what we already run, watch and secure decides whether adopting it adds a new thing to operate.
+
+### Usage
+Typically asked and answerable during Enrichment.
+
+### Additional Properties
+| Parameter Name | Parameter Value |
+|---|---|
+| question_id | Q-0098 |
+
+___
+
+## Classify Term as Question
+
+### Term Name
+Does it fit our estate — the platforms we run, our monitoring, our security controls?
+
+___
+
+## Link Perspective to Question
+
+### Perspective Name
+Perspective::Financial
+
+### Question Name
+Does it fit our estate — the platforms we run, our monitoring, our security controls?
+
+___
+
+## Link Perspective to Question
+
+### Perspective Name
+Perspective::Data Owner
+
+### Question Name
+Does it fit our estate — the platforms we run, our monitoring, our security controls?
+
+___
+
+## Link Perspective to Question
+
+### Perspective Name
+Perspective::Consumer
+
+### Question Name
+Does it fit our estate — the platforms we run, our monitoring, our security controls?
+
+___
+
+## Link Perspective to Question
+
+### Perspective Name
+Perspective::App/AI Builder
+
+### Question Name
+Does it fit our estate — the platforms we run, our monitoring, our security controls?
+
+___
+
+## Link Perspective to Question
+
+### Perspective Name
+Perspective::Security
+
+### Question Name
+Does it fit our estate — the platforms we run, our monitoring, our security controls?
+
+___
+
+## Link Perspective to Question
+
+### Perspective Name
+Perspective::Architecture
+
+### Question Name
+Does it fit our estate — the platforms we run, our monitoring, our security controls?
+
+___
+
+## Link Perspective to Question
+
+### Perspective Name
+Perspective::Admin
+
+### Question Name
+Does it fit our estate — the platforms we run, our monitoring, our security controls?
+
+___
+
+## Link Element To Scope
+
+### Target Element
+Does it fit our estate — the platforms we run, our monitoring, our security controls?
+
+### Scope Reference
+Enrichment
+
+### Scope Category
+Asked At
+
+___
+
+## Create Glossary Term
+
+### Glossary Name
+User Questions
+
+### Display Name
+What can the survey credential see, and what is it blind to — schemas, tables, system views, statistics?
+
+### Description
+credential_capability runs read-only pg_namespace, has_table_privilege and pg_has_role(pg_monitor) checks and never a trial write; it states 'connected as X — visible N of M schemas, SELECT on N of M tables' and raises a request for action to the database owner when coverage is thin. It is why 52 columns read not_permitted on 2026-10-21.
+
+### Summary
+A survey that cannot see a schema reports it as empty; knowing what the credential can read first says which later answers are measured and which are blind.
+
+### Usage
+Typically asked and answerable during Scouting.
+
+### Additional Properties
+| Parameter Name | Parameter Value |
+|---|---|
+| question_id | Q-0099 |
+
+___
+
+## Classify Term as Question
+
+### Term Name
+What can the survey credential see, and what is it blind to — schemas, tables, system views, statistics?
+
+___
+
+## Link Perspective to Question
+
+### Perspective Name
+Perspective::Governance
+
+### Question Name
+What can the survey credential see, and what is it blind to — schemas, tables, system views, statistics?
+
+___
+
+## Link Perspective to Question
+
+### Perspective Name
+Perspective::Steward
+
+### Question Name
+What can the survey credential see, and what is it blind to — schemas, tables, system views, statistics?
+
+___
+
+## Link Perspective to Question
+
+### Perspective Name
+Perspective::Security
+
+### Question Name
+What can the survey credential see, and what is it blind to — schemas, tables, system views, statistics?
+
+___
+
+## Link Perspective to Question
+
+### Perspective Name
+Perspective::Admin
+
+### Question Name
+What can the survey credential see, and what is it blind to — schemas, tables, system views, statistics?
+
+___
+
+## Link Element To Scope
+
+### Target Element
+What can the survey credential see, and what is it blind to — schemas, tables, system views, statistics?
+
+### Scope Reference
+Scouting
+
+### Scope Category
+Asked At
+
+___
+
+## Create Glossary Term
+
+### Glossary Name
+User Questions
+
+### Display Name
+What is the shape of this file system: how deep, how wide, where does the bulk sit?
+
+### Description
+filesystem_inventory walks the file system and reports totals today; depth, breadth and the ten largest folders by bytes need the per-folder bytes and depth the walk extensions add (Files brief §3, slice 1).
+
+### Summary
+Before deciding whether a file system is worth a full pass, its depth, breadth and where the bulk sits say how much there is and how it is laid out.
+
+### Usage
+Typically asked and answerable during Scouting.
+
+### Additional Properties
+| Parameter Name | Parameter Value |
+|---|---|
+| question_id | Q-0100 |
+
+___
+
+## Classify Term as Question
+
+### Term Name
+What is the shape of this file system: how deep, how wide, where does the bulk sit?
+
+___
+
+## Link Perspective to Question
+
+### Perspective Name
+Perspective::Steward
+
+### Question Name
+What is the shape of this file system: how deep, how wide, where does the bulk sit?
+
+___
+
+## Link Perspective to Question
+
+### Perspective Name
+Perspective::Data Expert
+
+### Question Name
+What is the shape of this file system: how deep, how wide, where does the bulk sit?
+
+___
+
+## Link Perspective to Question
+
+### Perspective Name
+Perspective::Admin
+
+### Question Name
+What is the shape of this file system: how deep, how wide, where does the bulk sit?
+
+___
+
+## Link Element To Scope
+
+### Target Element
+What is the shape of this file system: how deep, how wide, where does the bulk sit?
+
+### Scope Reference
+Scouting
+
+### Scope Category
+Asked At
+
+___
+
+## Create Glossary Term
+
+### Glossary Name
+User Questions
+
+### Display Name
+Which tabular or structured files are here, with what columns and types?
+
+### Description
+file_profiles is today's tabular data-file profiling promoted to its own step so it can be run alone and priced: Egeria's CSV Survey Service per CSV file and RE's profile for the formats Egeria has none for, stored as column rows per run with their source named.
+
+### Summary
+A file system's value is mostly in the data files it holds, and a consumer needs to know their columns and types before deciding to use them.
+
+### Usage
+Typically asked and answerable during Discovery.
+
+### Additional Properties
+| Parameter Name | Parameter Value |
+|---|---|
+| question_id | Q-0101 |
+
+___
+
+## Classify Term as Question
+
+### Term Name
+Which tabular or structured files are here, with what columns and types?
+
+___
+
+## Link Perspective to Question
+
+### Perspective Name
+Perspective::Consumer
+
+### Question Name
+Which tabular or structured files are here, with what columns and types?
+
+___
+
+## Link Perspective to Question
+
+### Perspective Name
+Perspective::App/AI Builder
+
+### Question Name
+Which tabular or structured files are here, with what columns and types?
+
+___
+
+## Link Perspective to Question
+
+### Perspective Name
+Perspective::Data Expert
+
+### Question Name
+Which tabular or structured files are here, with what columns and types?
+
+___
+
+## Link Element To Scope
+
+### Target Element
+Which tabular or structured files are here, with what columns and types?
+
+### Scope Reference
+Discovery
+
+### Scope Category
+Asked At
+
+___
+
+## Create Glossary Term
+
+### Glossary Name
+User Questions
+
+### Display Name
+What has changed since the last walk: new, modified, removed files, and growth?
+
+### Description
+fs_change_rates differences two walks on path, size and modification time; it needs the per-file rows kept per run. With one walk only it reports 'not measured', never zero change.
+
+### Summary
+A file system that changes needs re-walking; one that does not does not, and the size of the change says how soon.
+
+### Usage
+Typically asked and answerable during Discovery.
+
+### Additional Properties
+| Parameter Name | Parameter Value |
+|---|---|
+| question_id | Q-0102 |
+
+___
+
+## Classify Term as Question
+
+### Term Name
+What has changed since the last walk: new, modified, removed files, and growth?
+
+___
+
+## Link Perspective to Question
+
+### Perspective Name
+Perspective::Steward
+
+### Question Name
+What has changed since the last walk: new, modified, removed files, and growth?
+
+___
+
+## Link Perspective to Question
+
+### Perspective Name
+Perspective::Data Expert
+
+### Question Name
+What has changed since the last walk: new, modified, removed files, and growth?
+
+___
+
+## Link Element To Scope
+
+### Target Element
+What has changed since the last walk: new, modified, removed files, and growth?
+
+### Scope Reference
+Discovery
+
+### Scope Category
+Asked At
+
+___
+
+## Create Glossary Term
+
+### Glossary Name
+User Questions
+
+### Display Name
+Which files or folders contain personal or sensitive data?
+
+### Description
+data_class_match reuses the database analysis over the columns file_profiles stores, plus filename rules, and proposes new data classes only as drafts for a person to accept.
+
+### Summary
+Personal or sensitive data in files nobody classified is the exposure a steward most needs to find first.
+
+### Usage
+Typically asked and answerable during Analysis.
+
+### Additional Properties
+| Parameter Name | Parameter Value |
+|---|---|
+| question_id | Q-0103 |
+
+___
+
+## Classify Term as Question
+
+### Term Name
+Which files or folders contain personal or sensitive data?
+
+___
+
+## Link Perspective to Question
+
+### Perspective Name
+Perspective::Governance
+
+### Question Name
+Which files or folders contain personal or sensitive data?
+
+___
+
+## Link Perspective to Question
+
+### Perspective Name
+Perspective::Privacy
+
+### Question Name
+Which files or folders contain personal or sensitive data?
+
+___
+
+## Link Perspective to Question
+
+### Perspective Name
+Perspective::Security
+
+### Question Name
+Which files or folders contain personal or sensitive data?
+
+___
+
+## Link Element To Scope
+
+### Target Element
+Which files or folders contain personal or sensitive data?
+
+### Scope Reference
+Analysis
+
+### Scope Category
+Asked At
+
+___
+
+## Create Glossary Term
+
+### Glossary Name
+User Questions
+
+### Display Name
+Does this file system contain a recognisable structure: a project, a dataset layout, an archive, backups?
+
+### Description
+fs_layout_signals matches the names on the walk's kept rows (project manifests and .git directories, dated and partition folders, dictionary and schema files, archive and backup names) without opening a file; it also supplies the backup evidence Q-0066 asks for. With no walk it reports 'not measured', never 'nothing recognised'.
+
+### Summary
+A recognisable layout tells what the file system is for and how to read it before any file is opened.
+
+### Usage
+Typically asked and answerable during Discovery.
+
+### Additional Properties
+| Parameter Name | Parameter Value |
+|---|---|
+| question_id | Q-0104 |
+
+___
+
+## Classify Term as Question
+
+### Term Name
+Does this file system contain a recognisable structure: a project, a dataset layout, an archive, backups?
+
+___
+
+## Link Perspective to Question
+
+### Perspective Name
+Perspective::Data Expert
+
+### Question Name
+Does this file system contain a recognisable structure: a project, a dataset layout, an archive, backups?
+
+___
+
+## Link Perspective to Question
+
+### Perspective Name
+Perspective::Architecture
+
+### Question Name
+Does this file system contain a recognisable structure: a project, a dataset layout, an archive, backups?
+
+___
+
+## Link Perspective to Question
+
+### Perspective Name
+Perspective::Admin
+
+### Question Name
+Does this file system contain a recognisable structure: a project, a dataset layout, an archive, backups?
+
+___
+
+## Link Element To Scope
+
+### Target Element
+Does this file system contain a recognisable structure: a project, a dataset layout, an archive, backups?
+
+### Scope Reference
+Discovery
+
+### Scope Category
+Asked At
+
+___
+
+## Create Glossary Term
+
+### Glossary Name
+User Questions
+
+### Display Name
+What do the narrative files inside it (README, INDEX, ABOUT, NOTES, a data dictionary, a codebook, LICENSE, CHANGELOG) say the contents are, folder by folder?
+
+### Description
+folder_narratives is sought proactively, read as evidence, and proposes — a document says what the data is, a person confirms. For a repository the README is already read by architecture_doc_lens.
+
+### Summary
+The people who made a folder often wrote down what it is; reading that first is cheaper and more reliable than inferring it, provided it is treated as evidence and not as fact.
+
+### Usage
+Typically relevant during Discovery and Enrichment.
+
+### Additional Properties
+| Parameter Name | Parameter Value |
+|---|---|
+| question_id | Q-0105 |
+
+___
+
+## Classify Term as Question
+
+### Term Name
+What do the narrative files inside it (README, INDEX, ABOUT, NOTES, a data dictionary, a codebook, LICENSE, CHANGELOG) say the contents are, folder by folder?
+
+___
+
+## Link Perspective to Question
+
+### Perspective Name
+Perspective::Steward
+
+### Question Name
+What do the narrative files inside it (README, INDEX, ABOUT, NOTES, a data dictionary, a codebook, LICENSE, CHANGELOG) say the contents are, folder by folder?
+
+___
+
+## Link Perspective to Question
+
+### Perspective Name
+Perspective::Consumer
+
+### Question Name
+What do the narrative files inside it (README, INDEX, ABOUT, NOTES, a data dictionary, a codebook, LICENSE, CHANGELOG) say the contents are, folder by folder?
+
+___
+
+## Link Perspective to Question
+
+### Perspective Name
+Perspective::Data Expert
+
+### Question Name
+What do the narrative files inside it (README, INDEX, ABOUT, NOTES, a data dictionary, a codebook, LICENSE, CHANGELOG) say the contents are, folder by folder?
+
+___
+
+## Link Element To Scope
+
+### Target Element
+What do the narrative files inside it (README, INDEX, ABOUT, NOTES, a data dictionary, a codebook, LICENSE, CHANGELOG) say the contents are, folder by folder?
+
+### Scope Reference
+Discovery
+
+### Scope Category
+Asked At
+
+___
+
+## Link Element To Scope
+
+### Target Element
+What do the narrative files inside it (README, INDEX, ABOUT, NOTES, a data dictionary, a codebook, LICENSE, CHANGELOG) say the contents are, folder by folder?
+
+### Scope Reference
+Enrichment
+
+### Scope Category
+Asked At
+
+___
+
+## Create Glossary Term
+
+### Glossary Name
+User Questions
+
+### Display Name
+Which files are duplicates of each other, or of files in another registered file system?
+
+### Description
+fs_duplicates groups the files the walk hashed (SHA-256 under the walk's size limit) by size and hash, here and against other registered file systems' newest walks. With no hashes it reports 'not measured', never 'no duplicates'.
+
+### Summary
+Duplicate content costs storage and makes it unclear which copy is the one to use, keep or govern.
+
+### Usage
+Typically asked and answerable during Analysis.
+
+### Additional Properties
+| Parameter Name | Parameter Value |
+|---|---|
+| question_id | Q-0106 |
+
+___
+
+## Classify Term as Question
+
+### Term Name
+Which files are duplicates of each other, or of files in another registered file system?
+
+___
+
+## Link Perspective to Question
+
+### Perspective Name
+Perspective::Financial
+
+### Question Name
+Which files are duplicates of each other, or of files in another registered file system?
+
+___
+
+## Link Perspective to Question
+
+### Perspective Name
+Perspective::Steward
+
+### Question Name
+Which files are duplicates of each other, or of files in another registered file system?
+
+___
+
+## Link Perspective to Question
+
+### Perspective Name
+Perspective::Data Expert
+
+### Question Name
+Which files are duplicates of each other, or of files in another registered file system?
+
+___
+
+## Link Element To Scope
+
+### Target Element
+Which files are duplicates of each other, or of files in another registered file system?
+
+### Scope Reference
+Analysis
+
+### Scope Category
+Asked At
+
+___
+
+## Create Glossary Term
+
+### Glossary Name
+User Questions
+
+### Display Name
+Which files has nobody touched for a long time, and which are hot?
+
+### Description
+fs_activity ages each file's modified time, and its access time where the mount records one, at the walk's own time. Where access times are not recorded it says 'can't tell', never 'cold'.
+
+### Summary
+Cold data is a candidate for archiving or removal; hot data is what people depend on today.
+
+### Usage
+Typically asked and answerable during Analysis.
+
+### Additional Properties
+| Parameter Name | Parameter Value |
+|---|---|
+| question_id | Q-0107 |
+
+___
+
+## Classify Term as Question
+
+### Term Name
+Which files has nobody touched for a long time, and which are hot?
+
+___
+
+## Link Perspective to Question
+
+### Perspective Name
+Perspective::Financial
+
+### Question Name
+Which files has nobody touched for a long time, and which are hot?
+
+___
+
+## Link Perspective to Question
+
+### Perspective Name
+Perspective::Steward
+
+### Question Name
+Which files has nobody touched for a long time, and which are hot?
+
+___
+
+## Link Perspective to Question
+
+### Perspective Name
+Perspective::Data Owner
+
+### Question Name
+Which files has nobody touched for a long time, and which are hot?
+
+___
+
+## Link Element To Scope
+
+### Target Element
+Which files has nobody touched for a long time, and which are hot?
+
+### Scope Reference
+Analysis
+
+### Scope Category
+Asked At
+
+___
+
+## Create Glossary Term
+
+### Glossary Name
+User Questions
+
+### Display Name
+Who owns or can read what, and are there world-readable sensitive files?
+
+### Description
+fs_permissions counts owners, groups and modes from the walk's stat, and raises a request for action for world-readable files whose names look like secrets. No owner or file name is published. Data-class matches (F7) are not joined yet.
+
+### Summary
+A sensitive file anyone on the machine can read is an exposure that needs an owner to act.
+
+### Usage
+Typically asked and answerable during Analysis.
+
+### Additional Properties
+| Parameter Name | Parameter Value |
+|---|---|
+| question_id | Q-0108 |
+
+___
+
+## Classify Term as Question
+
+### Term Name
+Who owns or can read what, and are there world-readable sensitive files?
+
+___
+
+## Link Perspective to Question
+
+### Perspective Name
+Perspective::Governance
+
+### Question Name
+Who owns or can read what, and are there world-readable sensitive files?
+
+___
+
+## Link Perspective to Question
+
+### Perspective Name
+Perspective::Privacy
+
+### Question Name
+Who owns or can read what, and are there world-readable sensitive files?
+
+___
+
+## Link Perspective to Question
+
+### Perspective Name
+Perspective::Security
+
+### Question Name
+Who owns or can read what, and are there world-readable sensitive files?
+
+___
+
+## Link Element To Scope
+
+### Target Element
+Who owns or can read what, and are there world-readable sensitive files?
+
+### Scope Reference
+Analysis
+
+### Scope Category
+Asked At
+
+___
+
+## Create Glossary Term
+
+### Glossary Name
+User Questions
+
+### Display Name
+How much would it cost to survey fully, and which parts are not worth it?
+
+### Description
+The folder survey's price line, shown before the Survey press: the newest walk's files, bytes and wall time on this machine, whether it was capped, the directories not walked, and the heaviest folders' share of the bytes.
+
+### Summary
+A survey should be priced before it runs, and the bulk that is not worth walking said before anyone waits for it.
+
+### Usage
+Typically asked and answerable during Discovery.
+
+### Additional Properties
+| Parameter Name | Parameter Value |
+|---|---|
+| question_id | Q-0109 |
+
+___
+
+## Classify Term as Question
+
+### Term Name
+How much would it cost to survey fully, and which parts are not worth it?
+
+___
+
+## Link Perspective to Question
+
+### Perspective Name
+Perspective::Financial
+
+### Question Name
+How much would it cost to survey fully, and which parts are not worth it?
+
+___
+
+## Link Perspective to Question
+
+### Perspective Name
+Perspective::Admin
+
+### Question Name
+How much would it cost to survey fully, and which parts are not worth it?
+
+___
+
+## Link Element To Scope
+
+### Target Element
+How much would it cost to survey fully, and which parts are not worth it?
+
+### Scope Reference
+Discovery
+
+### Scope Category
+Asked At
+
+___
+
+## Create Glossary Term
+
+### Glossary Name
+User Questions
+
+### Display Name
+Is the schema of database 1 the same as the schema of database 2?
+
+### Description
+Answered as a relation with a degree, never yes or no: identical, superset, subset, overlapping or disjoint, with N of M tables matching by name, N of M columns matching by name and type, and every differing table and column named, from the schema inventories RE stored. A database with no inventory is not established, never different.
+
+### Summary
+Two databases can share a name, a server or an origin and still not hold the same schema; a person choosing which copy to use, or retiring one, needs to know how alike they are and where they differ.
+
+### Usage
+Typically asked and answerable during Assessment.
+
+### Additional Properties
+| Parameter Name | Parameter Value |
+|---|---|
+| question_id | Q-0110 |
+
+___
+
+## Classify Term as Question
+
+### Term Name
+Is the schema of database 1 the same as the schema of database 2?
+
+___
+
+## Link Perspective to Question
+
+### Perspective Name
+Perspective::Steward
+
+### Question Name
+Is the schema of database 1 the same as the schema of database 2?
+
+___
+
+## Link Perspective to Question
+
+### Perspective Name
+Perspective::Data Owner
+
+### Question Name
+Is the schema of database 1 the same as the schema of database 2?
+
+___
+
+## Link Perspective to Question
+
+### Perspective Name
+Perspective::Consumer
+
+### Question Name
+Is the schema of database 1 the same as the schema of database 2?
+
+___
+
+## Link Perspective to Question
+
+### Perspective Name
+Perspective::Architecture
+
+### Question Name
+Is the schema of database 1 the same as the schema of database 2?
+
+___
+
+## Link Element To Scope
+
+### Target Element
+Is the schema of database 1 the same as the schema of database 2?
+
+### Scope Reference
+Assessment
+
+### Scope Category
+Asked At
+
+___
+
+## Create Glossary Term
+
+### Glossary Name
+User Questions
+
+### Display Name
+Is database 1 the same as database 2?
+
+### Description
+The same data, not just the same shape: row counts per matching table, value-profile agreement and fingerprints, estimated (no row-by-row diff, owner ruling 3), as a relation with a degree.
+
+### Summary
+The same schema does not mean the same data: a copy can drift row by row while its shape stays identical.
+
+### Usage
+Typically asked and answerable during Analysis.
+
+### Additional Properties
+| Parameter Name | Parameter Value |
+|---|---|
+| question_id | Q-0111 |
+
+___
+
+## Classify Term as Question
+
+### Term Name
+Is database 1 the same as database 2?
+
+___
+
+## Link Perspective to Question
+
+### Perspective Name
+Perspective::Steward
+
+### Question Name
+Is database 1 the same as database 2?
+
+___
+
+## Link Perspective to Question
+
+### Perspective Name
+Perspective::Data Owner
+
+### Question Name
+Is database 1 the same as database 2?
+
+___
+
+## Link Perspective to Question
+
+### Perspective Name
+Perspective::Consumer
+
+### Question Name
+Is database 1 the same as database 2?
+
+___
+
+## Link Perspective to Question
+
+### Perspective Name
+Perspective::Data Expert
+
+### Question Name
+Is database 1 the same as database 2?
+
+___
+
+## Link Element To Scope
+
+### Target Element
+Is database 1 the same as database 2?
+
+### Scope Reference
+Analysis
+
+### Scope Category
+Asked At
+
+___
+
+## Create Glossary Term
+
+### Glossary Name
+User Questions
+
+### Display Name
+Is database 1 a subset or superset of database 2?
+
+### Description
+By schema: tables (and columns within them) contained, from the schema inventories RE stored; by data: rows contained where keys allow, estimated (CMP2). Read together, each with its degree.
+
+### Summary
+A smaller copy contained in a larger one is a different decision from two databases that each hold what the other lacks.
+
+### Usage
+Typically asked and answerable during Analysis.
+
+### Additional Properties
+| Parameter Name | Parameter Value |
+|---|---|
+| question_id | Q-0112 |
+
+___
+
+## Classify Term as Question
+
+### Term Name
+Is database 1 a subset or superset of database 2?
+
+___
+
+## Link Perspective to Question
+
+### Perspective Name
+Perspective::Steward
+
+### Question Name
+Is database 1 a subset or superset of database 2?
+
+___
+
+## Link Perspective to Question
+
+### Perspective Name
+Perspective::Data Owner
+
+### Question Name
+Is database 1 a subset or superset of database 2?
+
+___
+
+## Link Perspective to Question
+
+### Perspective Name
+Perspective::Architecture
+
+### Question Name
+Is database 1 a subset or superset of database 2?
+
+___
+
+## Link Element To Scope
+
+### Target Element
+Is database 1 a subset or superset of database 2?
+
+### Scope Reference
+Analysis
 
 ### Scope Category
 Asked At

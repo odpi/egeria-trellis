@@ -1,0 +1,227 @@
+test_types:
+  id: '1016'
+  test_type: Future_Date_1Y
+  test_name_short: Future Year
+  test_name_long: Future dates within year of test run date
+  test_description: |-
+    Tests that maximum date referenced in column is no greater than one year beyond the test date, consistent with baseline data.
+  except_message: |-
+    Future date beyond one year found when absent in baseline.
+  measure_uom: Future dates post 1 year
+  measure_uom_description: null
+  selection_criteria: |-
+    general_type='D'AND future_date_ct > 0 AND max_date <='{AS_OF_DATE}'::DATE + INTERVAL'365 DAYS'
+  generation_template: null
+  dq_score_prevalence_formula: |-
+    ({RESULT_MEASURE}-{THRESHOLD_VALUE})::FLOAT/NULLIF({RECORD_CT}::FLOAT, 0)
+  dq_score_risk_factor: '1.0'
+  column_name_prompt: null
+  column_name_help: null
+  default_parm_columns: threshold_value
+  default_parm_values: |-
+    0
+  default_parm_prompts: |-
+    Maximum Post 1-Year Future Date Count
+  default_parm_help: null
+  default_parm_required: N
+  default_severity: Fail
+  run_type: CAT
+  test_scope: column
+  column_general_types: [D, A]
+  dq_dimension: Timeliness
+  impact_dimension: Conformance
+  health_dimension: Freshness
+  threshold_description: |-
+    Expected count of future dates beyond one year
+  result_visualization: line_chart
+  result_visualization_params: null
+  usage_notes: |-
+    Future Year looks for date values in the column that extend beyond one year after the test date. This would be appropriate for transactional dates where you would expect to find dates in the near future, but not beyond one year ahead.  Failures could indicate invalid entries or possibly dummy dates representing blank values.
+  active: Y
+  ai_redact_values: false
+  algorithm: Boundary check
+  generation_sets:
+    - Standard
+  cat_test_conditions:
+  - id: '7011'
+    test_type: Future_Date_1Y
+    sql_flavor: bigquery
+    measure: |-
+      SUM(IF({COLUMN_NAME} > CAST(DATETIME_ADD(CAST('{RUN_DATE}' AS DATETIME), INTERVAL 1 YEAR) AS {COLUMN_TYPE}), 1, 0))
+    test_operator: '>'
+    test_condition: |-
+      {THRESHOLD_VALUE}
+  - id: '6011'
+    test_type: Future_Date_1Y
+    sql_flavor: databricks
+    measure: |-
+      SUM(GREATEST(0, SIGN({COLUMN_NAME}::DATE - ('{RUN_DATE}'::DATE+365))))
+    test_operator: '>'
+    test_condition: |-
+      {THRESHOLD_VALUE}
+  - id: '3011'
+    test_type: Future_Date_1Y
+    sql_flavor: mssql
+    measure: |-
+      SUM(CASE WHEN CAST({COLUMN_NAME} AS DATE) > DATEADD(DAY, 365, CONVERT(DATE, '{RUN_DATE}')) THEN 1 ELSE 0 END)
+    test_operator: '>'
+    test_condition: |-
+      {THRESHOLD_VALUE}
+  - id: '4011'
+    test_type: Future_Date_1Y
+    sql_flavor: postgresql
+    measure: |-
+      SUM(GREATEST(0, SIGN({COLUMN_NAME}::DATE - ('{RUN_DATE}'::DATE+365))))
+    test_operator: '>'
+    test_condition: |-
+      {THRESHOLD_VALUE}
+  - id: '1011'
+    test_type: Future_Date_1Y
+    sql_flavor: redshift
+    measure: |-
+      SUM(GREATEST(0, SIGN({COLUMN_NAME}::DATE - ('{RUN_DATE}'::DATE+365))))
+    test_operator: '>'
+    test_condition: |-
+      {THRESHOLD_VALUE}
+  - id: '7011'
+    test_type: Future_Date_1Y
+    sql_flavor: redshift_spectrum
+    measure: |-
+      SUM(GREATEST(0, SIGN({COLUMN_NAME}::DATE - ('{RUN_DATE}'::DATE+365))))
+    test_operator: '>'
+    test_condition: |-
+      {THRESHOLD_VALUE}
+  - id: '2011'
+    test_type: Future_Date_1Y
+    sql_flavor: snowflake
+    measure: |-
+      SUM(GREATEST(0, SIGN({COLUMN_NAME}::DATE - ('{RUN_DATE}'::DATE+365))))
+    test_operator: '>'
+    test_condition: |-
+      {THRESHOLD_VALUE}
+  - id: '8011'
+    test_type: Future_Date_1Y
+    sql_flavor: oracle
+    measure: |-
+      SUM(CASE WHEN TRUNC({COLUMN_NAME}) > TO_DATE('{RUN_DATE}', 'YYYY-MM-DD HH24:MI:SS') + 365 THEN 1 ELSE 0 END)
+    test_operator: '>'
+    test_condition: |-
+      {THRESHOLD_VALUE}
+  - id: '8011'
+    test_type: Future_Date_1Y
+    sql_flavor: sap_hana
+    measure: |-
+      SUM(CASE WHEN CAST({COLUMN_NAME} AS DATE) > ADD_DAYS(TO_DATE('{RUN_DATE}', 'YYYY-MM-DD HH24:MI:SS'), 365) THEN 1 ELSE 0 END)
+    test_operator: '>'
+    test_condition: |-
+      {THRESHOLD_VALUE}
+  - id: '10011'
+    test_type: Future_Date_1Y
+    sql_flavor: salesforce_data360
+    measure: |-
+      SUM(GREATEST(0, SIGN(CAST({COLUMN_NAME} AS DATE) - (CAST('{RUN_DATE}' AS DATE)+365))))
+    test_operator: '>'
+    test_condition: |-
+      {THRESHOLD_VALUE}
+  - id: '11037'
+    test_type: Future_Date_1Y
+    sql_flavor: duckdb
+    measure: |-
+      SUM(GREATEST(0, SIGN({COLUMN_NAME}::DATE - ('{RUN_DATE}'::DATE+365))))
+    test_operator: '>'
+    test_condition: |-
+      {THRESHOLD_VALUE}
+  target_data_lookups:
+  - id: '1374'
+    test_id: '1016'
+    test_type: Future_Date_1Y
+    sql_flavor: bigquery
+    lookup_type: null
+    lookup_query: |-
+      SELECT `{COLUMN_NAME}`, COUNT(*) AS count
+      FROM `{TARGET_SCHEMA}`.`{TABLE_NAME}`
+      WHERE DATETIME_DIFF(`{COLUMN_NAME}`, DATE_ADD(CAST(CAST('{TEST_DATE}' AS DATETIME) AS {COLUMN_TYPE}), INTERVAL 365 DAY), DAY) > {THRESHOLD_VALUE}
+      GROUP BY `{COLUMN_NAME}`
+      LIMIT {LIMIT};
+    error_type: Test Results
+  - id: '1308'
+    test_id: '1016'
+    test_type: Future_Date_1Y
+    sql_flavor: databricks
+    lookup_type: null
+    lookup_query: |-
+      SELECT DISTINCT `{COLUMN_NAME}`, COUNT(*) AS count  FROM `{TARGET_SCHEMA}`.`{TABLE_NAME}` WHERE GREATEST(0, SIGN(`{COLUMN_NAME}`::DATE - ('{TEST_DATE}'::DATE + 365))) > {THRESHOLD_VALUE} GROUP BY `{COLUMN_NAME}` LIMIT {LIMIT};
+    error_type: Test Results
+  - id: '1150'
+    test_id: '1016'
+    test_type: Future_Date_1Y
+    sql_flavor: mssql
+    lookup_type: null
+    lookup_query: |-
+      SELECT DISTINCT TOP {LIMIT} "{COLUMN_NAME}", COUNT(*) AS count  FROM "{TARGET_SCHEMA}"."{TABLE_NAME}" WHERE CAST("{COLUMN_NAME}" AS DATE) > DATEADD(DAY, 365, CONVERT(DATE, '{TEST_DATE}')) GROUP BY "{COLUMN_NAME}";
+    error_type: Test Results
+  - id: '1093'
+    test_id: '1016'
+    test_type: Future_Date_1Y
+    sql_flavor: postgresql
+    lookup_type: null
+    lookup_query: |-
+      SELECT DISTINCT "{COLUMN_NAME}", COUNT(*) AS count FROM "{TARGET_SCHEMA}"."{TABLE_NAME}" WHERE GREATEST(0, SIGN("{COLUMN_NAME}"::DATE - ('{TEST_DATE}'::DATE + 365))) > {THRESHOLD_VALUE} GROUP BY "{COLUMN_NAME}" LIMIT {LIMIT};
+    error_type: Test Results
+  - id: '1011'
+    test_id: '1016'
+    test_type: Future_Date_1Y
+    sql_flavor: redshift
+    lookup_type: null
+    lookup_query: |-
+      SELECT DISTINCT "{COLUMN_NAME}", COUNT(*) AS count FROM "{TARGET_SCHEMA}"."{TABLE_NAME}" WHERE GREATEST(0, SIGN("{COLUMN_NAME}"::DATE - ('{TEST_DATE}'::DATE + 365))) > {THRESHOLD_VALUE} GROUP BY "{COLUMN_NAME}" LIMIT {LIMIT};
+    error_type: Test Results
+  - id: '1411'
+    test_id: '1016'
+    test_type: Future_Date_1Y
+    sql_flavor: redshift_spectrum
+    lookup_type: null
+    lookup_query: |-
+      SELECT DISTINCT "{COLUMN_NAME}", COUNT(*) AS count FROM "{TARGET_SCHEMA}"."{TABLE_NAME}" WHERE GREATEST(0, SIGN("{COLUMN_NAME}"::DATE - ('{TEST_DATE}'::DATE + 365))) > {THRESHOLD_VALUE} GROUP BY "{COLUMN_NAME}" LIMIT {LIMIT};
+    error_type: Test Results
+  - id: '1207'
+    test_id: '1016'
+    test_type: Future_Date_1Y
+    sql_flavor: snowflake
+    lookup_type: null
+    lookup_query: |-
+      SELECT DISTINCT "{COLUMN_NAME}", COUNT(*) AS count  FROM "{TARGET_SCHEMA}"."{TABLE_NAME}" WHERE GREATEST(0, SIGN("{COLUMN_NAME}"::DATE - ('{TEST_DATE}'::DATE + 365))) > {THRESHOLD_VALUE} GROUP BY "{COLUMN_NAME}" LIMIT {LIMIT};
+    error_type: Test Results
+  - id: '8016'
+    test_id: '1016'
+    test_type: Future_Date_1Y
+    sql_flavor: oracle
+    lookup_type: null
+    lookup_query: |-
+      SELECT "{COLUMN_NAME}", COUNT(*) AS count FROM "{TARGET_SCHEMA}"."{TABLE_NAME}" WHERE TRUNC("{COLUMN_NAME}") > TO_DATE('{TEST_DATE}', 'YYYY-MM-DD HH24:MI:SS') + 365 GROUP BY "{COLUMN_NAME}" FETCH FIRST {LIMIT} ROWS ONLY
+    error_type: Test Results
+  - id: '8016'
+    test_id: '1016'
+    test_type: Future_Date_1Y
+    sql_flavor: sap_hana
+    lookup_type: null
+    lookup_query: |-
+      SELECT "{COLUMN_NAME}", COUNT(*) AS count FROM "{TARGET_SCHEMA}"."{TABLE_NAME}" WHERE CAST("{COLUMN_NAME}" AS DATE) > ADD_DAYS(TO_DATE('{TEST_DATE}', 'YYYY-MM-DD HH24:MI:SS'), 365) GROUP BY "{COLUMN_NAME}" LIMIT {LIMIT}
+    error_type: Test Results
+  - id: '10018'
+    test_id: 1016
+    test_type: Future_Date_1Y
+    sql_flavor: salesforce_data360
+    lookup_type: null
+    lookup_query: |-
+      SELECT DISTINCT "{COLUMN_NAME}", COUNT(*) AS count FROM "{TABLE_NAME}" WHERE GREATEST(0, SIGN(CAST("{COLUMN_NAME}" AS DATE) - (CAST('{TEST_DATE}' AS DATE) + 365))) > {THRESHOLD_VALUE} GROUP BY "{COLUMN_NAME}" LIMIT {LIMIT};
+    error_type: Test Results
+  - id: '11038'
+    test_id: '1016'
+    test_type: Future_Date_1Y
+    sql_flavor: duckdb
+    lookup_type: null
+    lookup_query: |-
+      SELECT DISTINCT "{COLUMN_NAME}", COUNT(*) AS count FROM "{TARGET_SCHEMA}"."{TABLE_NAME}" WHERE GREATEST(0, SIGN("{COLUMN_NAME}"::DATE - ('{TEST_DATE}'::DATE + 365))) > {THRESHOLD_VALUE} GROUP BY "{COLUMN_NAME}" LIMIT {LIMIT};
+    error_type: Test Results
+  test_templates: []

@@ -249,6 +249,12 @@ class SlaContentSurveyor(BaseSurveyor):
                     for f in findings
                 ],
                 surveyed_at=self._surveyed_at,
+                # This one call is the whole run's answer for
+                # (slug, FINDING_KIND, ""): a newer run retires the older
+                # run's rows, as secret_scan does. Without it every earlier
+                # run kept counting as current
+                # (FINDINGS-SUPERSESSION-IMPLEMENTED.md).
+                supersedes_previous=True,
             )
         except Exception as exc:
             log.warning("Could not persist SLA content findings for %s: %s",

@@ -2,10 +2,10 @@
 
 **Status:** consolidated model, current as of 2026-09-25. This is the single
 place the strategy is stated; the design notes it draws on
-(`design-notes/REPLY-DATABASE-CREDENTIAL-CAPABILITY-VISIBILITY.md`,
-`design-notes/DATABASE-ENGINE-CATALOG-CAPABILITY-SURVEY.md`,
-`design-notes/DATABASE-STEP-CAPABILITY-AUDIT.md`,
-`design-notes/RESOURCE-REACHABILITY-IMPLEMENTED.md`) are the history and the
+(`design-notes/exchange/REPLY-DATABASE-CREDENTIAL-CAPABILITY-VISIBILITY.md`,
+`DATABASE-ENGINE-CATALOG-CAPABILITY-SURVEY.md`,
+`DATABASE-STEP-CAPABILITY-AUDIT.md`,
+`RESOURCE-REACHABILITY-IMPLEMENTED.md`) are the history and the
 evidence, and this document supersedes them where they differ.
 
 **Decision (project owner, 2026-09-25):** database access is modelled as
@@ -328,6 +328,82 @@ curate-accept; the service account in `.env` is what RE uses toward Egeria.
 The one interaction with this document: the *engine host's* user, which is
 an Egeria configuration, is the user whose connection visibility §5's
 operational rule constrains.
+
+**Curation rights follow Egeria's zones (Brief Z, project owner 2026-10-10).**
+Who may record a verdict on, or Publish, an architecture element is decided
+by emulating Egeria's own zone security, not by RE's record of who decided
+it last: with no zone in use it is open to any signed-in user; with zones in
+use RE reads the element's zones, their security access controls and the
+caller's account, and applies `OpenMetadataAccessSecurityConnector
+.validateZoneAccess` for `UPDATE_PROPERTIES` (`resource_explorer/
+zone_access.py`, which cites the connector's source lines). Anything RE cannot
+read denies, with the reason. A Portal `curator` or `admin` role claim is an
+interim override until Egeria role appointments are read. The rule, the
+per-item Publish behaviour and the words on screen are in `admin-guide.md`,
+"Who may curate and publish".
+
+**Every resource write asks the same question (Brief Z2, 2026-10-10).** The
+routes that used to check only the sign-in now call the same decision,
+`workflows/curate.resource_access`, with the operations Egeria would check:
+publishing a repository, database or file system (the Egeria publish routes,
+the publish-report press, the repository commit and sub-resource catalog, a
+database survey through Egeria, Egeria's native survey register, a
+file-system publish or chosen publish on survey, a Survey Definition run on a
+resource with an Egeria Project), starting an Egeria action on it (a native
+survey run: attach), adding or removing a documentation source on a resource
+already in Egeria (attach, detach), RE-only decisions about its link (reset,
+forget links, discarding a stale link: update), and the bulk linkage actions
+item by item. A database commit checks each schema element already in Egeria
+that it would write (attach; a leave-out: detach and delete, plus delete on
+every table and column its delete walks), at the press and again in the run
+as the requester; a schema not permitted is skipped as "not permitted ·
+<reason>" and the rest proceed. Destructive paths stay behind the ISSUE-117
+block, with the access check in front of it, so a refusal is said before the
+block would be. An automatic publish at the end of an analysis or Survey
+Definition run asks again as the person who requested the run. A run nobody
+requested (a schedule, whose creator RE does not record yet; an unattributed
+queue row) never writes on RE's service account's rights: it proceeds only
+while no zone is in use for the resource. `runs enqueue` attributes a run that
+may publish to the signed-in person only.
+
+**Anchors and existing elements (round 2).** An element already in Egeria is
+judged on its own zones only, as Egeria does: one with no zones is open,
+whatever RE configures (RE's configured zones apply to an element it is about
+to create). An anchored member (its `Anchors.anchorGUID` names another
+element, as a schema's names its database) is judged as Egeria's
+`validateUserForAnchor*` judges it: the operation on the anchor's zones
+(ATTACH, DETACH, DELETE_MEMBER for a delete, CREATE, UPDATE_PROPERTIES,
+CLASSIFY, PUBLISH) plus READ on the member itself. An element adopted by
+qualifiedName (the repository publisher, the database commit) is checked
+before it is written.
+
+**Investigations, work lists and RFA ToDos (Brief Z3, 2026-10-11).** The same
+decision now stands in front of the Egeria writes that are not to a
+resource's own asset, through `workflows/egeria_work_access`, which names
+each write as the elements it touches and the operation Egeria checks on
+each. Promoting an investigation creates its Project (create, classify,
+attach; publish too when it is private, in its private zones); binding to an
+existing Project may create its working set under it (create on the Project's
+zones, attach); a rename pushed to the Project is an update; relinking
+attaches each member to the working set (judged on the Project, plus read on
+the working set); a reclassify that moves visibility changes the Project's
+zones and kind (publish, classify, declassify) and each member report's zones
+(publish). Publishing a work list creates or attaches to its `WorkingSet`;
+each membership is an attach on the member's asset. A batch run is checked
+per member when its run would publish (the resource is assigned an Egeria
+Project). An RFA status change creates or updates its Egeria `ToDo` (create,
+update). A member, report or batch item that is refused is skipped with its
+own words ("not permitted · <reason>") and the rest proceed; the route
+answers 403 only when nothing at all is permitted (a refused Project,
+working set or collection, a refused ToDo, or every member refused). Each
+queued membership or ResourceList row records who asked (and a Portal
+curator/admin role only from the verified caller) and is checked again as
+that person when the outbox drains it; a retried ToDo write, whose row
+records nobody, follows the no-requester rule. RE writes no zone on a
+Project, working set, `WorkingSet` or `ToDo` it creates (only a private
+investigation's own private zones), so a new one is judged on exactly those;
+Egeria may still place an element written with no zone in the server's
+default zones, which RE cannot read.
 
 ---
 

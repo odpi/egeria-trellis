@@ -90,16 +90,16 @@ class TestResultsRoute:
 
 class TestTrendRoute:
     def test_unknown_repo_returns_404(self, client):
-        resp = client.get("/api/projects/not-a-real-repo/analyses/security_scan/trend")
+        resp = client.get("/api/projects/not-a-real-repo/analyses/security_scan/trend?entity_type=repo")
         assert resp.status_code == 404
 
     def test_unmapped_analysis_id_returns_400(self, client):
-        resp = client.get("/api/projects/myproj/analyses/not_a_real_analysis/trend")
+        resp = client.get("/api/projects/myproj/analyses/not_a_real_analysis/trend?entity_type=repo")
         assert resp.status_code == 400
 
     @pytest.mark.parametrize("analysis_id", _ALL_5_ANALYSIS_IDS)
     def test_no_history_returns_empty_runs_not_error(self, client, analysis_id):
-        resp = client.get(f"/api/projects/myproj/analyses/{analysis_id}/trend")
+        resp = client.get(f"/api/projects/myproj/analyses/{analysis_id}/trend?entity_type=repo")
         assert resp.status_code == 200
         assert resp.json() == {"runs": []}
 
@@ -109,7 +109,7 @@ class TestTrendRoute:
             {"dep_name": "a", "dep_version": "", "dep_type": "runtime", "ecosystem": "python", "source_file": ""},
             {"dep_name": "b", "dep_version": "", "dep_type": "runtime", "ecosystem": "python", "source_file": ""},
         ])
-        resp = client.get("/api/projects/myproj/analyses/dependency_analysis/trend")
+        resp = client.get("/api/projects/myproj/analyses/dependency_analysis/trend?entity_type=repo")
         runs = resp.json()["runs"]
         assert len(runs) == 2
         assert runs[0]["value"] == 1
@@ -124,6 +124,6 @@ class TestTrendRoute:
             "myproj", "security_hygiene",
             [{"check_name": "license", "label": "pass", "summary": ""}], surveyed_at="2026-01-02T00:00:00",
         )
-        resp = client.get("/api/projects/myproj/analyses/security_scan/trend")
+        resp = client.get("/api/projects/myproj/analyses/security_scan/trend?entity_type=repo")
         runs = resp.json()["runs"]
         assert [r["value"] for r in runs] == [1, 0]

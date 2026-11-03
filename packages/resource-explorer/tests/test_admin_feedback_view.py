@@ -22,15 +22,11 @@ excluded everything" is true.
 """
 from __future__ import annotations
 
-import re
-from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
 
 from resource_explorer.web.app import app
-
-INDEX = Path(__file__).resolve().parents[1] / "resource_explorer" / "web" / "static" / "index.html"
 
 
 @pytest.fixture
@@ -217,85 +213,6 @@ def test_the_per_resource_route_still_works(client):
     res = client.get("/api/curate/feedback/repo/anything")
     assert res.status_code == 200, res.text
     assert isinstance(res.json(), list)
-
-
-def test_an_absent_rating_does_not_render_as_zero_stars():
-    """`rating` is nullable and the form allows a message with no score.
-    "No rating given" and "rated 0" are different, and only one is a judgement.
-    """
-    html = INDEX.read_text()
-    fn = html[html.index("function _feedbackRatingHtml"):]
-    fn = fn[:fn.index("\n}")]
-    assert "null" in fn and "undefined" in fn, (
-        "_feedbackRatingHtml does not special-case a missing rating, so an "
-        "absent score would render as zero stars"
-    )
-
-
-def test_the_feedback_pane_is_wired_end_to_end():
-    """A pane needs four things; three of them fail silently rather than erroring."""
-    html = INDEX.read_text()
-    assert 'id="admin-feedback-view"' in html, "no pane element"
-    assert "adminFeedbackView" in html, "pane is not in showMainView's hide-list"
-    assert "tab === 'admin-feedback'" in html, "no route in showMainView"
-    assert "function loadAdminFeedbackPanel" in html, "no loader"
-
-    groups = html[html.index("const _ADMIN_GROUPS"):html.index("function _adminSubnavHtml")]
-    assert "admin-feedback" in groups, "pane exists but no subnav button reaches it"
-    # It belongs under Observe, which existed as a group of one specifically to
-    # hold this and the log viewer.
-    observe = groups[groups.index("'Observe'"):]
-    assert "admin-feedback" in observe, "Feedback should sit under Observe"
-
-
-def test_every_row_is_badged_with_its_origin():
-    """Badging is what keeps a future, deliberate merge possible — it must be
-    visible on the row, not only in a tooltip."""
-    html = INDEX.read_text()
-    fn = html[html.index("function loadAdminFeedbackPanel"):]
-    fn = fn[:fn.index("\nfunction _adminFeedbackSetFilter")]
-    assert "_feedbackSourceBadge(r.source)" in fn, (
-        "loadAdminFeedbackPanel's row template does not call the source badge"
-    )
-    badge_fn = html[html.index("function _feedbackSourceBadge"):]
-    badge_fn = badge_fn[:badge_fn.index("\n}")]
-    assert "'page'" in badge_fn and ">page<" in badge_fn and ">resource<" in badge_fn
-
-
-def test_a_field_absent_by_source_is_not_rendered_like_a_measured_empty():
-    """resource_feedback rows have no triage_status; page rows have no
-    entity_type/slug. Neither should render as the same "—" the pane uses for
-    an optional field left blank (e.g. no rating given) — that would claim
-    the column was measured and came back empty, which isn't what happened."""
-    html = INDEX.read_text()
-    assert "function _feedbackNA" in html, "no distinct 'not applicable' renderer"
-    fn = html[html.index("function loadAdminFeedbackPanel"):]
-    fn = fn[:fn.index("\nfunction _adminFeedbackSetFilter")]
-    assert "_feedbackNA(" in fn, (
-        "the row template never reaches for the not-applicable renderer, so a "
-        "column absent by source falls back to the same marker as an empty one"
-    )
-
-
-def test_counts_are_shown_per_source_not_one_hiding_total():
-    """A single combined total would hide that one store is empty while the
-    other has content — exactly the situation the bug report was about."""
-    html = INDEX.read_text()
-    fn = html[html.index("function loadAdminFeedbackPanel"):]
-    fn = fn[:fn.index("\nfunction _adminFeedbackSetFilter")]
-    assert "counts.page" in fn and "counts.resource" in fn, (
-        "the pane's summary text does not reference both sources' counts "
-        "separately"
-    )
-
-
-def test_the_source_filter_is_reachable_from_the_pane():
-    """Filtering by origin is the same capability the badge exists for,
-    surfaced as a control."""
-    html = INDEX.read_text()
-    fn = html[html.index("function loadAdminFeedbackPanel"):]
-    fn = fn[:fn.index("\nfunction _adminFeedbackSetFilter")]
-    assert "'source', 'page'" in fn and "'source', 'resource'" in fn
 
 
 class TestContactFieldStrippingHelperIsKept:

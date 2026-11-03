@@ -704,6 +704,10 @@ class ReportPipeline:
             # pyegeria format_set_executor shapes:
             if kind == "empty":
                 return None   # no records — caller shows "no results" message
+            if kind == "absent":
+                # pyegeria 6.2.17 (#518): not established / does not apply. The sentence IS the answer; any
+                # partial numbers under `detail` are not, and must never be rendered as if measured.
+                return raw.get("content") or "Not established."
             if kind == "json" and "data" in raw:
                 val = raw["data"]
                 return val if isinstance(val, str) else json.dumps(val, indent=2)

@@ -19,6 +19,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 import yaml
+from trellis_analytics.declaration import Declaration
+from trellis_analytics.declaration import refusal as declaration_refusal
 
 log = logging.getLogger(__name__)
 
@@ -103,6 +105,46 @@ class AnalysisCatalogEntry:
     #: `target_shape` takes above, for the same reason.
     availability: str = "queued"
 
+    #: ENRICHMENT-E1-CONTEXT-TAB (2026-09-29 amendment, project owner):
+    #: analyses whose prerequisite is a HUMAN INPUT rather than a survey read
+    #: run at the Enrichment stage — the designer's reply (§0.2) said no
+    #: analysis runs there; the owner's correction is that a class does,
+    #: gated on something a person supplies rather than something a survey
+    #: measures. `requires_input` names that field/source kind in words
+    #: ("lens", "documentation_source", "ingested_documentation",
+    #: "confirmed_glossary_term") — empty for every analysis unaffected by
+    #: this ruling. The prerequisite resolver's new human-input precondition
+    #: kind (`surveyors/step_preconditions.py`) reads this value indirectly,
+    #: through the catalog id -> requires_input mapping it declares itself,
+    #: rather than this field driving resolution directly — see that
+    #: module's own comment for why the two are declared in two places on
+    #: purpose (the catalog says WHAT is required in words for display; the
+    #: resolver says HOW to check it).
+    requires_input: str = ""
+
+    #: Extensibility brief 2c: set only on an entry GENERATED from an
+    #: installable step's manifest (scripts/generate_external_step_entries.py)
+    #: — the package, entry point, step key, version and the manifest's
+    #: declarations. Empty for every built-in analysis. RE's host
+    #: (`survey_step_host`) reads it to attach the step beside the step
+    #: registry, installed or not, so a card whose package is absent says so.
+    provided_by: dict = field(default_factory=dict)
+
+    #: What this analysis declares about its results (design note
+    #: DESIGN-DECLARED-EXTENSIBILITY-RENDERING-CHAT-CONFIDENCE §1): result
+    #: kind, measures with units and as-ofs, absence sentences, Chat extents,
+    #: confidence form, answers and scope. The same model a library step's
+    #: manifest carries (`trellis_analytics.declaration.Declaration`), so a
+    #: built-in analysis and a user step are read by one set of rules. None
+    #: when the entry declares nothing, or when what it declared was refused.
+    declaration: Declaration | None = None
+
+    #: Why the entry's declaration was refused, in words naming the field and
+    #: value; "" when it was accepted or there was none. A refused declaration
+    #: does not take the entry, or the catalog, down with it: the analysis is
+    #: still listed and runnable, and says why it has no declaration.
+    declaration_refused: str = ""
+
     def to_dict(self) -> dict:
         return {
             "id": self.id,
@@ -119,6 +161,10 @@ class AnalysisCatalogEntry:
             "recommended": self.recommended,
             "egeria_registration": self.egeria_registration,
             "target_shape": self.target_shape,
+            "requires_input": self.requires_input,
+            **({"provided_by": self.provided_by} if self.provided_by else {}),
+            **({"declaration": self.declaration.model_dump(mode="json")} if self.declaration else {}),
+            **({"declaration_refused": self.declaration_refused} if self.declaration_refused else {}),
             # The orchestrator step keys this analysis actually runs. Present so
             # a card can offer a scoped Publish: _publishScopedSteps needs the
             # step keys, not the analysis id, and without them the local
@@ -152,7 +198,81 @@ def _re_analysis_steps_for(analysis_id: str) -> list[str]:
     return list(REPO_ANALYSIS_SOURCE_STEPS.get(analysis_id, []))
 
 
+@functools.lru_cache(maxsize=1)
+def question_binding() -> dict[str, tuple[str, ...]]:
+    """{analysis id: the question ids whose `answering.analysis_ids` name it}, in catalogue order, from every
+    `<type>_questions` section of the question catalogue, retired rows excluded.
+
+    This is where a built-in analysis's declared `answers` come from (project owner, 2026-10-28: "generate the
+    declaration's answers from the question catalogue's analysis_ids"; one place to edit)."""
+    from resource_explorer.surveyors.question_catalog_reader import (
+        _DEFAULT_CONFIG_PATH as questions_path,
+    )
+
+    if not questions_path.exists():
+        return {}
+    with open(questions_path) as f:
+        raw = yaml.safe_load(f) or {}
+    bound: dict[str, list[str]] = {}
+    for key, items in raw.items():
+        if not key.endswith("_questions") or not isinstance(items, list):
+            continue
+        for item in items:
+            if not isinstance(item, dict) or item.get("retired"):
+                continue
+            for a in (item.get("answering") or {}).get("analysis_ids") or []:
+                if item.get("id") and item["id"] not in bound.setdefault(a, []):
+                    bound[a].append(item["id"])
+    return {a: tuple(qs) for a, qs in bound.items()}
+
+
+def generated_answers(raw: dict) -> list[str]:
+    """The `answers` an entry's declaration carries, generated rather than written: a library step's are its
+    manifest's questions (`provided_by.questions`, copied by the generator); infrastructure that answers no question
+    by declaration (`answers_questions: false`) answers none; every other entry's are the question catalogue's
+    binding (`question_binding`)."""
+    if raw.get("provided_by"):
+        return list((raw.get("provided_by") or {}).get("questions") or [])
+    if raw.get("answers_questions") is False:
+        return []
+    return list(question_binding().get(raw.get("id", ""), ()))
+
+
+def check_declaration(raw: dict) -> tuple[Declaration | None, str]:
+    """The entry's `declaration:` validated, or None and the sentence saying
+    why it was refused. No declaration at all is (None, "") — absent is not
+    refused; `test_analysis_declarations` is what requires one.
+
+    Beyond the model's own rules, one the catalog adds: a measure that names
+    the annotation it writes as must name one of the entry's own
+    `annotation_types`, so the two lists cannot drift apart."""
+    body = raw.get("declaration")
+    if body is None:
+        return None, ""
+    where = f"analysis catalog entry '{raw.get('id', '?')}'"
+    if not isinstance(body, dict):
+        return None, f"{where}: declaration is a {type(body).__name__}, not a mapping of declaration fields"
+    if "answers" in body and not raw.get("provided_by"):
+        return None, (f"{where}: declaration refused: answers is written by hand; they are generated from the "
+                      "question catalog's analysis_ids, so remove them here and bind the question there")
+    body = {**body, "answers": generated_answers(raw)} if "answers" not in body else body
+    try:
+        declared = Declaration.model_validate(body)
+    except ValueError as exc:
+        return None, f"{where}: declaration refused: {declaration_refusal(exc)}"
+    types = list(raw.get("annotation_types") or [])
+    foreign = [f"{m.name} ({m.annotation.type})" for m in declared.measures
+               if m.annotation and m.annotation.type not in types]
+    if foreign:
+        return None, (f"{where}: declaration refused: measure {', '.join(foreign)} writes as an annotation type "
+                      f"the entry does not list in annotation_types ({', '.join(types) or 'none'})")
+    return declared, ""
+
+
 def _entry_from_yaml(raw: dict) -> AnalysisCatalogEntry:
+    declared, refused = check_declaration(raw)
+    if refused:
+        log.error("%s", refused)
     return AnalysisCatalogEntry(
         id=raw["id"],
         name=raw["name"],
@@ -171,26 +291,83 @@ def _entry_from_yaml(raw: dict) -> AnalysisCatalogEntry:
         # nobody has considered must not license itself onto a compiler's hot
         # path by staying silent.
         availability=raw.get("availability", "queued"),
+        requires_input=raw.get("requires_input", ""),
+        provided_by=dict(raw.get("provided_by") or {}),
+        declaration=declared,
+        declaration_refused=refused,
     )
+
+
+def installed_step_entries(entity_type: str) -> list[dict]:
+    """The catalog entries (raw, the YAML's vocabulary) of every Analytic Library step installed here that measures
+    `entity_type`, built from its manifest at read time -- the same `catalog_entry` the generator writes, so the two
+    cannot differ in shape. [] when no step is installed, or the library is not (a broken entry point is logged and
+    recorded by `survey_step_host.discover_steps`, which this reads through)."""
+    from trellis_analytics.discovery import origin
+
+    from resource_explorer.surveyors.survey_step_host import catalog_entry, discover_steps
+
+    out = []
+    for name, manifest in sorted(discover_steps(entity_type).items()):
+        try:
+            where = origin(name)
+        except LookupError as exc:
+            log.warning("installed step '%s' not merged into the analysis catalog: %s", name, exc)
+            continue
+        out.append(catalog_entry(manifest, where))
+    return out
+
+
+def _merge_installed(entity_type: str, entries: list[AnalysisCatalogEntry]) -> list[AnalysisCatalogEntry]:
+    """The YAML's entries with the installed steps' manifests merged in. An installed step's manifest REPLACES its
+    committed generated entry in place (the manifest is the source; the committed entry is only the fallback that
+    keeps a step whose package is absent listed, with its "not installed here" reason) and a step with no committed
+    entry is appended. A manifest that takes a built-in analysis's id is refused, as `attach` refuses it."""
+    merged = list(entries)
+    index = {e.id: i for i, e in enumerate(merged)}
+    for raw in installed_step_entries(entity_type):
+        entry = _entry_from_yaml(raw)
+        i = index.get(entry.id)
+        if i is None:
+            index[entry.id] = len(merged)
+            merged.append(entry)
+        elif merged[i].provided_by:
+            merged[i] = entry
+        else:
+            log.error("installed step '%s' has a built-in analysis's id; not merged into the catalog", entry.id)
+    return merged
 
 
 @functools.lru_cache(maxsize=1)
 def _load(config_path: Path = _DEFAULT_CONFIG_PATH) -> dict[str, list[AnalysisCatalogEntry]]:
     if not config_path.exists():
-        return {"repo": [], "database": [], "filesystem": []}
+        return {"repo": [], "database": [], "filesystem": [], "open_data": []}
     with open(config_path) as f:
         raw = yaml.safe_load(f) or {}
 
-    return {
+    loaded = {
         "repo": [_entry_from_yaml(e) for e in raw.get("repo_analyses") or []],
         "database": [_entry_from_yaml(e) for e in raw.get("database_analyses") or []],
         "filesystem": [_entry_from_yaml(e) for e in raw.get("filesystem_analyses") or []],
+        "open_data": [_entry_from_yaml(e) for e in raw.get("open_data_analyses") or []],
     }
+    if config_path == _DEFAULT_CONFIG_PATH:
+        # Installed steps join the catalog when it is read: adding a step needs no commit here (F1, 2026-10-29).
+        for entity_type in ("database", "filesystem"):
+            loaded[entity_type] = _merge_installed(entity_type, loaded[entity_type])
+    return loaded
+
+
+def declaration_refusals() -> list[str]:
+    """Every refused declaration in the catalog, one sentence each, naming
+    the entry and what was refused. [] when every declaration was accepted."""
+    return [e.declaration_refused for entries in _load().values() for e in entries if e.declaration_refused]
 
 
 def clear_cache() -> None:
     """Testing hook — the loader result is cached via lru_cache."""
     _load.cache_clear()
+    question_binding.cache_clear()
     _last_merge_status.clear()
 
 

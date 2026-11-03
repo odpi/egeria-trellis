@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 from unittest.mock import MagicMock
+from tests.qn_lookup_bridge import expert_from_legacy
 
 from resource_explorer.surveyors.egeria_publisher import EgeriaPublisher
 
@@ -34,16 +35,14 @@ def _sub_resource_row(locator, kind, owners=None, **extra):
 def _publisher(registry):
     pub = EgeriaPublisher(platform_url="https://fake", registry=registry)
     pub._automated_curation = MagicMock()
+    pub._metadata_expert = expert_from_legacy(pub._automated_curation)
     pub._asset_maker = MagicMock()
     pub._discovery = MagicMock()
     pub._connect = MagicMock()  # publish_sub_resources() connects itself; short-circuit to the mocks above
     # Nothing pre-exists in Egeria by default.
-    pub._automated_curation.get_guid_for_name.return_value = []
+    pub._automated_curation.get_guid_for_name.return_value = "No elements found"   # pyegeria's real miss
 
-    async def _fake_async_template(type_name):
-        return f"template-{type_name}"
-
-    pub._automated_curation._async_get_template_guid_for_technology_type = _fake_async_template
+    pub._automated_curation.get_template_guid_for_technology_type.side_effect = lambda type_name: f"template-{type_name}"
     counter = {"n": 0}
 
     def _create(body):
@@ -164,6 +163,9 @@ class TestOrderingAndParentResolution:
         expected_qn = f"GitHubRepository::{GITHUB_URL}::docs"
         assert body["replacementProperties"] == {
             "class": "AssetProperties", "qualifiedName": expected_qn,
+            # The naming rule (ruling 2026-10-07): path and repository; MagicMock registry
+            # has no project, so the repository reads as the slug.
+            "displayName": "docs/ \u00b7 myproj",
         }
 
 
@@ -193,7 +195,7 @@ class TestIdempotency:
         def _lookup(qn):
             if qn.endswith("::docs"):
                 return ["22222222-2222-2222-2222-222222222222"]
-            return []
+            return "No elements found"          # pyegeria's real miss ([] is not an answer pyegeria gives)
 
         pub._automated_curation.get_guid_for_name.side_effect = _lookup
         pub.publish_sub_resources("myproj", GITHUB_URL, "asset-guid", ["docs", "docs/SECURITY.md"])

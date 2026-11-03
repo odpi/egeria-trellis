@@ -233,7 +233,7 @@ logs/
 *.outbox/
 
 # Frontend build (bundled Tailwind CSS for resource-explorer's static UI)
-packages/resource-explorer/frontend-build/node_modules/
+packages/resource-explorer/frontend-build/node_modules
 
 # macOS
 .DS_Store
@@ -245,7 +245,7 @@ packages/resource-explorer/frontend-build/node_modules/
 .claude/worktrees/
 
 # Apple Numbers working spreadsheets. Note the derived CSVs ARE tracked
-# (e.g. packages/resource-explorer/docs/dr-egeria/re-inventory-2026-08-21.csv)
+# (e.g. packages/resource-explorer/docs/archive/dr-egeria-batches/re-inventory-2026-08-21.csv)
 # — if a .numbers source is worth keeping, commit it deliberately with -f.
 *.numbers
 

@@ -1,0 +1,4633 @@
+{
+ "slug": "dataops_testgen",
+ "interfaces": [
+  {
+   "kind": "http_api",
+   "source": "running_instance",
+   "origin": "http://localhost:8530/api/openapi.json",
+   "as_of": "2026-10-15T21:53:51+00:00",
+   "title": "TestGen API",
+   "version": "5.92.2",
+   "spec_version": "openapi 3.1.0",
+   "description": "Automate profiling, test execution, and test generation jobs. Export and import test definitions for promotion across environments.\n\n**Authentication**: OAuth 2.1 authorization code flow. See `GET /.well-known/oauth-authorization-server` for discovery.",
+   "base_paths": [],
+   "operations": [
+    {
+     "key": "GET /.well-known/oauth-authorization-server",
+     "name": "GET /.well-known/oauth-authorization-server",
+     "kind": "http_api",
+     "kind_detail": "",
+     "method": "GET",
+     "path": "/.well-known/oauth-authorization-server",
+     "summary": "Authorization Server Metadata",
+     "description": "Return OAuth 2.1 Authorization Server Metadata per RFC 8414.\n\nOAuth clients use this for server discovery.",
+     "operation_id": "authorization_server_metadata__well_known_oauth_authorization_server_get",
+     "tags": [
+      "OAuth"
+     ],
+     "group": "OAuth",
+     "parameters": [],
+     "request_body": null,
+     "responses": [
+      {
+       "status": "200",
+       "description": "Successful Response",
+       "content_types": [
+        "application/json"
+       ],
+       "schema_name": ""
+      }
+     ],
+     "security": [],
+     "deprecated": false,
+     "input_schema": null,
+     "handler": "",
+     "handler_signature": "",
+     "location": ""
+    },
+    {
+     "key": "GET /oauth/authorize",
+     "name": "GET /oauth/authorize",
+     "kind": "http_api",
+     "kind_detail": "",
+     "method": "GET",
+     "path": "/oauth/authorize",
+     "summary": "Authorize Get",
+     "description": "Show login form for authorization code flow, or skip if already logged in.",
+     "operation_id": "authorize_get_oauth_authorize_get",
+     "tags": [
+      "OAuth"
+     ],
+     "group": "OAuth",
+     "parameters": [
+      {
+       "name": "response_type",
+       "in": "query",
+       "required": true,
+       "type": "string",
+       "description": ""
+      },
+      {
+       "name": "client_id",
+       "in": "query",
+       "required": true,
+       "type": "string",
+       "description": ""
+      },
+      {
+       "name": "redirect_uri",
+       "in": "query",
+       "required": false,
+       "type": "string",
+       "description": ""
+      },
+      {
+       "name": "scope",
+       "in": "query",
+       "required": false,
+       "type": "string",
+       "description": ""
+      },
+      {
+       "name": "state",
+       "in": "query",
+       "required": false,
+       "type": "string",
+       "description": ""
+      },
+      {
+       "name": "code_challenge",
+       "in": "query",
+       "required": false,
+       "type": "string",
+       "description": ""
+      },
+      {
+       "name": "code_challenge_method",
+       "in": "query",
+       "required": false,
+       "type": "string",
+       "description": ""
+      }
+     ],
+     "request_body": null,
+     "responses": [
+      {
+       "status": "200",
+       "description": "Successful Response",
+       "content_types": [
+        "application/json"
+       ],
+       "schema_name": ""
+      },
+      {
+       "status": "422",
+       "description": "Validation Error",
+       "content_types": [
+        "application/json"
+       ],
+       "schema_name": "HTTPValidationError"
+      }
+     ],
+     "security": [],
+     "deprecated": false,
+     "input_schema": null,
+     "handler": "",
+     "handler_signature": "",
+     "location": ""
+    },
+    {
+     "key": "POST /oauth/authorize",
+     "name": "POST /oauth/authorize",
+     "kind": "http_api",
+     "kind_detail": "",
+     "method": "POST",
+     "path": "/oauth/authorize",
+     "summary": "Authorize Post",
+     "description": "Authenticate user and issue authorization code.",
+     "operation_id": "authorize_post_oauth_authorize_post",
+     "tags": [
+      "OAuth"
+     ],
+     "group": "OAuth",
+     "parameters": [],
+     "request_body": {
+      "required": true,
+      "content_types": [
+       "application/x-www-form-urlencoded"
+      ],
+      "schema_name": "Body_authorize_post_oauth_authorize_post"
+     },
+     "responses": [
+      {
+       "status": "200",
+       "description": "Successful Response",
+       "content_types": [
+        "application/json"
+       ],
+       "schema_name": ""
+      },
+      {
+       "status": "422",
+       "description": "Validation Error",
+       "content_types": [
+        "application/json"
+       ],
+       "schema_name": "HTTPValidationError"
+      }
+     ],
+     "security": [],
+     "deprecated": false,
+     "input_schema": null,
+     "handler": "",
+     "handler_signature": "",
+     "location": ""
+    },
+    {
+     "key": "GET /oauth/logout",
+     "name": "GET /oauth/logout",
+     "kind": "http_api",
+     "kind_detail": "",
+     "method": "GET",
+     "path": "/oauth/logout",
+     "summary": "Logout",
+     "description": "Clear the OAuth session cookie and redirect.\n\nEnforces same-origin on redirect_uri to prevent open redirect attacks.",
+     "operation_id": "logout_oauth_logout_get",
+     "tags": [
+      "OAuth"
+     ],
+     "group": "OAuth",
+     "parameters": [
+      {
+       "name": "redirect_uri",
+       "in": "query",
+       "required": false,
+       "type": "string",
+       "description": ""
+      }
+     ],
+     "request_body": null,
+     "responses": [
+      {
+       "status": "200",
+       "description": "Successful Response",
+       "content_types": [
+        "application/json"
+       ],
+       "schema_name": ""
+      },
+      {
+       "status": "422",
+       "description": "Validation Error",
+       "content_types": [
+        "application/json"
+       ],
+       "schema_name": "HTTPValidationError"
+      }
+     ],
+     "security": [],
+     "deprecated": false,
+     "input_schema": null,
+     "handler": "",
+     "handler_signature": "",
+     "location": ""
+    },
+    {
+     "key": "POST /oauth/token",
+     "name": "POST /oauth/token",
+     "kind": "http_api",
+     "kind_detail": "",
+     "method": "POST",
+     "path": "/oauth/token",
+     "summary": "Token",
+     "description": "Exchange credentials or authorization code for an access token.",
+     "operation_id": "token_oauth_token_post",
+     "tags": [
+      "OAuth"
+     ],
+     "group": "OAuth",
+     "parameters": [],
+     "request_body": null,
+     "responses": [
+      {
+       "status": "200",
+       "description": "Successful Response",
+       "content_types": [
+        "application/json"
+       ],
+       "schema_name": ""
+      }
+     ],
+     "security": [],
+     "deprecated": false,
+     "input_schema": null,
+     "handler": "",
+     "handler_signature": "",
+     "location": ""
+    },
+    {
+     "key": "POST /oauth/revoke",
+     "name": "POST /oauth/revoke",
+     "kind": "http_api",
+     "kind_detail": "",
+     "method": "POST",
+     "path": "/oauth/revoke",
+     "summary": "Revoke",
+     "description": "Revoke an access or refresh token.",
+     "operation_id": "revoke_oauth_revoke_post",
+     "tags": [
+      "OAuth"
+     ],
+     "group": "OAuth",
+     "parameters": [],
+     "request_body": null,
+     "responses": [
+      {
+       "status": "200",
+       "description": "Successful Response",
+       "content_types": [
+        "application/json"
+       ],
+       "schema_name": ""
+      }
+     ],
+     "security": [],
+     "deprecated": false,
+     "input_schema": null,
+     "handler": "",
+     "handler_signature": "",
+     "location": ""
+    },
+    {
+     "key": "POST /oauth/register",
+     "name": "POST /oauth/register",
+     "kind": "http_api",
+     "kind_detail": "",
+     "method": "POST",
+     "path": "/oauth/register",
+     "summary": "Register Client",
+     "description": "Dynamic client registration (RFC 7591).\n\nAccepts JSON body with optional client_name, redirect_uris, grant_types, scope.\nReturns client_id and client_secret for the registered client.",
+     "operation_id": "register_client_oauth_register_post",
+     "tags": [
+      "OAuth"
+     ],
+     "group": "OAuth",
+     "parameters": [],
+     "request_body": null,
+     "responses": [
+      {
+       "status": "200",
+       "description": "Successful Response",
+       "content_types": [
+        "application/json"
+       ],
+       "schema_name": ""
+      }
+     ],
+     "security": [],
+     "deprecated": false,
+     "input_schema": null,
+     "handler": "",
+     "handler_signature": "",
+     "location": ""
+    },
+    {
+     "key": "GET /api/v1/health",
+     "name": "GET /api/v1/health",
+     "kind": "http_api",
+     "kind_detail": "",
+     "method": "GET",
+     "path": "/api/v1/health",
+     "summary": "Health",
+     "description": "",
+     "operation_id": "health_api_v1_health_get",
+     "tags": [
+      "API"
+     ],
+     "group": "API",
+     "parameters": [],
+     "request_body": null,
+     "responses": [
+      {
+       "status": "200",
+       "description": "Successful Response",
+       "content_types": [
+        "application/json"
+       ],
+       "schema_name": ""
+      }
+     ],
+     "security": [],
+     "deprecated": false,
+     "input_schema": null,
+     "handler": "",
+     "handler_signature": "",
+     "location": ""
+    },
+    {
+     "key": "POST /api/v1/table-groups/{table_group_id}/profiling-runs",
+     "name": "POST /api/v1/table-groups/{table_group_id}/profiling-runs",
+     "kind": "http_api",
+     "kind_detail": "",
+     "method": "POST",
+     "path": "/api/v1/table-groups/{table_group_id}/profiling-runs",
+     "summary": "Submit Profiling",
+     "description": "Submit a profiling job for a table group.",
+     "operation_id": "submit_profiling_api_v1_table_groups__table_group_id__profiling_runs_post",
+     "tags": [
+      "Jobs"
+     ],
+     "group": "Jobs",
+     "parameters": [
+      {
+       "name": "table_group_id",
+       "in": "path",
+       "required": true,
+       "type": "string (uuid)",
+       "description": ""
+      }
+     ],
+     "request_body": null,
+     "responses": [
+      {
+       "status": "202",
+       "description": "Successful Response",
+       "content_types": [
+        "application/json"
+       ],
+       "schema_name": "JobSubmittedResponse"
+      },
+      {
+       "status": "404",
+       "description": "Not found",
+       "content_types": [
+        "application/json"
+       ],
+       "schema_name": "ErrorResponse"
+      },
+      {
+       "status": "422",
+       "description": "Validation Error",
+       "content_types": [
+        "application/json"
+       ],
+       "schema_name": "HTTPValidationError"
+      }
+     ],
+     "security": [
+      "HTTPBearer"
+     ],
+     "deprecated": false,
+     "input_schema": null,
+     "handler": "",
+     "handler_signature": "",
+     "location": ""
+    },
+    {
+     "key": "GET /api/v1/table-groups/{table_group_id}/profiling-runs",
+     "name": "GET /api/v1/table-groups/{table_group_id}/profiling-runs",
+     "kind": "http_api",
+     "kind_detail": "",
+     "method": "GET",
+     "path": "/api/v1/table-groups/{table_group_id}/profiling-runs",
+     "summary": "List Profiling Runs",
+     "description": "List profiling runs for a table group, newest first.\n\nCombine ``?status=completed&limit=1`` to fetch the latest completed run.",
+     "operation_id": "list_profiling_runs_api_v1_table_groups__table_group_id__profiling_runs_get",
+     "tags": [
+      "runs"
+     ],
+     "group": "runs",
+     "parameters": [
+      {
+       "name": "table_group_id",
+       "in": "path",
+       "required": true,
+       "type": "string (uuid)",
+       "description": ""
+      },
+      {
+       "name": "status",
+       "in": "query",
+       "required": false,
+       "type": "JobStatus",
+       "description": ""
+      },
+      {
+       "name": "page",
+       "in": "query",
+       "required": false,
+       "type": "integer",
+       "description": ""
+      },
+      {
+       "name": "limit",
+       "in": "query",
+       "required": false,
+       "type": "integer",
+       "description": ""
+      }
+     ],
+     "request_body": null,
+     "responses": [
+      {
+       "status": "200",
+       "description": "Successful Response",
+       "content_types": [
+        "application/json"
+       ],
+       "schema_name": "ProfilingRunHistoryResponse"
+      },
+      {
+       "status": "404",
+       "description": "Not found",
+       "content_types": [
+        "application/json"
+       ],
+       "schema_name": "ErrorResponse"
+      },
+      {
+       "status": "422",
+       "description": "Validation Error",
+       "content_types": [
+        "application/json"
+       ],
+       "schema_name": "HTTPValidationError"
+      }
+     ],
+     "security": [
+      "HTTPBearer"
+     ],
+     "deprecated": false,
+     "input_schema": null,
+     "handler": "",
+     "handler_signature": "",
+     "location": ""
+    },
+    {
+     "key": "POST /api/v1/test-suites/{test_suite_id}/test-runs",
+     "name": "POST /api/v1/test-suites/{test_suite_id}/test-runs",
+     "kind": "http_api",
+     "kind_detail": "",
+     "method": "POST",
+     "path": "/api/v1/test-suites/{test_suite_id}/test-runs",
+     "summary": "Submit Test Run",
+     "description": "Submit a test execution job for a test suite.",
+     "operation_id": "submit_test_run_api_v1_test_suites__test_suite_id__test_runs_post",
+     "tags": [
+      "Jobs"
+     ],
+     "group": "Jobs",
+     "parameters": [
+      {
+       "name": "test_suite_id",
+       "in": "path",
+       "required": true,
+       "type": "string (uuid)",
+       "description": ""
+      }
+     ],
+     "request_body": null,
+     "responses": [
+      {
+       "status": "202",
+       "description": "Successful Response",
+       "content_types": [
+        "application/json"
+       ],
+       "schema_name": "JobSubmittedResponse"
+      },
+      {
+       "status": "404",
+       "description": "Not found",
+       "content_types": [
+        "application/json"
+       ],
+       "schema_name": "ErrorResponse"
+      },
+      {
+       "status": "422",
+       "description": "Validation Error",
+       "content_types": [
+        "application/json"
+       ],
+       "schema_name": "HTTPValidationError"
+      }
+     ],
+     "security": [
+      "HTTPBearer"
+     ],
+     "deprecated": false,
+     "input_schema": null,
+     "handler": "",
+     "handler_signature": "",
+     "location": ""
+    },
+    {
+     "key": "POST /api/v1/test-suites/{test_suite_id}/test-generation",
+     "name": "POST /api/v1/test-suites/{test_suite_id}/test-generation",
+     "kind": "http_api",
+     "kind_detail": "",
+     "method": "POST",
+     "path": "/api/v1/test-suites/{test_suite_id}/test-generation",
+     "summary": "Submit Test Generation",
+     "description": "Submit a test generation job for a test suite.\n\nGenerates from the test suite's stored generation sets when none are given,\nfalling back to Standard.",
+     "operation_id": "submit_test_generation_api_v1_test_suites__test_suite_id__test_generation_post",
+     "tags": [
+      "Jobs"
+     ],
+     "group": "Jobs",
+     "parameters": [
+      {
+       "name": "test_suite_id",
+       "in": "path",
+       "required": true,
+       "type": "string (uuid)",
+       "description": ""
+      }
+     ],
+     "request_body": {
+      "required": false,
+      "content_types": [
+       "application/json"
+      ],
+      "schema_name": "TestGenerationRequest"
+     },
+     "responses": [
+      {
+       "status": "202",
+       "description": "Successful Response",
+       "content_types": [
+        "application/json"
+       ],
+       "schema_name": "JobSubmittedResponse"
+      },
+      {
+       "status": "400",
+       "description": "Invalid generation set",
+       "content_types": [
+        "application/json"
+       ],
+       "schema_name": "ErrorResponse"
+      },
+      {
+       "status": "404",
+       "description": "Not found",
+       "content_types": [
+        "application/json"
+       ],
+       "schema_name": "ErrorResponse"
+      },
+      {
+       "status": "422",
+       "description": "Validation Error",
+       "content_types": [
+        "application/json"
+       ],
+       "schema_name": "HTTPValidationError"
+      }
+     ],
+     "security": [
+      "HTTPBearer"
+     ],
+     "deprecated": false,
+     "input_schema": null,
+     "handler": "",
+     "handler_signature": "",
+     "location": ""
+    },
+    {
+     "key": "GET /api/v1/jobs/{job_id}",
+     "name": "GET /api/v1/jobs/{job_id}",
+     "kind": "http_api",
+     "kind_detail": "",
+     "method": "GET",
+     "path": "/api/v1/jobs/{job_id}",
+     "summary": "Get Job Status",
+     "description": "Poll the status of a job execution.",
+     "operation_id": "get_job_status_api_v1_jobs__job_id__get",
+     "tags": [
+      "Jobs"
+     ],
+     "group": "Jobs",
+     "parameters": [
+      {
+       "name": "job_id",
+       "in": "path",
+       "required": true,
+       "type": "string (uuid)",
+       "description": ""
+      }
+     ],
+     "request_body": null,
+     "responses": [
+      {
+       "status": "200",
+       "description": "Successful Response",
+       "content_types": [
+        "application/json"
+       ],
+       "schema_name": "JobResponse"
+      },
+      {
+       "status": "404",
+       "description": "Not found",
+       "content_types": [
+        "application/json"
+       ],
+       "schema_name": "ErrorResponse"
+      },
+      {
+       "status": "422",
+       "description": "Validation Error",
+       "content_types": [
+        "application/json"
+       ],
+       "schema_name": "HTTPValidationError"
+      }
+     ],
+     "security": [
+      "HTTPBearer"
+     ],
+     "deprecated": false,
+     "input_schema": null,
+     "handler": "",
+     "handler_signature": "",
+     "location": ""
+    },
+    {
+     "key": "POST /api/v1/jobs/{job_id}/cancel",
+     "name": "POST /api/v1/jobs/{job_id}/cancel",
+     "kind": "http_api",
+     "kind_detail": "",
+     "method": "POST",
+     "path": "/api/v1/jobs/{job_id}/cancel",
+     "summary": "Cancel Job",
+     "description": "Request cancellation of a job execution.",
+     "operation_id": "cancel_job_api_v1_jobs__job_id__cancel_post",
+     "tags": [
+      "Jobs"
+     ],
+     "group": "Jobs",
+     "parameters": [
+      {
+       "name": "job_id",
+       "in": "path",
+       "required": true,
+       "type": "string (uuid)",
+       "description": ""
+      }
+     ],
+     "request_body": null,
+     "responses": [
+      {
+       "status": "200",
+       "description": "Successful Response",
+       "content_types": [
+        "application/json"
+       ],
+       "schema_name": "JobResponse"
+      },
+      {
+       "status": "404",
+       "description": "Not found",
+       "content_types": [
+        "application/json"
+       ],
+       "schema_name": "ErrorResponse"
+      },
+      {
+       "status": "409",
+       "description": "Invalid status transition",
+       "content_types": [
+        "application/json"
+       ],
+       "schema_name": "ErrorResponse"
+      },
+      {
+       "status": "422",
+       "description": "Validation Error",
+       "content_types": [
+        "application/json"
+       ],
+       "schema_name": "HTTPValidationError"
+      }
+     ],
+     "security": [
+      "HTTPBearer"
+     ],
+     "deprecated": false,
+     "input_schema": null,
+     "handler": "",
+     "handler_signature": "",
+     "location": ""
+    },
+    {
+     "key": "GET /api/v1/projects/{project_code}/jobs",
+     "name": "GET /api/v1/projects/{project_code}/jobs",
+     "kind": "http_api",
+     "kind_detail": "",
+     "method": "GET",
+     "path": "/api/v1/projects/{project_code}/jobs",
+     "summary": "List Jobs",
+     "description": "List job executions for a project, with optional filters and pagination.",
+     "operation_id": "list_jobs_api_v1_projects__project_code__jobs_get",
+     "tags": [
+      "Jobs"
+     ],
+     "group": "Jobs",
+     "parameters": [
+      {
+       "name": "project_code",
+       "in": "path",
+       "required": true,
+       "type": "string",
+       "description": ""
+      },
+      {
+       "name": "job_key",
+       "in": "query",
+       "required": false,
+       "type": "PublicJobKey",
+       "description": ""
+      },
+      {
+       "name": "status",
+       "in": "query",
+       "required": false,
+       "type": "JobStatus",
+       "description": ""
+      },
+      {
+       "name": "page",
+       "in": "query",
+       "required": false,
+       "type": "integer",
+       "description": ""
+      },
+      {
+       "name": "limit",
+       "in": "query",
+       "required": false,
+       "type": "integer",
+       "description": ""
+      }
+     ],
+     "request_body": null,
+     "responses": [
+      {
+       "status": "200",
+       "description": "Successful Response",
+       "content_types": [
+        "application/json"
+       ],
+       "schema_name": "JobListResponse"
+      },
+      {
+       "status": "404",
+       "description": "Not found",
+       "content_types": [
+        "application/json"
+       ],
+       "schema_name": "ErrorResponse"
+      },
+      {
+       "status": "422",
+       "description": "Validation Error",
+       "content_types": [
+        "application/json"
+       ],
+       "schema_name": "HTTPValidationError"
+      }
+     ],
+     "security": [
+      "HTTPBearer"
+     ],
+     "deprecated": false,
+     "input_schema": null,
+     "handler": "",
+     "handler_signature": "",
+     "location": ""
+    },
+    {
+     "key": "GET /api/v1/table-groups/{table_group_id}/monitors",
+     "name": "GET /api/v1/table-groups/{table_group_id}/monitors",
+     "kind": "http_api",
+     "kind_detail": "",
+     "method": "GET",
+     "path": "/api/v1/table-groups/{table_group_id}/monitors",
+     "summary": "List Table Monitors",
+     "description": "Per-table monitoring summary for a table group, with group totals.\n\nEach row nests per-type state: ``freshness`` / ``volume`` / ``schema`` (one monitor each)\nand ``metrics`` (one per metric). ``anomalies_only`` restricts to tables with at least one\nanomaly of any type. ``monitor_id`` on a per-type object addresses that monitor's series.",
+     "operation_id": "list_table_monitors_api_v1_table_groups__table_group_id__monitors_get",
+     "tags": [
+      "monitors"
+     ],
+     "group": "monitors",
+     "parameters": [
+      {
+       "name": "table_group_id",
+       "in": "path",
+       "required": true,
+       "type": "string (uuid)",
+       "description": ""
+      },
+      {
+       "name": "table_name",
+       "in": "query",
+       "required": false,
+       "type": "string",
+       "description": ""
+      },
+      {
+       "name": "anomalies_only",
+       "in": "query",
+       "required": false,
+       "type": "boolean",
+       "description": ""
+      },
+      {
+       "name": "sort",
+       "in": "query",
+       "required": false,
+       "type": "MonitorSortField",
+       "description": ""
+      },
+      {
+       "name": "order",
+       "in": "query",
+       "required": false,
+       "type": "SortOrder",
+       "description": ""
+      },
+      {
+       "name": "page",
+       "in": "query",
+       "required": false,
+       "type": "integer",
+       "description": ""
+      },
+      {
+       "name": "limit",
+       "in": "query",
+       "required": false,
+       "type": "integer",
+       "description": ""
+      }
+     ],
+     "request_body": null,
+     "responses": [
+      {
+       "status": "200",
+       "description": "Successful Response",
+       "content_types": [
+        "application/json"
+       ],
+       "schema_name": "MonitorSummaryListResponse"
+      },
+      {
+       "status": "404",
+       "description": "Not found",
+       "content_types": [
+        "application/json"
+       ],
+       "schema_name": "ErrorResponse"
+      },
+      {
+       "status": "422",
+       "description": "Validation Error",
+       "content_types": [
+        "application/json"
+       ],
+       "schema_name": "HTTPValidationError"
+      }
+     ],
+     "security": [
+      "HTTPBearer"
+     ],
+     "deprecated": false,
+     "input_schema": null,
+     "handler": "",
+     "handler_signature": "",
+     "location": ""
+    },
+    {
+     "key": "GET /api/v1/monitors/{monitor_id}/series",
+     "name": "GET /api/v1/monitors/{monitor_id}/series",
+     "kind": "http_api",
+     "kind_detail": "",
+     "method": "GET",
+     "path": "/api/v1/monitors/{monitor_id}/series",
+     "summary": "Get Monitor Series",
+     "description": "A monitor's lookback time-series, type-discriminated, with a self-contained header.\n\n``points`` shape depends on ``type``:\n- volume / metric: ``{time, value, lower_bound, upper_bound, threshold_value, is_anomaly, is_training, is_error, is_pending}``\n- freshness: ``{time, minutes_since_update, staleness_threshold, lower_bound, upper_bound, update_detected, is_anomaly, is_training, is_error, is_pending}``\n- schema: ``{time, table_change, additions, deletions, modifications, window_start, is_error}``\n\n``current_bands`` carries the latest thresholds (null while training); its shape also\ndepends on ``type``. The latest point is the monitor's current state.",
+     "operation_id": "get_monitor_series_api_v1_monitors__monitor_id__series_get",
+     "tags": [
+      "monitors"
+     ],
+     "group": "monitors",
+     "parameters": [
+      {
+       "name": "monitor_id",
+       "in": "path",
+       "required": true,
+       "type": "string (uuid)",
+       "description": ""
+      }
+     ],
+     "request_body": null,
+     "responses": [
+      {
+       "status": "200",
+       "description": "Successful Response",
+       "content_types": [
+        "application/json"
+       ],
+       "schema_name": "MonitorSeriesResponse"
+      },
+      {
+       "status": "404",
+       "description": "Not found",
+       "content_types": [
+        "application/json"
+       ],
+       "schema_name": "ErrorResponse"
+      },
+      {
+       "status": "422",
+       "description": "Validation Error",
+       "content_types": [
+        "application/json"
+       ],
+       "schema_name": "HTTPValidationError"
+      }
+     ],
+     "security": [
+      "HTTPBearer"
+     ],
+     "deprecated": false,
+     "input_schema": null,
+     "handler": "",
+     "handler_signature": "",
+     "location": ""
+    },
+    {
+     "key": "GET /api/v1/test-runs/{job_id}",
+     "name": "GET /api/v1/test-runs/{job_id}",
+     "kind": "http_api",
+     "kind_detail": "",
+     "method": "GET",
+     "path": "/api/v1/test-runs/{job_id}",
+     "summary": "Get Test Run",
+     "description": "Get a test run by the job execution ID that created it.",
+     "operation_id": "get_test_run_api_v1_test_runs__job_id__get",
+     "tags": [
+      "runs"
+     ],
+     "group": "runs",
+     "parameters": [
+      {
+       "name": "job_id",
+       "in": "path",
+       "required": true,
+       "type": "string (uuid)",
+       "description": ""
+      }
+     ],
+     "request_body": null,
+     "responses": [
+      {
+       "status": "200",
+       "description": "Successful Response",
+       "content_types": [
+        "application/json"
+       ],
+       "schema_name": "TestRunResponse"
+      },
+      {
+       "status": "404",
+       "description": "Not found",
+       "content_types": [
+        "application/json"
+       ],
+       "schema_name": "ErrorResponse"
+      },
+      {
+       "status": "422",
+       "description": "Validation Error",
+       "content_types": [
+        "application/json"
+       ],
+       "schema_name": "HTTPValidationError"
+      }
+     ],
+     "security": [
+      "HTTPBearer"
+     ],
+     "deprecated": false,
+     "input_schema": null,
+     "handler": "",
+     "handler_signature": "",
+     "location": ""
+    },
+    {
+     "key": "GET /api/v1/test-runs/{job_id}/results",
+     "name": "GET /api/v1/test-runs/{job_id}/results",
+     "kind": "http_api",
+     "kind_detail": "",
+     "method": "GET",
+     "path": "/api/v1/test-runs/{job_id}/results",
+     "summary": "List Test Run Results",
+     "description": "List individual results for a test run.\n\nOmitting ``disposition`` returns active results \u2014 confirmed and no_decision\n(excludes dismissed and muted); pass an explicit value to filter to one state.",
+     "operation_id": "list_test_run_results_api_v1_test_runs__job_id__results_get",
+     "tags": [
+      "runs"
+     ],
+     "group": "runs",
+     "parameters": [
+      {
+       "name": "job_id",
+       "in": "path",
+       "required": true,
+       "type": "string (uuid)",
+       "description": ""
+      },
+      {
+       "name": "status",
+       "in": "query",
+       "required": false,
+       "type": "ResultStatus",
+       "description": ""
+      },
+      {
+       "name": "table_name",
+       "in": "query",
+       "required": false,
+       "type": "string",
+       "description": ""
+      },
+      {
+       "name": "column_name",
+       "in": "query",
+       "required": false,
+       "type": "string",
+       "description": ""
+      },
+      {
+       "name": "test_type",
+       "in": "query",
+       "required": false,
+       "type": "string",
+       "description": "Filter to one test type, given as its code \u2014 the value returned in each result's `test_type`, e.g. `Dupe_Rows`."
+      },
+      {
+       "name": "disposition",
+       "in": "query",
+       "required": false,
+       "type": "Disposition",
+       "description": ""
+      },
+      {
+       "name": "page",
+       "in": "query",
+       "required": false,
+       "type": "integer",
+       "description": ""
+      },
+      {
+       "name": "limit",
+       "in": "query",
+       "required": false,
+       "type": "integer",
+       "description": ""
+      }
+     ],
+     "request_body": null,
+     "responses": [
+      {
+       "status": "200",
+       "description": "Successful Response",
+       "content_types": [
+        "application/json"
+       ],
+       "schema_name": "TestResultListResponse"
+      },
+      {
+       "status": "400",
+       "description": "Unknown test type",
+       "content_types": [
+        "application/json"
+       ],
+       "schema_name": "ErrorResponse"
+      },
+      {
+       "status": "404",
+       "description": "Not found",
+       "content_types": [
+        "application/json"
+       ],
+       "schema_name": "ErrorResponse"
+      },
+      {
+       "status": "422",
+       "description": "Validation Error",
+       "content_types": [
+        "application/json"
+       ],
+       "schema_name": "HTTPValidationError"
+      }
+     ],
+     "security": [
+      "HTTPBearer"
+     ],
+     "deprecated": false,
+     "input_schema": null,
+     "handler": "",
+     "handler_signature": "",
+     "location": ""
+    },
+    {
+     "key": "GET /api/v1/profiling-runs/{job_id}",
+     "name": "GET /api/v1/profiling-runs/{job_id}",
+     "kind": "http_api",
+     "kind_detail": "",
+     "method": "GET",
+     "path": "/api/v1/profiling-runs/{job_id}",
+     "summary": "Get Profiling Run",
+     "description": "Get a profiling run by the job execution ID that created it.",
+     "operation_id": "get_profiling_run_api_v1_profiling_runs__job_id__get",
+     "tags": [
+      "runs"
+     ],
+     "group": "runs",
+     "parameters": [
+      {
+       "name": "job_id",
+       "in": "path",
+       "required": true,
+       "type": "string (uuid)",
+       "description": ""
+      }
+     ],
+     "request_body": null,
+     "responses": [
+      {
+       "status": "200",
+       "description": "Successful Response",
+       "content_types": [
+        "application/json"
+       ],
+       "schema_name": "ProfilingRunResponse"
+      },
+      {
+       "status": "404",
+       "description": "Not found",
+       "content_types": [
+        "application/json"
+       ],
+       "schema_name": "ErrorResponse"
+      },
+      {
+       "status": "422",
+       "description": "Validation Error",
+       "content_types": [
+        "application/json"
+       ],
+       "schema_name": "HTTPValidationError"
+      }
+     ],
+     "security": [
+      "HTTPBearer"
+     ],
+     "deprecated": false,
+     "input_schema": null,
+     "handler": "",
+     "handler_signature": "",
+     "location": ""
+    },
+    {
+     "key": "GET /api/v1/profiling-runs/{job_id}/hygiene-issues",
+     "name": "GET /api/v1/profiling-runs/{job_id}/hygiene-issues",
+     "kind": "http_api",
+     "kind_detail": "",
+     "method": "GET",
+     "path": "/api/v1/profiling-runs/{job_id}/hygiene-issues",
+     "summary": "List Profiling Run Hygiene Issues",
+     "description": "List data-quality hygiene issues for a profiling run.\n\nExcludes Potential PII findings, which are listed by\n``/profiling-runs/{job_id}/potential-pii``. Omitting ``disposition``\nreturns confirmed issues; pass ``dismissed`` or ``muted`` to filter to\nthose states. Callers without ``view_pii`` on the run's project see\n``[PII Redacted]`` in ``detail`` for PII-flagged rows.",
+     "operation_id": "list_profiling_run_hygiene_issues_api_v1_profiling_runs__job_id__hygiene_issues_get",
+     "tags": [
+      "runs"
+     ],
+     "group": "runs",
+     "parameters": [
+      {
+       "name": "job_id",
+       "in": "path",
+       "required": true,
+       "type": "string (uuid)",
+       "description": ""
+      },
+      {
+       "name": "issue_type",
+       "in": "query",
+       "required": false,
+       "type": "string",
+       "description": "Filter to one issue type, given as its id \u2014 the value returned in each issue's `issue_type`, e.g. `1002`."
+      },
+      {
+       "name": "likelihood",
+       "in": "query",
+       "required": false,
+       "type": "IssueLikelihood",
+       "description": ""
+      },
+      {
+       "name": "disposition",
+       "in": "query",
+       "required": false,
+       "type": "HygieneDisposition",
+       "description": ""
+      },
+      {
+       "name": "page",
+       "in": "query",
+       "required": false,
+       "type": "integer",
+       "description": ""
+      },
+      {
+       "name": "limit",
+       "in": "query",
+       "required": false,
+       "type": "integer",
+       "description": ""
+      }
+     ],
+     "request_body": null,
+     "responses": [
+      {
+       "status": "200",
+       "description": "Successful Response",
+       "content_types": [
+        "application/json"
+       ],
+       "schema_name": "HygieneIssueListResponse"
+      },
+      {
+       "status": "400",
+       "description": "Unknown issue type",
+       "content_types": [
+        "application/json"
+       ],
+       "schema_name": "ErrorResponse"
+      },
+      {
+       "status": "404",
+       "description": "Not found",
+       "content_types": [
+        "application/json"
+       ],
+       "schema_name": "ErrorResponse"
+      },
+      {
+       "status": "422",
+       "description": "Validation Error",
+       "content_types": [
+        "application/json"
+       ],
+       "schema_name": "HTTPValidationError"
+      }
+     ],
+     "security": [
+      "HTTPBearer"
+     ],
+     "deprecated": false,
+     "input_schema": null,
+     "handler": "",
+     "handler_signature": "",
+     "location": ""
+    },
+    {
+     "key": "GET /api/v1/profiling-runs/{job_id}/potential-pii",
+     "name": "GET /api/v1/profiling-runs/{job_id}/potential-pii",
+     "kind": "http_api",
+     "kind_detail": "",
+     "method": "GET",
+     "path": "/api/v1/profiling-runs/{job_id}/potential-pii",
+     "summary": "List Profiling Run Potential Pii",
+     "description": "List Potential PII findings for a profiling run.\n\nCompanion to ``/profiling-runs/{job_id}/hygiene-issues``. Omitting\n``disposition`` returns confirmed findings; pass ``dismissed`` or\n``muted`` to filter to those states. Callers without ``view_pii`` on\nthe run's project see ``[PII Redacted]`` in ``detail``.",
+     "operation_id": "list_profiling_run_potential_pii_api_v1_profiling_runs__job_id__potential_pii_get",
+     "tags": [
+      "runs"
+     ],
+     "group": "runs",
+     "parameters": [
+      {
+       "name": "job_id",
+       "in": "path",
+       "required": true,
+       "type": "string (uuid)",
+       "description": ""
+      },
+      {
+       "name": "pii_risk",
+       "in": "query",
+       "required": false,
+       "type": "PiiRisk",
+       "description": ""
+      },
+      {
+       "name": "disposition",
+       "in": "query",
+       "required": false,
+       "type": "HygieneDisposition",
+       "description": ""
+      },
+      {
+       "name": "page",
+       "in": "query",
+       "required": false,
+       "type": "integer",
+       "description": ""
+      },
+      {
+       "name": "limit",
+       "in": "query",
+       "required": false,
+       "type": "integer",
+       "description": ""
+      }
+     ],
+     "request_body": null,
+     "responses": [
+      {
+       "status": "200",
+       "description": "Successful Response",
+       "content_types": [
+        "application/json"
+       ],
+       "schema_name": "PotentialPiiListResponse"
+      },
+      {
+       "status": "404",
+       "description": "Not found",
+       "content_types": [
+        "application/json"
+       ],
+       "schema_name": "ErrorResponse"
+      },
+      {
+       "status": "422",
+       "description": "Validation Error",
+       "content_types": [
+        "application/json"
+       ],
+       "schema_name": "HTTPValidationError"
+      }
+     ],
+     "security": [
+      "HTTPBearer"
+     ],
+     "deprecated": false,
+     "input_schema": null,
+     "handler": "",
+     "handler_signature": "",
+     "location": ""
+    },
+    {
+     "key": "GET /api/v1/profiling-runs/{job_id}/columns",
+     "name": "GET /api/v1/profiling-runs/{job_id}/columns",
+     "kind": "http_api",
+     "kind_detail": "",
+     "method": "GET",
+     "path": "/api/v1/profiling-runs/{job_id}/columns",
+     "summary": "List Profiling Run Columns",
+     "description": "List per-column profiles for a profiling run.\n\nThe default ``hygiene_severity`` sort orders columns worst-first by the tuple\n``(definite, likely, possible, high, moderate)`` \u2014 a column with any Definite hygiene\nissue outranks any column with none regardless of lower-severity counts. Use\n``sort=table`` for a stable per-table listing (schema, table, column position).\n\n``table_name`` is a case-sensitive exact match: source-system casing is preserved.\n\n``profiling_score``, ``testing_score``, and ``pii_flag`` on each returned item reflect\nthe column's current values from the catalog \u2014 a column that has been re-profiled\nsince the pinned run still reports the latest scores and classification.",
+     "operation_id": "list_profiling_run_columns_api_v1_profiling_runs__job_id__columns_get",
+     "tags": [
+      "runs"
+     ],
+     "group": "runs",
+     "parameters": [
+      {
+       "name": "job_id",
+       "in": "path",
+       "required": true,
+       "type": "string (uuid)",
+       "description": ""
+      },
+      {
+       "name": "table_name",
+       "in": "query",
+       "required": false,
+       "type": "string",
+       "description": ""
+      },
+      {
+       "name": "sort",
+       "in": "query",
+       "required": false,
+       "type": "ColumnSort",
+       "description": ""
+      },
+      {
+       "name": "page",
+       "in": "query",
+       "required": false,
+       "type": "integer",
+       "description": ""
+      },
+      {
+       "name": "limit",
+       "in": "query",
+       "required": false,
+       "type": "integer",
+       "description": ""
+      }
+     ],
+     "request_body": null,
+     "responses": [
+      {
+       "status": "200",
+       "description": "Successful Response",
+       "content_types": [
+        "application/json"
+       ],
+       "schema_name": "ProfilingColumnListResponse"
+      },
+      {
+       "status": "404",
+       "description": "Not found",
+       "content_types": [
+        "application/json"
+       ],
+       "schema_name": "ErrorResponse"
+      },
+      {
+       "status": "422",
+       "description": "Validation Error",
+       "content_types": [
+        "application/json"
+       ],
+       "schema_name": "HTTPValidationError"
+      }
+     ],
+     "security": [
+      "HTTPBearer"
+     ],
+     "deprecated": false,
+     "input_schema": null,
+     "handler": "",
+     "handler_signature": "",
+     "location": ""
+    },
+    {
+     "key": "GET /api/v1/projects/{project_code}/scores",
+     "name": "GET /api/v1/projects/{project_code}/scores",
+     "kind": "http_api",
+     "kind_detail": "",
+     "method": "GET",
+     "path": "/api/v1/projects/{project_code}/scores",
+     "summary": "Quality Score rollup for a project",
+     "description": "Quality Score rollup for a project.\n\nReturns the overall Testing Score (``total`` / ``cde`` / ``profiling`` / ``testing``).\nWhen ``group_by`` is supplied, adds a ``breakdown`` ordered by ``impact`` descending \u2014\nthe actionable signal for which group accounts for the most of the score's\naffected data points. ``impact_dimension`` is the recommended primary breakdown.\n\nFilter query params are repeatable: repeats within one field OR together, different\nfields AND together. ``quality_dimension``, ``impact_dimension`` and ``table_group``\nare groupable only, not filterable.",
+     "operation_id": "get_project_scores_api_v1_projects__project_code__scores_get",
+     "tags": [
+      "Scores"
+     ],
+     "group": "Scores",
+     "parameters": [
+      {
+       "name": "project_code",
+       "in": "path",
+       "required": true,
+       "type": "string",
+       "description": ""
+      },
+      {
+       "name": "group_by",
+       "in": "query",
+       "required": false,
+       "type": "ScoresGroupBy",
+       "description": ""
+      },
+      {
+       "name": "score_type",
+       "in": "query",
+       "required": false,
+       "type": "ScoreType",
+       "description": ""
+      },
+      {
+       "name": "data_source",
+       "in": "query",
+       "required": false,
+       "type": "string[]",
+       "description": ""
+      },
+      {
+       "name": "business_domain",
+       "in": "query",
+       "required": false,
+       "type": "string[]",
+       "description": ""
+      },
+      {
+       "name": "source_system",
+       "in": "query",
+       "required": false,
+       "type": "string[]",
+       "description": ""
+      },
+      {
+       "name": "source_process",
+       "in": "query",
+       "required": false,
+       "type": "string[]",
+       "description": ""
+      },
+      {
+       "name": "stakeholder_group",
+       "in": "query",
+       "required": false,
+       "type": "string[]",
+       "description": ""
+      },
+      {
+       "name": "transform_level",
+       "in": "query",
+       "required": false,
+       "type": "string[]",
+       "description": ""
+      },
+      {
+       "name": "data_location",
+       "in": "query",
+       "required": false,
+       "type": "string[]",
+       "description": ""
+      },
+      {
+       "name": "data_product",
+       "in": "query",
+       "required": false,
+       "type": "string[]",
+       "description": ""
+      },
+      {
+       "name": "semantic_data_type",
+       "in": "query",
+       "required": false,
+       "type": "string[]",
+       "description": ""
+      },
+      {
+       "name": "data_classification",
+       "in": "query",
+       "required": false,
+       "type": "string[]",
+       "description": ""
+      }
+     ],
+     "request_body": null,
+     "responses": [
+      {
+       "status": "200",
+       "description": "Successful Response",
+       "content_types": [
+        "application/json"
+       ],
+       "schema_name": "ScoresResponse"
+      },
+      {
+       "status": "400",
+       "description": "Invalid filter value",
+       "content_types": [
+        "application/json"
+       ],
+       "schema_name": "ErrorResponse"
+      },
+      {
+       "status": "404",
+       "description": "Not found",
+       "content_types": [
+        "application/json"
+       ],
+       "schema_name": "ErrorResponse"
+      },
+      {
+       "status": "422",
+       "description": "Validation Error",
+       "content_types": [
+        "application/json"
+       ],
+       "schema_name": "HTTPValidationError"
+      }
+     ],
+     "security": [
+      "HTTPBearer"
+     ],
+     "deprecated": false,
+     "input_schema": null,
+     "handler": "",
+     "handler_signature": "",
+     "location": ""
+    },
+    {
+     "key": "GET /api/v1/test-suites/{test_suite_id}/test-definition-export",
+     "name": "GET /api/v1/test-suites/{test_suite_id}/test-definition-export",
+     "kind": "http_api",
+     "kind_detail": "",
+     "method": "GET",
+     "path": "/api/v1/test-suites/{test_suite_id}/test-definition-export",
+     "summary": "Export Test Definitions",
+     "description": "Export test definitions from a test suite as a portable JSON document.",
+     "operation_id": "export_test_definitions_api_v1_test_suites__test_suite_id__test_definition_export_get",
+     "tags": [
+      "Test Definitions"
+     ],
+     "group": "Test Definitions",
+     "parameters": [
+      {
+       "name": "test_suite_id",
+       "in": "path",
+       "required": true,
+       "type": "string (uuid)",
+       "description": ""
+      },
+      {
+       "name": "origin",
+       "in": "query",
+       "required": false,
+       "type": "Origin",
+       "description": ""
+      },
+      {
+       "name": "table_name",
+       "in": "query",
+       "required": false,
+       "type": "string",
+       "description": ""
+      },
+      {
+       "name": "test_type",
+       "in": "query",
+       "required": false,
+       "type": "string",
+       "description": ""
+      }
+     ],
+     "request_body": null,
+     "responses": [
+      {
+       "status": "200",
+       "description": "Successful Response",
+       "content_types": [
+        "application/json"
+       ],
+       "schema_name": "ExportDocument"
+      },
+      {
+       "status": "404",
+       "description": "Not found",
+       "content_types": [
+        "application/json"
+       ],
+       "schema_name": "ErrorResponse"
+      },
+      {
+       "status": "422",
+       "description": "Validation Error",
+       "content_types": [
+        "application/json"
+       ],
+       "schema_name": "HTTPValidationError"
+      }
+     ],
+     "security": [
+      "HTTPBearer"
+     ],
+     "deprecated": false,
+     "input_schema": null,
+     "handler": "",
+     "handler_signature": "",
+     "location": ""
+    },
+    {
+     "key": "POST /api/v1/test-suites/{test_suite_id}/test-definition-import",
+     "name": "POST /api/v1/test-suites/{test_suite_id}/test-definition-import",
+     "kind": "http_api",
+     "kind_detail": "",
+     "method": "POST",
+     "path": "/api/v1/test-suites/{test_suite_id}/test-definition-import",
+     "summary": "Import Test Definitions",
+     "description": "Import test definitions into a test suite from a portable JSON document.",
+     "operation_id": "import_test_definitions_api_v1_test_suites__test_suite_id__test_definition_import_post",
+     "tags": [
+      "Test Definitions"
+     ],
+     "group": "Test Definitions",
+     "parameters": [
+      {
+       "name": "test_suite_id",
+       "in": "path",
+       "required": true,
+       "type": "string (uuid)",
+       "description": ""
+      }
+     ],
+     "request_body": {
+      "required": true,
+      "content_types": [
+       "application/json"
+      ],
+      "schema_name": "ImportRequest"
+     },
+     "responses": [
+      {
+       "status": "200",
+       "description": "Successful Response",
+       "content_types": [
+        "application/json"
+       ],
+       "schema_name": "ImportResponse"
+      },
+      {
+       "status": "400",
+       "description": "Strict validation failed (includes the projected import result) or invalid payload",
+       "content_types": [
+        "application/json"
+       ],
+       "schema_name": "anyOf"
+      },
+      {
+       "status": "404",
+       "description": "Not found",
+       "content_types": [
+        "application/json"
+       ],
+       "schema_name": "ErrorResponse"
+      },
+      {
+       "status": "422",
+       "description": "Validation Error",
+       "content_types": [
+        "application/json"
+       ],
+       "schema_name": "HTTPValidationError"
+      }
+     ],
+     "security": [
+      "HTTPBearer"
+     ],
+     "deprecated": false,
+     "input_schema": null,
+     "handler": "",
+     "handler_signature": "",
+     "location": ""
+    }
+   ],
+   "total_operations": 26,
+   "schemas": {
+    "Body_authorize_post_oauth_authorize_post": {
+     "properties": {
+      "username": {
+       "type": "string"
+      },
+      "password": {
+       "type": "string"
+      },
+      "client_id": {
+       "type": "string"
+      },
+      "redirect_uri": {
+       "type": "string",
+       "default": ""
+      },
+      "response_type": {
+       "type": "string",
+       "default": "code"
+      },
+      "scope": {
+       "type": "string",
+       "default": ""
+      },
+      "state": {
+       "type": "string",
+       "default": ""
+      },
+      "code_challenge": {
+       "type": "string",
+       "default": ""
+      },
+      "code_challenge_method": {
+       "type": "string",
+       "default": "S256"
+      }
+     },
+     "type": "object",
+     "required": [
+      "username",
+      "password",
+      "client_id"
+     ]
+    },
+    "ColumnSort": {
+     "type": "string",
+     "enum": [
+      "hygiene_severity",
+      "table"
+     ]
+    },
+    "Disposition": {
+     "type": "string",
+     "enum": [
+      "confirmed",
+      "dismissed",
+      "muted",
+      "no_decision"
+     ]
+    },
+    "ErrorDetail": {
+     "properties": {
+      "code": {
+       "type": "string"
+      },
+      "detail": {
+       "type": "string"
+      }
+     },
+     "type": "object",
+     "required": [
+      "code",
+      "detail"
+     ],
+     "description": "A single error entry."
+    },
+    "ErrorResponse": {
+     "properties": {
+      "errors": {
+       "items": {
+        "$ref": "#/components/schemas/ErrorDetail"
+       },
+       "type": "array"
+      }
+     },
+     "type": "object",
+     "required": [
+      "errors"
+     ],
+     "description": "Standardized error response for business logic errors (400, 404, 409)."
+    },
+    "ExportDocument": {
+     "properties": {
+      "version": {
+       "type": "integer"
+      },
+      "source": {
+       "$ref": "#/components/schemas/ExportSource"
+      },
+      "definitions": {
+       "items": {
+        "$ref": "#/components/schemas/TestDefinitionExport"
+       },
+       "type": "array"
+      }
+     },
+     "type": "object",
+     "required": [
+      "version",
+      "source",
+      "definitions"
+     ]
+    },
+    "ExportSource": {
+     "properties": {
+      "project_code": {
+       "type": "string"
+      },
+      "test_suite": {
+       "type": "string"
+      },
+      "table_group": {
+       "type": "string"
+      },
+      "table_group_schema": {
+       "type": "string"
+      },
+      "exported_at": {
+       "type": "string",
+       "format": "date-time"
+      },
+      "testgen_version": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ]
+      }
+     },
+     "type": "object",
+     "required": [
+      "project_code",
+      "test_suite",
+      "table_group",
+      "table_group_schema",
+      "exported_at"
+     ]
+    },
+    "GeneralType": {
+     "type": "string",
+     "enum": [
+      "alpha",
+      "numeric",
+      "datetime",
+      "boolean",
+      "time",
+      "other"
+     ]
+    },
+    "HTTPValidationError": {
+     "properties": {
+      "detail": {
+       "items": {
+        "$ref": "#/components/schemas/ValidationError"
+       },
+       "type": "array"
+      }
+     },
+     "type": "object"
+    },
+    "HygieneDisposition": {
+     "type": "string",
+     "enum": [
+      "confirmed",
+      "dismissed",
+      "muted"
+     ]
+    },
+    "HygieneIssueCounts": {
+     "properties": {
+      "definite": {
+       "type": "integer",
+       "default": 0
+      },
+      "likely": {
+       "type": "integer",
+       "default": 0
+      },
+      "possible": {
+       "type": "integer",
+       "default": 0
+      }
+     },
+     "type": "object",
+     "description": "Counts of active data-quality hygiene issues by likelihood category."
+    },
+    "HygieneIssueItem": {
+     "properties": {
+      "id": {
+       "type": "string",
+       "format": "uuid"
+      },
+      "issue_type": {
+       "type": "string"
+      },
+      "issue_type_name": {
+       "type": "string"
+      },
+      "schema_name": {
+       "type": "string"
+      },
+      "table_name": {
+       "type": "string"
+      },
+      "column_name": {
+       "type": "string"
+      },
+      "likelihood": {
+       "anyOf": [
+        {
+         "$ref": "#/components/schemas/IssueLikelihood"
+        },
+        {
+         "type": "null"
+        }
+       ]
+      },
+      "impact_dimension": {
+       "anyOf": [
+        {
+         "$ref": "#/components/schemas/ImpactDimension"
+        },
+        {
+         "type": "null"
+        }
+       ]
+      },
+      "detail": {
+       "type": "string"
+      },
+      "disposition": {
+       "$ref": "#/components/schemas/HygieneDisposition"
+      }
+     },
+     "type": "object",
+     "required": [
+      "id",
+      "issue_type",
+      "issue_type_name",
+      "schema_name",
+      "table_name",
+      "column_name",
+      "detail",
+      "disposition"
+     ],
+     "description": "One data-quality hygiene issue in a profiling run."
+    },
+    "HygieneIssueListResponse": {
+     "properties": {
+      "items": {
+       "items": {
+        "$ref": "#/components/schemas/HygieneIssueItem"
+       },
+       "type": "array"
+      },
+      "page": {
+       "type": "integer"
+      },
+      "limit": {
+       "type": "integer"
+      },
+      "total": {
+       "type": "integer"
+      }
+     },
+     "type": "object",
+     "required": [
+      "items",
+      "page",
+      "limit",
+      "total"
+     ],
+     "description": "Paginated hygiene issues for a profiling run."
+    },
+    "ImpactDimension": {
+     "type": "string",
+     "enum": [
+      "reliability",
+      "conformance",
+      "regularity",
+      "usability"
+     ]
+    },
+    "ImportAction": {
+     "type": "string",
+     "enum": [
+      "create",
+      "update",
+      "skip",
+      "delete"
+     ]
+    },
+    "ImportConfig": {
+     "properties": {
+      "mode": {
+       "$ref": "#/components/schemas/ImportMode"
+      },
+      "on_match": {
+       "$ref": "#/components/schemas/OnMatch"
+      },
+      "on_new": {
+       "$ref": "#/components/schemas/OnNew"
+      },
+      "on_absence": {
+       "$ref": "#/components/schemas/OnAbsence"
+      }
+     },
+     "type": "object",
+     "required": [
+      "mode",
+      "on_match",
+      "on_new",
+      "on_absence"
+     ]
+    },
+    "ImportItem": {
+     "properties": {
+      "action": {
+       "$ref": "#/components/schemas/ImportAction"
+      },
+      "reason": {
+       "$ref": "#/components/schemas/ImportReason"
+      },
+      "tds": {
+       "items": {
+        "$ref": "#/components/schemas/ImportItemTD"
+       },
+       "type": "array"
+      }
+     },
+     "type": "object",
+     "required": [
+      "action",
+      "reason",
+      "tds"
+     ]
+    },
+    "ImportItemTD": {
+     "properties": {
+      "idx": {
+       "anyOf": [
+        {
+         "type": "integer"
+        },
+        {
+         "type": "null"
+        }
+       ]
+      },
+      "target_id": {
+       "anyOf": [
+        {
+         "type": "string",
+         "format": "uuid"
+        },
+        {
+         "type": "null"
+        }
+       ]
+      }
+     },
+     "type": "object"
+    },
+    "ImportMode": {
+     "type": "string",
+     "enum": [
+      "preview",
+      "apply",
+      "apply_strict"
+     ]
+    },
+    "ImportPayload": {
+     "properties": {
+      "version": {
+       "type": "integer",
+       "default": 1
+      },
+      "source": {
+       "anyOf": [
+        {
+         "$ref": "#/components/schemas/ExportSource"
+        },
+        {
+         "type": "null"
+        }
+       ]
+      },
+      "definitions": {
+       "items": {
+        "$ref": "#/components/schemas/TestDefinitionExport"
+       },
+       "type": "array"
+      }
+     },
+     "type": "object",
+     "required": [
+      "definitions"
+     ],
+     "description": "Import payload \u2014 same structure as an export document, but definitions are typed."
+    },
+    "ImportReason": {
+     "type": "string",
+     "enum": [
+      "matched",
+      "no_match",
+      "policy",
+      "locked",
+      "invalid_test_type",
+      "non_public_test_type",
+      "invalid_table",
+      "missing_external_id",
+      "absent"
+     ]
+    },
+    "ImportRequest": {
+     "properties": {
+      "config": {
+       "$ref": "#/components/schemas/ImportConfig"
+      },
+      "payload": {
+       "$ref": "#/components/schemas/ImportPayload"
+      }
+     },
+     "type": "object",
+     "required": [
+      "config",
+      "payload"
+     ]
+    },
+    "ImportResponse": {
+     "properties": {
+      "summary": {
+       "$ref": "#/components/schemas/ImportSummary"
+      },
+      "items": {
+       "items": {
+        "$ref": "#/components/schemas/ImportItem"
+       },
+       "type": "array"
+      }
+     },
+     "type": "object",
+     "required": [
+      "summary",
+      "items"
+     ]
+    },
+    "ImportStrictError": {
+     "properties": {
+      "errors": {
+       "items": {
+        "$ref": "#/components/schemas/ErrorDetail"
+       },
+       "type": "array"
+      },
+      "import_result": {
+       "$ref": "#/components/schemas/ImportResponse"
+      }
+     },
+     "type": "object",
+     "required": [
+      "errors",
+      "import_result"
+     ],
+     "description": "400 response for apply_strict when entries would be skipped."
+    },
+    "ImportSummary": {
+     "properties": {
+      "created": {
+       "type": "integer",
+       "default": 0
+      },
+      "updated": {
+       "type": "integer",
+       "default": 0
+      },
+      "skipped": {
+       "type": "integer",
+       "default": 0
+      },
+      "deleted": {
+       "type": "integer",
+       "default": 0
+      }
+     },
+     "type": "object"
+    },
+    "IssueCounts": {
+     "properties": {
+      "hygiene_issues": {
+       "$ref": "#/components/schemas/HygieneIssueCounts"
+      },
+      "potential_pii": {
+       "$ref": "#/components/schemas/PotentialPiiCounts"
+      },
+      "dismissed": {
+       "type": "integer",
+       "default": 0
+      }
+     },
+     "type": "object",
+     "required": [
+      "hygiene_issues",
+      "potential_pii"
+     ],
+     "description": "Profiling-finding breakdown: active counts by kind, plus a single dismissed total."
+    },
+    "IssueLikelihood": {
+     "type": "string",
+     "enum": [
+      "definite",
+      "likely",
+      "possible"
+     ]
+    },
+    "JobListResponse": {
+     "properties": {
+      "items": {
+       "items": {
+        "$ref": "#/components/schemas/JobResponse"
+       },
+       "type": "array"
+      },
+      "page": {
+       "type": "integer"
+      },
+      "limit": {
+       "type": "integer"
+      },
+      "total": {
+       "type": "integer"
+      }
+     },
+     "type": "object",
+     "required": [
+      "items",
+      "page",
+      "limit",
+      "total"
+     ],
+     "description": "Paginated list of job executions."
+    },
+    "JobResponse": {
+     "properties": {
+      "id": {
+       "type": "string",
+       "format": "uuid"
+      },
+      "job_key": {
+       "$ref": "#/components/schemas/PublicJobKey"
+      },
+      "status": {
+       "$ref": "#/components/schemas/JobStatus"
+      },
+      "source": {
+       "$ref": "#/components/schemas/JobSource"
+      },
+      "created_at": {
+       "type": "string",
+       "format": "date-time"
+      },
+      "claimed_at": {
+       "anyOf": [
+        {
+         "type": "string",
+         "format": "date-time"
+        },
+        {
+         "type": "null"
+        }
+       ]
+      },
+      "started_at": {
+       "anyOf": [
+        {
+         "type": "string",
+         "format": "date-time"
+        },
+        {
+         "type": "null"
+        }
+       ]
+      },
+      "completed_at": {
+       "anyOf": [
+        {
+         "type": "string",
+         "format": "date-time"
+        },
+        {
+         "type": "null"
+        }
+       ]
+      },
+      "error_message": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ]
+      }
+     },
+     "type": "object",
+     "required": [
+      "id",
+      "job_key",
+      "status",
+      "source",
+      "created_at"
+     ],
+     "description": "Full job execution record returned by status and cancel endpoints."
+    },
+    "JobSource": {
+     "type": "string",
+     "enum": [
+      "api",
+      "ui",
+      "scheduler",
+      "mcp",
+      "cli",
+      "system"
+     ]
+    },
+    "JobStatus": {
+     "type": "string",
+     "enum": [
+      "pending",
+      "claimed",
+      "running",
+      "completed",
+      "error",
+      "cancel_requested",
+      "canceled"
+     ]
+    },
+    "JobSubmittedResponse": {
+     "properties": {
+      "id": {
+       "type": "string",
+       "format": "uuid"
+      },
+      "created_at": {
+       "type": "string",
+       "format": "date-time"
+      }
+     },
+     "type": "object",
+     "required": [
+      "id",
+      "created_at"
+     ],
+     "description": "Returned on 202 Accepted after successful job submission."
+    },
+    "MetricMonitorSummary": {
+     "properties": {
+      "monitor_id": {
+       "type": "string",
+       "format": "uuid"
+      },
+      "metric_name": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ]
+      },
+      "anomalies": {
+       "type": "integer",
+       "default": 0
+      },
+      "is_training": {
+       "anyOf": [
+        {
+         "type": "boolean"
+        },
+        {
+         "type": "null"
+        }
+       ]
+      },
+      "is_pending": {
+       "type": "boolean",
+       "default": true
+      }
+     },
+     "type": "object",
+     "required": [
+      "monitor_id"
+     ],
+     "description": "One metric monitor (per column) on a table."
+    },
+    "MonitorSeriesResponse": {
+     "properties": {
+      "monitor_id": {
+       "type": "string",
+       "format": "uuid"
+      },
+      "type": {
+       "$ref": "#/components/schemas/MonitorType"
+      },
+      "threshold_mode": {
+       "$ref": "#/components/schemas/MonitorThresholdMode"
+      },
+      "table_name": {
+       "type": "string"
+      },
+      "column_name": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ]
+      },
+      "lookback": {
+       "type": "integer"
+      },
+      "is_training": {
+       "type": "boolean"
+      },
+      "current_bands": {
+       "anyOf": [
+        {
+         "additionalProperties": true,
+         "type": "object"
+        },
+        {
+         "type": "null"
+        }
+       ]
+      },
+      "points": {
+       "items": {
+        "additionalProperties": true,
+        "type": "object"
+       },
+       "type": "array"
+      }
+     },
+     "type": "object",
+     "required": [
+      "monitor_id",
+      "type",
+      "threshold_mode",
+      "table_name",
+      "lookback",
+      "is_training",
+      "points"
+     ],
+     "description": "A single monitor's lookback time-series with a self-contained header."
+    },
+    "MonitorSortField": {
+     "type": "string",
+     "enum": [
+      "table_name",
+      "freshness_anomalies",
+      "volume_anomalies",
+      "schema_anomalies",
+      "metric_anomalies",
+      "latest_update",
+      "row_count"
+     ]
+    },
+    "MonitorSummaryListResponse": {
+     "properties": {
+      "items": {
+       "items": {
+        "$ref": "#/components/schemas/MonitorTableRow"
+       },
+       "type": "array"
+      },
+      "page": {
+       "type": "integer"
+      },
+      "limit": {
+       "type": "integer"
+      },
+      "total": {
+       "type": "integer"
+      },
+      "totals": {
+       "$ref": "#/components/schemas/MonitorTotals"
+      }
+     },
+     "type": "object",
+     "required": [
+      "items",
+      "page",
+      "limit",
+      "total",
+      "totals"
+     ],
+     "description": "Paginated per-table monitoring summary with group totals."
+    },
+    "MonitorTableRow": {
+     "properties": {
+      "table_name": {
+       "type": "string"
+      },
+      "row_count": {
+       "anyOf": [
+        {
+         "type": "integer"
+        },
+        {
+         "type": "null"
+        }
+       ]
+      },
+      "previous_row_count": {
+       "anyOf": [
+        {
+         "type": "integer"
+        },
+        {
+         "type": "null"
+        }
+       ]
+      },
+      "latest_update": {
+       "anyOf": [
+        {
+         "type": "string",
+         "format": "date-time"
+        },
+        {
+         "type": "null"
+        }
+       ]
+      },
+      "table_state": {
+       "anyOf": [
+        {
+         "$ref": "#/components/schemas/TableState"
+        },
+        {
+         "type": "null"
+        }
+       ]
+      },
+      "freshness": {
+       "$ref": "#/components/schemas/MonitorTypeSummary"
+      },
+      "volume": {
+       "$ref": "#/components/schemas/MonitorTypeSummary"
+      },
+      "schema": {
+       "$ref": "#/components/schemas/SchemaMonitorSummary"
+      },
+      "metrics": {
+       "items": {
+        "$ref": "#/components/schemas/MetricMonitorSummary"
+       },
+       "type": "array"
+      }
+     },
+     "type": "object",
+     "required": [
+      "table_name",
+      "freshness",
+      "volume",
+      "schema",
+      "metrics"
+     ],
+     "description": "Monitoring summary for a single table within the lookback window."
+    },
+    "MonitorThresholdMode": {
+     "type": "string",
+     "enum": [
+      "prediction_model",
+      "historical_calculation",
+      "static",
+      "not_applicable"
+     ]
+    },
+    "MonitorTotals": {
+     "properties": {
+      "lookback": {
+       "type": "integer"
+      },
+      "lookback_start": {
+       "anyOf": [
+        {
+         "type": "string",
+         "format": "date-time"
+        },
+        {
+         "type": "null"
+        }
+       ]
+      },
+      "lookback_end": {
+       "anyOf": [
+        {
+         "type": "string",
+         "format": "date-time"
+        },
+        {
+         "type": "null"
+        }
+       ]
+      },
+      "total_monitored_tables": {
+       "type": "integer"
+      },
+      "freshness_anomalies": {
+       "type": "integer"
+      },
+      "volume_anomalies": {
+       "type": "integer"
+      },
+      "schema_anomalies": {
+       "type": "integer"
+      },
+      "metric_anomalies": {
+       "type": "integer"
+      }
+     },
+     "type": "object",
+     "required": [
+      "lookback",
+      "total_monitored_tables",
+      "freshness_anomalies",
+      "volume_anomalies",
+      "schema_anomalies",
+      "metric_anomalies"
+     ],
+     "description": "Group-wide totals across all monitored tables."
+    },
+    "MonitorType": {
+     "type": "string",
+     "enum": [
+      "freshness",
+      "volume",
+      "schema",
+      "metric"
+     ]
+    },
+    "MonitorTypeSummary": {
+     "properties": {
+      "monitor_id": {
+       "anyOf": [
+        {
+         "type": "string",
+         "format": "uuid"
+        },
+        {
+         "type": "null"
+        }
+       ]
+      },
+      "anomalies": {
+       "type": "integer",
+       "default": 0
+      },
+      "is_training": {
+       "anyOf": [
+        {
+         "type": "boolean"
+        },
+        {
+         "type": "null"
+        }
+       ]
+      },
+      "is_pending": {
+       "type": "boolean",
+       "default": true
+      }
+     },
+     "type": "object",
+     "description": "Per-type monitoring state for a table (single-instance types)."
+    },
+    "OnAbsence": {
+     "type": "string",
+     "enum": [
+      "do_nothing",
+      "delete_all",
+      "delete_unlocked"
+     ]
+    },
+    "OnMatch": {
+     "type": "string",
+     "enum": [
+      "overwrite_all",
+      "overwrite_unlocked",
+      "skip"
+     ]
+    },
+    "OnNew": {
+     "type": "string",
+     "enum": [
+      "skip",
+      "create",
+      "create_and_lock"
+     ]
+    },
+    "Origin": {
+     "type": "string",
+     "enum": [
+      "manual",
+      "auto",
+      "both"
+     ]
+    },
+    "PiiFlag": {
+     "type": "string",
+     "enum": [
+      "high",
+      "moderate",
+      "low",
+      "manual"
+     ]
+    },
+    "PiiRisk": {
+     "type": "string",
+     "enum": [
+      "high",
+      "moderate"
+     ]
+    },
+    "PotentialPiiCounts": {
+     "properties": {
+      "high": {
+       "type": "integer",
+       "default": 0
+      },
+      "moderate": {
+       "type": "integer",
+       "default": 0
+      }
+     },
+     "type": "object",
+     "description": "Counts of active Potential PII findings by risk level."
+    },
+    "PotentialPiiItem": {
+     "properties": {
+      "id": {
+       "type": "string",
+       "format": "uuid"
+      },
+      "issue_type": {
+       "type": "string"
+      },
+      "issue_type_name": {
+       "type": "string"
+      },
+      "schema_name": {
+       "type": "string"
+      },
+      "table_name": {
+       "type": "string"
+      },
+      "column_name": {
+       "type": "string"
+      },
+      "pii_risk": {
+       "anyOf": [
+        {
+         "$ref": "#/components/schemas/PiiRisk"
+        },
+        {
+         "type": "null"
+        }
+       ]
+      },
+      "detail": {
+       "type": "string"
+      },
+      "disposition": {
+       "$ref": "#/components/schemas/HygieneDisposition"
+      }
+     },
+     "type": "object",
+     "required": [
+      "id",
+      "issue_type",
+      "issue_type_name",
+      "schema_name",
+      "table_name",
+      "column_name",
+      "detail",
+      "disposition"
+     ],
+     "description": "One Potential PII finding in a profiling run."
+    },
+    "PotentialPiiListResponse": {
+     "properties": {
+      "items": {
+       "items": {
+        "$ref": "#/components/schemas/PotentialPiiItem"
+       },
+       "type": "array"
+      },
+      "page": {
+       "type": "integer"
+      },
+      "limit": {
+       "type": "integer"
+      },
+      "total": {
+       "type": "integer"
+      }
+     },
+     "type": "object",
+     "required": [
+      "items",
+      "page",
+      "limit",
+      "total"
+     ],
+     "description": "Paginated Potential PII findings for a profiling run."
+    },
+    "ProfilingColumnItem": {
+     "properties": {
+      "schema_name": {
+       "type": "string"
+      },
+      "table_name": {
+       "type": "string"
+      },
+      "column_name": {
+       "type": "string"
+      },
+      "general_type": {
+       "anyOf": [
+        {
+         "$ref": "#/components/schemas/GeneralType"
+        },
+        {
+         "type": "null"
+        }
+       ]
+      },
+      "functional_data_type": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ]
+      },
+      "db_data_type": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ]
+      },
+      "datatype_suggestion": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ]
+      },
+      "pii_flag": {
+       "anyOf": [
+        {
+         "$ref": "#/components/schemas/PiiFlag"
+        },
+        {
+         "type": "null"
+        }
+       ]
+      },
+      "critical_data_element": {
+       "type": "boolean",
+       "default": false
+      },
+      "record_ct": {
+       "anyOf": [
+        {
+         "type": "integer"
+        },
+        {
+         "type": "null"
+        }
+       ]
+      },
+      "null_value_ct": {
+       "anyOf": [
+        {
+         "type": "integer"
+        },
+        {
+         "type": "null"
+        }
+       ]
+      },
+      "distinct_value_ct": {
+       "anyOf": [
+        {
+         "type": "integer"
+        },
+        {
+         "type": "null"
+        }
+       ]
+      },
+      "filled_value_ct": {
+       "anyOf": [
+        {
+         "type": "integer"
+        },
+        {
+         "type": "null"
+        }
+       ]
+      },
+      "profiling_score": {
+       "anyOf": [
+        {
+         "type": "number"
+        },
+        {
+         "type": "null"
+        }
+       ]
+      },
+      "testing_score": {
+       "anyOf": [
+        {
+         "type": "number"
+        },
+        {
+         "type": "null"
+        }
+       ]
+      },
+      "issue_counts": {
+       "$ref": "#/components/schemas/IssueCounts"
+      }
+     },
+     "type": "object",
+     "required": [
+      "schema_name",
+      "table_name",
+      "column_name",
+      "issue_counts"
+     ],
+     "description": "One column's profile within a profiling run.\n\n``profiling_score``, ``testing_score``, and ``pii_flag`` reflect the column's current\ncatalog values \u2014 a column that has been re-profiled since the pinned run still\nreports the latest scores and classification."
+    },
+    "ProfilingColumnListResponse": {
+     "properties": {
+      "items": {
+       "items": {
+        "$ref": "#/components/schemas/ProfilingColumnItem"
+       },
+       "type": "array"
+      },
+      "page": {
+       "type": "integer"
+      },
+      "limit": {
+       "type": "integer"
+      },
+      "total": {
+       "type": "integer"
+      }
+     },
+     "type": "object",
+     "required": [
+      "items",
+      "page",
+      "limit",
+      "total"
+     ],
+     "description": "Paginated per-column profiles for a profiling run."
+    },
+    "ProfilingRunHistoryItem": {
+     "properties": {
+      "job_execution_id": {
+       "type": "string",
+       "format": "uuid"
+      },
+      "table_group_id": {
+       "type": "string",
+       "format": "uuid"
+      },
+      "status": {
+       "$ref": "#/components/schemas/JobStatus"
+      },
+      "started_at": {
+       "anyOf": [
+        {
+         "type": "string",
+         "format": "date-time"
+        },
+        {
+         "type": "null"
+        }
+       ]
+      },
+      "completed_at": {
+       "anyOf": [
+        {
+         "type": "string",
+         "format": "date-time"
+        },
+        {
+         "type": "null"
+        }
+       ]
+      },
+      "profiling_score": {
+       "anyOf": [
+        {
+         "type": "number"
+        },
+        {
+         "type": "null"
+        }
+       ]
+      },
+      "table_ct": {
+       "anyOf": [
+        {
+         "type": "integer"
+        },
+        {
+         "type": "null"
+        }
+       ]
+      },
+      "column_ct": {
+       "anyOf": [
+        {
+         "type": "integer"
+        },
+        {
+         "type": "null"
+        }
+       ]
+      },
+      "record_ct": {
+       "anyOf": [
+        {
+         "type": "integer"
+        },
+        {
+         "type": "null"
+        }
+       ]
+      },
+      "data_point_ct": {
+       "anyOf": [
+        {
+         "type": "integer"
+        },
+        {
+         "type": "null"
+        }
+       ]
+      },
+      "error_message": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ]
+      },
+      "issue_counts": {
+       "$ref": "#/components/schemas/IssueCounts"
+      }
+     },
+     "type": "object",
+     "required": [
+      "job_execution_id",
+      "table_group_id",
+      "status",
+      "issue_counts"
+     ],
+     "description": "One profiling run in a table group's history."
+    },
+    "ProfilingRunHistoryResponse": {
+     "properties": {
+      "items": {
+       "items": {
+        "$ref": "#/components/schemas/ProfilingRunHistoryItem"
+       },
+       "type": "array"
+      },
+      "page": {
+       "type": "integer"
+      },
+      "limit": {
+       "type": "integer"
+      },
+      "total": {
+       "type": "integer"
+      }
+     },
+     "type": "object",
+     "required": [
+      "items",
+      "page",
+      "limit",
+      "total"
+     ],
+     "description": "Paginated profiling-run history for a table group, newest first."
+    },
+    "ProfilingRunResponse": {
+     "properties": {
+      "id": {
+       "type": "string",
+       "format": "uuid"
+      },
+      "status": {
+       "$ref": "#/components/schemas/JobStatus"
+      },
+      "table_group_id": {
+       "anyOf": [
+        {
+         "type": "string",
+         "format": "uuid"
+        },
+        {
+         "type": "null"
+        }
+       ]
+      },
+      "started_at": {
+       "anyOf": [
+        {
+         "type": "string",
+         "format": "date-time"
+        },
+        {
+         "type": "null"
+        }
+       ]
+      },
+      "completed_at": {
+       "anyOf": [
+        {
+         "type": "string",
+         "format": "date-time"
+        },
+        {
+         "type": "null"
+        }
+       ]
+      },
+      "result": {
+       "anyOf": [
+        {
+         "$ref": "#/components/schemas/ProfilingRunResult"
+        },
+        {
+         "type": "null"
+        }
+       ]
+      }
+     },
+     "type": "object",
+     "required": [
+      "id",
+      "status"
+     ],
+     "description": "Profiling run returned by GET /profiling-runs/{id}."
+    },
+    "ProfilingRunResult": {
+     "properties": {
+      "score": {
+       "anyOf": [
+        {
+         "type": "number"
+        },
+        {
+         "type": "null"
+        }
+       ]
+      },
+      "table_ct": {
+       "anyOf": [
+        {
+         "type": "integer"
+        },
+        {
+         "type": "null"
+        }
+       ]
+      },
+      "column_ct": {
+       "anyOf": [
+        {
+         "type": "integer"
+        },
+        {
+         "type": "null"
+        }
+       ]
+      },
+      "record_ct": {
+       "anyOf": [
+        {
+         "type": "integer"
+        },
+        {
+         "type": "null"
+        }
+       ]
+      },
+      "issue_counts": {
+       "$ref": "#/components/schemas/IssueCounts"
+      }
+     },
+     "type": "object",
+     "required": [
+      "issue_counts"
+     ],
+     "description": "Run-specific data populated when profiling completes."
+    },
+    "PublicJobKey": {
+     "type": "string",
+     "enum": [
+      "run-profile",
+      "run-tests",
+      "run-test-generation"
+     ]
+    },
+    "ResultCounts": {
+     "properties": {
+      "passed": {
+       "type": "integer",
+       "default": 0
+      },
+      "failed": {
+       "type": "integer",
+       "default": 0
+      },
+      "warning": {
+       "type": "integer",
+       "default": 0
+      },
+      "error": {
+       "type": "integer",
+       "default": 0
+      },
+      "log": {
+       "type": "integer",
+       "default": 0
+      },
+      "dismissed": {
+       "type": "integer",
+       "default": 0
+      }
+     },
+     "type": "object",
+     "description": "Counts of test results by outcome status, with dismissed results separated."
+    },
+    "ResultStatus": {
+     "type": "string",
+     "enum": [
+      "passed",
+      "failed",
+      "warning",
+      "error",
+      "log"
+     ]
+    },
+    "SchemaMonitorSummary": {
+     "properties": {
+      "monitor_id": {
+       "anyOf": [
+        {
+         "type": "string",
+         "format": "uuid"
+        },
+        {
+         "type": "null"
+        }
+       ]
+      },
+      "anomalies": {
+       "type": "integer",
+       "default": 0
+      },
+      "is_pending": {
+       "type": "boolean",
+       "default": true
+      },
+      "column_adds": {
+       "type": "integer",
+       "default": 0
+      },
+      "column_drops": {
+       "type": "integer",
+       "default": 0
+      },
+      "column_mods": {
+       "type": "integer",
+       "default": 0
+      }
+     },
+     "type": "object",
+     "description": "Schema monitor state (no training mode; carries structural-change counts)."
+    },
+    "ScoreBreakdownRow": {
+     "properties": {
+      "value": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "description": "The group value (e.g. ``reliability`` for ``impact_dimension``, ``sales_db`` for ``data_source``). Null when the underlying data isn't classified into a group (e.g. an issue type with no ``impact_dimension`` assigned)."
+      },
+      "score": {
+       "anyOf": [
+        {
+         "type": "number"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "description": "Testing Score for this group (0-100). Null when the group has no scored data points."
+      },
+      "impact": {
+       "type": "number",
+       "description": "Contribution to the overall score's affected data points, 0-100."
+      }
+     },
+     "type": "object",
+     "required": [
+      "value",
+      "score",
+      "impact"
+     ],
+     "description": "One row of the group_by breakdown returned by the ``scores`` endpoint.\n\nRows are ordered by ``impact`` descending \u2014 the actionable signal for which\ngroup is dragging the score down the most."
+    },
+    "ScoreType": {
+     "type": "string",
+     "enum": [
+      "total",
+      "cde"
+     ]
+    },
+    "ScoresGroupBy": {
+     "type": "string",
+     "enum": [
+      "quality_dimension",
+      "impact_dimension",
+      "table_group",
+      "data_source",
+      "business_domain",
+      "source_system",
+      "source_process",
+      "stakeholder_group",
+      "transform_level",
+      "data_location",
+      "data_product",
+      "semantic_data_type",
+      "data_classification"
+     ]
+    },
+    "ScoresResponse": {
+     "properties": {
+      "total": {
+       "anyOf": [
+        {
+         "type": "number"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "description": "Overall Testing Score across all data in the filtered slice (0-100)."
+      },
+      "cde": {
+       "anyOf": [
+        {
+         "type": "number"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "description": "Testing Score restricted to critical data elements in the filtered slice (0-100)."
+      },
+      "profiling": {
+       "anyOf": [
+        {
+         "type": "number"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "description": "Profiling component of the total score (0-100)."
+      },
+      "testing": {
+       "anyOf": [
+        {
+         "type": "number"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "description": "Testing component of the total score (0-100)."
+      },
+      "breakdown": {
+       "anyOf": [
+        {
+         "items": {
+          "$ref": "#/components/schemas/ScoreBreakdownRow"
+         },
+         "type": "array"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "description": "Breakdown rows for the requested ``group_by``, ordered by ``impact`` descending. Absent when no ``group_by`` was provided."
+      }
+     },
+     "type": "object",
+     "required": [
+      "total",
+      "cde",
+      "profiling",
+      "testing"
+     ],
+     "description": "Quality Score rollup for a project.\n\nOverall scores are always populated. ``breakdown`` is present iff ``group_by``\nwas supplied on the request; rows are ordered by ``impact`` descending. Scores\ncan be null when the filtered slice has no scored data points."
+    },
+    "SortOrder": {
+     "type": "string",
+     "enum": [
+      "asc",
+      "desc"
+     ]
+    },
+    "TableState": {
+     "type": "string",
+     "enum": [
+      "added",
+      "dropped",
+      "modified"
+     ]
+    },
+    "TestDefinitionExport": {
+     "properties": {
+      "test_type": {
+       "type": "string"
+      },
+      "external_id": {
+       "anyOf": [
+        {
+         "type": "string",
+         "format": "uuid"
+        },
+        {
+         "type": "null"
+        }
+       ]
+      },
+      "last_auto_gen_date": {
+       "anyOf": [
+        {
+         "type": "string",
+         "format": "date-time"
+        },
+        {
+         "type": "null"
+        }
+       ]
+      },
+      "table_name": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ]
+      },
+      "column_name": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ]
+      },
+      "test_description": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ]
+      },
+      "test_active": {
+       "type": "boolean",
+       "default": true
+      },
+      "severity": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ]
+      },
+      "lock_refresh": {
+       "type": "boolean",
+       "default": false
+      },
+      "export_to_observability": {
+       "anyOf": [
+        {
+         "type": "boolean"
+        },
+        {
+         "type": "null"
+        }
+       ]
+      },
+      "skip_errors": {
+       "type": "integer",
+       "default": 0
+      },
+      "baseline_ct": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ]
+      },
+      "baseline_unique_ct": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ]
+      },
+      "baseline_value": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ]
+      },
+      "baseline_value_ct": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ]
+      },
+      "threshold_value": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ]
+      },
+      "baseline_sum": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ]
+      },
+      "baseline_avg": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ]
+      },
+      "baseline_sd": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ]
+      },
+      "lower_tolerance": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ]
+      },
+      "upper_tolerance": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ]
+      },
+      "subset_condition": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ]
+      },
+      "groupby_names": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ]
+      },
+      "having_condition": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ]
+      },
+      "window_date_column": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ]
+      },
+      "window_days": {
+       "type": "integer",
+       "default": 0
+      },
+      "match_schema_name": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ]
+      },
+      "match_table_name": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ]
+      },
+      "match_column_names": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ]
+      },
+      "match_subset_condition": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ]
+      },
+      "match_groupby_names": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ]
+      },
+      "match_having_condition": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ]
+      },
+      "custom_query": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ]
+      },
+      "history_calculation": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ]
+      },
+      "history_calculation_upper": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ]
+      },
+      "history_lookback": {
+       "type": "integer",
+       "default": 0
+      },
+      "external_url": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ]
+      },
+      "custom_metadata": {
+       "anyOf": [
+        {
+         "additionalProperties": true,
+         "type": "object"
+        },
+        {
+         "type": "null"
+        }
+       ]
+      }
+     },
+     "type": "object",
+     "required": [
+      "test_type"
+     ],
+     "description": "Test definition fields included in the export/import file."
+    },
+    "TestGenerationRequest": {
+     "properties": {
+      "generation_sets": {
+       "anyOf": [
+        {
+         "items": {
+          "type": "string"
+         },
+         "type": "array"
+        },
+        {
+         "type": "null"
+        }
+       ]
+      }
+     },
+     "type": "object"
+    },
+    "TestResultItem": {
+     "properties": {
+      "test_definition_id": {
+       "type": "string",
+       "format": "uuid"
+      },
+      "test_type": {
+       "type": "string"
+      },
+      "test_type_name": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ]
+      },
+      "schema_name": {
+       "type": "string"
+      },
+      "table_name": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ]
+      },
+      "column_names": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ]
+      },
+      "result_status": {
+       "anyOf": [
+        {
+         "$ref": "#/components/schemas/ResultStatus"
+        },
+        {
+         "type": "null"
+        }
+       ]
+      },
+      "result_measure": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ]
+      },
+      "threshold_value": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ]
+      },
+      "result_message": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ]
+      },
+      "test_time": {
+       "anyOf": [
+        {
+         "type": "string",
+         "format": "date-time"
+        },
+        {
+         "type": "null"
+        }
+       ]
+      },
+      "disposition": {
+       "$ref": "#/components/schemas/Disposition"
+      }
+     },
+     "type": "object",
+     "required": [
+      "test_definition_id",
+      "test_type",
+      "schema_name",
+      "disposition"
+     ],
+     "description": "One individual test result within a test run."
+    },
+    "TestResultListResponse": {
+     "properties": {
+      "items": {
+       "items": {
+        "$ref": "#/components/schemas/TestResultItem"
+       },
+       "type": "array"
+      },
+      "page": {
+       "type": "integer"
+      },
+      "limit": {
+       "type": "integer"
+      },
+      "total": {
+       "type": "integer"
+      }
+     },
+     "type": "object",
+     "required": [
+      "items",
+      "page",
+      "limit",
+      "total"
+     ],
+     "description": "Paginated list of individual test results."
+    },
+    "TestRunResponse": {
+     "properties": {
+      "id": {
+       "type": "string",
+       "format": "uuid"
+      },
+      "status": {
+       "$ref": "#/components/schemas/JobStatus"
+      },
+      "test_suite_id": {
+       "anyOf": [
+        {
+         "type": "string",
+         "format": "uuid"
+        },
+        {
+         "type": "null"
+        }
+       ]
+      },
+      "table_group_id": {
+       "anyOf": [
+        {
+         "type": "string",
+         "format": "uuid"
+        },
+        {
+         "type": "null"
+        }
+       ]
+      },
+      "started_at": {
+       "anyOf": [
+        {
+         "type": "string",
+         "format": "date-time"
+        },
+        {
+         "type": "null"
+        }
+       ]
+      },
+      "completed_at": {
+       "anyOf": [
+        {
+         "type": "string",
+         "format": "date-time"
+        },
+        {
+         "type": "null"
+        }
+       ]
+      },
+      "result": {
+       "anyOf": [
+        {
+         "$ref": "#/components/schemas/TestRunResult"
+        },
+        {
+         "type": "null"
+        }
+       ]
+      }
+     },
+     "type": "object",
+     "required": [
+      "id",
+      "status"
+     ],
+     "description": "Test run returned by GET /test-runs/{id}."
+    },
+    "TestRunResult": {
+     "properties": {
+      "score": {
+       "anyOf": [
+        {
+         "type": "number"
+        },
+        {
+         "type": "null"
+        }
+       ]
+      },
+      "result_counts": {
+       "$ref": "#/components/schemas/ResultCounts"
+      }
+     },
+     "type": "object",
+     "required": [
+      "result_counts"
+     ],
+     "description": "Run-specific data populated when execution completes."
+    },
+    "ValidationError": {
+     "properties": {
+      "loc": {
+       "items": {
+        "anyOf": [
+         {
+          "type": "string"
+         },
+         {
+          "type": "integer"
+         }
+        ]
+       },
+       "type": "array"
+      },
+      "msg": {
+       "type": "string"
+      },
+      "type": {
+       "type": "string"
+      },
+      "input": {},
+      "ctx": {
+       "type": "object"
+      }
+     },
+     "type": "object",
+     "required": [
+      "loc",
+      "msg",
+      "type"
+     ]
+    }
+   },
+   "security_schemes": {
+    "HTTPBearer": "http bearer"
+   },
+   "groups": {
+    "Jobs": "Submit, poll, cancel, and list job executions (profiling, tests, generation).",
+    "Test Definitions": "Export and import test definitions across environments.",
+    "OAuth": "OAuth 2.1 authorization code flow and token management.",
+    "API": "Health and version information."
+   },
+   "notes": [],
+   "noun": "operations",
+   "source_phrase": "from the running instance at http://localhost:8530/api/openapi.json, fetched 2026-10-15T21:53:51+00:00",
+   "source_word": "running instance",
+   "count": 26
+  },
+  {
+   "kind": "http_api",
+   "source": "derived_from_code",
+   "origin": "",
+   "as_of": "",
+   "title": "",
+   "version": "",
+   "spec_version": "",
+   "description": "Route registrations found in the code. Not a published contract.",
+   "base_paths": [],
+   "operations": [
+    {
+     "key": "GET /api/v1/health",
+     "name": "GET /api/v1/health",
+     "kind": "http_api",
+     "kind_detail": "",
+     "method": "GET",
+     "path": "/api/v1/health",
+     "summary": "",
+     "description": "",
+     "operation_id": "",
+     "tags": [
+      "testgen/api/app.py"
+     ],
+     "group": "testgen/api/app.py",
+     "parameters": [],
+     "request_body": null,
+     "responses": [],
+     "security": [],
+     "deprecated": false,
+     "input_schema": null,
+     "handler": "health",
+     "handler_signature": "",
+     "location": "testgen/api/app.py:10"
+    },
+    {
+     "key": "GET /api/v1/jobs/{job_id}",
+     "name": "GET /api/v1/jobs/{job_id}",
+     "kind": "http_api",
+     "kind_detail": "",
+     "method": "GET",
+     "path": "/api/v1/jobs/{job_id}",
+     "summary": "Fetch one job.",
+     "description": "",
+     "operation_id": "",
+     "tags": [
+      "testgen/api/jobs.py"
+     ],
+     "group": "testgen/api/jobs.py",
+     "parameters": [
+      {
+       "name": "job_id",
+       "in": "path",
+       "required": true,
+       "type": "",
+       "description": ""
+      }
+     ],
+     "request_body": null,
+     "responses": [],
+     "security": [],
+     "deprecated": false,
+     "input_schema": null,
+     "handler": "get_job",
+     "handler_signature": "(job_id: UUID) -> JobOut",
+     "location": "testgen/api/jobs.py:20"
+    },
+    {
+     "key": "POST /api/v1/jobs/{job_id}/cancel",
+     "name": "POST /api/v1/jobs/{job_id}/cancel",
+     "kind": "http_api",
+     "kind_detail": "",
+     "method": "POST",
+     "path": "/api/v1/jobs/{job_id}/cancel",
+     "summary": "",
+     "description": "",
+     "operation_id": "",
+     "tags": [
+      "testgen/api/jobs.py"
+     ],
+     "group": "testgen/api/jobs.py",
+     "parameters": [
+      {
+       "name": "job_id",
+       "in": "path",
+       "required": true,
+       "type": "",
+       "description": ""
+      }
+     ],
+     "request_body": null,
+     "responses": [],
+     "security": [],
+     "deprecated": false,
+     "input_schema": null,
+     "handler": "cancel_job",
+     "handler_signature": "",
+     "location": "testgen/api/jobs.py:40"
+    },
+    {
+     "key": "GET /debug/state",
+     "name": "GET /debug/state",
+     "kind": "http_api",
+     "kind_detail": "",
+     "method": "GET",
+     "path": "/debug/state",
+     "summary": "",
+     "description": "",
+     "operation_id": "",
+     "tags": [
+      "testgen/ui/debug.py"
+     ],
+     "group": "testgen/ui/debug.py",
+     "parameters": [],
+     "request_body": null,
+     "responses": [],
+     "security": [],
+     "deprecated": false,
+     "input_schema": null,
+     "handler": "debug",
+     "handler_signature": "",
+     "location": "testgen/ui/debug.py:3"
+    },
+    {
+     "key": "GET /debug/profile",
+     "name": "GET /debug/profile",
+     "kind": "http_api",
+     "kind_detail": "",
+     "method": "GET",
+     "path": "/debug/profile",
+     "summary": "",
+     "description": "",
+     "operation_id": "",
+     "tags": [
+      "testgen/ui/debug.py"
+     ],
+     "group": "testgen/ui/debug.py",
+     "parameters": [],
+     "request_body": null,
+     "responses": [],
+     "security": [],
+     "deprecated": false,
+     "input_schema": null,
+     "handler": "profile",
+     "handler_signature": "",
+     "location": "testgen/ui/debug.py:9"
+    }
+   ],
+   "total_operations": 5,
+   "schemas": {},
+   "security_schemes": {},
+   "groups": {},
+   "notes": [],
+   "noun": "operations",
+   "source_phrase": "derived from code, not a published contract",
+   "source_word": "derived from code",
+   "count": 5
+  }
+ ],
+ "best": "running_instance",
+ "comparisons": [
+  {
+   "a": {
+    "source": "running_instance",
+    "word": "running instance",
+    "count": 26,
+    "origin": "http://localhost:8530/api/openapi.json"
+   },
+   "b": {
+    "source": "derived_from_code",
+    "word": "derived from code",
+    "count": 5,
+    "origin": ""
+   },
+   "both": 3,
+   "probable": [],
+   "only_a": [
+    {
+     "key": "GET /.well-known/oauth-authorization-server",
+     "name": "GET /.well-known/oauth-authorization-server",
+     "summary": "Authorization Server Metadata",
+     "group": "OAuth",
+     "location": ""
+    },
+    {
+     "key": "GET /oauth/authorize",
+     "name": "GET /oauth/authorize",
+     "summary": "Authorize Get",
+     "group": "OAuth",
+     "location": ""
+    },
+    {
+     "key": "POST /oauth/authorize",
+     "name": "POST /oauth/authorize",
+     "summary": "Authorize Post",
+     "group": "OAuth",
+     "location": ""
+    },
+    {
+     "key": "GET /oauth/logout",
+     "name": "GET /oauth/logout",
+     "summary": "Logout",
+     "group": "OAuth",
+     "location": ""
+    },
+    {
+     "key": "POST /oauth/token",
+     "name": "POST /oauth/token",
+     "summary": "Token",
+     "group": "OAuth",
+     "location": ""
+    },
+    {
+     "key": "POST /oauth/revoke",
+     "name": "POST /oauth/revoke",
+     "summary": "Revoke",
+     "group": "OAuth",
+     "location": ""
+    },
+    {
+     "key": "POST /oauth/register",
+     "name": "POST /oauth/register",
+     "summary": "Register Client",
+     "group": "OAuth",
+     "location": ""
+    },
+    {
+     "key": "POST /api/v1/table-groups/{table_group_id}/profiling-runs",
+     "name": "POST /api/v1/table-groups/{table_group_id}/profiling-runs",
+     "summary": "Submit Profiling",
+     "group": "Jobs",
+     "location": ""
+    },
+    {
+     "key": "GET /api/v1/table-groups/{table_group_id}/profiling-runs",
+     "name": "GET /api/v1/table-groups/{table_group_id}/profiling-runs",
+     "summary": "List Profiling Runs",
+     "group": "runs",
+     "location": ""
+    },
+    {
+     "key": "POST /api/v1/test-suites/{test_suite_id}/test-runs",
+     "name": "POST /api/v1/test-suites/{test_suite_id}/test-runs",
+     "summary": "Submit Test Run",
+     "group": "Jobs",
+     "location": ""
+    },
+    {
+     "key": "POST /api/v1/test-suites/{test_suite_id}/test-generation",
+     "name": "POST /api/v1/test-suites/{test_suite_id}/test-generation",
+     "summary": "Submit Test Generation",
+     "group": "Jobs",
+     "location": ""
+    },
+    {
+     "key": "GET /api/v1/projects/{project_code}/jobs",
+     "name": "GET /api/v1/projects/{project_code}/jobs",
+     "summary": "List Jobs",
+     "group": "Jobs",
+     "location": ""
+    },
+    {
+     "key": "GET /api/v1/table-groups/{table_group_id}/monitors",
+     "name": "GET /api/v1/table-groups/{table_group_id}/monitors",
+     "summary": "List Table Monitors",
+     "group": "monitors",
+     "location": ""
+    },
+    {
+     "key": "GET /api/v1/monitors/{monitor_id}/series",
+     "name": "GET /api/v1/monitors/{monitor_id}/series",
+     "summary": "Get Monitor Series",
+     "group": "monitors",
+     "location": ""
+    },
+    {
+     "key": "GET /api/v1/test-runs/{job_id}",
+     "name": "GET /api/v1/test-runs/{job_id}",
+     "summary": "Get Test Run",
+     "group": "runs",
+     "location": ""
+    },
+    {
+     "key": "GET /api/v1/test-runs/{job_id}/results",
+     "name": "GET /api/v1/test-runs/{job_id}/results",
+     "summary": "List Test Run Results",
+     "group": "runs",
+     "location": ""
+    },
+    {
+     "key": "GET /api/v1/profiling-runs/{job_id}",
+     "name": "GET /api/v1/profiling-runs/{job_id}",
+     "summary": "Get Profiling Run",
+     "group": "runs",
+     "location": ""
+    },
+    {
+     "key": "GET /api/v1/profiling-runs/{job_id}/hygiene-issues",
+     "name": "GET /api/v1/profiling-runs/{job_id}/hygiene-issues",
+     "summary": "List Profiling Run Hygiene Issues",
+     "group": "runs",
+     "location": ""
+    },
+    {
+     "key": "GET /api/v1/profiling-runs/{job_id}/potential-pii",
+     "name": "GET /api/v1/profiling-runs/{job_id}/potential-pii",
+     "summary": "List Profiling Run Potential Pii",
+     "group": "runs",
+     "location": ""
+    },
+    {
+     "key": "GET /api/v1/profiling-runs/{job_id}/columns",
+     "name": "GET /api/v1/profiling-runs/{job_id}/columns",
+     "summary": "List Profiling Run Columns",
+     "group": "runs",
+     "location": ""
+    },
+    {
+     "key": "GET /api/v1/projects/{project_code}/scores",
+     "name": "GET /api/v1/projects/{project_code}/scores",
+     "summary": "Quality Score rollup for a project",
+     "group": "Scores",
+     "location": ""
+    },
+    {
+     "key": "GET /api/v1/test-suites/{test_suite_id}/test-definition-export",
+     "name": "GET /api/v1/test-suites/{test_suite_id}/test-definition-export",
+     "summary": "Export Test Definitions",
+     "group": "Test Definitions",
+     "location": ""
+    },
+    {
+     "key": "POST /api/v1/test-suites/{test_suite_id}/test-definition-import",
+     "name": "POST /api/v1/test-suites/{test_suite_id}/test-definition-import",
+     "summary": "Import Test Definitions",
+     "group": "Test Definitions",
+     "location": ""
+    }
+   ],
+   "only_b": [
+    {
+     "key": "GET /debug/state",
+     "name": "GET /debug/state",
+     "summary": "",
+     "group": "testgen/ui/debug.py",
+     "location": "testgen/ui/debug.py:3"
+    },
+    {
+     "key": "GET /debug/profile",
+     "name": "GET /debug/profile",
+     "summary": "",
+     "group": "testgen/ui/debug.py",
+     "location": "testgen/ui/debug.py:9"
+    }
+   ],
+   "only_a_by_file": {},
+   "only_b_by_file": {
+    "testgen/ui/debug.py": 2
+   },
+   "summary": "from the running instance at http://localhost:8530/api/openapi.json, fetched 2026-10-15T21:53:51+00:00 lists 26 operation(s); derived from code, not a published contract lists 5 operation(s). 3 match exactly; 23 only in the first, 2 only in the second. Why they differ is not decided here; the differences are listed below."
+  }
+ ],
+ "missing": [
+  {
+   "source": "committed_spec",
+   "reason": "no committed OpenAPI/Swagger file recorded (a repository surveyed before spec capture existed shows this until it is re-surveyed)"
+  }
+ ],
+ "problems": [],
+ "instance": {
+  "url": "http://localhost:8530/api/openapi.json",
+  "status": "ok",
+  "error": "",
+  "fetched_at": "2026-10-15T21:53:51+00:00",
+  "attempted_at": "2026-10-15T21:53:51+00:00",
+  "registered_by": "dan",
+  "registered_at": "2026-10-15T21:53:51+00:00",
+  "bytes": 55344,
+  "content_type": "application/json"
+ }
+}

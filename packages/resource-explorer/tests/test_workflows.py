@@ -149,7 +149,7 @@ class TestAnalysisRunTimingsAndPublishMode:
     """`steps_seconds`/`publish_seconds`/`publish_mode` — added so a run's cost
     can be split into "thought" (the survey steps) vs "waited" (the
     synchronous Egeria drain). And `published`'s third state, "queued", for
-    `RunsConfig.publish_inline=False` (default stays True, unchanged). See
+    `RunsConfig.publish_inline=False` (the default since 2026-10-14). See
     config.py's `RunsConfig.publish_inline` docstring for the 2026-09-13
     measurement (inline drain: 546.61s of a 558.89s run) that motivated both.
     """
@@ -176,11 +176,13 @@ class TestAnalysisRunTimingsAndPublishMode:
         assert result.publish_mode == "not-attempted"
         Pub.assert_not_called()
 
-    def test_default_inline_publish_records_mode_and_positive_publish_seconds(self, registry):
-        """The unchanged default: drained inline, `published is True`,
-        `publish_mode == "inline"`."""
+    def test_inline_publish_records_mode_and_positive_publish_seconds(self, registry, monkeypatch):
+        """`RUNS_PUBLISH_INLINE=true`: drained inline, `published is True`,
+        `publish_mode == "inline"` (the default is enqueue-only since 2026-10-14)."""
+        from resource_explorer.config import get_config
         from resource_explorer.workflows.analysis import run_analysis
 
+        monkeypatch.setattr(get_config().runs, "publish_inline", True)
         registry.has_assigned_egeria_project = lambda *a, **k: True
         with patch("resource_explorer.surveyors.survey_orchestrator.SurveyOrchestrator") as Orch, \
              patch("resource_explorer.surveyors.survey_report.summarise_annotations",
@@ -219,12 +221,15 @@ class TestAnalysisRunTimingsAndPublishMode:
         assert result.publish_mode == "enqueued"
         assert "queued for publish" in result.summary
 
-    def test_execute_and_record_analysis_writes_timings_onto_the_activity_detail(self, registry):
+    def test_execute_and_record_analysis_writes_timings_onto_the_activity_detail(self, registry, monkeypatch):
         """The instrumentation only matters if it reaches the row a person (or
         the frontend) actually reads — `update_activity_status`'s `detail`."""
         from resource_explorer.activity_logger import log_analysis_run
         from resource_explorer.workflows.analysis import execute_and_record_analysis
 
+        from resource_explorer.config import get_config
+
+        monkeypatch.setattr(get_config().runs, "publish_inline", True)
         registry.has_assigned_egeria_project = lambda *a, **k: True
         activity_id = log_analysis_run(
             registry, "repo", "myproj", "My Project", "running",
@@ -310,8 +315,8 @@ class TestRunAnalysisPublishChoice:
 
     def test_no_choice_keeps_the_config_default_byte_for_byte(self, registry):
         """Sabotage check for the choice's own default path: with `publish`
-        omitted, behaviour must be identical to before this feature existed
-        — the config default decides, nothing else."""
+        omitted, the config default decides, nothing else — enqueue-only
+        since 2026-10-14 (project owner: a run does not wait for its publish)."""
         from resource_explorer.workflows.analysis import run_analysis
 
         registry.has_assigned_egeria_project = lambda *a, **k: True
@@ -320,13 +325,14 @@ class TestRunAnalysisPublishChoice:
                    return_value=[]), \
              patch("resource_explorer.surveyors.egeria_publisher.EgeriaPublisher") as Pub:
             Orch.return_value.run.return_value = self._survey_result()
-            Pub.return_value.publish_deferred = False  # config default is publish_inline=True
+            Pub.return_value.publish_deferred = True  # config default is publish_inline=False
+            Pub.return_value.publish_run_id = "Annotation::myproj::t"
             result = run_analysis("myproj", "security_scan", is_ingest=False,
                                   steps=["repo_security"], registry=registry)
-        assert result.published is True
-        assert result.publish_mode == "inline"
+        assert result.published == "queued"
+        assert result.publish_mode == "enqueued"
         Pub.return_value.publish.assert_called_once_with(
-            Orch.return_value.run.return_value, defer_drain=False,
+            Orch.return_value.run.return_value, defer_drain=True,
         )
 
 
@@ -378,26 +384,31 @@ class TestCreateAnnotationsEnqueueVsDrain:
         assert counts["links_failed"] == 0
 
     def test_publish_inline_true_still_drains(self, registry, monkeypatch):
-        """The unchanged default: sabotaging this (skipping the flag check)
+        """`RUNS_PUBLISH_INLINE=true`: sabotaging this (skipping the flag check)
         would leave `drain_called` at 0 here just as it would falsely pass the
-        False-case test above — this is the other half of that guard."""
+        False-case test above — this is the other half of that guard. The inline
+        path drains the annotations, then the run's read-back; a drain that
+        landed nothing (this spy) leaves the run queued, not published."""
         from resource_explorer.config import get_config
 
         monkeypatch.setattr(get_config().runs, "publish_inline", True)
 
-        drain_called = {"n": 0}
+        drained_runs = []
 
         def _spy(*a, **k):
-            drain_called["n"] += 1
+            drained_runs.append(k.get("run_id"))
             return {"claimed": 1, "done": 1, "failed": 0, "dead": 0}
 
         monkeypatch.setattr("resource_explorer.egeria_outbox.drain_outbox", _spy)
 
         publisher = self._publisher(registry)
-        counts = publisher._create_annotations(self._result(), "report-guid-1")
+        result = self._result()
+        counts = publisher._create_annotations(result, "report-guid-1")
 
-        assert drain_called["n"] == 1
-        assert publisher.publish_deferred is False
+        prefix = f"Annotation::myproj::{result.surveyed_at.isoformat()}"
+        assert drained_runs == [prefix, f"{prefix}::read_back"]
+        assert publisher.publish_read_back is False
+        assert publisher.publish_deferred is True, "not read back is queued, whichever branch ran"
         assert counts["annotations_queued"] == 1
 
     def test_defer_drain_override_wins_over_the_config_default(self, registry, monkeypatch):
@@ -542,6 +553,12 @@ class TestPublishBadgeBookkeepingWaitsForTheFlip:
         for row in registry.claim_due_outbox_elements(run_id=run_id):
             registry.mark_outbox_done(row["id"], f"guid-{row['id']}")
 
+        # Every write landed, but the run is not read back yet: no flip, no badge.
+        assert registry.complete_publish_run_if_done(run_id) is False
+        assert registry.get_last_published_annotation_types("myproj") == {}
+        for row in registry.claim_due_outbox_elements(run_id=f"{run_id}::read_back"):
+            registry.mark_outbox_done(row["id"], "report-guid", note="read back")
+
         assert registry.complete_publish_run_if_done(run_id) is True
         assert registry.get_last_published_annotation_types("myproj"), (
             "the badge table must be populated once the run's rows landed"
@@ -552,12 +569,20 @@ class TestPublishBadgeBookkeepingWaitsForTheFlip:
         assert "pending_published_record" not in detail
 
     def test_inline_publish_still_writes_the_badge_tables_immediately(self, registry, monkeypatch):
-        """Sabotage check for the guard itself: the unchanged default
-        (defer_drain=False) must keep writing at publish() time — this is
-        the byte-for-byte behaviour the background path must not disturb."""
+        """Sabotage check for the guard itself: an inline publish
+        (defer_drain=False) whose writes land and read back before it returns
+        keeps writing at publish() time. The drain is faked at the registry
+        (every claimed row of the scoped run marked done), not at Egeria."""
+        def _drain(reg, *a, run_id=None, **k):
+            for row in reg.claim_due_outbox_elements(run_id=run_id):
+                reg.mark_outbox_done(row["id"], f"guid-{row['id']}")
+            return {"claimed": 1, "done": 1, "failed": 0, "dead": 0}
+
+        monkeypatch.setattr("resource_explorer.egeria_outbox.drain_outbox", _drain)
         publisher = self._publisher(registry, monkeypatch)
         publisher.publish(self._result(), defer_drain=False)
 
+        assert publisher.publish_read_back is True
         assert publisher.publish_deferred is False
         assert registry.get_last_published_annotation_types("myproj")
         assert registry.get_last_published_analyses("myproj")

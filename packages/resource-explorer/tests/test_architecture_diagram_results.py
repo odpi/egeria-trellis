@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import json
 
+from tests.recovery_fake_support import RecoveryBulkSurface
 from resource_explorer.surveyors.repo_survey_definition_adapter import (
     ANALYSIS_KINDS,
     _architecture_diagram_headline,
@@ -68,7 +69,7 @@ def _wire_row(source, target, one_way=True):
                                        "target": target, "oneWay": one_way})}
 
 
-class _Reg:
+class _Reg(RecoveryBulkSurface):
     """`component_rows_by_scope`: {scope_locator: [row, ...]} — mirrors
     `query_findings_all_runs`' real per-scope shape, ACROSS runs, so a test
     can put two rows (different run_label, or different surveyed_at) under
@@ -81,6 +82,13 @@ class _Reg:
         self._interface_rows = list(interface_rows)
         self._verdicts = verdicts or {}
         self._blueprint_rows = list(blueprint_rows)
+
+    def _bulk_scopes(self, slug, kind):
+        return list(self._by_scope) if kind == "architecture_recovery" else []
+
+    def list_settings_with_prefix(self, prefix):
+        # The diagram asks which services are referenced-only (ports on the edge); nothing was reclassified.
+        return []
 
     def query_finding_scopes(self, slug, kind, check_name=None, include_withdrawn=False):
         if kind == "architecture_recovery" and check_name == "component":

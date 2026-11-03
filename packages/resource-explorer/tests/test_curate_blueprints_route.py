@@ -61,7 +61,10 @@ class TestTheRoute:
 
     def test_empty_when_nothing_proposed(self, client, registry):
         out = client.get("/api/projects/p/components/blueprints").json()
-        assert out == {"blueprints": [], "perspectives": []}
+        assert out["blueprints"] == [] and out["perspectives"] == []
+        # The selector still lists the three kinds, honestly "not yet drawn" (brief section 4).
+        assert [k["kind"] for k in out["kinds"]] == ["deployment", "build", "logical"]
+        assert all(k["state"] == "not yet drawn" and not k["drawn"] for k in out["kinds"])
 
     def test_shape_matches_the_existing_reader_and_lists_perspectives(self, client, registry):
         _seed_cluster(registry, "p", perspective="physical", name="core")
@@ -91,16 +94,19 @@ class TestAcceptRoundTripsThroughTheNewReader:
             def __init__(self, registry=None):
                 self.registry = registry
 
-            def materialize_blueprint_element(self, entity_type, slug, perspective, cluster_name, *, display_name, oversized=False):
+            def materialize_blueprint_element(self, entity_type, slug, perspective, cluster_name, *, display_name, oversized=False, verify_cached=False, **_):
                 guid = "bp-guid-1"
                 qn = f"SolutionBlueprint::{entity_type}::{slug}::{perspective}::{cluster_name}"
                 self.registry.record_materialized_blueprint(entity_type, slug, perspective, cluster_name, qn, guid)
                 return {"status": "materialized", "guid": guid, "qualified_name": qn}
 
+            def blueprint_member_guids(self, guid):
+                return None
+
             def resolve_member_guids(self, registry, entity_type, slug, member_slugs, slug_to_scope):
                 return {}, list(member_slugs)   # neither member has its own materialized component
 
-            def resolve_child_blueprint_guids(self, registry, entity_type, slug, perspective, child_names):
+            def resolve_child_blueprint_guids(self, registry, entity_type, slug, perspective, child_names, **_):
                 return {}, list(child_names)
 
         monkeypatch.setattr(
@@ -110,7 +116,10 @@ class TestAcceptRoundTripsThroughTheNewReader:
         r = client.post("/api/curate/blueprint-verdicts/repo/p",
                          json={"perspective": "physical", "cluster_name": "core", "verdict": "accepted"})
         assert r.status_code == 200, r.text
-        assert r.json()["materialization"]["status"] in ("materialized", "partial")
+        assert "materialization" not in r.json()            # Accept is a decision; Publish writes
+        from resource_explorer.workflows.curate import materialize_blueprint_if_accepted
+        out = materialize_blueprint_if_accepted(registry, "repo", "p", "physical", "core", "accepted")
+        assert out["status"] in ("materialized", "partial")
 
         out = client.get("/api/projects/p/components/blueprints").json()
         bp = out["blueprints"][0]
@@ -130,3 +139,48 @@ class TestAcceptRoundTripsThroughTheNewReader:
         out = client.get("/api/projects/p/components/blueprints").json()
         assert out["blueprints"][0]["verdict"]["verdict"] == "rejected"
         assert out["blueprints"][0]["materialized"] is None
+
+
+class TestTheShapeRidesTheRoute:
+    """The manifest names the shape and why BEFORE the write, and a person can flip it
+    (DESIGN-BLUEPRINT-BENCHMARK-EGERIA-WORKSPACES.md 6a)."""
+
+    def _seed_platform(self, registry):
+        for slug, name in (("platform", "OMAG Server Platform"), ("view", "View Server")):
+            registry.upsert_finding("p", "architecture_recovery", [{
+                "check_name": "component", "label": "x",
+                "detail": {"name": name, "slug": slug, "admission": "built_here"}}],
+                surveyed_at="2026-09-03T00:00:00", scope_locator=f"src/{slug}")
+        _seed_cluster(registry, "p", perspective="deployment", name="OMAG-Server-Platform",
+                      members=["platform", "view"])
+
+    def test_the_reader_carries_the_plan_the_dialog_names(self, client, registry):
+        self._seed_platform(registry)
+        bp = client.get("/api/projects/p/components/blueprints").json()["blueprints"][0]
+        plan = bp["shape_plan"]
+        assert plan["shape"] == "container" and plan["flip_to"] == "contents"
+        assert plan["words"] == "OMAG Server Platform as container · 1 sub-component"
+        assert "real component" in plan["why"]
+
+    def test_a_cluster_with_no_members_has_no_plan(self, client, registry):
+        _seed_cluster(registry, "p", perspective="physical", name="empty")
+        assert client.get("/api/projects/p/components/blueprints").json()["blueprints"][0]["shape_plan"] is None
+
+    def test_a_flip_is_kept_for_publish_and_a_bad_shape_is_refused(self, client, registry, monkeypatch):
+        """Accept writes nothing; the chosen shape rides on the verdict row until Publish."""
+        self._seed_platform(registry)
+
+        def boom(*a, **k):
+            raise AssertionError("Accept reached the write")
+        monkeypatch.setattr("resource_explorer.workflows.curate.materialize_blueprint_if_accepted", boom)
+        from resource_explorer.architecture_publish import blueprint_choices
+        body = {"perspective": "deployment", "cluster_name": "OMAG-Server-Platform", "verdict": "accepted"}
+        row = client.post("/api/curate/blueprint-verdicts/repo/p", json={**body, "shape": "contents"})
+        assert row.status_code == 200
+        assert blueprint_choices(row.json()) == {"shape": "contents", "identifier": ""}
+        row = client.post("/api/curate/blueprint-verdicts/repo/p", json=body)
+        assert row.status_code == 200
+        assert blueprint_choices(row.json()) == {"shape": "contents", "identifier": ""}   # not sent: kept
+        row = client.post("/api/curate/blueprint-verdicts/repo/p", json={**body, "shape": ""})
+        assert blueprint_choices(row.json()) == {"shape": "", "identifier": ""}     # sent empty: the default
+        assert client.post("/api/curate/blueprint-verdicts/repo/p", json={**body, "shape": "both"}).status_code == 400

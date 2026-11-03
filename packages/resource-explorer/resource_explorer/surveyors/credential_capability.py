@@ -187,8 +187,15 @@ def assess(requirement: str, probe: dict | None) -> CapabilityAssessment:
             requirement=CATALOG, known=True, satisfied=True, connected_as=who)
 
     if requirement == READ:
-        total = int(probe.get("table_total") or 0)
-        got = int(probe.get("table_select") or 0)
+        # `relation_total`/`relation_select` (renamed from `table_total`/
+        # `table_select`, REPLY-DESIGNER-ROUND2-DATABASE-SCREENS.md §2.3 —
+        # the whole-database figure counts base tables + views + matviews,
+        # not tables alone). `probe` can be a survey blob stored before this
+        # rename, so the old key is read as a fallback rather than silently
+        # reading 0 and reporting "no shortfall" for a perfectly good,
+        # merely old-shaped, stored probe.
+        total = int(probe.get("relation_total", probe.get("table_total")) or 0)
+        got = int(probe.get("relation_select", probe.get("table_select")) or 0)
         if total <= 0:
             # No denominator, so no fraction can be stated. Not a failure:
             # a database whose catalog shows no tables cannot have a SELECT
@@ -202,7 +209,7 @@ def assess(requirement: str, probe: dict | None) -> CapabilityAssessment:
             have=got, of=total,
             detail="" if ok else (
                 f"needs `read`: connected as {who}, which has SELECT on "
-                f"{got} of {total} table(s) — the rest are in this "
+                f"{got} of {total} relation(s) — the rest are in this "
                 f"database's catalog but out of this credential's reach"),
         )
 
@@ -289,3 +296,12 @@ def capability_rfa(slug: str, display_name: str, step_key: str,
               "database."
         ),
     }
+
+
+def with_stored_login(cap: dict | None, stored_login: str) -> dict | None:
+    """W40: the probe's `connected_as` is the login that survey used; the resource's stored login can differ (a
+    credential typed for one run, or a login changed since). Carry the stored login beside it, as words only: never
+    the password, never a key. A blob without a probe stays as it was."""
+    if not cap:
+        return cap
+    return {**cap, "stored_login": (stored_login or "").strip()}

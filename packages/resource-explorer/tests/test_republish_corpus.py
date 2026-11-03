@@ -66,3 +66,13 @@ class TestSuccessIsNotAnAssetGuid:
     def test_pending_rows_are_not_ok_either(self):
         """Left mid-flight is not published, however clean it looks."""
         assert self._rec(done=100, unfinished=25, guids=100) is False
+
+
+def test_importing_the_script_leaves_logging_enabled():
+    """The script quiets the library with `logging.disable(WARNING)`; that belongs in main(), not at import, or every
+    test after this module's collection loses WARNING output (the archive-cascade caplog tests saw '')."""
+    import importlib
+    import logging
+
+    importlib.import_module("scripts.republish_corpus")
+    assert logging.root.manager.disable == logging.NOTSET

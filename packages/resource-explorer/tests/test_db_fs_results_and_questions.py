@@ -51,9 +51,9 @@ def fs_reg(pg_registry, slug):
 
 
 class TestDatabaseResultsMapCoverage:
-    """The map's own documented contract: 14 real readers, 3 known-absent
-    (data_class_match/reference_data_match/nested_column_profile -- no local
-    store exists for them yet, see the map's docstring), egeria_db_survey
+    """The map's own documented contract: real readers for every mapped
+    analysis but one known-absent (nested_column_profile -- no local store
+    exists for it yet, see the map's comment), egeria_db_survey
     excluded (a trigger, not a reader, same as repo's own Egeria-triggered
     analyses)."""
 
@@ -69,8 +69,8 @@ class TestDatabaseResultsMapCoverage:
         # `db_derived` step and so all three with a reader from the start.
         #
         # `DATABASE_ANALYSIS_RE_STEP_MAP` (renamed from `DATABASE_ANALYSIS_
-        # STEP_MAP` — slice 17, docs/design-notes/SLICE-17-RUNNABILITY-FROM-
-        # CATALOG-IMPLEMENTED.md) maps an analysis id to a `re_analysis_step`
+        # STEP_MAP` — slice 17, SLICE-17-RUNNABILITY-FROM-CATALOG-IMPLEMENTED.md) maps an analysis
+        # id to a `re_analysis_step`
         # key, `db_derived` for all eleven zero-fetch ids including these
         # three — it is now DERIVED from `db_derived.DB_DERIVED_ANALYSES`
         # rather than hand-listed a second time, which is exactly the fix:
@@ -84,12 +84,31 @@ class TestDatabaseResultsMapCoverage:
             DATABASE_ANALYSIS_RE_STEP_MAP, DATABASE_ANALYSIS_RESULTS_MAP,
         )
 
-        expected_absent = {
-            "data_class_match", "reference_data_match", "nested_column_profile",
-            "egeria_db_survey",
-        }
+        # data_class_match and reference_data_match left this set on
+        # 2026-10-20: their verdicts are now stored in database_column_matches.
+        # sql_analysis joined them 2026-10-22: a catalogue entry and a step map, but no results reader yet (its
+        # view rows are served by the databases route, not through this map).
+        expected_absent = {"nested_column_profile", "egeria_db_survey", "sql_analysis"}
         assert set(DATABASE_ANALYSIS_RE_STEP_MAP) - set(DATABASE_ANALYSIS_RESULTS_MAP) == expected_absent
-        assert len(DATABASE_ANALYSIS_RESULTS_MAP) == 18
+        # Nineteen: ENRICHMENT-E3 added `database_owner` (the measured datdba,
+        # its own fact with its own measured_at).
+        # Twenty: `db_hub_tables` (2026-10-02), a `db_derived` check with the
+        # same shared reader as the others.
+        # Twenty-one: `db_statistics_freshness` (2026-10-10, backlog 7i), same
+        # shared reader.
+        # Twenty-two: `database_staleness` (2026-10-13, extensibility brief
+        # 2c), the first user step: its catalog entry is generated from its
+        # manifest and `survey_step_host` attaches the generic
+        # ResourceMeasureAnnotation reader for it, installed or not.
+        # Twenty-five (2026-10-15): the catalog cards for the first three
+        # library steps, `statistics_freshness`, `hub_tables` and
+        # `change_rates`, get the same generic reader from their generated
+        # entries, installed or not.
+        # Twenty-seven (2026-10-20): data_class_match and reference_data_match,
+        # read from database_column_matches.
+        # Twenty-nine (2026-10-20): value_profile and quality_checks, read from
+        # database_value_profiles and database_quality_results/_proposals.
+        assert len(DATABASE_ANALYSIS_RESULTS_MAP) == 29
 
     def test_every_entry_is_a_reader_pair(self):
         from resource_explorer.surveyors.database.survey_definition_adapter import (
@@ -163,7 +182,7 @@ class TestDatabaseResultsReadersReadStoredRows:
         ])
         reader, _ = DATABASE_ANALYSIS_RESULTS_MAP["schema_inventory"]
         result = reader(db_reg, slug)
-        assert result["table_count"] == 1
+        assert result["relation_count"] == 1
         assert result["column_count"] == 1
         assert result["tables"][0]["table_name"] == "orders"
         assert result["tables"][0]["row_count"] == 42
@@ -179,7 +198,7 @@ class TestDatabaseResultsReadersReadStoredRows:
         ])
         reader, _ = DATABASE_ANALYSIS_RESULTS_MAP["row_count_snapshot"]
         result = reader(db_reg, slug)
-        assert result["table_count"] == 2
+        assert result["relation_count"] == 2
         assert result["measured_count"] == 1  # the NULL row_count is not "measured as 0"
 
     def test_operations_sections_read_the_latest_survey_blob(self, db_reg, slug):
@@ -207,10 +226,14 @@ class TestDatabaseResultsReadersReadStoredRows:
 
 class TestFilesystemResultsMap:
     def test_covers_its_one_analysis(self):
+        """One built-in analysis; everything else in the map is an Analytic Library step attached beside it (Files
+        build step 6), each read by the generic reader for its annotation type."""
+        from resource_explorer.surveyors import survey_step_host
         from resource_explorer.surveyors.filesystem.survey_definition_adapter import (
             FILESYSTEM_ANALYSIS_RESULTS_MAP,
         )
-        assert set(FILESYSTEM_ANALYSIS_RESULTS_MAP) == {"filesystem_inventory"}
+        library = survey_step_host.attached_user_steps("filesystem")
+        assert set(FILESYSTEM_ANALYSIS_RESULTS_MAP) - library == {"filesystem_inventory"}
 
     def test_empty_when_never_surveyed(self, fs_reg, slug):
         from resource_explorer.surveyors.filesystem.survey_definition_adapter import (
@@ -235,6 +258,37 @@ class TestFilesystemResultsMap:
         assert result["file_count"] == 1
         assert result["directory_count"] == 1
         assert result["total_size_bytes"] == 100
+
+    def _inventory(self, fs_reg, slug, rows):
+        from resource_explorer.surveyors.filesystem.survey_definition_adapter import (
+            FILESYSTEM_ANALYSIS_RESULTS_MAP,
+        )
+        fs_reg.write_detail_rows("filesystem_entries", slug, "2026-09-22T10:00:00", rows=rows)
+        reader, _ = FILESYSTEM_ANALYSIS_RESULTS_MAP["filesystem_inventory"]
+        return reader(fs_reg, slug)
+
+    def test_unread_size_is_counted_not_treated_as_zero(self, fs_reg, slug):
+        result = self._inventory(fs_reg, slug, [
+            {"entry_path": "/d/a.csv", "entry_type": "file", "size_bytes": 100},
+            {"entry_path": "/d/b.csv", "entry_type": "file", "size_bytes": None},
+            {"entry_path": "/d/c.csv", "entry_type": "file", "size_bytes": 0},
+        ])
+        assert result["total_size_bytes"] == 100
+        # b.csv is unknown; c.csv is a measured empty file -- not the same thing.
+        assert result["unmeasured_file_count"] == 1
+
+    def test_no_known_size_is_absent_not_zero(self, fs_reg, slug):
+        result = self._inventory(fs_reg, slug, [
+            {"entry_path": "/d/a.csv", "entry_type": "file", "size_bytes": None},
+        ])
+        assert result["total_size_bytes"] is None
+        assert result["unmeasured_file_count"] == 1
+
+    def test_all_sizes_known_reports_no_unmeasured(self, fs_reg, slug):
+        result = self._inventory(fs_reg, slug, [
+            {"entry_path": "/d/a.csv", "entry_type": "file", "size_bytes": 5},
+        ])
+        assert result["unmeasured_file_count"] == 0
 
 
 class TestBuildSurveyResultsSynthesizesPerAnalysisDashboards:
@@ -311,10 +365,14 @@ class TestQuestionHasDataIsGeneralized:
         assert question_has_data(db_reg, slug, [], entity_type="database") is None
 
     def test_database_false_not_raise_for_the_known_gap_analyses(self, db_reg, slug):
-        """data_class_match/reference_data_match/nested_column_profile have
-        no entry in DATABASE_ANALYSIS_RESULTS_MAP yet (see that map's own
-        docstring) -- has_data must degrade to False, not KeyError."""
+        """nested_column_profile has no entry in DATABASE_ANALYSIS_RESULTS_MAP
+        yet (see that map's own comment) -- has_data must degrade to False, not
+        KeyError. data_class_match has a reader now, and on a never-surveyed
+        database it is False for the honest reason: nothing stored."""
         from resource_explorer.workflows.scouting import question_has_data
+        assert question_has_data(
+            db_reg, slug, ["nested_column_profile"], entity_type="database",
+        ) is False
         assert question_has_data(
             db_reg, slug, ["data_class_match"], entity_type="database",
         ) is False

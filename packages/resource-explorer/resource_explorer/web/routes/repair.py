@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import asyncio
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 
 router = APIRouter()
@@ -131,3 +131,19 @@ async def drop_membership(slug: str, investigation_slug: str) -> dict:
     except RepairError as exc:
         raise HTTPException(status_code=422, detail=str(exc))
     return {"status": "success", "remaining_folio_members": members}
+
+
+@router.post("/database-server-links")
+async def link_database_servers(request: Request, dry_run: bool = False) -> dict:
+    """Heal: link every published database to its server's DatabaseManager (CapabilityAssetUse, OWNS) where it has
+    no link, reading each database's links first. Admin only: it writes to Egeria as RE's daemon account, and it
+    runs only when this is pressed. `dry_run=true` reads everything and writes nothing."""
+    from resource_explorer.repair import RepairError, link_database_servers as do_link
+    from resource_explorer.web.admin_auth import require_admin
+
+    require_admin(request)
+    try:
+        report = await asyncio.to_thread(do_link, dry_run=dry_run)
+    except RepairError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    return report.as_dict()

@@ -41,6 +41,9 @@ actually answer (see `_build_step_key_to_questions()` below — the
 step→question join is per (survey_group, step_key), not per bare
 step_key, for exactly this reason).
 
+- **quality**   — "Database Quality Survey" (survey_kind assessment, quality slice Q2): `postgres_value_profile`,
+  `propose_quality_checks`, `run_quality_checks`, in that order. No other definition chains these steps.
+
 Run this whenever DATABASE_STEP_REGISTRY changes (a step added/removed/
 re-described, or an analysis's `intent` tier changes in
 analysis_catalog.yaml), then execute the regenerated doc(s) against Egeria.
@@ -71,6 +74,7 @@ hash-guard overwrite safety).
 from __future__ import annotations
 
 import argparse
+import os
 import hashlib
 import json
 
@@ -95,7 +99,9 @@ SPECS_CSV = DOCS_DIR / "database_survey_types.csv"
 # the repo generator's own layout choice — see that script's identical
 # comment for why the CSV itself stays at the dr-egeria root rather than in
 # a batch folder.
-SURVEY_DEFS_DIR = DOCS_DIR / "survey-definitions-database"
+# RE_SURVEY_DEFS_DIR redirects every write (documents and the provenance sidecar) so a test
+# can exercise the generator on a copy instead of rewriting the tracked tree.
+SURVEY_DEFS_DIR = Path(os.environ.get("RE_SURVEY_DEFS_DIR") or DOCS_DIR / "survey-definitions-database")
 ALL_STEPS_SENTINEL = "*"
 
 
@@ -114,6 +120,13 @@ class SurveyTypesCsvError(ValueError):
     database_survey_types.csv — deliberately loud rather than silently
     producing a broken or incomplete Survey Definition, same reasoning as
     `generate_repo_survey_definition.py`'s identical guard."""
+
+
+# Steps deliberately in no Survey Definition, each with the reason. sql_analysis re-runs the whole default
+# database survey, so the owner left it out of every definition (decision 2026-10-16).
+NOT_IN_ANY_DEFINITION = {
+    "sql_analysis": "re-runs the whole default database survey; left out by owner decision 2026-10-16",
+}
 
 
 def load_specs_from_csv(csv_path: Path = SPECS_CSV) -> list[SurveyDefSpec]:
@@ -163,7 +176,9 @@ def load_specs_from_csv(csv_path: Path = SPECS_CSV) -> list[SurveyDefSpec]:
     # than hard-fail, same reasoning as the repo generator's identical
     # guard.
     referenced = {key for spec in specs for key in spec.step_keys}
-    unreferenced = [key for key in DATABASE_STEP_REGISTRY if key not in referenced]
+    unreferenced = [
+        key for key in DATABASE_STEP_REGISTRY if key not in referenced and key not in NOT_IN_ANY_DEFINITION
+    ]
     if unreferenced:
         print(
             f"WARNING: DATABASE_STEP_REGISTRY step(s) with no Survey Type "
@@ -234,6 +249,11 @@ SPEC_ANALYSIS_SCOPE: dict[str, set[str]] = {
         "db_external_dependencies",
     },
     "DatabaseAssessmentSurvey": {"privilege_audit"},
+    # Quality slice Q2: value profile -> propose -> run, authored once (DESIGN-QUALITY-AT-SCALE-AND-TESTGEN.md 2.2).
+    # Q-0096 and Q-0097 (added 2026-10-21) name `quality_checks` in their `answering.analysis_ids`, so this document
+    # carries their two "Link Element To Scope" blocks. A question that names `value_profile` or `quality_checks`
+    # later is picked up by this scope, and the committed document must be regenerated (the generator guard says so).
+    "DatabaseQualitySurvey": {"value_profile", "quality_checks"},
 }
 
 

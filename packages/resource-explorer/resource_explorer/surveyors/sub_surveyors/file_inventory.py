@@ -76,6 +76,23 @@ class FileInventorySurveyor(BaseSurveyor):
     def step_name(self) -> str:
         return STEP
 
+    def _file_type_annotations(self) -> list[Annotation]:
+        """Egeria's own folder-survey annotations for this inventory (file_type_profile.py). A failure
+        to build them is reported as a low-confidence measure, never swallowed and never fatal."""
+        try:
+            from resource_explorer.surveyors.file_type_profile import build_file_type_annotations
+
+            return build_file_type_annotations(self.registry, self.project.slug, surveyed_at=self._surveyed_at)
+        except Exception as exc:
+            log.warning("File type profile failed for %s: %s", self.project.slug, exc)
+            return [ResourceMeasureAnnotation(
+                check_name="file_type_profile", summary="File type profile could not be built",
+                analysis_step=STEP, confidence=0,
+                explanation=f"The file type annotations were not produced: {exc}",
+                resource_properties={"error": str(exc)},
+                json_properties=StepOutcome("unverified", cause="file type profile failed",
+                                            detail={"error": str(exc)}).as_row())]
+
     def run(self) -> list[Annotation]:
         results: list[Annotation] = []
         try:
@@ -149,6 +166,8 @@ class FileInventorySurveyor(BaseSurveyor):
                     ).as_row(),
                 )
             )
+            if file_count:       # zero files is recorded above as unverified, not as a measured zero
+                results.extend(self._file_type_annotations())
         except Exception as exc:
             # Never take the whole survey down: the dependent steps degrade to
             # the previous inventory (which is exactly today's behaviour), and

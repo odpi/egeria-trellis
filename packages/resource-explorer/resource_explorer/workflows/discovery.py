@@ -172,13 +172,10 @@ def run_search_query(criteria: RepoSearchCriteria, registry) -> list[dict]:
 
     query = build_query(criteria)
 
-    # Runtime override (set via the Scouting > Discover repos inline setting)
-    # takes precedence over the .env-configured deployment default (config.py's
-    # GitHubConfig.base_url, applied inside GitHubClient itself when
-    # base_url=None) — D2.
-    base_url = registry.get_setting("github_base_url") or None
+    # GITHUB_BASE_URL (config.py GitHubConfig.base_url) is the single source;
+    # GitHubClient() applies it itself, the same as surveys and ingestion.
     try:
-        return GitHubClient(base_url=base_url).search_repos(
+        return GitHubClient().search_repos(
             query, sort=criteria.sort, order="desc", limit=criteria.limit,
         )
     except GithubException as exc:
@@ -200,8 +197,7 @@ def fetch_list_urls(urls: list[str], registry) -> list[dict]:
     batch ("Scouting workflow redesign" plan, D1)."""
     from resource_explorer.github.client import GitHubClient
 
-    base_url = registry.get_setting("github_base_url") or None
-    client = GitHubClient(base_url=base_url)
+    client = GitHubClient()
     out = []
     for url in urls:
         try:

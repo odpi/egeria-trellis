@@ -127,7 +127,9 @@ class _FakeCursorConnection(PostgreSQLConnection):
             return rows
         if "c.relkind IN ('r', 'p', 'v', 'm')" in query:
             return [
-                {"table_name": name, "relkind": info["relkind"], "reltuples": info["reltuples"]}
+                {"table_name": name, "relkind": info["relkind"], "reltuples": info["reltuples"],
+                 # a "comment" key means the comment query succeeded (None = no comment)
+                 **({"table_comment": info["comment"]} if "comment" in info else {})}
                 for name, info in self._catalog_tables.items()
             ]
         if "FROM pg_attribute a" in query:
@@ -207,6 +209,25 @@ class TestZeroAccessToASchema:
             assert col["type"]  # a real Postgres type name, not blank
 
         assert by_name["line_items"]["row_count_estimate"] == 42000
+
+
+class TestCatalogFallbackReadsTheTableComment:
+    def _tables(self, catalog_tables):
+        conn = _FakeCursorConnection(information_schema_tables={}, catalog_tables=catalog_tables, catalog_columns={})
+        return {t["name"]: t for t in conn._get_tables_for_schema(_schema("coco_ods"))}
+
+    def test_a_comment_is_kept_and_marked_read(self):
+        t = self._tables({"orders": {"relkind": "r", "reltuples": 1, "comment": "Customer orders"}})["orders"]
+        assert t["description"] == "Customer orders" and t["description_read"] is True
+        assert t["source"] == "catalog_fallback"
+
+    def test_a_read_with_no_comment_is_read_and_empty(self):
+        t = self._tables({"orders": {"relkind": "r", "reltuples": 1, "comment": None}})["orders"]
+        assert t["description"] == "" and t["description_read"] is True
+
+    def test_a_row_without_the_comment_column_is_not_marked_read(self):
+        t = self._tables({"orders": {"relkind": "r", "reltuples": 1}})["orders"]
+        assert t["description"] == "" and "description_read" not in t
 
 
 class TestPartialAccess:
@@ -511,7 +532,7 @@ class TestSchemaInventoryResultsSurfaceTheEstimate:
         ])
 
         value = _schema_inventory_results(registry, slug)
-        assert value["table_count"] == 2
+        assert value["relation_count"] == 2
         assert value["catalog_only_table_count"] == 1
         by_name = {t["table_name"]: t for t in value["tables"]}
         assert by_name["customers"]["row_count_is_estimate"] is False
@@ -532,7 +553,8 @@ class TestSchemaInventoryResultsNameRelationKindsSeparately:
     """Design ruling (security-model.md §2.1/§3.4, 2026-09-26): relation
     kinds are reported separately and named, never blended into one "table
     count" -- base_table_count stays the stable field the comparators
-    already diff `table_count` as if it meant."""
+    already diff `relation_count` (renamed from `table_count`,
+    REPLY-DESIGNER-ROUND2-DATABASE-SCREENS.md §2.3) as if it meant."""
 
     def test_mixed_relation_kinds_are_each_counted(self, registry, db_entity):
         slug = db_entity.slug
@@ -547,7 +569,7 @@ class TestSchemaInventoryResultsNameRelationKindsSeparately:
              "table_type": "FOREIGN", "state": STATE_MEASURED},
         ])
         value = _schema_inventory_results(registry, slug)
-        assert value["table_count"] == 4
+        assert value["relation_count"] == 4
         assert value["base_table_count"] == 1
         assert value["view_count"] == 1
         assert value["materialized_view_count"] == 1
@@ -562,7 +584,7 @@ class TestSchemaInventoryResultsNameRelationKindsSeparately:
              "table_type": "BASE TABLE", "state": STATE_MEASURED},
         ])
         value = _schema_inventory_results(registry, slug)
-        assert value["table_count"] == value["base_table_count"] == 2
+        assert value["relation_count"] == value["base_table_count"] == 2
         assert value["view_count"] == 0
         assert value["materialized_view_count"] == 0
         assert value["foreign_table_count"] == 0
@@ -596,7 +618,7 @@ class TestFactsNoteCarriesTheCatalogCaveat:
         from resource_explorer.surveyors.result_status import MEASURED_WITHIN_CREDENTIAL_SCOPE
 
         value = {
-            "table_count": 23,
+            "relation_count": 23,
             "catalog_only_table_count": 20,
             "_status": {
                 "state": MEASURED_WITHIN_CREDENTIAL_SCOPE,
@@ -620,7 +642,7 @@ class TestFactsNoteCarriesTheCatalogCaveat:
         from resource_explorer.surveyors.result_status import MEASURED_WITHIN_CREDENTIAL_SCOPE
 
         value = {
-            "table_count": 3,
+            "relation_count": 3,
             "catalog_only_table_count": 0,
             "_status": {
                 "state": MEASURED_WITHIN_CREDENTIAL_SCOPE,

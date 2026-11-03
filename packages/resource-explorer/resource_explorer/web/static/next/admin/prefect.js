@@ -11,6 +11,7 @@
  */
 import { getPrefectStatus, listPrefectFlowRuns, cancelPrefectFlowRun } from '/static/re-api.js';
 import { esc } from '/static/next/app.js';
+import { inPageConfirm } from '/static/next/confirm-dialog.js';
 
 const STATE_TONE = {
   COMPLETED: 'text-state-ok', RUNNING: 'text-accent-ink',
@@ -91,7 +92,7 @@ function bind() {
   const refresh = _host.querySelector('[data-refresh]');
   if (refresh) refresh.addEventListener('click', () => reload());
   _host.querySelectorAll('[data-cancel]').forEach((b) => b.addEventListener('click', async () => {
-    if (!window.confirm('Cancel this flow run? The step it was running will stop, not silently retry locally.')) return;
+    if (!(await inPageConfirm({ message: 'Cancel this flow run? The step it was running will stop, not silently retry locally.', confirmLabel: 'Confirm' }))) return;
     b.disabled = true;
     b.textContent = 'Cancelling…';
     try {

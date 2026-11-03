@@ -25,7 +25,7 @@ import logging
 from dataclasses import dataclass
 
 from trellis_artifact_tree.model import Rung
-from trellis_context import Candidate, ContextSpec, Pointer, Section, pack
+from trellis_context import BudgetError, Candidate, ContextSpec, Pointer, Section, pack
 
 log = logging.getLogger(__name__)
 
@@ -164,6 +164,9 @@ INSTRUCTION_VARIANTS: dict[str, tuple[str, str]] = {
 #: the largest cap at which the ranked sections reach FULL while the budget,
 #: not the cap, still decides the last sections in. The value is a knob, not
 #: a law: `compile_context(max_sections=...)` overrides it, 0 disables it.
+#: This is the built-in default; the running value is the tier setting
+#: `compile_max_sections` (config.py, EXPLORER_COMPILE_MAX_SECTIONS), which
+#: compile_context reads when no `max_sections` is passed.
 MAX_EVIDENCE_SECTIONS = 12
 
 
@@ -178,9 +181,18 @@ logger = logging.getLogger(__name__)
 _GAP_PHRASING = {
     "never_run": "has not run",
     "nothing_found": "ran and found nothing — a real zero, not a missing result",
-    "not_established": "ran, but cannot be credited with this result",
+    "not_established": "ran · result not attributable",
     "partial": "ran over only part of what it covers",
 }
+
+#: The sentence offered on hover beside a gap's short cue word. The cue stays short
+#: ("ran · result not attributable"); the explanation is on demand.
+_GAP_EXPLANATION = {
+    "not_established": "it ran, but nothing shows this analysis produced the result",
+}
+
+#: A NOT_ESTABLISHED gap with no recorded run: nothing proves it ran, and nothing proves it did not.
+_NOT_ESTABLISHED_UNRECORDED = "no run recorded · whether it ran is not known"
 
 
 @dataclass(frozen=True)
@@ -198,7 +210,17 @@ class CompiledContext:
     compile_id: str = ""
 
 
-def _compile_id(spec, candidates: dict, budget: int) -> str:
+def _default_max_sections() -> int:
+    """The tier's section cap (config.py `compile_max_sections`), or the built-in default if config cannot resolve."""
+    try:
+        from resource_explorer.config import get_llm_tier_config
+
+        return get_llm_tier_config().compile_max_sections
+    except Exception:
+        return MAX_EVIDENCE_SECTIONS
+
+
+def _compile_id(spec, candidates: dict, budget: int, max_sections: int = MAX_EVIDENCE_SECTIONS) -> str:
     """blake2b over the packer's inputs, in a canonical order.
 
     Hashes rung TEXT, not provenance timestamps: a re-read of the same stored
@@ -207,7 +229,7 @@ def _compile_id(spec, candidates: dict, budget: int) -> str:
     """
     import hashlib
     h = hashlib.blake2b(digest_size=16)
-    h.update(f"{spec.spec_id}|{spec.version}|{budget}|{spec.target_model}|".encode())
+    h.update(f"{spec.spec_id}|{spec.version}|{budget}|{max_sections}|{spec.target_model}|".encode())
     for key in sorted(candidates):
         h.update(f"[{key}]".encode())
         for rung, text in sorted(candidates[key].rungs.items(), key=lambda kv: str(kv[0])):
@@ -246,6 +268,21 @@ _STOPWORDS = frozenset({
     # on "repository" alone. Same reason "results"/"survey" are here.
     "repository", "repositories", "repo", "there", "already", "has",
 })
+
+
+#: Words that name the same thing as a catalog analysis's own vocabulary. "Are there outstanding CVEs?" is the
+#: catalog's question for cve_scan, so an asker who says "known security vulnerabilities" shared no token with it:
+#: cve_scan ranked on catalog position alone, fell below the section cap and was deferred (walk 2026-10-12).
+#: Applied to BOTH sides of the overlap, so the entries that already say "vulnerabilities" keep matching.
+_TOKEN_ALIASES = {
+    "vulnerability": "cve", "vulnerabilities": "cve", "vulnerable": "cve", "cves": "cve",
+    "advisory": "cve", "advisories": "cve",
+}
+
+
+def _tokens(text: str) -> set[str]:
+    import re
+    return {_TOKEN_ALIASES.get(t, t) for t in re.findall(r"[a-z0-9]+", text.lower())}
 
 
 def _question_relevance(question: str, catalog_question: str, analysis_ids: list[str]) -> float:
@@ -287,12 +324,12 @@ def _question_relevance(question: str, catalog_question: str, analysis_ids: list
     if re.sub(r"[^a-z0-9]+", " ", question.lower()).strip() == \
             re.sub(r"[^a-z0-9]+", " ", catalog_question.lower()).strip():
         return 1.0
-    q_tokens = set(re.findall(r"[a-z0-9]+", question.lower())) - _STOPWORDS
+    q_tokens = _tokens(question) - _STOPWORDS
     if not q_tokens:
         return 0.0
-    candidate_tokens = set(re.findall(r"[a-z0-9]+", catalog_question.lower()))
+    candidate_tokens = _tokens(catalog_question)
     for aid in analysis_ids:
-        candidate_tokens |= set(aid.split("_"))
+        candidate_tokens |= _tokens(aid.replace("_", " "))
     candidate_tokens -= _STOPWORDS
     return len(q_tokens & candidate_tokens) / len(q_tokens)
 
@@ -694,11 +731,166 @@ def _results_to_rungs(results: dict, analysis_id: str) -> dict[Rung, str]:
     return rungs
 
 
+#: Endpoint lines the model sees per rung. The FULL cap is generous (a service
+#: has tens of endpoints, not thousands; egeria_git has 1,596 and is cut with
+#: the extent said); SUMMARY is a visible prefix.
+MAX_ENDPOINTS_FULL = 120
+MAX_ENDPOINTS_SUMMARY = 20
+
+
+def _with_endpoints(rungs: dict[Rung, str], registry, slug: str):
+    """Add the endpoint LIST to interface_surface's rungs.
+
+    The findings give the model counts ("1869 registration(s) found"), and
+    the 1869 is mostly test mocks; the endpoints themselves are in
+    project_code_markers (resource_explorer/endpoints.py). Returns (rungs,
+    extents): extents is `{"endpoints": {"total", "shown"}}` for
+    manifest["lists"], only when there is a list to be partly shown.
+    A reader that fails adds a note-line, not silence."""
+    from resource_explorer.endpoints import read_endpoints, render_lines
+
+    spec = _spec_endpoints(rungs, registry, slug)
+    if spec is not None:
+        return spec
+    es = read_endpoints(registry, slug)
+    if es is None:
+        return rungs, {}
+    if not es.measured and not rungs:
+        return rungs, {}
+    heading = ("endpoint list (non-test code registrations from the code markers; derived from code, not a "
+               "published contract; it replaces the registration counts in the findings above, which include "
+               "test-path mocks)")
+    full = "\n".join([heading] + render_lines(es, MAX_ENDPOINTS_FULL))
+    summ = "\n".join([heading] + render_lines(es, MAX_ENDPOINTS_SUMMARY))
+    out = dict(rungs)
+    out[Rung.FULL] = (out[Rung.FULL] + "\n" + full) if Rung.FULL in out else f"## interface_surface\n{full}"
+    out[Rung.SUMMARY] = (out[Rung.SUMMARY] + "\n" + summ) if Rung.SUMMARY in out else f"## interface_surface\n{summ}"
+    out.setdefault(Rung.IDENTIFIERS, "## interface_surface\nchecks: endpoints")
+    extents = {}
+    if es.measured:
+        n = es.total
+        extents["endpoints"] = {"total": n, "shown": {
+            "FULL": min(n, MAX_ENDPOINTS_FULL), "SUMMARY": min(n, MAX_ENDPOINTS_SUMMARY)}}
+    return out, extents
+
+
+def _spec_endpoints(rungs: dict[Rung, str], registry, slug: str):
+    """interface_surface's endpoint block from the best DESCRIBED source (a committed spec, else a registered
+    running instance), saying which; None when only code (or nothing) is known, so the code path above runs.
+    The code-derived routes are then a one-line comparison, not a second list competing with the first."""
+    from resource_explorer.api_reference.compare import compare_interfaces
+    from resource_explorer.api_reference.derived import derive_from_code
+    from resource_explorer.api_reference.service import best_spec_interface, render_spec_lines, spec_heading
+    from resource_explorer.endpoints import read_endpoints
+
+    iface = best_spec_interface(registry, slug)      # stored reads; unreadable parts are logged and skipped there
+    if iface is None:
+        return None
+    derived = derive_from_code(registry, slug)
+    others = [compare_interfaces(iface, derived)] if derived is not None else []
+
+    def block(limit: int) -> str:
+        lines = [spec_heading(iface)] + render_spec_lines(iface, limit, others)
+        es = read_endpoints(registry, slug)
+        kinds: dict = {}
+        for e in (es.rows if es else []):
+            if e.kind != "http_api":
+                kinds[e.kind] = kinds.get(e.kind, 0) + 1
+        if kinds:
+            lines.append("- other registrations in code (not part of the HTTP API): "
+                         + ", ".join(f"{k} {v}" for k, v in sorted(kinds.items())))
+        return "\n".join(lines)
+
+    out = dict(rungs)
+    full, summ = block(MAX_ENDPOINTS_FULL), block(MAX_ENDPOINTS_SUMMARY)
+    out[Rung.FULL] = (out[Rung.FULL] + "\n" + full) if Rung.FULL in out else f"## interface_surface\n{full}"
+    out[Rung.SUMMARY] = (out[Rung.SUMMARY] + "\n" + summ) if Rung.SUMMARY in out else f"## interface_surface\n{summ}"
+    out.setdefault(Rung.IDENTIFIERS, "## interface_surface\nchecks: endpoints")
+    n = len(iface.operations)
+    return out, {"endpoints": {"total": n, "shown": {"FULL": min(n, MAX_ENDPOINTS_FULL),
+                                                      "SUMMARY": min(n, MAX_ENDPOINTS_SUMMARY)}}}
+
+
+MAX_CLASSES_FULL, MAX_CLASSES_SUMMARY = 60, 15
+MAX_FUNCTIONS_FULL, MAX_FUNCTIONS_SUMMARY = 40, 10
+
+
+def _with_contributors(rungs: dict[Rung, str], registry, slug: str):
+    """The two contributor lists (Q-0003 / Q-0051's declared list extent: top contributors by share, with names)
+    appended to chaoss_metrics' rungs, read through `contributors.contributors`. FULL carries the top 10 of each
+    list, SUMMARY the top 3, IDENTIFIERS nothing more. Returns (rungs, extent, row ids behind the text). A list
+    never fetched says so in words; nothing is appended when neither list was ever fetched."""
+    from resource_explorer import contributors as contrib
+
+    try:
+        lists = contrib.both(registry, slug)
+    except Exception as exc:  # noqa: BLE001 - a compile survives a failed read; the section packs without lists
+        log.warning("contributor lists unavailable for %s: %s", slug, exc)
+        return rungs, {}, []
+    if not contrib.any_fetched(lists):
+        return rungs, {}, []
+    full = "\n".join(contrib.text_block(lists, limit=contrib.TOP))
+    short = "\n".join(contrib.text_block(lists, limit=3))
+    head = f"## chaoss_metrics\n"
+    out = dict(rungs)
+    out[Rung.FULL] = (rungs.get(Rung.FULL) or head.rstrip()) + "\n" + full
+    if Rung.SUMMARY in rungs or not rungs:
+        out[Rung.SUMMARY] = (rungs.get(Rung.SUMMARY) or head.rstrip()) + "\n" + short
+    if Rung.IDENTIFIERS not in out:
+        out[Rung.IDENTIFIERS] = head + "reports: contributors"
+    extent = {f"contributors.{w}": {"total": cl.humans, "shown": {"FULL": len(cl.rows[:contrib.TOP]),
+                                                                       "SUMMARY": len(cl.rows[:3])}}
+              for w, cl in lists.items() if cl.rows}
+    # Per rung, because the packer picks one: the ids of the fetch rows and the contributor rows that rung shows.
+    ids: dict[str, list[int]] = {"FULL": [], "SUMMARY": []}
+    for cl in lists.values():
+        heads = cl.row_ids[:len(cl.row_ids) - len(cl.rows)]
+        ids["FULL"].extend(heads + [r.id for r in cl.rows[:contrib.TOP]])
+        ids["SUMMARY"].extend(heads + [r.id for r in cl.rows[:3]])
+    return out, extent, ids
+
+
+def _with_symbols(rungs: dict[Rung, str], registry, slug: str, question: str):
+    """Add the symbol lists to api_structure's rungs: the question-matched
+    block first (classes the question names with their methods, or the
+    symbols under a module it names, or one line saying nothing matched),
+    then the public classes and top-level functions with N-of-M extents.
+    Counts alone ("5,937 symbols") gave the model nothing to list from
+    (resource_explorer/code_symbols.py)."""
+    from resource_explorer.code_symbols import TYPE_KINDS, left_out_tail, list_line, read_symbols, render_matched
+
+    ss = read_symbols(registry, slug)
+    if ss is None or not ss.measured:
+        return rungs, {}
+    classes = [s for s in ss.rows if s.kind in TYPE_KINDS]
+    funcs = [s for s in ss.rows if s.kind == "function" and not s.parent_class]
+    heading = ("symbol lists (public, non-test symbols from the stored code symbols; ordered by file then line; "
+               "public is inferred from naming)")
+    matched = render_matched(question, ss, ss.rows)
+    tail = left_out_tail(ss)
+
+    def block(nc: int, nf: int) -> str:
+        return "\n".join([heading] + matched + list_line("classes", classes, nc, tail)
+                         + list_line("top-level functions", funcs, nf))
+
+    out = dict(rungs)
+    full, summ = block(MAX_CLASSES_FULL, MAX_FUNCTIONS_FULL), block(MAX_CLASSES_SUMMARY, MAX_FUNCTIONS_SUMMARY)
+    out[Rung.FULL] = (out[Rung.FULL] + "\n" + full) if Rung.FULL in out else f"## api_structure\n{full}"
+    out[Rung.SUMMARY] = (out[Rung.SUMMARY] + "\n" + summ) if Rung.SUMMARY in out else f"## api_structure\n{summ}"
+    out.setdefault(Rung.IDENTIFIERS, "## api_structure\nreports: classes, top-level functions")
+    extents = {
+        "classes": {"total": len(classes), "shown": {"FULL": min(len(classes), MAX_CLASSES_FULL),
+                                                      "SUMMARY": min(len(classes), MAX_CLASSES_SUMMARY)}},
+        "functions": {"total": len(funcs), "shown": {"FULL": min(len(funcs), MAX_FUNCTIONS_FULL),
+                                                      "SUMMARY": min(len(funcs), MAX_FUNCTIONS_SUMMARY)}},
+    }
+    return out, extents
+
+
 #: Which analyses have a real, addressable view to point at. Deliberately
 #: narrow: Backlog "a compiled answer should be able to POINT at a view" notes
 #: deep-linking to a perspective/scope is the *prerequisite* work, and today
-#: only the architecture card has perspective tabs (`_archTabsHtml` in
-#: index.html) worth linking into. Add an entry here once a view exists to
+#: only the architecture card has perspective tabs worth linking into. Add an entry here once a view exists to
 #: point at — the compiler side needs no other change, since `Pointer` is
 #: already resource/analysis-agnostic.
 _POINTABLE_VIEWS = {"architecture_recovery": "architecture"}
@@ -749,6 +941,15 @@ def _judge_gap(fact_layer, slug: str, analysis_id: str) -> dict:
         return gap
     gap["state"] = fact.state
     gap["reason"] = phrasing
+    if fact.state in _GAP_EXPLANATION:
+        gap["explanation"] = _GAP_EXPLANATION[fact.state]
+    if fact.state == "not_established" and not fact.last_run_at:
+        # "ran" is said only when a run is recorded. NOT_ESTABLISHED without one is the fact layer's "surveyed by runs
+        # that predate per-step recording" (or no reader at all), and the panel showed "ran" beside "not run" for it
+        # (the compile panel for an integration question, 2026-10-25). The fact's own note says which.
+        gap["reason"] = _NOT_ESTABLISHED_UNRECORDED
+        note = getattr(fact, "note", "")
+        gap["explanation"] = note if isinstance(note, str) and note else _NOT_ESTABLISHED_UNRECORDED
     if fact.last_run_at:
         gap["last_run_at"] = fact.last_run_at
     if fact.can_run:
@@ -882,6 +1083,7 @@ def compile_context(
     session_id: str | None = None,
     max_sections: int | None = None,
     instructions_variant: str = "default",
+    narrative_store_factory=None,
 ) -> CompiledContext:
     """Build, resolve and pack a context for `question` about resource `slug`.
 
@@ -1002,6 +1204,7 @@ def compile_context(
         for analysis_id in ids:
             weights[analysis_id] = max(weights.get(analysis_id, 0.0), weight)
         derivation.append({
+            "question_id": entry.get("id", ""),
             "question": entry["question"],
             "matched_purposes": d.get("matched_purposes", []),
             "matched_perspectives": d.get("matched_perspectives", []),
@@ -1039,7 +1242,7 @@ def compile_context(
     sections = [Section("instructions", role="instructions", required=True, weight=1.0)]
     candidates: dict[str, Candidate] = {}
     ranked = sorted(weights.items(), key=lambda kv: (-kv[1], kv[0]))
-    cap = MAX_EVIDENCE_SECTIONS if max_sections is None else max_sections
+    cap = _default_max_sections() if max_sections is None else max_sections
     deferred: list[dict] = []
     # The cap counts sections WITH EVIDENCE, and a gap costs nothing. The
     # first version sliced the ranking to `cap` entries before resolving any,
@@ -1059,12 +1262,76 @@ def compile_context(
     #: Per packed section, each list field's total and shown-per-rung
     #: (`manifest["lists"]`), from the reader's results before rendering.
     list_extents: dict[str, dict] = {}
+    #: Per packed section, the stored row ids its text was built from (persist what the model saw): kept on the
+    #: recorded manifest, so a stored answer names the exact rows behind it.
+    rows_seen: dict[str, dict] = {}
+    from resource_explorer import declared_context
+    from resource_explorer.facts import FactLayer
+
+    _facts = FactLayer(registry, resource_type=resource_type)
+    #: Analyses whose catalogue entry declares its results: their section is built from the declaration (§3 of
+    #: DESIGN-DECLARED-EXTENSIBILITY-RENDERING-CHAT-CONFIDENCE), not from the generic shape below.
+    _declared = declared_context.declarations(resource_type)
+    _steps = declared_context.library_steps(resource_type)
+    #: Per packed declared section, what each rung showed (extents, as-of, confidence form), for the manifest.
+    declared_seen: dict[str, dict] = {}
+    #: Declared analyses with nothing stored, and the sentence each declares for that.
+    declared_absent: dict[str, dict] = {}
     for rank, (analysis_id, weight) in enumerate(ranked):
         if cap > 0 and packed_count >= cap:
             deferred.append({"key": analysis_id, "weight": round(weight, 3), "rank": rank,
                              "reason": f"below the section cap of {cap}"})
             continue
+        dec = _declared.get(analysis_id)
+        fact = None
+        if dec is not None and not dec.built:
+            # Declared before it has a runner: planned, not measured. Nothing stored can exist, so nothing is read.
+            sections.append(Section(analysis_id, role="evidence", weight=weight))
+            declared_absent[analysis_id] = declared_context.absence(dec, "never_run")
+            continue
+        if dec is not None:
+            try:
+                fact = _facts.fact(slug, analysis_id).as_dict()
+            except Exception as exc:
+                # Fail-soft to the generic path below, which has its own; the declared section is the loss.
+                log.warning("fact for declared %s on %s failed: %s", analysis_id, slug, exc)
+                extra_notes.append(f"declared section for {analysis_id} unavailable ({type(exc).__name__}); "
+                                   "packed from its stored findings instead")
+            if fact is not None and fact.get("state") in declared_context.KNOWN_STATES:
+                try:
+                    records = declared_context.measure_records(registry, resource_type, slug, _steps.get(analysis_id),
+                                                               dec, analysis_id)
+                except Exception as exc:
+                    log.warning("measure records for declared %s on %s failed: %s", analysis_id, slug, exc)
+                    records = {}
+                table = None
+                if dec.is_table_result():
+                    # B1: a table result's rows are stored, not in its result; quote them in the declared order.
+                    from resource_explorer import table_result
+
+                    table = table_result.table_rows(registry, resource_type, slug, analysis_id, dec)
+                rungs, seen = declared_context.section_rungs(analysis_id, dec, fact, records, table=table)
+                _ids = [r["row_id"] for r in records.values() if r.get("row_id")]
+                if _ids:
+                    rows_seen.setdefault(analysis_id, {})["step_annotations"] = _ids
+                if analysis_id in caveat_ids:
+                    rungs = _with_caveat(rungs, coverage["caveat"])
+                sections.append(Section(analysis_id, role="evidence", weight=weight))
+                provenance = ({"analysis_id": analysis_id, "check": None,
+                               "surveyed_at": fact.get("last_run_at") or None},)
+                candidates[analysis_id] = Candidate(analysis_id, rungs, provenance=provenance,
+                                                    pointer=_pointer_for(analysis_id, slug, provenance))
+                declared_seen[analysis_id] = seen
+                lists = declared_context.list_extents(seen)
+                if lists:
+                    list_extents[analysis_id] = lists
+                packed_count += 1
+                continue
         findings = registry.query_findings(slug, analysis_id)
+        _fids = [f"project_analysis_findings:{slug}/{analysis_id}/{f.get('scope_locator') or ''}/"
+                 f"{f.get('surveyed_at') or ''}/{f.get('check_name') or ''}" for f in findings]
+        if _fids:
+            rows_seen.setdefault(analysis_id, {})["findings"] = _fids
         rungs = _findings_to_rungs(findings, analysis_id)
         provenance = _provenance(findings, analysis_id)
 
@@ -1098,6 +1365,9 @@ def compile_context(
                     log.warning("results reader for %s failed on %s: %s",
                                 analysis_id, slug, exc)
                     results = None
+                if results is not None and analysis_id == "chaoss_metrics" and isinstance(results, dict):
+                    # The contributor lists are packed by _with_contributors below, once, with their row ids.
+                    results = {k: v for k, v in results.items() if k != "contributors"}
                 if results is not None:
                     from_reader = _results_to_rungs(results, analysis_id)
                     extents = _list_extents(results) if isinstance(results, dict) else {}
@@ -1131,6 +1401,29 @@ def compile_context(
                         if extents:
                             list_extents[analysis_id] = extents
 
+        if analysis_id == "interface_surface":
+            rungs, ep_extent = _with_endpoints(rungs, registry, slug)
+            if ep_extent:
+                list_extents.setdefault(analysis_id, {}).update(ep_extent)
+            if rungs and not provenance:
+                provenance = ({"analysis_id": analysis_id, "check": None, "surveyed_at": None},)
+
+        if analysis_id == "chaoss_metrics":
+            rungs, c_extent, c_ids = _with_contributors(rungs, registry, slug)
+            if c_extent:
+                list_extents.setdefault(analysis_id, {}).update(c_extent)
+            if c_ids and (c_ids["FULL"] or c_ids["SUMMARY"]):
+                rows_seen.setdefault(analysis_id, {})["project_contributors"] = c_ids
+            if rungs and not provenance:
+                provenance = ({"analysis_id": analysis_id, "check": None, "surveyed_at": None},)
+
+        if analysis_id == "api_structure":
+            rungs, sym_extent = _with_symbols(rungs, registry, slug, question)
+            if sym_extent:
+                list_extents.setdefault(analysis_id, {}).update(sym_extent)
+            if rungs and not provenance:
+                provenance = ({"analysis_id": analysis_id, "check": None, "surveyed_at": None},)
+
         if rungs and analysis_id in caveat_ids:
             rungs = _with_caveat(rungs, coverage["caveat"])
         sections.append(Section(analysis_id, role="evidence", weight=weight))
@@ -1140,9 +1433,23 @@ def compile_context(
                 pointer=_pointer_for(analysis_id, slug, provenance),
             )
             packed_count += 1
+        elif dec is not None and fact is not None:
+            declared_absent[analysis_id] = declared_context.absence(dec, fact.get("state", ""))
         # No rungs => no candidate => the packer records a gap. Deliberately not
         # skipped here: a section the derivation says should exist, with nothing
         # behind it, is information -- and it does not count against the cap.
+
+    # A file system's narrative passages ride beside its analyses (Files follow-up 1): one section, always present, so
+    # "never pressed", "no passage matched" and "index unreachable" are each said, never an empty gap.
+    narrative_info: dict | None = None
+    if resource_type == "filesystem":
+        from resource_explorer import narrative_context
+
+        n_rungs, narrative_info = narrative_context.build(registry, slug, question, store_factory=narrative_store_factory)
+        sections.append(Section(narrative_context.SECTION_KEY, role="evidence", weight=2.0))
+        candidates[narrative_context.SECTION_KEY] = Candidate(
+            narrative_context.SECTION_KEY, n_rungs,
+            provenance=({"analysis_id": narrative_context.SECTION_KEY, "check": None, "surveyed_at": None},))
 
     # The instructions candidate is built last because its text depends on
     # where the caveat went. The coverage line (and the caveat, when it has no
@@ -1155,10 +1462,12 @@ def compile_context(
     coverage["caveat_placed_in"] = placed if placed else (["instructions"] if coverage["caveat"] else [])
     if placed:
         caveat_line = caveat_line_short = ""
+    # A declared analysis with nothing stored is said in its own words (§3 step 3), beside the coverage line.
+    absent_line, absent_line_short = declared_context.absence_lines(declared_absent)
     candidates["instructions"] = Candidate(
         "instructions",
-        {Rung.FULL: coverage_line + caveat_line + instr_full,
-         Rung.SUMMARY: coverage_line_short + caveat_line_short + instr_short,
+        {Rung.FULL: coverage_line + caveat_line + absent_line + instr_full,
+         Rung.SUMMARY: coverage_line_short + caveat_line_short + absent_line_short + instr_short,
          Rung.IDENTIFIERS: _INSTRUCTIONS_BARE})
 
     spec = ContextSpec(
@@ -1167,18 +1476,43 @@ def compile_context(
     )
     packed = pack(spec, candidates, budget)
     m = packed.manifest
-    from resource_explorer.facts import FactLayer
-
-    _facts = FactLayer(registry, resource_type=resource_type)
-    compile_id = _compile_id(spec, candidates, budget)
+    compile_id = _compile_id(spec, candidates, budget, cap)
+    text, used = packed.text(), m.used
+    # §3 step 4: a declared section the budget dropped or the cap deferred is named in the context with its declared
+    # cost. It goes in only where it fits: the budget is a hard ceiling, so what does not fit is a manifest note.
+    omitted = [(d["key"], "left out to fit the budget") for d in m.dropped if d["key"] in _declared]
+    omitted += [(d["key"], f"not read: ranked below the section cap of {cap}") for d in deferred
+                if d["key"] in _declared]
+    omitted_in_context: list[str] = []
+    if omitted:
+        block = declared_context.omission_block([(k, _declared[k], why) for k, why in omitted])
+        if used + len(block) <= budget:
+            text, used = text + block, used + len(block)
+            omitted_in_context = [k for k, _ in omitted]
+        else:
+            extra_notes.append("declared sections left out, not said in the context for want of room: "
+                               + ", ".join(k for k, _ in omitted))
+    packed_keys = {p["key"] for p in m.packed}
+    narrative_manifest = None
+    if narrative_info is not None:
+        # Citations only (the text is in the stored context): what an answer may cite, and what the journal stores.
+        cited = [{k: v for k, v in p.items() if k != "text"} for p in narrative_info["passages"]]
+        narrative_manifest = {"state": narrative_info["state"], "collection": narrative_info["collection"],
+                              "passages": cited, "packed": "narratives" in packed_keys}
+        for p in m.packed:
+            if p["key"] == "narratives":
+                p["passages"] = cited
+    declared_packed = {k: v for k, v in declared_seen.items() if k in packed_keys}
+    for k, v in declared_packed.items():
+        v["rung"] = next(p["rung"] for p in m.packed if p["key"] == k)
     compiled = CompiledContext(
-        text=packed.text(),
+        text=text,
         compile_id=compile_id,
         manifest={
             "compile_id": compile_id,
             "resource_type": resource_type,
-            "spec_id": m.spec_id, "budget": m.budget, "used": m.used,
-            "headroom": m.headroom, "packed": list(m.packed),
+            "spec_id": m.spec_id, "budget": m.budget, "max_sections": cap, "used": used,
+            "headroom": m.budget - used, "packed": list(m.packed),
             "dropped": list(m.dropped),
             # Ranked below the cap: never offered to the packer, so neither
             # packed, dropped nor a gap. Listed so "why these?" can show what
@@ -1189,6 +1523,7 @@ def compile_context(
             # the "N of M shown" the text carries, as data, so the rail can
             # say M without recounting (pick N by packed[i]["rung"]).
             "lists": {k: v for k, v in list_extents.items() if k in candidates},
+            "rows_seen": {k: v for k, v in rows_seen.items() if k in candidates},
             # What the catalog says answers this question at all. `gaps` says
             # which offered sections had nothing; this says whether the
             # question was ever a question stored analyses answer.
@@ -1197,7 +1532,21 @@ def compile_context(
             # Judged, not merely listed. The packer knows only that a section
             # had no candidate; the fact layer knows whether that is a zero or
             # an absence, and they are opposite answers to the same question.
-            "gaps": [_judge_gap(_facts, slug, g["key"]) for g in m.gaps],
+            "gaps": [{**_judge_gap(_facts, slug, g["key"]), **(
+                {"sentence": declared_absent[g["key"]]["sentence"], "absence": declared_absent[g["key"]]["absence"]}
+                if g["key"] in declared_absent else {})} for g in m.gaps],
+            # Per packed declared section (§3 step 5): the rung it went in at, the as-of, the confidence form, and
+            # per extent how many rows of how many, with the identity of each row shown at each rung.
+            "declared": declared_packed,
+            # §4: the weakest declared confidence form any packed section rests on -- what an answer reports,
+            # never an average -- and each section's form.
+            "confidence": {
+                "weakest": declared_context.weakest([v["confidence"] for v in declared_packed.values()]),
+                "by_section": {k: v["confidence"] for k, v in declared_packed.items() if v["confidence"]},
+            },
+            **({"narratives": narrative_manifest} if narrative_manifest is not None else {}),
+            "absences_in_context": sorted(declared_absent),
+            "omitted_in_context": omitted_in_context,
             "notes": list(m.notes) + extra_notes,
         },
         derivation=derivation,
@@ -1205,7 +1554,10 @@ def compile_context(
     record = getattr(registry, "record_compile", None)
     if callable(record):
         try:
-            record(compile_id, slug, question, compiled.manifest, compiled.derivation,
+            # The stored row carries the text the model was given (§3 step 5: "persist what the model saw"), so a
+            # stored answer can be opened as it was, not re-compiled against results that have since moved. In the
+            # manifest's JSON rather than a column of its own: no DDL. The returned manifest stays without it.
+            record(compile_id, slug, question, {**compiled.manifest, "text": compiled.text}, compiled.derivation,
                    session_id=session_id)
         except Exception as exc:
             # Persistence is an instrument, not the product: a compile the
@@ -1223,3 +1575,304 @@ def compile_context(
         else:
             compiled.manifest["recorded"] = True
     return compiled
+
+
+def build_epistemological_matrix(
+    registry: ProjectRegistry,
+    slugs: list[str],
+    analyses: list[str] | None = None,
+) -> tuple[str, list[dict]]:
+    """Build an epistemological comparison matrix across multiple resource slugs.
+
+    Surfaces survey coverage and asymmetry explicitly using FactLayer states
+    (measured, nothing_found, never_run, partial, not_established).
+    Returns (markdown_table, matrix_records).
+    """
+    from resource_explorer.facts import (
+        FactLayer,
+        MEASURED,
+        NOTHING_FOUND,
+        NEVER_RUN,
+        PARTIAL,
+        NOT_ESTABLISHED,
+    )
+
+    if not slugs:
+        return "", []
+
+    slug_types: dict[str, str] = {}
+    for s in slugs:
+        norm = registry._normalize_slug(s)
+        if registry.get(norm):
+            slug_types[norm] = "repo"
+        elif registry.get_database(norm, allow_unreadable=True):
+            slug_types[norm] = "database"
+        elif registry.get_filesystem(norm):
+            slug_types[norm] = "filesystem"
+        else:
+            slug_types[norm] = "repo"
+
+    normalized_slugs = [registry._normalize_slug(s) for s in slugs]
+
+    if not analyses:
+        # Default core set covering repos, databases, and general health. Every id here must be a real analysis id:
+        # "dependencies" and "project_stats" are not, so FactLayer answered NOT_ESTABLISHED ("produces an action rather
+        # than findings") for every resource whatever its data, and a chat answer read that as "no dependencies".
+        analyses = [
+            "security_scan",
+            "license_classification",
+            "dependency_analysis",
+            "ci_quality",
+            "repo_conventions",
+            "architecture_recovery",
+            "schema_inventory",
+            "data_profiling",
+            "data_quality",
+        ]
+
+    matrix_records: list[dict] = []
+    lines: list[str] = []
+
+    # Markdown table header
+    header_cols = ["Dimension"] + [f"{s} ({slug_types[s]})" for s in normalized_slugs]
+    lines.append("| " + " | ".join(header_cols) + " |")
+    lines.append("| " + " | ".join(["---"] * len(header_cols)) + " |")
+
+    for analysis_id in analyses:
+        row_slugs: dict[str, dict] = {}
+        row_values: list[str] = []
+        has_any_data = False
+
+        for s in normalized_slugs:
+            rtype = slug_types[s]
+            fl = FactLayer(registry, resource_type=rtype)
+            fact = fl.fact(s, analysis_id)
+            state = fact.state
+            headline = fact.headline or fact.note
+
+            display_state = state.upper()
+            if state == MEASURED:
+                display_state = f"KNOWN ({headline[:35]}...)" if headline and len(headline) > 35 else f"KNOWN ({headline})" if headline else "KNOWN"
+                has_any_data = True
+            elif state == NOTHING_FOUND:
+                display_state = "KNOWN (0 / None found)"
+                has_any_data = True
+            elif state == NEVER_RUN:
+                display_state = "NEVER_RUN"
+            elif state == PARTIAL:
+                display_state = f"PARTIAL ({headline[:25]})" if headline else "PARTIAL"
+                has_any_data = True
+            elif state == NOT_ESTABLISHED:
+                display_state = "NOT_ESTABLISHED"
+
+            row_slugs[s] = {
+                "state": state,
+                "display": display_state,
+                "headline": headline,
+                "is_known": fact.is_known,
+            }
+            row_values.append(display_state.replace("|", "/"))
+
+        # Format dimension name
+        dim_name = analysis_id.replace("_", " ").title()
+        matrix_records.append({
+            "analysis_id": analysis_id,
+            "dimension": dim_name,
+            "slugs": row_slugs,
+        })
+        lines.append(f"| {dim_name} | " + " | ".join(row_values) + " |")
+
+    markdown_table = "\n".join(lines)
+    return markdown_table, matrix_records
+
+
+def compile_multi_resource_context(
+    registry: ProjectRegistry,
+    slugs: list[str],
+    question: str,
+    budget: int = 8000,
+    perspectives: list[str] | None = None,
+    purposes: list[str] | None = None,
+    target_model: str = "default",
+    session_id: str = "",
+    instructions_variant: str = "default",
+    max_sections_per_resource: int | None = None,
+) -> CompiledContext:
+    """Compile structured comparative context across two or more resources.
+
+    Gives each resource an equal share of what the matrix and preamble leave of
+    the budget, and generates an epistemological asymmetry matrix comparing
+    survey coverage. The assembled text never exceeds `budget` characters:
+    `used` is its length, and a compile that cannot fit raises BudgetError.
+    """
+    if not slugs:
+        raise ValueError("At least one resource slug is required for context compilation.")
+
+    normalized_slugs = [registry._normalize_slug(s) for s in slugs]
+
+    # Single-resource fast path
+    if len(normalized_slugs) == 1:
+        slug = normalized_slugs[0]
+        rtype = "repo"
+        if registry.get_database(slug, allow_unreadable=True):
+            rtype = "database"
+        elif registry.get_filesystem(slug):
+            rtype = "filesystem"
+        return compile_context(
+            registry=registry,
+            slug=slug,
+            question=question,
+            budget=budget,
+            resource_type=rtype,
+            perspectives=perspectives,
+            purposes=purposes,
+            target_model=target_model,
+            session_id=session_id,
+            instructions_variant=instructions_variant,
+            max_sections=max_sections_per_resource,
+        )
+
+    # Multi-resource compilation
+    matrix_md, matrix_records = build_epistemological_matrix(registry, normalized_slugs)
+
+    slug_types: dict[str, str] = {}
+    for slug in normalized_slugs:
+        rtype = "repo"
+        if registry.get_database(slug, allow_unreadable=True):
+            rtype = "database"
+        elif registry.get_filesystem(slug):
+            rtype = "filesystem"
+        slug_types[slug] = rtype
+
+    def _assemble(texts: list[str]) -> str:
+        text_parts: list[str] = [
+            "=== MULTI-RESOURCE EVIDENCE COMPILATION ===",
+            f"Target Resources: {', '.join(normalized_slugs)}\n",
+            "## Epistemological Coverage & Asymmetry Matrix",
+            "The following table compares survey findings and knowledge states across resources.",
+            "A state of 'KNOWN' indicates measured facts; 'NEVER_RUN' indicates unmeasured dimensions (do not assume absence).",
+            matrix_md,
+            "",
+        ]
+        for slug, t in zip(normalized_slugs, texts):
+            text_parts.append(f"=== RESOURCE EVIDENCE: {slug} ({slug_types[slug]}) ===")
+            text_parts.append(t)
+            text_parts.append("")
+        return "\n".join(text_parts).strip()
+
+    # The budget is in the packer's unit (characters), and so is everything measured here: the matrix and preamble are
+    # measured as assembled, not reserved as a guessed 20% and counted as len // 4. That pair let compile 144eef54 report
+    # 1004 of headroom over 6,095 characters of text against a budget of 6000. Over budget is a hard failure, never a
+    # truncation.
+    overhead = len(_assemble([""] * len(normalized_slugs)))
+    per_resource_budget = (budget - overhead) // len(normalized_slugs)
+
+    compiled_list: list[CompiledContext] = []
+    combined_text = ""
+    # A resource's text can run a little past its share (the packer counts its sections, not the blank lines between
+    # them), so the assembled text is measured and, when over, every share steps down by the overrun and the
+    # resources are compiled again. Bounded: a compile that still does not fit raises.
+    if per_resource_budget <= 0:
+        raise BudgetError(
+            f"multi-resource compile of {', '.join(normalized_slugs)}: the matrix and preamble take {overhead} "
+            f"characters of a budget of {budget}, leaving no room for evidence"
+        )
+    for _attempt in range(3):
+        if per_resource_budget <= 0:
+            break
+        compiled_list = [
+            compile_context(
+                registry=registry,
+                slug=slug,
+                question=question,
+                budget=per_resource_budget,
+                resource_type=slug_types[slug],
+                perspectives=perspectives,
+                purposes=purposes,
+                target_model=target_model,
+                session_id=session_id,
+                instructions_variant=instructions_variant,
+                max_sections=max_sections_per_resource,
+            )
+            for slug in normalized_slugs
+        ]
+        combined_text = _assemble([c.text for c in compiled_list])
+        over = len(combined_text) - budget
+        if over <= 0:
+            break
+        per_resource_budget -= -(-over // len(normalized_slugs))
+    if len(combined_text) > budget:
+        raise BudgetError(
+            f"multi-resource compile of {', '.join(normalized_slugs)}: assembled {len(combined_text)} characters "
+            f"into a budget of {budget} — the ceiling is hard, and silent truncation would defeat every other guarantee"
+        )
+
+    # Create multi-resource compile ID
+    id_input = f"{':'.join(normalized_slugs)}|{budget}|" + "|".join(c.compile_id for c in compiled_list)
+    import hashlib
+
+    multi_compile_id = hashlib.sha256(id_input.encode("utf-8")).hexdigest()[:16]
+
+    total_used = len(combined_text)
+    all_gaps = []
+    for slug, c in zip(normalized_slugs, compiled_list):
+        for g in c.manifest.get("gaps", []):
+            gap_copy = dict(g)
+            gap_copy["resource_slug"] = slug
+            all_gaps.append(gap_copy)
+
+    all_notes = []
+    for slug, c in zip(normalized_slugs, compiled_list):
+        for n in c.manifest.get("notes", []):
+            all_notes.append(f"[{slug}] {n}")
+
+    combined_derivation = []
+    for slug, c in zip(normalized_slugs, compiled_list):
+        for d in c.derivation:
+            d_copy = dict(d)
+            d_copy["resource_slug"] = slug
+            combined_derivation.append(d_copy)
+
+    manifest = {
+        "compile_id": multi_compile_id,
+        "mode": "multi_resource",
+        "slugs": normalized_slugs,
+        "budget": budget,
+        "max_sections": _default_max_sections() if max_sections_per_resource is None else max_sections_per_resource,
+        "used": total_used,
+        "headroom": max(0, budget - total_used),
+        "coverage_matrix": matrix_records,
+        # One list of what was packed, across every resource, each entry naming its resource. The readers of a
+        # compile (the chat's source line, the compile panel, the journal entry's Evidence and Confidence) all read
+        # `packed`; without it a multi-resource answer read as having no sources.
+        "packed": [{**p, "resource_slug": slug} for slug, c in zip(normalized_slugs, compiled_list)
+                   for p in (c.manifest.get("packed") or []) if isinstance(p, dict)],
+        "per_resource": {slug: c.manifest for slug, c in zip(normalized_slugs, compiled_list)},
+        "gaps": all_gaps,
+        "notes": all_notes,
+        "instructions_variant": instructions_variant,
+    }
+
+    record = getattr(registry, "record_compile", None)
+    if callable(record):
+        try:
+            record(
+                multi_compile_id,
+                ",".join(normalized_slugs),
+                question,
+                manifest,
+                combined_derivation,
+                session_id=session_id,
+            )
+            manifest["recorded"] = True
+        except Exception as exc:
+            log.warning("could not record multi-compile %s: %s", multi_compile_id, exc)
+            manifest["notes"].append(f"compile not recorded ({type(exc).__name__})")
+            manifest["recorded"] = False
+
+    return CompiledContext(
+        text=combined_text,
+        compile_id=multi_compile_id,
+        manifest=manifest,
+        derivation=combined_derivation,
+    )

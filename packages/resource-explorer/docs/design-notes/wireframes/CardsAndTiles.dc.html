@@ -1,0 +1,138 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <style>
+    :root{--bg:#1a1a2e;--card:#16213e;--card-line:#2c4a7c;--ink:#e6e8ef;--muted:#a3abc0;--accent:#4f9cf9;--accent-ink:#7cb6ff;--ok:#5cbf60;--warn:#f5b74e;--gap:#b39dfa;--tint:#1b2d52;--rule:rgba(160,175,210,.20);
+      --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;--mono:ui-monospace,"SF Mono",Menlo,monospace}
+    *{box-sizing:border-box}
+    body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:15px;line-height:1.55}
+    .caps{font-size:12px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+    .muted{color:var(--muted)} .mono{font-family:var(--mono);font-size:.86em}
+    .lnk{color:var(--accent-ink);text-decoration:underline;text-underline-offset:3px}
+    .q{color:var(--muted);text-decoration:underline dotted;text-underline-offset:3px}
+    .warn{color:var(--warn)} .ok{color:var(--ok)} .gapc{color:var(--gap)}
+    .g{font-family:"Noto Sans Symbols 2","DejaVu Sans","Segoe UI Symbol","Apple Symbols",sans-serif;display:inline-block;width:1.2em;text-align:center}
+    .panel-t{font-size:20px;font-weight:600;margin:0 0 4px}
+    .panel-s{font-size:14px;color:var(--muted);margin:0 0 12px;max-width:70ch}
+    .card{background:var(--card);border:1px solid var(--card-line);border-radius:8px;padding:14px 16px;margin-bottom:12px;position:relative}
+    .card.needs{box-shadow:inset 3px 0 0 var(--warn)}
+    .card.lowered{color:var(--muted)}
+    .card.chosen{background:var(--tint)}
+    .ch{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+    .ct{font-size:18px;font-weight:600}
+    .acts{margin-left:auto;display:flex;gap:8px}
+    .btn{font-size:13.5px;font-weight:600;border:1px solid var(--accent);color:var(--accent-ink);border-radius:6px;padding:2px 10px;white-space:nowrap}
+    .btn.off{border-style:dashed;border-color:var(--muted);color:var(--muted)}
+    .foot{font-size:14px;color:var(--muted);margin-top:8px;border-top:1px solid var(--rule);padding-top:6px}
+    .ann{font-size:13px;color:var(--muted);font-style:italic;margin:2px 0 10px}
+    .tiles{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+    .tile{background:var(--card);border:1px solid var(--card-line);border-radius:8px;padding:12px 14px;cursor:pointer}
+    .tile .v{font-size:30px;font-weight:700;line-height:1.15;margin-top:2px;font-variant-numeric:tabular-nums}
+    .tile .v.state{font-size:20px;font-weight:600;padding:6px 0 4px}
+    .tile .s{font-size:14px;color:var(--muted)}
+    .fact{background:var(--card);border:1px solid var(--card-line);border-radius:8px;padding:4px 10px;font-size:14px}
+    .fact .k{font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+    .col{display:grid;grid-template-columns:1fr 1fr;gap:28px}
+    table.t{border-collapse:collapse;width:100%;font-size:14.5px}
+    table.t td{padding:7px 4px;border-bottom:1px solid var(--rule)}
+    table.t tr:last-child td{border-bottom:0}
+    .before{background:#1a1a2e;border:1px dashed #44507a;border-radius:8px;padding:12px 14px;font-size:14px}
+  </style>
+</helmet>
+<div style="width:1500px;padding:28px 28px 60px">
+  <div style="border-bottom:1px solid var(--card-line);padding-bottom:16px">
+    <div class="caps" style="color:var(--accent-ink)">Plan · cards and tiles across /next · PLAN-CARDS-AND-TILES · against main at 82f50726 · drawn in Dark</div>
+    <h1 style="font-weight:600;font-size:32px;margin:10px 0 6px">A card is one thing to read or act on. A tile is one count that is the answer.</h1>
+    <p style="margin:0;max-width:110ch">Two components, defined once. Rows stay rows and sentences stay sentences. The left edge means &ldquo;needs you&rdquo; and nothing else. A tile opens what it counted, and shows absence as a state, never 0. Values illustrative (coco_pharma).</p>
+  </div>
+
+  <div class="col" style="margin-top:24px">
+   <div>
+    <div class="panel-t">A · The card, and its states</div>
+    <div class="panel-s">Header (title, meta, actions at the top right) · body · footer (provenance, always last).</div>
+    <div class="caps" style="margin-bottom:6px">Survey definitions · 3</div>
+    <div class="card">
+      <div class="ch"><span class="ct">Database Analysis Survey</span><span class="muted" style="font-size:14px">8 steps · none fetch · <span class="lnk">runs 13 analyses</span></span><span class="acts"><span class="btn">Re-run…</span><span class="btn">Re-run · coordinated by Egeria →</span></span></div>
+      <div style="margin-top:6px"><span class="ok"><span class="g">✓</span></span>4 of 4 ran · coordinated by Egeria · started by peterprofile · Oct 19, 9:02 AM · <span class="lnk">step 4 report ›</span></div>
+      <div class="foot"><span class="mono">GovActionProcess::DatabaseAnalysisSurvey</span> · <span class="lnk">runs · 7 ›</span> · <span class="lnk">definition history ›</span></div>
+    </div>
+    <div class="ann">ordinary: border only</div>
+    <div class="card needs">
+      <div class="ch"><span class="ct">Database Assessment Survey</span><span class="muted" style="font-size:14px">1 step</span><span class="acts"><span class="btn">Re-run…</span></span></div>
+      <div style="margin-top:6px"><span class="warn"><span class="g">✕</span>failed</span> · step 1 · Connection to localhost:5442 refused · <span class="lnk">change the Egeria-visible host ›</span></div>
+      <div class="foot">ran 10-19 14:02 · by RE · started by dwolfson</div>
+    </div>
+    <div class="ann">needs you: the left edge, in state-warn. It means this and nothing else.</div>
+    <div class="card lowered">
+      <div class="ch"><span class="ct">Sales tables</span><span style="font-size:14px">rule · retired 10-18</span><span class="acts"><span class="btn">Restore</span></span></div>
+      <div style="margin-top:6px">publish every table whose name contains &ldquo;sales&rdquo; · matched 14 when retired</div>
+      <div class="foot">by dwolfson 10-14 · retired by dwolfson 10-18</div>
+    </div>
+    <div class="ann">lowered: all text in ink-muted, never lighter; the border stays</div>
+    <div class="card chosen">
+      <div class="ch"><span class="ct">apac_sales</span><span class="muted" style="font-size:14px">schema · 18 tables</span><span class="acts"><span class="btn off">Re-run · coordinated by Egeria</span></span></div>
+      <div style="margin-top:6px">publish · <span class="lnk">Sales schemas</span> · waits for Publish</div>
+      <div class="foot">first seen in survey 10-14</div>
+    </div>
+    <div class="ann">chosen or selected: the accent-tint fill. An off control is dashed; the card is unchanged.</div>
+
+    <div class="caps" style="margin:14px 0 6px">Analyses · 30 &nbsp;&middot;&nbsp; a list is one card, not 30</div>
+    <div class="card" style="padding:4px 16px">
+      <table class="t">
+        <tr><td><span class="ok g">✓</span> Table activity <span class="mono muted">re_table_activity</span><div class="muted" style="font-size:14px">ran 18h ago · RE · 205 active, 61 can't tell</div></td><td style="text-align:right"><span class="btn">Re-run →</span> <span class="q">with options…</span></td></tr>
+        <tr><td><span class="warn g">◐</span> Column profile <span class="mono muted">re_column_profile</span><div class="muted" style="font-size:14px">ran 18h ago · RE · 3 of 61 tables readable</div></td><td style="text-align:right"><span class="btn">Re-run →</span> <span class="q">with options…</span></td></tr>
+      </table>
+    </div>
+    <div class="ann">one level only: never a card inside a card. Section labels sit above, outside the card.</div>
+   </div>
+
+   <div>
+    <div class="panel-t">B · The tile, and absence as a state</div>
+    <div class="panel-s">Label · figure (30px, bold, tabular) · sub. The whole tile opens what it counted.</div>
+    <div class="tiles">
+      <div class="tile"><div class="caps">Tables</div><div class="v">266</div><div class="s">opens the 266 ›</div></div>
+      <div class="tile"><div class="caps">Rows</div><div class="v">≈2.1 M</div><div class="s">estimate · analyzed 10-13</div></div>
+      <div class="tile"><div class="caps">Need you</div><div class="v warn">2</div><div class="s">a credential, a failed step</div></div>
+      <div class="tile"><div class="caps">Readable</div><div class="v state warn"><span class="g">◐</span>partial</div><div class="s">3 of 61 with this credential</div></div>
+    </div>
+    <div class="ann">measured · an estimate says so · a state count takes the state color · partial is a state, not a number</div>
+    <div class="tiles" style="margin-top:8px">
+      <div class="tile"><div class="caps">Size</div><div class="v state muted"><span class="g">?</span>not read</div><div class="s">the survey didn't measure size</div></div>
+      <div class="tile"><div class="caps">Columns</div><div class="v state muted"><span class="g">○</span>not measured</div><div class="s">no column survey yet · run it ›</div></div>
+      <div class="tile"><div class="caps">Empty schemas</div><div class="v"><span class="g" style="font-size:22px">∅</span>0</div><div class="s">counted, none found</div></div>
+      <div class="tile" style="border-style:dashed;cursor:default"><div class="caps">Health · don't</div><div class="v" style="color:var(--muted)">82/100</div><div class="s">not a tile: the card below says 82.2</div></div>
+    </div>
+    <div class="ann">absence is a state, never 0 or blank · a real zero is ∅ 0 · the dashed &ldquo;don't&rdquo; is the rule the old tiles broke: same value, same precision as the card</div>
+
+    <div class="panel-t" style="margin-top:22px">Fact tiles, for values that aren't counts</div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px">
+      <div class="fact"><div class="k">Website</div><span class="lnk">egeria-project.org ↗</span></div>
+      <div class="fact"><div class="k">Language</div>Python</div>
+      <div class="fact"><div class="k">Last pushed</div>2 days ago</div>
+      <div class="fact"><div class="k">Stars</div><span class="g muted">?</span><span class="muted">not read</span></div>
+    </div>
+    <div class="ann">the repository header's scouting tiles, migrated: same size as today, with the card border and radius</div>
+
+    <div class="panel-t" style="margin-top:22px">C · At a glance, before and after (slice C1)</div>
+    <div class="caps" style="margin:6px 0">Before: one line of figures</div>
+    <div class="before"><span class="muted g">●</span>29 <span class="muted">schemas</span> &nbsp; <span class="muted g">●</span>266 <span class="muted">tables</span> &nbsp; <span class="gapc g">◐</span>≈2.1 M <span class="muted">rows</span> &nbsp; <span class="muted g">●</span>310 MB <span class="muted">size</span> &nbsp; <span class="muted">largest: sales.orders · surveyed 10-19 18:07 by RE's own survey</span></div>
+    <div class="caps" style="margin:12px 0 6px">After: the same figures, the same states, as tiles</div>
+    <div class="tiles">
+      <div class="tile"><div class="caps">Schemas</div><div class="v">29</div><div class="s">22 new since 10-03</div></div>
+      <div class="tile"><div class="caps">Tables</div><div class="v">266</div><div class="s">largest: sales.orders</div></div>
+      <div class="tile"><div class="caps">Rows</div><div class="v"><span class="g gapc" style="font-size:22px">◐</span>≈2.1 M</div><div class="s">within this credential</div></div>
+      <div class="tile"><div class="caps">Last survey</div><div class="v" style="font-size:24px;padding-top:4px">10-19 18:07</div><div class="s">RE's own survey · report ›</div></div>
+    </div>
+    <div class="ann">nothing new is computed: these are understanding-glance.js's figures and states, drawn large</div>
+   </div>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>

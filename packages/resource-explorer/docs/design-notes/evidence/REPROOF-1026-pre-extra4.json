@@ -1,0 +1,72 @@
+{
+ "mode": "read",
+ "at": "2026-10-26T21:45:40+00:00",
+ "identity": "resourceexplorernpa",
+ "requested_by": "owner (peterprofile) via the Monday coordinator 2026-10-26: leave-out re-proof",
+ "elements": {
+  "6920bac4-16cd-4a80-9b70-712276114c3d": {
+   "before": {
+    "plain": {
+     "type": "VirtualConnection",
+     "status": "ACTIVE",
+     "qualifiedName": "PostgreSQL Relational Database Schema::host.docker.internal:5432::re_reproof_postreset_1025.alpha::Connection",
+     "updatedBy": "resourceexplorernpa"
+    },
+    "lineage": {
+     "type": "VirtualConnection",
+     "status": "ACTIVE",
+     "qualifiedName": "PostgreSQL Relational Database Schema::host.docker.internal:5432::re_reproof_postreset_1025.alpha::Connection",
+     "updatedBy": "resourceexplorernpa"
+    }
+   }
+  },
+  "fe413588-e635-451c-820b-995ec8e5f97e": {
+   "before": {
+    "plain": {
+     "type": "Endpoint",
+     "status": "ACTIVE",
+     "qualifiedName": "PostgreSQL Relational Database Schema::host.docker.internal:5432::re_reproof_postreset_1025.alpha::Endpoint",
+     "updatedBy": "resourceexplorernpa"
+    },
+    "lineage": {
+     "type": "Endpoint",
+     "status": "ACTIVE",
+     "qualifiedName": "PostgreSQL Relational Database Schema::host.docker.internal:5432::re_reproof_postreset_1025.alpha::Endpoint",
+     "updatedBy": "resourceexplorernpa"
+    }
+   }
+  },
+  "f646f352-18cd-4c1b-9e66-8ef9b34486ff": {
+   "before": {
+    "plain": {
+     "type": "Connection",
+     "status": "ACTIVE",
+     "qualifiedName": "PostgreSQL Relational Database Schema::host.docker.internal:5432::re_reproof_postreset_1025.alpha::SecretsStoreConnection",
+     "updatedBy": "resourceexplorernpa"
+    },
+    "lineage": {
+     "type": "Connection",
+     "status": "ACTIVE",
+     "qualifiedName": "PostgreSQL Relational Database Schema::host.docker.internal:5432::re_reproof_postreset_1025.alpha::SecretsStoreConnection",
+     "updatedBy": "resourceexplorernpa"
+    }
+   }
+  },
+  "25b64af4-60f5-4b58-9755-4d2c1556c8db": {
+   "before": {
+    "plain": {
+     "type": "Endpoint",
+     "status": "ACTIVE",
+     "qualifiedName": "PostgreSQL Relational Database Schema::host.docker.internal:5432::re_reproof_postreset_1025.alpha::SecretStoreEndpoint",
+     "updatedBy": "resourceexplorernpa"
+    },
+    "lineage": {
+     "type": "Endpoint",
+     "status": "ACTIVE",
+     "qualifiedName": "PostgreSQL Relational Database Schema::host.docker.internal:5432::re_reproof_postreset_1025.alpha::SecretStoreEndpoint",
+     "updatedBy": "resourceexplorernpa"
+    }
+   }
+  }
+ }
+}

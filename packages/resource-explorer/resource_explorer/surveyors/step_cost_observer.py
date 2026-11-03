@@ -150,6 +150,23 @@ class Observation:
     #: §17.1's attribution: "" for a directly-requested step, the requesting
     #: step's key for an auto-run prerequisite.
     demanded_by: str = ""
+    #: Prefect dispatch honesty (2026-09-28). Mirrors `executor_ref` for a
+    #: genuine Prefect dispatch (kept as its own field, not folded into
+    #: `executor_ref`, per the step_runs schema migration's own reasoning —
+    #: see registry.py::record_step_run). Empty unless `executor=='prefect'`
+    #: and the dispatch actually happened.
+    flow_run_id: str = ""
+    #: Non-empty only when a Prefect dispatch was attempted and fell back to
+    #: local execution — the exception text `run_prefect_step` caught. Empty
+    #: for a step that was never routed to Prefect at all, which is a
+    #: different, unremarkable case this field must not conflate with a
+    #: failure.
+    dispatch_failed: str = ""
+    #: R21: the OpenLineage run id and how delivery went
+    #: (`openlineage.RunState.summary()`), so a run's event can be found from
+    #: its `step_runs` row and a lost event is visible, not inferred. Empty
+    #: only for an Observation built by hand.
+    openlineage: dict = field(default_factory=dict)
 
     def vector(self) -> dict:
         """The cost vector as it is stored, one key per §17.2 axis.
@@ -177,6 +194,7 @@ class Observation:
             "questions_answered": self.questions_answered,
             "outcomes": list(self.outcomes),
             "interpretable": self.interpretable,
+            **({"openlineage": dict(self.openlineage)} if self.openlineage else {}),
         }
 
     def declared_vector(self) -> dict:
@@ -222,7 +240,9 @@ def _cpu_seconds() -> float:
 @contextmanager
 def observe(step_key: str, declared_fetch: str, declared_compute: str,
             *, executor: str = "local", source: str = "local",
-            executor_ref: str = "", demanded_by: str = ""):
+            executor_ref: str = "", demanded_by: str = "",
+            entity_type: str = "", slug: str = "", resource=None,
+            job_family: str = "analysis"):
     """Measure a step's whole cost vector, then compare it with what it declared.
 
     Yields a one-element list that receives the Observation on exit, so a
@@ -238,6 +258,12 @@ def observe(step_key: str, declared_fetch: str, declared_compute: str,
     """
     global _connect_count, _patched
     from resource_explorer.observability import acquisition, external_calls, llm_usage
+    from resource_explorer.observability import openlineage
+
+    # R21: every step passes through here, so this is the one place a run
+    # event is emitted -- START now, COMPLETE/FAIL in the finally below.
+    ol_state, ol_token = openlineage.begin(job_family, step_key, entity_type, slug, resource)
+    raised: BaseException | None = None
 
     out: list[Observation] = []
     with _counter_lock:
@@ -254,6 +280,9 @@ def observe(step_key: str, declared_fetch: str, declared_compute: str,
         tokens = stack.enter_context(llm_usage.usage_scope())
         try:
             yield out
+        except BaseException as exc:
+            raised = exc
+            raise
         finally:
             elapsed = time.perf_counter() - t0
             cpu = _cpu_seconds() - cpu0
@@ -276,6 +305,8 @@ def observe(step_key: str, declared_fetch: str, declared_compute: str,
             obs.executor_ref = executor_ref
             obs.demanded_by = demanded_by
             obs.disagreement = _disagreement(obs)
+            openlineage.finish(ol_state, ol_token, raised=raised)
+            obs.openlineage = ol_state.summary()
             out.append(obs)
             if obs.disagreement:
                 log.warning("step cost: %s — %s", step_key, obs.disagreement)
@@ -356,6 +387,13 @@ def _step_ever_measured(registry, step_key: str) -> bool:
     return row is not None
 
 
+def completed(annotations, raised: bool) -> bool:
+    """True when a step ran to the end: it did not raise and reported no `step_error` (BaseSurveyor._warn,
+    which most surveyors use instead of raising). Only a completed step's step_runs row carries the commit
+    it read (`survey_commit_sha`): a failed step read nothing a reader should cite."""
+    return not raised and not any(getattr(a, "check_name", "") == "step_error" for a in annotations or ())
+
+
 def describe_work(annotations) -> tuple[int, tuple[str, ...]]:
     """What a step produced, as the observer needs it: how many annotations,
     and any StepOutcome labels they carry.
@@ -429,7 +467,7 @@ def _analyses_for_step(step_key: str, entity_type: str) -> set[str] | None:
 
 
 def record(registry, slug: str, obs: Observation, surveyed_at: str | None = None,
-           entity_type: str = "repo") -> str:
+           entity_type: str = "repo", survey_commit_sha: str | None = None) -> str:
     """Persist one observation. Returns FIRST when this is the first ever for
     this step, RECORDED normally, NOT_RECORDED when persistence failed.
 
@@ -458,6 +496,8 @@ def record(registry, slug: str, obs: Observation, surveyed_at: str | None = None
             executor_ref=obs.executor_ref, demanded_by=obs.demanded_by,
             metrics=obs.vector(), declared=obs.declared_vector(),
             disagreement=obs.disagreement,
+            flow_run_id=obs.flow_run_id, dispatch_failed=obs.dispatch_failed,
+            survey_commit_sha=survey_commit_sha,
         )
     except Exception as exc:
         vector_recorded = False

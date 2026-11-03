@@ -1,5 +1,0 @@
-amundsen             done     157
-deep_causality       done     124
-kafka                done     137
-polaris              done     68
-polaris              failed   57

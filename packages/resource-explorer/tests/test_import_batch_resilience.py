@@ -120,7 +120,7 @@ class TestFailuresAreAttributedCorrectly:
 
         _run(repos, fail_success_logs)
         batch = [s for s in summaries if "batch complete" in s.lower()]
-        assert batch and "5 succeeded, 0 failed" in batch[0], (
+        assert batch and "5 imported, 0 already registered, 0 failed" in batch[0], (
             f"logging failures were miscounted as import failures: {batch}")
 
     def test_a_real_import_failure_still_counts_and_continues(self, repos):
@@ -133,7 +133,7 @@ class TestFailuresAreAttributedCorrectly:
         state = _run(repos, lambda k: None, import_impl=fail_third)
         assert len(state["imported"]) == 4
         batch = [k for k in state["logged"] if "batch complete" in k.get("summary", "").lower()]
-        assert "4 succeeded, 1 failed" in batch[0]["summary"]
+        assert "4 imported, 0 already registered, 1 failed" in batch[0]["summary"]
 
     def test_a_failing_repo_does_not_stop_the_ones_after_it(self, repos):
         def fail_first(url):

@@ -1,0 +1,2429 @@
+{
+ "captured": "2026-10-15",
+ "platform": "Egeria 6.2 quickstart (qs-view-server), pyegeria 6.2.3",
+ "identity": "RE daemon (DaemonReason.ENGINE_HOST), read-only (engine-host step 4, M2)",
+ "route": "AssetMaker.get_asset_by_guid",
+ "call": "get_asset_by_guid('cb92eedc-...', body={'class': 'GetRequestBody', 'graphQueryDepth': 1}, output_format='JSON')",
+ "secrets": "keys matching token|password|secret|credential|apikey replaced by <removed>; mermaidGraph dropped",
+ "note": "The native PostgreSQLSurvey report of the survey step above. reportedAnnotations trimmed to the database, schema and all 10 table measurements plus 2 of 67 column measurements; actionsForTarget dropped. Table measurements carry rows inserted/updated/deleted (cumulative pg_stat counters), NO row count.",
+ "answer": {
+  "class": "OpenMetadataRootElement",
+  "elementHeader": {
+   "anchor": {
+    "class": "ElementClassification",
+    "classificationName": "Anchors",
+    "classificationOrigin": "ASSIGNED",
+    "classificationProperties": {
+     "anchorDomainName": "Asset",
+     "anchorGUID": "304152cf-fa47-4496-9a14-27a7f5b35df2",
+     "anchorTypeName": "RelationalDatabase",
+     "class": "AnchorsProperties",
+     "typeName": "Anchors"
+    },
+    "headerVersion": 0,
+    "origin": {
+     "homeMetadataCollectionId": "9905c3cb-94c5-4494-9229-0d6f69c0b842",
+     "homeMetadataCollectionName": "qs-metadata-store",
+     "originCategory": "LOCAL_COHORT",
+     "sourceServer": "qs-metadata-store"
+    },
+    "status": "ACTIVE",
+    "type": {
+     "typeCategory": "CLASSIFICATION_DEF",
+     "typeDescription": "Identifies the anchor entity for an element that is part of a large composite object such as an asset.",
+     "typeId": "aa44f302-2e43-4669-a1e7-edaae414fc6e",
+     "typeName": "Anchors",
+     "typeVersion": 1
+    },
+    "versions": {
+     "createTime": "2026-10-13T01:10:56.778+00:00",
+     "createdBy": "postgresqlsurveyengine",
+     "lastRequestId": "8eef4cc1-6c3e-49d5-9408-94392aeed91c",
+     "maintainedBy": [
+      "postgresqlsurveyengine"
+     ],
+     "updateTime": "2026-10-13T01:10:56.778+00:00",
+     "updatedBy": "postgresqlsurveyengine",
+     "version": 1
+    }
+   },
+   "class": "ElementHeader",
+   "guid": "cb92eedc-5e24-4da7-ba5e-fc11d1707d8f",
+   "headerVersion": 0,
+   "origin": {
+    "homeMetadataCollectionId": "9905c3cb-94c5-4494-9229-0d6f69c0b842",
+    "homeMetadataCollectionName": "qs-metadata-store",
+    "originCategory": "LOCAL_COHORT",
+    "sourceServer": "qs-metadata-store"
+   },
+   "status": "ACTIVE",
+   "type": {
+    "superTypeNames": [
+     "Report",
+     "DataSet",
+     "DataAsset",
+     "Asset",
+     "Referenceable",
+     "OpenMetadataRoot"
+    ],
+    "typeCategory": "ENTITY_DEF",
+    "typeDescription": "A set of results describing the analysis from the execution of a survey action service.",
+    "typeId": "db9d02a6-11f1-4b6e-86ce-95df2352c3a2",
+    "typeName": "SurveyReport",
+    "typeVersion": 1
+   },
+   "versions": {
+    "createTime": "2026-10-13T01:10:56.781+00:00",
+    "createdBy": "postgresqlsurveyengine",
+    "lastRequestId": "452789a8-153c-4d82-bd19-4d6f563ddeb2",
+    "maintainedBy": [
+     "postgresqlsurveyengine"
+    ],
+    "updateTime": "2026-10-13T01:12:26.126+00:00",
+    "updatedBy": "postgresqlsurveyengine",
+    "version": 6
+   }
+  },
+  "properties": {
+   "analysisStep": "Profiling Associated Resources",
+   "authors": [
+    "postgresqlsurveyengine"
+   ],
+   "class": "SurveyReportProperties",
+   "completionMessage": "OMES-SURVEY-ACTION-0019 The survey action service postgres-database-survey-service has completed the analysis of asset 304152cf-fa47-4496-9a14-27a7f5b35df2 with request type survey-postgres-database in 89142 milliseconds; the results are stored in survey report cb92eedc-5e24-4da7-ba5e-fc11d1707d8f",
+   "completionTime": "2026-10-13T01:12:26.105+00:00",
+   "createdTime": "2026-10-13T01:10:56.758+00:00",
+   "description": "This is the survey-postgres-database survey report for asset 304152cf-fa47-4496-9a14-27a7f5b35df2 generated at Tue Oct 13 01:10:56 GMT 2026 by the postgres-database-survey-service survey action service running on survey action engine PostgreSQL Survey Engine (PostgreSQLSurvey).",
+   "displayName": "Survey Report for 304152cf-fa47-4496-9a14-27a7f5b35df2",
+   "purpose": "survey-postgres-database",
+   "qualifiedName": "SurveyReport::survey-postgres-database::304152cf-fa47-4496-9a14-27a7f5b35df2::Tue Oct 13 01:10:56 GMT 2026",
+   "startTime": "2026-10-13T01:10:56.758+00:00",
+   "typeName": "SurveyReport"
+  },
+  "reportOriginator": {
+   "class": "RelatedMetadataElementSummary",
+   "relatedElement": {
+    "elementHeader": {
+     "anchor": {
+      "class": "ElementClassification",
+      "classificationName": "Anchors",
+      "classificationOrigin": "ASSIGNED",
+      "classificationProperties": {
+       "anchorDomainName": "Asset",
+       "anchorGUID": "06994d5d-a228-408c-8842-fd6256db4c34",
+       "anchorTypeName": "GovernanceActionProcessInstance",
+       "class": "AnchorsProperties",
+       "typeName": "Anchors"
+      },
+      "headerVersion": 0,
+      "origin": {
+       "homeMetadataCollectionId": "9905c3cb-94c5-4494-9229-0d6f69c0b842",
+       "homeMetadataCollectionName": "qs-metadata-store",
+       "originCategory": "LOCAL_COHORT",
+       "sourceServer": "qs-metadata-store"
+      },
+      "status": "ACTIVE",
+      "type": {
+       "typeCategory": "CLASSIFICATION_DEF",
+       "typeDescription": "Identifies the anchor entity for an element that is part of a large composite object such as an asset.",
+       "typeId": "aa44f302-2e43-4669-a1e7-edaae414fc6e",
+       "typeName": "Anchors",
+       "typeVersion": 1
+      },
+      "versions": {
+       "createTime": "2026-10-13T01:10:53.675+00:00",
+       "createdBy": "postgresqlgovernanceengine",
+       "lastRequestId": "0f24bf8d-5134-440b-b90b-16aa2472d4ce",
+       "maintainedBy": [
+        "postgresqlgovernanceengine"
+       ],
+       "updateTime": "2026-10-13T01:10:53.675+00:00",
+       "updatedBy": "postgresqlgovernanceengine",
+       "version": 1
+      }
+     },
+     "class": "ElementHeader",
+     "guid": "532d040d-e2ca-45b8-9167-675d6e20128f",
+     "headerVersion": 0,
+     "origin": {
+      "homeMetadataCollectionId": "9905c3cb-94c5-4494-9229-0d6f69c0b842",
+      "homeMetadataCollectionName": "qs-metadata-store",
+      "originCategory": "LOCAL_COHORT",
+      "sourceServer": "qs-metadata-store"
+     },
+     "status": "ACTIVE",
+     "type": {
+      "superTypeNames": [
+       "Action",
+       "Process",
+       "Asset",
+       "Referenceable",
+       "OpenMetadataRoot"
+      ],
+      "typeCategory": "ENTITY_DEF",
+      "typeDescription": "An engine action that has been created to support the active governance of the open metadata ecosystem and/or digital landscape.",
+      "typeId": "c976d88a-2b11-4b40-b972-c38d41bfc6be",
+      "typeName": "EngineAction",
+      "typeVersion": 2
+     },
+     "versions": {
+      "createTime": "2026-10-13T01:10:53.678+00:00",
+      "createdBy": "postgresqlgovernanceengine",
+      "lastRequestId": "452789a8-153c-4d82-bd19-4d6f563ddeb2",
+      "maintainedBy": [
+       "postgresqlgovernanceengine",
+       "postgresqlsurveyengine"
+      ],
+      "updateTime": "2026-10-13T01:12:26.167+00:00",
+      "updatedBy": "postgresqlsurveyengine",
+      "version": 5
+     }
+    },
+    "properties": {
+     "activityStatus": "COMPLETED",
+     "class": "EngineActionProperties",
+     "completionGuards": [
+      "survey-completed"
+     ],
+     "completionMessage": "OMES-SURVEY-ACTION-0019 The survey action service postgres-database-survey-service has completed the analysis of asset 304152cf-fa47-4496-9a14-27a7f5b35df2 with request type survey-postgres-database in 89142 milliseconds; the results are stored in survey report cb92eedc-5e24-4da7-ba5e-fc11d1707d8f",
+     "completionTime": "2026-10-13T01:12:26.155+00:00",
+     "description": "Create a survey report detailing the contents of the PostgreSQL Relational Database.",
+     "displayName": "Run the survey.",
+     "domainIdentifier": 0,
+     "executorEngineGUID": "064519ac-c6fb-4e76-b3dd-43c9bd31cd16",
+     "executorEngineName": "PostgreSQLSurvey",
+     "priority": 0,
+     "processName": "PostgreSQLDatabase:CreateAndSurveyGovernanceActionProcess@1791853850864::982691e5-90d7-41ca-93e9-3e8f566b6e79",
+     "processStepGUID": "7ef6b05c-f6e7-494f-ad61-d90922c14898",
+     "processStepName": "PostgreSQLDatabase::CreateAndSurvey::Step2",
+     "processingEngineUserId": "postgresqlsurveyengine",
+     "qualifiedName": "PostgreSQLDatabase::CreateAndSurvey::Step2::e4aa185d-9a1a-4261-8724-d56a3bf6ae7b",
+     "receivedGuards": [
+      "set-up-complete"
+     ],
+     "requestParameters": {
+      "databaseDescription": "PostgreSQL database usda",
+      "databaseName": "usda",
+      "hostIdentifier": "host.docker.internal",
+      "portNumber": "5432",
+      "secretsCollectionName": "<removed>",
+      "secretsStorePathName": "<removed>",
+      "serverName": "host.docker.internal:5432",
+      "templateGUID": "3d398b3f-7ae6-4713-952a-409f3dea8520",
+      "versionIdentifier": "not recorded"
+     },
+     "requestType": "survey-postgres-database",
+     "requestedStartTime": "2026-10-13T01:10:53.559+00:00",
+     "requesterUserId": "peterprofile",
+     "startTime": "2026-10-13T01:10:56.917+00:00",
+     "typeName": "EngineAction"
+    }
+   },
+   "relatedElementAtEnd1": true,
+   "relationshipHeader": {
+    "class": "ElementHeader",
+    "guid": "5e93cda8-f010-4c61-ba56-118d8091ca3a",
+    "headerVersion": 0,
+    "origin": {
+     "homeMetadataCollectionId": "9905c3cb-94c5-4494-9229-0d6f69c0b842",
+     "homeMetadataCollectionName": "qs-metadata-store",
+     "originCategory": "LOCAL_COHORT",
+     "sourceServer": "qs-metadata-store"
+    },
+    "status": "ACTIVE",
+    "type": {
+     "superTypeNames": [
+      "LabeledRelationship"
+     ],
+     "typeCategory": "RELATIONSHIP_DEF",
+     "typeDescription": "Links a report to the element (typically a process) that created the report.",
+     "typeId": "6d38cf1f-44ba-44f7-8ec9-029535544d0b",
+     "typeName": "ReportOriginator",
+     "typeVersion": 1
+    },
+    "versions": {
+     "createTime": "2026-10-13T01:10:56.893+00:00",
+     "createdBy": "postgresqlsurveyengine",
+     "lastRequestId": "8eef4cc1-6c3e-49d5-9408-94392aeed91c",
+     "maintainedBy": [
+      "postgresqlsurveyengine"
+     ],
+     "updateTime": "2026-10-13T01:10:56.893+00:00",
+     "updatedBy": "postgresqlsurveyengine",
+     "version": 1
+    }
+   }
+  },
+  "reportSubjects": [
+   {
+    "class": "RelatedMetadataElementSummary",
+    "relatedElement": {
+     "elementHeader": {
+      "anchor": {
+       "class": "ElementClassification",
+       "classificationName": "Anchors",
+       "classificationOrigin": "ASSIGNED",
+       "classificationProperties": {
+        "anchorDomainName": "Asset",
+        "anchorTypeName": "RelationalDatabase",
+        "class": "AnchorsProperties",
+        "typeName": "Anchors"
+       },
+       "headerVersion": 0,
+       "origin": {
+        "homeMetadataCollectionId": "9905c3cb-94c5-4494-9229-0d6f69c0b842",
+        "homeMetadataCollectionName": "qs-metadata-store",
+        "originCategory": "LOCAL_COHORT",
+        "sourceServer": "qs-metadata-store"
+       },
+       "status": "ACTIVE",
+       "type": {
+        "typeCategory": "CLASSIFICATION_DEF",
+        "typeDescription": "Identifies the anchor entity for an element that is part of a large composite object such as an asset.",
+        "typeId": "aa44f302-2e43-4669-a1e7-edaae414fc6e",
+        "typeName": "Anchors",
+        "typeVersion": 1
+       },
+       "versions": {
+        "createTime": "2026-10-13T01:10:52.681+00:00",
+        "createdBy": "postgresqlgovernanceengine",
+        "lastRequestId": "0f24bf8d-5134-440b-b90b-16aa2472d4ce",
+        "maintainedBy": [
+         "postgresqlgovernanceengine"
+        ],
+        "updateTime": "2026-10-13T01:10:52.681+00:00",
+        "updatedBy": "postgresqlgovernanceengine",
+        "version": 1
+       }
+      },
+      "class": "ElementHeader",
+      "dataScope": {
+       "class": "ElementClassification",
+       "classificationName": "DataScope",
+       "classificationOrigin": "ASSIGNED",
+       "classificationProperties": {
+        "additionalProperties": {
+         "analysisService": "open-lineage-data-scope-governance-service",
+         "analysisTime": "2026-10-14T12:11:07Z",
+         "analysisWindowEnd": "2026-10-14T12:11:07Z",
+         "analysisWindowStart": "2026-09-14T12:11:07Z",
+         "lastReadInWindow": "2026-10-04T17:43:50Z",
+         "readersInWindow": "1",
+         "readsInWindow": "1",
+         "readsPerDay": "0.03"
+        },
+        "class": "DataScopeProperties",
+        "maxHeight": 0.0,
+        "maxLatitude": 0.0,
+        "maxLongitude": 0.0,
+        "minHeight": 0.0,
+        "minLatitude": 0.0,
+        "minLongitude": 0.0,
+        "typeName": "DataScope"
+       },
+       "headerVersion": 0,
+       "origin": {
+        "homeMetadataCollectionId": "9905c3cb-94c5-4494-9229-0d6f69c0b842",
+        "homeMetadataCollectionName": "qs-metadata-store",
+        "originCategory": "LOCAL_COHORT",
+        "sourceServer": "qs-metadata-store"
+       },
+       "status": "ACTIVE",
+       "type": {
+        "typeCategory": "CLASSIFICATION_DEF",
+        "typeDescription": "Identifies the scope of the data stored in the digital resource(s).",
+        "typeId": "22f996d0-c4b7-433a-af0b-6a3e9478e488",
+        "typeName": "DataScope",
+        "typeVersion": 2
+       },
+       "versions": {
+        "createTime": "2026-10-13T01:24:27.737+00:00",
+        "createdBy": "egeriagovernanceengine",
+        "lastRequestId": "ab1d07d6-8f8e-4df7-ab28-1a1de08d6fea",
+        "maintainedBy": [
+         "egeriagovernanceengine"
+        ],
+        "updateTime": "2026-10-14T12:12:10.563+00:00",
+        "updatedBy": "egeriagovernanceengine",
+        "version": 61
+       }
+      },
+      "guid": "304152cf-fa47-4496-9a14-27a7f5b35df2",
+      "headerVersion": 0,
+      "origin": {
+       "homeMetadataCollectionId": "9905c3cb-94c5-4494-9229-0d6f69c0b842",
+       "homeMetadataCollectionName": "qs-metadata-store",
+       "originCategory": "LOCAL_COHORT",
+       "sourceServer": "qs-metadata-store"
+      },
+      "status": "ACTIVE",
+      "type": {
+       "superTypeNames": [
+        "Database",
+        "DataStore",
+        "DataAsset",
+        "Asset",
+        "Referenceable",
+        "OpenMetadataRoot"
+       ],
+       "typeCategory": "ENTITY_DEF",
+       "typeDescription": "A data store organized to facilitate a relational data model.",
+       "typeId": "6a28e242-4eca-4664-81cb-e2096d769568",
+       "typeName": "RelationalDatabase",
+       "typeVersion": 1
+      },
+      "versions": {
+       "createTime": "2026-10-13T01:10:52.688+00:00",
+       "createdBy": "postgresqlgovernanceengine",
+       "lastRequestId": "0f24bf8d-5134-440b-b90b-16aa2472d4ce",
+       "maintainedBy": [
+        "postgresqlgovernanceengine"
+       ],
+       "updateTime": "2026-10-13T01:10:52.688+00:00",
+       "updatedBy": "postgresqlgovernanceengine",
+       "version": 1
+      }
+     },
+     "properties": {
+      "class": "RelationalDatabaseProperties",
+      "contentStatus": "ACTIVE",
+      "deployedImplementationType": "PostgreSQL Relational Database",
+      "description": "PostgreSQL database usda",
+      "displayName": "usda",
+      "qualifiedName": "PostgreSQL Relational Database::host.docker.internal:5432::usda",
+      "typeName": "RelationalDatabase",
+      "versionIdentifier": "not recorded"
+     }
+    },
+    "relatedElementAtEnd1": true,
+    "relationshipHeader": {
+     "class": "ElementHeader",
+     "guid": "48fe9ff3-e97d-41a4-b572-997842521f41",
+     "headerVersion": 0,
+     "origin": {
+      "homeMetadataCollectionId": "9905c3cb-94c5-4494-9229-0d6f69c0b842",
+      "homeMetadataCollectionName": "qs-metadata-store",
+      "originCategory": "LOCAL_COHORT",
+      "sourceServer": "qs-metadata-store"
+     },
+     "status": "ACTIVE",
+     "type": {
+      "superTypeNames": [
+       "LabeledRelationship"
+      ],
+      "typeCategory": "RELATIONSHIP_DEF",
+      "typeDescription": "Links a report to the element that the report is about.",
+      "typeId": "559211a7-ddd2-4f31-9f2f-2bf3021124c8",
+      "typeName": "ReportSubject",
+      "typeVersion": 1
+     },
+     "versions": {
+      "createTime": "2026-10-13T01:10:56.822+00:00",
+      "createdBy": "postgresqlsurveyengine",
+      "lastRequestId": "8eef4cc1-6c3e-49d5-9408-94392aeed91c",
+      "maintainedBy": [
+       "postgresqlsurveyengine"
+      ],
+      "updateTime": "2026-10-13T01:10:56.822+00:00",
+      "updatedBy": "postgresqlsurveyengine",
+      "version": 1
+     }
+    }
+   }
+  ],
+  "reportedAnnotations": [
+   {
+    "class": "RelatedMetadataElementSummary",
+    "relatedElement": {
+     "elementHeader": {
+      "anchor": {
+       "class": "ElementClassification",
+       "classificationName": "Anchors",
+       "classificationOrigin": "ASSIGNED",
+       "classificationProperties": {
+        "anchorDomainName": "Asset",
+        "anchorGUID": "304152cf-fa47-4496-9a14-27a7f5b35df2",
+        "anchorTypeName": "RelationalDatabase",
+        "class": "AnchorsProperties",
+        "typeName": "Anchors"
+       },
+       "headerVersion": 0,
+       "origin": {
+        "homeMetadataCollectionId": "9905c3cb-94c5-4494-9229-0d6f69c0b842",
+        "homeMetadataCollectionName": "qs-metadata-store",
+        "originCategory": "LOCAL_COHORT",
+        "sourceServer": "qs-metadata-store"
+       },
+       "status": "ACTIVE",
+       "type": {
+        "typeCategory": "CLASSIFICATION_DEF",
+        "typeDescription": "Identifies the anchor entity for an element that is part of a large composite object such as an asset.",
+        "typeId": "aa44f302-2e43-4669-a1e7-edaae414fc6e",
+        "typeName": "Anchors",
+        "typeVersion": 1
+       },
+       "versions": {
+        "createTime": "2026-10-13T01:12:25.902+00:00",
+        "createdBy": "postgresqlsurveyengine",
+        "lastRequestId": "452789a8-153c-4d82-bd19-4d6f563ddeb2",
+        "maintainedBy": [
+         "postgresqlsurveyengine"
+        ],
+        "updateTime": "2026-10-13T01:12:25.902+00:00",
+        "updatedBy": "postgresqlsurveyengine",
+        "version": 1
+       }
+      },
+      "class": "ElementHeader",
+      "guid": "3b2b7b49-f378-4a9c-aef4-5c7c894dc1f5",
+      "headerVersion": 0,
+      "origin": {
+       "homeMetadataCollectionId": "9905c3cb-94c5-4494-9229-0d6f69c0b842",
+       "homeMetadataCollectionName": "qs-metadata-store",
+       "originCategory": "LOCAL_COHORT",
+       "sourceServer": "qs-metadata-store"
+      },
+      "status": "ACTIVE",
+      "type": {
+       "superTypeNames": [
+        "Annotation",
+        "AuthoredReferenceable",
+        "Referenceable",
+        "OpenMetadataRoot"
+       ],
+       "typeCategory": "ENTITY_DEF",
+       "typeDescription": "A summary set of measurements for a resource.",
+       "typeId": "c85bea73-d7af-46d7-8a7e-cb745910b1d",
+       "typeName": "ResourceMeasureAnnotation",
+       "typeVersion": 1
+      },
+      "versions": {
+       "createTime": "2026-10-13T01:12:25.904+00:00",
+       "createdBy": "postgresqlsurveyengine",
+       "lastRequestId": "452789a8-153c-4d82-bd19-4d6f563ddeb2",
+       "maintainedBy": [
+        "postgresqlsurveyengine"
+       ],
+       "updateTime": "2026-10-13T01:12:25.904+00:00",
+       "updatedBy": "postgresqlsurveyengine",
+       "version": 1
+      }
+     },
+     "properties": {
+      "absoluteUncertainty": 0,
+      "analysisStep": "Profiling Associated Resources",
+      "annotationType": "Capture Database Column Measurements",
+      "class": "ResourceMeasureAnnotationProperties",
+      "confidence": 0,
+      "explanation": "This annotation retrieves statistics about an individual column.",
+      "jsonProperties": "{\"qualifiedColumnName\":\"usda.public.src_cd.src_cd\",\"columnName\":\"src_cd\",\"columnSize\":26,\"columnDataType\":\"int4\",\"columnNotNull\":true,\"averageColumnWidth\":4,\"numberOfDistinctValues\":0}",
+      "qualifiedName": "Annotation::Capture Database Column Measurements::usda.public.src_cd.src_cd::a1b03bd7-43fd-4a09-b4f3-1d02bde46fd1",
+      "relativeUncertainty": 0,
+      "resourceProperties": {
+       "Average Column Width": "4",
+       "Column data type": "int4",
+       "Column name": "src_cd",
+       "Column qualified name": "usda.public.src_cd.src_cd",
+       "Column size": "26",
+       "Not Null": "true",
+       "Number Of Distinct Values": "0"
+      },
+      "samplePercent": 0,
+      "sampleSize": 0,
+      "summary": "Capture summary statistics about a database column.",
+      "typeName": "ResourceMeasureAnnotation"
+     }
+    },
+    "relatedElementAtEnd1": false,
+    "relationshipHeader": {
+     "class": "ElementHeader",
+     "guid": "980cf5dc-e65d-4211-8fd5-53dc81a5b2e0",
+     "headerVersion": 0,
+     "origin": {
+      "homeMetadataCollectionId": "9905c3cb-94c5-4494-9229-0d6f69c0b842",
+      "homeMetadataCollectionName": "qs-metadata-store",
+      "originCategory": "LOCAL_COHORT",
+      "sourceServer": "qs-metadata-store"
+     },
+     "status": "ACTIVE",
+     "type": {
+      "superTypeNames": [
+       "LabeledRelationship"
+      ],
+      "typeCategory": "RELATIONSHIP_DEF",
+      "typeDescription": "Link between a SurveyReport and an Annotation generated from the same run of a survey action service.",
+      "typeId": "3af278ed-f4e8-4afc-851b-a5b0908ba06f",
+      "typeName": "ReportedAnnotation",
+      "typeVersion": 2
+     },
+     "versions": {
+      "createTime": "2026-10-13T01:12:25.966+00:00",
+      "createdBy": "postgresqlsurveyengine",
+      "lastRequestId": "452789a8-153c-4d82-bd19-4d6f563ddeb2",
+      "maintainedBy": [
+       "postgresqlsurveyengine"
+      ],
+      "updateTime": "2026-10-13T01:12:25.966+00:00",
+      "updatedBy": "postgresqlsurveyengine",
+      "version": 1
+     }
+    }
+   },
+   {
+    "class": "RelatedMetadataElementSummary",
+    "relatedElement": {
+     "elementHeader": {
+      "anchor": {
+       "class": "ElementClassification",
+       "classificationName": "Anchors",
+       "classificationOrigin": "ASSIGNED",
+       "classificationProperties": {
+        "anchorDomainName": "Asset",
+        "anchorGUID": "304152cf-fa47-4496-9a14-27a7f5b35df2",
+        "anchorTypeName": "RelationalDatabase",
+        "class": "AnchorsProperties",
+        "typeName": "Anchors"
+       },
+       "headerVersion": 0,
+       "origin": {
+        "homeMetadataCollectionId": "9905c3cb-94c5-4494-9229-0d6f69c0b842",
+        "homeMetadataCollectionName": "qs-metadata-store",
+        "originCategory": "LOCAL_COHORT",
+        "sourceServer": "qs-metadata-store"
+       },
+       "status": "ACTIVE",
+       "type": {
+        "typeCategory": "CLASSIFICATION_DEF",
+        "typeDescription": "Identifies the anchor entity for an element that is part of a large composite object such as an asset.",
+        "typeId": "aa44f302-2e43-4669-a1e7-edaae414fc6e",
+        "typeName": "Anchors",
+        "typeVersion": 1
+       },
+       "versions": {
+        "createTime": "2026-10-13T01:12:23.623+00:00",
+        "createdBy": "postgresqlsurveyengine",
+        "lastRequestId": "452789a8-153c-4d82-bd19-4d6f563ddeb2",
+        "maintainedBy": [
+         "postgresqlsurveyengine"
+        ],
+        "updateTime": "2026-10-13T01:12:23.623+00:00",
+        "updatedBy": "postgresqlsurveyengine",
+        "version": 1
+       }
+      },
+      "class": "ElementHeader",
+      "guid": "9db7a326-cda2-4e61-a12b-9aa361b61fb8",
+      "headerVersion": 0,
+      "origin": {
+       "homeMetadataCollectionId": "9905c3cb-94c5-4494-9229-0d6f69c0b842",
+       "homeMetadataCollectionName": "qs-metadata-store",
+       "originCategory": "LOCAL_COHORT",
+       "sourceServer": "qs-metadata-store"
+      },
+      "status": "ACTIVE",
+      "type": {
+       "superTypeNames": [
+        "Annotation",
+        "AuthoredReferenceable",
+        "Referenceable",
+        "OpenMetadataRoot"
+       ],
+       "typeCategory": "ENTITY_DEF",
+       "typeDescription": "A summary set of measurements for a resource.",
+       "typeId": "c85bea73-d7af-46d7-8a7e-cb745910b1d",
+       "typeName": "ResourceMeasureAnnotation",
+       "typeVersion": 1
+      },
+      "versions": {
+       "createTime": "2026-10-13T01:12:23.624+00:00",
+       "createdBy": "postgresqlsurveyengine",
+       "lastRequestId": "452789a8-153c-4d82-bd19-4d6f563ddeb2",
+       "maintainedBy": [
+        "postgresqlsurveyengine"
+       ],
+       "updateTime": "2026-10-13T01:12:23.624+00:00",
+       "updatedBy": "postgresqlsurveyengine",
+       "version": 1
+      }
+     },
+     "properties": {
+      "absoluteUncertainty": 0,
+      "analysisStep": "Profiling Associated Resources",
+      "annotationType": "Capture Database Column Measurements",
+      "class": "ResourceMeasureAnnotationProperties",
+      "confidence": 0,
+      "explanation": "This annotation retrieves statistics about an individual column.",
+      "jsonProperties": "{\"qualifiedColumnName\":\"usda.public.src_cd.srccd_desc\",\"columnName\":\"srccd_desc\",\"columnSize\":30,\"columnDataType\":\"text\",\"columnNotNull\":true,\"averageColumnWidth\":44,\"numberOfDistinctValues\":0}",
+      "qualifiedName": "Annotation::Capture Database Column Measurements::usda.public.src_cd.srccd_desc::9ba00b3d-7162-4e18-9355-ac99ddba7df5",
+      "relativeUncertainty": 0,
+      "resourceProperties": {
+       "Average Column Width": "44",
+       "Column data type": "text",
+       "Column name": "srccd_desc",
+       "Column qualified name": "usda.public.src_cd.srccd_desc",
+       "Column size": "30",
+       "Not Null": "true",
+       "Number Of Distinct Values": "0"
+      },
+      "samplePercent": 0,
+      "sampleSize": 0,
+      "summary": "Capture summary statistics about a database column.",
+      "typeName": "ResourceMeasureAnnotation"
+     }
+    },
+    "relatedElementAtEnd1": false,
+    "relationshipHeader": {
+     "class": "ElementHeader",
+     "guid": "b7502b1a-f8ae-4b7a-9f9e-cba5cfcb346c",
+     "headerVersion": 0,
+     "origin": {
+      "homeMetadataCollectionId": "9905c3cb-94c5-4494-9229-0d6f69c0b842",
+      "homeMetadataCollectionName": "qs-metadata-store",
+      "originCategory": "LOCAL_COHORT",
+      "sourceServer": "qs-metadata-store"
+     },
+     "status": "ACTIVE",
+     "type": {
+      "superTypeNames": [
+       "LabeledRelationship"
+      ],
+      "typeCategory": "RELATIONSHIP_DEF",
+      "typeDescription": "Link between a SurveyReport and an Annotation generated from the same run of a survey action service.",
+      "typeId": "3af278ed-f4e8-4afc-851b-a5b0908ba06f",
+      "typeName": "ReportedAnnotation",
+      "typeVersion": 2
+     },
+     "versions": {
+      "createTime": "2026-10-13T01:12:23.689+00:00",
+      "createdBy": "postgresqlsurveyengine",
+      "lastRequestId": "452789a8-153c-4d82-bd19-4d6f563ddeb2",
+      "maintainedBy": [
+       "postgresqlsurveyengine"
+      ],
+      "updateTime": "2026-10-13T01:12:23.689+00:00",
+      "updatedBy": "postgresqlsurveyengine",
+      "version": 1
+     }
+    }
+   },
+   {
+    "class": "RelatedMetadataElementSummary",
+    "relatedElement": {
+     "elementHeader": {
+      "anchor": {
+       "class": "ElementClassification",
+       "classificationName": "Anchors",
+       "classificationOrigin": "ASSIGNED",
+       "classificationProperties": {
+        "anchorDomainName": "Asset",
+        "anchorGUID": "304152cf-fa47-4496-9a14-27a7f5b35df2",
+        "anchorTypeName": "RelationalDatabase",
+        "class": "AnchorsProperties",
+        "typeName": "Anchors"
+       },
+       "headerVersion": 0,
+       "origin": {
+        "homeMetadataCollectionId": "9905c3cb-94c5-4494-9229-0d6f69c0b842",
+        "homeMetadataCollectionName": "qs-metadata-store",
+        "originCategory": "LOCAL_COHORT",
+        "sourceServer": "qs-metadata-store"
+       },
+       "status": "ACTIVE",
+       "type": {
+        "typeCategory": "CLASSIFICATION_DEF",
+        "typeDescription": "Identifies the anchor entity for an element that is part of a large composite object such as an asset.",
+        "typeId": "aa44f302-2e43-4669-a1e7-edaae414fc6e",
+        "typeName": "Anchors",
+        "typeVersion": 1
+       },
+       "versions": {
+        "createTime": "2026-10-13T01:12:21.103+00:00",
+        "createdBy": "postgresqlsurveyengine",
+        "lastRequestId": "452789a8-153c-4d82-bd19-4d6f563ddeb2",
+        "maintainedBy": [
+         "postgresqlsurveyengine"
+        ],
+        "updateTime": "2026-10-13T01:12:21.103+00:00",
+        "updatedBy": "postgresqlsurveyengine",
+        "version": 1
+       }
+      },
+      "class": "ElementHeader",
+      "guid": "78473dd6-1dc8-4ac5-9a67-093460747c74",
+      "headerVersion": 0,
+      "origin": {
+       "homeMetadataCollectionId": "9905c3cb-94c5-4494-9229-0d6f69c0b842",
+       "homeMetadataCollectionName": "qs-metadata-store",
+       "originCategory": "LOCAL_COHORT",
+       "sourceServer": "qs-metadata-store"
+      },
+      "status": "ACTIVE",
+      "type": {
+       "superTypeNames": [
+        "Annotation",
+        "AuthoredReferenceable",
+        "Referenceable",
+        "OpenMetadataRoot"
+       ],
+       "typeCategory": "ENTITY_DEF",
+       "typeDescription": "A summary set of measurements for a resource.",
+       "typeId": "c85bea73-d7af-46d7-8a7e-cb745910b1d",
+       "typeName": "ResourceMeasureAnnotation",
+       "typeVersion": 1
+      },
+      "versions": {
+       "createTime": "2026-10-13T01:12:21.109+00:00",
+       "createdBy": "postgresqlsurveyengine",
+       "lastRequestId": "452789a8-153c-4d82-bd19-4d6f563ddeb2",
+       "maintainedBy": [
+        "postgresqlsurveyengine"
+       ],
+       "updateTime": "2026-10-13T01:12:21.109+00:00",
+       "updatedBy": "postgresqlsurveyengine",
+       "version": 1
+      }
+     },
+     "properties": {
+      "absoluteUncertainty": 0,
+      "analysisStep": "Profiling Associated Resources",
+      "annotationType": "Capture Database Table Measurements",
+      "class": "ResourceMeasureAnnotationProperties",
+      "confidence": 0,
+      "explanation": "This annotation retrieves statistics about individual columns and aggregates them into a summary for the table.",
+      "jsonProperties": "{\"tableName\":\"src_cd\",\"qualifiedTableName\":\"usda.public.src_cd\",\"tableSize\":16384,\"tableType\":\"Table\",\"columnCount\":2,\"numberOfRowsInserted\":0,\"numberOfRowsUpdated\":0,\"numberOfRowsDeleted\":0,\"tableOwner\":\"dwolfson\",\"isPopulated\":true,\"hasIndexes\":true,\"hasRules\":false,\"hasTriggers\":true,\"hasRowSecurity\":false}",
+      "qualifiedName": "Annotation::Capture Database Table Measurements::usda.public.src_cd::415eb20b-1d68-4232-9d3f-47049f9bf0a4",
+      "relativeUncertainty": 0,
+      "resourceProperties": {
+       "Has Indexes": "true",
+       "Has Row Security": "false",
+       "Has Rules": "false",
+       "Has Triggers": "true",
+       "Is Populated": "true",
+       "Number Of Rows Deleted": "0",
+       "Number Of Rows Inserted": "0",
+       "Number Of Rows Updated": "0",
+       "Number of columns": "2",
+       "Resource Owner": "dwolfson",
+       "Table Name": "src_cd",
+       "Table Qualified Name": "usda.public.src_cd",
+       "Table Size": "16384",
+       "Table Type": "Table"
+      },
+      "samplePercent": 0,
+      "sampleSize": 0,
+      "summary": "Capture summary statistics about a database table.",
+      "typeName": "ResourceMeasureAnnotation"
+     }
+    },
+    "relatedElementAtEnd1": false,
+    "relationshipHeader": {
+     "class": "ElementHeader",
+     "guid": "4e9a9a32-2108-4290-a06d-80bf2519b8d1",
+     "headerVersion": 0,
+     "origin": {
+      "homeMetadataCollectionId": "9905c3cb-94c5-4494-9229-0d6f69c0b842",
+      "homeMetadataCollectionName": "qs-metadata-store",
+      "originCategory": "LOCAL_COHORT",
+      "sourceServer": "qs-metadata-store"
+     },
+     "status": "ACTIVE",
+     "type": {
+      "superTypeNames": [
+       "LabeledRelationship"
+      ],
+      "typeCategory": "RELATIONSHIP_DEF",
+      "typeDescription": "Link between a SurveyReport and an Annotation generated from the same run of a survey action service.",
+      "typeId": "3af278ed-f4e8-4afc-851b-a5b0908ba06f",
+      "typeName": "ReportedAnnotation",
+      "typeVersion": 2
+     },
+     "versions": {
+      "createTime": "2026-10-13T01:12:21.217+00:00",
+      "createdBy": "postgresqlsurveyengine",
+      "lastRequestId": "452789a8-153c-4d82-bd19-4d6f563ddeb2",
+      "maintainedBy": [
+       "postgresqlsurveyengine"
+      ],
+      "updateTime": "2026-10-13T01:12:21.217+00:00",
+      "updatedBy": "postgresqlsurveyengine",
+      "version": 1
+     }
+    }
+   },
+   {
+    "class": "RelatedMetadataElementSummary",
+    "relatedElement": {
+     "elementHeader": {
+      "anchor": {
+       "class": "ElementClassification",
+       "classificationName": "Anchors",
+       "classificationOrigin": "ASSIGNED",
+       "classificationProperties": {
+        "anchorDomainName": "Asset",
+        "anchorGUID": "304152cf-fa47-4496-9a14-27a7f5b35df2",
+        "anchorTypeName": "RelationalDatabase",
+        "class": "AnchorsProperties",
+        "typeName": "Anchors"
+       },
+       "headerVersion": 0,
+       "origin": {
+        "homeMetadataCollectionId": "9905c3cb-94c5-4494-9229-0d6f69c0b842",
+        "homeMetadataCollectionName": "qs-metadata-store",
+        "originCategory": "LOCAL_COHORT",
+        "sourceServer": "qs-metadata-store"
+       },
+       "status": "ACTIVE",
+       "type": {
+        "typeCategory": "CLASSIFICATION_DEF",
+        "typeDescription": "Identifies the anchor entity for an element that is part of a large composite object such as an asset.",
+        "typeId": "aa44f302-2e43-4669-a1e7-edaae414fc6e",
+        "typeName": "Anchors",
+        "typeVersion": 1
+       },
+       "versions": {
+        "createTime": "2026-10-13T01:12:07.530+00:00",
+        "createdBy": "postgresqlsurveyengine",
+        "lastRequestId": "452789a8-153c-4d82-bd19-4d6f563ddeb2",
+        "maintainedBy": [
+         "postgresqlsurveyengine"
+        ],
+        "updateTime": "2026-10-13T01:12:07.530+00:00",
+        "updatedBy": "postgresqlsurveyengine",
+        "version": 1
+       }
+      },
+      "class": "ElementHeader",
+      "guid": "9f8f43ba-cc00-4abd-a7e9-8fd8206553a9",
+      "headerVersion": 0,
+      "origin": {
+       "homeMetadataCollectionId": "9905c3cb-94c5-4494-9229-0d6f69c0b842",
+       "homeMetadataCollectionName": "qs-metadata-store",
+       "originCategory": "LOCAL_COHORT",
+       "sourceServer": "qs-metadata-store"
+      },
+      "status": "ACTIVE",
+      "type": {
+       "superTypeNames": [
+        "Annotation",
+        "AuthoredReferenceable",
+        "Referenceable",
+        "OpenMetadataRoot"
+       ],
+       "typeCategory": "ENTITY_DEF",
+       "typeDescription": "A summary set of measurements for a resource.",
+       "typeId": "c85bea73-d7af-46d7-8a7e-cb745910b1d",
+       "typeName": "ResourceMeasureAnnotation",
+       "typeVersion": 1
+      },
+      "versions": {
+       "createTime": "2026-10-13T01:12:07.532+00:00",
+       "createdBy": "postgresqlsurveyengine",
+       "lastRequestId": "452789a8-153c-4d82-bd19-4d6f563ddeb2",
+       "maintainedBy": [
+        "postgresqlsurveyengine"
+       ],
+       "updateTime": "2026-10-13T01:12:07.532+00:00",
+       "updatedBy": "postgresqlsurveyengine",
+       "version": 1
+      }
+     },
+     "properties": {
+      "absoluteUncertainty": 0,
+      "analysisStep": "Profiling Associated Resources",
+      "annotationType": "Capture Database Table Measurements",
+      "class": "ResourceMeasureAnnotationProperties",
+      "confidence": 0,
+      "explanation": "This annotation retrieves statistics about individual columns and aggregates them into a summary for the table.",
+      "jsonProperties": "{\"tableName\":\"footnote\",\"qualifiedTableName\":\"usda.public.footnote\",\"tableSize\":16384,\"tableType\":\"Table\",\"columnCount\":5,\"numberOfRowsInserted\":0,\"numberOfRowsUpdated\":0,\"numberOfRowsDeleted\":0,\"tableOwner\":\"dwolfson\",\"isPopulated\":true,\"hasIndexes\":true,\"hasRules\":false,\"hasTriggers\":true,\"hasRowSecurity\":false}",
+      "qualifiedName": "Annotation::Capture Database Table Measurements::usda.public.footnote::a266c389-04d2-4ad8-a224-a79791793fb8",
+      "relativeUncertainty": 0,
+      "resourceProperties": {
+       "Has Indexes": "true",
+       "Has Row Security": "false",
+       "Has Rules": "false",
+       "Has Triggers": "true",
+       "Is Populated": "true",
+       "Number Of Rows Deleted": "0",
+       "Number Of Rows Inserted": "0",
+       "Number Of Rows Updated": "0",
+       "Number of columns": "5",
+       "Resource Owner": "dwolfson",
+       "Table Name": "footnote",
+       "Table Qualified Name": "usda.public.footnote",
+       "Table Size": "16384",
+       "Table Type": "Table"
+      },
+      "samplePercent": 0,
+      "sampleSize": 0,
+      "summary": "Capture summary statistics about a database table.",
+      "typeName": "ResourceMeasureAnnotation"
+     }
+    },
+    "relatedElementAtEnd1": false,
+    "relationshipHeader": {
+     "class": "ElementHeader",
+     "guid": "21c59c94-1917-479c-a8d8-75d0f331683a",
+     "headerVersion": 0,
+     "origin": {
+      "homeMetadataCollectionId": "9905c3cb-94c5-4494-9229-0d6f69c0b842",
+      "homeMetadataCollectionName": "qs-metadata-store",
+      "originCategory": "LOCAL_COHORT",
+      "sourceServer": "qs-metadata-store"
+     },
+     "status": "ACTIVE",
+     "type": {
+      "superTypeNames": [
+       "LabeledRelationship"
+      ],
+      "typeCategory": "RELATIONSHIP_DEF",
+      "typeDescription": "Link between a SurveyReport and an Annotation generated from the same run of a survey action service.",
+      "typeId": "3af278ed-f4e8-4afc-851b-a5b0908ba06f",
+      "typeName": "ReportedAnnotation",
+      "typeVersion": 2
+     },
+     "versions": {
+      "createTime": "2026-10-13T01:12:07.594+00:00",
+      "createdBy": "postgresqlsurveyengine",
+      "lastRequestId": "452789a8-153c-4d82-bd19-4d6f563ddeb2",
+      "maintainedBy": [
+       "postgresqlsurveyengine"
+      ],
+      "updateTime": "2026-10-13T01:12:07.594+00:00",
+      "updatedBy": "postgresqlsurveyengine",
+      "version": 1
+     }
+    }
+   },
+   {
+    "class": "RelatedMetadataElementSummary",
+    "relatedElement": {
+     "elementHeader": {
+      "anchor": {
+       "class": "ElementClassification",
+       "classificationName": "Anchors",
+       "classificationOrigin": "ASSIGNED",
+       "classificationProperties": {
+        "anchorDomainName": "Asset",
+        "anchorGUID": "304152cf-fa47-4496-9a14-27a7f5b35df2",
+        "anchorTypeName": "RelationalDatabase",
+        "class": "AnchorsProperties",
+        "typeName": "Anchors"
+       },
+       "headerVersion": 0,
+       "origin": {
+        "homeMetadataCollectionId": "9905c3cb-94c5-4494-9229-0d6f69c0b842",
+        "homeMetadataCollectionName": "qs-metadata-store",
+        "originCategory": "LOCAL_COHORT",
+        "sourceServer": "qs-metadata-store"
+       },
+       "status": "ACTIVE",
+       "type": {
+        "typeCategory": "CLASSIFICATION_DEF",
+        "typeDescription": "Identifies the anchor entity for an element that is part of a large composite object such as an asset.",
+        "typeId": "aa44f302-2e43-4669-a1e7-edaae414fc6e",
+        "typeName": "Anchors",
+        "typeVersion": 1
+       },
+       "versions": {
+        "createTime": "2026-10-13T01:12:02.599+00:00",
+        "createdBy": "postgresqlsurveyengine",
+        "lastRequestId": "452789a8-153c-4d82-bd19-4d6f563ddeb2",
+        "maintainedBy": [
+         "postgresqlsurveyengine"
+        ],
+        "updateTime": "2026-10-13T01:12:02.599+00:00",
+        "updatedBy": "postgresqlsurveyengine",
+        "version": 1
+       }
+      },
+      "class": "ElementHeader",
+      "guid": "99fbeb71-a100-4dca-bc61-db80237b0311",
+      "headerVersion": 0,
+      "origin": {
+       "homeMetadataCollectionId": "9905c3cb-94c5-4494-9229-0d6f69c0b842",
+       "homeMetadataCollectionName": "qs-metadata-store",
+       "originCategory": "LOCAL_COHORT",
+       "sourceServer": "qs-metadata-store"
+      },
+      "status": "ACTIVE",
+      "type": {
+       "superTypeNames": [
+        "Annotation",
+        "AuthoredReferenceable",
+        "Referenceable",
+        "OpenMetadataRoot"
+       ],
+       "typeCategory": "ENTITY_DEF",
+       "typeDescription": "A summary set of measurements for a resource.",
+       "typeId": "c85bea73-d7af-46d7-8a7e-cb745910b1d",
+       "typeName": "ResourceMeasureAnnotation",
+       "typeVersion": 1
+      },
+      "versions": {
+       "createTime": "2026-10-13T01:12:02.600+00:00",
+       "createdBy": "postgresqlsurveyengine",
+       "lastRequestId": "452789a8-153c-4d82-bd19-4d6f563ddeb2",
+       "maintainedBy": [
+        "postgresqlsurveyengine"
+       ],
+       "updateTime": "2026-10-13T01:12:02.600+00:00",
+       "updatedBy": "postgresqlsurveyengine",
+       "version": 1
+      }
+     },
+     "properties": {
+      "absoluteUncertainty": 0,
+      "analysisStep": "Profiling Associated Resources",
+      "annotationType": "Capture Database Table Measurements",
+      "class": "ResourceMeasureAnnotationProperties",
+      "confidence": 0,
+      "explanation": "This annotation retrieves statistics about individual columns and aggregates them into a summary for the table.",
+      "jsonProperties": "{\"tableName\":\"fd_group\",\"qualifiedTableName\":\"usda.public.fd_group\",\"tableSize\":16384,\"tableType\":\"Table\",\"columnCount\":2,\"numberOfRowsInserted\":0,\"numberOfRowsUpdated\":0,\"numberOfRowsDeleted\":0,\"tableOwner\":\"dwolfson\",\"isPopulated\":true,\"hasIndexes\":true,\"hasRules\":false,\"hasTriggers\":true,\"hasRowSecurity\":false}",
+      "qualifiedName": "Annotation::Capture Database Table Measurements::usda.public.fd_group::2455da60-e2d9-48ea-bc6d-44888de03bd3",
+      "relativeUncertainty": 0,
+      "resourceProperties": {
+       "Has Indexes": "true",
+       "Has Row Security": "false",
+       "Has Rules": "false",
+       "Has Triggers": "true",
+       "Is Populated": "true",
+       "Number Of Rows Deleted": "0",
+       "Number Of Rows Inserted": "0",
+       "Number Of Rows Updated": "0",
+       "Number of columns": "2",
+       "Resource Owner": "dwolfson",
+       "Table Name": "fd_group",
+       "Table Qualified Name": "usda.public.fd_group",
+       "Table Size": "16384",
+       "Table Type": "Table"
+      },
+      "samplePercent": 0,
+      "sampleSize": 0,
+      "summary": "Capture summary statistics about a database table.",
+      "typeName": "ResourceMeasureAnnotation"
+     }
+    },
+    "relatedElementAtEnd1": false,
+    "relationshipHeader": {
+     "class": "ElementHeader",
+     "guid": "20eca890-4f8e-4bac-a6e7-5a6415f40d8a",
+     "headerVersion": 0,
+     "origin": {
+      "homeMetadataCollectionId": "9905c3cb-94c5-4494-9229-0d6f69c0b842",
+      "homeMetadataCollectionName": "qs-metadata-store",
+      "originCategory": "LOCAL_COHORT",
+      "sourceServer": "qs-metadata-store"
+     },
+     "status": "ACTIVE",
+     "type": {
+      "superTypeNames": [
+       "LabeledRelationship"
+      ],
+      "typeCategory": "RELATIONSHIP_DEF",
+      "typeDescription": "Link between a SurveyReport and an Annotation generated from the same run of a survey action service.",
+      "typeId": "3af278ed-f4e8-4afc-851b-a5b0908ba06f",
+      "typeName": "ReportedAnnotation",
+      "typeVersion": 2
+     },
+     "versions": {
+      "createTime": "2026-10-13T01:12:02.669+00:00",
+      "createdBy": "postgresqlsurveyengine",
+      "lastRequestId": "452789a8-153c-4d82-bd19-4d6f563ddeb2",
+      "maintainedBy": [
+       "postgresqlsurveyengine"
+      ],
+      "updateTime": "2026-10-13T01:12:02.669+00:00",
+      "updatedBy": "postgresqlsurveyengine",
+      "version": 1
+     }
+    }
+   },
+   {
+    "class": "RelatedMetadataElementSummary",
+    "relatedElement": {
+     "elementHeader": {
+      "anchor": {
+       "class": "ElementClassification",
+       "classificationName": "Anchors",
+       "classificationOrigin": "ASSIGNED",
+       "classificationProperties": {
+        "anchorDomainName": "Asset",
+        "anchorGUID": "304152cf-fa47-4496-9a14-27a7f5b35df2",
+        "anchorTypeName": "RelationalDatabase",
+        "class": "AnchorsProperties",
+        "typeName": "Anchors"
+       },
+       "headerVersion": 0,
+       "origin": {
+        "homeMetadataCollectionId": "9905c3cb-94c5-4494-9229-0d6f69c0b842",
+        "homeMetadataCollectionName": "qs-metadata-store",
+        "originCategory": "LOCAL_COHORT",
+        "sourceServer": "qs-metadata-store"
+       },
+       "status": "ACTIVE",
+       "type": {
+        "typeCategory": "CLASSIFICATION_DEF",
+        "typeDescription": "Identifies the anchor entity for an element that is part of a large composite object such as an asset.",
+        "typeId": "aa44f302-2e43-4669-a1e7-edaae414fc6e",
+        "typeName": "Anchors",
+        "typeVersion": 1
+       },
+       "versions": {
+        "createTime": "2026-10-13T01:11:35.435+00:00",
+        "createdBy": "postgresqlsurveyengine",
+        "lastRequestId": "452789a8-153c-4d82-bd19-4d6f563ddeb2",
+        "maintainedBy": [
+         "postgresqlsurveyengine"
+        ],
+        "updateTime": "2026-10-13T01:11:35.435+00:00",
+        "updatedBy": "postgresqlsurveyengine",
+        "version": 1
+       }
+      },
+      "class": "ElementHeader",
+      "guid": "7241003a-9cbc-471d-b8a8-21510d7ffed8",
+      "headerVersion": 0,
+      "origin": {
+       "homeMetadataCollectionId": "9905c3cb-94c5-4494-9229-0d6f69c0b842",
+       "homeMetadataCollectionName": "qs-metadata-store",
+       "originCategory": "LOCAL_COHORT",
+       "sourceServer": "qs-metadata-store"
+      },
+      "status": "ACTIVE",
+      "type": {
+       "superTypeNames": [
+        "Annotation",
+        "AuthoredReferenceable",
+        "Referenceable",
+        "OpenMetadataRoot"
+       ],
+       "typeCategory": "ENTITY_DEF",
+       "typeDescription": "A summary set of measurements for a resource.",
+       "typeId": "c85bea73-d7af-46d7-8a7e-cb745910b1d",
+       "typeName": "ResourceMeasureAnnotation",
+       "typeVersion": 1
+      },
+      "versions": {
+       "createTime": "2026-10-13T01:11:35.436+00:00",
+       "createdBy": "postgresqlsurveyengine",
+       "lastRequestId": "452789a8-153c-4d82-bd19-4d6f563ddeb2",
+       "maintainedBy": [
+        "postgresqlsurveyengine"
+       ],
+       "updateTime": "2026-10-13T01:11:35.436+00:00",
+       "updatedBy": "postgresqlsurveyengine",
+       "version": 1
+      }
+     },
+     "properties": {
+      "absoluteUncertainty": 0,
+      "analysisStep": "Profiling Associated Resources",
+      "annotationType": "Capture Database Table Measurements",
+      "class": "ResourceMeasureAnnotationProperties",
+      "confidence": 0,
+      "explanation": "This annotation retrieves statistics about individual columns and aggregates them into a summary for the table.",
+      "jsonProperties": "{\"tableName\":\"nut_data\",\"qualifiedTableName\":\"usda.public.nut_data\",\"tableSize\":23896064,\"tableType\":\"Table\",\"columnCount\":17,\"numberOfRowsInserted\":0,\"numberOfRowsUpdated\":0,\"numberOfRowsDeleted\":0,\"tableOwner\":\"dwolfson\",\"isPopulated\":true,\"hasIndexes\":true,\"hasRules\":false,\"hasTriggers\":true,\"hasRowSecurity\":false}",
+      "qualifiedName": "Annotation::Capture Database Table Measurements::usda.public.nut_data::1fd6b32c-d284-418a-9aaf-44dfb838694b",
+      "relativeUncertainty": 0,
+      "resourceProperties": {
+       "Has Indexes": "true",
+       "Has Row Security": "false",
+       "Has Rules": "false",
+       "Has Triggers": "true",
+       "Is Populated": "true",
+       "Number Of Rows Deleted": "0",
+       "Number Of Rows Inserted": "0",
+       "Number Of Rows Updated": "0",
+       "Number of columns": "17",
+       "Resource Owner": "dwolfson",
+       "Table Name": "nut_data",
+       "Table Qualified Name": "usda.public.nut_data",
+       "Table Size": "23896064",
+       "Table Type": "Table"
+      },
+      "samplePercent": 0,
+      "sampleSize": 0,
+      "summary": "Capture summary statistics about a database table.",
+      "typeName": "ResourceMeasureAnnotation"
+     }
+    },
+    "relatedElementAtEnd1": false,
+    "relationshipHeader": {
+     "class": "ElementHeader",
+     "guid": "4ce2b678-2d74-4b39-8c21-2605a57482bd",
+     "headerVersion": 0,
+     "origin": {
+      "homeMetadataCollectionId": "9905c3cb-94c5-4494-9229-0d6f69c0b842",
+      "homeMetadataCollectionName": "qs-metadata-store",
+      "originCategory": "LOCAL_COHORT",
+      "sourceServer": "qs-metadata-store"
+     },
+     "status": "ACTIVE",
+     "type": {
+      "superTypeNames": [
+       "LabeledRelationship"
+      ],
+      "typeCategory": "RELATIONSHIP_DEF",
+      "typeDescription": "Link between a SurveyReport and an Annotation generated from the same run of a survey action service.",
+      "typeId": "3af278ed-f4e8-4afc-851b-a5b0908ba06f",
+      "typeName": "ReportedAnnotation",
+      "typeVersion": 2
+     },
+     "versions": {
+      "createTime": "2026-10-13T01:11:35.499+00:00",
+      "createdBy": "postgresqlsurveyengine",
+      "lastRequestId": "452789a8-153c-4d82-bd19-4d6f563ddeb2",
+      "maintainedBy": [
+       "postgresqlsurveyengine"
+      ],
+      "updateTime": "2026-10-13T01:11:35.499+00:00",
+      "updatedBy": "postgresqlsurveyengine",
+      "version": 1
+     }
+    }
+   },
+   {
+    "class": "RelatedMetadataElementSummary",
+    "relatedElement": {
+     "elementHeader": {
+      "anchor": {
+       "class": "ElementClassification",
+       "classificationName": "Anchors",
+       "classificationOrigin": "ASSIGNED",
+       "classificationProperties": {
+        "anchorDomainName": "Asset",
+        "anchorGUID": "304152cf-fa47-4496-9a14-27a7f5b35df2",
+        "anchorTypeName": "RelationalDatabase",
+        "class": "AnchorsProperties",
+        "typeName": "Anchors"
+       },
+       "headerVersion": 0,
+       "origin": {
+        "homeMetadataCollectionId": "9905c3cb-94c5-4494-9229-0d6f69c0b842",
+        "homeMetadataCollectionName": "qs-metadata-store",
+        "originCategory": "LOCAL_COHORT",
+        "sourceServer": "qs-metadata-store"
+       },
+       "status": "ACTIVE",
+       "type": {
+        "typeCategory": "CLASSIFICATION_DEF",
+        "typeDescription": "Identifies the anchor entity for an element that is part of a large composite object such as an asset.",
+        "typeId": "aa44f302-2e43-4669-a1e7-edaae414fc6e",
+        "typeName": "Anchors",
+        "typeVersion": 1
+       },
+       "versions": {
+        "createTime": "2026-10-13T01:11:26.270+00:00",
+        "createdBy": "postgresqlsurveyengine",
+        "lastRequestId": "452789a8-153c-4d82-bd19-4d6f563ddeb2",
+        "maintainedBy": [
+         "postgresqlsurveyengine"
+        ],
+        "updateTime": "2026-10-13T01:11:26.270+00:00",
+        "updatedBy": "postgresqlsurveyengine",
+        "version": 1
+       }
+      },
+      "class": "ElementHeader",
+      "guid": "d2ee325d-fcb3-4978-ab66-c571c789d0b7",
+      "headerVersion": 0,
+      "origin": {
+       "homeMetadataCollectionId": "9905c3cb-94c5-4494-9229-0d6f69c0b842",
+       "homeMetadataCollectionName": "qs-metadata-store",
+       "originCategory": "LOCAL_COHORT",
+       "sourceServer": "qs-metadata-store"
+      },
+      "status": "ACTIVE",
+      "type": {
+       "superTypeNames": [
+        "Annotation",
+        "AuthoredReferenceable",
+        "Referenceable",
+        "OpenMetadataRoot"
+       ],
+       "typeCategory": "ENTITY_DEF",
+       "typeDescription": "A summary set of measurements for a resource.",
+       "typeId": "c85bea73-d7af-46d7-8a7e-cb745910b1d",
+       "typeName": "ResourceMeasureAnnotation",
+       "typeVersion": 1
+      },
+      "versions": {
+       "createTime": "2026-10-13T01:11:26.272+00:00",
+       "createdBy": "postgresqlsurveyengine",
+       "lastRequestId": "452789a8-153c-4d82-bd19-4d6f563ddeb2",
+       "maintainedBy": [
+        "postgresqlsurveyengine"
+       ],
+       "updateTime": "2026-10-13T01:11:26.272+00:00",
+       "updatedBy": "postgresqlsurveyengine",
+       "version": 1
+      }
+     },
+     "properties": {
+      "absoluteUncertainty": 0,
+      "analysisStep": "Profiling Associated Resources",
+      "annotationType": "Capture Database Table Measurements",
+      "class": "ResourceMeasureAnnotationProperties",
+      "confidence": 0,
+      "explanation": "This annotation retrieves statistics about individual columns and aggregates them into a summary for the table.",
+      "jsonProperties": "{\"tableName\":\"weight\",\"qualifiedTableName\":\"usda.public.weight\",\"tableSize\":1064960,\"tableType\":\"Table\",\"columnCount\":7,\"numberOfRowsInserted\":0,\"numberOfRowsUpdated\":0,\"numberOfRowsDeleted\":0,\"tableOwner\":\"dwolfson\",\"isPopulated\":true,\"hasIndexes\":true,\"hasRules\":false,\"hasTriggers\":true,\"hasRowSecurity\":false}",
+      "qualifiedName": "Annotation::Capture Database Table Measurements::usda.public.weight::c5039ded-246f-4938-bf29-94d8c22db725",
+      "relativeUncertainty": 0,
+      "resourceProperties": {
+       "Has Indexes": "true",
+       "Has Row Security": "false",
+       "Has Rules": "false",
+       "Has Triggers": "true",
+       "Is Populated": "true",
+       "Number Of Rows Deleted": "0",
+       "Number Of Rows Inserted": "0",
+       "Number Of Rows Updated": "0",
+       "Number of columns": "7",
+       "Resource Owner": "dwolfson",
+       "Table Name": "weight",
+       "Table Qualified Name": "usda.public.weight",
+       "Table Size": "1064960",
+       "Table Type": "Table"
+      },
+      "samplePercent": 0,
+      "sampleSize": 0,
+      "summary": "Capture summary statistics about a database table.",
+      "typeName": "ResourceMeasureAnnotation"
+     }
+    },
+    "relatedElementAtEnd1": false,
+    "relationshipHeader": {
+     "class": "ElementHeader",
+     "guid": "0f0f3ad8-37c9-4a80-ad0d-57dce66a2741",
+     "headerVersion": 0,
+     "origin": {
+      "homeMetadataCollectionId": "9905c3cb-94c5-4494-9229-0d6f69c0b842",
+      "homeMetadataCollectionName": "qs-metadata-store",
+      "originCategory": "LOCAL_COHORT",
+      "sourceServer": "qs-metadata-store"
+     },
+     "status": "ACTIVE",
+     "type": {
+      "superTypeNames": [
+       "LabeledRelationship"
+      ],
+      "typeCategory": "RELATIONSHIP_DEF",
+      "typeDescription": "Link between a SurveyReport and an Annotation generated from the same run of a survey action service.",
+      "typeId": "3af278ed-f4e8-4afc-851b-a5b0908ba06f",
+      "typeName": "ReportedAnnotation",
+      "typeVersion": 2
+     },
+     "versions": {
+      "createTime": "2026-10-13T01:11:26.346+00:00",
+      "createdBy": "postgresqlsurveyengine",
+      "lastRequestId": "452789a8-153c-4d82-bd19-4d6f563ddeb2",
+      "maintainedBy": [
+       "postgresqlsurveyengine"
+      ],
+      "updateTime": "2026-10-13T01:11:26.346+00:00",
+      "updatedBy": "postgresqlsurveyengine",
+      "version": 1
+     }
+    }
+   },
+   {
+    "class": "RelatedMetadataElementSummary",
+    "relatedElement": {
+     "elementHeader": {
+      "anchor": {
+       "class": "ElementClassification",
+       "classificationName": "Anchors",
+       "classificationOrigin": "ASSIGNED",
+       "classificationProperties": {
+        "anchorDomainName": "Asset",
+        "anchorGUID": "304152cf-fa47-4496-9a14-27a7f5b35df2",
+        "anchorTypeName": "RelationalDatabase",
+        "class": "AnchorsProperties",
+        "typeName": "Anchors"
+       },
+       "headerVersion": 0,
+       "origin": {
+        "homeMetadataCollectionId": "9905c3cb-94c5-4494-9229-0d6f69c0b842",
+        "homeMetadataCollectionName": "qs-metadata-store",
+        "originCategory": "LOCAL_COHORT",
+        "sourceServer": "qs-metadata-store"
+       },
+       "status": "ACTIVE",
+       "type": {
+        "typeCategory": "CLASSIFICATION_DEF",
+        "typeDescription": "Identifies the anchor entity for an element that is part of a large composite object such as an asset.",
+        "typeId": "aa44f302-2e43-4669-a1e7-edaae414fc6e",
+        "typeName": "Anchors",
+        "typeVersion": 1
+       },
+       "versions": {
+        "createTime": "2026-10-13T01:11:14.911+00:00",
+        "createdBy": "postgresqlsurveyengine",
+        "lastRequestId": "452789a8-153c-4d82-bd19-4d6f563ddeb2",
+        "maintainedBy": [
+         "postgresqlsurveyengine"
+        ],
+        "updateTime": "2026-10-13T01:11:14.911+00:00",
+        "updatedBy": "postgresqlsurveyengine",
+        "version": 1
+       }
+      },
+      "class": "ElementHeader",
+      "guid": "e874ab2d-2799-41e6-860a-52482c756864",
+      "headerVersion": 0,
+      "origin": {
+       "homeMetadataCollectionId": "9905c3cb-94c5-4494-9229-0d6f69c0b842",
+       "homeMetadataCollectionName": "qs-metadata-store",
+       "originCategory": "LOCAL_COHORT",
+       "sourceServer": "qs-metadata-store"
+      },
+      "status": "ACTIVE",
+      "type": {
+       "superTypeNames": [
+        "Annotation",
+        "AuthoredReferenceable",
+        "Referenceable",
+        "OpenMetadataRoot"
+       ],
+       "typeCategory": "ENTITY_DEF",
+       "typeDescription": "A summary set of measurements for a resource.",
+       "typeId": "c85bea73-d7af-46d7-8a7e-cb745910b1d",
+       "typeName": "ResourceMeasureAnnotation",
+       "typeVersion": 1
+      },
+      "versions": {
+       "createTime": "2026-10-13T01:11:14.913+00:00",
+       "createdBy": "postgresqlsurveyengine",
+       "lastRequestId": "452789a8-153c-4d82-bd19-4d6f563ddeb2",
+       "maintainedBy": [
+        "postgresqlsurveyengine"
+       ],
+       "updateTime": "2026-10-13T01:11:14.913+00:00",
+       "updatedBy": "postgresqlsurveyengine",
+       "version": 1
+      }
+     },
+     "properties": {
+      "absoluteUncertainty": 0,
+      "analysisStep": "Profiling Associated Resources",
+      "annotationType": "Capture Database Table Measurements",
+      "class": "ResourceMeasureAnnotationProperties",
+      "confidence": 0,
+      "explanation": "This annotation retrieves statistics about individual columns and aggregates them into a summary for the table.",
+      "jsonProperties": "{\"tableName\":\"data_src\",\"qualifiedTableName\":\"usda.public.data_src\",\"tableSize\":73728,\"tableType\":\"Table\",\"columnCount\":9,\"numberOfRowsInserted\":0,\"numberOfRowsUpdated\":0,\"numberOfRowsDeleted\":0,\"tableOwner\":\"dwolfson\",\"isPopulated\":true,\"hasIndexes\":true,\"hasRules\":false,\"hasTriggers\":true,\"hasRowSecurity\":false}",
+      "qualifiedName": "Annotation::Capture Database Table Measurements::usda.public.data_src::df85d40c-d48f-4f3b-8bb2-83c89233d934",
+      "relativeUncertainty": 0,
+      "resourceProperties": {
+       "Has Indexes": "true",
+       "Has Row Security": "false",
+       "Has Rules": "false",
+       "Has Triggers": "true",
+       "Is Populated": "true",
+       "Number Of Rows Deleted": "0",
+       "Number Of Rows Inserted": "0",
+       "Number Of Rows Updated": "0",
+       "Number of columns": "9",
+       "Resource Owner": "dwolfson",
+       "Table Name": "data_src",
+       "Table Qualified Name": "usda.public.data_src",
+       "Table Size": "73728",
+       "Table Type": "Table"
+      },
+      "samplePercent": 0,
+      "sampleSize": 0,
+      "summary": "Capture summary statistics about a database table.",
+      "typeName": "ResourceMeasureAnnotation"
+     }
+    },
+    "relatedElementAtEnd1": false,
+    "relationshipHeader": {
+     "class": "ElementHeader",
+     "guid": "457062bd-7168-479c-82ce-c6c75d9e39fc",
+     "headerVersion": 0,
+     "origin": {
+      "homeMetadataCollectionId": "9905c3cb-94c5-4494-9229-0d6f69c0b842",
+      "homeMetadataCollectionName": "qs-metadata-store",
+      "originCategory": "LOCAL_COHORT",
+      "sourceServer": "qs-metadata-store"
+     },
+     "status": "ACTIVE",
+     "type": {
+      "superTypeNames": [
+       "LabeledRelationship"
+      ],
+      "typeCategory": "RELATIONSHIP_DEF",
+      "typeDescription": "Link between a SurveyReport and an Annotation generated from the same run of a survey action service.",
+      "typeId": "3af278ed-f4e8-4afc-851b-a5b0908ba06f",
+      "typeName": "ReportedAnnotation",
+      "typeVersion": 2
+     },
+     "versions": {
+      "createTime": "2026-10-13T01:11:14.985+00:00",
+      "createdBy": "postgresqlsurveyengine",
+      "lastRequestId": "452789a8-153c-4d82-bd19-4d6f563ddeb2",
+      "maintainedBy": [
+       "postgresqlsurveyengine"
+      ],
+      "updateTime": "2026-10-13T01:11:14.985+00:00",
+      "updatedBy": "postgresqlsurveyengine",
+      "version": 1
+     }
+    }
+   },
+   {
+    "class": "RelatedMetadataElementSummary",
+    "relatedElement": {
+     "elementHeader": {
+      "anchor": {
+       "class": "ElementClassification",
+       "classificationName": "Anchors",
+       "classificationOrigin": "ASSIGNED",
+       "classificationProperties": {
+        "anchorDomainName": "Asset",
+        "anchorGUID": "304152cf-fa47-4496-9a14-27a7f5b35df2",
+        "anchorTypeName": "RelationalDatabase",
+        "class": "AnchorsProperties",
+        "typeName": "Anchors"
+       },
+       "headerVersion": 0,
+       "origin": {
+        "homeMetadataCollectionId": "9905c3cb-94c5-4494-9229-0d6f69c0b842",
+        "homeMetadataCollectionName": "qs-metadata-store",
+        "originCategory": "LOCAL_COHORT",
+        "sourceServer": "qs-metadata-store"
+       },
+       "status": "ACTIVE",
+       "type": {
+        "typeCategory": "CLASSIFICATION_DEF",
+        "typeDescription": "Identifies the anchor entity for an element that is part of a large composite object such as an asset.",
+        "typeId": "aa44f302-2e43-4669-a1e7-edaae414fc6e",
+        "typeName": "Anchors",
+        "typeVersion": 1
+       },
+       "versions": {
+        "createTime": "2026-10-13T01:11:08.654+00:00",
+        "createdBy": "postgresqlsurveyengine",
+        "lastRequestId": "452789a8-153c-4d82-bd19-4d6f563ddeb2",
+        "maintainedBy": [
+         "postgresqlsurveyengine"
+        ],
+        "updateTime": "2026-10-13T01:11:08.654+00:00",
+        "updatedBy": "postgresqlsurveyengine",
+        "version": 1
+       }
+      },
+      "class": "ElementHeader",
+      "guid": "925a217e-d9c8-42c7-9376-58368de6f2f4",
+      "headerVersion": 0,
+      "origin": {
+       "homeMetadataCollectionId": "9905c3cb-94c5-4494-9229-0d6f69c0b842",
+       "homeMetadataCollectionName": "qs-metadata-store",
+       "originCategory": "LOCAL_COHORT",
+       "sourceServer": "qs-metadata-store"
+      },
+      "status": "ACTIVE",
+      "type": {
+       "superTypeNames": [
+        "Annotation",
+        "AuthoredReferenceable",
+        "Referenceable",
+        "OpenMetadataRoot"
+       ],
+       "typeCategory": "ENTITY_DEF",
+       "typeDescription": "A summary set of measurements for a resource.",
+       "typeId": "c85bea73-d7af-46d7-8a7e-cb745910b1d",
+       "typeName": "ResourceMeasureAnnotation",
+       "typeVersion": 1
+      },
+      "versions": {
+       "createTime": "2026-10-13T01:11:08.656+00:00",
+       "createdBy": "postgresqlsurveyengine",
+       "lastRequestId": "452789a8-153c-4d82-bd19-4d6f563ddeb2",
+       "maintainedBy": [
+        "postgresqlsurveyengine"
+       ],
+       "updateTime": "2026-10-13T01:11:08.656+00:00",
+       "updatedBy": "postgresqlsurveyengine",
+       "version": 1
+      }
+     },
+     "properties": {
+      "absoluteUncertainty": 0,
+      "analysisStep": "Profiling Associated Resources",
+      "annotationType": "Capture Database Table Measurements",
+      "class": "ResourceMeasureAnnotationProperties",
+      "confidence": 0,
+      "explanation": "This annotation retrieves statistics about individual columns and aggregates them into a summary for the table.",
+      "jsonProperties": "{\"tableName\":\"nutr_def\",\"qualifiedTableName\":\"usda.public.nutr_def\",\"tableSize\":24576,\"tableType\":\"Table\",\"columnCount\":6,\"numberOfRowsInserted\":0,\"numberOfRowsUpdated\":0,\"numberOfRowsDeleted\":0,\"tableOwner\":\"dwolfson\",\"isPopulated\":true,\"hasIndexes\":true,\"hasRules\":false,\"hasTriggers\":true,\"hasRowSecurity\":false}",
+      "qualifiedName": "Annotation::Capture Database Table Measurements::usda.public.nutr_def::c9e32025-7eab-449c-9b66-ce5efd16f623",
+      "relativeUncertainty": 0,
+      "resourceProperties": {
+       "Has Indexes": "true",
+       "Has Row Security": "false",
+       "Has Rules": "false",
+       "Has Triggers": "true",
+       "Is Populated": "true",
+       "Number Of Rows Deleted": "0",
+       "Number Of Rows Inserted": "0",
+       "Number Of Rows Updated": "0",
+       "Number of columns": "6",
+       "Resource Owner": "dwolfson",
+       "Table Name": "nutr_def",
+       "Table Qualified Name": "usda.public.nutr_def",
+       "Table Size": "24576",
+       "Table Type": "Table"
+      },
+      "samplePercent": 0,
+      "sampleSize": 0,
+      "summary": "Capture summary statistics about a database table.",
+      "typeName": "ResourceMeasureAnnotation"
+     }
+    },
+    "relatedElementAtEnd1": false,
+    "relationshipHeader": {
+     "class": "ElementHeader",
+     "guid": "8b1d98ff-5c9c-4afc-8a67-cb1e227c2406",
+     "headerVersion": 0,
+     "origin": {
+      "homeMetadataCollectionId": "9905c3cb-94c5-4494-9229-0d6f69c0b842",
+      "homeMetadataCollectionName": "qs-metadata-store",
+      "originCategory": "LOCAL_COHORT",
+      "sourceServer": "qs-metadata-store"
+     },
+     "status": "ACTIVE",
+     "type": {
+      "superTypeNames": [
+       "LabeledRelationship"
+      ],
+      "typeCategory": "RELATIONSHIP_DEF",
+      "typeDescription": "Link between a SurveyReport and an Annotation generated from the same run of a survey action service.",
+      "typeId": "3af278ed-f4e8-4afc-851b-a5b0908ba06f",
+      "typeName": "ReportedAnnotation",
+      "typeVersion": 2
+     },
+     "versions": {
+      "createTime": "2026-10-13T01:11:08.712+00:00",
+      "createdBy": "postgresqlsurveyengine",
+      "lastRequestId": "452789a8-153c-4d82-bd19-4d6f563ddeb2",
+      "maintainedBy": [
+       "postgresqlsurveyengine"
+      ],
+      "updateTime": "2026-10-13T01:11:08.712+00:00",
+      "updatedBy": "postgresqlsurveyengine",
+      "version": 1
+     }
+    }
+   },
+   {
+    "class": "RelatedMetadataElementSummary",
+    "relatedElement": {
+     "elementHeader": {
+      "anchor": {
+       "class": "ElementClassification",
+       "classificationName": "Anchors",
+       "classificationOrigin": "ASSIGNED",
+       "classificationProperties": {
+        "anchorDomainName": "Asset",
+        "anchorGUID": "304152cf-fa47-4496-9a14-27a7f5b35df2",
+        "anchorTypeName": "RelationalDatabase",
+        "class": "AnchorsProperties",
+        "typeName": "Anchors"
+       },
+       "headerVersion": 0,
+       "origin": {
+        "homeMetadataCollectionId": "9905c3cb-94c5-4494-9229-0d6f69c0b842",
+        "homeMetadataCollectionName": "qs-metadata-store",
+        "originCategory": "LOCAL_COHORT",
+        "sourceServer": "qs-metadata-store"
+       },
+       "status": "ACTIVE",
+       "type": {
+        "typeCategory": "CLASSIFICATION_DEF",
+        "typeDescription": "Identifies the anchor entity for an element that is part of a large composite object such as an asset.",
+        "typeId": "aa44f302-2e43-4669-a1e7-edaae414fc6e",
+        "typeName": "Anchors",
+        "typeVersion": 1
+       },
+       "versions": {
+        "createTime": "2026-10-13T01:11:00.717+00:00",
+        "createdBy": "postgresqlsurveyengine",
+        "lastRequestId": "452789a8-153c-4d82-bd19-4d6f563ddeb2",
+        "maintainedBy": [
+         "postgresqlsurveyengine"
+        ],
+        "updateTime": "2026-10-13T01:11:00.717+00:00",
+        "updatedBy": "postgresqlsurveyengine",
+        "version": 1
+       }
+      },
+      "class": "ElementHeader",
+      "guid": "3c8e4fad-745d-4152-aff3-df37106ea8e8",
+      "headerVersion": 0,
+      "origin": {
+       "homeMetadataCollectionId": "9905c3cb-94c5-4494-9229-0d6f69c0b842",
+       "homeMetadataCollectionName": "qs-metadata-store",
+       "originCategory": "LOCAL_COHORT",
+       "sourceServer": "qs-metadata-store"
+      },
+      "status": "ACTIVE",
+      "type": {
+       "superTypeNames": [
+        "Annotation",
+        "AuthoredReferenceable",
+        "Referenceable",
+        "OpenMetadataRoot"
+       ],
+       "typeCategory": "ENTITY_DEF",
+       "typeDescription": "A summary set of measurements for a resource.",
+       "typeId": "c85bea73-d7af-46d7-8a7e-cb745910b1d",
+       "typeName": "ResourceMeasureAnnotation",
+       "typeVersion": 1
+      },
+      "versions": {
+       "createTime": "2026-10-13T01:11:00.719+00:00",
+       "createdBy": "postgresqlsurveyengine",
+       "lastRequestId": "452789a8-153c-4d82-bd19-4d6f563ddeb2",
+       "maintainedBy": [
+        "postgresqlsurveyengine"
+       ],
+       "updateTime": "2026-10-13T01:11:00.719+00:00",
+       "updatedBy": "postgresqlsurveyengine",
+       "version": 1
+      }
+     },
+     "properties": {
+      "absoluteUncertainty": 0,
+      "analysisStep": "Profiling Associated Resources",
+      "annotationType": "Capture Database Table Measurements",
+      "class": "ResourceMeasureAnnotationProperties",
+      "confidence": 0,
+      "explanation": "This annotation retrieves statistics about individual columns and aggregates them into a summary for the table.",
+      "jsonProperties": "{\"tableName\":\"food_des\",\"qualifiedTableName\":\"usda.public.food_des\",\"tableSize\":1368064,\"tableType\":\"Table\",\"columnCount\":14,\"numberOfRowsInserted\":0,\"numberOfRowsUpdated\":0,\"numberOfRowsDeleted\":0,\"tableOwner\":\"dwolfson\",\"isPopulated\":true,\"hasIndexes\":true,\"hasRules\":false,\"hasTriggers\":true,\"hasRowSecurity\":false}",
+      "qualifiedName": "Annotation::Capture Database Table Measurements::usda.public.food_des::b33a22b2-01d2-437f-9df9-0f08ace281d8",
+      "relativeUncertainty": 0,
+      "resourceProperties": {
+       "Has Indexes": "true",
+       "Has Row Security": "false",
+       "Has Rules": "false",
+       "Has Triggers": "true",
+       "Is Populated": "true",
+       "Number Of Rows Deleted": "0",
+       "Number Of Rows Inserted": "0",
+       "Number Of Rows Updated": "0",
+       "Number of columns": "14",
+       "Resource Owner": "dwolfson",
+       "Table Name": "food_des",
+       "Table Qualified Name": "usda.public.food_des",
+       "Table Size": "1368064",
+       "Table Type": "Table"
+      },
+      "samplePercent": 0,
+      "sampleSize": 0,
+      "summary": "Capture summary statistics about a database table.",
+      "typeName": "ResourceMeasureAnnotation"
+     }
+    },
+    "relatedElementAtEnd1": false,
+    "relationshipHeader": {
+     "class": "ElementHeader",
+     "guid": "33ba6303-10e1-4aaa-bb31-8e48ed49da42",
+     "headerVersion": 0,
+     "origin": {
+      "homeMetadataCollectionId": "9905c3cb-94c5-4494-9229-0d6f69c0b842",
+      "homeMetadataCollectionName": "qs-metadata-store",
+      "originCategory": "LOCAL_COHORT",
+      "sourceServer": "qs-metadata-store"
+     },
+     "status": "ACTIVE",
+     "type": {
+      "superTypeNames": [
+       "LabeledRelationship"
+      ],
+      "typeCategory": "RELATIONSHIP_DEF",
+      "typeDescription": "Link between a SurveyReport and an Annotation generated from the same run of a survey action service.",
+      "typeId": "3af278ed-f4e8-4afc-851b-a5b0908ba06f",
+      "typeName": "ReportedAnnotation",
+      "typeVersion": 2
+     },
+     "versions": {
+      "createTime": "2026-10-13T01:11:00.785+00:00",
+      "createdBy": "postgresqlsurveyengine",
+      "lastRequestId": "452789a8-153c-4d82-bd19-4d6f563ddeb2",
+      "maintainedBy": [
+       "postgresqlsurveyengine"
+      ],
+      "updateTime": "2026-10-13T01:11:00.785+00:00",
+      "updatedBy": "postgresqlsurveyengine",
+      "version": 1
+     }
+    }
+   },
+   {
+    "class": "RelatedMetadataElementSummary",
+    "relatedElement": {
+     "elementHeader": {
+      "anchor": {
+       "class": "ElementClassification",
+       "classificationName": "Anchors",
+       "classificationOrigin": "ASSIGNED",
+       "classificationProperties": {
+        "anchorDomainName": "Asset",
+        "anchorGUID": "304152cf-fa47-4496-9a14-27a7f5b35df2",
+        "anchorTypeName": "RelationalDatabase",
+        "class": "AnchorsProperties",
+        "typeName": "Anchors"
+       },
+       "headerVersion": 0,
+       "origin": {
+        "homeMetadataCollectionId": "9905c3cb-94c5-4494-9229-0d6f69c0b842",
+        "homeMetadataCollectionName": "qs-metadata-store",
+        "originCategory": "LOCAL_COHORT",
+        "sourceServer": "qs-metadata-store"
+       },
+       "status": "ACTIVE",
+       "type": {
+        "typeCategory": "CLASSIFICATION_DEF",
+        "typeDescription": "Identifies the anchor entity for an element that is part of a large composite object such as an asset.",
+        "typeId": "aa44f302-2e43-4669-a1e7-edaae414fc6e",
+        "typeName": "Anchors",
+        "typeVersion": 1
+       },
+       "versions": {
+        "createTime": "2026-10-13T01:10:59.326+00:00",
+        "createdBy": "postgresqlsurveyengine",
+        "lastRequestId": "452789a8-153c-4d82-bd19-4d6f563ddeb2",
+        "maintainedBy": [
+         "postgresqlsurveyengine"
+        ],
+        "updateTime": "2026-10-13T01:10:59.326+00:00",
+        "updatedBy": "postgresqlsurveyengine",
+        "version": 1
+       }
+      },
+      "class": "ElementHeader",
+      "guid": "57eda955-79fb-48df-88f4-28234df1ab08",
+      "headerVersion": 0,
+      "origin": {
+       "homeMetadataCollectionId": "9905c3cb-94c5-4494-9229-0d6f69c0b842",
+       "homeMetadataCollectionName": "qs-metadata-store",
+       "originCategory": "LOCAL_COHORT",
+       "sourceServer": "qs-metadata-store"
+      },
+      "status": "ACTIVE",
+      "type": {
+       "superTypeNames": [
+        "Annotation",
+        "AuthoredReferenceable",
+        "Referenceable",
+        "OpenMetadataRoot"
+       ],
+       "typeCategory": "ENTITY_DEF",
+       "typeDescription": "A summary set of measurements for a resource.",
+       "typeId": "c85bea73-d7af-46d7-8a7e-cb745910b1d",
+       "typeName": "ResourceMeasureAnnotation",
+       "typeVersion": 1
+      },
+      "versions": {
+       "createTime": "2026-10-13T01:10:59.328+00:00",
+       "createdBy": "postgresqlsurveyengine",
+       "lastRequestId": "452789a8-153c-4d82-bd19-4d6f563ddeb2",
+       "maintainedBy": [
+        "postgresqlsurveyengine"
+       ],
+       "updateTime": "2026-10-13T01:10:59.328+00:00",
+       "updatedBy": "postgresqlsurveyengine",
+       "version": 1
+      }
+     },
+     "properties": {
+      "absoluteUncertainty": 0,
+      "analysisStep": "Profiling Associated Resources",
+      "annotationType": "Capture Database Table Measurements",
+      "class": "ResourceMeasureAnnotationProperties",
+      "confidence": 0,
+      "explanation": "This annotation retrieves statistics about individual columns and aggregates them into a summary for the table.",
+      "jsonProperties": "{\"tableName\":\"datsrcln\",\"qualifiedTableName\":\"usda.public.datsrcln\",\"tableSize\":5144576,\"tableType\":\"Table\",\"columnCount\":3,\"numberOfRowsInserted\":0,\"numberOfRowsUpdated\":0,\"numberOfRowsDeleted\":0,\"tableOwner\":\"dwolfson\",\"isPopulated\":true,\"hasIndexes\":true,\"hasRules\":false,\"hasTriggers\":true,\"hasRowSecurity\":false}",
+      "qualifiedName": "Annotation::Capture Database Table Measurements::usda.public.datsrcln::efcb7cad-8efd-4568-a0ec-d2ba3e8e9ec4",
+      "relativeUncertainty": 0,
+      "resourceProperties": {
+       "Has Indexes": "true",
+       "Has Row Security": "false",
+       "Has Rules": "false",
+       "Has Triggers": "true",
+       "Is Populated": "true",
+       "Number Of Rows Deleted": "0",
+       "Number Of Rows Inserted": "0",
+       "Number Of Rows Updated": "0",
+       "Number of columns": "3",
+       "Resource Owner": "dwolfson",
+       "Table Name": "datsrcln",
+       "Table Qualified Name": "usda.public.datsrcln",
+       "Table Size": "5144576",
+       "Table Type": "Table"
+      },
+      "samplePercent": 0,
+      "sampleSize": 0,
+      "summary": "Capture summary statistics about a database table.",
+      "typeName": "ResourceMeasureAnnotation"
+     }
+    },
+    "relatedElementAtEnd1": false,
+    "relationshipHeader": {
+     "class": "ElementHeader",
+     "guid": "cc1be9ab-624c-467c-b90a-7064356ccb5d",
+     "headerVersion": 0,
+     "origin": {
+      "homeMetadataCollectionId": "9905c3cb-94c5-4494-9229-0d6f69c0b842",
+      "homeMetadataCollectionName": "qs-metadata-store",
+      "originCategory": "LOCAL_COHORT",
+      "sourceServer": "qs-metadata-store"
+     },
+     "status": "ACTIVE",
+     "type": {
+      "superTypeNames": [
+       "LabeledRelationship"
+      ],
+      "typeCategory": "RELATIONSHIP_DEF",
+      "typeDescription": "Link between a SurveyReport and an Annotation generated from the same run of a survey action service.",
+      "typeId": "3af278ed-f4e8-4afc-851b-a5b0908ba06f",
+      "typeName": "ReportedAnnotation",
+      "typeVersion": 2
+     },
+     "versions": {
+      "createTime": "2026-10-13T01:10:59.398+00:00",
+      "createdBy": "postgresqlsurveyengine",
+      "lastRequestId": "452789a8-153c-4d82-bd19-4d6f563ddeb2",
+      "maintainedBy": [
+       "postgresqlsurveyengine"
+      ],
+      "updateTime": "2026-10-13T01:10:59.398+00:00",
+      "updatedBy": "postgresqlsurveyengine",
+      "version": 1
+     }
+    }
+   },
+   {
+    "class": "RelatedMetadataElementSummary",
+    "relatedElement": {
+     "elementHeader": {
+      "anchor": {
+       "class": "ElementClassification",
+       "classificationName": "Anchors",
+       "classificationOrigin": "ASSIGNED",
+       "classificationProperties": {
+        "anchorDomainName": "Asset",
+        "anchorGUID": "304152cf-fa47-4496-9a14-27a7f5b35df2",
+        "anchorTypeName": "RelationalDatabase",
+        "class": "AnchorsProperties",
+        "typeName": "Anchors"
+       },
+       "headerVersion": 0,
+       "origin": {
+        "homeMetadataCollectionId": "9905c3cb-94c5-4494-9229-0d6f69c0b842",
+        "homeMetadataCollectionName": "qs-metadata-store",
+        "originCategory": "LOCAL_COHORT",
+        "sourceServer": "qs-metadata-store"
+       },
+       "status": "ACTIVE",
+       "type": {
+        "typeCategory": "CLASSIFICATION_DEF",
+        "typeDescription": "Identifies the anchor entity for an element that is part of a large composite object such as an asset.",
+        "typeId": "aa44f302-2e43-4669-a1e7-edaae414fc6e",
+        "typeName": "Anchors",
+        "typeVersion": 1
+       },
+       "versions": {
+        "createTime": "2026-10-13T01:10:58.567+00:00",
+        "createdBy": "postgresqlsurveyengine",
+        "lastRequestId": "452789a8-153c-4d82-bd19-4d6f563ddeb2",
+        "maintainedBy": [
+         "postgresqlsurveyengine"
+        ],
+        "updateTime": "2026-10-13T01:10:58.567+00:00",
+        "updatedBy": "postgresqlsurveyengine",
+        "version": 1
+       }
+      },
+      "class": "ElementHeader",
+      "guid": "b036770f-18a0-47aa-8fa1-656b77e0049a",
+      "headerVersion": 0,
+      "origin": {
+       "homeMetadataCollectionId": "9905c3cb-94c5-4494-9229-0d6f69c0b842",
+       "homeMetadataCollectionName": "qs-metadata-store",
+       "originCategory": "LOCAL_COHORT",
+       "sourceServer": "qs-metadata-store"
+      },
+      "status": "ACTIVE",
+      "type": {
+       "superTypeNames": [
+        "Annotation",
+        "AuthoredReferenceable",
+        "Referenceable",
+        "OpenMetadataRoot"
+       ],
+       "typeCategory": "ENTITY_DEF",
+       "typeDescription": "A summary set of measurements for a resource.",
+       "typeId": "c85bea73-d7af-46d7-8a7e-cb745910b1d",
+       "typeName": "ResourceMeasureAnnotation",
+       "typeVersion": 1
+      },
+      "versions": {
+       "createTime": "2026-10-13T01:10:58.570+00:00",
+       "createdBy": "postgresqlsurveyengine",
+       "lastRequestId": "452789a8-153c-4d82-bd19-4d6f563ddeb2",
+       "maintainedBy": [
+        "postgresqlsurveyengine"
+       ],
+       "updateTime": "2026-10-13T01:10:58.570+00:00",
+       "updatedBy": "postgresqlsurveyengine",
+       "version": 1
+      }
+     },
+     "properties": {
+      "absoluteUncertainty": 0,
+      "analysisStep": "Profiling Associated Resources",
+      "annotationType": "Capture Database Table Measurements",
+      "class": "ResourceMeasureAnnotationProperties",
+      "confidence": 0,
+      "explanation": "This annotation retrieves statistics about individual columns and aggregates them into a summary for the table.",
+      "jsonProperties": "{\"tableName\":\"deriv_cd\",\"qualifiedTableName\":\"usda.public.deriv_cd\",\"tableSize\":16384,\"tableType\":\"Table\",\"columnCount\":2,\"numberOfRowsInserted\":0,\"numberOfRowsUpdated\":0,\"numberOfRowsDeleted\":0,\"tableOwner\":\"dwolfson\",\"isPopulated\":true,\"hasIndexes\":true,\"hasRules\":false,\"hasTriggers\":true,\"hasRowSecurity\":false}",
+      "qualifiedName": "Annotation::Capture Database Table Measurements::usda.public.deriv_cd::a6cecb57-3ba2-4c6e-a9ec-2c947a30f2fa",
+      "relativeUncertainty": 0,
+      "resourceProperties": {
+       "Has Indexes": "true",
+       "Has Row Security": "false",
+       "Has Rules": "false",
+       "Has Triggers": "true",
+       "Is Populated": "true",
+       "Number Of Rows Deleted": "0",
+       "Number Of Rows Inserted": "0",
+       "Number Of Rows Updated": "0",
+       "Number of columns": "2",
+       "Resource Owner": "dwolfson",
+       "Table Name": "deriv_cd",
+       "Table Qualified Name": "usda.public.deriv_cd",
+       "Table Size": "16384",
+       "Table Type": "Table"
+      },
+      "samplePercent": 0,
+      "sampleSize": 0,
+      "summary": "Capture summary statistics about a database table.",
+      "typeName": "ResourceMeasureAnnotation"
+     }
+    },
+    "relatedElementAtEnd1": false,
+    "relationshipHeader": {
+     "class": "ElementHeader",
+     "guid": "c0b8d70d-f0be-4930-8d04-18e550113f11",
+     "headerVersion": 0,
+     "origin": {
+      "homeMetadataCollectionId": "9905c3cb-94c5-4494-9229-0d6f69c0b842",
+      "homeMetadataCollectionName": "qs-metadata-store",
+      "originCategory": "LOCAL_COHORT",
+      "sourceServer": "qs-metadata-store"
+     },
+     "status": "ACTIVE",
+     "type": {
+      "superTypeNames": [
+       "LabeledRelationship"
+      ],
+      "typeCategory": "RELATIONSHIP_DEF",
+      "typeDescription": "Link between a SurveyReport and an Annotation generated from the same run of a survey action service.",
+      "typeId": "3af278ed-f4e8-4afc-851b-a5b0908ba06f",
+      "typeName": "ReportedAnnotation",
+      "typeVersion": 2
+     },
+     "versions": {
+      "createTime": "2026-10-13T01:10:58.659+00:00",
+      "createdBy": "postgresqlsurveyengine",
+      "lastRequestId": "452789a8-153c-4d82-bd19-4d6f563ddeb2",
+      "maintainedBy": [
+       "postgresqlsurveyengine"
+      ],
+      "updateTime": "2026-10-13T01:10:58.659+00:00",
+      "updatedBy": "postgresqlsurveyengine",
+      "version": 1
+     }
+    }
+   },
+   {
+    "class": "RelatedMetadataElementSummary",
+    "relatedElement": {
+     "elementHeader": {
+      "anchor": {
+       "class": "ElementClassification",
+       "classificationName": "Anchors",
+       "classificationOrigin": "ASSIGNED",
+       "classificationProperties": {
+        "anchorDomainName": "Asset",
+        "anchorGUID": "304152cf-fa47-4496-9a14-27a7f5b35df2",
+        "anchorTypeName": "RelationalDatabase",
+        "class": "AnchorsProperties",
+        "typeName": "Anchors"
+       },
+       "headerVersion": 0,
+       "origin": {
+        "homeMetadataCollectionId": "9905c3cb-94c5-4494-9229-0d6f69c0b842",
+        "homeMetadataCollectionName": "qs-metadata-store",
+        "originCategory": "LOCAL_COHORT",
+        "sourceServer": "qs-metadata-store"
+       },
+       "status": "ACTIVE",
+       "type": {
+        "typeCategory": "CLASSIFICATION_DEF",
+        "typeDescription": "Identifies the anchor entity for an element that is part of a large composite object such as an asset.",
+        "typeId": "aa44f302-2e43-4669-a1e7-edaae414fc6e",
+        "typeName": "Anchors",
+        "typeVersion": 1
+       },
+       "versions": {
+        "createTime": "2026-10-13T01:10:58.296+00:00",
+        "createdBy": "postgresqlsurveyengine",
+        "lastRequestId": "452789a8-153c-4d82-bd19-4d6f563ddeb2",
+        "maintainedBy": [
+         "postgresqlsurveyengine"
+        ],
+        "updateTime": "2026-10-13T01:10:58.296+00:00",
+        "updatedBy": "postgresqlsurveyengine",
+        "version": 1
+       }
+      },
+      "class": "ElementHeader",
+      "guid": "189ae608-7d3b-42ee-b5b1-316dbcec6571",
+      "headerVersion": 0,
+      "origin": {
+       "homeMetadataCollectionId": "9905c3cb-94c5-4494-9229-0d6f69c0b842",
+       "homeMetadataCollectionName": "qs-metadata-store",
+       "originCategory": "LOCAL_COHORT",
+       "sourceServer": "qs-metadata-store"
+      },
+      "status": "ACTIVE",
+      "type": {
+       "superTypeNames": [
+        "Annotation",
+        "AuthoredReferenceable",
+        "Referenceable",
+        "OpenMetadataRoot"
+       ],
+       "typeCategory": "ENTITY_DEF",
+       "typeDescription": "A summary set of measurements for a resource.",
+       "typeId": "c85bea73-d7af-46d7-8a7e-cb745910b1d",
+       "typeName": "ResourceMeasureAnnotation",
+       "typeVersion": 1
+      },
+      "versions": {
+       "createTime": "2026-10-13T01:10:58.297+00:00",
+       "createdBy": "postgresqlsurveyengine",
+       "lastRequestId": "452789a8-153c-4d82-bd19-4d6f563ddeb2",
+       "maintainedBy": [
+        "postgresqlsurveyengine"
+       ],
+       "updateTime": "2026-10-13T01:10:58.297+00:00",
+       "updatedBy": "postgresqlsurveyengine",
+       "version": 1
+      }
+     },
+     "properties": {
+      "absoluteUncertainty": 0,
+      "analysisStep": "Profiling Associated Resources",
+      "annotationType": "Capture Database Schema Measurements",
+      "class": "ResourceMeasureAnnotationProperties",
+      "confidence": 0,
+      "explanation": "This annotation retrieves statistics about individual tables and columns, and aggregates them into a summary for the schema.",
+      "jsonProperties": "{\"qualifiedSchemaName\":\"usda.public\",\"schemaName\":\"public\",\"totalTableSize\":31637504,\"tableCount\":10,\"viewCount\":0,\"columnCount\":2,\"materializedViewCount\":0}",
+      "qualifiedName": "Annotation::Capture Database Schema Measurements::usda.public::22bac7cb-7ec5-4403-8f96-9874425b0473",
+      "relativeUncertainty": 0,
+      "resourceProperties": {
+       "Number of columns": "2",
+       "Number of materialized views": "0",
+       "Number of tables": "10",
+       "Number of views": "0",
+       "Qualified Schema Name": "usda.public",
+       "Schema Name": "public",
+       "Total size of tables": "31637504"
+      },
+      "samplePercent": 0,
+      "sampleSize": 0,
+      "summary": "Capture summary statistics about the database tables in a database schema.",
+      "typeName": "ResourceMeasureAnnotation"
+     }
+    },
+    "relatedElementAtEnd1": false,
+    "relationshipHeader": {
+     "class": "ElementHeader",
+     "guid": "e491f169-d05a-423a-b36a-85bc81b6b1c3",
+     "headerVersion": 0,
+     "origin": {
+      "homeMetadataCollectionId": "9905c3cb-94c5-4494-9229-0d6f69c0b842",
+      "homeMetadataCollectionName": "qs-metadata-store",
+      "originCategory": "LOCAL_COHORT",
+      "sourceServer": "qs-metadata-store"
+     },
+     "status": "ACTIVE",
+     "type": {
+      "superTypeNames": [
+       "LabeledRelationship"
+      ],
+      "typeCategory": "RELATIONSHIP_DEF",
+      "typeDescription": "Link between a SurveyReport and an Annotation generated from the same run of a survey action service.",
+      "typeId": "3af278ed-f4e8-4afc-851b-a5b0908ba06f",
+      "typeName": "ReportedAnnotation",
+      "typeVersion": 2
+     },
+     "versions": {
+      "createTime": "2026-10-13T01:10:58.359+00:00",
+      "createdBy": "postgresqlsurveyengine",
+      "lastRequestId": "452789a8-153c-4d82-bd19-4d6f563ddeb2",
+      "maintainedBy": [
+       "postgresqlsurveyengine"
+      ],
+      "updateTime": "2026-10-13T01:10:58.359+00:00",
+      "updatedBy": "postgresqlsurveyengine",
+      "version": 1
+     }
+    }
+   },
+   {
+    "class": "RelatedMetadataElementSummary",
+    "relatedElement": {
+     "elementHeader": {
+      "anchor": {
+       "class": "ElementClassification",
+       "classificationName": "Anchors",
+       "classificationOrigin": "ASSIGNED",
+       "classificationProperties": {
+        "anchorDomainName": "Asset",
+        "anchorGUID": "304152cf-fa47-4496-9a14-27a7f5b35df2",
+        "anchorTypeName": "RelationalDatabase",
+        "class": "AnchorsProperties",
+        "typeName": "Anchors"
+       },
+       "headerVersion": 0,
+       "origin": {
+        "homeMetadataCollectionId": "9905c3cb-94c5-4494-9229-0d6f69c0b842",
+        "homeMetadataCollectionName": "qs-metadata-store",
+        "originCategory": "LOCAL_COHORT",
+        "sourceServer": "qs-metadata-store"
+       },
+       "status": "ACTIVE",
+       "type": {
+        "typeCategory": "CLASSIFICATION_DEF",
+        "typeDescription": "Identifies the anchor entity for an element that is part of a large composite object such as an asset.",
+        "typeId": "aa44f302-2e43-4669-a1e7-edaae414fc6e",
+        "typeName": "Anchors",
+        "typeVersion": 1
+       },
+       "versions": {
+        "createTime": "2026-10-13T01:10:58.073+00:00",
+        "createdBy": "postgresqlsurveyengine",
+        "lastRequestId": "452789a8-153c-4d82-bd19-4d6f563ddeb2",
+        "maintainedBy": [
+         "postgresqlsurveyengine"
+        ],
+        "updateTime": "2026-10-13T01:10:58.073+00:00",
+        "updatedBy": "postgresqlsurveyengine",
+        "version": 1
+       }
+      },
+      "class": "ElementHeader",
+      "guid": "d86095cb-0907-4611-8ce5-23b135e21bf4",
+      "headerVersion": 0,
+      "origin": {
+       "homeMetadataCollectionId": "9905c3cb-94c5-4494-9229-0d6f69c0b842",
+       "homeMetadataCollectionName": "qs-metadata-store",
+       "originCategory": "LOCAL_COHORT",
+       "sourceServer": "qs-metadata-store"
+      },
+      "status": "ACTIVE",
+      "type": {
+       "superTypeNames": [
+        "Annotation",
+        "AuthoredReferenceable",
+        "Referenceable",
+        "OpenMetadataRoot"
+       ],
+       "typeCategory": "ENTITY_DEF",
+       "typeDescription": "A summary set of measurements for a resource.",
+       "typeId": "c85bea73-d7af-46d7-8a7e-cb745910b1d",
+       "typeName": "ResourceMeasureAnnotation",
+       "typeVersion": 1
+      },
+      "versions": {
+       "createTime": "2026-10-13T01:10:58.076+00:00",
+       "createdBy": "postgresqlsurveyengine",
+       "lastRequestId": "452789a8-153c-4d82-bd19-4d6f563ddeb2",
+       "maintainedBy": [
+        "postgresqlsurveyengine"
+       ],
+       "updateTime": "2026-10-13T01:10:58.076+00:00",
+       "updatedBy": "postgresqlsurveyengine",
+       "version": 1
+      }
+     },
+     "properties": {
+      "absoluteUncertainty": 0,
+      "analysisStep": "Profiling Associated Resources",
+      "annotationType": "Capture Database Measurements",
+      "class": "ResourceMeasureAnnotationProperties",
+      "confidence": 0,
+      "explanation": "This annotation retrieves statistics about a database and its usage.",
+      "jsonProperties": "{\"resourceName\":\"usda\",\"schemaCount\":1,\"tableCount\":10,\"viewCount\":10,\"columnCount\":2,\"materializedViewCount\":10,\"size\":58555415,\"rowsFetched\":1054580,\"rowsInserted\":0,\"rowsUpdated\":0,\"rowsDeleted\":0,\"sessionTime\":2.8861018229E7,\"activeTime\":441.327}",
+      "qualifiedName": "Annotation::Capture Database Measurements::usda::238aac13-1bcd-46be-86e5-664fdbe93ed6",
+      "relativeUncertainty": 0,
+      "resourceProperties": {
+       "Active Time": "441.327",
+       "Data size": "58555415",
+       "Database Name": "usda",
+       "Number of columns": "2",
+       "Number of schemas": "1",
+       "Number of tables": "10",
+       "Rows Deleted": "0",
+       "Rows Fetched": "1054580",
+       "Rows Inserted": "0",
+       "Rows Updated": "0",
+       "Session Time": "2.8861018229E7"
+      },
+      "samplePercent": 0,
+      "sampleSize": 0,
+      "summary": "Capture summary statistics about a database.",
+      "typeName": "ResourceMeasureAnnotation"
+     }
+    },
+    "relatedElementAtEnd1": false,
+    "relationshipHeader": {
+     "class": "ElementHeader",
+     "guid": "219fd8ad-b997-43f2-9cdc-f98db037b748",
+     "headerVersion": 0,
+     "origin": {
+      "homeMetadataCollectionId": "9905c3cb-94c5-4494-9229-0d6f69c0b842",
+      "homeMetadataCollectionName": "qs-metadata-store",
+      "originCategory": "LOCAL_COHORT",
+      "sourceServer": "qs-metadata-store"
+     },
+     "status": "ACTIVE",
+     "type": {
+      "superTypeNames": [
+       "LabeledRelationship"
+      ],
+      "typeCategory": "RELATIONSHIP_DEF",
+      "typeDescription": "Link between a SurveyReport and an Annotation generated from the same run of a survey action service.",
+      "typeId": "3af278ed-f4e8-4afc-851b-a5b0908ba06f",
+      "typeName": "ReportedAnnotation",
+      "typeVersion": 2
+     },
+     "versions": {
+      "createTime": "2026-10-13T01:10:58.162+00:00",
+      "createdBy": "postgresqlsurveyengine",
+      "lastRequestId": "452789a8-153c-4d82-bd19-4d6f563ddeb2",
+      "maintainedBy": [
+       "postgresqlsurveyengine"
+      ],
+      "updateTime": "2026-10-13T01:10:58.162+00:00",
+      "updatedBy": "postgresqlsurveyengine",
+      "version": 1
+     }
+    }
+   }
+  ]
+ }
+}

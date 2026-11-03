@@ -29,6 +29,25 @@ from resource_explorer.bulk_ops import (
 from resource_explorer.registry import Project, ProjectRegistry
 
 
+@pytest.fixture(autouse=True)
+def _zone_access_open(monkeypatch):
+    """Brief Z2: this write path asks `curation_access` (the one decision). These tests are about something else,
+    so no zone is in use: the access reads are faked open at the client boundary (`tests/zone_fakes.open_access`)."""
+    from tests.zone_fakes import open_access
+
+    return open_access(monkeypatch, caller_if_none="zone2-tester")
+
+# Brief I: these tests fake the Egeria clients; the code under test runs as a signed-in caller, as on a route.
+pytestmark = pytest.mark.usefixtures("signed_in_caller")
+
+
+@pytest.fixture(autouse=True)
+def _block_cleared_for_the_older_delete_tests(monkeypatch):
+    """The older delete_in_egeria tests exercise the delete itself, so they run with the archive-cascade block cleared.
+    TestIssue117BlockOnDeleteInEgeria removes it again to prove the refusal."""
+    monkeypatch.setenv("RE_ISSUE_117_BLOCK_OFF", "test-clearance")
+
+
 @pytest.fixture
 def registry(tmp_path):
     reg = ProjectRegistry(db_path=str(tmp_path / "t.db"))
@@ -163,3 +182,86 @@ class TestActionValidation:
     def test_an_unknown_action_is_refused_before_anything_runs(self, registry):
         with pytest.raises(ValueError, match="unknown action"):
             resolve_all(registry, _targets("p0"), "obliterate")
+
+
+class TestOnlyAStillStaleLinkMayBeResolved:
+    """A resource republished since the list was read has no stale record; resolving it would clear a good link and
+    publish a second element to Egeria."""
+
+    def test_a_target_no_longer_stale_is_skipped_in_dry_run_and_apply(self, registry):
+        registry.clear_egeria_linkage_status("repo", "p1")      # republished meanwhile
+        for dry in (True, False):
+            with patch("resource_explorer.bulk_ops._resolve_one") as one:
+                r = resolve_all(registry, _targets("p0", "p1"), "republish", dry_run=dry)
+            d = {x["slug"]: x for x in r.details}
+            assert d["p1"]["result"] == "skipped" and "no longer stale" in d["p1"]["message"], dry
+            assert d["p0"]["result"] == "ok"
+            assert r.skipped == 1 and r.succeeded == 1
+            if not dry:
+                assert [c.args[2] for c in one.call_args_list] == ["p0"], "the good link is never touched"
+            else:
+                one.assert_not_called()
+
+    def test_the_good_links_guid_survives(self, registry):
+        registry.clear_egeria_linkage_status("repo", "p1")
+        with patch("resource_explorer.bulk_ops._resolve_one"):
+            resolve_all(registry, _targets("p1"), "discard", dry_run=False)
+        assert registry.get_egeria_asset_guid("p1") == "guid-1"
+
+
+class TestIssue117BlockOnDeleteInEgeria:
+    def test_refused_while_the_block_is_on_in_dry_run_and_apply_and_no_client_is_built(self, registry, monkeypatch):
+        monkeypatch.delenv("RE_ISSUE_117_BLOCK_OFF", raising=False)
+        from resource_explorer.catalogue_gateway import ISSUE_117_WORDS
+        for dry in (True, False):
+            with patch("pyegeria.AssetMaker") as AM:
+                r = delete_in_egeria(registry, _targets("p0", "p1"), dry_run=dry)
+            AM.assert_not_called()
+            assert r.failed == 2 and r.succeeded == 0
+            assert all(d["message"] == ISSUE_117_WORDS for d in r.details)
+        assert registry.get_egeria_asset_guid("p0") == "guid-0", "the local pointer is untouched"
+
+    def test_at_the_shipped_default_rules_delete_in_egeria_fails_and_makes_no_client_call(self, registry, monkeypatch):
+        """Behavioural (2026-10-23 lift): the shipped rules, un-stubbed, both variables unset. The lift opens the
+        leave-out archive only, so a bulk delete still fails with the block's words and no client is built or used."""
+        from resource_explorer import catalogue_gateway as gw
+        monkeypatch.setattr(gw, "issue_117_blocked", gw._shipped_issue_117_blocked)
+        monkeypatch.delenv("RE_ISSUE_117_BLOCK_OFF", raising=False)
+        monkeypatch.delenv("RE_ISSUE_117_BLOCK", raising=False)
+        assert gw.issue_117_blocked("p0", scope=gw.LEAVE_OUT_ARCHIVE) is False, "the lift is live in this test"
+        with patch("pyegeria.AssetMaker") as AM, patch("resource_explorer.egeria_clients.egeria_client") as client:
+            r = delete_in_egeria(registry, _targets("p0", "p1"), dry_run=False)
+        AM.assert_not_called()
+        client.assert_not_called()
+        assert r.failed == 2 and r.succeeded == 0
+        assert all(d["message"] == gw.ISSUE_117_WORDS for d in r.details)
+        assert registry.get_egeria_asset_guid("p0") == "guid-0"
+
+    def test_the_override_lifts_the_block_for_its_one_slug_only(self, registry, monkeypatch):
+        """Each target is judged by its own slug: p1 is named and goes on (dry run: no client), p0 is refused."""
+        from datetime import datetime, timezone
+
+        from resource_explorer import catalogue_gateway as gw
+        monkeypatch.setattr(gw, "issue_117_blocked", gw._shipped_issue_117_blocked)       # the shipped rules, un-stubbed
+        monkeypatch.setenv("RE_ISSUE_117_BLOCK_OFF", "tester/" + datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ") + "/p1")
+        with patch("pyegeria.AssetMaker") as AM:
+            r = delete_in_egeria(registry, _targets("p0", "p1"), dry_run=True)
+        AM.assert_not_called()
+        by = {d["slug"]: d for d in r.details}
+        assert by["p0"]["result"] == "failed" and by["p0"]["message"] == gw.ISSUE_117_WORDS
+        assert by["p1"]["result"] != "failed", by["p1"]
+        monkeypatch.setenv("RE_ISSUE_117_BLOCK_OFF", "tester/2020-01-01T00:00:00Z/p1")      # expired: both refused
+        r = delete_in_egeria(registry, _targets("p0", "p1"), dry_run=True)
+        assert r.failed == 2
+
+
+class TestOnlyStatusStaleIsResolved:
+    def test_an_uncatalogued_row_is_not_stale_and_is_skipped(self, registry):
+        registry.mark_egeria_linkage_uncatalogued("repo", "p1", "never published")
+        assert registry.get_egeria_linkage("repo", "p1")["status"] == "uncatalogued"
+        for dry in (True, False):
+            with patch("resource_explorer.bulk_ops._resolve_one") as one:
+                r = resolve_all(registry, _targets("p1"), "republish", dry_run=dry)
+            assert r.skipped == 1 and r.succeeded == 0, dry
+            assert "no longer stale" in r.details[0]["message"]
+            one.assert_not_called()

@@ -67,11 +67,11 @@ class TestSymbolMembers:
 
 class TestFallbackAndScope:
     def test_unknown_analysis_falls_back_to_its_findings_with_detail(self, db):
-        db.upsert_finding("p", "interface_surface", [
+        db.upsert_finding("p", "ci_quality", [
             {"check_name": "cli", "label": "implied", "summary": "from click", "detail": {"framework": "click"}},
             {"check_name": "http_api", "label": "implied", "summary": "from fastapi"},
         ], surveyed_at="2026-09-01T00:00:00")
-        m = members_for(db, "p", "interface_surface").to_dict()
+        m = members_for(db, "p", "ci_quality").to_dict()
         assert m["total"] == 2 and m["groups"][0]["name"] == "implied"
         assert m["groups"][0]["members"][0]["extra"] == {"framework": "click"}
         # scope is recorded but not honoured -- the caller can see it was
@@ -80,7 +80,7 @@ class TestFallbackAndScope:
         assert m["not_applicable"] is False
 
     def test_bad_scope_is_coerced_not_trusted(self, db):
-        assert members_for(db, "p", "interface_surface", scope="everything").to_dict()["scope"] == "public"
+        assert members_for(db, "p", "ci_quality", scope="everything").to_dict()["scope"] == "public"
 
     def test_children_of_an_unknown_key_is_empty_not_an_error(self, db):
         assert children_for(db, "p", "cve_scan", "nope:x") == []
@@ -121,3 +121,53 @@ class TestMetricsOnlyAnalysisHasNoMembers:
         ], surveyed_at="2026-09-01T00:00:00")
         m = members_for(db, "p", "cve_scan").to_dict()
         assert m["not_applicable"] is False and m["total"] == 1
+
+
+class TestAnswerLinkOpensTheStoreTheAnalysisWrote:
+    """The answer page's "open the full list" link calls members_for with NO
+    metric (chat.js openMembers({slug, analysisId})). api_structure's reader
+    was registered only under ("api_structure", "symbol_count"), so the bare
+    call fell through to the findings fallback and said "0 findings" for a
+    repository whose api_structure data lives in project_code_symbols and
+    project_analysis_metrics (live: dataops_testgen, 2026-10-15)."""
+
+    @staticmethod
+    def _sym(path, qn):
+        from resource_explorer.ingestion.code_symbol_extractor import CodeSymbol
+        return CodeSymbol(resource_slug="p", file_path=path, language="python", kind="function",
+                          name=qn.split(".")[-1], qualified_name=qn, signature="", docstring="",
+                          start_line=1, end_line=2, is_private=False)
+
+    def test_bare_api_structure_call_reads_the_symbol_store(self, db):
+        db.upsert_code_symbols("p", [self._sym("a.py", "a.f"), self._sym("b.py", "b.g")])
+        m = members_for(db, "p", "api_structure").to_dict()   # no metric, as the link sends it
+        assert m["total"] == 2
+        assert m["source"] == "project_code_symbols"
+        assert not m["empty"]
+
+    def test_bare_code_symbol_extraction_and_manifest_parse_resolve_to_a_reader(self, db):
+        m = members_for(db, "p", "manifest_parse").to_dict()
+        assert m["source"] == "project_dependencies"          # not the findings fallback
+
+    def test_an_empty_list_says_what_is_missing_not_zero_findings(self, db):
+        m = members_for(db, "p", "interface_surface").to_dict()
+        assert m["empty"] is True
+        assert m["reason"].startswith("not measured")  # endpoints: never extracted != zero
+        m2 = members_for(db, "p", "api_structure").to_dict()
+        assert m2["empty"] is True and m2["reason"] == "nothing stored by api_structure for this repo"
+
+
+class TestMembersRouteForTheAnswerLink:
+    def test_route_without_metric_returns_the_symbols_the_answer_used(self, db, monkeypatch):
+        from fastapi.testclient import TestClient
+        db.upsert_code_symbols("p", [TestAnswerLinkOpensTheStoreTheAnalysisWrote._sym("a.py", "a.f")])
+        monkeypatch.setattr("resource_explorer.registry.ProjectRegistry.__init__",
+                            lambda self, db_path=None: setattr(self, "__dict__", db.__dict__) or None)
+        monkeypatch.setenv("TRELLIS_ANONYMOUS_READ", "true")
+        from resource_explorer.web.app import app
+        r = TestClient(app).get("/api/projects/p/members/api_structure?entity_type=repo")
+        assert r.status_code == 200, r.text
+        body = r.json()
+        assert body["total"] == 1 and body["source"] == "project_code_symbols" and body["empty"] is False
+        r2 = TestClient(app).get("/api/projects/p/members/interface_surface?entity_type=repo")
+        assert r2.json()["empty"] is True and r2.json()["reason"].startswith("not measured")

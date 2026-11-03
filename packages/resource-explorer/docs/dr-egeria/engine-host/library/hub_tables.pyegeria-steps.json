@@ -1,0 +1,27 @@
+{
+  "$comment": [
+    "GENERATED with hub_tables.md by packages/resource-explorer/scripts/generate_engine_host_declaration.py from the manifest of 'hub_tables'. Do not hand-edit; regenerate.",
+    "resource_explorer.dr_egeria_runner runs these find-or-create pyegeria steps, in this order, before the document (docs/dr-egeria-engine-host-gaps.md)."
+  ],
+  "steps": [
+    {
+      "command": "Create Survey Action Engine",
+      "qualified_name": "ResourceExplorerSurvey",
+      "display_name": "Resource Explorer Survey Engine",
+      "description": "Resource Explorer's survey engine. It is hosted by Resource Explorer's worker, outside any Egeria engine host (Q-M4): no Java engine host configuration may list it, or a JVM host races Resource Explorer for every claim."
+    },
+    {
+      "command": "Create Survey Action Service",
+      "qualified_name": "SurveyActionService::ResourceExplorerSurvey::hub_tables",
+      "display_name": "Resource Explorer Survey Service — hub_tables",
+      "description": "Foreign-key degree in and out per table, from the keys Resource Explorer stored, and the tables it proposes as hubs (referenced by at least hub_min_referencing other tables, a declared parameter; a count from partly captured keys is a lower bound, reported as at least N). The proposal is an annotation, never a classification on the table. Opens no connection to the database. With no foreign keys stored it is shown as \"not measured\", never as a database with no hubs."
+    },
+    {
+      "command": "Link Supported Governance Service",
+      "governance_engine": "ResourceExplorerSurvey",
+      "governance_service": "SurveyActionService::ResourceExplorerSurvey::hub_tables",
+      "request_type": "re-hub-tables",
+      "service_request_type": "re-hub-tables"
+    }
+  ]
+}

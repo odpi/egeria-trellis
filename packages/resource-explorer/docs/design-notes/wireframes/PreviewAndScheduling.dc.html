@@ -1,0 +1,152 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;600&amp;family=Lora:wght@400;500&amp;display=swap">
+  <style>
+    :root{
+      --paper:#f3f2f2; --rule:rgba(32,31,29,.16); --rule-strong:#8e8a8a;
+      --ink:#201f1d; --ink-muted:#4a463e;
+      --accent:#b68235; --accent-ink:#7d5411;
+      --ok:#1d6b3f; --warn:#9c4212; --gap:#5b4a9c;
+      --chrome:#1b1a19; --chrome-surface:#2d2b2b; --chrome-line:#444141;
+      --chrome-ink:#f3f2f2; --chrome-muted:#9b9797; --accent-on-dark:#e1ad66; --ok-on-dark:#74c68d;
+      --s1:4.6px; --s2:9.2px; --s3:13.8px; --s4:18.4px; --s6:27.6px;
+      --heading:"Cormorant Garamond",Georgia,serif;
+      --body:"Lora",Georgia,serif;
+      --mono:ui-monospace,"SF Mono",Menlo,monospace;
+    }
+    *{box-sizing:border-box}
+    body{margin:0;font-family:var(--body);background:var(--paper);color:var(--ink);font-size:15px;line-height:1.55}
+    .tnum{font-variant-numeric:tabular-nums}
+    .mono{font-family:var(--mono);font-size:.87em}
+    .caps{font-family:var(--heading);font-weight:600;font-size:12px;letter-spacing:.09em;text-transform:uppercase}
+    .h{font-family:var(--heading);font-weight:600}
+    .muted{color:var(--ink-muted)}
+    .lnk{color:var(--accent-ink);text-decoration:underline;text-underline-offset:3px}
+    .g{font-family:"DejaVu Sans","Apple Symbols","Segoe UI Symbol",sans-serif;font-weight:600;display:inline-block;width:1.3em;text-align:center}
+    .ok{color:var(--ok)} .warn{color:var(--warn)} .gapc{color:var(--gap)}
+    .panel-t{font-family:var(--heading);font-weight:600;font-size:21px;margin:0 0 var(--s1)}
+    .panel-s{font-size:13px;color:var(--ink-muted);margin:0 0 var(--s3);max-width:62ch}
+    /* sidebar, on chrome */
+    .side{background:var(--chrome);color:var(--chrome-ink);width:300px;padding:var(--s3);border-radius:3px;font-size:13px;line-height:1.45}
+    .side .lab{font-family:var(--heading);font-weight:600;font-size:12px;letter-spacing:.09em;text-transform:uppercase;color:var(--chrome-muted);margin:var(--s3) 0 4px}
+    .side .sel{border:1px solid var(--chrome-line);border-radius:2px;padding:3px 6px}
+    .side .row{padding:4px 8px;border-left:2px solid transparent;display:flex;justify-content:space-between;gap:8px}
+    .side .row.on{border-left-color:var(--accent);background:var(--chrome-surface)}
+    .side .n{color:var(--chrome-muted)}
+    .side .fold{color:var(--chrome-muted);padding:4px 8px;text-decoration:underline;text-underline-offset:3px}
+    .side .btn{display:inline-block;border:1px solid var(--accent);color:var(--accent-on-dark);border-radius:2px;padding:1px 7px;font-size:12px;margin:0 4px 4px 0}
+    .side .btn.quiet{border-color:var(--chrome-line);color:var(--chrome-ink)}
+    .side .btn.off{border-style:dashed;color:var(--chrome-muted);border-color:var(--chrome-line)}
+    .side .why{color:var(--chrome-muted);font-size:12px}
+    .side .res{padding:3px 8px;display:flex;gap:6px}
+    .side .res input{margin:0}
+    .note{border-left:2px solid var(--chrome-line);padding-left:8px;margin-top:6px;color:var(--chrome-ink);font-size:12px}
+    /* paper panes */
+    .pane{background:#fff;border:1px solid var(--rule);padding:var(--s4);border-radius:2px}
+    .btn2{display:inline-block;border:1px solid var(--rule-strong);border-radius:2px;padding:1px 8px;font-size:12.5px;margin-right:6px}
+    .btn2.primary{border-color:var(--accent);color:var(--accent-ink)}
+    table.grid{border-collapse:collapse;font-size:13px;width:100%}
+    table.grid th{font-family:var(--heading);font-weight:600;text-align:left;font-size:13px;border-bottom:1px solid var(--rule-strong);padding:4px 8px;vertical-align:bottom}
+    table.grid td{border-bottom:1px solid var(--rule);padding:4px 8px;vertical-align:baseline}
+    table.grid td.c{text-align:center}
+    .tabs{display:flex;gap:var(--s4);border-bottom:1px solid var(--rule);font-size:14px;margin:var(--s2) 0 var(--s2)}
+    .tabs span{padding-bottom:3px}
+    .tabs .on{border-bottom:2px solid var(--accent)}
+    .tabs .zero{color:var(--ink-muted);border-bottom:1px dashed var(--rule-strong)}
+    .call{font-size:12.5px;color:var(--ink-muted);border-left:3px solid var(--gap);padding-left:var(--s2);margin-top:var(--s2);max-width:58ch}
+    .strike{text-decoration:line-through;color:var(--ink-muted)}
+  </style>
+</helmet>
+<style>
+  .card{background:#fff;border:1px solid var(--rule);padding:12px 14px;border-radius:2px;margin-top:10px}
+  .b{display:inline-block;border:1px solid var(--accent);color:var(--accent-ink);border-radius:2px;padding:1px 8px;font-size:12.5px}
+  .b.off{border:1px dashed var(--rule-strong);color:var(--ink-muted)}
+  .b.q{border-color:var(--rule-strong);color:var(--ink)}
+  .ql{color:var(--ink-muted);text-decoration:underline;text-underline-offset:3px;font-size:12.5px}
+  .ln{font-size:12.5px;color:var(--ink-muted);margin-top:3px}
+  .lab{font-family:var(--heading);font-weight:600;font-size:12px;letter-spacing:.09em;text-transform:uppercase;color:var(--ink-muted);margin:0 0 4px}
+  .rowx{display:flex;gap:10px;align-items:baseline;border-bottom:1px solid var(--rule);padding:7px 0;font-size:13px}
+  .col{display:grid;grid-template-columns:1fr 1fr;gap:var(--s6)}
+</style>
+
+<style>
+  table.st{border-collapse:collapse;width:100%;font-size:12.5px}
+  table.st th{font-family:var(--heading);font-weight:600;font-size:13px;text-align:left;border-bottom:1px solid var(--rule-strong);padding:4px 6px;vertical-align:bottom}
+  table.st td{border-bottom:1px solid var(--rule);padding:5px 6px;vertical-align:baseline}
+  table.st td.n{text-align:right;font-variant-numeric:tabular-nums}
+  .sch td{background:rgba(32,31,29,.03)}
+  .ind{padding-left:22px!important}
+  .inh{color:var(--ink-muted)}
+  .sub2{font-size:11.5px;color:var(--ink-muted)}
+  .tag{display:inline-block;border:1px solid var(--rule-strong);border-radius:2px;padding:0 5px;font-size:11.5px;color:var(--accent-ink);text-decoration:underline;text-underline-offset:2px}
+  .fbar{display:flex;flex-wrap:wrap;gap:8px;align-items:baseline;font-size:12.5px;border:1px solid var(--rule);background:#fff;padding:6px 8px;border-radius:2px}
+  .fld{border:1px solid var(--rule-strong);border-radius:2px;padding:0 6px}
+  .rule{display:flex;gap:10px;align-items:baseline;font-size:13px;padding:4px 0;border-bottom:1px solid var(--rule)}
+</style>
+<div style="width:1500px;padding:var(--s6) var(--s6) 60px">
+  <div style="border-bottom:1px solid var(--rule-strong);padding-bottom:var(--s4)">
+    <div class="caps" style="color:var(--accent-ink)">Table preview &middot; Automate &middot; replies to ASK-DESIGNER-TABLE-PREVIEW and ASK-DESIGNER-GROUP-SCHEDULING-AND-FIRST-INDEX &middot; against main at 55c5c6ea</div>
+    <h1 class="h" style="font-weight:400;font-size:38px;margin:var(--s3) 0 var(--s2);max-width:62ch">A preview is an act, masked by default; a Group schedule is a rule</h1>
+    <p style="max-width:104ch;margin:0">A: the first surface that shows data. The reason for masking sits on the column, and unknown is never shown as safe. B: one form, always visible, for a resource, a selection or a Group. C: the first index, asked first, with measured and estimated figures each sourced. Values illustrative.</p>
+  </div>
+
+  <div class="panel-t" style="margin-top:var(--s4)">A &middot; Table preview</div>
+  <div class="tabs"><span class="muted">Questions</span><span class="muted">Survey &amp; analyses</span><span class="muted">By analysis</span><span class="muted">Disposition</span><span class="muted">Schema Inventory</span><span class="on">Table preview</span></div>
+  <div class="card">
+    <div style="display:flex;gap:10px;align-items:baseline;flex-wrap:wrap"><span class="fld" style="border:1px solid var(--rule-strong);border-radius:2px;padding:0 6px;font-size:12.5px">table: <span class="mono">sales.orders</span> &#9662;</span><span style="font-size:13px"><strong>sales.orders</strong> &middot; first 20 rows as the database returned them &middot; not a sample, not ordered &middot; as you (<span class="mono">dan_ro</span>) &middot; 14:03</span><span style="margin-left:auto"><span class="b q">20 &#9662;</span> <span class="b">Show 20 rows</span></span></div>
+    <div class="ln">recorded &middot; RE 14:03 &middot; Egeria 14:03 &middot; shown, never stored</div>
+    <div style="font-size:13px;margin:8px 0 4px"><span class="lnk">3 of 7 columns masked</span> &middot; <span class="lnk">1 PII match</span> &middot; <span class="lnk">1 confidential</span> &middot; <span class="lnk">1 not profiled</span> &middot; 1 revealed by you &middot; <span class="ql">Mask all again</span></div>
+    <table class="grid" style="font-size:12.5px">
+      <tr><th>order_id</th><th>placed_at</th><th>email<div><span class="tag" style="font-family:var(--body);font-weight:400">masked &middot; email</span> <span class="ql" style="font-weight:400">show</span></div></th><th>card_last4<div><span class="tag" style="font-family:var(--body);font-weight:400">masked &middot; confidential</span></div></th><th>notes<div><span class="tag" style="font-family:var(--body);font-weight:400;color:var(--ink-muted)">masked &middot; not profiled</span></div></th><th>ship_to<div style="font-family:var(--body);font-weight:400;font-size:11.5px">revealed by you &middot; recorded</div></th><th>amount</th></tr>
+      <tr><td class="mono">100231</td><td class="mono">2026-09-30 11:02</td><td class="muted">&bull;&bull;&bull;&bull;&bull;&bull;</td><td class="muted">&bull;&bull;&bull;&bull;&bull;&bull;</td><td class="muted">&bull;&bull;&bull;&bull;&bull;&bull;</td><td>12 Elm St, Austin</td><td class="mono" style="text-align:right">84.10</td></tr>
+      <tr><td class="mono">100232</td><td class="mono">2026-09-30 11:07</td><td class="muted">&bull;&bull;&bull;&bull;&bull;&bull;</td><td class="muted">&bull;&bull;&bull;&bull;&bull;&bull;</td><td class="muted">&bull;&bull;&bull;&bull;&bull;&bull;</td><td>4 Oak Ave, Dallas</td><td class="mono" style="text-align:right">19.00</td></tr>
+    </table>
+    <div style="margin-top:8px;font-size:13px;border-left:3px solid var(--rule-strong);padding:4px 10px;background:rgba(32,31,29,.03)">Show email&rsquo;s values? This is recorded with your name in RE and Egeria. <span class="b">Show</span> <span class="ql">keep masked</span></div>
+    <div class="col" style="margin-top:10px;gap:var(--s3)">
+      <div class="ln">No credential: <span style="color:var(--ink)">Previews run as you, with your own credential for coco_pharma, not the surveyor&rsquo;s.</span> <span class="lnk">Enter your credential &rsaquo;</span></div>
+      <div class="ln">Refusals: &ldquo;your credential can&rsquo;t read sales.orders &middot; permission denied for table orders&rdquo; &middot; &ldquo;no rows shown &middot; the query ran longer than 10 s and was stopped&rdquo; &middot; &ldquo;<span class="g">&#8709;</span>0 rows &middot; sales.orders is empty, as of 14:03&rdquo;</div>
+    </div>
+  </div>
+
+  <div class="col" style="margin-top:var(--s4)">
+   <div>
+    <div class="panel-t">B &middot; Schedules, for one, a selection or a Group</div>
+    <div class="card">
+      <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:baseline;font-size:12.5px"><span class="lab" style="margin:0">Add a schedule</span> For <span class="b q">Group &middot; Python services (14) &#9662;</span> What <span class="b q">a survey &#9662;</span> Which <span class="b q">repo analysis &#9662;</span> How often <span class="b q">weekly &#9662;</span> <span class="b">Schedule</span></div>
+      <table class="grid" style="margin-top:10px;font-size:12.5px">
+        <tr><th>For</th><th>What</th><th>Cadence</th><th>Last run</th><th>Next</th></tr>
+        <tr><td>&#9662; <strong>Python services (14)</strong></td><td>repo analysis survey</td><td>weekly</td><td>12 of 14 <span class="ok">&#10003;</span> &middot; <span class="lnk">2 failed</span></td><td>Mon 06:00</td></tr>
+        <tr><td class="ind" style="padding-left:24px"><span class="mono">coco_api</span><div class="ln">own schedule &middot; differs from Python services (weekly)</div></td><td></td><td><strong>daily</strong></td><td><span class="ok">&#10003;</span> 10-19 06:01</td><td>10-20 06:00</td></tr>
+        <tr><td style="padding-left:24px"><span class="mono">egeria_python</span><div class="ln">from <span class="tag">Python services</span></div></td><td></td><td>weekly</td><td><span class="warn">&#10005;</span> 10-13 &middot; clone timed out</td><td>Mon 06:00</td></tr>
+        <tr><td><span class="mono">coco_ods</span></td><td>index_health</td><td>daily</td><td><span class="warn">&#10005;</span> failed 3 runs since 10-17</td><td>10-20 02:00</td></tr>
+      </table>
+      <div class="ln">A failing schedule: &#10005; on the sidebar row, and one RFA per schedule (&ldquo;failed 3 runs since 10-17&rdquo;) that resolves on the next success.</div>
+    </div>
+   </div>
+   <div>
+    <div class="panel-t">C &middot; First index, asked first</div>
+    <div class="card">
+      <div style="font-size:14px"><strong>Index 12 repositories for chat?</strong></div>
+      <div style="font-size:13px;margin-top:4px">14,800 files &middot; 410 MB of text &middot; <span class="muted">measured, surveys of 10-12 to 10-17</span></div>
+      <div style="font-size:13px">7 fetch: clone &asymp; 1.6 GB &middot; 5 use the local copy</div>
+      <div style="font-size:13px">about 1 h 10 min and 1.3 GB of index &middot; <span class="muted">estimated from the 31 repositories indexed here</span></div>
+      <div style="margin-top:8px"><span class="b">Index them</span> <span class="ql">not now</span> &middot; <span class="lnk" style="font-size:12.5px">show the 12 &rsaquo;</span></div>
+      <div class="lab" style="margin-top:14px">First indexing &middot; 3 of 12 done</div>
+      <div class="rowx"><span class="mono">coco_api</span><span style="margin-left:auto"><span class="ok">&#10003;</span> indexed 10-19 14:20 &middot; 5 min &middot; 96 MB</span></div>
+      <div class="rowx"><span class="mono">egeria_python</span><span style="margin-left:auto"><span class="muted">&#9684;</span> indexing &middot; 4th of 12</span></div>
+      <div class="rowx"><span class="mono">trellis</span><span style="margin-left:auto" class="muted">waiting</span></div>
+      <div class="ln" style="margin-top:8px">On a repository: <span style="color:var(--ink)">not yet indexed &middot; chat can&rsquo;t search its files yet &middot; </span><span class="lnk">index it &rsaquo;</span></div>
+    </div>
+   </div>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>

@@ -41,6 +41,11 @@ RESOURCE_TYPES: tuple[str, ...] = (
     "filesystem",
     "dataset",
     "model",
+    # Open data OD1 (DESIGN-OPEN-DATA-SEARCH-AND-SURVEY §9, §11): the dataset, the portal it is found on, and the
+    # directory of portals. Registered, not surveyed (see REGISTERED_RESOURCE_TYPES).
+    "open_data",
+    "open_data_portal",
+    "portal_directory",
 )
 
 #: The types with a registered `ResourceTypeAdapter`, a registry table and an
@@ -55,6 +60,16 @@ _SURVEYED = {
 SURVEYED_RESOURCE_TYPES: tuple[str, ...] = tuple(
     t for t in RESOURCE_TYPES if t in _SURVEYED
 )
+
+#: The kinds a registry table holds that nothing surveys yet (OD1: registration, search and import only). They are
+#: NOT in SURVEYED_RESOURCE_TYPES, which claims a `ResourceTypeAdapter` and an analysis catalog section: adding
+#: them there would make `*` in the question catalog expand to kinds with no questions and would fail
+#: `test_every_surveyed_type_has_a_registered_adapter`. OD2 promotes `open_data` when its scout earns it.
+REGISTERED_ONLY_RESOURCE_TYPES: tuple[str, ...] = ("open_data", "open_data_portal", "portal_directory")
+
+#: The kinds a work list's members may be: the surveyed ones plus `open_data` (a portal and a directory are
+#: sources, not things a person works through, so they are not members).
+MEMBER_RESOURCE_TYPES: tuple[str, ...] = SURVEYED_RESOURCE_TYPES + ("open_data",)
 
 #: The value every pre-multi-resource call site assumed. Kept as a named
 #: constant so "this defaults to repo" is greppable rather than a bare string
@@ -77,7 +92,9 @@ RESOURCE_TYPES_SEPARATOR = ";"
 def parse_resource_types(raw: str) -> list[str]:
     """Parse one `Resource Types` CSV cell into resource-type names.
 
-    `*` expands to the whole vocabulary. An empty cell yields
+    `*` expands to the kinds with an adapter (`SURVEYED_RESOURCE_TYPES`), not to every name in the vocabulary
+    (`dataset` and `model` stay valid NAMES but nothing surveys them, and the question-catalog generator refuses a
+    row that names one). An empty cell yields
     `[DEFAULT_RESOURCE_TYPE]` — every row authored before the column existed
     is a repository question, and the backfill says so explicitly, but a row
     added later with the cell left blank must not vanish from every catalog.
@@ -94,7 +111,10 @@ def parse_resource_types(raw: str) -> list[str]:
         v.strip() for v in text.split(RESOURCE_TYPES_SEPARATOR) if v.strip()
     ]
     if ALL_RESOURCE_TYPES_MARKER in values:
-        return list(RESOURCE_TYPES)
+        # `*` is the kinds that have an adapter, not the whole vocabulary (owner ruling 2026-10-22,
+        # REVIEW-QUESTIONS-AND-ANALYTICS-2026-10-22.md §1.1): a section for a kind nothing can survey would be
+        # a list of questions nobody can answer.
+        return list(SURVEYED_RESOURCE_TYPES)
     unknown = [v for v in values if v not in RESOURCE_TYPES]
     if unknown:
         raise ValueError(

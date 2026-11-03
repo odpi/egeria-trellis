@@ -143,7 +143,7 @@ locally; the connector code is authoritative for behaviour):
 | `postgres-server-survey-service` / `survey-postgres-server` | PostgreSQL Server | + PRODUCE_INVENTORY | server-level subset |
 | DuckDB, Oracle, MSSQL, Kafka, Unity Catalog (server / catalog / schema / volume), Apache Atlas | — | same shape | — |
 
-**Ground truth from a live run (2026-09-21, `design-notes/PROBES-2026-09-21.md`).**
+**Ground truth from a live run (2026-09-21, `PROBES-2026-09-21.md`).**
 The table above was read from the annotation-type enums. The first native
 `survey-postgres-database` that completed end to end (against the Prefect
 server's own database, 36 tables, engine action COMPLETED in about 225 s)
@@ -298,7 +298,7 @@ a database behind a VPN is out of reach permanently. `coco_ods` failing with
    RFA "Egeria cannot reach this resource" so the gap is visible.
 
 **Amended 2026-09-21 — reachable means network *and* a resolvable secret.**
-Probe 9 (`design-notes/PROBES-2026-09-21.md`) showed that "has a connection"
+Probe 9 (`PROBES-2026-09-21.md`) showed that "has a connection"
 is not "can open it". `coco_pharma` was catalogued with a real
 `VirtualConnection`, the existence check passed, and the native survey still
 failed with a SCRAM authentication error, because the embedded
@@ -1370,7 +1370,7 @@ can see (structure, keys, names, comments, partition bounds, activity
 counters) is the Scouting estimate; column statistics and everything
 value-derived need the *data identity* and so arrive at Discovery only when
 that identity is held — the two-identity model in
-`design-notes/REPLY-DATABASE-CREDENTIAL-CAPABILITY-VISIBILITY.md` §9.
+`design-notes/exchange/REPLY-DATABASE-CREDENTIAL-CAPABILITY-VISIBILITY.md` §9.
 
 ### 16.3 The questions
 

@@ -84,7 +84,7 @@ class TestSchemaInventoryHeadlineNamesSchemas:
         )
         result = _schema_inventory_headline(registry, "mydb")
         label = result["label"]
-        assert "4 table(s)" in label
+        assert "4 relation(s)" in label
         assert "1 base" in label
         assert "1 view" in label
         assert "1 materialized view" in label

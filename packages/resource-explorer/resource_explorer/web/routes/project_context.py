@@ -18,7 +18,9 @@ from resource_explorer.registry import ProjectRegistry
 
 router = APIRouter()
 
-_VALID_STATUSES = {"unset", "personal", "linked", "deferred", "declined"}
+#: `unbound` is written by scripts/clear_egeria_pointers_after_reset.py (the Egeria project this context named
+#: is gone after a reset). It is not an answer: the publish gate treats it exactly as `unset`.
+_VALID_STATUSES = {"unset", "unbound", "personal", "linked", "deferred", "declined"}
 
 
 class ProjectContextData(BaseModel):
@@ -36,47 +38,6 @@ class SetProjectContextRequest(BaseModel):
     egeria_project_guid: str = ""
     egeria_project_qualified_name: str = ""
     free_text_name: str = ""
-
-
-class ProjectCandidate(BaseModel):
-    guid: str
-    qualified_name: str
-    display_name: str
-    description: str = ""
-
-
-# NOTE: this fixed-path route must be registered before the generic
-# /{entity_type}/{slug} routes below — FastAPI matches in registration
-# order, and /{entity_type}/{slug} would otherwise swallow this path
-# (treating "search" as entity_type, "candidates" as slug).
-@router.get("/search/candidates", response_model=list[ProjectCandidate])
-def search_project_candidates(q: str = "*", limit: int = 20) -> list[ProjectCandidate]:
-    """Real Egeria Projects matching a text search — the "pick an existing
-    Egeria Project" option's data source. Fail-soft: a search/connection
-    error returns an empty list rather than a 500, since the picker's other
-    options (personal/deferred/declined) must stay usable even when Egeria
-    itself is unreachable."""
-    from resource_explorer.surveyors.egeria_project_finder import (
-        EgeriaProjectFinder, EgeriaProjectFinderError,
-    )
-
-    try:
-        finder = EgeriaProjectFinder()
-        results = finder.search_projects(search_string=q, limit=limit)
-    except EgeriaProjectFinderError:
-        return []
-    return [ProjectCandidate(**r) for r in results]
-
-
-@router.get("/{entity_type}/{slug}")
-def get_project_context(entity_type: str, slug: str) -> ProjectContextData:
-    """Current Egeria Project context for a resource — status "unset" (not
-    a 404) when nothing has ever been decided, since "no opinion yet" is a
-    normal, expected state here, not an error."""
-    row = ProjectRegistry().get_project_context(entity_type, slug)
-    if not row:
-        return ProjectContextData(entity_type=entity_type, entity_slug=slug, status="unset")
-    return ProjectContextData(**row)
 
 
 @router.post("/{entity_type}/{slug}")

@@ -20,7 +20,7 @@ def _app():
 class TestTheScreenHoldsTheDesignRules:
     def test_it_renders_whether_or_not_the_catalog_has_rows_for_the_stage(self):
         app = _app()
-        i = app.index("if (state.stage === 'curate') renderCurate(slug);")
+        i = app.index("renderCurate(slug).catch(")
         j = app.index("if (!state.questions.length) {", i)
         assert i < j, "Curate must render before the empty-question early return"
 
@@ -35,8 +35,11 @@ class TestTheScreenHoldsTheDesignRules:
         # function (renderCatalogueDepthOffer), not app.js's rowKey.
         body = app[app.index("async function renderCurate("):app.index("async function renderCatalogueDepthOffer(")]
         assert "Only worthy things get curated" in body
-        assert "data-curate-go ${plan.in_population && me ? '' : 'disabled'}" in body
-        assert "sign in to catalogue" in body
+        # The button now lives in the commit panel (stages/repo-manifest.js, brief section 2): gated by
+        # every blocker, never hidden, with the reason directly under it.
+        panel = (NEXT / "stages" / "repo-manifest.js").read_text(encoding="utf-8")
+        assert "data-curate-go ${off ? 'disabled' : ''}" in panel
+        assert "sign in to publish" in panel and "not in Curate’s population" in panel
 
     def test_every_count_opens_its_members_and_the_manifest_names_the_three_rules(self):
         app = _app()

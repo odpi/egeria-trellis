@@ -8,6 +8,10 @@ from typing import Any
 from resource_explorer.config import ExplorerConfig, get_config
 
 
+class EmptyAgentAnswer(Exception):
+    """The agent ran to completion and produced no text."""
+
+
 class BaseExplorerAgent(ABC):
     """
     Wraps BeeAI RequirementAgent with standard configuration.
@@ -25,8 +29,101 @@ class BaseExplorerAgent(ABC):
         text = result.output[0].text
     """
 
+    #: The CompiledContext behind the most recent handle() call, or None. The
+    #: HTTP route reads it after handle() to show the user the manifest that
+    #: shaped the answer (see ConversationAgent._last_compiled).
+    _last_compiled = None
+    #: What an answer was read from when it had no compile behind it, e.g. {"kind": "stored_dependencies",
+    #: "resource_slug", "analysis_id", "dependencies"}; None otherwise. The route puts it on the done event.
+    _answered_from = None
+
+    #: Whether this agent may be given the tool that files a RequestForAction. The in-app chat does;
+    #: the A2A surface sets it False because its tools are read-only (see agents/rfa_tools.py).
+    allow_writes = True
+
+    #: Appended to a prompt that names the RFA tool when ``allow_writes`` is False.
+    NO_WRITES_NOTE = (
+        "\n\nYou cannot file RequestForActions in this session. If you find an actionable issue, "
+        "describe it and say it should be raised in the Resource Explorer."
+    )
+
+    def _write_tools(self) -> list:
+        """The tools that write, or none when this agent is read-only."""
+        if not self.allow_writes:
+            return []
+        from resource_explorer.agents.journal_tool import write_journal
+        from resource_explorer.agents.rfa_tools import create_rfa_from_finding
+
+        return [create_rfa_from_finding, write_journal]
+
     def __init__(self, config: ExplorerConfig | None = None) -> None:
         self.config = config or get_config()
+        # Tracing used to start only as a side effect of building a RAGSystem, which the chat agents
+        # build only in their failure fallback; with the sessionless RAG path gone, nothing started
+        # it and the agent runs exported no spans. Idempotent, and the reachability probe is cached.
+        from resource_explorer.observability.phoenix_client import init_phoenix
+
+        init_phoenix()
+
+    def _multi_resource_evidence(
+        self, query: str, slugs: list[str], perspectives=None, budget: int | None = None
+    ) -> list[str]:
+        """Prompt lines of compiled evidence across several resources, plus what is missing.
+
+        The multi-resource counterpart of ConversationAgent._compiled_evidence:
+        one deterministic compile over every named resource, with the coverage
+        matrix that says which dimensions were measured for which resource.
+        Gaps are named per resource, because "no stored result" for one side of
+        a comparison must not read as "nothing found" on that side.
+
+        Fail-soft: a compiler that cannot compile returns nothing and the agent
+        proceeds with its tools, as it did before.
+        """
+        self._last_compiled = None
+        try:
+            from resource_explorer.config import get_llm_tier_config
+            from resource_explorer.context_compile import compile_multi_resource_context
+            from resource_explorer.registry import ProjectRegistry
+
+            compiled = compile_multi_resource_context(
+                ProjectRegistry(),
+                slugs,
+                query,
+                budget=get_llm_tier_config().compile_evidence_budget_chars if budget is None else budget,
+                perspectives=list(perspectives or []),
+                session_id=getattr(self, "session_id", None) or "",
+            )
+        except Exception:
+            import logging
+
+            logging.getLogger(__name__).debug(
+                "multi-resource evidence unavailable for %s", slugs, exc_info=True
+            )
+            return []
+
+        self._last_compiled = compiled
+
+        out: list[str] = []
+        if compiled.text.strip():
+            out.append("Evidence (compiled from stored analysis results):")
+            out.append(compiled.text)
+        by_resource: dict[str, dict[str, list[str]]] = {}
+        for gap in compiled.manifest.get("gaps", []):
+            reason = gap.get("reason", "no stored result")
+            by_resource.setdefault(gap.get("resource_slug", ""), {}).setdefault(
+                reason, []
+            ).append(gap["key"])
+        for slug, by_state in sorted(by_resource.items()):
+            for reason, keys in sorted(by_state.items()):
+                out.append(f"[{slug}] Analyses that {reason}: " + ", ".join(sorted(keys)) + ".")
+        if by_resource:
+            out.append(
+                "Say so if the question depends on one of them, and say which resource it is "
+                "missing for. An analysis that ran and found nothing has answered; one that has "
+                "not run has not. Do not read the first as the second, and do not compare a "
+                "measured value on one side with an unmeasured one on the other as if both were known."
+            )
+        return out
 
     @abstractmethod
     def system_prompt(self) -> str:
@@ -73,28 +170,26 @@ class BaseExplorerAgent(ABC):
         resolved-tier ``num_ctx`` (resource_explorer/config.py TIER_PRESETS)
         can be threaded through.
 
-        BeeAI's ``OllamaChatModel`` talks to Ollama via litellm's
-        OpenAI-compatible ``/v1/chat/completions`` endpoint, not Ollama's
-        native ``/api/chat`` — so there is no ``options={"num_ctx": ...}``
-        dict to pass the way llm_client.py's raw ``ollama`` client takes
-        one. Verified empirically (monkeypatching litellm's ``acompletion``
-        and inspecting the outgoing kwargs) that a ``settings={"num_ctx":
-        ...}`` constructor kwarg survives BeeAI's own supported-params
-        filtering and reaches the litellm call as a top-level ``num_ctx``
-        kwarg, which litellm forwards to Ollama's OpenAI-compatible server —
-        Ollama's compat layer reads ``num_ctx`` from the request body the
-        same way it does on the native endpoint.
+        BeeAI's stock ``OllamaChatModel`` talks to Ollama's OpenAI-compatible
+        ``/v1`` endpoint, which silently ignores ``num_ctx`` (measured
+        2026-10-20: ``num_ctx=2048`` still loaded the model at 32768). So
+        this builds ``NativeOllamaChatModel``, which uses the native
+        ``/api/chat`` endpoint where ``num_ctx`` and the ``max_tokens`` cap
+        (as ``num_predict``) are honoured.
         """
         cfg = self.config.llm
         if cfg.backend != "ollama":
             return self._llm_name()
 
-        from beeai_framework.adapters.ollama.backend.chat import OllamaChatModel
+        from beeai_framework.backend import ChatModelParameters
 
-        return OllamaChatModel(
+        from resource_explorer.agents.ollama_native import NativeOllamaChatModel
+
+        return NativeOllamaChatModel(
             cfg.ollama.model,
             base_url=cfg.ollama.base_url,
             settings={"num_ctx": cfg.ollama.num_ctx},
+            parameters=ChatModelParameters(max_tokens=cfg.ollama.max_tokens),
         )
 
     def _infer_project_slug(self, query: str) -> str | None:
@@ -136,7 +231,13 @@ class BaseExplorerAgent(ABC):
                     results.append((pos, project.slug))
 
             # 2. Match databases
-            for db in registry.list_databases():
+            all_databases = registry.list_databases()
+            db_name_counts: dict[str, int] = {}
+            for db in all_databases:
+                if db.database_name:
+                    key = db.database_name.lower()
+                    db_name_counts[key] = db_name_counts.get(key, 0) + 1
+            for db in all_databases:
                 slug = db.slug.lower()
                 slug_pattern = slug.replace("_", r"[-_ ]")
                 m = re.search(r"\b" + slug_pattern + r"\b", q_normalized)
@@ -146,6 +247,13 @@ class BaseExplorerAgent(ABC):
                     if words:
                         m = re.search(r"\b" + re.escape(words[0]) + r"\b", q)
                         if m and all(w in q for w in words):
+                            pos = m.start()
+                if pos is None and db.database_name and db.database_name.lower() in db_name_counts:
+                    # The database's own name ("adventureworks" for laz_local_adventureworks), only
+                    # when no other registered database shares it: otherwise it names no one of them.
+                    if db_name_counts[db.database_name.lower()] == 1:
+                        m = re.search(r"\b" + re.escape(db.database_name.lower()) + r"\b", q_normalized)
+                        if m:
                             pos = m.start()
                 if pos is not None:
                     results.append((pos, db.slug))
@@ -228,7 +336,14 @@ class BaseExplorerAgent(ABC):
             # six ad hoc pools became one.
             from resource_explorer.concurrency import run_sync
 
-            return run_sync(lambda: asyncio.run(_inner()))
+            # The shared pool carries the caller into its thread (concurrency._CallersContextPool),
+            # so an A2A or chat request's agent reads the registry and Egeria as the caller.
+            text = run_sync(lambda: asyncio.run(_inner()))
         except RuntimeError:
             # No running event loop — safe to call asyncio.run directly
-            return asyncio.run(_inner())
+            text = asyncio.run(_inner())
+        if not (text or "").strip():
+            # final_answer("") is a 200 with nothing in it. Raise so the caller's own fallback runs,
+            # rather than showing the user a blank reply.
+            raise EmptyAgentAnswer("the agent finished with an empty answer")
+        return text

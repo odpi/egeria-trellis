@@ -9,7 +9,7 @@ appropriate pgvector collections based on collection configuration.
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import List, Dict, Optional, Tuple
+from typing import List, Dict, Optional, Sequence, Tuple
 import fnmatch
 
 # Add parent directory to path
@@ -22,10 +22,14 @@ from advisor.collection_config import (
     get_phase1_collections,
     get_phase2_collections
 )
-from advisor.config import resolve_advisor_data_root
 from advisor.vector_store import get_vector_store
 from advisor.embeddings import get_embedding_generator
-from advisor.ingest import CodeIngester
+from advisor.collection_sources import (
+    get_collection_source_paths,
+    get_file_patterns,
+    get_repos_dir,
+)
+from advisor.ingest import CodeIngester, existing_chunk_count, path_is_excluded
 from loguru import logger
 
 
@@ -54,78 +58,28 @@ class IngestResult:
         yield self.chunks
 
 
-def get_repos_dir() -> Path:
-    """Get the data/repos directory path.
-
-    Under resolve_advisor_data_root() (ADVISOR_DATA_PATH) -- see
-    clone_repos.py's get_repos_dir() for why this must match the clone
-    target, and admin.py for the read side.
-    """
-    return resolve_advisor_data_root() / "repos"
+# NOTE: get_repos_dir / get_collection_source_paths / get_file_patterns moved to
+# advisor/collection_sources.py (2026-09-10) so incremental_indexer's CLI resolves
+# sources identically instead of carrying a second copy of these rules. They are
+# imported above, so `from ingest_collections import get_repos_dir` still works.
 
 
-def get_collection_source_paths(collection: CollectionMetadata) -> List[Path]:
-    """
-    Get source paths for a collection.
-    
-    Args:
-        collection: Collection metadata
-        
-    Returns:
-        List of absolute paths to source directories
-    """
-    repos_dir = get_repos_dir()
-    
-    # Extract repo name from source_repo URL
-    # e.g., "https://github.com/odpi/egeria-python.git" -> "egeria-python"
-    repo_name = collection.source_repo.split("/")[-1].replace(".git", "")
-    repo_path = repos_dir / repo_name
-    
-    if not repo_path.exists():
-        logger.warning(f"Repository not found: {repo_path}")
-        return []
-    
-    # Build full paths
-    source_paths = []
-    for rel_path in collection.source_paths:
-        full_path = repo_path / rel_path
-        if full_path.exists():
-            source_paths.append(full_path)
-        else:
-            logger.warning(f"Source path not found: {full_path}")
-    
-    return source_paths
-
-
-def get_file_patterns(collection: CollectionMetadata) -> List[str]:
-    """
-    Get file patterns for a collection based on language.
-    
-    Args:
-        collection: Collection metadata
-        
-    Returns:
-        List of file patterns (e.g., ["*.py", "*.md"])
-    """
-    from advisor.collection_config import Language
-    
-    patterns = {
-        Language.PYTHON: ["*.py"],
-        Language.JAVA: ["*.java"],
-        Language.MARKDOWN: ["*.md"],
-        Language.MIXED: ["*.py", "*.java", "*.md", "*.yaml", "*.yml", "*.json"]
-    }
-    
-    return patterns.get(collection.language, ["*.py", "*.md"])
-
-
-def count_files(paths: List[Path], patterns: List[str]) -> int:
+def count_files(
+    paths: List[Path],
+    patterns: List[str],
+    exclude_patterns: Optional[Sequence[str]] = None,
+) -> int:
     """
     Count files matching patterns in paths.
-    
+
+    Applies `exclude_patterns` the same way ingest_directory() does, so the
+    "Estimated files" figure and the zero-candidate skip below reflect what
+    will actually be ingested rather than the pre-exclusion total.
+
     Args:
         paths: List of directory paths
         patterns: List of file patterns
+        exclude_patterns: Glob patterns to skip (collection.exclude_patterns)
         
     Returns:
         Total file count
@@ -133,6 +87,8 @@ def count_files(paths: List[Path], patterns: List[str]) -> int:
     count = 0
     for path in paths:
         if path.is_file():
+            if path_is_excluded(path, exclude_patterns):
+                continue
             for pattern in patterns:
                 if fnmatch.fnmatch(path.name, pattern):
                     count += 1
@@ -140,34 +96,14 @@ def count_files(paths: List[Path], patterns: List[str]) -> int:
         elif path.is_dir():
             for pattern in patterns:
                 try:
-                    count += len(list(path.rglob(pattern)))
+                    count += sum(
+                        1 for f in path.rglob(pattern)
+                        if not path_is_excluded(f, exclude_patterns, root=path)
+                    )
                 except (PermissionError, OSError) as e:
                     logger.warning(f"Skipping inaccessible path {path}: {e}")
                     continue
     return count
-
-
-def existing_chunk_count(vector_store, collection_name: str) -> Optional[int]:
-    """How many rows the collection's table already holds, or None if the
-    table does not exist.
-
-    Two traps this deliberately avoids (both bit trevor on 2026-09-04):
-
-    * `collection_name in vector_store.list_collections()` compares the
-      *collection* name with *table* names. `pyegeria_drE` is stored as the
-      table `pyegeria_dre` (see _TABLE_NAME_MAP in advisor/vector_store_pg.py),
-      so that check never matched drE — and always matched `pyegeria` and
-      `pyegeria_cli`. `collection_exists()` resolves the mapping.
-    * Existence alone says nothing about content. The web app's startup hook
-      (advisor/web/app.py `_startup` -> `provision_schema()`) creates every
-      collection table *empty* the moment the container starts, so on a fresh
-      deployment the tables already exist before the first ingest runs. An
-      empty table must be ingested into, not reported as "already exists".
-    """
-    if not vector_store.collection_exists(collection_name):
-        return None
-    stats = vector_store.get_collection_stats(collection_name) or {}
-    return int(stats.get("num_entities") or 0)
 
 
 def _record_ingest_time(collection_name: str, files: int, chunks: int) -> None:
@@ -217,7 +153,7 @@ def ingest_collection(
     result.patterns = patterns
     
     # Count files
-    file_count = count_files(source_paths, patterns)
+    file_count = count_files(source_paths, patterns, collection.exclude_patterns)
     result.candidates = file_count
     logger.info(f"Source paths: {len(source_paths)}")
     logger.info(f"File patterns: {patterns}")
@@ -303,7 +239,8 @@ def ingest_collection(
                 files, chunks = ingester.ingest_directory(
                     source_path,
                     file_pattern=pattern,
-                    recursive=True
+                    recursive=True,
+                    exclude_patterns=collection.exclude_patterns
                 )
                 total_files += files
                 total_chunks += chunks

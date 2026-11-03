@@ -1,0 +1,197 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RE in the Portal's look</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;600&family=Lora:wght@400;500&display=swap">
+<style>
+  /* ── Page around the three renderings ─────────────────────────────── */
+  body{margin:0;background:#d9dbe1;font-family:system-ui,-apple-system,"Segoe UI",sans-serif;color:#1f2333}
+  .intro{max-width:1320px;margin:0 auto;padding:24px 16px 8px}
+  .intro h1{font-size:22px;margin:0 0 6px}
+  .intro p{margin:0 0 4px;font-size:15px;line-height:1.5;max-width:110ch}
+  .label{max-width:1320px;margin:28px auto 8px;padding:0 16px;font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#1f2333}
+  .frame{max-width:1320px;margin:0 auto;padding:0 16px}
+
+  /* ── ONE markup, three skins. Every skin defines the same tokens. ── */
+  .app{display:grid;grid-template-columns:250px 1fr;min-height:760px;border-radius:6px;overflow:hidden;box-shadow:0 6px 24px rgba(0,0,0,.18)}
+
+  /* Skin 1: RE today (dark chrome, paper content, Cormorant + Lora) */
+  .re{--chrome:#1b1a19;--chrome-surface:#2d2b2b;--chrome-line:#444141;--chrome-ink:#f3f2f2;--chrome-muted:#9b9797;--chrome-accent:#e1ad66;
+      --bg:#f3f2f2;--card:#f3f2f2;--card-border:transparent;--line:rgba(32,31,29,.16);--ink:#201f1d;--muted:#4a463e;
+      --accent:#b68235;--accent-ink:#7d5411;--ok:#1d6b3f;--warn:#9c4212;--gap:#5b4a9c;
+      --head:"Cormorant Garamond",Georgia,serif;--body:Lora,Georgia,serif;--ui:"Cormorant Garamond",Georgia,serif;
+      --radius:2px;--tile-bg:transparent;--tile-num:20px;--body-size:15px;--small:13px;--caps-size:12px;--weight-ui:600}
+
+  /* Skin 1b: RE today, with ONE change: body and detail text in the system sans.
+     Headings, labels, tabs, caps and buttons stay in Cormorant; palette, rules and layout unchanged.
+     Applied as class "re rs", so every .re rule still holds and only --body differs. */
+  .rs{--body:system-ui,-apple-system,"Segoe UI",sans-serif}
+
+  /* Skin 2: the Portal's look, dark (navy ground, cards, system sans, big numbers) */
+  .pd{--chrome:#121a33;--chrome-surface:#1d2a4f;--chrome-line:#0f3460;--chrome-ink:#e0e0e0;--chrome-muted:#a3abc0;--chrome-accent:#4f9cf9;
+      --bg:#1a1a2e;--card:#16213e;--card-border:#0f3460;--line:#24345c;--ink:#e6e8ef;--muted:#a3abc0;
+      --accent:#4f9cf9;--accent-ink:#7cb6ff;--ok:#4caf50;--warn:#f5b74e;--gap:#a78bfa;
+      --head:system-ui,-apple-system,"Segoe UI",sans-serif;--body:system-ui,-apple-system,"Segoe UI",sans-serif;--ui:system-ui,-apple-system,"Segoe UI",sans-serif;
+      --radius:8px;--tile-bg:#16213e;--tile-num:30px;--body-size:15px;--small:13.5px;--caps-size:12px;--weight-ui:600}
+
+  /* Skin 3: the Portal's look, light */
+  .pl{--chrome:#ffffff;--chrome-surface:#eef1f7;--chrome-line:#d3d9e6;--chrome-ink:#1f2333;--chrome-muted:#4c5468;--chrome-accent:#2563eb;
+      --bg:#f5f6fa;--card:#ffffff;--card-border:#d3d9e6;--line:#e3e7f0;--ink:#1f2333;--muted:#4c5468;
+      --accent:#2563eb;--accent-ink:#1d4fc4;--ok:#2e7d32;--warn:#b45309;--gap:#6d28d9;
+      --head:system-ui,-apple-system,"Segoe UI",sans-serif;--body:system-ui,-apple-system,"Segoe UI",sans-serif;--ui:system-ui,-apple-system,"Segoe UI",sans-serif;
+      --radius:8px;--tile-bg:#ffffff;--tile-num:30px;--body-size:15px;--small:13.5px;--caps-size:12px;--weight-ui:600}
+
+  /* ── Shared component styles, all through the tokens ─────────────── */
+  .side{background:var(--chrome);color:var(--chrome-ink);padding:14px 12px;font-family:var(--body);font-size:13.5px;border-right:1px solid var(--chrome-line)}
+  .brand{font-family:var(--head);font-weight:600;font-size:19px;margin:0 0 14px}
+  .side .lab{font-family:var(--ui);font-weight:var(--weight-ui);font-size:var(--caps-size);letter-spacing:.08em;text-transform:uppercase;color:var(--chrome-muted);margin:14px 0 6px}
+  .side .row{display:flex;justify-content:space-between;gap:8px;padding:5px 8px;border-left:3px solid transparent;border-radius:var(--radius)}
+  .side .row.on{background:var(--chrome-surface);border-left-color:var(--accent)}
+  .side .n{color:var(--chrome-muted)}
+  .side .mono{font-family:ui-monospace,"SF Mono",Menlo,monospace;font-size:12.5px}
+
+  .main{background:var(--bg);color:var(--ink);font-family:var(--body);font-size:var(--body-size);line-height:1.55}
+  .stages{display:flex;gap:4px;padding:10px 18px;background:var(--chrome);border-bottom:1px solid var(--chrome-line);font-family:var(--ui);font-size:14px}
+  .stages span{color:var(--chrome-muted);padding:3px 10px;border-radius:var(--radius)}
+  .stages .on{color:var(--chrome-ink);background:var(--chrome-surface);box-shadow:inset 0 -2px 0 var(--accent)}
+  .pane{padding:18px 22px 26px}
+  .name{font-family:var(--head);font-weight:600;font-size:26px;margin:0}
+  .sub{color:var(--muted);font-size:var(--small);margin:2px 0 12px}
+  .tabs{display:flex;gap:20px;border-bottom:1px solid var(--line);font-family:var(--ui);font-size:14.5px;margin-bottom:16px}
+  .tabs span{padding:4px 0;color:var(--muted)}
+  .tabs .on{color:var(--ink);box-shadow:inset 0 -2px 0 var(--accent);font-weight:var(--weight-ui)}
+
+  .tiles{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:18px}
+  .tile{background:var(--tile-bg);border:1px solid var(--card-border);border-radius:var(--radius);padding:12px 14px}
+  .re .tile{border:0;border-top:1px solid var(--line);padding:8px 0 0}
+  .tile .k{font-family:var(--ui);font-size:var(--caps-size);letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:var(--weight-ui)}
+  .tile .v{font-size:var(--tile-num);font-weight:700;line-height:1.15;margin-top:2px;font-variant-numeric:tabular-nums}
+  .re .tile .v{font-family:var(--body);font-weight:500}
+  .tile .s{font-size:var(--small);color:var(--muted)}
+
+  .seclab{font-family:var(--ui);font-weight:var(--weight-ui);font-size:var(--caps-size);letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin:6px 0 8px}
+  .card{background:var(--card);border:1px solid var(--card-border);border-radius:var(--radius);padding:14px 16px;margin-bottom:12px}
+  .re .card{border:0;border-top:1px solid var(--line);border-radius:0;padding:12px 0}
+  .pd .card.def,.pl .card.def{border-left:4px solid var(--accent)}
+  .pd .card.off,.pl .card.off{border-left:4px solid var(--card-border)}
+  .ch{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap}
+  .ct{font-family:var(--head);font-weight:600;font-size:19px}
+  .meta{color:var(--muted);font-size:var(--small)}
+  .btns{margin-left:auto;display:flex;gap:8px}
+  .btn{font-family:var(--ui);font-weight:var(--weight-ui);font-size:13.5px;border:1px solid var(--accent);color:var(--accent-ink);border-radius:var(--radius);padding:3px 11px;background:transparent;white-space:nowrap}
+  .pd .btn.primary{background:var(--accent);color:#0b1020;border-color:var(--accent)}
+  .pl .btn.primary{background:var(--accent);color:#fff;border-color:var(--accent)}
+  .btn.off{border-style:dashed;border-color:var(--muted);color:var(--muted)}
+  .lnk{color:var(--accent-ink);text-decoration:underline;text-underline-offset:3px}
+  .q{color:var(--muted);text-decoration:underline;text-decoration-style:dotted;text-underline-offset:3px}
+  .runline{margin-top:8px}
+  .warn{color:var(--warn)} .ok{color:var(--ok)}
+  .g{font-family:"Noto Sans Symbols 2","DejaVu Sans","Segoe UI Symbol","Apple Symbols",sans-serif;display:inline-block;width:1.2em;text-align:center}
+  .fix{margin-top:4px}
+  .prov{color:var(--muted);font-size:var(--small);margin-top:4px}
+  .mono{font-family:ui-monospace,"SF Mono",Menlo,monospace;font-size:.86em}
+  .pd .pill,.pl .pill{display:inline-block;font-size:12px;font-weight:600;padding:1px 8px;border-radius:999px;background:color-mix(in srgb,var(--accent) 16%,transparent);color:var(--accent-ink)}
+  .re .pill{color:var(--muted)}
+
+  .ans{margin:4px 0 14px;max-width:84ch}
+  .ans p{margin:0 0 6px}
+
+  table.an{border-collapse:collapse;width:100%;font-size:var(--body-size)}
+  table.an td{padding:8px 6px;border-bottom:1px solid var(--line);vertical-align:baseline}
+  table.an td.r{text-align:right;white-space:nowrap}
+  .pd table.an,.pl table.an{background:var(--card);border:1px solid var(--card-border);border-radius:var(--radius);overflow:hidden}
+  .pd table.an td:first-child,.pl table.an td:first-child{padding-left:12px}
+  .pd table.an td.r,.pl table.an td.r{padding-right:12px}
+</style>
+</head>
+<body>
+<div class="intro">
+  <h1>Resource Explorer in the Portal's look: an experiment</h1>
+  <p>The same screen four times, with identical words and layout: Analysis, Survey &amp; analyses, on coco_pharma. Only the look changes. Rendering 2 changes just one thing from RE today, the typeface of the body and detail text, to separate the effect of the typeface from the effect of the color scheme. Renderings 3 and 4 take the Portal's whole look: typefaces, colors, card treatment, corner radius and number tiles.</p>
+  <p>Look first at the detail text: the run line, the provenance lines under each card, the answer paragraph and the analysis rows. That's the text you found hard to read.</p>
+</div>
+
+<!-- The screen, defined once and cloned into each skin by the script at the end -->
+<template id="screen">
+<div class="app">
+  <aside class="side">
+    <div class="brand">Resource Explorer</div>
+    <div class="lab">Investigation · Pharma data</div>
+    <div class="row on"><span>coco_pharma</span><span class="n">db</span></div>
+    <div class="row"><span>localhost_docker_egeria</span><span class="n">db</span></div>
+    <div class="row"><span>coco_ods</span><span class="n">db</span></div>
+    <div class="lab">Repositories · 73</div>
+    <div class="row"><span>egeria_python</span><span class="n">repo</span></div>
+    <div class="row"><span>trellis</span><span class="n">repo</span></div>
+    <div class="row"><span>coco_api</span><span class="n">repo</span></div>
+    <div class="lab">Signed in</div>
+    <div class="row"><span>dwolfson</span><span class="n mono">egeria-dev:9443</span></div>
+  </aside>
+  <section class="main">
+    <div class="stages"><span>Scouting</span><span>Discovery</span><span>Assessment</span><span class="on">Analysis</span><span>Enrichment</span><span>Curate</span><span>Automate</span></div>
+    <div class="pane">
+      <h2 class="name">coco_pharma</h2>
+      <div class="sub">PostgreSQL database · registered in Egeria · surveyed 10-19 by RE and by Egeria's own survey</div>
+      <div class="tabs"><span>Questions</span><span class="on">Survey &amp; analyses</span><span>By analysis</span><span>Disposition</span><span>Schema Inventory</span><span>Table preview</span></div>
+
+      <div class="tiles">
+        <div class="tile"><div class="k">Schemas</div><div class="v">29</div><div class="s">22 new since 10-03</div></div>
+        <div class="tile"><div class="k">Tables</div><div class="v">266</div><div class="s">3 readable by the surveyor</div></div>
+        <div class="tile"><div class="k">Analyses run</div><div class="v">13 of 30</div><div class="s">last 18h ago</div></div>
+        <div class="tile"><div class="k">Need you</div><div class="v warn">2</div><div class="s">a credential, a refused step</div></div>
+      </div>
+
+      <div class="seclab">Survey definitions · 3</div>
+      <div class="card def">
+        <div class="ch"><span class="ct">Database Analysis Survey</span><span class="meta">8 steps · none fetch · <span class="lnk">runs 13 analyses</span></span>
+          <span class="btns"><span class="btn">Re-run…</span><span class="btn primary">Re-run · coordinated by Egeria →</span></span></div>
+        <div class="runline"><span class="warn"><span class="g">◐</span>2 of 4 ran</span> <span class="q">why</span> · coordinated by Egeria · started by peterprofile · Oct 15, 7:34 PM · <span class="lnk">step 4 report ›</span></div>
+        <div class="fix">steps 1–2 not run · the survey's credential reads 3 of 61 tables · <span class="lnk">use a credential that can read all tables ›</span></div>
+        <div class="prov">the process stopped after step 4 of 8 · <span class="mono">GovActionProcess::DatabaseAnalysisSurvey</span> · <span class="lnk">runs · 6 ›</span> · <span class="lnk">definition history ›</span></div>
+      </div>
+      <div class="card off">
+        <div class="ch"><span class="ct">Database Scouting Scan</span><span class="meta">3 steps · <span class="lnk">runs 4 analyses</span></span>
+          <span class="btns"><span class="btn">Re-run…</span><span class="btn off">Re-run · coordinated by Egeria</span></span></div>
+        <div class="runline"><span class="ok"><span class="g">✓</span></span>ran 2 days ago · by RE · started by dwolfson</div>
+        <div class="prov">Egeria can't start this · step 1 has no executor in Egeria · <span class="q">why</span></div>
+      </div>
+
+      <div class="seclab" style="margin-top:16px">What the latest survey says · table activity</div>
+      <div class="ans">
+        <p>205 of 266 tables had writes since Postgres last reset its counters on 10-03. For the other 61 RE <strong>can't tell</strong>: the counters cover only 2 days, shorter than the 90-day dormancy threshold, so none of them is proposed for leaving out.</p>
+        <p class="prov">row counts · Postgres estimates, last analyzed 10-13 · RE measured count where a scan ran · <span class="lnk">the 61 tables ›</span></p>
+      </div>
+
+      <div class="seclab">Analyses · 30 <span class="pill">13 ran</span></div>
+      <table class="an">
+        <tr><td><span class="ok g">✓</span> Table activity <span class="mono" style="color:var(--muted)">re_table_activity</span><div class="prov">ran 18h ago · RE · 205 active, 61 can't tell</div></td><td class="r"><span class="btn">Re-run →</span> <span class="q">with options…</span></td></tr>
+        <tr><td><span class="warn g">◐</span> Column profile <span class="mono" style="color:var(--muted)">re_column_profile</span><div class="prov">ran 18h ago · RE · 3 of 61 tables readable with this credential</div></td><td class="r"><span class="btn">Re-run →</span> <span class="q">with options…</span></td></tr>
+        <tr><td><span class="g" style="color:var(--muted)">○</span> Hub tables <span class="mono" style="color:var(--muted)">re_hub_tables</span><div class="prov">not run · needs Table activity first</div></td><td class="r"><span class="btn">Run →</span> <span class="q">with options…</span></td></tr>
+      </table>
+    </div>
+  </section>
+</div>
+</template>
+
+<div class="label">1 · RE today: dark chrome, paper content, Cormorant Garamond headings, Lora body</div>
+<div class="frame" id="f-re"></div>
+<div class="label">2 · RE today with one change: body and detail text in the system sans (headings, labels and palette unchanged)</div>
+<div class="frame" id="f-rs"></div>
+<div class="label">3 · The Portal's look, dark: navy ground, bordered cards, system sans, big-number tiles</div>
+<div class="frame" id="f-pd"></div>
+<div class="label">4 · The Portal's look, light: the same treatment on its light palette</div>
+<div class="frame" id="f-pl"></div>
+<div style="height:40px"></div>
+
+<script>
+  const t = document.getElementById('screen');
+  [['f-re','re'],['f-rs','re rs'],['f-pd','pd'],['f-pl','pl']].forEach(([id, skin]) => {
+    const node = t.content.firstElementChild.cloneNode(true);
+    node.classList.add(...skin.split(' '));
+    document.getElementById(id).appendChild(node);
+  });
+</script>
+</body>
+</html>

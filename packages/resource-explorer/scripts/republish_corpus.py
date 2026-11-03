@@ -22,8 +22,6 @@ import subprocess
 import sys
 import time
 
-logging.disable(logging.WARNING)
-
 from resource_explorer.registry import ProjectRegistry                    # noqa: E402
 from resource_explorer.surveyors.egeria_publisher import EgeriaPublisher  # noqa: E402
 from resource_explorer.surveyors.survey_orchestrator import SurveyOrchestrator  # noqa: E402
@@ -101,6 +99,9 @@ def publish_one(registry, slug: str) -> dict:
 
 
 def main() -> int:
+    # Quiet the library for this script run only. At import time this was process-wide: importing the module
+    # (tests/test_republish_corpus.py does) silenced WARNING for every later test in the session.
+    logging.disable(logging.WARNING)
     ap = argparse.ArgumentParser()
     ap.add_argument("--limit", type=int, default=0, help="stop after N repos")
     ap.add_argument("--pause", type=float, default=30.0,

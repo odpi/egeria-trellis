@@ -52,7 +52,9 @@ def _bucket(status: str) -> str:
     low = status.lower()
     if not low:
         return "unmarked"
-    if any(w in low for w in ("implemented", "built", "shipped", "complete and", "done")):
+    # "not yet built" contains "built": say what is not built before testing for what is.
+    if ("implemented" in low or not re.search(r"\bnot (yet )?built\b", low)) and any(
+            w in low for w in ("implemented", "built", "shipped", "complete and", "done")):
         return "shipped"
     if any(w in low for w in ("not built", "not yet built", "not started",
                               "planned", "on hold", "ready to execute")):

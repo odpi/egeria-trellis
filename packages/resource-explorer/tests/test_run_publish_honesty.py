@@ -420,15 +420,6 @@ class TestNotEstablished:
         assert got["security_scan"]["last_run_at"] == "2026-08-26T10:00:00"
         assert got["__unattributed_surveys__"]["count"] == 1
 
-    def test_the_ui_renders_all_three_states(self):
-        html = (
-            __import__("pathlib").Path(__file__).resolve().parents[1]
-            / "resource_explorer" / "web" / "static" / "index.html"
-        ).read_text()
-        assert "📅 Last run not established" in html
-        assert "📅 Never run" in html
-        assert "la.last_run_basis === 'not_established'" in html
-
 
 class TestProposedPerspectives:
     """The eight analyses that carried no lens at all now carry one.

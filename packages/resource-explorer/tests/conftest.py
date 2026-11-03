@@ -16,8 +16,34 @@ session.
 from __future__ import annotations
 
 import os
+import sys
 
 import pytest
+
+# Under pytest-xdist each worker gets its own registry schema,
+# resource_explorer_xdist_<controller pid>_<worker>, wherever the URL settings
+# point at `resource_explorer` (CI's service container), so concurrent workers
+# and concurrent runs never share one. Created here and dropped at the worker's
+# session teardown (fixture `xdist_worker_registry_schema`), only where tests
+# really use it; see tests/xdist_registry_schema.py. Done before the imports
+# below, because importing the app may build the first registry.
+from tests import xdist_registry_schema  # noqa: E402
+
+_XDIST_SCHEMA = xdist_registry_schema.apply(
+    os.environ, os.environ.get("PYTEST_XDIST_WORKER", ""), xdist_registry_schema.run_id())
+
+# Fail-closed guard against tests reaching the SHARED registry (incident
+# 2026-10-02; see tests/shared_registry_guard.py and
+# docs/design-notes/implemented/TEST-SHARED-REGISTRY-GUARD-IMPLEMENTED.md).
+# Installed at import, before any probe below opens a connection, at the
+# SQLAlchemy/psycopg2 connect choke point so a cached config cannot defeat it.
+# Opt-in for a deliberate run: RE_TESTS_ALLOW_SHARED_REGISTRY=1.
+from tests import live_egeria_tier, registry_template, shared_registry_guard, tracked_tree_guard
+
+shared_registry_guard.install()
+# A fresh SQLite registry file starts as a copy of one schema built per process
+# (~170 ms of DDL per fresh registry otherwise); see tests/registry_template.py.
+registry_template.install()
 
 # Per-process, NOT a single shared name. The fixture below drops this schema
 # CASCADE at session start and teardown, so a fixed name meant any two
@@ -63,6 +89,7 @@ def _sweep_orphan_test_schemas(cur) -> list[str]:
         if name == _TEST_SCHEMA:
             continue
         suffix = name[len(_TEST_SCHEMA_PREFIX) + 1:]
+        suffix = suffix.split("_", 1)[0]   # `<pid>_v<n>` per-test scratch schemas
         if name != _TEST_SCHEMA_PREFIX and not suffix.isdigit():
             continue    # not a session schema at all — `..._backup` is someone's
                         # deliberate copy, and destroying data this fixture does
@@ -106,6 +133,22 @@ _PGVECTOR_AVAILABLE = _pgvector_reachable()
 # Enqueueing, reading and reconciling are unaffected — only claiming.
 os.environ.setdefault("EXPLORER_RUN_QUEUE_ENABLED", "false")
 
+# RE has no code default for its service account (config.EgeriaConfig.user_id is blank when EGERIA_USER_ID is unset
+# and every path that needs it refuses). The tests that act as the daemon get an explicit test account here.
+#
+# Clearly fake, non-person values, and ONLY when the live tier is off: an env var outranks the package .env
+# (pydantic-settings), so setting these under `--live-egeria-reads/-writes` (or RE_LIVE_EGERIA_READS) would hide the
+# real service account from the live fixtures. The live tier reads the real .env instead.
+def _live_tier_requested() -> bool:
+    flag = any(a.startswith("--live-egeria") for a in sys.argv[1:])
+    env = os.environ.get("RE_LIVE_EGERIA_READS", "").strip().lower() not in ("", "0", "false", "no")
+    return flag or env
+
+
+if not _live_tier_requested():
+    os.environ.setdefault("EGERIA_USER_ID", "re-test-service-account")
+    os.environ.setdefault("EGERIA_USER_PASSWORD", "re-test-password")
+
 
 def _egeria_reachable() -> bool:
     """Same posture as _pgvector_reachable() — a real Egeria platform is an
@@ -123,7 +166,15 @@ def _egeria_reachable() -> bool:
         return False
 
 
-_EGERIA_AVAILABLE = _egeria_reachable()
+#: Probed lazily and only when a live tier was opted into (see
+#: tests/live_egeria_tier.py): a default run must not contact the platform.
+_egeria_probe_cache: list[bool] = []
+
+
+def _egeria_available() -> bool:
+    if not _egeria_probe_cache:
+        _egeria_probe_cache.append(_egeria_reachable())
+    return _egeria_probe_cache[0]
 
 
 @pytest.fixture
@@ -196,14 +247,61 @@ def pytest_addoption(parser):
              "session can turn them red in files nobody touched)",
     )
     parser.addoption(
+        "--live-egeria-reads", action="store_true", default=False,
+        help="run the live READ tier (requires_egeria / live_egeria) against "
+             "the shared dev Egeria platform (or set RE_LIVE_EGERIA_READS=1). "
+             "Skipped by default even when Egeria is reachable; run it after "
+             "a peer round. Never runs in CI.",
+    )
+    parser.addoption(
         "--live-egeria-writes", action="store_true", default=False,
-        help="run tests marked live_egeria_writes, which perform real "
+        help="ALSO needs RE_LIVE_EGERIA_WRITES_CLEARED=<who>/<UTC time> "
+             "naming the peer round, else the tier is skipped. Implies reads. "
+             "run tests marked live_egeria_writes, which perform real "
              "catalogue/delete writes against the shared dev Egeria platform "
              "(skipped by default even when Egeria is reachable — this is a "
              "bigger commitment than requires_egeria's read-only reachability "
              "check, and needs live-peer coordination before every run; see "
              "tests/live_egeria_write_fixtures.py)",
     )
+
+
+def pytest_sessionstart(session):
+    """Fingerprint the tracked tree so pytest_sessionfinish can prove the run left it alone."""
+    if hasattr(session.config, "workerinput"):  # xdist worker: the controller checks
+        return
+    session.config._tracked_tree_before = tracked_tree_guard.snapshot()
+
+
+def pytest_sessionfinish(session, exitstatus):
+    if hasattr(session.config, "workerinput"):
+        return
+    before = getattr(session.config, "_tracked_tree_before", None)
+    touched = tracked_tree_guard.changed(before, tracked_tree_guard.snapshot())
+    if touched:
+        print("\n\nTEST RUN MODIFIED THE WORKING TREE under packages/resource-explorer "
+              "(tests must write to tmp_path, never to tracked files):\n  "
+              + "\n  ".join(touched))
+        session.exitstatus = 1
+
+
+def pytest_report_header(config):
+    """One line naming the live Egeria tier when it is ON: URL and user id only."""
+    decision = getattr(config, "_live_egeria_decision", None)
+    if decision is None:   # header prints before collection: decide now, same inputs
+        decision = live_egeria_tier.decide(
+            os.environ,
+            reads_flag=config.getoption("--live-egeria-reads"),
+            writes_flag=config.getoption("--live-egeria-writes"),
+            reachable=_egeria_available,
+        )
+        config._live_egeria_decision = decision
+    if not decision.reads_on:
+        return None
+    from resource_explorer.config import get_config
+
+    cfg = get_config().egeria
+    return live_egeria_tier.banner(decision, cfg.platform_url, cfg.user_id)
 
 
 def pytest_configure(config):
@@ -214,12 +312,20 @@ def pytest_configure(config):
     )
     config.addinivalue_line(
         "markers",
-        "requires_egeria: needs a live reachable Egeria platform "
-        "(auto-skipped when one isn't available). Read-only-safe: this only "
-        "certifies reachability, never that the test writes anything. A test "
+        "requires_egeria: the live READ tier. OPT-IN since 2026-10-05: skipped "
+        "by default even when Egeria is reachable; run with --live-egeria-reads "
+        "(or RE_LIVE_EGERIA_READS=1) after a peer round. Never runs in CI. "
+        "Also skipped when the platform is unreachable. Read-only-safe: this "
+        "only certifies reachability, never that the test writes anything. A test "
         "that writes to dev Egeria — even throwaway writes — must additionally "
         "carry live_egeria_writes below; requires_egeria alone is not enough "
         "of a gate for that.",
+    )
+    config.addinivalue_line(
+        "markers",
+        "fresh_registry_schema: build this test's SQLite registries from an empty "
+        "file, not from the per-process template (for tests about what "
+        "_init_schema does to an empty database; see tests/registry_template.py)",
     )
     config.addinivalue_line(
         "markers",
@@ -230,8 +336,12 @@ def pytest_configure(config):
         "markers",
         "live_egeria_writes: performs REAL writes (catalogue, then delete) "
         "against the shared dev Egeria platform. Skipped by default even when "
-        "Egeria is reachable — pass --live-egeria-writes to opt in, and get "
-        "live-peer coordination first (see tests/live_egeria_write_fixtures.py "
+        "Egeria is reachable — needs --live-egeria-writes AND "
+        "RE_LIVE_EGERIA_WRITES_CLEARED=<who>/<UTC time> (non-empty; the flag "
+        "alone skips the tier) naming the peer round: another session's done "
+        "is a statement about itself, never a clearance from the others; the "
+        "peer round is a question to every live peer, and the answer set is "
+        "what goes in the variable. Get live-peer coordination first (see tests/live_egeria_write_fixtures.py "
         "and the coordinate-shared-writes skill). Deliberately separate from, "
         "and stricter than, requires_egeria — see that marker's own docstring.",
     )
@@ -307,22 +417,22 @@ def pytest_collection_modifyitems(config, items):
     run_corpus = config.getoption("--corpus")
 
     skip_pgvector = pytest.mark.skip(reason="pgvector/Postgres not reachable at the configured host:port")
-    skip_egeria = pytest.mark.skip(reason="Egeria platform not reachable at the configured platform_url")
-
-    run_live_egeria_writes = config.getoption("--live-egeria-writes")
-    skip_live_writes = pytest.mark.skip(
-        reason="performs real writes against shared dev Egeria — needs both a "
-               "reachable platform AND --live-egeria-writes (plus live-peer "
-               "coordination before you pass that flag); requires_egeria's "
-               "reachability check alone is not enough of a gate for a "
-               "write-capable test"
+    decision = live_egeria_tier.decide(
+        os.environ,
+        reads_flag=config.getoption("--live-egeria-reads"),
+        writes_flag=config.getoption("--live-egeria-writes"),
+        reachable=_egeria_available,
     )
-    should_skip_live_writes = _live_egeria_writes_should_skip(_EGERIA_AVAILABLE, run_live_egeria_writes)
+    config._live_egeria_decision = decision
+    skip_egeria = pytest.mark.skip(reason=decision.read_skip_reason or "")
+    skip_live_writes = pytest.mark.skip(reason=decision.write_skip_reason or "")
+    should_skip_live_writes = _live_egeria_writes_should_skip(decision.reads_on, decision.writes_on)
 
     for item in items:
         if not _PGVECTOR_AVAILABLE and "requires_pgvector" in item.keywords:
             item.add_marker(skip_pgvector)
-        if not _EGERIA_AVAILABLE and "requires_egeria" in item.keywords:
+        if not decision.reads_on and (
+                "requires_egeria" in item.keywords or "live_egeria" in item.keywords):
             item.add_marker(skip_egeria)
         if not run_corpus and "corpus" in item.keywords:
             item.add_marker(skip_corpus)
@@ -416,6 +526,132 @@ os.environ.setdefault("EXPLORER_REQUIRE_LOGIN", "false")
 # hostname and logs a warning per process — correct behaviour, noisy here.
 os.environ.setdefault("RE_JWT_SECRET", "resource-explorer-test-secret")
 
+# Import the app ONCE, here, before any test has patched anything. Route modules
+# bind `get_current_user` by name (`from ..auth import get_current_user`) at their
+# FIRST import, and the first import used to happen inside whichever test fixture
+# got there first — several of which monkeypatch `resource_explorer.auth.get_current_user`
+# just before `from resource_explorer.web.app import app`. The route modules then kept
+# that fixture's lambda for the rest of the process (tests/test_curate.py's
+# "peterprofile" answered a later test that expected the signed-in "dan").
+# Importing here makes every route module bind the real function; a test that
+# wants a different caller patches it with monkeypatch, which is undone at teardown.
+import resource_explorer.web.app  # noqa: E402,F401
+
+
+@pytest.fixture(scope="session", autouse=True)
+def xdist_worker_registry_schema():
+    """Drop this worker's registry schema at session teardown (see the top of this file)."""
+    yield _XDIST_SCHEMA
+    xdist_registry_schema.teardown(_XDIST_SCHEMA)
+
+
+@pytest.fixture(scope="session", autouse=True)
+def registry_schema_template(tmp_path_factory):
+    """Build the per-process registry template before the first test (per xdist worker)."""
+    return registry_template.build(tmp_path_factory.mktemp("registry-template"))
+
+
+@pytest.fixture(autouse=True)
+def fresh_registry_schema_marker(request, registry_schema_template):
+    """`@pytest.mark.fresh_registry_schema` tests get the original empty-file schema setup."""
+    fresh = request.node.get_closest_marker("fresh_registry_schema") is not None
+    registry_template.suspended(fresh)
+    yield
+    registry_template.suspended(False)
+
+
+@pytest.fixture(autouse=True)
+def api_reference_fetch_workers_finish():
+    """After each test, wait for API-reference fetch workers it left running.
+
+    `api_reference.live.fetch_openapi` stops waiting at its deadline but its
+    worker thread lives on, holding one of `_FETCH_SLOTS` (a process-wide cap of
+    MAX_FETCH_THREADS) until its blocked read or resolver returns. Several tests
+    exist to provoke exactly that (test_api_reference_hostile's resolver sleeps
+    5 s). The NEXT test in the same process then started with slots held, and
+    `TestThreadCap`'s exact counts, or a route answering TOO_BUSY, failed.
+
+    Serially, enough other tests ran in between that the workers had always
+    ended; under pytest-xdist (2026-10-29) a worker reached test_api_reference_r3
+    seconds after the hostile tests and five tests failed. Each test now leaves
+    every slot free, as it found it. Costs nothing when no slot is held.
+    """
+    yield
+    live = sys.modules.get("resource_explorer.api_reference.live")
+    if live is None:
+        return
+    import time
+
+    deadline = time.monotonic() + 15
+    while True:
+        taken = 0
+        while taken < live.MAX_FETCH_THREADS and live._FETCH_SLOTS.acquire(blocking=False):
+            taken += 1
+        for _ in range(taken):
+            live._FETCH_SLOTS.release()
+        if taken == live.MAX_FETCH_THREADS or time.monotonic() > deadline:
+            return
+        time.sleep(0.05)
+
+
+@pytest.fixture(autouse=True)
+def issue_117_block_off_for_legacy_delete_path_tests(request, monkeypatch):
+    """The ISSUE-117 hard block (RE_ISSUE_117_BLOCK_OFF) stops every archive and delete RE could
+    send to Egeria. The older catalogue tests exercise that frozen path against the fake and keep doing so
+    with the switch off; ONLY tests/test_catalogue_issue117_block.py runs with it on (the shipped state)."""
+    if request.module.__name__.endswith("test_catalogue_issue117_block"):
+        return
+    # A lifespan run under TestClient reads the platform's origin once at start: never a live call from a test.
+    from resource_explorer import catalogue_gateway as _gw0
+    monkeypatch.setattr(_gw0, "read_platform_origin", lambda timeout=3.0: "")
+    monkeypatch.setenv("RE_ISSUE_117_BLOCK_OFF", "tests/legacy-delete-path-fixture")
+    # The shipped block is lifted for ONE database slug and expires; these older tests use many slugs and bare
+    # "clearance" strings, so they keep the old meaning (any non-empty value = off) through this stand-in. The
+    # shipped rules are tested, un-stubbed, in tests/test_catalogue_issue117_block.py and nowhere else.
+    import os
+    from resource_explorer import catalogue_gateway as _gw
+    monkeypatch.setattr(_gw, "_shipped_issue_117_blocked", _gw.issue_117_blocked, raising=False)   # for tests that need the real rules
+    monkeypatch.setattr(_gw, "issue_117_blocked", lambda slug="", *, scope="": not (os.environ.get(_gw.ISSUE_117_ENV) or "").strip())
+
+
+@pytest.fixture(scope="session", autouse=True)
+def workspace_installed_steps_are_not_installed():
+    """The suite's normal state is "no reference step installed", whatever the venv holds.
+
+    Since R19 the reference steps are uv workspace members, so a root `uv sync` installs them (CI syncs only this
+    package and has none). Tests that assert a step is absent, or that install one on the fly (tests/
+    library_step_install.py), must not depend on which of the two venvs they run in: discovery skips any
+    `trellis-step-*` distribution living in the interpreter's own site-packages, and the steps the app attached when it
+    was imported (above) are attached again without them. A step a test installs lives under its tmp_path, so it is
+    still found.
+    """
+    import sysconfig
+    from pathlib import Path
+    from trellis_analytics import discovery
+
+    from resource_explorer.surveyors import survey_step_host
+
+    site = Path(sysconfig.get_paths()["purelib"]).resolve()
+    real = discovery._entry_points
+
+    def _without_workspace_steps():
+        for group, ep in real():
+            dist = getattr(ep, "dist", None)
+            path = getattr(dist, "_path", None)
+            if dist and (dist.name or "").startswith("trellis-step-") and path and Path(path).resolve().parent == site:
+                continue
+            yield group, ep
+
+    mp = pytest.MonkeyPatch()
+    mp.setattr(discovery, "_entry_points", _without_workspace_steps)
+    survey_step_host.refresh("database")
+    survey_step_host.refresh("filesystem")
+    yield
+    mp.undo()
+
+
+_ephemeral_prefect_settings: dict = {}
+
 
 @pytest.fixture(autouse=True)
 def ephemeral_prefect(monkeypatch):
@@ -462,7 +698,6 @@ def ephemeral_prefect(monkeypatch):
     from prefect.settings import (
         PREFECT_API_URL,
         PREFECT_SERVER_EPHEMERAL_ENABLED,
-        temporary_settings,
     )
 
     for var in ("PREFECT_API_URL", "PREFECT_API_KEY"):
@@ -491,8 +726,339 @@ def ephemeral_prefect(monkeypatch):
     # re-reading `os.environ` for the rest — so an env var set after Prefect's
     # first import cannot reach this field at all; only passing it in
     # `updates` (as done below) can.
-    with temporary_settings({
-        PREFECT_API_URL: None,
-        PREFECT_SERVER_EPHEMERAL_ENABLED: True,
-    }):
+    #
+    # The derived Settings object is built once and reused: `copy_with_update`
+    # is a full pydantic validation (~16 ms, measured 2026-10-29), paid by
+    # every one of ~14,000 tests for an identical result. It is a pure
+    # function of the base settings (model_validate, no env read), so it is
+    # rebuilt whenever the base context is a different object. Entering it is
+    # exactly what `temporary_settings` does after building it.
+    import prefect.context
+
+    context = prefect.context.get_settings_context()
+    cached = _ephemeral_prefect_settings.get("entry")
+    if cached is None or cached[0] is not context.settings:
+        new_settings = context.settings.copy_with_update(updates={
+            PREFECT_API_URL: None,
+            PREFECT_SERVER_EPHEMERAL_ENABLED: True,
+        })
+        cached = (context.settings, new_settings)
+        _ephemeral_prefect_settings["entry"] = cached
+    with prefect.context.SettingsContext(profile=context.profile, settings=cached[1]):
         yield
+
+
+class ProbeLaunchedInTest(BaseException):
+    """Raised by the guard below. A BaseException on purpose: the probe's callers catch `Exception` (a probe must never
+    break a press), and a guard that is swallowed there would let an accidental launch pass."""
+
+
+@pytest.fixture(autouse=True)
+def no_live_reachability_probe(request, monkeypatch):
+    """Since Files step 2 (fix round 1) the file system reachability probe launches NOTHING in Egeria: it is a
+    mounted-prefix check. This guard makes any code path that still reaches the old CHECK_ASSET engine-action launch (a
+    Folder Survey launch is a WRITE to Egeria) FAIL the test, uncatchably by `except Exception`. Tests of the legacy
+    `reachability` module install their own `_get_clients` fake after this runs. Live-tier tests are left alone.
+
+    The same fixture keeps the prefix map out of the real docker and the real quickstart compose file: with no
+    configured pairs it is empty ("Egeria's mounts unknown"), and a test that wants pairs passes them in."""
+    from resource_explorer import egeria_mounts
+
+    egeria_mounts.reset_for_tests()
+
+    if not request.node.get_closest_marker("requires_egeria"):
+        def _refuse(*_a, **_k):
+            raise ProbeLaunchedInTest("the reachability probe must not launch an engine action; pass nothing to Egeria")
+
+        monkeypatch.setattr("resource_explorer.reachability._get_clients", _refuse)
+
+        import inspect as _inspect
+
+        real_docker = egeria_mounts.docker_inspect_mounts
+        monkeypatch.setattr(egeria_mounts, "_REAL_DOCKER_INSPECT", real_docker, raising=False)   # for tests of its parsing
+
+        def _no_docker(*_a, **_k):
+            raise egeria_mounts.DockerUnavailable("docker is not used in tests")
+
+        _no_docker.__signature__ = _inspect.signature(real_docker)      # so an autospec of it binds the real signature
+
+        monkeypatch.setattr(egeria_mounts, "docker_inspect_mounts", _no_docker)
+        monkeypatch.setattr(egeria_mounts, "DEFAULT_COMPOSE_FILE", "no-such-quickstart-compose.yaml")
+    yield
+    egeria_mounts.reset_for_tests()
+
+
+@pytest.fixture(autouse=True)
+def clear_survey_definition_reader_caches():
+    """Clear survey_definition_reader's module-level caches before every test.
+
+    `survey_definition_reader.py` keeps four process-lifetime caches
+    (`_question_guid_cache`, `_candidates_cache`, `_fetch_cache`,
+    `_process_guid_cache`) behind a single `clear_caches()` testing hook. That
+    hook already existed and was already called by hand at the top of
+    `test_survey_definition_reader.py`'s own tests — but three tests in
+    `test_survey_definitions_routes.py::TestListCandidates`
+    (`test_returns_step_detail_for_valid_candidate`,
+    `test_egeria_step_enriched_with_produced_annotation_types`,
+    `test_egeria_native_processes_excludes_delete_kind`) never called it, and
+    `patch()` on the reader's own method cannot see a hit that was already
+    served from `_candidates_cache` — a real call earlier in the suite
+    populates it keyed by `(full_scan, technology_type, survey_kind)`, and
+    whichever of these three tests runs after that call in the same process
+    gets the stale cached candidates instead of exercising its own patched
+    behavior. Order-dependent, passes every one of the three in isolation.
+
+    Autouse removes the opt-in step (the same reasoning `ephemeral_prefect`
+    above gives for its own autouse switch) rather than trusting every test
+    module that touches this reader to remember to call `clear_caches()`
+    itself.
+
+    **A second, separate process-lifetime singleton, found 2026-09-28 while
+    investigating why the SAME three tests were still red in CI after this
+    fixture landed.** `web/routes/survey_definitions.py` keeps its own
+    module-level `_tech_type_catalog` (a lazily-constructed
+    `EgeriaTechTypeCatalog`, built once and reused — see that module's own
+    comment on why: "callers should share one instance rather than refetch
+    per request"). Right for production, wrong for a test process: once any
+    test's route call constructs it for real, every LATER test — including
+    one that patches `EgeriaTechTypeCatalog.get_produced_annotation_types`
+    on the class — still calls through the SAME pre-existing instance, whose
+    own internal `_all_types_cache`/`_detail_cache` (instance attributes,
+    not module globals, so `clear_caches()` above never touched them) may
+    already hold a real-or-empty answer from before the patch was ever
+    applied. Reset here too, by the same reasoning as the reader's caches:
+    a process-lifetime singleton is a production optimisation, not a test
+    contract, and every test should see a fresh one.
+    """
+    from resource_explorer.surveyors.survey_definition_reader import clear_caches
+
+    clear_caches()
+    yield
+    clear_caches()
+
+
+@pytest.fixture(autouse=True)
+def clear_tech_type_catalog_singleton():
+    """Reset `web.routes.survey_definitions`'s module-level `EgeriaTechTypeCatalog`
+    singleton before and after every test — see
+    `clear_survey_definition_reader_caches`'s docstring above for why this is
+    a second instance of the exact same problem in a different module.
+    """
+    import resource_explorer.web.routes.survey_definitions as survey_definitions_route
+
+    survey_definitions_route._tech_type_catalog = None
+    yield
+    survey_definitions_route._tech_type_catalog = None
+
+
+@pytest.fixture(autouse=True)
+def isolate_database_url_settings(tmp_path, monkeypatch):
+    """Point every setting that defaults to the SHARED Postgres at a throwaway
+    SQLite file, so a test that forgets to override one cannot leak into it.
+
+    Found 2026-10-05: test_ingest_then_query_returns_real_retrieved_content
+    patched the registry and vector store but not MetricsCollector, whose
+    METRICS_DATABASE_URL has its own shared default; every local run with
+    pgvector reachable wrote 'fixtureproj' rows into the shared query_log.
+
+    A value that is unset, or that already addresses the shared registry (a
+    developer's exported URL), is replaced. A deliberate override (a temp
+    SQLite path, a resource_explorer_test* schema) is left alone, and so is
+    CI, whose service container deliberately IS the registry. A test overrides
+    afterwards with its own monkeypatch.setenv.
+    """
+    import resource_explorer.config as _config_module
+
+    shared_registry_guard.isolate_url_settings(os.environ, monkeypatch.setenv, tmp_path)
+    _config_module._config = None
+    yield
+
+
+@pytest.fixture(autouse=True)
+def reset_cached_config():
+    """Drop `resource_explorer.config._config` before and after every test.
+
+    `get_config()` caches the first `ExplorerConfig` for the life of the
+    process, so a test that sets `REGISTRY_DATABASE_URL` (or any env var) in a
+    fixture was silently ignored once anything had called it earlier, and the
+    test fell through to the SHARED registry (incident 2026-10-02). Resetting
+    makes a per-test `monkeypatch.setenv` effective. The connect-time guard in
+    tests/shared_registry_guard.py is the backstop for URLs that arrive by any
+    other route.
+    """
+    import resource_explorer.config as _config_module
+
+    _config_module._config = None
+    yield
+    _config_module._config = None
+
+
+_scratch_counter = {"n": 0}
+
+
+@pytest.fixture(autouse=True)
+def isolate_pgvector_schema(monkeypatch, isolate_database_url_settings, reset_cached_config):
+    """Point PGVECTOR_SCHEMA at a per-test scratch schema, never the shared one.
+
+    The guard's raw-psycopg2 allowance cannot see a default `PgVectorStore()`:
+    it qualifies tables by schema NAME, so it would read and write the shared
+    `resource_explorer` schema. This sets PGVECTOR_SCHEMA to
+    `resource_explorer_test_<pid>_v<n>` (a test's own override still wins), and
+    shared_registry_guard refuses a store built on the shared name.
+
+    LAZY: setting the env var connects to nothing. The schema is created by the
+    store itself (CREATE SCHEMA IF NOT EXISTS on connect) and dropped here at
+    teardown only if a store was actually built on it AND pgvector is
+    reachable, so a run without pgvector never attempts it.
+    """
+    _scratch_counter["n"] += 1
+    scratch = f"{_TEST_SCHEMA_PREFIX}_{os.getpid()}_v{_scratch_counter['n']}"
+    monkeypatch.setenv("PGVECTOR_SCHEMA", scratch)
+    yield scratch
+    if scratch in shared_registry_guard._state["vector_schemas_built"]:
+        shared_registry_guard._state["vector_schemas_built"].discard(scratch)
+        if _PGVECTOR_AVAILABLE:
+            import psycopg2
+            from resource_explorer.config import PgVectorConfig
+
+            cfg = PgVectorConfig()
+            conn = psycopg2.connect(
+                host=cfg.host, port=cfg.port, dbname=cfg.dbname,
+                user=cfg.db_user, password=cfg.password,
+            )
+            conn.autocommit = True
+            try:
+                with conn.cursor() as cur:
+                    cur.execute(f'DROP SCHEMA IF EXISTS "{scratch}" CASCADE')
+            finally:
+                conn.close()
+
+
+# ── Brief I: who an Egeria call acts as, for tests that fake the clients ─────
+# Nothing falls back to the service account any more: a code path that builds an Egeria client
+# with no signed-in caller and no declared daemon job raises NoCallerIdentity. Tests whose point
+# is NOT identity opt in to one of these, explicitly, per module or per test.
+
+@pytest.fixture
+def signed_in_caller():
+    """A signed-in person with an Egeria token, as the web middleware would publish them."""
+    from resource_explorer.a2a_auth import CallerIdentity, current_caller
+
+    reset = current_caller.set(CallerIdentity(user_id="test-caller", egeria_token="tok-test-caller",
+                                              auth_source="app-jwt"))
+    try:
+        yield "test-caller"
+    finally:
+        current_caller.reset(reset)
+
+
+@pytest.fixture
+def as_daemon():
+    """A declared daemon job (the scheduler's), as a worker loop would declare it."""
+    from resource_explorer.egeria_clients import Daemon, DaemonReason, acting_as
+
+    with acting_as(Daemon(DaemonReason.SCHEDULER)) as identity:
+        yield identity
+
+
+# ── Brief I round 2: no test reaches a real Egeria platform ─────────────────
+_LIVE_MARKERS = ("requires_egeria", "live_egeria", "live_egeria_writes")
+
+
+class RealEgeriaBlocked(RuntimeError):
+    """A test tried to send a request to a real Egeria platform without a live marker."""
+
+
+def _is_pyegeria_client(cls) -> bool:
+    """A real pyegeria client class: a subclass of pyegeria's client bases (or the Egeria* facades,
+    which compose clients rather than inherit). By class, not by `__module__` text."""
+    import inspect
+
+    if not inspect.isclass(cls):
+        return False
+    from pyegeria.core._base_platform_client import BasePlatformClient
+    from pyegeria.core._base_server_client import BaseServerClient
+
+    if issubclass(cls, (BasePlatformClient, BaseServerClient)):
+        return True
+    # The REAL facades, from their own modules (a test may have patched `pyegeria.EgeriaTech`).
+    from pyegeria.egeria_cat_client import EgeriaCat
+    from pyegeria.egeria_config_client import EgeriaConfig
+    from pyegeria.egeria_tech_client import EgeriaTech
+
+    return issubclass(cls, (EgeriaTech, EgeriaCat, EgeriaConfig))
+
+
+@pytest.fixture(autouse=True)
+def no_real_egeria(request, monkeypatch):
+    """Every pyegeria client comes from `egeria_clients` (the ban test enforces it), so this
+    guards there: the factory refuses to construct a REAL pyegeria class. Fakes (any class not
+    from pyegeria) pass untouched.
+    A test marked requires_egeria / live_egeria / live_egeria_writes is left alone."""
+    if any(request.node.get_closest_marker(m) for m in _LIVE_MARKERS):
+        yield
+        return
+    from resource_explorer import egeria_clients
+
+    def guarded_build(cls, *args):
+        # A real pyegeria class is refused BEFORE it is constructed: some pyegeria constructors
+        # already call the platform (`/api/about`). Fakes and mocks pass through.
+        if _is_pyegeria_client(cls):
+            raise RealEgeriaBlocked(
+                f"a test tried to build a real {cls.__name__} (it would reach a real Egeria "
+                "platform); mark it requires_egeria / live_egeria_writes, or fake the client")
+        return cls(*args)
+
+    monkeypatch.setattr(egeria_clients, "_build", guarded_build)
+    yield
+
+
+#: Platforms existing test fixtures hard-code. Allowed in tests only, so a fixture that names
+#: the old default `https://localhost:9443` keeps working whatever EGERIA_PLATFORM_URL the run
+#: sets; the guard above still refuses to build any REAL client, so nothing is sent anywhere.
+_FIXTURE_PLATFORMS = ("https://localhost:9443", "http://localhost:9443",
+                      "https://host.docker.internal:9443")
+
+
+@pytest.fixture(autouse=True)
+def allow_fixture_platforms(request, monkeypatch):
+    if any(request.node.get_closest_marker(m) for m in _LIVE_MARKERS):
+        return
+    from resource_explorer import egeria_clients
+
+    real = egeria_clients.allowed_platforms
+    monkeypatch.setattr(egeria_clients, "allowed_platforms",
+                        lambda: real() | {egeria_clients.origin_of(u) for u in _FIXTURE_PLATFORMS})
+
+
+@pytest.fixture
+def allow_example_platform(monkeypatch):
+    """For tests whose fake entities name `https://egeria.example`: allow that origin, as a
+    deployment would with EGERIA_ALLOWED_PLATFORM_URLS (Brief I round 2)."""
+    from resource_explorer import egeria_clients
+
+    real = egeria_clients.allowed_platforms
+    monkeypatch.setattr(egeria_clients, "allowed_platforms",
+                        lambda: real() | {egeria_clients.origin_of("https://egeria.example")})
+
+
+@pytest.fixture(autouse=True)
+def fresh_zone_controls_report(monkeypatch):
+    """The start-up zone check's answer (`egeria_identity._zone_controls_state`) is per-process; each test starts
+    with it unasked, so one test's "ok" or "blocked" never decides another's publish."""
+    from resource_explorer import egeria_identity
+
+    monkeypatch.setattr(egeria_identity, "_zone_controls_state", None)
+
+
+@pytest.fixture(autouse=True)
+def no_live_publish_readback(request, monkeypatch):
+    """The run's "published as <identity>" is ONE read of the SurveyReport by GUID (`presser_hold.read_published_by`).
+    A test that fakes the publish has no Egeria to read, and the real read would reach for a platform: here it says
+    "could not tell" (''). ONLY `test_queued_run_publishes_as_presser` exercises the real function, with the pyegeria
+    boundary faked."""
+    if request.module.__name__.endswith("test_queued_run_publishes_as_presser"):
+        return
+    from resource_explorer import presser_hold
+
+    monkeypatch.setattr(presser_hold, "read_published_by", lambda report_guid: "")

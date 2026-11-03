@@ -176,6 +176,9 @@ def _last_run_info(registry, slug: str, analysis_id: str, entity_type: str = "re
             "last_run_at": own.get("last_run_at", ""),
             "last_run_status": own.get("last_run_status", ""),
             "last_run_via": own.get("last_run_via") or analysis_id,
+            "ran_as": own.get("ran_as") or None,
+            "not_retried": own.get("not_retried") or "",
+            "publish_proof": own.get("last_publish_proof") or None,
         }
     if entity_type == "repo":
         from resource_explorer.surveyors.repo_survey_definition_adapter import (
@@ -189,8 +192,10 @@ def _last_run_info(registry, slug: str, analysis_id: str, entity_type: str = "re
                     "last_run_at": source.get("last_run_at", ""),
                     "last_run_status": source.get("last_run_status", ""),
                     "last_run_via": source_id,
+                    "ran_as": None,            # a derived result was not run by anyone's override
+                    "not_retried": "",
                 }
-    return {"last_run_at": "", "last_run_status": "", "last_run_via": ""}
+    return {"last_run_at": "", "last_run_status": "", "last_run_via": "", "ran_as": None, "not_retried": ""}
 
 
 def build_measurements(
@@ -273,7 +278,7 @@ def build_measurements(
     if entity_type != "repo":
         return _build_measurements_via_results_reader(
             registry, slug, analysis_id, kinds_map, run_at, source,
-            adapter=adapter, level=level)
+            adapter=adapter, level=level, entity_type=entity_type)
 
     kinds = _METRICS_KINDS.get(analysis_id)
 
@@ -328,7 +333,7 @@ def build_measurements(
 
 def _build_measurements_via_results_reader(
     registry, slug: str, analysis_id: str, kinds_map: dict, run_at: str, source: str,
-    adapter=None, level: str = "resource",
+    adapter=None, level: str = "resource", entity_type: str = "",
 ) -> dict:
     """The non-repo counterpart of the `_METRICS_KINDS` branch above.
 
@@ -389,11 +394,25 @@ def _build_measurements_via_results_reader(
         }
 
     raw = reader(registry, slug) or {}
-    measurements = [
-        {"name": name, "value": value, "opens": None, "note": ""}
-        for name, value in raw.items()
-        if not isinstance(value, (list, dict))
-    ]
+    if isinstance(raw.get("measurement_rows"), list):
+        # A generic annotation reader (`surveyors/annotation_readers.py`,
+        # R7) returns rows already shaped, each carrying the state words its
+        # envelope states; flattening would drop them.
+        measurements = list(raw["measurement_rows"])
+        # A library step's further declared measures are stored under their own keys; each is its own row with its own
+        # stated state, so one that could not be measured reads "not established" and its reason, not the whole row's
+        # state and not a number (F19).
+        step_keys = list(getattr(kinds_map.get(analysis_id), "step_keys", None) or [])
+        if entity_type and step_keys:
+            from resource_explorer.surveyors.annotation_readers import declared_measure_rows
+
+            measurements += declared_measure_rows(registry, entity_type, slug, step_keys[0])
+    else:
+        measurements = [
+            {"name": name, "value": value, "opens": None, "note": ""}
+            for name, value in raw.items()
+            if not isinstance(value, (list, dict))
+        ]
 
     if not measurements:
         return {
@@ -458,6 +477,12 @@ def _first_sentence(text: str) -> str:
     return text[: idx + 1]
 
 
+def _fs_library_step(analysis_id: str) -> str:
+    from resource_explorer.workflows.analysis import filesystem_library_step_key
+
+    return filesystem_library_step_key(analysis_id)
+
+
 def runnable_and_reason(analysis_id: str, entity_type: str = "repo") -> tuple[bool, str]:
     """Whether this entity type's run route would accept this id, and the
     reason when it would not — the SAME check and the SAME text
@@ -479,10 +504,32 @@ def runnable_and_reason(analysis_id: str, entity_type: str = "repo") -> tuple[bo
     via a direct API call that bypasses this check entirely — the run route
     itself (`databases.py::run_single_database_analysis`) was never broken,
     only this precheck's idea of which catalog to resolve against."""
-    from resource_explorer.workflows.analysis import resolve_analysis_plan
+    if entity_type == "database":
+        # One predicate with the run route (databases.py): resolve_analysis_plan's source-step map is not
+        # what that route dispatches from, and two predicates is how a card offered a Run the route refused.
+        from resource_explorer.surveyors.database.database_surveyor import (
+            database_analysis_has_runner,
+            database_library_step_missing_reason,
+        )
 
-    is_ingest, steps = resolve_analysis_plan(analysis_id, entity_type)
-    runnable = bool(is_ingest or steps)
+        runnable = database_analysis_has_runner(analysis_id)
+        if runnable and (missing := database_library_step_missing_reason(analysis_id)):
+            # A library step whose package is absent here: the card says so before the press, never after it.
+            return False, missing
+    elif entity_type == "filesystem" and (step := _fs_library_step(analysis_id)):
+        # One predicate with the run route (filesystems.py: `filesystem_library_step_key`, then the package check): a
+        # library step is not in the survey-step map the lines below read, which is why its Re-run was disabled
+        # with "no mapped survey step(s)" while the route would have run it (F12, 2026-10-29).
+        from resource_explorer.surveyors.survey_step_host import library_step_missing_reason
+
+        if missing := library_step_missing_reason(step, "filesystem"):
+            return False, missing
+        runnable = True
+    else:
+        from resource_explorer.workflows.analysis import resolve_analysis_plan
+
+        is_ingest, steps = resolve_analysis_plan(analysis_id, entity_type)
+        runnable = bool(is_ingest or steps)
     if runnable:
         return True, ""
     return False, (
@@ -491,7 +538,93 @@ def runnable_and_reason(analysis_id: str, entity_type: str = "repo") -> tuple[bo
     )
 
 
-def build_analyses_index(registry, slug: str, entity_type: str = "repo") -> dict:
+# ── which analyses a survey definition runs (brief section 9) ───────────────
+
+def documented_definition_steps(entity_type: str) -> list[dict]:
+    """The authored survey definitions for this resource type, as
+    `{name, display_name, kind, steps: [re_analysis_step, ...]}`.
+
+    Read from the same documents the survey pane lists definitions from
+    (`survey_definition_docs.documented_definitions`), so the analyses list and the definition
+    row cannot disagree about what a definition contains. `re_analysis_step` is the step's own
+    property; a step without one contributes nothing (it cannot be mapped to an analysis)."""
+    from resource_explorer.surveyors.survey_definition_docs import documented_definitions
+
+    out = []
+    for name, doc in documented_definitions().items():
+        if doc.resource_type != entity_type:
+            continue
+        keys = [(doc.step_info.get(k, {}) or {}).get("re_analysis_step") for k in doc.steps]
+        out.append({"name": name, "display_name": doc.display_name or name,
+                    "kind": doc.survey_kind or "", "steps": [k for k in keys if k]})
+    return out
+
+
+def _definition_step_for(analysis_steps: list[str], definition: dict) -> str:
+    """The first of the definition's steps that is a source of the analysis, or ''."""
+    sources = set(analysis_steps or [])
+    return next((st for st in definition["steps"] if st in sources), "")
+
+
+def coverage_for_analysis(analysis_id: str, tier: str, source_steps: dict,
+                          definitions: list[dict]) -> dict:
+    """Which definitions run this analysis, and in which step.
+
+    `runs_in`   definitions of the analysis's OWN tier that include a step producing it;
+    `also_in`   definitions of another tier whose step bundle produces it as well (a step that
+                cannot be split apart, so running that definition also yields this result);
+    `not_in`    definitions of the analysis's own tier that do NOT include it (the sentence
+                "not part of the Scan · runs on its own" is for a definition edited later).
+    Everything is derived from the definitions' `re_analysis_step` properties mapped through the
+    adapter's `analysis_source_steps`; no list of analyses is kept by hand."""
+    steps = (source_steps or {}).get(analysis_id) or []
+    runs_in, also_in, not_in = [], [], []
+    for d in definitions:
+        step = _definition_step_for(steps, d)
+        entry = {"name": d["name"], "display_name": d["display_name"], "step": step, "kind": d["kind"]}
+        if step and d["kind"] == tier:
+            runs_in.append(entry)
+        elif step:
+            also_in.append(entry)
+        elif d["kind"] == tier:
+            not_in.append(entry)
+    return {"runs_in": runs_in, "also_in": also_in, "not_in": not_in}
+
+
+def analyses_run_by_definition(definition: dict, entries: list[dict], source_steps: dict) -> dict:
+    """`{own: [analysis ids], also: [analysis ids]}` for one definition: the analyses of the
+    definition's own tier its steps produce, and the other-tier ones its bundled steps also produce.
+    The definition row reads "N steps · runs <len(own)> analyses" from this."""
+    own, also = [], []
+    for e in entries:
+        aid = e["id"]
+        if _definition_step_for((source_steps or {}).get(aid) or [], definition):
+            (own if e.get("intent", "") == definition["kind"] else also).append(aid)
+    return {"own": own, "also": also}
+
+
+def _credential_use(entity_type: str, analysis_id: str) -> str:
+    """Which credential a run of this analysis uses, as the run route really does it.
+
+    `"stored"`  a database analysis that opens a connection: the run is enqueued and uses the
+                credential saved for the database (the run queue refuses to persist any other);
+    `"none"`    a zero-fetch `db_derived` analysis, or a library step (`credential_tier: none`): it
+                opens no connection, so "uses stored credential" would be false;
+    `""`        not a database analysis, or one with no local runner (nothing to say)."""
+    if entity_type != "database":
+        return ""
+    from resource_explorer.surveyors.database.database_surveyor import (
+        database_analysis_has_runner,
+        database_analysis_needs_credentials,
+    )
+
+    if not database_analysis_has_runner(analysis_id):
+        return ""
+    return "stored" if database_analysis_needs_credentials(analysis_id) else "none"
+
+
+def build_analyses_index(registry, slug: str, entity_type: str = "repo", *,
+                         definitions: list[dict] | None = None) -> dict:
     """GET /api/projects/{slug}/analyses-index payload.
 
     One row per `get_analyses(entity_type, include_egeria_live=False)` entry,
@@ -517,6 +650,9 @@ def build_analyses_index(registry, slug: str, entity_type: str = "repo") -> dict
     `databases.py::run_single_database_analysis`, which never shared this
     bug — only this precheck's idea of which catalog to resolve against.
 
+    `definitions` (tests) replaces the authored survey definitions each row's coverage is derived
+    from; the default reads them from the same documents the survey pane lists (brief section 9).
+
     Raises `LookupError` for an unknown slug — routes translate to 404."""
     from resource_explorer.surveyors.analysis_catalog_reader import get_analyses
     from resource_explorer.surveyors.question_catalog_reader import get_questions
@@ -538,6 +674,8 @@ def build_analyses_index(registry, slug: str, entity_type: str = "repo") -> dict
 
     kinds_provider = adapter.analysis_kinds
     kinds_map = kinds_provider() if kinds_provider else {}
+    source_steps = adapter.analysis_source_steps() if adapter.analysis_source_steps else {}
+    defs = definitions if definitions is not None else documented_definition_steps(entity_type)
 
     entries = [a for a in get_analyses(entity_type, include_egeria_live=False)
                if a.get("action") != "publish"]
@@ -549,7 +687,7 @@ def build_analyses_index(registry, slug: str, entity_type: str = "repo") -> dict
     for entry in entries:
         aid = entry["id"]
         matched_questions = [
-            {"question": q["question"], "stage": q["stage"]}
+            {"id": q.get("id", ""), "question": q["question"], "stage": q["stage"]}
             for q in questions if aid in (q["answering"]["analysis_ids"] or [])
         ]
 
@@ -589,9 +727,16 @@ def build_analyses_index(registry, slug: str, entity_type: str = "repo") -> dict
             "last_run_at": run_info["last_run_at"],
             "last_run_status": run_info["last_run_status"],
             "last_run_via": run_info["last_run_via"],
+            "last_run_ran_as": run_info.get("ran_as"),
+            "last_run_not_retried": run_info.get("not_retried", ""),
+            # The last run's publish word, from its proof rows: queued for publish / published · read back /
+            # publish failed. None when that run published nothing through the outbox.
+            "last_publish_proof": run_info.get("publish_proof"),
+            "uses_credential": _credential_use(entity_type, aid),
             "cost": cost,
             "runnable": runnable,
             "runnable_reason": runnable_reason,
+            "definitions": coverage_for_analysis(aid, entry.get("intent", ""), source_steps, defs),
             "catalog": entry,
         })
 

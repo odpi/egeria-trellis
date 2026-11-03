@@ -238,59 +238,59 @@ def curate_materialize(
         help="A component's scope_locator, or a blueprint's 'perspective::cluster_name'"),
     entity_type: str = typer.Option("repo", "--entity-type"),
 ):
-    """Materialize an accepted component or blueprint verdict into Egeria.
+    """Publish one accepted component or blueprint to Egeria, through the same Publish the web press uses.
 
-    Which one is decided by the id's shape — `perspective::cluster_name` is a
-    blueprint, anything else is a component's scope_locator. That is the same
-    key `add_blueprint_verdict` builds, not a new convention.
+    It no longer writes directly: it queues ONE publish_architecture run for the target, and only when the
+    Publish plan lists it (accepted and not yet in Egeria, or a blueprint still to finish). The run writes it
+    as the web press would: the hold-back for a second blueprint of a kind, the attached record, the
+    promotion and the per-item result rows. `perspective::cluster_name` is a blueprint; anything else is a
+    component's scope_locator (the key `add_blueprint_verdict` builds).
     """
     from resource_explorer.cli import session as cli_session
-    from resource_explorer.workflows.curate import (
-        materialize_blueprint_if_accepted,
-        materialize_component_if_accepted,
-    )
 
-    # Materialization creates real Egeria elements and stamps them with an
-    # owner, so it needs a person to be that owner (plan §4). Exits 2 with one
-    # line when the session is missing or expired.
+    if entity_type != "repo":
+        console.print("[yellow]Nothing attempted — Publish is only wired for entity_type='repo'.[/yellow]")
+        raise typer.Exit(code=1)
+    # The run commits on this person's behalf (Ownership = them), so it needs a person. Exits 2 with one line
+    # when the session is missing or expired.
     cli_session.require_and_activate(console)
 
-    from resource_explorer.workflows.curate import (
-        CurationDenied,
-        owner_of,
-        promote_to_publish_zones,
-        require_curation_rights,
-    )
+    from resource_explorer.architecture_publish import PublishAlreadyRunning, enqueue_publish, publish_plan
+    from resource_explorer.run_queue import requested_by
+    from resource_explorer.workflows.curate import CurationDenied, publish_item_access
 
     registry = _registry()
-    # The same check the route makes, from the same place — the CLI does not
-    # get a second, laxer answer to "may this person curate this".
+    proj = registry.get(project)
+    if not proj:
+        console.print(f"[red]Project '{project}' not found[/red]")
+        raise typer.Exit(code=1)
+    plan = publish_plan(registry, project)
+    held = {b["key"]: b for b in plan["blueprints"].get("needs_identifier") or []}
+    listed = ({c["path"] for c in plan["components"]["to_write"]} | {b["key"] for b in plan["blueprints"]["to_write"]})
+    if target not in listed:
+        why = (held[target]["words"] if target in held
+               else "not in the Publish plan: not accepted, or already in Egeria with nothing left to finish")
+        console.print(f"[yellow]Nothing queued — {target}: {why}[/yellow]")
+        raise typer.Exit(code=1)
+
+    def authorize(kind: str, key: str) -> None:
+        # The same check the web press makes (workflows.curate.publish_item_access): every operation the write
+        # performs, and ATTACH on a blueprint's members.
+        d = publish_item_access(registry, project, kind, key)
+        if not d.allowed:
+            raise CurationDenied(d.reason)
+
     try:
-        require_curation_rights(owner_of(registry, entity_type, project, target))
+        out = enqueue_publish(registry, proj, plan, requested_by=requested_by(), authorize=authorize, only={target})
     except CurationDenied as exc:
-        console.print(f"[red]{exc}[/red]")
+        console.print(f"[red]not permitted · {exc}[/red]")
         raise typer.Exit(code=3)
-
-    if "::" in target:
-        perspective, cluster_name = target.split("::", 1)
-        result = materialize_blueprint_if_accepted(
-            registry, entity_type, project, perspective, cluster_name, "accepted",
-        )
-    else:
-        result = materialize_component_if_accepted(
-            registry, entity_type, project, target, "accepted",
-        )
-
-    if result is None:
-        console.print("[yellow]Nothing attempted — materialization is only wired "
-                      "for entity_type='repo'.[/yellow]")
+    except PublishAlreadyRunning as exc:
+        console.print(f"[yellow]{exc}[/yellow]")
         raise typer.Exit(code=1)
-    guid = result.get("guid", "")
-    if guid and result.get("status") != "error":
-        result["promotion"] = promote_to_publish_zones(guid)
-    console.print(json.dumps(result, indent=2, default=str))
-    if result.get("status") == "error":
-        raise typer.Exit(code=1)
+    console.print(json.dumps({k: out[k] for k in ("run_id", "activity_id", "queued")}, indent=2, default=str))
+    console.print("[dim]Queued as Publish; the per-item result is on the Publish band (last publish) "
+                  "when the run finishes.[/dim]")
 
 
 # ── runs ─────────────────────────────────────────────────────────────────────
@@ -346,6 +346,15 @@ def runs_cancel(run_id: str = typer.Argument(help="Run id")):
     if registry.cancel_queued_run(run_id):
         console.print(f"[green]cancelled {run_id}[/green]")
         return
+    from resource_explorer.run_queue import UNCANCELLABLE_KINDS
+
+    if row.get("kind") in UNCANCELLABLE_KINDS:      # refused by the registry; say why
+        console.print(
+            f"[yellow]Run {run_id} is an {row['kind']} run, held for its Egeria engine action — nothing was "
+            "changed.[/yellow]\n[dim]RE has claimed that action; cancelling the run here would leave it "
+            "claimed with nothing to complete it.[/dim]"
+        )
+        raise typer.Exit(code=1)
     console.print(
         f"[yellow]Run {run_id} is {row['state']}, not queued — nothing was "
         f"changed.[/yellow]\n[dim]A claimed run holds a real thread in "
@@ -355,6 +364,11 @@ def runs_cancel(run_id: str = typer.Argument(help="Run id")):
         "failed.[/dim]"
     )
     raise typer.Exit(code=1)
+
+
+#: Run kinds that may write to Egeria (an analysis or Survey Definition run auto-publishes when the resource has an
+#: assigned Egeria Project): `runs enqueue` attributes them to the signed-in person only (Brief Z2 round 2).
+PUBLISHING_KINDS = frozenset({"analysis_run", "survey_definition_run", "database_analysis_run"})
 
 
 @runs_app.command("enqueue")
@@ -380,6 +394,12 @@ def runs_enqueue(
         console.print(f"[red]Unknown kind '{kind}' — expected one of "
                       f"{list(ProjectRegistry.RUN_KINDS)}[/red]")
         raise typer.Exit(code=1)
+    if kind in run_queue.PERSON_ACTION_KINDS:
+        # Brief Z round 3: a verbatim target and a free --requested-by would let a shell forge what the run
+        # trusts (a Portal role override in the target, another person's grants via the requester).
+        console.print("[red]use Publish (web) or `curate materialize` — person actions need a signed-in "
+                      "requester[/red]")
+        raise typer.Exit(code=1)
     try:
         parsed = json.loads(target)
     except ValueError as exc:
@@ -394,7 +414,19 @@ def runs_enqueue(
     # person could then hold every worker slot. So: `--requested-by` wins when
     # given (a script attributing on someone's behalf), otherwise the signed-in
     # user, and only a genuinely signed-out shell falls through to "".
-    cli_session.activate(cli_session.resolve_identity()[1])
+    if kind in PUBLISHING_KINDS:
+        # Brief Z2 round 2: these runs may publish to Egeria, and the run re-checks curation access as its
+        # requester. So the requester must be the person at this shell: a session is required, and a
+        # --requested-by naming anyone else is refused (it would borrow their grants).
+        identity = cli_session.require_and_activate(console)
+        me = (getattr(identity, "user_id", "") or run_queue.requested_by() or "").strip()
+        if requested_by and requested_by.strip() != me:
+            console.print(f"[red]--requested-by {requested_by!r} is not the signed-in user ({me!r}): a run that "
+                          "may publish to Egeria is attributed to the person who queues it[/red]")
+            raise typer.Exit(code=1)
+        requested_by = me
+    else:
+        cli_session.activate(cli_session.resolve_identity()[1])
     attributed_to = requested_by or run_queue.requested_by()
     if not attributed_to:
         console.print(

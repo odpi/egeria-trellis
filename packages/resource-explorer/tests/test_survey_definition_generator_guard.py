@@ -13,6 +13,7 @@ a CSV change (regenerating is right) or hand-authored into (regenerating is
 destruction). Content still matching what we last wrote proves the former.
 """
 import json
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -20,7 +21,8 @@ from pathlib import Path
 import pytest
 
 SCRIPT = Path(__file__).resolve().parent.parent / "scripts" / "generate_repo_survey_definition.py"
-DEFS = Path(__file__).resolve().parent.parent / "docs" / "dr-egeria" / "survey-definitions"
+REAL_DEFS = Path(__file__).resolve().parent.parent / "docs" / "dr-egeria" / "survey-definitions"
+DEFS = REAL_DEFS  # rebound to a tmp copy by the `restore` fixture
 PROVENANCE = DEFS / ".generated.json"
 
 
@@ -31,17 +33,15 @@ def _run(*args) -> str:
 
 
 @pytest.fixture
-def restore():
-    """Snapshot every document and the sidecar; put them all back afterwards."""
-    saved = {p: p.read_text() for p in DEFS.glob("*.md")}
-    saved_prov = PROVENANCE.read_text() if PROVENANCE.exists() else None
+def restore(tmp_path, monkeypatch):
+    """Run the generator on a COPY of the definitions (via RE_SURVEY_DEFS_DIR), so no test
+    ever rewrites the tracked tree. Rebinds DEFS/PROVENANCE to the copy for this test."""
+    work = tmp_path / "defs"
+    shutil.copytree(REAL_DEFS, work)
+    monkeypatch.setenv("RE_SURVEY_DEFS_DIR", str(work))
+    monkeypatch.setitem(globals(), "DEFS", work)
+    monkeypatch.setitem(globals(), "PROVENANCE", work / ".generated.json")
     yield
-    for p, text in saved.items():
-        p.write_text(text)
-    if saved_prov is None:
-        PROVENANCE.unlink(missing_ok=True)
-    else:
-        PROVENANCE.write_text(saved_prov)
 
 
 def test_a_clean_tree_regenerates_to_nothing(restore):

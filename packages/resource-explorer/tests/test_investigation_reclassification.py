@@ -21,10 +21,13 @@ from resource_explorer.surveyors.investigation_reclassifier import (
     LATERAL, LOOSEN, TIGHTEN, InvestigationReclassifier, direction_of,
 )
 
+
 # See test_investigation_routes.py's identical pytestmark / conftest.py's
 # mock_egeria_client_connections docstring — this file reaches the same
 # unmocked marker-application client construction via EgeriaInvestigationPublisher.
-pytestmark = pytest.mark.usefixtures("mock_egeria_client_connections")
+# Brief I: and a declared identity (the daemon: these tests are not about who acts, and a
+# signed-in caller would change the registry's per-user scoping they rely on).
+pytestmark = pytest.mark.usefixtures("mock_egeria_client_connections", "as_daemon")
 
 
 @contextmanager
@@ -61,7 +64,8 @@ def _egeria(zones_by_guid: dict, *, enforced=True, accept=True, kind_swap=True,
         return (True, "") if kind_swap else (False, "stubbed failure")
 
     rc.InvestigationReclassifier._move_kind_classification = _stub
-    before = (ident.current_zones, ident.set_zone_membership, ident._private_zone_state)
+    before = (ident.current_zones, ident.set_zone_membership, ident._private_zone_state,
+              ident.read_zones, ident.clear_zone_membership)
     ident._private_zone_state = {"status": "exists", "enforced": enforced,
                                  "zone": ident.private_zone(), "control_present": True}
     ident.current_zones = lambda guid, *a, **k: list(zones_by_guid.get(guid, []))
@@ -73,10 +77,21 @@ def _egeria(zones_by_guid: dict, *, enforced=True, accept=True, kind_swap=True,
         return True
 
     ident.set_zone_membership = _set
+    # The strict reader and the documented clear call (loosening with NO configured zone).
+    ident.read_zones = lambda guid, *a, **k: list(zones_by_guid.get(guid, []))
+
+    def _clear(guid, **k):
+        if not accept(guid) if callable(accept) else not accept:
+            return False
+        zones_by_guid[guid] = []
+        return True
+
+    ident.clear_zone_membership = _clear
     try:
         yield zones_by_guid
     finally:
-        ident.current_zones, ident.set_zone_membership, ident._private_zone_state = before
+        (ident.current_zones, ident.set_zone_membership, ident._private_zone_state,
+         ident.read_zones, ident.clear_zone_membership) = before
         rc.InvestigationReclassifier._move_kind_classification = real_kind
 
 
@@ -214,7 +229,10 @@ def test_tightening_an_ownerless_investigation_is_refused(tmp_path):
 
 # ── loosening and lateral ──────────────────────────────────────────────────
 
-def test_loosening_moves_everything_into_the_publish_zones(tmp_path):
+def test_loosening_with_no_configured_zone_clears_the_zones_and_invents_none(tmp_path, monkeypatch):
+    """Configured-only (owner, 2026-10-07): with nothing configured, loosening removes the private
+    zones and leaves zones to Egeria. No zone is written."""
+    monkeypatch.delenv("EXPLORER_PUBLISH_ZONES", raising=False)
     reg = ProjectRegistry(db_path=str(tmp_path / "t.db"))
     reg.add(Project(slug="r1", display_name="r1", github_url="https://github.com/o/r1",
                     description=""))
@@ -224,17 +242,48 @@ def test_loosening_moves_everything_into_the_publish_zones(tmp_path):
     reg.record_egeria_survey("r1", "2026-09-08T00:00:00", "report-1")
     _bind(reg, inv["slug"])
 
-    from resource_explorer.egeria_identity import private_zone, publish_zones
+    from resource_explorer.egeria_identity import private_zone
+    import resource_explorer.egeria_identity as ident
+    zones = {"proj-1": [private_zone(), "alice"], "report-1": [private_zone(), "alice"]}
+    with _egeria(zones):
+        wrote = []
+        orig = ident.set_zone_membership
+        ident.set_zone_membership = lambda g, z, **k: wrote.append((g, z)) or orig(g, z, **k)
+        try:
+            res = InvestigationReclassifier(reg).reclassify(inv["slug"], "Task")
+        finally:
+            ident.set_zone_membership = orig
+
+    assert res.direction == LOOSEN
+    assert res.ok, res.errors
+    assert zones["report-1"] == [] and zones["proj-1"] == []
+    assert wrote == [], "no ZoneMembership may be written when nothing is configured"
+    assert "egeria-runtime" not in str(zones)
+
+
+def test_loosening_moves_everything_into_the_publish_zones(tmp_path, monkeypatch, zone_controls_ok):
+    reg = ProjectRegistry(db_path=str(tmp_path / "t.db"))
+    reg.add(Project(slug="r1", display_name="r1", github_url="https://github.com/o/r1",
+                    description=""))
+    inv = _inv(reg, "Going Public", "PersonalProject")
+    ws = reg.get_or_create_working_set(inv["slug"])
+    reg.add_working_set_member(ws["slug"], "repo", "r1")
+    reg.record_egeria_survey("r1", "2026-09-08T00:00:00", "report-1")
+    _bind(reg, inv["slug"])
+
+    from resource_explorer.egeria_identity import private_zone
+    monkeypatch.setenv("EXPLORER_PUBLISH_ZONES", "shared-zone")     # configured on purpose
     zones = {"proj-1": [private_zone(), "alice"], "report-1": [private_zone(), "alice"]}
     with _egeria(zones):
         res = InvestigationReclassifier(reg).reclassify(inv["slug"], "Task")
 
     assert res.direction == LOOSEN
     assert res.ok, res.errors
-    assert zones["report-1"] == publish_zones()
+    assert zones["report-1"] == ["shared-zone"]
 
 
-def test_a_lateral_change_moves_nothing(tmp_path):
+def test_a_lateral_change_moves_nothing(tmp_path, monkeypatch):
+    monkeypatch.setenv("EXPLORER_DRAFT_ZONE", "resource-explorer-draft")   # the configured case
     """Task -> Campaign is a real change with no visibility consequence. Re-zoning
     would be pointless work, and the connector rejects a no-op zone change
     anyway, so it would surface as a permissions error."""
@@ -246,9 +295,9 @@ def test_a_lateral_change_moves_nothing(tmp_path):
     # lateral change that wrongly re-zoned would have been a no-op and the test
     # passed a sabotage run that removed the guard entirely. The starting zone
     # has to differ from the target for "nothing moved" to mean anything.
-    from resource_explorer.egeria_identity import draft_zone, publish_zones
+    from resource_explorer.egeria_identity import configured_publish_zones, draft_zone
 
-    assert draft_zone() not in publish_zones(), "test premise: the two must differ"
+    assert draft_zone() not in configured_publish_zones(), "test premise: the two must differ"
     zones = {"proj-1": [draft_zone()]}
     with _egeria(zones):
         res = InvestigationReclassifier(reg).reclassify(inv["slug"], "Campaign")
@@ -363,6 +412,7 @@ def test_never_asked_triggers_a_zone_check_rather_than_refusing(tmp_path, monkey
         return ident._private_zone_state
 
     before = (ident.current_zones, ident.set_zone_membership, ident._private_zone_state)
+    monkeypatch.setenv("EXPLORER_DRAFT_ZONE", "resource-explorer-draft")   # the configured case
     zones = {"proj-1": [ident.draft_zone()]}
     ident._private_zone_state = None                     # never asked
     ident.current_zones = lambda guid, *a, **k: list(zones.get(guid, []))
@@ -732,3 +782,11 @@ def test_a_clean_declassify_that_did_nothing_says_that_instead(monkeypatch):
     assert "reported no error" in why, why
     assert "Error" not in why.split("reported no error")[0], (
         "nothing raised, so the reason must not name an exception")
+
+
+@pytest.fixture
+def zone_controls_ok(monkeypatch):
+    """The configured zones' controls admit everyone, so the start-up zone check lets them be written."""
+    from tests.zone_fakes import zone_controls_grant_all
+
+    return zone_controls_grant_all(monkeypatch)

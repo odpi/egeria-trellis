@@ -33,7 +33,7 @@ from uuid import uuid4
 
 from typing import Any
 
-from a2a.types import AgentSkill, Message, Part, TaskState, TaskStatus, TextPart
+from a2a.types import AgentSkill, DataPart, Message, Part, TaskState, TaskStatus, TextPart
 from resource_explorer import _mcp_compat  # noqa: F401  -- must precede agentstack_sdk (mcp 2.x rename)
 from agentstack_sdk.server import Server
 from agentstack_sdk.server.context import RunContext
@@ -67,6 +67,39 @@ def _project_scope(query: str) -> tuple[str, str | None]:
         head, _, rest = query.partition(" ")
         return rest.strip(), head.split(":", 1)[1].strip()
     return query, None
+
+
+def _choice_status(question: str, example: str, query: str, named: list[str], context: RunContext) -> TaskStatus:
+    """An input_required status offering ranked repo AND database candidates.
+
+    The text names them for a client that only shows text; the data part carries the same choices
+    as {"kind": "resource_choices", "choices": [{slug, name, type}]} for one that can render them,
+    the way the web chat renders its chips.
+    """
+    try:
+        from resource_explorer.resource_chips import candidate_chips
+
+        choices = candidate_chips(query, named)
+    except Exception:
+        choices = []
+    if choices:
+        listing = ", ".join(f"{c['slug']} ({c['type']})" for c in choices)
+    else:
+        listing = "none registered"
+    text = f"{question} Candidates: {listing}. Reply with the names, e.g. {example}"
+    parts = [Part(root=TextPart(text=text))]
+    if choices:
+        parts.append(Part(root=DataPart(data={"kind": "resource_choices", "choices": choices})))
+    return TaskStatus(
+        state=TaskState.input_required,
+        message=Message(
+            role="agent",
+            parts=parts,
+            messageId=str(uuid4()),
+            taskId=context.task_id,
+            contextId=context.context_id,
+        ),
+    )
 
 
 def _ask_project_status(context: RunContext) -> TaskStatus:
@@ -256,27 +289,12 @@ def _compare_server() -> Server:
         from resource_explorer.agents.compare_agent import CompareAgent
         query = _text(message)
         agent = CompareAgent()
+        agent.allow_writes = False   # the A2A surface is read-only
         slugs = agent._infer_all_project_slugs(query)
 
         if len(slugs) < 2:
-            try:
-                from resource_explorer.registry import ProjectRegistry
-                available = ", ".join(p.slug for p in ProjectRegistry().list_all())
-            except Exception:
-                available = "unknown"
-            reply: Message = yield TaskStatus(
-                state=TaskState.input_required,
-                message=Message(
-                    role="agent",
-                    parts=[Part(root=TextPart(text=(
-                        f"Which two projects would you like to compare? "
-                        f"Available: {available}. "
-                        "Reply with both project names, e.g. 'compare egeria and agentstack'."
-                    )))],
-                    messageId=str(uuid4()),
-                    taskId=context.task_id,
-                    contextId=context.context_id,
-                ),
+            reply: Message = yield _choice_status(
+                "Which two projects would you like to compare?", "'compare egeria and agentstack'.", query, slugs, context
             )
             if reply:
                 for s in agent._infer_all_project_slugs(_text(reply)):
@@ -310,27 +328,12 @@ def _integration_server() -> Server:
         from resource_explorer.agents.integration_agent import IntegrationAgent
         query = _text(message)
         agent = IntegrationAgent()
+        agent.allow_writes = False   # the A2A surface is read-only
         slugs = agent._infer_all_project_slugs(query)
 
         if len(slugs) < 2:
-            try:
-                from resource_explorer.registry import ProjectRegistry
-                available = ", ".join(p.slug for p in ProjectRegistry().list_all())
-            except Exception:
-                available = "unknown"
-            reply: Message = yield TaskStatus(
-                state=TaskState.input_required,
-                message=Message(
-                    role="agent",
-                    parts=[Part(root=TextPart(text=(
-                        f"Which two projects should I check for integration? "
-                        f"Available: {available}. "
-                        "Reply with both project names, e.g. 'egeria and agentstack'."
-                    )))],
-                    messageId=str(uuid4()),
-                    taskId=context.task_id,
-                    contextId=context.context_id,
-                ),
+            reply: Message = yield _choice_status(
+                "Which two projects should I check for integration?", "'egeria and agentstack'.", query, slugs, context
             )
             if reply:
                 for s in agent._infer_all_project_slugs(_text(reply)):

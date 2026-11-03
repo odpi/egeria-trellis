@@ -19,108 +19,16 @@ would cost more than it protects.
 from __future__ import annotations
 
 import inspect
-import re
 from pathlib import Path
 
 import pytest
 
 from resource_explorer.surveyors.repo_survey_definition_adapter import ANALYSIS_KINDS
 
-INDEX = Path(__file__).resolve().parents[1] / "resource_explorer" / "web" / "static" / "index.html"
-
-
-def _js_object_keys(name: str) -> set[str]:
-    html = INDEX.read_text()
-    start = html.index(f"const {name} = {{")
-    body = html[start:html.index("};", start)]
-    return set(re.findall(r"^\s*(\w+):\s*'", body, re.M))
-
-
-def _js_object_pairs(name: str) -> dict[str, str]:
-    """Same parse as _js_object_keys, but keeping the values.
-
-    The key-only check above was written for a real bug and stopped one step
-    short of it: `repository_health` and `repo_classification` both HAD entries,
-    so every key assertion passed, while their values disagreed with the backend
-    and their cards rendered wrongly. A present-but-wrong entry is invisible to
-    a membership test.
-    """
-    html = INDEX.read_text()
-    start = html.index(f"const {name} = {{")
-    body = html[start:html.index("};", start)]
-    return dict(re.findall(r"^\s*(\w+):\s*'([^']*)'", body, re.M))
-
 
 @pytest.fixture(scope="module")
 def kinds_with_results() -> set[str]:
     return {k for k, v in ANALYSIS_KINDS.items() if v.results}
-
-
-def test_every_kind_with_results_has_a_render_mode(kinds_with_results):
-    """Without an entry the card renders no Results button, so a working
-    backend reader is unreachable from the UI."""
-    missing = kinds_with_results - _js_object_keys("_REPO_RESULTS_RENDER_MODE")
-    assert not missing, (
-        f"analysis kinds with backend results but no frontend render mode: {sorted(missing)}. "
-        "Add them to _REPO_RESULTS_RENDER_MODE in index.html."
-    )
-
-
-def test_no_render_mode_for_a_kind_that_no_longer_exists(kinds_with_results):
-    """The other direction: an entry for a removed kind is dead code that reads
-    as coverage."""
-    stale = _js_object_keys("_REPO_RESULTS_RENDER_MODE") - kinds_with_results
-    assert not stale, f"frontend render modes for unknown analysis kinds: {sorted(stale)}"
-
-
-def test_render_modes_are_ones_the_frontend_can_dispatch():
-    """_renderAnalysisResultsContent dispatches on exactly these three; anything
-    else falls through to the custom branch and renders by accident."""
-    html = INDEX.read_text()
-    start = html.index("const _REPO_RESULTS_RENDER_MODE = {")
-    body = html[start:html.index("};", start)]
-    used = set(re.findall(r":\s*'(\w+)'", body))
-    assert used <= {"findings_list", "metrics", "custom"}
-
-
-def test_every_kind_with_a_trend_has_a_y_axis_label():
-    """The trend chart is generic, so without a label the plotted number has no
-    stated unit — a chart that looks authoritative and says nothing."""
-    with_trend = {k for k, v in ANALYSIS_KINDS.items()
-                  if v.results and v.results.trend_reader}
-    missing = with_trend - _js_object_keys("_REPO_TREND_LABEL")
-    assert not missing, (
-        f"analysis kinds with a trend reader but no Y-axis label: {sorted(missing)}. "
-        "Add them to _REPO_TREND_LABEL in index.html."
-    )
-
-
-def test_render_mode_values_agree_with_the_backend():
-    """A render mode that exists but names the wrong branch is worse than a
-    missing one: the card renders, so nothing looks broken, but it renders the
-    wrong shape and falls through to the empty state.
-
-    Both real instances behaved that way. `repository_health` declared
-    'findings_list' against a payload with no `findings` key, so a repo with
-    genuine scores displayed "No results yet — click Run to scan."
-    `repo_classification` declared 'custom' where the backend said
-    'findings_list'; there the frontend was right and the backend entry was
-    stale. Hence comparing values, not asserting one side is authoritative.
-    """
-    frontend = _js_object_pairs("_REPO_RESULTS_RENDER_MODE")
-    backend = {k: v.results.render for k, v in ANALYSIS_KINDS.items() if v.results}
-
-    mismatched = {
-        k: (frontend[k], backend[k])
-        for k in frontend.keys() & backend.keys()
-        if frontend[k] != backend[k]
-    }
-    assert not mismatched, (
-        "render mode disagrees between index.html and ANALYSIS_KINDS "
-        f"(analysis_id: (frontend, backend)): {mismatched}. "
-        "Decide which side is right — a stale backend declaration and a wrong "
-        "frontend branch both present as an empty results card."
-    )
 
 
 def test_metrics_mode_readers_return_metrics_at_the_top_level():
@@ -131,7 +39,6 @@ def test_metrics_mode_readers_return_metrics_at_the_top_level():
     _health_results did exactly that. This pins the contract that made the
     render-mode fix real rather than merely consistent.
     """
-    from resource_explorer.surveyors import repo_survey_definition_adapter as A
 
     reserved = {"detail", "surveyed_at", "_status"}
     for kind, spec in ANALYSIS_KINDS.items():
@@ -162,151 +69,6 @@ def test_metrics_mode_readers_return_metrics_at_the_top_level():
 # of deriving them below rather than listing them is that a fifth is caught.
 
 
-def _top_level_functions(html: str) -> dict[str, str]:
-    """Split index.html's script into its top-level `function`/`async function`
-    bodies. Column-0 anchored — every function these tests care about is
-    top-level, and a nested one would belong to its parent's body anyway."""
-    # Line comments stripped first: this file discusses its own function names
-    # constantly, and a comment naming _renderAnalysisResultsContent() would
-    # otherwise classify a function by what it talks about rather than what it
-    # calls. (Harmless today — _loadDashboardTrendCharts was picked up that way
-    # and could not affect the result — but a derivation that reads prose as
-    # code is one edit away from being wrong in a direction that matters.)
-    html = re.sub(r"^\s*//.*$", "", html, flags=re.M)
-    starts = [(m.start(), m.group(1))
-              for m in re.finditer(r"^(?:async )?function (\w+)\s*\(", html, re.M)]
-    out = {}
-    for i, (pos, name) in enumerate(starts):
-        end = starts[i + 1][0] if i + 1 < len(starts) else len(html)
-        out[name] = html[pos:end]
-    return out
-
-
-def test_every_site_that_inserts_results_html_draws_pending_diagrams():
-    html = INDEX.read_text()
-    fns = _top_level_functions(html)
-
-    # A function that builds results HTML but never assigns innerHTML hands it
-    # upward — its caller is the insertion site, not it. _renderGroupedCards
-    # Dashboard is the one such today.
-    producers = {"_renderAnalysisResultsContent"}
-    producers |= {n for n, b in fns.items()
-                  if "_renderAnalysisResultsContent(" in b and ".innerHTML" not in b}
-
-    inserters = {
-        n for n, b in fns.items()
-        if ".innerHTML" in b and any(f"{p}(" in b for p in producers)
-        and n not in producers
-    }
-    assert inserters, "found no results-insertion sites at all — the derivation broke, not the code"
-
-    missing = {n for n in inserters if "renderPendingArchDiagrams(" not in fns[n]}
-    assert not missing, (
-        f"these insert analysis results HTML and never draw the pending "
-        f"architecture diagram, so an architecture_diagram card renders as an "
-        f"empty bordered box: {sorted(missing)}. Call renderPendingArchDiagrams() "
-        f"after the innerHTML assignment."
-    )
-
-
-def test_the_placeholder_is_claimed_before_the_diagram_is_fetched():
-    """Two sweeps can overlap — a dashboard rendering while a chat card is still
-    fetching. Measured with the claim moved after the await: three POSTs for two
-    placeholders, the second overwriting the first's SVG."""
-    html = INDEX.read_text()
-    body = _top_level_functions(html)["renderPendingArchDiagrams"]
-    claim = body.index("container.dataset.rendered = 'true'")
-    fetched = body.index("await fetch(")
-    assert claim < fetched, (
-        "renderPendingArchDiagrams marks a placeholder rendered only after "
-        "awaiting the diagram server, leaving a window in which a second sweep "
-        "posts the same source again."
-    )
-
-
-def test_every_path_that_can_show_a_diagram_also_offers_its_source():
-    """The Mermaid source is the take-away form of this card (pastes into a PR
-    or an ADR and stays live, and is diffable between runs where two pictures
-    are not). All three exits of the renderer have a `mermaid` string in hand
-    — drawn, too-large-to-draw, and the empty case — so the two that have a
-    diagram to talk about must both offer it, not just the happy one."""
-    html = INDEX.read_text()
-    body = _top_level_functions(html)["_renderArchitectureDiagramResults"]
-
-    # The early return for "no data at all" legitimately has no source to show.
-    returns = [seg for seg in body.split("return ")[1:]
-               if "_renderEmptyResultState" not in seg]
-    assert len(returns) >= 2, (
-        "expected at least the drawn and the too-large returns to inspect; the "
-        "derivation broke, not the code"
-    )
-    missing = [i for i, seg in enumerate(returns) if "_renderMermaidSource(" not in seg]
-    assert not missing, (
-        f"{len(missing)} of {len(returns)} returns in "
-        f"_renderArchitectureDiagramResults show a diagram (or say why it "
-        f"cannot be drawn) without offering its Mermaid source. Add "
-        f"_renderMermaidSource(data.mermaid)."
-    )
-
-
-def test_a_diagram_that_cannot_be_drawn_still_shows_its_source():
-    """The failure path is the one that most needs the source: the diagram
-    server being unreachable is exactly when a reader has no other route to
-    the answer, and the source is already sitting in the placeholder's
-    dataset. Guards against it regressing to an error message alone."""
-    html = INDEX.read_text()
-    body = _top_level_functions(html)["renderPendingArchDiagrams"]
-    catch = body[body.index("} catch ("):]
-    assert "dataset.mcode" in catch, (
-        "renderPendingArchDiagrams' failure path no longer renders the Mermaid "
-        "source it already holds in container.dataset.mcode — a reader whose "
-        "diagram server is down now gets an error and nothing else."
-    )
-
-
-def test_the_source_block_is_escaped_exactly_once():
-    """_esc() on an already-escaped string double-escapes: the reader copies
-    `A --&gt; B` and pastes something no Mermaid renderer accepts. The
-    placeholder's data-mcode is escaped at emit time and decoded by reading
-    .dataset, so the failure path escapes once; the <details> block escapes the
-    raw payload once. Neither may escape a value that _esc already touched."""
-    html = INDEX.read_text()
-    fns = _top_level_functions(html)
-    src = fns["_renderMermaidSource"]
-    assert "_esc(mermaid)" in src, "_renderMermaidSource no longer escapes its input"
-    assert src.count("_esc(") == 1, (
-        f"_renderMermaidSource escapes {src.count('_esc(')} times; the source "
-        f"is displayed once and must be escaped once."
-    )
-    # The renderer must hand it the RAW payload, never the escaped copy.
-    body = fns["_renderArchitectureDiagramResults"]
-    assert "_renderMermaidSource(_esc(" not in body, (
-        "_renderArchitectureDiagramResults passes an already-escaped string to "
-        "_renderMermaidSource, so the copy button yields &gt; instead of >."
-    )
-
-
-def test_a_derived_last_run_is_labelled_as_derived_on_the_card():
-    """`last_run_via: 'derived'` means nobody ran this analysis — a derived one
-    dispatched the steps it owns. The card renders `_runVia` from that field,
-    and before 2026-09-09 it tested only for 'survey', so 'derived' fell to the
-    empty string and the card said "Last run today" about a run of something
-    else. That is the same defect the attribution fix was for, one layer along:
-    a right date under a wrong label."""
-    html = INDEX.read_text()
-    fns = _top_level_functions(html)
-    body = next(b for b in fns.values() if "last_run_via === 'survey'" in b)
-    assert "'derived'" in body, (
-        "the analysis card branches on last_run_via but has no case for "
-        "'derived', so a borrowed freshness renders indistinguishably from a "
-        "direct run of this analysis"
-    )
-    assert "last_run_derived_from" in body, (
-        "the card labels a run as derived without naming which analysis's run "
-        "it came from — the reader cannot tell what was actually run"
-    )
-
-
 def test_the_api_sends_the_field_the_card_reads():
     """A card reading a key the payload never sends renders `undefined`. Both
     sides are edited here, so this pins them together.
@@ -335,105 +97,6 @@ def test_the_api_sends_the_field_the_card_reads():
 # as the rest of this file — no build step, no JS test runner) with
 # assertions specific enough that deleting either fix fails them; each was
 # sabotaged and confirmed to fail before being trusted.
-
-
-def test_the_saved_time_sentence_covers_all_four_bases():
-    """`_savedTimeSentence` (designer's split ruling, 2026-09-13) must render
-    a sentence for every one of RunCost's states: measured+split, measured
-    whole-run only, declared, and unknown/unavailable. A regression that
-    dropped one of these would still "work" for the other three, so this
-    checks all four fixed fragments rather than just that the function
-    exists."""
-    html = INDEX.read_text()
-    fns = _top_level_functions(html)
-    assert "_savedTimeSentence" in fns, "_savedTimeSentence is gone from index.html"
-    body = fns["_savedTimeSentence"]
-
-    assert "of waiting saved" in body, (
-        "missing the measured-split variant (\"about {publish} of waiting "
-        "saved (median of N runs); the run itself took {steps}\")"
-    )
-    assert "unsplit" in body, (
-        "missing the whole-run-measured, no-split variant (\"the wait would "
-        "have been about {seconds} (median of N runs), unsplit\")"
-    )
-    assert "declared '" in body and "not yet measured" in body, (
-        "missing the declared-word variant — a declared catalog word must "
-        "never be rendered as if it were a measured figure"
-    )
-    assert "is not known yet" in body, (
-        "missing the unavailable/unknown variant"
-    )
-    # A declared word must never be formatted as a number — the whole point
-    # of carrying `basis` alongside the figure.
-    assert "_humaniseSeconds(started.rerun_cost_declared" not in body
-    assert "_humaniseSplitSeconds(started.rerun_cost_declared" not in body
-
-
-def test_the_queued_toast_is_sticky_and_links_to_activity():
-    """The queued branch's toast must pass a 0ms duration (no auto-dismiss
-    timer — every toast already carries a manual '×' dismiss, see
-    showToast()) and must offer a way to the activity entry it refers to.
-    Restoring the old fixed-6000ms call, or dropping the link, must fail
-    this test — both were sabotaged against it directly."""
-    html = INDEX.read_text()
-    fns = _top_level_functions(html)
-    body = fns["runAnalysisCatalogCard"]
-
-    m = re.search(r"if\s*\(queued\)\s*\{(.*?)\n\s*\}\s*else\s*\{", body, re.S)
-    assert m, (
-        "runAnalysisCatalogCard's queued/else branch was not found in the "
-        "expected shape — update this test's structure assumption"
-    )
-    queued_branch = m.group(1)
-
-    toast_call = re.search(r"showToast\(\s*'info',([\s\S]*?)\);", queued_branch)
-    assert toast_call, "the queued branch no longer shows an 'info' toast"
-    # The call's final argument (duration) must be a bare 0 — not 6000, not
-    # omitted (which would default to 6000).
-    assert re.search(r",\s*0\s*\)\s*;?\s*$", "showToast('info'," + toast_call.group(1) + ");"), (
-        "the queued-for-publish toast no longer passes a 0ms (sticky) "
-        "duration — it will vanish on the default timer before it can be read"
-    )
-    assert "_savedTimeSentence(" in queued_branch, (
-        "the queued toast no longer renders the saved-time sentence"
-    )
-    assert "_openActivityEntry(" in queued_branch, (
-        "the queued toast lost its link to the Activity tab entry"
-    )
-
-
-def test_the_run_dialog_result_also_shows_the_saved_time_sentence():
-    """The saved-time line belongs in the run dialog's own result panel too,
-    not only the toast — the toast can be dismissed or missed."""
-    html = INDEX.read_text()
-    fns = _top_level_functions(html)
-    body = fns["runAnalysisCatalogCard"]
-    m = re.search(r"if\s*\(queued\)\s*\{(.*?)\n\s*\}\s*else\s*\{", body, re.S)
-    assert m
-    queued_branch = m.group(1)
-    assert "resultEl.innerHTML" in queued_branch and "_savedTimeSentence(" in queued_branch
-
-
-def test_freshness_skip_offers_running_anyway_in_background():
-    """The 'Run anyway' decision prompt must also offer the background
-    variant when the caller can provide one — otherwise a reader declining
-    the freshness skip is pushed back onto the slower default path even when
-    a background run was available a moment ago."""
-    html = INDEX.read_text()
-    fns = _top_level_functions(html)
-    body = fns["_handleFreshnessSkip"]
-    assert "onForceBackground" in body, (
-        "_handleFreshnessSkip no longer accepts a background alternative"
-    )
-    assert "Run anyway in background" in body, (
-        "_handleFreshnessSkip no longer offers a 'Run anyway in background' button"
-    )
-    # And the freshness gate's own 12s timer must be untouched — it is a
-    # decision prompt, not a promise about something landing later.
-    assert re.search(r"12000\s*\)\s*;", body), (
-        "_handleFreshnessSkip's toast duration changed away from 12s"
-    )
 
 
 APP_JS = Path(__file__).resolve().parents[1] / "resource_explorer" / "web" / "static" / "next" / "app.js"

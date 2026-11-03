@@ -215,6 +215,16 @@ class SymbolExtractionSurveyor(BaseSurveyor):
             except Exception as exc:
                 log.warning("Could not persist symbol extraction snapshot for %s: %s", slug, exc)
 
+            try:
+                # A committed OpenAPI/Swagger file is parsed from the SAME checkout (no second download), so the
+                # API reference can say "from the committed spec" (api_reference/committed.py). Its own
+                # try-block: a spec that will not parse must not take the symbols down with it.
+                from resource_explorer.api_reference.committed import capture_committed_specs
+
+                capture_committed_specs(self.registry, slug, local_root, surveyed_at=self._surveyed_at)
+            except (ValueError, OSError) as exc:
+                log.warning("Could not capture committed API specs for %s: %s", slug, exc)
+
         except Exception as exc:
             log.exception("SymbolExtractionSurveyor failed for %s", self.project.slug)
             self._warn(results, str(exc))

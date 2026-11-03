@@ -1,0 +1,137 @@
+/* The three looks of /next: Dark (the default), Light and Paper.
+   RULING-THEMES-PORTAL-DARK-LIGHT.md, 2026-10-20. Loaded BEFORE tailwind-next.css.
+
+   Every colour is a space-separated RGB channel triple under --c-<token>, so
+   Tailwind can write rgb(var(--c-ink) / <alpha-value>) and `/20` opacity keeps
+   working. `rule` is the one full colour value (it is already translucent).
+   Fonts are --font-heading / --font-body and corner radii --r-sm / --r-md /
+   --r-lg, per look.
+
+   The look is the data-look attribute on <html>, set before first paint by the
+   snippet in index.html's <head>. With no attribute at all (storage blocked,
+   attribute stripped) the :root rule below makes it Dark: the first selector
+   of the Dark block is bare :root, and Light and Paper beat it on specificity.
+
+   The `-on-dark` tokens mean "on chrome". In Light the chrome is white, so they
+   carry dark-ink values by design; renaming them to -on-chrome is a separate,
+   mechanical change.
+
+   tests/test_themes_contrast.py reads this file and fails a text pair under
+   4.5:1 or an outline pair under 3:1. Edit a value, run that test. */
+
+:root {
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+
+/* Dark: the Portal's dark look. The default. */
+:root,
+:root[data-look="dark"] {
+  --c-chrome: 17 26 48;
+  --c-chrome-alt: 20 30 56;
+  --c-chrome-surface: 29 42 79;
+  --c-chrome-line: 15 52 96;
+  --c-chrome-line-soft: 26 39 71;
+  --c-chrome-ink: 230 232 239;
+  --c-chrome-muted: 163 171 192;
+  --c-accent: 79 156 249;
+  --c-accent-on-dark: 124 182 255;
+  --c-accent-deep: 29 63 122;
+  --c-paper: 26 26 46;
+  --c-paper-surface: 22 33 62;
+  --c-rule: rgba(160, 175, 210, 0.20);
+  --c-rule-strong: 107 122 156;
+  --c-card: 22 33 62;
+  --c-card-line: 44 74 124;
+  --c-ink: 230 232 239;
+  --c-ink-muted: 163 171 192;
+  --c-accent-ink: 124 182 255;
+  --c-accent-tint: 27 45 82;
+  --c-state-ok: 92 191 96;
+  --c-state-ok-on-dark: 92 191 96;
+  --c-state-warn: 245 183 78;
+  --c-state-warn-on-dark: 245 183 78;
+  --c-state-gap: 179 157 250;
+  --c-state-gap-on-dark: 179 157 250;
+  --font-heading: var(--font-sans);
+  --font-body: var(--font-sans);
+  --r-sm: 6px;
+  --r-md: 8px;
+  --r-lg: 8px;
+  color-scheme: dark;
+}
+/* Light: the Portal's light look. */
+:root[data-look="light"] {
+  --c-chrome: 255 255 255;
+  --c-chrome-alt: 245 246 250;
+  --c-chrome-surface: 238 241 247;
+  --c-chrome-line: 211 217 230;
+  --c-chrome-line-soft: 227 231 240;
+  --c-chrome-ink: 31 35 51;
+  --c-chrome-muted: 63 70 88;
+  --c-accent: 37 99 235;
+  --c-accent-on-dark: 29 79 196;
+  --c-accent-deep: 147 180 245;
+  --c-paper: 245 246 250;
+  --c-paper-surface: 255 255 255;
+  --c-rule: rgba(31, 35, 51, 0.12);
+  --c-rule-strong: 122 131 153;
+  --c-card: 255 255 255;
+  --c-card-line: 180 189 208;
+  --c-ink: 31 35 51;
+  --c-ink-muted: 63 70 88;
+  --c-accent-ink: 29 79 196;
+  --c-accent-tint: 232 239 255;
+  --c-state-ok: 37 107 41;
+  --c-state-ok-on-dark: 37 107 41;
+  --c-state-warn: 154 74 7;
+  --c-state-warn-on-dark: 154 74 7;
+  --c-state-gap: 109 40 217;
+  --c-state-gap-on-dark: 109 40 217;
+  --font-heading: var(--font-sans);
+  --font-body: var(--font-sans);
+  --r-sm: 6px;
+  --r-md: 8px;
+  --r-lg: 8px;
+  color-scheme: light;
+}
+/* Paper: RE's look to date (today's values), body text now in the system sans.
+   Kept for one release to gather feedback. */
+:root[data-look="paper"] {
+  --c-chrome: 27 26 25;
+  --c-chrome-alt: 32 31 29;
+  --c-chrome-surface: 45 43 43;
+  --c-chrome-line: 68 65 65;
+  --c-chrome-line-soft: 45 43 43;
+  --c-chrome-ink: 243 242 242;
+  --c-chrome-muted: 155 151 151;
+  --c-accent: 182 130 53;
+  --c-accent-on-dark: 225 173 102;
+  --c-accent-deep: 90 59 10;
+  --c-paper: 243 242 242;
+  --c-paper-surface: 234 233 233;
+  --c-rule: rgba(32, 31, 29, 0.16);
+  --c-rule-strong: 142 138 138;
+  --c-card: 251 250 250;
+  --c-card-line: 201 198 196;
+  --c-ink: 32 31 29;
+  --c-ink-muted: 74 70 62;
+  --c-accent-ink: 125 84 17;
+  --c-accent-tint: 255 243 228;
+  --c-state-ok: 29 107 63;
+  --c-state-ok-on-dark: 116 198 141;
+  --c-state-warn: 156 66 18;
+  --c-state-warn-on-dark: 242 162 106;
+  --c-state-gap: 91 74 156;
+  --c-state-gap-on-dark: 169 154 224;
+  --font-heading: "Cormorant Garamond", Georgia, serif;
+  --font-body: var(--font-sans);
+  --r-sm: 2px;
+  --r-md: 4px;
+  --r-lg: 7px;
+}
+
+/* Tiles: a figure never wraps and never overruns its tile. The row is a size container, so the figure's size is
+   capped by the row width (cqi) as well as by the figure token (which scales with the text-size control). */
+[data-ui-tile-row] { container-type: inline-size; }
+[data-ui-tile] [data-tile-figure] { white-space: nowrap; font-size: min(1.5rem, 14cqi); }
+[data-ui-tile] [data-tile-unit] { font-size: 0.5em; font-weight: 600; }

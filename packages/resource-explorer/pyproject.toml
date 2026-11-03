@@ -40,6 +40,12 @@ dependencies = [
     # in a workspace-wide sync, it does not make it a requirement, so a
     # per-package install would fail on the import.
     "trellis-auth",
+    # The Analytic Library: Curate's By-analysis tab calls
+    # trellis_analytics.routines.curation_coverage (brief 2b). Declared here for the
+    # reason trellis-auth is: a root [tool.uv.sources] entry makes it available, not required.
+    # trellis-analytics' own `re` extra points back at this package; that is an optional
+    # edge, and the route degrades to not_applicable if the import ever fails.
+    "trellis-analytics",
     # Embeddings & LLM
     "sentence-transformers>=3.3.0",
     "ollama>=0.4.0",
@@ -78,6 +84,10 @@ dependencies = [
     "textual>=8.2.4",
     "openpyxl>=3.1.5",
     "pyarrow>=23.0.1",
+    # S3 reach (outcome 3, BRIEF-S3-REACH-AND-PARQUET-SLICE-2026-11-02): the built-in `s3` reach mechanism lists,
+    # heads and range-reads objects; it never calls a write. Already in the lock as mlflow's transitive; pinned here
+    # because RE now imports it directly.
+    "boto3>=1.43.0,<2",
     # Egeria integration
     # scripts/create_measure_definitions.py's ValidValueMember linking needs
     # pyegeria>=6.0.18.1 (egeria-python PYEGERIA_ISSUES.md ISSUE-56) — not
@@ -116,16 +126,69 @@ dependencies = [
     # live platform through the client. Note pyegeria moved MetadataExpert from
     # pyegeria.omvs.metadata_explorer to pyegeria.omvs.metadata_expert in this
     # release; RE is unaffected because it imports from the top-level package.
-    "pyegeria>=6.1.10",
+    # Raised to 6.2.1 for the ISSUE-131 fix (the *_by_name finds now send the
+    # type filter when no body is given). 6.2.1 also pins altair==6.3.0 and
+    # needs fastapi>=0.141.1; the lock moved altair 6.2.2 -> 6.3.0 with it.
+    # Raised to 6.2.3: AssetMaker's action/process queries default activity_status_list to None (ISSUE-148), and
+    # AutomatedCuration.get_engine_actions is gone (ISSUE-151); neither is called by RE (AUDIT-PYEGERIA-6.2.3.md).
+    # Raised to 6.2.5 (2026-10-16): Egeria main (odpi/egeria#9371) moved the engine-action claim/status/completion/
+    # active-claimed calls to the Governance Engine view service; 6.2.5 adds the GovernanceEngine client and routes
+    # the old AutomatedCuration methods there (ISSUE-153). Without it the engine host's calls 404.
+    # Raised to 6.2.7 (2026-10-21): ISSUE-152 -- update_annotation, update_context_event, update_schema_type,
+    # update_schema_attribute and update_subject_area now send their body (before, they sent nothing); 6.2.6 fixed
+    # the add/update_catalog_target bodies (ISSUE-156). No dependency changes; the lock moved only pyegeria.
+    # Raised to 6.2.8 (2026-10-21): ISSUE-160 -- create_folder_element_from_template sends directoryAddress and
+    # deployedImplementationType; CSV/secrets-store/Postgres/UC/Kafka template placeholders are filled and unset
+    # optional args no longer leave ~{x}~ literals. The lock moved only pyegeria.
+    # Raised to 6.2.9 (2026-10-21): #477 (ISSUE-161) Dr.Egeria entry points resolve the user at run time
+    # (--userid > EGERIA_USER > config/.env > default); #478 Postgres Server/Database element commands take
+    # secrets-store attributes. RE passes --userid explicitly and generates no Postgres element commands.
+    # Raised to 6.2.10 (2026-10-23): #483 (ISSUE-163/164/165) request fields 6.2.9 dropped are now sent -- find_*
+    # zone filter, relationship page size, anchor scope, anchorScopeGUIDs, initiate_engine_action startDate; new
+    # undo/restore, usage-activity and product-catalog APIs; #482 (ISSUE-162) term/data-designer booleans kept.
+    # Audit: RE passes none of those fields (tests/test_pyegeria_6210_request_fields.py). The lock moved only pyegeria.
+    # Raised to 6.2.13 (2026-10-27) for the Egeria build with the ISSUE-166 boxed-properties fix (odpi/egeria
+    # 12b1aaae #9389, image c2ca054c). 6.2.12 content as below, plus: #498 unset numbers/flags are no longer sent as
+    # 0/false (domain_identifier, position, headCount defaults now None) and create_egeria_bearer_token RAISES
+    # (PyegeriaUnauthorized/Client/Connection/TimeoutException) instead of returning "FAILED" or the 401 text;
+    # #495 security annotation models; #497 Dr.Egeria survey-report/security-finding commands. Audit: RE passes
+    # domain_identifier explicitly, sets no position/headCount; every RE annotation body is sent unchanged on 6.2.10
+    # and 6.2.13 (14 types compared); trellis-auth's password login already catches the raise. EgeriaClients._mint /
+    # refresh now raise on a failed daemon login instead of continuing without a token
+    # (tests/test_pyegeria_6213_audit.py).
+    # The 6.2.12 audit: #485 (ISSUE-165)
+    # routes the endpoints Egeria removed (analysis reports, subject-area membership, find_governance_action_processes,
+    # get_gov_def_in_context, data classifications) to their replacements as deprecated wrappers; #487
+    # get_platform_organization reads /api/public/app/info; #492/#493 SecurityOfficer statements of applicability;
+    # delete_annotation's body is now optional. Audit: RE calls none of the rerouted methods, nor
+    # get_platform_organization (tests/test_pyegeria_6212_rerouted_methods.py). No shared client code changed.
+    # Raised to 6.2.16 (2026-10-30) for egeria-python #513: pyegeria no longer depends on or applies nest_asyncio;
+    # its sync methods go through run_sync (safe from a running loop or a loopless worker thread) and its httpx
+    # session is per thread and per loop. RE's four get_event_loop().run_until_complete() sites relied on the
+    # nest_asyncio patch and now call the sync method instead; the loop-feeding wrappers around them are gone.
+    # Without this, sub-resource publishing quietly created nothing on any thread that had run asyncio.run
+    # (tests/test_pyegeria_6216_sync_bridge.py).
+    # Raised to 6.2.17 (2026-10-30): #516 refuses an unregistered analytic_function outside the pyegeria /
+    # trellis_analytics prefixes; #518 returns kind "absent" (a sentence in content, no data) for not_established /
+    # not_applicable; #519 reads the pyegeria.analytics entry-point group (trellis.analytics as an alias), so
+    # trellis_analytics' discovery.register() is now redundant but left in place. Audit: RE runs its steps through
+    # trellis_analytics.step, not pyegeria's resolver, and reads no exec_report_spec output; every analytic_function
+    # trellis names resolves (trellis-analytics tests/test_pyegeria_6217_allowlist.py), and the advisor's two readers
+    # of exec_report_spec show "absent" as its sentence (egeria-advisor tests/unit/test_report_absent_kind.py).
+    # Raised to 6.2.18 (2026-10-31, project owner): ISSUE-173 reads the pyegeria.report_specs entry-point group, so
+    # installing trellis-analytics registers the Portal tile's report spec; PYEGERIA_REPORT_SPEC_MODULES (removed in 6.2.19)
+    # is no longer set anywhere in trellis.
+    # Raised to 6.2.19 (2026-11-02): the release that removes PYEGERIA_REPORT_SPEC_MODULES and refuses a dotted
+    # analytic_function path, so a 6.2.18 venv can no longer pass tests that the 8813 containers would fail.
+    "pyegeria>=6.2.19",
     "mcp>=2.0.0",
     # nest-asyncio removed 2026-09-04 with the shared-pool refactor: RE no
     # longer imports it anywhere. Its one site, surveyors/prefect_adapter.py's
     # module-level nest_asyncio.apply(), was both unnecessary (every sync/async
     # bridge now hands the coroutine to a thread with a fresh loop — see
-    # resource_explorer/concurrency.py) and redundant (pyegeria declares
-    # nest-asyncio itself and applies it at package import, in
-    # pyegeria/view/mermaid_utilities.py). It therefore stays installed as a
-    # pyegeria transitive dependency; what is gone is RE claiming it directly.
+    # resource_explorer/concurrency.py) and redundant (pyegeria then applied it
+    # at package import). Since pyegeria 6.2.16 (#513) pyegeria neither declares
+    # nor applies it, so nothing in RE's process is patched any more.
     # Database surveying
     "psycopg2-binary>=2.9.0",
     "prefect>=3.0.0",
@@ -139,7 +202,7 @@ dependencies = [
     "tree-sitter>=0.21",
     "tree-sitter-java>=0.21",
     # Structural code-marker detection engine for architecture recovery
-    # (docs/architecture-recovery-design.md §5.1). A pip dependency rather
+    # (docs/architecture-recovery.md §5.1, Detectors first). A pip dependency rather
     # than a system prerequisite on purpose: `ast-grep-cli` publishes
     # prebuilt wheels for macOS arm64/x86_64, manylinux aarch64/x86_64 and
     # Windows, at version parity with Homebrew, so `uv sync` provisions the
@@ -160,10 +223,13 @@ dev = [
     "pytest-asyncio>=0.24.0",
     "pytest-cov>=5.0.0",
     "pytest-timeout>=2.3.0",
+    "pytest-xdist>=3.6.0",
     "ruff>=0.8.0",
     "black>=24.10.0",
     "mypy>=1.13.0",
     "watchfiles>=1.0.0",
+    # The S3 mock the reach mechanism's tests run against (no network, no real bucket).
+    "moto[s3]>=5.0.0",
 ]
 phoenix = [
     "arize-phoenix>=5.0.0",
@@ -186,6 +252,20 @@ ast = [
 
 [project.scripts]
 resource-explorer = "resource_explorer.cli.main:app"
+
+# Reach mechanisms (DESIGN-FILES-REMOTE-REACH §3): installing a package that names an entry point here registers it.
+# The built-ins are always present whatever this metadata says (a venv installed before it still has them).
+[project.entry-points."trellis.file_reach"]
+s3 = "resource_explorer.reach_mechanisms.s3:S3Mechanism"
+
+# The library's reader seam (trellis_analytics.readers): RE's implementations, found wherever RE is installed.
+# B1: the stored rows of a table result (the protocol is trellis_analytics.readers.table_rows.TableRowsReader).
+# claude/re-ls2-seam declares this SAME table (ods, catalogue_scope, investigation_purposes, question_ids). A merge
+# can keep both table headers without a conflict, and TOML refuses a table declared twice, so uv and pip would fail
+# to parse this file: whichever merges second folds the five entries into ONE table here, and adds TABLE_ROWS to
+# test_reader_seam_host.py's tuple.
+[project.entry-points."trellis_analytics.readers"]
+table_rows = "resource_explorer.table_result:RegistryTableRows"
 
 [tool.hatch.build.targets.wheel]
 packages = ["resource_explorer"]

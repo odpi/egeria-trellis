@@ -121,7 +121,6 @@ class TestLiveTemplateAvailability:
 
     @pytest.mark.requires_egeria
     def test_every_returnable_technology_type_has_a_registered_template(self):
-        import asyncio
         import warnings
         warnings.filterwarnings("ignore")
         from pyegeria.omvs.automated_curation import AutomatedCuration
@@ -130,7 +129,6 @@ class TestLiveTemplateAvailability:
         cfg = get_config().egeria
         ac = AutomatedCuration(cfg.view_server, cfg.platform_url, cfg.user_id, cfg.user_password)
         ac.create_egeria_bearer_token(cfg.user_id, cfg.user_password)
-        loop = asyncio.get_event_loop()
 
         returnable_types = (
             set(_TECH_TYPE_BY_EXTENSION.values())
@@ -140,9 +138,7 @@ class TestLiveTemplateAvailability:
         failures = []
         for tech_type in sorted(returnable_types):
             try:
-                guid = loop.run_until_complete(
-                    ac._async_get_template_guid_for_technology_type(tech_type)
-                )
+                guid = ac.get_template_guid_for_technology_type(tech_type)
                 if not guid:
                     failures.append(tech_type)
             except Exception:

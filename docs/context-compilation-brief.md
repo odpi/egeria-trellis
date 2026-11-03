@@ -319,7 +319,7 @@ flowchart LR
     AC["Analysis catalog: local + Egeria entries merged at read"]
     RS["Resolvers, as the signed-in user"]
     IV["Investigation: the compile unit"]
-    OB["Outbox publisher: stamps requester, owner, draft zone"]
+    OB["Outbox publisher: stamps requester, owner, optional configured zone"]
   end
   GT -- vocabulary --> QC
   TT -- vocabulary --> AC

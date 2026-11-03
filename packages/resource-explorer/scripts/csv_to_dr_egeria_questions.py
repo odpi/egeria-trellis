@@ -84,6 +84,13 @@ import csv
 import sys
 from pathlib import Path
 
+# The Status rule is the package's, shared with csv_to_question_catalog_yaml.py so the two outputs cannot disagree
+# about which rows are gone. Normally run under the package's own interpreter; the sys.path nudge covers the
+# standalone case.
+if __package__ in (None, ""):  # running as a script, not imported as a module
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from resource_explorer.question_status import is_skipped_status
+
 REQUIRED_COLUMNS = ["Question", "Funnel Stage"]
 # "Answering Analysis"/"Answering Mechanism" are RE-internal roadmap
 # documentation (which analysis_catalog.yaml id, if any, and which kind of
@@ -119,7 +126,11 @@ REQUIRED_COLUMNS = ["Question", "Funnel Stage"]
 # "Level" (2026-09-25, design §18.3) is RE-internal like Purposes: the
 # granularity the answer is a single value at. Not published to Egeria yet —
 # it will ride the same valid-value-set mechanism as Purposes (§10).
-OPTIONAL_LEAD_COLUMNS = ["Why is this important?", "Rationale/Source", "Answering Analysis", "Answering Mechanism", "Purposes", "Catalog History", "Status", "Resource Types", "Level"]
+# "Question ID" (2026-10-13) is the stable id RE's manifests name a question by. It IS sent to Egeria, but as an
+# Additional Properties entry (`question_id`) on the Create Glossary Term block, never as a column read by the
+# perspective scan, and never as the Qualified Name: the term's join key stays its Display Name for now, and a
+# changed Qualified Name would make Dr.Egeria create a second term rather than find the first.
+OPTIONAL_LEAD_COLUMNS = ["Question ID", "Why is this important?", "Rationale/Source", "Answering Analysis", "Answering Mechanism", "Purposes", "Catalog History", "Status", "Resource Types", "Level"]
 
 
 def _block(command: str, **fields: str) -> str:
@@ -136,6 +147,15 @@ def _block(command: str, **fields: str) -> str:
         lines.append(value)
         lines.append("")
     return "\n".join(lines).rstrip() + "\n\n___\n"
+
+
+def _question_properties(question_id: str) -> str:
+    """The Additional Properties table carrying the stable id, in the table form the survey-definition
+    documents already use (`| Parameter Name | Parameter Value |`). Empty when the row has no id."""
+    qid = (question_id or "").strip()
+    if not qid:
+        return ""
+    return "| Parameter Name | Parameter Value |\n|---|---|\n" + f"| question_id | {qid} |"
 
 
 def _question_summary(why: str, rationale: str) -> str:
@@ -207,6 +227,10 @@ def generate(
         question = (row.get("Question") or "").strip()
         if not question:
             continue
+        if is_skipped_status(row.get("Status")):
+            # Retired or merged (2026-10-22): no new term. The Egeria term it created earlier is UPDATED by the
+            # coordinator's separate cleared batch, never deleted; this document only stops creating it.
+            continue
         funnel_stage = (row.get("Funnel Stage") or "").strip()
         if not funnel_stage:
             skipped.append(f"{question!r} — missing 'Funnel Stage', skipped")
@@ -226,6 +250,7 @@ def generate(
                 "Description": description,
                 "Summary": summary,
                 "Usage": usage,
+                "Additional Properties": _question_properties(row.get("Question ID", "")),
             },
         ))
         out.append(_block("Classify Term as Question", **{"Term Name": question}))
@@ -295,8 +320,9 @@ def main() -> None:
 
     content = generate(rows, questions_glossary=args.questions_glossary, title=title)
     output_path.write_text(content)
-    n_questions = sum(1 for r in rows if (r.get("Question") or "").strip())
-    print(f"Wrote {output_path} ({n_questions} questions from {len(rows)} CSV rows)")
+    n_questions = sum(1 for r in rows if (r.get("Question") or "").strip()
+                      and not is_skipped_status(r.get("Status")))
+    print(f"Wrote {output_path} ({n_questions} active questions from {len(rows)} CSV rows)")
 
 
 if __name__ == "__main__":

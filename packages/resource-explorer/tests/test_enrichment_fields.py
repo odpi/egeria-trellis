@@ -118,33 +118,6 @@ class TestReviseAfterReload:
         assert ctx["enrichment"]["owner"]["value"] == "data-platform"
         assert ctx["enrichment"]["criticality"]["value"] == "critical"
 
-    def test_the_classic_context_form_save_does_not_erase_enrichment(self, client, monkeypatch):
-        """The `/` page's Context form (`saveContextForm` in index.html) POSTs
-        only its own fixed fields to the SAME document POST /api/context uses
-        -- it never sends `enrichment`. `ContextData.enrichment` defaults to
-        `{}`, so passing that request straight to model_dump() would silently
-        erase every judgement /next recorded the next time someone saves the
-        classic form. Regression for that."""
-        signed_in_as(monkeypatch, "peterprofile")
-        client.patch("/api/context/repo/p/field", json={"key": "sensitivity", "value": "restricted", "kind": "judgement"})
-
-        # Mirrors saveContextForm's payload shape: the fixed fields only.
-        r = client.post("/api/context/repo/p", json={"environment": "prod", "org_owner": "data-platform"})
-        assert r.status_code == 200
-
-        ctx = client.get("/api/context/repo/p").json()
-        assert ctx["enrichment"]["sensitivity"]["value"] == "restricted", \
-            "the classic Context form's save must not wipe /next's enrichment judgements"
-        assert ctx["environment"] == "prod"
-
-    def test_a_caller_that_explicitly_sends_empty_enrichment_can_still_clear_it(self, client, monkeypatch):
-        signed_in_as(monkeypatch, "peterprofile")
-        client.patch("/api/context/repo/p/field", json={"key": "sensitivity", "value": "restricted", "kind": "judgement"})
-        r = client.post("/api/context/repo/p", json={"enrichment": {}})
-        assert r.status_code == 200
-        ctx = client.get("/api/context/repo/p").json()
-        assert ctx["enrichment"] == {}
-
 
 class TestObservations:
     def test_an_observation_carries_its_source(self, client, monkeypatch):

@@ -270,7 +270,7 @@ class TestRealPackagedCatalog:
         # British-spelling wording below -- update this text again if it's
         # reworded further, not the assertions.
         entries = qcr.get_questions("repo")
-        license_q = next(e for e in entries if e["question"].startswith("What explicit licence"))
+        license_q = next(e for e in entries if e["question"].startswith("What explicit license"))
         assert license_q["answering"]["kind"] == "analysis"
         assert "license_classification" in license_q["answering"]["analysis_ids"]
 
@@ -298,3 +298,60 @@ class TestRealPackagedCatalog:
         scouting_entries = qcr.get_questions("repo", phase="scouting")
         scouting_questions = {e["question"] for e in scouting_entries}
         assert "Are there outstanding CVEs?" not in scouting_questions
+
+
+# ── the committed catalog carries no retired or merged rows (architect ruling (a), 2026-10-23) ──────────────
+# A guard, not a filter: the Survey Definition candidates' main path (the authored documents, matched against
+# the YAML's questions: SurveyDefinitionReader.find_candidate_process_guids_by_questions) applies no status
+# filter of its own; it relies on the YAML holding only live questions. The DEPRECATED filter in
+# SurveyDefinitionReader._lookup_question_guid covers only the Egeria paths (the no-documents fallback and the
+# warm-up). So a retired or merged row reaching the YAML must fail here.
+
+def _catalog_guard_violations(path) -> list[str]:
+    """Every retired/merged row, retired-flagged row and active reserved id in the catalog at `path`."""
+    import yaml
+
+    raw = yaml.safe_load(Path(path).read_text()) or {}
+    rows = [(key, row) for key, value in raw.items()
+            if key.endswith(qcr._QUESTIONS_KEY_SUFFIX) for row in (value or [])]
+    assert rows, f"{path} holds no question rows: this guard would prove nothing"
+
+    def _gone(text) -> bool:
+        said = str(text or "").strip().lower()
+        return said.startswith("retired") or said.startswith("merged")
+
+    out = [f"{key} {row.get('id')}: status {row.get('status') or row.get('Status')!r}" for key, row in rows
+           if _gone(row.get("status")) or _gone(row.get("Status"))]
+    # The YAML's own encoding of a CSV Status "Retired" (question_status.WRITER_RETIRED): the main path would
+    # still offer it, so it counts as a retired row here too.
+    out += [f"{key} {row.get('id')}: flagged retired" for key, row in rows if row.get("retired")]
+    reserved = {str(i) for i in (raw.get(qcr._RESERVED_IDS_KEY) or [])}
+    assert reserved, f"{path} lists no reserved_question_ids: this guard would prove nothing"
+    active = {str(row.get("id")) for _, row in rows if row.get("id")}
+    out += [f"reserved id {i} is in the active list" for i in sorted(reserved & active)]
+    return out
+
+
+def test_committed_catalog_has_no_retired_or_merged_rows_and_no_reserved_id_is_active():
+    assert _catalog_guard_violations(qcr._DEFAULT_CONFIG_PATH) == []
+
+
+def test_committed_catalog_guard_fails_on_a_retired_row(tmp_path):
+    """Fail-on-purpose: the guard over a fixture with a merged row, a retired flag and an active reserved id."""
+    path = tmp_path / "question_catalog.yaml"
+    path.write_text(textwrap.dedent("""
+        repo_questions:
+          - id: Q-0009
+            question: "Gone?"
+            status: "merged into Q-0016 2026-10-22"
+          - id: Q-0100
+            question: "Old?"
+            retired: true
+        reserved_question_ids:
+        - Q-0009
+    """))
+    assert _catalog_guard_violations(path) == [
+        "repo_questions Q-0009: status 'merged into Q-0016 2026-10-22'",
+        "repo_questions Q-0100: flagged retired",
+        "reserved id Q-0009 is in the active list",
+    ]

@@ -1,5 +1,7 @@
 # Kroki — server-side diagram rendering
 
+**Status:** live. How server-side mermaid rendering works.
+
 ## What it's for
 
 Resource Explorer's database ER-diagram view (mermaid flowcharts of table/

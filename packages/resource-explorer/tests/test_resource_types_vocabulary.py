@@ -23,7 +23,7 @@ from resource_explorer.resource_types import (
 
 class TestTheVocabulary:
     def test_the_five_types_the_design_names_are_all_present(self):
-        assert set(RESOURCE_TYPES) == {"repo", "database", "filesystem", "dataset", "model"}
+        assert set(RESOURCE_TYPES) == {"repo", "database", "filesystem", "dataset", "model", "open_data", "open_data_portal", "portal_directory"}
 
     def test_dataset_and_model_are_vocabulary_but_not_surveyed(self):
         # Nothing surveys them yet, deliberately (design §13 Phase 0 item 4).
@@ -105,8 +105,10 @@ class TestParseResourceTypes:
     def test_whitespace_is_tolerated(self):
         assert parse_resource_types(" database ; filesystem ") == ["database", "filesystem"]
 
-    def test_star_expands_to_the_whole_vocabulary(self):
-        assert parse_resource_types(ALL_RESOURCE_TYPES_MARKER) == list(RESOURCE_TYPES)
+    def test_star_expands_to_the_kinds_with_an_adapter(self):
+        # Not the whole vocabulary since 2026-10-22 (owner ruling, review §1.1): dataset and model have no adapter.
+        assert parse_resource_types(ALL_RESOURCE_TYPES_MARKER) == list(SURVEYED_RESOURCE_TYPES)
+        assert parse_resource_types(ALL_RESOURCE_TYPES_MARKER) != list(RESOURCE_TYPES)
 
     def test_empty_means_repo_so_a_pre_column_row_does_not_vanish(self):
         assert parse_resource_types("") == [DEFAULT_RESOURCE_TYPE]

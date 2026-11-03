@@ -129,13 +129,16 @@ class TestRepoRoundTripsUnchanged:
         # entries. Stream 4 landed the real cross-type (`*`) rewording and
         # the database rows -- every declared resource type now has real,
         # non-empty authored content, which is the thing worth pinning now.
-        from resource_explorer.resource_types import RESOURCE_TYPES
+        from resource_explorer.resource_types import SURVEYED_RESOURCE_TYPES
 
         raw = yaml.safe_load(YAML_PATH.read_text(encoding="utf-8"))
-        for rt in RESOURCE_TYPES:
+        # The kinds with an adapter. `dataset` and `model` were withdrawn 2026-10-22 (owner ruling,
+        # REVIEW-QUESTIONS-AND-ANALYTICS-2026-10-22 §1.1): no section, because no row may name them.
+        for rt in SURVEYED_RESOURCE_TYPES:
             key = f"{rt}_questions"
             assert key in raw, f"{key} missing -- no row declared this resource type"
             assert raw[key], f"{key} is empty"
+        assert "dataset_questions" not in raw and "model_questions" not in raw
 
     def test_a_repo_only_question_still_lands_only_in_repo(self):
         # Spot-checks that a question never touched by the cross-type
@@ -175,7 +178,7 @@ class TestAHypotheticalDatabaseRow:
 
     def _generated(self, generator, extra: dict):
         fieldnames, rows = _rows()
-        row = {c: "" for c in fieldnames}
+        row = {c: "" for c in fieldnames} | {"Question ID": "Q-9001"}   # every row needs a stable id
         row.update(extra)
         return yaml.safe_load(generator.generate(rows + [row])), rows
 
@@ -188,7 +191,10 @@ class TestAHypotheticalDatabaseRow:
             "Data Expert": "X",
         })
         assert "database_questions" in raw
-        real_repo_count = sum(1 for r in rows if "repo" in r["Resource Types"].split(";") or r["Resource Types"] == "*")
+        from resource_explorer.question_status import is_skipped_status
+
+        real_repo_count = sum(1 for r in rows if not is_skipped_status(r["Status"])
+                              and ("repo" in r["Resource Types"].split(";") or r["Resource Types"] == "*"))
         assert len(raw["repo_questions"]) == real_repo_count  # repo is untouched by this row
         entry = next(e for e in raw["database_questions"]
                      if e["question"] == "Which schemas carry the data (hypothetical)?")
@@ -221,7 +227,7 @@ class TestAHypotheticalDatabaseRow:
         assert "schema_inventory" not in repo_ids
 
     def test_a_star_row_lands_in_every_resource_type(self, generator):
-        from resource_explorer.resource_types import RESOURCE_TYPES
+        from resource_explorer.resource_types import SURVEYED_RESOURCE_TYPES as RESOURCE_TYPES   # `*` = adapters only
 
         raw, _ = self._generated(generator, {
             "Question": "Who owns this data (hypothetical)?",
@@ -238,7 +244,10 @@ class TestAHypotheticalDatabaseRow:
             "Question": "What is the grain of each table (hypothetical)?",
             "Funnel Stage": "Discovery",
             "Resource Types": "database;filesystem",
-            "Answering Analysis": "GAP: grain_determination not built",
+            # Not a registered analysis/step id (gap guard, §C): a real one
+            # here would now fail generation as a false gap. This fixture's
+            # own point is cross-type row placement, not the answering note.
+            "Answering Analysis": "GAP: grain_ranking_hypothetical not built",
         })
         target = "What is the grain of each table (hypothetical)?"
         assert any(e["question"] == target for e in raw["database_questions"])
@@ -252,7 +261,7 @@ class TestAHypotheticalDatabaseRow:
         """`yaml.safe_dump` emits `&id001`/`*id001` for a repeated object, and
         two resource types would then share one mutable entry."""
         fieldnames, rows = _rows()
-        row = {c: "" for c in fieldnames}
+        row = {c: "" for c in fieldnames} | {"Question ID": "Q-9001"}   # every row needs a stable id
         row.update({
             "Question": "Who owns this data?",
             "Funnel Stage": "Scouting",
@@ -264,7 +273,7 @@ class TestAHypotheticalDatabaseRow:
 
     def test_an_unknown_resource_type_fails_loudly(self, generator):
         fieldnames, rows = _rows()
-        row = {c: "" for c in fieldnames}
+        row = {c: "" for c in fieldnames} | {"Question ID": "Q-9001"}   # every row needs a stable id
         row.update({"Question": "Q?", "Funnel Stage": "Scouting", "Resource Types": "databse"})
         with pytest.raises(ValueError, match="databse"):
             generator.generate(rows + [row])
@@ -275,7 +284,7 @@ class TestAHypotheticalDatabaseRow:
         from resource_explorer.surveyors import question_catalog_reader as qcr
 
         fieldnames, rows = _rows()
-        row = {c: "" for c in fieldnames}
+        row = {c: "" for c in fieldnames} | {"Question ID": "Q-9001"}   # every row needs a stable id
         row.update({
             "Question": "Which schemas carry the data (hypothetical)?",
             "Funnel Stage": "Scouting",
@@ -327,7 +336,7 @@ class TestPerTypeAnalysisValidation:
 
     def _generated_for(self, generator, extra: dict):
         fieldnames, rows = _rows()
-        row = {c: "" for c in fieldnames}
+        row = {c: "" for c in fieldnames} | {"Question ID": "Q-9001"}   # every row needs a stable id
         row.update(extra)
         return yaml.safe_load(generator.generate(rows + [row]))
 

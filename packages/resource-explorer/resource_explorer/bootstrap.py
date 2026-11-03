@@ -101,7 +101,7 @@ from __future__ import annotations
 
 import json
 import logging
-import shutil
+import os
 import subprocess
 import sys
 import threading
@@ -176,11 +176,101 @@ class BatchStatus:
     consecutive_failures: int = 0
 
 
+@dataclass
+class PrefectPoolStatus:
+    """Worker liveness for the `resource-explorer-pool` work pool (2026-09-28,
+    part of the whole-definition-Prefect-default change — see
+    PREFECT-DEFAULT-WHOLE-DEFINITION-IMPLEMENTED.md).
+
+    Same tri-state shape as `BatchStatus`: `reachable` says whether the last
+    attempt could actually reach the Prefect API at all, independent of
+    whether a worker was found — a real incident earlier tonight was
+    `prefect_up.sh` starting a worker on the wrong pool, silent until a run
+    degraded; this exists so that shows up here, before anyone hits it in a
+    run.
+    """
+
+    reachable: bool | None = None
+    worker_count: int = 0
+    last_heartbeat: str = ""
+    last_checked_at: str = ""
+    last_check_error: str = ""
+
+
 _status: dict[str, BatchStatus] = {}
 _status_lock = threading.Lock()
 _reinitializing = False
+#: Held for the whole of a check_and_heal pass (see there).
+_heal_lock = threading.Lock()
 _stop_event: threading.Event | None = None
 _thread: threading.Thread | None = None
+
+_prefect_pool_status = PrefectPoolStatus()
+_prefect_pool_status_lock = threading.Lock()
+
+
+def check_prefect_pool_workers(pool: str | None = None) -> PrefectPoolStatus:
+    """Query Prefect's own API for `pool`'s registered workers — the same
+    `work_pools/{pool}/workers/filter` data `prefect_up.sh` and the
+    dispatch-honesty live gate checked by hand — and update/return the
+    module-level status.
+
+    Fails open like the batch canary checks above: an unreachable Prefect
+    API reports `reachable=False` with the error text, never a false
+    "0 workers" that would look identical to a real empty pool. `pool`
+    defaults to `config.prefect.work_pool`.
+    """
+    from resource_explorer.config import get_config
+
+    pool = pool or get_config().prefect.work_pool
+    status = PrefectPoolStatus(last_checked_at=_now())
+    try:
+        import asyncio
+
+        from resource_explorer.surveyors.prefect_adapter import re_prefect_client
+
+        async def _fetch():
+            async with re_prefect_client() as client:
+                return await client.read_workers_for_work_pool(pool)
+
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            loop = None
+        if loop and loop.is_running():
+            from resource_explorer.concurrency import run_sync
+
+            workers = run_sync(lambda: asyncio.run(_fetch()))
+        else:
+            workers = asyncio.run(_fetch())
+
+        status.reachable = True
+        status.worker_count = len(workers)
+        heartbeats = [
+            str(w.last_heartbeat_time) for w in workers if getattr(w, "last_heartbeat_time", None)
+        ]
+        status.last_heartbeat = max(heartbeats) if heartbeats else ""
+        if status.worker_count == 0:
+            log.warning(
+                "bootstrap: Prefect work pool %r has NO registered workers — a "
+                "default whole-definition run will find the API reachable but "
+                "have nothing to dispatch to; see the design note "
+                "PREFECT-DEFAULT-WHOLE-DEFINITION-IMPLEMENTED.md", pool,
+            )
+        else:
+            log.info(
+                "bootstrap: Prefect work pool %r has %d worker(s), last "
+                "heartbeat %s", pool, status.worker_count, status.last_heartbeat or "unknown",
+            )
+    except Exception as exc:
+        status.reachable = False
+        status.last_check_error = str(exc)
+        log.warning("bootstrap: could not check Prefect pool %r workers: %s", pool, exc)
+
+    with _prefect_pool_status_lock:
+        global _prefect_pool_status
+        _prefect_pool_status = status
+    return status
 
 
 def _now() -> str:
@@ -261,7 +351,7 @@ def discover_batches(docs_dir: Path = DOCS_DIR) -> list[Batch]:
 
 # ── canary check ────────────────────────────────────────────────────────────
 
-def canary_present(batch: Batch, client=None) -> bool | None:
+def canary_present(batch: Batch, expert=None) -> bool | None:
     """Is this batch's canary element in Egeria?
 
     Tri-state, and the third state matters:
@@ -285,11 +375,15 @@ def canary_present(batch: Batch, client=None) -> bool | None:
         # Nothing to check, and nothing to heal — a known answer, not an unknown.
         return True
 
-    if client is None:
+    c = batch.canary
+    by_qualified_name = bool(c.get("qualified_name"))
+    if expert is None:
         try:
             from resource_explorer.surveyors.survey_definition_reader import SurveyDefinitionReader
 
-            client = SurveyDefinitionReader()._connect_classification_explorer()
+            # Both canary kinds are instant reads on a MetadataExpert (egeria_lookup.py): the unique-name read for
+            # a qualifiedName, a typed string search for a display name. The exact-value search timed out.
+            expert = SurveyDefinitionReader()._connect_metadata_expert()
         except Exception as exc:
             log.info(
                 "bootstrap: cannot reach Egeria to check %s (%s) — skipping heal, state unknown",
@@ -297,23 +391,33 @@ def canary_present(batch: Batch, client=None) -> bool | None:
             )
             return None
 
-    from resource_explorer.surveyors.survey_definition_reader import _as_guid
+    if by_qualified_name:
+        # type is not asked on purpose: a wrong type_name would read as "missing" and trigger a heal. Matching
+        # on the globally unique qualified_name alone is safer than guessing a type.
+        try:
+            from resource_explorer.egeria_lookup import guid_by_qualified_name
 
-    c = batch.canary
-    if c.get("qualified_name"):
-        prop, name = "qualifiedName", c["qualified_name"]
-    else:
-        prop, name = "displayName", c["display_name"]
+            return guid_by_qualified_name(expert, c["qualified_name"]) is not None
+        except Exception as exc:
+            log.info(
+                "bootstrap: canary lookup failed for %s (%s) — skipping heal, state unknown",
+                batch.batch_id, exc,
+            )
+            return None
 
-    kwargs = {"property_name": [prop]}
-    # type is optional on purpose: a wrong type_name silently returns nothing,
-    # which reads as "missing" and triggers a heal. Matching on the globally
-    # unique qualified_name alone is safer than guessing a type.
-    if c.get("type"):
-        kwargs["type_name"] = c["type"]
+    # displayName canaries (no qualifiedName declared; a question term's qualifiedName is generated by Dr.Egeria):
+    # a typed string search, exact, on displayName, GlossaryTerm unless the canary names its type (architect ruling
+    # 2026-10-22). Two terms holding the name are UNREADABLE (None: no heal; a heal would re-run a CREATE document
+    # keyed on display name and add a third). DEPRECATED terms count here: the canary asks "did this batch run",
+    # and a heal on a retired term would re-create it.
+    from resource_explorer.egeria_lookup import ExactValueAmbiguous, guid_by_exact_value
 
     try:
-        return _as_guid(client.get_guid_for_name(name, **kwargs)) is not None
+        return guid_by_exact_value(expert, c["display_name"], property_name="displayName",
+                                   type_name=c.get("type") or "GlossaryTerm") is not None
+    except ExactValueAmbiguous as exc:
+        log.info("bootstrap: canary for %s is ambiguous (%s) — skipping heal, state unknown", batch.batch_id, exc)
+        return None
     except Exception as exc:
         log.info(
             "bootstrap: canary lookup failed for %s (%s) — skipping heal, state unknown",
@@ -324,54 +428,158 @@ def canary_present(batch: Batch, client=None) -> bool | None:
 
 # ── heal ────────────────────────────────────────────────────────────────────
 
-def _resolve_dr_egeria_executable() -> str | None:
-    """Find the `dr_egeria` executable to run.
+@dataclass
+class DrEgeriaProcess:
+    """What one `dr_egeria --process` run of one document returned. `ok` is the process's own answer (exit 0);
+    it is NOT a per-command result: the CLI exits 0 even when commands fail or the client raises, so a caller
+    that needs per-command results reads `stdout` (the summary table), as `dr_egeria_runner` does."""
 
-    Prefer the one installed next to the running interpreter over whatever
-    `dr_egeria` resolves to on PATH. They are not interchangeable: this
-    package pins a pyegeria version, and the venv's own `dr_egeria` is built
-    against it, while PATH can point anywhere. On the dev box PATH's
-    `dr_egeria` is a pipx install on a different Python with a newer
-    pyegeria that died at bearer-token creation with
-    `AsyncLibraryNotFoundError` before running a single command (verified
-    2026-09-12) — a bootstrap auto-heal picking that one up fails before it
-    writes anything.
+    ok: bool
+    detail: str
+    stdout: str = ""
+    stderr: str = ""
+
+
+SOURCE_ADHOC_AS = "--as"
+SOURCE_ADMIN_SESSION = "admin session"
+SOURCE_STARTUP_HEAL = "start-up heal"
+CHILD_TOKEN_ENV = "RE_DR_EGERIA_CHILD_TOKEN"
+CHILD_PASSWORD_ENV = "RE_DR_EGERIA_CHILD_PASSWORD"
+
+
+class NoDrEgeriaIdentity(ValueError):
+    """No Egeria identity was supplied for a Dr.Egeria run. RE never lets the `dr_egeria` CLI choose one."""
+
+
+@dataclass(frozen=True)
+class DrEgeriaIdentity:
+    """WHO a Dr.Egeria document is applied as, and where that identity came from. Always supplied by the caller.
+
+    * `password` set: a named Egeria user with a password (an ad-hoc `--as` run, or the start-up heal's service
+      account). It travels in the child's environment (`CHILD_PASSWORD_ENV`), never argv.
+    * `token` set (no password): a signed-in person's Egeria bearer token (the admin route). It travels in the
+      child's environment (`CHILD_TOKEN_ENV`), never argv.
+    Either way the child is `resource_explorer.dr_egeria_child`, which builds its client through the factory.
+
+    `source` is one of SOURCE_ADHOC_AS / SOURCE_ADMIN_SESSION / SOURCE_STARTUP_HEAL. Secrets are `repr=False`.
     """
-    venv_candidate = Path(sys.executable).parent / "dr_egeria"
-    if venv_candidate.is_file():
-        return str(venv_candidate)
-    return shutil.which("dr_egeria")
+
+    user: str
+    source: str
+    password: str = field(default="", repr=False)
+    token: str = field(default="", repr=False)
+
+    def __post_init__(self) -> None:
+        if not (self.user or "").strip():
+            raise NoDrEgeriaIdentity("no Egeria identity set; pass --as or sign in")
+        if not (self.password or self.token):
+            raise NoDrEgeriaIdentity(f"no credential for Egeria user {self.user!r}; pass --as or sign in")
+
+    @property
+    def announcement(self) -> str:
+        return f"applying as {self.user} from {self.source}"
 
 
-def _run_dr_egeria(doc: Path) -> tuple[bool, str]:
-    """Execute one document. Runs `dr_egeria` as a subprocess from the
-    document's own directory, matching how these documents are run by hand and
-    keeping relative paths resolving the same way."""
-    executable = _resolve_dr_egeria_executable()
-    if executable is None:
-        venv_candidate = Path(sys.executable).parent / "dr_egeria"
-        return False, f"dr_egeria CLI not found next to {venv_candidate} or on PATH"
+def dr_egeria_command(doc_name: str, identity: DrEgeriaIdentity, *, server: str, url: str) -> tuple[list[str], dict]:
+    """The argv and the extra environment for one run. The identity is ALWAYS explicit and NO secret is on argv.
 
-    log.info("bootstrap: running dr_egeria via %s", executable)
+    `python -m resource_explorer.dr_egeria_child --server S --url U --userid USER DOC`, plus a one-key environment:
+    the password (`CHILD_PASSWORD_ENV`) or the token (`CHILD_TOKEN_ENV`), whichever the identity holds. argv is
+    visible in `ps` to local users for the life of the run; the environment is not."""
+    argv = [sys.executable, "-m", "resource_explorer.dr_egeria_child", "--server", server, "--url", url,
+            "--userid", identity.user, doc_name]
+    if identity.password:
+        return argv, {CHILD_PASSWORD_ENV: identity.password}
+    return argv, {CHILD_TOKEN_ENV: identity.token}
+
+
+def run_dr_egeria_document(doc: Path, *, identity: DrEgeriaIdentity, env: dict | None = None) -> DrEgeriaProcess:
+    """THE Dr.Egeria processor: run one document through `resource_explorer.dr_egeria_child` (what pyegeria's
+    `dr_egeria --process --summary-only` does, with a factory-built client so no secret is on argv).
+
+    Used by the bootstrap heal (`_run_dr_egeria`, as the service account) and by the ad-hoc runner
+    (`dr_egeria_runner`, as a named person), so there is one way RE executes a Dr.Egeria document. Runs as a
+    subprocess from the document's own directory.
+
+    **Who it applies as is the `identity` argument and nothing else.** There is no default: the identity Egeria
+    recorded once did not match the identity RE had set, so RE now passes `--userid` and the credential
+    explicitly on every call and never relies on what the CLI or its environment would pick. A missing identity
+    is a `TypeError` here and a refusal in every caller.
+
+    `env` replaces the child's environment when given; None inherits this process's (plus the child token for a
+    token identity)."""
+    if not isinstance(identity, DrEgeriaIdentity):
+        raise NoDrEgeriaIdentity("no Egeria identity set; pass --as or sign in")
+    from resource_explorer.config import get_config
+
+    egeria = get_config().egeria
+    argv, extra = dr_egeria_command(doc.name, identity, server=egeria.view_server, url=egeria.platform_url)
+    log.info("bootstrap: running dr_egeria child, %s", identity.announcement)
+    child_env = dict(env if env is not None else os.environ)
+    child_env.pop(CHILD_TOKEN_ENV, None)           # exactly one secret reaches the child, whatever the parent holds
+    child_env.pop(CHILD_PASSWORD_ENV, None)
+    child_env.update(extra)
     try:
         proc = subprocess.run(
-            [executable, "--process", "--summary-only", doc.name],
+            argv,
             cwd=str(doc.parent),
             capture_output=True,
             text=True,
             timeout=HEAL_TIMEOUT_SECONDS,
+            env=child_env,
         )
-    except FileNotFoundError:
-        return False, "dr_egeria CLI not found on PATH"
     except subprocess.TimeoutExpired:
-        return False, f"timed out after {HEAL_TIMEOUT_SECONDS}s"
+        return DrEgeriaProcess(False, f"timed out after {HEAL_TIMEOUT_SECONDS}s")
     except Exception as exc:  # pragma: no cover - defensive
-        return False, f"{type(exc).__name__}: {exc}"
+        return DrEgeriaProcess(False, f"{type(exc).__name__}: {exc}")
 
+    stdout, stderr = proc.stdout or "", proc.stderr or ""
     if proc.returncode != 0:
-        tail = (proc.stderr or proc.stdout or "").strip().splitlines()
-        return False, f"exit {proc.returncode}: {tail[-1] if tail else 'no output'}"
-    return True, "ok"
+        tail = (stderr or stdout).strip().splitlines()
+        return DrEgeriaProcess(False, f"exit {proc.returncode}: {tail[-1] if tail else 'no output'}",
+                               stdout, stderr)
+    return DrEgeriaProcess(True, "ok", stdout, stderr)
+
+
+def heal_identity() -> DrEgeriaIdentity:
+    """The identity a bootstrap heal applies documents as: RE's service account (`EGERIA_USER_ID` and its
+    password, read by `egeria_clients._daemon_credential()`). The only service-account case for Dr.Egeria."""
+    from resource_explorer.egeria_clients import _daemon_credential
+
+    try:
+        user, password = _daemon_credential()
+    except PermissionError as exc:          # NoServiceAccount: EGERIA_USER_ID / its password not set
+        raise NoDrEgeriaIdentity(str(exc)) from exc
+    return DrEgeriaIdentity(user=user, source=SOURCE_STARTUP_HEAL, password=password)
+
+
+def log_heal_identity_at_startup() -> dict:
+    """At startup: log who the heal applies Dr.Egeria documents as, and where that identity comes from. Both are the
+    same source (`EGERIA_USER_ID` / `EGERIA_USER_PASSWORD` via `_daemon_credential()`), so there is nothing to
+    compare; a heal with no service account is logged as a loud warning. Never a password. Returns what it logged."""
+    from resource_explorer.config import get_config
+
+    source = "EGERIA_USER_ID (environment or .env)"
+    try:
+        heal_user = heal_identity().user
+    except NoDrEgeriaIdentity as exc:
+        log.warning("bootstrap: the heal has NO service account and will not heal anything: %s", exc)
+        return {"heal_user": "", "source": source, "set": False,
+                "env_egeria_user": os.environ.get("EGERIA_USER", ""), "egeria_user_id": get_config().egeria.user_id}
+    log.info("bootstrap: Dr.Egeria heal applies as %r, from %s", heal_user, source)
+    return {"heal_user": heal_user, "source": source, "set": True,
+            "env_egeria_user": os.environ.get("EGERIA_USER", ""), "egeria_user_id": get_config().egeria.user_id}
+
+
+def _run_dr_egeria(doc: Path) -> tuple[bool, str]:
+    """Execute one document for a heal, as the service account (`heal_identity()`), explicitly."""
+    try:
+        identity = heal_identity()
+    except NoDrEgeriaIdentity as exc:
+        return False, str(exc)
+    log.info("bootstrap: %s", identity.announcement)
+    result = run_dr_egeria_document(doc, identity=identity)
+    return result.ok, result.detail
 
 
 def _run_post_heal(batch: Batch) -> tuple[bool, str]:
@@ -493,6 +701,20 @@ def check_and_heal(docs_dir: Path = DOCS_DIR, force: bool = False) -> dict:
     """
     global _reinitializing
 
+    # One pass at a time in this process, whoever calls (the route, the automatic loop, the CLI). Non-blocking: a
+    # pass that finds it held does nothing and says so, and must not touch `_reinitializing`, which belongs to the
+    # winner (the loser used to clear it in its finally).
+    if not _heal_lock.acquire(blocking=False):
+        return {"batches": {}, "running": True}
+    try:
+        return _check_and_heal_locked(docs_dir, force)
+    finally:
+        _heal_lock.release()
+
+
+def _check_and_heal_locked(docs_dir: Path, force: bool) -> dict:
+    global _reinitializing
+
     batches = discover_batches(docs_dir)
     results: dict[str, dict] = {}
     _reinitializing = True
@@ -532,6 +754,18 @@ def check_and_heal(docs_dir: Path = DOCS_DIR, force: bool = False) -> dict:
                 results[batch.batch_id] = {"action": "ok", "reason": "canary present"}
                 continue
 
+            try:
+                heal_identity()
+            except NoDrEgeriaIdentity as exc:
+                # Nothing to heal as: say so on the status the endpoint returns, and do not count it as a heal that
+                # ran and failed (that would trip the consecutive-failure guard on a configuration gap).
+                reason = f"no service account: {exc}"
+                log.warning("bootstrap: %s missing but not healed — %s", batch.batch_id, reason)
+                with _status_lock:
+                    st.last_healed_at = _now()
+                    st.last_heal_result = reason
+                results[batch.batch_id] = {"action": "failed", "reason": reason}
+                continue
             log.info("bootstrap: %s missing — healing (%d file(s))", batch.batch_id, len(batch.files))
             ok, detail = heal_batch(batch)
             # Re-check rather than assuming the heal worked: a canary that never
@@ -604,23 +838,89 @@ def get_status(docs_dir: Path = DOCS_DIR) -> dict:
             "idempotent": batch.idempotent,
             "file_count": len(batch.files),
         }
+    with _prefect_pool_status_lock:
+        pool_st = _prefect_pool_status
+
+    from resource_explorer.investigation_purposes import status as _purposes_status
+    from resource_explorer.surveyors.database.bootstrap_data_classes import status as _dc_status
+
     return {
         "reinitializing": _reinitializing,
         "egeria_reachable": not any_unreachable,
         "batches": out,
+        # The data-class seed's last outcome ("data classes: present, 6 sets" / "created, …" /
+        # "could not check · why").
+        "data_classes": _dc_status(),
+        # The investigation-purpose seed's last outcome (`investigation_purposes.py`).
+        "investigation_purposes": _purposes_status(),
+        # 2026-09-28 — resource-explorer-pool worker liveness, reported
+        # alongside the Dr.Egeria batch status the admin banner already
+        # reads, so a missing/offline Prefect worker is a monitored
+        # condition rather than something discovered by a confusing run
+        # failure or silent local fallback.
+        "prefect_pool": {
+            "reachable": pool_st.reachable,
+            "worker_count": pool_st.worker_count,
+            "last_heartbeat": pool_st.last_heartbeat,
+            "last_checked_at": pool_st.last_checked_at,
+            "last_check_error": pool_st.last_check_error,
+        },
     }
+
+
+# ── data classes ────────────────────────────────────────────────────────────
+
+def _data_class_pass(registry=None):
+    """RE's data-class seed (`surveyors/database/bootstrap_data_classes.py`): its own canary (one
+    typed read), healed only when absent, outcome logged and recorded as an activity row when it
+    changes. Never raises."""
+    try:
+        from resource_explorer.surveyors.database.bootstrap_data_classes import (
+            check_and_heal_data_classes,
+        )
+
+        return check_and_heal_data_classes(registry=registry)
+    except Exception:  # pragma: no cover - check_and_heal_data_classes never raises
+        log.exception("bootstrap: data-class pass failed")
+        return None
+
+
+def _purposes_pass(registry=None):
+    """The investigation-purposes list (`investigation_purposes.py`): Egeria holds it (owner ruling
+    2026-10-13); this pass creates the set and its values when missing, under its own canary, and refreshes
+    the reader's cache. Never raises."""
+    try:
+        from resource_explorer.investigation_purposes import check_and_heal_purposes
+
+        return check_and_heal_purposes(registry=registry)
+    except Exception:  # pragma: no cover - check_and_heal_purposes never raises
+        log.exception("bootstrap: investigation-purposes pass failed")
+        return None
 
 
 # ── scheduler ───────────────────────────────────────────────────────────────
 
 def _loop(docs_dir: Path, interval: int, stop: threading.Event) -> None:
+    from resource_explorer.egeria_clients import Daemon, DaemonReason, acting_as
+
     while not stop.is_set():
         try:
-            check_and_heal(docs_dir)
+            with acting_as(Daemon(DaemonReason.BOOTSTRAP)):
+                check_and_heal(docs_dir)
         except Exception:
             # Never let a bad pass kill the loop — the next tick should still
             # get a chance to notice and repair a reset.
             log.exception("bootstrap: check pass failed")
+        # After the Dr.Egeria batches: the data-class seed. Leader-elected with this loop
+        # (LOCK_BOOTSTRAP), so it runs at start and after every Egeria reset, once per deployment.
+        _data_class_pass()
+        _purposes_pass()
+        try:
+            check_prefect_pool_workers()
+        except Exception:
+            # Same tolerance as the batch-heal pass above — a worker-liveness
+            # check that itself throws must not stop future ticks either.
+            log.exception("bootstrap: Prefect pool worker check failed")
         stop.wait(interval)
 
 

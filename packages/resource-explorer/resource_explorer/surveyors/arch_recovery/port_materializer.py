@@ -50,6 +50,7 @@ import logging
 import os
 import re
 from typing import TYPE_CHECKING
+from resource_explorer.config import egeria_platform_url, egeria_view_server  # noqa: E402,F401
 
 if TYPE_CHECKING:
     from resource_explorer.registry import ProjectRegistry
@@ -62,7 +63,6 @@ log = logging.getLogger(__name__)
 _DEFAULT_PLATFORM_URL = "https://localhost:9443"
 _DEFAULT_VIEW_SERVER = "qs-view-server"
 _DEFAULT_USER = "erinoverview"
-_DEFAULT_PASSWORD = "secret"
 _DEFAULT_TIMEOUT = 30
 
 _UUID_RE = re.compile(
@@ -115,11 +115,13 @@ class PortMaterializer:
         user_password: str | None = None,
         timeout: int | None = None,
         registry: "ProjectRegistry | None" = None,
+        identity=None,
     ) -> None:
-        self.platform_url = platform_url or os.getenv("EGERIA_PLATFORM_URL", _DEFAULT_PLATFORM_URL)
-        self.view_server = view_server or os.getenv("EGERIA_VIEW_SERVER", _DEFAULT_VIEW_SERVER)
+        self._identity = identity
+        self.platform_url = platform_url or egeria_platform_url()
+        self.view_server = view_server or egeria_view_server()
         self.user_id = user_id or os.getenv("EGERIA_USER", _DEFAULT_USER)
-        self.user_password = user_password or os.getenv("EGERIA_USER_PASSWORD", _DEFAULT_PASSWORD)
+        self.user_password = user_password or ""   # not used to authenticate (Brief I)
         self.timeout = timeout or int(os.getenv("PYEGERIA_TIMEOUT_SECONDS", str(_DEFAULT_TIMEOUT)))
         self._registry = registry
         self._metadata_expert = None
@@ -135,19 +137,21 @@ class PortMaterializer:
             from pyegeria import MetadataExpert
             from pyegeria.omvs.solution_architect import SolutionArchitect
 
+            from resource_explorer.egeria_clients import current_principal, egeria_client
+
+            # Who (Brief I): the run's declared identity, else the signed-in Caller. This used
+            # to be the service account always.
+            clients = egeria_client(self._identity or current_principal(), purpose="materialize ports",
+                                    view_server=self.view_server, platform_url=self.platform_url)
+
             # MetadataExpert: the generic create/read route (no dedicated
             # SolutionPort wrapper exists). SolutionArchitect: the real,
             # dedicated link_solution_component_port attach call — that one
             # IS a proper pyegeria method, only creation is missing.
-            self._metadata_expert = MetadataExpert(
-                self.view_server, self.platform_url, self.user_id, self.user_password
-            )
-            self._metadata_expert.create_egeria_bearer_token(self.user_id, self.user_password)
-
-            self._solution_architect = SolutionArchitect(
-                self.view_server, self.platform_url, self.user_id, self.user_password
-            )
-            self._solution_architect.create_egeria_bearer_token(self.user_id, self.user_password)
+            self._metadata_expert = clients.of(MetadataExpert)
+            self._solution_architect = clients.of(SolutionArchitect)
+        except PermissionError:
+            raise
         except ImportError as exc:
             raise PortMaterializationError(
                 "pyegeria is not installed. Add it to your dependencies."
@@ -261,10 +265,23 @@ class PortMaterializer:
 
         self._attach_if_needed(component_guid, guid)
 
+        # Whose write this is (Brief I), from the one on-behalf helper: the generic create body
+        # above carries no additionalProperties, so `requestedBy` is merged in after it (read, merge,
+        # write), and Ownership = the requester. A stamp that did not land is reported as partial.
+        from resource_explorer.egeria_clients import current_principal
+        from resource_explorer.egeria_identity import on_behalf_of, stamp_on_behalf
+
+        identity = self._identity or current_principal()
+        behalf = on_behalf_of(identity)
+        not_recorded = stamp_on_behalf(guid, behalf, identity=identity, props_client=self._metadata_expert)
+
         if self._registry:
             self._registry.record_materialized_port(
                 entity_type, entity_slug, scope_locator, port_name, qualified_name, guid,
             )
+        if not_recorded:
+            return {"status": "partial", "words": f"partial · {not_recorded}", "guid": guid,
+                    "qualified_name": qualified_name}
         return {"status": "materialized", "guid": guid, "qualified_name": qualified_name}
 
     def _attach_if_needed(self, component_guid: str, port_guid: str) -> None:

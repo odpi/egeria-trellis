@@ -9,6 +9,7 @@ ever attempted. No live Egeria in any test here.
 from __future__ import annotations
 
 from unittest.mock import MagicMock
+from tests.qn_lookup_bridge import expert_from_legacy
 
 import pytest
 
@@ -16,11 +17,15 @@ from resource_explorer.surveyors.arch_recovery.blueprint_materializer import (
     BlueprintMaterializationError, BlueprintMaterializer,
 )
 
+# Brief I: a blueprint or port is written by a queued publish: RE's daemon on the requester's behalf.
+pytestmark = pytest.mark.usefixtures("as_daemon")
+
 
 def _materializer(registry=None):
     m = BlueprintMaterializer(platform_url="https://fake", registry=registry)
     m._solution_architect = MagicMock()
     m._automated_curation = MagicMock()
+    m._metadata_expert = expert_from_legacy(m._automated_curation)
     m._connect = MagicMock()  # short-circuit: attributes above stand in for a real connection
     m._automated_curation.get_guid_for_name.return_value = []  # nothing pre-exists by default
     m._solution_architect.create_solution_blueprint.return_value = "11111111-1111-1111-1111-111111111111"
@@ -42,13 +47,13 @@ class TestFreshMaterialization:
         assert result == {
             "status": "materialized",
             "guid": "11111111-1111-1111-1111-111111111111",
-            "qualified_name": "SolutionBlueprint::repo::myproj::deployment::svc-cluster",
+            "qualified_name": "SolutionBlueprint::repo::myproj::deployment",
         }
         m._connect.assert_called_once()
         body = m._solution_architect.create_solution_blueprint.call_args[0][0]
         props = body["properties"]
         assert props["class"] == "SolutionBlueprintProperties"
-        assert props["qualifiedName"] == "SolutionBlueprint::repo::myproj::deployment::svc-cluster"
+        assert props["qualifiedName"] == "SolutionBlueprint::repo::myproj::deployment"
         assert props["displayName"] == "svc cluster"
         assert props["additionalProperties"]["recoveredBy"] == "architecture_recovery"
 
@@ -131,7 +136,7 @@ class TestFreshMaterialization:
         )
         registry.record_materialized_blueprint.assert_called_once_with(
             "repo", "myproj", "deployment", "svc-cluster",
-            "SolutionBlueprint::repo::myproj::deployment::svc-cluster",
+            "SolutionBlueprint::repo::myproj::deployment",
             "11111111-1111-1111-1111-111111111111",
         )
 
@@ -182,6 +187,10 @@ class TestIdempotency:
         m._automated_curation.get_guid_for_name.return_value = [
             "33333333-3333-3333-3333-333333333333"
         ]
+        m._solution_architect.get_solution_blueprint_by_guid.return_value = {
+            "elementHeader": {"type": {"typeName": "SolutionBlueprint"}},
+            "properties": {"qualifiedName": "SolutionBlueprint::repo::myproj::deployment",
+                           "displayName": "svc cluster"}}
         result = m.materialize_blueprint_element(
             "repo", "myproj", "deployment", "svc-cluster", display_name="svc cluster",
         )
@@ -190,7 +199,7 @@ class TestIdempotency:
         m._solution_architect.create_solution_blueprint.assert_not_called()
         registry.record_materialized_blueprint.assert_called_once_with(
             "repo", "myproj", "deployment", "svc-cluster",
-            "SolutionBlueprint::repo::myproj::deployment::svc-cluster",
+            "SolutionBlueprint::repo::myproj::deployment",
             "33333333-3333-3333-3333-333333333333",
         )
 

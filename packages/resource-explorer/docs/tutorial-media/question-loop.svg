@@ -1,0 +1,112 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1920" height="1080" viewBox="0 0 1920 1080">
+  <title>How the questions improve</title>
+  <desc>Surveys store results; chat answers from stored results and says which analyses would help. Two paths lead
+  back: the short path runs a missing analysis from chat, so the next answer uses it; the long path reviews the
+  questions people ask and turns recurring ones into new survey steps.</desc>
+  <defs>
+    <marker id="rust" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#a8502a"/>
+    </marker>
+    <marker id="slate" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#3f4f6b"/>
+    </marker>
+    <marker id="teal" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#1f6b5c"/>
+    </marker>
+    <style>
+      .sans { font-family: "Helvetica Neue", Helvetica, Arial, sans-serif; }
+      .serif { font-family: Georgia, "Times New Roman", serif; }
+      .ink { fill: #2b2119; }
+      .muted { fill: #6b5d50; }
+      .teal { fill: #1f6b5c; }
+      .rust { fill: #a8502a; }
+      .slate { fill: #1f2a3d; }
+      .caps { font-weight: 700; letter-spacing: 2.5px; }
+      .head { font-size: 30px; font-weight: 700; }
+      .body { font-size: 23px; }
+    </style>
+  </defs>
+
+  <rect width="1920" height="1080" fill="#faf7f2"/>
+
+  <!-- Heading -->
+  <text x="80" y="82" class="sans rust caps" font-size="22">HOW THE QUESTIONS IMPROVE</text>
+  <text x="80" y="140" class="serif ink" font-size="48">Chat finds the gaps; surveys close the ones that keep coming back</text>
+  <text x="80" y="188" class="sans muted" font-size="25">A gap can be closed on the spot. A question that keeps coming back can become part of a survey.</text>
+
+  <!-- Arrows (drawn first, under the boxes) -->
+  <g fill="none" stroke-width="3">
+    <!-- Surveys -> Stored results -> Chat -->
+    <line x1="560" y1="370" x2="714" y2="370" stroke="#a8502a" marker-end="url(#rust)"/>
+    <line x1="1200" y1="370" x2="1354" y2="370" stroke="#a8502a" marker-end="url(#rust)"/>
+    <!-- Chat -> Question log -->
+    <line x1="1600" y1="490" x2="1600" y2="694" stroke="#3f4f6b" marker-end="url(#slate)"/>
+    <!-- Short path: Chat back to Stored results -->
+    <path d="M1440,490 V580 Q1440,590 1430,590 H970 Q960,590 960,580 V496" stroke="#1f6b5c" stroke-dasharray="10 7" marker-end="url(#teal)"/>
+    <!-- Long path: Question log -> New survey step -> Surveys -->
+    <line x1="1360" y1="790" x2="566" y2="790" stroke="#a8502a" stroke-dasharray="10 7" marker-end="url(#rust)"/>
+    <line x1="320" y1="700" x2="320" y2="496" stroke="#a8502a" stroke-dasharray="10 7" marker-end="url(#rust)"/>
+  </g>
+
+  <!-- Surveys -->
+  <rect x="80" y="250" width="480" height="240" rx="14" fill="#f7e8dc" stroke="#b08050" stroke-width="2.5"/>
+  <text x="110" y="302" class="sans ink head">Surveys</text>
+  <g class="sans ink body">
+    <text x="110" y="350">The questions someone planned for,</text>
+    <text x="110" y="380">each answered by a set of analyses.</text>
+    <text x="110" y="410">An analysis can also be run on its</text>
+    <text x="110" y="440">own.</text>
+  </g>
+
+  <!-- Stored results -->
+  <rect x="720" y="250" width="480" height="240" rx="14" fill="#f0d5c0" stroke="#b08050" stroke-width="2.5"/>
+  <text x="750" y="302" class="sans ink head">Stored results</text>
+  <g class="sans ink body">
+    <text x="750" y="350">Each result kept once, with when it</text>
+    <text x="750" y="380">was measured and how.</text>
+    <text x="750" y="428" class="muted">Surveys and chat read the same</text>
+    <text x="750" y="458" class="muted">results; nothing is measured twice.</text>
+  </g>
+
+  <!-- Chat -->
+  <rect x="1360" y="250" width="480" height="240" rx="14" fill="#e6eaf2" stroke="#3f4f6b" stroke-width="2.5"/>
+  <text x="1390" y="302" class="sans slate head">Chat</text>
+  <g class="sans slate body">
+    <text x="1390" y="350">Answers from stored results, and</text>
+    <text x="1390" y="380">names the ones it used. Says which</text>
+    <text x="1390" y="410">analyses would help but have not</text>
+    <text x="1390" y="440">run yet.</text>
+  </g>
+
+  <!-- Short path label -->
+  <rect x="850" y="612" width="460" height="96" rx="10" fill="#faf7f2" stroke="#1f6b5c" stroke-width="2" stroke-dasharray="8 6"/>
+  <text x="872" y="646" class="sans teal caps" font-size="19">SHORT PATH · PART 8</text>
+  <text x="872" y="682" class="sans ink" font-size="22">Click Run in chat; the next answer uses it.</text>
+
+  <!-- Question log -->
+  <rect x="1360" y="700" width="480" height="200" rx="14" fill="#ffffff" stroke="#3f4f6b" stroke-width="2.5"/>
+  <text x="1390" y="752" class="sans slate head">Question log</text>
+  <g class="sans slate body">
+    <text x="1390" y="800">Questions asked in chat, and what</text>
+    <text x="1390" y="830">could have answered them.</text>
+    <text x="1390" y="868" class="muted" font-size="20" font-style="italic">Planned: not on screen yet.</text>
+  </g>
+
+  <!-- Long path label -->
+  <rect x="640" y="822" width="640" height="96" rx="10" fill="#faf7f2" stroke="#a8502a" stroke-width="2" stroke-dasharray="8 6"/>
+  <text x="662" y="856" class="sans rust caps" font-size="19">LONG PATH · ADVANCED TUTORIAL</text>
+  <text x="662" y="892" class="sans ink" font-size="22">See which questions recur, and which no survey expected.</text>
+
+  <!-- New survey step -->
+  <rect x="80" y="700" width="480" height="200" rx="14" fill="#ffffff" stroke="#a8502a" stroke-width="2.5"/>
+  <text x="110" y="752" class="sans ink head">A new survey step</text>
+  <g class="sans ink body">
+    <text x="110" y="800">A question that keeps needing the</text>
+    <text x="110" y="830">same extra work becomes part of a</text>
+    <text x="110" y="860">standard survey.</text>
+  </g>
+
+  <!-- Footnote -->
+  <text x="80" y="990" class="serif ink" font-size="26" font-style="italic">Chat is where new questions show up first; surveys are where the recurring ones end up.</text>
+  <text x="80" y="1034" class="sans muted" font-size="20">Questions, analyses and surveys are not fixed: they can be added and removed. The Advanced tutorial shows how.</text>
+</svg>

@@ -96,7 +96,8 @@ def ingest_collection(collection_name: str, repo_path: Path, drop_existing: bool
             dir_path=full_path,
             file_pattern="*.md",
             recursive=True,
-            batch_size=50
+            batch_size=50,
+            exclude_patterns=collection_meta.exclude_patterns
         )
         
         total_files += files

@@ -16,6 +16,14 @@ from github import GithubException
 from resource_explorer.registry import Project, ProjectRegistry
 
 
+@pytest.fixture(autouse=True)
+def _clear_in_flight():
+    from resource_explorer.github import org_importer
+    org_importer._IN_FLIGHT.clear()
+    yield
+    org_importer._IN_FLIGHT.clear()
+
+
 @pytest.fixture
 def registry(tmp_path):
     r = ProjectRegistry(db_path=str(tmp_path / "test.db"))

@@ -223,9 +223,32 @@ def language_breakdown_plotly(resource_slug: str) -> "plotly.graph_objects.Figur
         except Exception:
             pass
 
-    fig = go.Figure(go.Pie(labels=labels, values=values))
+    total = sum(values)
+    shares = [(100.0 * v / total) if total else 0.0 for v in values]
+    # walk3: a tiny slice's label ("0.00249%") sat outside the pie, on the title. The pie prints a number only on a
+    # slice big enough to hold it, inside and horizontal; the legend carries every slice with its percentage.
+    fig = go.Figure(go.Pie(
+        labels=[f"{name} {_pie_percent(p)}" for name, p in zip(labels, shares)],
+        values=values,
+        text=[_pie_percent(p) if p >= PIE_LABEL_MIN_PERCENT else "" for p in shares],
+        textinfo="text",
+        textposition="inside",
+        insidetextorientation="horizontal",
+    ))
     fig.update_layout(title=f"Language breakdown — {resource_slug}")
     return fig
+
+
+PIE_LABEL_MIN_PERCENT = 3.0
+
+
+def _pie_percent(p: float) -> str:
+    """A share as text with at most 3 significant figures; under 0.01% it reads '<0.01%'."""
+    if p <= 0:
+        return "0%"
+    if p < 0.01:
+        return "<0.01%"
+    return f"{p:.3g}%"
 
 
 def top_committers_plotly(resource_slug: str, limit: int = 10) -> "plotly.graph_objects.Figure | None":

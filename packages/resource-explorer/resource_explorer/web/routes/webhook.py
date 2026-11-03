@@ -34,9 +34,9 @@ def _do_refresh(resource_slug: str) -> None:
         return
     logger.info("Webhook: starting incremental refresh for '%s'", resource_slug)
     try:
-        IncrementalIndexer().refresh(project)
+        result = IncrementalIndexer().refresh(project)
         QueryCache().invalidate_project(resource_slug)
-        logger.info("Webhook: refresh complete for '%s'", resource_slug)
+        logger.info("Webhook: refresh complete for '%s': %s", resource_slug, result.value)
     except Exception as exc:
         logger.error("Webhook: refresh failed for '%s': %s", resource_slug, exc)
 

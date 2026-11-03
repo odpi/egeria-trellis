@@ -150,3 +150,97 @@ class TestEvidenceOfField:
         assert ann.evidence_of is not None
         assert not (ann.evidence_of or False)  # 0 is falsy in Python...
         assert ann.evidence_of is not None  # ...but must not be mistaken for unset
+
+
+class TestDataGrainInterval:
+    """Egeria's DataGrainAnnotationProperties.interval is a Java `long`
+    (DataGrainAnnotationProperties.java: `private long interval = 0L;`,
+    OpenMetadataProperty.INTERVAL = DataType.LONG, "expressing in the units of the
+    grain", example "60"). The live gate on 2026-10-14 sent "per-date" and got 400:
+    "Cannot deserialize value of type `long` from String \"per-date\"" for every grain."""
+
+    def test_a_whole_number_interval_is_sent_as_a_number(self):
+        from resource_explorer.surveyors.survey_report import DataGrainAnnotation
+
+        props = build_annotation_props(DataGrainAnnotation(summary="s", analysis_step="a", interval=60), "QN")
+        assert props["interval"] == 60 and isinstance(props["interval"], int)
+
+    def test_zero_is_sent_not_dropped(self):
+        from resource_explorer.surveyors.survey_report import DataGrainAnnotation
+
+        props = build_annotation_props(DataGrainAnnotation(summary="s", analysis_step="a", interval=0), "QN")
+        assert props["interval"] == 0
+
+    @pytest.mark.parametrize("bad", ["per-date", "60", 1.5, True])
+    def test_a_non_integer_interval_is_refused_before_it_reaches_egeria(self, bad):
+        from resource_explorer.surveyors.survey_report import DataGrainAnnotation
+
+        with pytest.raises(TypeError, match="interval"):
+            build_annotation_props(DataGrainAnnotation(summary="s", analysis_step="a", interval=bad), "QN")
+
+    def test_the_period_word_rides_in_additional_properties(self):
+        from resource_explorer.surveyors.survey_report import DataGrainAnnotation
+
+        props = build_annotation_props(
+            DataGrainAnnotation(summary="s", analysis_step="a", interval_name="monthly"), "QN")
+        assert "interval" not in props
+        assert props["additionalProperties"] == {"intervalName": "monthly"}
+
+
+class TestFailedCreateLogsEgeriasWords:
+    """pyegeria's CLIENT_ERROR_400 text names only the URL; Egeria's reason is in the
+    response body (FFDCResponseBase.exceptionErrorMessage). Body below is the live one
+    captured 2026-10-14 from a DataGrainAnnotation create on qs-view-server."""
+
+    LIVE_BODY = {
+        "class": "FFDCResponseBase", "relatedHTTPCode": 400,
+        "exceptionClassName": "com.fasterxml.jackson.databind.exc.InvalidFormatException",
+        "exceptionErrorMessage": "Cannot deserialize value of type `long` from String \"per-date\": "
+                                 "not a valid `long` value",
+        "exceptionSystemAction": "The system is unable to map the request to Egeria's implementation "
+                                 "and returns with an error.",
+        "exceptionUserAction": "Ensure JSON fields match the expected Java object structure and types.",
+    }
+
+    def _client_error(self):
+        import json as _json
+
+        import httpx
+        from pyegeria.core._exceptions import PyegeriaClientException
+
+        url = "https://localhost:9443/servers/qs-view-server/api/open-metadata/data-discovery/annotations"
+        response = httpx.Response(400, json=self.LIVE_BODY, request=httpx.Request("POST", url))
+        return PyegeriaClientException(response, {"class name": "BaseServerClient"},
+                                       {"userid": "u", "reason": _json.dumps(self.LIVE_BODY)})
+
+    def test_the_warning_carries_egerias_exception_error_message(self, caplog):
+        from unittest.mock import create_autospec
+
+        from pyegeria.omvs.data_discovery import DataDiscovery
+
+        from resource_explorer.surveyors.annotation_props import publish_annotations
+        from resource_explorer.surveyors.survey_report import DataGrainAnnotation
+
+        discovery = create_autospec(DataDiscovery, instance=True, spec_set=True)
+        discovery.create_annotation.side_effect = self._client_error()
+        ann = DataGrainAnnotation(summary="s", analysis_step="a", grain_statement="one row per id")
+        with caplog.at_level("WARNING", logger="resource_explorer.surveyors.annotation_props"):
+            out = publish_annotations(discovery, lambda qn: "", [ann], "report-guid", "Annotation::t")
+        assert out == [None]
+        text = caplog.text
+        assert "Cannot deserialize value of type `long` from String \"per-date\"" in text
+        assert "InvalidFormatException" in text
+        assert "400" in text
+
+    def test_detail_reads_the_fields_pyegeria_fills(self):
+        from resource_explorer.egeria_absence import egeria_error_detail
+
+        detail = egeria_error_detail(self._client_error())
+        assert detail.startswith("HTTP 400")
+        assert "InvalidFormatException" in detail
+        assert "not a valid `long` value" in detail
+
+    def test_detail_is_empty_for_an_exception_with_no_egeria_body(self):
+        from resource_explorer.egeria_absence import egeria_error_detail
+
+        assert egeria_error_detail(RuntimeError("boom")) == ""

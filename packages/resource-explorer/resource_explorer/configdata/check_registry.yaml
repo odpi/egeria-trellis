@@ -493,6 +493,34 @@ analyses:
       detect: {default: context}
       coupling: {default: context}
 
+  # Database quality checks (DESIGN-VALUE-PROFILE-AND-QUALITY-CHECKS.md §5).
+  # The check names are the vendored catalogue's test-type codes (the
+  # executor's key, and DataQualityRule.method once Publish lands). Results
+  # are rows of database_quality_results (status per check_key), not
+  # project_analysis_findings: `findings_kind` names that table's analysis.
+  # A failing or warning check is work for someone (a task); everything else,
+  # including a pass, is context. A check that was not evaluated is neither:
+  # its reason is shown, and it is never a pass.
+  quality_checks:
+    findings_kind: quality_checks
+    source: surveyors/database/quality/run_checks.py:run_quality_checks
+    checks:
+      - Missing_Pct
+      - Required
+      - Required_No_Placeholder
+      - Unique
+      - Future_Date
+      - Min_Date
+      - Row_Ct_Pct
+    destinations:
+      Missing_Pct: {default: context, labels: {fail: task, warning: task}}
+      Required: {default: context, labels: {fail: task, warning: task}}
+      Required_No_Placeholder: {default: context, labels: {fail: task, warning: task}}
+      Unique: {default: context, labels: {fail: task, warning: task}}
+      Future_Date: {default: context, labels: {fail: task, warning: task}}
+      Min_Date: {default: context, labels: {fail: task, warning: task}}
+      Row_Ct_Pct: {default: context, labels: {fail: task, warning: task}}
+
 # Analyses with no per-check decomposition — they answer as a whole, so a
 # question joins to the analysis id directly and there is nothing finer to
 # name. Listed explicitly so "absent from this file" is never ambiguous

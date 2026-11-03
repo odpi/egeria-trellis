@@ -36,7 +36,9 @@ class TestSchemaInventoryTreeRoute:
     def test_no_stored_rows_yet_returns_an_empty_tree_not_a_404(self, client):
         resp = client.get("/api/databases/db/schema-inventory-tree")
         assert resp.status_code == 200
-        assert resp.json() == {"schemas": []}
+        # A2.1: the route also names the surveys it read (none stored here).
+        assert resp.json()["schemas"] == []
+        assert resp.json()["sources"]["chosen"]["schemas"] == 0
 
     def test_a_real_schema_appears_with_its_tables(self, registry, client):
         registry.write_detail_rows("database_tables", "db", "2026-09-27T00:00:00", rows=[

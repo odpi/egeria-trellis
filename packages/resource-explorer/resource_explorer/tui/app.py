@@ -360,9 +360,11 @@ class ProjectExplorerApp(App):
             from resource_explorer.registry import ProjectRegistry
             project = ProjectRegistry().get(slug)
             if project:
-                IncrementalIndexer().refresh(project)
+                result = IncrementalIndexer().refresh(project)
                 QueryCache().invalidate_project(slug)
-                msg = f"Refresh complete for **{slug}**."
+                msg = (f"**{slug}** is not yet indexed; there was nothing of its own to refresh."
+                       if result.value == "not_yet_indexed"
+                       else f"Refresh complete for **{slug}**.")
             else:
                 msg = f"Project **{slug}** not found."
         except Exception as exc:

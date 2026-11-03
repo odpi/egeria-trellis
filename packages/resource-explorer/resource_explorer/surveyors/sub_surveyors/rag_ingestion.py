@@ -48,6 +48,7 @@ from __future__ import annotations
 import logging
 from datetime import datetime
 
+from resource_explorer.index_state import has_own_index, shared_collections
 from resource_explorer.registry import Project, ProjectRegistry
 from resource_explorer.surveyors.base_surveyor import BaseSurveyor
 from resource_explorer.step_outcome import StepOutcome
@@ -108,11 +109,17 @@ class RagIngestionSurveyor(BaseSurveyor):
         except Exception as exc:
             log.warning("RagIngestionSurveyor: vector store unavailable for %s: %s", slug, exc)
 
+        own_index = has_own_index(slug, collections)
+        shared = shared_collections(slug, collections)
+        # A shared collection (web_docs_* and the like) holds another source's chunks. Adding its
+        # count to "this project's chunks" is the bug this branch exists to stop.
+        shared_counts = {c: counts[c] for c in shared if c in counts}
+        counts = {c: n for c, n in counts.items() if c not in shared_counts}
         total_chunks = sum(counts.values())
         properties = {
             **counts,
             "total_chunks": total_chunks,
-            "collections": len(collections),
+            "collections": len(collections) - len(shared),
             "last_commit_sha": self.project.last_commit_sha or "",
             "ingested": ingested,
         }
@@ -120,12 +127,45 @@ class RagIngestionSurveyor(BaseSurveyor):
         try:
             self.registry.upsert_metric(
                 slug, "rag_ingestion",
-                {"total_chunks": total_chunks, "collections": len(collections)},
-                detail={"by_collection": counts},
+                {"total_chunks": total_chunks, "collections": len(collections) - len(shared)},
+                detail={"by_collection": counts, "shared_collections": shared_counts},
                 surveyed_at=self._surveyed_at,
             )
         except Exception as exc:
             log.warning("Could not persist RAG ingestion snapshot for %s: %s", slug, exc)
+
+        if not own_index:
+            # This step refreshes collections the project already has; it cannot make the first
+            # index. A listed collection that is not `{slug}_{type}` (the shared site docs) is not
+            # the repository's own content, so "never indexed" is the honest state, not a count.
+            shared_text = (
+                f" Chat can search the shared collection(s) {', '.join(shared)} (the site "
+                "documentation), not this repository's own content."
+                if shared else ""
+            )
+            return [
+                ResourceMeasureAnnotation(
+                    check_name="rag_ingestion",
+                    summary=("Not indexed for chat (no collections registered)" if not shared
+                             else "Not indexed for chat (only shared collections registered)"),
+                    analysis_step=STEP,
+                    # Nothing was verified about the repository's content: unverified, never 100.
+                    confidence=0,
+                    explanation=(
+                        f"{slug} has no pgvector collection of its own, so Chat and the query "
+                        f"router have nothing to search in the repository itself.{shared_text} "
+                        "This step refreshes existing collections only; the first index is made "
+                        "by registering the repository with ingestion (the CLI wizard) or after "
+                        "a repair."
+                    ),
+                    resource_properties=properties,
+                    json_properties=StepOutcome(
+                        "unverified",
+                        cause="no collection of its own registered; never indexed for chat",
+                        detail={"last_indexed_at": self.project.last_indexed_at or "",
+                                "shared_collections": shared}).as_row(),
+                )
+            ]
 
         if not ingested and not counts:
             return [
@@ -150,7 +190,7 @@ class RagIngestionSurveyor(BaseSurveyor):
             ResourceMeasureAnnotation(
                 check_name="rag_ingestion",
                 summary=(
-                    f"{total_chunks} chunk(s) across {len(collections)} collection(s)"
+                    f"{total_chunks} chunk(s) across {len(collections) - len(shared)} collection(s)"
                     + ("" if ingested else " (from the previous ingestion — refresh failed)")
                 ),
                 analysis_step=STEP,

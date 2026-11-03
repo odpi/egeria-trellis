@@ -13,27 +13,54 @@
 name: resource-explorer
 
 on:
+  # main and open PRs only (owner, 2026-10-27). Until now this fired on a push
+  # to every branch, so each builder push started a ~55 minute run for a sha
+  # that was usually still being worked on; four were queued at once for
+  # branches already inside a local gate batch. Branch work is gated locally
+  # (~/.re-gate/scripts/gate-batch.sh: the same suite in CI mode plus the
+  # render harness); this workflow is the clean-machine check: no live Egeria,
+  # no sign-ins, no local settings. That is what it catches that the gate
+  # cannot (2026-10-27: a test passed every gate because the gate machine's
+  # Egeria answered pyegeria's constructor probe, and failed here).
+  #
+  # Not a merge requirement: main has no branch protection and no rulesets
+  # requiring this check (verified 2026-10-27). The local gate is the bar for
+  # merging; a red run here is read after the fact and fixed on a branch.
+  #
+  # pull_request + push are split as in images.yml: `pull_request` covers
+  # every PR branch, `push` covers main only, so one commit never fires both
+  # (the double-run that removed `pull_request:` on 2026-09-03 came from push
+  # on every branch AND pull_request). A branch with no PR gets no run; use
+  # workflow_dispatch to run one by hand.
+  pull_request:
+    paths-ignore:
+      # Docs-only changes skip the run (owner-approved 2026-10-14).
+      # ONLY paths that nothing reads are listed. Verified by grep 2026-10-14:
+      #   - docs/dr-egeria/** is read at runtime (bootstrap.py, egeria_resync.py,
+      #     survey_definition_docs.py) and by the generator-equality tests: NOT ignored.
+      #   - docs/design-notes/** is NOT ignored: test_design_note_references_resolve.py
+      #     checks every cited note name against the files that exist there, so a
+      #     rename or delete in that directory can turn the suite red.
+      #   - the package README.md and CLAUDE.md are scanned by that same test: NOT ignored.
+      # Nothing else under docs/ is opened by any test, script or source file
+      # (every other mention is a comment or docstring).
+      - "packages/resource-explorer/docs/*.md"
+      - "packages/resource-explorer/docs/archive/**"
+      - "packages/resource-explorer/docs/experiments/**"
   push:
-    # Every branch, not just main and re/**: since 2026-09-10 all work lands
-    # on a branch + PR (main heads the upstream sync PR), and a suite that
-    # runs only on main runs only after merge. That is how a test that timed
-    # out on CI stayed red for 20 consecutive main runs while every branch PR
-    # showed "mergeable" with no test check at all — the fix/ branch carrying
-    # the repair could not run it either. (The earlier re/** entry existed for
-    # the same reason at smaller scale: a workflow that only triggers on main
-    # is untested YAML until the day it is merged.)
-    #
-    # No separate `pull_request:` trigger, deliberately (removed 2026-09-03):
-    # every commit on an open PR from this repo already matches one of the
-    # branches above, so `pull_request:` alongside `push:` fired TWO
-    # independent runs per commit — confirmed directly, same sha producing
-    # both an `event: push` and an `event: pull_request` run, neither aware
-    # of the other. That doubled CI minutes and showed as duplicate/confusing
-    # checks on the PR merge box. This repo has no forks to cover, so `push:`
-    # alone loses no coverage. If forked PRs are ever accepted, `pull_request:`
-    # needs to come back — for a fork, `push:` never fires at all.
-    branches: ["**"]
+    branches: [main]
+    paths-ignore:  # the same list as pull_request's, and the same reasons
+      - "packages/resource-explorer/docs/*.md"
+      - "packages/resource-explorer/docs/archive/**"
+      - "packages/resource-explorer/docs/experiments/**"
   workflow_dispatch:
+
+# One run per ref at a time: a newer push to a branch cancels the superseded
+# run (it burned up to 45 minutes of runner time for a sha nobody will merge).
+# main is never cancelled -- its runs are the record of what merged.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 defaults:
   run:
@@ -45,9 +72,13 @@ jobs:
 
     # GitHub's default is 360 minutes. The first run sat 20+ minutes on a step
     # that takes 5 seconds locally (see the embedding-model cache below), and
-    # would have burned six hours before failing. A suite that takes ~3 minutes
-    # locally has no business running for 30.
-    timeout-minutes: 30
+    # would have burned six hours before failing. The full suite takes ~20-25
+    # minutes on CI when runs do not overlap; 45 left room for parallel runs
+    # while still failing fast on a hung test. Raised to 60 (owner, 2026-10-11):
+    # the suite grew past ~9,600 tests and #594's run was cancelled mid-suite at 45.
+    # Raised to 90 (owner, 2026-10-28): at ~13,300 tests the Full suite step took
+    # 35 min on one run of cd44abbe and was cancelled at 55 min on its re-run.
+    timeout-minutes: 90
 
     services:
       postgres:
@@ -126,16 +157,59 @@ jobs:
           path: ~/.cache/huggingface
           key: hf-all-MiniLM-L6-v2-${{ runner.os }}
 
+      - name: Set up Node
+        # Pinned rather than relying on ubuntu-latest's preinstalled Node
+        # (test_next_renders_text_cross_check.py and friends get away with
+        # that because they only run plain, hookless `node -e`/`--check`).
+        # The render harness below registers a custom ESM loader hook
+        # (`node:module`'s `register()`, frontend-build/test-harness/
+        # static-loader.mjs) -- stable only from Node 20.6, so this pins the
+        # same major version local development already uses for it (see
+        # frontend-build/test-harness/README.md), rather than depending on
+        # whatever ships on the runner image that week.
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install frontend-build JS dependencies
+        # test_tailwind_next_freshness.py and test_tailwind_next_class_
+        # coverage.py need the actual pinned tailwindcss CLI installed at
+        # frontend-build/node_modules/.bin/, which `npm ci` (using the
+        # committed package-lock.json) provides. Without this step both
+        # tests skip/fail here -- the one place a stale tailwind-next.css
+        # must actually be caught, not the one place it silently isn't (see
+        # docs/Backlog.md, "tailwind-next.css has no build-freshness
+        # check"). The same `npm ci` also installs `jsdom`, the render
+        # harness's own dependency (added alongside this step rather than
+        # given its own install, since both live in this same package.json).
+        working-directory: packages/resource-explorer/frontend-build
+        run: npm ci
+
+      - name: Run the /next render harness tests
+        # node+jsdom tests that actually load app.js's real ES module graph
+        # and render it into a real DOM -- distinct from every other JS-
+        # related test in this package (test_next_*.py), which asserts only
+        # against app.js's source TEXT and cannot see whether a SECOND
+        # render (a pane switch, a reload, a filter-then-expand) loses
+        # state a first render had. See frontend-build/test-harness/README.md
+        # and NEXT-RENDER-HARNESS-IMPLEMENTED.md for what
+        # this catches and the red/green verification against the two bugs
+        # it was built for.
+        working-directory: packages/resource-explorer/frontend-build
+        run: npm run test:harness
+
       - name: Create the schema and the vector extension
         run: |
           PGPASSWORD=advisor psql -h localhost -p 5442 -U egeria_advisor -d egeria_advisor \
             -c 'CREATE SCHEMA IF NOT EXISTS resource_explorer;' \
             -c 'CREATE EXTENSION IF NOT EXISTS vector;'
 
-      - name: Confirm the integration tier can actually run
-        # Fails fast and unambiguously if the service is misconfigured, before
-        # 1800 unit tests scroll past and bury the reason.
-        run: uv run pytest tests/ -m requires_pgvector -q --no-header
+      - name: Confirm Postgres is reachable
+        # Fails fast if the service is misconfigured, before thousands of unit
+        # tests scroll past and bury the reason. The requires_pgvector tests
+        # themselves run inside the full suite below (RE_REQUIRE_POSTGRES=1
+        # makes an unreachable DB a hard error there), so they are not run twice.
+        run: PGPASSWORD=advisor psql -h localhost -p 5442 -U egeria_advisor -d egeria_advisor -c 'select 1;'
 
       - name: Full suite
         # -rs prints the reason for every skip in this same run.
@@ -152,4 +226,19 @@ jobs:
         # requires_egeria (22 tests) still has no service here — an Egeria
         # platform is not something a job can stand up — so those stay skipped,
         # and their reasons are now printed by the run that already happened.
-        run: uv run pytest tests/ -q --no-header -rs
+        #
+        # -n auto (pytest-xdist, 2026-10-29): one worker per runner CPU (4 on a
+        # public-repo ubuntu-latest). Serial, this step took 66-69 minutes and
+        # pushed the job past its timeout. Each worker gets its own registry
+        # schema in the service container (tests/conftest.py, _XDIST_WORKER), so
+        # concurrent tests never share one. -rs and --durations report across all
+        # workers as before.
+        run: uv run pytest tests/ -q --no-header -rs --durations=25 -n auto
+
+      - name: Analytic Library tests (trellis-analytics)
+        # Its routines read RE's registry through resolve_node_set, so its tests need resource_explorer installed;
+        # `--with-editable` layers the library on this job's environment without re-syncing it. Its scratch
+        # registries are temp SQLite (ProjectRegistry(db_path=...)), never this job's Postgres.
+        # `[dev]` adds papermill + a kernel for the notebook host; the spec-document test loads the Advisor's
+        # parser by path (it needs only pyegeria + md_processing, not the Advisor's install).
+        run: uv run --with-editable '../trellis-analytics[dev]' pytest ../trellis-analytics/tests -q --no-header -rs

@@ -1,0 +1,127 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;600&amp;family=Lora:wght@400;500&amp;display=swap">
+  <style>
+    :root{
+      --paper:#f3f2f2; --rule:rgba(32,31,29,.16); --rule-strong:#8e8a8a;
+      --ink:#201f1d; --ink-muted:#4a463e;
+      --accent:#b68235; --accent-ink:#7d5411;
+      --ok:#1d6b3f; --warn:#9c4212; --gap:#5b4a9c;
+      --chrome:#1b1a19; --chrome-surface:#2d2b2b; --chrome-line:#444141;
+      --chrome-ink:#f3f2f2; --chrome-muted:#9b9797; --accent-on-dark:#e1ad66; --ok-on-dark:#74c68d;
+      --s1:4.6px; --s2:9.2px; --s3:13.8px; --s4:18.4px; --s6:27.6px;
+      --heading:"Cormorant Garamond",Georgia,serif;
+      --body:"Lora",Georgia,serif;
+      --mono:ui-monospace,"SF Mono",Menlo,monospace;
+    }
+    *{box-sizing:border-box}
+    body{margin:0;font-family:var(--body);background:var(--paper);color:var(--ink);font-size:15px;line-height:1.55}
+    .tnum{font-variant-numeric:tabular-nums}
+    .mono{font-family:var(--mono);font-size:.87em}
+    .caps{font-family:var(--heading);font-weight:600;font-size:12px;letter-spacing:.09em;text-transform:uppercase}
+    .h{font-family:var(--heading);font-weight:600}
+    .muted{color:var(--ink-muted)}
+    .lnk{color:var(--accent-ink);text-decoration:underline;text-underline-offset:3px}
+    .g{font-family:"DejaVu Sans","Apple Symbols","Segoe UI Symbol",sans-serif;font-weight:600;display:inline-block;width:1.3em;text-align:center}
+    .ok{color:var(--ok)} .warn{color:var(--warn)} .gapc{color:var(--gap)}
+    .panel-t{font-family:var(--heading);font-weight:600;font-size:21px;margin:0 0 var(--s1)}
+    .panel-s{font-size:13px;color:var(--ink-muted);margin:0 0 var(--s3);max-width:62ch}
+    /* sidebar, on chrome */
+    .side{background:var(--chrome);color:var(--chrome-ink);width:300px;padding:var(--s3);border-radius:3px;font-size:13px;line-height:1.45}
+    .side .lab{font-family:var(--heading);font-weight:600;font-size:12px;letter-spacing:.09em;text-transform:uppercase;color:var(--chrome-muted);margin:var(--s3) 0 4px}
+    .side .sel{border:1px solid var(--chrome-line);border-radius:2px;padding:3px 6px}
+    .side .row{padding:4px 8px;border-left:2px solid transparent;display:flex;justify-content:space-between;gap:8px}
+    .side .row.on{border-left-color:var(--accent);background:var(--chrome-surface)}
+    .side .n{color:var(--chrome-muted)}
+    .side .fold{color:var(--chrome-muted);padding:4px 8px;text-decoration:underline;text-underline-offset:3px}
+    .side .btn{display:inline-block;border:1px solid var(--accent);color:var(--accent-on-dark);border-radius:2px;padding:1px 7px;font-size:12px;margin:0 4px 4px 0}
+    .side .btn.quiet{border-color:var(--chrome-line);color:var(--chrome-ink)}
+    .side .btn.off{border-style:dashed;color:var(--chrome-muted);border-color:var(--chrome-line)}
+    .side .why{color:var(--chrome-muted);font-size:12px}
+    .side .res{padding:3px 8px;display:flex;gap:6px}
+    .side .res input{margin:0}
+    .note{border-left:2px solid var(--chrome-line);padding-left:8px;margin-top:6px;color:var(--chrome-ink);font-size:12px}
+    /* paper panes */
+    .pane{background:#fff;border:1px solid var(--rule);padding:var(--s4);border-radius:2px}
+    .btn2{display:inline-block;border:1px solid var(--rule-strong);border-radius:2px;padding:1px 8px;font-size:12.5px;margin-right:6px}
+    .btn2.primary{border-color:var(--accent);color:var(--accent-ink)}
+    table.grid{border-collapse:collapse;font-size:13px;width:100%}
+    table.grid th{font-family:var(--heading);font-weight:600;text-align:left;font-size:13px;border-bottom:1px solid var(--rule-strong);padding:4px 8px;vertical-align:bottom}
+    table.grid td{border-bottom:1px solid var(--rule);padding:4px 8px;vertical-align:baseline}
+    table.grid td.c{text-align:center}
+    .tabs{display:flex;gap:var(--s4);border-bottom:1px solid var(--rule);font-size:14px;margin:var(--s2) 0 var(--s2)}
+    .tabs span{padding-bottom:3px}
+    .tabs .on{border-bottom:2px solid var(--accent)}
+    .tabs .zero{color:var(--ink-muted);border-bottom:1px dashed var(--rule-strong)}
+    .call{font-size:12.5px;color:var(--ink-muted);border-left:3px solid var(--gap);padding-left:var(--s2);margin-top:var(--s2);max-width:58ch}
+    .strike{text-decoration:line-through;color:var(--ink-muted)}
+  </style>
+</helmet>
+<style>
+  table.st{border-collapse:collapse;width:100%;font-size:12.5px}
+  table.st th{font-family:var(--heading);font-weight:600;font-size:13px;text-align:left;border-bottom:1px solid var(--rule-strong);padding:4px 6px}
+  table.st td{border-bottom:1px solid var(--rule);padding:5px 6px;vertical-align:baseline}
+  .sch td{background:rgba(32,31,29,.03)}
+  .ind{padding-left:22px!important}
+  .inh{color:var(--ink-muted)}
+  .sub2{font-size:11.5px;color:var(--ink-muted)}
+  .strk{text-decoration:line-through;color:var(--ink-muted)}
+  .man{border:1px solid var(--rule-strong);border-radius:2px;padding:var(--s3);background:#fff;font-size:13.5px}
+  .man li{margin:3px 0}
+</style>
+<div style="width:1500px;padding:var(--s6) var(--s6) 60px">
+  <div style="border-bottom:1px solid var(--rule-strong);padding-bottom:var(--s4)">
+    <div class="caps" style="color:var(--accent-ink)">Curate &middot; what gets catalogued &middot; reply to ASK-DESIGNER-CURATE-CATALOGUE-SCOPE-DATABASES &middot; against main at 45f4671b</div>
+    <h1 class="h" style="font-weight:400;font-size:38px;margin:var(--s3) 0 var(--s2);max-width:56ch">The scope is RE&rsquo;s declared choice; the commit compiles it into Egeria&rsquo;s lever</h1>
+    <p style="max-width:100ch;margin:0">Band 2&rsquo;s first section on a database. Depth first, then the Schema Inventory tree with a choice on the left and a proven state on the right. Proposals come only from measurements; the plain-name filter&rsquo;s limits block the commit before the press, not after. Values illustrative (coco_pharma).</p>
+  </div>
+
+  <div style="display:flex;gap:var(--s6);margin-top:var(--s6);align-items:flex-start">
+    <div style="flex:1;min-width:0">
+      <div class="pane">
+        <div style="display:flex;gap:var(--s2);align-items:baseline"><span class="h" style="font-size:20px">What gets catalogued</span><span class="muted" style="font-size:13px">Your scope: 7 of 29 schemas &middot; declared by dwolfson 10-04 &middot; Egeria&rsquo;s latest survey covers 29 schemas, 266 tables</span></div>
+        <div style="font-size:13.5px;margin:8px 0">Depth &middot; &#9675; the database only &middot; <span class="muted" style="border-bottom:1px dashed var(--rule-strong)">&#9675; schemas</span> <span class="sub2">(Egeria&rsquo;s cataloguer creates tables with their schemas; schemas alone can&rsquo;t be asked for)</span> &middot; <strong>&#9679; tables</strong> &middot; &#9675; tables and columns</div>
+        <table class="st">
+          <tr><th style="width:250px">Choice</th><th>Schema / table</th><th>Tables</th><th>Rows</th><th>Data classes</th><th>Last write</th><th style="width:250px">State in Egeria</th></tr>
+          <tr class="sch"><td>catalogue <span class="sub2">&middot; confirmed by dwolfson 10-04</span></td><td class="mono">coco_sus</td><td class="lnk tnum">30</td><td class="tnum">1.2 M</td><td>PII &middot; 3 columns</td><td>10-03</td><td><span class="g ok">&#10003;</span>catalogued &middot; 30 tables<div class="sub2">element &middot; read back 10-04 09:12</div></td></tr>
+          <tr><td class="ind inh">catalogue (from schema)</td><td class="mono ind">coco_sus.batch_record</td><td></td><td class="tnum">88,410</td><td>&mdash;</td><td>10-03</td><td><span class="g ok">&#10003;</span>catalogued<div class="sub2">RelationalTable &middot; read back 10-04 09:12</div></td></tr>
+          <tr><td class="ind">leave out <span class="sub2">&middot; differs from its schema</span></td><td class="mono ind">coco_sus.import_scratch</td><td></td><td><span class="g">?</span>not established</td><td>&mdash;</td><td>&mdash;</td><td><span class="g warn">&#9888;</span><strong>will be removed from Egeria</strong> on its next refresh<div class="sub2">catalogued 10-01 &middot; nothing hangs off it</div></td></tr>
+          <tr class="sch"><td><span class="g warn">&#9205;</span>proposed: <strong>leave out</strong><div class="sub2">no writes since 2019-06 &middot; <span class="lnk">confirm</span> &middot; <span class="lnk">catalogue instead</span></div></td><td class="mono">archive_2019</td><td class="lnk tnum">14</td><td class="tnum">402 k</td><td>&mdash;</td><td>2019-06</td><td><span class="g ok">&#10003;</span>catalogued &middot; 14 tables<div class="sub2">if you confirm: <strong style="color:var(--ink)">removed from Egeria</strong> on its next refresh &middot; 2 glossary-term assignments and 1 lineage mapping hang off them</div></td></tr>
+          <tr class="sch"><td>leave out <span class="sub2">&middot; confirmed 10-04</span><div class="sub2">survey now disagrees: confirmed at 0 tables; it now has 4 (10-09) &middot; <span class="lnk">reconsider</span></div></td><td class="mono">public</td><td class="lnk tnum">4</td><td class="tnum">12</td><td>&mdash;</td><td>10-09</td><td>left out</td></tr>
+          <tr class="sch"><td>catalogue</td><td class="mono">us_sales</td><td class="lnk tnum">1</td><td class="tnum">9,204</td><td>&mdash;</td><td>10-02</td><td><span class="g">&#9684;</span>attached &middot; waiting for Egeria&rsquo;s next refresh<div class="sub2">last cycle 09:05</div></td></tr>
+          <tr><td class="ind"><span class="g">&#9888;</span><strong>needs a person</strong><div class="sub2"><span class="mono">orders</span> is chosen differently in us_sales and eu_sales; Egeria&rsquo;s filter can&rsquo;t tell them apart &middot; <span class="lnk">catalogue both</span> &middot; <span class="lnk">leave both out</span></div></td><td class="mono ind">us_sales.orders</td><td></td><td class="tnum">9,204</td><td>&mdash;</td><td>10-02</td><td>&mdash;</td></tr>
+          <tr class="sch"><td class="inh">undecided <span class="sub2">&middot; left out at commit</span></td><td class="mono">demo_auth</td><td class="lnk tnum">4</td><td class="tnum">31</td><td>PII &middot; 2 columns</td><td>09-11</td><td>left out</td></tr>
+          <tr class="sch"><td class="muted" colspan="7">system schemas &middot; 2 &middot; not offered: system schemas are never catalogued</td></tr>
+        </table>
+      </div>
+    </div>
+
+    <div style="width:430px">
+      <p class="panel-t">The manifest, above the button</p>
+      <p class="panel-s">The difference this commit makes, then the three mechanisms in the order they run, each saying what it will do to this scope.</p>
+      <div class="man">
+        <div><strong>This commit:</strong> 3 tables added &middot; <span class="warn">1 table will be removed from Egeria</span> (coco_sus.import_scratch, left out 10-04) &middot; 4 tables undecided, not catalogued &middot; 1 proposal awaiting you would remove 14 more</div>
+        <ol style="padding-left:18px;margin:var(--s2) 0">
+          <li><strong>RE publishes</strong> the server and database assets, a survey report, 640 annotations.</li>
+          <li><strong>Egeria&rsquo;s cataloguer creates</strong> 6 schemas, 121 tables. Attaches the database as a catalog target with your scope as its lists; the elements arrive on the daemon&rsquo;s next refresh, not now.</li>
+          <li><strong>Egeria&rsquo;s survey measures</strong> every non-system schema, table and column. Its scope can&rsquo;t be limited, so it measures what you left out too.</li>
+        </ol>
+        <div class="muted" style="font-size:12.5px">Carries from Context: licence (observed). <strong style="color:var(--ink)">Not carried:</strong> owner &mdash; not declared on Context &middot; <span class="lnk">declare it &rsaquo;</span></div>
+        <div class="muted" style="font-size:12.5px;margin-top:4px">Joins the deployment&rsquo;s publish zones: <span class="mono">coco-governed</span></div>
+        <div style="margin-top:var(--s3)"><span class="btn2 muted" style="border-style:dashed">Catalogue &middot; removes 1 from Egeria</span></div>
+        <div class="sub2" style="margin-top:4px">disabled: 1 choice Egeria can&rsquo;t express &mdash; resolve it above</div>
+      </div>
+      <div class="call">Proposals only from measurements: 0 tables, no writes since, a lens match. PII is a mark, not a proposal; a staging-like name is a note. A verdict gates the commit (tracking, using) and proposes nothing.</div>
+    </div>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>

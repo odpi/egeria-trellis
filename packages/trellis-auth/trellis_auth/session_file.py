@@ -94,6 +94,34 @@ class SessionRecord:
             return None
         return datetime.fromtimestamp(self.expires_at, timezone.utc).astimezone()
 
+    @property
+    def egeria_expires_at(self) -> Optional[int]:
+        """The `exp` of the Egeria bearer token inside the app JWT, or None when it has none.
+
+        `expires_at` is the *app* JWT's bound, and `create_access_token` falls back
+        to the app's own TTL (8 hours in RE) when the Egeria token carries no
+        readable `exp`. Then `expires_at` is our cap, not Egeria's word, and a
+        message saying "signed in until <expires_at>" would vouch for a token
+        nobody has dated (2026-10-20: "valid until 05:11" over a token Egeria
+        refused). Check this before presenting `expires_at` as the session's end.
+
+        Read unverified, like `_token_expiry`: a display question, not an
+        authentication decision.
+        """
+        from trellis_auth.auth import egeria_token_expiry
+
+        try:
+            claims = jwt.decode(self.token, options={"verify_signature": False})
+        except jwt.PyJWTError:
+            return None
+        egeria_token = claims.get("egeria_token")
+        return egeria_token_expiry(egeria_token) if isinstance(egeria_token, str) else None
+
+    @property
+    def egeria_expiry_known(self) -> bool:
+        """True when the session's end comes from the Egeria token's own `exp`."""
+        return self.egeria_expires_at is not None
+
     def to_dict(self) -> Dict[str, Any]:
         return {
             "app": self.app_name,

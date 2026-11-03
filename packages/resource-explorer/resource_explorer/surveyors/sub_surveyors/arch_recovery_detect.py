@@ -36,6 +36,28 @@ log = logging.getLogger(__name__)
 STEP = "ArchitectureDetect"
 
 
+def _admission_left_out(referenced: list, notes: list[str], census) -> list[str]:
+    """The lines of what the detectors found and did not admit (the blueprint manifest's "left out, said")."""
+    import re
+    lines = []
+    if referenced:
+        lines.append(f"{len(referenced)} service{'' if len(referenced) == 1 else 's'} referenced only · "
+                     f"listed as runtime dependencies")
+    docker_only = sum(1 for n in notes if "Dockerfile present but no first-party code" in n)
+    if docker_only:
+        lines.append(f"{docker_only} director{'y' if docker_only == 1 else 'ies'} with Dockerfiles but no "
+                     f"first-party source · treated as build contexts, not admitted")
+    for n in notes:
+        m = re.match(r"(\d+) compose service\(s\) under test or example directories", n)
+        if m:
+            lines.append(f"{m.group(1)} compose service{'' if m.group(1) == '1' else 's'} under test or "
+                         f"example directories · fixtures, never components")
+    if census.excluded_by_rule:
+        worst = ", ".join(f"{r} ({n})" for r, n in census.excluded_by_rule.most_common(3))
+        lines.append(f"excluded as vendored or cache: {worst}")
+    return lines
+
+
 class ArchDetectSurveyor(BaseSurveyor):
     def __init__(
         self,
@@ -136,7 +158,23 @@ class ArchDetectSurveyor(BaseSurveyor):
             if self._scope_locator:
                 first_party = [f for f in first_party if path_matches_scope(f, self._scope_locator)]
 
-            components, evidence, notes, code_marker_operations = build_components(root, first_party)
+            census_info: dict = {}
+            components, evidence, notes, code_marker_operations = build_components(root, first_party, all_files=census.first_party,
+                                                                                       census_info=census_info)
+
+            # Whose boundary is each node (DESIGN-BLUEPRINT-NODE-ADMISSION.md)? A person's earlier
+            # reclassifications are honoured first; then the services running images this repository
+            # neither builds nor publishes are taken out of the components. They are not dropped: they are
+            # persisted as the not-admitted record and listed as runtime dependencies.
+            from resource_explorer import node_admission
+            from resource_explorer.surveyors.arch_recovery import admission as _adm
+            node_admission.apply_to_components(
+                components, node_admission.read_reclassifications(self.registry, self.project.slug))
+            components, referenced = _adm.split(components)
+            # The published-image list is read from the whole census (build_components), never from the
+            # files this run was handed, so it is the same list on a full run and a scoped one.
+            admission_published = sorted(census_info.get("published", {}))
+            left_out = _admission_left_out(referenced, notes, census)
 
             # Unlike coupling, detect has three independent ways to find a
             # component — package manifests, Dockerfile/compose deployment
@@ -153,7 +191,8 @@ class ArchDetectSurveyor(BaseSurveyor):
                     or node_manifests(root, first_party)
                     or gradle_modules(root, first_party)
                 )
-                has_deployment_unit = any(u != "." for u in deployment_units(root, first_party))
+                has_deployment_unit = bool(referenced) or any(
+                    u != "." for u in deployment_units(root, first_party))
                 present_langs = imports.languages_present(first_party)
                 has_marker_language = bool(set(present_langs) & code_markers.marker_languages())
                 if has_manifest or has_deployment_unit or has_marker_language:
@@ -255,6 +294,11 @@ class ArchDetectSurveyor(BaseSurveyor):
                 run_scope=self._scope_locator, outcome=detect_outcome,
                 ports=ports, wires=wires, notes=notes,
             )
+            if not self._scope_locator:
+                # A scoped run saw part of the repository; it must not replace the whole-repository record.
+                from resource_explorer.surveyors.arch_recovery.persist import persist_admission
+                persist_admission(self.registry, self.project.slug, referenced, left_out, admission_published,
+                                  len(components), self._surveyed_at)
 
             by_type: dict[str, int] = {}
             for c in components:
@@ -271,6 +315,8 @@ class ArchDetectSurveyor(BaseSurveyor):
                     f"code-marker-supported language found; this repo's first-party "
                     f"files are {langs}"
                 )
+            elif referenced:
+                summary = _adm.ZERO_COMPONENT_SENTENCE
             else:
                 summary = "No components detected from manifests, deployment units, or code markers"
             results.append(ResourceMeasureAnnotation(

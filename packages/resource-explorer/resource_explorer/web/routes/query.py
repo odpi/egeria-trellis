@@ -4,6 +4,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+import logging
 import time
 from collections.abc import AsyncIterator
 
@@ -12,6 +13,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field
 
 router = APIRouter()
+log = logging.getLogger(__name__)
 
 # ── session store ──────────────────────────────────────────────────────────────
 # Maps session_id → (ConversationAgent, last_used_timestamp)
@@ -62,19 +64,33 @@ def _get_or_create_session(session_id: str, resource_slug: str | None,
     return agent
 
 
+def _ephemeral_session(resource_slug: str | None, resource_type: str | None = None):
+    """A one-request ConversationAgent for a caller that sent no session_id.
+
+    It has every tool the stored sessions have. It is not put in `_sessions` and its turns are not
+    persisted: with no session_id there is no conversation to resume, and writing history rows under
+    an invented id would leave unreachable rows behind.
+    """
+    from resource_explorer.agents.conversation_agent import ConversationAgent
+
+    return ConversationAgent(resource_slug=resource_slug, resource_type=resource_type or "repo")
+
+
 def _persist_turn(
     session_id: str, query: str, response: str, resource_slug: str | None,
     compile_id: str | None = None,
-) -> None:
+) -> int | None:
     """Both turns of an exchange, each pointing at the compile that shaped the
-    answer (None when nothing was compiled — see registry's column comment)."""
+    answer (None when nothing was compiled — see registry's column comment).
+    Returns the assistant row's id, the exchange's identity (a journal entry is
+    derived from the stored exchange by this id), or None when nothing was stored."""
     try:
         from resource_explorer.registry import ProjectRegistry
         registry = ProjectRegistry()
         registry.append_turn(session_id, "user", query, resource_slug, compile_id=compile_id)
-        registry.append_turn(session_id, "assistant", response, resource_slug, compile_id=compile_id)
+        return registry.append_turn(session_id, "assistant", response, resource_slug, compile_id=compile_id)
     except Exception:
-        pass
+        return None
 
 
 def _compile_id_of(agent) -> str | None:
@@ -100,10 +116,17 @@ class QueryRequest(BaseModel):
     #: chat question pulls that type's own catalog and analyses instead of
     #: always compiling against repo's.
     entity_type: str = "repo"
+    #: True when the person has already answered "this question names another
+    #: resource": they chose to keep the scoped one. The stream then skips the
+    #: names-another-resource check and answers on the scope as asked.
+    skip_resource_check: bool = False
     #: Active Perspective chips. Empty means no perspective filter, which is a
     #: real state and not a missing value -- the compile still runs.
     perspectives: list[str] = []
     session_id: str | None = None  # browser-generated UUID for cross-turn memory
+    #: The slug of the investigation open on the rail, if any. Only the chat's journal tool reads it ("save this to
+    #: the journal" writes to THIS investigation); it never changes how a question is answered.
+    investigation: str | None = None
 
 
 class QueryResponse(BaseModel):
@@ -118,6 +141,17 @@ class QueryResponse(BaseModel):
     #: fewer for the frontend to special-case. None when there was no
     #: resource in scope, or the compile itself produced nothing.
     compiled: dict | None = None
+    disambiguation_chips: list[dict] | None = None
+    #: What the answer was read from when no compile is behind it (BaseExplorerAgent._answered_from), e.g. the
+    #: stored dependency list of the resource it is asked on. None otherwise.
+    answered_from: dict | None = None
+    #: Set when the answer is the journal tool's "Add this turn?" question: the turn it would add, for the pane
+    #: to draw [Add] [Not now] against.
+    journal_proposal: dict | None = None
+    #: The stored exchange this answer is (the assistant row id), for the pane's per-turn journal control; None when
+    #: the turn was not stored (no session). `journal_written`: earlier exchanges the chat's journal tool just added.
+    exchange_id: int | None = None
+    journal_written: list[int] = []
 
 
 def _compiled_payload(agent) -> dict | None:
@@ -201,10 +235,9 @@ def _pick_chart(query: str, intent: str, resource_slug: str) -> dict | None:
 async def ask(request: QueryRequest) -> QueryResponse:
     """POST a question, get a response.
 
-    Both branches below are synchronous, potentially-slow code
-    (ConversationAgent.handle / RAGSystem.query, each of which can run
-    LLM calls and tool calls, including a Postgres vector_search) — they
-    run off the event loop via asyncio.to_thread, never awaited directly
+    ConversationAgent.handle is synchronous, potentially-slow code (LLM calls
+    and tool calls, including a Postgres vector_search) — it
+    runs off the event loop via asyncio.to_thread, never awaited directly
     on it. Before 2026-09-13 they were called straight from this `async
     def`, which is exactly how a single stuck vector_search connect froze
     every request the :8810 process was serving: this coroutine runs on
@@ -215,29 +248,39 @@ async def ask(request: QueryRequest) -> QueryResponse:
     intent = QueryProcessor().classify(request.query)
     query_hash = hashlib.sha256(request.query.encode()).hexdigest()[:16]
 
-    compiled = None
     if request.session_id:
         agent = _get_or_create_session(request.session_id, request.resource_slug,
                                         request.entity_type)
-        response = await asyncio.to_thread(
-            agent.handle, request.query, resource_slug=request.resource_slug,
-            resource_type=request.entity_type, perspectives=request.perspectives,
-        )
-        _persist_turn(request.session_id, request.query, response, request.resource_slug)
-        compiled = _compiled_payload(agent)
     else:
-        from resource_explorer.rag_system import RAGSystem
-        response = await asyncio.to_thread(
-            RAGSystem().query, request.query, resource_slug=request.resource_slug,
-        )
+        agent = _ephemeral_session(request.resource_slug, request.entity_type)
+    agent.investigation = request.investigation
+    response = await asyncio.to_thread(
+        agent.handle, request.query, resource_slug=request.resource_slug,
+        resource_type=request.entity_type, perspectives=request.perspectives,
+    )
+    exchange_id = None
+    if request.session_id:
+        exchange_id = _persist_turn(request.session_id, request.query, response, request.resource_slug,
+                                    compile_id=_compile_id_of(agent))
+    compiled = _compiled_payload(agent)
 
     chart = _pick_chart(request.query, intent.value, request.resource_slug or "")
+    chips = None
+    answered_from = getattr(agent, "_answered_from", None)
+    if intent.value in ("comparison", "integration") and not answered_from:
+        chips = _disambiguation_chips(request.query, request.resource_slug or request.database_slug)
+
     return QueryResponse(
         response=response,
         intent=intent.value,
         query_hash=query_hash,
         chart=chart,
         compiled=compiled,
+        disambiguation_chips=chips,
+        answered_from=answered_from,
+        journal_proposal=getattr(agent, "_journal_proposal", None),
+        exchange_id=exchange_id,
+        journal_written=getattr(agent, "_journal_written", None) or [],
     )
 
 
@@ -253,7 +296,7 @@ async def stream(request: QueryRequest) -> StreamingResponse:
         POST /api/context/compile's response, sourced from the same compile
         ConversationAgent._compiled_evidence already did to shape this
         answer -- None when there was no resource in scope, or nothing
-        compiled (the RAGSystem fallback path, no session_id).
+        compiled. A request with no session_id runs a fresh ConversationAgent whose turns are not stored.
     """
     def _sse(obj: dict) -> str:
         return f"data: {json.dumps(obj)}\n\n"
@@ -261,28 +304,53 @@ async def stream(request: QueryRequest) -> StreamingResponse:
     async def _generate() -> AsyncIterator[str]:
         loop = asyncio.get_event_loop()
 
+        # A scoped question that names a DIFFERENT resource is held, not answered:
+        # an LLM answer about the scoped resource would be the wrong answer, and
+        # switching silently would be a different wrong one. The person chooses.
+        checked: dict | None = None
+        if request.resource_slug and not request.skip_resource_check:
+            checked = await asyncio.to_thread(
+                _named_resource_check, request.query, request.resource_slug)
+            if checked and ("resource_question" in checked or "alias_suggestion" in checked):
+                if "resource_question" in checked:
+                    rq = checked["resource_question"]
+                    held_text = (f"This question names {rq['named_name']}, but this chat is on "
+                                 f"{rq['scoped_slug']}. Choose which one to ask about.")
+                else:
+                    a = checked["alias_suggestion"]
+                    held_text = (f"“{a['term']}” is not a known name. Did you mean {a['candidate_name']}? "
+                                 f"This chat is on {a['scoped_slug']}.")
+                yield _sse({"t": "chunk", "v": held_text})
+                yield _sse({"t": "done", "intent": "", "hash": "", "cached": False, "chart": None,
+                            "compiled": None, "compile_id": None, "held": True, **checked})
+                return
+
         queue: asyncio.Queue = asyncio.Queue()
 
         def _producer() -> None:
             try:
+                from resource_explorer.query_processor import QueryProcessor
+                intent = QueryProcessor().classify(request.query).value
                 if request.session_id:
-                    from resource_explorer.query_processor import QueryProcessor
-                    intent = QueryProcessor().classify(request.query).value
                     agent = _get_or_create_session(request.session_id, request.resource_slug,
                                                     request.entity_type)
-                    text = agent.handle(request.query, resource_slug=request.resource_slug,
-                                        resource_type=request.entity_type,
-                                        perspectives=request.perspectives)
-                    compiled = _compiled_payload(agent)
-                    _persist_turn(request.session_id, request.query, text, request.resource_slug,
-                                  compile_id=_compile_id_of(agent))
-                    loop.call_soon_threadsafe(queue.put_nowait, text)
-                    loop.call_soon_threadsafe(queue.put_nowait, {"_done": True, "intent": intent, "hash": hashlib.sha256(request.query.encode()).hexdigest()[:16], "cached": False, "compiled": compiled})
                 else:
-                    from resource_explorer.rag_system import RAGSystem
-                    rag = RAGSystem()
-                    for item in rag.stream(request.query, resource_slug=request.resource_slug):
-                        loop.call_soon_threadsafe(queue.put_nowait, item)
+                    agent = _ephemeral_session(request.resource_slug, request.entity_type)
+                agent.investigation = request.investigation
+                text = agent.handle(request.query, resource_slug=request.resource_slug,
+                                    resource_type=request.entity_type,
+                                    perspectives=request.perspectives)
+                compiled = _compiled_payload(agent)
+                exchange_id = None
+                if request.session_id:
+                    exchange_id = _persist_turn(request.session_id, request.query, text, request.resource_slug,
+                                                compile_id=_compile_id_of(agent))
+                loop.call_soon_threadsafe(queue.put_nowait, text)
+                loop.call_soon_threadsafe(queue.put_nowait, {"_done": True, "intent": intent, "hash": hashlib.sha256(request.query.encode()).hexdigest()[:16], "cached": False, "compiled": compiled,
+                                                                  "journal_proposal": getattr(agent, "_journal_proposal", None),
+                                                                  "exchange_id": exchange_id,
+                                                                  "journal_written": getattr(agent, "_journal_written", None) or [],
+                                                                  "answered_from": getattr(agent, "_answered_from", None)})
             finally:
                 loop.call_soon_threadsafe(queue.put_nowait, None)  # sentinel
 
@@ -322,6 +390,22 @@ async def stream(request: QueryRequest) -> StreamingResponse:
                 # Side-by-side symbol comparison for comparison queries about API surface
                 if intent_val == "comparison":
                     done["compare_symbols"] = _compare_symbols_table(request.query)
+                if item.get("answered_from"):
+                    done["answered_from"] = item["answered_from"]
+                # Disambiguation chips for cross-resource queries with missing or ambiguous targets. Not when the
+                # answer was read from the scoped resource's own dependency list: the second name was a dependency.
+                if intent_val in ("comparison", "integration") and not item.get("answered_from"):
+                    chips = _disambiguation_chips(request.query, request.resource_slug or request.database_slug)
+                    if chips:
+                        done["disambiguation_chips"] = chips
+                if item.get("journal_proposal"):
+                    done["journal_proposal"] = item["journal_proposal"]
+                if item.get("exchange_id") is not None:
+                    done["exchange_id"] = item["exchange_id"]
+                if item.get("journal_written"):
+                    done["journal_written"] = item["journal_written"]
+                if checked and "resource_check_error" in checked:
+                    done["resource_check_error"] = checked["resource_check_error"]
                 # Suggest an alias when no project was resolved but a fuzzy match exists
                 if not request.resource_slug:
                     alias_hint = _fuzzy_alias_suggestion(request.query)
@@ -351,7 +435,6 @@ def _code_inventory_table(query: str, resource_slug: str) -> dict | None:
     Extracts kind hint from query, returns top 30 matching symbols.
     """
     import re
-    import sqlite3
     try:
         from resource_explorer.registry import ProjectRegistry
         registry = ProjectRegistry()
@@ -370,27 +453,25 @@ def _code_inventory_table(query: str, resource_slug: str) -> dict | None:
         if m:
             pattern = m.group(1)
 
-        conn = sqlite3.connect(registry.db_path)
-        conn.row_factory = sqlite3.Row
         filters = ["project_slug = ?"]
         params: list = [slug]
         if kind != "all":
             filters.append("kind = ?")
             params.append(kind)
         if pattern:
-            filters.append("name LIKE ?")
-            params.append(f"%{pattern}%")
+            filters.append("LOWER(name) LIKE ?")
+            params.append(f"%{pattern.lower()}%")
         where = " AND ".join(filters)
-        rows = conn.execute(
-            f"SELECT kind, name, qualified_name, signature, docstring, file_path, start_line "  # noqa: S608
-            f"FROM project_code_symbols WHERE {where} ORDER BY file_path, start_line LIMIT 30",
-            params,
-        ).fetchall()
-        total = conn.execute(
-            f"SELECT COUNT(*) FROM project_code_symbols WHERE {where}",  # noqa: S608
-            params,
-        ).fetchone()[0]
-        conn.close()
+        with registry._conn() as conn:
+            rows = conn.execute(
+                f"SELECT kind, name, qualified_name, signature, docstring, file_path, start_line "  # noqa: S608
+                f"FROM project_code_symbols WHERE {where} ORDER BY file_path, start_line LIMIT 30",
+                params,
+            ).fetchall()
+            total = conn.execute(
+                f"SELECT COUNT(*) FROM project_code_symbols WHERE {where}",  # noqa: S608
+                params,
+            ).fetchone()[0]
 
         if not rows:
             return None
@@ -421,7 +502,6 @@ def _compare_symbols_table(query: str) -> dict | None:
     projects have symbol data or the query isn't about code structure.
     """
     import re
-    import sqlite3
 
     _SYMBOL_KEYWORDS = ("class", "method", "function", "interface", "api surface", "symbol", "public")
     q = query.lower()
@@ -443,52 +523,48 @@ def _compare_symbols_table(query: str) -> dict | None:
         if len(slugs) < 2:
             return None
 
-        conn = sqlite3.connect(registry.db_path)
-        conn.row_factory = sqlite3.Row
-
         sides = []
-        for slug in slugs[:2]:
-            filters = ["project_slug = ?"]
-            params: list = [slug]
-            if kind != "all":
-                filters.append("kind = ?")
-                params.append(kind)
-            where = " AND ".join(filters)
+        with registry._conn() as conn:
+            for slug in slugs[:2]:
+                filters = ["project_slug = ?"]
+                params: list = [slug]
+                if kind != "all":
+                    filters.append("kind = ?")
+                    params.append(kind)
+                where = " AND ".join(filters)
 
-            counts_rows = conn.execute(
-                f"SELECT kind, COUNT(*) as cnt FROM project_code_symbols WHERE {where} GROUP BY kind",  # noqa: S608
-                params,
-            ).fetchall()
-            counts = {r["kind"]: r["cnt"] for r in counts_rows}
+                counts_rows = conn.execute(
+                    f"SELECT kind, COUNT(*) as cnt FROM project_code_symbols WHERE {where} GROUP BY kind",  # noqa: S608
+                    params,
+                ).fetchall()
+                counts = {r["kind"]: r["cnt"] for r in counts_rows}
 
-            items_rows = conn.execute(
-                f"SELECT kind, qualified_name, signature, docstring, file_path, start_line "  # noqa: S608
-                f"FROM project_code_symbols WHERE {where} ORDER BY kind, file_path, start_line LIMIT 20",
-                params,
-            ).fetchall()
-            total = conn.execute(
-                f"SELECT COUNT(*) FROM project_code_symbols WHERE {where}",  # noqa: S608
-                params,
-            ).fetchone()[0]
+                items_rows = conn.execute(
+                    f"SELECT kind, qualified_name, signature, docstring, file_path, start_line "  # noqa: S608
+                    f"FROM project_code_symbols WHERE {where} ORDER BY kind, file_path, start_line LIMIT 20",
+                    params,
+                ).fetchall()
+                total = conn.execute(
+                    f"SELECT COUNT(*) FROM project_code_symbols WHERE {where}",  # noqa: S608
+                    params,
+                ).fetchone()[0]
 
-            sides.append({
-                "slug": slug,
-                "total": total,
-                "counts": counts,
-                "items": [
-                    {
-                        "kind": r["kind"],
-                        "name": r["qualified_name"],
-                        "signature": r["signature"] or "",
-                        "doc": (r["docstring"] or "")[:80],
-                        "file": r["file_path"],
-                        "line": r["start_line"],
-                    }
-                    for r in items_rows
-                ],
-            })
-
-        conn.close()
+                sides.append({
+                    "slug": slug,
+                    "total": total,
+                    "counts": counts,
+                    "items": [
+                        {
+                            "kind": r["kind"],
+                            "name": r["qualified_name"],
+                            "signature": r["signature"] or "",
+                            "doc": (r["docstring"] or "")[:80],
+                            "file": r["file_path"],
+                            "line": r["start_line"],
+                        }
+                        for r in items_rows
+                    ],
+                })
 
         if not any(s["total"] > 0 for s in sides):
             return None
@@ -496,6 +572,79 @@ def _compare_symbols_table(query: str) -> dict | None:
         return {"kind": kind, "sides": sides}
     except Exception:
         return None
+
+
+class _NameProbe:
+    """Built lazily: BaseExplorerAgent pulls in the agent stack, and the
+    detection reuses its matcher (`_infer_all_project_slugs`) rather than a
+    second one. That matcher already covers repos, databases and file systems,
+    then falls back to the alias table."""
+
+    @staticmethod
+    def make():
+        from resource_explorer.agents.base import BaseExplorerAgent
+
+        class _Probe(BaseExplorerAgent):
+            def system_prompt(self): return ""
+            def tools(self): return []
+            def handle(self, *a, **kw): return ""
+        return _Probe()
+
+
+def _resource_identity(registry, slug: str) -> tuple[str, str]:
+    """(display_name, type) for a slug in any of the three resource tables."""
+    p = registry.get(slug)
+    if p:
+        return (p.display_name or slug), "repo"
+    d = registry.get_database(slug, allow_unreadable=True)
+    if d:
+        return (d.display_name or slug), "database"
+    f = registry.get_filesystem(slug)
+    if f:
+        return (f.display_name or slug), "filesystem"
+    return slug, "repo"
+
+
+def _named_resource_check(query: str, scoped_slug: str) -> dict | None:
+    """For a question asked ON a resource: does it name a different one?
+
+    Returns one of
+      {"resource_question": {kind: "other_resource", named_slug, named_name, named_type, scoped_slug}}
+        -- the question exactly names a known resource (slug, alias or display name)
+           that is not the scoped one;
+      {"alias_suggestion": {term, candidate_slug, candidate_name, candidate_type, scoped_slug}}
+        -- it names nothing known but a phrase fuzzy-matches a resource that is not the scoped one;
+      {"resource_check_error": "<why>"}
+        -- the check itself failed (logged, and surfaced to the person rather than read as "names nothing");
+      None -- it names nothing, or names the scoped resource.
+    """
+    try:
+        from resource_explorer.registry import ProjectRegistry
+
+        registry = ProjectRegistry()
+        scoped = registry._normalize_slug(scoped_slug)
+        named = _NameProbe.make()._infer_all_project_slugs(query)
+        if named:
+            if scoped in named:
+                return None
+            name, kind = _resource_identity(registry, named[0])
+            return {"resource_question": {
+                "kind": "other_resource", "named_slug": named[0], "named_name": name,
+                "named_type": kind, "scoped_slug": scoped,
+            }}
+        # Short words match too loosely against a name once every question is scoped.
+        result = registry.fuzzy_candidate(query, exclude_slug=scoped, min_term_len=5)
+        if not result:
+            return None
+        term, slug = result
+        name, kind = _resource_identity(registry, slug)
+        return {"alias_suggestion": {
+            "term": term, "candidate_slug": slug, "candidate_name": name,
+            "candidate_type": kind, "scoped_slug": scoped,
+        }}
+    except Exception as exc:
+        log.warning("resource-name check failed for scope %r: %s", scoped_slug, exc, exc_info=True)
+        return {"resource_check_error": f"{type(exc).__name__}: {exc}"}
 
 
 def _fuzzy_alias_suggestion(query: str) -> dict | None:
@@ -525,5 +674,25 @@ def _fuzzy_alias_suggestion(query: str) -> dict | None:
             "candidate_slug": slug,
             "candidate_name": project.display_name if project else slug,
         }
-    except Exception:
+    except Exception as exc:
+        # Observable, not swallowed: a registry error here used to read as "nothing to suggest".
+        log.warning("alias suggestion failed: %s", exc, exc_info=True)
+        return None
+
+
+def _disambiguation_chips(query: str, scope_slug: str | None = None) -> list[dict] | None:
+    """Candidate resource chips when a cross-resource question names fewer than 2 resources.
+
+    The agents infer their targets from the question text alone, so the resource open in the UI
+    does not count as named -- it is only ranked first.
+    """
+    try:
+        from resource_explorer.resource_chips import candidate_chips
+
+        named = _NameProbe.make()._infer_all_project_slugs(query)
+        if len(named) >= 2:
+            return None
+        return candidate_chips(query, named, scope_slug) or None
+    except Exception as exc:
+        log.warning("disambiguation chips lookup failed: %s", exc, exc_info=True)
         return None

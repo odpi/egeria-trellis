@@ -25,12 +25,17 @@
     "repaired both affected terms. All 41 now resolve. The canary below is the document's last",
     "term, which is the strongest completion signal available.",
     "",
+    "2026-10-22: the canary is Q-0095's term, no longer the document's last. The old canary (Q-0042) was retired and is",
+    "no longer in the document, and the document's last terms are new (Q-0098 onward) and not yet in Egeria: a canary on",
+    "one of them would read the batch as missing and make a restart re-run it before the cleared Egeria update. Q-0095's",
+    "text is unchanged and long established. Move the canary to the document's last term once that update has run.",
+    "",
     "Terms are generated from ../resource_questions.csv (the source of truth) via",
     "scripts/csv_to_dr_egeria_questions.py \u2014 edit the CSV and regenerate, don't hand-edit the md."
   ],
   "display_name": "Resource questions (scouting stage)",
   "canary": {
-    "display_name": "Is there a Survey Definition authored for this resource's technology type at all, or is that a catalog gap?"
+    "display_name": "Does this filesystem contain recognizable tabular or structured data files, and what do their schemas look like?"
   },
   "files": [
     "scouting-questions.md"

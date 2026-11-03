@@ -66,6 +66,9 @@ intent_patterns:
       - '(can|does|will) .+ (work|integrate|connect|talk) (with|to|alongside)'
       - '(together|in tandem)'
       - '(interop|integration).+(between|of)'
+      # "relationship between X and Y" / "how are X and Y related": integration, not comparison (owner, 2026-10-25)
+      - 'relation(ship)?s? (between|of) .+ (and|with|to) '
+      - '(how|in what way) (is|are) .+ related'
 
   comparison:
     priority: HIGH

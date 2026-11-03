@@ -7,7 +7,7 @@
     the shared dev Egeria platform that other Claude Code sessions on this
     machine also use for real work. Per this project's `coordinate-shared-
     writes` discipline (see the skill of that name, and
-    `docs/design-notes/PLAN-EXECUTION-MODES-VERIFICATION.md` phase 4), running
+    `PLAN-EXECUTION-MODES-VERIFICATION.md` phase 4), running
     any test that pulls in `live_egeria_write_target` (or any other fixture
     below) is NOT something you get to do unilaterally, even though the
     elements created are thrown away within the same test:
@@ -55,6 +55,7 @@ possible failure mode, in the same spirit as the note in
 from __future__ import annotations
 
 import logging
+import os
 import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -103,6 +104,9 @@ class LiveEgeriaWriteTarget:
     database_qualified_name: str
     filesystem_guid: str
     filesystem_qualified_name: str
+    #: RE_LIVE_EGERIA_WRITES_CLEARED at the time of the write: who cleared it
+    #: and the peer round it names. Copied into every live write's test report.
+    cleared_by: str = ""
 
 
 def _connect():
@@ -217,6 +221,17 @@ def live_egeria_write_target(request):
     if not cfg.platform_url:
         pytest.skip("EGERIA_PLATFORM_URL is not configured")
 
+    # Defense in depth, like the platform_url check: the marker skip is the
+    # primary gate, but a fixture reached some other way must not write
+    # without the clearance that names the peer round.
+    from tests.live_egeria_tier import CLEARED_ENV, WRITES_CLEARANCE_REASON
+    cleared_by = os.environ.get(CLEARED_ENV, "").strip()
+    if not cleared_by:
+        pytest.skip(WRITES_CLEARANCE_REASON)
+    # Into the junit/report properties and onto the terminal report.
+    request.node.user_properties.append(("live_egeria_writes_cleared_by", cleared_by))
+    print(f"live Egeria write: cleared by {cleared_by}")
+
     automated_curation, asset_maker = _connect()
 
     suffix = _new_suffix()
@@ -293,6 +308,7 @@ def live_egeria_write_target(request):
             database_qualified_name=database_name,
             filesystem_guid=filesystem_guid,
             filesystem_qualified_name=folder_name,
+            cleared_by=cleared_by,
         )
     finally:
         # Teardown runs even if the test body raised, or if cataloguing above

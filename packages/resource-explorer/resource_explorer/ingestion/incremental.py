@@ -1,12 +1,23 @@
 """Incremental indexer — re-indexes only collection types affected by changed files."""
 from __future__ import annotations
 
+from enum import Enum
 from pathlib import PurePath
 
 from resource_explorer.github.client import GitHubClient
 from resource_explorer.ingestion.pipeline import IngestionPipeline
 from resource_explorer.vector_store_pg import MultiCollectionStore
+from resource_explorer.index_state import has_own_index
 from resource_explorer.registry import Project, ProjectRegistry, ProjectStatus
+
+
+class RefreshResult(str, Enum):
+    """What `IncrementalIndexer.refresh` did, so callers stop inferring it from side effects."""
+
+    INDEXED = "indexed"                      # re-embedded one or more of the project's own collections
+    NO_CHANGES = "no_changes"                # latest commit equals the stored one
+    NOT_YET_INDEXED = "not_yet_indexed"      # no own collection: nothing to refresh, SHA left alone
+    NOTHING_AFFECTED = "nothing_affected"    # changed files touch none of the project's own collection types
 
 
 class IncrementalIndexer:
@@ -37,12 +48,20 @@ class IncrementalIndexer:
         self.registry = ProjectRegistry()
         self.client = GitHubClient()
 
-    def refresh(self, project: Project) -> None:
+    def refresh(self, project: Project) -> RefreshResult:
         import tempfile
         from pathlib import Path
 
         repo = self.client.get_repo(project.github_url)
         latest_sha = self.client.get_latest_commit_sha(repo)
+
+        if not has_own_index(project.slug, project.collections):
+            # This step refreshes collections a project already has; it cannot make the first
+            # index (that is a consent-and-cost decision, not a side effect of a refresh). Moving
+            # last_commit_sha here would make every later run say "No changes" about content that
+            # was never indexed, so leave it where it is.
+            print(f"Not yet indexed: {project.slug} has no collection of its own to refresh")
+            return RefreshResult.NOT_YET_INDEXED
 
         last_sha = self._get_last_sha(project.slug)
         if last_sha == latest_sha:
@@ -50,7 +69,7 @@ class IncrementalIndexer:
             # Still profile data files if that step was never run
             if not self.registry.get_data_profiles(project.slug):
                 self._run_profile_only(repo, project)
-            return
+            return RefreshResult.NO_CHANGES
 
         changed_files = self._get_changed_files(repo, last_sha, latest_sha)
         n = len(changed_files)
@@ -58,7 +77,7 @@ class IncrementalIndexer:
 
         if not changed_files:
             self._store_last_sha(project.slug, latest_sha)
-            return
+            return RefreshResult.NOTHING_AFFECTED
 
         # Find which collection types are touched by the changed files
         from resource_explorer.configdata.collection_config import COLLECTION_TYPES
@@ -81,8 +100,10 @@ class IncrementalIndexer:
         }
 
         if not project_ctypes:
+            # The project has an own index, and this commit touches none of its collection types:
+            # a correct no-op, so the SHA advances.
             self._store_last_sha(project.slug, latest_sha)
-            return
+            return RefreshResult.NOTHING_AFFECTED
 
         print(f"Re-indexing {len(project_ctypes)} collection(s): {', '.join(project_ctypes)}")
 
@@ -167,6 +188,7 @@ class IncrementalIndexer:
         self.registry.update_indexed_at(project.slug, surviving)
         self.registry.update_status(project.slug, ProjectStatus.ACTIVE)
         self._store_last_sha(project.slug, latest_sha)
+        return RefreshResult.INDEXED
 
     def _run_profile_only(self, repo, project: Project) -> None:
         """Download the repo just to populate file inventory and data profiles.

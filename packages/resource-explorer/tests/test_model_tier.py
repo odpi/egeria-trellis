@@ -39,7 +39,8 @@ class TestResolveModelTier:
 
     def test_every_preset_has_the_required_keys(self):
         for tier, preset in TIER_PRESETS.items():
-            assert set(preset) == {"num_ctx", "rag_context_budget_tokens", "model"}
+            assert set(preset) == {"num_ctx", "rag_context_budget_tokens", "model",
+                                   "compile_evidence_budget_chars", "compile_max_sections"}
 
 
 class TestResolveLLMTierConfig:
@@ -160,11 +161,10 @@ class TestOllamaBackendSendsNumCtx:
 
 
 class TestBeeAIAgentThreadsNumCtx:
-    """resource_explorer/agents/base.py's BeeAI RequirementAgent path talks
-    to Ollama via litellm's OpenAI-compatible endpoint, not the raw ollama
-    client — num_ctx is threaded through OllamaChatModel(settings={...})
-    instead of an `options` dict. See _build_llm()'s docstring for how this
-    was verified to actually reach the outgoing litellm call."""
+    """resource_explorer/agents/base.py's BeeAI RequirementAgent path builds
+    a NativeOllamaChatModel (Ollama's /api/chat, via litellm's ollama_chat
+    provider): Ollama's OpenAI-compatible /v1 endpoint ignores num_ctx, which
+    is why the stock OllamaChatModel is not used. See _build_llm()."""
 
     def test_build_llm_constructs_ollama_chat_model_with_num_ctx(self, monkeypatch):
         from resource_explorer.agents.stats_agent import StatsAgent
@@ -182,6 +182,37 @@ class TestBeeAIAgentThreadsNumCtx:
 
         assert isinstance(llm, OllamaChatModel)
         assert llm._settings.get("num_ctx") == 4096
+        # Native endpoint, not /v1 (which ignores num_ctx), and the cap reaches the call.
+        assert llm._litellm_provider_id == "ollama_chat"
+        assert not llm._settings["base_url"].endswith("/v1")
+        assert llm.parameters.max_tokens == cfg.llm.ollama.max_tokens == 4096
+
+    def test_native_model_puts_num_ctx_and_num_predict_in_the_request(self):
+        from beeai_framework.backend import ChatModelParameters, UserMessage
+
+        from resource_explorer.agents.ollama_native import NativeOllamaChatModel
+        from beeai_framework.backend.chat import ChatModelInput
+
+        llm = NativeOllamaChatModel(
+            "llama3.1:8b",
+            base_url="http://localhost:11434",
+            settings={"num_ctx": 4096},
+            parameters=ChatModelParameters(max_tokens=77),
+        )
+        sent = llm._transform_input(ChatModelInput(messages=[UserMessage("hi")]))
+        assert sent["model"] == "ollama_chat/llama3.1:8b"
+        assert sent["num_ctx"] == 4096
+        assert sent["max_tokens"] == 77
+        assert sent["base_url"] == "http://localhost:11434"
+
+    async def test_native_model_survives_clone(self):
+        from resource_explorer.agents.ollama_native import NativeOllamaChatModel
+
+        llm = NativeOllamaChatModel("llama3.1:8b", base_url="http://localhost:11434", settings={"num_ctx": 4096})
+        cloned = await llm.clone()
+        assert isinstance(cloned, NativeOllamaChatModel)
+        assert cloned._litellm_provider_id == "ollama_chat"
+        assert cloned._settings["num_ctx"] == 4096
 
     def test_build_llm_leaves_openai_backend_as_a_bare_string(self, monkeypatch):
         from resource_explorer.agents.stats_agent import StatsAgent

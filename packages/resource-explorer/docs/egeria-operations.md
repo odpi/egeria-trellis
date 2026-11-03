@@ -92,7 +92,7 @@ Four checks, and all four must pass:
 
 ```
 questions              49/49 resolve
-RepoAssessmentSurvey   10 steps · reducer present · runs after all 8 inputs
+RepoAssessmentSurvey   14 steps · reducer present · runs after all 8 inputs
 RepoFullSurvey         35 steps · reducer present · runs after all 8 inputs
 reconciler --dry-run   0 duplicate / 0 stale across all EIGHT definitions
 ```
@@ -252,7 +252,24 @@ equivalent: it re-derives current state, and loses the history that
 
 *Merged 2026-09-02 from four runbooks.*
 
-## 8. After a platform reset
+## 8. Before, and after, a platform reset
+
+### 8.0 Before the reset (added 2026-10-03)
+
+The reset erases the Egeria state that explains a failed publish, so read the evidence first.
+
+1. **Open Admin, Publish Queue (classic UI) and check pending, running and dead rows.** Nothing should be
+   pending. Dead rows have used up their 8 attempts and will not retry on their own; read each row's
+   `last_error` before the reset. The usual cause is a collection or Project GUID Egeria no longer holds
+   (a 404 on the target), which is a stale pointer, not an outage. Do not retry such rows.
+2. **Run the Egeria Alignment scan once** (it never writes) and keep the list: it names the stale
+   investigation GUIDs the dead rows point at, and any that were Projects bound by hand.
+3. **Stop RE before Egeria goes down, and start it only when Egeria is fully up.** The scheduler drains the
+   outbox about every 15 minutes. With no Egeria client at all, rows stay pending and burn no attempts; with
+   a reachable but half-deployed Egeria, every write fails and counts, and a good row can dead-letter.
+4. Do not start `reauthor_survey_definitions` yourself afterwards (see §2.1).
+
+### 8.1 After the reset
 
 *(from `egeria-reset-recovery.md`, written from an actual reset)*
 

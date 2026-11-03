@@ -366,6 +366,39 @@ def _validation_config() -> AuthConfig:
 
 
 # ---------------------------------------------------------------------------
+# Service accounts -- ids no human may sign in as (2026-10-09).
+# Resource Explorer's background work runs as its own Egeria account, and RE
+# and EA share TRELLIS_JWT_SECRET with no audience check, so an EA session for
+# that account would be accepted by RE. Read from configuration only (no RE
+# import): RE_DAEMON_USER_ID plus the comma-separated TRELLIS_SERVICE_ACCOUNTS.
+# ---------------------------------------------------------------------------
+
+SERVICE_ACCOUNT_DETAIL = "this is a service account; sign in as yourself"
+
+
+def service_account_ids() -> frozenset:
+    ids = set()
+    daemon = os.environ.get("RE_DAEMON_USER_ID", "")
+    if daemon.strip():
+        ids.add(daemon.strip().casefold())
+    for part in os.environ.get("TRELLIS_SERVICE_ACCOUNTS", "").split(","):
+        if part.strip():
+            ids.add(part.strip().casefold())
+    return frozenset(ids)
+
+
+def is_service_account(user_id: Optional[str]) -> bool:
+    return bool(user_id) and user_id.strip().casefold() in service_account_ids()
+
+
+def refuse_service_account(user_id: Optional[str]) -> None:
+    """Raise HTTP 403 when `user_id` is a service account. Call before any Egeria call."""
+    if is_service_account(user_id):
+        logger.warning(f"auth: refused session for service account {user_id!r}")
+        raise HTTPException(status_code=403, detail=SERVICE_ACCOUNT_DETAIL)
+
+
+# ---------------------------------------------------------------------------
 # Token creation / decoding — pure delegation, no EA-specific behaviour.
 # ---------------------------------------------------------------------------
 
@@ -383,6 +416,8 @@ def create_access_token(
     8-hour `jwt_ttl_hours`, so in practice the Egeria expiry is the session
     bound and refresh is a re-login.
     """
+    # The one chokepoint every minting path (password, portal, CLI) passes.
+    refuse_service_account(user_id)
     return _create_access_token(
         user_id, egeria_token, _base_config(), role=role, display_name=display_name
     )
@@ -535,6 +570,7 @@ def login_with_password(user_id: str, password: str) -> Optional[str]:
     unreachable. The caller mints the session JWT from the token and drops the
     password — this is the only point at which EA handles one.
     """
+    refuse_service_account(user_id)
     return _login_with_password(user_id, password, _validation_config())
 
 
@@ -551,4 +587,5 @@ def validate_egeria_credentials(user_id: str, password: str) -> bool:
 
     Prefer `login_with_password`, which keeps the token it just obtained.
     """
+    refuse_service_account(user_id)
     return _validate_egeria_credentials(user_id, password, _validation_config())

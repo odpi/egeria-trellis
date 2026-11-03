@@ -136,7 +136,7 @@ etc. changing over time is exactly the kind of signal worth tracking, not bolted
 
 Confirmed: the infrastructure is **already phase-agnostic**, not Scouting-specific — despite only
 Scouting having a built UI tab today. `QuestionCatalogEntry` (`question_catalog_reader.py`) already
-carries independent `asked_at`/`answered_at` Funnel Stage fields, and `docs/dr-egeria/foundations.md`
+carries independent `asked_at`/`answered_at` Funnel Stage fields, and `docs/dr-egeria/foundations/foundations.md`
 already defines 9 Funnel Stage terms, not just one. So this is not a schema change — it's:
 
 1. **Reorganize `docs/dr-egeria/resource_questions.csv`** — move questions whose `Asked At`/

@@ -68,6 +68,40 @@ function chip(label, key, value) {
     >${esc(label)}</button>`;
 }
 
+const LOOK_NAMES = [['dark', 'Dark'], ['light', 'Light'], ['paper', 'Paper']];
+
+/** Which look people use, from the activity rows each change writes (RULING-THEMES-PORTAL-DARK-LIGHT.md section 1).
+ *  Says what the numbers cannot know: someone who never touched the control is on Dark and leaves no row. A fetch
+ *  that fails is said to have failed, not shown as zeros. */
+async function lookCountsHtml() {
+  let data;
+  try {
+    const res = await fetch('/api/feedback/look-counts', { headers: authHeaders() });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    data = await res.json();
+  } catch (err) {
+    return `<p class="mt-s3 text-caveat text-state-warn" data-look-counts-error>Could not load the look counts: ${esc(err.message)}</p>`;
+  }
+  const rows = LOOK_NAMES.map(([id, name]) => {
+    const c = (data.looks || {})[id] || { people: 0, switched_away: 0 };
+    return `<tr class="border-b border-rule" data-look-row="${id}">
+      <td class="py-[3px] pr-s4 text-ink">${name}</td>
+      <td class="tnum py-[3px] pr-s4 text-ink">${c.people}</td>
+      <td class="tnum py-[3px] text-ink">${c.switched_away}</td></tr>`;
+  }).join('');
+  return `<div class="mt-s3" data-look-counts>
+    <h4 class="m-0 mb-[2px] font-heading text-subtab font-normal text-ink">Which look people use</h4>
+    <table class="text-caveat"><thead><tr class="text-caps uppercase tracking-caps text-ink-muted">
+      <th class="pr-s4 text-left font-normal">Look</th>
+      <th class="pr-s4 text-left font-normal">People on it now</th>
+      <th class="text-left font-normal">Switched away from it</th></tr></thead>
+      <tbody>${rows}</tbody></table>
+    <p class="mt-[2px] max-w-[65ch] text-provenance text-ink-muted">Counts people who have changed the look at least once
+      (<span class="tnum">${data.people_who_changed || 0}</span> people, <span class="tnum">${data.changes || 0}</span> changes).
+      Anyone who never touched the control is on Dark and leaves no row, so Dark's number is a floor, not a total.
+      Comments sent from the look menu are in the list below, subject "Look: ...".</p></div>`;
+}
+
 async function reload() {
   if (!_host) return;
   const params = new URLSearchParams();
@@ -147,6 +181,7 @@ async function reload() {
       across ${counts.resource?.resources || 0} resource${(counts.resource?.resources || 0) === 1 ? '' : 's'}
       (a resource's Curate tab) = ${total} total. Shown together, badged by origin — not merged.
     </p>
+    ${await lookCountsHtml()}
     <div class="my-s3 flex flex-wrap items-center gap-[6px]">
       ${chip('All sources', 'source', '')}
       ${chip('Page', 'source', 'page')}

@@ -9,7 +9,7 @@ Why this is its own step rather than a side effect of one reader.
 sub-surveyors read it (health, maturity, language, file_structure,
 license_classifier, security_features, security_hygiene, homepage). Exactly one
 of them — HealthSurveyor — refreshed it, as an internal side effect, and the
-other seven read whatever happened to be there. So the freshness of licence
+other seven read whatever happened to be there. So the freshness of license
 classification, maturity, security-feature and homepage results depended on
 whether repo_health happened to be in the same survey and happened to run first
 — an ordering nothing declared and nothing enforced. Run any of those seven
@@ -142,7 +142,7 @@ class GitStatisticsSurveyor(BaseSurveyor):
                 explanation=(
                     "Refreshed project_stats from the GitHub API. Every step that reads "
                     "repository statistics in this run — health, maturity, language, file "
-                    "structure, licence, security features and hygiene, homepage — sees "
+                    "structure, license, security features and hygiene, homepage — sees "
                     "these numbers rather than whatever an earlier, unrelated run left."
                     + (f" This run's refresh failed ({error}); the values above are the "
                        "previously stored ones." if not refreshed else "")

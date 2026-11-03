@@ -5,6 +5,8 @@ must run before the interface is designed in detail; §8's numbers decide whethe
 right or merely plausible. Companion to `architecture-recovery.md` (which this document does not
 restate) and `curate-evidence-based-decisions-plan.md`.
 
+> **Superseded 2026-10-08 (one point):** "promotion out of the draft zone" (§ table, line 50) describes the 2026-09 default; the draft zone was retired as a default, see `resource_explorer/egeria_identity.py`.
+
 **Decision (project owner, 2026-09-08):** curation should start from what the user is trying to
 achieve. The Purpose sets the coarseness and scope of the components presented; components are
 made of sub-components, so a Purpose chooses a level rather than a different set of things.

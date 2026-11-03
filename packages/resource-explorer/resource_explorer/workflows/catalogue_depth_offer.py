@@ -58,7 +58,7 @@ def build_catalogue_depth_offer(registry, slug: str) -> dict:
     Raises `LookupError` for an unknown slug, mirroring `build_depth_offer`'s
     own 404 shape (caught and translated in the route, kept out of this pure
     function so it stays FastAPI-free)."""
-    from resource_explorer.component_tree import component_tree
+    from resource_explorer.component_tree import totals as component_totals
     from resource_explorer.curate_plan import Curations
 
     project = registry.get(slug)
@@ -72,7 +72,8 @@ def build_catalogue_depth_offer(registry, slug: str) -> dict:
     latest = next((c for c in curations if c.get("kind", "catalogue") == "catalogue"), None)
     layer1_done = bool(latest and latest.get("state") == "done")
 
-    tree = component_tree(registry, slug)
+    # Only the two counts: the whole tree (branches, ports, topology) was being built for them.
+    tree = component_totals(registry, slug)
     remaining = max(0, tree.get("total_components", 0) - tree.get("accepted", 0))
 
     already_decided = bool(latest and latest.get("layer2_offer")) if latest else False

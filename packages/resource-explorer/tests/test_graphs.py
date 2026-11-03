@@ -98,8 +98,9 @@ class TestGraphsWithData:
         })
         fig = graphs.language_breakdown_plotly("proj")
         data = json.loads(fig.to_json())
-        assert "Python" in data["data"][0]["labels"]
-        assert "Shell" in data["data"][0]["labels"]
+        labels = data["data"][0]["labels"]
+        assert any(l.startswith("Python") for l in labels)
+        assert any(l.startswith("Shell") for l in labels)
 
     def test_language_breakdown_handles_str_dict_format(self, registry, monkeypatch):
         """StatsFetcher stores language_breakdown as str(dict) — test both formats."""
@@ -109,7 +110,32 @@ class TestGraphsWithData:
         })
         fig = graphs.language_breakdown_plotly("proj")
         data = json.loads(fig.to_json())
-        assert "Python" in data["data"][0]["labels"]
+        assert any(l.startswith("Python") for l in data["data"][0]["labels"])
+
+    def test_language_pie_labels_small_slices_and_legend_percentages(self, registry, monkeypatch):
+        """walk3: a 0.0025% slice printed '0.00249%' outside the pie, over the title."""
+        from resource_explorer.dashboard import graphs
+        monkeypatch.setattr(graphs, "_latest_row", lambda slug: {
+            "language_breakdown": json.dumps({
+                "Python": 995000, "JavaScript": 2500, "Shell": 2475, "CSS": 25})
+        })
+        trace = json.loads(graphs.language_breakdown_plotly("proj").to_json())["data"][0]
+        by_name = {l.split(" ")[0]: i for i, l in enumerate(trace["labels"])}
+        # the legend carries every slice with its percentage
+        assert trace["labels"][by_name["Python"]] == "Python 99.5%"
+        assert trace["labels"][by_name["CSS"]] == "CSS <0.01%"
+        assert all(l.rstrip().endswith("%") for l in trace["labels"])
+        # no printed number runs past 3 significant figures
+        for l in trace["labels"]:
+            num = l.rsplit(" ", 1)[1].strip("<%")
+            assert len(num.replace(".", "").lstrip("0")) <= 3, l
+        # slices under 3% print nothing on the pie; larger ones sit inside, horizontal
+        for name in ("JavaScript", "Shell", "CSS"):
+            assert trace["text"][by_name[name]] == "", name
+        assert trace["text"][by_name["Python"]] == "99.5%"
+        assert trace["textinfo"] == "text"
+        assert trace["textposition"] == "inside"
+        assert trace["insidetextorientation"] == "horizontal"
 
     def test_health_radar_scores_capped_at_ten(self, registry, monkeypatch):
         from resource_explorer.dashboard import graphs

@@ -82,21 +82,21 @@ class TestDiscovery:
         assert [b.batch_id for b in bs.discover_batches(tmp_path)] == ["good"]
 
 
-class _FakeClient:
-    """Mimics ClassificationExplorer.get_guid_for_name, including pyegeria's
-    habit of returning a human sentence rather than None when nothing matches."""
+class _FakeExpert:
+    """Mimics MetadataExpert.get_metadata_element_by_unique_name: the element when held, pyegeria's
+    "No elements found" sentence when not, a raise when Egeria cannot be asked."""
 
     def __init__(self, present=(), raises=False):
         self._present = set(present)
         self._raises = raises
         self.calls = []
 
-    def get_guid_for_name(self, name, **kw):
-        self.calls.append((name, kw))
+    def get_metadata_element_by_unique_name(self, name=None, property_name="qualifiedName", body=None, **kw):
+        self.calls.append((name, property_name, kw))
         if self._raises:
             raise RuntimeError("egeria unreachable")
         if name in self._present:
-            return "6a3014a3-de4d-4909-8dd0-511dae0e08b2"
+            return {"elementGUID": "6a3014a3-de4d-4909-8dd0-511dae0e08b2", "type": {"typeName": "Referenceable"}}
         return "No elements found"
 
 
@@ -104,19 +104,19 @@ class TestCanary:
     def test_present_canary_detected(self, tmp_path):
         _write_batch(tmp_path, "b", canary={"qualified_name": "Q::b"})
         batch = bs.discover_batches(tmp_path)[0]
-        assert bs.canary_present(batch, _FakeClient(present=["Q::b"])) is True
+        assert bs.canary_present(batch, expert=_FakeExpert(present=["Q::b"])) is True
 
     def test_missing_canary_detected(self, tmp_path):
         _write_batch(tmp_path, "b", canary={"qualified_name": "Q::b"})
         batch = bs.discover_batches(tmp_path)[0]
-        assert bs.canary_present(batch, _FakeClient()) is False
+        assert bs.canary_present(batch, expert=_FakeExpert()) is False
 
     def test_sentinel_string_is_not_mistaken_for_a_guid(self, tmp_path):
         """pyegeria returns "No elements found" — truthy. If that were taken as
         a GUID the batch would read as present and never heal."""
         _write_batch(tmp_path, "b", canary={"qualified_name": "Q::b"})
         batch = bs.discover_batches(tmp_path)[0]
-        assert bs.canary_present(batch, _FakeClient(present=[])) is False
+        assert bs.canary_present(batch, expert=_FakeExpert(present=[])) is False
 
     def test_lookup_error_returns_unknown_not_present(self, tmp_path):
         """An unreachable Egeria is not evidence of a reset (so: no heal), but it
@@ -124,35 +124,39 @@ class TestCanary:
         catalog report present=True across the board after a redeploy."""
         _write_batch(tmp_path, "b", canary={"qualified_name": "Q::b"})
         batch = bs.discover_batches(tmp_path)[0]
-        assert bs.canary_present(batch, _FakeClient(raises=True)) is None
+        assert bs.canary_present(batch, expert=_FakeExpert(raises=True)) is None
 
     def test_no_canary_means_never_auto_healed(self, tmp_path):
         _write_batch(tmp_path, "b", canary=None)
         batch = bs.discover_batches(tmp_path)[0]
         assert batch.has_canary is False
-        assert bs.canary_present(batch, _FakeClient()) is True
+        assert bs.canary_present(batch) is True
 
-    def test_type_is_omitted_from_lookup_when_not_declared(self, tmp_path):
-        """A wrong type_name silently returns nothing, which reads as 'missing'
-        and triggers a heal — so type must not be invented when absent."""
-        _write_batch(tmp_path, "b", canary={"qualified_name": "Q::b"})
-        client = _FakeClient(present=["Q::b"])
-        bs.canary_present(bs.discover_batches(tmp_path)[0], client)
-        assert "type_name" not in client.calls[0][1]
-
-    def test_declared_type_is_passed_through(self, tmp_path):
+    def test_a_qualified_name_canary_is_the_unique_name_read_with_no_type_invented(self, tmp_path):
+        """A wrong type_name would read as 'missing' and trigger a heal, and the unique-name read takes no type:
+        a declared type is not asked, qualifiedName alone is global."""
         _write_batch(tmp_path, "b", canary={"type": "Perspective", "qualified_name": "Q::b"})
-        client = _FakeClient(present=["Q::b"])
-        bs.canary_present(bs.discover_batches(tmp_path)[0], client)
-        assert client.calls[0][1]["type_name"] == "Perspective"
+        expert = _FakeExpert(present=["Q::b"])
+        assert bs.canary_present(bs.discover_batches(tmp_path)[0], expert=expert) is True
+        assert expert.calls == [("Q::b", "qualifiedName", {})]
 
     def test_display_name_canary_uses_display_name_property(self, tmp_path):
         """Glossary-term qualified names are generated with a deployment-specific
-        org prefix and version, so those batches key on display name instead."""
+        org prefix and version, so those batches key on display name instead: a typed
+        GlossaryTerm string search, exact, kept to the displayName property."""
+        from unittest.mock import create_autospec
+
+        from pyegeria import MetadataExpert
+
         _write_batch(tmp_path, "b", canary={"display_name": "Some Question?"})
-        client = _FakeClient(present=["Some Question?"])
-        assert bs.canary_present(bs.discover_batches(tmp_path)[0], client) is True
-        assert client.calls[0][1]["property_name"] == ["displayName"]
+        expert = create_autospec(MetadataExpert, instance=True, spec_set=True)
+        expert.find_metadata_elements_with_string.return_value = [{
+            "elementGUID": "6a3014a3-de4d-4909-8dd0-511dae0e08b2",
+            "type": {"typeName": "GlossaryTerm", "superTypeNames": ["Referenceable"]},
+            "elementProperties": {"propertiesAsStrings": {"displayName": "Some Question?"}}}]
+        assert bs.canary_present(bs.discover_batches(tmp_path)[0], expert=expert) is True
+        kw = expert.find_metadata_elements_with_string.call_args.kwargs
+        assert kw["search_string"] == "Some Question?" and kw["metadata_element_type"] == "GlossaryTerm"
 
 
 class TestCheckAndHeal:
@@ -410,74 +414,28 @@ class TestRealManifests:
         assert "scripts/reconcile_survey_definition_scopes.py" in scripts
 
 
-class TestRunDrEgeriaExecutableResolution:
-    """A bootstrap auto-heal must run the venv's own `dr_egeria`, not
-    whatever `dr_egeria` happens to resolve to on PATH. On the dev box PATH
-    resolves to a pipx install on a different Python with a newer pyegeria
-    that died at bearer-token creation before running a single command
-    (verified 2026-09-12) — a heal picking that one up fails before it
-    writes anything."""
+class TestRunDrEgeriaRunsTheChildOnThisInterpreter:
+    """A bootstrap auto-heal runs `python -m resource_explorer.dr_egeria_child` on the interpreter RE itself runs on
+    (never a `dr_egeria` from PATH: a pipx copy on a different Python died at bearer-token creation, 2026-09-12),
+    and puts no secret on argv."""
 
-    def test_prefers_the_copy_next_to_sys_executable(self, tmp_path, monkeypatch):
-        venv_bin = tmp_path / "venv-bin"
-        venv_bin.mkdir()
-        venv_dr_egeria = venv_bin / "dr_egeria"
-        venv_dr_egeria.write_text("#!/bin/sh\n")
-        monkeypatch.setattr(sys, "executable", str(venv_bin / "python"))
-        # Even if PATH would also resolve one, the venv copy must win.
-        monkeypatch.setattr(bs.shutil, "which", lambda name: "/usr/local/bin/dr_egeria")
-
+    def test_uses_sys_executable_and_no_secret_on_argv(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(sys, "executable", "/venv/bin/python")
         captured = {}
 
         def fake_run(argv, **kwargs):
-            captured["argv"] = argv
+            captured["argv"], captured["env"] = argv, kwargs.get("env") or {}
             return SimpleNamespace(returncode=0, stdout="", stderr="")
 
         monkeypatch.setattr(bs.subprocess, "run", fake_run)
-
         doc = tmp_path / "one.md"
         doc.write_text("# one\n")
         ok, _detail = bs._run_dr_egeria(doc)
 
         assert ok is True
-        assert captured["argv"][0] == str(venv_dr_egeria)
+        assert captured["argv"][:3] == ["/venv/bin/python", "-m", "resource_explorer.dr_egeria_child"]
+        from resource_explorer.config import get_config
 
-    def test_falls_back_to_path_when_venv_copy_absent(self, tmp_path, monkeypatch):
-        venv_bin = tmp_path / "venv-bin"
-        venv_bin.mkdir()
-        monkeypatch.setattr(sys, "executable", str(venv_bin / "python"))
-        monkeypatch.setattr(bs.shutil, "which", lambda name: "/usr/local/bin/dr_egeria")
+        assert get_config().egeria.user_password not in captured["argv"]
+        assert captured["env"]["RE_DR_EGERIA_CHILD_PASSWORD"] == get_config().egeria.user_password
 
-        captured = {}
-
-        def fake_run(argv, **kwargs):
-            captured["argv"] = argv
-            return SimpleNamespace(returncode=0, stdout="", stderr="")
-
-        monkeypatch.setattr(bs.subprocess, "run", fake_run)
-
-        doc = tmp_path / "one.md"
-        doc.write_text("# one\n")
-        ok, _detail = bs._run_dr_egeria(doc)
-
-        assert ok is True
-        assert captured["argv"][0] == "/usr/local/bin/dr_egeria"
-
-    def test_names_both_locations_when_neither_exists(self, tmp_path, monkeypatch):
-        venv_bin = tmp_path / "venv-bin"
-        venv_bin.mkdir()
-        monkeypatch.setattr(sys, "executable", str(venv_bin / "python"))
-        monkeypatch.setattr(bs.shutil, "which", lambda name: None)
-
-        def fake_run(argv, **kwargs):
-            raise AssertionError("subprocess.run must not be called when no executable was found")
-
-        monkeypatch.setattr(bs.subprocess, "run", fake_run)
-
-        doc = tmp_path / "one.md"
-        doc.write_text("# one\n")
-        ok, detail = bs._run_dr_egeria(doc)
-
-        assert ok is False
-        assert str(venv_bin / "dr_egeria") in detail
-        assert "PATH" in detail

@@ -89,3 +89,20 @@ class TestPriority:
 
     def test_health_beats_general(self, qp):
         assert qp.classify("is it abandoned") == QueryIntent.HEALTH
+
+
+class TestRelationshipRoutesToIntegration:
+    """"Relationship between X and Y" is an integration question (owner, 2026-10-25); before, it fell to conceptual
+    ("what is ...") or to general."""
+
+    @pytest.mark.parametrize("query", [
+        "What is the relationship between docling and data-prep-kit?",
+        "relationship between Egeria and OpenLineage",
+        "how are kafka and flink related?",
+        "what's the relation of marquez to openlineage",
+    ])
+    def test_relationship_questions_route_to_integration(self, qp, query):
+        assert qp.classify(query) == QueryIntent.INTEGRATION
+
+    def test_difference_between_stays_comparison(self, qp):
+        assert qp.classify("what is the difference between docling and marker") == QueryIntent.COMPARISON

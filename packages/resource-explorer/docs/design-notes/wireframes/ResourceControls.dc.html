@@ -1,0 +1,145 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;600&amp;family=Lora:wght@400;500&amp;display=swap">
+  <style>
+    :root{
+      --paper:#f3f2f2; --rule:rgba(32,31,29,.16); --rule-strong:#8e8a8a;
+      --ink:#201f1d; --ink-muted:#4a463e;
+      --accent:#b68235; --accent-ink:#7d5411;
+      --ok:#1d6b3f; --warn:#9c4212; --gap:#5b4a9c;
+      --chrome:#1b1a19; --chrome-surface:#2d2b2b; --chrome-line:#444141;
+      --chrome-ink:#f3f2f2; --chrome-muted:#9b9797; --accent-on-dark:#e1ad66; --ok-on-dark:#74c68d;
+      --s1:4.6px; --s2:9.2px; --s3:13.8px; --s4:18.4px; --s6:27.6px;
+      --heading:"Cormorant Garamond",Georgia,serif;
+      --body:"Lora",Georgia,serif;
+      --mono:ui-monospace,"SF Mono",Menlo,monospace;
+    }
+    *{box-sizing:border-box}
+    body{margin:0;font-family:var(--body);background:var(--paper);color:var(--ink);font-size:15px;line-height:1.55}
+    .tnum{font-variant-numeric:tabular-nums}
+    .mono{font-family:var(--mono);font-size:.87em}
+    .caps{font-family:var(--heading);font-weight:600;font-size:12px;letter-spacing:.09em;text-transform:uppercase}
+    .h{font-family:var(--heading);font-weight:600}
+    .muted{color:var(--ink-muted)}
+    .lnk{color:var(--accent-ink);text-decoration:underline;text-underline-offset:3px}
+    .g{font-family:"DejaVu Sans","Apple Symbols","Segoe UI Symbol",sans-serif;font-weight:600;display:inline-block;width:1.3em;text-align:center}
+    .ok{color:var(--ok)} .warn{color:var(--warn)} .gapc{color:var(--gap)}
+    .panel-t{font-family:var(--heading);font-weight:600;font-size:21px;margin:0 0 var(--s1)}
+    .panel-s{font-size:13px;color:var(--ink-muted);margin:0 0 var(--s3);max-width:62ch}
+    /* sidebar, on chrome */
+    .side{background:var(--chrome);color:var(--chrome-ink);width:300px;padding:var(--s3);border-radius:3px;font-size:13px;line-height:1.45}
+    .side .lab{font-family:var(--heading);font-weight:600;font-size:12px;letter-spacing:.09em;text-transform:uppercase;color:var(--chrome-muted);margin:var(--s3) 0 4px}
+    .side .sel{border:1px solid var(--chrome-line);border-radius:2px;padding:3px 6px}
+    .side .row{padding:4px 8px;border-left:2px solid transparent;display:flex;justify-content:space-between;gap:8px}
+    .side .row.on{border-left-color:var(--accent);background:var(--chrome-surface)}
+    .side .n{color:var(--chrome-muted)}
+    .side .fold{color:var(--chrome-muted);padding:4px 8px;text-decoration:underline;text-underline-offset:3px}
+    .side .btn{display:inline-block;border:1px solid var(--accent);color:var(--accent-on-dark);border-radius:2px;padding:1px 7px;font-size:12px;margin:0 4px 4px 0}
+    .side .btn.quiet{border-color:var(--chrome-line);color:var(--chrome-ink)}
+    .side .btn.off{border-style:dashed;color:var(--chrome-muted);border-color:var(--chrome-line)}
+    .side .why{color:var(--chrome-muted);font-size:12px}
+    .side .res{padding:3px 8px;display:flex;gap:6px}
+    .side .res input{margin:0}
+    .note{border-left:2px solid var(--chrome-line);padding-left:8px;margin-top:6px;color:var(--chrome-ink);font-size:12px}
+    /* paper panes */
+    .pane{background:#fff;border:1px solid var(--rule);padding:var(--s4);border-radius:2px}
+    .btn2{display:inline-block;border:1px solid var(--rule-strong);border-radius:2px;padding:1px 8px;font-size:12.5px;margin-right:6px}
+    .btn2.primary{border-color:var(--accent);color:var(--accent-ink)}
+    table.grid{border-collapse:collapse;font-size:13px;width:100%}
+    table.grid th{font-family:var(--heading);font-weight:600;text-align:left;font-size:13px;border-bottom:1px solid var(--rule-strong);padding:4px 8px;vertical-align:bottom}
+    table.grid td{border-bottom:1px solid var(--rule);padding:4px 8px;vertical-align:baseline}
+    table.grid td.c{text-align:center}
+    .tabs{display:flex;gap:var(--s4);border-bottom:1px solid var(--rule);font-size:14px;margin:var(--s2) 0 var(--s2)}
+    .tabs span{padding-bottom:3px}
+    .tabs .on{border-bottom:2px solid var(--accent)}
+    .tabs .zero{color:var(--ink-muted);border-bottom:1px dashed var(--rule-strong)}
+    .call{font-size:12.5px;color:var(--ink-muted);border-left:3px solid var(--gap);padding-left:var(--s2);margin-top:var(--s2);max-width:58ch}
+    .strike{text-decoration:line-through;color:var(--ink-muted)}
+  </style>
+</helmet>
+<style>
+  .topbar{background:var(--chrome);color:var(--chrome-ink);padding:10px 16px;display:flex;gap:18px;align-items:center;font-size:13px;border-radius:3px 3px 0 0}
+  .crumb{border:1px solid #5a3b0a;border-radius:2px;padding:2px 8px;font-family:var(--mono);font-size:12.5px;color:var(--accent-on-dark)}
+  .menu{position:absolute;top:44px;left:250px;width:290px;background:#fff;color:var(--ink);border:1px solid var(--rule-strong);border-radius:2px;box-shadow:0 10px 24px rgba(0,0,0,.18);font-size:13.5px;z-index:2}
+  .menu .it{padding:7px 12px}
+  .menu .sub{font-size:12px;color:var(--ink-muted)}
+  .side2{background:var(--chrome);color:var(--chrome-ink);width:310px;padding:var(--s3);font-size:13px;line-height:1.45}
+  .side2 .chipk{display:inline-block;border:1px solid var(--chrome-line);border-radius:2px;padding:1px 8px;font-size:12px;margin-right:4px}
+  .side2 .chipk.on{border-color:var(--accent);color:var(--accent-on-dark)}
+  .side2 .tb{display:inline-block;border:1px solid var(--chrome-line);border-radius:2px;padding:1px 8px;font-size:12px}
+  .side2 .tb.acc{border-color:var(--accent);color:var(--accent-on-dark)}
+  .side2 .grp{border-top:1px solid #2d2b2b;padding:6px 0 4px}
+  .side2 .m{color:var(--chrome-muted);font-size:12px}
+  .side2 .row{padding:4px 8px;display:flex;gap:6px}
+  .old{text-decoration:line-through;color:var(--ink-muted)}
+</style>
+<div style="width:1500px;padding:var(--s6) var(--s6) 60px">
+  <div style="border-bottom:1px solid var(--rule-strong);padding-bottom:var(--s4)">
+    <div class="caps" style="color:var(--accent-ink)">Resource controls &middot; reply to ASK-DESIGNER-RESOURCE-CONTROLS-PLACEMENT &middot; against main at cf52f4a9</div>
+    <h1 class="h" style="font-weight:400;font-size:38px;margin:var(--s3) 0 var(--s2);max-width:56ch">The resource&rsquo;s name already looks like a control: make it one</h1>
+    <p style="max-width:96ch;margin:0">One resource: its menu on the top bar&rsquo;s name (hide, remove), the confirmation under the bar. Many resources: the Select bar, grouped by weight, remove last. The verdict stays beside the content. Find gets a word.</p>
+  </div>
+
+  <div style="display:flex;gap:var(--s6);margin-top:var(--s6);align-items:flex-start">
+    <div style="flex:1;min-width:0">
+      <p class="panel-t">A &middot; One resource: the menu on its name</p>
+      <p class="panel-s" style="max-width:90ch">The crumb is the only element in the bar drawn like a control, and it names the resource on every stage. Remove is last, after a rule, in ink; the accent is only on the commit button, which names what goes.</p>
+      <div style="position:relative">
+        <div class="topbar"><span style="color:var(--chrome-muted)">A A A</span><span class="h" style="font-size:19px">Resource Explorer</span><span class="crumb">laz_local_adventureworks &#9662;</span><span style="margin-left:auto;color:var(--chrome-muted)">Activity &middot; Admin &middot; Investigation: Customer 360</span></div>
+        <div class="menu">
+          <div class="it">Hide from my list<div class="sub">a view preference: only your list, nothing is deleted</div></div>
+          <div style="height:1px;background:var(--rule)"></div>
+          <div class="it">Remove from Resource Explorer&hellip;</div>
+        </div>
+        <div style="background:#fff;border:1px solid var(--rule);border-top:0;padding:var(--s4);min-height:250px">
+          <div style="display:flex;gap:14px;align-items:baseline;flex-wrap:wrap">
+            <span class="h" style="font-size:26px;font-weight:400">laz_local_adventureworks</span>
+            <span class="lnk" style="font-size:13px">no external links recorded</span>
+            <span style="margin-left:auto;font-size:13px;border:1px solid var(--rule-strong);border-radius:11px;padding:0 9px">recommended &#9662;</span>
+            <span class="old" style="font-size:13px">hide</span><span class="old" style="font-size:13px">remove</span>
+          </div>
+          <div class="muted" style="font-size:13px;margin-top:4px">surveyed 2 days ago &middot; not published to Egeria</div>
+          <div class="muted" style="font-size:12.5px;margin-top:var(--s4)">The header keeps the name, links, provenance and the disposition pill: a judgement sits beside what is judged. <span class="old">hide</span> and <span class="old">remove</span> leave it.</div>
+        </div>
+      </div>
+
+      <p class="panel-t" style="margin-top:var(--s6)">A&prime; &middot; Remove chosen: the panel under the bar</p>
+      <div class="pane" style="font-size:14px;max-width:900px">
+        <div>Unregister the database <span class="mono">laz_local_adventureworks</span> and delete its local survey records (surveys, schema, table and column detail, coverage)? This cannot be undone.</div>
+        <div style="margin-top:4px">Not touched: the source database itself, anything already published to Egeria, and the server registration it was discovered from. It is not the same as marking it <em>ignored</em>: an ignored resource stays registered and can come back.</div>
+        <div style="margin-top:var(--s3)"><span class="btn2 primary">Remove the database laz_local_adventureworks</span> <span class="lnk" style="font-size:13px">Cancel</span></div>
+        <div class="call">Sentence in ink, not the accent: the accent is for controls, never states. The commit button names the kind and the resource.</div>
+      </div>
+    </div>
+
+    <div style="width:330px">
+      <p class="panel-t">B &middot; Many: Select, grouped by weight</p>
+      <p class="panel-s">Find has a word and names the kind. Select is a labeled control; shift/&#8984;-click a row also starts it.</p>
+      <div class="side2">
+        <div style="display:flex;gap:4px;align-items:center"><span class="chipk">Repos</span><span class="chipk on">DBs</span><span class="chipk">FS</span><span style="margin-left:auto" class="tb acc">＋ Find databases</span><span class="m">?</span></div>
+        <div class="m" style="margin-top:10px">Investigation</div>
+        <div style="border:1px solid var(--chrome-line);border-radius:2px;padding:2px 6px">Customer 360 &#9662;</div>
+        <div style="margin-top:10px;display:flex;gap:8px;align-items:baseline"><span class="tb acc">Done selecting</span><span class="m">Show hidden 2</span><span class="m" style="margin-left:auto">9 shown &middot; <span style="text-decoration:underline">select these 9</span></span></div>
+        <div class="m" style="margin-top:6px">Tick resources, then act on all of them. 3 selected.</div>
+        <div class="grp" style="margin-top:6px"><span class="tb acc">＋ add to Customer 360</span> <span class="tb">− remove from Customer 360</span></div>
+        <div class="grp"><span class="tb">mark as&hellip; &#9662;</span> <span class="tb">save as work list&hellip;</span></div>
+        <div class="grp"><span class="tb">hide</span></div>
+        <div class="grp" style="border-top:1px solid var(--chrome-line);margin-top:6px;padding-top:8px"><span class="tb">remove&hellip;</span> <span class="m">from Resource Explorer</span></div>
+        <div class="row" style="margin-top:6px"><input type="checkbox" checked><span>crm_prod</span></div>
+        <div class="row"><input type="checkbox" checked><span>sales_dw</span></div>
+        <div class="row"><input type="checkbox" checked><span>orders_eu</span></div>
+      </div>
+      <div class="call">Bulk confirm uses the same per-kind sentence; its button reads &ldquo;Remove 3 databases&rdquo;. &ldquo;Delete&rdquo; is retired: nothing here deletes a database or a file.</div>
+    </div>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>

@@ -27,6 +27,7 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass, field
 
+from resource_explorer.artifact_provenance import commit_label, extraction_commit, role_label
 from resource_explorer.registry import ProjectRegistry
 from resource_explorer.surveyors.repo_survey_definition_adapter import ANALYSIS_KINDS
 
@@ -61,6 +62,10 @@ class MemberSet:
     #: decided from.
     not_applicable: bool = False
     reason: str = ""
+    #: True when the analysis's own store holds no member rows for this
+    #: resource. `reason` then says which store was empty, so the pane never
+    #: prints a bare "0 findings" for data that lives elsewhere.
+    empty: bool = False
 
     def to_dict(self) -> dict:
         return {
@@ -70,6 +75,7 @@ class MemberSet:
                        for g in self.groups],
             "note": self.note, "source": self.source, "inventory": self.inventory,
             "run_at": self.run_at, "not_applicable": self.not_applicable, "reason": self.reason,
+            "empty": self.empty,
         }
 
 
@@ -166,10 +172,12 @@ def _symbol_members(registry, slug, scope, limit) -> MemberSet:
     # the inventory summary is how the rail says so rather than hiding it.
     inv = registry.file_inventory_summary(slug)
     provenance = inventory_sentence(inv, nfiles)
+    sha = extraction_commit(registry, slug)
+    extracted = f"Symbols extracted at {commit_label(sha)}." if sha else f"Extraction {commit_label(sha)}."
     return MemberSet("api_structure", "symbol_count",
                      "symbols, by language and file" + ("" if scope == "all" else " — public only"),
                      int(total or 0), scope, True, groups,
-                     note=f"{provenance} `public` is inferred from naming conventions, not declared; a maintainer's marking would be better.",
+                     note=f"{provenance} {extracted} `public` is inferred from naming conventions, not declared; a maintainer's marking would be better.",
                      source="project_code_symbols", inventory=inv.get("short", ""))
 
 
@@ -191,13 +199,57 @@ def inventory_sentence(inv: dict, nfiles=None) -> str:
             "2026-09-11 counts vendored code as the repository's own until re-indexed.")
 
 
+def _symbol_row(r: dict) -> dict:
+    """One symbol as a member: name, a detail line that now carries the line
+    and signature, and the same facts as keys (line, signature, doc) so a
+    reader of the JSON does not parse the line. A class carries a
+    children_key and opens to its methods."""
+    from resource_explorer.code_symbols import TYPE_KINDS
+
+    line = int(r.get("start_line") or 0)
+    sig = (r.get("signature") or "").strip()
+    doc = ""
+    for ln in (r.get("docstring") or "").strip().splitlines():
+        if ln.strip():
+            doc = ln.strip()[:160]
+            break
+    bits = [(r.get("kind") or "") + (" · private" if r.get("is_private") else ""),
+            role_label(r.get("file_role"))]
+    if line:
+        bits.append(f"line {line}")
+    detail = " · ".join(bits) + (f" · {sig}" if sig else "") + (f" · {doc}" if doc else "")
+    row = {"name": r["qualified_name"], "detail": detail, "line": line, "signature": sig, "doc": doc,
+           "kind": r.get("kind") or ""}
+    if (r.get("kind") or "") in TYPE_KINDS:
+        row["children_key"] = f"class:{r['file_path']}::{r['qualified_name']}"
+    return row
+
+
+_SYMBOL_COLS = ("qualified_name, kind, name, file_path, start_line, signature, docstring, parent_class, "
+                "COALESCE(is_private,0) AS is_private, file_role")
+
+
 def _symbols_in_file(registry, slug, file_path, scope, limit) -> list[dict]:
     where = "project_slug = ? AND file_path = ?" + ("" if scope == "all" else " AND COALESCE(is_private, 0) = 0")
     with registry._conn() as conn:
         rows = [_row(r) for r in conn.execute(
-            f"SELECT qualified_name, kind, COALESCE(is_private,0) AS is_private FROM project_code_symbols WHERE {where} "
-            "ORDER BY kind, qualified_name LIMIT ?", (slug, file_path, limit)).fetchall()]
-    return [{"name": r["qualified_name"], "detail": (r.get("kind") or "") + (" · private" if r.get("is_private") else "")} for r in rows]
+            f"SELECT {_SYMBOL_COLS} FROM project_code_symbols "
+            f"WHERE {where} ORDER BY start_line, qualified_name LIMIT ?", (slug, file_path, limit)).fetchall()]
+    return [_symbol_row(r) for r in rows]
+
+
+def _methods_of(registry, slug, key, scope, limit) -> list[dict]:
+    """`class:<file>::<qualified_name>` -> the symbols whose parent_class is
+    that class's simple name, in the same file, by line."""
+    file_path, _, qn = key[len("class:"):].partition("::")
+    simple = qn.rsplit(".", 1)[-1]
+    where = ("project_slug = ? AND file_path = ? AND parent_class = ?"
+             + ("" if scope == "all" else " AND COALESCE(is_private, 0) = 0"))
+    with registry._conn() as conn:
+        rows = [_row(r) for r in conn.execute(
+            f"SELECT {_SYMBOL_COLS} FROM project_code_symbols WHERE {where} "
+            "ORDER BY start_line, qualified_name LIMIT ?", (slug, file_path, simple, limit)).fetchall()]
+    return [_symbol_row(r) for r in rows]
 
 
 def _component_members(registry, slug, scope, limit) -> MemberSet:
@@ -239,12 +291,108 @@ def _findings_members(registry, slug, analysis_id, scope, limit) -> MemberSet:
                      source="project_analysis_findings")
 
 
+def _spec_endpoint_members(registry, slug, scope, limit):
+    """The endpoints from the best DESCRIBED source (committed spec, else registered running instance), grouped
+    by tag -- the same source the chat compile quotes (api_reference/service.best_spec_interface). None when
+    only code is known, so the by-file code list runs."""
+    from resource_explorer.api_reference.service import best_spec_interface
+
+    iface = best_spec_interface(registry, slug)
+    if iface is None:
+        return None
+    by_tag: dict[str, list] = {}
+    for op in iface.operations:
+        by_tag.setdefault(op.group or "(untagged)", []).append(op)
+    groups = []
+    remaining = limit
+    for tag in sorted(by_tag):
+        items = by_tag[tag]
+        take = items[:max(remaining, 0)]
+        remaining -= len(take)
+        groups.append(Group(tag, len(items), [
+            {"name": o.name,
+             "detail": " · ".join(x for x in (o.summary, f"auth {', '.join(o.security)}" if o.security else "",
+                                              "deprecated" if o.deprecated else "") if x),
+             "extra": {"method": o.method, "path": o.path, "operation_id": o.operation_id, "tags": o.tags}}
+            for o in take], len(take) < len(items)))
+    n = len(iface.operations)
+    return MemberSet("interface_surface", "endpoints", "operations, by tag", n, scope, False, groups,
+                     note=f"{iface.source_phrase.capitalize()}. The API reference pane has parameters, bodies, "
+                          "responses and the comparison with the code.",
+                     source=f"api_reference:{iface.source}",
+                     inventory=f"{n:,} operations in {len(groups)} groups")
+
+
+def _endpoint_members(registry, slug, scope, limit) -> MemberSet:
+    """interface_surface's members are the endpoints, grouped by file, each
+    with method, path, handler and line -- read from project_code_markers
+    through the same reader the compile uses (resource_explorer/endpoints.py),
+    so the list the model was shown and the list the pane opens are one list.
+    The fallback this replaced opened the four findings and, inside the
+    http_api one, a 1,869-item evidence blob that was mostly test mocks.
+
+    Not measured (no markers ever captured) is `total=None`; measured and
+    none is `total=0`. Different sentences, never one blank."""
+    from resource_explorer.endpoints import read_endpoints
+
+    spec = _spec_endpoint_members(registry, slug, scope, limit)
+    if spec is not None:
+        return spec
+    es = read_endpoints(registry, slug)
+    if es is None:
+        return MemberSet("interface_surface", "endpoints", "endpoints, by file", None, scope, False,
+                         empty=True, reason="the endpoint reader could not read the registry; this is not a count of zero",
+                         source="project_code_markers")
+    left_out = []
+    if es.excluded_tests:
+        left_out.append(f"{es.excluded_tests:,} registration(s) under test paths left out")
+    if es.excluded_vendored:
+        left_out.append(f"{es.excluded_vendored:,} under vendored code left out")
+    note = ("Code registrations (route decorators and annotations) outside tests"
+            + (f"; {'; '.join(left_out)}" if left_out else "") + ". Ordered by file, then line.")
+    if not es.measured:
+        return MemberSet("interface_surface", "endpoints", "endpoints, by file", None, scope, False,
+                         empty=True, note=note,
+                         reason="not measured: no code markers were captured for this repository, "
+                                "which is not the same as having no endpoints",
+                         source="project_code_markers")
+    by_file: dict[str, list] = {}
+    for e in es.rows:
+        by_file.setdefault(e.file_path, []).append(e)
+    groups = []
+    remaining = limit
+    for path in sorted(by_file):
+        items = by_file[path]
+        take = items[:max(remaining, 0)]
+        remaining -= len(take)
+        groups.append(Group(path, len(items), [
+            {"name": e.label or e.path,
+             "detail": " · ".join(x for x in (e.handler, f"line {e.start_line}" if e.start_line else "",
+                                              e.framework, e.kind if e.kind != "http_api" else "") if x),
+             "extra": {"handler": e.handler, "file": e.file_path, "line": e.start_line, "kind": e.kind,
+                       "method": e.method, "path": e.path, "framework": e.framework,
+                       "signature": e.signature, "doc": e.doc}}
+            for e in take], len(take) < len(items)))
+    ms = MemberSet("interface_surface", "endpoints", "endpoints, by file", es.total, scope, False, groups,
+                   note=note, source="project_code_markers", inventory=f"{es.total:,} endpoints in {len(groups)} files")
+    if es.total == 0:
+        ms.empty = True
+        ms.reason = f"measured: no endpoints found outside tests ({'; '.join(left_out) or 'nothing left out'})"
+    return ms
+
+
 _READERS = {
+    ("interface_surface", None): _endpoint_members,
     ("cve_scan", None): _cve_members,
     ("dependency_analysis", None): _dependency_members,
     ("manifest_parse", "dependency_count"): _dependency_members,
     ("data_file_profiling", None): _data_file_members,
     ("api_structure", "symbol_count"): _symbol_members,
+    # The answer page's link sends no metric. Without a bare key these fell
+    # through to the findings fallback: "0 findings" for api_structure, whose
+    # rows live in project_code_symbols (dataops_testgen, 2026-10-15).
+    ("api_structure", None): _symbol_members,
+    ("manifest_parse", None): _dependency_members,
     ("code_symbol_extraction", "symbol_count"): _symbol_members,
     ("code_symbol_extraction", None): _symbol_members,
     ("architecture_recovery", None): _component_members,
@@ -324,6 +472,9 @@ def members_for(registry: ProjectRegistry, slug: str, analysis_id: str, metric: 
         # place to look (or the analysis is unknown to this registry) —
         # unchanged behaviour.
         ms = _findings_members(registry, slug, analysis_id, scope, limit)
+    if not ms.not_applicable and not ms.total and not ms.reason:
+        ms.empty = True
+        ms.reason = f"nothing stored by {analysis_id} for this repo"
     ms.run_at = last_run_at(registry, slug, analysis_id)
     return ms
 
@@ -332,6 +483,8 @@ def children_for(registry: ProjectRegistry, slug: str, analysis_id: str, key: st
                  scope: str = "public", limit: int = DEFAULT_LIMIT) -> list[dict]:
     """One level down. Keys are opaque to the client: `file:<path>` today."""
     scope = "all" if scope == "all" else "public"
+    if key.startswith("class:") and analysis_id in ("api_structure", "code_symbol_extraction"):
+        return _methods_of(registry, slug, key, scope, limit)
     if key.startswith("file:") and analysis_id in ("api_structure", "code_symbol_extraction"):
         return _symbols_in_file(registry, slug, key[5:], scope, limit)
     return []

@@ -1,0 +1,173 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;600&amp;family=Lora:wght@400;500&amp;display=swap">
+  <style>
+    :root{
+      --paper:#f3f2f2; --rule:rgba(32,31,29,.16); --rule-strong:#8e8a8a;
+      --ink:#201f1d; --ink-muted:#4a463e;
+      --accent:#b68235; --accent-ink:#7d5411;
+      --ok:#1d6b3f; --warn:#9c4212; --gap:#5b4a9c;
+      --chrome:#1b1a19; --chrome-surface:#2d2b2b; --chrome-line:#444141;
+      --chrome-ink:#f3f2f2; --chrome-muted:#9b9797; --accent-on-dark:#e1ad66; --ok-on-dark:#74c68d;
+      --s1:4.6px; --s2:9.2px; --s3:13.8px; --s4:18.4px; --s6:27.6px;
+      --heading:"Cormorant Garamond",Georgia,serif;
+      --body:"Lora",Georgia,serif;
+      --mono:ui-monospace,"SF Mono",Menlo,monospace;
+    }
+    *{box-sizing:border-box}
+    body{margin:0;font-family:var(--body);background:var(--paper);color:var(--ink);font-size:15px;line-height:1.55}
+    .tnum{font-variant-numeric:tabular-nums}
+    .mono{font-family:var(--mono);font-size:.87em}
+    .caps{font-family:var(--heading);font-weight:600;font-size:12px;letter-spacing:.09em;text-transform:uppercase}
+    .h{font-family:var(--heading);font-weight:600}
+    .muted{color:var(--ink-muted)}
+    .lnk{color:var(--accent-ink);text-decoration:underline;text-underline-offset:3px}
+    .g{font-family:"DejaVu Sans","Apple Symbols","Segoe UI Symbol",sans-serif;font-weight:600;display:inline-block;width:1.3em;text-align:center}
+    .ok{color:var(--ok)} .warn{color:var(--warn)} .gapc{color:var(--gap)}
+    .panel-t{font-family:var(--heading);font-weight:600;font-size:21px;margin:0 0 var(--s1)}
+    .panel-s{font-size:13px;color:var(--ink-muted);margin:0 0 var(--s3);max-width:62ch}
+    /* sidebar, on chrome */
+    .side{background:var(--chrome);color:var(--chrome-ink);width:300px;padding:var(--s3);border-radius:3px;font-size:13px;line-height:1.45}
+    .side .lab{font-family:var(--heading);font-weight:600;font-size:12px;letter-spacing:.09em;text-transform:uppercase;color:var(--chrome-muted);margin:var(--s3) 0 4px}
+    .side .sel{border:1px solid var(--chrome-line);border-radius:2px;padding:3px 6px}
+    .side .row{padding:4px 8px;border-left:2px solid transparent;display:flex;justify-content:space-between;gap:8px}
+    .side .row.on{border-left-color:var(--accent);background:var(--chrome-surface)}
+    .side .n{color:var(--chrome-muted)}
+    .side .fold{color:var(--chrome-muted);padding:4px 8px;text-decoration:underline;text-underline-offset:3px}
+    .side .btn{display:inline-block;border:1px solid var(--accent);color:var(--accent-on-dark);border-radius:2px;padding:1px 7px;font-size:12px;margin:0 4px 4px 0}
+    .side .btn.quiet{border-color:var(--chrome-line);color:var(--chrome-ink)}
+    .side .btn.off{border-style:dashed;color:var(--chrome-muted);border-color:var(--chrome-line)}
+    .side .why{color:var(--chrome-muted);font-size:12px}
+    .side .res{padding:3px 8px;display:flex;gap:6px}
+    .side .res input{margin:0}
+    .note{border-left:2px solid var(--chrome-line);padding-left:8px;margin-top:6px;color:var(--chrome-ink);font-size:12px}
+    /* paper panes */
+    .pane{background:#fff;border:1px solid var(--rule);padding:var(--s4);border-radius:2px}
+    .btn2{display:inline-block;border:1px solid var(--rule-strong);border-radius:2px;padding:1px 8px;font-size:12.5px;margin-right:6px}
+    .btn2.primary{border-color:var(--accent);color:var(--accent-ink)}
+    table.grid{border-collapse:collapse;font-size:13px;width:100%}
+    table.grid th{font-family:var(--heading);font-weight:600;text-align:left;font-size:13px;border-bottom:1px solid var(--rule-strong);padding:4px 8px;vertical-align:bottom}
+    table.grid td{border-bottom:1px solid var(--rule);padding:4px 8px;vertical-align:baseline}
+    table.grid td.c{text-align:center}
+    .tabs{display:flex;gap:var(--s4);border-bottom:1px solid var(--rule);font-size:14px;margin:var(--s2) 0 var(--s2)}
+    .tabs span{padding-bottom:3px}
+    .tabs .on{border-bottom:2px solid var(--accent)}
+    .tabs .zero{color:var(--ink-muted);border-bottom:1px dashed var(--rule-strong)}
+    .call{font-size:12.5px;color:var(--ink-muted);border-left:3px solid var(--gap);padding-left:var(--s2);margin-top:var(--s2);max-width:58ch}
+    .strike{text-decoration:line-through;color:var(--ink-muted)}
+  </style>
+</helmet>
+<style>
+  .band{border-top:1px solid var(--rule-strong);padding-top:var(--s2);margin-top:var(--s4)}
+  .band .t{font-family:var(--heading);font-weight:600;font-size:19px}
+  .chip2{display:inline-block;border:1px solid var(--rule-strong);border-radius:11px;padding:0 9px;font-size:12.5px;margin:0 4px 4px 0}
+  .slot{border:1px solid var(--rule);border-radius:2px;padding:var(--s2) var(--s3);background:#fff;min-height:150px;display:flex;flex-direction:column}
+  .slot .ct{font-family:var(--heading);font-weight:600;font-size:15px}
+  .slot .pv{font-size:12px;color:var(--ink-muted);margin-top:auto;padding-top:6px;display:flex;gap:8px}
+  .bar{height:7px;background:var(--ink-muted);opacity:.55;border-radius:1px;display:block;grid-column:1 / -1;grid-row:2}
+  .brow{display:grid;grid-template-columns:1fr auto;gap:1px 6px;font-size:12px;align-items:center;margin:2px 0}
+  .entry{border-bottom:1px solid var(--rule);padding:6px 0;font-size:13.5px}
+  .entry .by{font-size:12px;color:var(--ink-muted)}
+</style>
+<div style="width:1500px;padding:var(--s6) var(--s6) 60px">
+  <div style="border-bottom:1px solid var(--rule-strong);padding-bottom:var(--s4)">
+    <div class="caps" style="color:var(--accent-ink)">Curate and Understanding for every kind &middot; reply to ASK-DESIGNER-CURATE-AND-UNDERSTANDING-ALL-KINDS &middot; against main at 524f1c7f</div>
+    <h1 class="h" style="font-weight:400;font-size:38px;margin:var(--s3) 0 var(--s2);max-width:52ch">Same three bands on every kind; a database&rsquo;s charts, now and over time</h1>
+    <p style="max-width:96ch;margin:0">Curate: findable (group, tags) &rarr; the kind&rsquo;s own curation work &rarr; what people say (ratings as counts, the signed journal as notes). Understanding: the six database charts in two sections, each with its run and what it counts; a chart that never ran says so in its own slot. Values are illustrative (AdventureWorks).</p>
+  </div>
+
+  <div style="display:flex;gap:var(--s6);margin-top:var(--s6);align-items:flex-start">
+    <div style="width:640px">
+      <p class="panel-t">A &middot; Curate on a database</p>
+      <p class="panel-s">Band 1 is two lines. Band 2 is the kind&rsquo;s own work, present and explained until its readers exist. Band 3 is the same on every kind.</p>
+      <div class="pane">
+        <div class="caps muted">Curate &middot; database</div>
+        <div class="h" style="font-size:24px;font-weight:400">laz_local_adventureworks</div>
+
+        <div class="band" style="margin-top:var(--s2)"><span class="t">Findable</span> <span class="muted" style="font-size:12.5px">&middot; local &middot; not in Egeria</span></div>
+        <div style="font-size:13.5px;margin-top:4px"><span class="muted" style="display:inline-block;width:52px">group</span> Sales platform <span class="lnk" style="font-size:12.5px">change</span></div>
+        <div style="font-size:13.5px;margin-top:4px"><span class="muted" style="display:inline-block;width:52px">tags</span><span class="chip2">sales</span><span class="chip2">sample-data</span><span class="chip2">postgres &times;</span> <span class="lnk" style="font-size:12.5px">＋ tag</span></div>
+
+        <div class="band"><span class="t">Glossary terms on tables and columns</span></div>
+        <div style="font-size:13.5px;margin-top:4px">No proposals yet: needs data classes per column (<span class="mono">data_class_match</span>) and a glossary to match against.</div>
+        <div class="band"><span class="t">Logical schema match</span></div>
+        <div style="font-size:13.5px;margin-top:4px">No proposals yet: needs the logical schemas Egeria knows to be read. Rows will be proposed, then confirmed, overridden, or flagged when a later survey disagrees.</div>
+
+        <div class="band"><span class="t">Ratings</span> <span class="muted" style="font-size:13px">&middot; <span class="tnum">4</span> &middot; &#9733;&#9733;&#9733;&#9733;&#9733; <span class="tnum">2</span> &middot; &#9733;&#9733;&#9733; <span class="tnum">1</span> &middot; &#9733;&#9733; <span class="tnum">1</span></span><span class="lnk" style="font-size:12.5px;margin-left:12px">rate it</span></div>
+        <div class="entry">&#9733;&#9733;&#9733;&#9733;&#9733; <span class="muted">usefulness</span> &mdash; Good sample of a real sales schema.<div class="by">mchessell &middot; 09-30</div></div>
+        <div class="entry">&#9733;&#9733; <span class="muted">documentation</span> &mdash; No column comments at all.<div class="by">unsigned &middot; from before authors were recorded &middot; 08-14</div></div>
+
+        <div class="band"><span class="t">Notes</span> <span class="muted" style="font-size:12.5px">&middot; the journal &middot; why it matters, and to whom</span></div>
+        <div style="border:1px solid var(--rule-strong);border-radius:2px;padding:6px 8px;font-size:13px;color:var(--ink-muted);margin-top:6px">Worth using for anyone who&hellip;</div>
+        <div class="entry">Use the sales schema only; production.* is archive-shaped.<div class="by">dwolfson &middot; 09-29 &middot; suggested to Data Expert</div></div>
+        <div style="font-size:13px;margin-top:8px"><span class="caps muted">Curator notes from Classic &middot; 2 &middot; unsigned</span> <span class="lnk" style="font-size:12.5px">show</span></div>
+      </div>
+    </div>
+
+    <div style="flex:1;min-width:0">
+      <p class="panel-t">B &middot; Understanding on a database</p>
+      <p class="panel-s" style="max-width:90ch">Only database charts. &ldquo;Now&rdquo; names its run (and says when that run was partial); &ldquo;Over time&rdquo; opens on a sentence, not a banner. Unestablished row counts are counted beside the chart, never drawn as zero.</p>
+      <div class="pane">
+        <div style="display:flex;gap:var(--s2);align-items:baseline"><span class="h" style="font-size:20px">Now</span><span class="muted" style="font-size:13px">from the survey of 09-28 14:02 &middot; local &middot; <span class="g">&#9680;</span> 3 of 5 schemas readable with this credential</span></div>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:var(--s3);margin-top:var(--s2)">
+          <div class="slot"><div class="ct">Tables and columns per schema</div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;font-size:11.5px;margin-top:6px">
+              <div><div class="muted">tables</div>
+                <div class="brow"><span>sales</span><span class="bar" style="width:80%"></span><span class="tnum">19</span></div>
+                <div class="brow"><span>production</span><span class="bar" style="width:100%"></span><span class="tnum">25</span></div>
+                <div class="brow"><span>person</span><span class="bar" style="width:52%"></span><span class="tnum">13</span></div></div>
+              <div><div class="muted">columns</div>
+                <div class="brow"><span>sales</span><span class="bar" style="width:75%"></span><span class="tnum">160</span></div>
+                <div class="brow"><span>production</span><span class="bar" style="width:100%"></span><span class="tnum">212</span></div>
+                <div class="brow"><span>person</span><span class="bar" style="width:45%"></span><span class="tnum">96</span></div></div>
+            </div>
+            <div class="pv">counts tables and columns per readable schema &middot; <span class="lnk">save image</span></div></div>
+          <div class="slot"><div class="ct">Largest tables, by rows</div>
+            <div style="margin-top:6px">
+              <div class="brow"><span class="mono" style="font-size:11px">sales.salesorderdetail</span><span class="bar" style="width:100%"></span><span class="tnum">121,317</span></div>
+              <div class="brow"><span class="mono" style="font-size:11px">production.transactionhistory</span><span class="bar" style="width:93%"></span><span class="tnum">113,443</span></div>
+              <div class="brow"><span class="mono" style="font-size:11px">sales.salesorderheader</span><span class="bar" style="width:26%"></span><span class="tnum">31,465</span></div>
+            </div>
+            <div style="font-size:12px;margin-top:6px"><span class="g">?</span> <span class="tnum">12</span> tables&rsquo; row counts not established &mdash; statistics not gathered on the server &middot; <span class="lnk">by size instead &rsaquo;</span></div>
+            <div class="pv">rows, as estimated by the server&rsquo;s statistics &middot; <span class="lnk">save image</span></div></div>
+          <div class="slot"><div class="ct">Column types</div>
+            <div style="margin-top:6px">
+              <div class="brow"><span>integer</span><span class="bar" style="width:100%"></span><span class="tnum">201</span></div>
+              <div class="brow"><span>character varying</span><span class="bar" style="width:62%"></span><span class="tnum">125</span></div>
+              <div class="brow"><span>timestamp</span><span class="bar" style="width:40%"></span><span class="tnum">81</span></div>
+            </div>
+            <div style="font-size:12px;margin-top:6px"><span class="g">?</span> type not recorded &middot; <span class="tnum">3</span></div>
+            <div class="pv">counts columns per declared type &middot; <span class="lnk">save image</span></div></div>
+        </div>
+
+        <div style="display:flex;gap:var(--s2);align-items:baseline;margin-top:var(--s6)"><span class="h" style="font-size:20px">Over time</span><span class="muted" style="font-size:13px">7 runs since 08-02</span></div>
+        <div style="font-size:14px;margin:6px 0 var(--s2)">Since the run of 09-21: <span class="lnk">2 tables added</span>, <span class="lnk">1 removed</span>, <span class="lnk">14 columns added</span>.</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:var(--s3)">
+          <div class="slot"><div class="ct">Structure over runs</div>
+            <svg viewBox="0 0 300 90" style="width:100%;height:90px;margin-top:6px"><polyline fill="none" stroke="#4a463e" stroke-width="1.5" points="10,60 55,58 100,55 145,55"/><line x1="180" y1="20" x2="180" y2="70" stroke="#8e8a8a" stroke-dasharray="3 3"/><polyline fill="none" stroke="#4a463e" stroke-width="1.5" points="215,50 260,48 290,46"/><g fill="#4a463e"><circle cx="10" cy="60" r="2.5"/><circle cx="55" cy="58" r="2.5"/><circle cx="100" cy="55" r="2.5"/><circle cx="145" cy="55" r="2.5"/><circle cx="215" cy="50" r="2.5"/><circle cx="260" cy="48" r="2.5"/><circle cx="290" cy="46" r="2.5"/></g><text x="150" y="82" font-size="13" fill="#4a463e">09-14: tables not measured</text></svg>
+            <div class="pv">tables per run &middot; one point per run, gaps where a run didn&rsquo;t measure &middot; <span class="lnk">save image</span></div></div>
+          <div class="slot"><div class="ct">Activity per table</div>
+            <div style="font-size:12.5px;margin-top:6px"><span class="mono">sales.salesorderdetail</span> &middot; <span class="tnum">1,204</span> inserts/day</div>
+            <div style="font-size:12.5px"><span class="mono">person.person</span> &middot; idle</div>
+            <div style="font-size:12.5px"><span class="mono">production.workorder</span> &middot; counters reset between runs &mdash; not comparable</div>
+            <div class="pv">from db_change_rates, last two runs &middot; <span class="lnk">save image</span></div></div>
+          <div class="slot" style="border-style:dashed"><div class="ct">A chart whose step never ran</div>
+            <div style="font-size:13.5px;margin-top:10px"><span class="g">&#9675;</span> not run: needs a database survey</div>
+            <div style="margin-top:8px"><span class="btn2 primary">Run survey</span></div>
+            <div class="pv">never &ldquo;no data&rdquo;: that phrase can&rsquo;t tell never-ran from ran-and-found-none</div></div>
+        </div>
+      </div>
+      <div class="call">Per kind: no repo chart kinds on a database. A file share gets one sentence until its charts are designed. The saved image carries resource, chart, run and source as a footer line.</div>
+    </div>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>

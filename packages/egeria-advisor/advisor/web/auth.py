@@ -44,9 +44,10 @@ async def auth_login(req: LoginRequest) -> Dict[str, Any]:
     it is never stored and never signed into the JWT (contract change
     2026-09-04 — see advisor/auth.py and docs/runtime-architecture-plan.md §4).
     """
-    from advisor.auth import login_with_password, create_access_token
+    from advisor.auth import login_with_password, create_access_token, refuse_service_account
     if not req.username or not req.password:
         raise HTTPException(status_code=400, detail="username and password required")
+    refuse_service_account(req.username)  # before any Egeria call
     egeria_token = await asyncio.get_event_loop().run_in_executor(
         None, login_with_password, req.username, req.password
     )
@@ -66,9 +67,10 @@ async def auth_portal(req: PortalTokenRequest) -> Dict[str, Any]:
     no Egeria round-trip on this path beyond the optional cheap validation
     below, and no password anywhere.
     """
-    from advisor.auth import exchange_portal_token, create_access_token, validate_egeria_token
+    from advisor.auth import exchange_portal_token, create_access_token, validate_egeria_token, refuse_service_account
     payload = exchange_portal_token(req.portal_token)
     egeria_user = payload.get("sub", "")
+    refuse_service_account(egeria_user)  # before the Egeria liveness check
     egeria_token = payload.get("egeria_token", "")
 
     # Optional liveness check: the token was minted by someone else, so confirm

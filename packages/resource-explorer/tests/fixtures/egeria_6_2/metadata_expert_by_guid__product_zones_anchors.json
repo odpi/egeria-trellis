@@ -1,0 +1,301 @@
+{
+ "captured": "2026-10-14",
+ "platform": "Egeria 6.2 quickstart (qs-view-server), pyegeria 6.2.3",
+ "identity": "RE daemon (DaemonReason.ACCESS_CHECK), read-only",
+ "route": "MetadataExpert.get_metadata_element_by_guid",
+ "call": "get_metadata_element_by_guid(guid)",
+ "secrets": "keys matching token|password|secret|credential|apikey replaced by <removed>",
+ "graph_keys_dropped": [],
+ "answer": {
+  "classifications": [
+   {
+    "class": "AttachedClassification",
+    "classificationName": "Anchors",
+    "classificationOrigin": "ASSIGNED",
+    "classificationProperties": {
+     "propertiesAsStrings": {
+      "anchorDomainName": "AuthoredReferenceable",
+      "anchorScopeGUIDs": "{0=c4626e6c-3662-43c1-835a-124230961545}",
+      "anchorTypeName": "DigitalProduct",
+      "zoneMembership": "{0=digital-products}"
+     },
+     "propertyCount": 4,
+     "propertyNames": [
+      "anchorTypeName",
+      "anchorDomainName",
+      "zoneMembership",
+      "anchorScopeGUIDs"
+     ],
+     "propertyValueMap": {
+      "anchorDomainName": {
+       "class": "PrimitiveTypePropertyValue",
+       "primitiveTypeCategory": "OM_PRIMITIVE_TYPE_STRING",
+       "primitiveValue": "AuthoredReferenceable",
+       "typeName": "string"
+      },
+      "anchorScopeGUIDs": {
+       "arrayCount": 1,
+       "arrayValues": {
+        "propertiesAsStrings": {
+         "0": "c4626e6c-3662-43c1-835a-124230961545"
+        },
+        "propertyCount": 1,
+        "propertyNames": [
+         "0"
+        ],
+        "propertyValueMap": {
+         "0": {
+          "class": "PrimitiveTypePropertyValue",
+          "primitiveTypeCategory": "OM_PRIMITIVE_TYPE_STRING",
+          "primitiveValue": "c4626e6c-3662-43c1-835a-124230961545",
+          "typeName": "string"
+         }
+        }
+       },
+       "class": "ArrayTypePropertyValue",
+       "typeName": "array<string>"
+      },
+      "anchorTypeName": {
+       "class": "PrimitiveTypePropertyValue",
+       "primitiveTypeCategory": "OM_PRIMITIVE_TYPE_STRING",
+       "primitiveValue": "DigitalProduct",
+       "typeName": "string"
+      },
+      "zoneMembership": {
+       "arrayCount": 1,
+       "arrayValues": {
+        "propertiesAsStrings": {
+         "0": "digital-products"
+        },
+        "propertyCount": 1,
+        "propertyNames": [
+         "0"
+        ],
+        "propertyValueMap": {
+         "0": {
+          "class": "PrimitiveTypePropertyValue",
+          "primitiveTypeCategory": "OM_PRIMITIVE_TYPE_STRING",
+          "primitiveValue": "digital-products",
+          "typeName": "string"
+         }
+        }
+       },
+       "class": "ArrayTypePropertyValue",
+       "typeName": "array<string>"
+      }
+     }
+    },
+    "headerVersion": 0,
+    "origin": {
+     "homeMetadataCollectionId": "9905c3cb-94c5-4494-9229-0d6f69c0b842",
+     "homeMetadataCollectionName": "qs-metadata-store",
+     "originCategory": "LOCAL_COHORT",
+     "sourceServer": "qs-metadata-store"
+    },
+    "status": "ACTIVE",
+    "type": {
+     "typeCategory": "CLASSIFICATION_DEF",
+     "typeDescription": "Identifies the anchor entity for an element that is part of a large composite object such as an asset.",
+     "typeId": "aa44f302-2e43-4669-a1e7-edaae414fc6e",
+     "typeName": "Anchors",
+     "typeVersion": 1
+    },
+    "versions": {
+     "createTime": "2026-10-08T22:17:46.505+00:00",
+     "createdBy": "jacquardnpa",
+     "lastRequestId": "b94b45b1-26b7-420f-8c07-8f24606cb20f",
+     "maintainedBy": [
+      "jacquardnpa"
+     ],
+     "updateTime": "2026-10-08T22:17:46.505+00:00",
+     "updatedBy": "jacquardnpa",
+     "version": 1
+    }
+   },
+   {
+    "class": "AttachedClassification",
+    "classificationName": "ZoneMembership",
+    "classificationOrigin": "ASSIGNED",
+    "classificationProperties": {
+     "propertiesAsStrings": {
+      "zoneMembership": "{0=digital-products}"
+     },
+     "propertyCount": 1,
+     "propertyNames": [
+      "zoneMembership"
+     ],
+     "propertyValueMap": {
+      "zoneMembership": {
+       "arrayCount": 1,
+       "arrayValues": {
+        "propertiesAsStrings": {
+         "0": "digital-products"
+        },
+        "propertyCount": 1,
+        "propertyNames": [
+         "0"
+        ],
+        "propertyValueMap": {
+         "0": {
+          "class": "PrimitiveTypePropertyValue",
+          "primitiveTypeCategory": "OM_PRIMITIVE_TYPE_STRING",
+          "primitiveValue": "digital-products",
+          "typeName": "string"
+         }
+        }
+       },
+       "class": "ArrayTypePropertyValue",
+       "typeName": "array<string>"
+      }
+     }
+    },
+    "headerVersion": 0,
+    "origin": {
+     "homeMetadataCollectionId": "9905c3cb-94c5-4494-9229-0d6f69c0b842",
+     "homeMetadataCollectionName": "qs-metadata-store",
+     "originCategory": "LOCAL_COHORT",
+     "sourceServer": "qs-metadata-store"
+    },
+    "status": "ACTIVE",
+    "type": {
+     "typeCategory": "CLASSIFICATION_DEF",
+     "typeDescription": "Defines the element's membership of the governance zones.",
+     "typeId": "52993f4b-d853-47ae-a2e6-f22b96863533",
+     "typeName": "ZoneMembership",
+     "typeVersion": 1
+    },
+    "versions": {
+     "createTime": "2026-10-08T22:17:46.505+00:00",
+     "createdBy": "jacquardnpa",
+     "lastRequestId": "b94b45b1-26b7-420f-8c07-8f24606cb20f",
+     "maintainedBy": [
+      "jacquardnpa"
+     ],
+     "updateTime": "2026-10-08T22:17:46.505+00:00",
+     "updatedBy": "jacquardnpa",
+     "version": 1
+    }
+   }
+  ],
+  "elementGUID": "2c236456-2b68-48cf-af73-42cc7d7a7de0",
+  "elementProperties": {
+   "propertiesAsStrings": {
+    "category": "Survey Reports",
+    "contentStatus": "APPROVED",
+    "deploymentStatus": "UNDER_DEVELOPMENT",
+    "description": "List of files that could not be classified using the file reference data supplied by Core Content Pack.",
+    "displayName": "Missing File Classifiers",
+    "identifier": "MISSING-FILE-CLASSIFIERS",
+    "introductionDate": "1791497866503",
+    "productName": "Missing File Classifiers",
+    "qualifiedName": "DigitalProduct::Jacquard::MISSING-FILE-CLASSIFIERS::Missing File Classifiers",
+    "versionIdentifier": "6.3-SNAPSHOT"
+   },
+   "propertyCount": 10,
+   "propertyNames": [
+    "identifier",
+    "deploymentStatus",
+    "versionIdentifier",
+    "displayName",
+    "qualifiedName",
+    "description",
+    "category",
+    "productName",
+    "contentStatus",
+    "introductionDate"
+   ],
+   "propertyValueMap": {
+    "category": {
+     "class": "PrimitiveTypePropertyValue",
+     "primitiveTypeCategory": "OM_PRIMITIVE_TYPE_STRING",
+     "primitiveValue": "Survey Reports",
+     "typeName": "string"
+    },
+    "contentStatus": {
+     "class": "EnumTypePropertyValue",
+     "symbolicName": "APPROVED",
+     "typeName": "ContentStatus"
+    },
+    "deploymentStatus": {
+     "class": "EnumTypePropertyValue",
+     "symbolicName": "UNDER_DEVELOPMENT",
+     "typeName": "DeploymentStatus"
+    },
+    "description": {
+     "class": "PrimitiveTypePropertyValue",
+     "primitiveTypeCategory": "OM_PRIMITIVE_TYPE_STRING",
+     "primitiveValue": "List of files that could not be classified using the file reference data supplied by Core Content Pack.",
+     "typeName": "string"
+    },
+    "displayName": {
+     "class": "PrimitiveTypePropertyValue",
+     "primitiveTypeCategory": "OM_PRIMITIVE_TYPE_STRING",
+     "primitiveValue": "Missing File Classifiers",
+     "typeName": "string"
+    },
+    "identifier": {
+     "class": "PrimitiveTypePropertyValue",
+     "primitiveTypeCategory": "OM_PRIMITIVE_TYPE_STRING",
+     "primitiveValue": "MISSING-FILE-CLASSIFIERS",
+     "typeName": "string"
+    },
+    "introductionDate": {
+     "class": "PrimitiveTypePropertyValue",
+     "primitiveTypeCategory": "OM_PRIMITIVE_TYPE_DATE",
+     "primitiveValue": 1791497866503,
+     "typeName": "date"
+    },
+    "productName": {
+     "class": "PrimitiveTypePropertyValue",
+     "primitiveTypeCategory": "OM_PRIMITIVE_TYPE_STRING",
+     "primitiveValue": "Missing File Classifiers",
+     "typeName": "string"
+    },
+    "qualifiedName": {
+     "class": "PrimitiveTypePropertyValue",
+     "primitiveTypeCategory": "OM_PRIMITIVE_TYPE_STRING",
+     "primitiveValue": "DigitalProduct::Jacquard::MISSING-FILE-CLASSIFIERS::Missing File Classifiers",
+     "typeName": "string"
+    },
+    "versionIdentifier": {
+     "class": "PrimitiveTypePropertyValue",
+     "primitiveTypeCategory": "OM_PRIMITIVE_TYPE_STRING",
+     "primitiveValue": "6.3-SNAPSHOT",
+     "typeName": "string"
+    }
+   }
+  },
+  "headerVersion": 0,
+  "origin": {
+   "homeMetadataCollectionId": "9905c3cb-94c5-4494-9229-0d6f69c0b842",
+   "homeMetadataCollectionName": "qs-metadata-store",
+   "originCategory": "LOCAL_COHORT",
+   "sourceServer": "qs-metadata-store"
+  },
+  "status": "ACTIVE",
+  "type": {
+   "superTypeNames": [
+    "Collection",
+    "AuthoredReferenceable",
+    "Referenceable",
+    "OpenMetadataRoot"
+   ],
+   "typeCategory": "ENTITY_DEF",
+   "typeDescription": "A digital product is a collection of digital resources that have been designed to meet a specific consumer need.",
+   "typeId": "4aaaa7ca-6b4b-4c4b-997f-d5dfd42917b0",
+   "typeName": "DigitalProduct",
+   "typeVersion": 1
+  },
+  "versions": {
+   "createTime": "2026-10-08T22:17:46.508+00:00",
+   "createdBy": "jacquardnpa",
+   "lastRequestId": "2e7df35b-b573-4d10-bf03-5e6956e0ea16",
+   "maintainedBy": [
+    "jacquardnpa"
+   ],
+   "updateTime": "2026-10-14T17:29:13.101+00:00",
+   "updatedBy": "jacquardnpa",
+   "version": 2
+  }
+ }
+}

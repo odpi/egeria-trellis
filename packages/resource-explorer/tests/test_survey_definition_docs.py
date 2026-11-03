@@ -144,9 +144,10 @@ class TestDocumentsCarryTheirOwnScoping:
                 assert info["qualified_name"].endswith(key)
                 assert info["executes_at"], f"{name}/{key}: no executes_at"
             total_links += len(doc.scoped_by)
-        # Refresh is the one definition scoped by nothing — by design, it
-        # answers no question — and everything else is scoped by at least one.
-        assert docs["RepoRefreshSurvey"].scoped_by == []
+        # Refresh answers exactly one question since the 2026-10-22 CSV edit: the change-detection one
+        # (Q-0041, repo_profile_refresh). Everything else is scoped by at least one too.
+        assert docs["RepoRefreshSurvey"].scoped_by == [
+            "How much has changed since the last time this was surveyed — is it worth re-running now?"]
         assert total_links >= 90, total_links
 
     def test_a_known_link_is_read_verbatim(self):

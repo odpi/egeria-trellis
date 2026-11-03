@@ -18,8 +18,21 @@ cd "$(dirname "$0")/.."  # packages/resource-explorer/
 STATE_DIR=".prefect-run"
 mkdir -p "$STATE_DIR"
 
-API_URL="${PREFECT_API_URL:-http://localhost:4200/api}"
-WORK_POOL="${PREFECT_WORK_POOL:-default-agent-pool}"
+# `.env` is only loaded by Python's dotenv inside the app process — this
+# bash script never sources it, so a bare `${PREFECT_WORK_POOL:-...}` always
+# fell through to the default below, silently starting a worker on the wrong
+# pool while `.env` configured a different one. Read `.env`'s value as a
+# fallback when the shell doesn't already have one (an explicit
+# `PREFECT_WORK_POOL=... make prefect-up` still wins).
+_env_var() {
+  [ -f ".env" ] || return 0
+  grep -E "^$1=" .env | tail -1 | cut -d= -f2-
+}
+
+API_URL="${PREFECT_API_URL:-$(_env_var PREFECT_API_URL)}"
+API_URL="${API_URL:-http://localhost:4200/api}"
+WORK_POOL="${PREFECT_WORK_POOL:-$(_env_var PREFECT_WORK_POOL)}"
+WORK_POOL="${WORK_POOL:-default-agent-pool}"
 DEPLOYMENT_NAME="RE Survey Flow/re-survey-step-deployment"
 
 _reachable() {

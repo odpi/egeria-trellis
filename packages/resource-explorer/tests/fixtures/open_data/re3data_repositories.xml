@@ -1,0 +1,243 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<list>
+            <repository>
+            <id>r3d100000001</id>
+                        <doi>https://doi.org/10.17616/R31NJCHT</doi>
+                        <name>Odum Institute Archive Dataverse</name>
+            <link href="/api/v1/repository/r3d100000001" rel="self" />
+        </repository>
+            <repository>
+            <id>r3d100000002</id>
+                        <doi>https://doi.org/10.17616/R31597</doi>
+                        <name>Access to Archival Databases</name>
+            <link href="/api/v1/repository/r3d100000002" rel="self" />
+        </repository>
+            <repository>
+            <id>r3d100000004</id>
+                        <doi>https://doi.org/10.17616/R3WC79</doi>
+                        <name>Datenbank Gesprochenes Deutsch</name>
+            <link href="/api/v1/repository/r3d100000004" rel="self" />
+        </repository>
+            <repository>
+            <id>r3d100000005</id>
+                        <doi>https://doi.org/10.17616/R3RP41</doi>
+                        <name>UNC Dataverse</name>
+            <link href="/api/v1/repository/r3d100000005" rel="self" />
+        </repository>
+            <repository>
+            <id>r3d100000006</id>
+                        <doi>https://doi.org/10.17616/R3MW23</doi>
+                        <name>Archaeology Data Service</name>
+            <link href="/api/v1/repository/r3d100000006" rel="self" />
+        </repository>
+            <repository>
+            <id>r3d100000007</id>
+                        <doi>https://doi.org/10.17616/R3H59K</doi>
+                        <name>ESO Science Archive Facility</name>
+            <link href="/api/v1/repository/r3d100000007" rel="self" />
+        </repository>
+            <repository>
+            <id>r3d100000011</id>
+                        <doi>https://doi.org/10.17616/R3CC7N</doi>
+                        <name>CEDA Archive</name>
+            <link href="/api/v1/repository/r3d100000011" rel="self" />
+        </repository>
+            <repository>
+            <id>r3d100000012</id>
+                        <doi>https://doi.org/10.17616/R37P4C</doi>
+                        <name>Biological and Chemical Oceanography Data Management Office</name>
+            <link href="/api/v1/repository/r3d100000012" rel="self" />
+        </repository>
+            <repository>
+            <id>r3d100000013</id>
+                        <doi>https://doi.org/10.17616/R33W2F</doi>
+                        <name>Blue Obelisk Data Repository</name>
+            <link href="/api/v1/repository/r3d100000013" rel="self" />
+        </repository>
+            <repository>
+            <id>r3d100000015</id>
+                        <doi>https://doi.org/10.17616/R3059X</doi>
+                        <name>California Water CyberInfrastructure</name>
+            <link href="/api/v1/repository/r3d100000015" rel="self" />
+        </repository>
+            <repository>
+            <id>r3d100000016</id>
+                        <doi>https://doi.org/10.17616/R3VC70</doi>
+                        <name>Canadian Astronomy Data Centre</name>
+            <link href="/api/v1/repository/r3d100000016" rel="self" />
+        </repository>
+            <repository>
+            <id>r3d100000017</id>
+                        <doi>https://doi.org/10.17616/R3QP4Q</doi>
+                        <name>RNA Abundance Database</name>
+            <link href="/api/v1/repository/r3d100000017" rel="self" />
+        </repository>
+            <repository>
+            <id>r3d100000018</id>
+                        <doi>https://doi.org/10.17616/R3KW2S</doi>
+                        <name>Cell Centered Database</name>
+            <link href="/api/v1/repository/r3d100000018" rel="self" />
+        </repository>
+            <repository>
+            <id>r3d100000019</id>
+                        <doi>https://doi.org/10.17616/R3G598</doi>
+                        <name>ESS-DIVE</name>
+            <link href="/api/v1/repository/r3d100000019" rel="self" />
+        </repository>
+            <repository>
+            <id>r3d100000020</id>
+                        <doi>https://doi.org/10.17616/R3BC7B</doi>
+                        <name>Coastal Data Information Program</name>
+            <link href="/api/v1/repository/r3d100000020" rel="self" />
+        </repository>
+            <repository>
+            <id>r3d100000021</id>
+                        <doi>https://doi.org/10.17616/R36P42</doi>
+                        <name>Chemical Database Service</name>
+            <link href="/api/v1/repository/r3d100000021" rel="self" />
+        </repository>
+            <repository>
+            <id>r3d100000022</id>
+                        <doi>https://doi.org/10.17616/R33013</doi>
+                        <name>Comprehensive Epidemiological Data Resource</name>
+            <link href="/api/v1/repository/r3d100000022" rel="self" />
+        </repository>
+            <repository>
+            <id>r3d100000023</id>
+                        <doi>https://doi.org/10.17616/R3Z59M</doi>
+                        <name>Cell Image Library</name>
+            <link href="/api/v1/repository/r3d100000023" rel="self" />
+        </repository>
+            <repository>
+            <id>r3d100000027</id>
+                        <doi>https://doi.org/10.17616/R3TG6B</doi>
+                        <name>CiteSeerX</name>
+            <link href="/api/v1/repository/r3d100000027" rel="self" />
+        </repository>
+            <repository>
+            <id>r3d100000028</id>
+                        <doi>https://doi.org/10.17616/R3PP4D</doi>
+                        <name>The Data Hub</name>
+            <link href="/api/v1/repository/r3d100000028" rel="self" />
+        </repository>
+            <repository>
+            <id>r3d100000031</id>
+                        <doi>https://doi.org/10.17616/R3K01F</doi>
+                        <name>Google Code Project Hosting</name>
+            <link href="/api/v1/repository/r3d100000031" rel="self" />
+        </repository>
+            <repository>
+            <id>r3d100000032</id>
+                        <doi>https://doi.org/10.17616/R3F59Z</doi>
+                        <name>Communication Portal for Accessing Social Statistics</name>
+            <link href="/api/v1/repository/r3d100000032" rel="self" />
+        </repository>
+            <repository>
+            <id>r3d100000033</id>
+                        <doi>https://doi.org/10.17616/R39G6P</doi>
+                        <name>Forest Global Earth Observatory</name>
+            <link href="/api/v1/repository/r3d100000033" rel="self" />
+        </repository>
+            <repository>
+            <id>r3d100000034</id>
+                        <doi>https://doi.org/10.17616/R35P4R</doi>
+                        <name>Cornell University Geospatial Information Repository</name>
+            <link href="/api/v1/repository/r3d100000034" rel="self" />
+        </repository>
+            <repository>
+            <id>r3d100000036</id>
+                        <doi>https://doi.org/10.17616/R3X599</doi>
+                        <name>Goddard Earth Sciences Data and Information Services Center</name>
+            <link href="/api/v1/repository/r3d100000036" rel="self" />
+        </repository>
+            <repository>
+            <id>r3d100000037</id>
+                        <doi>https://doi.org/10.17616/R3SG61</doi>
+                        <name>Oak Ridge National Laboratory Distributed Active Archive Center for Biogeochemical Dynamics</name>
+            <link href="/api/v1/repository/r3d100000037" rel="self" />
+        </repository>
+            <repository>
+            <id>r3d100000038</id>
+                        <doi>https://doi.org/10.17616/R3NP43</doi>
+                        <name>Australian Antarctic Data Centre</name>
+            <link href="/api/v1/repository/r3d100000038" rel="self" />
+        </repository>
+            <repository>
+            <id>r3d100000039</id>
+                        <doi>https://doi.org/10.17616/R3J014</doi>
+                        <name>Global Biodiversity Information Facility</name>
+            <link href="/api/v1/repository/r3d100000039" rel="self" />
+        </repository>
+            <repository>
+            <id>r3d100000042</id>
+                        <doi>https://doi.org/10.17616/R3D59N</doi>
+                        <name>The World Bank Open Data</name>
+            <link href="/api/v1/repository/r3d100000042" rel="self" />
+        </repository>
+            <repository>
+            <id>r3d100000043</id>
+                        <doi>https://doi.org/10.17616/R38G6C</doi>
+                        <name>DataBasin</name>
+            <link href="/api/v1/repository/r3d100000043" rel="self" />
+        </repository>
+            <repository>
+            <id>r3d100000044</id>
+                        <doi>https://doi.org/10.17616/R34S33</doi>
+                        <name>DRYAD</name>
+            <link href="/api/v1/repository/r3d100000044" rel="self" />
+        </repository>
+            <repository>
+            <id>r3d100000045</id>
+                        <doi>https://doi.org/10.17616/R3101G</doi>
+                        <name>DataONE</name>
+            <link href="/api/v1/repository/r3d100000045" rel="self" />
+        </repository>
+            <repository>
+            <id>r3d100000046</id>
+                        <doi>https://doi.org/10.17616/R3W88N</doi>
+                        <name>European Environment Agency, Datasets</name>
+            <link href="/api/v1/repository/r3d100000046" rel="self" />
+        </repository>
+            <repository>
+            <id>r3d100000047</id>
+                        <doi>https://doi.org/10.17616/R3RG6Q</doi>
+                        <name>Edinburgh DataShare</name>
+            <link href="/api/v1/repository/r3d100000047" rel="self" />
+        </repository>
+            <repository>
+            <id>r3d100000049</id>
+                        <doi>https://doi.org/10.17616/R3MS3F</doi>
+                        <name>Potsdam Carte du Ciel Plates</name>
+            <link href="/api/v1/repository/r3d100000049" rel="self" />
+        </repository>
+            <repository>
+            <id>r3d100010035</id>
+                        <doi>https://doi.org/10.17616/R3201S</doi>
+                        <name>Chandra Data Archive</name>
+            <link href="/api/v1/repository/r3d100010035" rel="self" />
+        </repository>
+            <repository>
+            <id>r3d100010050</id>
+                        <doi>https://doi.org/10.17616/R3H01T</doi>
+                        <name>Geoscience Data Exchange at NSF NCAR</name>
+            <link href="/api/v1/repository/r3d100010050" rel="self" />
+        </repository>
+            <repository>
+            <id>r3d100010051</id>
+                        <doi>https://doi.org/10.17616/R3C880</doi>
+                        <name>Harvard Dataverse</name>
+            <link href="/api/v1/repository/r3d100010051" rel="self" />
+        </repository>
+            <repository>
+            <id>r3d100010052</id>
+                        <doi>https://doi.org/10.17616/R37G62</doi>
+                        <name>Encyclopedia of Astronomy and Astrophysics</name>
+            <link href="/api/v1/repository/r3d100010052" rel="self" />
+        </repository>
+            <repository>
+            <id>r3d100010054</id>
+                        <doi>https://doi.org/10.17616/R33S3S</doi>
+                        <name>U.S. Geological Survey</name>
+            <link href="/api/v1/repository/r3d100010054" rel="self" />
+        </repository>
+</list>

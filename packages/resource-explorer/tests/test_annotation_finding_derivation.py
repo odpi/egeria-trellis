@@ -229,7 +229,8 @@ class TestTwoSecretsOnOneLine:
         collide again, silently."""
         src = (pathlib.Path(__file__).parent.parent / "resource_explorer" / "surveyors"
                / "sub_surveyors" / "secret_ruleset.py").read_text()
-        assert "offset=m.start()," in src
+        # make() in _scan_text_bounded passes base + m.start() as `start`.
+        assert "offset=start," in src and "start = base + m.start()" in src
 
     def test_two_such_annotations_do_not_collide_end_to_end(self):
         from resource_explorer.surveyors.survey_report import (

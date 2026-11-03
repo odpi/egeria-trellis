@@ -32,12 +32,13 @@ within one fetch) still stands and is still what most of this file pins.
 from __future__ import annotations
 
 import time
-from pathlib import Path
 from unittest.mock import patch
 
 from resource_explorer.surveyors.survey_definition_reader import SurveyDefinitionReader
 
-INDEX = Path(__file__).resolve().parents[1] / "resource_explorer" / "web" / "static" / "index.html"
+# Brief I: these tests fake the Egeria clients; the code under test runs as a signed-in caller, as on a route.
+import pytest  # noqa: E402
+pytestmark = pytest.mark.usefixtures("signed_in_caller")
 
 
 def _reader() -> SurveyDefinitionReader:
@@ -150,32 +151,3 @@ def test_a_single_question_does_not_start_a_thread_pool():
         assert _reader()._resolve_question_guids(["only"]) == [("only", "g")]
         assert _reader()._resolve_question_guids([]) == []
 
-
-def test_the_two_candidate_fetches_are_issued_together():
-    """UPDATED 2026-09-03 (commit 6c402e8): the second, cross-stage
-    `automate_full` fetch this test used to pin as concurrent with the first
-    was removed entirely, not made concurrent — Automate's own Surveys
-    sub-tab already lists every Survey Definition catalog-wide, so merging
-    Full Survey into every other stage's list was never load-bearing. There
-    is now exactly one candidate fetch per stage; nothing to parallelize.
-    This asserts that, so a reintroduced second fetch (concurrent or not)
-    gets caught rather than silently restoring the duplication commit
-    6c402e8 removed.
-    """
-    src = INDEX.read_text()
-    block = src[src.index("const _candParams = { phase: intent"):]
-    block = block[:block.index("} catch {")]
-
-    assert block.count("await fetch(") == 1, (
-        f"expected exactly one candidate fetch per stage, found {block.count('await fetch(')} "
-        "— see this test's docstring for why a second one should not come back"
-    )
-    assert "survey_kind: 'automate_full'" not in block
-
-
-def test_both_candidate_filters_are_still_sent():
-    """Guards the same incident `test_ui_terminology_consistency` documents:
-    each filter alone returns a plausible wrong list. Re-asserted here because
-    this file rewrote the call site."""
-    src = INDEX.read_text()
-    assert "const _candParams = { phase: intent, survey_kind: intent };" in src

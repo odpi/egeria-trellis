@@ -1,5 +1,7 @@
 # Resource Explorer — Surveyor Reference Guide
 
+**Status:** stale. Oldest unrevised reference (2026-08-07); predates the database surveyors and Prefect. Check against the code.
+
 The survey framework produces an **Egeria-aligned annotation report** for any indexed project.
 Surveys run entirely from SQLite (no Egeria connection needed); publishing to Egeria is optional.
 
@@ -383,13 +385,19 @@ All annotations inherit from `Annotation` and are defined in `survey_report.py`:
 |---|---|---|
 | `ClassificationAnnotation` | `ClassificationAnnotationProperties` | FileClassifier, Language, Documentation |
 | `ResourceMeasureAnnotation` | `ResourceMeasureAnnotationProperties` | FileStructure, FileSize, DataProfiler, Dependency |
-| `QualityScoreAnnotation` | `QualityAnnotationProperties` | Health |
-| `DataClassAnnotation` | `DataClassAnnotationProperties` | Dependency |
+| `QualityScoreAnnotation` | `QualityAnnotationProperties` | Health, FOSS scorecard, SQL view analysis (databases) |
+| `DataClassAnnotation` | `DataClassAnnotationProperties` | Dependency, database column profiling (`data_class_match`, one per column checked) |
 | `SchemaAnalysisAnnotation` | `SchemaAnalysisAnnotationProperties` | ApiStructure, DataProfiler |
 | `RelationshipAnnotation` | `RelationshipAdviceAnnotationProperties` | (reserved) |
 | `RequestForActionAnnotation` | `RequestForActionProperties` | Security, FileSize, DataProfiler, any via `_warn()` |
 
 `RequestForActionProperties` has **no "Annotation" suffix** — this is the correct Egeria class name.
+
+**A `QualityScoreAnnotation`'s scores are in `jsonProperties`, under `qualityScores`, as numbers.** Egeria's
+`QualityAnnotationProperties` has a single int `qualityScore` (which RE leaves unset, so Egeria shows `0`) and
+ignores unknown fields. RE used to send the map as a `qualityScores` field, which Egeria discarded without an
+error; reports published before 2026-10-19 hold no scores. `egeria_reader` restores the map to
+`subtype_data["qualityScores"]` when it reads an annotation back.
 
 ---
 

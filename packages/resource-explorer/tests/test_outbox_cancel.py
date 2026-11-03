@@ -18,6 +18,9 @@ import pytest
 
 from resource_explorer.registry import ProjectRegistry
 
+# Brief I: these tests drive the drain mechanics, as the background loop does: a declared daemon job.
+pytestmark = pytest.mark.usefixtures("as_daemon")
+
 
 @pytest.fixture
 def registry(tmp_path):

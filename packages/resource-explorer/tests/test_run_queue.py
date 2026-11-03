@@ -175,6 +175,13 @@ class TestHeartbeat:
 
 
 class TestCancel:
+    def test_a_held_kind_row_is_never_cancelled(self, reg):
+        """engine_action rows stand for Egeria engine actions RE has claimed: cancelling one locally would
+        leave the action claimed with nothing to complete it. Refused here, so every caller gets it."""
+        run_id = reg.enqueue_run("engine_action", {"engine_action_guid": "a-1"})
+        assert reg.cancel_queued_run(run_id) is False
+        assert reg.get_run(run_id)["state"] == "queued"
+
     def test_a_queued_row_cancels(self, reg):
         run_id = reg.enqueue_run("scouting_scan", {"slug": "a"})
         assert reg.cancel_queued_run(run_id) is True
@@ -420,6 +427,42 @@ class TestPostgresClaimSemantics:
             reg = ProjectRegistry(database_url=pg_registry.database_url)
             barrier.wait(timeout=10)
             row = reg.claim_next_run(name)
+            if row is not None:
+                claimed.append(row["id"])
+
+        threads = [threading.Thread(target=_claim, args=(f"host:{i}",)) for i in (1, 2)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join(timeout=20)
+
+        assert set(claimed) == ids
+
+    def test_a_claimer_locks_only_the_row_it_takes(self, pg_registry, monkeypatch):
+        """Both claimers have READ their candidates before either has taken a lock (a barrier inside the scan
+        forces it). A scan that locked every candidate it read would leave the second claimer nothing."""
+        from resource_explorer import presser_hold
+
+        ids = {pg_registry.enqueue_run("scouting_scan", {"slug": f"s{i}"}) for i in range(2)}
+        real = presser_hold.claimable_by
+        met = threading.Barrier(2)
+        seen = threading.local()
+
+        def _meet_once(*a, **kw):
+            if not getattr(seen, "done", False):
+                seen.done = True
+                met.wait(timeout=5)
+            return real(*a, **kw)
+
+        monkeypatch.setattr(presser_hold, "claimable_by", _meet_once)
+        claimed: list = []
+
+        def _claim(name: str) -> None:
+            reg = ProjectRegistry(database_url=pg_registry.database_url)
+            try:
+                row = reg.claim_next_run(name)
+            except threading.BrokenBarrierError:
+                return
             if row is not None:
                 claimed.append(row["id"])
 

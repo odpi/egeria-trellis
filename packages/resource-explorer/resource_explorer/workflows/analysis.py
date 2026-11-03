@@ -35,9 +35,13 @@ class AnalysisRunResult:
     `published` is FOUR-state, not a bool: None (never attempted — the
     resource has no assigned Egeria project, or the run produced no
     annotations), False (attempted and failed), True (attempted, drained
-    inline, and landed in Egeria before this call returned), "queued"
-    (`RunsConfig.publish_inline=False` — durably enqueued, not yet applied;
-    the scheduler's periodic drain will apply it, within its own cycle).
+    inline, landed in Egeria AND read back before this call returned),
+    "queued" (enqueued — the default since 2026-10-14 — or inline but not yet
+    read back; the scheduler's periodic drain applies and reads it back).
+    The word a person sees is not this flag: it is derived from the run's
+    outbox rows (`registry.publish_proofs`, carried as `publish_proof` on the
+    activity entry): "queued for publish", "published · read back", or
+    "publish failed" with Egeria's words.
     Callers render the ☁ Publish button on False and None and hide it on True
     and "queued" alike (both mean "nothing for the user to retry by hand"),
     so collapsing True/False would hide the recovery path for a failure, and
@@ -49,8 +53,9 @@ class AnalysisRunResult:
     steps) vs "waited" (the synchronous Egeria drain) — see
     `RunsConfig.publish_inline`'s docstring for the measurement that made the
     split worth having. `publish_mode` is "not-attempted" (no assigned
-    project, or no annotations), "inline" (drained synchronously — the
-    unchanged default), or "enqueued" (`publish_inline=False`).
+    project, or no annotations), "inline" (drained synchronously —
+    `RUNS_PUBLISH_INLINE=true` or the per-run "wait"), or "enqueued" (the
+    default since 2026-10-14).
     """
 
     status: str  # "ok" | "error"
@@ -251,7 +256,17 @@ def run_analysis(
     publish_mode = "not-attempted"
     publish_run_id = ""
     pending_published_record = None
+    refusal = ""
     if result.annotations and registry.has_assigned_egeria_project("repo", slug):
+        # Brief Z2: the person who asked for this run must be allowed to publish the repository (re-checked here,
+        # right before the write; the findings are kept either way).
+        from resource_explorer.workflows.curate import person_write_refusal
+
+        refusal = person_write_refusal(registry, "repo", slug)
+        if refusal:
+            publish_mode = "not-permitted"
+            summary = summary.rstrip(".") + f"; not published: {refusal}."
+    if result.annotations and not refusal and registry.has_assigned_egeria_project("repo", slug):
         from resource_explorer.config import get_config
 
         # The per-run choice, threaded through from the route: "wait"/
@@ -266,6 +281,8 @@ def run_analysis(
             defer_drain = not get_config().runs.publish_inline
         publish_mode = "enqueued" if defer_drain else "inline"
         publish_start = time.perf_counter()
+        from resource_explorer.private_publish import PrivateAwaitsOwner, record_waiting
+
         try:
             from resource_explorer.surveyors.egeria_publisher import EgeriaPublisher
 
@@ -296,14 +313,26 @@ def run_analysis(
                 # docstring for the measurement, and this run-in-background
                 # design for the per-run choice that can now also cause it).
                 published = "queued"
-                publish_run_id = getattr(publisher, "publish_run_id", "") or ""
+                run_id = getattr(publisher, "publish_run_id", "")
+                publish_run_id = run_id if isinstance(run_id, str) else ""
                 pending_published_record = getattr(publisher, "pending_published_record", None)
                 summary = summary.rstrip(".") + (
                     f"; {len(result.annotations)} Egeria write(s) queued for "
                     "publish — next drain ≤ 15 min."
                 )
             else:
+                # Inline, and its read-back proof landed before publish() returned (the publisher reports
+                # `publish_deferred` otherwise, whichever branch ran).
                 published = True
+                run_id = getattr(publisher, "publish_run_id", "")
+                publish_run_id = run_id if isinstance(run_id, str) else ""
+        except PrivateAwaitsOwner as exc:
+            # Waiting, not failed (2026-10-13 review): only the private investigation's owner can publish it.
+            # Nothing was written, so `published` stays None ("not attempted"), and the wait is recorded once.
+            publish_mode = "awaits-owner"
+            summary = summary.rstrip(".") + f"; {exc}."
+            record_waiting(registry, exc, run_key=f"{analysis_id} · {result.surveyed_at.isoformat()}",
+                           source="analysis")
         except Exception as exc:
             published = False
             summary += f" (⚠ auto-publish to Egeria failed: {exc})"
@@ -428,14 +457,16 @@ def execute_and_record_analysis(slug: str, analysis_id: str, activity_id: str,
     # apply later.
     if result.published == "queued" and result.pending_published_record:
         detail["pending_published_record"] = result.pending_published_record
-    # publish_run_id only when queued — see registry.complete_publish_run_
-    # if_done, which reads it off this exact activity row to flip
-    # `published` from "queued" to True once the run's outbox rows land.
-    publish_run_id = result.publish_run_id if result.published == "queued" else ""
+    # publish_run_id whenever the run published through the outbox: the entry's publish word is derived from that
+    # run's proof rows (registry.publish_proofs), and registry.complete_publish_run_if_done reads it off this exact
+    # row to flip `published` from "queued" once the run is read back.
+    publish_run_id = result.publish_run_id if result.published in ("queued", True) else ""
     registry.update_activity_status(
         activity_id, result.status, summary=summary, detail=json.dumps(detail),
         annotations=result.annotations or None, publish_run_id=publish_run_id,
     )
+    if result.status == "ok":
+        _refresh_board_summaries_after_run(registry, entity_type, slug, analysis_id)
     return result
 
 
@@ -488,7 +519,8 @@ class DatabaseAnalysisRunResult:
     annotations: list[dict] = field(default_factory=list)
 
 
-def run_database_analysis(slug: str, analysis_id: str, *, registry=None) -> DatabaseAnalysisRunResult:
+def run_database_analysis(slug: str, analysis_id: str, *, registry=None,
+                          credentials: dict | None = None) -> DatabaseAnalysisRunResult:
     """Run one database per-card analysis's mapped step(s) — the database
     equivalent of `run_analysis` above.
 
@@ -509,10 +541,16 @@ def run_database_analysis(slug: str, analysis_id: str, *, registry=None) -> Data
     `status="error"`, exactly like `run_analysis` — only for something
     genuinely unexpected, which the caller (`execute_and_record_database_
     analysis` below) catches and records.
+
+    `credentials` (`{"user", "password"}`) is a credential typed for THIS run only (brief section
+    8, owner-approved 2026-10-07): it replaces the stored one, and it is never written anywhere by
+    this function. Only the in-process override path passes it; the run queue never does.
     """
     from resource_explorer.registry import ProjectRegistry
     from resource_explorer.surveyors.database.database_surveyor import (
+        DATABASE_REGISTRY_STEP_ANALYSES,
         DATABASE_SURVEYOR_STEP_MAP,
+        database_library_step_key,
         run_database_survey,
     )
     from resource_explorer.surveyors.database.db_derived import (
@@ -552,13 +590,38 @@ def run_database_analysis(slug: str, analysis_id: str, *, registry=None) -> Data
             annotations=ann_summary,
         )
 
+    library_key = database_library_step_key(analysis_id)
+    if library_key:
+        return _run_database_library_step(registry, slug, analysis_id, library_key)
+
+    if analysis_id in DATABASE_REGISTRY_STEP_ANALYSES:
+        # Each registry step in order, through the executor (prerequisites, step_runs); the first that does not
+        # run stops the rest, since each reads what the one before stored. `run_synthetic_step` has no stored-
+        # credential fallback, so the credential is passed here: this run's when one was typed, else the stored one.
+        if credentials is None and (not db.db_user or not db.db_password):
+            return DatabaseAnalysisRunResult(
+                status="error",
+                error="No stored database credentials — register the database with "
+                      "db_user/db_password, or run a full survey with credentials, first.",
+            )
+        login = credentials or {"user": db.db_user, "password": db.db_password}
+        step_kwargs = {"db_user": login.get("user", ""), "db_pwd": login.get("password", ""),
+                       "credential_scope": "this run" if credentials else ""}
+        summaries = []
+        for step_key in DATABASE_REGISTRY_STEP_ANALYSES[analysis_id]:
+            result = _run_database_library_step(registry, slug, analysis_id, step_key, **step_kwargs)
+            if result.status != "ok":
+                return result
+            summaries.append(f"{step_key}: {result.summary}")
+        return DatabaseAnalysisRunResult(status="ok", summary=" · ".join(summaries))
+
     if analysis_id not in DATABASE_SURVEYOR_STEP_MAP:
         return DatabaseAnalysisRunResult(
             status="error",
             error=f"Analysis '{analysis_id}' has no local survey step(s) mapped.",
         )
 
-    if not db.db_user or not db.db_password:
+    if credentials is None and (not db.db_user or not db.db_password):
         return DatabaseAnalysisRunResult(
             status="error",
             error="No stored database credentials — register the database with "
@@ -568,7 +631,8 @@ def run_database_analysis(slug: str, analysis_id: str, *, registry=None) -> Data
     steps = DATABASE_SURVEYOR_STEP_MAP[analysis_id]
     try:
         result = run_database_survey(
-            slug, credentials={"user": db.db_user, "password": db.db_password},
+            slug,
+            credentials=credentials or {"user": db.db_user, "password": db.db_password},
             registry=registry, steps=steps,
         )
     except Exception as exc:
@@ -588,6 +652,52 @@ def run_database_analysis(slug: str, analysis_id: str, *, registry=None) -> Data
         ),
         annotations=ann_summary,
     )
+
+
+def _run_database_library_step(registry, slug: str, analysis_id: str, step_key: str,
+                               **runner_kwargs) -> DatabaseAnalysisRunResult:
+    """A database's library or registry step: `_run_library_step` for entity type "database"."""
+    return _run_library_step(registry, "database", slug, analysis_id, step_key, **runner_kwargs)
+
+
+def _run_library_step(registry, entity_type: str, slug: str, analysis_id: str, step_key: str,
+                      **runner_kwargs) -> DatabaseAnalysisRunResult:
+    """Run ONE Analytic Library step (or one of the adapter's own registry steps, for
+    `DATABASE_REGISTRY_STEP_ANALYSES`) for a database, through the executor that runs one inside a survey.
+    A library step is given no credential; a registry step that opens a connection is given one in `runner_kwargs`
+    (`db_user`, `db_pwd`, `credential_scope`) by its caller.
+
+    `run_synthetic_step` is that path (the engine host's too): cost observed, `step_runs` row written, the run
+    recorded as a survey activity row, the result in `step_annotations`. In this process, on RE's own engine.
+    The step opens no connection and gets no password (`credential_tier: none`), so none is read or passed.
+
+    A per-card run stores its result and does not publish (database publishing stays its own explicit action):
+    the executor's publisher is a recorder that declines, so the step's output is counted and nothing is sent to
+    Egeria. A step whose package is not installed fails with `StepNotInstalled`'s words; a step that did not run
+    is an error with the executor's own reason, never an ok."""
+    from resource_explorer.surveyors.survey_definition_executor import NothingToPublish, SurveyDefinitionExecutor
+
+    outputs: list = []
+
+    def _count_and_decline(entity, step_outputs, surveyed_at, registry):
+        outputs.extend(step_outputs)
+        raise NothingToPublish("a per-card run stores its result; it does not publish")
+
+    try:
+        ran = SurveyDefinitionExecutor(registry).run_synthetic_step(
+            entity_type=entity_type, slug=slug, re_analysis_step=step_key, executes_at="resource-explorer",
+            engine_override="resource-explorer", publisher=_count_and_decline,
+            display_name=f"{analysis_id} (per-card run)", **runner_kwargs)
+    except Exception as exc:
+        return DatabaseAnalysisRunResult(status="error", error=str(exc))
+
+    report = next((r for r in ran.get("steps") or [] if r.get("re_analysis_step") == step_key), {})
+    if report.get("status") != "ok":
+        why = "; ".join(str(e) for e in ran.get("errors") or []) or str(report.get("detail") or "") \
+            or f"step status {report.get('status') or 'unknown'}"
+        return DatabaseAnalysisRunResult(status="error", error=f"{step_key} did not run on {slug}: {why}")
+    count = sum(int(o.get("annotation_count") or 0) for o in outputs if isinstance(o, dict))
+    return DatabaseAnalysisRunResult(status="ok", summary=f"{count} annotation(s).")
 
 
 def execute_and_record_database_analysis(slug: str, analysis_id: str, activity_id: str,
@@ -618,7 +728,139 @@ def execute_and_record_database_analysis(slug: str, analysis_id: str, activity_i
         activity_id, result.status, summary=result.summary or result.error or "",
         detail=json.dumps(detail), annotations=result.annotations or None,
     )
+    if result.status == "ok":
+        _refresh_board_summaries_after_run(registry, "database", slug, analysis_id)
     return result
+
+
+def filesystem_library_step_key(analysis_id: str) -> str:
+    """The Analytic Library step a file system's analysis id runs, or "" when it names none. Only steps
+    `survey_step_host.attach` put beside filesystem_inventory (installed or catalogued and missing): the folder survey,
+    the walk extensions and file_profiles have their own presses and routes."""
+    from resource_explorer.surveyors import survey_step_host
+    from resource_explorer.surveyors.filesystem.survey_definition_adapter import FILESYSTEM_ANALYSIS_STEP_MAP
+
+    steps = FILESYSTEM_ANALYSIS_STEP_MAP.get(analysis_id) or []
+    attached = survey_step_host.attached_user_steps("filesystem") | set(survey_step_host.missing_library_steps("filesystem"))
+    return steps[0] if len(steps) == 1 and steps[0] in attached else ""
+
+
+def run_filesystem_analysis(slug: str, analysis_id: str, *, registry=None) -> DatabaseAnalysisRunResult:
+    """Run ONE file system analysis that is an Analytic Library step (Files build step 6: fs_change_rates,
+    fs_duplicates, fs_activity, fs_permissions; step 7's fs_layout_signals): zero-fetch derivations over the walk's kept per-file rows, so no
+    file is opened and no credential is read. Through the same executor a survey uses (`_run_library_step`): cost
+    observed, `step_runs` row written, the result in `step_annotations`; stored, not published. Never raises for an
+    analysis-level failure."""
+    from resource_explorer.registry import ProjectRegistry
+
+    registry = registry or ProjectRegistry()
+    if not registry.filesystem_exists(slug):
+        return DatabaseAnalysisRunResult(status="error", error=f"FileSystem '{slug}' not found")
+    step_key = filesystem_library_step_key(analysis_id)
+    if not step_key:
+        return DatabaseAnalysisRunResult(
+            status="error", error=f"Analysis '{analysis_id}' is not an Analytic Library step for file systems")
+    return _run_library_step(registry, "filesystem", slug, analysis_id, step_key)
+
+
+def _executor_of_step(registry, slug: str, step_key: str) -> dict:
+    """{"executor": ...} from the step's latest `step_runs` row (who actually ran it: `local` or `prefect`), or {}
+    when no row is there. Never a guess: an absent executor stays absent."""
+    if not step_key:
+        return {}
+    try:
+        rows = registry.query_step_runs(slug=slug, step_key=step_key, entity_type="filesystem", limit=1)
+    except Exception:  # noqa: BLE001 — a missing fact must not fail the run's own record
+        return {}
+    executor = (rows[0] if rows else {}).get("executor") or ""
+    return {"executor": executor} if executor else {}
+
+
+def execute_and_record_filesystem_analysis(slug: str, analysis_id: str, activity_id: str,
+                                           *, registry=None) -> DatabaseAnalysisRunResult:
+    """Run one file system analysis and write its terminal status onto `activity_id`, from the run queue's
+    `filesystem_analysis_run` handler (the file-system twin of `execute_and_record_database_analysis`)."""
+    from resource_explorer.registry import ProjectRegistry
+
+    registry = registry or ProjectRegistry()
+    started = time.monotonic()
+    try:
+        result = run_filesystem_analysis(slug, analysis_id, registry=registry)
+    except Exception as exc:  # pragma: no cover — genuinely unexpected
+        log.exception("File system analysis run crashed for %s/%s", slug, analysis_id)
+        registry.update_activity_status(
+            activity_id, "error", summary=f"'{analysis_id}' run crashed: {exc}",
+            detail=json.dumps({"analysis_id": analysis_id, "published": None, "error": str(exc),
+                               "duration_s": round(time.monotonic() - started, 3)}))
+        return DatabaseAnalysisRunResult(status="error", error=str(exc))
+    detail = {"analysis_id": analysis_id, "published": None, "duration_s": round(time.monotonic() - started, 3),
+              **_executor_of_step(registry, slug, filesystem_library_step_key(analysis_id))}
+    if result.status == "error":
+        detail["error"] = result.error or result.summary
+    else:
+        detail["message"] = result.summary
+    registry.update_activity_status(
+        activity_id, result.status, summary=result.summary or result.error or "",
+        detail=json.dumps(detail), annotations=result.annotations or None)
+    if result.status == "ok":
+        _refresh_board_summaries_after_run(registry, "filesystem", slug, analysis_id)
+    return result
+
+
+#: The word an override row shows for a credential typed for one run, and the row's own statement
+#: that the run is not retried (the credential lives in session memory and dies with the session).
+OVERRIDE_SCOPE = "this run"
+NOT_RETRIED_WORDS = "not retried · credential was for this run only"
+
+
+def execute_override_database_analysis(slug: str, analysis_id: str, activity_id: str,
+                                       user: str, password: str, *, registry=None
+                                       ) -> DatabaseAnalysisRunResult:
+    """One database analysis run with a credential typed for this run only (brief section 8).
+
+    **In-process, on RE's own engine; never the run queue and never Prefect.** The queue persists
+    its payload in the registry and Prefect keeps flow parameters, and an override password may be
+    neither. So this runs where the request was received (`start_in_process`), holds the password in
+    memory for the call, and drops it: scrubbed from every string stored (summary, detail,
+    annotations summary), kept out of log lines by `redacting_logs`, never returned. The activity
+    row names the user it ran as and says it is not retried; it never carries the password.
+    """
+    from resource_explorer.registry import ProjectRegistry
+    from resource_explorer.secret_redaction import redacting_logs, scrub
+
+    registry = registry or ProjectRegistry()
+    ran_as = {"user": user, "scope": OVERRIDE_SCOPE}
+    with redacting_logs(password):
+        try:
+            result = run_database_analysis(
+                slug, analysis_id, registry=registry,
+                credentials={"user": user, "password": password})
+        except Exception as exc:
+            # No traceback: its frames and message are the override's to leak.
+            msg = scrub(str(exc), password)
+            log.error("Database analysis override run crashed for %s/%s: %s", slug, analysis_id, msg)
+            registry.update_activity_status(
+                activity_id, "error", summary=f"'{analysis_id}' run crashed: {msg}",
+                detail=json.dumps({"analysis_id": analysis_id, "published": None, "error": msg,
+                                   "ran_as": ran_as, "not_retried": NOT_RETRIED_WORDS}),
+            )
+            return DatabaseAnalysisRunResult(status="error", error=msg)
+    detail = {"analysis_id": analysis_id, "published": None, "ran_as": ran_as,
+              "not_retried": NOT_RETRIED_WORDS}
+    clean = DatabaseAnalysisRunResult(
+        status=result.status, summary=scrub(result.summary, password),
+        error=scrub(result.error, password), annotations=scrub(result.annotations, password))
+    if clean.status == "error":
+        detail["error"] = clean.error or clean.summary
+    else:
+        detail["message"] = clean.summary
+    registry.update_activity_status(
+        activity_id, clean.status, summary=clean.summary or clean.error or "",
+        detail=json.dumps(detail), annotations=clean.annotations or None,
+    )
+    if clean.status == "ok":
+        _refresh_board_summaries_after_run(registry, "database", slug, analysis_id)
+    return clean
 
 
 def _humanise_age(seconds: float) -> str:
@@ -666,8 +908,7 @@ class Freshness:
         ago = _humanise_age(self.age_seconds or 0)
         source = "" if self.via == analysis_id else f" (via '{self.via}')"
         if self.fresh:
-            return (f"'{analysis_id}' already has data from {ago}{source}; "
-                    f"not running it again. Pass force=true to run anyway.")
+            return f"'{analysis_id}' has data from {ago}{source}."
         return f"'{analysis_id}' last produced data {ago}{source}."
 
 
@@ -960,6 +1201,10 @@ def build_analysis_last_activity(registry, entity_type: str, slug: str) -> dict[
     published_by_analysis = registry.get_last_published_analyses(slug)
     publish_linkage = registry.get_egeria_linkage(f"{entity_type}_publish", slug) or {}
     publish_stale = publish_linkage.get("status") == "stale"
+    publish_uncatalogued = publish_linkage.get("status") == "uncatalogued"
+
+    from resource_explorer.catalogue_commit import _ts, egeria_reset_at_or_none, publish_fields
+    reset_at = egeria_reset_at_or_none(registry, slug)  # None: publish_fields says it could not check
 
     result: dict[str, dict] = {}
     for a in get_analyses(entity_type, include_egeria_live=False):
@@ -970,7 +1215,7 @@ def build_analysis_last_activity(registry, entity_type: str, slug: str) -> dict[
         if recorded:
             pub_at, pub_scope = recorded, "analysis"
         elif shared:
-            pub_at, pub_scope = max(published_by_type[t] for t in shared), entity_type
+            pub_at, pub_scope = max((published_by_type[t] for t in shared), key=_ts), entity_type
         else:
             pub_at, pub_scope = "", ""
         result[a["id"]] = {
@@ -982,9 +1227,12 @@ def build_analysis_last_activity(registry, entity_type: str, slug: str) -> dict[
             "last_run_via": run.get("last_run_via", ""),
             "last_run_derived_from": run.get("last_run_derived_from", ""),
             "last_run_partial": run.get("last_run_partial", False),
+            "last_publish_proof": run.get("last_publish_proof"),
             "last_published_at": pub_at,
             "last_published_scope": pub_scope,
+            **publish_fields(registry, slug, pub_at, reset_at),
             "publish_stale": bool(pub_at) and publish_stale,
+            "publish_uncatalogued": publish_uncatalogued,
         }
     result["__auto_publishes__"] = {
         "auto_publishes": registry.has_assigned_egeria_project(entity_type, slug),
@@ -1014,8 +1262,65 @@ def _results_map_for(entity_type: str):
     return REPO_ANALYSIS_RESULTS_MAP, REPO_ANALYSIS_HEADLINE_MAP
 
 
+def list_survey_result_boards(registry, entity_type: str, slug: str, stage: str = "") -> dict:
+    """The By-analysis contents board's cheap half: [{id, title, description,
+    analysis_ids}] for `entity_type`/`stage` — catalog metadata ONLY, no
+    results/headline reader is called. Exists so the /next By-analysis pane
+    (`app.js`'s `loadByAnalysisPane`) can paint its table-of-contents and
+    fire one fetch per board (`build_survey_results(..., board_id=...)`
+    below) instead of waiting on `build_survey_results`' full sweep, which
+    `build_survey_results`'s own docstring already measured at 109s on one
+    repo's Analysis stage — see BRIEF-BY-ANALYSIS-PANEL-USABILITY.md's
+    "Progressive render" section, added 2026-09-28 for exactly this.
+
+    Same id/title/description shape `build_survey_results` returns per
+    board, minus `analyses`/`has_results`/timestamps — a caller that wants
+    those already has `build_survey_results(..., board_id=this board's id)`
+    to fetch them one board at a time.
+    """
+    if entity_type == "repo":
+        from resource_explorer.surveyors.repo_survey_definition_adapter import (
+            SURVEY_RESULT_DASHBOARDS,
+            get_dashboard_stages,
+        )
+
+        boards = []
+        for dashboard in SURVEY_RESULT_DASHBOARDS.values():
+            stages = get_dashboard_stages(dashboard.analysis_ids)
+            if stage and stage not in stages:
+                continue
+            boards.append({
+                "id": dashboard.id,
+                "title": dashboard.title,
+                "description": dashboard.description,
+                "analysis_ids": list(dashboard.analysis_ids),
+                "stages": stages,
+            })
+        return {"slug": slug, "stage": stage, "boards": boards}
+
+    from resource_explorer.surveyors.analysis_catalog_reader import get_analyses
+
+    results_map, _headline_map = _results_map_for(entity_type)
+    catalog_by_id = {a["id"]: a for a in get_analyses(entity_type, include_egeria_live=False)}
+    boards = []
+    for analysis_id in results_map:
+        entry = catalog_by_id.get(analysis_id)
+        this_stage = ((entry or {}).get("intent") or "").strip().lower()
+        if stage and stage != this_stage:
+            continue
+        boards.append({
+            "id": analysis_id,
+            "title": (entry or {}).get("name") or analysis_id.replace("_", " ").title(),
+            "description": (entry or {}).get("description") or "",
+            "analysis_ids": [analysis_id],
+            "stages": [this_stage] if this_stage else [],
+        })
+    return {"slug": slug, "stage": stage, "boards": boards}
+
+
 def build_survey_results(
     registry, entity_type: str, slug: str, stage: str = "", include_empty: bool = False,
+    board_id: str = "",
 ) -> dict:
     """Tier 2 — the Survey Results ("By analysis") dashboards for any
     entity_type, generalized out of `projects.py`'s `_survey_results_sync`
@@ -1039,12 +1344,47 @@ def build_survey_results(
     last_surveyed_at) is computed the same way the repo branch computes it,
     just scoped to that one analysis_id's own annotation_types instead of a
     dashboard's union.
+
+    **The read-cost fix (2026-09-28, BOARD-SUMMARY-READ-COST-IMPLEMENTED.md):** when `board_id` is
+    **given, this first tries
+    `registry.get_board_summary` — a single-row read of what a writer
+    (`_refresh_board_summaries_after_run` below, called from
+    `execute_and_record_analysis`/`execute_and_record_database_analysis` at
+    run completion) already computed and persisted. That summary is used as-
+    is when it exists and is at least as new as the board's own analysis_id's
+    most recent recorded run (`registry.get_analysis_last_run`); otherwise
+    this falls through to the expensive per-call recompute below exactly as
+    before PR #346/this change. Whenever board_id is given and this DOES
+    recompute (summary missing, stale, or entity_type/board_id combination
+    this reader has never seen written), the freshly-built dashboard dict is
+    persisted before returning, so the next read of the same board is fast —
+    a form of self-healing that needs no separate backfill step. Measured
+    before this fix: `db_classification` 25.8s, `db_relationship_graph`
+    12.2s, `db_fingerprint` 10.4s, per call, on adventureworks discovery
+    boards — see the IMPLEMENTED doc for the full before/after table.
     """
+    if board_id:
+        fast = _read_board_summary_if_fresh(registry, entity_type, slug, board_id, stage, include_empty)
+        if fast is not None:
+            # The persisted summary was written before any reset; the marker is read NOW, every time.
+            _status = (registry.get_egeria_linkage(f"{entity_type}_publish", slug) or {}).get("status")
+            for _board in fast.get("dashboards") or []:
+                _board.update(_reset_fields(registry, slug, _board.get("last_published_at", "")))
+                # the persisted copy's publish flags are corrected the same way: from the linkage row, now
+                _board["publish_stale"] = bool(_board.get("last_published_at")) and _status == "stale"
+                _board["publish_uncatalogued"] = _status == "uncatalogued"
+                _stamp_own_run(registry, entity_type, slug, _board)
+                _stamp_result_state(registry, entity_type, slug, _board)
+            return fast
+
+    from resource_explorer.catalogue_commit import _ts
     from resource_explorer.surveyors.analysis_catalog_reader import get_analyses
 
     results_map, headline_map = _results_map_for(entity_type)
     published_by_type = registry.get_last_published_annotation_types(slug)
-    publish_stale = (registry.get_egeria_linkage(f"{entity_type}_publish", slug) or {}).get("status") == "stale"
+    _publish_status = (registry.get_egeria_linkage(f"{entity_type}_publish", slug) or {}).get("status")
+    publish_stale = _publish_status == "stale"
+    publish_uncatalogued = _publish_status == "uncatalogued"
     last_surveyed_at = ""
     getter = {
         "repo": registry.get, "database": registry.get_database, "filesystem": registry.get_filesystem,
@@ -1064,6 +1404,8 @@ def build_survey_results(
         )
 
         for dashboard in SURVEY_RESULT_DASHBOARDS.values():
+            if board_id and dashboard.id != board_id:
+                continue
             stages = get_dashboard_stages(dashboard.analysis_ids)
             if stage and stage not in stages:
                 continue
@@ -1074,7 +1416,7 @@ def build_survey_results(
             dashboard_types = get_dashboard_annotation_types(dashboard.analysis_ids)
             last_published_at = max(
                 (published_by_type[t] for t in dashboard_types if t in published_by_type),
-                default="",
+                key=_ts, default="",
             )
             dashboards.append({
                 "id": dashboard.id,
@@ -1087,27 +1429,49 @@ def build_survey_results(
                 "has_results": has_results,
                 "analyses": analyses,
                 "last_published_at": last_published_at,
+                **_reset_fields(registry, slug, last_published_at),
                 "publish_stale": bool(last_published_at) and publish_stale,
+                "publish_uncatalogued": publish_uncatalogued,
                 "last_surveyed_at": last_surveyed_at,
             })
+        for _d in dashboards:
+            _stamp_own_run(registry, entity_type, slug, _d)
+            _stamp_result_state(registry, entity_type, slug, _d)
+        if board_id and dashboards:
+            _persist_board_summary(registry, entity_type, slug, board_id, dashboards[0])
         return {"slug": slug, "stage": stage, "dashboards": dashboards}
 
     # database / filesystem: one synthesized dashboard per analysis_id that
     # this entity_type actually has a results reader for.
+    #
+    # **Stage filter runs BEFORE `_read_analyses` (2026-09-28, the second
+    # half of the read-cost fix).** `_read_analyses` is the expensive call —
+    # it invokes this analysis_id's `results_reader`/`headline_reader`, the
+    # same readers this whole change exists to stop paying for repeatedly.
+    # Harmless when `board_id` scopes the loop to one analysis_id (the
+    # common case, one iteration either way), but for a stage-wide call with
+    # no board_id (`GET .../survey-results?stage=discovery`, no board_id —
+    # e.g. a legacy/non-progressive caller, or the pre-#346 pane) the OLD
+    # order paid the full read cost for EVERY analysis_id in `results_map`,
+    # including every other stage's, before checking whether this one's
+    # stage even matched — reading (and discarding) every OTHER stage's
+    # boards' full cost for a call that only wanted one stage's.
     catalog_by_id = {a["id"]: a for a in get_analyses(entity_type, include_egeria_live=False)}
     for analysis_id in results_map:
+        if board_id and analysis_id != board_id:
+            continue
         entry = catalog_by_id.get(analysis_id)
-        analyses = _read_analyses(registry, slug, [analysis_id], results_map, headline_map)
         this_stage = ((entry or {}).get("intent") or "").strip().lower()
         if stage and stage != this_stage:
             continue
+        analyses = _read_analyses(registry, slug, [analysis_id], results_map, headline_map)
         has_results = any(_results_have_data(a["results"]) for a in analyses)
         if not has_results and not include_empty:
             continue
         annotation_types = (entry or {}).get("annotation_types") or []
         last_published_at = max(
             (published_by_type[t] for t in annotation_types if t in published_by_type),
-            default="",
+            key=_ts, default="",
         )
         dashboards.append({
             "id": analysis_id,
@@ -1120,10 +1484,296 @@ def build_survey_results(
             "has_results": has_results,
             "analyses": analyses,
             "last_published_at": last_published_at,
+            **_reset_fields(registry, slug, last_published_at),
             "publish_stale": bool(last_published_at) and publish_stale,
+            "publish_uncatalogued": publish_uncatalogued,
             "last_surveyed_at": last_surveyed_at,
         })
+    # An analysis in the catalog with a step but no results reader has no board above. Asked for by id, it answers
+    # with a board that says so (`no_results_view`), not with nothing: the pane read a missing board as an error.
+    if board_id and include_empty and board_id not in results_map and board_id in catalog_by_id:
+        entry = catalog_by_id[board_id]
+        this_stage = ((entry or {}).get("intent") or "").strip().lower()
+        if not stage or stage == this_stage:
+            dashboards.append({
+                "id": board_id,
+                "title": entry.get("name") or board_id.replace("_", " ").title(),
+                "description": entry.get("description") or "",
+                "render": "custom", "custom_renderer": "", "perspectives": [],
+                "stages": [this_stage] if this_stage else [],
+                "has_results": False, "no_results_view": True, "analyses": [],
+                "last_published_at": "", **_reset_fields(registry, slug, ""),
+                "publish_stale": False, "publish_uncatalogued": publish_uncatalogued,
+                "last_surveyed_at": last_surveyed_at,
+            })
+    for _d in dashboards:
+        _stamp_own_run(registry, entity_type, slug, _d)
+        _stamp_result_state(registry, entity_type, slug, _d)
+    if board_id and dashboards and not dashboards[0].get("no_results_view"):
+        _persist_board_summary(registry, entity_type, slug, board_id, dashboards[0])
     return {"slug": slug, "stage": stage, "dashboards": dashboards}
+
+
+def _board_analysis_ids(entity_type: str, board_id: str) -> list[str]:
+    """The analysis_id(s) a board_id's freshness should be judged against —
+    just `[board_id]` for database/filesystem (1:1), or a repo dashboard's
+    own `analysis_ids` when `board_id` names one of `SURVEY_RESULT_
+    DASHBOARDS`. `[]` when `board_id` names neither (caller falls back to
+    the expensive recompute, which will itself return no dashboard for an
+    unknown id — same as today)."""
+    if entity_type == "repo":
+        from resource_explorer.surveyors.repo_survey_definition_adapter import SURVEY_RESULT_DASHBOARDS
+
+        dashboard = SURVEY_RESULT_DASHBOARDS.get(board_id)
+        return list(dashboard.analysis_ids) if dashboard else []
+    return [board_id]
+
+
+def _latest_run_at(registry, entity_type: str, slug: str, analysis_ids: list[str]) -> str:
+    """The newest `last_run_at` (ISO, lexically comparable) any of these
+    analysis_ids has recorded — `""` when none of them has ever run."""
+    last_run = registry.get_analysis_last_run(entity_type, slug)
+    return max(
+        (last_run.get(aid, {}).get("last_run_at") or "" for aid in analysis_ids),
+        default="",
+    )
+
+
+def _stamp_own_run(registry, entity_type: str, slug: str, board: dict) -> None:
+    """`board["last_run_at"]`: when THIS board's own analysis_id(s) last ran
+    (the attributed activity time), "" when none did. `last_surveyed_at` on
+    the same board is the whole resource's survey time and says nothing about
+    this card; the header must not present it as the card's own run."""
+    try:
+        ids = _board_analysis_ids(entity_type, board.get("id", "")) or [board.get("id", "")]
+        board["last_run_at"] = _latest_run_at(registry, entity_type, slug, [i for i in ids if i])
+    except Exception:
+        board["last_run_at"] = ""
+
+
+#: The result states a board carries (`result_state`), each derived from stored proof rows (activity_log's recorded
+#: step list, step_runs, a section-coverage row, the result rows themselves), never from which branch the code took.
+#: `survey_unattributed` is a sixth the design did not list: a survey whose row records no step list cannot say
+#: whether this analysis's step ran, and "not requested" or "ran, no rows" would each be a guess.
+RESULT_STATES = ("has_results", "not_requested", "ran_no_rows", "predates_storage", "never_surveyed",
+                 "no_results_view", "survey_unattributed")
+
+#: When an analysis's local result store began. A survey that executed the step before this left verdicts only in
+#: Egeria annotations, so "no rows" then says nothing about the step. Only analyses whose store start is known.
+#: database_column_matches: PR #759 merged 2026-10-19 21:04 -0500.
+_COLUMN_MATCH_STORE_START = "2026-10-20T02:04:52+00:00"
+RESULT_STORE_STARTS: dict[str, str] = {
+    "data_class_match": _COLUMN_MATCH_STORE_START,
+    "reference_data_match": _COLUMN_MATCH_STORE_START,
+}
+
+#: Analyses whose step writes a section-coverage row on every completed run, even when it has no rows: that row is
+#: the proof the step ran, so an empty result is "ran, no rows" and not "never run".
+RESULT_COVERAGE_SECTIONS: dict[str, str] = {
+    "data_class_match": "column_matches",
+    "reference_data_match": "column_matches",
+}
+
+#: A recorded step whose status is one of these did not execute.
+_STEP_NOT_EXECUTED = frozenset({
+    "skipped_by_design", "skipped", "unknown_step", "not_executed_no_egeria_handler", "unrecognized_engine",
+})
+
+
+def _parse_ts(value):
+    from datetime import datetime, timezone
+    try:
+        d = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except (TypeError, ValueError):
+        return None
+    return d if d.tzinfo else d.replace(tzinfo=timezone.utc)
+
+
+def _latest_survey_record(registry, entity_type: str, slug: str) -> dict | None:
+    """The newest `survey` activity row: {"ts", "steps"}. `steps` is the set of step keys that EXECUTED, read from the
+    row's own recorded list, else from the step_runs snapshot that ended at it; None when neither names any (the
+    survey is on record, its steps are not)."""
+    with registry._conn() as conn:
+        row = conn.execute(
+            "SELECT ts, detail FROM activity_log WHERE entity_type = ? AND entity_slug = ? "
+            "AND operation = 'survey' ORDER BY ts DESC LIMIT 1", (entity_type, slug)).fetchone()
+    if row is None:
+        return None
+    try:
+        detail = json.loads(row["detail"] or "{}")
+    except (TypeError, ValueError):
+        detail = {}
+    listed = (detail.get("steps") or []) if isinstance(detail, dict) else []
+    keys = {
+        s.get("re_analysis_step") or str(s.get("step") or "").rsplit("::", 1)[-1]
+        for s in listed if isinstance(s, dict) and (s.get("status") or "") not in _STEP_NOT_EXECUTED
+    }
+    if listed:
+        return {"ts": row["ts"], "steps": keys}
+    end = _parse_ts(row["ts"])
+    runs = registry._step_run_times(entity_type, slug)
+    for _, t in runs:
+        start = _parse_ts(t)
+        if end is not None and start is not None and 0 <= (end - start).total_seconds() <= 7200:
+            return {"ts": row["ts"], "steps": {k for k, tt in runs if tt == t}}
+    return {"ts": row["ts"], "steps": None}
+
+
+def _coverage_proof(registry, entity_type: str, slug: str, section: str) -> str:
+    """Newest `surveyed_at` of a coverage row for `section`, "" when none was ever written."""
+    try:
+        table, slug_column = registry._coverage_table(entity_type)
+        with registry._conn() as conn:
+            row = conn.execute(
+                f"SELECT MAX(surveyed_at) AS at FROM {table} WHERE {slug_column} = ? AND section = ?",
+                (slug, section)).fetchone()
+        return (dict(row).get("at") if row else "") or ""
+    except Exception:
+        return ""
+
+
+def derive_result_state(registry, entity_type: str, slug: str, board: dict) -> str:
+    """One of RESULT_STATES for a board, from proof rows. See RESULT_STATES."""
+    if board.get("no_results_view"):
+        return "no_results_view"
+    if board.get("has_results"):
+        return "has_results"
+    from resource_explorer.registry import _analysis_step_map
+
+    ids = [i for i in (_board_analysis_ids(entity_type, board.get("id", "")) or [board.get("id", "")]) if i]
+    own_run = board.get("last_run_at") or ""
+    survey = _latest_survey_record(registry, entity_type, slug)
+    if not (board.get("last_surveyed_at") or survey or own_run):
+        return "never_surveyed"
+
+    def _predates(when) -> bool:
+        starts = [RESULT_STORE_STARTS.get(i) for i in ids]
+        t = _parse_ts(when)
+        return bool(starts) and all(starts) and t is not None and t < _parse_ts(min(starts))
+
+    # A section-coverage row is written whenever the step completes, even with no rows.
+    sections = {RESULT_COVERAGE_SECTIONS[i] for i in ids if i in RESULT_COVERAGE_SECTIONS}
+    for section in sections:
+        at = _coverage_proof(registry, entity_type, slug, section)
+        if at:
+            return "ran_no_rows"
+
+    smap = _analysis_step_map(entity_type)
+    owned = {k for i in ids for k in smap.get(i, [])}
+    survey_ts = _parse_ts(survey["ts"]) if survey else None
+    in_survey = None
+    if survey and survey["steps"] is not None and owned:
+        in_survey = bool(owned & survey["steps"])
+    own_t = _parse_ts(own_run) if own_run else None
+    own_after = own_t is not None and (survey_ts is None or own_t > survey_ts)
+    if in_survey or own_after:
+        return "predates_storage" if _predates(survey["ts"] if in_survey else own_run) else "ran_no_rows"
+    if in_survey is False:
+        return "not_requested"
+    return "survey_unattributed"
+
+
+def _stamp_result_state(registry, entity_type: str, slug: str, board: dict) -> None:
+    """`board["result_state"]`, derived NOW from proof rows (also on a persisted summary, like `_reset_fields`)."""
+    try:
+        board["result_state"] = derive_result_state(registry, entity_type, slug, board)
+    except Exception:
+        log.exception("result_state for %s/%s/%s", entity_type, slug, board.get("id"))
+        board["result_state"] = "survey_unattributed"
+
+
+def _reset_fields(registry, slug: str, published_at: str) -> dict:
+    """`published_state` / `egeria_reset_at` for a board, from the `egeria_reset` marker (see
+    catalogue_commit.publish_fields). Read at answer time, so a persisted board summary written before a
+    reset is corrected on the way out."""
+    from resource_explorer.catalogue_commit import publish_fields
+    return publish_fields(registry, slug, published_at)
+
+
+def _read_board_summary_if_fresh(
+    registry, entity_type: str, slug: str, board_id: str, stage: str, include_empty: bool,
+) -> dict | None:
+    """The fast path: a persisted `board_summary` row, used as-is when it's
+    at least as new as the board's own analysis_id(s)' latest recorded run —
+    `None` when there is nothing persisted, it's stale, or `board_id` isn't
+    one this reader recognises (any of which means "fall through to the
+    expensive recompute", exactly as if this function did not exist).
+
+    Applies the SAME stage/include_empty filtering the expensive path would
+    have — a fast answer that skipped those checks would disagree with the
+    slow one about what to return, which is the one thing a read-cost-only
+    change must never do (see this function's caller's docstring).
+    """
+    analysis_ids = _board_analysis_ids(entity_type, board_id)
+    if not analysis_ids:
+        return None
+    persisted = registry.get_board_summary(entity_type, slug, board_id)
+    if persisted is None:
+        return None
+    source_run_at = persisted["source_run_at"]
+    if source_run_at:
+        latest_run_at = _latest_run_at(registry, entity_type, slug, analysis_ids)
+        if latest_run_at and source_run_at < latest_run_at:
+            return None  # stale — a newer run exists than this summary reflects
+    board = persisted["summary"]
+    if not isinstance(board, dict) or board.get("id") != board_id:
+        return None  # malformed/mismatched row — recompute rather than trust it
+    if stage and stage not in (board.get("stages") or []):
+        return {"slug": slug, "stage": stage, "dashboards": []}
+    if not board.get("has_results") and not include_empty:
+        return {"slug": slug, "stage": stage, "dashboards": []}
+    return {"slug": slug, "stage": stage, "dashboards": [board]}
+
+
+def _persist_board_summary(registry, entity_type: str, slug: str, board_id: str, board: dict) -> None:
+    """Write `board` (one dashboard dict, exactly as returned to a caller)
+    as this board's fast-read row. Never raises — a persist failure must not
+    turn a successful read into an error; the next read just falls back to
+    recomputing again, same as if this had never been called."""
+    try:
+        analysis_ids = _board_analysis_ids(entity_type, board_id) or [board_id]
+        source_run_at = _latest_run_at(registry, entity_type, slug, analysis_ids)
+        registry.write_board_summary(entity_type, slug, board_id, board, source_run_at=source_run_at)
+    except Exception:
+        log.warning(
+            "board_summary persist failed for %s/%s/%s", entity_type, slug, board_id, exc_info=True,
+        )
+
+
+def _refresh_board_summaries_after_run(registry, entity_type: str, slug: str, analysis_id: str) -> None:
+    """Recompute-and-persist the board_summary row(s) this analysis_id's run
+    just made stale, right at run completion — the writer half of the
+    read-cost fix (registry.write_board_summary's docstring has the full
+    design). Called from `execute_and_record_analysis`/`execute_and_record_
+    database_analysis` after a successful run.
+
+    Deliberately reuses `build_survey_results(..., board_id=...)` itself
+    rather than a second, parallel "compute a board summary" implementation
+    — that function already persists whatever it computes whenever
+    `board_id` is given (see its own docstring), so this is "ask for this
+    board's fresh answer, once, right now, while the reads that just wrote
+    it are warm" rather than a new write path that could drift out of sync
+    with what a read actually returns.
+
+    Never raises — see `_persist_board_summary`'s own docstring for why a
+    summary that fails to refresh is never worse than one that was never
+    written; this wraps the whole thing in the same spirit for the
+    dashboard-lookup step, which `_persist_board_summary` alone doesn't
+    cover (e.g. `SURVEY_RESULT_DASHBOARDS` import failing).
+    """
+    try:
+        if entity_type == "repo":
+            from resource_explorer.surveyors.repo_survey_definition_adapter import SURVEY_RESULT_DASHBOARDS
+
+            board_ids = [d.id for d in SURVEY_RESULT_DASHBOARDS.values() if analysis_id in d.analysis_ids]
+        else:
+            board_ids = [analysis_id]
+        for board_id in board_ids:
+            build_survey_results(registry, entity_type, slug, stage="", include_empty=True, board_id=board_id)
+    except Exception:
+        log.warning(
+            "board_summary refresh failed for %s/%s/%s", entity_type, slug, analysis_id, exc_info=True,
+        )
 
 
 def _read_analyses(registry, slug: str, analysis_ids: list[str], results_map: dict, headline_map: dict) -> list[dict]:

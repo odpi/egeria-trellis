@@ -244,6 +244,7 @@ def run_nested_columns(
     resource_slug: str = "",
     sampling_overrides: dict[str, Any] | None = None,
     run_overrides: dict[str, Any] | None = None,
+    scope_settings: dict[str, dict] | None = None,
     max_columns: int | None = None,
 ) -> dict:
     """`postgres_nested_columns`: sample every JSON/JSONB/XML column, then
@@ -258,8 +259,10 @@ def run_nested_columns(
     config = resolve_sampling_config(
         purpose="matching",
         resource_slug=resource_slug,
-        global_settings=sampling_overrides,
-        run_settings=run_overrides,
+        # The stored scopes (sampling.scoped_settings), then the caller's own override as the RUN scope:
+        # `sampling_overrides` is what a request or a caller passed for this run, never a global setting.
+        **(scope_settings or {}),
+        run_settings={**(sampling_overrides or {}), **(run_overrides or {})} or None,
     )
     budget = SamplingBudget(config)
     annotations: list = []

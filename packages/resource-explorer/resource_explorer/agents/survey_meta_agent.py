@@ -39,7 +39,7 @@ class SurveyMetaAgent:
         if slug:
             if registry.get(slug):
                 entity_type = "repo"
-            elif registry.get_database(slug):
+            elif registry.get_database(slug, allow_unreadable=True):
                 entity_type = "database"
 
         # Activity log — always useful

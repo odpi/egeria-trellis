@@ -8,6 +8,9 @@ from resource_explorer.registry import FileSystemEntity, ProjectRegistry, Projec
 from resource_explorer.surveyors.filesystem.local_filesystem_surveyor import LocalFileSystemSurveyor
 from resource_explorer.surveyors.filesystem.egeria_filesystem_surveyor import EgeriaFileSystemSurveyor
 
+# Brief I: these tests fake the Egeria clients; the code under test runs as a signed-in caller, as on a route.
+pytestmark = pytest.mark.usefixtures("signed_in_caller")
+
 
 def test_local_filesystem_surveyor_walk():
     # Setup temporary directory inside workspace for scanning
@@ -73,14 +76,18 @@ def test_local_filesystem_surveyor_walk():
 @patch("pyegeria.AutomatedCuration")
 @patch("pyegeria.AssetMaker")
 @patch("pyegeria.omvs.data_discovery.DataDiscovery")
-def test_egeria_filesystem_surveyor(mock_discovery_cls, mock_asset_maker_cls, mock_autoc_cls):
+@patch("pyegeria.MetadataExpert")
+def test_egeria_filesystem_surveyor(mock_expert_cls, mock_discovery_cls, mock_asset_maker_cls, mock_autoc_cls):
     # Setup mocks
+    mock_expert_cls.return_value.get_metadata_element_by_unique_name.return_value = "No elements found"
     mock_autoc = mock_autoc_cls.return_value
     mock_asset_maker = mock_asset_maker_cls.return_value
     mock_discovery = mock_discovery_cls.return_value
 
-    mock_autoc.get_guid_for_name.return_value = []
-    mock_autoc.create_folder_element_from_template.return_value = "fs-folder-guid-123"
+    # pyegeria's real miss, for the data files' typed pathName search (egeria_lookup.guid_by_exact_value)
+    mock_expert_cls.return_value.find_metadata_elements_with_string.return_value = "No elements found"
+    mock_autoc.get_template_guid_for_technology_type.return_value = "fbdd8efd-1b69-474c-bb6d-0a304b394146"
+    mock_autoc.create_folder_element_from_template.return_value = "0f0f0f0f-1111-2222-3333-444444444444"
     mock_autoc.create_elem_from_template.return_value = "file-guid-456"
     mock_asset_maker.create_asset.return_value = "report-guid-789"
 
@@ -123,17 +130,14 @@ def test_egeria_filesystem_surveyor(mock_discovery_cls, mock_asset_maker_cls, mo
     res = surveyor.catalog_and_survey(fs_entity, survey_data, mock_registry)
 
     # Verify calls
-    mock_autoc.create_folder_element_from_template.assert_called_once_with(
-        path_name="file://shared-mount",
-        folder_name="Mock FS",
-        file_system="mock-fs",
-        description="FileSystem root mapping: /tmp/local-mount -> file://shared-mount"
-    )
-    
-    mock_registry.set_filesystem_egeria_guid.assert_called_once_with("mock-fs", "fs-folder-guid-123")
+    assert mock_autoc.create_folder_element_from_template.call_args.args == ("file://shared-mount", "Mock FS", "mock-fs")
+    assert mock_autoc.create_folder_element_from_template.call_args.kwargs["description"] == \
+        "FileSystem root mapping: /tmp/local-mount -> file://shared-mount"
+
+    mock_registry.set_filesystem_egeria_guid.assert_called_once_with("mock-fs", "0f0f0f0f-1111-2222-3333-444444444444")
     
     # Assert return values
-    assert res["filesystem_guid"] == "fs-folder-guid-123"
+    assert res["filesystem_guid"] == "0f0f0f0f-1111-2222-3333-444444444444"
     assert res["report_guid"] == "report-guid-789"
     assert res["file_guids"]["sales.csv"] == "file-guid-456"
     assert res["annotation_count"] == 2  # 1 measure annotation, 1 schema annotation

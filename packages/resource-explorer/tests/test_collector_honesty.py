@@ -1,5 +1,4 @@
-"""Collector-honesty design ruling (2026-09-26, docs/design-notes/SLICE-17C-
-RENDERABLE-ANSWER-GATE-IMPLEMENTED.md's "Live gate follow-ups" section): a
+"""Collector-honesty design ruling (2026-09-26, SLICE-17C-RENDERABLE-ANSWER-GATE-IMPLEMENTED.md's "Live gate follow-ups" section): a
 collector that catches an exception records it on its own section
 (`_errors`), rather than only silently degrading to an empty list or a
 zero -- and a reader renders a recorded error as "collection failed:
@@ -206,3 +205,52 @@ class TestPrivilegeAuditHeadlineRendersCollectionFailureBeforeTheHonestFloor:
         }}}
         registry = _FakeRegistry(survey_data)
         assert _db_privilege_audit_headline(registry, "coco_ods") is None
+
+
+class TestUnsupportedOperationsSectionIsNotAnEmptyAnswer:
+    """The engine cannot answer (the surveyor stores None for the section) is
+    "not supported / not measured" -- distinct from a section that was read and
+    came back empty, and from a step that never ran."""
+
+    def _reader(self, section):
+        from resource_explorer.surveyors.database.survey_definition_adapter import (
+            _operations_section_reader,
+        )
+        return _operations_section_reader(section)
+
+    def test_privilege_audit_unsupported_says_so(self):
+        registry = _FakeRegistry({"operations": {"privilege_audit": None}})
+        payload = self._reader("privilege_audit")(registry, "coco_ods")
+        assert payload["state"] == "not_supported"
+        headline = _db_privilege_audit_headline(registry, "coco_ods")
+        assert "not supported" in headline["label"] and "not measured" in headline["label"]
+
+    def test_privilege_audit_read_but_empty_is_not_reported_unsupported(self):
+        registry = _FakeRegistry({"operations": {"privilege_audit": {
+            "roles": [], "table_grants": [], "default_acl": []}}})
+        payload = self._reader("privilege_audit")(registry, "coco_ods")
+        assert payload.get("state") != "not_supported"
+        assert _db_privilege_audit_headline(registry, "coco_ods") is None
+
+    def test_activity_signals_unsupported_says_so_not_no_activity(self):
+        from resource_explorer.surveyors.database.survey_definition_adapter import (
+            _db_activity_signals_headline,
+        )
+        registry = _FakeRegistry({"operations": {"activity_signals": None}})
+        assert self._reader("activity_signals")(registry, "coco_ods")["state"] == "not_supported"
+        label = _db_activity_signals_headline(registry, "coco_ods")["label"]
+        assert "not supported" in label and "No table activity" not in label
+
+    def test_activity_signals_read_but_empty_keeps_the_empty_wording(self):
+        from resource_explorer.surveyors.database.survey_definition_adapter import (
+            _db_activity_signals_headline,
+        )
+        registry = _FakeRegistry({"operations": {"activity_signals": {
+            "table_activity": [], "table_count": 0}}})
+        assert self._reader("activity_signals")(registry, "coco_ods").get("state") != "not_supported"
+        assert _db_activity_signals_headline(registry, "coco_ods")["label"] == "No table activity recorded yet."
+
+    def test_step_that_never_ran_is_still_empty(self):
+        registry = _FakeRegistry({"operations": {}})
+        assert self._reader("privilege_audit")(registry, "coco_ods") == {}
+        assert self._reader("activity_signals")(registry, "coco_ods") == {}

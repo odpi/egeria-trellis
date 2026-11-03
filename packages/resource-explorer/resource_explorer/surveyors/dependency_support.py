@@ -265,9 +265,12 @@ def egeria_technology_types_present(names: list[str]) -> tuple[dict[str, bool] |
         from resource_explorer.surveyors.egeria_tech_type_catalog import EgeriaTechTypeCatalog
 
         e = get_config().egeria
-        cat = EgeriaTechTypeCatalog(e.platform_url, e.view_server, e.user_id, e.user_password)
+        # Who asks is the factory's business (Brief I): no credentials passed from here.
+        cat = EgeriaTechTypeCatalog(e.platform_url, e.view_server)
         cat.connect()
         have = {t.get("displayName") for t in cat.list_technology_types()}
+    except PermissionError:
+        raise      # no caller / expired sign-in is a 401, never "catalog unreachable"
     except Exception as exc:  # noqa: BLE001 - the whole point is to report, not raise
         log.warning("dependency_support: Egeria technology-type catalog unreachable: %s", exc)
         return None, "unreachable", f"{type(exc).__name__}: {exc}"

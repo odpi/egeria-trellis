@@ -1,0 +1,1010 @@
+{
+ "mode": "read",
+ "at": "2026-10-26T21:46:58+00:00",
+ "identity": "resourceexplorernpa",
+ "requested_by": "owner (peterprofile) via the Monday coordinator 2026-10-26: leave-out re-proof",
+ "elements": {
+  "87b8fb6b-3898-4c84-97c0-1b8e7cdb4082": {
+   "before": {
+    "plain": "ERR PyegeriaAPIException: \n\n=> \tSERVER_ERROR_500\n=>\tEgeria detected error: `https://localhost:9443/servers/qs-view-server/api/open-metadata/metadata-expert/metadata-elements/87b8fb6b-389",
+    "lineage": {
+     "type": "DeployedDatabaseSchema",
+     "status": "ACTIVE",
+     "qualifiedName": "PostgreSQL Relational Database Schema::host.docker.internal:5432::re_reproof_postreset_1025.alpha_archivedOn_Mon Oct 26 21:46:02 GMT 2026",
+     "updatedBy": "peterprofile"
+    }
+   }
+  },
+  "91c862e5-8176-4c21-b261-e3fbf2868021": {
+   "before": {
+    "plain": {
+     "type": "DeployedDatabaseSchema",
+     "status": "ACTIVE",
+     "qualifiedName": "PostgreSQL Relational Database Schema::host.docker.internal:5432::re_reproof_postreset_1025.beta",
+     "updatedBy": "peterprofile"
+    },
+    "lineage": {
+     "type": "DeployedDatabaseSchema",
+     "status": "ACTIVE",
+     "qualifiedName": "PostgreSQL Relational Database Schema::host.docker.internal:5432::re_reproof_postreset_1025.beta",
+     "updatedBy": "peterprofile"
+    }
+   }
+  },
+  "dde21d2e-e574-4156-83f8-9f3269566c4b": {
+   "before": {
+    "plain": "ERR PyegeriaAPIException: \n\n=> \tSERVER_ERROR_500\n=>\tEgeria detected error: `https://localhost:9443/servers/qs-view-server/api/open-metadata/metadata-expert/metadata-elements/dde21d2e-e57",
+    "lineage": {
+     "type": "RelationalDBSchemaType",
+     "status": "ACTIVE",
+     "qualifiedName": "PostgreSQL Relational Database Schema::host.docker.internal:5432::re_reproof_postreset_1025.alpha_schemaType_archivedOn_Mon Oct 26 21:46:02 GMT 2026",
+     "updatedBy": "peterprofile"
+    }
+   }
+  },
+  "c268a3a1-857e-4c31-b1f7-07576f5fec13": {
+   "before": {
+    "plain": {
+     "type": "RelationalDBSchemaType",
+     "status": "ACTIVE",
+     "qualifiedName": "PostgreSQL Relational Database Schema::host.docker.internal:5432::re_reproof_postreset_1025.beta_schemaType",
+     "updatedBy": "dbcatnpa"
+    },
+    "lineage": {
+     "type": "RelationalDBSchemaType",
+     "status": "ACTIVE",
+     "qualifiedName": "PostgreSQL Relational Database Schema::host.docker.internal:5432::re_reproof_postreset_1025.beta_schemaType",
+     "updatedBy": "dbcatnpa"
+    }
+   }
+  },
+  "686d3e8a-e57c-4e20-ba54-370201bb517e": {
+   "before": {
+    "plain": "ERR PyegeriaAPIException: \n\n=> \tSERVER_ERROR_500\n=>\tEgeria detected error: `https://localhost:9443/servers/qs-view-server/api/open-metadata/metadata-expert/metadata-elements/686d3e8a-e57",
+    "lineage": {
+     "type": "RelationalTable",
+     "status": "ACTIVE",
+     "qualifiedName": "PostgreSQL Relational Database Schema::host.docker.internal:5432::re_reproof_postreset_1025.alpha::widget_parts_archivedOn_Mon Oct 26 21:46:01 GMT 2026",
+     "updatedBy": "peterprofile"
+    }
+   }
+  },
+  "19a56998-3121-4a75-9290-57370a19964c": {
+   "before": {
+    "plain": "ERR PyegeriaAPIException: \n\n=> \tSERVER_ERROR_500\n=>\tEgeria detected error: `https://localhost:9443/servers/qs-view-server/api/open-metadata/metadata-expert/metadata-elements/19a56998-312",
+    "lineage": {
+     "type": "RelationalTable",
+     "status": "ACTIVE",
+     "qualifiedName": "PostgreSQL Relational Database Schema::host.docker.internal:5432::re_reproof_postreset_1025.alpha::widgets_archivedOn_Mon Oct 26 21:46:01 GMT 2026",
+     "updatedBy": "peterprofile"
+    }
+   }
+  },
+  "909b21ed-4aff-4aba-9a1b-323285b0c9f9": {
+   "before": {
+    "plain": {
+     "type": "RelationalTable",
+     "status": "ACTIVE",
+     "qualifiedName": "PostgreSQL Relational Database Schema::host.docker.internal:5432::re_reproof_postreset_1025.beta::gadget_notes",
+     "updatedBy": "dbcatnpa"
+    },
+    "lineage": {
+     "type": "RelationalTable",
+     "status": "ACTIVE",
+     "qualifiedName": "PostgreSQL Relational Database Schema::host.docker.internal:5432::re_reproof_postreset_1025.beta::gadget_notes",
+     "updatedBy": "dbcatnpa"
+    }
+   }
+  },
+  "5e228ca8-4476-4eb3-a3ca-3bca9e1760da": {
+   "before": {
+    "plain": {
+     "type": "RelationalTable",
+     "status": "ACTIVE",
+     "qualifiedName": "PostgreSQL Relational Database Schema::host.docker.internal:5432::re_reproof_postreset_1025.beta::gadgets",
+     "updatedBy": "dbcatnpa"
+    },
+    "lineage": {
+     "type": "RelationalTable",
+     "status": "ACTIVE",
+     "qualifiedName": "PostgreSQL Relational Database Schema::host.docker.internal:5432::re_reproof_postreset_1025.beta::gadgets",
+     "updatedBy": "dbcatnpa"
+    }
+   }
+  },
+  "d9dd8325-f5f9-415f-8085-6ba6c6c4d5fb": {
+   "before": {
+    "plain": "ERR PyegeriaAPIException: \n\n=> \tSERVER_ERROR_500\n=>\tEgeria detected error: `https://localhost:9443/servers/qs-view-server/api/open-metadata/metadata-expert/metadata-elements/d9dd8325-f5f",
+    "lineage": {
+     "type": "RelationalColumn",
+     "status": "ACTIVE",
+     "qualifiedName": "PostgreSQL Relational Database Schema::host.docker.internal:5432::re_reproof_postreset_1025.alpha::widget_parts::id_archivedOn_Mon Oct 26 21:46:01 GMT 2026",
+     "updatedBy": "peterprofile"
+    }
+   }
+  },
+  "6afbfe35-26b6-4321-8bb2-725f8c1897e5": {
+   "before": {
+    "plain": "ERR PyegeriaAPIException: \n\n=> \tSERVER_ERROR_500\n=>\tEgeria detected error: `https://localhost:9443/servers/qs-view-server/api/open-metadata/metadata-expert/metadata-elements/6afbfe35-26b",
+    "lineage": {
+     "type": "RelationalColumn",
+     "status": "ACTIVE",
+     "qualifiedName": "PostgreSQL Relational Database Schema::host.docker.internal:5432::re_reproof_postreset_1025.alpha::widget_parts::part_archivedOn_Mon Oct 26 21:46:00 GMT 2026",
+     "updatedBy": "peterprofile"
+    }
+   }
+  },
+  "a2862d99-24d7-4d74-9ec7-33986fdfc2d2": {
+   "before": {
+    "plain": "ERR PyegeriaAPIException: \n\n=> \tSERVER_ERROR_500\n=>\tEgeria detected error: `https://localhost:9443/servers/qs-view-server/api/open-metadata/metadata-expert/metadata-elements/a2862d99-24d",
+    "lineage": {
+     "type": "RelationalColumn",
+     "status": "ACTIVE",
+     "qualifiedName": "PostgreSQL Relational Database Schema::host.docker.internal:5432::re_reproof_postreset_1025.alpha::widget_parts::widget_id_archivedOn_Mon Oct 26 21:46:01 GMT 2026",
+     "updatedBy": "peterprofile"
+    }
+   }
+  },
+  "0005db72-bac8-4a8a-9c88-33a88920a8df": {
+   "before": {
+    "plain": "ERR PyegeriaAPIException: \n\n=> \tSERVER_ERROR_500\n=>\tEgeria detected error: `https://localhost:9443/servers/qs-view-server/api/open-metadata/metadata-expert/metadata-elements/0005db72-bac",
+    "lineage": {
+     "type": "RelationalColumn",
+     "status": "ACTIVE",
+     "qualifiedName": "PostgreSQL Relational Database Schema::host.docker.internal:5432::re_reproof_postreset_1025.alpha::widgets::id_archivedOn_Mon Oct 26 21:46:00 GMT 2026",
+     "updatedBy": "peterprofile"
+    }
+   }
+  },
+  "50efdc5e-2679-4761-8339-98befd433679": {
+   "before": {
+    "plain": "ERR PyegeriaAPIException: \n\n=> \tSERVER_ERROR_500\n=>\tEgeria detected error: `https://localhost:9443/servers/qs-view-server/api/open-metadata/metadata-expert/metadata-elements/50efdc5e-267",
+    "lineage": {
+     "type": "RelationalColumn",
+     "status": "ACTIVE",
+     "qualifiedName": "PostgreSQL Relational Database Schema::host.docker.internal:5432::re_reproof_postreset_1025.alpha::widgets::made_on_archivedOn_Mon Oct 26 21:45:59 GMT 2026",
+     "updatedBy": "peterprofile"
+    }
+   }
+  },
+  "320d1faf-04ed-4501-ba8d-83d481554e3c": {
+   "before": {
+    "plain": "ERR PyegeriaAPIException: \n\n=> \tSERVER_ERROR_500\n=>\tEgeria detected error: `https://localhost:9443/servers/qs-view-server/api/open-metadata/metadata-expert/metadata-elements/320d1faf-04e",
+    "lineage": {
+     "type": "RelationalColumn",
+     "status": "ACTIVE",
+     "qualifiedName": "PostgreSQL Relational Database Schema::host.docker.internal:5432::re_reproof_postreset_1025.alpha::widgets::name_archivedOn_Mon Oct 26 21:46:00 GMT 2026",
+     "updatedBy": "peterprofile"
+    }
+   }
+  },
+  "d5a66898-9e70-4aef-860a-3bdb84c97deb": {
+   "before": {
+    "plain": {
+     "type": "RelationalColumn",
+     "status": "ACTIVE",
+     "qualifiedName": "PostgreSQL Relational Database Schema::host.docker.internal:5432::re_reproof_postreset_1025.beta::gadget_notes::gadget_id",
+     "updatedBy": "dbcatnpa"
+    },
+    "lineage": {
+     "type": "RelationalColumn",
+     "status": "ACTIVE",
+     "qualifiedName": "PostgreSQL Relational Database Schema::host.docker.internal:5432::re_reproof_postreset_1025.beta::gadget_notes::gadget_id",
+     "updatedBy": "dbcatnpa"
+    }
+   }
+  },
+  "0a41cf19-075c-44d4-8fbe-b632e32e99d6": {
+   "before": {
+    "plain": {
+     "type": "RelationalColumn",
+     "status": "ACTIVE",
+     "qualifiedName": "PostgreSQL Relational Database Schema::host.docker.internal:5432::re_reproof_postreset_1025.beta::gadget_notes::id",
+     "updatedBy": "dbcatnpa"
+    },
+    "lineage": {
+     "type": "RelationalColumn",
+     "status": "ACTIVE",
+     "qualifiedName": "PostgreSQL Relational Database Schema::host.docker.internal:5432::re_reproof_postreset_1025.beta::gadget_notes::id",
+     "updatedBy": "dbcatnpa"
+    }
+   }
+  },
+  "649c06a0-d951-4544-825c-55b0fbb76bc6": {
+   "before": {
+    "plain": {
+     "type": "RelationalColumn",
+     "status": "ACTIVE",
+     "qualifiedName": "PostgreSQL Relational Database Schema::host.docker.internal:5432::re_reproof_postreset_1025.beta::gadget_notes::note",
+     "updatedBy": "dbcatnpa"
+    },
+    "lineage": {
+     "type": "RelationalColumn",
+     "status": "ACTIVE",
+     "qualifiedName": "PostgreSQL Relational Database Schema::host.docker.internal:5432::re_reproof_postreset_1025.beta::gadget_notes::note",
+     "updatedBy": "dbcatnpa"
+    }
+   }
+  },
+  "3da641ad-2790-4433-939b-2eb3dcb93b86": {
+   "before": {
+    "plain": {
+     "type": "RelationalColumn",
+     "status": "ACTIVE",
+     "qualifiedName": "PostgreSQL Relational Database Schema::host.docker.internal:5432::re_reproof_postreset_1025.beta::gadgets::id",
+     "updatedBy": "dbcatnpa"
+    },
+    "lineage": {
+     "type": "RelationalColumn",
+     "status": "ACTIVE",
+     "qualifiedName": "PostgreSQL Relational Database Schema::host.docker.internal:5432::re_reproof_postreset_1025.beta::gadgets::id",
+     "updatedBy": "dbcatnpa"
+    }
+   }
+  },
+  "4492d41a-7494-40b2-a413-c3037e68856f": {
+   "before": {
+    "plain": {
+     "type": "RelationalColumn",
+     "status": "ACTIVE",
+     "qualifiedName": "PostgreSQL Relational Database Schema::host.docker.internal:5432::re_reproof_postreset_1025.beta::gadgets::label",
+     "updatedBy": "dbcatnpa"
+    },
+    "lineage": {
+     "type": "RelationalColumn",
+     "status": "ACTIVE",
+     "qualifiedName": "PostgreSQL Relational Database Schema::host.docker.internal:5432::re_reproof_postreset_1025.beta::gadgets::label",
+     "updatedBy": "dbcatnpa"
+    }
+   }
+  },
+  "ab6b26a2-d5ef-4dc4-acb8-a84120171344": {
+   "before": {
+    "plain": {
+     "type": "RelationalColumn",
+     "status": "ACTIVE",
+     "qualifiedName": "PostgreSQL Relational Database Schema::host.docker.internal:5432::re_reproof_postreset_1025.beta::gadgets::price",
+     "updatedBy": "dbcatnpa"
+    },
+    "lineage": {
+     "type": "RelationalColumn",
+     "status": "ACTIVE",
+     "qualifiedName": "PostgreSQL Relational Database Schema::host.docker.internal:5432::re_reproof_postreset_1025.beta::gadgets::price",
+     "updatedBy": "dbcatnpa"
+    }
+   }
+  },
+  "b1d6a26a-8a6d-4bb7-aad8-fc9be2afff84": {
+   "before": {
+    "plain": {
+     "type": "RelationalColumn",
+     "status": "ACTIVE",
+     "qualifiedName": "PostgreSQL Relational Database Schema::host.docker.internal:5432::re_reproof_postreset_1025.beta::gadgets::released_on",
+     "updatedBy": "dbcatnpa"
+    },
+    "lineage": {
+     "type": "RelationalColumn",
+     "status": "ACTIVE",
+     "qualifiedName": "PostgreSQL Relational Database Schema::host.docker.internal:5432::re_reproof_postreset_1025.beta::gadgets::released_on",
+     "updatedBy": "dbcatnpa"
+    }
+   }
+  },
+  "78fa910b-03fc-4bd5-825f-8ef385a4b639": {
+   "before": {
+    "plain": {
+     "type": "RelationalDatabase",
+     "status": "ACTIVE",
+     "qualifiedName": "PostgreSQL Relational Database::host.docker.internal:5432::re_reproof_postreset_1025",
+     "updatedBy": "peterprofile"
+    },
+    "lineage": {
+     "type": "RelationalDatabase",
+     "status": "ACTIVE",
+     "qualifiedName": "PostgreSQL Relational Database::host.docker.internal:5432::re_reproof_postreset_1025",
+     "updatedBy": "peterprofile"
+    }
+   }
+  },
+  "d498dcda-63c5-44ae-ba3a-268a26de4137": {
+   "before": {
+    "plain": {
+     "type": "SoftwareServer",
+     "status": "ACTIVE",
+     "qualifiedName": "PostgreSQL Server::host.docker.internal:5432",
+     "updatedBy": "peterprofile"
+    },
+    "lineage": {
+     "type": "SoftwareServer",
+     "status": "ACTIVE",
+     "qualifiedName": "PostgreSQL Server::host.docker.internal:5432",
+     "updatedBy": "peterprofile"
+    }
+   }
+  },
+  "50f7d305-1015-454a-b495-13a644c6a5a8": {
+   "before": {
+    "plain": {
+     "type": "SurveyReport",
+     "status": "ACTIVE",
+     "qualifiedName": "SurveyReport::PostgreSQL::laz_local_re_reproof_postreset_1025::2026-10-25T17:32:53.365832",
+     "updatedBy": "peterprofile"
+    },
+    "lineage": {
+     "type": "SurveyReport",
+     "status": "ACTIVE",
+     "qualifiedName": "SurveyReport::PostgreSQL::laz_local_re_reproof_postreset_1025::2026-10-25T17:32:53.365832",
+     "updatedBy": "peterprofile"
+    }
+   }
+  },
+  "7fe1cbe9-bdd6-496e-aa58-138931f2e22f": {
+   "before": {
+    "plain": {
+     "type": "SurveyReport",
+     "status": "ACTIVE",
+     "qualifiedName": "SurveyReport::PostgreSQL::laz_local_re_reproof_postreset_1025::2026-10-25T17:36:05.748310",
+     "updatedBy": "peterprofile"
+    },
+    "lineage": {
+     "type": "SurveyReport",
+     "status": "ACTIVE",
+     "qualifiedName": "SurveyReport::PostgreSQL::laz_local_re_reproof_postreset_1025::2026-10-25T17:36:05.748310",
+     "updatedBy": "peterprofile"
+    }
+   }
+  },
+  "89468fc5-c437-4cf5-9bf5-139e27a204f8": {
+   "before": {
+    "plain": {
+     "type": "SurveyReport",
+     "status": "ACTIVE",
+     "qualifiedName": "SurveyReport::PostgreSQL::laz_local_re_reproof_postreset_1025::2026-10-25T17:31:21.935730",
+     "updatedBy": "peterprofile"
+    },
+    "lineage": {
+     "type": "SurveyReport",
+     "status": "ACTIVE",
+     "qualifiedName": "SurveyReport::PostgreSQL::laz_local_re_reproof_postreset_1025::2026-10-25T17:31:21.935730",
+     "updatedBy": "peterprofile"
+    }
+   }
+  },
+  "9c1f918d-800c-48d6-b746-c16d19a62084": {
+   "before": {
+    "plain": {
+     "type": "SurveyReport",
+     "status": "ACTIVE",
+     "qualifiedName": "SurveyReport::PostgreSQL::laz_local_re_reproof_postreset_1025::2026-10-25T17:35:09.054491",
+     "updatedBy": "peterprofile"
+    },
+    "lineage": {
+     "type": "SurveyReport",
+     "status": "ACTIVE",
+     "qualifiedName": "SurveyReport::PostgreSQL::laz_local_re_reproof_postreset_1025::2026-10-25T17:35:09.054491",
+     "updatedBy": "peterprofile"
+    }
+   }
+  },
+  "e9316ce1-03ab-4c0c-8005-ca85bf434119": {
+   "before": {
+    "plain": {
+     "type": "SurveyReport",
+     "status": "ACTIVE",
+     "qualifiedName": "SurveyReport::PostgreSQL::laz_local_re_reproof_postreset_1025::2026-10-25T17:34:04.083467",
+     "updatedBy": "peterprofile"
+    },
+    "lineage": {
+     "type": "SurveyReport",
+     "status": "ACTIVE",
+     "qualifiedName": "SurveyReport::PostgreSQL::laz_local_re_reproof_postreset_1025::2026-10-25T17:34:04.083467",
+     "updatedBy": "peterprofile"
+    }
+   }
+  },
+  "fb6d96f4-a5f7-4f5e-92b2-2c7629824255": {
+   "before": {
+    "plain": {
+     "type": "SurveyReport",
+     "status": "ACTIVE",
+     "qualifiedName": "SurveyReport::PostgreSQL::laz_local_re_reproof_postreset_1025::2026-10-25T01:36:00.776399",
+     "updatedBy": "peterprofile"
+    },
+    "lineage": {
+     "type": "SurveyReport",
+     "status": "ACTIVE",
+     "qualifiedName": "SurveyReport::PostgreSQL::laz_local_re_reproof_postreset_1025::2026-10-25T01:36:00.776399",
+     "updatedBy": "peterprofile"
+    }
+   }
+  },
+  "9d9f87f7-d2ac-4ebd-b3c3-9d288b1b55ea": {
+   "before": {
+    "plain": {
+     "type": "SurveyReport",
+     "status": "ACTIVE",
+     "qualifiedName": "SurveyReport::PostgreSQL::laz_local_re_reproof_postreset_1025::2026-10-25T17:48:14.757550",
+     "updatedBy": "peterprofile"
+    },
+    "lineage": {
+     "type": "SurveyReport",
+     "status": "ACTIVE",
+     "qualifiedName": "SurveyReport::PostgreSQL::laz_local_re_reproof_postreset_1025::2026-10-25T17:48:14.757550",
+     "updatedBy": "peterprofile"
+    }
+   }
+  },
+  "ad0453ae-9100-402c-8d71-6143ae50ab90": {
+   "before": {
+    "plain": {
+     "type": "RequestForAction",
+     "status": "ACTIVE",
+     "qualifiedName": "Annotation::PostgreSQL::laz_local_re_reproof_postreset_1025::2026-10-25T17:31:21.935730::quality_proposals::proposals",
+     "updatedBy": "peterprofile"
+    },
+    "lineage": {
+     "type": "RequestForAction",
+     "status": "ACTIVE",
+     "qualifiedName": "Annotation::PostgreSQL::laz_local_re_reproof_postreset_1025::2026-10-25T17:31:21.935730::quality_proposals::proposals",
+     "updatedBy": "peterprofile"
+    }
+   }
+  },
+  "120a891c-b72c-4996-8681-27faabf36502": {
+   "before": {
+    "plain": {
+     "type": "ResourceProfileAnnotation",
+     "status": "ACTIVE",
+     "qualifiedName": "Annotation::PostgreSQL::laz_local_re_reproof_postreset_1025::2026-10-25T17:31:21.935730::value_profile::[\"beta\",\"gadgets\",\"released_on\"]",
+     "updatedBy": "peterprofile"
+    },
+    "lineage": {
+     "type": "ResourceProfileAnnotation",
+     "status": "ACTIVE",
+     "qualifiedName": "Annotation::PostgreSQL::laz_local_re_reproof_postreset_1025::2026-10-25T17:31:21.935730::value_profile::[\"beta\",\"gadgets\",\"released_on\"]",
+     "updatedBy": "peterprofile"
+    }
+   }
+  },
+  "9d7ed353-924e-4fe7-9837-00c16a344c8c": {
+   "before": {
+    "plain": {
+     "type": "ResourceProfileAnnotation",
+     "status": "ACTIVE",
+     "qualifiedName": "Annotation::PostgreSQL::laz_local_re_reproof_postreset_1025::2026-10-25T17:31:21.935730::value_profile::[\"beta\",\"gadgets\",\"price\"]",
+     "updatedBy": "peterprofile"
+    },
+    "lineage": {
+     "type": "ResourceProfileAnnotation",
+     "status": "ACTIVE",
+     "qualifiedName": "Annotation::PostgreSQL::laz_local_re_reproof_postreset_1025::2026-10-25T17:31:21.935730::value_profile::[\"beta\",\"gadgets\",\"price\"]",
+     "updatedBy": "peterprofile"
+    }
+   }
+  },
+  "89765539-d09e-49c5-8c38-3d452941d2e0": {
+   "before": {
+    "plain": {
+     "type": "ResourceProfileAnnotation",
+     "status": "ACTIVE",
+     "qualifiedName": "Annotation::PostgreSQL::laz_local_re_reproof_postreset_1025::2026-10-25T17:31:21.935730::value_profile::[\"beta\",\"gadgets\",\"label\"]",
+     "updatedBy": "peterprofile"
+    },
+    "lineage": {
+     "type": "ResourceProfileAnnotation",
+     "status": "ACTIVE",
+     "qualifiedName": "Annotation::PostgreSQL::laz_local_re_reproof_postreset_1025::2026-10-25T17:31:21.935730::value_profile::[\"beta\",\"gadgets\",\"label\"]",
+     "updatedBy": "peterprofile"
+    }
+   }
+  },
+  "bec96f74-ad8a-438c-b17d-e9f4a3ad23f4": {
+   "before": {
+    "plain": {
+     "type": "ResourceProfileAnnotation",
+     "status": "ACTIVE",
+     "qualifiedName": "Annotation::PostgreSQL::laz_local_re_reproof_postreset_1025::2026-10-25T17:31:21.935730::value_profile::[\"beta\",\"gadgets\",\"id\"]",
+     "updatedBy": "peterprofile"
+    },
+    "lineage": {
+     "type": "ResourceProfileAnnotation",
+     "status": "ACTIVE",
+     "qualifiedName": "Annotation::PostgreSQL::laz_local_re_reproof_postreset_1025::2026-10-25T17:31:21.935730::value_profile::[\"beta\",\"gadgets\",\"id\"]",
+     "updatedBy": "peterprofile"
+    }
+   }
+  },
+  "4facab72-00a3-40ca-9140-9a7d3c4ed58f": {
+   "before": {
+    "plain": {
+     "type": "ResourceProfileAnnotation",
+     "status": "ACTIVE",
+     "qualifiedName": "Annotation::PostgreSQL::laz_local_re_reproof_postreset_1025::2026-10-25T17:31:21.935730::value_profile::[\"beta\",\"gadget_notes\",\"note\"]",
+     "updatedBy": "peterprofile"
+    },
+    "lineage": {
+     "type": "ResourceProfileAnnotation",
+     "status": "ACTIVE",
+     "qualifiedName": "Annotation::PostgreSQL::laz_local_re_reproof_postreset_1025::2026-10-25T17:31:21.935730::value_profile::[\"beta\",\"gadget_notes\",\"note\"]",
+     "updatedBy": "peterprofile"
+    }
+   }
+  },
+  "d1ca1036-1c59-4c63-a138-7e8ca1a4a461": {
+   "before": {
+    "plain": {
+     "type": "ResourceProfileAnnotation",
+     "status": "ACTIVE",
+     "qualifiedName": "Annotation::PostgreSQL::laz_local_re_reproof_postreset_1025::2026-10-25T17:31:21.935730::value_profile::[\"beta\",\"gadget_notes\",\"gadget_id\"]",
+     "updatedBy": "peterprofile"
+    },
+    "lineage": {
+     "type": "ResourceProfileAnnotation",
+     "status": "ACTIVE",
+     "qualifiedName": "Annotation::PostgreSQL::laz_local_re_reproof_postreset_1025::2026-10-25T17:31:21.935730::value_profile::[\"beta\",\"gadget_notes\",\"gadget_id\"]",
+     "updatedBy": "peterprofile"
+    }
+   }
+  },
+  "910fea6c-f085-41f4-b6e0-b15df77ba468": {
+   "before": {
+    "plain": {
+     "type": "ResourceProfileAnnotation",
+     "status": "ACTIVE",
+     "qualifiedName": "Annotation::PostgreSQL::laz_local_re_reproof_postreset_1025::2026-10-25T17:31:21.935730::value_profile::[\"beta\",\"gadget_notes\",\"id\"]",
+     "updatedBy": "peterprofile"
+    },
+    "lineage": {
+     "type": "ResourceProfileAnnotation",
+     "status": "ACTIVE",
+     "qualifiedName": "Annotation::PostgreSQL::laz_local_re_reproof_postreset_1025::2026-10-25T17:31:21.935730::value_profile::[\"beta\",\"gadget_notes\",\"id\"]",
+     "updatedBy": "peterprofile"
+    }
+   }
+  },
+  "ca4221dd-f5f7-4a88-b378-8948ca0846dd": {
+   "before": {
+    "plain": {
+     "type": "ResourceProfileAnnotation",
+     "status": "ACTIVE",
+     "qualifiedName": "Annotation::PostgreSQL::laz_local_re_reproof_postreset_1025::2026-10-25T17:31:21.935730::value_profile::[\"alpha\",\"widgets\",\"made_on\"]",
+     "updatedBy": "peterprofile"
+    },
+    "lineage": {
+     "type": "ResourceProfileAnnotation",
+     "status": "ACTIVE",
+     "qualifiedName": "Annotation::PostgreSQL::laz_local_re_reproof_postreset_1025::2026-10-25T17:31:21.935730::value_profile::[\"alpha\",\"widgets\",\"made_on\"]",
+     "updatedBy": "peterprofile"
+    }
+   }
+  },
+  "299d5906-92f8-4f90-a690-e978d1b4f084": {
+   "before": {
+    "plain": {
+     "type": "ResourceProfileAnnotation",
+     "status": "ACTIVE",
+     "qualifiedName": "Annotation::PostgreSQL::laz_local_re_reproof_postreset_1025::2026-10-25T17:31:21.935730::value_profile::[\"alpha\",\"widgets\",\"name\"]",
+     "updatedBy": "peterprofile"
+    },
+    "lineage": {
+     "type": "ResourceProfileAnnotation",
+     "status": "ACTIVE",
+     "qualifiedName": "Annotation::PostgreSQL::laz_local_re_reproof_postreset_1025::2026-10-25T17:31:21.935730::value_profile::[\"alpha\",\"widgets\",\"name\"]",
+     "updatedBy": "peterprofile"
+    }
+   }
+  },
+  "6c1cffdd-5115-4456-9c52-54273e0ac62f": {
+   "before": {
+    "plain": {
+     "type": "ResourceProfileAnnotation",
+     "status": "ACTIVE",
+     "qualifiedName": "Annotation::PostgreSQL::laz_local_re_reproof_postreset_1025::2026-10-25T17:31:21.935730::value_profile::[\"alpha\",\"widgets\",\"id\"]",
+     "updatedBy": "peterprofile"
+    },
+    "lineage": {
+     "type": "ResourceProfileAnnotation",
+     "status": "ACTIVE",
+     "qualifiedName": "Annotation::PostgreSQL::laz_local_re_reproof_postreset_1025::2026-10-25T17:31:21.935730::value_profile::[\"alpha\",\"widgets\",\"id\"]",
+     "updatedBy": "peterprofile"
+    }
+   }
+  },
+  "bc8846c8-f92c-4e52-ab0d-9ec95a0f87dd": {
+   "before": {
+    "plain": {
+     "type": "ResourceProfileAnnotation",
+     "status": "ACTIVE",
+     "qualifiedName": "Annotation::PostgreSQL::laz_local_re_reproof_postreset_1025::2026-10-25T17:31:21.935730::value_profile::[\"alpha\",\"widget_parts\",\"part\"]",
+     "updatedBy": "peterprofile"
+    },
+    "lineage": {
+     "type": "ResourceProfileAnnotation",
+     "status": "ACTIVE",
+     "qualifiedName": "Annotation::PostgreSQL::laz_local_re_reproof_postreset_1025::2026-10-25T17:31:21.935730::value_profile::[\"alpha\",\"widget_parts\",\"part\"]",
+     "updatedBy": "peterprofile"
+    }
+   }
+  },
+  "10171e5d-36aa-43b3-8f2e-e7d8ed571609": {
+   "before": {
+    "plain": {
+     "type": "ResourceProfileAnnotation",
+     "status": "ACTIVE",
+     "qualifiedName": "Annotation::PostgreSQL::laz_local_re_reproof_postreset_1025::2026-10-25T17:31:21.935730::value_profile::[\"alpha\",\"widget_parts\",\"widget_id\"]",
+     "updatedBy": "peterprofile"
+    },
+    "lineage": {
+     "type": "ResourceProfileAnnotation",
+     "status": "ACTIVE",
+     "qualifiedName": "Annotation::PostgreSQL::laz_local_re_reproof_postreset_1025::2026-10-25T17:31:21.935730::value_profile::[\"alpha\",\"widget_parts\",\"widget_id\"]",
+     "updatedBy": "peterprofile"
+    }
+   }
+  },
+  "4c38bbcf-7f47-4c9f-ac4a-106ca7900949": {
+   "before": {
+    "plain": {
+     "type": "ResourceProfileAnnotation",
+     "status": "ACTIVE",
+     "qualifiedName": "Annotation::PostgreSQL::laz_local_re_reproof_postreset_1025::2026-10-25T17:31:21.935730::value_profile::[\"alpha\",\"widget_parts\",\"id\"]",
+     "updatedBy": "peterprofile"
+    },
+    "lineage": {
+     "type": "ResourceProfileAnnotation",
+     "status": "ACTIVE",
+     "qualifiedName": "Annotation::PostgreSQL::laz_local_re_reproof_postreset_1025::2026-10-25T17:31:21.935730::value_profile::[\"alpha\",\"widget_parts\",\"id\"]",
+     "updatedBy": "peterprofile"
+    }
+   }
+  },
+  "5fa3f17e-4d9a-45b4-8238-5d0441961f1c": {
+   "before": {
+    "plain": {
+     "type": "RequestForAction",
+     "status": "ACTIVE",
+     "qualifiedName": "Annotation::PostgreSQL::laz_local_re_reproof_postreset_1025::2026-10-25T17:34:04.083467::quality_proposals::proposals",
+     "updatedBy": "peterprofile"
+    },
+    "lineage": {
+     "type": "RequestForAction",
+     "status": "ACTIVE",
+     "qualifiedName": "Annotation::PostgreSQL::laz_local_re_reproof_postreset_1025::2026-10-25T17:34:04.083467::quality_proposals::proposals",
+     "updatedBy": "peterprofile"
+    }
+   }
+  },
+  "60749210-39ed-4c20-84df-5b165d1a128a": {
+   "before": {
+    "plain": {
+     "type": "ResourceProfileAnnotation",
+     "status": "ACTIVE",
+     "qualifiedName": "Annotation::PostgreSQL::laz_local_re_reproof_postreset_1025::2026-10-25T17:34:04.083467::value_profile::[\"beta\",\"gadgets\",\"label\"]",
+     "updatedBy": "peterprofile"
+    },
+    "lineage": {
+     "type": "ResourceProfileAnnotation",
+     "status": "ACTIVE",
+     "qualifiedName": "Annotation::PostgreSQL::laz_local_re_reproof_postreset_1025::2026-10-25T17:34:04.083467::value_profile::[\"beta\",\"gadgets\",\"label\"]",
+     "updatedBy": "peterprofile"
+    }
+   }
+  },
+  "66159b5e-4d8d-4022-aadb-0b088e59f239": {
+   "before": {
+    "plain": {
+     "type": "ResourceProfileAnnotation",
+     "status": "ACTIVE",
+     "qualifiedName": "Annotation::PostgreSQL::laz_local_re_reproof_postreset_1025::2026-10-25T17:35:09.054491::value_profile::[\"beta\",\"gadgets\",\"released_on\"]",
+     "updatedBy": "peterprofile"
+    },
+    "lineage": {
+     "type": "ResourceProfileAnnotation",
+     "status": "ACTIVE",
+     "qualifiedName": "Annotation::PostgreSQL::laz_local_re_reproof_postreset_1025::2026-10-25T17:35:09.054491::value_profile::[\"beta\",\"gadgets\",\"released_on\"]",
+     "updatedBy": "peterprofile"
+    }
+   }
+  },
+  "0da5afad-7b92-4642-8192-c327a75796c2": {
+   "before": {
+    "plain": {
+     "type": "QualityAnnotation",
+     "status": "ACTIVE",
+     "qualifiedName": "Annotation::PostgreSQL::laz_local_re_reproof_postreset_1025::2026-10-25T17:48:14.757550::quality_check::alpha.widgets.made_on:_:Min_Date",
+     "updatedBy": "peterprofile"
+    },
+    "lineage": {
+     "type": "QualityAnnotation",
+     "status": "ACTIVE",
+     "qualifiedName": "Annotation::PostgreSQL::laz_local_re_reproof_postreset_1025::2026-10-25T17:48:14.757550::quality_check::alpha.widgets.made_on:_:Min_Date",
+     "updatedBy": "peterprofile"
+    }
+   }
+  },
+  "10e56860-9340-473f-8f17-58301e4c3df7": {
+   "before": {
+    "plain": {
+     "type": "QualityAnnotation",
+     "status": "ACTIVE",
+     "qualifiedName": "Annotation::PostgreSQL::laz_local_re_reproof_postreset_1025::2026-10-25T17:48:14.757550::quality_check::alpha.widgets.made_on:_:Future_Date",
+     "updatedBy": "peterprofile"
+    },
+    "lineage": {
+     "type": "QualityAnnotation",
+     "status": "ACTIVE",
+     "qualifiedName": "Annotation::PostgreSQL::laz_local_re_reproof_postreset_1025::2026-10-25T17:48:14.757550::quality_check::alpha.widgets.made_on:_:Future_Date",
+     "updatedBy": "peterprofile"
+    }
+   }
+  },
+  "658d051f-08b0-42c1-b843-127add9440f5": {
+   "before": {
+    "plain": {
+     "type": "RequestForAction",
+     "status": "ACTIVE",
+     "qualifiedName": "Annotation::PostgreSQL::laz_local_re_reproof_postreset_1025::2026-10-25T17:48:14.757550::quality_proposals::proposals",
+     "updatedBy": "peterprofile"
+    },
+    "lineage": {
+     "type": "RequestForAction",
+     "status": "ACTIVE",
+     "qualifiedName": "Annotation::PostgreSQL::laz_local_re_reproof_postreset_1025::2026-10-25T17:48:14.757550::quality_proposals::proposals",
+     "updatedBy": "peterprofile"
+    }
+   }
+  },
+  "d72c3d60-9e3d-489c-8f57-d84cecf0d5e5": {
+   "before": {
+    "plain": {
+     "type": "ResourceMeasureAnnotation",
+     "status": "ACTIVE",
+     "qualifiedName": "Annotation::PostgreSQL::laz_local_re_reproof_postreset_1025::2026-10-25T01:36:00.776399::12",
+     "updatedBy": "peterprofile"
+    },
+    "lineage": {
+     "type": "ResourceMeasureAnnotation",
+     "status": "ACTIVE",
+     "qualifiedName": "Annotation::PostgreSQL::laz_local_re_reproof_postreset_1025::2026-10-25T01:36:00.776399::12",
+     "updatedBy": "peterprofile"
+    }
+   }
+  },
+  "0c68cd8b-094d-4669-ba49-2dfd878800c3": {
+   "before": {
+    "plain": {
+     "type": "ResourceMeasureAnnotation",
+     "status": "ACTIVE",
+     "qualifiedName": "Annotation::PostgreSQL::laz_local_re_reproof_postreset_1025::2026-10-25T01:36:00.776399::11",
+     "updatedBy": "peterprofile"
+    },
+    "lineage": {
+     "type": "ResourceMeasureAnnotation",
+     "status": "ACTIVE",
+     "qualifiedName": "Annotation::PostgreSQL::laz_local_re_reproof_postreset_1025::2026-10-25T01:36:00.776399::11",
+     "updatedBy": "peterprofile"
+    }
+   }
+  },
+  "89e847a2-94e8-4b5e-9e45-82d8ee6b7a19": {
+   "before": {
+    "plain": {
+     "type": "ResourceMeasureAnnotation",
+     "status": "ACTIVE",
+     "qualifiedName": "Annotation::PostgreSQL::laz_local_re_reproof_postreset_1025::2026-10-25T01:36:00.776399::10",
+     "updatedBy": "peterprofile"
+    },
+    "lineage": {
+     "type": "ResourceMeasureAnnotation",
+     "status": "ACTIVE",
+     "qualifiedName": "Annotation::PostgreSQL::laz_local_re_reproof_postreset_1025::2026-10-25T01:36:00.776399::10",
+     "updatedBy": "peterprofile"
+    }
+   }
+  },
+  "75648084-b2f9-4020-8a0a-40284db55bce": {
+   "before": {
+    "plain": {
+     "type": "ResourceMeasureAnnotation",
+     "status": "ACTIVE",
+     "qualifiedName": "Annotation::PostgreSQL::laz_local_re_reproof_postreset_1025::2026-10-25T01:36:00.776399::9",
+     "updatedBy": "peterprofile"
+    },
+    "lineage": {
+     "type": "ResourceMeasureAnnotation",
+     "status": "ACTIVE",
+     "qualifiedName": "Annotation::PostgreSQL::laz_local_re_reproof_postreset_1025::2026-10-25T01:36:00.776399::9",
+     "updatedBy": "peterprofile"
+    }
+   }
+  },
+  "f46ed844-5ffe-4b1a-ac7f-e0eb8cb03b46": {
+   "before": {
+    "plain": {
+     "type": "ResourceMeasureAnnotation",
+     "status": "ACTIVE",
+     "qualifiedName": "Annotation::PostgreSQL::laz_local_re_reproof_postreset_1025::2026-10-25T01:36:00.776399::8",
+     "updatedBy": "peterprofile"
+    },
+    "lineage": {
+     "type": "ResourceMeasureAnnotation",
+     "status": "ACTIVE",
+     "qualifiedName": "Annotation::PostgreSQL::laz_local_re_reproof_postreset_1025::2026-10-25T01:36:00.776399::8",
+     "updatedBy": "peterprofile"
+    }
+   }
+  },
+  "7012a0e2-728c-457c-bfaf-74d22e95eba7": {
+   "before": {
+    "plain": {
+     "type": "SchemaAnalysisAnnotation",
+     "status": "ACTIVE",
+     "qualifiedName": "Annotation::PostgreSQL::laz_local_re_reproof_postreset_1025::2026-10-25T01:36:00.776399::7",
+     "updatedBy": "peterprofile"
+    },
+    "lineage": {
+     "type": "SchemaAnalysisAnnotation",
+     "status": "ACTIVE",
+     "qualifiedName": "Annotation::PostgreSQL::laz_local_re_reproof_postreset_1025::2026-10-25T01:36:00.776399::7",
+     "updatedBy": "peterprofile"
+    }
+   }
+  },
+  "f5579381-f062-4dec-b29e-46c8fd0c9c05": {
+   "before": {
+    "plain": {
+     "type": "SchemaAnalysisAnnotation",
+     "status": "ACTIVE",
+     "qualifiedName": "Annotation::PostgreSQL::laz_local_re_reproof_postreset_1025::2026-10-25T01:36:00.776399::6",
+     "updatedBy": "peterprofile"
+    },
+    "lineage": {
+     "type": "SchemaAnalysisAnnotation",
+     "status": "ACTIVE",
+     "qualifiedName": "Annotation::PostgreSQL::laz_local_re_reproof_postreset_1025::2026-10-25T01:36:00.776399::6",
+     "updatedBy": "peterprofile"
+    }
+   }
+  },
+  "c592933c-d01c-4271-9f30-df512e793c79": {
+   "before": {
+    "plain": {
+     "type": "SchemaAnalysisAnnotation",
+     "status": "ACTIVE",
+     "qualifiedName": "Annotation::PostgreSQL::laz_local_re_reproof_postreset_1025::2026-10-25T01:36:00.776399::5",
+     "updatedBy": "peterprofile"
+    },
+    "lineage": {
+     "type": "SchemaAnalysisAnnotation",
+     "status": "ACTIVE",
+     "qualifiedName": "Annotation::PostgreSQL::laz_local_re_reproof_postreset_1025::2026-10-25T01:36:00.776399::5",
+     "updatedBy": "peterprofile"
+    }
+   }
+  },
+  "8d3e46ed-9081-49d3-a401-ddccf36b4dd5": {
+   "before": {
+    "plain": {
+     "type": "SchemaAnalysisAnnotation",
+     "status": "ACTIVE",
+     "qualifiedName": "Annotation::PostgreSQL::laz_local_re_reproof_postreset_1025::2026-10-25T01:36:00.776399::4",
+     "updatedBy": "peterprofile"
+    },
+    "lineage": {
+     "type": "SchemaAnalysisAnnotation",
+     "status": "ACTIVE",
+     "qualifiedName": "Annotation::PostgreSQL::laz_local_re_reproof_postreset_1025::2026-10-25T01:36:00.776399::4",
+     "updatedBy": "peterprofile"
+    }
+   }
+  },
+  "8dcd4288-2dce-4d6e-9f6d-db1cf0de0e4f": {
+   "before": {
+    "plain": {
+     "type": "SchemaAnalysisAnnotation",
+     "status": "ACTIVE",
+     "qualifiedName": "Annotation::PostgreSQL::laz_local_re_reproof_postreset_1025::2026-10-25T01:36:00.776399::3",
+     "updatedBy": "peterprofile"
+    },
+    "lineage": {
+     "type": "SchemaAnalysisAnnotation",
+     "status": "ACTIVE",
+     "qualifiedName": "Annotation::PostgreSQL::laz_local_re_reproof_postreset_1025::2026-10-25T01:36:00.776399::3",
+     "updatedBy": "peterprofile"
+    }
+   }
+  },
+  "be0efae6-c082-4bf5-8e81-46ce5dc738b7": {
+   "before": {
+    "plain": {
+     "type": "SchemaAnalysisAnnotation",
+     "status": "ACTIVE",
+     "qualifiedName": "Annotation::PostgreSQL::laz_local_re_reproof_postreset_1025::2026-10-25T01:36:00.776399::2",
+     "updatedBy": "peterprofile"
+    },
+    "lineage": {
+     "type": "SchemaAnalysisAnnotation",
+     "status": "ACTIVE",
+     "qualifiedName": "Annotation::PostgreSQL::laz_local_re_reproof_postreset_1025::2026-10-25T01:36:00.776399::2",
+     "updatedBy": "peterprofile"
+    }
+   }
+  },
+  "9823a333-d94f-4b6a-994d-a6c0c440e863": {
+   "before": {
+    "plain": {
+     "type": "SchemaAnalysisAnnotation",
+     "status": "ACTIVE",
+     "qualifiedName": "Annotation::PostgreSQL::laz_local_re_reproof_postreset_1025::2026-10-25T01:36:00.776399::1",
+     "updatedBy": "peterprofile"
+    },
+    "lineage": {
+     "type": "SchemaAnalysisAnnotation",
+     "status": "ACTIVE",
+     "qualifiedName": "Annotation::PostgreSQL::laz_local_re_reproof_postreset_1025::2026-10-25T01:36:00.776399::1",
+     "updatedBy": "peterprofile"
+    }
+   }
+  },
+  "987b0c89-4206-456f-8b93-55739c13dcb7": {
+   "before": {
+    "plain": {
+     "type": "SchemaAnalysisAnnotation",
+     "status": "ACTIVE",
+     "qualifiedName": "Annotation::PostgreSQL::laz_local_re_reproof_postreset_1025::2026-10-25T01:36:00.776399::0",
+     "updatedBy": "peterprofile"
+    },
+    "lineage": {
+     "type": "SchemaAnalysisAnnotation",
+     "status": "ACTIVE",
+     "qualifiedName": "Annotation::PostgreSQL::laz_local_re_reproof_postreset_1025::2026-10-25T01:36:00.776399::0",
+     "updatedBy": "peterprofile"
+    }
+   }
+  },
+  "6920bac4-16cd-4a80-9b70-712276114c3d": {
+   "before": {
+    "plain": "ERR PyegeriaAPIException: \n\n=> \tSERVER_ERROR_500\n=>\tEgeria detected error: `https://localhost:9443/servers/qs-view-server/api/open-metadata/metadata-expert/metadata-elements/6920bac4-16c",
+    "lineage": {
+     "type": "VirtualConnection",
+     "status": "ACTIVE",
+     "qualifiedName": "PostgreSQL Relational Database Schema::host.docker.internal:5432::re_reproof_postreset_1025.alpha::Connection_archivedOn_Mon Oct 26 21:46:01 GMT 2026",
+     "updatedBy": "peterprofile"
+    }
+   }
+  },
+  "fe413588-e635-451c-820b-995ec8e5f97e": {
+   "before": {
+    "plain": "ERR PyegeriaAPIException: \n\n=> \tSERVER_ERROR_500\n=>\tEgeria detected error: `https://localhost:9443/servers/qs-view-server/api/open-metadata/metadata-expert/metadata-elements/fe413588-e63",
+    "lineage": {
+     "type": "Endpoint",
+     "status": "ACTIVE",
+     "qualifiedName": "PostgreSQL Relational Database Schema::host.docker.internal:5432::re_reproof_postreset_1025.alpha::Endpoint_archivedOn_Mon Oct 26 21:46:01 GMT 2026",
+     "updatedBy": "peterprofile"
+    }
+   }
+  },
+  "f646f352-18cd-4c1b-9e66-8ef9b34486ff": {
+   "before": {
+    "plain": "ERR PyegeriaAPIException: \n\n=> \tSERVER_ERROR_500\n=>\tEgeria detected error: `https://localhost:9443/servers/qs-view-server/api/open-metadata/metadata-expert/metadata-elements/f646f352-18c",
+    "lineage": {
+     "type": "Connection",
+     "status": "ACTIVE",
+     "qualifiedName": "PostgreSQL Relational Database Schema::host.docker.internal:5432::re_reproof_postreset_1025.alpha::SecretsStoreConnection_archivedOn_Mon Oct 26 21:46:01 GMT 2026",
+     "updatedBy": "peterprofile"
+    }
+   }
+  },
+  "25b64af4-60f5-4b58-9755-4d2c1556c8db": {
+   "before": {
+    "plain": "ERR PyegeriaAPIException: \n\n=> \tSERVER_ERROR_500\n=>\tEgeria detected error: `https://localhost:9443/servers/qs-view-server/api/open-metadata/metadata-expert/metadata-elements/25b64af4-60f",
+    "lineage": {
+     "type": "Endpoint",
+     "status": "ACTIVE",
+     "qualifiedName": "PostgreSQL Relational Database Schema::host.docker.internal:5432::re_reproof_postreset_1025.alpha::SecretStoreEndpoint_archivedOn_Mon Oct 26 21:46:01 GMT 2026",
+     "updatedBy": "peterprofile"
+    }
+   }
+  }
+ }
+}

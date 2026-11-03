@@ -22,6 +22,8 @@ integration test here — the suite still runs with no external services.
 """
 from __future__ import annotations
 
+import json
+
 import pytest
 
 from resource_explorer.registry import Project, ProjectRegistry
@@ -216,3 +218,524 @@ class TestRenameProjectSlugOnRealPostgres:
         finally:
             pg_registry.remove(new_slug) if pg_registry.get(new_slug) else None
             pg_registry.remove(slug) if pg_registry.get(slug) else None
+
+
+class TestRegistryConstructionIsCheapOnAWarmProcess:
+    """2026-09-29 per-request-latency investigation
+    (PER-REQUEST-SERVER-LATENCY-IMPLEMENTED.md): every
+    `ProjectRegistry()` construction re-ran `_init_schema` — ~150
+    CREATE TABLE/ALTER TABLE/CREATE INDEX statements — against Postgres,
+    measured directly at 250-470ms EVERY time, not just cold. Almost every
+    web route does `registry = ProjectRegistry()` fresh, so this landed on
+    every request. Fixed by caching the Engine and an "already verified"
+    flag per `database_url` at the class level, so a process only pays this
+    once per URL. These tests pin that behaviour directly against real
+    Postgres rather than timing it, which would be flaky."""
+
+    def test_second_construction_for_the_same_url_skips_schema_init(self, pg_test_schema, monkeypatch):
+        from resource_explorer.config import get_config
+        from resource_explorer.registry import ProjectRegistry
+
+        cfg = get_config().pgvector
+        url = (f"postgresql://{cfg.db_user}:{cfg.password}@{cfg.host}:{cfg.port}"
+               f"/{cfg.dbname}?options=-csearch_path%3D{pg_test_schema}")
+
+        # `pg_test_schema` is session-scoped (one throwaway schema, reused by
+        # every integration test), so an earlier test in this same session
+        # may already have constructed a `ProjectRegistry` against this exact
+        # URL and populated the class-level cache. Clear this URL's entries
+        # so "first ever construction" is deterministic regardless of test
+        # order, rather than asserting the process-wide cache is untouched.
+        ProjectRegistry._pg_engine_cache.pop(url, None)
+        ProjectRegistry._pg_schema_ready.discard(url)
+
+        calls = []
+        real_init_schema = ProjectRegistry._init_schema
+
+        def _counting_init_schema(self):
+            calls.append(1)
+            return real_init_schema(self)
+
+        monkeypatch.setattr(ProjectRegistry, "_init_schema", _counting_init_schema)
+
+        first = ProjectRegistry(database_url=url)
+        second = ProjectRegistry(database_url=url)
+
+        assert len(calls) == 1, "second construction re-ran _init_schema"
+        assert first.engine is second.engine, "second construction opened its own pool"
+        assert url in ProjectRegistry._pg_schema_ready
+
+
+class TestDatabaseSurveysCacheIsInstanceScopedAndWriteInvalidated:
+    """2026-09-29: profiling one board's `/survey-results` request showed
+    `get_database_surveys` (fetches every historical survey's full
+    `survey_data` blob) called 5 times for the same slug within a single
+    request — `_credential_capability_results` deliberately searches every
+    stored survey (its own docstring explains why), but nothing stopped
+    five separate callers each re-running that same full fetch. Cached
+    per-`ProjectRegistry`-instance; these tests pin the two properties that
+    matter: repeat reads within one instance don't re-query, and a write
+    through the same instance is never served stale."""
+
+    @pytest.fixture
+    def pg_surveyed_database(self, pg_registry):
+        from resource_explorer.registry import DatabaseEntity
+
+        slug = "pg_itest_survey_cache_db"
+        if pg_registry.get_database(slug) is None:
+            pg_registry.register_database(DatabaseEntity(
+                slug=slug, display_name="Survey Cache Test DB", db_type="postgresql",
+                host="localhost", port=5432, database_name=slug,
+            ))
+        yield slug
+        pg_registry.remove_database(slug)
+
+    def test_repeat_reads_within_one_instance_do_not_requery(self, pg_registry, pg_surveyed_database, monkeypatch):
+        """The FULL fetch (every historical `survey_data` blob) happens once;
+        the cheap freshness check (`_database_surveys_freshness`) is expected
+        to run on every call, cache hit or miss — that is the point of the
+        2026-09-29 self-invalidating-key hardening, not something to
+        suppress. So this counts the full-fetch query specifically (its
+        `ORDER BY surveyed_at DESC` clause, which the freshness query does
+        not have), not every statement that mentions `database_surveys`."""
+        from resource_explorer.registry import ConnectionWrapper
+
+        pg_registry.record_database_survey(
+            pg_surveyed_database, schema_count=1, table_count=1, column_count=1,
+            survey_data={"credential_capability": {"visible": True}},
+        )
+
+        full_fetch_calls = []
+        freshness_calls = []
+        real_execute = ConnectionWrapper.execute
+
+        def _counting_execute(self, sql, params=None):
+            if "FROM database_surveys" in sql:
+                if "ORDER BY surveyed_at DESC" in sql:
+                    full_fetch_calls.append(1)
+                elif "max(surveyed_at)" in sql:
+                    freshness_calls.append(1)
+            return real_execute(self, sql, params)
+
+        monkeypatch.setattr(ConnectionWrapper, "execute", _counting_execute)
+
+        first = pg_registry.get_database_surveys(pg_surveyed_database)
+        second = pg_registry.get_database_surveys(pg_surveyed_database)
+
+        assert len(full_fetch_calls) == 1, (
+            "second get_database_surveys() call re-ran the full blob fetch"
+        )
+        assert len(freshness_calls) == 2, (
+            "the cheap freshness check should run on every call, cache hit "
+            "or miss — that's what makes the cache self-invalidating"
+        )
+        assert first == second
+
+    def test_write_through_the_same_instance_is_not_served_stale(self, pg_registry, pg_surveyed_database):
+        first = pg_registry.get_database_surveys(pg_surveyed_database)
+        assert first == []
+        pg_registry.record_database_survey(
+            pg_surveyed_database, schema_count=1, table_count=2, column_count=3,
+            survey_data={"credential_capability": {"visible": True}},
+        )
+        second = pg_registry.get_database_surveys(pg_surveyed_database)
+        assert len(second) == 1, (
+            "get_database_surveys served a cached empty result after a "
+            "write through the same ProjectRegistry instance"
+        )
+
+    def test_get_latest_database_survey_uses_a_limit_1_query(self, pg_registry, pg_surveyed_database):
+        """A dedicated query, not `get_database_surveys(...)[0]` — see that
+        method's own docstring for why (profiled: 700-900ms vs ~30ms on a
+        heavily-surveyed database)."""
+        pg_registry.record_database_survey(
+            pg_surveyed_database, schema_count=1, table_count=1, column_count=1,
+            survey_data={"a": 1}, surveyed_at="2026-01-01T00:00:00",
+        )
+        pg_registry.record_database_survey(
+            pg_surveyed_database, schema_count=2, table_count=2, column_count=2,
+            survey_data={"b": 2}, surveyed_at="2026-01-02T00:00:00",
+        )
+        latest = pg_registry.get_latest_database_survey(pg_surveyed_database)
+        assert latest["surveyed_at"] == "2026-01-02T00:00:00"
+
+
+class TestGetDatabaseSurveysCacheSurvivesTheRunQueueWorkerPattern:
+    """2026-09-29 hardening: the "Resource-explorer PR/CI merge" session's
+    review of this branch found that the original per-instance survey cache
+    (write-invalidated only through THAT SAME instance) is safe for web
+    routes — every route constructs `ProjectRegistry()` fresh per request —
+    but was a real staleness risk for any LONG-LIVED holder that constructs
+    ONE `ProjectRegistry` and reuses it across many iterations, the shape
+    `run_queue.py`'s `QueueRunner._loop` is written in: one
+    `registry = ProjectRegistry()` before `while not self._stop.is_set():`,
+    intended to be threaded through `claim_and_execute_once(registry) ->
+    execute_run(row, registry=registry)` for every iteration. A survey
+    written by a DIFFERENT process (the web server, or a different worker)
+    in between two iterations would never invalidate that one instance's
+    cached copy under the old scheme.
+
+    This drives the REAL `run_queue.claim_and_execute_once` /
+    `run_queue.execute_run` call chain — not two bare `ProjectRegistry`
+    instances calling `get_database_surveys` directly in isolation — with
+    ONE `ProjectRegistry` constructed once and threaded through multiple
+    simulated run-queue iterations, exactly the way `QueueRunner._loop`
+    does, so this proves the specific bug class (a long-lived worker
+    registry serving a stale survey list after another process's write) is
+    closed, not just the underlying cache mechanism in the abstract.
+
+    Honesty note, found while building this test: `QueueRunner._loop`'s own
+    `registry` local is currently DEAD — its call site
+    (`claim_and_execute_once(kinds=self.kinds)`) does not pass `registry=`,
+    so today's worker actually builds a fresh `ProjectRegistry` per
+    iteration via `claim_and_execute_once`'s `registry or ProjectRegistry()`
+    default, and even a future fix to pass it through would not, by itself,
+    reach `get_database_surveys` — `execute_run` calls
+    `HANDLERS[kind](target, result_ref)` with no `registry` argument at all,
+    so every handler (`_handle_database_analysis_run` included) constructs
+    its own fresh registry regardless. Neither of those is this fix's to
+    make — they are separate, out-of-scope findings, logged in
+    `PER-REQUEST-SERVER-LATENCY-IMPLEMENTED.md`'s
+    staleness-hardening addendum. This test still exercises the call chain
+    `claim_and_execute_once`/`execute_run` genuinely support (both accept an
+    explicit `registry=`) with one instance reused across iterations, which
+    is the pattern the cache must be safe under whether today's wiring
+    happens to reach it or a future fix completes that wiring.
+    """
+
+    def test_worker_registry_sees_a_survey_written_by_a_different_instance_between_runs(
+        self, pg_test_schema, monkeypatch
+    ):
+        from resource_explorer.config import get_config
+        from resource_explorer.registry import DatabaseEntity, ProjectRegistry
+        from resource_explorer import run_queue as rq
+
+        cfg = get_config().pgvector
+        url = (f"postgresql://{cfg.db_user}:{cfg.password}@{cfg.host}:{cfg.port}"
+               f"/{cfg.dbname}?options=-csearch_path%3D{pg_test_schema}")
+
+        # ONE ProjectRegistry, constructed once — exactly QueueRunner._loop's
+        # `registry = ProjectRegistry()` before its `while` loop — reused
+        # across multiple simulated iterations below, instead of letting
+        # each call build its own.
+        worker_registry = ProjectRegistry(database_url=url)
+
+        slug = "pg_itest_worker_loop_survey_cache"
+        worker_registry.register_database(DatabaseEntity(
+            slug=slug, display_name="Worker Loop Test DB", db_type="postgresql",
+            host="localhost", port=5432, database_name=slug,
+        ))
+        try:
+            # Iteration 1: a read against the slug through the long-lived
+            # instance — the same shape db_derived.py's _snapshot_keys uses
+            # (registry.get_database_surveys(slug)) when an analysis run
+            # reaches it via this same worker registry.
+            first_reads = worker_registry.get_database_surveys(slug)
+            assert first_reads == []
+
+            # Iteration 1's actual unit of work: an unrelated row claimed
+            # and executed through the REAL run_queue call chain
+            # (claim_and_execute_once -> execute_run), on the SAME threaded
+            # registry instance — not a direct get_database_surveys() call
+            # standing in for it.
+            monkeypatch.setitem(
+                rq.HANDLERS, "curate_commit",
+                lambda target, result_ref: rq.RunOutcome(state="succeeded"),
+            )
+            run_id = worker_registry.enqueue_run("curate_commit", {"curation_id": "noop"}, requested_by="itest-curator")
+            claimed = rq.claim_and_execute_once(worker_registry)
+            assert claimed is not None and claimed["id"] == run_id
+            assert worker_registry.get_run(run_id)["state"] == "succeeded"
+
+            # A DIFFERENT process — the web server, or a different worker —
+            # writes a new survey for the SAME slug in between iterations,
+            # through its OWN ProjectRegistry instance.
+            other_process_registry = ProjectRegistry(database_url=url)
+            other_process_registry.record_database_survey(
+                slug, schema_count=1, table_count=2, column_count=3,
+                survey_data={"credential_capability": {"visible": True}},
+            )
+
+            # Iteration 2, same long-lived worker registry: another
+            # unrelated row runs through the same call chain first (to keep
+            # exercising claim_and_execute_once/execute_run across
+            # iterations, matching QueueRunner._loop's repeated-call shape)...
+            run_id_2 = worker_registry.enqueue_run("curate_commit", {"curation_id": "noop-2"})
+            claimed_2 = rq.claim_and_execute_once(worker_registry)
+            assert claimed_2 is not None and claimed_2["id"] == run_id_2
+
+            # ...and THEN the very next read for the original slug, through
+            # the SAME instance used in iteration 1, must see the newer
+            # survey — not the empty list it cached back in iteration 1.
+            second_reads = worker_registry.get_database_surveys(slug)
+            assert len(second_reads) == 1, (
+                "the long-lived run-queue worker registry served a stale "
+                "cached survey list after a DIFFERENT process's write — "
+                "exactly the 2026-09-29 staleness bug this hardening closes"
+            )
+        finally:
+            worker_registry.remove_database(slug)
+
+
+class TestFindLatestDatabaseSurveyWithKey:
+    """2026-09-29 round 2 (PER-REQUEST-SERVER-LATENCY-ROUND-2-IMPLEMENTED.md): `find_latest_database_survey_with_key` replaces
+    the "fetch every historical blob, loop in Python" pattern with a
+    server-side `jsonb_exists` containment query on Postgres. This is the
+    exact search shape the 2026-09-26 fix (`a0f28aec`, "Fix schema-count
+    leading number and credential-capability key mismatch") landed —
+    `_credential_capability_results` searching every stored survey
+    newest-first rather than only the latest — so this class exercises
+    that shape directly against real Postgres, not just the
+    `_FakeRegistry`-level unit test in test_schema_inventory_headline.py."""
+
+    @pytest.fixture
+    def pg_surveyed_database(self, pg_registry):
+        from resource_explorer.registry import DatabaseEntity
+
+        slug = "pg_itest_find_survey_with_key_db"
+        if pg_registry.get_database(slug) is None:
+            pg_registry.register_database(DatabaseEntity(
+                slug=slug, display_name="Find Survey With Key Test DB", db_type="postgresql",
+                host="localhost", port=5432, database_name=slug,
+            ))
+        yield slug
+        pg_registry.remove_database(slug)
+
+    def test_returns_none_when_no_survey_has_the_key(self, pg_registry, pg_surveyed_database):
+        pg_registry.record_database_survey(
+            pg_surveyed_database, schema_count=1, table_count=1, column_count=1,
+            survey_data={"schema_count": 1},
+        )
+        assert pg_registry.find_latest_database_survey_with_key(
+            pg_surveyed_database, "credential_capability") is None
+
+    def test_finds_the_key_on_the_only_survey(self, pg_registry, pg_surveyed_database):
+        pg_registry.record_database_survey(
+            pg_surveyed_database, schema_count=1, table_count=1, column_count=1,
+            survey_data={"credential_capability": {"schema_total": 8, "schema_visible": 6}},
+        )
+        found = pg_registry.find_latest_database_survey_with_key(
+            pg_surveyed_database, "credential_capability")
+        assert found is not None
+        assert json.loads(found["survey_data"])["credential_capability"]["schema_total"] == 8
+
+    def test_the_2026_09_26_bug_shape_an_older_survey_carries_the_key_the_newest_does_not(
+        self, pg_registry, pg_surveyed_database,
+    ):
+        """The exact real-world shape found live 2026-09-26 on `coco_pharma`:
+        an older survey ran the credential_capability probe; a later,
+        newer survey was schema/statistics-only and carries no such key at
+        all (not merely a falsy one — the key is genuinely absent, exactly
+        as `DatabaseSurveyor.survey()` only ever sets it when the probe
+        step actually ran). The newest-first search must not stop at the
+        newer, probe-less survey and report "nothing" — it must keep
+        looking and find the older reading, same as `_credential_capability_
+        results`'s own docstring requires and `a0f28aec` fixed live for."""
+        pg_registry.record_database_survey(
+            pg_surveyed_database, schema_count=8, table_count=61, column_count=200,
+            survey_data={"credential_capability": {"schema_total": 8, "schema_visible": 6,
+                                                     "table_total": 61, "table_select": 3}},
+            surveyed_at="2026-09-25T00:00:00",
+        )
+        pg_registry.record_database_survey(
+            pg_surveyed_database, schema_count=8, table_count=61, column_count=200,
+            survey_data={"schema_count": 8},  # newer, no probe this run
+            surveyed_at="2026-09-26T00:00:00",
+        )
+        found = pg_registry.find_latest_database_survey_with_key(
+            pg_surveyed_database, "credential_capability")
+        assert found is not None
+        assert found["surveyed_at"] == "2026-09-25T00:00:00"
+        cap = json.loads(found["survey_data"])["credential_capability"]
+        assert cap["schema_total"] == 8
+        assert cap["schema_visible"] == 6
+
+    def test_an_empty_dict_value_is_treated_as_falsy_and_search_continues(
+        self, pg_registry, pg_surveyed_database,
+    ):
+        """The key existing with a falsy value (`{}`) is the one case the
+        fast SQL path alone cannot distinguish from a truthy one — pinned
+        directly per `find_latest_database_survey_with_key`'s own docstring
+        ("Candidate had the key but a falsy value... fall through to the
+        exhaustive scan"). Not expected in real surveyor output (the probe
+        either omits the key or writes a real reading), but correctness
+        here must not depend on that assumption holding."""
+        pg_registry.record_database_survey(
+            pg_surveyed_database, schema_count=1, table_count=1, column_count=1,
+            survey_data={"credential_capability": {"schema_total": 3, "schema_visible": 3}},
+            surveyed_at="2026-09-25T00:00:00",
+        )
+        pg_registry.record_database_survey(
+            pg_surveyed_database, schema_count=1, table_count=1, column_count=1,
+            survey_data={"credential_capability": {}},  # present, empty — falsy
+            surveyed_at="2026-09-26T00:00:00",
+        )
+        found = pg_registry.find_latest_database_survey_with_key(
+            pg_surveyed_database, "credential_capability")
+        assert found is not None
+        assert found["surveyed_at"] == "2026-09-25T00:00:00", (
+            "the newer survey's empty credential_capability was treated as "
+            "truthy — the fast path's candidate check must verify, not just "
+            "check key presence"
+        )
+
+    def test_credential_capability_results_reader_uses_the_fast_path_correctly(
+        self, pg_registry, pg_surveyed_database,
+    ):
+        """End to end through the actual results reader
+        (`_credential_capability_results`), not just the registry method —
+        confirms the reader's `find_latest_database_survey_with_key`
+        integration returns the same answer the pre-round-2 linear scan
+        would have, for the exact bug shape `a0f28aec` fixed."""
+        from resource_explorer.surveyors.database.survey_definition_adapter import (
+            _credential_capability_results,
+        )
+
+        pg_registry.record_database_survey(
+            pg_surveyed_database, schema_count=8, table_count=61, column_count=200,
+            survey_data={"credential_capability": {"schema_total": 8, "schema_visible": 6}},
+            surveyed_at="2026-09-25T00:00:00",
+        )
+        pg_registry.record_database_survey(
+            pg_surveyed_database, schema_count=8, table_count=61, column_count=200,
+            survey_data={"schema_count": 8},
+            surveyed_at="2026-09-26T00:00:00",
+        )
+        cap = _credential_capability_results(pg_registry, pg_surveyed_database)
+        assert cap == {"schema_total": 8, "schema_visible": 6}
+
+    def test_repeat_calls_within_one_instance_do_not_requery(self, pg_registry, pg_surveyed_database, monkeypatch):
+        """A single board read calls `_credential_capability_results` (and
+        so this method) from several distinct call sites for the same
+        slug/key — 5 times, per `cProfile` on `schema_inventory`. Cached
+        per `(slug, key)` on the `ProjectRegistry` instance, lazily and
+        deliberately WITHOUT touching `__init__`/`record_database_survey`
+        (see this method's own docstring for why) — pinned here the same
+        way `get_database_surveys`'s own dedup is pinned, by counting real
+        `database_surveys` queries across repeat calls."""
+        from resource_explorer.registry import ConnectionWrapper
+
+        pg_registry.record_database_survey(
+            pg_surveyed_database, schema_count=1, table_count=1, column_count=1,
+            survey_data={"credential_capability": {"schema_total": 3, "schema_visible": 3}},
+        )
+
+        calls = []
+        real_execute = ConnectionWrapper.execute
+
+        def _counting_execute(self, sql, params=None):
+            if "FROM database_surveys" in sql:
+                calls.append(1)
+            return real_execute(self, sql, params)
+
+        monkeypatch.setattr(ConnectionWrapper, "execute", _counting_execute)
+
+        first = pg_registry.find_latest_database_survey_with_key(
+            pg_surveyed_database, "credential_capability")
+        second = pg_registry.find_latest_database_survey_with_key(
+            pg_surveyed_database, "credential_capability")
+
+        assert len(calls) == 1, "second find_latest_database_survey_with_key() call re-queried Postgres"
+        assert first == second
+
+
+class TestFindLatestDetailSurveyedAt:
+    """2026-09-29 round 3 (PER-REQUEST-SERVER-LATENCY-ROUND-3-IMPLEMENTED.md): `find_latest_detail_surveyed_at` replaces
+    `db_derived.py`'s `_resolve_table_surveyed_at` walk (one `query_detail_
+    rows` call per candidate `surveyed_at`, newest first, until one is
+    non-empty) with a single `MAX(surveyed_at)` query — provably
+    equivalent per that method's own docstring, pinned here directly
+    against real Postgres."""
+
+    @pytest.fixture
+    def pg_database(self, pg_registry):
+        from resource_explorer.registry import DatabaseEntity
+
+        slug = "pg_itest_find_latest_detail_db"
+        if pg_registry.get_database(slug) is None:
+            pg_registry.register_database(DatabaseEntity(
+                slug=slug, display_name="Find Latest Detail Test DB", db_type="postgresql",
+                host="localhost", port=5432, database_name=slug,
+            ))
+        yield slug
+        pg_registry.remove_database(slug)
+
+    def test_returns_none_when_the_table_has_no_rows_for_this_slug(self, pg_registry, pg_database):
+        assert pg_registry.find_latest_detail_surveyed_at("database_tables", pg_database) is None
+
+    def test_finds_the_only_surveyed_at(self, pg_registry, pg_database):
+        pg_registry.write_detail_rows(
+            "database_tables", pg_database, "2026-09-29T00:00:00", "local",
+            [{"schema_name": "public", "table_name": "t1"}],
+        )
+        at = pg_registry.find_latest_detail_surveyed_at("database_tables", pg_database)
+        assert at == "2026-09-29T00:00:00"
+
+    def test_finds_the_newest_of_several_surveyed_ats(self, pg_registry, pg_database):
+        for at in ("2026-09-27T00:00:00", "2026-09-29T00:00:00", "2026-09-28T00:00:00"):
+            pg_registry.write_detail_rows(
+                "database_tables", pg_database, at, "local",
+                [{"schema_name": "public", "table_name": "t1"}],
+            )
+        found = pg_registry.find_latest_detail_surveyed_at("database_tables", pg_database)
+        assert found == "2026-09-29T00:00:00"
+
+    def test_a_run_that_never_touched_this_table_is_correctly_skipped(self, pg_registry, pg_database):
+        """The exact property `_resolve_table_surveyed_at`'s walk existed
+        for: a later run's own steps can genuinely never touch a structured
+        table at all (a schema-only run writes no `database_table_activity`
+        rows), and that must not shadow an earlier run that DID."""
+        pg_registry.write_detail_rows(
+            "database_table_activity", pg_database, "2026-09-27T00:00:00", "local",
+            [{"schema_name": "public", "table_name": "t1", "rows_inserted": 5}],
+        )
+        # A later survey ran, but this particular table was never touched by
+        # it — no row exists for "2026-09-29" in database_table_activity at all.
+        found = pg_registry.find_latest_detail_surveyed_at("database_table_activity", pg_database)
+        assert found == "2026-09-27T00:00:00"
+
+    def test_require_any_non_null_skips_a_row_with_every_counter_null(self, pg_registry, pg_database):
+        """The `database_table_activity`-specific case `require_measured_
+        counter` exists for: a row can be written (the step ran) with every
+        counter NULL (nothing was actually measured). That must not count
+        as "this run has the answer" — the newer, unmeasured row must be
+        skipped in favour of the older, real one."""
+        pg_registry.write_detail_rows(
+            "database_table_activity", pg_database, "2026-09-27T00:00:00", "local",
+            [{"schema_name": "public", "table_name": "t1", "rows_inserted": 5}],
+        )
+        pg_registry.write_detail_rows(
+            "database_table_activity", pg_database, "2026-09-29T00:00:00", "local",
+            [{"schema_name": "public", "table_name": "t1"}],  # every counter NULL
+        )
+        found = pg_registry.find_latest_detail_surveyed_at(
+            "database_table_activity", pg_database,
+            require_any_non_null=("rows_inserted", "rows_updated", "rows_deleted",
+                                   "seq_scan", "idx_scan"),
+        )
+        assert found == "2026-09-27T00:00:00", (
+            "the newer, all-NULL-counter row was accepted as measured"
+        )
+
+    def test_resolve_table_surveyed_at_gives_identical_answers_to_the_old_walk(
+        self, pg_registry, pg_database,
+    ):
+        """End to end through `db_derived._resolve_table_surveyed_at` itself
+        (not just the registry method it now calls) — the exact bug shape
+        the walk existed for, reproduced: an older run wrote
+        `database_table_activity` rows with real counters; a newer run
+        wrote NONE for this table at all (a schema-only run). The newer
+        run's absence here must not shadow the older run's real answer."""
+        from resource_explorer.surveyors.database.db_derived import _resolve_table_surveyed_at
+
+        pg_registry.write_detail_rows(
+            "database_table_activity", pg_database, "2026-09-27T00:00:00", "local",
+            [{"schema_name": "public", "table_name": "t1", "rows_inserted": 5}],
+        )
+        at, rows = _resolve_table_surveyed_at(
+            pg_registry, pg_database, "database_table_activity", None,
+            require_measured_counter=True,
+        )
+        assert at == "2026-09-27T00:00:00"
+        assert len(rows) == 1
+        assert rows[0]["rows_inserted"] == 5

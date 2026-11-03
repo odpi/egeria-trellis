@@ -1,0 +1,150 @@
+{
+ "mode": "read",
+ "at": "2026-10-27T15:37:37+00:00",
+ "identity": "resourceexplorernpa",
+ "elements": {
+  "0005db72-bac8-4a8a-9c88-33a88920a8df": {
+   "before": {
+    "plain": "ERR PyegeriaAPIException: \n\n=> \tSERVER_ERROR_500\n=>\tEgeria detected error: `https://localhost:9443/servers/qs-view-server/api/open-metadata/metadata-expert/metadata-elements/0005db72-bac",
+    "lineage": {
+     "type": "RelationalColumn",
+     "status": "ACTIVE",
+     "qualifiedName": "PostgreSQL Relational Database Schema::host.docker.internal:5432::re_reproof_postreset_1025.alpha::widgets::id_archivedOn_Tue Oct 27 15:36:54 GMT 2026",
+     "updatedBy": "peterprofile"
+    }
+   }
+  },
+  "19a56998-3121-4a75-9290-57370a19964c": {
+   "before": {
+    "plain": "ERR PyegeriaAPIException: \n\n=> \tSERVER_ERROR_500\n=>\tEgeria detected error: `https://localhost:9443/servers/qs-view-server/api/open-metadata/metadata-expert/metadata-elements/19a56998-312",
+    "lineage": {
+     "type": "RelationalTable",
+     "status": "ACTIVE",
+     "qualifiedName": "PostgreSQL Relational Database Schema::host.docker.internal:5432::re_reproof_postreset_1025.alpha::widgets_archivedOn_Tue Oct 27 15:36:54 GMT 2026",
+     "updatedBy": "peterprofile"
+    }
+   }
+  },
+  "25b64af4-60f5-4b58-9755-4d2c1556c8db": {
+   "before": {
+    "plain": "ERR PyegeriaAPIException: \n\n=> \tSERVER_ERROR_500\n=>\tEgeria detected error: `https://localhost:9443/servers/qs-view-server/api/open-metadata/metadata-expert/metadata-elements/25b64af4-60f",
+    "lineage": {
+     "type": "Endpoint",
+     "status": "ACTIVE",
+     "qualifiedName": "PostgreSQL Relational Database Schema::host.docker.internal:5432::re_reproof_postreset_1025.alpha::SecretStoreEndpoint_archivedOn_Tue Oct 27 15:36:54 GMT 2026",
+     "updatedBy": "peterprofile"
+    }
+   }
+  },
+  "320d1faf-04ed-4501-ba8d-83d481554e3c": {
+   "before": {
+    "plain": "ERR PyegeriaAPIException: \n\n=> \tSERVER_ERROR_500\n=>\tEgeria detected error: `https://localhost:9443/servers/qs-view-server/api/open-metadata/metadata-expert/metadata-elements/320d1faf-04e",
+    "lineage": {
+     "type": "RelationalColumn",
+     "status": "ACTIVE",
+     "qualifiedName": "PostgreSQL Relational Database Schema::host.docker.internal:5432::re_reproof_postreset_1025.alpha::widgets::name_archivedOn_Tue Oct 27 15:36:54 GMT 2026",
+     "updatedBy": "peterprofile"
+    }
+   }
+  },
+  "50efdc5e-2679-4761-8339-98befd433679": {
+   "before": {
+    "plain": "ERR PyegeriaAPIException: \n\n=> \tSERVER_ERROR_500\n=>\tEgeria detected error: `https://localhost:9443/servers/qs-view-server/api/open-metadata/metadata-expert/metadata-elements/50efdc5e-267",
+    "lineage": {
+     "type": "RelationalColumn",
+     "status": "ACTIVE",
+     "qualifiedName": "PostgreSQL Relational Database Schema::host.docker.internal:5432::re_reproof_postreset_1025.alpha::widgets::made_on_archivedOn_Tue Oct 27 15:36:54 GMT 2026",
+     "updatedBy": "peterprofile"
+    }
+   }
+  },
+  "686d3e8a-e57c-4e20-ba54-370201bb517e": {
+   "before": {
+    "plain": "ERR PyegeriaAPIException: \n\n=> \tSERVER_ERROR_500\n=>\tEgeria detected error: `https://localhost:9443/servers/qs-view-server/api/open-metadata/metadata-expert/metadata-elements/686d3e8a-e57",
+    "lineage": {
+     "type": "RelationalTable",
+     "status": "ACTIVE",
+     "qualifiedName": "PostgreSQL Relational Database Schema::host.docker.internal:5432::re_reproof_postreset_1025.alpha::widget_parts_archivedOn_Tue Oct 27 15:36:54 GMT 2026",
+     "updatedBy": "peterprofile"
+    }
+   }
+  },
+  "6920bac4-16cd-4a80-9b70-712276114c3d": {
+   "before": {
+    "plain": "ERR PyegeriaAPIException: \n\n=> \tSERVER_ERROR_500\n=>\tEgeria detected error: `https://localhost:9443/servers/qs-view-server/api/open-metadata/metadata-expert/metadata-elements/6920bac4-16c",
+    "lineage": {
+     "type": "VirtualConnection",
+     "status": "ACTIVE",
+     "qualifiedName": "PostgreSQL Relational Database Schema::host.docker.internal:5432::re_reproof_postreset_1025.alpha::Connection_archivedOn_Tue Oct 27 15:36:54 GMT 2026",
+     "updatedBy": "peterprofile"
+    }
+   }
+  },
+  "6afbfe35-26b6-4321-8bb2-725f8c1897e5": {
+   "before": {
+    "plain": "ERR PyegeriaAPIException: \n\n=> \tSERVER_ERROR_500\n=>\tEgeria detected error: `https://localhost:9443/servers/qs-view-server/api/open-metadata/metadata-expert/metadata-elements/6afbfe35-26b",
+    "lineage": {
+     "type": "RelationalColumn",
+     "status": "ACTIVE",
+     "qualifiedName": "PostgreSQL Relational Database Schema::host.docker.internal:5432::re_reproof_postreset_1025.alpha::widget_parts::part_archivedOn_Tue Oct 27 15:36:54 GMT 2026",
+     "updatedBy": "peterprofile"
+    }
+   }
+  },
+  "a2862d99-24d7-4d74-9ec7-33986fdfc2d2": {
+   "before": {
+    "plain": "ERR PyegeriaAPIException: \n\n=> \tSERVER_ERROR_500\n=>\tEgeria detected error: `https://localhost:9443/servers/qs-view-server/api/open-metadata/metadata-expert/metadata-elements/a2862d99-24d",
+    "lineage": {
+     "type": "RelationalColumn",
+     "status": "ACTIVE",
+     "qualifiedName": "PostgreSQL Relational Database Schema::host.docker.internal:5432::re_reproof_postreset_1025.alpha::widget_parts::widget_id_archivedOn_Tue Oct 27 15:36:54 GMT 2026",
+     "updatedBy": "peterprofile"
+    }
+   }
+  },
+  "d9dd8325-f5f9-415f-8085-6ba6c6c4d5fb": {
+   "before": {
+    "plain": "ERR PyegeriaAPIException: \n\n=> \tSERVER_ERROR_500\n=>\tEgeria detected error: `https://localhost:9443/servers/qs-view-server/api/open-metadata/metadata-expert/metadata-elements/d9dd8325-f5f",
+    "lineage": {
+     "type": "RelationalColumn",
+     "status": "ACTIVE",
+     "qualifiedName": "PostgreSQL Relational Database Schema::host.docker.internal:5432::re_reproof_postreset_1025.alpha::widget_parts::id_archivedOn_Tue Oct 27 15:36:54 GMT 2026",
+     "updatedBy": "peterprofile"
+    }
+   }
+  },
+  "dde21d2e-e574-4156-83f8-9f3269566c4b": {
+   "before": {
+    "plain": "ERR PyegeriaAPIException: \n\n=> \tSERVER_ERROR_500\n=>\tEgeria detected error: `https://localhost:9443/servers/qs-view-server/api/open-metadata/metadata-expert/metadata-elements/dde21d2e-e57",
+    "lineage": {
+     "type": "RelationalDBSchemaType",
+     "status": "ACTIVE",
+     "qualifiedName": "PostgreSQL Relational Database Schema::host.docker.internal:5432::re_reproof_postreset_1025.alpha_schemaType_archivedOn_Tue Oct 27 15:36:55 GMT 2026",
+     "updatedBy": "peterprofile"
+    }
+   }
+  },
+  "f646f352-18cd-4c1b-9e66-8ef9b34486ff": {
+   "before": {
+    "plain": "ERR PyegeriaAPIException: \n\n=> \tSERVER_ERROR_500\n=>\tEgeria detected error: `https://localhost:9443/servers/qs-view-server/api/open-metadata/metadata-expert/metadata-elements/f646f352-18c",
+    "lineage": {
+     "type": "Connection",
+     "status": "ACTIVE",
+     "qualifiedName": "PostgreSQL Relational Database Schema::host.docker.internal:5432::re_reproof_postreset_1025.alpha::SecretsStoreConnection_archivedOn_Tue Oct 27 15:36:54 GMT 2026",
+     "updatedBy": "peterprofile"
+    }
+   }
+  },
+  "fe413588-e635-451c-820b-995ec8e5f97e": {
+   "before": {
+    "plain": "ERR PyegeriaAPIException: \n\n=> \tSERVER_ERROR_500\n=>\tEgeria detected error: `https://localhost:9443/servers/qs-view-server/api/open-metadata/metadata-expert/metadata-elements/fe413588-e63",
+    "lineage": {
+     "type": "Endpoint",
+     "status": "ACTIVE",
+     "qualifiedName": "PostgreSQL Relational Database Schema::host.docker.internal:5432::re_reproof_postreset_1025.alpha::Endpoint_archivedOn_Tue Oct 27 15:36:54 GMT 2026",
+     "updatedBy": "peterprofile"
+    }
+   }
+  }
+ }
+}

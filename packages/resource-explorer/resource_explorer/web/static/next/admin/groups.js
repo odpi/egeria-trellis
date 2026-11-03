@@ -33,6 +33,7 @@
  * delete your files on disk").
  */
 import { state, esc, refreshGroupsAndSidebar } from '/static/next/app.js';
+import { inPageConfirm, inPageNotice } from '/static/next/confirm-dialog.js';
 import {
   listGroups, groupSuggestions, createGroup, deleteGroup, assignGroup,
   listProjects, listDatabases, listFilesystems,
@@ -233,11 +234,12 @@ async function onApplySuggestion(index) {
   try {
     await createGroup(groupSlug, s.suggested_display_name, `Auto-suggested from shared GitHub org: ${s.org}`);
     for (const repoSlug of s.repo_slugs) {
+      // Explicit 'repo': suggested groups come from shared GitHub orgs, so every slug here is a repo.
       await assignGroup(repoSlug, groupSlug, 'repo');
     }
     await reload();
   } catch (err) {
-    window.alert(`Failed to apply suggestion: ${err.message}`);
+    await inPageNotice({ message: `Failed to apply suggestion: ${err.message}` });
   }
 }
 
@@ -252,12 +254,12 @@ async function onDeleteGroup(slug) {
   const msg = n > 0
     ? `Delete group "${name}"? ${n} resource${n === 1 ? '' : 's'} return to Ungrouped — nothing is deleted.`
     : `Delete group "${name}"? It has no members.`;
-  if (!window.confirm(msg)) return;
+  if (!(await inPageConfirm({ message: msg, confirmLabel: 'Confirm' }))) return;
   try {
     await deleteGroup(slug);
     await reload();
   } catch (err) {
-    window.alert(`Failed to delete group: ${err.message}`);
+    await inPageNotice({ message: `Failed to delete group: ${err.message}` });
   }
 }
 

@@ -243,3 +243,31 @@ def test_move_to_outbox_fallback_and_folder_of(tmp_path, monkeypatch):
     inbox_file = dm._paths["inbox"] / f"{doc_id}.md"
     assert not inbox_file.exists()
 
+
+
+def test_parse_analytic_only_spec_with_output_types():
+    rsd = """
+## Create Report Spec
+### Heading
+Tile
+### Description
+An analytic tile
+### Analytic Function
+pkg.mod.func
+### Analytic Spec Params
+resource_type=database, limit=30
+### Output Types
+DICT, BAR
+"""
+    spec = parse_report_spec_markdown(rsd)
+    # pyegeria 6.2.2 (ISSUE-141): no action function at all, not ""
+    assert spec.action.function is None and spec.action.analytic_function == "pkg.mod.func"
+    assert spec.action.analytic_spec_params == {"resource_type": "database", "limit": 30}
+    assert [f.types for f in spec.formats] == [["DICT", "BAR"]]
+    # and the validator does not warn "No Action Function" for an analytic-only spec
+    assert validate_report_spec(spec) == []
+
+
+def test_validator_still_warns_when_a_spec_has_no_function_of_either_kind():
+    spec = FormatSet(heading="h", description="d", formats=[], action=None)
+    assert validate_report_spec(spec) == ["No Action Function defined."]

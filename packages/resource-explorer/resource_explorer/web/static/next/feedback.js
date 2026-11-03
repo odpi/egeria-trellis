@@ -18,6 +18,7 @@
 // FeedbackSubmission model — verify there before changing any key.
 
 import { feedbackVotesHtml } from '/static/next/app.js';
+import { inPagePrompt } from '/static/next/confirm-dialog.js';
 
 const CATEGORIES = [
   { value: '', label: 'Category (optional)' },
@@ -68,7 +69,7 @@ function _buildModal() {
   const overlay = document.createElement('div');
   overlay.id = 'fb-modal-overlay';
   overlay.className = 'fixed inset-0 z-[90] flex items-center justify-center';
-  overlay.style.background = 'rgba(27,26,25,0.55)';
+  overlay.style.background = 'rgb(var(--c-chrome, 27 26 25) / 0.55)';
   // `hidden` attribute loses to the `flex` utility (display:flex wins over
   // preflight's [hidden]); the `hidden` CLASS is ordered after `flex` and wins.
   overlay.classList.add('hidden');
@@ -101,7 +102,11 @@ function _showError(msg) {
   err.hidden = false;
 }
 
-function openFeedbackModal() {
+let _subject = '';
+
+function openFeedbackModal(opts) {
+  // Opened as a click handler this gets an Event; only a `{subject}` object counts.
+  _subject = (opts && typeof opts.subject === 'string') ? opts.subject : '';
   if (!_modalEl) _buildModal();
   // Reset form state on every open — also undoes a previous submission's
   // "Thank you" message if the modal is reopened quickly.
@@ -109,8 +114,18 @@ function openFeedbackModal() {
   _resetForm();
   _modalEl.classList.remove('hidden');
   const textarea = _modalEl.querySelector('#fb-message');
-  if (textarea) textarea.focus();
+  if (textarea) {
+    // "Tell us" on the look control (RULING-THEMES-PORTAL-DARK-LIGHT.md section 1): the subject
+    // leads the message, and travels as element_guid ("look:Paper") so the comments on a look
+    // can be found without reading them all.
+    if (_subject) textarea.value = `${_subject}\n\n`;
+    textarea.focus();
+    if (_subject) textarea.setSelectionRange(textarea.value.length, textarea.value.length);
+  }
 }
+
+// The look control (look.js) asks for the form without importing this module.
+document.addEventListener('re-open-feedback', (e) => openFeedbackModal({ subject: (e.detail && e.detail.subject) || '' }));
 
 function _resetForm() {
   if (!_modalEl) return;
@@ -169,7 +184,7 @@ async function submitFeedback() {
   const payload = {
     session_id: _sessionId(),
     page: location.pathname + location.search,
-    element_guid: '',
+    element_guid: _subject ? _subject.toLowerCase().replace(/\s+/g, '') : '',
     rating: _rating > 0 ? _rating : null,
     category,
     message,
@@ -273,17 +288,21 @@ function _rowQuestion(row) {
 
 function _currentSlug() {
   const el = document.getElementById('scope-slug');
-  const s = el ? el.textContent.trim() : '';
+  // `data-slug` first: #scope-slug is the resource's menu button and its text
+  // reads "<slug> ▾", so the text is no longer the bare slug.
+  const s = el ? (el.dataset.slug !== undefined ? el.dataset.slug : el.textContent).trim() : '';
   return s && s !== 'no resource selected' ? s : '';
 }
 
 /** `#scope-slug`'s `data-entity-type`, set by app.js's `renderTopBar()`
  *  alongside the slug it already reads from that same element — a plain DOM
  *  read, not an app.js import, matching this module's stated independence
- *  above. Defaults to 'repo': existing pages predate this attribute. */
+ *  above. No default: a missing attribute throws rather than filing the vote against 'repo'. */
 function _currentEntityType() {
   const el = document.getElementById('scope-slug');
-  return (el && el.dataset.entityType) || 'repo';
+  const kind = el && el.dataset.entityType;
+  if (!kind) throw new Error('feedback: entityType is required (no data-entity-type on #scope-slug)');
+  return kind;
 }
 
 function _attachTo(row) {
@@ -339,7 +358,7 @@ async function _sendAnswerVerdict(bar, vote) {
   // "wrong" what they know is the one case where the words are the point.
   let comment = '';
   if (verdict === 'disagree') {
-    const typed = window.prompt('What is wrong with this answer? (optional)', '');
+    const typed = await inPagePrompt({ title: 'What is wrong?', message: 'What is wrong with this answer? (optional)', label: 'What is wrong', confirmLabel: 'Record' });
     if (typed === null) {
       // Cancelled. This function's own design principle (see `_said`'s doc
       // comment above) is that every path through it ends in a visible,

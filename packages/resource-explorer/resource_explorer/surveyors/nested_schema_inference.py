@@ -30,7 +30,7 @@ Two independent shapes, because JSON and XML do not profile the same way:
   the "xpath key sampling" §5.4 asks for, done with the stdlib parser rather
   than a Postgres `xpath()` round trip specifically so the same function can
   profile an XML *file* in §6 with no database involved at all. See
-  `docs/design-notes/POSTGRES-NESTED-COLUMNS-IMPLEMENTED.md` for why this is
+  `POSTGRES-NESTED-COLUMNS-IMPLEMENTED.md` for why this is
   a documented deviation from the design doc's literal
   `jsonb_object_keys`/`jsonb_typeof`/`xpath()` SQL-function wording rather
   than an oversight.

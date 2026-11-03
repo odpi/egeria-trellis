@@ -210,7 +210,7 @@ class TestDatabaseAnalysisStepMap:
             "schema_inventory", "row_count_snapshot", "privilege_audit",
             "db_activity_signals", "db_resilience", "db_external_dependencies",
             "data_class_match", "reference_data_match", "nested_column_profile",
-            "credential_capability",
+            "credential_capability", "sql_analysis",
         }
 
     def test_privilege_audit_now_runs_the_dedicated_operations_step(self):
@@ -241,3 +241,100 @@ class TestDatabaseAnalysisStepMap:
         assert set(DATABASE_SURVEYOR_STEP_MAP["nested_column_profile"]) == {
             "schema", "statistics", "nested_columns",
         }
+
+
+class TestColumnProfileVerdictsAreStored:
+    """The column-profile step's verdicts (data_class_match, reference_data_match) are written to
+    database_column_matches when the step completes, and read back by the analyses' readers. Before
+    2026-10-20 they were built and kept nowhere locally, so both analyses read "no results view yet"."""
+
+    _MATCHES = (
+        {"schema": "public", "table": "customer", "column": "email", "column_path": "public.customer.email",
+         "question": "data_class_match", "verdict": "matched", "established": True, "confidence": 92,
+         "evidence": "pattern", "matched_guid": "dc-1", "matched_qualified_name": "DataClass::email",
+         "matched_display_name": "Email address", "matched_element_is_draft": False,
+         "sampled_conformance": 0.98, "value_coverage": None, "unmatched_values": [], "detected_patterns": [],
+         "privacy_relevant": True, "proposed_specification": "", "proposed_values": [], "other_candidates": [],
+         "not_established_reason": "", "unusable_specifications": [],
+         "sample": {"strategy": "random", "sample_rows": 40, "total_rows": 4200000, "seed": 7},
+         "statement": "matches Email address in 98% of 40 sampled values"},
+        {"schema": "public", "table": "customer", "column": "avatar", "column_path": "public.customer.avatar",
+         "question": "data_class_match", "verdict": "not_sampled", "established": False, "confidence": 0,
+         "evidence": "", "matched_guid": "", "matched_qualified_name": "", "matched_display_name": "",
+         "matched_element_is_draft": False, "sampled_conformance": None, "value_coverage": None,
+         "unmatched_values": [], "detected_patterns": [], "privacy_relevant": False,
+         "proposed_specification": "", "proposed_values": [], "other_candidates": [],
+         "not_established_reason": "bytea values are not sampled", "unusable_specifications": [],
+         "sample": None, "statement": "not sampled: bytea values are not sampled"},
+        {"schema": "public", "table": "customer", "column": "country", "column_path": "public.customer.country",
+         "question": "reference_data_match", "verdict": "no_match", "established": True, "confidence": 70,
+         "evidence": "", "matched_guid": "", "matched_qualified_name": "", "matched_display_name": "",
+         "matched_element_is_draft": False, "sampled_conformance": None, "value_coverage": 0.1,
+         "unmatched_values": ["XX"], "detected_patterns": [], "privacy_relevant": False,
+         "proposed_specification": "", "proposed_values": [], "other_candidates": [],
+         "not_established_reason": "", "unusable_specifications": [], "sample": None,
+         "statement": "no reference set covers these values"},
+    )
+
+    def _survey(self, registry, db_entity, profile_result=None, raises=None, steps=("column_profile",)):
+        conn = _mock_conn()
+        surveyor = DatabaseSurveyor(db_entity, {"user": "admin", "password": "secret"}, registry)
+        with _patched_connection(conn), \
+             patch("resource_explorer.surveyors.database.column_profile_step.run_column_profile") as mock_profile:
+            if raises is not None:
+                mock_profile.side_effect = raises
+            else:
+                mock_profile.return_value = profile_result
+            return surveyor.survey(steps=list(steps), reference_catalog=object())
+
+    def test_every_verdict_is_stored_and_read_back(self, registry, db_entity):
+        from resource_explorer.surveyors.database.survey_definition_adapter import (
+            DATABASE_ANALYSIS_RESULTS_MAP,
+        )
+
+        self._survey(registry, db_entity, {"column_profile_rows": [], "annotations": [],
+                                           "matches": list(self._MATCHES)})
+        rows = registry.query_detail_rows("database_column_matches", db_entity.slug)
+        assert {(r["column_name"], r["question"]) for r in rows} == {
+            ("email", "data_class_match"), ("avatar", "data_class_match"), ("country", "reference_data_match")}
+
+        reader, _ = DATABASE_ANALYSIS_RESULTS_MAP["data_class_match"]
+        got = reader(registry, db_entity.slug)
+        assert got["column_count"] == 2 and got["established_count"] == 1
+        assert got["verdict_counts"] == {"matched": 1, "not_sampled": 1}
+        email = next(c for c in got["columns"] if c["column_path"] == "public.customer.email")
+        assert email["matched_display_name"] == "Email address" and email["privacy_relevant"] is True
+        assert email["sample"]["total_rows"] == 4200000
+        # A column no value was sampled from is a stored verdict, not established, never "no match".
+        avatar = next(c for c in got["columns"] if c["column_path"] == "public.customer.avatar")
+        assert avatar["verdict"] == "not_sampled" and avatar["established"] is False
+        assert avatar["state"] == "not_measured"
+
+        reader, _ = DATABASE_ANALYSIS_RESULTS_MAP["reference_data_match"]
+        assert reader(registry, db_entity.slug)["verdict_counts"] == {"no_match": 1}
+
+    def test_a_completed_step_with_no_columns_records_coverage_but_no_rows(self, registry, db_entity):
+        from resource_explorer.registry import SECTION_COLUMN_MATCHES
+
+        self._survey(registry, db_entity, {"column_profile_rows": [], "annotations": [], "matches": []})
+        assert registry.query_detail_rows("database_column_matches", db_entity.slug) == []
+        assert SECTION_COLUMN_MATCHES in registry.get_section_coverage("database", db_entity.slug)
+
+    def test_a_failed_step_stores_nothing_not_an_empty_answer(self, registry, db_entity):
+        from resource_explorer.registry import SECTION_COLUMN_MATCHES
+        from resource_explorer.surveyors.database.survey_definition_adapter import (
+            DATABASE_ANALYSIS_RESULTS_MAP,
+        )
+
+        self._survey(registry, db_entity, raises=RuntimeError("sampling failed"))
+        assert registry.query_detail_rows("database_column_matches", db_entity.slug) == []
+        assert SECTION_COLUMN_MATCHES not in registry.get_section_coverage("database", db_entity.slug)
+        reader, _ = DATABASE_ANALYSIS_RESULTS_MAP["data_class_match"]
+        assert reader(registry, db_entity.slug) == {}
+
+    def test_a_survey_without_the_step_stores_nothing(self, registry, db_entity):
+        from resource_explorer.registry import SECTION_COLUMN_MATCHES
+
+        self._survey(registry, db_entity, steps=("schema",))
+        assert registry.query_detail_rows("database_column_matches", db_entity.slug) == []
+        assert SECTION_COLUMN_MATCHES not in registry.get_section_coverage("database", db_entity.slug)

@@ -1,0 +1,1211 @@
+[
+ {
+  "id": 616,
+  "database_slug": "laz_local_re_reproof_postreset_1025",
+  "curation_id": "41ff9434174b4887a1ee88d842b8d7fa",
+  "node_kind": "database",
+  "schema_name": "",
+  "table_name": "",
+  "proof": "database_published",
+  "element_guid": "78fa910b-03fc-4bd5-825f-8ef385a4b639",
+  "target_guid": "",
+  "qualified_name": "PostgreSQL Relational Database::host.docker.internal:5432::re_reproof_postreset_1025",
+  "outbox_id": null,
+  "recorded_by": "peterprofile",
+  "read_at": "2026-10-27T15:36:50.102197",
+  "detail": {
+   "server_guid": "d498dcda-63c5-44ae-ba3a-268a26de4137",
+   "server_name": "host.docker.internal:5432",
+   "requester": "",
+   "server_link": {
+    "outcome": "already linked",
+    "words": "already linked",
+    "capability_guid": "2bc36747-f5de-4505-9fe7-9c891bd1c92e"
+   }
+  }
+ },
+ {
+  "id": 617,
+  "database_slug": "laz_local_re_reproof_postreset_1025",
+  "curation_id": "41ff9434174b4887a1ee88d842b8d7fa",
+  "node_kind": "schema",
+  "schema_name": "beta",
+  "table_name": "",
+  "proof": "target_attached",
+  "element_guid": "91c862e5-8176-4c21-b261-e3fbf2868021",
+  "target_guid": "2f476800-8f02-4b1c-9504-46fccde6c494",
+  "qualified_name": "PostgreSQL Relational Database Schema::host.docker.internal:5432::re_reproof_postreset_1025.beta",
+  "outbox_id": 78305,
+  "recorded_by": "peterprofile",
+  "read_at": "2026-10-27T15:36:50.716679",
+  "detail": {
+   "targets_for_schema": 1,
+   "mechanism": "already_attached",
+   "action_type": "",
+   "engine_action": "",
+   "fallback_reason": "",
+   "create_error_adopted": "",
+   "connector_last_refresh": "2026-10-27T15:30:13.987+00:00",
+   "connector_note": "the connector's last refresh, not this target's",
+   "requester": ""
+  }
+ },
+ {
+  "id": 618,
+  "database_slug": "laz_local_re_reproof_postreset_1025",
+  "curation_id": "41ff9434174b4887a1ee88d842b8d7fa",
+  "node_kind": "schema",
+  "schema_name": "alpha",
+  "table_name": "",
+  "proof": "delete_call",
+  "element_guid": "87b8fb6b-3898-4c84-97c0-1b8e7cdb4082",
+  "target_guid": "",
+  "qualified_name": "PostgreSQL Relational Database Schema::host.docker.internal:5432::re_reproof_postreset_1025.alpha",
+  "outbox_id": 78306,
+  "recorded_by": "peterprofile",
+  "read_at": "2026-10-27T15:36:54.075160",
+  "detail": {
+   "operation": "remove_catalog_target",
+   "flags": {
+    "forLineage": true,
+    "forDuplicateProcessing": true
+   },
+   "outcome": "ok",
+   "type": "CatalogTarget",
+   "relationship_guid": "001ca723-0423-4e3c-bb22-07b421617328"
+  }
+ },
+ {
+  "id": 619,
+  "database_slug": "laz_local_re_reproof_postreset_1025",
+  "curation_id": "41ff9434174b4887a1ee88d842b8d7fa",
+  "node_kind": "schema",
+  "schema_name": "alpha",
+  "table_name": "",
+  "proof": "target_detached",
+  "element_guid": "87b8fb6b-3898-4c84-97c0-1b8e7cdb4082",
+  "target_guid": "",
+  "qualified_name": "PostgreSQL Relational Database Schema::host.docker.internal:5432::re_reproof_postreset_1025.alpha",
+  "outbox_id": 78306,
+  "recorded_by": "peterprofile",
+  "read_at": "2026-10-27T15:36:54.176060",
+  "detail": {
+   "note": "target gone from the cataloguer's list on read-back"
+  }
+ },
+ {
+  "id": 620,
+  "database_slug": "laz_local_re_reproof_postreset_1025",
+  "curation_id": "41ff9434174b4887a1ee88d842b8d7fa",
+  "node_kind": "column",
+  "schema_name": "alpha",
+  "table_name": "",
+  "proof": "delete_call",
+  "element_guid": "50efdc5e-2679-4761-8339-98befd433679",
+  "target_guid": "",
+  "qualified_name": "PostgreSQL Relational Database Schema::host.docker.internal:5432::re_reproof_postreset_1025.alpha::widgets::made_on",
+  "outbox_id": 78306,
+  "recorded_by": "peterprofile",
+  "read_at": "2026-10-27T15:36:54.282272",
+  "detail": {
+   "operation": "ARCHIVE",
+   "flags": {
+    "deleteMethod": "ARCHIVE",
+    "forLineage": true,
+    "forDuplicateProcessing": true,
+    "cascade_delete": false
+   },
+   "outcome": "ok",
+   "type": "RelationalColumn"
+  }
+ },
+ {
+  "id": 621,
+  "database_slug": "laz_local_re_reproof_postreset_1025",
+  "curation_id": "41ff9434174b4887a1ee88d842b8d7fa",
+  "node_kind": "schema",
+  "schema_name": "alpha",
+  "table_name": "",
+  "proof": "element_archived",
+  "element_guid": "50efdc5e-2679-4761-8339-98befd433679",
+  "target_guid": "",
+  "qualified_name": "PostgreSQL Relational Database Schema::host.docker.internal:5432::re_reproof_postreset_1025.alpha::widgets::made_on",
+  "outbox_id": 78306,
+  "recorded_by": "peterprofile",
+  "read_at": "2026-10-27T15:36:54.284825",
+  "detail": {
+   "read_back": "pending",
+   "type": "RelationalColumn",
+   "name": "widgets::made_on",
+   "planned": 14,
+   "words": "archived \u00b7 read-back pending"
+  }
+ },
+ {
+  "id": 622,
+  "database_slug": "laz_local_re_reproof_postreset_1025",
+  "curation_id": "41ff9434174b4887a1ee88d842b8d7fa",
+  "node_kind": "column",
+  "schema_name": "alpha",
+  "table_name": "",
+  "proof": "delete_call",
+  "element_guid": "320d1faf-04ed-4501-ba8d-83d481554e3c",
+  "target_guid": "",
+  "qualified_name": "PostgreSQL Relational Database Schema::host.docker.internal:5432::re_reproof_postreset_1025.alpha::widgets::name",
+  "outbox_id": 78306,
+  "recorded_by": "peterprofile",
+  "read_at": "2026-10-27T15:36:54.354276",
+  "detail": {
+   "operation": "ARCHIVE",
+   "flags": {
+    "deleteMethod": "ARCHIVE",
+    "forLineage": true,
+    "forDuplicateProcessing": true,
+    "cascade_delete": false
+   },
+   "outcome": "ok",
+   "type": "RelationalColumn"
+  }
+ },
+ {
+  "id": 623,
+  "database_slug": "laz_local_re_reproof_postreset_1025",
+  "curation_id": "41ff9434174b4887a1ee88d842b8d7fa",
+  "node_kind": "schema",
+  "schema_name": "alpha",
+  "table_name": "",
+  "proof": "element_archived",
+  "element_guid": "320d1faf-04ed-4501-ba8d-83d481554e3c",
+  "target_guid": "",
+  "qualified_name": "PostgreSQL Relational Database Schema::host.docker.internal:5432::re_reproof_postreset_1025.alpha::widgets::name",
+  "outbox_id": 78306,
+  "recorded_by": "peterprofile",
+  "read_at": "2026-10-27T15:36:54.356996",
+  "detail": {
+   "read_back": "pending",
+   "type": "RelationalColumn",
+   "name": "widgets::name",
+   "planned": 14,
+   "words": "archived \u00b7 read-back pending"
+  }
+ },
+ {
+  "id": 624,
+  "database_slug": "laz_local_re_reproof_postreset_1025",
+  "curation_id": "41ff9434174b4887a1ee88d842b8d7fa",
+  "node_kind": "column",
+  "schema_name": "alpha",
+  "table_name": "",
+  "proof": "delete_call",
+  "element_guid": "0005db72-bac8-4a8a-9c88-33a88920a8df",
+  "target_guid": "",
+  "qualified_name": "PostgreSQL Relational Database Schema::host.docker.internal:5432::re_reproof_postreset_1025.alpha::widgets::id",
+  "outbox_id": 78306,
+  "recorded_by": "peterprofile",
+  "read_at": "2026-10-27T15:36:54.423961",
+  "detail": {
+   "operation": "ARCHIVE",
+   "flags": {
+    "deleteMethod": "ARCHIVE",
+    "forLineage": true,
+    "forDuplicateProcessing": true,
+    "cascade_delete": false
+   },
+   "outcome": "ok",
+   "type": "RelationalColumn"
+  }
+ },
+ {
+  "id": 625,
+  "database_slug": "laz_local_re_reproof_postreset_1025",
+  "curation_id": "41ff9434174b4887a1ee88d842b8d7fa",
+  "node_kind": "schema",
+  "schema_name": "alpha",
+  "table_name": "",
+  "proof": "element_archived",
+  "element_guid": "0005db72-bac8-4a8a-9c88-33a88920a8df",
+  "target_guid": "",
+  "qualified_name": "PostgreSQL Relational Database Schema::host.docker.internal:5432::re_reproof_postreset_1025.alpha::widgets::id",
+  "outbox_id": 78306,
+  "recorded_by": "peterprofile",
+  "read_at": "2026-10-27T15:36:54.426087",
+  "detail": {
+   "read_back": "pending",
+   "type": "RelationalColumn",
+   "name": "widgets::id",
+   "planned": 14,
+   "words": "archived \u00b7 read-back pending"
+  }
+ },
+ {
+  "id": 626,
+  "database_slug": "laz_local_re_reproof_postreset_1025",
+  "curation_id": "41ff9434174b4887a1ee88d842b8d7fa",
+  "node_kind": "column",
+  "schema_name": "alpha",
+  "table_name": "",
+  "proof": "delete_call",
+  "element_guid": "6afbfe35-26b6-4321-8bb2-725f8c1897e5",
+  "target_guid": "",
+  "qualified_name": "PostgreSQL Relational Database Schema::host.docker.internal:5432::re_reproof_postreset_1025.alpha::widget_parts::part",
+  "outbox_id": 78306,
+  "recorded_by": "peterprofile",
+  "read_at": "2026-10-27T15:36:54.502835",
+  "detail": {
+   "operation": "ARCHIVE",
+   "flags": {
+    "deleteMethod": "ARCHIVE",
+    "forLineage": true,
+    "forDuplicateProcessing": true,
+    "cascade_delete": false
+   },
+   "outcome": "ok",
+   "type": "RelationalColumn"
+  }
+ },
+ {
+  "id": 627,
+  "database_slug": "laz_local_re_reproof_postreset_1025",
+  "curation_id": "41ff9434174b4887a1ee88d842b8d7fa",
+  "node_kind": "schema",
+  "schema_name": "alpha",
+  "table_name": "",
+  "proof": "element_archived",
+  "element_guid": "6afbfe35-26b6-4321-8bb2-725f8c1897e5",
+  "target_guid": "",
+  "qualified_name": "PostgreSQL Relational Database Schema::host.docker.internal:5432::re_reproof_postreset_1025.alpha::widget_parts::part",
+  "outbox_id": 78306,
+  "recorded_by": "peterprofile",
+  "read_at": "2026-10-27T15:36:54.504693",
+  "detail": {
+   "read_back": "pending",
+   "type": "RelationalColumn",
+   "name": "widget_parts::part",
+   "planned": 14,
+   "words": "archived \u00b7 read-back pending"
+  }
+ },
+ {
+  "id": 628,
+  "database_slug": "laz_local_re_reproof_postreset_1025",
+  "curation_id": "41ff9434174b4887a1ee88d842b8d7fa",
+  "node_kind": "column",
+  "schema_name": "alpha",
+  "table_name": "",
+  "proof": "delete_call",
+  "element_guid": "a2862d99-24d7-4d74-9ec7-33986fdfc2d2",
+  "target_guid": "",
+  "qualified_name": "PostgreSQL Relational Database Schema::host.docker.internal:5432::re_reproof_postreset_1025.alpha::widget_parts::widget_id",
+  "outbox_id": 78306,
+  "recorded_by": "peterprofile",
+  "read_at": "2026-10-27T15:36:54.570597",
+  "detail": {
+   "operation": "ARCHIVE",
+   "flags": {
+    "deleteMethod": "ARCHIVE",
+    "forLineage": true,
+    "forDuplicateProcessing": true,
+    "cascade_delete": false
+   },
+   "outcome": "ok",
+   "type": "RelationalColumn"
+  }
+ },
+ {
+  "id": 629,
+  "database_slug": "laz_local_re_reproof_postreset_1025",
+  "curation_id": "41ff9434174b4887a1ee88d842b8d7fa",
+  "node_kind": "schema",
+  "schema_name": "alpha",
+  "table_name": "",
+  "proof": "element_archived",
+  "element_guid": "a2862d99-24d7-4d74-9ec7-33986fdfc2d2",
+  "target_guid": "",
+  "qualified_name": "PostgreSQL Relational Database Schema::host.docker.internal:5432::re_reproof_postreset_1025.alpha::widget_parts::widget_id",
+  "outbox_id": 78306,
+  "recorded_by": "peterprofile",
+  "read_at": "2026-10-27T15:36:54.572350",
+  "detail": {
+   "read_back": "pending",
+   "type": "RelationalColumn",
+   "name": "widget_parts::widget_id",
+   "planned": 14,
+   "words": "archived \u00b7 read-back pending"
+  }
+ },
+ {
+  "id": 630,
+  "database_slug": "laz_local_re_reproof_postreset_1025",
+  "curation_id": "41ff9434174b4887a1ee88d842b8d7fa",
+  "node_kind": "column",
+  "schema_name": "alpha",
+  "table_name": "",
+  "proof": "delete_call",
+  "element_guid": "d9dd8325-f5f9-415f-8085-6ba6c6c4d5fb",
+  "target_guid": "",
+  "qualified_name": "PostgreSQL Relational Database Schema::host.docker.internal:5432::re_reproof_postreset_1025.alpha::widget_parts::id",
+  "outbox_id": 78306,
+  "recorded_by": "peterprofile",
+  "read_at": "2026-10-27T15:36:54.644480",
+  "detail": {
+   "operation": "ARCHIVE",
+   "flags": {
+    "deleteMethod": "ARCHIVE",
+    "forLineage": true,
+    "forDuplicateProcessing": true,
+    "cascade_delete": false
+   },
+   "outcome": "ok",
+   "type": "RelationalColumn"
+  }
+ },
+ {
+  "id": 631,
+  "database_slug": "laz_local_re_reproof_postreset_1025",
+  "curation_id": "41ff9434174b4887a1ee88d842b8d7fa",
+  "node_kind": "schema",
+  "schema_name": "alpha",
+  "table_name": "",
+  "proof": "element_archived",
+  "element_guid": "d9dd8325-f5f9-415f-8085-6ba6c6c4d5fb",
+  "target_guid": "",
+  "qualified_name": "PostgreSQL Relational Database Schema::host.docker.internal:5432::re_reproof_postreset_1025.alpha::widget_parts::id",
+  "outbox_id": 78306,
+  "recorded_by": "peterprofile",
+  "read_at": "2026-10-27T15:36:54.646573",
+  "detail": {
+   "read_back": "pending",
+   "type": "RelationalColumn",
+   "name": "widget_parts::id",
+   "planned": 14,
+   "words": "archived \u00b7 read-back pending"
+  }
+ },
+ {
+  "id": 632,
+  "database_slug": "laz_local_re_reproof_postreset_1025",
+  "curation_id": "41ff9434174b4887a1ee88d842b8d7fa",
+  "node_kind": "table",
+  "schema_name": "alpha",
+  "table_name": "",
+  "proof": "delete_call",
+  "element_guid": "19a56998-3121-4a75-9290-57370a19964c",
+  "target_guid": "",
+  "qualified_name": "PostgreSQL Relational Database Schema::host.docker.internal:5432::re_reproof_postreset_1025.alpha::widgets",
+  "outbox_id": 78306,
+  "recorded_by": "peterprofile",
+  "read_at": "2026-10-27T15:36:54.778537",
+  "detail": {
+   "operation": "ARCHIVE",
+   "flags": {
+    "deleteMethod": "ARCHIVE",
+    "forLineage": true,
+    "forDuplicateProcessing": true,
+    "cascade_delete": false
+   },
+   "outcome": "ok",
+   "type": "RelationalTable"
+  }
+ },
+ {
+  "id": 633,
+  "database_slug": "laz_local_re_reproof_postreset_1025",
+  "curation_id": "41ff9434174b4887a1ee88d842b8d7fa",
+  "node_kind": "schema",
+  "schema_name": "alpha",
+  "table_name": "",
+  "proof": "element_archived",
+  "element_guid": "19a56998-3121-4a75-9290-57370a19964c",
+  "target_guid": "",
+  "qualified_name": "PostgreSQL Relational Database Schema::host.docker.internal:5432::re_reproof_postreset_1025.alpha::widgets",
+  "outbox_id": 78306,
+  "recorded_by": "peterprofile",
+  "read_at": "2026-10-27T15:36:54.780543",
+  "detail": {
+   "read_back": "pending",
+   "type": "RelationalTable",
+   "name": "widgets",
+   "planned": 14,
+   "words": "archived \u00b7 read-back pending"
+  }
+ },
+ {
+  "id": 634,
+  "database_slug": "laz_local_re_reproof_postreset_1025",
+  "curation_id": "41ff9434174b4887a1ee88d842b8d7fa",
+  "node_kind": "table",
+  "schema_name": "alpha",
+  "table_name": "",
+  "proof": "delete_call",
+  "element_guid": "686d3e8a-e57c-4e20-ba54-370201bb517e",
+  "target_guid": "",
+  "qualified_name": "PostgreSQL Relational Database Schema::host.docker.internal:5432::re_reproof_postreset_1025.alpha::widget_parts",
+  "outbox_id": 78306,
+  "recorded_by": "peterprofile",
+  "read_at": "2026-10-27T15:36:54.902562",
+  "detail": {
+   "operation": "ARCHIVE",
+   "flags": {
+    "deleteMethod": "ARCHIVE",
+    "forLineage": true,
+    "forDuplicateProcessing": true,
+    "cascade_delete": false
+   },
+   "outcome": "ok",
+   "type": "RelationalTable"
+  }
+ },
+ {
+  "id": 635,
+  "database_slug": "laz_local_re_reproof_postreset_1025",
+  "curation_id": "41ff9434174b4887a1ee88d842b8d7fa",
+  "node_kind": "schema",
+  "schema_name": "alpha",
+  "table_name": "",
+  "proof": "element_archived",
+  "element_guid": "686d3e8a-e57c-4e20-ba54-370201bb517e",
+  "target_guid": "",
+  "qualified_name": "PostgreSQL Relational Database Schema::host.docker.internal:5432::re_reproof_postreset_1025.alpha::widget_parts",
+  "outbox_id": 78306,
+  "recorded_by": "peterprofile",
+  "read_at": "2026-10-27T15:36:54.904817",
+  "detail": {
+   "read_back": "pending",
+   "type": "RelationalTable",
+   "name": "widget_parts",
+   "planned": 14,
+   "words": "archived \u00b7 read-back pending"
+  }
+ },
+ {
+  "id": 636,
+  "database_slug": "laz_local_re_reproof_postreset_1025",
+  "curation_id": "41ff9434174b4887a1ee88d842b8d7fa",
+  "node_kind": "schema",
+  "schema_name": "alpha",
+  "table_name": "",
+  "proof": "delete_call",
+  "element_guid": "6920bac4-16cd-4a80-9b70-712276114c3d",
+  "target_guid": "",
+  "qualified_name": "PostgreSQL Relational Database Schema::host.docker.internal:5432::re_reproof_postreset_1025.alpha::Connection",
+  "outbox_id": 78306,
+  "recorded_by": "peterprofile",
+  "read_at": "2026-10-27T15:36:55.176164",
+  "detail": {
+   "operation": "ARCHIVE",
+   "flags": {
+    "deleteMethod": "ARCHIVE",
+    "forLineage": true,
+    "forDuplicateProcessing": true,
+    "cascade_delete": false
+   },
+   "outcome": "ok",
+   "type": "VirtualConnection"
+  }
+ },
+ {
+  "id": 637,
+  "database_slug": "laz_local_re_reproof_postreset_1025",
+  "curation_id": "41ff9434174b4887a1ee88d842b8d7fa",
+  "node_kind": "schema",
+  "schema_name": "alpha",
+  "table_name": "",
+  "proof": "element_archived",
+  "element_guid": "6920bac4-16cd-4a80-9b70-712276114c3d",
+  "target_guid": "",
+  "qualified_name": "PostgreSQL Relational Database Schema::host.docker.internal:5432::re_reproof_postreset_1025.alpha::Connection",
+  "outbox_id": 78306,
+  "recorded_by": "peterprofile",
+  "read_at": "2026-10-27T15:36:55.177867",
+  "detail": {
+   "read_back": "pending",
+   "type": "VirtualConnection",
+   "name": "Connection",
+   "planned": 14,
+   "words": "archived \u00b7 read-back pending"
+  }
+ },
+ {
+  "id": 638,
+  "database_slug": "laz_local_re_reproof_postreset_1025",
+  "curation_id": "41ff9434174b4887a1ee88d842b8d7fa",
+  "node_kind": "schema",
+  "schema_name": "alpha",
+  "table_name": "",
+  "proof": "delete_call",
+  "element_guid": "fe413588-e635-451c-820b-995ec8e5f97e",
+  "target_guid": "",
+  "qualified_name": "PostgreSQL Relational Database Schema::host.docker.internal:5432::re_reproof_postreset_1025.alpha::Endpoint",
+  "outbox_id": 78306,
+  "recorded_by": "peterprofile",
+  "read_at": "2026-10-27T15:36:55.218505",
+  "detail": {
+   "operation": "ARCHIVE",
+   "flags": {
+    "deleteMethod": "ARCHIVE",
+    "forLineage": true,
+    "forDuplicateProcessing": true,
+    "cascade_delete": false
+   },
+   "outcome": "ok",
+   "type": "Endpoint"
+  }
+ },
+ {
+  "id": 639,
+  "database_slug": "laz_local_re_reproof_postreset_1025",
+  "curation_id": "41ff9434174b4887a1ee88d842b8d7fa",
+  "node_kind": "schema",
+  "schema_name": "alpha",
+  "table_name": "",
+  "proof": "element_archived",
+  "element_guid": "fe413588-e635-451c-820b-995ec8e5f97e",
+  "target_guid": "",
+  "qualified_name": "PostgreSQL Relational Database Schema::host.docker.internal:5432::re_reproof_postreset_1025.alpha::Endpoint",
+  "outbox_id": 78306,
+  "recorded_by": "peterprofile",
+  "read_at": "2026-10-27T15:36:55.221068",
+  "detail": {
+   "read_back": "pending",
+   "type": "Endpoint",
+   "name": "Endpoint",
+   "planned": 14,
+   "words": "archived \u00b7 read-back pending"
+  }
+ },
+ {
+  "id": 640,
+  "database_slug": "laz_local_re_reproof_postreset_1025",
+  "curation_id": "41ff9434174b4887a1ee88d842b8d7fa",
+  "node_kind": "schema",
+  "schema_name": "alpha",
+  "table_name": "",
+  "proof": "delete_call",
+  "element_guid": "f646f352-18cd-4c1b-9e66-8ef9b34486ff",
+  "target_guid": "",
+  "qualified_name": "PostgreSQL Relational Database Schema::host.docker.internal:5432::re_reproof_postreset_1025.alpha::SecretsStoreConnection",
+  "outbox_id": 78306,
+  "recorded_by": "peterprofile",
+  "read_at": "2026-10-27T15:36:55.273554",
+  "detail": {
+   "operation": "ARCHIVE",
+   "flags": {
+    "deleteMethod": "ARCHIVE",
+    "forLineage": true,
+    "forDuplicateProcessing": true,
+    "cascade_delete": false
+   },
+   "outcome": "ok",
+   "type": "Connection"
+  }
+ },
+ {
+  "id": 641,
+  "database_slug": "laz_local_re_reproof_postreset_1025",
+  "curation_id": "41ff9434174b4887a1ee88d842b8d7fa",
+  "node_kind": "schema",
+  "schema_name": "alpha",
+  "table_name": "",
+  "proof": "element_archived",
+  "element_guid": "f646f352-18cd-4c1b-9e66-8ef9b34486ff",
+  "target_guid": "",
+  "qualified_name": "PostgreSQL Relational Database Schema::host.docker.internal:5432::re_reproof_postreset_1025.alpha::SecretsStoreConnection",
+  "outbox_id": 78306,
+  "recorded_by": "peterprofile",
+  "read_at": "2026-10-27T15:36:55.275452",
+  "detail": {
+   "read_back": "pending",
+   "type": "Connection",
+   "name": "SecretsStoreConnection",
+   "planned": 14,
+   "words": "archived \u00b7 read-back pending"
+  }
+ },
+ {
+  "id": 642,
+  "database_slug": "laz_local_re_reproof_postreset_1025",
+  "curation_id": "41ff9434174b4887a1ee88d842b8d7fa",
+  "node_kind": "schema",
+  "schema_name": "alpha",
+  "table_name": "",
+  "proof": "delete_call",
+  "element_guid": "25b64af4-60f5-4b58-9755-4d2c1556c8db",
+  "target_guid": "",
+  "qualified_name": "PostgreSQL Relational Database Schema::host.docker.internal:5432::re_reproof_postreset_1025.alpha::SecretStoreEndpoint",
+  "outbox_id": 78306,
+  "recorded_by": "peterprofile",
+  "read_at": "2026-10-27T15:36:55.307352",
+  "detail": {
+   "operation": "ARCHIVE",
+   "flags": {
+    "deleteMethod": "ARCHIVE",
+    "forLineage": true,
+    "forDuplicateProcessing": true,
+    "cascade_delete": false
+   },
+   "outcome": "ok",
+   "type": "Endpoint"
+  }
+ },
+ {
+  "id": 643,
+  "database_slug": "laz_local_re_reproof_postreset_1025",
+  "curation_id": "41ff9434174b4887a1ee88d842b8d7fa",
+  "node_kind": "schema",
+  "schema_name": "alpha",
+  "table_name": "",
+  "proof": "element_archived",
+  "element_guid": "25b64af4-60f5-4b58-9755-4d2c1556c8db",
+  "target_guid": "",
+  "qualified_name": "PostgreSQL Relational Database Schema::host.docker.internal:5432::re_reproof_postreset_1025.alpha::SecretStoreEndpoint",
+  "outbox_id": 78306,
+  "recorded_by": "peterprofile",
+  "read_at": "2026-10-27T15:36:55.309269",
+  "detail": {
+   "read_back": "pending",
+   "type": "Endpoint",
+   "name": "SecretStoreEndpoint",
+   "planned": 14,
+   "words": "archived \u00b7 read-back pending"
+  }
+ },
+ {
+  "id": 644,
+  "database_slug": "laz_local_re_reproof_postreset_1025",
+  "curation_id": "41ff9434174b4887a1ee88d842b8d7fa",
+  "node_kind": "schema",
+  "schema_name": "alpha",
+  "table_name": "",
+  "proof": "delete_call",
+  "element_guid": "dde21d2e-e574-4156-83f8-9f3269566c4b",
+  "target_guid": "",
+  "qualified_name": "PostgreSQL Relational Database Schema::host.docker.internal:5432::re_reproof_postreset_1025.alpha_schemaType",
+  "outbox_id": 78306,
+  "recorded_by": "peterprofile",
+  "read_at": "2026-10-27T15:36:55.483738",
+  "detail": {
+   "operation": "ARCHIVE",
+   "flags": {
+    "deleteMethod": "ARCHIVE",
+    "forLineage": true,
+    "forDuplicateProcessing": true,
+    "cascade_delete": false
+   },
+   "outcome": "ok",
+   "type": "RelationalDBSchemaType"
+  }
+ },
+ {
+  "id": 645,
+  "database_slug": "laz_local_re_reproof_postreset_1025",
+  "curation_id": "41ff9434174b4887a1ee88d842b8d7fa",
+  "node_kind": "schema",
+  "schema_name": "alpha",
+  "table_name": "",
+  "proof": "element_archived",
+  "element_guid": "dde21d2e-e574-4156-83f8-9f3269566c4b",
+  "target_guid": "",
+  "qualified_name": "PostgreSQL Relational Database Schema::host.docker.internal:5432::re_reproof_postreset_1025.alpha_schemaType",
+  "outbox_id": 78306,
+  "recorded_by": "peterprofile",
+  "read_at": "2026-10-27T15:36:55.485783",
+  "detail": {
+   "read_back": "pending",
+   "type": "RelationalDBSchemaType",
+   "name": "PostgreSQL Relational Database Schema::host.docker.internal:5432::re_reproof_postreset_1025.alpha_schemaType",
+   "planned": 14,
+   "words": "archived \u00b7 read-back pending"
+  }
+ },
+ {
+  "id": 646,
+  "database_slug": "laz_local_re_reproof_postreset_1025",
+  "curation_id": "41ff9434174b4887a1ee88d842b8d7fa",
+  "node_kind": "schema",
+  "schema_name": "alpha",
+  "table_name": "",
+  "proof": "delete_call",
+  "element_guid": "87b8fb6b-3898-4c84-97c0-1b8e7cdb4082",
+  "target_guid": "",
+  "qualified_name": "PostgreSQL Relational Database Schema::host.docker.internal:5432::re_reproof_postreset_1025.alpha",
+  "outbox_id": 78306,
+  "recorded_by": "peterprofile",
+  "read_at": "2026-10-27T15:36:55.748263",
+  "detail": {
+   "operation": "ARCHIVE",
+   "flags": {
+    "deleteMethod": "ARCHIVE",
+    "forLineage": true,
+    "forDuplicateProcessing": true,
+    "cascade_delete": false
+   },
+   "outcome": "ok",
+   "type": "DeployedDatabaseSchema"
+  }
+ },
+ {
+  "id": 647,
+  "database_slug": "laz_local_re_reproof_postreset_1025",
+  "curation_id": "41ff9434174b4887a1ee88d842b8d7fa",
+  "node_kind": "schema",
+  "schema_name": "alpha",
+  "table_name": "",
+  "proof": "element_archived",
+  "element_guid": "87b8fb6b-3898-4c84-97c0-1b8e7cdb4082",
+  "target_guid": "",
+  "qualified_name": "PostgreSQL Relational Database Schema::host.docker.internal:5432::re_reproof_postreset_1025.alpha",
+  "outbox_id": 78306,
+  "recorded_by": "peterprofile",
+  "read_at": "2026-10-27T15:36:55.750287",
+  "detail": {
+   "read_back": "pending",
+   "type": "DeployedDatabaseSchema",
+   "name": "alpha",
+   "planned": 14,
+   "words": "archived \u00b7 read-back pending"
+  }
+ },
+ {
+  "id": 648,
+  "database_slug": "laz_local_re_reproof_postreset_1025",
+  "curation_id": "41ff9434174b4887a1ee88d842b8d7fa",
+  "node_kind": "schema",
+  "schema_name": "alpha",
+  "table_name": "",
+  "proof": "element_archived",
+  "element_guid": "50efdc5e-2679-4761-8339-98befd433679",
+  "target_guid": "",
+  "qualified_name": "PostgreSQL Relational Database Schema::host.docker.internal:5432::re_reproof_postreset_1025.alpha::widgets::made_on",
+  "outbox_id": 78306,
+  "recorded_by": "peterprofile",
+  "read_at": "2026-10-27T15:36:55.896654",
+  "detail": {
+   "read_back": "confirmed",
+   "type": "RelationalColumn",
+   "name": "widgets::made_on",
+   "planned": 14,
+   "words": "archived \u00b7 confirmed"
+  }
+ },
+ {
+  "id": 649,
+  "database_slug": "laz_local_re_reproof_postreset_1025",
+  "curation_id": "41ff9434174b4887a1ee88d842b8d7fa",
+  "node_kind": "schema",
+  "schema_name": "alpha",
+  "table_name": "",
+  "proof": "element_archived",
+  "element_guid": "320d1faf-04ed-4501-ba8d-83d481554e3c",
+  "target_guid": "",
+  "qualified_name": "PostgreSQL Relational Database Schema::host.docker.internal:5432::re_reproof_postreset_1025.alpha::widgets::name",
+  "outbox_id": 78306,
+  "recorded_by": "peterprofile",
+  "read_at": "2026-10-27T15:36:56.044931",
+  "detail": {
+   "read_back": "confirmed",
+   "type": "RelationalColumn",
+   "name": "widgets::name",
+   "planned": 14,
+   "words": "archived \u00b7 confirmed"
+  }
+ },
+ {
+  "id": 650,
+  "database_slug": "laz_local_re_reproof_postreset_1025",
+  "curation_id": "41ff9434174b4887a1ee88d842b8d7fa",
+  "node_kind": "schema",
+  "schema_name": "alpha",
+  "table_name": "",
+  "proof": "element_archived",
+  "element_guid": "0005db72-bac8-4a8a-9c88-33a88920a8df",
+  "target_guid": "",
+  "qualified_name": "PostgreSQL Relational Database Schema::host.docker.internal:5432::re_reproof_postreset_1025.alpha::widgets::id",
+  "outbox_id": 78306,
+  "recorded_by": "peterprofile",
+  "read_at": "2026-10-27T15:36:56.203064",
+  "detail": {
+   "read_back": "confirmed",
+   "type": "RelationalColumn",
+   "name": "widgets::id",
+   "planned": 14,
+   "words": "archived \u00b7 confirmed"
+  }
+ },
+ {
+  "id": 651,
+  "database_slug": "laz_local_re_reproof_postreset_1025",
+  "curation_id": "41ff9434174b4887a1ee88d842b8d7fa",
+  "node_kind": "schema",
+  "schema_name": "alpha",
+  "table_name": "",
+  "proof": "element_archived",
+  "element_guid": "6afbfe35-26b6-4321-8bb2-725f8c1897e5",
+  "target_guid": "",
+  "qualified_name": "PostgreSQL Relational Database Schema::host.docker.internal:5432::re_reproof_postreset_1025.alpha::widget_parts::part",
+  "outbox_id": 78306,
+  "recorded_by": "peterprofile",
+  "read_at": "2026-10-27T15:36:56.338674",
+  "detail": {
+   "read_back": "confirmed",
+   "type": "RelationalColumn",
+   "name": "widget_parts::part",
+   "planned": 14,
+   "words": "archived \u00b7 confirmed"
+  }
+ },
+ {
+  "id": 652,
+  "database_slug": "laz_local_re_reproof_postreset_1025",
+  "curation_id": "41ff9434174b4887a1ee88d842b8d7fa",
+  "node_kind": "schema",
+  "schema_name": "alpha",
+  "table_name": "",
+  "proof": "element_archived",
+  "element_guid": "a2862d99-24d7-4d74-9ec7-33986fdfc2d2",
+  "target_guid": "",
+  "qualified_name": "PostgreSQL Relational Database Schema::host.docker.internal:5432::re_reproof_postreset_1025.alpha::widget_parts::widget_id",
+  "outbox_id": 78306,
+  "recorded_by": "peterprofile",
+  "read_at": "2026-10-27T15:36:56.478780",
+  "detail": {
+   "read_back": "confirmed",
+   "type": "RelationalColumn",
+   "name": "widget_parts::widget_id",
+   "planned": 14,
+   "words": "archived \u00b7 confirmed"
+  }
+ },
+ {
+  "id": 653,
+  "database_slug": "laz_local_re_reproof_postreset_1025",
+  "curation_id": "41ff9434174b4887a1ee88d842b8d7fa",
+  "node_kind": "schema",
+  "schema_name": "alpha",
+  "table_name": "",
+  "proof": "element_archived",
+  "element_guid": "d9dd8325-f5f9-415f-8085-6ba6c6c4d5fb",
+  "target_guid": "",
+  "qualified_name": "PostgreSQL Relational Database Schema::host.docker.internal:5432::re_reproof_postreset_1025.alpha::widget_parts::id",
+  "outbox_id": 78306,
+  "recorded_by": "peterprofile",
+  "read_at": "2026-10-27T15:36:56.620600",
+  "detail": {
+   "read_back": "confirmed",
+   "type": "RelationalColumn",
+   "name": "widget_parts::id",
+   "planned": 14,
+   "words": "archived \u00b7 confirmed"
+  }
+ },
+ {
+  "id": 654,
+  "database_slug": "laz_local_re_reproof_postreset_1025",
+  "curation_id": "41ff9434174b4887a1ee88d842b8d7fa",
+  "node_kind": "schema",
+  "schema_name": "alpha",
+  "table_name": "",
+  "proof": "element_archived",
+  "element_guid": "19a56998-3121-4a75-9290-57370a19964c",
+  "target_guid": "",
+  "qualified_name": "PostgreSQL Relational Database Schema::host.docker.internal:5432::re_reproof_postreset_1025.alpha::widgets",
+  "outbox_id": 78306,
+  "recorded_by": "peterprofile",
+  "read_at": "2026-10-27T15:36:56.744927",
+  "detail": {
+   "read_back": "confirmed",
+   "type": "RelationalTable",
+   "name": "widgets",
+   "planned": 14,
+   "words": "archived \u00b7 confirmed"
+  }
+ },
+ {
+  "id": 655,
+  "database_slug": "laz_local_re_reproof_postreset_1025",
+  "curation_id": "41ff9434174b4887a1ee88d842b8d7fa",
+  "node_kind": "schema",
+  "schema_name": "alpha",
+  "table_name": "",
+  "proof": "element_archived",
+  "element_guid": "686d3e8a-e57c-4e20-ba54-370201bb517e",
+  "target_guid": "",
+  "qualified_name": "PostgreSQL Relational Database Schema::host.docker.internal:5432::re_reproof_postreset_1025.alpha::widget_parts",
+  "outbox_id": 78306,
+  "recorded_by": "peterprofile",
+  "read_at": "2026-10-27T15:36:56.883572",
+  "detail": {
+   "read_back": "confirmed",
+   "type": "RelationalTable",
+   "name": "widget_parts",
+   "planned": 14,
+   "words": "archived \u00b7 confirmed"
+  }
+ },
+ {
+  "id": 656,
+  "database_slug": "laz_local_re_reproof_postreset_1025",
+  "curation_id": "41ff9434174b4887a1ee88d842b8d7fa",
+  "node_kind": "schema",
+  "schema_name": "alpha",
+  "table_name": "",
+  "proof": "element_archived",
+  "element_guid": "6920bac4-16cd-4a80-9b70-712276114c3d",
+  "target_guid": "",
+  "qualified_name": "PostgreSQL Relational Database Schema::host.docker.internal:5432::re_reproof_postreset_1025.alpha::Connection",
+  "outbox_id": 78306,
+  "recorded_by": "peterprofile",
+  "read_at": "2026-10-27T15:36:57.019062",
+  "detail": {
+   "read_back": "confirmed",
+   "type": "VirtualConnection",
+   "name": "Connection",
+   "planned": 14,
+   "words": "archived \u00b7 confirmed"
+  }
+ },
+ {
+  "id": 657,
+  "database_slug": "laz_local_re_reproof_postreset_1025",
+  "curation_id": "41ff9434174b4887a1ee88d842b8d7fa",
+  "node_kind": "schema",
+  "schema_name": "alpha",
+  "table_name": "",
+  "proof": "element_archived",
+  "element_guid": "fe413588-e635-451c-820b-995ec8e5f97e",
+  "target_guid": "",
+  "qualified_name": "PostgreSQL Relational Database Schema::host.docker.internal:5432::re_reproof_postreset_1025.alpha::Endpoint",
+  "outbox_id": 78306,
+  "recorded_by": "peterprofile",
+  "read_at": "2026-10-27T15:36:57.140238",
+  "detail": {
+   "read_back": "confirmed",
+   "type": "Endpoint",
+   "name": "Endpoint",
+   "planned": 14,
+   "words": "archived \u00b7 confirmed"
+  }
+ },
+ {
+  "id": 658,
+  "database_slug": "laz_local_re_reproof_postreset_1025",
+  "curation_id": "41ff9434174b4887a1ee88d842b8d7fa",
+  "node_kind": "schema",
+  "schema_name": "alpha",
+  "table_name": "",
+  "proof": "element_archived",
+  "element_guid": "f646f352-18cd-4c1b-9e66-8ef9b34486ff",
+  "target_guid": "",
+  "qualified_name": "PostgreSQL Relational Database Schema::host.docker.internal:5432::re_reproof_postreset_1025.alpha::SecretsStoreConnection",
+  "outbox_id": 78306,
+  "recorded_by": "peterprofile",
+  "read_at": "2026-10-27T15:36:57.280498",
+  "detail": {
+   "read_back": "confirmed",
+   "type": "Connection",
+   "name": "SecretsStoreConnection",
+   "planned": 14,
+   "words": "archived \u00b7 confirmed"
+  }
+ },
+ {
+  "id": 659,
+  "database_slug": "laz_local_re_reproof_postreset_1025",
+  "curation_id": "41ff9434174b4887a1ee88d842b8d7fa",
+  "node_kind": "schema",
+  "schema_name": "alpha",
+  "table_name": "",
+  "proof": "element_archived",
+  "element_guid": "25b64af4-60f5-4b58-9755-4d2c1556c8db",
+  "target_guid": "",
+  "qualified_name": "PostgreSQL Relational Database Schema::host.docker.internal:5432::re_reproof_postreset_1025.alpha::SecretStoreEndpoint",
+  "outbox_id": 78306,
+  "recorded_by": "peterprofile",
+  "read_at": "2026-10-27T15:36:57.428100",
+  "detail": {
+   "read_back": "confirmed",
+   "type": "Endpoint",
+   "name": "SecretStoreEndpoint",
+   "planned": 14,
+   "words": "archived \u00b7 confirmed"
+  }
+ },
+ {
+  "id": 660,
+  "database_slug": "laz_local_re_reproof_postreset_1025",
+  "curation_id": "41ff9434174b4887a1ee88d842b8d7fa",
+  "node_kind": "schema",
+  "schema_name": "alpha",
+  "table_name": "",
+  "proof": "element_archived",
+  "element_guid": "dde21d2e-e574-4156-83f8-9f3269566c4b",
+  "target_guid": "",
+  "qualified_name": "PostgreSQL Relational Database Schema::host.docker.internal:5432::re_reproof_postreset_1025.alpha_schemaType",
+  "outbox_id": 78306,
+  "recorded_by": "peterprofile",
+  "read_at": "2026-10-27T15:36:57.568981",
+  "detail": {
+   "read_back": "confirmed",
+   "type": "RelationalDBSchemaType",
+   "name": "PostgreSQL Relational Database Schema::host.docker.internal:5432::re_reproof_postreset_1025.alpha_schemaType",
+   "planned": 14,
+   "words": "archived \u00b7 confirmed"
+  }
+ },
+ {
+  "id": 661,
+  "database_slug": "laz_local_re_reproof_postreset_1025",
+  "curation_id": "41ff9434174b4887a1ee88d842b8d7fa",
+  "node_kind": "schema",
+  "schema_name": "alpha",
+  "table_name": "",
+  "proof": "element_archived",
+  "element_guid": "87b8fb6b-3898-4c84-97c0-1b8e7cdb4082",
+  "target_guid": "",
+  "qualified_name": "PostgreSQL Relational Database Schema::host.docker.internal:5432::re_reproof_postreset_1025.alpha",
+  "outbox_id": 78306,
+  "recorded_by": "peterprofile",
+  "read_at": "2026-10-27T15:36:57.687439",
+  "detail": {
+   "read_back": "confirmed",
+   "type": "DeployedDatabaseSchema",
+   "name": "alpha",
+   "planned": 14,
+   "words": "archived \u00b7 confirmed"
+  }
+ },
+ {
+  "id": 662,
+  "database_slug": "laz_local_re_reproof_postreset_1025",
+  "curation_id": "41ff9434174b4887a1ee88d842b8d7fa",
+  "node_kind": "schema",
+  "schema_name": "alpha",
+  "table_name": "",
+  "proof": "archived",
+  "element_guid": "87b8fb6b-3898-4c84-97c0-1b8e7cdb4082",
+  "target_guid": "",
+  "qualified_name": "PostgreSQL Relational Database Schema::host.docker.internal:5432::re_reproof_postreset_1025.alpha",
+  "outbox_id": 78306,
+  "recorded_by": "peterprofile",
+  "read_at": "2026-10-27T15:36:57.692196",
+  "detail": {
+   "form": "archive",
+   "hangs_off": {
+    "AssociatedAnnotation": 2,
+    "ForeignKey": 2
+   },
+   "content": {
+    "tables": 2,
+    "columns": 6
+   },
+   "elements_archived": 14
+  }
+ },
+ {
+  "id": 663,
+  "database_slug": "laz_local_re_reproof_postreset_1025",
+  "curation_id": "41ff9434174b4887a1ee88d842b8d7fa",
+  "node_kind": "database",
+  "schema_name": "",
+  "table_name": "",
+  "proof": "report_published",
+  "element_guid": "fb6d96f4-a5f7-4f5e-92b2-2c7629824255",
+  "target_guid": "",
+  "qualified_name": "",
+  "outbox_id": null,
+  "recorded_by": "",
+  "read_at": "2026-10-27T15:36:58.043911",
+  "detail": {
+   "annotation_count": 13,
+   "surveyed_at": "2026-10-25T01:36:00.776399",
+   "report_error": "",
+   "outcome": "reused",
+   "note": "reused existing report (same survey run 2026-10-25T01:36:00.776399)",
+   "annotations_in_egeria": 13
+  }
+ },
+ {
+  "id": 664,
+  "database_slug": "laz_local_re_reproof_postreset_1025",
+  "curation_id": "41ff9434174b4887a1ee88d842b8d7fa",
+  "node_kind": "database",
+  "schema_name": "",
+  "table_name": "",
+  "proof": "survey_started",
+  "element_guid": "79041873-d9a2-42f8-8bb0-8cd8493de825",
+  "target_guid": "",
+  "qualified_name": "",
+  "outbox_id": null,
+  "recorded_by": "",
+  "read_at": "2026-10-27T15:36:58.626022",
+  "detail": {
+   "includeSchemaNames": [
+    "beta"
+   ],
+   "not_scopable": [],
+   "process": "PostgreSQLSurvey::survey-postgres-database",
+   "submitted_at": "2026-10-27T15:36:58",
+   "engine_action": "79041873-d9a2-42f8-8bb0-8cd8493de825"
+  }
+ },
+ {
+  "id": 665,
+  "database_slug": "laz_local_re_reproof_postreset_1025",
+  "curation_id": "41ff9434174b4887a1ee88d842b8d7fa",
+  "node_kind": "database",
+  "schema_name": "",
+  "table_name": "",
+  "proof": "connector_read",
+  "element_guid": "",
+  "target_guid": "",
+  "qualified_name": "",
+  "outbox_id": null,
+  "recorded_by": "",
+  "read_at": "2026-10-27T15:36:58.733399",
+  "detail": {
+   "last_refresh_time": "2026-10-27T15:30:13.987+00:00",
+   "status": "WAITING",
+   "note": "the connector's own time; no per-target time exists"
+  }
+ },
+ {
+  "id": 666,
+  "database_slug": "laz_local_re_reproof_postreset_1025",
+  "curation_id": "41ff9434174b4887a1ee88d842b8d7fa",
+  "node_kind": "schema",
+  "schema_name": "beta",
+  "table_name": "",
+  "proof": "elements_read_back",
+  "element_guid": "91c862e5-8176-4c21-b261-e3fbf2868021",
+  "target_guid": "2f476800-8f02-4b1c-9504-46fccde6c494",
+  "qualified_name": "PostgreSQL Relational Database Schema::host.docker.internal:5432::re_reproof_postreset_1025.beta",
+  "outbox_id": null,
+  "recorded_by": "peterprofile",
+  "read_at": "2026-10-27T15:36:58.927963",
+  "detail": {
+   "tables": [
+    "gadget_notes",
+    "gadgets"
+   ],
+   "columns": 7,
+   "elements": 10
+  }
+ },
+ {
+  "id": 667,
+  "database_slug": "laz_local_re_reproof_postreset_1025",
+  "curation_id": "41ff9434174b4887a1ee88d842b8d7fa",
+  "node_kind": "database",
+  "schema_name": "",
+  "table_name": "",
+  "proof": "zones_read",
+  "element_guid": "78fa910b-03fc-4bd5-825f-8ef385a4b639",
+  "target_guid": "",
+  "qualified_name": "",
+  "outbox_id": null,
+  "recorded_by": "",
+  "read_at": "2026-10-27T15:36:58.946296",
+  "detail": {
+   "zones": []
+  }
+ }
+]

@@ -9,12 +9,16 @@ call is ever attempted. No live Egeria in any test here.
 from __future__ import annotations
 
 from unittest.mock import MagicMock
+from tests.qn_lookup_bridge import expert_from_legacy
 
 import pytest
 
 from resource_explorer.surveyors.arch_recovery.materializer import (
     ComponentMaterializer, MaterializationError,
 )
+
+# Brief I: these tests fake the Egeria clients; the code under test runs as a signed-in caller, as on a route.
+pytestmark = pytest.mark.usefixtures("signed_in_caller")
 
 
 @pytest.fixture(autouse=True)
@@ -39,6 +43,7 @@ def _materializer(registry=None):
     m = ComponentMaterializer(platform_url="https://fake", registry=registry)
     m._solution_architect = MagicMock()
     m._automated_curation = MagicMock()
+    m._metadata_expert = expert_from_legacy(m._automated_curation)
     m._connect = MagicMock()  # short-circuit: attributes above stand in for a real connection
     m._automated_curation.get_guid_for_name.return_value = []  # nothing pre-exists by default
     m._solution_architect.create_solution_component.return_value = "11111111-1111-1111-1111-111111111111"
@@ -67,8 +72,10 @@ class TestFreshMaterialization:
         # Egeria's security connector 403s a zone change whose before and
         # after are equal, which is what writing the publish zones here
         # produced (live, 2026-09-04).
-        assert governance["zones"] == ["resource-explorer-draft"]
-        assert governance["ownership"] is True and governance["zone_membership"] is True
+        # No default draft zone since 2026-10-08 (owner: DRAFT is a status, not a zone): NOTHING is
+        # sent. The configured case is `test_a_configured_draft_zone_is_stamped` below.
+        assert governance["zones"] == []
+        assert governance["ownership"] is True and governance["zone_membership"] is False
         m._connect.assert_called_once()
         body = m._solution_architect.create_solution_component.call_args[0][0]
         assert body["class"] == "NewElementRequestBody"

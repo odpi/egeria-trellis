@@ -44,9 +44,31 @@ PKG = Path(__file__).resolve().parents[1] / "resource_explorer"
 
 
 def _registry_url() -> str:
+    """A Postgres URL for the advisory-lock tests.
+
+    Outside CI the conftest guard points the registry at a throwaway SQLite
+    file, where election is a deliberate no-op, so both locks "won" and these
+    tests failed on every local run with Postgres reachable. Advisory locks
+    write nothing and every test uses a unique name, so the PGVECTOR_*
+    instance is safe to lock against, addressed through the per-test scratch
+    schema that the shared-registry guard admits."""
+    from urllib.parse import quote
+
     from resource_explorer.config import get_config
 
-    return get_config().registry.database_url
+    url = get_config().registry.database_url
+    if url.startswith("postgresql"):
+        return url
+    host = os.environ.get("PGVECTOR_HOST")
+    if not host:
+        pytest.skip("no Postgres configured (PGVECTOR_HOST unset) for the advisory-lock tests")
+    user = quote(os.environ.get("PGVECTOR_USER", ""), safe="")
+    pw = quote(os.environ.get("PGVECTOR_PASSWORD", ""), safe="")
+    # The per-test scratch schema (conftest's isolate_pgvector_schema) is the name the shared-registry guard
+    # admits; an advisory lock never touches it, so it need not exist.
+    schema = os.environ.get("PGVECTOR_SCHEMA", "resource_explorer_test")
+    return (f"postgresql://{user}:{pw}@{host}:{os.environ.get('PGVECTOR_PORT', '5432')}/"
+            f"{os.environ.get('PGVECTOR_DBNAME', 'postgres')}?options=-csearch_path%3D{schema}")
 
 
 # ── B. Leader election ──────────────────────────────────────────────────
@@ -73,6 +95,8 @@ class TestAdvisoryKeys:
             # create the same zone, and pyegeria's generic element create has
             # no upsert.
             "draft-zone-bootstrap": 3533934354696901714,
+            # The engine-host claim sweep (engine_host.py), started only with RE_ENGINE_HOST_ENABLED on.
+            "engine-host": 54773764437381287,
         }
 
     def test_keys_are_distinct_and_fit_int64(self):
@@ -618,7 +642,12 @@ class TestPoolDoesNotHoldTheProcessOpen:
 
 def test_registry_creates_its_schema_on_a_fresh_postgres(monkeypatch):
     """A fresh database has no resource_explorer schema; the registry must create it
-    before its tables, or every CREATE TABLE fails under the pinned search_path."""
+    before its tables, or every CREATE TABLE fails under the pinned search_path.
+
+    The schema is named resource_explorer_test_fresh_<pid>: the shared-registry guard only
+    admits resource_explorer_test* schemas, and a pid-unique name cannot collide with a
+    peer's run or a live server. Skipped (with the reason) only when the role may not
+    create schemas in the database, which is a property of the machine, not of the code."""
     import pytest as _pytest
     try:
         import psycopg2 as _pg
@@ -628,24 +657,31 @@ def test_registry_creates_its_schema_on_a_fresh_postgres(monkeypatch):
     url = get_config().registry.database_url
     if not url.startswith("postgresql"):
         _pytest.skip("registry is not on Postgres in this environment")
+    base = url.split("?")[0]
+    schema = f"resource_explorer_test_fresh_{os.getpid()}"
     try:
-        raw = _pg.connect(url.split("?")[0], connect_timeout=3)
+        raw = _pg.connect(base, connect_timeout=3)
         raw.autocommit = True
     except Exception as exc:  # pragma: no cover - environment dependent
         _pytest.skip(f"postgres unreachable: {exc}")
     with raw.cursor() as cur:
-        cur.execute("DROP SCHEMA IF EXISTS re_fresh_schema_test CASCADE")
+        cur.execute("SELECT has_database_privilege(current_user, current_database(), 'CREATE')")
+        can_create = cur.fetchone()[0]
+        cur.execute(f'DROP SCHEMA IF EXISTS "{schema}" CASCADE')
     raw.close()
+    if not can_create:
+        _pytest.skip("the database role lacks CREATE on the database, so a fresh schema "
+                     "cannot be made here")
     # Point the registry at a search_path whose schema does not exist yet.
     from resource_explorer.registry import ProjectRegistry
-    fresh_url = url.split("?")[0] + "?options=-csearch_path%3Dre_fresh_schema_test"
+    fresh_url = base + f"?options=-csearch_path%3D{schema}"
     try:
         reg = ProjectRegistry(database_url=fresh_url)
         assert reg.list_all() == []
     finally:
-        c = _pg.connect(url.split("?")[0]); c.autocommit = True
+        c = _pg.connect(base); c.autocommit = True
         with c.cursor() as cur:
-            cur.execute("DROP SCHEMA IF EXISTS re_fresh_schema_test CASCADE")
+            cur.execute(f'DROP SCHEMA IF EXISTS "{schema}" CASCADE')
         c.close()
 
 

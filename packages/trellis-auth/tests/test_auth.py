@@ -534,7 +534,7 @@ def test_validate_egeria_credentials_success_via_mocked_client(monkeypatch):
             self.kwargs = kwargs
 
         def create_egeria_bearer_token(self, user_id, password):
-            return "fake-bearer-token"
+            return make_egeria_token()   # JWT-shaped: login refuses anything else (2026-10-20)
 
     _install_fake_pyegeria(monkeypatch, _FakeEgeriaTech)
 
@@ -560,3 +560,100 @@ def test_validate_egeria_credentials_missing_pyegeria_returns_false(monkeypatch)
     monkeypatch.setitem(sys.modules, "pyegeria.egeria_tech_client", None)
 
     assert validate_egeria_credentials("dan.egeria", "hunter2", _connected_config()) is False
+
+
+# ---------------------------------------------------------------------------
+# 2026-10-20: a login cached a 442-char, 6-dot "token" with no exp, and Egeria
+# 401'd every call made with it. pyegeria's create_egeria_bearer_token returns
+# the token endpoint's response body whatever the HTTP status, so an error body
+# comes back looking like a token. login_with_password must refuse anything
+# that is not JWT-shaped.
+# ---------------------------------------------------------------------------
+
+# Not Egeria's exact body (that was never captured) — the same shape: a JSON
+# error with dots in it, the kind of thing a 401/5xx answer carries.
+_ERROR_BODY = (
+    '{"class":"VoidResponse","relatedHTTPCode":401,"exceptionClassName":'
+    '"org.odpi.openmetadata.frameworks.auditlog.messagesets.ExceptionMessageDefinition",'
+    '"exceptionErrorMessage":"OMAG-SECURITY-401-001 user peterprofile is not authorized"}'
+)
+
+_NOT_TOKENS = [
+    _ERROR_BODY,
+    "FAILED",                                        # pyegeria's own transport-error return
+    "<html><body>502 Bad Gateway</body></html>",
+    "a.b.c",                                         # three segments, none of them JSON
+    "eyJhbGciOiJIUzI1NiJ9.e30",                      # two segments
+    " " + "x" * 10,
+]
+
+
+@pytest.mark.parametrize("value", _NOT_TOKENS)
+def test_is_well_formed_egeria_token_refuses_non_jwts(value):
+    from trellis_auth import is_well_formed_egeria_token
+
+    assert is_well_formed_egeria_token(value) is False
+
+
+def test_is_well_formed_egeria_token_accepts_a_jwt():
+    from trellis_auth import is_well_formed_egeria_token
+
+    assert is_well_formed_egeria_token(make_egeria_token()) is True
+    assert is_well_formed_egeria_token(None) is False
+
+
+def test_egeria_token_shape_never_shows_content():
+    from trellis_auth import egeria_token_shape
+
+    assert egeria_token_shape("ab.cd.ef") == "8 chars, 2 dots"
+    assert "secret" not in egeria_token_shape("secret.value")
+
+
+@pytest.mark.parametrize("value", _NOT_TOKENS)
+def test_login_with_password_refuses_a_reply_that_is_not_a_token(monkeypatch, caplog, value):
+    class _FakeEgeriaTech:
+        def __init__(self, **kwargs):
+            pass
+
+        def create_egeria_bearer_token(self, user_id, password):
+            return value
+
+    _install_fake_pyegeria(monkeypatch, _FakeEgeriaTech)
+
+    with caplog.at_level("DEBUG", logger="trellis_auth.auth"):
+        assert login_with_password("peterprofile", "hunter2", _connected_config()) is None
+    assert "not a bearer token" in caplog.text
+    assert "hunter2" not in caplog.text
+    if len(value) > 8:
+        assert value not in caplog.text, "the reply itself must never be logged"
+
+
+def test_real_pyegeria_returns_an_error_body_as_a_token_and_login_refuses_it(monkeypatch):
+    """The root cause, end to end through the real pyegeria: only HTTP is faked.
+
+    The token endpoint answers 401 with a JSON body; pyegeria hands that body back
+    as the token. Before the shape gate login_with_password returned it."""
+    httpx = pytest.importorskip("httpx")
+    bsc = pytest.importorskip("pyegeria.core._base_server_client")
+    from pyegeria.egeria_tech_client import EgeriaTech
+
+    def handler(request):
+        if request.url.path.endswith("/api/token"):
+            return httpx.Response(401, text=_ERROR_BODY)
+        return httpx.Response(200, json={})
+
+    real = httpx.AsyncClient
+
+    class _Faked(real):
+        def __init__(self, *a, **kw):
+            kw["transport"] = httpx.MockTransport(handler)
+            super().__init__(*a, **kw)
+
+    monkeypatch.setattr(bsc, "AsyncClient", _Faked)
+    config = _connected_config()
+
+    raw = EgeriaTech(view_server=config.egeria_view_server, platform_url=config.egeria_platform_url,
+                     user_id="peterprofile", user_pwd="wrong").create_egeria_bearer_token("peterprofile", "wrong")
+    assert raw == _ERROR_BODY, "pyegeria returns the error body as if it were a token"
+
+    assert login_with_password("peterprofile", "wrong", config) is None

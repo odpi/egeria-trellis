@@ -1,0 +1,28 @@
+{
+  "$comment": [
+    "GENERATED with resource-explorer-survey-engine.md by packages/resource-explorer/scripts/generate_engine_host_declaration.py from DATABASE_STEP_REGISTRY. Do not hand-edit; regenerate.",
+    "pyegeria steps for what pyegeria 6.2.3's Dr.Egeria cannot express (docs/dr-egeria-engine-host-gaps.md). resource_explorer.dr_egeria_runner runs them, in this order, before the document: each finds its element by qualifiedName (the link: by engine, service and requestType) and creates it only when absent.",
+    "TODO (engine host, step 2 live gate): add engine-host to the initialization batches only after that gate."
+  ],
+  "steps": [
+    {
+      "command": "Create Survey Action Engine",
+      "qualified_name": "ResourceExplorerSurvey",
+      "display_name": "Resource Explorer Survey Engine",
+      "description": "Resource Explorer's survey engine. It is hosted by Resource Explorer's worker, outside any Egeria engine host (Q-M4): no Java engine host configuration may list it, or a JVM host races Resource Explorer for every claim."
+    },
+    {
+      "command": "Create Survey Action Service",
+      "qualified_name": "SurveyActionService::ResourceExplorerSurvey::db_derived",
+      "display_name": "Resource Explorer Survey Service — db_derived",
+      "description": "Zero-fetch derivation over already-stored rows."
+    },
+    {
+      "command": "Link Supported Governance Service",
+      "governance_engine": "ResourceExplorerSurvey",
+      "governance_service": "SurveyActionService::ResourceExplorerSurvey::db_derived",
+      "request_type": "re-db-derived",
+      "service_request_type": "re-db-derived"
+    }
+  ]
+}

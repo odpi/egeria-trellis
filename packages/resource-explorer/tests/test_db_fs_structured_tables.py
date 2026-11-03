@@ -235,13 +235,17 @@ def _required_columns_by_table() -> dict[str, set[str]]:
 
 class TestTableRoundTrip:
     def test_every_declared_table_exists_and_round_trips(self, registry):
-        """Each of the ten tables accepts a row and returns it.
+        """Each of the eleven tables accepts a row and returns it.
 
         Driven off `_DETAIL_TABLE_SPECS` rather than a hand-written list, so a
         table added to the DDL without a test fails here instead of shipping
         untested.
         """
-        assert len(_DETAIL_TABLE_SPECS) == 10, sorted(_DETAIL_TABLE_SPECS)
+        # Eleven: database_column_matches (2026-10-20), the column-profile step's verdicts.
+        # Fourteen: database_value_profiles, database_quality_proposals and
+        # database_quality_results (2026-10-20, value profile and quality checks).
+        # Fifteen: database_value_profile_frequent_values (port step 8, a child of the profile).
+        assert len(_DETAIL_TABLE_SPECS) == 15, sorted(_DETAIL_TABLE_SPECS)
         required = _required_columns_by_table()
         for table, spec in _DETAIL_TABLE_SPECS.items():
             slug = "coco_ods" if spec.resource_type == "database" else "drop_zone"
@@ -716,12 +720,21 @@ class TestBackfill:
         assert columns["ward_id"]["foreign_key_json"]["foreign_table"] == "ward"
 
     def test_database_blob_unmeasured_fields_stay_none(self):
-        """The old blob carried no view counts or schema sizes. None, not 0."""
+        """The old blob carried no view counts. None, not 0. (The schema size
+        stopped being unmeasured in Brief D 7f.2: it is the sum of the tables'
+        sizes -- see test_schema_size_is_a_sum_only_when_every_table_was_sized.)"""
         rows = database_rows_from_survey_data(local_database_blob())
         schema = rows["database_schemas"][0]
         assert schema["view_count"] is None
         assert schema["mat_view_count"] is None
-        assert schema["total_table_size_bytes"] is None
+
+    def test_schema_size_is_a_sum_only_when_every_table_was_sized(self):
+        blob = local_database_blob()
+        rows = database_rows_from_survey_data(blob)
+        assert rows["database_schemas"][0]["total_table_size_bytes"] == 81920
+        blob["schema_info"]["schemas"][0]["tables"][0]["size_bytes"] = None
+        rows = database_rows_from_survey_data(blob)
+        assert rows["database_schemas"][0]["total_table_size_bytes"] is None
 
     def test_grants_are_not_measured_when_privilege_audit_did_not_run(self):
         """No `operations` key in the blob at all (a schema_inventory-only
@@ -935,3 +948,26 @@ class TestDatabaseDiffReadsRows:
         body = client.get("/api/databases/coco_ods/diff").json()
         assert body["table_diff_state"] == STATE_MEASURED
         assert body["new_tables"] == ["public.patient"]
+
+
+class TestViewLineageMaterializes:
+    """The surveyor writes `lineage` and a `complexity` metrics dict per view."""
+
+    def _view_row(self, view: dict) -> dict:
+        blob = {**local_database_blob(), "views": [view]}
+        rows = database_rows_from_survey_data(blob)
+        return next(v for v in rows["database_sql_objects"] if v["object_name"] == view["name"])
+
+    def test_surveyed_lineage_and_complexity_are_not_dropped(self):
+        row = self._view_row({
+            "name": "v", "schema": "public", "definition": "SELECT 1",
+            "lineage": {"total": {"name": "total", "source": "orders", "downstream": []}},
+            "complexity": {"complexity_score": 12, "node_count": 9},
+        })
+        assert row["column_lineage_json"] == {"total": {"name": "total", "source": "orders", "downstream": []}}
+        assert row["complexity"] == 12
+
+    def test_unanalysed_view_stays_absent(self):
+        row = self._view_row({"name": "v", "schema": "public", "definition": "SELECT 1"})
+        assert row["column_lineage_json"] is None
+        assert row["complexity"] is None

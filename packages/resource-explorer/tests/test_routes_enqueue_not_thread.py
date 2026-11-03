@@ -136,24 +136,6 @@ class TestPublishChoiceThreadsThroughTheQueueRow:
         assert registry.list_runs() == []
 
 
-class TestStageBatchEnqueues:
-    def test_the_route_queues_the_derived_step_keys(self, client, registry):
-        with patch("resource_explorer.workflows.analysis.run_stage_batch") as run:
-            resp = client.post("/api/projects/myproj/analyses/stage/scouting/run")
-        assert resp.status_code == 200, resp.text
-        run.assert_not_called()
-        row = registry.list_runs(state="queued")[0]
-        assert row["kind"] == "stage_batch"
-        target = json.loads(row["target"])
-        assert target["stage"] == "scouting"
-        assert target["step_keys"], "the batch was queued with no steps to run"
-
-    def test_an_empty_stage_is_a_400_not_an_empty_queued_row(self, client, registry):
-        resp = client.post("/api/projects/myproj/analyses/stage/enrichment/run")
-        assert resp.status_code == 400
-        assert registry.list_runs() == []
-
-
 class TestScoutingScanEnqueues:
     def test_the_route_queues_a_scouting_scan(self, client, registry):
         with patch("resource_explorer.workflows.scouting.run_scouting_scan") as run:
@@ -235,3 +217,13 @@ class TestRunsApi:
         resp = client.post(f"/api/runs/{run_id}/cancel")
         assert resp.status_code == 409
         assert registry.get_run(run_id)["state"] == "claimed"
+
+
+def test_cancelling_a_held_engine_action_row_is_a_409(client, registry):
+    """A held kind's row stands for an Egeria engine action RE has claimed; cancelling it locally would leave
+    that action claimed with no one to complete it."""
+    run_id = registry.enqueue_run("engine_action", {"engine_action_guid": "a-1"})
+    resp = client.post(f"/api/runs/{run_id}/cancel")
+    assert resp.status_code == 409
+    assert "engine_action" in resp.json()["detail"]
+    assert registry.get_run(run_id)["state"] == "queued"

@@ -16,9 +16,23 @@ from resource_explorer.egeria_outbox import (
     OutboxClients,
     apply_element,
     drain_outbox,
+    enqueue_doc_source_publish,
+    enqueue_doc_source_unpublish,
     record_drain_outcome,
 )
 from resource_explorer.registry import Project, ProjectRegistry
+
+
+@pytest.fixture(autouse=True)
+def _zone_access_open(monkeypatch):
+    """Brief Z2: this write path asks `curation_access` (the one decision). These tests are about something else,
+    so no zone is in use: the access reads are faked open at the client boundary (`tests/zone_fakes.open_access`)."""
+    from tests.zone_fakes import open_access
+
+    return open_access(monkeypatch)
+
+# Brief I: these tests drive the drain mechanics, as the background loop does: a declared daemon job.
+pytestmark = pytest.mark.usefixtures("as_daemon")
 
 
 @pytest.fixture()
@@ -151,15 +165,20 @@ class TestApplyIsIdempotent:
 
         assert apply_element(row, OutboxClients(discovery=discovery), lambda qn: "") == "new"
 
-    def test_a_lookup_that_raises_falls_through_to_create(self, db, project):
-        discovery = type("D", (), {"create_annotation": lambda self, body: "new"})()
+    def test_a_lookup_that_raises_creates_nothing(self, db, project):
+        # Could not check is not "not there" (re/lookup-failure-never-creates; it used to fall through to
+        # create). An ordinary OutboxApplyError: the drain retries the row per policy.
+        made = []
+        discovery = type("D", (), {"create_annotation": lambda self, body: made.append(body) or "new"})()
         row = {"id": 1, "egeria_guid": "", "qualified_name": "Q",
                "element_kind": "annotation", "payload_json": "{}"}
 
         def boom(qn):
             raise RuntimeError("lookup down")
 
-        assert apply_element(row, OutboxClients(discovery=discovery), boom) == "new"
+        with pytest.raises(OutboxApplyError, match="look-up for 'Q' could not be made"):
+            apply_element(row, OutboxClients(discovery=discovery), boom)
+        assert made == []
 
     def test_an_unknown_element_kind_raises_rather_than_reporting_success(self, db, project):
         # A row that reports 'done' without writing anything is the exact
@@ -905,7 +924,7 @@ class TestDefaultClientsIncludesCollectionManager:
         fake_publisher._connect = MagicMock()
         monkeypatch.setattr(
             "resource_explorer.surveyors.egeria_publisher.EgeriaPublisher",
-            lambda: fake_publisher,
+            lambda **_kw: fake_publisher,   # the drain now hands it its service identity
         )
 
         clients, _find_guid = mod._default_clients()
@@ -996,7 +1015,16 @@ class TestDeferredLinksWaitForTheirReferents:
 class TestCompletePublishRunIfDone:
     """registry.complete_publish_run_if_done — the flip from `published:
     "queued"` to `published: True` once a background publish's outbox rows
-    (annotations AND their `::links` companion) have all landed."""
+    (annotations AND their `::links` companion) have all landed AND its
+    `::read_back` row is done (2026-10-14: published means read back)."""
+
+    def _read_back(self, db, project, run_id, *, done=True):
+        from resource_explorer.egeria_outbox import enqueue_publish_read_back
+
+        row = enqueue_publish_read_back(db, "repo", project, run_id, "report-guid")
+        if done:
+            db.mark_outbox_done(row, "report-guid", note="read back")
+        return row
 
     def _activity_row(self, db, publish_run_id, published="queued"):
         from resource_explorer.activity_logger import log_analysis_run
@@ -1011,18 +1039,31 @@ class TestCompletePublishRunIfDone:
         )
         return entry_id
 
-    def test_flips_to_true_once_every_row_is_terminal(self, db, project):
+    def test_flips_to_true_once_the_run_is_read_back(self, db, project):
+        """Every write done is not published: a run with no read-back gets one queued (a run enqueued before the
+        read-back existed), and only that row, done, flips it."""
         run_id = "Annotation::p::2026-01-01T00:00:00"
-        row = _enqueue(db, project, qn="Annotation::p::1::0", run_id=run_id)
+        db.enqueue_outbox_element("repo", project, "annotation", "Annotation::p::1::0",
+                                  {"class": "X", "parentGUID": "report-guid-1"}, run_id=run_id)
+        row = db.list_outbox_elements(run_id=run_id)[0]["id"]
         db.mark_outbox_done(row, "guid-1")
         entry_id = self._activity_row(db, run_id)
 
+        assert db.complete_publish_run_if_done(run_id) is False
+        assert json.loads(db.get_activity(entry_id)["detail"])["published"] == "queued"
+        [rb] = db.list_outbox_elements(run_id=f"{run_id}::read_back")
+        assert rb["element_kind"] == "publish_read_back" and rb["status"] == "pending"
+        assert json.loads(rb["payload_json"])["report_guid"] == "report-guid-1"
+        assert db.get_activity(entry_id)["publish_proof"]["state"] == "queued"
+
+        db.mark_outbox_done(rb["id"], "report-guid-1", note="read back")
         assert db.complete_publish_run_if_done(run_id) is True
         entry = db.get_activity(entry_id)
         detail = json.loads(entry["detail"])
         assert detail["published"] is True
         assert "published_at" in detail
-        assert "Published at" in entry["summary"]
+        assert "published · read back at" in entry["summary"]
+        assert entry["publish_proof"]["state"] == "read_back"
 
     def test_does_not_flip_while_a_row_is_still_pending(self, db, project):
         run_id = "Annotation::p::2026-01-01T00:00:01"
@@ -1068,18 +1109,27 @@ class TestCompletePublishRunIfDone:
         """The integration point: drain_outbox must call this itself once a
         run's last row lands, not leave it to a separate caller."""
         run_id = "Annotation::p::2026-01-01T00:00:04"
-        discovery = type("D", (), {"create_annotation": lambda *a, **k: "guid-5"})()
+        from unittest.mock import create_autospec
+
+        from pyegeria.omvs.data_discovery import DataDiscovery
+
+        discovery = create_autospec(DataDiscovery, instance=True, spec_set=True)
+        discovery.create_annotation.return_value = "guid-5"
+        # The live shape (probed 2026-10-14): a list with the GUID at elementHeader.guid, then "No elements found".
+        discovery.get_new_annotations.side_effect = lambda guid, **k: (
+            [{"elementHeader": {"guid": "guid-5"}, "properties": {}}] if not k.get("start_from")
+            else "No elements found")
         row = db.enqueue_outbox_element(
             "repo", project, "annotation", "Annotation::p::5::0",
             {"class": "NewElementRequestBody"}, run_id=run_id,
         )
+        self._read_back(db, project, run_id, done=False)
         entry_id = self._activity_row(db, run_id)
 
         from resource_explorer.egeria_outbox import OutboxClients, drain_outbox
 
-        summary = drain_outbox(db, OutboxClients(discovery=discovery), lambda qn: "",
-                               run_id=run_id)
-        assert summary["done"] == 1
+        summary = drain_outbox(db, OutboxClients(discovery=discovery), lambda qn: "")
+        assert summary["done"] == 2, summary
         detail = json.loads(db.get_activity(entry_id)["detail"])
         assert detail["published"] is True
 
@@ -1109,6 +1159,7 @@ class TestCompletePublishRunIfDone:
         run_id = "Annotation::p::2026-01-01T00:00:06"
         row = _enqueue(db, project, qn="Annotation::p::7::0", run_id=run_id)
         db.mark_outbox_done(row, "guid-7")
+        self._read_back(db, project, run_id)
         entry_id = self._activity_row(db, run_id)
 
         assert db.complete_publish_run_if_done(run_id) is True
@@ -1124,6 +1175,7 @@ class TestCompletePublishRunIfDone:
         run_id = "Annotation::p::2026-01-01T00:00:07"
         row = _enqueue(db, project, qn="Annotation::p::8::0", run_id=run_id)
         db.mark_outbox_done(row, "guid-8")
+        self._read_back(db, project, run_id)
         entry_id = self._activity_row(db, run_id)
         db.update_activity_status(
             entry_id, "ok",
@@ -1170,3 +1222,437 @@ class TestCompletePublishRunIfDone:
         assert db.complete_publish_run_if_done(run_id) is True
         assert db.get_last_published_annotation_types(project) == {}
         assert db.get_last_published_analyses(project) == {}
+
+
+@pytest.mark.usefixtures("allow_example_platform")   # the fake entities name egeria.example
+class TestDocSourceOutbox:
+    """Egeria publish-state fix (2026-09-29,
+    DOC-SOURCES-DECLARE-AND-PROBE-IMPLEMENTED.md).
+
+    `doc_source_publish`/`doc_source_unpublish` reuse THIS outbox (not a new
+    retry queue) for a documentation source declared/removed on a resource
+    that is ALREADY published — previously the source stayed local-only
+    until the resource's own next full re-publish. Both creators resolve the
+    entity and (for publish) the local `doc_sources` row fresh at apply
+    time, via a `ProjectRegistry()` they construct themselves — the
+    `doc_registry` fixture below monkeypatches `ProjectRegistry.__init__` to
+    share one prepared registry's state, the same trick
+    `tests/test_doc_sources_routes.py`'s `client` fixture already uses.
+    """
+
+    @pytest.fixture
+    def doc_registry(self, tmp_path, monkeypatch):
+        from resource_explorer.registry import DatabaseEntity
+
+        reg = ProjectRegistry(db_path=str(tmp_path / "docsrc.db"))
+        reg.register_database(DatabaseEntity(
+            slug="adventureworks", display_name="AdventureWorks", db_type="postgresql",
+            host="localhost", port=5432, database_name="adventureworks",
+            egeria_url="https://egeria.example", egeria_server="view1",
+            egeria_user="u", egeria_password="p", egeria_asset_guid="asset-1",
+        ))
+        monkeypatch.setattr(
+            "resource_explorer.registry.ProjectRegistry.__init__",
+            lambda self, db_path=None: setattr(self, "__dict__", reg.__dict__) or None,
+        )
+        return reg
+
+    def _publish_row(self, source_id: str, url: str = "https://docs.example/x") -> dict:
+        return {
+            "id": 1, "egeria_guid": "", "element_kind": "doc_source_publish",
+            "qualified_name": f"ExternalReference::{url}",
+            "payload_json": json.dumps({
+                "entity_type": "database", "entity_slug": "adventureworks", "source_id": source_id,
+            }),
+        }
+
+    def _unpublish_row(self, ref_guid: str = "ref-1") -> dict:
+        return {
+            "id": 1, "egeria_guid": "", "element_kind": "doc_source_unpublish",
+            "qualified_name": f"ExternalReferenceRemoval::{ref_guid}",
+            "payload_json": json.dumps({
+                "entity_type": "database", "entity_slug": "adventureworks", "ref_guid": ref_guid,
+            }),
+        }
+
+    def test_publish_creator_writes_the_ref_guid_back_onto_the_local_row(self, doc_registry, monkeypatch):
+        row = doc_registry.add_doc_source("database", "adventureworks", "https://docs.example/x")
+        monkeypatch.setattr(
+            "resource_explorer.doc_source_egeria.publish_doc_source",
+            lambda source, asset_guid, **kw: {"ok": True, "ref_guid": "ref-1", "link_guid": "link-1", "error": ""},
+        )
+        monkeypatch.setattr("resource_explorer.doc_source_egeria.ref_guid_exists", lambda *a, **kw: True)
+
+        guid = apply_element(self._publish_row(row["id"]), OutboxClients(), lambda qn: "SHOULD-NOT-BE-CALLED")
+
+        assert guid == "ref-1"
+        updated = doc_registry.get_doc_source("database", "adventureworks", row["id"])
+        assert updated["egeria_external_ref_guid"] == "ref-1"
+        assert updated["egeria_link_relationship_guid"] == "link-1"
+
+    def test_generic_lookup_is_never_consulted_for_doc_source_publish(self, doc_registry, monkeypatch):
+        # If the outbox's generic step-2 qualifiedName search DID run for
+        # this kind, it could adopt a same-qualifiedName ExternalReference
+        # from an unrelated feature (the homepage reference uses the exact
+        # same "ExternalReference::<url>" convention) and mark the row done
+        # WITHOUT ever linking it to this asset — the bug _SELF_RESOLVING_
+        # KINDS exists to prevent. A poisoned lookup proves it is skipped.
+        row = doc_registry.add_doc_source("database", "adventureworks", "https://docs.example/x")
+        monkeypatch.setattr(
+            "resource_explorer.doc_source_egeria.publish_doc_source",
+            lambda source, asset_guid, **kw: {"ok": True, "ref_guid": "ref-1", "link_guid": "link-1", "error": ""},
+        )
+        monkeypatch.setattr("resource_explorer.doc_source_egeria.ref_guid_exists", lambda *a, **kw: True)
+
+        def poisoned(qn):
+            raise AssertionError("generic find_element_guid must not be called for doc_source_publish")
+
+        assert apply_element(self._publish_row(row["id"]), OutboxClients(), poisoned) == "ref-1"
+
+    def test_publish_failure_raises_so_the_drain_retries(self, doc_registry, monkeypatch):
+        row = doc_registry.add_doc_source("database", "adventureworks", "https://docs.example/x")
+        monkeypatch.setattr(
+            "resource_explorer.doc_source_egeria.publish_doc_source",
+            lambda source, asset_guid, **kw: {"ok": False, "ref_guid": "", "link_guid": "", "error": "boom"},
+        )
+
+        with pytest.raises(OutboxApplyError, match="boom"):
+            apply_element(self._publish_row(row["id"]), OutboxClients(), lambda qn: "")
+
+    def test_publish_is_a_no_op_when_the_local_row_was_removed_before_the_drain(self, doc_registry, monkeypatch):
+        calls = []
+        monkeypatch.setattr(
+            "resource_explorer.doc_source_egeria.publish_doc_source",
+            lambda source, asset_guid, **kw: calls.append(1) or
+                {"ok": True, "ref_guid": "x", "link_guid": "", "error": ""},
+        )
+
+        guid = apply_element(self._publish_row("never-existed", "https://gone.example"),
+                             OutboxClients(), lambda qn: "")
+
+        assert guid == ""
+        assert calls == [], "a source removed before its publish drained must not call Egeria at all"
+
+    def test_unpublish_creator_detaches_and_deletes_the_one_reference(self, doc_registry, monkeypatch):
+        calls = []
+        monkeypatch.setattr(
+            "resource_explorer.doc_source_egeria.unpublish_doc_source",
+            lambda ref_guid, asset_guid, **kw: calls.append((ref_guid, asset_guid)) or {"ok": True, "error": ""},
+        )
+
+        assert apply_element(self._unpublish_row("ref-1"), OutboxClients(), lambda qn: "") == "ref-1"
+        assert calls == [("ref-1", "asset-1")]
+
+    def test_unpublish_failure_raises_so_the_drain_retries(self, doc_registry, monkeypatch):
+        monkeypatch.setattr(
+            "resource_explorer.doc_source_egeria.unpublish_doc_source",
+            lambda ref_guid, asset_guid, **kw: {"ok": False, "error": "network down"},
+        )
+
+        with pytest.raises(OutboxApplyError, match="network down"):
+            apply_element(self._unpublish_row("ref-1"), OutboxClients(), lambda qn: "")
+
+    # ── Adoption-race fix, round 4 (2026-09-29) ──────────────────────────────
+    # A ref guid ALONE must not short-circuit the publish creator: only a
+    # row with BOTH ref_guid and link_guid already set is genuinely done.
+
+    def test_publish_short_circuits_only_when_both_guids_are_already_set(
+        self, doc_registry, monkeypatch,
+    ):
+        row = doc_registry.add_doc_source("database", "adventureworks", "https://docs.example/x")
+        doc_registry.set_doc_source_egeria_ref(
+            "database", "adventureworks", row["id"], "ref-already", "link-already")
+
+        def poisoned(source, asset_guid, **kw):
+            raise AssertionError("publish_doc_source must not be called when ref+link are both set")
+
+        monkeypatch.setattr("resource_explorer.doc_source_egeria.publish_doc_source", poisoned)
+
+        guid = apply_element(self._publish_row(row["id"]), OutboxClients(), lambda qn: "SHOULD-NOT-BE-CALLED")
+
+        assert guid == "ref-already"
+
+    def test_publish_still_runs_and_links_when_ref_is_set_but_link_is_not(
+        self, doc_registry, monkeypatch,
+    ):
+        # The exact self-heal shape: a row adopted by read-back carries a ref
+        # guid but no link guid. Re-queueing its publish must actually LINK
+        # it, not treat the bare ref guid as "already done" (the bug that
+        # would have silently left it unlinked forever).
+        row = doc_registry.add_doc_source("database", "adventureworks", "https://docs.example/x")
+        doc_registry.set_doc_source_egeria_ref("database", "adventureworks", row["id"], "ref-only")
+
+        calls = []
+        monkeypatch.setattr(
+            "resource_explorer.doc_source_egeria.publish_doc_source",
+            lambda source, asset_guid, **kw: calls.append(kw.get("known_ref_guid")) or
+                {"ok": True, "ref_guid": "ref-only", "link_guid": "link-now", "error": ""},
+        )
+        monkeypatch.setattr("resource_explorer.doc_source_egeria.ref_guid_exists", lambda *a, **kw: True)
+
+        guid = apply_element(self._publish_row(row["id"]), OutboxClients(), lambda qn: "SHOULD-NOT-BE-CALLED")
+
+        assert guid == "ref-only"
+        assert calls == ["ref-only"], "the known (already-adopted) ref guid must be passed through"
+        updated = doc_registry.get_doc_source("database", "adventureworks", row["id"])
+        assert updated["egeria_external_ref_guid"] == "ref-only"
+        assert updated["egeria_link_relationship_guid"] == "link-now"
+
+    # ── Proof-row rule (round 5, 2026-09-29) ─────────────────────────────────
+    # "done" is a claim like any other state this system renders and needs
+    # the same evidence-backing discipline: a row must not reach `done`
+    # unless BOTH guids were actually written back AND verified. This is the
+    # live incident's own shape at the outbox layer -- outbox row 68961
+    # completed `done` with `egeria_guid = b9925119...` and an empty link,
+    # silently, for exactly the reason these guards now refuse.
+
+    def test_publish_does_not_mark_done_when_the_link_guid_is_missing(self, doc_registry, monkeypatch):
+        # publish_doc_source's own best-effort link step can legitimately
+        # return ok=True with an empty link_guid (a caught link exception,
+        # see its own docstring) -- that must not read as "done" from the
+        # outbox's point of view; it must retry.
+        row = doc_registry.add_doc_source("database", "adventureworks", "https://docs.example/x")
+        monkeypatch.setattr(
+            "resource_explorer.doc_source_egeria.publish_doc_source",
+            lambda source, asset_guid, **kw: {
+                "ok": True, "ref_guid": "b9925119-dead", "link_guid": "", "error": "",
+            },
+        )
+
+        with pytest.raises(OutboxApplyError, match="link"):
+            apply_element(self._publish_row(row["id"]), OutboxClients(), lambda qn: "SHOULD-NOT-BE-CALLED")
+
+        # And the row must NOT have been written back -- next drain retries
+        # from scratch rather than reading a half-written row.
+        updated = doc_registry.get_doc_source("database", "adventureworks", row["id"])
+        assert updated["egeria_external_ref_guid"] == ""
+        assert updated["egeria_link_relationship_guid"] == ""
+
+    def test_publish_does_not_mark_done_when_the_ref_guid_fails_verification(self, doc_registry, monkeypatch):
+        # Both guids come back non-empty, but the ref guid does not actually
+        # resolve when re-checked -- the exact live-incident shape if the
+        # verification step is skipped: "attempted" is not "verified".
+        row = doc_registry.add_doc_source("database", "adventureworks", "https://docs.example/x")
+        monkeypatch.setattr(
+            "resource_explorer.doc_source_egeria.publish_doc_source",
+            lambda source, asset_guid, **kw: {
+                "ok": True, "ref_guid": "b9925119-dead", "link_guid": "link-1", "error": "",
+            },
+        )
+        monkeypatch.setattr("resource_explorer.doc_source_egeria.ref_guid_exists", lambda *a, **kw: False)
+
+        with pytest.raises(OutboxApplyError, match="does not resolve"):
+            apply_element(self._publish_row(row["id"]), OutboxClients(), lambda qn: "SHOULD-NOT-BE-CALLED")
+
+        updated = doc_registry.get_doc_source("database", "adventureworks", row["id"])
+        assert updated["egeria_external_ref_guid"] == ""
+        assert updated["egeria_link_relationship_guid"] == ""
+
+    def test_publish_passes_the_unpublish_guard_bound_to_this_entity(self, doc_registry, monkeypatch):
+        row = doc_registry.add_doc_source("database", "adventureworks", "https://docs.example/x")
+
+        captured = {}
+        monkeypatch.setattr(
+            "resource_explorer.doc_source_egeria.publish_doc_source",
+            lambda source, asset_guid, **kw: captured.update(kw) or
+                {"ok": True, "ref_guid": "ref-1", "link_guid": "link-1", "error": ""},
+        )
+        monkeypatch.setattr("resource_explorer.doc_source_egeria.ref_guid_exists", lambda *a, **kw: True)
+
+        apply_element(self._publish_row(row["id"]), OutboxClients(), lambda qn: "SHOULD-NOT-BE-CALLED")
+
+        assert callable(captured.get("is_ref_unpublishing"))
+        # Bound to THIS entity — a pending unpublish enqueued for a
+        # different entity/slug must not register as unpublishing here.
+        from resource_explorer.egeria_outbox import enqueue_doc_source_unpublish
+
+        enqueue_doc_source_unpublish(doc_registry, "database", "some-other-db", "ref-elsewhere")
+        assert captured["is_ref_unpublishing"]("ref-elsewhere") is False
+        enqueue_doc_source_unpublish(doc_registry, "database", "adventureworks", "ref-here")
+        assert captured["is_ref_unpublishing"]("ref-here") is True
+
+    # ── Self-heal reopen fix, round 6 (2026-09-29) ───────────────────────────
+    # Round 5 made `_create_doc_source_publish` verify a reused ref guid
+    # before trusting it, and required BOTH guids + verification before a
+    # row reaches `done`. That fix never RAN for the live-incident row
+    # because the self-heal enqueue step (`web/routes/doc_sources.py::
+    # _compute_egeria_state`) treated an existing `done` row — even one
+    # whose claim predates round 5's guarantee — as "already handled" and
+    # never re-queued anything. `registry.reopen_outbox_row` is the fix:
+    # reset the SAME row to `pending` (not a second row) so the next drain
+    # actually exercises round 5's verify-before-trust logic.
+    #
+    # This test reproduces the exact data shape from the live bug end to
+    # end at the outbox/drain layer: a `done` row with `egeria_guid=X`, a
+    # `doc_sources` row with `ref=X`/no link, `X` missing in Egeria — reopen
+    # it, drain for real, and confirm the SAME row ends up `done` with a
+    # NEW ref + a NEW link, not a second row alongside the old one.
+
+    def test_reopening_a_done_row_with_a_dead_guid_and_draining_produces_a_new_ref_and_link(
+        self, doc_registry, monkeypatch,
+    ):
+        row = doc_registry.add_doc_source("database", "adventureworks", "https://egeria.ai")
+        doc_registry.set_doc_source_egeria_ref("database", "adventureworks", row["id"], "dead-guid-b99")
+        # Enqueue as the original add would have, then simulate the
+        # PRE-round-5 write-back that produced the live incident: `done`,
+        # `egeria_guid` set to the now-dead ref, no link ever recorded.
+        element_id = enqueue_doc_source_publish(
+            doc_registry, "database", "adventureworks", row["id"], row["url"])
+        doc_registry.mark_outbox_done(element_id, "dead-guid-b99")
+        stuck = doc_registry.get_doc_source_outbox_row("database", "adventureworks", row["id"])
+        assert stuck["status"] == "done"
+
+        # `ref_guid_exists` reports the dead guid gone (the live fact — an
+        # unrelated unpublish deleted it) and any fresh guid this drain
+        # mints as present, so `publish_doc_source`'s own round-5 guard
+        # abandons the dead guid and creates a new reference.
+        monkeypatch.setattr(
+            "resource_explorer.doc_source_egeria.ref_guid_exists",
+            lambda guid, **kw: guid != "dead-guid-b99",
+        )
+        publish_calls = []
+
+        def fake_publish_doc_source(source, asset_guid, **kw):
+            publish_calls.append(kw.get("known_ref_guid"))
+            # Mirrors publish_doc_source's real round-5 behavior at exactly
+            # the boundary this test cares about: a known_ref_guid that
+            # fails verification is abandoned in favor of a fresh reference.
+            return {"ok": True, "ref_guid": "fresh-ref-guid", "link_guid": "fresh-link-guid", "error": ""}
+
+        monkeypatch.setattr(
+            "resource_explorer.doc_source_egeria.publish_doc_source", fake_publish_doc_source)
+
+        # Reproduces exactly what `_compute_egeria_state`'s self-heal now
+        # does for a not_catalogued row backed by a `done` outbox row.
+        doc_registry.reopen_outbox_row(element_id, "test: proof no longer holds")
+        reopened = doc_registry.get_doc_source_outbox_row("database", "adventureworks", row["id"])
+        assert reopened["id"] == element_id, "reopened the SAME row, not a fresh one"
+        assert reopened["status"] == "pending"
+        assert reopened["egeria_guid"] == ""
+
+        # A non-empty OutboxClients is required so `drain_outbox` doesn't hit
+        # its own "no Egeria client available" early-out (`_default_clients()`
+        # constructing a REAL pyegeria client against the live platform) —
+        # the creator this test exercises never reads `clients` itself
+        # (`publish_doc_source`/`ref_guid_exists` are monkeypatched directly
+        # above), so any non-None stub satisfies it, matching this file's own
+        # established pattern for a drain that doesn't need a real client
+        # (e.g. `OutboxClients(discovery=object())` elsewhere in this file).
+        summary = drain_outbox(doc_registry, OutboxClients(discovery=object()), lambda qn: "")
+
+        assert summary["done"] == 1
+        assert publish_calls == ["dead-guid-b99"], (
+            "the dead guid was passed through so publish_doc_source's own "
+            "verify-before-reuse guard is what abandons it, not this test"
+        )
+        final_row = doc_registry.get_doc_source_outbox_row("database", "adventureworks", row["id"])
+        assert final_row["id"] == element_id, "still the same row — not a duplicate"
+        assert final_row["status"] == "done"
+        assert final_row["egeria_guid"] == "fresh-ref-guid"
+        updated_source = doc_registry.get_doc_source("database", "adventureworks", row["id"])
+        assert updated_source["egeria_external_ref_guid"] == "fresh-ref-guid"
+        assert updated_source["egeria_link_relationship_guid"] == "fresh-link-guid"
+        # No second doc_source_publish row was created for this element.
+        all_rows = doc_registry.list_outbox_elements(entity_slug="adventureworks")
+        publish_rows = [r for r in all_rows if r["element_kind"] == "doc_source_publish"]
+        assert len(publish_rows) == 1
+
+    def test_reopen_outbox_row_clears_status_guid_and_attempts_and_records_why(self, doc_registry):
+        # Direct unit coverage of `reopen_outbox_row` itself, independent of
+        # the doc-sources self-heal caller — kind-agnostic, so this also
+        # covers the `doc_source_unpublish` shape (no self-heal call site
+        # exists for that kind yet; this proves the primitive itself is
+        # ready for one without inventing a call site that doesn't
+        # correspond to a real bug — see that kind's own docstring).
+        element_id = enqueue_doc_source_unpublish(doc_registry, "database", "adventureworks", "ref-1")
+        doc_registry.mark_outbox_done(element_id, "ref-1")
+        with doc_registry._conn() as conn:
+            conn.execute("UPDATE egeria_outbox SET attempts=3, last_error='old failure' WHERE id=?",
+                         (element_id,))
+
+        doc_registry.reopen_outbox_row(element_id, "test: reference still resolves, retry deletion")
+
+        rows = doc_registry.list_outbox_elements(entity_slug="adventureworks")
+        row = next(r for r in rows if r["id"] == element_id)
+        assert row["status"] == "pending"
+        assert row["egeria_guid"] == ""
+        assert row["attempts"] == 0
+        assert row["completed_at"] == ""
+        assert row["last_error"] == ""
+        assert row["reopened_at"]
+        assert row["reopen_reason"] == "test: reference still resolves, retry deletion"
+        # It is still the SAME row (same qualified_name/element_kind) — a
+        # reopen never touches the element's own identity.
+        assert row["element_kind"] == "doc_source_unpublish"
+        assert row["qualified_name"] == "ExternalReferenceRemoval::ref-1"
+
+
+class TestElementScopedDrain:
+    """Egeria publish-state fix round 3 (2026-09-29): `add_doc_source`/the
+    DELETE handler must attempt the row they just enqueued immediately, not
+    only rely on the scheduler's next 15-minute pass. `element_id` is the
+    mechanism `drain_outbox`/`drain_outbox_row` use to do that — pinned here
+    at the outbox layer (route-level behavior is
+    `tests/test_doc_sources_routes.py::TestImmediateOutboxAttempt`).
+    """
+
+    def test_claim_due_outbox_elements_with_element_id_takes_only_that_row(self, db, project):
+        first = _enqueue(db, project, qn="Annotation::p::2026-01-01T00:00:00::0")
+        second = _enqueue(db, project, qn="Annotation::p::2026-01-01T00:00:00::1")
+
+        claimed = db.claim_due_outbox_elements(element_id=second)
+
+        assert [r["id"] for r in claimed] == [second]
+        # The other row is untouched — still pending, still claimable on its
+        # own, exactly as an unscoped drain would still find it.
+        assert [r["id"] for r in db.peek_due_outbox_elements()] == [first]
+
+    def test_element_id_scoping_respects_the_ordinary_due_gate(self, db, project):
+        # A row not yet due (backoff not elapsed) must stay off-limits even
+        # when named explicitly by id — element_id narrows WHICH rows are
+        # eligible, it does not bypass the ordinary claim rules.
+        row_id = _enqueue(db, project)
+        db.mark_outbox_failed(row_id, "transient")  # sets a future next_attempt_at
+
+        claimed = db.claim_due_outbox_elements(element_id=row_id)
+
+        assert claimed == []
+
+    def test_drain_outbox_with_element_id_applies_only_that_row(self, db, project):
+        untouched = _enqueue(db, project, qn="Annotation::p::2026-01-01T00:00:00::0")
+        target = _enqueue(db, project, qn="Annotation::p::2026-01-01T00:00:00::1")
+
+        discovery = type("D", (), {"create_annotation": lambda self, body: {"guid": "g"}})()
+        summary = drain_outbox(db, OutboxClients(discovery=discovery), lambda qn: "",
+                               element_id=target)
+
+        assert summary["claimed"] == 1
+        assert summary["done"] == 1
+        counts = db.outbox_counts()
+        assert counts == {"done": 1, "pending": 1}
+        assert [r["id"] for r in db.peek_due_outbox_elements()] == [untouched]
+
+    def test_drain_outbox_row_is_the_same_mechanism_as_drain_outbox(self, db, project):
+        # drain_outbox_row is a thin, named wrapper — not a second
+        # implementation — so a failure there is reported and retried
+        # exactly like any other outbox row, via the SAME mark_outbox_failed
+        # bookkeeping the scheduler's own unscoped drain uses.
+        from resource_explorer.egeria_outbox import drain_outbox_row
+
+        row_id = _enqueue(db, project)
+
+        class _RaisingDiscovery:
+            def create_annotation(self, body):
+                raise RuntimeError("Egeria unreachable")
+
+        summary = drain_outbox_row(db, row_id, OutboxClients(discovery=_RaisingDiscovery()),
+                                   lambda qn: "")
+
+        assert summary["claimed"] == 1
+        assert summary["failed"] == 1
+        row = db.peek_due_outbox_elements(now=(datetime.utcnow() + timedelta(hours=1)).isoformat())
+        assert row and row[0]["id"] == row_id
+        assert row[0]["status"] == "failed"
+        # Left exactly where the normal 15-minute scheduler drain would find
+        # and retry it — not dead-lettered on a single failed attempt.
+        assert row[0]["attempts"] == 1

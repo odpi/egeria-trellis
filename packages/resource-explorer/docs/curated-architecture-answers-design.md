@@ -1,6 +1,6 @@
 # Curated architecture answers — design
 
-Status: design pass, not yet built. Opened 2026-09-08 from a question raised
+**Status:** implemented in part (code cites §6 items 1-4). Originally a design pass, not yet built. Opened 2026-09-08 from a question raised
 while fixing the `architecture_diagram` chat answer (see `docs/Backlog.md`'s
 entry for that day and `tests/test_architecture_diagram_results.py`).
 

@@ -4,6 +4,7 @@ from __future__ import annotations
 from fastapi import APIRouter
 from pydantic import BaseModel
 
+from resource_explorer.quality_batch import WORK_LIST_ENTITY
 from resource_explorer.registry import ProjectRegistry, TARGET_ANALYSIS, TARGET_SURVEY
 
 router = APIRouter()
@@ -57,9 +58,30 @@ class ScheduleEntry(BaseModel):
 #: that at the point the schedule was created.
 _RESOURCE_LOOKUP = {
     "repo": lambda reg, slug: reg.get(slug),
-    "database": lambda reg, slug: reg.get_database(slug),
+    "database": lambda reg, slug: reg.get_database(slug, allow_unreadable=True),
     "filesystem": lambda reg, slug: reg.get_filesystem(slug),
 }
+
+
+def _require_quality_work_list(registry, slug: str, entry: ScheduleEntry) -> None:
+    """A schedule on a work list (quality slice Q3): only the DatabaseQualitySurvey, only on a list of databases,
+    and the list must exist. Whether the creator may publish each member is checked per member at every firing, as
+    them (`quality_batch.run_scheduled_batch`), because the members are whoever is on the list THEN; a refused member
+    is reported by name on that run, the rest run."""
+    from fastapi import HTTPException
+
+    from resource_explorer.quality_batch import QUALITY_DEFINITION, work_list_members
+
+    if entry.analysis_id != QUALITY_DEFINITION or entry.target_kind != TARGET_SURVEY:
+        raise HTTPException(status_code=422, detail=f"a work list can be scheduled for the {QUALITY_DEFINITION} "
+                                                    "survey only (target_kind 'survey')")
+    try:
+        work_list_members(registry, slug)
+    except KeyError:
+        raise HTTPException(status_code=404, detail=f"No work list '{slug}' — a schedule against it could never "
+                                                    "run. Check the slug.") from None
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 def _require_resource(registry, entity_type: str, slug: str) -> None:
@@ -192,6 +214,12 @@ def run_schedule_now(entity_type: str, slug: str, analysis_id: str) -> dict:
     }
 
 
+def _signed_in_user() -> str:
+    from resource_explorer.run_queue import requested_by
+
+    return requested_by() or ""
+
+
 @router.post("/{entity_type}/{slug}")
 def save_schedule(entity_type: str, slug: str, entry: ScheduleEntry) -> dict:
     """Create or update a schedule for a specific analysis on a resource."""
@@ -204,7 +232,17 @@ def save_schedule(entity_type: str, slug: str, entry: ScheduleEntry) -> dict:
             detail=f"Invalid target_kind '{entry.target_kind}'; must be "
                    f"'{TARGET_ANALYSIS}' or '{TARGET_SURVEY}'")
     registry = ProjectRegistry()
-    _require_resource(registry, entity_type, slug)
+    if entity_type == WORK_LIST_ENTITY:
+        _require_quality_work_list(registry, slug, entry)
+    else:
+        _require_resource(registry, entity_type, slug)
+    if entry.enabled and entity_type != WORK_LIST_ENTITY:
+        # Brief Z2 round 2: a scheduled run publishes what it measures (auto-publish when the resource has an
+        # Egeria Project), so the person creating the schedule must be allowed to publish the resource. Round 3:
+        # they are recorded as `created_by` and every timer run runs as them, so the run re-checks their rights;
+        # a schedule with no creator (from before) follows the no-requester rule.
+        from resource_explorer.web.routes.curate import require_resource_write
+        require_resource_write(registry, entity_type, slug, "publish")
     registry.save_schedule(
         entity_type=entity_type,
         entity_slug=slug,
@@ -212,6 +250,7 @@ def save_schedule(entity_type: str, slug: str, entry: ScheduleEntry) -> dict:
         schedule=entry.schedule,
         enabled=entry.enabled,
         target_kind=entry.target_kind,
+        created_by=_signed_in_user(),       # Brief Z2 round 3: a timer run runs as this person
     )
     hint = _cost_hint(entity_type, entry.analysis_id)
     out = {"status": "ok", "entity_type": entity_type, "entity_slug": slug,

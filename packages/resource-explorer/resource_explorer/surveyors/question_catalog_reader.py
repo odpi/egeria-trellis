@@ -40,10 +40,13 @@ Unification Thread) — deliberately not built yet.
 from __future__ import annotations
 
 import functools
+import logging
 from dataclasses import dataclass, field
 from pathlib import Path
 
 import yaml
+
+log = logging.getLogger(__name__)
 
 _DEFAULT_CONFIG_PATH = Path(__file__).parent.parent / "configdata" / "question_catalog.yaml"
 
@@ -66,6 +69,10 @@ class QuestionCatalogEntry:
     stage: str
     perspectives: list[str]
     answering: QuestionAnswering
+    #: The question's stable id (`Q-0001`): assigned once in the CSV's `Question ID` column, never derived
+    #: from the text, one id across every resource type a shared question appears under. The text can be
+    #: reworded; the id cannot change, which is what lets a manifest or a stored row name a question.
+    id: str = ""
     purposes: list[str] = field(default_factory=list)
     #: Granularity the answer is a single value at (design §18.3): one or more
     #: of resource / container / member / field. Asked above its level a
@@ -92,6 +99,7 @@ class QuestionCatalogEntry:
 
     def to_dict(self) -> dict:
         return {
+            "id": self.id,
             "question": self.question,
             "stage": self.stage,
             "perspectives": self.perspectives,
@@ -108,6 +116,7 @@ class QuestionCatalogEntry:
 def _entry_from_yaml(raw: dict) -> QuestionCatalogEntry:
     answering_raw = raw.get("answering") or {}
     return QuestionCatalogEntry(
+        id=str(raw.get("id") or ""),
         question=raw["question"],
         stage=raw.get("stage", ""),
         perspectives=list(raw.get("perspectives") or []),
@@ -221,11 +230,69 @@ def _load(config_path: Path = _DEFAULT_CONFIG_PATH) -> dict[str, list[QuestionCa
     with open(config_path) as f:
         raw = yaml.safe_load(f) or {}
 
-    return {
+    loaded = {
         key[: -len(_QUESTIONS_KEY_SUFFIX)]: [_entry_from_yaml(e) for e in (value or [])]
         for key, value in raw.items()
         if key.endswith(_QUESTIONS_KEY_SUFFIX) and key != _QUESTIONS_KEY_SUFFIX
     }
+    if config_path == _DEFAULT_CONFIG_PATH:
+        _merge_step_questions(loaded)
+    return loaded
+
+
+def _merge_step_questions(loaded: dict[str, list[QuestionCatalogEntry]]) -> None:
+    """Add the questions installed Analytic Library steps declare in their manifests (`question_defs`) to each resource
+    type the step measures, at read time, the way the analysis catalogue merges the step's own entry (owner ruling
+    2026-10-29, "namespaced id in manifest"). Their ids are under the step's own prefix (`fs_permissions:Q1`), so no
+    central allocation is needed and none can collide with the catalogue's `Q-0001` sequence. Nothing is written to
+    configdata. A row already in a section with the same id is left as it is."""
+    try:
+        from trellis_analytics.discovery import discover
+
+        # `check=False`: the discovery's question check reads THIS catalogue's ids, which would ask it to load itself.
+        manifests = discover(check=False)
+    except ImportError:
+        return
+    except Exception as exc:  # noqa: BLE001 -- a broken package must not take the catalogue down; discover names it
+        log.error("step-declared questions not merged: %s", exc)
+        return
+    for manifest in manifests.values():
+        if getattr(manifest, "kind", "") != "step":
+            continue
+        for q in manifest.question_defs:
+            row = QuestionCatalogEntry(
+                id=q.id, question=q.question, stage=q.stage or manifest.stage.capitalize(),
+                perspectives=list(q.perspectives or [p for p in manifest.perspectives if p != "all"]),
+                purposes=list(q.purposes or manifest.purposes), levels=list(q.levels),
+                answering=QuestionAnswering(kind="analysis", analysis_ids=[manifest.name], note=manifest.name),
+                answering_mechanism="Code Analysis", rationale=q.rationale,
+                catalog_history=f"from the step '{manifest.name}' (version {manifest.version}), merged at read time")
+            for resource_type in manifest.resource_types:
+                section = loaded.setdefault(resource_type, [])
+                if all(e.id != row.id for e in section):
+                    section.append(row)
+        # A question the manifest names (`questions`) is also answered by this step: it joins the question's answering
+        # set after RE's own analyses, in catalogue order, so the row shows both lines (leg 3, 2026-10-29).
+        named = {str(q).strip() for q in manifest.questions}
+        for resource_type in manifest.resource_types:
+            for e in loaded.get(resource_type, []):
+                if e.id in named and manifest.name not in e.answering.analysis_ids:
+                    e.answering.analysis_ids.append(manifest.name)
+
+
+#: The top-level YAML key listing the ids of rows the generator skipped (Status `retired <date>: ...` or
+#: `merged into Q-00NN <date>`). Not a `<type>_questions` section, so `_load` never reads it as one.
+_RESERVED_IDS_KEY = "reserved_question_ids"
+
+
+@functools.lru_cache(maxsize=1)
+def _load_reserved_ids(config_path: Path = _DEFAULT_CONFIG_PATH) -> frozenset[str]:
+    """Ids of retired and merged questions: absent from every section, still real ids (never reused)."""
+    if not config_path.exists():
+        return frozenset()
+    with open(config_path) as f:
+        raw = yaml.safe_load(f) or {}
+    return frozenset(str(i) for i in (raw.get(_RESERVED_IDS_KEY) or []))
 
 
 def authored_resource_types() -> list[str]:
@@ -245,6 +312,7 @@ def is_authored(resource_type: str) -> bool:
 def clear_cache() -> None:
     """Testing hook — the loader result is cached via lru_cache."""
     _load.cache_clear()
+    _load_reserved_ids.cache_clear()
 
 
 def get_questions(
@@ -345,3 +413,45 @@ def get_questions(
     else:
         result.absence = FILTERED_TO_NOTHING
     return result
+
+
+
+def all_question_ids() -> set[str]:
+    """Every question id in the catalog, across all resource types, retired and merged questions included (a
+    retired or merged question keeps its id, so a manifest naming one is still naming something real). The
+    skipped rows are in no section; their ids are the YAML's `reserved_question_ids`."""
+    return {e.id for entries in _load().values() for e in entries if e.id} | set(_load_reserved_ids())
+
+
+def find_question(key: str, resource_type: str | None = None) -> dict | None:
+    """One catalog entry (as `get_questions` returns it, minus `derivation`) by its stable id OR its
+    display text, or None. The id is tried first; the text is matched exactly as the text-keyed routes
+    always have, so existing URLs and stored keys that carry the wording keep resolving.
+
+    With `resource_type` the search is confined to that type's section (the same text can be authored
+    under two types with different answering). Without it, the first type in catalog order that has the
+    key wins; for an id that is always the same question, since one id is one question."""
+    key = (key or "").strip()
+    if not key:
+        return None
+    catalog = _load()
+    sections = [resource_type] if resource_type else list(catalog)
+    for attr in ("id", "question"):
+        for rt in sections:
+            for e in catalog.get(rt, []):
+                if getattr(e, attr) == key:
+                    return e.to_dict()
+    return None
+
+
+def find_question_by_id(question_id: str, resource_type: str | None = None) -> dict | None:
+    """Like `find_question`, but the key must be an id; a text that merely looks like one is not matched."""
+    question_id = (question_id or "").strip()
+    if not question_id:
+        return None
+    catalog = _load()
+    for rt in ([resource_type] if resource_type else list(catalog)):
+        for e in catalog.get(rt, []):
+            if e.id == question_id:
+                return e.to_dict()
+    return None

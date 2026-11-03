@@ -13,7 +13,7 @@ result_status's vocabulary, never a bare value:
     measured         ran, and there is something here
     nothing_found    ran, and there is genuinely nothing — a real zero
     never_run        never ran, so nothing is known either way
-    not_established  ran, but this analysis cannot be credited with the result
+    not_established  ran, but nothing shows this analysis produced the result
     partial          ran over part of what it covers
 
 The distinction that matters most is `nothing_found` vs `never_run`. They are
@@ -36,6 +36,8 @@ agreed" and "the detector was sure" are different claims.
 """
 from __future__ import annotations
 
+import contextlib
+import dataclasses
 import functools
 import logging
 from dataclasses import dataclass, field
@@ -82,6 +84,18 @@ class Fact:
     #: Step keys that would establish or improve this fact. Present even when
     #: the state is `measured` — re-running is how a stale fact is refreshed.
     can_run: list = field(default_factory=list)
+    #: Whether the run route would accept this analysis, and the reason when it would not -- the Survey & analyses
+    #: list's own predicate (`stage_page.runnable_and_reason`), so a Re-run is offered here only where it is there.
+    #: None: not asked (a fact built outside the layer).
+    runnable: bool | None = None
+    runnable_reason: str = ""
+    #: An installed Analytic Library step's analysis (not one of RE's own): the Questions row gives it a line of its own.
+    library: bool = False
+    #: The adapter registers a reader for this analysis's numbers AT the question's level (a sub-resource level with an
+    #: entry in `analysis_container_results_map`): its "numbers behind this" are rows at that level, not the resource
+    #: scalars. The Questions row offers them per analysis, so a question's second analysis is reachable too
+    #: (DESIGN-VALUE-PROFILE-SCREEN-2026-10-30 §5: Q-0079's value profile behind its data_class_match).
+    numbers_at_level: bool = False
     #: Why the state is what it is, in words, when there is something to say.
     note: str = ""
     #: The analysis's OWN one-sentence summary, from its headline_reader.
@@ -96,11 +110,28 @@ class Fact:
     #: know what the fields mean, which is the reason it is allowed to be
     #: prose at all.
     headline: str = ""
+    #: True when the headline's figure is a lower bound (a declared `capped_field` was true): the step line says so in a
+    #: title. Carried beside the sentence, never parsed back out of it.
+    headline_capped: bool = False
+    #: The legend for the categories the analysis declares (declared_words.categories_legend), shown beside the step line.
+    headline_categories: str = ""
+    #: The headline for a particular question, by question id, when one analysis backs two questions that ask
+    #: different things of it (quality_checks: "which checks should it have?" and "which hold and which fail?").
+    #: `FactLayer.answer` puts the question's own sentence into `headline`; not serialized.
+    headline_by_question: dict = field(default_factory=dict)
     #: True when this informs a judgement rather than making one. Whether a
     #: resource REPLACES something you already have is a decision about intent;
     #: no query settles it, so the related-resources fact is offered as
     #: evidence and must not be phrased as the answer.
     evidence_only: bool = False
+
+    @property
+    def as_of(self) -> str:
+        """When what this fact describes was measured. A zero-fetch derivation is recomputed on every read, so its
+        run time says nothing; the reader carries the newest stored row it read as `_run.read_snapshot`, and that is
+        the as-of. Otherwise the run time."""
+        carried = (self.value or {}).get("_run") if isinstance(self.value, dict) else None
+        return str((carried or {}).get("read_snapshot") or self.last_run_at or "")
 
     @property
     def is_known(self) -> bool:
@@ -138,9 +169,12 @@ class Fact:
         )
         return {
             "analysis_id": self.analysis_id, "state": self.state,
-            "headline": self.headline,
+            "headline": self.headline, "headline_capped": self.headline_capped,
+            "headline_categories": self.headline_categories,
             "value": value, "provenance": self.provenance,
-            "last_run_at": self.last_run_at, "can_run": self.can_run,
+            "last_run_at": self.last_run_at, "as_of": self.as_of, "can_run": self.can_run,
+            "runnable": self.runnable, "runnable_reason": self.runnable_reason, "library": self.library,
+            "numbers_at_level": self.numbers_at_level,
             "note": self.note, "is_known": self.is_known,
             "evidence_only": self.evidence_only,
             "destination": destination, "destination_basis": destination_basis,
@@ -191,6 +225,11 @@ class Envelope:
     level_mismatch: bool = False
     #: Why, in words, when `level_mismatch` is true. Empty otherwise.
     level_note: str = ""
+    #: The analyses the catalog lists behind this question, each read by the SAME function every other
+    #: consumer uses (`FactLayer.fact`), as {analysis_id, state, is_known, last_run_at}. Filled only when the
+    #: answer came from the resource's own state, so `facts` holds the one state fact and says nothing about
+    #: the analyses behind the question (walk 2026-10-12: "not run" in the chat beside "Health 85/100 · 4d ago").
+    analyses_behind: list = field(default_factory=list)
 
     @property
     def answerable(self) -> bool:
@@ -215,6 +254,7 @@ class Envelope:
             "level_mismatch": self.level_mismatch,
             "level_note": self.level_note,
             "facts": [f.as_dict() for f in self.facts],
+            "analyses_behind": list(self.analyses_behind),
             "can_run": self.can_run,
             # Counted here rather than left to each caller, so two agents
             # cannot disagree about whether the same envelope had an answer.
@@ -231,6 +271,21 @@ class Envelope:
             # key nothing else uses.
             "query_hash": _query_hash(self.question),
         }
+
+
+#: The engine-neutral levels (design §18.3) in each resource type's own words, for sentences a person reads. A type or
+#: level not named here falls back to plain words rather than to the level's identifier.
+_LEVEL_WORDS = {
+    "database": {"resource": "database", "container": "schema", "member": "table", "field": "column"},
+    "filesystem": {"resource": "file system", "container": "directory", "member": "file", "field": "field"},
+    "repo": {"resource": "repository", "container": "directory", "member": "file", "field": "symbol"},
+}
+
+
+def _level_words(resource_type: str, level: str) -> tuple[str, str]:
+    """(the whole resource, one of its parts at `level`), in words: ("database", "table") for a member."""
+    words = _LEVEL_WORDS.get(resource_type, {})
+    return words.get("resource", "resource"), words.get(level, "part")
 
 
 @functools.lru_cache(maxsize=8)
@@ -319,7 +374,41 @@ def _r_maintainers(reg, p) -> tuple:
     from years ago — and quoting it answers "how many people have ever touched
     this", which is not the question. Measured on egeria_git: 63 by that count,
     3 authors in the commits actually recorded, and one of them wrote over half.
+
+    **The two contributor lists answer first** (REVIEW-QUESTIONS-AND-ANALYTICS-2026-10-22.md, addendum 1, owner 2026-10-23): top 10 over the last
+    12 months and top 10 all time, read through `contributors.contributors`, the reader the compile, the chat tool
+    and chaoss_metrics also use, so every surface names the same people. The value carries the stored row ids it
+    was built from (`row_ids`). The per-author count over `project_commits` below stays only for a repository whose
+    lists were never fetched, and says so (`basis`).
     """
+    from resource_explorer import contributors as contrib
+
+    try:
+        lists = contrib.both(reg, p.slug)
+    except Exception:  # noqa: BLE001 - a registry without the table still answers from project_commits
+        lists = {}
+    if contrib.any_fetched(lists) and not any(cl.rows for cl in lists.values()):
+        # A fetch was attempted and stored no list (refused, failed, or GitHub answered empty): its own words,
+        # never the 90-day git authors below. Empty everywhere is a real absence; anything else (a list never fetched included) is not established.
+        empty = all(cl.absence == contrib.EMPTY_REPOSITORY for cl in lists.values())
+        return ({"named": contrib.absence_sentence(lists),
+                 "all_time": lists[contrib.WINDOW_ALL].as_dict(), "months_12": lists[contrib.WINDOW_12].as_dict(),
+                 "note": contrib.COMPARE_WORDS,
+                 "row_ids": [i for cl in lists.values() for i in cl.row_ids]},
+                NOTHING_FOUND if empty else NOT_ESTABLISHED)
+    if contrib.any_fetched(lists):
+        concentration = _finding(reg, p.slug, "chaoss_metrics", "elephant_factor")
+        return ({"named": contrib.headline_sentence(lists),
+                 "hover": " · ".join(h for h in (lists[w].hover() for w in contrib.WINDOWS) if h),
+                 "top_contributors_all_time": [r.as_dict() for r in lists[contrib.WINDOW_ALL].rows],
+                 "all_time": {k: v for k, v in lists[contrib.WINDOW_ALL].as_dict().items() if k != "rows"},
+                 "top_contributors_12_months": [r.as_dict() for r in lists[contrib.WINDOW_12].rows],
+                 "months_12": {k: v for k, v in lists[contrib.WINDOW_12].as_dict().items() if k != "rows"},
+                 "note": contrib.COMPARE_WORDS,
+                 "concentration": concentration.get("label", ""),
+                 "concentration_detail": concentration.get("summary", ""),
+                 "row_ids": [i for cl in lists.values() for i in cl.row_ids]},
+                MEASURED)
     with reg._conn() as conn:
         rows = conn.execute(
             "SELECT author_name, author_email, count(*) AS commits "
@@ -352,7 +441,7 @@ def _r_maintainers(reg, p) -> tuple:
     people = sorted(merged.values(), key=lambda e: -e["commits"])
     top = [{**e, "share": round(e["commits"] / total, 3)} for e in people[:5]]
     concentration = _finding(reg, p.slug, "chaoss_metrics", "elephant_factor")
-    return ({"people": len(people),
+    return ({"basis": contrib.FALLBACK_WORDS, "people": len(people),
              # Kept alongside, because the difference between them IS the
              # finding when one person commits under several addresses.
              "commit_identities": len(rows),
@@ -498,9 +587,10 @@ def _r_catalogued(reg, p) -> tuple:
     # The GUID alone says "published at some point"; the publish claims say
     # when. Both, or the answer is half of one.
     published = reg.get_last_published_annotation_types(p.slug) or {}
-    when = max(published.values(), default="")
+    from resource_explorer.catalogue_commit import _ts, publish_fields
+    when = max(published.values(), key=_ts, default="")
     return ({"catalogued": bool(guid), "egeria_asset_guid": guid,
-             "last_published_at": when},
+             "last_published_at": when, **publish_fields(reg, p.slug, when)},
             MEASURED if guid else NOTHING_FOUND)
 
 
@@ -530,9 +620,9 @@ def _r_license(reg, p) -> tuple:
     stats = reg.get_latest_project_stats(p.slug) or {}
     name = (stats.get("license") or "").strip()
     spdx = (stats.get("license_spdx_id") or "").strip()
-    # "Other"/"NOASSERTION" is GitHub saying it could not identify a licence,
+    # "Other"/"NOASSERTION" is GitHub saying it could not identify a license,
     # which is NOT the same as there being none — and for a question about
-    # restrictions on use, reporting it as a licence would be the more
+    # restrictions on use, reporting it as a license would be the more
     # dangerous of the two errors.
     unidentified = spdx.upper() in ("NOASSERTION", "") or name.lower() == "other"
     return (
@@ -651,21 +741,31 @@ def _r_changed_since_survey(reg, p) -> tuple:
 #:   _r_maintainers  "Who maintains this repository?"
 #:                -> "Who owns this resource (accountable owner), and who administers it?"
 #:   _r_catalogued   "Has this repository already been catalogued in Egeria and when?"
-#:                -> "Has this resource already been catalogued in Egeria, and when?"
+#:                -> "Has this resource already been cataloged in Egeria, and when?"
 #:   _r_license      "Are there any restrictions for use?"
-#:                -> "Under what licence or agreement may this resource be used?"
+#:                -> "Under what license or agreement may this resource be used?"
 #:
-#: `_r_license`'s row SPLIT into two. It maps to the licence row above, which
+#: `_r_license`'s row SPLIT into two. It maps to the license row above, which
 #: is what the resolver actually does (it reads `stats["license"]`). The other
-#: half — "Are there any restrictions for use beyond the licence —
+#: half — "Are there any restrictions for use beyond the license —
 #: classification, zone or terms of use?" — is a new, unbuilt question and
 #: gets NO entry here. A question with no state source is a normal state, and
-#: pointing a licence-field read at it would answer a governance question with
-#: a licence string.
+#: pointing a license-field read at it would answer a governance question with
+#: a license string.
 #:
 #: `test_every_declared_question_is_in_the_real_catalog` fails loudly on each
 #: of these, which is the point: a key matching nothing is a resolver that
 #: never runs, and it looks exactly like a question we chose not to answer.
+#: **Reconciled with the question-catalog review, 2026-10-22**
+#: (REVIEW-QUESTIONS-AND-ANALYTICS-2026-10-22.md §2): Q-0039 and Q-0042 (the launcher affordances) were retired, so
+#: their keys are gone from both tables; Q-0040 was reworded to "Given what is known, is this worth a full survey?"
+#: and re-keyed. Q-0012 (licence) merged into Q-0030 and its key is gone rather than moved: a declared source answers
+#: BEFORE the kind is consulted, so keying Q-0030 to `_r_license` would make the licence field replace the
+#: `license_classification` risk tier that Q-0030 is answered by. Q-0009 (replace or extend) merged into Q-0011, and
+#: the repo table's `_r_related` follows it (it informs, see EVIDENCE_ONLY); the database table drops its
+#: `_db_r_related` key, because Q-0011 is a mixed-kind question for a database and that table holds direct-kind ones
+#: only. The resolvers themselves (`_r_license`, `_r_which_survey`, `_r_survey_definition_exists` and the database
+#: ones) stay defined; only the question each was keyed to is gone.
 RESOURCE_STATE_SOURCES = {
     "What is this resource, and what is it for?": (_r_description, "description"),
     "Is this repository actively maintained?": (_r_maintained, "foss_scorecard"),
@@ -673,21 +773,16 @@ RESOURCE_STATE_SOURCES = {
         (_r_maintainers, "project_commits"),
     "How widely adopted and active is the community around this repository?":
         (_r_community, "community_support"),
-    "Which Survey Definition should I run — a quick coarse check or the full deep survey?":
-        (_r_which_survey, "survey_definitions"),
-    "Is there a Survey Definition authored for this resource's technology type at all, or is that a catalog gap?":
-        (_r_survey_definition_exists, "survey_definitions"),
-    "Has this resource already been catalogued in Egeria, and when?":
+    "Has this resource already been cataloged in Egeria, and when?":
         (_r_catalogued, "egeria_catalogue_state"),
     "Has this resource already been surveyed at any tier, and what did earlier signals reveal?":
         (_r_surveyed, "survey_history"),
-    "Based on what's already known, is this worth investigating further, or should it be deprioritized?":
+    "Given what is known, is this worth a full survey?":
         (_r_disposition, "disposition"),
     "Any known feedback?": (_r_feedback, "resource_feedback"),
-    "Under what licence or agreement may this resource be used?": (_r_license, "license"),
     "Is there any existing use within our organization?":
         (_r_existing_use, "catalog_presence"),
-    "Does it replace or extend something we already have?":
+    "Which resources overlap with this one — the same data, a subset, a stand-in or a replacement — and how does this one differ?":
         (_r_related, "related_resources"),
     "How much has changed since the last time this was surveyed — is it worth re-running now?":
         (_r_changed_since_survey, "change_since_last_survey"),
@@ -775,13 +870,390 @@ def _h_change_since_last_survey(value: dict, state: str) -> str:
     return f"{changed} of {changed + unchanged} analysis(es) changed since the last survey: {names}."
 
 
+def _h_project_commits(value: dict, state: str) -> str:
+    """Q-0003's headline from the contributor lists: the top contributor and the top-3 share. Empty for the
+    git-author fallback, which keeps its old (no-sentence) rendering."""
+    return str((value or {}).get("named") or "")
+
+
 _RESOURCE_STATE_HEADLINES: dict[str, "Callable[[dict, str], str]"] = {
+    "project_commits": _h_project_commits,
     "catalog_presence": _h_catalog_presence,
     "related_resources": _h_related_resources,
     "survey_history": _h_survey_history,
     "survey_definitions": _h_survey_definitions,
     "disposition": _h_disposition,
     "change_since_last_survey": _h_change_since_last_survey,
+}
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# The DATABASE resource-state table — porting #309's repository pattern
+# ═══════════════════════════════════════════════════════════════════════════
+#
+# HEADLINE-GAPS-FINGERPRINT-AND-REPO-CARDS-IMPLEMENTED.md
+# (#309) built this mechanism for repositories: a question answered from a
+# field ALREADY STORED on the resource, never from a survey step, read via
+# `RESOURCE_STATE_SOURCES` and given a one-sentence headline by
+# `_RESOURCE_STATE_HEADLINES`. Owner found live 2026-09-29 (checking
+# `laz_local_adventureworks`, #8810): 11 database questions with this exact
+# shape — no analysis backs them at all — were rendering `○ not run`, because
+# `database`'s `ResourceTypeAdapter` never declared a `state_sources` table
+# (`survey_definition_adapter.py`'s own comment: "`state_sources` stays
+# undeclared for now — no database question is answered directly off a
+# state-source table the way repo's 'actively maintained?' is."). `○ not
+# run` is a promise a real analysis exists and has not been triggered yet —
+# false for all 11, since none of them has a surveyor at all. The vocabulary
+# fix (glyphs.js's `no_reader` / app.js's `rowState`) makes an UNDECLARED
+# direct-field row read `◌ no reader` instead; this table is what turns 10 of
+# the 11 into real answers, moving them out of that state entirely.
+#
+# One row of the 11 is NOT implemented here — see the note on license below.
+#
+# Resolvers take `(registry, DatabaseEntity)`, matching the repo resolvers'
+# `(registry, Project)` shape exactly, so `_resource_state_fact` needs only
+# one change to serve both: it now fetches the entity through the adapter's
+# own `get_entity` (`get_adapter(resource_type).get_entity`) instead of the
+# hardcoded `self._registry.get(slug)`, which only ever read the `projects`
+# table — every one of these resolvers would have received `project=None`
+# and reported "No resource named ... is registered" otherwise, for every
+# database, every time. Same "repo hardcode" shape `_last_run`'s own
+# docstring already names (its sixth instance, found by a test rather than
+# read).
+def _db_r_description(reg, db) -> tuple:
+    d = (getattr(db, "description", "") or "").strip()
+    return ({"description": d}, MEASURED if d else NOTHING_FOUND)
+
+
+def _db_r_catalogued(reg, db) -> tuple:
+    """Reuses `egeria_linkage.describe_publish_status` — the same
+    is_published-plus-staleness check `databases.py`'s summary row and
+    `curate_plan.py` already use, rather than the old bare
+    `bool(egeria_asset_guid)` claim REPLY-DATABASE-CREDENTIAL... found stale.
+
+    "When" comes from `activity_log`'s own `publish` operation for this
+    entity — the repo reader's "when" (`project_published_annotation_types`)
+    is written only by the repo publish path (`repo_survey_definition_
+    adapter._publish`); the database publish path
+    (`survey_definition_adapter._publish` -> `EgeriaDatabaseSurveyor.
+    publish_step_annotations`) never writes that table, so reading it for a
+    database would silently report "never published" for one that plainly
+    has been. `activity_log` is written for every operation, on every
+    resource type (CLAUDE.md rule 16), including publish, so its own
+    timestamp is the honest source here.
+    """
+    from resource_explorer.egeria_linkage import describe_publish_status
+
+    guid = getattr(db, "egeria_asset_guid", "") or ""
+    status = describe_publish_status(reg, "database", db.slug, guid)
+    when = ""
+    if guid:
+        recent = reg.list_activity(
+            entity_type="database", entity_slug=db.slug,
+            operation="publish", limit=1,
+        )
+        if recent:
+            when = recent[0].get("ts", "") or ""
+    from resource_explorer.catalogue_commit import publish_fields
+    return (
+        {"catalogued": bool(status.get("is_published")), "egeria_asset_guid": guid,
+         "last_published_at": when, "note": status.get("note", ""), **publish_fields(reg, db.slug, when)},
+        MEASURED if status.get("is_published") else NOTHING_FOUND,
+    )
+
+
+def _db_r_existing_use(reg, db) -> tuple:
+    """Registry membership: group siblings AND investigation/work-list
+    membership (`find_entity_investigations` — the reverse index
+    `list_investigation_members` already backs, used here for "which
+    investigations is THIS database in", same generalized `working_set_
+    members` table repo's own version does not yet read)."""
+    group = getattr(db, "group_slug", "") or ""
+    siblings = []
+    if group:
+        siblings = [
+            x.slug for x in (reg.list_databases_in_group(group) or [])
+            if x.slug != db.slug
+        ]
+    investigations = reg.find_entity_investigations("database", db.slug) or []
+    value = {
+        "registered": True,
+        "group": group,
+        "siblings_in_group": len(siblings),
+        "sibling_slugs": siblings[:20],
+        "investigation_count": len(investigations),
+        "investigation_names": [i.get("display_name", "") for i in investigations[:10]],
+        "surveyed": bool(getattr(db, "last_surveyed_at", "")),
+    }
+    return value, MEASURED
+
+
+def _db_r_feedback(reg, db) -> tuple:
+    rows = reg.list_resource_feedback("database", db.slug) or []
+    return ({"feedback_count": len(rows)}, MEASURED if rows else NOTHING_FOUND)
+
+
+def _db_r_related(reg, db) -> tuple:
+    """Candidates only, same contract as the repo reader's own `_r_related`
+    docstring: a direct lookup over registered databases sharing this one's
+    server or name pattern, NOT a similarity score — `db_fingerprint`
+    (`db_derived.py::fingerprint_database`) already does full structural
+    similarity as an ANALYSIS, and duplicating that logic here would be a
+    second, cheaper opinion the fingerprint card could disagree with."""
+    same_server, same_name = [], []
+    server_slug = getattr(db, "server_slug", "") or ""
+    name = (getattr(db, "database_name", "") or "").strip().lower()
+    for other in reg.list_databases():
+        if other.slug == db.slug:
+            continue
+        if server_slug and getattr(other, "server_slug", "") == server_slug:
+            same_server.append(other.slug)
+        other_name = (getattr(other, "database_name", "") or "").strip().lower()
+        if name and other_name == name:
+            same_name.append(other.slug)
+    value = {
+        "server_slug": server_slug,
+        "same_server_count": len(same_server),
+        "same_server": same_server[:15],
+        "database_name": getattr(db, "database_name", "") or "",
+        "same_name_count": len(same_name),
+        "same_name": same_name[:15],
+    }
+    return value, MEASURED if (same_server or same_name) else NOTHING_FOUND
+
+
+def _db_r_surveyed(reg, db) -> tuple:
+    when = getattr(db, "last_surveyed_at", "") or ""
+    return ({"last_surveyed_at": when, "surveyed": bool(when)},
+            MEASURED if when else NOTHING_FOUND)
+
+
+def _db_r_disposition(reg, db) -> tuple:
+    d = reg.get_disposition_for_entity("database", db.slug) or {}
+    verdict = d.get("disposition") or ""
+    known = verdict and verdict != "undecided"
+    return ({"disposition": verdict, "reason": d.get("reason", ""),
+             "decided_at": d.get("decided_at", "")},
+            MEASURED if known else NOTHING_FOUND)
+
+
+def _db_survey_candidates(p) -> tuple:
+    """(candidates, reachable) for "PostgreSQL Database" — the database
+    adapter's own `technology_type` (`survey_definition_adapter.py`'s
+    `_ADAPTER`), mirroring `_survey_candidates` above exactly."""
+    try:
+        from resource_explorer.surveyors.survey_definition_reader import (
+            SurveyDefinitionReader,
+        )
+        reader = SurveyDefinitionReader()
+        return (reader.find_candidate_process_guids("PostgreSQL Database"), True)
+    except Exception as exc:
+        log.debug("survey definition candidates unavailable: %s", exc)
+        return ([], False)
+
+
+def _db_r_which_survey(reg, db) -> tuple:
+    candidates, reachable = _db_survey_candidates(db)
+    if not reachable:
+        return ({"detail": "Egeria could not be reached, so what is authored "
+                           "for this technology type is unknown."},
+                NOT_ESTABLISHED)
+    if not candidates:
+        return ({"candidates": []}, NOTHING_FOUND)
+    names = [c.get("qualified_name", "").split("::")[-1] for c in candidates]
+    return ({"count": len(candidates), "candidates": names,
+             "note": "Cheapest first is the usual order; the Survey tab shows "
+                     "each one's step count and speed tag."},
+            MEASURED)
+
+
+def _db_r_survey_definition_exists(reg, db) -> tuple:
+    candidates, reachable = _db_survey_candidates(db)
+    if not reachable:
+        return ({"detail": "Egeria could not be reached, so whether anything "
+                           "is authored is unknown — this is not a finding "
+                           "that nothing is."}, NOT_ESTABLISHED)
+    return ({"authored": bool(candidates), "count": len(candidates),
+             "technology_type": "PostgreSQL Database"},
+            MEASURED if candidates else NOTHING_FOUND)
+
+
+def _db_r_changed_since_survey(reg, db) -> tuple:
+    """Same comparison as the repo reader (`notification_detector.
+    detect_change`, generic over slug/analysis_id — no entity-type
+    hardcode), run across every id `DATABASE_ANALYSIS_RESULTS_MAP` declares
+    instead of the repo map."""
+    from resource_explorer.notification_detector import detect_change
+    from resource_explorer.surveyors.database.survey_definition_adapter import (
+        DATABASE_ANALYSIS_RESULTS_MAP,
+    )
+
+    changed, unchanged = [], 0
+    for analysis_id in sorted(DATABASE_ANALYSIS_RESULTS_MAP):
+        try:
+            res = detect_change(reg, db.slug, analysis_id)
+        except Exception:
+            continue
+        if res.changed:
+            changed.append({"analysis_id": analysis_id, "summary": res.summary})
+        else:
+            unchanged += 1
+    value = {"changed_count": len(changed), "changed": changed[:15],
+             "unchanged_count": unchanged,
+             "last_surveyed_at": getattr(db, "last_surveyed_at", "") or ""}
+    comparable = bool(changed) or unchanged
+    return value, (MEASURED if changed else NOTHING_FOUND) if comparable else NOT_ESTABLISHED
+
+
+def _h_db_description(value: dict, state: str) -> str:
+    d = value.get("description") or ""
+    return d if d else "No description recorded for this database yet."
+
+
+def _h_db_catalogued(value: dict, state: str) -> str:
+    if not value.get("catalogued"):
+        note = value.get("note") or ""
+        return note if note else "Not yet published to Egeria."
+    when = value.get("last_published_at") or ""
+    if when and value.get("published_state") == "published_earlier":
+        # the server's ONE word source (catalogue_commit.publish_fields -> pre_reset_words), fix round 1
+        words = value.get("published_earlier_words") or "published before the reset \u00b7 not in Egeria now"
+        return f"{words[:1].upper()}{words[1:]} (published {when})."
+    return f"Published to Egeria {when}." if when else "Published to Egeria."
+
+
+def _h_db_existing_use(value: dict, state: str) -> str:
+    group = value.get("group") or ""
+    siblings = value.get("siblings_in_group") or 0
+    inv = value.get("investigation_count") or 0
+    parts = []
+    if group:
+        parts.append(f"registered in group {group!r} alongside {siblings} other resource(s)"
+                     if siblings else f"registered in group {group!r}, no siblings yet")
+    else:
+        parts.append("registered, but not assigned to a group")
+    if inv:
+        names = ", ".join(value.get("investigation_names") or [])
+        parts.append(f"in scope for {inv} investigation(s): {names}")
+    else:
+        parts.append("not in scope for any investigation")
+    return "; ".join(parts).capitalize() + "."
+
+
+def _h_db_feedback(value: dict, state: str) -> str:
+    count = value.get("feedback_count") or 0
+    if not count:
+        return "No feedback recorded yet."
+    return f"{count} feedback item(s) recorded."
+
+
+def _h_db_related(value: dict, state: str) -> str:
+    if state == NOTHING_FOUND:
+        return "No candidate overlap found — no other registered database shares its server or name."
+    parts = []
+    same_server = value.get("same_server_count") or 0
+    same_name = value.get("same_name_count") or 0
+    if same_server:
+        parts.append(f"{same_server} on the same server")
+    if same_name:
+        parts.append(f"{same_name} sharing its name {value.get('database_name', '')!r}")
+    return ("Candidate overlap only, not a judgement of replacement: "
+            + "; ".join(parts) + ".")
+
+
+def _h_db_surveyed(value: dict, state: str) -> str:
+    if state == NOTHING_FOUND:
+        return "Never surveyed at any tier."
+    return f"Last surveyed {value.get('last_surveyed_at', '')}."
+
+
+def _h_db_survey_definitions(value: dict, state: str) -> str:
+    if state == NOT_ESTABLISHED:
+        return value.get("detail") or "Egeria could not be reached, so this is not established."
+    if "candidates" in value:
+        count = value.get("count") or 0
+        if not count:
+            return "No Survey Definition is authored for this technology type."
+        names = ", ".join(value.get("candidates") or [])
+        return f"{count} Survey Definition(s) authored: {names}."
+    authored = value.get("authored")
+    count = value.get("count") or 0
+    tech = value.get("technology_type") or "this technology type"
+    return (f"{count} Survey Definition(s) authored for {tech}." if authored
+            else f"No Survey Definition is authored for {tech} — a catalog gap.")
+
+
+def _h_db_disposition(value: dict, state: str) -> str:
+    if state == NOTHING_FOUND:
+        return "No disposition recorded yet — undecided."
+    verdict = value.get("disposition") or ""
+    reason = value.get("reason") or ""
+    return f"{verdict.capitalize()}" + (f" — {reason}" if reason else ".")
+
+
+def _h_db_change_since_last_survey(value: dict, state: str) -> str:
+    if state == NOT_ESTABLISHED:
+        return "Nothing comparable yet — no prior survey to measure change against."
+    changed = value.get("changed_count") or 0
+    unchanged = value.get("unchanged_count") or 0
+    if not changed:
+        return f"Nothing has changed since the last survey ({unchanged} analysis(es) compared)."
+    names = ", ".join(c["analysis_id"] for c in (value.get("changed") or [])[:5])
+    return f"{changed} of {changed + unchanged} analysis(es) changed since the last survey: {names}."
+
+
+#: subject namespace is `db_*`, disjoint from the repo table's subjects
+#: above — merged into `_RESOURCE_STATE_HEADLINES` below rather than kept
+#: separate, so `_resource_state_headline`'s single lookup keeps working
+#: unchanged for both resource types.
+_DATABASE_RESOURCE_STATE_HEADLINES: dict[str, "Callable[[dict, str], str]"] = {
+    "db_description": _h_db_description,
+    "db_catalogued": _h_db_catalogued,
+    "db_existing_use": _h_db_existing_use,
+    "db_feedback": _h_db_feedback,
+    "db_related": _h_db_related,
+    "db_surveyed": _h_db_surveyed,
+    "db_survey_definitions": _h_db_survey_definitions,
+    "db_disposition": _h_db_disposition,
+    "db_change_since_last_survey": _h_db_change_since_last_survey,
+}
+_RESOURCE_STATE_HEADLINES.update(_DATABASE_RESOURCE_STATE_HEADLINES)
+
+
+#: question text -> (resolver, subject), the DATABASE table — registered on
+#: the database `ResourceTypeAdapter` (`state_sources=lambda: ...
+#: DATABASE_RESOURCE_STATE_SOURCES`, survey_definition_adapter.py), read
+#: through `get_adapter("database").state_sources()` exactly like the repo
+#: table is read through the repo adapter. A separate dict from `RESOURCE_
+#: STATE_SOURCES`, not a merge — the two are looked up per resource type
+#: (`FactLayer._map`), so identical question text in both catalogs (e.g.
+#: "What is this resource, and what is it for?") resolves to each type's own
+#: resolver with no collision.
+#:
+#: **Only 10 of the 11 direct-field database rows found live 2026-09-29 are
+#: here.** "Under what license or agreement may this resource be used?"
+#: is NOT implemented: its catalog `note` is a stale, copy-pasted "direct
+#: field (GitHub license field)" — `DatabaseEntity` (registry.py) has no
+#: license field, GitHub has no opinion about a PostgreSQL database, and no
+#: other stored field answers it. This is the "the mechanism you find
+#: doesn't match what's described" case the brief for this table names
+#: explicitly: reported rather than guessed at, and the row is left to
+#: render `◌ no reader` (the vocabulary fix), which is the honest state —
+#: not `○ not run` (a promise of a survey step that does not exist for the
+#: field this catalog note claims), and not a fabricated reader either.
+DATABASE_RESOURCE_STATE_SOURCES = {
+    "What is this resource, and what is it for?": (_db_r_description, "db_description"),
+    "Has this resource already been cataloged in Egeria, and when?":
+        (_db_r_catalogued, "db_catalogued"),
+    "Is there any existing use within our organization?":
+        (_db_r_existing_use, "db_existing_use"),
+    "Any known feedback?": (_db_r_feedback, "db_feedback"),
+    "Has this resource already been surveyed at any tier, and what did earlier signals reveal?":
+        (_db_r_surveyed, "db_surveyed"),
+    "Given what is known, is this worth a full survey?":
+        (_db_r_disposition, "db_disposition"),
+    "How much has changed since the last time this was surveyed — is it worth re-running now?":
+        (_db_r_changed_since_survey, "db_change_since_last_survey"),
 }
 
 #: Kinds that ARE answerable, but not from analysis results — and not yet
@@ -861,6 +1333,25 @@ class FactLayer:
 
     # ── one analysis ────────────────────────────────────────────────────────
     def fact(self, slug: str, analysis_id: str, level: str = "resource") -> Fact:
+        # One scope per fact: the results reader and the headline reader of an analysis often run the
+        # same expensive read; `read_memo` lets the second reuse the first's (copied) answer and
+        # nothing longer-lived (see that module's docstring).
+        from resource_explorer import read_memo
+        with read_memo.scope():
+            fact = self._fact(slug, analysis_id, level)
+        if self._map("analysis_results_map") is None:
+            return fact    # a resource type with no maps has no run route to ask (its fact says so already)
+        from resource_explorer.surveyors.survey_step_host import attached_user_steps
+        from resource_explorer.workflows.stage_page import runnable_and_reason
+
+        fact.runnable, fact.runnable_reason = runnable_and_reason(analysis_id, self.resource_type)
+        fact.library = analysis_id in attached_user_steps(self.resource_type)
+        if level != "resource":
+            container_map = self._map("analysis_container_results_map") or {}
+            fact.numbers_at_level = analysis_id in container_map
+        return fact
+
+    def _fact(self, slug: str, analysis_id: str, level: str = "resource") -> Fact:
         results_map = self._map("analysis_results_map")
         source_steps = self._map("analysis_source_steps") or {}
 
@@ -900,7 +1391,10 @@ class FactLayer:
         # first version of this fix did nothing at all. Read it from the
         # registry that actually carries it.
         _kind = (self._map("analysis_kinds") or {}).get(analysis_id)
-        live = bool(getattr(getattr(_kind, "results", None), "live_read", False))
+        live = getattr(getattr(_kind, "results", None), "live_read", False)
+        # A per-resource answer: live for one resource, run-gated for another (a file system Egeria's Folder Survey
+        # leads is read back from Egeria's report; one RE walks keeps its run gate).
+        live = bool(live(self._registry, slug)) if callable(live) else bool(live)
         if live and not run.get("last_run_at"):
             try:
                 value = self._read_results(slug, analysis_id, entry)
@@ -925,13 +1419,18 @@ class FactLayer:
                 # is already true here) when no `_status` override exists, so
                 # this is a strict widening, not a behavior change, for every
                 # other live-read analysis that has never set one.
+                head = self._headline_head(analysis_id, slug, level)
                 return Fact(
                     analysis_id=analysis_id, state=self._state_for(value, run), value=value,
-                    headline=self._headline_for(analysis_id, slug, level),
+                    headline=str(head.get("label") or ""), headline_by_question=head.get("by_question") or {},
+                    headline_capped=bool(head.get("capped")), headline_categories=str(head.get("categories") or ""),
                     provenance=self._provenance_for(value), can_run=can_run,
-                    note="Read live from data refreshed at ingestion, not from a "
-                         "recorded survey run — current regardless of when a survey "
-                         "last ran.",
+                    note=(f"Read back from Egeria's own survey report ({value['report_sentence']}), not from a run "
+                          "of Resource Explorer's."
+                          if self._provenance_for(value) == PROVENANCE_EGERIA and value.get("report_sentence") else
+                          "Read live from data refreshed at ingestion, not from a "
+                          "recorded survey run — current regardless of when a survey "
+                          "last ran."),
                 )
 
         if not run.get("last_run_at"):
@@ -946,7 +1445,7 @@ class FactLayer:
                 note=("This resource was surveyed by runs that predate per-step "
                       "recording, so whether this analysis was among them cannot "
                       "be determined.") if unattributed else
-                     "This analysis has never run against this resource.",
+                     "This analysis has not yet run on this resource.",
             )
 
         try:
@@ -971,15 +1470,21 @@ class FactLayer:
             )
 
         state = self._state_for(value, run)
+        head = self._headline_head(analysis_id, slug, level)
         return Fact(
             analysis_id=analysis_id, state=state, value=value,
-            headline=self._headline_for(analysis_id, slug, level),
+            headline=str(head.get("label") or ""), headline_by_question=head.get("by_question") or {},
+                    headline_capped=bool(head.get("capped")), headline_categories=str(head.get("categories") or ""),
             provenance=self._provenance_for(value),
             last_run_at=run.get("last_run_at", ""), can_run=can_run,
             note=self._note_for(state, value, run),
         )
 
     def _headline_for(self, analysis_id: str, slug: str, level: str = "resource") -> str:
+        """The analysis's own summary sentence, or "": `_headline_head`'s label."""
+        return str(self._headline_head(analysis_id, slug, level).get("label") or "")
+
+    def _headline_head(self, analysis_id: str, slug: str, level: str = "resource") -> dict:
         """The analysis's own summary sentence, or "" — level-aware (slice
         21a). Before this, the SAME resource-level sentence answered every
         question an analysis backs regardless of the question's own
@@ -1013,19 +1518,38 @@ class FactLayer:
                 except Exception as exc:
                     log.debug("container headline read failed for %s/%s/%s: %s",
                               slug, analysis_id, level, exc)
-                    return ""
-                return str(head.get("label") or "")
+                    return {}
+                return head
 
         kind = (self._map("analysis_kinds") or {}).get(analysis_id)
         reader = getattr(getattr(kind, "results", None), "headline_reader", None)
         if reader is None:
-            return ""
+            return self._table_headline(analysis_id, slug)
         try:
             head = reader(self._registry, slug) or {}
         except Exception as exc:
             log.debug("headline read failed for %s/%s: %s", slug, analysis_id, exc)
-            return ""
-        return str(head.get("label") or "")
+            return {}
+        return head
+
+    def _table_headline(self, analysis_id: str, slug: str) -> dict:
+        """B1: a table result with no headline reader of its own answers with its declared summary measures and
+        cites the table ("1,846 of 1,916 columns · the table lists them"); {} for any other analysis. An analysis
+        that has its own headline reader keeps its own words."""
+        from resource_explorer.declared_context import declarations
+        from resource_explorer.table_result import question_line
+
+        try:
+            dec = declarations(self.resource_type).get(analysis_id)
+            if dec is None or not dec.is_table_result():
+                return {}
+            entry = (self._map("analysis_results_map") or {}).get(analysis_id)
+            value = self._read_results(slug, analysis_id, entry) if entry is not None else None
+            line = question_line(dec, value or {}, self._last_run(slug).get(analysis_id, {}))
+        except Exception as exc:  # noqa: BLE001 -- best effort, as every headline here
+            log.debug("table headline read failed for %s/%s: %s", slug, analysis_id, exc)
+            return {}
+        return {"label": line, "status": "info"} if line else {}
 
     def _level_specific_headline_exists(self, analysis_id: str, level: str) -> bool:
         """Would `_headline_for(analysis_id, ..., level)` return a GENUINE
@@ -1115,7 +1639,12 @@ class FactLayer:
             # (REPLY-COPY-REVIEW-CREDENTIAL-AND-FIT-LANGUAGE.md §3) — the
             # reader had to work out that meant "the ones it can't read".
             catalog_only = (value or {}).get("catalog_only_table_count") or 0
-            table_count = (value or {}).get("table_count")
+            # `relation_count` (renamed from `table_count`, REPLY-DESIGNER-
+            # ROUND2-DATABASE-SCREENS.md §2.3) -- `_schema_inventory_
+            # results` builds `value` fresh every call, so the old key is
+            # read as a fallback only for defense in depth, not because a
+            # stale stored blob is expected here.
+            table_count = (value or {}).get("relation_count", (value or {}).get("table_count"))
             if catalog_only and table_count:
                 select_count = table_count - catalog_only
                 who_name = f"`{connected_as}`" if connected_as else "this credential"
@@ -1143,7 +1672,20 @@ class FactLayer:
         return ""
 
     # ── many analyses ───────────────────────────────────────────────────────
+    def one_read(self):
+        """One read's shared derivations (db_derived's `one_read`): every analysis behind a database question reads
+        the same recomputed `run_db_derived`, so it is computed once per read, not twice per analysis id."""
+        if self.resource_type != "database":
+            return contextlib.nullcontext()
+        from resource_explorer.surveyors.database.db_derived import one_read
+
+        return one_read()
+
     def facts(self, slug: str, analysis_ids: list, level: str = "resource") -> list:
+        with self.one_read():
+            return self._facts(slug, analysis_ids, level)
+
+    def _facts(self, slug: str, analysis_ids: list, level: str) -> list:
         results = [self.fact(slug, a, level) for a in analysis_ids]
         # The one choke point every consumer of "what is known about this
         # resource" already goes through (resource_facts, bulk_resource_facts,
@@ -1168,11 +1710,15 @@ class FactLayer:
         is a lookup rather than an inference — and for 18 of the 41 the correct
         behaviour is to produce no answer about the resource at all.
         """
+        with self.one_read():
+            return self._answer(slug, question)
+
+    def _answer(self, slug: str, question: dict) -> Envelope:
         answering = question.get("answering") or {}
         kind = answering.get("kind") or "unknown"
         env = Envelope(
             subject=slug, question=question.get("question", ""),
-            question_id=question.get("question", ""), kind=kind,
+            question_id=question.get("id", ""), kind=kind,
         )
         # A declared resource-state source answers before the kind is
         # consulted: `direct` describes where the answer lives, and once that
@@ -1180,6 +1726,13 @@ class FactLayer:
         declared = (self._map("state_sources") or {}).get(question.get("question", ""))
         if declared:
             env.facts = [self._resource_state_fact(slug, *declared)]
+            level = self._primary_level(question)
+            for aid in answering.get("analysis_ids") or []:
+                f = self.fact(slug, aid, level)
+                env.analyses_behind.append({
+                    "analysis_id": aid, "state": f.state, "is_known": f.is_known,
+                    "last_run_at": f.last_run_at,
+                })
             if not env.answerable:
                 env.blocked_reason = (
                     "Nothing is recorded for this on this resource yet."
@@ -1195,21 +1748,45 @@ class FactLayer:
                 return env
 
         ids = answering.get("analysis_ids") or []
+        if not ids and kind in ("mixed", "partial"):
+            # Not "declares no analysis": these kinds say part of the answer
+            # exists somewhere other than an analysis result (a person's
+            # Enrichment input, a fact shown elsewhere). The note, written for
+            # this resource type, says where -- so it is shown, as it is for
+            # `gap`/`human`, rather than a generic "nothing to read".
+            env.blocked_reason = (
+                "No single analysis answers this: part of it is not an "
+                "analysis result."
+            )
+            note = (answering.get("note") or "").strip()
+            if note:
+                env.blocked_reason += f" ({note[:400]})"
+            return env
         if not ids:
             env.blocked_reason = (
                 "This question declares no analysis that answers it, so there is "
                 "nothing to read."
             )
             return env
-        env.facts = self.facts(slug, ids, self._primary_level(question))
+        env.facts = [self._for_question(f, question.get("id", "")) for f in self.facts(slug, ids, self._primary_level(question))]
         if not env.answerable:
+            # Every analysis behind it never ran: said in the owner's words, once (F23, 2026-10-30). Anything else
+            # (one could not be established, say) is not "not yet run", so it keeps the wider sentence.
+            not_yet_run = bool(env.facts) and all(f.state == NEVER_RUN for f in env.facts)
             env.blocked_reason = (
-                "Nothing has been measured for this yet."
+                ("Not yet run." if not_yet_run else "Nothing has been measured for this yet.")
                 + (f" Run: {', '.join(env.can_run)}." if env.can_run else "")
             )
         else:
             self._check_level(env, question)
         return env
+
+    @staticmethod
+    def _for_question(fact: Fact, question_id: str) -> Fact:
+        """The fact with this question's own headline, when its reader wrote one for it (a copy: the fact itself
+        answers other questions too)."""
+        own = (fact.headline_by_question or {}).get(question_id)
+        return dataclasses.replace(fact, headline=own) if own else fact
 
     #: Levels named below "resource" (design §18.3's engine-neutral
     #: vocabulary: database=resource, schema=container, table=member,
@@ -1386,21 +1963,17 @@ class FactLayer:
         ]
         env.level_mismatch = True
         if capable_ids:
-            env.level_note = (
-                f"Answered, but not at {'/'.join(sub_levels)} level — "
-                + (f"{capable_ids[0]} stores per-{sub_levels[0]} rows"
-                   if len(capable_ids) == 1
-                   else f"{', '.join(capable_ids)} store per-{sub_levels[0]} rows")
-                + f", but no reader shows them yet."
-            )
+            # Rows exist at that level but nothing shows them: in person words, as the rollup note below (W16,
+            # 2026-10-30), not "member level", "stores per-member rows" or analysis ids.
+            whole, per = _level_words(self.resource_type, sub_levels[0])
+            env.level_note = (f"Answered for the {whole} as a whole: the figures for each {per} are stored but not "
+                              "shown here yet.")
         else:
-            env.level_note = (
-                "Answered only as a whole-resource rollup — this question is "
-                f"asked at {'/'.join(sub_levels)} level and "
-                + (f"{known_ids[0]} names no {sub_levels[0]}."
-                   if len(known_ids) == 1
-                   else f"none of {', '.join(known_ids)} name one.")
-            )
+            # Shown on the person's row: the resource and level in that person's words, not "rollup", "member/field
+            # level" or analysis ids (quality-screens read, item 6, 2026-10-30). Which analyses stand behind the row
+            # is on the row already.
+            whole, per = _level_words(self.resource_type, sub_levels[0])
+            env.level_note = f"Answered for the {whole} as a whole, not {per} by {per}."
 
     # ── internals ───────────────────────────────────────────────────────────
     def _resource_state_fact(self, slug: str, resolver, subject: str) -> Fact:
@@ -1409,8 +1982,19 @@ class FactLayer:
         `can_run` is empty on purpose: no survey step establishes these. Saying
         "run X to find out" when nothing would change the answer is the same
         false offer the envelope exists to prevent, one step further on.
+
+        The entity is fetched through the adapter's own `get_entity`
+        (`get_adapter(self.resource_type).get_entity`), not the hardcoded
+        `self._registry.get(slug)` this used before — that method only ever
+        reads the `projects` table, so every database resolver added for the
+        11-row database direct-field fix would have received `project=None`
+        here and reported "No resource named ... is registered" for every
+        database, every time. Repo's own `_get_project_entity` is exactly
+        `registry.get(slug)`, so this is a no-op change for repo callers.
         """
-        project = self._registry.get(slug)
+        from resource_explorer.surveyors.survey_definition_executor import get_adapter
+
+        project = get_adapter(self.resource_type).get_entity(self._registry, slug)
         if not project:
             return Fact(subject, NOT_ESTABLISHED,
                         note=f"No resource named {slug!r} is registered.")
@@ -1502,7 +2086,7 @@ def _has_content(value) -> bool:
     results dict carrying only those has measured nothing, and counting them as
     content is how an empty result came to render as a populated one.
     """
-    envelope = {"_status", "surveyed_at", "detail", "scoped_to", "run_outcomes"}
+    envelope = {"_status", "_run", "surveyed_at", "detail", "scoped_to", "run_outcomes"}
     if isinstance(value, dict):
         return any(
             _has_content(v) for k, v in value.items() if k not in envelope

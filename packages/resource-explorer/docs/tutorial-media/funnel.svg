@@ -1,0 +1,134 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1920" height="1080" viewBox="0 0 1920 1080">
+  <title>The survey funnel</title>
+  <desc>Six stages in the order of what they cost, from Scouting at the top to Curate at the bottom, inside an
+  investigation. Egeria, the shared catalog, sits to the left; every stage can read from it, and Curate publishes to
+  it. To the right, chat can be used at any stage, and Understanding and Automate sit around the funnel.</desc>
+  <defs>
+    <marker id="teal" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#1f6b5c"/>
+    </marker>
+    <marker id="rust" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#a8502a"/>
+    </marker>
+    <style>
+      .sans { font-family: "Helvetica Neue", Helvetica, Arial, sans-serif; }
+      .serif { font-family: Georgia, "Times New Roman", serif; }
+      .ink { fill: #2b2119; }
+      .muted { fill: #6b5d50; }
+      .teal { fill: #1f6b5c; }
+      .rust { fill: #a8502a; }
+      .caps { font-weight: 700; letter-spacing: 2.5px; }
+    </style>
+  </defs>
+
+  <rect width="1920" height="1080" fill="#faf7f2"/>
+
+  <!-- Heading -->
+  <text x="80" y="82" class="sans rust caps" font-size="22">THE SURVEY FUNNEL</text>
+  <text x="80" y="140" class="serif ink" font-size="48">Cheap questions first, costly ones only where they are worth it</text>
+  <text x="80" y="188" class="sans muted" font-size="25">Six stages, in the order of what they cost. Most data sources stop early; only a few go all the way.</text>
+
+  <!-- Egeria -->
+  <rect x="80" y="230" width="320" height="690" rx="14" fill="#e6f0ee" stroke="#1f6b5c" stroke-width="2"/>
+  <text x="108" y="292" class="sans teal caps" font-size="30">EGERIA</text>
+  <text x="108" y="328" class="sans teal" font-size="23" font-style="italic">the shared catalog</text>
+  <g class="sans ink" font-size="23">
+    <text x="108" y="410">• What is already</text>
+    <text x="130" y="440">cataloged</text>
+    <text x="108" y="495">• Questions and</text>
+    <text x="130" y="525">perspectives</text>
+    <text x="108" y="580">• What you publish</text>
+  </g>
+  <g class="sans muted" font-size="20">
+    <text x="108" y="790">Every stage can read</text>
+    <text x="108" y="818">from Egeria. Curate</text>
+    <text x="108" y="846">writes to it when</text>
+    <text x="108" y="874">you publish.</text>
+  </g>
+
+  <!-- Investigation frame -->
+  <rect x="440" y="230" width="1010" height="690" rx="16" fill="#ffffff" stroke="#d9cbb8" stroke-width="2"/>
+  <text x="470" y="274" class="sans teal caps" font-size="23">INVESTIGATION</text>
+  <text x="470" y="304" class="sans muted" font-size="20">Why you are looking, and at which data sources. Optional: you meet it in part 12.</text>
+
+  <!-- Funnel stages: centre x = 720, top width 440, bottom width 180 -->
+  <polygon points="500,330 940,330 921.1,410 518.9,410" fill="#f7e8dc"/>
+  <polygon points="522.2,424 917.8,424 898.9,504 541.1,504" fill="#f0d5c0"/>
+  <polygon points="544.4,518 895.6,518 876.7,598 563.3,598" fill="#e3b795"/>
+  <polygon points="566.7,612 873.3,612 854.4,692 585.6,692" fill="#d99a6e"/>
+  <polygon points="588.9,706 851.1,706 832.2,786 607.8,786" fill="#a85a2e"/>
+  <polygon points="611.1,800 828.9,800 810,880 630,880" fill="#8c3d18"/>
+  <g class="sans" font-size="28" font-weight="700" text-anchor="middle">
+    <text x="720" y="380" class="ink">1. Scouting</text>
+    <text x="720" y="474" class="ink">2. Discovery</text>
+    <text x="720" y="568" class="ink">3. Assessment</text>
+    <text x="720" y="662" fill="#2b2119">4. Analysis</text>
+    <text x="720" y="756" fill="#ffffff">5. Enrichment</text>
+    <text x="720" y="850" fill="#ffffff">6. Curate</text>
+  </g>
+
+  <!-- Egeria to each stage: two-way; Curate publishes -->
+  <g stroke="#1f6b5c" stroke-width="2.5" fill="none">
+    <line x1="406" y1="370" x2="497" y2="370" marker-start="url(#teal)" marker-end="url(#teal)"/>
+    <line x1="406" y1="464" x2="519" y2="464" marker-start="url(#teal)" marker-end="url(#teal)"/>
+    <line x1="406" y1="558" x2="541" y2="558" marker-start="url(#teal)" marker-end="url(#teal)"/>
+    <line x1="406" y1="652" x2="564" y2="652" marker-start="url(#teal)" marker-end="url(#teal)"/>
+    <line x1="406" y1="746" x2="586" y2="746" marker-start="url(#teal)" marker-end="url(#teal)"/>
+  </g>
+  <line x1="608" y1="840" x2="408" y2="840" stroke="#a8502a" stroke-width="5" marker-end="url(#rust)"/>
+  <text x="462" y="826" class="sans rust" font-size="22" font-weight="700">Publish</text>
+
+  <!-- What each stage asks -->
+  <g>
+    <rect x="970" y="330" width="460" height="80" rx="8" fill="#f3efe8"/>
+    <rect x="970" y="424" width="460" height="80" rx="8" fill="#f3efe8"/>
+    <rect x="970" y="518" width="460" height="80" rx="8" fill="#f3efe8"/>
+    <rect x="970" y="612" width="460" height="80" rx="8" fill="#f3efe8"/>
+    <rect x="970" y="706" width="460" height="80" rx="8" fill="#f3efe8"/>
+    <rect x="970" y="800" width="460" height="80" rx="8" fill="#f3efe8"/>
+  </g>
+  <g class="sans ink" font-size="23" font-weight="700">
+    <text x="992" y="364">A fast first look</text>
+    <text x="992" y="458">Worked out from what Scouting found</text>
+    <text x="992" y="552">Judged against criteria</text>
+    <text x="992" y="646">Structure and numbers in detail</text>
+    <text x="992" y="740">What only a person knows</text>
+    <text x="992" y="834">Your decision</text>
+  </g>
+  <g class="sans muted" font-size="20">
+    <text x="992" y="392">What is it, how big, is it alive? Seconds.</text>
+    <text x="992" y="486">Worth a closer look? Already cataloged?</text>
+    <text x="992" y="580">Security, documentation, quality</text>
+    <text x="992" y="674">Dependencies, profiles. Can take minutes.</text>
+    <text x="992" y="768">Owner, sensitivity, intended use</text>
+    <text x="992" y="862">Choose what to publish, then publish</text>
+  </g>
+
+  <!-- Right column -->
+  <rect x="1490" y="230" width="350" height="310" rx="14" fill="#f7f2ea" stroke="#b08050" stroke-width="2"/>
+  <text x="1515" y="276" class="sans rust caps" font-size="22">ASK IN CHAT</text>
+  <g class="sans ink" font-size="22">
+    <text x="1515" y="322">At any stage, in your</text>
+    <text x="1515" y="350">own words.</text>
+    <text x="1515" y="398">Answers come from what</text>
+    <text x="1515" y="426">has been measured, and</text>
+    <text x="1515" y="454">name the results they used.</text>
+  </g>
+  <text x="1515" y="506" class="sans muted" font-size="20" font-style="italic">Part 8</text>
+
+  <rect x="1490" y="570" width="350" height="350" rx="14" fill="#f7f2ea" stroke="#b08050" stroke-width="2"/>
+  <text x="1515" y="616" class="sans rust caps" font-size="22">AROUND THE FUNNEL</text>
+  <g class="sans ink" font-size="22">
+    <text x="1515" y="662" font-weight="700">Understanding</text>
+    <text x="1515" y="690">a view over everything</text>
+    <text x="1515" y="718">measured so far</text>
+    <text x="1515" y="766" font-weight="700">Automate</text>
+    <text x="1515" y="794">re-runs any stage on</text>
+    <text x="1515" y="822">a schedule</text>
+  </g>
+  <text x="1515" y="884" class="sans muted" font-size="20" font-style="italic">Both: the Advanced tutorial</text>
+
+  <!-- Footnote -->
+  <text x="80" y="990" class="serif ink" font-size="26" font-style="italic">A guide, not a rule: go straight to any stage when its question is the one you need answered.</text>
+  <text x="80" y="1034" class="sans muted" font-size="20">The same six stages apply to databases, file systems and code repositories. The questions in each stage differ by kind.</text>
+</svg>

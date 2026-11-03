@@ -1,7 +1,7 @@
 """DB/FS gate removal in /next (re/next-db-fs-gate-removal, 2026-09-22).
 
 The project owner reversed the earlier "DB and FS stay out of /next" ruling
-(docs/design-notes/COORDINATOR-BRIEF-MULTI-RESOURCE.md, 2026-09-20) — see
+(docs/design-notes/exchange/COORDINATOR-BRIEF-MULTI-RESOURCE.md, 2026-09-20) — see
 docs/Backlog.md's reversal entry. This slice:
 
   - relaxes `paneNeedsRepo()` so Survey no longer blocks db/filesystem (its
@@ -171,7 +171,9 @@ class TestByAnalysisAndQuestionsNoLongerGatedToRepo:
         start = src.index("function _surveyResultsPath(")
         end = src.index("};", src.index("export const getSurveyDashboards"))
         body = src[start:end]
-        assert "entityType = 'repo'" in body
+        # no default: the kind is required (see test-harness/no-default-entity-type.test.mjs)
+        assert "entityType = 'repo'" not in body
+        assert "requireKind('getSurveyDashboards', entityType)" in body
         assert "/api/databases/" in body
         assert "/api/filesystems/" in body
 
@@ -206,5 +208,9 @@ class TestAutomateNoLongerHardcodesRepo:
 class TestWorklistNoLongerHardcodesRepo:
     def test_analysis_menu_reads_the_work_lists_own_entity_type(self):
         src = _worklist_src()
-        assert "listAnalyses(wl.entity_type || 'repo'" in src
+        # The VIEW's kind since a list may hold more than one (DESIGN-WORK-LISTS-WINNOWING-AND-MIXED-KINDS §5):
+        # one kind's list or chip reads its own menu, the shared view one menu per kind present.
+        assert "listAnalyses(viewKind()" in src
+        assert "listAnalyses(k, { intent: stage })" in src
+        assert "entity_type || 'repo'" not in src
         assert "listAnalyses('repo'" not in src

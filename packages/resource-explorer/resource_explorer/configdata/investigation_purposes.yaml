@@ -1,0 +1,37 @@
+# RE's seed for the investigation-purposes list (ProjectCharter.purposes).
+#
+# Decision (project owner, 2026-10-13): "Egeria holds the set of record." This file is only the SEED:
+# resource_explorer/investigation_purposes.py creates the set and these values in Egeria at start-up when they
+# are missing (leader-only, idempotent, its own canary carrying a fingerprint of this file), and RE then reads
+# the list from Egeria. A person extends the list in Egeria; nothing is added from free text automatically.
+#
+# Decision (project owner, 2026-10-13): the list is SUGGESTIVE everywhere. A purpose outside it is kept and
+# warned about, never rejected.
+#
+# Editing an entry here changes the fingerprint, so the next start re-checks every element. It only ADDS what
+# is missing: a value already in Egeria is never updated or removed from here.
+#
+# `default` is the value marked isDefaultValue on its ValidValueMember link.
+investigation_purposes:
+  default: Explore
+  values:
+    - name: Assess
+      description: Review resources already in use.
+    - name: Certify
+      description: Validate against a named external standard.
+    - name: Deploy
+      description: Investigate (re)deployment approaches.
+    - name: Explore
+      description: The default; no commitment implied.
+    - name: Find
+      description: Locate the resources that hold or serve what is needed, before any choice between them is made.
+    - name: Integrate
+      description: Connect resources so data or services flow between them; how they fit together.
+    - name: Learn
+      description: Bring a person up to speed on a resource.
+    - name: Maintain
+      description: Track change and risk over time; version-change impact.
+    - name: Select
+      description: Choose among resources already found, and decide whether to adopt them; subsumes comparing alternatives.
+    - name: Share
+      description: Produce blueprints and docs so others can find and reuse.

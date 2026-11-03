@@ -61,6 +61,24 @@ class CreateSubscriptionRequest(BaseModel):
     label: str = ""
 
 
+#: How to find a resource of each subscribable kind, same shape as
+#: schedules.py's own `_RESOURCE_LOOKUP` (kept as a second dict rather than
+#: imported, since the two 404 messages below differ in wording and this one
+#: has no "unknown entity_type passes through" exception to share).
+_RESOURCE_LOOKUP = {
+    "repo": lambda reg, slug: reg.get(slug),
+    "database": lambda reg, slug: reg.get_database(slug, allow_unreadable=True),
+    "filesystem": lambda reg, slug: reg.get_filesystem(slug),
+}
+
+#: Human noun for the 404 detail, per entity_type — "Repo 'x' not found" is
+#: wrong and confusing for a database/filesystem slug (found live 2026-09-28:
+#: a database's own "notify me" dialog sent `entity_type: 'repo'`
+#: unconditionally, so it 404'd against `registry.get()` — the repo-only
+#: lookup — with a slug that was never going to be there).
+_ENTITY_NOUN = {"repo": "Repo", "database": "Database", "filesystem": "Filesystem"}
+
+
 @router.get("/subscriptions", response_model=list[SubscriptionData])
 def list_subscriptions(
     entity_type: str | None = None,
@@ -83,8 +101,19 @@ def list_subscriptions(
 @router.post("/subscriptions", response_model=SubscriptionData)
 def create_subscription(req: CreateSubscriptionRequest) -> SubscriptionData:
     registry = ProjectRegistry()
-    if req.entity_type == "repo" and not registry.get(req.entity_slug):
-        raise HTTPException(status_code=404, detail=f"Repo '{req.entity_slug}' not found")
+    # Type-correct dispatch: a database/filesystem slug must be validated
+    # against ITS OWN registry lookup, not silently skipped (the old check
+    # only ever ran for entity_type == "repo") and not checked with the
+    # repo-only lookup (the old check's actual bug, once the client started
+    # sending a real entity_type instead of hardcoding 'repo'). An
+    # entity_type this dict doesn't know passes through unvalidated, same as
+    # schedules.py's `_require_resource` — this route has never constrained
+    # the vocabulary, and 422ing here would reject a resource kind added
+    # elsewhere before this dict was updated for it.
+    lookup = _RESOURCE_LOOKUP.get(req.entity_type)
+    if lookup is not None and not lookup(registry, req.entity_slug):
+        noun = _ENTITY_NOUN.get(req.entity_type, req.entity_type.capitalize())
+        raise HTTPException(status_code=404, detail=f"{noun} '{req.entity_slug}' not found")
     row = registry.create_subscription(req.entity_type, req.entity_slug, req.analysis_id, req.label)
     return SubscriptionData.from_row(
         row, (req.entity_type, req.entity_slug, req.analysis_id) in _scheduled_pairs(registry))

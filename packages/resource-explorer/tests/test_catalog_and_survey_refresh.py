@@ -1,7 +1,7 @@
 """Tests for the "catalog_and_survey never refreshes an existing element's
 connection" fix — docs/Backlog.md "TIER 1 — catalog_and_survey never refreshes
 an existing element's credentials/connection" and
-docs/design-notes/CATALOG-AND-SURVEY-REFRESH-FIX.md.
+CATALOG-AND-SURVEY-REFRESH-FIX.md.
 
 Root cause (confirmed live against qs-view-server, see the design note):
 pyegeria's AutomatedCuration.create_postgres_server_element_from_template and
@@ -17,6 +17,7 @@ already exists by qualifiedName.
 from __future__ import annotations
 
 from unittest.mock import MagicMock
+from tests.qn_lookup_bridge import expert_from_legacy
 
 import pytest
 
@@ -48,8 +49,17 @@ def surveyor():
     )
     # Bypass connect() — inject mocks directly, as other tests in this suite do.
     s._automated_curation = MagicMock()
+    # A real miss is pyegeria's "No elements found"; a bare MagicMock answer is not one (round 3: odd answers are
+    # could-not-check, never "create").
+    s._automated_curation.get_guid_for_name.return_value = "No elements found"
     s._asset_maker = MagicMock()
     s._discovery = MagicMock()
+    # S19: no archived copy of the database, so a create is a plain create (a real 6.2 miss).
+    from pyegeria import MetadataExpert
+    from unittest.mock import create_autospec
+    s._metadata_expert = create_autospec(MetadataExpert, spec_set=True, instance=True)
+    expert_from_legacy(s._automated_curation, s._metadata_expert)
+    s._metadata_expert.find_metadata_elements_with_string.return_value = "No elements found"
     return s
 
 
@@ -117,15 +127,31 @@ class TestCatalogAndSurveyFreshCatalog:
         ]
         surveyor._initiate_survey = MagicMock(return_value="survey-guid")
 
+        surveyor._secrets_store_guid = "store-guid"  # RE's own secrets store, already found (no lookup here)
         surveyor._catalog_and_survey(db_entity, db_user="postgres", db_pwd="corrected-pw")
 
+        # The CURRENT credentials reach Egeria only through RE's secrets store (owner decision 2026-10-21: no
+        # plaintext databaseUserId/databasePassword placeholders -- Egeria's templates declare neither).
+        saves = surveyor._automated_curation.save_client_side_secret.call_args_list
+        assert saves, "the current credentials were not saved to the secrets store"
+        secrets = saves[-1][0][1]["secretsCollection"]["secrets"]
+        assert secrets == {"userId": "postgres", "clearPassword": "corrected-pw"}
         calls = surveyor._automated_curation.create_elem_from_template.call_args_list
-        server_body = calls[0][0][0]
-        db_body = calls[1][0][0]
-        assert server_body["placeholderPropertyValues"]["databaseUserId"] == "postgres"
-        assert server_body["placeholderPropertyValues"]["databasePassword"] == "corrected-pw"
-        assert db_body["placeholderPropertyValues"]["databaseUserId"] == "postgres"
-        assert db_body["placeholderPropertyValues"]["databasePassword"] == "corrected-pw"
+        for body in (calls[0][0][0], calls[1][0][0]):
+            ph = body["placeholderPropertyValues"]
+            assert "databaseUserId" not in ph and "databasePassword" not in ph
+            assert "corrected-pw" not in str(body)
+            assert ph["secretsCollectionName"] and ph["secretsStorePathName"]
+
+
+def _by_qn(connection_guid):
+    """Existing elements, found by their FULL qualifiedName (Brief L, 7f.7) — never a bare name."""
+    found = {
+        "PostgreSQL Server::localhost:5442": "existing-server-guid",
+        "PostgreSQL Relational Database::localhost:5442::coco_ods": "existing-db-guid",
+        "PostgreSQL Relational Database::localhost:5442::coco_ods::Connection": connection_guid,
+    }
+    return MagicMock(side_effect=lambda qn: found.get(qn, ""))
 
 
 class TestCatalogAndSurveyExistingElement:
@@ -136,11 +162,7 @@ class TestCatalogAndSurveyExistingElement:
     must not call the (network) create path again once something is found."""
 
     def test_does_not_recreate_when_already_found_by_name(self, surveyor, db_entity):
-        surveyor._find_element_guid = MagicMock(side_effect=[
-            "existing-server-guid",  # server lookup
-            "existing-db-guid",      # database lookup
-            "",                      # connection-presence check finds none
-        ])
+        surveyor._find_by_qualified_name = _by_qn("")   # connection-presence check finds none
         surveyor._initiate_survey = MagicMock(return_value="survey-guid")
 
         result = surveyor._catalog_and_survey(db_entity, db_user="postgres", db_pwd="corrected-pw")
@@ -150,11 +172,7 @@ class TestCatalogAndSurveyExistingElement:
         surveyor._automated_curation.create_elem_from_template.assert_not_called()
 
     def test_warns_when_existing_element_has_no_connection(self, surveyor, db_entity, caplog):
-        surveyor._find_element_guid = MagicMock(side_effect=[
-            "existing-server-guid",
-            "existing-db-guid",
-            "",  # connection-presence check: none found
-        ])
+        surveyor._find_by_qualified_name = _by_qn("")   # connection-presence check: none found
         surveyor._initiate_survey = MagicMock(return_value="survey-guid")
 
         with caplog.at_level("WARNING"):
@@ -164,11 +182,7 @@ class TestCatalogAndSurveyExistingElement:
         assert any("delete-and-recatalog" in r.message for r in caplog.records)
 
     def test_no_warning_when_existing_element_has_a_connection(self, surveyor, db_entity, caplog):
-        surveyor._find_element_guid = MagicMock(side_effect=[
-            "existing-server-guid",
-            "existing-db-guid",
-            "connection-guid-present",  # connection-presence check: found
-        ])
+        surveyor._find_by_qualified_name = _by_qn("connection-guid-present")   # connection found
         surveyor._initiate_survey = MagicMock(return_value="survey-guid")
 
         with caplog.at_level("WARNING"):

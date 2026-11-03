@@ -181,7 +181,7 @@ and `egeria-advisor` depend on the other workspace members (`trellis-microflow`,
 needs the whole tree to resolve against the one shared `uv.lock`. The root `.dockerignore`
 excludes `.venv`, `data/`, logs, caches, `*.db` (SQLite is retired per §3 of the plan — "the
 SQLite fallback ... is retired" — so none belong in an image regardless), `.git`,
-`docs/incident-evidence`, and `node_modules`/`htmlcov` for when those exist.
+and `node_modules`/`htmlcov` for when those exist.
 
 ## Local build and run targets
 

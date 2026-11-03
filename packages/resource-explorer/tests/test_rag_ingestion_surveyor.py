@@ -126,6 +126,24 @@ class TestDegradation:
 
 
 class TestOrdering:
+    def test_a_repo_with_no_collections_is_reported_as_never_indexed(self, registry):
+        bare = Project(slug="bare", display_name="Bare", github_url="https://github.com/o/bare",
+                       description="", collections=[])
+        registry.add(bare)
+        stop, _mock = _counts({})
+        try:
+            with patch("resource_explorer.ingestion.incremental.IncrementalIndexer.refresh"), \
+                 patch("resource_explorer.query_cache.QueryCache.invalidate_project"):
+                anns = RagIngestionSurveyor(bare, registry).run()
+        finally:
+            stop.stop()
+
+        assert len(anns) == 1
+        assert anns[0].summary == "Not indexed for chat (no collections registered)"
+        assert "indexed no chunks" not in anns[0].explanation
+        assert anns[0].json_properties["outcome"] == "unverified"
+        assert "never indexed" in anns[0].json_properties["outcome_cause"]
+
     def test_is_the_last_step_in_the_registry(self):
         """Nothing downstream reads pgvector, and this is the most expensive
         step in the set — STEP_REGISTRY order is also Full Survey order."""

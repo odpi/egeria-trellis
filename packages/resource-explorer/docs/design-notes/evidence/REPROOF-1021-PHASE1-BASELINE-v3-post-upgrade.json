@@ -1,0 +1,1423 @@
+{
+ "captured_at": "2026-10-22T16:09:45.393858+00:00",
+ "egeria_image": "tree built on odpi/egeria-platform@sha256:621ca8e0 (local ed4a6609); archive to be tested on odpi/egeria-platform@sha256:a8bcff5c (6.3-SNAPSHOT, odpi/egeria c6dbf952 #9378; local a5f941a1; started 2026-10-22T15:59:10Z)",
+ "database": "c79be6db-c959-48a2-b96f-c71249f47e1e",
+ "curation": "2a8727fceb0e4108b171f84da4c63098",
+ "pressed_by": "peterprofile (owner's signed-in pane; service account refuses login)",
+ "elements": {
+  "c79be6db-c959-48a2-b96f-c71249f47e1e": {
+   "guid": "c79be6db-c959-48a2-b96f-c71249f47e1e",
+   "type": "RelationalDatabase",
+   "createdBy": "resourceexplorernpa",
+   "createTime": "2026-10-22T11:11:34.771+00:00",
+   "version": 2,
+   "anchor": {
+    "anchorGUID": null,
+    "anchorTypeName": "RelationalDatabase"
+   },
+   "qualifiedName": "PostgreSQL Relational Database::host.docker.internal:5432::re_cascade_reproof_1021",
+   "name": "re_cascade_reproof_1021"
+  },
+  "910956f7-25f6-4413-8dbc-26caef3749b4": {
+   "guid": "910956f7-25f6-4413-8dbc-26caef3749b4",
+   "type": "ResourceMeasureAnnotation",
+   "createdBy": "postgresqlsurveyengine",
+   "createTime": "2026-10-22T11:12:14.168+00:00",
+   "version": 1,
+   "anchor": {
+    "anchorGUID": "c79be6db-c959-48a2-b96f-c71249f47e1e",
+    "anchorTypeName": "RelationalDatabase"
+   },
+   "qualifiedName": "Annotation::Capture Database Table Measurements::re_cascade_reproof_1021.beta.gadgets::52c88d24-fa77-4354-8592-c99fa307f790",
+   "name": null
+  },
+  "a8bdead5-9af6-451f-a510-d8abcb4e89a5": {
+   "guid": "a8bdead5-9af6-451f-a510-d8abcb4e89a5",
+   "type": "ResourceMeasureAnnotation",
+   "createdBy": "postgresqlsurveyengine",
+   "createTime": "2026-10-22T11:12:14.017+00:00",
+   "version": 1,
+   "anchor": {
+    "anchorGUID": "c79be6db-c959-48a2-b96f-c71249f47e1e",
+    "anchorTypeName": "RelationalDatabase"
+   },
+   "qualifiedName": "Annotation::Capture Database Table Measurements::re_cascade_reproof_1021.beta.gadget_notes::b1e2eafd-5091-4b53-85d1-03ebbc179b05",
+   "name": null
+  },
+  "6217d358-9e1b-4e28-b949-5f98a90c2dac": {
+   "guid": "6217d358-9e1b-4e28-b949-5f98a90c2dac",
+   "type": "ResourceMeasureAnnotation",
+   "createdBy": "postgresqlsurveyengine",
+   "createTime": "2026-10-22T11:12:13.869+00:00",
+   "version": 1,
+   "anchor": {
+    "anchorGUID": "c79be6db-c959-48a2-b96f-c71249f47e1e",
+    "anchorTypeName": "RelationalDatabase"
+   },
+   "qualifiedName": "Annotation::Capture Database Schema Measurements::re_cascade_reproof_1021.beta::8e45639f-b22f-40a3-a856-870b7d50459d",
+   "name": null
+  },
+  "ca159438-fc56-45c0-b6c0-06fa0791c4f7": {
+   "guid": "ca159438-fc56-45c0-b6c0-06fa0791c4f7",
+   "type": "ResourceMeasureAnnotation",
+   "createdBy": "postgresqlsurveyengine",
+   "createTime": "2026-10-22T11:12:13.721+00:00",
+   "version": 1,
+   "anchor": {
+    "anchorGUID": "c79be6db-c959-48a2-b96f-c71249f47e1e",
+    "anchorTypeName": "RelationalDatabase"
+   },
+   "qualifiedName": "Annotation::Capture Database Table Measurements::re_cascade_reproof_1021.alpha.widget_parts::942ae3ca-986a-4e53-b390-99f43504b121",
+   "name": null
+  },
+  "37974c05-5951-41ed-af5f-6ba26f601082": {
+   "guid": "37974c05-5951-41ed-af5f-6ba26f601082",
+   "type": "ResourceMeasureAnnotation",
+   "createdBy": "postgresqlsurveyengine",
+   "createTime": "2026-10-22T11:12:13.521+00:00",
+   "version": 1,
+   "anchor": {
+    "anchorGUID": "c79be6db-c959-48a2-b96f-c71249f47e1e",
+    "anchorTypeName": "RelationalDatabase"
+   },
+   "qualifiedName": "Annotation::Capture Database Table Measurements::re_cascade_reproof_1021.alpha.widgets::28a5a8c8-56fb-4f76-a16d-3ed2f30d38ef",
+   "name": null
+  },
+  "bf966bd3-e14b-472f-a536-0a558c5edbde": {
+   "guid": "bf966bd3-e14b-472f-a536-0a558c5edbde",
+   "type": "ResourceMeasureAnnotation",
+   "createdBy": "postgresqlsurveyengine",
+   "createTime": "2026-10-22T11:12:13.356+00:00",
+   "version": 1,
+   "anchor": {
+    "anchorGUID": "c79be6db-c959-48a2-b96f-c71249f47e1e",
+    "anchorTypeName": "RelationalDatabase"
+   },
+   "qualifiedName": "Annotation::Capture Database Schema Measurements::re_cascade_reproof_1021.alpha::214f6544-7feb-499d-9730-ba974566f642",
+   "name": null
+  },
+  "f976b127-5524-448a-b501-0d95fa8f1ef2": {
+   "guid": "f976b127-5524-448a-b501-0d95fa8f1ef2",
+   "type": "ResourceMeasureAnnotation",
+   "createdBy": "postgresqlsurveyengine",
+   "createTime": "2026-10-22T11:12:13.109+00:00",
+   "version": 1,
+   "anchor": {
+    "anchorGUID": "c79be6db-c959-48a2-b96f-c71249f47e1e",
+    "anchorTypeName": "RelationalDatabase"
+   },
+   "qualifiedName": "Annotation::Capture Database Measurements::re_cascade_reproof_1021::765cec4a-c875-4e40-b967-091d9739a554",
+   "name": null
+  },
+  "1c9917fa-6082-4b09-9b10-05737a0a8148": {
+   "guid": "1c9917fa-6082-4b09-9b10-05737a0a8148",
+   "type": "SurveyReport",
+   "createdBy": "postgresqlsurveyengine",
+   "createTime": "2026-10-22T11:12:11.543+00:00",
+   "version": 6,
+   "anchor": {
+    "anchorGUID": "c79be6db-c959-48a2-b96f-c71249f47e1e",
+    "anchorTypeName": "RelationalDatabase"
+   },
+   "qualifiedName": "SurveyReport::survey-postgres-database::c79be6db-c959-48a2-b96f-c71249f47e1e::Thu Oct 22 11:12:11 GMT 2026",
+   "name": "Survey Report for c79be6db-c959-48a2-b96f-c71249f47e1e"
+  },
+  "1b09c959-08a9-42cb-bb67-0acdb676963f": {
+   "guid": "1b09c959-08a9-42cb-bb67-0acdb676963f",
+   "type": "SurveyReport",
+   "createdBy": "resourceexplorernpa",
+   "createTime": "2026-10-22T11:12:08.814+00:00",
+   "version": 1,
+   "anchor": {
+    "anchorGUID": null,
+    "anchorTypeName": "SurveyReport"
+   },
+   "qualifiedName": "SurveyReport::PostgreSQL::laz_local_re_cascade_reproof_1021::2026-10-21T22:24:06.746740",
+   "name": "Survey: re_cascade_reproof_1021 @ laz-local-5432 (archive-cascade re-proof throwaway)"
+  },
+  "b9b6c90a-b269-47f2-b0ea-dd17b715b5fa": {
+   "guid": "b9b6c90a-b269-47f2-b0ea-dd17b715b5fa",
+   "type": "ResourceMeasureAnnotation",
+   "createdBy": "resourceexplorernpa",
+   "createTime": "2026-10-22T11:12:10.308+00:00",
+   "version": 1,
+   "anchor": {
+    "anchorGUID": "1b09c959-08a9-42cb-bb67-0acdb676963f",
+    "anchorTypeName": "SurveyReport"
+   },
+   "qualifiedName": "Annotation::PostgreSQL::laz_local_re_cascade_reproof_1021::2026-10-21T22:24:06.746740::12",
+   "name": null
+  },
+  "6896aa07-db47-4cf8-affd-b39e4bc13359": {
+   "guid": "6896aa07-db47-4cf8-affd-b39e4bc13359",
+   "type": "ResourceMeasureAnnotation",
+   "createdBy": "resourceexplorernpa",
+   "createTime": "2026-10-22T11:12:10.204+00:00",
+   "version": 1,
+   "anchor": {
+    "anchorGUID": "1b09c959-08a9-42cb-bb67-0acdb676963f",
+    "anchorTypeName": "SurveyReport"
+   },
+   "qualifiedName": "Annotation::PostgreSQL::laz_local_re_cascade_reproof_1021::2026-10-21T22:24:06.746740::11",
+   "name": null
+  },
+  "4152df7b-942e-4381-8964-bc9d5865d685": {
+   "guid": "4152df7b-942e-4381-8964-bc9d5865d685",
+   "type": "ResourceMeasureAnnotation",
+   "createdBy": "resourceexplorernpa",
+   "createTime": "2026-10-22T11:12:10.113+00:00",
+   "version": 1,
+   "anchor": {
+    "anchorGUID": "1b09c959-08a9-42cb-bb67-0acdb676963f",
+    "anchorTypeName": "SurveyReport"
+   },
+   "qualifiedName": "Annotation::PostgreSQL::laz_local_re_cascade_reproof_1021::2026-10-21T22:24:06.746740::10",
+   "name": null
+  },
+  "1a90d32f-cdeb-4c83-9abe-e780b17b4389": {
+   "guid": "1a90d32f-cdeb-4c83-9abe-e780b17b4389",
+   "type": "ResourceMeasureAnnotation",
+   "createdBy": "resourceexplorernpa",
+   "createTime": "2026-10-22T11:12:10.017+00:00",
+   "version": 1,
+   "anchor": {
+    "anchorGUID": "1b09c959-08a9-42cb-bb67-0acdb676963f",
+    "anchorTypeName": "SurveyReport"
+   },
+   "qualifiedName": "Annotation::PostgreSQL::laz_local_re_cascade_reproof_1021::2026-10-21T22:24:06.746740::9",
+   "name": null
+  },
+  "7b142869-ad81-4f7d-8c3c-dfd41704626f": {
+   "guid": "7b142869-ad81-4f7d-8c3c-dfd41704626f",
+   "type": "ResourceMeasureAnnotation",
+   "createdBy": "resourceexplorernpa",
+   "createTime": "2026-10-22T11:12:09.928+00:00",
+   "version": 1,
+   "anchor": {
+    "anchorGUID": "1b09c959-08a9-42cb-bb67-0acdb676963f",
+    "anchorTypeName": "SurveyReport"
+   },
+   "qualifiedName": "Annotation::PostgreSQL::laz_local_re_cascade_reproof_1021::2026-10-21T22:24:06.746740::8",
+   "name": null
+  },
+  "5b73c0c4-47a5-46fa-ac7c-119cc89e8f05": {
+   "guid": "5b73c0c4-47a5-46fa-ac7c-119cc89e8f05",
+   "type": "SchemaAnalysisAnnotation",
+   "createdBy": "resourceexplorernpa",
+   "createTime": "2026-10-22T11:12:09.825+00:00",
+   "version": 1,
+   "anchor": {
+    "anchorGUID": "1b09c959-08a9-42cb-bb67-0acdb676963f",
+    "anchorTypeName": "SurveyReport"
+   },
+   "qualifiedName": "Annotation::PostgreSQL::laz_local_re_cascade_reproof_1021::2026-10-21T22:24:06.746740::7",
+   "name": null
+  },
+  "e8e2c126-acd5-49c1-ae45-88f711b4797e": {
+   "guid": "e8e2c126-acd5-49c1-ae45-88f711b4797e",
+   "type": "SchemaAnalysisAnnotation",
+   "createdBy": "resourceexplorernpa",
+   "createTime": "2026-10-22T11:12:09.745+00:00",
+   "version": 1,
+   "anchor": {
+    "anchorGUID": "1b09c959-08a9-42cb-bb67-0acdb676963f",
+    "anchorTypeName": "SurveyReport"
+   },
+   "qualifiedName": "Annotation::PostgreSQL::laz_local_re_cascade_reproof_1021::2026-10-21T22:24:06.746740::6",
+   "name": null
+  },
+  "01bcab2c-c1c0-47e9-97b7-9619705f0acd": {
+   "guid": "01bcab2c-c1c0-47e9-97b7-9619705f0acd",
+   "type": "SchemaAnalysisAnnotation",
+   "createdBy": "resourceexplorernpa",
+   "createTime": "2026-10-22T11:12:09.639+00:00",
+   "version": 1,
+   "anchor": {
+    "anchorGUID": "1b09c959-08a9-42cb-bb67-0acdb676963f",
+    "anchorTypeName": "SurveyReport"
+   },
+   "qualifiedName": "Annotation::PostgreSQL::laz_local_re_cascade_reproof_1021::2026-10-21T22:24:06.746740::5",
+   "name": null
+  },
+  "d194dc9c-ee40-4529-a26f-7a36db8ff5ad": {
+   "guid": "d194dc9c-ee40-4529-a26f-7a36db8ff5ad",
+   "type": "SchemaAnalysisAnnotation",
+   "createdBy": "resourceexplorernpa",
+   "createTime": "2026-10-22T11:12:09.558+00:00",
+   "version": 1,
+   "anchor": {
+    "anchorGUID": "1b09c959-08a9-42cb-bb67-0acdb676963f",
+    "anchorTypeName": "SurveyReport"
+   },
+   "qualifiedName": "Annotation::PostgreSQL::laz_local_re_cascade_reproof_1021::2026-10-21T22:24:06.746740::4",
+   "name": null
+  },
+  "9669cfc8-5925-4e2b-a6ba-ef109b412169": {
+   "guid": "9669cfc8-5925-4e2b-a6ba-ef109b412169",
+   "type": "SchemaAnalysisAnnotation",
+   "createdBy": "resourceexplorernpa",
+   "createTime": "2026-10-22T11:12:09.478+00:00",
+   "version": 1,
+   "anchor": {
+    "anchorGUID": "1b09c959-08a9-42cb-bb67-0acdb676963f",
+    "anchorTypeName": "SurveyReport"
+   },
+   "qualifiedName": "Annotation::PostgreSQL::laz_local_re_cascade_reproof_1021::2026-10-21T22:24:06.746740::3",
+   "name": null
+  },
+  "36215b81-ea06-4317-b069-5dba396a5973": {
+   "guid": "36215b81-ea06-4317-b069-5dba396a5973",
+   "type": "SchemaAnalysisAnnotation",
+   "createdBy": "resourceexplorernpa",
+   "createTime": "2026-10-22T11:12:09.344+00:00",
+   "version": 1,
+   "anchor": {
+    "anchorGUID": "1b09c959-08a9-42cb-bb67-0acdb676963f",
+    "anchorTypeName": "SurveyReport"
+   },
+   "qualifiedName": "Annotation::PostgreSQL::laz_local_re_cascade_reproof_1021::2026-10-21T22:24:06.746740::2",
+   "name": null
+  },
+  "eafe590a-92d0-41a7-a3ce-f47480d5d3f6": {
+   "guid": "eafe590a-92d0-41a7-a3ce-f47480d5d3f6",
+   "type": "SchemaAnalysisAnnotation",
+   "createdBy": "resourceexplorernpa",
+   "createTime": "2026-10-22T11:12:09.201+00:00",
+   "version": 1,
+   "anchor": {
+    "anchorGUID": "1b09c959-08a9-42cb-bb67-0acdb676963f",
+    "anchorTypeName": "SurveyReport"
+   },
+   "qualifiedName": "Annotation::PostgreSQL::laz_local_re_cascade_reproof_1021::2026-10-21T22:24:06.746740::1",
+   "name": null
+  },
+  "6b8a603b-0245-4338-96d5-6435d99d9c29": {
+   "guid": "6b8a603b-0245-4338-96d5-6435d99d9c29",
+   "type": "SchemaAnalysisAnnotation",
+   "createdBy": "resourceexplorernpa",
+   "createTime": "2026-10-22T11:12:09.093+00:00",
+   "version": 1,
+   "anchor": {
+    "anchorGUID": "1b09c959-08a9-42cb-bb67-0acdb676963f",
+    "anchorTypeName": "SurveyReport"
+   },
+   "qualifiedName": "Annotation::PostgreSQL::laz_local_re_cascade_reproof_1021::2026-10-21T22:24:06.746740::0",
+   "name": null
+  },
+  "2f9a40a0-6f0b-4f37-9522-ea12407b5745": {
+   "guid": "2f9a40a0-6f0b-4f37-9522-ea12407b5745",
+   "type": "DeployedDatabaseSchema",
+   "createdBy": "resourceexplorernpa",
+   "createTime": "2026-10-22T11:12:05.395+00:00",
+   "version": 2,
+   "anchor": {
+    "anchorGUID": "c79be6db-c959-48a2-b96f-c71249f47e1e",
+    "anchorTypeName": "RelationalDatabase"
+   },
+   "qualifiedName": "PostgreSQL Relational Database Schema::host.docker.internal:5432::re_cascade_reproof_1021.beta",
+   "name": "re_cascade_reproof_1021.beta"
+  },
+  "05bcc901-5892-4990-a1af-4300ba25d180": {
+   "guid": "05bcc901-5892-4990-a1af-4300ba25d180",
+   "type": "RelationalDBSchemaType",
+   "createdBy": "dbcatnpa",
+   "createTime": "2026-10-22T11:37:47.532+00:00",
+   "version": 1,
+   "anchor": {
+    "anchorGUID": "2f9a40a0-6f0b-4f37-9522-ea12407b5745",
+    "anchorTypeName": "DeployedDatabaseSchema"
+   },
+   "qualifiedName": "PostgreSQL Relational Database Schema::host.docker.internal:5432::re_cascade_reproof_1021.beta_schemaType",
+   "name": "Schema Type for re_cascade_reproof_1021.beta"
+  },
+  "db43ac3d-f974-4aae-aabd-53cdb04abd39": {
+   "guid": "db43ac3d-f974-4aae-aabd-53cdb04abd39",
+   "type": "RelationalTable",
+   "createdBy": "dbcatnpa",
+   "createTime": "2026-10-22T11:37:48.089+00:00",
+   "version": 1,
+   "anchor": {
+    "anchorGUID": "2f9a40a0-6f0b-4f37-9522-ea12407b5745",
+    "anchorTypeName": "DeployedDatabaseSchema"
+   },
+   "qualifiedName": "PostgreSQL Relational Database Schema::host.docker.internal:5432::re_cascade_reproof_1021.beta::gadgets",
+   "name": "gadgets"
+  },
+  "415f4402-e229-4747-9ae8-f3e4ee094b7a": {
+   "guid": "415f4402-e229-4747-9ae8-f3e4ee094b7a",
+   "type": "RelationalColumn",
+   "createdBy": "dbcatnpa",
+   "createTime": "2026-10-22T11:37:48.569+00:00",
+   "version": 1,
+   "anchor": {
+    "anchorGUID": "2f9a40a0-6f0b-4f37-9522-ea12407b5745",
+    "anchorTypeName": "DeployedDatabaseSchema"
+   },
+   "qualifiedName": "PostgreSQL Relational Database Schema::host.docker.internal:5432::re_cascade_reproof_1021.beta::gadgets::price",
+   "name": "price"
+  },
+  "7633bb5e-6730-4e8b-b2d5-1a06ba93879f": {
+   "guid": "7633bb5e-6730-4e8b-b2d5-1a06ba93879f",
+   "type": "RelationalColumn",
+   "createdBy": "dbcatnpa",
+   "createTime": "2026-10-22T11:37:48.447+00:00",
+   "version": 1,
+   "anchor": {
+    "anchorGUID": "2f9a40a0-6f0b-4f37-9522-ea12407b5745",
+    "anchorTypeName": "DeployedDatabaseSchema"
+   },
+   "qualifiedName": "PostgreSQL Relational Database Schema::host.docker.internal:5432::re_cascade_reproof_1021.beta::gadgets::label",
+   "name": "label"
+  },
+  "6b539a14-ce40-4514-b64b-18e66ad13f0b": {
+   "guid": "6b539a14-ce40-4514-b64b-18e66ad13f0b",
+   "type": "RelationalColumn",
+   "createdBy": "dbcatnpa",
+   "createTime": "2026-10-22T11:37:48.274+00:00",
+   "version": 1,
+   "anchor": {
+    "anchorGUID": "2f9a40a0-6f0b-4f37-9522-ea12407b5745",
+    "anchorTypeName": "DeployedDatabaseSchema"
+   },
+   "qualifiedName": "PostgreSQL Relational Database Schema::host.docker.internal:5432::re_cascade_reproof_1021.beta::gadgets::id",
+   "name": "id"
+  },
+  "006d37cb-36a5-453f-92f1-c1b007ce17a4": {
+   "guid": "006d37cb-36a5-453f-92f1-c1b007ce17a4",
+   "type": "RelationalTable",
+   "createdBy": "dbcatnpa",
+   "createTime": "2026-10-22T11:37:47.591+00:00",
+   "version": 1,
+   "anchor": {
+    "anchorGUID": "2f9a40a0-6f0b-4f37-9522-ea12407b5745",
+    "anchorTypeName": "DeployedDatabaseSchema"
+   },
+   "qualifiedName": "PostgreSQL Relational Database Schema::host.docker.internal:5432::re_cascade_reproof_1021.beta::gadget_notes",
+   "name": "gadget_notes"
+  },
+  "869264bf-a842-4624-a48d-28432710bf52": {
+   "guid": "869264bf-a842-4624-a48d-28432710bf52",
+   "type": "RelationalColumn",
+   "createdBy": "dbcatnpa",
+   "createTime": "2026-10-22T11:37:47.919+00:00",
+   "version": 1,
+   "anchor": {
+    "anchorGUID": "2f9a40a0-6f0b-4f37-9522-ea12407b5745",
+    "anchorTypeName": "DeployedDatabaseSchema"
+   },
+   "qualifiedName": "PostgreSQL Relational Database Schema::host.docker.internal:5432::re_cascade_reproof_1021.beta::gadget_notes::note",
+   "name": "note"
+  },
+  "e837ff19-8304-4aa3-86a5-8db853a8c116": {
+   "guid": "e837ff19-8304-4aa3-86a5-8db853a8c116",
+   "type": "RelationalColumn",
+   "createdBy": "dbcatnpa",
+   "createTime": "2026-10-22T11:37:47.804+00:00",
+   "version": 1,
+   "anchor": {
+    "anchorGUID": "2f9a40a0-6f0b-4f37-9522-ea12407b5745",
+    "anchorTypeName": "DeployedDatabaseSchema"
+   },
+   "qualifiedName": "PostgreSQL Relational Database Schema::host.docker.internal:5432::re_cascade_reproof_1021.beta::gadget_notes::gadget_id",
+   "name": "gadget_id"
+  },
+  "75181baa-52ea-492c-8e73-c2363c1a41a6": {
+   "guid": "75181baa-52ea-492c-8e73-c2363c1a41a6",
+   "type": "RelationalColumn",
+   "createdBy": "dbcatnpa",
+   "createTime": "2026-10-22T11:37:47.690+00:00",
+   "version": 1,
+   "anchor": {
+    "anchorGUID": "2f9a40a0-6f0b-4f37-9522-ea12407b5745",
+    "anchorTypeName": "DeployedDatabaseSchema"
+   },
+   "qualifiedName": "PostgreSQL Relational Database Schema::host.docker.internal:5432::re_cascade_reproof_1021.beta::gadget_notes::id",
+   "name": "id"
+  },
+  "cc615faa-cd5e-4cce-8931-2c17639d2200": {
+   "guid": "cc615faa-cd5e-4cce-8931-2c17639d2200",
+   "type": "VirtualConnection",
+   "createdBy": "resourceexplorernpa",
+   "createTime": "2026-10-22T11:12:05.472+00:00",
+   "version": 1,
+   "anchor": {
+    "anchorGUID": "2f9a40a0-6f0b-4f37-9522-ea12407b5745",
+    "anchorTypeName": "DeployedDatabaseSchema"
+   },
+   "qualifiedName": "PostgreSQL Relational Database Schema::host.docker.internal:5432::re_cascade_reproof_1021.beta::Connection",
+   "name": "re_cascade_reproof_1021.beta connection"
+  },
+  "306f208e-9a22-4401-8ce0-712d023c597f": {
+   "guid": "306f208e-9a22-4401-8ce0-712d023c597f",
+   "type": "Connection",
+   "createdBy": "resourceexplorernpa",
+   "createTime": "2026-10-22T11:12:05.619+00:00",
+   "version": 1,
+   "anchor": {
+    "anchorGUID": "2f9a40a0-6f0b-4f37-9522-ea12407b5745",
+    "anchorTypeName": "DeployedDatabaseSchema"
+   },
+   "qualifiedName": "PostgreSQL Relational Database Schema::host.docker.internal:5432::re_cascade_reproof_1021.beta::SecretsStoreConnection",
+   "name": "re_cascade_reproof_1021.beta secrets store connection"
+  },
+  "807c8076-16d5-4c62-b6b2-e13239ef2f9a": {
+   "guid": "807c8076-16d5-4c62-b6b2-e13239ef2f9a",
+   "type": "Endpoint",
+   "createdBy": "resourceexplorernpa",
+   "createTime": "2026-10-22T11:12:05.718+00:00",
+   "version": 1,
+   "anchor": {
+    "anchorGUID": "2f9a40a0-6f0b-4f37-9522-ea12407b5745",
+    "anchorTypeName": "DeployedDatabaseSchema"
+   },
+   "qualifiedName": "PostgreSQL Relational Database Schema::host.docker.internal:5432::re_cascade_reproof_1021.beta::SecretStoreEndpoint",
+   "name": "re_cascade_reproof_1021.beta secret store endpoint"
+  },
+  "8a95b5ec-4a7f-4929-9d70-584298995514": {
+   "guid": "8a95b5ec-4a7f-4929-9d70-584298995514",
+   "type": "Endpoint",
+   "createdBy": "resourceexplorernpa",
+   "createTime": "2026-10-22T11:12:05.522+00:00",
+   "version": 1,
+   "anchor": {
+    "anchorGUID": "2f9a40a0-6f0b-4f37-9522-ea12407b5745",
+    "anchorTypeName": "DeployedDatabaseSchema"
+   },
+   "qualifiedName": "PostgreSQL Relational Database Schema::host.docker.internal:5432::re_cascade_reproof_1021.beta::Endpoint",
+   "name": "re_cascade_reproof_1021.beta endpoint"
+  },
+  "4ffa5fec-fb9d-47a8-93fa-ad5490b46713": {
+   "guid": "4ffa5fec-fb9d-47a8-93fa-ad5490b46713",
+   "type": "DeployedDatabaseSchema",
+   "createdBy": "resourceexplorernpa",
+   "createTime": "2026-10-22T11:11:53.379+00:00",
+   "version": 2,
+   "anchor": {
+    "anchorGUID": "c79be6db-c959-48a2-b96f-c71249f47e1e",
+    "anchorTypeName": "RelationalDatabase"
+   },
+   "qualifiedName": "PostgreSQL Relational Database Schema::host.docker.internal:5432::re_cascade_reproof_1021.alpha",
+   "name": "re_cascade_reproof_1021.alpha"
+  },
+  "ed8365e6-9f42-4027-8bb2-0b756b2672f1": {
+   "guid": "ed8365e6-9f42-4027-8bb2-0b756b2672f1",
+   "type": "RelationalDBSchemaType",
+   "createdBy": "dbcatnpa",
+   "createTime": "2026-10-22T11:37:45.650+00:00",
+   "version": 1,
+   "anchor": {
+    "anchorGUID": "4ffa5fec-fb9d-47a8-93fa-ad5490b46713",
+    "anchorTypeName": "DeployedDatabaseSchema"
+   },
+   "qualifiedName": "PostgreSQL Relational Database Schema::host.docker.internal:5432::re_cascade_reproof_1021.alpha_schemaType",
+   "name": "Schema Type for re_cascade_reproof_1021.alpha"
+  },
+  "76b84f25-f407-443d-ba09-1830966f1043": {
+   "guid": "76b84f25-f407-443d-ba09-1830966f1043",
+   "type": "RelationalTable",
+   "createdBy": "dbcatnpa",
+   "createTime": "2026-10-22T11:37:46.368+00:00",
+   "version": 1,
+   "anchor": {
+    "anchorGUID": "4ffa5fec-fb9d-47a8-93fa-ad5490b46713",
+    "anchorTypeName": "DeployedDatabaseSchema"
+   },
+   "qualifiedName": "PostgreSQL Relational Database Schema::host.docker.internal:5432::re_cascade_reproof_1021.alpha::widgets",
+   "name": "widgets"
+  },
+  "c4f9cc9f-bcac-48b2-b9c2-c6fbf8b8910f": {
+   "guid": "c4f9cc9f-bcac-48b2-b9c2-c6fbf8b8910f",
+   "type": "RelationalColumn",
+   "createdBy": "dbcatnpa",
+   "createTime": "2026-10-22T11:37:46.853+00:00",
+   "version": 1,
+   "anchor": {
+    "anchorGUID": "4ffa5fec-fb9d-47a8-93fa-ad5490b46713",
+    "anchorTypeName": "DeployedDatabaseSchema"
+   },
+   "qualifiedName": "PostgreSQL Relational Database Schema::host.docker.internal:5432::re_cascade_reproof_1021.alpha::widgets::made_on",
+   "name": "made_on"
+  },
+  "693442d1-9952-410f-aaf4-668961bf65ee": {
+   "guid": "693442d1-9952-410f-aaf4-668961bf65ee",
+   "type": "RelationalColumn",
+   "createdBy": "dbcatnpa",
+   "createTime": "2026-10-22T11:37:46.663+00:00",
+   "version": 1,
+   "anchor": {
+    "anchorGUID": "4ffa5fec-fb9d-47a8-93fa-ad5490b46713",
+    "anchorTypeName": "DeployedDatabaseSchema"
+   },
+   "qualifiedName": "PostgreSQL Relational Database Schema::host.docker.internal:5432::re_cascade_reproof_1021.alpha::widgets::name",
+   "name": "name"
+  },
+  "1ae68997-0236-41cb-9f18-d3f0b6be4658": {
+   "guid": "1ae68997-0236-41cb-9f18-d3f0b6be4658",
+   "type": "RelationalColumn",
+   "createdBy": "dbcatnpa",
+   "createTime": "2026-10-22T11:37:46.477+00:00",
+   "version": 1,
+   "anchor": {
+    "anchorGUID": "4ffa5fec-fb9d-47a8-93fa-ad5490b46713",
+    "anchorTypeName": "DeployedDatabaseSchema"
+   },
+   "qualifiedName": "PostgreSQL Relational Database Schema::host.docker.internal:5432::re_cascade_reproof_1021.alpha::widgets::id",
+   "name": "id"
+  },
+  "974d8cfd-4f19-4022-8ef8-3f5b35434642": {
+   "guid": "974d8cfd-4f19-4022-8ef8-3f5b35434642",
+   "type": "RelationalTable",
+   "createdBy": "dbcatnpa",
+   "createTime": "2026-10-22T11:37:45.772+00:00",
+   "version": 1,
+   "anchor": {
+    "anchorGUID": "4ffa5fec-fb9d-47a8-93fa-ad5490b46713",
+    "anchorTypeName": "DeployedDatabaseSchema"
+   },
+   "qualifiedName": "PostgreSQL Relational Database Schema::host.docker.internal:5432::re_cascade_reproof_1021.alpha::widget_parts",
+   "name": "widget_parts"
+  },
+  "bb7aec58-08be-4ece-887c-d6f28069c5f5": {
+   "guid": "bb7aec58-08be-4ece-887c-d6f28069c5f5",
+   "type": "RelationalColumn",
+   "createdBy": "dbcatnpa",
+   "createTime": "2026-10-22T11:37:46.208+00:00",
+   "version": 1,
+   "anchor": {
+    "anchorGUID": "4ffa5fec-fb9d-47a8-93fa-ad5490b46713",
+    "anchorTypeName": "DeployedDatabaseSchema"
+   },
+   "qualifiedName": "PostgreSQL Relational Database Schema::host.docker.internal:5432::re_cascade_reproof_1021.alpha::widget_parts::part",
+   "name": "part"
+  },
+  "8213636c-23d9-4392-8595-92a86c000dd4": {
+   "guid": "8213636c-23d9-4392-8595-92a86c000dd4",
+   "type": "RelationalColumn",
+   "createdBy": "dbcatnpa",
+   "createTime": "2026-10-22T11:37:46.058+00:00",
+   "version": 1,
+   "anchor": {
+    "anchorGUID": "4ffa5fec-fb9d-47a8-93fa-ad5490b46713",
+    "anchorTypeName": "DeployedDatabaseSchema"
+   },
+   "qualifiedName": "PostgreSQL Relational Database Schema::host.docker.internal:5432::re_cascade_reproof_1021.alpha::widget_parts::widget_id",
+   "name": "widget_id"
+  },
+  "d5b10e7f-cc0c-4b5e-b1d9-98202dc7e377": {
+   "guid": "d5b10e7f-cc0c-4b5e-b1d9-98202dc7e377",
+   "type": "RelationalColumn",
+   "createdBy": "dbcatnpa",
+   "createTime": "2026-10-22T11:37:45.924+00:00",
+   "version": 1,
+   "anchor": {
+    "anchorGUID": "4ffa5fec-fb9d-47a8-93fa-ad5490b46713",
+    "anchorTypeName": "DeployedDatabaseSchema"
+   },
+   "qualifiedName": "PostgreSQL Relational Database Schema::host.docker.internal:5432::re_cascade_reproof_1021.alpha::widget_parts::id",
+   "name": "id"
+  },
+  "909e62fc-96e9-4f3b-b0b4-501bdf699520": {
+   "guid": "909e62fc-96e9-4f3b-b0b4-501bdf699520",
+   "type": "VirtualConnection",
+   "createdBy": "resourceexplorernpa",
+   "createTime": "2026-10-22T11:11:53.456+00:00",
+   "version": 1,
+   "anchor": {
+    "anchorGUID": "4ffa5fec-fb9d-47a8-93fa-ad5490b46713",
+    "anchorTypeName": "DeployedDatabaseSchema"
+   },
+   "qualifiedName": "PostgreSQL Relational Database Schema::host.docker.internal:5432::re_cascade_reproof_1021.alpha::Connection",
+   "name": "re_cascade_reproof_1021.alpha connection"
+  },
+  "94e096f8-95a0-4883-8cb0-ccce1f009257": {
+   "guid": "94e096f8-95a0-4883-8cb0-ccce1f009257",
+   "type": "Connection",
+   "createdBy": "resourceexplorernpa",
+   "createTime": "2026-10-22T11:11:53.560+00:00",
+   "version": 1,
+   "anchor": {
+    "anchorGUID": "4ffa5fec-fb9d-47a8-93fa-ad5490b46713",
+    "anchorTypeName": "DeployedDatabaseSchema"
+   },
+   "qualifiedName": "PostgreSQL Relational Database Schema::host.docker.internal:5432::re_cascade_reproof_1021.alpha::SecretsStoreConnection",
+   "name": "re_cascade_reproof_1021.alpha secrets store connection"
+  },
+  "5c59160b-e679-4a0d-9dfa-3ec5a177fec6": {
+   "guid": "5c59160b-e679-4a0d-9dfa-3ec5a177fec6",
+   "type": "Endpoint",
+   "createdBy": "resourceexplorernpa",
+   "createTime": "2026-10-22T11:11:53.664+00:00",
+   "version": 1,
+   "anchor": {
+    "anchorGUID": "4ffa5fec-fb9d-47a8-93fa-ad5490b46713",
+    "anchorTypeName": "DeployedDatabaseSchema"
+   },
+   "qualifiedName": "PostgreSQL Relational Database Schema::host.docker.internal:5432::re_cascade_reproof_1021.alpha::SecretStoreEndpoint",
+   "name": "re_cascade_reproof_1021.alpha secret store endpoint"
+  },
+  "515fc5ec-fa26-4c80-95fb-35ae8b56c98f": {
+   "guid": "515fc5ec-fa26-4c80-95fb-35ae8b56c98f",
+   "type": "Endpoint",
+   "createdBy": "resourceexplorernpa",
+   "createTime": "2026-10-22T11:11:53.491+00:00",
+   "version": 1,
+   "anchor": {
+    "anchorGUID": "4ffa5fec-fb9d-47a8-93fa-ad5490b46713",
+    "anchorTypeName": "DeployedDatabaseSchema"
+   },
+   "qualifiedName": "PostgreSQL Relational Database Schema::host.docker.internal:5432::re_cascade_reproof_1021.alpha::Endpoint",
+   "name": "re_cascade_reproof_1021.alpha endpoint"
+  },
+  "27da987d-f5eb-4e1a-88b4-7e547d49bc42": {
+   "guid": "27da987d-f5eb-4e1a-88b4-7e547d49bc42",
+   "type": "VirtualConnection",
+   "createdBy": "resourceexplorernpa",
+   "createTime": "2026-10-22T11:11:34.829+00:00",
+   "version": 1,
+   "anchor": {
+    "anchorGUID": "c79be6db-c959-48a2-b96f-c71249f47e1e",
+    "anchorTypeName": "RelationalDatabase"
+   },
+   "qualifiedName": "PostgreSQL Relational Database::host.docker.internal:5432::re_cascade_reproof_1021::Connection",
+   "name": "re_cascade_reproof_1021 connection"
+  },
+  "4d15c08e-755d-4742-8854-a731e88feaa7": {
+   "guid": "4d15c08e-755d-4742-8854-a731e88feaa7",
+   "type": "Endpoint",
+   "createdBy": "resourceexplorernpa",
+   "createTime": "2026-10-22T11:11:35.068+00:00",
+   "version": 1,
+   "anchor": {
+    "anchorGUID": "c79be6db-c959-48a2-b96f-c71249f47e1e",
+    "anchorTypeName": "RelationalDatabase"
+   },
+   "qualifiedName": "PostgreSQL Relational Database::host.docker.internal:5432::re_cascade_reproof_1021::Endpoint",
+   "name": "re_cascade_reproof_1021 endpoint"
+  },
+  "14f65d8d-a5a2-4673-891b-b768caf272eb": {
+   "guid": "14f65d8d-a5a2-4673-891b-b768caf272eb",
+   "type": "Connection",
+   "createdBy": "resourceexplorernpa",
+   "createTime": "2026-10-22T11:11:34.863+00:00",
+   "version": 1,
+   "anchor": {
+    "anchorGUID": "c79be6db-c959-48a2-b96f-c71249f47e1e",
+    "anchorTypeName": "RelationalDatabase"
+   },
+   "qualifiedName": "PostgreSQL Relational Database::host.docker.internal:5432::re_cascade_reproof_1021::SecretsStoreConnection",
+   "name": "re_cascade_reproof_1021 secrets store connection"
+  },
+  "813ecc44-afaf-4f12-9e81-54585ff30135": {
+   "guid": "813ecc44-afaf-4f12-9e81-54585ff30135",
+   "type": "Endpoint",
+   "createdBy": "resourceexplorernpa",
+   "createTime": "2026-10-22T11:11:34.889+00:00",
+   "version": 1,
+   "anchor": {
+    "anchorGUID": "c79be6db-c959-48a2-b96f-c71249f47e1e",
+    "anchorTypeName": "RelationalDatabase"
+   },
+   "qualifiedName": "PostgreSQL Relational Database::host.docker.internal:5432::re_cascade_reproof_1021::SecretStoreEndpoint",
+   "name": "re_cascade_reproof_1021 secret store endpoint"
+  },
+  "64463b01-shared-connector-type": {
+   "note": "ConnectorType 'Relational Database JDBC Connector' is Egeria Project-owned and shared by every database connection; not part of the throwaway tree"
+  }
+ },
+ "edges": [
+  {
+   "from": "c79be6db-c959-48a2-b96f-c71249f47e1e",
+   "rel": "DataFlow",
+   "to": "40332aec-aef2-4f83-96c5-3c35ca0fc653",
+   "to_type": "DeployedSoftwareComponent"
+  },
+  {
+   "from": "c79be6db-c959-48a2-b96f-c71249f47e1e",
+   "rel": "ActionTarget",
+   "to": "24cbda3f-0ab2-4b90-8211-8225c95e248d",
+   "to_type": "EngineAction"
+  },
+  {
+   "from": "c79be6db-c959-48a2-b96f-c71249f47e1e",
+   "rel": "AssociatedAnnotation",
+   "to": "910956f7-25f6-4413-8dbc-26caef3749b4",
+   "to_type": "ResourceMeasureAnnotation"
+  },
+  {
+   "from": "c79be6db-c959-48a2-b96f-c71249f47e1e",
+   "rel": "AssociatedAnnotation",
+   "to": "a8bdead5-9af6-451f-a510-d8abcb4e89a5",
+   "to_type": "ResourceMeasureAnnotation"
+  },
+  {
+   "from": "c79be6db-c959-48a2-b96f-c71249f47e1e",
+   "rel": "AssociatedAnnotation",
+   "to": "6217d358-9e1b-4e28-b949-5f98a90c2dac",
+   "to_type": "ResourceMeasureAnnotation"
+  },
+  {
+   "from": "c79be6db-c959-48a2-b96f-c71249f47e1e",
+   "rel": "AssociatedAnnotation",
+   "to": "ca159438-fc56-45c0-b6c0-06fa0791c4f7",
+   "to_type": "ResourceMeasureAnnotation"
+  },
+  {
+   "from": "c79be6db-c959-48a2-b96f-c71249f47e1e",
+   "rel": "AssociatedAnnotation",
+   "to": "37974c05-5951-41ed-af5f-6ba26f601082",
+   "to_type": "ResourceMeasureAnnotation"
+  },
+  {
+   "from": "c79be6db-c959-48a2-b96f-c71249f47e1e",
+   "rel": "AssociatedAnnotation",
+   "to": "bf966bd3-e14b-472f-a536-0a558c5edbde",
+   "to_type": "ResourceMeasureAnnotation"
+  },
+  {
+   "from": "c79be6db-c959-48a2-b96f-c71249f47e1e",
+   "rel": "AssociatedAnnotation",
+   "to": "f976b127-5524-448a-b501-0d95fa8f1ef2",
+   "to_type": "ResourceMeasureAnnotation"
+  },
+  {
+   "from": "c79be6db-c959-48a2-b96f-c71249f47e1e",
+   "rel": "ReportSubject",
+   "to": "1c9917fa-6082-4b09-9b10-05737a0a8148",
+   "to_type": "SurveyReport"
+  },
+  {
+   "from": "1c9917fa-6082-4b09-9b10-05737a0a8148",
+   "rel": "ReportedAnnotation",
+   "to": "910956f7-25f6-4413-8dbc-26caef3749b4",
+   "to_type": "ResourceMeasureAnnotation"
+  },
+  {
+   "from": "1c9917fa-6082-4b09-9b10-05737a0a8148",
+   "rel": "ReportedAnnotation",
+   "to": "a8bdead5-9af6-451f-a510-d8abcb4e89a5",
+   "to_type": "ResourceMeasureAnnotation"
+  },
+  {
+   "from": "1c9917fa-6082-4b09-9b10-05737a0a8148",
+   "rel": "ReportedAnnotation",
+   "to": "6217d358-9e1b-4e28-b949-5f98a90c2dac",
+   "to_type": "ResourceMeasureAnnotation"
+  },
+  {
+   "from": "1c9917fa-6082-4b09-9b10-05737a0a8148",
+   "rel": "ReportedAnnotation",
+   "to": "ca159438-fc56-45c0-b6c0-06fa0791c4f7",
+   "to_type": "ResourceMeasureAnnotation"
+  },
+  {
+   "from": "1c9917fa-6082-4b09-9b10-05737a0a8148",
+   "rel": "ReportedAnnotation",
+   "to": "37974c05-5951-41ed-af5f-6ba26f601082",
+   "to_type": "ResourceMeasureAnnotation"
+  },
+  {
+   "from": "1c9917fa-6082-4b09-9b10-05737a0a8148",
+   "rel": "ReportedAnnotation",
+   "to": "bf966bd3-e14b-472f-a536-0a558c5edbde",
+   "to_type": "ResourceMeasureAnnotation"
+  },
+  {
+   "from": "1c9917fa-6082-4b09-9b10-05737a0a8148",
+   "rel": "ReportedAnnotation",
+   "to": "f976b127-5524-448a-b501-0d95fa8f1ef2",
+   "to_type": "ResourceMeasureAnnotation"
+  },
+  {
+   "from": "1c9917fa-6082-4b09-9b10-05737a0a8148",
+   "rel": "ReportOriginator",
+   "to": "24cbda3f-0ab2-4b90-8211-8225c95e248d",
+   "to_type": "EngineAction"
+  },
+  {
+   "from": "1c9917fa-6082-4b09-9b10-05737a0a8148",
+   "rel": "ReportSubject",
+   "to": "c79be6db-c959-48a2-b96f-c71249f47e1e",
+   "to_type": "RelationalDatabase"
+  },
+  {
+   "from": "c79be6db-c959-48a2-b96f-c71249f47e1e",
+   "rel": "ReportSubject",
+   "to": "1b09c959-08a9-42cb-bb67-0acdb676963f",
+   "to_type": "SurveyReport"
+  },
+  {
+   "from": "1b09c959-08a9-42cb-bb67-0acdb676963f",
+   "rel": "ReportedAnnotation",
+   "to": "b9b6c90a-b269-47f2-b0ea-dd17b715b5fa",
+   "to_type": "ResourceMeasureAnnotation"
+  },
+  {
+   "from": "1b09c959-08a9-42cb-bb67-0acdb676963f",
+   "rel": "ReportedAnnotation",
+   "to": "6896aa07-db47-4cf8-affd-b39e4bc13359",
+   "to_type": "ResourceMeasureAnnotation"
+  },
+  {
+   "from": "1b09c959-08a9-42cb-bb67-0acdb676963f",
+   "rel": "ReportedAnnotation",
+   "to": "4152df7b-942e-4381-8964-bc9d5865d685",
+   "to_type": "ResourceMeasureAnnotation"
+  },
+  {
+   "from": "1b09c959-08a9-42cb-bb67-0acdb676963f",
+   "rel": "ReportedAnnotation",
+   "to": "1a90d32f-cdeb-4c83-9abe-e780b17b4389",
+   "to_type": "ResourceMeasureAnnotation"
+  },
+  {
+   "from": "1b09c959-08a9-42cb-bb67-0acdb676963f",
+   "rel": "ReportedAnnotation",
+   "to": "7b142869-ad81-4f7d-8c3c-dfd41704626f",
+   "to_type": "ResourceMeasureAnnotation"
+  },
+  {
+   "from": "1b09c959-08a9-42cb-bb67-0acdb676963f",
+   "rel": "ReportedAnnotation",
+   "to": "5b73c0c4-47a5-46fa-ac7c-119cc89e8f05",
+   "to_type": "SchemaAnalysisAnnotation"
+  },
+  {
+   "from": "1b09c959-08a9-42cb-bb67-0acdb676963f",
+   "rel": "ReportedAnnotation",
+   "to": "e8e2c126-acd5-49c1-ae45-88f711b4797e",
+   "to_type": "SchemaAnalysisAnnotation"
+  },
+  {
+   "from": "1b09c959-08a9-42cb-bb67-0acdb676963f",
+   "rel": "ReportedAnnotation",
+   "to": "01bcab2c-c1c0-47e9-97b7-9619705f0acd",
+   "to_type": "SchemaAnalysisAnnotation"
+  },
+  {
+   "from": "1b09c959-08a9-42cb-bb67-0acdb676963f",
+   "rel": "ReportedAnnotation",
+   "to": "d194dc9c-ee40-4529-a26f-7a36db8ff5ad",
+   "to_type": "SchemaAnalysisAnnotation"
+  },
+  {
+   "from": "1b09c959-08a9-42cb-bb67-0acdb676963f",
+   "rel": "ReportedAnnotation",
+   "to": "9669cfc8-5925-4e2b-a6ba-ef109b412169",
+   "to_type": "SchemaAnalysisAnnotation"
+  },
+  {
+   "from": "1b09c959-08a9-42cb-bb67-0acdb676963f",
+   "rel": "ReportedAnnotation",
+   "to": "36215b81-ea06-4317-b069-5dba396a5973",
+   "to_type": "SchemaAnalysisAnnotation"
+  },
+  {
+   "from": "1b09c959-08a9-42cb-bb67-0acdb676963f",
+   "rel": "ReportedAnnotation",
+   "to": "eafe590a-92d0-41a7-a3ce-f47480d5d3f6",
+   "to_type": "SchemaAnalysisAnnotation"
+  },
+  {
+   "from": "1b09c959-08a9-42cb-bb67-0acdb676963f",
+   "rel": "ReportedAnnotation",
+   "to": "6b8a603b-0245-4338-96d5-6435d99d9c29",
+   "to_type": "SchemaAnalysisAnnotation"
+  },
+  {
+   "from": "1b09c959-08a9-42cb-bb67-0acdb676963f",
+   "rel": "ReportSubject",
+   "to": "c79be6db-c959-48a2-b96f-c71249f47e1e",
+   "to_type": "RelationalDatabase"
+  },
+  {
+   "from": "c79be6db-c959-48a2-b96f-c71249f47e1e",
+   "rel": "DataSetContent",
+   "to": "2f9a40a0-6f0b-4f37-9522-ea12407b5745",
+   "to_type": "DeployedDatabaseSchema"
+  },
+  {
+   "from": "2f9a40a0-6f0b-4f37-9522-ea12407b5745",
+   "rel": "DataFlow",
+   "to": "a7df1af9-a54d-476d-a3ab-366ca4d05859",
+   "to_type": "DeployedSoftwareComponent"
+  },
+  {
+   "from": "2f9a40a0-6f0b-4f37-9522-ea12407b5745",
+   "rel": "Schema",
+   "to": "05bcc901-5892-4990-a1af-4300ba25d180",
+   "to_type": "RelationalDBSchemaType"
+  },
+  {
+   "from": "05bcc901-5892-4990-a1af-4300ba25d180",
+   "rel": "AttributeForSchema",
+   "to": "db43ac3d-f974-4aae-aabd-53cdb04abd39",
+   "to_type": "RelationalTable"
+  },
+  {
+   "from": "db43ac3d-f974-4aae-aabd-53cdb04abd39",
+   "rel": "NestedSchemaAttribute",
+   "to": "415f4402-e229-4747-9ae8-f3e4ee094b7a",
+   "to_type": "RelationalColumn"
+  },
+  {
+   "from": "415f4402-e229-4747-9ae8-f3e4ee094b7a",
+   "rel": "NestedSchemaAttribute",
+   "to": "db43ac3d-f974-4aae-aabd-53cdb04abd39",
+   "to_type": "RelationalTable"
+  },
+  {
+   "from": "db43ac3d-f974-4aae-aabd-53cdb04abd39",
+   "rel": "NestedSchemaAttribute",
+   "to": "7633bb5e-6730-4e8b-b2d5-1a06ba93879f",
+   "to_type": "RelationalColumn"
+  },
+  {
+   "from": "7633bb5e-6730-4e8b-b2d5-1a06ba93879f",
+   "rel": "NestedSchemaAttribute",
+   "to": "db43ac3d-f974-4aae-aabd-53cdb04abd39",
+   "to_type": "RelationalTable"
+  },
+  {
+   "from": "db43ac3d-f974-4aae-aabd-53cdb04abd39",
+   "rel": "NestedSchemaAttribute",
+   "to": "6b539a14-ce40-4514-b64b-18e66ad13f0b",
+   "to_type": "RelationalColumn"
+  },
+  {
+   "from": "6b539a14-ce40-4514-b64b-18e66ad13f0b",
+   "rel": "ForeignKey",
+   "to": "e837ff19-8304-4aa3-86a5-8db853a8c116",
+   "to_type": "RelationalColumn"
+  },
+  {
+   "from": "6b539a14-ce40-4514-b64b-18e66ad13f0b",
+   "rel": "NestedSchemaAttribute",
+   "to": "db43ac3d-f974-4aae-aabd-53cdb04abd39",
+   "to_type": "RelationalTable"
+  },
+  {
+   "from": "db43ac3d-f974-4aae-aabd-53cdb04abd39",
+   "rel": "AttributeForSchema",
+   "to": "05bcc901-5892-4990-a1af-4300ba25d180",
+   "to_type": "RelationalDBSchemaType"
+  },
+  {
+   "from": "05bcc901-5892-4990-a1af-4300ba25d180",
+   "rel": "AttributeForSchema",
+   "to": "006d37cb-36a5-453f-92f1-c1b007ce17a4",
+   "to_type": "RelationalTable"
+  },
+  {
+   "from": "006d37cb-36a5-453f-92f1-c1b007ce17a4",
+   "rel": "NestedSchemaAttribute",
+   "to": "869264bf-a842-4624-a48d-28432710bf52",
+   "to_type": "RelationalColumn"
+  },
+  {
+   "from": "869264bf-a842-4624-a48d-28432710bf52",
+   "rel": "NestedSchemaAttribute",
+   "to": "006d37cb-36a5-453f-92f1-c1b007ce17a4",
+   "to_type": "RelationalTable"
+  },
+  {
+   "from": "006d37cb-36a5-453f-92f1-c1b007ce17a4",
+   "rel": "NestedSchemaAttribute",
+   "to": "e837ff19-8304-4aa3-86a5-8db853a8c116",
+   "to_type": "RelationalColumn"
+  },
+  {
+   "from": "e837ff19-8304-4aa3-86a5-8db853a8c116",
+   "rel": "ForeignKey",
+   "to": "6b539a14-ce40-4514-b64b-18e66ad13f0b",
+   "to_type": "RelationalColumn"
+  },
+  {
+   "from": "e837ff19-8304-4aa3-86a5-8db853a8c116",
+   "rel": "NestedSchemaAttribute",
+   "to": "006d37cb-36a5-453f-92f1-c1b007ce17a4",
+   "to_type": "RelationalTable"
+  },
+  {
+   "from": "006d37cb-36a5-453f-92f1-c1b007ce17a4",
+   "rel": "NestedSchemaAttribute",
+   "to": "75181baa-52ea-492c-8e73-c2363c1a41a6",
+   "to_type": "RelationalColumn"
+  },
+  {
+   "from": "75181baa-52ea-492c-8e73-c2363c1a41a6",
+   "rel": "NestedSchemaAttribute",
+   "to": "006d37cb-36a5-453f-92f1-c1b007ce17a4",
+   "to_type": "RelationalTable"
+  },
+  {
+   "from": "006d37cb-36a5-453f-92f1-c1b007ce17a4",
+   "rel": "AttributeForSchema",
+   "to": "05bcc901-5892-4990-a1af-4300ba25d180",
+   "to_type": "RelationalDBSchemaType"
+  },
+  {
+   "from": "05bcc901-5892-4990-a1af-4300ba25d180",
+   "rel": "Schema",
+   "to": "2f9a40a0-6f0b-4f37-9522-ea12407b5745",
+   "to_type": "DeployedDatabaseSchema"
+  },
+  {
+   "from": "2f9a40a0-6f0b-4f37-9522-ea12407b5745",
+   "rel": "ActionTarget",
+   "to": "53fd20b9-df7d-4e2d-bfb2-acd6404dbe3a",
+   "to_type": "EngineAction"
+  },
+  {
+   "from": "2f9a40a0-6f0b-4f37-9522-ea12407b5745",
+   "rel": "DataSetContent",
+   "to": "c79be6db-c959-48a2-b96f-c71249f47e1e",
+   "to_type": "RelationalDatabase"
+  },
+  {
+   "from": "2f9a40a0-6f0b-4f37-9522-ea12407b5745",
+   "rel": "ResourceConnection",
+   "to": "cc615faa-cd5e-4cce-8931-2c17639d2200",
+   "to_type": "VirtualConnection"
+  },
+  {
+   "from": "cc615faa-cd5e-4cce-8931-2c17639d2200",
+   "rel": "ResourceConnection",
+   "to": "2f9a40a0-6f0b-4f37-9522-ea12407b5745",
+   "to_type": "DeployedDatabaseSchema"
+  },
+  {
+   "from": "cc615faa-cd5e-4cce-8931-2c17639d2200",
+   "rel": "EmbeddedConnection",
+   "to": "306f208e-9a22-4401-8ce0-712d023c597f",
+   "to_type": "Connection"
+  },
+  {
+   "from": "306f208e-9a22-4401-8ce0-712d023c597f",
+   "rel": "ConnectToEndpoint",
+   "to": "807c8076-16d5-4c62-b6b2-e13239ef2f9a",
+   "to_type": "Endpoint"
+  },
+  {
+   "from": "807c8076-16d5-4c62-b6b2-e13239ef2f9a",
+   "rel": "ConnectToEndpoint",
+   "to": "306f208e-9a22-4401-8ce0-712d023c597f",
+   "to_type": "Connection"
+  },
+  {
+   "from": "306f208e-9a22-4401-8ce0-712d023c597f",
+   "rel": "EmbeddedConnection",
+   "to": "cc615faa-cd5e-4cce-8931-2c17639d2200",
+   "to_type": "VirtualConnection"
+  },
+  {
+   "from": "cc615faa-cd5e-4cce-8931-2c17639d2200",
+   "rel": "ConnectToEndpoint",
+   "to": "8a95b5ec-4a7f-4929-9d70-584298995514",
+   "to_type": "Endpoint"
+  },
+  {
+   "from": "8a95b5ec-4a7f-4929-9d70-584298995514",
+   "rel": "ConnectToEndpoint",
+   "to": "cc615faa-cd5e-4cce-8931-2c17639d2200",
+   "to_type": "VirtualConnection"
+  },
+  {
+   "from": "c79be6db-c959-48a2-b96f-c71249f47e1e",
+   "rel": "DataSetContent",
+   "to": "4ffa5fec-fb9d-47a8-93fa-ad5490b46713",
+   "to_type": "DeployedDatabaseSchema"
+  },
+  {
+   "from": "4ffa5fec-fb9d-47a8-93fa-ad5490b46713",
+   "rel": "DataFlow",
+   "to": "a7df1af9-a54d-476d-a3ab-366ca4d05859",
+   "to_type": "DeployedSoftwareComponent"
+  },
+  {
+   "from": "4ffa5fec-fb9d-47a8-93fa-ad5490b46713",
+   "rel": "Schema",
+   "to": "ed8365e6-9f42-4027-8bb2-0b756b2672f1",
+   "to_type": "RelationalDBSchemaType"
+  },
+  {
+   "from": "ed8365e6-9f42-4027-8bb2-0b756b2672f1",
+   "rel": "AttributeForSchema",
+   "to": "76b84f25-f407-443d-ba09-1830966f1043",
+   "to_type": "RelationalTable"
+  },
+  {
+   "from": "76b84f25-f407-443d-ba09-1830966f1043",
+   "rel": "NestedSchemaAttribute",
+   "to": "c4f9cc9f-bcac-48b2-b9c2-c6fbf8b8910f",
+   "to_type": "RelationalColumn"
+  },
+  {
+   "from": "c4f9cc9f-bcac-48b2-b9c2-c6fbf8b8910f",
+   "rel": "NestedSchemaAttribute",
+   "to": "76b84f25-f407-443d-ba09-1830966f1043",
+   "to_type": "RelationalTable"
+  },
+  {
+   "from": "76b84f25-f407-443d-ba09-1830966f1043",
+   "rel": "NestedSchemaAttribute",
+   "to": "693442d1-9952-410f-aaf4-668961bf65ee",
+   "to_type": "RelationalColumn"
+  },
+  {
+   "from": "693442d1-9952-410f-aaf4-668961bf65ee",
+   "rel": "NestedSchemaAttribute",
+   "to": "76b84f25-f407-443d-ba09-1830966f1043",
+   "to_type": "RelationalTable"
+  },
+  {
+   "from": "76b84f25-f407-443d-ba09-1830966f1043",
+   "rel": "NestedSchemaAttribute",
+   "to": "1ae68997-0236-41cb-9f18-d3f0b6be4658",
+   "to_type": "RelationalColumn"
+  },
+  {
+   "from": "1ae68997-0236-41cb-9f18-d3f0b6be4658",
+   "rel": "ForeignKey",
+   "to": "8213636c-23d9-4392-8595-92a86c000dd4",
+   "to_type": "RelationalColumn"
+  },
+  {
+   "from": "1ae68997-0236-41cb-9f18-d3f0b6be4658",
+   "rel": "NestedSchemaAttribute",
+   "to": "76b84f25-f407-443d-ba09-1830966f1043",
+   "to_type": "RelationalTable"
+  },
+  {
+   "from": "76b84f25-f407-443d-ba09-1830966f1043",
+   "rel": "AttributeForSchema",
+   "to": "ed8365e6-9f42-4027-8bb2-0b756b2672f1",
+   "to_type": "RelationalDBSchemaType"
+  },
+  {
+   "from": "ed8365e6-9f42-4027-8bb2-0b756b2672f1",
+   "rel": "AttributeForSchema",
+   "to": "974d8cfd-4f19-4022-8ef8-3f5b35434642",
+   "to_type": "RelationalTable"
+  },
+  {
+   "from": "974d8cfd-4f19-4022-8ef8-3f5b35434642",
+   "rel": "NestedSchemaAttribute",
+   "to": "bb7aec58-08be-4ece-887c-d6f28069c5f5",
+   "to_type": "RelationalColumn"
+  },
+  {
+   "from": "bb7aec58-08be-4ece-887c-d6f28069c5f5",
+   "rel": "NestedSchemaAttribute",
+   "to": "974d8cfd-4f19-4022-8ef8-3f5b35434642",
+   "to_type": "RelationalTable"
+  },
+  {
+   "from": "974d8cfd-4f19-4022-8ef8-3f5b35434642",
+   "rel": "NestedSchemaAttribute",
+   "to": "8213636c-23d9-4392-8595-92a86c000dd4",
+   "to_type": "RelationalColumn"
+  },
+  {
+   "from": "8213636c-23d9-4392-8595-92a86c000dd4",
+   "rel": "ForeignKey",
+   "to": "1ae68997-0236-41cb-9f18-d3f0b6be4658",
+   "to_type": "RelationalColumn"
+  },
+  {
+   "from": "8213636c-23d9-4392-8595-92a86c000dd4",
+   "rel": "NestedSchemaAttribute",
+   "to": "974d8cfd-4f19-4022-8ef8-3f5b35434642",
+   "to_type": "RelationalTable"
+  },
+  {
+   "from": "974d8cfd-4f19-4022-8ef8-3f5b35434642",
+   "rel": "NestedSchemaAttribute",
+   "to": "d5b10e7f-cc0c-4b5e-b1d9-98202dc7e377",
+   "to_type": "RelationalColumn"
+  },
+  {
+   "from": "d5b10e7f-cc0c-4b5e-b1d9-98202dc7e377",
+   "rel": "NestedSchemaAttribute",
+   "to": "974d8cfd-4f19-4022-8ef8-3f5b35434642",
+   "to_type": "RelationalTable"
+  },
+  {
+   "from": "974d8cfd-4f19-4022-8ef8-3f5b35434642",
+   "rel": "AttributeForSchema",
+   "to": "ed8365e6-9f42-4027-8bb2-0b756b2672f1",
+   "to_type": "RelationalDBSchemaType"
+  },
+  {
+   "from": "ed8365e6-9f42-4027-8bb2-0b756b2672f1",
+   "rel": "Schema",
+   "to": "4ffa5fec-fb9d-47a8-93fa-ad5490b46713",
+   "to_type": "DeployedDatabaseSchema"
+  },
+  {
+   "from": "4ffa5fec-fb9d-47a8-93fa-ad5490b46713",
+   "rel": "ActionTarget",
+   "to": "8e58929e-b45e-437b-8d4f-727ff6bc0990",
+   "to_type": "EngineAction"
+  },
+  {
+   "from": "4ffa5fec-fb9d-47a8-93fa-ad5490b46713",
+   "rel": "DataSetContent",
+   "to": "c79be6db-c959-48a2-b96f-c71249f47e1e",
+   "to_type": "RelationalDatabase"
+  },
+  {
+   "from": "4ffa5fec-fb9d-47a8-93fa-ad5490b46713",
+   "rel": "ResourceConnection",
+   "to": "909e62fc-96e9-4f3b-b0b4-501bdf699520",
+   "to_type": "VirtualConnection"
+  },
+  {
+   "from": "909e62fc-96e9-4f3b-b0b4-501bdf699520",
+   "rel": "ResourceConnection",
+   "to": "4ffa5fec-fb9d-47a8-93fa-ad5490b46713",
+   "to_type": "DeployedDatabaseSchema"
+  },
+  {
+   "from": "909e62fc-96e9-4f3b-b0b4-501bdf699520",
+   "rel": "EmbeddedConnection",
+   "to": "94e096f8-95a0-4883-8cb0-ccce1f009257",
+   "to_type": "Connection"
+  },
+  {
+   "from": "94e096f8-95a0-4883-8cb0-ccce1f009257",
+   "rel": "ConnectToEndpoint",
+   "to": "5c59160b-e679-4a0d-9dfa-3ec5a177fec6",
+   "to_type": "Endpoint"
+  },
+  {
+   "from": "5c59160b-e679-4a0d-9dfa-3ec5a177fec6",
+   "rel": "ConnectToEndpoint",
+   "to": "94e096f8-95a0-4883-8cb0-ccce1f009257",
+   "to_type": "Connection"
+  },
+  {
+   "from": "94e096f8-95a0-4883-8cb0-ccce1f009257",
+   "rel": "EmbeddedConnection",
+   "to": "909e62fc-96e9-4f3b-b0b4-501bdf699520",
+   "to_type": "VirtualConnection"
+  },
+  {
+   "from": "909e62fc-96e9-4f3b-b0b4-501bdf699520",
+   "rel": "ConnectToEndpoint",
+   "to": "515fc5ec-fa26-4c80-95fb-35ae8b56c98f",
+   "to_type": "Endpoint"
+  },
+  {
+   "from": "515fc5ec-fa26-4c80-95fb-35ae8b56c98f",
+   "rel": "ConnectToEndpoint",
+   "to": "909e62fc-96e9-4f3b-b0b4-501bdf699520",
+   "to_type": "VirtualConnection"
+  },
+  {
+   "from": "c79be6db-c959-48a2-b96f-c71249f47e1e",
+   "rel": "ResourceConnection",
+   "to": "27da987d-f5eb-4e1a-88b4-7e547d49bc42",
+   "to_type": "VirtualConnection"
+  },
+  {
+   "from": "27da987d-f5eb-4e1a-88b4-7e547d49bc42",
+   "rel": "ResourceConnection",
+   "to": "c79be6db-c959-48a2-b96f-c71249f47e1e",
+   "to_type": "RelationalDatabase"
+  },
+  {
+   "from": "27da987d-f5eb-4e1a-88b4-7e547d49bc42",
+   "rel": "ConnectToEndpoint",
+   "to": "4d15c08e-755d-4742-8854-a731e88feaa7",
+   "to_type": "Endpoint"
+  },
+  {
+   "from": "4d15c08e-755d-4742-8854-a731e88feaa7",
+   "rel": "ConnectToEndpoint",
+   "to": "27da987d-f5eb-4e1a-88b4-7e547d49bc42",
+   "to_type": "VirtualConnection"
+  },
+  {
+   "from": "27da987d-f5eb-4e1a-88b4-7e547d49bc42",
+   "rel": "EmbeddedConnection",
+   "to": "14f65d8d-a5a2-4673-891b-b768caf272eb",
+   "to_type": "Connection"
+  },
+  {
+   "from": "14f65d8d-a5a2-4673-891b-b768caf272eb",
+   "rel": "EmbeddedConnection",
+   "to": "27da987d-f5eb-4e1a-88b4-7e547d49bc42",
+   "to_type": "VirtualConnection"
+  },
+  {
+   "from": "14f65d8d-a5a2-4673-891b-b768caf272eb",
+   "rel": "ConnectToEndpoint",
+   "to": "813ecc44-afaf-4f12-9e81-54585ff30135",
+   "to_type": "Endpoint"
+  },
+  {
+   "from": "813ecc44-afaf-4f12-9e81-54585ff30135",
+   "rel": "ConnectToEndpoint",
+   "to": "14f65d8d-a5a2-4673-891b-b768caf272eb",
+   "to_type": "Connection"
+  }
+ ],
+ "server": {
+  "guid": "9aca0c49-3857-4464-8725-4461def488be",
+  "type": "SoftwareServer",
+  "createdBy": "erinoverview",
+  "anchor": {
+   "anchorGUID": null,
+   "anchorTypeName": "SoftwareServer"
+  },
+  "edges_to_throwaway": [],
+  "all_edge_types": {
+   "ActionTarget->EngineAction": 8,
+   "AssociatedAnnotation->ResourceMeasureAnnotation": 3443,
+   "ReportSubject->SurveyReport": 8,
+   "SourcedFrom->SoftwareServer": 1,
+   "SupportedSoftwareCapability->DatabaseManager": 1,
+   "ResourceConnection->VirtualConnection": 1,
+   "ServerEndpoint->Endpoint": 1
+  }
+ },
+ "engine_actions": {
+  "24cbda3f-0ab2-4b90-8211-8225c95e248d": {
+   "requestType": "survey-postgres-database",
+   "completionMessage": "OMES-SURVEY-ACTION-0019 The survey action service postgres-database-survey-service has completed the analysis of asset c79be6db-c959-48a2-b96f-c71249f47e1e with",
+   "completionTime": "1792667534428",
+   "version": 5,
+   "createdBy": "resourceexplorernpa"
+  },
+  "53fd20b9-df7d-4e2d-bfb2-acd6404dbe3a": {
+   "requestType": "catalog-postgres-schema",
+   "completionMessage": "GOVERNANCE-ACTION-CONNECTORS-0032 Integration connector Egeria:IntegrationGroup:Database::JDBCIntegrationConnector is now cataloging DeployedDatabaseSchema serv",
+   "completionTime": "1792667526888",
+   "version": 5,
+   "createdBy": "resourceexplorernpa"
+  },
+  "8e58929e-b45e-437b-8d4f-727ff6bc0990": {
+   "requestType": "catalog-postgres-schema",
+   "completionMessage": "GOVERNANCE-ACTION-CONNECTORS-0032 Integration connector Egeria:IntegrationGroup:Database::JDBCIntegrationConnector is now cataloging DeployedDatabaseSchema serv",
+   "completionTime": "1792667516772",
+   "version": 5,
+   "createdBy": "resourceexplorernpa"
+  }
+ },
+ "counts": {
+  "elements": 55,
+  "by_type": {
+   "RelationalDatabase": 1,
+   "ResourceMeasureAnnotation": 12,
+   "SurveyReport": 2,
+   "SchemaAnalysisAnnotation": 8,
+   "DeployedDatabaseSchema": 2,
+   "RelationalDBSchemaType": 2,
+   "RelationalTable": 4,
+   "RelationalColumn": 12,
+   "VirtualConnection": 3,
+   "Connection": 3,
+   "Endpoint": 6
+  }
+ }
+}

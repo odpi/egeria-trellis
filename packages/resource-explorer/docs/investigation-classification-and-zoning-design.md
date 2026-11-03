@@ -7,6 +7,9 @@ Purpose, and the local-first/promotable shape. This one covers two things it
 left open: **which Egeria classification an investigation carries**, and
 **who can see the investigation and the artifacts it produces**.
 
+> **Superseded 2026-10-08:** the draft zone was retired as a default (owner ruling: "DRAFT is a content status, not a zone"). Where this document describes `resource-explorer-draft` as the default zone for published assets, read it as history; current behaviour is in `resource_explorer/egeria_identity.py` and `docs/admin-guide.md`. Private-investigation zoning (`[resource-explorer-private, <owner>]`) is unchanged.
+
+
 Written 2026-09-07 from a proposal by the project owner. Everything asserted
 about Egeria below was read out of the Egeria 6 source in
 `~/localGit/egeria-v6/egeria`, not from documentation — file and line given

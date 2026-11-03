@@ -1,6 +1,6 @@
 """Tests for egeria_async_survey_result.py — the poll/resolve/convert logic
 that turns a triggered Egeria-native survey engine action into a real RE
-result (docs/design-notes/EGERIA-ASYNC-RESULT-RETRIEVAL-IMPLEMENTED.md).
+result (EGERIA-ASYNC-RESULT-RETRIEVAL-IMPLEMENTED.md).
 
 Every pyegeria client and every AssetMaker read is mocked; these tests
 verify RE's own polling-timeout handling, report-attribution logic, and

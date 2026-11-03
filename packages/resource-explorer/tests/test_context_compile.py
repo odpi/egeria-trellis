@@ -75,7 +75,9 @@ class TestQuestionRelevance:
         from resource_explorer.surveyors.question_catalog_reader import get_questions
 
         entries = get_questions("repo", perspectives=None, purposes=None)
-        question = "Show me all the documentation survey results for egeria"
+        # "for egeria" was the second decoy here; Q-0022 now reads "What does it talk to — Egeria, ..."
+        # (REVIEW-QUESTIONS-AND-ANALYTICS-2026-10-22 §2), so the word names a real topic of that question.
+        question = "Show me all the documentation survey results for this project"
 
         scored = []
         for position, e in enumerate(entries):
@@ -580,6 +582,35 @@ class TestGapsAreJudgedNotListed:
         fl = MagicMock()
         fl.fact.return_value = MagicMock(state="never_run", last_run_at="", can_run=["repo_x"])
         assert _judge_gap(fl, "x", "a")["reason"] == "has not run"
+
+    def test_not_established_is_a_short_cue_with_the_sentence_on_hover(self):
+        from unittest.mock import MagicMock
+
+        from resource_explorer.context_compile import _judge_gap
+
+        fl = MagicMock()
+        fl.fact.return_value = MagicMock(state="not_established", last_run_at="2026-10-02T10:00:00", can_run=[])
+        gap = _judge_gap(fl, "x", "a")
+        assert gap["state"] == "not_established", "the internal state name is unchanged"
+        assert gap["reason"] == "ran · result not attributable"
+        assert "cannot be credited" not in gap["reason"]
+        assert gap["explanation"] == "it ran, but nothing shows this analysis produced the result"
+
+    def test_not_established_with_no_recorded_run_never_says_ran(self):
+        """The compile panel showed "ran · result not attributable" beside "not run" for deployment_evidence
+        (seen 2026-10-25 on an integration question). With no run recorded, "ran" is unproven."""
+        from unittest.mock import MagicMock
+
+        from resource_explorer.context_compile import _judge_gap
+
+        note = ("This resource was surveyed by runs that predate per-step recording, so whether this analysis was "
+                "among them cannot be determined.")
+        fl = MagicMock()
+        fl.fact.return_value = MagicMock(state="not_established", last_run_at="", can_run=[], note=note)
+        gap = _judge_gap(fl, "x", "deployment_evidence")
+        assert gap["state"] == "not_established"
+        assert gap["reason"] == "no run recorded · whether it ran is not known"
+        assert "ran ·" not in gap["reason"] and gap["explanation"] == note
 
     def test_an_unjudgeable_gap_is_still_reported(self):
         """Fail-soft: a fact layer that cannot answer must not cost the compile,
@@ -1427,3 +1458,48 @@ class TestTheManifestCarriesEveryListsTotal:
     def test_only_packed_sections_appear(self, monkeypatch):
         c = compile_context(_registry({"repo_conventions": [_finding("a")]}), "x", "q", budget=6000)
         assert set(c.manifest["lists"]) <= {p["key"] for p in c.manifest["packed"]}
+
+
+class TestVulnerabilityQuestionBindsToCveScan:
+    """Walk 2026-10-12: "...known security vulnerabilities in its dependencies?" compiled without cve_scan. The
+    catalog binds cve_scan to "Are there outstanding CVEs?", which shares no token with it, so cve_scan ranked on
+    catalog position alone and was deferred below the section cap."""
+
+    QUESTION = "Does this repository have any known security vulnerabilities in its dependencies?"
+
+    def _every_analysis_has_a_result(self):
+        from resource_explorer.surveyors.analysis_catalog_reader import get_analyses
+        ids = [a["id"] for a in get_analyses("repo")]
+        return _registry({i: [_finding("c", "ok", "detail " * 40)] for i in ids})
+
+    def test_cve_scan_is_packed_not_deferred(self):
+        c = compile_context(self._every_analysis_has_a_result(), "x", self.QUESTION)
+        assert "cve_scan" in [p["key"] for p in c.manifest["packed"]]
+        assert "cve_scan" not in [d["key"] for d in c.manifest["deferred"]]
+
+
+class TestSectionCapIsATierSetting:
+    """`compile_max_sections` (config.py) is the default cap, `max_sections=` still overrides it, and the cap is
+    part of the compile's identity because it changes what is packed."""
+
+    def test_the_compile_id_changes_when_the_cap_changes(self):
+        reg = TestSectionCap()._many()
+        a = compile_context(reg, "x", "how well documented is it?", budget=6000, max_sections=12)
+        b = compile_context(reg, "x", "how well documented is it?", budget=6000, max_sections=8)
+        assert a.compile_id != b.compile_id
+        assert b.manifest["max_sections"] == 8 and a.manifest["max_sections"] == 12
+
+    def test_the_tier_setting_is_the_default_cap(self, monkeypatch):
+        monkeypatch.setenv("EXPLORER_COMPILE_MAX_SECTIONS", "3")
+        from resource_explorer.config import get_llm_tier_config
+        get_llm_tier_config(force_refresh=True)
+        try:
+            c = compile_context(TestSectionCap()._many(), "x", "q", budget=6000)
+            assert c.manifest["max_sections"] == 3
+            assert len([p for p in c.manifest["packed"] if p["role"] == "evidence"]) <= 3
+            # An explicit argument still wins.
+            assert compile_context(TestSectionCap()._many(), "x", "q", budget=6000,
+                                   max_sections=5).manifest["max_sections"] == 5
+        finally:
+            monkeypatch.delenv("EXPLORER_COMPILE_MAX_SECTIONS")
+            get_llm_tier_config(force_refresh=True)

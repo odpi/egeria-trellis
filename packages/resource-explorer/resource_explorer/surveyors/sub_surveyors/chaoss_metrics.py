@@ -135,12 +135,19 @@ def _day(ts) -> str:
     return str(ts or "")[:10]
 
 
-def assess(commits: list, stats: dict) -> list:
+def assess(commits: list, stats: dict, all_time=None) -> list:
     """CHAOSS metrics from individual commits, each on its own terms.
 
     `commits` are rows of (author_email, author_name, committed_at) — one per
     commit, so each is counted exactly once and periods can be cut disjointly.
+
+    `all_time` is the stored all-time contributor list (`contributors.contributors(..., "all_time")`). When it
+    has rows, authorship concentration (the elephant factor) is computed from it: GitHub's contributions per
+    linked account, bots left out. The old derivation from `commits` stays only as the fallback when no list is
+    stored, and says so ("from git authors, 90-day fetch").
     """
+    from resource_explorer import contributors as contrib
+
     out: list = []
 
     commits_by_author: Counter = Counter()
@@ -155,8 +162,26 @@ def assess(commits: list, stats: dict) -> list:
             dated.append((day, who))
 
     # ── elephant factor ──────────────────────────────────────────────────────
-    factor = elephant_factor(commits_by_author)
-    if factor is None:
+    listed = all_time is not None and bool(getattr(all_time, "rows", None))
+    humans = {f"{r.id}:{r.name}": r.commits for r in all_time.rows} if listed else {}
+    factor = elephant_factor(humans) if listed else elephant_factor(commits_by_author)
+    if listed and factor is not None:
+        label, note = _band(factor)
+        # The stored non-bot total (the same denominator every contributor surface uses), so "the single largest
+        # holds" here and Q-0003's top share are one number.
+        total = int(all_time.total or 0) or sum(humans.values())
+        top = all_time.rows[0].commits / total
+        out.append(_metric(
+            "elephant_factor", label,
+            f"{note} Measured over GitHub's {total} all-time contribution(s) by {len(humans)} "
+            f"contributor(s) (fetched {all_time.fetched_at[:10]}"
+            + (f", {contrib.bots_words(all_time.bots_excluded)}" if all_time.bots_excluded else "")
+            + f"); the single largest holds {top:.0%}.",
+            value=factor,
+            detail={"authors": len(humans), "commits": total, "top_author_share": round(top, 3),
+                    "basis": contrib.SHARE_BASIS[contrib.WINDOW_ALL], "fetched_at": all_time.fetched_at,
+                    "bots_excluded": all_time.bots_excluded, "window_start": "", "window_end": ""}))
+    elif factor is None:
         out.append(_metric("elephant_factor", "",
                            "No per-author commit counts are recorded, so the "
                            "concentration of authorship is unknown — this is not "
@@ -171,10 +196,10 @@ def assess(commits: list, stats: dict) -> list:
             + (f" between {dated[0][0] if dated else ''} and "
                f"{dated[-1][0] if dated else ''}" if dated else "")
             + f", by {len(commits_by_author)} author(s); the single largest wrote "
-              f"{top_share:.0%}.",
+              f"{top_share:.0%} ({contrib.FALLBACK_WORDS}).",
             value=factor,
             detail={"authors": len(commits_by_author), "commits": total,
-                    "top_author_share": round(top_share, 3),
+                    "top_author_share": round(top_share, 3), "basis": contrib.FALLBACK_WORDS,
                     "window_start": dated[0][0] if dated else "",
                     "window_end": dated[-1][0] if dated else ""}))
 
@@ -312,8 +337,10 @@ class ChaossMetricsSurveyor(BaseSurveyor):
                     "FROM project_commits WHERE project_slug = ? "
                     "ORDER BY committed_at", (slug,)).fetchall()]
             stats = self.registry.get_latest_project_stats(slug) or {}
+            from resource_explorer import contributors as contrib
+            all_time = contrib.contributors(self.registry, slug, contrib.WINDOW_ALL, top=10_000)
 
-            if not rows and not stats:
+            if not rows and not stats and not all_time.rows:
                 # Persist the reason, not just annotate it. The annotation says
                 # "not established"; the results card reads FINDINGS, so returning
                 # without writing one made the card render an absence where a stated
@@ -342,7 +369,7 @@ class ChaossMetricsSurveyor(BaseSurveyor):
                 ))
                 return out
 
-            metrics = assess(rows, stats)
+            metrics = assess(rows, stats, all_time=all_time)
             self.registry.upsert_finding(slug, "chaoss_metrics", metrics,
                                          surveyed_at=self._surveyed_at)
             ef = next((m for m in metrics if m["check_name"] == "elephant_factor"), None)

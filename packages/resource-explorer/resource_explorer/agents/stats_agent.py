@@ -1,7 +1,6 @@
 """Statistics agent — answers quantitative questions from GitHub API + SQLite time-series."""
 from __future__ import annotations
 
-import sqlite3
 
 from resource_explorer.agents.base import BaseExplorerAgent
 from resource_explorer.prompt_templates import stats_agent_system_prompt
@@ -59,23 +58,21 @@ class StatsAgent(BaseExplorerAgent):
         registry = ProjectRegistry()
         resource_slug = registry._normalize_slug(resource_slug)
         try:
-            conn = sqlite3.connect(registry.db_path)
-            conn.row_factory = sqlite3.Row
-            row = conn.execute(
-                "SELECT * FROM project_stats WHERE project_slug = ? ORDER BY fetched_at DESC LIMIT 1",
-                (resource_slug,),
-            ).fetchone()
-            history = conn.execute(
-                "SELECT fetched_at, stars, commits_30d, forks FROM project_stats "
-                "WHERE project_slug = ? ORDER BY fetched_at DESC LIMIT 4",
-                (resource_slug,),
-            ).fetchall()
-            commit_rows = conn.execute(
-                "SELECT author_name, author_email, committed_at FROM project_commits "
-                "WHERE project_slug = ? ORDER BY committed_at DESC",
-                (resource_slug,),
-            ).fetchall()
-            conn.close()
+            with registry._conn() as conn:
+                row = conn.execute(
+                    "SELECT * FROM project_stats WHERE project_slug = ? ORDER BY fetched_at DESC LIMIT 1",
+                    (resource_slug,),
+                ).fetchone()
+                history = conn.execute(
+                    "SELECT fetched_at, stars, commits_30d, forks FROM project_stats "
+                    "WHERE project_slug = ? ORDER BY fetched_at DESC LIMIT 4",
+                    (resource_slug,),
+                ).fetchall()
+                commit_rows = conn.execute(
+                    "SELECT author_name, author_email, committed_at FROM project_commits "
+                    "WHERE project_slug = ? ORDER BY committed_at DESC",
+                    (resource_slug,),
+                ).fetchall()
         except Exception:
             return ""
 
@@ -110,16 +107,15 @@ class StatsAgent(BaseExplorerAgent):
         _now = _dt.utcnow()  # naive UTC — matches stored committed_at format
         _c30 = _c90 = 0
         try:
-            _conn2 = sqlite3.connect(registry.db_path)
-            _c30 = _conn2.execute(
-                "SELECT COUNT(*) FROM project_commits WHERE project_slug = ? AND committed_at >= ?",
-                (resource_slug, (_now - _td(days=30)).isoformat()),
-            ).fetchone()[0]
-            _c90 = _conn2.execute(
-                "SELECT COUNT(*) FROM project_commits WHERE project_slug = ? AND committed_at >= ?",
-                (resource_slug, (_now - _td(days=90)).isoformat()),
-            ).fetchone()[0]
-            _conn2.close()
+            with registry._conn() as _conn2:
+                _c30 = _conn2.execute(
+                    "SELECT COUNT(*) FROM project_commits WHERE project_slug = ? AND committed_at >= ?",
+                    (resource_slug, (_now - _td(days=30)).isoformat()),
+                ).fetchone()[0]
+                _c90 = _conn2.execute(
+                    "SELECT COUNT(*) FROM project_commits WHERE project_slug = ? AND committed_at >= ?",
+                    (resource_slug, (_now - _td(days=90)).isoformat()),
+                ).fetchone()[0]
         except Exception:
             pass
         commits_30d = _c30 if (_c30 or _c90) else (d.get("commits_30d") or 0)
@@ -188,25 +184,23 @@ class StatsAgent(BaseExplorerAgent):
     def _indexed_file_count(self, slug: str, registry) -> str:
         """Return total file count — prefers survey total, falls back to code-only count."""
         try:
-            conn = sqlite3.connect(registry.db_path)
-            # Prefer survey total (all file types across all collections)
-            n = conn.execute(
-                """SELECT SUM(file_count) FROM project_file_type_counts
-                   WHERE project_slug = ?
-                     AND surveyed_at = (
-                         SELECT MAX(surveyed_at) FROM project_file_type_counts WHERE project_slug = ?
-                     )""",
-                (slug, slug),
-            ).fetchone()[0]
-            if n:
-                conn.close()
-                return f"{n} (surveyed)"
-            # Fall back to code-symbols count (Python/JS/Java/Go only)
-            n = conn.execute(
-                "SELECT COUNT(DISTINCT file_path) FROM project_code_symbols WHERE project_slug = ?",
-                (slug,),
-            ).fetchone()[0]
-            conn.close()
+            with registry._conn() as conn:
+                # Prefer survey total (all file types across all collections)
+                n = conn.execute(
+                    """SELECT SUM(file_count) FROM project_file_type_counts
+                       WHERE project_slug = ?
+                         AND surveyed_at = (
+                             SELECT MAX(surveyed_at) FROM project_file_type_counts WHERE project_slug = ?
+                         )""",
+                    (slug, slug),
+                ).fetchone()[0]
+                if n:
+                    return f"{n} (surveyed)"
+                # Fall back to code-symbols count (Python/JS/Java/Go only)
+                n = conn.execute(
+                    "SELECT COUNT(DISTINCT file_path) FROM project_code_symbols WHERE project_slug = ?",
+                    (slug,),
+                ).fetchone()[0]
             if n:
                 return f"{n} (code files only — run survey for full count)"
         except Exception:

@@ -5,6 +5,7 @@ import logging
 import os
 from datetime import datetime
 from typing import TYPE_CHECKING
+from resource_explorer.config import egeria_platform_url, egeria_view_server  # noqa: E402,F401
 
 if TYPE_CHECKING:
     from resource_explorer.registry import DatabaseEntity
@@ -39,7 +40,7 @@ log = logging.getLogger(__name__)
 # survey tries to use it. _create_postgres_element_from_template below
 # bypasses the two broken wrappers the same way _initiate_native_survey
 # bypasses initiate_postgres_*_survey, adding "deepCopy": True to the raw
-# request body. See docs/design-notes/CATALOG-AND-SURVEY-REFRESH-FIX.md for
+# request body. See CATALOG-AND-SURVEY-REFRESH-FIX.md for
 # the full investigation, including why this only helps *fresh* catalog runs
 # and not an already-broken existing asset (Egeria's own "reuse by
 # qualifiedName" match path never triggers deepCopy's child-copying at all —
@@ -48,6 +49,18 @@ log = logging.getLogger(__name__)
 
 class EgeriaDatabaseSurveyorError(RuntimeError):
     """Raised when Egeria survey operations fail."""
+
+
+class ArchivedDatabaseNeedsConfirmation(EgeriaDatabaseSurveyorError):
+    """S19 (owner ruling 2026-10-14): Egeria holds no database under this name but an archived copy of it
+    (`<qn>_archivedOn_<date>`), so a create here would re-include it as a NEW element. Nothing is created; the
+    person confirms through a Curate commit (Re-include), never through a survey."""
+
+    def __init__(self, message: str, *, state: str, archived_guid: str = "", date: str = ""):
+        super().__init__(message)
+        self.state = state
+        self.archived_guid = archived_guid
+        self.date = date
 
 
 # The connector provider RE's OWN secrets-store Connection must use --
@@ -68,11 +81,16 @@ class EgeriaDatabaseSurveyorError(RuntimeError):
 # native-survey time) correctly keeps YAMLSecretsStoreProvider, matching
 # Egeria's own documented pattern -- see
 # https://egeria-project.org/connectors/secrets/yaml-file-secrets-store-connector/.
-# See docs/design-notes/PROBES-2026-09-21.md for the full investigation.
+# See PROBES-2026-09-21.md for the full investigation.
 _YAML_SECRETS_FILE_PROVIDER_CLASS = (
     "org.odpi.openmetadata.adapters.connectors.secretsstore.yaml.YAMLSecretsFileProvider"
 )
 _OWN_SECRETS_STORE_QUALIFIED_NAME = "Resource Explorer:SecretsStoreConnector:YAML File Connection"
+
+#: LineageMapping's ends (OpenMetadataTypesArchive1_2.getLineageMappingRelationship): end 1 is
+#: `sourceElement`, end 2 `targetElement`. `LineageLinker.link_lineage(element_one_guid=...)` is end 1
+#: (`LineageHandler.linkLineage` -> `createRelatedElementsInStore(type, elementOneGUID, elementTwoGUID)`).
+LINEAGE_MAPPING_TARGET_END = 2
 
 
 def _secrets_collection_name(db_slug: str) -> str:
@@ -123,15 +141,34 @@ class EgeriaDatabaseSurveyor:
         view_server: str | None = None,
         user_id: str | None = None,
         user_password: str | None = None,
+        *,
+        identity=None,
     ) -> None:
-        self.platform_url = platform_url or os.getenv("EGERIA_PLATFORM_URL", "")
-        self.view_server = view_server or os.getenv("EGERIA_VIEW_SERVER", "qs-view-server")
+        self.platform_url = platform_url or egeria_platform_url()
+        self.view_server = view_server or egeria_view_server()
         self.user_id = user_id or os.getenv("EGERIA_USER", "erinoverview")
-        self.user_password = user_password or os.getenv("EGERIA_USER_PASSWORD", "secret")
+        self.user_password = user_password or ""   # not used to authenticate (Brief I)
+        self._identity = identity
         self._automated_curation = None
         self._asset_maker = None
         self._discovery = None
+        self._metadata_expert = None
         self._secrets_store_guid = ""
+
+    def principal(self):
+        """Who this surveyor acts as: the identity it was given, else `current_principal()` (the
+        signed-in Caller on a route, the declared daemon job otherwise), resolved once."""
+        if self._identity is None:
+            from resource_explorer.egeria_clients import current_principal
+
+            self._identity = current_principal()
+        return self._identity
+
+    def _clients(self):
+        from resource_explorer.egeria_clients import egeria_client
+
+        return egeria_client(self.principal(), purpose="database survey",
+                             view_server=self.view_server, platform_url=self.platform_url)
 
     def connect(self) -> None:
         """Establish pyegeria client connections."""
@@ -148,24 +185,15 @@ class EgeriaDatabaseSurveyor:
             from pyegeria import AutomatedCuration, AssetMaker
             from pyegeria.omvs.data_discovery import DataDiscovery
 
+            clients = self._clients()
             # AutomatedCuration for triggering surveys
-            self._automated_curation = AutomatedCuration(
-                self.view_server, self.platform_url, self.user_id, self.user_password
-            )
-            self._automated_curation.create_egeria_bearer_token(self.user_id, self.user_password)
-
+            self._automated_curation = clients.of(AutomatedCuration)
             # AssetMaker for finding survey reports
-            self._asset_maker = AssetMaker(
-                self.view_server, self.platform_url, self.user_id, self.user_password
-            )
-            self._asset_maker.create_egeria_bearer_token(self.user_id, self.user_password)
-
+            self._asset_maker = clients.of(AssetMaker)
             # DataDiscovery for retrieving annotations
-            self._discovery = DataDiscovery(
-                self.view_server, self.platform_url, self.user_id, self.user_password
-            )
-            self._discovery.create_egeria_bearer_token(self.user_id, self.user_password)
-
+            self._discovery = clients.of(DataDiscovery)
+        except PermissionError:
+            raise
         except ImportError as exc:
             raise EgeriaDatabaseSurveyorError("pyegeria is not installed.") from exc
         except Exception as exc:
@@ -180,6 +208,8 @@ class EgeriaDatabaseSurveyor:
         db_pwd: str,
         registry=None,
         survey_after_catalog: bool = True,
+        submitted_by: str = "",
+        reinclude_guid: str = "",
     ) -> dict:
         """Guarded front door — see _catalog_and_survey."""
         from resource_explorer.egeria_linkage import guard_linkage
@@ -188,7 +218,8 @@ class EgeriaDatabaseSurveyor:
                            db_entity.display_name or db_entity.slug,
                            db_entity.egeria_asset_guid or ""):
             return self._catalog_and_survey(
-                db_entity, db_user, db_pwd, registry, survey_after_catalog)
+                db_entity, db_user, db_pwd, registry, survey_after_catalog,
+                submitted_by=submitted_by, reinclude_guid=reinclude_guid)
 
     @staticmethod
     def _note_stale_guid_if_any(exc, db_entity, guid: str, registry) -> None:
@@ -224,7 +255,7 @@ class EgeriaDatabaseSurveyor:
         than creating a duplicate — so this is safe to call unconditionally —
         but that reuse path does NOT re-run deepCopy's child-copying, so it
         cannot repair an existing element that is already missing its
-        connection. See docs/design-notes/CATALOG-AND-SURVEY-REFRESH-FIX.md.
+        connection. See CATALOG-AND-SURVEY-REFRESH-FIX.md.
         """
         template_guid = self._automated_curation.get_template_guid_for_technology_type(technology_type)
         body = {
@@ -289,8 +320,7 @@ class EgeriaDatabaseSurveyor:
 
         from pyegeria import ConnectionMaker
 
-        maker = ConnectionMaker(self.view_server, self.platform_url, self.user_id, self.user_password)
-        maker.create_egeria_bearer_token(self.user_id, self.user_password)
+        maker = self._clients().of(ConnectionMaker)
         relationship_body = {"class": "NewRelationshipRequestBody"}
 
         # Find-or-create each sub-element individually, not just the final
@@ -390,7 +420,7 @@ class EgeriaDatabaseSurveyor:
         named collection, and return the two placeholder values
         ("secretsCollectionName", "secretsStorePathName") the PostgreSQL
         template's embedded SecretsStoreConnection needs bound -- see
-        docs/design-notes/PROBES-2026-09-21.md for why both were previously
+        PROBES-2026-09-21.md for why both were previously
         left as Egeria's own unsubstituted template placeholders.
 
         Non-fatal by design, matching this method's siblings in
@@ -421,7 +451,7 @@ class EgeriaDatabaseSurveyor:
         by-qualifiedName reuse path skipped past) needs delete-and-recatalog,
         which changes the asset's GUID and orphans its existing Survey Reports/
         annotations. That is a real, bigger decision than this bug fix's scope —
-        see docs/design-notes/CATALOG-AND-SURVEY-REFRESH-FIX.md and the Backlog
+        see CATALOG-AND-SURVEY-REFRESH-FIX.md and the Backlog
         entry — so it is not automated here. This only makes the absence
         visible (at WARNING level) instead of letting it surface later as an
         opaque OPEN-SURVEY-0009 from the native survey engine, the same
@@ -433,10 +463,12 @@ class EgeriaDatabaseSurveyor:
         Connection template today (confirmed live) — a heuristic tied to this
         content pack's naming convention, not a guaranteed-stable Egeria API.
         """
-        qualified_name = f"PostgreSQL Relational Database::{server_name}::{db_entity.database_name}"
+        from resource_explorer.catalogue_gateway import database_qualified_name
+
+        qualified_name = database_qualified_name(server_name, db_entity.database_name)
         connection_qn = f"{qualified_name}::Connection"
         try:
-            has_connection = bool(self._find_element_guid(connection_qn))
+            has_connection = bool(self._find_by_qualified_name(connection_qn))
         except Exception as exc:
             log.debug(f"Could not check for a Connection on {qualified_name!r} (non-fatal): {exc}")
             return
@@ -447,8 +479,8 @@ class EgeriaDatabaseSurveyor:
                 "OPEN-SURVEY-0009. This element was cataloged before this fix, or via "
                 "Egeria's by-qualifiedName reuse path, which does not create one. Fixing "
                 "it requires delete-and-recatalog (changes the GUID, orphans existing "
-                "Survey Reports/annotations) — see "
-                "docs/design-notes/CATALOG-AND-SURVEY-REFRESH-FIX.md."
+                "Survey Reports/annotations) — see the design note "
+                "CATALOG-AND-SURVEY-REFRESH-FIX.md."
             )
 
     def _catalog_and_survey(
@@ -458,37 +490,74 @@ class EgeriaDatabaseSurveyor:
         db_pwd: str,
         registry=None,
         survey_after_catalog: bool = True,
+        submitted_by: str = "",
+        reinclude_guid: str = "",
     ) -> dict:
         """Catalog the PostgreSQL server + database in Egeria, then optionally initiate a native survey.
+
+        S19 (owner ruling 2026-10-14): when no database holds its name, its archived copy is looked for FIRST,
+        before anything is written. One there and `reinclude_guid` not naming it (the newest copy, confirmed in a
+        Curate commit): `ArchivedDatabaseNeedsConfirmation`, nothing created. A lookup that cannot be made:
+        `EgeriaDatabaseSurveyorError`, nothing created.
 
         Egeria's template-based creation stores the connection details (including
         credentials) so that subsequent surveys can be initiated without supplying
         credentials again — for a *freshly-cataloged* element. See
-        docs/design-notes/CATALOG-AND-SURVEY-REFRESH-FIX.md for what this does and
+        CATALOG-AND-SURVEY-REFRESH-FIX.md for what this does and
         does not fix for an already-cataloged element.
 
-        Returns dict with keys: server_guid, database_guid, survey_action_guid.
+        Returns dict with keys: server_guid, database_guid, survey_action_guid,
+        server_survey_guid and survey_submissions.
+
+        `survey_submissions` lists ONLY the surveys whose engine-action GUID
+        came back AND whose proof row was persisted (see _record_survey_submission);
+        callers must derive any "survey started" claim from it, never from the
+        branch that ran.
         """
         self.connect()
+        survey_submissions: list[dict] = []
 
         # Use egeria_host if set (e.g. host.docker.internal when Egeria runs in Docker);
         # fall back to the locally-visible host.
+        from resource_explorer.catalogue_gateway import (
+            database_qualified_name, server_name_for, server_qualified_name)
+
         egeria_host = getattr(db_entity, "egeria_host", "") or db_entity.host
-        server_name = f"{egeria_host}:{db_entity.port}"
+        server_name = server_name_for(db_entity)
 
         # ── 1. Create / find PostgreSQL Server element ─────────────────────────
-        server_guid = db_entity.egeria_asset_guid  # reuse if already stored as server
-        if not server_guid:
-            server_guid = self._find_element_guid(server_name)
+        # Adoption is by the FULL qualifiedName, never a bare name (Brief L, backlog 7f.7): a bare
+        # `sales` matched host A's database when host B's `sales` was registered, and host B adopted it.
+        # The names are the catalogue gateway's (one definition): `PostgreSQL Server::<host:port>` and
+        # `PostgreSQL Relational Database::<host:port>::<db>`.
+        # The server is ALWAYS found by its own qualifiedName. `egeria_asset_guid` is the DATABASE's guid in
+        # every current flow (`set_database_egeria_guid`), so reusing it as the server printed the database
+        # as the server (rehearsal 2, D-E) — and when the database lookup misses (e.g. `egeria_host`
+        # changed) no comparison can tell, so the stored guid is never a server candidate at all (Brief L
+        # round 2). NOTE a server element is SHARED by host:port: a commit attaches to whatever server
+        # already carries that qualifiedName.
+        db_guid_lookup = self._find_by_qualified_name(
+            database_qualified_name(server_name, db_entity.database_name))
+        server_guid = self._find_by_qualified_name(server_qualified_name(server_name))
+        if server_guid and server_guid == db_guid_lookup:
+            server_guid = ""
+        if not db_guid_lookup:
+            self._refuse_unconfirmed_reinclude(database_qualified_name(server_name, db_entity.database_name),
+                                               reinclude_guid)
 
-        # Look up the database element before deciding whether a secrets
-        # write is needed at all: reusing both existing elements by name is
+        # Whether a secrets write is needed at all: reusing both existing elements by name is
         # the common re-survey path, and a reused element's deepCopy already
         # ran (or didn't) long before this call, so writing a fresh secret for
         # it here would be a wasted live write, not a fix -- see
         # _create_postgres_element_from_template's own docstring on why reuse
         # never re-runs deepCopy.
-        db_guid_lookup = self._find_element_guid(db_entity.database_name)
+        # The credentials reach the templates ONLY through the secrets store. Egeria's PostgreSQL
+        # Server/Database templates declare neither databaseUserId nor databasePassword
+        # (PostgresPlaceholderProperty.getPostgres{Server,Database}PlaceholderPropertyTypes) and the shipped
+        # content pack carries no ~{databaseUserId}~/~{databasePassword}~, so a plaintext pair would be
+        # discarded by Egeria and give the element no credentials. **Decision (project owner, 2026-10-21):**
+        # "drop the fallback if it isn't useful" -- on a failed save nothing credential-bearing is sent; the
+        # element is created without credentials and the failure is logged.
         secret_placeholders: dict = {}
         if not server_guid or not db_guid_lookup:
             secrets_collection_name, secrets_store_path = self._save_database_secret(
@@ -499,6 +568,9 @@ class EgeriaDatabaseSurveyor:
                     "secretsCollectionName": secrets_collection_name,
                     "secretsStorePathName": secrets_store_path,
                 }
+            else:
+                log.warning(f"Database {db_entity.slug!r}: secrets-store save failed; element created "
+                            "without credentials, so Egeria's native survey cannot connect")
 
         if not server_guid:
             try:
@@ -508,9 +580,15 @@ class EgeriaDatabaseSurveyor:
                         "serverName": server_name,
                         "hostIdentifier": egeria_host,
                         "portNumber": str(db_entity.port),
-                        "databaseUserId": db_user,
-                        "description": db_entity.description or f"PostgreSQL server at {egeria_host}:{db_entity.port}",
-                        "databasePassword": db_pwd,
+                        # Declared by the server template (resourceName) and supplied by nothing: it would
+                        # stay a literal ~{resourceName}~ on the element.
+                        "resourceName": server_name,
+                        # The server's OWN description: the rehearsal (2026-10-05) found the
+                        # server element carrying the DATABASE's description.
+                        "description": f"PostgreSQL server at {egeria_host}:{db_entity.port}",
+                        # A second placeholder nothing supplied: it stayed as a literal
+                        # `~{versionIdentifier}~` on the server element.
+                        "versionIdentifier": "not recorded",
                         **secret_placeholders,
                     },
                 )
@@ -532,9 +610,16 @@ class EgeriaDatabaseSurveyor:
                         "serverName": server_name,
                         "hostIdentifier": egeria_host,
                         "portNumber": str(db_entity.port),
-                        "databaseUserId": db_user,
                         "description": db_entity.description or f"PostgreSQL database {db_entity.database_name}",
-                        "databasePassword": db_pwd,
+                        # The template's description placeholder is
+                        # `databaseDescription`, not `description` (scratch test
+                        # 2, 2026-10-05), and `versionIdentifier` is a second one
+                        # nothing supplied: with `description` alone both stayed
+                        # as literal ~{...}~ strings on the element. Supplied
+                        # here so none remains; the version is "not recorded"
+                        # because RE keeps no PostgreSQL version for the database.
+                        "databaseDescription": db_entity.description or f"PostgreSQL database {db_entity.database_name}",
+                        "versionIdentifier": "not recorded",
                         **secret_placeholders,
                     },
                 )
@@ -559,8 +644,12 @@ class EgeriaDatabaseSurveyor:
             # Survey the server first (captures connection info, database list, server config)
             if server_guid:
                 try:
+                    self._last_survey_process_qn = ""
                     server_survey_guid = self._initiate_survey("PostgreSQL Server", server_guid)
                     log.info(f"Egeria server survey initiated: {server_survey_guid}")
+                    self._record_survey_submission(
+                        registry, db_entity, "PostgreSQL Server", server_survey_guid,
+                        submitted_by, survey_submissions)
                 except Exception as exc:
                     log.warning(f"Server survey initiation failed (non-fatal): {exc}")
                     # This is where a stale cached GUID actually surfaces, and it
@@ -576,8 +665,12 @@ class EgeriaDatabaseSurveyor:
             # Survey the database (captures schemas, tables, columns, relationships)
             if db_guid:
                 try:
+                    self._last_survey_process_qn = ""
                     survey_action_guid = self._initiate_survey("PostgreSQL Relational Database", db_guid)
                     log.info(f"Egeria database survey initiated: {survey_action_guid}")
+                    self._record_survey_submission(
+                        registry, db_entity, "PostgreSQL Relational Database",
+                        survey_action_guid, submitted_by, survey_submissions)
                 except Exception as exc:
                     log.warning(f"Cataloged OK but Egeria database survey initiation failed: {exc}")
                     self._note_stale_guid_if_any(exc, db_entity, db_guid, registry)
@@ -587,7 +680,58 @@ class EgeriaDatabaseSurveyor:
             "server_survey_guid": server_survey_guid,
             "database_guid": db_guid,
             "survey_action_guid": survey_action_guid,
+            "survey_submissions": survey_submissions,
         }
+
+    _last_survey_process_qn: str = ""
+    _last_survey_started_as: str = ""
+
+    def _record_survey_submission(
+        self, registry, db_entity, tech_type: str, engine_action_guid: str,
+        submitted_by: str, out: list,
+    ) -> None:
+        """Persist the proof row for a survey Publish just initiated, through the
+        SAME recorder a native-survey run uses (registry.record_native_survey_submission),
+        so the read-back sweep and the native-survey list see it.
+
+        Records nothing when there is no registry or no engine-action GUID
+        (an empty/None return is not proof Egeria accepted anything). A
+        recording failure is logged loudly and the survey is then NOT reported
+        as started: the claim must match a row that exists.
+
+        Arguments: entity_type 'database' and slug from the entity; the process
+        qualified name is the one _initiate_survey actually used (a discovered
+        Survey Definition process, else the configured survey_existing native
+        process for the technology type); surveyed_at is the submission time (UTC,
+        naive ISO, the registry's spelling); submitted_by is passed in, never read
+        from a ContextVar here.
+        """
+        guid = (engine_action_guid or "").strip() if isinstance(engine_action_guid, str) else ""
+        if registry is None or not guid:
+            return
+        process_qn = self._last_survey_process_qn
+        if not process_qn:
+            from resource_explorer.surveyors.technology_type_processes import (
+                KIND_SURVEY_EXISTING, get_process_by_kind)
+            native = get_process_by_kind("database", tech_type, KIND_SURVEY_EXISTING)
+            process_qn = native.qualified_name if native else ""
+        if not process_qn:
+            log.error(f"Survey {guid} was initiated for {tech_type} but no process name is "
+                      "known to record it under; no proof row written.")
+            return
+        from datetime import timezone
+        try:
+            registry.record_native_survey_submission(
+                "database", db_entity.slug, process_qn,
+                datetime.now(timezone.utc).replace(tzinfo=None).isoformat(),
+                engine_action_guid=guid, submitted_by=submitted_by or "",
+                started_as=self._last_survey_started_as)
+        except Exception as exc:  # noqa: BLE001
+            log.error(f"Survey {guid} was initiated but its proof row could not be "
+                      f"recorded: {exc}")
+            return
+        out.append({"technology_type": tech_type, "process_qualified_name": process_qn,
+                    "engine_action_guid": guid})
 
     def trigger_survey_by_guid(self, db_guid: str, start_time: datetime | None = None) -> str:
         """Initiate Egeria's native PostgreSQL database survey using a stored GUID.
@@ -629,7 +773,7 @@ class EgeriaDatabaseSurveyor:
 
         self.connect()
         reader = SurveyDefinitionReader(
-            self.platform_url, self.view_server, self.user_id, self.user_password
+            self.platform_url, self.view_server, identity=self.principal()
         )
         reader._automated_curation = self._automated_curation
         candidates = reader.find_candidate_process_guids(tech_type)
@@ -649,6 +793,10 @@ class EgeriaDatabaseSurveyor:
         views: list | None = None,
         operations: dict | None = None,
         credential_capability: dict | None = None,
+        column_profile: dict | None = None,
+        nested_columns: dict | None = None,
+        quality_annotations: list | None = None,
+        step_annotations: list | None = None,
     ) -> dict:
         """Publish RE-computed annotations to Egeria WITHOUT cataloging the database
         or triggering Egeria's own native survey as a side effect.
@@ -659,32 +807,34 @@ class EgeriaDatabaseSurveyor:
         not appropriate when a Survey Definition has already explicitly declared
         this step runs in RE. The database must already be cataloged in Egeria;
         this method does not auto-catalog it.
+
+        `step_annotations`: the annotations a quality step built itself (the value profile's, and the proposal
+        step's one request or measure), published beside the schema ones. `quality_annotations`: one
+        QualityAnnotation per evaluated check.
+
+        What landed is judged by READING the report back by its GUID (`reportedAnnotations`), never from the GUIDs
+        the creates returned: `annotations_this_publish` is how many of this publish's annotations the report
+        holds (None: the read failed), `quality_annotations_in_egeria` the same for the checks.
         """
+        from resource_explorer.catalogue_gateway import database_qualified_name, server_name_for
+
+        # Interim (2026-10-13 review): no private (born-private) publish exists for databases yet, so a database in a
+        # private investigation is refused here, before anything is written, recorded once per state.
+        from resource_explorer.private_publish import refuse_unsupported_private
+
+        refuse_unsupported_private(registry, "database", db_entity.slug,
+                                   name=getattr(db_entity, "display_name", "") or db_entity.slug)
         self.connect()
-        db_guid = self._find_element_guid(db_entity.database_name)
+        expected_qn = database_qualified_name(server_name_for(db_entity), db_entity.database_name)
+        db_guid = self._find_by_qualified_name(expected_qn)
         if not db_guid:
-            raise EgeriaDatabaseSurveyorError(
-                f"Database '{db_entity.database_name}' is not yet cataloged in Egeria — "
-                "cannot publish a Survey Definition step's results without an existing "
-                "asset to attach the SurveyReport to."
-            )
+            raise EgeriaDatabaseSurveyorError(self._not_catalogued_sentence(db_entity, expected_qn))
 
-        from resource_explorer.surveyors.database.database_surveyor import DatabaseSurveyor
-
-        annotations = []
-        local_surveyor = DatabaseSurveyor(db_entity, {}, registry)
-        if schema_info:
-            annotations.extend(local_surveyor._create_schema_annotations(schema_info))
-        if statistics:
-            annotations.extend(local_surveyor._create_statistics_annotations(statistics))
-        if views:
-            annotations.extend(local_surveyor._create_views_annotations(views))
-        if operations:
-            annotations.extend(local_surveyor._create_operations_annotations(operations))
-        if credential_capability:
-            annotations.extend(
-                local_surveyor._create_credential_capability_annotations(credential_capability)
-            )
+        annotations = build_step_annotations(
+            db_entity, registry, schema_info=schema_info, statistics=statistics, views=views,
+            operations=operations, credential_capability=credential_capability,
+            column_profile=column_profile, nested_columns=nested_columns,
+            quality_annotations=quality_annotations, step_annotations=step_annotations)
 
         qualified_name = f"SurveyReport::PostgreSQL::{db_entity.slug}::{surveyed_at}"
         body = {
@@ -706,34 +856,79 @@ class EgeriaDatabaseSurveyor:
                 },
             },
         }
+        # Profile publish reshape: an unchanged value-profile measure is RE-LINKED to this report (the annotation
+        # already in Egeria), only a changed or new one is created. Planned against RE's own proof rows of the last
+        # published profile, before anything is written.
+        profile_plan = self._plan_profile_publish(registry, db_entity.slug, annotations)
         report_guid = self._asset_maker.create_asset(body=body)
         log.info(f"Published SurveyReport in Egeria: {report_guid}")
-        self._create_annotations(annotations, report_guid, db_entity.slug, surveyed_at)
+        # Re-link FIRST: a re-link Egeria refuses (the annotation archived, deleted or wiped) puts that measure back
+        # into the create set, so it is created in this same run rather than missing until the next.
+        if profile_plan and profile_plan.relink:
+            relinked = self._relink_unchanged(report_guid, profile_plan.relink)
+            profile_plan.recreate(i for i, outcome in relinked.items() if outcome == "refused")
+        skip = frozenset(profile_plan.relink) if profile_plan else frozenset()
+        made = self._create_annotations(annotations, report_guid, db_entity.slug, surveyed_at,
+                                        **({"skip": skip} if skip else {}))
 
         # Publish column-level lineage mapping relationships to Egeria
+        self.lineage_not_checked = []
         if db_guid and views:
             try:
                 self._publish_column_lineage(db_entity, views)
             except Exception as lin_err:
                 log.warning(f"Could not publish column lineage: {lin_err}")
 
-        if registry:
-            registry.record_database_survey(
-                slug=db_entity.slug,
-                schema_count=len(schema_info.get("schemas", [])) if schema_info else 0,
-                table_count=schema_info.get("total_tables", 0) if schema_info else 0,
-                column_count=schema_info.get("total_columns", 0) if schema_info else 0,
-                survey_data={
-                    "schema_info": schema_info,
-                    "statistics": statistics or {},
-                    "views": views or [],
-                    "operations": operations or {},
-                },
-                egeria_report_guid=report_guid,
-                source="egeria-published",
-            )
+        # A publish measures nothing, so it NEVER writes a database_surveys
+        # row (false-zero hotfix, 2026-09-30): the caller records the outcome
+        # on the measured row it published, via
+        # registry.record_database_survey_published().
 
-        return {"asset_guid": db_guid, "report_guid": report_guid, "annotation_count": len(annotations)}
+        # The run's own proof: what the report holds when READ BACK by its GUID, against what was sent.
+        # Every PLANNED re-link goes to the read-back, whatever the attach answered: the read by GUID decides.
+        read_back = self._read_back(report_guid, annotations, db_entity.slug, surveyed_at,
+                                    relinked=dict(profile_plan.relink) if profile_plan else None)
+        profile = self._record_profile_publish(registry, db_entity.slug, report_guid, surveyed_at, annotations,
+                                               profile_plan, read_back) if profile_plan else {}
+        quality_idx = [i for i, a in enumerate(annotations) if any(a is q for q in quality_annotations or [])]
+        quality_proof: dict = {}
+        if quality_idx:
+            quality_proof = {"quality_annotation_count": len(quality_idx),
+                             "quality_annotations_in_egeria": read_back["quality"] if read_back else None}
+
+        # Ownership on the report, recorded for the person the work is on behalf of, exactly as the engine host does
+        # (`publish_engine_action_report`): a queued press is `Daemon(RUN_QUEUE, requested_by=<presser>)`, so the
+        # service account never becomes the owner. Best-effort and reported, never a failed publish.
+        governance: dict = {}
+        from resource_explorer.egeria_identity import draft_zones, on_behalf_of, stamp_published
+
+        owner = ""
+        try:
+            owner = on_behalf_of(self.principal()).owner
+            if owner:
+                governance = stamp_published(report_guid, owner, identity=self.principal(), zones=draft_zones())
+        except Exception as exc:  # noqa: BLE001 - a governance gap is reported, never a failed publish
+            governance = {"ownership": False, "zone_membership": False, "owner": owner,
+                          "reason": f"{type(exc).__name__}: {exc}"[:300]}
+
+        element_links: dict = {}
+        if quality_idx:
+            element_links = self._link_quality_checks(db_entity, annotations, surveyed_at)
+        return {"asset_guid": db_guid, "report_guid": report_guid,
+                # RE's own count (what it built and sent), as everywhere; Egeria's is `annotations_in_egeria`:
+                # what the report held when read back, None when RE cannot tell.
+                "annotation_count": len(annotations),
+                "annotations_in_egeria": read_back["held"] if read_back else None,
+                "annotations_this_publish": read_back["this_publish"] if read_back else None,
+                **quality_proof,
+                # The value profile's measures on this report, counted from the proof rows just written (created
+                # vs re-linked vs no longer measured): the run card's line. {} when this publish had none.
+                "profile_publish": profile,
+                "governance": governance,
+                "element_links": element_links,
+                # Column names whose look-up could not be made, and "source -> target" pairs whose
+                # existing LineageMappings could not be read: their lineage was not linked.
+                "lineage_not_checked": list(self.lineage_not_checked)}
 
     def _initiate_survey(self, tech_type: str, target_guid: str, start_time: datetime | None = None) -> str:
         """Dynamically find a user-authored Survey Definition process for tech_type
@@ -761,6 +956,8 @@ class EgeriaDatabaseSurveyor:
                     action_targets=targets,
                     start_time=start_time,
                 )
+                self._last_survey_process_qn = process_name
+                self._last_survey_started_as = "process"
                 log.info(f"Initiated dynamically discovered survey process {process_name} on {target_guid}: {guid}"
                          + (f" (start_time={start_time.isoformat()})" if start_time else ""))
                 return guid
@@ -783,7 +980,10 @@ class EgeriaDatabaseSurveyor:
                 f"start_time={start_time.isoformat()} requested but the native-survey fallback path "
                 f"(pyegeria's private _async_initiate_survey) has no start_time parameter — firing immediately."
             )
-        return self._initiate_native_survey(native.qualified_name, target_guid)
+        guid = self._initiate_native_survey(native.qualified_name, target_guid)
+        self._last_survey_process_qn = native.qualified_name
+        self._last_survey_started_as = "gov_action_type"
+        return guid
 
     def _initiate_native_survey(self, survey_qualified_name: str, target_guid: str) -> str:
         """Call pyegeria's private _async_initiate_survey directly with a correct
@@ -792,13 +992,17 @@ class EgeriaDatabaseSurveyor:
         ("PostgreSQLSurvey:survey-postgres-database") that does not match the real
         double-colon qualifiedName Egeria actually registers
         ("PostgreSQLSurvey::survey-postgres-database"), causing
-        OMAG-GENERIC-HANDLERS-400-013 "name is not recognized". This is a pyegeria
-        bug — remove this workaround once it's fixed upstream.
-        """
-        import asyncio
+        OMAG-GENERIC-HANDLERS-400-013 "name is not recognized". pyegeria 6.2.16 fixed
+        those two names, but `survey_qualified_name` comes from technology_type_processes.yaml
+        and pyegeria has no public method that takes one, so this stays.
 
-        loop = asyncio.get_event_loop()
-        return loop.run_until_complete(
+        pyegeria's run_sync (6.2.16, #513) drives the coroutine: it is safe on a worker thread
+        with no loop and from inside a running loop, which get_event_loop().run_until_complete
+        was not once nest_asyncio went.
+        """
+        from pyegeria.core.async_runner import run_sync
+
+        return run_sync(
             self._automated_curation._async_initiate_survey(survey_qualified_name, target_guid)
         )
 
@@ -810,29 +1014,98 @@ class EgeriaDatabaseSurveyor:
     def _find_element_guid(self, name: str) -> str:
         """Return the GUID of an existing Egeria element by display/qualified name, or '' if not found.
 
-        '' is the callers' cue to *create* the element, so anything that is not a
-        clean "no such element" must at least be visible. pyegeria raises for an
-        ambiguous name ("Multiple elements found for supplied name!") exactly as
-        it does for a transport failure; swallowing both silently meant a name
-        that already had two elements got a third on the next catalog run, and a
-        dead view server looked like an empty catalog. Verified live 2026-09-04
-        against qs-view-server while diagnosing a stale linkage: the by-name
-        search itself was fine, the element had simply been deleted.
+        '' is the callers' cue to *create* the element, so only a real miss returns it: pyegeria's
+        "No elements found", or a typed not-found (`egeria_absence.is_absent`). Anything else that
+        raised (unreachable, 401/403, 500, timeout, or "Multiple elements found for supplied name!")
+        could not be checked, and raises `EgeriaDatabaseSurveyorError` saying so: nothing is created on
+        it. This used to log "treating as absent" and return '', with only Egeria's duplicate-
+        qualifiedName refusal between a failed look-up and a duplicate (AUDIT-PYEGERIA-6.2.2.md).
         """
+        from resource_explorer.egeria_absence import lookup_could_not_be_made, lookup_exception_is_absent
+
+        from resource_explorer.egeria_lookup import guid_by_qualified_name
+
         try:
-            result = self._automated_curation.get_guid_for_name(name)
-            if isinstance(result, list) and result:
-                candidate = result[0] if isinstance(result[0], str) else result[0].get("guid", "")
-                return candidate if self._UUID_RE.match(candidate or "") else ""
-            if isinstance(result, str) and self._UUID_RE.match(result):
-                return result
+            # Every caller passes a qualifiedName: the unique-name read, not the exact-value search that
+            # times out on a large repository (egeria_lookup.py).
+            return guid_by_qualified_name(self._metadata_expert_client(), name) or ""
         except Exception as exc:
-            log.warning(
-                f"Egeria by-name lookup for {name!r} failed rather than returning "
-                f"'not found' — treating as absent, which may create a duplicate: "
-                f"{' '.join(str(exc).split())[:300] or type(exc).__name__}"
-            )
-        return ""
+            if lookup_exception_is_absent(exc):
+                return ""
+            raise EgeriaDatabaseSurveyorError(lookup_could_not_be_made(name, exc)) from exc
+
+    def _not_catalogued_sentence(self, db_entity, expected_qn: str) -> str:
+        """Why an exact-qualifiedName lookup missed, in words a person can act on. When RE holds a
+        guid for this database from an earlier catalogue, that element's own qualifiedName is read:
+        a different host string there is a host change, and the sentence names both hosts and the
+        fix. Adoption stays exact-match (7f.7); this only explains the miss."""
+        from resource_explorer.catalogue_gateway import parse_element_answer, server_name_for
+
+        base = (f"Database '{db_entity.database_name}' is not yet published to Egeria under "
+                f"{expected_qn!r} — cannot publish a Survey Definition step's results without an "
+                "existing asset to attach the SurveyReport to.")
+        stored = (db_entity.egeria_asset_guid or "").strip()
+        if not stored:
+            return base
+        try:
+            found = parse_element_answer(self._asset_maker.get_asset_by_guid(stored, output_format="JSON"))
+        except Exception as exc:
+            raise EgeriaDatabaseSurveyorError(
+                f"{base} RE's stored element {stored} could not be read to say why: "
+                f"{' '.join(str(exc).split())[:200] or type(exc).__name__}") from exc
+        prefix = "PostgreSQL Relational Database::"
+        qn = found.qualified_name if found is not None else ""
+        if qn.startswith(prefix) and qn.endswith(f"::{db_entity.database_name}"):
+            held = qn[len(prefix):-(len(db_entity.database_name) + 2)]
+            ours = server_name_for(db_entity)
+            if held != ours:
+                return (f"The database element in Egeria ({stored}) is named for host {held}; this "
+                        f"registration says host {ours}. Re-publish the database, or correct the "
+                        "host (Egeria host) on the registration.")
+        return base
+
+    def _metadata_expert_client(self):
+        if self._metadata_expert is None:
+            from pyegeria import MetadataExpert
+            self._metadata_expert = self._clients().of(MetadataExpert)
+        return self._metadata_expert
+
+    def _refuse_unconfirmed_reinclude(self, qualified_name: str, reinclude_guid: str = "") -> None:
+        """S19: raise unless a create under `qualified_name` re-includes nothing, or re-includes exactly the newest
+        archived copy the person confirmed. The decision is `catalogue_gateway.decide_reinclude`, the one the
+        catalogue commit uses."""
+        from resource_explorer.catalogue_gateway import (
+            NEEDS_CONFIRMATION, SIBLING_UNREADABLE, decide_reinclude, find_archived_siblings)
+        try:
+            sibs = find_archived_siblings(self._metadata_expert_client(), qualified_name)
+        except Exception as exc:  # noqa: BLE001 - every failure is "could not check": nothing is created
+            raise EgeriaDatabaseSurveyorError(
+                f"{SIBLING_UNREADABLE} for {qualified_name!r}: nothing created "
+                f"({' '.join(str(exc).split())[:200] or type(exc).__name__})") from exc
+        got = decide_reinclude(None, sibs, reinclude_guid)
+        if got["state"] in (NEEDS_CONFIRMATION, "changed"):
+            sib = got["sibling"]
+            tail = " · confirm Re-include in Curate › Contents" if got["state"] == NEEDS_CONFIRMATION else ""
+            raise ArchivedDatabaseNeedsConfirmation(
+                f"the database is {got['text']}{tail} · nothing created", state=got["state"],
+                archived_guid=sib.guid, date=sib.date)
+
+    def _find_by_qualified_name(self, qualified_name: str) -> str:
+        """The GUID of the element whose qualifiedName is EXACTLY `qualified_name`, or '' (not found).
+
+        Searches the qualifiedName property only (never displayName/resourceName, which carry a
+        bare database name shared across hosts). Used for every adoption of an existing server or
+        database (Brief L, 7f.7). A lookup that FAILS is not "absent": it raises
+        `EgeriaDatabaseSurveyorError` rather than letting the caller create a duplicate.
+        """
+        from resource_explorer.egeria_lookup import guid_by_qualified_name
+
+        try:
+            return guid_by_qualified_name(self._metadata_expert_client(), qualified_name) or ""
+        except Exception as exc:
+            raise EgeriaDatabaseSurveyorError(
+                f"Egeria qualifiedName lookup for {qualified_name!r} failed, so RE cannot tell whether "
+                f"it exists: {' '.join(str(exc).split())[:300] or type(exc).__name__}") from exc
 
     def check_survey_exists(self, db_slug: str) -> bool:
         """Check if any survey reports exist for this database in Egeria.
@@ -1000,7 +1273,7 @@ class EgeriaDatabaseSurveyor:
         from resource_explorer.surveyors.egeria_survey_reader import get_annotations_by_report_guid
 
         self.connect()
-        return get_annotations_by_report_guid(self._asset_maker, report_guid)
+        return get_annotations_by_report_guid(self._metadata_expert_client(), report_guid)
 
     def get_latest_survey(self, db_slug: str) -> dict | None:
         """Get the most recent survey report for a database.
@@ -1027,16 +1300,37 @@ class EgeriaDatabaseSurveyor:
         db_pwd: str = "",
         statistics: dict | None = None,
         views: list | None = None,
+        submitted_by: str = "",
+        survey_after_catalog: bool = True,
+        declared_measures: bool = False,
     ) -> dict:
         """Catalog the database in Egeria, trigger a native PostgreSQL survey,
         and publish the local survey report and annotations directly to Egeria.
+
+        `declared_measures=True` adds the measures chosen Publish on Curate's
+        publish table (`publish_table.annotations_for`), after the stored
+        verdicts, and returns each with the GUID the report read found for it
+        (`declared_measures` in the result). Only the catalogue commit, the
+        database's one press, asks for them: it records their proof rows.
+
+        `survey_after_catalog=False` publishes everything but starts NO native
+        survey: the catalogue commit (`catalogue_commit.py`) starts its own,
+        scoped to the chosen schemas, and an unscoped one here would measure
+        every schema the steward left out.
         """
+        # Interim (2026-10-13 review): no private (born-private) publish exists for databases yet, so a database in a
+        # private investigation is refused here, before anything is written, recorded once per state.
+        from resource_explorer.private_publish import refuse_unsupported_private
+
+        refuse_unsupported_private(registry, "database", db_entity.slug,
+                                   name=getattr(db_entity, "display_name", "") or db_entity.slug)
         result = self.catalog_and_survey(
             db_entity=db_entity,
             db_user=db_user,
             db_pwd=db_pwd,
             registry=registry,
-            survey_after_catalog=True,
+            survey_after_catalog=survey_after_catalog,
+            submitted_by=submitted_by,
         )
 
         server_guid        = result.get("server_guid", "")
@@ -1046,7 +1340,15 @@ class EgeriaDatabaseSurveyor:
 
         # ── Publish local survey report & annotations to Egeria ──────────────────
         report_guid = ""
+        report_error = ""
+        report_reused = False
+        annotations_in_egeria = None
         annotations = []
+        verdicts = {"state": "not_read", "annotations": [], "column_paths": []}
+        verdict_start = 0
+        declared = {"state": "not_asked", "rows": [], "annotations": []}
+        declared_start = 0
+        pub: dict = {}
         if db_guid:
             # Recreate annotations from local scan data using DatabaseSurveyor helpers
             try:
@@ -1060,6 +1362,20 @@ class EgeriaDatabaseSurveyor:
                     annotations.extend(local_surveyor._create_views_annotations(views))
             except Exception as exc:
                 log.warning(f"Could not reconstruct local annotations: {exc}")
+            # The column-profile step's stored verdicts (DESIGN-PUBLISHING-COLUMN-VERDICTS.md §1). Appended
+            # after the survey's own annotations so their indices, and so their published names, do not move.
+            verdicts = self._stored_verdict_annotations(registry, db_entity.slug, schema_info)
+            verdict_start = len(annotations)
+            annotations.extend(verdicts["annotations"])
+            # Curate's publish table (declared extensibility slice 1): after the verdicts, so neither moves.
+            if declared_measures and registry is not None:
+                from resource_explorer.publish_table import annotations_for
+                from resource_explorer.surveyors.database.db_derived import one_read
+
+                with one_read():                 # F38: the derivations once per read, not once per measure
+                    declared = annotations_for(registry, db_entity.slug)
+                declared_start = len(annotations)
+                annotations.extend(declared["annotations"])
 
             qualified_name = f"SurveyReport::PostgreSQL::{db_entity.slug}::{surveyed_at}"
             body = {
@@ -1083,38 +1399,53 @@ class EgeriaDatabaseSurveyor:
                     },
                 },
             }
-            try:
-                report_guid = self._asset_maker.create_asset(body=body)
-                log.info(f"Published SurveyReport in Egeria: {report_guid}")
-                
-                # Push annotations under the SurveyReport in Egeria
-                self._create_annotations(annotations, report_guid, db_entity.slug, surveyed_at)
-            except Exception as exc:
-                log.warning(f"Failed to publish SurveyReport to Egeria: {exc}")
+            pub = self._publish_survey_report(body, qualified_name, annotations, db_entity.slug, surveyed_at)
+            report_guid, report_error = pub["report_guid"], pub["report_error"]
+            report_reused, annotations_in_egeria = pub["reused"], pub["annotations_in_egeria"]
+
+        if db_guid and report_guid and verdicts["annotations"]:
+            verdicts["column_links"] = self._link_verdicts_to_columns(
+                db_entity, annotations, verdict_start, verdicts["column_paths"], surveyed_at)
+        # A reused report already holds earlier batches beside this one: retire them (DESIGN-PUBLISHING-COLUMN-
+        # VERDICTS.md §1 item 10). A fresh report holds none, so there is nothing to look for.
+        if db_guid and report_guid and report_reused and verdicts.get("state") == "sent" and verdicts.get("batch"):
+            verdicts["superseded"] = self._retire_superseded_verdicts(report_guid, verdicts["batch"])
+
+        # Each chosen measure with what the report read found for it: its GUID, or "" (sent, not read back).
+        declared_out = []
+        if declared["annotations"]:
+            from resource_explorer.surveyors.survey_report import annotation_qualified_name
+
+            guids = pub.get("read_back_guids")
+            prefix = f"Annotation::PostgreSQL::{db_entity.slug}::{surveyed_at}"
+            why = ("" if guids is not None else
+                   (report_error or pub.get("annotation_error") or "the report could not be read back"))
+            for i, (row, ann) in enumerate(zip(declared["rows"], declared["annotations"])):
+                idx = declared_start + i
+                declared_out.append({
+                    "analysis_id": row["analysis_id"], "measure": row["measure"], "value": row["value"],
+                    "unit": row["unit"], "as_of": row["as_of"], "route": row["writes_as"]["route"],
+                    "type": row["writes_as"]["type"], "qualified_name": annotation_qualified_name(prefix, idx, ann),
+                    "guid": (guids or {}).get(idx, "") if report_guid else "",
+                    "why": why if report_guid else (report_error or "no report was written")})
 
         # Use the created report GUID if available, otherwise fall back to Egeria's native action GUID
         effective_report_guid = report_guid or survey_action_guid
 
         # Publish column-level lineage mapping relationships to Egeria
+        self.lineage_not_checked = []
         if db_guid and views:
             try:
                 self._publish_column_lineage(db_entity, views)
             except Exception as lin_err:
                 log.warning(f"Could not publish column lineage: {lin_err}")
 
+        # No survey row is written here: a publish measures nothing (false-zero
+        # hotfix, 2026-09-30). The outcome is stamped on the measured row this
+        # publish read (published_at + report guid), never as a new row.
         if registry and db_guid:
-            registry.record_database_survey(
-                slug=db_entity.slug,
-                schema_count=schema_count,
-                table_count=table_count,
-                column_count=column_count,
-                survey_data={
-                    "schema_info": schema_info,
-                    "statistics": statistics or {},
-                    "views": views or [],
-                },
-                egeria_report_guid=effective_report_guid,
-                source="egeria-published",
+            registry.record_database_survey_published(
+                db_entity.slug, surveyed_at, effective_report_guid,
             )
 
         return {
@@ -1123,23 +1454,663 @@ class EgeriaDatabaseSurveyor:
             "report_guid":        effective_report_guid,
             "server_survey_guid": server_survey_guid,
             "annotation_count":   len(annotations),
+            "report_error":       report_error,
+            "report_element_guid": report_guid,
+            "report_reused":      report_reused,
+            "annotation_error":   pub.get("annotation_error", "") if db_guid else "",
+            "annotations_in_egeria": annotations_in_egeria,
+            "lineage_not_checked": list(self.lineage_not_checked),
+            "survey_submissions": result.get("survey_submissions", []),
+            # What the stored column-profile verdicts contributed: never counts alone, always the batch and
+            # whether one was stored at all (`state`: sent / none_stored / not_read).
+            "verdicts": {k: v for k, v in verdicts.items() if k not in ("annotations", "column_paths")},
+            # Curate's publish table: what was chosen and sent, each with its read-back (`state`: not_asked /
+            # none_chosen / sent / not_read).
+            "declared_measures": {"state": declared["state"], "sent": declared_out,
+                                  **({"reason": declared["reason"]} if declared.get("reason") else {}),
+                                  **({"not_built": declared["not_built"]} if declared.get("not_built") else {})},
         }
 
+    def publish_engine_action_report(
+        self,
+        db_entity: "DatabaseEntity",
+        annotations: list,
+        *,
+        asset_guid: str,
+        request_type: str,
+        engine_action_guid: str,
+        engine_user: str,
+        requester: str,
+        registry=None,
+        extra_properties: dict | None = None,
+        on_report_created=None,
+    ) -> dict:
+        """Publish the SurveyReport of an Egeria engine action RE ran as an engine host (engine_host.py, E4),
+        shaped like a native survey action service's report (DESIGN-RE-ENGINE-HOST-BY-EQUIVALENCE C9):
+
+        * `ReportSubject` from the database asset (the action's target) and a `ReportOriginator` from the
+          engine action, which is how Egeria's own readers and RE's `native_survey_run` find it;
+        * qualifiedName `SurveyReport::<requestType>::<assetGUID>::<time>`, purpose = the request type,
+          authors = [the engine user], anchored on the asset (`AnnotationStore.java:67-150`);
+        * `Ownership` stamped to the requester, with the draft zones every RE publish gets.
+
+        The report and its annotations go through the same path as every database SurveyReport
+        (`_publish_survey_report`: create, annotations via `annotation_props.publish_annotations`, a 409 on the
+        same name reuses the report). Returns what happened, never raises for an Egeria answer: `report_error`
+        is set when the report could not be written (then `report_guid` is ""), `originator_error` when the
+        report exists but could not be linked to the action. The caller decides the completion from these.
+        Everything runs as the current principal (the engine host's `Daemon(ENGINE_HOST, requested_by)`).
+        `on_report_created(report_guid)`, when given, is called the moment the report element exists (created, or the
+        one a 409 reuses), before its annotations are written: the engine host's proof of a publish in progress."""
+        from datetime import timezone
+
+        from resource_explorer.private_publish import refuse_unsupported_private
+
+        # The sweep already left private resources unclaimed; this is the same guard every database publish has.
+        refuse_unsupported_private(registry, "database", db_entity.slug,
+                                   name=getattr(db_entity, "display_name", "") or db_entity.slug)
+        self.connect()
+        created = datetime.now(timezone.utc)
+        stamp = created.strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
+        egeria_time = created.strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "+00:00"
+        qualified_name = f"SurveyReport::{request_type}::{asset_guid}::{stamp}"
+        additional = {"annotation_count": str(len(annotations)), "engineActionGUID": engine_action_guid}
+        if requester:
+            additional["requestedBy"] = requester
+        # Engine host step 4: `derived_from_report`, the previous process step's report this one was derived from.
+        additional.update({str(k): str(v) for k, v in (extra_properties or {}).items() if v not in (None, "")})
+        body = {
+            "class": "NewElementRequestBody",
+            "anchorGUID": asset_guid,
+            "isOwnAnchor": False,
+            "parentGUID": asset_guid,
+            "parentAtEnd1": True,
+            "parentRelationshipTypeName": "ReportSubject",
+            "properties": {
+                "class": "SurveyReportProperties",
+                "typeName": "SurveyReport",
+                "qualifiedName": qualified_name,
+                "displayName": f"Survey Report for {asset_guid}",
+                "description": (f"This is the {request_type} survey report for asset {asset_guid} "
+                                f"({db_entity.display_name}) generated at {stamp} by Resource Explorer's engine "
+                                f"host for engine action {engine_action_guid}."),
+                "purpose": request_type,
+                "authors": [engine_user] if engine_user else [],
+                "startTime": egeria_time,
+                "createdTime": egeria_time,
+                "additionalProperties": additional,
+            },
+        }
+        out = self._publish_survey_report(body, qualified_name, annotations, db_entity.slug, stamp,
+                                          on_report_created=on_report_created)
+        out.update(qualified_name=qualified_name, annotation_count=len(annotations), originator_guid="",
+                   originator_error="", governance={})
+        report_guid = out["report_guid"]
+        if not report_guid:
+            return out
+        from pyegeria import MetadataExpert
+
+        try:
+            expert = self._clients().of(MetadataExpert)
+            out["originator_guid"] = expert.create_related_elements(body={
+                "class": "NewRelatedElementsRequestBody",
+                "typeName": "ReportOriginator",
+                "metadataElement1GUID": engine_action_guid,
+                "metadataElement2GUID": report_guid,
+            }) or ""
+            if not out["originator_guid"]:
+                out["originator_error"] = "Egeria gave no relationship GUID for the ReportOriginator link"
+        except Exception as exc:  # noqa: BLE001 - returned for the caller to complete survey-failed with
+            out["originator_error"] = f"{type(exc).__name__}: {exc}"[:400]
+            log.warning("ReportOriginator %s -> %s not created: %s", engine_action_guid, report_guid,
+                        out["originator_error"])
+        if requester:
+            from resource_explorer.egeria_identity import draft_zones, stamp_published
+
+            try:
+                out["governance"] = stamp_published(report_guid, requester, identity=self.principal(),
+                                                    zones=draft_zones())
+            except Exception as exc:  # noqa: BLE001 - a governance gap is reported, never a failed survey
+                out["governance"] = {"ownership": False, "zone_membership": False, "owner": requester,
+                                     "reason": f"{type(exc).__name__}: {exc}"[:300]}
+        # A QualityAnnotation is linked to the column or table it describes (design 2.6), as the press does. An
+        # element not in Egeria is counted, not an error.
+        from resource_explorer.surveyors.survey_report import QualityCheckAnnotation
+
+        if any(isinstance(a, QualityCheckAnnotation) for a in annotations):
+            out["element_links"] = self._link_quality_checks(db_entity, annotations, stamp)
+        return out
+
+    @staticmethod
+    def _tell_report_created(callback, report_guid: str) -> None:
+        """The caller's proof hook: a hook that fails is logged, never a failed publish (the report exists)."""
+        try:
+            callback(report_guid)
+        except Exception as exc:  # noqa: BLE001 - a proof row, not the publish
+            log.warning("report %s created, but the caller's proof hook failed: %s", report_guid, exc)
+
+    @staticmethod
+    def _is_duplicate_qualified_name(exc: Exception) -> bool:
+        """Egeria's 409 for a create whose qualifiedName is already taken (OMAG-COMMON-409-001)."""
+        text = " ".join(str(exc).split())
+        return "409" in text and ("is not available for use" in text or "OMAG-COMMON-409" in text
+                                  or "unique property" in text)
+
+    def _annotations_held_by(self, report_guid: str):
+        """How many annotations Egeria holds under this report, counted over EVERY page of its `ReportedAnnotation`
+        list, or None when the list could not be read to its end (None is "could not tell", never zero, and never
+        the count of the pages that were read)."""
+        held = self._report_annotations(report_guid)
+        return None if held is None else len(held)
+
+    def _report_annotations(self, report_guid: str) -> list[dict] | None:
+        """Every annotation under the report (`egeria_survey_reader.reported_annotations`), or None when the read
+        could not be made to the end of the list. One graph read (`get_asset_by_guid`, graphQueryDepth=1) is ONE
+        page, 999 entries live, so it is never used to count."""
+        from resource_explorer.surveyors.egeria_survey_reader import reported_annotations
+
+        try:
+            return reported_annotations(self._metadata_expert_client(), report_guid)
+        except Exception as exc:  # noqa: BLE001 -- unknown, said as unknown
+            log.warning("could not read every annotation under report %s: %s", report_guid, exc)
+            return None
+
+    def _publish_survey_report(self, body: dict, qualified_name: str, annotations: list,
+                               db_slug: str, surveyed_at: str, *, on_report_created=None) -> dict:
+        """Create RE's SurveyReport and its annotations, or reuse the one Egeria already holds.
+
+        The report's qualifiedName is keyed on the survey run's timestamp, so publishing the SAME run
+        twice meets a 409. That one case looks the existing report up by its exact name and reuses it, and
+        publishes its annotations by IDENTITY: `publish_annotations` looks each qualifiedName up before it
+        creates, so what is already there is adopted and only new names are created (a newer verdict batch, a
+        partial set). What Egeria then holds is counted for the caller, never used to decide.
+        Every other failure is returned as `report_error` for the caller to FAIL on: never "published"."""
+        # `annotations_this_publish`: how many of THIS publish's annotations Egeria holds (None: could not tell).
+        # `annotations_in_egeria`: all the report holds, which on a reused report includes earlier batches.
+        # `read_back_guids` ({index: GUID}): every annotation of this publish the report read found, by its published
+        # name; None when the report could not be read. Curate's publish table proves each chosen measure from it.
+        out = {"report_guid": "", "report_error": "", "annotation_error": "", "reused": False, "annotations_in_egeria": None,
+               "annotations_this_publish": None, "read_back_guids": None}
+        try:
+            out["report_guid"] = self._asset_maker.create_asset(body=body)
+            log.info(f"Published SurveyReport in Egeria: {out['report_guid']}")
+            if on_report_created is not None and out["report_guid"]:
+                self._tell_report_created(on_report_created, out["report_guid"])
+            made = self._create_annotations(annotations, out["report_guid"], db_slug, surveyed_at)
+            # Counted from a READ of the report by its GUID (`_read_back`), not from the GUIDs the creates returned
+            # and not from how many were sent. A read that could not be made is None ("could not tell"), never a
+            # number. On a fresh report everything it holds is this publish's.
+            read_back = self._read_back(out["report_guid"], annotations, db_slug, surveyed_at)
+            out["annotations_in_egeria"] = read_back["held"] if read_back else None
+            out["annotations_this_publish"] = read_back["this_publish"] if read_back else None
+            out["quality_annotations_in_egeria"] = read_back["quality"] if read_back else None
+            out["read_back_guids"] = read_back["guids"] if read_back else None
+            return out
+        except Exception as exc:
+            if not (not out["report_guid"] and self._is_duplicate_qualified_name(exc)):
+                log.warning(f"Failed to publish SurveyReport to Egeria: {exc}")
+                out["report_error"] = f"{exc}"[:400]
+                return out
+        try:
+            existing = self._find_element_guid(qualified_name)
+        except EgeriaDatabaseSurveyorError as exc:
+            # Could not look: not "no report with that name". Nothing adopted, nothing created.
+            out["report_error"] = (f"Egeria refused the report as a duplicate, and {exc}")[:400]
+            log.warning(out["report_error"])
+            return out
+        if not existing:
+            out["report_error"] = ("Egeria refused the report as a duplicate but no report with that name "
+                                   f"could be read ({qualified_name})")
+            log.warning(out["report_error"])
+            return out
+        out.update(report_guid=existing, reused=True)
+        log.info("SurveyReport %s already in Egeria (same survey run %s): reusing it", existing, surveyed_at)
+        if on_report_created is not None:
+            self._tell_report_created(on_report_created, existing)
+        # Always by identity, never by count: `publish_annotations` looks each qualifiedName up and adopts what is
+        # there, so a republish of the same set creates nothing. A COUNT shortcut ("held >= sent, skip") was wrong:
+        # a newer stored verdict batch carries new names but the same count as the batch already held, and was
+        # skipped whole (live check 2026-10-20, DESIGN-PUBLISHING-COLUMN-VERDICTS.md §1).
+        made = None
+        try:
+            made = self._create_annotations(annotations, existing, db_slug, surveyed_at)   # adopts what is there
+        except Exception as exc:
+            log.warning("publishing the missing annotations under %s failed: %s", existing, exc)
+            out["annotation_error"] = f"{exc}"[:400]      # observable: the caller shows it
+        # Judged on THIS publish's own annotations, as the fresh branch does: `publish_annotations` never raises for
+        # one failed create (or a look-up it could not make); it returns None in that annotation's place. The
+        # report's total held count cannot judge it: once a report holds an earlier batch, the total runs ahead of
+        # what this publish sent, and a partial failure would read as success.
+        if isinstance(made, list):
+            missing = sum(1 for g in made if not g)
+            out["annotations_this_publish"] = len(made) - missing
+            if missing and not out["annotation_error"]:
+                out["annotation_error"] = (f"{missing} of {len(made)} annotations of this publish could not be "
+                                           "published or confirmed under the reused report")
+        # What the report now holds in all (earlier batches included), for the words only.
+        out["annotations_in_egeria"] = self._annotations_held_by(existing)
+        # Whether THIS publish's annotations are held, from a read of the report by name (the GUIDs above can be
+        # ones a look-up adopted). When the read cannot be made the counts above stand.
+        read_back = self._read_back(existing, annotations, db_slug, surveyed_at)
+        if read_back is not None:
+            out["annotations_this_publish"] = read_back["this_publish"]
+        out["quality_annotations_in_egeria"] = read_back["quality"] if read_back else None
+        out["read_back_guids"] = read_back["guids"] if read_back else None
+        return out
+
+    @staticmethod
+    def _stored_verdict_annotations(registry, slug: str, schema_info: dict | None) -> dict:
+        """The latest stored column-profile verdict batch as annotations (`column_profile_step.
+        verdict_annotations_from_rows`), checked against the kept survey's inventory.
+
+        `state`: `sent` (a batch was read; its annotations are in the result), `none_stored` (read, and no
+        batch exists: never run, not "no verdicts"), `not_read` (no registry, or the read failed: unknown).
+        """
+        if registry is None:
+            return {"state": "not_read", "annotations": [], "column_paths": [], "reason": "no registry"}
+        try:
+            rows = registry.query_detail_rows("database_column_matches", slug)
+        except Exception as exc:  # noqa: BLE001 -- unknown, never "none stored"
+            log.warning("could not read the stored column-profile verdicts for %s: %s", slug, exc)
+            return {"state": "not_read", "annotations": [], "column_paths": [], "reason": str(exc)[:300]}
+        if not rows:
+            return {"state": "none_stored", "annotations": [], "column_paths": []}
+        from resource_explorer.surveyors.database.column_profile_step import verdict_annotations_from_rows
+
+        inventory = None
+        if schema_info and schema_info.get("schemas"):
+            inventory = {f"{sc.get('name')}.{t.get('name')}.{c.get('name')}"
+                         for sc in schema_info.get("schemas") or []
+                         for t in sc.get("tables") or []
+                         for c in t.get("columns") or []}
+        built = verdict_annotations_from_rows(rows, batch_surveyed_at=rows[0].get("surveyed_at", ""),
+                                              inventory=inventory)
+        return {"state": "sent", **built}
+
+    def _retire_superseded_verdicts(self, report_guid: str, batch: str) -> dict:
+        """Mark the column-profile verdicts of EARLIER batches under a reused report `contentStatus: DEPRECATED`.
+
+        A newer batch published into the same kept survey's report is added beside the older one (its names end
+        `@<batch>`), so without this the report counts superseded verdicts as current, including ones for columns
+        the newer batch dropped. Retired, never deleted: the evidence stays and the change can be undone. A verdict
+        is told apart by its `analysisStep` and its `jsonProperties.measuredAt`; only a batch older than `batch` is
+        touched, and one already DEPRECATED is left alone, so a republish of the same batch changes nothing.
+        Never raises. `state`: `checked`, or `not_checked` when the report could not be read (unknown, never 0).
+        """
+        from resource_explorer.surveyors.database.column_profile_step import ANALYSIS_STEP
+
+        counts = {"state": "checked", "retired": 0, "already_retired": 0, "failed": 0}
+        held = self._report_annotations(report_guid)
+        if held is None:  # could not tell which are superseded
+            return {**counts, "state": "not_checked", "reason": "the report's annotations could not be read to the end"}
+        for ann in held:
+            measured = str((ann.get("json_properties") or {}).get("measuredAt") or "")
+            if ann.get("analysis_step") != ANALYSIS_STEP or not measured or measured >= batch or not ann.get("guid"):
+                continue
+            if (ann.get("content_status") or "").upper() == "DEPRECATED":
+                counts["already_retired"] += 1
+                continue
+            type_name = ann.get("type_name") or ""
+            body = {"class": "UpdateElementRequestBody", "mergeUpdate": True,
+                    "properties": {"class": f"{type_name}Properties" if type_name else "AnnotationProperties",
+                                   "contentStatus": "DEPRECATED"}}
+            try:
+                self._discovery.update_annotation(ann["guid"], body)
+                counts["retired"] += 1
+            except Exception as exc:  # noqa: BLE001 -- counted; the publish itself stands
+                log.warning("could not retire superseded verdict %s: %s", ann.get("qualified_name"), exc)
+                counts["failed"] += 1
+        return counts
+
+    def _link_verdicts_to_columns(self, db_entity, annotations: list, start: int, column_paths: list[str],
+                                  surveyed_at: str) -> dict:
+        """`AssociatedAnnotation` from each published verdict annotation to its `RelationalColumn`, where a
+        Curate catalogue commit had Egeria's JDBC cataloguer create one. The column's qualifiedName is the
+        cataloguer's, confirmed live 2026-10-20: `<schema qualifiedName>::<table>::<column>`. Linked once
+        (`egeria_link_once`): a republish never adds a second link. Never raises; returns counts by outcome.
+        """
+        counts = self._link_annotations_to_elements(
+            db_entity, annotations, [(start + i, path) for i, path in enumerate(column_paths)], surveyed_at,
+            label="column verdict", what="verdict")
+        counts["no_column_element"] = counts.pop("no_element")
+        return counts
+
+    def _link_quality_checks(self, db_entity, annotations: list, surveyed_at: str) -> dict:
+        """`AssociatedAnnotation` from each published QualityAnnotation to the column (or, for a table check, the
+        table) it describes (DESIGN-QUALITY-AT-SCALE-AND-TESTGEN.md 2.6: "on the column or table elements"), the
+        mechanism the column verdicts use. An element that is not in Egeria is not an error: it is counted
+        (`no_element`) and said in the words. Returns the counts by outcome and `of`, the checks that name an
+        element at all. Never raises."""
+        from resource_explorer.surveyors.survey_report import QualityCheckAnnotation
+
+        targets = []
+        checks = 0
+        for i, ann in enumerate(annotations):
+            if isinstance(ann, QualityCheckAnnotation):
+                checks += 1
+                if ann.schema_name and ann.table_name:
+                    targets.append((i, ".".join(p for p in (ann.schema_name, ann.table_name, ann.column_name) if p)))
+        kinds: dict = {}
+        counts = self._link_annotations_to_elements(db_entity, annotations, targets, surveyed_at,
+                                                    label="quality check", what="quality check", kinds=kinds)
+        counts["of"] = len(targets)
+        counts["checks"] = checks
+        counts.update(kinds)
+        counts["rule_links"] = self._link_quality_checks_to_rules(db_entity, annotations, surveyed_at)
+        return counts
+
+    def _link_quality_checks_to_rules(self, db_entity, annotations: list, surveyed_at: str) -> dict:
+        """`GovernedBy` from each QualityAnnotation to the DataQualityRule it ran under (owner, 2026-10-20: "Use
+        governedBy for Annotation to Rule"; DESIGN-QUALITY-Q5-DATA-QUALITY-RULE.md §4), once each. Only a check whose
+        rule was READ from Egeria for this run (`ruleSource` egeria) is linked: one run from the local copy or
+        before its rule existed names no rule it evaluated. The annotation is end 1, the rule end 2. Counts by
+        outcome; never raises."""
+        from pyegeria.omvs.governance_officer import GovernanceOfficer
+
+        from resource_explorer.egeria_link_once import (
+            ALREADY_LINKED,
+            COULD_NOT_CHECK,
+            LINK_FAILED,
+            LINKED,
+            link_once,
+        )
+        from resource_explorer.surveyors.survey_report import (
+            QualityCheckAnnotation,
+            annotation_qualified_name,
+        )
+
+        counts = {"linked": 0, "already_linked": 0, "not_checked": 0, "failed": 0, "of": 0}
+        targets = [(i, a) for i, a in enumerate(annotations) if isinstance(a, QualityCheckAnnotation)
+                   and (a.additional_properties or {}).get("ruleSource") == "egeria"
+                   and (a.additional_properties or {}).get("ruleGuid")]
+        if not targets:
+            return counts
+        counts["of"] = len(targets)
+        prefix = f"Annotation::PostgreSQL::{db_entity.slug}::{surveyed_at}"
+        try:
+            expert = self._metadata_expert_client()
+            officer = self._clients().of(GovernanceOfficer)
+        except Exception as exc:  # noqa: BLE001 - counted, never a failed publish
+            log.warning("Could not build the clients to link quality checks to their rules: %s", exc)
+            counts["not_checked"] = len(targets)
+            return counts
+        body = {"class": "NewRelationshipRequestBody",
+                "properties": {"class": "GovernedByProperties", "label": "evaluated by"}}
+        for index, ann in targets:
+            rule_guid = ann.additional_properties["ruleGuid"]
+            try:
+                ann_guid = self._find_element_guid(annotation_qualified_name(prefix, index, ann))
+            except EgeriaDatabaseSurveyorError:
+                counts["not_checked"] += 1
+                continue
+            if not ann_guid:
+                counts["failed"] += 1
+                continue
+            outcome = link_once(
+                expert, relationship_type="GovernedBy", read_guid=ann_guid, read_end=1, far_guid=rule_guid,
+                what=f"from quality check {ann.item_key} to rule {rule_guid}",
+                create=lambda a=ann_guid, r=rule_guid: officer.attach_governed_by_definition(a, r, body))
+            counts[{LINKED: "linked", ALREADY_LINKED: "already_linked", COULD_NOT_CHECK: "not_checked",
+                    LINK_FAILED: "failed"}.get(outcome.outcome, "failed")] += 1
+        return counts
+
+    def _link_annotations_to_elements(self, db_entity, annotations: list, targets: list[tuple[int, str]],
+                                      surveyed_at: str, *, label: str, what: str,
+                                      kinds: dict | None = None) -> dict:
+        """`AssociatedAnnotation` from `annotations[i]` to the element `path` names ("schema.table.column", or
+        "schema.table" for a table), once each (`egeria_link_once`). The element's qualifiedName is the JDBC
+        cataloguer's: `<schema qualifiedName>::<table>[::<column>]` (the column form confirmed live 2026-10-20; the
+        table form is the same pattern one level up, not yet confirmed live). Counts by outcome, never raises:
+
+        linked / already_linked  a link between exactly these two exists now
+        no_element               Egeria holds no such element (the cataloguer has not made it): not an error
+        not_checked              a look-up could not be made, so nothing was linked
+        failed                   the annotation could not be found by name, or the link create failed
+
+        `kinds`, when given, is filled with how many of the `no_element` ones were columns and how many tables
+        (`no_element_columns`, `no_element_tables`), for the words."""
+        from resource_explorer.catalogue_gateway import schema_qualified_name, server_name_for
+        from resource_explorer.egeria_link_once import (
+            ALREADY_LINKED,
+            COULD_NOT_CHECK,
+            LINK_FAILED,
+            LINKED,
+            link_once,
+        )
+        from resource_explorer.surveyors.database.egeria_reference_catalog import (
+            build_associated_annotation_body,
+        )
+        from resource_explorer.surveyors.survey_report import annotation_qualified_name
+
+        counts = {"linked": 0, "already_linked": 0, "no_element": 0, "not_checked": 0, "failed": 0}
+        prefix = f"Annotation::PostgreSQL::{db_entity.slug}::{surveyed_at}"
+        server = server_name_for(db_entity)
+        element_guids: dict[str, str | None] = {}
+        if not targets:
+            return counts
+        expert = self._metadata_expert_client()
+        for index, path in targets:
+            ann = annotations[index]
+            schema, table, column = (path.split(".", 2) + ["", "", ""])[:3]
+            if path not in element_guids:
+                name = f"{schema_qualified_name(server, db_entity.database_name, schema)}::{table}"
+                if column:
+                    name += f"::{column}"
+                try:
+                    element_guids[path] = self._find_element_guid(name)
+                except EgeriaDatabaseSurveyorError:
+                    element_guids[path] = None
+            element_guid = element_guids[path]
+            if element_guid is None:
+                counts["not_checked"] += 1
+                continue
+            if not element_guid:
+                counts["no_element"] += 1
+                if kinds is not None:
+                    key = "no_element_columns" if column else "no_element_tables"
+                    kinds[key] = kinds.get(key, 0) + 1
+                continue
+            try:
+                ann_guid = self._find_element_guid(annotation_qualified_name(prefix, index, ann))
+            except EgeriaDatabaseSurveyorError:
+                counts["not_checked"] += 1
+                continue
+            if not ann_guid:
+                counts["failed"] += 1
+                continue
+            body = build_associated_annotation_body(
+                label=label, description=f"{ann.annotation_type_name or what} for {path}")
+            outcome = link_once(
+                expert, relationship_type="AssociatedAnnotation", read_guid=ann_guid, read_end=2,
+                far_guid=element_guid, what=f"from {path} to its {what}",
+                create=lambda a=ann_guid, c=element_guid, b=body: self._discovery.link_annotation_to_described_element(
+                    a, c, body=b))
+            counts[{LINKED: "linked", ALREADY_LINKED: "already_linked", COULD_NOT_CHECK: "not_checked",
+                    LINK_FAILED: "failed"}.get(outcome.outcome, "failed")] += 1
+        return counts
+
+    def _plan_profile_publish(self, registry, slug: str, annotations: list):
+        """Which re-linkable annotations to re-link and which to create (`profile_publish.plan_profile_publish`):
+        the value profile's column measures and not-profiled tables, and the proposals annotation (round 2), each
+        against RE's proof rows of its own step's last publish. None when this publish has none of them or no
+        registry (then everything is created, as before)."""
+        from resource_explorer.surveyors.database.quality.profile_publish import (
+            plan_profile_publish,
+            relink_kind,
+        )
+        from resource_explorer.surveyors.database.quality.value_profile import ANALYSIS_STEP
+
+        steps = {a.analysis_step for a in annotations if relink_kind(a)}
+        if registry is None or not steps:
+            return None
+        previous = registry.latest_profile_publish("database", slug, ANALYSIS_STEP)
+        others = {step: registry.latest_profile_publish("database", slug, step)
+                  for step in steps if step != ANALYSIS_STEP}
+        return plan_profile_publish(annotations, previous, others)
+
+    def _relink_unchanged(self, report_guid: str, pairs: dict[int, str]) -> dict[int, str]:
+        """One `ReportedAnnotation` from the new report to each unchanged measure's EXISTING annotation.
+
+        `ReportedAnnotation` is multi-link (one annotation is reported by many reports), so an attach never
+        upserts: the report's own list is READ FIRST (paged to its end) and a pair it already holds is not
+        attached again. {index: relinked | already_linked | not_checked | refused | failed}; never raises. When
+        the report's list cannot be read nothing is attached (not_checked): the read-back then says what is
+        missing. `refused`: Egeria said the annotation is not there (`egeria_absence`: a typed 404, as for an
+        archived, deleted or wiped element), so the caller creates it instead; `failed`: anything else (could not
+        tell), left to the read-back."""
+        from resource_explorer.egeria_absence import lookup_exception_is_absent
+
+        held = self._report_annotations(report_guid)
+        if held is None:
+            return {i: "not_checked" for i in pairs}
+        linked = {a.get("guid") for a in held if a.get("guid")}
+        out: dict[int, str] = {}
+        for i, guid in pairs.items():
+            if guid in linked:
+                out[i] = "already_linked"
+                continue
+            try:
+                self._discovery.attach_annotation_to_report(
+                    report_guid, guid,
+                    body={"class": "NewRelationshipRequestBody",
+                          "properties": {"class": "ReportedAnnotationProperties"}})
+            except Exception as exc:  # noqa: BLE001 -- counted; the read-back says it is missing
+                log.warning("could not re-link annotation %s to report %s: %s", guid, report_guid, exc)
+                out[i] = "refused" if lookup_exception_is_absent(exc) else "failed"
+                continue
+            linked.add(guid)
+            out[i] = "relinked"
+        return out
+
+    def _record_profile_publish(self, registry, slug: str, report_guid: str, surveyed_at: str,
+                                annotations: list, plan, read_back: dict | None) -> dict:
+        """Write the re-linkable annotations' proof rows, each under its own step, and return the card's counts
+        FROM the value profile's (`registry.profile_publish_counts`, column measures only). A row is written only for
+        an annotation the read-back found on the report
+        (`read_back["guids"]`, by index): created under its new GUID (a refused re-link created again carries the
+        note "re-created: the re-used annotation was gone"), or re-linked under the existing one. A previous
+        measure this run did not measure gets a `no_longer_measured` row, or `not_measured_this_run` when its
+        table was not profiled this run. When the report could not be
+        read, no created/relinked row is written (unknown, never "published"). Never raises: a failed record is
+        logged and the counts come back empty."""
+        from datetime import UTC, datetime
+
+        from resource_explorer.surveyors.database.quality.profile_publish import (
+            CREATED,
+            NO_LONGER_MEASURED,
+            NOT_MEASURED_THIS_RUN,
+            RECREATED_NOTE,
+            RELINKED,
+            annotation_type_of,
+        )
+        from resource_explorer.surveyors.database.quality.propose import ANALYSIS_STEP as PROPOSALS_STEP
+        from resource_explorer.surveyors.database.quality.value_profile import ANALYSIS_STEP
+
+        on_report = (read_back or {}).get("guids") or {}
+
+        def previous(step: str) -> dict:
+            guid, at = plan.previous_by_step.get(step, ("", ""))
+            return {"previous_report_guid": guid, "previous_report_at": at}
+
+        by_step: dict[str, list] = {ANALYSIS_STEP: []}
+        for i, key in plan.keys.items():
+            guid = on_report.get(i)
+            if not guid:
+                continue
+            step = plan.steps.get(i, ANALYSIS_STEP)
+            by_step.setdefault(step, []).append(
+                {"annotation_guid": guid, "item_key": key, "content_hash": plan.hashes[i],
+                 "outcome": RELINKED if i in plan.relink else CREATED,
+                 "annotation_type": annotation_type_of(annotations[i]),
+                 "summary": getattr(annotations[i], "summary", ""),
+                 **({"groups": plan.groups[i]} if i in plan.groups else {}),
+                 **({"moved": plan.moved[i]} if i in plan.moved and i not in plan.relink else {}),
+                 **({"note": RECREATED_NOTE} if i in plan.recreated else {}), **previous(step)})
+        for outcome, gone in ((NO_LONGER_MEASURED, plan.gone), (NOT_MEASURED_THIS_RUN, plan.not_measured)):
+            for key, guid in gone.items():
+                by_step[ANALYSIS_STEP].append(
+                    {"annotation_guid": guid, "item_key": key, "content_hash": None, "outcome": outcome,
+                     "annotation_type": "ResourceProfileAnnotation", **previous(ANALYSIS_STEP)})
+        try:
+            read_at = datetime.now(UTC).isoformat()
+            for step, rows in by_step.items():
+                registry.record_profile_publish("database", slug, report_guid=report_guid, report_at=surveyed_at,
+                                                read_at=read_at, analysis_step=step, rows=rows)
+            counts = registry.profile_publish_counts(report_guid, ANALYSIS_STEP)
+            # A re-linked proposals request still names the run that first published it: the card says since when it
+            # is unchanged, from the proof rows, so it is not read as new work.
+            since = registry.relinked_since(report_guid, PROPOSALS_STEP) if PROPOSALS_STEP in by_step else ""
+            return {**counts, "proposals_unchanged_since": since} if since else counts
+        except Exception as exc:  # noqa: BLE001 -- the report stands; the card says it could not count
+            log.warning("could not record the value-profile proof rows of report %s: %s", report_guid, exc)
+            return {}
+
+    def _read_back(self, report_guid: str, annotations: list, db_slug: str, surveyed_at: str,
+                   relinked: dict[int, str] | None = None) -> dict | None:
+        """What the Egeria report holds, from a READ of the report's `ReportedAnnotation` list paged to its END
+        (`_report_annotations`), never from the GUIDs the creates returned (a create that returns a GUID has not
+        proved the element is there) and never from one graph read of the report, which is one page.
+
+        `{"held": annotations under the report in all, "this_publish": how many of THESE annotations are among them
+        (by their published names), "quality": how many of the QualityAnnotations}`; None when the report could not
+        be read, which is "could not tell", never zero.
+
+        `relinked` ({index: existing annotation GUID}): the value-profile measures this publish RE-LINKED rather than
+        created. Their names are an earlier run's, so they are found on the report by GUID. `guids` ({index: GUID})
+        is every annotation of this publish the read found on the report."""
+        from resource_explorer.surveyors.survey_report import QualityCheckAnnotation, annotation_qualified_name
+
+        every = self._report_annotations(report_guid)
+        if every is None:
+            return None
+        relinked = relinked or {}
+        by_name = {a.get("qualified_name"): a.get("guid") or "" for a in every}
+        held_guids = {a.get("guid") for a in every if a.get("guid")}
+        prefix = f"Annotation::PostgreSQL::{db_slug}::{surveyed_at}"
+        guids: dict[int, str] = {}
+        quality = 0
+        for i, a in enumerate(annotations):
+            if i in relinked:
+                if relinked[i] in held_guids:
+                    guids[i] = relinked[i]
+                continue
+            name = annotation_qualified_name(prefix, i, a)
+            if name in by_name:
+                guids[i] = by_name[name]
+                quality += isinstance(a, QualityCheckAnnotation)
+        return {"held": len(by_name),
+                "this_publish": len(guids),
+                "quality": quality,
+                "guids": guids}
+
     def _publish_column_lineage(self, db_entity: "DatabaseEntity", views: list[dict]) -> None:
-        """Publish column-level lineage to Egeria using LineageLinker."""
+        """Publish column-level lineage to Egeria as LineageMapping relationships (source column at end 1,
+        view column at end 2).
+
+        LineageMapping is MULTI-LINK (`OpenMetadataTypesArchive1_2.getLineageMappingRelationship`,
+        `setMultiLink(true)`): every `link_lineage` call adds another relationship between the same two
+        columns. So each (source, target) pair is built once per run, then linked only when no
+        LineageMapping between exactly those two exists (`egeria_link_once.link_once`), and never when
+        that cannot be read."""
         if not views:
             return
 
-        from pyegeria.omvs.lineage_linker import LineageLinker
-        linker = LineageLinker(self.view_server, self.platform_url, self.user_id, self.user_password)
-        linker.create_egeria_bearer_token(self.user_id, self.user_password)
-
         db_name = db_entity.database_name
 
+        #: Column names whose look-up could not be made, and "source -> target" pairs whose existing links
+        #: could not be read, so their mappings were skipped. Kept on the surveyor so a caller can tell "no
+        #: lineage published" from "lineage RE could not check".
+        self.lineage_not_checked = []
+        _column_guid = self._lineage_column_guid
+
+        # (source GUID, target GUID) -> (source qualifiedName, target qualifiedName, view name), first seen
+        # wins. Two leaves can name one column ("orders" and "public.orders"), and two views can resolve to
+        # one element through the short-name fallback: each pair is linked once.
+        pairs: dict[tuple[str, str], tuple[str, str, str]] = {}
         for view in views:
             schema_name = view["schema"]
             view_name = view["name"]
-            
+
             # Walk column lineages
             for target_col, lineage_tree in view.get("lineage", {}).items():
                 sources = self._extract_leaf_sources(lineage_tree)
@@ -1147,48 +2118,73 @@ class EgeriaDatabaseSurveyor:
                     continue
 
                 target_qn = f"{db_name}.{schema_name}.{view_name}.{target_col}"
-                target_guid = self._find_element_guid(target_qn)
-                if not target_guid:
-                    target_guid = self._find_element_guid(f"{view_name}.{target_col}")
+                target_guid = _column_guid(target_qn, f"{view_name}.{target_col}")
 
                 if not target_guid:
                     log.debug(f"Could not find Egeria GUID for derived column '{target_qn}'")
                     continue
 
-                for src_table, src_col in sources:
+                for src_table, src_col in sorted(sources):
                     if "." in src_table:
                         s_name, t_name = src_table.split(".", 1)
                     else:
                         s_name, t_name = schema_name, src_table
 
                     src_qn = f"{db_name}.{s_name}.{t_name}.{src_col}"
-                    src_guid = self._find_element_guid(src_qn)
-                    if not src_guid:
-                        src_guid = self._find_element_guid(f"{t_name}.{src_col}")
+                    src_guid = _column_guid(src_qn, f"{t_name}.{src_col}")
 
                     if not src_guid:
                         log.debug(f"Could not find Egeria GUID for source column '{src_qn}'")
                         continue
+                    pairs.setdefault((src_guid, target_guid), (src_qn, target_qn, view_name))
 
-                    try:
-                        body = {
-                            "class": "NewRelationshipRequestBody",
-                            "properties": {
-                                "class": "LineageMappingProperties",
-                                "iscQualifiedName": f"SQLGlot::LineageMapping::{target_qn}",
-                                "label": "Column Derivation Link",
-                                "description": f"Statically analyzed lineage map of view {view_name} via SQLGlot."
-                            }
-                        }
-                        rel_guid = linker.link_lineage(
-                            element_one_guid=src_guid,
-                            relationship_type_name="LineageMapping",
-                            element_two_guid=target_guid,
-                            body=body
-                        )
-                        log.info(f"Published column lineage mapping: {src_qn} -> {target_qn} (guid: {rel_guid})")
-                    except Exception as link_err:
-                        log.warning(f"Failed to create LineageMapping link between {src_qn} and {target_qn}: {link_err}")
+        if not pairs:
+            return
+
+        from pyegeria import MetadataExpert
+        from pyegeria.omvs.lineage_linker import LineageLinker
+
+        from resource_explorer.egeria_link_once import COULD_NOT_CHECK, link_once
+
+        clients = self._clients()
+        linker = clients.of(LineageLinker)
+        expert = clients.of(MetadataExpert)
+
+        for (src_guid, target_guid), (src_qn, target_qn, view_name) in pairs.items():
+            body = {
+                "class": "NewRelationshipRequestBody",
+                "properties": {
+                    "class": "LineageMappingProperties",
+                    "iscQualifiedName": f"SQLGlot::LineageMapping::{target_qn}",
+                    "label": "Column Derivation Link",
+                    "description": f"Statically analyzed lineage map of view {view_name} via SQLGlot."
+                }
+            }
+            # Read from the view column (end 2, `targetElement`): it is fed by the few leaves of one
+            # expression, while a base-table column (end 1, `sourceElement`) can feed every view on it.
+            outcome = link_once(
+                expert, relationship_type="LineageMapping", read_guid=target_guid,
+                read_end=LINEAGE_MAPPING_TARGET_END, far_guid=src_guid,
+                what=f"from {src_qn} to {target_qn}",
+                create=lambda s=src_guid, t=target_guid, b=body: linker.link_lineage(
+                    element_one_guid=s, relationship_type_name="LineageMapping", element_two_guid=t, body=b))
+            if outcome.outcome == COULD_NOT_CHECK:
+                self.lineage_not_checked.append(f"{src_qn} -> {target_qn}")
+
+    def _lineage_column_guid(self, *names: str) -> str:
+        """The first of `names` found in Egeria, or "". Lineage only LINKS two columns that already exist and
+        never creates one, so a look-up that could not be made skips this mapping (recorded in
+        `lineage_not_checked` and logged) rather than ending every other view's lineage."""
+        for name in names:
+            try:
+                guid = self._find_element_guid(name)
+            except EgeriaDatabaseSurveyorError as exc:
+                self.lineage_not_checked.append(name)
+                log.warning("column lineage: %s; this mapping is skipped", exc)
+                return ""
+            if guid:
+                return guid
+        return ""
 
     def _extract_leaf_sources(self, node: dict) -> list[tuple[str, str]]:
         """Traverse a serialized SQLGlot lineage node tree and return leaf sources as list of (table, column)."""
@@ -1210,8 +2206,10 @@ class EgeriaDatabaseSurveyor:
         report_guid: str,
         db_slug: str,
         surveyed_at: str,
-    ) -> None:
-        """Push a list of Annotation objects to Egeria.
+        skip: frozenset[int] | set[int] = frozenset(),
+    ) -> list:
+        """Push a list of Annotation objects to Egeria; returns one GUID or None per annotation (`skip`: indices
+        not created, see `publish_annotations`).
 
         Delegates to the shared implementation — see annotation_props.py.
         Kept as a method because tests reach for it by name. `surveyed_at` is
@@ -1220,9 +2218,9 @@ class EgeriaDatabaseSurveyor:
         from resource_explorer.surveyors.annotation_props import publish_annotations
 
         qualified_name_prefix = f"Annotation::PostgreSQL::{db_slug}::{surveyed_at}"
-        publish_annotations(
+        return publish_annotations(
             self._discovery, self._find_element_guid,
-            annotations, report_guid, qualified_name_prefix,
+            annotations, report_guid, qualified_name_prefix, skip=skip,
         )
 
     @staticmethod
@@ -1247,13 +2245,48 @@ class EgeriaDatabaseSurveyor:
             return default
 
 
+def _count_noun(n: int, one: str, many: str) -> str:
+    return f"{n} {one if n == 1 else many}"
+
+
+def element_link_words(links: dict | None) -> str:
+    """The words for a run's QualityAnnotations and their element links (`_link_quality_checks`).
+
+    The checks belong to the REPORT: an accepted check does not need its table cataloged, so a column or table
+    Egeria does not hold yet is a neutral state, never a failure ("3 checks on the report · 3 columns not yet
+    cataloged in Egeria, so not linked to them"). What did link is said first ("linked to N of M elements"); a
+    look-up that could not be made or a link that could not be created is said as a gap ("could not be checked",
+    "could not be linked"), because those are not about the catalogue. "" when the run published no check."""
+    links = links or {}
+    checks = links.get("checks", links.get("of", 0)) or 0
+    if not checks:
+        return ""
+    parts = [_count_noun(checks, "check on the report", "checks on the report")]
+    made = links.get("linked", 0) + links.get("already_linked", 0)
+    if made:
+        parts.append(f"linked to {made} of {links.get('of', checks)} elements")
+    columns, tables = links.get("no_element_columns", 0), links.get("no_element_tables", 0)
+    if not (columns or tables) and links.get("no_element"):
+        columns = links["no_element"]               # a count without its kinds: the checks mostly name columns
+    unlinked = [n for n in (_count_noun(columns, "column", "columns") if columns else "",
+                            _count_noun(tables, "table", "tables") if tables else "") if n]
+    if unlinked:
+        total = columns + tables
+        parts.append(f"{' and '.join(unlinked)} not yet cataloged in Egeria, so not linked to "
+                     f"{'it' if total == 1 else 'them'}")
+    for key, why in (("not_checked", "could not be checked"), ("failed", "could not be linked")):
+        if links.get(key):
+            parts.append(f"{links[key]} {why}")
+    return " · ".join(parts)
+
+
 def can_use_egeria() -> bool:
     """Check if Egeria is available and configured.
     
     Returns:
         True if EGERIA_PLATFORM_URL is set and pyegeria is installed
     """
-    if not os.getenv("EGERIA_PLATFORM_URL"):
+    if not egeria_platform_url():
         return False
     
     try:
@@ -1263,3 +2296,60 @@ def can_use_egeria() -> bool:
         return False
 
 # Made with Bob
+
+
+def build_step_annotations(db_entity, registry=None, *, schema_info: dict | None = None,
+                           statistics: dict | None = None, views: list | None = None,
+                           operations: dict | None = None, credential_capability: dict | None = None,
+                           column_profile: dict | None = None, nested_columns: dict | None = None,
+                           quality_annotations: list | None = None, step_annotations: list | None = None) -> list:
+    """The annotations a database run's results become, in one place: what `publish_step_annotations` publishes,
+    and what RE's engine host publishes on its native-shaped report for a credentialed database step (case 3). Pure:
+    builds annotation dicts, opens no connection and calls no Egeria.
+
+    `column_profile` and `nested_columns` are the two value-sampling steps' outputs. Those steps build their own
+    annotations (one per column verdict, the sample's provenance, any RFA) and carry them as `annotations`, so they
+    pass through as built. Before this they were built and never published."""
+    from resource_explorer.surveyors.database.database_surveyor import DatabaseSurveyor
+
+    annotations: list = []
+    local_surveyor = DatabaseSurveyor(db_entity, {}, registry)
+    if schema_info:
+        annotations.extend(local_surveyor._create_schema_annotations(schema_info))
+    if statistics:
+        annotations.extend(local_surveyor._create_statistics_annotations(statistics))
+    if views:
+        annotations.extend(local_surveyor._create_views_annotations(views))
+    if operations:
+        annotations.extend(local_surveyor._create_operations_annotations(operations))
+        annotations.extend(
+            local_surveyor._create_table_statistics_annotations(operations, schema_info or {})
+        )
+    if credential_capability:
+        annotations.extend(
+            local_surveyor._create_credential_capability_annotations(credential_capability)
+        )
+    for sampled in (column_profile, nested_columns):
+        if sampled:
+            annotations.extend(sampled.get("annotations") or [])
+    # What the quality steps built themselves (the value profile's annotations, the proposal step's one request or
+    # measure), then one QualityAnnotation per evaluated check (run_quality_checks). Appended last, as built.
+    annotations.extend(step_annotations or [])
+    annotations.extend(quality_annotations or [])
+    return annotations
+
+
+def annotations_from_step_outputs(db_entity, step_outputs: list, registry=None) -> list:
+    """`build_step_annotations` over a run's step outputs, read the way the database adapter's `_publish` reads
+    them (the last output carrying each part wins). Nothing when no output carries one of the parts."""
+    parts: dict = {}
+    for output in step_outputs or []:
+        if not isinstance(output, dict):
+            continue
+        for key in ("schema_info", "statistics", "views", "operations", "credential_capability",
+                    "column_profile", "nested_columns", "quality_annotations"):
+            if output.get(key):
+                parts[key] = output[key]
+    if not parts:
+        return []
+    return build_step_annotations(db_entity, registry, **parts)

@@ -1,0 +1,153 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;600&amp;family=Lora:wght@400;500&amp;display=swap">
+  <style>
+    :root{
+      --paper:#f3f2f2; --rule:rgba(32,31,29,.16); --rule-strong:#8e8a8a;
+      --ink:#201f1d; --ink-muted:#4a463e;
+      --accent:#b68235; --accent-ink:#7d5411;
+      --ok:#1d6b3f; --warn:#9c4212; --gap:#5b4a9c;
+      --chrome:#1b1a19; --chrome-surface:#2d2b2b; --chrome-line:#444141;
+      --chrome-ink:#f3f2f2; --chrome-muted:#9b9797; --accent-on-dark:#e1ad66; --ok-on-dark:#74c68d;
+      --s1:4.6px; --s2:9.2px; --s3:13.8px; --s4:18.4px; --s6:27.6px;
+      --heading:"Cormorant Garamond",Georgia,serif;
+      --body:"Lora",Georgia,serif;
+      --mono:ui-monospace,"SF Mono",Menlo,monospace;
+    }
+    *{box-sizing:border-box}
+    body{margin:0;font-family:var(--body);background:var(--paper);color:var(--ink);font-size:15px;line-height:1.55}
+    .tnum{font-variant-numeric:tabular-nums}
+    .mono{font-family:var(--mono);font-size:.87em}
+    .caps{font-family:var(--heading);font-weight:600;font-size:12px;letter-spacing:.09em;text-transform:uppercase}
+    .h{font-family:var(--heading);font-weight:600}
+    .muted{color:var(--ink-muted)}
+    .lnk{color:var(--accent-ink);text-decoration:underline;text-underline-offset:3px}
+    .g{font-family:"DejaVu Sans","Apple Symbols","Segoe UI Symbol",sans-serif;font-weight:600;display:inline-block;width:1.3em;text-align:center}
+    .ok{color:var(--ok)} .warn{color:var(--warn)} .gapc{color:var(--gap)}
+    .panel-t{font-family:var(--heading);font-weight:600;font-size:21px;margin:0 0 var(--s1)}
+    .panel-s{font-size:13px;color:var(--ink-muted);margin:0 0 var(--s3);max-width:62ch}
+    /* sidebar, on chrome */
+    .side{background:var(--chrome);color:var(--chrome-ink);width:300px;padding:var(--s3);border-radius:3px;font-size:13px;line-height:1.45}
+    .side .lab{font-family:var(--heading);font-weight:600;font-size:12px;letter-spacing:.09em;text-transform:uppercase;color:var(--chrome-muted);margin:var(--s3) 0 4px}
+    .side .sel{border:1px solid var(--chrome-line);border-radius:2px;padding:3px 6px}
+    .side .row{padding:4px 8px;border-left:2px solid transparent;display:flex;justify-content:space-between;gap:8px}
+    .side .row.on{border-left-color:var(--accent);background:var(--chrome-surface)}
+    .side .n{color:var(--chrome-muted)}
+    .side .fold{color:var(--chrome-muted);padding:4px 8px;text-decoration:underline;text-underline-offset:3px}
+    .side .btn{display:inline-block;border:1px solid var(--accent);color:var(--accent-on-dark);border-radius:2px;padding:1px 7px;font-size:12px;margin:0 4px 4px 0}
+    .side .btn.quiet{border-color:var(--chrome-line);color:var(--chrome-ink)}
+    .side .btn.off{border-style:dashed;color:var(--chrome-muted);border-color:var(--chrome-line)}
+    .side .why{color:var(--chrome-muted);font-size:12px}
+    .side .res{padding:3px 8px;display:flex;gap:6px}
+    .side .res input{margin:0}
+    .note{border-left:2px solid var(--chrome-line);padding-left:8px;margin-top:6px;color:var(--chrome-ink);font-size:12px}
+    /* paper panes */
+    .pane{background:#fff;border:1px solid var(--rule);padding:var(--s4);border-radius:2px}
+    .btn2{display:inline-block;border:1px solid var(--rule-strong);border-radius:2px;padding:1px 8px;font-size:12.5px;margin-right:6px}
+    .btn2.primary{border-color:var(--accent);color:var(--accent-ink)}
+    table.grid{border-collapse:collapse;font-size:13px;width:100%}
+    table.grid th{font-family:var(--heading);font-weight:600;text-align:left;font-size:13px;border-bottom:1px solid var(--rule-strong);padding:4px 8px;vertical-align:bottom}
+    table.grid td{border-bottom:1px solid var(--rule);padding:4px 8px;vertical-align:baseline}
+    table.grid td.c{text-align:center}
+    .tabs{display:flex;gap:var(--s4);border-bottom:1px solid var(--rule);font-size:14px;margin:var(--s2) 0 var(--s2)}
+    .tabs span{padding-bottom:3px}
+    .tabs .on{border-bottom:2px solid var(--accent)}
+    .tabs .zero{color:var(--ink-muted);border-bottom:1px dashed var(--rule-strong)}
+    .call{font-size:12.5px;color:var(--ink-muted);border-left:3px solid var(--gap);padding-left:var(--s2);margin-top:var(--s2);max-width:58ch}
+    .strike{text-decoration:line-through;color:var(--ink-muted)}
+  </style>
+</helmet>
+<style>
+  .card{background:#fff;border:1px solid var(--rule);padding:12px 14px;border-radius:2px;margin-top:10px}
+  .b{display:inline-block;border:1px solid var(--accent);color:var(--accent-ink);border-radius:2px;padding:1px 8px;font-size:12.5px}
+  .b.off{border:1px dashed var(--rule-strong);color:var(--ink-muted)}
+  .b.q{border-color:var(--rule-strong);color:var(--ink)}
+  .ql{color:var(--ink-muted);text-decoration:underline;text-underline-offset:3px;font-size:12.5px}
+  .ln{font-size:12.5px;color:var(--ink-muted);margin-top:3px}
+  .lab{font-family:var(--heading);font-weight:600;font-size:12px;letter-spacing:.09em;text-transform:uppercase;color:var(--ink-muted);margin:0 0 4px}
+  .rowx{display:flex;gap:10px;align-items:baseline;border-bottom:1px solid var(--rule);padding:7px 0;font-size:13px}
+  .col{display:grid;grid-template-columns:1fr 1fr;gap:var(--s6)}
+</style>
+
+<style>
+  table.st{border-collapse:collapse;width:100%;font-size:12.5px}
+  table.st th{font-family:var(--heading);font-weight:600;font-size:13px;text-align:left;border-bottom:1px solid var(--rule-strong);padding:4px 6px;vertical-align:bottom}
+  table.st td{border-bottom:1px solid var(--rule);padding:5px 6px;vertical-align:baseline}
+  table.st td.n{text-align:right;font-variant-numeric:tabular-nums}
+  .sch td{background:rgba(32,31,29,.03)}
+  .ind{padding-left:22px!important}
+  .inh{color:var(--ink-muted)}
+  .sub2{font-size:11.5px;color:var(--ink-muted)}
+  .tag{display:inline-block;border:1px solid var(--rule-strong);border-radius:2px;padding:0 5px;font-size:11.5px;color:var(--accent-ink);text-decoration:underline;text-underline-offset:2px}
+  .fbar{display:flex;flex-wrap:wrap;gap:8px;align-items:baseline;font-size:12.5px;border:1px solid var(--rule);background:#fff;padding:6px 8px;border-radius:2px}
+  .fld{border:1px solid var(--rule-strong);border-radius:2px;padding:0 6px}
+  .rule{display:flex;gap:10px;align-items:baseline;font-size:13px;padding:4px 0;border-bottom:1px solid var(--rule)}
+</style>
+<div style="width:1500px;padding:var(--s6) var(--s6) 60px">
+  <div style="border-bottom:1px solid var(--rule-strong);padding-bottom:var(--s4)">
+    <div class="caps" style="color:var(--accent-ink)">Analysis &middot; Survey &middot; runs and registration &middot; reply to ASK-DESIGNER-RUNS-REGISTRATION &middot; against main at df5dbc91</div>
+    <h1 class="h" style="font-weight:400;font-size:38px;margin:var(--s3) 0 var(--s2);max-width:60ch">One definition, one card; one verb, Run, with its coordinator named</h1>
+    <p style="max-width:104ch;margin:0">The definition card carries its runs, whoever coordinated them. A refusal the person can fix says how, on the run line. Registration states say what Egeria answered and offer the next press. Values illustrative (coco_pharma, localhost_docker_egeria).</p>
+  </div>
+  <div class="col" style="margin-top:var(--s4)">
+   <div>
+    <div class="panel-t">A &middot; The definition card, merged</div>
+    <div class="card">
+      <div style="display:flex;gap:10px;align-items:baseline;flex-wrap:wrap"><span class="h" style="font-size:18px">Database Analysis Survey</span><span class="muted" style="font-size:12.5px">8 steps &middot; none fetch &middot; <span class="lnk">runs 13 analyses</span></span><span style="margin-left:auto"><span class="b">Re-run&hellip;</span> <span class="b">Re-run &middot; coordinated by Egeria &rarr;</span></span></div>
+      <div style="font-size:13px;margin-top:6px"><span class="warn"><span class="g">&#9680;</span>2 of 4 ran</span> <span class="ql">why</span> &middot; coordinated by Egeria &middot; started by peterprofile &middot; Oct 15, 7:34 PM &middot; <span class="lnk">step 4 report &rsaquo;</span></div>
+      <div class="ln">the process stopped after step 4 of 8 &middot; <span class="ql">which 4</span></div>
+      <div style="font-size:13px;margin-top:4px;color:var(--ink)">steps 1&ndash;2 not run &middot; the survey&rsquo;s credential reads 3 of 61 tables &middot; <span class="lnk">use a credential that can read all tables &rsaquo;</span></div>
+      <div class="ln"><span class="lnk">runs &middot; 6 &rsaquo;</span> &middot; <span class="lnk">definition history &rsaquo;</span> &middot; <span class="mono">GovActionProcess::DatabaseAnalysisSurvey</span></div>
+    </div>
+    <div class="call">The top card leaves &ldquo;Egeria&rsquo;s own surveys&rdquo;: it was a run of this definition, not a survey of Egeria&rsquo;s. Until the merge, it carries this same &ldquo;Re-run &middot; coordinated by Egeria &rarr;&rdquo;, never &ldquo;Run again in Egeria&rdquo;.</div>
+
+    <div class="panel-t" style="margin-top:var(--s4)">B &middot; A definition Egeria can&rsquo;t start</div>
+    <div class="card">
+      <div style="display:flex;gap:10px;align-items:baseline;flex-wrap:wrap"><span class="h" style="font-size:18px">Database Scouting Scan</span><span class="muted" style="font-size:12.5px">3 steps &middot; <span class="lnk">runs 4 analyses</span></span><span style="margin-left:auto"><span class="b">Re-run&hellip;</span> <span class="b off">Re-run &middot; coordinated by Egeria</span></span></div>
+      <div style="font-size:13px;margin-top:6px"><span class="ok"><span class="g">&#10003;</span></span>ran 2 days ago &middot; by RE &middot; started by dwolfson</div>
+      <div class="ln" style="text-align:right">Egeria can&rsquo;t start this &middot; step 1 has no executor in Egeria &middot; <span class="ql">why</span></div>
+    </div>
+
+    <div class="panel-t" style="margin-top:var(--s4)">C &middot; An analysis row, and a run no longer followed</div>
+    <div class="card">
+      <div class="rowx" style="border:0"><span>Table activity</span><span class="muted mono" style="font-size:12px">re_table_activity</span><span style="margin-left:auto"><span class="b">Re-run &rarr;</span> <span class="ql">with options&hellip;</span></span></div>
+      <div style="font-size:13px;margin-top:4px"><span class="muted g">&#9684;</span>running &middot; as of 14:12 &middot; <span class="muted">stopped checking after 10 minutes</span> &middot; <span class="b q">check now</span></div>
+    </div>
+   </div>
+
+   <div>
+    <div class="panel-t">D &middot; Registering with Egeria: the states</div>
+    <div class="card">
+      <div class="lab">The Egeria-visible host, inherited and changed</div>
+      <div class="rowx"><span class="mono">localhost_docker_egeria</span><span>host.docker.internal:5442 <span class="muted">(from its server)</span> <span class="ql">edit</span></span><span style="margin-left:auto"><span class="g">&#9888;</span>will change &middot; Egeria has localhost:5442 &middot; <span class="b">Register again &rarr;</span></span></div>
+      <div class="lab" style="margin-top:12px">A registration Egeria can&rsquo;t reach</div>
+      <div class="rowx" style="display:block"><div>registered &middot; <strong>Egeria couldn&rsquo;t connect</strong> &middot; read back 10-16 13:40</div>
+        <div class="ln"><span class="warn"><span class="g">&#10005;</span>failed</span> &middot; Connection to localhost:5442 refused &middot; Egeria tried <strong class="mono">localhost:5442</strong>, and localhost is Egeria&rsquo;s own machine &middot; <span class="lnk">change the Egeria-visible host &rsaquo;</span></div></div>
+      <div class="lab" style="margin-top:12px">Its element is no longer in Egeria</div>
+      <div class="rowx"><span>no longer in Egeria &middot; <span class="muted">was registered 10-15 as 4f2a&hellip;</span></span><span style="margin-left:auto"><span class="b">Register again &rarr;</span></span></div>
+      <div class="rowx"><span>couldn&rsquo;t read Egeria &middot; <span class="muted">Connection reset</span></span><span style="margin-left:auto"><span class="b q">check again</span></span></div>
+      <div class="lab" style="margin-top:12px">Start again, when an earlier one is unresolved</div>
+      <div style="font-size:13px;border-left:3px solid var(--rule-strong);padding:6px 10px;background:rgba(32,31,29,.03)">An earlier registration (submitted 10-16 13:02) hasn&rsquo;t finished. Starting again may create a second database element in Egeria. <span class="b">Start again</span> <span class="ql">wait for it</span></div>
+      <div class="lab" style="margin-top:12px">A shared server connection, raised because it&rsquo;s the cause</div>
+      <div style="font-size:13px">Egeria&rsquo;s server element is shared with <span class="mono">coco_pharma</span> &middot; its connection uses coco_pharma&rsquo;s credential &middot; <span class="muted">that credential reads 3 of 61 tables</span></div>
+    </div>
+
+    <div class="panel-t" style="margin-top:var(--s4)">E &middot; A sign-in Egeria refuses, and who you are</div>
+    <div class="card">
+      <div style="font-size:13.5px">Egeria accepted <strong>rover</strong>&rsquo;s password but refuses its requests. Sign in as a user this Egeria server knows.</div>
+      <div style="margin-top:10px;background:var(--chrome);color:var(--chrome-ink);padding:6px 10px;border-radius:2px;font-size:13px;display:flex;gap:10px"><span>Resource Explorer</span><span style="margin-left:auto">signed in as <strong>rover</strong> <span style="color:var(--chrome-muted)">&middot; on egeria-dev:9443</span></span></div>
+      <div class="ln">The user name is never cut; the server&rsquo;s name gives way first.</div>
+    </div>
+   </div>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>

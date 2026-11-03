@@ -38,6 +38,7 @@ from types import ModuleType
 
 import pytest
 
+from advisor import collection_sources
 from advisor.collection_config import (
     PYEGERIA_CLI_COLLECTION,
     PYEGERIA_COLLECTION,
@@ -88,7 +89,7 @@ def repos_dir(tmp_path, monkeypatch, ingest_script) -> Path:
         target = repo / rel
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(content)
-    monkeypatch.setattr(ingest_script, "get_repos_dir", lambda: repos)
+    monkeypatch.setattr(collection_sources, "get_repos_dir", lambda: repos)
     return repos
 
 
@@ -120,7 +121,7 @@ def test_pyegeria_resolution_reaches_nested_subpackages(ingest_script, repos_dir
 
 
 def test_missing_repo_resolves_to_nothing(ingest_script, tmp_path, monkeypatch):
-    monkeypatch.setattr(ingest_script, "get_repos_dir", lambda: tmp_path / "nowhere")
+    monkeypatch.setattr(collection_sources, "get_repos_dir", lambda: tmp_path / "nowhere")
     assert ingest_script.get_collection_source_paths(PYEGERIA_CLI_COLLECTION) == []
 
 
@@ -174,6 +175,7 @@ class _FakeIngester:
     def __init__(self, collection_name, chunk_size=None, chunk_overlap=None):
         self.collection_name = collection_name
         self.failed_files: list[tuple[str, str]] = []
+        self.seen: list[Path] = []
         _FakeIngester.instances.append(self)
 
     def failure_summary(self, limit=3):
@@ -181,8 +183,15 @@ class _FakeIngester:
             return ""
         return f"{len(self.failed_files)} file(s) failed: {self.failed_files[0][1]}"
 
-    def ingest_directory(self, dir_path, file_pattern, recursive=True):
-        files = list(dir_path.rglob(file_pattern))
+    def ingest_directory(self, dir_path, file_pattern, recursive=True,
+                         batch_size=50, exclude_patterns=None):
+        from advisor.ingest import path_is_excluded
+
+        files = [
+            f for f in dir_path.rglob(file_pattern)
+            if not path_is_excluded(f, exclude_patterns, root=dir_path)
+        ]
+        self.seen.extend(files)
         ok = 0
         for f in files:
             if self.fail_all:
@@ -291,3 +300,93 @@ def test_exit_nonzero_when_nothing_ingested(ingest_script):
 def test_exit_zero_for_pure_dry_run(ingest_script):
     results = {"pyegeria": _r(ingest_script, "pyegeria", 0, "dry run — no ingestion performed", True)}
     assert ingest_script.exit_code_for(results) == 0
+
+
+# ---------------------------------------------------------------------------
+# exclude_patterns are actually applied
+#
+# Found live 2026-09-10 on the running box: egeria_general is configured as
+# "all of site/docs EXCEPT concepts/ and types/", but nothing on the ingest
+# path ever read collection.exclude_patterns — ingest_directory() did a bare
+# rglob — so the 179 concept and 168 type files were ingested a second time
+# into egeria_general, duplicating both specialized collections.
+#
+# The parsers in advisor/data_prep/ do accept exclude_patterns and match with
+# PurePath.match(), which does not treat a leading "**" as a recursive
+# wildcard before Python 3.13 — so "**/concepts/**" matches nothing there.
+# path_is_excluded() uses fnmatch instead; test_leading_doublestar_* pins that.
+# ---------------------------------------------------------------------------
+
+from advisor.collection_config import EGERIA_GENERAL_COLLECTION  # noqa: E402
+from advisor.ingest import path_is_excluded  # noqa: E402
+
+_DOCS_LAYOUT = {
+    "site/docs/index.md": "# index\n",
+    "site/docs/guides/getting-started.md": "# start\n",
+    "site/docs/guides/admin/config.md": "# config\n",
+    "site/docs/concepts/asset.md": "# asset\n",
+    "site/docs/concepts/glossary-term.md": "# term\n",
+    "site/docs/types/0/0010-base-model.md": "# types\n",
+    "site/docs/types/1/0110-actors.md": "# actors\n",
+}
+
+
+@pytest.fixture
+def docs_repos_dir(tmp_path, monkeypatch, ingest_script) -> Path:
+    repos = tmp_path / "repos"
+    repo = repos / "egeria-docs"
+    for rel, content in _DOCS_LAYOUT.items():
+        target = repo / rel
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(content)
+    monkeypatch.setattr(collection_sources, "get_repos_dir", lambda: repos)
+    return repos
+
+
+def test_leading_doublestar_pattern_matches_a_nested_directory(tmp_path):
+    path = tmp_path / "site" / "docs" / "concepts" / "asset.md"
+    assert path_is_excluded(path, ["**/concepts/**"])
+    # The pathlib form these patterns were written for, and why they never fired.
+    assert not path.match("**/concepts/**") or sys.version_info >= (3, 13)
+
+
+def test_path_is_excluded_leaves_unmatched_paths_alone(tmp_path):
+    path = tmp_path / "site" / "docs" / "guides" / "getting-started.md"
+    assert not path_is_excluded(path, ["**/concepts/**", "**/types/**"])
+    assert not path_is_excluded(path, [])
+    assert not path_is_excluded(path, None)
+
+
+def test_path_is_excluded_matches_relative_to_root(tmp_path):
+    root = tmp_path / "repo"
+    path = root / "node_modules" / "pkg" / "index.js"
+    # No leading directory before node_modules once made relative to root.
+    assert path_is_excluded(path, ["**/node_modules/**"], root=root)
+
+
+def test_count_files_honours_exclusions(ingest_script, docs_repos_dir):
+    docs = docs_repos_dir / "egeria-docs" / "site" / "docs"
+    assert ingest_script.count_files([docs], ["*.md"]) == 7
+    assert ingest_script.count_files(
+        [docs], ["*.md"], EGERIA_GENERAL_COLLECTION.exclude_patterns
+    ) == 3
+
+
+def test_egeria_general_does_not_ingest_concepts_or_types(
+    ingest_script, docs_repos_dir, monkeypatch
+):
+    _FakeIngester.instances.clear()
+    _FakeIngester.fail_all = False
+    monkeypatch.setattr(ingest_script, "CodeIngester", _FakeIngester)
+    monkeypatch.setattr(ingest_script, "_record_ingest_time", lambda *a, **k: None)
+    monkeypatch.setattr(ingest_script, "get_vector_store", lambda: _FakeStore({}))
+
+    result = ingest_script.ingest_collection(EGERIA_GENERAL_COLLECTION)
+
+    # index.md + guides/getting-started.md + guides/admin/config.md
+    assert result.files == 3
+    assert result.candidates == 3, "the estimate must match what is ingested"
+
+    seen = {p.name for i in _FakeIngester.instances for p in i.seen}
+    assert seen == {"index.md", "getting-started.md", "config.md"}
+    assert "asset.md" not in seen and "0010-base-model.md" not in seen

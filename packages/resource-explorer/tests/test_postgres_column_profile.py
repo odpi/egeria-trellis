@@ -57,7 +57,7 @@ from resource_explorer.surveyors.database.column_profile_step import (
     ACTION_REVIEW_UNMATCHED_VALUES,
     SamplingBudget,
     _rfa_for_match,
-    publish_proposals,
+    publish_proposals as _publish_proposals,
     run_column_profile,
     sample_column_values,
 )
@@ -72,8 +72,8 @@ from resource_explorer.surveyors.database.egeria_reference_catalog import (
     list_known_data_classes,
     list_known_valid_value_sets,
     load_reference_catalog,
-    publish_proposed_data_class,
-    publish_proposed_valid_value_set,
+    publish_proposed_data_class as _publish_proposed_data_class,
+    publish_proposed_valid_value_set as _publish_proposed_valid_value_set,
     valid_value_set_from_element,
 )
 from resource_explorer.surveyors.database.sampling import (
@@ -97,6 +97,7 @@ from resource_explorer.surveyors.database.sampling import (
 )
 
 # ── Fakes ─────────────────────────────────────────────────────────────────────
+
 
 class _FakeSamplingConnection:
     """A duck-typed stand-in for `PostgreSQLConnection` that records the SQL it
@@ -132,10 +133,52 @@ class _FakeSamplingConnection:
             return [{"value": v, "value_count": c} for v, c in counts.items()]
         return [{"value": v} for v in values]
 
+    def execute_query_isolated(self, query, params=()):
+        """§F: `column_profile_step.py` calls this instead of `execute_query`
+        now — proxied straight through here since this fake has no real
+        transaction to protect (unlike `PostgreSQLConnection`'s SAVEPOINT-
+        wrapped override, exercised separately in
+        `TestExecuteQueryIsolatedSavepoints` below)."""
+        return self.execute_query(query, params)
+
 
 def _column_from_sql(query: str) -> str:
     match = re.search(r'SELECT "([^"]+)" AS value', query)
     return match.group(1) if match else ""
+
+
+class _ExpertOver:
+    """The MetadataExpert unique-name read, answering what the old `get_guid_for_name` fakes below are scripted
+    with (an existing GUID, the miss sentence, or whatever a subclass returns). Production asks the unique-name
+    endpoint for every exact qualifiedName (egeria_lookup.py)."""
+
+    def __init__(self, *clients):
+        self._clients = [c for c in clients if c is not None]
+
+    def get_metadata_element_by_unique_name(self, name=None, property_name="qualifiedName", body=None, **kwargs):
+        from tests.qn_lookup_bridge import NO_ELEMENTS_FOUND, convert_answer
+
+        answer = NO_ELEMENTS_FOUND
+        for client in self._clients:
+            answer = client.get_guid_for_name(name, property_name=[property_name])
+            if answer != NO_ELEMENTS_FOUND:
+                break
+        return convert_answer(answer)
+
+
+def publish_proposed_data_class(designer, match, **kwargs):
+    kwargs.setdefault("expert", _ExpertOver(designer))
+    return _publish_proposed_data_class(designer, match, **kwargs)
+
+
+def publish_proposed_valid_value_set(ref_manager, match, **kwargs):
+    kwargs.setdefault("expert", _ExpertOver(ref_manager))
+    return _publish_proposed_valid_value_set(ref_manager, match, **kwargs)
+
+
+def publish_proposals(matches, *, designer=None, ref_manager=None, **kwargs):
+    kwargs.setdefault("expert", _ExpertOver(designer, ref_manager))
+    return _publish_proposals(matches, designer=designer, ref_manager=ref_manager, **kwargs)
 
 
 class _FakeDesigner:
@@ -155,8 +198,8 @@ class _FakeDesigner:
             raise RuntimeError("view server unreachable")
         return self.elements
 
-    def get_guid_for_name(self, name):
-        return self.existing_guids.get(name, "")
+    def get_guid_for_name(self, name, property_name=None, type_name=None):   # pyegeria's signature
+        return self.existing_guids.get(name, "No elements found")
 
     def create_data_class(self, body):
         self.created.append(body)
@@ -176,8 +219,8 @@ class _FakeRefManager:
             raise RuntimeError("view server unreachable")
         return self.elements
 
-    def get_guid_for_name(self, name):
-        return self.existing_guids.get(name, "")
+    def get_guid_for_name(self, name, property_name=None, type_name=None):   # pyegeria's signature
+        return self.existing_guids.get(name, "No elements found")
 
     def create_valid_value_definition(self, body):
         self.created.append(body)
@@ -239,6 +282,7 @@ def _sample(values, **kwargs):
 
 
 # ── 1. Sampling configuration (design §5.8) ──────────────────────────────────
+
 
 class TestSamplingConfiguration:
     """§5.8 is a configuration surface, not a single knob."""
@@ -325,6 +369,7 @@ class TestSamplingConfiguration:
 
 
 # ── 2. The SQL: TABLESAMPLE, not ORDER BY random() ───────────────────────────
+
 
 class TestSampleSql:
     """§5.8 names `TABLESAMPLE SYSTEM`/`BERNOULLI` specifically, in preference
@@ -437,6 +482,7 @@ class TestSampleSql:
 
 # ── 3. The envelope (§5.8's first rule) ──────────────────────────────────────
 
+
 class TestProvenanceEnvelope:
     def test_the_sentence_carries_strategy_size_total_seed_and_date(self):
         # §5.8's own example: "from a random sample of 10 000 of 4.2 M rows
@@ -482,6 +528,7 @@ class TestProvenanceEnvelope:
 
 # ── 4. `n_distinct`'s sign convention ────────────────────────────────────────
 
+
 class TestResolveNDistinct:
     """pg_stats packs three meanings into one signed column. Two of the three
     are wrong if read as a plain number."""
@@ -522,6 +569,7 @@ class TestResolveNDistinct:
 
 
 # ── 5. data_class_match ──────────────────────────────────────────────────────
+
 
 class TestDataClassMatch:
     def _match(self, values, classes=(EMAIL_CLASS,), column="email",
@@ -727,6 +775,7 @@ class TestDataClassMatch:
 
 # ── 6. reference_data_match ──────────────────────────────────────────────────
 
+
 class TestReferenceDataMatch:
     def _match(self, distinct_values, distinct_count=5, total_rows=100_000,
                sets=(COUNTRY_SET,), provenance=None, **kwargs):
@@ -877,6 +926,7 @@ class TestStatementsAreAlwaysQualified:
 
 # ── 7. The DRAFT proposal path ───────────────────────────────────────────────
 
+
 def _proposal_match(question="data_class_match"):
     values = [f"{i:08x}-0000-4000-8000-000000000000" for i in range(40)]
     if question == "data_class_match":
@@ -942,7 +992,9 @@ class TestDraftProposalPath:
         # There is no `create_valid_value_set` and no `ValidValueSetProperties`
         # in pyegeria — a set is created through create_valid_value_definition.
         assert props["class"] == "ValidValueDefinitionProperties"
-        assert props["typeName"] == "ValidValueSet"
+        # No typeName: Egeria 6.2 knows no `ValidValueSet` type (OMAG-COMMON-400-018); a set is a plain
+        # ValidValueDefinition, as bootstrap_data_classes creates its sets.
+        assert "typeName" not in props
 
     def test_publishing_a_data_class_proposal_creates_and_links_it(self):
         designer, discovery = _FakeDesigner(), _FakeDiscovery()
@@ -974,10 +1026,10 @@ class TestDraftProposalPath:
             proposed_data_class_qualified_name,
         )
         qn = proposed_data_class_qualified_name(match)
-        designer = _FakeDesigner(existing_guids={qn: "guid-existing"})
+        designer = _FakeDesigner(existing_guids={qn: "eeeeeeee-0000-4000-8000-000000000001"})
         result = publish_proposed_data_class(designer, match)
         assert result.created is False
-        assert result.guid == "guid-existing"
+        assert result.guid == "eeeeeeee-0000-4000-8000-000000000001"
         assert designer.created == []
 
     def test_a_miss_reading_as_pyegerias_sentinel_string_still_creates(self):
@@ -993,7 +1045,7 @@ class TestDraftProposalPath:
         match = _proposal_match()
 
         class _SentinelDesigner(_FakeDesigner):
-            def get_guid_for_name(self, name):
+            def get_guid_for_name(self, name, property_name=None, type_name=None):
                 return "No elements found"
 
         designer = _SentinelDesigner()
@@ -1074,6 +1126,7 @@ class TestDraftProposalPath:
 
 # ── 8. The RFA fallback (support doc §3) ─────────────────────────────────────
 
+
 class TestRfaFallback:
     def test_a_partial_reference_match_raises_an_rfa_listing_the_values(self):
         # §5.4 asks for this by name. And it stays an RFA even though DRAFT
@@ -1135,6 +1188,7 @@ class TestRfaFallback:
 
 
 # ── 9. Reading the platform ──────────────────────────────────────────────────
+
 
 class TestReferenceCatalogReads:
     def test_only_data_class_typed_elements_are_taken(self):
@@ -1497,6 +1551,7 @@ class TestSampleColumnValues:
 
 # ── 11. contentStatus reaches Egeria on the way out ──────────────────────────
 
+
 class TestContentStatusReachesThePublishPath:
     def test_a_draft_annotation_publishes_content_status(self):
         from resource_explorer.surveyors.annotation_props import build_annotation_props
@@ -1539,6 +1594,7 @@ class TestContentStatusReachesThePublishPath:
 
 # ── 12. …and reaches the surface a person reads ──────────────────────────────
 
+
 class TestContentStatusIsSurfaced:
     """The peer review's "load-bearing question before slice 10": does any
     consumer read path actually surface `contentStatus`, or does a draft render
@@ -1557,17 +1613,23 @@ class TestContentStatusIsSurfaced:
             get_annotations_by_report_guid,
         )
 
-        class _FakeAssetMaker:
-            def get_asset_by_guid(self, guid, body=None, output_format="JSON"):
-                return {"reportedAnnotations": [{"relatedElement": {
-                    "elementHeader": {"guid": "a1", "type": {"typeName": "DataClassAnnotation"}},
-                    "properties": {
-                        "qualifiedName": "qn", "summary": "proposed",
-                        "contentStatus": "DRAFT",
-                    },
-                }}]}
+        from tests.report_pages import paged_expert
 
-        annotations = get_annotations_by_report_guid(_FakeAssetMaker(), "report")
+        # contentStatus is an enum on the wire: the paged read decodes its symbolic name
+        expert = paged_expert(lambda guid: [("a1", "DataClassAnnotation", {"qualifiedName": "qn", "summary": "proposed"})])
+        from tests.report_pages import related_entry
+        real = expert.get_related_metadata_elements.side_effect
+
+        def with_enum(*a, **k):
+            answer = real(*a, **k)
+            if isinstance(answer, dict):
+                for e in answer["elementList"]:
+                    e["element"]["elementProperties"]["propertyValueMap"]["contentStatus"] = {
+                        "class": "EnumTypePropertyValue", "symbolicName": "DRAFT"}
+            return answer
+        expert.get_related_metadata_elements.side_effect = with_enum
+
+        annotations = get_annotations_by_report_guid(expert, "report")
         assert annotations[0]["content_status"] == "DRAFT"
 
     def test_an_annotation_with_no_content_status_reads_as_empty_not_confirmed(self):
@@ -1575,14 +1637,10 @@ class TestContentStatusIsSurfaced:
             get_annotations_by_report_guid,
         )
 
-        class _FakeAssetMaker:
-            def get_asset_by_guid(self, guid, body=None, output_format="JSON"):
-                return {"reportedAnnotations": [{"relatedElement": {
-                    "elementHeader": {"guid": "a1", "type": {"typeName": "X"}},
-                    "properties": {"qualifiedName": "qn", "summary": "s"},
-                }}]}
+        from tests.report_pages import paged_expert
 
-        assert get_annotations_by_report_guid(_FakeAssetMaker(), "r")[0]["content_status"] == ""
+        expert = paged_expert(lambda guid: [("a1", "X", {"qualifiedName": "qn", "summary": "s"})])
+        assert get_annotations_by_report_guid(expert, "r")[0]["content_status"] == ""
 
     @pytest.mark.parametrize("module_path", [
         "resource_explorer.web.routes.egeria",
@@ -1607,17 +1665,297 @@ class TestContentStatusIsSurfaced:
         )
         assert item.content_status == "DRAFT"
 
-    def test_the_frontend_renders_a_draft_badge(self):
-        from pathlib import Path
+# ── §F, 2026-09-28: one column'''s failure can'''t cascade, and a view is never
+#    offered to TABLESAMPLE at all ──────────────────────────────────────────
+#
+# The live incident (`laz_local_adventureworks`): `TABLESAMPLE` on a view
+# raised a real Postgres error, and — because nothing released the
+# connection'''s aborted transaction — every column sampled AFTER it in the
+# same run failed too, silently, while the step still reported "ok". These
+# pin the fix at the `run_column_profile` level: `execute_query_isolated` is
+# used instead of `execute_query` (so a real Postgres connection cannot
+# cascade — see `TestExecuteQueryIsolatedSavepoints` for that half), a view'''s
+# columns are never offered to TABLESAMPLE in the first place, and the
+# step'''s own status/counts say what actually happened rather than "ok".
 
-        import resource_explorer
+from resource_explorer.registry import STATE_NOT_APPLICABLE  # noqa: E402
+from resource_explorer.surveyors.database.column_profile_step import (  # noqa: E402
+    STEP_STATUS_OK,
+    STEP_STATUS_PARTIAL,
+)
 
-        index = Path(resource_explorer.__file__).parent / "web" / "static" / "index.html"
-        source = index.read_text(encoding="utf-8")
-        renderer = source[source.index("function renderAnnotations"):]
-        renderer = renderer[: renderer.index("\n}")]
-        assert "content_status" in renderer
-        assert "DRAFT" in renderer
-        # An empty contentStatus must NOT draw a badge: "not stated" is what
-        # every pre-slice-10 annotation carries and is not "confirmed".
-        assert "cs\n" in renderer or "cs ?" in renderer or "cs ?" in renderer
+
+class _FakeIsolatingConnection(_FakeSamplingConnection):
+    """Simulates a connection whose isolation actually works (the contract
+    `PostgreSQLConnection.execute_query_isolated`'''s SAVEPOINT provides): a
+    poisoned column'''s query raises, but nothing about that leaks into the
+    NEXT call — exactly what `execute_query` alone could not guarantee on a
+    real Postgres connection. Only `execute_query_isolated` is overridden;
+    `column_profile_step.py` must call it, not `execute_query`, or these
+    tests would see every call route through the (non-isolating) parent
+    implementation and never notice the difference.
+    """
+
+    def __init__(self, *args, poison=(), **kwargs):
+        super().__init__(*args, **kwargs)
+        self.poison = set(poison)
+
+    def execute_query_isolated(self, query, params=()):
+        column = _column_from_sql(query)
+        self.executed.append(query)
+        if column in self.poison:
+            raise RuntimeError(
+                "TABLESAMPLE clause can only be applied to tables and "
+                "materialized views"
+            )
+        values = self.values_by_column.get(column, [])
+        if "GROUP BY value" in query:
+            counts: dict = {}
+            for v in values:
+                counts[v] = counts.get(v, 0) + 1
+            return [{"value": v, "value_count": c} for v, c in counts.items()]
+        return [{"value": v} for v in values]
+
+    def execute_query(self, query, params=()):
+        raise AssertionError(
+            "column_profile_step.py must call execute_query_isolated, not "
+            "execute_query, so one column'''s failure cannot cascade to the "
+            "next on a real connection"
+        )
+
+
+class TestOneColumnsFailureDoesNotCascade:
+    def test_a_poisoned_column_does_not_stop_the_next_column_from_sampling(self):
+        conn = _FakeIsolatingConnection(
+            {"email": _EMAILS, "country": ["GB"] * 20 + ["US"] * 15 + ["FR"] * 5,
+             "avatar": []},
+            poison={"email"},
+        )
+        _, result = _run(conn=conn)
+        rows = {r["column_name"]: r for r in result["column_profile_rows"]}
+        assert rows["email"]["state"] != STATE_MEASURED
+        assert rows["country"]["state"] == STATE_MEASURED
+
+    def test_the_steps_own_status_is_partial_and_names_the_first_error(self):
+        conn = _FakeIsolatingConnection(
+            {"email": _EMAILS, "country": ["GB"] * 20 + ["US"] * 15 + ["FR"] * 5,
+             "avatar": []},
+            poison={"email"},
+        )
+        _, result = _run(conn=conn)
+        assert result["status"] == STEP_STATUS_PARTIAL
+        assert result["counts"]["errored"] == 1
+        assert result["counts"]["sampled"] >= 1
+        assert "TABLESAMPLE" in result["first_error"]
+
+    def test_no_error_at_all_keeps_the_status_ok(self):
+        conn = _FakeIsolatingConnection(
+            {"email": _EMAILS, "country": ["GB"] * 20 + ["US"] * 15 + ["FR"] * 5,
+             "avatar": []},
+        )
+        _, result = _run(conn=conn)
+        assert result["status"] == STEP_STATUS_OK
+        assert result["counts"]["errored"] == 0
+
+
+_VIEW_SCHEMA_INFO = {
+    "schemas": [{
+        "name": "sales",
+        "tables": [{
+            "name": "vcustomer_summary",
+            "type": "VIEW",
+            "columns": [{"name": "email", "data_type": "text"}],
+        }],
+    }],
+}
+
+_MATVIEW_SCHEMA_INFO = {
+    "schemas": [{
+        "name": "sales",
+        "tables": [{
+            "name": "mv_customer_summary",
+            "type": "MATERIALIZED VIEW",
+            "columns": [{"name": "email", "data_type": "text"}],
+        }],
+    }],
+}
+
+
+class TestViewsAndMaterializedViews:
+    def test_a_views_column_is_never_offered_to_tablesample(self):
+        conn = _FakeIsolatingConnection({"email": _EMAILS})
+        result = run_column_profile(
+            conn, conn.capabilities, _VIEW_SCHEMA_INFO,
+            {"row_stats": []}, [], resource_slug="coco_ods", reference_catalog=_CATALOG,
+        )
+        assert not any("TABLESAMPLE" in q for q in conn.executed), (
+            "a view'''s column must never reach TABLESAMPLE — Postgres rejects "
+            "it outright and (before this fix) that rejection cascaded"
+        )
+        row = result["column_profile_rows"][0]
+        assert row["state"] == STATE_NOT_APPLICABLE
+        assert result["counts"]["skipped_not_applicable"] == 1
+        assert result["status"] == STEP_STATUS_OK
+
+    def test_a_materialized_views_column_is_sampled_normally(self):
+        conn = _FakeIsolatingConnection({"email": _EMAILS})
+        result = run_column_profile(
+            conn, conn.capabilities, _MATVIEW_SCHEMA_INFO,
+            {"row_stats": []}, [], resource_slug="coco_ods", reference_catalog=_CATALOG,
+        )
+        assert any("TABLESAMPLE" in q for q in conn.executed), (
+            "a materialized view IS TABLESAMPLE-able and must be sampled "
+            "exactly like a base table"
+        )
+        row = result["column_profile_rows"][0]
+        assert row["state"] == STATE_MEASURED
+        assert result["counts"]["sampled"] == 1
+        assert result["counts"]["skipped_not_applicable"] == 0
+
+
+class TestExecuteQueryIsolatedSavepoints:
+    """`PostgreSQLConnection.execute_query_isolated` — the real SAVEPOINT
+    mechanism, characterised the same way this file already characterises
+    TABLESAMPLE: by asserting the SQL/command SHAPE issued to a fake cursor,
+    since there is no live Postgres in this environment.
+    """
+
+    def _connection_with_fake_cursor(self, *, fail: bool):
+        from resource_explorer.surveyors.database.connection import PostgreSQLConnection
+
+        executed: list = []
+
+        class _FakeCursor:
+            description = [("value",)]
+
+            def execute(self, sql, params=()):
+                executed.append(sql)
+                if fail and sql.startswith("SELECT"):
+                    raise RuntimeError(
+                        "TABLESAMPLE clause can only be applied to tables "
+                        "and materialized views"
+                    )
+
+            def fetchall(self):
+                return [("x",)]
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *a):
+                return False
+
+        class _FakeConn:
+            def cursor(self):
+                return _FakeCursor()
+
+        conn = PostgreSQLConnection("h", 5432, "d", "u", "p")
+        conn._conn = _FakeConn()
+        return conn, executed
+
+    def test_success_issues_savepoint_then_release(self):
+        conn, executed = self._connection_with_fake_cursor(fail=False)
+        rows = conn.execute_query_isolated("SELECT 1")
+        assert rows == [{"value": "x"}]
+        assert executed[0].startswith("SAVEPOINT ")
+        assert executed[1] == "SELECT 1"
+        assert executed[2].startswith("RELEASE SAVEPOINT ")
+
+    def test_failure_issues_savepoint_then_rollback_to_savepoint_and_reraises(self):
+        conn, executed = self._connection_with_fake_cursor(fail=True)
+        with pytest.raises(RuntimeError, match="TABLESAMPLE"):
+            conn.execute_query_isolated("SELECT 1")
+        assert executed[0].startswith("SAVEPOINT ")
+        assert executed[1] == "SELECT 1"
+        assert executed[2].startswith("ROLLBACK TO SAVEPOINT ")
+        assert executed[2] != "ROLLBACK"
+
+    def test_execute_query_itself_is_unchanged_no_savepoint_commands(self):
+        conn, executed = self._connection_with_fake_cursor(fail=False)
+        conn.execute_query("SELECT 1")
+        assert executed == ["SELECT 1"]
+
+    def test_not_connected_raises_the_same_error_as_execute_query(self):
+        from resource_explorer.surveyors.database.connection import PostgreSQLConnection
+
+        conn = PostgreSQLConnection("h", 5432, "d", "u", "p")
+        with pytest.raises(RuntimeError, match="Not connected"):
+            conn.execute_query_isolated("SELECT 1")
+
+
+class TestExecuteQueryIsolatedDefaultsToExecuteQuery:
+    def test_default_implementation_just_calls_execute_query(self):
+        from resource_explorer.surveyors.database.connection import DatabaseConnection
+
+        calls = []
+
+        class _Bare(DatabaseConnection):
+            def connect(self): return None
+            def execute_query(self, query, params=()):
+                calls.append(query)
+                return [{"ok": True}]
+            def get_schema_info(self): return {}
+            def get_statistics(self): return {}
+            def close(self): pass
+
+        conn = _Bare()
+        assert conn.execute_query_isolated("SELECT 1") == [{"ok": True}]
+        assert calls == ["SELECT 1"]
+
+
+# ── The step's annotations reach the publish path ────────────────────────────
+
+
+class TestColumnProfileAnnotationsArePublished:
+    """`postgres_column_profile` used to build its DataClass / ResourceMeasure / RFA
+    annotations and then lose them: `_run_postgres_column_profile` nests them under
+    `column_profile["annotations"]`, and `annotations_from_step_outputs` (what both the
+    Survey Definition `_publish` and the engine host publish from) read only the
+    schema, statistics, views, operations and credential_capability parts. So every
+    data_class_match verdict stayed local while the adapter's own comment said it was
+    "only ever turned into Egeria annotations"."""
+
+    @pytest.fixture
+    def db_entity(self, tmp_path):
+        from resource_explorer.registry import DatabaseEntity, ProjectRegistry
+
+        registry = ProjectRegistry(db_path=str(tmp_path / "test.db"))
+        entity = DatabaseEntity(
+            slug="coco_ods", display_name="Coco ODS", db_type="postgresql",
+            host="localhost", port=5432, database_name="coco_ods",
+        )
+        registry.register_database(entity)
+        return entity
+
+    def test_the_profiles_annotations_are_in_what_a_run_publishes(self, db_entity):
+        from resource_explorer.surveyors.database.egeria_database_surveyor import (
+            annotations_from_step_outputs,
+        )
+
+        _, profile = _run()
+        assert profile["annotations"], "the fixture must produce annotations to publish"
+        step_output = {"schema_info": _SCHEMA_INFO, "column_profile": profile}
+
+        published = annotations_from_step_outputs(db_entity, [step_output])
+
+        for ann in profile["annotations"]:
+            assert any(p is ann for p in published), (
+                f"{type(ann).__name__} {getattr(ann, 'item_key', '')!r} was built but is not published"
+            )
+
+    def test_a_profile_alone_still_publishes_its_annotations(self, db_entity):
+        """A step output carrying only the column profile (no inventory) is not 'nothing'."""
+        from resource_explorer.surveyors.database.egeria_database_surveyor import (
+            annotations_from_step_outputs,
+        )
+
+        _, profile = _run()
+        published = annotations_from_step_outputs(db_entity, [{"column_profile": profile}])
+        assert len(published) == len(profile["annotations"])
+
+    def test_one_runs_profile_annotations_have_unique_published_names(self):
+        """A collision would make the whole publish refuse (assert_unique_qualified_names)."""
+        from resource_explorer.surveyors.survey_report import assert_unique_qualified_names
+
+        _, profile = _run()
+        assert_unique_qualified_names("Annotation::PostgreSQL::coco_ods::t", profile["annotations"])

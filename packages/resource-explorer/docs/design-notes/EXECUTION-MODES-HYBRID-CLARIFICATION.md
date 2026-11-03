@@ -1,5 +1,7 @@
 # Execution modes — resolving the "hybrid" naming collision
 
+*(Status refreshed 2026-10-28: built on main 2026-09-20 (commit `4da212aa`, which folds the hybrid surveyors into `executes_at: egeria-adaptive`). The original status line is kept below.)*
+
 **Status:** proposal, 2026-09-20. Corrects `PLAN-EXECUTION-MODES-VERIFICATION.md` §3, which the
 project owner flagged as using "hybrid" for two different things. Nothing here is built.
 

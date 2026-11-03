@@ -29,7 +29,7 @@ class TestOneTrailFormat:
         wl = (NEXT / "worklist.js").read_text(encoding="utf-8")
         assert "ctx.subTabs" in wl and "← back to questions" in wl
         app = (NEXT / "app.js").read_text(encoding="utf-8")
-        assert re.search(r"subTabs: SUB_TABS\.map", app)
+        assert re.search(r"subTabs: SUB_TABS(\.filter\(\(t\) => !t\.stageTab\))?\.map", app)
 
     def test_the_journal_note_names_the_list_and_stays(self):
         app = (NEXT / "app.js").read_text(encoding="utf-8")
@@ -100,7 +100,7 @@ class TestPromotionSelectionInTheShell:
         members = app[app.index("async function openMembers("):app.index("function rowKey(i)")]
         assert "accent-accent" not in members, "gold is not a fill on 200 checkboxes"
         assert "this list is a tree" in self._sel()
-        assert "Nothing listed" in members
+        assert "nothing stored by" in members
 
 
 class TestDispositionRulings:
@@ -119,7 +119,7 @@ class TestDispositionRulings:
 
     def test_a_non_repo_now_renders_real_disposition_chips_not_the_old_apology(self):
         """SUPERSEDED (re/multiselect-groups-dbfs, 2026-09-23): FUNNEL-COST-
-        RULINGS §5 (docs/design-notes/REPLY-FUNNEL-COST.md) was correct for
+        RULINGS §5 (docs/design-notes/exchange/REPLY-FUNNEL-COST.md) was correct for
         2026-09-13's mechanism -- a database/filesystem genuinely had no
         disposition, so an empty facet row would have misrepresented a
         mechanism gap as "nothing is dispositioned". That mechanism gap

@@ -10,7 +10,8 @@
 **Written by:** dwolfson
 **Written at:** 2026-08-20
 
-> Transcribed by the assistant from the maintainer's hand-written `docs/workspaces.md`.
+> Transcribed by the assistant from the maintainer's hand-written workspaces outline
+> (since folded into `docs/Architecture.md#runtime-neighbours`).
 > **Component names, groupings and descriptions are the maintainer's**; the assistant added
 > structure, types, and the perspective/vocabulary fields. Marked per component.
 >

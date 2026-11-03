@@ -46,7 +46,7 @@ class TestRunScopedAnalysis:
             json={"locator": "src"},
         )
         assert resp.status_code == 404
-        assert "not a cataloged sub-resource" in resp.json()["detail"]
+        assert "not a published sub-resource" in resp.json()["detail"]
 
     def test_400_for_unknown_analysis_id(self, client, registry):
         registry.catalog_sub_resource("repo", "myproj", "src", "folder")

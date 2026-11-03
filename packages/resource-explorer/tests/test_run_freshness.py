@@ -12,7 +12,6 @@ someone a redundant click.
 """
 from __future__ import annotations
 
-import json
 from datetime import datetime, timedelta, timezone
 
 import pytest
@@ -56,8 +55,9 @@ class TestTheThreeStates:
         _log_run(reg, slug, "security_scan", minutes_ago=5)
         f = assess_freshness(reg, "repo", slug, "security_scan")
         assert f.fresh and f.state == "fresh"
-        assert "not running it again" in f.reason("security_scan")
-        assert "force=true" in f.reason("security_scan")
+        assert "has data from" in f.reason("security_scan")
+        assert "force=true" not in f.reason("security_scan")
+        assert "not running it again" not in f.reason("security_scan")
 
     def test_an_old_run_is_stale(self, reg, slug):
         _log_run(reg, slug, "security_scan", minutes_ago=180)
@@ -287,41 +287,6 @@ class TestTheFrontendRunCallersHandleASkip:
     """Split out of TestTheGateIsWiredAndScopedCorrectly (unchanged content)
     to make room for TestTheEnqueueResponseCarriesThePrice between the
     route-level tests above and the frontend-derivation tests below."""
-
-    def test_every_frontend_caller_of_the_run_route_handles_a_skip(self):
-        """Derived, not listed. `activity_id` is null on a skip, so a caller
-        that polls it regardless hangs forever. THREE functions reach this
-        route and two of them share a byte-identical fetch block — the first
-        version of this change patched one of that pair and would have left the
-        other hanging."""
-        import pathlib
-        import re
-        html = (pathlib.Path(__file__).resolve().parent.parent
-                / "resource_explorer" / "web" / "static" / "index.html").read_text()
-        html = re.sub(r"^\s*//.*$", "", html, flags=re.M)
-        starts = [(m.start(), m.group(1))
-                  for m in re.finditer(r"^(?:async )?function (\w+)\s*\(", html, re.M)]
-        bodies = {}
-        for i, (pos, name) in enumerate(starts):
-            end = starts[i + 1][0] if i + 1 < len(starts) else len(html)
-            bodies[name] = html[pos:end]
-
-        callers = {n for n, b in bodies.items()
-                   if re.search(r"/analyses/\$\{[^}]+\}/run", b)
-                   and "_pollActivityUntilDone" in b}
-        assert callers, "found no frontend callers of the run route — derivation broke"
-        missing = sorted(n for n in callers if "_handleFreshnessSkip" not in bodies[n])
-        assert not missing, (
-            f"these poll activity_id without handling a skipped run, so a "
-            f"declined run leaves the UI polling null forever: {missing}")
-
-    def test_the_skip_offers_a_way_through(self):
-        import pathlib
-        html = (pathlib.Path(__file__).resolve().parent.parent
-                / "resource_explorer" / "web" / "static" / "index.html").read_text()
-        assert "force=true" in html, (
-            "the frontend never sends force=true, so a reader who genuinely "
-            "wants a re-run has no way to ask for one")
 
 
 def _succeeded_run(reg, analysis_id, seconds, slug="any"):

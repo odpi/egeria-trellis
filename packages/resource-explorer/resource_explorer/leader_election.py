@@ -69,6 +69,9 @@ LOCK_EGERIA_RESYNC = "egeria-resync"
 #: processes starting together would otherwise each race to create the same
 #: zone, and pyegeria's generic element create has no upsert.
 LOCK_DRAFT_ZONE = "draft-zone-bootstrap"
+#: The engine-host claim sweep (engine_host.py). A loop like the three above, but started only when
+#: RE_ENGINE_HOST_ENABLED is on, so a default worker still runs exactly three loops.
+LOCK_ENGINE_HOST = "engine-host"
 
 
 def advisory_key(name: str) -> int:
@@ -123,6 +126,7 @@ class LeaderLock:
                     self.database_url.split("://", 1)[0], self.name,
                 )
                 self._held = True
+                _held_locks[self.name] = self
                 return True
             try:
                 from sqlalchemy import create_engine
@@ -159,6 +163,7 @@ class LeaderLock:
                     # exactly as long as its session does.
                     self._conn = conn
                     self._held = True
+                    _held_locks[self.name] = self
                 else:
                     conn.close()
                 return won
@@ -202,6 +207,29 @@ class LeaderLock:
                     pass
                 self._engine = None
 
+    def still_held(self) -> bool:
+        """Ask Postgres, not the cached flag: is this session still holding the key? A lost
+        connection (which drops a session-scoped lock) or any error is False. A non-Postgres
+        registry has no election, so it is True while held."""
+        with self._lock:
+            if not self._held:
+                return False
+            if self._conn is None:
+                return True
+            try:
+                cur = self._conn.cursor()
+                cur.execute(
+                    "SELECT count(*) FROM pg_locks WHERE locktype = 'advisory' AND granted "
+                    "AND pid = pg_backend_pid() AND classid::bigint = %s AND objid::bigint = %s",
+                    ((self.key >> 32) & 0xFFFFFFFF, self.key & 0xFFFFFFFF),
+                )
+                held = bool(cur.fetchone()[0])
+                cur.close()
+                return held
+            except Exception as exc:
+                log.warning("leader check for %r failed (%s) — treating as not leader", self.name, exc)
+                return False
+
     # Release on garbage collection too, so a dropped lock in a test does
     # not keep a key held until the interpreter exits.
     def __del__(self) -> None:  # pragma: no cover - GC timing
@@ -211,7 +239,21 @@ class LeaderLock:
             pass
 
 
-ALL_LOCK_NAMES = (LOCK_SCHEDULER, LOCK_BOOTSTRAP, LOCK_EGERIA_RESYNC, LOCK_DRAFT_ZONE)
+#: Locks this process has won, by name (kept after a release, so "won then lost" is not
+#: mistaken for "never elected").
+_held_locks: dict[str, "LeaderLock"] = {}
+
+
+def still_leader(name: str) -> bool | None:
+    """Does this process still lead `name`? None when it never won that lock here (a manual run
+    or a test: no election applies); otherwise `LeaderLock.still_held()`."""
+    lock = _held_locks.get(name)
+    if lock is None:
+        return None
+    return lock.still_held()
+
+
+ALL_LOCK_NAMES = (LOCK_SCHEDULER, LOCK_BOOTSTRAP, LOCK_EGERIA_RESYNC, LOCK_DRAFT_ZONE, LOCK_ENGINE_HOST)
 
 
 def documented_keys() -> dict[str, int]:

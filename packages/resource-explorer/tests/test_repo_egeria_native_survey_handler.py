@@ -1,8 +1,7 @@
 """Coverage for `repo_survey_definition_adapter._trigger_egeria_native_survey`
 and its supporting `EgeriaPublisher` methods (`trigger_survey_by_guid`,
 `_initiate_survey`, `_find_survey_process_name`) — the repo "egeria" handler
-closing Backlog "Path B3" (docs/design-notes/PLAN-EXECUTION-MODES-
-VERIFICATION.md §1 Path B). Mirrors the shape of
+closing Backlog "Path B3" (PLAN-EXECUTION-MODES-VERIFICATION.md §1 Path B). Mirrors the shape of
 tests/test_execution_modes_path_b1_failure_modes.py's database coverage —
 pure unit tests, no live Egeria needed.
 

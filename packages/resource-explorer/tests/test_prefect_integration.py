@@ -85,8 +85,9 @@ class TestPrefectOrchestration:
 
         with patch("resource_explorer.surveyors.prefect_adapter.get_config") as mock_config, \
              patch("resource_explorer.prefect.flows.get_adapter", return_value=mock_adapter), \
-             patch("resource_explorer.surveyors.prefect_adapter.get_client", side_effect=Exception("API Down")):
-            
+             patch("resource_explorer.surveyors.prefect_adapter.re_prefect_client",
+                   side_effect=Exception("API Down")):
+
             mock_config.return_value.prefect.enabled = True
             
             result = run_prefect_step(

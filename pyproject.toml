@@ -10,7 +10,9 @@ dependencies = []
 # declare workspace membership and hold shared tooling config.
 
 [tool.uv.workspace]
-members = ["packages/*"]
+# The reference steps are members too (R19), so one resolution and one uv.lock cover them and a sync keeps them
+# installed. A third-party (T2) step is not listed here and stays outside the lock.
+members = ["packages/*", "packages/trellis-analytics/examples/steps/*"]
 
 [tool.uv.sources]
 resource-explorer = { workspace = true }
@@ -21,6 +23,44 @@ trellis-artifact-tree = { workspace = true }
 trellis-context = { workspace = true }
 trellis-querycache = { workspace = true }
 trellis-auth = { workspace = true }
+trellis-analytics = { workspace = true }
+trellis-step-change-rates = { workspace = true }
+trellis-step-database-staleness = { workspace = true }
+trellis-step-fs-activity = { workspace = true }
+trellis-step-fs-change-rates = { workspace = true }
+trellis-step-fs-duplicates = { workspace = true }
+trellis-step-fs-layout-signals = { workspace = true }
+trellis-step-fs-permissions = { workspace = true }
+trellis-step-hub-tables = { workspace = true }
+trellis-step-schema-comparison = { workspace = true }
+trellis-step-statistics-freshness = { workspace = true }
+
+# What a bare `uv sync` at the root installs: uv installs the `dev` group by default, and the root is virtual (no
+# dependencies of its own), so without this a bare sync resolved to nothing and removed everything. Every member plus
+# resource-explorer's dev extra is what `uv sync --all-packages --extra dev` installs, so the two now agree, and the
+# reference steps are among them (R19). Add a new member here when you add one to the workspace.
+[dependency-groups]
+dev = [
+    "resource-explorer[dev]",
+    "egeria-advisor",
+    "trellis-microflow",
+    "trellis-vectorstore",
+    "trellis-artifact-tree",
+    "trellis-context",
+    "trellis-querycache",
+    "trellis-auth",
+    "trellis-analytics[dev]",
+    "trellis-step-change-rates",
+    "trellis-step-database-staleness",
+    "trellis-step-fs-activity",
+    "trellis-step-fs-change-rates",
+    "trellis-step-fs-duplicates",
+    "trellis-step-fs-layout-signals",
+    "trellis-step-fs-permissions",
+    "trellis-step-hub-tables",
+    "trellis-step-schema-comparison",
+    "trellis-step-statistics-freshness",
+]
 
 [tool.uv]
 # Combining both members' constraints in one resolution otherwise pulls an

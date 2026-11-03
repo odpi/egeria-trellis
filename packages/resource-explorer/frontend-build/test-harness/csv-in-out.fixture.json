@@ -1,0 +1,627 @@
+{
+ "csv": "resource_type,address,display_name,group,server,connection_ref,disposition,notes,region,status_registered,db_password\ndatabase,pg.regional:5432/sales,,regional,regional-pg,,,,eu,yes,csv-cell-pw-do-not-leak\ndatabase,pg.regional:5432/orders,,,regional-pg,,,,,,\ndatabase,pg.regional:5432/hr,,,,,,,,,\ndatabase,pg.regional:5432/sales,,,regional-pg,,,,,,\ndatabase,not-an-address,,,regional-pg,,,,,,\nfilesystem,/mnt/share,,,,,,,,,\ndatabase,pg.regional:5432/ref_only,,,,corp-secrets-entry,,,,,\nrepo,https://github.com/apache/airflow,,,,,,,,,\ndatabase,pg.regional:5432/ghost,,,nowhere-pg,,,,,,\n",
+ "preview": {
+  "refused": null,
+  "header": [
+   "resource_type",
+   "address",
+   "display_name",
+   "group",
+   "server",
+   "connection_ref",
+   "disposition",
+   "notes",
+   "region",
+   "status_registered",
+   "db_password"
+  ],
+  "missing": [],
+  "messages": [
+   "Ignored columns: region",
+   "1 status_ column ignored: those are written by RE, never read",
+   "Credential column(s) ignored: db_password. A CSV names where a credential comes from (server or connection_ref), never the credential."
+  ],
+  "ignored": {
+   "unknown": [
+    "region"
+   ],
+   "status": [
+    "status_registered"
+   ],
+   "credential": [
+    "db_password"
+   ]
+  },
+  "counts": {
+   "new": 3,
+   "ready": 2,
+   "needs_person": 1,
+   "already_registered": 1,
+   "duplicate_in_file": 1,
+   "invalid": 2,
+   "not_importable": 2
+  },
+  "lines": {
+   "new": [
+    {
+     "line": 2,
+     "resource_type": "database",
+     "address": "pg.regional:5432/sales",
+     "display_name": "",
+     "group": "regional",
+     "server": "regional-pg",
+     "connection_ref": "",
+     "disposition": "",
+     "message": "ready to register",
+     "needs_person": false
+    },
+    {
+     "line": 8,
+     "resource_type": "database",
+     "address": "pg.regional:5432/ref_only",
+     "display_name": "",
+     "group": "",
+     "server": "",
+     "connection_ref": "corp-secrets-entry",
+     "disposition": "",
+     "message": "ready to register",
+     "needs_person": false
+    },
+    {
+     "line": 4,
+     "resource_type": "database",
+     "address": "pg.regional:5432/hr",
+     "display_name": "",
+     "group": "",
+     "server": "",
+     "connection_ref": "",
+     "disposition": "",
+     "message": "needs a person: name a server or a credential",
+     "needs_person": true,
+     "matching_servers": [
+      "regional_pg"
+     ]
+    }
+   ],
+   "already_registered": [
+    {
+     "line": 3,
+     "resource_type": "database",
+     "address": "pg.regional:5432/orders",
+     "display_name": "",
+     "group": "",
+     "server": "regional-pg",
+     "connection_ref": "",
+     "disposition": "",
+     "message": "already registered",
+     "needs_person": false,
+     "slug": "regional_pg_orders"
+    }
+   ],
+   "duplicate_in_file": [
+    {
+     "line": 5,
+     "resource_type": "database",
+     "address": "pg.regional:5432/sales",
+     "display_name": "",
+     "group": "",
+     "server": "regional-pg",
+     "connection_ref": "",
+     "disposition": "",
+     "message": "duplicate of an earlier row in this file",
+     "needs_person": false
+    }
+   ],
+   "invalid": [
+    {
+     "line": 6,
+     "resource_type": "database",
+     "address": "not-an-address",
+     "display_name": "",
+     "group": "",
+     "server": "regional-pg",
+     "connection_ref": "",
+     "disposition": "",
+     "message": "address \"not-an-address\" is not host:port/name (a database address, for example pg.regional.example:5432/orders)",
+     "needs_person": false
+    },
+    {
+     "line": 10,
+     "resource_type": "database",
+     "address": "pg.regional:5432/ghost",
+     "display_name": "",
+     "group": "",
+     "server": "nowhere-pg",
+     "connection_ref": "",
+     "disposition": "",
+     "message": "server 'nowhere-pg' is not a registered database server",
+     "needs_person": false
+    }
+   ],
+   "not_importable": [
+    {
+     "line": 7,
+     "resource_type": "filesystem",
+     "address": "/mnt/share",
+     "display_name": "",
+     "group": "",
+     "server": "",
+     "connection_ref": "",
+     "disposition": "",
+     "message": "file system rows are exported but cannot be registered from CSV yet: there is no file-system import path, and mount points are machine-local",
+     "needs_person": false
+    },
+    {
+     "line": 9,
+     "resource_type": "repo",
+     "address": "https://github.com/apache/airflow",
+     "display_name": "",
+     "group": "",
+     "server": "",
+     "connection_ref": "",
+     "disposition": "",
+     "message": "repo rows are not imported from this dialog: use Find repos, 'load from file'",
+     "needs_person": false
+    }
+   ]
+  },
+  "proposed_changes": [],
+  "servers": [
+   {
+    "slug": "regional_pg",
+    "display_name": "Regional PG",
+    "host": "pg.regional",
+    "port": 5432
+   }
+  ],
+  "rows": 9
+ },
+ "proposed": {
+  "refused": null,
+  "header": [
+   "resource_type",
+   "address",
+   "group",
+   "disposition"
+  ],
+  "missing": [],
+  "messages": [],
+  "ignored": {
+   "unknown": [],
+   "status": [],
+   "credential": []
+  },
+  "counts": {
+   "new": 0,
+   "ready": 0,
+   "needs_person": 0,
+   "already_registered": 1,
+   "duplicate_in_file": 0,
+   "invalid": 0,
+   "not_importable": 0
+  },
+  "lines": {
+   "new": [],
+   "already_registered": [
+    {
+     "line": 2,
+     "resource_type": "database",
+     "address": "pg.regional:5432/orders",
+     "display_name": "",
+     "group": "other",
+     "server": "",
+     "connection_ref": "",
+     "disposition": "ignored",
+     "message": "already registered",
+     "needs_person": false,
+     "slug": "regional_pg_orders"
+    }
+   ],
+   "duplicate_in_file": [],
+   "invalid": [],
+   "not_importable": []
+  },
+  "proposed_changes": [
+   {
+    "line": 2,
+    "resource_type": "database",
+    "slug": "regional_pg_orders",
+    "field": "group",
+    "current": "regional",
+    "proposed": "other",
+    "blocked": ""
+   },
+   {
+    "line": 2,
+    "resource_type": "database",
+    "slug": "regional_pg_orders",
+    "field": "disposition",
+    "current": "undecided",
+    "proposed": "ignored",
+    "blocked": ""
+   }
+  ],
+  "servers": [
+   {
+    "slug": "regional_pg",
+    "display_name": "Regional PG",
+    "host": "pg.regional",
+    "port": 5432
+   }
+  ],
+  "rows": 1
+ },
+ "refused": {
+  "refused": "The file is missing the required column(s): resource_type, address. The header row found was: name, url.",
+  "header": [
+   "name",
+   "url"
+  ],
+  "missing": [
+   "resource_type",
+   "address"
+  ],
+  "messages": [],
+  "ignored": {
+   "unknown": [],
+   "status": [],
+   "credential": []
+  },
+  "counts": null,
+  "lines": null,
+  "proposed_changes": [],
+  "servers": []
+ },
+ "chosen": {
+  "refused": null,
+  "header": [
+   "resource_type",
+   "address",
+   "display_name",
+   "group",
+   "server",
+   "connection_ref",
+   "disposition",
+   "notes",
+   "region",
+   "status_registered",
+   "db_password"
+  ],
+  "missing": [],
+  "messages": [
+   "Ignored columns: region",
+   "1 status_ column ignored: those are written by RE, never read",
+   "Credential column(s) ignored: db_password. A CSV names where a credential comes from (server or connection_ref), never the credential."
+  ],
+  "ignored": {
+   "unknown": [
+    "region"
+   ],
+   "status": [
+    "status_registered"
+   ],
+   "credential": [
+    "db_password"
+   ]
+  },
+  "counts": {
+   "new": 3,
+   "ready": 3,
+   "needs_person": 0,
+   "already_registered": 1,
+   "duplicate_in_file": 1,
+   "invalid": 2,
+   "not_importable": 2
+  },
+  "lines": {
+   "new": [
+    {
+     "line": 2,
+     "resource_type": "database",
+     "address": "pg.regional:5432/sales",
+     "display_name": "",
+     "group": "regional",
+     "server": "regional-pg",
+     "connection_ref": "",
+     "disposition": "",
+     "message": "ready to register",
+     "needs_person": false
+    },
+    {
+     "line": 4,
+     "resource_type": "database",
+     "address": "pg.regional:5432/hr",
+     "display_name": "",
+     "group": "",
+     "server": "regional-pg",
+     "connection_ref": "",
+     "disposition": "",
+     "message": "ready to register",
+     "needs_person": false
+    },
+    {
+     "line": 8,
+     "resource_type": "database",
+     "address": "pg.regional:5432/ref_only",
+     "display_name": "",
+     "group": "",
+     "server": "",
+     "connection_ref": "corp-secrets-entry",
+     "disposition": "",
+     "message": "ready to register",
+     "needs_person": false
+    }
+   ],
+   "already_registered": [
+    {
+     "line": 3,
+     "resource_type": "database",
+     "address": "pg.regional:5432/orders",
+     "display_name": "",
+     "group": "",
+     "server": "regional-pg",
+     "connection_ref": "",
+     "disposition": "",
+     "message": "already registered",
+     "needs_person": false,
+     "slug": "regional_pg_orders"
+    }
+   ],
+   "duplicate_in_file": [
+    {
+     "line": 5,
+     "resource_type": "database",
+     "address": "pg.regional:5432/sales",
+     "display_name": "",
+     "group": "",
+     "server": "regional-pg",
+     "connection_ref": "",
+     "disposition": "",
+     "message": "duplicate of an earlier row in this file",
+     "needs_person": false
+    }
+   ],
+   "invalid": [
+    {
+     "line": 6,
+     "resource_type": "database",
+     "address": "not-an-address",
+     "display_name": "",
+     "group": "",
+     "server": "regional-pg",
+     "connection_ref": "",
+     "disposition": "",
+     "message": "address \"not-an-address\" is not host:port/name (a database address, for example pg.regional.example:5432/orders)",
+     "needs_person": false
+    },
+    {
+     "line": 10,
+     "resource_type": "database",
+     "address": "pg.regional:5432/ghost",
+     "display_name": "",
+     "group": "",
+     "server": "nowhere-pg",
+     "connection_ref": "",
+     "disposition": "",
+     "message": "server 'nowhere-pg' is not a registered database server",
+     "needs_person": false
+    }
+   ],
+   "not_importable": [
+    {
+     "line": 7,
+     "resource_type": "filesystem",
+     "address": "/mnt/share",
+     "display_name": "",
+     "group": "",
+     "server": "",
+     "connection_ref": "",
+     "disposition": "",
+     "message": "file system rows are exported but cannot be registered from CSV yet: there is no file-system import path, and mount points are machine-local",
+     "needs_person": false
+    },
+    {
+     "line": 9,
+     "resource_type": "repo",
+     "address": "https://github.com/apache/airflow",
+     "display_name": "",
+     "group": "",
+     "server": "",
+     "connection_ref": "",
+     "disposition": "",
+     "message": "repo rows are not imported from this dialog: use Find repos, 'load from file'",
+     "needs_person": false
+    }
+   ]
+  },
+  "proposed_changes": [],
+  "servers": [
+   {
+    "slug": "regional_pg",
+    "display_name": "Regional PG",
+    "host": "pg.regional",
+    "port": 5432
+   }
+  ],
+  "rows": 9
+ },
+ "reconfirm": {
+  "refused": null,
+  "header": [
+   "resource_type",
+   "address",
+   "display_name",
+   "group",
+   "server",
+   "connection_ref",
+   "disposition",
+   "notes",
+   "region",
+   "status_registered",
+   "db_password"
+  ],
+  "missing": [],
+  "messages": [
+   "Ignored columns: region",
+   "1 status_ column ignored: those are written by RE, never read",
+   "Credential column(s) ignored: db_password. A CSV names where a credential comes from (server or connection_ref), never the credential."
+  ],
+  "ignored": {
+   "unknown": [
+    "region"
+   ],
+   "status": [
+    "status_registered"
+   ],
+   "credential": [
+    "db_password"
+   ]
+  },
+  "counts": {
+   "new": 3,
+   "ready": 2,
+   "needs_person": 1,
+   "already_registered": 1,
+   "already_in_investigation": 1,
+   "duplicate_in_file": 1,
+   "invalid": 2,
+   "not_importable": 2
+  },
+  "lines": {
+   "new": [
+    {
+     "line": 2,
+     "resource_type": "database",
+     "address": "pg.regional:5432/sales",
+     "display_name": "",
+     "group": "regional",
+     "server": "regional-pg",
+     "connection_ref": "",
+     "disposition": "",
+     "message": "ready to register",
+     "needs_person": false
+    },
+    {
+     "line": 8,
+     "resource_type": "database",
+     "address": "pg.regional:5432/ref_only",
+     "display_name": "",
+     "group": "",
+     "server": "",
+     "connection_ref": "corp-secrets-entry",
+     "disposition": "",
+     "message": "ready to register",
+     "needs_person": false
+    },
+    {
+     "line": 4,
+     "resource_type": "database",
+     "address": "pg.regional:5432/hr",
+     "display_name": "",
+     "group": "",
+     "server": "",
+     "connection_ref": "",
+     "disposition": "",
+     "message": "needs a person: name a server or a credential",
+     "needs_person": true,
+     "matching_servers": [
+      "regional_pg"
+     ]
+    }
+   ],
+   "already_registered": [
+    {
+     "line": 3,
+     "resource_type": "database",
+     "address": "pg.regional:5432/orders",
+     "display_name": "",
+     "group": "",
+     "server": "regional-pg",
+     "connection_ref": "",
+     "disposition": "",
+     "message": "already registered",
+     "needs_person": false,
+     "slug": "regional_pg_orders",
+     "in_investigation": true
+    }
+   ],
+   "duplicate_in_file": [
+    {
+     "line": 5,
+     "resource_type": "database",
+     "address": "pg.regional:5432/sales",
+     "display_name": "",
+     "group": "",
+     "server": "regional-pg",
+     "connection_ref": "",
+     "disposition": "",
+     "message": "duplicate of an earlier row in this file",
+     "needs_person": false
+    }
+   ],
+   "invalid": [
+    {
+     "line": 6,
+     "resource_type": "database",
+     "address": "not-an-address",
+     "display_name": "",
+     "group": "",
+     "server": "regional-pg",
+     "connection_ref": "",
+     "disposition": "",
+     "message": "address \"not-an-address\" is not host:port/name (a database address, for example pg.regional.example:5432/orders)",
+     "needs_person": false
+    },
+    {
+     "line": 10,
+     "resource_type": "database",
+     "address": "pg.regional:5432/ghost",
+     "display_name": "",
+     "group": "",
+     "server": "nowhere-pg",
+     "connection_ref": "",
+     "disposition": "",
+     "message": "server 'nowhere-pg' is not a registered database server",
+     "needs_person": false
+    }
+   ],
+   "not_importable": [
+    {
+     "line": 7,
+     "resource_type": "filesystem",
+     "address": "/mnt/share",
+     "display_name": "",
+     "group": "",
+     "server": "",
+     "connection_ref": "",
+     "disposition": "",
+     "message": "file system rows are exported but cannot be registered from CSV yet: there is no file-system import path, and mount points are machine-local",
+     "needs_person": false
+    },
+    {
+     "line": 9,
+     "resource_type": "repo",
+     "address": "https://github.com/apache/airflow",
+     "display_name": "",
+     "group": "",
+     "server": "",
+     "connection_ref": "",
+     "disposition": "",
+     "message": "repo rows are not imported from this dialog: use Find repos, 'load from file'",
+     "needs_person": false
+    }
+   ]
+  },
+  "proposed_changes": [],
+  "servers": [
+   {
+    "slug": "regional_pg",
+    "display_name": "Regional PG",
+    "host": "pg.regional",
+    "port": 5432
+   }
+  ],
+  "rows": 9,
+  "investigation": "c360"
+ }
+}

@@ -19,6 +19,34 @@ export function whenMs(iso) {
   return Date.parse(zoned ? s : `${s}Z`);
 }
 
+/** A stored ISO time ("2026-10-30T11:12:58.965452") in the house format, "2026-10-30 11:12": no T, no seconds, no
+ *  microseconds, the format Curate's summary line uses. null for anything that is not an ISO date-time string, so a
+ *  caller can leave other values as they are. */
+const ISO_TIME = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/;
+export function houseTime(v) {
+  return typeof v === 'string' && ISO_TIME.test(v) ? v.slice(0, 16).replace('T', ' ') : null;
+}
+
+/** The page's one read-back time form, "MM-DD HH:MM" (W24; curation_coverage._stamp and catalogue_commit._stamp say
+ *  the same), for a stored time: ISO ("2026-10-09T17:51:36Z") or compact ("20261006T2100Z"). As stored, no zone
+ *  shift, like the routine's words. A date alone is "MM-DD"; anything unreadable comes back as it was. */
+const COMPACT_TIME = /^\d{4}(\d{2})(\d{2})T(\d{2})(\d{2})Z$/;
+export function stamp(v) {
+  const s = String(v ?? '');
+  if (/^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}/.test(s)) return `${s.slice(5, 10)} ${s.slice(11, 16)}`;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s.slice(5, 10);
+  const c = COMPACT_TIME.exec(s);
+  return c ? `${c[1]}-${c[2]} ${c[3]}:${c[4]}` : s;
+}
+
+/** A stamp as the READER's local time ("Oct 16, 10:42 AM"), never the UTC date the server stored. Empty when the
+ *  stamp cannot be read. */
+export function localTime(iso) {
+  const ms = whenMs(iso);
+  if (Number.isNaN(ms)) return '';
+  return new Date(ms).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+}
+
 export function ago(iso) {
   if (!iso) return '';
   const then = whenMs(iso);
@@ -74,3 +102,80 @@ export function changedTimesHtml(n) {
   if (n < 1) return '';
   return n === 1 ? 'changed once' : `changed <span class="tnum">${n}</span> times`;
 }
+
+/** The result line for something saved in RE's own record: "saved · who · when" (REPLY-DESIGNER-SAVE-AND-PUBLISH-VERBS.md).
+ *  It is built from the re-read row (or the route's own answer), never from the click. A missing author is said, not
+ *  skipped: "who isn't recorded". The Egeria family's lines are different words ("cataloged · read back when",
+ *  "published · read back when", "sent · waiting for Egeria") and only after a read-back proves them. */
+export function savedLine(who, whenIso) {
+  const w = String(whenIso || '');
+  const when = w.length >= 16 ? `${w.slice(5, 10)} ${w.slice(11, 16)}` : '';
+  return ['saved', who || "who isn't recorded", when].filter(Boolean).join(' · ');
+}
+
+/** "read back 09:12": the time the read-back was done, for the Egeria family's result lines. */
+export function readBackAt(date = new Date()) {
+  return `read back ${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
+}
+
+/* ── Egeria reset: words that read the `egeria_reset` marker (never decided here) ──────────────────────────
+ * The server derives `published_state` ('published' | 'published_earlier' | '') and `egeria_reset_at` from the
+ * marker row; these functions only choose how to say it. A short word on the element, the sentence on demand
+ * (the title). */
+
+export const PUBLISHED_EARLIER_WORD = 'published earlier';
+/** Only a fallback for a payload that carries no words: the words are the server's (`published_earlier_words`, from
+ *  catalogue_commit.publish_fields / pre_reset_words: "published before the <date> reset · not in Egeria now"). */
+export const PUBLISHED_EARLIER_SENTENCE = 'published before the reset \u00b7 not in Egeria now';
+
+/** The sentence for a publish older than the latest Egeria reset: the server's words, ONE source (fix round 1). */
+export function publishedEarlierSentence(item) {
+  return String((item && item.published_earlier_words) || PUBLISHED_EARLIER_SENTENCE);
+}
+export const STORED_COPY_RESET_LINE = 'Egeria was reset since \u00b7 the element is not in Egeria now';
+export const UNBOUND_WORDS = 'unbound by reset \u00b7 rebind to recreate';
+
+/** The Published badge for something with `last_published_at`: {text, title, earlier}. Empty text when never
+ *  published. `earlier` is true only when the server says the publish predates the reset. */
+export function publishedBadge(item) {
+  const at = item && item.last_published_at;
+  if (!at) return { text: '', title: '', earlier: false };
+  if (item.published_state === 'published_earlier') {
+    return { text: PUBLISHED_EARLIER_WORD, title: `${publishedEarlierSentence(item)} (${at}; reset ${item.egeria_reset_at || ''})`, earlier: true };
+  }
+  return { text: 'Published', title: `Last published: ${at}`, earlier: false };
+}
+
+/** The heading of RE's own stored copy of a survey report, and the ONE added line when the reset postdates the
+ *  read. `rep.reset_since` comes from the server. Returns {head, resetLine} (resetLine '' when none). */
+export function storedCopyWords(rep) {
+  const read = rep && (rep.stored_copy_read_at || rep.read_at) || '';
+  return {
+    head: `stored copy \u00b7 read from Egeria ${read || 'at an unrecorded time'}`,
+    resetLine: rep && rep.reset_since ? STORED_COPY_RESET_LINE : '',
+  };
+}
+
+/* ── a run step's status as the words a person reads ─────────────────────
+ * `skipped_by_design` is the executor's internal state for a step that looked and had nothing it could be asked to
+ * do. It is not a failure and not "ran and found nothing": the screen says "not run", and for run_quality_checks with
+ * no accepted check, why: "not run · no accepted checks". The full sentence the step recorded rides in the title. */
+export const NO_ACCEPTED_CHECKS_WORDS = 'not run · no accepted checks';
+
+/** { kind: 'ok' | 'not_run' | 'failed', words, title } for one entry of a run's `steps`. `words` is '' for ok. */
+export function stepOutcome(step) {
+  const status = String((step && step.status) || '');
+  const detail = typeof (step && step.detail) === 'string' ? step.detail : '';
+  if (status === 'ok') return { kind: 'ok', words: '', title: '' };
+  if (status === 'skipped_by_design') {
+    return {
+      kind: 'not_run',
+      words: /^no accepted checks\b/.test(detail) ? NO_ACCEPTED_CHECKS_WORDS : 'not run',
+      title: detail,
+    };
+  }
+  return { kind: 'failed', words: detail ? String(detail).slice(0, 120) : '', title: detail };
+}
+
+/** The status token as a person reads it, where only the token is known (no detail): the internal state is never shown. */
+export const statusToken = (status) => (status === 'skipped_by_design' ? 'not run' : status);

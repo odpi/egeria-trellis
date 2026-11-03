@@ -64,7 +64,55 @@
 #                       pick it up. Mixed-output kinds take their single
 #                       most-restrictive shape (simplicity over per-output
 #                       tagging, until real friction shows up).
+#   answers_questions - optional; `false` declares infrastructure (ingestion, parsing,
+#                       publishing) that answers no question by design, so the
+#                       question-catalog generator's orphan check
+#                       (scripts/csv_to_question_catalog_yaml.py) does not list
+#                       it. Absent means "should answer a question": an entry no
+#                       question names is then warned about at generation time.
 #   recommended       - shown with a ★ star as a suggested starting point.
+#   declaration       - what the analysis declares about its RESULTS, so
+#                       Understanding, Chat and the Curate publish table use
+#                       them with no code per analysis (design note
+#                       DESIGN-DECLARED-EXTENSIBILITY-RENDERING-CHAT-CONFIDENCE
+#                       §1/§2/§4). The same model as a library step's
+#                       `StepManifest.declaration` (trellis_analytics/
+#                       declaration.py), validated on load by
+#                       analysis_catalog_reader.check_declaration; a refused
+#                       one is logged and listed, naming the field, and the
+#                       entry still loads. Every database and filesystem entry
+#                       declares one (test_analysis_declarations.py).
+#     result_kind       - measure | series | distribution | list | graph |
+#                         finding | proposal | table (table needs a
+#                         result_kind_note saying why none of the others fits).
+#     measures          - each: name, unit (in words), as_of (the result field
+#                         saying when), value_field, and optionally
+#                         annotation: {type, properties} — the Egeria type it
+#                         writes as, which must be one of annotation_types;
+#                         absent = "generic measure, no native type declared";
+#                         and optionally its own confidence (below) where it
+#                         differs from the declaration's.
+#     absence           - the sentence for each of not_measured,
+#                         not_permitted, not_applicable, measured_nothing.
+#     extents           - Chat's shapes: name, fields, rows, order,
+#                         truncation (with {shown} and {total}), token_cost,
+#                         citation; and, where the rows are not under the
+#                         extent's own name in the stored result, source (the
+#                         path(s) to them, '.' for the result as one row) and,
+#                         joining several, tag (the field naming which one).
+#     confidence        - form (measured | estimated | inferred | judged |
+#                         generated), basis (the result field carrying it;
+#                         required unless measured), score, and calibrated
+#                         (inferred only, required there). With per-measure
+#                         confidence, this is the weakest of the measures'.
+#     answers           - NOT written here: generated on load from the
+#                         question catalogue's answering.analysis_ids ([] for
+#                         answers_questions: false); a hand-written list is
+#                         refused (project owner, 2026-10-28). Library steps
+#                         carry their manifest's questions, generated.
+#     built             - false for an analysis declared before it has a
+#                         runner: it reads as "planned, not measured".
+#     scope             - resource | container | member | field.
 #   egeria_registration - schema-only hook for eventual GovernanceActionType
 #                       registration of this analysis as a native Egeria
 #                       action. NOT a registration mechanism — just a place
@@ -145,7 +193,7 @@ repo_analyses:
     # The id stays `security_scan` deliberately: it keys existing schedules
     # and stored findings. Real scanning belongs in new entries under the
     # same `family="security"`, not by widening this one's claims again.
-    description: "Presence of three security-hygiene artifacts: a security policy (SECURITY.md), a CI configuration, and a licence. File presence only -- this does not scan code, detect secrets, or check CVEs. For GitHub's actual security toggles see Security Features."
+    description: "Presence of three security-hygiene artifacts: a security policy (SECURITY.md), a CI configuration, and a license. File presence only -- this does not scan code, detect secrets, or check CVEs. For GitHub's actual security toggles see Security Features."
     resource_types: ["repo"]
     intent: assessment  # true scoring against criteria — unchanged
     perspectives: ["Security", "Steward"]
@@ -214,7 +262,7 @@ repo_analyses:
     name: "License Classification"
     description: "Classify the repo's SPDX license id into a risk tier (permissive/weak copyleft/strong copyleft/source-available/unknown)."
     resource_types: ["repo"]
-    intent: discovery  # retagged from 'assessment' 2026-08-20: Discovery is derivation over already-collected data (zero new fetch), not where a survey happens to be launched from. All three of this tier's analyses declare requires_resources={} — they reason over project_stats/file inventory that Scouting already gathered, and exist to decide whether the expensive tiers are worth paying for. See CLAUDE.md rule 17.  # is this worth pursuing, given its usage restrictions?
+    intent: discovery  # kept at discovery 2026-10-22 (CLAUDE.md rule 17, collect-vs-reason axis): the one stage-vs-intent warning on Q-0030 (Scouting/Assessment) is accepted. Earlier note follows:  # retagged from 'assessment' 2026-08-20: Discovery is derivation over already-collected data (zero new fetch), not where a survey happens to be launched from. All three of this tier's analyses declare requires_resources={} — they reason over project_stats/file inventory that Scouting already gathered, and exist to decide whether the expensive tiers are worth paying for. See CLAUDE.md rule 17.  # is this worth pursuing, given its usage restrictions?
     perspectives: ["Steward", "Security", "all"]
     annotation_types: ["ClassificationAnnotation"]
     source: local
@@ -389,7 +437,7 @@ repo_analyses:
 
   - id: foss_scorecard
     name: FOSS Scorecard
-    description: "OpenSSF-Scorecard-shaped checks computed from data already collected — maintenance, licence, CI tests, releases, contributors, SAST settings. A check that cannot be evaluated reports unknown and is EXCLUDED from the score, rather than scored zero as OpenSSF's own tool does, and the coverage is reported alongside the number: 8.0 over five checks and 8.0 over twelve are different claims. Not comparable with a published OpenSSF score, by design."
+    description: "OpenSSF-Scorecard-shaped checks computed from data already collected — maintenance, license, CI tests, releases, contributors, SAST settings. A check that cannot be evaluated reports unknown and is EXCLUDED from the score, rather than scored zero as OpenSSF's own tool does, and the coverage is reported alongside the number: 8.0 over five checks and 8.0 over twelve are different claims. Not comparable with a published OpenSSF score, by design."
     resource_types: ["repo"]
     intent: assessment
     perspectives: ["Security", "Steward", "Governance", "Consumer"]
@@ -562,6 +610,7 @@ repo_analyses:
     run_time: fast
     availability: inline
     action: survey
+    answers_questions: false  # infrastructure: it feeds other analyses or writes to Egeria and answers no question itself (review §1.2)
     target_shape: corpus
     native_process_ref: null
 
@@ -607,6 +656,7 @@ repo_analyses:
     # distinguishable from "nobody has considered this yet".
     availability: queued
     action: survey
+    answers_questions: false  # infrastructure: it feeds other analyses or writes to Egeria and answers no question itself (review §1.2)
     target_shape: whole_resource_only
     recommended: false
     egeria_registration:
@@ -628,6 +678,7 @@ repo_analyses:
     # distinguishable from "nobody has considered this yet".
     availability: queued
     action: survey
+    answers_questions: false  # infrastructure: it feeds other analyses or writes to Egeria and answers no question itself (review §1.2)
     target_shape: whole_resource_only
     recommended: false
     egeria_registration:
@@ -806,6 +857,7 @@ repo_analyses:
     source: local
     run_time: minutes
     action: profile
+    answers_questions: false  # infrastructure: it feeds other analyses or writes to Egeria and answers no question itself (review §1.2)
     target_shape: whole_resource_only
     recommended: false
     egeria_registration:
@@ -822,6 +874,7 @@ repo_analyses:
     source: local
     run_time: minutes
     action: ingest
+    answers_questions: false  # infrastructure: it feeds other analyses or writes to Egeria and answers no question itself (review §1.2)
     target_shape: whole_resource_only
     recommended: false
     egeria_registration:
@@ -838,6 +891,7 @@ repo_analyses:
     source: local
     run_time: minutes
     action: ingest
+    answers_questions: false  # infrastructure: it feeds other analyses or writes to Egeria and answers no question itself (review §1.2)
     target_shape: whole_resource_only
     recommended: false
     egeria_registration:
@@ -854,6 +908,7 @@ repo_analyses:
     source: egeria
     run_time: minutes
     action: publish
+    answers_questions: false  # infrastructure: it feeds other analyses or writes to Egeria and answers no question itself (review §1.2)
     target_shape: whole_resource_only
     recommended: true
     egeria_registration:
@@ -876,6 +931,51 @@ database_analyses:
     egeria_registration:
       candidate: false
       native_process_ref: null
+    declaration:
+      result_kind: list
+      listing:
+        item_fields: [schema_name, table_name, table_type, column_count, row_count]
+        order: 'by schema, then table'
+        key_field: table_name
+        item_label: tables, views and foreign tables
+      measures:
+      - name: relations
+        unit: tables, views and foreign tables
+        as_of: run.surveyed_at
+        value_field: relation_count
+        annotation:
+          type: SchemaAnalysisAnnotation
+      - name: columns
+        unit: columns
+        as_of: run.surveyed_at
+        value_field: column_count
+        annotation:
+          type: SchemaAnalysisAnnotation
+      - name: schemas_with_tables
+        unit: schemas
+        as_of: run.surveyed_at
+        value_field: schemas_with_tables
+        annotation:
+          type: ResourceMeasureAnnotation
+      absence:
+        not_measured: 'Not measured: no survey has read this database''s schema yet.'
+        not_permitted: 'Not permitted: the credential sees only part of this database, so the inventory covers what
+          it could see, not every schema.'
+        not_applicable: 'Not applicable: this analysis reads a database''s own tables, and this resource holds none
+          to read.'
+        measured_nothing: 'Measured: the schemas the credential can see hold no tables.'
+      extents:
+      - name: relations
+        fields: [schema_name, table_name, table_type, column_count, row_count, row_count_is_estimate]
+        rows: 30
+        sort: [schema_name asc, table_name asc]
+        truncation: '{shown} of {total} relations shown, by schema and name'
+        token_cost: 1480
+        citation: '{analysis} · {scope} · as of {as_of}'
+        source: [tables]
+      confidence:
+        form: measured
+      scope: resource
 
   - id: row_count_snapshot
     name: "Row Count Snapshot"
@@ -900,6 +1000,51 @@ database_analyses:
     egeria_registration:
       candidate: false
       native_process_ref: null
+    declaration:
+      result_kind: distribution
+      categories:
+        exclusive: true
+      measures:
+      - name: total_rows
+        unit: rows
+        as_of: run.surveyed_at
+        value_field: total_row_count
+        annotation:
+          type: ResourceMeasureAnnotation
+      - name: total_size
+        unit: bytes
+        as_of: run.surveyed_at
+        value_field: total_size_bytes
+        confidence: {form: measured}  # pg_total_relation_size: an exact read, unlike the row-count estimate
+        annotation:
+          type: ResourceMeasureAnnotation
+      - name: estimated_relations
+        unit: tables
+        as_of: run.surveyed_at
+        value_field: estimated_count
+        annotation:
+          type: ResourceMeasureAnnotation
+      absence:
+        not_measured: 'Not measured: no row count is recorded — a table nobody has analyzed or written to since a restore
+          reads as unknown, never as empty.'
+        not_permitted: 'Not permitted: the credential that surveyed this database could not read pg_stat_user_tables
+          for these tables, so it is not measured.'
+        not_applicable: 'Not applicable: a view holds no rows of its own.'
+        measured_nothing: 'Measured: every table counted holds no rows.'
+      extents:
+      - name: tables_by_rows
+        fields: [schema_name, table_name, row_count, size_bytes, row_count_is_estimate]
+        rows: 20
+        sort: [row_count desc]
+        truncation: '{shown} of {total} tables shown, by row count'
+        token_cost: 840
+        citation: '{analysis} · {scope} · as of {as_of}'
+        source: [tables]
+      confidence:
+        form: estimated
+        basis: tables.row_count_is_estimate
+        method: PostgreSQL's row-count estimate, not a count of the rows
+      scope: resource
 
   - id: privilege_audit
     name: "Privilege Audit"
@@ -916,6 +1061,48 @@ database_analyses:
     egeria_registration:
       candidate: false
       native_process_ref: null
+    declaration:
+      result_kind: finding
+      finding:
+        what_field: privilege_type
+        where_field: table_name
+      measures:
+      - name: roles
+        unit: roles
+        as_of: run.surveyed_at
+        value_field: roles[]
+        annotation:
+          type: ResourceMeasureAnnotation
+      - name: table_grants
+        unit: grants
+        as_of: run.surveyed_at
+        value_field: table_grants[]
+        annotation:
+          type: ResourceMeasureAnnotation
+      absence:
+        not_measured: 'Not measured: no survey has read this database''s roles and grants yet, or the read failed.'
+        not_permitted: 'Not permitted: the credential that surveyed this database could not read pg_roles or the table
+          grants, so it is not measured.'
+        not_applicable: 'Not applicable: this database''s engine has no roles or grants to read.'
+        measured_nothing: 'Measured: no grant to PUBLIC was found.'
+      extents:
+      - name: table_grants
+        fields: [table_schema, table_name, grantee, privilege_type, is_grantable]
+        rows: 30
+        order: PUBLIC grantees first, then by table
+        truncation: '{shown} of {total} grants shown, PUBLIC first'
+        token_cost: 1240
+        citation: '{analysis} · {scope} · as of {as_of}'
+      - name: roles
+        fields: [rolname, rolsuper, rolcanlogin, rolbypassrls]
+        rows: 20
+        sort: [rolsuper desc, rolname asc]
+        truncation: '{shown} of {total} roles shown, superusers first'
+        token_cost: 680
+        citation: '{analysis} · {scope} · as of {as_of}'
+      confidence:
+        form: measured
+      scope: resource
 
   - id: db_activity_signals
     name: "Activity Signals"
@@ -932,6 +1119,47 @@ database_analyses:
     egeria_registration:
       candidate: false
       native_process_ref: null
+    declaration:
+      result_kind: measure
+      measures:
+      - name: tables_with_activity
+        unit: tables
+        as_of: run.surveyed_at
+        value_field: table_count
+        annotation:
+          type: ResourceMeasureAnnotation
+      - name: database_activity
+        unit: rows written and scans since the statistics reset
+        as_of: run.surveyed_at
+        value_field: database_activity
+        annotation:
+          type: ResourceMeasureAnnotation
+      absence:
+        not_measured: 'Not measured: no table activity is recorded yet, or the read failed.'
+        not_permitted: 'Not permitted: the credential that surveyed this database could not read pg_stat_user_tables
+          or pg_stat_database, so it is not measured.'
+        not_applicable: 'Not applicable: this database''s engine keeps no activity counters.'
+        measured_nothing: 'Measured: nothing has read or written any table since the statistics were last reset.'
+      extents:
+      - name: database_activity
+        fields: [database_activity, stats_reset]
+        rows: 1
+        order: the database as a whole
+        truncation: '{shown} of {total} summaries shown'
+        token_cost: 56
+        citation: '{analysis} · {scope} · as of {as_of}'
+        source: ['.']
+      - name: busiest_tables
+        fields: [schemaname, tablename, rows_inserted, rows_updated, rows_deleted, seq_scan, idx_scan]
+        rows: 15
+        order: by rows written, most first
+        truncation: '{shown} of {total} tables shown, by rows written'
+        token_cost: 880
+        citation: '{analysis} · {scope} · as of {as_of}'
+        source: [table_activity]
+      confidence:
+        form: measured
+      scope: resource
 
   - id: credential_capability
     name: "Credential Capability"
@@ -948,6 +1176,60 @@ database_analyses:
     egeria_registration:
       candidate: false
       native_process_ref: null
+    declaration:
+      result_kind: measure
+      measures:
+      - name: schemas_visible
+        unit: schemas
+        as_of: run.surveyed_at
+        value_field: schema_visible
+        annotation:
+          type: ResourceMeasureAnnotation
+      - name: schemas_total
+        unit: schemas
+        as_of: run.surveyed_at
+        value_field: schema_total
+        annotation:
+          type: ResourceMeasureAnnotation
+      - name: tables_selectable
+        unit: tables
+        as_of: run.surveyed_at
+        value_field: relation_select
+        annotation:
+          type: ResourceMeasureAnnotation
+      - name: tables_total
+        unit: tables
+        as_of: run.surveyed_at
+        value_field: relation_total
+        annotation:
+          type: ResourceMeasureAnnotation
+      absence:
+        not_measured: 'Not measured: this credential''s reach has never been probed — not a finding that it can see
+          everything.'
+        not_permitted: 'Not permitted: the credential cannot read the privilege functions the probe uses, so its reach
+          is not known.'
+        not_applicable: 'Not applicable: this analysis reads a database''s own tables, and this resource holds none
+          to read.'
+        measured_nothing: 'Measured: the credential can see no schema and select from no table.'
+      extents:
+      - name: reach
+        fields: [connected_as, schema_visible, schema_total, relation_select, relation_total, write_capable]
+        rows: 1
+        order: the credential as a whole
+        truncation: '{shown} of {total} summaries shown'
+        token_cost: 88
+        citation: '{analysis} · {scope} · as of {as_of}'
+        source: ['.']
+      - name: by_schema
+        fields: [schema, usage_granted, table_select, table_total]
+        rows: 20
+        order: least visible first
+        truncation: '{shown} of {total} schemas shown, least visible first'
+        token_cost: 680
+        citation: '{analysis} · {scope} · as of {as_of}'
+      confidence:
+        form: measured
+      scope: resource
 
   - id: db_resilience
     name: "Operational Resilience"
@@ -964,6 +1246,44 @@ database_analyses:
     egeria_registration:
       candidate: false
       native_process_ref: null
+    declaration:
+      result_kind: table
+      table:
+        columns: [replication, wal_archiving, backup_tool_signals, clustering]
+      result_kind_note: 'Four unrelated status sections (replication, WAL archiving, backup tools, clustering), each
+        a few facts with no common measure: no list of like items, no single number.'
+      measures:
+      - name: replicas
+        unit: replicas
+        as_of: run.surveyed_at
+        value_field: replication.replicas[]
+        annotation:
+          type: ResourcePhysicalStatusAnnotation
+      - name: wal_archive_failures
+        unit: WAL segments that failed to archive
+        as_of: run.surveyed_at
+        value_field: wal_archiving.failed_count
+        annotation:
+          type: ResourcePhysicalStatusAnnotation
+      absence:
+        not_measured: 'Not measured: the replication role or archiving status could not be read; the backup and restore
+          dates are an Enrichment input, pending, never silently omitted.'
+        not_permitted: 'Not permitted: the credential that surveyed this database could not read pg_stat_replication
+          or pg_stat_archiver, so it is not measured.'
+        not_applicable: 'Not applicable: this database''s engine reports no replication or WAL archiving.'
+        measured_nothing: 'Measured: no replica and no backup tool was detected.'
+      extents:
+      - name: status
+        fields: [replication, wal_archiving, backup_tool_signals, clustering]
+        rows: 1
+        order: the database as a whole
+        truncation: '{shown} of {total} summaries shown'
+        token_cost: 72
+        citation: '{analysis} · {scope} · as of {as_of}'
+        source: ['.']
+      confidence:
+        form: measured
+      scope: resource
 
   - id: db_external_dependencies
     name: "External Dependencies"
@@ -980,6 +1300,64 @@ database_analyses:
     egeria_registration:
       candidate: false
       native_process_ref: null
+    declaration:
+      result_kind: list
+      listing:
+        item_fields: [kind, extname, extversion, srvname, fdwname, schema_name, table_name, pubname, subname]
+        order: 'by kind, then name'
+        key_field: kind
+        item_label: external dependencies
+      measures:
+      - name: extensions
+        unit: extensions
+        as_of: run.surveyed_at
+        value_field: extensions[]
+        annotation:
+          type: SchemaAnalysisAnnotation
+      - name: foreign_servers
+        unit: foreign servers
+        as_of: run.surveyed_at
+        value_field: foreign_servers[]
+        annotation:
+          type: SchemaAnalysisAnnotation
+      - name: foreign_tables
+        unit: foreign tables
+        as_of: run.surveyed_at
+        value_field: foreign_tables[]
+        annotation:
+          type: SchemaAnalysisAnnotation
+      - name: publications
+        unit: publications
+        as_of: run.surveyed_at
+        value_field: publications[]
+        annotation:
+          type: SchemaAnalysisAnnotation
+      - name: subscriptions
+        unit: subscriptions
+        as_of: run.surveyed_at
+        value_field: subscriptions[]
+        annotation:
+          type: SchemaAnalysisAnnotation
+      absence:
+        not_measured: 'Not measured: no survey has read this database''s extensions and foreign servers yet, or the
+          read failed.'
+        not_permitted: 'Not permitted: the credential that surveyed this database could not read pg_extension or the
+          foreign-data catalogs, so it is not measured.'
+        not_applicable: 'Not applicable: this database''s engine has no extensions or foreign data wrappers.'
+        measured_nothing: 'Measured: no extensions, foreign servers or tables, publications or subscriptions.'
+      extents:
+      - name: dependencies
+        fields: [kind, extname, extversion, srvname, fdwname, schema_name, table_name, pubname, subname]
+        rows: 30
+        order: by kind, then name
+        truncation: '{shown} of {total} external dependencies shown, by kind'
+        token_cost: 760
+        citation: '{analysis} · {scope} · as of {as_of}'
+        source: [extensions, foreign_servers, foreign_tables, publications, subscriptions]
+        tag: kind
+      confidence:
+        form: measured
+      scope: resource
 
   # ── db_derived: the zero-fetch derivation tier (Phase 1 slice 9) ─────────
   #
@@ -1012,6 +1390,48 @@ database_analyses:
     egeria_registration:
       candidate: false
       native_process_ref: null
+    declaration:
+      result_kind: proposal
+      proposal:
+        candidate_field: kind
+        decided_by: curator
+      measures:
+      - name: kind_confidence
+        unit: confidence points (0-95, a rule score)
+        as_of: run.read_snapshot
+        value_field: confidence
+        annotation:
+          type: ClassificationAnnotation
+      - name: signal_coverage
+        unit: fraction of signal weight available (0-1)
+        as_of: run.read_snapshot
+        value_field: coverage
+        annotation:
+          type: ResourceMeasureAnnotation
+      absence:
+        not_measured: 'Not established: too little signal to name a kind — not a finding that the database is of no
+          particular kind.'
+        not_permitted: 'Not permitted: the credential that surveyed this database could not read the table shapes or
+          tuple counters the classification weighs, so it is not measured.'
+        not_applicable: 'Not applicable: this analysis reads a database''s own tables, and this resource holds none
+          to read.'
+        measured_nothing: 'Undecided: the kinds scored too close to call, so none is proposed.'
+      extents:
+      - name: proposed_kind
+        fields: [kind, confidence, ranked, signals_used, signals_missing, coverage]
+        rows: 1
+        order: the proposed kind
+        truncation: '{shown} of {total} classifications shown'
+        token_cost: 88
+        citation: '{analysis} · {scope} · as of {as_of}'
+        source: ['.']
+      confidence:
+        form: inferred
+        basis: signals_used
+        method: 'how many kinds of evidence were available: table shapes, key density, names, read/write activity'
+        score: confidence
+        calibrated: false
+      scope: resource
 
   - id: db_relationship_graph
     name: "Relationship Graph"
@@ -1034,6 +1454,201 @@ database_analyses:
     egeria_registration:
       candidate: false
       native_process_ref: null
+    declaration:
+      result_kind: graph
+      categories:
+        exclusive: true
+      measures:
+      - name: foreign_key_edges
+        unit: foreign-key edges
+        as_of: run.read_snapshot
+        value_field: edge_count
+        annotation:
+          type: SchemaAnalysisAnnotation
+      - name: connected_components
+        unit: connected components
+        as_of: run.read_snapshot
+        value_field: component_count
+        annotation:
+          type: ResourceMeasureAnnotation
+      - name: largest_component
+        unit: tables
+        as_of: run.read_snapshot
+        value_field: largest_component
+        annotation:
+          type: ResourceMeasureAnnotation
+      - name: isolated_tables
+        unit: tables
+        as_of: run.read_snapshot
+        value_field: isolated_tables[]
+        annotation:
+          type: ResourceMeasureAnnotation
+      absence:
+        not_measured: 'Not established: foreign keys were not captured for this database — not a finding that its tables
+          do not relate.'
+        not_permitted: 'Not permitted: the credential that surveyed this database could not read the key constraints,
+          so it is not measured.'
+        not_applicable: 'Not applicable: this analysis reads a database''s own tables, and this resource holds none
+          to read.'
+        measured_nothing: 'Measured: no table references another by foreign key — a bag of tables, a real finding.'
+      extents:
+      - name: graph_summary
+        fields: [verdict, table_count, edge_count, component_count, largest_component]
+        rows: 1
+        order: the database as a whole
+        truncation: '{shown} of {total} summaries shown'
+        token_cost: 80
+        citation: '{analysis} · {scope} · as of {as_of}'
+        source: ['.']
+      - name: most_referenced
+        fields: [table, referenced_by]
+        rows: 10
+        order: by tables referencing it, most first
+        truncation: '{shown} of {total} referenced tables shown, by tables referencing them'
+        token_cost: 200
+        citation: '{analysis} · {scope} · as of {as_of}'
+      confidence:
+        form: measured
+      scope: resource
+
+  - id: db_hub_tables
+    name: "Starting Tables"
+    description: >
+      Which tables would a consumer start with? A short ranking over four
+      signals already stored for the other zero-fetch checks: how many other
+      tables reference the table by foreign key, its row count, whether it
+      carries a comment, and its read counters. No connection is opened. A
+      signal that was never established for a table (keys not captured, no
+      row count, statistics never collected) is left out of the ranking and
+      named, never scored as zero — "no foreign keys captured" is not "nothing
+      depends on this table".
+    resource_types: ["database"]
+    intent: discovery
+    perspectives: ["Consumer", "App/AI Builder", "Data Expert"]
+    annotation_types: ["ResourceMeasureAnnotation"]
+    source: local
+    run_time: fast
+    availability: inline
+    action: survey
+    target_shape: whole_resource_only
+    recommended: true
+    egeria_registration:
+      candidate: false
+      native_process_ref: null
+    declaration:
+      result_kind: list
+      listing:
+        item_fields: [table, score, fk_in_degree, row_count]
+        order: 'highest score first'
+        key_field: table
+        item_label: starting tables
+      measures:
+      - name: ranked_tables
+        unit: tables
+        as_of: provenance.read_snapshot
+        value_field: ranked_count
+        annotation:
+          type: ResourceMeasureAnnotation
+      absence:
+        not_measured: 'Not established: the tables cannot be compared yet — not a finding that none of them is a natural
+          starting point.'
+        not_permitted: 'Not permitted: the credential that surveyed this database could not read the keys, row counts
+          or read counters the ranking compares, so it is not measured.'
+        not_applicable: 'Not applicable: this analysis reads a database''s own tables, and this resource holds none
+          to read.'
+        measured_nothing: 'Measured: no table stands out as a starting point on the signals that were available.'
+      extents:
+      - name: starting_tables
+        fields: [table, score, fk_in_degree, row_count, has_comment, reads]
+        rows: 10
+        sort: [score desc]
+        truncation: '{shown} of {total} ranked tables shown, by rank score'
+        token_cost: 520
+        citation: '{analysis} · {scope} · as of {as_of}'
+        source: [hubs]
+      confidence:
+        form: measured
+      scope: resource
+
+  - id: db_statistics_freshness
+    name: "Statistics Freshness"
+    description: >
+      Are this database's planner statistics current? Per table: never
+      analyzed, last analyzed N days ago, and the rows changed since that
+      analyze as a share of live rows, flagged when above the point at which
+      Postgres's autovacuum would itself analyze the table
+      (autovacuum_analyze_threshold 50 + autovacuum_analyze_scale_factor 0.1
+      times the row estimate), with a per-schema roll-up. Reads only the
+      stored table-activity and table rows; no connection is opened. This
+      database's own autovacuum settings are not stored, so Postgres's
+      defaults are used and the result says so. "Never analyzed" is Postgres's
+      own NULL and is a finding; a table whose statistics could not be read is
+      "not read" and is never counted as current or as never analyzed.
+    resource_types: ["database"]
+    intent: analysis
+    perspectives: ["Steward", "Admin", "Data Expert"]
+    annotation_types: ["ResourceMeasureAnnotation"]
+    source: local
+    run_time: fast
+    availability: inline
+    action: survey
+    target_shape: whole_resource_only
+    recommended: true
+    egeria_registration:
+      candidate: false
+      native_process_ref: null
+    declaration:
+      result_kind: list
+      listing:
+        item_fields: [schema, table, status, days_since_analyze]
+        order: 'stale first, then never analyzed, then not read'
+        key_field: table
+        item_label: tables needing attention
+      measures:
+      - name: stale_tables
+        unit: tables
+        as_of: as_of
+        value_field: counts.stale
+        annotation:
+          type: ResourceMeasureAnnotation
+      - name: never_analyzed_tables
+        unit: tables
+        as_of: as_of
+        value_field: counts.never_analyzed
+        annotation:
+          type: ResourceMeasureAnnotation
+      - name: current_tables
+        unit: tables
+        as_of: as_of
+        value_field: counts.current
+        annotation:
+          type: ResourceMeasureAnnotation
+      - name: statistics_not_read_tables
+        unit: tables
+        as_of: as_of
+        value_field: counts.not_read
+        annotation:
+          type: ResourceMeasureAnnotation
+      absence:
+        not_measured: 'Not measured: no table statistics are stored for this database — not a finding that its statistics
+          are current, nor that nothing was ever analyzed.'
+        not_permitted: 'Not permitted: the credential that surveyed this database could not read pg_stat_user_tables,
+          so it is not measured.'
+        not_applicable: 'Not applicable: this analysis reads a database''s own tables, and this resource holds none
+          to read.'
+        measured_nothing: 'Measured: every table''s statistics are current.'
+      extents:
+      - name: needs_attention
+        fields: [schema, table, status, days_since_analyze, changes_since_analyze, threshold]
+        rows: 20
+        order: stale first, then never analyzed, then not read; most rows changed first
+        truncation: '{shown} of {total} tables needing attention shown, stale first'
+        token_cost: 1000
+        citation: '{analysis} · {scope} · as of {as_of}'
+        source: [attention]
+      confidence:
+        form: measured
+      scope: resource
 
   - id: grain_determination
     name: "Table Grain"
@@ -1059,6 +1674,47 @@ database_analyses:
     egeria_registration:
       candidate: false
       native_process_ref: null
+    declaration:
+      result_kind: proposal
+      proposal:
+        candidate_field: grain_statement
+        decided_by: curator
+      measures:
+      - name: determined_grains
+        unit: tables
+        as_of: run.read_snapshot
+        value_field: determined_count
+        annotation:
+          type: DataGrainAnnotation
+      - name: undetermined_grains
+        unit: tables
+        as_of: run.read_snapshot
+        value_field: undetermined_count
+        annotation:
+          type: ResourceMeasureAnnotation
+      absence:
+        not_measured: 'Not established: the table has no declared key and no stored column profile, so its grain is
+          not known.'
+        not_permitted: 'Not permitted: the credential that surveyed this database could not read the key constraints
+          or column statistics the grain is derived from, so it is not measured.'
+        not_applicable: 'Not applicable: a view has no grain of its own.'
+        measured_nothing: 'Measured: no column, alone or in the key, is unique over the rows — a modelling gap, not
+          missing evidence.'
+      extents:
+      - name: grains
+        fields: [qualified_name, grain_statement, basis, confidence, label, interval]
+        rows: 25
+        order: in table order
+        truncation: '{shown} of {total} tables'' grains shown'
+        token_cost: 1240
+        citation: '{analysis} · {scope} · as of {as_of}'
+      confidence:
+        form: inferred
+        basis: basis
+        method: "the table's primary key, or a column profile whose distinct count matches the row count"
+        score: confidence
+        calibrated: false
+      scope: member
 
   - id: db_fingerprint
     name: "Schema Fingerprint"
@@ -1082,6 +1738,45 @@ database_analyses:
     egeria_registration:
       candidate: false
       native_process_ref: null
+    declaration:
+      result_kind: list
+      listing:
+        item_fields: [slug, verdict, column_jaccard]
+        order: 'most similar first'
+        key_field: slug
+        item_label: comparable databases
+      measures:
+      - name: best_similarity
+        unit: Jaccard similarity of columns (0-1)
+        as_of: run.read_snapshot
+        value_field: best_similarity
+        annotation:
+          type: FingerprintAnnotation
+      - name: comparable_databases
+        unit: databases
+        as_of: run.read_snapshot
+        value_field: comparable_databases
+        annotation:
+          type: ResourceMeasureAnnotation
+      absence:
+        not_measured: 'Not established: no other database in the registry has stored schema rows to compare against
+          — not a finding that this one is unique.'
+        not_permitted: 'Not permitted: the credential that surveyed this database could not read the table and column
+          names, so it is not measured.'
+        not_applicable: 'Not applicable: this analysis reads a database''s own tables, and this resource holds none
+          to read.'
+        measured_nothing: 'Measured: no known database resembles this one.'
+      extents:
+      - name: matches
+        fields: [slug, verdict, column_jaccard, table_jaccard, containment]
+        rows: 5
+        sort: [column_jaccard desc]
+        truncation: '{shown} of {total} similar databases shown, by similarity'
+        token_cost: 240
+        citation: '{analysis} · {scope} · as of {as_of}'
+      confidence:
+        form: measured
+      scope: resource
 
   - id: schema_conventions
     name: "Schema Conventions"
@@ -1105,6 +1800,79 @@ database_analyses:
     egeria_registration:
       candidate: false
       native_process_ref: null
+    declaration:
+      result_kind: finding
+      finding:
+        what_field: explanation
+        where_field: item
+      measures:
+      - name: tables_without_primary_key
+        unit: tables
+        as_of: run.read_snapshot
+        value_field: checks.tables_without_primary_key.count
+        basis:
+          denominator_field: checks.tables_without_primary_key.total
+          denominator_label: tables
+        annotation:
+          type: ResourceMeasureAnnotation
+      - name: tables_without_foreign_key
+        unit: tables
+        as_of: run.read_snapshot
+        value_field: checks.tables_without_foreign_key.count
+        basis:
+          denominator_field: checks.tables_without_foreign_key.total
+          denominator_label: tables
+        annotation:
+          type: ResourceMeasureAnnotation
+      - name: tables_without_comment
+        unit: tables
+        as_of: run.read_snapshot
+        value_field: checks.tables_without_comment.count
+        basis:
+          denominator_field: checks.tables_without_comment.total
+          denominator_label: tables
+        annotation:
+          type: ResourceMeasureAnnotation
+      - name: column_comment_coverage
+        unit: fraction of columns with a comment (0-1)
+        as_of: run.read_snapshot
+        value_field: checks.column_comment_coverage.fraction
+        annotation:
+          type: ResourceMeasureAnnotation
+      - name: names_not_snake_case
+        unit: tables and columns
+        as_of: run.read_snapshot
+        value_field: checks.naming_convention.count
+        annotation:
+          type: ResourceMeasureAnnotation
+      absence:
+        not_measured: 'Not verified: keys or comments were not captured for this database — not a finding that they
+          are missing.'
+        not_permitted: 'Not permitted: the credential that surveyed this database could not read the constraints or
+          comments, so it is not measured.'
+        not_applicable: 'Not applicable: this analysis reads a database''s own tables, and this resource holds none
+          to read.'
+        measured_nothing: 'Measured: every table and column passes this check.'
+      extents:
+      - name: checks
+        fields: [check, label, count, total, explanation]
+        rows: 5
+        order: in check order
+        truncation: '{shown} of {total} checks shown'
+        token_cost: 240
+        citation: '{analysis} · {scope} · as of {as_of}'
+      - name: offending_items
+        fields: [check, item]
+        rows: 30
+        sort: [check asc, item asc]
+        truncation: '{shown} of {total} offending tables and columns shown, by check'
+        token_cost: 520
+        citation: '{analysis} · {scope} · as of {as_of}'
+        source: [checks.tables_without_comment.items, checks.naming_convention.items]
+        tag: check
+      confidence:
+        form: measured
+      scope: resource
 
   - id: data_class_match
     name: "Data Class Match"
@@ -1127,6 +1895,212 @@ database_analyses:
     egeria_registration:
       candidate: false
       native_process_ref: null
+    declaration:
+      result_kind: proposal
+      proposal:
+        candidate_field: matched_display_name
+        decided_by: curator
+      measures:
+      - name: established_columns
+        unit: columns
+        as_of: surveyed_at
+        value_field: established_count
+        basis:
+          denominator_field: column_count
+          denominator_label: columns
+        annotation:
+          type: DataClassAnnotation
+      - name: columns_examined
+        unit: columns
+        as_of: surveyed_at
+        value_field: column_count
+        annotation:
+          type: ResourceMeasureAnnotation
+      absence:
+        not_measured: 'Not established: no value was sampled from this column — never "no match found".'
+        not_permitted: 'Not permitted: the credential cannot read this table''s values, so the column was not sampled.'
+        not_applicable: 'Not applicable: this column''s type holds no values a data class describes.'
+        measured_nothing: 'Measured: the sampled values match no data class in the platform.'
+      extents:
+      - name: matches
+        fields: [column_path, verdict, matched_display_name, confidence, privacy_relevant, statement]
+        rows: 25
+        order: privacy-relevant first, then by confidence
+        truncation: '{shown} of {total} columns shown, privacy-relevant first'
+        token_cost: 1240
+        citation: '{analysis} · {scope} · as of {as_of}'
+        source: [columns]
+      confidence:
+        form: inferred
+        basis: columns.sample
+        method: 'the sampled values of each column, compared with the known classes'
+        score: confidence
+        calibrated: false
+      scope: field
+
+  # DESIGN-VALUE-PROFILE-AND-QUALITY-CHECKS.md: value profile -> propose -> run.
+  # The check catalogue is vendored data (configdata/quality/testgen/PROVENANCE.md);
+  # the names shown are Resource Explorer's own, never the upstream product's.
+  - id: value_profile
+    name: "Value Profile"
+    description: "Measured, not estimated: per-column record, value, distinct and null counts, empty and placeholder-text counts, and date bounds with future-dated counts, over the whole table (one aggregate query per table). No sampling: a table over the row ceiling or the statement timeout is reported as not profiled with the reason, a view or foreign table as not applicable, a table the credential cannot read as not permitted — never as zero."
+    resource_types: ["database"]
+    intent: analysis
+    perspectives: ["Steward", "Data Owner", "Admin"]
+    annotation_types: ["ResourceProfileAnnotation", "ResourceMeasureAnnotation"]
+    source: local
+    # api_heavy: it reads every row of every table it profiles.
+    run_time: medium
+    availability: queued
+    action: survey
+    target_shape: whole_resource_only
+    recommended: false
+    egeria_registration:
+      candidate: false
+      native_process_ref: null
+    declaration:
+      result_kind: table
+      table:
+        # B1 (DESIGN-B1-MEMBER-SCOPED-TABLE-RESULT-2026-11-02): one row per column, every column stored in
+        # analysis_table_rows; the Value profile tab reads them through this declaration. The columns are the
+        # native row's own names (database_value_profiles), so the typed read and the native read compare field
+        # for field (evidence/B1-VALUE-PROFILE-EQUIVALENCE).
+        key_fields: [schema, table, column]
+        columns:
+        - schema
+        - table
+        - column
+        - {name: state, type: state, absence: 'not profiled', states: [measured, not_measured, not_permitted, not_applicable]}
+        - {name: reason, type: text, absence: 'no reason recorded'}
+        - {name: general_type, type: text, absence: 'type not recorded'}
+        - {name: ran_as, type: text, absence: 'role not recorded'}
+        - {name: frequency_state, type: text, absence: 'most common values not asked for'}
+        - {name: record_ct, type: integer, absence: 'not counted'}
+        - {name: value_ct, type: integer, absence: 'not counted'}
+        - {name: distinct_value_ct, type: integer, absence: 'not counted'}
+        - {name: null_value_ct, type: integer, absence: 'not counted'}
+        - {name: zero_length_ct, type: integer, absence: 'not counted'}
+        - {name: filled_value_ct, type: integer, absence: 'not counted'}
+        - {name: min_date, type: text, absence: 'no date range'}
+        - {name: max_date, type: text, absence: 'no date range'}
+        - {name: future_date_ct, type: integer, absence: 'not counted'}
+        - {name: before_20yr_date_ct, type: integer, absence: 'not counted'}
+        - {name: before_5yr_date_ct, type: integer, absence: 'not counted'}
+        - {name: date_days_present, type: integer, absence: 'not counted'}
+        - {name: min_length, type: integer, absence: 'no lengths taken'}
+        - {name: max_length, type: integer, absence: 'no lengths taken'}
+        - {name: avg_length, type: number, absence: 'no lengths taken', unit: 'characters'}
+        - {name: zero_value_ct, type: integer, absence: 'not counted'}
+        - {name: min_value, type: number, absence: 'no number range', unit: 'in the column''s own unit'}
+        - {name: max_value, type: number, absence: 'no number range', unit: 'in the column''s own unit'}
+        - {name: avg_value, type: number, absence: 'not taken', unit: 'in the column''s own unit'}
+        - {name: stdev_value, type: number, absence: 'not taken', unit: 'in the column''s own unit'}
+        - {name: fractional_sum, type: text, absence: 'not taken'}
+        - {name: sum_value, type: text, absence: 'not taken'}
+        - {name: boolean_true_ct, type: integer, absence: 'not counted'}
+        max_rows: 1000
+        order: 'by schema, table and column name, as the registry sorts them'
+        truncation: 'the first {shown} of {total} columns; every column is stored and the summary counts them
+          all'
+        summary: [profiled_columns, columns]
+      result_kind_note: 'About thirty facts per column (records, values, distinct, nulls, empties, dates, lengths,
+        ranges) for up to thousands of columns: not one measure across items, so not a distribution; a table of
+        members.'
+      measures:
+      - name: profiled_columns
+        unit: columns
+        as_of: surveyed_at
+        value_field: measured_count
+        basis:
+          denominator_field: column_count
+          denominator_label: columns
+        annotation:
+          type: ResourceProfileAnnotation
+      - name: columns
+        unit: columns
+        as_of: surveyed_at
+        value_field: column_count
+        annotation:
+          type: ResourceMeasureAnnotation
+      absence:
+        not_measured: 'Not profiled: the table is over the row ceiling or the statement timeout — never zero.'
+        not_permitted: 'Not permitted: the credential cannot read this table, so it was not profiled.'
+        not_applicable: 'Not applicable: a view or foreign table is not profiled.'
+        measured_nothing: 'Measured: the table holds no rows.'
+      confidence:
+        form: measured
+      scope: field
+
+  - id: quality_checks
+    name: "Quality Checks"
+    description: "Proposes data-quality checks from the value profile (completeness, uniqueness, past dates, minimum date, row-count range) for a person to accept or reject in Curate, then runs the accepted ones against the database. A check whose inputs were not measured, or whose measure is undefined (an empty table, a zero baseline), is reported as not evaluated with the reason, never as a pass."
+    resource_types: ["database"]
+    intent: analysis  # retagged from 'assessment' 2026-10-22 (Q-0096 and Q-0097 are Analysis questions: proposing and running checks is analysis, the verdict is Q-0090's; review §1.3).
+    perspectives: ["Steward", "Data Owner"]
+    # The proposal step leaves ONE RequestForAction ("review N proposed quality checks") or, with none proposed, ONE
+    # ResourceMeasure; run_quality_checks leaves one QualityAnnotation per evaluated check (RE's
+    # AnnotationType.QUALITY_SCORE, published as Egeria's QualityAnnotationProperties) (quality slice Q2).
+    annotation_types: ["RequestForActionAnnotation", "ResourceMeasureAnnotation", "QualityScoreAnnotation"]
+    source: local
+    run_time: medium
+    availability: queued
+    action: survey
+    target_shape: whole_resource_only
+    recommended: false
+    egeria_registration:
+      candidate: false
+      native_process_ref: null
+    declaration:
+      result_kind: proposal
+      proposal:
+        candidate_field: check_key
+        decided_by: curator
+        state_field: state
+      measures:
+      - name: checks_failed
+        unit: checks
+        as_of: results_surveyed_at
+        value_field: status_counts.fail
+        annotation:
+          type: QualityScoreAnnotation
+      - name: checks_passed
+        unit: checks
+        as_of: results_surveyed_at
+        value_field: status_counts.pass
+        annotation:
+          type: QualityScoreAnnotation
+      - name: checks_proposed
+        unit: checks
+        as_of: proposals_surveyed_at
+        value_field: proposal_state_counts.proposed
+        annotation:
+          type: RequestForActionAnnotation
+      absence:
+        not_measured: 'Not evaluated: the check''s inputs were not measured, or its measure is undefined (an empty table,
+          a zero baseline) — never a pass.'
+        not_permitted: 'Not permitted: the credential cannot read the table the check runs against.'
+        not_applicable: 'Not applicable: no check of this kind applies to this column.'
+        measured_nothing: 'Measured: no check was proposed from the value profile.'
+      extents:
+      - name: results
+        fields: [check_key, test_type, status, measure, severity, reason]
+        rows: 25
+        order: failures first, then warnings, then by check
+        truncation: '{shown} of {total} check results shown, failures first'
+        token_cost: 1240
+        citation: '{analysis} · {scope} · as of {as_of}'
+      - name: proposals
+        fields: [check_key, test_type, state, reason]
+        rows: 25
+        order: awaiting a verdict first
+        truncation: '{shown} of {total} proposed checks shown, awaiting a verdict first'
+        token_cost: 840
+        citation: '{analysis} · {scope} · as of {as_of}'
+      confidence:
+        form: judged
+        basis: proposals.state
+        method: "a person's decision on each proposed check"
+      scope: field
 
   - id: db_change_rates
     name: "Change Rates"
@@ -1150,6 +2124,57 @@ database_analyses:
     egeria_registration:
       candidate: false
       native_process_ref: null
+    declaration:
+      result_kind: list
+      listing:
+        item_fields: [qualified_name, change, per_day]
+        order: 'most rows written per day first'
+        key_field: qualified_name
+        item_label: tables
+      measures:
+      - name: tables_active
+        unit: tables
+        as_of: to_surveyed_at
+        value_field: tables_active
+        annotation:
+          type: ResourceMeasureAnnotation
+      - name: tables_idle
+        unit: tables
+        as_of: to_surveyed_at
+        value_field: tables_idle
+        annotation:
+          type: ResourceMeasureAnnotation
+      - name: tables_without_a_rate
+        unit: tables
+        as_of: to_surveyed_at
+        value_field: tables_without_a_rate
+        annotation:
+          type: ResourceMeasureAnnotation
+      - name: interval
+        unit: days
+        as_of: to_surveyed_at
+        value_field: interval_days
+        annotation:
+          type: ResourceMeasureAnnotation
+      absence:
+        not_measured: 'Insufficient history: this database has been surveyed once, and a rate needs two snapshots —
+          not a finding that nothing is changing.'
+        not_permitted: 'Not permitted: the credential that surveyed this database could not read the tuple counters,
+          so it is not measured.'
+        not_applicable: 'Not applicable: this analysis reads a database''s own tables, and this resource holds none
+          to read.'
+        measured_nothing: 'Measured: no table was written to between the two snapshots — genuinely idle.'
+      extents:
+      - name: per_table
+        fields: [qualified_name, change, deltas, per_day, row_count_delta]
+        rows: 20
+        order: by rows written per day, most first
+        truncation: '{shown} of {total} tables shown, by rows written per day'
+        token_cost: 840
+        citation: '{analysis} · {scope} · as of {as_of}'
+      confidence:
+        form: measured
+      scope: resource
 
   - id: schema_diff
     name: "Schema Diff (Columns)"
@@ -1175,6 +2200,53 @@ database_analyses:
     egeria_registration:
       candidate: false
       native_process_ref: null
+    declaration:
+      result_kind: list
+      listing:
+        item_fields: [change, qualified_name, old_type, new_type]
+        order: 'added, then dropped, then retyped'
+        key_field: qualified_name
+        item_label: column changes
+      measures:
+      - name: columns_added
+        unit: columns
+        as_of: to_surveyed_at
+        value_field: columns_added[]
+        annotation:
+          type: SchemaAnalysisAnnotation
+      - name: columns_dropped
+        unit: columns
+        as_of: to_surveyed_at
+        value_field: columns_dropped[]
+        annotation:
+          type: SchemaAnalysisAnnotation
+      - name: columns_retyped
+        unit: columns
+        as_of: to_surveyed_at
+        value_field: columns_retyped[]
+        annotation:
+          type: SchemaAnalysisAnnotation
+      absence:
+        not_measured: 'Insufficient history: this database has been surveyed once, and a diff needs two snapshots —
+          not a finding that the schema is unchanged.'
+        not_permitted: 'Not permitted: the credential that surveyed this database could not read the column definitions,
+          so it is not measured.'
+        not_applicable: 'Not applicable: this analysis reads a database''s own tables, and this resource holds none
+          to read.'
+        measured_nothing: 'Measured: no column was added, dropped or retyped between the two surveys.'
+      extents:
+      - name: column_changes
+        fields: [change, qualified_name, old_type, new_type]
+        rows: 30
+        order: added, then dropped, then retyped; by name
+        truncation: '{shown} of {total} column changes shown, by kind of change'
+        token_cost: 1000
+        citation: '{analysis} · {scope} · as of {as_of}'
+        source: [columns_added, columns_dropped, columns_retyped]
+        tag: change
+      confidence:
+        form: measured
+      scope: resource
 
   - id: grant_change
     name: "Grant Change"
@@ -1198,6 +2270,53 @@ database_analyses:
     egeria_registration:
       candidate: false
       native_process_ref: null
+    declaration:
+      result_kind: list
+      listing:
+        item_fields: [change, grant]
+        order: 'PUBLIC grants first'
+        key_field: grant
+        item_label: grant changes
+      measures:
+      - name: grants_added
+        unit: grants
+        as_of: to_surveyed_at
+        value_field: grants_added[]
+        annotation:
+          type: ResourceMeasureAnnotation
+      - name: grants_revoked
+        unit: grants
+        as_of: to_surveyed_at
+        value_field: grants_revoked[]
+        annotation:
+          type: ResourceMeasureAnnotation
+      - name: public_grants_added
+        unit: grants
+        as_of: to_surveyed_at
+        value_field: public_grants_added[]
+        annotation:
+          type: ResourceMeasureAnnotation
+      absence:
+        not_measured: 'Insufficient history: grants have been read once, and a change needs two snapshots — not a finding
+          that grants are unchanged.'
+        not_permitted: 'Not permitted: the credential that surveyed this database could not read the grants, so it is
+          not measured.'
+        not_applicable: 'Not applicable: this analysis reads a database''s own tables, and this resource holds none
+          to read.'
+        measured_nothing: 'Measured: no grant was added or revoked between the two surveys.'
+      extents:
+      - name: grant_changes
+        fields: [change, grant]
+        rows: 30
+        order: PUBLIC grants first, then added, then revoked
+        truncation: '{shown} of {total} grant changes shown, PUBLIC first'
+        token_cost: 520
+        citation: '{analysis} · {scope} · as of {as_of}'
+        source: [grants_added, grants_revoked]
+        tag: change
+      confidence:
+        form: measured
+      scope: resource
 
   # ── §16's coverage/grain/fit rows (2026-09-24) ───────────────────────────
   #
@@ -1237,6 +2356,42 @@ database_analyses:
     egeria_registration:
       candidate: false
       native_process_ref: null
+    declaration:
+      result_kind: proposal
+      proposal:
+        candidate_field: term
+        decided_by: curator
+      measures:
+      - name: subject_terms
+        unit: candidate terms
+        as_of: run.read_snapshot
+        value_field: term_count
+        annotation:
+          type: ResourceMeasureAnnotation
+      absence:
+        not_measured: 'Not established: no schema rows are stored for this database — not a finding that its data has
+          no subject.'
+        not_permitted: 'Not permitted: the credential that surveyed this database could not read the table and column
+          names or comments, so it is not measured.'
+        not_applicable: 'Not applicable: this analysis reads a database''s own tables, and this resource holds none
+          to read.'
+        measured_nothing: 'Measured: every name is structural (id, created_at, value), so nothing says what the data
+          is about — a finding for Enrichment.'
+      extents:
+      - name: terms
+        fields: [term, basis, confidence, occurrences]
+        rows: 15
+        order: by confidence, then occurrences, highest first
+        truncation: '{shown} of {total} candidate terms shown, by confidence'
+        token_cost: 520
+        citation: '{analysis} · {scope} · as of {as_of}'
+      confidence:
+        form: inferred
+        basis: terms.basis
+        method: 'whether the term came from a comment, a name, or both'
+        score: confidence
+        calibrated: false
+      scope: resource
 
   - id: coverage_signals
     name: "Coverage Signals"
@@ -1265,6 +2420,63 @@ database_analyses:
     egeria_registration:
       candidate: false
       native_process_ref: null
+    declaration:
+      result_kind: measure
+      measures:
+      - name: coverage_start
+        unit: timestamp
+        as_of: run.read_snapshot
+        value_field: temporal.dataCoverageStartTime
+        annotation:
+          type: ResourceMeasureAnnotation
+      - name: coverage_end
+        unit: timestamp
+        as_of: run.read_snapshot
+        value_field: temporal.dataCoverageEndTime
+        annotation:
+          type: ResourceMeasureAnnotation
+      - name: date_columns
+        unit: columns
+        as_of: run.read_snapshot
+        value_field: temporal.date_column_count
+        annotation:
+          type: ResourceMeasureAnnotation
+      - name: place_columns
+        unit: columns
+        as_of: run.read_snapshot
+        value_field: spatial.place_columns[]
+        annotation:
+          type: ResourceMeasureAnnotation
+      absence:
+        not_measured: 'Not established: ANALYZE has not run, or the credential cannot see pg_stats, so the period covered
+          is unknown — not a finding that the database holds no dates.'
+        not_permitted: 'Not permitted: the credential that surveyed this database could not read pg_stats, so it is
+          not measured.'
+        not_applicable: 'Not applicable: this analysis reads a database''s own tables, and this resource holds none
+          to read.'
+        measured_nothing: 'Measured: no column holds dates or times, so no period is covered.'
+      extents:
+      - name: period
+        fields: [dataCoverageStartTime, dataCoverageEndTime, basis, confidence]
+        rows: 1
+        order: the database as a whole
+        truncation: '{shown} of {total} periods shown'
+        token_cost: 72
+        citation: '{analysis} · {scope} · as of {as_of}'
+        source: [temporal]
+      - name: column_ranges
+        fields: [schema_name, table_name, column_name, start, end, basis]
+        rows: 15
+        sort: [start asc]
+        truncation: '{shown} of {total} dated columns shown, earliest first'
+        token_cost: 760
+        citation: '{analysis} · {scope} · as of {as_of}'
+        source: [temporal.column_ranges]
+      confidence:
+        form: estimated
+        basis: temporal.basis
+        method: "date ranges read from PostgreSQL's column statistics, not from the rows"
+      scope: resource
 
   - id: preliminary_fit
     name: "Preliminary Fit"
@@ -1281,7 +2493,17 @@ database_analyses:
       carried through as deferred criteria naming the analysis that answers
       them, never scored here.
     resource_types: ["database"]
-    intent: discovery
+    # Retagged discovery -> enrichment, 2026-09-29 (ENRICHMENT-E1-CONTEXT-TAB,
+    # project owner's amendment to the designer's reply §0.2): the reply said
+    # no analysis runs at Enrichment; the owner's correction is that a class
+    # does, when its prerequisite is a human input rather than a survey read.
+    # This is that case — it already took a `lens` as a runtime parameter
+    # (`db_derived.compute_preliminary_fit`), and a declared lens is exactly
+    # the human input this class is gated on. Discovery's own zero-fetch tier
+    # is unaffected: `test_discovery_is_the_zero_fetch_derivation_tier`
+    # iterates repo analyses only, and this entry is database-only.
+    intent: enrichment
+    requires_input: lens
     perspectives: ["Consumer", "Financial"]
     annotation_types: ["ResourceMeasureAnnotation"]
     source: local
@@ -1293,6 +2515,211 @@ database_analyses:
     egeria_registration:
       candidate: false
       native_process_ref: null
+    declaration:
+      result_kind: finding
+      finding:
+        what_field: verdict
+      measures:
+      - name: fit_confidence
+        unit: confidence points (0-100, a rule score)
+        as_of: run.read_snapshot
+        value_field: confidence
+        annotation:
+          type: ResourceMeasureAnnotation
+      absence:
+        not_measured: 'Could not check: none of the free estimates (subject, coverage, grain) is established yet — not
+          a pass and not a failure.'
+        not_permitted: 'Not permitted: the credential that surveyed this database could not read the stored rows the
+          free estimates come from, so it is not measured.'
+        not_applicable: 'No requirement declared: without a lens there is nothing to fit against — not a pass and not
+          a failure; what this resource could satisfy is shown instead.'
+        measured_nothing: 'Measured: every criterion of the lens was checked and none failed.'
+      extents:
+      - name: verdict
+        fields: [verdict, confidence, failed_inputs, unchecked_inputs, deferred_criteria]
+        rows: 1
+        order: the verdict
+        truncation: '{shown} of {total} verdicts shown'
+        token_cost: 80
+        citation: '{analysis} · {scope} · as of {as_of}'
+        source: ['.']
+      confidence:
+        form: inferred
+        basis: inputs
+        method: 'which of the three free estimates were available to compare'
+        score: confidence
+        calibrated: false
+      scope: resource
+
+  # ── Enrichment-tier stubs (2026-09-29, ENRICHMENT-E1-CONTEXT-TAB) ────────
+  #
+  # Referenced by Enrichment's "Survey & analyses" map (the amendment above)
+  # but NOT implemented here — each is a placeholder registration only, so
+  # the map has a real catalog id to point at and the gap guard
+  # (test_analysis_catalog_reader.py::test_enrichment_and_automate_have_no_
+  # entries_by_design) can tell "declared, not yet built" apart from "nobody
+  # registered this yet". `availability: queued` and no runner exists for
+  # any of the three — clicking Run on one of these is expected to fail
+  # until its own slice builds it. Scoped to `database_analyses` only for
+  # now (matching every worked example in the reply and the amendment);
+  # broadening to repo/filesystem is a follow-on once #348 and the
+  # glossary-confirmation mechanism exist there too.
+
+  - id: doc_source_ingestion
+    name: "Documentation Source Ingestion"
+    description: >
+      Not built. Placeholder registration only (ENRICHMENT-E1-CONTEXT-TAB).
+      #348's slice 2: once a documentation source is declared and reachable
+      (PR #348, re/doc-sources-declare-and-probe), this ingests its content
+      for doc_evidence_check to read. Unlocked by a declared, reachable
+      documentation source — a human input, not a survey read.
+    resource_types: ["database"]
+    intent: enrichment
+    requires_input: documentation_source
+    perspectives: ["Data Expert", "Steward"]
+    annotation_types: []
+    source: local
+    run_time: fast
+    availability: queued
+    action: survey
+    answers_questions: false  # infrastructure: it feeds other analyses or writes to Egeria and answers no question itself (review §1.2)
+    target_shape: whole_resource_only
+    recommended: false
+    egeria_registration:
+      candidate: false
+      native_process_ref: null
+    declaration:
+      built: false
+      result_kind: measure
+      measures:
+      - name: documents_ingested
+        unit: documents
+        as_of: run.surveyed_at
+        value_field: documents_ingested
+      absence:
+        not_measured: 'Not built: documentation ingestion has no runner yet, so nothing has been ingested.'
+        not_permitted: 'Not permitted: the declared documentation source could not be read with the access supplied.'
+        not_applicable: 'Not applicable: no documentation source is declared for this resource.'
+        measured_nothing: 'Measured: the declared documentation source holds no documents.'
+      extents:
+      - name: ingestion
+        fields: [documents_ingested]
+        rows: 1
+        order: the source as a whole
+        truncation: '{shown} of {total} summaries shown'
+        token_cost: 48
+        citation: '{analysis} · {scope} · as of {as_of}'
+      confidence:
+        form: measured
+      scope: resource
+
+  - id: doc_evidence_check
+    name: "Documentation Evidence Check"
+    description: >
+      Not built. Placeholder registration only (ENRICHMENT-E1-CONTEXT-TAB).
+      Reads ingested documentation (doc_source_ingestion's output) for
+      evidence bearing on the catalog's human questions. Unlocked by
+      ingested documentation — a human input's downstream artifact, not a
+      survey read.
+    resource_types: ["database"]
+    intent: enrichment
+    requires_input: ingested_documentation
+    perspectives: ["Data Expert", "Steward"]
+    annotation_types: []
+    source: local
+    run_time: fast
+    availability: queued
+    action: survey
+    target_shape: whole_resource_only
+    recommended: false
+    egeria_registration:
+      candidate: false
+      native_process_ref: null
+    declaration:
+      built: false
+      result_kind: finding
+      finding:
+        what_field: passage
+        where_field: source
+      measures:
+      - name: evidence_found
+        unit: passages of evidence
+        as_of: run.surveyed_at
+        value_field: evidence[]
+      absence:
+        not_measured: 'Not built: the documentation evidence check has no runner yet, so no documentation has been read
+          for evidence.'
+        not_permitted: 'Not permitted: the ingested documentation could not be read with the access supplied.'
+        not_applicable: 'Not applicable: no documentation has been ingested for this resource.'
+        measured_nothing: 'Measured: the ingested documentation holds no evidence bearing on these questions.'
+      extents:
+      - name: evidence
+        fields: [question, passage, source]
+        rows: 10
+        order: by question
+        truncation: '{shown} of {total} passages shown, by question'
+        token_cost: 280
+        citation: '{analysis} · {scope} · as of {as_of}'
+      confidence:
+        form: inferred
+        basis: evidence.source
+        method: 'the documentation the evidence was found in'
+        calibrated: false
+      scope: resource
+
+  - id: semantic_suggestions
+    name: "Semantic Suggestions"
+    description: >
+      Not built. Placeholder registration only (ENRICHMENT-E1-CONTEXT-TAB).
+      Suggests glossary-term matches once a person has confirmed at least
+      one term for this resource. Unlocked by a confirmed glossary term — a
+      human input, not a survey read.
+    resource_types: ["database"]
+    intent: enrichment
+    requires_input: confirmed_glossary_term
+    perspectives: ["Data Expert", "Steward"]
+    annotation_types: []
+    source: local
+    run_time: fast
+    availability: queued
+    action: survey
+    target_shape: whole_resource_only
+    recommended: false
+    egeria_registration:
+      candidate: false
+      native_process_ref: null
+    declaration:
+      built: false
+      result_kind: proposal
+      proposal:
+        candidate_field: term
+        decided_by: curator
+      measures:
+      - name: terms_suggested
+        unit: glossary terms
+        as_of: run.surveyed_at
+        value_field: suggestions[]
+      absence:
+        not_measured: 'Not built: semantic suggestions have no runner yet, so no term has been suggested.'
+        not_permitted: 'Not permitted: the glossary could not be read with the access supplied.'
+        not_applicable: 'Not applicable: no glossary term has been confirmed for this resource yet, and suggestions
+          start from one.'
+        measured_nothing: 'Measured: no further glossary term matches this resource.'
+      extents:
+      - name: suggestions
+        fields: [term, basis, confidence]
+        rows: 10
+        order: by confidence, highest first
+        truncation: '{shown} of {total} suggested terms shown, by confidence'
+        token_cost: 280
+        citation: '{analysis} · {scope} · as of {as_of}'
+      confidence:
+        form: inferred
+        basis: suggestions.basis
+        method: 'the glossary term a person already confirmed'
+        score: suggestions.confidence
+        calibrated: false
+      scope: resource
 
   - id: reference_data_match
     name: "Reference Data Match"
@@ -1310,6 +2737,49 @@ database_analyses:
     egeria_registration:
       candidate: false
       native_process_ref: null
+    declaration:
+      result_kind: proposal
+      proposal:
+        candidate_field: matched_display_name
+        decided_by: curator
+      measures:
+      - name: established_columns
+        unit: columns
+        as_of: surveyed_at
+        value_field: established_count
+        basis:
+          denominator_field: column_count
+          denominator_label: columns
+        annotation:
+          type: RelationshipAnnotation
+      - name: columns_examined
+        unit: columns
+        as_of: surveyed_at
+        value_field: column_count
+        annotation:
+          type: ResourceMeasureAnnotation
+      absence:
+        not_measured: 'Inconclusive: the distinct-value list was truncated or not sampled, so coverage of a set is not
+          known — never a partial match.'
+        not_permitted: 'Not permitted: the credential cannot read this column''s values.'
+        not_applicable: 'Not applicable: the column has too many distinct values to be reference data.'
+        measured_nothing: 'Measured: the column''s values match no valid-value set in the platform.'
+      extents:
+      - name: matches
+        fields: [column_path, verdict, matched_display_name, confidence, statement]
+        rows: 25
+        order: partial matches first, then by confidence
+        truncation: '{shown} of {total} columns shown, partial matches first'
+        token_cost: 1040
+        citation: '{analysis} · {scope} · as of {as_of}'
+        source: [columns]
+      confidence:
+        form: inferred
+        basis: columns.sample
+        method: 'the sampled values of each low-cardinality column, compared with the known value sets'
+        score: confidence
+        calibrated: false
+      scope: field
 
   - id: nested_column_profile
     name: "Nested Column Profile"
@@ -1330,6 +2800,89 @@ database_analyses:
     egeria_registration:
       candidate: false
       native_process_ref: null
+    declaration:
+      result_kind: list
+      listing:
+        item_fields: [column, family, label]
+        order: 'structured first, then by name'
+        key_field: column
+        item_label: columns
+      measures:
+      - name: nested_columns
+        unit: columns
+        as_of: run.surveyed_at
+        value_field: nested_columns.columns[]
+        annotation:
+          type: SchemaAnalysisAnnotation
+      absence:
+        not_measured: 'Not collected: no JSON, JSONB or XML value was sampled from this column.'
+        not_permitted: 'Not permitted: the credential cannot read this column''s values.'
+        not_applicable: 'Not applicable: the engine does not support sampling this column''s values.'
+        measured_nothing: 'Measured: every sampled value is a scalar — a finding (possibly a misclassified column),
+          not "no nested structure".'
+      extents:
+      - name: columns
+        fields: [column, family, label, schema.max_depth, schema.keys]
+        rows: 15
+        order: structured first, then by name
+        truncation: '{shown} of {total} nested columns shown, structured first'
+        token_cost: 640
+        citation: '{analysis} · {scope} · as of {as_of}'
+      confidence:
+        form: estimated
+        basis: nested_columns.columns.schema.sample_size
+        method: 'a sample of the rows, not every row'
+      scope: field
+
+  - id: sql_analysis
+    name: "SQL Analysis"
+    description: "Parses the database's view DDL with SQLGlot: view dependencies, static column-level lineage and complexity scores, from the definitions the schema step already read (information_schema.views, pg_views, pg_matviews, pg_proc, pg_trigger). Registered 2026-10-22 so Q-0071 resolves its result in the question layer; the step itself (sql_analysis) existed before this entry."
+    resource_types: ["database"]
+    intent: discovery
+    perspectives: ["Data Expert", "App/AI Builder"]
+    annotation_types: ["SchemaAnalysisAnnotation", "RelationshipAnnotation", "QualityScoreAnnotation", "RequestForAction", "DataClassAnnotation"]
+    source: local
+    run_time: fast
+    action: survey
+    target_shape: whole_resource_only
+    recommended: false
+    egeria_registration:
+      candidate: false
+      native_process_ref: null
+    declaration:
+      result_kind: graph
+      categories:
+        exclusive: false
+      measures:
+      - name: views
+        unit: views
+        as_of: run.surveyed_at
+        value_field: views[]
+        annotation:
+          type: SchemaAnalysisAnnotation
+      - name: view_complexity
+        unit: complexity score (0-100; -1 is a parse error)
+        as_of: run.surveyed_at
+        value_field: views.complexity.complexity_score
+        annotation:
+          type: QualityScoreAnnotation
+      absence:
+        not_measured: 'Not measured: no view definition has been read for this database yet.'
+        not_permitted: 'Not permitted: the credential that surveyed this database could not read the view definitions,
+          so it is not measured.'
+        not_applicable: 'Not applicable: this database defines no views to parse.'
+        measured_nothing: 'Measured: no view depends on another, and none carries column lineage.'
+      extents:
+      - name: views
+        fields: [qualified_name, kind, dependencies, complexity.complexity_score]
+        rows: 20
+        order: most complex first
+        truncation: '{shown} of {total} views shown, most complex first'
+        token_cost: 680
+        citation: '{analysis} · {scope} · as of {as_of}'
+      confidence:
+        form: measured
+      scope: member
 
   - id: egeria_db_survey
     name: "Egeria Native DB Survey"
@@ -1341,11 +2894,388 @@ database_analyses:
     source: egeria
     run_time: async
     action: publish
+    answers_questions: false  # infrastructure: it feeds other analyses or writes to Egeria and answers no question itself (review §1.2)
     target_shape: whole_resource_only
     recommended: true
     egeria_registration:
       candidate: true
       native_process_ref: ["database", "PostgreSQL Relational Database"]
+    declaration:
+      result_kind: table
+      table:
+        columns: [status]
+      result_kind_note: 'A trigger for Egeria''s native survey: its results arrive later as Egeria''s own annotations,
+        materialised into the detail tables, not as one shape of its own.'
+      measures:
+      - name: native_annotations
+        unit: annotations
+        as_of: run.surveyed_at
+        value_field: annotations[]
+        annotation:
+          type: SchemaAnalysisAnnotation
+      absence:
+        not_measured: 'Not measured: Egeria''s native survey has not run against this database, or has not finished.'
+        not_permitted: 'Not permitted: Egeria''s survey engine could not connect to this database with its configured
+          credential.'
+        not_applicable: 'Not applicable: Egeria has no native survey for this database''s technology type.'
+        measured_nothing: 'Measured: Egeria''s native survey finished and wrote no annotations.'
+      extents:
+      - name: status
+        fields: [status]
+        rows: 1
+        order: the latest trigger
+        truncation: '{shown} of {total} runs shown'
+        token_cost: 48
+        citation: '{analysis} · {scope} · as of {as_of}'
+      confidence:
+        form: measured
+      scope: resource
+
+  # BEGIN GENERATED user steps (database): scripts/generate_external_step_entries.py. Do not hand-edit.
+  - id: change_rates
+    name: Table Change Rates
+    description: Rows inserted, updated and deleted per day per table between the latest two table activity
+      snapshots Resource Explorer stored, over their interval; a counter reset between them gives no rate,
+      never a negative one. Opens no connection to the database. With one activity snapshot, or a table
+      missing from one, it is shown as "not measured", never as a rate of zero.
+    resource_types:
+    - database
+    intent: analysis
+    perspectives:
+    - Steward
+    - Data Expert
+    annotation_types:
+    - ResourceMeasureAnnotation
+    source: local
+    run_time: fast
+    availability: queued
+    action: survey
+    target_shape: whole_resource_only
+    recommended: false
+    egeria_registration:
+      candidate: true
+      native_process_ref: null
+    provided_by:
+      package: trellis-step-change-rates
+      entry_point: change_rates
+      step: change_rates
+      version: 0.1.0
+      kind: step
+      source: ods
+      credential_tier: none
+      questions:
+      - Q-0086
+      purposes:
+      - Maintain
+      - Assess
+    declaration:
+      result_kind: distribution
+      measures:
+      - name: change_rates
+        unit: rows written per day
+        as_of: toAsOf
+        value_field: Writes Per Day
+        annotation:
+          type: ResourceMeasureAnnotation
+      absence:
+        not_measured: 'Not measured: one table activity snapshot is stored, or the table is missing from
+          one; a rate needs two, and a counter reset between them gives no rate.'
+        not_permitted: 'Not permitted: the survey that stored the activity snapshots could not read this
+          table''s counters, so no rate is held for it.'
+        not_applicable: 'Not applicable: a view holds no rows of its own, so nothing is written to it.'
+        measured_nothing: 'Measured: no rows were inserted, updated or deleted over the interval.'
+      extents:
+      - name: tables_by_write_rate
+        fields:
+        - scope
+        - Writes Per Day
+        - Writes In Interval
+        - Interval Days
+        - fromAsOf
+        - toAsOf
+        rows: 20
+        sort:
+        - Writes Per Day desc
+        truncation: '{shown} of {total} tables shown, by rows written per day'
+        token_cost: 1000
+        citation: '{analysis} · {scope} · as of {as_of}'
+      confidence:
+        form: measured
+      answers:
+      - Q-0086
+      scope: member
+      categories:
+        exclusive: true
+  - id: database_staleness
+    name: Database Staleness
+    description: 'Rows changed per table since the last survey: compares the latest two row-count snapshots
+      Resource Explorer stored for the database. Reads only what RE already stored; opens no connection
+      to the database. Shown as "not measured", never as zero, when fewer than two row-count snapshots exist,
+      or a table or its count is missing from one.'
+    resource_types:
+    - database
+    intent: analysis
+    perspectives:
+    - Steward
+    - Data Expert
+    annotation_types:
+    - ResourceMeasureAnnotation
+    source: local
+    run_time: fast
+    availability: queued
+    action: survey
+    target_shape: whole_resource_only
+    recommended: false
+    egeria_registration:
+      candidate: true
+      native_process_ref: null
+    provided_by:
+      package: trellis-step-database-staleness
+      entry_point: database_staleness
+      step: database_staleness
+      version: 0.2.1
+      kind: step
+      source: ods
+      credential_tier: none
+      questions:
+      - Q-0041
+      purposes:
+      - Maintain
+    declaration:
+      result_kind: distribution
+      measures:
+      - name: database_staleness
+        unit: rows changed since the previous survey
+        as_of: latestSurvey
+        value_field: rowsChanged
+        annotation:
+          type: ResourceMeasureAnnotation
+      - name: writes_since_statistics_reset
+        unit: rows inserted, updated or deleted since the statistics reset
+        as_of: asOf
+        value_field: writesSinceStatisticsReset
+        annotation:
+          type: ResourceMeasureAnnotation
+      absence:
+        not_measured: 'Not measured: fewer than two row-count snapshots are stored, or the table or its
+          count is missing from one; a change needs two — never shown as zero.'
+        not_permitted: 'Not permitted: the survey that stored the row counts could not count this table''s
+          rows, so no change is held for it.'
+        not_applicable: 'Not applicable: a view holds no rows of its own.'
+        measured_nothing: 'Measured: no rows changed between the two latest surveys.'
+      extents:
+      - name: tables_by_change
+        fields:
+        - scope
+        - rowsChanged
+        - rowsBefore
+        - rowsAfter
+        - previousSurvey
+        - latestSurvey
+        rows: 20
+        sort:
+        - rowsChanged desc
+        truncation: '{shown} of {total} tables shown, by rows changed'
+        token_cost: 1000
+        citation: '{analysis} · {scope} · as of {as_of}'
+      confidence:
+        form: estimated
+        method: the change between two of PostgreSQL's row-count estimates, not a count of the rows
+      answers:
+      - Q-0041
+      scope: member
+      categories:
+        exclusive: true
+  - id: hub_tables
+    name: Hub Tables
+    description: Foreign-key degree in and out per table, from the keys Resource Explorer stored, and the
+      tables it proposes as hubs (referenced by at least hub_min_referencing other tables, a declared parameter;
+      a count from partly captured keys is a lower bound, reported as at least N). The proposal is an annotation,
+      never a classification on the table. Opens no connection to the database. With no foreign keys stored
+      it is shown as "not measured", never as a database with no hubs.
+    resource_types:
+    - database
+    intent: analysis
+    perspectives:
+    - Data Expert
+    - Steward
+    annotation_types:
+    - ResourceMeasureAnnotation
+    - ClassificationAnnotation
+    source: local
+    run_time: fast
+    availability: queued
+    action: survey
+    target_shape: whole_resource_only
+    recommended: false
+    egeria_registration:
+      candidate: true
+      native_process_ref: null
+    provided_by:
+      package: trellis-step-hub-tables
+      entry_point: hub_tables
+      step: hub_tables
+      version: 0.2.0
+      kind: step
+      source: ods
+      credential_tier: none
+      questions:
+      - Q-0072
+      - Q-0068
+      purposes:
+      - Explore
+      - Integrate
+    declaration:
+      result_kind: proposal
+      measures:
+      - name: hub_tables
+        unit: tables referencing this one by foreign key
+        as_of: asOf
+        value_field: Foreign Keys In
+        annotation:
+          type: ResourceMeasureAnnotation
+        capped_field: Referenced By Is Lower Bound
+      - name: hub_table_proposal
+        unit: tables referencing the proposed hub
+        as_of: asOf
+        value_field: Foreign Keys In
+        annotation:
+          type: ClassificationAnnotation
+        capped_field: Referenced By Is Lower Bound
+      absence:
+        not_measured: 'Not measured: no foreign keys are stored for this database, so hubs cannot be derived
+          — not a finding that it has no hubs.'
+        not_permitted: 'Not permitted: the survey that stored this database''s keys could not read this
+          table''s constraints, so its degree is not held.'
+        not_applicable: 'Not applicable: a view has no keys of its own.'
+        measured_nothing: 'Measured: no table is referenced by enough other tables to be proposed as a hub.'
+      extents:
+      - name: proposed_hubs
+        fields:
+        - scope
+        - Foreign Keys In
+        - Foreign Keys Out
+        - Referencing Tables
+        - Referenced By Is Lower Bound
+        rows: 10
+        order: by tables referencing it, most first
+        truncation: '{shown} of {total} proposed hubs shown, by tables referencing them'
+        token_cost: 440
+        citation: '{analysis} · {scope} · as of {as_of}'
+      confidence:
+        form: measured
+      answers:
+      - Q-0072
+      - Q-0068
+      scope: member
+      proposal:
+        candidate_field: candidate_classifications
+        decided_by: curator
+  - id: statistics_freshness
+    name: Table Statistics Freshness
+    description: 'How old each table''s planner statistics are: the age of the last ANALYZE and VACUUM,
+      tables never analyzed, and tables changed past autovacuum''s analyze trigger, as of the newest table
+      activity snapshot Resource Explorer stored. Opens no connection to the database. A table whose statistics
+      were not read, or a database with none stored, is shown as "not measured", never as fresh.'
+    resource_types:
+    - database
+    intent: analysis
+    perspectives:
+    - Steward
+    - Data Expert
+    annotation_types:
+    - ResourceMeasureAnnotation
+    source: local
+    run_time: fast
+    availability: queued
+    action: survey
+    target_shape: whole_resource_only
+    recommended: false
+    egeria_registration:
+      candidate: true
+      native_process_ref: null
+    provided_by:
+      package: trellis-step-statistics-freshness
+      entry_point: statistics_freshness
+      step: statistics_freshness
+      version: 0.1.0
+      kind: step
+      source: ods
+      credential_tier: none
+      questions:
+      - Q-0073
+      - Q-0062
+      purposes:
+      - Maintain
+    declaration:
+      result_kind: list
+      measures:
+      - name: statistics_freshness
+        unit: days since the last ANALYZE
+        as_of: asOf
+        value_field: Days Since Analyze
+        annotation:
+          type: ResourceMeasureAnnotation
+      - name: statistics_freshness_summary
+        unit: tables never analyzed or stale
+        as_of: asOf
+        value_field: Needs Attention
+        annotation:
+          type: ResourceMeasureAnnotation
+        scope: resource
+        basis:
+          denominator_field: Tables
+          denominator_label: tables
+      absence:
+        not_measured: 'Not measured: no table statistics are stored for this database, or this table''s
+          were not read — never shown as fresh.'
+        not_permitted: 'Not permitted: the survey that stored the table activity could not read this table''s
+          statistics from pg_stat_user_tables.'
+        not_applicable: 'Not applicable: a view has no planner statistics of its own.'
+        measured_nothing: 'Measured: no table whose statistics were read is stale or has never been analyzed
+          (a table not read, or with changes since not read, is counted separately).'
+      extents:
+      - name: tables_by_staleness
+        fields:
+        - scope
+        - Statistics Status
+        - Days Since Analyze
+        - Number Of Rows Changed Since Analyze
+        - Analyze Threshold
+        rows: 20
+        order: stale first, then never analyzed, then oldest ANALYZE first
+        truncation: '{shown} of {total} tables shown, stale first'
+        token_cost: 840
+        citation: '{analysis} · {scope} · as of {as_of}'
+      - name: summary
+        fields:
+        - Tables
+        - Needs Attention
+        - Never Analyzed
+        - Stale
+        - Current
+        - Not Read
+        - Oldest Analyze Days
+        rows: 1
+        order: the database as a whole
+        truncation: '{shown} of {total} summaries shown'
+        token_cost: 88
+        citation: '{analysis} · {scope} · as of {as_of}'
+      confidence:
+        form: measured
+      answers:
+      - Q-0073
+      - Q-0062
+      scope: member
+      listing:
+        item_fields:
+        - scope
+        - Statistics Status
+        - Days Since Analyze
+        order: stale first, then never analyzed, then oldest ANALYZE first
+        key_field: scope
+        item_label: tables
+  # END GENERATED user steps (database)
 
 filesystem_analyses:
   - id: filesystem_inventory
@@ -1367,3 +3297,628 @@ filesystem_analyses:
     egeria_registration:
       candidate: false
       native_process_ref: null
+    declaration:
+      result_kind: measure
+      measures:
+      - name: files
+        unit: files
+        as_of: run.surveyed_at
+        value_field: file_count
+        annotation:
+          type: ResourceMeasureAnnotation
+      - name: directories
+        unit: directories
+        as_of: run.surveyed_at
+        value_field: directory_count
+        annotation:
+          type: ResourceMeasureAnnotation
+      - name: data_files
+        unit: data files
+        as_of: run.surveyed_at
+        value_field: data_file_count
+        annotation:
+          type: ResourceMeasureAnnotation
+      - name: total_size
+        unit: bytes
+        as_of: run.surveyed_at
+        value_field: total_size_bytes
+        annotation:
+          type: ResourceMeasureAnnotation
+      absence:
+        not_measured: 'Not measured: no survey has walked this file system yet.'
+        not_permitted: 'Not permitted: the account running the survey cannot read this folder.'
+        not_applicable: 'Not applicable: this analysis reads a file system''s own entries, and this resource holds none
+          to read.'
+        measured_nothing: 'Measured: the folder is empty.'
+      extents:
+      - name: inventory
+        fields: [entry_count, file_count, directory_count, data_file_count, total_size_bytes]
+        rows: 1
+        order: the file system as a whole
+        truncation: '{shown} of {total} summaries shown'
+        token_cost: 80
+        citation: '{analysis} · {scope} · as of {as_of}'
+        source: ['.']
+      confidence:
+        form: measured
+      scope: resource
+
+  - id: resource_reachability
+    name: "Resource Reachability"
+    description: >
+      Whether Egeria's survey engine can reach this resource or only Resource Explorer can: a CHECK_ASSET-only engine action (Phase 1 slice 13), its outcome stored as a resource_reachability row and read as the reach state the Folder Survey fork uses. A resource never probed reads as not probed, never as unreachable.
+    resource_types: ["filesystem"]
+    intent: discovery
+    perspectives: ["Architecture", "Admin"]
+    annotation_types: []
+    source: local
+    run_time: fast
+    action: survey
+    target_shape: whole_resource_only
+    recommended: false
+    egeria_registration:
+      candidate: false
+      native_process_ref: null
+    declaration:
+      result_kind: measure
+      measures:
+      - name: reach
+        unit: reach state
+        as_of: checked_at
+        value_field: state
+      absence:
+        not_measured: 'Not probed: nobody has checked whether Egeria''s survey engine can reach this resource — never
+          shown as unreachable.'
+        not_permitted: 'Not permitted: Egeria''s engine was refused access to this path.'
+        not_applicable: 'Not applicable: this resource is not a path Egeria''s engine could be asked to read.'
+        measured_nothing: 'Undecided: the probe ran and could not tell whether Egeria can read this path.'
+      extents:
+      - name: reach
+        fields: [state, sentence, checked_at, surveyor, why]
+        rows: 1
+        order: the latest probe
+        truncation: '{shown} of {total} probes shown, latest first'
+        token_cost: 80
+        citation: '{analysis} · {scope} · as of {as_of}'
+      confidence:
+        form: measured
+      scope: resource
+
+  # BEGIN GENERATED user steps (filesystem): scripts/generate_external_step_entries.py. Do not hand-edit.
+  - id: fs_activity
+    name: File Activity
+    description: 'How long since each file was modified, and since it was read where the mount records access
+      times: hot, warm and cold files and bytes, aged at the newest walk''s own time, from the per-file
+      rows Resource Explorer kept. Opens no file. Where access times were not recorded on the walk or the
+      mount does not update them, reads are shown as "not measured" (can''t tell), never as cold.'
+    resource_types:
+    - filesystem
+    intent: analysis
+    perspectives:
+    - Steward
+    - Financial
+    - Data Owner
+    annotation_types:
+    - ResourceProfileAnnotation
+    source: local
+    run_time: fast
+    availability: queued
+    action: survey
+    target_shape: whole_resource_only
+    recommended: false
+    egeria_registration:
+      candidate: true
+      native_process_ref: null
+    provided_by:
+      package: trellis-step-fs-activity
+      entry_point: fs_activity
+      step: fs_activity
+      version: 0.1.0
+      kind: step
+      source: ods
+      credential_tier: none
+      questions:
+      - Q-0107
+      purposes:
+      - Maintain
+      - Assess
+    declaration:
+      result_kind: distribution
+      measures:
+      - name: fs_activity
+        unit: files not modified for more than {Cold Days} days (cold)
+        as_of: asOf
+        value_field: Cold Files
+        annotation:
+          type: ResourceProfileAnnotation
+      - name: fs_access_activity
+        unit: files not read for more than {Cold Days} days (cold)
+        as_of: asOf
+        value_field: Cold Files
+        annotation:
+          type: ResourceProfileAnnotation
+      absence:
+        not_measured: 'Not measured: no walk has kept per-file rows, or (for reads) access times were not
+          recorded on the walk or the mount does not update them, so which files are read cannot be told.'
+        not_permitted: 'Not permitted: the walk could not read these files'' times, so no age is held for
+          them.'
+        not_applicable: 'Not applicable: file activity is measured for file systems only.'
+        measured_nothing: 'Measured: the walk found no files.'
+      extents:
+      - name: activity_bands
+        fields:
+        - scope
+        - Hot Files
+        - Warm Files
+        - Cold Files
+        - Cold Bytes
+        - Hot Days
+        - Cold Days
+        - Access Possibly Resource Explorer's Own Read
+        - asOf
+        rows: 2
+        order: by modification, then by access
+        truncation: '{shown} of {total} results shown'
+        token_cost: 300
+        citation: '{analysis} · {scope} · as of {as_of}'
+      confidence:
+        form: measured
+      answers:
+      - Q-0107
+      scope: resource
+      categories:
+        exclusive: true
+  - id: fs_change_rates
+    name: File System Change
+    description: Files added, removed and modified, and the growth in bytes, between the latest two walks
+      Resource Explorer kept for a file system, over their interval. Reads the walks' per-file rows; opens
+      no file. With one walk only it is shown as "not measured", never as no change; where a walk was capped,
+      files added, removed and growth are "not measured" and only the files both walks saw are compared.
+    resource_types:
+    - filesystem
+    intent: discovery
+    perspectives:
+    - Steward
+    - Data Expert
+    annotation_types:
+    - ResourceMeasureAnnotation
+    source: local
+    run_time: fast
+    availability: queued
+    action: survey
+    target_shape: whole_resource_only
+    recommended: false
+    egeria_registration:
+      candidate: true
+      native_process_ref: null
+    provided_by:
+      package: trellis-step-fs-change-rates
+      entry_point: fs_change_rates
+      step: fs_change_rates
+      version: 0.1.0
+      kind: step
+      source: ods
+      credential_tier: none
+      questions:
+      - Q-0102
+      purposes:
+      - Maintain
+    declaration:
+      result_kind: measure
+      measures:
+      - name: fs_change_rates
+        unit: files added, removed or modified between two walks
+        as_of: toAsOf
+        value_field: Files Changed
+        annotation:
+          type: ResourceMeasureAnnotation
+      absence:
+        not_measured: 'Not measured: Resource Explorer has kept per-file rows from one walk of this file
+          system, or none; a change needs two walks.'
+        not_permitted: 'Not permitted: the walk could not read this file system''s folders, so no per-file
+          rows were kept to compare.'
+        not_applicable: 'Not applicable: a change between walks is measured for file systems only.'
+        measured_nothing: 'Measured: no file was added, removed or modified between the two walks.'
+      extents:
+      - name: change_since_last_walk
+        fields:
+        - scope
+        - Files Added
+        - Files Removed
+        - Files Modified
+        - Bytes Growth
+        - Interval Days
+        - fromAsOf
+        - toAsOf
+        rows: 1
+        order: one row for the file system
+        truncation: '{shown} of {total} file systems shown'
+        token_cost: 200
+        citation: '{analysis} · {scope} · as of {as_of}'
+      confidence:
+        form: measured
+      answers:
+      - Q-0102
+      scope: resource
+  - id: fs_duplicates
+    name: Duplicate Files
+    description: Files with the same content (size and SHA-256) within a file system, and files whose content
+      another registered file system also holds, from the hashes Resource Explorer's newest walk kept. Opens
+      no file. Where the walk hashed nothing (hashing off, every file over the limit) it is shown as "not
+      measured", never as no duplicates; files the walk did not hash are counted as not compared.
+    resource_types:
+    - filesystem
+    intent: analysis
+    perspectives:
+    - Steward
+    - Data Expert
+    - Financial
+    annotation_types:
+    - ResourceMeasureAnnotation
+    source: local
+    run_time: fast
+    availability: queued
+    action: survey
+    target_shape: whole_resource_only
+    recommended: false
+    egeria_registration:
+      candidate: true
+      native_process_ref: null
+    provided_by:
+      package: trellis-step-fs-duplicates
+      entry_point: fs_duplicates
+      step: fs_duplicates
+      version: 0.1.0
+      kind: step
+      source: ods
+      credential_tier: none
+      questions:
+      - Q-0106
+      purposes:
+      - Assess
+      - Maintain
+    declaration:
+      result_kind: measure
+      measures:
+      - name: fs_duplicates
+        unit: copies beyond the first of identical files
+        as_of: asOf
+        value_field: Redundant Files
+        annotation:
+          type: ResourceMeasureAnnotation
+      - name: fs_duplicates_elsewhere
+        unit: files whose content another registered file system also holds
+        as_of: asOf
+        value_field: Files Also Elsewhere
+        annotation:
+          type: ResourceMeasureAnnotation
+      absence:
+        not_measured: 'Not measured: the newest walk hashed no file (hashing off, or every file over the
+          limit or secret-named), or no other registered file system has hashes to compare with.'
+        not_permitted: 'Not permitted: the walk could not read these files, so none was hashed and none
+          can be compared.'
+        not_applicable: 'Not applicable: duplicate content is measured for file systems only.'
+        measured_nothing: 'Measured: no two hashed files have the same content.'
+      extents:
+      - name: duplicate_content
+        fields:
+        - scope
+        - Duplicate Sets
+        - Redundant Files
+        - Redundant Bytes
+        - Files Not Hashed
+        - Files Also Elsewhere
+        - Matches By File System
+        - asOf
+        rows: 2
+        order: duplicates here, then content also held elsewhere
+        truncation: '{shown} of {total} results shown'
+        token_cost: 300
+        citation: '{analysis} · {scope} · as of {as_of}'
+      confidence:
+        form: measured
+      answers:
+      - Q-0106
+      scope: resource
+  - id: fs_layout_signals
+    name: File System Layout Signals
+    description: 'Whether the file system holds a recognisable structure (a project, a dataset layout, an
+      archive, backups) from the names on Resource Explorer''s newest walk: project manifests and .git directories,
+      dated and partition folders, dictionary and schema files, archive and backup names. Opens no file
+      and publishes no name. With no walk it is shown as "not measured", never as nothing recognised.'
+    resource_types:
+    - filesystem
+    intent: discovery
+    perspectives:
+    - Data Expert
+    - Steward
+    - Architecture
+    annotation_types:
+    - ResourceProfileAnnotation
+    source: local
+    run_time: fast
+    availability: queued
+    action: survey
+    target_shape: whole_resource_only
+    recommended: false
+    egeria_registration:
+      candidate: true
+      native_process_ref: null
+    provided_by:
+      package: trellis-step-fs-layout-signals
+      entry_point: fs_layout_signals
+      step: fs_layout_signals
+      version: 0.1.0
+      kind: step
+      source: ods
+      credential_tier: none
+      questions:
+      - Q-0104
+      purposes:
+      - Select
+      - Explore
+    declaration:
+      result_kind: measure
+      measures:
+      - name: fs_layout_signals
+        unit: recognised structures
+        as_of: asOf
+        value_field: Recognised Structures
+        annotation:
+          type: ResourceProfileAnnotation
+      absence:
+        not_measured: 'Not measured: no walk has kept per-file rows, so no name could be matched.'
+        not_permitted: 'Not permitted: the walk could not list these folders, so their names are not held.'
+        not_applicable: 'Not applicable: layout signals are measured for file systems only.'
+        measured_nothing: 'Measured: no project manifest or .git directory, no dated or partition folders
+          or dictionary file, no archive or backup file on the walk.'
+      extents:
+      - name: layout_counts
+        fields:
+        - scope
+        - Recognised As
+        - Project Manifests
+        - Git Directories Not Walked
+        - Dated Folders
+        - Partition Folders
+        - Data Dictionary Or Schema Files
+        - Archive Files
+        - Backup Files
+        - Folders With A README
+        - asOf
+        rows: 1
+        order: the one layout profile
+        truncation: '{shown} of {total} results shown'
+        token_cost: 260
+        citation: '{analysis} · {scope} · as of {as_of}'
+      confidence:
+        form: measured
+      answers:
+      - Q-0104
+      scope: resource
+  - id: fs_permissions
+    name: File Permissions
+    description: Owners, groups and modes as counts (world-readable, world-writable, group-writable, setuid),
+      and world-readable files whose names look like secrets as a request for action, from the owner, group
+      and mode Resource Explorer's newest walk kept. Opens no file and publishes no name. With no stat fields,
+      or no file name classified, it is shown as "not measured", never as none found.
+    resource_types:
+    - filesystem
+    intent: analysis
+    perspectives:
+    - Security
+    - Privacy
+    - Governance
+    annotation_types:
+    - ResourceProfileAnnotation
+    - RequestForActionAnnotation
+    source: local
+    run_time: fast
+    availability: queued
+    action: survey
+    target_shape: whole_resource_only
+    recommended: false
+    egeria_registration:
+      candidate: true
+      native_process_ref: null
+    provided_by:
+      package: trellis-step-fs-permissions
+      entry_point: fs_permissions
+      step: fs_permissions
+      version: 0.1.0
+      kind: step
+      source: ods
+      credential_tier: none
+      questions:
+      - Q-0108
+      purposes:
+      - Assess
+      - Certify
+    declaration:
+      result_kind: measure
+      measures:
+      - name: fs_permissions
+        unit: world-readable files
+        as_of: asOf
+        value_field: World Readable Files
+        annotation:
+          type: ResourceProfileAnnotation
+      - name: world_readable_sensitive
+        unit: world-readable files with a secret-looking name
+        as_of: asOf
+        value_field: World Readable Secret Named Files
+        annotation:
+          type: RequestForActionAnnotation
+      absence:
+        not_measured: 'Not measured: no walk has kept per-file rows, the walk recorded no owner, group or
+          mode (no stat fields), or it classified no file name, so who can read what cannot be told.'
+        not_permitted: 'Not permitted: the walk could not stat these files, so no owner or mode is held
+          for them.'
+        not_applicable: 'Not applicable: file permissions are measured for file systems only.'
+        measured_nothing: 'Measured: no world-readable file has a secret-looking name.'
+      extents:
+      - name: permission_counts
+        fields:
+        - scope
+        - Distinct Owners
+        - Distinct Groups
+        - World Readable Files
+        - World Writable Files
+        - World Readable Secret Named Files
+        - Files Whose Names Were Not Classified
+        - asOf
+        rows: 2
+        order: the permissions profile, then the request for action
+        truncation: '{shown} of {total} results shown'
+        token_cost: 300
+        citation: '{analysis} · {scope} · as of {as_of}'
+      confidence:
+        form: measured
+      answers:
+      - Q-0108
+      scope: resource
+  # END GENERATED user steps (filesystem)
+
+
+# Open data (OD2, project owner approved 2026-10-30: "declare it"). The scout is a batch over a work list of
+# open_data members: definition × work list, one `describe` call per dataset, priced before the press
+# (open_data/service.py scout_price / scout_work_list; POST /api/open-data/work-lists/{slug}/scout). It runs inline
+# in that request, not through the queue, so availability says inline. It answers no catalog question yet.
+open_data_analyses:
+  - id: external_data_scout
+    name: "External Data Scout"
+    description: "Re-reads every dataset of a work list of open data from its portal (one call each, priced first) and refreshes what the portal states: license and its flags, publisher, modified date, formats, size, and the coverage and update cadence it gives. A portal that does not answer leaves the dataset's earlier values in place and says so; a field the portal does not state is reported as not reported by that source, never as empty."
+    resource_types: ["open_data"]
+    intent: scouting
+    perspectives: ["all", "Steward"]
+    annotation_types: []
+    source: local
+    run_time: minutes
+    availability: inline
+    action: survey
+    target_shape: whole_resource_only
+    recommended: true
+    answers_questions: false
+    egeria_registration:
+      candidate: false
+      native_process_ref: null
+    declaration:
+      result_kind: table
+      table:
+        columns: [title, outcome, words]
+        key_fields: [title]
+      result_kind_note: "One row per dataset of the work list with its outcome (scouted, or could not be scouted and why); none of the other kinds fits a per-dataset outcome list."
+      measures:
+      - name: datasets_scouted
+        unit: datasets
+        as_of: retrieved_at
+        value_field: scouted
+      - name: datasets_not_scouted
+        unit: datasets
+        as_of: retrieved_at
+        value_field: could_not_scout
+      absence:
+        not_measured: 'Not scouted: the portal did not answer, so the dataset keeps the values it had.'
+        not_permitted: 'Not permitted: the portal refused the read.'
+        not_applicable: 'Not applicable: the dataset is not on a portal RE can read yet.'
+        measured_nothing: 'Scouted: the portal states nothing the dataset did not already hold.'
+      extents:
+      - name: rows
+        fields: [title, outcome, words]
+        rows: 25
+        order: datasets that could not be scouted first
+        truncation: '{shown} of {total} datasets shown, those not scouted first'
+        token_cost: 600
+        citation: '{analysis} · {scope} · as of {as_of}'
+
+  - id: external_data_profile
+    name: "External Data Profile"
+    description: "Downloads the first three tabular distributions of each dataset on a work list of open data (each capped; a larger file is not read), profiles them with the same code as a file system's data-file profile, matches the sampled columns against the data classes Egeria holds, reads documentation distributions (data dictionary, codebook, citation, license, methodology) as evidence stated by that file, collects where the dataset came from, and fingerprints its columns against open data already profiled. A distribution over the cap is reported as not profiled, never as empty; a number carries its sample ratio and when it was retrieved."
+    resource_types: ["open_data"]
+    intent: analysis
+    perspectives: ["all", "Steward"]
+    annotation_types: []
+    source: local
+    run_time: minutes
+    availability: inline
+    action: survey
+    target_shape: whole_resource_only
+    recommended: false
+    answers_questions: false
+    egeria_registration:
+      candidate: false
+      native_process_ref: null
+    declaration:
+      result_kind: table
+      table:
+        columns: [title, outcome, words]
+        key_fields: [title]
+      result_kind_note: "One row per dataset with its outcome and, per distribution, whether it was profiled; none of the other kinds fits a per-distribution outcome list."
+      measures:
+      - name: distributions_profiled
+        unit: distributions
+        as_of: ran_at
+        value_field: profiled
+      - name: datasets_not_profiled
+        unit: datasets
+        as_of: ran_at
+        value_field: not_profiled
+      absence:
+        not_measured: 'Not profiled: the file was not downloaded or could not be read, and the row says why.'
+        not_permitted: 'Not permitted: the source refused the download.'
+        not_applicable: 'Not applicable: the distribution is not in a format profiled here.'
+        measured_nothing: 'Profiled: the file was read and holds no rows.'
+      extents:
+      - name: rows
+        fields: [title, outcome, words]
+        rows: 25
+        order: datasets that could not be profiled first
+        truncation: '{shown} of {total} datasets shown, those not profiled first'
+        token_cost: 600
+        citation: '{analysis} · {scope} · as of {as_of}'
+
+  - id: external_data_refresh
+    name: "External Data Refresh"
+    description: "Looks at each dataset of a work list of open data on its portal again (the dataset and its distributions, two calls each, priced first) and says what changed on their side since the last look: the title, publisher, license, formats, size and modified date, and distributions added, removed or changed. The first look has no earlier list of distributions and says so rather than saying nothing changed. A portal that does not answer leaves the earlier look and the stored values in place."
+    resource_types: ["open_data"]
+    intent: scouting
+    perspectives: ["all", "Steward"]
+    annotation_types: []
+    source: local
+    run_time: minutes
+    availability: inline
+    action: survey
+    target_shape: whole_resource_only
+    recommended: false
+    answers_questions: false
+    egeria_registration:
+      candidate: false
+      native_process_ref: null
+    declaration:
+      result_kind: table
+      table:
+        columns: [title, outcome, words]
+        key_fields: [title]
+      result_kind_note: "One row per dataset with what changed on their side; none of the other kinds fits a per-dataset change list."
+      measures:
+      - name: datasets_changed
+        unit: datasets
+        as_of: looked_at
+        value_field: changed
+      - name: datasets_unchanged
+        unit: datasets
+        as_of: looked_at
+        value_field: unchanged
+      absence:
+        not_measured: 'Not refreshed: the portal did not answer, so the dataset keeps the values and the earlier look it had.'
+        not_permitted: 'Not permitted: the portal refused the read.'
+        not_applicable: 'Not applicable: the dataset is not on a portal RE can read yet.'
+        measured_nothing: 'No change on their side since the last look.'
+      extents:
+      - name: rows
+        fields: [title, outcome, words]
+        rows: 25
+        order: datasets that changed first
+        truncation: '{shown} of {total} datasets shown, those that changed first'
+        token_cost: 600
+        citation: '{analysis} · {scope} · as of {as_of}'

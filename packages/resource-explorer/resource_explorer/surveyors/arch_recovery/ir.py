@@ -99,6 +99,15 @@ class Component:
     # this is what the target model already expects, not a workaround).
     parent_slug: str = ""
     depth: int = 0
+    # Whose boundary this is (DESIGN-BLUEPRINT-NODE-ADMISSION.md): "built_here" (a build
+    # context, Dockerfile, manifest or first-party marker in this repository), "shipped_here"
+    # (an image this repository publishes) or "referenced_only" (an image it neither builds
+    # nor publishes: a runtime dependency, never a component). `admission_evidence` is the
+    # short "from <file>" / "image <name>" sentence shown on the node; `image` is the image
+    # a compose service runs, when it names one.
+    admission: str = "built_here"
+    admission_evidence: str = ""
+    image: str = ""
 
     def __post_init__(self) -> None:
         if self.type is not None and self.type not in COMPONENT_TYPES:

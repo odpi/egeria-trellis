@@ -14,23 +14,44 @@
 # deliberately separate conventions — see ResourceTypeAdapter's docstring in
 # survey_definition_executor.py.
 #
+# Each technology type may also say how it is registered in Egeria:
+#   separate_server_element - true: the kind has a SERVER element distinct from
+#                        its database element (PostgreSQL). false: the two
+#                        coincide (a single-file or embedded database) -- the
+#                        single-step variant, not built yet. Absent: the kind is
+#                        not wired, and RE says so rather than guessing.
+#   server_technology_type - the technology type of that server element.
+#   (per process) target - "asset" (default) or "server": which Egeria element
+#                        the action target is.
+#
 # Each process has a `kind`, which controls how RE is allowed to use it:
+#   (optional per process) action_target_name - the name Egeria's survey service
+#                        expects its subject under; defaults to "serverToSurvey".
 #   survey_existing    - a single GovernanceActionType that surveys an
 #                        already-cataloged asset (target = existing asset
 #                        GUID, action target name "serverToSurvey"). Safe to
 #                        trigger directly against an existing entity.
 #   catalog_and_survey - a multi-step GovernanceActionProcess that CREATES the
 #                        asset from template placeholder properties (host,
-#                        port, credentials, ...) and then surveys it. Not
-#                        (yet) wired for one-click execution from RE, since
-#                        that needs template placeholder parameters rather
-#                        than an existing GUID — shown as informational only.
+#                        port, secrets collection, ...) and then surveys it.
+#                        Wired for one-click execution (catalog_and_survey.py)
+#                        for a database RE holds a registered record for:
+#                        RE maps its stored record onto those placeholders
+#                        (never a password: credentials reach Egeria through
+#                        the .omsecrets projection) and submits the process.
+#                        FileDirectory's is not wired yet.
+#   mixed_process      - a GovernanceActionProcess RE declares whose steps run
+#                        on different hosts (a native survey, then an RE step on
+#                        RE's engine host); its steps are mixed_process.py's
+#                        MIXED_PROCESSES. Started with the asset as target.
 #   delete             - a destructive process (e.g. deletes a cataloged
 #                        asset). RE must NEVER expose this as a runnable
 #                        candidate, one-click or otherwise.
 technology_types:
   - name: "PostgreSQL Relational Database"
     entity_type: database
+    separate_server_element: true
+    server_technology_type: "PostgreSQL Server"
     processes:
       - qualified_name: "PostgreSQLSurvey::survey-postgres-database"
         display_name: "Survey PostgreSQL Database"
@@ -43,11 +64,37 @@ technology_types:
         display_name: "Catalog and Survey"
         kind: catalog_and_survey
         description: >-
-          Creates the RelationalDatabase entity from a catalog template, runs
-          a survey against it, and prints the resulting report — all as one
-          native Egeria process. Confirmed live 2026-07-08 via
+          Registers the PostgreSQL server with Egeria if it is not there yet,
+          then has Egeria's own process create the RelationalDatabase entity
+          from its catalog template, survey it, and print the report. Optional:
+          RE's own surveys never need it. Process confirmed live 2026-07-08 via
           find_governance_definitions(search_string="PostgreSQLDatabase",
           metadata_element_type="GovernanceActionProcess").
+      - qualified_name: "ResourceExplorerSurvey::re-db-derived"
+        display_name: "Resource Explorer: derived checks"
+        kind: survey_existing
+        action_target_name: newAsset
+        needs_credentials: false
+        description: >-
+          Resource Explorer's own db_derived step, run as an Egeria engine action
+          by RE's engine host (engine_host.py; DESIGN-RE-ENGINE-HOST-BY-EQUIVALENCE
+          §5). It reads only the rows RE already stores and opens no connection.
+          Listed after PostgreSQLSurvey on purpose: callers that take the FIRST
+          survey_existing process keep Egeria's own survey. Runs only where the
+          owner has declared the engine (docs/dr-egeria/engine-host/) and RE's
+          engine host is on.
+      - qualified_name: "GovActionProcess::ResourceExplorer::PostgresSurveyThenDerived"
+        display_name: "Postgres survey then derived"
+        kind: mixed_process
+        description: >-
+          One Egeria process, two steps: Egeria's own PostgreSQL survey, then
+          Resource Explorer's database staleness derived from the report that
+          survey just wrote (engine host step 4, mixed_process.py; the steps and
+          guard are MIXED_PROCESSES["postgres_survey_then_derived"]). Started
+          with the database asset as its "serverToSurvey" target, the name RE's
+          own PostgreSQLSurvey run uses. Runs only where the owner has declared
+          the process (docs/dr-egeria/engine-host/processes/) and RE's engine
+          host is on; step 1 needs the database's credentials as PostgreSQLSurvey does.
       - qualified_name: "PostgreSQLDatabase:DeleteAssetWithTemplateGovernanceActionProcess"
         display_name: "Delete Database Asset"
         kind: delete
@@ -59,6 +106,7 @@ technology_types:
       - qualified_name: "PostgreSQLSurvey::survey-postgres-server"
         display_name: "Survey PostgreSQL Server"
         kind: survey_existing
+        target: server
         description: >-
           Egeria's native survey of an already-cataloged PostgreSQL server —
           connection metadata and hosted database list.
@@ -73,6 +121,7 @@ technology_types:
       - qualified_name: "FileSurvey::survey-folder"
         display_name: "Survey Folder"
         kind: survey_existing
+        action_target_name: fileToSurvey
         description: >-
           Egeria's native survey of an already-cataloged FileFolder — file/
           folder counts, sizes, and classification, without recursing into

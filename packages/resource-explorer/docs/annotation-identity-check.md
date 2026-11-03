@@ -1,5 +1,7 @@
 # Can a measurement reach its survey report?
 
+**Status:** implemented. Answered 2026-09-11 from the schema and live registry; the answer is applied in code.
+
 **Asked by:** the design session, `NEXT-ROUND.md` §0 — scoped as "an hour, not
 a work item", on the grounds that answering it might retire the backlogged
 run-id persistence change and the timestamp-correlation hazard with it.

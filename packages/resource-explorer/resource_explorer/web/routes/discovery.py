@@ -110,43 +110,6 @@ async def list_foundation_prefilters() -> dict:
     return _load_foundation_prefilters()
 
 
-class GithubBaseUrlSetting(BaseModel):
-    base_url: str
-    is_override: bool  # False = showing config.py's .env-configured default, not a runtime override
-
-
-@router.get("/github-base-url", response_model=GithubBaseUrlSetting)
-async def get_github_base_url() -> GithubBaseUrlSetting:
-    """Backs the minimal inline "GitHub source: <base_url> [edit]" control
-    on the Discover-repos view (D1/D2/D8) — the only runtime setting this
-    plan introduces, so a small dedicated pair of routes rather than a full
-    generic /api/settings/{key} REST surface."""
-    from resource_explorer.config import get_config
-    from resource_explorer.registry import ProjectRegistry
-
-    override = ProjectRegistry().get_setting("github_base_url")
-    return GithubBaseUrlSetting(
-        base_url=override or get_config().github.base_url, is_override=bool(override),
-    )
-
-
-class GithubBaseUrlUpdate(BaseModel):
-    base_url: str  # "" clears the override, reverting to the .env default
-
-
-@router.post("/github-base-url", response_model=GithubBaseUrlSetting)
-async def set_github_base_url(body: GithubBaseUrlUpdate) -> GithubBaseUrlSetting:
-    from resource_explorer.config import get_config
-    from resource_explorer.registry import ProjectRegistry
-
-    registry = ProjectRegistry()
-    registry.set_setting("github_base_url", body.base_url.strip())
-    override = registry.get_setting("github_base_url")
-    return GithubBaseUrlSetting(
-        base_url=override or get_config().github.base_url, is_override=bool(override),
-    )
-
-
 class RepoSearchRequest(BaseModel):
     keyword: str = ""
     min_stars: int = 0
@@ -261,27 +224,19 @@ def export_inventory() -> Response:
     scorecard that looks authoritative is the failure mode this format is most
     likely to produce.
     """
-    import csv as _csv
-    import io as _io
-
-    from resource_explorer.batch_io import ALL_COLUMNS, export_rows
+    from resource_explorer.batch_io import export_filename, export_rows, rows_to_csv_text
     from resource_explorer.registry import ProjectRegistry
 
     rows = export_rows(ProjectRegistry())
-    buf = _io.StringIO()
-    writer = _csv.DictWriter(buf, fieldnames=list(ALL_COLUMNS))
-    writer.writeheader()
-    for r in rows:
-        writer.writerow({c: r.get(c, "") for c in ALL_COLUMNS})
 
     return Response(
-        content=buf.getvalue(),
+        content=rows_to_csv_text(rows),
         media_type="text/csv",
         # Dated filename: the point of the scorecard is diffing one against
         # another, and "inventory.csv (3)" in a downloads folder makes that
-        # needlessly hard.
+        # needlessly hard. `re-<what>-<name>-<date>.csv`, shared by every export.
         headers={"Content-Disposition":
-                 f'attachment; filename="re-inventory-{_today()}.csv"'},
+                 f'attachment; filename="{export_filename("inventory", date=_today())}"'},
     )
 
 
@@ -320,6 +275,87 @@ class ListLoadResult(BaseModel):
     # than silently folded in, because "I gave you 3 lines and got 214 repos"
     # needs an explanation attached to it.
     expanded_orgs: list[dict] = []
+
+
+class FromFileRequest(BaseModel):
+    """A CSV, as text (the browser reads the file), and the db servers a person
+    chose in the preview for rows that named none: {"<line>": "<server slug>"}."""
+    text: str
+    server_choices: dict[str, str] = {}
+    #: The investigation chosen (preview only reads it: which already-registered
+    #: rows are already members of it).
+    investigation: str = ""
+
+
+class FromFileImport(FromFileRequest):
+    lines: list[int] | None = None      # file lines the person ticked; None = all
+    group: str = ""
+    #: [{"line": 7, "field": "group"}]: proposed changes the person accepted.
+    accept_changes: list[dict] = []
+
+
+def _server_choices(raw: dict[str, str]) -> dict[int, str]:
+    try:
+        return {int(k): v for k, v in raw.items() if v}
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="server_choices keys must be line numbers") from exc
+
+
+@router.post("/from-file/preview")
+def preview_from_file(body: FromFileRequest) -> dict:
+    """The five-count preview of a CSV (batch_io.plan_import). Writes nothing.
+
+    A file missing `resource_type` or `address` is refused (`refused` is set,
+    `missing` names the column, `header` is the row found) with HTTP 200: it is
+    a result the dialog shows, not a server fault.
+    """
+    from resource_explorer.batch_io import preview_file
+    from resource_explorer.registry import ProjectRegistry
+
+    return preview_file(ProjectRegistry(), body.text,
+                        server_choices=_server_choices(body.server_choices),
+                        investigation=body.investigation)
+
+
+@router.post("/from-file/import")
+def import_from_file(body: FromFileImport) -> dict:
+    """Apply a confirmed preview. The file is re-planned here from its text; the
+    browser never sends rows. Local registry writes only: nothing goes to Egeria
+    and no credential is read from the file (there is no way to: see
+    batch_io.parse_csv_strict)."""
+    from datetime import datetime, timezone
+
+    from resource_explorer.batch_io import import_file
+    from resource_explorer.registry import ProjectRegistry
+
+    when = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    try:
+        return import_file(
+            ProjectRegistry(), body.text, lines=body.lines,
+            server_choices=_server_choices(body.server_choices), group=body.group,
+            investigation=body.investigation, accept_changes=body.accept_changes,
+            rationale=f"Loaded from a file on {when}")
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+class CandidateExport(BaseModel):
+    label: str = ""
+    server_slug: str = ""
+    candidates: list[dict] = []
+
+
+@router.post("/candidates.csv")
+def export_candidates(body: CandidateExport) -> Response:
+    """A source's candidates, as the dialog's table shows them, in the shared
+    column contract. POST because the rows are the dialog's, not a stored set."""
+    from resource_explorer.batch_io import candidate_export_rows, export_filename, rows_to_csv_text
+    from resource_explorer.registry import ProjectRegistry
+
+    rows = candidate_export_rows(ProjectRegistry(), body.candidates, body.server_slug)
+    name = export_filename("candidates", body.label or body.server_slug or "", date=_today())
+    return Response(content=rows_to_csv_text(rows), media_type="text/csv",
+                    headers={"Content-Disposition": f'attachment; filename="{name}"'})
 
 
 @router.post("/from-list", response_model=ListLoadResult)
@@ -437,40 +473,84 @@ class ImportRequest(BaseModel):
 class ImportResponse(BaseModel):
     queued: int
     skipped: list[str]  # github_urls already registered, not re-queued
+    in_flight: list[str] = []  # github_urls already in another running batch, refused
+    batch_id: str = ""  # activity-log id of the batch row, written 'running' before this returns
 
 
 @router.post("/import", response_model=ImportResponse)
 async def import_repos(body: ImportRequest) -> ImportResponse:
     """Queues a background import — see resource_explorer/github/org_importer.py.
-    Returns immediately; progress is written to the activity log (operation
-    'scout') as each repo completes, not polled from this response."""
+    Returns immediately. The batch row and one row per repo are written to the
+    activity log (operation 'scout') as 'running' BEFORE this returns, and each
+    is finalised as its repo finishes; GET /import/{batch_id} reads them back."""
     import threading
 
-    from resource_explorer.github.org_importer import _run_import_batch
+    from resource_explorer.github.org_importer import (
+        _run_import_batch, begin_import_batch, claim_in_flight, release_in_flight,
+    )
     from resource_explorer.registry import ProjectRegistry
 
     registry = ProjectRegistry()
     if body.group_slug and not registry.get_group(body.group_slug):
         raise HTTPException(status_code=404, detail=f"Group '{body.group_slug}' not found")
 
-    to_queue = []
+    candidates = []
     skipped = []
     for r in body.repos:
         if registry.get_by_github_url(r.github_url):
             skipped.append(r.github_url)
         else:
-            to_queue.append(r.model_dump())
+            candidates.append(r.model_dump())
 
+    claimed, in_flight = claim_in_flight([c["github_url"] for c in candidates])
+    to_queue = [c for c in candidates if c["github_url"] in claimed]
+
+    batch_id = ""
     if to_queue:
-        t = threading.Thread(
-            target=_run_import_batch,
-            args=(body.source_label, to_queue, body.group_slug),
-            daemon=True,
-            name="resource-explorer-discovery-import",
-        )
-        t.start()
+        try:
+            batch = begin_import_batch(registry, body.source_label, to_queue)
+            batch_id = batch.batch_id
+            t = threading.Thread(
+                target=_run_import_batch,
+                args=(body.source_label, to_queue, body.group_slug, batch),
+                daemon=True,
+                name="resource-explorer-discovery-import",
+            )
+            t.start()
+        except BaseException:
+            release_in_flight(claimed)
+            raise
 
-    return ImportResponse(queued=len(to_queue), skipped=skipped)
+    return ImportResponse(queued=len(to_queue), skipped=skipped, in_flight=in_flight, batch_id=batch_id)
+
+
+def _repo_state(entry: dict | None) -> str:
+    """importing | imported | already_registered | failed | unknown, from the persisted row."""
+    if not entry:
+        return "unknown"
+    if entry["status"] == "running":
+        return "importing"
+    if entry["status"] == "error":
+        return "failed"
+    outcome = next((i.get("outcome") for i in entry.get("items", []) if i.get("outcome")), "")
+    return outcome or "imported"
+
+
+@router.get("/import/{batch_id}")
+def import_status(batch_id: str) -> dict:
+    """Progress of a batch, derived only from its persisted activity rows."""
+    from resource_explorer.registry import ProjectRegistry
+
+    registry = ProjectRegistry()
+    batch = registry.get_activity(batch_id)
+    if not batch or batch.get("operation") != "scout":
+        raise HTTPException(status_code=404, detail="Unknown import batch")
+    repos = {}
+    for it in batch.get("items", []):
+        e = registry.get_activity(it.get("entry_id", ""))
+        repos[it["github_url"]] = {"state": _repo_state(e), "detail": (e or {}).get("detail", "")}
+    return {"batch_id": batch_id, "status": batch["status"], "done": batch["status"] != "running",
+            "summary": batch["summary"], "repos": repos}
 
 
 class DispositionRequest(BaseModel):

@@ -1,6 +1,6 @@
 """Tests for the filesystem reachability check — Phase 1 slice #13
 (COORDINATOR-BRIEF-MULTI-RESOURCE.md, egeria-support-for-multi-resource.md
-§5/§9/§10, `docs/design-notes/RESOURCE-REACHABILITY-IMPLEMENTED.md`).
+§5/§9/§10, `RESOURCE-REACHABILITY-IMPLEMENTED.md`).
 
 `classify_check_asset_result` is pure (no network/registry dependency) and
 is tested directly against the live-confirmed raw response shapes recorded

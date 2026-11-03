@@ -1,355 +1,128 @@
 # Designer inbox
 
-**One writer: the designer session.** Implementers never need to edit this file
-— the *answered* column is derived from the `*-IMPLEMENTED.md` you write, and
-each of those already names what it replies to in its header. Two writers on one
-file is how the 02:32 crossing lost an index; signal by adding your reply
-document and this gets regenerated from it.
+**One writer: the designer session.** This file is written by hand. The
+designer reads each `*-IMPLEMENTED.md` and the commits that cite a reply,
+then updates the row. Nothing generates it. Implementers never edit it:
+signal by writing your `*-IMPLEMENTED.md` (it now lives in `implemented/`)
+and naming the designer note it answers, by its bare filename.
 
-**Last reconciled:** 2026-09-17 against the implementer's report of 09-16.
-`origin/main` was at `05cb63c0` (after `#104`) when the specs were written.
+**Last reconciled:** 2026-10-01, against `main` at `524f1c7f`, after the
+design-notes move. Evidence for every row is an implemented note or a commit
+that names the designer note. A row whose only evidence is a commit that
+doesn't name the note says **unverified**. `TIMELINE.md` (the coordinator's)
+was the cross-check for dates.
+
+**The rule stays: unanswered until proven shipped.** A row with no citation
+is *not built*, never *probably done*.
 
 ---
 
-## Start here — what is ready to pick up
+## Open: replies with nothing built against them yet
 
-**One classification pass, then three items.** Everything else on the last board had already shipped — see below,
-because the reason matters more than the list.
-
-| | take this | read | verified |
-|---|---|---|---|
-| **Parity inventory** | *First pass done — classify it* | `INVENTORY-CLASSIC-TO-NEXT.md` | **Sixteen candidate gaps, one of them decided.** Ten absent entirely (the whole Admin section, repair, outbox, resync, Prefect, discovery sources, question catalog, group admin, scout source mode, persisted sidebar width); five partly present (group collapse, per-answer feedback, perspective persistence, chat, bulk); one deferred on record (databases and filesystems). **What is left needs the project owner:** marking each *deferred* (a decision exists) vs *undiscussed*. I can only cite the one decision that came through these notes. Half an hour with the table. |
-
-### Just landed, and reviewed
-
-**Stale publish shipped** in `8758f248` ("RE: publish state resolves against
-Egeria and flags, never deletes, what vanished"), Sep 16 — **before** this
-board or its "Stale publish" row were even written (2026-09-17). No
-`*-IMPLEMENTED.md` existed for it, which is the exact mechanism this board's
-own "Why this kept happening" section names — a `*-IMPLEMENTED.md` written
-2026-09-20, `PUBLISH-STATE-AFTER-REDEPLOY-IMPLEMENTED.md`, closes that gap.
-`egeria_resync.py`'s `_scan_vanished_publishes` resolves each project's
-newest `project_egeria_surveys.egeria_report_guid` against Egeria (reusing
-the existing `_resolves()` tri-state check), `_do_flag_vanished_publishes`
-flags via `egeria_linkage_status` (never deletes), and the 4th publish state
-is wired into every surface — `next/app.js` and three `index.html` sites.
-
-**Sort direction and the classic row fixed** 2026-09-20 —
-`VERDICT-QUEUE-AND-CLASSIC-ROW-IMPLEMENTED.md`. The comparator in
-`next/stages/curate.js` now runs agreement and confidence the same
-direction (both ascending, weakest-first), the toggle reads *by evidence*,
-and `_archRow` (`index.html`) gains the required *"also proposed by ‹run
-label(s)› ›"* clause when `c.proposals` has more than one current entry.
-The primary-selection swap (best-evidenced rather than most-recent) is
-deliberately deferred — filed in `docs/Backlog.md` ("Classic panel: primary
-component pick is still `latest`, not best-evidenced") rather than silently
-skipped, since the honesty clause required here doesn't depend on it.
-
-**Verdict subject shipped** in PR #107 (`1b370cbe`), with
-`VERDICT-RULING-IMPLEMENTED.md` as its reply. Reviewed in
-`REVIEW-VERDICT-RULING.md`: all four consequences are there, and two are better
-than the spec (blueprint coverage bucketed per reading rather than one clause;
-the zero-total omission reasoned out). Three things came back:
-
-- **One defect — the sort comparator inverts the queue** (`app.js:5880`).
-  Agreement runs descending while confidence runs ascending, so the
-  best-evidenced branches now sort to the top of a weakest-first review queue.
-  My §2b wording caused it: *outranks* reads as *sorts above*, where agreement
-  should raise effective evidence and therefore **sink** a branch. The control
-  should also read *by evidence*, not *by confidence*.
-- **The classic Curate panel still has the original defect.**
-  `repo_survey_definition_adapter.py:2951` keeps `max(comp_rows, key=surveyed_at)`
-  as the top-level primary, and the classic panel reads it — so a curator there
-  still sees whichever extractor ran last, presented as the answer. It may defer
-  the two-proposal display; it may not present one proposal as the answer. One
-  clause fixes it. **Answered 09-17** — see `RULING-CLASSIC-AND-NEXT.md`: classic
-  retires only if `/next` earns it, so there is no timeline and the clause is
-  required. Capability may live in `/next` alone; honesty may not.
-- **If there must be a primary, it should be the best-evidenced, not the most
-  recent** — *most recently surveyed* is a fact about the scheduler, not about
-  the component.
-
-### Shipped, verified against `342e0ca3` — three boards' worth
-
-Everything below was on a previous board as ready-to-start. All of it was
-already done.
-
-- **`interface_surface`'s three-rung ladder**, reading `[project.scripts]` from
-  DistributionParser — `interface_surface.py:87-88`, `_cli_entry_points` at
-  `:174`, and its docstring states the defect I wrote the spec about: *"a
-  `[project.scripts]` entry point IS the CLI, not a hint of one."*
-- **The four destinations** — `destinations.py`, with `judgement`/`task`/`context`
-  declarable and **`ours` computed rather than declared**, which is better than
-  what I specified: a check should not be able to nominate its own gap as
-  someone else's problem.
-- **The gaps collection** — `gaps.py`, dated 09-15, with `not_measurable` and
-  `disagreement` as its only two shapes.
-- **`proposed_by` on the component rows** — `component_tree.py:231` at HEAD.
-- **`Find repos` out of `SUB_TABS`** — four entries at `app.js:179`, no `search`.
-- **The caveat attribution rule** — `app.js:453` carries it as a comment, and
-  `attribute(f, f.note)` at `:464` implements it.
-- **The plural ports case, the tree's foot sentence, sort-by-confidence** —
-  `portsWords()`, `totals_sentence()`, and the `sort === 'confidence'` branch.
-
-### Why this kept happening, and the rule that actually fixes it
-
-Three rounds running, this board listed shipped work as ready-to-start. Same
-mechanism every time: **the state column derived from whether a
-`*-IMPLEMENTED.md` existed, and reply documents lag the code.** `gaps.py` is
-dated 09-15 — it was being written while I was writing the spec that asked for
-it.
-
-I wrote the convention that fixes this into this file yesterday — *a
-ready-to-start row must cite the code it was checked against* — and then added
-four rows with no citations. Stating a rule is not following it.
-
-**So the default flips.** A row does not go on this board as ready-to-start
-until someone has looked at the code and put the citation in the row. Absent a
-citation the row is *unknown*, never *ready*. "Unanswered until proven shipped"
-manufactures work; "unknown until verified" costs one grep. The designer session
-can now read the repo directly, so there is no excuse left.
-
-### Blocked, or still on the designer's desk
-
-- **The component branch tree with its type evidence** — **drawn**, on canvas
-  page seven. Its spec waits for **Verdict subject** to land, because the tree is built out of
-  the Verdict subject row changes and writing the prose before that is specifying against a
-  guess. One correction is already on the drawing: I had it sorted
-  strongest-first, and `#86`'s weakest-first is better — a review queue should
-  open on what needs attention.
-- **The wire diagram beside the tree** — layout and the two ceilings. Mine.
-- **Switching readings with verdicts already recorded** — a verdict is about the
-  path, so it shows on every reading; switching must not look like fresh
-  proposals with mysteriously pre-filled verdicts. Noted on the tree drawing,
-  drawn next round.
-- **Nested proposals** — where two extractors propose components over the same
-  scope at *different granularities*. `curation-lenses-design.md` §4.4's overlap
-  object, deliberately out of scope in today's ruling; a round of its own.
+| written | designer note | what it asks for |
+|---|---|---|
+| 10-01 | `REPLY-DESIGNER-CURATE-AND-UNDERSTANDING-ALL-KINDS.md` + `CurateAndUnderstanding` (canvas 16) | Curate's three bands on every kind; authors on tags, feedback and notes; database charts rebuilt on `database_tables`; per-kind chart list |
+| 10-01 | `REPLY-DESIGNER-DISCOVERY-SOURCES-ALL-KINDS.md` + `FindAndImport` (canvas 16) | One Find dialog per kind; non-connectable databases listed; CSV rows name a server, never a credential |
+| 09-30 | `REPLY-DESIGNER-WORK-LISTS-VS-INVESTIGATIONS.md` + `WorkListsAndScope`, `InvestigationLensFitPairs` (canvas 15) | Investigation / scope / work list vocabulary; the two actions; the scope grid; the data lens section; fit rows; pair questions |
 
 ---
 
 ## The ledger
 
-| written | designer reply | subject | state |
+Newest first. "Answered" means the evidence covers the whole note.
+"In part" names what's left.
+
+| written | designer note | subject | state |
 |---|---|---|---|
-| 09-17 | `RULING-CLASSIC-AND-NEXT.md` | Classic retires only if `/next` earns it; capability may diverge, honesty may not; the one-clause fix for the classic component row | answered — `VERDICT-QUEUE-AND-CLASSIC-ROW-IMPLEMENTED.md` (honesty clause; primary-selection swap deferred to `docs/Backlog.md`) |
-| 09-17 | `REVIEW-VERDICT-RULING.md` | Review of `#107`; the sort-comparator defect; the classic-row defect | answered — `VERDICT-QUEUE-AND-CLASSIC-ROW-IMPLEMENTED.md` |
-| 09-17 | `SPEC-PUBLISH-STATE-AFTER-REDEPLOY.md` + `PUBLISH-STATE-AFTER-REDEPLOY-CORRECTIONS.md` + `REPLY-PUBLISH-STATE-GO-AHEAD.md` | Publish state is stored locally and never reconciled; one resolve per connection; created vs archive GUIDs; the fourth publish state | answered — shipped `8758f248` (before this board existed); `PUBLISH-STATE-AFTER-REDEPLOY-IMPLEMENTED.md` written 09-20 to close the missing-reply gap |
-| 09-17 | `ComponentTree.dc.html` (canvas page 7) | The branch tree: type evidence in words, agreement in the sort, absence in both columns, accept as the catalogue act | drawn; spec follows **Verdict subject** |
-| 09-17 | `REPLY-RETRACTION-WITHDRAWN.md` | Withdrawing §4; two kinds of correction under one word; the gaps-list seed | needs no build; its §4 question is answered by the spec above |
-| 09-16 | `RULING-WHAT-A-VERDICT-IS-ABOUT.md` + `VerdictSubject` | What a verdict is *about*; the three meanings of "perspective"; the withdrawal asymmetry | **ready to start — Verdict subject** |
-| 09-15 | `SPEC-ACTIONABLE-AND-HONEST.md` + `Actionable` / `WhatWeFound` | Whose absence it is; the four destinations; population and caveat attribution; the interface ladder's missing rung | answered in part — `#98`–`#104`; **Honest rows** and **Findings that act** remain |
-| 09-14 | `REPLY-CATALOGUE-IN-LAYERS.md` | Conceding the type error; layer 2 = accepted verdicts; the retraction | answered — the bulk-accept wording landed; §4 **superseded** by `REPLY-RETRACTION-WITHDRAWN.md` |
-| 09-14 | `SPEC-THE-STAGE-PAGE.md` + `StagePage` / `FactInPlace` / `AnalysesIndex` | The owner's round — points 1/2/3/6/7/9/10, the fold, and the fact under the answer | answered — `#93` (endpoints), `#94`, `#99` (the split) |
-| 09-14 | `REPLY-PORTS-SCARCITY-CORRECTED.md` | A correction against myself on port scarcity; the plural ports case; round two's agenda | answered — `#85`, `#86` (all three items; no `*-IMPLEMENTED.md` was written, which is how this row went stale) |
-| 09-14 | `SPEC-PORTS-ROUND-ONE.md` + `ComponentReview` / `PortsAndWires` | The Curate claim corrected; ports as a column not a screen; review at the branch | answered — `PORTS-ROUND-ONE-IMPLEMENTED.md` (`#84`, `#85`) |
-| 09-14 | `REPLY-CORRECTION-POPULATION.md` | Keep the whole current list; one clause when the corrected record carried a facet | answered — `#84` |
-| 09-14 | `SPEC-REPORT-ACTS.md` + `ReportActs.dc.html` | The three acts on a report; the whole report as default; staleness carried; the record's uses | answered — `REPORT-ACTS-IMPLEMENTED.md` (`#83`, correction act included) |
-| 09-13 | `SPEC-RECORDS-AND-COST-CALLS.md` + `RunChoice` / `DepthOffer` | The re-run choice, §3's depth offer, the report record | answered — `TWO-CALLS-AND-THE-RECORD-IMPLEMENTED.md` (`#81`, `#82`) |
-| 09-13 | `REVIEW-RAIL-SENTENCE.md` | Review of `#60` — three copy defects | answered — `#72`, all four points |
-| 09-13 | `REPLY-COST-LADDER-AND-PUBLISH-STATE.md` | Publish stays out of the ladder; three publish states, one condition | answered — `FUNNEL-COST-IMPLEMENTED.md` (`#70`, `#71`, `#75`, `#76`) |
-| 09-13 | `REPLY-FUNNEL-COST.md` | Rulings on the funnel measurement | answered — `FUNNEL-COST-STATUS.md` + addendum, `#61`, `#63` |
-| 09-12 | `REPLY-BLANK-RAIL-AND-LIST-ANSWERS.md` | The blank evidence rail; list answers side by side; the report as a Record | answered — `#59`, `#60` |
-| 09-12 | `REVIEW-PROMOTION.md` | Review of `#41`; "no fix" answered as a value not a flag | answered — `PROMOTION-AND-RAIL-IMPLEMENTED.md` |
-| 09-12 | `REVIEW-ENRICHMENT-JOURNAL-VENDORED.md` | Review of `#34`/`#35`/`#36`/`#39`; the four open items answered | answered — `REVIEW-FIXES-IMPLEMENTED.md` |
+| 10-01 | `REPLY-DESIGNER-CURATE-AND-UNDERSTANDING-ALL-KINDS.md` | Curate and Understanding for every kind | **not built yet** |
+| 10-01 | `REPLY-DESIGNER-DISCOVERY-SOURCES-ALL-KINDS.md` | Discovery sources for every kind; CSV in and out | **not built yet** |
+| 10-01 | `REPLY-DESIGNER-DESIGN-NOTES-REORG.md` | The move; bare note names; INBOX reconcile; TIMELINE lines | answered — `DESIGN-NOTES-MOVE-IMPLEMENTED.md` (bare-name convention and dangling-pointer test adopted); the INBOX reconcile is this pass |
+| 09-30 | `REPLY-DESIGNER-WORK-LISTS-VS-INVESTIGATIONS.md` | Work lists vs investigations, questions 1–8 | **not built yet** |
+| 09-29 | `REPLY-DESIGNER-ENRICHMENT-STAGE-IA.md` + `EnrichmentContext` (canvas 14) | The Context tab; feeds-→; observation states | answered — `ENRICHMENT-E0-ROW-ANATOMY-IMPLEMENTED.md`, `ENRICHMENT-E1-CONTEXT-TAB-IMPLEMENTED.md`, `ENRICHMENT-E2-DOC-SOURCES-RESEAT-IMPLEMENTED.md`, `ENRICHMENT-E3-OBSERVATION-STATES-IMPLEMENTED.md`; human-question answers still have no author (§6 item 1) — unverified |
+| 09-28 | `REPLY-DESIGNER-ROUND2-DATABASE-SCREENS.md` + `DatabaseScreens` (canvas 12) | One glyph table; the By-analysis band; the Questions headline; per-schema tree | in part — `G1-GLYPH-CONSOLIDATION-IMPLEMENTED.md`, `G2-QUESTIONS-HEADLINE-SLOT-IMPLEMENTED.md`, `TABLE-COUNT-RENAME-IMPLEMENTED.md`, `BY-ANALYSIS-PROGRESSIVE-AND-GRAPH-IMPLEMENTED.md`; the tree's per-schema overview and the header remedies — unverified |
+| 09-28 | `RelationshipGraph` (canvas 13) | The graph from the real edges; "no keys inside", never "isolated" | answered — `RELATIONSHIP-GRAPH-RENDERING-IMPLEMENTED.md`, `RELATIONSHIP-GRAPH-SCHEMA-SELECT-AFFORDANCE-IMPLEMENTED.md` (neither names the drawing; unverified on the per-schema wording) |
+| 09-28 | `REVIEW-CURATE-PUBLISH-FRESHNESS.md` | Review of the curate publish-freshness work | landed late (`81031e92`), after `CURATE-PUBLISH-FRESHNESS-IMPLEMENTED.md`; no reply names it — **its findings are unanswered** |
+| 09-28 | `REVIEW-MULTI-RESOURCE-REPRESENTATIONS.md` | Review of the multi-resource spec draft | needs no build (a review of a design) |
+| 09-27 | `REVIEW-MULTI-RESOURCE-ROUND2.md` | Round 2 of the same | needs no build |
+| 09-27 | `REPLY-DRAFT-BADGE.md` | `contentStatus: DRAFT` is the measured/declared axis, not a badge | needs no build (it ruled against building one) |
+| 09-25 | `REVIEW-SURVEY-PANE-285.md` | Review of `#285` | answered — `SLICE-16-HONEST-ABSENCE-IMPLEMENTED.md`, `SLICE-17-RUNNABILITY-FROM-CATALOG-IMPLEMENTED.md` |
+| 09-25 | `REPLY-SURVEY-ANALYSES-PANE-USER-FACING-MODEL.md` | One runnable-first list | answered — `41703c55` (no implemented note) |
+| 09-24 | `REPLY-COPY-REVIEW-CREDENTIAL-AND-FIT-LANGUAGE.md` | The §7 copy checklist | answered — `ae63e872` (items 1, 2, 4–9), `d4740781` (item 3) |
+| 09-24 | `REPLY-DATABASE-CREDENTIAL-CAPABILITY-VISIBILITY.md` | What a credential can see, shown | in part — `#250`–`#257`, `69d9871b` (§7/§8 docs); the §1 model ruling is with the architecture session (`ASK-CREDENTIAL-GATING-AND-OMSECRETS-REFRESH.md`) |
+| 09-24 | `REPLY-SCHEMA-AS-SUB-RESOURCE.md` | A schema is a grain, not a sub-resource | answered — `SCHEMA-AGGREGATION-GRAIN-IMPLEMENTED.md` |
+| 09-23 | `RULING-DB-QUESTION-CATALOG-CONSISTENCY.md` | The fact layer takes the resource type | answered — `9e614f38`, `b481c3dc` (no implemented note) |
+| 09-22 | `RULING-SUBRESOURCES-PLACEMENT.md` | Sub-Resources configuration lives on Survey & analyses | answered — `d8855c71` (no implemented note) |
+| 09-22 | `REVIEW-MULTI-RESOURCE-ROUND3.md` | Round 3 of the multi-resource spec | needs no build |
+| 09-21 | `REPLY-RECONCILE-FLAGS.md` | Build the status route; the "scheduled" boolean; where the saved search goes | in part — `RESYNC-STATUS-ROUTE-IMPLEMENTED.md` matches §1 but doesn't name this reply; §2–§3 unverified |
+| 09-20 | `SPEC-MULTI-RESOURCE-REPRESENTATIONS.md` | Representations for databases and file shares | in part — the phases in `COORDINATOR-BRIEF-MULTI-RESOURCE.md`; §2 "change over time" is still absent (parity D-24, D-28, D-31; see the Curate and Understanding reply) |
+| 09-20 | `SPEC-ADMIN-THE-FOUR-GAPS.md` | Admin's four gaps | answered — `ADMIN-REGISTRIES-IMPLEMENTED.md`, `DISCOVERY-SOURCES-ADMIN-IMPLEMENTED.md`, `GROUPS-ADMIN-IMPLEMENTED.md`, `RECONCILE-ADMIN-IMPLEMENTED.md` |
+| 09-18 | `RULING-NAV-GROUPING.md` | Run, frame, cross-cutting; ad-hoc vs bound shown | answered — `NAV-GROUPING-IMPLEMENTED.md` |
+| 09-17 | `SPEC-CURATE-SELECTION-AND-BLUEPRINTS.md` | Curate selection and blueprints | answered — `ITEM-3-CURATE-IMPLEMENTED.md` |
+| 09-17 | `SPEC-PARITY-INVENTORY-AND-GROUPS.md` | Parity inventory; groups | answered — `GROUPS-ADMIN-IMPLEMENTED.md`, `SIDEBAR-GROUP-COLLAPSE-IMPLEMENTED.md` |
+| 09-17 | `RULING-CLASSIC-AND-NEXT.md` | Classic retires only if `/next` earns it; capability may diverge, honesty may not | answered — `VERDICT-QUEUE-AND-CLASSIC-ROW-IMPLEMENTED.md` (primary-selection swap deferred to `docs/Backlog.md`) |
+| 09-17 | `REVIEW-VERDICT-RULING.md` | Review of `#107`; the sort comparator; the classic row | answered — `VERDICT-QUEUE-AND-CLASSIC-ROW-IMPLEMENTED.md` |
+| 09-17 | `SPEC-PUBLISH-STATE-AFTER-REDEPLOY.md` + `REPLY-PUBLISH-STATE-GO-AHEAD.md` | The fourth publish state | answered — `PUBLISH-STATE-AFTER-REDEPLOY-IMPLEMENTED.md` (shipped `8758f248`) |
+| 09-17 | `ComponentTree` (canvas 7) | The branch tree | answered — `ITEM-3-CURATE-IMPLEMENTED.md` |
+| 09-17 | `REPLY-RETRACTION-WITHDRAWN.md` | Withdrawing §4 | needs no build |
+| 09-16 | `RULING-WHAT-A-VERDICT-IS-ABOUT.md` + `VerdictSubject` | What a verdict is about | answered — `VERDICT-RULING-IMPLEMENTED.md` |
+| 09-15 | `SPEC-ACTIONABLE-AND-HONEST.md` + `Actionable` / `WhatWeFound` | Whose absence it is; the four destinations | in part — `#98`–`#104`, `NEXT-DISCOVERY-IMPORT-SEARCH-IMPLEMENTED.md`; **Honest rows** and **Findings that act** — unverified since 09-17 |
+| 09-14 | `REPLY-CATALOGUE-IN-LAYERS.md` | Layer 2 = accepted verdicts | answered — `ITEM-3-CURATE-IMPLEMENTED.md`; §4 superseded by `REPLY-RETRACTION-WITHDRAWN.md` |
+| 09-14 | `SPEC-THE-STAGE-PAGE.md` + `StagePage` / `FactInPlace` / `AnalysesIndex` | The owner's round | answered — `#93`, `#94`, `#99` |
+| 09-14 | `REPLY-PORTS-SCARCITY-CORRECTED.md` | Port scarcity corrected | answered — `#85`, `#86` |
+| 09-14 | `SPEC-PORTS-ROUND-ONE.md` + `ComponentReview` / `PortsAndWires` | Ports as a column | answered — `#84`, `#85` † |
+| 09-14 | `REPLY-CORRECTION-POPULATION.md` | The whole current list | answered — `#84` |
+| 09-14 | `SPEC-REPORT-ACTS.md` + `ReportActs` | The three acts on a report | answered — `#83` † |
+| 09-13 | `SPEC-RECORDS-AND-COST-CALLS.md` + `RunChoice` / `DepthOffer` | The re-run choice; the depth offer; the report record | answered — `#81`, `#82` † |
+| 09-13 | `REVIEW-RAIL-SENTENCE.md` | Review of `#60` | answered — `#72` |
+| 09-13 | `REPLY-COST-LADDER-AND-PUBLISH-STATE.md` | Publish off the ladder | answered — `#70`, `#71`, `#75`, `#76`; `funnel-cost-measured.md` (in `docs/`) † |
+| 09-13 | `REPLY-FUNNEL-COST.md` | Rulings on the funnel measurement | answered — `#61`, `#63` † |
+| 09-12 | `REPLY-BLANK-RAIL-AND-LIST-ANSWERS.md` | The blank rail; list answers | answered — `#59`, `#60`, `0460ba31` |
+| 09-12 | `REVIEW-PROMOTION.md` | Review of `#41` | answered — `7433592f` † |
+| 09-12 | `REVIEW-ENRICHMENT-JOURNAL-VENDORED.md` | Review of `#34`–`#39` | answered per the 09-17 ledger; **unverified** † |
 
----
+† The 09-17 version of this ledger cited an implemented note for these
+rows: `PORTS-ROUND-ONE`, `REPORT-ACTS`, `TWO-CALLS-AND-THE-RECORD`,
+`FUNNEL-COST`, `FUNNEL-COST-STATUS`, `PROMOTION-AND-RAIL` and
+`REVIEW-FIXES`. **None of those seven files was ever committed**, on any
+branch. They must have lived in a working folder that never reached the
+repo. The rows now cite the PRs and commits instead, and the one row with
+no PR is marked unverified. The design notes aren't scanned by the
+dangling-pointer test, which is why nothing caught this.
 
-## Newest: what a component verdict is about
-
-`RULING-WHAT-A-VERDICT-IS-ABOUT.md`. The question could not be settled until the
-research separated the three things called *perspective* (§0 above). Once
-separated:
-
-**A verdict is about the component — the thing at that path — not about the
-proposal that surfaced it.** It stays keyed by `scope_locator`. Three reasons,
-none of them mine: `materializer.py`'s own comment says *"accepting is the point
-at which that evidence stops mattering to what gets written"*;
-`curation-lenses-design.md` §4.3 already ruled *"one verdict per component,
-reused by every lens"* on the neighbouring axis; and identity is path-only end to
-end — `run_label` reaches Egeria nowhere at all.
-
-Four consequences, and they are the work:
-
-- **The row shows both proposals.** Today the card's type, confidence and reading
-  come from `max(comp_rows, key=surveyed_at)` — whichever step wrote last — so a
-  curator can rule on a card whose attributes came from the other extractor than
-  the drawing they clicked from, with nothing saying so. That is the defect the
-  ambiguity was hiding.
-- **Agreement is the best signal in the data and `latest wins` discards it.** Two
-  unrelated methods — one reading manifests, one reading twenty-four months of
-  co-change — landing on one path is stronger evidence than either alone, and it
-  is the answer to the owner's *"why do we think this is which kind"*. Same fix,
-  both problems. It also outranks a single high confidence in the sort.
-- **Withdrawal is already proposal-scoped while verdicts are path-scoped** —
-  `_withdraw_vacated` skips scopes it did not write. So coupling can withdraw a
-  path that still carries a verdict earned from detect's, and today that reads as
-  nothing. It gets the perishability treatment, third time out: *⚠ review — no
-  longer proposed by coupling*. **Flag, do not invalidate.**
-- **The coverage sentence holds two identity regimes in one breath** — components
-  keyed by path, blueprints by `perspective::cluster_name`. It should say which:
-  *4 of 87 component paths reviewed · 0 of 12 clusters in the logical reading
-  reviewed.*
-
-`_DIAGRAM_PERSPECTIVE_PREFERENCE`'s coupling-over-detect order stays — it is a
-reasonable default and nothing better is known — but it stops being invisible.
-What stays recorded as deliberate is that the two are **never merged** in the
-diagram.
-
-## Actionable, and honest about which population
-
-`SPEC-ACTIONABLE-AND-HONEST.md`, drawn on canvas page five. Two of the owner's
-six are short answers; four are one habit and one missing half.
-
-**The dashboard split shipped** — `Questions · Survey & analyses · By analysis ·
-Disposition`, with the fetch counts on the definition rows.
-
-**Find repos leaves the strip, because a rule of mine was wrong.** *Identical
-sub-tab order on every stage, grey what a stage lacks* is right for things that
-are per-stage. Finding and importing repositories is corpus-level — the same
-action on Scouting as on Curate — so greying it across nine stages is nine wrong
-promises.
-
-**Point 3 is the important one: the missing half is *whose absence it is.*** The
-honesty rules produced a surface scrupulous about what it cannot say and silent
-about what to do. *"responsiveness — not established"* is a true sentence about
-the **analysis**, shown to someone who asked about the **repository**. So: a
-finding about the analysis collapses to one line — *3 of 11 community measures
-cannot be computed from what is collected — what is missing, and why › Not a
-finding about this repository* — with an RFA against the analysis behind the
-link. And every finding about the repository names one of **four destinations**:
-a judgement (Enrichment, not a task), a task (RFA), context (nothing to do — as
-important as the others), or **ours** (the gaps list). The gaps list *is* the
-number behind the owner's instinct that the analytics need work.
-
-**Points 4/5/6 are one habit** — a row composed from several analyses over
-several populations, written as though it came from one:
-
-- **The contradiction is real and diagnosable.** The row's provenance names three
-  analyses; 24 is `architecture_recovery`'s, the nothing is
-  `architecture_doc_lens`'s — and the answer line already says so, attributed,
-  before the caveat repeats it as *"This analysis"*. Rule: **a caveat on a
-  multi-analysis row names its analysis, or it does not render.**
-- **Every count carries its population** — *24 at depth 1, of 87 recovered* — and
-  no sentence holds two populations without *of* between them. Plus the type
-  evidence (*a console entry point*, *two detectors agree*) on the row.
-- **The interface ladder is missing its middle rung.** `interface_surface` has
-  *declared* and *implied*; the truth is usually *implemented*. And its current
-  sentence is wrong on this repository: *"cli — implied, depends on click"* while
-  `[project.scripts]` is read in four other places, one of them
-  `deployment_evidence.py` from `#94`, which calls a console entry point the
-  strongest signal. **A fact known by one walk and not read by another** — the
-  vendored defect, one analytic over.
-
-## Cataloguing in layers
-
-`REPLY-CATALOGUE-IN-LAYERS.md`. The owner's ruling corrected me, and for a better
-reason than I got right: my S3 answer said *importable distribution → Software
-Library*, and `SoftwareLibrary` is a classification meaning **a server that
-manages distribution of software modules** — PyPI, Nexus, npm. It names the
-manager, not the module. So my version would have kept cataloguing every package
-as an artifact server while congratulating itself on fixing the applications.
-
-Three things follow:
-
-- **Layer 2 is the accepted verdicts**, which reframes the component column
-  rather than adding to it — accepting a branch *is* the layer-2 catalogue act.
-  So the bulk-accept dialog must say it catalogues, **but must not name a type
-  nobody has verified**: *catalogues them as software components under
-  `resource-explorer`; the exact Egeria type is not yet pinned.* Naming
-  `DeployedSoftwareComponent` in a confirmation before verification is the
-  `SoftwareLibrary` mistake one step earlier in its life.
-- **The layer-2 offer is the depth offer's twin** — same three rules, same
-  outcome-on-the-record — and unlike component creation its price has a basis:
-  *about 1m 36s of Egeria writes (measured, 1.5s median)*.
-- ~~**The retraction is not scheduled and should be.**~~ **Withdrawn on 09-17** —
-  `REPLY-RETRACTION-WITHDRAWN.md`. The owner had already ruled on 09-14 (wipe and
-  redeploy), `SoftwareLibrary` was never published, and my premise that every
-  published SurveyReport hung off both elements was half false. What survives is
-  one gaps entry: *there is no way to correct or annotate an element already
-  published to Egeria.*
-
-Also: the live metric is `code_lines`, not `lines_of_code` — the sheet is
-corrected. And `#93`'s per-cell `opens` table is the best work in that round and
-is not mine: refusing `opens` on `relationship_count` because `_symbol_members`
-lists symbols rather than relationships, traced to the reader's own docstring, is
-the honesty rule at a granularity I would not have thought to ask for.
-
-## The owner's round
-
-`SPEC-THE-STAGE-PAGE.md`, drawn on canvas page four. Seven of the ten points are
-one cause, and the code states it more sharply than the complaint: **the
-Questions row renders the answer and cannot reach the members at all, while
-`Dashboard · by question` renders the same sentence from the same envelope so it
-can host a `detail` disclosure whose payload opens in a 290px rail.** The answer
-is in two panes and the fact is in neither.
-
-The spine: **one object, the analysis; one entry, the question; one place for the
-fact, the pane under the answer.** Questions absorbs `Dashboard · by question`;
-Survey becomes *Survey & analyses*; `By analysis` keeps its own tab; the rail
-keeps provenance and only provenance — the code already admits members went there
-because the pane *"held an empty ask box and eighteen hundred pixels of
-nothing"*, and the pane is no longer empty.
-
-Point 10's link is *the numbers behind this 6 ›*, and it opens a table of six
-measurements under the answer — because 965 file names are not the fact behind
-*965 source files*; the number is. Point 4: visuals return under one rule — a
-visual may only show a number the row beneath it also shows, from the same value,
-rounded the same way, because a tile reading *82/100* over a card reading *82.2*
-was the defect, not the chart.
-
-## Ports, and a correction against myself
-
-`REPLY-PORTS-SCARCITY-CORRECTED.md` — **all of it shipped in `#85`/`#86`**; kept
-here for the correction it records against me.
-
-I wrote that most repositories have almost no ports, and built part of the
-"column, not a screen" ruling on it. You measured **71 on egeria-workspaces, 68
-with an owner.** My figure was the logical reading, where components are packages
-and nothing declares a port; yours is deployment artifacts in a compose-heavy
-repository. Both true; my generalisation across them was not.
-
-The ruling stands on its stronger half — a port is a reading, not a proposal —
-but 71 forces a **plural case** the drawing lacked: three or more as `15 ports ›`
-opening the list in the rail, because counts open what they counted. And the
-tree's foot gains the other end of the sentence: *71 ports across 9 components ·
-3 not attributable to any shown component, counted apart.*
-
-Three things in `#85` I would not have specified and would not change: ports
-keyed by the deployment **service name** so the column and the diagram agree by
-construction; the three unowned ports counted apart rather than attached to a
-guess; and the price line reading *not yet measured — the first branch is what
-fixes it*. **641 → 69 branches in 2.9 s** settles the scale question by
-measurement.
+Dates are the ones written in each note. `TIMELINE.md` gives the commit date,
+which is later for the notes that landed in the 09-16 bulk commit and for
+the three reviews that landed in `81031e92`.
 
 ---
 
 ## Conventions
 
-- Designer replies land in this folder. `REVIEW-*` for a review of shipped work,
-  `REPLY-*` for an answer to a question, `SPEC-*` for something buildable,
-  `RULING-*` for a decision with consequences rather than a layout; wireframes in
-  a `design_handoff_*` folder beside them.
-- Every reply names the commit it was read against in its header. If main has
-  moved, say so in your response rather than assuming the reply is current.
-- Implementer replies are `*-IMPLEMENTED.md` in this same folder, naming what
-  they reply to. **Write one even when the work shipped inside a PR raised for
-  something else** — that omission is what left three shipped items sitting on
-  the board as ready-to-start.
-- **A ready-to-start row cites the code it was checked against**, with a path and
-  a line or the grep that came back empty, and names who checked it. Mine say so
-  when I could not check: no repo checkout is reachable from the designer session
-  unless the user connects one, so a citation of mine may be a relay of yours.
-- **Attribute decisions by role, not by first name** — *the project owner ruled
-  X* — and give each ruling the repo-wide greppable callout,
-  `**Decision (project owner, <date>):** ...`, rather than folding it into
-  prose. Repo convention, in the root `CLAUDE.md`; these notes are a project
-  record, not private correspondence. A username inside a UI mockup is sample
-  data, not attribution, and is fine.
-- **A designer ruling can be wrong.** Six are on the record here — the greyed
-  `Find repos` tab, port scarcity, the `SoftwareLibrary` type, `lines_of_code`,
-  the stale ports board rows, and the retraction that the owner had already ruled
-  out — and every one was caught by measurement against the code or by someone
-  remembering a decision. Measure and say so; it is the fastest correction path
-  this pair has, and the ledger is more useful with the errors left legible in it
-  than tidied out.
+- Designer notes land in this folder's root. `REVIEW-*` reviews shipped work,
+  `REPLY-*` answers a question, `SPEC-*` is something buildable, and
+  `RULING-*` is a decision with consequences rather than a layout.
+  Drawings go in `wireframes/` and on the canvas.
+- Every designer note names the commit it was read against. If main has
+  moved, say so rather than assuming the note is current.
+- Implementer replies are `*-IMPLEMENTED.md` in `implemented/`. **Name the
+  designer note you answer, by its bare filename**, so this ledger can cite
+  you. **Write one even when the work shipped inside a PR raised for
+  something else.** Fifteen rows above cite only PRs or commits, and
+  several are *unverified* because nothing named the note.
+- Refer to any note by its bare filename, never by a path. The
+  dangling-pointer test resolves names across the tree
+  (`DESIGN-NOTES-MOVE-IMPLEMENTED.md`).
+- `TIMELINE.md` is the coordinator's. It gets one line per designer note
+  when the note merges, and the designer doesn't write it.
+- **Attribute decisions by role, not by first name**, using the greppable
+  callout `**Decision (project owner, <date>):** ...` (root `CLAUDE.md`).
+- **A designer ruling can be wrong.** Six were on the record by 09-17: the
+  greyed `Find repos` tab, port scarcity, the `SoftwareLibrary` type,
+  `lines_of_code`, the stale ports board rows, and a retraction the owner
+  had already ruled out. Each was caught by measuring against the code. Since
+  then the corrections have mostly run the other way: asks whose premise
+  the code contradicted (one mechanism for work lists and investigations,
+  a derived INBOX, a repo-only discovery pane). Measuring is still the
+  fastest correction path, so the errors stay in the ledger where they can
+  be read rather than being tidied out.
+
+When an *-IMPLEMENTED note merges, move its ask and design into implemented/; answered exchanges go to exchange/.

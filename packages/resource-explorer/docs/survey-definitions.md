@@ -190,6 +190,8 @@ The executor walks the Survey Definition's steps in order. For each step:
 
 After the dispatch loop, if any RE step produced results, they're published back to Egeria — but **narrowly**: only a `SurveyReport` + annotations are created. This deliberately does **not** catalog the resource or trigger Egeria's own native survey as a side effect (unlike the older `database survey --egeria`/`publish_local_survey` path, which does both). The resource must already be cataloged in Egeria — if it isn't, the run fails clearly rather than silently auto-cataloging it.
 
+For a database, the report carries the annotations of every RE step that ran: the schema inventory, statistics, views, operations and credential capability, and (since 2026-10-19) the column-profiling steps' own annotations. That means one `DataClassMatch` and one `ColumnValueSample` per column checked, `ReferenceDataMatch` for low-cardinality columns, the nested JSON/XML column profiles, and their requests for action. Before 2026-10-19 the column-profiling annotations were built but never published. A run of the same Survey Definition adds them; earlier reports are not changed. The user guide's "What a database's survey report carries" lists the verdicts.
+
 ## Current limitations
 
 - **Linear sequences only.** A Survey Definition where any step has more than one outgoing `Link Next Process Step` (guard-based branching) is rejected with `UnsupportedSurveyDefinitionError` naming the step and branch count. Branching support is a known future extension, not yet built.

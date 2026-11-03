@@ -1,5 +1,11 @@
 # Extending Resource Explorer
 
+**Status:** live. How to add a question, analysis step, annotation type or survey type.
+
+> **Adding an analysis without changing RE's code?** Write a library step instead: an installable package with a
+> declared manifest. Start with the [tutorial](../../trellis-analytics/docs/TUTORIAL-ADD-AN-ANALYTIC-STEP-2026-10-30.md); the field-by-field reference is [extending-with-analyses.md](extending-with-analyses.md). This document is about RE's
+> own built-in registries.
+
 How to add a **question**, an **analysis step**, an **annotation type**, or a
 **survey type** — and, more usefully, what breaks when you miss a step.
 

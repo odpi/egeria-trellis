@@ -9,6 +9,36 @@ from typing import Any
 from resource_explorer.registry import DatabaseEntity
 
 
+def _description_read_flag(info: dict) -> dict:
+    """`{"description_read": True}` when the catalog summary carried the table comment, else nothing.
+
+    Absent means the comment was not read -- never that there is none -- so a caller counting
+    undocumented tables can tell the two apart.
+    """
+    return {"description_read": True} if info.get("description_read") else {}
+
+
+def _flag(value) -> bool | None:
+    """A catalog boolean as a bool; anything else (NULL, absent) is None --
+    "not read" -- and never False."""
+    return value if isinstance(value, bool) else None
+
+
+_FLAG_KEYS = ("has_triggers", "has_rules", "has_row_security")
+
+
+class TableActivityReadFailed(list):
+    """An EMPTY list standing for a `pg_stat_user_tables` read that raised.
+
+    Falsy and iterable like `[]`, so callers that only iterate are unchanged;
+    `.error` is the failure text for those that must not call it "no row".
+    """
+
+    def __init__(self, error):
+        super().__init__()
+        self.error = f"{type(error).__name__}: {error}"[:300]
+
+
 @dataclass(frozen=True)
 class EngineCapabilities:
     """What this connection's engine can report, declared per capability
@@ -78,6 +108,12 @@ class EngineCapabilities:
     #: write. Independent of `privileges` above (which audits OTHER roles'
     #: grants): this is about what THIS SESSION's own role can reach.
     credential_introspection: bool = False
+    #: Whether this engine can run RE's typed row preview (`preview_rows`): the first n rows of one
+    #: table, read-only, with a statement timeout (design REPLY-DESIGNER-TABLE-PREVIEW-2026-10-19).
+    #: A preview needs only two engine-specific things, "quote an identifier" and "limit n rows",
+    #: which is why it is the first capability put behind this seam. False for every engine that has
+    #: not written them: the preview then refuses in words rather than guessing a dialect.
+    row_preview: bool = False
 
     def as_dict(self) -> dict[str, bool]:
         return asdict(self)
@@ -87,6 +123,46 @@ class EngineCapabilities:
 #: DatabaseConnection subclass already does via get_schema_info(). The
 #: default for any engine that has not declared otherwise.
 NO_CAPABILITIES = EngineCapabilities()
+
+#: The preview's statement timeout (design: "stopped after 10 s").
+PREVIEW_TIMEOUT_MS = 10_000
+#: The two row counts a person may ask for.
+PREVIEW_LIMITS = (20, 100)
+
+
+class PreviewError(Exception):
+    """A row preview that did not return rows. `kind` names which of the refusals it is; `sentence` is safe to
+    show: it never carries a row value or the credential."""
+
+    kind = "error"
+
+    def __init__(self, sentence: str) -> None:
+        super().__init__(sentence)
+        self.sentence = sentence
+
+
+class PreviewDenied(PreviewError):
+    """The credential cannot read the table (SQLSTATE 42501)."""
+
+    kind = "no_read"
+
+
+class PreviewTimedOut(PreviewError):
+    """The query ran past the statement timeout and the database stopped it; nothing was read."""
+
+    kind = "timeout"
+
+
+class PreviewUnsupported(PreviewError):
+    """This engine has no row preview."""
+
+    kind = "unsupported"
+
+
+class PreviewStale(PreviewError):
+    """The catalogue names a table or column the database no longer has."""
+
+    kind = "stale"
 
 
 @dataclass(frozen=True)
@@ -147,7 +223,7 @@ class ContainmentLevel:
     system_containers: tuple[str, ...] = ()
     #: Prefixes for the same, for engines that generate them (`pg_toast`,
     #: `pg_toast_temp_1`, `pg_temp_3`). A prefix rather than a pattern because
-    #: every real case is a prefix and a regex here would be a licence to put
+    #: every real case is a prefix and a regex here would be a license to put
     #: matching logic in a declaration.
     system_container_prefixes: tuple[str, ...] = ()
 
@@ -355,6 +431,42 @@ class DatabaseConnection(ABC):
     def execute_query(self, query: str, params: tuple = ()) -> list[dict]:
         """Execute a query and return results as list of dicts."""
 
+    def execute_query_isolated(self, query: str, params: tuple = ()) -> list[dict]:
+        """Like `execute_query`, but where the engine supports it, a failure
+        here cannot abort every later statement on the same connection.
+
+        Default implementation: just `execute_query` — right for an engine
+        with no such cascading-abort behaviour, or one this base class has
+        not been taught about yet. `PostgreSQLConnection` overrides this with
+        a real per-call SAVEPOINT (see its own docstring for the incident
+        this exists to prevent): once one statement in a Postgres transaction
+        raises, the WHOLE transaction is aborted and every subsequent
+        statement fails too — "current transaction is aborted, commands
+        ignored until end of transaction block" — regardless of what that
+        next statement is about. A caller issuing several independent,
+        speculative queries in a loop (`column_profile_step.py`'s per-column
+        sampling is the case that found this) needs each one isolated from
+        the others' failures, which plain `execute_query` cannot give it.
+        """
+        return self.execute_query(query, params)
+
+    def end_transaction(self) -> None:
+        """End the current read transaction, releasing the locks its reads took. A no-op for an engine without
+        transactions; `PostgreSQLConnection` rolls back (every caller of this is read-only)."""
+
+    def preview_rows(self, schema: str, table: str, columns: list[str], limit: int,
+                     *, timeout_ms: int = PREVIEW_TIMEOUT_MS,
+                     column_types: dict[str, str] | None = None) -> list[dict]:
+        """The first `limit` rows of one table, as the engine returns them: THE seam a later engine adapter fills.
+
+        Not abstract, and the default refuses: an engine that has not written "quote an identifier" and
+        "limit n rows" must say so (`PreviewUnsupported`), never fall back to another engine's dialect.
+        Callers check `capabilities.row_preview` first. Raises `PreviewDenied` / `PreviewTimedOut` /
+        `PreviewStale` / `PreviewError`; none of them carries a row value.
+        """
+        raise PreviewUnsupported(
+            "Row preview is built for PostgreSQL only; this engine has no adapter for it yet.")
+
     @abstractmethod
     def get_schema_info(self) -> dict:
         """Get database schema information (schemas, tables, columns)."""
@@ -400,12 +512,14 @@ class PostgreSQLConnection(DatabaseConnection):
         database: str,
         user: str,
         password: str,
+        connect_timeout: int | None = None,
     ) -> None:
         self.host = host
         self.port = port
         self.database = database
         self.user = user
         self.password = password
+        self.connect_timeout = connect_timeout
         self._conn = None
 
     def connect(self) -> Any:
@@ -418,12 +532,16 @@ class PostgreSQLConnection(DatabaseConnection):
                 "Install it with: pip install psycopg2-binary"
             ) from e
 
+        kwargs = {}
+        if self.connect_timeout is not None:
+            kwargs["connect_timeout"] = self.connect_timeout
         self._conn = psycopg2.connect(
             host=self.host,
             port=self.port,
             database=self.database,
             user=self.user,
             password=self.password,
+            **kwargs,
         )
         return self._conn
 
@@ -438,6 +556,59 @@ class PostgreSQLConnection(DatabaseConnection):
                 columns = [desc[0] for desc in cur.description]
                 return [dict(zip(columns, row)) for row in cur.fetchall()]
             return []
+
+    #: Name of the SAVEPOINT `execute_query_isolated` uses. Fixed rather than
+    #: generated per call — Postgres scopes a SAVEPOINT name to the current
+    #: transaction, and this method never nests (it releases or rolls back
+    #: before returning), so there is never more than one live at a time.
+    _ISOLATION_SAVEPOINT = "re_isolated_query"
+
+    def execute_query_isolated(self, query: str, params: tuple = ()) -> list[dict]:
+        """`execute_query`, wrapped in its own SAVEPOINT.
+
+        **The incident this exists to prevent (2026-09-27/28,
+        `laz_local_adventureworks`).** `column_profile_step.py` samples
+        columns table by table, issuing one `execute_query` per column in a
+        loop, all on the same connection and the same (implicit,
+        autocommit=False) transaction. One column happened to be on a VIEW —
+        `TABLESAMPLE` is only valid against a plain table or a materialized
+        view, and Postgres rejected it with a real SQL error. `execute_query`
+        propagated that as an exception, which the caller caught and logged —
+        correct so far. But Postgres does not merely fail the ONE statement
+        that errored: it aborts the WHOLE transaction, and every subsequent
+        statement fails too, with "current transaction is aborted, commands
+        ignored until end of transaction block", until something issues a
+        ROLLBACK. Nothing did. Every column sampled after the view — ~40 of
+        them, unrelated tables included — failed the identical way, silently
+        (each one individually caught and logged as "sampling failed"), and
+        `postgres_column_profile` still reported `status: "ok"`.
+
+        A SAVEPOINT scopes the abort to just the one statement it wraps:
+        `RELEASE SAVEPOINT` on success keeps its work; `ROLLBACK TO
+        SAVEPOINT` on failure undoes only what happened since the savepoint
+        was taken and returns the SURROUNDING transaction to a working state
+        — the connection is usable again for the very next call, which is
+        exactly what `execute_query` alone cannot offer a caller that issues
+        several independent, speculative queries in sequence.
+        """
+        if not self._conn:
+            raise RuntimeError("Not connected to database")
+
+        with self._conn.cursor() as cur:
+            cur.execute(f"SAVEPOINT {self._ISOLATION_SAVEPOINT}")
+            try:
+                cur.execute(query, params)
+                if cur.description:
+                    columns = [desc[0] for desc in cur.description]
+                    rows = [dict(zip(columns, row)) for row in cur.fetchall()]
+                else:
+                    rows = []
+            except Exception:
+                cur.execute(f"ROLLBACK TO SAVEPOINT {self._ISOLATION_SAVEPOINT}")
+                raise
+            else:
+                cur.execute(f"RELEASE SAVEPOINT {self._ISOLATION_SAVEPOINT}")
+                return rows
 
     def get_schema_info(self) -> dict:
         """Get PostgreSQL schema information.
@@ -466,7 +637,8 @@ class PostgreSQLConnection(DatabaseConnection):
         already-known schema — `pg_class`/`pg_attribute` are catalog
         metadata, not privilege-filtered, so table names, relation kinds,
         and column names/types ARE visible with zero grants; only row data
-        and comments are not. Each such table is tagged `source:
+        is not (a table comment is read from `pg_description`, which is not
+        privilege-filtered; a successful read is marked `description_read`). Each such table is tagged `source:
         "catalog_fallback"`, the same marker `database_rows_from_survey_data`
         (`result_materializer.py`) already recognizes and stores as
         `STATE_CATALOG_ESTIMATE` — no downstream change needed for the
@@ -479,6 +651,8 @@ class PostgreSQLConnection(DatabaseConnection):
             SELECT schema_name
             FROM information_schema.schemata
             WHERE schema_name NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
+            AND left(schema_name, 8) <> 'pg_temp_'
+            AND left(schema_name, 14) <> 'pg_toast_temp_'
             ORDER BY schema_name
         """
         try:
@@ -493,12 +667,25 @@ class PostgreSQLConnection(DatabaseConnection):
         for schema in schemas:
             schema_name = schema["schema_name"]
             seen_schema_names.add(schema_name)
-            tables = self._get_tables_for_schema(schema_name)
-            result["schemas"].append({
+            schema_entry = {
                 "name": schema_name,
                 "description": schema_descriptions.get(schema_name, ""),
-                "tables": tables,
-            })
+            }
+            try:
+                tables = self._get_tables_for_schema(schema_name)
+            except Exception as exc:  # noqa: BLE001
+                # One unreadable schema must not abort the survey (Egeria's own
+                # connector does; this one does not). Roll the failed
+                # transaction back so the next schema can be read, say plainly
+                # that THIS schema was not readable, and keep the structure the
+                # unprivileged catalog still shows.
+                self._rollback_quietly()
+                errors[f"schema:{schema_name}"] = str(exc)
+                schema_entry["access"] = "not_readable"
+                schema_entry["not_readable_reason"] = f"{type(exc).__name__}: {exc}"[:300]
+                tables = self._catalog_tables_list(schema_name, errors)
+            schema_entry["tables"] = tables
+            result["schemas"].append(schema_entry)
             result["total_tables"] += len(tables)
             result["total_columns"] += sum(len(t["columns"]) for t in tables)
 
@@ -522,11 +709,14 @@ class PostgreSQLConnection(DatabaseConnection):
                 tables.append({
                     "name": table_name,
                     "type": info.get("table_type") or "",
-                    "description": "",
+                    "relkind": info.get("relkind"),
+                    "description": info.get("description") or "",
+                    **_description_read_flag(info),
                     "columns": self._catalog_columns_for_table(schema_name, table_name),
                     "source": "catalog_fallback",
                     "row_count_estimate": info.get("reltuples"),
                     "row_count_basis": "estimated",
+                    **{k: info.get(k) for k in _FLAG_KEYS},
                 })
             result["schemas"].append({
                 "name": schema_name,
@@ -544,6 +734,52 @@ class PostgreSQLConnection(DatabaseConnection):
         if errors:
             result["_errors"] = errors
         return result
+
+    def end_transaction(self) -> None:
+        """Roll back the current transaction: a long read run (the value profile, the quality checks) ends it per
+        table, so it never holds AccessShareLock on every table it has read until the run ends."""
+        if self._conn is not None:
+            self._conn.rollback()
+
+    def _rollback_quietly(self) -> None:
+        """End an aborted transaction so the connection is usable again."""
+        try:
+            if self._conn is not None:
+                self._conn.rollback()
+        except Exception:  # noqa: BLE001
+            pass
+
+    def _catalog_tables_list(self, schema_name: str, errors: dict[str, str]) -> list[dict]:
+        """The tables `pg_class` shows for one schema, in `schema_info` shape,
+        for a schema the privileged read could not complete. A catalog read that
+        also fails returns [] and records why."""
+        try:
+            catalog_tables = self._catalog_table_summary(schema_name)
+        except Exception as exc:  # noqa: BLE001
+            self._rollback_quietly()
+            errors[f"schema_catalog:{schema_name}"] = str(exc)
+            return []
+        tables = []
+        for table_name, info in catalog_tables.items():
+            try:
+                columns = self._catalog_columns_for_table(schema_name, table_name)
+            except Exception as exc:  # noqa: BLE001
+                self._rollback_quietly()
+                errors[f"table:{schema_name}.{table_name}"] = str(exc)
+                columns = []
+            tables.append({
+                "name": table_name,
+                "type": info.get("table_type") or "",
+                "relkind": info.get("relkind"),
+                "description": info.get("description") or "",
+                **_description_read_flag(info),
+                "columns": columns,
+                "source": "catalog_fallback",
+                "row_count_estimate": info.get("reltuples"),
+                "row_count_basis": "estimated",
+                **{k: info.get(k) for k in _FLAG_KEYS},
+            })
+        return tables
 
     def _enumerate_relations(self) -> tuple[list[dict], list[dict]]:
         """The unprivileged floor: every non-system schema and relation in
@@ -564,6 +800,8 @@ class PostgreSQLConnection(DatabaseConnection):
                    has_schema_privilege(current_user, n.nspname, 'USAGE') AS usage_granted
             FROM pg_namespace n
             WHERE n.nspname NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
+            AND left(n.nspname, 8) <> 'pg_temp_'
+            AND left(n.nspname, 14) <> 'pg_toast_temp_'
             ORDER BY n.nspname
         """)
         tables = self.execute_query("""
@@ -574,6 +812,8 @@ class PostgreSQLConnection(DatabaseConnection):
             JOIN pg_namespace n ON n.oid = c.relnamespace
             WHERE c.relkind IN ('r', 'v', 'm', 'f', 'p')
               AND n.nspname NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
+              AND left(n.nspname, 8) <> 'pg_temp_'
+              AND left(n.nspname, 14) <> 'pg_toast_temp_'
             ORDER BY n.nspname, c.relname
         """)
         return schemas, tables
@@ -586,6 +826,8 @@ class PostgreSQLConnection(DatabaseConnection):
                        obj_description(n.oid, 'pg_namespace') AS description
                 FROM pg_namespace n
                 WHERE n.nspname NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
+                AND left(n.nspname, 8) <> 'pg_temp_'
+                AND left(n.nspname, 14) <> 'pg_toast_temp_'
                 ORDER BY n.nspname
             """)
             return {r["schema_name"]: r.get("description") or "" for r in rows}
@@ -749,13 +991,22 @@ class PostgreSQLConnection(DatabaseConnection):
         pk_lookup, fk_lookup = self._catalog_keys_for_schema(schema_name)
         for table_name, info in catalog.items():
             if table_name in tables:
+                # information_schema reports a partitioned parent as plain
+                # "BASE TABLE" and has no relkind; the pg_class read above
+                # already knows, so say so (no extra query).
+                if info.get("relkind") == "p":
+                    tables[table_name]["type"] = info["table_type"]
+                    tables[table_name]["relkind"] = "p"
+                tables[table_name].update({k: info.get(k) for k in _FLAG_KEYS})
                 continue
             columns = self._catalog_columns_for_table(
                 schema_name, table_name, pk_lookup, fk_lookup)
             tables[table_name] = {
                 "name": table_name,
                 "type": info.get("table_type") or "",
-                "description": "",
+                "relkind": info.get("relkind"),
+                "description": info.get("description") or "",
+                **_description_read_flag(info),
                 "columns": columns,
                 "source": "catalog_fallback",
                 # pg_class.reltuples is an ANALYZE-time estimate, never a
@@ -764,6 +1015,7 @@ class PostgreSQLConnection(DatabaseConnection):
                 # "row_count" that every other caller reads as exact.
                 "row_count_estimate": info.get("reltuples"),
                 "row_count_basis": "estimated",
+                **{k: info.get(k) for k in _FLAG_KEYS},
             }
 
     def _catalog_table_summary(self, schema_name: str) -> dict[str, dict]:
@@ -774,7 +1026,9 @@ class PostgreSQLConnection(DatabaseConnection):
         estimate from the last `ANALYZE`, not a live count.
         """
         query = """
-            SELECT c.relname AS table_name, c.relkind, c.reltuples
+            SELECT c.relname AS table_name, c.relkind, c.reltuples,
+                   c.relhastriggers, c.relhasrules, c.relrowsecurity,
+                   obj_description(c.oid, 'pg_class') AS table_comment
             FROM pg_class c
             JOIN pg_namespace n ON n.oid = c.relnamespace
             WHERE n.nspname = %s
@@ -782,7 +1036,7 @@ class PostgreSQLConnection(DatabaseConnection):
         """
         rows = self.execute_query(query, (schema_name,))
         kind_to_type = {
-            "r": "BASE TABLE", "p": "BASE TABLE",
+            "r": "BASE TABLE", "p": "PARTITIONED TABLE",
             "v": "VIEW", "m": "MATERIALIZED VIEW",
         }
         out: dict[str, dict] = {}
@@ -793,9 +1047,24 @@ class PostgreSQLConnection(DatabaseConnection):
             reltuples = r.get("reltuples")
             out[name] = {
                 "table_type": kind_to_type.get(r.get("relkind"), ""),
+                "relkind": r.get("relkind"),
+                #: pg_description is not privilege-filtered, so the comment is readable for a table the
+                #: login has no grant on. `description_read` is True only when this row carried the
+                #: column, so an empty description means "no comment", never "not read".
+                "description": r.get("table_comment") or "",
+                "description_read": "table_comment" in r,
                 "reltuples": (
                     int(reltuples) if reltuples is not None and reltuples >= 0 else None
                 ),
+                #: Egeria's "Has Triggers" / "Has Rules" / "Has Row Security".
+                #: None = this row did not carry the column: NOT read, never False.
+                "has_triggers": _flag(r.get("relhastriggers")),
+                #: A view's own SELECT is implemented as a rule, so relhasrules
+                #: is true for EVERY view: that is not a rule someone attached.
+                #: For a view or materialized view it is not read (None).
+                "has_rules": (
+                    None if r.get("relkind") in ("v", "m") else _flag(r.get("relhasrules"))),
+                "has_row_security": _flag(r.get("relrowsecurity")),
             }
         return out
 
@@ -950,31 +1219,59 @@ class PostgreSQLConnection(DatabaseConnection):
         return columns
 
     def list_databases(self) -> list[dict]:
-        """List all databases on this server that the current user can connect to."""
+        """List every non-template database on this server, INCLUDING the ones
+        this credential cannot CONNECT to.
+
+        Design: REPLY-DESIGNER-DISCOVERY-SOURCES-ALL-KINDS.md §2 ("Two defects
+        to fix with it"). This used to filter with
+        `WHERE has_database_privilege(d.datname, 'CONNECT')`, so a steward
+        looking at a server saw fewer databases than exist and was never told,
+        and it defaulted `size_bytes` to 0 and `owner` to '' so a value that
+        was never read looked like a measured zero. Now:
+
+          * `can_connect` is the measured `has_database_privilege(..., 'CONNECT')`
+            for every row — shown, never used to drop the row.
+          * `size_bytes` / `size_pretty` are None when the credential cannot
+            read them. `pg_database_size()` raises "permission denied" without
+            CONNECT (or membership of `pg_read_all_stats`), so it is guarded in
+            SQL; None means "not read", never 0.
+          * `owner` is `pg_database.datdba`, readable by everyone; None only if
+            the row somehow carries none.
+          * `description` is `shobj_description()`, also readable by everyone,
+            so an empty value IS a measurement: '' means "none set" (NULL from
+            the server is normalised to '' on purpose — the caller renders it
+            as "none set", not "not reported").
+        """
         query = """
             SELECT
                 d.datname                                    AS name,
-                pg_size_pretty(pg_database_size(d.datname)) AS size_pretty,
-                pg_database_size(d.datname)                 AS size_bytes,
-                d.datdba::regrole::text                     AS owner,
+                has_database_privilege(d.datname, 'CONNECT') AS can_connect,
+                CASE WHEN has_database_privilege(d.datname, 'CONNECT')
+                       OR pg_has_role(current_user, 'pg_read_all_stats', 'MEMBER')
+                     THEN pg_size_pretty(pg_database_size(d.datname)) END AS size_pretty,
+                CASE WHEN has_database_privilege(d.datname, 'CONNECT')
+                       OR pg_has_role(current_user, 'pg_read_all_stats', 'MEMBER')
+                     THEN pg_database_size(d.datname) END    AS size_bytes,
+                d.datdba::regrole::text                      AS owner,
                 shobj_description(d.oid, 'pg_database')     AS description,
                 pg_encoding_to_char(d.encoding)             AS encoding
             FROM pg_database d
             WHERE d.datistemplate = false
-            AND has_database_privilege(d.datname, 'CONNECT')
             ORDER BY d.datname
         """
         try:
             rows = self.execute_query(query)
             result = []
             for r in rows:
+                size_bytes = r.get("size_bytes")
                 result.append({
                     "name": r["name"],
-                    "size_pretty": r.get("size_pretty") or "",
-                    "size_bytes": int(r.get("size_bytes") or 0),
-                    "owner": r.get("owner") or "",
+                    "can_connect": bool(r.get("can_connect")),
+                    "size_pretty": r.get("size_pretty") or None,
+                    "size_bytes": int(size_bytes) if size_bytes is not None else None,
+                    "owner": r.get("owner") or None,
                     "description": r.get("description") or "",
-                    "encoding": r.get("encoding") or "",
+                    "encoding": r.get("encoding") or None,
                 })
             return result
         except Exception as e:
@@ -1005,6 +1302,9 @@ class PostgreSQLConnection(DatabaseConnection):
             # has_schema_privilege/has_table_privilege and pg_has_role all
             # exist on every Postgres this codebase supports.
             credential_introspection=True,
+            # `preview_rows` below: a typed SELECT with sql.Identifier quoting, LIMIT n, a read-only
+            # transaction and a statement timeout.
+            row_preview=True,
         )
 
     @property
@@ -1012,6 +1312,119 @@ class PostgreSQLConnection(DatabaseConnection):
         """server → database → schema, per REPLY-SCHEMA-AS-SUB-RESOURCE.md §5's
         first table row. The one engine declared in this slice."""
         return POSTGRES_CONTAINMENT
+
+    # Failures whose server message names only a relation or a column (insufficient_privilege, undefined_table,
+    # undefined_column), never a row value, so its first sentence may be shown. Any other failure is reported by its
+    # SQLSTATE alone, because a data error ("invalid input syntax for type integer: ...") can quote the value it
+    # choked on.
+
+    @staticmethod
+    def _first_line(exc: Exception) -> str:
+        return " ".join(str(exc).strip().splitlines()[:1]).strip()
+
+    #: bytea is replaced by its length. Every other column is cut in the database, whatever type the catalogue holds
+    #: for it (N4): the catalogue is a survey, the column may have changed since, so the stored type never decides
+    #: how much is fetched.
+    _PREVIEW_BINARY_TYPES = frozenset({"bytea"})
+    #: One more than the display cut (`table_preview.MAX_CELL_CHARS`, 500), so the browser can tell "cut" from "fits".
+    PREVIEW_FETCH_CHARS = 501
+
+    @classmethod
+    def _preview_select_item(cls, column: str, column_type: str | None):
+        from psycopg2 import sql
+
+        ident = sql.Identifier(column)
+        kind = (column_type or "").strip().lower().split("(")[0].strip()   # "timestamp(6)" -> "timestamp"
+        if kind in cls._PREVIEW_BINARY_TYPES:
+            # NULL stays NULL (|| with NULL is NULL); otherwise only the length leaves the database
+            return sql.SQL("{} || pg_catalog.octet_length({})::text || {} AS {}").format(
+                sql.Literal("<"), ident, sql.Literal(" bytes>"), ident)
+        return sql.SQL("pg_catalog.left({}::text, {}) AS {}").format(ident, sql.Literal(cls.PREVIEW_FETCH_CHARS), ident)
+
+    @classmethod
+    def build_preview_query(cls, schema: str, table: str, columns: list[str], limit: int,
+                            column_types: dict[str, str] | None = None):
+        """The preview's ONE statement, composed from names and a validated integer.
+
+        `schema`, `table` and every column are `sql.Identifier`s (quoted by the driver), `limit` must be one
+        of `PREVIEW_LIMITS` and is rendered as a literal integer. There is no parameter through which text
+        could reach the statement unquoted. With no selectable column (every column masked) it selects the
+        constant 1, so the row count is still known and no masked value leaves the database.
+
+        Large values are cut IN the database (finding 10, N4): EVERY column is selected as `left(col::text, 501)`,
+        whatever the catalogue says its type is, except a catalogued bytea, which is its `octet_length` placeholder.
+        Both are composed from `sql.Identifier` and `sql.Literal` only. `column_types` is consulted for bytea alone.
+        """
+        from psycopg2 import sql
+
+        if limit not in PREVIEW_LIMITS:
+            raise ValueError(f"limit must be one of {PREVIEW_LIMITS}")
+        types = column_types or {}
+        select_list = (
+            sql.SQL(", ").join(cls._preview_select_item(c, types.get(c)) for c in columns)
+            if columns else sql.SQL("1")
+        )
+        return sql.SQL("SELECT {cols} FROM {rel} LIMIT {n}").format(
+            cols=select_list,
+            rel=sql.SQL("{}.{}").format(sql.Identifier(schema), sql.Identifier(table)),
+            n=sql.Literal(int(limit)),
+        )
+
+    def preview_rows(self, schema: str, table: str, columns: list[str], limit: int,
+                     *, timeout_ms: int = PREVIEW_TIMEOUT_MS,
+                     column_types: dict[str, str] | None = None) -> list[dict]:
+        """The first `limit` rows of `schema.table`, selecting only `columns`.
+
+        One read-only transaction (`SET TRANSACTION READ ONLY`, first statement) with
+        `SET LOCAL statement_timeout`, always rolled back. Rows come back as `{column: value}` dicts keyed
+        by the selected columns (an empty `columns` yields one empty dict per row). Nothing is logged or
+        kept here. Errors are reduced to `PreviewError`s whose sentences never carry a value.
+        """
+        import psycopg2
+        from psycopg2 import errors, sql
+
+        if not self._conn:
+            raise RuntimeError("Not connected to database")
+        query = self.build_preview_query(schema, table, list(columns), limit, column_types)
+        conn = self._conn
+        # `SET TRANSACTION READ ONLY` and `SET LOCAL` only mean something inside a transaction block. With autocommit
+        # on, Postgres merely warns and the SELECT would run read-write with no timeout, so the read-only guarantee
+        # must not depend on the connection's mode: refuse before any statement (L1).
+        if getattr(conn, "autocommit", False):
+            raise PreviewError("the connection is not in a transaction, so a read-only preview cannot be "
+                               "guaranteed · nothing was read")
+        try:
+            conn.rollback()                      # a clean transaction, so SET TRANSACTION is its first statement
+            with conn.cursor() as cur:
+                cur.execute("SET TRANSACTION READ ONLY")
+                cur.execute(sql.SQL("SET LOCAL statement_timeout = {}").format(sql.Literal(int(timeout_ms))))
+                cur.execute(query)
+                fetched = cur.fetchall()
+        except errors.QueryCanceled:
+            raise PreviewTimedOut(
+                f"no rows shown · the query ran longer than {timeout_ms // 1000} s and was stopped · nothing was read"
+            ) from None
+        except errors.InsufficientPrivilege as exc:
+            raise PreviewDenied(self._first_line(exc) or "permission denied") from None
+        except (errors.UndefinedTable, errors.UndefinedColumn) as exc:
+            raise PreviewStale(
+                self._first_line(exc) or "the table or a column is not in the database") from None
+        except psycopg2.Error as exc:
+            code = getattr(exc, "pgcode", None) or ""
+            raise PreviewError(
+                f"the database stopped the query{f' (SQLSTATE {code})' if code else ''}") from None
+        except Exception:                        # noqa: BLE001 - anything that is not a driver error
+            # A decoding or programming error after connecting is not a connect failure and not the database
+            # stopping the query; its text can quote a value, so it is never sent (finding 6).
+            raise PreviewError("the database answer could not be read") from None
+        finally:
+            try:
+                conn.rollback()
+            except psycopg2.Error:               # a dead connection raises a driver error; the caller closes it
+                pass
+        if not columns:
+            return [{} for _ in fetched]
+        return [dict(zip(columns, row)) for row in fetched]
 
     def get_column_stats(self) -> list[dict]:
         """Per-column `pg_stats` — populated only after `ANALYZE` has run.
@@ -1081,8 +1494,11 @@ class PostgreSQLConnection(DatabaseConnection):
         """
         try:
             rows = self.execute_query(query)
-        except Exception:
-            return []
+        except Exception as exc:
+            # A failed read is NOT "no rows": return an empty list that carries
+            # the error, so existing `or []` callers behave as before while the
+            # publish path can say "read failed (...)".
+            return TableActivityReadFailed(exc)
         result = []
         for r in rows:
             result.append({
@@ -1120,6 +1536,61 @@ class PostgreSQLConnection(DatabaseConnection):
             return str(value) if value else ""
         except Exception:
             return ""
+
+    def get_stats_reset_evidence(self) -> str | None:
+        """The reset time as EVIDENCE (Brief D 7f.3): three honest answers.
+
+        * a timestamp string -- Postgres reset this database's counters then;
+        * `STATS_NEVER_RESET` -- the read worked and Postgres said NULL, i.e.
+          the counters have never been reset;
+        * `None` -- the read failed or returned no row: NOT read, which says
+          nothing about whether a reset happened.
+
+        `get_stats_reset()` above folds the last two into "" and keeps doing
+        so for its other callers; this is the one the stored column uses.
+        """
+        from resource_explorer.registry import STATS_NEVER_RESET
+
+        try:
+            rows = self.execute_query(
+                "SELECT stats_reset FROM pg_stat_database WHERE datname = current_database()"
+            )
+        except Exception:
+            return None
+        if not rows:
+            return None
+        value = rows[0].get("stats_reset")
+        return str(value) if value else STATS_NEVER_RESET
+
+    def get_database_activity(self) -> dict:
+        """Database-wide counters from `pg_stat_database` for the current
+        database: `tup_fetched`, `tup_inserted`, `tup_updated`, `tup_deleted`,
+        `session_time` and `active_time` (the last two, in milliseconds, exist
+        from PostgreSQL 14).
+
+        All are CUMULATIVE since the last statistics reset (`get_stats_reset`).
+        Returns `{"error": text}` when the read raised and `{"no_row": True}`
+        when Postgres returned no row: neither is zero activity. A column the
+        server does not have, or reports NULL, is `None` in the dict (not
+        read), never 0.
+        """
+        wanted = ("tup_fetched", "tup_inserted", "tup_updated", "tup_deleted",
+                  "session_time", "active_time")
+        try:
+            rows = self.execute_query_isolated(
+                "SELECT * FROM pg_stat_database WHERE datname = current_database()"
+            )
+        except Exception as exc:  # noqa: BLE001
+            return {"error": f"{type(exc).__name__}: {exc}"[:300]}
+        if not rows:
+            return {"no_row": True}
+        row = rows[0]
+        out: dict = {}
+        for name in wanted:
+            value = row.get(name)
+            out[name] = float(value) if name.endswith("_time") and value is not None else (
+                int(value) if value is not None else None)
+        return out
 
     def get_index_stats(self) -> list[dict]:
         """Per-index usage from `pg_stat_user_indexes`, joined to `pg_index`
@@ -1258,6 +1729,23 @@ class PostgreSQLConnection(DatabaseConnection):
             result["_errors"] = errors
         return result
 
+    def get_database_owner(self) -> dict:
+        """The owner role of the connected database (`pg_database.datdba`).
+
+        A server-level fact the schema step already has a connection open to
+        read, so it rides there (ENRICHMENT-E3; `db_server_profile` is the
+        eventual consolidated home for server-level facts like this). Shown
+        on Context's owner row as MATERIAL only -- owner is a judgement, and
+        the Postgres role is never offered as the answer. Empty dict when it
+        could not be read: absence, not a guess.
+        """
+        rows = self.execute_query_isolated(
+            "SELECT d.datdba::regrole::text AS owner FROM pg_database d "
+            "WHERE d.datname = current_database()"
+        )
+        owner = (rows[0].get("owner") if rows else "") or ""
+        return {"owner": owner} if owner else {}
+
     def get_credential_capability(self) -> dict:
         """What THIS credential can see and do, as distinct from what the
         database contains — the `credential_capability` probe (design: REPLY-
@@ -1337,8 +1825,19 @@ class PostgreSQLConnection(DatabaseConnection):
             "connected_as": connected_as,
             "schema_total": len(schemas),
             "schema_visible": sum(1 for s in schemas if s.get("usage_granted")),
-            "table_total": len(tables),
-            "table_select": sum(1 for t in tables if t.get("can_select")),
+            # Renamed from `table_total`/`table_select` (REPLY-DESIGNER-
+            # ROUND2-DATABASE-SCREENS.md §2.3's "table count means two
+            # populations on one screen" -- `tables` here is every relation
+            # `_enumerate_relations()` selects, `relkind IN ('r','v','m',
+            # 'f','p')`: base tables, views, matviews, foreign and
+            # partitioned tables combined, the same all-kinds figure
+            # `_schema_inventory_results`'s own `relation_count` reports.
+            # `by_schema[...]`'s own `table_total`/`table_select` are left
+            # named as they were -- this rename is for the WHOLE-DATABASE
+            # figure the reply's example (schema_inventory's 157 vs.
+            # relationship-graph's 68) was about, not the per-schema one.
+            "relation_total": len(tables),
+            "relation_select": sum(1 for t in tables if t.get("can_select")),
             "by_schema": by_schema,
             "stats_role": stats_role,
             #: Always True: this method never skips the write probe, it only
@@ -1586,6 +2085,9 @@ class PostgreSQLConnection(DatabaseConnection):
             "table_activity": self.get_table_activity(),
             "index_stats": self.get_index_stats(),
             "stats_reset": self.get_stats_reset(),
+            #: Brief D 7f.3: timestamp / "never" / None (not read). Kept beside,
+            #: not instead of, `stats_reset`, whose "" other readers rely on.
+            "stats_reset_evidence": self.get_stats_reset_evidence(),
         }
         return stats
 
@@ -1600,18 +2102,31 @@ class PostgreSQLConnection(DatabaseConnection):
         return result[0] if result else {"size_bytes": 0, "size_pretty": "0 bytes"}
 
     def _get_table_statistics(self) -> list[dict]:
-        """Get statistics for all tables."""
+        """Sizes for EVERY user table (plain, partitioned, materialised view).
+
+        Brief D 7f.2: this used to end in `LIMIT 100`, so a database with 219
+        tables sized 100 of them and left 119 NULL in every snapshot. It is
+        still ordered largest first (callers take the top few), but never
+        truncated. `total_bytes` is `pg_total_relation_size` (table + indexes
+        + TOAST); `relation_bytes` is `pg_relation_size` (the table's own heap
+        alone), so the difference is the index/TOAST share. A size Postgres
+        will not give is NULL, never 0.
+        """
         query = """
-            SELECT 
-                schemaname,
-                tablename,
-                pg_total_relation_size(quote_ident(schemaname)||'.'||quote_ident(tablename)) as total_bytes,
-                pg_size_pretty(pg_total_relation_size(quote_ident(schemaname)||'.'||quote_ident(tablename))) as total_size
-            FROM pg_tables
-            WHERE schemaname NOT IN ('pg_catalog', 'information_schema')
-              AND has_schema_privilege(schemaname, 'USAGE')
-            ORDER BY total_bytes DESC
-            LIMIT 100
+            SELECT
+                n.nspname AS schemaname,
+                c.relname AS tablename,
+                pg_total_relation_size(c.oid) AS total_bytes,
+                pg_size_pretty(pg_total_relation_size(c.oid)) AS total_size,
+                pg_relation_size(c.oid) AS relation_bytes,
+                pg_indexes_size(c.oid) AS index_bytes
+            FROM pg_class c
+            JOIN pg_namespace n ON n.oid = c.relnamespace
+            WHERE c.relkind IN ('r', 'p', 'm')
+              AND n.nspname NOT IN ('pg_catalog', 'information_schema')
+              AND left(n.nspname, 8) <> 'pg_toast'
+              AND has_schema_privilege(n.oid, 'USAGE')
+            ORDER BY total_bytes DESC NULLS LAST
         """
         return self.execute_query(query)
 
@@ -1708,7 +2223,8 @@ def server_connection(host: str, port: int, user: str, password: str, db_type: s
 
 
 @contextmanager
-def database_connection(db_entity: DatabaseEntity, credentials: dict):
+def database_connection(db_entity: DatabaseEntity, credentials: dict,
+                        connect_timeout: int | None = None):
     """Context manager for database connections.
     
     Args:
@@ -1736,6 +2252,7 @@ def database_connection(db_entity: DatabaseEntity, credentials: dict):
             database=db_entity.database_name,
             user=credentials["user"],
             password=credentials["password"],
+            connect_timeout=connect_timeout,
         )
     else:
         raise ValueError(f"Unsupported database type: {db_entity.db_type}")

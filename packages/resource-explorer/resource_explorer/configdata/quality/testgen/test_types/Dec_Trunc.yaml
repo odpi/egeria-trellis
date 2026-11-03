@@ -1,0 +1,232 @@
+test_types:
+  id: '1011'
+  test_type: Dec_Trunc
+  test_name_short: Decimal Truncation
+  test_name_long: Sum of fractional values at or above reference
+  test_description: |-
+    Tests for decimal truncation by confirming that sum of fractional values in data is no less than sum at baseline.
+  except_message: |-
+    Sum of fractional values is under baseline sum, which may indicate decimal truncation.
+  measure_uom: Fractional sum
+  measure_uom_description: |-
+    The sum of all decimal values from all data for this column
+  selection_criteria: |-
+    fractional_sum > 0 AND functional_table_type LIKE'%cumulative%'
+  generation_template: null
+  dq_score_prevalence_formula: |-
+    1
+  dq_score_risk_factor: '1.0'
+  column_name_prompt: null
+  column_name_help: null
+  default_parm_columns: threshold_value
+  default_parm_values: |-
+    ROUND(fractional_sum, 0)
+  default_parm_prompts: |-
+    Sum of Fractional Values at Baseline
+  default_parm_help: null
+  default_parm_required: N
+  default_severity: Fail
+  run_type: CAT
+  test_scope: column
+  column_general_types: [N]
+  dq_dimension: Validity
+  impact_dimension: Conformance
+  health_dimension: Schema Drift
+  threshold_description: |-
+    Minimum expected sum of all fractional values
+  result_visualization: line_chart
+  result_visualization_params: null
+  usage_notes: |-
+    Decimal Truncation tests that the fractional (decimal) part of a numeric column has not been truncated since Baseline.  This works by summing all the fractional values after the decimal point and confirming that the total is at least equal to the fractional total at baseline.  This could indicate a problem in a cumulative dataset, where prior values should still exist unchanged. A failure here would suggest that some process changed data that you would still expect to be present and matching its value when the column was profiled. This test would not be appropriate for an incremental or windowed dataset. For an exact sum of fractional values, use Match Fractional Sum.
+  active: Y
+  ai_redact_values: true
+  algorithm: Boundary check
+  generation_sets:
+    - Standard
+  cat_test_conditions:
+  - id: '7006'
+    test_type: Dec_Trunc
+    sql_flavor: bigquery
+    measure: |-
+      SUM(ROUND(ABS(MOD({COLUMN_NAME}, 1)), 5)) + 1
+    test_operator: <
+    test_condition: |-
+      {THRESHOLD_VALUE}
+  - id: '6006'
+    test_type: Dec_Trunc
+    sql_flavor: databricks
+    measure: |-
+      SUM(ROUND(ABS(({COLUMN_NAME} % 1)), 5))+1
+    test_operator: <
+    test_condition: |-
+      {THRESHOLD_VALUE}
+  - id: '3006'
+    test_type: Dec_Trunc
+    sql_flavor: mssql
+    measure: |-
+      SUM(ROUND(ABS(({COLUMN_NAME} % 1)), 5))+1
+    test_operator: <
+    test_condition: |-
+      {THRESHOLD_VALUE}
+  - id: '4006'
+    test_type: Dec_Trunc
+    sql_flavor: postgresql
+    measure: |-
+      SUM(ROUND(ABS(({COLUMN_NUM} % 1)), 5))+1
+    test_operator: <
+    test_condition: |-
+      {THRESHOLD_VALUE}
+  - id: '1006'
+    test_type: Dec_Trunc
+    sql_flavor: redshift
+    measure: |-
+      SUM(ROUND(ABS(({COLUMN_NAME} % 1)), 5))+1
+    test_operator: <
+    test_condition: |-
+      {THRESHOLD_VALUE}
+  - id: '7006'
+    test_type: Dec_Trunc
+    sql_flavor: redshift_spectrum
+    measure: |-
+      SUM(ROUND(ABS(({COLUMN_NAME} % 1)), 5))+1
+    test_operator: <
+    test_condition: |-
+      {THRESHOLD_VALUE}
+  - id: '2006'
+    test_type: Dec_Trunc
+    sql_flavor: snowflake
+    measure: |-
+      SUM(ROUND(ABS(({COLUMN_NAME} % 1)), 5))+1
+    test_operator: <
+    test_condition: |-
+      {THRESHOLD_VALUE}
+  - id: '8006'
+    test_type: Dec_Trunc
+    sql_flavor: oracle
+    measure: |-
+      SUM(ROUND(ABS(MOD({COLUMN_NAME}, 1)), 5))+1
+    test_operator: <
+    test_condition: |-
+      {THRESHOLD_VALUE}
+  - id: '8006'
+    test_type: Dec_Trunc
+    sql_flavor: sap_hana
+    measure: |-
+      SUM(ROUND(ABS(MOD({COLUMN_NAME}, 1)), 5))+1
+    test_operator: <
+    test_condition: |-
+      {THRESHOLD_VALUE}
+  - id: '10006'
+    test_type: Dec_Trunc
+    sql_flavor: salesforce_data360
+    measure: |-
+      SUM(ROUND(ABS(MOD({COLUMN_NAME}, 1)), 5))+1
+    test_operator: '<'
+    test_condition: |-
+      {THRESHOLD_VALUE}
+  - id: '11022'
+    test_type: Dec_Trunc
+    sql_flavor: duckdb
+    measure: |-
+      SUM(ROUND(ABS(({COLUMN_NAME} % 1)), 5))+1
+    test_operator: <
+    test_condition: |-
+      {THRESHOLD_VALUE}
+  target_data_lookups:
+  - id: '1369'
+    test_id: '1011'
+    test_type: Dec_Trunc
+    sql_flavor: bigquery
+    lookup_type: null
+    lookup_query: |-
+      SELECT DISTINCT LENGTH(SPLIT(CAST(`{COLUMN_NAME}` AS STRING), '.')[SAFE_OFFSET(1)]) AS decimal_scale, COUNT(*) AS count
+      FROM `{TARGET_SCHEMA}`.`{TABLE_NAME}`
+      GROUP BY decimal_scale
+      LIMIT {LIMIT};
+    error_type: Test Results
+  - id: '1303'
+    test_id: '1011'
+    test_type: Dec_Trunc
+    sql_flavor: databricks
+    lookup_type: null
+    lookup_query: |-
+      SELECT DISTINCT LENGTH(SPLIT_PART(`{COLUMN_NAME}`::STRING, '.', 2)) AS decimal_scale, COUNT(*) AS count FROM `{TARGET_SCHEMA}`.`{TABLE_NAME}` GROUP BY decimal_scale LIMIT {LIMIT};
+    error_type: Test Results
+  - id: '1145'
+    test_id: '1011'
+    test_type: Dec_Trunc
+    sql_flavor: mssql
+    lookup_type: null
+    lookup_query: |-
+      WITH CTE AS (
+        SELECT LEN(SUBSTRING(CAST(ABS("{COLUMN_NAME}") % 1 AS VARCHAR), 3, LEN("{COLUMN_NAME}"))) AS decimal_scale
+        FROM "{TARGET_SCHEMA}"."{TABLE_NAME}"
+      )
+      SELECT DISTINCT TOP {LIMIT} decimal_scale, COUNT(*) AS count
+        FROM cte GROUP BY decimal_scale ORDER BY COUNT(*) DESC;
+    error_type: Test Results
+  - id: '1088'
+    test_id: '1011'
+    test_type: Dec_Trunc
+    sql_flavor: postgresql
+    lookup_type: null
+    lookup_query: |-
+      SELECT DISTINCT LENGTH(SPLIT_PART({COLUMN_NUM} :: TEXT, '.', 2)) AS decimal_scale, COUNT(*) AS count FROM "{TARGET_SCHEMA}"."{TABLE_NAME}" GROUP BY decimal_scale LIMIT {LIMIT};
+    error_type: Test Results
+  - id: '1006'
+    test_id: '1011'
+    test_type: Dec_Trunc
+    sql_flavor: redshift
+    lookup_type: null
+    lookup_query: |-
+      SELECT DISTINCT DECIMAL_SCALE("{COLUMN_NAME}" :: SUPER) AS decimal_scale, COUNT(*) AS count FROM "{TARGET_SCHEMA}"."{TABLE_NAME}" GROUP BY DECIMAL_SCALE("{COLUMN_NAME}" :: SUPER) LIMIT {LIMIT};
+    error_type: Test Results
+  - id: '1406'
+    test_id: '1011'
+    test_type: Dec_Trunc
+    sql_flavor: redshift_spectrum
+    lookup_type: null
+    lookup_query: |-
+      SELECT DISTINCT DECIMAL_SCALE("{COLUMN_NAME}" :: SUPER) AS decimal_scale, COUNT(*) AS count FROM "{TARGET_SCHEMA}"."{TABLE_NAME}" GROUP BY DECIMAL_SCALE("{COLUMN_NAME}" :: SUPER) LIMIT {LIMIT};
+    error_type: Test Results
+  - id: '1202'
+    test_id: '1011'
+    test_type: Dec_Trunc
+    sql_flavor: snowflake
+    lookup_type: null
+    lookup_query: |-
+      SELECT DISTINCT LENGTH(SPLIT_PART("{COLUMN_NAME}" :: TEXT, '.', 2)) AS decimal_scale, COUNT(*) AS count FROM "{TARGET_SCHEMA}"."{TABLE_NAME}" GROUP BY decimal_scale LIMIT {LIMIT};
+    error_type: Test Results
+  - id: '8006'
+    test_id: '1011'
+    test_type: Dec_Trunc
+    sql_flavor: oracle
+    lookup_type: null
+    lookup_query: |-
+      SELECT DISTINCT CASE WHEN INSTR(TO_CHAR("{COLUMN_NAME}"), '.') > 0 THEN LENGTH(SUBSTR(TO_CHAR("{COLUMN_NAME}"), INSTR(TO_CHAR("{COLUMN_NAME}"), '.') + 1)) ELSE 0 END AS decimal_scale, COUNT(*) AS count FROM "{TARGET_SCHEMA}"."{TABLE_NAME}" GROUP BY CASE WHEN INSTR(TO_CHAR("{COLUMN_NAME}"), '.') > 0 THEN LENGTH(SUBSTR(TO_CHAR("{COLUMN_NAME}"), INSTR(TO_CHAR("{COLUMN_NAME}"), '.') + 1)) ELSE 0 END FETCH FIRST {LIMIT} ROWS ONLY
+    error_type: Test Results
+  - id: '8006'
+    test_id: '1011'
+    test_type: Dec_Trunc
+    sql_flavor: sap_hana
+    lookup_type: null
+    lookup_query: |-
+      SELECT DISTINCT CASE WHEN LOCATE(TO_VARCHAR("{COLUMN_NAME}"), '.') > 0 THEN LENGTH(SUBSTR(TO_VARCHAR("{COLUMN_NAME}"), LOCATE(TO_VARCHAR("{COLUMN_NAME}"), '.') + 1)) ELSE 0 END AS decimal_scale, COUNT(*) AS count FROM "{TARGET_SCHEMA}"."{TABLE_NAME}" GROUP BY CASE WHEN LOCATE(TO_VARCHAR("{COLUMN_NAME}"), '.') > 0 THEN LENGTH(SUBSTR(TO_VARCHAR("{COLUMN_NAME}"), LOCATE(TO_VARCHAR("{COLUMN_NAME}"), '.') + 1)) ELSE 0 END LIMIT {LIMIT}
+    error_type: Test Results
+  - id: '10011'
+    test_id: 1011
+    test_type: Dec_Trunc
+    sql_flavor: salesforce_data360
+    lookup_type: null
+    lookup_query: |-
+      SELECT DISTINCT LENGTH(SPLIT_PART(CAST("{COLUMN_NAME}" AS TEXT), '.', 2)) AS decimal_scale, COUNT(*) AS count FROM "{TABLE_NAME}" GROUP BY decimal_scale LIMIT {LIMIT};
+    error_type: Test Results
+  - id: '11023'
+    test_id: '1011'
+    test_type: Dec_Trunc
+    sql_flavor: duckdb
+    lookup_type: null
+    lookup_query: |-
+      SELECT DISTINCT LENGTH(SPLIT_PART("{COLUMN_NAME}" :: TEXT, '.', 2)) AS decimal_scale, COUNT(*) AS count FROM "{TARGET_SCHEMA}"."{TABLE_NAME}" GROUP BY decimal_scale LIMIT {LIMIT};
+    error_type: Test Results
+  test_templates: []

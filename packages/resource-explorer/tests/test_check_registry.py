@@ -42,7 +42,9 @@ def test_every_registry_analysis_id_is_a_real_analysis():
     """A registry entry for an analysis that doesn't exist is dead config, and
     would let a question reference a check that can never run."""
     catalog = yaml.safe_load(ANALYSES.read_text())
-    real = {a["id"] for a in catalog["repo_analyses"]}
+    # Database analyses too since 2026-10-20: quality_checks names its checks
+    # (the vendored test types) here, for destinations.
+    real = {a["id"] for a in catalog["repo_analyses"] + catalog["database_analyses"]}
     for aid in _registry()["analyses"]:
         assert aid in real, f"check_registry declares unknown analysis id: {aid}"
 
@@ -141,6 +143,8 @@ def test_question_purposes_are_in_the_known_vocabulary():
     known = {
         "Explore", "Select", "Assess", "Maintain", "Share",
         "Learn", "Certify", "Remediate", "Attest", "Deploy",
+        # Added by the 2026-10-13 ruling (investigation_purposes.yaml's seed): Find and Integrate.
+        "Find", "Integrate",
     }
     questions = yaml.safe_load(QUESTIONS.read_text())["repo_questions"]
     for entry in questions:

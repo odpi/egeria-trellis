@@ -72,6 +72,18 @@ UNGUARDED_BY_DESIGN: dict[str, str] = {
         "Same class as project_published_annotation_types. Narrower follow-up "
         "worth having: a sub-resource with NO egeria_guid is pure orphan debris "
         "on removal, and remove() cleans neither.",
+    "project_contributors":
+        "per-fetch contributor lists (REVIEW-QUESTIONS-AND-ANALYTICS-2026-10-22 "
+        "addendum 1). Its sibling project_contributor_stats has an FK; this one "
+        "was created as ONE additive CREATE TABLE IF NOT EXISTS with no foreign "
+        "key (the DDL rule PROJECT_CONTRIBUTORS_DDL states), so removal is "
+        "explicit instead: remove() deletes its rows by project_slug in the "
+        "same transaction as project_commits and project_contributor_stats. "
+        "Adding the FK later is DDL and needs the owner's word.",
+    "resource_scope_events":
+        "append-only audit log of what a person decided to publish or leave out "
+        "(who, when, which locator). The rows are the record of that decision and "
+        "may outlive the resource; nothing updates or deletes them, ever.",
     "query_log":
         "observability history -- what was asked about a resource is analytics "
         "that outlives the resource, and feedback tuning reads it. Deliberate.",

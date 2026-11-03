@@ -1,0 +1,897 @@
+[
+ {
+  "guid": "d7e3b590-652a-494e-a4b6-255af036dc58",
+  "type": "ResourceMeasureAnnotation",
+  "qualifiedName": "Annotation::Capture Database Column Measurements::coco_pharma.us_sales.us_sales_forecast.closedate::3c9f922b-14db-424f-8ea8-548b4838eb4b_archivedOn_Tue Oct 06 16:04:15 GMT 2026",
+  "memento": true
+ },
+ {
+  "guid": "2bd512d9-f162-4070-87fa-1b97485f2f9c",
+  "type": "ResourceMeasureAnnotation",
+  "qualifiedName": "Annotation::Capture Database Column Measurements::coco_pharma.us_sales.us_sales_forecast.confidencelevel::aa570254-3246-481d-9bbe-963f4f2da8fb_archivedOn_Tue Oct 06 16:04:15 GMT 2026",
+  "memento": true
+ },
+ {
+  "guid": "f50a603a-7a0c-455e-946c-b3e92512b2f1",
+  "type": "ResourceMeasureAnnotation",
+  "qualifiedName": "Annotation::Capture Database Column Measurements::coco_pharma.us_sales.us_sales_forecast.createddate::34c6d7cf-e821-403f-9596-b554c50d8775_archivedOn_Tue Oct 06 16:04:15 GMT 2026",
+  "memento": true
+ },
+ {
+  "guid": "003dd9f0-e7e3-456f-b0ef-6a75799f6946",
+  "type": "ResourceMeasureAnnotation",
+  "qualifiedName": "Annotation::Capture Database Column Measurements::coco_pharma.us_sales.us_sales_forecast.currency::881ec79b-aab6-4a83-988b-6b6b5324ee16_archivedOn_Tue Oct 06 16:04:16 GMT 2026",
+  "memento": true
+ },
+ {
+  "guid": "d0c7af2d-7d9a-470b-a107-5751d609fb5c",
+  "type": "ResourceMeasureAnnotation",
+  "qualifiedName": "Annotation::Capture Database Column Measurements::coco_pharma.us_sales.us_sales_forecast.date::923c3afd-7907-4b85-bffe-56e627e6e19f_archivedOn_Tue Oct 06 16:04:15 GMT 2026",
+  "memento": true
+ },
+ {
+  "guid": "be9c67c2-b369-4433-b3e3-09c77a2baa3b",
+  "type": "ResourceMeasureAnnotation",
+  "qualifiedName": "Annotation::Capture Database Column Measurements::coco_pharma.us_sales.us_sales_forecast.forecastamount::58c1ce64-7094-409e-8901-1e7e94f8d6a5_archivedOn_Tue Oct 06 16:04:23 GMT 2026",
+  "memento": true
+ },
+ {
+  "guid": "08277a04-dfb6-4388-ab8f-98f3f43f8875",
+  "type": "ResourceMeasureAnnotation",
+  "qualifiedName": "Annotation::Capture Database Column Measurements::coco_pharma.us_sales.us_sales_forecast.opportunityid::ddeaed51-85df-4145-bfe4-ff1aea46ebab_archivedOn_Tue Oct 06 16:04:17 GMT 2026",
+  "memento": true
+ },
+ {
+  "guid": "9bbef810-eb52-45ff-997b-4292899d8dcb",
+  "type": "ResourceMeasureAnnotation",
+  "qualifiedName": "Annotation::Capture Database Column Measurements::coco_pharma.us_sales.us_sales_forecast.productline::92443571-0f93-4b62-b14b-3e6ef596b0b9_archivedOn_Tue Oct 06 16:04:15 GMT 2026",
+  "memento": true
+ },
+ {
+  "guid": "d08fc75a-4023-4392-8291-0008c5adb314",
+  "type": "ResourceMeasureAnnotation",
+  "qualifiedName": "Annotation::Capture Database Column Measurements::coco_pharma.us_sales.us_sales_forecast.recordid::7a604031-bb60-491d-bdf1-85ae709d0daa_archivedOn_Tue Oct 06 16:04:17 GMT 2026",
+  "memento": true
+ },
+ {
+  "guid": "378e4bfc-872a-4c2e-a11c-14775f3a68ae",
+  "type": "ResourceMeasureAnnotation",
+  "qualifiedName": "Annotation::Capture Database Column Measurements::coco_pharma.us_sales.us_sales_forecast.repid::93d38364-173f-4394-8089-d8aae1c29024_archivedOn_Tue Oct 06 16:04:17 GMT 2026",
+  "memento": true
+ },
+ {
+  "guid": "65b9ef26-0126-4300-9a51-49f643800bee",
+  "type": "ResourceMeasureAnnotation",
+  "qualifiedName": "Annotation::Capture Database Column Measurements::coco_pharma.us_sales.us_sales_forecast.salesstage::026d3008-dfff-441d-a158-2ec33265a24c_archivedOn_Tue Oct 06 16:04:15 GMT 2026",
+  "memento": true
+ },
+ {
+  "guid": "ebd8f769-42e9-4617-8519-0f720abd6084",
+  "type": "ResourceMeasureAnnotation",
+  "qualifiedName": "Annotation::Capture Database Measurements::coco_pharma::0706858a-1172-476a-a7a3-1967341ba01b_archivedOn_Tue Oct 06 16:04:14 GMT 2026",
+  "memento": true
+ },
+ {
+  "guid": "9770444f-ee2b-4bcd-8281-90e8d7a612b2",
+  "type": "ResourceMeasureAnnotation",
+  "qualifiedName": "Annotation::Capture Database Measurements::coco_pharma::8983cc68-da5c-4ae1-9265-2bb4801202e2_archivedOn_Tue Oct 06 16:04:23 GMT 2026",
+  "memento": true
+ },
+ {
+  "guid": "1e638d01-6d43-4df1-a5a1-54a4e99bf16f",
+  "type": "ResourceMeasureAnnotation",
+  "qualifiedName": "Annotation::Capture Database Schema Measurements::coco_pharma.coco_ods::27206001-73ee-4721-8104-d4ee2ad945f6_archivedOn_Tue Oct 06 16:04:14 GMT 2026",
+  "memento": true
+ },
+ {
+  "guid": "f548c883-5036-4758-a4bc-79a717655c18",
+  "type": "ResourceMeasureAnnotation",
+  "qualifiedName": "Annotation::Capture Database Schema Measurements::coco_pharma.coco_sus::e3a27ce3-070b-4949-9379-a55a3ce9d772_archivedOn_Tue Oct 06 16:04:11 GMT 2026",
+  "memento": true
+ },
+ {
+  "guid": "34a4862f-f54b-49b5-bb8c-0f4bbdbbd316",
+  "type": "ResourceMeasureAnnotation",
+  "qualifiedName": "Annotation::Capture Database Schema Measurements::coco_pharma.us_sales::77fac49c-1732-4ac9-af70-5ef2a7af67da_archivedOn_Tue Oct 06 16:04:15 GMT 2026",
+  "memento": true
+ },
+ {
+  "guid": "649e0238-3120-4d86-86f4-2072d7a46196",
+  "type": "ResourceMeasureAnnotation",
+  "qualifiedName": "Annotation::Capture Database Table Measurements::coco_pharma.coco_ods.categories::9bb5ea82-d394-4670-a70e-530156867df1_archivedOn_Tue Oct 06 16:04:21 GMT 2026",
+  "memento": true
+ },
+ {
+  "guid": "2dcdc51a-33e7-42d0-8e2c-22edf4afbd6c",
+  "type": "ResourceMeasureAnnotation",
+  "qualifiedName": "Annotation::Capture Database Table Measurements::coco_pharma.coco_ods.categories::9fa66caf-6095-4a22-acfb-4cfdfa16b8c5_archivedOn_Tue Oct 06 16:04:12 GMT 2026",
+  "memento": true
+ },
+ {
+  "guid": "99316248-d486-4c78-851b-74658f386e91",
+  "type": "ResourceMeasureAnnotation",
+  "qualifiedName": "Annotation::Capture Database Table Measurements::coco_pharma.coco_ods.coco_locations::6fbeb550-7138-430b-be6b-597895f4d5bf_archivedOn_Tue Oct 06 16:04:23 GMT 2026",
+  "memento": true
+ },
+ {
+  "guid": "89443f44-6220-44e1-8a8b-a36abb3a7c3e",
+  "type": "ResourceMeasureAnnotation",
+  "qualifiedName": "Annotation::Capture Database Table Measurements::coco_pharma.coco_ods.coco_locations::c3f7612b-3aa4-4fc9-8b51-63e9e8be6841_archivedOn_Tue Oct 06 16:04:14 GMT 2026",
+  "memento": true
+ },
+ {
+  "guid": "13ea5a5f-3e2d-4b67-a043-86d8907fc46d",
+  "type": "ResourceMeasureAnnotation",
+  "qualifiedName": "Annotation::Capture Database Table Measurements::coco_pharma.coco_ods.customer_customer_demo::504fa082-37ff-4b08-8131-1de32efe7beb_archivedOn_Tue Oct 06 16:04:12 GMT 2026",
+  "memento": true
+ },
+ {
+  "guid": "f30e878a-8a76-4325-99b0-be1d558c9a30",
+  "type": "ResourceMeasureAnnotation",
+  "qualifiedName": "Annotation::Capture Database Table Measurements::coco_pharma.coco_ods.customer_customer_demo::f9b36386-c474-4de8-a32a-e8780e215d85_archivedOn_Tue Oct 06 16:04:20 GMT 2026",
+  "memento": true
+ },
+ {
+  "guid": "a033954b-d79c-4a29-91b2-351418e3607e",
+  "type": "ResourceMeasureAnnotation",
+  "qualifiedName": "Annotation::Capture Database Table Measurements::coco_pharma.coco_ods.customer_demographics::596048ba-86ca-4fe3-b423-708cfb152a43_archivedOn_Tue Oct 06 16:04:14 GMT 2026",
+  "memento": true
+ },
+ {
+  "guid": "24fe5afe-59ac-4679-a771-baf2be0505f9",
+  "type": "ResourceMeasureAnnotation",
+  "qualifiedName": "Annotation::Capture Database Table Measurements::coco_pharma.coco_ods.customer_demographics::f26ecf6f-8dd6-41d9-89b2-04510bc8fb22_archivedOn_Tue Oct 06 16:04:22 GMT 2026",
+  "memento": true
+ },
+ {
+  "guid": "dbdcd585-2039-45ce-ab43-ac90c3986149",
+  "type": "ResourceMeasureAnnotation",
+  "qualifiedName": "Annotation::Capture Database Table Measurements::coco_pharma.coco_ods.customers::5efc7c1a-78cf-4d25-9009-62723547e8b1_archivedOn_Tue Oct 06 16:04:21 GMT 2026",
+  "memento": true
+ },
+ {
+  "guid": "94afd9f0-2ac8-41ab-9076-60262ff2614b",
+  "type": "ResourceMeasureAnnotation",
+  "qualifiedName": "Annotation::Capture Database Table Measurements::coco_pharma.coco_ods.customers::c157d4ab-28c2-42c0-87d2-1aee429c1029_archivedOn_Tue Oct 06 16:04:12 GMT 2026",
+  "memento": true
+ },
+ {
+  "guid": "c811b2d8-c688-4f1f-8bf4-8dae3ec7361d",
+  "type": "ResourceMeasureAnnotation",
+  "qualifiedName": "Annotation::Capture Database Table Measurements::coco_pharma.coco_ods.customer_travel::1c73f56d-b826-4863-bb65-e7811246ff5e_archivedOn_Tue Oct 06 16:04:14 GMT 2026",
+  "memento": true
+ },
+ {
+  "guid": "40e57566-9ffd-493c-bab7-fc605b90150b",
+  "type": "ResourceMeasureAnnotation",
+  "qualifiedName": "Annotation::Capture Database Table Measurements::coco_pharma.coco_ods.customer_travel::8505dc37-bd0f-4ed4-bf6a-37d3e1cd8ec9_archivedOn_Tue Oct 06 16:04:22 GMT 2026",
+  "memento": true
+ },
+ {
+  "guid": "f3e4e21e-0c01-42e8-ad1e-0b43d4020974",
+  "type": "ResourceMeasureAnnotation",
+  "qualifiedName": "Annotation::Capture Database Table Measurements::coco_pharma.coco_ods.employees::11ed8fcb-ef78-43ac-a6bc-b01160012e84_archivedOn_Tue Oct 06 16:04:21 GMT 2026",
+  "memento": true
+ },
+ {
+  "guid": "e06f411f-4161-454d-9f38-a53ae0d71a9d",
+  "type": "ResourceMeasureAnnotation",
+  "qualifiedName": "Annotation::Capture Database Table Measurements::coco_pharma.coco_ods.employees::edc4048d-6bbc-40b4-be69-5302704e76b5_archivedOn_Tue Oct 06 16:04:12 GMT 2026",
+  "memento": true
+ },
+ {
+  "guid": "c2333ac7-5219-43d1-8c53-24e882ea5783",
+  "type": "ResourceMeasureAnnotation",
+  "qualifiedName": "Annotation::Capture Database Table Measurements::coco_pharma.coco_ods.employee_territories::0a980de2-da62-4ee7-952c-294f48b533f5_archivedOn_Tue Oct 06 16:04:22 GMT 2026",
+  "memento": true
+ },
+ {
+  "guid": "09699073-0fa7-4ec0-ab67-033bffb76e18",
+  "type": "ResourceMeasureAnnotation",
+  "qualifiedName": "Annotation::Capture Database Table Measurements::coco_pharma.coco_ods.employee_territories::a50603dc-28a5-45f3-8223-d38d46f9d94e_archivedOn_Tue Oct 06 16:04:14 GMT 2026",
+  "memento": true
+ },
+ {
+  "guid": "ab6971c3-07b0-43c7-8aec-fa4f613c8eda",
+  "type": "ResourceMeasureAnnotation",
+  "qualifiedName": "Annotation::Capture Database Table Measurements::coco_pharma.coco_ods.order_details::121f778a-c3b4-4eaa-a130-c51305c81817_archivedOn_Tue Oct 06 16:04:13 GMT 2026",
+  "memento": true
+ },
+ {
+  "guid": "214ed086-990a-422e-b274-cbecd6932a6c",
+  "type": "ResourceMeasureAnnotation",
+  "qualifiedName": "Annotation::Capture Database Table Measurements::coco_pharma.coco_ods.order_details::606d46a2-dcfb-41dd-b1e1-9dc3d683b3df_archivedOn_Tue Oct 06 16:04:21 GMT 2026",
+  "memento": true
+ },
+ {
+  "guid": "eea51559-e572-4000-9ffc-3c49dfd92fb4",
+  "type": "ResourceMeasureAnnotation",
+  "qualifiedName": "Annotation::Capture Database Table Measurements::coco_pharma.coco_ods.orders::34464fde-509a-4d1d-9b57-fa0f5e434d44_archivedOn_Tue Oct 06 16:04:12 GMT 2026",
+  "memento": true
+ },
+ {
+  "guid": "4884a2ce-215c-4bdd-bf01-00ef3fd39f8b",
+  "type": "ResourceMeasureAnnotation",
+  "qualifiedName": "Annotation::Capture Database Table Measurements::coco_pharma.coco_ods.orders::34ea461e-8951-4516-9315-7e1faedf3f84_archivedOn_Tue Oct 06 16:04:21 GMT 2026",
+  "memento": true
+ },
+ {
+  "guid": "13307305-c309-45c8-ae90-c63e0efbaa84",
+  "type": "ResourceMeasureAnnotation",
+  "qualifiedName": "Annotation::Capture Database Table Measurements::coco_pharma.coco_ods.products::7c68c0f0-616e-4a5d-b667-110347dd56d3_archivedOn_Tue Oct 06 16:04:21 GMT 2026",
+  "memento": true
+ },
+ {
+  "guid": "57a225ac-ce42-41e9-8232-d81a3e60035f",
+  "type": "ResourceMeasureAnnotation",
+  "qualifiedName": "Annotation::Capture Database Table Measurements::coco_pharma.coco_ods.products::dedb8ab7-c30a-4e7f-a7c7-591b8e44e2ff_archivedOn_Tue Oct 06 16:04:13 GMT 2026",
+  "memento": true
+ },
+ {
+  "guid": "5492ead1-7911-43a3-965b-7d51bb629965",
+  "type": "ResourceMeasureAnnotation",
+  "qualifiedName": "Annotation::Capture Database Table Measurements::coco_pharma.coco_ods.region::4ee8154f-97d4-4574-8a9f-31674df4816f_archivedOn_Tue Oct 06 16:04:20 GMT 2026",
+  "memento": true
+ },
+ {
+  "guid": "3886544e-fe0f-4ba0-9433-890b83fc075f",
+  "type": "ResourceMeasureAnnotation",
+  "qualifiedName": "Annotation::Capture Database Table Measurements::coco_pharma.coco_ods.region::714c1471-0312-40d7-9854-b26d69212eac_archivedOn_Tue Oct 06 16:04:12 GMT 2026",
+  "memento": true
+ },
+ {
+  "guid": "0a45a209-803d-4978-98d4-7fd91f4ef528",
+  "type": "ResourceMeasureAnnotation",
+  "qualifiedName": "Annotation::Capture Database Table Measurements::coco_pharma.coco_ods.shippers::7c0677ad-9fd6-4259-b249-26089dd0f32e_archivedOn_Tue Oct 06 16:04:13 GMT 2026",
+  "memento": true
+ },
+ {
+  "guid": "d0e7cb1e-cc97-4a0e-94b8-5e5323530f74",
+  "type": "ResourceMeasureAnnotation",
+  "qualifiedName": "Annotation::Capture Database Table Measurements::coco_pharma.coco_ods.shippers::9203df23-624e-4f64-b844-028e012e95d6_archivedOn_Tue Oct 06 16:04:22 GMT 2026",
+  "memento": true
+ },
+ {
+  "guid": "83049b84-8448-4068-97a0-11b980f83e70",
+  "type": "ResourceMeasureAnnotation",
+  "qualifiedName": "Annotation::Capture Database Table Measurements::coco_pharma.coco_ods.sites::84938f8f-213e-413f-9c4d-d662730ad09e_archivedOn_Tue Oct 06 16:04:22 GMT 2026",
+  "memento": true
+ },
+ {
+  "guid": "cb21c5d0-121b-46fb-9cc0-cfecece7822d",
+  "type": "ResourceMeasureAnnotation",
+  "qualifiedName": "Annotation::Capture Database Table Measurements::coco_pharma.coco_ods.sites::a5013008-4a7b-469c-8ad8-cdcb3d782588_archivedOn_Tue Oct 06 16:04:13 GMT 2026",
+  "memento": true
+ },
+ {
+  "guid": "e62ec25c-71b5-4a54-abda-509c47dcf81b",
+  "type": "ResourceMeasureAnnotation",
+  "qualifiedName": "Annotation::Capture Database Table Measurements::coco_pharma.coco_ods.supplier_invoice_details::720d5497-0675-41cd-b2e3-a805ad7ba18d_archivedOn_Tue Oct 06 16:04:14 GMT 2026",
+  "memento": true
+ },
+ {
+  "guid": "74041ff5-d97b-4042-a07c-ecd9d0b1e29a",
+  "type": "ResourceMeasureAnnotation",
+  "qualifiedName": "Annotation::Capture Database Table Measurements::coco_pharma.coco_ods.supplier_invoice_details::8272c252-1824-4b1d-997d-449fd60cbb57_archivedOn_Tue Oct 06 16:04:22 GMT 2026",
+  "memento": true
+ },
+ {
+  "guid": "16d6f52e-5845-43bd-9d85-0a8a2e629fa7",
+  "type": "ResourceMeasureAnnotation",
+  "qualifiedName": "Annotation::Capture Database Table Measurements::coco_pharma.coco_ods.supplier_invoices::3744b46c-5381-412f-818a-1398cdca4e19_archivedOn_Tue Oct 06 16:04:13 GMT 2026",
+  "memento": true
+ },
+ {
+  "guid": "5b189fb2-dc12-415c-b7a5-1d78323befdb",
+  "type": "ResourceMeasureAnnotation",
+  "qualifiedName": "Annotation::Capture Database Table Measurements::coco_pharma.coco_ods.supplier_invoices::ef83de62-d5ed-4cd1-ab00-d321525e3438_archivedOn_Tue Oct 06 16:04:21 GMT 2026",
+  "memento": true
+ },
+ {
+  "guid": "20e95279-8c2f-4e28-a7c3-07bf5d7a516b",
+  "type": "ResourceMeasureAnnotation",
+  "qualifiedName": "Annotation::Capture Database Table Measurements::coco_pharma.coco_ods.suppliers::2daed785-9cd8-47f8-9908-266aa212c97e_archivedOn_Tue Oct 06 16:04:22 GMT 2026",
+  "memento": true
+ },
+ {
+  "guid": "329f820c-9382-4e73-8723-b601eba2b869",
+  "type": "ResourceMeasureAnnotation",
+  "qualifiedName": "Annotation::Capture Database Table Measurements::coco_pharma.coco_ods.suppliers::b8cb27b3-aa05-41ca-a2b8-54c346ed72a8_archivedOn_Tue Oct 06 16:04:14 GMT 2026",
+  "memento": true
+ },
+ {
+  "guid": "6b8fee07-7ceb-4eba-af63-8862a1fe7b25",
+  "type": "ResourceMeasureAnnotation",
+  "qualifiedName": "Annotation::Capture Database Table Measurements::coco_pharma.coco_ods.supplies::4484643a-086a-4817-9f70-d61ab6976cef_archivedOn_Tue Oct 06 16:04:13 GMT 2026",
+  "memento": true
+ },
+ {
+  "guid": "5258d2d3-f555-402e-855b-d1322f14cff5",
+  "type": "ResourceMeasureAnnotation",
+  "qualifiedName": "Annotation::Capture Database Table Measurements::coco_pharma.coco_ods.supplies::ba2ae2d5-16b0-4ecd-9721-66ab2be81a67_archivedOn_Tue Oct 06 16:04:21 GMT 2026",
+  "memento": true
+ },
+ {
+  "guid": "7a09e4f0-4bf1-4020-a31c-fe0ebed8fc50",
+  "type": "ResourceMeasureAnnotation",
+  "qualifiedName": "Annotation::Capture Database Table Measurements::coco_pharma.coco_ods.supply_order_details::c0c1a992-053a-4bbf-9d5c-8bb23f457119_archivedOn_Tue Oct 06 16:04:20 GMT 2026",
+  "memento": true
+ },
+ {
+  "guid": "4c69edb4-396d-4b9a-a86c-8e10ef64f8d7",
+  "type": "ResourceMeasureAnnotation",
+  "qualifiedName": "Annotation::Capture Database Table Measurements::coco_pharma.coco_ods.supply_order_details::e1bdd1dd-eb1e-4ff4-8f4e-799fdff453a8_archivedOn_Tue Oct 06 16:04:11 GMT 2026",
+  "memento": true
+ },
+ {
+  "guid": "348afc66-e456-476c-bc19-1c428e57094a",
+  "type": "ResourceMeasureAnnotation",
+  "qualifiedName": "Annotation::Capture Database Table Measurements::coco_pharma.coco_ods.supply_orders::1e200d38-7ad7-4a0a-b9db-a0c35ac0fc45_archivedOn_Tue Oct 06 16:04:22 GMT 2026",
+  "memento": true
+ },
+ {
+  "guid": "b6b6823f-ed97-4686-966c-f4eff27c3929",
+  "type": "ResourceMeasureAnnotation",
+  "qualifiedName": "Annotation::Capture Database Table Measurements::coco_pharma.coco_ods.supply_orders::a588df8a-35ce-43e0-945e-522fb1e6fccd_archivedOn_Tue Oct 06 16:04:13 GMT 2026",
+  "memento": true
+ },
+ {
+  "guid": "f293a717-7555-4b6c-9877-a8661580b606",
+  "type": "ResourceMeasureAnnotation",
+  "qualifiedName": "Annotation::Capture Database Table Measurements::coco_pharma.coco_ods.territories::02bcc067-e125-4918-ab1c-6aa68d6196f7_archivedOn_Tue Oct 06 16:04:13 GMT 2026",
+  "memento": true
+ },
+ {
+  "guid": "310dc04d-cca2-4570-aae4-d8b5e34157a5",
+  "type": "ResourceMeasureAnnotation",
+  "qualifiedName": "Annotation::Capture Database Table Measurements::coco_pharma.coco_ods.territories::0b9894c9-ea48-407a-b7db-afee509c0def_archivedOn_Tue Oct 06 16:04:21 GMT 2026",
+  "memento": true
+ },
+ {
+  "guid": "04657725-1905-4bc1-8d9f-3718d89d93eb",
+  "type": "ResourceMeasureAnnotation",
+  "qualifiedName": "Annotation::Capture Database Table Measurements::coco_pharma.coco_ods.units_by_location::0f7b9d11-dab8-4f33-83f3-080f3914eef9_archivedOn_Tue Oct 06 16:04:23 GMT 2026",
+  "memento": true
+ },
+ {
+  "guid": "5ea599d3-22e3-48b1-9df1-e2661a00e213",
+  "type": "ResourceMeasureAnnotation",
+  "qualifiedName": "Annotation::Capture Database Table Measurements::coco_pharma.coco_ods.units_by_location::7bbd2677-df40-4544-abe9-0c79cc7600e6_archivedOn_Tue Oct 06 16:04:14 GMT 2026",
+  "memento": true
+ },
+ {
+  "guid": "1f17815c-a88a-44d8-865c-8c6fc1962681",
+  "type": "ResourceMeasureAnnotation",
+  "qualifiedName": "Annotation::Capture Database Table Measurements::coco_pharma.coco_ods.us_states::bdf99e5b-619d-4b19-8392-833296c2a159_archivedOn_Tue Oct 06 16:04:13 GMT 2026",
+  "memento": true
+ },
+ {
+  "guid": "87b5a180-09d3-46f5-a696-98ebf8f25a6e",
+  "type": "ResourceMeasureAnnotation",
+  "qualifiedName": "Annotation::Capture Database Table Measurements::coco_pharma.coco_ods.us_states::d87d07fd-15f4-4be7-9cb5-b5d8f2330c91_archivedOn_Tue Oct 06 16:04:22 GMT 2026",
+  "memento": true
+ },
+ {
+  "guid": "a3cf4de0-3b28-4fdd-8c9c-aa6af2d69d8f",
+  "type": "ResourceMeasureAnnotation",
+  "qualifiedName": "Annotation::Capture Database Table Measurements::coco_pharma.coco_sus.categories::1c7acb57-d666-4b36-936a-613276294df9_archivedOn_Tue Oct 06 16:04:19 GMT 2026",
+  "memento": true
+ },
+ {
+  "guid": "327bbe20-d7f6-4369-b649-b3d9af4a2ed2",
+  "type": "ResourceMeasureAnnotation",
+  "qualifiedName": "Annotation::Capture Database Table Measurements::coco_pharma.coco_sus.categories::ecc1f566-3909-4426-9522-6c5b0e871ff5_archivedOn_Tue Oct 06 16:04:09 GMT 2026",
+  "memento": true
+ },
+ {
+  "guid": "6988dec9-8178-4388-8bcb-64bc08ad6b51",
+  "type": "ResourceMeasureAnnotation",
+  "qualifiedName": "Annotation::Capture Database Table Measurements::coco_pharma.coco_sus.coco_locations::474ecbf8-1582-4282-99fe-d2a3ec299293_archivedOn_Tue Oct 06 16:04:19 GMT 2026",
+  "memento": true
+ },
+ {
+  "guid": "1ed87ecf-865a-44bb-ab9e-c28bc13444aa",
+  "type": "ResourceMeasureAnnotation",
+  "qualifiedName": "Annotation::Capture Database Table Measurements::coco_pharma.coco_sus.coco_locations::9162dedb-e399-488e-a5c0-37e3595b35dd_archivedOn_Tue Oct 06 16:04:08 GMT 2026",
+  "memento": true
+ },
+ {
+  "guid": "ea4e4187-8b37-4bd3-b185-fa35ec8d3a86",
+  "type": "ResourceMeasureAnnotation",
+  "qualifiedName": "Annotation::Capture Database Table Measurements::coco_pharma.coco_sus.ctry_scope_emissions::d07fd849-e135-4286-a178-18261bcb07a0_archivedOn_Tue Oct 06 16:04:10 GMT 2026",
+  "memento": true
+ },
+ {
+  "guid": "996b9bf2-0163-4eae-9de9-a4c7a31494a1",
+  "type": "ResourceMeasureAnnotation",
+  "qualifiedName": "Annotation::Capture Database Table Measurements::coco_pharma.coco_sus.customer_customer_demo::6e99bc6b-b90c-41b5-a66c-3da479e72e6c_archivedOn_Tue Oct 06 16:04:19 GMT 2026",
+  "memento": true
+ },
+ {
+  "guid": "24ef2467-e574-4ec6-8171-12aa2492c20a",
+  "type": "ResourceMeasureAnnotation",
+  "qualifiedName": "Annotation::Capture Database Table Measurements::coco_pharma.coco_sus.customer_customer_demo::a6124ce2-e81b-4251-927f-d40a766b823e_archivedOn_Tue Oct 06 16:04:09 GMT 2026",
+  "memento": true
+ },
+ {
+  "guid": "17accacb-c47e-404f-a112-73e6caea2913",
+  "type": "ResourceMeasureAnnotation",
+  "qualifiedName": "Annotation::Capture Database Table Measurements::coco_pharma.coco_sus.customer_demographics::9a43858e-4cbd-4c77-a6bf-816d81d19d62_archivedOn_Tue Oct 06 16:04:08 GMT 2026",
+  "memento": true
+ },
+ {
+  "guid": "be038b30-dd26-415c-9718-36ede86098cf",
+  "type": "ResourceMeasureAnnotation",
+  "qualifiedName": "Annotation::Capture Database Table Measurements::coco_pharma.coco_sus.customer_demographics::bdc158a8-1968-475b-a52c-31df0ac0438e_archivedOn_Tue Oct 06 16:04:18 GMT 2026",
+  "memento": true
+ },
+ {
+  "guid": "87924416-3f80-4aff-949e-e10b3ed9f657",
+  "type": "ResourceMeasureAnnotation",
+  "qualifiedName": "Annotation::Capture Database Table Measurements::coco_pharma.coco_sus.customers::0dcd265a-aff3-4b3a-9565-aee251c2d6af_archivedOn_Tue Oct 06 16:04:09 GMT 2026",
+  "memento": true
+ },
+ {
+  "guid": "cffb2b1c-5aa3-417e-a992-1e1e2af3d10b",
+  "type": "ResourceMeasureAnnotation",
+  "qualifiedName": "Annotation::Capture Database Table Measurements::coco_pharma.coco_sus.customers::72797f71-9805-47c3-afa6-0596a75a5465_archivedOn_Tue Oct 06 16:04:19 GMT 2026",
+  "memento": true
+ },
+ {
+  "guid": "9a68b763-0b66-49c7-8ffd-b12e135acb94",
+  "type": "ResourceMeasureAnnotation",
+  "qualifiedName": "Annotation::Capture Database Table Measurements::coco_pharma.coco_sus.customer_travel::b53d6f99-e5aa-4ff4-84ac-ef2786aa82f1_archivedOn_Tue Oct 06 16:04:11 GMT 2026",
+  "memento": true
+ },
+ {
+  "guid": "24db3f39-e573-4ca0-a68a-b37c82d6e408",
+  "type": "ResourceMeasureAnnotation",
+  "qualifiedName": "Annotation::Capture Database Table Measurements::coco_pharma.coco_sus.customer_travel::cd8bb5cc-9fda-402f-ba6f-7020f3d14cb2_archivedOn_Tue Oct 06 16:04:20 GMT 2026",
+  "memento": true
+ },
+ {
+  "guid": "cc48e704-4f5b-47f9-8aba-e35d54b9a8b4",
+  "type": "ResourceMeasureAnnotation",
+  "qualifiedName": "Annotation::Capture Database Table Measurements::coco_pharma.coco_sus.employees::7e794175-e8aa-4c6a-8b5e-176f85fa0b09_archivedOn_Tue Oct 06 16:04:07 GMT 2026",
+  "memento": true
+ },
+ {
+  "guid": "7540b892-1d2b-405c-a012-2bde50e77908",
+  "type": "ResourceMeasureAnnotation",
+  "qualifiedName": "Annotation::Capture Database Table Measurements::coco_pharma.coco_sus.employees::fb2bb826-d698-46d0-b6ac-62153fa8dee0_archivedOn_Tue Oct 06 16:04:18 GMT 2026",
+  "memento": true
+ },
+ {
+  "guid": "6605d38e-a22a-4190-be7c-632cbaba31b7",
+  "type": "ResourceMeasureAnnotation",
+  "qualifiedName": "Annotation::Capture Database Table Measurements::coco_pharma.coco_sus.employee_territories::d3fa326b-9d1e-4256-a773-52b97b4c642e_archivedOn_Tue Oct 06 16:04:18 GMT 2026",
+  "memento": true
+ },
+ {
+  "guid": "08e8f21e-1609-4559-8f6b-ffa0016ae5a1",
+  "type": "ResourceMeasureAnnotation",
+  "qualifiedName": "Annotation::Capture Database Table Measurements::coco_pharma.coco_sus.employee_territories::f69a1aa9-dee4-4c07-aeb1-69c538f788a8_archivedOn_Tue Oct 06 16:04:08 GMT 2026",
+  "memento": true
+ },
+ {
+  "guid": "5a53779e-6dbb-4ebc-a2d6-f9a1f2a32a8e",
+  "type": "ResourceMeasureAnnotation",
+  "qualifiedName": "Annotation::Capture Database Table Measurements::coco_pharma.coco_sus.ghg_emissions::02c9109d-23d5-4bb6-a1e3-160fecd0c2cd_archivedOn_Tue Oct 06 16:04:10 GMT 2026",
+  "memento": true
+ },
+ {
+  "guid": "9a692770-df0b-4011-9909-1501ff1e5a5d",
+  "type": "ResourceMeasureAnnotation",
+  "qualifiedName": "Annotation::Capture Database Table Measurements::coco_pharma.coco_sus.ghg_emissions::2cf36a80-5b2b-49f7-9456-1af0c4a284ae_archivedOn_Tue Oct 06 16:04:20 GMT 2026",
+  "memento": true
+ },
+ {
+  "guid": "7079f4a5-8af9-47a6-adb7-7ae3edd99b81",
+  "type": "ResourceMeasureAnnotation",
+  "qualifiedName": "Annotation::Capture Database Table Measurements::coco_pharma.coco_sus.order_details::67bca51e-1396-4c2d-97dc-a88c5c3a8fc1_archivedOn_Tue Oct 06 16:04:10 GMT 2026",
+  "memento": true
+ },
+ {
+  "guid": "b5d42d59-96f0-40f6-9c68-5d82b56a11d8",
+  "type": "ResourceMeasureAnnotation",
+  "qualifiedName": "Annotation::Capture Database Table Measurements::coco_pharma.coco_sus.order_details::e163f5c1-6873-4c75-a62e-fd6b4046ebf9_archivedOn_Tue Oct 06 16:04:20 GMT 2026",
+  "memento": true
+ },
+ {
+  "guid": "c6d8b4d4-a5e6-4f98-949f-12495f693c93",
+  "type": "ResourceMeasureAnnotation",
+  "qualifiedName": "Annotation::Capture Database Table Measurements::coco_pharma.coco_sus.orders::7ed9f8f1-bb81-4f09-bcb8-9b7b9284b955_archivedOn_Tue Oct 06 16:04:18 GMT 2026",
+  "memento": true
+ },
+ {
+  "guid": "66ee7287-2b3a-4c6d-8980-cb92fc5826c5",
+  "type": "ResourceMeasureAnnotation",
+  "qualifiedName": "Annotation::Capture Database Table Measurements::coco_pharma.coco_sus.orders::b1bd5ee5-cab9-4a71-8ecd-b461a161b1c0_archivedOn_Tue Oct 06 16:04:07 GMT 2026",
+  "memento": true
+ },
+ {
+  "guid": "917cbdb6-19ce-4b41-905f-0a959a929c4c",
+  "type": "ResourceMeasureAnnotation",
+  "qualifiedName": "Annotation::Capture Database Table Measurements::coco_pharma.coco_sus.products::3444bc02-992e-41fd-aaeb-1eab583524de_archivedOn_Tue Oct 06 16:04:10 GMT 2026",
+  "memento": true
+ },
+ {
+  "guid": "d9076bb1-e38c-40f7-a25e-2ab6f2b4541f",
+  "type": "ResourceMeasureAnnotation",
+  "qualifiedName": "Annotation::Capture Database Table Measurements::coco_pharma.coco_sus.products::a4365696-7bf5-4ca9-8dd8-b2df3d0c67f1_archivedOn_Tue Oct 06 16:04:19 GMT 2026",
+  "memento": true
+ },
+ {
+  "guid": "dce92cf9-8859-46f5-bd00-35aa5e67a5ec",
+  "type": "ResourceMeasureAnnotation",
+  "qualifiedName": "Annotation::Capture Database Table Measurements::coco_pharma.coco_sus.region::66c0c871-5eae-40b6-bae4-5a224e4c55fc_archivedOn_Tue Oct 06 16:04:07 GMT 2026",
+  "memento": true
+ },
+ {
+  "guid": "cc239e7a-bd04-4b81-b8c9-5599af652430",
+  "type": "ResourceMeasureAnnotation",
+  "qualifiedName": "Annotation::Capture Database Table Measurements::coco_pharma.coco_sus.region::f7e45e51-6a90-4a12-ad1f-5f8f1559fa3f_archivedOn_Tue Oct 06 16:04:17 GMT 2026",
+  "memento": true
+ },
+ {
+  "guid": "2672d931-dbec-43bc-8cf8-adb158daf5dd",
+  "type": "ResourceMeasureAnnotation",
+  "qualifiedName": "Annotation::Capture Database Table Measurements::coco_pharma.coco_sus.scope_emissions::67c4fbcf-b5c7-4078-ac4a-87451132c3e7_archivedOn_Tue Oct 06 16:04:10 GMT 2026",
+  "memento": true
+ },
+ {
+  "guid": "e31e1442-d0b6-4e90-8973-fbf68e11f583",
+  "type": "ResourceMeasureAnnotation",
+  "qualifiedName": "Annotation::Capture Database Table Measurements::coco_pharma.coco_sus.shippers::331b0525-5315-429a-a3da-b3862264f926_archivedOn_Tue Oct 06 16:04:10 GMT 2026",
+  "memento": true
+ },
+ {
+  "guid": "1dfeaa03-80be-4877-a682-d675ac2190e6",
+  "type": "ResourceMeasureAnnotation",
+  "qualifiedName": "Annotation::Capture Database Table Measurements::coco_pharma.coco_sus.shippers::bd8364ef-fb80-43ce-b388-1e66cc3c94f3_archivedOn_Tue Oct 06 16:04:20 GMT 2026",
+  "memento": true
+ },
+ {
+  "guid": "47a9e609-a377-41af-8993-ea143a766a6a",
+  "type": "ResourceMeasureAnnotation",
+  "qualifiedName": "Annotation::Capture Database Table Measurements::coco_pharma.coco_sus.sites2::05815b59-579c-44ec-b29a-69ad90ce75b1_archivedOn_Tue Oct 06 16:04:09 GMT 2026",
+  "memento": true
+ },
+ {
+  "guid": "d5131d8d-5675-4aec-a647-5e48b3819407",
+  "type": "ResourceMeasureAnnotation",
+  "qualifiedName": "Annotation::Capture Database Table Measurements::coco_pharma.coco_sus.sites2::3fe9a108-330f-4c77-9597-634c21c22328_archivedOn_Tue Oct 06 16:04:19 GMT 2026",
+  "memento": true
+ },
+ {
+  "guid": "7c4edd48-d064-4926-9e0e-bcac19a0af17",
+  "type": "ResourceMeasureAnnotation",
+  "qualifiedName": "Annotation::Capture Database Table Measurements::coco_pharma.coco_sus.sites::6decc7fc-10e1-4fe8-b9b4-54ce42697f15_archivedOn_Tue Oct 06 16:04:20 GMT 2026",
+  "memento": true
+ },
+ {
+  "guid": "4595f55e-e3cb-44ed-b0cb-2f478876dee8",
+  "type": "ResourceMeasureAnnotation",
+  "qualifiedName": "Annotation::Capture Database Table Measurements::coco_pharma.coco_sus.sites::f04dcac2-981a-4477-8c11-8cf083a7d0e3_archivedOn_Tue Oct 06 16:04:10 GMT 2026",
+  "memento": true
+ },
+ {
+  "guid": "cb4a9b34-6654-47b2-bf43-fde40b95ba21",
+  "type": "ResourceMeasureAnnotation",
+  "qualifiedName": "Annotation::Capture Database Table Measurements::coco_pharma.coco_sus.summary_emissions::39cea4de-80c3-434f-bc7f-06d7f6f858f9_archivedOn_Tue Oct 06 16:04:08 GMT 2026",
+  "memento": true
+ },
+ {
+  "guid": "ebe23762-f191-406f-a063-ae4ddcf6f07f",
+  "type": "ResourceMeasureAnnotation",
+  "qualifiedName": "Annotation::Capture Database Table Measurements::coco_pharma.coco_sus.supplier_invoice_details::125dc46b-ec01-44f5-a5b1-046cdb8d7d8c_archivedOn_Tue Oct 06 16:04:18 GMT 2026",
+  "memento": true
+ },
+ {
+  "guid": "62fbf0c0-c54d-4d1d-85a1-d9a78b3145d5",
+  "type": "ResourceMeasureAnnotation",
+  "qualifiedName": "Annotation::Capture Database Table Measurements::coco_pharma.coco_sus.supplier_invoice_details::24f96268-1afe-4c6d-b7cf-f51cf9d3fa19_archivedOn_Tue Oct 06 16:04:08 GMT 2026",
+  "memento": true
+ },
+ {
+  "guid": "aeec960f-5bc3-4925-9063-99042a5d2c91",
+  "type": "ResourceMeasureAnnotation",
+  "qualifiedName": "Annotation::Capture Database Table Measurements::coco_pharma.coco_sus.supplier_invoices::1eadb7e9-0766-4847-9e1c-45de4ce9ee60_archivedOn_Tue Oct 06 16:04:09 GMT 2026",
+  "memento": true
+ },
+ {
+  "guid": "3686d087-7b82-4707-8951-7a450588e121",
+  "type": "ResourceMeasureAnnotation",
+  "qualifiedName": "Annotation::Capture Database Table Measurements::coco_pharma.coco_sus.supplier_invoices::d6924e14-fcb3-4f2e-8f01-852d2e5163bd_archivedOn_Tue Oct 06 16:04:19 GMT 2026",
+  "memento": true
+ },
+ {
+  "guid": "8b91fab5-dfa3-4180-9ac3-9335526d0a98",
+  "type": "ResourceMeasureAnnotation",
+  "qualifiedName": "Annotation::Capture Database Table Measurements::coco_pharma.coco_sus.suppliers::1964b379-24e0-45fb-b0b3-7948a23b4dfd_archivedOn_Tue Oct 06 16:04:11 GMT 2026",
+  "memento": true
+ },
+ {
+  "guid": "7e39d692-3dc5-4746-b625-c9c1d152b8b7",
+  "type": "ResourceMeasureAnnotation",
+  "qualifiedName": "Annotation::Capture Database Table Measurements::coco_pharma.coco_sus.suppliers::2267f0f4-5cc7-4a9f-954b-ace1ce61f21a_archivedOn_Tue Oct 06 16:04:20 GMT 2026",
+  "memento": true
+ },
+ {
+  "guid": "77c71dd3-921c-46bf-b870-1529a8517d65",
+  "type": "ResourceMeasureAnnotation",
+  "qualifiedName": "Annotation::Capture Database Table Measurements::coco_pharma.coco_sus.supplies::77310204-b66c-4ab8-9c34-2c61a11ecb9b_archivedOn_Tue Oct 06 16:04:19 GMT 2026",
+  "memento": true
+ },
+ {
+  "guid": "36253535-6bb5-4326-adee-ba75956c671e",
+  "type": "ResourceMeasureAnnotation",
+  "qualifiedName": "Annotation::Capture Database Table Measurements::coco_pharma.coco_sus.supplies::7bcb2819-4838-4e02-af18-de9a00080744_archivedOn_Tue Oct 06 16:04:09 GMT 2026",
+  "memento": true
+ },
+ {
+  "guid": "6fbeb9bf-6348-48c6-8c21-c01928c2bd22",
+  "type": "ResourceMeasureAnnotation",
+  "qualifiedName": "Annotation::Capture Database Table Measurements::coco_pharma.coco_sus.supply_order_details::22a92014-a071-4454-97c9-959237896602_archivedOn_Tue Oct 06 16:04:09 GMT 2026",
+  "memento": true
+ },
+ {
+  "guid": "42a7a645-4b4b-49f6-897e-58e18c8a75d1",
+  "type": "ResourceMeasureAnnotation",
+  "qualifiedName": "Annotation::Capture Database Table Measurements::coco_pharma.coco_sus.supply_order_details::458a30d6-92e3-470f-9d22-169a4a5545a9_archivedOn_Tue Oct 06 16:04:19 GMT 2026",
+  "memento": true
+ },
+ {
+  "guid": "ac73df92-0279-469a-bfeb-9d925e24cd74",
+  "type": "ResourceMeasureAnnotation",
+  "qualifiedName": "Annotation::Capture Database Table Measurements::coco_pharma.coco_sus.supply_orders::126bd6ca-249b-46bc-b787-e5e4fa1c68ae_archivedOn_Tue Oct 06 16:04:18 GMT 2026",
+  "memento": true
+ },
+ {
+  "guid": "f56f02c3-f66a-4c4b-bc36-9ed2ab4d5364",
+  "type": "ResourceMeasureAnnotation",
+  "qualifiedName": "Annotation::Capture Database Table Measurements::coco_pharma.coco_sus.supply_orders::42850ec4-b198-4fb8-bc95-441ea699c4b4_archivedOn_Tue Oct 06 16:04:08 GMT 2026",
+  "memento": true
+ },
+ {
+  "guid": "1b9a7ea6-5baf-4b18-be77-17ae5f8e6753",
+  "type": "ResourceMeasureAnnotation",
+  "qualifiedName": "Annotation::Capture Database Table Measurements::coco_pharma.coco_sus.territories::8861215e-389f-4f9b-b943-ea939622e559_archivedOn_Tue Oct 06 16:04:18 GMT 2026",
+  "memento": true
+ },
+ {
+  "guid": "cd46b581-ee93-44d1-ab39-ba04a303828a",
+  "type": "ResourceMeasureAnnotation",
+  "qualifiedName": "Annotation::Capture Database Table Measurements::coco_pharma.coco_sus.territories::ed8be58e-6990-41de-9a69-686dc18f3e0f_archivedOn_Tue Oct 06 16:04:08 GMT 2026",
+  "memento": true
+ },
+ {
+  "guid": "63d692df-7f30-4d28-aa8d-4d861b6c0a7f",
+  "type": "ResourceMeasureAnnotation",
+  "qualifiedName": "Annotation::Capture Database Table Measurements::coco_pharma.coco_sus.unit_prefixes::0fdc23b0-9d49-49c5-b8ed-7bc1022151e8_archivedOn_Tue Oct 06 16:04:18 GMT 2026",
+  "memento": true
+ },
+ {
+  "guid": "97b760ed-6a73-49f5-bccd-f7383b0ea02a",
+  "type": "ResourceMeasureAnnotation",
+  "qualifiedName": "Annotation::Capture Database Table Measurements::coco_pharma.coco_sus.unit_prefixes::1f855b50-3f8c-4da9-a1c4-32686b898233_archivedOn_Tue Oct 06 16:04:08 GMT 2026",
+  "memento": true
+ },
+ {
+  "guid": "94eafc7b-778c-44d2-afae-d07ecfb5e2a5",
+  "type": "ResourceMeasureAnnotation",
+  "qualifiedName": "Annotation::Capture Database Table Measurements::coco_pharma.coco_sus.units_by_location::203d8673-967f-4754-81fe-649c0bfb553b_archivedOn_Tue Oct 06 16:04:11 GMT 2026",
+  "memento": true
+ },
+ {
+  "guid": "2e8c2a13-ad8b-4011-9987-d307ca813db8",
+  "type": "ResourceMeasureAnnotation",
+  "qualifiedName": "Annotation::Capture Database Table Measurements::coco_pharma.coco_sus.units_by_location::5946d771-ce7b-43be-b2ab-525c53b04e2b_archivedOn_Tue Oct 06 16:04:20 GMT 2026",
+  "memento": true
+ },
+ {
+  "guid": "34e58707-3165-4778-976b-75e6e478d400",
+  "type": "ResourceMeasureAnnotation",
+  "qualifiedName": "Annotation::Capture Database Table Measurements::coco_pharma.coco_sus.unit_units::1f3a2873-6d74-4509-aba0-d84bf36c38fe_archivedOn_Tue Oct 06 16:04:19 GMT 2026",
+  "memento": true
+ },
+ {
+  "guid": "ad776792-6c88-4e2e-852f-f95a2f6e079d",
+  "type": "ResourceMeasureAnnotation",
+  "qualifiedName": "Annotation::Capture Database Table Measurements::coco_pharma.coco_sus.unit_units::9684eb1d-6714-4672-b429-85f24c72a598_archivedOn_Tue Oct 06 16:04:09 GMT 2026",
+  "memento": true
+ },
+ {
+  "guid": "0d5bfcf8-7fd5-4288-b89a-7d10239d20f5",
+  "type": "ResourceMeasureAnnotation",
+  "qualifiedName": "Annotation::Capture Database Table Measurements::coco_pharma.coco_sus.us_states::041f7a99-b3f1-404e-9d74-34db6552fae2_archivedOn_Tue Oct 06 16:04:08 GMT 2026",
+  "memento": true
+ },
+ {
+  "guid": "a14b1719-88ea-4644-ad45-af268ce1b839",
+  "type": "ResourceMeasureAnnotation",
+  "qualifiedName": "Annotation::Capture Database Table Measurements::coco_pharma.coco_sus.us_states::3422d3ca-678e-4071-985f-356207160206_archivedOn_Tue Oct 06 16:04:18 GMT 2026",
+  "memento": true
+ },
+ {
+  "guid": "f724d2fc-3d03-4d10-980e-eba6c150926b",
+  "type": "ResourceMeasureAnnotation",
+  "qualifiedName": "Annotation::Capture Database Table Measurements::coco_pharma.us_sales.us_sales_forecast::6eadba7d-366e-4bd6-a5e2-d46f94e9186d_archivedOn_Tue Oct 06 16:04:17 GMT 2026",
+  "memento": true
+ },
+ {
+  "guid": "17f0a963-e96f-4726-86a2-e721fd0a38b1",
+  "type": "RelationalDatabase",
+  "qualifiedName": "PostgreSQL Relational Database::host.docker.internal:5442::coco_pharma_archivedOn_Tue Oct 06 16:04:25 GMT 2026",
+  "memento": true
+ },
+ {
+  "guid": "24197efb-1fab-4dd6-b3f8-f6719f2a8c1a",
+  "type": "VirtualConnection",
+  "qualifiedName": "PostgreSQL Relational Database::host.docker.internal:5442::coco_pharma::Connection_archivedOn_Tue Oct 06 16:04:25 GMT 2026",
+  "memento": true
+ },
+ {
+  "guid": "488c2d41-b4c8-4d08-a40a-fdbdf59337f8",
+  "type": "Endpoint",
+  "qualifiedName": "PostgreSQL Relational Database::host.docker.internal:5442::coco_pharma::Endpoint_archivedOn_Tue Oct 06 16:04:25 GMT 2026",
+  "memento": true
+ },
+ {
+  "guid": "ea97d270-fcce-4a95-8c54-cefbb14912be",
+  "type": "Connection",
+  "qualifiedName": "PostgreSQL Relational Database::host.docker.internal:5442::coco_pharma::SecretsStoreConnection_archivedOn_Tue Oct 06 16:04:25 GMT 2026",
+  "memento": true
+ },
+ {
+  "guid": "dcb04040-e8f5-48aa-aa09-a8d3fcdfe8a1",
+  "type": "Endpoint",
+  "qualifiedName": "PostgreSQL Relational Database::host.docker.internal:5442::coco_pharma::SecretStoreEndpoint_archivedOn_Tue Oct 06 16:04:25 GMT 2026",
+  "memento": true
+ },
+ {
+  "guid": "a358abb3-4031-4840-a9d6-69b8859c25b7",
+  "type": "DeployedDatabaseSchema",
+  "qualifiedName": "PostgreSQL Relational Database Schema::host.docker.internal:5442::coco_pharma.coco_ods_archivedOn_Tue Oct 06 16:04:23 GMT 2026",
+  "memento": true
+ },
+ {
+  "guid": "28bbde37-135a-4a55-8b68-f62ac9f6d32b",
+  "type": "DeployedDatabaseSchema",
+  "qualifiedName": "PostgreSQL Relational Database Schema::host.docker.internal:5442::coco_pharma.coco_sus_archivedOn_Tue Oct 06 16:04:23 GMT 2026",
+  "memento": true
+ },
+ {
+  "guid": "8065e349-bf8c-4472-bc68-b87fd8dbc298",
+  "type": "VirtualConnection",
+  "qualifiedName": "PostgreSQL Relational Database Schema::host.docker.internal:5442::coco_pharma.us_sales::Connection_archivedOn_Tue Oct 06 16:04:04 GMT 2026_archivedOn_Tue Oct 06 16:04:04 GMT 2026_archivedOn_Tue Oct 06 16:04:04 GMT 2026",
+  "memento": true
+ },
+ {
+  "guid": "73169ef5-1552-47a9-8b48-92124b76289b",
+  "type": "Endpoint",
+  "qualifiedName": "PostgreSQL Relational Database Schema::host.docker.internal:5442::coco_pharma.us_sales::Endpoint_archivedOn_Tue Oct 06 16:04:04 GMT 2026_archivedOn_Tue Oct 06 16:04:04 GMT 2026_archivedOn_Tue Oct 06 16:04:05 GMT 2026",
+  "memento": true
+ },
+ {
+  "guid": "f34ed759-dbdc-426a-a27f-93649b4a8e93",
+  "type": "RelationalDBSchemaType",
+  "qualifiedName": "PostgreSQL Relational Database Schema::host.docker.internal:5442::coco_pharma.us_sales_schemaType_archivedOn_Tue Oct 06 16:03:50 GMT 2026_archivedOn_Tue Oct 06 16:03:51 GMT 2026_archivedOn_Tue Oct 06 16:03:52 GMT 2026_archivedOn_Tue Oct 06 16:03:53 GMT 2026_archivedOn_Tue Oct 06 16:03:55 GMT 2026_archivedOn_Tue Oct 06 16:03:56 GMT 2026_archivedOn_Tue Oct 06 16:03:57 GMT 2026_archivedOn_Tue Oct 06 16:03:58 GMT 2026_archivedOn_Tue Oct 06 16:03:59 GMT 2026_archivedOn_Tue Oct 06 16:04:01 GMT 2026_archivedOn_Tue Oct 06 16:04:02 GMT 2026_archivedOn_Tue Oct 06 16:04:03 GMT 2026",
+  "memento": true
+ },
+ {
+  "guid": "9d27f7f8-e920-4780-b13a-72fe31cdfe9b",
+  "type": "Connection",
+  "qualifiedName": "PostgreSQL Relational Database Schema::host.docker.internal:5442::coco_pharma.us_sales::SecretsStoreConnection_archivedOn_Tue Oct 06 16:04:04 GMT 2026_archivedOn_Tue Oct 06 16:04:04 GMT 2026_archivedOn_Tue Oct 06 16:04:05 GMT 2026",
+  "memento": true
+ },
+ {
+  "guid": "3e48e7f3-cfad-416f-a2fe-0dff869a9531",
+  "type": "Endpoint",
+  "qualifiedName": "PostgreSQL Relational Database Schema::host.docker.internal:5442::coco_pharma.us_sales::SecretStoreEndpoint_archivedOn_Tue Oct 06 16:04:04 GMT 2026_archivedOn_Tue Oct 06 16:04:04 GMT 2026_archivedOn_Tue Oct 06 16:04:05 GMT 2026",
+  "memento": true
+ },
+ {
+  "guid": "9863e995-4abe-40a1-8e2f-6d80243586ad",
+  "type": "RelationalTable",
+  "qualifiedName": "PostgreSQL Relational Database Schema::host.docker.internal:5442::coco_pharma.us_sales::us_sales_forecast_archivedOn_Tue Oct 06 16:03:50 GMT 2026_archivedOn_Tue Oct 06 16:03:51 GMT 2026_archivedOn_Tue Oct 06 16:03:52 GMT 2026_archivedOn_Tue Oct 06 16:03:53 GMT 2026_archivedOn_Tue Oct 06 16:03:55 GMT 2026_archivedOn_Tue Oct 06 16:03:56 GMT 2026_archivedOn_Tue Oct 06 16:03:57 GMT 2026_archivedOn_Tue Oct 06 16:03:58 GMT 2026_archivedOn_Tue Oct 06 16:04:00 GMT 2026_archivedOn_Tue Oct 06 16:04:01 GMT 2026_archivedOn_Tue Oct 06 16:04:02 GMT 2026_archivedOn_Tue Oct 06 16:04:06 GMT 2026",
+  "memento": true
+ },
+ {
+  "guid": "247bad56-ad1d-441d-83ab-be6f5236af1d",
+  "type": "RelationalColumn",
+  "qualifiedName": "PostgreSQL Relational Database Schema::host.docker.internal:5442::coco_pharma.us_sales::us_sales_forecast::closedate_archivedOn_Tue Oct 06 16:03:49 GMT 2026_archivedOn_Tue Oct 06 16:03:50 GMT 2026_archivedOn_Tue Oct 06 16:03:53 GMT 2026_archivedOn_Tue Oct 06 16:03:54 GMT 2026_archivedOn_Tue Oct 06 16:03:55 GMT 2026_archivedOn_Tue Oct 06 16:03:56 GMT 2026_archivedOn_Tue Oct 06 16:03:57 GMT 2026_archivedOn_Tue Oct 06 16:03:59 GMT 2026_archivedOn_Tue Oct 06 16:04:00 GMT 2026_archivedOn_Tue Oct 06 16:04:01 GMT 2026_archivedOn_Tue Oct 06 16:04:03 GMT 2026_archivedOn_Tue Oct 06 16:04:05 GMT 2026",
+  "memento": true
+ },
+ {
+  "guid": "4e246eb2-528c-44b5-ace8-4cec2e3a0df4",
+  "type": "RelationalColumn",
+  "qualifiedName": "PostgreSQL Relational Database Schema::host.docker.internal:5442::coco_pharma.us_sales::us_sales_forecast::confidencelevel_archivedOn_Tue Oct 06 16:03:50 GMT 2026_archivedOn_Tue Oct 06 16:03:51 GMT 2026_archivedOn_Tue Oct 06 16:03:52 GMT 2026_archivedOn_Tue Oct 06 16:03:53 GMT 2026_archivedOn_Tue Oct 06 16:03:54 GMT 2026_archivedOn_Tue Oct 06 16:03:57 GMT 2026_archivedOn_Tue Oct 06 16:03:58 GMT 2026_archivedOn_Tue Oct 06 16:03:59 GMT 2026_archivedOn_Tue Oct 06 16:04:00 GMT 2026_archivedOn_Tue Oct 06 16:04:02 GMT 2026_archivedOn_Tue Oct 06 16:04:03 GMT 2026_archivedOn_Tue Oct 06 16:04:05 GMT 2026",
+  "memento": true
+ },
+ {
+  "guid": "0bdbdcad-58eb-498e-b9c5-dd0d421bfcb7",
+  "type": "RelationalColumn",
+  "qualifiedName": "PostgreSQL Relational Database Schema::host.docker.internal:5442::coco_pharma.us_sales::us_sales_forecast::createddate_archivedOn_Tue Oct 06 16:03:50 GMT 2026_archivedOn_Tue Oct 06 16:03:51 GMT 2026_archivedOn_Tue Oct 06 16:03:52 GMT 2026_archivedOn_Tue Oct 06 16:03:54 GMT 2026_archivedOn_Tue Oct 06 16:03:55 GMT 2026_archivedOn_Tue Oct 06 16:03:56 GMT 2026_archivedOn_Tue Oct 06 16:03:57 GMT 2026_archivedOn_Tue Oct 06 16:03:58 GMT 2026_archivedOn_Tue Oct 06 16:04:00 GMT 2026_archivedOn_Tue Oct 06 16:04:01 GMT 2026_archivedOn_Tue Oct 06 16:04:02 GMT 2026_archivedOn_Tue Oct 06 16:04:05 GMT 2026",
+  "memento": true
+ },
+ {
+  "guid": "4009f894-422c-4375-a10c-0352cd5eb5af",
+  "type": "RelationalColumn",
+  "qualifiedName": "PostgreSQL Relational Database Schema::host.docker.internal:5442::coco_pharma.us_sales::us_sales_forecast::currency_archivedOn_Tue Oct 06 16:03:49 GMT 2026_archivedOn_Tue Oct 06 16:03:51 GMT 2026_archivedOn_Tue Oct 06 16:03:53 GMT 2026_archivedOn_Tue Oct 06 16:03:54 GMT 2026_archivedOn_Tue Oct 06 16:03:55 GMT 2026_archivedOn_Tue Oct 06 16:03:56 GMT 2026_archivedOn_Tue Oct 06 16:03:57 GMT 2026_archivedOn_Tue Oct 06 16:03:59 GMT 2026_archivedOn_Tue Oct 06 16:04:00 GMT 2026_archivedOn_Tue Oct 06 16:04:01 GMT 2026_archivedOn_Tue Oct 06 16:04:02 GMT 2026_archivedOn_Tue Oct 06 16:04:05 GMT 2026",
+  "memento": true
+ },
+ {
+  "guid": "04baabeb-d7e6-47fd-9f01-a29d166072e9",
+  "type": "RelationalColumn",
+  "qualifiedName": "PostgreSQL Relational Database Schema::host.docker.internal:5442::coco_pharma.us_sales::us_sales_forecast::date_archivedOn_Tue Oct 06 16:03:50 GMT 2026_archivedOn_Tue Oct 06 16:03:51 GMT 2026_archivedOn_Tue Oct 06 16:03:52 GMT 2026_archivedOn_Tue Oct 06 16:03:53 GMT 2026_archivedOn_Tue Oct 06 16:03:54 GMT 2026_archivedOn_Tue Oct 06 16:03:56 GMT 2026_archivedOn_Tue Oct 06 16:03:57 GMT 2026_archivedOn_Tue Oct 06 16:03:58 GMT 2026_archivedOn_Tue Oct 06 16:03:59 GMT 2026_archivedOn_Tue Oct 06 16:04:02 GMT 2026_archivedOn_Tue Oct 06 16:04:03 GMT 2026_archivedOn_Tue Oct 06 16:04:06 GMT 2026",
+  "memento": true
+ },
+ {
+  "guid": "46680585-5fe2-4221-9979-ee184840f564",
+  "type": "RelationalColumn",
+  "qualifiedName": "PostgreSQL Relational Database Schema::host.docker.internal:5442::coco_pharma.us_sales::us_sales_forecast::forecastamount_archivedOn_Tue Oct 06 16:03:50 GMT 2026_archivedOn_Tue Oct 06 16:03:51 GMT 2026_archivedOn_Tue Oct 06 16:03:52 GMT 2026_archivedOn_Tue Oct 06 16:03:53 GMT 2026_archivedOn_Tue Oct 06 16:03:54 GMT 2026_archivedOn_Tue Oct 06 16:03:55 GMT 2026_archivedOn_Tue Oct 06 16:03:58 GMT 2026_archivedOn_Tue Oct 06 16:03:59 GMT 2026_archivedOn_Tue Oct 06 16:04:00 GMT 2026_archivedOn_Tue Oct 06 16:04:02 GMT 2026_archivedOn_Tue Oct 06 16:04:03 GMT 2026_archivedOn_Tue Oct 06 16:04:05 GMT 2026",
+  "memento": true
+ },
+ {
+  "guid": "13eefcea-8bfe-4d51-8384-77a30ca7ffa3",
+  "type": "RelationalColumn",
+  "qualifiedName": "PostgreSQL Relational Database Schema::host.docker.internal:5442::coco_pharma.us_sales::us_sales_forecast::opportunityid_archivedOn_Tue Oct 06 16:03:49 GMT 2026_archivedOn_Tue Oct 06 16:03:50 GMT 2026_archivedOn_Tue Oct 06 16:03:52 GMT 2026_archivedOn_Tue Oct 06 16:03:53 GMT 2026_archivedOn_Tue Oct 06 16:03:55 GMT 2026_archivedOn_Tue Oct 06 16:03:56 GMT 2026_archivedOn_Tue Oct 06 16:03:58 GMT 2026_archivedOn_Tue Oct 06 16:03:59 GMT 2026_archivedOn_Tue Oct 06 16:04:00 GMT 2026_archivedOn_Tue Oct 06 16:04:02 GMT 2026_archivedOn_Tue Oct 06 16:04:03 GMT 2026_archivedOn_Tue Oct 06 16:04:05 GMT 2026",
+  "memento": true
+ },
+ {
+  "guid": "94becf71-8477-4ecd-b03d-2b1a2426e9e2",
+  "type": "RelationalColumn",
+  "qualifiedName": "PostgreSQL Relational Database Schema::host.docker.internal:5442::coco_pharma.us_sales::us_sales_forecast::productline_archivedOn_Tue Oct 06 16:03:50 GMT 2026_archivedOn_Tue Oct 06 16:03:51 GMT 2026_archivedOn_Tue Oct 06 16:03:52 GMT 2026_archivedOn_Tue Oct 06 16:03:53 GMT 2026_archivedOn_Tue Oct 06 16:03:54 GMT 2026_archivedOn_Tue Oct 06 16:03:55 GMT 2026_archivedOn_Tue Oct 06 16:03:57 GMT 2026_archivedOn_Tue Oct 06 16:03:59 GMT 2026_archivedOn_Tue Oct 06 16:04:00 GMT 2026_archivedOn_Tue Oct 06 16:04:02 GMT 2026_archivedOn_Tue Oct 06 16:04:03 GMT 2026_archivedOn_Tue Oct 06 16:04:05 GMT 2026",
+  "memento": true
+ },
+ {
+  "guid": "ab42c627-1b28-4587-870b-4470cd69e942",
+  "type": "RelationalColumn",
+  "qualifiedName": "PostgreSQL Relational Database Schema::host.docker.internal:5442::coco_pharma.us_sales::us_sales_forecast::recordid_archivedOn_Tue Oct 06 16:03:50 GMT 2026_archivedOn_Tue Oct 06 16:03:51 GMT 2026_archivedOn_Tue Oct 06 16:03:52 GMT 2026_archivedOn_Tue Oct 06 16:03:53 GMT 2026_archivedOn_Tue Oct 06 16:03:55 GMT 2026_archivedOn_Tue Oct 06 16:03:56 GMT 2026_archivedOn_Tue Oct 06 16:03:57 GMT 2026_archivedOn_Tue Oct 06 16:03:58 GMT 2026_archivedOn_Tue Oct 06 16:03:59 GMT 2026_archivedOn_Tue Oct 06 16:04:01 GMT 2026_archivedOn_Tue Oct 06 16:04:03 GMT 2026_archivedOn_Tue Oct 06 16:04:06 GMT 2026",
+  "memento": true
+ },
+ {
+  "guid": "9a9c8449-77a1-4b7b-b541-8468e7040232",
+  "type": "RelationalColumn",
+  "qualifiedName": "PostgreSQL Relational Database Schema::host.docker.internal:5442::coco_pharma.us_sales::us_sales_forecast::repid_archivedOn_Tue Oct 06 16:03:50 GMT 2026_archivedOn_Tue Oct 06 16:03:51 GMT 2026_archivedOn_Tue Oct 06 16:03:52 GMT 2026_archivedOn_Tue Oct 06 16:03:53 GMT 2026_archivedOn_Tue Oct 06 16:03:54 GMT 2026_archivedOn_Tue Oct 06 16:03:56 GMT 2026_archivedOn_Tue Oct 06 16:03:57 GMT 2026_archivedOn_Tue Oct 06 16:03:58 GMT 2026_archivedOn_Tue Oct 06 16:04:01 GMT 2026_archivedOn_Tue Oct 06 16:04:02 GMT 2026_archivedOn_Tue Oct 06 16:04:03 GMT 2026_archivedOn_Tue Oct 06 16:04:06 GMT 2026",
+  "memento": true
+ },
+ {
+  "guid": "6b38b5c6-9074-434a-a962-dc8958680738",
+  "type": "RelationalColumn",
+  "qualifiedName": "PostgreSQL Relational Database Schema::host.docker.internal:5442::coco_pharma.us_sales::us_sales_forecast::salesstage_archivedOn_Tue Oct 06 16:03:49 GMT 2026_archivedOn_Tue Oct 06 16:03:50 GMT 2026_archivedOn_Tue Oct 06 16:03:51 GMT 2026_archivedOn_Tue Oct 06 16:03:54 GMT 2026_archivedOn_Tue Oct 06 16:03:55 GMT 2026_archivedOn_Tue Oct 06 16:03:56 GMT 2026_archivedOn_Tue Oct 06 16:03:57 GMT 2026_archivedOn_Tue Oct 06 16:03:59 GMT 2026_archivedOn_Tue Oct 06 16:04:00 GMT 2026_archivedOn_Tue Oct 06 16:04:01 GMT 2026_archivedOn_Tue Oct 06 16:04:03 GMT 2026_archivedOn_Tue Oct 06 16:04:05 GMT 2026",
+  "memento": true
+ },
+ {
+  "guid": "4d7dcb9f-e720-45a8-a2a8-6273278f96a9",
+  "type": "SurveyReport",
+  "qualifiedName": "SurveyReport::survey-postgres-database::17f0a963-e96f-4726-86a2-e721fd0a38b1::Sun Oct 04 15:22:55 GMT 2026_archivedOn_Tue Oct 06 16:04:16 GMT 2026",
+  "memento": true
+ },
+ {
+  "guid": "03b908a5-2605-48fc-b79b-5dbf56b200fe",
+  "type": "SurveyReport",
+  "qualifiedName": "SurveyReport::survey-postgres-database::17f0a963-e96f-4726-86a2-e721fd0a38b1::Sun Oct 04 15:31:57 GMT 2026_archivedOn_Tue Oct 06 16:04:17 GMT 2026",
+  "memento": true
+ },
+ {
+  "guid": "b99463ea-614c-4291-a138-1c48a2bdc2eb",
+  "type": "SurveyReport",
+  "qualifiedName": "SurveyReport::survey-postgres-database::17f0a963-e96f-4726-86a2-e721fd0a38b1::Tue Oct 06 13:25:55 GMT 2026_archivedOn_Tue Oct 06 16:04:14 GMT 2026",
+  "memento": true
+ },
+ {
+  "guid": "bf44a57c-469a-48ae-bf91-c6a2d83e2cff",
+  "type": "SurveyReport",
+  "qualifiedName": "SurveyReport::survey-postgres-database::17f0a963-e96f-4726-86a2-e721fd0a38b1::Tue Oct 06 13:55:51 GMT 2026_archivedOn_Tue Oct 06 16:04:23 GMT 2026",
+  "memento": true
+ },
+ {
+  "guid": "87271b37-2e54-4a90-90bc-6a25bc98cd83",
+  "type": "DeployedDatabaseSchema",
+  "qualifiedName": "PostgreSQL Relational Database Schema::host.docker.internal:5442::coco_pharma.us_sales",
+  "memento": true,
+  "note": "Memento, NOT renamed; found by GUID, not by the name search"
+ }
+]

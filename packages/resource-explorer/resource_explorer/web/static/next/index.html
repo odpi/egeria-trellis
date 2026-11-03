@@ -3,12 +3,30 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Resource Explorer · /next</title>
+<!-- Before first paint: the remembered look, so the page never flashes the wrong
+     one. No storage (blocked, private window) means Dark, which is also what
+     themes.css falls back to with no attribute at all. look.js writes the key. -->
+<script>
+(function () {
+  var look = 'dark';
+  try {
+    var v = localStorage.getItem('re-next.look');
+    if (v === 'light' || v === 'paper' || v === 'dark') look = v;
+  } catch (e) { /* storage unavailable: Dark */ }
+  document.documentElement.setAttribute('data-look', look);
+})();
+</script>
+<title>Resource Explorer</title>
 <link rel="icon" href="/static/egeria-logo.png">
 
 <!-- Self-hosted, like every other asset this app loads. Regenerate with
      frontend-build/build-next-fonts.py. -->
 <link rel="stylesheet" href="/static/next/fonts/fonts.css">
+
+<!-- The three looks (Dark default, Light, Paper): every colour, font and radius
+     as a CSS variable. Loaded BEFORE the Tailwind sheet and the <style> below,
+     which read these variables. RULING-THEMES-PORTAL-DARK-LIGHT.md. -->
+<link rel="stylesheet" href="/static/next/themes.css">
 
 <style>
   /* Base and the handful of things a utility class is the wrong tool for.
@@ -18,9 +36,9 @@
   html, body { height: 100%; }
   body {
     margin: 0;
-    background: #1b1a19;
-    color: #f3f2f2;
-    font-family: Lora, Georgia, serif;
+    background: rgb(var(--c-chrome, 27 26 25));
+    color: rgb(var(--c-chrome-ink, 243 242 242));
+    font-family: var(--font-body, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif);
     font-size: 15px;   /* raised from 14px with the answer line — see the
                           `answer` token's note in tailwind-next.config.js */
     line-height: 1.55;
@@ -33,11 +51,28 @@
      spans — it is a manual pass, so the class is deliberately short. */
   .tnum { font-feature-settings: "tnum"; font-variant-numeric: tabular-nums; }
 
+  /* Resizable table columns (next/colresize.js): a thin vertical bar at a header cell's right
+     edge, drawn on hover, on keyboard focus and while dragging. currentColor, so it follows the
+     theme; the cursor says what a drag does. */
+  .rc-handle {
+    position: absolute; top: 0; right: 0; bottom: 0; width: 7px;
+    cursor: col-resize; touch-action: none; user-select: none;
+  }
+  .rc-handle::after {
+    content: ""; position: absolute; top: 2px; bottom: 2px; right: 2px; width: 2px;
+    background: currentColor; opacity: 0; border-radius: 1px;
+  }
+  *:hover > .rc-handle::after { opacity: 0.25; }
+  .rc-handle:hover::after, .rc-handle:focus-visible::after, .rc-handle[data-rc-active]::after { opacity: 0.8; }
+  .rc-handle:focus-visible { outline: none; }
+  /* An ordinary <table> once its columns are frozen for resizing: text wraps inside its own cell. */
+  table[data-rc-fixed] th, table[data-rc-fixed] td { overflow-wrap: break-word; }
+
   /* Never the browser default. */
   :focus { outline: none; }
-  :focus-visible { outline: 2px solid #b68235; outline-offset: 2px; }
+  :focus-visible { outline: 2px solid rgb(var(--c-accent, 182 130 53)); outline-offset: 2px; }
 
-  ::selection { background: rgba(182, 130, 53, 0.3); }
+  ::selection { background: rgb(var(--c-accent, 182 130 53) / 0.3); }
 
   /* The intent strip must never wrap: a wider item reflows the whole row.
      Scrolled horizontally instead, with the scrollbar out of the way. */
@@ -52,7 +87,7 @@
      rather than a colour change, so the element's own state (held, selected,
      current) still reads underneath it. */
   #app-grid button:hover, #intent-nav button:hover, #perspective-row button:hover {
-    background-color: rgba(182, 130, 53, 0.12);
+    background-color: rgb(var(--c-accent, 182 130 53) / 0.12);
   }
 
   /* ── Responsive ───────────────────────────────────────────────────────
@@ -84,7 +119,7 @@
     position: absolute; top: 0; bottom: 0; width: 5px; z-index: 20;
     cursor: col-resize; background: transparent;
   }
-  .seam:hover, .seam.dragging { background: rgba(182, 130, 53, 0.55); }
+  .seam:hover, .seam.dragging { background: rgb(var(--c-accent, 182 130 53) / 0.55); }
   #seam-sidebar { left: calc(var(--sidebar-w) - 2px); }
   #seam-rail    { right: calc(var(--rail-w) - 2px); }
   body.resizing { cursor: col-resize; user-select: none; }
@@ -95,7 +130,7 @@
       grid-template-areas: "sidebar content" "sidebar rail";
       grid-template-rows: minmax(0, 1fr) auto;
     }
-    #app-grid > .pane-rail { border-left: 0; border-top: 1px solid #444141; }
+    #app-grid > .pane-rail { border-left: 0; border-top: 1px solid rgb(var(--c-chrome-line, 68 65 65)); }
     /* Only the sidebar seam still means anything once the rail is stacked. */
     #seam-rail { display: none; }
   }
@@ -106,7 +141,7 @@
       grid-template-areas: "content" "rail" "sidebar";
       grid-template-rows: minmax(0, 1fr) auto auto;
     }
-    #app-grid > .pane-sidebar { border-right: 0; border-top: 1px solid #444141; }
+    #app-grid > .pane-sidebar { border-right: 0; border-top: 1px solid rgb(var(--c-chrome-line, 68 65 65)); }
     .seam { display: none; }
   }
 
@@ -118,16 +153,16 @@
      to the table's own container, so the page itself never moves. */
   #wl-grid { overflow-x: auto; }
   #wl-grid table { border-collapse: separate; border-spacing: 0; }
-  #wl-grid th, #wl-grid td { border-bottom: 1px solid var(--wl-rule, rgba(32,31,29,.16)); }
+  #wl-grid th, #wl-grid td { border-bottom: 1px solid var(--wl-rule, rgb(var(--c-ink, 32 31 29) / .16)); }
   #wl-grid .wl-freeze-1, #wl-grid .wl-freeze-2 {
-    position: sticky; z-index: 2; background: #f3f2f2;
+    position: sticky; z-index: 2; background: rgb(var(--c-paper, 243 242 242));
   }
   #wl-grid .wl-freeze-1 { left: 0; }
   #wl-grid .wl-freeze-2 { left: 26px; }
   /* A hairline where the frozen block ends, so the seam is legible rather
      than the columns appearing to overlap mid-scroll. */
-  #wl-grid .wl-freeze-2 { box-shadow: 1px 0 0 rgba(32,31,29,.16); }
-  #wl-grid thead th { position: sticky; top: 0; z-index: 3; background: #f3f2f2; }
+  #wl-grid .wl-freeze-2 { box-shadow: 1px 0 0 rgb(var(--c-ink, 32 31 29) / .16); }
+  #wl-grid thead th { position: sticky; top: 0; z-index: 3; background: rgb(var(--c-paper, 243 242 242)); }
   #wl-grid thead th.wl-freeze-1, #wl-grid thead th.wl-freeze-2 { z-index: 4; }
   /* Question columns stay narrow: they hold one glyph. */
   #wl-grid td.wl-cell, #wl-grid th.wl-col { width: 26px; min-width: 26px; text-align: center; }
@@ -137,9 +172,9 @@
   #wl-grid .wl-cellbtn {
     display: block; width: 100%; cursor: pointer;
     background: none; border: 0; font: inherit; color: inherit;
-    border-radius: 2px;
+    border-radius: var(--r-sm, 2px);
   }
-  #wl-grid .wl-cellbtn:hover { background: rgba(32,31,29,.08); }
+  #wl-grid .wl-cellbtn:hover { background: rgb(var(--c-ink, 32 31 29) / .08); }
   /* AGE IS A RULE ON THE CELL'S BASELINE, graded, never a recolour.
      It does not compete with the glyph for the same pixels, it survives
      print, and a column of stale cells reads as a broken underline running
@@ -161,7 +196,7 @@
   #wl-grid .wl-cellbtn { position: relative; padding: 6px 0; }
   #wl-grid .wl-age1::after, #wl-grid .wl-age2::after {
     content: ""; position: absolute; left: 50%; transform: translateX(-50%);
-    bottom: 1px; background: var(--wl-age, rgba(32,31,29,.55));
+    bottom: 1px; background: var(--wl-age, rgb(var(--c-ink, 32 31 29) / .55));
   }
   #wl-grid .wl-age1::after { width: 40%; height: 1px; }
   #wl-grid .wl-age2::after { width: 100%; height: 2px; }
@@ -180,20 +215,20 @@
   html { font-size: 16px; }
   html[data-textsize="112"] { font-size: 17.9px; }
   html[data-textsize="125"] { font-size: 20px; }
-  #textsize button[aria-pressed="true"] { color: var(--wl-accent-on-dark, #e0b872); }
+  #textsize button[aria-pressed="true"] { color: var(--wl-accent-on-dark, rgb(var(--c-accent-on-dark, 224 184 114))); }
 
   /* The chart selector, in the same language as the stage tabs: accent ink
      and an accent underline. Selection is the only thing on the pane that
      must never be inferred. */
   .wl-chartchip { border-bottom: 2px solid transparent; }
   .wl-chartchip[aria-pressed="true"] {
-    color: var(--wl-accent-ink, #7d5411);
-    border-bottom-color: var(--wl-accent, #b68235);
+    color: var(--wl-accent-ink, rgb(var(--c-accent-ink, 125 84 17)));
+    border-bottom-color: var(--wl-accent, rgb(var(--c-accent, 182 130 53)));
   }
 
   /* The same staleness treatment the grid uses, for a line of text: a rule
      under it, never a recolour. Age and quality stay different claims. */
-  .wl-age-text { border-bottom: 1px solid var(--wl-age, rgba(32,31,29,.55)); }
+  .wl-age-text { border-bottom: 1px solid var(--wl-age, rgb(var(--c-ink, 32 31 29) / .55)); }
 
   /* Dashboard cards. A PROSE measurement is a peer of a numeric one — same
      border, same weight, same rank in the flow — and simply wider, because a
@@ -208,8 +243,8 @@
     .wl-cards { grid-template-columns: minmax(0, 1fr); }
     .wl-card-wide { grid-column: auto; }
   }
-  #wl-grid th.wl-col-live { color: var(--wl-accent-ink, #7a6a3f); }
-  #wl-grid .wl-cellbtn:focus-visible { outline: 2px solid var(--wl-focus, #7a6a3f); outline-offset: 1px; }
+  #wl-grid th.wl-col-live { color: var(--wl-accent-ink, rgb(var(--c-accent-ink, 122 106 63))); }
+  #wl-grid .wl-cellbtn:focus-visible { outline: 2px solid var(--wl-focus, rgb(var(--c-accent-ink, 122 106 63))); outline-offset: 1px; }
 
   /* ── The chat rail is a DRAWER, not a fixed column ──────────────────── */
   #app-grid.rail-closed {
@@ -225,7 +260,7 @@
     #app-grid:not(.rail-closed) > .pane-rail {
       position: absolute; top: 0; right: 0; bottom: 0;
       width: min(360px, 92vw); z-index: 30;
-      border-left: 1px solid #444141; border-top: 0;
+      border-left: 1px solid rgb(var(--c-chrome-line, 68 65 65)); border-top: 0;
       box-shadow: 0 12px 32px rgba(45, 43, 43, 0.22);
     }
     #app-grid:not(.rail-closed) {
@@ -263,8 +298,8 @@
          it; as a drawer it floats over the paper content pane, and without
          this its chrome-light text lands on white and is invisible — the
          drawer opened correctly and looked like a blank screen. */
-      background: #1b1a19;
-      border-right: 1px solid #444141; border-top: 0;
+      background: rgb(var(--c-chrome, 27 26 25));
+      border-right: 1px solid rgb(var(--c-chrome-line, 68 65 65)); border-top: 0;
       box-shadow: 0 12px 32px rgba(45, 43, 43, 0.28);
       transform: translateX(-101%); transition: transform .16s ease-out;
     }
@@ -275,11 +310,11 @@
     .seam { display: none; }
   }
   /* The header is a two-line masthead on a phone, not a six-line one. The
-     investigation name and the cross-link to the current UI are context, and
+     investigation name is context, and
      context is what a 375px screen has least room for — the content is why
      anyone opened it. */
   @media (max-width: 780px) {
-    #investigation-name, #investigation-scope, #switch-ui { display: none; }
+    #investigation-name, #investigation-scope { display: none; }
     #intent-nav { overflow-x: auto; white-space: nowrap; }
     #perspective-row { max-height: 2.4em; overflow: hidden; }
   }
@@ -302,39 +337,39 @@
      be looking at when you found out. auth.js toggles `style.display`
      directly, so this cannot become a class-based toggle. -->
 <div id="login-overlay" style="display:none;position:fixed;inset:0;z-index:100;
-     align-items:center;justify-content:center;background:#1b1a19">
-  <div style="width:min(380px,92vw);border:1px solid #444141;border-radius:4px;
-              padding:27.6px;background:#201f1d">
-    <div style="font-family:'Cormorant Garamond',Georgia,serif;font-size:19px;margin-bottom:4.6px">
+     align-items:center;justify-content:center;background:rgb(var(--c-chrome, 27 26 25))">
+  <div style="width:min(380px,92vw);border:1px solid rgb(var(--c-chrome-line, 68 65 65));border-radius:var(--r-md, 4px);
+              padding:27.6px;background:rgb(var(--c-chrome-alt, 32 31 29))">
+    <div style="font-family:var(--font-heading, 'Cormorant Garamond', Georgia, serif);font-size:19px;margin-bottom:4.6px">
       Resource Explorer
     </div>
-    <div style="font-size:11px;letter-spacing:.09em;text-transform:uppercase;color:#e1ad66;
+    <div style="font-size:11px;letter-spacing:.09em;text-transform:uppercase;color:rgb(var(--c-accent-on-dark, 225 173 102));
                 margin-bottom:18.4px">Experimental UI</div>
-    <div id="login-message" class="hidden" style="font-size:13px;color:#9b9797;margin-bottom:13.8px"></div>
-    <label for="login-username" style="display:block;font-size:11.5px;color:#9b9797;margin-bottom:4.6px">
+    <div id="login-message" class="hidden" style="font-size:13px;color:rgb(var(--c-chrome-muted, 155 151 151));margin-bottom:13.8px"></div>
+    <label for="login-username" style="display:block;font-size:11.5px;color:rgb(var(--c-chrome-muted, 155 151 151));margin-bottom:4.6px">
       Egeria user id
     </label>
     <input id="login-username" type="text" autocomplete="username"
            style="width:100%;padding:6px 10px;margin-bottom:13.8px;font:inherit;font-size:13px;
-                  color:#f3f2f2;background:transparent;border:1px solid #444141;border-radius:2px">
-    <label for="login-password" style="display:block;font-size:11.5px;color:#9b9797;margin-bottom:4.6px">
+                  color:rgb(var(--c-chrome-ink, 243 242 242));background:transparent;border:1px solid rgb(var(--c-chrome-line, 68 65 65));border-radius:var(--r-sm, 2px)">
+    <label for="login-password" style="display:block;font-size:11.5px;color:rgb(var(--c-chrome-muted, 155 151 151));margin-bottom:4.6px">
       Password
     </label>
     <input id="login-password" type="password" autocomplete="current-password"
            style="width:100%;padding:6px 10px;margin-bottom:13.8px;font:inherit;font-size:13px;
-                  color:#f3f2f2;background:transparent;border:1px solid #444141;border-radius:2px">
-    <div id="login-error" class="hidden" style="font-size:12px;color:#e1ad66;margin-bottom:9.2px"></div>
+                  color:rgb(var(--c-chrome-ink, 243 242 242));background:transparent;border:1px solid rgb(var(--c-chrome-line, 68 65 65));border-radius:var(--r-sm, 2px)">
+    <div id="login-error" class="hidden" style="font-size:12px;color:rgb(var(--c-accent-on-dark, 225 173 102));margin-bottom:9.2px"></div>
     <button id="login-submit-btn"
-            style="font-family:'Cormorant Garamond',Georgia,serif;font-size:14px;cursor:pointer;
-                   padding:6px 16px;color:#e1ad66;background:transparent;
-                   border:1px solid #b68235;border-radius:2px">Sign in</button>
+            style="font-family:var(--font-heading, 'Cormorant Garamond', Georgia, serif);font-size:14px;cursor:pointer;
+                   padding:6px 16px;color:rgb(var(--c-accent-on-dark, 225 173 102));background:transparent;
+                   border:1px solid rgb(var(--c-accent, 182 130 53));border-radius:var(--r-sm, 2px)">Sign in</button>
     <!-- Only useful in the dev-box anonymous-read mode, and safe by
          construction rather than by being hidden: Auth.hideLogin() refuses
          to dismiss while the server requires login and nobody is signed in,
          so this button cannot reveal a shell whose every call 401s. Without
          it, an anonymous-read box shows a modal with no way past it. -->
     <button id="login-dismiss-btn"
-            style="margin-left:9.2px;font-size:12px;cursor:pointer;color:#9b9797;
+            style="margin-left:9.2px;font-size:12px;cursor:pointer;color:rgb(var(--c-chrome-muted, 155 151 151));
                    background:transparent;border:0">Continue without signing in</button>
   </div>
 </div>
@@ -342,7 +377,7 @@
 <div class="flex h-full flex-col">
 
   <!-- ── Top bar ───────────────────────────────────────────────────────── -->
-  <header class="flex flex-wrap items-center gap-s4 border-b border-chrome-line px-4 py-[10px]">
+  <header class="relative flex flex-wrap items-center gap-s4 border-b border-chrome-line px-4 py-[10px]">
     <!-- Below 780px the sidebar is a drawer and this is the way in. It lives
          in the MASTHEAD, not in the nav row below: that row overflows
          horizontally at this width, which put the button at x=882 on a 375px
@@ -353,6 +388,9 @@
          browser cannot rely on the browser's zoom, and should not have to:
          one control removes the whole class of complaint. Three steps off the
          root font size, which every pane size is expressed against. -->
+    <!-- THE LOOK (Dark / Light / Paper), built by look.js. Sits beside the text
+         size: both are "make this readable for me". -->
+    <span id="look" class="flex items-baseline text-[13px]"></span>
     <span id="textsize" class="flex items-baseline gap-[2px] text-[13px]" role="group"
           aria-label="Text size">
       <button data-textsize="100" class="cursor-pointer bg-transparent px-[5px] text-chrome-muted"
@@ -363,13 +401,20 @@
         title="Largest text">A</button>
     </span>
     <span class="font-heading text-brand font-semibold">Resource Explorer</span>
-    <span id="scope-slug"
-          class="rounded-sm border border-accent-deep px-2 py-[2px] font-mono text-provenance text-accent-on-dark"></span>
+    <!-- The resource's own menu (REPLY-DESIGNER-RESOURCE-CONTROLS-PLACEMENT.md
+         §1): the name is bordered in the accent-deep colour, which is how a
+         control looks, so it IS one. Hide/unhide and Remove live behind it
+         because this is the one element that names the current resource on
+         every stage and sub-tab. app.js renderTopBar() fills it and binds it. -->
+    <button id="scope-slug" type="button" aria-haspopup="menu" aria-expanded="false"
+            title="This resource's menu: hide, remove"
+            class="cursor-pointer rounded-sm border border-accent-deep bg-transparent px-2 py-[2px] font-mono text-provenance text-accent-on-dark disabled:cursor-default"></button>
     <span class="ml-auto flex items-center gap-s4 text-[12px] text-chrome-muted">
-      <button id="activity-open-btn" type="button" title="Recent activity — scouting, survey, catalog, publish, RFA"
+      <button id="activity-open-btn" type="button" title="Recent activity — scouting, survey, publish, RFA"
         class="cursor-pointer bg-transparent text-chrome-muted hover:text-chrome-ink">📋 Activity
-        <span id="activity-count" class="tnum text-accent-on-dark">–</span></button>
-      <button id="admin-open-btn" type="button" title="System/catalog configuration — annotation types, question catalog, logs, feedback, Prefect, plus links to the rest in the current UI"
+        <span id="activity-count" class="tnum text-accent-on-dark">–</span>
+        <span id="activity-unread" class="tnum hidden rounded-sm border border-accent px-[5px] text-accent-on-dark"></span></button>
+      <button id="admin-open-btn" type="button" title="System configuration — annotation types, question catalog, logs, feedback, Prefect, plus links to the rest in the current UI"
         class="cursor-pointer bg-transparent text-chrome-muted hover:text-chrome-ink">⚙ Admin</button>
       <span id="investigation-name">No investigation</span>
       <!-- RULING-NAV-GROUPING.md §3: "Investigation additionally becomes a
@@ -385,14 +430,8 @@
            binding step) and is deliberately NOT built here — see
            NAV-GROUPING-IMPLEMENTED.md for why it's deferred. -->
       <span id="investigation-scope" class="text-chrome-muted"></span>
-      <span id="whoami">–</span>
-      <!-- Make switching one click, and say which UI you are in. Testers
-           comparing one repo in both shells in one session is what produces
-           usable feedback. -->
-      <a id="switch-ui" href="/"
-         class="rounded-sm border border-chrome-line px-2 py-[2px] text-chrome-ink no-underline hover:border-accent hover:text-accent-on-dark">
-        /next · switch to current UI
-      </a>
+      <button id="whoami" type="button" aria-haspopup="dialog" title="Connection details: who you are signed in as, which Egeria, which build"
+        class="shrink-0 cursor-pointer whitespace-nowrap border-0 bg-transparent p-0 text-chrome-muted underline decoration-dotted hover:text-chrome-ink">–</button>
       <button id="logout-btn" class="cursor-pointer bg-transparent text-chrome-muted hover:text-chrome-ink">
         Sign out
       </button>

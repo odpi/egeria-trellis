@@ -211,6 +211,42 @@ DEFAULT_MEASURE_SAMPLING = SamplingConfig(strategy=CATALOG_STATS_ONLY)
 DEFAULT_MATCHING_SAMPLING = SamplingConfig(strategy=RANDOM)
 
 
+def check_sampling_overrides(overrides: dict[str, Any]) -> None:
+    """Refuse a per-resource or per-run override with a key `SamplingConfig` does not have, or a bad value.
+
+    `merged_with` ignores unknown keys on purpose (a shared settings blob may carry another resource type's),
+    but a setting a person typed for ONE resource or ONE run has no such excuse: `"stratgy": "head"` would be
+    stored and silently change nothing. Raises SamplingConfigError naming the keys, else resolves the
+    override once, so a bad value raises here rather than in a survey.
+    """
+    if not isinstance(overrides, dict):
+        raise SamplingConfigError("sampling settings must be a JSON object")
+    known = {f for f in DEFAULT_MATCHING_SAMPLING.as_dict() if f != "scope"} | {"time_budget"}
+    unknown = sorted(set(overrides) - known)
+    if unknown:
+        raise SamplingConfigError(
+            f"unknown sampling setting(s) {', '.join(unknown)}; known: {', '.join(sorted(known))}")
+    resolve_sampling_config(purpose="matching", run_settings=overrides)
+
+
+def scoped_settings(registry, resource_type: str, slug: str) -> dict[str, dict]:
+    """The three stored scopes for one resource, as `resolve_sampling_config` keyword arguments.
+
+    Global and per resource type come from RE's settings (`config.SamplingSettings`); per resource from the
+    registry (`ProjectRegistry.set_resource_sampling`). The fourth scope, per run, is the caller's: a step's
+    `sampling` request parameter. Missing scopes are {}, which means "nothing set here".
+    """
+    from resource_explorer.config import get_config
+
+    settings = get_config().sampling
+    resource = {}
+    if registry is not None and slug:
+        resource = registry.get_resource_sampling(resource_type, slug)
+    return {"global_settings": settings.defaults(),
+            "resource_type_settings": settings.for_resource_type(resource_type),
+            "resource_settings": resource}
+
+
 def stable_seed_for(resource_slug: str) -> int:
     """A seed fixed per resource (§5.8's `seed` default), derived from the slug.
 
@@ -303,6 +339,22 @@ class SampleProvenance:
     truncated: bool = False
     #: Populated when the strategy did not read values at all.
     reason_not_sampled: str = ""
+    #: True only when `reason_not_sampled` names an actual query FAILURE
+    #: (§F, 2026-09-28) — a real exception the connection raised — as opposed
+    #: to the other, benign reasons `reason_not_sampled` already carries
+    #: (`catalog_stats_only`, the byte/time budget spent, a view/foreign
+    #: table §F declares out of scope). `run_column_profile` uses this to
+    #: count sampled/skipped/errored separately and report the step's own
+    #: status as "partial" rather than "ok" when it is ever true, without
+    #: string-matching `reason_not_sampled`'s free text to tell the cases
+    #: apart.
+    errored: bool = False
+    #: True when this column's row was never attempted because it belongs to
+    #: a relation kind `TABLESAMPLE` cannot apply to at all (a view or a
+    #: foreign table) — distinct from `errored`: this is a declared-in-advance
+    #: skip, not a failure, and `_profile_row` reports it as
+    #: `STATE_NOT_APPLICABLE` rather than `STATE_NOT_COLLECTED`.
+    not_applicable: bool = False
 
     @property
     def reads_values(self) -> bool:
@@ -353,17 +405,26 @@ class SampleProvenance:
             "tablesample_percent": self.tablesample_percent,
             "truncated": self.truncated,
             "reason_not_sampled": self.reason_not_sampled,
+            "errored": self.errored,
+            "not_applicable": self.not_applicable,
             "envelope": self.describe(),
         }
 
 
-def not_sampled_provenance(config: SamplingConfig, reason: str = "") -> SampleProvenance:
+def not_sampled_provenance(
+    config: SamplingConfig, reason: str = "", *, errored: bool = False,
+    not_applicable: bool = False,
+) -> SampleProvenance:
     """Provenance for a column no value was read from.
 
     The honest record of `catalog_stats_only`, of an absent capability, and of
     a table the sampler could not reach — all three are "nothing was looked
     at", and all three must render differently from "we looked and found
     nothing".
+
+    `errored`/`not_applicable` (§F, 2026-09-28): see `SampleProvenance`'s own
+    docstrings for each field. Both default False, which is every existing
+    call site's behaviour unchanged.
     """
     return SampleProvenance(
         strategy=config.strategy if not config.reads_values else CATALOG_STATS_ONLY,
@@ -373,6 +434,8 @@ def not_sampled_provenance(config: SamplingConfig, reason: str = "") -> SamplePr
             if not config.reads_values
             else "no sample was taken"
         ),
+        errored=errored,
+        not_applicable=not_applicable,
     )
 
 

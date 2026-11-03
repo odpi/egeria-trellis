@@ -41,15 +41,18 @@ class TestOrgImporterImportRepo:
         assert project.group_slug == "myproducts"
         assert project.collections == []  # never ingested
 
-    def test_stats_fetch_failure_does_not_undo_registration(self, registry):
-        with patch("resource_explorer.github.stats_fetcher.StatsFetcher") as MockStats:
-            MockStats.return_value.fetch.side_effect = RuntimeError("rate limited")
-            project = OrgImporter(registry).import_repo(
-                "https://github.com/my-org/widgets", "widgets",
-            )
-
-        assert project is not None
+    def test_import_makes_no_stats_fetch(self, registry):
+        """The GitHub stats fetch (~2 min per repo) moved to the first scouting survey."""
+        from unittest.mock import create_autospec
+        from resource_explorer.github.stats_fetcher import StatsFetcher
+        fake = create_autospec(StatsFetcher, instance=True, spec_set=True)
+        fake.fetch.side_effect = AssertionError("import must not fetch stats")
+        with patch("resource_explorer.github.stats_fetcher.StatsFetcher", return_value=fake) as cls:
+            OrgImporter(registry).import_repo("https://github.com/my-org/widgets", "widgets")
+        cls.assert_not_called()
+        fake.fetch.assert_not_called()
         assert registry.get("widgets") is not None
+        assert registry.get_latest_project_stats("widgets") is None
 
     def test_already_registered_by_url_raises(self, registry):
         with patch("resource_explorer.github.stats_fetcher.StatsFetcher") as MockStats:

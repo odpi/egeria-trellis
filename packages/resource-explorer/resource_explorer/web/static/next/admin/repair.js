@@ -39,6 +39,7 @@ import {
   repairRepointMembership, repairDropMembership,
 } from '/static/re-api.js';
 import { esc } from '/static/next/app.js';
+import { inPageConfirm, inPageNotice } from '/static/next/confirm-dialog.js';
 
 let _host = null;
 let _repos = [];
@@ -88,7 +89,7 @@ function membershipsHtml() {
         <button type="button" data-repoint="${esc(m.investigation_slug)}"
           class="cursor-pointer rounded-sm border border-rule-strong px-2 py-[2px] text-provenance text-ink hover:border-accent">Repoint</button>
         <button type="button" data-drop="${esc(m.investigation_slug)}"
-          class="cursor-pointer rounded-sm border border-state-warn px-2 py-[2px] text-provenance text-state-warn hover:bg-paper-raised">Drop</button>
+          class="cursor-pointer rounded-sm border border-state-warn px-2 py-[2px] text-provenance text-state-warn hover:bg-paper-surface">Drop</button>
       </div>
     </div>`).join('');
 }
@@ -108,7 +109,7 @@ function detailHtml(repo) {
           <input type="text" data-rename-input placeholder="new_slug"
             class="flex-1 rounded-sm border border-rule-strong bg-transparent px-2 py-[3px] font-mono text-caveat text-ink">
           <button type="button" data-rename
-            class="cursor-pointer rounded-sm border border-accent px-3 py-[3px] text-caveat text-accent-ink hover:bg-paper-raised">Rename</button>
+            class="cursor-pointer rounded-sm border border-accent px-3 py-[3px] text-caveat text-accent-ink hover:bg-paper-surface">Rename</button>
         </div>
       </div>
 
@@ -123,7 +124,7 @@ function detailHtml(repo) {
           <input type="text" data-url-input placeholder="https://github.com/org/correct-repo"
             class="flex-1 rounded-sm border border-rule-strong bg-transparent px-2 py-[3px] font-mono text-caveat text-ink">
           <button type="button" data-change-url
-            class="cursor-pointer rounded-sm border border-accent px-3 py-[3px] text-caveat text-accent-ink hover:bg-paper-raised">Change URL</button>
+            class="cursor-pointer rounded-sm border border-accent px-3 py-[3px] text-caveat text-accent-ink hover:bg-paper-surface">Change URL</button>
         </div>
       </div>
 
@@ -191,10 +192,10 @@ function bindDrift() {
     b.disabled = true;
     try {
       const data = await repairEnableCollection(_selectedSlug, collectionType);
-      window.alert(`Enabled '${data.collection}' — ${data.chunks_inserted} chunk(s) inserted.`);
+      await inPageNotice({ title: 'Done', message: `Enabled '${data.collection}' — ${data.chunks_inserted} chunk(s) inserted.` });
       await selectRepo(_selectedSlug);
     } catch (err) {
-      window.alert(`Enable failed: ${err.message}`);
+      await inPageNotice({ message: `Enable failed: ${err.message}` });
       b.disabled = false;
     }
   }));
@@ -205,26 +206,24 @@ function bindMemberships() {
     const from = b.dataset.repoint;
     const select = _host.querySelector(`[data-repoint-target="${CSS.escape(from)}"]`);
     const to = select?.value;
-    if (!to) { window.alert('No other investigation to repoint to.'); return; }
+    if (!to) { await inPageNotice({ title: 'Nothing to do', message: 'No other investigation to repoint to.' }); return; }
     try {
       const data = await repairRepointMembership(_selectedSlug, from, to);
-      window.alert(`Moved '${_selectedSlug}' to '${data.to_investigation}'.`);
+      await inPageNotice({ title: 'Done', message: `Moved '${_selectedSlug}' to '${data.to_investigation}'.` });
       await selectRepo(_selectedSlug);
     } catch (err) {
-      window.alert(`Repoint failed: ${err.message}`);
+      await inPageNotice({ message: `Repoint failed: ${err.message}` });
     }
   }));
   _host.querySelectorAll('[data-drop]').forEach((b) => b.addEventListener('click', async () => {
     const investigationSlug = b.dataset.drop;
-    if (!window.confirm(
-      `Drop '${_selectedSlug}' from investigation '${investigationSlug}'? This only removes it from `
-      + `that investigation's Folio — it stays in RE's registry and any other investigation it's in.`
-    )) return;
+    if (!(await inPageConfirm({ message: `Drop '${_selectedSlug}' from investigation '${investigationSlug}'? This only removes it from `
+      + `that investigation's Folio — it stays in RE's registry and any other investigation it's in.`, confirmLabel: 'Confirm' }))) return;
     try {
       await repairDropMembership(_selectedSlug, investigationSlug);
       await selectRepo(_selectedSlug);
     } catch (err) {
-      window.alert(`Drop failed: ${err.message}`);
+      await inPageNotice({ message: `Drop failed: ${err.message}` });
     }
   }));
 }
@@ -235,37 +234,33 @@ function bind() {
   _host.querySelector('[data-rename]')?.addEventListener('click', async () => {
     const input = _host.querySelector('[data-rename-input]');
     const newSlug = (input?.value || '').trim();
-    if (!newSlug) { window.alert('Enter a new slug first.'); return; }
-    if (!window.confirm(
-      `Rename '${_selectedSlug}' to '${newSlug}'? This moves every registry row and this repo's own `
-      + `pgvector collections. It does not touch GitHub or Egeria.`
-    )) return;
+    if (!newSlug) { await inPageNotice({ title: 'Nothing to do', message: 'Enter a new slug first.' }); return; }
+    if (!(await inPageConfirm({ message: `Rename '${_selectedSlug}' to '${newSlug}'? This moves every registry row and this repo's own `
+      + `pgvector collections. It does not touch GitHub or Egeria.`, confirmLabel: 'Confirm' }))) return;
     try {
       const data = await repairRename(_selectedSlug, newSlug);
-      window.alert(`Renamed '${_selectedSlug}' → '${data.new_slug}'.`);
+      await inPageNotice({ title: 'Done', message: `Renamed '${_selectedSlug}' → '${data.new_slug}'.` });
       _selectedSlug = data.new_slug;
       await reloadRepos();
     } catch (err) {
-      window.alert(`Rename failed: ${err.message}`);
+      await inPageNotice({ message: `Rename failed: ${err.message}` });
     }
   });
 
   _host.querySelector('[data-change-url]')?.addEventListener('click', async () => {
     const input = _host.querySelector('[data-url-input]');
     const newUrl = (input?.value || '').trim();
-    if (!newUrl) { window.alert('Enter the correct github_url first.'); return; }
+    if (!newUrl) { await inPageNotice({ title: 'Nothing to do', message: 'Enter the correct github_url first.' }); return; }
     const repo = _repos.find((r) => r.slug === _selectedSlug);
-    if (!window.confirm(
-      `Change github_url for '${_selectedSlug}' to '${newUrl}'? This drops all `
+    if (!(await inPageConfirm({ message: `Change github_url for '${_selectedSlug}' to '${newUrl}'? This drops all `
       + `${repo ? repo.collections.length : 'existing'} collection(s) — you'll need to re-index `
-      + `afterward. It does not touch GitHub itself.`
-    )) return;
+      + `afterward. It does not touch GitHub itself.`, confirmLabel: 'Confirm' }))) return;
     try {
       const data = await repairGithubUrl(_selectedSlug, newUrl, true);
-      window.alert(`'${_selectedSlug}' now points at ${data.new_url}. Run refresh to re-index.`);
+      await inPageNotice({ title: 'Done', message: `'${_selectedSlug}' now points at ${data.new_url}. Run refresh to re-index.` });
       await reloadRepos();
     } catch (err) {
-      window.alert(`URL change failed: ${err.message}`);
+      await inPageNotice({ message: `URL change failed: ${err.message}` });
     }
   });
 

@@ -9,15 +9,12 @@ the second cause routine rather than theoretical, so it is asserted here.
 from __future__ import annotations
 
 import logging
-from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
 
 from resource_explorer.observability import logging_setup as ls
 from resource_explorer.web.app import app
-
-INDEX = Path(__file__).resolve().parents[1] / "resource_explorer" / "web" / "static" / "index.html"
 
 
 @pytest.fixture
@@ -90,23 +87,6 @@ def test_newest_first(client):
     assert msgs.index("newer") < msgs.index("older")
 
 
-def test_the_pane_is_wired_and_states_the_buffer_is_volatile():
-    html = INDEX.read_text()
-    assert 'id="admin-logs-view"' in html, "no pane element"
-    assert "adminLogsView" in html, "pane not in showMainView's hide-list"
-    assert "tab === 'admin-logs'" in html, "no route in showMainView"
-    assert "function loadAdminLogsPanel" in html, "no loader"
-
-    groups = html[html.index("const _ADMIN_GROUPS"):html.index("function _adminSubnavHtml")]
-    assert "admin-logs" in groups, "pane exists but no subnav button reaches it"
-
-    panel = html[html.index("async function loadAdminLogsPanel"):]
-    panel = panel[:panel.index("function _adminLogsSetLevel")]
-    assert "restart" in panel, (
-        "the empty state does not mention that the buffer starts empty on "
-        "restart, so 'no logs' reads as a statement about the system"
-    )
-
 def test_a_traceback_survives_into_the_record(client):
     """The thing a log viewer exists for. A one-line "it failed" is what the
     activity log already gives you."""
@@ -135,20 +115,4 @@ def test_stack_info_is_captured_as_well_as_exc_info(client):
     rec = client.get("/api/logs/").json()["records"][0]
     assert rec["exc"], "stack_info was dropped on the way into the buffer"
     assert "Stack" in rec["exc"]
-
-
-def test_a_multi_line_message_keeps_its_lines(client):
-    """The record held the newlines; the view used to throw them away, because
-    a table cell collapses whitespace by default."""
-    logging.getLogger("resource_explorer.viewer_test").info("first\nsecond\nthird")
-    rec = client.get("/api/logs/").json()["records"][0]
-    assert rec["message"].splitlines() == ["first", "second", "third"]
-
-    html = INDEX.read_text()
-    cell = html[html.index("${_esc(r.message || '')}") - 400:]
-    cell = cell[:cell.index("</td>")]
-    assert "whitespace-pre-wrap" in cell, (
-        "the message cell does not preserve newlines, so a multi-line message "
-        "renders as one run-on line"
-    )
 

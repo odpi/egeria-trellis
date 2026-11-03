@@ -13,7 +13,9 @@ CLAUDE.md rule 16 ("Activity log entries must be written for ALL operations"),
 not a deliberate omission. This is what backs the Admin Schedules overview's
 "watch for successful completions, look for errors that need follow-up" use.
 
-Supported entity_type values: 'repo', 'database'
+Supported entity_type values: 'repo', 'database', and 'work_list' (quality slice Q3: the schedule's definition runs
+across the list's members as they are at each firing, one queued run per database, and a database whose inventory did
+not change since its last quality run is skipped and said so; `quality_batch.py`).
 
 Dispatch by analysis_id, not just entity_type: a scheduled analysis_id might be
 (a) a local analysis_catalog entry — runs RE's own scan, as before; (b) a
@@ -66,19 +68,29 @@ isn't a SurveyOrchestrator step at all).
 """
 from __future__ import annotations
 
+from contextlib import contextmanager
+
+import json
 import logging
 import threading
 import time
 
 log = logging.getLogger(__name__)
 
+from resource_explorer.quality_batch import WORK_LIST_ENTITY, run_scheduled_batch
 from resource_explorer.registry import TARGET_ANALYSIS, TARGET_SURVEY
 
 _CHECK_INTERVAL_SECONDS = 900  # 15 minutes
+#: The native-survey read-back sweep and the Egeria outbox drain run on their OWN loop, not on the 15-minute tick
+#: (the architect's ruling, 2026-10-21): a scheduled RagIngestion running inline in `_run_due` held the tick for
+#: 14+ minutes and a survey that finished in seconds sat at "waiting" on its card. 60 s; the card's "not checked
+#: since" cue is 2 x this (native_survey_run.NOT_CHECKED_AFTER_S).
+_READBACK_INTERVAL_SECONDS = 60
 _started = False
 _lock = threading.Lock()
 _stop_event: threading.Event | None = None
 _thread: threading.Thread | None = None
+_readback_thread: threading.Thread | None = None
 
 
 def start_scheduler() -> None:
@@ -89,10 +101,15 @@ def start_scheduler() -> None:
     `scheduler` advisory lock, so a second RE process against the same
     registry stands by rather than double-firing every due schedule.
     """
-    global _started, _stop_event, _thread
+    global _started, _stop_event, _thread, _readback_thread
     with _lock:
-        if _started and _thread is not None and _thread.is_alive():
+        # BOTH threads: a tick thread that is up while the read-back thread died (or the reverse) is a half-started
+        # scheduler, and returning here would leave it that way.
+        if (_started and _thread is not None and _thread.is_alive()
+                and _readback_thread is not None and _readback_thread.is_alive()):
             return
+        if _stop_event is not None:
+            _stop_event.set()        # a half-started pair: its surviving thread leaves at its next wait, never doubles
         _started = True
         _stop_event = threading.Event()
         _thread = threading.Thread(
@@ -101,8 +118,17 @@ def start_scheduler() -> None:
             daemon=True,
             name="resource-explorer-scheduler",
         )
-        t = _thread
+        # The read-back/outbox loop shares this start, this stop and the `scheduler` advisory lock: only the
+        # leader runs it, and it stops where the tick stops.
+        _readback_thread = threading.Thread(
+            target=_readback_loop,
+            args=(_stop_event,),
+            daemon=True,
+            name="resource-explorer-readback",
+        )
+        t, rt = _thread, _readback_thread
     t.start()
+    rt.start()
     log.info("Background scheduler started (check interval: %ds)", _CHECK_INTERVAL_SECONDS)
 
 
@@ -117,16 +143,20 @@ def stop_scheduler(timeout: float = 5.0) -> None:
     loop still running past that release is exactly the double-fire the
     lock exists to prevent.
     """
-    global _started, _stop_event, _thread
+    global _started, _stop_event, _thread, _readback_thread
     with _lock:
-        stop, thread = _stop_event, _thread
+        stop, thread, readback = _stop_event, _thread, _readback_thread
         _stop_event = None
         _thread = None
+        _readback_thread = None
         _started = False
     if stop is not None:
         stop.set()
-    if thread is not None and thread.is_alive():
-        thread.join(timeout=timeout)
+    # One bounded budget for both threads, not one each.
+    deadline = time.monotonic() + timeout
+    for t in (thread, readback):
+        if t is not None and t.is_alive():
+            t.join(timeout=max(0.0, deadline - time.monotonic()))
 
 
 def _scheduler_loop(stop: threading.Event | None = None) -> None:
@@ -141,14 +171,54 @@ def _scheduler_loop(stop: threading.Event | None = None) -> None:
             time.sleep(_CHECK_INTERVAL_SECONDS)
         elif stop.wait(_CHECK_INTERVAL_SECONDS):
             break
+        _tick()
+
+
+def _tick() -> None:
+    """One scheduler pass, declared as RE's daemon identity (Brief I): scheduled surveys, RFA
+    reconciliation and the native-survey sweep run as `Daemon(SCHEDULER)`; the outbox drain
+    declares its own `Daemon(OUTBOX)`."""
+    from resource_explorer.egeria_clients import Daemon, DaemonReason, acting_as
+
+    with acting_as(Daemon(DaemonReason.SCHEDULER)):
+        _tick_body()
+
+
+def _tick_body() -> None:
+    try:
+        _run_due()
+    except Exception:
+        log.exception("Scheduler iteration failed")
+    try:
+        _reconcile_rfa_actions()
+    except Exception:
+        log.exception("RFA reconciliation iteration failed")
+    # The native-survey read-back sweep and the outbox drain are NOT called here: `_readback_loop` owns both, so
+    # a long `_run_due` cannot starve them (and nothing runs them twice).
+
+
+def _readback_loop(stop: threading.Event | None = None) -> None:
+    """Every _READBACK_INTERVAL_SECONDS: the native read-back sweep and the outbox drain, independent of the tick.
+    Sleeps first, like the tick. `stop` is optional so a test can drive one pass with a patched wait."""
+    while stop is None or not stop.is_set():
+        if stop is None:
+            time.sleep(_READBACK_INTERVAL_SECONDS)
+        elif stop.wait(_READBACK_INTERVAL_SECONDS):
+            break
+        _readback_pass()
+
+
+def _readback_pass() -> None:
+    """One pass of the read-back loop. A bare thread has no ContextVars, so the identity is declared here: the
+    sweep runs as `Daemon(SCHEDULER)` (the drain declares its own `Daemon(OUTBOX)`). Idle (nothing awaiting
+    read-back, nothing pending in the outbox) makes no Egeria call."""
+    from resource_explorer.egeria_clients import Daemon, DaemonReason, acting_as
+
+    with acting_as(Daemon(DaemonReason.SCHEDULER)):
         try:
-            _run_due()
+            _sweep_native_surveys()
         except Exception:
-            log.exception("Scheduler iteration failed")
-        try:
-            _reconcile_rfa_actions()
-        except Exception:
-            log.exception("RFA reconciliation iteration failed")
+            log.exception("Native Egeria survey read-back iteration failed")
         try:
             _drain_egeria_outbox()
         except Exception:
@@ -167,6 +237,33 @@ def _reconcile_rfa_actions() -> None:
     reconcile_rfa_actions(registry)
 
 
+def _sweep_native_surveys() -> None:
+    """BRIEF-NATIVE-EGERIA-SURVEY-LAUNCH.md gate point 3 -- "the row moves to
+    complete on its own". A native survey takes minutes (a 157-table database
+    took ~14), so a browser tab cannot be the only thing that reads it back.
+    Reuses this loop, as the RFA and outbox passes above do.
+
+    Runs in a raw scheduler thread with NO signed-in caller, and that is
+    correct here rather than a leak: it reads Egeria read-only and writes the
+    proof rows of runs somebody else submitted. It never decides visibility
+    or attribution from the caller (`sweep_in_flight` takes no identity), which
+    is the one safe shape for code that runs on nobody's behalf. With nothing
+    in flight it is a single registry query and no Egeria call."""
+    from resource_explorer import catalog_and_survey, native_survey_run
+    from resource_explorer.registry import ProjectRegistry
+
+    registry = ProjectRegistry()
+    # A run the sweep has stopped retrying is not work: it is skipped here exactly as the sweep skips it.
+    if not registry.list_in_flight_native_survey_runs(
+            limit=1, skip=lambda r: native_survey_run._row_gave_up(registry, r)):
+        return
+    # The registration port is the survey port plus the reads a registration run needs.
+    with native_survey_run.port_session(catalog_and_survey.PyegeriaRegistrationPort()) as port:
+        n = native_survey_run.sweep_in_flight(registry, port)
+    if n:
+        log.info("Native Egeria survey read-back: read %d in-flight run(s)", n)
+
+
 def _drain_egeria_outbox() -> None:
     """docs/outbox-publishing-design.md §5 — reuses this same background loop
     rather than starting a second one, exactly as RFA reconciliation above
@@ -180,8 +277,18 @@ def _drain_egeria_outbox() -> None:
     from resource_explorer.egeria_outbox import drain_outbox
     from resource_explorer.registry import ProjectRegistry
 
+    from resource_explorer.egeria_clients import Daemon, DaemonReason
+
     registry = ProjectRegistry()
-    summary = drain_outbox(registry)
+    # Runs from before the read-back existed get one, so their word can reach its proof (bounded per pass).
+    try:
+        backfilled = registry.queue_missing_read_backs()
+        if backfilled:
+            log.info("Egeria outbox: queued %d read-back(s) for earlier publish runs", backfilled)
+    except Exception:
+        log.exception("Egeria outbox: read-back backfill failed")
+    # The background loop is the one drain that runs as the daemon (Brief I).
+    summary = drain_outbox(registry, identity=Daemon(DaemonReason.OUTBOX))
     if summary.get("claimed"):
         log.info("Egeria outbox drain: %s", summary)
 
@@ -289,6 +396,29 @@ def _coalesce_repo_surveys(due: list[dict], registry) -> dict[tuple[str, str], l
     return results
 
 
+@contextmanager
+def _as_schedule_creator(sched: dict):
+    """Brief Z2 round 3: a timer run runs as the person who created (or last enabled) the schedule, as run_queue
+    runs a queued row as its requester: the caller ContextVar names them (so the run-time access re-check,
+    `workflows.curate.person_write_refusal`, judges THEIR rights), and Egeria is reached as
+    `Daemon(SCHEDULER, requested_by=<them>)`. A schedule with no `created_by` (every one from before the column)
+    runs with no requester, which writes only while no zone is in use."""
+    from resource_explorer.a2a_auth import CallerIdentity, current_caller
+    from resource_explorer.egeria_clients import Daemon, DaemonReason, acting_as
+
+    creator = (sched.get("created_by") or "").strip()
+    if not creator:
+        yield
+        return
+    reset = current_caller.set(CallerIdentity(user_id=creator, egeria_token=None, auth_source="scheduled-run",
+                                              role="user"))
+    try:
+        with acting_as(Daemon(DaemonReason.SCHEDULER, requested_by=creator)):
+            yield
+    finally:
+        current_caller.reset(reset)
+
+
 def _run_due() -> None:
     from resource_explorer.activity_logger import log_survey
     from resource_explorer.registry import ProjectRegistry
@@ -315,17 +445,25 @@ def _run_due() -> None:
         analysis_id = sched["analysis_id"]
         next_run = sched.get("next_run", "")
         analysis_name = _analysis_display_name(entity_type, analysis_id)
+        batch_result: dict = {}
         try:
             batch_key = (entity_slug, analysis_id)
-            if batch_key in batched:
+            if entity_type == WORK_LIST_ENTITY:
+                # Quality Q3: a schedule on a work list runs the definition across its members as they are now,
+                # one queued run per database, skipping each whose inventory did not change (`quality_batch`).
+                with _as_schedule_creator(sched):
+                    entity_name, entity_location, errors, batch_result = run_scheduled_batch(
+                        registry, entity_slug, analysis_id, created_by=(sched.get("created_by") or "").strip())
+            elif batch_key in batched:
                 project = registry.get(entity_slug)
                 entity_name = project.display_name if project else entity_slug
                 entity_location = project.github_url if project else ""
                 errors = batched[batch_key]
             else:
-                entity_name, entity_location, errors = _execute(
-                    entity_type, entity_slug, analysis_id, registry, next_run,
-                    target_kind=sched.get("target_kind") or TARGET_ANALYSIS)
+                with _as_schedule_creator(sched):
+                    entity_name, entity_location, errors = _execute(
+                        entity_type, entity_slug, analysis_id, registry, next_run,
+                        target_kind=sched.get("target_kind") or TARGET_ANALYSIS)
             status = "error" if errors else "ok"
             detail = "; ".join(errors) if errors else ""
         except Exception as exc:
@@ -333,6 +471,14 @@ def _run_due() -> None:
             entity_name, entity_location, status, detail = entity_slug, "", "error", str(exc)
 
         summary = f"Scheduled run of '{analysis_name}' " + ("completed with errors" if status == "error" else "completed successfully")
+        if batch_result:
+            # The batch says what it did per member, skips included ("says so", design §2.2): the sentence is the
+            # summary and every member's outcome is the detail.
+            summary = f"Scheduled batch of '{analysis_name}' across work list '{entity_slug}': {batch_result['summary']}"
+            detail = json.dumps({"set_id": batch_result["set_id"], "work_list_slug": entity_slug,
+                                 "definition": analysis_id, "errors": errors,
+                                 "members": [{k: o.get(k) for k in ("entity_slug", "outcome", "words", "run_id")}
+                                             for o in batch_result["members"]]})
         try:
             activity_id = log_survey(
                 registry=registry,
@@ -458,6 +604,14 @@ def _execute(
     Dispatch — see module docstring for the (a)/(b)/(c)/(d) breakdown
     (database) and the repo-specific paragraph beneath it.
     """
+    if entity_type == WORK_LIST_ENTITY:
+        # "Run now" on a work-list schedule (the timer goes through `_run_due`'s own branch, which keeps the
+        # per-member outcomes for its activity row): the same batch, as whoever pressed.
+        from resource_explorer.run_queue import requested_by
+
+        name, location, errors, _result = run_scheduled_batch(registry, entity_slug, analysis_id,
+                                                              created_by=requested_by() or "")
+        return (name, location, errors)
     if target_kind == TARGET_SURVEY:
         return _run_scheduled_survey(entity_type, entity_slug, analysis_id, registry)
     if entity_type == "repo":
@@ -484,7 +638,7 @@ def _run_scheduled_survey(
     )
 
     entity = (registry.get(entity_slug) if entity_type == "repo"
-              else registry.get_database(entity_slug))
+              else registry.get_database(entity_slug, allow_unreadable=True))
     name = getattr(entity, "display_name", "") or entity_slug
     location = getattr(entity, "github_url", "") or ""
     try:
@@ -544,11 +698,20 @@ def _run_repo_survey(slug: str, analysis_id: str, registry) -> tuple[str, str, l
         from resource_explorer.ingestion.incremental import IncrementalIndexer
         from resource_explorer.query_cache import QueryCache
 
+        from resource_explorer.ingestion.incremental import RefreshResult
+
         try:
-            IncrementalIndexer().refresh(project)
+            result = IncrementalIndexer().refresh(project)
             QueryCache().invalidate_project(slug)
         except Exception as exc:
             return (project.display_name, project.github_url, [str(exc)])
+        if result is RefreshResult.NOT_YET_INDEXED:
+            # Not a success: nothing was refreshed because there is nothing of the repository's own
+            # to refresh. Saying so on the schedule is what keeps a recurring run from reading as
+            # "last run ok" for a repository chat has never been able to search.
+            return (project.display_name, project.github_url, [
+                "Not yet indexed: this repository has no index of its own, so there was nothing to "
+                "refresh. The first index is made separately."])
         return (project.display_name, project.github_url, [])
 
     if entry.get("action") == "profile":
@@ -628,7 +791,7 @@ def _run_repo_survey_definition(project, analysis_id: str, registry) -> tuple[st
 
 
 def _run_db_survey(slug: str, analysis_id: str, registry, next_run: str = "") -> tuple[str, str, list[str]]:
-    db = registry.get_database(slug)
+    db = registry.get_database(slug, allow_unreadable=True)
     if not db:
         return (slug, "", [f"Database '{slug}' not found — schedule may be stale"])
 
@@ -648,6 +811,11 @@ def _run_db_survey(slug: str, analysis_id: str, registry, next_run: str = "") ->
         DB_DERIVED_ANALYSES,
         run_db_derived,
     )
+
+    if analysis_id not in DB_DERIVED_ANALYSES and getattr(db, "credential_status", "") == "unreadable":
+        # One database with an undecryptable credential fails honestly for
+        # itself only; db_derived (no credentials) still runs above.
+        return (db.display_name, db.host, [f"credential unreadable: re-enter credentials for {slug}"])
 
     if analysis_id in DB_DERIVED_ANALYSES:
         try:
@@ -723,8 +891,8 @@ def _run_local_db_survey(db, registry, analysis_id: str = "") -> tuple[str, str,
 def _run_egeria_native_db_survey(db, next_run: str) -> tuple[str, str, list[str]]:
     if not db.egeria_asset_guid:
         return (db.display_name, db.host, [
-            "Database is not yet cataloged in Egeria (no stored egeria_asset_guid) — "
-            "catalog/publish it first (Scouting's survey report or Curate), or run this "
+            "Database is not yet published to Egeria (no stored egeria_asset_guid) — "
+            "publish it first (Scouting's survey report or Curate), or run this "
             "survey manually, before scheduling the native re-survey."
         ])
 

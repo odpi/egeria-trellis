@@ -70,8 +70,8 @@ class TestDatabaseStepMapFansOutCorrectly:
     def test_db_derived_credits_all_analyses(self):
         """Was "all six" until Phase 1 slice 14's follow-up (2026-09-22) added
         schema_diff and grant_change to db_derived, then "all eight" until
-        slice 17 (docs/design-notes/SLICE-17-RUNNABILITY-FROM-CATALOG-
-        IMPLEMENTED.md) fixed this map being derived from
+        slice 17 (SLICE-17-RUNNABILITY-FROM-CATALOG-IMPLEMENTED.md) fixed this map being derived
+        from
         `db_derived.DB_DERIVED_ANALYSES` instead of hand-listed a second
         time — `subject_signals`/`coverage_signals`/`preliminary_fit`
         (design §16.3's Scouting/Discovery rows, added to
@@ -95,16 +95,19 @@ class TestDatabaseStepMapFansOutCorrectly:
             "db_fingerprint", "schema_conventions", "db_change_rates",
             "schema_diff", "grant_change",
             "subject_signals", "coverage_signals", "preliminary_fit",
+            "db_hub_tables", "db_statistics_freshness",
         }
 
-    def test_sql_analysis_has_no_analysis_catalog_entry(self):
-        """A known, documented gap -- not silently mapped to something wrong."""
+    def test_sql_analysis_has_a_catalog_entry_and_maps_only_to_itself(self):
+        """Was "has no analysis catalog entry" until 2026-10-22 (review §1.2). It has one now, and the step map
+        sends it to its own step and nothing else -- no other analysis is credited with its runs."""
         from resource_explorer.surveyors.database.survey_definition_adapter import (
             DATABASE_ANALYSIS_RE_STEP_MAP)
 
-        assert "sql_analysis" not in DATABASE_ANALYSIS_RE_STEP_MAP.values()
-        for keys in DATABASE_ANALYSIS_RE_STEP_MAP.values():
-            assert "sql_analysis" not in keys
+        assert DATABASE_ANALYSIS_RE_STEP_MAP["sql_analysis"] == ["sql_analysis"]
+        for analysis_id, keys in DATABASE_ANALYSIS_RE_STEP_MAP.items():
+            if analysis_id != "sql_analysis":
+                assert "sql_analysis" not in keys
 
 
 class TestDatabaseNeverRun:

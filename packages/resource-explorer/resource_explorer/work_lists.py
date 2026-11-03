@@ -40,7 +40,10 @@ qualifiedName: work lists are namespaced `WorkingSet::resource-explorer::<slug>`
 `CollectionMembership` genuinely does carry `membershipRationale` — it is a
 real `OpenMetadataProperty` — and pyegeria's `add_to_collection` takes an
 optional relationship body, so a member's reason travels with it rather than
-being local-only.
+being local-only. So does its confidence, as Egeria's `confidence` (an int,
+0-100). Until 2026-10-13 it was sent as `expectedConfidence`, which is not an
+Egeria property: Egeria dropped it and the membership read `confidence: 0`.
+The names are built in one place, `egeria_outbox.collection_membership_properties`.
 
 **Publishing is explicit, never automatic.** Creating a work list writes
 locally and nothing else. `publish_work_list()` is what enqueues the Egeria
@@ -50,10 +53,13 @@ and is what keeps a half-finished publish from being invisible.
 """
 from __future__ import annotations
 
+import json
 import logging
 import uuid
 from datetime import datetime, timezone
 from typing import Any, Iterable
+
+from resource_explorer.resource_types import SURVEYED_RESOURCE_TYPES
 
 log = logging.getLogger(__name__)
 
@@ -86,51 +92,211 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-def _ensure_schema(conn) -> None:
-    """Create this feature's tables if they are not there.
+# ── Keeping the published WorkingSet in step (the Portal's ask, 2026-10-12) ──
 
-    `CREATE TABLE IF NOT EXISTS` and nothing else — no `ALTER` to a table
-    another session's code also writes. Several Claude sessions and two apps
-    share this database; a purely additive schema cannot break any of them,
-    and that property is worth more here than tidiness.
-    """
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS work_lists (
-            slug            TEXT PRIMARY KEY,
-            display_name    TEXT NOT NULL,
-            description     TEXT NOT NULL DEFAULT '',
-            entity_type     TEXT NOT NULL DEFAULT 'repo',
-            investigation   TEXT NOT NULL DEFAULT '',
-            created_by      TEXT NOT NULL DEFAULT '',
-            created_at      TEXT NOT NULL,
-            derived_from    TEXT NOT NULL DEFAULT '',
-            egeria_guid     TEXT NOT NULL DEFAULT '',
-            published_at    TEXT NOT NULL DEFAULT ''
-        )
-    """)
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS work_list_members (
-            work_list_slug  TEXT NOT NULL,
-            entity_slug     TEXT NOT NULL,
-            rationale       TEXT NOT NULL DEFAULT '',
-            confidence      INTEGER,
-            added_at        TEXT NOT NULL,
-            PRIMARY KEY (work_list_slug, entity_slug)
-        )
-    """)
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS work_list_runs (
-            set_id          TEXT NOT NULL,
-            run_id          TEXT NOT NULL,
-            work_list_slug  TEXT NOT NULL DEFAULT '',
-            entity_slug     TEXT NOT NULL,
-            analysis_id     TEXT NOT NULL,
-            enqueued_at     TEXT NOT NULL,
-            PRIMARY KEY (set_id, run_id)
-        )
-    """)
-    conn.execute(
-        "CREATE INDEX IF NOT EXISTS idx_work_list_runs_set ON work_list_runs(set_id)")
+#: The additionalProperties key the Portal's Resource Browser reads to link a WorkingSet back to RE.
+RESOURCE_EXPLORER_URL_KEY = "resourceExplorerUrl"
+
+#: Outbox states of a row that may still be sent (cancellable), and of one being sent now.
+_UNSENT = ("pending", "failed")
+_SENDING = ("running",)
+
+#: At most this many removals are applied inside one publish request; the rest are left to the background drain.
+INLINE_DETACH_LIMIT = 50
+
+#: At most this many adds are applied inside one publish request (owner's ruling 2026-10-13: adds drain inline, as
+#: removals do); the rest are left to the background drain and said so.
+INLINE_ATTACH_LIMIT = INLINE_DETACH_LIMIT
+
+#: The per-member states a publish's adds come back in, read from each outbox row AFTER the inline drain.
+ATTACHED, ATTACH_NOT_PERMITTED, ATTACH_FAILED, ATTACH_LEFT = (
+    "attached", "not permitted", "could not attach", "left to the background drain")
+
+
+def public_base_url() -> str:
+    """`RE_PUBLIC_URL`, checked: an http(s) URL with a host, without a trailing slash. Anything else is treated as
+    not configured (with a warning), so a typo never becomes a link the Portal shows."""
+    from urllib.parse import urlsplit
+
+    from resource_explorer.config import WebUIConfig
+
+    raw = (WebUIConfig().public_url or "").strip()
+    if not raw:
+        return ""
+    parts = urlsplit(raw)
+    if parts.scheme not in ("http", "https") or not parts.hostname:
+        log.warning("RE_PUBLIC_URL %r is not an http(s) URL with a host; no link back is written", raw)
+        return ""
+    return raw.rstrip("/")
+
+
+def _url_kind(wl: dict) -> str:
+    """The kind the link back opens the page on: the list's one kind, or for a list of more than one the kind it
+    holds most of (the page's sidebar shows one kind at a time; the list itself shows every kind)."""
+    kinds = wl.get("kinds") or {}
+    if wl.get("entity_type") != MIXED or not kinds:
+        return wl.get("entity_type") or "repo"
+    return max(kinds, key=lambda k: kinds[k])
+
+
+def resource_explorer_url(slug: str, entity_type: str = "repo") -> str:
+    """The /next work-list page for `slug` on RE's configured public URL (`RE_PUBLIC_URL`), in the shape the page
+    writes itself (`next/app.js` `writeUrl`: `type=` only for a non-repo kind, then `worklist=`). "" when no valid
+    public URL is configured: the key is then left out, never a guessed localhost."""
+    from urllib.parse import urlencode
+
+    base = public_base_url()
+    if not base:
+        return ""
+    query = {"type": entity_type} if entity_type and entity_type != "repo" else {}
+    query["worklist"] = slug
+    return f"{base}/next?{urlencode(query)}"
+
+
+def _additional_properties(element) -> dict:
+    """The additionalProperties of a collection read back with `get_collection_by_guid(output_format="JSON")`:
+    {} when it has none. Raises when the answer is not an element (pyegeria answers a string for "not found")."""
+    if isinstance(element, list) and len(element) == 1:
+        element = element[0]
+    if not isinstance(element, dict):
+        raise ValueError(f"no collection element in the answer: {str(element)[:120]}")
+    props = element.get("properties") if isinstance(element.get("properties"), dict) else element
+    found = props.get("additionalProperties") or props.get("additional_properties") or {}
+    return dict(found) if isinstance(found, dict) else {}
+
+
+from resource_explorer.member_assets import (  # noqa: E402,F401  (the one resolver; re-exported for callers)
+    MEMBER_ENTITY_TYPES, MemberUnresolved, NotInEgeriaYet, member_egeria_guid,
+)
+
+
+def _refused(row: dict) -> bool:
+    """An add that was REFUSED (the drain's zone re-check, or Egeria's security) was never applied: it cannot have
+    landed, so it is not "maybe attached"."""
+    from resource_explorer.egeria_outbox import REFUSED_BY_SECURITY, SECURITY_REFUSAL_MARKER
+
+    words = (row.get("last_error") or "").strip()
+    return words.startswith("not permitted") or SECURITY_REFUSAL_MARKER in words or REFUSED_BY_SECURITY in words
+
+
+def recorded_memberships(registry, slug: str, collection_guid: str) -> dict[str, dict]:
+    """What RE's OWN outbox says about each member it has written to this WorkingSet, by member GUID. The one
+    source both the publish's removals and their counts are taken from (never a fresh Egeria read).
+
+    Rows are replayed oldest first, for this collection only (an Egeria reset gives the list a new GUID):
+
+    * `attached`: the last settled write was a done add (a done removal clears it);
+    * `maybe`: an add was ATTEMPTED and not confirmed (failed, dead or cancelled with attempts > 0): a timed-out add
+      may have landed, so it counts as possibly attached (a done removal clears it). Not for a REFUSED add (the
+      drain's "not permitted", or Egeria's security refusal): it was never applied;
+    * `unsent_adds`: add rows not yet applied (pending, or failed and backing off): cancellable;
+    * `never_sent_adds`: those of them with no attempt at all;
+    * `adding`: an add row is being sent right now;
+    * `last_add_id`: the newest add row, which names the removal that follows it (one removal per add cycle);
+    * `unsent_removals`: removal rows not yet applied (pending, or failed): cancellable;
+    * `removing`: a removal row is unsettled (pending, failed or running).
+
+    A cancelled or dead row never attempted changes nothing: it was never sent."""
+    from resource_explorer.egeria_outbox import COLLECTION_MEMBERSHIP_DETACH
+
+    rows = registry.list_outbox_rows_for_kinds("work_list", slug,
+                                               ("collection_membership", COLLECTION_MEMBERSHIP_DETACH))
+    out: dict[str, dict] = {}
+    for row in sorted(rows, key=lambda r: int(r["id"])):
+        try:
+            payload = json.loads(row.get("payload_json") or "{}") or {}
+        except (TypeError, ValueError):
+            continue
+        if str(payload.get("collection_guid") or "") != collection_guid or not payload.get("member_guid"):
+            continue
+        rec = out.setdefault(str(payload["member_guid"]), {
+            "entity_slug": "", "entity_type": "", "attached": False, "maybe": False, "unsent_adds": [],
+            "never_sent_adds": [], "adding": False, "last_add_id": 0, "unsent_removals": [], "removing": False})
+        rec["entity_slug"] = str(payload.get("member_entity_slug") or rec["entity_slug"])
+        rec["entity_type"] = str(payload.get("member_entity_type") or rec["entity_type"])
+        status, row_id = row.get("status") or "", int(row["id"])
+        attempted = int(row.get("attempts") or 0) > 0
+        if row.get("element_kind") == "collection_membership":
+            rec["last_add_id"] = row_id
+            if status == "done":
+                rec["attached"] = True
+            elif status in _SENDING:
+                rec["adding"] = True
+            if status in _UNSENT:
+                rec["unsent_adds"].append(row_id)
+                if not attempted:
+                    rec["never_sent_adds"].append(row_id)
+            if status in ("failed", "dead", "cancelled") and attempted and not _refused(row):
+                # tried at least once and not refused: may have landed
+                rec["maybe"] = True
+        elif status == "done":
+            rec["attached"] = rec["maybe"] = False
+        elif status in _UNSENT + _SENDING:
+            rec["removing"] = True
+            if status in _UNSENT:
+                rec["unsent_removals"].append(row_id)
+    return out
+
+
+# The work-list tables are created by ProjectRegistry._init_schema (a migration), not here.
+
+#: How many re-applies a shortlist's filter keeps in its record (`reapplies`), newest last.
+REAPPLY_HISTORY = 20
+
+#: What a list's `entity_type` reads when its members are of more than one kind (DESIGN-WORK-LISTS-WINNOWING-AND-
+#: MIXED-KINDS §5). Never a member's kind: each member carries its own.
+MIXED = "mixed"
+
+
+def member_refs(entity_slugs: Iterable, default_kind: str) -> list[tuple[str, str]]:
+    """(kind, slug) pairs, in order, de-duplicated. Each item is a slug (it takes `default_kind`) or a mapping with
+    `entity_slug` and, optionally, `entity_type`. A slug that would take the kind "mixed" is refused: a list of more
+    than one kind cannot say which kind a bare slug is."""
+    out: list[tuple[str, str]] = []
+    for item in entity_slugs:
+        if isinstance(item, dict):
+            slug, kind = str(item.get("entity_slug") or ""), str(item.get("entity_type") or "") or default_kind
+        else:
+            slug, kind = str(item or ""), default_kind
+        if not slug:
+            continue
+        if not kind or kind == MIXED:
+            raise ValueError(f"'{slug}' names no kind, and this list holds more than one: say which kind it is")
+        out.append((kind, slug))
+    return list(dict.fromkeys(out))
+
+
+def kinds_summary(members: list[dict]) -> dict[str, int]:
+    """How many members of each kind, in first-seen order: the chips' "12 repositories · 4 databases". Derived on
+    every read from the members, never stored, so it cannot drift from them (assumed: owner to confirm; §5 said
+    "keeps a derived kinds summary")."""
+    out: dict[str, int] = {}
+    for m in members:
+        k = m.get("entity_type") or ""
+        out[k] = out.get(k, 0) + 1
+    return out
+
+
+def list_kind(stored: str, kinds: dict[str, int]) -> str:
+    """The list's kind as read: its members' one kind, MIXED for more than one, the stored kind when it is empty."""
+    present = [k for k in kinds if k]
+    if len(present) > 1:
+        return MIXED
+    return present[0] if present else (stored or "")
+
+
+def _stored_filter(raw, slug: str) -> dict | None:
+    """A shortlist's saved filter, parsed: None when it has none. A value that does not parse is said on the list
+    (`unreadable`), never read as "no filter": the shortlist was cut on something, and the bench must not offer to
+    re-apply a filter it cannot read."""
+    if raw in (None, ""):
+        return None
+    try:
+        got = json.loads(raw)
+    except (TypeError, ValueError) as exc:
+        log.warning("work list %s: its stored filter does not parse: %s", slug, exc)
+        return {"unreadable": f"the stored filter could not be read · {type(exc).__name__}"}
+    return got if isinstance(got, dict) else {"unreadable": "the stored filter is not a mapping"}
 
 
 class WorkLists:
@@ -151,44 +317,56 @@ class WorkLists:
                investigation: str = "", created_by: str = "",
                derived_from: str = "", rationale: str = "",
                slug: str = "") -> dict:
-        """Create a work list. LOCAL ONLY — nothing reaches Egeria here."""
+        """Create a work list. LOCAL ONLY — nothing reaches Egeria here.
+
+        `entity_slugs` items are slugs (each takes `entity_type`) or mappings naming their own `entity_type`, so a
+        list may hold more than one kind (§5). The list's stored `entity_type` is the kind a member added later
+        without one takes; for a list created with more than one kind it is "mixed", and such a member must name
+        its kind."""
         slug = slug or f"wl-{uuid.uuid4().hex[:10]}"
         # Materialise ONCE: `entity_slugs` may be a generator, and the old
         # shape consumed it in `dict.fromkeys` then counted it again, which
         # logs "0 members" for a list that has members.
-        slugs = list(dict.fromkeys(entity_slugs))
+        refs = member_refs(entity_slugs, entity_type)
+        kinds = {k for k, _ in refs}
+        stored = MIXED if len(kinds) > 1 else (next(iter(kinds)) if kinds else entity_type)
         now = _now()
         with self._conn() as conn:
-            _ensure_schema(conn)
             conn.execute(
                 "INSERT INTO work_lists (slug, display_name, description, entity_type,"
                 " investigation, created_by, created_at, derived_from)"
                 " VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                (slug, display_name, description, entity_type, investigation,
+                (slug, display_name, description, stored, investigation,
                  created_by, now, derived_from),
             )
-            for entity_slug in slugs:
+            for kind, entity_slug in refs:
                 conn.execute(
-                    "INSERT INTO work_list_members (work_list_slug, entity_slug,"
-                    " rationale, confidence, added_at) VALUES (?, ?, ?, ?, ?)",
-                    (slug, entity_slug, rationale, None, now),
+                    "INSERT INTO work_list_members (work_list_slug, entity_slug, entity_type,"
+                    " rationale, confidence, added_at) VALUES (?, ?, ?, ?, ?, ?)",
+                    (slug, entity_slug, kind, rationale, None, now),
                 )
-        log.info("work list %s created with %d member(s)", slug, len(slugs))
+        log.info("work list %s created with %d member(s) of %d kind(s)", slug, len(refs), len(kinds))
         return self.get(slug)
 
     def get(self, slug: str) -> dict | None:
         with self._conn() as conn:
-            _ensure_schema(conn)
             row = conn.execute(
                 "SELECT * FROM work_lists WHERE slug = ?", (slug,)).fetchone()
             if not row:
                 return None
             members = conn.execute(
-                "SELECT entity_slug, rationale, confidence, added_at"
-                " FROM work_list_members WHERE work_list_slug = ? ORDER BY added_at, entity_slug",
+                "SELECT entity_slug, entity_type, rationale, confidence, added_at"
+                " FROM work_list_members WHERE work_list_slug = ? ORDER BY added_at, entity_type, entity_slug",
                 (slug,)).fetchall()
         out = dict(row)
+        out["filter"] = _stored_filter(out.pop("filter_json", None), slug)
+        out.pop("filter_as_of", None)              # carried inside `filter` as `applied_at`
         out["members"] = [dict(m) for m in members]
+        # `entity_type` as read is the members' kind ("mixed" for more than one); `stored_entity_type` is what a
+        # member added without a kind takes. `kinds` is derived here, every read.
+        out["stored_entity_type"] = out.get("entity_type") or ""
+        out["kinds"] = kinds_summary(out["members"])
+        out["entity_type"] = list_kind(out["stored_entity_type"], out["kinds"])
         self._attach_dispositions(out["members"])
         return out
 
@@ -201,14 +379,16 @@ class WorkLists:
         that say `undecided` rather than no rows at all. The matrix groups on
         this and a missing value is a legitimate group.
         """
-        try:
-            from resource_explorer.registry import ProjectRegistry
-            registry = ProjectRegistry()
-        except Exception:                                   # pragma: no cover
-            return
+        # The registry this instance already holds: a bare ProjectRegistry()
+        # here re-ran the whole registry init on every get (a real cost on SQLite).
+        registry = self.registry
         for m in members:
             m.setdefault("disposition", "")
             m.setdefault("github_url", "")
+            if m.get("entity_type") != "repo":
+                # Dispositions are keyed by a repo's github_url; `registry.get` reads repos only, so a database or
+                # file-system slug that happens to name a repo would borrow that repo's verdict.
+                continue
             try:
                 # registry.get() returns a Project DATACLASS, not a dict —
                 # a .get() call on it raises rather than returning None, and
@@ -227,9 +407,14 @@ class WorkLists:
             except Exception:                               # pragma: no cover
                 continue
 
-    def list_all(self, *, investigation: str = "") -> list[dict]:
+    def list_all(self, *, investigation: str = "", user_id: str | None = None) -> list[dict]:
+        """Every list (or an investigation's), each with `hidden`: this caller's own view preference (W38)."""
+        from resource_explorer.registry import current_user_id
+
+        user_id = current_user_id() if user_id is None else user_id
         with self._conn() as conn:
-            _ensure_schema(conn)
+            hidden_slugs = {r["work_list_slug"] for r in conn.execute(
+                "SELECT work_list_slug FROM work_list_view WHERE user_id = ? AND hidden = 1", (user_id,)).fetchall()}
             if investigation:
                 rows = conn.execute(
                     "SELECT * FROM work_lists WHERE investigation = ?"
@@ -240,37 +425,106 @@ class WorkLists:
             out = []
             for row in rows:
                 d = dict(row)
-                d["member_count"] = conn.execute(
-                    "SELECT COUNT(*) AS n FROM work_list_members WHERE work_list_slug = ?",
-                    (d["slug"],)).fetchone()["n"]
+                rows_by_kind = conn.execute(
+                    "SELECT entity_type, COUNT(*) AS n FROM work_list_members WHERE work_list_slug = ?"
+                    " GROUP BY entity_type", (d["slug"],)).fetchall()
+                d["kinds"] = {r["entity_type"]: r["n"] for r in rows_by_kind}
+                d["member_count"] = sum(d["kinds"].values())
+                d["stored_entity_type"] = d.get("entity_type") or ""
+                d["entity_type"] = list_kind(d["stored_entity_type"], d["kinds"])
+                d.pop("filter_json", None)
+                d["hidden"] = d["slug"] in hidden_slugs
                 out.append(d)
         return out
 
-    def set_member(self, slug: str, entity_slug: str, *,
-                   rationale: str = "", confidence: int | None = None) -> None:
-        """Add a member, or update the reason it is there."""
+    def set_hidden(self, slug: str, hidden: bool, *, user_id: str | None = None) -> None:
+        """Hide or unhide a list for ONE person (W38). A view preference: the list, its members and everyone else's
+        sidebar are untouched, and nothing reaches Egeria."""
+        from resource_explorer.registry import current_user_id
+
+        user_id = current_user_id() if user_id is None else user_id
         with self._conn() as conn:
-            _ensure_schema(conn)
+            conn.execute(
+                "INSERT INTO work_list_view (work_list_slug, user_id, hidden, updated_at) VALUES (?, ?, ?, ?)"
+                " ON CONFLICT(work_list_slug, user_id) DO UPDATE SET hidden = excluded.hidden,"
+                " updated_at = excluded.updated_at", (slug, user_id, int(bool(hidden)), _now()))
+
+    def set_investigation(self, slug: str, investigation: str) -> None:
+        """Link a saved list to an investigation (or, with '', unlink it).
+
+        Only `create()` ever set `work_lists.investigation`, and only when an
+        investigation was current at save time; this is the one later write.
+        The caller checks that the investigation exists."""
+        with self._conn() as conn:
+            conn.execute("UPDATE work_lists SET investigation = ? WHERE slug = ?",
+                         (investigation, slug))
+
+    def _member_kind(self, conn, slug: str, entity_slug: str, entity_type: str) -> str:
+        """The kind a member call means: the one given; else the member's own kind when exactly one member has that
+        slug; else the list's stored kind. Raises ValueError when that is "mixed" or two kinds share the slug."""
+        if entity_type:
+            return entity_type
+        have = [r["entity_type"] for r in conn.execute(
+            "SELECT entity_type FROM work_list_members WHERE work_list_slug = ? AND entity_slug = ?",
+            (slug, entity_slug)).fetchall()]
+        if len(have) > 1:
+            raise ValueError(f"'{entity_slug}' is in this list as {' and as '.join(sorted(have))}: say which kind")
+        if have:
+            return have[0]
+        row = conn.execute("SELECT entity_type FROM work_lists WHERE slug = ?", (slug,)).fetchone()
+        stored = (row["entity_type"] if row else "") or ""
+        if not stored or stored == MIXED:
+            raise ValueError(f"'{entity_slug}' names no kind, and this list holds more than one: say which kind it is")
+        return stored
+
+    def set_member(self, slug: str, entity_slug: str, *,
+                   rationale: str = "", confidence=None, entity_type: str = "") -> None:
+        """Add a member, or update the reason it is there.
+
+        `confidence` is checked by the same function the outbox sends it with
+        (`egeria_outbox.membership_confidence`: an int 0-100; ValueError otherwise), so a value stored here
+        is one Egeria can hold. None leaves an existing member's confidence as it is (a rationale-only
+        update, e.g. the journal's, must not wipe it). Clearing a confidence is not offered: Egeria merges
+        relationship properties, so a cleared value would need its own write (follow-up)."""
+        from resource_explorer.egeria_outbox import membership_confidence
+
+        if confidence is not None:
+            confidence = membership_confidence(confidence)
+        with self._conn() as conn:
+            kind = self._member_kind(conn, slug, entity_slug, entity_type)
             existing = conn.execute(
-                "SELECT 1 FROM work_list_members WHERE work_list_slug = ? AND entity_slug = ?",
-                (slug, entity_slug)).fetchone()
-            if existing:
+                "SELECT 1 FROM work_list_members WHERE work_list_slug = ? AND entity_type = ? AND entity_slug = ?",
+                (slug, kind, entity_slug)).fetchone()
+            if existing and confidence is None:
+                conn.execute(
+                    "UPDATE work_list_members SET rationale = ?"
+                    " WHERE work_list_slug = ? AND entity_type = ? AND entity_slug = ?",
+                    (rationale, slug, kind, entity_slug))
+            elif existing:
                 conn.execute(
                     "UPDATE work_list_members SET rationale = ?, confidence = ?"
-                    " WHERE work_list_slug = ? AND entity_slug = ?",
-                    (rationale, confidence, slug, entity_slug))
+                    " WHERE work_list_slug = ? AND entity_type = ? AND entity_slug = ?",
+                    (rationale, confidence, slug, kind, entity_slug))
             else:
                 conn.execute(
-                    "INSERT INTO work_list_members (work_list_slug, entity_slug,"
-                    " rationale, confidence, added_at) VALUES (?, ?, ?, ?, ?)",
-                    (slug, entity_slug, rationale, confidence, _now()))
+                    "INSERT INTO work_list_members (work_list_slug, entity_slug, entity_type,"
+                    " rationale, confidence, added_at) VALUES (?, ?, ?, ?, ?, ?)",
+                    (slug, entity_slug, kind, rationale, confidence, _now()))
 
-    def remove_member(self, slug: str, entity_slug: str) -> None:
+    def remove_member(self, slug: str, entity_slug: str, entity_type: str = "") -> None:
+        """Remove one member. Without `entity_type`, the slug must name one member (ValueError when a repository
+        and a database in the list share it)."""
         with self._conn() as conn:
-            _ensure_schema(conn)
+            if not entity_type:
+                have = conn.execute(
+                    "SELECT entity_type FROM work_list_members WHERE work_list_slug = ? AND entity_slug = ?",
+                    (slug, entity_slug)).fetchall()
+                if len(have) > 1:
+                    raise ValueError(f"'{entity_slug}' is in this list as more than one kind: say which")
+                entity_type = have[0]["entity_type"] if have else ""
             conn.execute(
-                "DELETE FROM work_list_members WHERE work_list_slug = ? AND entity_slug = ?",
-                (slug, entity_slug))
+                "DELETE FROM work_list_members WHERE work_list_slug = ? AND entity_type = ? AND entity_slug = ?",
+                (slug, entity_type, entity_slug))
 
     def delete(self, slug: str) -> None:
         """Remove the work list locally.
@@ -279,43 +533,155 @@ class WorkLists:
         is a catalog decision with its own consequences, and doing it as a
         side effect of tidying a local list is how a catalog loses history
         nobody meant to spend.
+
+        If an unpublish is ever added, it goes here, and in this order: Egeria
+        refuses to delete a WorkingSet that still has members
+        (OMAG-GENERIC-HANDLERS-403-005, which pyegeria misreports as an
+        AUTHORIZATION 401), so every membership is removed first (the
+        `collection_membership_detach` rows `publish` queues), and only then
+        the collection.
         """
         with self._conn() as conn:
-            _ensure_schema(conn)
             conn.execute("DELETE FROM work_list_members WHERE work_list_slug = ?", (slug,))
+            conn.execute("DELETE FROM work_list_view WHERE work_list_slug = ?", (slug,))
             conn.execute("DELETE FROM work_lists WHERE slug = ?", (slug,))
 
     # ── Promotion ───────────────────────────────────────────────────────
 
     def promote(self, slug: str, survivors: Iterable[str], *,
                 display_name: str = "", rationale: str = "",
-                created_by: str = "") -> dict:
+                created_by: str = "", filter: dict | None = None) -> dict:
         """The survivors of one work list become a new, narrower one.
 
         The new list records `derived_from`, so the funnel keeps its own
         trail: a shortlist that cannot say what it was shortlisted FROM is a
         list of names, not a decision.
+
+        With `filter` (DESIGN-WORK-LISTS-WINNOWING-AND-MIXED-KINDS §2), the
+        shortlist also keeps WHAT it was cut on: the checked expression, when,
+        and all three buckets (`winnowing.check_filter`). The survivors must be
+        exactly its kept bucket, and its buckets must account for every member
+        of this list, or nothing is created (ValueError, with the words): a
+        stored filter that disagrees with the members it sits beside would say
+        one thing and hold another.
         """
         parent = self.get(slug)
         if not parent:
             raise KeyError(slug)
-        keep = [s for s in survivors if any(m["entity_slug"] == s for m in parent["members"])]
-        return self.create(
+        survivors = list(survivors)
+        stored = None
+        if filter is not None:
+            stored = self._checked_against(parent, filter, survivors)
+        # A survivor named by slug alone keeps the kind it has in the parent (every kind, if two share the slug);
+        # one named with its kind keeps exactly that member.
+        keep = [{"entity_slug": m["entity_slug"], "entity_type": m["entity_type"]} for m in parent["members"]
+                if any((s == m["entity_slug"]) if not isinstance(s, dict)
+                       else (s.get("entity_slug") == m["entity_slug"]
+                             and s.get("entity_type", m["entity_type"]) == m["entity_type"]) for s in survivors)]
+        made = self.create(
             display_name or f"{parent['display_name']} — shortlist",
             keep,
             description=f"Survivors of {parent['display_name']}",
-            entity_type=parent["entity_type"],
+            entity_type=parent["stored_entity_type"] or parent["entity_type"],
             investigation=parent["investigation"],
             created_by=created_by,
             derived_from=slug,
             rationale=rationale,
         )
+        if stored is not None:
+            self._store_filter(made["slug"], stored)
+            made = self.get(made["slug"])
+        return made
+
+    @staticmethod
+    def _checked_against(parent: dict, filter: dict, survivors: list[str]) -> dict:
+        """`filter` checked, and checked against the list it says it was cut from. Raises ValueError."""
+        from resource_explorer.winnowing import check_filter
+
+        stored = check_filter(filter)
+        # A cut made under one kind's chip covers that kind's members only; the others were not asked.
+        scope_kind = stored.get("entity_type") or ""
+        members = {m["entity_slug"] for m in parent["members"] if not scope_kind or m["entity_type"] == scope_kind}
+        if stored["parent_slug"] and stored["parent_slug"] != parent["slug"]:
+            raise ValueError(f"the filter says it was cut from {stored['parent_slug']!r}, not {parent['slug']!r}")
+        stored["parent_slug"] = parent["slug"]
+        named = set(stored["kept"]) | set(stored["dropped"]) | {u["entity_slug"] for u in stored["could_not_check"]}
+        if named != members or stored["parent_count"] != len(members):
+            missing, stray = sorted(members - named), sorted(named - members)
+            raise ValueError("the filter's buckets do not match the list's members"
+                             + (f" · not in any bucket: {', '.join(missing)}" if missing else "")
+                             + (f" · not members: {', '.join(stray)}" if stray else ""))
+        if {s if not isinstance(s, dict) else s.get("entity_slug") for s in survivors} != set(stored["kept"]):
+            raise ValueError("the shortlist's members must be exactly the filter's kept bucket")
+        return stored
+
+    def _store_filter(self, slug: str, stored: dict) -> None:
+        with self._conn() as conn:
+            conn.execute("UPDATE work_lists SET filter_json = ?, filter_as_of = ? WHERE slug = ?",
+                         (json.dumps(stored, sort_keys=True), stored["applied_at"], slug))
+
+    def reapply(self, slug: str, filter: dict, *, automatic: bool = False) -> dict:
+        """Re-cut a shortlist on fresher answers: the stored filter becomes the new one, and its members the new kept
+        bucket. AUTOMATIC when a member's answer for a filtered column refreshes (**Decision (project owner,
+        2026-10-28):** "automatic"), and also a manual press ("re-apply now"); the bench says which.
+
+        Members that stay keep their rationale and confidence; members that join get "joined when <criteria> was
+        re-applied"; members that fail now are removed. A current member that moves to could-not-check is HELD, not
+        dropped: it stays a member and is named in `held` with its sentence (the owner: never silently dropped).
+        Every re-apply is recorded on the filter (`reapplies`, newest last, the last REAPPLY_HISTORY kept): when,
+        the as-of of the answers it read, automatic or pressed, and who joined, dropped or was held.
+
+        Raises KeyError (no such list) or ValueError (not a filtered shortlist, its parent is gone, the criteria
+        differ, or the buckets do not match the parent)."""
+        from resource_explorer.winnowing import criterion_words
+
+        wl = self.get(slug)
+        if not wl:
+            raise KeyError(slug)
+        if not wl.get("filter") or not wl.get("derived_from"):
+            raise ValueError("this list was not cut by a filter, so there is nothing to re-apply")
+        if wl["filter"].get("unreadable"):
+            raise ValueError(f"{wl['filter']['unreadable']}, so it cannot be re-applied")
+        parent = self.get(wl["derived_from"])
+        if not parent:
+            raise ValueError(f"the list it was cut from ({wl['derived_from']!r}) no longer exists")
+        stored = self._checked_against(parent, filter, list((filter or {}).get("kept") or []))
+        before = [{k: c.get(k) for k in ("field", "op", "value", "analysis_ids")} for c in wl["filter"]["criteria"]]
+        after = [{k: c.get(k) for k in ("field", "op", "value", "analysis_ids")} for c in stored["criteria"]]
+        if before != after:
+            raise ValueError("re-applying keeps the shortlist's criteria; a different filter is a new shortlist")
+        current = {(m["entity_type"], m["entity_slug"]) for m in wl["members"]}
+        kept = set(stored["kept"])
+        unchecked = {u["entity_slug"]: u["words"] for u in stored["could_not_check"]}
+        scope_kind = stored.get("entity_type") or ""
+        wanted = {(m["entity_type"], m["entity_slug"]) for m in parent["members"]
+                  if m["entity_slug"] in kept and (not scope_kind or m["entity_type"] == scope_kind)}
+        # Held: a member now could-not-check stays, said, rather than leaving on an answer nobody has.
+        held_refs = {(k, s_) for k, s_ in current - wanted if s_ in unchecked}
+        joined = [s_ for k, s_ in sorted(wanted - current)]
+        dropped = sorted(s_ for k, s_ in current - wanted - held_refs)
+        held = [{"entity_slug": s_, "entity_type": k, "words": unchecked[s_]} for k, s_ in sorted(held_refs)]
+        reason = f"joined when {' and '.join(criterion_words(c) for c in stored['criteria'])} was re-applied"
+        for k, s_ in current - wanted - held_refs:
+            self.remove_member(slug, s_, k)
+        for k, s_ in sorted(wanted - current):
+            self.set_member(slug, s_, rationale=reason, entity_type=k)
+        entry = {"at": _now(), "automatic": bool(automatic), "applied_at": stored["applied_at"],
+                 "answers_as_of": stored.get("newest_answer") or stored.get("oldest_answer") or "",
+                 "joined": joined, "dropped": dropped, "held": held,
+                 "could_not_check": len(stored["could_not_check"])}
+        stored["reapplies"] = (list(wl["filter"].get("reapplies") or []) + [entry])[-REAPPLY_HISTORY:]
+        self._store_filter(slug, stored)
+        log.info("shortlist %s re-applied (%s): %d joined, %d dropped, %d held", slug,
+                 "automatic" if automatic else "pressed", len(joined), len(dropped), len(held))
+        return {"slug": slug, "automatic": bool(automatic), "joined": joined, "dropped": dropped, "held": held,
+                "reapply": entry, "work_list": self.get(slug)}
 
     # ── Batch runs ──────────────────────────────────────────────────────
 
     def enqueue_batch(self, analysis_id: str, entity_slugs: Iterable[str], *,
                       work_list_slug: str = "", requested_by: str = "",
-                      entity_type: str = "repo") -> dict:
+                      entity_type: str = "repo", refusal=None) -> dict:
         """Enqueue one analysis across a SET of resources, and return a set id.
 
         The queue already does the hard half of this — `SKIP LOCKED` claims
@@ -328,14 +694,28 @@ class WorkLists:
         concept of a set and does not need one.
 
         `entity_type` defaults to "repo" for existing callers — a batch is
-        homogeneous (one work list, one entity_type, same as the `work_lists`
-        table's own column), and this is stored on each row's `target` dict
-        so `run_queue.py::_handle_analysis_run` resolves the right resource
-        type's analysis steps instead of always the repo's.
+        homogeneous (one analysis, one kind: the definition catalog is per
+        kind), and this is stored on each row's `target` dict so
+        `run_queue.py::_handle_analysis_run` resolves the right resource
+        type's analysis steps instead of always the repo's. A list of more
+        than one kind runs as one batch per kind: `enqueue_per_kind`.
         """
         slugs = list(dict.fromkeys(entity_slugs))
         if not slugs:
             raise ValueError("a batch needs at least one resource")
+        # Brief Z3: `refusal(slug) -> str` checks each member's Egeria write as the caller
+        # (`egeria_work_access.batch_refusal`). A refused member gets no run and comes back in `not_permitted`
+        # with its words; the rest run. Nothing permitted at all raises `CurationDenied` (the route's 403).
+        not_permitted: list[dict] = []
+        if refusal is not None:
+            from resource_explorer.workflows.curate import CurationDenied
+            from resource_explorer.workflows.egeria_work_access import per_member
+
+            slugs, refused = per_member(slugs, refusal)
+            not_permitted = [{"entity_slug": s, "words": why} for s, why in refused]
+            if not slugs:
+                reasons = sorted({why.removeprefix("not permitted · ") for _, why in refused})
+                raise CurationDenied(reasons[0] if len(reasons) == 1 else "; ".join(reasons))
         set_id = f"set-{uuid.uuid4().hex[:12]}"
         now = _now()
         enqueued: list[dict] = []
@@ -347,7 +727,6 @@ class WorkLists:
             )
             enqueued.append({"run_id": run_id, "entity_slug": entity_slug})
         with self._conn() as conn:
-            _ensure_schema(conn)
             for row in enqueued:
                 conn.execute(
                     "INSERT INTO work_list_runs (set_id, run_id, work_list_slug,"
@@ -356,7 +735,46 @@ class WorkLists:
                      analysis_id, now))
         log.info("batch %s: enqueued %s across %d resource(s)", set_id, analysis_id, len(slugs))
         return {"set_id": set_id, "analysis_id": analysis_id,
-                "work_list_slug": work_list_slug, "runs": enqueued}
+                "work_list_slug": work_list_slug, "runs": enqueued, "not_permitted": not_permitted}
+
+    def enqueue_per_kind(self, analyses: dict[str, str], members: list[tuple[str, str]], *,
+                         work_list_slug: str = "", requested_by: str = "", refusal_for=None) -> dict:
+        """One batch per kind present (§5: runs stay per kind; the definition catalog is per kind), each with its
+        own set id, so the bench shows one run line per kind. "Run on all" is N runs, said so.
+
+        `analyses` maps a kind to the analysis to run on that kind's members; a kind present with none chosen is
+        reported in `not_run` with its count, never silently skipped. `refusal_for(kind)` gives the per-member
+        zone check for a kind (as `enqueue_batch`'s `refusal`). A kind whose every member is refused comes back as
+        a `refused` line with its words; the others still run. Raises `CurationDenied` only when nothing at all
+        was queued and something was refused."""
+        from resource_explorer.workflows.curate import CurationDenied
+
+        by_kind: dict[str, list[str]] = {}
+        for kind, slug in members:
+            by_kind.setdefault(kind, []).append(slug)
+        runs: list[dict] = []
+        not_run: list[dict] = []
+        refused: list[str] = []
+        for kind, slugs in by_kind.items():
+            analysis_id = (analyses or {}).get(kind) or ""
+            if not analysis_id:
+                not_run.append({"entity_type": kind, "count": len(slugs),
+                                "words": f"no analysis chosen for the {len(slugs)} {kind} member(s)"})
+                continue
+            try:
+                started = self.enqueue_batch(
+                    analysis_id, slugs, work_list_slug=work_list_slug, requested_by=requested_by,
+                    entity_type=kind, refusal=refusal_for(kind) if refusal_for else None)
+            except CurationDenied as exc:
+                refused.append(str(exc))
+                runs.append({"entity_type": kind, "analysis_id": analysis_id, "set_id": "", "runs": [],
+                             "not_permitted": [], "refused": f"not permitted · {exc}"})
+                continue
+            runs.append({"entity_type": kind, **started})
+        if refused and not any(r["runs"] for r in runs):
+            raise CurationDenied("; ".join(sorted(set(refused))))
+        return {"work_list_slug": work_list_slug, "runs": runs, "not_run": not_run,
+                "words": f"{len([r for r in runs if r['runs']])} run(s), one per kind"}
 
     def batch_progress(self, set_id: str) -> dict | None:
         """What every run in this set is doing right now.
@@ -367,7 +785,6 @@ class WorkLists:
         a cached count would guarantee.
         """
         with self._conn() as conn:
-            _ensure_schema(conn)
             rows = conn.execute(
                 "SELECT wr.run_id, wr.entity_slug, wr.analysis_id, wr.enqueued_at,"
                 "       r.state, r.error, r.result_ref, r.started_at, r.finished_at"
@@ -417,16 +834,104 @@ class WorkLists:
           has published nothing it can find again. Same reasoning as the
           investigation publisher, which is where `_create_typed_collection`
           comes from.
-        * the memberships are ENQUEUED to the outbox and applied by whichever
-          worker drains it, each carrying its `membershipRationale`.
+        * the memberships are ENQUEUED to the outbox, each carrying its
+          `membershipRationale`, and then applied here and now by the same
+          drain the scheduler runs (`_apply_adds`, up to INLINE_ATTACH_LIMIT;
+          owner's ruling 2026-10-13). `attach` reports each by its row's own
+          state afterwards; whatever is left stays for the background drain.
 
         A member whose resource was never published to Egeria has no GUID to
         attach and is REPORTED, not retried — that is a fact about the
         resource, not a failed write.
+
+        **A re-publish also removes** (the Portal reads this collection, and
+        membership is uni-link, so adds converge and removals happen only if RE
+        makes them): members RE recorded attaching and has since dropped are
+        detached, one `collection_membership_detach` row each, DETACH-checked
+        on both ends, applied before this returns (`_apply_removals`), and
+        reported in `removals` by each row's own outcome.
+
+        **The link back.** With `RE_PUBLIC_URL` configured, the WorkingSet
+        carries `additionalProperties.resourceExplorerUrl`, the /next
+        work-list page: on create, and merged in again on every re-publish
+        (UPDATE_PROPERTIES, checked; `link_back` says what happened). Without
+        it the key is left out.
+
+        **Zone access (Brief Z3).** Every write is checked first, as the caller,
+        with the one decision (`workflows.egeria_work_access` ->
+        `curation_access`): the collection (CREATE for a new one, ATTACH) and
+        each member's end of its membership (ATTACH). A refused member is NOT
+        queued and comes back in `not_permitted` with its words ("not permitted
+        · <reason>"); the rest proceed. Raises `CurationDenied` (the route's
+        403) before anything is written when the collection is refused, or when
+        the collection exists already and every member to attach is refused
+        (nothing at all would be permitted). The drain re-checks each queued
+        row as the same person (`egeria_outbox._collection_refusal`).
         """
+        from resource_explorer.workflows.curate import CurationDenied
+        from resource_explorer.workflows.egeria_work_access import (
+            access_words, collection_detach_write, member_detach_write, member_write, per_member,
+            work_list_collection_write, work_list_link_back_write,
+        )
+
         wl = self.get(slug)
         if not wl:
             raise KeyError(slug)
+        from resource_explorer.zone_access import EgeriaAccessReader
+
+        reader = EgeriaAccessReader()      # one press: controls and accounts read once, elements fresh per check
+        existing = (wl.get("egeria_guid") or "").strip()
+        refused_collection = access_words(self.registry, [work_list_collection_write(existing)],
+                                          entity_type="work_list", slug=slug, reader=reader)
+        if refused_collection:
+            raise CurationDenied(refused_collection.removeprefix("not permitted · "))
+
+        # Each member is resolved, checked and reported as ITS OWN kind (§5: a list may hold more than one).
+        attachable, unpublished, unresolved = [], [], []
+        for m in wl["members"]:
+            try:
+                member_guid = member_egeria_guid(self.registry, m["entity_type"], m["entity_slug"])
+            except MemberUnresolved as exc:
+                unresolved.append({"entity_slug": m["entity_slug"], "entity_type": m["entity_type"],
+                                   "words": f"could not resolve · {exc}"})
+                continue
+            except NotInEgeriaYet:
+                unpublished.append((m["entity_type"], m["entity_slug"]))
+                continue
+            attachable.append({
+                "member_guid": member_guid,
+                "entity_type": m["entity_type"],
+                "entity_slug": m["entity_slug"],
+                "rationale": m.get("rationale") or "",
+                "confidence": m.get("confidence"),
+            })
+        attachable, refused = per_member(attachable, lambda m: access_words(
+            self.registry, [member_write(m["member_guid"])], entity_type=m["entity_type"], slug=m["entity_slug"],
+            reader=reader))
+        not_permitted = [{"entity_slug": m["entity_slug"], "words": why} for m, why in refused]
+
+        # Removals (re-publish only): what RE recorded attaching to this collection, minus the current members.
+        # Every current member's GUID counts, refused or not: a refused add is not a removal.
+        # A member still in the list whose asset GUID does not resolve right now (links forgotten, stale assets
+        # cleared, a cache emptied) is NOT removed: only one that now resolves to a DIFFERENT GUID leaves its old
+        # GUID behind as a removal.
+        current_guids = {m["member_guid"] for m in attachable} | {m["member_guid"] for m, _ in refused}
+        # An unresolved member (unknown type, unreadable) is held like an unpublished one: never removed on a guess.
+        resolved = {**{s_: "" for _, s_ in unpublished}, **{u["entity_slug"]: "" for u in unresolved},
+                    **{m["entity_slug"]: m["member_guid"] for m in attachable + [m for m, _ in refused]}}
+        recorded = recorded_memberships(self.registry, slug, existing) if existing else {}
+        removed = {g: r for g, r in recorded.items()
+                   if g not in current_guids and not (r["entity_slug"] in resolved and not resolved[r["entity_slug"]])}
+        detachable, detach_refused = per_member(
+            [{"member_guid": g, "entity_slug": r["entity_slug"] or g, "entity_type": r["entity_type"]}
+             for g, r in removed.items() if r["attached"] or r["adding"] or r["maybe"]],
+            lambda m: access_words(
+                self.registry, [collection_detach_write(existing, "the collection"),
+                                member_detach_write(m["member_guid"])],
+                entity_type=m["entity_type"] or wl["stored_entity_type"], slug=m["entity_slug"], reader=reader))
+        if (refused or detach_refused) and not attachable and not detachable and existing:
+            reasons = sorted({why.removeprefix("not permitted · ") for _, why in refused + detach_refused})
+            raise CurationDenied(reasons[0] if len(reasons) == 1 else "; ".join(reasons))
 
         from resource_explorer.egeria_outbox import _default_clients
         from resource_explorer.surveyors.egeria_investigation_publisher import (
@@ -438,15 +943,28 @@ class WorkLists:
         # `'tuple' object has no attribute 'require'` at publish time, which
         # is only reachable with a live platform and so is exactly the kind of
         # line a stub test does not exercise.
-        clients, _find_element_guid = _default_clients()
+        from resource_explorer.egeria_clients import current_principal
+
+        # The person who pressed publish (Brief I), not the outbox daemon.
+        who = current_principal()
+        clients, _find_element_guid = _default_clients(who)
+        if not callable(_find_element_guid):
+            # Every add is looked up by name before it is created; a drain handed no look-up cannot tell "absent"
+            # from "could not check". Said before anything is written, never passed on as None.
+            raise RuntimeError("publish has no Egeria look-up to check what already exists, so nothing was sent")
         cm = clients.require("collection_manager")
 
+        # The link back to RE's work-list page (the Portal's Resource Browser reads it). Written on create, and
+        # again on every re-publish, so a list published before the URL was configured gains it.
+        url = resource_explorer_url(slug, _url_kind(wl))
+        link_back = {"url": url, "state": "set" if url else "not configured", "words": ""}
         guid = (wl.get("egeria_guid") or "").strip()
         if not guid:
             guid = _create_typed_collection(
                 cm, EGERIA_TYPE_NAME, wl["display_name"],
                 wl.get("description") or f"Work list {slug}",
                 qualified_name=f"{EGERIA_TYPE_NAME}::resource-explorer::{slug}",
+                additional_properties={RESOURCE_EXPLORER_URL_KEY: url} if url else None,
             )
             if not guid:
                 raise RuntimeError("Egeria returned no GUID for the collection")
@@ -454,24 +972,17 @@ class WorkLists:
                 conn.execute(
                     "UPDATE work_lists SET egeria_guid = ?, published_at = ?"
                     " WHERE slug = ?", (guid, _now(), slug))
-
-        attachable, unpublished = [], []
-        for m in wl["members"]:
-            project = self.registry.get(m["entity_slug"])
-            member_guid = (getattr(project, "egeria_asset_guid", "") or "") if project else ""
-            if member_guid:
-                attachable.append({
-                    "member_guid": member_guid,
-                    "entity_type": wl["entity_type"],
-                    "entity_slug": m["entity_slug"],
-                    "rationale": m.get("rationale") or "",
-                    "confidence": m.get("confidence"),
-                })
-            else:
-                unpublished.append(m["entity_slug"])
+        elif url:
+            link_back.update(self._set_link_back(cm, guid, url, access_words(
+                self.registry, [work_list_link_back_write(guid)], entity_type="work_list", slug=slug,
+                reader=reader)))
 
         row_ids = enqueue_work_list_members(
             self.registry, slug, guid, attachable, run_id=run_id)
+        attached, attach_error = self._apply_adds(list(zip(row_ids, (m["entity_slug"] for m in attachable))),
+                                    clients, _find_element_guid, who)
+        removals = self._apply_removals(slug, guid, wl["stored_entity_type"], removed, detachable, detach_refused,
+                                        clients, _find_element_guid, who, run_id=run_id)
 
         return {
             "slug": slug,
@@ -481,8 +992,197 @@ class WorkLists:
             "outbox_row_ids": row_ids,
             # Named, not counted: "3 could not be attached" is not actionable
             # and "3 could not be attached: a, b, c" is.
-            "members_without_an_egeria_asset": unpublished,
+            "members_without_an_egeria_asset": [s_ for _, s_ in unpublished],
+            # The groups, by name: queued to attach; held in RE with no Egeria element (with its type); and ones
+            # whose element RE could not establish (never folded into "not published").
+            "queued_to_attach": [m["entity_slug"] for m in attachable],
+            # Each queued member's add, applied here and now (owner's ruling 2026-10-13), by its outbox row's own
+            # state after the inline drain: attached / not permitted / could not attach / left to the background
+            # drain. One entry per queued member, in order.
+            "attach": attached,
+            # "" when every inline drain ran; else what raised, in words (the rows stay for the background drain).
+            "attach_error": attach_error,
+            "not_published": [{"entity_slug": s_, "entity_type": k, "words": str(NotInEgeriaYet(k))}
+                              for k, s_ in unpublished],
+            "not_resolved": unresolved,
+            # Brief Z3: each member the caller may not attach, with its words; the rest were queued.
+            "not_permitted": not_permitted,
+            # Members removed in RE since the last publish, each by its outbox row's own outcome.
+            "removals": removals,
+            "link_back": link_back,
         }
+
+    @staticmethod
+    def _set_link_back(cm, guid: str, url: str, refused: str) -> dict:
+        """Put `resourceExplorerUrl` on an existing WorkingSet (UPDATE_PROPERTIES, checked first). The current
+        additionalProperties are read and merged here, so keys someone else added survive and nothing is sent
+        when the link is already right. Its own outcome: a refusal or a failure does not stop the memberships."""
+        if refused:
+            return {"state": "not permitted", "words": refused}
+        try:
+            # depth 0: the collection alone, not its members and their graph (the default depth is 3).
+            current = _additional_properties(cm.get_collection_by_guid(guid, graph_query_depth=0,
+                                                                       output_format="JSON"))
+        except Exception as exc:  # noqa: BLE001 - said on the result, the publish goes on
+            log.warning("work list link back: could not read %s: %s", guid, exc)
+            return {"state": "failed",
+                    "words": f"could not read its current properties · {type(exc).__name__}: {exc}"[:300]}
+        if current.get(RESOURCE_EXPLORER_URL_KEY) == url:
+            return {"state": "unchanged", "words": ""}
+        try:
+            cm.update_collection(guid, {
+                "class": "UpdateElementRequestBody",
+                "mergeUpdate": True,
+                "properties": {"class": "CollectionProperties",
+                               "additionalProperties": {**current, RESOURCE_EXPLORER_URL_KEY: url}},
+            })
+        except Exception as exc:  # noqa: BLE001 - said on the result, the publish goes on
+            log.warning("work list link back not set on %s: %s", guid, exc)
+            return {"state": "failed", "words": f"could not be set · {type(exc).__name__}: {exc}"[:300]}
+        return {"state": "set", "words": ""}
+
+    def _apply_adds(self, rows: list[tuple[int, str]], clients, find_element_guid, who) -> tuple[list[dict], str]:
+        """Apply this publish's queued `collection_membership` rows now, one scoped drain per row, as the person
+        who pressed publish (owner's ruling 2026-10-13: adds drain inline, as removals already do; before it the
+        person waited up to 15 minutes for the scheduler).
+
+        The SAME drain the scheduler runs (`drain_outbox(..., element_id=row_id)`), only earlier: the Z3 re-check
+        as the row's requester, the membership's confidence/rationale properties, `verify_membership_landed`,
+        `OutboxNotKept`, retry with backoff for a failed add, and `mark_outbox_done(note=)` are all its own.
+
+        `find_element_guid` is the publisher's real look-up, checked callable by `publish` before anything is
+        written, and passed as given: never None, never a stand-in that answers "" (a look-up that cannot run must
+        not read as "absent").
+
+        Each member's words come from its row as it stands afterwards (the proof row), never from the branch
+        taken here: "attached" (done; the read-back note, if any, follows), "not permitted · <why>" (refused at
+        the re-check or by Egeria's security), "could not attach · <why>" (`will_retry` says whether the
+        background drain sends it again), or "left to the background drain" (over the cap, still pending, or
+        being sent by the background drain). A drain that raises fails no publish: its rows stay in the outbox,
+        and the second value says so in words ("" when every inline drain ran), shown on the page as `attach_error`.
+        """
+        from resource_explorer.egeria_outbox import NOT_RETRIED, REFUSED_BY_SECURITY, drain_outbox
+
+        failures: list[str] = []
+        for row_id, member in rows[:INLINE_ATTACH_LIMIT]:
+            try:
+                drain_outbox(self.registry, clients, find_element_guid, element_id=row_id, identity=who)
+            except Exception as exc:  # drain_outbox never raises by contract; whatever does is said, not hidden
+                log.exception("work list publish: inline drain of outbox row %s failed; left to the background",
+                              row_id)
+                failures.append(f"{member}: {type(exc).__name__}: {exc}")
+        error = (f"the inline send failed for {len(failures)} member(s) · left to the background drain · "
+                 + "; ".join(failures))[:500] if failures else ""
+        out: list[dict] = []
+        for n, (row_id, member) in enumerate(rows):
+            row = self.registry.get_outbox_element(row_id) or {}
+            status, said = row.get("status") or "", (row.get("last_error") or "").strip()
+            entry: dict[str, Any] = {"entity_slug": member, "outbox_row_id": row_id, "status": status}
+            if status == "done":
+                entry.update(state=ATTACHED, words=f"{ATTACHED} · {said}" if said else ATTACHED)
+            elif status in ("dead", "failed") and said.startswith((ATTACH_NOT_PERMITTED, REFUSED_BY_SECURITY)):
+                entry.update(state=ATTACH_NOT_PERMITTED,
+                             words=said if said.startswith(ATTACH_NOT_PERMITTED)
+                             else f"{ATTACH_NOT_PERMITTED} · {said}")
+            elif status in ("dead", "failed"):
+                entry.update(state=ATTACH_FAILED, words=f"{ATTACH_FAILED} · {said or 'Egeria gave no sentence'}",
+                             will_retry=status == "failed" and not said.startswith(NOT_RETRIED))
+            elif status == "running":
+                entry.update(state=ATTACH_LEFT, words=f"{ATTACH_LEFT} · being sent by it now")
+            elif status == "pending" and n >= INLINE_ATTACH_LIMIT:
+                entry.update(state=ATTACH_LEFT,
+                             words=f"{ATTACH_LEFT} · over {INLINE_ATTACH_LIMIT} in one publish")
+            elif status == "pending":
+                entry.update(state=ATTACH_LEFT, words=f"{ATTACH_LEFT} · {said}" if said else ATTACH_LEFT)
+            else:                                      # withdrawn or superseded meanwhile, or a row not found
+                entry.update(state=ATTACH_FAILED, will_retry=False,
+                             words=f"{ATTACH_FAILED} · {status or 'its outbox row was not found'}"
+                                   + (f": {said}" if said else ""))
+            out.append(entry)
+        return out, error
+
+    def _apply_removals(self, slug: str, guid: str, entity_type: str, removed: dict, detachable: list,
+                        detach_refused: list, clients, find_element_guid, who, *, run_id: str = "") -> dict:
+        """Take members removed in RE out of the WorkingSet, from RE's own record (`recorded_memberships`).
+
+        * An add never attempted is withdrawn (cancelled): it never reached Egeria, so there is nothing to detach.
+        * An add attempted and not confirmed (failed or dead after a try) may have landed: it is cancelled if it
+          would retry, and the member gets a removal (Egeria's detach of an unlinked pair changes nothing).
+        * A member added (or being added) gets ONE `collection_membership_detach` row, as the person who pressed
+          publish, applied here and now so the result is the row's own outcome: "detached", "not permitted"
+          (re-checked at the drain), "could not be detached · <why>" (destructive: never re-sent; the next
+          publish queues a new row), or "waiting" (an earlier add of the member is still being sent).
+        * A member re-added in RE whose removal was never sent has that removal withdrawn.
+        * A member never published to Egeria is not "detached": it has no recorded add.
+
+        These rows are also what any future unpublish must send first (see `delete`)."""
+        from resource_explorer.egeria_outbox import (
+            COLLECTION_MEMBERSHIP_DETACH, collection_membership_qn, drain_outbox, requester_fields,
+        )
+
+        withdrawn_before_sent: list[str] = []
+        still_sending: list[dict] = []
+        for g, rec in removed.items():
+            cancelled = [self.registry.cancel_outbox_row(i, "member removed from the work list before it was sent")
+                         for i in rec["unsent_adds"]]
+            if rec["attached"] or rec["adding"] or rec["maybe"] or not cancelled:
+                continue                               # detached below (or nothing was ever queued)
+            if all(cancelled):                         # never attempted: it cannot have reached Egeria
+                withdrawn_before_sent.append(rec["entity_slug"] or g)
+            else:                                      # it started sending as we looked: not this press's to undo
+                still_sending.append({"entity_slug": rec["entity_slug"] or g,
+                                      "words": "its add is being sent now · publish again to remove it"})
+        for g, rec in recorded_memberships(self.registry, slug, guid).items():
+            if g not in removed:                       # a current member: a removal not yet sent is superseded
+                for i in rec["unsent_removals"]:
+                    self.registry.cancel_outbox_row(i, "member added back to the work list before it was sent")
+
+        # Re-read after the withdrawals: an add that started sending meanwhile could not be cancelled and needs
+        # the removal after all; one already being removed is not queued twice.
+        now = recorded_memberships(self.registry, slug, guid)
+        out = {"detached": [], "not_permitted": [{"entity_slug": m["entity_slug"], "words": why}
+                                                 for m, why in detach_refused],
+               "failed": [], "waiting": still_sending, "withdrawn_before_sent": withdrawn_before_sent}
+        rows: list[tuple[int, str]] = []
+        for m in detachable:
+            rec = now.get(m["member_guid"]) or {}
+            if rec.get("removing"):
+                out["waiting"].append({"entity_slug": m["entity_slug"], "words": "removal already queued"})
+                continue
+            if not (rec.get("attached") or rec.get("adding") or rec.get("maybe")):
+                continue                               # removed meanwhile by another press: nothing left to do
+            payload: dict[str, Any] = {
+                "collection_guid": guid, "member_guid": m["member_guid"],
+                "member_entity_type": m.get("entity_type") or rec.get("entity_type") or entity_type,
+                "member_entity_slug": m["entity_slug"],
+            }
+            payload.update(requester_fields())
+            # One removal per add cycle: the key names the newest add it follows, so two presses queue one row
+            # (`enqueue_outbox_element_once`), and a member added again and removed again gets a new one.
+            key = f"{collection_membership_qn(guid, m['member_guid'])}::after-add-{rec.get('last_add_id') or 0}"
+            rows.append((self.registry.enqueue_outbox_element_once(
+                "work_list", slug, COLLECTION_MEMBERSHIP_DETACH, key, payload, run_id=run_id), m["entity_slug"]))
+        for row_id, _ in rows[:INLINE_DETACH_LIMIT]:
+            drain_outbox(self.registry, clients, find_element_guid, element_id=row_id,
+                         identity=who)
+        for n, (row_id, member) in enumerate(rows):
+            row = self.registry.get_outbox_element(row_id) or {}
+            status, words = row.get("status") or "", (row.get("last_error") or "").strip()
+            if status == "done":
+                out["detached"].append(member)
+            elif status in ("dead", "failed") and words.startswith("not permitted"):
+                out["not_permitted"].append({"entity_slug": member, "words": words})
+            elif status in ("dead", "failed"):
+                out["failed"].append({"entity_slug": member, "words": words})
+            elif status == "running":
+                out["waiting"].append({"entity_slug": member, "words": "being sent by the background drain"})
+            elif n >= INLINE_DETACH_LIMIT:
+                out["waiting"].append({"entity_slug": member, "words":
+                                       f"left to the background drain (over {INLINE_DETACH_LIMIT} in one publish)"})
+            else:
+                out["waiting"].append({"entity_slug": member, "words": words or "queued for the background drain"})
+        out["outbox_row_ids"] = [i for i, _ in rows]
+        return out
 
 
 def enqueue_work_list_members(registry, work_list_slug: str, collection_guid: str,
@@ -494,6 +1194,8 @@ def enqueue_work_list_members(registry, work_list_slug: str, collection_guid: st
     change what every existing queued row means. This adds two optional keys
     the shared creator passes through only when they are present.
     """
+    from resource_explorer.egeria_outbox import requester_fields
+
     row_ids: list[int] = []
     for m in members:
         payload: dict[str, Any] = {
@@ -505,7 +1207,9 @@ def enqueue_work_list_members(registry, work_list_slug: str, collection_guid: st
         if m.get("rationale"):
             payload["membership_rationale"] = m["rationale"]
         if m.get("confidence") is not None:
+            # The payload key queued rows already carry; the creator sends it as Egeria's `confidence`.
             payload["expected_confidence"] = m["confidence"]
+        payload.update(requester_fields())       # Brief Z3: the drain re-checks the person who pressed publish
         row_ids.append(registry.enqueue_outbox_element(
             "work_list", work_list_slug, "collection_membership",
             f"CollectionMembership::{collection_guid}::{m['member_guid']}",

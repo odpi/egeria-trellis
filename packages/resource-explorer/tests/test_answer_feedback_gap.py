@@ -18,7 +18,7 @@ from fastapi.testclient import TestClient
 from resource_explorer.config import FeedbackConfig
 from resource_explorer.destinations import OURS
 from resource_explorer.feedback_store import FeedbackStore
-from resource_explorer.gaps import gaps_summary
+from resource_explorer.gaps import gap_is_about_question, gaps_summary
 from resource_explorer.registry import Project
 
 
@@ -56,6 +56,11 @@ def client(tmp_path, reg, monkeypatch):
 
 
 def _a_question_with_an_analysis() -> tuple[str, str]:
+    q, analysis_id, _qid = _a_question_with_its_id()
+    return q, analysis_id
+
+
+def _a_question_with_its_id() -> tuple[str, str, str]:
     """A real catalogued question that names at least one analysis, read from
     the catalog rather than hard-coded — a fixed string here would start
     failing the day someone rewords a row, which is not what this asserts."""
@@ -64,14 +69,14 @@ def _a_question_with_an_analysis() -> tuple[str, str]:
     for e in get_questions("repo"):
         ids = (e.get("answering") or {}).get("analysis_ids") or []
         if ids:
-            return e["question"], ids[0]
+            return e["question"], ids[0], e["id"]
     pytest.skip("no catalogued question names an analysis")
 
 
 class TestADisagreementBecomesAGap:
     def test_it_lands_in_the_gaps_collection_as_ours(self, client, reg, slug):
         api, _ = client
-        question, analysis_id = _a_question_with_an_analysis()
+        question, analysis_id, qid = _a_question_with_its_id()
 
         res = api.post("/api/feedback/answer", json={
             "slug": slug, "question": question, "verdict": "disagree",
@@ -82,9 +87,11 @@ class TestADisagreementBecomesAGap:
         assert body["gap"]["destination"] == OURS
         assert body["gap"]["analysis_id"] == analysis_id
 
-        rows = [r for r in gaps_summary(reg, slug)["gaps"]
-                if r["check_name"] == f"question:{question}"]
+        # Found the way any reader finds it: by the question's stable id, or its text for a legacy row.
+        rows = [r for r in gaps_summary(reg, slug)["gaps"] if gap_is_about_question(r, question, qid)]
         assert len(rows) == 1
+        # keyed by the stable id (question-id slice), so a rewording cannot orphan it
+        assert rows[0]["check_name"] == f"question:{qid}"
         assert rows[0]["destination"] == OURS
         assert rows[0]["source"] == "person"
 
@@ -105,7 +112,7 @@ class TestADisagreementBecomesAGap:
         """Agreement is signal with nowhere else to live — "nobody has
         questioned this" and "someone confirmed it" must not look alike."""
         api, store = client
-        question, _analysis = _a_question_with_an_analysis()
+        question, _analysis, qid = _a_question_with_its_id()
 
         api.post("/api/feedback/answer", json={
             "slug": slug, "question": question, "verdict": "partly",
@@ -113,7 +120,8 @@ class TestADisagreementBecomesAGap:
         })
         recorded = store.list(limit=10)
         assert len(recorded) == 1
-        assert recorded[0]["element_guid"] == f"answer:{slug}:{question}"
+        # keyed by the question's stable id, not its wording
+        assert recorded[0]["element_guid"] == f"answer:{slug}:{qid}"
         assert "[partly]" in recorded[0]["message"]
 
 

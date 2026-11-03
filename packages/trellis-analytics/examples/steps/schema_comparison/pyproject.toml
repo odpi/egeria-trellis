@@ -1,0 +1,25 @@
+[project]
+name = "trellis-step-schema-comparison"
+dynamic = ["version"]
+description = "Analytic Library step: is the schema of database 1 the same as the schema of database 2? A relation with a degree (identical, subset, superset, overlapping, disjoint, not established), never yes/no, from the schema inventories RE stored. A set step: run on a work list of two databases. Installable on its own; installing it is registering it."
+requires-python = ">=3.12,<4.0"
+dependencies = ["trellis-analytics>=0.1.0"]
+
+# Installation is registration: Resource Explorer finds the step through this entry point.
+[project.entry-points."pyegeria.analytics"]
+schema_comparison = "schema_comparison.manifest:MANIFEST"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.version]
+path = "src/schema_comparison/__init__.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/schema_comparison"]
+
+# In this repo the library is the sibling package, three levels up; outside it, trellis-analytics comes from
+# wherever the host installed it. pip ignores this table.
+[tool.uv.sources]
+trellis-analytics = { path = "../../..", editable = true }

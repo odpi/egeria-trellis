@@ -29,4 +29,6 @@ docs/dr-egeria/**/egeria-outbox/
 docs/dr-egeria/**/logs/
 docs/dr-egeria/logs/
 docs/dr-egeria/debug_log.log
+# Probe outputs from running dr_egeria with the package root as cwd.
+/egeria-outbox/
 .prefect-run/

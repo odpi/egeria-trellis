@@ -526,7 +526,7 @@ class TestAnUndeclaredEngineIsAnAbsenceNotAFlatNamespace:
 _CAP_COCO_PHARMA = {
     "connected_as": "egeria_user",
     "schema_total": 4, "schema_visible": 3,
-    "table_total": 26, "table_select": 3,
+    "relation_total": 26, "relation_select": 3,
     "by_schema": {
         # USAGE, no SELECT — the incident. "Structure only", for this schema.
         "coco_ods": {"usage_granted": True, "table_total": 23, "table_select": 0},
@@ -559,7 +559,7 @@ class TestPerSchemaCredentialScope:
 
     def test_full_coverage_stays_silent(self):
         assert schema_scope.credential_shortfall({
-            "table_total": 2, "table_select": 2,
+            "relation_total": 2, "relation_select": 2,
             "by_schema": {"public": {"usage_granted": True, "table_total": 2,
                                      "table_select": 2}},
         }, POSTGRES_CONTAINMENT) is None
@@ -570,7 +570,7 @@ class TestPerSchemaCredentialScope:
         shortfall = schema_scope.credential_shortfall(
             _CAP_COCO_PHARMA, POSTGRES_CONTAINMENT,
         )
-        assert shortfall["phrase"] == "2 of 4 schemas readable; 3 of 26 tables"
+        assert shortfall["phrase"] == "2 of 4 schemas readable (3 visible); 3 of 26 relation(s)"
         # Worst first: no visibility, then structure-only.
         assert shortfall["short_containers"] == ["demo", "coco_ods"]
 
@@ -594,7 +594,7 @@ class TestPerSchemaCredentialScope:
         # The existing database-wide fraction is untouched...
         assert "3 of 26" in status["fraction"]
         # ...and the per-schema reading is what §2 adds.
-        assert status["schema_fraction"] == "2 of 4 schemas readable; 3 of 26 tables"
+        assert status["schema_fraction"] == "2 of 4 schemas readable (3 visible); 3 of 26 relation(s)"
         assert status["by_container"]["coco_ods"]["state"] == (
             schema_scope.SCOPE_STRUCTURE_ONLY
         )
@@ -637,7 +637,7 @@ class TestTheCapabilityShortfallMessageNamesSchemas:
         rfa = [a for a in annotations if hasattr(a, "action_requested")]
         assert rfa, "thin coverage must still raise the RFA"
         assert rfa[0].summary == (
-            "connected as egeria_user: 2 of 4 schemas readable; 3 of 26 tables"
+            "connected as egeria_user: 2 of 4 schemas readable (3 visible); 3 of 26 relation(s)"
         )
         assert "coco_ods (structure_only)" in rfa[0].explanation
         assert "demo (not_visible)" in rfa[0].explanation
@@ -690,3 +690,26 @@ class TestNoRollupIsASilentAverage:
         assert derived["db_classification"]["state"] == STATE_NOT_MEASURED
         assert derived["db_classification"]["by_schema"] == {}
         assert derived["db_classification"]["aggregation"]["container_count"] == 0
+
+
+class TestVisibleVersusReadableAreLabelled:
+    """Walk 2026-10-12, coco_pharma: the header said "sees 6 of 8 schemas" (USAGE) and the panel "4 of 8 schemas
+    readable" (every table SELECTable). Both true, counting different things; the phrase now says both."""
+
+    def test_the_phrase_names_visible_when_it_differs_from_readable(self):
+        by_schema = {f"ok{i}": {"usage_granted": True, "table_total": 2, "table_select": 2} for i in range(4)}
+        by_schema["partial"] = {"usage_granted": True, "table_total": 5, "table_select": 1}
+        by_schema["structure"] = {"usage_granted": True, "table_total": 5, "table_select": 0}
+        by_schema["blind1"] = {"usage_granted": False, "table_total": 3, "table_select": 0}
+        by_schema["blind2"] = {"usage_granted": False, "table_total": 3, "table_select": 0}
+        s = schema_scope.credential_shortfall(
+            {"relation_total": 61, "relation_select": 9, "by_schema": by_schema}, POSTGRES_CONTAINMENT)
+        assert s["containers_visible"] == 6 and s["containers_readable"] == 4
+        assert s["phrase"] == "4 of 8 schemas readable (6 visible); 9 of 61 relation(s)"
+
+    def test_no_visible_clause_when_the_two_agree(self):
+        by_schema = {"a": {"usage_granted": True, "table_total": 2, "table_select": 2},
+                     "b": {"usage_granted": False, "table_total": 2, "table_select": 0}}
+        s = schema_scope.credential_shortfall(
+            {"relation_total": 4, "relation_select": 2, "by_schema": by_schema}, POSTGRES_CONTAINMENT)
+        assert s["phrase"] == "1 of 2 schemas readable; 2 of 4 relation(s)"

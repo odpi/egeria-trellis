@@ -5,7 +5,7 @@
 Deferred by the project owner on 2026-09-21 ("defer the resource_
 reachability table until further tests -- do not build it yet"); un-deferred
 by the project owner on 2026-09-22, who asked for this slice to proceed
-now. See `docs/design-notes/RESOURCE-REACHABILITY-IMPLEMENTED.md` for the
+now. See `RESOURCE-REACHABILITY-IMPLEMENTED.md` for the
 full write-up, including the live probe 7/8 results this module's mapping
 is built from -- not guessed at.
 
@@ -14,7 +14,7 @@ mechanism (`AutomatedCuration.initiate_gov_action_type("FileSurvey::
 survey-folder", ..., request_parameters={"finalAnalysisStep": "CHECK_ASSET"})`
 against a folder Asset) but ALSO surfaced a real, previously-unknown gap:
 `EgeriaFileSystemSurveyor.catalog_and_survey`'s own `create_folder_element_
-from_template()` call (the DataFolder template) attaches NO Connection to
+from_template()` call (the FileFolder template) attaches NO Connection to
 the folder Asset it creates -- confirmed live, not inferred from the docs'
 existing "no attached Connection subgraph" comment. Every filesystem RE has
 ever cataloged this way will report `no_connection` from this check, not a
@@ -46,6 +46,14 @@ cleaned up, `PROBES-2026-09-21.md`'s "Probes 7 and 8, run live" section):
 
 All three completed in single-digit seconds -- confirms the design doc's
 "that probe is cheap" claim for every outcome, not just the reachable one.
+
+**Correction, read from Egeria's source (Files step 2, 2026-10-20).** The three live runs were an empty folder, a missing
+folder and no connection. `FolderSurveyService` does not read `finalAnalysisStep` (only the Atlas and Unity Catalog
+services do), so on a folder Egeria CAN read this call is a full Folder Survey: it walks and classifies the whole tree,
+writes a SurveyReport and its CSV logs, and a large folder will not finish inside `DEFAULT_TIMEOUT_SECONDS` (the result
+is then `unknown`, "could not tell"). It is still the one call that asks Egeria's engine host about a path, and the
+missing-folder and no-connection answers stay fast; `file_reach.probe_filesystem` takes it through a seam so a cheaper
+stat can replace it.
 """
 from __future__ import annotations
 
@@ -240,14 +248,12 @@ def _get_clients():
     (trigger + poll a single engine action by GUID)."""
     from pyegeria import AutomatedCuration, MetadataExpert
 
-    from resource_explorer.rfa_egeria_sync import _egeria_connection_kwargs
+    from resource_explorer.egeria_clients import Daemon, DaemonReason, egeria_client
 
-    view_server, platform_url, user_id, user_password = _egeria_connection_kwargs()
-    automated_curation = AutomatedCuration(view_server, platform_url, user_id, user_password)
-    automated_curation.create_egeria_bearer_token(user_id, user_password)
-    metadata_expert = MetadataExpert(view_server, platform_url, user_id, user_password)
-    metadata_expert.create_egeria_bearer_token(user_id, user_password)
-    return automated_curation, metadata_expert
+    # Who (Brief I): reachability is a named system job — the CHECK_ASSET probe runs as the
+    # service account whether the page or a pass asked for it.
+    clients = egeria_client(Daemon(DaemonReason.REACHABILITY), purpose="reachability probe")
+    return clients.of(AutomatedCuration), clients.of(MetadataExpert)
 
 
 def _poll_action_status(
@@ -315,7 +321,7 @@ def check_filesystem_reachability(
             outcome="unknown",
             error_code="NOT_CATALOGED",
             error_detail=(
-                "This filesystem has not been cataloged in Egeria yet (no "
+                "This filesystem has not been published to Egeria yet (no "
                 "egeria_asset_guid) -- there is no Asset to run CHECK_ASSET "
                 "against."
             ),

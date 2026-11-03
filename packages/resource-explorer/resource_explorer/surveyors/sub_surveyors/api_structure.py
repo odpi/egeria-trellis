@@ -51,7 +51,8 @@ class ApiStructureSurveyor(BaseSurveyor):
         counts of public symbols, complexity, and inheritance depth.
       - One ResourceMeasureAnnotation with total symbol/relationship counts.
 
-    This surveyor doesn't itself extract symbols — extraction happens earlier,
+    This surveyor doesn't itself extract symbols — extraction happens first (the generated
+    definitions place repo_symbol_extraction ahead of this step),
     inline during ingestion (IngestionPipeline._ingest_code(), which already
     re-runs on every full add and incremental refresh — see
     ingestion/code_symbol_extractor.py / java_symbol_extractor.py). Since this
@@ -115,7 +116,7 @@ class ApiStructureSurveyor(BaseSurveyor):
     def _nothing_analysed(self, outcome: StepOutcome, unscoped: int) -> Annotation:
         """Say which kind of nothing this was, rather than returning none."""
         if outcome.outcome == UNVERIFIED:
-            summary = "API structure not analysed — no code symbols extracted"
+            summary = "API structure not analyzed — no code symbols extracted"
             explanation = (
                 "project_code_symbols holds no rows for this repo. Symbols are "
                 "written by repo_symbol_extraction (and by full RAG ingestion); "

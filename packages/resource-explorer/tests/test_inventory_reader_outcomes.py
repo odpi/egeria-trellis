@@ -221,7 +221,7 @@ class TestApiStructureSaysWhichNothingItFound:
         results = ApiStructureSurveyor(project, registry).run()
         assert len(results) == 1
         assert _outcome_of(results[0]) == UNVERIFIED
-        assert "not analysed" in results[0].summary
+        assert "not analyzed" in results[0].summary
 
     def test_symbols_present_but_out_of_scope_is_a_provable_zero(self, registry, project):
         """The distinction the unscoped count exists to make: the table has

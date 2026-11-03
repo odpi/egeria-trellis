@@ -1,7 +1,6 @@
 """Community health agent — maintenance status, contributor diversity, activity trends."""
 from __future__ import annotations
 
-import sqlite3
 
 from resource_explorer.agents.base import BaseExplorerAgent
 from resource_explorer.prompt_templates import health_agent_system_prompt
@@ -52,7 +51,7 @@ class HealthAgent(BaseExplorerAgent):
         project = registry.get(resource_slug)
         if not project:
             return ""
-        base = self._sqlite_stats(registry.db_path, resource_slug)
+        base = self._stats_row(registry, resource_slug)
         if not base:
             return ""
         sections = self._format_health_sections(resource_slug, base)
@@ -61,15 +60,13 @@ class HealthAgent(BaseExplorerAgent):
             sections.extend(["", "Pull Requests (live):"] + github_extra)
         return "\n".join(sections)
 
-    def _sqlite_stats(self, db_path: str, resource_slug: str) -> dict:
+    def _stats_row(self, registry, resource_slug: str) -> dict:
         try:
-            conn = sqlite3.connect(db_path)
-            conn.row_factory = sqlite3.Row
-            row = conn.execute(
-                "SELECT * FROM project_stats WHERE project_slug = ? ORDER BY fetched_at DESC LIMIT 1",
-                (resource_slug,),
-            ).fetchone()
-            conn.close()
+            with registry._conn() as conn:
+                row = conn.execute(
+                    "SELECT * FROM project_stats WHERE project_slug = ? ORDER BY fetched_at DESC LIMIT 1",
+                    (resource_slug,),
+                ).fetchone()
             return dict(row) if row else {}
         except Exception:
             return {}
