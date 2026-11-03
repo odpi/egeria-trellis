@@ -60,7 +60,9 @@ screenshots were taken, a Database Quality Survey had also been run on this data
 
    - "How complete and consistent is this database's documentation": "37 of 263 base tables declare no primary key.
      54 of 263 base tables have no comment; 32 of 1916 columns do."
-   - "How well-modelled is this database": the same figures, from the same stored analyses.
+   - "How well-modelled is this database": the same figures. Both come from one analysis, Schema Conventions, which
+     reports keys and comments in a single sentence; the documentation question reads the comment counts, and the
+     primary-key count rides along (gap G34).
    - "Is this database maintained and healthy": "34,207 writes and 2,989,434 reads since statistics collection
      began (never reset)."
    - "Is this database resilient": "primary; no replicas; WAL archiving off; no backup tool detected."

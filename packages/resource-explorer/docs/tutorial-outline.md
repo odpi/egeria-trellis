@@ -32,7 +32,7 @@
   database registered twice). Assessment answers four questions with nothing run on it; the Database Assessment
   Survey is offered on Analysis, not Assessment, and adds nothing there until W43 (the Architect, 2026-11-02), so
   part 6 runs no Assessment survey. Step 6 runs one analysis on its own, Table Statistics Freshness (pressed once
-  on the project owner's word, 2026-11-03T15:00:31Z), turning two partial answers whole. G31, G32 and G33 added; G13
+  on the project owner's word, 2026-11-03T15:00:31Z), turning two partial answers whole. G31 to G34 added; G13
   and G23 extended.
 **Replaces, once written:** the six walks in [`tutorial/`](tutorial/README.md), which stay on `main` until then.
 
@@ -1084,6 +1084,7 @@ in this outline; each is named where it bites.
 | G31 | The "LAST SURVEY" tile names the stage's overview survey, not the survey that ran (read 2026-11-02, graded F47). For one run, Assessment showed "Database Scouting Scan" and Analysis showed "Database Assessment Survey", which had never run. | 6 | Name the survey that ran last. |
 | G32 | ○ rows say "not run" in two ways (read 2026-11-03, graded W54): "Not yet run. Run: postgres_column_profile." and "Nothing has been measured for this yet. Run: postgres_nested_columns." Only the second has "not yet run" in its source line. | 6 | One phrasing, and the source line on both. |
 | G33 | A headline that names the wrong numerator (read 2026-11-03, graded W57): after Table Statistics Freshness ran, the source line reads "statistics_freshness · measured · 215 of 266 tables (81%)". All 266 relations were measured; 215 is the never-analyzed count (215 never analyzed, 48 current, 3 views unknown). | 6 | The headline names its numerator. |
+| G34 | Two questions show one shared sentence (read 2026-11-03, graded W58): "How complete and consistent is this database's documentation" (Q-0088) and "How well-modelled is this database" (Q-0090) both show Schema Conventions' summary, "37 of 263 base tables declare no primary key. 54 of 263 base tables have no comment; 32 of 1916 columns do." | 6 | Each question shows the measures it names. |
 
 ---
 
