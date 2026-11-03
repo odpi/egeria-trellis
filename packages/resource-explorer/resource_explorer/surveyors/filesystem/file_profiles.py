@@ -1198,8 +1198,11 @@ def _run(fs_entity, registry, walk: dict, files: list[dict], run_id: str, *, por
                 res = profile_remote(mechanism, rel, ext, int(f.get("size_bytes") or 0), limit=limit)
             else:
                 res = profile_file(path, ext, limit=limit)
-            if res.get("note"):
-                notes[rel] = res["note"] + (f" · {DELTA_NOTE}" if _in_delta_table(rel, delta_tables) else "")
+            in_delta = _in_delta_table(rel, delta_tables)
+            partitions = path_partition_columns(rel, delta_tables) if in_delta else []
+            if res.get("note") or partitions:
+                notes[rel] = " · ".join(p for p in (res.get("note") or "", DELTA_NOTE if in_delta else "",
+                                                     partition_note(partitions)) if p)
             bytes_read += res["bytes_read"]
             if res["error"]:
                 errors[rel] = res["error"]
@@ -1233,6 +1236,21 @@ def _run(fs_entity, registry, walk: dict, files: list[dict], run_id: str, *, por
 
 def _in_delta_log(rel: str) -> bool:
     return rel.startswith(f"{DELTA_LOG}/") or f"/{DELTA_LOG}/" in rel
+
+
+def path_partition_columns(rel: str, tables: set[str]) -> list[str]:
+    """The Hive-style partition columns in a Delta part's path below its table folder ("kind=a/part-0.parquet" → kind).
+    A part's footer does not hold them, so its profile lacks them (W48)."""
+    table = max((t for t in tables if t == "" or rel.startswith(t + "/")), key=len, default=None)
+    if table is None:
+        return []
+    below = rel[len(table) + 1:] if table else rel
+    return [seg.split("=", 1)[0] for seg in below.split("/")[:-1] if "=" in seg and seg.split("=", 1)[0]]
+
+
+def partition_note(columns: list[str]) -> str:
+    """The part's note for the partition columns its profile does not carry; "" when there are none."""
+    return f"partition column(s) from the path not included: {', '.join(columns)}" if columns else ""
 
 
 def _in_delta_table(rel: str, tables: set[str]) -> bool:

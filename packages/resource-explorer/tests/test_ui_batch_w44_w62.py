@@ -248,3 +248,17 @@ def test_w46_fs_activity_on_an_object_store():
     assert access["state"] == "not_established"
     assert access["summary"] == "not measured · S3 objects carry no access time; reads cannot be told"
     assert "walked before" not in access["reason"]
+
+
+# --- W48: a Delta part's note says which path partition columns its profile does not carry -----------------------
+
+def test_w48_delta_part_partition_columns_from_the_path():
+    from resource_explorer.surveyors.filesystem.file_profiles import partition_note, path_partition_columns
+
+    tables = {"lake/orders"}
+    assert path_partition_columns("lake/orders/kind=a/part-0.parquet", tables) == ["kind"]
+    assert path_partition_columns("lake/orders/year=2026/kind=b/part-1.parquet", tables) == ["year", "kind"]
+    assert path_partition_columns("lake/orders/part-2.parquet", tables) == []
+    assert path_partition_columns("kind=a/p.parquet", {""}) == ["kind"]          # a table at the root
+    assert partition_note(["kind"]) == "partition column(s) from the path not included: kind"
+    assert partition_note([]) == ""
