@@ -158,3 +158,46 @@ def test_w51_egeria_counts_only_points_at_measure_beside():
     fp = {"price": {"walk": True, "words": "16 data files, ..."}}
     _egeria_counts_only(fp, {"surveyor": "x"})
     assert fp["price"]["words"] == "16 data files, ..."
+
+
+# --- W44: Egeria's Folder Survey row checks the lead before the asset --------------------------------------------
+
+def _folder_survey_reason(monkeypatch, fork, asset_guid=""):
+    from types import SimpleNamespace
+
+    from resource_explorer import file_reach
+    from resource_explorer import native_survey_run as nsr
+    from resource_explorer.surveyors.technology_type_processes import NativeProcess
+
+    monkeypatch.setattr(file_reach, "fork_for", lambda registry, entity: fork)
+    process = NativeProcess(qualified_name=nsr.FOLDER_SURVEY_QN, display_name="Survey Folder",
+                            kind=nsr.KIND_SURVEY_EXISTING, action_target_name="fileToSurvey")
+    fs = SimpleNamespace(slug="egeria_v6", local_mount_point="/x", egeria_asset_guid=asset_guid)
+    return nsr.cannot_run_reason(process, fs, registry=object())
+
+
+def test_w44_an_re_led_file_system_is_not_told_to_attach_a_root_folder(monkeypatch):
+    from resource_explorer import file_reach
+
+    fork = file_reach.ForkState(state=file_reach.RE_ONLY, sentence="only Resource Explorer can read this path · checked 2026-10-21",
+                                surveyor=file_reach.SURVEYOR_RE)
+    words = _folder_survey_reason(monkeypatch, fork)
+    assert words.startswith("RE-led walk: no Egeria asset needed")
+    assert "only Resource Explorer can read this path · checked 2026-10-21" in words
+    assert "Attach the root folder" not in words
+
+
+def test_w44_an_s3_bucket_says_egeria_cannot_reach_it(monkeypatch):
+    from resource_explorer import file_reach
+
+    fork = file_reach.ForkState(state=file_reach.REMOTE, sentence="read through S3", surveyor=file_reach.SURVEYOR_RE)
+    assert _folder_survey_reason(monkeypatch, fork).startswith("Egeria cannot reach this bucket; the walk is RE-led")
+
+
+def test_w44_an_egeria_led_unattached_file_system_keeps_the_w39_words(monkeypatch):
+    from resource_explorer import file_reach
+    from resource_explorer import native_survey_run as nsr
+
+    fork = file_reach.ForkState(state=file_reach.EXPECTED, sentence="expected reachable", surveyor=file_reach.SURVEYOR_EGERIA)
+    assert _folder_survey_reason(monkeypatch, fork) == nsr.FS_NEEDS_ROOT_ASSET
+    assert _folder_survey_reason(monkeypatch, fork, asset_guid="de51f58d") == ""
