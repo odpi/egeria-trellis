@@ -4,8 +4,8 @@ The next weekly drop is coming, and Peter needs to get in first. Once you sign i
 user id at the top right. Everything you do from then on is recorded under it.
 
 **Before you start.** You need the address of your Resource Explorer, and Peter Profile's Quickstart user id and
-password. The Getting Started tutorial gives you all three. This part takes about ten minutes, and it changes
-nothing.
+password. The Getting Started tutorial gives you all three. The usual address is `http://localhost:8810/`. This part
+takes about ten minutes, and it changes nothing.
 
 *Screens read on 2026-11-02.*
 

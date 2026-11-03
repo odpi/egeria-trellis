@@ -1,6 +1,6 @@
 # Walk 5 — Add your own analysis
 
-*Screens read on 2026-10-29, Explorer on port 8813, `origin/main` at `afdac240`, except where a line says it was read on `9d40eab4` by the architect session. Resource: `loading_bay`; the user-added steps are `fs_permissions` and `fs_activity`.*
+*Screens read on 2026-10-29 on a test server, `origin/main` at `afdac240`, except where a line says it was read on `9d40eab4` by the architect session. Resource: `loading_bay`; the user-added steps are `fs_permissions` and `fs_activity`.*
 
 This walk follows two steps that were added without changing Resource Explorer's code, and shows where each one appears. Only what was read on a screen is written here; the rest is under "Not built yet".
 
