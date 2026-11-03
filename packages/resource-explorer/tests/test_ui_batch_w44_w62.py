@@ -113,3 +113,27 @@ def test_w57_a_state_count_is_never_read_as_n_measured():
     whole = MeasureDeclaration(name="profiled_columns", unit="columns", as_of="asOf", value_field="n",
                                basis=BasisDeclaration(denominator_field="t", denominator_label="columns"))
     assert declared_words.measure_sentence(whole, {"n": 456, "t": 1236})[0] == "456 of 1,236 columns (37%)"
+
+
+# --- W52: the value-profile header says the class of a reason, never the database's raw error text ---------------
+
+def test_w52_header_reason_classes():
+    from resource_explorer.value_profile_screen import _reason_phrase, reason_class
+
+    raw = 'permission denied for schema demo\nLINE 429: FROM "demo"."feedback"\n          ^'
+    assert _reason_phrase(raw, 1) == "1 table: permission denied (schema demo)"
+    assert reason_class('relation "public.gone" does not exist\nLINE 1: SELECT') == "relation not found"
+    assert reason_class('syntax error at or near "("\nLINE 3: ...') == "query error"
+    assert reason_class("no rows to profile") == "no rows to profile"     # RE's own words are already a class
+    assert _reason_phrase("a view, not profiled", 87) == "87 views"
+
+
+def test_w52_the_raw_error_stays_on_the_tables_own_line():
+    from resource_explorer.value_profile_screen import header_line, table_line
+
+    raw = 'permission denied for schema demo\nLINE 429: FROM "demo"."feedback"\n          ^'
+    t = {"schema_name": "demo", "table_name": "feedback", "state_counts": {"not_permitted": 3}, "column_count": 3,
+         "record_ct": None, "reasons": {raw: 3}}
+    head = header_line({"column_count": 3, "measured_count": 0, "surveyed_at": "2026-11-03T14:53:00"}, [t])
+    assert "LINE 429" not in head and "^" not in head and "permission denied (schema demo)" in head
+    assert "LINE 429" in table_line(t, "2026-11-03T14:53:00")
