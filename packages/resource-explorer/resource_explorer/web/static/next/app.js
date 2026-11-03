@@ -546,6 +546,9 @@ export async function ensureResourceListLoaded(type) {
 const stageLabel = () =>
   STAGES.find((s) => s.id === state.stage)?.label || state.stage;
 
+/** "4 Analysis": the stage a per-card Run → is pressed on, as the nav numbers it (W55). */
+const pressedOnWords = () => (RUN_ORDER.has(state.stage) ? `${RUN_ORDER.get(state.stage)} ${stageLabel()}` : stageLabel());
+
 /** Escape for interpolation into a template literal that becomes innerHTML.
  *  Every value below that came from the API goes through this — question
  *  text, headlines and notes are authored content, and one unescaped `<`
@@ -5769,12 +5772,12 @@ async function loadEnrichmentAnalysesMapPane() {
     const label = b.textContent;
     b.disabled = true; b.textContent = 'running…';
     try {
-      const started = await runAnalysis(slug, analysisId, apiEntityType(state.resourceType));
+      const started = await runAnalysis(slug, analysisId, apiEntityType(state.resourceType), { pressedOn: pressedOnWords() });
       if (isFreshnessSkip(started)) {
         b.disabled = false; b.textContent = UP_TO_DATE_WORD;
         setTimeout(() => { b.textContent = label; }, 4000);
         offerRunAnyway(started, { slug, analysisId, onForce: async () => {
-          await runAnalysis(slug, analysisId, apiEntityType(state.resourceType), { force: true });
+          await runAnalysis(slug, analysisId, apiEntityType(state.resourceType), { force: true, pressedOn: pressedOnWords() });
           await loadEnrichmentAnalysesMapPane();
         } });
         return;
@@ -6352,7 +6355,7 @@ async function renderAnalysesIndexSection(slug, stage) {
       // request -> the server's in-process run); the plain call is unchanged.
       const started = credential
         ? await runAnalysisWithCredential(slug, aid, credential)
-        : await runAnalysis(slug, aid, apiEntityType(state.resourceType), { force });
+        : await runAnalysis(slug, aid, apiEntityType(state.resourceType), { force, pressedOn: pressedOnWords() });
       if (isFreshnessSkip(started)) {
         // The server declined: the last run is still fresh. The button is usable again at once; the dialog says
         // "Already up to date" and offers the forced run.
@@ -10540,7 +10543,7 @@ async function rerun(entry, i, { background = false, skipPlanCheck = false, forc
     // Enqueue and stop watching. The row says it is queued in the worker
     // and how to see the result; nothing here pretends to know when.
     try {
-      const queued = await runAnalysis(slug, analysisId, apiEntityType(state.resourceType), { force });
+      const queued = await runAnalysis(slug, analysisId, apiEntityType(state.resourceType), { force, pressedOn: pressedOnWords() });
       if (isFreshnessSkip(queued)) {
         state.runsInFlight.delete(entry.question);
         replaceRow(entry, i, state.answers.get(entry.question));
@@ -10559,7 +10562,7 @@ async function rerun(entry, i, { background = false, skipPlanCheck = false, forc
 
   let finishedRun = null;
   try {
-    const started = await runAnalysis(slug, analysisId, apiEntityType(state.resourceType), { force });
+    const started = await runAnalysis(slug, analysisId, apiEntityType(state.resourceType), { force, pressedOn: pressedOnWords() });
     if (isFreshnessSkip(started)) {
       state.runsInFlight.delete(entry.question);
       replaceRow(entry, i, state.answers.get(entry.question));

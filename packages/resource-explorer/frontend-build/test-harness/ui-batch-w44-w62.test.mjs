@@ -69,3 +69,25 @@ test('W49 Survey & analyses with no Survey Definitions draws the sub-tab strip o
   const strip = app.subTabsHtml().match(/^<div[^>]*>/)[0];
   assert.equal(content.innerHTML.split(strip).length - 1, 1, 'the sub-tab strip, once');
 });
+
+// W55: a per-card Run →'s Activity row says the stage it was pressed on and the intent it declares, both, always.
+test('W55 a per-card run says "pressed on 4 Analysis · declared intent: discovery"; a survey keeps its intent', async () => {
+  await load();
+  const act = await import('/static/next/stages/activity.js');
+  const perCard = (detail) => ({ intent: 'discovery', detail: JSON.stringify({
+    survey_definition_ref: 'synthetic::database::coco_pharma_trial::statistics_freshness', ...detail }) });
+  assert.equal(text(act.intentWordsHtml(perCard({ pressed_on: '4 Analysis' }))).trim(),
+    'pressed on 4 Analysis · declared intent: discovery');
+  assert.equal(text(act.intentWordsHtml(perCard({}))).trim(), 'pressed-on stage not recorded · declared intent: discovery');
+  assert.equal(text(act.intentWordsHtml({ intent: 'discovery', detail: JSON.stringify({ survey_definition_ref: 'RE::db-survey' }) })).trim(),
+    'discovery');
+});
+
+test('W55 the Run → press sends the stage it was pressed on', async () => {
+  await load();
+  const api = await import('/static/re-api.js');
+  const urls = [];
+  globalThis.fetch = async (url) => { urls.push(String(url)); return { ok: true, status: 200, json: async () => ({ status: 'started' }) }; };
+  await api.runAnalysis('coco', 'statistics_freshness', 'database', { force: true, pressedOn: '4 Analysis' });
+  assert.match(urls[0], /\/api\/databases\/coco\/analyses\/statistics_freshness\/run\?force=true&pressed_on=4%20Analysis$/);
+});

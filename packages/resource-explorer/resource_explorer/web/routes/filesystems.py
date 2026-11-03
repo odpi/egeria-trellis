@@ -956,7 +956,7 @@ def publish_filesystem_folder_survey(slug: str) -> dict:
 # ── Files build step 6: the derived steps (Analytic Library steps over the walk's kept per-file rows) ───────────────
 
 @router.post("/{slug}/analyses/{analysis_id}/run")
-def run_filesystem_analysis(slug: str, analysis_id: str) -> dict:
+def run_filesystem_analysis(slug: str, analysis_id: str, pressed_on: str = "") -> dict:
     """Run ONE file system analysis that is an Analytic Library step (fs_change_rates, fs_duplicates, fs_activity,
     fs_permissions, fs_layout_signals): validated here (an unknown id, or a step whose package is not installed, is a 400 naming why),
     then queued, as every step is (a step never runs in the web process). Zero-fetch: the step reads the walk's kept
@@ -983,7 +983,8 @@ def run_filesystem_analysis(slug: str, analysis_id: str) -> dict:
         raise HTTPException(status_code=400, detail=missing)
     activity_id = log_analysis_run(registry, "filesystem", slug, fs.display_name, "running",
                                    f"Running '{analysis_id}' on {slug}…", analysis_id, published=None)
-    run_id = registry.enqueue_run("filesystem_analysis_run", {"slug": slug, "analysis_id": analysis_id},
+    run_id = registry.enqueue_run("filesystem_analysis_run", {"slug": slug, "analysis_id": analysis_id,
+                                                              **({"pressed_on": pressed_on[:40]} if pressed_on else {})},
                                   result_ref=activity_id, requested_by=requested_by())
     log.info("enqueued filesystem_analysis_run %s for %s/%s (activity %s)", run_id, slug, analysis_id, activity_id)
     return {"status": "started", "slug": slug, "analysis_id": analysis_id, "activity_id": activity_id, "run_id": run_id}

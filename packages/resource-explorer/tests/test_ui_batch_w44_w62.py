@@ -28,3 +28,45 @@ def test_w54_a_known_count_of_databases_is_not_database_s():
     assert db_derived._databases(11) == "databases"
     src = open(db_derived.__file__, encoding="utf-8").read()
     assert "database(s)" not in src.replace('"database(s)" beside', "")
+
+
+# --- W55: a per-card Run → says the stage it was pressed on beside the intent it declares ---------------------------
+
+def test_w55_the_pressed_on_stage_reaches_the_one_analysis_surveys_activity_row(tmp_path, monkeypatch):
+    import json
+
+    from fastapi.testclient import TestClient
+
+    from resource_explorer.registry import DatabaseEntity, ProjectRegistry
+    from resource_explorer.run_queue import _handle_database_analysis_run
+    from resource_explorer.surveyors.survey_definition_executor import get_adapter
+    from tests.test_database_library_step_run import _fake_library_step
+
+    registry = ProjectRegistry(db_path=str(tmp_path / "w55.db"))
+    registry.register_database(DatabaseEntity(slug="nocreds", display_name="No Creds", db_type="postgresql",
+                                              host="localhost", port=5432, database_name="nocreds"))
+    monkeypatch.setattr("resource_explorer.registry.ProjectRegistry.__init__",
+                        lambda self, db_path=None: setattr(self, "__dict__", registry.__dict__) or None)
+    monkeypatch.setitem(get_adapter("database").re_analysis_steps, "database_staleness", _fake_library_step([]))
+    from resource_explorer.web.app import app
+
+    resp = TestClient(app).post("/api/databases/nocreds/analyses/database_staleness/run?pressed_on=4%20Analysis")
+    assert resp.status_code == 200, resp.text
+    [queued] = registry.list_runs(state="queued")
+    target = json.loads(queued["target"]) if isinstance(queued["target"], str) else queued["target"]
+    assert target["pressed_on"] == "4 Analysis"
+
+    assert _handle_database_analysis_run(target, resp.json()["activity_id"]).state == "succeeded"
+    wrappers = [a for a in registry.list_activity(limit=50)
+                if str(json.loads(a.get("detail") or "{}").get("survey_definition_ref", "")).startswith("synthetic::")]
+    assert [json.loads(w["detail"])["pressed_on"] for w in wrappers] == ["4 Analysis"]
+    assert wrappers[0]["intent"] == "discovery"     # the declared intent stays; the stage is said beside it
+
+
+def test_w55_no_pressed_on_outside_a_per_card_handler():
+    from resource_explorer.activity_logger import PRESSED_ON, pressed_on
+
+    assert PRESSED_ON.get() == ""
+    with pressed_on("4 Analysis"):
+        assert PRESSED_ON.get() == "4 Analysis"
+    assert PRESSED_ON.get() == ""
