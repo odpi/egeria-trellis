@@ -222,4 +222,4 @@ see. OpenLineage has its numbers. `loading_bay` has its file counts, and its roo
 in Egeria. Several questions still read ○: nobody has looked yet.
 
 **Next:** [Part 6 — Discovery, Assessment and Analysis: go further down the
-funnel](README.md#the-core-tutorial). Peter asks whether `coco_pharma` is already in the catalog.
+funnel](06-further-down.md). Peter asks whether `coco_pharma` is already in the catalog.
