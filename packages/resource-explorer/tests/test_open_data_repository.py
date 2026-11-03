@@ -252,7 +252,9 @@ def test_a_descriptor_reader_that_raises_is_a_note_and_the_inventory_still_stand
         raise RuntimeError("disk on fire")
     monkeypatch.setattr(dd, "store_descriptors", boom)
     out = _inventory_step(reg, _tree(tmp_path / "t", **{"README.md": "x"}))
-    assert "dataset descriptors not read (disk on fire)" in out[0].summary
+    assert "dataset descriptors not read (RuntimeError)" in out[0].summary and "disk on fire" not in out[0].summary
+    assert out[0].resource_properties["descriptor_error"] == "disk on fire"
+    assert "disk on fire" in str(out[0].json_properties)
     assert len(reg.get_file_inventory_with_sizes("acme-data")) == 1
 
 

@@ -93,16 +93,17 @@ class FileInventorySurveyor(BaseSurveyor):
                 json_properties=StepOutcome("unverified", cause="file type profile failed",
                                             detail={"error": str(exc)}).as_row())]
 
-    def _read_descriptors(self, local_root: Path) -> str:
-        """Read and store the dataset descriptors; return the words for the step summary."""
+    def _read_descriptors(self, local_root: Path) -> tuple[str, str]:
+        """Read and store the dataset descriptors; return (the words for the step summary, the raw error or "").
+        The summary carries the reason class only; the raw text goes to json_properties."""
         try:
             from resource_explorer.surveyors.sub_surveyors.dataset_descriptor import store_descriptors
 
             found = store_descriptors(self.registry, self.project.slug, local_root, surveyed_at=self._surveyed_at)
-            return f"dataset descriptors: {len(found)} found" if found else "no dataset descriptor"
+            return (f"dataset descriptors: {len(found)} found" if found else "no dataset descriptor"), ""
         except Exception as exc:
             log.warning("Dataset descriptors not read for %s: %s", self.project.slug, exc)
-            return f"dataset descriptors not read ({exc})"
+            return f"dataset descriptors not read ({type(exc).__name__})", str(exc)
 
     def run(self) -> list[Annotation]:
         results: list[Annotation] = []
@@ -153,7 +154,7 @@ class FileInventorySurveyor(BaseSurveyor):
             # neither is reachable from the UI, so no press made a registered repository's descriptors appear.
             # store_descriptors stays the one writer (it supersedes the previous run and stores "none" as a
             # fact). A failure is a note on this step, never silent and never a failed inventory.
-            descriptor_words = self._read_descriptors(local_root)
+            descriptor_words, descriptor_error = self._read_descriptors(local_root)
 
             results.append(
                 ResourceMeasureAnnotation(
@@ -169,6 +170,7 @@ class FileInventorySurveyor(BaseSurveyor):
                     resource_properties={
                         "file_count": file_count,
                         "surveyed_at": self._surveyed_at,
+                        **({"descriptor_error": descriptor_error} if descriptor_error else {}),
                     },
                     # A zipball that extracted to zero files is not a repo with
                     # no files — it is an extraction that produced nothing, and
@@ -176,7 +178,8 @@ class FileInventorySurveyor(BaseSurveyor):
                     # known-positive available here: the count IS the
                     # measurement, so a zero cannot be shown to be real.
                     json_properties=(
-                        StepOutcome("recovered", detail={"file_count": file_count})
+                        StepOutcome("recovered", detail={"file_count": file_count,
+                                                         **({"descriptor_error": descriptor_error} if descriptor_error else {})})
                         if file_count else
                         StepOutcome("unverified",
                                     cause="zipball extraction inventoried no files")
