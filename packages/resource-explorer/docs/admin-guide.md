@@ -784,11 +784,11 @@ host does. Design: [`design-notes/DESIGN-RE-ENGINE-HOST-BY-EQUIVALENCE.md`](desi
   Egeria") refuses before the press, with "not declared in this Egeria · runs only where the owner has declared
   the engine (Admin › Repair › Declare…) and RE's engine host is on". The line clears and the cards offer Run once
   the engine is seen: within 5 s with the engine host on, at the next 10-minute check otherwise.
-- **Private resources never offer an Egeria-dispatched RE survey.** A resource in a private investigation
-  (PersonalProject or Experiment) shows no "Run in Egeria" on any RE-engine card, the mixed process included. The
-  engine host never claims engine actions on private resources, so such an action would wait forever. The card says
-  "not offered: this <kind> is in a private investigation … · Resource Explorer's own Run on the card runs it here
-  instead". It names the investigation only to someone who may see it. The API refuses the same press with the same
+- **Creator-only resources never offer an Egeria-dispatched RE survey.** A resource in a creator-only investigation
+  (F56: the investigation's visibility decides, not its kind; PersonalProject and Experiment start creator-only)
+  shows no "Run in Egeria" on any RE-engine card, the mixed process included. The engine host never claims engine
+  actions on creator-only resources, so such an action would wait forever. The card says "not offered: this <kind> is
+  in a creator-only investigation … · Resource Explorer's own Run on the card runs it here instead". It names the investigation only to someone who may see it. The API refuses the same press with the same
   sentence (422). Egeria's own engines' cards are unchanged.
 
 ### The Dr.Egeria runner (ad hoc)

@@ -974,11 +974,15 @@ ENGINE_NOT_DECLARED = ("not declared in this Egeria · runs only where the owner
                        "(Admin › Repair › Declare…) and RE's engine host is on")
 
 
-#: W66: why an RE-engine row is not offered on a private resource. RE's engine host leaves an engine action on a
-#: private target unclaimed (Q-O3), so the press would create an action that waits forever (bc2d5fe2, 2026-11-04).
-PRIVATE_NOT_OFFERED = ("not offered: this {kind} is in a private investigation, and Resource Explorer's engine host does "
-                       "not claim Egeria engine actions on private resources (nothing of a private investigation is "
-                       "written into Egeria's engine queue) · Resource Explorer's own Run on the card runs it here instead")
+#: W66: why an RE-engine row is not offered on a resource in a creator-only investigation. RE's engine host leaves an
+#: engine action on such a target unclaimed (Q-O3), so the press would create an action that waits forever
+#: (bc2d5fe2, 2026-11-04). F56: keyed on the investigation's `visibility`, never its kind, and worded so (a shared
+#: PersonalProject's resources are offered; a creator-only StudyProject's are not). "Private investigation" is kept
+#: for local + creator-only, so it is not this sentence's word.
+PRIVATE_NOT_OFFERED = ("not offered: this {kind} is in a creator-only investigation, and Resource Explorer's engine host "
+                       "does not claim Egeria engine actions on creator-only resources (nothing of a creator-only "
+                       "investigation is written into Egeria's engine queue) · Resource Explorer's own Run on the card "
+                       "runs it here instead")
 
 
 def is_re_engine_process(process: NativeProcess) -> bool:
@@ -1000,7 +1004,7 @@ def _entity_kind_words(entity) -> tuple[str, str]:
 
 
 def _private_refusal(process: NativeProcess, entity, registry) -> str:
-    """W66: the sentence when this RE-engine row's resource is in a private investigation, else "". Asked FIRST for
+    """W66: the sentence when this RE-engine row's resource is in a creator-only investigation (F56: `visibility`), else "". Asked FIRST for
     every RE-engine row. Never names the investigation (the listing adds it for a viewer who may see it)."""
     if entity is None or registry is None or not is_re_engine_process(process):
         return ""
@@ -1014,17 +1018,17 @@ def _private_refusal(process: NativeProcess, entity, registry) -> str:
 
 
 def is_private_refusal(reason: str) -> bool:
-    return reason.startswith("not offered: this ") and "in a private investigation" in reason
+    return reason.startswith("not offered: this ") and "in a creator-only investigation" in reason
 
 
 def private_investigation_words(registry, entity_type: str, slug: str, viewer: str) -> str:
-    """" (private investigation: <display name>)" for a viewer who may see it (`_may_see_investigation`), else ""."""
+    """ (creator-only investigation: <display name>)" for a viewer who may see it (`_may_see_investigation`), else ""."""
     if not (viewer or "").strip():
         return ""
     try:
         row = registry.private_investigation_for_entity(entity_type, slug)
         if row and registry._may_see_investigation(row, viewer.strip()):
-            return f" (private investigation: {row.get('display_name') or row.get('slug')})"
+            return f" (creator-only investigation: {row.get('display_name') or row.get('slug')})"
     except Exception:  # noqa: BLE001 - nothing named is the safe answer
         return ""
     return ""
