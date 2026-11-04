@@ -1,6 +1,6 @@
 # Resource Explorer documentation
 
-61 documents, grouped by what they *are* rather than what they are about — the
+65 documents, grouped by what they *are* rather than what they are about — the
 distinction that matters when deciding whether one is still live.
 
 **Generated from each document's own `**Status:**` line**, not from a
@@ -34,7 +34,7 @@ Decisions and models. Cited from source where a comment cannot restate them.
 
 - **[a2a.md](a2a.md)** — 2026-10-15  
   live. The A2A server surface (one service, routed by path)
-- **[admin-guide.md](admin-guide.md)** — 2026-10-26  
+- **[admin-guide.md](admin-guide.md)** — 2026-11-04  
   live. Operator guide; the best-maintained user-facing document
 - **[architecture-recovery-extraction-design.md](architecture-recovery-extraction-design.md)** — 2026-09-03  
   design reference. Part of the architecture-recovery design — split out 2026-09-03
@@ -42,22 +42,26 @@ Decisions and models. Cited from source where a comment cannot restate them.
   reference, current as of 2026-09-02
 - **[Architecture.md](Architecture.md)** — 2026-10-15  
   live. Module map, flows and key decisions; the zone passage was corrected 2026-10-14
-- **[Backlog.md](Backlog.md)** — 2026-10-30  
+- **[Backlog.md](Backlog.md)** — 2026-10-31  
   not scheduled
 - **[BUILDER-BRIEF-CHECKLIST.md](BUILDER-BRIEF-CHECKLIST.md)** — 2026-10-14  
   live. Short checklist for every builder brief
 - **[cross-resource-test-protocols.md](cross-resource-test-protocols.md)** — 2026-10-17  
   Ready for manual and automated verification
-- **[ddl-analysis-table-rows.md](ddl-analysis-table-rows.md)** — 2026-11-02  
+- **[ddl-analysis-table-rows.md](ddl-analysis-table-rows.md)** — 2026-11-03  
   branch `claude/re-b1-table-result`, not deployed. This is the deployment record for one new tabl
 - **[ddl-artifact-columns.md](ddl-artifact-columns.md)** — 2026-10-28  
   merged to main (PR #700). The columns are added by RE's schema init the first time a process run
+- **[ddl-file-systems-key-tail.md](ddl-file-systems-key-tail.md)** — 2026-11-04  
+  branch `claude/re-overnight-batch-49ba3c`, not deployed. This is the deployment record for one D
 - **[ddl-investigation-visibility.md](ddl-investigation-visibility.md)** — 2026-11-04  
   branch `claude/re-f56-visibility-axis`, not deployed. This is the deployment record for one colu
 - **[ddl-open-data-data-request.md](ddl-open-data-data-request.md)** — 2026-10-29  
   APPROVED (owner, 2026-10-30). Not yet applied. Decision (project owner, 2026-10-30): "approve th
 - **[ddl-open-data-od1.md](ddl-open-data-od1.md)** — 2026-10-28  
   branch pushed, not merged. This is the deployment record for three NEW tables in RE's shared reg
+- **[ddl-open-data-repo-slug.md](ddl-open-data-repo-slug.md)** — 2026-11-03  
+  specified by the Architect's brief (BRIEF-OPEN-DATA-REPO-DATASETS-AND-ZENODO-2026-11-02, "DDL");
 - **[ddl-step-annotations.md](ddl-step-annotations.md)** — 2026-10-14  
   live. Deployment record for the step_annotations table (2026-10-13)
 - **[ddl-value-profile-1b.md](ddl-value-profile-1b.md)** — 2026-10-28  
@@ -80,9 +84,9 @@ Decisions and models. Cited from source where a comment cannot restate them.
   consolidated runbook. Current as of 2026-09-02
 - **[egeria-support-for-multi-resource.md](egeria-support-for-multi-resource.md)** — 2026-10-14  
   validation and planning input, 2026-09-20. Expands §12 of
-- **[extending-resource-explorer.md](extending-resource-explorer.md)** — 2026-10-30  
+- **[extending-resource-explorer.md](extending-resource-explorer.md)** — 2026-10-31  
   live. How to add a question, analysis step, annotation type or survey type
-- **[extending-with-analyses.md](extending-with-analyses.md)** — 2026-10-30  
+- **[extending-with-analyses.md](extending-with-analyses.md)** — 2026-11-03  
   live reference. Written 2026-10-28, brought up to date 2026-10-30 against `origin/main` at `aacd
 - **[feedback-and-curation.md](feedback-and-curation.md)** — 2026-09-03  
   consolidated design. Current as of 2026-09-02
@@ -112,9 +116,11 @@ Decisions and models. Cited from source where a comment cannot restate them.
   consolidated design and reference. Current as of 2026-09-02
 - **[surveyor-reference.md](surveyor-reference.md)** — 2026-10-19  
   stale. Oldest unrevised reference (2026-08-07); predates the database surveyors and Prefect. Che
-- **[testgen-integration-guide.md](testgen-integration-guide.md)** — 2026-10-30  
+- **[testgen-integration-guide.md](testgen-integration-guide.md)** — 2026-10-31  
   live guide. Written 2026-10-28, brought up to date 2026-10-30 against `origin/main` at `aacdfaff
-- **[user-guide.md](user-guide.md)** — 2026-10-30  
+- **[tutorial-outline.md](tutorial-outline.md)** — 2026-11-04  
+  the outline the prose is written from. Prose is being written one part at a time in
+- **[user-guide.md](user-guide.md)** — 2026-11-04  
   live. Investigations, work lists, private work, the questions, Curate, Publish, Files and live s
 
 ## Findings and audits
@@ -144,7 +150,7 @@ The work is done and these are NOT archive candidates: source comments point her
   design, unmeasured (2026-09-08). Nothing here is built. §8 defines the spike that
 - **[discovery-automate-project-context-plan.md](discovery-automate-project-context-plan.md)** — 2026-10-28  
   all 5 parts built and live-verified (2026-08-13). Part 1 (Discovery
-- **[investigation-classification-and-zoning-design.md](investigation-classification-and-zoning-design.md)** — 2026-10-14  
+- **[investigation-classification-and-zoning-design.md](investigation-classification-and-zoning-design.md)** — 2026-11-04  
   BUILT. All six phases are implemented and live-verified (2026-09-07/08). Extends
 - **[investigation-framing-design.md](investigation-framing-design.md)** — 2026-10-13  
   design; two pieces have since been built (2026-08-24). All 41 questions are tagged with Purpose 
@@ -163,4 +169,5 @@ The work is done and these are NOT archive candidates: source comments point her
 
 Includes the user-facing guides. Anything here without a Status line is a candidate for gaining one.
 
-- **[open-data-adapters.md](open-data-adapters.md)** — 2026-10-28
+- **[open-data-adapters.md](open-data-adapters.md)** — 2026-11-03
+- **[walkthrough-find-a-new-data-source.md](walkthrough-find-a-new-data-source.md)** — 2026-11-04

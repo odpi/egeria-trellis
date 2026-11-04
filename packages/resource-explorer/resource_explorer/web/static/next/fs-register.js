@@ -46,7 +46,7 @@ export const FS_REGISTER_WORDS = {
   credNone: 'None · a public bucket',
   credKey: 'A key held in the secrets store',
   credProfile: "This server's host profile",
-  keyNote: 'The key is sent once and held in the secrets store by reference; it is never kept in the registry.',
+  keyNote: 'The key is sent once and held in the secrets store by reference; the registry keeps only the last four characters of its id (…XXXX), never the id or the secret.',
   noStore: 'no secrets store is configured on this server · a key cannot be held · choose a public bucket or a host profile',
   checkReach: 'Check reach',
   checking: 'Checking…',

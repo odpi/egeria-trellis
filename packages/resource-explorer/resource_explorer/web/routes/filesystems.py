@@ -334,10 +334,11 @@ def register_filesystem(registration: FileSystemRegistration):
 
 def _register_s3(registry: ProjectRegistry, registration: FileSystemRegistration) -> FileSystemSummary:
     """An S3 file system. A typed key goes to the secrets store FIRST (refused when none is configured, before any row is
-    written); the registry keeps only its reference and the key id. Then the reach check runs and is recorded."""
+    written); the registry keeps only its reference and the key id's last four characters (W42). Then the reach check
+    runs and is recorded."""
     from resource_explorer import file_reach
     from resource_explorer.reach_mechanisms import CREDENTIAL_SECRET_REF, ReachError
-    from resource_explorer.reach_mechanisms.s3 import store_key
+    from resource_explorer.reach_mechanisms.s3 import key_tail, store_key
 
     if registry.filesystem_exists(registration.slug):
         raise HTTPException(status_code=400, detail=f"FileSystem '{registration.slug}' already registered.")
@@ -363,7 +364,9 @@ def _register_s3(registry: ProjectRegistry, registration: FileSystemRegistration
         protocol="s3", endpoint_url=settings.endpoint_url, region=settings.region, bucket=settings.bucket,
         root_prefix=settings.root, path_style=settings.path_style, tls_verify=settings.tls_verify,
         credential_kind=settings.credential_kind, credential_ref=settings.credential_ref,
-        access_key_id=settings.access_key_id)
+        # W42: only the id's tail is stored (the reach line reads "key …XXXX (<ref>)" from it); the whole id goes to
+        # the secrets store with the secret, by reference, and nowhere else.
+        access_key_id=key_tail(settings.access_key_id))
     try:
         registry.register_filesystem(fs)
     except Exception as exc:
