@@ -64,7 +64,7 @@ sent as a bearer token for the higher rate limit only and is never required (the
 
 ## Open data from a registered repository
 
-A repository can be the dataset. During ingestion (while the checkout is on disk) the `dataset_descriptor` step reads, and
+A repository can be the dataset. The Coarse Profile survey (its `file_inventory` step, from the zipball it already extracts; ingestion does the same on first index) reads, and
 keeps every one it finds, `datapackage.json` (Frictionless), `croissant.json` / `metadata.json` with `@type: Dataset`,
 `CITATION.cff`, a DOI badge or link in the README and a Hugging Face dataset card (README front matter with `license:` and
 `dataset_info:`), and stores them as `dataset_descriptor` findings. No network call is made then; a field a descriptor does
