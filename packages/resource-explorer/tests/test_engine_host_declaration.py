@@ -93,13 +93,33 @@ def test_changing_the_registry_entry_changes_the_document(monkeypatch):
     assert _script().render() != DOC.read_text()
 
 
-def test_the_declaration_is_never_a_bootstrap_batch():
-    """The owner runs this document. A `_batch.json` beside it would make RE's bootstrap monitor
-    write it to Egeria on its own every ten minutes."""
+def test_the_declaration_is_an_opt_in_bootstrap_batch_last_in_order(monkeypatch):
+    """F54 (2026-11-04): engine-host is a bootstrap batch, LAST, that the automatic heal runs only when
+    RE_ENGINE_HOST_HEAL is on (default off), through dr_egeria_runner (so its pyegeria steps run)."""
     from resource_explorer import bootstrap
 
-    assert not (DOC.parent / "_batch.json").exists()
-    assert "engine-host" not in [b.batch_id for b in bootstrap.discover_batches()]
+    monkeypatch.delenv("RE_ENGINE_HOST_HEAL", raising=False)
+    batches = bootstrap.discover_batches()
+    assert batches[-1].batch_id == "engine-host"
+    b = batches[-1]
+    assert b.opt_in == "RE_ENGINE_HOST_HEAL" and b.opted_in is False
+    assert b.runner == "dr_egeria_runner" and b.idempotent is False
+    assert b.canary == {"type": "SurveyActionEngine", "qualified_name": "ResourceExplorerSurvey"}
+    assert b.files == ["resource-explorer-survey-engine.md", "library/change_rates.md", "library/database_staleness.md",
+                       "library/hub_tables.md", "library/statistics_freshness.md", "steps/database-steps.md",
+                       "steps/repo-steps.md", "processes/postgres-survey-then-derived.md"]
+    assert all((b.path / f).is_file() for f in b.files)
+    assert (DOC.parent / "_batch.json").read_text() == _script().render_batch(
+        [DOC.parent / f for f in b.files]), "engine-host/_batch.json is stale: run the generator"
+
+
+def test_every_engine_host_document_is_in_the_batch_so_the_runner_guards_it():
+    """dr_egeria_runner finds the batch from a sub-folder document too (library/, steps/, processes/)."""
+    from resource_explorer import dr_egeria_runner as runner
+
+    for rel in ("resource-explorer-survey-engine.md", "library/hub_tables.md", "processes/postgres-survey-then-derived.md"):
+        assert runner._batch_of(DOC.parent / rel) == "engine-host"
+        assert "NOT idempotent" in runner._batch_note(DOC.parent / rel)
 
 
 STEPS = DOC.with_name(DOC.stem + ".pyegeria-steps.json")
@@ -144,9 +164,16 @@ def test_the_runner_plans_the_committed_declaration_in_the_order_that_works(monk
     assert out["not_safe_to_repeat"] == ["Link Action to Action Executor"]
 
 
-def test_the_declaration_names_when_it_joins_the_initialization_batches():
-    for text in (DOC.read_text(), STEPS.read_text()):
-        assert "TODO (engine host, step 2 live gate)" in text
+def test_the_declaration_says_how_the_batch_runs_it_and_no_longer_says_never():
+    """F54: the step-2 TODO is done; every generated document says the batch runs it only by the Admin press or the
+    opt-in heal, and none still claims RE's bootstrap never runs it."""
+    docs = [DOC, *sorted((DOC.parent / "library").glob("*.md")), *sorted((DOC.parent / "steps").glob("*.md")),
+            *sorted((DOC.parent / "processes").glob("*.md"))]
+    for path in docs:
+        text = " ".join(path.read_text().split())
+        assert "TODO (engine host, step 2 live gate)" not in text and "bootstrap never runs" not in text, path
+        assert "only as part of the engine-host batch" in text and "RE_ENGINE_HOST_HEAL" in text, path
+    assert "TODO" not in STEPS.read_text()
 
 
 # ── engine host step 3: Analytic Library steps, one declaration per step, generated from its manifest ──
