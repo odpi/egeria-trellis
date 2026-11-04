@@ -28,7 +28,7 @@ from resource_explorer.surveyors.survey_definition_reader import SurveyDefinitio
 
 log = logging.getLogger(__name__)
 
-from resource_explorer.activity_logger import log_survey
+from resource_explorer.activity_logger import PRESSED_ON, log_survey
 
 
 class SurveyDefinitionExecutorError(RuntimeError):
@@ -1430,6 +1430,8 @@ class SurveyDefinitionExecutor:
                 detail=json.dumps({
                     "survey_definition_ref": process_qn,
                     "process_guid": process_guid,
+                    # W55: the stage a per-card Run → was pressed on, beside the declared intent above.
+                    **({"pressed_on": PRESSED_ON.get()} if PRESSED_ON.get() else {}),
                     "steps": steps_report,
                     "errors": errors,
                     "published": published,

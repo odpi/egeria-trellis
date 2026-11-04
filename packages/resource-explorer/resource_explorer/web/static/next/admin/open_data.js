@@ -131,6 +131,18 @@ export async function renderDataPortals(host) {
 export const SEED_ADD_HELP = 'Registers this portal for everyone, as you. Checks reach first; nothing is imported.';
 export const SEEDS_ALL_REGISTERED = 'all suggested portals are registered';
 
+/** W61: a one-document feed's reach check reads the whole document (healthdata.gov: 31 MB, 47 s on 2026-11-03), so its
+ *  Add says so, with the size from the row's own `size_note`; a paged feed keeps the short help. The time is from that
+ *  measured read (~1.5 s a MB), said in round minutes. */
+export function seedAddHelp(row) {
+  const m = /^one document, ~?\s*([\d.,]+)\s*(KB|MB|GB)\b/i.exec(String((row && row.size_note) || ''));
+  if (!m) return SEED_ADD_HELP;
+  const mb = Number(m[1].replace(/,/g, '')) * ({ KB: 0.001, MB: 1, GB: 1000 }[m[2].toUpperCase()]);
+  const minutes = Math.max(1, Math.round((mb * 1.5) / 60));
+  const took = minutes === 1 ? 'about a minute' : `about ${minutes} minutes`;
+  return `Registers this portal for everyone, as you. Checks reach first (reads the whole ${m[1]} ${m[2].toUpperCase()} document, ${took}); nothing is imported.`;
+}
+
 /** "Suggested portals · N": the shipped list, folded (a table starts closed). Offered, never applied: one Add per row,
  *  no bulk. A row that did not answer is greyed with its date; one RE cannot read yet has no Add. */
 export function suggestedPortalsHtml(res) {
@@ -145,7 +157,7 @@ export function suggestedPortalsHtml(res) {
         <td class="py-s2 pr-s3 text-caveat align-top text-ink-muted">${esc(r.size_note)}</td>
         <td class="py-s2 pr-s3 text-caveat align-top text-ink-muted">${esc(r.why)}</td>
         <td class="py-s2 pr-s3 text-caveat align-top text-ink-muted">${esc(r.words)}</td>
-        <td class="py-s2 pr-s3 text-caveat align-top">${r.can_add ? `<button type="button" data-od-seed-add="${esc(r.feed_url)}" title="${esc(SEED_ADD_HELP)}" class="cursor-pointer rounded-sm border border-rule-strong bg-transparent px-2 py-[2px] text-caveat text-ink hover:border-accent">Add</button> <span data-od-seed-state class="text-provenance text-ink-muted"></span>` : ''}</td>
+        <td class="py-s2 pr-s3 text-caveat align-top">${r.can_add ? `<button type="button" data-od-seed-add="${esc(r.feed_url)}" title="${esc(seedAddHelp(r))}" class="cursor-pointer rounded-sm border border-rule-strong bg-transparent px-2 py-[2px] text-caveat text-ink hover:border-accent">Add</button> <span data-od-seed-state class="text-provenance text-ink-muted"></span>` : ''}</td>
       </tr>`).join('')}</tbody></table></div></details>`;
 }
 
@@ -211,6 +223,8 @@ export async function openPortalPane(host, slug, { lens = null, investigation = 
 
 /** The empty state says WHY: the portal had none for these terms, or the license needs dropped them all. */
 export function noCandidatesWords(res, licence) {
+  // W62: a feed (no search of its own) says what it read, never a bare 0; a licence drop still says so below.
+  if (res.words && !res.licence_dropped) return `No candidates: ${res.words}.`;
   const needs = [];
   if (licence && licence.commercial) needs.push('commercial use needed');
   if (licence && licence.share_alike === false) needs.push('no share-alike');
@@ -223,7 +237,7 @@ export function noCandidatesWords(res, licence) {
 export function drawCandidates(pane, out, slug, res, terms, requestName, investigation, licence = null) {
   const rows = res.rows;
   out.innerHTML = `
-    <p class="mb-s2 text-provenance text-ink-muted tnum">${rows.length} row${rows.length === 1 ? '' : 's'} of ${show(res.total)} · ${res.calls_made} call${res.calls_made === 1 ? '' : 's'} made
+    <p class="mb-s2 text-provenance text-ink-muted tnum">${res.words ? esc(res.words) : `${rows.length} row${rows.length === 1 ? '' : 's'} of ${show(res.total)}`} · ${res.calls_made} call${res.calls_made === 1 ? '' : 's'} made
       ${res.licence_dropped ? ` · ${res.licence_dropped} dropped on license` : ''}</p>
     ${rows.length ? `<table class="w-full min-w-[56rem] table-fixed text-left" data-rc-id="od-candidates">
       <thead><tr class="border-b border-rule text-caps uppercase tracking-caps text-ink-muted">

@@ -403,6 +403,12 @@ def dataset_sentence(descriptors: list[dict]) -> str:
 
 
 STATE_DATASET, STATE_DOI_ONLY, STATE_DATA_FILES = "dataset", "doi_only", "data_files_no_descriptor"
+#: W59: the two absences, which both read as nothing before: the descriptors were never read here (not checked), and
+#: they were read and nothing names a dataset (a measured "none").
+STATE_NOT_CHECKED, STATE_NONE = "not_checked", "none"
+NOT_CHECKED_SENTENCE = ("dataset signal: not checked · descriptors have not been read for this repository yet · "
+                        "the Coarse Profile survey reads them")
+NO_SIGNAL_SENTENCE = "no dataset signal (no descriptor, no data files)"
 
 DOI_ONLY_SENTENCE = ("a DOI names it ({doi}) · whether it is a dataset is not established until the DOI is resolved "
                      "(Import resolves it)")
@@ -430,7 +436,8 @@ def declared_files_summary(registry: ProjectRegistry, slug: str) -> list[dict]:
 
 def kind_finding(registry: ProjectRegistry, slug: str, role_evidence: list[str] | None = None) -> dict | None:
     """The finding behind the repository page's "what kind of thing" row, from what is stored: the descriptors of the
-    last ingestion (and when they were read) and the tier-1 file inventory. None = nothing to say.
+    last ingestion (and when they were read) and the tier-1 file inventory. Never None (W59): with no signal the finding says
+    whether the descriptors were read ("no dataset signal") or not ("not checked").
 
       descriptor that names a dataset -> "a dataset repository · identity DOI 10.…/… · licence CC-BY-4.0 (from …)"
       only a DOI names it             -> "a DOI names it (10.…) · whether it is a dataset is not established until the
@@ -458,11 +465,14 @@ def kind_finding(registry: ProjectRegistry, slug: str, role_evidence: list[str] 
                     "(the Coarse Profile survey reads them)")
     elif data_files:
         state, sentence = STATE_DATA_FILES, NO_DESCRIPTOR_SENTENCE
+    elif not read_at:
+        state, sentence = STATE_NOT_CHECKED, NOT_CHECKED_SENTENCE
     else:
-        return None
+        state, sentence = STATE_NONE, NO_SIGNAL_SENTENCE
     return {
-        "check_name": "dataset_kind", "label": "dataset repository" if state == STATE_DATASET else
-        "DOI only" if state == STATE_DOI_ONLY else "data files only",
+        "check_name": "dataset_kind", "label": {STATE_DATASET: "dataset repository", STATE_DOI_ONLY: "DOI only",
+                                                STATE_DATA_FILES: "data files only", STATE_NOT_CHECKED: "not checked",
+                                                STATE_NONE: "no dataset signal"}[state],
         "summary": sentence, "confidence": 60,
         "detail": {"state": state, "descriptors": [{k: d[k] for k in ("kind", "path", "identifier", "identifier_kind", "doi")}
                                                    for d in descriptors],

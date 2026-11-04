@@ -66,7 +66,7 @@ def test_a_stored_summary_that_holds_the_field_reads_n_of_m_in_the_declared_word
     install_steps(STEP)
     row = _summary_row(_registry(tmp_path, NEW_PROPS, OLD_SUMMARY))
     assert row["value"] == "226" or row["value"] == 226
-    assert row["value_words"] == "226 of 266 tables (85%)"
+    assert row["value_words"] == "226 tables never analyzed or stale of 266 tables (85% of the tables)"   # W57
     assert row["capped"] is False
 
 

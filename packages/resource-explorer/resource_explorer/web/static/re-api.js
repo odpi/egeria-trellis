@@ -1740,8 +1740,11 @@ function _runAnalysisPath(entityType, slug, analysisId) {
  *  (including a database/filesystem's own "Run"/"re-run" button on a
  *  Questions-checklist row) posted to the repo-only route regardless of the
  *  resource's real type. */
-export const runAnalysis = (slug, analysisId, entityType, { force = false } = {}) =>
-  post(`${_runAnalysisPath(requireKind('runAnalysis', entityType), slug, analysisId)}${force ? '?force=true' : ''}`);
+export const runAnalysis = (slug, analysisId, entityType, { force = false, pressedOn = '' } = {}) => {
+  // `pressedOn` ("4 Analysis"): the stage the Run → was pressed on, for the run's Activity row (W55).
+  const q = [force ? 'force=true' : '', pressedOn ? `pressed_on=${encodeURIComponent(pressedOn)}` : ''].filter(Boolean).join('&');
+  return post(`${_runAnalysisPath(requireKind('runAnalysis', entityType), slug, analysisId)}${q ? `?${q}` : ''}`);
+};
 
 /** ONE database analysis with a credential typed for that run (brief section 8). The password goes in
  *  the body of this call and nowhere else; the server runs it in its own process (not queued, not

@@ -165,16 +165,18 @@ class RunOutcome:
 
 
 def _handle_analysis_run(target: dict, result_ref: str) -> RunOutcome:
+    from resource_explorer.activity_logger import pressed_on
     from resource_explorer.workflows.analysis import execute_and_record_analysis
 
-    result = execute_and_record_analysis(
-        target["slug"], target["analysis_id"], result_ref,
-        publish=target.get("publish"),
-        # Default "repo" for a row enqueued before `entity_type` was added to
-        # `WorkLists.enqueue_batch`'s target dict — unchanged behaviour for
-        # any row already queued.
-        entity_type=target.get("entity_type", "repo"),
-    )
+    with pressed_on(target.get("pressed_on", "")):
+        result = execute_and_record_analysis(
+            target["slug"], target["analysis_id"], result_ref,
+            publish=target.get("publish"),
+            # Default "repo" for a row enqueued before `entity_type` was added to
+            # `WorkLists.enqueue_batch`'s target dict — unchanged behaviour for
+            # any row already queued.
+            entity_type=target.get("entity_type", "repo"),
+        )
     return RunOutcome(
         state="succeeded" if result.status == "ok" else "failed",
         error=result.error or "",
@@ -193,11 +195,13 @@ def _handle_database_analysis_run(target: dict, result_ref: str) -> RunOutcome:
     why this is a distinct handler/dataclass from the repo path rather than a
     reuse of `_handle_analysis_run` — database analysis runs do not
     auto-publish to Egeria the way repo's do."""
+    from resource_explorer.activity_logger import pressed_on
     from resource_explorer.workflows.analysis import execute_and_record_database_analysis
 
-    result = execute_and_record_database_analysis(
-        target["slug"], target["analysis_id"], result_ref,
-    )
+    with pressed_on(target.get("pressed_on", "")):
+        result = execute_and_record_database_analysis(
+            target["slug"], target["analysis_id"], result_ref,
+        )
     return RunOutcome(
         state="succeeded" if result.status == "ok" else "failed",
         error=result.error or "",
@@ -207,9 +211,11 @@ def _handle_database_analysis_run(target: dict, result_ref: str) -> RunOutcome:
 def _handle_filesystem_analysis_run(target: dict, result_ref: str) -> RunOutcome:
     """One file system Analytic Library step (Files build step 6): the file-system twin of
     `_handle_database_analysis_run`. Stored, never published (a file system's publish stays its own press)."""
+    from resource_explorer.activity_logger import pressed_on
     from resource_explorer.workflows.analysis import execute_and_record_filesystem_analysis
 
-    result = execute_and_record_filesystem_analysis(target["slug"], target["analysis_id"], result_ref)
+    with pressed_on(target.get("pressed_on", "")):
+        result = execute_and_record_filesystem_analysis(target["slug"], target["analysis_id"], result_ref)
     return RunOutcome(state="succeeded" if result.status == "ok" else "failed", error=result.error or "")
 
 

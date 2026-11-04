@@ -168,6 +168,11 @@ def test_the_list_offers_only_unregistered_rows_and_shrinks_as_portals_are_added
     assert client.get("/api/open-data/portals").json()[0]["origin"] == "seed"
 
 
+def test_w60_a_seed_portals_slug_comes_from_its_feed_host_not_its_display_name(client):
+    r = client.post("/api/open-data/portal-seeds/add", json={"feed_url": "https://demo.ckan.org"})
+    assert r.status_code == 200 and r.json()["slug"] == "demo_ckan_org"
+
+
 def test_a_registered_portal_is_matched_on_host_and_path_not_on_name(client):
     client.post("/api/open-data/portals", json={"display_name": "My own name for it", "api_kind": "CKAN",
                                                 "base_url": "https://www.demo.ckan.org/"})

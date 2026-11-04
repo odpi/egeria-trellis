@@ -74,8 +74,15 @@ const relDays = (iso) => {
 
 /** The dataset sentence (server-built: dataset_descriptor.py) and, for a dataset repository, the Import press with its
  *  price before the press and its hover help. A repository with data files and no descriptor gets the sentence only. */
-export function datasetKindHtml(f) {
+/** W59: a classification run with no dataset_kind finding ran before the descriptors were read (or before the row
+ *  existed): not checked, said as such. Never nothing, which read the same as "no dataset signal". */
+export const DATASET_NOT_CHECKED_WORDS = 'dataset signal: not checked (classification ran before descriptors were read) · re-run reads it';
+/** W59: descriptors read after the classification that wrote this finding ran: its sentence may be out of date. */
+export const DATASET_OLDER_WORDS = 'descriptors read after this classification ran · re-run reads them';
+
+export function datasetKindHtml(f, classifiedAt = '') {
   const d = f.detail || {};
+  const older = !!(classifiedAt && d.descriptors_read_at && String(d.descriptors_read_at) > String(classifiedAt));
   const press = (d.state === 'dataset' || d.state === 'doi_only')
     ? `<button type="button" data-dataset-import ${d.can_import ? '' : 'disabled'} title="${esc(d.help || '')}"
         class="cursor-pointer rounded-sm border border-rule-strong bg-transparent px-2 py-[1px] text-caveat text-ink hover:border-accent disabled:cursor-not-allowed disabled:opacity-60">Import as open data</button>
@@ -86,7 +93,8 @@ export function datasetKindHtml(f) {
   return `<div data-dataset-kind="${esc(d.state || '')}" class="mt-s2 flex flex-wrap items-baseline gap-s2">
     <span class="text-provenance uppercase text-ink-muted">Kind</span>
     <span data-dataset-sentence class="text-caveat text-ink break-words [overflow-wrap:anywhere]">${esc(f.summary || '')}</span>
-    ${d.descriptors_read_at ? `<span data-dataset-read-at class="text-provenance text-ink-muted">descriptors read ${esc(relDays(d.descriptors_read_at))}</span>` : ''}${press}</div>`;
+    ${d.descriptors_read_at ? `<span data-dataset-read-at class="text-provenance text-ink-muted">descriptors read ${esc(relDays(d.descriptors_read_at))}</span>` : ''}${
+  older ? `<span data-dataset-older class="text-provenance text-accent-ink">${esc(DATASET_OLDER_WORDS)}</span>` : ''}${press}</div>`;
 }
 
 /** Wire the Import press drawn by datasetKindHtml: one POST, then the words the server answered with. */
@@ -142,7 +150,10 @@ export function repoClassificationHtml(data, entry = null) {
 
   // "What kind of thing is this repository", for a dataset: the sentence, and the press that registers it as open data.
   const kind = by.dataset_kind;
-  if (kind) out.push(datasetKindHtml(kind));
+  out.push(kind ? datasetKindHtml(kind, (data && data.surveyed_at) || '')
+    : `<div data-dataset-kind="not_checked" class="mt-s2 flex flex-wrap items-baseline gap-s2">
+    <span class="text-provenance uppercase text-ink-muted">Kind</span>
+    <span data-dataset-sentence class="text-caveat text-ink-muted">${esc(DATASET_NOT_CHECKED_WORDS)}</span></div>`);
 
   const gate = by.architecture_recovery_gate;
   if (gate) {

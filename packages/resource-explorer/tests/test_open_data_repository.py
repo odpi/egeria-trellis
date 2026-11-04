@@ -282,9 +282,15 @@ def test_the_kind_row_says_dataset_repository_or_data_files_without_a_descriptor
     assert f["detail"]["help"] == "Writes one open-data row to this app's registry and nothing to Egeria."
 
 
-def test_no_data_and_no_descriptor_says_nothing(reg):
+def test_no_data_and_no_descriptor_says_which_absence(reg, tmp_path):
+    """W59: "not checked" (descriptors never read) and "no dataset signal" (read, nothing) both read as nothing before."""
     _inventory(reg, "acme-data", {"src/app.py": 10})
-    assert dd.kind_finding(reg, "acme-data") is None
+    f = dd.kind_finding(reg, "acme-data")
+    assert f["detail"]["state"] == "not_checked" and f["summary"] == dd.NOT_CHECKED_SENTENCE
+    dd.store_descriptors(reg, "acme-data", _tree(tmp_path / "t", **{"README.md": "# app"}))
+    f = dd.kind_finding(reg, "acme-data")
+    assert f["detail"]["state"] == "none" and f["summary"] == "no dataset signal (no descriptor, no data files)"
+    assert f["detail"]["can_import"] is False
 
 
 def test_the_ddl_adds_repo_slug_and_the_reserved_portal_once(reg):

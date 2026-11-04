@@ -868,6 +868,23 @@ FS_NEEDS_ROOT_ASSET = (
     "Attach the root folder to Egeria first (the press above), then Survey.")
 
 
+#: Egeria's Folder Survey row where Resource Explorer leads (W44): the card above runs RE's walk, and needs no asset.
+FS_RE_LED_WORDS = "RE-led walk: no Egeria asset needed · {why} · Survey on the card above runs Resource Explorer's walk"
+#: The same for an S3 bucket: Egeria's engine host has no reach to object storage at all.
+FS_S3_RE_LED_WORDS = "Egeria cannot reach this bucket; the walk is RE-led · Survey on the card above runs it"
+
+
+def folder_survey_re_led_words(fork) -> str:
+    """Egeria's Folder Survey row's refusal where Resource Explorer leads, '' where Egeria leads (or nobody yet)."""
+    from resource_explorer import file_reach
+
+    if fork.state == file_reach.REMOTE:
+        return FS_S3_RE_LED_WORDS
+    if fork.state in file_reach._RE_LEADS:
+        return FS_RE_LED_WORDS.format(why=fork.sentence)
+    return ""
+
+
 def _no_asset_words(entity) -> str:
     """The refusal for a resource with no Egeria asset, in the words of its own kind (database / file system / other)."""
     from resource_explorer import catalog_and_survey as cas
@@ -920,14 +937,22 @@ def cannot_run_reason(process: NativeProcess, entity, *, registry=None, technolo
         if registry is None or not cas.server_pointer(registry, entity):
             return cas.SERVER_NOT_REGISTERED_WORDS
         return _missing_credentials_reason(entity)
-    if not (getattr(entity, "egeria_asset_guid", "") or "").strip():
-        return _no_asset_words(entity)
     if process.qualified_name == FOLDER_SURVEY_QN and not hasattr(entity, "db_type"):
         # Files step 2: Egeria's Folder Survey leads only where the stored probe proves Egeria's engine host can read
-        # the canonical mount. Registry-only (the newest probe row), so it is safe on a list read.
+        # the canonical mount. Registry-only (the newest probe row), so it is safe on a list read. The lead is checked
+        # BEFORE the asset (W44): where Resource Explorer leads, attaching a root folder would not make Egeria's survey
+        # runnable, so "Attach the root folder to Egeria first" was the wrong advice.
         from resource_explorer import file_reach
 
-        return file_reach.refusal_words(file_reach.fork_for(registry, entity), for_egeria_lead=True)
+        fork = file_reach.fork_for(registry, entity)
+        led_by_re = folder_survey_re_led_words(fork)
+        if led_by_re:
+            return led_by_re
+        if not (getattr(entity, "egeria_asset_guid", "") or "").strip():
+            return _no_asset_words(entity)
+        return file_reach.refusal_words(fork, for_egeria_lead=True)
+    if not (getattr(entity, "egeria_asset_guid", "") or "").strip():
+        return _no_asset_words(entity)
     if not process.needs_credentials:
         return ""
     return _missing_credentials_reason(entity)
