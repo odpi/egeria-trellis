@@ -2342,6 +2342,13 @@ export const getBootstrapStatus = () => get('/api/bootstrap/status');
  *  that is not idempotent, duplicates step links. The banner only ever heals what is missing. */
 export const runBootstrapMissingOnly = () => adminPost('/api/bootstrap/run', { force: false });
 
+/** W65: run ONE bootstrap batch (Admin › Repair › "Declare RE's survey engine in Egeria" sends 'engine-host'),
+ *  missing-only, under the same 409 lock as the heal. Never forced: `force` is not a parameter here either. */
+export const runBootstrapBatch = (batch) => adminPost('/api/bootstrap/run', { batch });
+
+/** W65: what a one-batch run will do (documents, elements, identity, time), read without an Egeria call. */
+export const getBootstrapPrice = (batch) => get(`/api/bootstrap/price/${encodeURIComponent(batch)}`);
+
 export const listStaleLinkages = () => get('/api/egeria/linkage/stale');
 
 /** action: republish | resurvey | discard. Every action clears the unusable link first. */

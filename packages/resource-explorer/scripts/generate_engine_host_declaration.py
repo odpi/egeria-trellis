@@ -6,12 +6,13 @@ DATABASE_STEP_REGISTRY through `resource_explorer.engine_host` (the same names t
 together with its sibling `resource-explorer-survey-engine.pyegeria-steps.json`: the three elements pyegeria
 6.2.3's Dr.Egeria has no command for (the SurveyActionEngine, one SurveyActionService per step, and their
 SupportedGovernanceService links), which `resource_explorer.dr_egeria_runner` runs as find-or-create pyegeria
-steps BEFORE the document. This script never talks to Egeria, and the folder has no `_batch.json`, so RE's
-bootstrap never runs it: an admin runs it with `resource-explorer dr-egeria run
-engine-host/resource-explorer-survey-engine.md` (or the admin route).
+steps BEFORE the document. This script never talks to Egeria.
 
-TODO (engine host, step 2 live gate): add this folder to the initialization batches (a `_batch.json` here and
-an entry in `_folder_order.json`) only AFTER the live gate of engine-host step 2 has passed against Egeria.
+**The engine-host batch (F54, 2026-11-04).** The folder is a bootstrap batch: this script also writes its
+`_batch.json` (`render_batch`), listing every document in run-note order with the engine as canary and
+`"opt_in": "RE_ENGINE_HOST_HEAL"`. RE's bootstrap runs the batch on its own only when that setting is on (default
+off: the batch is reported `opted_out`); an admin declares it with Admin › Repair › "Declare RE's survey engine in
+Egeria", and anyone can still run one document with `resource-explorer dr-egeria run engine-host/<doc>.md`.
 
 **Analytic Library steps (engine host, step 3).** Each installed library step the engine host admits
 (`survey_step_host.library_steps()`, the same function the claim sweep dispatches through) gets its OWN document,
@@ -60,6 +61,10 @@ PKG = Path(__file__).resolve().parents[1]
 DOC = PKG / "docs" / "dr-egeria" / "engine-host" / "resource-explorer-survey-engine.md"
 STEPS = DOC.with_name(DOC.stem + ".pyegeria-steps.json")      # dr_egeria_runner.STEPS_SUFFIX
 
+#: Every generated document says how it is run as part of the engine-host batch (F54).
+BATCH_RUN_WORDS = ("RE's bootstrap runs it only as part of the engine-host batch:\nby Admin › Repair › \"Declare RE's "
+                   "survey engine in Egeria\", or on its own when RE_ENGINE_HOST_HEAL is on (default off).")
+
 ENGINE_DESCRIPTION = (
     "Resource Explorer's survey engine. It is hosted by Resource Explorer's worker, outside any Egeria engine "
     "host (Q-M4): no Java engine host configuration may list it, or a JVM host races Resource Explorer for "
@@ -79,7 +84,7 @@ def _header() -> str:
 GENERATED from DATABASE_STEP_REGISTRY by packages/resource-explorer/scripts/generate_engine_host_declaration.py.
 Do not hand-edit; regenerate. Design: docs/design-notes/DESIGN-RE-ENGINE-HOST-BY-EQUIVALENCE.md §5.1 (E1).
 
-RE's bootstrap never runs this document (this folder is not a bootstrap batch); an admin runs it with
+{BATCH_RUN_WORDS} Run it alone with
 `resource-explorer dr-egeria run engine-host/{DOC.name}`.
 
 NOT EXPRESSIBLE IN Dr.Egeria (pyegeria 6.2.3 has no command for these). They are pyegeria steps in
@@ -92,9 +97,6 @@ FIRST, in this order, each finding its element by qualifiedName and creating it 
 The commands below are the ones Dr.Egeria has: the GovernanceActionType a person or process initiates, and its
 GovernanceActionExecutor link to the engine. "Link Action to Action Executor" is NOT safe to repeat; the runner
 refuses a second run of the same content unless forced.
-
-TODO (engine host, step 2 live gate): this folder joins the initialization batches (_batch.json +
-_folder_order.json) only after the live gate of engine-host step 2.
 -->
 """
 
@@ -175,7 +177,8 @@ def render_steps() -> str:
         "pyegeria steps for what pyegeria 6.2.3's Dr.Egeria cannot express (docs/dr-egeria-engine-host-gaps.md). "
         "resource_explorer.dr_egeria_runner runs them, in this order, before the document: each finds its "
         "element by qualifiedName (the link: by engine, service and requestType) and creates it only when absent.",
-        "TODO (engine host, step 2 live gate): add engine-host to the initialization batches only after that gate.",
+        "Part of bootstrap batch engine-host (_batch.json): healed only when RE_ENGINE_HOST_HEAL is on, or by the "
+        "Admin press.",
     ], "steps": steps}
     return json.dumps(doc, indent=2, ensure_ascii=False) + "\n"
 
@@ -212,7 +215,7 @@ dispatch it: initiating {gat} creates an engine action with request type {step.r
 claims, runs through its step host and completes with one of {", ".join(eh.SURVEY_GUARDS)}
 ({step.nothing_to_derive_guard} when there is nothing to derive).
 
-Run it with `resource-explorer dr-egeria run engine-host/library/{step.step_key}.md`. RE's bootstrap never runs it.
+Run it with `resource-explorer dr-egeria run engine-host/library/{step.step_key}.md`. {BATCH_RUN_WORDS}
 Its pyegeria steps ({step.step_key}{STEPS.name[len(DOC.stem):]}) run first, each find-or-create:
   - {eh.ENGINE_TYPE_NAME} `{eh.ENGINE_QUALIFIED_NAME}` (normally already there, from the engine's own document);
   - {eh.SERVICE_TYPE_NAME} `{eh.service_qualified_name(step.step_key)}`, linked to the engine by
@@ -343,7 +346,7 @@ its GovernanceActionExecutor below.{f'''
 Not here, declared by the engine's own document: {", ".join(declared_elsewhere)}.''' if declared_elsewhere else ""}
 
 Run it with `resource-explorer dr-egeria run engine-host/steps/{registry_steps_path(entity_type).name}` AFTER the
-engine's own document. RE's bootstrap never runs it. "Link Action to Action Executor" is NOT safe to repeat; the runner
+engine's own document. {BATCH_RUN_WORDS} "Link Action to Action Executor" is NOT safe to repeat; the runner
 refuses a second run of the same content unless forced. Retire a step by Content Status DEPRECATED, never by deleting.
 -->
 """
@@ -458,7 +461,7 @@ create the SurveyingActionProcess subtype yet (egeria-python ISSUE-150); one lin
 Needs, already declared: RE's engine {eh.ENGINE_QUALIFIED_NAME} serving {re_steps}
 (engine-host/library/), and the content pack's engines. Every element here has a Dr.Egeria command, so there is no
 pyegeria steps file. Run it with `resource-explorer dr-egeria run engine-host/processes/{mixed_process_path(process.key).name}`;
-RE's bootstrap never runs it. The Link commands are NOT safe to repeat; the runner refuses a second run of the same
+{BATCH_RUN_WORDS} The Link commands are NOT safe to repeat; the runner refuses a second run of the same
 content unless forced. Start a run with Dr.Egeria's Initiate Governance Action Process, or RE's Run on the database.
 -->
 
@@ -573,6 +576,65 @@ def render_mixed_processes() -> dict[Path, str]:
     return out
 
 
+BATCH = DOC.parent / "_batch.json"          # bootstrap.BATCH_MANIFEST_FILE
+
+#: The opt-in setting of the engine-host batch (bootstrap.Batch.opt_in): the automatic heal runs it only when on.
+OPT_IN_ENV = "RE_ENGINE_HOST_HEAL"
+
+
+def _batch_order(path: Path) -> tuple:
+    """Run-note order (RUN-NOTE-ENGINE-DECLARATION-2026-11-04 §1): the engine's own document, then library/, then
+    steps/ (database before repo), then processes/ (they link the types the others create)."""
+    rel = path.relative_to(DOC.parent)
+    group = {DOC.name: 0, "library": 1, "steps": 2, "processes": 3}.get(rel.parts[0], 4)
+    within = {"database-steps.md": 0, "repo-steps.md": 1}.get(rel.name, 2)
+    return group, within, str(rel)
+
+
+def render_batch(documents) -> str:
+    """engine-host/_batch.json: every generated Dr.Egeria document of this folder, in run-note order."""
+    from resource_explorer import engine_host as eh
+
+    files = [str(p.relative_to(DOC.parent)) for p in sorted((p for p in documents if p.suffix == ".md"),
+                                                              key=_batch_order)]
+    doc = {
+        "$comment": [
+            "GENERATED by packages/resource-explorer/scripts/generate_engine_host_declaration.py. Do not hand-edit;",
+            "regenerate. Brief: DESIGN-BRIEF-ENGINE-HOST-SELF-HEAL-2026-11-04 (F54).",
+            "",
+            "RE's survey engine and everything that hangs off it: the SurveyActionEngine and its services (the",
+            "documents' pyegeria steps), the GovernanceActionTypes with their executor links, and the mixed process.",
+            "",
+            f"OPT-IN. bootstrap heals this batch on its own ONLY when {OPT_IN_ENV} is true (default off): a heal",
+            "writes the engine and some sixty elements, and a deployment whose Egeria must not host RE's engine (Q-M4)",
+            "must not get it by surprise. Off, the batch is reported opted_out and RE says the engine is missing;",
+            "Admin > Repair > \"Declare RE's survey engine in Egeria\" runs it whatever the setting says.",
+            "",
+            "NOT idempotent: \"Link Action to Action Executor\" and the process links do not look for an existing",
+            "relationship. Each document is run through dr_egeria_runner (pyegeria steps first, then the document),",
+            "in this order, stopping at the first that fails, and only when the canary was VERIFIED missing (False,",
+            "never 'could not tell') inside the heal lock. That waiver is decided ONCE at the start of the pass and",
+            "covers every document of it (after document 1 the engine exists, and 2..n still run). A run in progress",
+            "of any document refuses the whole pass before it starts.",
+            "",
+            "No post_heal reconciler (Architect ruling Q2, 2026-11-04): the batch is never re-run while the engine is",
+            "present, so a heal never meets the links an earlier run made; and a governance action type that",
+            "survived a reset lost its old executor link with the deleted engine, so the link a heal makes is the",
+            "first. A pass that fails part way leaves the engine present: the Admin press then says how many of the",
+            "documents were applied, and the rest is run by hand (dr-egeria run --force).",
+            "",
+            f"The canary is the engine, by qualifiedName (the lookup asks no type: a wrong type reads as missing).",
+        ],
+        "display_name": "Resource Explorer survey engine (engine host)",
+        "idempotent": False,
+        "opt_in": OPT_IN_ENV,
+        "runner": "dr_egeria_runner",
+        "canary": {"type": eh.ENGINE_TYPE_NAME, "qualified_name": eh.ENGINE_QUALIFIED_NAME},
+        "files": files,
+    }
+    return json.dumps(doc, indent=2, ensure_ascii=False) + "\n"
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("--check", action="store_true", help="write nothing; exit 1 when the document is stale")
@@ -586,6 +648,7 @@ def main(argv: list[str] | None = None) -> int:
     else:
         want = {DOC: render(), STEPS: render_steps(), **render_library(), **render_mixed_processes(),
                 **render_registry_steps()}
+        want[BATCH] = render_batch(want)
         orphans = [*(sorted(LIBRARY.glob("*")) if LIBRARY.is_dir() else []),
                    *(sorted(PROCESSES.glob("*")) if PROCESSES.is_dir() else []),
                    *(sorted(REGISTRY_STEPS.glob("*")) if REGISTRY_STEPS.is_dir() else [])]

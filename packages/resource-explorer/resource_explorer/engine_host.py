@@ -205,6 +205,11 @@ STARTED_BY_RE = "re"
 
 ENABLE_ENV = "RE_ENGINE_HOST_ENABLED"
 
+#: F54: the engine-host bootstrap batch's opt-in (docs/dr-egeria/engine-host/_batch.json "opt_in"). On, the bootstrap
+#: re-declares RE's engine on its own when a pass finds it missing; off (the default), only Admin › Repair › "Declare
+#: RE's survey engine in Egeria" does. Independent of ENABLE_ENV, which runs the claim sweep.
+HEAL_ENV = "RE_ENGINE_HOST_HEAL"
+
 #: The native engine host's sweep interval (`EngineConfigurationRefreshThread.java:51`, 5000 ms).
 SWEEP_INTERVAL_SECONDS = 5
 
@@ -236,6 +241,48 @@ _COMPLETION_TO_ACTIVITY = {"ACTIONED": "COMPLETED", "INVALID": "INVALID", "FAILE
 _READ_ONLY_TARGETS = frozenset({"surveyReport"})
 
 _GUID_RE = re.compile(r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")
+
+
+#: The engine host's last VERIFIED answer to "is RE's engine in Egeria?" (W65): {"present": bool | None, "at": iso}.
+#: Set by every `resolve_engine_guid` lookup that reached Egeria; read by `/api/bootstrap/status` and the cards' refusal
+#: (W64) without an Egeria call. None = no lookup has answered in this process.
+_engine_answer: dict = {"present": None, "at": ""}
+
+
+def last_engine_answer() -> dict:
+    """{"present": True | False | None, "at": iso}: the last lookup of RE's engine that reached Egeria."""
+    return dict(_engine_answer)
+
+
+def record_engine_answer(present: bool, at: str = "") -> None:
+    """Record a verified answer (the sweep's lookup, or the bootstrap pass's canary read of the engine)."""
+    global _engine_answer
+    from datetime import datetime, timezone
+
+    # The bootstrap status's format (bootstrap._now), so the two sources' times compare as strings.
+    _engine_answer = {"present": bool(present), "at": at or datetime.now(timezone.utc).isoformat(timespec="seconds")}
+
+
+def engine_declared() -> bool | None:
+    """RE's engine is declared in this Egeria: True / False from the newest verified answer, or None (not known).
+    Combines the engine host's own lookups with the bootstrap pass's canary read of the engine-host batch."""
+    answers = [a for a in (last_engine_answer(), _bootstrap_engine_answer()) if a.get("present") is not None]
+    if not answers:
+        return None
+    return bool(max(answers, key=lambda a: a.get("at") or "")["present"])
+
+
+def _bootstrap_engine_answer() -> dict:
+    try:
+        from resource_explorer import bootstrap
+
+        with bootstrap._status_lock:
+            st = bootstrap._status.get(bootstrap.ENGINE_HOST_BATCH)
+            if st is None or st.present is None:
+                return {"present": None, "at": ""}
+            return {"present": st.present, "at": st.last_verified_at}
+    except Exception:  # noqa: BLE001 - a missing source is "not known", never a guess
+        return {"present": None, "at": ""}
 
 
 def engine_host_enabled() -> bool:
@@ -618,9 +665,11 @@ class EngineHost:
 
         answer = self._client(MetadataExpert).get_metadata_guid_by_unique_name(ENGINE_QUALIFIED_NAME)
         if isinstance(answer, str) and _GUID_RE.match(answer.strip()):
+            record_engine_answer(True)
             self._engine_guid = answer.strip()
             log.info("engine host: engine %s is %s", ENGINE_QUALIFIED_NAME, self._engine_guid)
             return self._engine_guid
+        record_engine_answer(False)
         self._report_once("no_engine", ENGINE_QUALIFIED_NAME,
                           "engine host: no engine %r in Egeria (answer %r); nothing is claimed until the "
                           "owner runs docs/dr-egeria/engine-host/", ENGINE_QUALIFIED_NAME,

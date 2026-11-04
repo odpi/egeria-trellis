@@ -12868,6 +12868,29 @@ class ProjectRegistry:
             ).fetchone()
         return dict(row) if row else None
 
+    def private_investigation_for_entity(self, entity_type: str, entity_slug: str) -> dict | None:
+        """The private investigation `private_owner_for_entity` answers from (same query, same oldest-owner choice),
+        as {slug, display_name, created_by, project_classification}, or None. Unscoped for the same reason; a caller
+        names it to a person only after `_may_see_investigation` (W66: naming it to others would leak it)."""
+        placeholders = ",".join("?" * len(self.PRIVATE_CLASSIFICATIONS))
+        with self._conn() as conn:
+            row = conn.execute(
+                f"""SELECT i.slug, i.display_name, i.created_by, i.project_classification
+                    FROM working_set_members m
+                    JOIN working_sets ws ON ws.slug = m.working_set_slug
+                                         AND ws.collection_kind = 'folio'
+                    JOIN investigation_resource_lists rl
+                      ON rl.working_set_slug = m.working_set_slug
+                    JOIN investigations i ON i.slug = rl.investigation_slug
+                    WHERE m.entity_type = ? AND m.entity_slug = ?
+                      AND m.state <> 'excluded'
+                      AND i.project_classification IN ({placeholders})
+                      AND i.created_by IS NOT NULL AND i.created_by <> ''
+                    ORDER BY i.created_at ASC""",
+                (entity_type, entity_slug, *self.PRIVATE_CLASSIFICATIONS),
+            ).fetchone()
+        return dict(row) if row else None
+
     # ── Deleting an investigation (permanent; no undo) ──────────────────────────────────────────────────────
 
     #: Tables that hold rows for an investigation under (entity_type='investigation', entity_slug=<slug>). All of
