@@ -161,8 +161,8 @@ again: it picks up where it stopped and does not create a second copy.
 
 **What can go wrong**
 - **"Not permitted".** Egeria's zones do not let you create elements. Ask an administrator.
-- **The dataset is in a private investigation.** Publishing is refused before anything is written. Private
-  investigations cannot publish this kind yet.
+- **The dataset is in a creator-only investigation.** Publishing is refused before anything is written.
+  Creator-only investigations cannot publish this kind yet.
 - **Origin or scope says "not written".** The portal gave no publisher or no coverage. Nothing was invented.
 
 ## 8. Look again later  [portal]
