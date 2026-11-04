@@ -155,6 +155,9 @@ a plain CLI command dies.
   The flip side: agentstack-sdk (RE's A2A role) still imports mcp 1.x's `streamablehttp_client`, so
   `resource_explorer/_mcp_compat.py` installs that name over mcp 2's `streamable_http_client` and must
   be imported before any `agentstack_sdk` import. Drop the shim once agentstack-sdk supports mcp 2.
+- TLS trust (2026-11-04): resource-explorer requires `certifi>=2026.10.18`. That release drops "emSign ECC Root CA - G3",
+  distrusted after the October 2026 emSign G3 key compromise; RE's open-data, GitHub, DataCite and S3 reads verify through
+  certifi. `tests/test_tls_trust_floor.py` checks both the floor and the bundle. An older venv needs `uv sync`.
 - pyegeria floor is 6.1.10 in all three packages (ISSUE-86 token support; report runs are attributed to
   the signed-in user). Keep the quickstart's pyegeria-web/jupyter images on the same version.
 
