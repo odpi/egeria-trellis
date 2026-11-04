@@ -17,7 +17,7 @@ dependencies = [
     # alias (here and in pyegeria) during the split, so nothing in trellis declares it. 6.2.18 (2026-10-31, ISSUE-173)
     # reads the pyegeria.report_specs group below, so installing this package registers the Portal tile's spec.
     # 6.2.19 (2026-11-02) removes PYEGERIA_REPORT_SPEC_MODULES and refuses a dotted analytic_function path.
-    "pyegeria>=6.2.19",
+    "pyegeria>=6.2.20",
 ]
 
 [project.optional-dependencies]

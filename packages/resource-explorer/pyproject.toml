@@ -180,7 +180,7 @@ dependencies = [
     # is no longer set anywhere in trellis.
     # Raised to 6.2.19 (2026-11-02): the release that removes PYEGERIA_REPORT_SPEC_MODULES and refuses a dotted
     # analytic_function path, so a 6.2.18 venv can no longer pass tests that the 8813 containers would fail.
-    "pyegeria>=6.2.19",
+    "pyegeria>=6.2.20",
     "mcp>=2.0.0",
     # nest-asyncio removed 2026-09-04 with the shared-pool refactor: RE no
     # longer imports it anywhere. Its one site, surveyors/prefect_adapter.py's
