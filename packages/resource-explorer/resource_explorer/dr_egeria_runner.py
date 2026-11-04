@@ -251,35 +251,51 @@ _STEP_FIELDS = {
 }
 
 
-def _batch_of(doc: Path) -> str:
-    """The batch id (directory name) when the `_batch.json` beside the document lists it in `files`."""
+def _manifest_of(doc: Path) -> tuple[Path | None, str]:
+    """The nearest `_batch.json` at or above the document's folder, inside the docs root, and the document's path
+    relative to that manifest's folder (a batch may list documents in sub-folders: engine-host/library/x.md)."""
     from resource_explorer import bootstrap
 
-    manifest = doc.parent / bootstrap.BATCH_MANIFEST_FILE
-    if not manifest.is_file():
+    try:
+        root = docs_root()
+    except Exception:  # noqa: BLE001 - no root configured: only the document's own folder is looked at
+        root = doc.parent
+    folder = doc.parent
+    while True:
+        manifest = folder / bootstrap.BATCH_MANIFEST_FILE
+        if manifest.is_file():
+            return manifest, doc.relative_to(folder).as_posix()
+        if folder == root or folder.parent == folder or root not in folder.parents:
+            return None, ""
+        folder = folder.parent
+
+
+def _batch_of(doc: Path) -> str:
+    """The batch id (directory name) when the nearest `_batch.json` lists the document in `files`."""
+    manifest, rel = _manifest_of(doc)
+    if manifest is None:
         return ""
     try:
         files = json.loads(manifest.read_text()).get("files") or []
     except (OSError, ValueError, AttributeError):
-        return doc.parent.name             # unreadable manifest: assume it may list the document
-    return doc.parent.name if doc.name in files else ""
+        return manifest.parent.name        # unreadable manifest: assume it may list the document
+    return manifest.parent.name if rel in files else ""
 
 
 def _batch_note(doc: Path) -> str:
     """When the document belongs to a bootstrap batch that is not idempotent, say what a repeat needs after it."""
-    from resource_explorer import bootstrap
-
-    manifest = doc.parent / bootstrap.BATCH_MANIFEST_FILE
-    if not manifest.is_file():
+    manifest, _rel = _manifest_of(doc)
+    if manifest is None:
         return ""
+    name = manifest.parent.name
     try:
         spec = json.loads(manifest.read_text())
     except (OSError, ValueError):
-        return f"this document is in bootstrap batch {doc.parent.name}, whose manifest is unreadable"
+        return f"this document is in bootstrap batch {name}, whose manifest is unreadable"
     if spec.get("idempotent", True):
-        return f"this document is in bootstrap batch {doc.parent.name} (idempotent)"
+        return f"this document is in bootstrap batch {name} (idempotent)"
     script = (spec.get("post_heal") or {}).get("script") or ""
-    return (f"this document is in bootstrap batch {doc.parent.name}, which is NOT idempotent"
+    return (f"this document is in bootstrap batch {name}, which is NOT idempotent"
             + (f"; after a repeat run, run {script} to strip duplicate links" if script else ""))
 
 
@@ -628,11 +644,17 @@ def _item_counts(row: dict) -> str:
     return ", ".join(parts) or "no command results recorded"
 
 
-def _guard_repeat(registry, plan: DocumentPlan, force: bool, own_id: str = "") -> None:
+def _guard_repeat(registry, plan: DocumentPlan, force: bool, own_id: str = "", waiver: str = "") -> list[dict]:
     """Refuse a run that could repeat writes. Order: a live run of the same content (always refused, force or
-    not); a bootstrap batch document (refused unless forced); an earlier run of the same content (refused
-    unless forced). A running row whose owner is provably gone is first reconciled to `interrupted` exactly as
-    run_reconciler does, and then counts as an earlier run (it may have written before it stopped)."""
+    not, waiver or not); a bootstrap batch document (refused unless forced or waived); an earlier run of the same
+    content (refused unless forced or waived). A running row whose owner is provably gone is first reconciled to
+    `interrupted` exactly as run_reconciler does, and then counts as an earlier run (it may have written before it
+    stopped).
+
+    `waiver` (engine-host self-heal, 2026-11-04): the words of the bootstrap pass that VERIFIED, inside the heal
+    lock, that the batch's canary is missing from Egeria. An earlier run of this content is then evidence of a run
+    whose elements a reset wiped, not of elements still there (act A was refused on 2026-11-04 by a 2026-10-15 row
+    from before a reset). Only `bootstrap` passes it. Returns the earlier runs the waiver set aside."""
     from resource_explorer.run_reconciler import reconcile_one
 
     for r in _runs_of(registry, plan.sha256):
@@ -644,6 +666,8 @@ def _guard_repeat(registry, plan: DocumentPlan, force: bool, own_id: str = "") -
         r = running[0]
         raise RunRefused(f"a run of {plan.rel} (same content) is in progress: activity {r['id']} since {r['ts']} "
                          "(its process is alive or cannot be checked)")
+    if waiver:
+        return prior
     unsafe = ", ".join(plan.not_safe_to_repeat) or "none"
     if plan.batch_id and not force:
         raise RepeatRefused(
@@ -656,6 +680,23 @@ def _guard_repeat(registry, plan: DocumentPlan, force: bool, own_id: str = "") -
             f"{plan.rel} (sha256 {plan.sha256[:12]}) was run before: activity {r['id']} at {r['ts']} ended "
             f"{r['status']} ({_item_counts(r)}). Commands not safe to repeat: {unsafe}. Run it again only on "
             "purpose, with force." + (f" Note: {plan.batch_note}." if plan.batch_note else ""))
+    return []
+
+
+def run_in_progress(path: str | os.PathLike, registry=None) -> dict | None:
+    """The RUNNING row of this document's content whose process is alive or cannot be checked, or None. Rows whose
+    owner is provably gone are first reconciled to `interrupted`, as `_guard_repeat` does. For the bootstrap's
+    whole-pass refusal (Architect ruling Q2, 2026-11-04): a running row for ANY file refuses the pass before it starts."""
+    from resource_explorer.registry import ProjectRegistry
+    from resource_explorer.run_reconciler import reconcile_one
+
+    plan = plan_document(path)
+    registry = registry or ProjectRegistry()
+    for r in _runs_of(registry, plan.sha256):
+        if r.get("status") == RUNNING:
+            reconcile_one(registry, r)
+    running = [r for r in _runs_of(registry, plan.sha256) if r.get("status") == RUNNING]
+    return running[0] if running else None
 
 
 def _child_env() -> dict:
@@ -695,7 +736,7 @@ def _result_from_row(row: dict, plan: DocumentPlan) -> dict:
 
 def run_document(path: str | os.PathLike, *, dry_run: bool = False, force: bool = False, requested_by: str = "",
                  registry=None, identity: Any = None,
-                 announce: Optional[Callable[[str], None]] = None) -> dict:
+                 announce: Optional[Callable[[str], None]] = None, heal_waiver: str = "") -> dict:
     """Run (or, with `dry_run`, only plan) one Dr.Egeria document. THE function the CLI and the route call.
 
     A real run needs `identity` (a `bootstrap.DrEgeriaIdentity`, supplied by the caller: `--as`, the admin's own
@@ -703,7 +744,10 @@ def run_document(path: str | os.PathLike, *, dry_run: bool = False, force: bool 
     "applying as <user> from <source>" before the first command (default: the log).
 
     Raises `DocumentRefused` (bad path or invalid document; nothing written) or `RunRefused` /
-    `RepeatRefused` (a run in progress, or the content already applied without `force`)."""
+    `RepeatRefused` (a run in progress, or the content already applied without `force`).
+
+    `heal_waiver` is for `bootstrap` alone, which calls this from INSIDE its heal lock after verifying the batch's
+    canary missing: the heal-lock refusal is then its own lock, and earlier runs are set aside (`_guard_repeat`)."""
     plan = plan_document(path)
     if dry_run:
         return _plan_view(plan)
@@ -717,7 +761,7 @@ def run_document(path: str | os.PathLike, *, dry_run: bool = False, force: bool 
         raise RunRefused("another ad-hoc Dr.Egeria run is in progress in this process")
     try:
         return _run_locked(plan, force=force, requested_by=requested_by, registry=registry, identity=identity,
-                           announce=announce)
+                           announce=announce, heal_waiver=heal_waiver)
     finally:
         _run_lock.release()
 
@@ -737,7 +781,7 @@ def _step_scope(identity, acting_as, client_scope, Named, EgeriaIdentity, KIND_C
 
 
 def _run_locked(plan: DocumentPlan, *, force: bool, requested_by: str, registry, identity,
-                announce: Optional[Callable[[str], None]] = None) -> dict:
+                announce: Optional[Callable[[str], None]] = None, heal_waiver: str = "") -> dict:
     import asyncio
 
     from resource_explorer import bootstrap
@@ -747,15 +791,21 @@ def _run_locked(plan: DocumentPlan, *, force: bool, requested_by: str, registry,
     from resource_explorer.registry import ActivityEntry, ProjectRegistry
     from resource_explorer.run_reconciler import process_identity
 
-    if bootstrap._heal_lock.locked():
+    if bootstrap._heal_lock.locked() and not heal_waiver:
         raise RunRefused("a bootstrap heal is running; it also runs Dr.Egeria documents")
     registry = registry or ProjectRegistry()
-    _guard_repeat(registry, plan, force)
+    superseded = _guard_repeat(registry, plan, force, waiver=heal_waiver)
 
     entry_id = str(uuid.uuid4())
     detail = {"document": plan.rel, "sha256": plan.sha256, "dry_run": False, "force": force,
               "requested_by": requested_by, "not_safe_to_repeat": plan.not_safe_to_repeat,
               "batch_note": plan.batch_note, "applying_as": identity.user, "identity_source": identity.source}
+    if heal_waiver:
+        detail["heal_waiver"] = heal_waiver
+        detail["superseded_runs"] = [{"id": r["id"], "ts": r.get("ts", ""), "status": r.get("status", "")}
+                                     for r in superseded]
+        detail["superseded_words"] = "; ".join(
+            f"earlier run {r['id']} at {r.get('ts', '')} superseded: {heal_waiver}" for r in superseded)
     planned_items = [c.item(NOT_RUN) for c in plan.commands]
 
     def write(status: str, summary: str, items: list[dict], *, running: bool) -> None:
@@ -773,7 +823,7 @@ def _run_locked(plan: DocumentPlan, *, force: bool, requested_by: str, registry,
     write(RUNNING, f"Dr.Egeria {plan.rel}: running {len(plan.commands)} command(s)", planned_items, running=True)
     # Another process may have started the same content between the check and the row: the later one stands down.
     try:
-        _guard_repeat(registry, plan, force=True, own_id=entry_id)
+        _guard_repeat(registry, plan, force=True, own_id=entry_id, waiver=heal_waiver)
     except RunRefused as exc:
         write(REFUSED, f"Dr.Egeria {plan.rel}: refused, {exc}", planned_items, running=False)
         raise

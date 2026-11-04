@@ -31,6 +31,9 @@ def test_bootstrap_run_never_sends_force_true():
     run = API[API.index("export const runBootstrapMissingOnly"):]
     run = run[:run.index(";") + 1]
     assert "force: false" in run and "force: true" not in run
+    one = API[API.index("export const runBootstrapBatch"):]
+    one = one[:one.index(";") + 1]
+    assert "{ batch }" in one and "force" not in one, "the one-batch press (W65) is never forced"
     for js in NEXT.rglob("*.js"):
         text = js.read_text()
         assert "bootstrap/run" not in text or js.name == "re-api.js", f"{js} posts the bootstrap run itself"

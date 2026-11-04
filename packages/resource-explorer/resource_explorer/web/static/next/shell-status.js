@@ -111,11 +111,35 @@ export function lastHeal(status) {
 export function bootstrapAttention(status) {
   if (!status) return null;
   const batches = Object.values(status.batches || {});
-  const missing = batches.filter((b) => b.present === false);
+  // An opt-in batch that is off (engine-host, F54) is not healed by "Run bootstrap now": it has its own line
+  // (engineLine) and its own press (Admin › Repair), so it is not counted here.
+  const missing = batches.filter((b) => (b.state ? b.state === 'missing' : b.present === false)
+    && !(b.opt_in && b.opt_in.on === false));
   if (status.reinitializing) return { kind: 'restoring', word: 'Restoring definitions', missing: missing.length };
   if (status.egeria_reachable === false) return { kind: 'unreachable', word: 'Egeria not reachable', missing: missing.length };
   if (missing.length) return { kind: 'missing', word: `${missing.length} definition batch${missing.length === 1 ? '' : 'es'} missing`, missing: missing.length };
   return null;
+}
+
+/** The engine-host batch's own line (W65), for everyone: null, or {kind, word}. "missing" whenever the engine is
+ *  verified absent, whatever the self-heal setting says; "declaring" while a pass is running that batch. opted_out
+ *  and unknown draw nothing here (Admin › Repair says them). */
+export const ENGINE_BATCH = 'engine-host';
+export const ENGINE_MISSING_WORDS = "Resource Explorer's survey engine is not declared in this Egeria · RE-engine "
+  + 'surveys cannot run in Egeria · an admin can declare it (Admin › Repair)';
+export const ENGINE_DECLARING_WORDS = "Resource Explorer's survey engine: declaring…";
+export function engineLine(status) {
+  const b = status?.batches?.[ENGINE_BATCH];
+  if (!b) return null;
+  if (status.healing === ENGINE_BATCH || b.healing === true) return { kind: 'declaring', word: ENGINE_DECLARING_WORDS };
+  if (b.state === 'missing') return { kind: 'missing', word: ENGINE_MISSING_WORDS };
+  return null;
+}
+
+function engineLineHtml(eng) {
+  if (!eng) return '';
+  return `<span data-engine-line="${esc(eng.kind)}" class="basis-full ${eng.kind === 'declaring' ? 'text-accent-ink' : 'text-state-warn'}">`
+    + `<span aria-hidden="true">${eng.kind === 'declaring' ? '◔' : '⚠'}</span> ${esc(eng.word)}</span>`;
 }
 
 function healLine(status) {
@@ -131,8 +155,9 @@ let runInFlight = false;
 /** Draw, update or remove the bootstrap banner for `status` (null = could not be read: no banner, no claim). */
 export function renderBootstrapBanner(doc, status, { run = runBootstrapMissingOnly, onDone, locked = false } = {}) {
   const need = bootstrapAttention(status);
+  const eng = engineLine(status);
   if (runInFlight && doc.getElementById(BOOTSTRAP_BANNER_ID)) return need;
-  if (!need) { removeEl(doc, BOOTSTRAP_BANNER_ID); return null; }
+  if (!need && !eng) { removeEl(doc, BOOTSTRAP_BANNER_ID); return null; }
   let bar = doc.getElementById(BOOTSTRAP_BANNER_ID);
   if (!bar) {
     bar = doc.createElement('div');
@@ -141,9 +166,15 @@ export function renderBootstrapBanner(doc, status, { run = runBootstrapMissingOn
     bar.className = 'sticky top-0 z-30 flex flex-wrap items-baseline gap-s3 border-b border-rule-strong bg-paper px-s3 py-s2 text-caveat text-ink';
     doc.body.insertBefore(bar, doc.body.firstChild);
   }
+  if (!need) {
+    // Only the engine line: no batch word, no run button (the press is Admin › Repair's).
+    bar.dataset.bootstrapKind = 'engine';
+    bar.innerHTML = engineLineHtml(eng);
+    return { kind: 'engine', word: eng.word, missing: 0 };
+  }
   const canRun = need.kind === 'missing';
   bar.dataset.bootstrapKind = need.kind;
-  bar.innerHTML = `<span class="${need.kind === 'restoring' ? 'text-accent-ink' : 'text-state-warn'}" aria-hidden="true">${need.kind === 'restoring' ? '◔' : '⚠'}</span>
+  bar.innerHTML = `${engineLineHtml(eng)}<span class="${need.kind === 'restoring' ? 'text-accent-ink' : 'text-state-warn'}" aria-hidden="true">${need.kind === 'restoring' ? '◔' : '⚠'}</span>
     <span data-bootstrap-word>${esc(need.word)}</span>
     ${canRun ? `<button type="button" data-bootstrap-run ${locked ? 'disabled data-admin-only' : ''}
       title="${locked ? 'Admin only: needs the admin credential (Admin → Feedback)' : 'Heal only what is missing. Nothing already present is re-run.'}"

@@ -291,4 +291,6 @@ Decided shape (first pass, may change):
 
 Generators to extend when built: `generate_engine_host_declaration.py` (process element + ImplementedBy), a new
 `generate_governance_metrics.py` (one GovernanceMetric per declared measure), and a routine declaration generator
-(AnalyticalActionProcess + EmbeddedProcess) — all generated only; the owner runs them.
+(AnalyticalActionProcess + EmbeddedProcess) — all generated only; run by the owner — by hand, by the Admin press,
+or by the opt-in heal (engine-host batch, `RE_ENGINE_HOST_HEAL`; reconciled 2026-11-04,
+DESIGN-BRIEF-ENGINE-HOST-SELF-HEAL-2026-11-04).
