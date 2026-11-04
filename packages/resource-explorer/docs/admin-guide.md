@@ -761,12 +761,15 @@ host does. Design: [`design-notes/DESIGN-RE-ENGINE-HOST-BY-EQUIVALENCE.md`](desi
   the library steps, the registry steps, the mixed process) are the `engine-host` bootstrap batch. Do not edit
   them; regenerate. Make sure no Java engine host lists `ResourceExplorerSurvey`, or it will race RE for every
   claim. An Egeria reset wipes the declaration. There are three ways to put it back:
-  - **Admin › Repair › "Declare RE's survey engine in Egeria".** The row shows the engine's state, the self-heal
-    setting and the price: the documents, the elements they create, who they apply as (RE's service account,
-    `EGERIA_USER_ID`), and how long the last run took. The press asks in the page, then runs the batch once
-    through the same lock as the heal. It is refused with "a bootstrap heal is already running" while one runs.
-    It is refused without a write if the engine is already declared ("already declared · content applied on
-    <date>") or if Egeria cannot be checked. It works whatever `RE_ENGINE_HOST_HEAL` says.
+  - **Admin › Repair › "Declare RE's survey engine in Egeria".** The row shows the engine's state — with the engine
+    present, "declared in this Egeria · N of 8 documents applied · checked …" (W67: the count comes from the same
+    run-row read as the press's words, without a press; an unreadable history reads "documents applied: not
+    known", never 0) — the self-heal setting and the price: the documents, the elements they create, who they apply
+    as (RE's service account, `EGERIA_USER_ID`), and how long the last run took. When N < 8 the press is offered as
+    "Complete the declaration" (F55). The press asks in the page, then runs the batch once through the same lock as
+    the heal. It is refused with "a bootstrap heal is already running" while one runs. It is refused without a
+    write if the engine is already declared and complete ("already declared · content applied on <date> · 8 of 8
+    documents applied") or if Egeria cannot be checked. It works whatever `RE_ENGINE_HOST_HEAL` says.
   - **The opt-in heal.** With `RE_ENGINE_HOST_HEAL=true`, the start-up check and the 10-minute loop run the batch on
     their own when they find the engine missing. Off (the default), they only read whether it is there.
   - **By hand**, one document at a time: `resource-explorer dr-egeria run engine-host/<doc>.md --as <user>`.

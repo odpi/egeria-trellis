@@ -1003,17 +1003,28 @@ def batch_price(batch_id: str, docs_dir: Path = DOCS_DIR, registry=None) -> dict
     except Exception:  # noqa: BLE001 - the time is then "not measured here"
         seconds = None
     n = len(batch.files)
+    # W67: the applied count rides on the price (read once, when the Repair row loads), from the SAME run-row read
+    # the press's words use (`applied_documents`), so a partial declaration is visible without a press.
+    applied = applied_count(batch, registry)
     words = (f"runs {n} Dr.Egeria document{'s' if n != 1 else ''} in order as "
              f"{applying_as or 'NO service account (EGERIA_USER_ID unset): refused'} · creates "
              f"{len(engines)} engine, {len(services)} services, {gats} governance action types, "
              f"{processes} process{'es' if processes != 1 else ''} · "
              + (f"about {seconds} s" if seconds is not None else "time not measured here yet")
-             + " · refused if already declared")
+             + " · with the engine present, runs only the documents not yet applied")
     return {"documents": n, "engines": len(engines), "services": len(services), "governance_action_types": gats,
             "processes": processes, "applying_as": applying_as, "seconds": seconds,
             "self_heal": ({"key": batch.opt_in, "on": batch.opted_in, "interval_seconds": CHECK_INTERVAL_SECONDS}
                           if batch.opt_in else None),
+            "documents_applied": applied, "documents_applied_words": applied_words(applied),
             "words": words}
+
+
+def applied_words(applied: dict) -> str:
+    """"N of M documents applied", or why the count is not known — never "0" for an unread history (W67)."""
+    if "error" in applied:
+        return f"documents applied: not known ({applied['error']})"
+    return f"{applied['applied']} of {applied['total']} documents applied"
 
 
 # ── orchestration ───────────────────────────────────────────────────────────

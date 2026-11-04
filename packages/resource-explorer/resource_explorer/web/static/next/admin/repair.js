@@ -59,16 +59,32 @@ let _memberships = [];
 
 export const ENGINE_BATCH = 'engine-host';
 export const DECLARE_LABEL = "Declare RE's survey engine in Egeria";
+export const COMPLETE_LABEL = 'Complete the declaration';
 
-/** Pure: the engine's state in words, from /api/bootstrap/status's engine-host entry (null = not read). */
-export function engineStateWords(entry) {
+/** Pure (W67): is the declaration partial — the engine present, fewer documents applied than the batch holds?
+ *  null when the count was not read (an unread history is never "0 applied"). */
+export function partialDeclaration(entry, price) {
+  const d = price?.documents_applied;
+  if (!entry || entry.state !== 'present' || !d || d.error || typeof d.applied !== 'number') return null;
+  return d.applied < d.total;
+}
+
+/** Pure: the press's label — F55's completion when the declaration is partial, else the declaration. */
+export function pressLabel(entry, price) {
+  return partialDeclaration(entry, price) ? COMPLETE_LABEL : DECLARE_LABEL;
+}
+
+/** Pure: the engine's state in words, from /api/bootstrap/status's engine-host entry (null = not read). W67: on a
+ *  present engine the applied count follows, from the price's run-row read (the same one the press's words use). */
+export function engineStateWords(entry, price = null) {
   if (!entry) return 'engine state: not read';
-  const base = {
+  let base = {
     present: 'declared in this Egeria',
     missing: 'NOT declared in this Egeria · RE-engine surveys cannot run in Egeria',
     unknown: 'not known · Egeria has not answered yet',
     opted_out: 'not checked yet',
   }[entry.state] || `engine state: ${entry.state || 'not reported'}`;
+  if (entry.state === 'present' && price?.documents_applied_words) base += ` · ${price.documents_applied_words}`;
   // Architect ruling Q4: say when, and by whom, the state was last verified.
   return entry.checked_at && entry.source ? `${base} · checked ${ago(entry.checked_at)} by the ${entry.source}` : base;
 }
@@ -102,12 +118,12 @@ function engineRowHtml(entry, price) {
   return `
     <div class="rounded-sm border border-rule p-s3" data-engine-row>
       <h4 class="m-0 text-caps uppercase tracking-caps text-ink-muted">RE's survey engine in Egeria</h4>
-      <p class="mt-[4px] max-w-[70ch] text-caveat text-ink" data-engine-state>${esc(engineStateWords(entry))}</p>
+      <p class="mt-[4px] max-w-[70ch] text-caveat text-ink" data-engine-state>${esc(engineStateWords(entry, price))}</p>
       <p class="mt-[2px] max-w-[70ch] text-provenance text-ink-muted" data-engine-self-heal>${esc(selfHealWords(entry?.opt_in || price?.self_heal))}</p>
       <p class="mt-[4px] max-w-[70ch] text-caveat text-ink-muted" data-engine-price>${esc(price ? price.words : 'price: not read')}</p>
       <div class="mt-s2 flex flex-wrap items-baseline gap-s2">
         <button type="button" data-engine-declare
-          class="cursor-pointer rounded-sm border border-accent px-3 py-[3px] text-caveat text-accent-ink hover:bg-paper-surface">${esc(DECLARE_LABEL)}</button>
+          class="cursor-pointer rounded-sm border border-accent px-3 py-[3px] text-caveat text-accent-ink hover:bg-paper-surface">${esc(pressLabel(entry, price))}</button>
         <span data-engine-result class="text-caveat text-ink"></span>
       </div>
     </div>`;
@@ -135,11 +151,16 @@ function drawEngineRow() {
   result.textContent = _engine.result;
   btn.addEventListener('click', async () => {
     if (btn.disabled) return;
+    const partial = partialDeclaration(entry, price);
     const ok = await inPageConfirm({
-      title: DECLARE_LABEL,
-      message: `${price ? price.words : 'Price not read.'}\n\nThis writes to Egeria. It is refused without a write if the `
-        + 'engine is already declared or Egeria cannot be checked.',
-      confirmLabel: 'Declare it',
+      title: pressLabel(entry, price),
+      message: `${price ? price.words : 'Price not read.'}\n\nThis writes to Egeria. `
+        + (partial
+          ? `The engine is declared and ${price.documents_applied_words}: only the documents with no run here whose `
+            + 'elements are verified absent in Egeria are run; the rest are skipped and named. Refused without a '
+            + 'write if that cannot be verified.'
+          : 'It is refused without a write if the engine is already declared and complete, or Egeria cannot be checked.'),
+      confirmLabel: partial ? 'Complete it' : 'Declare it',
     });
     if (!ok) return;
     btn.disabled = true;

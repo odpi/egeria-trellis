@@ -234,7 +234,34 @@ def test_price_counts_what_the_documents_declare(root, monkeypatch):
     assert price["applying_as"] == "resourceexplorernpa"
     assert price["self_heal"] == {"key": OPT, "on": False, "interval_seconds": bs.CHECK_INTERVAL_SECONDS}
     assert price["words"].startswith("runs 1 Dr.Egeria document in order as resourceexplorernpa · creates 1 engine")
-    assert price["words"].endswith("refused if already declared")
+    assert price["words"].endswith("with the engine present, runs only the documents not yet applied")
+
+
+def test_w67_the_price_carries_the_applied_count_from_the_same_run_row_read(root, reg, monkeypatch):
+    """W67: the Admin row reads "N of M documents applied" without a press; the count and the press's words come
+    from one read (`applied_documents`), and an unread history is never rendered as 0."""
+    from resource_explorer import dr_egeria_runner as runner
+
+    (root / "engine-host" / "library").mkdir()
+    (root / "engine-host" / "library" / "x.md").write_text((root / "plain" / "only.md").read_text())
+    _engine_batch(root, files=("decl.md", "library/x.md"))
+    before = bs.batch_price("engine-host", root, registry=reg)
+    assert before["documents_applied"] == {"applied": 0, "total": 2, "pending": ["decl.md", "library/x.md"]}
+    assert before["documents_applied_words"] == "0 of 2 documents applied"
+    Fakes(monkeypatch)
+    runner.run_document("engine-host/decl.md", force=True, identity=IDENT, registry=reg)
+    after = bs.batch_price("engine-host", root, registry=reg)
+    assert after["documents_applied"] == {"applied": 1, "total": 2, "pending": ["library/x.md"]}
+    assert after["documents_applied_words"] == "1 of 2 documents applied"
+    assert bs.already_declared_words(bs.discover_batches(root)[0], registry=reg).endswith("1 of 2 documents applied")
+
+    class Unreadable:
+        def list_activity(self, **kw):
+            raise RuntimeError("registry down")
+
+    broken = bs.batch_price("engine-host", root, registry=Unreadable())
+    assert broken["documents_applied"] == {"error": "run history not read (RuntimeError)"}
+    assert broken["documents_applied_words"] == "documents applied: not known (run history not read (RuntimeError))"
 
 
 def test_the_real_price_is_eight_documents():

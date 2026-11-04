@@ -176,3 +176,39 @@ test('repair (F55): a completed partial batch answers its own words; a completio
     reason: 'completing the batch stopped at library/x.md: not run · Egeria answered 500' } } }),
   'not completed · completing the batch stopped at library/x.md: not run · Egeria answered 500');
 });
+
+test('repair (W67): a present engine carries the applied count on the row without a press; a partial one offers Complete the declaration', async () => {
+  const present = ENG({ state: 'present', present: true, checked_at: new Date().toISOString(), source: 'engine host' });
+  const priceWith = (applied) => ({ ...PRICE, documents_applied: { applied, total: 8, pending: [] },
+    documents_applied_words: `${applied} of 8 documents applied` });
+  const { document, window } = makeDomEnvironment();
+  globalThis.fetch = async (url) => {
+    const u = String(url);
+    if (u.startsWith('/api/projects/') || u.startsWith('/api/investigations/')) return json([]);
+    if (u.startsWith('/api/bootstrap/status')) return json(STATUS({ 'engine-host': present }));
+    if (u.startsWith('/api/bootstrap/price/engine-host')) return json(priceWith(3));
+    return json({});
+  };
+  globalThis.location = window.location; globalThis.history = window.history;
+  const api = await import('/static/re-api.js'); api.clearCache();
+  const pane = await import(`/static/next/admin/repair.js?t=${Math.random()}`);
+  const host = document.createElement('div'); document.body.appendChild(host);
+  await pane.renderRepair(host); await tick();
+  assert.match(text(host.querySelector('[data-engine-state]')),
+    /^declared in this Egeria · 3 of 8 documents applied · checked .* by the engine host$/);
+  assert.equal(text(host.querySelector('[data-engine-declare]')), 'Complete the declaration');
+  host.querySelector('[data-engine-declare]').click(); await tick();
+  const dialog = document.querySelector('[data-confirm-dialog]');
+  assert.match(text(dialog), /The engine is declared and 3 of 8 documents applied: only the documents with no run here/);
+  assert.equal(text(dialog.querySelector('[data-confirm-yes]')), 'Complete it');
+  dialog.querySelector('[data-confirm-no]').click(); await tick();
+  // Pure words: complete → the declaring label; not read → no count, never "0 of 8".
+  assert.equal(pane.pressLabel(present, priceWith(8)), "Declare RE's survey engine in Egeria");
+  assert.equal(pane.engineStateWords(present, priceWith(8)).startsWith('declared in this Egeria · 8 of 8 documents applied'), true);
+  assert.equal(pane.engineStateWords(present, PRICE).startsWith('declared in this Egeria · checked'), true);
+  assert.equal(pane.pressLabel(present, PRICE), "Declare RE's survey engine in Egeria");
+  assert.equal(pane.partialDeclaration(present, { ...PRICE, documents_applied: { error: 'run history not read (X)' },
+    documents_applied_words: 'documents applied: not known (run history not read (X))' }), null);
+  assert.equal(pane.engineStateWords(ENG(), priceWith(3)), 'NOT declared in this Egeria · RE-engine surveys cannot run in Egeria',
+    'a missing engine says nothing about applied documents');
+});
