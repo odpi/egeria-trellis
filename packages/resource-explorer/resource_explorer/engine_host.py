@@ -460,6 +460,16 @@ def is_claim_refused(exc: BaseException) -> bool:
     return False
 
 
+def is_token_refused(exc: BaseException) -> bool:
+    """F57: Egeria refused the daemon's token (a 401/403 on a call that worked a moment ago). The one reading
+    `egeria_clients.classify_token_check_failure` makes, so the sweep and the login check agree on what a refusal
+    is. A platform restart (2026-11-04 21:00Z, JVM OOM) invalidates every token it issued; `_daemon_token_due`
+    re-mints only at the token's own `exp`, so without this the host failed every pass for an hour."""
+    from resource_explorer.egeria_clients import TOKEN_REFUSED, classify_token_check_failure
+
+    return classify_token_check_failure(exc) == TOKEN_REFUSED
+
+
 def governance_engine_client(client):
     """`client` (a pyegeria `GovernanceEngine`) with `legacy_fallback` off (§2.1). pyegeria's default is already
     False; this keeps it so if a caller or a later default ever turned it on."""
@@ -629,6 +639,31 @@ class EngineHost:
             clients = egeria_client(identity, purpose="engine host", shared=False)
             self._clients[key] = clients
         return clients.of(cls)
+
+    def refresh_daemon_tokens(self) -> int:
+        """F57: re-mint the daemon token on every daemon client set this host holds (never a person's: a Caller
+        cannot refresh). Returns how many sets were refreshed."""
+        count = 0
+        for clients in list(self._clients.values()):
+            identity = getattr(clients, "identity", None)
+            if identity is None or getattr(identity, "is_person", False):
+                continue
+            clients.refresh()
+            count += 1
+        return count
+
+    def _retry_once_after_401(self, fn, what: str):
+        """F57: run one pass; on a token refusal re-mint the daemon tokens ONCE and run it once more. A second
+        refusal propagates as it always did (the loop's ERROR). Any other failure propagates untouched."""
+        try:
+            return fn()
+        except Exception as exc:  # noqa: BLE001 -- only a token refusal is handled here
+            if not is_token_refused(exc):
+                raise
+            refreshed = self.refresh_daemon_tokens()
+            log.info("engine host: daemon token re-minted after a 401 on the %s (Egeria restarted?); %d client "
+                     "set(s) refreshed, retrying once", what, refreshed)
+            return fn()
 
     def _engine(self):
         """The Governance Engine client for the identity this code is acting as (§2.1)."""
@@ -878,7 +913,11 @@ class EngineHost:
         return facts
 
     def sweep_once(self) -> SweepResult:
-        """One pass: list, filter, claim, enqueue. Never raises for an Egeria answer; returns what it did."""
+        """One pass: list, filter, claim, enqueue. Never raises for an Egeria answer; returns what it did.
+        F57: a token refusal re-mints the daemon token once and repeats the pass once."""
+        return self._retry_once_after_401(self._sweep_once, "sweep")
+
+    def _sweep_once(self) -> SweepResult:
         result = SweepResult()
         if not engine_host_enabled():
             result.note = f"{ENABLE_ENV} is off"
@@ -981,7 +1020,11 @@ class EngineHost:
           outcome, never by running the step again. A row that stored no outcome completes survey-failed with
           the row's own words (a departure from §3.4's "re-run": see `_outcome_from_ended_row`).
 
-        Each action is handled on its own: one that raises is counted in `errors` and the pass goes on."""
+        Each action is handled on its own: one that raises is counted in `errors` and the pass goes on.
+        F57: a token refusal re-mints the daemon token once and repeats the pass once."""
+        return self._retry_once_after_401(self._restart_pass, "completion pass")
+
+    def _restart_pass(self) -> RestartResult:
         result = RestartResult()
         if not engine_host_enabled():
             result.note = f"{ENABLE_ENV} is off"
@@ -2195,6 +2238,8 @@ def _run_engine_action(registry, run_id: str, target: dict) -> tuple[str, str]:
 
     principal = current_principal()
     # Not scope-shared: these clients are closed when the run ends (they are bound to this run's event loop).
+    # F57: built fresh per run, so they mint a new token here and never carry one a platform restart killed;
+    # the once-and-retry re-mint belongs to the long-lived host's passes (`_retry_once_after_401`), not here.
     clients = egeria_client(principal, purpose="engine host", shared=False)
     engine = governance_engine_client(clients.of(GovernanceEngine))
     expert = None
