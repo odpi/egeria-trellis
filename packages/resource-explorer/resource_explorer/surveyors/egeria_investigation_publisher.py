@@ -221,39 +221,48 @@ def _apply_investigation_marker(pm, project_guid: str) -> tuple[bool, str]:
 
 
 def is_private_investigation(inv: dict) -> bool:
-    """Whether this investigation's Egeria elements must be zoned private: see
+    """Whether this investigation's Egeria elements must be zoned to its creator (`[private zone, owner]`, design
+    §3.3): `visibility` is creator-only (F56 — never the kind) AND there is a recorded creator. See
     `EgeriaInvestigationPublisher._is_private`, which delegates here (Brief Z3: the access check asks the same
-    rule without needing the publisher class)."""
+    rule without needing the publisher class).
+
+    The name is older than F56's words: in served text "private investigation" now means local + creator-only
+    only (`ProjectRegistry.is_private_investigation_row`). This predicate is about ZONING, and a creator-only
+    investigation that is in Egeria is exactly the one it is for."""
     from resource_explorer.registry import ProjectRegistry
 
-    return bool(
-        (inv.get("project_classification") or "") in ProjectRegistry.PRIVATE_CLASSIFICATIONS
-        and (inv.get("created_by") or "").strip()
-    )
+    return bool(ProjectRegistry.is_creator_only(inv) and (inv.get("created_by") or "").strip())
 
 
 #: The proof-row kind of a refusal to publish a private investigation that has no owner (design ruling
 #: 2026-10-13). Carried in the activity row's `detail` and `items` so it is told apart from a failed write.
 OWNERLESS_PRIVATE_REFUSAL = "private_without_owner"
 
-_PRIVATE_KIND_WORDS = {"PersonalProject": "personal", "Experiment": "experiment"}
+_KIND_WORDS = {"PersonalProject": "personal project", "StudyProject": "study", "Task": "task",
+               "Campaign": "campaign", "Experiment": "experiment"}
+
+
+def kind_words(kind: str) -> str:
+    """A kind in words for a sentence ("personal project"); "investigation" when the kind is undecided."""
+    kind = (kind or "").strip()
+    return _KIND_WORDS.get(kind, kind) or "investigation"
 
 
 def ownerless_private_words(inv: dict, verb: str = "published") -> str:
-    """The refusal words when `inv` is a privately-classified investigation with NO owner, else `""`.
+    """The refusal words when `inv` is creator-only with NO owner, else `""`.
 
-    Design ruling 2026-10-13. A private kind maps to `[PRIVATE_ZONE, owner]`; with no owner there is nobody to
-    make it private TO, and `is_private_investigation` (which requires an owner) used to answer "not private"
-    for exactly these rows, so they were published unzoned and readable by everyone (`egeria-understanding`,
-    found live 2026-10-13). Every write path refuses instead: never an unzoned element, never a fallback.
+    Design ruling 2026-10-13. Creator-only maps to `[PRIVATE_ZONE, owner]`; with no owner there is nobody to
+    zone it TO, and `is_private_investigation` (which requires an owner) used to answer "not private" for exactly
+    these rows, so they were published unzoned and readable by everyone (`egeria-understanding`, found live
+    2026-10-13). Every write path refuses instead: never an unzoned element, never a fallback. Keyed on the
+    `visibility` column (F56), and the words name the kind and the visibility separately.
     """
     from resource_explorer.registry import ProjectRegistry
 
-    kind = (inv.get("project_classification") or "").strip()
-    if kind not in ProjectRegistry.PRIVATE_CLASSIFICATIONS or (inv.get("created_by") or "").strip():
+    if not ProjectRegistry.is_creator_only(inv) or (inv.get("created_by") or "").strip():
         return ""
-    label = _PRIVATE_KIND_WORDS.get(kind, kind)
-    return f"not {verb} · this {label} investigation has no owner, so it cannot be made private"
+    return (f"not {verb} · this {kind_words(inv.get('project_classification') or '')} is creator-only but has "
+            "no recorded creator, so there is nobody to zone it to")
 
 
 def _latest_ownerless_refusal(registry, slug: str, action: str) -> dict | None:
@@ -417,6 +426,34 @@ class PromotionResult:
         }
 
 
+def apply_promotion_choice(inv: dict, choice: dict) -> dict:
+    """`inv` as it will be promoted with the dialog's `choice` (F56): kind, hypothesis and visibility validated
+    as `create_investigation` validates them; anything left out keeps the stored value. Raises ValueError with
+    the words for the person. Pure: nothing is stored."""
+    from resource_explorer.registry import ProjectRegistry
+
+    out = dict(inv)
+    kind = (choice.get("project_classification") or "").strip() or (inv.get("project_classification") or "")
+    if not kind:
+        raise ValueError("choose a kind before this goes to Egeria — Egeria records it as that Project "
+                         f"classification: one of {list(ProjectRegistry.PROJECT_CLASSIFICATIONS)}")
+    if kind not in ProjectRegistry.PROJECT_CLASSIFICATIONS:
+        raise ValueError(f"unknown classification {kind!r}; valid: {list(ProjectRegistry.PROJECT_CLASSIFICATIONS)}")
+    hypothesis = (choice.get("hypothesis") or "").strip() or (inv.get("hypothesis") or "").strip()
+    if kind in ProjectRegistry.HYPOTHESIS_REQUIRED_FOR:
+        if not hypothesis:
+            raise ValueError(f"{kind} requires a hypothesis — it is the attribute the classification exists to "
+                             "record")
+    else:
+        hypothesis = ""
+    visibility = (choice.get("visibility") or "").strip() or inv.get("visibility") or ProjectRegistry.VISIBILITY_SHARED
+    if visibility not in ProjectRegistry.VISIBILITIES:
+        raise ValueError(f"unknown visibility {visibility!r}; valid: {list(ProjectRegistry.VISIBILITIES)}")
+    out.update(project_classification=kind, hypothesis=hypothesis, visibility=visibility,
+               egeria_binding=ProjectRegistry.BINDING_EGERIA)
+    return out
+
+
 class EgeriaInvestigationPublisher:
     """Creates the Egeria side of an investigation. Read-only on the local row —
     the caller decides whether to record the returned GUIDs."""
@@ -430,7 +467,7 @@ class EgeriaInvestigationPublisher:
     def _is_private(inv: dict) -> bool:
         """Whether this investigation's Egeria elements must be zoned private.
 
-        Keyed on the same `PRIVATE_CLASSIFICATIONS` the registry uses, read off
+        Keyed on the `visibility` column (F56) the registry uses, read off
         the row rather than re-derived, and requiring a recorded creator —
         zoning to an empty owner would produce `[private_zone]` alone, which is
         readable by nobody at all, including the person it belongs to.
@@ -472,15 +509,26 @@ class EgeriaInvestigationPublisher:
         self._pm, self._cm = pm, cm
         return pm, cm
 
-    def promote(self, investigation_slug: str, *, refusal=None) -> PromotionResult:
+    def promote(self, investigation_slug: str, *, refusal=None, choice: dict | None = None) -> PromotionResult:
         """`refusal(member) -> str` (Brief Z3): each member's end of its CollectionMembership, checked before it
         is queued; a member it refuses is reported unlinkable with those words ("not permitted · <reason>") and
-        the rest are linked. The Project's own writes are checked by the caller before this runs."""
+        the rest are linked. The Project's own writes are checked by the caller before this runs.
+
+        `choice` (F56): the promote dialog's answers — `project_classification`, `hypothesis`, `visibility` —
+        applied to what is SENT (and the zoning), not stored here: the caller records them once a Project
+        exists. Giving a choice IS the decision to leave local, so a local investigation promotes with one. A
+        Project is never created without a kind: a private investigation's kind is undecided until this asks."""
         res = PromotionResult()
         inv = self._registry.get_investigation(investigation_slug)
         if not inv:
             res.errors.append(f"investigation '{investigation_slug}' not found")
             return res
+        if choice:
+            try:
+                inv = apply_promotion_choice(inv, choice)
+            except ValueError as exc:
+                res.errors.append(str(exc))
+                return res
         if inv.get("egeria_project_guid"):
             res.errors.append(
                 "already bound to an Egeria Project — unbind first rather than "
@@ -492,11 +540,11 @@ class EgeriaInvestigationPublisher:
         # — and the row would end up bound while still flagged local. The
         # caller is not blocked, only made to say so: changing the binding is a
         # one-field edit, and then this promotes normally.
-        if (inv.get("egeria_binding") or "egeria") == "local":
+        if (inv.get("egeria_binding") or "egeria") == "local" and not choice:
             res.errors.append(
-                "this investigation is ad-hoc — it was created with no Egeria "
-                "Project on purpose. Change its binding to 'egeria' first if it "
-                "should have one."
+                "this investigation is ad-hoc (local) — it was created with no "
+                "Egeria Project on purpose. Publish it to Egeria from its page, "
+                "which asks for its kind and who can see it."
             )
             return res
         # A private kind with no owner: refused before any client is built (ruling 2026-10-13). Zoning it to
@@ -628,9 +676,9 @@ class EgeriaInvestigationPublisher:
                 # by now, so this is reported rather than raised — but it is an
                 # error, so `ok` is False and the caller is told.
                 res.errors.append(
-                    f"this is a private investigation, but the '{private_zone()}' zone "
+                    f"this investigation is creator-only, but the '{private_zone()}' zone "
                     "is not confirmed to be enforced, so its Egeria Project could not be "
-                    "made private. It is visible to everyone until the zone is fixed."
+                    "zoned to its creator. It is visible to everyone until the zone is fixed."
                 )
             elif not set_zone_membership(res.project_guid, private_zones(private_owner)):
                 res.errors.append(

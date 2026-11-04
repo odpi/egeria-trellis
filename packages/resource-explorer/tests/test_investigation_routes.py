@@ -333,7 +333,10 @@ def test_an_ownerless_private_row_stays_visible_and_says_so(made):
         with _as("bob"):
             seen = reg.get_investigation(inv["slug"])
         assert seen is not None, "an ownerless row must not vanish"
-        assert seen["visibility"] == "shared"
+        # F56: `visibility` is the stored setting (creator-only, backfilled from the kind); whether the rule actually
+        # holds is `visible_to_creator_only`, False for a row with no creator.
+        assert seen["visibility"] == "creator-only"
+        assert seen["visible_to_creator_only"] is False
         assert "visible to everyone" in seen.get("visibility_note", "")
     finally:
         with reg._conn() as conn:
@@ -352,7 +355,7 @@ def test_visibility_is_reported_not_left_to_be_re_derived(made):
         shared = reg.create_investigation("Alice Shared2", project_classification="Task")
         got = {i["slug"]: i for i in reg.list_investigations()}
     try:
-        assert got[priv["slug"]]["visibility"] == "private"
+        assert got[priv["slug"]]["visibility"] == "creator-only"      # F56: the stored axis, not a derived word
         assert got[priv["slug"]]["is_mine"] is True
         assert got[shared["slug"]]["visibility"] == "shared"
     finally:
@@ -1916,8 +1919,9 @@ def test_the_marker_is_not_a_kind_and_so_survives_reclassification(made):
 
     assert INVESTIGATION_MARKER not in ProjectRegistry.PROJECT_CLASSIFICATIONS, (
         "the marker is in the kind vocabulary — a reclassification would strip it")
-    assert INVESTIGATION_MARKER not in ProjectRegistry.PRIVATE_CLASSIFICATIONS, (
-        "the marker would drive zoning, which the owner said it must not")
+    # F56: zoning follows `visibility`; the kind table only supplies defaults at creation.
+    assert INVESTIGATION_MARKER not in ProjectRegistry.DEFAULT_VISIBILITY_BY_KIND, (
+        "the marker would drive a visibility default, which the owner said it must not")
 
 
 # ── link-status: which members are linked, read from what relink writes ───

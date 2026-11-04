@@ -7,7 +7,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { test } from 'node:test';
-import { makeDomEnvironment, ensureLoaderRegistered } from './dom-harness.mjs';
+import { makeDomEnvironment, ensureLoaderRegistered, confirmPromote } from './dom-harness.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const INDEX_HTML = fs.readFileSync(path.resolve(HERE, '../../resource_explorer/web/static/next/index.html'), 'utf8');
@@ -54,6 +54,7 @@ async function investigation({ promote, relink, startBound = false }) {
 test('a refused promote shows the no_access cue and "not permitted", the reason on hover', async () => {
   const t = await investigation({ promote: () => refused(REASON) });
   t.document.querySelector('[data-act="inv-promote"]').click();
+  await confirmPromote(t.document);
   await tick(200);
   const cue = t.document.querySelector('[data-inv-promote-refused] [data-cue="no_access"]');
   assert.ok(cue, 'the cue');
@@ -67,6 +68,7 @@ test('a member the promote check refused is named with the cue; the linked ones 
     ok: true, classification_requested: 'StudyProject', classification_confirmed: 'StudyProject', members_linked: ['b'],
     members_unlinkable: [{ entity_type: 'repo', entity_slug: 'a', reason: `not permitted · ${REASON}` }] }) }) });
   t.document.querySelector('[data-act="inv-promote"]').click();
+  await confirmPromote(t.document);
   await tick(250);
   const row = t.document.querySelector('[data-member-not-permitted="a"]');
   assert.ok(row, 'the refused member');

@@ -78,7 +78,7 @@ def _ownerless(reg: ProjectRegistry, name: str, classification: str = "PersonalP
 
 
 @pytest.mark.parametrize("classification,hypothesis,word", [
-    ("PersonalProject", "", "personal"),
+    ("PersonalProject", "", "personal project"),
     ("Experiment", "h", "experiment"),
 ])
 def test_an_ownerless_private_investigation_is_refused_and_nothing_is_sent(
@@ -101,7 +101,7 @@ def test_an_ownerless_private_investigation_is_refused_and_nothing_is_sent(
     assert _sent(cm) == [], f"sent to Egeria for an ownerless private investigation: {cm.mock_calls}"
     assert zoned == {}
     assert not res.ok and res.project_guid == ""
-    words = f"not published · this {word} investigation has no owner, so it cannot be made private"
+    words = f"not published · this {word} is creator-only but has no recorded creator, so there is nobody to zone it to"
     assert res.not_published == words
     assert words in res.errors
     assert res.as_dict()["not_published"] == words
@@ -155,7 +155,7 @@ def test_the_bound_write_paths_refuse_an_ownerless_private_investigation_too(tmp
                      (inv["slug"],))
     pm, cm = _clients()
     pub = EgeriaInvestigationPublisher(reg, project_manager=pm, collection_manager=cm)
-    words = "not published · this personal investigation has no owner, so it cannot be made private"
+    words = "not published · this personal project is creator-only but has no recorded creator, so there is nobody to zone it to"
 
     for res in (pub.ensure_working_set(inv["slug"]), pub.relink_members(inv["slug"]),
                 pub.sync_project_properties(inv["slug"])):
@@ -182,7 +182,7 @@ def test_a_reclassify_of_a_bound_ownerless_private_investigation_is_refused(tmp_
         for to, hyp in (("Task", ""), ("Experiment", "h")):
             res = InvestigationReclassifier(reg).reclassify(inv["slug"], to, hyp)
             assert res.errors == [
-                "not reclassified · this personal investigation has no owner, so it cannot be made private"]
+                "not reclassified · this personal project is creator-only but has no recorded creator, so there is nobody to zone it to"]
             assert not res.local_applied
     finally:
         ident.set_zone_membership = before
@@ -213,7 +213,7 @@ def test_repeated_resync_relink_passes_leave_one_refusal_row(tmp_path):
     with reg._conn() as conn:
         conn.execute("UPDATE investigations SET egeria_project_guid = 'proj-live' WHERE slug = ?",
                      (inv["slug"],))
-    words = "not published · this personal investigation has no owner, so it cannot be made private"
+    words = "not published · this personal project is creator-only but has no recorded creator, so there is nobody to zone it to"
 
     for _ in range(2):
         out = EgeriaResync(registry=reg)._do_relink_investigation_members()

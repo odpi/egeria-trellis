@@ -172,9 +172,10 @@ def decisions(monkeypatch):
 
 #: A private investigation, not yet in Egeria: promote creates its Project in [SECURED (the private zone), OWNER].
 PRIVATE_UNBOUND = {"slug": "i", "display_name": "I", "project_classification": "PersonalProject",
-                   "created_by": OWNER, "egeria_binding": "egeria", "egeria_project_guid": ""}
+                   "visibility": "creator-only", "created_by": OWNER, "egeria_binding": "egeria", "egeria_project_guid": ""}
 #: A bound investigation whose Project is "pg".
-BOUND = {"slug": "i", "display_name": "I", "project_classification": "PersonalProject", "created_by": OWNER,
+BOUND = {"slug": "i", "display_name": "I", "project_classification": "PersonalProject", "visibility": "creator-only",
+         "created_by": OWNER,
          "egeria_binding": "egeria", "egeria_project_guid": "pg", "status": "open"}
 WORK_LIST = {"slug": "w", "display_name": "W", "entity_type": "repo", "stored_entity_type": "repo",
              "kinds": {"repo": 1}, "egeria_guid": "wg", "members": [{"entity_slug": "p", "entity_type": "repo"}]}
@@ -192,7 +193,7 @@ ROUTES = [
       "resource_explorer.registry.ProjectRegistry.investigation_working_set_slug": lambda self, slug: "",
       "resource_explorer.registry.ProjectRegistry.set_investigation_egeria_project": _reached}),
     ("investigation reclassify", "post", "/api/investigations/i/reclassify",
-     {"project_classification": "StudyProject"}, "pg",
+     {"project_classification": "StudyProject", "visibility": "shared"}, "pg",
      {INV: lambda self, slug: dict(BOUND),
       "resource_explorer.surveyors.investigation_reclassifier.InvestigationReclassifier._move_zones": _reached}),
     ("investigation relink", "post", "/api/investigations/i/relink-members", None, "cg",
@@ -320,7 +321,8 @@ def test_operations_are_the_ones_egeria_checks_for_each_write(registry):
 
     assert ewa.promote_writes({"project_classification": "StudyProject"})[0].operations == (
         "CREATE", "CLASSIFY", "ATTACH")
-    assert ewa.promote_writes({"project_classification": "PersonalProject", "created_by": OWNER})[0].operations == (
+    assert ewa.promote_writes({"project_classification": "PersonalProject", "visibility": "creator-only",
+                             "created_by": OWNER})[0].operations == (
         "CREATE", "CLASSIFY", "ATTACH", "PUBLISH")
     assert ewa.sync_writes({"egeria_project_guid": "pg"})[0].operations == ("UPDATE_PROPERTIES",)
     assert ewa.sync_writes({}) == []
@@ -568,7 +570,10 @@ class TestReclassify:
         from resource_explorer.surveyors import investigation_reclassifier as ir
         from resource_explorer.workflows.egeria_work_access import access_words
 
+        from resource_explorer.registry import ProjectRegistry as _PR
+
         inv = {"slug": "i", "display_name": "I", "project_classification": frm, "created_by": USER,
+               "visibility": _PR.default_visibility_for(frm),
                "egeria_project_guid": "pg"}
         monkeypatch.setattr(registry, "get_investigation", lambda slug: dict(inv))
         monkeypatch.setattr(ir.InvestigationReclassifier, "_report_guids", lambda self, slug: (["r1", "r2"], []))
@@ -578,11 +583,13 @@ class TestReclassify:
         monkeypatch.setattr(ir.InvestigationReclassifier, "_move_kind_classification",
                             lambda self, *a: (True, ""))
         monkeypatch.setattr(registry, "set_investigation_classification",
-                            lambda slug, to, hypothesis="": applied.append(to))
+                            lambda slug, to, hypothesis="", **k: applied.append(to))
         monkeypatch.setattr("resource_explorer.egeria_identity.private_zone_status", lambda: {"status": "ok"})
         monkeypatch.setattr("resource_explorer.egeria_identity.private_zone_is_enforced", lambda: True)
+        # F56: these pin the visibility directions, so the dialog's visibility follows the kind's default.
         res = ir.InvestigationReclassifier(registry).reclassify(
-            "i", to, access=lambda ws: access_words(registry, ws, entity_type="investigation", slug="i"))
+            "i", to, access=lambda ws: access_words(registry, ws, entity_type="investigation", slug="i"),
+            visibility=_PR.default_visibility_for(to))
         return res, moved, applied
 
     def test_a_tightening_with_a_refused_report_moves_nothing(self, registry, monkeypatch):

@@ -235,7 +235,7 @@ function privateZoneHtml() {
   }
   const settling = (z.settling_seconds_remaining || 0) > 0;
   return `<div class="mb-s3 rounded-sm border border-rule bg-paper-surface p-s3">
-    <div class="text-caveat text-state-warn">${settling ? '⏳ Private zone settling' : '⚠ Private investigations cannot publish'}</div>
+    <div class="text-caveat text-state-warn">${settling ? '⏳ Private zone settling' : '⚠ Creator-only investigations cannot publish'}</div>
     <div class="mt-[2px] text-caveat text-ink">${settling
       ? `The <span class="font-mono">${zone}</span> control exists but Egeria's security connector `
         + `has not reloaded it yet (about ${Math.ceil((z.settling_seconds_remaining || 0) / 60)} min). `

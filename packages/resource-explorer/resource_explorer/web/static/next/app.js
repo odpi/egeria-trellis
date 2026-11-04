@@ -902,7 +902,8 @@ export function renderTopBar() {
   const scopeEl = $('investigation-scope');
   if (scopeEl) {
     scopeEl.textContent = inv
-      ? (inv.egeria_binding === 'egeria' ? '· bound to Egeria Project' : '· ad hoc')
+      ? (inv.is_private_investigation ? '· private investigation · not in Egeria'   // F56: local + creator-only only
+        : inv.egeria_binding === 'egeria' ? '· bound to Egeria Project' : '· ad hoc')
       : '';
     scopeEl.title = inv?.egeria_project_qualified_name || '';
   }

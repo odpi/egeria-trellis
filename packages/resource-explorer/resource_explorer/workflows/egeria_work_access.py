@@ -66,7 +66,7 @@ class ElementWrite:
 #: cannot see the investigation's elements (Egeria refuses it them by design), so it neither checks nor writes
 #: them, and the row or the press waits for the owner (2026-10-13, the owner's privacy proof).
 def owner_waiting_words(owner: str) -> str:
-    return f"waiting for the owner, {owner}, to retry: the service account cannot see a private investigation"
+    return f"waiting for the owner, {owner}, to retry: the service account cannot see a creator-only investigation"
 
 
 def investigation_unscoped(registry, slug: str) -> Optional[dict]:
@@ -350,6 +350,18 @@ def reclassify_kind_after_move(project_guid: str, from_kind: str, target: Iterab
         ops += (z.DECLASSIFY_OPERATION,)
     return ElementWrite(project_guid, ops, label="the investigation Project in its new zones",
                         zones_after=tuple(target), foreign_after=tuple(own_zones))
+
+
+def reclassify_kind_in_place(project_guid: str, from_kind: str) -> ElementWrite:
+    """F56: a reclassify that changes the kind and NOT the visibility: the Project stays in its zones, and only
+    its kind classification is swapped (CLASSIFY the new kind; DECLASSIFY the old one when RE knows it)."""
+    from resource_explorer.registry import ProjectRegistry
+
+    z = _ops()
+    ops = (z.CLASSIFY_OPERATION,)
+    if from_kind and from_kind in ProjectRegistry.PROJECT_CLASSIFICATIONS:
+        ops += (z.DECLASSIFY_OPERATION,)
+    return ElementWrite(project_guid, ops)
 
 
 def report_write(report_guid: str) -> ElementWrite:

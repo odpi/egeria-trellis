@@ -31,7 +31,8 @@ exactly as native leaves it:
   So is a library step's whose package is not installed here: the start-up line, which names every installed step
   per host ("library steps · Egeria host: <installed> (M missing: <names>) · Files host: ..."), names it, and its
   actions are skipped as `library_step_not_installed` (§3.3; Q-M7 is still open);
-* none of its targets is a database with a private owner (`registry.private_owner_for_entity`). The engine
+* none of its targets is a database with a private owner (`registry.private_owner_for_entity`: a resource in a
+  creator-only investigation — keyed on the investigation's `visibility`, F56, never its kind). The engine
   host is unattended, so it is a daemon; private work never runs as the service account (owner, Q-O3). The
   owner runs such work attended from RE. Claiming and then refusing would write a FAILED action into a
   private context (§3.5).
@@ -755,7 +756,8 @@ class EngineHost:
         else:
             reports = []
         slugs = [self.registry.database_slug_for_asset_guid(t["guid"]) for t in targets]
-        # Private first: if ANY target is a resource in a private investigation the action is left unclaimed,
+        # Private first: if ANY target is a resource in a creator-only investigation (F56: its `visibility`, not its
+        # kind — a shared PersonalProject's resources are claimed) the action is left unclaimed,
         # whatever else it names (owner, Q-O3; claiming and refusing would write a FAILED action into a
         # private context, §3.5). A repository target counts too (case 3 claims repository request types).
         for t, slug in zip(targets, slugs):

@@ -722,9 +722,9 @@ def promotion_by_scope(registry: ProjectRegistry, slug: str, node_kind: str) -> 
 def _private_skip(guid: str, in_zones: list[str]) -> dict:
     return {
         "status": "skipped",
-        "reason": ("this element belongs to a private investigation; accepting a "
-                   "finding does not make it public. Reclassify the investigation "
-                   "to share it."),
+        "reason": ("this element belongs to a creator-only investigation; accepting a "
+                   "finding does not make it public. Make the investigation shared "
+                   "(Reclassify…) to share it."),
         "guid": guid,
         "zones": in_zones,
         "words": "accepted · stays private · reclassify the investigation to share it",

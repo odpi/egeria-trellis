@@ -453,9 +453,11 @@ def _w66_rows(registry, viewer=""):
                                                                    viewer=viewer)}
 
 
-W66_SENTENCE = ("not offered: this database is in a private investigation, and Resource Explorer's engine host does not "
-                "claim Egeria engine actions on private resources (nothing of a private investigation is written into "
-                "Egeria's engine queue) · Resource Explorer's own Run on the card runs it here instead")
+# F56: the sentence says "creator-only investigation" — "private investigation" names only local + creator-only.
+W66_SENTENCE = ("not offered: this database is in a creator-only investigation, and Resource Explorer's engine host "
+                "does not claim Egeria engine actions on creator-only resources (nothing of a creator-only "
+                "investigation is written into Egeria's engine queue) · Resource Explorer's own Run on the card runs it "
+                "here instead")
 
 
 def test_w66_a_private_database_offers_no_re_engine_run_and_says_why(registry, monkeypatch):
@@ -468,7 +470,7 @@ def test_w66_a_private_database_offers_no_re_engine_run_and_says_why(registry, m
     for qn in RE_ENGINE_ROWS:
         assert by[qn]["runnable"] is False and by[qn]["cannot_run_reason"] == W66_SENTENCE, qn
     # Egeria's own engines are not RE's rule.
-    assert "private investigation" not in by["PostgreSQLSurvey::survey-postgres-database"]["cannot_run_reason"]
+    assert "creator-only investigation" not in by["PostgreSQLSurvey::survey-postgres-database"]["cannot_run_reason"]
 
 
 def test_w66_private_is_asked_first_even_with_the_engine_absent_or_the_host_off(registry, monkeypatch):
@@ -485,7 +487,7 @@ def test_w66_the_owner_sees_the_investigation_named_another_viewer_does_not(regi
     _make_private(registry, owner="alice", name="Alice Private")
     owner_reason = _w66_rows(registry, viewer="alice")["ResourceExplorerSurvey::re-db-derived"]["cannot_run_reason"]
     other_reason = _w66_rows(registry, viewer="bob")["ResourceExplorerSurvey::re-db-derived"]["cannot_run_reason"]
-    assert owner_reason == W66_SENTENCE + " (private investigation: Alice Private)"
+    assert owner_reason == W66_SENTENCE + " (creator-only investigation: Alice Private)"
     assert other_reason == W66_SENTENCE and "Alice" not in other_reason
 
 
@@ -527,4 +529,31 @@ def test_w66_a_shared_investigation_changes_nothing(registry, monkeypatch):
         inv = registry.create_investigation("Team task", project_classification="Task")
         ws = registry.get_or_create_working_set(inv["slug"])
         registry.add_working_set_member(ws["slug"], "database", "adventureworks")
-    assert "private investigation" not in _w66_rows(registry)["ResourceExplorerSurvey::re-db-derived"]["cannot_run_reason"]
+    assert "creator-only investigation" not in _w66_rows(registry)["ResourceExplorerSurvey::re-db-derived"]["cannot_run_reason"]
+
+
+def _in_investigation(registry, kind, visibility, owner="alice"):
+    with _as(owner):
+        inv = registry.create_investigation(f"{kind} {visibility}", project_classification=kind, visibility=visibility)
+        ws = registry.get_or_create_working_set(inv["slug"])
+        registry.add_working_set_member(ws["slug"], "database", "adventureworks")
+    return inv
+
+
+def test_f56_a_shared_personal_projects_database_is_offered(registry, monkeypatch):
+    """F56: Q-O3 follows the investigation's visibility, not its kind. A PersonalProject made shared is claimable."""
+    from resource_explorer import engine_host
+
+    monkeypatch.setenv("RE_ENGINE_HOST_ENABLED", "true")
+    engine_host.record_engine_answer(True)
+    _in_investigation(registry, "PersonalProject", "shared")
+    assert "creator-only investigation" not in _w66_rows(registry)["ResourceExplorerSurvey::re-db-derived"]["cannot_run_reason"]
+
+
+def test_f56_a_creator_only_studys_database_is_not_offered(registry, monkeypatch):
+    from resource_explorer import engine_host
+
+    monkeypatch.setenv("RE_ENGINE_HOST_ENABLED", "true")
+    engine_host.record_engine_answer(True)
+    _in_investigation(registry, "StudyProject", "creator-only")
+    assert _w66_rows(registry, viewer="bob")["ResourceExplorerSurvey::re-db-derived"]["cannot_run_reason"] == W66_SENTENCE

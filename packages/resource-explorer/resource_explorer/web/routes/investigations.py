@@ -40,6 +40,9 @@ class InvestigationCreate(BaseModel):
     hypothesis: str = ""
     egeria_project_guid: str = ""
     egeria_project_qualified_name: str = ""
+    #: F56: `creator-only` | `shared`. None takes the kind's default (`DEFAULT_VISIBILITY_BY_KIND`). The
+    #: "Private investigation" preset sends binding `local`, visibility `creator-only` and an empty kind.
+    visibility: str | None = None
 
 
 class InvestigationUpdate(BaseModel):
@@ -52,12 +55,26 @@ class InvestigationUpdate(BaseModel):
     #: investigation between visibility regimes and needs a flow with a report
     #: rather than a PATCH (design §5).
     hypothesis: str | None = None
+    #: F56: who can see it, while it has no Egeria Project. Once promoted this is a 400 that says to use
+    #: Reclassify…, which moves the Egeria zones.
+    visibility: str | None = None
 
 
 class ReclassifyRequest(BaseModel):
     project_classification: str
     #: Required when moving TO Experiment and it has none already.
     hypothesis: str = ""
+    #: F56: None (or the current value) keeps the visibility; reclassifying never changes it by itself.
+    visibility: str | None = None
+
+
+class PromoteRequest(BaseModel):
+    """F56: the promote dialog's answers. The kind is asked (default StudyProject; Experiment needs its
+    hypothesis) and the visibility confirmed (creator-only publishes zoned to the creator; shared publishes in
+    the publish zones). Empty fields keep what is stored."""
+    project_classification: str = ""
+    hypothesis: str = ""
+    visibility: str = ""
 
 
 class EgeriaProjectBinding(BaseModel):
@@ -206,6 +223,28 @@ async def list_classifications() -> dict:
         ],
         "default_classification": "StudyProject",
         "default_binding": ProjectRegistry.BINDING_EGERIA,
+        # F56: the third axis, its defaults by kind, and the "Private investigation" preset. Served beside the
+        # kinds so the form's words and defaults come from one place.
+        "visibilities": [
+            {"name": ProjectRegistry.VISIBILITY_CREATOR_ONLY,
+             "label": "Creator-only",
+             "consequence": "creator-only: only you see it in Resource Explorer; published zoned to you"},
+            {"name": ProjectRegistry.VISIBILITY_SHARED,
+             "label": "Shared",
+             "consequence": "shared: everyone signed in to Resource Explorer sees it; published in the "
+                            "publish zones"},
+        ],
+        "default_visibility_by_kind": {
+            name: ProjectRegistry.default_visibility_for(name) for name in ProjectRegistry.PROJECT_CLASSIFICATIONS
+        },
+        "private_preset": {
+            "label": "Private investigation — mine, not in Egeria",
+            "description": "Only you see it, and nothing is written to Egeria. Its kind is decided when you "
+                           "publish it to Egeria.",
+            "egeria_binding": ProjectRegistry.BINDING_LOCAL,
+            "visibility": ProjectRegistry.VISIBILITY_CREATOR_ONLY,
+            "project_classification": "",
+        },
     }
 
 
@@ -228,6 +267,7 @@ async def create_investigation(req: InvestigationCreate) -> dict:
             hypothesis=req.hypothesis,
             egeria_project_guid=req.egeria_project_guid,
             egeria_project_qualified_name=req.egeria_project_qualified_name,
+            visibility=req.visibility,
         )
     except ValueError as exc:
         # A classification or binding violation is a 400, not a silent drop: an
@@ -390,7 +430,7 @@ async def bind_egeria_project(slug: str, req: EgeriaProjectBinding) -> dict:
 
 
 @router.post("/{slug}/promote")
-async def promote_to_egeria(slug: str) -> dict:
+async def promote_to_egeria(slug: str, req: PromoteRequest | None = None) -> dict:
     """Create the Egeria side of this investigation — Project, working-set
     Collection, ResourceList and CollectionMembership.
 
@@ -407,6 +447,19 @@ async def promote_to_egeria(slug: str) -> dict:
     inv = reg.get_investigation(slug)
     if not inv:
         raise HTTPException(status_code=404, detail=f"Investigation '{slug}' not found")
+
+    # F56: the dialog's kind + visibility. Validated here so a bad answer is a 400 before anything is asked of
+    # Egeria; the access check below then judges the Project that will actually be sent (its zones follow the
+    # chosen visibility). A local investigation promotes only with a choice (the dialog always sends one); with
+    # none, promote refuses it with its words, as before F56.
+    from resource_explorer.surveyors.egeria_investigation_publisher import apply_promotion_choice
+
+    choice = {k: v for k, v in (req.model_dump() if req else {}).items() if (v or "").strip()}
+    if choice:
+        try:
+            inv = apply_promotion_choice(inv, choice)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
 
     # Brief Z3: the new Project's writes (CREATE, CLASSIFY, ATTACH; PUBLISH when private) as the caller, before
     # anything is written; each member's end is checked one by one inside promote (a refused member is
@@ -430,10 +483,16 @@ async def promote_to_egeria(slug: str) -> dict:
     import asyncio
 
     result = await asyncio.to_thread(EgeriaInvestigationPublisher(reg).promote, slug,
-                                     refusal=investigation_member_refusal(reg, slug))
+                                     refusal=investigation_member_refusal(reg, slug), choice=choice or None)
     if result.project_guid:
         # Record the binding even on partial success — the Project genuinely
         # exists now, and leaving the local row unbound would orphan it.
+        if choice:
+            # The kind and visibility the Project was created with: recorded with the binding, never before it
+            # (a refused or failed promote leaves the investigation as it was).
+            reg.set_investigation_classification(slug, inv["project_classification"],
+                                                 hypothesis=inv.get("hypothesis") or "",
+                                                 visibility=inv.get("visibility"))
         reg.set_investigation_egeria_project(slug, {
             "status": "linked",
             "egeria_project_guid": result.project_guid,
@@ -479,6 +538,7 @@ async def update_investigation(slug: str, req: InvestigationUpdate) -> dict:
         return reg.update_investigation(
             slug, display_name=req.display_name, description=req.description,
             purposes=req.purposes, purpose_text=req.purpose_text, hypothesis=req.hypothesis,
+            visibility=req.visibility,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
@@ -603,7 +663,7 @@ async def reclassify_investigation(slug: str, req: ReclassifyRequest) -> dict:
         raise HTTPException(status_code=403, detail=f"could not check access in Egeria ({exc})")
     result = await asyncio.to_thread(
         InvestigationReclassifier(reg).reclassify, slug,
-        req.project_classification, req.hypothesis,
+        req.project_classification, req.hypothesis, visibility=req.visibility,
         access=lambda writes: access_words(reg, writes, entity_type="investigation", slug=slug, reader=reader),
     )
     if result.not_permitted:

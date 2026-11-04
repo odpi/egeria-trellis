@@ -57,7 +57,7 @@ The header shows who you are signed in as (your user id), and **Sign out** ends 
 
 ### Who can see your work, and what "owned by you" means
 
-Everything you publish to Egeria is written **as you**. Egeria's own record shows your user id, and the elements you create are owned by you. A run that a person starts in the Explorer, or that a schedule starts later, publishes in the same way, with the same care about whose work it is (see "Private investigations").
+Everything you publish to Egeria is written **as you**. Egeria's own record shows your user id, and the elements you create are owned by you. A run that a person starts in the Explorer, or that a schedule starts later, publishes in the same way, with the same care about whose work it is (see "Who can see an investigation, and private investigations").
 
 **Resource Explorer adds no zone of its own.** Egeria "zones" are the labels a deployment uses to say who may see or change an element. By default RE sends none, so what you publish follows the deployment's normal rules. The Curate band on a resource reads "zones: none · everyone visible". A draft is a *content status* (a draft is something a person has not yet accepted), not a zone. The older "draft zone" (`resource-explorer-draft`) was retired on 2026-10-08. A deployment can still choose to configure one; ask whoever runs your Explorer (the admin guide, "Governance zones", says how).
 
@@ -176,18 +176,37 @@ Pick a purpose from the list when you start an investigation (or when you fill i
 
 Purposes order the questions: a stage's Questions tab reads, for example, "ordered by purpose · Explore, Learn · 4 of 6 lead", and a question that is not among the current investigation's purposes is marked "NOT AMONG THIS INVESTIGATION'S PURPOSES".
 
-### Private investigations
+### Who can see an investigation, and private investigations
 
-An investigation of kind **Personal** or **Experiment** is **private to its owner**: you.
+An investigation has a **kind** and, separately, **who can see it**. The kind is Egeria's (Personal project, Study,
+Task, Campaign or Experiment) and is what Egeria records on its Project. Who can see it is Resource Explorer's
+setting and has two values:
+
+- **Creator-only**: only you see it in Resource Explorer, and what it publishes to Egeria is zoned to you.
+- **Shared**: everyone signed in to Resource Explorer sees it, and it publishes in your deployment's publish zones.
+
+Each kind starts with a default: **Personal project** and **Experiment** start creator-only; **Study**, **Task** and
+**Campaign** start shared. The form shows the choice as two buttons with one line saying what it means, and you can
+change it. Changing the kind later (**Reclassify…**) does not change who can see it; the dialog says "still
+creator-only" (or "still shared") unless you change that too.
+
+A **private investigation** is one that is creator-only **and** not in Egeria. Choose **Private investigation — mine,
+not in Egeria** at the top of the Kind list when you create one. It has no kind yet. When you press **Publish to
+Egeria →** you are asked for its kind (Study is the default; Experiment asks for its hypothesis) and whether it stays
+creator-only or becomes shared. The investigation's header reads "private investigation · not in Egeria" before
+that, and, for example, "Study · creator-only · in Egeria as StudyProject" after.
+
+For a creator-only investigation:
 
 - In RE, nobody else sees it in their list. It carries a 🔒 mark.
-- In Egeria, what it produces (its survey reports and their findings) is written with the zones `[resource-explorer-private, <your user id>]`, so Egeria's own security lets only you read it.
-- **The work runs as you.** Only the signed-in owner can write a private investigation's reports. If a schedule or another person's session reaches one, RE does not write it; the row waits, reading "waits for <owner> to publish", and your next Publish sends it.
-- The repositories, databases and file systems in a private investigation's scope are shared things. RE does not hide them from other people; only what the investigation *produces* is private.
-- Today a private investigation can publish **repositories**. Databases and file systems in a private investigation are refused with a clear message instead of being published where others could read them.
-- Changing a private investigation to a public kind always works. Changing a public one to a private kind can stop part-way if something already reached a public zone; the result lists exactly what moved and what did not.
+- In Egeria, its Project and what it produces (its survey reports and their findings) are written with the zones `[resource-explorer-private, <your user id>]`, so Egeria's own security lets only you read them.
+- **The work runs as you.** Only the signed-in owner can write a creator-only investigation's reports. If a schedule or another person's session reaches one, RE does not write it; the row waits, reading "waits for <owner> to publish", and your next Publish sends it.
+- The repositories, databases and file systems in its scope are shared things. RE does not hide them from other people; only what the investigation *produces* is creator-only.
+- RE's engine host does not claim Egeria engine actions on its resources; run those surveys from the resource's own card.
+- Today a creator-only investigation can publish **repositories**. Databases and file systems in one are refused with a clear message instead of being published where others could read them.
+- Making a creator-only investigation shared always works. Making a shared one creator-only can stop part-way if something already reached a public zone; the result lists exactly what moved and what did not.
 
-An older private investigation created before RE recorded owners shows a note saying so, and is visible to everyone until it is recreated.
+An older creator-only investigation created before RE recorded owners shows a note saying so, and is visible to everyone until it is recreated.
 
 ### Work lists versus investigations
 
@@ -438,7 +457,7 @@ What a press can send, by where it comes from:
 
 Three things to know:
 
-- **No zone is added by RE.** What you publish follows your deployment's normal rules unless its administrator configured a zone. A private investigation's output is the exception (see "Private investigations").
+- **No zone is added by RE.** What you publish follows your deployment's normal rules unless its administrator configured a zone. A creator-only investigation's output is the exception (see "Who can see an investigation, and private investigations").
 - **Draft is a status, not a place.** A finding you have not accepted is a draft; it is not held in a separate zone. The old draft zone was retired on 2026-10-08.
 - **Egeria rolls forward.** RE does not undo a publish. Removing a tag removes its link; a corrected note is a later note; elements RE created stay in Egeria until the owner deletes them by hand.
 

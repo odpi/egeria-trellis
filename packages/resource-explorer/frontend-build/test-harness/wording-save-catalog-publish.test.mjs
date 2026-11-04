@@ -11,7 +11,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { test } from 'node:test';
-import { makeDomEnvironment, ensureLoaderRegistered } from './dom-harness.mjs';
+import { makeDomEnvironment, ensureLoaderRegistered, confirmPromote } from './dom-harness.mjs';
 
 const NEXT_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..', 'resource_explorer', 'web', 'static', 'next');
 const INDEX_HTML = fs.readFileSync(path.join(NEXT_DIR, 'index.html'), 'utf8');
@@ -232,6 +232,7 @@ test('investigation, not yet in Egeria: the send reads "Publish to Egeria →", 
   assert.equal(label(btn), 'Publish to Egeria →');
   assert.doesNotMatch(document.getElementById('content').textContent, /Create in Egeria/);
   btn.click();
+  await confirmPromote(document);
   await wait();
   assert.match(label(document.getElementById('inv-egeria-form')), /^published · read back \d\d:\d\d/);
 });

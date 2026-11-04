@@ -115,3 +115,12 @@ export async function loadAppModule() {
   const cacheBust = `?t=${Date.now()}_${Math.random().toString(36).slice(2)}`;
   return import(`/static/next/app.js${cacheBust}`);
 }
+
+/** F56: "Publish to Egeria →" first asks for the kind and who can see it; this presses the dialog's own
+ *  "Publish to Egeria" once it has rendered (the press that used to be the button's). */
+export async function confirmPromote(document, ms = 60) {
+  await new Promise((r) => setTimeout(r, ms));
+  const go = document.querySelector('#inv-promote-go');
+  if (!go) throw new Error('the promote dialog did not open');
+  go.click();
+}

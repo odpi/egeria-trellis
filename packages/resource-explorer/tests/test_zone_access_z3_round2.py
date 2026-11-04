@@ -161,7 +161,7 @@ def test_a_tightening_by_a_non_owner_is_refused_on_the_new_zones_before_anything
     fake.controls[SECURED] = {"associatedSecurityList": {"PUBLISH": [USER], "DEFAULT": ["dbas"]}}
     _signed_in(monkeypatch)                                         # USER, not the investigation's owner
     inv = {"slug": "i", "display_name": "I", "project_classification": "StudyProject", "created_by": OWNER,
-           "egeria_project_guid": "pg"}
+           "visibility": "shared", "egeria_project_guid": "pg"}
     monkeypatch.setattr(registry, "get_investigation", lambda slug: dict(inv))
     monkeypatch.setattr(ir.InvestigationReclassifier, "_report_guids", lambda self, slug: ([], []))
     moved = []
@@ -171,7 +171,8 @@ def test_a_tightening_by_a_non_owner_is_refused_on_the_new_zones_before_anything
     monkeypatch.setattr("resource_explorer.egeria_identity.private_zone_status", lambda: {"status": "ok"})
     monkeypatch.setattr("resource_explorer.egeria_identity.private_zone_is_enforced", lambda: True)
     res = ir.InvestigationReclassifier(registry).reclassify(
-        "i", "PersonalProject", access=lambda ws: access_words(registry, ws, entity_type="investigation", slug="i"))
+        "i", "PersonalProject", access=lambda ws: access_words(registry, ws, entity_type="investigation", slug="i"),
+        visibility="creator-only")
     assert moved == []
     assert res.not_permitted == (f"not permitted · the investigation Project in its new zones: zone {SECURED} "
                                  f"does not grant {USER} classify in Egeria")
