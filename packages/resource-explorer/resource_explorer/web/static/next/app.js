@@ -87,6 +87,7 @@ import { renderInvestigation, openInvestigationDetail, refreshOpenInvestigation,
 import { openInvestigationPicker, scopeActWording } from '/static/next/investigation-picker.js';
 import { addActWording, addListToInvestigation, openStartFromList, START_LABEL } from '/static/next/worklist-actions.js';
 import { loadChartsPane, renderUnderstandingTabs } from '/static/next/stages/understanding.js';
+import { datasetKindHtml, wireDatasetImport, DATASET_NOT_CHECKED_WORDS } from '/static/next/stages/repo-analysis-views.js';
 import { renderCurate, jumpToCurateSection } from '/static/next/stages/curate.js';
 import { wireLook } from '/static/next/look.js';
 import { coverageHtml } from '/static/next/stages/curate-coverage.js';
@@ -9785,6 +9786,8 @@ function bodyLines(entry, i, st, env) {
   if (lines.answer) {
     html += `<div class="ml-[22px] mt-[6px] text-answer text-ink">${lines.answer}</div>`;
   }
+  // W63: Q-0043's answer row carries the dataset sentence (and its Import press) itself, not only Understanding.
+  html += datasetKindRowHtml(entry, env);
   // §18.3's own caveat, ahead of the analysis's own (below): a rollup with
   // no schema/table/column named is the more important thing to say here,
   // and the reader should not have to reach the analysis's own note to
@@ -9796,6 +9799,27 @@ function bodyLines(entry, i, st, env) {
     html += `<div class="ml-[22px] mt-[5px] text-caveat text-accent-ink">${tnum(esc(lines.caveat))}</div>`;
   }
   return html + provenanceLine(entry, i, lines, st);
+}
+
+/** W63: the dataset sentence on the Q-0043 answer row ("What kind of thing is this repository"). The row used to read
+ *  "Role · repo_classification · run 3m ago" and never "a DOI names it (…)" / "a dataset repository · …", which only
+ *  Understanding drew (repo-analysis-views.js). Drawn from the SAME stored finding (`dataset_kind`, in the
+ *  repo_classification fact's value.findings) with the same datasetKindHtml, so the two places cannot disagree: the
+ *  sentence, when the descriptors were read, and in the dataset / doi_only states the Import press with its price
+ *  and help. A known classification with no dataset_kind finding is W59's "not checked" line, never nothing. */
+export function datasetKindRowHtml(entry, env) {
+  const ids = (entry && entry.analysis_ids) || [];
+  if (!ids.includes('repo_classification')) return '';
+  const fact = ((env && env.facts) || []).find((f) => f.analysis_id === 'repo_classification');
+  if (!fact || !fact.is_known) return '';
+  const findings = (fact.value && fact.value.findings) || [];
+  const kind = findings.find((f) => f && f.check_name === 'dataset_kind');
+  const inner = kind
+    ? datasetKindHtml(kind, fact.last_run_at || '')
+    : `<div data-dataset-kind="not_checked" class="mt-s2 flex flex-wrap items-baseline gap-s2">
+    <span class="text-provenance uppercase text-ink-muted">Kind</span>
+    <span data-dataset-sentence class="text-caveat text-ink-muted">${esc(DATASET_NOT_CHECKED_WORDS)}</span></div>`;
+  return `<div data-question-dataset-kind class="ml-[22px]">${inner}</div>`;
 }
 
 /** §17.1's within-budget half: the resolver already ran a producer before
@@ -10092,6 +10116,10 @@ export function bindRowActions(el, entry, i) {
   numbersBtn?.addEventListener('click', () =>
     toggleMeasurementsInPlace(i, numbersBtn.dataset.numbersFor, numbersBtn, numbersBtn.dataset.numbersLevel));
   el.querySelector(`[data-notify="${i}"]`)?.addEventListener('click', () => openNotifyDialog(entry));
+  // W63: the Import press on Q-0043's row posts once and shows the server's words, as Understanding's does.
+  if (el.querySelector('[data-question-dataset-kind] [data-dataset-import]')) {
+    wireDatasetImport(el.querySelector('[data-question-dataset-kind]'), state.selectedSlug);
+  }
   el.querySelector(`[data-prereq-accept="${i}"]`)?.addEventListener('click', () => acceptPrerequisiteProposal(entry, i));
   el.querySelector(`[data-prereq-decline="${i}"]`)?.addEventListener('click', () => declinePrerequisiteProposal(entry, i));
   el.querySelector(`[data-prereq-rfa="${i}"]`)?.addEventListener('click', () => raisePrerequisiteCapabilityRfa(entry, i));
