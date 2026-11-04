@@ -2964,12 +2964,45 @@ def _schema_conventions_headline(registry, slug: str) -> dict | None:
         if c.get("label") == "gap" and c.get("explanation")
     ]
     if gaps:
-        return {"label": " ".join(gaps), "status": "info"}
-    passing = sum(1 for c in checks.values() if c.get("label") == "pass")
-    return {
-        "label": f"{passing} of {len(checks)} convention check(s) pass; no gap found.",
-        "status": "info",
-    }
+        head = {"label": " ".join(gaps), "status": "info"}
+    else:
+        passing = sum(1 for c in checks.values() if c.get("label") == "pass")
+        head = {
+            "label": f"{passing} of {len(checks)} convention check(s) pass; no gap found.",
+            "status": "info",
+        }
+    by_question = _checks_headline_by_question("schema_conventions", checks)
+    if by_question:
+        head["by_question"] = by_question
+    return head
+
+
+#: W58: a named check the run did not produce. Said, never left out: a question whose checks are all absent still
+#: gets a sentence, and it is this one, not the shared fallback dressed as its answer.
+CHECK_NOT_MEASURED_WORDS = "{check}: not measured on this run."
+
+
+def _checks_headline_by_question(analysis_id: str, checks: dict) -> dict:
+    """W58: {question id: sentence} from the catalog's `headline_by_question` map for `analysis_id` — each question's
+    sentence is its named checks' own `explanation`s, in the catalog's order (the step wrote them; nothing is
+    re-derived here), a missing check saying so. {} when the catalog names nothing for this analysis."""
+    from resource_explorer.surveyors.analysis_catalog_reader import _load
+
+    try:
+        entry = next((e for e in _load().get("database", []) if e.id == analysis_id), None)
+    except Exception:  # noqa: BLE001 - an unreadable catalog: the shared sentence answers every question
+        return {}
+    mapping = getattr(entry, "headline_by_question", None) or {}
+    out: dict = {}
+    for question_id, names in mapping.items():
+        parts = []
+        for name in names:
+            check = checks.get(name) if isinstance(checks, dict) else None
+            words = (check or {}).get("explanation") if isinstance(check, dict) else None
+            parts.append(str(words).strip() if words else CHECK_NOT_MEASURED_WORDS.format(check=name))
+        if parts:
+            out[question_id] = " ".join(parts)
+    return out
 
 
 def _db_relationship_graph_container_headline(registry, slug: str) -> dict | None:

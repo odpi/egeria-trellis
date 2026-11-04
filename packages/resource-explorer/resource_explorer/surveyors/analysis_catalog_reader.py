@@ -71,6 +71,10 @@ class AnalysisCatalogEntry:
     action: str
     recommended: bool
     egeria_registration: dict = field(default_factory=dict)
+    #: W58: {question id: [check / measure names]} for an analysis that answers two or more questions with different
+    #: measures — each question's headline is built from the named parts' own sentences; the shared headline stays the
+    #: fallback for every question not named. Empty for the many analyses where one sentence is right.
+    headline_by_question: dict = field(default_factory=dict)
     # repo scope-narrowing funnel plan (docs/repo-scope-narrowing-funnel.md),
     # D5 — "corpus" | "single_container" | "single_leaf" | "whole_resource_only".
     # Defaults to the conservative "whole_resource_only" for any entry that
@@ -160,6 +164,7 @@ class AnalysisCatalogEntry:
             "action": self.action,
             "recommended": self.recommended,
             "egeria_registration": self.egeria_registration,
+            "headline_by_question": dict(self.headline_by_question),
             "target_shape": self.target_shape,
             "requires_input": self.requires_input,
             **({"provided_by": self.provided_by} if self.provided_by else {}),
@@ -286,6 +291,8 @@ def _entry_from_yaml(raw: dict) -> AnalysisCatalogEntry:
         action=raw.get("action", "survey"),
         recommended=bool(raw.get("recommended", False)),
         egeria_registration=dict(raw.get("egeria_registration") or {}),
+        headline_by_question={str(q): [str(x) for x in (parts or [])]
+                              for q, parts in (raw.get("headline_by_question") or {}).items()},
         target_shape=raw.get("target_shape", "whole_resource_only"),
         # Unset means "queued" — see the field's own comment. An entry that
         # nobody has considered must not license itself onto a compiler's hot

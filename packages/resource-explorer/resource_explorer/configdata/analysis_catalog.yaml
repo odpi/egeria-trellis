@@ -1787,6 +1787,13 @@ database_analyses:
       indexes — postgres_schema_and_stats owns that check, which needs a live
       pg_stat_user_indexes read. A database where nothing at all is documented
       reads as "comments not captured" rather than as 100% undocumented.
+    # W58 (2026-11-04): this analysis answers two Assessment questions that ask different things of it. Each names
+    # the checks whose own sentences headline it; the shared sentence (every gap, or the clean pass) stays the
+    # fallback for every other question (Q-0083 asks for all of them). Read by `_schema_conventions_headline`
+    # (FactLayer picks `by_question` per question); a check the run did not produce reads "not measured on this run".
+    headline_by_question:
+      Q-0088: [tables_without_comment]                                  # documentation: the comment counts
+      Q-0090: [tables_without_primary_key, tables_without_foreign_key]  # well-modelled: the key/constraint counts
     resource_types: ["database"]
     intent: analysis
     perspectives: ["Steward", "Data Expert"]
