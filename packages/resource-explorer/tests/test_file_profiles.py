@@ -942,7 +942,7 @@ def test_two_elements_holding_the_path_name_are_ambiguous_and_nothing_is_created
         port.close()
     fake._create_data_file_asset.assert_not_called()
     action = out["egeria_actions"]["week1.csv"]
-    assert action["error"] == ("catalogued twice in Egeria — by garygeeke (CSVFile::coco-data-lake:) and by "
+    assert action["error"] == ("cataloged twice in Egeria — by garygeeke (CSVFile::coco-data-lake:) and by "
                                "resourceexplorernpa (CSVFile::egeria-deployment:) · Resource Explorer will not choose; "
                                "reconcile on Curate")
     assert action["ambiguous"] is True
@@ -963,13 +963,13 @@ def test_the_ambiguity_words_say_what_the_elements_did_not_carry(registry, tmp_p
             for g in (PROBE_GUID, OTHER_GUID)]
     with pytest.raises(fp.PathNameAmbiguous) as info:
         fp.guid_by_exact_path_name(_expert_answering(bare), path, type_name="CSVFile")
-    assert fp.ambiguous_words(info.value, path) == ("catalogued twice in Egeria — by an unknown creator (no qualified name "
+    assert fp.ambiguous_words(info.value, path) == ("cataloged twice in Egeria — by an unknown creator (no qualified name "
                                                     "read) and by an unknown creator (no qualified name read) · Resource "
                                                     "Explorer will not choose; reconcile on Curate")
     three = bare + [_holder("dddddddd-0000-0000-0000-000000000003", path, "erinoverview", f"CSVFile::x:{path}")]
     with pytest.raises(fp.PathNameAmbiguous) as info3:
         fp.guid_by_exact_path_name(_expert_answering(three), path, type_name="CSVFile")
-    assert fp.ambiguous_words(info3.value, path).startswith("catalogued 3 times in Egeria — by an unknown creator")
+    assert fp.ambiguous_words(info3.value, path).startswith("cataloged 3 times in Egeria — by an unknown creator")
     assert fp.ambiguous_words(info3.value, path).endswith("and by erinoverview (CSVFile::x:) · Resource Explorer will not "
                                                           "choose; reconcile on Curate")
 

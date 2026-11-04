@@ -143,7 +143,7 @@ test('fix round 2: a file system whose name in Egeria is unknown says so on the 
 
 test("W53: Egeria's two-cataloguer refusal reads on the card per file, both GUIDs behind 'the numbers behind this'", async () => {
   const { host, fs } = await setUp();
-  const words = 'catalogued twice in Egeria — by garygeeke (CSVFile::coco-data-lake:) and by resourceexplorernpa (CSVFile::egeria-deployment:) · Resource Explorer will not choose; reconcile on Curate';
+  const words = 'cataloged twice in Egeria — by garygeeke (CSVFile::coco-data-lake:) and by resourceexplorernpa (CSVFile::egeria-deployment:) · Resource Explorer will not choose; reconcile on Curate';
   const run = RUN({ counts: COUNTS({ submit_failed: 1 }), egeria_half: 'submit_failed', files: [
     { file_path: 'week1.csv', state: 'submit_failed', stats_source: '', columns: 0, sample_ratio: null, format: 'csv',
       egeria_error: words, egeria_holders: [

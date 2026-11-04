@@ -162,7 +162,7 @@ def file_system_name_from_root(qualified_name: str, canonical_mount: str) -> str
 class PathNameAmbiguous(RuntimeError):
     """Two or more elements of the type hold this exact pathName: nothing is adopted or created. `holders` names each
     one — {guid, created_by, qualified_name} as the search answered them ("" where the element carried none) — so the
-    refusal can say WHO catalogued the path twice (W53), and the GUIDs sit behind "the numbers behind this"."""
+    refusal can say WHO cataloged the path twice (W53), and the GUIDs sit behind "the numbers behind this"."""
 
     def __init__(self, message: str, holders: list[dict] | None = None) -> None:
         super().__init__(message)
@@ -171,9 +171,9 @@ class PathNameAmbiguous(RuntimeError):
 
 #: W53: the per-file refusal when Egeria holds two CSVFile elements for one path. Words only: the "use this one" press is
 #: the owner's design (Curate), not this item. Both GUIDs are carried beside it (`holders`), never in the sentence.
-AMBIGUOUS_WORDS = ("catalogued twice in Egeria — by {first} and by {second} · Resource Explorer will not choose; "
+AMBIGUOUS_WORDS = ("cataloged twice in Egeria — by {first} and by {second} · Resource Explorer will not choose; "
                    "reconcile on Curate")
-AMBIGUOUS_MANY_WORDS = ("catalogued {n} times in Egeria — by {all} · Resource Explorer will not choose; reconcile on Curate")
+AMBIGUOUS_MANY_WORDS = ("cataloged {n} times in Egeria — by {all} · Resource Explorer will not choose; reconcile on Curate")
 UNKNOWN_CREATOR = "an unknown creator"
 
 
