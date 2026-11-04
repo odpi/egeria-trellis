@@ -4997,10 +4997,15 @@ class ProjectRegistry:
                     -- Experiment's defining attribute. Empty for every other
                     -- classification, and required for that one.
                     hypothesis                     TEXT DEFAULT '',
+                    -- F56: creator-only | shared (VISIBILITIES). Its own
+                    -- axis; the kind only supplies the default at creation.
+                    -- Existing registries gain it in
+                    -- `_migrate_investigation_visibility` (docs/ddl-investigation-visibility.md).
+                    visibility                     TEXT NOT NULL DEFAULT 'shared',
                     -- Whose investigation this is. `SHARED_USER_ID` ('') is a
                     -- real value meaning shared/legacy, not a null-shaped
                     -- unknown — same convention as resource_working_set.
-                    -- Decides visibility for the PRIVATE_CLASSIFICATIONS.
+                    -- Who `visibility = creator-only` is visible to.
                     created_by                     TEXT DEFAULT '',
                     egeria_project_status          TEXT DEFAULT 'unset',
                     egeria_free_text_name          TEXT DEFAULT '',
@@ -5238,6 +5243,7 @@ class ProjectRegistry:
         self._migrate_value_profile_columns()
         self._migrate_walk_file_columns()
         self._migrate_open_data_tables()
+        self._migrate_investigation_visibility()
 
     #: Artifacts slice 1 (DESIGN-ARTIFACTS-VIEW-AND-DOC-LINKS.md §3; owner's go 2026-10-15; DDL record
     #: docs/ddl-artifact-columns.md). file_role: core | test | generated | vendored | docs from
@@ -5356,6 +5362,42 @@ class ProjectRegistry:
         for table, column in self.WALK_FILE_COLUMNS:
             with self._conn() as conn:
                 self._add_nullable_text_column(conn, table, column, self._get_table_columns(conn, table))
+
+    #: The kinds the F56 backfill marks creator-only: exactly the pre-F56 `PRIVATE_CLASSIFICATIONS`, so nothing
+    #: changes on day one. Frozen here rather than read from `DEFAULT_VISIBILITY_BY_KIND`: the backfill states what
+    #: WAS true of the existing rows, and a later change to the defaults must not change what it would write.
+    _VISIBILITY_BACKFILL_KINDS = ("PersonalProject", "Experiment")
+
+    def _migrate_investigation_visibility(self) -> None:
+        """F56 (docs/ddl-investigation-visibility.md): `investigations.visibility TEXT NOT NULL DEFAULT 'shared'`,
+        then the rows whose kind made them private before F56 are set creator-only, IN THE SAME transaction — so
+        the column is never observed with those rows reading shared. Runs only when the column is missing: the
+        backfill is a one-time statement of the old rule, never re-applied (it would undo a person's later choice
+        to share a PersonalProject). A fresh registry gets the column from CREATE TABLE and has no rows.
+
+        Postgres 11+: a constant default is catalog-only, no table rewrite; ACCESS EXCLUSIVE on `investigations`
+        for the ALTER and the UPDATE, bounded by the 10 s lock_timeout."""
+        with self._conn() as conn:
+            if "visibility" in self._get_table_columns(conn, "investigations"):
+                return
+            if not self._get_table_columns(conn, "investigations"):
+                return
+            if conn.is_postgres:
+                conn.execute(f"SET LOCAL lock_timeout = '{self._DDL_LOCK_TIMEOUT}'")
+            try:
+                conn.execute("ALTER TABLE investigations ADD COLUMN IF NOT EXISTS visibility TEXT NOT NULL "
+                             "DEFAULT 'shared'" if conn.is_postgres else
+                             "ALTER TABLE investigations ADD COLUMN visibility TEXT NOT NULL DEFAULT 'shared'")
+            except Exception as exc:
+                if getattr(exc, "pgcode", None) == "55P03" or "lock timeout" in str(exc).lower():
+                    raise RuntimeError(
+                        "Could not add investigations.visibility: another process holds a lock on investigations; "
+                        "stop other Resource Explorer processes and restart.") from exc
+                raise
+            placeholders = ",".join("?" * len(self._VISIBILITY_BACKFILL_KINDS))
+            conn.execute(
+                f"UPDATE investigations SET visibility = ? WHERE project_classification IN ({placeholders})",
+                (self.VISIBILITY_CREATOR_ONLY, *self._VISIBILITY_BACKFILL_KINDS))
 
     def _migrate_open_data_tables(self) -> None:
         """Open data OD1 (docs/ddl-open-data-od1.md): three new tables, each `CREATE TABLE IF NOT EXISTS` in its own
@@ -11945,13 +11987,51 @@ class ProjectRegistry:
     BINDING_EGERIA = "egeria"    # has one, or is meant to
     EGERIA_BINDINGS = (BINDING_LOCAL, BINDING_EGERIA)
 
-    #: Classifications whose investigations are visible only to their creator.
-    #: Owner's design, points 5 and 6: Personal and Experiment are the
-    #: creator's; Task, Campaign and Study follow the normal rules.
+    #: The THIRD axis (F56, owner's Option D, 2026-11-04): who may see the
+    #: investigation in Resource Explorer, and which zones its Egeria elements
+    #: get. `creator-only`: only its creator sees it in RE, and what it publishes
+    #: is zoned to them (design §3.3). `shared`: the normal rules.
     #:
-    #: Visibility follows the CLASSIFICATION rather than a separate flag, which
-    #: is what makes reclassification a visibility change (design §5 / Phase 6).
-    PRIVATE_CLASSIFICATIONS = ("PersonalProject", "Experiment")
+    #: Its own column, NOT read off the kind. Until F56 the kind implied it
+    #: (`PersonalProject`/`Experiment` were "private"), so a kind named a
+    #: visibility it never says in Egeria and a reclassify silently moved who
+    #: could see the work. `project_classification` is now Egeria's vocabulary
+    #: and nothing else; THIS column alone decides the list filter, the zoning,
+    #: the ownerless refusal and the engine host's no-claim rule (Q-O3).
+    VISIBILITY_CREATOR_ONLY = "creator-only"
+    VISIBILITY_SHARED = "shared"
+    VISIBILITIES = (VISIBILITY_CREATOR_ONLY, VISIBILITY_SHARED)
+
+    #: The visibility a kind gets when nobody says otherwise — a DEFAULT at
+    #: creation (and the day-one backfill), never a rule read later. Owner's
+    #: design points 5 and 6: Personal and Experiment are the creator's; Task,
+    #: Campaign and Study follow the normal rules. A kind not listed (and the
+    #: undecided kind of a private investigation) defaults to shared, except
+    #: that the "Private investigation" preset sets creator-only explicitly.
+    DEFAULT_VISIBILITY_BY_KIND = {
+        "PersonalProject": VISIBILITY_CREATOR_ONLY,
+        "Experiment": VISIBILITY_CREATOR_ONLY,
+    }
+
+    @classmethod
+    def default_visibility_for(cls, kind: str) -> str:
+        return cls.DEFAULT_VISIBILITY_BY_KIND.get((kind or "").strip(), cls.VISIBILITY_SHARED)
+
+    @classmethod
+    def is_creator_only(cls, row) -> bool:
+        """Whether the row's `visibility` column says creator-only. A row read
+        before the column existed has none, and reads shared (the migration
+        backfills the column, so that only happens on a hand-built dict)."""
+        return (row.get("visibility") or "").strip() == cls.VISIBILITY_CREATOR_ONLY
+
+    @classmethod
+    def is_private_investigation_row(cls, row) -> bool:
+        """F56 §4's words: "private investigation" means ONLY local AND
+        creator-only — yours, not in Egeria. A creator-only investigation that
+        is in Egeria is named by its kind and visibility, never "private"."""
+        return (cls.is_creator_only(row)
+                and (row.get("egeria_binding") or cls.BINDING_EGERIA) == cls.BINDING_LOCAL
+                and not (row.get("egeria_project_guid") or "").strip())
 
     def _may_see_investigation(self, row, user_id: str) -> bool:
         """Whether `user_id` may see this investigation.
@@ -11972,10 +12052,11 @@ class ProjectRegistry:
           means "RE does not show it to others", no more.
 
         A row nobody owns (`created_by == SHARED_USER_ID`) is visible to
-        everyone even when privately classified — see the migration comment.
+        everyone even when creator-only — see the migration comment.
+
+        Keyed on the `visibility` column (F56), never on the kind.
         """
-        classification = (row.get("project_classification") or "").strip()
-        if classification not in self.PRIVATE_CLASSIFICATIONS:
+        if not self.is_creator_only(row):
             return True
         owner = (row.get("created_by") or SHARED_USER_ID)
         if owner == SHARED_USER_ID:
@@ -11991,8 +12072,15 @@ class ProjectRegistry:
                              egeria_binding: str = "egeria",
                              hypothesis: str = "",
                              egeria_project_guid: str = "",
-                             egeria_project_qualified_name: str = "") -> dict:
+                             egeria_project_qualified_name: str = "",
+                             visibility: str | None = None) -> dict:
         """Create one investigation.
+
+        `visibility` (F56): `creator-only` or `shared`; None takes
+        `DEFAULT_VISIBILITY_BY_KIND` for the kind. `project_classification` may
+        be "" (kind undecided) only while `egeria_binding` is `local`: the
+        "Private investigation" preset is local + creator-only + no kind, and
+        promotion asks for the kind.
 
         `purposes` is SUGGESTIVE (owner ruling 2026-10-13, "warn only - suggestive
         everywhere"): a value outside Egeria's purposes list is kept, and the
@@ -12010,7 +12098,13 @@ class ProjectRegistry:
         import re as _re
         purposes = [p.strip() for p in (purposes or []) if p and p.strip()]
         warnings = self._purpose_warnings(purposes)
-        if project_classification not in self.PROJECT_CLASSIFICATIONS:
+        project_classification = (project_classification or "").strip()
+        if not project_classification:
+            if egeria_binding != self.BINDING_LOCAL:
+                raise ValueError(
+                    "a kind is required for an investigation that is in Egeria (or meant to be): "
+                    f"choose one of {list(self.PROJECT_CLASSIFICATIONS)}, or keep it local")
+        elif project_classification not in self.PROJECT_CLASSIFICATIONS:
             raise ValueError(
                 f"unknown classification {project_classification!r}; "
                 f"valid: {list(self.PROJECT_CLASSIFICATIONS)}"
@@ -12029,17 +12123,19 @@ class ProjectRegistry:
         if hypothesis and project_classification not in self.HYPOTHESIS_REQUIRED_FOR:
             raise ValueError(
                 f"hypothesis is only meaningful for "
-                f"{list(self.HYPOTHESIS_REQUIRED_FOR)}, not {project_classification!r}"
+                f"{list(self.HYPOTHESIS_REQUIRED_FOR)}, not {project_classification or 'an undecided kind'!r}"
             )
+        visibility = (visibility or "").strip() or self.default_visibility_for(project_classification)
+        if visibility not in self.VISIBILITIES:
+            raise ValueError(f"unknown visibility {visibility!r}; valid: {list(self.VISIBILITIES)}")
         owner = current_user_id()
-        if project_classification in self.PRIVATE_CLASSIFICATIONS and not owner:
-            # Design ruling 2026-10-13: a private kind is zoned `[PRIVATE_ZONE, owner]`, so with no signed-in
+        if visibility == self.VISIBILITY_CREATOR_ONLY and not owner:
+            # Design ruling 2026-10-13: creator-only is zoned `[PRIVATE_ZONE, owner]`, so with no signed-in
             # caller (anonymous, or a bare thread that dropped the ContextVar) it would be born ownerless:
             # visible to everyone in RE and refused by every publish. Refused here, where it can be fixed.
             raise ValueError(
-                f"{project_classification} needs an owner, and there is no signed-in caller — this "
-                "investigation would have no owner, so it could not be made private. Sign in, or choose "
-                "a shared kind."
+                "a creator-only investigation needs an owner, and there is no signed-in caller — it would "
+                "have no owner to be visible to. Sign in, or make it shared."
             )
         base = _re.sub(r"[^a-z0-9]+", "-", display_name.lower()).strip("-") or "investigation"
         slug, n = base, 1
@@ -12051,12 +12147,12 @@ class ProjectRegistry:
             conn.execute(
                 """INSERT INTO investigations
                    (slug, display_name, description, purposes_json,
-                    project_classification, egeria_binding, hypothesis,
+                    project_classification, egeria_binding, hypothesis, visibility,
                     created_by, egeria_project_guid,
                     egeria_project_qualified_name, status, created_at, updated_at)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'open', ?, ?)""",
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'open', ?, ?)""",
                 (slug, display_name, description, self._purposes_to_json(purposes, purpose_text),
-                 project_classification, egeria_binding, hypothesis,
+                 project_classification, egeria_binding, hypothesis, visibility,
                  # Resolved here, not taken from the caller — the same reason
                  # `current_user_id`'s docstring gives: a method that resolves
                  # it cannot be called without scoping; a route that has to
@@ -12098,23 +12194,27 @@ class ProjectRegistry:
         if not self._may_see_investigation(d, user_id):
             return None
         d["purposes"], d["purpose_text"] = self._purposes_from_json(d.pop("purposes_json"))
-        # Say what the visibility actually IS, rather than leaving the caller
-        # to re-derive it from classification + created_by. `private` here
-        # means "RE does not show this to other people" — not that Egeria is
-        # withholding anything; see `_may_see_investigation`.
+        # `visibility` is the stored column (F56): creator-only | shared. It
+        # means "RE does not show this to other people" (and what it publishes
+        # is zoned to its creator) — not that Egeria is withholding anything;
+        # see `_may_see_investigation`.
         owner = d.get("created_by") or SHARED_USER_ID
-        is_private_kind = (d.get("project_classification") or "") in self.PRIVATE_CLASSIFICATIONS
-        d["visibility"] = "private" if (is_private_kind and owner != SHARED_USER_ID) else "shared"
+        creator_only = self.is_creator_only(d)
+        d["visibility"] = self.VISIBILITY_CREATOR_ONLY if creator_only else self.VISIBILITY_SHARED
+        # Whether the creator-only rule actually holds for this row: an ownerless one is visible to all.
+        d["visible_to_creator_only"] = creator_only and owner != SHARED_USER_ID
+        # F56 §4: "private investigation" names ONLY local + creator-only. Served so no screen re-derives it.
+        d["is_private_investigation"] = self.is_private_investigation_row(d)
         d["is_mine"] = bool(owner) and owner == user_id
-        if is_private_kind and owner == SHARED_USER_ID:
+        if creator_only and owner == SHARED_USER_ID:
             # Not an error, and not silently fine either: the row predates
-            # ownership being recorded, so it is privately CLASSIFIED and
-            # visible to everyone. Surfaced so it can be claimed rather than
-            # quietly contradicting its own classification.
+            # ownership being recorded, so it is creator-only with no creator
+            # and visible to everyone. Surfaced so it can be claimed rather
+            # than quietly contradicting its own setting.
             d["visibility_note"] = (
-                "Classified as private, but created before RE recorded who owns "
+                "Set to creator-only, but created before RE recorded who owns "
                 "an investigation — so it is still visible to everyone. Recreate "
-                "it, or an owner can be set, to make it private."
+                "it, or an owner can be set, to make it creator-only."
             )
         # The shape the publish path already speaks, assembled here so callers
         # never rebuild it from the individual columns.
@@ -12333,7 +12433,7 @@ class ProjectRegistry:
         with self._conn() as conn:
             rows = conn.execute(
                 """SELECT i.slug AS investigation_slug, i.display_name, i.status,
-                          i.project_classification, i.created_by,
+                          i.project_classification, i.created_by, i.visibility,
                           wsm.state, wsm.membership_rationale, wsm.added_at
                    FROM working_set_members wsm
                    JOIN working_sets ws ON ws.slug = wsm.working_set_slug
@@ -12419,10 +12519,16 @@ class ProjectRegistry:
                              description: str | None = None,
                              purposes: list[str] | None = None,
                              purpose_text: str | None = None,
-                             hypothesis: str | None = None) -> dict | None:
+                             hypothesis: str | None = None,
+                             visibility: str | None = None) -> dict | None:
         """Rename, re-describe, or refine the hypothesis. The slug never
         changes — members, the Egeria binding and inherited context rows
         reference it.
+
+        `visibility` (F56) is accepted here only while the investigation has no
+        Egeria Project: then it is RE's list filter alone. Once promoted, a
+        change moves Egeria zones and goes through Reclassify (ValueError here,
+        with those words). Making it creator-only needs a recorded creator.
 
         Changing the *classification* is deliberately NOT here: it can move an
         investigation between visibility regimes and is a flow with a report,
@@ -12449,6 +12555,20 @@ class ProjectRegistry:
                     f"{cls} requires a hypothesis — clearing it would leave the "
                     "classification asserting something with its point missing"
                 )
+        if visibility is not None:
+            visibility = visibility.strip()
+            if visibility not in self.VISIBILITIES:
+                raise ValueError(f"unknown visibility {visibility!r}; valid: {list(self.VISIBILITIES)}")
+            if visibility == inv.get("visibility"):
+                visibility = None
+            elif (inv.get("egeria_project_guid") or "").strip():
+                raise ValueError(
+                    "this investigation is in Egeria, so changing who can see it moves its Egeria zones — "
+                    "use Reclassify…, which moves them and reports each one")
+            elif visibility == self.VISIBILITY_CREATOR_ONLY and not (inv.get("created_by") or "").strip():
+                raise ValueError(
+                    "this investigation has no recorded creator (it predates ownership being recorded), so "
+                    "there is nobody for it to be visible to")
         with self._conn() as conn:
             if display_name is not None:
                 conn.execute("UPDATE investigations SET display_name = ? WHERE slug = ?",
@@ -12465,6 +12585,9 @@ class ProjectRegistry:
             if hypothesis is not None:
                 conn.execute("UPDATE investigations SET hypothesis = ? WHERE slug = ?",
                              (hypothesis, slug))
+            if visibility is not None:
+                conn.execute("UPDATE investigations SET visibility = ? WHERE slug = ?",
+                             (visibility, slug))
             conn.execute("UPDATE investigations SET updated_at = ? WHERE slug = ?",
                          (datetime.utcnow().isoformat(), slug))
         out = self.get_investigation(slug)
@@ -12536,16 +12659,18 @@ class ProjectRegistry:
         return {"known": names, "investigation_purposes": ranked(inv_bucket), "intended_use": ranked(use_bucket)}
 
     def set_investigation_classification(self, slug: str, classification: str, *,
-                                         hypothesis: str = "") -> dict | None:
-        """Change an investigation's classification. LOCAL ONLY.
+                                         hypothesis: str = "",
+                                         visibility: str | None = None) -> dict | None:
+        """Change an investigation's classification (and, when given, its visibility). LOCAL ONLY.
 
         Deliberately not exposed through `update_investigation`, and deliberately
-        not the whole operation. Because visibility follows the classification
-        (`PRIVATE_CLASSIFICATIONS`), changing it can move the investigation
-        between visibility regimes — which is several Egeria writes that fail
-        independently. `surveyors/investigation_reclassifier` is the flow that
-        owns that, and it calls this LAST, once Egeria already holds the new
-        state.
+        not the whole operation. The kind and the visibility are separate axes
+        (F56): `visibility=None` KEEPS the stored visibility whatever the new
+        kind's default — a reclassify never moves who can see the work unless the
+        person changes it in the same dialog. A visibility change on a promoted
+        investigation is several Egeria writes that fail independently;
+        `surveyors/investigation_reclassifier` is the flow that owns that, and it
+        calls this LAST, once Egeria already holds the new state.
 
         Calling this directly changes what RE shows without changing what Egeria
         serves. That is legitimate for a purely local investigation and a bug
@@ -12563,6 +12688,9 @@ class ProjectRegistry:
             raise ValueError(
                 f"unknown classification {classification!r}; "
                 f"valid: {list(self.PROJECT_CLASSIFICATIONS)}")
+        visibility = (visibility or "").strip() or inv.get("visibility") or self.VISIBILITY_SHARED
+        if visibility not in self.VISIBILITIES:
+            raise ValueError(f"unknown visibility {visibility!r}; valid: {list(self.VISIBILITIES)}")
         hypothesis = (hypothesis or "").strip()
         if classification in self.HYPOTHESIS_REQUIRED_FOR:
             hypothesis = hypothesis or (inv.get("hypothesis") or "").strip()
@@ -12578,9 +12706,9 @@ class ProjectRegistry:
             hypothesis = ""
         with self._conn() as conn:
             conn.execute(
-                "UPDATE investigations SET project_classification = ?, hypothesis = ?, "
+                "UPDATE investigations SET project_classification = ?, hypothesis = ?, visibility = ?, "
                 "updated_at = ? WHERE slug = ?",
-                (classification, hypothesis, datetime.utcnow().isoformat(), slug),
+                (classification, hypothesis, visibility, datetime.utcnow().isoformat(), slug),
             )
         return self.get_investigation(slug)
 
@@ -12642,7 +12770,7 @@ class ProjectRegistry:
             row = conn.execute(
                 """SELECT i.slug, i.display_name, i.egeria_project_guid,
                           i.egeria_project_qualified_name,
-                          i.project_classification, i.created_by
+                          i.project_classification, i.created_by, i.visibility
                    FROM working_set_members m
                    JOIN working_sets ws ON ws.slug = m.working_set_slug
                    JOIN investigation_resource_lists rl
@@ -12678,9 +12806,10 @@ class ProjectRegistry:
     def private_owner_for_entity(self, entity_type: str, entity_slug: str) -> str:
         """The userId an entity's artifacts must be zoned to, or `""` for none.
 
-        A resource's artifacts are private when the resource is in scope for a
-        privately-classified investigation (`PRIVATE_CLASSIFICATIONS`) that has
-        a recorded owner. The answer is that owner's userId.
+        A resource's artifacts are zoned to an owner when the resource is in
+        scope for a creator-only investigation (the `visibility` column, F56 —
+        never the kind) that has a recorded owner. The answer is that owner's
+        userId.
 
         **Deliberately UNSCOPED — it must see investigations the caller cannot.**
         This is the exact inverse of `_may_see_investigation`, and getting it
@@ -12714,10 +12843,16 @@ class ProjectRegistry:
         # name, which is most of them. That failure was silent and it failed
         # OPEN: no owner found means "not private", so the artifacts would have
         # published into the public zones. Caught by a test, not by review.
-        placeholders = ",".join("?" * len(self.PRIVATE_CLASSIFICATIONS))
+        row = self._creator_only_investigation_row(entity_type, entity_slug)
+        return (row["created_by"] if row else "") or ""
+
+    def _creator_only_investigation_row(self, entity_type: str, entity_slug: str) -> dict | None:
+        """The oldest owned creator-only investigation `entity` is in scope for (closed ones count), UNSCOPED — the
+        one query behind `private_owner_for_entity` (and W66's naming), so the two can never choose differently."""
         with self._conn() as conn:
             row = conn.execute(
-                f"""SELECT i.created_by, i.slug
+                """SELECT i.created_by, i.slug, i.display_name, i.project_classification, i.visibility,
+                          i.egeria_binding, i.egeria_project_guid
                     FROM working_set_members m
                     JOIN working_sets ws ON ws.slug = m.working_set_slug
                                          AND ws.collection_kind = 'folio'
@@ -12726,12 +12861,12 @@ class ProjectRegistry:
                     JOIN investigations i ON i.slug = rl.investigation_slug
                     WHERE m.entity_type = ? AND m.entity_slug = ?
                       AND m.state <> 'excluded'
-                      AND i.project_classification IN ({placeholders})
+                      AND i.visibility = ?
                       AND i.created_by IS NOT NULL AND i.created_by <> ''
                     ORDER BY i.created_at ASC""",
-                (entity_type, entity_slug, *self.PRIVATE_CLASSIFICATIONS),
+                (entity_type, entity_slug, self.VISIBILITY_CREATOR_ONLY),
             ).fetchone()
-        return (row["created_by"] if row else "") or ""
+        return dict(row) if row else None
 
     # ── Deleting an investigation (permanent; no undo) ──────────────────────────────────────────────────────
 

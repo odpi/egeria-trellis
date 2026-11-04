@@ -114,7 +114,7 @@ class PrivateReportNotConfirmed(RuntimeError):
     def __init__(self, report_guid: str, owner: str, reason: str):
         self.report_guid, self.owner, self.reason = report_guid, owner, reason
         super().__init__(
-            f"Not published: this resource belongs to {owner}'s private investigation, and its "
+            f"Not published: this resource belongs to {owner}'s creator-only investigation, and its "
             f"survey report {report_guid[:8] or '(none)'} could not be confirmed private — {reason}. "
             "No findings were written to Egeria. The report element itself may exist; nothing "
             "beneath it was published. Publish again as the investigation's owner once Egeria "
@@ -1099,7 +1099,7 @@ class EgeriaPublisher:
                 return
         status = private_zone_status()
         raise EgeriaConnectionError(
-            f"'{resource_slug}' belongs to a private investigation, but the "
+            f"'{resource_slug}' belongs to a creator-only investigation, but the "
             f"'{private_zone()}' governance zone is not confirmed to be enforced "
             f"({status.get('status')}: {status.get('detail') or 'no detail'}). "
             "Publishing now would put private artifacts in a zone Egeria ignores, "
@@ -1201,7 +1201,7 @@ class EgeriaPublisher:
                 self._registry, entity_type="repo", entity_slug=result.resource_slug,
                 entity_name=result.project_display_name, entity_location=result.github_url,
                 status="error",
-                summary=(f"NOT published: private investigation's report "
+                summary=(f"NOT published: creator-only investigation's report "
                          f"{(report_guid or 'no-guid')[:12]}… could not be confirmed private "
                          f"({reason}); no findings were written"),
                 detail=reason,

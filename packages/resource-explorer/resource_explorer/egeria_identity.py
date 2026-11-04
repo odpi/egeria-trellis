@@ -968,7 +968,7 @@ def ensure_private_zone_exists(identity: Optional[EgeriaIdentity] = None) -> dic
                 ),
                 "associatedSecurityList": {"DEFAULT": ["resourceExplorerPrivateNobody"]},
                 "otherProperties": {
-                    "criteria": "Published by resource-explorer from a private investigation.",
+                    "criteria": "Published by resource-explorer from a creator-only investigation.",
                     "createdBy": "resource-explorer",
                 },
             },
@@ -1012,7 +1012,7 @@ def ensure_private_zone_exists(identity: Optional[EgeriaIdentity] = None) -> dic
         unauthorized = "UserNotAuthorized" in detail or "not authorized" in detail.lower()
         log.warning(
             "egeria: could not ensure the private zone %r is enforced — %s. "
-            "Private investigations will NOT publish until this is fixed.", zone, detail)
+            "Creator-only investigations will NOT publish until this is fixed.", zone, detail)
         _private_zone_state = {
             "status": "not_authorized" if unauthorized else "error",
             "zone": zone, "control_present": False, "enforced": False,

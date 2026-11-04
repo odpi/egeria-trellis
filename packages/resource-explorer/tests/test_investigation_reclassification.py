@@ -109,12 +109,13 @@ def _bind(reg, slug, guid="proj-1"):
 # ── direction ──────────────────────────────────────────────────────────────
 
 def test_direction_is_about_visibility_not_alphabetical_order():
-    P = ProjectRegistry.PRIVATE_CLASSIFICATIONS
-    assert direction_of("Task", "PersonalProject", P) == TIGHTEN
-    assert direction_of("PersonalProject", "Task", P) == LOOSEN
-    assert direction_of("Task", "Campaign", P) == LATERAL
-    assert direction_of("PersonalProject", "Experiment", P) == LATERAL, (
-        "both are private — nothing about visibility changes")
+    # F56: the direction is a VISIBILITY change; the kind no longer decides it.
+    P = (ProjectRegistry.VISIBILITY_CREATOR_ONLY,)
+    assert direction_of("shared", "creator-only", P) == TIGHTEN
+    assert direction_of("creator-only", "shared", P) == LOOSEN
+    assert direction_of("shared", "shared", P) == LATERAL
+    assert direction_of("creator-only", "creator-only", P) == LATERAL, (
+        "both creator-only — nothing about visibility changes")
 
 
 # ── tightening: the dangerous direction ────────────────────────────────────
@@ -134,7 +135,7 @@ def test_tightening_moves_the_project_and_every_published_report(tmp_path):
     zones = {"proj-1": ["egeria-runtime"], "report-1": ["egeria-runtime"],
              "report-2": ["egeria-runtime"]}
     with _egeria(zones):
-        res = InvestigationReclassifier(reg).reclassify(inv["slug"], "PersonalProject")
+        res = InvestigationReclassifier(reg).reclassify(inv["slug"], "PersonalProject", visibility="creator-only")
 
     assert res.direction == TIGHTEN
     assert res.ok, res.errors
@@ -164,7 +165,7 @@ def test_a_report_that_cannot_be_moved_leaves_the_classification_unchanged(tmp_p
 
     zones = {"proj-1": ["egeria-runtime"], "report-stuck": ["egeria-runtime"]}
     with _egeria(zones, accept=lambda guid: guid != "report-stuck"):
-        res = InvestigationReclassifier(reg).reclassify(inv["slug"], "PersonalProject")
+        res = InvestigationReclassifier(reg).reclassify(inv["slug"], "PersonalProject", visibility="creator-only")
 
     assert not res.ok
     assert res.local_applied is False, "RE would claim private over a public artifact"
@@ -189,7 +190,7 @@ def test_an_unmovable_report_says_why_rather_than_just_failing(tmp_path):
 
     with _egeria({"proj-1": ["egeria-runtime"], "report-x": ["egeria-runtime"]},
                  accept=lambda g: g != "report-x"):
-        res = InvestigationReclassifier(reg).reclassify(inv["slug"], "PersonalProject")
+        res = InvestigationReclassifier(reg).reclassify(inv["slug"], "PersonalProject", visibility="creator-only")
 
     reason = res.reports_unmovable[0]["reason"]
     assert "egeria-runtime" in reason and "PUBLISH" in reason, reason
@@ -203,7 +204,7 @@ def test_tightening_is_refused_when_the_private_zone_is_not_enforced(tmp_path):
     _bind(reg, inv["slug"])
     zones = {"proj-1": ["egeria-runtime"]}
     with _egeria(zones, enforced=False):
-        res = InvestigationReclassifier(reg).reclassify(inv["slug"], "PersonalProject")
+        res = InvestigationReclassifier(reg).reclassify(inv["slug"], "PersonalProject", visibility="creator-only")
 
     assert not res.ok
     assert res.local_applied is False
@@ -222,9 +223,9 @@ def test_tightening_an_ownerless_investigation_is_refused(tmp_path):
         conn.execute("UPDATE investigations SET created_by = '' WHERE slug = ?",
                      (inv["slug"],))
     with _egeria({"proj-1": ["egeria-runtime"]}):
-        res = InvestigationReclassifier(reg).reclassify(inv["slug"], "PersonalProject")
+        res = InvestigationReclassifier(reg).reclassify(inv["slug"], "PersonalProject", visibility="creator-only")
     assert not res.ok
-    assert any("nobody to make it private to" in e for e in res.errors)
+    assert any("nobody for it to be creator-only to" in e for e in res.errors)
 
 
 # ── loosening and lateral ──────────────────────────────────────────────────
@@ -250,7 +251,7 @@ def test_loosening_with_no_configured_zone_clears_the_zones_and_invents_none(tmp
         orig = ident.set_zone_membership
         ident.set_zone_membership = lambda g, z, **k: wrote.append((g, z)) or orig(g, z, **k)
         try:
-            res = InvestigationReclassifier(reg).reclassify(inv["slug"], "Task")
+            res = InvestigationReclassifier(reg).reclassify(inv["slug"], "Task", visibility="shared")
         finally:
             ident.set_zone_membership = orig
 
@@ -275,7 +276,7 @@ def test_loosening_moves_everything_into_the_publish_zones(tmp_path, monkeypatch
     monkeypatch.setenv("EXPLORER_PUBLISH_ZONES", "shared-zone")     # configured on purpose
     zones = {"proj-1": [private_zone(), "alice"], "report-1": [private_zone(), "alice"]}
     with _egeria(zones):
-        res = InvestigationReclassifier(reg).reclassify(inv["slug"], "Task")
+        res = InvestigationReclassifier(reg).reclassify(inv["slug"], "Task", visibility="shared")
 
     assert res.direction == LOOSEN
     assert res.ok, res.errors
@@ -312,7 +313,7 @@ def test_a_local_only_investigation_reclassifies_without_touching_egeria(tmp_pat
     inv = _inv(reg, "Local Only", "Task")
     zones: dict = {}
     with _egeria(zones):
-        res = InvestigationReclassifier(reg).reclassify(inv["slug"], "PersonalProject")
+        res = InvestigationReclassifier(reg).reclassify(inv["slug"], "PersonalProject", visibility="creator-only")
     assert res.ok
     assert zones == {}, "an unpromoted investigation wrote to Egeria"
     assert reg.get_investigation(inv["slug"])["project_classification"] == "PersonalProject"
@@ -358,7 +359,7 @@ def test_an_element_already_in_the_target_zones_is_not_an_error(tmp_path):
     from resource_explorer.egeria_identity import private_zone
     zones = {"proj-1": [private_zone(), "alice"]}
     with _egeria(zones, accept=False):   # any write would fail
-        res = InvestigationReclassifier(reg).reclassify(inv["slug"], "PersonalProject")
+        res = InvestigationReclassifier(reg).reclassify(inv["slug"], "PersonalProject", visibility="creator-only")
     assert res.ok, res.errors
     assert res.project_rezoned
 
@@ -377,7 +378,7 @@ def test_an_unverifiable_move_is_not_counted_as_moved(tmp_path):
     ident.current_zones = lambda guid, *a, **k: []       # cannot tell, ever
     ident.set_zone_membership = lambda guid, zones, **k: True
     try:
-        res = InvestigationReclassifier(reg).reclassify(inv["slug"], "PersonalProject")
+        res = InvestigationReclassifier(reg).reclassify(inv["slug"], "PersonalProject", visibility="creator-only")
     finally:
         ident.current_zones, ident.set_zone_membership, ident._private_zone_state = before
     assert not res.ok
@@ -419,7 +420,7 @@ def test_never_asked_triggers_a_zone_check_rather_than_refusing(tmp_path, monkey
     ident.set_zone_membership = lambda guid, z, **k: zones.__setitem__(guid, list(z)) or True
     monkeypatch.setattr(ident, "ensure_private_zone_exists", _fake_ensure)
     try:
-        res = InvestigationReclassifier(reg).reclassify(inv["slug"], "PersonalProject")
+        res = InvestigationReclassifier(reg).reclassify(inv["slug"], "PersonalProject", visibility="creator-only")
     finally:
         ident.current_zones, ident.set_zone_membership, ident._private_zone_state = before
 
@@ -456,7 +457,7 @@ def test_a_member_whose_surveys_cannot_be_listed_blocks_a_tightening(tmp_path):
 
     zones = {"proj-1": ["egeria-runtime"]}
     with _egeria(zones):
-        res = InvestigationReclassifier(reg).reclassify(inv["slug"], "PersonalProject")
+        res = InvestigationReclassifier(reg).reclassify(inv["slug"], "PersonalProject", visibility="creator-only")
 
     assert not res.ok
     assert res.local_applied is False, (
@@ -483,7 +484,7 @@ def test_an_unreadable_member_does_not_block_a_loosening(tmp_path):
     from resource_explorer.egeria_identity import private_zone
     zones = {"proj-1": [private_zone(), "alice"]}
     with _egeria(zones):
-        res = InvestigationReclassifier(reg).reclassify(inv["slug"], "Task")
+        res = InvestigationReclassifier(reg).reclassify(inv["slug"], "Task", visibility="shared")
 
     assert res.local_applied is True, "a loosening was blocked by a reporting problem"
     assert res.reports_unmovable, "the unreadable member was still not reported"
@@ -629,7 +630,7 @@ def test_the_kind_swap_is_verified_and_reported_separately(tmp_path, monkeypatch
     # in the file then got the stub — `test_both_kinds_at_once...` passed alone
     # and failed in suite, which is the signature of exactly this.
     with _egeria(zones, kind_calls=calls):
-        res = InvestigationReclassifier(reg).reclassify(inv["slug"], "PersonalProject")
+        res = InvestigationReclassifier(reg).reclassify(inv["slug"], "PersonalProject", visibility="creator-only")
 
     assert calls == [("proj-1", "Task", "PersonalProject")]
     assert res.egeria_kind_changed is True
@@ -646,7 +647,7 @@ def test_a_failed_kind_swap_does_not_claim_an_exposure(tmp_path, monkeypatch):
     _bind(reg, inv["slug"])
     zones = {"proj-1": ["egeria-runtime"]}
     with _egeria(zones, kind_swap=False):
-        res = InvestigationReclassifier(reg).reclassify(inv["slug"], "PersonalProject")
+        res = InvestigationReclassifier(reg).reclassify(inv["slug"], "PersonalProject", visibility="creator-only")
 
     assert res.egeria_kind_changed is False
     assert res.project_rezoned is True, "zones are the safety property and went first"

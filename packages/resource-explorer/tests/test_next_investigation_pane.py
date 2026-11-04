@@ -148,13 +148,12 @@ class TestListView:
         assert "inv.slug === state.investigation" in src
 
     def test_private_investigations_show_a_visibility_note(self):
-        # docs/investigation-classification-and-zoning-design.md:
-        # PRIVATE_CLASSIFICATIONS investigations 404 for non-owners and are
-        # visible only to their creator -- the ones that DO come back must
-        # say so, using the server's own visibility_note rather than a
-        # hardcoded guess at the reason.
+        # docs/investigation-classification-and-zoning-design.md (F56):
+        # creator-only investigations 404 for non-owners -- the ones that DO
+        # come back must say so, using the server's own visibility_note rather
+        # than a hardcoded guess at the reason.
         src = _inv_src()
-        assert "inv.visibility === 'private'" in src
+        assert "inv.visibility === 'creator-only'" in src
         assert "visibility_note" in src
 
 
@@ -289,8 +288,9 @@ class TestReclassify:
         src = _inv_src()
         fn = src[src.index("'[data-act=\"inv-reclassify\"]'"):]
         fn = fn[:fn.index("el.querySelector('[data-act=\"inv-close\"]')")]
-        assert "Loosening" in fn or "loosening" in fn
-        assert "Tightening" in fn or "tightening" in fn
+        # F56: the directions are visibility changes, named in the form's words.
+        assert "Making it shared always works" in fn or "Making it\n        shared always works" in fn
+        assert "creator-only can fail partway" in fn
 
     def test_reclassify_reports_still_public_and_local_applied(self):
         src = _inv_src()

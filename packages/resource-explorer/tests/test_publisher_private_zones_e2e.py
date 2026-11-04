@@ -590,8 +590,8 @@ def test_a_private_database_publishes_nothing(private_db_and_fs, monkeypatch, me
                 s.publish_step_annotations(db, {}, None, "2026-10-13T00:00:00", registry=reg)
             else:
                 s.publish_local_survey(db, {}, 0, 0, 0, "2026-10-13T00:00:00", registry=reg)
-    assert str(info.value) == ("not published · this database ('db1') is in alice's private investigation, and "
-                               "private publishing for databases is not built yet; nothing was written")
+    assert str(info.value) == ("not published · this database ('db1') is in alice's creator-only investigation, and "
+                               "creator-only publishing for databases is not built yet; nothing was written")
     assert len(reg.list_activity(entity_slug="db1", status="error", limit=10)) == 1, "one row per state"
 
 
@@ -610,7 +610,7 @@ def test_a_private_file_system_publishes_nothing(private_db_and_fs, monkeypatch,
     fs = SimpleNamespace(slug="fs1", display_name="FS1", egeria_asset_guid="", local_mount_point="/x",
                          canonical_mount_point="/x", description="")
     for _ in range(3):
-        with pytest.raises(PrivateKindNotSupported, match="private publishing for file systems is not built yet"):
+        with pytest.raises(PrivateKindNotSupported, match="creator-only publishing for file systems is not built yet"):
             getattr(s, method)(fs, {}, registry=reg)
     assert len(reg.list_activity(entity_slug="fs1", status="error", limit=10)) == 1, "one row per state"
 

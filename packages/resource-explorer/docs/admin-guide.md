@@ -343,7 +343,7 @@ blueprint, dependency confirmations, node reclassify), every Publish item, the C
    read; it skips the zone check.
 3. **Zones not in use:** allowed for any signed-in user. "Not in use" means the element, when it is in Egeria,
    carries no `ZoneMembership`, and RE configures no draft, publish or private zone for it
-   (`EXPLORER_DRAFT_ZONE`, `EXPLORER_PUBLISH_ZONES` / `egeria.default_catalog_zones`, a private investigation).
+   (`EXPLORER_DRAFT_ZONE`, `EXPLORER_PUBLISH_ZONES` / `egeria.default_catalog_zones`, a creator-only investigation).
    With nothing configured and the element not yet in Egeria, RE reads nothing from Egeria to decide.
 4. **Zones in use:** RE asks what Egeria's own access connector would answer
    (`OpenMetadataAccessSecurityConnector.validateZoneAccess`; mirrored in `zone_access.py`, with file and line
@@ -750,8 +750,9 @@ host does. Design: [`design-notes/DESIGN-RE-ENGINE-HOST-BY-EQUIVALENCE.md`](desi
 - **It acts as a daemon, never as the requester.** Every Egeria call the engine host makes runs under RE's own
   service account. The user who asked for the action is recorded on the run row as a name and is never used as
   a credential.
-- **Private work is left alone.** An action whose target is a database in somebody's private investigation is
-  left **unclaimed**. The engine host is unattended, so private work never runs as the service account; its
+- **Private work is left alone.** An action whose target is a database in somebody's creator-only investigation is
+  left **unclaimed** (F56: the investigation's `visibility` decides, not its kind — a shared Personal project's
+  resources are claimed, a creator-only Study's are not). The engine host is unattended, so private work never runs as the service account; its
   owner runs it from RE while signed in.
 - **What it claims.** Only actions that are approved, not yet claimed, and for a request type RE declares. An
   action with no target, or a target that is not a registered database, is claimed and then completed as

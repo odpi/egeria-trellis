@@ -1,6 +1,6 @@
 # Resource Explorer documentation
 
-60 documents, grouped by what they *are* rather than what they are about — the
+61 documents, grouped by what they *are* rather than what they are about — the
 distinction that matters when deciding whether one is still live.
 
 **Generated from each document's own `**Status:**` line**, not from a
@@ -52,6 +52,8 @@ Decisions and models. Cited from source where a comment cannot restate them.
   branch `claude/re-b1-table-result`, not deployed. This is the deployment record for one new tabl
 - **[ddl-artifact-columns.md](ddl-artifact-columns.md)** — 2026-10-28  
   merged to main (PR #700). The columns are added by RE's schema init the first time a process run
+- **[ddl-investigation-visibility.md](ddl-investigation-visibility.md)** — 2026-11-04  
+  branch `claude/re-f56-visibility-axis`, not deployed. This is the deployment record for one colu
 - **[ddl-open-data-data-request.md](ddl-open-data-data-request.md)** — 2026-10-29  
   APPROVED (owner, 2026-10-30). Not yet applied. Decision (project owner, 2026-10-30): "approve th
 - **[ddl-open-data-od1.md](ddl-open-data-od1.md)** — 2026-10-28  

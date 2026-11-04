@@ -1,5 +1,12 @@
 """Change an investigation's classification, and move its Egeria elements with it.
 
+**F56 (2026-11-04): the kind and the visibility are separate axes.** A reclassify
+changes the KIND; the visibility (`creator-only` | `shared`) stays unless the
+person changes it in the same dialog (`visibility=`). Zones move only when the
+VISIBILITY changes (the directions below are visibility directions: tightening
+is shared -> creator-only). A kind change with the visibility kept is LATERAL:
+the Project's kind classification is swapped in place, its zones untouched.
+
 `docs/investigation-classification-and-zoning-design.md` §5 and Phase 6 — the
 owner's point 7: "It should be possible to change the classification of a project
 subsequent to its being created and that could lead to visibility changes."
@@ -67,6 +74,9 @@ class ReclassificationResult:
     slug: str = ""
     from_classification: str = ""
     to_classification: str = ""
+    #: F56: the visibility before and after. Equal unless the person changed it in the same dialog.
+    from_visibility: str = ""
+    to_visibility: str = ""
     direction: str = LATERAL
     #: The Egeria Project, or "" for a local-only investigation. Needed to tell
     #: "the Project is still public" from "there is no Project" — see
@@ -118,6 +128,9 @@ class ReclassificationResult:
             "project_guid": self.project_guid,
             "from_classification": self.from_classification,
             "to_classification": self.to_classification,
+            "from_visibility": self.from_visibility,
+            "to_visibility": self.to_visibility,
+            "visibility_kept": bool(self.to_visibility) and self.from_visibility == self.to_visibility,
             "direction": self.direction,
             "project_rezoned": self.project_rezoned,
             "egeria_kind_changed": self.egeria_kind_changed,
@@ -386,7 +399,10 @@ class InvestigationReclassifier:
     # ── the flow ──────────────────────────────────────────────────────────
 
     def reclassify(self, slug: str, to_classification: str,
-                   hypothesis: str = "", *, access=None) -> ReclassificationResult:
+                   hypothesis: str = "", *, access=None, visibility: str | None = None) -> ReclassificationResult:
+        """`visibility` (F56): None or the current value keeps it — the default, and the dialog says so ("still
+        creator-only"); a different value is the person changing it in the same dialog, and only that moves
+        zones."""
         from resource_explorer.registry import ProjectRegistry
 
         res = ReclassificationResult(slug=slug, to_classification=to_classification)
@@ -395,13 +411,18 @@ class InvestigationReclassifier:
             res.errors.append(f"investigation '{slug}' not found")
             return res
         res.from_classification = inv.get("project_classification") or ""
+        res.from_visibility = inv.get("visibility") or ProjectRegistry.VISIBILITY_SHARED
+        res.to_visibility = (visibility or "").strip() or res.from_visibility
         if to_classification not in ProjectRegistry.PROJECT_CLASSIFICATIONS:
             res.errors.append(
                 f"unknown classification {to_classification!r}; "
                 f"valid: {list(ProjectRegistry.PROJECT_CLASSIFICATIONS)}")
             return res
-        if res.from_classification == to_classification:
-            res.errors.append(f"already classified {to_classification}")
+        if res.to_visibility not in ProjectRegistry.VISIBILITIES:
+            res.errors.append(f"unknown visibility {res.to_visibility!r}; valid: {list(ProjectRegistry.VISIBILITIES)}")
+            return res
+        if res.from_classification == to_classification and res.from_visibility == res.to_visibility:
+            res.errors.append(f"already classified {to_classification}, {res.to_visibility}")
             return res
 
         hypothesis = (hypothesis or "").strip()
@@ -412,8 +433,8 @@ class InvestigationReclassifier:
                 "the classification exists to record")
             return res
 
-        res.direction = direction_of(res.from_classification, to_classification,
-                                     ProjectRegistry.PRIVATE_CLASSIFICATIONS)
+        res.direction = direction_of(res.from_visibility, res.to_visibility,
+                                     (ProjectRegistry.VISIBILITY_CREATOR_ONLY,))
         owner = (inv.get("created_by") or "").strip()
         if res.direction == TIGHTEN and not owner:
             # Zoning to an empty owner yields `[private_zone]` alone, readable by
@@ -421,9 +442,8 @@ class InvestigationReclassifier:
             # is better than making somebody's work inaccessible to themselves.
             res.errors.append(
                 "this investigation has no recorded creator (it predates ownership "
-                "being recorded), so there is nobody to make it private to. "
-                "Recreate it, or set an owner, before classifying it as "
-                f"{to_classification}.")
+                "being recorded), so there is nobody for it to be creator-only to. "
+                "Recreate it, or set an owner, before making it creator-only.")
             from resource_explorer.surveyors.egeria_investigation_publisher import (
                 record_ownerless_refusal,
             )
@@ -457,9 +477,28 @@ class InvestigationReclassifier:
             return self._apply_locally(res, to_classification, hypothesis)
 
         if res.direction == LATERAL:
-            # Nothing moves. Task -> Campaign is a real change with no visibility
-            # consequence, and pretending otherwise would re-zone elements for no
-            # reason — which the connector rejects as a no-op anyway.
+            # No zone moves. Task -> Campaign (or, since F56, Experiment -> StudyProject that stays creator-only)
+            # changes the kind and nothing about who can see it; re-zoning would be for no reason, and the
+            # connector rejects a no-op zone change anyway. The Project's KIND classification still has to move,
+            # or Egeria keeps saying the old kind while RE says the new one.
+            if access is not None:
+                from resource_explorer.workflows.egeria_work_access import reclassify_kind_in_place
+
+                why = access([reclassify_kind_in_place(project_guid, res.from_classification)])
+                if why:
+                    res.not_permitted = why
+                    res.errors.append(f"the investigation Project: {why}. Nothing was changed.")
+                    return res
+            moved, why = self._move_kind_classification(
+                project_guid, res.from_classification, to_classification,
+                hypothesis or (inv.get("hypothesis") or ""))
+            res.egeria_kind_changed = moved
+            if not moved:
+                # Local left as it was: nothing else changed, so RE keeps saying what Egeria still says.
+                res.errors.append(
+                    f"the Egeria Project still carries {res.from_classification!r} rather than "
+                    f"{to_classification!r}: {why}. Nothing was changed.")
+                return res
             return self._apply_locally(res, to_classification, hypothesis)
 
         # Brief Z3: every element this moves is checked first, before anything else is asked of Egeria (even the
@@ -514,10 +553,10 @@ class InvestigationReclassifier:
             if not private_zone_is_enforced():
                 res.errors.append(
                     f"the '{private_zone()}' zone is not confirmed to be enforced, so "
-                    "this investigation cannot be made private. Nothing was changed — "
+                    "this investigation cannot be made creator-only. Nothing was changed — "
                     "moving its artifacts into a zone Egeria ignores would leave them "
                     "readable by everyone while Resource Explorer showed them as "
-                    "private.")
+                    "creator-only.")
                 return res
 
         target = self._target_zones(res.direction, owner)
@@ -558,10 +597,14 @@ class InvestigationReclassifier:
 
         # The metadata half, after the zones. Order matters: zones are the
         # safety property and go first, so a failure here leaves the
-        # visibility correct and only the classification stale.
-        moved, why = self._move_kind_classification(
-            project_guid, res.from_classification, to_classification,
-            hypothesis or (inv.get("hypothesis") or ""))
+        # visibility correct and only the classification stale. Only the
+        # visibility changed (F56): the kind stays, nothing to swap.
+        if res.from_classification == to_classification:
+            moved, why = True, ""
+        else:
+            moved, why = self._move_kind_classification(
+                project_guid, res.from_classification, to_classification,
+                hypothesis or (inv.get("hypothesis") or ""))
         res.egeria_kind_changed = moved
         if not moved:
             res.errors.append(
@@ -577,7 +620,7 @@ class InvestigationReclassifier:
             res.errors.append(
                 "the classification was NOT changed, because some elements are still "
                 "readable by everyone. Resource Explorer would have shown this "
-                "investigation as private while Egeria served them.")
+                "investigation as creator-only while Egeria served them.")
             return res
         return self._apply_locally(res, to_classification, hypothesis)
 
@@ -585,7 +628,7 @@ class InvestigationReclassifier:
                        hypothesis: str) -> ReclassificationResult:
         try:
             self._registry.set_investigation_classification(
-                res.slug, to_classification, hypothesis=hypothesis)
+                res.slug, to_classification, hypothesis=hypothesis, visibility=res.to_visibility)
             res.local_applied = True
         except Exception as exc:
             res.errors.append(

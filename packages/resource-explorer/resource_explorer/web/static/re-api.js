@@ -911,12 +911,14 @@ export const getInvestigation = (slug) => get(`/api/investigations/${encodeURICo
 export const createInvestigation = ({
   displayName, description = '', purposes = [], purposeText = '',
   projectClassification = 'StudyProject', egeriaBinding = 'egeria', hypothesis = '',
-  egeriaProjectGuid = '', egeriaProjectQualifiedName = '',
+  egeriaProjectGuid = '', egeriaProjectQualifiedName = '', visibility = null,
 } = {}) =>
   post('/api/investigations/', {
     display_name: displayName, description, purposes, purpose_text: purposeText,
     project_classification: projectClassification, egeria_binding: egeriaBinding, hypothesis,
     egeria_project_guid: egeriaProjectGuid, egeria_project_qualified_name: egeriaProjectQualifiedName,
+    // F56: creator-only | shared; null takes the kind's default on the server.
+    ...(visibility ? { visibility } : {}),
   });
 
 export const updateInvestigation = (slug, fields) =>
@@ -953,7 +955,13 @@ export const bindInvestigationEgeriaProject = (slug, {
 /** Send the signed-in user's own journal entries to the investigation's Egeria Project (409 until promoted). */
 export const publishInvestigationJournal = (slug) =>
   post(`/api/investigations/${encodeURIComponent(slug)}/journal/publish`);
-export const promoteInvestigation = (slug) => post(`/api/investigations/${encodeURIComponent(slug)}/promote`);
+/** F56: `choice` is the promote dialog's answers — { projectClassification, hypothesis, visibility }; omitted fields
+ *  keep what is stored. A local (or private) investigation promotes only with a choice. */
+export const promoteInvestigation = (slug, choice = null) =>
+  post(`/api/investigations/${encodeURIComponent(slug)}/promote`, choice ? {
+    project_classification: choice.projectClassification || '', hypothesis: choice.hypothesis || '',
+    visibility: choice.visibility || '',
+  } : undefined);
 /** Delete an investigation, permanently in Resource Explorer. `egeria: false` deletes in Resource Explorer only (the
  *  Egeria Project, Collection and Notes stay); `egeria: true` ARCHIVES the Project in Egeria first (restorable). Owner
  *  or Portal admin only. */
@@ -965,9 +973,11 @@ export const deleteInvestigation = (slug, { egeria = false, confirmed = '' } = {
 export const previewInvestigationDelete = (slug) =>
   get(`/api/investigations/${encodeURIComponent(slug)}/delete-preview`);
 
-export const reclassifyInvestigation = (slug, projectClassification, hypothesis = '') =>
+export const reclassifyInvestigation = (slug, projectClassification, hypothesis = '', visibility = null) =>
   post(`/api/investigations/${encodeURIComponent(slug)}/reclassify`, {
     project_classification: projectClassification, hypothesis,
+    // F56: null keeps the visibility; reclassifying never changes it by itself.
+    ...(visibility ? { visibility } : {}),
   });
 
 export const relinkInvestigationMembers = (slug) =>

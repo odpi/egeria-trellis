@@ -245,7 +245,7 @@ class ComponentMaterializer:
         private_owner, private_zones_for_owner = self._privacy_for(entity_type, entity_slug)
         if private_owner and private_zones_for_owner is None:
             return {"status": "skipped",
-                    "reason": ("belongs to a private investigation and the private "
+                    "reason": ("belongs to a creator-only investigation and the private "
                                "governance zone is not confirmed to be enforced; "
                                "nothing was written to Egeria"),
                     "scope_locator": scope_locator,
