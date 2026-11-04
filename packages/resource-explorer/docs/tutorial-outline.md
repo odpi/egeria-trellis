@@ -34,6 +34,8 @@
   part 6 runs no Assessment survey. Step 6 runs one analysis on its own, Table Statistics Freshness (pressed once
   on the project owner's word, 2026-11-03T15:00:31Z), turning two partial answers whole. G31 to G34 added; G13
   and G23 extended.
+- 2026-11-04: W57 landed (main b7bfff93): the statistics_freshness source line now names what it counts. Part 6
+  step 6 quotes the new words, and says the screenshot still shows the old ones; G33 marked fixed.
 **Replaces, once written:** the six walks in [`tutorial/`](tutorial/README.md), which stay on `main` until then.
 
 ## How to read this outline
@@ -1003,7 +1005,7 @@ stamps recur from part to part. Take them in order, in one Quickstart, without r
 | S20 | 5 · note | `loading_bay`: the weekly files, summary lines, sections closed | File-system survey | Reach line, the presses, the closed sections with their summary lines | **Taken 2026-11-02:** `S20-folder-survey.webp` after Egeria's Folder Survey; with `S20a-root-folder-attached.webp` (Curate's publish band) and `S20b-files-open.webp` (Files open). Files reads "analysis level: top level only", so no `.restatement.csv` is listed; that moves to the part that walks the files. Re-shoot after W38. |
 | S21 | 6 · 1 | is `coco_pharma` already catalogued? | Discovery | "Nothing is recorded for this — a real absence…" | **Taken 2026-11-03:** `tutorial/images/06-further-down/S21-already-catalogued.webp`, ∅ "Not yet published to Egeria"; with `S21b-likely-copy.webp`, "localhost_docker_coco_pharma (likely_copy, column-signature Jaccard 1.00, containment 1.00)". Re-shoot after W38. |
 | S22 | 6 · 4 | what has not been looked at yet | Analysis, a ○ row | "Nothing has been measured for this yet." | **Taken 2026-11-03:** `S22-not-measured.webp`, three ○ rows; "Nothing has been measured for this yet." beside "Not yet run." (G32). Re-shoot after W38. |
-| S23 | 6 · 5 | the deeper look, one analysis at a time | One analysis run on its own | The row after its run | **Taken 2026-11-03:** `S23a-one-analysis-ran.webp` (the Table Statistics Freshness card, ✓ "just now") and `S23-statistics-current.webp` ("statistics_freshness · measured · 215 of 266 tables (81%)", the partial line gone). Re-shoot after W38. |
+| S23 | 6 · 5 | the deeper look, one analysis at a time | One analysis run on its own | The row after its run | **Taken 2026-11-03:** `S23a-one-analysis-ran.webp` (the Table Statistics Freshness card, ✓ "just now") and `S23-statistics-current.webp` ("statistics_freshness · measured · 215 of 266 tables (81%)", the partial line gone). Re-shoot after W38; the re-shot S23 will show W57's words. |
 | S24 | 7 · 1–2 | Tanya as owner, "clinical-trial reporting" | Context tab | Sensitivity, Owner, Intended use set, signed and dated | new |
 | S25 | 7 · 5 | what a person must settle | RFAs drawer | One open item | new |
 | S26 | 8 · 2–3 | Erin's follow-up question, and what the answer rests on | Chat answer | The answer and the "From N stored results" line | new |
@@ -1083,7 +1085,7 @@ in this outline; each is named where it bites.
 | G30 | One survey report, two counts (read 2026-11-02): the folder survey card says "7 annotations on the report; 6 read into RE", while Curate's "Egeria reports" lists the same report with "0 annotations". | 5, 10 | One count, or say what each one counts. |
 | G31 | The "LAST SURVEY" tile names the stage's overview survey, not the survey that ran (read 2026-11-02, graded F47). For one run, Assessment showed "Database Scouting Scan" and Analysis showed "Database Assessment Survey", which had never run. | 6 | Name the survey that ran last. |
 | G32 | ○ rows say "not run" in two ways (read 2026-11-03, graded W54): "Not yet run. Run: postgres_column_profile." and "Nothing has been measured for this yet. Run: postgres_nested_columns." Only the second has "not yet run" in its source line. | 6 | One phrasing, and the source line on both. |
-| G33 | A headline that names the wrong numerator (read 2026-11-03, graded W57): after Table Statistics Freshness ran, the source line reads "statistics_freshness · measured · 215 of 266 tables (81%)". All 266 relations were measured; 215 is the never-analyzed count (215 never analyzed, 48 current, 3 views unknown). | 6 | The headline names its numerator. |
+| G33 | A headline that names the wrong numerator (read 2026-11-03, graded W57): after Table Statistics Freshness ran, the source line reads "statistics_freshness · measured · 215 of 266 tables (81%)". All 266 relations were measured; 215 is the never-analyzed count (215 never analyzed, 48 current, 3 views unknown). | 6 | The headline names its numerator. **Fixed by W57** (main b7bfff93, read 2026-11-04): the line reads "215 tables never analyzed or stale of 266 tables (81% of the tables)". Part 6 quotes the new words; S23 still shows the old ones until it is re-shot. |
 | G34 | Two questions show one shared sentence (read 2026-11-03, graded W58): "How complete and consistent is this database's documentation" (Q-0088) and "How well-modelled is this database" (Q-0090) both show Schema Conventions' summary, "37 of 263 base tables declare no primary key. 54 of 263 base tables have no comment; 32 of 1916 columns do." | 6 | Each question shows the measures it names. |
 
 ---
