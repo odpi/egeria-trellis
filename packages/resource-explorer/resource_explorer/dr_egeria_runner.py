@@ -683,6 +683,22 @@ def _guard_repeat(registry, plan: DocumentPlan, force: bool, own_id: str = "", w
     return []
 
 
+def run_in_progress(path: str | os.PathLike, registry=None) -> dict | None:
+    """The RUNNING row of this document's content whose process is alive or cannot be checked, or None. Rows whose
+    owner is provably gone are first reconciled to `interrupted`, as `_guard_repeat` does. For the bootstrap's
+    whole-pass refusal (Architect ruling Q2, 2026-11-04): a running row for ANY file refuses the pass before it starts."""
+    from resource_explorer.registry import ProjectRegistry
+    from resource_explorer.run_reconciler import reconcile_one
+
+    plan = plan_document(path)
+    registry = registry or ProjectRegistry()
+    for r in _runs_of(registry, plan.sha256):
+        if r.get("status") == RUNNING:
+            reconcile_one(registry, r)
+    running = [r for r in _runs_of(registry, plan.sha256) if r.get("status") == RUNNING]
+    return running[0] if running else None
+
+
 def _child_env() -> dict:
     """The `dr_egeria` child's environment: this process's, minus any Egeria user or password variable (the
     identity travels in explicit arguments, never in what a variable happens to hold), with a wide console."""
@@ -788,6 +804,8 @@ def _run_locked(plan: DocumentPlan, *, force: bool, requested_by: str, registry,
         detail["heal_waiver"] = heal_waiver
         detail["superseded_runs"] = [{"id": r["id"], "ts": r.get("ts", ""), "status": r.get("status", "")}
                                      for r in superseded]
+        detail["superseded_words"] = "; ".join(
+            f"earlier run {r['id']} at {r.get('ts', '')} superseded: {heal_waiver}" for r in superseded)
     planned_items = [c.item(NOT_RUN) for c in plan.commands]
 
     def write(status: str, summary: str, items: list[dict], *, running: bool) -> None:

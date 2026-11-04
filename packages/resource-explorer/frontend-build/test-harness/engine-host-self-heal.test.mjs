@@ -156,3 +156,13 @@ test('repair: the 409 from the server reaches the row as words', async () => {
   await tick(40);
   assert.equal(text(host.querySelector('[data-engine-result]')), 'not run · a bootstrap heal is already running · try again when it ends');
 });
+
+test('repair: the state says when and by whom it was checked (Architect ruling Q4)', async () => {
+  const { pane } = await setUpRepair();
+  const at = new Date(Date.now() - 2 * 60 * 1000).toISOString();
+  assert.equal(pane.engineStateWords(ENG({ checked_at: at, source: 'engine host' })),
+    'NOT declared in this Egeria · RE-engine surveys cannot run in Egeria · checked 2m ago by the engine host');
+  assert.equal(pane.engineStateWords(ENG({ state: 'present', checked_at: at, source: 'bootstrap check' })),
+    'declared in this Egeria · checked 2m ago by the bootstrap check');
+  assert.equal(pane.engineStateWords(ENG({ state: 'opted_out' })), 'not checked yet');
+});

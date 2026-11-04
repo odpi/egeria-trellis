@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import os
+from pathlib import Path
 from unittest.mock import patch
 
 import pytest
@@ -93,6 +94,7 @@ def test_opted_in_and_missing_heals_every_document_in_order_through_the_runner(r
     assert out["batches"]["engine-host"]["action"] == "healed", out
     assert [p for p, _w in seen] == ["engine-host/decl.md", "engine-host/library/x.md"]
     assert all(w.startswith("canary ResourceExplorerSurvey verified missing at ") for _p, w in seen)
+    assert len({w for _p, w in seen}) == 1, "the waiver is decided ONCE at pass start and covers the whole pass"
     assert "2 documents run" in out["batches"]["engine-host"]["reason"]
     rows = _rows(reg)
     assert {json.loads(r["detail"])["identity_source"] for r in rows} == {bs.SOURCE_STARTUP_HEAL}
@@ -114,20 +116,59 @@ def test_a_verified_missing_canary_sets_aside_a_run_whose_elements_a_reset_wiped
     detail = json.loads(next(r for r in _rows(reg) if r["id"] == again["activity_id"])["detail"])
     assert detail["heal_waiver"].startswith("canary ResourceExplorerSurvey verified missing")
     assert [r["id"] for r in detail["superseded_runs"]] == [first["activity_id"]]
+    assert detail["superseded_words"] == (f"earlier run {first['activity_id']} at {first_ts(reg, first)} superseded: "
+                                          "canary ResourceExplorerSurvey verified missing at T")
+
+
+def first_ts(reg, out):
+    return next(r for r in _rows(reg) if r["id"] == out["activity_id"])["ts"]
+
+
+def _running_row(reg, plan, row_id="live-1"):
+    from resource_explorer.registry import ActivityEntry
+
+    reg.write_activity(ActivityEntry(
+        id=row_id, ts="2026-11-04T10:00:00+00:00", operation="dr_egeria", intent="enrichment",
+        entity_type="dr_egeria_document", entity_slug=plan.rel, entity_name=plan.path.name, entity_location="",
+        status="running", summary="running",
+        detail=json.dumps({"sha256": plan.sha256, "_runner": {"host": os.uname().nodename, "pid": os.getpid()}}),
+        items=[]))
+
+
+def test_a_running_row_for_any_file_refuses_the_whole_pass_before_it_starts(root, reg, monkeypatch):
+    """Architect ruling Q2: document 2 is running elsewhere, so not even document 1 runs."""
+    from resource_explorer import dr_egeria_runner as runner
+
+    (root / "engine-host" / "second.md").write_text((root / "plain" / "only.md").read_text())
+    _engine_batch(root, files=("decl.md", "second.md"))
+    _canary(monkeypatch, False)
+    monkeypatch.setattr("resource_explorer.registry.ProjectRegistry", lambda *a, **k: reg)
+    Fakes(monkeypatch)
+    _running_row(reg, runner.plan_document("engine-host/second.md"))
+    monkeypatch.setattr(runner, "run_document", lambda *a, **k: pytest.fail("nothing of the batch may start"))
+    out = bs.check_and_heal(root, only="engine-host")["batches"]["engine-host"]
+    assert out["action"] == "failed" and "second.md is in progress" in out["reason"]
+    assert "nothing of this batch was started" in out["reason"]
+
+
+def test_status_says_when_and_by_whom_the_state_was_checked(root, monkeypatch):
+    from resource_explorer import engine_host
+
+    _engine_batch(root)
+    _canary(monkeypatch, False)
+    bs.check_and_heal(root)
+    st = bs.get_status(root)["batches"]["engine-host"]
+    assert st["source"] == "bootstrap check" and st["checked_at"]
+    engine_host.record_engine_answer(False, at="2999-01-01T00:00:00+00:00")
+    st = bs.get_status(root)["batches"]["engine-host"]
+    assert (st["source"], st["checked_at"]) == ("engine host", "2999-01-01T00:00:00+00:00")
 
 
 def test_the_waiver_never_passes_a_run_in_progress(root, reg, monkeypatch):
     from resource_explorer import dr_egeria_runner as runner
-    from resource_explorer.registry import ActivityEntry
 
     Fakes(monkeypatch)
-    plan = runner.plan_document("engine-host/decl.md")
-    reg.write_activity(ActivityEntry(
-        id="live-1", ts="2026-11-04T10:00:00+00:00", operation="dr_egeria", intent="enrichment",
-        entity_type="dr_egeria_document", entity_slug=plan.rel, entity_name="decl.md", entity_location="",
-        status="running", summary="running",
-        detail=json.dumps({"sha256": plan.sha256, "_runner": {"host": os.uname().nodename, "pid": os.getpid()}}),
-        items=[]))
+    _running_row(reg, runner.plan_document("engine-host/decl.md"))
     with pytest.raises(runner.RunRefused, match="in progress"):
         runner.run_document("engine-host/decl.md", identity=IDENT, registry=reg, heal_waiver="canary verified missing")
 
@@ -150,7 +191,8 @@ def test_one_batch_run_on_a_present_engine_answers_already_declared_and_writes_n
     monkeypatch.setattr(bs, "heal_batch", lambda *a, **k: pytest.fail("a present engine is never re-declared"))
     monkeypatch.setattr("resource_explorer.registry.ProjectRegistry", lambda *a, **k: reg)
     out = bs.check_and_heal(root, only="engine-host")["batches"]["engine-host"]
-    assert out == {"action": "present", "reason": "already declared · no run of its documents is recorded here"}
+    assert out == {"action": "present", "reason": "already declared · no run of its first document is recorded here · "
+                   "0 of 1 documents applied — run the rest from the CLI (resource-explorer dr-egeria run --force)"}
 
 
 def test_already_declared_names_the_date_its_content_was_applied(root, reg, monkeypatch):
@@ -161,14 +203,15 @@ def test_already_declared_names_the_date_its_content_was_applied(root, reg, monk
     runner.run_document("engine-host/decl.md", force=True, identity=IDENT, registry=reg)
     batch = bs.discover_batches(root)[0]
     words = bs.already_declared_words(batch, registry=reg)
-    assert words.startswith("already declared · content applied on 20") and len(words.split("on ")[-1]) == 10
+    assert words.startswith("already declared · content applied on 20") and words.endswith(" · 1 of 1 documents applied")
 
 
 def test_one_batch_run_refuses_unknown_canary_without_a_write(root, monkeypatch):
     _engine_batch(root)
     _canary(monkeypatch, None)
     monkeypatch.setattr(bs, "heal_batch", lambda *a, **k: pytest.fail("no heal on an unreadable canary"))
-    assert bs.check_and_heal(root, only="engine-host")["batches"]["engine-host"]["action"] == "unknown"
+    out = bs.check_and_heal(root, only="engine-host")["batches"]["engine-host"]
+    assert out == {"action": "unknown", "reason": "could not check Egeria: could not reach Egeria"}
 
 
 def test_one_batch_run_is_never_forced_and_names_a_real_batch(root):
@@ -377,3 +420,111 @@ def test_w64_served_status_carries_the_state_the_cards_read(registry, monkeypatc
         bs._status[bs.ENGINE_HOST_BATCH] = bs.BatchStatus(present=False, last_verified_at="2026-11-04T17:00:00+00:00")
     assert bs.get_status()["batches"]["engine-host"]["state"] == "missing"
     assert _rows_by_qn(registry)["ResourceExplorerSurvey::re-db-derived"]["cannot_run_reason"] == nsr.ENGINE_NOT_DECLARED
+
+
+# ── W66: a private resource never offers an Egeria-dispatched RE survey ──
+
+from contextlib import contextmanager  # noqa: E402
+
+
+@contextmanager
+def _as(user_id: str):
+    from resource_explorer.a2a_auth import CallerIdentity, current_caller
+
+    reset = current_caller.set(CallerIdentity(user_id=user_id, egeria_token=None, auth_source="app-jwt"))
+    try:
+        yield
+    finally:
+        current_caller.reset(reset)
+
+
+def _make_private(registry, owner="alice", name="Alice Private"):
+    with _as(owner):
+        inv = registry.create_investigation(name, project_classification="PersonalProject")
+        ws = registry.get_or_create_working_set(inv["slug"])
+        registry.add_working_set_member(ws["slug"], "database", "adventureworks")
+    return inv
+
+
+def _w66_rows(registry, viewer=""):
+    from resource_explorer import native_survey_run as nsr
+
+    return {r["qualified_name"]: r for r in nsr.native_survey_rows(registry, "database", "adventureworks", TECH,
+                                                                   viewer=viewer)}
+
+
+W66_SENTENCE = ("not offered: this database is in a private investigation, and Resource Explorer's engine host does not "
+                "claim Egeria engine actions on private resources (nothing of a private investigation is written into "
+                "Egeria's engine queue) · Resource Explorer's own Run on the card runs it here instead")
+
+
+def test_w66_a_private_database_offers_no_re_engine_run_and_says_why(registry, monkeypatch):
+    from resource_explorer import engine_host
+
+    monkeypatch.setenv("RE_ENGINE_HOST_ENABLED", "true")
+    engine_host.record_engine_answer(True)
+    _make_private(registry)
+    by = _w66_rows(registry, viewer="bob")
+    for qn in RE_ENGINE_ROWS:
+        assert by[qn]["runnable"] is False and by[qn]["cannot_run_reason"] == W66_SENTENCE, qn
+    # Egeria's own engines are not RE's rule.
+    assert "private investigation" not in by["PostgreSQLSurvey::survey-postgres-database"]["cannot_run_reason"]
+
+
+def test_w66_private_is_asked_first_even_with_the_engine_absent_or_the_host_off(registry, monkeypatch):
+    from resource_explorer import engine_host
+
+    _make_private(registry)
+    engine_host.record_engine_answer(False)
+    monkeypatch.delenv("RE_ENGINE_HOST_ENABLED", raising=False)
+    assert _w66_rows(registry)["ResourceExplorerSurvey::re-db-derived"]["cannot_run_reason"] == W66_SENTENCE
+
+
+def test_w66_the_owner_sees_the_investigation_named_another_viewer_does_not(registry, monkeypatch):
+    monkeypatch.setenv("RE_ENGINE_HOST_ENABLED", "true")
+    _make_private(registry, owner="alice", name="Alice Private")
+    owner_reason = _w66_rows(registry, viewer="alice")["ResourceExplorerSurvey::re-db-derived"]["cannot_run_reason"]
+    other_reason = _w66_rows(registry, viewer="bob")["ResourceExplorerSurvey::re-db-derived"]["cannot_run_reason"]
+    assert owner_reason == W66_SENTENCE + " (private investigation: Alice Private)"
+    assert other_reason == W66_SENTENCE and "Alice" not in other_reason
+
+
+def test_w66_the_api_refuses_with_the_same_sentence_before_egeria(registry, monkeypatch):
+    from resource_explorer import engine_host
+    from resource_explorer import native_survey_run as nsr
+
+    monkeypatch.setenv("RE_ENGINE_HOST_ENABLED", "true")
+    engine_host.record_engine_answer(True)
+    _make_private(registry)
+
+    class NoPort:
+        def __getattr__(self, name):
+            raise AssertionError(f"the press reached Egeria ({name})")
+
+    for qn in RE_ENGINE_ROWS:
+        with pytest.raises(nsr.NativeSurveyCannotRun) as refused:
+            nsr.submit_native_survey(registry, NoPort(), "database", "adventureworks", qn, technology_type=TECH)
+        assert str(refused.value) == W66_SENTENCE, qn
+
+
+def test_w66_route_answers_422_with_the_sentence(registry, monkeypatch):
+    from resource_explorer import engine_host
+    from resource_explorer.web.routes import native_surveys as route
+
+    monkeypatch.setenv("RE_ENGINE_HOST_ENABLED", "true")
+    engine_host.record_engine_answer(True)
+    _make_private(registry)
+    src = Path(route.__file__).read_text()
+    assert "except nsr.NativeSurveyCannotRun as exc:\n        raise HTTPException(status_code=422" in src
+
+
+def test_w66_a_shared_investigation_changes_nothing(registry, monkeypatch):
+    from resource_explorer import engine_host
+
+    monkeypatch.setenv("RE_ENGINE_HOST_ENABLED", "true")
+    engine_host.record_engine_answer(True)
+    with _as("alice"):
+        inv = registry.create_investigation("Team task", project_classification="Task")
+        ws = registry.get_or_create_working_set(inv["slug"])
+        registry.add_working_set_member(ws["slug"], "database", "adventureworks")
+    assert "private investigation" not in _w66_rows(registry)["ResourceExplorerSurvey::re-db-derived"]["cannot_run_reason"]

@@ -751,6 +751,15 @@ def _heal_with_runner(batch: Batch, *, waiver: str, requested_by: str) -> tuple[
         identity = heal_identity()
     except NoDrEgeriaIdentity as exc:
         return False, f"no service account: {exc}"
+    # Architect ruling Q2: a run in progress for ANY file of the batch refuses the whole pass before document 1.
+    for filename in batch.files:
+        try:
+            live = runner.run_in_progress(batch.path / filename)
+        except Exception as exc:  # noqa: BLE001 - cannot tell: do not start
+            return False, f"not run · could not check for a run in progress of {filename}: {exc}"
+        if live:
+            return False, (f"not run · a run of {filename} is in progress (activity {live['id']} since "
+                           f"{live.get('ts', '')}); nothing of this batch was started")
     counts: dict[str, int] = {}
     done = 0
     for filename in batch.files:
@@ -783,16 +792,22 @@ def already_declared_words(batch: Batch, registry=None) -> str:
             from resource_explorer.registry import ProjectRegistry
 
             registry = ProjectRegistry()
-        first = f"{batch.batch_id}/{batch.files[0]}" if batch.files else ""
-        rows = [r for r in registry.list_activity(operation=runner.OPERATION, limit=1000)
-                if r.get("status") in (runner.OK, runner.WARNING)
-                and runner._detail_of(r).get("document") == first and not runner._detail_of(r).get("dry_run")]
+        wanted = [f"{batch.batch_id}/{f}" for f in batch.files]
+        ok_rows = [r for r in registry.list_activity(operation=runner.OPERATION, limit=1000)
+                   if r.get("status") in (runner.OK, runner.WARNING) and not runner._detail_of(r).get("dry_run")
+                   and runner._detail_of(r).get("document") in wanted]
     except Exception as exc:  # noqa: BLE001 - the words say what could not be read
         return f"already declared · run history not read ({type(exc).__name__})"
-    if not rows:
-        return "already declared · no run of its documents is recorded here"
-    newest = max(rows, key=lambda r: r.get("ts") or "")
-    return f"already declared · content applied on {(newest.get('ts') or '')[:10]}"
+    applied = {runner._detail_of(r).get("document") for r in ok_rows}
+    n, m = len(applied), len(wanted)
+    # Architect ruling Q1 (2): how many of the batch's documents have an ok row, so a partial state is visible.
+    count = (f"{n} of {m} documents applied" if n == m
+             else f"{n} of {m} documents applied — run the rest from the CLI (resource-explorer dr-egeria run --force)")
+    first = [r for r in ok_rows if runner._detail_of(r).get("document") == wanted[0]] if wanted else []
+    if not first:
+        return f"already declared · no run of its first document is recorded here · {count}"
+    newest = max(first, key=lambda r: r.get("ts") or "")
+    return f"already declared · content applied on {(newest.get('ts') or '')[:10]} · {count}"
 
 
 def batch_price(batch_id: str, docs_dir: Path = DOCS_DIR, registry=None) -> dict:
@@ -940,7 +955,9 @@ def _check_and_heal_locked(docs_dir: Path, force: bool, *, only: str = "", reque
                         verified_missing_at = now if state is False else ""
 
             if state is None:
-                results[batch.batch_id] = {"action": "unknown", "reason": "could not reach Egeria"}
+                results[batch.batch_id] = {"action": "unknown", "reason": (
+                    "could not check Egeria: could not reach Egeria" if batch.batch_id == only
+                    else "could not reach Egeria")}
                 continue
 
             if opted_out:
@@ -1038,6 +1055,26 @@ def _state_of(batch: Batch, st: BatchStatus) -> str:
     return STATE_OPTED_OUT if not batch.opted_in else STATE_UNKNOWN
 
 
+SOURCE_BOOTSTRAP_CHECK = "bootstrap check"
+SOURCE_ENGINE_HOST = "engine host"
+
+
+def _checked_of(batch: Batch, st: BatchStatus) -> tuple[str, str]:
+    """When the state was last verified, and by whom (Architect ruling Q4): ("", "") when nothing has answered."""
+    mine = (st.last_verified_at, SOURCE_BOOTSTRAP_CHECK) if st.present is not None else ("", "")
+    if batch.batch_id != ENGINE_HOST_BATCH:
+        return mine
+    try:
+        from resource_explorer import engine_host
+
+        sweep = engine_host.last_engine_answer()
+    except Exception:  # noqa: BLE001
+        return mine
+    if sweep.get("present") is not None and (sweep.get("at") or "") >= (mine[0] or ""):
+        return sweep["at"], SOURCE_ENGINE_HOST
+    return mine
+
+
 def _engine_host_fields() -> dict:
     """The engine-host batch's extra status: when the engine host's sweep last answered, and whether it runs."""
     try:
@@ -1067,9 +1104,12 @@ def get_status(docs_dir: Path = DOCS_DIR) -> dict:
         reachable = not st.last_check_error
         any_unreachable = any_unreachable or not reachable
         state = _state_of(batch, st)
+        checked_at, source = _checked_of(batch, st)
         out[batch.batch_id] = {
             "display_name": batch.display_name,
             "state": state,
+            "checked_at": checked_at,
+            "source": source,
             "opt_in": ({"key": batch.opt_in, "on": batch.opted_in} if batch.opt_in else None),
             "healing": _healing_batch == batch.batch_id,
             "present": st.present,

@@ -35,7 +35,7 @@
  *
  * W65 (2026-11-04): one row above the repos, "Declare RE's survey engine in Egeria". It is an Egeria WRITE (the
  * engine-host bootstrap batch: eight Dr.Egeria documents), so it is priced before the press, confirmed in the page,
- * sent as ONE batch and never forced (POST /api/bootstrap/run {batch: "engine-host"}, the heal's own 409 lock), and
+ * sent as ONE batch and never forced (re-api's runBootstrapBatch, the heal's own 409 lock), and
  * answers with the runner's result words. It works whatever RE_ENGINE_HOST_HEAL says; the row says that setting.
  */
 import {
@@ -45,6 +45,7 @@ import {
   getBootstrapStatus, getBootstrapPrice, runBootstrapBatch,
 } from '/static/re-api.js';
 import { esc } from '/static/next/app.js';
+import { ago } from '/static/next/format.js';
 import { inPageConfirm, inPageNotice } from '/static/next/confirm-dialog.js';
 
 let _host = null;
@@ -62,12 +63,14 @@ export const DECLARE_LABEL = "Declare RE's survey engine in Egeria";
 /** Pure: the engine's state in words, from /api/bootstrap/status's engine-host entry (null = not read). */
 export function engineStateWords(entry) {
   if (!entry) return 'engine state: not read';
-  return {
+  const base = {
     present: 'declared in this Egeria',
     missing: 'NOT declared in this Egeria · RE-engine surveys cannot run in Egeria',
     unknown: 'not known · Egeria has not answered yet',
     opted_out: 'not checked yet',
   }[entry.state] || `engine state: ${entry.state || 'not reported'}`;
+  // Architect ruling Q4: say when, and by whom, the state was last verified.
+  return entry.checked_at && entry.source ? `${base} · checked ${ago(entry.checked_at)} by the ${entry.source}` : base;
 }
 
 /** Pure: the self-heal setting in words (from the batch's opt_in, or the price's self_heal). */
