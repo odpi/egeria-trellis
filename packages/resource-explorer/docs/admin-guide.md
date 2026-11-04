@@ -756,10 +756,31 @@ host does. Design: [`design-notes/DESIGN-RE-ENGINE-HOST-BY-EQUIVALENCE.md`](desi
 - **What it claims.** Only actions that are approved, not yet claimed, and for a request type RE declares. An
   action with no target, or a target that is not a registered database, is claimed and then completed as
   "survey-invalid" with the reason. If another host claims first, RE skips it quietly.
-- **Declaring the engine in Egeria** is a one-off step, run by an admin with the Dr.Egeria runner (next
-  section): `resource-explorer dr-egeria run engine-host/resource-explorer-survey-engine.md`. The document is
-  generated; do not edit it. Make sure no Java engine host lists `ResourceExplorerSurvey`, or it will race RE
-  for every claim.
+- **Declaring the engine in Egeria.** The eight generated documents in `docs/dr-egeria/engine-host/` (the engine,
+  the library steps, the registry steps, the mixed process) are the `engine-host` bootstrap batch. Do not edit
+  them; regenerate. Make sure no Java engine host lists `ResourceExplorerSurvey`, or it will race RE for every
+  claim. An Egeria reset wipes the declaration. There are three ways to put it back:
+  - **Admin › Repair › "Declare RE's survey engine in Egeria".** The row shows the engine's state, the self-heal
+    setting and the price: the documents, the elements they create, who they apply as (RE's service account,
+    `EGERIA_USER_ID`), and how long the last run took. The press asks in the page, then runs the batch once
+    through the same lock as the heal. It is refused with "a bootstrap heal is already running" while one runs.
+    It is refused without a write if the engine is already declared ("already declared · content applied on
+    <date>") or if Egeria cannot be checked. It works whatever `RE_ENGINE_HOST_HEAL` says.
+  - **The opt-in heal.** With `RE_ENGINE_HOST_HEAL=true`, the start-up check and the 10-minute loop run the batch on
+    their own when they find the engine missing. Off (the default), they only read whether it is there.
+  - **By hand**, one document at a time: `resource-explorer dr-egeria run engine-host/<doc>.md --as <user>`.
+    These documents belong to a non-idempotent batch, so the runner needs `--force` for them.
+  The press and the heal re-run documents that RE ran before a reset. They may, because they first verified the
+  engine missing inside the heal lock, and they record which earlier runs that set aside. A pass that stops part
+  way leaves the engine present, so the rest is then run by hand.
+- **What the banner means.** When the engine is verified missing (by the engine host's lookup, or by the
+  bootstrap's read of it), the shell banner shows one line for everyone:
+  "Resource Explorer's survey engine is not declared in this Egeria · RE-engine surveys cannot run in Egeria · an
+  admin can declare it (Admin › Repair)". It reads "declaring…" while a pass declares it. Every RE-engine card
+  ("Resource Explorer: derived checks", "Postgres survey then derived", the Survey Definitions "coordinated by
+  Egeria") refuses before the press, with "not declared in this Egeria · runs only where the owner has declared
+  the engine (Admin › Repair › Declare…) and RE's engine host is on". The line clears and the cards offer Run once
+  the engine is seen: within 5 s with the engine host on, at the next 10-minute check otherwise.
 
 ### The Dr.Egeria runner (ad hoc)
 
@@ -796,6 +817,7 @@ other path is refused. There is also an admin route, `POST /api/bootstrap/dr-ege
 | `FEEDBACK_ADMIN_USERS` | Egeria user ids who count as admin: comma-separated (`alice,bob`), a JSON list (`["alice","bob"]`), a single name, or empty for none. Whitespace is trimmed. A value that cannot be read logs one warning at startup and counts as empty (no admins); it never stops the server. Required for the Dr.Egeria runner route. |
 | `FEEDBACK_ADMIN_TOKEN` | A shared secret an admin pastes once in Admin → Feedback (sent as `X-Admin-Token`). Counts as admin for the gates in "Admin gating", but not for the Dr.Egeria runner route. |
 | `RE_ENGINE_HOST_ENABLED` | Turns the engine host on (see above). Default off. |
+| `RE_ENGINE_HOST_HEAL` | Lets the bootstrap re-declare RE's survey engine on its own when it is missing (the `engine-host` batch). Default off: the engine is then re-declared only by Admin › Repair › "Declare RE's survey engine in Egeria". |
 | `RE_DR_EGERIA_DOCS_DIR` | Moves the folder the Dr.Egeria runner reads documents from. |
 | `EXPLORER_DRAFT_ZONE`, `EXPLORER_PUBLISH_ZONES` | Optional zones RE stamps; see "Governance zones". |
 
