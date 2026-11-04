@@ -909,9 +909,14 @@ def cannot_run_reason(process: NativeProcess, entity, *, registry=None, technolo
     Kind-based and registry-only: no Egeria call, so it is safe on a list read.
 
     A database that was never registered with Egeria is not an error: it gets the neutral
-    "Egeria has not been given this database" sentence (see `row_is_neutral`)."""
+    "Egeria has not been given this database" sentence (see `row_is_neutral`).
+
+    W66: an RE-engine row on a private resource is refused FIRST (`_private_refusal`)."""
     from resource_explorer import catalog_and_survey as cas
 
+    private = _private_refusal(process, entity, registry)
+    if private:
+        return private
     if process.kind == KIND_CATALOG_AND_SURVEY:
         # Not run through `submit_native_survey`: registering is its own press (register_with_egeria).
         return cas.wiring_reason("database" if hasattr(entity, "db_type") else "filesystem",
@@ -967,6 +972,62 @@ ENGINE_HOST_OFF = "engine host off"
 #: the owner's declaration): the press would initiate a GovernanceActionType Egeria does not hold (SERVER_ERROR_500).
 ENGINE_NOT_DECLARED = ("not declared in this Egeria · runs only where the owner has declared the engine "
                        "(Admin › Repair › Declare…) and RE's engine host is on")
+
+
+#: W66: why an RE-engine row is not offered on a private resource. RE's engine host leaves an engine action on a
+#: private target unclaimed (Q-O3), so the press would create an action that waits forever (bc2d5fe2, 2026-11-04).
+PRIVATE_NOT_OFFERED = ("not offered: this {kind} is in a private investigation, and Resource Explorer's engine host does "
+                       "not claim Egeria engine actions on private resources (nothing of a private investigation is "
+                       "written into Egeria's engine queue) · Resource Explorer's own Run on the card runs it here instead")
+
+
+def is_re_engine_process(process: NativeProcess) -> bool:
+    """A row RE's own engine serves: a ResourceExplorerSurvey request type, a mixed process (its RE step), or one of
+    RE's Survey Definitions coordinated by Egeria. Egeria's own engines' rows are not."""
+    from resource_explorer import engine_host
+
+    return (process.kind in (KIND_MIXED_PROCESS, KIND_RE_DEFINITION)
+            or process.qualified_name.startswith(engine_host.ENGINE_QUALIFIED_NAME + "::"))
+
+
+def _entity_kind_words(entity) -> tuple[str, str]:
+    """(registry entity type, the words for it) of a registered resource."""
+    if hasattr(entity, "db_type"):
+        return "database", "database"
+    if hasattr(entity, "github_url"):
+        return "repo", "repository"
+    return "filesystem", "file system"
+
+
+def _private_refusal(process: NativeProcess, entity, registry) -> str:
+    """W66: the sentence when this RE-engine row's resource is in a private investigation, else "". Asked FIRST for
+    every RE-engine row. Never names the investigation (the listing adds it for a viewer who may see it)."""
+    if entity is None or registry is None or not is_re_engine_process(process):
+        return ""
+    entity_type, kind = _entity_kind_words(entity)
+    slug = getattr(entity, "slug", "") or ""
+    try:
+        owner = registry.private_owner_for_entity(entity_type, slug)
+    except Exception:  # noqa: BLE001 - an unreadable answer is not "not private": refuse, the safe side
+        return PRIVATE_NOT_OFFERED.format(kind=kind)
+    return PRIVATE_NOT_OFFERED.format(kind=kind) if owner else ""
+
+
+def is_private_refusal(reason: str) -> bool:
+    return reason.startswith("not offered: this ") and "in a private investigation" in reason
+
+
+def private_investigation_words(registry, entity_type: str, slug: str, viewer: str) -> str:
+    """" (private investigation: <display name>)" for a viewer who may see it (`_may_see_investigation`), else ""."""
+    if not (viewer or "").strip():
+        return ""
+    try:
+        row = registry.private_investigation_for_entity(entity_type, slug)
+        if row and registry._may_see_investigation(row, viewer.strip()):
+            return f" (private investigation: {row.get('display_name') or row.get('slug')})"
+    except Exception:  # noqa: BLE001 - nothing named is the safe answer
+        return ""
+    return ""
 
 
 def _engine_not_declared() -> bool:
@@ -1303,7 +1364,9 @@ def native_survey_rows(registry, entity_type: str, slug: str, technology_type: s
         gone = pointers.get(gone_key) == "gone"
         taken_here = taken and gone_key == "database"
         again_here = again and gone_key == "database"
-        if gone:
+        if is_private_refusal(reason):
+            pass                                  # W66: a private resource's refusal is asked first and stands
+        elif gone:
             reason = cas.STALE_WORDS
         elif taken_here:
             reason = cas.NAME_TAKEN_WORDS
@@ -1311,6 +1374,8 @@ def native_survey_rows(registry, entity_type: str, slug: str, technology_type: s
             reason = cas.REGISTERED_AGAIN_WORDS
         if process.kind == KIND_MIXED_PROCESS and not reason and (declared or {}).get(process.qualified_name) is False:
             reason = PROCESS_NOT_DECLARED
+        if is_private_refusal(reason):
+            reason += private_investigation_words(registry, entity_type, slug, viewer)
         creds = (credentials_state(entity)
                  if (process.kind in (KIND_SURVEY_EXISTING, KIND_MIXED_PROCESS) and entity is not None
                      and process.needs_credentials)

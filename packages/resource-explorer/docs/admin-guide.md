@@ -771,8 +771,10 @@ host does. Design: [`design-notes/DESIGN-RE-ENGINE-HOST-BY-EQUIVALENCE.md`](desi
   - **By hand**, one document at a time: `resource-explorer dr-egeria run engine-host/<doc>.md --as <user>`.
     These documents belong to a non-idempotent batch, so the runner needs `--force` for them.
   The press and the heal re-run documents that RE ran before a reset. They may, because they first verified the
-  engine missing inside the heal lock, and they record which earlier runs that set aside. A pass that stops part
-  way leaves the engine present, so the rest is then run by hand.
+  engine missing inside the heal lock. That check is made once, at the start of the pass, and covers every document
+  of it. Each document's activity row records which earlier runs it set aside. A run in progress of any document
+  refuses the whole pass before it starts. A pass that stops part way leaves the engine present. The press then
+  answers "already declared · … · 3 of 8 documents applied — run the rest from the CLI".
 - **What the banner means.** When the engine is verified missing (by the engine host's lookup, or by the
   bootstrap's read of it), the shell banner shows one line for everyone:
   "Resource Explorer's survey engine is not declared in this Egeria · RE-engine surveys cannot run in Egeria · an
@@ -781,6 +783,12 @@ host does. Design: [`design-notes/DESIGN-RE-ENGINE-HOST-BY-EQUIVALENCE.md`](desi
   Egeria") refuses before the press, with "not declared in this Egeria · runs only where the owner has declared
   the engine (Admin › Repair › Declare…) and RE's engine host is on". The line clears and the cards offer Run once
   the engine is seen: within 5 s with the engine host on, at the next 10-minute check otherwise.
+- **Private resources never offer an Egeria-dispatched RE survey.** A resource in a private investigation
+  (PersonalProject or Experiment) shows no "Run in Egeria" on any RE-engine card, the mixed process included. The
+  engine host never claims engine actions on private resources, so such an action would wait forever. The card says
+  "not offered: this <kind> is in a private investigation … · Resource Explorer's own Run on the card runs it here
+  instead". It names the investigation only to someone who may see it. The API refuses the same press with the same
+  sentence (422). Egeria's own engines' cards are unchanged.
 
 ### The Dr.Egeria runner (ad hoc)
 
