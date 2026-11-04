@@ -160,7 +160,65 @@ def file_system_name_from_root(qualified_name: str, canonical_mount: str) -> str
 
 
 class PathNameAmbiguous(RuntimeError):
-    """Two or more elements of the type hold this exact pathName: nothing is adopted or created."""
+    """Two or more elements of the type hold this exact pathName: nothing is adopted or created. `holders` names each
+    one — {guid, created_by, qualified_name} as the search answered them ("" where the element carried none) — so the
+    refusal can say WHO catalogued the path twice (W53), and the GUIDs sit behind "the numbers behind this"."""
+
+    def __init__(self, message: str, holders: list[dict] | None = None) -> None:
+        super().__init__(message)
+        self.holders = list(holders or [])
+
+
+#: W53: the per-file refusal when Egeria holds two CSVFile elements for one path. Words only: the "use this one" press is
+#: the owner's design (Curate), not this item. Both GUIDs are carried beside it (`holders`), never in the sentence.
+AMBIGUOUS_WORDS = ("catalogued twice in Egeria — by {first} and by {second} · Resource Explorer will not choose; "
+                   "reconcile on Curate")
+AMBIGUOUS_MANY_WORDS = ("catalogued {n} times in Egeria — by {all} · Resource Explorer will not choose; reconcile on Curate")
+UNKNOWN_CREATOR = "an unknown creator"
+
+
+def _holder_words(holder: dict, path_name: str) -> str:
+    """"<creator> (<qualifiedName prefix>)": the prefix is the qualifiedName with the path taken off its end (the CSV
+    Data File template's `CSVFile::<fileSystemName>:<path>` leaves `CSVFile::<fileSystemName>:`), else the whole name;
+    a name the element did not carry reads "no qualified name read"."""
+    creator = (holder.get("created_by") or "").strip() or UNKNOWN_CREATOR
+    qn = (holder.get("qualified_name") or "").strip()
+    prefix = qn[:-len(path_name)] if path_name and qn.endswith(path_name) and len(qn) > len(path_name) else qn
+    return f"{creator} ({prefix or 'no qualified name read'})"
+
+
+def ambiguous_words(exc: "PathNameAmbiguous", path_name: str) -> str:
+    """The W53 sentence for a `PathNameAmbiguous`, naming each cataloguer and its qualifiedName prefix."""
+    parts = [_holder_words(h, path_name) for h in exc.holders]
+    if len(parts) == 2:
+        return AMBIGUOUS_WORDS.format(first=parts[0], second=parts[1])
+    if len(parts) > 2:
+        return AMBIGUOUS_MANY_WORDS.format(n=len(parts), all=", by ".join(parts[:-1]) + f" and by {parts[-1]}")
+    return AMBIGUOUS_WORDS.format(first=UNKNOWN_CREATOR + " (no qualified name read)",
+                                  second=UNKNOWN_CREATOR + " (no qualified name read)")
+
+
+def _created_by_of(element: dict) -> str:
+    """`elementHeader.versions.createdBy` (LIVE: fixtures/egeria_6_2), or ""."""
+    header = element.get("elementHeader")
+    versions = header.get("versions") if isinstance(header, dict) else None
+    return str(versions.get("createdBy") or "") if isinstance(versions, dict) else ""
+
+
+def _qualified_name_of(element: dict) -> str:
+    """`qualifiedName` of a find-with-string element, read where `_path_name_of` reads pathName; "" when absent."""
+    ep = element.get("elementProperties")
+    if isinstance(ep, dict):
+        strings = ep.get("propertiesAsStrings")
+        if isinstance(strings, dict) and strings.get("qualifiedName"):
+            return str(strings["qualifiedName"])
+        pv = (ep.get("propertyValueMap") or {}).get("qualifiedName")
+        if isinstance(pv, dict) and pv.get("primitiveValue"):
+            return str(pv["primitiveValue"])
+    props = element.get("properties")
+    if isinstance(props, dict) and props.get("qualifiedName"):
+        return str(props["qualifiedName"])
+    return ""
 
 
 def guid_by_exact_path_name(expert, path_name: str, *, type_name: str) -> str | None:
@@ -186,6 +244,7 @@ def guid_by_exact_path_name(expert, path_name: str, *, type_name: str) -> str | 
     if not isinstance(answer, list) or not answer:
         raise RuntimeError(f"the pathName search for {path_name!r} gave no usable answer ({answer!r:.80})")
     held: list[str] = []
+    holders: list[dict] = []
     for element in answer:
         if not isinstance(element, dict):
             raise RuntimeError(f"an element in the pathName answer for {path_name!r} is not an element")
@@ -198,9 +257,11 @@ def guid_by_exact_path_name(expert, path_name: str, *, type_name: str) -> str | 
             continue                       # the value sits in another property of the element
         if guid not in held:
             held.append(guid)
+            holders.append({"guid": guid, "created_by": _created_by_of(element),
+                            "qualified_name": _qualified_name_of(element)})
     if len(held) > 1:
         raise PathNameAmbiguous(f"{len(held)} {type_name} elements hold the pathName {path_name!r}: nothing is "
-                                "adopted or created")
+                                "adopted or created", holders)
     if len(answer) >= page:
         raise RuntimeError(f"the pathName search for {path_name!r} filled its page ({page}) without two holders: "
                            "more may follow, so the count could not be told")
@@ -788,6 +849,10 @@ def submit_egeria_half(port: CsvSurveyPort | None, fs_entity, files: list[dict],
             actions[rel] = {"engine_action_guid": action, "asset_guid": asset}
             rows[rel] = [marker_row(SUBMITTED)]
             ok += 1
+        except PathNameAmbiguous as exc:   # W53: Egeria holds the path twice; both cataloguers named, both GUIDs kept
+            actions[rel] = {"error": ambiguous_words(exc, f"{canonical_root}/{rel}"), "holders": exc.holders,
+                            "ambiguous": True}
+            rows[rel] = [marker_row(SUBMIT_FAILED)]
         except Exception as exc:  # noqa: BLE001 -- one file refused does not end the run
             actions[rel] = {"error": _short(exc)}
             rows[rel] = [marker_row(SUBMIT_FAILED)]
@@ -1305,6 +1370,19 @@ def price(registry, slug: str, *, limit: int = PROFILE_LIMIT_BYTES) -> dict:
 FILES_SHOWN = 50
 
 
+def _egeria_refusal(action) -> dict:
+    """{egeria_error, egeria_holders} for a file Egeria's half refused, from its stored `egeria_actions` entry; {} for a
+    submitted file or one with no entry. The holders are the GUIDs (and cataloguers) a W53 refusal names."""
+    if not isinstance(action, dict) or not action.get("error"):
+        return {}
+    out = {"egeria_error": str(action["error"])}
+    if action.get("holders"):
+        out["egeria_holders"] = [{"guid": str(h.get("guid") or ""), "created_by": str(h.get("created_by") or ""),
+                                  "qualified_name": str(h.get("qualified_name") or "")} for h in action["holders"]
+                                 if isinstance(h, dict)]
+    return out
+
+
 def card_counts(states: list[dict]) -> dict:
     """The card's counts, each from the stored rows of one run."""
     by = lambda *s: [r for r in states if r["state"] in s]  # noqa: E731
@@ -1354,9 +1432,12 @@ def profiles_view(registry, slug: str) -> dict:
                 col.update(column_name=f"column {r['ordinal']}", header_suspect=True)
             by_file.setdefault(r["file_path"], []).append(col)
     notes = m.get("notes") or {}
+    # W53: Egeria's per-file refusal (the `egeria_actions` error) reads on the card, with the GUIDs it names beside it.
+    egeria_actions = m.get("egeria_actions") or {}
     files = [{**s, "format": ext_of(s["file_path"]), "columns_list": by_file.get(s["file_path"], [])[:30],
               **({"note": notes[s["file_path"]]} if s["file_path"] in notes else {}),
-              **({"error": m["errors"][s["file_path"]]} if s["file_path"] in (m.get("errors") or {}) else {})}
+              **({"error": m["errors"][s["file_path"]]} if s["file_path"] in (m.get("errors") or {}) else {}),
+              **_egeria_refusal(egeria_actions.get(s["file_path"]))}
              for s in states[:FILES_SHOWN]]
     proof = latest_publish_proof(registry, slug, run_id)
     if proof:

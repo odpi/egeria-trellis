@@ -439,6 +439,13 @@ export function fileProfilesHtml(fp, fold = null) {
   const rows = (run.files || []).map((f) => [f.file_path, STATE_WORDS[f.state] ? `${STATE_WORDS[f.state]}${f.state === 'not_applicable' ? ` ${f.format || '(none)'}` : ''}` : f.state,
     sourceWords(f.stats_source), f.columns ? num(f.columns) : dash,
     f.sample_ratio != null && f.sample_ratio < 1 ? `${W.sampled} ${(f.sample_ratio * 100).toFixed(1)}%` : '']);
+  // W53: Egeria's per-file refusals, each in its own words beside the file; the GUIDs a refusal names (two cataloguers
+  // of one path) sit behind "the numbers behind this", never in the sentence.
+  const refusals = (run.files || []).filter((f) => f.egeria_error).map((f) => `<div data-fp-refusal="${esc(f.file_path)}" class="text-provenance text-state-warn">
+      <span class="font-glyph" aria-hidden="true">⚠</span> ${esc(f.file_path)} · <span data-fp-refusal-words>${esc(f.egeria_error)}</span>${
+  (f.egeria_holders || []).length ? ` <details data-fp-refusal-holders class="inline"><summary class="inline cursor-pointer text-accent-ink underline">the numbers behind this ›</summary>
+        <ul class="m-0 list-none p-0 text-ink-muted">${f.egeria_holders.map((h) => `<li data-fp-holder="${esc(h.guid)}"><span class="tnum">${esc(h.guid)}</span>${
+  h.created_by ? ` · created by ${esc(h.created_by)}` : ''}${h.qualified_name ? ` · ${esc(h.qualified_name)}` : ''}</li>`).join('')}</ul></details>` : ''}</div>`).join('');
   // The price (before the next press) and Egeria's refusals stay outside the fold: they are answers, not evidence.
   const body = `<div data-fp-run class="text-caveat text-ink">${esc(W.profiledAt(day(run.run_id)))} · <span data-fp-words>${esc(run.words || '')}</span></div>
     ${other ? `<div data-fp-other class="text-provenance text-ink-muted">${esc(other)}</div>` : ''}
@@ -450,6 +457,7 @@ export function fileProfilesHtml(fp, fold = null) {
     ${sectionHtml('profiles', !fold || fold.open, W.profilesHeading, answer, 'data-fp-section', body, 'none')}
     <div data-fp-price class="text-caveat text-ink">${esc(price.words || '')}</div>
     ${egeriaLines.map((l) => `<div data-fp-egeria class="text-provenance text-state-warn"><span class="font-glyph" aria-hidden="true">⚠</span> ${esc(l)}</div>`).join('')}
+    ${refusals}
   </div>`;
 }
 
