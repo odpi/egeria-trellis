@@ -2695,7 +2695,7 @@ database_questions:
 - id: Q-0085
   question: Who can read and write what — roles, grants, superusers, PUBLIC grants — which sensitive columns
     can which roles read, and what has changed?
-  stage: Analysis
+  stage: Assessment
   perspectives:
   - Governance
   - Privacy
@@ -2731,7 +2731,8 @@ database_questions:
   catalog_history: '2026-10-22: absorbs Q-0089 (''What is the sensitive-data exposure — which sensitive
     columns can which roles read?'') as its last clause (review §1.6); names grant_change for ''and what
     changed''; data_class_match is built (catalogued, queued), so the old note''s ''proposed'' is corrected
-    — the join between it and the grants is what is not built.'
+    — the join between it and the grants is what is not built. 2026-11-02: re-tagged Analysis → Assessment
+    so the Database Assessment Survey is offered on the stage it is named for (W43, owner).'
   retired: false
 - id: Q-0086
   question: How is this database changing — rows inserted, updated and deleted per table per period, size

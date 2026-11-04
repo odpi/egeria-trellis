@@ -358,8 +358,28 @@ class TestTheCommittedCsvGeneratesTheNumbersInThePrBody:
         by_id = {e["id"]: e for k, v in out.items() if k.endswith("_questions") for e in v}
         assert len(by_id) == 104
         assert dict(Counter(e["stage"] for e in by_id.values())) == {
-            "Analysis": 38, "Discovery": 27, "Scouting": 14, "Assessment": 15, "Enrichment": 5,
+            # W43 (owner, 2026-11-02, "Re-tag its questions"): Q-0085 Analysis -> Assessment, so Analysis 38 -> 37 and
+            # Assessment 15 -> 16; the asserts are moved, not loosened.
+            "Analysis": 37, "Discovery": 27, "Scouting": 14, "Assessment": 16, "Enrichment": 5,
             "Analysis/Enrichment": 1, "Scouting/Assessment": 1, "Discovery/Enrichment": 2, "Discovery/Analysis": 1}
+
+    def test_w43_q0085_is_an_assessment_question_and_the_database_assessment_survey_is_offered_there(self, generated):
+        """W43: the Database Assessment Survey's one question is tagged Assessment, so the survey (scoped by that
+        question in its own document) is among the Assessment-stage candidates for a PostgreSQL database and no
+        longer among Analysis's own. Read from the generated catalog and the authored documents; no Egeria."""
+        _, out, _ = generated
+        by_id = {e["id"]: e for k, v in out.items() if k.endswith("_questions") for e in v}
+        q = by_id["Q-0085"]
+        assert q["stage"] == "Assessment"
+        assert "privilege_audit" in q["answering"]["analysis_ids"]
+        assert "2026-11-02: re-tagged Analysis → Assessment" in q["catalog_history"]
+        from resource_explorer.surveyors.survey_definition_docs import documented_definitions
+
+        survey = documented_definitions()["DatabaseAssessmentSurvey"]
+        assert survey.scoped_by == [q["question"]], "the survey is scoped by exactly this question"
+        stage_questions = lambda stage: {e["question"] for e in out["database_questions"] if e["stage"] == stage}  # noqa: E731
+        assert set(survey.scoped_by) <= stage_questions("Assessment")
+        assert not set(survey.scoped_by) & stage_questions("Analysis")
 
     def test_no_answer_is_unclassified(self, generated):
         _, out, _ = generated
