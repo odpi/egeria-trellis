@@ -782,32 +782,170 @@ def _counts_words(counts: dict[str, int], documents: int) -> str:
     return f"{documents} document{'s' if documents != 1 else ''} run · " + (", ".join(parts) or "no commands")
 
 
+def applied_documents(batch: Batch, registry=None) -> tuple[list[str], list[dict]]:
+    """THE read of which documents of `batch` have an ok (or warning) run row here: (wanted, ok_rows), `wanted` being
+    every document as its row names it (`<batch id>/<file>`). The press's words, the Admin row's count (W67) and the
+    completion (F55) all read this; nothing counts applied documents another way. Raises when the registry cannot
+    be read (the callers say so; an unreadable history is never "nothing applied")."""
+    from resource_explorer import dr_egeria_runner as runner
+
+    if registry is None:
+        from resource_explorer.registry import ProjectRegistry
+
+        registry = ProjectRegistry()
+    wanted = [f"{batch.batch_id}/{f}" for f in batch.files]
+    ok_rows = [r for r in registry.list_activity(operation=runner.OPERATION, limit=1000)
+               if r.get("status") in (runner.OK, runner.WARNING) and not runner._detail_of(r).get("dry_run")
+               and runner._detail_of(r).get("document") in wanted]
+    return wanted, ok_rows
+
+
+def applied_count(batch: Batch, registry=None) -> dict:
+    """{applied, total, pending: [files]} from `applied_documents`, or {error} when the history cannot be read."""
+    try:
+        wanted, ok_rows = applied_documents(batch, registry)
+    except Exception as exc:  # noqa: BLE001 - the caller renders the error, never 0
+        return {"error": f"run history not read ({type(exc).__name__})"}
+    from resource_explorer import dr_egeria_runner as runner
+
+    applied = {runner._detail_of(r).get("document") for r in ok_rows}
+    return {"applied": len(applied), "total": len(wanted),
+            "pending": [f for f, w in zip(batch.files, wanted) if w not in applied]}
+
+
 def already_declared_words(batch: Batch, registry=None) -> str:
-    """What a one-batch run answers when the canary is present: "already declared · content applied on <date>"
-    (the newest ok/warning run row of the batch's first document), or that no run is recorded here."""
+    """What a one-batch run answers when the canary is present and nothing is left to complete: "already declared ·
+    content applied on <date>" (the newest ok/warning run row of the batch's first document), or that no run is
+    recorded here, with the applied count."""
     try:
         from resource_explorer import dr_egeria_runner as runner
 
-        if registry is None:
-            from resource_explorer.registry import ProjectRegistry
-
-            registry = ProjectRegistry()
-        wanted = [f"{batch.batch_id}/{f}" for f in batch.files]
-        ok_rows = [r for r in registry.list_activity(operation=runner.OPERATION, limit=1000)
-                   if r.get("status") in (runner.OK, runner.WARNING) and not runner._detail_of(r).get("dry_run")
-                   and runner._detail_of(r).get("document") in wanted]
+        wanted, ok_rows = applied_documents(batch, registry)
     except Exception as exc:  # noqa: BLE001 - the words say what could not be read
         return f"already declared · run history not read ({type(exc).__name__})"
     applied = {runner._detail_of(r).get("document") for r in ok_rows}
     n, m = len(applied), len(wanted)
     # Architect ruling Q1 (2): how many of the batch's documents have an ok row, so a partial state is visible.
-    count = (f"{n} of {m} documents applied" if n == m
-             else f"{n} of {m} documents applied — run the rest from the CLI (resource-explorer dr-egeria run --force)")
+    # F55: the press itself completes the rest (`complete_batch`), so the CLI is no longer the advice here.
+    count = f"{n} of {m} documents applied"
     first = [r for r in ok_rows if runner._detail_of(r).get("document") == wanted[0]] if wanted else []
     if not first:
         return f"already declared · no run of its first document is recorded here · {count}"
     newest = max(first, key=lambda r: r.get("ts") or "")
     return f"already declared · content applied on {(newest.get('ts') or '')[:10]} · {count}"
+
+
+# ── F55: complete a partial batch from the page ─────────────────────────────
+
+ACTION_COMPLETED = "completed"
+ACTION_COMPLETION_FAILED = "completion_failed"
+
+
+def created_element_present(qualified_name: str, expert=None) -> bool | None:
+    """Is the element `qualified_name` in Egeria: True / False verified, None when the lookup could not be made or
+    answered (unreachable, ambiguous). The same unique-name read as the canary's (`egeria_lookup`), no type asked."""
+    if expert is None:
+        try:
+            from resource_explorer.surveyors.survey_definition_reader import SurveyDefinitionReader
+
+            expert = SurveyDefinitionReader()._connect_metadata_expert()
+        except Exception as exc:  # noqa: BLE001 - cannot reach Egeria: not known
+            log.info("bootstrap: cannot reach Egeria to look up %s (%s)", qualified_name, exc)
+            return None
+    try:
+        from resource_explorer.egeria_lookup import guid_by_qualified_name
+
+        return guid_by_qualified_name(expert, qualified_name) is not None
+    except Exception as exc:  # noqa: BLE001 - ambiguous or failed: not known, never absent
+        log.info("bootstrap: lookup of %s failed (%s) — not known", qualified_name, exc)
+        return None
+
+
+def _created_qualified_names(plan) -> list[str]:
+    """The qualified names a document's Dr.Egeria `Create …` commands make (its own created elements). The pyegeria
+    steps are find-or-create and are not counted; links and classifications create no named element."""
+    return [c.element for c in plan.dr_egeria if c.command.startswith("Create ") and c.element]
+
+
+def complete_batch(batch: Batch, *, requested_by: str = "", registry=None) -> tuple[str, str]:
+    """F55: the canary is PRESENT; run the documents of `batch` that have no ok run row AND whose own created elements
+    are verified absent, in order, through the runner with a waiver (the heal lock is held by the caller). A document
+    with an ok row or a present element is skipped and named; a lookup that cannot answer refuses the whole pass
+    (undetermined is never absent). (action, words): `present` (nothing to run, or refused with the reason),
+    `completed` ("completed the batch: ran …, … · skipped 1 already applied"), `completion_failed`."""
+    from resource_explorer import dr_egeria_runner as runner
+
+    count = applied_count(batch, registry)
+    if "error" in count:
+        return "present", already_declared_words(batch, registry)
+    pending = count["pending"]
+    if not pending:
+        return "present", already_declared_words(batch, registry)
+    applied_words = f"skipped {count['applied']} already applied" if count["applied"] else ""
+    try:
+        identity = heal_identity()
+    except NoDrEgeriaIdentity as exc:
+        return "present", f"{already_declared_words(batch, registry)} · not completed: no service account ({exc})"
+    for filename in batch.files:
+        try:
+            live = runner.run_in_progress(batch.path / filename)
+        except Exception as exc:  # noqa: BLE001 - cannot tell: do not start
+            return "present", (f"{already_declared_words(batch, registry)} · not completed: could not check for a run "
+                               f"in progress of {filename}: {exc}")
+        if live:
+            return "present", (f"{already_declared_words(batch, registry)} · not completed: a run of {filename} is in "
+                               f"progress (activity {live['id']} since {live.get('ts', '')}); nothing was started")
+    # Decide every document BEFORE the first write: a lookup that cannot answer refuses the whole pass.
+    to_run: list[str] = []
+    present_skips: list[str] = []
+    verified_at = _now()
+    for filename in pending:
+        try:
+            plan = runner.plan_document(batch.path / filename)
+        except Exception as exc:  # noqa: BLE001
+            return "present", f"{already_declared_words(batch, registry)} · not completed: {filename} could not be planned ({exc})"
+        if plan.errors:
+            return "present", (f"{already_declared_words(batch, registry)} · not completed: {filename} is not valid "
+                               f"({'; '.join(plan.errors)})")
+        names = _created_qualified_names(plan)
+        present_names = []
+        for qn in names:
+            answer = created_element_present(qn)
+            if answer is None:
+                return "present", (f"{already_declared_words(batch, registry)} · not completed: could not verify that "
+                                   f"{filename}'s elements are absent ({qn} could not be looked up) · nothing run")
+            if answer:
+                present_names.append(qn)
+        if present_names:
+            present_skips.append(f"{filename} ({', '.join(present_names)} present)")
+        else:
+            to_run.append(filename)
+    skipped = [w for w in (applied_words, (f"skipped {len(present_skips)} whose elements are present: "
+                                           + ", ".join(present_skips)) if present_skips else "") if w]
+    if not to_run:
+        return "present", " · ".join([already_declared_words(batch, registry), "nothing left to run"] + skipped[1:])
+    waiver = (f"completing the engine-host batch: canary present, {len(to_run)} document(s) with no ok run and their "
+              f"created elements verified absent at {verified_at}"
+              + (f" · pressed by {requested_by}" if requested_by else ""))
+    ran: list[str] = []
+    counts: dict[str, int] = {}
+    for filename in to_run:
+        try:
+            out = runner.run_document(batch.path / filename, identity=identity, heal_waiver=waiver,
+                                      requested_by=requested_by or SOURCE_STARTUP_HEAL, registry=registry)
+        except Exception as exc:  # noqa: BLE001 - a refusal or a failure stops the pass, with its words
+            return ACTION_COMPLETION_FAILED, (f"completing the batch stopped at {filename}: not run · {exc}"
+                                              + (f" · ran {', '.join(ran)}" if ran else ""))
+        for item in out.get("commands") or []:
+            st = item.get("status", "") if isinstance(item, dict) else ""
+            counts[st] = counts.get(st, 0) + 1
+        ran.append(filename)
+        if out.get("status") not in (runner.OK, runner.WARNING):
+            return ACTION_COMPLETION_FAILED, (f"completing the batch stopped at {filename}: "
+                                              f"{out.get('summary') or out.get('status')} · "
+                                              f"{_counts_words(counts, len(ran))}")
+    words = f"completed the batch: ran {', '.join(ran)}"
+    return ACTION_COMPLETED, " · ".join([words] + skipped + [_counts_words(counts, len(ran))])
 
 
 def batch_price(batch_id: str, docs_dir: Path = DOCS_DIR, registry=None) -> dict:
@@ -968,7 +1106,19 @@ def _check_and_heal_locked(docs_dir: Path, force: bool, *, only: str = "", reque
 
             if state:
                 if batch.batch_id == only:
-                    results[batch.batch_id] = {"action": "present", "reason": already_declared_words(batch)}
+                    # F55: a present canary no longer only refuses — the documents with no ok row whose elements are
+                    # verified absent are run (the rest skipped and named); `present` when nothing is left or it
+                    # could not be verified.
+                    _healing_batch = batch.batch_id
+                    try:
+                        action, words = complete_batch(batch, requested_by=requested_by)
+                    finally:
+                        _healing_batch = ""
+                    if action != "present":
+                        with _status_lock:
+                            st.last_healed_at = _now()
+                            st.last_heal_result = "ok" if action == ACTION_COMPLETED else words
+                    results[batch.batch_id] = {"action": action, "reason": words}
                 else:
                     results[batch.batch_id] = {"action": "ok", "reason": "canary present"}
                 continue

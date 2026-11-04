@@ -91,6 +91,9 @@ export function engineResultWords(out, err) {
   if (!r) return 'not run · the server answered without this batch';
   if (r.action === 'healed') return `declared · ${r.reason}`;
   if (r.action === 'present') return r.reason || 'already declared';
+  // F55: a partial declaration completed from the page (or stopped part way), the engine already present.
+  if (r.action === 'completed') return r.reason || 'completed the batch';
+  if (r.action === 'completion_failed') return `not completed · ${r.reason || 'the run stopped'}`;
   if (r.action === 'unknown') return 'not run · could not reach Egeria to check whether it is declared';
   return `not declared · ${r.reason || r.action}`;
 }

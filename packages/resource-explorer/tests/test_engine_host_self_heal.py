@@ -191,8 +191,12 @@ def test_one_batch_run_on_a_present_engine_answers_already_declared_and_writes_n
     monkeypatch.setattr(bs, "heal_batch", lambda *a, **k: pytest.fail("a present engine is never re-declared"))
     monkeypatch.setattr("resource_explorer.registry.ProjectRegistry", lambda *a, **k: reg)
     out = bs.check_and_heal(root, only="engine-host")["batches"]["engine-host"]
-    assert out == {"action": "present", "reason": "already declared · no run of its first document is recorded here · "
-                   "0 of 1 documents applied — run the rest from the CLI (resource-explorer dr-egeria run --force)"}
+    # F55: with no Egeria to verify the pending document's elements absent, the press completes nothing and says so.
+    assert out["action"] == "present"
+    assert out["reason"].startswith("already declared · no run of its first document is recorded here · "
+                                    "0 of 1 documents applied · not completed: could not verify that decl.md's elements "
+                                    "are absent (")
+    assert out["reason"].endswith("could not be looked up) · nothing run")
 
 
 def test_already_declared_names_the_date_its_content_was_applied(root, reg, monkeypatch):

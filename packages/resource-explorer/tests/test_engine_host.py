@@ -186,7 +186,7 @@ def test_the_engine_guid_is_resolved_by_qualified_name(reg, enabled, monkeypatch
         host.sweep_once()
     finally:
         host.close()
-    fakes.expert.get_metadata_guid_by_unique_name.assert_called_with("ResourceExplorerSurvey")
+    fakes.expert.get_metadata_guid_by_unique_name.assert_any_call("ResourceExplorerSurvey")   # F55 adds the types
 
 
 def test_with_no_engine_declared_in_egeria_nothing_is_claimed(reg, enabled, monkeypatch):

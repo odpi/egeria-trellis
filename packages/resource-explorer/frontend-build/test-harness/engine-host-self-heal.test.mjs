@@ -166,3 +166,13 @@ test('repair: the state says when and by whom it was checked (Architect ruling Q
     'declared in this Egeria · checked 2m ago by the bootstrap check');
   assert.equal(pane.engineStateWords(ENG({ state: 'opted_out' })), 'not checked yet');
 });
+
+test('repair (F55): a completed partial batch answers its own words; a completion that stopped says not completed', async () => {
+  const { pane } = await setUpRepair();
+  assert.equal(pane.engineResultWords({ batches: { 'engine-host': { action: 'completed',
+    reason: 'completed the batch: ran library/change_rates.md · skipped 1 already applied · 1 document run · 5 ok' } } }),
+  'completed the batch: ran library/change_rates.md · skipped 1 already applied · 1 document run · 5 ok');
+  assert.equal(pane.engineResultWords({ batches: { 'engine-host': { action: 'completion_failed',
+    reason: 'completing the batch stopped at library/x.md: not run · Egeria answered 500' } } }),
+  'not completed · completing the batch stopped at library/x.md: not run · Egeria answered 500');
+});
