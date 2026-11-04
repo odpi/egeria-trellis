@@ -542,9 +542,9 @@ class EgeriaInvestigationPublisher:
         # one-field edit, and then this promotes normally.
         if (inv.get("egeria_binding") or "egeria") == "local" and not choice:
             res.errors.append(
-                "this investigation is local — it was created with no Egeria "
-                "Project on purpose. Publish it to Egeria from its page, which "
-                "asks for its kind and who can see it."
+                "this investigation is ad-hoc (local) — it was created with no "
+                "Egeria Project on purpose. Publish it to Egeria from its page, "
+                "which asks for its kind and who can see it."
             )
             return res
         # A private kind with no owner: refused before any client is built (ruling 2026-10-13). Zoning it to
