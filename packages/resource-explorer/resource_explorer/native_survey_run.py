@@ -926,11 +926,13 @@ def cannot_run_reason(process: NativeProcess, entity, *, registry=None, technolo
         return f"RE does not run processes of kind {process.kind!r}."
     from resource_explorer import engine_host
 
-    if process.qualified_name.startswith(engine_host.ENGINE_QUALIFIED_NAME + "::") \
-            and not engine_host.engine_host_enabled():
-        # RE's own engine serves this action; with the engine host off nothing would, and the action would sit
-        # APPROVED while the row polls. Still shown, not runnable.
-        return ENGINE_HOST_OFF
+    if process.qualified_name.startswith(engine_host.ENGINE_QUALIFIED_NAME + "::"):
+        if not engine_host.engine_host_enabled():
+            # RE's own engine serves this action; with the engine host off nothing would, and the action would sit
+            # APPROVED while the row polls. Still shown, not runnable.
+            return ENGINE_HOST_OFF
+        if _engine_not_declared():
+            return ENGINE_NOT_DECLARED
     if entity is None:
         return "This resource is not registered."
     if process.target == "server":
@@ -960,6 +962,22 @@ def cannot_run_reason(process: NativeProcess, entity, *, registry=None, technolo
 
 #: Why an RE engine-host process (`ResourceExplorerSurvey::...`) cannot run: RE_ENGINE_HOST_ENABLED is off.
 ENGINE_HOST_OFF = "engine host off"
+
+#: W64: why an RE-engine row cannot run while RE's engine is verified absent from this Egeria (after a reset, before
+#: the owner's declaration): the press would initiate a GovernanceActionType Egeria does not hold (SERVER_ERROR_500).
+ENGINE_NOT_DECLARED = ("not declared in this Egeria · runs only where the owner has declared the engine "
+                       "(Admin › Repair › Declare…) and RE's engine host is on")
+
+
+def _engine_not_declared() -> bool:
+    """RE's engine is VERIFIED absent (the engine host's lookup, or the bootstrap pass's canary read; newest wins).
+    In-process state, no Egeria call, so it is safe on a list read. Not known is not absent: the row stays offered."""
+    from resource_explorer import engine_host
+
+    try:
+        return engine_host.engine_declared() is False
+    except Exception:  # noqa: BLE001 - a state that cannot be read refuses nothing
+        return False
 
 #: Why a mixed process (engine host step 4) cannot run: Egeria has no process by that qualifiedName. Known only after
 #: a read (the /check press, or Run itself); the registry-only listing never claims it.
@@ -991,6 +1009,8 @@ def _mixed_cannot_run_reason(process: NativeProcess, entity) -> str:
         return f"{process.qualified_name} is not a process Resource Explorer declares."
     if not engine_host.engine_host_enabled():
         return ENGINE_HOST_OFF
+    if _engine_not_declared():
+        return ENGINE_NOT_DECLARED
     if entity is None:
         return "This resource is not registered."
     if not (getattr(entity, "egeria_asset_guid", "") or "").strip():
@@ -1030,6 +1050,8 @@ def _definition_cannot_run_reason(process: NativeProcess, entity) -> str:
         return f"{process.qualified_name} is not a Survey Definition Resource Explorer declares."
     if not engine_host.engine_host_enabled():
         return ENGINE_HOST_OFF
+    if _engine_not_declared():
+        return ENGINE_NOT_DECLARED
     if declared.entity_type != engine_host.ENTITY_TYPE:
         return NOT_FOR_THIS_KIND.format(kind=declared.entity_type)
     if entity is None:

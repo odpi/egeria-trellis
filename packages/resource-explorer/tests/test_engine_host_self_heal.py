@@ -298,3 +298,82 @@ def test_live_the_canary_resolves_by_qualified_name_once_declared():
     batch = next(b for b in bs.discover_batches() if b.batch_id == "engine-host")
     assert batch.canary["qualified_name"] == "ResourceExplorerSurvey"
     assert bs.canary_present(batch) in (True, False)
+
+
+# ── W64: every RE-engine card refuses before the press while the engine is verified absent ──
+
+from tests.test_native_survey_run import TECH, registry  # noqa: E402,F401 - the fixture
+
+RE_ENGINE_ROWS = ("ResourceExplorerSurvey::re-db-derived", "GovActionProcess::ResourceExplorer::PostgresSurveyThenDerived")
+
+
+def _rows_by_qn(registry):
+    from resource_explorer import native_survey_run as nsr
+
+    return {r["qualified_name"]: r for r in nsr.native_survey_rows(registry, "database", "adventureworks", TECH)}
+
+
+def test_w64_re_engine_rows_refuse_with_their_words_while_the_engine_is_absent(registry, monkeypatch):
+    from resource_explorer import engine_host
+    from resource_explorer import native_survey_run as nsr
+
+    monkeypatch.setenv("RE_ENGINE_HOST_ENABLED", "true")
+    engine_host.record_engine_answer(False)
+    by = _rows_by_qn(registry)
+    for qn in RE_ENGINE_ROWS:
+        assert by[qn]["runnable"] is False, qn
+        assert by[qn]["cannot_run_reason"] == nsr.ENGINE_NOT_DECLARED, qn
+    assert nsr.ENGINE_NOT_DECLARED == ("not declared in this Egeria · runs only where the owner has declared the "
+                                       "engine (Admin › Repair › Declare…) and RE's engine host is on")
+    # Egeria's own survey does not need RE's engine: not refused for this reason.
+    assert by["PostgreSQLSurvey::survey-postgres-database"]["cannot_run_reason"] != nsr.ENGINE_NOT_DECLARED
+
+
+def test_w64_the_refusal_lifts_once_the_engine_is_seen_and_never_on_not_known(registry, monkeypatch):
+    from resource_explorer import engine_host
+    from resource_explorer import native_survey_run as nsr
+
+    monkeypatch.setenv("RE_ENGINE_HOST_ENABLED", "true")
+    for answer in (None, True):
+        if answer is not None:
+            engine_host.record_engine_answer(answer)
+        by = _rows_by_qn(registry)
+        for qn in RE_ENGINE_ROWS:
+            assert by[qn]["cannot_run_reason"] != nsr.ENGINE_NOT_DECLARED, (answer, qn)
+
+
+def test_w64_engine_host_off_still_says_engine_host_off(registry, monkeypatch):
+    from resource_explorer import engine_host
+    from resource_explorer import native_survey_run as nsr
+
+    monkeypatch.delenv("RE_ENGINE_HOST_ENABLED", raising=False)
+    engine_host.record_engine_answer(False)
+    by = _rows_by_qn(registry)
+    assert by["ResourceExplorerSurvey::re-db-derived"]["cannot_run_reason"] == nsr.ENGINE_HOST_OFF
+
+
+def test_w64_the_press_is_refused_before_any_egeria_call(registry, monkeypatch):
+    from resource_explorer import engine_host
+    from resource_explorer import native_survey_run as nsr
+
+    monkeypatch.setenv("RE_ENGINE_HOST_ENABLED", "true")
+    engine_host.record_engine_answer(False)
+
+    class NoPort:
+        def __getattr__(self, name):
+            raise AssertionError(f"the press reached Egeria ({name})")
+
+    with pytest.raises(nsr.NativeSurveyCannotRun, match="not declared in this Egeria"):
+        nsr.submit_native_survey(registry, NoPort(), "database", "adventureworks",
+                                 "ResourceExplorerSurvey::re-db-derived", technology_type=TECH)
+
+
+def test_w64_served_status_carries_the_state_the_cards_read(registry, monkeypatch):
+    """The bootstrap pass's canary read alone (engine host never asked) is enough for the cards to refuse."""
+    from resource_explorer import native_survey_run as nsr
+
+    monkeypatch.setenv("RE_ENGINE_HOST_ENABLED", "true")
+    with bs._status_lock:
+        bs._status[bs.ENGINE_HOST_BATCH] = bs.BatchStatus(present=False, last_verified_at="2026-11-04T17:00:00+00:00")
+    assert bs.get_status()["batches"]["engine-host"]["state"] == "missing"
+    assert _rows_by_qn(registry)["ResourceExplorerSurvey::re-db-derived"]["cannot_run_reason"] == nsr.ENGINE_NOT_DECLARED
