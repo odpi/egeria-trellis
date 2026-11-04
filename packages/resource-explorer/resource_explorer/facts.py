@@ -1770,12 +1770,9 @@ class FactLayer:
             return env
         env.facts = [self._for_question(f, question.get("id", "")) for f in self.facts(slug, ids, self._primary_level(question))]
         if not env.answerable:
-            # One sentence whatever the facts' states (W54, 2026-11-03): the row's source line says WHEN ("not yet
-            # run", "run 3d ago"), once (F23), so the answer line does not say it again in other words.
-            env.blocked_reason = (
-                "Nothing has been measured for this yet."
-                + (f" Run: {', '.join(env.can_run)}." if env.can_run else "")
-            )
+            # One sentence whatever the facts' states, in the owner's words (F23; W54 ruling 2026-11-04, "Use Not
+            # yet run"). What can run it is said on the row's source line ("run: <analysis>"), from `can_run`.
+            env.blocked_reason = "Not yet run."
         else:
             self._check_level(env, question)
         return env

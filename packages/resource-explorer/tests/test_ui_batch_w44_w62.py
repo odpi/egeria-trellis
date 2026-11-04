@@ -19,8 +19,8 @@ def test_w54_unrun_answer_line_is_one_sentence(monkeypatch, states):
          "analysis_ids": ["postgres_column_profile", "postgres_nested_columns"]}}
     env = layer.answer("slug", q)
     assert env.answerable is False
-    assert env.blocked_reason.startswith("Nothing has been measured for this yet.")
-    assert "Not yet run" not in env.blocked_reason   # the row's source line says WHEN, once (F23)
+    assert env.blocked_reason == "Not yet run."      # the owner's words (F23), every unrun case (W54 ruling 2026-11-04)
+    assert env.can_run == ["postgres_column_profile", "postgres_nested_columns"]   # said on the source line
 
 
 def test_w54_a_known_count_of_databases_is_not_database_s():

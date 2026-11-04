@@ -9771,7 +9771,7 @@ function bodyLines(entry, i, st, env) {
   if (st === 'unrun') {
     // NO answer line. Not a zero, not an empty string — the absence of the
     // line is the statement.
-    const why = (env && env.blocked_reason) || 'Nothing has been measured for this yet.';
+    const why = (env && env.blocked_reason) || 'Not yet run.';
     const lines = readEnvelope(entry, env, esc, tnum);
     return autoRanNoteHtml(entry, indent)
       + `<div class="ml-[22px] mt-[6px] text-answer text-ink">${tnum(esc(why))}</div>`
@@ -9907,7 +9907,11 @@ function provenanceLine(entry, i, lines, st) {
   const sources = lines.sources && lines.sources.length
     ? lines.sources.join(', ')
     : (entry.analysis_ids || []).join(', ');
-  if (sources) bits.push(esc(sources));
+  // An unrun row's answer line is "Not yet run." (F23, W54): its source line names what would run it, not "not yet
+  // run" a second time.
+  const runnable = (lines.canRun && lines.canRun.length) ? lines.canRun.join(', ') : sources;
+  if (st === 'unrun' && runnable) bits.push(`run: ${esc(runnable)}`);
+  else if (sources) bits.push(esc(sources));
   else if (entry.answering_mechanism) bits.push(esc(entry.answering_mechanism));
 
   // WHEN, said exactly as precisely as the record allows. Three different
@@ -9926,8 +9930,8 @@ function provenanceLine(entry, i, lines, st) {
     bits.push(`as of <span class="tnum">${esc(String(lines.asOf).slice(0, 16).replace('T', ' '))}</span>`);
   } else if (lines.runTimeUnrecorded) {
     bits.push('run time not recorded');
-  } else if (st !== 'running') {
-    // The one place an unrun row says "not yet run" (F23, W54): its answer line says what is missing, not when.
+  } else if (st !== 'running' && st !== 'unrun') {
+    // An unrun row already says "Not yet run." as its answer line: not again here (F23, W54).
     bits.push('not yet run');
   }
   // When the row says "not yet run" (here or as its answer), a step that never ran does not say it a second time.
