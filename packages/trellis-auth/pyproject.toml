@@ -36,7 +36,7 @@ dependencies = [
 # doesn't need live credential validation doesn't have to install it.
 
 [project.optional-dependencies]
-egeria = ["pyegeria>=6.2.20"]  # raised with trellis' floor 2026-10-31
+egeria = ["pyegeria>=6.2.21"]  # raised with trellis' floor 2026-10-31
 dev = [
     "pytest>=8.3.0",
     "pytest-cov>=5.0.0",
