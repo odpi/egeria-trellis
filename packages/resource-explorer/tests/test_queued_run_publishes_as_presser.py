@@ -32,8 +32,8 @@ PRESSER = "peterprofile"
 DAEMON_NAME = "resourceexplorernpa"
 
 
-def _token(exp_in: float, marker: str = "alpha") -> str:
-    return jwt.encode({"sub": PRESSER, "exp": int(time.time() + exp_in), "marker": marker}, "k", algorithm="HS256")
+def _token(exp_in: float, marker: str = "alpha", base: float | None = None) -> str:
+    return jwt.encode({"sub": PRESSER, "exp": int((time.time() if base is None else base) + exp_in), "marker": marker}, "k", algorithm="HS256")
 
 
 LIVE_TOKEN = _token(3600, "live-session-token")
@@ -41,10 +41,19 @@ EXPIRED_TOKEN = _token(-60, "expired-session-token")
 
 
 @pytest.fixture(autouse=True)
-def _clean_hold():
-    presser_hold.clear_all()
+def _clean_hold(monkeypatch):
+    """A private holder on a frozen clock, and tokens minted from that same clock per test (F53).
+
+    The module-level `take`/`release`/`clear_all` are bound to the import-time holder, so they are re-pointed too.
+    Wall-clock drift or a clock patched by another test can then not reach the hold (it returned None under xdist)."""
+    now = time.time()
+    holder = presser_hold._Holder(clock=lambda: now)
+    monkeypatch.setattr(presser_hold, "_HOLDER", holder)
+    for name in ("take", "release", "clear_all"):
+        monkeypatch.setattr(presser_hold, name, getattr(holder, name))
+    monkeypatch.setitem(globals(), "LIVE_TOKEN", _token(3600, "live-session-token", now))
+    monkeypatch.setitem(globals(), "EXPIRED_TOKEN", _token(-60, "expired-session-token", now))
     yield
-    presser_hold.clear_all()
 
 
 # ── the hold ────────────────────────────────────────────────────────────────
