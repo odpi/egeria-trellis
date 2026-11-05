@@ -37,7 +37,7 @@ Resource Explorer asks you to sign in before it shows anything. The sign-in pane
 
 Your password is used once, to get an Egeria token, and is never stored. From then on every read and write RE makes runs *as you*: Egeria's own provenance records your user id, and anything you publish is owned by you.
 
-**Sessions last about an hour**, because that is how long Egeria's tokens last, and they all end when the Egeria platform restarts. When yours lapses the sign-in panel reappears; sign in again and carry on. Opening Resource Explorer from inside the Egeria Portal skips this entirely: the Portal hands over the token it already holds.
+**Sessions last about an hour**, because that is how long Egeria's tokens last, and they all end when the Egeria platform restarts. When yours lapses the sign-in panel reappears; sign in again and carry on. If the Egeria platform restarts while you are signed in, the next thing you press is refused and the sign-in panel tells you why — "your Egeria sign-in is no longer valid (Egeria restarted since you signed in) · sign in again" — rather than the plain "session has expired" words; nothing you pressed ran. Opening Resource Explorer from inside the Egeria Portal skips this entirely: the Portal hands over the token it already holds.
 
 The header shows who you are signed in as (your user id), and **Sign out** ends the session. Intended behavior: the header always reads your user id while you are signed in. Today, with no investigation selected, the header's connection-details control can read "not signed in" even though you are signed in; that is a defect, fixed in the pending status-words PR, and the sign-in itself is not affected.
 
