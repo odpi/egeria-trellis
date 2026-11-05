@@ -70,6 +70,15 @@ _KINDS = (KIND_CALLER, KIND_DAEMON)
 
 EXPIRED_SENTENCE = "your Egeria sign-in expired; sign in again"
 NO_CALLER_SENTENCE = "no one is signed in, so RE will not call Egeria; sign in again"
+#: F58: the person's Egeria bearer token is dead while the RE session that carries it is still valid (Egeria restarted
+#: since they signed in, invalidating every token it issued). The RE session's own expiry cannot see this; only
+#: Egeria's refusal of the token can. The sentence a route answers; a route adds what was NOT done after it.
+EGERIA_TOKEN_REFUSED_SENTENCE = ("your Egeria sign-in is no longer valid (Egeria restarted since you signed in) · "
+                                 "sign in again")
+#: The machine marker of that answer (`{"error": EGERIA_TOKEN_REFUSED_CODE, "detail": <sentence>}`, HTTP 401): the
+#: shell branches on it, never on the words, and shows the sign-in form with the Egeria words — distinct from the RE
+#: session's own 401 (`{"error": "login_required"}`).
+EGERIA_TOKEN_REFUSED_CODE = "egeria_token_refused"
 
 #: Seconds before a daemon token's `exp` at which the factory re-mints it.
 _DAEMON_REFRESH_MARGIN = 120
@@ -90,6 +99,18 @@ class CallerTokenExpired(PermissionError):
     status_code = 401
 
     def __init__(self, message: str = EXPIRED_SENTENCE) -> None:
+        super().__init__(message)
+
+
+class EgeriaTokenRefused(PermissionError):
+    """F58: Egeria refused the signed-in person's token on a call that needed it (a 401/403 read as
+    `classify_token_check_failure` reads one) while the RE session is still valid — Egeria restarted since they
+    signed in. A Caller's clients cannot be refreshed by RE: the person signs in again. Maps to 401 with the
+    `EGERIA_TOKEN_REFUSED_CODE` marker and the sentence (the raiser may add what was not done)."""
+
+    status_code = 401
+
+    def __init__(self, message: str = EGERIA_TOKEN_REFUSED_SENTENCE) -> None:
         super().__init__(message)
 
 

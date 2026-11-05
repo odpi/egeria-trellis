@@ -153,6 +153,15 @@ def _egeria_refused(request, exc):
     return JSONResponse(status_code=403, content={"detail": str(exc), "refused_by": "egeria"})
 
 
+def _egeria_token_refused(request, exc):
+    """F58: Egeria refused the signed-in person's token while the RE session is still valid (Egeria restarted since
+    they signed in). 401 with the distinct marker: the shell branches on `error`, never on the words, and shows the
+    sign-in form with the Egeria words — not the RE session's own `login_required`."""
+    from resource_explorer.egeria_clients import EGERIA_TOKEN_REFUSED_CODE
+
+    return JSONResponse(status_code=401, content={"error": EGERIA_TOKEN_REFUSED_CODE, "detail": str(exc)})
+
+
 def _platform_not_allowed(request, exc):
     """Brief I: a resource names an Egeria platform RE is not configured for; nothing was sent."""
     return JSONResponse(status_code=403, content={"detail": str(exc), "refused_by": "platform"})
@@ -160,12 +169,13 @@ def _platform_not_allowed(request, exc):
 
 def _install_egeria_identity_handlers() -> None:
     from resource_explorer.egeria_clients import (
-        CallerTokenExpired, EgeriaRefused, NoCallerIdentity, PlatformNotAllowed,
+        CallerTokenExpired, EgeriaRefused, EgeriaTokenRefused, NoCallerIdentity, PlatformNotAllowed,
     )
 
     app.add_exception_handler(NoCallerIdentity, _egeria_identity_refused)
     app.add_exception_handler(CallerTokenExpired, _egeria_identity_refused)
     app.add_exception_handler(EgeriaRefused, _egeria_refused)
+    app.add_exception_handler(EgeriaTokenRefused, _egeria_token_refused)
     app.add_exception_handler(PlatformNotAllowed, _platform_not_allowed)
 
 
