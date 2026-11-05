@@ -1006,6 +1006,86 @@ def test_the_ambiguity_words_say_what_the_elements_did_not_carry(registry, tmp_p
                                                           "choose; reconcile on Curate")
 
 
+# ── F58: a dead Egeria sign-in is said before the per-file loop ──────────────────────────────────────────────────────
+
+class PyegeriaUnauthorizedException(Exception):
+    """pyegeria's own type by NAME (what `classify_token_check_failure` reads), with the live 2026-11-05 text."""
+
+
+LIVE_401_TEXT = ("=> AUTHORIZATION_ERROR_401 => User not authorized received for user - `peterprofile` "
+                 "requesting on behalf of `peterprofile`")
+
+
+def _refusing_port(*, at: str):
+    """A port whose FIRST call as the person — `at` is `csv_survey_listed` or `egeria_file_system_name` — is refused
+    by Egeria with the live 401; every per-file call is a mock that must stay uncalled."""
+    port = create_autospec(fp.CsvSurveyPort, instance=True, spec_set=True)
+    port.csv_survey_listed.return_value = True
+    port.egeria_file_system_name.return_value = "egeria-deployment"
+    getattr(port, at).side_effect = PyegeriaUnauthorizedException(LIVE_401_TEXT)
+    return port
+
+
+@pytest.mark.parametrize("at", ["csv_survey_listed", "egeria_file_system_name"])
+def test_f58_the_egeria_half_refuses_the_whole_run_when_egeria_refuses_the_persons_token(registry, tmp_path, at):
+    """F58: the refusal is raised before any per-file work, with the sentence and the marker words; nothing is
+    submitted, nothing stored."""
+    from resource_explorer.egeria_clients import EgeriaTokenRefused
+
+    fs = _probe_fs(registry, tmp_path)
+    port = _refusing_port(at=at)
+    with pytest.raises(EgeriaTokenRefused) as info:
+        fp.run_file_profiles(fs, registry, port=port, limit=LIMIT)
+    assert str(info.value) == ("your Egeria sign-in is no longer valid (Egeria restarted since you signed in) · "
+                               "sign in again · nothing was profiled")
+    port.csv_asset_guid.assert_not_called()
+    port.initiate.assert_not_called()
+    assert registry.list_filesystem_file_column_runs("hampton") == []
+    assert fp.profiles_view(registry, "hampton")["run"] is None
+    # the claim was released: a later press (a new sign-in) runs
+    assert registry.take_claim(f"{fp.STEP_KEY}:hampton", "later-press")
+
+
+def test_f58_another_failure_on_the_first_call_is_not_a_token_refusal(registry, tmp_path):
+    """Only Egeria's refusal of the token ends the run; a transport failure stays the half's own `could_not_check`."""
+    fs = _probe_fs(registry, tmp_path)
+    port = _refusing_port(at="csv_survey_listed")
+    port.csv_survey_listed.side_effect = ConnectionError("connection refused")
+    out = fp.run_file_profiles(fs, registry, port=port, limit=LIMIT)
+    assert out["egeria_half"] == fp.EGERIA_HALF_UNCHECKED
+    assert len(registry.list_filesystem_file_column_runs("hampton")) == 1
+
+
+@pytest.mark.usefixtures("signed_in_caller")
+def test_f58_the_press_answers_401_with_the_marker_and_the_previous_card_stands(api, registry, tmp_path, monkeypatch):
+    """Live 2026-11-05: three presses after an Egeria restart each stored a run of raw AUTHORIZATION_ERROR_401 lines and
+    the newest masked the previous card. Now: 401 `{"error": "egeria_token_refused", "detail": <words>}`, no run row,
+    the previous run's card unchanged."""
+    client, headers = api
+    fs = _probe_fs(registry, tmp_path)
+    good, _fake = _real_port_with_fake_surveyor({}, root_qn=f"FileFolder::egeria-deployment:{PROBE_DIR}")
+    try:
+        fp.run_file_profiles(fs, registry, port=good, limit=LIMIT)        # the previous run (a live sign-in)
+    finally:
+        good.close()
+    before = client.get("/api/filesystems/hampton/file-profiles", headers=headers).json()
+    assert before["run"] is not None and before["run"]["counts"]["submitted"] == 2
+    runs_before = registry.list_filesystem_file_column_runs("hampton")
+
+    refusing = _refusing_port(at="egeria_file_system_name")
+    monkeypatch.setattr(fp, "make_port", lambda identity=None: refusing)
+    r = client.post("/api/filesystems/hampton/file-profiles", headers=headers)
+    assert r.status_code == 401, r.text
+    assert r.json() == {"error": "egeria_token_refused",
+                        "detail": "your Egeria sign-in is no longer valid (Egeria restarted since you signed in) · "
+                                  "sign in again · nothing was profiled"}
+    refusing.csv_asset_guid.assert_not_called()
+    refusing.initiate.assert_not_called()
+    assert registry.list_filesystem_file_column_runs("hampton") == runs_before
+    assert client.get("/api/filesystems/hampton/file-profiles", headers=headers).json() == before
+    assert "AUTHORIZATION_ERROR_401" not in r.text
+
+
 def _expert_answering(answer):
     from unittest.mock import create_autospec
 

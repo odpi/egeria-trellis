@@ -802,13 +802,34 @@ def _true() -> bool:
     return True
 
 
+#: F58: what the whole-run refusal says after the shared sentence (`EGERIA_TOKEN_REFUSED_SENTENCE`): the run stopped
+#: before any per-file work, so no run row is stored and the previous run's card stands.
+TOKEN_REFUSED_NOTHING_PROFILED = "nothing was profiled"
+
+
+def _refuse_run_if_token_refused(exc: BaseException) -> None:
+    """F58: Egeria refused the person's token on the run's first call as them (the CSV-service read or the file-system
+    name lookup, both before the per-file loop). Live 2026-11-05 (three presses after a platform restart): the RE
+    session was valid, the Egeria token inside it dead, and the run went on — every file line filled with the raw
+    AUTHORIZATION_ERROR_401 text, a run row stored, the previous run's card masked. The whole run is refused instead:
+    `EgeriaTokenRefused` (401 with the marker), nothing profiled, nothing stored. A Caller's clients cannot be
+    refreshed by RE; the person signs in again."""
+    from resource_explorer.egeria_clients import EGERIA_TOKEN_REFUSED_SENTENCE, EgeriaTokenRefused
+    from resource_explorer.engine_host import is_token_refused
+
+    if is_token_refused(exc):
+        raise EgeriaTokenRefused(f"{EGERIA_TOKEN_REFUSED_SENTENCE} · {TOKEN_REFUSED_NOTHING_PROFILED}") from exc
+
+
 def submit_egeria_half(port: CsvSurveyPort | None, fs_entity, files: list[dict], *,
                        heartbeat: Callable[[], Any] = _true) -> tuple[str, dict[str, list[dict]], dict]:
     """Submit Egeria's CSV Survey Service for each file routed to Egeria. Returns (half state, rows per file, actions per
     file {path: {engine_action_guid, asset_guid} | {error}}). Whether the service is installed is read FIRST; a failed read
     is `could_not_check`, never "not installed". Then the name Egeria uses for the file system: when it cannot be
     established the half refuses (`file_system_name_unknown`, nothing read or created in Egeria). `heartbeat` renews the
-    run's claim before each file; False (the claim is lost) raises `ClaimLost`, naming how many were already submitted."""
+    run's claim before each file; False (the claim is lost) raises `ClaimLost`, naming how many were already submitted.
+    F58: Egeria refusing the person's token on either read before the loop raises `EgeriaTokenRefused` — the whole
+    run is refused, nothing is profiled or stored."""
     if not files:
         return EGERIA_HALF_NONE, {}, {}
     rows: dict[str, list[dict]] = {}
@@ -821,6 +842,7 @@ def submit_egeria_half(port: CsvSurveyPort | None, fs_entity, files: list[dict],
     try:
         listed = port.csv_survey_listed()
     except Exception as exc:  # noqa: BLE001 -- a failed read is said, never read as absence
+        _refuse_run_if_token_refused(exc)          # F58: a dead sign-in ends the run here, before any file
         for f in files:
             rows[f["file_path"]] = [marker_row(EGERIA_UNCHECKED)]
             actions[f["file_path"]] = {"error": _short(exc)}
@@ -834,6 +856,7 @@ def submit_egeria_half(port: CsvSurveyPort | None, fs_entity, files: list[dict],
         if not str(fs_name or "").strip():
             raise FileSystemNameUnknown("Egeria's answer carried no name")
     except Exception as exc:  # noqa: BLE001 -- unknown is refused, never guessed (the slug is not Egeria's name)
+        _refuse_run_if_token_refused(exc)          # F58: a dead sign-in ends the run here, before any file
         why = str(exc) if isinstance(exc, FileSystemNameUnknown) else _short(exc)
         for f in files:
             rows[f["file_path"]] = [marker_row(FS_NAME_UNKNOWN)]

@@ -1098,7 +1098,10 @@ def run_filesystem_file_profiles(slug: str) -> dict:
     """The press (consent is this press; the card showed the cost line before it). Profiles every data file of the newest
     walk: a `.csv` on an Egeria-led file system goes to Egeria's CSV Survey Service, every other readable file is profiled
     here. Writes nothing into the path. 409 when there is no walk yet, and 409 while a run for this file system is in
-    flight (server-side claim: a second press submits nothing)."""
+    flight (server-side claim: a second press submits nothing). F58: when Egeria refuses the signed-in person's token
+    on the run's first call as them (Egeria restarted since they signed in), the whole run is refused — 401 with the
+    `egeria_token_refused` marker and "… sign in again · nothing was profiled" (`egeria_clients.EgeriaTokenRefused`,
+    answered by the app's handler), no run row stored, the previous run's card kept."""
     from resource_explorer.surveyors.filesystem import file_profiles as fp
     from resource_explorer.web.routes.curate import require_resource_write
 

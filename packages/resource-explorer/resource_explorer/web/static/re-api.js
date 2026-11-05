@@ -72,8 +72,10 @@ async function apiErrorFrom(res, path) {
     return refused;
   }
   // Brief I: no caller, or the caller's Egeria sign-in expired. A dead session like login_required,
-  // but the sentence is the server's ("your Egeria sign-in expired; sign in again").
-  if (res.status === 401 && refusedBy === 'sign-in') {
+  // but the sentence is the server's ("your Egeria sign-in expired; sign in again"). F58: the
+  // `egeria_token_refused` marker (Egeria restarted since the person signed in; auth.js has already
+  // shown the sign-in form with the sentence) is the same kind of answer.
+  if (res.status === 401 && (refusedBy === 'sign-in' || code === 'egeria_token_refused')) {
     const now = Date.now();
     if (now - lastSessionDead > 1000) {
       lastSessionDead = now;
@@ -81,7 +83,7 @@ async function apiErrorFrom(res, path) {
     }
     const dead = new ApiError(401, String(detail || 'sign-in needed'), path);
     dead.loginRequired = true;
-    dead.refusedBy = 'sign-in';
+    dead.refusedBy = refusedBy || code;
     return dead;
   }
   if (res.status === 401 && code === 'login_required') {

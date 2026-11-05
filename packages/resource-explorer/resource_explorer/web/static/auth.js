@@ -228,6 +228,30 @@ const Auth = (() => {
     showLogin('Your session has expired. Please sign in again.');
   }
 
+  // F58: the marker a route answers when Egeria refused the person's Egeria
+  // token while this RE session is still valid (Egeria restarted since they
+  // signed in). The shell branches on the marker, never on the words, and
+  // shows the sign-in form with the server's sentence — distinct from the RE
+  // session's own 401 (`login_required`, "Your session has expired").
+  const EGERIA_TOKEN_REFUSED = 'egeria_token_refused';
+  const EGERIA_TOKEN_REFUSED_WORDS = 'Your Egeria sign-in is no longer valid (Egeria restarted since you signed in). Sign in again.';
+
+  function handleEgeriaTokenRefused(detail) {
+    clearToken();
+    showLogin(detail || EGERIA_TOKEN_REFUSED_WORDS);
+  }
+
+  // Which 401 this is, read from a CLONE of the response so the caller's own
+  // body read is untouched. A body that is not JSON, or carries no marker, is
+  // the RE session's 401.
+  async function classify401(response) {
+    try {
+      const body = await response.clone().json();
+      if (body && body.error === EGERIA_TOKEN_REFUSED) return { kind: EGERIA_TOKEN_REFUSED, detail: body.detail || '' };
+    } catch { /* not JSON: the session 401 */ }
+    return { kind: 'login_required', detail: '' };
+  }
+
   const _origFetch = window.fetch.bind(window);
   // Auth's own endpoints are excluded from the 401 handler: a 401 there means
   // "wrong credentials", not "your session expired", and they show their own
@@ -271,7 +295,9 @@ const Auth = (() => {
 
     const response = await _origFetch(...args);
     if (response.status === 401 && !_AUTH_ENDPOINTS.some(p => url.includes(p))) {
-      handle401();
+      const which = await classify401(response);
+      if (which.kind === EGERIA_TOKEN_REFUSED) handleEgeriaTokenRefused(which.detail);
+      else handle401();
     }
     return response;
   };
@@ -323,5 +349,6 @@ const Auth = (() => {
     showLogin();
   }
 
-  return { init, isAuthenticated, getToken, getHeaders, getUser, showLogin, hideLogin, doLogout, handle401 };
+  return { init, isAuthenticated, getToken, getHeaders, getUser, showLogin, hideLogin, doLogout, handle401,
+           handleEgeriaTokenRefused, EGERIA_TOKEN_REFUSED };
 })();
