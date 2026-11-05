@@ -167,7 +167,53 @@ def _platform_not_allowed(request, exc):
     return JSONResponse(status_code=403, content={"detail": str(exc), "refused_by": "platform"})
 
 
+def _token_refusal_in(exc: BaseException):
+    """F60: the `EgeriaTokenRefused` that ended this request, when there is one anywhere in what was raised — the
+    exception itself, what it was raised `from`, or what was being handled when it was raised (`__context__`).
+    `egeria_clients` raises the refusal at the person's client call; a route's own helpers then often wrap it
+    (`EgeriaFileSystemSurveyorError(...) from exc`, `HTTPException(500, f"Publish failed: {exc}")` inside an
+    `except Exception`), and each wrap would otherwise bury the one fact the person must hear — sign in again —
+    under that route's words. Bounded, cycle-safe."""
+    from resource_explorer.egeria_clients import EgeriaTokenRefused
+
+    seen: set = set()
+    e = exc
+    for _ in range(12):
+        if e is None or id(e) in seen:
+            return None
+        if isinstance(e, EgeriaTokenRefused):
+            return e
+        seen.add(id(e))
+        e = e.__cause__ if e.__cause__ is not None else e.__context__
+    return None
+
+
+async def _http_exception_or_token_refused(request, exc):
+    """F60: an HTTPException a route raised while handling Egeria's refusal of the person's token answers the
+    401 marker (the refusal's own sentence), whatever status the route chose; every other HTTPException is
+    FastAPI's default answer."""
+    from fastapi.exception_handlers import http_exception_handler
+
+    refused = _token_refusal_in(exc)
+    if refused is not None:
+        return _egeria_token_refused(request, refused)
+    return await http_exception_handler(request, exc)
+
+
+def _unhandled_or_token_refused(request, exc):
+    """F60: an unhandled exception that carries the person's token refusal answers the 401 marker; anything else
+    is the plain 500 Starlette would have sent (and Starlette still re-raises it to the server log)."""
+    from starlette.responses import PlainTextResponse
+
+    refused = _token_refusal_in(exc)
+    if refused is not None:
+        return _egeria_token_refused(request, refused)
+    return PlainTextResponse("Internal Server Error", status_code=500)
+
+
 def _install_egeria_identity_handlers() -> None:
+    from starlette.exceptions import HTTPException as StarletteHTTPException
+
     from resource_explorer.egeria_clients import (
         CallerTokenExpired, EgeriaRefused, EgeriaTokenRefused, NoCallerIdentity, PlatformNotAllowed,
     )
@@ -177,6 +223,9 @@ def _install_egeria_identity_handlers() -> None:
     app.add_exception_handler(EgeriaRefused, _egeria_refused)
     app.add_exception_handler(EgeriaTokenRefused, _egeria_token_refused)
     app.add_exception_handler(PlatformNotAllowed, _platform_not_allowed)
+    # F60: the refusal is answered the same way when a route wrapped it (see `_token_refusal_in`).
+    app.add_exception_handler(StarletteHTTPException, _http_exception_or_token_refused)
+    app.add_exception_handler(Exception, _unhandled_or_token_refused)
 
 
 _install_egeria_identity_handlers()

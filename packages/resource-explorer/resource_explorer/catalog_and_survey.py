@@ -604,6 +604,8 @@ def address_state(registry, entity_type: str, slug: str, entity) -> dict:
 def _classify(port, guid: str, out: dict) -> str:
     try:
         return "resolves" if port.asset_exists(guid) else "gone"
+    except PermissionError:
+        raise          # F60: Egeria refused the person's token — the app's 401 marker, not an 'unreadable' row
     except Exception as exc:  # noqa: BLE001
         out["error"] = nsr._short_error(exc)
         return "unreadable"

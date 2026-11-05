@@ -54,6 +54,8 @@ __all__ = [
     "EXPIRED_SENTENCE",
     "EgeriaClients",
     "EgeriaRefused",
+    "is_person_token_refused",
+    "unwrap_client",
     "NoCallerIdentity",
     "PlatformNotAllowed",
     "acting_as",
@@ -564,6 +566,83 @@ def _build(cls: Any, view_server: str, platform_url: str, user_id: str, password
     return cls(view_server, platform_url, user_id, password)
 
 
+def is_person_token_refused(exc: BaseException) -> bool:
+    """F60: Egeria refused a PERSON's token — the reading `classify_token_check_failure` makes (a 401, pyegeria's
+    PyegeriaUnauthorizedException, the AUTHORIZATION_ERROR_401 text, wrapped or bare) — and NOT Egeria's security
+    connector refusing what this person may do (an OPEN-METADATA-SECURITY-403 or an HTTP 403): that is Brief I's
+    `EgeriaRefused` ("refused by Egeria", 403), which a route raises itself and which a new sign-in would not change.
+    A timeout or a refused connection is neither."""
+    from resource_explorer.egeria_outbox import is_security_refusal
+
+    if isinstance(exc, Exception) and is_security_refusal(exc):
+        return False
+    return classify_token_check_failure(exc) == TOKEN_REFUSED
+
+
+class _GuardedCall:
+    """One method of a person's pyegeria client (F60). Calling it is calling the method; a failure Egeria answered
+    as a refusal of the person's token is raised as `EgeriaTokenRefused` (the original exception as its cause),
+    every other failure passes unchanged. Attribute reads and writes go to the method itself, so a test's mock
+    (`.return_value`, `.assert_called_once()`) and pyegeria's own function attributes still work."""
+
+    __slots__ = ("_fn",)
+
+    def __init__(self, fn: Any) -> None:
+        object.__setattr__(self, "_fn", fn)
+
+    def __call__(self, *args: Any, **kwargs: Any) -> Any:
+        try:
+            return self._fn(*args, **kwargs)
+        except Exception as exc:  # noqa: BLE001 - classified, re-raised unchanged unless it is the token refusal
+            if is_person_token_refused(exc):
+                raise EgeriaTokenRefused() from exc
+            raise
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._fn, name)
+
+    def __setattr__(self, name: str, value: Any) -> None:
+        setattr(self._fn, name, value)
+
+    def __repr__(self) -> str:
+        return f"<guarded {self._fn!r}>"
+
+
+class _PersonClient:
+    """F60: the one seam every call as a signed-in PERSON passes through. `EgeriaClients.of()` hands a route (or
+    anything acting as the caller) this wrapper around the pyegeria sub-client; every method called on it is a
+    `_GuardedCall`, so Egeria refusing the person's token — the platform restarted since they signed in and every
+    token it issued died (live 2026-11-05: the Profile press showed sixteen raw AUTHORIZATION_ERROR_401 lines) —
+    becomes `egeria_clients.EgeriaTokenRefused` (401 + the `egeria_token_refused` marker, answered by the app) at
+    the call, whichever route made it, instead of pyegeria's raw text through whatever that route says about an
+    error. A Caller's clients cannot be refreshed by RE (no password is held): the person signs in again. The
+    daemon's clients are never wrapped (F57: they re-mint). Non-callable attributes, and attribute writes, go to
+    the client itself; `unwrap_client` gives the client back for a class-level check."""
+
+    __slots__ = ("_client",)
+
+    def __init__(self, client: Any) -> None:
+        object.__setattr__(self, "_client", client)
+
+    def __getattr__(self, name: str) -> Any:
+        attr = getattr(self._client, name)
+        if callable(attr) and not isinstance(attr, type):
+            return _GuardedCall(attr)
+        return attr
+
+    def __setattr__(self, name: str, value: Any) -> None:
+        setattr(self._client, name, value)
+
+    def __repr__(self) -> str:
+        return f"<as the person: {self._client!r}>"
+
+
+def unwrap_client(client: Any) -> Any:
+    """The pyegeria client inside a person's `_PersonClient` wrapper (F60); anything else unchanged. For a check on
+    the client's CLASS (`zone_access._catch_wrapped`), which the wrapper would otherwise hide."""
+    return client._client if isinstance(client, _PersonClient) else client
+
+
 class EgeriaClients:
     """pyegeria sub-clients for ONE identity, created lazily, sharing one token (EgeriaTech's shape).
 
@@ -585,6 +664,7 @@ class EgeriaClients:
         _check_platform(identity, self.platform_url)
         self.user_id = _client_user(identity)
         self._clients: dict[tuple, Any] = {}
+        self._guarded: dict[tuple, _PersonClient] = {}     # F60: a person's wrappers, one per sub-client
         self._token: Optional[str] = identity.token if identity.is_person else None
         self._lock = threading.Lock()
 
@@ -614,7 +694,8 @@ class EgeriaClients:
         return exp is not None and exp - _DAEMON_REFRESH_MARGIN <= time.time()
 
     def of(self, cls: Any, *, server: Optional[str] = None) -> Any:
-        """The sub-client of pyegeria class `cls` for this identity."""
+        """The sub-client of pyegeria class `cls` for this identity. For a PERSON it is wrapped (`_PersonClient`,
+        F60): a call Egeria refuses as a dead token raises `EgeriaTokenRefused`. The daemon's is the bare client."""
         key = (cls, server or self.view_server)
         with self._lock:
             client = self._clients.get(key)
@@ -632,6 +713,11 @@ class EgeriaClients:
                     self._mint(client)
             elif not self.identity.is_person and self._daemon_token_due():
                 self.refresh()
+            if self.identity.is_person:
+                guarded = self._guarded.get(key)
+                if guarded is None:
+                    guarded = self._guarded[key] = _PersonClient(client)
+                client = guarded
         _record(self.identity, self.purpose)
         return client
 
