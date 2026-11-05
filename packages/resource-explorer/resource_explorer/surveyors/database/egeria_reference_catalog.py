@@ -447,6 +447,8 @@ def load_data_class_keywords(ref_manager, data_class_names: Sequence[str],
             failures.append(f"{name}: timed out")
             unread.append(name)
             continue
+        except PermissionError:
+            raise      # F60: Egeria refused the person's token — the route answers the 401 marker, not the fallback
         except Exception as exc:  # noqa: BLE001 - recorded as "could not read", never as "none"
             failures.append(f"{name}: {exc}")
             unread.append(name)

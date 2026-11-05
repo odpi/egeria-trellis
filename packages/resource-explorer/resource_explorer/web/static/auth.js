@@ -85,10 +85,25 @@ const Auth = (() => {
 
   // ── Overlay ──────────────────────────────────────────────────────────────
 
-  function showLogin(message) {
+  // F59: the stronger reason wins on the overlay. Live 2026-11-05 12:10:53Z: a press on a token killed by an
+  // Egeria restart answered the `egeria_token_refused` 401 and the form showed the Egeria sentence — then, within
+  // the same second, the page's own follow-up reads answered the plain session 401 (`login_required`, because the
+  // RE token had just been cleared) and handle401 replaced the words with "Your session has expired". The person
+  // signed in again but was not told why. So the overlay remembers how strong the reason it shows is: a weaker
+  // reason (the session 401, the session-dead banner's own Sign-in button, any later 401) may re-show the overlay
+  // but never replaces stronger words. Cleared when the overlay actually hides (a successful sign-in), so a plain
+  // 401 later in the new session reads the session words again. A flag rather than keeping the RE token until
+  // submit: the token IS dead for Egeria, and the flag also covers any other later 401, whatever raised it.
+  const REASON_NONE = 0;
+  const REASON_SESSION = 1;     // the RE session's own 401, the first-load prompt, the banner's button
+  const REASON_EGERIA = 2;      // Egeria refused the person's token (the marker): the person must know WHY
+  let overlayReason = REASON_NONE;
+
+  function showLogin(message, reason = REASON_SESSION) {
     const overlay = document.getElementById('login-overlay');
     if (!overlay) return;
-    if (message) {
+    if (message && reason >= overlayReason) {
+      overlayReason = reason;
       const msg = document.getElementById('login-message');
       if (msg) { msg.textContent = message; msg.classList.remove('hidden'); }
     }
@@ -105,6 +120,7 @@ const Auth = (() => {
     if (loginRequired && !isAuthenticated()) return;
     const overlay = document.getElementById('login-overlay');
     if (overlay) overlay.style.display = 'none';
+    overlayReason = REASON_NONE;       // F59: the next reason, whatever its strength, is shown
     document.dispatchEvent(new CustomEvent('re:login-closed'));
     document.getElementById('login-message')?.classList.add('hidden');
     const err = document.getElementById('login-error');
@@ -225,7 +241,7 @@ const Auth = (() => {
 
   function handle401() {
     clearToken();
-    showLogin('Your session has expired. Please sign in again.');
+    showLogin('Your session has expired. Please sign in again.', REASON_SESSION);
   }
 
   // F58: the marker a route answers when Egeria refused the person's Egeria
@@ -238,7 +254,8 @@ const Auth = (() => {
 
   function handleEgeriaTokenRefused(detail) {
     clearToken();
-    showLogin(detail || EGERIA_TOKEN_REFUSED_WORDS);
+    // F59: the stronger reason — the login_required 401s that follow clearToken cannot replace these words.
+    showLogin(detail || EGERIA_TOKEN_REFUSED_WORDS, REASON_EGERIA);
   }
 
   // Which 401 this is, read from a CLONE of the response so the caller's own
@@ -350,5 +367,7 @@ const Auth = (() => {
   }
 
   return { init, isAuthenticated, getToken, getHeaders, getUser, showLogin, hideLogin, doLogout, handle401,
-           handleEgeriaTokenRefused, EGERIA_TOKEN_REFUSED };
+           handleEgeriaTokenRefused, EGERIA_TOKEN_REFUSED,
+           // F59: read by tests; the overlay's own words are what a person sees.
+           overlayReason: () => overlayReason };
 })();

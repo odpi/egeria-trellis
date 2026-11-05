@@ -4306,11 +4306,33 @@ def _repo_conventions_headline(registry, slug: str) -> dict | None:
     return _generic_findings_headline(_repo_conventions_results(registry, slug), noun="convention")
 
 
+#: W69: a classification that ran without a role verdict. Said in words on the Q-0043 row, never "Role" or nothing.
+ROLE_NOT_DETERMINED_WORDS = "role: not determined (classification ran without a role verdict)"
+
+
+def repo_role_words(role: dict | None) -> str:
+    """W69: the role words of a stored `repo_role` finding — "samples (also library)" — read from `detail.roles`
+    (the ranked list), else from the `summary` before its " — architecture recovery" tail. The finding's `label` is
+    the fixed word "Role" (what the finding IS, see repo_classification.py), so it is never the answer. A finding
+    with no roles, or none at all, reads `ROLE_NOT_DETERMINED_WORDS`."""
+    if not role:
+        return ROLE_NOT_DETERMINED_WORDS
+    roles = [str(r) for r in ((role.get("detail") or {}).get("roles") or []) if r]
+    if roles:
+        return roles[0] + (f" (also {', '.join(roles[1:])})" if len(roles) > 1 else "")
+    summary = str(role.get("summary") or "").split(" — ")[0].strip()
+    return summary or ROLE_NOT_DETERMINED_WORDS
+
+
 def _repo_classification_headline(registry, slug: str) -> dict | None:
     """The role and the gate decision — the two things a reader wants at a
     glance. Deliberately NOT a count of located-vs-missing artifacts: §5.5b
     forbids reducing this to a number, because a checklist becomes a maturity
-    score and a score punishes deliberate choices."""
+    score and a score punishes deliberate choices.
+
+    W69 (live on deep_causality, Q-0043): the headline read "Role · architecture recovery: run" — the finding's
+    `label` is the fixed word "Role", the role words live in `summary` / `detail.roles`. The headline now leads
+    with the role words (`repo_role_words`); a classification with no role verdict says so in words."""
     findings = _repo_classification_results(registry, slug).get("findings") or []
     if not findings:
         return None
@@ -4320,9 +4342,7 @@ def _repo_classification_headline(registry, slug: str) -> dict | None:
                 "status": "error"}
     role = by_check.get("repo_role")
     gate = by_check.get("architecture_recovery_gate")
-    if not role:
-        return None
-    label = role.get("label", "unclassified")
+    label = repo_role_words(role)
     if gate:
         label = f"{label} · architecture recovery: {gate.get('label')}"
     return {"label": label, "status": "info"}
