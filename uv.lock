@@ -20,7 +20,7 @@ resolution-markers = [
 members = [
     "egeria-advisor",
     "resource-explorer",
-    "trellis-analytics",
+    "trellis-analytics-re",
     "trellis-artifact-tree",
     "trellis-auth",
     "trellis-context",
@@ -2178,6 +2178,18 @@ requires-dist = [
     { name = "trellis-vectorstore", editable = "packages/trellis-vectorstore" },
 ]
 provides-extras = ["dev", "dashboard", "gpu", "onnx-tools", "phoenix"]
+
+[[package]]
+name = "egeria-trellis-analytics"
+version = "0.2.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "pyegeria" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/21/6e/83eedd331a986f7cb2057785443f5844b0ea86d7853c22a916dcfdeba88b/egeria_trellis_analytics-0.2.0.tar.gz", hash = "sha256:c4c7f33d07dc315ac6b2c382d37fd5d7e719bc694bd4b8e0fa034ec9c1e812c2", size = 84830, upload-time = "2026-11-05T11:52:02.586Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/f9/7d/c6465d7a05b09b7e77a31d4495e0d0316991744f7a35b51beba743e8999a/egeria_trellis_analytics-0.2.0-py3-none-any.whl", hash = "sha256:1f62f77e2a08b7c9931554d140a01c8e55d4a9f747b5757c39a560de49e58ac2", size = 68493, upload-time = "2026-11-05T11:52:01.148Z" },
+]
 
 [[package]]
 name = "email-validator"
@@ -8347,6 +8359,7 @@ dependencies = [
     { name = "certifi" },
     { name = "cryptography" },
     { name = "docling" },
+    { name = "egeria-trellis-analytics" },
     { name = "fastapi" },
     { name = "great-expectations" },
     { name = "httpx" },
@@ -8381,7 +8394,7 @@ dependencies = [
     { name = "textual" },
     { name = "tree-sitter" },
     { name = "tree-sitter-java" },
-    { name = "trellis-analytics" },
+    { name = "trellis-analytics-re" },
     { name = "trellis-artifact-tree" },
     { name = "trellis-auth" },
     { name = "trellis-context" },
@@ -8431,6 +8444,7 @@ requires-dist = [
     { name = "certifi", specifier = ">=2026.10.18" },
     { name = "cryptography", specifier = ">=43.0.0" },
     { name = "docling", specifier = ">=2.0.0" },
+    { name = "egeria-trellis-analytics", specifier = ">=0.2,<0.3" },
     { name = "fastapi", specifier = ">=0.115.0" },
     { name = "great-expectations", specifier = ">=0.18.0" },
     { name = "httpx", specifier = ">=0.27.0" },
@@ -8477,7 +8491,7 @@ requires-dist = [
     { name = "tree-sitter-java", specifier = ">=0.21" },
     { name = "tree-sitter-javascript", marker = "extra == 'ast'", specifier = ">=0.21" },
     { name = "tree-sitter-python", marker = "extra == 'ast'", specifier = ">=0.21" },
-    { name = "trellis-analytics", editable = "packages/trellis-analytics" },
+    { name = "trellis-analytics-re", editable = "packages/trellis-analytics" },
     { name = "trellis-artifact-tree", editable = "packages/trellis-artifact-tree" },
     { name = "trellis-auth", editable = "packages/trellis-auth" },
     { name = "trellis-context", editable = "packages/trellis-context" },
@@ -9976,10 +9990,11 @@ wheels = [
 ]
 
 [[package]]
-name = "trellis-analytics"
-version = "0.1.0"
+name = "trellis-analytics-re"
+version = "0.2.0"
 source = { editable = "packages/trellis-analytics" }
 dependencies = [
+    { name = "egeria-trellis-analytics" },
     { name = "pyegeria" },
 ]
 
@@ -10002,6 +10017,7 @@ re = [
 
 [package.metadata]
 requires-dist = [
+    { name = "egeria-trellis-analytics", specifier = ">=0.2,<0.3" },
     { name = "ipykernel", marker = "extra == 'dev'" },
     { name = "nbformat", marker = "extra == 'dev'" },
     { name = "papermill", marker = "extra == 'dev'" },
@@ -10151,101 +10167,101 @@ provides-extras = ["redis", "dev"]
 name = "trellis-step-change-rates"
 source = { editable = "packages/trellis-analytics/examples/steps/change_rates" }
 dependencies = [
-    { name = "trellis-analytics" },
+    { name = "egeria-trellis-analytics" },
 ]
 
 [package.metadata]
-requires-dist = [{ name = "trellis-analytics", editable = "packages/trellis-analytics" }]
+requires-dist = [{ name = "egeria-trellis-analytics", specifier = ">=0.2,<0.3" }]
 
 [[package]]
 name = "trellis-step-database-staleness"
 source = { editable = "packages/trellis-analytics/examples/steps/database_staleness" }
 dependencies = [
-    { name = "trellis-analytics" },
+    { name = "egeria-trellis-analytics" },
 ]
 
 [package.metadata]
-requires-dist = [{ name = "trellis-analytics", editable = "packages/trellis-analytics" }]
+requires-dist = [{ name = "egeria-trellis-analytics", specifier = ">=0.2,<0.3" }]
 
 [[package]]
 name = "trellis-step-fs-activity"
 source = { editable = "packages/trellis-analytics/examples/steps/fs_activity" }
 dependencies = [
-    { name = "trellis-analytics" },
+    { name = "egeria-trellis-analytics" },
 ]
 
 [package.metadata]
-requires-dist = [{ name = "trellis-analytics", editable = "packages/trellis-analytics" }]
+requires-dist = [{ name = "egeria-trellis-analytics", specifier = ">=0.2,<0.3" }]
 
 [[package]]
 name = "trellis-step-fs-change-rates"
 source = { editable = "packages/trellis-analytics/examples/steps/fs_change_rates" }
 dependencies = [
-    { name = "trellis-analytics" },
+    { name = "egeria-trellis-analytics" },
 ]
 
 [package.metadata]
-requires-dist = [{ name = "trellis-analytics", editable = "packages/trellis-analytics" }]
+requires-dist = [{ name = "egeria-trellis-analytics", specifier = ">=0.2,<0.3" }]
 
 [[package]]
 name = "trellis-step-fs-duplicates"
 source = { editable = "packages/trellis-analytics/examples/steps/fs_duplicates" }
 dependencies = [
-    { name = "trellis-analytics" },
+    { name = "egeria-trellis-analytics" },
 ]
 
 [package.metadata]
-requires-dist = [{ name = "trellis-analytics", editable = "packages/trellis-analytics" }]
+requires-dist = [{ name = "egeria-trellis-analytics", specifier = ">=0.2,<0.3" }]
 
 [[package]]
 name = "trellis-step-fs-layout-signals"
 source = { editable = "packages/trellis-analytics/examples/steps/fs_layout_signals" }
 dependencies = [
-    { name = "trellis-analytics" },
+    { name = "egeria-trellis-analytics" },
 ]
 
 [package.metadata]
-requires-dist = [{ name = "trellis-analytics", editable = "packages/trellis-analytics" }]
+requires-dist = [{ name = "egeria-trellis-analytics", specifier = ">=0.2,<0.3" }]
 
 [[package]]
 name = "trellis-step-fs-permissions"
 source = { editable = "packages/trellis-analytics/examples/steps/fs_permissions" }
 dependencies = [
-    { name = "trellis-analytics" },
+    { name = "egeria-trellis-analytics" },
 ]
 
 [package.metadata]
-requires-dist = [{ name = "trellis-analytics", editable = "packages/trellis-analytics" }]
+requires-dist = [{ name = "egeria-trellis-analytics", specifier = ">=0.2,<0.3" }]
 
 [[package]]
 name = "trellis-step-hub-tables"
 source = { editable = "packages/trellis-analytics/examples/steps/hub_tables" }
 dependencies = [
-    { name = "trellis-analytics" },
+    { name = "egeria-trellis-analytics" },
 ]
 
 [package.metadata]
-requires-dist = [{ name = "trellis-analytics", editable = "packages/trellis-analytics" }]
+requires-dist = [{ name = "egeria-trellis-analytics", specifier = ">=0.2,<0.3" }]
 
 [[package]]
 name = "trellis-step-schema-comparison"
 source = { editable = "packages/trellis-analytics/examples/steps/schema_comparison" }
 dependencies = [
-    { name = "trellis-analytics" },
+    { name = "egeria-trellis-analytics" },
 ]
 
 [package.metadata]
-requires-dist = [{ name = "trellis-analytics", editable = "packages/trellis-analytics" }]
+requires-dist = [{ name = "egeria-trellis-analytics", specifier = ">=0.2,<0.3" }]
 
 [[package]]
 name = "trellis-step-statistics-freshness"
 source = { editable = "packages/trellis-analytics/examples/steps/statistics_freshness" }
 dependencies = [
-    { name = "trellis-analytics" },
+    { name = "egeria-trellis-analytics" },
 ]
 
 [package.metadata]
-requires-dist = [{ name = "trellis-analytics", editable = "packages/trellis-analytics" }]
+requires-dist = [{ name = "egeria-trellis-analytics", specifier = ">=0.2,<0.3" }]
 
 [[package]]
 name = "trellis-vectorstore"
@@ -10282,7 +10298,7 @@ source = { virtual = "." }
 dev = [
     { name = "egeria-advisor" },
     { name = "resource-explorer", extra = ["dev"] },
-    { name = "trellis-analytics", extra = ["dev"] },
+    { name = "trellis-analytics-re", extra = ["dev"] },
     { name = "trellis-artifact-tree" },
     { name = "trellis-auth" },
     { name = "trellis-context" },
@@ -10307,7 +10323,7 @@ dev = [
 dev = [
     { name = "egeria-advisor", editable = "packages/egeria-advisor" },
     { name = "resource-explorer", extras = ["dev"], editable = "packages/resource-explorer" },
-    { name = "trellis-analytics", extras = ["dev"], editable = "packages/trellis-analytics" },
+    { name = "trellis-analytics-re", extras = ["dev"], editable = "packages/trellis-analytics" },
     { name = "trellis-artifact-tree", editable = "packages/trellis-artifact-tree" },
     { name = "trellis-auth", editable = "packages/trellis-auth" },
     { name = "trellis-context", editable = "packages/trellis-context" },
