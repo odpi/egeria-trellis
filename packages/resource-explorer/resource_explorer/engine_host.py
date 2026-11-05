@@ -285,6 +285,73 @@ def _bootstrap_engine_answer() -> dict:
         return {"present": None, "at": ""}
 
 
+#: F55: the engine host checks the declaration per GovernanceActionType, not only the engine. {request type:
+#: {"present": bool, "at": iso}} — the newest verified lookup of `ResourceExplorerSurvey::<request type>` by qualified
+#: name. Refreshed by the sweep every `TYPE_PRESENCE_EVERY_SWEEPS` sweeps (one unique-name read per declared type).
+_type_answers: dict[str, dict] = {}
+
+#: How many sweeps apart the per-type lookup runs (sweeps are SWEEP_INTERVAL_SECONDS apart, so ~1 min at 5 s).
+TYPE_PRESENCE_EVERY_SWEEPS = 12
+
+
+def record_type_answer(request_type: str, present: bool, at: str = "") -> None:
+    """Record a verified answer about one GovernanceActionType of RE's engine."""
+    from datetime import datetime, timezone
+
+    _type_answers[request_type] = {"present": bool(present),
+                                   "at": at or datetime.now(timezone.utc).isoformat(timespec="seconds")}
+
+
+def type_declared(request_type: str) -> bool | None:
+    """Is `ResourceExplorerSurvey::<request_type>` declared in this Egeria: True / False from the newest verified
+    lookup, None when it has not been looked up (not known is never absent). In-process state, no Egeria call."""
+    answer = _type_answers.get(request_type)
+    return None if answer is None else bool(answer.get("present"))
+
+
+def type_answers() -> dict[str, dict]:
+    return {k: dict(v) for k, v in _type_answers.items()}
+
+
+def declaring_document(request_type: str) -> str:
+    """The engine-host batch document whose `## Create Governance Action Type` declares `request_type`, relative to
+    the batch folder (`library/change_rates.md`), or "" when no document in the batch declares it. Read from the
+    documents themselves (one source), cached per process."""
+    return _declaring_documents().get(governance_action_type_qn_for(request_type), "")
+
+
+_declaring_cache: dict[str, dict[str, str]] = {}
+
+
+def _declaring_documents() -> dict[str, str]:
+    """{GovernanceActionType qualifiedName: document path within the engine-host batch}."""
+    from resource_explorer import bootstrap
+
+    key = str(bootstrap.DOCS_DIR)
+    cached = _declaring_cache.get(key)
+    if cached is not None:
+        return cached
+    out: dict[str, str] = {}
+    try:
+        batch = next((b for b in bootstrap.discover_batches() if b.batch_id == bootstrap.ENGINE_HOST_BATCH), None)
+        for filename in (batch.files if batch else []):
+            doc = batch.path / filename
+            if not doc.is_file():
+                continue
+            lines = doc.read_text().splitlines()
+            for i, line in enumerate(lines):
+                if line.strip() == "## Create Governance Action Type":
+                    for later in lines[i + 1:i + 12]:
+                        if later.strip().startswith(ENGINE_QUALIFIED_NAME + "::"):
+                            out.setdefault(later.strip(), filename)
+                            break
+    except Exception as exc:  # noqa: BLE001 - the words then name no document; the refusal still stands
+        log.info("engine host: could not read the engine-host documents for the declaring map: %s", exc)
+        return out
+    _declaring_cache[key] = out
+    return out
+
+
 def engine_host_enabled() -> bool:
     """`RE_ENGINE_HOST_ENABLED` is on. Off (the default) means no loop and no Egeria call."""
     raw = os.environ.get(ENABLE_ENV)
@@ -460,6 +527,16 @@ def is_claim_refused(exc: BaseException) -> bool:
     return False
 
 
+def is_token_refused(exc: BaseException) -> bool:
+    """F57: Egeria refused the daemon's token (a 401/403 on a call that worked a moment ago). The one reading
+    `egeria_clients.classify_token_check_failure` makes, so the sweep and the login check agree on what a refusal
+    is. A platform restart (2026-11-04 21:00Z, JVM OOM) invalidates every token it issued; `_daemon_token_due`
+    re-mints only at the token's own `exp`, so without this the host failed every pass for an hour."""
+    from resource_explorer.egeria_clients import TOKEN_REFUSED, classify_token_check_failure
+
+    return classify_token_check_failure(exc) == TOKEN_REFUSED
+
+
 def governance_engine_client(client):
     """`client` (a pyegeria `GovernanceEngine`) with `legacy_fallback` off (§2.1). pyegeria's default is already
     False; this keeps it so if a caller or a later default ever turned it on."""
@@ -579,6 +656,7 @@ class EngineHost:
         self._clients: dict[tuple, Any] = {}
         self._reported: set[tuple[str, str]] = set()
         self._loop = None
+        self._sweeps = 0                      # F55: the per-type lookup runs every TYPE_PRESENCE_EVERY_SWEEPS
 
     # -- plumbing --------------------------------------------------------------
 
@@ -630,6 +708,31 @@ class EngineHost:
             self._clients[key] = clients
         return clients.of(cls)
 
+    def refresh_daemon_tokens(self) -> int:
+        """F57: re-mint the daemon token on every daemon client set this host holds (never a person's: a Caller
+        cannot refresh). Returns how many sets were refreshed."""
+        count = 0
+        for clients in list(self._clients.values()):
+            identity = getattr(clients, "identity", None)
+            if identity is None or getattr(identity, "is_person", False):
+                continue
+            clients.refresh()
+            count += 1
+        return count
+
+    def _retry_once_after_401(self, fn, what: str):
+        """F57: run one pass; on a token refusal re-mint the daemon tokens ONCE and run it once more. A second
+        refusal propagates as it always did (the loop's ERROR). Any other failure propagates untouched."""
+        try:
+            return fn()
+        except Exception as exc:  # noqa: BLE001 -- only a token refusal is handled here
+            if not is_token_refused(exc):
+                raise
+            refreshed = self.refresh_daemon_tokens()
+            log.info("engine host: daemon token re-minted after a 401 on the %s (Egeria restarted?); %d client "
+                     "set(s) refreshed, retrying once", what, refreshed)
+            return fn()
+
     def _engine(self):
         """The Governance Engine client for the identity this code is acting as (§2.1)."""
         from pyegeria import GovernanceEngine
@@ -675,6 +778,40 @@ class EngineHost:
                           "owner runs docs/dr-egeria/engine-host/", ENGINE_QUALIFIED_NAME,
                           " ".join(str(answer).split())[:120], level=logging.WARNING)
         return None
+
+    def refresh_type_presence(self, supported: dict[str, str] | None = None) -> dict[str, bool]:
+        """F55: one `get_metadata_guid_by_unique_name` per declared request type (`supported_request_types`), recorded
+        in `_type_answers` so the cards' gate (`native_survey_run.cannot_run_reason`) can refuse a row whose TYPE the
+        owner has not declared although the engine is. A GUID is present, Egeria's "No elements found" is absent;
+        any other answer leaves the type as it was (not known). A token refusal propagates (F57 re-mints and
+        retries the pass); any other failure is said once and leaves the map as it was."""
+        from pyegeria import MetadataExpert
+
+        found: dict[str, bool] = {}
+        expert = self._client(MetadataExpert)
+        for request_type in sorted(supported if supported is not None else supported_request_types()):
+            try:
+                answer = expert.get_metadata_guid_by_unique_name(governance_action_type_qn_for(request_type))
+            except Exception as exc:  # noqa: BLE001 -- a 401 is F57's; anything else leaves this type not known
+                if is_token_refused(exc):
+                    raise
+                self._report_once("type_lookup_failed", request_type, "engine host: could not look up the action "
+                                  "type %s (%s); its presence stays as it was", governance_action_type_qn_for(
+                                      request_type), _short(exc, 200), level=logging.WARNING)
+                continue
+            if isinstance(answer, str) and _GUID_RE.match(answer.strip()):
+                found[request_type] = True
+            elif isinstance(answer, str) and "no elements found" in answer.lower():
+                found[request_type] = False
+            else:
+                continue
+            record_type_answer(request_type, found[request_type])
+        missing = sorted(rt for rt, present in found.items() if not present)
+        if missing:
+            self._report_once("types_missing", ",".join(missing), "engine host: the engine is declared but %d of its "
+                              "action types are not: %s (Admin › Repair › Declare… completes the batch)",
+                              len(missing), ", ".join(missing))
+        return found
 
     # -- the sweep -------------------------------------------------------------
 
@@ -878,7 +1015,11 @@ class EngineHost:
         return facts
 
     def sweep_once(self) -> SweepResult:
-        """One pass: list, filter, claim, enqueue. Never raises for an Egeria answer; returns what it did."""
+        """One pass: list, filter, claim, enqueue. Never raises for an Egeria answer; returns what it did.
+        F57: a token refusal re-mints the daemon token once and repeats the pass once."""
+        return self._retry_once_after_401(self._sweep_once, "sweep")
+
+    def _sweep_once(self) -> SweepResult:
         result = SweepResult()
         if not engine_host_enabled():
             result.note = f"{ENABLE_ENV} is off"
@@ -892,6 +1033,9 @@ class EngineHost:
             if not engine_guid:
                 result.note = "engine not declared in Egeria"
                 return result
+            if self._sweeps % TYPE_PRESENCE_EVERY_SWEEPS == 0:     # F55: the first sweep, then every Nth
+                self.refresh_type_presence(supported)
+            self._sweeps += 1
             try:
                 actions = self._approved_actions(engine_guid)
             except Exception as exc:  # a missing service is said once; anything else propagates
@@ -981,7 +1125,11 @@ class EngineHost:
           outcome, never by running the step again. A row that stored no outcome completes survey-failed with
           the row's own words (a departure from §3.4's "re-run": see `_outcome_from_ended_row`).
 
-        Each action is handled on its own: one that raises is counted in `errors` and the pass goes on."""
+        Each action is handled on its own: one that raises is counted in `errors` and the pass goes on.
+        F57: a token refusal re-mints the daemon token once and repeats the pass once."""
+        return self._retry_once_after_401(self._restart_pass, "completion pass")
+
+    def _restart_pass(self) -> RestartResult:
         result = RestartResult()
         if not engine_host_enabled():
             result.note = f"{ENABLE_ENV} is off"
@@ -2195,6 +2343,8 @@ def _run_engine_action(registry, run_id: str, target: dict) -> tuple[str, str]:
 
     principal = current_principal()
     # Not scope-shared: these clients are closed when the run ends (they are bound to this run's event loop).
+    # F57: built fresh per run, so they mint a new token here and never carry one a platform restart killed;
+    # the once-and-retry re-mint belongs to the long-lived host's passes (`_retry_once_after_401`), not here.
     clients = egeria_client(principal, purpose="engine host", shared=False)
     engine = governance_engine_client(clients.of(GovernanceEngine))
     expert = None

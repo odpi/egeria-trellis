@@ -140,3 +140,29 @@ test('fix round 2: a file system whose name in Egeria is unknown says so on the 
   const cells = [...host.querySelectorAll('table[data-rc-id="fs-measure-profiles"] tbody tr')].map((tr) => [...tr.children].map((td) => text(td)));
   assert.equal(cells[0][1], "file system's name in Egeria not known");
 });
+
+test("W53: Egeria's two-cataloguer refusal reads on the card per file, both GUIDs behind 'the numbers behind this'", async () => {
+  const { host, fs } = await setUp();
+  const words = 'cataloged twice in Egeria — by garygeeke (CSVFile::coco-data-lake:) and by resourceexplorernpa (CSVFile::egeria-deployment:) · Resource Explorer will not choose; reconcile on Curate';
+  const run = RUN({ counts: COUNTS({ submit_failed: 1 }), egeria_half: 'submit_failed', files: [
+    { file_path: 'week1.csv', state: 'submit_failed', stats_source: '', columns: 0, sample_ratio: null, format: 'csv',
+      egeria_error: words, egeria_holders: [
+        { guid: 'dddddddd-0000-0000-0000-000000000001', created_by: 'garygeeke', qualified_name: 'CSVFile::coco-data-lake:/x/week1.csv' },
+        { guid: 'dddddddd-0000-0000-0000-000000000002', created_by: 'resourceexplorernpa', qualified_name: 'CSVFile::egeria-deployment:/x/week1.csv' }] },
+    { file_path: 'week2.csv', state: 'submit_failed', stats_source: '', columns: 0, sample_ratio: null, format: 'csv',
+      egeria_error: 'RuntimeError: timed out' },
+  ] });
+  host.innerHTML = fs.folderSurveyCardHtml(VIEW({ price: PRICE(), run }));
+  const refusal = host.querySelector('[data-fp-refusal="week1.csv"]');
+  assert.ok(refusal, 'the refusal is on the card, not only in the run record');
+  assert.equal(text(refusal.querySelector('[data-fp-refusal-words]')), words);
+  assert.doesNotMatch(text(refusal.querySelector('[data-fp-refusal-words]')), /dddddddd/, 'no GUID in the sentence');
+  const holders = refusal.querySelectorAll('[data-fp-holder]');
+  assert.equal(holders.length, 2);
+  assert.match(text(holders[0]), /^dddddddd-0000-0000-0000-000000000001 · created by garygeeke · CSVFile::coco-data-lake:\/x\/week1.csv$/);
+  assert.match(text(refusal.querySelector('[data-fp-refusal-holders] summary')), /the numbers behind this/);
+  const plain = host.querySelector('[data-fp-refusal="week2.csv"]');
+  assert.equal(text(plain.querySelector('[data-fp-refusal-words]')), 'RuntimeError: timed out');
+  assert.equal(plain.querySelector('[data-fp-refusal-holders]'), null, 'no holders, no disclosure');
+  assert.match(text(host.querySelector('[data-fp-egeria]')), /1 CSV file refused by Egeria/);
+});

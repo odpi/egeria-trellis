@@ -5732,7 +5732,7 @@ pg_roles, role_table_grants and pg_default_acl give the access half and already 
 Access is only half an answer; access crossed with sensitivity is the half anyone acts on.
 
 ### Usage
-Typically asked and answerable during Analysis.
+Typically asked and answerable during Assessment.
 
 ### Additional Properties
 | Parameter Name | Parameter Value |
@@ -5794,7 +5794,7 @@ ___
 Who can read and write what — roles, grants, superusers, PUBLIC grants — which sensitive columns can which roles read, and what has changed?
 
 ### Scope Reference
-Analysis
+Assessment
 
 ### Scope Category
 Asked At

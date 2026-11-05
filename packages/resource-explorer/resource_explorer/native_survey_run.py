@@ -938,6 +938,9 @@ def cannot_run_reason(process: NativeProcess, entity, *, registry=None, technolo
             return ENGINE_HOST_OFF
         if _engine_not_declared():
             return ENGINE_NOT_DECLARED
+        request_type = process.qualified_name.split("::", 1)[1]
+        if _type_not_declared(request_type):
+            return type_not_declared_words(request_type)
     if entity is None:
         return "This resource is not registered."
     if process.target == "server":
@@ -972,6 +975,31 @@ ENGINE_HOST_OFF = "engine host off"
 #: the owner's declaration): the press would initiate a GovernanceActionType Egeria does not hold (SERVER_ERROR_500).
 ENGINE_NOT_DECLARED = ("not declared in this Egeria · runs only where the owner has declared the engine "
                        "(Admin › Repair › Declare…) and RE's engine host is on")
+
+
+#: F55 (the W64 residual): the engine is declared but THIS row's GovernanceActionType is not (a partial declaration:
+#: act A ran, acts B–D did not). The press would initiate a type Egeria does not hold (SERVER_ERROR_500), so the row
+#: reads not runnable and names the document that declares the type.
+TYPE_NOT_DECLARED = ("not declared in this Egeria: the engine is, but its '{request_type}' action type is not "
+                     "(engine-host document {document}) · Admin › Repair › Declare…")
+
+
+def type_not_declared_words(request_type: str) -> str:
+    from resource_explorer import engine_host
+
+    document = engine_host.declaring_document(request_type) or "not found in the batch"
+    return TYPE_NOT_DECLARED.format(request_type=request_type, document=document)
+
+
+def _type_not_declared(request_type: str) -> bool:
+    """`ResourceExplorerSurvey::<request_type>` is VERIFIED absent (the engine host's per-type lookup, F55). In-process
+    state, no Egeria call. Not known is not absent: the row stays offered."""
+    from resource_explorer import engine_host
+
+    try:
+        return engine_host.type_declared(request_type) is False
+    except Exception:  # noqa: BLE001 - a state that cannot be read refuses nothing
+        return False
 
 
 #: W66: why an RE-engine row is not offered on a resource in a creator-only investigation. RE's engine host leaves an
@@ -1084,6 +1112,8 @@ def _mixed_cannot_run_reason(process: NativeProcess, entity) -> str:
     for step in declared.re_steps:
         if step.request_type not in supported:
             return f"step {step.number} ({step.request_type}) is not installed where the engine host runs"
+        if _type_not_declared(step.request_type):            # F55: the step's type, not only the engine
+            return type_not_declared_words(step.request_type)
     return _missing_credentials_reason(entity) if process.needs_credentials else ""
 
 

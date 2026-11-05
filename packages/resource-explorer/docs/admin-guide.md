@@ -761,12 +761,15 @@ host does. Design: [`design-notes/DESIGN-RE-ENGINE-HOST-BY-EQUIVALENCE.md`](desi
   the library steps, the registry steps, the mixed process) are the `engine-host` bootstrap batch. Do not edit
   them; regenerate. Make sure no Java engine host lists `ResourceExplorerSurvey`, or it will race RE for every
   claim. An Egeria reset wipes the declaration. There are three ways to put it back:
-  - **Admin › Repair › "Declare RE's survey engine in Egeria".** The row shows the engine's state, the self-heal
-    setting and the price: the documents, the elements they create, who they apply as (RE's service account,
-    `EGERIA_USER_ID`), and how long the last run took. The press asks in the page, then runs the batch once
-    through the same lock as the heal. It is refused with "a bootstrap heal is already running" while one runs.
-    It is refused without a write if the engine is already declared ("already declared · content applied on
-    <date>") or if Egeria cannot be checked. It works whatever `RE_ENGINE_HOST_HEAL` says.
+  - **Admin › Repair › "Declare RE's survey engine in Egeria".** The row shows the engine's state — with the engine
+    present, "declared in this Egeria · N of 8 documents applied · checked …" (W67: the count comes from the same
+    run-row read as the press's words, without a press; an unreadable history reads "documents applied: not
+    known", never 0) — the self-heal setting and the price: the documents, the elements they create, who they apply
+    as (RE's service account, `EGERIA_USER_ID`), and how long the last run took. When N < 8 the press is offered as
+    "Complete the declaration" (F55). The press asks in the page, then runs the batch once through the same lock as
+    the heal. It is refused with "a bootstrap heal is already running" while one runs. It is refused without a
+    write if the engine is already declared and complete ("already declared · content applied on <date> · 8 of 8
+    documents applied") or if Egeria cannot be checked. It works whatever `RE_ENGINE_HOST_HEAL` says.
   - **The opt-in heal.** With `RE_ENGINE_HOST_HEAL=true`, the start-up check and the 10-minute loop run the batch on
     their own when they find the engine missing. Off (the default), they only read whether it is there.
   - **By hand**, one document at a time: `resource-explorer dr-egeria run engine-host/<doc>.md --as <user>`.
@@ -775,7 +778,18 @@ host does. Design: [`design-notes/DESIGN-RE-ENGINE-HOST-BY-EQUIVALENCE.md`](desi
   engine missing inside the heal lock. That check is made once, at the start of the pass, and covers every document
   of it. Each document's activity row records which earlier runs it set aside. A run in progress of any document
   refuses the whole pass before it starts. A pass that stops part way leaves the engine present. The press then
-  answers "already declared · … · 3 of 8 documents applied — run the rest from the CLI".
+  **completes the batch** (F55, 2026-11-04): with the engine present it runs only the documents that have no ok run
+  row here AND whose own created elements (the document's `Create …` qualified names) are verified absent in Egeria,
+  in order, and skips and names the rest — "completed the batch: ran library/change_rates.md, … · skipped 1 already
+  applied". A lookup that cannot answer refuses the whole pass ("not completed: could not verify that …'s elements
+  are absent · nothing run"): undetermined is never absent. The Admin row carries the count without a press
+  ("declared in this Egeria · 3 of 8 documents applied").
+- **The declaration is checked per action type, not only per engine** (F55, the W64 residual). The engine host looks
+  up each declared `ResourceExplorerSurvey::<request type>` by qualified name on its first sweep and then every
+  twelfth (about once a minute); a card whose type is absent while the engine is present reads "not declared in this
+  Egeria: the engine is, but its 're-change-rates' action type is not (engine-host document library/change_rates.md)
+  · Admin › Repair › Declare…" and refuses the press, which would otherwise initiate a type Egeria does not hold (a
+  500). A type never looked up is not known and stays offered.
 - **What the banner means.** When the engine is verified missing (by the engine host's lookup, or by the
   bootstrap's read of it), the shell banner shows one line for everyone:
   "Resource Explorer's survey engine is not declared in this Egeria · RE-engine surveys cannot run in Egeria · an

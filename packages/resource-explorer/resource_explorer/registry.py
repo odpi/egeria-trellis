@@ -198,7 +198,7 @@ class FileSystemEntity:
     tls_verify: bool = True
     credential_kind: str = ""       # none | secret_ref | profile (blank for a local mount)
     credential_ref: str = ""        # the secrets-store reference, or the host profile's name
-    access_key_id: str = ""         # display only: its last four on the reach line
+    access_key_id: str = ""         # W42: the key id's TAIL only ("…XXXX", s3.key_tail), never the whole id
 
 
 @dataclass
@@ -5244,6 +5244,7 @@ class ProjectRegistry:
         self._migrate_walk_file_columns()
         self._migrate_open_data_tables()
         self._migrate_investigation_visibility()
+        self._migrate_file_systems_key_tail()
 
     #: Artifacts slice 1 (DESIGN-ARTIFACTS-VIEW-AND-DOC-LINKS.md §3; owner's go 2026-10-15; DDL record
     #: docs/ddl-artifact-columns.md). file_role: core | test | generated | vendored | docs from
@@ -5398,6 +5399,23 @@ class ProjectRegistry:
             conn.execute(
                 f"UPDATE investigations SET visibility = ? WHERE project_classification IN ({placeholders})",
                 (self.VISIBILITY_CREATOR_ONLY, *self._VISIBILITY_BACKFILL_KINDS))
+
+    def _migrate_file_systems_key_tail(self) -> None:
+        """W42 (docs/ddl-file-systems-key-tail.md): `file_systems.access_key_id` keeps only the key id's last four
+        characters as `…XXXX` (`reach_mechanisms.s3.key_tail`); the whole id never lands in the shared registry (the
+        secret already does not). One UPDATE, idempotent: a row already holding a tail (starts with "…") or nothing is
+        left alone; an id of four characters or fewer (not a real key id) is cleared rather than kept whole. The reach
+        line already printed "key …XXXX (<ref>)" from the tail, so nothing a person reads changes. No DDL: a data
+        migration in its own short transaction, run on every init (the WHERE makes a second run a no-op)."""
+        with self._conn() as conn:
+            if "access_key_id" not in self._get_table_columns(conn, "file_systems"):
+                return
+            if conn.is_postgres:
+                conn.execute(f"SET LOCAL lock_timeout = '{self._DDL_LOCK_TIMEOUT}'")
+            conn.execute(
+                "UPDATE file_systems SET access_key_id = CASE WHEN length(access_key_id) > 4 "
+                "THEN '…' || substr(access_key_id, length(access_key_id) - 3) ELSE '' END "
+                "WHERE access_key_id <> '' AND access_key_id NOT LIKE '…%'")
 
     def _migrate_open_data_tables(self) -> None:
         """Open data OD1 (docs/ddl-open-data-od1.md): three new tables, each `CREATE TABLE IF NOT EXISTS` in its own

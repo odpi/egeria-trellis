@@ -123,8 +123,10 @@ def test_register_holds_the_key_by_reference_and_never_in_the_registry(aws, reg,
     assert body["location"] == "s3://datalake/demo"
     assert body["credential_name"] == "key …W7QX (S3 reader)"
     fs = reg.get_filesystem("dl_minio")
-    assert fs.credential_ref == "dl_minio::S3 reader" and fs.access_key_id == KEY_ID and fs.path_style is True
-    assert SECRET not in _row_text(reg, "dl_minio")
+    # W42: a 20-character id is stored as its 4-character tail; the whole id is in no column of the row.
+    assert len(KEY_ID) == 20 and fs.access_key_id == "…W7QX" and len(fs.access_key_id.lstrip("…")) == 4
+    assert fs.credential_ref == "dl_minio::S3 reader" and fs.path_style is True
+    assert SECRET not in _row_text(reg, "dl_minio") and KEY_ID not in _row_text(reg, "dl_minio")
     from resource_explorer import omsecrets_store
 
     held = omsecrets_store._load(store)["secretsCollections"]["dl_minio::S3 reader"]["secrets"]
@@ -202,12 +204,33 @@ def test_the_folder_survey_walks_the_bucket_re_led(aws, reg, store):
     assert SECRET not in r.text
 
 
+def test_w42_existing_rows_keep_only_the_key_tail_after_the_migration(reg):
+    """A row written before W42 held the whole id: the next init tails it; a tailed row and an empty one are left alone;
+    an id of four characters or fewer is cleared, never kept whole. The reach line reads the same tail as before."""
+    from resource_explorer.reach_mechanisms.s3 import S3Settings
+
+    with reg._conn() as conn:
+        for slug, key in (("old_full", KEY_ID), ("already", "…W7QX"), ("public", ""), ("short", "AB12")):
+            conn.execute(
+                "INSERT INTO file_systems (slug, display_name, local_mount_point, canonical_mount_point, status, "
+                "registered_at, protocol, bucket, credential_kind, credential_ref, access_key_id) VALUES "
+                "(?, ?, 's3://b', 's3://b', 'active', '2026-11-01T00:00:00', 's3', 'b', ?, ?, ?)",
+                (slug, slug, "secret_ref" if key else "none", f"{slug}::S3 reader" if key else "", key))
+    reg._migrate_file_systems_key_tail()
+    reg._migrate_file_systems_key_tail()                       # a second run changes nothing
+    stored = {fs.slug: fs.access_key_id for fs in reg.list_filesystems()}
+    assert stored == {"old_full": "…W7QX", "already": "…W7QX", "public": "", "short": ""}
+    assert KEY_ID not in _row_text(reg, "old_full")
+    assert S3Settings.from_filesystem(reg.get_filesystem("old_full")).credential_name() == "key …W7QX (S3 reader)"
+
+
 def test_the_form_is_served_with_its_s3_fields_and_words():
     js = _client().get("/static/next/fs-register.js").text
     for words in ("An S3 bucket (or MinIO)", "Check reach", "Endpoint URL (blank = AWS)", "Bucket *", "Root prefix",
                   "Path style (MinIO)", "Verify TLS", "None · a public bucket", "A key held in the secrets store",
                   "This server's host profile", "no secrets store is configured on this server",
-                  "held in the secrets store by reference"):
+                  "held in the secrets store by reference",
+                  "the registry keeps only the last four characters of its id (…XXXX), never the id or the secret"):
         assert words in js, words
     import re
 

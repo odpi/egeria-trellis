@@ -191,8 +191,12 @@ def test_one_batch_run_on_a_present_engine_answers_already_declared_and_writes_n
     monkeypatch.setattr(bs, "heal_batch", lambda *a, **k: pytest.fail("a present engine is never re-declared"))
     monkeypatch.setattr("resource_explorer.registry.ProjectRegistry", lambda *a, **k: reg)
     out = bs.check_and_heal(root, only="engine-host")["batches"]["engine-host"]
-    assert out == {"action": "present", "reason": "already declared · no run of its first document is recorded here · "
-                   "0 of 1 documents applied — run the rest from the CLI (resource-explorer dr-egeria run --force)"}
+    # F55: with no Egeria to verify the pending document's elements absent, the press completes nothing and says so.
+    assert out["action"] == "present"
+    assert out["reason"].startswith("already declared · no run of its first document is recorded here · "
+                                    "0 of 1 documents applied · not completed: could not verify that decl.md's elements "
+                                    "are absent (")
+    assert out["reason"].endswith("could not be looked up) · nothing run")
 
 
 def test_already_declared_names_the_date_its_content_was_applied(root, reg, monkeypatch):
@@ -230,7 +234,34 @@ def test_price_counts_what_the_documents_declare(root, monkeypatch):
     assert price["applying_as"] == "resourceexplorernpa"
     assert price["self_heal"] == {"key": OPT, "on": False, "interval_seconds": bs.CHECK_INTERVAL_SECONDS}
     assert price["words"].startswith("runs 1 Dr.Egeria document in order as resourceexplorernpa · creates 1 engine")
-    assert price["words"].endswith("refused if already declared")
+    assert price["words"].endswith("with the engine present, runs only the documents not yet applied")
+
+
+def test_w67_the_price_carries_the_applied_count_from_the_same_run_row_read(root, reg, monkeypatch):
+    """W67: the Admin row reads "N of M documents applied" without a press; the count and the press's words come
+    from one read (`applied_documents`), and an unread history is never rendered as 0."""
+    from resource_explorer import dr_egeria_runner as runner
+
+    (root / "engine-host" / "library").mkdir()
+    (root / "engine-host" / "library" / "x.md").write_text((root / "plain" / "only.md").read_text())
+    _engine_batch(root, files=("decl.md", "library/x.md"))
+    before = bs.batch_price("engine-host", root, registry=reg)
+    assert before["documents_applied"] == {"applied": 0, "total": 2, "pending": ["decl.md", "library/x.md"]}
+    assert before["documents_applied_words"] == "0 of 2 documents applied"
+    Fakes(monkeypatch)
+    runner.run_document("engine-host/decl.md", force=True, identity=IDENT, registry=reg)
+    after = bs.batch_price("engine-host", root, registry=reg)
+    assert after["documents_applied"] == {"applied": 1, "total": 2, "pending": ["library/x.md"]}
+    assert after["documents_applied_words"] == "1 of 2 documents applied"
+    assert bs.already_declared_words(bs.discover_batches(root)[0], registry=reg).endswith("1 of 2 documents applied")
+
+    class Unreadable:
+        def list_activity(self, **kw):
+            raise RuntimeError("registry down")
+
+    broken = bs.batch_price("engine-host", root, registry=Unreadable())
+    assert broken["documents_applied"] == {"error": "run history not read (RuntimeError)"}
+    assert broken["documents_applied_words"] == "documents applied: not known (run history not read (RuntimeError))"
 
 
 def test_the_real_price_is_eight_documents():

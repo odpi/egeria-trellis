@@ -920,18 +920,68 @@ def test_a_path_name_read_that_is_not_an_explicit_miss_creates_nothing(registry,
     assert out["egeria_half"] == fp.EGERIA_HALF_SUBMIT_FAILED
 
 
+OTHER_GUID = "dddddddd-0000-0000-0000-000000000002"
+
+
+def _holder(guid, path, created_by, qn):
+    """A CSVFile element as find-with-string answers it (LIVE shape: elementHeader.versions.createdBy, the strings map)."""
+    return {"elementHeader": {"guid": guid, "type": {"typeName": "CSVFile"}, "versions": {"createdBy": created_by}},
+            "elementProperties": {"propertiesAsStrings": {"pathName": path, "qualifiedName": qn}}}
+
+
 def test_two_elements_holding_the_path_name_are_ambiguous_and_nothing_is_created(registry, tmp_path):
+    """W53: the refusal names both cataloguers and both qualifiedName prefixes; the GUIDs ride beside the words."""
     fs = _probe_fs(registry, tmp_path)
     path = f"{PROBE_DIR}/week1.csv"
-    two = [{"elementHeader": {"guid": g, "type": {"typeName": "CSVFile"}}, "properties": {"pathName": path}}
-           for g in (PROBE_GUID, "dddddddd-0000-0000-0000-000000000002")]
+    two = [_holder(PROBE_GUID, path, "garygeeke", f"CSVFile::coco-data-lake:{path}"),
+           _holder(OTHER_GUID, path, "resourceexplorernpa", f"CSVFile::egeria-deployment:{path}")]
     port, fake = _real_port_with_fake_surveyor({}, root_qn=f"FileFolder::egeria-deployment:{PROBE_DIR}", by_path=two)
     try:
         out = fp.run_file_profiles(fs, registry, port=port, limit=LIMIT)
     finally:
         port.close()
     fake._create_data_file_asset.assert_not_called()
-    assert "PathNameAmbiguous" in out["egeria_actions"]["week1.csv"]["error"]
+    action = out["egeria_actions"]["week1.csv"]
+    assert action["error"] == ("cataloged twice in Egeria — by garygeeke (CSVFile::coco-data-lake:) and by "
+                               "resourceexplorernpa (CSVFile::egeria-deployment:) · Resource Explorer will not choose; "
+                               "reconcile on Curate")
+    assert action["ambiguous"] is True
+    assert [h["guid"] for h in action["holders"]] == [PROBE_GUID, OTHER_GUID]
+    assert PROBE_GUID not in action["error"] and OTHER_GUID not in action["error"], "the GUIDs are behind the numbers, not in the sentence"
+    # The card reads the refusal and its holders from the stored run (profiles_view), the same words.
+    view = fp.profiles_view(registry, fs.slug)
+    row = next(f for f in view["run"]["files"] if f["file_path"] == "week1.csv")
+    assert row["state"] == fp.SUBMIT_FAILED and row["egeria_error"] == action["error"]
+    assert [h["guid"] for h in row["egeria_holders"]] == [PROBE_GUID, OTHER_GUID]
+    assert row["egeria_holders"][0]["created_by"] == "garygeeke"
+
+
+def test_the_ambiguity_words_say_what_the_elements_did_not_carry(registry, tmp_path):
+    """An element with no createdBy or qualifiedName is still named — as unknown, never dropped or guessed."""
+    path = f"{PROBE_DIR}/week1.csv"
+    bare = [{"elementHeader": {"guid": g, "type": {"typeName": "CSVFile"}}, "properties": {"pathName": path}}
+            for g in (PROBE_GUID, OTHER_GUID)]
+    with pytest.raises(fp.PathNameAmbiguous) as info:
+        fp.guid_by_exact_path_name(_expert_answering(bare), path, type_name="CSVFile")
+    assert fp.ambiguous_words(info.value, path) == ("cataloged twice in Egeria — by an unknown creator (no qualified name "
+                                                    "read) and by an unknown creator (no qualified name read) · Resource "
+                                                    "Explorer will not choose; reconcile on Curate")
+    three = bare + [_holder("dddddddd-0000-0000-0000-000000000003", path, "erinoverview", f"CSVFile::x:{path}")]
+    with pytest.raises(fp.PathNameAmbiguous) as info3:
+        fp.guid_by_exact_path_name(_expert_answering(three), path, type_name="CSVFile")
+    assert fp.ambiguous_words(info3.value, path).startswith("cataloged 3 times in Egeria — by an unknown creator")
+    assert fp.ambiguous_words(info3.value, path).endswith("and by erinoverview (CSVFile::x:) · Resource Explorer will not "
+                                                          "choose; reconcile on Curate")
+
+
+def _expert_answering(answer):
+    from unittest.mock import create_autospec
+
+    from pyegeria import MetadataExpert
+
+    expert = create_autospec(MetadataExpert, instance=True, spec_set=True)
+    expert.find_metadata_elements_with_string.return_value = answer
+    return expert
 
 
 def test_a_path_name_read_that_raises_creates_nothing(registry, tmp_path):
