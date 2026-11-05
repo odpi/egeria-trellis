@@ -956,6 +956,38 @@ def test_two_elements_holding_the_path_name_are_ambiguous_and_nothing_is_created
     assert row["egeria_holders"][0]["created_by"] == "garygeeke"
 
 
+def _live_holder(guid, path, created_by, qn):
+    """A CSVFile element as `find_metadata_elements_with_string` answered it LIVE on 2026-11-05 (W68): `versions` at the
+    element's top level, `elementGUID`, no `elementHeader`."""
+    return {"elementGUID": guid, "type": {"typeName": "CSVFile"}, "headerVersion": 0, "status": "ACTIVE",
+            "classifications": [], "origin": {"sourceServer": "qs-metadata-store"},
+            "versions": {"createdBy": created_by, "createTime": "2026-11-03T12:37:00.000+00:00", "version": 1},
+            "elementProperties": {"propertiesAsStrings": {"pathName": path, "qualifiedName": qn}}}
+
+
+def test_w68_the_cataloguers_are_named_from_the_top_level_versions_of_a_live_hit(registry, tmp_path):
+    """W68: live on 2026-11-05 every PathNameAmbiguous line read "by an unknown creator" twice, because the hits carry
+    `versions` at the element's top level and `_created_by_of` read only `elementHeader.versions`. Both shapes name the
+    user; a hit with neither is "an unknown creator"."""
+    path = "/egeria-workspaces/coco-data-lake/week1.csv"
+    live = [_live_holder("5cb0541d-0000-0000-0000-000000000001", path, "filescatnpa", f"CSVFile::egeria-workspaces:{path}"),
+            _live_holder("a2283d15-0000-0000-0000-000000000002", path, "filegovernanceengine",
+                         f"DataLake::PROJ-CT-TBDF::{path}")]
+    with pytest.raises(fp.PathNameAmbiguous) as info:
+        fp.guid_by_exact_path_name(_expert_answering(live), path, type_name="CSVFile")
+    assert [h["created_by"] for h in info.value.holders] == ["filescatnpa", "filegovernanceengine"]
+    assert fp.ambiguous_words(info.value, path) == (
+        "cataloged twice in Egeria — by filescatnpa (CSVFile::egeria-workspaces:) and by filegovernanceengine "
+        "(DataLake::PROJ-CT-TBDF::) · Resource Explorer will not choose; reconcile on Curate")
+    # the elementHeader shape (fixtures/egeria_6_2) still names the user
+    assert fp._created_by_of(_holder(PROBE_GUID, path, "garygeeke", "x")) == "garygeeke"
+    # top level wins when both are present; "" only when neither carries a name
+    both = {**_live_holder(PROBE_GUID, path, "top", "x"), "elementHeader": {"versions": {"createdBy": "header"}}}
+    assert fp._created_by_of(both) == "top"
+    assert fp._created_by_of({"elementHeader": {"guid": PROBE_GUID}, "versions": {}}) == ""
+    assert fp._created_by_of({"elementGUID": PROBE_GUID}) == ""
+
+
 def test_the_ambiguity_words_say_what_the_elements_did_not_carry(registry, tmp_path):
     """An element with no createdBy or qualifiedName is still named — as unknown, never dropped or guessed."""
     path = f"{PROBE_DIR}/week1.csv"

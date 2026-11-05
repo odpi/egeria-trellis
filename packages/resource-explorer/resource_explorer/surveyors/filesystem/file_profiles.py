@@ -199,10 +199,16 @@ def ambiguous_words(exc: "PathNameAmbiguous", path_name: str) -> str:
 
 
 def _created_by_of(element: dict) -> str:
-    """`elementHeader.versions.createdBy` (LIVE: fixtures/egeria_6_2), or ""."""
-    header = element.get("elementHeader")
-    versions = header.get("versions") if isinstance(header, dict) else None
-    return str(versions.get("createdBy") or "") if isinstance(versions, dict) else ""
+    """The user who created the element, or "" when the element carries none (then, and only then, the words say
+    "an unknown creator"). W68: a `find_metadata_elements_with_string` hit carries `versions` at the ELEMENT's top level
+    (LIVE 2026-11-05: keys classifications, elementGUID, elementProperties, headerVersion, origin, status, type,
+    versions — and no `elementHeader`), so that is read first; `elementHeader.versions.createdBy` (the shape of
+    fixtures/egeria_6_2) second."""
+    for holder in (element, element.get("elementHeader")):
+        versions = holder.get("versions") if isinstance(holder, dict) else None
+        if isinstance(versions, dict) and versions.get("createdBy"):
+            return str(versions["createdBy"])
+    return ""
 
 
 def _qualified_name_of(element: dict) -> str:
