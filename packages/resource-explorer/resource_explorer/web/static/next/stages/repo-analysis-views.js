@@ -76,6 +76,16 @@ const relDays = (iso) => {
  *  price before the press and its hover help. A repository with data files and no descriptor gets the sentence only. */
 /** W59: a classification run with no dataset_kind finding ran before the descriptors were read (or before the row
  *  existed): not checked, said as such. Never nothing, which read the same as "no dataset signal". */
+//: W69: a classification that ran without a role verdict, in words (the server's `ROLE_NOT_DETERMINED_WORDS`).
+export const ROLE_NOT_DETERMINED_WORDS = 'role: not determined (classification ran without a role verdict)';
+
+/** W69: the role words of a `repo_role` finding whose `detail.roles` is empty: its `summary` before the
+ *  " — architecture recovery" tail, else the absence words. Never its `label` (the fixed word "Role"). */
+export function roleSummaryWords(role) {
+  const summary = String((role && role.summary) || '').split(' — ')[0].trim();
+  return summary || ROLE_NOT_DETERMINED_WORDS;
+}
+
 export const DATASET_NOT_CHECKED_WORDS = 'dataset signal: not checked (classification ran before descriptors were read) · re-run reads it';
 /** W59: descriptors read after the classification that wrote this finding ran: its sentence may be out of date. */
 export const DATASET_OLDER_WORDS = 'descriptors read after this classification ran · re-run reads them';
@@ -134,8 +144,10 @@ export function repoClassificationHtml(data, entry = null) {
   const role = by.repo_role;
   if (role) {
     // Multi-valued and ranked: the primary first and marked, the secondaries shown beside it, never hidden.
+    // W69: the finding's `label` is the fixed word "Role" (what the finding IS), never the answer: with no ranked
+    // roles the summary's own words are read ("samples (also library)"), and with none of those the absence words.
     const roles = (role.detail && Array.isArray(role.detail.roles) && role.detail.roles.length)
-      ? role.detail.roles : [role.label];
+      ? role.detail.roles : [roleSummaryWords(role)];
     out.push(`<div data-classification-roles class="mt-s2 flex flex-wrap items-center gap-s1">
       <span class="text-provenance uppercase text-ink-muted">Role</span>${roles.map((r, i) => i === 0
     ? `<span data-role-rank="1" class="rounded-sm border border-rule-strong px-2 py-[1px] text-caveat font-semibold text-ink break-words [overflow-wrap:anywhere]" title="primary role">${esc(r)}</span>`
