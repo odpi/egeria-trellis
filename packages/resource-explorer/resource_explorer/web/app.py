@@ -392,13 +392,13 @@ def _install_login_required_middleware() -> None:
 
     Hence the order in this file, bottom to top of the stack:
 
-        _revalidate_experimental_assets  (added last → outermost)
+        _revalidate_shell_and_static  (added last → outermost)
           └── CORS
                 └── LoginRequiredMiddleware   (this)
                       └── _identity_middleware (added first → innermost)
                             └── routes
 
-    (`_revalidate_experimental_assets` is declared below the routers, so it
+    (`_revalidate_shell_and_static` is declared below the routers, so it
     is added last and therefore wraps everything. It only sets a response
     header on the way out, so its position does not matter to correctness —
     but it is listed here because a stack diagram that omits a layer is how
@@ -530,29 +530,37 @@ async def admin_feedback() -> FileResponse:
     return FileResponse(_STATIC / "admin-feedback.html")
 
 
-@app.middleware("http")
-async def _revalidate_experimental_assets(request, call_next):
-    """Make `/next`'s assets revalidate instead of being served from cache.
+_HTML_SHELL_PATHS = frozenset({"/", "/next", "/admin/feedback"})
 
-    `StaticFiles` sets no `Cache-Control`, so a browser applies heuristic
-    freshness — and an ES module, once in a page's module map, is stickier
-    still. The effect during this experiment was a tester (and the person
-    building it) loading `app.js` against a CACHED `re-api.js`, which fails
-    as `does not provide an export named ...` — an error that describes a
-    stale cache but reads like a code bug, and which a plain reload does not
-    clear.
+
+@app.middleware("http")
+async def _revalidate_shell_and_static(request, call_next):
+    """Make every `/static/` file and the HTML shells revalidate on each load.
+
+    `StaticFiles` and `FileResponse` set no `Cache-Control`, so a browser
+    applies heuristic freshness (roughly a tenth of the file's age since
+    `Last-Modified`) and serves its stored copy with NO request to this
+    server. F61 (2026-11-05): a tester's browser kept running a 2026-10-28
+    `auth.js` through two deploys of that file, so the F58/F59 sign-in fixes
+    never reached them and the proof read as if the fixes had not worked.
+    An earlier version of this middleware covered only `/static/next/*` and
+    `/static/re-api.js`, which is why those files did refresh and `auth.js`
+    and the shells did not.
 
     `no-cache` means "revalidate", not "do not store": the browser still
-    caches and still gets a 304 when nothing changed. Scoped to the
-    experimental UI's own files by exact prefix, so the rest of `/static`
-    keeps whatever caching it has. Remove this along with `/next` if the
-    experiment is dropped; if `/next` ever becomes the default, replace it
-    with real cache-busting (a content hash in the filename) rather than
-    keeping revalidation forever.
+    caches and still gets a 304 when the ETag / `Last-Modified` matches, so
+    a warm cache costs one conditional request per file and no bytes. Scope:
+    everything under `/static/` plus the HTML routes in `_HTML_SHELL_PATHS`.
+    `/api/*` and `/health*` are untouched, and any response that already
+    chose its own `Cache-Control` keeps it. The long-term replacement is
+    real cache-busting (a content hash in the filename), not revalidation
+    forever; that is deliberately not done here.
     """
     response = await call_next(request)
     path = request.url.path
-    if path.startswith("/static/next/") or path == "/static/re-api.js":
+    if "Cache-Control" not in response.headers and (
+        path.startswith("/static/") or path in _HTML_SHELL_PATHS
+    ):
         response.headers["Cache-Control"] = "no-cache"
     return response
 
