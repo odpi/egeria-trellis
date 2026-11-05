@@ -298,7 +298,7 @@ Explain to anyone what a 0 meant.
 
 ## Where to go next
 
-- The reference: `packages/trellis-analytics/README.md`, every field and rule.
+- The reference: the [egeria-trellis-analytics README](https://github.com/odpi/egeria-trellis-analytics#readme), every field and rule.
 - Putting your result on a Portal dashboard: the Portal's *Local Dashboards* tutorial. Your step is already listed in
   the Portal's Analytic Functions Browser, because the same registry serves both. A report spec names it by its
   registered name, `my_row_changes`, never by its Python path.

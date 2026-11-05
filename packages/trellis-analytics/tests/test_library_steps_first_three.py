@@ -40,7 +40,7 @@ def reattach_after():
 def _run(url, name, slug="shop"):
     """[(measure, scope, annotation)] for one run of the installed step through the wrapper."""
     from trellis_analytics.discovery import discover
-    from trellis_analytics.readers.ods import OdsReader
+    from trellis_analytics_re.ods import OdsReader
     from trellis_analytics.step import HostContext, SurveyStep
 
     m = discover()[name]
@@ -394,7 +394,7 @@ def test_hub_tables_reads_its_threshold_from_the_manifest_parameter(hubs, make_r
     manifest changes the hubs, and the code holds no number of its own."""
     import hub_tables.step as code
     from trellis_analytics.discovery import discover
-    from trellis_analytics.readers.ods import OdsReader
+    from trellis_analytics_re.ods import OdsReader
     from trellis_analytics.step import HostContext, SurveyStep
 
     assert not hasattr(code, "HUB_MIN_REFERENCING")

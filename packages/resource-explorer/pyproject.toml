@@ -41,11 +41,14 @@ dependencies = [
     # per-package install would fail on the import.
     "trellis-auth",
     # The Analytic Library: Curate's By-analysis tab calls
-    # trellis_analytics.routines.curation_coverage (brief 2b). Declared here for the
-    # reason trellis-auth is: a root [tool.uv.sources] entry makes it available, not required.
-    # trellis-analytics' own `re` extra points back at this package; that is an optional
-    # edge, and the route degrades to not_applicable if the import ever fails.
-    "trellis-analytics",
+    # trellis_analytics.routines.curation_coverage (brief 2b). Since LS2 it is its own
+    # distribution (odpi/egeria-trellis-analytics); the readers it asks for are RE's, in
+    # trellis-analytics-re (this workspace), registered below in trellis_analytics.readers.
+    # Declared here for the reason trellis-auth is: a root [tool.uv.sources] entry makes a
+    # package available, not required. trellis-analytics-re's own `re` extra points back at
+    # this package; that is an optional edge.
+    "egeria-trellis-analytics>=0.2,<0.3",
+    "trellis-analytics-re",
     # Embeddings & LLM
     "sentence-transformers>=3.3.0",
     "ollama>=0.4.0",
@@ -258,12 +261,12 @@ resource-explorer = "resource_explorer.cli.main:app"
 # finds who answers it through this group; nothing in the library imports resource_explorer. RE is the one
 # implementation. Without RE installed (the Portal) a routine that asks answers not_established in words: "no reader
 # installed for ods here", "no reader for Resource Explorer's catalogue is installed here"; discovery's two warn-only
-# checks are skipped with a warning. ods and catalogue_scope still live in the library's tree until the library leaves
-# trellis (LS2 step 3), then with RE. table_rows (B1) is the stored rows of a table result, read through
+# checks are skipped with a warning. ods and catalogue_scope are trellis-analytics-re's (they read RE's registry);
+# the library itself is egeria-trellis-analytics since LS2 step 3. table_rows (B1) is the stored rows of a table result, read through
 # trellis_analytics.readers.table_rows.TableRowsReader. TOML refuses a table declared twice: add a reader here.
 [project.entry-points."trellis_analytics.readers"]
-ods = "trellis_analytics.readers.ods:OdsReader"
-catalogue_scope = "trellis_analytics.readers.registry_view:CatalogueScopeReader"
+ods = "trellis_analytics_re.ods:OdsReader"
+catalogue_scope = "trellis_analytics_re.registry_view:CatalogueScopeReader"
 investigation_purposes = "resource_explorer.investigation_purposes:known_purpose_names"
 question_ids = "resource_explorer.surveyors.question_catalog_reader:all_question_ids"
 table_rows = "resource_explorer.table_result:RegistryTableRows"

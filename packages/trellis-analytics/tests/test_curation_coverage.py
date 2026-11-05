@@ -1,7 +1,7 @@
 import json
 
 from trellis_analytics.envelope import ResultState
-from trellis_analytics.readers.ods import OdsReader
+from trellis_analytics_re.ods import OdsReader
 from trellis_analytics.routines import curation_coverage
 
 

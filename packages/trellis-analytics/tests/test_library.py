@@ -1,11 +1,12 @@
 import pytest
 from pyegeria.view.analytic_registry import AnalyticFunctionSpec
 
+from trellis_analytics import __version__
 from trellis_analytics.discovery import discover, register
 from trellis_analytics.envelope import Envelope, ResultState
 from trellis_analytics.manifest import RoutineManifest, StepManifest
 from trellis_analytics.manifests import CURATION_COVERAGE
-from trellis_analytics.readers.ods import OdsReader, OdsUnreadable
+from trellis_analytics_re.ods import OdsReader, OdsUnreadable
 
 
 def test_manifest_is_valid_spec_with_the_five_fields():
@@ -13,7 +14,7 @@ def test_manifest_is_valid_spec_with_the_five_fields():
     for f in ("kind", "source", "version", "envelope", "annotation_type", "resource_types"):
         assert hasattr(CURATION_COVERAGE, f), f
     assert (CURATION_COVERAGE.kind, CURATION_COVERAGE.source) == ("routine", "ods")
-    assert CURATION_COVERAGE.envelope is True and CURATION_COVERAGE.version == "0.1.0"
+    assert CURATION_COVERAGE.envelope is True and CURATION_COVERAGE.version == __version__
     # an old-style spec (none of the new fields) still validates: the base class is unchanged
     AnalyticFunctionSpec(name="old", function="x.y")
 
@@ -34,9 +35,10 @@ def test_discovery_through_entry_point(entry_point_dist):
 def test_the_library_declares_the_pyegeria_group_only():
     """Q2(b), project owner 2026-10-31: pyegeria.analytics is the group; trellis.analytics is only read, as an alias."""
     import tomllib
+    from importlib.metadata import distribution
     from pathlib import Path
     ROOT = Path(__file__).resolve().parents[1]
-    eps = tomllib.loads((ROOT / "pyproject.toml").read_text())["project"]["entry-points"]
+    eps = {ep.group for ep in distribution("egeria-trellis-analytics").entry_points}   # the installed library's
     assert "pyegeria.analytics" in eps and not any(g.startswith("trellis.") for g in eps)
     steps = sorted((ROOT / "examples" / "steps").glob("*/pyproject.toml"))
     assert steps and all(set(tomllib.loads(p.read_text())["project"]["entry-points"]) == {"pyegeria.analytics"}

@@ -65,7 +65,7 @@ def _survey(reg, slug, at, tables, *, invalid=False):
 
 def _run_step(url, slug="shop"):
     from trellis_analytics.discovery import discover
-    from trellis_analytics.readers.ods import OdsReader
+    from trellis_analytics_re.ods import OdsReader
     from trellis_analytics.step import HostContext, SurveyStep
 
     m = discover()["database_staleness"]
@@ -163,7 +163,7 @@ def _report():
 def _run_both(url, report, slug="shop"):
     """{(measure, scope): annotation} for one run with an ODS reader and, when given, a source report."""
     from trellis_analytics.discovery import discover
-    from trellis_analytics.readers.ods import OdsReader
+    from trellis_analytics_re.ods import OdsReader
     from trellis_analytics.step import HostContext, SurveyStep
 
     m = discover()["database_staleness"]

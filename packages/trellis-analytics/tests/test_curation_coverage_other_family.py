@@ -10,7 +10,7 @@ import inspect
 import pytest
 
 from trellis_analytics.envelope import ResultState
-from trellis_analytics.readers.ods import OdsReader
+from trellis_analytics_re.ods import OdsReader
 from trellis_analytics.routines import curation_coverage as cc_mod_fn
 cc = importlib.import_module("trellis_analytics.routines.curation_coverage")   # the package re-exports the function by this name
 
