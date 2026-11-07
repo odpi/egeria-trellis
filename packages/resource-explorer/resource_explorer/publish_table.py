@@ -97,7 +97,7 @@ _ENGINE_COMPLETED = "survey-completed"
 _KNOWN = ("measured", "nothing_found", "partial", "measured_within_credential_scope")
 #: The fact layer's state -> the declared absence that says it (Declaration.absence keys).
 _ABSENCE_OF = {"never_run": "not_measured", "not_established": "not_measured", "no_reader": "not_measured",
-               "unreadable": "not_measured", "nothing_found": "measured_nothing", "not_applicable": "not_applicable",
+               "unreadable": "not_measured", "nothing_found": "nothing_found", "not_applicable": "not_applicable",
                "not_permitted": "not_permitted"}
 
 
@@ -504,7 +504,7 @@ def build_rows(registry, entity_type: str, slug: str, *, layer=None, entries: li
                     row.update(value=None, value_words="—", absence=PER_MEMBER,
                                absence_words=f"one value per {scope}, not one for the resource · see {names}")
                 elif v is _MISSING:
-                    absence = _ABSENCE_OF.get(fact.get("state", ""), "not_measured") if not known else "measured_nothing"
+                    absence = _ABSENCE_OF.get(fact.get("state", ""), "not_measured") if not known else "nothing_found"
                     reason = why_none = ""
                     if known:
                         # The result's own check says whether the missing count is a measured zero or was never

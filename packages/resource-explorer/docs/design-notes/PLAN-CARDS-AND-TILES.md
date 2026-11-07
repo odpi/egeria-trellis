@@ -1,5 +1,8 @@
 # PLAN — Bordered cards and big-number tiles across /next (2026-10-20)
 
+> **Vocabulary note (2026-11-07):** the absence word `measured_nothing` was renamed `nothing_found` (trellis-analytics 0.3); this document now uses the new word. Results stored with the old word are still read.
+
+
 From the designer session, for the builder, at the project owner's request.
 Read against main at 82f50726, after the three looks landed (`themes.css`,
 `look.js`, PRs of 2026-10-20). Background: `RULING-THEMES-PORTAL-DARK-LIGHT.md`
@@ -90,7 +93,7 @@ they're stated here as tests:
    the state's glyph and word in place of a number: "? not read",
    "○ not measured", "◐ partial · within this credential". This uses the
    glyphs `understanding-glance.js` already uses. A real zero is "0", and
-   "∅ 0" where glyphs.js says measured-nothing.
+   "∅ 0" where glyphs.js says nothing-found.
 4. **Source and as-of are one hover away**, and on the sub line when they
    change the reading ("≈ estimate · analyzed 10-13").
 5. **Color only from a state word.** The figure is in ink, except when it

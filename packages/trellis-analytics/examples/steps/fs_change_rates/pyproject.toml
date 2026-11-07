@@ -3,7 +3,7 @@ name = "trellis-step-fs-change-rates"
 dynamic = ["version"]
 description = "Analytic Library step: new, modified and removed files and growth between the latest two walks RE kept. Installable on its own; installing it is registering it."
 requires-python = ">=3.12,<4.0"
-dependencies = ["egeria-trellis-analytics>=0.2,<0.3"]
+dependencies = ["egeria-trellis-analytics>=0.3.1,<0.4"]
 
 # Installation is registration: Resource Explorer finds the step through this entry point.
 [project.entry-points."pyegeria.analytics"]

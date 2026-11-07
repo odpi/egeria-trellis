@@ -17,7 +17,7 @@ from resource_explorer.facts import Fact, FactLayer
 from resource_explorer.surveyors import analysis_catalog_reader as reader
 
 ABSENCE = {"not_measured": "Not measured: nobody has looked yet.", "not_permitted": "Not permitted: no grant.",
-           "not_applicable": "Not applicable here.", "measured_nothing": "Measured: no tables at all."}
+           "not_applicable": "Not applicable here.", "nothing_found": "Measured: no tables at all."}
 EXTENT = {"name": "tables", "fields": ["table", "rows"], "rows": 4, "order": "by rows, most first",
           "truncation": "{shown} of {total} tables shown, by rows", "token_cost": 120,
           "citation": "{analysis} · {scope} · as of {as_of}"}
@@ -145,7 +145,7 @@ def test_absences_are_said_in_the_analyses_own_words():
     absent = {"a": dc.absence(dec, "never_run"), "b": dc.absence(dec, "nothing_found")}
     full, summary = dc.absence_lines(absent)
     assert "- a: Not measured: nobody has looked yet." in full and "- b: Measured: no tables at all." in full
-    assert summary == "Nothing stored for: a (not measured), b (measured nothing)\n"
+    assert summary == "Nothing stored for: a (not measured), b (nothing found)\n"
     assert dc.absence_lines({}) == ("", "")
 
 

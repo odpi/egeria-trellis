@@ -48,7 +48,7 @@ MANIFEST = StepManifest(
                           "be told."),
             not_permitted=("Not permitted: the walk could not read these files' times, so no age is held for them."),
             not_applicable="Not applicable: file activity is measured for file systems only.",
-            measured_nothing="Measured: the walk found no files."),
+            nothing_found="Measured: the walk found no files."),
         extents=[ExtentDeclaration(
             name="activity_bands",
             fields=["scope", "Hot Files", "Warm Files", "Cold Files", "Cold Bytes", "Hot Days", "Cold Days",

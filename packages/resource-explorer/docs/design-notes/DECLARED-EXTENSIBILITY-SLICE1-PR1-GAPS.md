@@ -1,5 +1,8 @@
 # Declared extensibility, slice 1 PR 1 (the declaration): gaps and choices (2026-10-27)
 
+> **Vocabulary note (2026-11-07):** the absence word `measured_nothing` was renamed `nothing_found` (trellis-analytics 0.3); this document now uses the new word. Results stored with the old word are still read.
+
+
 Companion to `DESIGN-DECLARED-EXTENSIBILITY-RENDERING-CHAT-CONFIDENCE.md`. PR 1 adds the declaration
 (`trellis_analytics/declaration.py`), carries it on `StepManifest.declaration` and on every database and
 filesystem entry of `analysis_catalog.yaml`, and validates both with the same model. Writing 36 real
@@ -23,8 +26,8 @@ yet say what a declaration needs. Each is recorded here rather than guessed. Not
   still need a basis *field*, since their basis differs per result.
 - **Confidence is one per declaration.** `database_staleness` reports an estimate (row counts) and an
   exact read (write counters); it declares `estimated`, the weaker, per §4's "weakest link" rule.
-- **The four absence keys meet the envelope's states** as the model's docstring says: `measured_nothing`
-  is `nothing_found`; `not_measured` and `not_permitted` are both `not_established`, told apart by the
+- **The four absence keys meet the envelope's states** as the model's docstring says: `nothing_found`
+  (then `measured_nothing`) is the envelope's `nothing_found`; `not_measured` and `not_permitted` are both `not_established`, told apart by the
   reason; `not_applicable` is itself.
 - **`token_cost` is an authoring estimate** (about 8 tokens a field a row, plus 40), not a measurement.
 - **A refused catalogue declaration does not take the catalogue down.** The entry still loads, is listed

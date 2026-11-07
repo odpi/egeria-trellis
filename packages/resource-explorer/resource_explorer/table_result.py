@@ -94,7 +94,7 @@ def table_rows(registry, resource_kind: str, slug: str, analysis_id: str, declar
         "total": total,
         "shown": len(typed_rows),
         "truncation": truncation_words(table, len(typed_rows), total) if run_id else "",
-        "fields": table.fields(),
+        "fields": table.fields_in_order(),
         "key_fields": list(table.key_fields),
         "order": table.order,
         "columns": [{"name": c.name, "type": c.type, "unit": c.unit, "absence": c.absence, "states": list(c.states),

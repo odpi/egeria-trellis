@@ -15,7 +15,7 @@ from resource_explorer.registry import ProjectRegistry
 from resource_explorer.surveyors.result_materializer import write_table_rows
 
 ABSENCE = {"not_measured": "Not profiled yet.", "not_permitted": "Not permitted.", "not_applicable": "Not applicable.",
-           "measured_nothing": "Measured: no columns."}
+           "nothing_found": "Measured: no columns."}
 SLUG = "shop"
 RUN = "2026-11-02T10:00:00+00:00"
 
@@ -34,7 +34,7 @@ def declaration(max_rows=5) -> Declaration:
         "table": {"key_fields": ["schema", "table", "column"],
                   "columns": ["schema", "table", "column",
                               {"name": "state", "type": "state", "absence": "not profiled",
-                               "states": ["measured", "not_measured", "not_permitted", "measured_nothing"]},
+                               "states": ["measured", "not_measured", "not_permitted", "nothing_found"]},
                               {"name": "null_count", "type": "integer", "absence": "not counted",
                                "measure_ref": "nulls_total"},
                               {"name": "size", "type": "bytes", "unit": "bytes", "absence": "not read"}],

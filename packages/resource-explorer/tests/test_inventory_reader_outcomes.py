@@ -133,7 +133,7 @@ class TestZerosThatUsedToBeSilent:
         assert _outcome_of(results[0]) == UNVERIFIED
         assert "inventory is empty" in results[0].summary
 
-    def test_file_size_records_a_metric_even_when_it_measured_nothing(self, registry, project):
+    def test_file_size_records_a_metric_even_when_it_nothing_found(self, registry, project):
         FileSizeSurveyor(project, registry).run()
         metrics = registry.query_metrics(project.slug, "repo_file_size")
         assert metrics, "a run that measured nothing must still leave a row"

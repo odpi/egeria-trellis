@@ -42,7 +42,7 @@ def refused(body) -> str:
 
 def test_the_vocabularies_are_the_design_notes():
     assert RESULT_KINDS == ("measure", "series", "distribution", "list", "graph", "finding", "proposal", "table")
-    assert ABSENCE_STATES == ("not_measured", "not_permitted", "not_applicable", "measured_nothing")
+    assert ABSENCE_STATES == ("not_measured", "not_permitted", "not_applicable", "nothing_found")
     assert CONFIDENCE_FORMS == ("measured", "estimated", "inferred", "judged", "generated")
 
 
@@ -67,8 +67,8 @@ def test_answers_empty_is_a_declaration_and_absent_is_not():
     (minimum(measures=[MEASURE, MEASURE]), "measure s is declared more than once"),
     (minimum(measures=[{**MEASURE, "annotation": {"type": ""}}]), "annotation type is empty"),
     (minimum(absence={**ABSENCE, "not_permitted": ""}), "absence sentence for not_permitted is empty"),
-    (minimum(absence={k: v for k, v in ABSENCE.items() if k != "measured_nothing"}),
-     "absence.measured_nothing is required"),
+    (minimum(absence={k: v for k, v in ABSENCE.items() if k != "nothing_found"}),
+     "absence.nothing_found is required"),
     (minimum(absence={**ABSENCE, "never_run": "x"}), "absence.never_run is not a declaration field"),
     (minimum(colour="blue"), "colour is not a declaration field"),
     (minimum(scope="table"), "scope 'table' is not one of the levels"),

@@ -1,5 +1,8 @@
 # Reference: what a library step declares, and what Resource Explorer does with it
 
+> **Vocabulary note (2026-11-07):** the absence word `measured_nothing` was renamed `nothing_found` (trellis-analytics 0.3); this document now uses the new word. Results stored with the old word are still read.
+
+
 **Status:** live reference. Written 2026-10-28, brought up to date 2026-10-30 against `origin/main` at `aacdfaff`.
 
 **Want to add a step? Start with the tutorial:**
@@ -212,7 +215,7 @@ person reads in place of a value, everywhere RE shows one:
 | `not_measured` | `not_established`: RE could not measure |
 | `not_permitted` | `not_established`: RE was not allowed to read it. The reason tells the two apart |
 | `not_applicable` | `not_applicable` |
-| `measured_nothing` | `nothing_found` |
+| `nothing_found` (written `measured_nothing` before 0.3; still read) | `nothing_found` |
 
 **Confidence: a basis written for a person.** `ConfidenceDeclaration(form=..., method=..., basis=...)`:
 
@@ -297,7 +300,7 @@ Declaration(
         key_fields=["schema", "table", "column"],
         columns=["schema", "table", "column",
                  TableColumn(name="state", type="state", absence="not profiled",
-                             states=["measured", "not_measured", "not_permitted", "measured_nothing"]),
+                             states=["measured", "not_measured", "not_permitted", "nothing_found"]),
                  TableColumn(name="declared_type", absence="type not recorded"),
                  TableColumn(name="null_count", type="integer", absence="not counted", measure_ref="nulls_total"),
                  TableColumn(name="distinct_estimate", type="integer", absence="not estimated")],

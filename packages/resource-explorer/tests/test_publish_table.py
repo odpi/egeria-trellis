@@ -24,7 +24,7 @@ SURVEYED_AT = "2026-10-27T09:00:00"
 ABSENCE = {"not_measured": "Example step x has not run on this database.",
            "not_permitted": "The credential cannot read the tables example step x samples.",
            "not_applicable": "This database has no tables for example step x.",
-           "measured_nothing": "Example step x ran and found no buckets."}
+           "nothing_found": "Example step x ran and found no buckets."}
 
 
 KIND_BLOCKS = {"distribution": {"categories": {"exclusive": True}},
@@ -123,13 +123,13 @@ def test_a_never_run_analysis_shows_its_declared_sentence_and_cannot_publish(reg
     assert not row["publishable"] and row["why_not"] == f"nothing to publish · {ABSENCE['not_measured']}"
 
 
-def test_a_measured_result_without_the_field_is_measured_nothing_not_never_run(registry, declared):
+def test_a_measured_result_without_the_field_is_nothing_found_not_never_run(registry, declared):
     declared["facts"]["example_step_x"].value = {"asOf": "2026-10-27T08:30:00", "other": 1}
     row = _rows(registry)["rows_sampled"]
-    assert row["absence"] == "measured_nothing" and row["absence_words"] == ABSENCE["measured_nothing"]
+    assert row["absence"] == "nothing_found" and row["absence_words"] == ABSENCE["nothing_found"]
 
 
-def test_a_count_its_own_check_did_not_measure_is_not_measured_nothing(registry, declared):
+def test_a_count_its_own_check_did_not_measure_is_not_nothing_found(registry, declared):
     """F42: `checks.<x>.count` is None because the check's own state says so; the row says that, not 'found nothing'."""
     dec = declared["entries"][0].declaration
     dec.measures[1].value_field = "checks.docs.count"
@@ -140,7 +140,7 @@ def test_a_count_its_own_check_did_not_measure_is_not_measured_nothing(registry,
     assert row["absence"] == "not_measured"
     assert row["absence_words"].endswith("Not one table carries a description.")
     declared["facts"]["example_step_x"].value["checks"]["docs"].update(state="measured", explanation="")
-    assert _rows(registry)["rows_sampled"]["absence"] == "measured_nothing"
+    assert _rows(registry)["rows_sampled"]["absence"] == "nothing_found"
 
 
 def test_a_number_without_its_as_of_does_not_publish(registry, declared):
@@ -670,7 +670,7 @@ def test_a_library_step_member_measure_is_one_value_per_member_not_found_nothing
         value={"measurement_rows": [{"name": "public.orders", "properties": {"Writes Per Day": "40"}},
                                     {"name": "public.items", "properties": {"Writes Per Day": "4"}}]})}
     row = pt.build_rows(registry, "database", SLUG)["rows"][0]
-    assert row["absence"] == pt.PER_MEMBER != "measured_nothing"
+    assert row["absence"] == pt.PER_MEMBER != "nothing_found"
     assert row["absence_words"] == "one value per member, not one for the resource · see tables_by_write_rate"
     assert not row["publishable"] and row["why_not"].startswith("nothing to publish · one value per member")
 
@@ -714,7 +714,7 @@ def test_a_resource_scoped_library_step_reads_each_measure_from_where_the_host_s
     if held["state"] == "measured":
         assert access["value"] == held["values"]["Cold Files"]
     else:
-        assert access["value"] is None and access["absence"] != "measured_nothing"
+        assert access["value"] is None and access["absence"] != "nothing_found"
         assert access["absence_words"].endswith(f" · {held['reason']}")
     if access["value"] is None:
         # find-absence-as-answer: not established is "not measured this run", never a zero, and offers no Publish

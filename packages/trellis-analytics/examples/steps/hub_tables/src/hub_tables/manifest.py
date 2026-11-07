@@ -56,7 +56,7 @@ MANIFEST = StepManifest(
             not_permitted=("Not permitted: the survey that stored this database's keys could not read this "
                            "table's constraints, so its degree is not held."),
             not_applicable="Not applicable: a view has no keys of its own.",
-            measured_nothing="Measured: no table is referenced by enough other tables to be proposed as a hub."),
+            nothing_found="Measured: no table is referenced by enough other tables to be proposed as a hub."),
         extents=[ExtentDeclaration(
             name="proposed_hubs", fields=["scope", "Foreign Keys In", "Foreign Keys Out", "Referencing Tables",
                                           "Referenced By Is Lower Bound"],

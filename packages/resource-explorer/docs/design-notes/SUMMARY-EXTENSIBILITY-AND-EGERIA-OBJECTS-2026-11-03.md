@@ -1,5 +1,8 @@
 # Trellis extensibility — analytics, local dashboards and their Egeria objects (summary, 2026-11-03)
 
+> **Vocabulary note (2026-11-07):** the absence word `measured_nothing` was renamed `nothing_found` (trellis-analytics 0.3); this document now uses the new word. Results stored with the old word are still read.
+
+
 A one-place summary of the current design for user-extensible analytics in Trellis / Resource Explorer (RE), the
 Egeria Portal and Egeria Advisor (EA): what a step or routine is, how it is declared, packaged, discovered, run,
 stored, published and shown on a local dashboard, and which Egeria objects carry each fact, including the ones we
@@ -160,7 +163,7 @@ classDiagram
     not_measured
     not_permitted
     not_applicable
-    measured_nothing
+    nothing_found
   }
   class ExtentDeclaration {
     rows
