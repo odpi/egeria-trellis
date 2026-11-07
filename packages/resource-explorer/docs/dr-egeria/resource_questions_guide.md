@@ -73,7 +73,7 @@ script runs.
 | `Answering Analysis` | Optional, RE-internal | Free text describing how RE answers this today. Parsed by the generator into a structured `kind` — see **Answering Analysis conventions** below. Not published to Egeria. |
 | `Answering Mechanism` | Optional, RE-internal | Which engine answers the question — one of: `Git Statistics`, `Code Analysis`, `RAG Queries`, `Agent-Based Analysis`, `Egeria Queries`, `Local Registry Query`, `Human-Supplied`, `Direct Field`, `Trend Chart`, `Gap`, `Automate Change Detection`, or a `+`-joined combination (e.g. `Code Analysis + Egeria Queries`). Orthogonal to `Answering Analysis`'s `kind` — this says *which system* answers it, not *how confidently*. Not published to Egeria. |
 | `Level` | Optional, RE-internal | The resource granularity at which the answer is a **single value**, `;`-separated from a controlled vocabulary — see **Level** below. Blank means `resource`. A typo fails the build, like `Purposes`. Not published to Egeria yet. |
-| **Perspective columns** (everything after `Answering Mechanism`) | Optional per question | One column per Perspective: `Financial`, `Governance`, `Steward`, `Data Owner`, `Consumer`, `App/AI Builder`, `Privacy`, `Community`, `Data Expert`, `Security`, `Architecture`, `Admin`. Put an `X` (any non-empty value works, but use `X` for consistency) in every column that applies to this question. Leave the cell blank if the perspective doesn't apply. A question can — and often should — have several perspectives marked. |
+| **Perspective columns** (everything after `Answering Mechanism`) | Optional per question | One column per Perspective: `Financial`, `Governance`, `Steward`, `Owner`, `Consumer`, `App/AI Builder`, `Privacy`, `Community`, `Data Expert`, `Security`, `Architecture`, `Administration`. Put an `X` (any non-empty value works, but use `X` for consistency) in every column that applies to this question. Leave the cell blank if the perspective doesn't apply. A question can — and often should — have several perspectives marked. |
 
 ### Rules the generator enforces (2026-10-22, REVIEW-QUESTIONS-AND-ANALYTICS-2026-10-22 §5)
 
@@ -114,7 +114,7 @@ descriptions live in `docs/dr-egeria/foundations/foundations.md`; summary:
 - **Financial** — cost to acquire/run/support, cost of duplication vs. reuse.
 - **Governance** — program-level compliance/policy oversight, not per-check detail.
 - **Steward** — day-to-day data quality and correctness for a domain.
-- **Data Owner** — accountable for whether a resource should exist, be retired, or change hands.
+- **Owner** — accountable for whether a resource should exist, be retired, or change hands. (Was RE's own `Data Owner` until 2026-11-07; now the content pack's `Perspective::Owner`.)
 - **Consumer** — "is this worth using for my purpose" shopping lens.
 - **App/AI Builder** — building an app or AI capability against the resource; content suitability, not just structural quality.
 - **Privacy** — regulatory compliance and sensitive-data exposure.
@@ -122,7 +122,7 @@ descriptions live in `docs/dr-egeria/foundations/foundations.md`; summary:
 - **Data Expert** — works with/moves/shapes data (consolidates data science, data engineering, and integration lenses).
 - **Security** — risk signals: CVEs, dependency vulnerabilities, security responsiveness.
 - **Architecture** — how the resource fits the broader information architecture/supply chain.
-- **Admin** — operational/infrastructure upkeep, access, reliability.
+- **Administration** — operational/infrastructure upkeep, access, reliability. (Was RE's own `Admin` until 2026-11-07; now the content pack's `Perspective::Administration`.)
 
 ## The headline rule — what an answer line must contain
 

@@ -107,7 +107,7 @@ class TestTheAudienceIsTheWholeVocabulary:
     client = TestRoute.client   # the same app, the same anonymous read
 
     """`list_perspectives()` is a deliberate subset -- what can narrow a
-    filter row. An audience is not a filter: someone is a Data Owner whether
+    filter row. An audience is not a filter: someone is an Owner whether
     or not any analysis is tagged with it today. `scope=all` returns the
     vocabulary; the default stays the subset."""
 

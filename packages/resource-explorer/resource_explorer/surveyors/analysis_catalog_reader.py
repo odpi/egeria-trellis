@@ -393,13 +393,18 @@ def get_egeria_merge_status(resource_type: str) -> str:
 #: the Egeria ones the Questions checklist filters by, so the same word meant
 #: different things on two screens and the other ten had no local meaning at all.
 #:
-#: The four were mapped by DESCRIPTION rather than name: `dba` -> Admin
-#: ("operational/infrastructure administration" — and all four dba entries were
-#: database operations), `data_scientist` -> Data Expert ("works with, moves and
-#: shapes data"). `security`/`steward` had exact namesakes.
+#: The four were mapped by DESCRIPTION rather than name: `dba` -> Admin (now
+#: Administration, below) ("operational/infrastructure administration" — and all
+#: four dba entries were database operations), `data_scientist` -> Data Expert
+#: ("works with, moves and shapes data"). `security`/`steward` had exact namesakes.
+#:
+#: Decision (project owner, 2026-11-07): RE stops creating its own `Data Owner`
+#: and `Admin` and uses the content pack's `Owner` and `Administration`. Each name
+#: here is the `Perspective::<name>` qualifiedName suffix, which is how all twelve
+#: are labelled. It is not Egeria's displayName (`OWNER-PERSPECTIVE` and so on).
 EGERIA_PERSPECTIVES = (
-    "Admin", "App/AI Builder", "Architecture", "Community", "Consumer",
-    "Data Expert", "Data Owner", "Financial", "Governance", "Privacy",
+    "Administration", "App/AI Builder", "Architecture", "Community", "Consumer",
+    "Data Expert", "Financial", "Governance", "Owner", "Privacy",
     "Security", "Steward",
 )
 
@@ -415,7 +420,7 @@ def list_perspectives() -> list[str]:
     analyses carry their own tags. Survey Definitions get theirs off the
     ScopedBy graph (Survey -> Question -> Perspective), so every perspective
     the QUESTION catalog uses is reachable by a survey — and those cover eight
-    lenses no analysis is tagged with today (Consumer, Data Owner, Community,
+    lenses no analysis is tagged with today (Consumer, Owner, Community,
     Architecture, ...). Reading only the analyses would have hidden them, and a
     survey tagged Consumer would sit behind a chip that was never offered.
     """

@@ -25,7 +25,7 @@ MANIFEST = StepManifest(
     # Assumed (owner to confirm): a week is hot, over a year is cold.
     parameters={"hot_days": 7, "cold_days": 365},
     stage="analysis",
-    perspectives=["Steward", "Financial", "Data Owner"],
+    perspectives=["Steward", "Financial", "Owner"],
     # Q-0107: "Which files has nobody touched for a long time, and which are hot?" (F8)
     questions=["Q-0107"],
     purposes=["Maintain", "Assess"],

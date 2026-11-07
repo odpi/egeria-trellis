@@ -46,7 +46,7 @@ appears. Where the screen uses a different word, the definition says so.
 | <a id="current-investigation"></a>**Current investigation** | The one you are working in now. Questions are ordered by its purposes, and data sources can be added to its scope in one click. |
 | <a id="journal"></a>**Journal** | An investigation's running notes, such as chat answers you chose to keep. |
 | <a id="disposition"></a>**Disposition** | Your verdict on a data source within an investigation, such as tracking, using or abandoned. |
-| <a id="perspective"></a>**Perspective** | Who is asking, such as Data Owner or Steward. Choosing one narrows the questions. |
+| <a id="perspective"></a>**Perspective** | Who is asking, such as Owner or Steward. Choosing one narrows the questions. |
 | <a id="activity"></a>**Activity** | The log of everything that has run or been published. |
 | <a id="credential"></a>**Credential** | The user name and password Resource Explorer uses to read a database. Stored encrypted. |
 | <a id="mount-local-path"></a>**Mount (local path)** | Where the folder of a file system is found on this server. |

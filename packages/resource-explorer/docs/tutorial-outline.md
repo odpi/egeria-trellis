@@ -240,7 +240,7 @@ first question is why that is not simply "catalog everything the trial touches".
    set most candidates aside early. It is a guide to working efficiently, not the only path: you may go straight to a
    later stage's question when that is the one you need answered.
 6. **Many points of view.** The same data source matters differently to each of the people in item 8. On the screen,
-   each question is tagged with the *perspectives* that care about it, such as Security, Architecture or Data Owner,
+   each question is tagged with the *perspectives* that care about it, such as Security, Architecture or Owner,
    and you can filter by them (part 3d). A perspective is a filter on the questions, not a job title; one person may
    use several. The questions themselves are not fixed: questions, analyses and surveys can be added or removed (the
    Advanced tutorial).
@@ -410,7 +410,7 @@ Quickstart folder's path (`loading_bay`). The OpenLineage repository's GitHub ad
 1. Use the filter box under **Repos**, **DBs** or **FS**.
 2. For repositories, the chips **All**, **New**, **Surveyed** and **Published** narrow the list (seen). ("In scope"
    belongs to part 12.)
-3. The **PERSPECTIVE** chips (Data Owner, Steward and others) narrow the questions to who is asking (seen). Leave them
+3. The **PERSPECTIVE** chips (Owner, Steward and others) narrow the questions to who is asking (seen). Leave them
    all off for this tutorial.
 4. With **FS** chosen, click **🔎 Find by passages**: it finds file systems by what their narrative files say (seen).
    Type a question, for example about the Drop Foot trial, and read the file systems that come back, each with the

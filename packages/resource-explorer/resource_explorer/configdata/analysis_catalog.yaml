@@ -304,7 +304,7 @@ repo_analyses:
     description: "Queries OSV.dev for advisories against the dependencies the manifest parser already recorded. Reports coverage as prominently as the count: DECLARED dependencies only (transitive ones are invisible), and only those with a pinned, parseable version — a range like ^0.41.7 cannot be queried, and sending it anyway makes OSV return every advisory for the package regardless of version. A clean result means 'none of what we could check had an advisory', never 'this repo has no vulnerable dependencies'."
     resource_types: ["repo"]
     intent: assessment
-    perspectives: ["Security", "Steward", "Admin"]
+    perspectives: ["Security", "Steward", "Administration"]
     annotation_types: ["RequestForActionAnnotation", "ResourceMeasureAnnotation"]
     source: local
     run_time: minutes
@@ -321,7 +321,7 @@ repo_analyses:
     description: "Scans HEAD content for committed-credential patterns using a VENDORED gitleaks ruleset (222 rules, MIT-licensed, source commit and pull date recorded). Reports WHICH ruleset and version produced the result, and surfaces the ruleset's own age — a stale ruleset misses key formats that did not exist when it was written and returns a confident clean. Never claims 'no secrets': only 'no matches against this ruleset, in the current HEAD snapshot of tracked files'. Says nothing about git history, which is where a removed secret still lives. Ruleset: https://github.com/gitleaks/gitleaks (MIT) — rules at https://github.com/gitleaks/gitleaks/blob/master/cmd/generate/config/rules"
     resource_types: ["repo"]
     intent: assessment
-    perspectives: ["Security", "Steward", "Admin"]
+    perspectives: ["Security", "Steward", "Administration"]
     annotation_types: ["ClassificationAnnotation", "RequestForActionAnnotation"]
     source: local
     run_time: minutes
@@ -332,7 +332,7 @@ repo_analyses:
     description: "Looks for telemetry SDK imports and literal outbound endpoints in source, paired with whether the project DISCLOSES them — an undisclosed call is the finding, not the call itself. Deliberately conservative in the opposite direction from secret scanning: an ordinary API client is not telemetry, and labelling one as such would make the analysis untrustworthy in the direction that matters. Never claims a repo does not phone home; only that curated patterns did not match what was scanned."
     resource_types: ["repo"]
     intent: assessment
-    perspectives: ["Security", "Steward", "Admin"]
+    perspectives: ["Security", "Steward", "Administration"]
     annotation_types: ["ClassificationAnnotation", "RequestForActionAnnotation"]
     source: local
     run_time: minutes
@@ -343,7 +343,7 @@ repo_analyses:
     description: "Keeps two questions apart that are usually conflated: whether contributor sign-off is STATED (CONTRIBUTING content mentions DCO or a CLA) and whether it is ENFORCED (a bot, workflow or branch protection actually blocks unsigned commits). Config presence alone reports `partial`, never `pass`. Note a disclosed limit: enforcement currently cannot be confirmed at all, because branch-protection data is not fetched anywhere in RE — that half reports UNVERIFIED rather than inventing a verdict."
     resource_types: ["repo"]
     intent: assessment
-    perspectives: ["Steward", "Community", "Admin"]
+    perspectives: ["Steward", "Community", "Administration"]
     annotation_types: ["ClassificationAnnotation", "RequestForActionAnnotation"]
     source: local
     run_time: fast
@@ -354,7 +354,7 @@ repo_analyses:
     description: "Whether the project publishes support or service-level commitments. Deliberately NEUTRAL — present or absent, not pass or gap — because most repositories legitimately publish none, and grading their absence would manufacture a finding out of a normal state. Absence alone never raises an action, and a stated commitment is never assessed for whether it is honoured."
     resource_types: ["repo"]
     intent: assessment
-    perspectives: ["Steward", "Community", "Admin"]
+    perspectives: ["Steward", "Community", "Administration"]
     annotation_types: ["ClassificationAnnotation"]
     source: local
     run_time: fast
@@ -402,7 +402,7 @@ repo_analyses:
     # alongside `manifest_parse` and `rag_ingestion`, which are the things it
     # plans. Tagging it `automate` broke that invariant and its test caught it.
     intent: analysis
-    perspectives: ["Steward", "Admin"]
+    perspectives: ["Steward", "Administration"]
     annotation_types: ["ClassificationAnnotation"]
     source: local
     run_time: fast
@@ -503,7 +503,7 @@ repo_analyses:
     description: "Which curated technologies the dependency list indicates (psycopg2 -> PostgreSQL, kafka-python -> Apache Kafka) and whether Egeria already holds a technology type for each. A STARTING POINT for people, not an answer: a match says the repo indicates X, not that X is supported, and an unmatched dependency has simply not been classified yet. Mapping in configdata/dependency_support.yaml, shaped to seed an Egeria Supported Technologies collection (project owner, 2026-09-12: 'A now, shaped to seed B')."
     resource_types: ["repo"]
     intent: discovery  # reasons over project_dependencies (repo_manifest_parse's output) — zero repo fetch; the Egeria call is catalog consultation, not acquisition
-    perspectives: ["Architecture", "Security", "Admin", "all"]
+    perspectives: ["Architecture", "Security", "Administration", "all"]
     annotation_types: ["ClassificationAnnotation"]
     source: local
     run_time: fast
@@ -520,7 +520,7 @@ repo_analyses:
     description: "Per declared distribution (repo_manifest_parse's output): which deployment evidence exists — a console entry point, a __main__.py, an unambiguous Dockerfile/compose/Helm chart, a web-framework dependency — and the verdict it supports: application (evidence found), library (importable, none found), or unknown (no manifest read yet). Layer 1 of 'Cataloguing in layers' (project owner, 2026-09-14): the evidence a Curate proposal's SoftwareCapability/Application verdict rests on, replacing a SoftwareLibrary-per-package guess."
     resource_types: ["repo"]
     intent: discovery  # reasons over already-parsed distribution/repo_conventions/dependency/file-inventory rows — zero repo fetch
-    perspectives: ["Architecture", "Admin", "all"]
+    perspectives: ["Architecture", "Administration", "all"]
     annotation_types: ["ClassificationAnnotation"]
     source: local
     run_time: fast
@@ -537,7 +537,7 @@ repo_analyses:
     description: "Which Egeria view services this repository consumes — one per pyegeria client class its code symbols reference (signature/return-type/base-class text match against configdata/egeria_view_services.yaml; imports are not captured anywhere in this codebase, so this is a LOWER BOUND, not a count), plus Dr.Egeria doc-path evidence and a best-effort command-family guess from filenames (real family names live in markdown headings, which are not stored — marked could_not_check). A repo with no pyegeria dependency reads nothing_found, not never-run."
     resource_types: ["repo"]
     intent: discovery  # reasons over already-collected dependency/code-symbol/relationship/file-inventory rows — zero repo fetch; the mapping is a curated local table, no Egeria call
-    perspectives: ["Architecture", "Admin", "all"]
+    perspectives: ["Architecture", "Administration", "all"]
     annotation_types: ["ClassificationAnnotation"]
     source: local
     run_time: fast
@@ -852,7 +852,7 @@ repo_analyses:
     description: "Download the repo's zipball once and refresh file inventory and data-file profiles (optionally also code symbols) — decoupled from pgvector re-ingestion. Backs Scouting's Coarse Profile tab."
     resource_types: ["repo"]
     intent: scouting
-    perspectives: ["Admin", "Data Expert"]
+    perspectives: ["Administration", "Data Expert"]
     annotation_types: []
     source: local
     run_time: minutes
@@ -869,7 +869,7 @@ repo_analyses:
     description: "Pull the latest commits and re-embed changed content into pgvector (incremental, commit-diff based). Keeps chat/RAG answers current with the repo."
     resource_types: ["repo"]
     intent: analysis
-    perspectives: ["App/AI Builder", "Admin"]
+    perspectives: ["App/AI Builder", "Administration"]
     annotation_types: []
     source: local
     run_time: minutes
@@ -921,7 +921,7 @@ database_analyses:
     description: "List all schemas, tables, columns with types, constraints, primary keys, foreign keys, and comments."
     resource_types: ["database"]
     intent: scouting
-    perspectives: ["all", "Admin"]
+    perspectives: ["all", "Administration"]
     annotation_types: ["SchemaAnalysisAnnotation", "ResourceMeasureAnnotation"]
     source: local
     run_time: fast
@@ -990,7 +990,7 @@ database_analyses:
       rather than as zero.
     resource_types: ["database"]
     intent: scouting
-    perspectives: ["all", "Admin"]
+    perspectives: ["all", "Administration"]
     annotation_types: ["ResourceMeasureAnnotation", "RequestForActionAnnotation"]
     source: local
     run_time: fast
@@ -1051,7 +1051,7 @@ database_analyses:
     description: "Roles, table grants and default ACLs from pg_roles/role_table_grants/pg_default_acl; raises a Request For Action on any PUBLIC grant. Backed by the postgres_operations step (design §5.4, §5.7) as of Phase 1 slice 8 — previously database-only/aspirational with no dedicated queries."
     resource_types: ["database"]
     intent: assessment  # scores grant/role hygiene — unchanged
-    perspectives: ["Security", "Admin"]
+    perspectives: ["Security", "Administration"]
     annotation_types: ["ResourceMeasureAnnotation", "RequestForActionAnnotation"]
     source: local
     run_time: fast
@@ -1109,7 +1109,7 @@ database_analyses:
     description: "Database-wide roll-up of pg_stat_user_tables tuple counters and scan counts: is anything reading or writing at all, database-wide, since the last statistics reset. Reuses postgres_schema_and_stats' per-table figures rather than re-querying them (design §5.2, §5.7)."
     resource_types: ["database"]
     intent: scouting
-    perspectives: ["Admin", "Steward"]
+    perspectives: ["Administration", "Steward"]
     annotation_types: ["ResourceMeasureAnnotation"]
     source: local
     run_time: fast
@@ -1166,7 +1166,7 @@ database_analyses:
     description: "Read-only pg_namespace/information_schema.schemata, pg_class/has_table_privilege, pg_has_role(pg_monitor) and has_table_privilege(INSERT) checks -- never a trial write. States 'connected as X -- visible N of M schemas, SELECT on N of M tables' and raises an RFA to the database owner when coverage is meaningfully thin (design REPLY-DATABASE-CREDENTIAL-CAPABILITY-VISIBILITY.md, replying to ASK-...-#251)."
     resource_types: ["database"]
     intent: scouting
-    perspectives: ["Admin", "Steward"]
+    perspectives: ["Administration", "Steward"]
     annotation_types: ["ResourceMeasureAnnotation", "RequestForAction"]
     source: local
     run_time: fast
@@ -1236,7 +1236,7 @@ database_analyses:
     description: "MIXED analysis (design §5.5): catalog half — primary/standby, replicas and lag, WAL archiving status, backup-tool/Citus-clustering signals — measured directly; Enrichment half (last backup date, restore-test date, RPO/RTO) is not machine-observable and stays explicitly pending, never silently omitted."
     resource_types: ["database"]
     intent: scouting
-    perspectives: ["Admin", "Data Owner"]
+    perspectives: ["Administration", "Owner"]
     annotation_types: ["ResourcePhysicalStatusAnnotation"]
     source: local
     run_time: fast
@@ -1290,7 +1290,7 @@ database_analyses:
     description: "What this database depends on outside itself: extensions, foreign data wrappers/servers/tables, logical replication publications/subscriptions (design §5.4)."
     resource_types: ["database"]
     intent: analysis
-    perspectives: ["Architecture", "Admin"]
+    perspectives: ["Architecture", "Administration"]
     annotation_types: ["SchemaAnalysisAnnotation"]
     source: local
     run_time: fast
@@ -1586,7 +1586,7 @@ database_analyses:
       "not read" and is never counted as current or as never analyzed.
     resource_types: ["database"]
     intent: analysis
-    perspectives: ["Steward", "Admin", "Data Expert"]
+    perspectives: ["Steward", "Administration", "Data Expert"]
     annotation_types: ["ResourceMeasureAnnotation"]
     source: local
     run_time: fast
@@ -1953,7 +1953,7 @@ database_analyses:
     description: "Measured, not estimated: per-column record, value, distinct and null counts, empty and placeholder-text counts, and date bounds with future-dated counts, over the whole table (one aggregate query per table). No sampling: a table over the row ceiling or the statement timeout is reported as not profiled with the reason, a view or foreign table as not applicable, a table the credential cannot read as not permitted — never as zero."
     resource_types: ["database"]
     intent: analysis
-    perspectives: ["Steward", "Data Owner", "Admin"]
+    perspectives: ["Steward", "Owner", "Administration"]
     annotation_types: ["ResourceProfileAnnotation", "ResourceMeasureAnnotation"]
     source: local
     # api_heavy: it reads every row of every table it profiles.
@@ -2043,7 +2043,7 @@ database_analyses:
     description: "Proposes data-quality checks from the value profile (completeness, uniqueness, past dates, minimum date, row-count range) for a person to accept or reject in Curate, then runs the accepted ones against the database. A check whose inputs were not measured, or whose measure is undefined (an empty table, a zero baseline), is reported as not evaluated with the reason, never as a pass."
     resource_types: ["database"]
     intent: analysis  # retagged from 'assessment' 2026-10-22 (Q-0096 and Q-0097 are Analysis questions: proposing and running checks is analysis, the verdict is Q-0090's; review §1.3).
-    perspectives: ["Steward", "Data Owner"]
+    perspectives: ["Steward", "Owner"]
     # The proposal step leaves ONE RequestForAction ("review N proposed quality checks") or, with none proposed, ONE
     # ResourceMeasure; run_quality_checks leaves one QualityAnnotation per evaluated check (RE's
     # AnnotationType.QUALITY_SCORE, published as Egeria's QualityAnnotationProperties) (quality slice Q2).
@@ -2120,7 +2120,7 @@ database_analyses:
       available" rather than the negative delta the subtraction would give.
     resource_types: ["database"]
     intent: analysis
-    perspectives: ["Steward", "Admin", "Data Owner"]
+    perspectives: ["Steward", "Administration", "Owner"]
     annotation_types: ["ResourceMeasureAnnotation", "SchemaAnalysisAnnotation"]
     source: local
     run_time: fast
@@ -2196,7 +2196,7 @@ database_analyses:
       `db_change_rates`.
     resource_types: ["database"]
     intent: analysis
-    perspectives: ["Steward", "Admin"]
+    perspectives: ["Steward", "Administration"]
     annotation_types: ["SchemaAnalysisAnnotation"]
     source: local
     run_time: fast
@@ -2266,7 +2266,7 @@ database_analyses:
       done-test case.
     resource_types: ["database"]
     intent: analysis
-    perspectives: ["Security", "Admin"]
+    perspectives: ["Security", "Administration"]
     annotation_types: ["ResourceMeasureAnnotation"]
     source: local
     run_time: fast
@@ -2896,7 +2896,7 @@ database_analyses:
     description: "Trigger Egeria's native PostgreSQL survey for deep annotation of schema, data quality, and lineage. Runs asynchronously."
     resource_types: ["database"]
     intent: curate  # was 'assessment' — action:"publish" is an explicit catalog-of-record write
-    perspectives: ["all", "Admin"]
+    perspectives: ["all", "Administration"]
     annotation_types: ["SchemaAnalysisAnnotation", "ClassificationAnnotation", "RequestForActionAnnotation"]
     source: egeria
     run_time: async
@@ -3356,7 +3356,7 @@ filesystem_analyses:
       Whether Egeria's survey engine can reach this resource or only Resource Explorer can: a CHECK_ASSET-only engine action (Phase 1 slice 13), its outcome stored as a resource_reachability row and read as the reach state the Folder Survey fork uses. A resource never probed reads as not probed, never as unreachable.
     resource_types: ["filesystem"]
     intent: discovery
-    perspectives: ["Architecture", "Admin"]
+    perspectives: ["Architecture", "Administration"]
     annotation_types: []
     source: local
     run_time: fast
@@ -3404,7 +3404,7 @@ filesystem_analyses:
     perspectives:
     - Steward
     - Financial
-    - Data Owner
+    - Owner
     annotation_types:
     - ResourceProfileAnnotation
     source: local

@@ -114,7 +114,7 @@ you need answered, you can go straight to it.
 ## Many points of view
 
 The same data source matters differently to different people. On the screen, each question is tagged with the
-[perspectives](glossary.md#perspective) that care about it, such as Security, Architecture or Data Owner. You can
+[perspectives](glossary.md#perspective) that care about it, such as Security, Architecture or Owner. You can
 filter the questions by perspective. A perspective is a filter on the questions, not a job title, and one person may
 use several.
 

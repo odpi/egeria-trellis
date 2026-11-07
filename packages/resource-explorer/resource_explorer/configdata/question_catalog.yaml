@@ -142,7 +142,7 @@ repo_questions:
   stage: Scouting
   perspectives:
   - Steward
-  - Data Owner
+  - Owner
   - Security
   purposes:
   - Explore
@@ -250,7 +250,7 @@ repo_questions:
   - Data Expert
   - Security
   - Architecture
-  - Admin
+  - Administration
   purposes:
   - Explore
   - Select
@@ -281,7 +281,7 @@ repo_questions:
   - Data Expert
   - Security
   - Architecture
-  - Admin
+  - Administration
   purposes:
   - Explore
   - Select
@@ -303,7 +303,7 @@ repo_questions:
   perspectives:
   - Community
   - Security
-  - Admin
+  - Administration
   purposes:
   - Select
   - Find
@@ -348,7 +348,7 @@ repo_questions:
   - Consumer
   - Data Expert
   - Security
-  - Admin
+  - Administration
   purposes:
   - Select
   - Assess
@@ -373,7 +373,7 @@ repo_questions:
   perspectives:
   - Security
   - Architecture
-  - Admin
+  - Administration
   purposes:
   - Select
   - Deploy
@@ -406,7 +406,7 @@ repo_questions:
   perspectives:
   - Security
   - Architecture
-  - Admin
+  - Administration
   purposes:
   - Select
   - Deploy
@@ -434,7 +434,7 @@ repo_questions:
   stage: Enrichment
   perspectives:
   - Financial
-  - Admin
+  - Administration
   purposes:
   - Select
   - Deploy
@@ -460,7 +460,7 @@ repo_questions:
   stage: Analysis
   perspectives:
   - Security
-  - Admin
+  - Administration
   purposes:
   - Assess
   - Deploy
@@ -491,7 +491,7 @@ repo_questions:
   - Consumer
   - Data Expert
   - Architecture
-  - Admin
+  - Administration
   purposes:
   - Maintain
   - Deploy
@@ -512,7 +512,7 @@ repo_questions:
   perspectives:
   - Security
   - Architecture
-  - Admin
+  - Administration
   purposes:
   - Select
   - Maintain
@@ -539,7 +539,7 @@ repo_questions:
   - Data Expert
   - Security
   - Architecture
-  - Admin
+  - Administration
   purposes:
   - Select
   - Deploy
@@ -570,7 +570,7 @@ repo_questions:
   - Community
   - Data Expert
   - Architecture
-  - Admin
+  - Administration
   purposes:
   - Select
   - Assess
@@ -596,7 +596,7 @@ repo_questions:
   perspectives:
   - Security
   - Architecture
-  - Admin
+  - Administration
   purposes:
   - Select
   - Learn
@@ -621,7 +621,7 @@ repo_questions:
   - Community
   - Data Expert
   - Architecture
-  - Admin
+  - Administration
   purposes:
   - Select
   - Learn
@@ -653,7 +653,7 @@ repo_questions:
   - Consumer
   - Data Expert
   - Architecture
-  - Admin
+  - Administration
   purposes:
   - Select
   - Maintain
@@ -680,7 +680,7 @@ repo_questions:
   - Governance
   - Security
   - Architecture
-  - Admin
+  - Administration
   purposes:
   - Assess
   - Certify
@@ -717,7 +717,7 @@ repo_questions:
   - Governance
   - Security
   - Architecture
-  - Admin
+  - Administration
   purposes:
   - Certify
   - Share
@@ -740,7 +740,7 @@ repo_questions:
   stage: Scouting/Assessment
   perspectives:
   - Financial
-  - Data Owner
+  - Owner
   - App/AI Builder
   - Security
   purposes:
@@ -775,7 +775,7 @@ repo_questions:
   - Financial
   - Governance
   - Steward
-  - Data Owner
+  - Owner
   - Security
   purposes:
   - Select
@@ -800,7 +800,7 @@ repo_questions:
   - Privacy
   - Security
   - Architecture
-  - Admin
+  - Administration
   purposes:
   - Assess
   - Certify
@@ -846,7 +846,7 @@ repo_questions:
   perspectives:
   - Security
   - Architecture
-  - Admin
+  - Administration
   purposes:
   - Assess
   - Certify
@@ -964,7 +964,7 @@ repo_questions:
   perspectives:
   - Governance
   - Steward
-  - Data Owner
+  - Owner
   purposes:
   - Explore
   - Select
@@ -1115,7 +1115,7 @@ repo_questions:
   question: What data files does it ship, and what shape are they?
   stage: Analysis
   perspectives:
-  - Data Owner
+  - Owner
   - Privacy
   - Data Expert
   purposes:
@@ -1244,7 +1244,7 @@ repo_questions:
   - App/AI Builder
   - Security
   - Architecture
-  - Admin
+  - Administration
   purposes:
   - Assess
   - Maintain
@@ -1277,7 +1277,7 @@ repo_questions:
   - Privacy
   - Security
   - Architecture
-  - Admin
+  - Administration
   purposes:
   - Assess
   - Deploy
@@ -1307,7 +1307,7 @@ repo_questions:
   perspectives:
   - Financial
   - Architecture
-  - Admin
+  - Administration
   purposes:
   - Explore
   - Maintain
@@ -1338,7 +1338,7 @@ repo_questions:
   stage: Discovery
   perspectives:
   - Governance
-  - Data Owner
+  - Owner
   - Privacy
   - Security
   purposes:
@@ -1395,7 +1395,7 @@ repo_questions:
   perspectives:
   - Governance
   - Steward
-  - Data Owner
+  - Owner
   - Consumer
   purposes:
   - Share
@@ -1420,7 +1420,7 @@ repo_questions:
   perspectives:
   - Financial
   - Governance
-  - Data Owner
+  - Owner
   - Consumer
   purposes:
   - Share
@@ -1444,12 +1444,12 @@ repo_questions:
   stage: Enrichment
   perspectives:
   - Financial
-  - Data Owner
+  - Owner
   - Consumer
   - App/AI Builder
   - Security
   - Architecture
-  - Admin
+  - Administration
   purposes:
   - Select
   - Assess
@@ -1526,7 +1526,7 @@ database_questions:
   stage: Scouting
   perspectives:
   - Steward
-  - Data Owner
+  - Owner
   - Security
   purposes:
   - Explore
@@ -1583,7 +1583,7 @@ database_questions:
   - Data Expert
   - Security
   - Architecture
-  - Admin
+  - Administration
   purposes:
   - Explore
   - Select
@@ -1614,7 +1614,7 @@ database_questions:
   - Data Expert
   - Security
   - Architecture
-  - Admin
+  - Administration
   purposes:
   - Explore
   - Select
@@ -1636,7 +1636,7 @@ database_questions:
   perspectives:
   - Community
   - Security
-  - Admin
+  - Administration
   purposes:
   - Select
   - Find
@@ -1683,7 +1683,7 @@ database_questions:
   stage: Enrichment
   perspectives:
   - Financial
-  - Admin
+  - Administration
   purposes:
   - Select
   - Deploy
@@ -1710,7 +1710,7 @@ database_questions:
   perspectives:
   - Security
   - Architecture
-  - Admin
+  - Administration
   purposes:
   - Select
   - Learn
@@ -1734,7 +1734,7 @@ database_questions:
   - Governance
   - Security
   - Architecture
-  - Admin
+  - Administration
   purposes:
   - Certify
   - Share
@@ -1757,7 +1757,7 @@ database_questions:
   stage: Scouting/Assessment
   perspectives:
   - Financial
-  - Data Owner
+  - Owner
   - App/AI Builder
   - Security
   purposes:
@@ -1805,7 +1805,7 @@ database_questions:
   perspectives:
   - Governance
   - Steward
-  - Data Owner
+  - Owner
   purposes:
   - Explore
   - Select
@@ -1856,7 +1856,7 @@ database_questions:
   perspectives:
   - Financial
   - Architecture
-  - Admin
+  - Administration
   purposes:
   - Explore
   - Maintain
@@ -1887,7 +1887,7 @@ database_questions:
   stage: Discovery
   perspectives:
   - Governance
-  - Data Owner
+  - Owner
   - Privacy
   - Security
   purposes:
@@ -1974,7 +1974,7 @@ database_questions:
   perspectives:
   - Governance
   - Steward
-  - Data Owner
+  - Owner
   - Consumer
   purposes:
   - Share
@@ -1999,7 +1999,7 @@ database_questions:
   perspectives:
   - Financial
   - Governance
-  - Data Owner
+  - Owner
   - Consumer
   purposes:
   - Share
@@ -2024,7 +2024,7 @@ database_questions:
   perspectives:
   - Financial
   - Data Expert
-  - Admin
+  - Administration
   purposes:
   - Explore
   - Select
@@ -2071,8 +2071,8 @@ database_questions:
   stage: Scouting
   perspectives:
   - Steward
-  - Data Owner
-  - Admin
+  - Owner
+  - Administration
   purposes:
   - Maintain
   - Assess
@@ -2101,7 +2101,7 @@ database_questions:
   perspectives:
   - Security
   - Architecture
-  - Admin
+  - Administration
   purposes:
   - Explore
   - Maintain
@@ -2123,8 +2123,8 @@ database_questions:
   question: Is this database a primary or a replica, is it clustered, and is WAL archiving or backup configured?
   stage: Scouting
   perspectives:
-  - Data Owner
-  - Admin
+  - Owner
+  - Administration
   purposes:
   - Assess
   - Maintain
@@ -2150,8 +2150,8 @@ database_questions:
   stage: Enrichment
   perspectives:
   - Governance
-  - Data Owner
-  - Admin
+  - Owner
+  - Administration
   purposes:
   - Assess
   - Attest
@@ -2348,7 +2348,7 @@ database_questions:
   perspectives:
   - Steward
   - Data Expert
-  - Admin
+  - Administration
   purposes:
   - Maintain
   - Learn
@@ -2673,7 +2673,7 @@ database_questions:
   perspectives:
   - Security
   - Architecture
-  - Admin
+  - Administration
   purposes:
   - Assess
   - Deploy
@@ -2700,7 +2700,7 @@ database_questions:
   - Governance
   - Privacy
   - Security
-  - Admin
+  - Administration
   purposes:
   - Assess
   - Certify
@@ -2740,8 +2740,8 @@ database_questions:
   stage: Analysis
   perspectives:
   - Steward
-  - Data Owner
-  - Admin
+  - Owner
+  - Administration
   purposes:
   - Maintain
   - Assess
@@ -2883,7 +2883,7 @@ database_questions:
   stage: Assessment
   perspectives:
   - Steward
-  - Admin
+  - Administration
   purposes:
   - Maintain
   - Assess
@@ -2908,8 +2908,8 @@ database_questions:
   stage: Assessment
   perspectives:
   - Governance
-  - Data Owner
-  - Admin
+  - Owner
+  - Administration
   purposes:
   - Assess
   - Attest
@@ -2934,7 +2934,7 @@ database_questions:
   stage: Analysis
   perspectives:
   - Steward
-  - Data Owner
+  - Owner
   purposes:
   - Assess
   - Certify
@@ -2962,7 +2962,7 @@ database_questions:
   stage: Analysis
   perspectives:
   - Steward
-  - Data Owner
+  - Owner
   purposes:
   - Assess
   - Remediate
@@ -2991,12 +2991,12 @@ database_questions:
   stage: Enrichment
   perspectives:
   - Financial
-  - Data Owner
+  - Owner
   - Consumer
   - App/AI Builder
   - Security
   - Architecture
-  - Admin
+  - Administration
   purposes:
   - Select
   - Assess
@@ -3024,7 +3024,7 @@ database_questions:
   - Governance
   - Steward
   - Security
-  - Admin
+  - Administration
   purposes:
   - Assess
   - Maintain
@@ -3049,7 +3049,7 @@ database_questions:
   stage: Assessment
   perspectives:
   - Steward
-  - Data Owner
+  - Owner
   - Consumer
   - Architecture
   purposes:
@@ -3078,7 +3078,7 @@ database_questions:
   stage: Analysis
   perspectives:
   - Steward
-  - Data Owner
+  - Owner
   - Consumer
   - Data Expert
   purposes:
@@ -3103,7 +3103,7 @@ database_questions:
   stage: Analysis
   perspectives:
   - Steward
-  - Data Owner
+  - Owner
   - Architecture
   purposes:
   - Assess
@@ -3152,7 +3152,7 @@ filesystem_questions:
   stage: Scouting
   perspectives:
   - Steward
-  - Data Owner
+  - Owner
   - Security
   purposes:
   - Explore
@@ -3206,7 +3206,7 @@ filesystem_questions:
   - Data Expert
   - Security
   - Architecture
-  - Admin
+  - Administration
   purposes:
   - Explore
   - Select
@@ -3237,7 +3237,7 @@ filesystem_questions:
   - Data Expert
   - Security
   - Architecture
-  - Admin
+  - Administration
   purposes:
   - Explore
   - Select
@@ -3259,7 +3259,7 @@ filesystem_questions:
   perspectives:
   - Community
   - Security
-  - Admin
+  - Administration
   purposes:
   - Select
   - Find
@@ -3302,7 +3302,7 @@ filesystem_questions:
   stage: Enrichment
   perspectives:
   - Financial
-  - Admin
+  - Administration
   purposes:
   - Select
   - Deploy
@@ -3329,7 +3329,7 @@ filesystem_questions:
   perspectives:
   - Security
   - Architecture
-  - Admin
+  - Administration
   purposes:
   - Select
   - Learn
@@ -3353,7 +3353,7 @@ filesystem_questions:
   - Governance
   - Security
   - Architecture
-  - Admin
+  - Administration
   purposes:
   - Certify
   - Share
@@ -3376,7 +3376,7 @@ filesystem_questions:
   stage: Scouting/Assessment
   perspectives:
   - Financial
-  - Data Owner
+  - Owner
   - App/AI Builder
   - Security
   purposes:
@@ -3424,7 +3424,7 @@ filesystem_questions:
   perspectives:
   - Governance
   - Steward
-  - Data Owner
+  - Owner
   purposes:
   - Explore
   - Select
@@ -3472,7 +3472,7 @@ filesystem_questions:
   perspectives:
   - Financial
   - Architecture
-  - Admin
+  - Administration
   purposes:
   - Explore
   - Maintain
@@ -3504,7 +3504,7 @@ filesystem_questions:
   stage: Discovery
   perspectives:
   - Governance
-  - Data Owner
+  - Owner
   - Privacy
   - Security
   purposes:
@@ -3590,7 +3590,7 @@ filesystem_questions:
   perspectives:
   - Governance
   - Steward
-  - Data Owner
+  - Owner
   - Consumer
   purposes:
   - Share
@@ -3615,7 +3615,7 @@ filesystem_questions:
   perspectives:
   - Financial
   - Governance
-  - Data Owner
+  - Owner
   - Consumer
   purposes:
   - Share
@@ -3639,8 +3639,8 @@ filesystem_questions:
   stage: Enrichment
   perspectives:
   - Governance
-  - Data Owner
-  - Admin
+  - Owner
+  - Administration
   purposes:
   - Assess
   - Attest
@@ -3827,7 +3827,7 @@ filesystem_questions:
   perspectives:
   - Steward
   - Data Expert
-  - Admin
+  - Administration
   purposes:
   - Explore
   - Select
@@ -3883,12 +3883,12 @@ filesystem_questions:
   stage: Enrichment
   perspectives:
   - Financial
-  - Data Owner
+  - Owner
   - Consumer
   - App/AI Builder
   - Security
   - Architecture
-  - Admin
+  - Administration
   purposes:
   - Select
   - Assess
@@ -3914,7 +3914,7 @@ filesystem_questions:
   perspectives:
   - Steward
   - Data Expert
-  - Admin
+  - Administration
   purposes:
   - Explore
   - Select
@@ -4021,7 +4021,7 @@ filesystem_questions:
   perspectives:
   - Data Expert
   - Architecture
-  - Admin
+  - Administration
   purposes:
   - Explore
   - Learn
@@ -4097,7 +4097,7 @@ filesystem_questions:
   perspectives:
   - Financial
   - Steward
-  - Data Owner
+  - Owner
   purposes:
   - Maintain
   - Assess
@@ -4145,7 +4145,7 @@ filesystem_questions:
   stage: Discovery
   perspectives:
   - Financial
-  - Admin
+  - Administration
   purposes:
   - Select
   - Explore
@@ -4171,7 +4171,7 @@ open_data_questions:
   perspectives:
   - Financial
   - Governance
-  - Data Owner
+  - Owner
   - Consumer
   purposes:
   - Select

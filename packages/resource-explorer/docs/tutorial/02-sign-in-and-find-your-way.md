@@ -55,7 +55,7 @@ takes about ten minutes, and it changes nothing.
         Part 7 uses them.
       - **Chat** shows or hides the right-hand rail (area 6).
    3. **The perspectives.** The row "PERSPECTIVE · 0 OF 12" has one chip for each
-      [perspective](glossary.md#perspective), from Admin to Steward. Choose one to narrow the questions to those
+      [perspective](glossary.md#perspective), from Administration to Steward. Choose one to narrow the questions to those
       that perspective cares about. "0 OF 12" means none is chosen, so you see every question.
    4. **The sidebar.** At the top are **Repos**, **DBs**, **FS** and **Open data**: repositories, databases, file
       systems and open data portals. Under them are a button to add one (here **＋ Find repos**), and a filter box.
