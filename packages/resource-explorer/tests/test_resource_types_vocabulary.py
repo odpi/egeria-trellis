@@ -23,7 +23,7 @@ from resource_explorer.resource_types import (
 
 class TestTheVocabulary:
     def test_the_five_types_the_design_names_are_all_present(self):
-        assert set(RESOURCE_TYPES) == {"repo", "database", "filesystem", "dataset", "model", "open_data", "open_data_portal", "portal_directory"}
+        assert set(RESOURCE_TYPES) == {"repo", "database", "filesystem", "dataset", "model", "open_data", "open_data_portal", "portal_directory", "catalog"}
 
     def test_dataset_and_model_are_vocabulary_but_not_surveyed(self):
         # Nothing surveys them yet, deliberately (design §13 Phase 0 item 4).

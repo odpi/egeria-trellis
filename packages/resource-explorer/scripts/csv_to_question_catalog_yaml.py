@@ -100,9 +100,12 @@ if __package__ in (None, ""):  # running as a script, not imported as a module
 from resource_explorer.question_status import is_skipped_status
 from resource_explorer.resource_types import (
     ALL_RESOURCE_TYPES_MARKER,
+    CATALOG_RESOURCE_TYPE,
     RESOURCE_TYPES,
     RESOURCE_TYPES_SEPARATOR,
     SURVEYED_RESOURCE_TYPES,
+    check_catalog_row,
+    is_catalog_row,
     parse_resource_types,
 )
 
@@ -276,6 +279,25 @@ KNOWN_STEP_IDS = _load_known_step_ids()
 # naming an analysis id that fully answers a question on its own, but it is
 # just as real a thing to claim does not exist.
 KNOWN_REGISTERED_IDS = set(KNOWN_ANALYSIS_IDS) | KNOWN_STEP_IDS
+
+
+_PORTAL_ROUTINES_PATH = (
+    Path(__file__).parent.parent / "resource_explorer" / "configdata" / "portal_routines.yaml"
+)
+
+
+def _load_known_portal_routines() -> list[str]:
+    """The third known-id source (RS-W1-3): the Portal routines a catalog question's `Answering Analysis` may name,
+    read live from configdata/portal_routines.yaml (hand-maintained until design note §9.7 step (a) reads pyegeria's
+    analytic registry instead). Only a catalog row is parsed against it: a repository question cannot be answered
+    by an estate-wide Overview tile, and an RE analysis id cannot answer a catalog question. Read live, like the
+    analysis catalogue, so the list and its consumer cannot drift; a missing file fails loudly."""
+    raw = yaml.safe_load(_PORTAL_ROUTINES_PATH.read_text()) or {}
+    names = [str(r.get("name") or "").strip() for r in (raw.get("routines") or [])]
+    return [n for n in names if n]
+
+
+KNOWN_PORTAL_ROUTINES = _load_known_portal_routines()
 
 
 def _load_unbuilt_analysis_ids() -> set[str]:
@@ -506,6 +528,55 @@ def _bare_step_names(note: str) -> list[str]:
     text = _PARENTHETICAL_RE.sub(" ", _strip_checks_suffix(note))
     named = set(_ID_TOKEN_RE.findall(text))
     return sorted((named & KNOWN_STEP_IDS) - ALL_CATALOGUE_IDS)
+
+
+def _portal_routines_named(note: str) -> list[str]:
+    """The known Portal routines a note names, in `portal_routines.yaml` order (word-boundary matches)."""
+    return [r for r in KNOWN_PORTAL_ROUTINES if re.search(rf"\b{re.escape(r)}\b", note)]
+
+
+def _is_pure_routine_list(prose: str) -> bool:
+    """Whether a catalog row's cell is nothing but known Portal routine names, `+`/`,`-joined (a parenthetical
+    gloss allowed), mirroring `_is_pure_analysis_list`."""
+    stripped = _PARENTHETICAL_RE.sub("", prose).strip()
+    if not stripped:
+        return False
+    parts = [p.strip() for p in re.split(r"[+,]", stripped)]
+    return all(p in KNOWN_PORTAL_ROUTINES for p in parts if p)
+
+
+def _parse_catalog_answering(note: str) -> dict:
+    """`Answering Analysis` for a catalog row (RS-W1-3). The cell names a Portal routine, not an RE analysis.
+
+    - routine names only -> `kind: portal`, the routines in `portal_routines`;
+    - `PARTIAL:` prose -> `kind: partial`, and it must name at least one known routine (what answers part of it);
+    - `GAP:` prose -> `kind: gap`, and it may NOT name a known routine (that would be a gap naming an answer);
+    - anything else -> `kind: unknown`, as for any row: "nobody has wired this", never a guess.
+
+    `analysis_ids` and `checks` stay empty: nothing in RE's analysis catalogue answers a question about the estate.
+    """
+    note = (note or "").strip()
+    upper = note.upper()
+    routines = _portal_routines_named(note)
+    if upper.startswith("GAP:"):
+        kind = "gap"
+        if routines:
+            raise ValueError(
+                f"this catalog gap names a Portal routine that exists: {routines}, in a GAP: note: {note!r}\n"
+                "Re-word as PARTIAL: (if the routine answers part of the question) or name the missing piece."
+            )
+    elif upper.startswith("PARTIAL:"):
+        kind = "partial"
+        if not routines:
+            raise ValueError(
+                f"catalog PARTIAL: note names no known Portal routine (configdata/portal_routines.yaml), so there "
+                f"is nothing to check its claim against: {note!r}"
+            )
+    elif _is_pure_routine_list(note):
+        kind = "portal"
+    else:
+        kind = "unknown"
+    return {"kind": kind, "analysis_ids": [], "checks": [], "portal_routines": routines, "note": note}
 
 
 def _parse_answering(note: str, known_checks: set[str] | None = None) -> dict:
@@ -857,6 +928,10 @@ def expand_resource_types(raw: str, label: str = "") -> list[str]:
     2026-10-22, review §1.1); an unknown name still fails inside `parse_resource_types`."""
     types = parse_resource_types(raw)
     named = [v.strip() for v in (raw or "").split(RESOURCE_TYPES_SEPARATOR) if v.strip()]
+    if named == [CATALOG_RESOURCE_TYPE]:
+        # RS-W1-3: the catalog has no adapter by design and is answered by Portal routines, not a surveyor.
+        # `check_catalog_row` (called first by `generate`) has already refused it beside any other type.
+        return types
     # `open_data` is registered-only (OD1) yet carries its own `open_data_questions` section, answered "no reader yet"
     # until each declared analysis is built (owner, 2026-11-02: "add them now"); it is named, never reached by `*`.
     no_adapter = [v for v in named if v != ALL_RESOURCE_TYPES_MARKER and v not in SURVEYED_RESOURCE_TYPES
@@ -963,8 +1038,12 @@ def generate(rows: list[dict], known_purposes: list[str] | None = None,
             continue
         perspective_cols = [c for c in row if c not in NON_PERSPECTIVE_COLUMNS]
         perspectives = [c for c in perspective_cols if (row.get(c) or "").strip()]
-        resource_types = expand_resource_types(
-            row.get("Resource Types", ""), f"{(row.get('Question ID') or '').strip()} {question!r}")
+        label = f"{(row.get('Question ID') or '').strip()} {question!r}"
+        check_catalog_row(row.get("Resource Types", ""), row.get("Funnel Stage", ""), label)
+        catalog_row = is_catalog_row(row.get("Resource Types", ""))
+        resource_types = expand_resource_types(row.get("Resource Types", ""), label)
+        answering = (_parse_catalog_answering(row.get("Answering Analysis", "")) if catalog_row
+                     else _parse_answering(row.get("Answering Analysis", ""), known_checks))
 
         entry = {
             "id": (row.get("Question ID") or "").strip(),
@@ -973,7 +1052,7 @@ def generate(rows: list[dict], known_purposes: list[str] | None = None,
             "perspectives": perspectives,
             "purposes": _parse_purposes(row.get("Purposes", ""), known_purposes, purpose_warnings),
             "levels": _parse_levels(row.get("Level", "")),
-            "answering": _parse_answering(row.get("Answering Analysis", ""), known_checks),
+            "answering": answering,
             "answering_mechanism": (row.get("Answering Mechanism") or "").strip(),
             "rationale": (row.get("Rationale/Source") or "").strip(),
             "catalog_history": (row.get("Catalog History") or "").strip(),
@@ -990,6 +1069,10 @@ def generate(rows: list[dict], known_purposes: list[str] | None = None,
             # cross-type question is authored once and rendered per type; the
             # YAML should read that way too.
             type_entry = copy.deepcopy(entry)
+            if catalog_row:
+                # Nothing to restrict: a catalog row carries routines, never analysis ids, and has no overrides.
+                by_type.setdefault(resource_type, []).append(type_entry)
+                continue
             _restrict_answering_to_type(type_entry["answering"], resource_type)
             _apply_type_override(type_entry, resource_type, known_checks)
             by_type.setdefault(resource_type, []).append(type_entry)
@@ -1013,6 +1096,11 @@ def generate(rows: list[dict], known_purposes: list[str] | None = None,
         "# written database questions yet\" and \"there are database questions and\n"
         "# your filters excluded them all\" are the same length and opposite\n"
         "# answers. Do not add empty sections to make the file look complete.\n"
+        "#\n"
+        "# `catalog_questions` (RS-W1-3) holds the Egeria Overview's catalog-wide\n"
+        "# questions (Resource Types = catalog): about the estate, one catalog per\n"
+        "# Egeria repository, so their `stage` is empty and nothing surveys them.\n"
+        "# Resource-scoped readers never ask for that section.\n"
         "#\n"
         "# Each entry:\n"
         "#   id            - the question's stable id (`Q-0001`), stored in the CSV's\n"
@@ -1041,8 +1129,9 @@ def generate(rows: list[dict], known_purposes: list[str] | None = None,
         "#                   it never excludes. See docs/investigation-framing-design.md.\n"
         "#   answering:\n"
         "#     kind        - \"analysis\" | \"direct\" | \"registry\" | \"human\" |\n"
-        "#                   \"chart\" | \"gap\" | \"partial\" | \"mixed\" | \"unknown\" —\n"
-        "#                   how (or whether) RE can answer this today.\n"
+        "#                   \"chart\" | \"gap\" | \"partial\" | \"mixed\" | \"portal\" |\n"
+        "#                   \"unknown\" — how (or whether) RE can answer this today.\n"
+        "#                   \"portal\" is a catalog question answered by a Portal routine.\n"
         "#     analysis_ids - analysis_catalog.yaml ids (from ANY `*_analyses`\n"
         "#                   section, not just repo_analyses) that answer\n"
         "#                   (fully or partially) this question; may be empty.\n"
@@ -1054,6 +1143,9 @@ def generate(rows: list[dict], known_purposes: list[str] | None = None,
         "#                   refs authored yet\" — fall back to analysis_ids, do not\n"
         "#                   read it as \"no checks apply\". A check ref implies its\n"
         "#                   analysis, which is added to analysis_ids automatically.\n"
+        "#     portal_routines - catalog questions only: the Portal routines (pyegeria\n"
+        "#                   view/overview_metrics.py, listed in configdata/portal_routines.yaml)\n"
+        "#                   the Overview tile answering it rides on. Absent on every other row.\n"
         "#     note        - the CSV's \"Answering Analysis\" column, verbatim —\n"
         "#                   human-readable detail (candidate tooling for gaps,\n"
         "#                   which direct field/table, etc.).\n"

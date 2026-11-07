@@ -46,6 +46,9 @@ RESOURCE_TYPES: tuple[str, ...] = (
     "open_data",
     "open_data_portal",
     "portal_directory",
+    # RS-W1-3 (2026-11-07): the catalog as a whole, one per Egeria repository. Questions only: no registry table,
+    # no adapter, never a work-list member, and `*` does not reach it (see CATALOG_RESOURCE_TYPE).
+    "catalog",
 )
 
 #: The types with a registered `ResourceTypeAdapter`, a registry table and an
@@ -70,6 +73,19 @@ REGISTERED_ONLY_RESOURCE_TYPES: tuple[str, ...] = ("open_data", "open_data_porta
 #: The kinds a work list's members may be: the surveyed ones plus `open_data` (a portal and a directory are
 #: sources, not things a person works through, so they are not members).
 MEMBER_RESOURCE_TYPES: tuple[str, ...] = SURVEYED_RESOURCE_TYPES + ("open_data",)
+
+#: The catalog as a whole — one per Egeria repository — as the subject of a question (RS-W1-3, design note §9.22,
+#: owner decision 2026-11-06: "a new resource type in the same CSV and generator"). The Egeria Overview's
+#: catalog-wide questions ("What share of critical assets is governed?") are rows of the same question catalog,
+#: tagged with this type. It is deliberately in none of the sets above: nothing surveys a catalog, no registry
+#: table holds one, it is not a thing a work list contains, and `*` does NOT expand to it — a question about the
+#: estate is a different kind of question from one about adopting a resource, so a catalog row always says
+#: `catalog` explicitly and says nothing else.
+CATALOG_RESOURCE_TYPE = "catalog"
+
+#: The types that exist only as the subject of questions, never as something registered, imported or surveyed.
+#: Input paths that accept a resource row (batch import) refuse these.
+QUESTION_ONLY_RESOURCE_TYPES: tuple[str, ...] = (CATALOG_RESOURCE_TYPE,)
 
 #: The value every pre-multi-resource call site assumed. Kept as a named
 #: constant so "this defaults to repo" is greppable rather than a bare string
@@ -125,3 +141,44 @@ def parse_resource_types(raw: str) -> list[str]:
             f"gained one."
         )
     return list(dict.fromkeys(values))
+
+
+def is_catalog_row(raw: str) -> bool:
+    """Whether a `Resource Types` cell names the catalog (RS-W1-3). Spaces and a trailing separator are tolerated;
+    `*` never means the catalog."""
+    values = [v.strip() for v in (raw or "").split(RESOURCE_TYPES_SEPARATOR) if v.strip()]
+    return CATALOG_RESOURCE_TYPE in values
+
+
+def check_catalog_row(raw_types: str, funnel_stage: str, label: str = "") -> None:
+    """The two rules a catalog question obeys, shared by both question generators so they cannot disagree.
+
+    1. `catalog` stands alone in its `Resource Types` cell. A question about the estate is not also a question
+       about one repository, and the Dr.Egeria split (catalog rows go to their own document, outside any batch
+       folder) depends on a row being one or the other.
+    2. A catalog row has no `Funnel Stage`, and only a catalog row may leave it empty. The funnel (Scouting ...
+       Enrichment) is about adopting one resource; the Overview is about the estate, so no stage term is
+       invented for it. An empty stage on any other row is an authoring error, as it always was.
+
+    Raises ValueError naming the row; returns None when the row is fine.
+    """
+    who = label or "a row"
+    stage = (funnel_stage or "").strip()
+    if is_catalog_row(raw_types):
+        values = [v.strip() for v in (raw_types or "").split(RESOURCE_TYPES_SEPARATOR) if v.strip()]
+        if values != [CATALOG_RESOURCE_TYPE]:
+            raise ValueError(
+                f"{who} names {values} in Resource Types; `{CATALOG_RESOURCE_TYPE}` must stand alone. A catalog-wide "
+                f"question is a separate row from any resource question."
+            )
+        if stage:
+            raise ValueError(
+                f"{who} is a catalog question with Funnel Stage {stage!r}; a catalog question has no funnel stage "
+                f"(the funnel is about adopting one resource). Leave the cell empty."
+            )
+        return
+    if not stage:
+        raise ValueError(
+            f"{who} has no Funnel Stage; only a catalog question (Resource Types = {CATALOG_RESOURCE_TYPE}) may "
+            f"leave it empty."
+        )

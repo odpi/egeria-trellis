@@ -17,7 +17,8 @@ context-plan.md); this generator was not kept in sync with that change
 until this pass (2026-08-15, restoring live Egeria state lost to a
 container restart — see that same doc's "ScopedBy link" follow-up):
     Question           - required; becomes the Question's Display Name
-    Funnel Stage        - required; the funnel-stage(s) this question
+    Funnel Stage        - required, except on a catalog row (see
+                          "Catalog questions" below); the funnel-stage(s) this question
                           belongs to. May be a single stage ("Scouting")
                           or a slash-combined value ("Analysis/Enrichment",
                           signaling an Analysis-first/Enrichment-fallback
@@ -69,11 +70,23 @@ Egeria or execute anything. Feed the output through Dr.Egeria's own
 validate/process pipeline (the `dr_egeria_run_block` MCP tool, or
 whatever CLI/agent has that capability) — never process blind.
 
+Catalog questions (RS-W1-3, 2026-11-07): a row whose `Resource Types` is
+exactly `catalog` is one of the Egeria Overview's catalog-wide questions. It
+has no Funnel Stage (no stage ScopedBy is emitted; Usage reads "Catalog-wide
+question (Egeria Overview)"), and an empty stage on any other row is an error.
+Catalog rows are left out by default and generated only with
+`--resource-type catalog`, into docs/dr-egeria/questions-catalog/
+catalog-questions.md. That folder deliberately has NO `_batch.json`, so the
+bootstrap heal never executes it: publishing those questions is one
+owner-approved run, not a side effect of the next heal. Perspective ScopedBy
+links have no reconciler, so a second run would leave permanent duplicates.
+
 Usage:
     uv run --package resource-explorer \\
         python packages/resource-explorer/scripts/csv_to_dr_egeria_questions.py \\
         docs/dr-egeria/resource_questions.csv \\
         [--output docs/dr-egeria/scouting-questions.md] \\
+        [--resource-type catalog] \\
         [--questions-glossary "User Questions"] \\
         [--stage-glossary "Funnel Stages"]
 """
@@ -90,6 +103,10 @@ from pathlib import Path
 if __package__ in (None, ""):  # running as a script, not imported as a module
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from resource_explorer.question_status import is_skipped_status
+from resource_explorer.resource_types import CATALOG_RESOURCE_TYPE, check_catalog_row, is_catalog_row
+
+#: Usage text on a catalog question's term, in place of the funnel-stage sentence it has no stage for.
+CATALOG_USAGE = "Catalog-wide question (Egeria Overview)."
 
 REQUIRED_COLUMNS = ["Question", "Funnel Stage"]
 # "Answering Analysis"/"Answering Mechanism" are RE-internal roadmap
@@ -202,7 +219,17 @@ def generate(
     *,
     questions_glossary: str,
     title: str,
+    resource_type: str | None = None,
 ) -> str:
+    """The Dr.Egeria document for `rows`.
+
+    `resource_type=None` (the default, what the `questions` batch runs) leaves catalog rows out; `"catalog"` keeps
+    ONLY catalog rows. No other value is accepted: every other row is resource-type-agnostic on the Egeria side
+    (see OPTIONAL_LEAD_COLUMNS), so there is nothing else to split by. Raises ValueError on a row breaking the
+    catalog rules (`resource_types.check_catalog_row`), which include an empty Funnel Stage on a resource row."""
+    if resource_type not in (None, CATALOG_RESOURCE_TYPE):
+        raise ValueError(f"--resource-type may only be {CATALOG_RESOURCE_TYPE!r} (or omitted), not {resource_type!r}")
+    want_catalog = resource_type == CATALOG_RESOURCE_TYPE
     perspective_columns = [
         c for c in rows[0].keys()
         if c not in REQUIRED_COLUMNS and c not in OPTIONAL_LEAD_COLUMNS
@@ -215,6 +242,13 @@ def generate(
         "> regenerate from the source CSV instead. Run docs/dr-egeria/foundations.md",
         "> first (creates the shared glossaries/perspectives/stage-terms this file",
         "> references by name). Run with VALIDATE first, then PROCESS.",
+        *([
+            ">",
+            "> Catalog questions (Resource Types = catalog). This file is deliberately in a",
+            "> folder with no _batch.json, so the bootstrap heal never executes it.",
+            "> Publishing it is one owner-approved run, once: its Perspective links have",
+            "> no reconciler, so a second run leaves permanent duplicates.",
+        ] if want_catalog else []),
         "",
         "---",
         "",
@@ -222,7 +256,6 @@ def generate(
         "",
     ]
 
-    skipped: list[str] = []
     for row in rows:
         question = (row.get("Question") or "").strip()
         if not question:
@@ -232,15 +265,16 @@ def generate(
             # coordinator's separate cleared batch, never deleted; this document only stops creating it.
             continue
         funnel_stage = (row.get("Funnel Stage") or "").strip()
-        if not funnel_stage:
-            skipped.append(f"{question!r} — missing 'Funnel Stage', skipped")
+        check_catalog_row(row.get("Resource Types", ""), funnel_stage,
+                          f"{(row.get('Question ID') or '').strip()} {question!r}")
+        if is_catalog_row(row.get("Resource Types", "")) != want_catalog:
             continue
         stage_tokens = [t.strip() for t in funnel_stage.split("/") if t.strip()]
 
         rationale = row.get("Rationale/Source", "")
         summary = _question_summary(row.get("Why is this important?", ""), rationale)
         description = _question_description(question, rationale)
-        usage = _question_usage(stage_tokens)
+        usage = CATALOG_USAGE if want_catalog else _question_usage(stage_tokens)
 
         out.append(_block(
             "Create Glossary Term",
@@ -286,11 +320,6 @@ def generate(
                 },
             ))
 
-    if skipped:
-        print("Warnings:", file=sys.stderr)
-        for s in skipped:
-            print(f"  - {s}", file=sys.stderr)
-
     return "\n".join(out) + "\n"
 
 
@@ -299,6 +328,8 @@ def main() -> None:
     parser.add_argument("csv_path", type=Path, help="Source CSV (see module docstring for schema)")
     parser.add_argument("--output", type=Path, default=None, help="Output .md path (default: <csv stem>.md next to the CSV)")
     parser.add_argument("--questions-glossary", default="User Questions", help='Glossary Name questions are created in (default: "User Questions")')
+    parser.add_argument("--resource-type", default=None, choices=[CATALOG_RESOURCE_TYPE],
+                        help="Generate only the catalog questions (default: every row EXCEPT the catalog questions)")
     parser.add_argument("--title", default=None, help="H1 title for the generated file (default: derived from the CSV filename)")
     args = parser.parse_args()
 
@@ -316,12 +347,19 @@ def main() -> None:
         parser.error(f"CSV missing required column(s): {missing}")
 
     output_path = args.output or args.csv_path.with_suffix(".md")
-    title = args.title or f"{args.csv_path.stem.replace('-', ' ').title()} — Generated"
+    title = args.title or ("Catalog Questions — Generated" if args.resource_type == CATALOG_RESOURCE_TYPE
+                           else f"{args.csv_path.stem.replace('-', ' ').title()} — Generated")
 
-    content = generate(rows, questions_glossary=args.questions_glossary, title=title)
+    try:
+        content = generate(rows, questions_glossary=args.questions_glossary, title=title,
+                           resource_type=args.resource_type)
+    except ValueError as exc:
+        parser.error(str(exc))
     output_path.write_text(content)
+    want_catalog = args.resource_type == CATALOG_RESOURCE_TYPE
     n_questions = sum(1 for r in rows if (r.get("Question") or "").strip()
-                      and not is_skipped_status(r.get("Status")))
+                      and not is_skipped_status(r.get("Status"))
+                      and is_catalog_row(r.get("Resource Types", "")) == want_catalog)
     print(f"Wrote {output_path} ({n_questions} active questions from {len(rows)} CSV rows)")
 
 

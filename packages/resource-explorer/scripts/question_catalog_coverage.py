@@ -32,12 +32,19 @@ from collections import defaultdict
 from resource_explorer.surveyors.question_catalog_reader import get_questions
 
 
+def _answerers(entry: dict) -> list[str]:
+    """What answers a question: its analysis ids, or for a catalog question (RS-W1-3) the Portal routines its
+    Overview tile rides on. `--resource-type catalog` reports routines where the other types report analyses."""
+    answering = entry["answering"]
+    return list(answering["analysis_ids"]) + list(answering.get("portal_routines") or [])
+
+
 def _reachability(entries: list[dict], axis: str) -> dict[str, set[str]]:
     """tag -> set of analysis ids reachable through questions carrying it."""
     reach: dict[str, set[str]] = defaultdict(set)
     for e in entries:
         for tag in e.get(axis) or []:
-            reach[tag].update(e["answering"]["analysis_ids"])
+            reach[tag].update(_answerers(e))
     return dict(reach)
 
 
@@ -91,7 +98,7 @@ def build_report(resource_type: str = "repo") -> dict:
         }
 
     report["questions_with_no_analysis"] = sorted(
-        e["question"] for e in entries if not e["answering"]["analysis_ids"]
+        e["question"] for e in entries if not _answerers(e)
     )
     report["untagged_questions"] = {
         axis: sorted(e["question"] for e in entries if not (e.get(axis) or []))
