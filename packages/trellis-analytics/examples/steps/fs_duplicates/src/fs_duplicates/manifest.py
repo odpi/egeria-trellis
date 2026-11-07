@@ -48,7 +48,7 @@ MANIFEST = StepManifest(
             not_permitted=("Not permitted: the walk could not read these files, so none was hashed and none can be "
                            "compared."),
             not_applicable="Not applicable: duplicate content is measured for file systems only.",
-            measured_nothing="Measured: no two hashed files have the same content."),
+            nothing_found="Measured: no two hashed files have the same content."),
         extents=[ExtentDeclaration(
             name="duplicate_content",
             fields=["scope", "Duplicate Sets", "Redundant Files", "Redundant Bytes", "Files Not Hashed",

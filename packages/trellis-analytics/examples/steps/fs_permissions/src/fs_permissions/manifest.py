@@ -48,7 +48,7 @@ MANIFEST = StepManifest(
             not_permitted=("Not permitted: the walk could not stat these files, so no owner or mode is held for "
                            "them."),
             not_applicable="Not applicable: file permissions are measured for file systems only.",
-            measured_nothing="Measured: no world-readable file has a secret-looking name."),
+            nothing_found="Measured: no world-readable file has a secret-looking name."),
         extents=[ExtentDeclaration(
             name="permission_counts",
             fields=["scope", "Distinct Owners", "Distinct Groups", "World Readable Files", "World Writable Files",

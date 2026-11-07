@@ -222,7 +222,7 @@ def kind_headline(dec, value: dict, run: dict | None = None) -> str:
         if rows is None:
             return ""
         if not rows:
-            return dec.absence.sentence("measured_nothing")
+            return dec.absence.sentence("nothing_found")
         lead = _plural_noun(len(rows), "finding", "findings")
         first = rows[0]
         if f.severity_field and f.severities:
@@ -240,7 +240,7 @@ def kind_headline(dec, value: dict, run: dict | None = None) -> str:
         if rows is None:
             return ""
         if not rows:
-            return dec.absence.sentence("measured_nothing")
+            return dec.absence.sentence("nothing_found")
         if not p.state_field:
             return f"{count_words(len(rows))} proposed"
         counts: dict[str, int] = {}
@@ -258,7 +258,7 @@ def kind_headline(dec, value: dict, run: dict | None = None) -> str:
             return ""
         n = len(rows)
         if not rows:
-            return dec.absence.sentence("measured_nothing")
+            return dec.absence.sentence("nothing_found")
         if lst.item_label:
             label = plural_by(n, " ".join(lst.item_label.split()))
         else:

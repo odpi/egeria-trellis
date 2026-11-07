@@ -178,7 +178,7 @@ def test_change_rates_two_walks_added_removed_modified_and_growth(fs_steps_insta
     assert not leaks(results, ["keep.txt", "gone.txt", "new.txt", "edit.txt"])
 
 
-def test_change_rates_two_identical_walks_is_measured_nothing(fs_steps_installed, fs_registry):
+def test_change_rates_two_identical_walks_is_nothing_found(fs_steps_installed, fs_registry):
     reg, url = fs_registry
     for at in ("2026-10-01T00:00:00", "2026-10-01T06:00:00"):
         walk(reg, "tree", at, [row("a.txt"), row("b.txt")])

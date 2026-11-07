@@ -2181,14 +2181,14 @@ provides-extras = ["dev", "dashboard", "gpu", "onnx-tools", "phoenix"]
 
 [[package]]
 name = "egeria-trellis-analytics"
-version = "0.2.0"
+version = "0.3.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "pyegeria" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/21/6e/83eedd331a986f7cb2057785443f5844b0ea86d7853c22a916dcfdeba88b/egeria_trellis_analytics-0.2.0.tar.gz", hash = "sha256:c4c7f33d07dc315ac6b2c382d37fd5d7e719bc694bd4b8e0fa034ec9c1e812c2", size = 84830, upload-time = "2026-11-05T11:52:02.586Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/c1/f5/1dfc1936dfb74a84a76dad001199825ded6ebdd96f1a46cb6bfaa8e6f38f/egeria_trellis_analytics-0.3.1.tar.gz", hash = "sha256:78d70a16ef3100a4434fd240148c7f3d0d796a343eed590dc6b108a9b355ffbf", size = 103460, upload-time = "2026-11-07T13:52:54.788Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/f9/7d/c6465d7a05b09b7e77a31d4495e0d0316991744f7a35b51beba743e8999a/egeria_trellis_analytics-0.2.0-py3-none-any.whl", hash = "sha256:1f62f77e2a08b7c9931554d140a01c8e55d4a9f747b5757c39a560de49e58ac2", size = 68493, upload-time = "2026-11-05T11:52:01.148Z" },
+    { url = "https://files.pythonhosted.org/packages/de/25/adfc20fd28baef151391ddd623cfb2e0d4a04d364eb85e6018fb29598df6/egeria_trellis_analytics-0.3.1-py3-none-any.whl", hash = "sha256:a6eb0327bbee8d0a985c0fa789dd57385a8616ed1e6e74251e55f3a668ae3cbb", size = 81304, upload-time = "2026-11-07T13:52:53.432Z" },
 ]
 
 [[package]]
@@ -8444,7 +8444,7 @@ requires-dist = [
     { name = "certifi", specifier = ">=2026.10.18" },
     { name = "cryptography", specifier = ">=43.0.0" },
     { name = "docling", specifier = ">=2.0.0" },
-    { name = "egeria-trellis-analytics", specifier = ">=0.2,<0.3" },
+    { name = "egeria-trellis-analytics", specifier = ">=0.3.1,<0.4" },
     { name = "fastapi", specifier = ">=0.115.0" },
     { name = "great-expectations", specifier = ">=0.18.0" },
     { name = "httpx", specifier = ">=0.27.0" },
@@ -10017,7 +10017,7 @@ re = [
 
 [package.metadata]
 requires-dist = [
-    { name = "egeria-trellis-analytics", specifier = ">=0.2,<0.3" },
+    { name = "egeria-trellis-analytics", specifier = ">=0.3.1,<0.4" },
     { name = "ipykernel", marker = "extra == 'dev'" },
     { name = "nbformat", marker = "extra == 'dev'" },
     { name = "papermill", marker = "extra == 'dev'" },
@@ -10171,7 +10171,7 @@ dependencies = [
 ]
 
 [package.metadata]
-requires-dist = [{ name = "egeria-trellis-analytics", specifier = ">=0.2,<0.3" }]
+requires-dist = [{ name = "egeria-trellis-analytics", specifier = ">=0.3.1,<0.4" }]
 
 [[package]]
 name = "trellis-step-database-staleness"
@@ -10181,7 +10181,7 @@ dependencies = [
 ]
 
 [package.metadata]
-requires-dist = [{ name = "egeria-trellis-analytics", specifier = ">=0.2,<0.3" }]
+requires-dist = [{ name = "egeria-trellis-analytics", specifier = ">=0.3.1,<0.4" }]
 
 [[package]]
 name = "trellis-step-fs-activity"
@@ -10191,7 +10191,7 @@ dependencies = [
 ]
 
 [package.metadata]
-requires-dist = [{ name = "egeria-trellis-analytics", specifier = ">=0.2,<0.3" }]
+requires-dist = [{ name = "egeria-trellis-analytics", specifier = ">=0.3.1,<0.4" }]
 
 [[package]]
 name = "trellis-step-fs-change-rates"
@@ -10201,7 +10201,7 @@ dependencies = [
 ]
 
 [package.metadata]
-requires-dist = [{ name = "egeria-trellis-analytics", specifier = ">=0.2,<0.3" }]
+requires-dist = [{ name = "egeria-trellis-analytics", specifier = ">=0.3.1,<0.4" }]
 
 [[package]]
 name = "trellis-step-fs-duplicates"
@@ -10211,7 +10211,7 @@ dependencies = [
 ]
 
 [package.metadata]
-requires-dist = [{ name = "egeria-trellis-analytics", specifier = ">=0.2,<0.3" }]
+requires-dist = [{ name = "egeria-trellis-analytics", specifier = ">=0.3.1,<0.4" }]
 
 [[package]]
 name = "trellis-step-fs-layout-signals"
@@ -10221,7 +10221,7 @@ dependencies = [
 ]
 
 [package.metadata]
-requires-dist = [{ name = "egeria-trellis-analytics", specifier = ">=0.2,<0.3" }]
+requires-dist = [{ name = "egeria-trellis-analytics", specifier = ">=0.3.1,<0.4" }]
 
 [[package]]
 name = "trellis-step-fs-permissions"
@@ -10231,7 +10231,7 @@ dependencies = [
 ]
 
 [package.metadata]
-requires-dist = [{ name = "egeria-trellis-analytics", specifier = ">=0.2,<0.3" }]
+requires-dist = [{ name = "egeria-trellis-analytics", specifier = ">=0.3.1,<0.4" }]
 
 [[package]]
 name = "trellis-step-hub-tables"
@@ -10241,7 +10241,7 @@ dependencies = [
 ]
 
 [package.metadata]
-requires-dist = [{ name = "egeria-trellis-analytics", specifier = ">=0.2,<0.3" }]
+requires-dist = [{ name = "egeria-trellis-analytics", specifier = ">=0.3.1,<0.4" }]
 
 [[package]]
 name = "trellis-step-schema-comparison"
@@ -10251,7 +10251,7 @@ dependencies = [
 ]
 
 [package.metadata]
-requires-dist = [{ name = "egeria-trellis-analytics", specifier = ">=0.2,<0.3" }]
+requires-dist = [{ name = "egeria-trellis-analytics", specifier = ">=0.3.1,<0.4" }]
 
 [[package]]
 name = "trellis-step-statistics-freshness"
@@ -10261,7 +10261,7 @@ dependencies = [
 ]
 
 [package.metadata]
-requires-dist = [{ name = "egeria-trellis-analytics", specifier = ">=0.2,<0.3" }]
+requires-dist = [{ name = "egeria-trellis-analytics", specifier = ">=0.3.1,<0.4" }]
 
 [[package]]
 name = "trellis-vectorstore"

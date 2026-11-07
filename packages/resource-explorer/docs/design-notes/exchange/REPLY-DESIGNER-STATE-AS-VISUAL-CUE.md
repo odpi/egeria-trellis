@@ -1,5 +1,8 @@
 # REPLY — Designer: state as a visual cue plus a short word, the sentence on demand (2026-10-06)
 
+> **Vocabulary note (2026-11-07):** the absence word `measured_nothing` was renamed `nothing_found` (trellis-analytics 0.3); this document now uses the new word. Results stored with the old word are still read.
+
+
 To ASK-DESIGNER-STATE-AS-VISUAL-CUE.md, read against main at f1f679eb
 (`stages/curate-scope.js`: `choiceCellHtml`, `setterButtons`,
 `commitStepsHtml`, `commitPanelHtml`; `glyphs.js`;
@@ -154,7 +157,7 @@ whether he saw it, on each surface in turn.
 
 The architect caught it: my table gave Egeria's soft delete the ∅ glyph and
 the word "removed". Both are already taken. ∅ means *measured, nothing
-found* (`glyphs.js`'s measured-nothing family), and "removed" is reserved
+found* (`glyphs.js`'s nothing-found family), and "removed" is reserved
 for taking a resource out of RE ("Remove from Resource Explorer", the
 controls reply). Her interim, "deleted" with no glyph, is the ruling:
 
@@ -169,6 +172,6 @@ controls reply). Her interim, "deleted" with no glyph, is the ruling:
 - **The preview's future form is "will delete"**, beside "will archive".
   The commit's preview and row strings that print "removed (soft-deleted)"
   and "removed · ‹time›" become "will delete" and "deleted · ‹time›".
-- **`glyphs.js`'s `removed` key** (∅, measured-nothing) is renamed
+- **`glyphs.js`'s `removed` key** (∅, nothing-found) is renamed
   `deleted`, and its glyph is dropped. The key should name the state, and
-  the measured-nothing family keeps a single meaning.
+  the nothing-found family keeps a single meaning.

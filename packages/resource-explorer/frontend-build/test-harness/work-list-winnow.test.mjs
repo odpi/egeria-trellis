@@ -26,7 +26,7 @@ const text = (el) => (el ? el.textContent.replace(/\s+/g, ' ').trim() : '');
 const NOT_MEASURED = "Not measured: no survey has read this database's schema yet.";
 const TYPES = { entity_type: 'database', unknown: [], analyses: { schema_inventory: { declared: true, result_kind: 'list',
   measures: [{ name: 'relations', unit: 'tables, views and foreign tables', value_field: 'relation_count', as_of: 'surveyed_at' }],
-  absence: { not_measured: NOT_MEASURED, not_permitted: 'np', not_applicable: 'na', measured_nothing: 'none' } } } };
+  absence: { not_measured: NOT_MEASURED, not_permitted: 'np', not_applicable: 'na', nothing_found: 'none' } } } };
 const Q = { id: 'Q-0010', question: 'How big is it?', kind: 'analysis', analysis_ids: ['schema_inventory'] };
 
 const fact = (n, at = '2026-10-20T00:00:00Z') => [{ analysis_id: 'schema_inventory', state: 'measured',

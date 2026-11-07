@@ -42,7 +42,7 @@ MANIFEST = StepManifest(
             not_permitted=("Not permitted: the walk could not read this file system's folders, so no per-file rows "
                            "were kept to compare."),
             not_applicable="Not applicable: a change between walks is measured for file systems only.",
-            measured_nothing="Measured: no file was added, removed or modified between the two walks."),
+            nothing_found="Measured: no file was added, removed or modified between the two walks."),
         extents=[ExtentDeclaration(
             name="change_since_last_walk",
             fields=["scope", "Files Added", "Files Removed", "Files Modified", "Bytes Growth", "Interval Days",

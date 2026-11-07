@@ -1,5 +1,8 @@
 # DESIGN — One declaration, three consumers: how user-added analyses render in Understanding, compile into Chat, publish to Egeria, and carry confidence (2026-10-21)
 
+> **Vocabulary note (2026-11-07):** the absence word `measured_nothing` was renamed `nothing_found` (trellis-analytics 0.3); this document now uses the new word. Results stored with the old word are still read.
+
+
 From the design session, from a direct conversation with the owner on
 2026-10-21. His general point: ease of extensibility for users adding
 questions, analyses, surveys and sources, and what that does to the
@@ -36,7 +39,7 @@ family, credential tier, nothing-to-derive guard):
 |---|---|---|
 | `result_kind` | Understanding, Chat, Egeria publish | one of §2's kinds; none fits → `table` and say so |
 | `measures[]`: name, unit, as-of source, value field | all three | a number never travels without its unit and as-of |
-| `absence[]`: the sentence for not_measured, not_permitted, not_applicable, measured_nothing | all three | declared, never improvised (the find-absence rule as a field) |
+| `absence[]`: the sentence for not_measured, not_permitted, not_applicable, nothing_found | all three | declared, never improvised (the find-absence rule as a field) |
 | `extents[]`: for Chat, which fields, how many rows, in what order, the truncation sentence, the token cost, the citation shape | Chat | the compiler takes the declared shape and no other |
 | `confidence`: the form from §4 and its basis field | all three | a score never travels without its basis |
 | `annotation`: the Egeria type and the property map, or absent | Egeria publish | absent means "generic measure, no native type declared" (owner's answer 1) |

@@ -93,7 +93,7 @@
 #                         and optionally its own confidence (below) where it
 #                         differs from the declaration's.
 #     absence           - the sentence for each of not_measured,
-#                         not_permitted, not_applicable, measured_nothing.
+#                         not_permitted, not_applicable, nothing_found.
 #     extents           - Chat's shapes: name, fields, rows, order,
 #                         truncation (with {shown} and {total}), token_cost,
 #                         citation; and, where the rows are not under the
@@ -963,7 +963,7 @@ database_analyses:
           it could see, not every schema.'
         not_applicable: 'Not applicable: this analysis reads a database''s own tables, and this resource holds none
           to read.'
-        measured_nothing: 'Measured: the schemas the credential can see hold no tables.'
+        nothing_found: 'Measured: the schemas the credential can see hold no tables.'
       extents:
       - name: relations
         fields: [schema_name, table_name, table_type, column_count, row_count, row_count_is_estimate]
@@ -1030,7 +1030,7 @@ database_analyses:
         not_permitted: 'Not permitted: the credential that surveyed this database could not read pg_stat_user_tables
           for these tables, so it is not measured.'
         not_applicable: 'Not applicable: a view holds no rows of its own.'
-        measured_nothing: 'Measured: every table counted holds no rows.'
+        nothing_found: 'Measured: every table counted holds no rows.'
       extents:
       - name: tables_by_rows
         fields: [schema_name, table_name, row_count, size_bytes, row_count_is_estimate]
@@ -1084,7 +1084,7 @@ database_analyses:
         not_permitted: 'Not permitted: the credential that surveyed this database could not read pg_roles or the table
           grants, so it is not measured.'
         not_applicable: 'Not applicable: this database''s engine has no roles or grants to read.'
-        measured_nothing: 'Measured: no grant to PUBLIC was found.'
+        nothing_found: 'Measured: no grant to PUBLIC was found.'
       extents:
       - name: table_grants
         fields: [table_schema, table_name, grantee, privilege_type, is_grantable]
@@ -1139,7 +1139,7 @@ database_analyses:
         not_permitted: 'Not permitted: the credential that surveyed this database could not read pg_stat_user_tables
           or pg_stat_database, so it is not measured.'
         not_applicable: 'Not applicable: this database''s engine keeps no activity counters.'
-        measured_nothing: 'Measured: nothing has read or written any table since the statistics were last reset.'
+        nothing_found: 'Measured: nothing has read or written any table since the statistics were last reset.'
       extents:
       - name: database_activity
         fields: [database_activity, stats_reset]
@@ -1210,7 +1210,7 @@ database_analyses:
           is not known.'
         not_applicable: 'Not applicable: this analysis reads a database''s own tables, and this resource holds none
           to read.'
-        measured_nothing: 'Measured: the credential can see no schema and select from no table.'
+        nothing_found: 'Measured: the credential can see no schema and select from no table.'
       extents:
       - name: reach
         fields: [connected_as, schema_visible, schema_total, relation_select, relation_total, write_capable]
@@ -1271,7 +1271,7 @@ database_analyses:
         not_permitted: 'Not permitted: the credential that surveyed this database could not read pg_stat_replication
           or pg_stat_archiver, so it is not measured.'
         not_applicable: 'Not applicable: this database''s engine reports no replication or WAL archiving.'
-        measured_nothing: 'Measured: no replica and no backup tool was detected.'
+        nothing_found: 'Measured: no replica and no backup tool was detected.'
       extents:
       - name: status
         fields: [replication, wal_archiving, backup_tool_signals, clustering]
@@ -1344,7 +1344,7 @@ database_analyses:
         not_permitted: 'Not permitted: the credential that surveyed this database could not read pg_extension or the
           foreign-data catalogs, so it is not measured.'
         not_applicable: 'Not applicable: this database''s engine has no extensions or foreign data wrappers.'
-        measured_nothing: 'Measured: no extensions, foreign servers or tables, publications or subscriptions.'
+        nothing_found: 'Measured: no extensions, foreign servers or tables, publications or subscriptions.'
       extents:
       - name: dependencies
         fields: [kind, extname, extversion, srvname, fdwname, schema_name, table_name, pubname, subname]
@@ -1415,7 +1415,7 @@ database_analyses:
           tuple counters the classification weighs, so it is not measured.'
         not_applicable: 'Not applicable: this analysis reads a database''s own tables, and this resource holds none
           to read.'
-        measured_nothing: 'Undecided: the kinds scored too close to call, so none is proposed.'
+        nothing_found: 'Undecided: the kinds scored too close to call, so none is proposed.'
       extents:
       - name: proposed_kind
         fields: [kind, confidence, ranked, signals_used, signals_missing, coverage]
@@ -1490,7 +1490,7 @@ database_analyses:
           so it is not measured.'
         not_applicable: 'Not applicable: this analysis reads a database''s own tables, and this resource holds none
           to read.'
-        measured_nothing: 'Measured: no table references another by foreign key — a bag of tables, a real finding.'
+        nothing_found: 'Measured: no table references another by foreign key — a bag of tables, a real finding.'
       extents:
       - name: graph_summary
         fields: [verdict, table_count, edge_count, component_count, largest_component]
@@ -1556,7 +1556,7 @@ database_analyses:
           or read counters the ranking compares, so it is not measured.'
         not_applicable: 'Not applicable: this analysis reads a database''s own tables, and this resource holds none
           to read.'
-        measured_nothing: 'Measured: no table stands out as a starting point on the signals that were available.'
+        nothing_found: 'Measured: no table stands out as a starting point on the signals that were available.'
       extents:
       - name: starting_tables
         fields: [table, score, fk_in_degree, row_count, has_comment, reads]
@@ -1636,7 +1636,7 @@ database_analyses:
           so it is not measured.'
         not_applicable: 'Not applicable: this analysis reads a database''s own tables, and this resource holds none
           to read.'
-        measured_nothing: 'Measured: every table''s statistics are current.'
+        nothing_found: 'Measured: every table''s statistics are current.'
       extents:
       - name: needs_attention
         fields: [schema, table, status, days_since_analyze, changes_since_analyze, threshold]
@@ -1698,7 +1698,7 @@ database_analyses:
         not_permitted: 'Not permitted: the credential that surveyed this database could not read the key constraints
           or column statistics the grain is derived from, so it is not measured.'
         not_applicable: 'Not applicable: a view has no grain of its own.'
-        measured_nothing: 'Measured: no column, alone or in the key, is unique over the rows — a modelling gap, not
+        nothing_found: 'Measured: no column, alone or in the key, is unique over the rows — a modelling gap, not
           missing evidence.'
       extents:
       - name: grains
@@ -1765,7 +1765,7 @@ database_analyses:
           names, so it is not measured.'
         not_applicable: 'Not applicable: this analysis reads a database''s own tables, and this resource holds none
           to read.'
-        measured_nothing: 'Measured: no known database resembles this one.'
+        nothing_found: 'Measured: no known database resembles this one.'
       extents:
       - name: matches
         fields: [slug, verdict, column_jaccard, table_jaccard, containment]
@@ -1859,7 +1859,7 @@ database_analyses:
           comments, so it is not measured.'
         not_applicable: 'Not applicable: this analysis reads a database''s own tables, and this resource holds none
           to read.'
-        measured_nothing: 'Measured: every table and column passes this check.'
+        nothing_found: 'Measured: every table and column passes this check.'
       extents:
       - name: checks
         fields: [check, label, count, total, explanation]
@@ -1927,7 +1927,7 @@ database_analyses:
         not_measured: 'Not established: no value was sampled from this column — never "no match found".'
         not_permitted: 'Not permitted: the credential cannot read this table''s values, so the column was not sampled.'
         not_applicable: 'Not applicable: this column''s type holds no values a data class describes.'
-        measured_nothing: 'Measured: the sampled values match no data class in the platform.'
+        nothing_found: 'Measured: the sampled values match no data class in the platform.'
       extents:
       - name: matches
         fields: [column_path, verdict, matched_display_name, confidence, privacy_relevant, statement]
@@ -2033,7 +2033,7 @@ database_analyses:
         not_measured: 'Not profiled: the table is over the row ceiling or the statement timeout — never zero.'
         not_permitted: 'Not permitted: the credential cannot read this table, so it was not profiled.'
         not_applicable: 'Not applicable: a view or foreign table is not profiled.'
-        measured_nothing: 'Measured: the table holds no rows.'
+        nothing_found: 'Measured: the table holds no rows.'
       confidence:
         form: measured
       scope: field
@@ -2087,7 +2087,7 @@ database_analyses:
           a zero baseline) — never a pass.'
         not_permitted: 'Not permitted: the credential cannot read the table the check runs against.'
         not_applicable: 'Not applicable: no check of this kind applies to this column.'
-        measured_nothing: 'Measured: no check was proposed from the value profile.'
+        nothing_found: 'Measured: no check was proposed from the value profile.'
       extents:
       - name: results
         fields: [check_key, test_type, status, measure, severity, reason]
@@ -2170,7 +2170,7 @@ database_analyses:
           so it is not measured.'
         not_applicable: 'Not applicable: this analysis reads a database''s own tables, and this resource holds none
           to read.'
-        measured_nothing: 'Measured: no table was written to between the two snapshots — genuinely idle.'
+        nothing_found: 'Measured: no table was written to between the two snapshots — genuinely idle.'
       extents:
       - name: per_table
         fields: [qualified_name, change, deltas, per_day, row_count_delta]
@@ -2240,7 +2240,7 @@ database_analyses:
           so it is not measured.'
         not_applicable: 'Not applicable: this analysis reads a database''s own tables, and this resource holds none
           to read.'
-        measured_nothing: 'Measured: no column was added, dropped or retyped between the two surveys.'
+        nothing_found: 'Measured: no column was added, dropped or retyped between the two surveys.'
       extents:
       - name: column_changes
         fields: [change, qualified_name, old_type, new_type]
@@ -2310,7 +2310,7 @@ database_analyses:
           not measured.'
         not_applicable: 'Not applicable: this analysis reads a database''s own tables, and this resource holds none
           to read.'
-        measured_nothing: 'Measured: no grant was added or revoked between the two surveys.'
+        nothing_found: 'Measured: no grant was added or revoked between the two surveys.'
       extents:
       - name: grant_changes
         fields: [change, grant]
@@ -2382,7 +2382,7 @@ database_analyses:
           names or comments, so it is not measured.'
         not_applicable: 'Not applicable: this analysis reads a database''s own tables, and this resource holds none
           to read.'
-        measured_nothing: 'Measured: every name is structural (id, created_at, value), so nothing says what the data
+        nothing_found: 'Measured: every name is structural (id, created_at, value), so nothing says what the data
           is about — a finding for Enrichment.'
       extents:
       - name: terms
@@ -2461,7 +2461,7 @@ database_analyses:
           not measured.'
         not_applicable: 'Not applicable: this analysis reads a database''s own tables, and this resource holds none
           to read.'
-        measured_nothing: 'Measured: no column holds dates or times, so no period is covered.'
+        nothing_found: 'Measured: no column holds dates or times, so no period is covered.'
       extents:
       - name: period
         fields: [dataCoverageStartTime, dataCoverageEndTime, basis, confidence]
@@ -2540,7 +2540,7 @@ database_analyses:
           free estimates come from, so it is not measured.'
         not_applicable: 'No requirement declared: without a lens there is nothing to fit against — not a pass and not
           a failure; what this resource could satisfy is shown instead.'
-        measured_nothing: 'Measured: every criterion of the lens was checked and none failed.'
+        nothing_found: 'Measured: every criterion of the lens was checked and none failed.'
       extents:
       - name: verdict
         fields: [verdict, confidence, failed_inputs, unchecked_inputs, deferred_criteria]
@@ -2607,7 +2607,7 @@ database_analyses:
         not_measured: 'Not built: documentation ingestion has no runner yet, so nothing has been ingested.'
         not_permitted: 'Not permitted: the declared documentation source could not be read with the access supplied.'
         not_applicable: 'Not applicable: no documentation source is declared for this resource.'
-        measured_nothing: 'Measured: the declared documentation source holds no documents.'
+        nothing_found: 'Measured: the declared documentation source holds no documents.'
       extents:
       - name: ingestion
         fields: [documents_ingested]
@@ -2658,7 +2658,7 @@ database_analyses:
           for evidence.'
         not_permitted: 'Not permitted: the ingested documentation could not be read with the access supplied.'
         not_applicable: 'Not applicable: no documentation has been ingested for this resource.'
-        measured_nothing: 'Measured: the ingested documentation holds no evidence bearing on these questions.'
+        nothing_found: 'Measured: the ingested documentation holds no evidence bearing on these questions.'
       extents:
       - name: evidence
         fields: [question, passage, source]
@@ -2711,7 +2711,7 @@ database_analyses:
         not_permitted: 'Not permitted: the glossary could not be read with the access supplied.'
         not_applicable: 'Not applicable: no glossary term has been confirmed for this resource yet, and suggestions
           start from one.'
-        measured_nothing: 'Measured: no further glossary term matches this resource.'
+        nothing_found: 'Measured: no further glossary term matches this resource.'
       extents:
       - name: suggestions
         fields: [term, basis, confidence]
@@ -2770,7 +2770,7 @@ database_analyses:
           known — never a partial match.'
         not_permitted: 'Not permitted: the credential cannot read this column''s values.'
         not_applicable: 'Not applicable: the column has too many distinct values to be reference data.'
-        measured_nothing: 'Measured: the column''s values match no valid-value set in the platform.'
+        nothing_found: 'Measured: the column''s values match no valid-value set in the platform.'
       extents:
       - name: matches
         fields: [column_path, verdict, matched_display_name, confidence, statement]
@@ -2825,7 +2825,7 @@ database_analyses:
         not_measured: 'Not collected: no JSON, JSONB or XML value was sampled from this column.'
         not_permitted: 'Not permitted: the credential cannot read this column''s values.'
         not_applicable: 'Not applicable: the engine does not support sampling this column''s values.'
-        measured_nothing: 'Measured: every sampled value is a scalar — a finding (possibly a misclassified column),
+        nothing_found: 'Measured: every sampled value is a scalar — a finding (possibly a misclassified column),
           not "no nested structure".'
       extents:
       - name: columns
@@ -2878,7 +2878,7 @@ database_analyses:
         not_permitted: 'Not permitted: the credential that surveyed this database could not read the view definitions,
           so it is not measured.'
         not_applicable: 'Not applicable: this database defines no views to parse.'
-        measured_nothing: 'Measured: no view depends on another, and none carries column lineage.'
+        nothing_found: 'Measured: no view depends on another, and none carries column lineage.'
       extents:
       - name: views
         fields: [qualified_name, kind, dependencies, complexity.complexity_score]
@@ -2925,7 +2925,7 @@ database_analyses:
         not_permitted: 'Not permitted: Egeria''s survey engine could not connect to this database with its configured
           credential.'
         not_applicable: 'Not applicable: Egeria has no native survey for this database''s technology type.'
-        measured_nothing: 'Measured: Egeria''s native survey finished and wrote no annotations.'
+        nothing_found: 'Measured: Egeria''s native survey finished and wrote no annotations.'
       extents:
       - name: status
         fields: [status]
@@ -2990,7 +2990,7 @@ database_analyses:
         not_permitted: 'Not permitted: the survey that stored the activity snapshots could not read this
           table''s counters, so no rate is held for it.'
         not_applicable: 'Not applicable: a view holds no rows of its own, so nothing is written to it.'
-        measured_nothing: 'Measured: no rows were inserted, updated or deleted over the interval.'
+        nothing_found: 'Measured: no rows were inserted, updated or deleted over the interval.'
       extents:
       - name: tables_by_write_rate
         fields:
@@ -3069,7 +3069,7 @@ database_analyses:
         not_permitted: 'Not permitted: the survey that stored the row counts could not count this table''s
           rows, so no change is held for it.'
         not_applicable: 'Not applicable: a view holds no rows of its own.'
-        measured_nothing: 'Measured: no rows changed between the two latest surveys.'
+        nothing_found: 'Measured: no rows changed between the two latest surveys.'
       extents:
       - name: tables_by_change
         fields:
@@ -3155,7 +3155,7 @@ database_analyses:
         not_permitted: 'Not permitted: the survey that stored this database''s keys could not read this
           table''s constraints, so its degree is not held.'
         not_applicable: 'Not applicable: a view has no keys of its own.'
-        measured_nothing: 'Measured: no table is referenced by enough other tables to be proposed as a hub.'
+        nothing_found: 'Measured: no table is referenced by enough other tables to be proposed as a hub.'
       extents:
       - name: proposed_hubs
         fields:
@@ -3239,7 +3239,7 @@ database_analyses:
         not_permitted: 'Not permitted: the survey that stored the table activity could not read this table''s
           statistics from pg_stat_user_tables.'
         not_applicable: 'Not applicable: a view has no planner statistics of its own.'
-        measured_nothing: 'Measured: no table whose statistics were read is stale or has never been analyzed
+        nothing_found: 'Measured: no table whose statistics were read is stale or has never been analyzed
           (a table not read, or with changes since not read, is counted separately).'
       extents:
       - name: tables_by_staleness
@@ -3336,7 +3336,7 @@ filesystem_analyses:
         not_permitted: 'Not permitted: the account running the survey cannot read this folder.'
         not_applicable: 'Not applicable: this analysis reads a file system''s own entries, and this resource holds none
           to read.'
-        measured_nothing: 'Measured: the folder is empty.'
+        nothing_found: 'Measured: the folder is empty.'
       extents:
       - name: inventory
         fields: [entry_count, file_count, directory_count, data_file_count, total_size_bytes]
@@ -3378,7 +3378,7 @@ filesystem_analyses:
           shown as unreachable.'
         not_permitted: 'Not permitted: Egeria''s engine was refused access to this path.'
         not_applicable: 'Not applicable: this resource is not a path Egeria''s engine could be asked to read.'
-        measured_nothing: 'Undecided: the probe ran and could not tell whether Egeria can read this path.'
+        nothing_found: 'Undecided: the probe ran and could not tell whether Egeria can read this path.'
       extents:
       - name: reach
         fields: [state, sentence, checked_at, surveyor, why]
@@ -3450,7 +3450,7 @@ filesystem_analyses:
         not_permitted: 'Not permitted: the walk could not read these files'' times, so no age is held for
           them.'
         not_applicable: 'Not applicable: file activity is measured for file systems only.'
-        measured_nothing: 'Measured: the walk found no files.'
+        nothing_found: 'Measured: the walk found no files.'
       extents:
       - name: activity_bands
         fields:
@@ -3525,7 +3525,7 @@ filesystem_analyses:
         not_permitted: 'Not permitted: the walk could not read this file system''s folders, so no per-file
           rows were kept to compare.'
         not_applicable: 'Not applicable: a change between walks is measured for file systems only.'
-        measured_nothing: 'Measured: no file was added, removed or modified between the two walks.'
+        nothing_found: 'Measured: no file was added, removed or modified between the two walks.'
       extents:
       - name: change_since_last_walk
         fields:
@@ -3605,7 +3605,7 @@ filesystem_analyses:
         not_permitted: 'Not permitted: the walk could not read these files, so none was hashed and none
           can be compared.'
         not_applicable: 'Not applicable: duplicate content is measured for file systems only.'
-        measured_nothing: 'Measured: no two hashed files have the same content.'
+        nothing_found: 'Measured: no two hashed files have the same content.'
       extents:
       - name: duplicate_content
         fields:
@@ -3677,7 +3677,7 @@ filesystem_analyses:
         not_measured: 'Not measured: no walk has kept per-file rows, so no name could be matched.'
         not_permitted: 'Not permitted: the walk could not list these folders, so their names are not held.'
         not_applicable: 'Not applicable: layout signals are measured for file systems only.'
-        measured_nothing: 'Measured: no project manifest or .git directory, no dated or partition folders
+        nothing_found: 'Measured: no project manifest or .git directory, no dated or partition folders
           or dictionary file, no archive or backup file on the walk.'
       extents:
       - name: layout_counts
@@ -3762,7 +3762,7 @@ filesystem_analyses:
         not_permitted: 'Not permitted: the walk could not stat these files, so no owner or mode is held
           for them.'
         not_applicable: 'Not applicable: file permissions are measured for file systems only.'
-        measured_nothing: 'Measured: no world-readable file has a secret-looking name.'
+        nothing_found: 'Measured: no world-readable file has a secret-looking name.'
       extents:
       - name: permission_counts
         fields:
@@ -3828,7 +3828,7 @@ open_data_analyses:
         not_measured: 'Not scouted: the portal did not answer, so the dataset keeps the values it had.'
         not_permitted: 'Not permitted: the portal refused the read.'
         not_applicable: 'Not applicable: the dataset is not on a portal RE can read yet.'
-        measured_nothing: 'Scouted: the portal states nothing the dataset did not already hold.'
+        nothing_found: 'Scouted: the portal states nothing the dataset did not already hold.'
       extents:
       - name: rows
         fields: [title, outcome, words]
@@ -3874,7 +3874,7 @@ open_data_analyses:
         not_measured: 'Not profiled: the file was not downloaded or could not be read, and the row says why.'
         not_permitted: 'Not permitted: the source refused the download.'
         not_applicable: 'Not applicable: the distribution is not in a format profiled here.'
-        measured_nothing: 'Profiled: the file was read and holds no rows.'
+        nothing_found: 'Profiled: the file was read and holds no rows.'
       extents:
       - name: rows
         fields: [title, outcome, words]
@@ -3920,7 +3920,7 @@ open_data_analyses:
         not_measured: 'Not refreshed: the portal did not answer, so the dataset keeps the values and the earlier look it had.'
         not_permitted: 'Not permitted: the portal refused the read.'
         not_applicable: 'Not applicable: the dataset is not on a portal RE can read yet.'
-        measured_nothing: 'No change on their side since the last look.'
+        nothing_found: 'No change on their side since the last look.'
       extents:
       - name: rows
         fields: [title, outcome, words]
@@ -3962,7 +3962,7 @@ open_data_analyses:
         not_measured: 'Not built: the licence check has no reader yet, so no licence has been judged against a purpose.'
         not_permitted: 'Not permitted: the source refused the read.'
         not_applicable: 'Not applicable: the dataset is not on a portal RE can read yet.'
-        measured_nothing: 'Measured: the source states nothing for this question.'
+        nothing_found: 'Measured: the source states nothing for this question.'
       extents:
       - name: summary
         fields: [licences_read]
@@ -4005,7 +4005,7 @@ open_data_analyses:
         not_measured: 'Not built: the cadence check has no reader yet, so no dataset has been compared with its stated cadence.'
         not_permitted: 'Not permitted: the source refused the read.'
         not_applicable: 'Not applicable: the dataset is not on a portal RE can read yet.'
-        measured_nothing: 'Measured: the source states nothing for this question.'
+        nothing_found: 'Measured: the source states nothing for this question.'
       extents:
       - name: summary
         fields: [cadence_checks]
@@ -4048,7 +4048,7 @@ open_data_analyses:
         not_measured: 'Not built: the dataset-level profile summary has no reader yet, so nothing has been summarised.'
         not_permitted: 'Not permitted: the source refused the read.'
         not_applicable: 'Not applicable: the dataset is not on a portal RE can read yet.'
-        measured_nothing: 'Measured: the source states nothing for this question.'
+        nothing_found: 'Measured: the source states nothing for this question.'
       extents:
       - name: summary
         fields: [distributions_profiled_summary]

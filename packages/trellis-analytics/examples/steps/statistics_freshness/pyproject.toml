@@ -3,7 +3,7 @@ name = "trellis-step-statistics-freshness"
 dynamic = ["version"]
 description = "Analytic Library step: how old each table's planner statistics are (last ANALYZE and VACUUM), from the activity snapshot RE stored. Installable on its own; installing it is registering it."
 requires-python = ">=3.12,<4.0"
-dependencies = ["egeria-trellis-analytics>=0.2,<0.3"]
+dependencies = ["egeria-trellis-analytics>=0.3.1,<0.4"]
 
 # Installation is registration: Resource Explorer finds the step through this entry point.
 [project.entry-points."pyegeria.analytics"]

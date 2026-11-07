@@ -50,7 +50,7 @@ MANIFEST = StepManifest(
             not_permitted=("Not permitted: the survey that stored the row counts could not count this table's rows, "
                            "so no change is held for it."),
             not_applicable="Not applicable: a view holds no rows of its own.",
-            measured_nothing="Measured: no rows changed between the two latest surveys."),
+            nothing_found="Measured: no rows changed between the two latest surveys."),
         extents=[ExtentDeclaration(
             name="tables_by_change", fields=["scope", "rowsChanged", "rowsBefore", "rowsAfter", "previousSurvey",
                                              "latestSurvey"],

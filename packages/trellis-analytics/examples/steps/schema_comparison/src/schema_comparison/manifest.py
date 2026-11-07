@@ -49,7 +49,7 @@ MANIFEST = StepManifest(
             not_permitted="Not established: RE could not read a database's stored schema inventory, so nothing "
                           "is claimed about either side.",
             not_applicable="Not applicable: the two members are not both databases.",
-            measured_nothing="Measured: neither database holds a table, so there is no schema to compare."),
+            nothing_found="Measured: neither database holds a table, so there is no schema to compare."),
         extents=[ExtentDeclaration(
             name="comparison", source=["."],
             fields=["database_1", "database_2", "schema_relation", "schema_similarity", "tables_on_union",

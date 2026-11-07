@@ -1,5 +1,8 @@
 # Review — where extensibility stands, against egeria-workspaces#603 (2026-10-30)
 
+> **Vocabulary note (2026-11-07):** the absence word `measured_nothing` was renamed `nothing_found` (trellis-analytics 0.3); this document now uses the new word. Results stored with the old word are still read.
+
+
 > Superseded in part by Q2(b) (#956) and pyegeria 6.2.18 (#959): analytics register through `pyegeria.analytics`, report specs through `pyegeria.report_specs`; `PYEGERIA_REPORT_SPEC_MODULES` is deprecated in 6.2.18 and removed in 6.2.19; dotted function paths are refused in 6.2.19 (pyegeria side: [ISSUE-173](https://github.com/odpi/egeria-python/blob/main/PYEGERIA_ISSUES.md) in egeria-python's PYEGERIA_ISSUES.md, [odpi/egeria-python#523](https://github.com/odpi/egeria-python/pull/523)). This review was read against pyegeria 6.2.16; the registry-only resolver §2.3 calls still open was closed by 6.2.17 (#516).
 
 Owner's words (architect chat, 2026-10-30): "lets review where we are on extensibility - there was an original design
@@ -40,7 +43,7 @@ matter. Item by item:
 
 | # | #603 lesson / contract field | RE today | Verdict |
 |---|---|---|---|
-| 1 | unknown ≠ 0 → `status: measured/not_measured/partial` | result states measured / not_measured / not_permitted / not_applicable / measured_nothing, each with a declared sentence (`AbsenceSentences`); find-absence-as-answer skill; status-words-from-proof-rows rule | **covered, and stronger** (five states, sentences declared) |
+| 1 | unknown ≠ 0 → `status: measured/not_measured/partial` | result states measured / not_measured / not_permitted / not_applicable / nothing_found, each with a declared sentence (`AbsenceSentences`); find-absence-as-answer skill; status-words-from-proof-rows rule | **covered, and stronger** (five states, sentences declared) |
 | 2 | existence ≠ outcome | step_runs + result states; ENGINE_REPORT_WORDS for Egeria engine reports; F-list items on "ran" vs "measured" | covered for RE's runs; the SurveyReport completion-status convention (#603 §8.1) is still Egeria/Java-side, open |
 | 3 | exclusive categories, `sums_to` | not declared; `result_kind` graph/measure says nothing about whether categories overlap or sum to a stated total | **gap** — add `categories: exclusive|overlapping` + `sums_to` to `Declaration` for graph/measure kinds, so a renderer can refuse to stack bars that double count |
 | 4 | capped page = lower bound → `capped` | `ExtentDeclaration.truncation` covers chat extents only; measures have no `capped` | **gap** — add `capped: bool` (and the words "at least") to the measure result; withhold derived figures when set |

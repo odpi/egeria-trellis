@@ -10,7 +10,7 @@ catalogue entry carries a declaration (`trellis_analytics.declaration.Declaratio
   does not carry is said as `(none)`, an extent whose rows are not in the result is said to be absent from it.
 - **Step 3, absences in words.** An analysis that has not run or could not run enters the context as its declared
   absence sentence (in the instructions section, `absence_lines`), and one that ran and found nothing carries its
-  `measured_nothing` sentence under its measures, so the model cannot read "never measured" as "nothing there".
+  `nothing_found` sentence under its measures, so the model cannot read "never measured" as "nothing there".
 - **Step 4, omissions said.** A declared section the budget or the section cap left out is named in the context
   with its declared token cost (`omission_line`), so an answer never pretends to have seen what was dropped.
 - **Confidence (§4).** Each section says its form and basis on its own line, where the numbers are; the compile's
@@ -403,7 +403,7 @@ def section_rungs(analysis_id: str, dec, fact: dict, records: dict | None = None
     scope = dec.scope or "resource"
     seen["as_of"] = as_of
     measures = _measure_lines(dec, value, run, records)
-    lead = [head] + measures + ([dec.absence.sentence("measured_nothing")] if state == "nothing_found" else [])
+    lead = [head] + measures + ([dec.absence.sentence("nothing_found")] if state == "nothing_found" else [])
     cats = declared_words.categories_line(dec, value, run)
     if cats:
         lead.append(cats)

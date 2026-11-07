@@ -3,7 +3,7 @@ name = "trellis-step-schema-comparison"
 dynamic = ["version"]
 description = "Analytic Library step: is the schema of database 1 the same as the schema of database 2? A relation with a degree (identical, subset, superset, overlapping, disjoint, not established), never yes/no, from the schema inventories RE stored. A set step: run on a work list of two databases. Installable on its own; installing it is registering it."
 requires-python = ">=3.12,<4.0"
-dependencies = ["egeria-trellis-analytics>=0.2,<0.3"]
+dependencies = ["egeria-trellis-analytics>=0.3.1,<0.4"]
 
 # Installation is registration: Resource Explorer finds the step through this entry point.
 [project.entry-points."pyegeria.analytics"]

@@ -48,7 +48,7 @@ MANIFEST = StepManifest(
             not_permitted=("Not permitted: the survey that stored the table activity could not read this table's "
                            "statistics from pg_stat_user_tables."),
             not_applicable="Not applicable: a view has no planner statistics of its own.",
-            measured_nothing=("Measured: no table whose statistics were read is stale or has never been analyzed "
+            nothing_found=("Measured: no table whose statistics were read is stale or has never been analyzed "
                               "(a table not read, or with changes since not read, is counted separately).")),
         extents=[ExtentDeclaration(
             name="tables_by_staleness", fields=["scope", "Statistics Status", "Days Since Analyze",

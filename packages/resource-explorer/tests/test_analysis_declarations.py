@@ -58,7 +58,7 @@ def test_every_declared_measure_has_a_unit_and_an_as_of_and_every_absence_a_sent
     for e in _entries():
         for m in e.declaration.measures:
             assert m.unit.strip() and m.as_of.strip() and m.value_field.strip(), (e.id, m.name)
-        for s in ("not_measured", "not_permitted", "not_applicable", "measured_nothing"):
+        for s in ("not_measured", "not_permitted", "not_applicable", "nothing_found"):
             assert e.declaration.absence.sentence(s).strip(), (e.id, s)
 
 
@@ -114,7 +114,7 @@ def test_to_dict_carries_the_declaration():
 
 # ── the reader's refusals ──────────────────────────────────────────────────
 
-ABSENCE = {"not_measured": "a", "not_permitted": "b", "not_applicable": "c", "measured_nothing": "d"}
+ABSENCE = {"not_measured": "a", "not_permitted": "b", "not_applicable": "c", "nothing_found": "d"}
 
 
 def _raw(declaration, **over):

@@ -435,7 +435,7 @@ export function readEnvelope(entry, env, esc, tnum) {
  * `glyphOf` (glyphs.js) is passed in, as `esc` is: this module imports nothing a node-run copy of it cannot resolve. */
 
 /** A declared absence state -> the house mark it is drawn with (glyphs.js). */
-export const TABLE_STATE_MARK = { measured: 'measured', measured_nothing: 'nothing', not_measured: 'not_measured',
+export const TABLE_STATE_MARK = { measured: 'measured', nothing_found: 'nothing', measured_nothing: 'nothing' /* stored before 0.3 */, not_measured: 'not_measured',
   not_permitted: 'no_access', not_applicable: 'optional' };
 
 /** One cell. `absent` cells read their column's absence word, muted; a state cell is its mark and its word. */

@@ -47,7 +47,7 @@ dependencies = [
     # Declared here for the reason trellis-auth is: a root [tool.uv.sources] entry makes a
     # package available, not required. trellis-analytics-re's own `re` extra points back at
     # this package; that is an optional edge.
-    "egeria-trellis-analytics>=0.2,<0.3",
+    "egeria-trellis-analytics>=0.3.1,<0.4",
     "trellis-analytics-re",
     # Embeddings & LLM
     "sentence-transformers>=3.3.0",
