@@ -1,0 +1,959 @@
+{
+ "startingElement": {
+  "headerVersion": 0,
+  "status": "ACTIVE",
+  "type": {
+   "typeId": "7ae66fcc-09be-4d16-b39f-b5e299473586",
+   "typeName": "GovernanceActionProcessStep",
+   "superTypeNames": [
+    "GovernanceActionType",
+    "GovernanceAction",
+    "GovernanceControl",
+    "GovernanceDefinition",
+    "AuthoredReferenceable",
+    "Referenceable",
+    "OpenMetadataRoot"
+   ],
+   "typeVersion": 1,
+   "typeDescription": "A description of a call to perform a step in a governance action process.  This acts as a template when creating the appropriate engine action instance.",
+   "typeCategory": "ENTITY_DEF"
+  },
+  "origin": {
+   "sourceServer": "qs-metadata-store",
+   "originCategory": "LOCAL_COHORT",
+   "homeMetadataCollectionId": "9905c3cb-94c5-4494-9229-0d6f69c0b842",
+   "homeMetadataCollectionName": "qs-metadata-store"
+  },
+  "versions": {
+   "createdBy": "resourceexplorernpa",
+   "updatedBy": "resourceexplorernpa",
+   "maintainedBy": [
+    "resourceexplorernpa"
+   ],
+   "createTime": "2026-11-07T16:08:44.861+00:00",
+   "updateTime": "2026-11-07T16:08:44.861+00:00",
+   "version": 1,
+   "lastRequestId": "f6f0297f-2012-48f4-848b-892b568e6c4e"
+  },
+  "elementGUID": "baa02861-6f98-4155-8eed-fbc2d4fa1652",
+  "classifications": [
+   {
+    "class": "AttachedClassification",
+    "headerVersion": 0,
+    "status": "ACTIVE",
+    "type": {
+     "typeId": "aa44f302-2e43-4669-a1e7-edaae414fc6e",
+     "typeName": "Anchors",
+     "typeVersion": 1,
+     "typeDescription": "Identifies the anchor entity for an element that is part of a large composite object such as an asset.",
+     "typeCategory": "CLASSIFICATION_DEF"
+    },
+    "origin": {
+     "sourceServer": "qs-metadata-store",
+     "originCategory": "LOCAL_COHORT",
+     "homeMetadataCollectionId": "9905c3cb-94c5-4494-9229-0d6f69c0b842",
+     "homeMetadataCollectionName": "qs-metadata-store"
+    },
+    "versions": {
+     "createdBy": "resourceexplorernpa",
+     "updatedBy": "resourceexplorernpa",
+     "maintainedBy": [
+      "resourceexplorernpa"
+     ],
+     "createTime": "2026-11-07T16:08:44.860+00:00",
+     "updateTime": "2026-11-07T16:08:44.860+00:00",
+     "version": 1,
+     "lastRequestId": "f6f0297f-2012-48f4-848b-892b568e6c4e"
+    },
+    "classificationOrigin": "ASSIGNED",
+    "classificationName": "Anchors",
+    "classificationProperties": {
+     "propertyValueMap": {
+      "anchorTypeName": {
+       "class": "PrimitiveTypePropertyValue",
+       "typeName": "string",
+       "primitiveTypeCategory": "OM_PRIMITIVE_TYPE_STRING",
+       "primitiveValue": "GovernanceActionProcessStep"
+      },
+      "anchorDomainName": {
+       "class": "PrimitiveTypePropertyValue",
+       "typeName": "string",
+       "primitiveTypeCategory": "OM_PRIMITIVE_TYPE_STRING",
+       "primitiveValue": "AuthoredReferenceable"
+      }
+     },
+     "propertyCount": 2,
+     "propertiesAsStrings": {
+      "anchorTypeName": "GovernanceActionProcessStep",
+      "anchorDomainName": "AuthoredReferenceable"
+     },
+     "propertyNames": [
+      "anchorTypeName",
+      "anchorDomainName"
+     ]
+    }
+   }
+  ],
+  "elementProperties": {
+   "propertyValueMap": {
+    "versionIdentifier": {
+     "class": "PrimitiveTypePropertyValue",
+     "typeName": "string",
+     "primitiveTypeCategory": "OM_PRIMITIVE_TYPE_STRING",
+     "primitiveValue": "1.0"
+    },
+    "domainIdentifier": {
+     "class": "PrimitiveTypePropertyValue",
+     "typeName": "int",
+     "primitiveTypeCategory": "OM_PRIMITIVE_TYPE_INT",
+     "primitiveValue": 0
+    },
+    "producedGuards": {
+     "class": "ArrayTypePropertyValue",
+     "typeName": "array<string>",
+     "arrayCount": 4,
+     "arrayValues": {
+      "propertyValueMap": {
+       "0": {
+        "class": "PrimitiveTypePropertyValue",
+        "typeName": "string",
+        "primitiveTypeCategory": "OM_PRIMITIVE_TYPE_STRING",
+        "primitiveValue": "survey-completed"
+       },
+       "1": {
+        "class": "PrimitiveTypePropertyValue",
+        "typeName": "string",
+        "primitiveTypeCategory": "OM_PRIMITIVE_TYPE_STRING",
+        "primitiveValue": "survey-invalid"
+       },
+       "2": {
+        "class": "PrimitiveTypePropertyValue",
+        "typeName": "string",
+        "primitiveTypeCategory": "OM_PRIMITIVE_TYPE_STRING",
+        "primitiveValue": "survey-failed"
+       },
+       "3": {
+        "class": "PrimitiveTypePropertyValue",
+        "typeName": "string",
+        "primitiveTypeCategory": "OM_PRIMITIVE_TYPE_STRING",
+        "primitiveValue": "Any"
+       }
+      },
+      "propertyCount": 4,
+      "propertiesAsStrings": {
+       "0": "survey-completed",
+       "1": "survey-invalid",
+       "2": "survey-failed",
+       "3": "Any"
+      },
+      "propertyNames": [
+       "0",
+       "1",
+       "2",
+       "3"
+      ]
+     }
+    },
+    "ignoreMultipleTriggers": {
+     "class": "PrimitiveTypePropertyValue",
+     "typeName": "boolean",
+     "primitiveTypeCategory": "OM_PRIMITIVE_TYPE_BOOLEAN",
+     "primitiveValue": true
+    },
+    "displayName": {
+     "class": "PrimitiveTypePropertyValue",
+     "typeName": "string",
+     "primitiveTypeCategory": "OM_PRIMITIVE_TYPE_STRING",
+     "primitiveValue": "Database Scouting Scan \u2014 Postgres Schema And Stats"
+    },
+    "qualifiedName": {
+     "class": "PrimitiveTypePropertyValue",
+     "typeName": "string",
+     "primitiveTypeCategory": "OM_PRIMITIVE_TYPE_STRING",
+     "primitiveValue": "GovActionProcessStep::DatabaseScoutingSurvey::postgres_schema_and_stats"
+    },
+    "description": {
+     "class": "PrimitiveTypePropertyValue",
+     "typeName": "string",
+     "primitiveTypeCategory": "OM_PRIMITIVE_TYPE_STRING",
+     "primitiveValue": "Schema, table and column inventory plus row-count/size statistics."
+    },
+    "additionalProperties": {
+     "class": "MapTypePropertyValue",
+     "typeName": "map<string,string>",
+     "mapValues": {
+      "propertyValueMap": {
+       "re_analysis_step": {
+        "class": "PrimitiveTypePropertyValue",
+        "typeName": "string",
+        "primitiveTypeCategory": "OM_PRIMITIVE_TYPE_STRING",
+        "primitiveValue": "postgres_schema_and_stats"
+       },
+       "supported_technology_type": {
+        "class": "PrimitiveTypePropertyValue",
+        "typeName": "string",
+        "primitiveTypeCategory": "OM_PRIMITIVE_TYPE_STRING",
+        "primitiveValue": "PostgreSQL Database"
+       },
+       "executes_at": {
+        "class": "PrimitiveTypePropertyValue",
+        "typeName": "string",
+        "primitiveTypeCategory": "OM_PRIMITIVE_TYPE_STRING",
+        "primitiveValue": "resource-explorer"
+       }
+      },
+      "propertyCount": 3,
+      "propertiesAsStrings": {
+       "supported_technology_type": "PostgreSQL Database",
+       "re_analysis_step": "postgres_schema_and_stats",
+       "executes_at": "resource-explorer"
+      },
+      "propertyNames": [
+       "supported_technology_type",
+       "re_analysis_step",
+       "executes_at"
+      ]
+     },
+     "mapElementCount": 3
+    },
+    "waitTime": {
+     "class": "PrimitiveTypePropertyValue",
+     "typeName": "int",
+     "primitiveTypeCategory": "OM_PRIMITIVE_TYPE_INT",
+     "primitiveValue": 0
+    },
+    "contentStatus": {
+     "class": "EnumTypePropertyValue",
+     "typeName": "ContentStatus",
+     "symbolicName": "ACTIVE"
+    }
+   },
+   "propertyCount": 10,
+   "propertiesAsStrings": {
+    "versionIdentifier": "1.0",
+    "domainIdentifier": "0",
+    "producedGuards": "{0=survey-completed, 1=survey-invalid, 2=survey-failed, 3=Any}",
+    "ignoreMultipleTriggers": "true",
+    "displayName": "Database Scouting Scan \u2014 Postgres Schema And Stats",
+    "qualifiedName": "GovActionProcessStep::DatabaseScoutingSurvey::postgres_schema_and_stats",
+    "description": "Schema, table and column inventory plus row-count/size statistics.",
+    "additionalProperties": "{supported_technology_type=PostgreSQL Database, re_analysis_step=postgres_schema_and_stats, executes_at=resource-explorer}",
+    "waitTime": "0",
+    "contentStatus": "ACTIVE"
+   },
+   "propertyNames": [
+    "versionIdentifier",
+    "domainIdentifier",
+    "producedGuards",
+    "ignoreMultipleTriggers",
+    "displayName",
+    "qualifiedName",
+    "description",
+    "additionalProperties",
+    "waitTime",
+    "contentStatus"
+   ]
+  }
+ },
+ "elementList": [
+  {
+   "headerVersion": 0,
+   "status": "ACTIVE",
+   "type": {
+    "typeId": "f672245f-35b5-4ca7-b645-014cf61d5b75",
+    "typeName": "GovernanceActionExecutor",
+    "typeVersion": 1,
+    "typeDescription": "Link between a governance action type, or process step, and the governance engine that will execute it.",
+    "typeCategory": "RELATIONSHIP_DEF"
+   },
+   "origin": {
+    "sourceServer": "qs-metadata-store",
+    "originCategory": "LOCAL_COHORT",
+    "homeMetadataCollectionId": "9905c3cb-94c5-4494-9229-0d6f69c0b842",
+    "homeMetadataCollectionName": "qs-metadata-store"
+   },
+   "versions": {
+    "createdBy": "resourceexplorernpa",
+    "updatedBy": "resourceexplorernpa",
+    "maintainedBy": [
+     "resourceexplorernpa"
+    ],
+    "createTime": "2026-11-07T16:22:50.969+00:00",
+    "updateTime": "2026-11-07T16:22:50.969+00:00",
+    "version": 1,
+    "lastRequestId": "57717631-76eb-45e2-905b-56792bb2927d"
+   },
+   "relationshipGUID": "c71d6a75-fdbd-44bc-87c6-5a86330903ce",
+   "relationshipProperties": {
+    "propertyValueMap": {
+     "requestType": {
+      "class": "PrimitiveTypePropertyValue",
+      "typeName": "string",
+      "primitiveTypeCategory": "OM_PRIMITIVE_TYPE_STRING",
+      "primitiveValue": "re-postgres-schema-and-stats"
+     }
+    },
+    "propertyCount": 1,
+    "propertiesAsStrings": {
+     "requestType": "re-postgres-schema-and-stats"
+    },
+    "propertyNames": [
+     "requestType"
+    ]
+   },
+   "element": {
+    "headerVersion": 0,
+    "status": "ACTIVE",
+    "type": {
+     "typeId": "9a6f3982-ebc0-4002-8762-21d415a0c21d",
+     "typeName": "SurveyActionEngine",
+     "superTypeNames": [
+      "GovernanceEngine",
+      "Engine",
+      "SoftwareCapability",
+      "Referenceable",
+      "OpenMetadataRoot"
+     ],
+     "typeVersion": 1,
+     "typeDescription": "A governance engine for managing the surveying of real-world resources and capturing the results in survey report attached to the associated asset.",
+     "typeCategory": "ENTITY_DEF"
+    },
+    "origin": {
+     "sourceServer": "qs-metadata-store",
+     "originCategory": "LOCAL_COHORT",
+     "homeMetadataCollectionId": "9905c3cb-94c5-4494-9229-0d6f69c0b842",
+     "homeMetadataCollectionName": "qs-metadata-store"
+    },
+    "versions": {
+     "createdBy": "resourceexplorernpa",
+     "updatedBy": "resourceexplorernpa",
+     "maintainedBy": [
+      "resourceexplorernpa"
+     ],
+     "createTime": "2026-11-07T16:20:22.239+00:00",
+     "updateTime": "2026-11-07T16:20:22.239+00:00",
+     "version": 1,
+     "lastRequestId": "71b0ba05-2261-427a-a576-ac8167d6af2b"
+    },
+    "elementGUID": "5a5d113f-4d5f-4366-acf2-913c91d9a866",
+    "classifications": [
+     {
+      "class": "AttachedClassification",
+      "headerVersion": 0,
+      "status": "ACTIVE",
+      "type": {
+       "typeId": "aa44f302-2e43-4669-a1e7-edaae414fc6e",
+       "typeName": "Anchors",
+       "typeVersion": 1,
+       "typeDescription": "Identifies the anchor entity for an element that is part of a large composite object such as an asset.",
+       "typeCategory": "CLASSIFICATION_DEF"
+      },
+      "origin": {
+       "sourceServer": "qs-metadata-store",
+       "originCategory": "LOCAL_COHORT",
+       "homeMetadataCollectionId": "9905c3cb-94c5-4494-9229-0d6f69c0b842",
+       "homeMetadataCollectionName": "qs-metadata-store"
+      },
+      "versions": {
+       "createdBy": "resourceexplorernpa",
+       "updatedBy": "resourceexplorernpa",
+       "maintainedBy": [
+        "resourceexplorernpa"
+       ],
+       "createTime": "2026-11-07T16:20:22.236+00:00",
+       "updateTime": "2026-11-07T16:20:22.236+00:00",
+       "version": 1,
+       "lastRequestId": "71b0ba05-2261-427a-a576-ac8167d6af2b"
+      },
+      "classificationOrigin": "ASSIGNED",
+      "classificationName": "Anchors",
+      "classificationProperties": {
+       "propertyValueMap": {
+        "anchorTypeName": {
+         "class": "PrimitiveTypePropertyValue",
+         "typeName": "string",
+         "primitiveTypeCategory": "OM_PRIMITIVE_TYPE_STRING",
+         "primitiveValue": "SurveyActionEngine"
+        },
+        "anchorDomainName": {
+         "class": "PrimitiveTypePropertyValue",
+         "typeName": "string",
+         "primitiveTypeCategory": "OM_PRIMITIVE_TYPE_STRING",
+         "primitiveValue": "SoftwareCapability"
+        }
+       },
+       "propertyCount": 2,
+       "propertiesAsStrings": {
+        "anchorTypeName": "SurveyActionEngine",
+        "anchorDomainName": "SoftwareCapability"
+       },
+       "propertyNames": [
+        "anchorTypeName",
+        "anchorDomainName"
+       ]
+      }
+     }
+    ],
+    "elementProperties": {
+     "propertyValueMap": {
+      "description": {
+       "class": "PrimitiveTypePropertyValue",
+       "typeName": "string",
+       "primitiveTypeCategory": "OM_PRIMITIVE_TYPE_STRING",
+       "primitiveValue": "Resource Explorer's survey engine. It is hosted by Resource Explorer's worker, outside any Egeria engine host (Q-M4): no Java engine host configuration may list it, or a JVM host races Resource Explorer for every claim."
+      },
+      "qualifiedName": {
+       "class": "PrimitiveTypePropertyValue",
+       "typeName": "string",
+       "primitiveTypeCategory": "OM_PRIMITIVE_TYPE_STRING",
+       "primitiveValue": "ResourceExplorerSurvey"
+      },
+      "displayName": {
+       "class": "PrimitiveTypePropertyValue",
+       "typeName": "string",
+       "primitiveTypeCategory": "OM_PRIMITIVE_TYPE_STRING",
+       "primitiveValue": "Resource Explorer Survey Engine"
+      }
+     },
+     "propertyCount": 3,
+     "propertiesAsStrings": {
+      "qualifiedName": "ResourceExplorerSurvey",
+      "displayName": "Resource Explorer Survey Engine",
+      "description": "Resource Explorer's survey engine. It is hosted by Resource Explorer's worker, outside any Egeria engine host (Q-M4): no Java engine host configuration may list it, or a JVM host races Resource Explorer for every claim."
+     },
+     "propertyNames": [
+      "description",
+      "qualifiedName",
+      "displayName"
+     ]
+    }
+   },
+   "elementAtEnd1": false
+  },
+  {
+   "headerVersion": 0,
+   "status": "ACTIVE",
+   "type": {
+    "typeId": "d9567840-9904-43a5-990b-4585c0446e00",
+    "typeName": "NextGovernanceActionProcessStep",
+    "typeVersion": 1,
+    "typeDescription": "Link between two process steps in a governance action process flow.",
+    "typeCategory": "RELATIONSHIP_DEF"
+   },
+   "origin": {
+    "sourceServer": "qs-metadata-store",
+    "originCategory": "LOCAL_COHORT",
+    "homeMetadataCollectionId": "9905c3cb-94c5-4494-9229-0d6f69c0b842",
+    "homeMetadataCollectionName": "qs-metadata-store"
+   },
+   "versions": {
+    "createdBy": "resourceexplorernpa",
+    "updatedBy": "resourceexplorernpa",
+    "maintainedBy": [
+     "resourceexplorernpa"
+    ],
+    "createTime": "2026-11-07T16:08:45.640+00:00",
+    "updateTime": "2026-11-07T16:08:45.640+00:00",
+    "version": 1,
+    "lastRequestId": "f42bcd6b-0d30-4a50-ba0c-b91c87b2f176"
+   },
+   "relationshipGUID": "ff783b4d-018e-417d-9334-0968a7588fff",
+   "relationshipProperties": {
+    "propertyValueMap": {
+     "guard": {
+      "class": "PrimitiveTypePropertyValue",
+      "typeName": "string",
+      "primitiveTypeCategory": "OM_PRIMITIVE_TYPE_STRING",
+      "primitiveValue": "Any"
+     },
+     "mandatoryGuard": {
+      "class": "PrimitiveTypePropertyValue",
+      "typeName": "boolean",
+      "primitiveTypeCategory": "OM_PRIMITIVE_TYPE_BOOLEAN",
+      "primitiveValue": false
+     }
+    },
+    "propertyCount": 2,
+    "propertiesAsStrings": {
+     "guard": "Any",
+     "mandatoryGuard": "false"
+    },
+    "propertyNames": [
+     "guard",
+     "mandatoryGuard"
+    ]
+   },
+   "element": {
+    "headerVersion": 0,
+    "status": "ACTIVE",
+    "type": {
+     "typeId": "7ae66fcc-09be-4d16-b39f-b5e299473586",
+     "typeName": "GovernanceActionProcessStep",
+     "superTypeNames": [
+      "GovernanceActionType",
+      "GovernanceAction",
+      "GovernanceControl",
+      "GovernanceDefinition",
+      "AuthoredReferenceable",
+      "Referenceable",
+      "OpenMetadataRoot"
+     ],
+     "typeVersion": 1,
+     "typeDescription": "A description of a call to perform a step in a governance action process.  This acts as a template when creating the appropriate engine action instance.",
+     "typeCategory": "ENTITY_DEF"
+    },
+    "origin": {
+     "sourceServer": "qs-metadata-store",
+     "originCategory": "LOCAL_COHORT",
+     "homeMetadataCollectionId": "9905c3cb-94c5-4494-9229-0d6f69c0b842",
+     "homeMetadataCollectionName": "qs-metadata-store"
+    },
+    "versions": {
+     "createdBy": "resourceexplorernpa",
+     "updatedBy": "resourceexplorernpa",
+     "maintainedBy": [
+      "resourceexplorernpa"
+     ],
+     "createTime": "2026-11-07T16:08:45.011+00:00",
+     "updateTime": "2026-11-07T16:08:45.011+00:00",
+     "version": 1,
+     "lastRequestId": "c9d83216-1454-4986-8320-825d39256c7e"
+    },
+    "elementGUID": "3746587d-3614-43a6-a2d7-e2bebd3ab510",
+    "classifications": [
+     {
+      "class": "AttachedClassification",
+      "headerVersion": 0,
+      "status": "ACTIVE",
+      "type": {
+       "typeId": "aa44f302-2e43-4669-a1e7-edaae414fc6e",
+       "typeName": "Anchors",
+       "typeVersion": 1,
+       "typeDescription": "Identifies the anchor entity for an element that is part of a large composite object such as an asset.",
+       "typeCategory": "CLASSIFICATION_DEF"
+      },
+      "origin": {
+       "sourceServer": "qs-metadata-store",
+       "originCategory": "LOCAL_COHORT",
+       "homeMetadataCollectionId": "9905c3cb-94c5-4494-9229-0d6f69c0b842",
+       "homeMetadataCollectionName": "qs-metadata-store"
+      },
+      "versions": {
+       "createdBy": "resourceexplorernpa",
+       "updatedBy": "resourceexplorernpa",
+       "maintainedBy": [
+        "resourceexplorernpa"
+       ],
+       "createTime": "2026-11-07T16:08:45.010+00:00",
+       "updateTime": "2026-11-07T16:08:45.010+00:00",
+       "version": 1,
+       "lastRequestId": "c9d83216-1454-4986-8320-825d39256c7e"
+      },
+      "classificationOrigin": "ASSIGNED",
+      "classificationName": "Anchors",
+      "classificationProperties": {
+       "propertyValueMap": {
+        "anchorTypeName": {
+         "class": "PrimitiveTypePropertyValue",
+         "typeName": "string",
+         "primitiveTypeCategory": "OM_PRIMITIVE_TYPE_STRING",
+         "primitiveValue": "GovernanceActionProcessStep"
+        },
+        "anchorDomainName": {
+         "class": "PrimitiveTypePropertyValue",
+         "typeName": "string",
+         "primitiveTypeCategory": "OM_PRIMITIVE_TYPE_STRING",
+         "primitiveValue": "AuthoredReferenceable"
+        }
+       },
+       "propertyCount": 2,
+       "propertiesAsStrings": {
+        "anchorTypeName": "GovernanceActionProcessStep",
+        "anchorDomainName": "AuthoredReferenceable"
+       },
+       "propertyNames": [
+        "anchorTypeName",
+        "anchorDomainName"
+       ]
+      }
+     }
+    ],
+    "elementProperties": {
+     "propertyValueMap": {
+      "versionIdentifier": {
+       "class": "PrimitiveTypePropertyValue",
+       "typeName": "string",
+       "primitiveTypeCategory": "OM_PRIMITIVE_TYPE_STRING",
+       "primitiveValue": "1.0"
+      },
+      "domainIdentifier": {
+       "class": "PrimitiveTypePropertyValue",
+       "typeName": "int",
+       "primitiveTypeCategory": "OM_PRIMITIVE_TYPE_INT",
+       "primitiveValue": 0
+      },
+      "producedGuards": {
+       "class": "ArrayTypePropertyValue",
+       "typeName": "array<string>",
+       "arrayCount": 4,
+       "arrayValues": {
+        "propertyValueMap": {
+         "0": {
+          "class": "PrimitiveTypePropertyValue",
+          "typeName": "string",
+          "primitiveTypeCategory": "OM_PRIMITIVE_TYPE_STRING",
+          "primitiveValue": "survey-completed"
+         },
+         "1": {
+          "class": "PrimitiveTypePropertyValue",
+          "typeName": "string",
+          "primitiveTypeCategory": "OM_PRIMITIVE_TYPE_STRING",
+          "primitiveValue": "survey-invalid"
+         },
+         "2": {
+          "class": "PrimitiveTypePropertyValue",
+          "typeName": "string",
+          "primitiveTypeCategory": "OM_PRIMITIVE_TYPE_STRING",
+          "primitiveValue": "survey-failed"
+         },
+         "3": {
+          "class": "PrimitiveTypePropertyValue",
+          "typeName": "string",
+          "primitiveTypeCategory": "OM_PRIMITIVE_TYPE_STRING",
+          "primitiveValue": "Any"
+         }
+        },
+        "propertyCount": 4,
+        "propertiesAsStrings": {
+         "0": "survey-completed",
+         "1": "survey-invalid",
+         "2": "survey-failed",
+         "3": "Any"
+        },
+        "propertyNames": [
+         "0",
+         "1",
+         "2",
+         "3"
+        ]
+       }
+      },
+      "ignoreMultipleTriggers": {
+       "class": "PrimitiveTypePropertyValue",
+       "typeName": "boolean",
+       "primitiveTypeCategory": "OM_PRIMITIVE_TYPE_BOOLEAN",
+       "primitiveValue": true
+      },
+      "qualifiedName": {
+       "class": "PrimitiveTypePropertyValue",
+       "typeName": "string",
+       "primitiveTypeCategory": "OM_PRIMITIVE_TYPE_STRING",
+       "primitiveValue": "GovActionProcessStep::DatabaseScoutingSurvey::postgres_operations"
+      },
+      "displayName": {
+       "class": "PrimitiveTypePropertyValue",
+       "typeName": "string",
+       "primitiveTypeCategory": "OM_PRIMITIVE_TYPE_STRING",
+       "primitiveValue": "Database Scouting Scan \u2014 Postgres Operations"
+      },
+      "description": {
+       "class": "PrimitiveTypePropertyValue",
+       "typeName": "string",
+       "primitiveTypeCategory": "OM_PRIMITIVE_TYPE_STRING",
+       "primitiveValue": "privilege_audit, db_activity_signals, db_resilience, db_external_dependencies."
+      },
+      "additionalProperties": {
+       "class": "MapTypePropertyValue",
+       "typeName": "map<string,string>",
+       "mapValues": {
+        "propertyValueMap": {
+         "re_analysis_step": {
+          "class": "PrimitiveTypePropertyValue",
+          "typeName": "string",
+          "primitiveTypeCategory": "OM_PRIMITIVE_TYPE_STRING",
+          "primitiveValue": "postgres_operations"
+         },
+         "supported_technology_type": {
+          "class": "PrimitiveTypePropertyValue",
+          "typeName": "string",
+          "primitiveTypeCategory": "OM_PRIMITIVE_TYPE_STRING",
+          "primitiveValue": "PostgreSQL Database"
+         },
+         "executes_at": {
+          "class": "PrimitiveTypePropertyValue",
+          "typeName": "string",
+          "primitiveTypeCategory": "OM_PRIMITIVE_TYPE_STRING",
+          "primitiveValue": "resource-explorer"
+         }
+        },
+        "propertyCount": 3,
+        "propertiesAsStrings": {
+         "supported_technology_type": "PostgreSQL Database",
+         "re_analysis_step": "postgres_operations",
+         "executes_at": "resource-explorer"
+        },
+        "propertyNames": [
+         "supported_technology_type",
+         "re_analysis_step",
+         "executes_at"
+        ]
+       },
+       "mapElementCount": 3
+      },
+      "waitTime": {
+       "class": "PrimitiveTypePropertyValue",
+       "typeName": "int",
+       "primitiveTypeCategory": "OM_PRIMITIVE_TYPE_INT",
+       "primitiveValue": 0
+      },
+      "contentStatus": {
+       "class": "EnumTypePropertyValue",
+       "typeName": "ContentStatus",
+       "symbolicName": "ACTIVE"
+      }
+     },
+     "propertyCount": 10,
+     "propertiesAsStrings": {
+      "versionIdentifier": "1.0",
+      "domainIdentifier": "0",
+      "producedGuards": "{0=survey-completed, 1=survey-invalid, 2=survey-failed, 3=Any}",
+      "ignoreMultipleTriggers": "true",
+      "qualifiedName": "GovActionProcessStep::DatabaseScoutingSurvey::postgres_operations",
+      "displayName": "Database Scouting Scan \u2014 Postgres Operations",
+      "description": "privilege_audit, db_activity_signals, db_resilience, db_external_dependencies.",
+      "additionalProperties": "{supported_technology_type=PostgreSQL Database, re_analysis_step=postgres_operations, executes_at=resource-explorer}",
+      "waitTime": "0",
+      "contentStatus": "ACTIVE"
+     },
+     "propertyNames": [
+      "versionIdentifier",
+      "domainIdentifier",
+      "producedGuards",
+      "ignoreMultipleTriggers",
+      "qualifiedName",
+      "displayName",
+      "description",
+      "additionalProperties",
+      "waitTime",
+      "contentStatus"
+     ]
+    }
+   },
+   "elementAtEnd1": false
+  },
+  {
+   "headerVersion": 0,
+   "status": "ACTIVE",
+   "type": {
+    "typeId": "5f6ddee5-31ea-4d4f-9c3f-00ad2fcb2aa0",
+    "typeName": "GovernanceActionProcessFlow",
+    "typeVersion": 1,
+    "typeDescription": "A link between a governance action process and its first process step.",
+    "typeCategory": "RELATIONSHIP_DEF"
+   },
+   "origin": {
+    "sourceServer": "qs-metadata-store",
+    "originCategory": "LOCAL_COHORT",
+    "homeMetadataCollectionId": "9905c3cb-94c5-4494-9229-0d6f69c0b842",
+    "homeMetadataCollectionName": "qs-metadata-store"
+   },
+   "versions": {
+    "createdBy": "resourceexplorernpa",
+    "updatedBy": "resourceexplorernpa",
+    "maintainedBy": [
+     "resourceexplorernpa"
+    ],
+    "createTime": "2026-11-07T16:08:45.218+00:00",
+    "updateTime": "2026-11-07T16:08:45.218+00:00",
+    "version": 1,
+    "lastRequestId": "923f3b48-954b-4fd1-a910-d168e75b0876"
+   },
+   "relationshipGUID": "23355cb2-a357-4de1-a21d-9a42242dea2a",
+   "element": {
+    "headerVersion": 0,
+    "status": "ACTIVE",
+    "type": {
+     "typeId": "4d3a2b8d-9e2e-4832-b338-21c74e45b238",
+     "typeName": "GovernanceActionProcess",
+     "superTypeNames": [
+      "GovernanceAction",
+      "GovernanceControl",
+      "GovernanceDefinition",
+      "AuthoredReferenceable",
+      "Referenceable",
+      "OpenMetadataRoot"
+     ],
+     "typeVersion": 1,
+     "typeDescription": "A process implemented by chained engine actions that call governance services.",
+     "typeCategory": "ENTITY_DEF"
+    },
+    "origin": {
+     "sourceServer": "qs-metadata-store",
+     "originCategory": "LOCAL_COHORT",
+     "homeMetadataCollectionId": "9905c3cb-94c5-4494-9229-0d6f69c0b842",
+     "homeMetadataCollectionName": "qs-metadata-store"
+    },
+    "versions": {
+     "createdBy": "resourceexplorernpa",
+     "updatedBy": "resourceexplorernpa",
+     "maintainedBy": [
+      "resourceexplorernpa"
+     ],
+     "createTime": "2026-11-07T16:08:45.149+00:00",
+     "updateTime": "2026-11-07T16:08:45.149+00:00",
+     "version": 1,
+     "lastRequestId": "579d5678-e6d3-4e47-99df-236ea9ceffb5"
+    },
+    "elementGUID": "0639b0bb-663e-4e95-8c0d-e2314a1cb63d",
+    "classifications": [
+     {
+      "class": "AttachedClassification",
+      "headerVersion": 0,
+      "status": "ACTIVE",
+      "type": {
+       "typeId": "aa44f302-2e43-4669-a1e7-edaae414fc6e",
+       "typeName": "Anchors",
+       "typeVersion": 1,
+       "typeDescription": "Identifies the anchor entity for an element that is part of a large composite object such as an asset.",
+       "typeCategory": "CLASSIFICATION_DEF"
+      },
+      "origin": {
+       "sourceServer": "qs-metadata-store",
+       "originCategory": "LOCAL_COHORT",
+       "homeMetadataCollectionId": "9905c3cb-94c5-4494-9229-0d6f69c0b842",
+       "homeMetadataCollectionName": "qs-metadata-store"
+      },
+      "versions": {
+       "createdBy": "resourceexplorernpa",
+       "updatedBy": "resourceexplorernpa",
+       "maintainedBy": [
+        "resourceexplorernpa"
+       ],
+       "createTime": "2026-11-07T16:08:45.147+00:00",
+       "updateTime": "2026-11-07T16:08:45.147+00:00",
+       "version": 1,
+       "lastRequestId": "579d5678-e6d3-4e47-99df-236ea9ceffb5"
+      },
+      "classificationOrigin": "ASSIGNED",
+      "classificationName": "Anchors",
+      "classificationProperties": {
+       "propertyValueMap": {
+        "anchorTypeName": {
+         "class": "PrimitiveTypePropertyValue",
+         "typeName": "string",
+         "primitiveTypeCategory": "OM_PRIMITIVE_TYPE_STRING",
+         "primitiveValue": "GovernanceActionProcess"
+        },
+        "anchorDomainName": {
+         "class": "PrimitiveTypePropertyValue",
+         "typeName": "string",
+         "primitiveTypeCategory": "OM_PRIMITIVE_TYPE_STRING",
+         "primitiveValue": "AuthoredReferenceable"
+        }
+       },
+       "propertyCount": 2,
+       "propertiesAsStrings": {
+        "anchorTypeName": "GovernanceActionProcess",
+        "anchorDomainName": "AuthoredReferenceable"
+       },
+       "propertyNames": [
+        "anchorTypeName",
+        "anchorDomainName"
+       ]
+      }
+     }
+    ],
+    "elementProperties": {
+     "propertyValueMap": {
+      "versionIdentifier": {
+       "class": "PrimitiveTypePropertyValue",
+       "typeName": "string",
+       "primitiveTypeCategory": "OM_PRIMITIVE_TYPE_STRING",
+       "primitiveValue": "1.0"
+      },
+      "domainIdentifier": {
+       "class": "PrimitiveTypePropertyValue",
+       "typeName": "int",
+       "primitiveTypeCategory": "OM_PRIMITIVE_TYPE_INT",
+       "primitiveValue": 0
+      },
+      "qualifiedName": {
+       "class": "PrimitiveTypePropertyValue",
+       "typeName": "string",
+       "primitiveTypeCategory": "OM_PRIMITIVE_TYPE_STRING",
+       "primitiveValue": "GovActionProcess::DatabaseScoutingSurvey"
+      },
+      "displayName": {
+       "class": "PrimitiveTypePropertyValue",
+       "typeName": "string",
+       "primitiveTypeCategory": "OM_PRIMITIVE_TYPE_STRING",
+       "primitiveValue": "Database Scouting Scan"
+      },
+      "description": {
+       "class": "PrimitiveTypePropertyValue",
+       "typeName": "string",
+       "primitiveTypeCategory": "OM_PRIMITIVE_TYPE_STRING",
+       "primitiveValue": "The fast, catalog/read-tier pass over a Postgres database \u2014 schema inventory (schema_inventory), row counts (row_count_snapshot), credential visibility (credential_capability), and the operations bundle's scouting-tier half (db_activity_signals, db_resilience). postgres_operations also backs an analysis-tier analysis (db_external_dependencies) and an assessment-tier one (privilege_audit) that this step cannot be split apart from \u2014 it is chained into all three Survey Definitions (Scouting, Analysis, Assessment) as a result, each under its own qualified name, so each document's ScopedBy links only claim the questions its own analyses answer."
+      },
+      "additionalProperties": {
+       "class": "MapTypePropertyValue",
+       "typeName": "map<string,string>",
+       "mapValues": {
+        "propertyValueMap": {
+         "survey_kind": {
+          "class": "PrimitiveTypePropertyValue",
+          "typeName": "string",
+          "primitiveTypeCategory": "OM_PRIMITIVE_TYPE_STRING",
+          "primitiveValue": "scouting"
+         },
+         "supported_technology_type": {
+          "class": "PrimitiveTypePropertyValue",
+          "typeName": "string",
+          "primitiveTypeCategory": "OM_PRIMITIVE_TYPE_STRING",
+          "primitiveValue": "PostgreSQL Database"
+         }
+        },
+        "propertyCount": 2,
+        "propertiesAsStrings": {
+         "supported_technology_type": "PostgreSQL Database",
+         "survey_kind": "scouting"
+        },
+        "propertyNames": [
+         "supported_technology_type",
+         "survey_kind"
+        ]
+       },
+       "mapElementCount": 2
+      },
+      "contentStatus": {
+       "class": "EnumTypePropertyValue",
+       "typeName": "ContentStatus",
+       "symbolicName": "ACTIVE"
+      }
+     },
+     "propertyCount": 7,
+     "propertiesAsStrings": {
+      "versionIdentifier": "1.0",
+      "domainIdentifier": "0",
+      "qualifiedName": "GovActionProcess::DatabaseScoutingSurvey",
+      "displayName": "Database Scouting Scan",
+      "description": "The fast, catalog/read-tier pass over a Postgres database \u2014 schema inventory (schema_inventory), row counts (row_count_snapshot), credential visibility (credential_capability), and the operations bundle's scouting-tier half (db_activity_signals, db_resilience). postgres_operations also backs an analysis-tier analysis (db_external_dependencies) and an assessment-tier one (privilege_audit) that this step cannot be split apart from \u2014 it is chained into all three Survey Definitions (Scouting, Analysis, Assessment) as a result, each under its own qualified name, so each document's ScopedBy links only claim the questions its own analyses answer.",
+      "additionalProperties": "{supported_technology_type=PostgreSQL Database, survey_kind=scouting}",
+      "contentStatus": "ACTIVE"
+     },
+     "propertyNames": [
+      "versionIdentifier",
+      "domainIdentifier",
+      "qualifiedName",
+      "displayName",
+      "description",
+      "additionalProperties",
+      "contentStatus"
+     ]
+    }
+   },
+   "elementAtEnd1": true
+  }
+ ],
+ "mermaidGraph": "---\ntitle: Starting Element - baa02861-6f98-4155-8eed-fbc2d4fa1652\n---\nflowchart LR\n%%{init: {\"flowchart\": {\"htmlLabels\": false}} }%%\n\n1@{ shape: rounded, label: \"*Governance Action Process Step*\n**Database Scouting Scan \u2014 Postgres Schema And Stats**\"}\n2@{ shape: rounded, label: \"*Survey Action Engine*\n**Resource Explorer Survey Engine**\"}\n3@{ shape: rounded, label: \"*Governance Action Process Step*\n**Database Scouting Scan \u2014 Postgres Operations**\"}\n4@{ shape: processes, label: \"*Governance Action Process*\n**Database Scouting Scan**\"}\n1==>|\"Governance Action Executor\"|2\n1==>|\"Next Governance Action Process Step\"|3\n4==>|\"Governance Action Process Flow\"|1\nstyle 1 color:#FFFFFF, fill:#3079ab, stroke:#000000\nstyle 2 color:#000000, fill:#39add1, stroke:#004563\nstyle 3 color:#FFFFFF, fill:#3079ab, stroke:#000000\nstyle 4 color:#000000, fill:#40E0D0, stroke:#000000\n"
+}

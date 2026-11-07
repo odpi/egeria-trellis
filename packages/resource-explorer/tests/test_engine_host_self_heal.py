@@ -49,6 +49,7 @@ def _canary(monkeypatch, answer):
 # ── F54: opt-in ──────────────────────────────────────────────────────────────
 
 def test_opted_out_batch_is_read_but_never_healed_and_reported_opted_out(root, monkeypatch):
+    monkeypatch.setenv(OPT, "false")            # owner D-A (2026-11-07): ON unless set false
     _engine_batch(root)
     _canary(monkeypatch, False)
     monkeypatch.setattr(bs, "heal_batch", lambda *a, **k: pytest.fail("an opted-out batch must not be healed"))
@@ -61,13 +62,15 @@ def test_opted_out_batch_is_read_but_never_healed_and_reported_opted_out(root, m
 
 
 def test_a_forced_heal_all_still_leaves_an_opted_out_batch_alone(root, monkeypatch):
+    monkeypatch.setenv(OPT, "off")
     _engine_batch(root)
     _canary(monkeypatch, True)
     monkeypatch.setattr(bs, "heal_batch", lambda *a, **k: pytest.fail("force must not reach an opted-out batch"))
     assert bs.check_and_heal(root, force=True)["batches"]["engine-host"]["action"] == "opted_out"
 
 
-def test_never_read_opted_out_batch_reads_opted_out_not_unknown(root):
+def test_never_read_opted_out_batch_reads_opted_out_not_unknown(root, monkeypatch):
+    monkeypatch.setenv(OPT, "no")
     _engine_batch(root)
     assert bs.get_status(root)["batches"]["engine-host"]["state"] == "opted_out"
 
@@ -193,9 +196,9 @@ def test_one_batch_run_on_a_present_engine_answers_already_declared_and_writes_n
     out = bs.check_and_heal(root, only="engine-host")["batches"]["engine-host"]
     # F55: with no Egeria to verify the pending document's elements absent, the press completes nothing and says so.
     assert out["action"] == "present"
-    assert out["reason"].startswith("already declared · no run of its first document is recorded here · "
-                                    "0 of 1 documents applied · not completed: could not verify that decl.md's elements "
-                                    "are absent (")
+    assert out["reason"].startswith("already declared · no run of its first document is recorded here · NOT verified · "
+                                    "0 of 1 documents applied · not completed: could not verify decl.md's elements "
+                                    "in Egeria (")
     assert out["reason"].endswith("could not be looked up) · nothing run")
 
 
@@ -232,9 +235,10 @@ def test_price_counts_what_the_documents_declare(root, monkeypatch):
     assert price["documents"] == 1 and price["engines"] == 1 and price["services"] == 1
     assert price["governance_action_types"] == 1 and price["processes"] == 0
     assert price["applying_as"] == "resourceexplorernpa"
-    assert price["self_heal"] == {"key": OPT, "on": False, "interval_seconds": bs.CHECK_INTERVAL_SECONDS}
+    assert price["self_heal"] == {"key": OPT, "on": True, "interval_seconds": bs.CHECK_INTERVAL_SECONDS}
     assert price["words"].startswith("runs 1 Dr.Egeria document in order as resourceexplorernpa · creates 1 engine")
-    assert price["words"].endswith("with the engine present, runs only the documents not yet applied")
+    assert price["words"].endswith("with the engine present, runs only the documents whose elements are verified "
+                                   "absent · automatic heal: on (RE_ENGINE_HOST_HEAL)")
 
 
 def test_w67_the_price_carries_the_applied_count_from_the_same_run_row_read(root, reg, monkeypatch):

@@ -683,6 +683,24 @@ def _guard_repeat(registry, plan: DocumentPlan, force: bool, own_id: str = "", w
     return []
 
 
+def _repository_stamp(steps: "_Steps", plan: DocumentPlan, items: list[dict]) -> str:
+    """RE-HEAL-LEDGER-TRUST decision 2: the metadataCollectionId of the repository this run wrote to, read from the
+    header of the first element the run reports ok (one read), or "" when none can be read. Never raises: a missing
+    stamp leaves the row a hint like every row before the stamp existed (bootstrap.applied_documents)."""
+    from resource_explorer.bootstrap import repository_id_of
+
+    names = [c.element for c, i in zip(plan.commands, items)
+             if c.element and i.get("status") in (OK, WARNING) and (c.kind == "pyegeria" or c.command.startswith("Create "))]
+    for qn in names[:2]:
+        try:
+            found = repository_id_of(steps._expert().get_metadata_element_by_unique_name(qn))
+        except Exception:  # noqa: BLE001 - not known: no stamp
+            continue
+        if found:
+            return found
+    return ""
+
+
 def run_in_progress(path: str | os.PathLike, registry=None) -> dict | None:
     """The RUNNING row of this document's content whose process is alive or cannot be checked, or None. Rows whose
     owner is provably gone are first reconciled to `interrupted`, as `_guard_repeat` does. For the bootstrap's
@@ -862,6 +880,10 @@ def _run_locked(plan: DocumentPlan, *, force: bool, requested_by: str, registry,
                     indexes = [n for n, c in enumerate(plan.commands) if c.kind == "dr_egeria"]
                     for n, item in zip(indexes, results):
                         items[n] = item
+                if not failed:
+                    stamp = _repository_stamp(steps, plan, items)
+                    if stamp:
+                        detail["metadata_collection_id"] = stamp
         finally:
             if steps is not None:
                 steps.close()
