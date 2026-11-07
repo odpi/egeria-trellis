@@ -34,7 +34,7 @@ def test_the_library_is_the_installed_wheel_not_this_tree():
     dist = distribution(LIBRARY)
     pkg = Path(trellis_analytics.__file__).resolve().parent
     assert ROOT not in pkg.parents, f"trellis_analytics imported from this tree ({pkg}), not the {LIBRARY} wheel"
-    assert dist.version.startswith("0.2.")
+    assert dist.version.startswith("0.3.")
     shipped = {ep.name for ep in dist.entry_points if ep.group == "pyegeria.analytics"}
     assert shipped == {"curation_coverage", "context_pack", "curation_coverage_tile"}
     assert shipped <= set(discover(check=False))
