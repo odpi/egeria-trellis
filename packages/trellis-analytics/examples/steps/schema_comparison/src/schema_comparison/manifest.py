@@ -26,7 +26,7 @@ MANIFEST = StepManifest(
     inputs=["ods"],
     # Owner ruling 1 (2026-10-30): the schema question is an Assessment one.
     stage="assessment",
-    perspectives=["Data Owner", "Steward", "Architecture", "Consumer"],
+    perspectives=["Owner", "Steward", "Architecture", "Consumer"],
     # Q-0110: "Is the schema of database 1 the same as the schema of database 2?"; Q-0112: "Is database 1 a subset or
     # superset of database 2?" (the schema half; data_comparison, CMP2, answers the data half).
     questions=["Q-0110", "Q-0112"],

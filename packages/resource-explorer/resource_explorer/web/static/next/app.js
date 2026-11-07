@@ -5050,7 +5050,7 @@ export function renderJournalWrite(slug, entityType) {
   if (!host) return;
   const who = signedInUser();
   // An AUDIENCE is the whole Egeria vocabulary, not the filter row's
-  // subset: someone is a Data Owner whether or not any analysis is tagged
+  // subset: someone is an Owner whether or not any analysis is tagged
   // with it today. (The two are the same twelve at the moment; the point
   // is which list this one follows when they diverge.)
   const perspectives = (state.allPerspectives || state.perspectives || []).map((p) => p.name || p.id || p).filter(Boolean);

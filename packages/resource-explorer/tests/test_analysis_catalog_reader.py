@@ -233,7 +233,7 @@ class TestFilterByPerspective:
     def test_perspective_excludes_entries_not_tagged_for_it(self):
         analyses = acr.get_analyses("database", perspective="Data Expert", include_egeria_live=False)
         ids = {a["id"] for a in analyses}
-        assert "privilege_audit" not in ids  # tagged 'Security'/'Admin', no 'all'
+        assert "privilege_audit" not in ids  # tagged 'Security'/'Administration', no 'all'
         assert "schema_inventory" in ids  # tagged 'all'
 
     def test_the_retired_vocabulary_matches_nothing(self):
@@ -264,7 +264,7 @@ class TestListPerspectives:
         perspectives = acr.list_perspectives()
         assert "all" not in perspectives
         # One vocabulary now: Egeria's, from foundations.md.
-        assert "Admin" in perspectives
+        assert "Administration" in perspectives
         assert "Security" in perspectives
         assert "Steward" in perspectives
         assert "Data Expert" in perspectives

@@ -5,11 +5,11 @@
     "../_folder_order.json) — the questions batch links its terms into these glossaries, and",
     "survey definitions scope themselves against them.",
     "",
-    "Canary is keyed on qualified_name, which for Perspectives is author-controlled in",
-    "foundations.md itself (no generated org prefix or version, unlike glossary terms — see",
-    "../questions/_batch.json for the contrasting case).",
+    "UNTIL 2026-11-07 the canary was keyed on qualified_name, which for Perspectives is author-controlled",
+    "in foundations.md itself (no generated org prefix or version, unlike glossary terms — see",
+    "../questions/_batch.json for the contrasting case). It is now a display_name canary; see CANARY CHOICE below.",
     "",
-    "type is 'Perspective', a subtype of Actor (confirmed with Dan; both 'Perspective' and",
+    "Perspective type note, kept for the next canary on a Perspective: type 'Perspective' is a subtype of Actor (confirmed with the project owner; both 'Perspective' and",
     "'Actor' resolve it, 'ActorProfile' does not). Recorded because it is genuinely non-obvious:",
     "the type names you would first reach for — GlossaryTerm, ValidValueDefinition, Collection —",
     "all MISS, and a wrong type_name yields a false 'missing' rather than an error. That is the",
@@ -18,13 +18,24 @@
     "The bootstrap therefore treats type as optional and matches on qualified_name alone when it",
     "is absent, since qualified_name is globally unique by Egeria convention.",
     "",
-    "'Perspective::Admin' is the LAST element foundations.md creates, so its presence means the",
-    "document ran to completion rather than merely starting."
+    "CANARY CHOICE (changed 2026-11-07): the 'Answered At' Scope Category term, matched on display_name as a",
+    "GlossaryTerm. It used to be 'Perspective::Admin', the LAST element foundations.md created. The project owner",
+    "decided on 2026-11-07 that RE stops creating its own 'Data Owner' and 'Admin' perspectives and uses the content",
+    "pack's 'Owner' and 'Administration'. That makes all twelve Perspectives content-pack elements, which Egeria",
+    "re-seeds itself, so none of them can say whether THIS document ran: a reset that wiped the glossaries would",
+    "still show every Perspective present and the batch would never heal. 'Answered At' is the last element the",
+    "document creates that only this document creates. Everything after it is a content-pack Perspective that",
+    "exists whether or not the document ran. Verified live on 2026-11-07: exactly one GlossaryTerm has that",
+    "display name. Two would read as ambiguous (state unknown, no heal), never as missing.",
+    "",
+    "Keeping 'Perspective::Admin' as the canary would have been actively harmful. Once the coordinator retires that",
+    "element, the canary reads missing, the heal re-runs this document, and the heal still cannot make the canary",
+    "present, because the document no longer creates it. That repeats until _consecutive_failures stops it."
   ],
   "display_name": "Foundations — glossaries, funnel stages, perspectives",
   "canary": {
-    "type": "Perspective",
-    "qualified_name": "Perspective::Admin"
+    "type": "GlossaryTerm",
+    "display_name": "Answered At"
   },
   "files": [
     "foundations.md"

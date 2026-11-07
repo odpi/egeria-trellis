@@ -93,7 +93,7 @@ class TestThreeActs:
                         json={"action": "journal", "suggest_to": ["../../etc; drop"], **SEL})
         assert r.status_code == 400 and "suggest_to" in r.json()["detail"]
         ok = client.post("/api/projects/p/members/cve_scan/promote?entity_type=repo",
-                         json={"action": "journal", "suggest_to": ["Data Owner", "peterprofile"], **SEL})
+                         json={"action": "journal", "suggest_to": ["Owner", "peterprofile"], **SEL})
         assert ok.status_code == 200
 
     def test_the_run_date_is_the_servers_when_it_has_one(self, client, registry):
