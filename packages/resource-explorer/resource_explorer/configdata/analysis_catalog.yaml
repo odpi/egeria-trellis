@@ -3141,14 +3141,14 @@ database_analyses:
         value_field: Foreign Keys In
         annotation:
           type: ResourceMeasureAnnotation
-        capped_field: Referenced By Is Lower Bound
+        completeness_field: Referenced By Is Lower Bound
       - name: hub_table_proposal
         unit: tables referencing the proposed hub
         as_of: asOf
         value_field: Foreign Keys In
         annotation:
           type: ClassificationAnnotation
-        capped_field: Referenced By Is Lower Bound
+        completeness_field: Referenced By Is Lower Bound
       absence:
         not_measured: 'Not measured: no foreign keys are stored for this database, so hubs cannot be derived
           — not a finding that it has no hubs.'
@@ -3677,8 +3677,8 @@ filesystem_analyses:
         not_measured: 'Not measured: no walk has kept per-file rows, so no name could be matched.'
         not_permitted: 'Not permitted: the walk could not list these folders, so their names are not held.'
         not_applicable: 'Not applicable: layout signals are measured for file systems only.'
-        nothing_found: 'Measured: no project manifest or .git directory, no dated or partition folders
-          or dictionary file, no archive or backup file on the walk.'
+        nothing_found: 'Measured: no project manifest or .git directory, no dated or partition folders or
+          dictionary file, no archive or backup file on the walk.'
       extents:
       - name: layout_counts
         fields:
