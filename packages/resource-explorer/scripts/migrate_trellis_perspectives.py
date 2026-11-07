@@ -63,6 +63,12 @@ MIGRATIONS = (
 
 _PAGE = 100
 
+#: An explicit body for the ScopedBy link. Without one, pyegeria (through 6.2.23) builds its default body with the
+#: properties class "ScopedBy", which Egeria rejects (HTTP 400, "Could not resolve type id 'ScopedBy' as a subtype
+#: of RelationshipProperties"; seen live 2026-11-07 on the first --apply, which therefore wrote nothing). Egeria's
+#: class is "ScopedByProperties". Passing the body here avoids the default; keep it after pyegeria is fixed.
+_SCOPED_BY_BODY = {"class": "NewRelationshipRequestBody", "properties": {"class": "ScopedByProperties"}}
+
 
 class Refused(Exception):
     """A check failed. Nothing past this point is written."""
@@ -180,7 +186,7 @@ def apply_plan(plan: list[dict], explorer, actor) -> None:
             if x["guid"] in held:
                 print(f"  = already linked, skipped: {x['name']}")
                 continue
-            explorer.add_scope_to_element(target, x["guid"])
+            explorer.add_scope_to_element(target, x["guid"], body=_SCOPED_BY_BODY)
             print(f"  + linked: {x['name']}")
         after = set(scoped_elements(explorer, target))
         wanted = {x["guid"] for x in e["to_move"]} | {x["guid"] for x in e["already_on_target"]}
