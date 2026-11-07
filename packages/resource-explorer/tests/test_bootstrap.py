@@ -392,7 +392,8 @@ class TestRealManifests:
     def test_real_manifests_discover_in_dependency_order(self):
         batches = bs.discover_batches(bs.DOCS_DIR)
         ids = [b.batch_id for b in batches]
-        assert ids[:3] == ["foundations", "questions", "survey-definitions"]
+        # RE-HEAL-LEDGER-TRUST (2026-11-07): engine-host before the survey-definition batches that require it.
+        assert ids[:4] == ["foundations", "questions", "engine-host", "survey-definitions"]
 
     def test_every_real_batch_has_a_usable_canary_and_files(self):
         for b in bs.discover_batches(bs.DOCS_DIR):
@@ -425,7 +426,10 @@ class TestRunDrEgeriaRunsTheChildOnThisInterpreter:
 
         def fake_run(argv, **kwargs):
             captured["argv"], captured["env"] = argv, kwargs.get("env") or {}
-            return SimpleNamespace(returncode=0, stdout="", stderr="")
+            # Decision 3 (RE-HEAL-LEDGER-TRUST): exit 0 is ok only with a summary that shows no FAILURE row.
+            from tests.test_dr_egeria_runner import OK_OUTPUT_ROWS, _summary
+
+            return SimpleNamespace(returncode=0, stdout=_summary(OK_OUTPUT_ROWS), stderr="")
 
         monkeypatch.setattr(bs.subprocess, "run", fake_run)
         doc = tmp_path / "one.md"

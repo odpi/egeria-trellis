@@ -41,10 +41,20 @@
     "tests/test_reachability_audit.py's TestSurveyDefinitionsAreRestorable caught the three",
     "database documents living in ../survey-definitions/ with no manifest of their own — a heal",
     "would have restored only the repo definitions and left these three silently absent, with the",
-    "repo batch's own canary still reporting healthy."
+    "repo batch's own canary still reporting healthy.",
+    "",
+    "REQUIRES engine-host (RE-HEAL-LEDGER-TRUST decision 4, 2026-11-07): this batch's 'Link Action to Action",
+    "Executor' blocks link its steps to ResourceExplorerSurvey, the engine the engine-host batch declares. Healed",
+    "while that engine is absent, every link fails (Dr.Egeria: \"Referenced element 'ResourceExplorerSurvey' ...",
+    "not found\") and the definitions come back undispatchable. bootstrap heals this batch only once engine-host is",
+    "present in the same pass; otherwise it is reported blocked_by engine-host and nothing of it runs. The",
+    "report-only check scripts/reconcile_executor_links.py (post_heal_checks) says whether each step has exactly one."
   ],
   "display_name": "Database Survey Definitions",
   "idempotent": false,
+  "requires": [
+    "engine-host"
+  ],
   "canary": {
     "qualified_name": "GovActionProcess::DatabaseAnalysisSurvey"
   },
@@ -62,6 +72,14 @@
     {
       "script": "scripts/reconcile_database_survey_definition_scopes.py",
       "reason": "Report-only: ScopedBy links vs. each document's own 'Link Element To Scope' blocks. Never writes on this path — a heal must not silently remove or add scope links; it only surfaces drift for a person to act on."
+    },
+    {
+      "script": "scripts/reconcile_executor_links.py",
+      "args": [
+        "--batch",
+        "survey-definitions-database"
+      ],
+      "reason": "Report-only: exactly one Link Action to Action Executor to ResourceExplorerSurvey per GovernanceActionType this batch's documents declare. Repairs only with --apply, which the engine-host batch's own post_heal passes, not this check."
     }
   ]
 }

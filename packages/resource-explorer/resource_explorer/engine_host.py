@@ -205,9 +205,10 @@ STARTED_BY_RE = "re"
 
 ENABLE_ENV = "RE_ENGINE_HOST_ENABLED"
 
-#: F54: the engine-host bootstrap batch's opt-in (docs/dr-egeria/engine-host/_batch.json "opt_in"). On, the bootstrap
-#: re-declares RE's engine on its own when a pass finds it missing; off (the default), only Admin › Repair › "Declare
-#: RE's survey engine in Egeria" does. Independent of ENABLE_ENV, which runs the claim sweep.
+#: F54: the engine-host bootstrap batch's setting (docs/dr-egeria/engine-host/_batch.json "opt_in"). On (the default
+#: since 2026-11-07, owner D-A: unset reads on), the bootstrap re-declares RE's engine on its own when a pass finds it
+#: missing; set false, only Admin › Repair › "Declare RE's survey engine in Egeria" does. Independent of ENABLE_ENV,
+#: which runs the claim sweep.
 HEAL_ENV = "RE_ENGINE_HOST_HEAL"
 
 #: The native engine host's sweep interval (`EngineConfigurationRefreshThread.java:51`, 5000 ms).

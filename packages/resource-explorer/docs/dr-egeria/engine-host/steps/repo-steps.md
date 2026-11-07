@@ -12,7 +12,7 @@ its GovernanceActionExecutor below.
 
 Run it with `resource-explorer dr-egeria run engine-host/steps/repo-steps.md` AFTER the
 engine's own document. RE's bootstrap runs it only as part of the engine-host batch:
-by Admin › Repair › "Declare RE's survey engine in Egeria", or on its own when RE_ENGINE_HOST_HEAL is on (default off). "Link Action to Action Executor" is NOT safe to repeat; the runner
+by Admin › Repair › "Declare RE's survey engine in Egeria", or on its own unless RE_ENGINE_HOST_HEAL is set false (default on). "Link Action to Action Executor" is NOT safe to repeat; the runner
 refuses a second run of the same content unless forced. Retire a step by Content Status DEPRECATED, never by deleting.
 -->
 
