@@ -27,15 +27,16 @@ def _el(guid):
 class FakeExplorer:
     def __init__(self, scopes, page=2, fail_link=()):
         self.scopes = {k: list(v) for k, v in scopes.items()}
-        self.page, self.fail_link, self.writes = page, set(fail_link), []
+        self.page, self.fail_link, self.writes, self.bodies = page, set(fail_link), [], []
 
     def get_scoped_elements(self, scope_guid, body=None, output_format="JSON"):
         start, size = body["startFrom"], min(body["pageSize"], self.page)   # short pages, never "the last"
         items = self.scopes.get(scope_guid, [])[start:start + size]
         return [_el(g) for g in items] or "No elements found"
 
-    def add_scope_to_element(self, scoped_by_guid, element_guid):
+    def add_scope_to_element(self, scoped_by_guid, element_guid, body=None):
         self.writes.append((scoped_by_guid, element_guid))
+        self.bodies.append(body)
         if element_guid not in self.fail_link:
             self.scopes.setdefault(scoped_by_guid, []).append(element_guid)
 
@@ -101,3 +102,15 @@ def test_a_different_target_guid_refuses(resolve):
     resolve["Perspective::Owner"] = "00000000-0000-0000-0000-000000000000"
     with pytest.raises(mig.Refused):
         mig.build_plan(None, FakeExplorer({}))
+
+
+def test_every_link_sends_the_scoped_by_properties_body():
+    """pyegeria's default body says properties class "ScopedBy", which Egeria rejects with HTTP 400 (live,
+    2026-11-07). Every link must send Egeria's class name, ScopedByProperties."""
+    m = mig.MIGRATIONS[0]
+    explorer = FakeExplorer({m["source_guid"]: ["q1", "q2"], m["target_guid"]: []})
+    plan = [{**m, "source_present": True, "to_move": [{"guid": "q1", "name": "Q1"}, {"guid": "q2", "name": "Q2"}],
+             "already_on_target": []}]
+    mig.apply_plan(plan, explorer, FakeActor())
+    assert explorer.bodies and all(b == {"class": "NewRelationshipRequestBody",
+                                         "properties": {"class": "ScopedByProperties"}} for b in explorer.bodies)
