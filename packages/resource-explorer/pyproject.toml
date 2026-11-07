@@ -47,7 +47,7 @@ dependencies = [
     # Declared here for the reason trellis-auth is: a root [tool.uv.sources] entry makes a
     # package available, not required. trellis-analytics-re's own `re` extra points back at
     # this package; that is an optional edge.
-    "egeria-trellis-analytics>=0.3.1,<0.4",
+    "egeria-trellis-analytics>=0.4,<0.5",
     "trellis-analytics-re",
     # Embeddings & LLM
     "sentence-transformers>=3.3.0",
@@ -184,7 +184,10 @@ dependencies = [
     # is no longer set anywhere in trellis.
     # Raised to 6.2.19 (2026-11-02): the release that removes PYEGERIA_REPORT_SPEC_MODULES and refuses a dotted
     # analytic_function path, so a 6.2.18 venv can no longer pass tests that the 8813 containers would fail.
-    "pyegeria>=6.2.21",
+    # Raised to 6.2.24 (2026-11-07, RS-W2-1b): the release that carries egeria-python #539-#544 (the Egeria 6.3
+    # report-spec, measurement and dashboard types; exec_report_spec for MetadataExpert-backed specs), the floor the
+    # Portal runs. The library 0.4.0 tile is declared, so pyegeria's executor shows its declared absence sentence.
+    "pyegeria>=6.2.24",
     "mcp>=2.0.0",
     # nest-asyncio removed 2026-09-04 with the shared-pool refactor: RE no
     # longer imports it anywhere. Its one site, surveyors/prefect_adapter.py's

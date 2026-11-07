@@ -137,7 +137,7 @@ def _without_as_of(tile: dict) -> dict:
 
 def test_portal_flow_end_to_end_runs_as_the_token_subject(tclient, reg, monkeypatch):
     from resource_explorer.a2a_auth import current_caller
-    from trellis_analytics.portal import curation_coverage_tile
+    from trellis_analytics.portal import curation_coverage_kpi
     seen = []
     real = analytics.curation_coverage_tile_for
 
@@ -152,7 +152,7 @@ def test_portal_flow_end_to_end_runs_as_the_token_subject(tclient, reg, monkeypa
     assert r.status_code == 200
     # Same tile, one source -- but `as_of` is stamped per call, so two calls can straddle a second boundary
     # (CI flake on #651: 13:10:21Z vs 13:10:22Z). Compare everything except the per-call timestamp.
-    assert _without_as_of(r.json()) == _without_as_of(curation_coverage_tile("demo", reg.database_url, "database"))
+    assert _without_as_of(r.json()) == _without_as_of(curation_coverage_kpi("demo", reg.database_url, "database"))
     assert r.json()["state"] in ("measured", "nothing_found")
     assert seen == [("erin", "tok")]                              # the route ran as the Portal user
 
@@ -203,35 +203,48 @@ def test_tile_route_unknown_entity_type_is_404(tclient):
     assert tclient.get(f"{TILE}/spreadsheet/demo", headers=_bearer(_session(tclient))).status_code == 404
 
 
-def test_missing_library_is_not_established_not_not_applicable(tclient, monkeypatch):
+def test_a_missing_library_is_an_import_error_not_a_hand_built_tile(monkeypatch):
+    """RS-W2-1b: the library is a requirement of RE, so RE keeps no fallback tile of its own (the reshape is gone).
+    A missing library is a broken install, and the route says so instead of drawing a tile."""
     real = builtins.__import__
 
     def deny(name, *a, **kw):
         if name.startswith("trellis_analytics"):
             raise ImportError("No module named 'trellis_analytics'", name="trellis_analytics")
         return real(name, *a, **kw)
-    session = _session(tclient)
     monkeypatch.setattr(builtins, "__import__", deny)
-    r = tclient.get(f"{TILE}/database/demo", headers=_bearer(session))
-    assert r.status_code == 200
-    body = r.json()
-    assert body["state"] == "not_established"
-    assert body["state_reason"] == "the Analytic Library is not installed on this RE"
+    with pytest.raises(ImportError, match="trellis_analytics"):
+        analytics.curation_coverage_tile_for("database", "demo", "sqlite:///x")
 
 
-def test_a_transitive_import_error_surfaces_it_is_not_a_missing_library():
-    def broken(*a, **kw):
-        raise ImportError("No module named 'psycopg2'", name="psycopg2")
-    import sys
-    import types
-    fake = types.ModuleType("trellis_analytics.portal")
-    fake.__getattr__ = lambda n: broken()
-    sys.modules["trellis_analytics.portal"], saved = fake, sys.modules.get("trellis_analytics.portal")
-    try:
-        with pytest.raises(ImportError, match="psycopg2"):
-            analytics.curation_coverage_tile_for("database", "demo", "sqlite:///x")
-    finally:
-        if saved is not None:
-            sys.modules["trellis_analytics.portal"] = saved
-        else:
-            del sys.modules["trellis_analytics.portal"]
+# --- baseline: the route's tile is byte-identical to the 0.3.1 hand-built one (BRIEF RS-W2-1b §2.3) -----------------
+
+def _scoped(reg):
+    """Curate choices over the fixture's four schemas, so the tile has chosen, left-out and undecided lines."""
+    scope.set_node_choice(reg, "demo", "tester", schema="sales", choice="catalogue")
+    scope.set_node_choice(reg, "demo", "tester", schema="hr", choice="leave_out")
+    return reg
+
+
+@pytest.mark.parametrize("slug,prepare,state", [("demo", lambda reg: reg, "nothing_found"), ("demo", _scoped, "measured"),
+                                               ("never-surveyed", lambda reg: reg, "not_established")],
+                         ids=["surveyed", "scoped", "unsurveyed"])
+def test_route_tile_is_byte_identical_to_the_031_hand_built_tile(tclient, reg, monkeypatch, slug, prepare, state):
+    """One result goes through both: the library's renderer (via the route) and the frozen 0.3.1 builder. The
+    result is captured where the library hands it to `kpi_tile`, so no timestamp needs masking."""
+    import json
+
+    import trellis_analytics.portal as portal
+    from tests.legacy_curation_tile import legacy_tile
+    prepare(reg)
+    seen = []
+    real = portal.kpi_tile
+
+    def capture(routine, result, **kw):
+        seen.append(result)
+        return real(routine, result, **kw)
+    monkeypatch.setattr(portal, "kpi_tile", capture)
+    r = tclient.get(f"{TILE}/database/{slug}", headers=_bearer(_session(tclient)))
+    assert r.status_code == 200 and len(seen) == 1
+    assert seen[0].envelope.result_state.value == state
+    assert json.dumps(r.json(), ensure_ascii=False) == json.dumps(legacy_tile(seen[0]), ensure_ascii=False)

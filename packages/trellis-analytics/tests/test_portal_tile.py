@@ -86,12 +86,18 @@ def test_dict_output_carries_the_envelope_beside_the_tile(tile, measured_url):
 
 # pyegeria 6.2.17 (#518, ISSUE-171): not_established / not_applicable come back as kind "absent" -- the sentence in
 # `content`, no top-level `data` for a chart or table to draw, the tile itself only under `detail`.
+# Since library 0.4 the tile is declared (RS-W2-1b), so `content` is the routine's own declared absence sentence, not
+# pyegeria's generic words; the specific reason stays in the envelope and in the tile's `state_reason`.
+def _declared(state: str) -> str:
+    from trellis_analytics.manifests import CURATION_COVERAGE_TILE
+    return getattr(CURATION_COVERAGE_TILE.declaration.absence, state)
+
 @pytest.mark.parametrize("fmt", ["DICT", "BAR"])
 def test_not_established_shows_its_word_never_a_zero_chart(tile, tmp_path, fmt):
     out = tile(f"sqlite:///{tmp_path}/missing.sqlite", fmt=fmt)
     assert out["kind"] == "absent" and "data" not in out        # not a chart, nothing to draw as an answer
-    assert out["content"].startswith("Not measured") and "could not open" in out["content"]
-    assert out["envelope"]["state"] == "not_established"
+    assert out["content"] == _declared("not_measured")
+    assert out["envelope"]["state"] == "not_established" and "could not open" in out["envelope"]["reason"]
     detail = out["detail"]
     assert detail["subtitle"].startswith("not established") and detail["state"] == "not_established"
     assert "Published" not in detail and detail["kpis"] == []
@@ -101,7 +107,7 @@ def test_not_established_shows_its_word_never_a_zero_chart(tile, tmp_path, fmt):
 def test_not_applicable_shows_its_word_never_a_zero_chart(tile, measured_url, fmt):
     out = tile(measured_url, fmt=fmt, resource_type="file_system")
     assert out["kind"] == "absent" and "data" not in out
-    assert out["content"].startswith("Does not apply") and out["envelope"]["state"] == "not_applicable"
+    assert out["content"] == _declared("not_applicable") and out["envelope"]["state"] == "not_applicable"
     detail = out["detail"]
     assert detail["state"] == "not_applicable" and detail["subtitle"].startswith("not applicable")
     assert "Published" not in detail and detail["kpis"] == []
