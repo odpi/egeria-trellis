@@ -13,6 +13,11 @@
 # your filters excluded them all" are the same length and opposite
 # answers. Do not add empty sections to make the file look complete.
 #
+# `catalog_questions` (RS-W1-3) holds the Egeria Overview's catalog-wide
+# questions (Resource Types = catalog): about the estate, one catalog per
+# Egeria repository, so their `stage` is empty and nothing surveys them.
+# Resource-scoped readers never ask for that section.
+#
 # Each entry:
 #   id            - the question's stable id (`Q-0001`), stored in the CSV's
 #                   `Question ID` column. Assigned once, never derived from the
@@ -40,8 +45,9 @@
 #                   it never excludes. See docs/investigation-framing-design.md.
 #   answering:
 #     kind        - "analysis" | "direct" | "registry" | "human" |
-#                   "chart" | "gap" | "partial" | "mixed" | "unknown" —
-#                   how (or whether) RE can answer this today.
+#                   "chart" | "gap" | "partial" | "mixed" | "portal" |
+#                   "unknown" — how (or whether) RE can answer this today.
+#                   "portal" is a catalog question answered by a Portal routine.
 #     analysis_ids - analysis_catalog.yaml ids (from ANY `*_analyses`
 #                   section, not just repo_analyses) that answer
 #                   (fully or partially) this question; may be empty.
@@ -53,6 +59,9 @@
 #                   refs authored yet" — fall back to analysis_ids, do not
 #                   read it as "no checks apply". A check ref implies its
 #                   analysis, which is added to analysis_ids automatically.
+#     portal_routines - catalog questions only: the Portal routines (pyegeria
+#                   view/overview_metrics.py, listed in configdata/portal_routines.yaml)
+#                   the Overview tile answering it rides on. Absent on every other row.
 #     note        - the CSV's "Answering Analysis" column, verbatim —
 #                   human-readable detail (candidate tooling for gaps,
 #                   which direct field/table, etc.).
@@ -4245,6 +4254,830 @@ open_data_questions:
   catalog_history: '2026-11-02: added for open data (owner: add them now; answers ''not run yet'' until
     the check lands). The analysis is declared in analysis_catalog.yaml with built: false, so the row
     reads no reader yet, not a runnable analysis.'
+  retired: false
+catalog_questions:
+- id: Q-0116
+  question: What share of critical assets is governed (owned, classified, certified)?
+  stage: ''
+  perspectives:
+  - Governance
+  purposes: []
+  levels:
+  - resource
+  answering:
+    kind: portal
+    analysis_ids: []
+    checks: []
+    portal_routines:
+    - governed_coverage
+    note: governed_coverage
+  answering_mechanism: Portal tile
+  rationale: 'DCAM · Governance (the source the Egeria Overview cites). The Overview''s tile: Governed
+    Coverage.'
+  catalog_history: '2026-11-07: added from the Egeria Overview''s Governance perspective (RS-W1-3); the
+    wording is the page''s.'
+  retired: false
+- id: Q-0117
+  question: Is governance coverage improving period over period?
+  stage: ''
+  perspectives:
+  - Governance
+  purposes: []
+  levels:
+  - resource
+  answering:
+    kind: portal
+    analysis_ids: []
+    checks: []
+    portal_routines:
+    - growth_series
+    note: growth_series
+  answering_mechanism: Portal tile
+  rationale: 'DAMA maturity (the source the Egeria Overview cites). The Overview''s tile: Growth trend.'
+  catalog_history: '2026-11-07: added from the Egeria Overview''s Governance perspective (RS-W1-3); the
+    wording is the page''s.'
+  retired: false
+- id: Q-0118
+  question: Where is our regulatory exposure concentrated?
+  stage: ''
+  perspectives:
+  - Governance
+  purposes: []
+  levels:
+  - resource
+  answering:
+    kind: gap
+    analysis_ids: []
+    checks: []
+    portal_routines: []
+    note: 'GAP: the Overview''s ''Confidential assets in open zones'' row is not wired (too few Confidentiality
+      classifications to measure); no Portal routine crosses confidentiality with zone membership yet.'
+  answering_mechanism: Gap
+  rationale: 'FAIR + Privacy (the source the Egeria Overview cites). The Overview''s tile: Confidential
+    in open zones.'
+  catalog_history: '2026-11-07: added from the Egeria Overview''s Governance perspective (RS-W1-3); the
+    wording is the page''s.'
+  retired: false
+- id: Q-0119
+  question: How many policy exceptions are open, and are they aging down?
+  stage: ''
+  perspectives:
+  - Governance
+  purposes: []
+  levels:
+  - resource
+  answering:
+    kind: portal
+    analysis_ids: []
+    checks: []
+    portal_routines:
+    - certifications_summary
+    note: certifications_summary
+  answering_mechanism: Portal tile
+  rationale: 'DCAM · Control (the source the Egeria Overview cites). The Overview''s tile: Open exceptions.'
+  catalog_history: '2026-11-07: added from the Egeria Overview''s Governance perspective (RS-W1-3); the
+    wording is the page''s.'
+  retired: false
+- id: Q-0120
+  question: Is the community actively curating & trusting the catalog?
+  stage: ''
+  perspectives:
+  - Governance
+  purposes: []
+  levels:
+  - resource
+  answering:
+    kind: gap
+    analysis_ids: []
+    checks: []
+    portal_routines: []
+    note: 'GAP: the Overview points to its People & Community section; no single measure answers this.'
+  answering_mechanism: Gap
+  rationale: 'Adoption (the source the Egeria Overview cites). The Overview''s tile: People & Community.'
+  catalog_history: '2026-11-07: added from the Egeria Overview''s Governance perspective (RS-W1-3); the
+    wording is the page''s.'
+  retired: false
+- id: Q-0121
+  question: Which assets lack an owner, classification, or description?
+  stage: ''
+  perspectives:
+  - Steward
+  purposes: []
+  levels:
+  - resource
+  answering:
+    kind: partial
+    analysis_ids: []
+    checks: []
+    portal_routines:
+    - governed_coverage
+    - ownership_coverage
+    - business_value_signals
+    note: 'PARTIAL: ownership_coverage, governed_coverage and business_value_signals (described count)
+      give how many Assets have each; the Attention Queue does not list the assets that lack them.'
+  answering_mechanism: Portal tile
+  rationale: 'DAMA · Metadata (the source the Egeria Overview cites). The Overview''s tile: Attention
+    queue.'
+  catalog_history: '2026-11-07: added from the Egeria Overview''s Steward perspective (RS-W1-3); the wording
+    is the page''s.'
+  retired: false
+- id: Q-0122
+  question: Which glossary terms are unlinked or awaiting approval?
+  stage: ''
+  perspectives:
+  - Steward
+  purposes: []
+  levels:
+  - resource
+  answering:
+    kind: partial
+    analysis_ids: []
+    checks: []
+    portal_routines:
+    - orphan_glossary_terms
+    note: 'PARTIAL: orphan_glossary_terms counts terms with no SemanticAssignment; terms awaiting approval
+      are not measured.'
+  answering_mechanism: Portal tile
+  rationale: 'FAIR · Findable (the source the Egeria Overview cites). The Overview''s tile: Orphan terms.'
+  catalog_history: '2026-11-07: added from the Egeria Overview''s Steward perspective (RS-W1-3); the wording
+    is the page''s.'
+  retired: false
+- id: Q-0123
+  question: Which data stores have never been surveyed / profiled?
+  stage: ''
+  perspectives:
+  - Steward
+  purposes: []
+  levels:
+  - resource
+  answering:
+    kind: gap
+    analysis_ids: []
+    checks: []
+    portal_routines: []
+    note: 'GAP: no Portal routine in the registry; the Overview''s ''Data stores never surveyed'' row
+      is computed inside overview_handler.py from ReportSubject links.'
+  answering_mechanism: Gap
+  rationale: 'DataOps · quality (the source the Egeria Overview cites). The Overview''s tile: Unsurveyed.'
+  catalog_history: '2026-11-07: added from the Egeria Overview''s Steward perspective (RS-W1-3); the wording
+    is the page''s.'
+  retired: false
+- id: Q-0124
+  question: What changed in my domain since I last looked?
+  stage: ''
+  perspectives:
+  - Steward
+  purposes: []
+  levels:
+  - resource
+  answering:
+    kind: gap
+    analysis_ids: []
+    checks: []
+    portal_routines: []
+    note: 'GAP: the Overview points to its Recent Activity section; nothing compares a domain with the
+      reader''s last visit.'
+  answering_mechanism: Gap
+  rationale: 'Observability (the source the Egeria Overview cites). The Overview''s tile: Recent Activity.'
+  catalog_history: '2026-11-07: added from the Egeria Overview''s Steward perspective (RS-W1-3); the wording
+    is the page''s.'
+  retired: false
+- id: Q-0125
+  question: Who is using the data products I'm responsible for, and how much?
+  stage: ''
+  perspectives:
+  - Owner
+  purposes: []
+  levels:
+  - resource
+  answering:
+    kind: gap
+    analysis_ids: []
+    checks: []
+    portal_routines: []
+    note: 'GAP: no Portal routine measures who uses a data product or how much; the page names a ''Most-engaged
+      assets'' tile that is not built.'
+  answering_mechanism: Gap
+  rationale: 'Data-as-product (the source the Egeria Overview cites). The Overview''s tile: Most-engaged
+    assets.'
+  catalog_history: '2026-11-07: added from the Egeria Overview''s Owner perspective (RS-W1-3); the wording
+    is the page''s.'
+  retired: false
+- id: Q-0126
+  question: What is the quality & freshness of the assets I manage?
+  stage: ''
+  perspectives:
+  - Owner
+  purposes: []
+  levels:
+  - resource
+  answering:
+    kind: partial
+    analysis_ids: []
+    checks: []
+    portal_routines:
+    - stale_assets
+    note: 'PARTIAL: stale_assets counts Assets with no update in 180 days; survey-based quality coverage
+      is computed inside overview_handler.py, and neither is narrowed to the assets the reader owns.'
+  answering_mechanism: Portal tile
+  rationale: 'DataOps (the source the Egeria Overview cites). The Overview''s tile: DQ coverage.'
+  catalog_history: '2026-11-07: added from the Egeria Overview''s Owner perspective (RS-W1-3); the wording
+    is the page''s.'
+  retired: false
+- id: Q-0127
+  question: Are there open issues or low ratings on assets I'm accountable for?
+  stage: ''
+  perspectives:
+  - Owner
+  purposes: []
+  levels:
+  - resource
+  answering:
+    kind: partial
+    analysis_ids: []
+    checks: []
+    portal_routines:
+    - feedback_summary
+    note: 'PARTIAL: feedback_summary counts ratings and comments across the catalog; it is not narrowed
+      to the reader''s assets and does not single out low ratings or open issues.'
+  answering_mechanism: Portal tile
+  rationale: 'Feedback (the source the Egeria Overview cites). The Overview''s tile: Ratings.'
+  catalog_history: '2026-11-07: added from the Egeria Overview''s Owner perspective (RS-W1-3); the wording
+    is the page''s.'
+  retired: false
+- id: Q-0128
+  question: Are the assets I manage properly classified & access-controlled?
+  stage: ''
+  perspectives:
+  - Owner
+  purposes: []
+  levels:
+  - resource
+  answering:
+    kind: partial
+    analysis_ids: []
+    checks: []
+    portal_routines:
+    - governed_coverage
+    note: 'PARTIAL: governed_coverage gives the catalog-wide classified share; it is not narrowed to the
+      reader''s assets, and access control is not measured.'
+  answering_mechanism: Portal tile
+  rationale: 'DCAM (the source the Egeria Overview cites). The Overview''s tile: Governed coverage.'
+  catalog_history: '2026-11-07: added from the Egeria Overview''s Owner perspective (RS-W1-3); the wording
+    is the page''s.'
+  retired: false
+- id: Q-0129
+  question: What certified data products exist for my domain?
+  stage: ''
+  perspectives:
+  - Consumer
+  purposes: []
+  levels:
+  - resource
+  answering:
+    kind: portal
+    analysis_ids: []
+    checks: []
+    portal_routines:
+    - count_elements
+    - count_elements_by_property
+    note: count_elements + count_elements_by_property (DigitalProduct, and deploymentStatus = ACTIVE)
+  answering_mechanism: Portal tile
+  rationale: 'FAIR · Findable (the source the Egeria Overview cites). The Overview''s tile: Data products.'
+  catalog_history: '2026-11-07: added from the Egeria Overview''s Consumer perspective (RS-W1-3); the
+    wording is the page''s.'
+  retired: false
+- id: Q-0130
+  question: Where did this data come from, and how fresh is it?
+  stage: ''
+  perspectives:
+  - Consumer
+  purposes: []
+  levels:
+  - resource
+  answering:
+    kind: partial
+    analysis_ids: []
+    checks: []
+    portal_routines:
+    - usage_context_counts
+    note: 'PARTIAL: usage_context_counts counts the supply chains and blueprints that give assets a usage
+      context; per-asset lineage and freshness are not on the Overview.'
+  answering_mechanism: Portal tile
+  rationale: 'FAIR · lineage (the source the Egeria Overview cites). The Overview''s tile: Usage context.'
+  catalog_history: '2026-11-07: added from the Egeria Overview''s Consumer perspective (RS-W1-3); the
+    wording is the page''s.'
+  retired: false
+- id: Q-0131
+  question: Which assets are used most (and least) across the organisation, and how is that changing?
+  stage: ''
+  perspectives:
+  - Consumer
+  purposes: []
+  levels:
+  - resource
+  answering:
+    kind: gap
+    analysis_ids: []
+    checks: []
+    portal_routines: []
+    note: 'GAP: no Portal routine measures asset usage; the page names a ''Most/least used'' tile that
+      is not built.'
+  answering_mechanism: Gap
+  rationale: 'Usage analytics (the source the Egeria Overview cites). The Overview''s tile: Most/least
+    used.'
+  catalog_history: '2026-11-07: added from the Egeria Overview''s Consumer perspective (RS-W1-3); the
+    wording is the page''s.'
+  retired: false
+- id: Q-0132
+  question: Which datasets are safe to use with an LLM/agent?
+  stage: ''
+  perspectives:
+  - Consumer
+  purposes: []
+  levels:
+  - resource
+  answering:
+    kind: partial
+    analysis_ids: []
+    checks: []
+    portal_routines:
+    - ai_ready_assets
+    note: 'PARTIAL: ai_ready_assets counts the Assets that pass the governed, documented and lineage-traced
+      gates together; it does not list them or judge safety for a particular agent.'
+  answering_mechanism: Portal tile
+  rationale: 'AI governance (the source the Egeria Overview cites). The Overview''s tile: AI-ready.'
+  catalog_history: '2026-11-07: added from the Egeria Overview''s Consumer perspective (RS-W1-3); the
+    wording is the page''s.'
+  retired: false
+- id: Q-0133
+  question: How much data is AI-ready — governed, documented, lineage-traced?
+  stage: ''
+  perspectives:
+  - App/AI Builder
+  purposes: []
+  levels:
+  - resource
+  answering:
+    kind: partial
+    analysis_ids: []
+    checks: []
+    portal_routines:
+    - context_readiness_funnel
+    - ai_ready_assets
+    note: 'PARTIAL: context_readiness_funnel gives the cataloged, documented, classified, lineage-traced
+      and AI-ready counts and ai_ready_assets the all-gates intersection; the page marks it partly answered.'
+  answering_mechanism: Portal tile
+  rationale: 'AI governance (the source the Egeria Overview cites). The Overview''s tile: Context readiness
+    funnel.'
+  catalog_history: '2026-11-07: added from the Egeria Overview''s App/AI Builder perspective (RS-W1-3);
+    the wording is the page''s.'
+  retired: false
+- id: Q-0134
+  question: What context products can I consume via MCP / API?
+  stage: ''
+  perspectives:
+  - App/AI Builder
+  purposes: []
+  levels:
+  - resource
+  answering:
+    kind: gap
+    analysis_ids: []
+    checks: []
+    portal_routines: []
+    note: 'GAP: the product list and call counts are not recorded in the metadata repository (the Overview
+      says so on its Context products panel).'
+  answering_mechanism: Gap
+  rationale: 'Context intelligence (the source the Egeria Overview cites). The Overview''s tile: Context
+    products.'
+  catalog_history: '2026-11-07: added from the Egeria Overview''s App/AI Builder perspective (RS-W1-3);
+    the wording is the page''s.'
+  retired: false
+- id: Q-0135
+  question: What is semantically grounded (glossary-linked)?
+  stage: ''
+  perspectives:
+  - App/AI Builder
+  purposes: []
+  levels:
+  - resource
+  answering:
+    kind: partial
+    analysis_ids: []
+    checks: []
+    portal_routines:
+    - semantic_grounding
+    note: 'PARTIAL: semantic_grounding gives the SemanticAssignment count and coverage percent; it does
+      not list what is grounded.'
+  answering_mechanism: Portal tile
+  rationale: 'RAG grounding (the source the Egeria Overview cites). The Overview''s tile: Semantic grounding.'
+  catalog_history: '2026-11-07: added from the Egeria Overview''s App/AI Builder perspective (RS-W1-3);
+    the wording is the page''s.'
+  retired: false
+- id: Q-0136
+  question: What guardrails keep confidential data out of AI context?
+  stage: ''
+  perspectives:
+  - App/AI Builder
+  - Security
+  purposes: []
+  levels:
+  - resource
+  answering:
+    kind: gap
+    analysis_ids: []
+    checks: []
+    portal_routines: []
+    note: 'GAP: no guardrail source yet; the Overview''s AI guardrails panel says ''Not measured''.'
+  answering_mechanism: Gap
+  rationale: 'AI safety (the source the Egeria Overview cites). The Overview''s tile: AI guardrails.'
+  catalog_history: '2026-11-07: added from the Egeria Overview''s App/AI Builder perspective (RS-W1-3);
+    the wording is the page''s. Also asked under Security as ''Is confidential data blocked from AI training/RAG
+    contexts?'' (merged: the same question in other words).'
+  retired: false
+- id: Q-0137
+  question: Where is PII / sensitive data, and is it in the right zones?
+  stage: ''
+  perspectives:
+  - Privacy
+  purposes: []
+  levels:
+  - resource
+  answering:
+    kind: partial
+    analysis_ids: []
+    checks: []
+    portal_routines:
+    - governed_coverage
+    note: 'PARTIAL: governed_coverage gives the by-classification and top-zone breakdowns behind the Confidentiality
+      distribution; whether sensitive data sits in the right zones is not measured.'
+  answering_mechanism: Portal tile
+  rationale: 'Privacy (the source the Egeria Overview cites). The Overview''s tile: Confidentiality dist..'
+  catalog_history: '2026-11-07: added from the Egeria Overview''s Privacy perspective (RS-W1-3); the wording
+    is the page''s.'
+  retired: false
+- id: Q-0138
+  question: What is our retention / certification compliance posture?
+  stage: ''
+  perspectives:
+  - Privacy
+  purposes: []
+  levels:
+  - resource
+  answering:
+    kind: partial
+    analysis_ids: []
+    checks: []
+    portal_routines:
+    - certifications_summary
+    note: 'PARTIAL: certifications_summary counts active and expiring certifications and licenses; retention
+      compliance is not scored.'
+  answering_mechanism: Portal tile
+  rationale: 'DCAM · Control (the source the Egeria Overview cites). The Overview''s tile: Certifications.'
+  catalog_history: '2026-11-07: added from the Egeria Overview''s Privacy perspective (RS-W1-3); the wording
+    is the page''s.'
+  retired: false
+- id: Q-0139
+  question: Who / what can access restricted personal or sensitive data?
+  stage: ''
+  perspectives:
+  - Privacy
+  purposes: []
+  levels:
+  - resource
+  answering:
+    kind: gap
+    analysis_ids: []
+    checks: []
+    portal_routines: []
+    note: 'GAP: no Portal routine reads access to restricted data.'
+  answering_mechanism: Gap
+  rationale: 'Access control (the source the Egeria Overview cites). The Overview''s tile: Restricted-data
+    access.'
+  catalog_history: '2026-11-07: added from the Egeria Overview''s Privacy perspective (RS-W1-3); the wording
+    is the page''s.'
+  retired: false
+- id: Q-0140
+  question: Are data-processing purposes documented for regulated data flows?
+  stage: ''
+  perspectives:
+  - Privacy
+  purposes: []
+  levels:
+  - resource
+  answering:
+    kind: gap
+    analysis_ids: []
+    checks: []
+    portal_routines: []
+    note: 'GAP: no measure of documented processing purposes; the page marks this a pointer, not an answer.'
+  answering_mechanism: Gap
+  rationale: 'Privacy by design (the source the Egeria Overview cites). The Overview''s tile: Processing
+    purposes.'
+  catalog_history: '2026-11-07: added from the Egeria Overview''s Privacy perspective (RS-W1-3); the wording
+    is the page''s.'
+  retired: false
+- id: Q-0141
+  question: Who are our most active contributors (karma leaders)?
+  stage: ''
+  perspectives:
+  - Community
+  purposes: []
+  levels:
+  - resource
+  answering:
+    kind: portal
+    analysis_ids: []
+    checks: []
+    portal_routines:
+    - karma_leaderboard
+    note: karma_leaderboard
+  answering_mechanism: Portal tile
+  rationale: 'Community Profile (the source the Egeria Overview cites). The Overview''s tile: Karma leaderboard.'
+  catalog_history: '2026-11-07: added from the Egeria Overview''s Community perspective (RS-W1-3); the
+    wording is the page''s.'
+  retired: false
+- id: Q-0142
+  question: Is engagement (comments, ratings, tags) growing?
+  stage: ''
+  perspectives:
+  - Community
+  purposes: []
+  levels:
+  - resource
+  answering:
+    kind: portal
+    analysis_ids: []
+    checks: []
+    portal_routines:
+    - engagement_series
+    note: engagement_series
+  answering_mechanism: Portal tile
+  rationale: 'Adoption (the source the Egeria Overview cites). The Overview''s tile: Engagement trend.'
+  catalog_history: '2026-11-07: added from the Egeria Overview''s Community perspective (RS-W1-3); the
+    wording is the page''s.'
+  retired: false
+- id: Q-0143
+  question: Which communities / teams are most (and least) engaged?
+  stage: ''
+  perspectives:
+  - Community
+  purposes: []
+  levels:
+  - resource
+  answering:
+    kind: partial
+    analysis_ids: []
+    checks: []
+    portal_routines:
+    - people_counts
+    note: 'PARTIAL: people_counts counts communities, teams and organizations; engagement per group is
+      not measured.'
+  answering_mechanism: Portal tile
+  rationale: 'Collaboration (the source the Egeria Overview cites). The Overview''s tile: By organization.'
+  catalog_history: '2026-11-07: added from the Egeria Overview''s Community perspective (RS-W1-3); the
+    wording is the page''s.'
+  retired: false
+- id: Q-0144
+  question: What questions are being asked but not answered?
+  stage: ''
+  perspectives:
+  - Community
+  purposes: []
+  levels:
+  - resource
+  answering:
+    kind: gap
+    analysis_ids: []
+    checks: []
+    portal_routines: []
+    note: 'GAP: no Portal routine reads open questions.'
+  answering_mechanism: Gap
+  rationale: 'Q&A (the source the Egeria Overview cites). The Overview''s tile: Open questions.'
+  catalog_history: '2026-11-07: added from the Egeria Overview''s Community perspective (RS-W1-3); the
+    wording is the page''s.'
+  retired: false
+- id: Q-0145
+  question: Which assets are unsurveyed / missing schema?
+  stage: ''
+  perspectives:
+  - Data Expert
+  purposes: []
+  levels:
+  - resource
+  answering:
+    kind: gap
+    analysis_ids: []
+    checks: []
+    portal_routines: []
+    note: 'GAP: no Portal routine in the registry; the Overview''s schema-captured share is computed inside
+      overview_handler.py (SchemaType anchors and survey schema annotations).'
+  answering_mechanism: Gap
+  rationale: 'DataOps (the source the Egeria Overview cites). The Overview''s tile: Schema captured.'
+  catalog_history: '2026-11-07: added from the Egeria Overview''s Data Expert perspective (RS-W1-3); the
+    wording is the page''s.'
+  retired: false
+- id: Q-0146
+  question: How complete is lineage — any orphan nodes?
+  stage: ''
+  perspectives:
+  - Data Expert
+  purposes: []
+  levels:
+  - resource
+  answering:
+    kind: partial
+    analysis_ids: []
+    checks: []
+    portal_routines:
+    - context_readiness_funnel
+    note: 'PARTIAL: context_readiness_funnel''s lineage-traced stage counts Assets connected in the lineage
+      graph; orphan nodes are not listed.'
+  answering_mechanism: Portal tile
+  rationale: 'FAIR · lineage (the source the Egeria Overview cites). The Overview''s tile: Lineage-traced.'
+  catalog_history: '2026-11-07: added from the Egeria Overview''s Data Expert perspective (RS-W1-3); the
+    wording is the page''s.'
+  retired: false
+- id: Q-0147
+  question: Are pipelines instrumented with open lineage end-to-end?
+  stage: ''
+  perspectives:
+  - Data Expert
+  purposes: []
+  levels:
+  - resource
+  answering:
+    kind: gap
+    analysis_ids: []
+    checks: []
+    portal_routines: []
+    note: 'GAP: no Portal routine measures lineage instrumentation.'
+  answering_mechanism: Gap
+  rationale: 'Observability (the source the Egeria Overview cites). The Overview''s tile: Instrumentation.'
+  catalog_history: '2026-11-07: added from the Egeria Overview''s Data Expert perspective (RS-W1-3); the
+    wording is the page''s.'
+  retired: false
+- id: Q-0148
+  question: What structural change happened recently?
+  stage: ''
+  perspectives:
+  - Data Expert
+  purposes: []
+  levels:
+  - resource
+  answering:
+    kind: gap
+    analysis_ids: []
+    checks: []
+    portal_routines: []
+    note: 'GAP: the Overview points to its Activity section; no measure of structural change.'
+  answering_mechanism: Gap
+  rationale: 'Observability (the source the Egeria Overview cites). The Overview''s tile: Activity.'
+  catalog_history: '2026-11-07: added from the Egeria Overview''s Data Expert perspective (RS-W1-3); the
+    wording is the page''s.'
+  retired: false
+- id: Q-0149
+  question: Which integration connectors and endpoints exist, and are any misconfigured or unmonitored?
+  stage: ''
+  perspectives:
+  - Security
+  purposes: []
+  levels:
+  - resource
+  answering:
+    kind: gap
+    analysis_ids: []
+    checks: []
+    portal_routines: []
+    note: 'GAP: no Portal routine inventories connectors or their configuration.'
+  answering_mechanism: Gap
+  rationale: 'Security architecture (the source the Egeria Overview cites). The Overview''s tile: Connector
+    inventory.'
+  catalog_history: '2026-11-07: added from the Egeria Overview''s Security perspective (RS-W1-3); the
+    wording is the page''s.'
+  retired: false
+- id: Q-0150
+  question: Which service accounts, connectors, or AI agents have elevated platform access?
+  stage: ''
+  perspectives:
+  - Security
+  purposes: []
+  levels:
+  - resource
+  answering:
+    kind: gap
+    analysis_ids: []
+    checks: []
+    portal_routines: []
+    note: 'GAP: no Portal routine reads platform access.'
+  answering_mechanism: Gap
+  rationale: 'Access control · least privilege (the source the Egeria Overview cites). The Overview''s
+    tile: Elevated access.'
+  catalog_history: '2026-11-07: added from the Egeria Overview''s Security perspective (RS-W1-3); the
+    wording is the page''s.'
+  retired: false
+- id: Q-0151
+  question: Are there open security-relevant governance exceptions (e.g. unencrypted, unclassified-for-risk
+    assets)?
+  stage: ''
+  perspectives:
+  - Security
+  purposes: []
+  levels:
+  - resource
+  answering:
+    kind: gap
+    analysis_ids: []
+    checks: []
+    portal_routines: []
+    note: 'GAP: the Overview points to its Governance section; exceptions are not split by security relevance.'
+  answering_mechanism: Gap
+  rationale: 'DCAM · Control (the source the Egeria Overview cites). The Overview''s tile: Governance.'
+  catalog_history: '2026-11-07: added from the Egeria Overview''s Security perspective (RS-W1-3); the
+    wording is the page''s.'
+  retired: false
+- id: Q-0152
+  question: How many Solution Blueprints and Components are catalogued, and are they linked to real assets?
+  stage: ''
+  perspectives:
+  - Architecture
+  purposes: []
+  levels:
+  - resource
+  answering:
+    kind: portal
+    analysis_ids: []
+    checks: []
+    portal_routines:
+    - usage_context_counts
+    - contextualised_coverage
+    note: usage_context_counts + contextualised_coverage
+  answering_mechanism: Portal tile
+  rationale: 'Solution architecture (the source the Egeria Overview cites). The Overview''s tile: Blueprints
+    & Components.'
+  catalog_history: '2026-11-07: added from the Egeria Overview''s Architecture perspective (RS-W1-3);
+    the wording is the page''s.'
+  retired: false
+- id: Q-0153
+  question: How many Information Supply Chains trace data end-to-end, and where do they break?
+  stage: ''
+  perspectives:
+  - Architecture
+  purposes: []
+  levels:
+  - resource
+  answering:
+    kind: portal
+    analysis_ids: []
+    checks: []
+    portal_routines:
+    - usage_context_counts
+    note: usage_context_counts
+  answering_mechanism: Portal tile
+  rationale: 'FAIR · lineage (the source the Egeria Overview cites). The Overview''s tile: Supply chains.'
+  catalog_history: '2026-11-07: added from the Egeria Overview''s Architecture perspective (RS-W1-3);
+    the wording is the page''s.'
+  retired: false
+- id: Q-0154
+  question: Which architectures are stale — unreviewed since a major asset or process change?
+  stage: ''
+  perspectives:
+  - Architecture
+  purposes: []
+  levels:
+  - resource
+  answering:
+    kind: gap
+    analysis_ids: []
+    checks: []
+    portal_routines: []
+    note: 'GAP: no Portal routine measures when an architecture was last reviewed against changes to its
+      assets or processes.'
+  answering_mechanism: Gap
+  rationale: 'Architecture governance (the source the Egeria Overview cites). The Overview''s tile: Freshness.'
+  catalog_history: '2026-11-07: added from the Egeria Overview''s Architecture perspective (RS-W1-3);
+    the wording is the page''s.'
+  retired: false
+- id: Q-0155
+  question: Which supply chains or blueprints handle confidential or high-criticality data?
+  stage: ''
+  perspectives:
+  - Architecture
+  purposes: []
+  levels:
+  - resource
+  answering:
+    kind: gap
+    analysis_ids: []
+    checks: []
+    portal_routines: []
+    note: 'GAP: the Overview points to its Security section; nothing crosses supply chains or blueprints
+      with confidentiality.'
+  answering_mechanism: Gap
+  rationale: 'Risk-aware design (the source the Egeria Overview cites). The Overview''s tile: Security.'
+  catalog_history: '2026-11-07: added from the Egeria Overview''s Architecture perspective (RS-W1-3);
+    the wording is the page''s.'
   retired: false
 reserved_question_ids:
 - Q-0009

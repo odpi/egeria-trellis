@@ -66,8 +66,8 @@ script runs.
 |---|---|---|
 | `Question ID` | Yes | The question's **stable id** (`Q-0001`), the first column. *Decision (project owner, 2026-10-07 extensibility rulings; built 2026-10-13)*: a manifest names the questions it answers by id, so the id never changes when the wording does. Assigned once, sequential and opaque (it names no resource type and no wording, both of which change); never derived from the text; never reused, so a retired row keeps its id and the next free id is one past the highest ever issued. A shared question (`*` or several types) has ONE id. The generator **refuses a missing, malformed or duplicate id**; the Admin add-question route assigns the next free one. Sent to Egeria as an `Additional Properties` entry (`question_id`) on the term, not as its Qualified Name — the term's join key stays its Display Name. |
 | `Question` | Yes | The question text, verbatim. This becomes the Egeria GlossaryTerm's **Display Name** — case- and punctuation-sensitive, since it's also the join key back to Egeria's own `Question` elements. Keep it phrased as an actual question a user would ask. |
-| `Funnel Stage` | Yes | Which funnel stage(s) this question belongs to: `Scouting`, `Discovery`, `Analysis`, `Assessment`, or `Enrichment`. **`Automate` is not one of them** as of 2026-09-20 — see the note at the top of this guide. May be **slash-combined** (e.g. `Analysis/Enrichment`) to signal an Analysis-first, Enrichment-fallback pattern (see `docs/repo-analysis-funnel.md (§14)`) — the question then shows up under both stages' checklists. |
-| `Resource Types` | Yes | Which resource types this question applies to: `;`-separated values from `repo`, `database`, `filesystem`, `dataset`, `model`, or `*` for all of them. *Decision (project owner, 2026-09-20)*: one CSV, one column, rather than a CSV per type — a question like "who owns this data?" is the same question whichever resource asks it, and authoring it five times is five chances to drift. The vocabulary lives in `resource_explorer/resource_types.py`; an unrecognized value **fails the generator loudly** rather than silently producing no catalog section, because a typo'd `databse` and a resource type nobody has authored for would otherwise look identical. Not published to Egeria — the Egeria side of the question model is resource-type-agnostic by design (one *User Questions* glossary, one *Funnel Stages* glossary, twelve Perspectives). Rows authored before this column existed were backfilled to `repo`; a blank cell means `repo` so a new row cannot vanish from every catalog. |
+| `Funnel Stage` | Yes, except on a catalog row (which must leave it empty) | Which funnel stage(s) this question belongs to: `Scouting`, `Discovery`, `Analysis`, `Assessment`, or `Enrichment`. **`Automate` is not one of them** as of 2026-09-20 — see the note at the top of this guide. May be **slash-combined** (e.g. `Analysis/Enrichment`) to signal an Analysis-first, Enrichment-fallback pattern (see `docs/repo-analysis-funnel.md (§14)`) — the question then shows up under both stages' checklists. |
+| `Resource Types` | Yes | Which resource types this question applies to: `;`-separated values from `repo`, `database`, `filesystem`, `dataset`, `model`, or `*` for all of them; or `catalog`, alone, for a catalog-wide question (see "Catalog questions" below). *Decision (project owner, 2026-09-20)*: one CSV, one column, rather than a CSV per type — a question like "who owns this data?" is the same question whichever resource asks it, and authoring it five times is five chances to drift. The vocabulary lives in `resource_explorer/resource_types.py`; an unrecognized value **fails the generator loudly** rather than silently producing no catalog section, because a typo'd `databse` and a resource type nobody has authored for would otherwise look identical. Not published to Egeria — the Egeria side of the question model is resource-type-agnostic by design (one *User Questions* glossary, one *Funnel Stages* glossary, twelve Perspectives). Rows authored before this column existed were backfilled to `repo`; a blank cell means `repo` so a new row cannot vanish from every catalog. |
 | `Why is this important?` | Optional but expected | One sentence on why a user would care. Becomes the term's **Summary**. |
 | `Rationale/Source` | Optional but expected | Longer explanation: where the answer comes from, what tooling/signal is involved, any caveats. Becomes the term's **Description** (falls back to the question text itself if left blank). This is the column most worth writing carefully — it's what someone reads to understand *why* the answer works the way it does. |
 | `Answering Analysis` | Optional, RE-internal | Free text describing how RE answers this today. Parsed by the generator into a structured `kind` — see **Answering Analysis conventions** below. Not published to Egeria. |
@@ -81,6 +81,37 @@ script runs.
 - **`Answering Analysis`** may name only analysis-catalogue ids, `direct`/`N/A`, `human`, or GAP/PARTIAL/MIXED prose. A bare *step* name (outside a parenthetical gloss) fails the build.
 - **`Status`**: `retired <date>: <reason>` or `merged into Q-00NN <date>` takes the row out of the YAML sections and out of the Dr.Egeria document; the id stays reserved (`reserved_question_ids` in the YAML, counted by the next free id). The bare word `Retired` (the Admin pane's) keeps the row, flagged. Other text (for example "inadequately answered today") is adequacy prose and changes nothing.
 - **Warnings**, never failures: a question whose Funnel Stage does not include the intent of an analysis it names; a catalogue entry no question names that does not declare `answers_questions: false`.
+
+### Catalog questions (`Resource Types` = `catalog`, RS-W1-3, 2026-11-07)
+
+**Decision (project owner, 2026-11-06):** the Egeria Overview's catalog-wide questions are rows of this CSV, under
+a new resource type in the same generator, not a separate list (design note §9.22, option (a)). `catalog` means the
+catalog as a whole, one per Egeria repository. The rules:
+
+- **`catalog` stands alone** in its cell (`catalog;repo` fails the build), and **`*` never reaches it**: `*` is
+  still the three surveyed kinds. A question about the estate is a different row from any resource question.
+- **No `Funnel Stage`.** The funnel is about adopting one resource. A catalog row leaves the cell empty (one with a
+  stage fails the build), and an empty stage on **any other** row is an error in both generators. No stage term is
+  invented; the Dr.Egeria document emits no stage `ScopedBy`, and the term's `Usage` reads "Catalog-wide question
+  (Egeria Overview)."
+- **`Answering Analysis` names a Portal routine**, from `resource_explorer/configdata/portal_routines.yaml` (the
+  24 names of pyegeria's analytic registry, hand-kept until design note §9.7 step (a) reads the registry itself).
+  Routine names alone → `kind: portal`; `PARTIAL:` must name at least one routine; `GAP:` may name none; anything
+  else is `kind: unknown`. RE analysis ids mean nothing on a catalog row. `Answering Mechanism` is `Portal tile`
+  (`Gap` for a gap).
+- **The Dr.Egeria document is separate and is not run by the heal.** Catalog rows are left out of
+  `questions/scouting-questions.md` and generated only with `--resource-type catalog`, into
+  `questions-catalog/catalog-questions.md`. That folder has **no `_batch.json`**, so bootstrap never executes it.
+  Publishing it is one owner-approved run, once: Perspective `ScopedBy` links have no reconciler, so a second run
+  leaves permanent duplicates. Never add the folder to a batch.
+
+```
+python scripts/csv_to_dr_egeria_questions.py docs/dr-egeria/resource_questions.csv \
+    --resource-type catalog --output docs/dr-egeria/questions-catalog/catalog-questions.md
+```
+
+The rows' wording is the Overview page's (`egeria-overview.html`'s `PERSPECTIVES`), as of 2026-11-07; rewording is
+editorial work for the owner, recorded in `Catalog History` like any other row.
 
 The generator treats **every column that isn't one of the named lead
 columns** (`Question`, `Funnel Stage`, `Resource Types`, `Why is this

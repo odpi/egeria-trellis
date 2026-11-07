@@ -1253,13 +1253,13 @@ class TestQuestionCatalogWriteRoutes:
     def test_add_question_route_accepts_find(self, client):
         """Find is a purpose now (owner ruling 2026-10-13); the old hard-coded list 400'd it."""
         resp = client.post("/api/analyses/question-catalog/questions", json={
-            "question": "Which databases hold customer addresses?", "purposes": ["Find", "Integrate"]})
+            "question": "Which databases hold customer addresses?", "stage": "Scouting", "purposes": ["Find", "Integrate"]})
         assert resp.status_code == 200, resp.text
         assert resp.json()["warnings"] == []
 
     def test_add_question_route_accepts_an_off_list_purpose_with_a_warning(self, client):
         resp = client.post("/api/analyses/question-catalog/questions", json={
-            "question": "Is this worth a look?", "purposes": ["Wander"]})
+            "question": "Is this worth a look?", "stage": "Scouting", "purposes": ["Wander"]})
         assert resp.status_code == 200, resp.text
         assert resp.json()["warnings"] == [
             "purpose 'Wander' is not in the investigation-purposes list; kept as written"]

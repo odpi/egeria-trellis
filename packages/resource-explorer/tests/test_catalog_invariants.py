@@ -371,7 +371,7 @@ class TestNoStaleGaps:
         import sys
         from pathlib import Path
         sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
-        from csv_to_question_catalog_yaml import _load_known_checks, _parse_answering
+        from csv_to_question_catalog_yaml import _load_known_checks, _parse_answering, _parse_catalog_answering
 
         # The generator passes the known-check set; without it a valid
         # `[checks: ...]` ref raises and this test would fail on correct rows.
@@ -381,7 +381,10 @@ class TestNoStaleGaps:
             note = (r.get("Answering Analysis") or "").strip()
             if not note:
                 continue  # a blank column is a different (also real) problem
-            if _parse_answering(note, known_checks)["kind"] == "unknown":
+            # A catalog row (RS-W1-3) names Portal routines, parsed by its own rule; `unknown` is as wrong there.
+            parsed = (_parse_catalog_answering(note) if (r.get("Resource Types") or "").strip() == "catalog"
+                      else _parse_answering(note, known_checks))
+            if parsed["kind"] == "unknown":
                 unknown.append((r["Question"][:56], note[:56]))
         assert unknown == [], (
             "these notes match none of the generator's conventions, so the "

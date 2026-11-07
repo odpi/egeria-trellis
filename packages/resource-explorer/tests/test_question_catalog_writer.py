@@ -132,7 +132,7 @@ class TestAddQuestion:
         """Purposes are suggestive (owner ruling 2026-10-13): an off-list value
         is written as given and named in the warnings, never refused."""
         csv_path, yaml_path = isolated
-        warnings = qcw.add_question("A new question?", purposes=["NotARealPurpose"])
+        warnings = qcw.add_question("A new question?", stage="Scouting", purposes=["NotARealPurpose"])
         assert warnings == ["purpose 'NotARealPurpose' is not in the investigation-purposes list; kept as written"]
         assert _read_csv(csv_path)[-1]["Purposes"] == "NotARealPurpose"
         entry = yaml.safe_load(yaml_path.read_text())["repo_questions"][-1]
@@ -140,7 +140,17 @@ class TestAddQuestion:
 
     def test_add_accepts_find_and_integrate(self, isolated):
         csv_path, _ = isolated
-        assert qcw.add_question("Where is the customer data?", purposes=["Find", "Integrate"]) == []
+        assert qcw.add_question("Where is the customer data?", stage="Scouting", purposes=["Find", "Integrate"]) == []
+
+    def test_add_refuses_a_question_with_no_stage(self, isolated):
+        """RS-W1-3: only a catalog question may leave Funnel Stage empty, and this editor adds repo questions. A
+        stage-less one used to land in the YAML under no stage's checklist and be skipped by the Dr.Egeria
+        document with a warning; it is now refused before anything is written."""
+        csv_path, _ = isolated
+        before = csv_path.read_text()
+        with pytest.raises(qcw.QuestionCatalogWriteError, match="no Funnel Stage"):
+            qcw.add_question("A stage-less question?")
+        assert csv_path.read_text() == before
 
     def test_add_requires_question_text(self, isolated):
         with pytest.raises(qcw.QuestionCatalogWriteError):

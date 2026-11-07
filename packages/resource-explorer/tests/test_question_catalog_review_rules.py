@@ -339,25 +339,28 @@ class TestTheCommittedCsvGeneratesTheNumbersInThePrBody:
 
     def test_row_counts(self, generated):
         rows, out, _ = generated
-        # 2026-10-28: +4 rows (Q-0106 to Q-0109, Files build step 6); 2026-10-30: +3 (Q-0110 to Q-0112, CMP1); 2026-11-02: +3 (Q-0113 to Q-0115, open data)
-        assert len(rows) == 115
+        # 2026-10-28: +4 rows (Q-0106 to Q-0109, Files build step 6); 2026-10-30: +3 (Q-0110 to Q-0112, CMP1); 2026-11-02: +3 (Q-0113 to Q-0115, open data);
+        # 2026-11-07: +40 (Q-0116 to Q-0155, the Egeria Overview's catalog questions, RS-W1-3)
+        assert len(rows) == 155
         statuses = Counter("retired" if r["Status"].startswith("retired") else "merged" if r["Status"].startswith("merged")
                            else "active" for r in rows)
-        assert statuses == {"active": 104, "retired": 2, "merged": 9}
+        assert statuses == {"active": 144, "retired": 2, "merged": 9}
         assert len(out["reserved_question_ids"]) == 11
 
     def test_active_questions_by_kind(self, generated):
         _, out, _ = generated
         assert {k: len(v) for k, v in out.items() if k.endswith("_questions")} == {
             "repo_questions": 52, "database_questions": 57, "filesystem_questions": 38,
-            "open_data_questions": 3}
+            "open_data_questions": 3, "catalog_questions": 40}
         assert "dataset_questions" not in out and "model_questions" not in out
 
     def test_active_questions_by_stage(self, generated):
         _, out, _ = generated
         by_id = {e["id"]: e for k, v in out.items() if k.endswith("_questions") for e in v}
-        assert len(by_id) == 104
+        assert len(by_id) == 144
         assert dict(Counter(e["stage"] for e in by_id.values())) == {
+            # RS-W1-3: the 40 catalog questions have no funnel stage, by rule.
+            "": 40,
             # W43 (owner, 2026-11-02, "Re-tag its questions"): Q-0085 Analysis -> Assessment, so Analysis 38 -> 37 and
             # Assessment 15 -> 16; the asserts are moved, not loosened.
             "Analysis": 37, "Discovery": 27, "Scouting": 14, "Assessment": 16, "Enrichment": 5,
