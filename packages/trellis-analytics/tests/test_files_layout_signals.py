@@ -61,7 +61,7 @@ def walk(reg, run_id, rows, *, capped=False, not_walked=None):
 
 def run(url):
     from trellis_analytics.discovery import discover
-    from trellis_analytics.readers.ods import OdsReader
+    from trellis_analytics_re.ods import OdsReader
     from trellis_analytics.step import HostContext, SurveyStep
 
     host = HostContext(resource_type="filesystem", slug="tree", producing_run="run-x", ods=OdsReader(url))

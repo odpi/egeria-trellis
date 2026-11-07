@@ -26,6 +26,7 @@ screen derives from these, carried in the interim in
 | **OpenMetadata test definitions** (test cases, test suites, results with `testCaseStatus` Success, Failed, Aborted, Queued) | another catalog's data-quality model | comparison only | **Decline, note the vocabulary** | `Aborted` as a status beside Failed is the same distinction Great Expectations makes and the envelope makes; useful as confirmation that the three-way split is the common practice, not as something to adopt from a competing catalog. |
 | **W3C PROV** (entity, activity, agent; `wasGeneratedBy`, `used`, `wasAttributedTo`) | the provenance ontology | the vocabulary behind `producingRun`, `measuredAt`, and the pack's per-item provenance (P4) | **Adopt the words, not the serialisation** | Egeria's lineage and OpenLineage both descend from this model; naming the pack's provenance fields with PROV's verbs keeps a context pack legible to tools that know PROV without adding a format. |
 | **JSON-LD / schema.org `Dataset`** | linked-data serialisation; the common dataset vocabulary | the context pack's graph shape (P-note §3) | **Study for the pack's graph shape** | A pack for an external consumer is easier to consume as JSON-LD with schema.org `Dataset` fields than as Egeria's native JSON; Egeria's types map onto it for the fields that overlap. Not before the first tabular and document shapes exist. |
+| **Open Semantic Interchange / Apache Ossie** (`semantic_model` with `datasets`, `fields`, `relationships`, `dimensions`, `metrics` with an `expression` per `dialect`, `ai_context.instructions`) | a vendor-neutral YAML/JSON description of a semantic model, incubating at Apache since July 2026 | the library's `MeasureDeclaration` and `TableColumn` as an export (and import) format; Egeria's data design as `datasets`; a metric carrier in Egeria via `DataValueSpecification` | **Study now, adopt as an export first** | It is a portable metric definition with no catalog, lineage or governance of its own, which is exactly the half we lack and the half we have. Export the declarations first (basis and absence words into `ai_context`), import second as declared-not-implemented measures, then a Portal report spec; a metric type upstream in Egeria only after the export exists as the worked example. Design: `packages/resource-explorer/docs/design-notes/DESIGN-OSI-METRIC-EXCHANGE-2026-11-03.md`. |
 
 ## What this changes in the working assumptions
 
@@ -52,6 +53,7 @@ screen derives from these, carried in the interim in
    publishing slice P1 is built.
 3. The quality-result distinction when the first quality step is written.
 4. JSON-LD for the pack's graph shape after the tabular and document shapes.
+5. OSI export of the library's declarations once the `trellis-analytics-re` split (LS2 step 3) has landed; see the design note above.
 
 ## OpenLineage run events (R21, built)
 

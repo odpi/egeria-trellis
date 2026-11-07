@@ -920,18 +920,180 @@ def test_a_path_name_read_that_is_not_an_explicit_miss_creates_nothing(registry,
     assert out["egeria_half"] == fp.EGERIA_HALF_SUBMIT_FAILED
 
 
+OTHER_GUID = "dddddddd-0000-0000-0000-000000000002"
+
+
+def _holder(guid, path, created_by, qn):
+    """A CSVFile element as find-with-string answers it (LIVE shape: elementHeader.versions.createdBy, the strings map)."""
+    return {"elementHeader": {"guid": guid, "type": {"typeName": "CSVFile"}, "versions": {"createdBy": created_by}},
+            "elementProperties": {"propertiesAsStrings": {"pathName": path, "qualifiedName": qn}}}
+
+
 def test_two_elements_holding_the_path_name_are_ambiguous_and_nothing_is_created(registry, tmp_path):
+    """W53: the refusal names both cataloguers and both qualifiedName prefixes; the GUIDs ride beside the words."""
     fs = _probe_fs(registry, tmp_path)
     path = f"{PROBE_DIR}/week1.csv"
-    two = [{"elementHeader": {"guid": g, "type": {"typeName": "CSVFile"}}, "properties": {"pathName": path}}
-           for g in (PROBE_GUID, "dddddddd-0000-0000-0000-000000000002")]
+    two = [_holder(PROBE_GUID, path, "garygeeke", f"CSVFile::coco-data-lake:{path}"),
+           _holder(OTHER_GUID, path, "resourceexplorernpa", f"CSVFile::egeria-deployment:{path}")]
     port, fake = _real_port_with_fake_surveyor({}, root_qn=f"FileFolder::egeria-deployment:{PROBE_DIR}", by_path=two)
     try:
         out = fp.run_file_profiles(fs, registry, port=port, limit=LIMIT)
     finally:
         port.close()
     fake._create_data_file_asset.assert_not_called()
-    assert "PathNameAmbiguous" in out["egeria_actions"]["week1.csv"]["error"]
+    action = out["egeria_actions"]["week1.csv"]
+    assert action["error"] == ("cataloged twice in Egeria — by garygeeke (CSVFile::coco-data-lake:) and by "
+                               "resourceexplorernpa (CSVFile::egeria-deployment:) · Resource Explorer will not choose; "
+                               "reconcile on Curate")
+    assert action["ambiguous"] is True
+    assert [h["guid"] for h in action["holders"]] == [PROBE_GUID, OTHER_GUID]
+    assert PROBE_GUID not in action["error"] and OTHER_GUID not in action["error"], "the GUIDs are behind the numbers, not in the sentence"
+    # The card reads the refusal and its holders from the stored run (profiles_view), the same words.
+    view = fp.profiles_view(registry, fs.slug)
+    row = next(f for f in view["run"]["files"] if f["file_path"] == "week1.csv")
+    assert row["state"] == fp.SUBMIT_FAILED and row["egeria_error"] == action["error"]
+    assert [h["guid"] for h in row["egeria_holders"]] == [PROBE_GUID, OTHER_GUID]
+    assert row["egeria_holders"][0]["created_by"] == "garygeeke"
+
+
+def _live_holder(guid, path, created_by, qn):
+    """A CSVFile element as `find_metadata_elements_with_string` answered it LIVE on 2026-11-05 (W68): `versions` at the
+    element's top level, `elementGUID`, no `elementHeader`."""
+    return {"elementGUID": guid, "type": {"typeName": "CSVFile"}, "headerVersion": 0, "status": "ACTIVE",
+            "classifications": [], "origin": {"sourceServer": "qs-metadata-store"},
+            "versions": {"createdBy": created_by, "createTime": "2026-11-03T12:37:00.000+00:00", "version": 1},
+            "elementProperties": {"propertiesAsStrings": {"pathName": path, "qualifiedName": qn}}}
+
+
+def test_w68_the_cataloguers_are_named_from_the_top_level_versions_of_a_live_hit(registry, tmp_path):
+    """W68: live on 2026-11-05 every PathNameAmbiguous line read "by an unknown creator" twice, because the hits carry
+    `versions` at the element's top level and `_created_by_of` read only `elementHeader.versions`. Both shapes name the
+    user; a hit with neither is "an unknown creator"."""
+    path = "/egeria-workspaces/coco-data-lake/week1.csv"
+    live = [_live_holder("5cb0541d-0000-0000-0000-000000000001", path, "filescatnpa", f"CSVFile::egeria-workspaces:{path}"),
+            _live_holder("a2283d15-0000-0000-0000-000000000002", path, "filegovernanceengine",
+                         f"DataLake::PROJ-CT-TBDF::{path}")]
+    with pytest.raises(fp.PathNameAmbiguous) as info:
+        fp.guid_by_exact_path_name(_expert_answering(live), path, type_name="CSVFile")
+    assert [h["created_by"] for h in info.value.holders] == ["filescatnpa", "filegovernanceengine"]
+    assert fp.ambiguous_words(info.value, path) == (
+        "cataloged twice in Egeria — by filescatnpa (CSVFile::egeria-workspaces:) and by filegovernanceengine "
+        "(DataLake::PROJ-CT-TBDF::) · Resource Explorer will not choose; reconcile on Curate")
+    # the elementHeader shape (fixtures/egeria_6_2) still names the user
+    assert fp._created_by_of(_holder(PROBE_GUID, path, "garygeeke", "x")) == "garygeeke"
+    # top level wins when both are present; "" only when neither carries a name
+    both = {**_live_holder(PROBE_GUID, path, "top", "x"), "elementHeader": {"versions": {"createdBy": "header"}}}
+    assert fp._created_by_of(both) == "top"
+    assert fp._created_by_of({"elementHeader": {"guid": PROBE_GUID}, "versions": {}}) == ""
+    assert fp._created_by_of({"elementGUID": PROBE_GUID}) == ""
+
+
+def test_the_ambiguity_words_say_what_the_elements_did_not_carry(registry, tmp_path):
+    """An element with no createdBy or qualifiedName is still named — as unknown, never dropped or guessed."""
+    path = f"{PROBE_DIR}/week1.csv"
+    bare = [{"elementHeader": {"guid": g, "type": {"typeName": "CSVFile"}}, "properties": {"pathName": path}}
+            for g in (PROBE_GUID, OTHER_GUID)]
+    with pytest.raises(fp.PathNameAmbiguous) as info:
+        fp.guid_by_exact_path_name(_expert_answering(bare), path, type_name="CSVFile")
+    assert fp.ambiguous_words(info.value, path) == ("cataloged twice in Egeria — by an unknown creator (no qualified name "
+                                                    "read) and by an unknown creator (no qualified name read) · Resource "
+                                                    "Explorer will not choose; reconcile on Curate")
+    three = bare + [_holder("dddddddd-0000-0000-0000-000000000003", path, "erinoverview", f"CSVFile::x:{path}")]
+    with pytest.raises(fp.PathNameAmbiguous) as info3:
+        fp.guid_by_exact_path_name(_expert_answering(three), path, type_name="CSVFile")
+    assert fp.ambiguous_words(info3.value, path).startswith("cataloged 3 times in Egeria — by an unknown creator")
+    assert fp.ambiguous_words(info3.value, path).endswith("and by erinoverview (CSVFile::x:) · Resource Explorer will not "
+                                                          "choose; reconcile on Curate")
+
+
+# ── F58: a dead Egeria sign-in is said before the per-file loop ──────────────────────────────────────────────────────
+
+class PyegeriaUnauthorizedException(Exception):
+    """pyegeria's own type by NAME (what `classify_token_check_failure` reads), with the live 2026-11-05 text."""
+
+
+LIVE_401_TEXT = ("=> AUTHORIZATION_ERROR_401 => User not authorized received for user - `peterprofile` "
+                 "requesting on behalf of `peterprofile`")
+
+
+def _refusing_port(*, at: str):
+    """A port whose FIRST call as the person — `at` is `csv_survey_listed` or `egeria_file_system_name` — is refused
+    by Egeria with the live 401; every per-file call is a mock that must stay uncalled."""
+    port = create_autospec(fp.CsvSurveyPort, instance=True, spec_set=True)
+    port.csv_survey_listed.return_value = True
+    port.egeria_file_system_name.return_value = "egeria-deployment"
+    getattr(port, at).side_effect = PyegeriaUnauthorizedException(LIVE_401_TEXT)
+    return port
+
+
+@pytest.mark.parametrize("at", ["csv_survey_listed", "egeria_file_system_name"])
+def test_f58_the_egeria_half_refuses_the_whole_run_when_egeria_refuses_the_persons_token(registry, tmp_path, at):
+    """F58: the refusal is raised before any per-file work, with the sentence and the marker words; nothing is
+    submitted, nothing stored."""
+    from resource_explorer.egeria_clients import EgeriaTokenRefused
+
+    fs = _probe_fs(registry, tmp_path)
+    port = _refusing_port(at=at)
+    with pytest.raises(EgeriaTokenRefused) as info:
+        fp.run_file_profiles(fs, registry, port=port, limit=LIMIT)
+    assert str(info.value) == ("your Egeria sign-in is no longer valid (Egeria restarted since you signed in) · "
+                               "sign in again · nothing was profiled")
+    port.csv_asset_guid.assert_not_called()
+    port.initiate.assert_not_called()
+    assert registry.list_filesystem_file_column_runs("hampton") == []
+    assert fp.profiles_view(registry, "hampton")["run"] is None
+    # the claim was released: a later press (a new sign-in) runs
+    assert registry.take_claim(f"{fp.STEP_KEY}:hampton", "later-press")
+
+
+def test_f58_another_failure_on_the_first_call_is_not_a_token_refusal(registry, tmp_path):
+    """Only Egeria's refusal of the token ends the run; a transport failure stays the half's own `could_not_check`."""
+    fs = _probe_fs(registry, tmp_path)
+    port = _refusing_port(at="csv_survey_listed")
+    port.csv_survey_listed.side_effect = ConnectionError("connection refused")
+    out = fp.run_file_profiles(fs, registry, port=port, limit=LIMIT)
+    assert out["egeria_half"] == fp.EGERIA_HALF_UNCHECKED
+    assert len(registry.list_filesystem_file_column_runs("hampton")) == 1
+
+
+@pytest.mark.usefixtures("signed_in_caller")
+def test_f58_the_press_answers_401_with_the_marker_and_the_previous_card_stands(api, registry, tmp_path, monkeypatch):
+    """Live 2026-11-05: three presses after an Egeria restart each stored a run of raw AUTHORIZATION_ERROR_401 lines and
+    the newest masked the previous card. Now: 401 `{"error": "egeria_token_refused", "detail": <words>}`, no run row,
+    the previous run's card unchanged."""
+    client, headers = api
+    fs = _probe_fs(registry, tmp_path)
+    good, _fake = _real_port_with_fake_surveyor({}, root_qn=f"FileFolder::egeria-deployment:{PROBE_DIR}")
+    try:
+        fp.run_file_profiles(fs, registry, port=good, limit=LIMIT)        # the previous run (a live sign-in)
+    finally:
+        good.close()
+    before = client.get("/api/filesystems/hampton/file-profiles", headers=headers).json()
+    assert before["run"] is not None and before["run"]["counts"]["submitted"] == 2
+    runs_before = registry.list_filesystem_file_column_runs("hampton")
+
+    refusing = _refusing_port(at="egeria_file_system_name")
+    monkeypatch.setattr(fp, "make_port", lambda identity=None: refusing)
+    r = client.post("/api/filesystems/hampton/file-profiles", headers=headers)
+    assert r.status_code == 401, r.text
+    assert r.json() == {"error": "egeria_token_refused",
+                        "detail": "your Egeria sign-in is no longer valid (Egeria restarted since you signed in) · "
+                                  "sign in again · nothing was profiled"}
+    refusing.csv_asset_guid.assert_not_called()
+    refusing.initiate.assert_not_called()
+    assert registry.list_filesystem_file_column_runs("hampton") == runs_before
+    assert client.get("/api/filesystems/hampton/file-profiles", headers=headers).json() == before
+    assert "AUTHORIZATION_ERROR_401" not in r.text
+
+
+def _expert_answering(answer):
+    from unittest.mock import create_autospec
+
+    from pyegeria import MetadataExpert
+
+    expert = create_autospec(MetadataExpert, instance=True, spec_set=True)
+    expert.find_metadata_elements_with_string.return_value = answer
+    return expert
 
 
 def test_a_path_name_read_that_raises_creates_nothing(registry, tmp_path):

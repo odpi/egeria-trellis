@@ -254,6 +254,18 @@ const tailHtml = (line, sentence) => {
   return more ? `<span class="text-ink-muted"> · ${esc(more)}</span>` : '';
 };
 
+/** W47: an RE-led walk applies no Egeria file-type reference data, so its file-type count is 0 while it knows the
+ *  deployed implementation types from its own data. Never "0 types" then: the words name what is known and what was not
+ *  applied. Null when the count stands as it is. */
+export function typesKnownOtherwise(v, c) {
+  const n = Number(c && c.deployed_types);
+  if (!(v && v.surveyor === 'Resource Explorer' && c && c.file_types === 0 && n > 0)) return null;
+  const known = `${num(n)} deployed type${n === 1 ? '' : 's'} known`;
+  return { header: `types: ${known} · Egeria file-type reference data not applied (RE-led walk)`,
+    tile: `${known} · file-type reference data not applied`,
+    unclassified: `${num(c.unclassified)} without an Egeria file type (reference data not applied)` };
+}
+
 /** The results, one shape for both leads. With `fold` ({open}) the measured results are the Files section, collapsed or
  *  open; without it (Understanding) they draw as before. */
 export function folderResultsHtml(view, fold = null) {
@@ -265,6 +277,7 @@ export function folderResultsHtml(view, fold = null) {
   const c = r.counts || {};
   const t = r.times || {};
   const attrs = `data-fs-results data-fs-state="measured" data-fs-surveyor="${esc(v.surveyor)}"`;
+  const otherwise = typesKnownOtherwise(v, c);
   const body = `<div data-fs-surveyed-by class="text-caveat text-ink">${esc(FOLDER_SURVEY_WORDS.surveyedBy(v.surveyor, day(v.surveyed_at)))}${
   tailHtml(FOLDER_SURVEY_WORDS.surveyedBy(v.surveyor, day(v.surveyed_at)), v.report_sentence)}</div>
     <div class="text-provenance text-ink-muted" data-fs-published>${publishWords(v)}</div>
@@ -276,16 +289,18 @@ export function folderResultsHtml(view, fold = null) {
       ${statRow('Files', num(c.files))}
       ${statRow('Folders', num(c.subdirectories))}
       ${statRow('Total size', c.total_size_bytes == null ? dash : fmtBytes(c.total_size_bytes))}
-      ${statRow('File types', num(c.file_types))}
-      ${statRow('Unclassified', num(c.unclassified))}
+      ${statRow('File types', otherwise ? otherwise.tile : num(c.file_types))}
+      ${statRow('Unclassified', otherwise && c.unclassified != null ? otherwise.unclassified : num(c.unclassified))}
       ${statRow('Last modified', t.last_modified ? day(t.last_modified) : dash)}
       ${inaccessibleHtml(r.inaccessible)}
     </div>
     ${typeRows('File types', r.file_types)}
+    ${otherwise ? typeRows('Deployed implementation types', r.deployed_types) : ''}
     ${typeRows('File extensions', r.extensions)}`;
   if (fold) {
     const answer = words(c.files == null ? '' : `${num(c.files)} files`, c.total_size_bytes == null ? '' : fmtBytes(c.total_size_bytes),
-      c.file_types == null ? '' : `${num(c.file_types)} types`, FOLDER_SURVEY_WORDS.surveyedBy(v.surveyor, day(v.surveyed_at)));
+      otherwise ? otherwise.header : c.file_types == null ? '' : `${num(c.file_types)} types`,
+      FOLDER_SURVEY_WORDS.surveyedBy(v.surveyor, day(v.surveyed_at)));
     return sectionHtml('files', fold.open, FOLDER_SURVEY_WORDS.filesHeading, answer, attrs, body, 'tight');
   }
   return `<div ${attrs} class="mt-s2">
@@ -402,8 +417,13 @@ export function fileProfilesHtml(fp, fold = null) {
   if (fp.error) return `<div data-fp data-fp-state="error" class="mt-s3 text-provenance text-state-warn">${esc(fp.error)}</div>`;
   const price = fp.price || {};
   const run = fp.run;
+  // W51: after an Egeria-led survey with no walk of RE's own, the prerequisite is Measure beside: the price says so and
+  // points at the press (the same action as the card's own button).
+  const pointer = price.needs === 'measure_beside'
+    ? ` <button type="button" data-fs-act="measure" data-fp-measure-pointer title="${esc(W.measureBesideHelp)}"
+        class="cursor-pointer bg-transparent p-0 text-caveat text-accent-ink underline">${esc(W.measureBeside)} →</button>` : '';
   const head = `<div class="text-caps uppercase tracking-caps text-ink-muted">${esc(W.profilesHeading)}</div>
-    <div data-fp-price class="text-caveat text-ink">${esc(price.words || '')}</div>`;
+    <div data-fp-price class="text-caveat text-ink">${esc(price.words || '')}${pointer}</div>`;
   if (!run) return `<div data-fp data-fp-state="none" class="mt-s3">${head}<div class="text-provenance text-ink-muted">${esc(W.noProfiles)}</div></div>`;
   const c = run.counts || {};
   const egeriaLines = [c.submitted ? W.submitted(c.submitted) : '', c.not_installed ? W.notInstalled(c.not_installed) : '',
@@ -419,6 +439,13 @@ export function fileProfilesHtml(fp, fold = null) {
   const rows = (run.files || []).map((f) => [f.file_path, STATE_WORDS[f.state] ? `${STATE_WORDS[f.state]}${f.state === 'not_applicable' ? ` ${f.format || '(none)'}` : ''}` : f.state,
     sourceWords(f.stats_source), f.columns ? num(f.columns) : dash,
     f.sample_ratio != null && f.sample_ratio < 1 ? `${W.sampled} ${(f.sample_ratio * 100).toFixed(1)}%` : '']);
+  // W53: Egeria's per-file refusals, each in its own words beside the file; the GUIDs a refusal names (two cataloguers
+  // of one path) sit behind "the numbers behind this", never in the sentence.
+  const refusals = (run.files || []).filter((f) => f.egeria_error).map((f) => `<div data-fp-refusal="${esc(f.file_path)}" class="text-provenance text-state-warn">
+      <span class="font-glyph" aria-hidden="true">⚠</span> ${esc(f.file_path)} · <span data-fp-refusal-words>${esc(f.egeria_error)}</span>${
+  (f.egeria_holders || []).length ? ` <details data-fp-refusal-holders class="inline"><summary class="inline cursor-pointer text-accent-ink underline">the numbers behind this ›</summary>
+        <ul class="m-0 list-none p-0 text-ink-muted">${f.egeria_holders.map((h) => `<li data-fp-holder="${esc(h.guid)}"><span class="tnum">${esc(h.guid)}</span>${
+  h.created_by ? ` · created by ${esc(h.created_by)}` : ''}${h.qualified_name ? ` · ${esc(h.qualified_name)}` : ''}</li>`).join('')}</ul></details>` : ''}</div>`).join('');
   // The price (before the next press) and Egeria's refusals stay outside the fold: they are answers, not evidence.
   const body = `<div data-fp-run class="text-caveat text-ink">${esc(W.profiledAt(day(run.run_id)))} · <span data-fp-words>${esc(run.words || '')}</span></div>
     ${other ? `<div data-fp-other class="text-provenance text-ink-muted">${esc(other)}</div>` : ''}
@@ -430,6 +457,7 @@ export function fileProfilesHtml(fp, fold = null) {
     ${sectionHtml('profiles', !fold || fold.open, W.profilesHeading, answer, 'data-fp-section', body, 'none')}
     <div data-fp-price class="text-caveat text-ink">${esc(price.words || '')}</div>
     ${egeriaLines.map((l) => `<div data-fp-egeria class="text-provenance text-state-warn"><span class="font-glyph" aria-hidden="true">⚠</span> ${esc(l)}</div>`).join('')}
+    ${refusals}
   </div>`;
 }
 
@@ -702,7 +730,18 @@ export async function mountFolderSurvey(host, slug, { onChange = () => {} } = {}
     filled = '';
     onChange(act, { failed: !!error });   // a refused press leaves its sentence on screen: the parent must not re-mount over it
   };
+  // F49: the read can take seconds on a large walk (egeria_v6: 4.1 s quiet, 70.6 s under load on 2026-11-03, most of it
+  // the walk-derived price), so the card says it is reading until it answers (W50's rule), never an empty space.
+  host.innerHTML = folderSurveyReadingHtml();
   await read();
   paint('');
   return () => paint('');
+}
+
+/** The card's place while its read is out: the heading and "reading…", no press and no fact. */
+export function folderSurveyReadingHtml() {
+  return `<div id="fs-folder-survey" class="mt-s3 mb-s3" data-fs-card data-fs-reading>
+    <div class="text-caps uppercase tracking-caps text-ink-muted">${esc(FOLDER_SURVEY_WORDS.heading)}</div>
+    <div class="mt-[2px] text-caveat text-ink-muted">reading…</div>
+  </div>`;
 }

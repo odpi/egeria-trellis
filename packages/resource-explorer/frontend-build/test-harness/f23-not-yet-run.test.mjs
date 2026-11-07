@@ -21,14 +21,15 @@ async function load() {
   return import('/static/next/app.js');
 }
 
-test('a question whose analyses all never ran says "Not yet run." once: no row-level word, no step-line word', async () => {
+test('a question whose analyses all never ran says "Not yet run." once; its source line says what would run it (W54)', async () => {
   const app = await load();
-  const env = { answerable: false, blocked_reason: 'Not yet run. Run: db_statistics_freshness, statistics_freshness.',
+  const env = { answerable: false, blocked_reason: 'Not yet run.',
     facts: [fact('db_statistics_freshness'), fact('statistics_freshness', { library: true })], caveat: '', sources: [] };
   const said = text(app.rowInner(entry, 0, env));
   assert.ok(!OLD.test(said), said);
   assert.equal(said.match(/not yet run/gi).length, 1, said);
   assert.match(said, /statistics_freshness · run/);   // the step line still offers Run
+  assert.match(said, /run: db_statistics_freshness, statistics_freshness/);
 });
 
 test('a step that never ran beside a lead that did says "not yet run" once, on its own line', async () => {

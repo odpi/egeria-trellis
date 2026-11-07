@@ -107,18 +107,18 @@ export const STATES = {
   measured:  { glyph: '✓', family: 'measured', word: 'measured',  tone: 'text-state-ok' },
 
   // ── ∅ measured nothing ──────────────────────────────────────────────
-  nothing:        { glyph: '∅', family: 'measured-nothing', word: 'nothing found', tone: 'text-state-ok' },
+  nothing:        { glyph: '∅', family: 'nothing-found', word: 'nothing found', tone: 'text-state-ok' },
   // RESERVED for G3's tree overview (§3.2/§3.3 of the reply): a schema
   // counted and genuinely empty, as distinct from `not_measured` below.
-  measured_zero:  { glyph: '∅', family: 'measured-nothing', word: '0', tone: 'text-state-ok' },
+  measured_zero:  { glyph: '∅', family: 'nothing-found', word: '0', tone: 'text-state-ok' },
   // G3 (re/empty-state-split, landed 2026-09-27/28): `_SCHEMA_SHORTFALL_
   // LABELS`' own two classification strings for this family -- `empty` is
   // the counted-zero case (same family as `measured_zero` above, its own
   // word because G3's own label text is exactly "empty", not "0"); `no_tables`
   // is a schema with no tables at all, which is also a genuine, counted
   // absence rather than an unmeasured one.
-  empty:      { glyph: '∅', family: 'measured-nothing', word: 'empty', tone: 'text-state-ok' },
-  no_tables:  { glyph: '∅', family: 'measured-nothing', word: 'no tables', tone: 'text-state-ok' },
+  empty:      { glyph: '∅', family: 'nothing-found', word: 'empty', tone: 'text-state-ok' },
+  no_tables:  { glyph: '∅', family: 'nothing-found', word: 'no tables', tone: 'text-state-ok' },
 
   // ── ◐ measured, within a limit ──────────────────────────────────────
   partial:         { glyph: '◐', family: 'limited', word: 'partial', tone: 'text-state-warn' },

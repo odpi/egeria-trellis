@@ -663,7 +663,8 @@ class AnalysisRunRequest(BaseModel):
 
 @router.post("/{slug}/analyses/{analysis_id}/run", response_model=AnalysisRunResult)
 async def run_single_database_analysis(slug: str, analysis_id: str,
-                                       body: AnalysisRunRequest | None = None) -> AnalysisRunResult:
+                                       body: AnalysisRunRequest | None = None,
+                                       pressed_on: str = "") -> AnalysisRunResult:
     """Runs only the DatabaseSurveyor step(s) one named local database
     analysis needs, not the whole schema+statistics+views survey every
     time — the per-card "Run" action in Analysis/Assessment (database
@@ -742,7 +743,8 @@ async def run_single_database_analysis(slug: str, analysis_id: str,
         f"Running '{analysis_id}' on {slug}…", analysis_id, published=None,
     )
     run_id = registry.enqueue_run(
-        "database_analysis_run", {"slug": slug, "analysis_id": analysis_id},
+        "database_analysis_run", {"slug": slug, "analysis_id": analysis_id,
+                                  **({"pressed_on": pressed_on[:40]} if pressed_on else {})},
         result_ref=activity_id, requested_by=_requested_by(),
     )
     log.info("enqueued database_analysis_run %s for %s/%s (activity %s)",

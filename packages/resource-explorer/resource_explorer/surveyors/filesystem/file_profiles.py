@@ -160,7 +160,71 @@ def file_system_name_from_root(qualified_name: str, canonical_mount: str) -> str
 
 
 class PathNameAmbiguous(RuntimeError):
-    """Two or more elements of the type hold this exact pathName: nothing is adopted or created."""
+    """Two or more elements of the type hold this exact pathName: nothing is adopted or created. `holders` names each
+    one — {guid, created_by, qualified_name} as the search answered them ("" where the element carried none) — so the
+    refusal can say WHO cataloged the path twice (W53), and the GUIDs sit behind "the numbers behind this"."""
+
+    def __init__(self, message: str, holders: list[dict] | None = None) -> None:
+        super().__init__(message)
+        self.holders = list(holders or [])
+
+
+#: W53: the per-file refusal when Egeria holds two CSVFile elements for one path. Words only: the "use this one" press is
+#: the owner's design (Curate), not this item. Both GUIDs are carried beside it (`holders`), never in the sentence.
+AMBIGUOUS_WORDS = ("cataloged twice in Egeria — by {first} and by {second} · Resource Explorer will not choose; "
+                   "reconcile on Curate")
+AMBIGUOUS_MANY_WORDS = ("cataloged {n} times in Egeria — by {all} · Resource Explorer will not choose; reconcile on Curate")
+UNKNOWN_CREATOR = "an unknown creator"
+
+
+def _holder_words(holder: dict, path_name: str) -> str:
+    """"<creator> (<qualifiedName prefix>)": the prefix is the qualifiedName with the path taken off its end (the CSV
+    Data File template's `CSVFile::<fileSystemName>:<path>` leaves `CSVFile::<fileSystemName>:`), else the whole name;
+    a name the element did not carry reads "no qualified name read"."""
+    creator = (holder.get("created_by") or "").strip() or UNKNOWN_CREATOR
+    qn = (holder.get("qualified_name") or "").strip()
+    prefix = qn[:-len(path_name)] if path_name and qn.endswith(path_name) and len(qn) > len(path_name) else qn
+    return f"{creator} ({prefix or 'no qualified name read'})"
+
+
+def ambiguous_words(exc: "PathNameAmbiguous", path_name: str) -> str:
+    """The W53 sentence for a `PathNameAmbiguous`, naming each cataloguer and its qualifiedName prefix."""
+    parts = [_holder_words(h, path_name) for h in exc.holders]
+    if len(parts) == 2:
+        return AMBIGUOUS_WORDS.format(first=parts[0], second=parts[1])
+    if len(parts) > 2:
+        return AMBIGUOUS_MANY_WORDS.format(n=len(parts), all=", by ".join(parts[:-1]) + f" and by {parts[-1]}")
+    return AMBIGUOUS_WORDS.format(first=UNKNOWN_CREATOR + " (no qualified name read)",
+                                  second=UNKNOWN_CREATOR + " (no qualified name read)")
+
+
+def _created_by_of(element: dict) -> str:
+    """The user who created the element, or "" when the element carries none (then, and only then, the words say
+    "an unknown creator"). W68: a `find_metadata_elements_with_string` hit carries `versions` at the ELEMENT's top level
+    (LIVE 2026-11-05: keys classifications, elementGUID, elementProperties, headerVersion, origin, status, type,
+    versions — and no `elementHeader`), so that is read first; `elementHeader.versions.createdBy` (the shape of
+    fixtures/egeria_6_2) second."""
+    for holder in (element, element.get("elementHeader")):
+        versions = holder.get("versions") if isinstance(holder, dict) else None
+        if isinstance(versions, dict) and versions.get("createdBy"):
+            return str(versions["createdBy"])
+    return ""
+
+
+def _qualified_name_of(element: dict) -> str:
+    """`qualifiedName` of a find-with-string element, read where `_path_name_of` reads pathName; "" when absent."""
+    ep = element.get("elementProperties")
+    if isinstance(ep, dict):
+        strings = ep.get("propertiesAsStrings")
+        if isinstance(strings, dict) and strings.get("qualifiedName"):
+            return str(strings["qualifiedName"])
+        pv = (ep.get("propertyValueMap") or {}).get("qualifiedName")
+        if isinstance(pv, dict) and pv.get("primitiveValue"):
+            return str(pv["primitiveValue"])
+    props = element.get("properties")
+    if isinstance(props, dict) and props.get("qualifiedName"):
+        return str(props["qualifiedName"])
+    return ""
 
 
 def guid_by_exact_path_name(expert, path_name: str, *, type_name: str) -> str | None:
@@ -186,6 +250,7 @@ def guid_by_exact_path_name(expert, path_name: str, *, type_name: str) -> str | 
     if not isinstance(answer, list) or not answer:
         raise RuntimeError(f"the pathName search for {path_name!r} gave no usable answer ({answer!r:.80})")
     held: list[str] = []
+    holders: list[dict] = []
     for element in answer:
         if not isinstance(element, dict):
             raise RuntimeError(f"an element in the pathName answer for {path_name!r} is not an element")
@@ -198,9 +263,11 @@ def guid_by_exact_path_name(expert, path_name: str, *, type_name: str) -> str | 
             continue                       # the value sits in another property of the element
         if guid not in held:
             held.append(guid)
+            holders.append({"guid": guid, "created_by": _created_by_of(element),
+                            "qualified_name": _qualified_name_of(element)})
     if len(held) > 1:
         raise PathNameAmbiguous(f"{len(held)} {type_name} elements hold the pathName {path_name!r}: nothing is "
-                                "adopted or created")
+                                "adopted or created", holders)
     if len(answer) >= page:
         raise RuntimeError(f"the pathName search for {path_name!r} filled its page ({page}) without two holders: "
                            "more may follow, so the count could not be told")
@@ -735,13 +802,34 @@ def _true() -> bool:
     return True
 
 
+#: F58: what the whole-run refusal says after the shared sentence (`EGERIA_TOKEN_REFUSED_SENTENCE`): the run stopped
+#: before any per-file work, so no run row is stored and the previous run's card stands.
+TOKEN_REFUSED_NOTHING_PROFILED = "nothing was profiled"
+
+
+def _refuse_run_if_token_refused(exc: BaseException) -> None:
+    """F58: Egeria refused the person's token on the run's first call as them (the CSV-service read or the file-system
+    name lookup, both before the per-file loop). Live 2026-11-05 (three presses after a platform restart): the RE
+    session was valid, the Egeria token inside it dead, and the run went on — every file line filled with the raw
+    AUTHORIZATION_ERROR_401 text, a run row stored, the previous run's card masked. The whole run is refused instead:
+    `EgeriaTokenRefused` (401 with the marker), nothing profiled, nothing stored. A Caller's clients cannot be
+    refreshed by RE; the person signs in again."""
+    from resource_explorer.egeria_clients import EGERIA_TOKEN_REFUSED_SENTENCE, EgeriaTokenRefused
+    from resource_explorer.engine_host import is_token_refused
+
+    if is_token_refused(exc):
+        raise EgeriaTokenRefused(f"{EGERIA_TOKEN_REFUSED_SENTENCE} · {TOKEN_REFUSED_NOTHING_PROFILED}") from exc
+
+
 def submit_egeria_half(port: CsvSurveyPort | None, fs_entity, files: list[dict], *,
                        heartbeat: Callable[[], Any] = _true) -> tuple[str, dict[str, list[dict]], dict]:
     """Submit Egeria's CSV Survey Service for each file routed to Egeria. Returns (half state, rows per file, actions per
     file {path: {engine_action_guid, asset_guid} | {error}}). Whether the service is installed is read FIRST; a failed read
     is `could_not_check`, never "not installed". Then the name Egeria uses for the file system: when it cannot be
     established the half refuses (`file_system_name_unknown`, nothing read or created in Egeria). `heartbeat` renews the
-    run's claim before each file; False (the claim is lost) raises `ClaimLost`, naming how many were already submitted."""
+    run's claim before each file; False (the claim is lost) raises `ClaimLost`, naming how many were already submitted.
+    F58: Egeria refusing the person's token on either read before the loop raises `EgeriaTokenRefused` — the whole
+    run is refused, nothing is profiled or stored."""
     if not files:
         return EGERIA_HALF_NONE, {}, {}
     rows: dict[str, list[dict]] = {}
@@ -754,6 +842,7 @@ def submit_egeria_half(port: CsvSurveyPort | None, fs_entity, files: list[dict],
     try:
         listed = port.csv_survey_listed()
     except Exception as exc:  # noqa: BLE001 -- a failed read is said, never read as absence
+        _refuse_run_if_token_refused(exc)          # F58: a dead sign-in ends the run here, before any file
         for f in files:
             rows[f["file_path"]] = [marker_row(EGERIA_UNCHECKED)]
             actions[f["file_path"]] = {"error": _short(exc)}
@@ -767,6 +856,7 @@ def submit_egeria_half(port: CsvSurveyPort | None, fs_entity, files: list[dict],
         if not str(fs_name or "").strip():
             raise FileSystemNameUnknown("Egeria's answer carried no name")
     except Exception as exc:  # noqa: BLE001 -- unknown is refused, never guessed (the slug is not Egeria's name)
+        _refuse_run_if_token_refused(exc)          # F58: a dead sign-in ends the run here, before any file
         why = str(exc) if isinstance(exc, FileSystemNameUnknown) else _short(exc)
         for f in files:
             rows[f["file_path"]] = [marker_row(FS_NAME_UNKNOWN)]
@@ -788,6 +878,10 @@ def submit_egeria_half(port: CsvSurveyPort | None, fs_entity, files: list[dict],
             actions[rel] = {"engine_action_guid": action, "asset_guid": asset}
             rows[rel] = [marker_row(SUBMITTED)]
             ok += 1
+        except PathNameAmbiguous as exc:   # W53: Egeria holds the path twice; both cataloguers named, both GUIDs kept
+            actions[rel] = {"error": ambiguous_words(exc, f"{canonical_root}/{rel}"), "holders": exc.holders,
+                            "ambiguous": True}
+            rows[rel] = [marker_row(SUBMIT_FAILED)]
         except Exception as exc:  # noqa: BLE001 -- one file refused does not end the run
             actions[rel] = {"error": _short(exc)}
             rows[rel] = [marker_row(SUBMIT_FAILED)]
@@ -1198,8 +1292,11 @@ def _run(fs_entity, registry, walk: dict, files: list[dict], run_id: str, *, por
                 res = profile_remote(mechanism, rel, ext, int(f.get("size_bytes") or 0), limit=limit)
             else:
                 res = profile_file(path, ext, limit=limit)
-            if res.get("note"):
-                notes[rel] = res["note"] + (f" · {DELTA_NOTE}" if _in_delta_table(rel, delta_tables) else "")
+            in_delta = _in_delta_table(rel, delta_tables)
+            partitions = path_partition_columns(rel, delta_tables) if in_delta else []
+            if res.get("note") or partitions:
+                notes[rel] = " · ".join(p for p in (res.get("note") or "", DELTA_NOTE if in_delta else "",
+                                                     partition_note(partitions)) if p)
             bytes_read += res["bytes_read"]
             if res["error"]:
                 errors[rel] = res["error"]
@@ -1235,6 +1332,21 @@ def _in_delta_log(rel: str) -> bool:
     return rel.startswith(f"{DELTA_LOG}/") or f"/{DELTA_LOG}/" in rel
 
 
+def path_partition_columns(rel: str, tables: set[str]) -> list[str]:
+    """The Hive-style partition columns in a Delta part's path below its table folder ("kind=a/part-0.parquet" → kind).
+    A part's footer does not hold them, so its profile lacks them (W48)."""
+    table = max((t for t in tables if t == "" or rel.startswith(t + "/")), key=len, default=None)
+    if table is None:
+        return []
+    below = rel[len(table) + 1:] if table else rel
+    return [seg.split("=", 1)[0] for seg in below.split("/")[:-1] if "=" in seg and seg.split("=", 1)[0]]
+
+
+def partition_note(columns: list[str]) -> str:
+    """The part's note for the partition columns its profile does not carry; "" when there are none."""
+    return f"partition column(s) from the path not included: {', '.join(columns)}" if columns else ""
+
+
 def _in_delta_table(rel: str, tables: set[str]) -> bool:
     """A part in a Delta table's folder or under it (partition folders); "" is a table at the root."""
     return any(t == "" or rel.startswith(t + "/") for t in tables)
@@ -1246,13 +1358,20 @@ def _mb(n: int) -> str:
     return f"{n / 1_000_000:,.1f} MB"
 
 
+#: The price before any walk has listed the files.
+NO_WALK_WORDS = "no walk yet · run the folder survey first"
+#: After an Egeria-led Folder Survey and no walk of RE's own: the survey ran, but it keeps counts, not a file list (W51).
+EGERIA_COUNTS_ONLY_WORDS = ("Egeria's survey reports counts, not files · Measure beside Egeria's survey to list them, "
+                            "then profile")
+
+
 def price(registry, slug: str, *, limit: int = PROFILE_LIMIT_BYTES) -> dict:
     """The one cost line, from the walk rows: "N data files, M MB to read; Egeria will profile C CSV files, RE will profile
     R others; about T s". T is from the bytes per second the last run of this step measured ON THIS MACHINE, else "no run
     yet to price from". M counts what will be read: the first `limit` bytes of a file over the limit."""
     walk, files = walk_data_files(registry, slug)
     if walk is None:
-        return {"walk": False, "words": "no walk yet · run the folder survey first"}
+        return {"walk": False, "words": NO_WALK_WORDS}
     led_by = walk.get("led_by") or "re"
     readable = readable_extensions()
     egeria = [f for f in files if source_for(f["file_path"], led_by) == SOURCE_EGERIA]
@@ -1278,6 +1397,19 @@ def price(registry, slug: str, *, limit: int = PROFILE_LIMIT_BYTES) -> dict:
 # ── what the card says (from the stored rows) ────────────────────────────────────────────────────────────────────────
 
 FILES_SHOWN = 50
+
+
+def _egeria_refusal(action) -> dict:
+    """{egeria_error, egeria_holders} for a file Egeria's half refused, from its stored `egeria_actions` entry; {} for a
+    submitted file or one with no entry. The holders are the GUIDs (and cataloguers) a W53 refusal names."""
+    if not isinstance(action, dict) or not action.get("error"):
+        return {}
+    out = {"egeria_error": str(action["error"])}
+    if action.get("holders"):
+        out["egeria_holders"] = [{"guid": str(h.get("guid") or ""), "created_by": str(h.get("created_by") or ""),
+                                  "qualified_name": str(h.get("qualified_name") or "")} for h in action["holders"]
+                                 if isinstance(h, dict)]
+    return out
 
 
 def card_counts(states: list[dict]) -> dict:
@@ -1329,9 +1461,12 @@ def profiles_view(registry, slug: str) -> dict:
                 col.update(column_name=f"column {r['ordinal']}", header_suspect=True)
             by_file.setdefault(r["file_path"], []).append(col)
     notes = m.get("notes") or {}
+    # W53: Egeria's per-file refusal (the `egeria_actions` error) reads on the card, with the GUIDs it names beside it.
+    egeria_actions = m.get("egeria_actions") or {}
     files = [{**s, "format": ext_of(s["file_path"]), "columns_list": by_file.get(s["file_path"], [])[:30],
               **({"note": notes[s["file_path"]]} if s["file_path"] in notes else {}),
-              **({"error": m["errors"][s["file_path"]]} if s["file_path"] in (m.get("errors") or {}) else {})}
+              **({"error": m["errors"][s["file_path"]]} if s["file_path"] in (m.get("errors") or {}) else {}),
+              **_egeria_refusal(egeria_actions.get(s["file_path"]))}
              for s in states[:FILES_SHOWN]]
     proof = latest_publish_proof(registry, slug, run_id)
     if proof:

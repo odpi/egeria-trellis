@@ -13,9 +13,9 @@ import sqlite3
 import pytest
 
 from resource_explorer.surveyors.survey_step_host import STEP_ODS_METHODS, step_reader
-from trellis_analytics.readers.ods import OdsUnreadable
+from trellis_analytics_re.ods import OdsUnreadable
 
-#: The tables and columns the typed methods read (trellis_analytics.readers.ods), and one row each.
+#: The tables and columns the typed methods read (trellis_analytics_re.ods), and one row each.
 DDL = [
     "CREATE TABLE database_surveys (database_slug TEXT, surveyed_at TEXT, source TEXT, invalid_at TEXT)",
     "CREATE TABLE database_tables (database_slug TEXT, surveyed_at TEXT, source TEXT, schema_name TEXT, "
@@ -382,7 +382,7 @@ def test_the_new_reads_offer_no_other_way_in(sqlite_url):
     """The step is handed the two new methods and nothing else new: no `query`, no table name, no column list."""
     import inspect
 
-    from trellis_analytics.readers.ods import OdsReader
+    from trellis_analytics_re.ods import OdsReader
 
     assert {"table_activity_snapshots", "table_keys"} <= set(STEP_ODS_METHODS)
     assert list(inspect.signature(OdsReader.table_activity_snapshots).parameters) == ["self", "slug", "limit"]

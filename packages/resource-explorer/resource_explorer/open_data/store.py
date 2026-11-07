@@ -12,6 +12,13 @@ from datetime import datetime, timezone
 from resource_explorer.open_data.absence import NOT_REPORTED
 
 
+def is_reserved_portal(portal: dict | None) -> bool:
+    """The pseudo-portal imports from a registered repository are filed under (open_data/schema.py)."""
+    from resource_explorer.open_data.schema import REPOSITORY_API_KIND
+
+    return bool(portal) and portal.get("api_kind") == REPOSITORY_API_KIND
+
+
 def now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
@@ -67,9 +74,11 @@ class OpenDataStore:
             row = conn.execute("SELECT * FROM open_data_portals WHERE slug = ?", (slug,)).fetchone()
         return dict(row) if row else None
 
-    def list_portals(self) -> list[dict]:
+    def list_portals(self, include_reserved: bool = False) -> list[dict]:
+        """The registered portals. The reserved `repository` pseudo-portal is not one: it is listed only on request."""
         with self._conn() as conn:
-            return [dict(r) for r in conn.execute("SELECT * FROM open_data_portals ORDER BY display_name").fetchall()]
+            rows = [dict(r) for r in conn.execute("SELECT * FROM open_data_portals ORDER BY display_name").fetchall()]
+        return rows if include_reserved else [r for r in rows if not is_reserved_portal(r)]
 
     def portal_by_url(self, url: str) -> dict | None:
         want = normalise_url(url)
@@ -118,21 +127,21 @@ class OpenDataStore:
         return [self._dataset(r) for r in rows]
 
     def add_dataset(self, *, slug: str, row: dict, portals: list[str], retrieved_at: str, imported_by: str,
-                    work_list_slug: str, datacite: dict | None) -> None:
+                    work_list_slug: str, datacite: dict | None, repo_slug: str = "") -> None:
         """`row` is an adapter's normalised candidate row (its `record` is the verbatim publisher record)."""
         flags = row["licence"]
         with self._conn() as conn:
             conn.execute(
                 "INSERT INTO open_data (slug, identifier, identifier_kind, portal_slug, portals_json, title,"
                 " publisher, licence_id, attribution, share_alike, commercial, modified, formats_json,"
-                " size_bytes, record_json, retrieved_at, datacite_json, imported_by, imported_at, work_list_slug)"
-                " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                " size_bytes, record_json, retrieved_at, datacite_json, imported_by, imported_at, work_list_slug, repo_slug)"
+                " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (slug, row["identifier"], row["identifier_kind"], portals[0], json.dumps(portals),
                  _enc(row["title"]), _enc(row["publisher"]), _enc(row["licence_id"]),
                  _enc(flags["attribution"]), _enc(flags["share_alike"]), _enc(flags["commercial"]),
                  _enc(row["modified"]), json.dumps(row["formats"]), _enc(row["size"]),
                  json.dumps(row["record"]), retrieved_at, json.dumps(datacite) if datacite else "",
-                 imported_by, now(), work_list_slug))
+                 imported_by, now(), work_list_slug, repo_slug))
 
     def datasets_in_work_list(self, work_list_slug: str) -> list[dict]:
         with self._conn() as conn:

@@ -1,10 +1,12 @@
 """2d: the tile's spec written as a Dr.Egeria report-spec document parses to the Python FormatSet."""
 import importlib.util
+from importlib.resources import files
 from pathlib import Path
 
 from trellis_analytics.portal import TILE_LABEL, report_specs
 
-DOC = Path(__file__).resolve().parents[1] / "examples" / "curation_coverage_tile.md"
+#: The tile spec ships in the library (Architect ruling, 2026-11-03: its copy is the only one); read it as installed.
+DOC = files("trellis_analytics") / "examples" / "curation_coverage_tile.md"
 
 
 def load_parser():

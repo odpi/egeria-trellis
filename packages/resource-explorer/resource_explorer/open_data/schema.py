@@ -41,7 +41,8 @@ STATEMENTS = (
         datacite_json    TEXT NOT NULL DEFAULT '',
         imported_by      TEXT NOT NULL DEFAULT '',
         imported_at      TEXT NOT NULL,
-        work_list_slug   TEXT NOT NULL DEFAULT ''
+        work_list_slug   TEXT NOT NULL DEFAULT '',
+        repo_slug        TEXT DEFAULT ''
     )""",
     """CREATE TABLE IF NOT EXISTS portal_directories (
         slug           TEXT PRIMARY KEY,
@@ -67,3 +68,19 @@ STATEMENTS = (
         updated_at          TEXT NOT NULL
     )""",
 )
+
+#: The reserved pseudo-portal a dataset imported from a registered repository is filed under (`portal_slug`). It is a
+#: row, not an adapter: created by `_migrate_open_data_tables` when absent, never listed with the portals, never
+#: searched, never read from. Deployment record: docs/ddl-open-data-repo-slug.md.
+REPOSITORY_PORTAL_SLUG = "repository"
+REPOSITORY_API_KIND = "repository"
+
+#: Additive, on the existing `open_data` table (the other statements here only create tables): provenance for a dataset
+#: that came from a repository. NULL/'' on every older row = "not imported from a repository".
+ADD_REPO_SLUG_COLUMN = "ALTER TABLE open_data ADD COLUMN repo_slug TEXT DEFAULT ''"
+
+REPOSITORY_PORTAL_ROW = (
+    "INSERT INTO open_data_portals (slug, display_name, api_kind, base_url, secret_ref, origin, registered_by,"
+    " registered_at, adapter, calls_per_page, page_size)"
+    " SELECT ?, 'Registered repositories', ?, 'repository://', '', 'system', '', ?, '', NULL, NULL"
+    " WHERE NOT EXISTS (SELECT 1 FROM open_data_portals WHERE slug = ?)")

@@ -23,6 +23,12 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
+#: What the S3 walk writes for owner, group and mode (resource_explorer.reach_mechanisms.NOT_REPORTED): the sign that
+#: the walk read an object store, as fs_permissions reads it.
+NOT_REPORTED = "not reported by this source"
+#: The access measure's words for an object store, like fs_permissions' NO_POSIX_WORDS for modes (W46).
+NO_ATIME_WORDS = "S3 objects carry no access time; reads cannot be told"
+
 ACCESS = "fs_access_activity"
 MODIFY_BASIS = "each file's modified time as the walk's stat read it, aged at the walk's own time"
 ACCESS_BASIS = ("each file's access time as the walk's stat read it before the walk opened the file, aged at the "
@@ -113,6 +119,10 @@ def _access(slug, walk, previous, rows, age, hot, cold, common, inputs) -> dict:
         return {"scope": slug, "state": "nothing_found", "measure": ACCESS, "value": {**common, "basis": ACCESS_BASIS},
                 "summary": "the walk found no files"}
     timed = [r for r in rows if r.get("accessed_at")]
+    if not timed and all(r.get("mode_octal") == NOT_REPORTED for r in rows):
+        # An object store keeps no access time at all, so this is not a walk that predates RE keeping them (W46).
+        return _absent(slug, f"the walk of {_stamp(walk['run_id'])} read an object store: {NO_ATIME_WORDS}",
+                       f"{NO_ATIME_WORDS}", ACCESS)
     if not timed:
         return _absent(slug, f"access times not recorded on this walk ({_stamp(walk['run_id'])}): it was walked before "
                              "Resource Explorer kept them, so which files were read cannot be told",

@@ -318,7 +318,7 @@ def _ensure_draft_zone() -> None:
                 log.info("private-zone bootstrap: %s", private)
             else:
                 log.warning(
-                    "private-zone bootstrap: %s — private investigations will NOT "
+                    "private-zone bootstrap: %s — creator-only investigations will NOT "
                     "publish to Egeria until this is resolved. %s",
                     private, private.get("remedy") or "")
 

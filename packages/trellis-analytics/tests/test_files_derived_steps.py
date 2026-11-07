@@ -70,7 +70,7 @@ def walk(reg, slug, run_id, rows, *, capped=False, blob=True):
 
 def run(url, name, slug="tree"):
     from trellis_analytics.discovery import discover
-    from trellis_analytics.readers.ods import OdsReader
+    from trellis_analytics_re.ods import OdsReader
     from trellis_analytics.step import HostContext, SurveyStep
 
     host = HostContext(resource_type="filesystem", slug=slug, producing_run="run-x", ods=OdsReader(url))
@@ -112,7 +112,7 @@ def test_each_step_declares_in_full_for_file_systems(fs_steps_installed):
 
 def test_the_capped_token_is_what_the_registry_writes(fs_registry):
     """`filesystem_walk_runs` reads "capped" with a LIKE on the stored JSON text; pinned to the writer's own form."""
-    from trellis_analytics.readers.ods import OdsReader
+    from trellis_analytics_re.ods import OdsReader
 
     reg, url = fs_registry
     walk(reg, "tree", "2026-10-01T00:00:00", [row("a.txt")], capped=True)
@@ -125,7 +125,7 @@ def test_the_capped_token_is_what_the_registry_writes(fs_registry):
 
 
 def test_hash_matches_read_only_other_file_systems_newest_walk_and_never_empty_files(fs_registry):
-    from trellis_analytics.readers.ods import OdsReader
+    from trellis_analytics_re.ods import OdsReader
 
     reg, url = fs_registry
     walk(reg, "tree", "2026-10-02T00:00:00", [row("a", digest="h1", state="hashed"),
@@ -178,7 +178,7 @@ def test_change_rates_two_walks_added_removed_modified_and_growth(fs_steps_insta
     assert not leaks(results, ["keep.txt", "gone.txt", "new.txt", "edit.txt"])
 
 
-def test_change_rates_two_identical_walks_is_measured_nothing(fs_steps_installed, fs_registry):
+def test_change_rates_two_identical_walks_is_nothing_found(fs_steps_installed, fs_registry):
     reg, url = fs_registry
     for at in ("2026-10-01T00:00:00", "2026-10-01T06:00:00"):
         walk(reg, "tree", at, [row("a.txt"), row("b.txt")])
@@ -325,7 +325,7 @@ def test_activity_parameters_are_read_from_the_manifest(fs_steps_installed, fs_r
     walk(reg, "tree", "2026-10-10T00:00:00", [row("a", mtime="2026-10-01T00:00:00")])
     m = discover()["fs_activity"]
     monkeypatch.setattr(m, "parameters", {"hot_days": 30, "cold_days": 60})
-    from trellis_analytics.readers.ods import OdsReader
+    from trellis_analytics_re.ods import OdsReader
     from trellis_analytics.step import HostContext, SurveyStep
 
     out = SurveyStep(m).run(HostContext(resource_type="filesystem", slug="tree", producing_run="r", ods=OdsReader(url)))

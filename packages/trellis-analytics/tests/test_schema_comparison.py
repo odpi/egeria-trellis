@@ -66,7 +66,7 @@ def pair(make_registry):
 
 def _run(url, members=("db1", "db2")):
     from trellis_analytics.discovery import discover
-    from trellis_analytics.readers.ods import OdsReader
+    from trellis_analytics_re.ods import OdsReader
     from trellis_analytics.step import HostContext, SurveyStep
 
     host = HostContext(resource_type="work_list", slug=SET, producing_run="run-c", ods=OdsReader(url),
@@ -211,7 +211,7 @@ def test_two_inventories_with_no_tables_have_nothing_to_compare():
 
 
 def test_the_inventory_read_tells_unsurveyed_from_unregistered(pair):
-    from trellis_analytics.readers.ods import OdsReader
+    from trellis_analytics_re.ods import OdsReader
 
     reg, url = pair
     _survey(reg, "db1", BASE, AT1)

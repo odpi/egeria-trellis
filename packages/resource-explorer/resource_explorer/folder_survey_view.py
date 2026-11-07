@@ -176,6 +176,16 @@ def extensions_view(registry, slug: str) -> dict | None:
     }
 
 
+def _egeria_counts_only(file_profiles: dict, egeria: dict | None) -> None:
+    """W51: an Egeria-led Folder Survey ran but RE has walked nothing, so there is no file list to profile. "no walk yet ·
+    run the folder survey first" was false (it ran); the prerequisite is Measure beside, and the card points at it."""
+    from resource_explorer.surveyors.filesystem.file_profiles import EGERIA_COUNTS_ONLY_WORDS
+
+    price = (file_profiles or {}).get("price")
+    if price and price.get("walk") is False and egeria and not egeria.get("none"):
+        price.update(words=EGERIA_COUNTS_ONLY_WORDS, needs="measure_beside")
+
+
 def _file_profiles(registry, slug: str) -> dict:
     """The file_profiles step's cost line and newest run (Files build step 5); a failed read is said, never an empty run."""
     from resource_explorer.surveyors.filesystem.file_profiles import profiles_view
@@ -242,6 +252,7 @@ def folder_survey_view(registry, slug: str) -> dict:
             "file_profiles": _file_profiles(registry, slug), "narrative_docs": _narrative_docs(registry, slug),
             "class_match": _class_match(registry, slug)}
     base["price"], base["derived"] = _walk_derived(registry, slug, fork)
+    _egeria_counts_only(base["file_profiles"], egeria)
     if not candidates:
         return {**base, "state": "none", "surveyor": "", "surveyed_at": "", "report_guid": "", "published": False,
                 "publish": None, "pre_reset": None, "report_sentence": "", "results": None, "limits": None, "detail_lines": []}

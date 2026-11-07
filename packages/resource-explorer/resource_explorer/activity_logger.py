@@ -1,6 +1,8 @@
 """Convenience helpers for writing activity log entries."""
 from __future__ import annotations
 
+import contextlib
+import contextvars
 import logging
 import uuid
 from datetime import datetime, timezone
@@ -210,6 +212,20 @@ def _declared_stage(entity_type: str, analysis_id: str) -> str:
         logging.getLogger(__name__).warning(
             "analysis catalog unreadable for %s/%s (%s); the row says 'assessment'", entity_type, analysis_id, exc)
     return "assessment"
+
+
+#: The stage a per-card Run → was pressed on ("4 Analysis"), for the one-analysis survey that run writes (W55).
+#: Set by the run queue's per-card handlers around the run; the executor records it beside the declared intent.
+PRESSED_ON: contextvars.ContextVar[str] = contextvars.ContextVar("pressed_on", default="")
+
+
+@contextlib.contextmanager
+def pressed_on(words: str):
+    token = PRESSED_ON.set(words or "")
+    try:
+        yield
+    finally:
+        PRESSED_ON.reset(token)
 
 
 def log_analysis_run(

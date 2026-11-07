@@ -2144,6 +2144,11 @@ def _signature(columns: list[dict], tables: list[dict]) -> tuple[set[str], set[s
     return table_sig - {"."}, column_sig
 
 
+def _databases(count: int) -> str:
+    """"database" or "databases" for a count already known (W54): never "database(s)" beside a number."""
+    return "database" if count == 1 else "databases"
+
+
 def _jaccard(a: set[str], b: set[str]) -> float:
     if not a and not b:
         return 0.0
@@ -2243,7 +2248,7 @@ def fingerprint_database(registry, inputs: DerivedInputs) -> dict:
         )
     elif not matches:
         explanation = (
-            f"Measured: compared against {comparable} other database(s) with "
+            f"Measured: compared against {comparable} other {_databases(comparable)} with "
             f"stored schema, none shares even {_REPORTABLE_JACCARD:.0%} of "
             f"this database's column signature. A real finding — no known "
             f"database resembles this one."
@@ -2251,7 +2256,7 @@ def fingerprint_database(registry, inputs: DerivedInputs) -> dict:
     else:
         top = matches[0]
         explanation = (
-            f"Closest of {comparable} comparable database(s): {top['slug']} "
+            f"Closest of {comparable} comparable {_databases(comparable)}: {top['slug']} "
             f"({top['verdict']}, column-signature Jaccard "
             f"{top['column_jaccard']:.2f}, containment "
             f"{top['containment']:.2f}). Thresholds: copy ≥ {_COPY_JACCARD}, "
@@ -4539,7 +4544,7 @@ def fingerprint_by_container(registry, inputs: DerivedInputs, containment) -> di
             f"Per-{grain_name} signatures, listed rather than averaged into one "
             f"digest. Compared every {grain_name} against every other "
             f"{grain_name} in this database and against {comparable_peers} "
-            f"other database(s) with stored rows; none crossed the copy "
+            f"other {_databases(comparable_peers)} with stored rows; none crossed the copy "
             f"(≥ {_COPY_JACCARD}) or subset (≥ {_SUBSET_CONTAINMENT}) line."
         )
 
@@ -5608,7 +5613,7 @@ def _fingerprint_annotations(result: dict) -> list:
         summary=(
             f"Schema fingerprint {result['digest'][:16]}"
             + (f" — closest match {top['slug']} ({top['verdict']})" if top
-               else f" — no match among {comparable} comparable database(s)"
+               else f" — no match among {comparable} comparable {_databases(comparable)}"
                if comparable else " — nothing to compare against")
         ),
         analysis_step=ANALYSIS_STEP,

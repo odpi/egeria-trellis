@@ -21,3 +21,47 @@ pod_data_json_head.json          https://data.nasa.gov/data.json  (Project Open 
     NOT catalog.data.gov: https://catalog.data.gov/data.json -> HTTP 404 (again, as on 2026-10-31);
     https://data.gov.au/data.json -> 404; https://data.sa.gov.au/data.json -> 404; data.nasa.gov answered on the
     second attempt after a first connect time-out.
+
+Recorded 2026-11-02 (UTC), read-only GETs, User-Agent "ResourceExplorer-OpenData/1 (read-only catalog queries)",
+Accept: application/ld+json for the catalogs. Seeds slice (BRIEF-OPEN-DATA-SEEDS). Each file is a mechanical copy or
+head-cut; nothing is edited by hand.
+
+dcat_catalog_compact_graph_page1.json   https://data.public.lu/api/1/site/catalog.jsonld?page=1&page_size=5  HTTP 200
+    COMPACT JSON-LD: one object, "@context" (an @vocab of dcat# plus prefixed term definitions) + "@graph" (51 nodes:
+    5 datasets' distributions and checksums, and the Catalog / hydra:Collection node). Written without indentation, every
+    node verbatim. The hydra statement says 100 per page, 3210 datasets (the page_size=5 query only shortened this page).
+    Candidates tried in the brief's order for "an EU CKAN portal that answers /catalog.jsonld with @context + @graph";
+    NONE of the ckanext-dcat portals did (a ckanext-dcat catalog answers an expanded, flattened array, like data.gov.ie):
+      https://dati.gov.it/catalog.jsonld            404 (HTML)
+      https://datos.gob.es/catalog.jsonld           404
+      https://data.overheid.nl/catalog.jsonld       404 (HTML)
+      https://www.data.gv.at/catalog.jsonld         404
+      https://opendata.swiss/catalog.jsonld?page=1  200 application/ld+json, a FLATTENED array (no @context/@graph)
+      https://ckan.opendata.swiss/catalog.jsonld    200, flattened (the same)
+      https://data.gov.gr/catalog.jsonld            200, flattened
+      https://data.gov.ro/catalog.jsonld            200, flattened
+      https://open.canada.ca/data/catalog.jsonld    200, flattened
+      https://data.gov.sk, data.gov.hr, data.norge.no, avaandmed.eesti.ee: 200 but text/html (not a feed)
+      data.public.lu, www.data.gouv.fr, dados.gov.pt (udata portals, not CKAN): 200 compact @graph  <- recorded: Luxembourg
+    So this fixture is an EU portal on udata, not CKAN. The CKAN adapter's twin of it is opendata.swiss (listed in the
+    seeds as one portal through two adapters).
+
+pod_data_json_with_distributions.json   https://healthdata.gov/data.json  HTTP 200 application/json
+    Project Open Data data.json with "distribution" arrays; one dataset carries a licence URI
+    (https://open.fda.gov/license) and "accrualPeriodicity": "R/P1Y". TRUNCATED: the catalog envelope plus the first 20
+    entries of "dataset" (the full file is ~31 MB, 31,319,575 bytes), cut by parsing the first 1.2 MB of the stream; the 20
+    entries are verbatim. Written without indentation.
+    The owner's "HHS" address https://www.hhs.gov/data.json answered HTTP 403 "Access Denied" (an Akamai block) to
+    this client, to curl's default agent and over http; it was not retried with another identity. healthdata.gov is HHS's
+    own health data portal and answered 200, so it is the recorded feed; the seeds list www.hhs.gov as failed.
+
+Recorded 2026-11-03 (UTC), read-only GETs, User-Agent "ResourceExplorer-OpenData/1 (read-only catalog queries)", no key
+(anonymous). Zenodo adapter slice (BRIEF-OPEN-DATA-REPO-DATASETS-AND-ZENODO). Each file is a verbatim copy of the answer.
+
+zenodo_search_clinical_trial_dataset_page1.json   https://zenodo.org/api/records?q=clinical trial&type=dataset&size=25&page=1  HTTP 200
+zenodo_search_clinical_trial_dataset_page2.json   the same with page=2  HTTP 200
+    25 hits per page; hits.total 20482 on both. Records without a `license` (8192485, 8046590) and without a concept DOI
+    (12737228 ...) are in page 1; 8046590 has an empty files list. No record states `metadata.publisher`.
+zenodo_record_with_files.json     https://zenodo.org/api/records/18494263  HTTP 200 (one file, VIP_ovary.xlsx, 246814 bytes, md5)
+zenodo_doi_lookup.json            https://zenodo.org/api/records?q=doi:"10.5281/zenodo.18494263"  HTTP 200, hits.total 1
+    `GET /api/records?size=1` answers {hits, aggregations, links} (the InvenioRDM probe); total 7,632,651 on the day.

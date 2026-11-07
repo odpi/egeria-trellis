@@ -8,7 +8,8 @@ dispatch it: initiating ResourceExplorerSurvey::re-hub-tables creates an engine 
 claims, runs through its step host and completes with one of survey-completed, survey-invalid, survey-failed
 (survey-completed when there is nothing to derive).
 
-Run it with `resource-explorer dr-egeria run engine-host/library/hub_tables.md`. RE's bootstrap never runs it.
+Run it with `resource-explorer dr-egeria run engine-host/library/hub_tables.md`. RE's bootstrap runs it only as part of the engine-host batch:
+by Admin › Repair › "Declare RE's survey engine in Egeria", or on its own when RE_ENGINE_HOST_HEAL is on (default off).
 Its pyegeria steps (hub_tables.pyegeria-steps.json) run first, each find-or-create:
   - SurveyActionEngine `ResourceExplorerSurvey` (normally already there, from the engine's own document);
   - SurveyActionService `SurveyActionService::ResourceExplorerSurvey::hub_tables`, linked to the engine by

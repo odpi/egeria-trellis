@@ -1,5 +1,8 @@
 # Your first analysis: adding a measurement to Resource Explorer
 
+> **Vocabulary note (2026-11-07):** the absence word `measured_nothing` was renamed `nothing_found` (trellis-analytics 0.3); this document now uses the new word. Results stored with the old word are still read.
+
+
 *A tutorial for developers who are new to Resource Explorer. About an hour. Rewritten 2026-10-30.*
 
 ## What you will do
@@ -167,7 +170,7 @@ MANIFEST = StepManifest(
             not_measured="Not measured: no earlier survey has counted rows for this database yet.",
             not_permitted="Not permitted: the row counts could not be read.",
             not_applicable="Not applicable: row changes are measured for databases only.",
-            measured_nothing="Measured: no table changed between the two surveys."),
+            nothing_found="Measured: no table changed between the two surveys."),
         confidence=ConfidenceDeclaration(form="measured"),   # a count, not an estimate
         scope="member",                                      # each result is about one table
     ),
@@ -298,7 +301,7 @@ Explain to anyone what a 0 meant.
 
 ## Where to go next
 
-- The reference: `packages/trellis-analytics/README.md`, every field and rule.
+- The reference: the [egeria-trellis-analytics README](https://github.com/odpi/egeria-trellis-analytics#readme), every field and rule.
 - Putting your result on a Portal dashboard: the Portal's *Local Dashboards* tutorial. Your step is already listed in
   the Portal's Analytic Functions Browser, because the same registry serves both. A report spec names it by its
   registered name, `my_row_changes`, never by its Python path.

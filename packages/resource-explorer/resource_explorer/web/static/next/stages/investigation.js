@@ -109,6 +109,84 @@ export async function investigationVocab() {
   return { purposes: purposeVocab.purposes, purposeVocab, classifications: _classifications };
 }
 
+/* ── F56: visibility is its own axis (creator-only | shared) ─────────────────
+ * The kind is Egeria's vocabulary only; the visibility decides who sees the investigation in Resource Explorer
+ * and which zones its Egeria elements get. "Private investigation" names ONLY local + creator-only (the
+ * server's `is_private_investigation`); anything else names its kind and its visibility separately. */
+
+/** The create form's value for the "Private investigation" preset (binding local, creator-only, kind undecided). */
+export const PRIVATE_PRESET = '__private__';
+
+const VIS_FALLBACK = [
+  { name: 'creator-only', label: 'Creator-only',
+    consequence: 'creator-only: only you see it in Resource Explorer; published zoned to you' },
+  { name: 'shared', label: 'Shared',
+    consequence: 'shared: everyone signed in to Resource Explorer sees it; published in the publish zones' },
+];
+
+function visibilities(classifications) {
+  return classifications.visibilities?.length ? classifications.visibilities : VIS_FALLBACK;
+}
+
+/** The visibility a kind gets by default (served `default_visibility_by_kind`; Personal and Experiment are creator-only). */
+export function defaultVisibilityFor(classifications, kind) {
+  const served = classifications.default_visibility_by_kind;
+  if (served && served[kind]) return served[kind];
+  return (kind === 'PersonalProject' || kind === 'Experiment') ? 'creator-only' : 'shared';
+}
+
+/** One radio per visibility, and the consequence line for the selected one. */
+export function visibilityRadioHtml(prefix, classifications, selected, { note = '' } = {}) {
+  const vis = visibilities(classifications);
+  const current = vis.find((v) => v.name === selected) || vis[vis.length - 1];
+  return `<div data-vis-group="${esc(prefix)}" class="mb-s2">
+      <span class="mb-[3px] block text-caveat text-ink-muted">Who can see it</span>
+      ${vis.map((v) => `<label class="mr-s3 inline-flex items-center gap-[4px] text-caveat text-ink">
+        <input type="radio" name="${esc(prefix)}-vis" value="${esc(v.name)}" ${v.name === current.name ? 'checked' : ''}>
+        ${esc(v.label || v.name)}</label>`).join('')}
+      <p data-vis-consequence class="m-0 mt-[2px] text-caveat text-ink-muted">${esc(current.consequence || '')}${
+        note ? ` <span data-vis-note>${esc(note)}</span>` : ''}</p>
+    </div>`;
+}
+
+export function readVisibilityRadio(host, prefix) {
+  return host.querySelector(`input[name="${prefix}-vis"]:checked`)?.value || '';
+}
+
+export function setVisibilityRadio(host, prefix, value) {
+  const input = host.querySelector(`input[name="${prefix}-vis"][value="${value}"]`);
+  if (input) input.checked = true;
+}
+
+/** Keep the consequence line in step with the radios; `extra(value)` adds words after it (e.g. "still creator-only"). */
+export function wireVisibilityRadio(host, prefix, classifications, extra = () => '') {
+  const vis = visibilities(classifications);
+  const line = host.querySelector(`[data-vis-group="${prefix}"] [data-vis-consequence]`);
+  const sync = () => {
+    const v = vis.find((x) => x.name === readVisibilityRadio(host, prefix));
+    if (!line || !v) return;
+    const more = extra(v.name);
+    line.innerHTML = `${esc(v.consequence || '')}${more ? ` <span data-vis-note>${esc(more)}</span>` : ''}`;
+  };
+  host.querySelectorAll(`input[name="${prefix}-vis"]`).forEach((r) => r.addEventListener('change', sync));
+  sync();
+  return sync;
+}
+
+/** The kind/visibility/Egeria words for an investigation's header (F56 §3):
+ *  "<kind> · creator-only · in Egeria as <kind>", or "private investigation · not in Egeria". */
+export function investigationKindWords(inv, classifications) {
+  if (inv.is_private_investigation) return 'private investigation · not in Egeria';
+  const kind = inv.project_classification || '';
+  const label = kind
+    ? ((classifications?.classifications || []).find((c) => c.name === kind)?.label || kind)
+    : 'kind undecided';
+  const where = inv.egeria_project_guid
+    ? (kind ? `in Egeria as ${kind}` : 'in Egeria')
+    : 'not in Egeria';
+  return `${label} · ${inv.visibility || 'shared'} · ${where}`;
+}
+
 export async function renderInvestigation() {
   if (_detailSlug) return renderDetail(_detailSlug);
   return renderList();
@@ -188,7 +266,7 @@ async function renderList() {
           <td class="py-s2 pr-s3 text-answer text-ink">
             ${inv.slug === state.investigation ? '<span title="current investigation">★ </span>' : ''}
             ${esc(inv.display_name || inv.slug)}
-            ${inv.visibility === 'private' ? `<span class="ml-[4px] text-caveat text-ink-muted" title="${esc(inv.visibility_note || 'visible only to its creator')}">🔒</span>` : ''}
+            ${inv.visibility === 'creator-only' ? `<span class="ml-[4px] text-caveat text-ink-muted" title="${esc(inv.visibility_note || (inv.is_private_investigation ? 'private investigation · not in Egeria' : 'creator-only: visible only to its creator'))}">🔒</span>` : ''}
           </td>
           <td class="py-s2 pr-s3 text-caveat text-ink-muted" data-inv-purposes-cell="${esc(inv.slug)}">${purposesSummaryHtml(inv, purposeNames) || '—'}</td>
           <td class="py-s2 pr-s3 text-caveat">${statusGlyph(inv.status)}</td>
@@ -251,6 +329,12 @@ function bindListHeader() {
  *  form and carries on with whatever the person was doing, not a page change. */
 export async function openCreateDialog({ onCreated = null } = {}) {
   const { purposeVocab, classifications } = await investigationVocab();
+  // F56: the "Private investigation" preset sits above the five kinds (served words; this fallback only if the
+  // server is older than F56).
+  const preset = classifications.private_preset || {
+    label: 'Private investigation — mine, not in Egeria',
+    description: 'Only you see it, and nothing is written to Egeria. Its kind is decided when you publish it to Egeria.',
+  };
   const d = openDialog('New investigation', '');
   const body = d.querySelector('#wl-detail-body');
   body.innerHTML = `
@@ -262,18 +346,24 @@ export async function openCreateDialog({ onCreated = null } = {}) {
     <div class="mb-s2">${purposePickerHtml({ prefix: 'inv-new', vocab: purposeVocab })}</div>
     <label class="mb-[3px] block text-caveat text-ink-muted">Kind</label>
     <select id="inv-new-class" class="mb-s2 w-full rounded-sm border border-rule bg-paper px-2 py-1 text-caveat text-ink">
+      <option value="${PRIVATE_PRESET}">${esc(preset.label)}</option>
       ${classifications.classifications.map((c) => `<option value="${esc(c.name)}" ${
         c.name === classifications.default_classification ? 'selected' : ''}>${esc(c.label || c.name)}</option>`).join('')}
     </select>
+    <p id="inv-new-preset-note" class="mb-s2 hidden text-caveat text-ink-muted">${esc(preset.description)}</p>
     <div id="inv-new-hyp-wrap" class="mb-s2 hidden">
       <label class="mb-[3px] block text-caveat text-ink-muted">Hypothesis (required for Experiment)</label>
       <input id="inv-new-hyp" type="text" class="w-full rounded-sm border border-rule bg-paper px-2 py-1 text-caveat text-ink">
     </div>
-    <label class="mb-[3px] block text-caveat text-ink-muted">Where it lives</label>
-    <select id="inv-new-binding" class="mb-s3 w-full rounded-sm border border-rule bg-paper px-2 py-1 text-caveat text-ink">
-      ${classifications.bindings.map((b) => `<option value="${esc(b.name)}" ${
-        b.name === classifications.default_binding ? 'selected' : ''}>${esc(b.label || b.name)}</option>`).join('')}
-    </select>
+    <div id="inv-new-kind-only">
+      ${visibilityRadioHtml('inv-new', classifications,
+        defaultVisibilityFor(classifications, classifications.default_classification))}
+      <label class="mb-[3px] block text-caveat text-ink-muted">Where it lives</label>
+      <select id="inv-new-binding" class="mb-s3 w-full rounded-sm border border-rule bg-paper px-2 py-1 text-caveat text-ink">
+        ${classifications.bindings.map((b) => `<option value="${esc(b.name)}" ${
+          b.name === classifications.default_binding ? 'selected' : ''}>${esc(b.label || b.name)}</option>`).join('')}
+      </select>
+    </div>
     <div id="inv-new-error" class="mb-s2 text-caveat text-state-warn"></div>
     <div class="flex gap-s2">
       <button id="inv-new-submit" type="button"
@@ -284,6 +374,7 @@ export async function openCreateDialog({ onCreated = null } = {}) {
   const classSel = body.querySelector('#inv-new-class');
   const hypWrap = body.querySelector('#inv-new-hyp-wrap');
   const requiresHyp = (name) => classifications.classifications.find((c) => c.name === name)?.requires_hypothesis;
+  const syncVis = wireVisibilityRadio(body, 'inv-new', classifications);
   const syncHyp = () => {
     const need = requiresHyp(classSel.value);
     hypWrap.classList.toggle('hidden', !need);
@@ -291,8 +382,18 @@ export async function openCreateDialog({ onCreated = null } = {}) {
     // Experiment specifically, and a stale value from switching kinds back
     // and forth must not silently ride along on a non-Experiment create.
     if (!need) body.querySelector('#inv-new-hyp').value = '';
+    // The preset fixes binding + visibility, so their controls are hidden; a kind shows them with the kind's default.
+    const isPreset = classSel.value === PRIVATE_PRESET;
+    body.querySelector('#inv-new-kind-only').classList.toggle('hidden', isPreset);
+    body.querySelector('#inv-new-preset-note').classList.toggle('hidden', !isPreset);
   };
-  classSel.addEventListener('change', syncHyp);
+  classSel.addEventListener('change', () => {
+    if (classSel.value !== PRIVATE_PRESET) {
+      setVisibilityRadio(body, 'inv-new', defaultVisibilityFor(classifications, classSel.value));
+      syncVis();
+    }
+    syncHyp();
+  });
   syncHyp();
   wirePurposePicker(body, 'inv-new');
 
@@ -301,7 +402,8 @@ export async function openCreateDialog({ onCreated = null } = {}) {
     const errEl = body.querySelector('#inv-new-error');
     if (!name) { errEl.textContent = 'Name is required.'; return; }
     const picked = readPurposePicker(body, 'inv-new');
-    const projectClassification = classSel.value;
+    const isPreset = classSel.value === PRIVATE_PRESET;
+    const projectClassification = isPreset ? '' : classSel.value;
     const hypothesis = body.querySelector('#inv-new-hyp').value.trim();
     if (requiresHyp(projectClassification) && !hypothesis) {
       errEl.textContent = 'This kind requires a hypothesis.';
@@ -309,7 +411,7 @@ export async function openCreateDialog({ onCreated = null } = {}) {
     }
     const btn = body.querySelector('#inv-new-submit');
     btn.disabled = true;
-    btn.textContent = 'Publishing…';
+    btn.textContent = isPreset ? 'Creating…' : 'Publishing…';
     try {
       const inv = await createInvestigation({
         displayName: name,
@@ -317,8 +419,9 @@ export async function openCreateDialog({ onCreated = null } = {}) {
         purposes: picked.purposes,
         purposeText: picked.purpose_text,
         projectClassification,
-        egeriaBinding: body.querySelector('#inv-new-binding').value,
+        egeriaBinding: isPreset ? (preset.egeria_binding || 'local') : body.querySelector('#inv-new-binding').value,
         hypothesis,
+        visibility: isPreset ? (preset.visibility || 'creator-only') : readVisibilityRadio(body, 'inv-new'),
       });
       closeCellDetail();
       await refreshInvestigationsAndSidebar();
@@ -382,8 +485,6 @@ async function renderDetail(slug) {
   }
   const { classifications, purposes: purposeNames } = await investigationVocab();
   if (stale()) return;
-  const classLabel = classifications.classifications.find((c) => c.name === inv.project_classification)?.label
-    || inv.project_classification;
 
   const isCurrent = inv.slug === state.investigation;
   const lifecycleButtons = inv.status === 'open'
@@ -393,13 +494,13 @@ async function renderDetail(slug) {
 
   el.innerHTML = `${detailHeaderHtml(inv)}
     <div class="mb-s3 flex flex-wrap items-center gap-s2 text-caveat text-ink-muted">
-      <span title="Project classification">${esc(classLabel)}</span>
+      <span data-inv-kind-words title="Kind · who can see it · where it lives">${esc(investigationKindWords(inv, classifications))}</span>
       ${inv.project_classification === 'Experiment' && inv.hypothesis
         ? `<span title="${esc(inv.hypothesis)}">· hypothesis set</span>` : ''}
       <span>·</span>
       ${bindingGlyph(inv)}
       ${purposesSummaryHtml(inv, purposeNames) ? `<span data-inv-purposes>· ${purposesSummaryHtml(inv, purposeNames)}</span>` : ''}
-      ${inv.visibility === 'private' ? `<span title="${esc(inv.visibility_note || '')}">· 🔒 private</span>` : ''}
+      ${inv.visibility === 'creator-only' ? `<span title="${esc(inv.visibility_note || 'only its creator sees it in Resource Explorer')}">· 🔒</span>` : ''}
     </div>
     <p class="max-w-[70ch] text-answer text-ink">${esc(inv.description || 'No description.')}</p>
     <div class="mb-s3 flex flex-wrap gap-s2">
@@ -718,7 +819,10 @@ function bindDetail(inv, members) {
   });
 
   el.querySelector('[data-act="inv-edit"]')?.addEventListener('click', async () => {
-    const { purposeVocab } = await investigationVocab();
+    const { purposeVocab, classifications } = await investigationVocab();
+    // F56: visibility is editable here while there is no Egeria Project (it is then RE's list filter alone); once
+    // promoted it moves Egeria zones, which Reclassify… does and reports.
+    const visEditable = !inv.egeria_project_guid;
     const host = $('inv-edit-form');
     host.innerHTML = `<div class="mb-s3 rounded-sm border border-rule p-s2">
       <label class="mb-[3px] block text-caveat text-ink-muted">Name</label>
@@ -730,6 +834,10 @@ function bindDetail(inv, members) {
       <label class="mb-[3px] block text-caveat text-ink-muted">Purposes</label>
       <div class="mb-s2">${purposePickerHtml({
         prefix: 'inv-edit', vocab: purposeVocab, selected: inv.purposes || [], text: inv.purpose_text || '' })}</div>
+      ${visEditable
+        ? visibilityRadioHtml('inv-edit', classifications, inv.visibility || 'shared')
+        : `<p data-inv-edit-vis class="mb-s2 text-caveat text-ink-muted">Who can see it: ${esc(inv.visibility || 'shared')}.
+            It is in Egeria, so changing it moves its Egeria zones — use Reclassify….</p>`}
       <div class="flex gap-s2">
         <button id="inv-edit-save" class="cursor-pointer rounded-sm border border-rule-strong bg-transparent px-2 py-[2px] text-caveat text-ink hover:border-accent disabled:cursor-default disabled:opacity-60">Save</button>
         <button id="inv-edit-cancel" class="cursor-pointer bg-transparent text-caveat text-ink-muted underline">Cancel</button>
@@ -737,6 +845,7 @@ function bindDetail(inv, members) {
       <span id="inv-edit-error" class="text-caveat text-state-warn"></span>
     </div>`;
     wirePurposePicker(host, 'inv-edit');
+    if (visEditable) wireVisibilityRadio(host, 'inv-edit', classifications);
     host.querySelector('#inv-edit-cancel').addEventListener('click', () => { host.innerHTML = ''; });
     host.querySelector('#inv-edit-save').addEventListener('click', async () => {
       const btn = host.querySelector('#inv-edit-save');
@@ -746,6 +855,7 @@ function bindDetail(inv, members) {
           display_name: host.querySelector('#inv-edit-name').value.trim(),
           description: host.querySelector('#inv-edit-desc').value.trim(),
           ...readPurposePicker(host, 'inv-edit'),
+          ...(visEditable ? { visibility: readVisibilityRadio(host, 'inv-edit') } : {}),
         });
         await refreshInvestigationsAndSidebar();
         renderDetail(inv.slug);
@@ -770,10 +880,11 @@ function bindDetail(inv, members) {
         <input id="inv-reclass-hyp" type="text" value="${esc(inv.hypothesis || '')}"
           class="w-full rounded-sm border border-rule bg-paper px-2 py-1 text-caveat text-ink">
       </div>
+      ${visibilityRadioHtml('inv-reclass', classifications, inv.visibility || 'shared')}
       <p class="mb-s2 text-caveat text-ink-muted">
-        Loosening visibility (e.g. Personal/Experiment → a public kind) always works. Tightening
-        can fail partway if artifacts already reached a public Egeria zone — the result will say
-        exactly which elements moved and which did not.
+        Changing the kind does not change who can see it. Making it shared always works. Making it
+        creator-only can fail partway if artifacts already reached a public Egeria zone — the result
+        will say exactly which elements moved and which did not.
       </p>
       <div class="flex gap-s2">
         <button id="inv-reclass-save" class="cursor-pointer rounded-sm border border-rule-strong bg-transparent px-2 py-[2px] text-caveat text-ink hover:border-accent disabled:cursor-default disabled:opacity-60">Reclassify</button>
@@ -787,6 +898,9 @@ function bindDetail(inv, members) {
       !classifications.classifications.find((c) => c.name === sel.value)?.requires_hypothesis);
     sel.addEventListener('change', syncHyp);
     syncHyp();
+    // F56: the visibility stays unless the person changes it here, and the dialog says so.
+    wireVisibilityRadio(host, 'inv-reclass', classifications,
+      (v) => (v === (inv.visibility || 'shared') ? `(still ${v})` : `(changes from ${inv.visibility || 'shared'})`));
     host.querySelector('#inv-reclass-cancel').addEventListener('click', () => { host.innerHTML = ''; });
     host.querySelector('#inv-reclass-save').addEventListener('click', async () => {
       const btn = host.querySelector('#inv-reclass-save');
@@ -802,10 +916,12 @@ function bindDetail(inv, members) {
         // partial result naming exactly which elements did not move matters
         // more than snapping back to a clean view.
         const result = await reclassifyInvestigation(
-          inv.slug, sel.value, host.querySelector('#inv-reclass-hyp').value.trim());
+          inv.slug, sel.value, host.querySelector('#inv-reclass-hyp').value.trim(),
+          readVisibilityRadio(host, 'inv-reclass'));
         btn.textContent = 'Reclassify';
         resultEl.innerHTML = (result.ok
-          ? `<span class="text-state-ok">Reclassified to ${esc(result.to_classification)}.</span>`
+          ? `<span class="text-state-ok">Reclassified to ${esc(result.to_classification)} · ${
+              result.visibility_kept ? `still ${esc(result.to_visibility)}` : `now ${esc(result.to_visibility)}`}.</span>`
           : `<span class="text-state-warn">Partial (${esc(result.direction)}): local_applied=${
               esc(String(result.local_applied))}.${result.still_public.length
                 ? ` Still public: ${result.still_public.map(esc).join(', ')}.` : ''}${
@@ -896,15 +1012,62 @@ function bindDetail(inv, members) {
     renderDetail(inv.slug);
   });
 
+  // F56: Publish to Egeria first ASKS — the kind (default StudyProject, or the kind already chosen; Experiment needs
+  // its hypothesis) and who can see it (creator-only publishes zoned to the creator; shared in the publish zones).
   el.querySelector('[data-act="inv-promote"]')?.addEventListener('click', async () => {
+    const { classifications } = await investigationVocab();
+    const host = $('inv-egeria-form');
+    const startKind = inv.project_classification || classifications.default_classification || 'StudyProject';
+    host.innerHTML = `<div data-inv-promote-ask class="mt-s2 rounded-sm border border-rule p-s2">
+      <label class="mb-[3px] block text-caveat text-ink-muted">Kind in Egeria</label>
+      <select id="inv-promote-kind" class="mb-s2 w-full rounded-sm border border-rule bg-paper px-2 py-1 text-caveat text-ink">
+        ${classifications.classifications.map((c) => `<option value="${esc(c.name)}" ${
+          c.name === startKind ? 'selected' : ''}>${esc(c.label || c.name)}</option>`).join('')}
+      </select>
+      <div id="inv-promote-hyp-wrap" class="mb-s2 hidden">
+        <label class="mb-[3px] block text-caveat text-ink-muted">Hypothesis (required for Experiment)</label>
+        <input id="inv-promote-hyp" type="text" value="${esc(inv.hypothesis || '')}"
+          class="w-full rounded-sm border border-rule bg-paper px-2 py-1 text-caveat text-ink">
+      </div>
+      ${visibilityRadioHtml('inv-promote', classifications, inv.visibility || 'shared')}
+      <div class="flex gap-s2">
+        <button id="inv-promote-go" class="cursor-pointer rounded-sm border border-accent bg-transparent px-2 py-[2px] text-caveat text-accent-ink">Publish to Egeria</button>
+        <button id="inv-promote-cancel" class="cursor-pointer bg-transparent text-caveat text-ink-muted underline">Cancel</button>
+      </div>
+      <span id="inv-promote-error" class="text-caveat text-state-warn"></span>
+    </div>`;
+    const kindSel = host.querySelector('#inv-promote-kind');
+    const hypWrap = host.querySelector('#inv-promote-hyp-wrap');
+    const needsHyp = () => classifications.classifications.find((c) => c.name === kindSel.value)?.requires_hypothesis;
+    const syncHyp = () => hypWrap.classList.toggle('hidden', !needsHyp());
+    kindSel.addEventListener('change', syncHyp);
+    syncHyp();
+    wireVisibilityRadio(host, 'inv-promote', classifications);
+    host.querySelector('#inv-promote-cancel').addEventListener('click', () => { host.innerHTML = ''; });
+    host.querySelector('#inv-promote-go').addEventListener('click', () => {
+      const hypothesis = host.querySelector('#inv-promote-hyp').value.trim();
+      if (needsHyp() && !hypothesis) {
+        host.querySelector('#inv-promote-error').textContent = 'This kind requires a hypothesis.';
+        return;
+      }
+      runPromote({
+        projectClassification: kindSel.value,
+        hypothesis: needsHyp() ? hypothesis : '',
+        visibility: readVisibilityRadio(host, 'inv-promote'),
+      });
+    });
+  });
+
+  async function runPromote(choice) {
     const btn = el.querySelector('[data-act="inv-promote"]');
     btn.disabled = true;
     btn.textContent = 'Creating…';
     const host = $('inv-egeria-form');
+    host.innerHTML = '';
     try {
       let result;
       try {
-        result = await promoteInvestigation(inv.slug);
+        result = await promoteInvestigation(inv.slug, choice);
       } catch (err) {
         // The write failed: reset the button, keep a cue on it, and say why in a pop-up.
         btn.disabled = false;
@@ -948,7 +1111,7 @@ function bindDetail(inv, members) {
       btn.textContent = 'Publish to Egeria →';
       host.insertAdjacentHTML('beforeend', `<div class="mt-s2 text-caveat" data-inv-promote-refused>${refusalHtml(err)}</div>`);
     }
-  });
+  }
 
   el.querySelector('[data-act="inv-sync"]')?.addEventListener('click', async () => {
     const btn = el.querySelector('[data-act="inv-sync"]');

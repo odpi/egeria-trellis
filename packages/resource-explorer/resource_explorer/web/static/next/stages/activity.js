@@ -424,6 +424,17 @@ function compactValue(v) {
   if (typeof v === 'object') return Object.entries(v).map(([k, x]) => `${k}: ${typeof x === 'object' && x !== null ? plainValue(x) : String(x)}`).join(' · ') || '—';
   return String(v);
 }
+/** The row's intent. A per-card Run → (a one-analysis survey, `synthetic::` ref) says both the stage it was pressed
+ *  on and the intent it declares, always (W55): "pressed on 4 Analysis · declared intent: discovery". */
+export function intentWordsHtml(op) {
+  let d = null;
+  try { d = op.detail ? JSON.parse(op.detail) : null; } catch { /* not JSON */ }
+  const perCard = !!(d && typeof d === 'object' && String(d.survey_definition_ref || '').startsWith('synthetic::'));
+  if (!perCard) return op.intent ? `<span class="text-provenance text-ink-muted">${esc(op.intent)}</span>` : '';
+  const where = d.pressed_on ? `pressed on ${esc(d.pressed_on)}` : 'pressed-on stage not recorded';
+  return `<span data-pressed-on class="text-provenance text-ink-muted">${where} · declared intent: ${esc(op.intent || 'not recorded')}</span>`;
+}
+
 export function readableDetailHtml(detail) {
   let obj = null;
   try { const parsed = JSON.parse(detail); if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) obj = parsed; } catch { /* not JSON */ }
@@ -488,7 +499,7 @@ function entryRowHtml(op) {
       <span class="shrink-0">${opIcon}</span>
       <span class="font-heading text-answer text-ink">${esc(opLabel)}</span>
       ${op.entity_slug ? `<span class="font-mono text-provenance text-ink-muted">${entityIcon} ${esc(op.entity_slug)}</span>` : ''}
-      ${op.intent ? `<span class="text-provenance text-ink-muted">${esc(op.intent)}</span>` : ''}
+      ${intentWordsHtml(op)}
       <span class="ml-auto shrink-0 text-provenance ${tone}">${glyph} ${esc(op.status || '')}</span>
       ${op.publish_proof ? publishProofHtml(op.publish_proof) : ''}
       ${hasDetail ? `<button type="button" data-activity-toggle="${detailId}"

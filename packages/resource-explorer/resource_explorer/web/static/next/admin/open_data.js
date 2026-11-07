@@ -17,7 +17,8 @@
 import {
   listOpenDataPortals, registerOpenDataPortal, checkOpenDataPortal, openDataPrice, searchOpenData, importOpenData,
   openDataLensTerms, listPortalDirectories, registerPortalDirectory, runPortalDirectory, importDirectoryPortals,
-  listOpenData, getOpenData, openDataDirectoryPrice,
+  listOpenData, getOpenData, openDataDirectoryPrice, listPortalSeeds, addPortalSeed,
+  repositoryDatasetState, importFromRepository,
 } from '/static/re-api.js';
 import { esc } from '/static/next/app.js';
 import { ago } from '/static/next/format.js';
@@ -82,7 +83,7 @@ export async function renderDataPortals(host) {
     </div>
     <form data-od-register class="mb-s3 hidden flex-wrap items-end gap-[6px]">
       <label class="text-caveat text-ink-muted">Name <input name="display_name" required class="rounded-sm border border-rule-strong bg-transparent px-2 py-[2px] text-caveat text-ink"></label>
-      <label class="text-caveat text-ink-muted">API <select name="api_kind" class="rounded-sm border border-rule-strong bg-transparent px-2 py-[2px] text-caveat text-ink"><option>CKAN</option><option>DCAT-AP</option></select></label>
+      <label class="text-caveat text-ink-muted">API <select name="api_kind" class="rounded-sm border border-rule-strong bg-transparent px-2 py-[2px] text-caveat text-ink"><option>CKAN</option><option>DCAT-AP</option><option>Zenodo</option></select></label>
       <label class="text-caveat text-ink-muted">Base URL <input name="base_url" required placeholder="https://demo.ckan.org" class="rounded-sm border border-rule-strong bg-transparent px-2 py-[2px] text-caveat text-ink" style="width:260px"></label>
       <label class="text-caveat text-ink-muted">API key <input name="api_key" type="password" autocomplete="off" class="rounded-sm border border-rule-strong bg-transparent px-2 py-[2px] text-caveat text-ink"></label>
       <button type="button" data-od-check class="cursor-pointer rounded-sm border border-rule-strong bg-transparent px-2 py-[2px] text-caveat text-ink hover:border-accent">Check</button>
@@ -103,8 +104,12 @@ export async function renderDataPortals(host) {
         <td class="py-s2 pr-s3 text-caveat align-top text-ink-muted">${esc(ago(p.registered_at))}${p.registered_by ? ` · ${esc(p.registered_by)}` : ' · the person who registered it was not recorded'}</td>
         <td class="py-s2 pr-s3 text-caveat align-top">${p.adapter_available ? `<button type="button" data-od-open="${esc(p.slug)}" class="cursor-pointer rounded-sm border border-rule-strong bg-transparent px-2 py-[2px] text-caveat text-ink hover:border-accent">Search</button>` : '<span class="text-ink-muted">registered for later</span>'}</td>
       </tr>`).join('')}</tbody></table></div>` : '<p data-od-empty class="text-answer text-ink">No portals registered yet.</p>'}
+    <div data-od-seeds class="mt-s4"></div>
+    <div data-od-repo-import class="mt-s4"></div>
     <div data-od-pane class="mt-s4"></div>`;
   watchTables(host);
+  drawPortalSeeds(host);
+  drawRepositoryImport(q(host, '[data-od-repo-import]'));
   const form = q(host, '[data-od-register]');
   q(host, '[data-od-register-toggle]').addEventListener('click', () => form.classList.toggle('hidden'));
   const apiHelp = q(host, '[data-od-api-help]');
@@ -121,6 +126,53 @@ export async function renderDataPortals(host) {
     try { await registerOpenDataPortal(body()); await renderDataPortals(host); } catch (e) { state.innerHTML = errText(e); }
   });
   host.querySelectorAll('[data-od-open]').forEach((b) => b.addEventListener('click', () => openPortalPane(host, b.dataset.odOpen)));
+}
+
+export const SEED_ADD_HELP = 'Registers this portal for everyone, as you. Checks reach first; nothing is imported.';
+export const SEEDS_ALL_REGISTERED = 'all suggested portals are registered';
+
+/** W61: a one-document feed's reach check reads the whole document (healthdata.gov: 31 MB, 47 s on 2026-11-03), so its
+ *  Add says so, with the size from the row's own `size_note`; a paged feed keeps the short help. The time is from that
+ *  measured read (~1.5 s a MB), said in round minutes. */
+export function seedAddHelp(row) {
+  const m = /^one document, ~?\s*([\d.,]+)\s*(KB|MB|GB)\b/i.exec(String((row && row.size_note) || ''));
+  if (!m) return SEED_ADD_HELP;
+  const mb = Number(m[1].replace(/,/g, '')) * ({ KB: 0.001, MB: 1, GB: 1000 }[m[2].toUpperCase()]);
+  const minutes = Math.max(1, Math.round((mb * 1.5) / 60));
+  const took = minutes === 1 ? 'about a minute' : `about ${minutes} minutes`;
+  return `Registers this portal for everyone, as you. Checks reach first (reads the whole ${m[1]} ${m[2].toUpperCase()} document, ${took}); nothing is imported.`;
+}
+
+/** "Suggested portals · N": the shipped list, folded (a table starts closed). Offered, never applied: one Add per row,
+ *  no bulk. A row that did not answer is greyed with its date; one RE cannot read yet has no Add. */
+export function suggestedPortalsHtml(res) {
+  if (!res.rows.length) return `<p data-od-seeds-none class="text-provenance text-ink-muted">${SEEDS_ALL_REGISTERED}</p>`;
+  return `<details data-od-seeds-fold><summary class="cursor-pointer text-caveat text-ink">Suggested portals · ${res.rows.length}</summary>
+    <div class="mt-s2 overflow-x-auto"><table class="w-full text-left" data-rc-id="od-portal-seeds">
+      <thead><tr class="border-b border-rule text-caps uppercase tracking-caps text-ink-muted">
+        <th class="pb-s2 pr-s3 font-normal">Portal</th><th class="pb-s2 pr-s3 font-normal">API</th><th class="pb-s2 pr-s3 font-normal">Size</th><th class="pb-s2 pr-s3 font-normal">Why</th><th class="pb-s2 pr-s3 font-normal">Checked</th><th class="pb-s2 pr-s3 font-normal"></th></tr></thead>
+      <tbody>${res.rows.map((r) => `<tr class="border-b border-rule${r.status === 'answered' ? '' : ' text-ink-muted'}" data-od-seed="${esc(r.feed_url)}" data-od-seed-status="${esc(r.status)}">
+        <td class="py-s2 pr-s3 text-caveat align-top">${esc(r.display_name)}<div class="font-mono text-provenance text-ink-muted break-all">${esc(r.feed_url)}</div></td>
+        <td class="py-s2 pr-s3 text-caveat align-top">${esc(r.api_kind || 'SPARQL')}</td>
+        <td class="py-s2 pr-s3 text-caveat align-top text-ink-muted">${esc(r.size_note)}</td>
+        <td class="py-s2 pr-s3 text-caveat align-top text-ink-muted">${esc(r.why)}</td>
+        <td class="py-s2 pr-s3 text-caveat align-top text-ink-muted">${esc(r.words)}</td>
+        <td class="py-s2 pr-s3 text-caveat align-top">${r.can_add ? `<button type="button" data-od-seed-add="${esc(r.feed_url)}" title="${esc(seedAddHelp(r))}" class="cursor-pointer rounded-sm border border-rule-strong bg-transparent px-2 py-[2px] text-caveat text-ink hover:border-accent">Add</button> <span data-od-seed-state class="text-provenance text-ink-muted"></span>` : ''}</td>
+      </tr>`).join('')}</tbody></table></div></details>`;
+}
+
+async function drawPortalSeeds(host) {
+  const slot = q(host, '[data-od-seeds]');
+  let res;
+  try { res = await listPortalSeeds(); } catch (e) { slot.innerHTML = `<p class="text-state-warn">${errText(e)}</p>`; return; }
+  slot.innerHTML = suggestedPortalsHtml(res);
+  watchTables(slot);
+  slot.querySelectorAll('[data-od-seed-add]').forEach((b) => b.addEventListener('click', async () => {
+    const state = b.parentElement.querySelector('[data-od-seed-state]');
+    b.disabled = true; state.textContent = 'checking reach…';
+    try { await addPortalSeed(b.dataset.odSeedAdd); await renderDataPortals(host); }
+    catch (e) { b.disabled = false; state.innerHTML = `<span class="text-state-warn">${errText(e)}</span>`; }
+  }));
 }
 
 /** The discovery-source pane for one portal: terms, filters, the price line, candidates, preview, Import. */
@@ -171,6 +223,8 @@ export async function openPortalPane(host, slug, { lens = null, investigation = 
 
 /** The empty state says WHY: the portal had none for these terms, or the license needs dropped them all. */
 export function noCandidatesWords(res, licence) {
+  // W62: a feed (no search of its own) says what it read, never a bare 0; a licence drop still says so below.
+  if (res.words && !res.licence_dropped) return `No candidates: ${res.words}.`;
   const needs = [];
   if (licence && licence.commercial) needs.push('commercial use needed');
   if (licence && licence.share_alike === false) needs.push('no share-alike');
@@ -183,7 +237,7 @@ export function noCandidatesWords(res, licence) {
 export function drawCandidates(pane, out, slug, res, terms, requestName, investigation, licence = null) {
   const rows = res.rows;
   out.innerHTML = `
-    <p class="mb-s2 text-provenance text-ink-muted tnum">${rows.length} row${rows.length === 1 ? '' : 's'} of ${show(res.total)} · ${res.calls_made} call${res.calls_made === 1 ? '' : 's'} made
+    <p class="mb-s2 text-provenance text-ink-muted tnum">${res.words ? esc(res.words) : `${rows.length} row${rows.length === 1 ? '' : 's'} of ${show(res.total)}`} · ${res.calls_made} call${res.calls_made === 1 ? '' : 's'} made
       ${res.licence_dropped ? ` · ${res.licence_dropped} dropped on license` : ''}</p>
     ${rows.length ? `<table class="w-full min-w-[56rem] table-fixed text-left" data-rc-id="od-candidates">
       <thead><tr class="border-b border-rule text-caps uppercase tracking-caps text-ink-muted">
@@ -224,6 +278,38 @@ export function drawCandidates(pane, out, slug, res, terms, requestName, investi
       document.dispatchEvent(new CustomEvent('re:open-data-imported', { detail: { work_list: r.work_list } }));
       watchTables(result);
     } catch (e) { result.innerHTML = `<p class="text-state-warn">${errText(e)}</p>`; }
+  });
+}
+
+/** Open data › Import › From a registered repository: the repository's slug, what an import would do (the identity it
+ *  would register and the price), and the press. Writes one open-data row and nothing to Egeria. */
+export function drawRepositoryImport(host) {
+  if (!host) return;
+  host.innerHTML = `<details class="rounded-sm border border-rule px-s3 py-s2"><summary class="cursor-pointer text-caveat text-ink">From a registered repository</summary>
+    <form data-od-repo-form class="mt-s2 flex flex-wrap items-end gap-s2">
+      <label class="text-caveat text-ink-muted">Repository slug <input name="repo_slug" required class="rounded-sm border border-rule-strong bg-transparent px-2 py-[2px] text-caveat text-ink" style="width:220px"></label>
+      <button type="button" data-od-repo-check class="cursor-pointer rounded-sm border border-rule-strong bg-transparent px-2 py-[2px] text-caveat text-ink hover:border-accent">Check</button>
+      <button type="submit" data-od-repo-import-press title="Writes one open-data row to this app's registry and nothing to Egeria." class="cursor-pointer rounded-sm border border-rule-strong bg-transparent px-2 py-[2px] text-caveat text-ink hover:border-accent">Import as open data</button>
+      <span data-od-repo-state class="basis-full text-provenance text-ink-muted" aria-live="polite">no network · reads the descriptor already on disk (+1 DataCite call if a DOI)</span>
+    </form></details>`;
+  const form = q(host, '[data-od-repo-form]');
+  const state = q(host, '[data-od-repo-state]');
+  q(host, '[data-od-repo-check]').addEventListener('click', async () => {
+    const slug = form.elements.repo_slug.value.trim();
+    if (!slug) { state.textContent = 'Name a registered repository.'; return; }
+    try {
+      const r = await repositoryDatasetState(slug);
+      state.textContent = r.identifier ? `would register ${r.identifier} (${r.identifier_kind}, from ${r.from}) · ${r.price}${r.words ? ` · ${r.words}` : ''}` : r.words;
+    } catch (e) { state.textContent = e && e.message ? e.message : 'Could not read the repository.'; }
+  });
+  form.addEventListener('submit', async (ev) => {
+    ev.preventDefault();
+    state.textContent = 'Importing…';
+    try {
+      const r = await importFromRepository({ repo_slug: form.elements.repo_slug.value.trim(), descriptor_path: '' });
+      state.textContent = r.words || r.outcome;
+      if (r.outcome === 'imported') document.dispatchEvent(new CustomEvent('re:open-data-imported', { detail: { work_list: r.work_list } }));
+    } catch (e) { state.textContent = e && e.message ? e.message : 'The import did not complete.'; }
   });
 }
 

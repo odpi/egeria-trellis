@@ -25,7 +25,7 @@ MANIFEST = StepManifest(
     # Assumed (owner to confirm): a week is hot, over a year is cold.
     parameters={"hot_days": 7, "cold_days": 365},
     stage="analysis",
-    perspectives=["Steward", "Financial", "Data Owner"],
+    perspectives=["Steward", "Financial", "Owner"],
     # Q-0107: "Which files has nobody touched for a long time, and which are hot?" (F8)
     questions=["Q-0107"],
     purposes=["Maintain", "Assess"],
@@ -48,7 +48,7 @@ MANIFEST = StepManifest(
                           "be told."),
             not_permitted=("Not permitted: the walk could not read these files' times, so no age is held for them."),
             not_applicable="Not applicable: file activity is measured for file systems only.",
-            measured_nothing="Measured: the walk found no files."),
+            nothing_found="Measured: the walk found no files."),
         extents=[ExtentDeclaration(
             name="activity_bands",
             fields=["scope", "Hot Files", "Warm Files", "Cold Files", "Cold Bytes", "Hot Days", "Cold Days",

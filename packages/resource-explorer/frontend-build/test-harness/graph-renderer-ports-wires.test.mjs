@@ -137,7 +137,7 @@ test('a protocol is shown only when an artifact stated one', () => {
   assert.equal(dt.deploymentGraphSpec(results().interfaces[0], '').nodes[1].notes[0].text, '5432');
 });
 
-test('not measured is not drawn as measured-nothing', () => {
+test('not measured is not drawn as nothing-found', () => {
   const nm = dom(dt.declaredTopologyHtml({ _status: { state: 'never_run', hint: 'No architecture recovery yet — run the analysis.' } }));
   assert.match(text(nm), /Not measured: No architecture recovery yet/);
   assert.equal(nm.querySelectorAll('[data-graph]').length, 0);

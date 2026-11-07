@@ -107,13 +107,18 @@ def measure_words(m, source: dict, run: dict | None = None, *, allow_of: bool = 
     if basis is not None and allow_of:
         d = number(resolve(source, basis.denominator_field, run))
         denominator = d if d is not None and d >= n else None
+    # A numerator that counts a part of the whole in its own words (statistics_freshness: "tables never analyzed or
+    # stale" of "tables") says what it counts: "215 of 266 tables" read as 215 tables measured (W57). A numerator in the
+    # whole's own words ("rows" of "rows in the table") keeps the short form.
+    subset = denominator is not None and bool(unit) and not basis.denominator_label.startswith(unit)
     if denominator is not None:
-        text = f"{count_words(n)} of {count_words(denominator)} {plural_by(denominator, basis.denominator_label)}"
+        whole = f"{count_words(denominator)} {plural_by(denominator, basis.denominator_label)}"
+        text = f"{count_words(n)} {plural_by(n, unit)} of {whole}" if subset else f"{count_words(n)} of {whole}"
     else:
         text = f"{count_words(n)} {plural_by(n, unit)}"
     share = None
     if denominator and not capped:
-        share = f"{round(100 * n / denominator):d}%"
+        share = f"{round(100 * n / denominator):d}%" + (f" of the {basis.denominator_label}" if subset else "")
     return {"text": f"{AT_LEAST} {text}" if capped else text, "value": n, "denominator": denominator,
             "capped": capped, "share": share, "derived_note": LOWER_BOUND_WORDS if capped else ""}
 
@@ -217,7 +222,7 @@ def kind_headline(dec, value: dict, run: dict | None = None) -> str:
         if rows is None:
             return ""
         if not rows:
-            return dec.absence.sentence("measured_nothing")
+            return dec.absence.sentence("nothing_found")
         lead = _plural_noun(len(rows), "finding", "findings")
         first = rows[0]
         if f.severity_field and f.severities:
@@ -235,7 +240,7 @@ def kind_headline(dec, value: dict, run: dict | None = None) -> str:
         if rows is None:
             return ""
         if not rows:
-            return dec.absence.sentence("measured_nothing")
+            return dec.absence.sentence("nothing_found")
         if not p.state_field:
             return f"{count_words(len(rows))} proposed"
         counts: dict[str, int] = {}
@@ -253,7 +258,7 @@ def kind_headline(dec, value: dict, run: dict | None = None) -> str:
             return ""
         n = len(rows)
         if not rows:
-            return dec.absence.sentence("measured_nothing")
+            return dec.absence.sentence("nothing_found")
         if lst.item_label:
             label = plural_by(n, " ".join(lst.item_label.split()))
         else:

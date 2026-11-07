@@ -72,8 +72,10 @@ async function apiErrorFrom(res, path) {
     return refused;
   }
   // Brief I: no caller, or the caller's Egeria sign-in expired. A dead session like login_required,
-  // but the sentence is the server's ("your Egeria sign-in expired; sign in again").
-  if (res.status === 401 && refusedBy === 'sign-in') {
+  // but the sentence is the server's ("your Egeria sign-in expired; sign in again"). F58: the
+  // `egeria_token_refused` marker (Egeria restarted since the person signed in; auth.js has already
+  // shown the sign-in form with the sentence) is the same kind of answer.
+  if (res.status === 401 && (refusedBy === 'sign-in' || code === 'egeria_token_refused')) {
     const now = Date.now();
     if (now - lastSessionDead > 1000) {
       lastSessionDead = now;
@@ -81,7 +83,7 @@ async function apiErrorFrom(res, path) {
     }
     const dead = new ApiError(401, String(detail || 'sign-in needed'), path);
     dead.loginRequired = true;
-    dead.refusedBy = 'sign-in';
+    dead.refusedBy = refusedBy || code;
     return dead;
   }
   if (res.status === 401 && code === 'login_required') {
@@ -222,6 +224,8 @@ const od = (path) => `/api/open-data${path}`;
 export const listOpenDataPortals = () => get(od('/portals'));
 export const registerOpenDataPortal = (body) => post(od('/portals'), body);
 export const checkOpenDataPortal = (body) => post(od('/portals/check'), body);
+export const listPortalSeeds = () => get(od('/portal-seeds'));
+export const addPortalSeed = (feed_url) => post(od('/portal-seeds/add'), { feed_url });
 export const openDataPrice = (slug, pages) => get(od(`/portals/${encodeURIComponent(slug)}/price?pages=${pages}`));
 export const searchOpenData = (slug, body) => post(od(`/portals/${encodeURIComponent(slug)}/search`), body);
 export const importOpenData = (slug, body) => post(od(`/portals/${encodeURIComponent(slug)}/import`), body);
@@ -241,9 +245,12 @@ export const publishOpenData = (slug) => post(od(`/datasets/${encodeURIComponent
 export const fitOpenData = (wl, request, investigation = '') => post(od(`/work-lists/${encodeURIComponent(wl)}/fit`), { request, investigation });
 export const putDataRequest = (inv, body) => put(od(`/investigations/${encodeURIComponent(inv)}/data-request`), body);
 export const getDataRequest = (inv) => get(od(`/investigations/${encodeURIComponent(inv)}/data-request`));
+export const repositoryDatasetState = (repoSlug) => get(od(`/repositories/${encodeURIComponent(repoSlug)}/dataset`));
+export const importFromRepository = (body) => post(od('/import-from-repository'), body);
 export const runPortalDirectory = (slug, body) => post(od(`/directories/${encodeURIComponent(slug)}/run`), body);
 export const importDirectoryPortals = (slug, body) => post(od(`/directories/${encodeURIComponent(slug)}/import`), body);
 export const listOpenData = () => get(od('/datasets'));
+export const getOpenDataQuestions = (slug) => get(od(`/datasets/${encodeURIComponent(slug)}/questions`));
 export const getOpenData = (slug) => get(od(`/datasets/${encodeURIComponent(slug)}`));
 
 /** Register a file system (Files step 1). The body is the route's own model: slug, display_name,
@@ -483,6 +490,7 @@ function _questionsPath(entityType, slug) {
   const enc = encodeURIComponent(slug);
   if (entityType === 'database') return `/api/databases/${enc}/questions`;
   if (entityType === 'filesystem') return `/api/filesystems/${enc}/questions`;
+  if (entityType === 'open_data') return `/api/open-data/datasets/${enc}/questions`;
   return `/api/projects/${enc}/scouting-questions`;
 }
 
@@ -905,12 +913,14 @@ export const getInvestigation = (slug) => get(`/api/investigations/${encodeURICo
 export const createInvestigation = ({
   displayName, description = '', purposes = [], purposeText = '',
   projectClassification = 'StudyProject', egeriaBinding = 'egeria', hypothesis = '',
-  egeriaProjectGuid = '', egeriaProjectQualifiedName = '',
+  egeriaProjectGuid = '', egeriaProjectQualifiedName = '', visibility = null,
 } = {}) =>
   post('/api/investigations/', {
     display_name: displayName, description, purposes, purpose_text: purposeText,
     project_classification: projectClassification, egeria_binding: egeriaBinding, hypothesis,
     egeria_project_guid: egeriaProjectGuid, egeria_project_qualified_name: egeriaProjectQualifiedName,
+    // F56: creator-only | shared; null takes the kind's default on the server.
+    ...(visibility ? { visibility } : {}),
   });
 
 export const updateInvestigation = (slug, fields) =>
@@ -947,7 +957,13 @@ export const bindInvestigationEgeriaProject = (slug, {
 /** Send the signed-in user's own journal entries to the investigation's Egeria Project (409 until promoted). */
 export const publishInvestigationJournal = (slug) =>
   post(`/api/investigations/${encodeURIComponent(slug)}/journal/publish`);
-export const promoteInvestigation = (slug) => post(`/api/investigations/${encodeURIComponent(slug)}/promote`);
+/** F56: `choice` is the promote dialog's answers — { projectClassification, hypothesis, visibility }; omitted fields
+ *  keep what is stored. A local (or private) investigation promotes only with a choice. */
+export const promoteInvestigation = (slug, choice = null) =>
+  post(`/api/investigations/${encodeURIComponent(slug)}/promote`, choice ? {
+    project_classification: choice.projectClassification || '', hypothesis: choice.hypothesis || '',
+    visibility: choice.visibility || '',
+  } : undefined);
 /** Delete an investigation, permanently in Resource Explorer. `egeria: false` deletes in Resource Explorer only (the
  *  Egeria Project, Collection and Notes stay); `egeria: true` ARCHIVES the Project in Egeria first (restorable). Owner
  *  or Portal admin only. */
@@ -959,9 +975,11 @@ export const deleteInvestigation = (slug, { egeria = false, confirmed = '' } = {
 export const previewInvestigationDelete = (slug) =>
   get(`/api/investigations/${encodeURIComponent(slug)}/delete-preview`);
 
-export const reclassifyInvestigation = (slug, projectClassification, hypothesis = '') =>
+export const reclassifyInvestigation = (slug, projectClassification, hypothesis = '', visibility = null) =>
   post(`/api/investigations/${encodeURIComponent(slug)}/reclassify`, {
     project_classification: projectClassification, hypothesis,
+    // F56: null keeps the visibility; reclassifying never changes it by itself.
+    ...(visibility ? { visibility } : {}),
   });
 
 export const relinkInvestigationMembers = (slug) =>
@@ -1734,8 +1752,11 @@ function _runAnalysisPath(entityType, slug, analysisId) {
  *  (including a database/filesystem's own "Run"/"re-run" button on a
  *  Questions-checklist row) posted to the repo-only route regardless of the
  *  resource's real type. */
-export const runAnalysis = (slug, analysisId, entityType, { force = false } = {}) =>
-  post(`${_runAnalysisPath(requireKind('runAnalysis', entityType), slug, analysisId)}${force ? '?force=true' : ''}`);
+export const runAnalysis = (slug, analysisId, entityType, { force = false, pressedOn = '' } = {}) => {
+  // `pressedOn` ("4 Analysis"): the stage the Run → was pressed on, for the run's Activity row (W55).
+  const q = [force ? 'force=true' : '', pressedOn ? `pressed_on=${encodeURIComponent(pressedOn)}` : ''].filter(Boolean).join('&');
+  return post(`${_runAnalysisPath(requireKind('runAnalysis', entityType), slug, analysisId)}${q ? `?${q}` : ''}`);
+};
 
 /** ONE database analysis with a credential typed for that run (brief section 8). The password goes in
  *  the body of this call and nowhere else; the server runs it in its own process (not queued, not
@@ -2322,6 +2343,13 @@ export const getBootstrapStatus = () => get('/api/bootstrap/status');
 /** "Run bootstrap now". `force` is deliberately NOT a parameter: a forced run re-runs every batch and, for a batch
  *  that is not idempotent, duplicates step links. The banner only ever heals what is missing. */
 export const runBootstrapMissingOnly = () => adminPost('/api/bootstrap/run', { force: false });
+
+/** W65: run ONE bootstrap batch (Admin › Repair › "Declare RE's survey engine in Egeria" sends 'engine-host'),
+ *  missing-only, under the same 409 lock as the heal. Never forced: `force` is not a parameter here either. */
+export const runBootstrapBatch = (batch) => adminPost('/api/bootstrap/run', { batch });
+
+/** W65: what a one-batch run will do (documents, elements, identity, time), read without an Egeria call. */
+export const getBootstrapPrice = (batch) => get(`/api/bootstrap/price/${encodeURIComponent(batch)}`);
 
 export const listStaleLinkages = () => get('/api/egeria/linkage/stale');
 

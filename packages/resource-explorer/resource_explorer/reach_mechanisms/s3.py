@@ -60,7 +60,9 @@ def ref_display_name(ref: str) -> str:
 
 
 def key_tail(access_key_id: str) -> str:
-    """The last four characters of a key id, for the reach line. Never the whole id."""
+    """The last four characters of a key id as "…XXXX", for the reach line AND for the registry row (W42: the whole id is
+    never stored). Idempotent: a tail given back reads as the same tail. Never the whole id; four or fewer characters
+    (not a real key id) give ""."""
     k = (access_key_id or "").strip()
     return f"…{k[-4:]}" if len(k) > 4 else ""
 
@@ -118,7 +120,7 @@ class S3Settings:
     tls_verify: bool = True
     credential_kind: str = CREDENTIAL_NONE
     credential_ref: str = ""        # the secrets-store ref, or the profile name
-    access_key_id: str = ""         # display only (its last four on the reach line)
+    access_key_id: str = ""         # the id's tail ("…XXXX") as the row holds it (W42), or the whole id typed on the form
 
     @classmethod
     def from_filesystem(cls, fs) -> "S3Settings":

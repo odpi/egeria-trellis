@@ -236,6 +236,16 @@ ___
 > Perspective::...`) keeps this portable across Egeria instances rather
 > than baking in this instance's default local qualifier/org name. See
 > `docs/survey-model.md (§4)` for the full incident writeup.
+>
+> **Decision (project owner, 2026-11-07):** "So Trellis needs to stop creating
+> Data Owner and Admin and use the ones from the content pack." All twelve
+> Perspectives below are now elements Egeria's core content pack ships
+> (folder "Product Perspectives"). `Owner` and `Administration` replace RE's
+> own `Data Owner` and `Admin`; their descriptions are the content pack's,
+> verbatim (its "the the" included), so a Merge Update re-run writes the
+> values that are already there. The Trellis-created `Perspective::Data Owner`
+> and `Perspective::Admin` are relinked and retired in Egeria by
+> `scripts/migrate_trellis_perspectives.py`, run once by the coordinator.
 
 ## Create Perspective
 
@@ -289,15 +299,13 @@ ___
 ## Create Perspective
 
 ### Display Name
-Data Owner
+Owner
 
 ### Qualified Name
-Perspective::Data Owner
+Perspective::Owner
 
 ### Description
-Accountable for a resource's existence and disposition — distinct from
-Steward (who tends day-to-day quality); Owner decides whether a resource
-should exist, be retired, or change hands.
+A focus on the the existence, protection and investment, of specific resources of the organization.
 
 ___
 
@@ -413,20 +421,12 @@ ___
 ## Create Perspective
 
 ### Display Name
-Admin
+Administration
 
 ### Qualified Name
-Perspective::Admin
+Perspective::Administration
 
 ### Description
-Operational/infrastructure administration of a resource — day-to-day
-upkeep, access, and reliability. Renamed from "Systems Administration"
-(itself renamed from a narrower "DBA" framing, 2026-08-12) — shortened
-further per direct request (2026-08-13). Note: reads identically to
-Resource Explorer's own "⚙ Admin" header nav (Annotation Types/Groups/
-Schedules system config) — different concept entirely (a lens on a
-resource vs. a system-config area of the app); flagged here since it's
-the one Perspective name that collides textually with existing RE UI
-vocabulary.
+A focus on the operational and administrative aspects of the organization's resources. This involves the day-to-day upkeep, access, and reliability of these resources.
 
 ___

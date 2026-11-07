@@ -10,7 +10,7 @@ import inspect
 import pytest
 
 from trellis_analytics.envelope import ResultState
-from trellis_analytics.readers.ods import OdsReader
+from trellis_analytics_re.ods import OdsReader
 from trellis_analytics.routines import curation_coverage as cc_mod_fn
 cc = importlib.import_module("trellis_analytics.routines.curation_coverage")   # the package re-exports the function by this name
 
@@ -95,6 +95,15 @@ def unchanged_parts(r):
             r.counted_against, r.as_of)
 
 
+def _without_measured_at(value):
+    """The dict minus every wall-clock stamp (`Envelope.measured_at` defaults to now at construction)."""
+    if isinstance(value, dict):
+        return {k: _without_measured_at(v) for k, v in value.items() if k not in ("measuredAt", "measured_at")}
+    if isinstance(value, list):
+        return [_without_measured_at(v) for v in value]
+    return value
+
+
 def test_the_pack_schemas_leave_undecided_for_one_line_naming_the_family(node_set):
     base = world(node_set)
     r = world(node_set, {"resolution": resolution({PACK: PACK_SCHEMAS}), "plan": None})
@@ -124,7 +133,8 @@ def test_an_endpoint_row_with_an_error_is_todays_output(node_set):
     today = world(node_set).to_dict()
     r = world(node_set, {"resolution": resolution({PACK: PACK_SCHEMAS}, error="Egeria could not be read"),
                          "plan": None})
-    assert r.to_dict() == today
+    # measuredAt is the wall clock at construction: two builds can straddle a second boundary (F52)
+    assert _without_measured_at(r.to_dict()) == _without_measured_at(today)
 
 
 def test_a_persons_choice_outranks_where_the_element_lives(node_set):

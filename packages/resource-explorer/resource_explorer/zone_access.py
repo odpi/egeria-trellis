@@ -463,7 +463,9 @@ def _catch_wrapped(client: Any, *names: str) -> bool:
     """Whether pyegeria's `dynamic_catch` installed loguru's `logger.catch` on any of these methods of THIS
     client's class. `dynamic_catch` decides at import time (`enable_logger_catch`); the wrapper, when there,
     carries `__wrapped__` (functools.wraps). So this asks the function itself, not today's setting."""
-    cls = type(client)
+    from resource_explorer.egeria_clients import unwrap_client
+
+    cls = type(unwrap_client(client))        # F60: a person's client is wrapped; the check is on pyegeria's class
     for name in names:
         fn = getattr(cls, name, None)
         if fn is not None and getattr(fn, "__wrapped__", None) is not None:

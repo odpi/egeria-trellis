@@ -54,7 +54,7 @@ It is a guide, not a rule. When a later question is the one you need, go straigh
 [SLIDE: Assessment question cards, tagged by perspective — blog image, to be checked against the screen]
 
 The same source matters differently to different people.
-Each question is tagged with the perspectives that care about it, such as Security, Architecture, or Data Owner.
+Each question is tagged with the perspectives that care about it, such as Security, Architecture, or Owner.
 You can filter by them. A perspective is a filter, not a job title.
 
 [SLIDE: S01 again, the chat box highlighted]

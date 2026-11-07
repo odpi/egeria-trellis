@@ -832,6 +832,9 @@ def test_a_page_that_filters_to_nothing_was_read_and_the_search_goes_on(store):
     got = service.run_search(store, p["slug"], terms="zzzznomatch", pages=3, transport=t)
     assert got["rows"] == [] and got["total"] == 22920
     assert got["calls_made"] == 3                              # three pages read, none stopped early
+    # W62: a feed has no search, so the words say what was read, never a bare 0 of 22,920.
+    assert got["words"] == (f"none of the {got['read']:,} datasets on pages 1–3 match 'zzzznomatch' · "
+                            f"{22920 - got['read']:,} more on later pages (a feed has no search)")
     assert [c[1] for c in t.calls[-3:]] == [{"page": 1}, {"page": 2}, {"page": 3}]
 
 

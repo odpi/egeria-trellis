@@ -87,6 +87,7 @@ import { renderInvestigation, openInvestigationDetail, refreshOpenInvestigation,
 import { openInvestigationPicker, scopeActWording } from '/static/next/investigation-picker.js';
 import { addActWording, addListToInvestigation, openStartFromList, START_LABEL } from '/static/next/worklist-actions.js';
 import { loadChartsPane, renderUnderstandingTabs } from '/static/next/stages/understanding.js';
+import { datasetKindHtml, wireDatasetImport, DATASET_NOT_CHECKED_WORDS } from '/static/next/stages/repo-analysis-views.js';
 import { renderCurate, jumpToCurateSection } from '/static/next/stages/curate.js';
 import { wireLook } from '/static/next/look.js';
 import { coverageHtml } from '/static/next/stages/curate-coverage.js';
@@ -546,6 +547,19 @@ export async function ensureResourceListLoaded(type) {
 const stageLabel = () =>
   STAGES.find((s) => s.id === state.stage)?.label || state.stage;
 
+/** How an analysis card's last run happened. A per-card Run → is a one-analysis survey: "via survey" was literally true
+ *  and misleading, so it is named, with the survey row's short id (W56). */
+export function lastRunViaWords(row) {
+  if (row.last_run_via === 'per_card') {
+    const id = String(row.last_run_survey_id || '').slice(0, 8);
+    return `via Run → on this card (a one-analysis survey${id ? `, <span class="font-mono">${esc(id)}</span>` : ''})`;
+  }
+  return `via ${esc(String(row.last_run_via).replace(/_/g, ' '))}`;
+}
+
+/** "4 Analysis": the stage a per-card Run → is pressed on, as the nav numbers it (W55). */
+const pressedOnWords = () => (RUN_ORDER.has(state.stage) ? `${RUN_ORDER.get(state.stage)} ${stageLabel()}` : stageLabel());
+
 /** Escape for interpolation into a template literal that becomes innerHTML.
  *  Every value below that came from the API goes through this — question
  *  text, headlines and notes are authored content, and one unescaped `<`
@@ -889,7 +903,8 @@ export function renderTopBar() {
   const scopeEl = $('investigation-scope');
   if (scopeEl) {
     scopeEl.textContent = inv
-      ? (inv.egeria_binding === 'egeria' ? '· bound to Egeria Project' : '· ad hoc')
+      ? (inv.is_private_investigation ? '· private investigation · not in Egeria'   // F56: local + creator-only only
+        : inv.egeria_binding === 'egeria' ? '· bound to Egeria Project' : '· ad hoc')
       : '';
     scopeEl.title = inv?.egeria_project_qualified_name || '';
   }
@@ -3491,6 +3506,17 @@ function selectedProject() {
   return currentResourceRows().find((p) => p.slug === state.selectedSlug) || null;
 }
 
+/** The resource header while its row is not back yet (W50): the name, the slug and "reading…", no fact. */
+function resourceHeaderReadingHtml(name, slug) {
+  return `
+    <div class="flex flex-wrap items-baseline gap-s3">
+      <h3 class="m-0 font-heading text-name font-normal">${esc(name)}</h3>
+      <span class="font-mono text-provenance text-ink-muted">${esc(slug)}</span>
+    </div>
+    <div data-header-reading class="mt-s1 text-provenance text-ink-muted">reading…</div>
+    <div id="resource-action" class="mt-s2"></div>`;
+}
+
 /**
  * Name, external links, provenance and the disposition pill. Hide and Remove
  * are NOT here any more: they live in the resource's menu on its name in the
@@ -3511,6 +3537,9 @@ function selectedProject() {
 export function resourceHeaderHtml(slug) {
   const p = selectedProject();
   const name = p?.display_name || slug;
+  // W50: before the resource's row is back, nothing below is known. "never surveyed · not published to Egeria" drawn
+  // as a placeholder read as a fact for a second; the header says it is reading until the row answers.
+  if (!p) return resourceHeaderReadingHtml(name, slug);
 
   const links = [];
   if (p?.github_url) {
@@ -5021,7 +5050,7 @@ export function renderJournalWrite(slug, entityType) {
   if (!host) return;
   const who = signedInUser();
   // An AUDIENCE is the whole Egeria vocabulary, not the filter row's
-  // subset: someone is a Data Owner whether or not any analysis is tagged
+  // subset: someone is an Owner whether or not any analysis is tagged
   // with it today. (The two are the same twelve at the moment; the point
   // is which list this one follows when they diverge.)
   const perspectives = (state.allPerspectives || state.perspectives || []).map((p) => p.name || p.id || p).filter(Boolean);
@@ -5758,12 +5787,12 @@ async function loadEnrichmentAnalysesMapPane() {
     const label = b.textContent;
     b.disabled = true; b.textContent = 'running…';
     try {
-      const started = await runAnalysis(slug, analysisId, apiEntityType(state.resourceType));
+      const started = await runAnalysis(slug, analysisId, apiEntityType(state.resourceType), { pressedOn: pressedOnWords() });
       if (isFreshnessSkip(started)) {
         b.disabled = false; b.textContent = UP_TO_DATE_WORD;
         setTimeout(() => { b.textContent = label; }, 4000);
         offerRunAnyway(started, { slug, analysisId, onForce: async () => {
-          await runAnalysis(slug, analysisId, apiEntityType(state.resourceType), { force: true });
+          await runAnalysis(slug, analysisId, apiEntityType(state.resourceType), { force: true, pressedOn: pressedOnWords() });
           await loadEnrichmentAnalysesMapPane();
         } });
         return;
@@ -5975,7 +6004,7 @@ export async function loadSurveyPane() {
       })}</div>`;
     }).join('')}
 
-    ${!all.length ? paneMessage(
+    ${!all.length ? paneNoteHtml(
         `No Survey Definitions have been authored for ${data.technology_type || 'this technology'} yet`,
         'The analyses below still run individually; a Survey Definition only bundles them into an '
         + 'Egeria-launchable process.') : ''}
@@ -6132,7 +6161,7 @@ export function analysisIndexRowHtml(row) {
           ? `<button type="button" data-analysis-questions="${esc(row.analysis_id)}"
                class="cursor-pointer bg-transparent p-0 text-accent-ink underline">${qn} question${qn === 1 ? '' : 's'} ›</button>`
           : row.serves === 'chat-only' ? 'chat-only — no question asks' : 'nothing-yet — no question asks, no reader either'}
-        · ${row.last_run_at ? `<span class="tnum">${esc(ago(row.last_run_at))}</span>${row.last_run_via ? ` · via ${esc(row.last_run_via.replace(/_/g, ' '))}` : ''}` : 'not yet run'}
+        · ${row.last_run_at ? `<span class="tnum">${esc(ago(row.last_run_at))}</span>${row.last_run_via ? ` · ${lastRunViaWords(row)}` : ''}` : 'not yet run'}
         · ${analysisRowPrice(row.cost)}
         ${row.last_publish_proof ? `· ${publishProofHtml(row.last_publish_proof)}` : ''}
         ${analysisRanAsHtml(row)}
@@ -6341,7 +6370,7 @@ async function renderAnalysesIndexSection(slug, stage) {
       // request -> the server's in-process run); the plain call is unchanged.
       const started = credential
         ? await runAnalysisWithCredential(slug, aid, credential)
-        : await runAnalysis(slug, aid, apiEntityType(state.resourceType), { force });
+        : await runAnalysis(slug, aid, apiEntityType(state.resourceType), { force, pressedOn: pressedOnWords() });
       if (isFreshnessSkip(started)) {
         // The server declined: the last run is still fresh. The button is usable again at once; the dialog says
         // "Already up to date" and offers the forced run.
@@ -8888,7 +8917,12 @@ export function renderLegend() {
 }
 
 export function paneMessage(title, body) {
-  return `${subTabsHtml()}
+  return `${subTabsHtml()}${paneNoteHtml(title, body)}`;
+}
+
+/** `paneMessage` without the sub-tab strip: for a note inside a pane that has already drawn its strip (W49). */
+export function paneNoteHtml(title, body) {
+  return `
     <h3 class="m-0 font-heading text-name font-normal">${esc(title)}</h3>
     <div class="my-s3 h-px bg-rule"></div>
     <p class="max-w-[70ch] text-answer text-ink">${esc(body)}</p>`;
@@ -9752,6 +9786,8 @@ function bodyLines(entry, i, st, env) {
   if (lines.answer) {
     html += `<div class="ml-[22px] mt-[6px] text-answer text-ink">${lines.answer}</div>`;
   }
+  // W63: Q-0043's answer row carries the dataset sentence (and its Import press) itself, not only Understanding.
+  html += datasetKindRowHtml(entry, env);
   // §18.3's own caveat, ahead of the analysis's own (below): a rollup with
   // no schema/table/column named is the more important thing to say here,
   // and the reader should not have to reach the analysis's own note to
@@ -9763,6 +9799,27 @@ function bodyLines(entry, i, st, env) {
     html += `<div class="ml-[22px] mt-[5px] text-caveat text-accent-ink">${tnum(esc(lines.caveat))}</div>`;
   }
   return html + provenanceLine(entry, i, lines, st);
+}
+
+/** W63: the dataset sentence on the Q-0043 answer row ("What kind of thing is this repository"). The row used to read
+ *  "Role · repo_classification · run 3m ago" and never "a DOI names it (…)" / "a dataset repository · …", which only
+ *  Understanding drew (repo-analysis-views.js). Drawn from the SAME stored finding (`dataset_kind`, in the
+ *  repo_classification fact's value.findings) with the same datasetKindHtml, so the two places cannot disagree: the
+ *  sentence, when the descriptors were read, and in the dataset / doi_only states the Import press with its price
+ *  and help. A known classification with no dataset_kind finding is W59's "not checked" line, never nothing. */
+export function datasetKindRowHtml(entry, env) {
+  const ids = (entry && entry.analysis_ids) || [];
+  if (!ids.includes('repo_classification')) return '';
+  const fact = ((env && env.facts) || []).find((f) => f.analysis_id === 'repo_classification');
+  if (!fact || !fact.is_known) return '';
+  const findings = (fact.value && fact.value.findings) || [];
+  const kind = findings.find((f) => f && f.check_name === 'dataset_kind');
+  const inner = kind
+    ? datasetKindHtml(kind, fact.last_run_at || '')
+    : `<div data-dataset-kind="not_checked" class="mt-s2 flex flex-wrap items-baseline gap-s2">
+    <span class="text-provenance uppercase text-ink-muted">Kind</span>
+    <span data-dataset-sentence class="text-caveat text-ink-muted">${esc(DATASET_NOT_CHECKED_WORDS)}</span></div>`;
+  return `<div data-question-dataset-kind class="ml-[22px]">${inner}</div>`;
 }
 
 /** §17.1's within-budget half: the resolver already ran a producer before
@@ -9875,7 +9932,11 @@ function provenanceLine(entry, i, lines, st) {
   const sources = lines.sources && lines.sources.length
     ? lines.sources.join(', ')
     : (entry.analysis_ids || []).join(', ');
-  if (sources) bits.push(esc(sources));
+  // An unrun row's answer line is "Not yet run." (F23, W54): its source line names what would run it, not "not yet
+  // run" a second time.
+  const runnable = (lines.canRun && lines.canRun.length) ? lines.canRun.join(', ') : sources;
+  if (st === 'unrun' && runnable) bits.push(`run: ${esc(runnable)}`);
+  else if (sources) bits.push(esc(sources));
   else if (entry.answering_mechanism) bits.push(esc(entry.answering_mechanism));
 
   // WHEN, said exactly as precisely as the record allows. Three different
@@ -9894,8 +9955,8 @@ function provenanceLine(entry, i, lines, st) {
     bits.push(`as of <span class="tnum">${esc(String(lines.asOf).slice(0, 16).replace('T', ' '))}</span>`);
   } else if (lines.runTimeUnrecorded) {
     bits.push('run time not recorded');
-  } else if (st !== 'running' && !(st === 'unrun' && lines.allNeverRun)) {
-    // An unrun row whose analyses all never ran already says "Not yet run." as its answer line: not again here (F23).
+  } else if (st !== 'running' && st !== 'unrun') {
+    // An unrun row already says "Not yet run." as its answer line: not again here (F23, W54).
     bits.push('not yet run');
   }
   // When the row says "not yet run" (here or as its answer), a step that never ran does not say it a second time.
@@ -10055,6 +10116,10 @@ export function bindRowActions(el, entry, i) {
   numbersBtn?.addEventListener('click', () =>
     toggleMeasurementsInPlace(i, numbersBtn.dataset.numbersFor, numbersBtn, numbersBtn.dataset.numbersLevel));
   el.querySelector(`[data-notify="${i}"]`)?.addEventListener('click', () => openNotifyDialog(entry));
+  // W63: the Import press on Q-0043's row posts once and shows the server's words, as Understanding's does.
+  if (el.querySelector('[data-question-dataset-kind] [data-dataset-import]')) {
+    wireDatasetImport(el.querySelector('[data-question-dataset-kind]'), state.selectedSlug);
+  }
   el.querySelector(`[data-prereq-accept="${i}"]`)?.addEventListener('click', () => acceptPrerequisiteProposal(entry, i));
   el.querySelector(`[data-prereq-decline="${i}"]`)?.addEventListener('click', () => declinePrerequisiteProposal(entry, i));
   el.querySelector(`[data-prereq-rfa="${i}"]`)?.addEventListener('click', () => raisePrerequisiteCapabilityRfa(entry, i));
@@ -10524,7 +10589,7 @@ async function rerun(entry, i, { background = false, skipPlanCheck = false, forc
     // Enqueue and stop watching. The row says it is queued in the worker
     // and how to see the result; nothing here pretends to know when.
     try {
-      const queued = await runAnalysis(slug, analysisId, apiEntityType(state.resourceType), { force });
+      const queued = await runAnalysis(slug, analysisId, apiEntityType(state.resourceType), { force, pressedOn: pressedOnWords() });
       if (isFreshnessSkip(queued)) {
         state.runsInFlight.delete(entry.question);
         replaceRow(entry, i, state.answers.get(entry.question));
@@ -10543,7 +10608,7 @@ async function rerun(entry, i, { background = false, skipPlanCheck = false, forc
 
   let finishedRun = null;
   try {
-    const started = await runAnalysis(slug, analysisId, apiEntityType(state.resourceType), { force });
+    const started = await runAnalysis(slug, analysisId, apiEntityType(state.resourceType), { force, pressedOn: pressedOnWords() });
     if (isFreshnessSkip(started)) {
       state.runsInFlight.delete(entry.question);
       replaceRow(entry, i, state.answers.get(entry.question));

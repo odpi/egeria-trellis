@@ -23,13 +23,20 @@
     "survey-definitions \u2014 same dependency on questions, same non-idempotent Link Next Process",
     "Step mechanism, but its own directory/canary/reconciler since the two batches share no",
     "documents or scripts. Listed after survey-definitions rather than before purely because that",
-    "is authoring order; the two do not depend on each other, only both on questions."
+    "is authoring order; the two do not depend on each other, only both on questions.",
+    "",
+    "engine-host (added 2026-11-04, F54) is LAST: nothing depends on it and it depends on nothing above (its elements are",
+    "engines, services and governance action types, not glossary terms). It is the one OPT-IN batch: its _batch.json",
+    "declares \"opt_in\": \"RE_ENGINE_HOST_HEAL\", and bootstrap heals it on its own only when that setting is true",
+    "(default off; it is then reported opted_out, and RE still says when the engine is missing). Admin > Repair >",
+    "\"Declare RE's survey engine in Egeria\" runs it whatever the setting says (POST /api/bootstrap/run {batch})."
   ],
   "folders": [
     "foundations",
     "questions",
     "survey-definitions",
     "survey-definitions-database",
-    "governance-metrics"
+    "governance-metrics",
+    "engine-host"
   ]
 }

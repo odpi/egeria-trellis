@@ -96,6 +96,26 @@ contain apostrophes), which is exactly how such a canary gets chosen by mistake.
   an object with a "folders" key (RE's, so the file can carry comments). Both
   parse, so a Portal-style file works here unchanged.
 - Adds `idempotent` and `post_heal`, which the Portal has no equivalent of.
+- Adds `opt_in` and `runner` (engine-host, F54 2026-11-04), below.
+
+## Opt-in batches (engine-host)
+
+A batch whose manifest names `"opt_in": "<ENV>"` is healed by the automatic pass ONLY when that setting is true.
+Off (the default), its canary is still READ every pass (one qualifiedName lookup, no write), so RE can say the
+engine is missing, but nothing is run and the result is `opted_out`. `check_and_heal(only=<batch>)` runs one batch
+whatever its setting says (Admin › Repair › "Declare RE's survey engine in Egeria"): the owner running the documents
+from the page, through the same lock as the heal. A one-batch run is never forced, and refuses without a write when
+the canary is present ("already declared") or cannot be read.
+
+`"runner": "dr_egeria_runner"` heals the batch document by document through `dr_egeria_runner.run_document`, as
+`heal_identity()`: that is the path that runs each document's sibling `.pyegeria-steps.json` (the SurveyActionEngine
+and its services, which Dr.Egeria has no command for) and records an activity row per document. Because the canary
+was VERIFIED missing inside the heal lock, the runner's repeat guard is waived for that pass (`heal_waiver`): an
+earlier run of the same content is then a run whose elements a reset wiped.
+
+Each status entry carries `state`: present | missing | unknown, or opted_out for an opt-in batch that is off and
+whose canary has not been read yet. For the engine-host batch, the engine host's own sweep is a second source
+(`engine_host.last_engine_answer()`), the newer answer winning; neither is an Egeria call on the poll.
 """
 from __future__ import annotations
 
@@ -149,6 +169,18 @@ class Batch:
     #: not repair anything on this path, so "the check found drift" is not
     #: the same failure as "the heal script itself errored".
     post_heal_checks: list[dict] = field(default_factory=list)
+    #: The setting (an environment variable) that must be true for the AUTOMATIC heal to run this batch; "" = none.
+    opt_in: str = ""
+    #: "dr_egeria_runner": heal through `dr_egeria_runner.run_document` (pyegeria steps, activity rows); "" = the
+    #: plain `dr_egeria` child per document.
+    runner: str = ""
+
+    @property
+    def opted_in(self) -> bool:
+        """True when the batch has no opt-in setting, or its setting is on."""
+        if not self.opt_in:
+            return True
+        return (os.environ.get(self.opt_in) or "").strip().lower() in ("1", "true", "yes", "on")
 
     @property
     def has_canary(self) -> bool:
@@ -200,6 +232,20 @@ class PrefectPoolStatus:
 _status: dict[str, BatchStatus] = {}
 _status_lock = threading.Lock()
 _reinitializing = False
+#: The batch a pass is healing right now ("" = none): the banner's "declaring…".
+_healing_batch = ""
+
+STATE_PRESENT = "present"
+STATE_MISSING = "missing"
+STATE_OPTED_OUT = "opted_out"
+STATE_UNKNOWN = "unknown"
+
+#: The engine-host batch (docs/dr-egeria/engine-host/_batch.json).
+ENGINE_HOST_BATCH = "engine-host"
+
+
+class UnknownBatch(KeyError):
+    """`check_and_heal(only=...)` named no batch on disk."""
 #: Held for the whole of a check_and_heal pass (see there).
 _heal_lock = threading.Lock()
 _stop_event: threading.Event | None = None
@@ -341,6 +387,8 @@ def discover_batches(docs_dir: Path = DOCS_DIR) -> list[Batch]:
             idempotent=bool(raw.get("idempotent", True)),
             post_heal=raw.get("post_heal"),
             post_heal_checks=list(raw.get("post_heal_checks") or []),
+            opt_in=str(raw.get("opt_in") or ""),
+            runner=str(raw.get("runner") or ""),
         )
 
     ordered_names = _read_folder_order(docs_dir)
@@ -665,7 +713,7 @@ def _run_post_heal_checks(batch: Batch) -> list[str]:
     return details
 
 
-def heal_batch(batch: Batch) -> tuple[bool, str]:
+def heal_batch(batch: Batch, *, waiver: str = "", requested_by: str = "") -> tuple[bool, str]:
     """Re-execute every document in a batch, in order, then its post-heal step.
 
     Stops at the first failing document: within a batch, file order encodes
@@ -673,6 +721,11 @@ def heal_batch(batch: Batch) -> tuple[bool, str]:
     prerequisites are missing — the same class of silent-partial-success this
     whole module exists to prevent.
     """
+    if batch.runner == "dr_egeria_runner":
+        ok, detail = _heal_with_runner(batch, waiver=waiver, requested_by=requested_by)
+        if not ok:
+            return False, detail
+        return True, detail
     for filename in batch.files:
         ok, detail = _run_dr_egeria(batch.path / filename)
         if not ok:
@@ -688,9 +741,296 @@ def heal_batch(batch: Batch) -> tuple[bool, str]:
     return True, detail or "ok"
 
 
+def _heal_with_runner(batch: Batch, *, waiver: str, requested_by: str) -> tuple[bool, str]:
+    """Run each document of a `runner: dr_egeria_runner` batch through `dr_egeria_runner.run_document`, in order, as
+    `heal_identity()`, with `waiver` (the canary was verified missing in this pass). Stops at the first document
+    that ends in error or is refused. Returns (ok, the result words: documents run and command counts)."""
+    from resource_explorer import dr_egeria_runner as runner
+
+    try:
+        identity = heal_identity()
+    except NoDrEgeriaIdentity as exc:
+        return False, f"no service account: {exc}"
+    # Architect ruling Q2: a run in progress for ANY file of the batch refuses the whole pass before document 1.
+    for filename in batch.files:
+        try:
+            live = runner.run_in_progress(batch.path / filename)
+        except Exception as exc:  # noqa: BLE001 - cannot tell: do not start
+            return False, f"not run · could not check for a run in progress of {filename}: {exc}"
+        if live:
+            return False, (f"not run · a run of {filename} is in progress (activity {live['id']} since "
+                           f"{live.get('ts', '')}); nothing of this batch was started")
+    counts: dict[str, int] = {}
+    done = 0
+    for filename in batch.files:
+        try:
+            out = runner.run_document(batch.path / filename, identity=identity, heal_waiver=waiver,
+                                      requested_by=requested_by or SOURCE_STARTUP_HEAL)
+        except Exception as exc:  # noqa: BLE001 - a refusal or a failure stops the batch, with its words
+            return False, f"{filename}: not run · {exc}" + (f" · {_counts_words(counts, done)}" if done else "")
+        for item in out.get("commands") or []:
+            st = item.get("status", "") if isinstance(item, dict) else ""
+            counts[st] = counts.get(st, 0) + 1
+        done += 1
+        if out.get("status") not in (runner.OK, runner.WARNING):
+            return False, f"{filename}: {out.get('summary') or out.get('status')} · {_counts_words(counts, done)}"
+    return True, _counts_words(counts, done)
+
+
+def _counts_words(counts: dict[str, int], documents: int) -> str:
+    parts = [f"{n} {st.replace('_', ' ')}" for st, n in sorted(counts.items()) if n]
+    return f"{documents} document{'s' if documents != 1 else ''} run · " + (", ".join(parts) or "no commands")
+
+
+def applied_documents(batch: Batch, registry=None) -> tuple[list[str], list[dict]]:
+    """THE read of which documents of `batch` have an ok (or warning) run row here: (wanted, ok_rows), `wanted` being
+    every document as its row names it (`<batch id>/<file>`). The press's words, the Admin row's count (W67) and the
+    completion (F55) all read this; nothing counts applied documents another way. Raises when the registry cannot
+    be read (the callers say so; an unreadable history is never "nothing applied")."""
+    from resource_explorer import dr_egeria_runner as runner
+
+    if registry is None:
+        from resource_explorer.registry import ProjectRegistry
+
+        registry = ProjectRegistry()
+    wanted = [f"{batch.batch_id}/{f}" for f in batch.files]
+    ok_rows = [r for r in registry.list_activity(operation=runner.OPERATION, limit=1000)
+               if r.get("status") in (runner.OK, runner.WARNING) and not runner._detail_of(r).get("dry_run")
+               and runner._detail_of(r).get("document") in wanted]
+    return wanted, ok_rows
+
+
+def applied_count(batch: Batch, registry=None) -> dict:
+    """{applied, total, pending: [files]} from `applied_documents`, or {error} when the history cannot be read."""
+    try:
+        wanted, ok_rows = applied_documents(batch, registry)
+    except Exception as exc:  # noqa: BLE001 - the caller renders the error, never 0
+        return {"error": f"run history not read ({type(exc).__name__})"}
+    from resource_explorer import dr_egeria_runner as runner
+
+    applied = {runner._detail_of(r).get("document") for r in ok_rows}
+    return {"applied": len(applied), "total": len(wanted),
+            "pending": [f for f, w in zip(batch.files, wanted) if w not in applied]}
+
+
+def already_declared_words(batch: Batch, registry=None) -> str:
+    """What a one-batch run answers when the canary is present and nothing is left to complete: "already declared ·
+    content applied on <date>" (the newest ok/warning run row of the batch's first document), or that no run is
+    recorded here, with the applied count."""
+    try:
+        from resource_explorer import dr_egeria_runner as runner
+
+        wanted, ok_rows = applied_documents(batch, registry)
+    except Exception as exc:  # noqa: BLE001 - the words say what could not be read
+        return f"already declared · run history not read ({type(exc).__name__})"
+    applied = {runner._detail_of(r).get("document") for r in ok_rows}
+    n, m = len(applied), len(wanted)
+    # Architect ruling Q1 (2): how many of the batch's documents have an ok row, so a partial state is visible.
+    # F55: the press itself completes the rest (`complete_batch`), so the CLI is no longer the advice here.
+    count = f"{n} of {m} documents applied"
+    first = [r for r in ok_rows if runner._detail_of(r).get("document") == wanted[0]] if wanted else []
+    if not first:
+        return f"already declared · no run of its first document is recorded here · {count}"
+    newest = max(first, key=lambda r: r.get("ts") or "")
+    return f"already declared · content applied on {(newest.get('ts') or '')[:10]} · {count}"
+
+
+# ── F55: complete a partial batch from the page ─────────────────────────────
+
+ACTION_COMPLETED = "completed"
+ACTION_COMPLETION_FAILED = "completion_failed"
+
+
+def created_element_present(qualified_name: str, expert=None) -> bool | None:
+    """Is the element `qualified_name` in Egeria: True / False verified, None when the lookup could not be made or
+    answered (unreachable, ambiguous). The same unique-name read as the canary's (`egeria_lookup`), no type asked."""
+    if expert is None:
+        try:
+            from resource_explorer.surveyors.survey_definition_reader import SurveyDefinitionReader
+
+            expert = SurveyDefinitionReader()._connect_metadata_expert()
+        except Exception as exc:  # noqa: BLE001 - cannot reach Egeria: not known
+            log.info("bootstrap: cannot reach Egeria to look up %s (%s)", qualified_name, exc)
+            return None
+    try:
+        from resource_explorer.egeria_lookup import guid_by_qualified_name
+
+        return guid_by_qualified_name(expert, qualified_name) is not None
+    except Exception as exc:  # noqa: BLE001 - ambiguous or failed: not known, never absent
+        log.info("bootstrap: lookup of %s failed (%s) — not known", qualified_name, exc)
+        return None
+
+
+def _created_qualified_names(plan) -> list[str]:
+    """The qualified names a document's Dr.Egeria `Create …` commands make (its own created elements). The pyegeria
+    steps are find-or-create and are not counted; links and classifications create no named element."""
+    return [c.element for c in plan.dr_egeria if c.command.startswith("Create ") and c.element]
+
+
+def complete_batch(batch: Batch, *, requested_by: str = "", registry=None) -> tuple[str, str]:
+    """F55: the canary is PRESENT; run the documents of `batch` that have no ok run row AND whose own created elements
+    are verified absent, in order, through the runner with a waiver (the heal lock is held by the caller). A document
+    with an ok row or a present element is skipped and named; a lookup that cannot answer refuses the whole pass
+    (undetermined is never absent). (action, words): `present` (nothing to run, or refused with the reason),
+    `completed` ("completed the batch: ran …, … · skipped 1 already applied"), `completion_failed`."""
+    from resource_explorer import dr_egeria_runner as runner
+
+    count = applied_count(batch, registry)
+    if "error" in count:
+        return "present", already_declared_words(batch, registry)
+    pending = count["pending"]
+    if not pending:
+        return "present", already_declared_words(batch, registry)
+    applied_words = f"skipped {count['applied']} already applied" if count["applied"] else ""
+    try:
+        identity = heal_identity()
+    except NoDrEgeriaIdentity as exc:
+        return "present", f"{already_declared_words(batch, registry)} · not completed: no service account ({exc})"
+    for filename in batch.files:
+        try:
+            live = runner.run_in_progress(batch.path / filename)
+        except Exception as exc:  # noqa: BLE001 - cannot tell: do not start
+            return "present", (f"{already_declared_words(batch, registry)} · not completed: could not check for a run "
+                               f"in progress of {filename}: {exc}")
+        if live:
+            return "present", (f"{already_declared_words(batch, registry)} · not completed: a run of {filename} is in "
+                               f"progress (activity {live['id']} since {live.get('ts', '')}); nothing was started")
+    # Decide every document BEFORE the first write: a lookup that cannot answer refuses the whole pass.
+    to_run: list[str] = []
+    present_skips: list[str] = []
+    verified_at = _now()
+    for filename in pending:
+        try:
+            plan = runner.plan_document(batch.path / filename)
+        except Exception as exc:  # noqa: BLE001
+            return "present", f"{already_declared_words(batch, registry)} · not completed: {filename} could not be planned ({exc})"
+        if plan.errors:
+            return "present", (f"{already_declared_words(batch, registry)} · not completed: {filename} is not valid "
+                               f"({'; '.join(plan.errors)})")
+        names = _created_qualified_names(plan)
+        present_names = []
+        for qn in names:
+            answer = created_element_present(qn)
+            if answer is None:
+                return "present", (f"{already_declared_words(batch, registry)} · not completed: could not verify that "
+                                   f"{filename}'s elements are absent ({qn} could not be looked up) · nothing run")
+            if answer:
+                present_names.append(qn)
+        if present_names:
+            present_skips.append(f"{filename} ({', '.join(present_names)} present)")
+        else:
+            to_run.append(filename)
+    skipped = [w for w in (applied_words, (f"skipped {len(present_skips)} whose elements are present: "
+                                           + ", ".join(present_skips)) if present_skips else "") if w]
+    if not to_run:
+        return "present", " · ".join([already_declared_words(batch, registry), "nothing left to run"] + skipped[1:])
+    waiver = (f"completing the engine-host batch: canary present, {len(to_run)} document(s) with no ok run and their "
+              f"created elements verified absent at {verified_at}"
+              + (f" · pressed by {requested_by}" if requested_by else ""))
+    ran: list[str] = []
+    counts: dict[str, int] = {}
+    for filename in to_run:
+        try:
+            out = runner.run_document(batch.path / filename, identity=identity, heal_waiver=waiver,
+                                      requested_by=requested_by or SOURCE_STARTUP_HEAL, registry=registry)
+        except Exception as exc:  # noqa: BLE001 - a refusal or a failure stops the pass, with its words
+            return ACTION_COMPLETION_FAILED, (f"completing the batch stopped at {filename}: not run · {exc}"
+                                              + (f" · ran {', '.join(ran)}" if ran else ""))
+        for item in out.get("commands") or []:
+            st = item.get("status", "") if isinstance(item, dict) else ""
+            counts[st] = counts.get(st, 0) + 1
+        ran.append(filename)
+        if out.get("status") not in (runner.OK, runner.WARNING):
+            return ACTION_COMPLETION_FAILED, (f"completing the batch stopped at {filename}: "
+                                              f"{out.get('summary') or out.get('status')} · "
+                                              f"{_counts_words(counts, len(ran))}")
+    words = f"completed the batch: ran {', '.join(ran)}"
+    return ACTION_COMPLETED, " · ".join([words] + skipped + [_counts_words(counts, len(ran))])
+
+
+def batch_price(batch_id: str, docs_dir: Path = DOCS_DIR, registry=None) -> dict:
+    """What a one-batch run will do, read from its documents (no Egeria call): for Admin › Repair's price line.
+
+    {documents, engines, services, governance_action_types, processes, applying_as, seconds, self_heal, words}.
+    `seconds` sums the newest recorded run of each document (None when none is recorded here)."""
+    from datetime import datetime as _dt
+
+    batch = next((b for b in discover_batches(docs_dir) if b.batch_id == batch_id), None)
+    if batch is None:
+        raise UnknownBatch(batch_id)
+    engines, services = set(), set()
+    gats = processes = 0
+    for f in batch.files:
+        doc = batch.path / f
+        text = doc.read_text() if doc.is_file() else ""
+        gats += sum(1 for line in text.splitlines() if line.strip() == "## Create Governance Action Type")
+        processes += sum(1 for line in text.splitlines() if line.strip() == "## Create Governance Action Process")
+        steps = doc.with_name(doc.stem + ".pyegeria-steps.json")
+        if steps.is_file():
+            try:
+                for step in json.loads(steps.read_text()).get("steps") or []:
+                    if step.get("command") == "Create Survey Action Engine":
+                        engines.add(step.get("qualified_name"))
+                    elif step.get("command") == "Create Survey Action Service":
+                        services.add(step.get("qualified_name"))
+            except (OSError, ValueError):
+                pass
+    try:
+        applying_as = heal_identity().user
+    except NoDrEgeriaIdentity:
+        applying_as = ""
+    seconds = None
+    try:
+        from resource_explorer import dr_egeria_runner as runner
+
+        if registry is None:
+            from resource_explorer.registry import ProjectRegistry
+
+            registry = ProjectRegistry()
+        newest: dict[str, dict] = {}
+        for r in registry.list_activity(operation=runner.OPERATION, limit=1000):
+            d = runner._detail_of(r)
+            doc_rel = d.get("document", "")
+            if not doc_rel.startswith(batch_id + "/") or d.get("dry_run") or not d.get("finished_at"):
+                continue
+            if doc_rel not in newest or (r.get("ts") or "") > (newest[doc_rel].get("ts") or ""):
+                newest[doc_rel] = r
+        total = 0.0
+        for r in newest.values():
+            total += max(0.0, (_dt.fromisoformat(runner._detail_of(r)["finished_at"])
+                               - _dt.fromisoformat(r["ts"])).total_seconds())
+        seconds = round(total) if newest else None
+    except Exception:  # noqa: BLE001 - the time is then "not measured here"
+        seconds = None
+    n = len(batch.files)
+    # W67: the applied count rides on the price (read once, when the Repair row loads), from the SAME run-row read
+    # the press's words use (`applied_documents`), so a partial declaration is visible without a press.
+    applied = applied_count(batch, registry)
+    words = (f"runs {n} Dr.Egeria document{'s' if n != 1 else ''} in order as "
+             f"{applying_as or 'NO service account (EGERIA_USER_ID unset): refused'} · creates "
+             f"{len(engines)} engine, {len(services)} services, {gats} governance action types, "
+             f"{processes} process{'es' if processes != 1 else ''} · "
+             + (f"about {seconds} s" if seconds is not None else "time not measured here yet")
+             + " · with the engine present, runs only the documents not yet applied")
+    return {"documents": n, "engines": len(engines), "services": len(services), "governance_action_types": gats,
+            "processes": processes, "applying_as": applying_as, "seconds": seconds,
+            "self_heal": ({"key": batch.opt_in, "on": batch.opted_in, "interval_seconds": CHECK_INTERVAL_SECONDS}
+                          if batch.opt_in else None),
+            "documents_applied": applied, "documents_applied_words": applied_words(applied),
+            "words": words}
+
+
+def applied_words(applied: dict) -> str:
+    """"N of M documents applied", or why the count is not known — never "0" for an unread history (W67)."""
+    if "error" in applied:
+        return f"documents applied: not known ({applied['error']})"
+    return f"{applied['applied']} of {applied['total']} documents applied"
+
+
 # ── orchestration ───────────────────────────────────────────────────────────
 
-def check_and_heal(docs_dir: Path = DOCS_DIR, force: bool = False) -> dict:
+def check_and_heal(docs_dir: Path = DOCS_DIR, force: bool = False, *, only: str = "",
+                   requested_by: str = "") -> dict:
     """Check every batch and heal the missing ones, in declared order.
 
     force=True re-runs every batch regardless of canary state. It exists for the
@@ -698,8 +1038,18 @@ def check_and_heal(docs_dir: Path = DOCS_DIR, force: bool = False) -> dict:
     batch with idempotent=false a forced re-run duplicates relationships and
     takes the Survey Definition out of service, so callers must opt in
     explicitly and surface a confirmation to the user.
+
+    only=<batch id> checks and heals that ONE batch (the Admin press), whatever its opt-in setting says, never
+    forced (ValueError with force), past the consecutive-failure guard; UnknownBatch when no such batch exists.
+    `requested_by` is recorded on the runner's rows. An opt-in batch that is off is never healed by a pass that
+    does not name it, forced or not.
     """
     global _reinitializing
+
+    if only and force:
+        raise ValueError("a one-batch run is never forced")
+    if only and only not in {b.batch_id for b in discover_batches(docs_dir)}:
+        raise UnknownBatch(only)
 
     # One pass at a time in this process, whoever calls (the route, the automatic loop, the CLI). Non-blocking: a
     # pass that finds it held does nothing and says so, and must not touch `_reinitializing`, which belongs to the
@@ -707,15 +1057,15 @@ def check_and_heal(docs_dir: Path = DOCS_DIR, force: bool = False) -> dict:
     if not _heal_lock.acquire(blocking=False):
         return {"batches": {}, "running": True}
     try:
-        return _check_and_heal_locked(docs_dir, force)
+        return _check_and_heal_locked(docs_dir, force, only=only, requested_by=requested_by)
     finally:
         _heal_lock.release()
 
 
-def _check_and_heal_locked(docs_dir: Path, force: bool) -> dict:
-    global _reinitializing
+def _check_and_heal_locked(docs_dir: Path, force: bool, *, only: str = "", requested_by: str = "") -> dict:
+    global _reinitializing, _healing_batch
 
-    batches = discover_batches(docs_dir)
+    batches = [b for b in discover_batches(docs_dir) if not only or b.batch_id == only]
     results: dict[str, dict] = {}
     _reinitializing = True
     try:
@@ -723,7 +1073,10 @@ def _check_and_heal_locked(docs_dir: Path, force: bool) -> dict:
             with _status_lock:
                 st = _status.setdefault(batch.batch_id, BatchStatus())
 
-            if st.consecutive_failures >= MAX_CONSECUTIVE_FAILURES and not force:
+            opted_out = not batch.opted_in and batch.batch_id != only
+            # An opted-out batch is still READ (so RE can say it is missing), never forced, never healed.
+            batch_force = force and not opted_out
+            if st.consecutive_failures >= MAX_CONSECUTIVE_FAILURES and not force and not only and not opted_out:
                 results[batch.batch_id] = {"action": "skipped", "reason": "too many consecutive failures"}
                 continue
 
@@ -731,7 +1084,7 @@ def _check_and_heal_locked(docs_dir: Path, force: bool) -> dict:
             # could not reach Egeria. None MUST be handled explicitly — a bare
             # `if present:` would treat it as falsy and heal during an outage,
             # precisely the behaviour failing open exists to prevent.
-            state = False if force else canary_present(batch)
+            state = False if batch_force else canary_present(batch)
             now = _now()
             with _status_lock:
                 st.last_checked_at = now
@@ -743,15 +1096,42 @@ def _check_and_heal_locked(docs_dir: Path, force: bool) -> dict:
                 else:
                     st.last_check_error = ""
                     st.last_verified_at = now
-                    if not force:
+                    if not batch_force:
                         st.present = state
+                    if batch_force:
+                        verified_missing_at = ""
+                    else:
+                        verified_missing_at = now if state is False else ""
 
             if state is None:
-                results[batch.batch_id] = {"action": "unknown", "reason": "could not reach Egeria"}
+                results[batch.batch_id] = {"action": "unknown", "reason": (
+                    "could not check Egeria: could not reach Egeria" if batch.batch_id == only
+                    else "could not reach Egeria")}
+                continue
+
+            if opted_out:
+                results[batch.batch_id] = {
+                    "action": STATE_OPTED_OUT,
+                    "reason": f"{batch.opt_in} is off · canary {'present' if state else 'missing'} · not healed"}
                 continue
 
             if state:
-                results[batch.batch_id] = {"action": "ok", "reason": "canary present"}
+                if batch.batch_id == only:
+                    # F55: a present canary no longer only refuses — the documents with no ok row whose elements are
+                    # verified absent are run (the rest skipped and named); `present` when nothing is left or it
+                    # could not be verified.
+                    _healing_batch = batch.batch_id
+                    try:
+                        action, words = complete_batch(batch, requested_by=requested_by)
+                    finally:
+                        _healing_batch = ""
+                    if action != "present":
+                        with _status_lock:
+                            st.last_healed_at = _now()
+                            st.last_heal_result = "ok" if action == ACTION_COMPLETED else words
+                    results[batch.batch_id] = {"action": action, "reason": words}
+                else:
+                    results[batch.batch_id] = {"action": "ok", "reason": "canary present"}
                 continue
 
             try:
@@ -767,7 +1147,16 @@ def _check_and_heal_locked(docs_dir: Path, force: bool) -> dict:
                 results[batch.batch_id] = {"action": "failed", "reason": reason}
                 continue
             log.info("bootstrap: %s missing — healing (%d file(s))", batch.batch_id, len(batch.files))
-            ok, detail = heal_batch(batch)
+            qn = (batch.canary or {}).get("qualified_name") or (batch.canary or {}).get("display_name") or "?"
+            waiver = (f"canary {qn} verified missing at {verified_missing_at}"
+                      + (f" · pressed by {requested_by}" if requested_by else " · automatic heal")
+                      if verified_missing_at else "")
+            _healing_batch = batch.batch_id
+            try:
+                ok, detail = heal_batch(batch, waiver=waiver, requested_by=requested_by) if batch.runner \
+                    else heal_batch(batch)
+            finally:
+                _healing_batch = ""
             # Re-check rather than assuming the heal worked: a canary that never
             # resolves is exactly how an infinite heal loop starts.
             recheck = canary_present(batch) if ok else False
@@ -804,8 +1193,58 @@ def _check_and_heal_locked(docs_dir: Path, force: bool) -> dict:
             results[batch.batch_id] = {"action": "healed" if ok else "failed", "reason": detail}
     finally:
         _reinitializing = False
+        _healing_batch = ""
 
     return {"batches": results}
+
+
+def _state_of(batch: Batch, st: BatchStatus) -> str:
+    """present | missing | unknown from the last verified answer; opted_out for an opt-in batch that is off and has
+    no verified answer yet. The engine-host batch also weighs the engine host's own sweep (newest answer wins)."""
+    present = st.present
+    if batch.batch_id == ENGINE_HOST_BATCH:
+        try:
+            from resource_explorer import engine_host
+
+            present = engine_host.engine_declared()
+        except Exception:  # noqa: BLE001 - fall back to this module's own answer
+            present = st.present
+    if present is True:
+        return STATE_PRESENT
+    if present is False:
+        return STATE_MISSING
+    return STATE_OPTED_OUT if not batch.opted_in else STATE_UNKNOWN
+
+
+SOURCE_BOOTSTRAP_CHECK = "bootstrap check"
+SOURCE_ENGINE_HOST = "engine host"
+
+
+def _checked_of(batch: Batch, st: BatchStatus) -> tuple[str, str]:
+    """When the state was last verified, and by whom (Architect ruling Q4): ("", "") when nothing has answered."""
+    mine = (st.last_verified_at, SOURCE_BOOTSTRAP_CHECK) if st.present is not None else ("", "")
+    if batch.batch_id != ENGINE_HOST_BATCH:
+        return mine
+    try:
+        from resource_explorer import engine_host
+
+        sweep = engine_host.last_engine_answer()
+    except Exception:  # noqa: BLE001
+        return mine
+    if sweep.get("present") is not None and (sweep.get("at") or "") >= (mine[0] or ""):
+        return sweep["at"], SOURCE_ENGINE_HOST
+    return mine
+
+
+def _engine_host_fields() -> dict:
+    """The engine-host batch's extra status: when the engine host's sweep last answered, and whether it runs."""
+    try:
+        from resource_explorer import engine_host
+
+        answer = engine_host.last_engine_answer()
+        return {"last_sweep_at": answer.get("at") or "", "engine_host_on": engine_host.engine_host_enabled()}
+    except Exception:  # noqa: BLE001
+        return {"last_sweep_at": "", "engine_host_on": None}
 
 
 def get_status(docs_dir: Path = DOCS_DIR) -> dict:
@@ -825,8 +1264,15 @@ def get_status(docs_dir: Path = DOCS_DIR) -> dict:
             st = _status.get(batch.batch_id, BatchStatus())
         reachable = not st.last_check_error
         any_unreachable = any_unreachable or not reachable
+        state = _state_of(batch, st)
+        checked_at, source = _checked_of(batch, st)
         out[batch.batch_id] = {
             "display_name": batch.display_name,
+            "state": state,
+            "checked_at": checked_at,
+            "source": source,
+            "opt_in": ({"key": batch.opt_in, "on": batch.opted_in} if batch.opt_in else None),
+            "healing": _healing_batch == batch.batch_id,
             "present": st.present,
             "reachable": reachable,
             "last_checked_at": st.last_checked_at,
@@ -838,6 +1284,8 @@ def get_status(docs_dir: Path = DOCS_DIR) -> dict:
             "idempotent": batch.idempotent,
             "file_count": len(batch.files),
         }
+        if batch.batch_id == ENGINE_HOST_BATCH:
+            out[batch.batch_id].update(_engine_host_fields())
     with _prefect_pool_status_lock:
         pool_st = _prefect_pool_status
 
@@ -846,6 +1294,7 @@ def get_status(docs_dir: Path = DOCS_DIR) -> dict:
 
     return {
         "reinitializing": _reinitializing,
+        "healing": _healing_batch,
         "egeria_reachable": not any_unreachable,
         "batches": out,
         # The data-class seed's last outcome ("data classes: present, 6 sets" / "created, …" /

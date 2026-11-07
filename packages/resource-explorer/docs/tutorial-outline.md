@@ -1,7 +1,7 @@
 # Resource Explorer tutorial — outline for review
 
 **Status:** the outline the prose is written from. Prose is being written one part at a time in
-[`tutorial/`](tutorial/README.md#the-core-tutorial); parts 1 to 5 are written.
+[`tutorial/`](tutorial/README.md#the-core-tutorial); parts 1 to 6 are written.
 **Date:** 2026-11-01.
 **Changes:**
 - 2026-10-29: the outline, with decisions D1–D9.
@@ -27,6 +27,15 @@
   root folder only"), then Egeria leads the survey and writes a survey report. G11, G16 and G28 extended; G29 and G30
   added. Reader-facing `8813` replaced: the tutorial's address is `http://localhost:8810/` (project owner, via the
   Coordinator, 2026-11-02); walks 1–6 now say their screens were read "on a test server".
+- 2026-11-03: part 6 written; S21, S21b, S22, S23a and S23 taken. Read on screen: Discovery answers "already
+  catalogued?" with ∅, and finds the trial database a likely copy of the Quickstart's `coco_pharma` (the same
+  database registered twice). Assessment answers four questions with nothing run on it; the Database Assessment
+  Survey is offered on Analysis, not Assessment, and adds nothing there until W43 (the Architect, 2026-11-02), so
+  part 6 runs no Assessment survey. Step 6 runs one analysis on its own, Table Statistics Freshness (pressed once
+  on the project owner's word, 2026-11-03T15:00:31Z), turning two partial answers whole. G31 to G34 added; G13
+  and G23 extended.
+- 2026-11-04: W57 landed (main b7bfff93): the statistics_freshness source line now names what it counts. Part 6
+  step 6 quotes the new words, and says the screenshot still shows the old ones; G33 marked fixed.
 **Replaces, once written:** the six walks in [`tutorial/`](tutorial/README.md), which stay on `main` until then.
 
 ## How to read this outline
@@ -231,7 +240,7 @@ first question is why that is not simply "catalog everything the trial touches".
    set most candidates aside early. It is a guide to working efficiently, not the only path: you may go straight to a
    later stage's question when that is the one you need answered.
 6. **Many points of view.** The same data source matters differently to each of the people in item 8. On the screen,
-   each question is tagged with the *perspectives* that care about it, such as Security, Architecture or Data Owner,
+   each question is tagged with the *perspectives* that care about it, such as Security, Architecture or Owner,
    and you can filter by them (part 3d). A perspective is a filter on the questions, not a job title; one person may
    use several. The questions themselves are not fixed: questions, analyses and surveys can be added or removed (the
    Advanced tutorial).
@@ -401,7 +410,7 @@ Quickstart folder's path (`loading_bay`). The OpenLineage repository's GitHub ad
 1. Use the filter box under **Repos**, **DBs** or **FS**.
 2. For repositories, the chips **All**, **New**, **Surveyed** and **Published** narrow the list (seen). ("In scope"
    belongs to part 12.)
-3. The **PERSPECTIVE** chips (Data Owner, Steward and others) narrow the questions to who is asking (seen). Leave them
+3. The **PERSPECTIVE** chips (Owner, Steward and others) narrow the questions to who is asking (seen). Leave them
    all off for this tutorial.
 4. With **FS** chosen, click **🔎 Find by passages**: it finds file systems by what their narrative files say (seen).
    Type a question, for example about the Drop Foot trial, and read the file systems that come back, each with the
@@ -485,7 +494,7 @@ coco_pharma and `loading_bay`):
 |---|---|---|---|
 | Scouting | Scouting Survey (9 steps); also Repo Scouting Scan (4), Coarse Profile Survey (7) | Database Scouting Scan (3 steps) | Folder survey card: **Survey** is the overview (G4) |
 | Discovery | Repo Discovery Survey (9 steps); also Repo Architecture Discovery (4) | **none** (gap G23) | the same Folder survey card |
-| Assessment | Assessment Survey (14 steps); also Compliance Survey (14) | **none shown on this stage** (gap G23): "Database Assessment Survey" exists, named on its analyses' rows, but is not listed | the same Folder survey card |
+| Assessment | Assessment Survey (14 steps); also Compliance Survey (14) | Database Assessment Survey (1 step; offered here since W43 re-tagged its question Q-0085, 2026-11-04; before that it was listed on Analysis) | the same Folder survey card |
 | Analysis | Analysis Survey (11 steps) | Database Analysis Survey (8 steps) | the same Folder survey card |
 
 Every repository stage also offers "Full Survey (all steps)", 43 steps, under "OTHER STAGES".
@@ -571,7 +580,9 @@ know what the deeper look shows.
      A database has no Discovery overview survey (gap G23).
 2. Decide: is this database worth a closer look? For the tutorial, yes.
 3. Click **3 Assessment**, then **Survey & analyses**, and run the overview survey (Database Assessment Survey,
-   definitions). Read two answers on **Questions**. (Not yet confirmed on a database.)
+   definitions). It is offered on this stage because its question, Q-0085, is an Assessment question (W43 re-tagged it
+   from Analysis, 2026-11-04). Read two answers on **Questions**. (To confirm on screen after W43 merges and 8813
+   restarts; the screenshot is re-shot then.)
 4. Click **4 Analysis**. Before running anything, find a row marked ○ and read "Nothing has been measured for this
    yet." (seen).
 5. Instead of the overview, run one narrower survey or one analysis with its **run** button. Show how to keep the cost
@@ -994,9 +1005,9 @@ stamps recur from part to part. Take them in order, in one Quickstart, without r
 | S18 | 5 · 3–4 | what is in `coco_pharma` (read on screen) | Questions after the survey, one row labelled | Answer, source line, buttons | **Taken 2026-11-02, re-shot after F46 merged (#973):** `S18-answers.webp`, "30 schema(s), 29 with tables, 28 visible to this credential" and "34,207 writes and 2,989,434 reads"; with `S18b-numbers-behind.webp` (schema total 30). Re-shoot after W38. |
 | S19 | 5 · note | OpenLineage, first look | Repository header tiles | Tiles incl. "? not read" | **Taken 2026-11-02:** `S19-openlineage-header.webp`, the stored survey ("surveyed 27d ago"); not run again. Re-shoot after W38. |
 | S20 | 5 · note | `loading_bay`: the weekly files, summary lines, sections closed | File-system survey | Reach line, the presses, the closed sections with their summary lines | **Taken 2026-11-02:** `S20-folder-survey.webp` after Egeria's Folder Survey; with `S20a-root-folder-attached.webp` (Curate's publish band) and `S20b-files-open.webp` (Files open). Files reads "analysis level: top level only", so no `.restatement.csv` is listed; that moves to the part that walks the files. Re-shoot after W38. |
-| S21 | 6 · 1 | is `coco_pharma` already catalogued? | Discovery | "Nothing is recorded for this — a real absence…" | new |
-| S22 | 6 · 4 | what has not been looked at yet | Analysis, a ○ row | "Nothing has been measured for this yet." | new on the database |
-| S23 | 6 · 5 | the deeper look, one analysis at a time | One analysis run on its own | The row after its run | new |
+| S21 | 6 · 1 | is `coco_pharma` already catalogued? | Discovery | "Nothing is recorded for this — a real absence…" | **Taken 2026-11-03:** `tutorial/images/06-further-down/S21-already-catalogued.webp`, ∅ "Not yet published to Egeria"; with `S21b-likely-copy.webp`, "localhost_docker_coco_pharma (likely_copy, column-signature Jaccard 1.00, containment 1.00)". Re-shoot after W38. |
+| S22 | 6 · 4 | what has not been looked at yet | Analysis, a ○ row | "Nothing has been measured for this yet." | **Taken 2026-11-03:** `S22-not-measured.webp`, three ○ rows; "Nothing has been measured for this yet." beside "Not yet run." (G32). Re-shoot after W38. |
+| S23 | 6 · 5 | the deeper look, one analysis at a time | One analysis run on its own | The row after its run | **Taken 2026-11-03:** `S23a-one-analysis-ran.webp` (the Table Statistics Freshness card, ✓ "just now") and `S23-statistics-current.webp` ("statistics_freshness · measured · 215 of 266 tables (81%)", the partial line gone). Re-shoot after W38; the re-shot S23 will show W57's words. |
 | S24 | 7 · 1–2 | Tanya as owner, "clinical-trial reporting" | Context tab | Sensitivity, Owner, Intended use set, signed and dated | new |
 | S25 | 7 · 5 | what a person must settle | RFAs drawer | One open item | new |
 | S26 | 8 · 2–3 | Erin's follow-up question, and what the answer rests on | Chat answer | The answer and the "From N stored results" line | new |
@@ -1056,7 +1067,7 @@ in this outline; each is named where it bites.
 | G10 | Slow panes say "still loading" for 9–15 seconds without saying what they wait for (Discovery, Analysis, Enrichment). | 4, 6, 7 | Already queued as a defect. |
 | G11 | A published database's header reads "never surveyed · not published to Egeria" while Curate says it is in Egeria; the sentence above the chips and a chip can disagree. A file system too (read 2026-11-02): after its root folder is attached and Egeria's Folder Survey has run, its header still reads "never surveyed · not published to Egeria". | 5, 9 | Already queued as defects. |
 | G12 | "unbound by reset" is explained only by reference to an internal event. | 12 | A word that describes the state, not its history. |
-| G13 | A ✓ beside an answer that says nothing could be checked ("not checked: 0 of 65 … could be queried"). | 5 | Already queued as a defect. |
+| G13 | A ✓ beside an answer that says nothing could be checked ("not checked: 0 of 65 … could be queried"). **Also 2026-11-03:** "Are this database's planner statistics current?" shows ✓ while its line reads "statistics_freshness has not run, so this answer is partial". | 5, 6 | Already queued as a defect. |
 | G14 | The user guide says a database's Curate is one page; walk 3 shows tabs ("Describe and publish · Contents · Structure · …") on a database. One of them is out of date. | 9 | Read the screen and correct the guide. |
 | G15 | "RFAs" is an unexplained abbreviation in the strip. | 7 | Spell it out on hover, or rename. |
 | G16 | Internal words on screen: "ran via Prefect"; "compile" in the chat rail ("a compile reads one resource's stored results"); chat source lines list raw analysis ids ("fs_permissions, fs_activity"). The Activity panel too (read 2026-11-02): its subtitle "…read from the same log the current UI's Activity tab shows" and its entries ("fs_permissions (per-card run): 1 step: ran"). Part 2 does not quote either. Survey & analyses cards (read 2026-11-02): "produces · ResourceMeasureAnnotation, …" and "GovActionProcess::RepoCoarseProfile · definition history"; the "Who owns this resource" row's developer parenthesis ("MIXED: two halves …"). A running survey (read 2026-11-02): "Launched GovActionProcess::DatabaseScoutingSurvey." The folder survey's **Survey** and Egeria's own "Survey Folder › Run in Egeria →" are one run shown as two buttons; pressing both surveys the folder twice (read 2026-11-02; in the W39 brief). One glyph, two meanings: ⚠ is "needs you" in the key but marks staleness on survey cards ("⚠ ran 70d ago"). | 2, 5, 8 | Plain words, or analysis display names. |
@@ -1066,7 +1077,7 @@ in this outline; each is named where it bites.
 | G20 | The sign-in panel says "EXPERIMENTAL UI". | 2 | **Not a defect (project owner, 2026-10-29):** RE is positioned as still experimental, evolving with user feedback. The tutorial explains the label; nothing to fix. |
 | G21 | This writer's browser was not signed in, so the register dialogs, the new-investigation dialog and the chat rail are outlined from the source code (marked "code"). | 3, 8, 12 | The prose writer reads each on the screen, signed in. |
 | G22 | Steps whose exact screen words nobody has recorded: a wrong password, Egeria down at sign-in, an empty investigation name, "promote" on a work list, the Assessment tab on a database, a step that asks before running a prerequisite. | 2, 5, 6, 11, 12 | Read on the screen during the prose phase; some need a deliberate error to see. |
-| G23 | The overview surveys are uneven across kinds (definitions, 2026-10-29). A database has no Discovery survey. A database's Assessment survey has one step. File-system stage surveys are not yet identified. Names are inconsistent: "Scouting Survey" and "Repo Scouting Scan" are both repository Scouting surveys; "Database Scouting Scan" is the database's overview; "Assessment Survey" and "Analysis Survey" carry no kind in their names, while "Repo Discovery Survey" does. A reader cannot tell from a name which survey is the overview. **Re-read on screen 2026-11-02:** a database's Assessment stage lists no survey of its own; the repository Assessment Survey has 14 steps, not 11; the file system has one Folder survey card on every stage. Part 4 gives the reader a table. | 4, 5, 6 | One naming rule (for example "<Kind> <Stage> Survey" for every overview), and the missing overviews either built or explained. |
+| G23 | The overview surveys are uneven across kinds (definitions, 2026-10-29). A database has no Discovery survey. A database's Assessment survey has one step. File-system stage surveys are not yet identified. Names are inconsistent: "Scouting Survey" and "Repo Scouting Scan" are both repository Scouting surveys; "Database Scouting Scan" is the database's overview; "Assessment Survey" and "Analysis Survey" carry no kind in their names, while "Repo Discovery Survey" does. A reader cannot tell from a name which survey is the overview. **Re-read on screen 2026-11-02:** a database's Assessment stage lists no survey of its own; the repository Assessment Survey has 14 steps, not 11; the file system has one Folder survey card on every stage. Part 4 gives the reader a table. **Read 2026-11-03:** the Assessment Survey's one question (Q-0085) is tagged Analysis, so the survey is offered on Analysis and adds nothing on Assessment (W43; the project owner chose "Re-tag its questions"). **Fixed by W43** (2026-11-04): Q-0085 is tagged Assessment in the catalog and every mirror; the Database Assessment Survey is offered on 3 Assessment once the branch merges, 8813 restarts and the questions batch's Egeria scope link is updated (an owner-approved heal). The naming unevenness stays open. | 4, 5, 6 | One naming rule (for example "<Kind> <Stage> Survey" for every overview), and the missing overviews either built or explained. |
 | G24 | After design note D1-a, a database can show as already in Egeria, matched by its endpoint, rather than published fresh. A reader who expects "published by RE" sees a different state. | 9, 10 | Explain it at part 10, step 7. D1-e (trellis #962) adds a coverage line, read on the screen on 2026-11-01 for coco_pharma as "not yet published · 26: 3 undecided · 22 in Egeria under 'Coco PostgreSQL Server 1' · not RE's · 1 left out by a confirmed proposal"; those counts are that screen's, so read the words on the screen before writing them in. |
 | G25 | Screenshot hygiene. The Quickstart on 8813 carries the project's own test work: the sidebar's WORK LISTS show "OD1 probe 2026-10-29", "Concurrency test — twelve re…", "dts-treasury-data candidates" and "egeria-understanding arch"; the repository list is 73 long; and the screen landed on a repository marked "abandoned", "Repository is archived". A reader's Quickstart shows none of this. Seen in S03, S13, S14, and in every part 3 shot with the sidebar. Also a file system's mount path that names a real account's home folder (S9 not taken). | 2, 3–13 | **For the owner (proposed 2026-11-02):** hide the test work lists before part 3's captures, or crop the sidebar where it is not the subject. If S03 is re-taken, land on a healthier repository. |
 | G26 | Saved database sources are listed to every person with their credential user name: "Find databases" opens on "Saved sources", and on a shared instance shows one person's dev servers and login to everyone. | 3a | A per-person hide (W38's pattern) or an owner-only listing. (Architect, 2026-11-02; to be briefed as W39 once the owner grades it.) |
@@ -1074,6 +1085,10 @@ in this outline; each is named where it bites.
 | G28 | Registering a file system writes no Activity entry; registering a database writes "Registered database <slug>" (read 2026-11-02). Part 2 tells the reader Activity logs everything that has run. The folder survey card's **Check again** writes none either (read 2026-11-02). | 2, 3b, 5 | An Activity entry for every registration and every press. |
 | G29 | The folder survey's **Survey**, on a file system Egeria leads but has no asset for, is refused with nothing on screen ("Not published to Egeria yet", 422, seen only in the log; F45). The step that makes it work is on another stage: Curate › PUBLISH TO EGERIA › **Publish**, "attaches the root folder only". A reader has no way to find that. | 5c | W39: say "attach the root folder first" on the card, and disable **Survey** until it is attached. Part 5c tells the reader to attach first. |
 | G30 | One survey report, two counts (read 2026-11-02): the folder survey card says "7 annotations on the report; 6 read into RE", while Curate's "Egeria reports" lists the same report with "0 annotations". | 5, 10 | One count, or say what each one counts. |
+| G31 | The "LAST SURVEY" tile names the stage's overview survey, not the survey that ran (read 2026-11-02, graded F47). For one run, Assessment showed "Database Scouting Scan" and Analysis showed "Database Assessment Survey", which had never run. | 6 | Name the survey that ran last. |
+| G32 | ○ rows say "not run" in two ways (read 2026-11-03, graded W54): "Not yet run. Run: postgres_column_profile." and "Nothing has been measured for this yet. Run: postgres_nested_columns." Only the second has "not yet run" in its source line. | 6 | One phrasing, and the source line on both. |
+| G33 | A headline that names the wrong numerator (read 2026-11-03, graded W57): after Table Statistics Freshness ran, the source line reads "statistics_freshness · measured · 215 of 266 tables (81%)". All 266 relations were measured; 215 is the never-analyzed count (215 never analyzed, 48 current, 3 views unknown). | 6 | The headline names its numerator. **Fixed by W57** (main b7bfff93, read 2026-11-04): the line reads "215 tables never analyzed or stale of 266 tables (81% of the tables)". Part 6 quotes the new words; S23 still shows the old ones until it is re-shot. |
+| G34 | Two questions show one shared sentence (read 2026-11-03, graded W58): "How complete and consistent is this database's documentation" (Q-0088) and "How well-modelled is this database" (Q-0090) both show Schema Conventions' summary, "37 of 263 base tables declare no primary key. 54 of 263 base tables have no comment; 32 of 1916 columns do." | 6 | Each question shows the measures it names. |
 
 ---
 

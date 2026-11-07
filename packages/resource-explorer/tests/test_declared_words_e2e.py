@@ -23,7 +23,7 @@ from resource_explorer.surveyors import annotation_readers as ar
 from tests.library_step_install import install_steps  # noqa: F401 - the fixture
 
 ABSENCE = {"not_measured": "Not measured: nobody looked.", "not_permitted": "Not permitted.",
-           "not_applicable": "Not applicable.", "measured_nothing": "Measured: nothing there."}
+           "not_applicable": "Not applicable.", "nothing_found": "Measured: nothing there."}
 NEXT = Path(__file__).resolve().parents[1] / "resource_explorer" / "web" / "static" / "next"
 
 
@@ -241,7 +241,7 @@ def test_a_kind_whose_key_field_the_result_does_not_hold_says_nothing_not_zero()
     head, _ = _kind("finding", {"what_field": "summary"}, [{"other": 1}], ["other"])
     assert head == ""
     none_at_all, dec = _kind("finding", {"what_field": "summary"}, [], ["summary"])
-    assert none_at_all == ABSENCE["measured_nothing"]          # rows read and empty: the declared sentence, not "0 findings"
+    assert none_at_all == ABSENCE["nothing_found"]          # rows read and empty: the declared sentence, not "0 findings"
 
 
 def test_a_finding_with_an_action_routes_to_a_request_for_action_and_a_proposal_to_a_draft():

@@ -41,7 +41,7 @@ MANIFEST = StepManifest(
             not_measured="Not measured: no walk has kept per-file rows, so no name could be matched.",
             not_permitted="Not permitted: the walk could not list these folders, so their names are not held.",
             not_applicable="Not applicable: layout signals are measured for file systems only.",
-            measured_nothing=("Measured: no project manifest or .git directory, no dated or partition folders or "
+            nothing_found=("Measured: no project manifest or .git directory, no dated or partition folders or "
                               "dictionary file, no archive or backup file on the walk.")),
         extents=[ExtentDeclaration(
             name="layout_counts",

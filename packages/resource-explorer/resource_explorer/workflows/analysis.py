@@ -1242,24 +1242,30 @@ def build_analysis_last_activity(registry, entity_type: str, slug: str) -> dict[
 
 def _results_map_for(entity_type: str):
     """(results_map, headline_map) for `entity_type` — the three per-type
-    constants `build_survey_results` reads results/headlines from."""
+    constants `build_survey_results` reads results/headlines from.
+
+    Copies, not the module's dicts (F50): `survey_step_host.attach` adds the
+    Analytic Library steps' readers to those dicts, and a catalog read inside
+    the loop over them (or another thread's refresh) could do so mid-iteration
+    — "dictionary changed size during iteration" under `pytest -n 4`. A caller
+    only reads them, so a snapshot taken here is the same answer."""
     if entity_type == "database":
         from resource_explorer.surveyors.database.survey_definition_adapter import (
             DATABASE_ANALYSIS_HEADLINE_MAP,
             DATABASE_ANALYSIS_RESULTS_MAP,
         )
-        return DATABASE_ANALYSIS_RESULTS_MAP, DATABASE_ANALYSIS_HEADLINE_MAP
+        return dict(DATABASE_ANALYSIS_RESULTS_MAP), dict(DATABASE_ANALYSIS_HEADLINE_MAP)
     if entity_type == "filesystem":
         from resource_explorer.surveyors.filesystem.survey_definition_adapter import (
             FILESYSTEM_ANALYSIS_HEADLINE_MAP,
             FILESYSTEM_ANALYSIS_RESULTS_MAP,
         )
-        return FILESYSTEM_ANALYSIS_RESULTS_MAP, FILESYSTEM_ANALYSIS_HEADLINE_MAP
+        return dict(FILESYSTEM_ANALYSIS_RESULTS_MAP), dict(FILESYSTEM_ANALYSIS_HEADLINE_MAP)
     from resource_explorer.surveyors.repo_survey_definition_adapter import (
         REPO_ANALYSIS_HEADLINE_MAP,
         REPO_ANALYSIS_RESULTS_MAP,
     )
-    return REPO_ANALYSIS_RESULTS_MAP, REPO_ANALYSIS_HEADLINE_MAP
+    return dict(REPO_ANALYSIS_RESULTS_MAP), dict(REPO_ANALYSIS_HEADLINE_MAP)
 
 
 def list_survey_result_boards(registry, entity_type: str, slug: str, stage: str = "") -> dict:

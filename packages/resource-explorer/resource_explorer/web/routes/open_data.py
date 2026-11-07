@@ -83,6 +83,14 @@ class ImportRequest(BaseModel):
     terms: str = ""
 
 
+class RepositoryImportRequest(BaseModel):
+    repo_slug: str
+    descriptor_path: str = ""
+    work_list_name: str = ""
+    work_list_slug: str = ""
+    investigation: str = ""
+
+
 class DirectoryRunRequest(BaseModel):
     pages: int = 1
     terms: str = ""
@@ -152,6 +160,45 @@ def check_portal(reg: PortalRegistration) -> dict:
     return {"ok": True, "words": "reachable", "total": got["total"]}
 
 
+class SeedAdd(BaseModel):
+    feed_url: str
+
+
+@router.get("/portal-seeds")
+def list_portal_seeds() -> dict:
+    """The shipped suggestions not yet registered (matched on feed host + path, not on name). Offered, never applied."""
+    from resource_explorer.open_data import seeds
+
+    rows = seeds.unregistered(_store().list_portals())
+    return {"rows": rows, "count": len(rows),
+            "all_registered_words": "all suggested portals are registered" if not rows else ""}
+
+
+@router.post("/portal-seeds/add")
+def add_portal_seed(body: SeedAdd, request: Request) -> dict:
+    """Register ONE suggested portal as the person pressing it, origin 'seed'. Reach is checked first; a refusal
+    registers nothing and says why in one sentence."""
+    from resource_explorer.open_data import seeds
+
+    who = _signed_in_user(request)
+    seed = seeds.seed_by_feed(body.feed_url)
+    if seed is None:
+        raise HTTPException(status_code=404, detail="That address is not in the suggested portals.")
+    if not seed["can_add"]:
+        raise HTTPException(status_code=422, detail=f"{seed['display_name']} cannot be added: {seed['words']}.")
+    reg = PortalRegistration(display_name=seed["display_name"], api_kind=seed["api_kind"], base_url=seed["feed_url"])
+    reach = check_portal(reg)
+    if not reach["ok"]:
+        raise HTTPException(status_code=422, detail=f"Not added: {reach['words']}")
+    try:
+        portal = service.register_portal(_store(), display_name=seed["display_name"], api_kind=seed["api_kind"],
+                                         base_url=seed["feed_url"], origin="seed", registered_by=who,
+                                         slug=service.host_slug(seed["feed_url"]), transport=_transport())
+    except service.OpenDataError as exc:
+        raise _http(exc) from exc
+    return {**_portal_summary(portal), "reach": reach["words"]}
+
+
 @router.delete("/portals/{slug}")
 def remove_portal(slug: str, request: Request) -> dict:
     _signed_in_user(request)
@@ -190,6 +237,30 @@ def import_rows(slug: str, req: ImportRequest, request: Request) -> dict:
         return service.import_datasets(
             _store(), chosen, work_list_name=name, transport=_transport(), egeria_lookup=_egeria_lookup(),
             imported_by=who, investigation=req.investigation, work_list_slug=req.work_list_slug)
+    except service.OpenDataError as exc:
+        raise _http(exc) from exc
+
+
+# ── datasets that live in a registered repository ──────────────────────────────
+
+@router.get("/repositories/{repo_slug}/dataset")
+def repository_dataset_state(repo_slug: str) -> dict:
+    """What an import from this repository would do, and what it costs: read before the press."""
+    try:
+        return service.repository_import_state(_store(), repo_slug)
+    except service.OpenDataError as exc:
+        raise _http(exc) from exc
+
+
+@router.post("/import-from-repository")
+def import_from_repository(req: RepositoryImportRequest, request: Request) -> dict:
+    """One `open_data` row from a registered repository's stored dataset descriptor. Writes nothing to Egeria."""
+    who = _signed_in_user(request)
+    try:
+        return service.import_from_repository(
+            _store(), repo_slug=req.repo_slug, descriptor_path=req.descriptor_path, transport=_transport(),
+            imported_by=who, work_list_name=req.work_list_name, work_list_slug=req.work_list_slug,
+            investigation=req.investigation)
     except service.OpenDataError as exc:
         raise _http(exc) from exc
 
@@ -264,6 +335,22 @@ def get_dataset(slug: str) -> dict:
     d["stated_by"] = d["portals"]
     d["survey"] = "Not yet run"
     return d
+
+
+@router.get("/datasets/{slug}/questions")
+def get_dataset_questions(slug: str) -> dict:
+    """The open data questions asked of one dataset, each with its state from the record alone.
+
+    The lead analyses are declared and not built, so a row is `no_reader` (◌ "no reader yet") unless the publisher's
+    record already states something that answers part of it: the licence and its three flags, the modified date and
+    the stated cadence. Those rows are `partial` (◐) and say whose record and when it was retrieved. Nothing here
+    runs an analysis; "none stated" is `no_reader`, never an answer."""
+    from resource_explorer.open_data import dataset_questions
+
+    d = _store().get_dataset(slug)
+    if not d:
+        raise HTTPException(status_code=404, detail=f"No open data '{slug}'.")
+    return dataset_questions.build(d)
 
 
 # ── directories ──────────────────────────────────────────────────────────────

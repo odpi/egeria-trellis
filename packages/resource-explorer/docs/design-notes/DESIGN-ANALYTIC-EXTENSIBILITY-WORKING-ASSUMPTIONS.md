@@ -1,5 +1,8 @@
 # DESIGN — Analytic extensibility across Trellis and the Egeria Portal: working assumptions (2026-10-02)
 
+> **Vocabulary note (2026-11-07):** the absence word `measured_nothing` was renamed `nothing_found` (trellis-analytics 0.3); this document now uses the new word. Results stored with the old word are still read.
+
+
 *(Status refreshed 2026-10-28: since overtaken in part. Declared extensibility slice 1 is built and merged
 (PRs #885 and #886); see `DECLARED-EXTENSIBILITY-SLICE1-PR1-GAPS.md` and the user guide
 `docs/extending-with-analyses.md`. The 2026-10-02 text below is unchanged.)*
@@ -345,7 +348,7 @@ Status as of 2026-11-02. Source of the verdicts: `REVIEW-EXTENSIBILITY-VS-WORKSP
 
 | # | Lesson | Status | Mechanism in trellis |
 |---|---|---|---|
-| 1 | unknown is not 0 | covered, stronger | five result states (measured / not_measured / not_permitted / not_applicable / measured_nothing), each with a declared sentence (`AbsenceSentences`) |
+| 1 | unknown is not 0 | covered, stronger | five result states (measured / not_measured / not_permitted / not_applicable / nothing_found), each with a declared sentence (`AbsenceSentences`) |
 | 2 | existence is not outcome | covered for RE; survey-outcome convention still Java-side | step_runs and result states; `ENGINE_REPORT_WORDS` for engine reports |
 | 3 | exclusive categories, `sums_to` | shipped (declaration `categories`), read live 2026-10-30 | `Declaration` for graph/measure kinds |
 | 4 | a capped page is a lower bound | shipped (`capped`, "at least"), read live 2026-10-30 | measure result field; derived figures withheld when set |

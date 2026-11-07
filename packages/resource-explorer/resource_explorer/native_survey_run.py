@@ -868,6 +868,23 @@ FS_NEEDS_ROOT_ASSET = (
     "Attach the root folder to Egeria first (the press above), then Survey.")
 
 
+#: Egeria's Folder Survey row where Resource Explorer leads (W44): the card above runs RE's walk, and needs no asset.
+FS_RE_LED_WORDS = "RE-led walk: no Egeria asset needed · {why} · Survey on the card above runs Resource Explorer's walk"
+#: The same for an S3 bucket: Egeria's engine host has no reach to object storage at all.
+FS_S3_RE_LED_WORDS = "Egeria cannot reach this bucket; the walk is RE-led · Survey on the card above runs it"
+
+
+def folder_survey_re_led_words(fork) -> str:
+    """Egeria's Folder Survey row's refusal where Resource Explorer leads, '' where Egeria leads (or nobody yet)."""
+    from resource_explorer import file_reach
+
+    if fork.state == file_reach.REMOTE:
+        return FS_S3_RE_LED_WORDS
+    if fork.state in file_reach._RE_LEADS:
+        return FS_RE_LED_WORDS.format(why=fork.sentence)
+    return ""
+
+
 def _no_asset_words(entity) -> str:
     """The refusal for a resource with no Egeria asset, in the words of its own kind (database / file system / other)."""
     from resource_explorer import catalog_and_survey as cas
@@ -892,9 +909,14 @@ def cannot_run_reason(process: NativeProcess, entity, *, registry=None, technolo
     Kind-based and registry-only: no Egeria call, so it is safe on a list read.
 
     A database that was never registered with Egeria is not an error: it gets the neutral
-    "Egeria has not been given this database" sentence (see `row_is_neutral`)."""
+    "Egeria has not been given this database" sentence (see `row_is_neutral`).
+
+    W66: an RE-engine row on a private resource is refused FIRST (`_private_refusal`)."""
     from resource_explorer import catalog_and_survey as cas
 
+    private = _private_refusal(process, entity, registry)
+    if private:
+        return private
     if process.kind == KIND_CATALOG_AND_SURVEY:
         # Not run through `submit_native_survey`: registering is its own press (register_with_egeria).
         return cas.wiring_reason("database" if hasattr(entity, "db_type") else "filesystem",
@@ -909,25 +931,38 @@ def cannot_run_reason(process: NativeProcess, entity, *, registry=None, technolo
         return f"RE does not run processes of kind {process.kind!r}."
     from resource_explorer import engine_host
 
-    if process.qualified_name.startswith(engine_host.ENGINE_QUALIFIED_NAME + "::") \
-            and not engine_host.engine_host_enabled():
-        # RE's own engine serves this action; with the engine host off nothing would, and the action would sit
-        # APPROVED while the row polls. Still shown, not runnable.
-        return ENGINE_HOST_OFF
+    if process.qualified_name.startswith(engine_host.ENGINE_QUALIFIED_NAME + "::"):
+        if not engine_host.engine_host_enabled():
+            # RE's own engine serves this action; with the engine host off nothing would, and the action would sit
+            # APPROVED while the row polls. Still shown, not runnable.
+            return ENGINE_HOST_OFF
+        if _engine_not_declared():
+            return ENGINE_NOT_DECLARED
+        request_type = process.qualified_name.split("::", 1)[1]
+        if _type_not_declared(request_type):
+            return type_not_declared_words(request_type)
     if entity is None:
         return "This resource is not registered."
     if process.target == "server":
         if registry is None or not cas.server_pointer(registry, entity):
             return cas.SERVER_NOT_REGISTERED_WORDS
         return _missing_credentials_reason(entity)
-    if not (getattr(entity, "egeria_asset_guid", "") or "").strip():
-        return _no_asset_words(entity)
     if process.qualified_name == FOLDER_SURVEY_QN and not hasattr(entity, "db_type"):
         # Files step 2: Egeria's Folder Survey leads only where the stored probe proves Egeria's engine host can read
-        # the canonical mount. Registry-only (the newest probe row), so it is safe on a list read.
+        # the canonical mount. Registry-only (the newest probe row), so it is safe on a list read. The lead is checked
+        # BEFORE the asset (W44): where Resource Explorer leads, attaching a root folder would not make Egeria's survey
+        # runnable, so "Attach the root folder to Egeria first" was the wrong advice.
         from resource_explorer import file_reach
 
-        return file_reach.refusal_words(file_reach.fork_for(registry, entity), for_egeria_lead=True)
+        fork = file_reach.fork_for(registry, entity)
+        led_by_re = folder_survey_re_led_words(fork)
+        if led_by_re:
+            return led_by_re
+        if not (getattr(entity, "egeria_asset_guid", "") or "").strip():
+            return _no_asset_words(entity)
+        return file_reach.refusal_words(fork, for_egeria_lead=True)
+    if not (getattr(entity, "egeria_asset_guid", "") or "").strip():
+        return _no_asset_words(entity)
     if not process.needs_credentials:
         return ""
     return _missing_credentials_reason(entity)
@@ -935,6 +970,107 @@ def cannot_run_reason(process: NativeProcess, entity, *, registry=None, technolo
 
 #: Why an RE engine-host process (`ResourceExplorerSurvey::...`) cannot run: RE_ENGINE_HOST_ENABLED is off.
 ENGINE_HOST_OFF = "engine host off"
+
+#: W64: why an RE-engine row cannot run while RE's engine is verified absent from this Egeria (after a reset, before
+#: the owner's declaration): the press would initiate a GovernanceActionType Egeria does not hold (SERVER_ERROR_500).
+ENGINE_NOT_DECLARED = ("not declared in this Egeria · runs only where the owner has declared the engine "
+                       "(Admin › Repair › Declare…) and RE's engine host is on")
+
+
+#: F55 (the W64 residual): the engine is declared but THIS row's GovernanceActionType is not (a partial declaration:
+#: act A ran, acts B–D did not). The press would initiate a type Egeria does not hold (SERVER_ERROR_500), so the row
+#: reads not runnable and names the document that declares the type.
+TYPE_NOT_DECLARED = ("not declared in this Egeria: the engine is, but its '{request_type}' action type is not "
+                     "(engine-host document {document}) · Admin › Repair › Declare…")
+
+
+def type_not_declared_words(request_type: str) -> str:
+    from resource_explorer import engine_host
+
+    document = engine_host.declaring_document(request_type) or "not found in the batch"
+    return TYPE_NOT_DECLARED.format(request_type=request_type, document=document)
+
+
+def _type_not_declared(request_type: str) -> bool:
+    """`ResourceExplorerSurvey::<request_type>` is VERIFIED absent (the engine host's per-type lookup, F55). In-process
+    state, no Egeria call. Not known is not absent: the row stays offered."""
+    from resource_explorer import engine_host
+
+    try:
+        return engine_host.type_declared(request_type) is False
+    except Exception:  # noqa: BLE001 - a state that cannot be read refuses nothing
+        return False
+
+
+#: W66: why an RE-engine row is not offered on a resource in a creator-only investigation. RE's engine host leaves an
+#: engine action on such a target unclaimed (Q-O3), so the press would create an action that waits forever
+#: (bc2d5fe2, 2026-11-04). F56: keyed on the investigation's `visibility`, never its kind, and worded so (a shared
+#: PersonalProject's resources are offered; a creator-only StudyProject's are not). "Private investigation" is kept
+#: for local + creator-only, so it is not this sentence's word.
+PRIVATE_NOT_OFFERED = ("not offered: this {kind} is in a creator-only investigation, and Resource Explorer's engine host "
+                       "does not claim Egeria engine actions on creator-only resources (nothing of a creator-only "
+                       "investigation is written into Egeria's engine queue) · Resource Explorer's own Run on the card "
+                       "runs it here instead")
+
+
+def is_re_engine_process(process: NativeProcess) -> bool:
+    """A row RE's own engine serves: a ResourceExplorerSurvey request type, a mixed process (its RE step), or one of
+    RE's Survey Definitions coordinated by Egeria. Egeria's own engines' rows are not."""
+    from resource_explorer import engine_host
+
+    return (process.kind in (KIND_MIXED_PROCESS, KIND_RE_DEFINITION)
+            or process.qualified_name.startswith(engine_host.ENGINE_QUALIFIED_NAME + "::"))
+
+
+def _entity_kind_words(entity) -> tuple[str, str]:
+    """(registry entity type, the words for it) of a registered resource."""
+    if hasattr(entity, "db_type"):
+        return "database", "database"
+    if hasattr(entity, "github_url"):
+        return "repo", "repository"
+    return "filesystem", "file system"
+
+
+def _private_refusal(process: NativeProcess, entity, registry) -> str:
+    """W66: the sentence when this RE-engine row's resource is in a creator-only investigation (F56: `visibility`), else "". Asked FIRST for
+    every RE-engine row. Never names the investigation (the listing adds it for a viewer who may see it)."""
+    if entity is None or registry is None or not is_re_engine_process(process):
+        return ""
+    entity_type, kind = _entity_kind_words(entity)
+    slug = getattr(entity, "slug", "") or ""
+    try:
+        owner = registry.private_owner_for_entity(entity_type, slug)
+    except Exception:  # noqa: BLE001 - an unreadable answer is not "not private": refuse, the safe side
+        return PRIVATE_NOT_OFFERED.format(kind=kind)
+    return PRIVATE_NOT_OFFERED.format(kind=kind) if owner else ""
+
+
+def is_private_refusal(reason: str) -> bool:
+    return reason.startswith("not offered: this ") and "in a creator-only investigation" in reason
+
+
+def private_investigation_words(registry, entity_type: str, slug: str, viewer: str) -> str:
+    """ (creator-only investigation: <display name>)" for a viewer who may see it (`_may_see_investigation`), else ""."""
+    if not (viewer or "").strip():
+        return ""
+    try:
+        row = registry.private_investigation_for_entity(entity_type, slug)
+        if row and registry._may_see_investigation(row, viewer.strip()):
+            return f" (creator-only investigation: {row.get('display_name') or row.get('slug')})"
+    except Exception:  # noqa: BLE001 - nothing named is the safe answer
+        return ""
+    return ""
+
+
+def _engine_not_declared() -> bool:
+    """RE's engine is VERIFIED absent (the engine host's lookup, or the bootstrap pass's canary read; newest wins).
+    In-process state, no Egeria call, so it is safe on a list read. Not known is not absent: the row stays offered."""
+    from resource_explorer import engine_host
+
+    try:
+        return engine_host.engine_declared() is False
+    except Exception:  # noqa: BLE001 - a state that cannot be read refuses nothing
+        return False
 
 #: Why a mixed process (engine host step 4) cannot run: Egeria has no process by that qualifiedName. Known only after
 #: a read (the /check press, or Run itself); the registry-only listing never claims it.
@@ -966,6 +1102,8 @@ def _mixed_cannot_run_reason(process: NativeProcess, entity) -> str:
         return f"{process.qualified_name} is not a process Resource Explorer declares."
     if not engine_host.engine_host_enabled():
         return ENGINE_HOST_OFF
+    if _engine_not_declared():
+        return ENGINE_NOT_DECLARED
     if entity is None:
         return "This resource is not registered."
     if not (getattr(entity, "egeria_asset_guid", "") or "").strip():
@@ -974,6 +1112,8 @@ def _mixed_cannot_run_reason(process: NativeProcess, entity) -> str:
     for step in declared.re_steps:
         if step.request_type not in supported:
             return f"step {step.number} ({step.request_type}) is not installed where the engine host runs"
+        if _type_not_declared(step.request_type):            # F55: the step's type, not only the engine
+            return type_not_declared_words(step.request_type)
     return _missing_credentials_reason(entity) if process.needs_credentials else ""
 
 
@@ -1005,6 +1145,8 @@ def _definition_cannot_run_reason(process: NativeProcess, entity) -> str:
         return f"{process.qualified_name} is not a Survey Definition Resource Explorer declares."
     if not engine_host.engine_host_enabled():
         return ENGINE_HOST_OFF
+    if _engine_not_declared():
+        return ENGINE_NOT_DECLARED
     if declared.entity_type != engine_host.ENTITY_TYPE:
         return NOT_FOR_THIS_KIND.format(kind=declared.entity_type)
     if entity is None:
@@ -1256,7 +1398,9 @@ def native_survey_rows(registry, entity_type: str, slug: str, technology_type: s
         gone = pointers.get(gone_key) == "gone"
         taken_here = taken and gone_key == "database"
         again_here = again and gone_key == "database"
-        if gone:
+        if is_private_refusal(reason):
+            pass                                  # W66: a private resource's refusal is asked first and stands
+        elif gone:
             reason = cas.STALE_WORDS
         elif taken_here:
             reason = cas.NAME_TAKEN_WORDS
@@ -1264,6 +1408,8 @@ def native_survey_rows(registry, entity_type: str, slug: str, technology_type: s
             reason = cas.REGISTERED_AGAIN_WORDS
         if process.kind == KIND_MIXED_PROCESS and not reason and (declared or {}).get(process.qualified_name) is False:
             reason = PROCESS_NOT_DECLARED
+        if is_private_refusal(reason):
+            reason += private_investigation_words(registry, entity_type, slug, viewer)
         creds = (credentials_state(entity)
                  if (process.kind in (KIND_SURVEY_EXISTING, KIND_MIXED_PROCESS) and entity is not None
                      and process.needs_credentials)

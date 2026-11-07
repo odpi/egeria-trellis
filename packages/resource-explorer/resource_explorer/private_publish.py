@@ -34,7 +34,7 @@ class PrivateOwnerUnknown(RuntimeError):
         self.entity_type, self.slug = entity_type, slug
         super().__init__(
             f"not published · could not tell whether {_KIND_WORDS.get(entity_type, entity_type)} '{slug}' is in a "
-            f"private investigation ({type(cause).__name__}: {str(cause)[:200]}); nothing was written. "
+            f"creator-only investigation ({type(cause).__name__}: {str(cause)[:200]}); nothing was written. "
             "Publishing anyway could put private work where everyone can read it."
         )
 
@@ -48,7 +48,7 @@ class PrivateAwaitsOwner(RuntimeError):
         self.entity_type, self.slug, self.owner, self.acting_as = entity_type, slug, owner, acting_as
         super().__init__(
             f"waits for {owner} to publish · {_KIND_WORDS.get(entity_type, entity_type)} '{slug}' is in {owner}'s "
-            f"private investigation, and only {owner} can write its private survey report "
+            f"creator-only investigation, and only {owner} can write its private survey report "
             f"(this ran as {acting_as or 'nobody signed in'}); nothing was written"
         )
 
@@ -60,8 +60,8 @@ class PrivateKindNotSupported(RuntimeError):
         self.entity_type, self.slug, self.owner = entity_type, slug, owner
         kind = _KIND_WORDS.get(entity_type, entity_type)
         super().__init__(
-            f"not published · this {kind} ('{slug}') is in {owner}'s private investigation, and private "
-            f"publishing for {kind}s is not built yet; nothing was written"
+            f"not published · this {kind} ('{slug}') is in {owner}'s creator-only investigation, and "
+            f"creator-only publishing for {kind}s is not built yet; nothing was written"
         )
 
 

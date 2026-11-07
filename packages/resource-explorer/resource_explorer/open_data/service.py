@@ -11,7 +11,7 @@ from resource_explorer.open_data import match as match_mod
 from resource_explorer.open_data.absence import NOT_REPORTED
 from resource_explorer.open_data.adapters import (
     Adapter, Price, adapter_for_api_kind, discover_adapters, price)
-from resource_explorer.open_data.store import OpenDataStore, normalise_url, now, slugify
+from resource_explorer.open_data.store import OpenDataStore, is_reserved_portal, normalise_url, now, slugify
 
 log = logging.getLogger(__name__)
 
@@ -52,6 +52,17 @@ def unique_slug(exists, base: str) -> str:
     while exists(slug):
         slug, n = f"{slugify(base)}_{n}", n + 1
     return slug
+
+
+def host_slug(url: str) -> str:
+    """A portal's slug from its feed's host ("https://healthdata.gov/data.json" -> "healthdata_gov"), the way a hand
+    registration names one (W60): a seed's display name ("healthdata.gov (U.S. Department of Health and Human Services)")
+    made "healthdata.gov_u.s._department_of_health_and_human_services"."""
+    from urllib.parse import urlparse
+
+    host = (urlparse(url or "").hostname or "").lower()
+    host = host[4:] if host.startswith("www.") else host
+    return slugify(host.replace(".", "_")) if host else ""
 
 
 def portal_secret_ref(slug: str) -> str:
@@ -173,7 +184,13 @@ def register_directory(store: OpenDataStore, *, display_name: str, api_kind: str
     return store.get_directory(slug)
 
 
+RESERVED_PORTAL_WORDS = ("'{name}' is not a portal: it is where datasets imported from a registered repository are "
+                         "filed. There is nothing to search or re-read from it.")
+
+
 def portal_adapter(portal: dict, transport) -> Adapter:
+    if is_reserved_portal(portal):
+        raise OpenDataError(RESERVED_PORTAL_WORDS.format(name=portal["display_name"]))
     cls = adapter_for_api_kind(portal["api_kind"], "portal")
     if cls is None:
         raise OpenDataError(f"No adapter for {portal['api_kind']} yet.")
@@ -203,6 +220,8 @@ def portal_cost(portal: dict) -> dict:
 # ── search ───────────────────────────────────────────────────────────────────
 
 def search_price(portal: dict, pages: int) -> dict:
+    if is_reserved_portal(portal):
+        raise OpenDataError(RESERVED_PORTAL_WORDS.format(name=portal["display_name"]))
     cls = adapter_for_api_kind(portal["api_kind"], "portal")
     if cls is None:
         raise OpenDataError(f"No adapter for {portal['api_kind']} yet: this portal cannot be searched.")
@@ -240,8 +259,12 @@ def run_search(store: OpenDataStore, portal_slug: str, *, terms: str, filters: d
     need = filters.pop("licence", None) or {}
     adapter = portal_adapter(portal, transport)
     rows, dropped, total, calls = [], 0, NOT_REPORTED, 0
+    read, pages_read, filters_locally = 0, 0, False
     for page in range(1, pages + 1):
         got = adapter.search(terms, filters, page)
+        pages_read = page
+        if "read" in got:     # a feed: no search of its own, so the adapter read whole pages and kept what matched
+            filters_locally, read = True, read + int(got["read"] or 0)
         # an adapter that knows what it spent says so (a one-document feed costs one call over many pages)
         calls += got["calls"] if "calls" in got else adapter.manifest.calls_per_page
         total = got["total"]
@@ -259,7 +282,20 @@ def run_search(store: OpenDataStore, portal_slug: str, *, terms: str, filters: d
         if not got.get("read", len(got["rows"])) or (isinstance(total, int) and page * got["page_size"] >= total):
             break
     return {"portal": portal["slug"], "price": priced, "calls_made": calls, "total": total, "rows": rows,
-            "licence_dropped": dropped, "retrieved_at": now()}
+            "licence_dropped": dropped, "retrieved_at": now(),
+            **({"read": read, "pages_read": pages_read,
+                "words": feed_search_words(len(rows) + dropped, read, pages_read, total, terms)} if filters_locally else {})}
+
+
+def feed_search_words(matched: int, read: int, pages_read: int, total, terms: str) -> str:
+    """What a feed search did (W62): a feed has no search, so 0 rows is "none of the 100 datasets on page 1 match",
+    never a bare 0 beside the feed's total. A portal that searched (CKAN, Zenodo) keeps its own count."""
+    pages = "page 1" if pages_read == 1 else f"pages 1–{pages_read}"
+    what = f"'{terms}'" if (terms or "").strip() else "the filters"
+    head = (f"none of the {read:,} datasets on {pages} match {what}" if not matched
+            else f"{matched:,} of the {read:,} datasets on {pages} match {what}")
+    more = total - read if isinstance(total, int) and total > read else 0
+    return head + (f" · {more:,} more on later pages (a feed has no search)" if more else " · a feed has no search")
 
 
 # ── import ───────────────────────────────────────────────────────────────────
@@ -348,6 +384,146 @@ def import_datasets(store: OpenDataStore, chosen: list[Chosen], *, work_list_nam
             "imported": sum(1 for o in outcomes if o["outcome"] == "imported"),
             "already_in_catalog": sum(1 for o in outcomes if o["outcome"] == "already_in_catalog"),
             "refused": sum(1 for o in outcomes if o["outcome"] == "refused"), "rows": outcomes}
+
+
+# ── import from a registered repository ─────────────────────────────────────
+
+REPOSITORY_PORTAL = "repository"
+
+
+def _declared_size(cc: dict, descriptor: dict, inventory: dict[str, int]):
+    """Bytes of the declared data files: the descriptor's own figures when it states one for every local file, else the
+    tree's sizes when every local file is present, else `NOT_REPORTED` (a partial sum is not a size)."""
+    from resource_explorer.surveyors.sub_surveyors.dataset_descriptor import is_remote
+
+    local = [f for f in descriptor.get("data_files") or [] if not is_remote(f["path"])]
+    if not local or cc["remote"]:
+        return NOT_REPORTED
+    if all(isinstance(f.get("bytes"), int) for f in local):
+        return sum(f["bytes"] for f in local)
+    base = descriptor["path"].rsplit("/", 1)[0] + "/" if "/" in descriptor["path"] else ""
+    sizes = [inventory.get(base + f["path"].lstrip("./"), inventory.get(f["path"])) for f in local]
+    return sum(sizes) if all(isinstance(n, int) for n in sizes) else NOT_REPORTED
+
+
+def repository_descriptors(registry, repo_slug: str) -> list[dict]:
+    """The dataset descriptors stored for a repository (from its last ingestion), as rows; [] = none stored."""
+    from resource_explorer.surveyors.sub_surveyors.dataset_descriptor import FINDINGS_KIND, descriptors_from
+
+    return descriptors_from(registry.query_findings(repo_slug, FINDINGS_KIND))
+
+
+def _repo_owner_repo(project) -> str:
+    url = (getattr(project, "github_url", "") or "").rstrip("/").removesuffix(".git")
+    return url.split("github.com/")[-1] if "github.com/" in url else (project.slug if project else "")
+
+
+def repository_import_state(store: OpenDataStore, repo_slug: str) -> dict:
+    """What an import from this repository would do, before the press: the identity it would register, the price in
+    words, the descriptors found, and the refusal sentence when no descriptor carries an identifier."""
+    from resource_explorer.surveyors.sub_surveyors import dataset_descriptor as dd
+
+    registry = store.registry
+    project = registry.get(repo_slug)
+    if project is None:
+        raise NotFound(f"No repository '{repo_slug}' is registered.")
+    descriptors, read_at = dd.stored_descriptors(registry, repo_slug)
+    ident = dd.chosen_identity(descriptors, _repo_owner_repo(project))
+    held = store.dataset_by_identifier(ident["identifier"]) if ident else None
+    return {
+        "repo_slug": repo_slug, "descriptors": [{k: d[k] for k in ("kind", "path", "identifier", "identifier_kind", "doi")}
+                                                for d in descriptors],
+        "identifier": ident["identifier"] if ident else None, "identifier_kind": ident["identifier_kind"] if ident else None,
+        "from": ident["from"] if ident else None,
+        "price": dd.IMPORT_PRICE_WORDS, "help": dd.IMPORT_HOVER_HELP,
+        "can_import": bool(ident) and held is None,
+        "already_imported": held["slug"] if held else "",
+        "descriptors_read_at": read_at,
+        "words": (dd.NOT_READ_YET_SENTENCE if not ident and not read_at
+                  else dd.NO_IDENTIFIER_SENTENCE if not ident
+                  else f"already imported as {held['slug']}" if held else ""),
+    }
+
+
+def import_from_repository(store: OpenDataStore, *, repo_slug: str, descriptor_path: str = "", transport,
+                           imported_by: str = "", work_list_name: str = "", work_list_slug: str = "",
+                           investigation: str = "") -> dict:
+    """Register ONE `open_data` row from a registered repository's stored dataset descriptor.
+
+    identifier = the DOI when any descriptor holds one, else the datapackage/Croissant name qualified by the repository
+    ("<owner>/<repo>:<name>"); refused, with one sentence, when none carries an identifier. portal_slug is the reserved
+    pseudo-portal; record_json is the descriptor verbatim plus the DataCite record; formats and size come from the
+    declared data files, cross-checked against the tier-1 inventory. The cost is the descriptor already on disk and
+    one DataCite call when there is a DOI: no Egeria call (this does not read the catalog first) and no write to Egeria.
+    A DataCite that does not answer does not stop the import: the row says it could not be checked."""
+    from resource_explorer.open_data.datacite import DataCiteResolver
+    from resource_explorer.surveyors.sub_surveyors import dataset_descriptor as dd
+    from resource_explorer.work_lists import WorkLists
+
+    registry = store.registry
+    project = registry.get(repo_slug)
+    if project is None:
+        raise NotFound(f"No repository '{repo_slug}' is registered.")
+    descriptors = repository_descriptors(registry, repo_slug)
+    if not descriptors:
+        raise OpenDataError(dd.NO_IDENTIFIER_SENTENCE)
+    if descriptor_path:
+        chosen = next((d for d in descriptors if d["path"] == descriptor_path), None)
+        if chosen is None:
+            raise NotFound(f"Repository '{repo_slug}' has no stored descriptor at '{descriptor_path}'.")
+    else:
+        chosen = None
+    owner_repo = _repo_owner_repo(project)
+    # a DOI held by any descriptor names the dataset (the chosen descriptor's first); else a name, the chosen one's first
+    ordered = ([chosen] + [d for d in descriptors if d is not chosen]) if chosen else descriptors
+    ident = dd.chosen_identity(ordered, owner_repo)
+    if ident is None:
+        raise OpenDataError(dd.NO_IDENTIFIER_SENTENCE)
+    descriptor = chosen or ident["descriptor"]
+    identifier = ident["identifier"]
+    held = store.dataset_by_identifier(identifier)
+    if held:
+        return {"outcome": "already_imported", "identifier": identifier, "slug": held["slug"], "work_list": "",
+                "words": f"already imported as {held['slug']}"}
+
+    datacite, dc_status, dc_detail = None, "no DOI", ""
+    doi = ident["identifier"] if ident["identifier_kind"] == dd.ID_DOI else NOT_REPORTED
+    if doi != NOT_REPORTED:
+        try:
+            datacite, dc_status = DataCiteResolver(transport=transport).resolve(doi), "resolved"
+        except Exception as exc:
+            dc_status, dc_detail = "could not check", f"{type(exc).__name__}: {exc}"[:200]
+            log.info("open data: DataCite could not resolve %s: %s", doi, exc)
+
+    inventory = {r["file_path"]: r["file_size_bytes"] for r in registry.get_file_inventory_with_sizes(repo_slug)}
+    cc = dd.cross_check(descriptor, list(inventory))
+    formats = sorted({f["format"] for f in descriptor.get("data_files") or [] if f["format"] != NOT_REPORTED})
+    row = {
+        "identifier": identifier, "identifier_kind": ident["identifier_kind"],
+        "title": descriptor["title"] if descriptor["title"] != NOT_REPORTED else project.display_name or NOT_REPORTED,
+        "publisher": descriptor["publisher"], "licence_id": descriptor["licence_id"], "licence": descriptor["licence"],
+        "modified": NOT_REPORTED, "formats": formats or NOT_REPORTED, "size": _declared_size(cc, descriptor, inventory),
+        "record": {"descriptor": descriptor, "datacite": datacite, "cross_check": cc, "repo_slug": repo_slug,
+                   "identity_from": ident["from"]},
+    }
+
+    wls = WorkLists(registry)
+    wl_slug = work_list_slug
+    if wl_slug:
+        if not wls.get(wl_slug):
+            raise NotFound(f"No work list '{wl_slug}'.")
+    else:
+        wl_slug = wls.create(work_list_name.strip() or f"Datasets from {project.display_name or repo_slug}", [],
+                             entity_type="open_data", investigation=investigation, created_by=imported_by)["slug"]
+    slug = unique_slug(lambda x: store.get_dataset(x) is not None,
+                       f"doi {identifier}" if ident["identifier_kind"] == dd.ID_DOI else identifier)
+    store.add_dataset(slug=slug, row=row, portals=[REPOSITORY_PORTAL], retrieved_at=now(), imported_by=imported_by,
+                      work_list_slug=wl_slug, datacite=datacite, repo_slug=repo_slug)
+    wls.set_member(wl_slug, slug, entity_type="open_data", rationale=f"imported from repository {repo_slug}")
+    return {"outcome": "imported", "identifier": identifier, "identifier_kind": ident["identifier_kind"], "slug": slug,
+            "work_list": wl_slug, "datacite": dc_status, "datacite_detail": dc_detail, "check": cc["words"],
+            "words": "imported" + (f" · {cc['words']}" if cc["words"] != NOT_REPORTED else "")
+                     + (" · DataCite could not be checked" if dc_status == "could not check" else "")}
 
 
 # ── directory ────────────────────────────────────────────────────────────────

@@ -53,7 +53,7 @@ def _summary_row(reg):
     return next(r for r in rows if r["measure"] == "statistics_freshness_summary")
 
 
-def test_a_stored_summary_without_the_declared_field_is_not_recorded_never_measured_nothing(install_steps, tmp_path):
+def test_a_stored_summary_without_the_declared_field_is_not_recorded_never_nothing_found(install_steps, tmp_path):
     install_steps(STEP)
     row = _summary_row(_registry(tmp_path, OLD_PROPS, OLD_SUMMARY))
     assert row["value"] is None and row["absence"] == pt.NOT_RECORDED
@@ -66,7 +66,7 @@ def test_a_stored_summary_that_holds_the_field_reads_n_of_m_in_the_declared_word
     install_steps(STEP)
     row = _summary_row(_registry(tmp_path, NEW_PROPS, OLD_SUMMARY))
     assert row["value"] == "226" or row["value"] == 226
-    assert row["value_words"] == "226 of 266 tables (85%)"
+    assert row["value_words"] == "226 tables never analyzed or stale of 266 tables (85% of the tables)"   # W57
     assert row["capped"] is False
 
 
@@ -97,7 +97,7 @@ def table_world(monkeypatch, tmp_path):
 
     dec = Declaration.model_validate({
         "result_kind": "measure", "scope": "resource",
-        "absence": {"not_measured": "a", "not_permitted": "b", "not_applicable": "c", "measured_nothing": "d"},
+        "absence": {"not_measured": "a", "not_permitted": "b", "not_applicable": "c", "nothing_found": "d"},
         "measures": [{"name": "rows_read", "unit": "rows", "as_of": "asOf", "value_field": "rows",
                       "capped_field": "capped", "basis": {"denominator_field": "total",
                                                           "denominator_label": "rows in the table"}}]})
@@ -138,7 +138,7 @@ def test_overlapping_categories_have_a_legend_that_says_not_stacked():
 
     dec = Declaration.model_validate({
         "result_kind": "graph", "categories": {"exclusive": False},
-        "absence": {"not_measured": "a", "not_permitted": "b", "not_applicable": "c", "measured_nothing": "d"},
+        "absence": {"not_measured": "a", "not_permitted": "b", "not_applicable": "c", "nothing_found": "d"},
         "measures": [{"name": "m", "unit": "views", "as_of": "asOf", "value_field": "n"}]})
     assert dw.categories_legend(dec, {}) == "categories overlap · not stacked or added up"
     stated = Declaration.model_validate({**json.loads(dec.model_dump_json()),

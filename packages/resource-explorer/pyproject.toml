@@ -41,11 +41,14 @@ dependencies = [
     # per-package install would fail on the import.
     "trellis-auth",
     # The Analytic Library: Curate's By-analysis tab calls
-    # trellis_analytics.routines.curation_coverage (brief 2b). Declared here for the
-    # reason trellis-auth is: a root [tool.uv.sources] entry makes it available, not required.
-    # trellis-analytics' own `re` extra points back at this package; that is an optional
-    # edge, and the route degrades to not_applicable if the import ever fails.
-    "trellis-analytics",
+    # trellis_analytics.routines.curation_coverage (brief 2b). Since LS2 it is its own
+    # distribution (odpi/egeria-trellis-analytics); the readers it asks for are RE's, in
+    # trellis-analytics-re (this workspace), registered below in trellis_analytics.readers.
+    # Declared here for the reason trellis-auth is: a root [tool.uv.sources] entry makes a
+    # package available, not required. trellis-analytics-re's own `re` extra points back at
+    # this package; that is an optional edge.
+    "egeria-trellis-analytics>=0.3.1,<0.4",
+    "trellis-analytics-re",
     # Embeddings & LLM
     "sentence-transformers>=3.3.0",
     "ollama>=0.4.0",
@@ -56,6 +59,7 @@ dependencies = [
     "nbconvert>=7.16.0",
     "PyGitHub>=2.5.0",
     "httpx>=0.27.0",
+    "certifi>=2026.10.18",  # emSign ECC Root CA - G3 distrusted after the Oct 2026 key compromise; this release drops it
     # CLI & terminal UI
     "typer>=0.12.0",
     "rich>=13.7.0",
@@ -180,7 +184,7 @@ dependencies = [
     # is no longer set anywhere in trellis.
     # Raised to 6.2.19 (2026-11-02): the release that removes PYEGERIA_REPORT_SPEC_MODULES and refuses a dotted
     # analytic_function path, so a 6.2.18 venv can no longer pass tests that the 8813 containers would fail.
-    "pyegeria>=6.2.19",
+    "pyegeria>=6.2.21",
     "mcp>=2.0.0",
     # nest-asyncio removed 2026-09-04 with the shared-pool refactor: RE no
     # longer imports it anywhere. Its one site, surveyors/prefect_adapter.py's
@@ -253,19 +257,24 @@ ast = [
 [project.scripts]
 resource-explorer = "resource_explorer.cli.main:app"
 
+# The Analytic Library's reader seam (LS2): the library owns what a routine may read (trellis_analytics.readers) and
+# finds who answers it through this group; nothing in the library imports resource_explorer. RE is the one
+# implementation. Without RE installed (the Portal) a routine that asks answers not_established in words: "no reader
+# installed for ods here", "no reader for Resource Explorer's catalogue is installed here"; discovery's two warn-only
+# checks are skipped with a warning. ods and catalogue_scope are trellis-analytics-re's (they read RE's registry);
+# the library itself is egeria-trellis-analytics since LS2 step 3. table_rows (B1) is the stored rows of a table result, read through
+# trellis_analytics.readers.table_rows.TableRowsReader. TOML refuses a table declared twice: add a reader here.
+[project.entry-points."trellis_analytics.readers"]
+ods = "trellis_analytics_re.ods:OdsReader"
+catalogue_scope = "trellis_analytics_re.registry_view:CatalogueScopeReader"
+investigation_purposes = "resource_explorer.investigation_purposes:known_purpose_names"
+question_ids = "resource_explorer.surveyors.question_catalog_reader:all_question_ids"
+table_rows = "resource_explorer.table_result:RegistryTableRows"
+
 # Reach mechanisms (DESIGN-FILES-REMOTE-REACH §3): installing a package that names an entry point here registers it.
 # The built-ins are always present whatever this metadata says (a venv installed before it still has them).
 [project.entry-points."trellis.file_reach"]
 s3 = "resource_explorer.reach_mechanisms.s3:S3Mechanism"
-
-# The library's reader seam (trellis_analytics.readers): RE's implementations, found wherever RE is installed.
-# B1: the stored rows of a table result (the protocol is trellis_analytics.readers.table_rows.TableRowsReader).
-# claude/re-ls2-seam declares this SAME table (ods, catalogue_scope, investigation_purposes, question_ids). A merge
-# can keep both table headers without a conflict, and TOML refuses a table declared twice, so uv and pip would fail
-# to parse this file: whichever merges second folds the five entries into ONE table here, and adds TABLE_ROWS to
-# test_reader_seam_host.py's tuple.
-[project.entry-points."trellis_analytics.readers"]
-table_rows = "resource_explorer.table_result:RegistryTableRows"
 
 [tool.hatch.build.targets.wheel]
 packages = ["resource_explorer"]

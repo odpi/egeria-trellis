@@ -870,7 +870,7 @@ def _run_single_analysis_background(slug: str, analysis_id: str, activity_id: st
 
 @router.post("/{slug}/analyses/{analysis_id}/run")
 async def run_single_analysis(slug: str, analysis_id: str,
-                              force: bool = False, publish: str | None = None) -> dict:
+                              force: bool = False, publish: str | None = None, pressed_on: str = "") -> dict:
     """Queue one named analysis's mapped survey step(s) — the per-card "Run"
     action in Analysis/Assessment.
 
@@ -969,7 +969,8 @@ async def run_single_analysis(slug: str, analysis_id: str,
         f"Running '{analysis_id}' on {slug}…", analysis_id, published=None,
     )
     run_id = registry.enqueue_run(
-        "analysis_run", {"slug": slug, "analysis_id": analysis_id, "publish": publish},
+        "analysis_run", {"slug": slug, "analysis_id": analysis_id, "publish": publish,
+                         **({"pressed_on": pressed_on[:40]} if pressed_on else {})},
         result_ref=activity_id, requested_by=_requested_by(),
     )
     log.info("enqueued analysis_run %s for %s/%s (activity %s, publish=%s)",

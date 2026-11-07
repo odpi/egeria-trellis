@@ -153,20 +153,79 @@ def _egeria_refused(request, exc):
     return JSONResponse(status_code=403, content={"detail": str(exc), "refused_by": "egeria"})
 
 
+def _egeria_token_refused(request, exc):
+    """F58: Egeria refused the signed-in person's token while the RE session is still valid (Egeria restarted since
+    they signed in). 401 with the distinct marker: the shell branches on `error`, never on the words, and shows the
+    sign-in form with the Egeria words — not the RE session's own `login_required`."""
+    from resource_explorer.egeria_clients import EGERIA_TOKEN_REFUSED_CODE
+
+    return JSONResponse(status_code=401, content={"error": EGERIA_TOKEN_REFUSED_CODE, "detail": str(exc)})
+
+
 def _platform_not_allowed(request, exc):
     """Brief I: a resource names an Egeria platform RE is not configured for; nothing was sent."""
     return JSONResponse(status_code=403, content={"detail": str(exc), "refused_by": "platform"})
 
 
+def _token_refusal_in(exc: BaseException):
+    """F60: the `EgeriaTokenRefused` that ended this request, when there is one anywhere in what was raised — the
+    exception itself, what it was raised `from`, or what was being handled when it was raised (`__context__`).
+    `egeria_clients` raises the refusal at the person's client call; a route's own helpers then often wrap it
+    (`EgeriaFileSystemSurveyorError(...) from exc`, `HTTPException(500, f"Publish failed: {exc}")` inside an
+    `except Exception`), and each wrap would otherwise bury the one fact the person must hear — sign in again —
+    under that route's words. Bounded, cycle-safe."""
+    from resource_explorer.egeria_clients import EgeriaTokenRefused
+
+    seen: set = set()
+    e = exc
+    for _ in range(12):
+        if e is None or id(e) in seen:
+            return None
+        if isinstance(e, EgeriaTokenRefused):
+            return e
+        seen.add(id(e))
+        e = e.__cause__ if e.__cause__ is not None else e.__context__
+    return None
+
+
+async def _http_exception_or_token_refused(request, exc):
+    """F60: an HTTPException a route raised while handling Egeria's refusal of the person's token answers the
+    401 marker (the refusal's own sentence), whatever status the route chose; every other HTTPException is
+    FastAPI's default answer."""
+    from fastapi.exception_handlers import http_exception_handler
+
+    refused = _token_refusal_in(exc)
+    if refused is not None:
+        return _egeria_token_refused(request, refused)
+    return await http_exception_handler(request, exc)
+
+
+def _unhandled_or_token_refused(request, exc):
+    """F60: an unhandled exception that carries the person's token refusal answers the 401 marker; anything else
+    is the plain 500 Starlette would have sent (and Starlette still re-raises it to the server log)."""
+    from starlette.responses import PlainTextResponse
+
+    refused = _token_refusal_in(exc)
+    if refused is not None:
+        return _egeria_token_refused(request, refused)
+    return PlainTextResponse("Internal Server Error", status_code=500)
+
+
 def _install_egeria_identity_handlers() -> None:
+    from starlette.exceptions import HTTPException as StarletteHTTPException
+
     from resource_explorer.egeria_clients import (
-        CallerTokenExpired, EgeriaRefused, NoCallerIdentity, PlatformNotAllowed,
+        CallerTokenExpired, EgeriaRefused, EgeriaTokenRefused, NoCallerIdentity, PlatformNotAllowed,
     )
 
     app.add_exception_handler(NoCallerIdentity, _egeria_identity_refused)
     app.add_exception_handler(CallerTokenExpired, _egeria_identity_refused)
     app.add_exception_handler(EgeriaRefused, _egeria_refused)
+    app.add_exception_handler(EgeriaTokenRefused, _egeria_token_refused)
     app.add_exception_handler(PlatformNotAllowed, _platform_not_allowed)
+    # F60: the refusal is answered the same way when a route wrapped it (see `_token_refusal_in`).
+    app.add_exception_handler(StarletteHTTPException, _http_exception_or_token_refused)
+    app.add_exception_handler(Exception, _unhandled_or_token_refused)
 
 
 _install_egeria_identity_handlers()
@@ -333,13 +392,13 @@ def _install_login_required_middleware() -> None:
 
     Hence the order in this file, bottom to top of the stack:
 
-        _revalidate_experimental_assets  (added last → outermost)
+        _revalidate_shell_and_static  (added last → outermost)
           └── CORS
                 └── LoginRequiredMiddleware   (this)
                       └── _identity_middleware (added first → innermost)
                             └── routes
 
-    (`_revalidate_experimental_assets` is declared below the routers, so it
+    (`_revalidate_shell_and_static` is declared below the routers, so it
     is added last and therefore wraps everything. It only sets a response
     header on the way out, so its position does not matter to correctness —
     but it is listed here because a stack diagram that omits a layer is how
@@ -471,29 +530,37 @@ async def admin_feedback() -> FileResponse:
     return FileResponse(_STATIC / "admin-feedback.html")
 
 
-@app.middleware("http")
-async def _revalidate_experimental_assets(request, call_next):
-    """Make `/next`'s assets revalidate instead of being served from cache.
+_HTML_SHELL_PATHS = frozenset({"/", "/next", "/admin/feedback"})
 
-    `StaticFiles` sets no `Cache-Control`, so a browser applies heuristic
-    freshness — and an ES module, once in a page's module map, is stickier
-    still. The effect during this experiment was a tester (and the person
-    building it) loading `app.js` against a CACHED `re-api.js`, which fails
-    as `does not provide an export named ...` — an error that describes a
-    stale cache but reads like a code bug, and which a plain reload does not
-    clear.
+
+@app.middleware("http")
+async def _revalidate_shell_and_static(request, call_next):
+    """Make every `/static/` file and the HTML shells revalidate on each load.
+
+    `StaticFiles` and `FileResponse` set no `Cache-Control`, so a browser
+    applies heuristic freshness (roughly a tenth of the file's age since
+    `Last-Modified`) and serves its stored copy with NO request to this
+    server. F61 (2026-11-05): a tester's browser kept running a 2026-10-28
+    `auth.js` through two deploys of that file, so the F58/F59 sign-in fixes
+    never reached them and the proof read as if the fixes had not worked.
+    An earlier version of this middleware covered only `/static/next/*` and
+    `/static/re-api.js`, which is why those files did refresh and `auth.js`
+    and the shells did not.
 
     `no-cache` means "revalidate", not "do not store": the browser still
-    caches and still gets a 304 when nothing changed. Scoped to the
-    experimental UI's own files by exact prefix, so the rest of `/static`
-    keeps whatever caching it has. Remove this along with `/next` if the
-    experiment is dropped; if `/next` ever becomes the default, replace it
-    with real cache-busting (a content hash in the filename) rather than
-    keeping revalidation forever.
+    caches and still gets a 304 when the ETag / `Last-Modified` matches, so
+    a warm cache costs one conditional request per file and no bytes. Scope:
+    everything under `/static/` plus the HTML routes in `_HTML_SHELL_PATHS`.
+    `/api/*` and `/health*` are untouched, and any response that already
+    chose its own `Cache-Control` keeps it. The long-term replacement is
+    real cache-busting (a content hash in the filename), not revalidation
+    forever; that is deliberately not done here.
     """
     response = await call_next(request)
     path = request.url.path
-    if path.startswith("/static/next/") or path == "/static/re-api.js":
+    if "Cache-Control" not in response.headers and (
+        path.startswith("/static/") or path in _HTML_SHELL_PATHS
+    ):
         response.headers["Cache-Control"] = "no-cache"
     return response
 

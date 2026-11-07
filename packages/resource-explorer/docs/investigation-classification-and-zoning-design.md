@@ -7,6 +7,12 @@ Purpose, and the local-first/promotable shape. This one covers two things it
 left open: **which Egeria classification an investigation carries**, and
 **who can see the investigation and the artifacts it produces**.
 
+> **F56 (2026-11-04, owner's Option D): visibility is its own axis.** Wherever this document says a kind is
+> "private" (`PRIVATE_CLASSIFICATIONS`, §1, §3.3, §4, §5), read: the investigation's `visibility` column
+> (`creator-only` | `shared`) decides, and the kind only supplies its DEFAULT at creation
+> (`ProjectRegistry.DEFAULT_VISIBILITY_BY_KIND`: PersonalProject and Experiment → creator-only, else shared). See the
+> addendum at the end ("F56 — the visibility axis").
+
 > **Superseded 2026-10-08:** the draft zone was retired as a default (owner ruling: "DRAFT is a content status, not a zone"). Where this document describes `resource-explorer-draft` as the default zone for published assets, read it as history; current behaviour is in `resource_explorer/egeria_identity.py` and `docs/admin-guide.md`. Private-investigation zoning (`[resource-explorer-private, <owner>]`) is unchanged.
 
 
@@ -1116,3 +1122,34 @@ meant them to bind, and the config reads as if they do. Flagged rather than
 changed, since the correct resolution depends on which of the two was meant —
 and now with live evidence of the effect rather than an inference from
 whitespace.
+
+## F56 — the visibility axis (2026-11-04)
+
+Owner's ruling, Option D (Architect's NOTE-INVESTIGATION-KIND-VS-VISIBILITY-2026-11-04 §3 B + §6 D). Three axes, each
+with one job:
+
+| axis | values | decides |
+|---|---|---|
+| `project_classification` | PersonalProject, Task, StudyProject, Campaign, Experiment — or `""` while local | what Egeria records on the Project (§1); nothing in RE |
+| `egeria_binding` | local, egeria | whether there is (or is meant to be) an Egeria Project (§1.3) |
+| `visibility` (new) | creator-only, shared | RE's list filter (§4), the zones its elements get (§3.3: `[private zone, owner]` vs the publish zones), the ownerless refusal, and the engine host's Q-O3 no-claim rule |
+
+- **§1 addendum.** The kind is Egeria's vocabulary and nothing else. It may be empty only while the binding is
+  local: the create form's top choice, **"Private investigation — mine, not in Egeria"**, is a PRESET (binding local
+  + creator-only + kind undecided), not a sixth kind. Promotion (`POST /promote` with `{project_classification,
+  hypothesis, visibility}`) asks for the kind (default StudyProject; Experiment requires its hypothesis) and confirms
+  the visibility; the choice is recorded only once the Project exists.
+- **§4 addendum.** `_may_see_investigation`, `find_entity_investigations`, `inherited_egeria_project_context` and
+  `private_owner_for_entity` read `visibility`. The rules that were there stay: the service identity sees
+  everything, an ownerless row is visible to all (and is refused by every publish), closed investigations still
+  count, the oldest owner wins.
+- **§5 addendum.** Reclassify changes the kind only. Zones move only when the person also changes the visibility
+  in the same dialog (the directions are now visibility directions: tightening = shared → creator-only). A kind
+  change that keeps the visibility is LATERAL: no zone moves, and the Project's kind classification is swapped in
+  place (before F56 a lateral change swapped nothing in Egeria, so Egeria kept the old kind).
+- **Words.** "Private investigation" names only local + creator-only (`get_investigation` serves
+  `is_private_investigation`). Everything else names the kind and the visibility separately: the header reads
+  "<kind> · creator-only · in Egeria as <kind>" or "private investigation · not in Egeria".
+- **Migration.** `docs/ddl-investigation-visibility.md`: one column, backfilled creator-only for the two kinds that
+  were private, so nothing changes on day one.
+

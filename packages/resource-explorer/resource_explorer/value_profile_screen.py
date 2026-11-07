@@ -18,6 +18,7 @@ share one vocabulary. `cells` values are `{"text", "title", "muted"}`; the page 
 """
 from __future__ import annotations
 
+import re
 from typing import Any
 from urllib.parse import urlencode
 
@@ -260,6 +261,27 @@ def table_line(t: dict, surveyed_at: str) -> str:
     return f"{name} · {rows} · {cols} · profiled {when_words(surveyed_at)[11:]}"
 
 
+_PERMISSION = re.compile(r"permission denied for (schema|table|relation|view|sequence) \"?([\w.$-]+)\"?", re.I)
+#: A database's own error text ("LINE 429: FROM ... ^", "ERROR:", a caret line): not words for a headline.
+_RAW_ERROR = re.compile(r"\bLINE \d+:|\bERROR:|\^|\n")
+
+
+def reason_class(reason: str) -> str:
+    """The class of a not-measured reason, in words for a header (W52): "permission denied (schema demo)", "relation not
+    found", "query error". The database's raw error text stays on the table's own line, behind the numbers; a reason in
+    RE's own words is already a class and is returned as it is."""
+    m = _PERMISSION.search(reason)
+    if m:
+        return f"permission denied ({m.group(1).lower()} {m.group(2)})"
+    if re.search(r"permission denied", reason, re.I):
+        return "permission denied"
+    if re.search(r"\bdoes not exist\b|\brelation .* not found\b|\bUndefinedTable\b", reason, re.I):
+        return "relation not found"
+    if _RAW_ERROR.search(reason) or len(reason) > 120:
+        return "query error"
+    return reason
+
+
 def _reason_phrase(reason: str, tables: int) -> str:
     """A not-measured reason as a short header phrase about tables."""
     for lead, one in KIND_BY_REASON:
@@ -268,7 +290,7 @@ def _reason_phrase(reason: str, tables: int) -> str:
     if reason.startswith("profile incomplete · exceeded "):
         minutes = reason[len("profile incomplete · exceeded "):].split(" min", 1)[0]
         return f"{plural(tables, 'table')} over the {minutes}-minute budget"
-    return f"{plural(tables, 'table')}: {reason}"
+    return f"{plural(tables, 'table')}: {reason_class(reason)}"
 
 
 def header_line(value: dict, tables: list[dict]) -> str:

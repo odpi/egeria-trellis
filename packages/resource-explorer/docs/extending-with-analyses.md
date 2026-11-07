@@ -1,5 +1,8 @@
 # Reference: what a library step declares, and what Resource Explorer does with it
 
+> **Vocabulary note (2026-11-07):** the absence word `measured_nothing` was renamed `nothing_found` (trellis-analytics 0.3); this document now uses the new word. Results stored with the old word are still read.
+
+
 **Status:** live reference. Written 2026-10-28, brought up to date 2026-10-30 against `origin/main` at `aacdfaff`.
 
 **Want to add a step? Start with the tutorial:**
@@ -11,7 +14,7 @@ step can declare, what a curator sees, and how Chat uses a step's results.
 A **library step** is a small Python package that adds a measurement to Resource Explorer (RE) without
 changing RE. Changing RE's own built-in analyses is a different job, covered in
 [extending-resource-explorer.md](extending-resource-explorer.md). The library's own reference for
-authors is [`trellis-analytics/README.md`](../../trellis-analytics/README.md). Where this page and that
+authors is [the egeria-trellis-analytics README](https://github.com/odpi/egeria-trellis-analytics#readme). Where this page and that
 README differ, this page was checked against the code. How steps are installed, versioned and retired is in
 [`DESIGN-ANALYTIC-LIFECYCLE-2026-10-30.md`](design-notes/DESIGN-ANALYTIC-LIFECYCLE-2026-10-30.md).
 
@@ -212,7 +215,7 @@ person reads in place of a value, everywhere RE shows one:
 | `not_measured` | `not_established`: RE could not measure |
 | `not_permitted` | `not_established`: RE was not allowed to read it. The reason tells the two apart |
 | `not_applicable` | `not_applicable` |
-| `measured_nothing` | `nothing_found` |
+| `nothing_found` (written `measured_nothing` before 0.3; still read) | `nothing_found` |
 
 **Confidence: a basis written for a person.** `ConfidenceDeclaration(form=..., method=..., basis=...)`:
 
@@ -297,7 +300,7 @@ Declaration(
         key_fields=["schema", "table", "column"],
         columns=["schema", "table", "column",
                  TableColumn(name="state", type="state", absence="not profiled",
-                             states=["measured", "not_measured", "not_permitted", "measured_nothing"]),
+                             states=["measured", "not_measured", "not_permitted", "nothing_found"]),
                  TableColumn(name="declared_type", absence="type not recorded"),
                  TableColumn(name="null_count", type="integer", absence="not counted", measure_ref="nulls_total"),
                  TableColumn(name="distinct_estimate", type="integer", absence="not estimated")],
@@ -504,7 +507,7 @@ written confidence method, one extent and a question named by id.
 
 ## See also
 
-- [`trellis-analytics/README.md`](../../trellis-analytics/README.md): the library's reference for authors
+- [the egeria-trellis-analytics README](https://github.com/odpi/egeria-trellis-analytics#readme): the library's reference for authors
 - [The tutorial](../../trellis-analytics/docs/TUTORIAL-ADD-AN-ANALYTIC-STEP-2026-10-30.md): build your first step, start to finish
 - [`DESIGN-ANALYTIC-LIFECYCLE-2026-10-30.md`](design-notes/DESIGN-ANALYTIC-LIFECYCLE-2026-10-30.md): where steps live, how they are installed, versioned and retired
 - [user-guide.md](user-guide.md), "The Analytic Library": what users see

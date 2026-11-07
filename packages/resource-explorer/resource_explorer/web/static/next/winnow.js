@@ -133,7 +133,7 @@ export function readCriterion(c, cell) {
   const v = resolvePath(fact, path);
   if (v === undefined) {
     return fact.state === 'nothing_found'
-      ? absent('measured-nothing', decl(aid)?.absence?.measured_nothing || 'measured, and found nothing to count')
+      ? absent('nothing-found', decl(aid)?.absence?.nothing_found || decl(aid)?.absence?.measured_nothing || 'measured, and found nothing to count')
       : absent('missing', `measured, but ${path} is not in the result`);
   }
   return { present: true, value: v, asOf: fact.as_of || fact.last_run_at || asOf };

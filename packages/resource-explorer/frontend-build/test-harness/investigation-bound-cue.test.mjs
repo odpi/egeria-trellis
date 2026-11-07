@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { test } from 'node:test';
-import { makeDomEnvironment, ensureLoaderRegistered } from './dom-harness.mjs';
+import { makeDomEnvironment, ensureLoaderRegistered, confirmPromote } from './dom-harness.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const INDEX_HTML = fs.readFileSync(path.resolve(HERE, '../../resource_explorer/web/static/next/index.html'), 'utf8');
@@ -60,6 +60,7 @@ test('after promote the Creating… button is gone and the bound cue shows', asy
   const btn = t.document.querySelector('[data-act="inv-promote"]');
   assert.ok(btn, 'unbound: publish button present');
   btn.click();
+  await confirmPromote(t.document);
   await tick(200);
   assert.equal(t.document.querySelector('[data-act="inv-promote"]'), null);
   assert.doesNotMatch(text(t.document.getElementById('content')), /Creating…/);
@@ -73,6 +74,7 @@ test('members the promote could not link are counted, with the existing link act
   const t = await setUp({ promoteResult: { ok: true, classification_requested: 'StudyProject', classification_confirmed: 'StudyProject',
     members_linked: [], members_unlinkable: [{ entity_slug: 'a', reason: 'no asset' }, { entity_slug: 'b', reason: 'no asset' }] } });
   t.document.querySelector('[data-act="inv-promote"]').click();
+  await confirmPromote(t.document);
   await tick(200);
   assert.match(text(t.document.querySelector('[data-inv-not-linked]')), /2 members not linked/);
   const link = t.document.querySelector('[data-act="inv-relink"]');

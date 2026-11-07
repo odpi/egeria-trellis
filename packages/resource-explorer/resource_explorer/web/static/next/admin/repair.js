@@ -32,13 +32,20 @@
  *                         and does not touch Egeria.
  *   - repoint membership: drop-then-add between two Folios; same "does not
  *                         remove the repo from RE" scope as drop.
+ *
+ * W65 (2026-11-04): one row above the repos, "Declare RE's survey engine in Egeria". It is an Egeria WRITE (the
+ * engine-host bootstrap batch: eight Dr.Egeria documents), so it is priced before the press, confirmed in the page,
+ * sent as ONE batch and never forced (re-api's runBootstrapBatch, the heal's own 409 lock), and
+ * answers with the runner's result words. It works whatever RE_ENGINE_HOST_HEAL says; the row says that setting.
  */
 import {
   listProjects, listInvestigations, getRepairDrift, getRepairMemberships,
   repairRename, repairGithubUrl, repairEnableCollection,
   repairRepointMembership, repairDropMembership,
+  getBootstrapStatus, getBootstrapPrice, runBootstrapBatch,
 } from '/static/re-api.js';
 import { esc } from '/static/next/app.js';
+import { ago } from '/static/next/format.js';
 import { inPageConfirm, inPageNotice } from '/static/next/confirm-dialog.js';
 
 let _host = null;
@@ -47,6 +54,123 @@ let _investigations = [];
 let _selectedSlug = '';
 let _drift = [];
 let _memberships = [];
+
+/* ── W65: RE's survey engine ──────────────────────────────────────────── */
+
+export const ENGINE_BATCH = 'engine-host';
+export const DECLARE_LABEL = "Declare RE's survey engine in Egeria";
+export const COMPLETE_LABEL = 'Complete the declaration';
+
+/** Pure (W67): is the declaration partial — the engine present, fewer documents applied than the batch holds?
+ *  null when the count was not read (an unread history is never "0 applied"). */
+export function partialDeclaration(entry, price) {
+  const d = price?.documents_applied;
+  if (!entry || entry.state !== 'present' || !d || d.error || typeof d.applied !== 'number') return null;
+  return d.applied < d.total;
+}
+
+/** Pure: the press's label — F55's completion when the declaration is partial, else the declaration. */
+export function pressLabel(entry, price) {
+  return partialDeclaration(entry, price) ? COMPLETE_LABEL : DECLARE_LABEL;
+}
+
+/** Pure: the engine's state in words, from /api/bootstrap/status's engine-host entry (null = not read). W67: on a
+ *  present engine the applied count follows, from the price's run-row read (the same one the press's words use). */
+export function engineStateWords(entry, price = null) {
+  if (!entry) return 'engine state: not read';
+  let base = {
+    present: 'declared in this Egeria',
+    missing: 'NOT declared in this Egeria · RE-engine surveys cannot run in Egeria',
+    unknown: 'not known · Egeria has not answered yet',
+    opted_out: 'not checked yet',
+  }[entry.state] || `engine state: ${entry.state || 'not reported'}`;
+  if (entry.state === 'present' && price?.documents_applied_words) base += ` · ${price.documents_applied_words}`;
+  // Architect ruling Q4: say when, and by whom, the state was last verified.
+  return entry.checked_at && entry.source ? `${base} · checked ${ago(entry.checked_at)} by the ${entry.source}` : base;
+}
+
+/** Pure: the self-heal setting in words (from the batch's opt_in, or the price's self_heal). */
+export function selfHealWords(optIn) {
+  if (!optIn) return 'self-heal: not reported by this server';
+  return optIn.on
+    ? 'self-heal: on · checked every 10 min'
+    : `self-heal: off (${optIn.key}) · the engine is re-declared only by this press after an Egeria reset`;
+}
+
+/** Pure: what the press answered, from the run's batches[engine-host] ({action, reason}), or the error. */
+export function engineResultWords(out, err) {
+  if (err) {
+    if (err.status === 409) return 'not run · a bootstrap heal is already running · try again when it ends';
+    return `not run · ${err.message || 'the request failed'}`;
+  }
+  const r = out?.batches?.[ENGINE_BATCH];
+  if (!r) return 'not run · the server answered without this batch';
+  if (r.action === 'healed') return `declared · ${r.reason}`;
+  if (r.action === 'present') return r.reason || 'already declared';
+  // F55: a partial declaration completed from the page (or stopped part way), the engine already present.
+  if (r.action === 'completed') return r.reason || 'completed the batch';
+  if (r.action === 'completion_failed') return `not completed · ${r.reason || 'the run stopped'}`;
+  if (r.action === 'unknown') return 'not run · could not reach Egeria to check whether it is declared';
+  return `not declared · ${r.reason || r.action}`;
+}
+
+function engineRowHtml(entry, price) {
+  return `
+    <div class="rounded-sm border border-rule p-s3" data-engine-row>
+      <h4 class="m-0 text-caps uppercase tracking-caps text-ink-muted">RE's survey engine in Egeria</h4>
+      <p class="mt-[4px] max-w-[70ch] text-caveat text-ink" data-engine-state>${esc(engineStateWords(entry, price))}</p>
+      <p class="mt-[2px] max-w-[70ch] text-provenance text-ink-muted" data-engine-self-heal>${esc(selfHealWords(entry?.opt_in || price?.self_heal))}</p>
+      <p class="mt-[4px] max-w-[70ch] text-caveat text-ink-muted" data-engine-price>${esc(price ? price.words : 'price: not read')}</p>
+      <div class="mt-s2 flex flex-wrap items-baseline gap-s2">
+        <button type="button" data-engine-declare
+          class="cursor-pointer rounded-sm border border-accent px-3 py-[3px] text-caveat text-accent-ink hover:bg-paper-surface">${esc(pressLabel(entry, price))}</button>
+        <span data-engine-result class="text-caveat text-ink"></span>
+      </div>
+    </div>`;
+}
+
+let _engine = { entry: null, price: null, read: false, result: '' };
+
+/** Read the engine's status and price (no Egeria call), then draw the row. */
+async function loadEngineRow() {
+  const [statusR, priceR] = await Promise.allSettled([getBootstrapStatus(), getBootstrapPrice(ENGINE_BATCH)]);
+  _engine.entry = statusR.status === 'fulfilled' ? (statusR.value?.batches?.[ENGINE_BATCH] || null) : null;
+  _engine.price = priceR.status === 'fulfilled' ? priceR.value : null;
+  _engine.read = true;
+  drawEngineRow();
+}
+
+/** Draw the row from what was read (render() rebuilds the pane on every repo pick; this keeps the row). */
+function drawEngineRow() {
+  const host = _host?.querySelector('[data-engine-section]');
+  if (!host || !_engine.read) return;
+  const { entry, price } = _engine;
+  host.innerHTML = engineRowHtml(entry, price);
+  const btn = host.querySelector('[data-engine-declare]');
+  const result = host.querySelector('[data-engine-result]');
+  result.textContent = _engine.result;
+  btn.addEventListener('click', async () => {
+    if (btn.disabled) return;
+    const partial = partialDeclaration(entry, price);
+    const ok = await inPageConfirm({
+      title: pressLabel(entry, price),
+      message: `${price ? price.words : 'Price not read.'}\n\nThis writes to Egeria. `
+        + (partial
+          ? `The engine is declared and ${price.documents_applied_words}: only the documents with no run here whose `
+            + 'elements are verified absent in Egeria are run; the rest are skipped and named. Refused without a '
+            + 'write if that cannot be verified.'
+          : 'It is refused without a write if the engine is already declared and complete, or Egeria cannot be checked.'),
+      confirmLabel: partial ? 'Complete it' : 'Declare it',
+    });
+    if (!ok) return;
+    btn.disabled = true;
+    result.textContent = 'declaring…';
+    let out = null; let err = null;
+    try { out = await runBootstrapBatch(ENGINE_BATCH); } catch (e) { err = e; }
+    _engine.result = engineResultWords(out, err);
+    await loadEngineRow();
+  });
+}
 
 function repoOptionsHtml() {
   return _repos.map((r) =>
@@ -154,6 +278,7 @@ function render() {
       action names what it does — and, where the name sounds worse than the act, what it does NOT
       do — before it runs.</p>
     <div class="my-s3 h-px bg-rule"></div>
+    <div class="mb-s3" data-engine-section><p class="text-caveat text-ink-muted">reading RE's survey engine…</p></div>
     <div class="rounded-sm border border-rule p-s3">
       <label class="block text-provenance uppercase tracking-caps text-ink-muted">Repo</label>
       <select data-repo-select
@@ -166,6 +291,7 @@ function render() {
       ${repo ? detailHtml(repo) : '<p class="py-s4 text-center text-caveat text-ink-muted">Choose a repo above to see repair actions.</p>'}
     </div>`;
   bind();
+  drawEngineRow();
 }
 
 async function selectRepo(slug) {
@@ -281,5 +407,7 @@ export async function renderRepair(host) {
     listProjects({ includeIgnored: true, includeHidden: true }),
     listInvestigations({ includeClosed: true }),
   ]);
+  _engine = { entry: null, price: null, read: false, result: '' };
   render();
+  await loadEngineRow();
 }

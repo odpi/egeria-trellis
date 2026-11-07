@@ -151,6 +151,7 @@ class IngestionPipeline:
         self._store_file_inventory(resource_slug, code_root, repo=repo)
         self._parse_dependencies(resource_slug, code_root)
         self._profile_data_files(resource_slug, code_root)
+        self._read_dataset_descriptors(resource_slug, code_root)
         self._parse_ci_workflows(resource_slug, code_root)
         self._parse_supply_chain(resource_slug, code_root)
         self._parse_repo_conventions(resource_slug, code_root)
@@ -270,6 +271,7 @@ class IngestionPipeline:
         with client.zipball_root(repo, subproject_path) as local_root:
             file_count = self._store_file_inventory(resource_slug, local_root, repo=repo, client=client)
             self._profile_data_files(resource_slug, local_root)
+            self._read_dataset_descriptors(resource_slug, local_root)
             # The census belongs on the CHEAP path too. It needs the files on
             # disk and nothing else, and refresh_profile already has them
             # extracted — requiring a full RAG re-ingest (with re-embedding)
@@ -513,6 +515,18 @@ class IngestionPipeline:
         except Exception as exc:
             self.console.print(f"[dim]File inventory skipped: {exc}[/dim]")
             return 0
+
+    def _read_dataset_descriptors(self, resource_slug: str, local_root: Path) -> None:
+        """Read the repository's dataset descriptors (datapackage.json, Croissant, CITATION.cff, a README DOI or a
+        Hugging Face card) while the tree is on disk and store them as `dataset_descriptor` findings. No network call:
+        the DOI is resolved by the import, not here. A tree with none is stored as that fact."""
+        from resource_explorer.surveyors.sub_surveyors.dataset_descriptor import store_descriptors
+
+        try:
+            found = store_descriptors(self.registry, resource_slug, local_root)
+            self.console.print(f"[dim]Dataset descriptors: {len(found)} found.[/dim]")
+        except Exception as exc:
+            self.console.print(f"[dim]Dataset descriptors skipped: {exc}[/dim]")
 
     def _profile_data_files(self, resource_slug: str, local_root: Path) -> None:
         """Profile CSV/XLSX/Parquet files while the repo is still on disk.

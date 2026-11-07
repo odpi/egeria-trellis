@@ -201,7 +201,7 @@ ___
 ## Link Perspective to Question
 
 ### Perspective Name
-Perspective::Data Owner
+Perspective::Owner
 
 ### Question Name
 Who owns this resource (accountable owner), and who administers it?
@@ -527,7 +527,7 @@ ___
 ## Link Perspective to Question
 
 ### Perspective Name
-Perspective::Admin
+Perspective::Administration
 
 ### Question Name
 Is there any existing use within our organization?
@@ -641,7 +641,7 @@ ___
 ## Link Perspective to Question
 
 ### Perspective Name
-Perspective::Admin
+Perspective::Administration
 
 ### Question Name
 Any known feedback?
@@ -715,7 +715,7 @@ ___
 ## Link Perspective to Question
 
 ### Perspective Name
-Perspective::Admin
+Perspective::Administration
 
 ### Question Name
 Which resources overlap with this one — the same data, a subset, a stand-in or a replacement — and how does this one differ?
@@ -799,7 +799,7 @@ ___
 ## Link Perspective to Question
 
 ### Perspective Name
-Perspective::Admin
+Perspective::Administration
 
 ### Question Name
 What dependencies does this require?
@@ -873,7 +873,7 @@ ___
 ## Link Perspective to Question
 
 ### Perspective Name
-Perspective::Admin
+Perspective::Administration
 
 ### Question Name
 Do we already support these dependencies?
@@ -960,7 +960,7 @@ ___
 ## Link Perspective to Question
 
 ### Perspective Name
-Perspective::Admin
+Perspective::Administration
 
 ### Question Name
 What deployment styles does this support?
@@ -1024,7 +1024,7 @@ ___
 ## Link Perspective to Question
 
 ### Perspective Name
-Perspective::Admin
+Perspective::Administration
 
 ### Question Name
 What does this resource cost to run, host or license?
@@ -1088,7 +1088,7 @@ ___
 ## Link Perspective to Question
 
 ### Perspective Name
-Perspective::Admin
+Perspective::Administration
 
 ### Question Name
 Is there a validation / deployment test for it?
@@ -1172,7 +1172,7 @@ ___
 ## Link Perspective to Question
 
 ### Perspective Name
-Perspective::Admin
+Perspective::Administration
 
 ### Question Name
 What is the upgrade process?
@@ -1246,7 +1246,7 @@ ___
 ## Link Perspective to Question
 
 ### Perspective Name
-Perspective::Admin
+Perspective::Administration
 
 ### Question Name
 What does it promise (SLA, support terms), and what does its history show?
@@ -1340,7 +1340,7 @@ ___
 ## Link Perspective to Question
 
 ### Perspective Name
-Perspective::Admin
+Perspective::Administration
 
 ### Question Name
 What does it talk to — Egeria, databases, services, message buses?
@@ -1424,7 +1424,7 @@ ___
 ## Link Perspective to Question
 
 ### Perspective Name
-Perspective::Admin
+Perspective::Administration
 
 ### Question Name
 How mature is it?
@@ -1498,7 +1498,7 @@ ___
 ## Link Perspective to Question
 
 ### Perspective Name
-Perspective::Admin
+Perspective::Administration
 
 ### Question Name
 Do we have the skills to support its use?
@@ -1592,7 +1592,7 @@ ___
 ## Link Perspective to Question
 
 ### Perspective Name
-Perspective::Admin
+Perspective::Administration
 
 ### Question Name
 How well documented is it?
@@ -1686,7 +1686,7 @@ ___
 ## Link Perspective to Question
 
 ### Perspective Name
-Perspective::Admin
+Perspective::Administration
 
 ### Question Name
 How is it supported?
@@ -1770,7 +1770,7 @@ ___
 ## Link Perspective to Question
 
 ### Perspective Name
-Perspective::Admin
+Perspective::Administration
 
 ### Question Name
 Is there a current, published, security analysis?
@@ -1854,7 +1854,7 @@ ___
 ## Link Perspective to Question
 
 ### Perspective Name
-Perspective::Admin
+Perspective::Administration
 
 ### Question Name
 Does it fit into our governance frameworks?
@@ -1918,7 +1918,7 @@ ___
 ## Link Perspective to Question
 
 ### Perspective Name
-Perspective::Data Owner
+Perspective::Owner
 
 ### Question Name
 What explicit license does this resource use, and are there non-standard or copyleft terms?
@@ -2035,7 +2035,7 @@ ___
 ## Link Perspective to Question
 
 ### Perspective Name
-Perspective::Data Owner
+Perspective::Owner
 
 ### Question Name
 Is intellectual property (IP) provenance managed via CLA or DCO?
@@ -2129,7 +2129,7 @@ ___
 ## Link Perspective to Question
 
 ### Perspective Name
-Perspective::Admin
+Perspective::Administration
 
 ### Question Name
 Does the software contain telemetry, phone-home mechanisms, or external metrics tracking?
@@ -2287,7 +2287,7 @@ ___
 ## Link Perspective to Question
 
 ### Perspective Name
-Perspective::Admin
+Perspective::Administration
 
 ### Question Name
 How does the repository handle secrets, credentials, and sensitive configurations?
@@ -2637,7 +2637,7 @@ ___
 ## Link Perspective to Question
 
 ### Perspective Name
-Perspective::Data Owner
+Perspective::Owner
 
 ### Question Name
 Given what is known, is this worth a full survey?
@@ -3051,7 +3051,7 @@ ___
 ## Link Perspective to Question
 
 ### Perspective Name
-Perspective::Data Owner
+Perspective::Owner
 
 ### Question Name
 What data files does it ship, and what shape are they?
@@ -3471,7 +3471,7 @@ ___
 ## Link Perspective to Question
 
 ### Perspective Name
-Perspective::Admin
+Perspective::Administration
 
 ### Question Name
 How much code is there, and how complex is it?
@@ -3565,7 +3565,7 @@ ___
 ## Link Perspective to Question
 
 ### Perspective Name
-Perspective::Admin
+Perspective::Administration
 
 ### Question Name
 What are the public interfaces?
@@ -3639,7 +3639,7 @@ ___
 ## Link Perspective to Question
 
 ### Perspective Name
-Perspective::Admin
+Perspective::Administration
 
 ### Question Name
 Can Egeria's survey engine reach this resource, or must Resource Explorer survey it locally — and which is cheaper?
@@ -3703,7 +3703,7 @@ ___
 ## Link Perspective to Question
 
 ### Perspective Name
-Perspective::Data Owner
+Perspective::Owner
 
 ### Question Name
 Where is this resource physically located, under which jurisdiction, and are there residency or transfer constraints?
@@ -3955,7 +3955,7 @@ ___
 ## Link Perspective to Question
 
 ### Perspective Name
-Perspective::Data Owner
+Perspective::Owner
 
 ### Question Name
 Is this resource ready to be offered as a data product — owner, description, license or agreement, schema, freshness, contact and scope?
@@ -4039,7 +4039,7 @@ ___
 ## Link Perspective to Question
 
 ### Perspective Name
-Perspective::Data Owner
+Perspective::Owner
 
 ### Question Name
 Is there demand for this — subscriptions, requests, feedback or existing use?
@@ -4123,7 +4123,7 @@ ___
 ## Link Perspective to Question
 
 ### Perspective Name
-Perspective::Admin
+Perspective::Administration
 
 ### Question Name
 How big is this database — schemas, tables, views, columns, rows and bytes?
@@ -4251,7 +4251,7 @@ ___
 ## Link Perspective to Question
 
 ### Perspective Name
-Perspective::Data Owner
+Perspective::Owner
 
 ### Question Name
 Is this database alive — writes since the statistics were reset, last vacuum or analyse, and is anything reading it?
@@ -4261,7 +4261,7 @@ ___
 ## Link Perspective to Question
 
 ### Perspective Name
-Perspective::Admin
+Perspective::Administration
 
 ### Question Name
 Is this database alive — writes since the statistics were reset, last vacuum or analyse, and is anything reading it?
@@ -4335,7 +4335,7 @@ ___
 ## Link Perspective to Question
 
 ### Perspective Name
-Perspective::Admin
+Perspective::Administration
 
 ### Question Name
 What engine and version is this, which extensions are installed, and is the version still supported?
@@ -4389,7 +4389,7 @@ ___
 ## Link Perspective to Question
 
 ### Perspective Name
-Perspective::Data Owner
+Perspective::Owner
 
 ### Question Name
 Is this database a primary or a replica, is it clustered, and is WAL archiving or backup configured?
@@ -4399,7 +4399,7 @@ ___
 ## Link Perspective to Question
 
 ### Perspective Name
-Perspective::Admin
+Perspective::Administration
 
 ### Question Name
 Is this database a primary or a replica, is it clustered, and is WAL archiving or backup configured?
@@ -4463,7 +4463,7 @@ ___
 ## Link Perspective to Question
 
 ### Perspective Name
-Perspective::Data Owner
+Perspective::Owner
 
 ### Question Name
 When was this resource last backed up successfully, and has a restore ever been tested?
@@ -4473,7 +4473,7 @@ ___
 ## Link Perspective to Question
 
 ### Perspective Name
-Perspective::Admin
+Perspective::Administration
 
 ### Question Name
 When was this resource last backed up successfully, and has a restore ever been tested?
@@ -4971,7 +4971,7 @@ ___
 ## Link Perspective to Question
 
 ### Perspective Name
-Perspective::Admin
+Perspective::Administration
 
 ### Question Name
 Are this database's planner statistics current?
@@ -5697,7 +5697,7 @@ ___
 ## Link Perspective to Question
 
 ### Perspective Name
-Perspective::Admin
+Perspective::Administration
 
 ### Question Name
 What does this database depend on outside itself — foreign data wrappers, dblink, extensions or publications?
@@ -5732,7 +5732,7 @@ pg_roles, role_table_grants and pg_default_acl give the access half and already 
 Access is only half an answer; access crossed with sensitivity is the half anyone acts on.
 
 ### Usage
-Typically asked and answerable during Analysis.
+Typically asked and answerable during Assessment.
 
 ### Additional Properties
 | Parameter Name | Parameter Value |
@@ -5781,7 +5781,7 @@ ___
 ## Link Perspective to Question
 
 ### Perspective Name
-Perspective::Admin
+Perspective::Administration
 
 ### Question Name
 Who can read and write what — roles, grants, superusers, PUBLIC grants — which sensitive columns can which roles read, and what has changed?
@@ -5794,7 +5794,7 @@ ___
 Who can read and write what — roles, grants, superusers, PUBLIC grants — which sensitive columns can which roles read, and what has changed?
 
 ### Scope Reference
-Analysis
+Assessment
 
 ### Scope Category
 Asked At
@@ -5845,7 +5845,7 @@ ___
 ## Link Perspective to Question
 
 ### Perspective Name
-Perspective::Data Owner
+Perspective::Owner
 
 ### Question Name
 How is this database changing — rows inserted, updated and deleted per table per period, size drift and schema churn?
@@ -5855,7 +5855,7 @@ ___
 ## Link Perspective to Question
 
 ### Perspective Name
-Perspective::Admin
+Perspective::Administration
 
 ### Question Name
 How is this database changing — rows inserted, updated and deleted per table per period, size drift and schema churn?
@@ -6195,7 +6195,7 @@ ___
 ## Link Perspective to Question
 
 ### Perspective Name
-Perspective::Admin
+Perspective::Administration
 
 ### Question Name
 Is this database maintained and healthy — vacuum recency, dead-tuple ratio and unused indexes?
@@ -6259,7 +6259,7 @@ ___
 ## Link Perspective to Question
 
 ### Perspective Name
-Perspective::Data Owner
+Perspective::Owner
 
 ### Question Name
 Is this database resilient — replica present, archiving on, backup evidence and a tested restore?
@@ -6269,7 +6269,7 @@ ___
 ## Link Perspective to Question
 
 ### Perspective Name
-Perspective::Admin
+Perspective::Administration
 
 ### Question Name
 Is this database resilient — replica present, archiving on, backup evidence and a tested restore?
@@ -6343,7 +6343,7 @@ ___
 ## Link Perspective to Question
 
 ### Perspective Name
-Perspective::Admin
+Perspective::Administration
 
 ### Question Name
 What kinds of files does this filesystem contain, and how much data is there?
@@ -6481,7 +6481,7 @@ ___
 ## Link Perspective to Question
 
 ### Perspective Name
-Perspective::Data Owner
+Perspective::Owner
 
 ### Question Name
 Which data-quality checks should this database have?
@@ -6545,7 +6545,7 @@ ___
 ## Link Perspective to Question
 
 ### Perspective Name
-Perspective::Data Owner
+Perspective::Owner
 
 ### Question Name
 Which data-quality checks hold on this database's tables, and which fail?
@@ -6609,7 +6609,7 @@ ___
 ## Link Perspective to Question
 
 ### Perspective Name
-Perspective::Data Owner
+Perspective::Owner
 
 ### Question Name
 Does it fit our estate — the platforms we run, our monitoring, our security controls?
@@ -6659,7 +6659,7 @@ ___
 ## Link Perspective to Question
 
 ### Perspective Name
-Perspective::Admin
+Perspective::Administration
 
 ### Question Name
 Does it fit our estate — the platforms we run, our monitoring, our security controls?
@@ -6743,7 +6743,7 @@ ___
 ## Link Perspective to Question
 
 ### Perspective Name
-Perspective::Admin
+Perspective::Administration
 
 ### Question Name
 What can the survey credential see, and what is it blind to — schemas, tables, system views, statistics?
@@ -6817,7 +6817,7 @@ ___
 ## Link Perspective to Question
 
 ### Perspective Name
-Perspective::Admin
+Perspective::Administration
 
 ### Question Name
 What is the shape of this file system: how deep, how wide, where does the bulk sit?
@@ -7103,7 +7103,7 @@ ___
 ## Link Perspective to Question
 
 ### Perspective Name
-Perspective::Admin
+Perspective::Administration
 
 ### Question Name
 Does this file system contain a recognisable structure: a project, a dataset layout, an archive, backups?
@@ -7338,7 +7338,7 @@ ___
 ## Link Perspective to Question
 
 ### Perspective Name
-Perspective::Data Owner
+Perspective::Owner
 
 ### Question Name
 Which files has nobody touched for a long time, and which are hot?
@@ -7476,7 +7476,7 @@ ___
 ## Link Perspective to Question
 
 ### Perspective Name
-Perspective::Admin
+Perspective::Administration
 
 ### Question Name
 How much would it cost to survey fully, and which parts are not worth it?
@@ -7540,7 +7540,7 @@ ___
 ## Link Perspective to Question
 
 ### Perspective Name
-Perspective::Data Owner
+Perspective::Owner
 
 ### Question Name
 Is the schema of database 1 the same as the schema of database 2?
@@ -7624,7 +7624,7 @@ ___
 ## Link Perspective to Question
 
 ### Perspective Name
-Perspective::Data Owner
+Perspective::Owner
 
 ### Question Name
 Is database 1 the same as database 2?
@@ -7708,7 +7708,7 @@ ___
 ## Link Perspective to Question
 
 ### Perspective Name
-Perspective::Data Owner
+Perspective::Owner
 
 ### Question Name
 Is database 1 a subset or superset of database 2?
@@ -7732,6 +7732,218 @@ Is database 1 a subset or superset of database 2?
 
 ### Scope Reference
 Analysis
+
+### Scope Category
+Asked At
+
+___
+
+## Create Glossary Term
+
+### Glossary Name
+User Questions
+
+### Display Name
+Is this dataset's licence usable for our purpose, and what does it require of us?
+
+### Description
+What the publisher's record states about the licence: its identifier, and the three flags (attribution, share-alike, commercial use) read from a known licence table. The check will judge those against a stated purpose; it cannot claim legal advice, and a licence the table does not know stays unjudged.
+
+### Summary
+A dataset we cannot lawfully use for our purpose is worth nothing, however good the data.
+
+### Usage
+Typically asked and answerable during Assessment.
+
+### Additional Properties
+| Parameter Name | Parameter Value |
+|---|---|
+| question_id | Q-0113 |
+
+___
+
+## Classify Term as Question
+
+### Term Name
+Is this dataset's licence usable for our purpose, and what does it require of us?
+
+___
+
+## Link Perspective to Question
+
+### Perspective Name
+Perspective::Financial
+
+### Question Name
+Is this dataset's licence usable for our purpose, and what does it require of us?
+
+___
+
+## Link Perspective to Question
+
+### Perspective Name
+Perspective::Governance
+
+### Question Name
+Is this dataset's licence usable for our purpose, and what does it require of us?
+
+___
+
+## Link Perspective to Question
+
+### Perspective Name
+Perspective::Owner
+
+### Question Name
+Is this dataset's licence usable for our purpose, and what does it require of us?
+
+___
+
+## Link Perspective to Question
+
+### Perspective Name
+Perspective::Consumer
+
+### Question Name
+Is this dataset's licence usable for our purpose, and what does it require of us?
+
+___
+
+## Link Element To Scope
+
+### Target Element
+Is this dataset's licence usable for our purpose, and what does it require of us?
+
+### Scope Reference
+Assessment
+
+### Scope Category
+Asked At
+
+___
+
+## Create Glossary Term
+
+### Glossary Name
+User Questions
+
+### Display Name
+Is this dataset kept to its stated cadence, and when was it last modified?
+
+### Description
+What the publisher states: the update cadence it gives (accrualPeriodicity) and the modified date. The check will compare them; a publisher that states no cadence leaves the question unanswered, not answered yes.
+
+### Summary
+A dataset that says it is updated monthly and was last touched two years ago cannot be relied on.
+
+### Usage
+Typically asked and answerable during Scouting.
+
+### Additional Properties
+| Parameter Name | Parameter Value |
+|---|---|
+| question_id | Q-0114 |
+
+___
+
+## Classify Term as Question
+
+### Term Name
+Is this dataset kept to its stated cadence, and when was it last modified?
+
+___
+
+## Link Perspective to Question
+
+### Perspective Name
+Perspective::Steward
+
+### Question Name
+Is this dataset kept to its stated cadence, and when was it last modified?
+
+___
+
+## Link Perspective to Question
+
+### Perspective Name
+Perspective::Consumer
+
+### Question Name
+Is this dataset kept to its stated cadence, and when was it last modified?
+
+___
+
+## Link Element To Scope
+
+### Target Element
+Is this dataset kept to its stated cadence, and when was it last modified?
+
+### Scope Reference
+Scouting
+
+### Scope Category
+Asked At
+
+___
+
+## Create Glossary Term
+
+### Glossary Name
+User Questions
+
+### Display Name
+What do we know about the data itself — columns, size, formats — and what has not been read?
+
+### Description
+A summary of what a profile of the dataset's distributions has read, and which were not read (over the size cap, not tabular, not downloaded). It will never report an unread distribution as empty.
+
+### Summary
+A description is not the data: the columns, the size and the formats decide whether it can be used at all.
+
+### Usage
+Typically asked and answerable during Discovery.
+
+### Additional Properties
+| Parameter Name | Parameter Value |
+|---|---|
+| question_id | Q-0115 |
+
+___
+
+## Classify Term as Question
+
+### Term Name
+What do we know about the data itself — columns, size, formats — and what has not been read?
+
+___
+
+## Link Perspective to Question
+
+### Perspective Name
+Perspective::Consumer
+
+### Question Name
+What do we know about the data itself — columns, size, formats — and what has not been read?
+
+___
+
+## Link Perspective to Question
+
+### Perspective Name
+Perspective::Data Expert
+
+### Question Name
+What do we know about the data itself — columns, size, formats — and what has not been read?
+
+___
+
+## Link Element To Scope
+
+### Target Element
+What do we know about the data itself — columns, size, formats — and what has not been read?
+
+### Scope Reference
+Discovery
 
 ### Scope Category
 Asked At

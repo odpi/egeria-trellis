@@ -334,10 +334,11 @@ def register_filesystem(registration: FileSystemRegistration):
 
 def _register_s3(registry: ProjectRegistry, registration: FileSystemRegistration) -> FileSystemSummary:
     """An S3 file system. A typed key goes to the secrets store FIRST (refused when none is configured, before any row is
-    written); the registry keeps only its reference and the key id. Then the reach check runs and is recorded."""
+    written); the registry keeps only its reference and the key id's last four characters (W42). Then the reach check
+    runs and is recorded."""
     from resource_explorer import file_reach
     from resource_explorer.reach_mechanisms import CREDENTIAL_SECRET_REF, ReachError
-    from resource_explorer.reach_mechanisms.s3 import store_key
+    from resource_explorer.reach_mechanisms.s3 import key_tail, store_key
 
     if registry.filesystem_exists(registration.slug):
         raise HTTPException(status_code=400, detail=f"FileSystem '{registration.slug}' already registered.")
@@ -363,7 +364,9 @@ def _register_s3(registry: ProjectRegistry, registration: FileSystemRegistration
         protocol="s3", endpoint_url=settings.endpoint_url, region=settings.region, bucket=settings.bucket,
         root_prefix=settings.root, path_style=settings.path_style, tls_verify=settings.tls_verify,
         credential_kind=settings.credential_kind, credential_ref=settings.credential_ref,
-        access_key_id=settings.access_key_id)
+        # W42: only the id's tail is stored (the reach line reads "key …XXXX (<ref>)" from it); the whole id goes to
+        # the secrets store with the secret, by reference, and nowhere else.
+        access_key_id=key_tail(settings.access_key_id))
     try:
         registry.register_filesystem(fs)
     except Exception as exc:
@@ -956,7 +959,7 @@ def publish_filesystem_folder_survey(slug: str) -> dict:
 # ── Files build step 6: the derived steps (Analytic Library steps over the walk's kept per-file rows) ───────────────
 
 @router.post("/{slug}/analyses/{analysis_id}/run")
-def run_filesystem_analysis(slug: str, analysis_id: str) -> dict:
+def run_filesystem_analysis(slug: str, analysis_id: str, pressed_on: str = "") -> dict:
     """Run ONE file system analysis that is an Analytic Library step (fs_change_rates, fs_duplicates, fs_activity,
     fs_permissions, fs_layout_signals): validated here (an unknown id, or a step whose package is not installed, is a 400 naming why),
     then queued, as every step is (a step never runs in the web process). Zero-fetch: the step reads the walk's kept
@@ -983,7 +986,8 @@ def run_filesystem_analysis(slug: str, analysis_id: str) -> dict:
         raise HTTPException(status_code=400, detail=missing)
     activity_id = log_analysis_run(registry, "filesystem", slug, fs.display_name, "running",
                                    f"Running '{analysis_id}' on {slug}…", analysis_id, published=None)
-    run_id = registry.enqueue_run("filesystem_analysis_run", {"slug": slug, "analysis_id": analysis_id},
+    run_id = registry.enqueue_run("filesystem_analysis_run", {"slug": slug, "analysis_id": analysis_id,
+                                                              **({"pressed_on": pressed_on[:40]} if pressed_on else {})},
                                   result_ref=activity_id, requested_by=requested_by())
     log.info("enqueued filesystem_analysis_run %s for %s/%s (activity %s)", run_id, slug, analysis_id, activity_id)
     return {"status": "started", "slug": slug, "analysis_id": analysis_id, "activity_id": activity_id, "run_id": run_id}
@@ -1094,7 +1098,10 @@ def run_filesystem_file_profiles(slug: str) -> dict:
     """The press (consent is this press; the card showed the cost line before it). Profiles every data file of the newest
     walk: a `.csv` on an Egeria-led file system goes to Egeria's CSV Survey Service, every other readable file is profiled
     here. Writes nothing into the path. 409 when there is no walk yet, and 409 while a run for this file system is in
-    flight (server-side claim: a second press submits nothing)."""
+    flight (server-side claim: a second press submits nothing). F58: when Egeria refuses the signed-in person's token
+    on the run's first call as them (Egeria restarted since they signed in), the whole run is refused — 401 with the
+    `egeria_token_refused` marker and "… sign in again · nothing was profiled" (`egeria_clients.EgeriaTokenRefused`,
+    answered by the app's handler), no run row stored, the previous run's card kept."""
     from resource_explorer.surveyors.filesystem import file_profiles as fp
     from resource_explorer.web.routes.curate import require_resource_write
 

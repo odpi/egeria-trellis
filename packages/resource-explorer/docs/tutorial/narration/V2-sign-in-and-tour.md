@@ -36,7 +36,7 @@ At the right end are requests for action, things a person must settle, and Chat.
 
 [SLIDE: reveal callout 3]
 
-The row of perspectives narrows the questions to the ones a perspective cares about, such as Security or Data Owner.
+The row of perspectives narrows the questions to the ones a perspective cares about, such as Security or Owner.
 With none chosen, you see every question.
 
 [SLIDE: reveal callout 4]

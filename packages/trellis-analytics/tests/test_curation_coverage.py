@@ -1,7 +1,7 @@
 import json
 
 from trellis_analytics.envelope import ResultState
-from trellis_analytics.readers.ods import OdsReader
+from trellis_analytics_re.ods import OdsReader
 from trellis_analytics.routines import curation_coverage
 
 
@@ -161,15 +161,18 @@ def test_a_choice_for_a_schema_curate_does_not_show_is_reported_not_counted(make
     assert r.count("not_yet", "chosen") == 0
 
 
-def test_without_resource_explorer_the_result_is_not_applicable_not_a_private_universe(make_ods, monkeypatch):
+def test_when_resource_explorer_will_not_load_the_result_is_not_established_not_a_private_universe(make_ods, monkeypatch):
+    # The catalogue reader is registered but RE cannot be imported: the reader is missing, said in the seam's words
+    # (amended 2026-11-02, Architect: not_established, was not_applicable).
     url = make_ods(schemas=["a", "b"])
     import sys
     monkeypatch.setitem(sys.modules, "resource_explorer", None)
     monkeypatch.setitem(sys.modules, "resource_explorer.registry", None)
     monkeypatch.setitem(sys.modules, "resource_explorer.catalogue_scope", None)
     r = curation_coverage(OdsReader(url), "database", "demo")
-    assert r.envelope.result_state is ResultState.NOT_APPLICABLE
-    assert "trellis-analytics[re]" in r.envelope.result_state_reason and r.known == [] and r.groups == []
+    assert r.envelope.result_state is ResultState.NOT_ESTABLISHED
+    assert r.envelope.result_state_reason.startswith("no reader for Resource Explorer's catalogue is installed here")
+    assert r.known == [] and r.groups == []
 
 
 def test_removal_alone_unpublishes_and_restoring_republishes(make_ods):

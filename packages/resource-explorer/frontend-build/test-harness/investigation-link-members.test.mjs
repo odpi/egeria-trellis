@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { test } from 'node:test';
-import { makeDomEnvironment, ensureLoaderRegistered } from './dom-harness.mjs';
+import { makeDomEnvironment, ensureLoaderRegistered, confirmPromote } from './dom-harness.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const INDEX_HTML = fs.readFileSync(path.resolve(HERE, '../../resource_explorer/web/static/next/index.html'), 'utf8');
@@ -67,6 +67,7 @@ test('a failed publish resets the button, leaves a cue on it, and pops up the re
   const t = await setUp({ promoteFails: true });
   const btn = t.document.querySelector('[data-act="inv-promote"]');
   btn.click();
+  await confirmPromote(t.document);
   await tick(200);
   const again = t.document.querySelector('[data-act="inv-promote"]');
   assert.equal(again.disabled, false);
@@ -78,6 +79,7 @@ test('a failed publish resets the button, leaves a cue on it, and pops up the re
 test('a successful publish leaves no greyed Creating… button anywhere', async () => {
   const t = await setUp({ promoteResult: OKPROMOTE });
   t.document.querySelector('[data-act="inv-promote"]').click();
+  await confirmPromote(t.document);
   await tick(200);
   assert.equal([...t.document.querySelectorAll('button[data-act^="inv-"]')].filter((b) => b.disabled).length, 0);
   assert.doesNotMatch(t.bodyText(), /Creating…/);

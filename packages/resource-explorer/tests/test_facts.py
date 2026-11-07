@@ -82,7 +82,7 @@ class TestEnvelope:
 class TestHasContent:
     """`_status`, `surveyed_at` and `detail` describe the RUN, not the finding."""
 
-    def test_a_results_dict_of_only_envelope_keys_has_measured_nothing(self):
+    def test_a_results_dict_of_only_envelope_keys_has_nothing_found(self):
         assert _has_content({"_status": {"state": "measured"},
                              "surveyed_at": "2026-08-26T00:00:00",
                              "detail": {"source": "egeria"}}) is False

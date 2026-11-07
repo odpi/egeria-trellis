@@ -12,6 +12,7 @@ publishing. Words are defined in the [glossary](glossary.md).
 | [3. Add data sources, and find them again](03-add-data-sources.md) | Register the trial's database, folder and repository |
 | [4. The stages: a funnel from cheap to costly](04-the-stages.md) | Cheap questions first; inside a stage; reading the marks |
 | [5. Scouting: run the overview survey and read the answers](05-scouting.md) | A first look at the database, the repository and the folder |
+| [6. Discovery, Assessment and Analysis: go further down the funnel](06-further-down.md) | Is it already catalogued? One analysis instead of a whole survey |
 
 ## The six walks
 

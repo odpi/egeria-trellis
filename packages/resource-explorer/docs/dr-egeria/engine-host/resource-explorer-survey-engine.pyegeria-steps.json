@@ -2,7 +2,7 @@
   "$comment": [
     "GENERATED with resource-explorer-survey-engine.md by packages/resource-explorer/scripts/generate_engine_host_declaration.py from DATABASE_STEP_REGISTRY. Do not hand-edit; regenerate.",
     "pyegeria steps for what pyegeria 6.2.3's Dr.Egeria cannot express (docs/dr-egeria-engine-host-gaps.md). resource_explorer.dr_egeria_runner runs them, in this order, before the document: each finds its element by qualifiedName (the link: by engine, service and requestType) and creates it only when absent.",
-    "TODO (engine host, step 2 live gate): add engine-host to the initialization batches only after that gate."
+    "Part of bootstrap batch engine-host (_batch.json): healed only when RE_ENGINE_HOST_HEAL is on, or by the Admin press."
   ],
   "steps": [
     {

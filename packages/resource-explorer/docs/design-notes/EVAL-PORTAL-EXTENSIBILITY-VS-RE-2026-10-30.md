@@ -1,5 +1,8 @@
 # Evaluation — the Portal's extension model vs RE's: what it has, what is missing, how to keep them coordinated (2026-10-30)
 
+> **Vocabulary note (2026-11-07):** the absence word `measured_nothing` was renamed `nothing_found` (trellis-analytics 0.3); this document now uses the new word. Results stored with the old word are still read.
+
+
 > Superseded in part by Q2(b) (#956) and pyegeria 6.2.18 (#959): analytics register through `pyegeria.analytics`, report specs through `pyegeria.report_specs`; `PYEGERIA_REPORT_SPEC_MODULES` is deprecated in 6.2.18 and removed in 6.2.19; dotted function paths are refused in 6.2.19 (pyegeria side: [ISSUE-173](https://github.com/odpi/egeria-python/blob/main/PYEGERIA_ISSUES.md) in egeria-python's PYEGERIA_ISSUES.md, [odpi/egeria-python#523](https://github.com/odpi/egeria-python/pull/523)). This evaluation was read against pyegeria 6.2.16.
 
 Owner's words (architect chat, 2026-10-30): "We also need to evaluate what (if anything) of RE's approach makes sense
@@ -34,7 +37,7 @@ must promise about its numbers.
 | Gap | In the Portal today | In RE/trellis today |
 |---|---|---|
 | **G1 A contract for what a number means** | a spec has `description`, `returns`, `binding_note`; a function returns whatever it returns; the honest-KPI rules are code in `overview_metrics` and prose in #603 | `Declaration`: result kind from a fixed vocabulary, measures with unit + as_of + value field (+ basis/capped/categories per the 2026-10-30 brief), four declared absence sentences, confidence by form, scope, answers; refused at registration when incomplete |
-| **G2 Absence vs zero at the framework level** | handled per function (the RE tile puts no counts at the top level so BAR cannot chart zeros; `count_elements` folds failure into 0 — #603 lesson 1, unverified as fixed in 6.2.16) | result states measured / not_measured / not_permitted / not_applicable / measured_nothing with declared sentences, read by every consumer; gate rule |
+| **G2 Absence vs zero at the framework level** | handled per function (the RE tile puts no counts at the top level so BAR cannot chart zeros; `count_elements` folds failure into 0 — #603 lesson 1, unverified as fixed in 6.2.16) | result states measured / not_measured / not_permitted / not_applicable / nothing_found with declared sentences, read by every consumer; gate rule |
 | **G3 Discovery** | two env-var lists of `module:callable` strings (`PYEGERIA_REPORT_SPEC_MODULES` (removed in 6.2.19), analytic modules), set as defaults in a handler; load order matters (the handler comments record a case where neither the demo specs nor the RE tile loaded until a refresh was added) | one Python entry-point group `trellis.analytics`; installing a package is the registration; the start-up line names what loaded and what was refused |
 | **G4 Generic rendering from the declaration** | `local-dashboards.html` renders known output formats (DICT/JSON/SERIES/BAR…); a tile's meaning is in the spec's prose | Understanding renders by `result_kind` (graph drawn; measure said with units; table); chat compiles extents; publish table writes-as from the declared annotation |
 | **G5 Provenance on the tile** | the RE tile carries state/as-of/version because `curation_coverage_tile` puts them in the dict; the Portal's tile template shows what it is given | every measure travels with unit, as-of, run, confidence form; "N of M" from basis (brief) |

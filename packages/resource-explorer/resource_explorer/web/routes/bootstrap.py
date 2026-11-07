@@ -30,6 +30,10 @@ class RunRequest(BaseModel):
     reconciler runs. This is the exact failure the missing-only gate prevents on
     the automatic path, so the manual path has to ask rather than assume.
     """
+    batch: str | None = None
+    """Run ONE batch (W65: Admin › Repair › "Declare RE's survey engine in Egeria" sends "engine-host"), whatever
+    its opt-in setting says, missing-only: refused without a write when its canary is present or unreadable. Never
+    with `force` (400)."""
 
 
 @router.get("/status")
@@ -50,15 +54,32 @@ async def bootstrap_run(request: Request, body: RunRequest | None = None) -> dic
     """
     admin_auth.require_admin(request)
     force = bool(body and body.force)
+    only = ((body.batch if body else None) or "").strip()
+    if only and force:
+        raise HTTPException(status_code=400, detail="a one-batch run is never forced")
+    if only and only not in {b.batch_id for b in bootstrap_mod.discover_batches(bootstrap_mod.DOCS_DIR)}:
+        raise HTTPException(status_code=404, detail=f"no bootstrap batch {only!r}")
     if bootstrap_mod._reinitializing:
         raise HTTPException(status_code=409, detail="A bootstrap heal is already running")
+    requested_by = (admin_auth._signed_in_sub(request) or "") if only else ""
     try:
-        out = await asyncio.to_thread(bootstrap_mod.check_and_heal, bootstrap_mod.DOCS_DIR, force)
+        out = await asyncio.to_thread(bootstrap_mod.check_and_heal, bootstrap_mod.DOCS_DIR, force, only=only,
+                                      requested_by=requested_by)
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"bootstrap run failed: {exc}")
     if out.get("running"):       # lost the lock inside check_and_heal: another pass (manual or automatic) holds it
         raise HTTPException(status_code=409, detail="A bootstrap heal is already running")
     return out
+
+
+@router.get("/price/{batch_id}")
+async def bootstrap_price(batch_id: str) -> dict:
+    """What a one-batch run of `batch_id` will do (W65's price line): read from the documents and RE's own run
+    rows, no Egeria call. 404 for no such batch."""
+    try:
+        return await asyncio.to_thread(bootstrap_mod.batch_price, batch_id)
+    except bootstrap_mod.UnknownBatch:
+        raise HTTPException(status_code=404, detail=f"no bootstrap batch {batch_id!r}")
 
 
 def _require_listed_admin(request: Request) -> str:

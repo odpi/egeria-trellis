@@ -279,7 +279,7 @@ def test_the_daemon_drain_leaves_a_private_row_pending_for_its_owner(world):
     assert after["status"] == "pending", (after["status"], after["last_error"])
     assert after["status"] != "dead"
     assert after["last_error"].startswith(
-        f"waiting for the owner, {OWNER}, to retry: the service account cannot see a private investigation"), \
+        f"waiting for the owner, {OWNER}, to retry: the service account cannot see a creator-only investigation"), \
         after["last_error"]
     assert after["attempts"] == row["attempts"]                 # no attempt burned
     assert summary.get("dead", 0) == 0
@@ -387,7 +387,7 @@ def test_a_daemon_relink_of_a_private_investigation_sends_nothing(world):
     finally:
         current_caller.reset(reset)
     assert eg.requests[n:] == []
-    words = f"waiting for the owner, {OWNER}, to retry: the service account cannot see a private investigation"
+    words = f"waiting for the owner, {OWNER}, to retry: the service account cannot see a creator-only investigation"
     assert res.errors == [words], res.errors
     # ensure_working_set refuses before anything (its recorded working set included) is looked at.
     assert others == [[words], [words], [words]], others
@@ -409,7 +409,7 @@ def test_attached_only_from_a_read_back_as_the_owner(world):
 
 # ── review round 1 (1841e4a8) ────────────────────────────────────────────────────────────────────────
 
-WAITING = f"waiting for the owner, {OWNER}, to retry: the service account cannot see a private investigation"
+WAITING = f"waiting for the owner, {OWNER}, to retry: the service account cannot see a creator-only investigation"
 
 
 def _bind_private(world, *, record_folio: str = ""):

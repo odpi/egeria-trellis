@@ -71,7 +71,7 @@ def test_f39_publish_rows_read_egerias_folder_survey_not_never_walked(registry, 
     assert rows["files"]["elsewhere"]["report_guid"] == "report-9"
 
 
-def test_f39_a_count_egeria_does_not_make_is_not_measured_never_measured_nothing(registry, tmp_path):
+def test_f39_a_count_egeria_does_not_make_is_not_measured_never_nothing_found(registry, tmp_path):
     """Egeria's survey does not single out data files: absence is never 0, and never "the folder is empty"."""
     _egeria_led_survey(registry, tmp_path)
     row = _inventory_rows(registry)["data_files"]

@@ -43,7 +43,7 @@ MANIFEST = StepManifest(
             not_permitted=("Not permitted: the survey that stored the activity snapshots could not read this "
                            "table's counters, so no rate is held for it."),
             not_applicable="Not applicable: a view holds no rows of its own, so nothing is written to it.",
-            measured_nothing="Measured: no rows were inserted, updated or deleted over the interval."),
+            nothing_found="Measured: no rows were inserted, updated or deleted over the interval."),
         extents=[ExtentDeclaration(
             name="tables_by_write_rate", fields=["scope", "Writes Per Day", "Writes In Interval", "Interval Days",
                                                   "fromAsOf", "toAsOf"],

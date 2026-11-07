@@ -2,9 +2,9 @@
 import json
 import sys
 
-from trellis_analytics.readers.ods import OdsReader
+from trellis_analytics.readers import ODS, open_reader
 from trellis_analytics.routines import curation_coverage
 
-r = curation_coverage(OdsReader(sys.argv[1]), "database", sys.argv[2])
+r = curation_coverage(open_reader(ODS, sys.argv[1]), "database", sys.argv[2])
 print(r.envelope.result_state.words, "·", r.summary)
 print(json.dumps(r.to_dict(), indent=2))
