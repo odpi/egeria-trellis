@@ -3,7 +3,7 @@ GENERATED from DATABASE_STEP_REGISTRY by packages/resource-explorer/scripts/gene
 Do not hand-edit; regenerate. Design: docs/design-notes/DESIGN-RE-ENGINE-HOST-BY-EQUIVALENCE.md §5.1 (E1).
 
 RE's bootstrap runs it only as part of the engine-host batch:
-by Admin › Repair › "Declare RE's survey engine in Egeria", or on its own when RE_ENGINE_HOST_HEAL is on (default off). Run it alone with
+by Admin › Repair › "Declare RE's survey engine in Egeria", or on its own unless RE_ENGINE_HOST_HEAL is set false (default on). Run it alone with
 `resource-explorer dr-egeria run engine-host/resource-explorer-survey-engine.md`.
 
 NOT EXPRESSIBLE IN Dr.Egeria (pyegeria 6.2.3 has no command for these). They are pyegeria steps in

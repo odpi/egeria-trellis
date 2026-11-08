@@ -53,14 +53,21 @@ _DEFAULT_CONFIG_PATH = Path(__file__).parent.parent / "configdata" / "question_c
 
 @dataclass(frozen=True)
 class QuestionAnswering:
-    kind: str  # analysis | direct | registry | human | chart | gap | partial | mixed | unknown
+    kind: str  # analysis | direct | registry | human | chart | gap | partial | mixed | portal | unknown
     analysis_ids: list[str] = field(default_factory=list)
     checks: list[str] = field(default_factory=list)
     note: str = ""
+    #: Catalog questions only (RS-W1-3): the Portal routines (configdata/portal_routines.yaml) the Overview tile
+    #: answering it rides on. Empty on every resource question, and then left out of `to_dict` so the shape every
+    #: existing caller reads is unchanged.
+    portal_routines: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict:
-        return {"kind": self.kind, "analysis_ids": self.analysis_ids,
-                "checks": self.checks, "note": self.note}
+        out = {"kind": self.kind, "analysis_ids": self.analysis_ids,
+               "checks": self.checks, "note": self.note}
+        if self.portal_routines:
+            out["portal_routines"] = self.portal_routines
+        return out
 
 
 @dataclass(frozen=True)
@@ -127,6 +134,7 @@ def _entry_from_yaml(raw: dict) -> QuestionCatalogEntry:
             analysis_ids=list(answering_raw.get("analysis_ids") or []),
             checks=list(answering_raw.get("checks") or []),
             note=answering_raw.get("note", ""),
+            portal_routines=list(answering_raw.get("portal_routines") or []),
         ),
         answering_mechanism=raw.get("answering_mechanism", ""),
         rationale=raw.get("rationale", ""),

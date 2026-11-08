@@ -3,7 +3,7 @@ name = "trellis-step-fs-layout-signals"
 dynamic = ["version"]
 description = "Analytic Library step: the recognisable structures in a file system (a project, a dataset layout, an archive, backups) from the names on RE's walk rows. Installable on its own; installing it is registering it."
 requires-python = ">=3.12,<4.0"
-dependencies = ["egeria-trellis-analytics>=0.3.1,<0.4"]
+dependencies = ["egeria-trellis-analytics>=0.4,<0.5"]
 
 # Installation is registration: Resource Explorer finds the step through this entry point.
 [project.entry-points."pyegeria.analytics"]

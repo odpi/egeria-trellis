@@ -768,22 +768,43 @@ host does. Design: [`design-notes/DESIGN-RE-ENGINE-HOST-BY-EQUIVALENCE.md`](desi
     as (RE's service account, `EGERIA_USER_ID`), and how long the last run took. When N < 8 the press is offered as
     "Complete the declaration" (F55). The press asks in the page, then runs the batch once through the same lock as
     the heal. It is refused with "a bootstrap heal is already running" while one runs. It is refused without a
-    write if the engine is already declared and complete ("already declared · content applied on <date> · 8 of 8
-    documents applied") or if Egeria cannot be checked. It works whatever `RE_ENGINE_HOST_HEAL` says.
-  - **The opt-in heal.** With `RE_ENGINE_HOST_HEAL=true`, the start-up check and the 10-minute loop run the batch on
-    their own when they find the engine missing. Off (the default), they only read whether it is there.
+    write if the engine is already declared and every document is verified present in Egeria ("already declared ·
+    content applied on <date> · verified present · 8 of 8 documents applied") or if Egeria cannot be checked ("… ·
+    NOT verified · …"). It works whatever `RE_ENGINE_HOST_HEAL` says. The price line ends "automatic heal: on | off
+    (RE_ENGINE_HOST_HEAL)".
+  - **The automatic heal, on by default** (owner decision D-A, RE-HEAL-LEDGER-TRUST 2026-11-07; it was opt-in
+    until then). The start-up check and the 10-minute loop run the batch on their own when they find the engine
+    missing. Only an explicit `RE_ENGINE_HOST_HEAL=false` (or 0/no/off) turns that off, for a deployment whose Egeria
+    must not host RE's engine (Q-M4); they then only read whether it is there, and the survey-definition batches
+    that require the engine are reported `blocked_by: engine-host` and not run.
   - **By hand**, one document at a time: `resource-explorer dr-egeria run engine-host/<doc>.md --as <user>`.
     These documents belong to a non-idempotent batch, so the runner needs `--force` for them.
   The press and the heal re-run documents that RE ran before a reset. They may, because they first verified the
   engine missing inside the heal lock. That check is made once, at the start of the pass, and covers every document
   of it. Each document's activity row records which earlier runs it set aside. A run in progress of any document
   refuses the whole pass before it starts. A pass that stops part way leaves the engine present. The press then
-  **completes the batch** (F55, 2026-11-04): with the engine present it runs only the documents that have no ok run
-  row here AND whose own created elements (the document's `Create …` qualified names) are verified absent in Egeria,
-  in order, and skips and names the rest — "completed the batch: ran library/change_rates.md, … · skipped 1 already
-  applied". A lookup that cannot answer refuses the whole pass ("not completed: could not verify that …'s elements
-  are absent · nothing run"): undetermined is never absent. The Admin row carries the count without a press
-  ("declared in this Egeria · 3 of 8 documents applied").
+  **completes the batch** (F55, 2026-11-04, revised by RE-HEAL-LEDGER-TRUST 2026-11-07): with the engine present it
+  verifies EVERY document against Egeria, whatever the run history says, by its own created elements (the
+  document's `Create …` qualified names). All present: skipped, "verified present". All absent: run, in order — with
+  "ledger says <doc> applied on <date> but <qn> is absent: re-applying" when a run row claimed otherwise (after the
+  2026-11-07 reset the run history survived and Egeria did not, and "8 of 8 documents applied" hid two documents
+  that had never run). Some present, some absent: not run, named, for a person (its links are not idempotent). A
+  lookup that cannot answer refuses the whole pass ("not completed: could not verify …'s elements in Egeria · nothing
+  run"): undetermined is never absent. After the documents, the press and the heal run the batch's `post_heal`, the
+  executor-link reconciler (`scripts/reconcile_executor_links.py --apply`): exactly one `Link Action to Action
+  Executor` to `ResourceExplorerSurvey` per declared GovernanceActionType, missing ones added, duplicates removed. Run
+  it by hand without `--apply` to see drift only. The Admin row carries the count without a press ("declared in this
+  Egeria · 3 of 8 documents applied"); run rows are stamped with the repository's metadataCollectionId, and rows
+  another repository wrote are not counted ("· N run rows from another repository ignored"). The id does NOT change
+  on a database reset (Egeria keeps it in the server configuration), so the stamp guards against RE pointed at a
+  different Egeria, not against a reset; the live verification above is what handles a reset.
+- **A Dr.Egeria document whose commands failed is a failed document**, even when the `dr_egeria` child exits 0: the
+  heal reads its summary table and stops at the first document with a FAILURE row, naming the command and Egeria's
+  words (2026-11-07: nine executor links failed with "Referenced element 'ResourceExplorerSurvey' … not found" under
+  "OK | ok"). A run with no summary table is not known to have worked and is not ok either.
+- **After an Egeria reset**, press "Declare RE's survey engine in Egeria" FIRST if the automatic pass has not run
+  yet, then the survey-definition heals: the survey-definition batches declare `"requires": ["engine-host"]`
+  because their steps link to the engine, and they are blocked until it is present.
 - **The declaration is checked per action type, not only per engine** (F55, the W64 residual). The engine host looks
   up each declared `ResourceExplorerSurvey::<request type>` by qualified name on its first sweep and then every
   twelfth (about once a minute); a card whose type is absent while the engine is present reads "not declared in this
@@ -840,7 +861,7 @@ other path is refused. There is also an admin route, `POST /api/bootstrap/dr-ege
 | `FEEDBACK_ADMIN_USERS` | Egeria user ids who count as admin: comma-separated (`alice,bob`), a JSON list (`["alice","bob"]`), a single name, or empty for none. Whitespace is trimmed. A value that cannot be read logs one warning at startup and counts as empty (no admins); it never stops the server. Required for the Dr.Egeria runner route. |
 | `FEEDBACK_ADMIN_TOKEN` | A shared secret an admin pastes once in Admin → Feedback (sent as `X-Admin-Token`). Counts as admin for the gates in "Admin gating", but not for the Dr.Egeria runner route. |
 | `RE_ENGINE_HOST_ENABLED` | Turns the engine host on (see above). Default off. |
-| `RE_ENGINE_HOST_HEAL` | Lets the bootstrap re-declare RE's survey engine on its own when it is missing (the `engine-host` batch). Default off: the engine is then re-declared only by Admin › Repair › "Declare RE's survey engine in Egeria". |
+| `RE_ENGINE_HOST_HEAL` | Lets the bootstrap re-declare RE's survey engine on its own when it is missing (the `engine-host` batch). **Default on** since 2026-11-07 (owner D-A); set false for a deployment whose Egeria must not host RE's engine (Q-M4): the engine is then re-declared only by Admin › Repair › "Declare RE's survey engine in Egeria", and the survey-definition batches that require it are reported blocked. |
 | `RE_DR_EGERIA_DOCS_DIR` | Moves the folder the Dr.Egeria runner reads documents from. |
 | `EXPLORER_DRAFT_ZONE`, `EXPLORER_PUBLISH_ZONES` | Optional zones RE stamps; see "Governance zones". |
 

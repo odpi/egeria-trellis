@@ -25,18 +25,19 @@
     "documents or scripts. Listed after survey-definitions rather than before purely because that",
     "is authoring order; the two do not depend on each other, only both on questions.",
     "",
-    "engine-host (added 2026-11-04, F54) is LAST: nothing depends on it and it depends on nothing above (its elements are",
-    "engines, services and governance action types, not glossary terms). It is the one OPT-IN batch: its _batch.json",
-    "declares \"opt_in\": \"RE_ENGINE_HOST_HEAL\", and bootstrap heals it on its own only when that setting is true",
-    "(default off; it is then reported opted_out, and RE still says when the engine is missing). Admin > Repair >",
-    "\"Declare RE's survey engine in Egeria\" runs it whatever the setting says (POST /api/bootstrap/run {batch})."
+    "engine-host (added 2026-11-04, F54) runs BEFORE the survey-definition batches since RE-HEAL-LEDGER-TRUST",
+    "(2026-11-07): their steps' 'Link Action to Action Executor' blocks target the engine it declares, and both declare",
+    "\"requires\": [\"engine-host\"] in their _batch.json, so bootstrap.order_by_requires would put it first anyway; this",
+    "list says the same thing so the file can be read on its own. It is healed by default; RE_ENGINE_HOST_HEAL=false",
+    "opts a deployment out (Q-M4), and the dependent batches are then reported blocked_by engine-host and nothing of",
+    "them runs. Admin > Repair > \"Declare RE's survey engine in Egeria\" runs it whatever the setting says."
   ],
   "folders": [
     "foundations",
     "questions",
+    "engine-host",
     "survey-definitions",
     "survey-definitions-database",
-    "governance-metrics",
-    "engine-host"
+    "governance-metrics"
   ]
 }

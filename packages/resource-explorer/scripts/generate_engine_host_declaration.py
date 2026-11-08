@@ -63,7 +63,7 @@ STEPS = DOC.with_name(DOC.stem + ".pyegeria-steps.json")      # dr_egeria_runner
 
 #: Every generated document says how it is run as part of the engine-host batch (F54).
 BATCH_RUN_WORDS = ("RE's bootstrap runs it only as part of the engine-host batch:\nby Admin › Repair › \"Declare RE's "
-                   "survey engine in Egeria\", or on its own when RE_ENGINE_HOST_HEAL is on (default off).")
+                   "survey engine in Egeria\", or on its own unless RE_ENGINE_HOST_HEAL is set false (default on).")
 
 ENGINE_DESCRIPTION = (
     "Resource Explorer's survey engine. It is hosted by Resource Explorer's worker, outside any Egeria engine "
@@ -578,7 +578,7 @@ def render_mixed_processes() -> dict[Path, str]:
 
 BATCH = DOC.parent / "_batch.json"          # bootstrap.BATCH_MANIFEST_FILE
 
-#: The opt-in setting of the engine-host batch (bootstrap.Batch.opt_in): the automatic heal runs it only when on.
+#: The setting of the engine-host batch (bootstrap.Batch.opt_in): the automatic heal runs it unless it is set false.
 OPT_IN_ENV = "RE_ENGINE_HOST_HEAL"
 
 
@@ -605,10 +605,11 @@ def render_batch(documents) -> str:
             "RE's survey engine and everything that hangs off it: the SurveyActionEngine and its services (the",
             "documents' pyegeria steps), the GovernanceActionTypes with their executor links, and the mixed process.",
             "",
-            f"OPT-IN. bootstrap heals this batch on its own ONLY when {OPT_IN_ENV} is true (default off): a heal",
-            "writes the engine and some sixty elements, and a deployment whose Egeria must not host RE's engine (Q-M4)",
-            "must not get it by surprise. Off, the batch is reported opted_out and RE says the engine is missing;",
-            "Admin > Repair > \"Declare RE's survey engine in Egeria\" runs it whatever the setting says.",
+            f"HEALED BY DEFAULT (owner D-A, RE-HEAL-LEDGER-TRUST 2026-11-07). {OPT_IN_ENV} keeps its name, but an",
+            "UNSET variable reads as on; only an explicit 0/false/no/off opts out, for a deployment whose Egeria must",
+            "not host RE's engine (Q-M4). Off, the batch is reported opted_out and RE says the engine is missing; the",
+            "survey-definition batches that require it (\"requires\": [\"engine-host\"]) are then blocked_by it and",
+            "nothing of them runs. Admin > Repair > \"Declare RE's survey engine in Egeria\" runs it whatever the setting says.",
             "",
             "NOT idempotent: \"Link Action to Action Executor\" and the process links do not look for an existing",
             "relationship. Each document is run through dr_egeria_runner (pyegeria steps first, then the document),",
@@ -617,11 +618,15 @@ def render_batch(documents) -> str:
             "covers every document of it (after document 1 the engine exists, and 2..n still run). A run in progress",
             "of any document refuses the whole pass before it starts.",
             "",
-            "No post_heal reconciler (Architect ruling Q2, 2026-11-04): the batch is never re-run while the engine is",
-            "present, so a heal never meets the links an earlier run made; and a governance action type that",
-            "survived a reset lost its old executor link with the deleted engine, so the link a heal makes is the",
-            "first. A pass that fails part way leaves the engine present: the Admin press then says how many of the",
-            "documents were applied, and the rest is run by hand (dr-egeria run --force).",
+            "post_heal: scripts/reconcile_executor_links.py --apply (RE-HEAL-LEDGER-TRUST decision 5, revisiting the",
+            "Architect's Q2 ruling of 2026-11-04 on the 2026-11-07 reset's evidence): exactly ONE executor link to",
+            "ResourceExplorerSurvey per GovernanceActionType the documents declare; duplicates removed, missing added,",
+            "as the heal's own write inside the lock, recorded as an activity row. It runs after a heal and after a",
+            "press that completes the batch or finds every document verified present, so a type that survived (or",
+            "was re-made by hand) without its link gets one, and a repeat never leaves two.",
+            "",
+            "With the engine present, the press verifies EVERY document against Egeria (decision 1): the run",
+            "history is a hint, Egeria is the truth.",
             "",
             f"The canary is the engine, by qualifiedName (the lookup asks no type: a wrong type reads as missing).",
         ],
@@ -631,6 +636,12 @@ def render_batch(documents) -> str:
         "runner": "dr_egeria_runner",
         "canary": {"type": eh.ENGINE_TYPE_NAME, "qualified_name": eh.ENGINE_QUALIFIED_NAME},
         "files": files,
+        "post_heal": {
+            "script": "scripts/reconcile_executor_links.py",
+            "args": ["--apply"],
+            "reason": "Link Action to Action Executor is not idempotent and a reset can leave a type without its "
+                      "link: exactly one executor link to ResourceExplorerSurvey per declared GovernanceActionType.",
+        },
     }
     return json.dumps(doc, indent=2, ensure_ascii=False) + "\n"
 

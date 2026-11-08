@@ -166,9 +166,13 @@ def test_the_press_is_refused_before_any_egeria_call(registry, monkeypatch):
 
 # ── (b) completing a partial batch from the page ──────────────────────────────
 
+X_QN = "ResourceExplorerSurvey::re-x"     # library/x.md creates its OWN element, so the two can be verified apart
+
+
 def _two_document_batch(root):
     (root / "engine-host" / "library").mkdir()
-    (root / "engine-host" / "library" / "x.md").write_text((root / "plain" / "only.md").read_text())
+    (root / "engine-host" / "library" / "x.md").write_text(
+        (root / "plain" / "only.md").read_text().replace("ResourceExplorerSurvey::re-db-derived", X_QN))
     _engine_batch(root, files=("decl.md", "library/x.md"))
 
 
@@ -192,7 +196,8 @@ def test_a_present_canary_completes_the_documents_with_no_ok_row_whose_elements_
     monkeypatch.setattr("resource_explorer.registry.ProjectRegistry", lambda *a, **k: reg)
     RunnerFakes(monkeypatch)
     runner.run_document("engine-host/decl.md", force=True, identity=IDENT, registry=reg)    # act A: document 1 applied
-    asked = _lookups(monkeypatch, {"ResourceExplorerSurvey::re-db-derived": False})
+    # RE-HEAL-LEDGER-TRUST decision 1: the applied document is verified too (present: skipped), not trusted.
+    asked = _lookups(monkeypatch, {"ResourceExplorerSurvey::re-db-derived": True, X_QN: False})
     seen = []
     real = runner.run_document
 
@@ -203,18 +208,22 @@ def test_a_present_canary_completes_the_documents_with_no_ok_row_whose_elements_
     monkeypatch.setattr(runner, "run_document", spy)
     out = bs.check_and_heal(root, only="engine-host", requested_by="dan")["batches"]["engine-host"]
     assert out["action"] == "completed", out
-    assert out["reason"].startswith("completed the batch: ran library/x.md · skipped 1 already applied · 1 document run"), out
+    assert out["reason"].startswith("completed the batch: ran library/x.md · skipped 1 verified present: decl.md · "
+                                    "1 document run"), out
     assert [p for p, _w in seen] == ["engine-host/library/x.md"], "the applied document is not run again"
-    assert seen[0][1].startswith("completing the engine-host batch: canary present, 1 document(s) with no ok run")
+    assert seen[0][1].startswith("completing the engine-host batch: canary present, 1 document(s) whose created "
+                                 "elements were verified absent")
     assert "pressed by dan" in seen[0][1]
-    assert asked == ["ResourceExplorerSurvey::re-db-derived"], "one lookup per created element of a pending document"
+    assert asked == ["ResourceExplorerSurvey::re-db-derived", X_QN], "one lookup per created element of EVERY document"
     rows = [r for r in _rows(reg) if json.loads(r["detail"]).get("document") == "engine-host/library/x.md"]
     assert len(rows) == 1 and rows[0]["status"] == "ok"
     assert bs.already_declared_words(bs.discover_batches(root)[0], registry=reg).endswith("2 of 2 documents applied")
-    # Pressed again: nothing left to run, and nothing is written.
+    # Pressed again, both now present: nothing left to run, and nothing is written.
+    _lookups(monkeypatch, {"ResourceExplorerSurvey::re-db-derived": True, X_QN: True})
     monkeypatch.setattr(runner, "run_document", lambda *a, **k: pytest.fail("a completed batch is never re-run"))
     again = bs.check_and_heal(root, only="engine-host")["batches"]["engine-host"]
-    assert again["action"] == "present" and again["reason"].endswith("2 of 2 documents applied"), again
+    assert again["action"] == "present", again
+    assert "· verified present · 2 of 2 documents applied · nothing left to run" in again["reason"], again
 
 
 def test_a_pending_document_whose_elements_are_present_is_skipped_and_named(root, reg, monkeypatch):
@@ -225,13 +234,14 @@ def test_a_pending_document_whose_elements_are_present_is_skipped_and_named(root
     monkeypatch.setattr("resource_explorer.registry.ProjectRegistry", lambda *a, **k: reg)
     RunnerFakes(monkeypatch)
     runner.run_document("engine-host/decl.md", force=True, identity=IDENT, registry=reg)
-    _lookups(monkeypatch, {"ResourceExplorerSurvey::re-db-derived": True})      # a hand run Egeria holds, no row here
+    _lookups(monkeypatch, {"ResourceExplorerSurvey::re-db-derived": True, X_QN: True})  # x.md: a hand run, no row here
     monkeypatch.setattr(runner, "run_document", lambda *a, **k: pytest.fail("present elements are never re-created"))
     out = bs.check_and_heal(root, only="engine-host")["batches"]["engine-host"]
     assert out["action"] == "present"
     assert out["reason"].startswith("already declared · content applied on 20")
     assert "nothing left to run" in out["reason"]
-    assert "skipped 1 whose elements are present: library/x.md (ResourceExplorerSurvey::re-db-derived present)" in out["reason"]
+    assert "verified present" in out["reason"]
+    assert "skipped 2 verified present: decl.md, library/x.md" in out["reason"]
 
 
 def test_a_lookup_that_cannot_answer_refuses_the_whole_pass(root, reg, monkeypatch):
@@ -244,8 +254,10 @@ def test_a_lookup_that_cannot_answer_refuses_the_whole_pass(root, reg, monkeypat
     monkeypatch.setattr(runner, "run_document", lambda *a, **k: pytest.fail("undetermined is never absent"))
     out = bs.check_and_heal(root, only="engine-host")["batches"]["engine-host"]
     assert out["action"] == "present"
-    assert out["reason"].startswith("already declared · no run of its first document is recorded here · 0 of 2 documents applied")
-    assert "not completed: could not verify that decl.md's elements are absent (ResourceExplorerSurvey::re-db-derived could not be looked up) · nothing run" in out["reason"]
+    assert out["reason"].startswith("already declared · no run of its first document is recorded here · NOT verified · "
+                                    "0 of 2 documents applied")
+    assert ("not completed: could not verify decl.md's elements in Egeria (ResourceExplorerSurvey::re-db-derived could "
+            "not be looked up) · nothing run") in out["reason"]
     assert _rows(reg) == []
 
 
@@ -256,7 +268,7 @@ def test_a_completion_that_fails_part_way_says_where_it_stopped(root, reg, monke
     _canary(monkeypatch, True)
     monkeypatch.setattr("resource_explorer.registry.ProjectRegistry", lambda *a, **k: reg)
     RunnerFakes(monkeypatch)
-    _lookups(monkeypatch, {"ResourceExplorerSurvey::re-db-derived": False})
+    _lookups(monkeypatch, {"ResourceExplorerSurvey::re-db-derived": False, X_QN: False})
 
     def boom(path, **kw):
         raise RuntimeError("Egeria answered 500")

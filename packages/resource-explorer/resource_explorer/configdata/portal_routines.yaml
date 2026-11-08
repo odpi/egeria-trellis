@@ -1,0 +1,86 @@
+# Portal routines a catalog-wide question (Resource Types = catalog) may name in its `Answering Analysis` cell.
+#
+# Hand-maintained (RS-W1-3, 2026-11-07). These are the names pyegeria's analytic registry gives the Egeria
+# Overview's metric functions (pyegeria/view/analytic_registry.py at pyegeria main 3f1fa354), each living in
+# pyegeria/view/overview_metrics.py. Step (a) of design note §9.7 replaces this list with a read of the registry's
+# own declarations (Wave 2 brief W2-1a gives the routines their declarations); until then, add a routine here
+# when a catalog question names it, and never invent one the registry does not have.
+#
+# scripts/csv_to_question_catalog_yaml.py reads this as KNOWN_PORTAL_ROUTINES, a third known-id source beside the
+# analysis catalogue and the step ids. A name a catalog row gives that is in no source is `kind: unknown`, as
+# for any other row.
+#
+# Each entry: name (the registry name), module (where the function lives), purpose (one line).
+routines:
+  - name: governed_coverage
+    module: pyegeria.view.overview_metrics
+    purpose: Share of Assets carrying at least one governance classification, with by-classification and top-zone breakdowns.
+  - name: ownership_coverage
+    module: pyegeria.view.overview_metrics
+    purpose: Share of Assets carrying an Ownership classification, with a by-owner-type breakdown.
+  - name: business_value_signals
+    module: pyegeria.view.overview_metrics
+    purpose: The signals behind the Business Value tiles (confidential, described and duplicate Asset counts).
+  - name: certifications_summary
+    module: pyegeria.view.overview_metrics
+    purpose: Active and expiring Certification relationships, licenses, and Exception counts.
+  - name: people_counts
+    module: pyegeria.view.overview_metrics
+    purpose: Counts of Person, Team, Organization, ITProfile and Community profiles.
+  - name: feedback_summary
+    module: pyegeria.view.overview_metrics
+    purpose: Ratings, comments, likes, tags and note logs, counted by type.
+  - name: usage_context_counts
+    module: pyegeria.view.overview_metrics
+    purpose: InformationSupplyChain and SolutionBlueprint counts, the structures that put assets in a usage context.
+  - name: semantic_grounding
+    module: pyegeria.view.overview_metrics
+    purpose: SemanticAssignment relationship count and coverage percent (the glossary-linked share).
+  - name: context_readiness_funnel
+    module: pyegeria.view.overview_metrics
+    purpose: Cataloged, documented, classified, lineage-traced and AI-ready funnel counts.
+  - name: ai_ready_assets
+    module: pyegeria.view.overview_metrics
+    purpose: Assets that are governed AND documented AND lineage-traced at once.
+  - name: growth_series
+    module: pyegeria.view.overview_metrics
+    purpose: Snapshot growth series (assets, terms, governed, products) through asOfTime, one point per window step.
+  - name: term_definition_completeness
+    module: pyegeria.view.overview_metrics
+    purpose: Share of GlossaryTerms with a non-empty description.
+  - name: active_contributors
+    module: pyegeria.view.overview_metrics
+    purpose: Distinct users behind at least one feedback relationship.
+  - name: count_elements
+    module: pyegeria.view.overview_metrics
+    purpose: Count of active elements of a given type, optionally filtered by classification.
+  - name: count_elements_by_property
+    module: pyegeria.view.overview_metrics
+    purpose: Count of active elements of a type whose named string property equals a value.
+  - name: counts_by_type
+    module: pyegeria.view.overview_metrics
+    purpose: Per-type element counts for a list of (label, type name) pairs.
+  - name: contextualised_coverage
+    module: pyegeria.view.overview_metrics
+    purpose: Percent of Assets linked to a SolutionComponent through ImplementedBy (a proxy for design context).
+  - name: karma_leaderboard
+    module: pyegeria.view.overview_metrics
+    purpose: Top people by karma points, from one bounded ContributionRecord fetch.
+  - name: engagement_series
+    module: pyegeria.view.overview_metrics
+    purpose: Weekly feedback-event trend (comments, ratings, likes, tags, note logs).
+  - name: orphan_glossary_terms
+    module: pyegeria.view.overview_metrics
+    purpose: Glossary terms with no SemanticAssignment to anything.
+  - name: stale_assets
+    module: pyegeria.view.overview_metrics
+    purpose: Assets with no update in the last N days (default 180).
+  - name: metric_trend
+    module: pyegeria.view.overview_metrics
+    purpose: Any single-snapshot routine re-run once per asOfTime snapshot, as a time series.
+  - name: asset_composition
+    module: pyegeria.view.overview_metrics
+    purpose: The composition of a type by subtype, each counted in the viewer and/or repository population.
+  - name: control_implementation_summary
+    module: pyegeria.view.overview_metrics
+    purpose: Controls in a statement of applicability, counted by implementation status.

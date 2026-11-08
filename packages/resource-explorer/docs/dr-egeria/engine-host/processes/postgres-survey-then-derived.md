@@ -11,7 +11,7 @@ Needs, already declared: RE's engine ResourceExplorerSurvey serving re-database-
 (engine-host/library/), and the content pack's engines. Every element here has a Dr.Egeria command, so there is no
 pyegeria steps file. Run it with `resource-explorer dr-egeria run engine-host/processes/postgres-survey-then-derived.md`;
 RE's bootstrap runs it only as part of the engine-host batch:
-by Admin › Repair › "Declare RE's survey engine in Egeria", or on its own when RE_ENGINE_HOST_HEAL is on (default off). The Link commands are NOT safe to repeat; the runner refuses a second run of the same
+by Admin › Repair › "Declare RE's survey engine in Egeria", or on its own unless RE_ENGINE_HOST_HEAL is set false (default on). The Link commands are NOT safe to repeat; the runner refuses a second run of the same
 content unless forced. Start a run with Dr.Egeria's Initiate Governance Action Process, or RE's Run on the database.
 -->
 

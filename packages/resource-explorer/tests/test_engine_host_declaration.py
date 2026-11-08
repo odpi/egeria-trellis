@@ -93,16 +93,20 @@ def test_changing_the_registry_entry_changes_the_document(monkeypatch):
     assert _script().render() != DOC.read_text()
 
 
-def test_the_declaration_is_an_opt_in_bootstrap_batch_last_in_order(monkeypatch):
-    """F54 (2026-11-04): engine-host is a bootstrap batch, LAST, that the automatic heal runs only when
-    RE_ENGINE_HOST_HEAL is on (default off), through dr_egeria_runner (so its pyegeria steps run)."""
+def test_the_declaration_is_a_default_on_bootstrap_batch_before_its_dependents(monkeypatch):
+    """F54 (2026-11-04): engine-host is a bootstrap batch run through dr_egeria_runner (so its pyegeria steps run).
+    RE-HEAL-LEDGER-TRUST (2026-11-07): healed by default (owner D-A: RE_ENGINE_HOST_HEAL unset reads on, only an
+    explicit false opts out), and ordered before the survey-definition batches that require it."""
     from resource_explorer import bootstrap
 
     monkeypatch.delenv("RE_ENGINE_HOST_HEAL", raising=False)
     batches = bootstrap.discover_batches()
-    assert batches[-1].batch_id == "engine-host"
-    b = batches[-1]
-    assert b.opt_in == "RE_ENGINE_HOST_HEAL" and b.opted_in is False
+    ids = [x.batch_id for x in batches]
+    b = batches[ids.index("engine-host")]
+    assert ids.index("engine-host") < ids.index("survey-definitions") < ids.index("survey-definitions-database")
+    assert b.opt_in == "RE_ENGINE_HOST_HEAL" and b.opted_in is True
+    monkeypatch.setenv("RE_ENGINE_HOST_HEAL", "false")
+    assert bootstrap.discover_batches()[ids.index("engine-host")].opted_in is False
     assert b.runner == "dr_egeria_runner" and b.idempotent is False
     assert b.canary == {"type": "SurveyActionEngine", "qualified_name": "ResourceExplorerSurvey"}
     assert b.files == ["resource-explorer-survey-engine.md", "library/change_rates.md", "library/database_staleness.md",

@@ -2223,7 +2223,7 @@ requires-dist = [
     { name = "psycopg2-binary", specifier = ">=2.9.9" },
     { name = "pydantic", specifier = ">=2.0.0" },
     { name = "pydantic-settings", specifier = ">=2.0.0" },
-    { name = "pyegeria", specifier = ">=6.2.21" },
+    { name = "pyegeria", specifier = ">=6.2.24" },
     { name = "pygments", specifier = ">=2.17.0" },
     { name = "pygount", specifier = ">=1.6.1" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0.0" },
@@ -2248,14 +2248,14 @@ provides-extras = ["dev", "dashboard", "gpu", "onnx-tools", "phoenix"]
 
 [[package]]
 name = "egeria-trellis-analytics"
-version = "0.3.1"
+version = "0.4.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "pyegeria" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/c1/f5/1dfc1936dfb74a84a76dad001199825ded6ebdd96f1a46cb6bfaa8e6f38f/egeria_trellis_analytics-0.3.1.tar.gz", hash = "sha256:78d70a16ef3100a4434fd240148c7f3d0d796a343eed590dc6b108a9b355ffbf", size = 103460, upload-time = "2026-11-07T13:52:54.788Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/4a/34/5f1e897aeb392c8132971a870963b515043e0a62a465dc3686a44cd810c6/egeria_trellis_analytics-0.4.0.tar.gz", hash = "sha256:cf0a4787e9831b9826337a9888cccff791949b7cca3743376bd78e049b2a09bf", size = 121185, upload-time = "2026-11-07T20:18:35Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/de/25/adfc20fd28baef151391ddd623cfb2e0d4a04d364eb85e6018fb29598df6/egeria_trellis_analytics-0.3.1-py3-none-any.whl", hash = "sha256:a6eb0327bbee8d0a985c0fa789dd57385a8616ed1e6e74251e55f3a668ae3cbb", size = 81304, upload-time = "2026-11-07T13:52:53.432Z" },
+    { url = "https://files.pythonhosted.org/packages/9a/e0/f87e358aca55c8a398b58b45446d62d3acdc430b0a4e843511657f792019/egeria_trellis_analytics-0.4.0-py3-none-any.whl", hash = "sha256:b622935363a887aa5d5d52f0f80b9f8ed1836dfadc5b640f4a588aa1d1e203cd", size = 94522, upload-time = "2026-11-07T20:18:33.713Z" },
 ]
 
 [[package]]
@@ -7520,7 +7520,7 @@ wheels = [
 
 [[package]]
 name = "pyegeria"
-version = "6.2.21"
+version = "6.2.24"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "altair" },
@@ -7554,9 +7554,9 @@ dependencies = [
     { name = "validators" },
     { name = "wcwidth" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/43/d7/81f69bf38174daa983c1ed46d2b5df3c4980845ddd531fa81305311ee93e/pyegeria-6.2.21.tar.gz", hash = "sha256:58be397e94b6d62913214d4d3203db42b3fae3848362e6f67942731007d47b18", size = 2137895, upload-time = "2026-11-04T20:43:01.191Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/20/38/bb1e4136609a79b4ddc23906f33e68e7dd0ee5a1d98e9338e9e39677ab9f/pyegeria-6.2.24.tar.gz", hash = "sha256:1f8951af8ea3e52f3f032e41038afcdcdcddc3dd74cb9932e54d1bf61d844a76", size = 2198199, upload-time = "2026-11-07T21:56:08.787Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/6b/d3/24194e6e1874e0f53582131fd74410108f736e21600ab8191ef8392d0d83/pyegeria-6.2.21-py3-none-any.whl", hash = "sha256:48efc6326cb5dc14e616471191ceeb38a377cd08759225129598bc460a67abe3", size = 1927512, upload-time = "2026-11-04T20:42:58.755Z" },
+    { url = "https://files.pythonhosted.org/packages/46/bc/9fbcc9fe463c634cd16977adf593c21e167e01bfc76b8ee2cecb3577360a/pyegeria-6.2.24-py3-none-any.whl", hash = "sha256:115a7276b80f629f5511660158fd55df0b8aed8b7b515cf02709ca966f4b7326", size = 1967488, upload-time = "2026-11-07T21:56:06.256Z" },
 ]
 
 [[package]]
@@ -8615,7 +8615,7 @@ requires-dist = [
     { name = "certifi", specifier = ">=2026.10.18" },
     { name = "cryptography", specifier = ">=43.0.0" },
     { name = "docling", specifier = ">=2.0.0" },
-    { name = "egeria-trellis-analytics", specifier = ">=0.3.1,<0.4" },
+    { name = "egeria-trellis-analytics", specifier = ">=0.4,<0.5" },
     { name = "fastapi", specifier = ">=0.115.0" },
     { name = "great-expectations", specifier = ">=0.18.0" },
     { name = "httpx", specifier = ">=0.27.0" },
@@ -8640,7 +8640,7 @@ requires-dist = [
     { name = "pyarrow", specifier = ">=23.0.1" },
     { name = "pydantic", specifier = ">=2.10.0" },
     { name = "pydantic-settings", specifier = ">=2.7.0" },
-    { name = "pyegeria", specifier = ">=6.2.21" },
+    { name = "pyegeria", specifier = ">=6.2.24" },
     { name = "pygithub", specifier = ">=2.5.0" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.3.0" },
     { name = "pytest-asyncio", marker = "extra == 'dev'", specifier = ">=0.24.0" },
@@ -10188,12 +10188,12 @@ re = [
 
 [package.metadata]
 requires-dist = [
-    { name = "egeria-trellis-analytics", specifier = ">=0.3.1,<0.4" },
+    { name = "egeria-trellis-analytics", specifier = ">=0.4,<0.5" },
     { name = "ipykernel", marker = "extra == 'dev'" },
     { name = "nbformat", marker = "extra == 'dev'" },
     { name = "papermill", marker = "extra == 'dev'" },
     { name = "psycopg2-binary", marker = "extra == 'postgres'" },
-    { name = "pyegeria", specifier = ">=6.2.21" },
+    { name = "pyegeria", specifier = ">=6.2.24" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.3.0" },
     { name = "python-dotenv", marker = "extra == 'dotenv'" },
     { name = "resource-explorer", marker = "extra == 're'", editable = "packages/resource-explorer" },
@@ -10264,7 +10264,7 @@ egeria = [
 
 [package.metadata]
 requires-dist = [
-    { name = "pyegeria", marker = "extra == 'egeria'", specifier = ">=6.2.21" },
+    { name = "pyegeria", marker = "extra == 'egeria'", specifier = ">=6.2.24" },
     { name = "pyjwt", specifier = ">=2.8.0" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.3.0" },
     { name = "pytest-cov", marker = "extra == 'dev'", specifier = ">=5.0.0" },
@@ -10342,7 +10342,7 @@ dependencies = [
 ]
 
 [package.metadata]
-requires-dist = [{ name = "egeria-trellis-analytics", specifier = ">=0.3.1,<0.4" }]
+requires-dist = [{ name = "egeria-trellis-analytics", specifier = ">=0.4,<0.5" }]
 
 [[package]]
 name = "trellis-step-database-staleness"
@@ -10352,7 +10352,7 @@ dependencies = [
 ]
 
 [package.metadata]
-requires-dist = [{ name = "egeria-trellis-analytics", specifier = ">=0.3.1,<0.4" }]
+requires-dist = [{ name = "egeria-trellis-analytics", specifier = ">=0.4,<0.5" }]
 
 [[package]]
 name = "trellis-step-fs-activity"
@@ -10362,7 +10362,7 @@ dependencies = [
 ]
 
 [package.metadata]
-requires-dist = [{ name = "egeria-trellis-analytics", specifier = ">=0.3.1,<0.4" }]
+requires-dist = [{ name = "egeria-trellis-analytics", specifier = ">=0.4,<0.5" }]
 
 [[package]]
 name = "trellis-step-fs-change-rates"
@@ -10372,7 +10372,7 @@ dependencies = [
 ]
 
 [package.metadata]
-requires-dist = [{ name = "egeria-trellis-analytics", specifier = ">=0.3.1,<0.4" }]
+requires-dist = [{ name = "egeria-trellis-analytics", specifier = ">=0.4,<0.5" }]
 
 [[package]]
 name = "trellis-step-fs-duplicates"
@@ -10382,7 +10382,7 @@ dependencies = [
 ]
 
 [package.metadata]
-requires-dist = [{ name = "egeria-trellis-analytics", specifier = ">=0.3.1,<0.4" }]
+requires-dist = [{ name = "egeria-trellis-analytics", specifier = ">=0.4,<0.5" }]
 
 [[package]]
 name = "trellis-step-fs-layout-signals"
@@ -10392,7 +10392,7 @@ dependencies = [
 ]
 
 [package.metadata]
-requires-dist = [{ name = "egeria-trellis-analytics", specifier = ">=0.3.1,<0.4" }]
+requires-dist = [{ name = "egeria-trellis-analytics", specifier = ">=0.4,<0.5" }]
 
 [[package]]
 name = "trellis-step-fs-permissions"
@@ -10402,7 +10402,7 @@ dependencies = [
 ]
 
 [package.metadata]
-requires-dist = [{ name = "egeria-trellis-analytics", specifier = ">=0.3.1,<0.4" }]
+requires-dist = [{ name = "egeria-trellis-analytics", specifier = ">=0.4,<0.5" }]
 
 [[package]]
 name = "trellis-step-hub-tables"
@@ -10412,7 +10412,7 @@ dependencies = [
 ]
 
 [package.metadata]
-requires-dist = [{ name = "egeria-trellis-analytics", specifier = ">=0.3.1,<0.4" }]
+requires-dist = [{ name = "egeria-trellis-analytics", specifier = ">=0.4,<0.5" }]
 
 [[package]]
 name = "trellis-step-schema-comparison"
@@ -10422,7 +10422,7 @@ dependencies = [
 ]
 
 [package.metadata]
-requires-dist = [{ name = "egeria-trellis-analytics", specifier = ">=0.3.1,<0.4" }]
+requires-dist = [{ name = "egeria-trellis-analytics", specifier = ">=0.4,<0.5" }]
 
 [[package]]
 name = "trellis-step-statistics-freshness"
@@ -10432,7 +10432,7 @@ dependencies = [
 ]
 
 [package.metadata]
-requires-dist = [{ name = "egeria-trellis-analytics", specifier = ">=0.3.1,<0.4" }]
+requires-dist = [{ name = "egeria-trellis-analytics", specifier = ">=0.4,<0.5" }]
 
 [[package]]
 name = "trellis-vectorstore"

@@ -18,4 +18,9 @@ setting off it is reported `opted_out`. RE still reads whether the engine is the
 and an admin declares it with Admin › Repair › "Declare RE's survey engine in Egeria" (`POST /api/bootstrap/run
 {"batch": "engine-host"}`). See `docs/admin-guide.md`, "Engine host".
 
+**Not a batch, on purpose: `questions-catalog/`** (RS-W1-3, 2026-11-07). It holds `catalog-questions.md`, the Egeria
+Overview's catalog-wide questions, generated from `resource_questions.csv` with `--resource-type catalog`. It has no
+`_batch.json`, so the heal never runs it: its Perspective links have no reconciler, and publishing it is one
+owner-approved run, once. Do not add a manifest. See `resource_questions_guide.md`, "Catalog questions".
+
 One document, outside any heal: `resource-explorer dr-egeria run <path.md> [--dry-run] [--force]`.
