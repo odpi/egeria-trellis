@@ -9,10 +9,10 @@ dependencies = [
     # The library, from its own repository since LS2 (brief section 3): the seam these modules implement
     # (trellis_analytics.readers), the routines, the manifests and the Portal tile's spec. Its wheel declares the
     # pyegeria.analytics and pyegeria.report_specs entry points, so this package declares neither.
-    "egeria-trellis-analytics>=0.3.1,<0.4",
-    # The pyegeria floor trellis runs against (raised to 6.2.21 on main, 2026-11-04); kept here so this package's
+    "egeria-trellis-analytics>=0.4,<0.5",
+    # The pyegeria floor trellis runs against (raised to 6.2.24 with RS-W2-1b, 2026-11-07); kept here so this package's
     # floor is never below resource-explorer's, whatever floor the library wheel itself declares.
-    "pyegeria>=6.2.21",
+    "pyegeria>=6.2.24",
 ]
 
 [project.optional-dependencies]

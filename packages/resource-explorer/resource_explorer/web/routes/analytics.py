@@ -63,17 +63,13 @@ def require_caller() -> None:
 
 
 def curation_coverage_tile_for(entity_type: str, slug: str, url: str | None = None) -> dict:
-    """The Portal tile dict, from the library's own `curation_coverage_tile` (one reshape, not a copy)."""
-    try:
-        from trellis_analytics.portal import curation_coverage_tile
-    except ImportError as exc:
-        # Only "the library itself is absent" is a state; a transitive ImportError is a bug and must surface.
-        if (exc.name or "").split(".")[0] != "trellis_analytics":
-            raise
-        reason = "the Analytic Library is not installed on this RE"
-        return {"state": "not_established", "state_reason": reason, "subtitle": f"Not established \u00b7 {reason}",
-                "summary": "", "groups": [], "kpis": []}
-    return curation_coverage_tile(slug, url or registry_url(), entity_type)
+    """The Portal tile dict: the library's `curation_coverage_kpi`, which renders the tile from the routine's
+    declaration (`trellis_analytics.render.kpi_tile`, library 0.4). RE builds no part of it.
+
+    The library is a requirement of RE (`egeria-trellis-analytics>=0.4,<0.5`), so a missing library is a broken
+    install and surfaces as the ImportError; RE no longer hand-builds a tile for it (RS-W2-1b)."""
+    from trellis_analytics.portal import curation_coverage_kpi
+    return curation_coverage_kpi(slug, url or registry_url(), entity_type)
 
 
 @router.get("/curation-coverage-tile/{entity_type}/{slug}")
