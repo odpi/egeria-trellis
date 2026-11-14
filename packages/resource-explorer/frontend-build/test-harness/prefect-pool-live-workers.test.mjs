@@ -124,3 +124,14 @@ test('a live worker a step would not be sent to is a warning line with the refus
   assert.equal(text(document.querySelector('[data-prefect-pool-word]')), `Prefect: ${summary}`);
   assert.equal(text(document.querySelector('[data-prefect-pool-runs-locally]')), RUNS_LOCALLY);
 });
+
+test('RE worker live on another pool than RE dispatches to: a warning line in the server words', async () => {
+  const { document, mod } = await loadShell();
+  const summary = '1 live worker(s) of 1 registered; last heartbeat 20 seconds ago; Resource Explorer\'s worker(s) '
+    + 're-worker-0123456789ab-hedwig on pool default-agent-pool are live on another pool than resource-explorer-pool';
+  mod.renderBootstrapBanner(document, STATUS(POOL({ live_count: 1, registered_count: 1, summary, parity_unchecked: [],
+    workers_elsewhere: ['re-worker-0123456789ab-hedwig on pool default-agent-pool'] })));
+  const line = document.querySelector('[data-prefect-pool-line]');
+  assert.equal(line.dataset.prefectPoolLine, 'workers_elsewhere');
+  assert.equal(text(document.querySelector('[data-prefect-pool-word]')), `Prefect: ${summary}`);
+});

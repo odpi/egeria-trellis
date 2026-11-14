@@ -11,6 +11,9 @@
 # the python child of `dotenv ... run -- prefect worker start` (pgrep -fl to find both). Exit 0 when the two
 # carry the same names with the same values, apart from the names listed in RE_PARITY_IGNORE (space separated;
 # default: the ones that are meant to differ between a web app and a worker).
+# PREFECT_WORK_POOL is ignored here, but it must equal the worker's --pool: Resource Explorer's own pool check
+# (bootstrap.check_prefect_pool_workers, through prefect_adapter.resolve_dispatch) names any of its workers that is
+# live on another pool than the one it dispatches to, in the status, the log and the banner.
 # Limitation: `ps eww` splits on spaces, so a value containing a space is fingerprinted by its first word.
 set -euo pipefail
 [ $# -eq 2 ] || { echo "usage: $0 <pid-a> <pid-b>" >&2; exit 2; }

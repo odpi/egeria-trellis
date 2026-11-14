@@ -294,6 +294,11 @@ class PrefectPoolStatus:
     #: Why a dispatched step would run locally although a worker is live (the refusal dispatch would give, in
     #: its words: the configured pool, the default deployment's pool, the online commits). "" when it would go.
     dispatch_refused: str = ""
+    #: Resource Explorer's own workers live on ANOTHER pool than the one it dispatches to (PREFECT_WORK_POOL),
+    #: as "<worker> on pool <name>": a worker whose --pool differs from the web app's, which never gets a step.
+    workers_elsewhere: list[str] = field(default_factory=list)
+    #: Why the other pools could not be read ("" when they were).
+    workers_elsewhere_error: str = ""
     last_checked_at: str = ""
     last_check_error: str = ""
 
@@ -385,6 +390,13 @@ def unreachable_words(steps: list[str]) -> str:
     listed = f" ({', '.join(steps)})" if steps else ""
     return (f"Runs are not recorded in Prefect; dispatched steps{listed} run in Resource Explorer's "
             "process instead.")
+
+
+def workers_elsewhere_words(pool: str, elsewhere: list[str]) -> str:
+    """The words for Resource Explorer's own workers live on another pool than the one it dispatches to."""
+    return (f"Resource Explorer's worker(s) {', '.join(elsewhere)} are live on another pool than {pool}, the one "
+            f"this Resource Explorer dispatches to (PREFECT_WORK_POOL): they get no step; start them with "
+            f"--pool {pool}")
 
 
 def parity_unchecked_words(names: list[str]) -> str:
@@ -524,7 +536,7 @@ def check_prefect_pool_workers(pool: str | None = None, *, now: datetime | None 
                 # judged live here, so the banner never calls a pool fine that a step would not be sent to.
                 live = [w for w in found if _worker_is_live(w, now, factor)]
                 try:
-                    decided = await resolve_dispatch(client, pool, online=live)
+                    decided = await resolve_dispatch(client, pool, online=live, look_elsewhere=True)
                 except Exception as exc:  # noqa: BLE001 - said on the status, never a silent all-clear
                     decided = DispatchChoice(pool=pool, refused=f"dispatch could not be checked: {exc}")
                 return found, decided
@@ -572,6 +584,8 @@ def check_prefect_pool_workers(pool: str | None = None, *, now: datetime | None 
         if status.never_heard_from and state != "none_registered":
             status.summary += f"; {status.never_heard_from} never heard from"
         status.dispatch_to = choice.deployment_name
+        status.workers_elsewhere = list(choice.elsewhere or [])
+        status.workers_elsewhere_error = choice.elsewhere_error
         if state != "live":
             status.runs_locally_instead = prefect_pool_runs_locally_instead()
         elif choice.refused:
@@ -585,11 +599,16 @@ def check_prefect_pool_workers(pool: str | None = None, *, now: datetime | None 
             # Its own state, so it is said once when it starts and once when it ends, at WARNING while it lasts.
             state = "live_parity_unchecked:" + ",".join(status.parity_unchecked)
             status.summary += "; " + parity_unchecked_words(status.parity_unchecked)
+        if status.workers_elsewhere:
+            # Whatever else is true: a worker started on another pool than PREFECT_WORK_POOL gets no step
+            # (Architect, 2026-11-14). Part of the state, so it is said once when it appears and once when it goes.
+            state += "|elsewhere:" + ",".join(status.workers_elsewhere)
+            status.summary += "; " + workers_elsewhere_words(pool, status.workers_elsewhere)
 
         if state != _prefect_pool_logged_state:
             if state == "live":
                 log.info("bootstrap: Prefect work pool %r: %s", pool, status.summary)
-            elif state.startswith(("live_parity_unchecked:", "live_dispatch_refused:")):
+            elif state.startswith(("live_parity_unchecked:", "live_dispatch_refused:", "live|")):
                 log.warning("bootstrap: Prefect work pool %r: %s", pool, status.summary)
             else:
                 log.warning(
@@ -1898,6 +1917,8 @@ def get_status(docs_dir: Path = DOCS_DIR) -> dict:
             "parity_unchecked": list(pool_st.parity_unchecked),
             "dispatch_to": pool_st.dispatch_to,
             "dispatch_refused": pool_st.dispatch_refused,
+            "workers_elsewhere": list(pool_st.workers_elsewhere),
+            "workers_elsewhere_error": pool_st.workers_elsewhere_error,
             "runs_locally_words": (unreachable_words(pool_st.runs_locally_instead)
                                    if pool_st.reachable is False
                                    else runs_locally_words(pool_st.runs_locally_instead)),

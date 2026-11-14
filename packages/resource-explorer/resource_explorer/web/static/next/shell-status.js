@@ -144,6 +144,8 @@ export function engineLine(status) {
  *    - 'dispatch_refused': a worker is live but a dispatched step would still run locally (its deployment is on
  *      another pool than the configured one, or it runs other code): the same decision dispatch makes;
  *    - 'parity_unchecked': a worker is live but advertises no commit, so RE cannot check it runs RE's code.
+ *    - 'workers_elsewhere': RE's own worker is live on another pool than the one RE dispatches to, so it gets no
+ *      step (its --pool differs from the web app's PREFECT_WORK_POOL). In the other states the summary says it.
  *  Nothing is drawn while the pool is unread (reachable null), while a worker on a known commit is live, or when Prefect is off by
  *  configuration (enabled false: every step runs locally by choice). Nothing waits in either warning state. */
 export function prefectPoolLine(status) {
@@ -169,6 +171,9 @@ export function prefectPoolLine(status) {
   // (Architect ruling 2026-11-13). The server's summary carries the words.
   if (p.live_count > 0 && (p.parity_unchecked || []).length) {
     return { kind: 'parity_unchecked', word: `Prefect: ${p.summary || 'commit parity not checked'}`, runsLocally: '' };
+  }
+  if (p.live_count > 0 && (p.workers_elsewhere || []).length) {
+    return { kind: 'workers_elsewhere', word: `Prefect: ${p.summary || 'a worker is on another pool'}`, runsLocally: '' };
   }
   return null;
 }

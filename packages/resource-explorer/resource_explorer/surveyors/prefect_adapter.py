@@ -284,6 +284,9 @@ DEFAULT_DEPLOYMENT = "RE Survey Flow/re-survey-step-deployment"
 #: Workers already warned about (no advertised commit): once per worker per process.
 _PARITY_UNCHECKED_WARNED: set[str] = set()
 _WORKER_SHA = re.compile(r"^re-worker-([0-9a-f]{12})(?:-|$)")
+#: Resource Explorer's own worker names: the container worker (`re-worker-<sha12>-<host>`) and the host worker
+#: (`re-host-worker-<host>`). A generic `ProcessWorker <uuid>` cannot be told apart from another product's.
+_RE_WORKER = re.compile(r"^re-(?:host-)?worker-")
 
 
 def sha_deployment(sha12: str) -> str:
@@ -367,6 +370,12 @@ class DispatchChoice:
     unchecked: list[str] = field(default_factory=list)
     #: True when `deployment` is the default one (a worker that advertises no commit): parity is not checked.
     via_default: bool = False
+    #: Resource Explorer's own workers ONLINE on another pool than `pool`, as "<worker> on pool <name>": a worker
+    #: started with a --pool other than the web app's PREFECT_WORK_POOL, which never gets a step. Only read when
+    #: asked (`look_elsewhere`); None when not read, [] when read and none found.
+    elsewhere: list[str] | None = None
+    #: Why `elsewhere` could not be read, or "".
+    elsewhere_error: str = ""
 
     @property
     def deployment_name(self) -> str:
@@ -381,7 +390,22 @@ async def _read_deployment_or_none(client: Any, name: str) -> tuple[Any, str]:
         return None, f"{type(e).__name__}: {e}"
 
 
-async def resolve_dispatch(client: Any, pool: str, online: list[Any] | None = None) -> DispatchChoice:
+async def _re_workers_elsewhere(client: Any, pool: str) -> list[str]:
+    """Resource Explorer's own workers (`_RE_WORKER` names) ONLINE on any work pool other than `pool`. Read only."""
+    found: list[str] = []
+    for wp in await client.read_work_pools():
+        name = str(getattr(wp, "name", "") or "")
+        if not name or name == pool:
+            continue
+        for w in await client.read_workers_for_work_pool(name):
+            wname = str(getattr(w, "name", "") or "")
+            if _is_online(w) and _RE_WORKER.match(wname):
+                found.append(f"{wname} on pool {name}")
+    return sorted(found)
+
+
+async def resolve_dispatch(client: Any, pool: str, online: list[Any] | None = None, *,
+                           look_elsewhere: bool = False) -> DispatchChoice:
     """The deployment a step's flow run goes to on the CONFIGURED pool `pool`, or the refusal. Read only.
 
     The configured pool (`config.prefect.work_pool`) is authoritative (Architect ruling 2026-11-14, §RE-RULING
@@ -397,10 +421,20 @@ async def resolve_dispatch(client: Any, pool: str, online: list[Any] | None = No
 
     `online` lets a caller pass the workers it already judged live (bootstrap's heartbeat check); by default the
     pool's workers with status ONLINE are read here.
+
+    `look_elsewhere` (bootstrap's check, not each dispatch) also lists Resource Explorer's own workers ONLINE on
+    any other pool (`elsewhere`): a worker whose --pool is not the web app's PREFECT_WORK_POOL gets no step, and
+    re-config-parity.sh ignores PREFECT_WORK_POOL by design, so this is where that mismatch is caught (Architect,
+    2026-11-14). It never changes the decision; a failure to read is `elsewhere_error`, not a refusal.
     """
     from resource_explorer.build_info import re_sha_short
 
     choice = DispatchChoice(pool=pool)
+    if look_elsewhere:
+        try:
+            choice.elsewhere = await _re_workers_elsewhere(client, pool)
+        except Exception as e:  # noqa: BLE001 - said on the status (elsewhere_error), never a silent "none"
+            choice.elsewhere_error = f"{type(e).__name__}: {e}"
     if online is None:
         online = [w for w in await client.read_workers_for_work_pool(pool) if _is_online(w)]
     own = re_sha_short()

@@ -184,6 +184,22 @@ class TestTheConfiguredPoolIsAuthoritative:
             _choose(c)
         assert f"the default deployment '{DEFAULT}' is missing" in str(ei.value)
 
+    def test_dispatch_itself_does_not_read_the_other_pools(self):
+        c = _client([_worker(f"re-worker-{OWN}-pop-os")], deployments=(DEFAULT, SHA_DEP))
+        _choose(c)
+        c.read_work_pools.assert_not_called()
+
+    def test_look_elsewhere_names_re_workers_only(self):
+        pools = {"resource-explorer-pool": [_worker(f"re-worker-{OWN}-pop-os")],
+                 "default-agent-pool": [_worker("re-host-worker-hedwig"), _worker(f"re-worker-{OTHER}-x", "OFFLINE")],
+                 "egeria-pool": [_worker("ProcessWorker 4b23da06")]}
+        c = _client([], deployments=(DEFAULT, SHA_DEP))
+        c.read_work_pools = AsyncMock(return_value=[types.SimpleNamespace(name=n) for n in pools])
+        c.read_workers_for_work_pool = AsyncMock(side_effect=lambda name: pools[name])
+        choice = asyncio.run(adapter.resolve_dispatch(c, "resource-explorer-pool", look_elsewhere=True))
+        assert choice.elsewhere == ["re-host-worker-hedwig on pool default-agent-pool"]
+        assert choice.deployment.name == SHA_DEP, "it never changes the decision"
+
     def test_the_lookup_is_read_only(self):
         c = _client([_worker(f"re-worker-{OWN}-pop-os")], deployments=(DEFAULT, SHA_DEP))
         _choose(c)

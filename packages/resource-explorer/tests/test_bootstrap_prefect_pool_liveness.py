@@ -67,6 +67,7 @@ def _client(workers, deployments=None):
         return SimpleNamespace(id=name, name=name.split("/", 1)[-1], work_pool_name=known[name])
 
     fake_client.read_deployment_by_name = AsyncMock(side_effect=read_deployment)
+    fake_client.read_work_pools = AsyncMock(return_value=[SimpleNamespace(name="resource-explorer-pool")])
     fake_client.__aenter__ = AsyncMock(return_value=fake_client)
     fake_client.__aexit__ = AsyncMock(return_value=False)
     return fake_client
@@ -260,7 +261,7 @@ class TestRunsLocallyInstead:
         with patch("resource_explorer.surveyors.prefect_adapter.re_prefect_client", return_value=client):
             bs.check_prefect_pool_workers(pool="resource-explorer-pool", now=NOW)
         called = {c[0] for c in client.method_calls} - {"__aenter__", "__aexit__"}
-        assert called <= {"read_workers_for_work_pool", "read_deployment_by_name"}, called
+        assert called <= {"read_workers_for_work_pool", "read_deployment_by_name", "read_work_pools"}, called
 
 
 class TestServerUnreachable:
@@ -402,3 +403,60 @@ class TestDispatchRefusedWhileAWorkerIsLive:
         with patch("resource_explorer.surveyors.prefect_adapter.re_prefect_client", return_value=client):
             status = bs.check_prefect_pool_workers(pool="resource-explorer-pool", now=NOW)
         assert "is missing: RuntimeError: boom" in status.dispatch_refused
+
+
+class TestReWorkerOnAnotherPool:
+    """Architect, 2026-11-14: re-config-parity.sh ignores PREFECT_WORK_POOL, but the web app's PREFECT_WORK_POOL
+    must equal the worker's --pool. The single lookup (resolve_dispatch, look_elsewhere) names RE's own workers
+    live on any other pool; a generic ProcessWorker (another product's, e.g. egeria-pool's) is not named."""
+
+    @staticmethod
+    def _client_with(pools: dict):
+        client = _client(pools.get("resource-explorer-pool", []))
+        client.read_work_pools = AsyncMock(return_value=[SimpleNamespace(name=n) for n in pools])
+        client.read_workers_for_work_pool = AsyncMock(side_effect=lambda name: pools[name])
+        return client
+
+    def _check_pools(self, pools):
+        with patch("resource_explorer.surveyors.prefect_adapter.re_prefect_client",
+                   return_value=self._client_with(pools)):
+            return bs.check_prefect_pool_workers(pool="resource-explorer-pool", now=NOW)
+
+    def test_a_live_re_worker_on_another_pool_is_named_once_at_warning(self, caplog):
+        caplog.set_level(logging.INFO, logger=bs.log.name)
+        pools = {"resource-explorer-pool": [_fake_worker(ON_SHA, FRESH)],
+                 "default-agent-pool": [_fake_worker("re-host-worker-hedwig", FRESH, status="ONLINE")],
+                 "egeria-pool": [_fake_worker("ProcessWorker 4b23da06", FRESH, status="ONLINE")]}
+        status = self._check_pools(pools)
+        assert status.workers_elsewhere == ["re-host-worker-hedwig on pool default-agent-pool"]
+        assert status.dispatch_refused == "" and status.dispatch_to == "re-survey-step-0123456789ab"
+        assert ("Resource Explorer's worker(s) re-host-worker-hedwig on pool default-agent-pool are live on another "
+                "pool than resource-explorer-pool") in status.summary
+        assert "start them with --pool resource-explorer-pool" in status.summary
+        self._check_pools(pools)
+        warns = [r for r in caplog.records if r.levelno == logging.WARNING]
+        assert len(warns) == 1 and "another pool" in warns[0].getMessage()
+        assert bs.get_status()["prefect_pool"]["workers_elsewhere"] == status.workers_elsewhere
+
+    def test_it_is_said_with_no_live_worker_on_the_dispatch_pool_too(self):
+        status = self._check_pools({"resource-explorer-pool": [],
+                                    "default-agent-pool": [_fake_worker(ON_SHA, FRESH, status="ONLINE")]})
+        assert status.live_count == 0
+        assert status.workers_elsewhere == [f"{ON_SHA} on pool default-agent-pool"]
+        assert "are live on another pool than resource-explorer-pool" in status.summary
+
+    def test_an_offline_or_foreign_worker_elsewhere_is_not_named(self):
+        status = self._check_pools({
+            "resource-explorer-pool": [_fake_worker(ON_SHA, FRESH)],
+            "default-agent-pool": [_fake_worker("re-host-worker-hedwig", STALE, status="OFFLINE")],
+            "egeria-pool": [_fake_worker("ProcessWorker 4b23da06", FRESH, status="ONLINE")]})
+        assert status.workers_elsewhere == [] and "another pool" not in status.summary
+
+    def test_other_pools_that_cannot_be_read_are_said_not_cleared(self):
+        client = self._client_with({"resource-explorer-pool": [_fake_worker(ON_SHA, FRESH)]})
+        client.read_work_pools = AsyncMock(side_effect=RuntimeError("boom"))
+        with patch("resource_explorer.surveyors.prefect_adapter.re_prefect_client", return_value=client):
+            status = bs.check_prefect_pool_workers(pool="resource-explorer-pool", now=NOW)
+        assert status.workers_elsewhere_error == "RuntimeError: boom"
+        assert bs.get_status()["prefect_pool"]["workers_elsewhere_error"] == "RuntimeError: boom"
+        assert status.dispatch_to == "re-survey-step-0123456789ab", "it never changes the dispatch decision"
