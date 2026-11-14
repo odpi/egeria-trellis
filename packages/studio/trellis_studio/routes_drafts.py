@@ -147,3 +147,21 @@ async def post_preview(request: Request, body: PreviewRequest) -> Dict[str, Any]
                                        params=body.params, run_placements=body.run_placements)
     except Exception as exc:  # noqa: BLE001
         raise_http(exc, "Previewing the draft")
+
+
+@router.get("/api/reports/lookup")
+async def get_report_lookup(request: Request, ref: str) -> Dict[str, Any]:
+    """Find a Report for a sheet placement, as the user. 409 carries pyegeria's words when it's absent or when
+    Egeria couldn't confirm either way."""
+    user = require_user(request)
+    if not ref.strip():
+        raise HTTPException(status_code=400, detail="Give a Report's qualified name or display name.")
+    try:
+        out = await authoring.lookup_report(user, request.app.state.settings, ref.strip())
+    except Exception as exc:  # noqa: BLE001
+        raise_http(exc, "Looking up the Report")
+    if out["by"] == "display name":
+        out["notes"].append("Found by display name. The placement is kept by qualified name, which is unique; a "
+                            "display name can name more than one Report, and on Egeria's display-name read "
+                            "\"none\" is only said when the read reached a confirmed end.")
+    return out

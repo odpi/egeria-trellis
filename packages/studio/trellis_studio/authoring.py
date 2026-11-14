@@ -169,3 +169,19 @@ async def preview(user, settings, draft: Dict[str, Any], *, max_rows: int, param
             kw["run"] = run_placements
         return _run_sync(a.async_preview(obj, **kw))
     return await in_user_thread(user, settings, fn)
+
+
+async def lookup_report(user, settings, ref: str) -> Dict[str, Any]:
+    """A Report as the user, by qualified name, else exact display name (pyegeria's three-way read, pager step 6).
+    Found: its names and spec. Absent or unknown: pyegeria refuses in words (AuthoringRefused), which the route
+    passes on; Studio never turns "couldn't confirm" into "there is none"."""
+    a = _authoring()
+
+    def fn(client):
+        d = _run_sync(a.async_load_held("report", ref, client))
+        qn = d.qualified_name
+        by_qn = bool(qn) and ref == qn
+        return {"found": True, "qualified_name": qn, "display_name": d.display_name, "spec": d.spec,
+                "output_format": d.output_format, "by": "qualified name" if by_qn else "display name",
+                "notes": list(d.notes)}
+    return await in_user_thread(user, settings, fn)

@@ -4,6 +4,7 @@ import { api } from '/static/studio_auth.js';
 import { h, clear, readJson } from '/static/dom.js';
 import { makeSplit } from '/static/panes.js';
 import { renderValidation, renderPreview, renderFailure } from '/static/studio_results.js';
+import '/static/studio_sheet.js';
 
 const state = { draft: null, savedAs: null, dirty: false, templates: [] };
 const panes = {};
@@ -222,19 +223,25 @@ function renderForm() {
   if (d.kind === 'spec') host.append(specForm(d));
   else if (d.kind === 'report') host.append(reportForm(d));
   else if (window.StudioSheetForm) host.append(window.StudioSheetForm(d, { touch, renderForm }));
-  else host.append(h('p', { class: 'st-muted' }, 'A sheet has its own form; edit it as JSON below for now.'));
   host.append(rawEditor(d));
+}
+
+/** The draft as sent: the form's own "_" keys dropped. */
+function outgoing() {
+  return JSON.parse(JSON.stringify(state.draft, (k, v) => (k.startsWith('_') ? undefined : v)));
 }
 
 function actions() {
   const drEgeria = h('input', { type: 'checkbox' });
+  const runAll = h('input', { type: 'checkbox' });
   const rows = h('input', { type: 'number', min: 1, max: 200, value: 25, size: 4 });
   return h('div', { class: 'st-actions' },
     h('button', { class: 'st-btn', onclick: saveDraft }, 'Save draft'),
     h('button', { class: 'st-btn st-btn-quiet', onclick: () => validateDraft(drEgeria.checked) }, 'Validate'),
     h('label', { class: 'st-muted' }, drEgeria, ' with Dr.Egeria'),
-    h('button', { class: 'st-btn st-btn-quiet', onclick: () => previewDraft(Number(rows.value) || 25) }, 'Preview'),
+    h('button', { class: 'st-btn st-btn-quiet', onclick: () => previewDraft(Number(rows.value) || 25, runAll.checked) }, 'Preview'),
     h('label', { class: 'st-muted' }, ' rows ', rows),
+    state.draft.kind === 'sheet' ? h('label', { class: 'st-muted' }, runAll, ' run every placement') : null,
     state.savedAs ? h('button', { class: 'st-btn st-btn-quiet', onclick: deleteDraft }, 'Delete draft') : null);
 }
 
@@ -247,7 +254,7 @@ function showDraft(draft, savedAs) {
 
 async function saveDraft() {
   setStatus('Saving to Egeria as you…');
-  const res = await readJson(await api('/api/drafts', { ...json({ draft: state.draft }), method: 'PUT' }));
+  const res = await readJson(await api('/api/drafts', { ...json({ draft: outgoing() }), method: 'PUT' }));
   if (!res.ok) { setStatus(`Not saved: ${res.detail}`, 'st-error'); return; }
   state.savedAs = draftName(state.draft); state.dirty = false;
   setStatus(res.data.words, 'st-ok');
@@ -266,14 +273,15 @@ async function deleteDraft() {
 
 async function validateDraft(drEgeria) {
   clear(panes.checks).append(h('p', { class: 'st-muted' }, 'Validating as you…'));
-  const res = await readJson(await api('/api/validate', json({ draft: state.draft, dr_egeria: drEgeria })));
+  const res = await readJson(await api('/api/validate', json({ draft: outgoing(), dr_egeria: drEgeria })));
   if (!res.ok) return renderFailure(panes.checks, 'Validation could not run.', res.detail);
   renderValidation(panes.checks, res.data);
 }
 
-async function previewDraft(maxRows) {
+async function previewDraft(maxRows, runPlacements = false) {
   clear(panes.preview).append(h('p', { class: 'st-muted' }, 'Running a sample as you…'));
-  const res = await readJson(await api('/api/preview', json({ draft: state.draft, max_rows: maxRows })));
+  const res = await readJson(await api('/api/preview', json({ draft: outgoing(), max_rows: maxRows,
+                                                              run_placements: runPlacements })));
   if (!res.ok) return renderFailure(panes.preview, 'Preview could not run.', res.detail);
   renderPreview(panes.preview, res.data);
 }
