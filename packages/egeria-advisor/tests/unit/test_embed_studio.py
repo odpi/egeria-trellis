@@ -271,6 +271,12 @@ def test_embed_mode_removes_the_password_form():
     assert "Sign in to Studio to use EA here." in js
 
 
+def test_embed_mode_never_reuses_a_stored_session():
+    js = (STATIC / "auth.js").read_text()
+    branch = js[js.index("if (EMBED) {\n      // No password form"):js.index("postToParent({ type: 'ea.ready' });")]
+    assert "clearToken();" in branch and "isAuthenticated()" not in branch
+
+
 def test_embed_listener_checks_source_and_the_accepted_origin():
     js = (STATIC / "embed.js").read_text()
     assert "if (event.source !== window.parent) return;" in js

@@ -393,12 +393,11 @@ const Auth = (() => {
       document.getElementById('login-overlay')?.remove();
       document.getElementById('login-header-btn')?.remove();
       await loadPolicy();
-      if (isAuthenticated()) {
-        updateUserDisplay();
-        onReady && onReady();
-      } else {
-        appStartDeferred = true;
-      }
+      // Never reuse a session stored earlier in this frame: only the one Studio hands over now counts, so signing
+      // out of Studio (or signing in as someone else) is what the panel follows.
+      clearToken();
+      updateUserDisplay();
+      appStartDeferred = true;
       postToParent({ type: 'ea.ready' });
       setTimeout(() => { if (!isAuthenticated()) showEmbedSignIn('Sign in to Studio to use EA here.'); }, EMBED_WAIT_MS);
       return;
