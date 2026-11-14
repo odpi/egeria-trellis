@@ -64,3 +64,7 @@ jobs:
         if: steps.scope.outputs.run == 'true'
         working-directory: packages/studio
         run: uv run --no-sync pytest tests -q --no-header -rs
+
+      - name: trellis-ui tests (its egeria-table.js source)
+        if: steps.scope.outputs.run == 'true'
+        run: uv run --no-sync pytest packages/trellis-ui/tests -q --no-header -rs

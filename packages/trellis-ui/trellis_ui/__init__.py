@@ -17,18 +17,26 @@ What is here (each file says more in its own header):
   markdown.js   markdown to sanitised HTML (needs /static/vendor/marked.min.js, which both apps vendor)
   envelope.js   the run-envelope renderer
   format.js     the time and number formatting envelope.js and RE's pages share
-  egeria-table.js  pyegeria's structured TABLE (kind "table") as a table: VENDORED unchanged from the
-                Egeria Portal (egeria-table.js.source.json names the commit and sha256); never edited here
+  egeria-table.js  pyegeria's structured TABLE (kind "table") as a table. Its home is pyegeria's package data
+                (owner decision D3, 2026-11-14: pyegeria.view.renderers), so the renderer and the shape it
+                draws ship together. `mount` serves THAT copy at /static/trellis-ui/egeria-table.js when the
+                installed pyegeria has it, and the vendored copy here (egeria-table.js.source.json; never edited)
+                only when it doesn't. Which one is served is said, never hidden: `egeria_table_source()`, the
+                X-Egeria-Table-Source response header, and one log line at mount.
 """
 from __future__ import annotations
 
+import logging
 from importlib import resources
 from pathlib import Path
-from typing import Any
+from typing import Any, Dict
 
-__all__ = ["STATIC_URL", "mount", "static_dir"]
+__all__ = ["STATIC_URL", "egeria_table_source", "mount", "static_dir"]
 
 STATIC_URL = "/static/trellis-ui"
+EGERIA_TABLE = "egeria-table.js"
+
+logger = logging.getLogger(__name__)
 
 
 def static_dir() -> Path:
@@ -36,9 +44,54 @@ def static_dir() -> Path:
     return Path(str(resources.files("trellis_ui") / "static"))
 
 
+def _pyegeria_renderer():
+    """pyegeria's egeria-table.js and its version, or None when the installed pyegeria predates D3."""
+    try:
+        from pyegeria.view.renderers import egeria_table_js
+    except Exception:  # no pyegeria, or one without the renderers module
+        return None
+    path = egeria_table_js()
+    if not path.is_file():
+        return None
+    try:
+        from importlib.metadata import version
+        ver = version("pyegeria")
+    except Exception:
+        ver = "unknown"
+    return path, ver
+
+
+def egeria_table_source() -> Dict[str, str]:
+    """Which egeria-table.js is served: {"source": "pyegeria"|"vendored", "path", "version"|"commit"}."""
+    found = _pyegeria_renderer()
+    if found is not None:
+        return {"source": "pyegeria", "path": str(found[0]), "version": found[1]}
+    import json
+    vendored = static_dir() / EGERIA_TABLE
+    try:
+        commit = json.loads((static_dir() / (EGERIA_TABLE + ".source.json")).read_text())["commit"]
+    except Exception:
+        commit = "unknown"
+    return {"source": "vendored", "path": str(vendored), "commit": commit}
+
+
 def mount(app: Any, path: str = STATIC_URL) -> None:
     """Serve the shared files at `path` on a Starlette/FastAPI app. Mount it before the app's own
-    "/static", which would otherwise answer `/static/trellis-ui/...` itself (with a 404)."""
+    "/static", which would otherwise answer `/static/trellis-ui/...` itself (with a 404).
+
+    egeria-table.js is answered by its own route, added before the static mount (Starlette matches in order), from
+    pyegeria's package data when the installed pyegeria has it, else from the vendored copy."""
+    from starlette.responses import FileResponse
     from starlette.staticfiles import StaticFiles
 
+    src = egeria_table_source()
+    label = (f"pyegeria {src['version']}" if src["source"] == "pyegeria"
+             else f"vendored copy (odpi/egeria-workspaces@{src['commit'][:8]}); this pyegeria has no renderer")
+    logger.info("trellis-ui: egeria-table.js from %s", label)
+
+    async def egeria_table(_request):
+        return FileResponse(src["path"], media_type="text/javascript",
+                            headers={"X-Egeria-Table-Source": label, "Cache-Control": "no-cache"})
+
+    app.add_route(f"{path}/{EGERIA_TABLE}", egeria_table, methods=["GET", "HEAD"])
     app.mount(path, StaticFiles(directory=static_dir()), name="trellis-ui")
