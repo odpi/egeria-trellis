@@ -5,6 +5,7 @@ import { h, clear, readJson } from '/static/dom.js';
 import { makeSplit } from '/static/panes.js';
 import { renderValidation, renderPreview, renderFailure } from '/static/studio_results.js';
 import '/static/studio_sheet.js';
+import { lifecyclePanel, pinPicker } from '/static/studio_lifecycle.js';
 
 const state = { draft: null, savedAs: null, dirty: false, templates: [] };
 const panes = {};
@@ -194,8 +195,7 @@ function reportForm(d) {
     field('Description', d.description, (v) => { d.description = v || null; }, { multiline: true }),
     field('Report spec it runs (label)', d.spec, (v) => { d.spec = v; }),
     field('Output format (TABLE, DICT, ...)', d.output_format, (v) => { d.output_format = v; }),
-    field('Pinned spec version (blank follows the latest, D14)', d.pinned_version ?? '', (v) => {
-      d.pinned_version = v.trim() === '' ? null : Number(v); }),
+    pinPicker(d, touch),
     paramRows(d.parameters, 'Parameters'),
     h('p', { class: 'st-muted' }, 'Each parameter is written both ways (D7): typed in reportParameters and as its camelCase copy. You edit one list; pyegeria writes both.'),
     paramRows(d.analytic_params, 'Analytic parameters (for an analytic routine)'));
@@ -224,6 +224,9 @@ function renderForm() {
   else if (d.kind === 'report') host.append(reportForm(d));
   else if (window.StudioSheetForm) host.append(window.StudioSheetForm(d, { touch, renderForm }));
   host.append(rawEditor(d));
+  const life = h('div', { class: 'st-block' }, h('h3', {}, 'Versions and publishing'));
+  host.append(life);
+  lifecyclePanel(d, state.savedAs).then((el) => life.append(el));
 }
 
 /** The draft as sent: the form's own "_" keys dropped. */
@@ -285,6 +288,8 @@ async function previewDraft(maxRows, runPlacements = false) {
   if (!res.ok) return renderFailure(panes.preview, 'Preview could not run.', res.detail);
   renderPreview(panes.preview, res.data);
 }
+
+document.addEventListener('studio:published', () => loadList());
 
 // ---- mount -------------------------------------------------------------------------------------------------
 

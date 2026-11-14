@@ -46,9 +46,10 @@ input, select, textarea { font: inherit; color: inherit; background: rgb(var(--c
 .st-table-wrap { --border: rgb(var(--c-rule-strong)); --card: rgb(var(--c-card)); --muted: rgb(var(--c-ink-muted));
   --accent: rgb(var(--c-accent-ink)); --subtle: rgb(var(--c-paper-surface)); color: rgb(var(--c-ink)); }
 .st-row { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
-.st-row input { flex: 1; min-width: 12em; }
+.st-row input:not([type=checkbox]) { flex: 1; min-width: 12em; }
 .st-placements { padding-left: 1.4em; }
 .st-placement { margin: 8px 0; }
 .st-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
 .st-cell { border: 1px solid rgb(var(--c-card-line)); border-radius: var(--r-sm, 4px); padding: 6px; background: rgb(var(--c-card)); min-width: 0; overflow-wrap: anywhere; }
 .st-cell.st-panel { background: rgb(var(--c-paper-surface)); }
+.st-chip { margin-right: 8px; white-space: nowrap; }
