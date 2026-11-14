@@ -203,6 +203,9 @@ def test_open_in_studio_refusal_is_pyegerias_words(client, monkeypatch):
         def __init__(self, *a, **k):
             pass
 
+        async def async_load(self, uid, kind, name):
+            return None
+
         async def async_save(self, uid, draft):
             raise a.AuthoringRefused(words)
     monkeypatch.setattr(a, "EgeriaDraftStore", Store)
@@ -286,3 +289,105 @@ def test_embed_listener_checks_source_and_the_accepted_origin():
 def test_index_loads_embed_js_after_auth():
     html = (STATIC / "index.html").read_text()
     assert html.index("/static/auth.js") < html.index("/static/embed.js")
+
+
+
+# ---- E1 read-back R1: no password on any client; a rejected token is a 401; clients closed ----------------
+
+def _real_client(monkeypatch):
+    from pyegeria.core.config import settings as pyeg_settings
+    from pyegeria.core._base_server_client import BaseServerClient
+    from advisor.web import embed
+    monkeypatch.setattr(pyeg_settings.User_Profile, "user_pwd", "secret-demo-default", raising=False)
+
+    async def origin(self):          # a sub-client asks the platform for its origin when built: no network here
+        return "test platform"
+    monkeypatch.setattr(BaseServerClient, "async_get_platform_origin", origin)
+    monkeypatch.setattr(auth, "get_egeria_credentials",
+                        lambda request: {"user_id": "peterprofile", "password": "", "token": _egeria_token()})
+    import advisor.mcp_config as mc
+    monkeypatch.setattr(mc, "get_pyegeria_platform_config",
+                        lambda *a, **k: {"view_server": "qs-view-server", "platform_url": "https://egeria.test:9443"})
+    return embed._user_client(object())
+
+
+def test_embed_client_holds_no_password_anywhere(monkeypatch):
+    c = _real_client(monkeypatch)
+    assert c.user_pwd is None and c.classification_manager.user_pwd is None
+
+
+def test_a_rejected_token_is_401_with_no_second_sign_in(monkeypatch):
+    import asyncio
+    import httpx
+    from pyegeria.core._exceptions import PyegeriaUnauthorizedException
+    from advisor.web import embed
+    c = _real_client(monkeypatch)
+    sub = c.classification_manager
+    minted = []
+
+    async def no_mint(*a, **k):
+        minted.append(a)
+        return "never"
+    monkeypatch.setattr(type(sub), "_async_create_egeria_bearer_token", no_mint)
+    sub.session = httpx.AsyncClient(transport=httpx.MockTransport(lambda req: httpx.Response(401)))
+    with pytest.raises(PyegeriaUnauthorizedException) as e:
+        asyncio.run(sub._async_get_elements_by_property_value("x", ["qualifiedName"], page_size=1))
+    assert minted == [] and sub.user_pwd is None
+    mapped = embed._authoring_error(e.value, "test")
+    assert mapped.status_code == 401 and mapped.detail == "Sign in to Studio to use EA here."
+
+
+def test_each_request_closes_its_client(client, monkeypatch):
+    import pyegeria.authoring as a
+    from advisor.web import embed
+    closed = []
+
+    class C(_Client):
+        user_pwd = None
+
+        def close_session(self):
+            closed.append(self.user_id)
+
+    class Store:
+        def __init__(self, *args, **kw):
+            pass
+
+        async def async_load(self, uid, kind, name):
+            return a.new_from(template="find-spec", new_label=name)
+    monkeypatch.setattr(a, "EgeriaDraftStore", Store)
+    monkeypatch.setattr(embed, "_user_client", lambda request: C("peterprofile"))
+    r = client.post("/api/studio/draft-context", json={"draft_ref": {"kind": "spec", "name": "X"}},
+                    headers=_bearer(studio_jwt()))
+    assert r.status_code == 200 and closed == ["peterprofile"]
+
+
+# ---- never overwrite: a repeat "Open in Studio" with a name the user already has --------------------------
+
+def test_open_in_studio_never_overwrites_an_existing_draft(client, store, monkeypatch):
+    import pyegeria.authoring as a
+    import advisor.report_draft as rd
+    monkeypatch.setattr(rd, "resolve_report_draft", lambda *args, **kw: (None, EA_DRAFT))
+    store["load"] = a.new_from(template="find-spec", new_label="Open Glossaries")   # already in their zone
+    r = client.post("/api/studio/open-draft", json={"draft_id": "d-1", "label": "Open Glossaries"},
+                    headers=_bearer(studio_jwt()))
+    assert r.status_code == 409 and "already have a Studio draft named 'Open Glossaries'" in r.json()["detail"]
+    assert store["saved"] == []
+
+
+def test_open_in_studio_unreadable_check_saves_nothing(client, store, monkeypatch):
+    import pyegeria.authoring as a
+    import advisor.report_draft as rd
+    monkeypatch.setattr(rd, "resolve_report_draft", lambda *args, **kw: (None, EA_DRAFT))
+
+    class Store:
+        def __init__(self, *args, **kw):
+            pass
+
+        async def async_load(self, uid, kind, name):
+            raise a.AuthoringRefused("Couldn't confirm whether Egeria holds a report spec named 'x'.")
+
+        async def async_save(self, uid, draft):
+            raise AssertionError("must not save")
+    monkeypatch.setattr(a, "EgeriaDraftStore", Store)
+    r = client.post("/api/studio/open-draft", json={"draft_id": "d-1", "label": "x"}, headers=_bearer(studio_jwt()))
+    assert r.status_code == 409 and "Couldn't confirm" in r.json()["detail"]

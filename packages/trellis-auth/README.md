@@ -124,8 +124,10 @@ panel embedded in Studio with no second sign-in.
 
 What holds it in place:
 - **One secret per box.** Set `TRELLIS_JWT_SECRET` once, for every app. An app-specific override
-  (`ADVISOR_JWT_SECRET`, `RE_JWT_SECRET`, `STUDIO_JWT_SECRET`) takes that app out of the shared sign-in: a JWT from
-  another app no longer verifies there. Studio refuses to start without a secret, and never derives one.
+  (`ADVISOR_JWT_SECRET`, `RE_JWT_SECRET`) takes that app out of the shared sign-in: a JWT from another app no longer
+  verifies there. Studio has no such override, refuses to start without the secret, and never derives one.
+- **The same identities on both sides.** Studio refuses service accounts (`TRELLIS_SERVICE_ACCOUNTS`,
+  `RE_DAEMON_USER_ID`) as EA does; list EA's own service account in `TRELLIS_SERVICE_ACCOUNTS` too.
 - **The JWT travels only by `postMessage`, to an exact origin.** Studio hands its session to the embedded EA as
   `{type: 'trellis_auth', jwt}`, targeted at EA's origin. EA accepts it only from the parent window and only from an
   origin in `ADVISOR_EMBED_ORIGINS`, and checks it with its own token check (`GET /api/embed/whoami`, which also

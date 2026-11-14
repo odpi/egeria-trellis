@@ -68,9 +68,37 @@ async def embed_whoami(request: Request) -> Dict[str, Any]:
     return {"user_id": user_id, "display_name": user.get("display_name") or user_id, "exp": user.get("exp")}
 
 
+class PasswordOnClient(RuntimeError):
+    """A client built for the embed routes must never hold a password (E1 read-back R1)."""
+
+
+def _scrub(client) -> None:
+    """pyegeria fills a missing password from its settings default, on EgeriaTech and on each sub-client it builds
+    lazily, and a client holding one may re-sign-in after a 401 (the 2026-10-28 identity-switch shape). Remove it
+    from the client and from every sub-client as it is built."""
+    client.user_pwd = None
+    get_sub = getattr(client, "_get_subclient", None)
+    if get_sub is None:
+        return
+
+    def scrubbed(name, _get=get_sub):
+        sub = _get(name)
+        sub.user_pwd = None
+        return sub
+    client._get_subclient = scrubbed
+    for sub in (getattr(client, "_instantiated_clients", None) or {}).values():
+        sub.user_pwd = None
+
+
+def assert_no_password(client) -> None:
+    holders = [client, *((getattr(client, "_instantiated_clients", None) or {}).values())]
+    if any(getattr(c, "user_pwd", None) for c in holders):
+        raise PasswordOnClient("An embed-route Egeria client holds a password; refused.")
+
+
 def _user_client(request: Request):
-    """A pyegeria client signed in as the request's user, from their own bearer token. No token: 401, before any
-    client is built (never EA's service account)."""
+    """A pyegeria client signed in as the request's user, from their own bearer token, holding no password. No
+    token: 401, before any client is built (never EA's service account)."""
     from advisor.auth import apply_token, get_egeria_credentials, refuse_service_account
     from advisor.egeria_signin import SIGN_IN_TO_READ_EGERIA
     from advisor.mcp_config import get_pyegeria_platform_config
@@ -80,19 +108,53 @@ def _user_client(request: Request):
     refuse_service_account(creds["user_id"])
     conn = get_pyegeria_platform_config()
     from pyegeria.egeria_tech_client import EgeriaTech
-    client = EgeriaTech(view_server=conn["view_server"], platform_url=conn["platform_url"], user_id=creds["user_id"])
+    client = EgeriaTech(view_server=conn["view_server"], platform_url=conn["platform_url"], user_id=creds["user_id"],
+                        user_pwd=None)
+    _scrub(client)
     apply_token(client, creds["token"])
+    assert_no_password(client)
     return client
+
+
+def _close(client) -> None:
+    fn = getattr(client, "close_session", None)
+    if fn is None:
+        return
+    try:
+        fn()
+    except Exception:  # noqa: BLE001 -- closing never changes the answer
+        pass
+
+
+def _as_user(request: Request, fn):
+    """Run fn(client) with a fresh client for the request's user; check no password crept back, then close it."""
+    client = _user_client(request)
+    try:
+        return fn(client)
+    finally:
+        try:
+            assert_no_password(client)
+        finally:
+            _close(client)
 
 
 def _authoring_error(exc: BaseException, doing: str) -> HTTPException:
     from pyegeria.authoring import AuthoringRefused
+    from pyegeria.core._exceptions import PyegeriaUnauthorizedException
     if isinstance(exc, HTTPException):
         return exc
+    if isinstance(exc, PyegeriaUnauthorizedException):
+        # Egeria refused the user's token: the panel says "Sign in to Studio" (auth.js's 401 path).
+        return HTTPException(status_code=401, detail="Sign in to Studio to use EA here.",
+                             headers={"WWW-Authenticate": "Bearer"})
     if isinstance(exc, AuthoringRefused):
         return HTTPException(status_code=409, detail=str(exc))
     logger.warning(f"embed: {doing} failed: {type(exc).__name__}: {str(exc)[:300]}")
     return HTTPException(status_code=502, detail=f"{doing} failed ({type(exc).__name__}); nothing was assumed.")
+
+
+class _AlreadyHeld(Exception):
+    pass
 
 
 class OpenDraftRequest(BaseModel):
@@ -131,14 +193,21 @@ async def open_in_studio(request: Request, body: OpenDraftRequest) -> Dict[str, 
     except Exception as exc:  # noqa: BLE001 -- said
         raise HTTPException(status_code=422, detail=f"This draft can't be made into a report spec yet: {exc}") from exc
 
-    def save():
+    def save(client):
         from pyegeria.authoring import EgeriaDraftStore, inprocess_runner
         from pyegeria.core.async_runner import run_sync
-        client = _user_client(request)
         store = EgeriaDraftStore(client, inprocess_runner(client))
+        # Never overwrite: a repeat "Open in Studio" with a name the user already has is refused in words, so
+        # their private draft (perhaps edited in Studio since) is never silently replaced. An unreadable check
+        # refuses too (pyegeria raises; nothing is saved).
+        if run_sync(store.async_load(client.user_id, "spec", label)) is not None:
+            raise _AlreadyHeld(label)
         return run_sync(store.async_save(client.user_id, draft))
     try:
-        qn = await asyncio.to_thread(save)
+        qn = await asyncio.to_thread(_as_user, request, save)
+    except _AlreadyHeld:
+        raise HTTPException(status_code=409, detail=f"You already have a Studio draft named {label!r}. Give this one "
+                                                    f"another name (nothing was saved), or open that draft in Studio.")
     except Exception as exc:  # noqa: BLE001
         raise _authoring_error(exc, "Saving the draft for Studio") from exc
     return {"draft_ref": {"kind": "spec", "name": label}, "qualified_name": qn,
@@ -158,14 +227,13 @@ async def draft_context(request: Request, body: DraftContextRequest) -> Dict[str
     if kind not in ("spec", "report", "sheet") or not name:
         raise HTTPException(status_code=400, detail="A draft reference is {kind: spec|report|sheet, name}.")
 
-    def load():
+    def load(client):
         from pyegeria.authoring import EgeriaDraftStore, serialize
         from pyegeria.core.async_runner import run_sync
-        client = _user_client(request)
         d = run_sync(EgeriaDraftStore(client).async_load(client.user_id, kind, name))
         return None if d is None else serialize(d)
     try:
-        md = await asyncio.to_thread(load)
+        md = await asyncio.to_thread(_as_user, request, load)
     except Exception as exc:  # noqa: BLE001
         raise _authoring_error(exc, "Reading the Studio draft") from exc
     if md is None:
