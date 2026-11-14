@@ -51,5 +51,36 @@ const out = {};
   out.unreachableSays = t.panel.root.querySelector('.st-ea-status').textContent;
   out.askWhenUnreachable = t.panel.askAbout({ kind: 'spec', name: 'x' });
   out.postedWhenUnreachable = t.posted.length;
+  // S4 R1: sign-out unloads the frame; a new session loads it again and hands over the NEW user's JWT.
+  let tok = 'jwt-first-user';
+  const getTok = () => tok;
+  t = (() => {
+    const dom = new JSDOM('<!doctype html><body></body>', { url: 'http://localhost:8840/', runScripts: 'outside-only' });
+    const win = dom.window; win.eval(src);
+    const panel = win.createEaPanel({ advisorUrl: `${EA}/`, getToken: getTok, onOpenDraft: () => {}, doc: win.document, win, timeoutMs: 1000 });
+    win.document.body.append(panel.root);
+    const posted = [];
+    // jsdom gives the frame a new window when its src changes: re-attach the spy after each (re)load.
+    const spy = () => { panel.frame.contentWindow.postMessage = (msg, target) => posted.push({ msg, target }); };
+    const send = (data) => win.dispatchEvent(new win.MessageEvent('message', { data, origin: EA, source: panel.frame.contentWindow }));
+    return { win, panel, posted, send, spy };
+  })();
+  t.panel.load();
+  t.spy();
+  t.send({ type: 'ea.ready' });
+  out.firstUserJwt = t.posted.length === 1 && t.posted[0].msg.jwt === 'jwt-first-user';
+  tok = null;
+  t.panel.unload();
+  out.unloadedFrameSrc = t.panel.frame.getAttribute('src');
+  out.unloadedReady = t.panel.state.ready;
+  t.panel.sessionChanged();                       // no session yet: stays unloaded
+  out.staysUnloadedWithoutSession = t.panel.state.unloaded && t.panel.frame.getAttribute('src') === 'about:blank';
+  tok = 'jwt-second-user';
+  t.panel.sessionChanged();                       // a new sign-in: EA loads again
+  out.reloadedSrc = t.panel.frame.getAttribute('src');
+  t.spy();
+  t.send({ type: 'ea.ready' });
+  out.secondUserJwt = t.posted.length === 2 && t.posted[1].msg.jwt === 'jwt-second-user';
+  if (t.panel.state.timer) t.win.clearTimeout(t.panel.state.timer);
   console.log(JSON.stringify(out));
 })();

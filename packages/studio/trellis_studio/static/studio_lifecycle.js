@@ -71,7 +71,9 @@ function impactView(i) {
     h('h4', {}, 'Impact'),
     i.breaking === null ? h('p', { class: 'st-warn' }, "What Egeria holds couldn't be read, so breaking changes can't be ruled out.")
       : i.breaking && i.breaking.length ? h('p', { class: 'st-error' }, `${i.breaking.length} breaking change${i.breaking.length === 1 ? '' : 's'}.`) : null,
-    i.changes ? changeList(i.changes) : null,
+    i.first_publication
+      ? h('p', {}, 'First publication: your private draft becomes public. There is no earlier public version to compare with.')
+      : i.changes ? changeList(i.changes) : null,
     ...(i.notes || []).map((n) => h('p', { class: 'st-warn' }, n)),
     h('strong', {}, 'Used by'),
     used.available

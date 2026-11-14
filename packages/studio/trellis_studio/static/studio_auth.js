@@ -35,7 +35,11 @@ export function headers(extra = {}) {
 /** fetch with the session; a 401 drops the session and shows the sign-in form. */
 export async function api(path, opts = {}) {
   const r = await fetch(path, { ...opts, headers: headers(opts.headers || {}) });
-  if (r.status === 401) { clearToken(); showLogin('Your session has ended. Sign in again.'); }
+  if (r.status === 401) {
+    clearToken();
+    document.dispatchEvent(new CustomEvent('studio:session-ended'));
+    showLogin('Your session has ended. Sign in again.');
+  }
   return r;
 }
 
@@ -58,9 +62,11 @@ function hideLogin() { const el = document.getElementById('st-login'); if (el) e
 
 export function signOut() {
   clearToken();
-  fetch('/api/auth/logout', { method: 'POST' }).catch(() => {});
-  document.dispatchEvent(new CustomEvent('studio:signed-out'));
-  showLogin();
+  document.dispatchEvent(new CustomEvent('studio:session-ended'));   // unload EA's frame first
+  fetch('/api/auth/logout', { method: 'POST' }).catch(() => {}).finally(() => {
+    // A fresh page: nothing of the previous user's work or EA stays in this tab.
+    window.location.replace(window.location.pathname);
+  });
 }
 
 /** Resolve once a session exists (already, by fragment, by postMessage, or by the form). */

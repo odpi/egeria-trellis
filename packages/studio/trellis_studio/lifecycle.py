@@ -58,6 +58,20 @@ def _diff_dict(a, b) -> Dict[str, Any]:
     return out.model_dump(mode="json") if hasattr(out, "model_dump") else out
 
 
+#: The words pyegeria's async_load_held starts with when Egeria holds no such artifact. Used ONLY with a pyegeria
+#: whose AuthoringRefused has no `answer` (before 5e38d483); a test pins it to the real refusal text.
+HOLDS_NO_PREFIX = "Egeria holds no"
+
+
+def refusal_state(exc: BaseException) -> str:
+    """'absent' only when pyegeria says so; everything else is 'unknown' (S3 R2). pyegeria's machine-readable
+    `answer` (absent | unknown | refused) decides; an older pyegeria without it falls back to its words."""
+    answer = getattr(exc, "answer", None)
+    if answer is not None:
+        return "absent" if answer == "absent" else "unknown"
+    return "absent" if str(exc).startswith(HOLDS_NO_PREFIX) else "unknown"
+
+
 def _held_or_none(client, kind, label, notes: List[str]):
     """The held artifact as a draft, or None with words. A refusal is said; it is never taken as "not held" for a
     breaking-change check (the caller treats unknown as unknown)."""
@@ -66,7 +80,7 @@ def _held_or_none(client, kind, label, notes: List[str]):
         return _run_sync(a.async_load_held(kind, label, client)), "read"
     except a.AuthoringRefused as exc:
         notes.append(str(exc))
-        return None, ("absent" if str(exc).startswith("Egeria holds no") else "unknown")
+        return None, refusal_state(exc)
 
 
 async def diff(user, settings, *, draft: Optional[Dict[str, Any]] = None, kind: Optional[str] = None,
@@ -155,6 +169,10 @@ async def plan(user, settings, op: str, **kw) -> Dict[str, Any]:
         out = {"op": op, "plan": _plan_public(p)}
         if d is not None:
             out["impact"] = _impact(client, d, p)
+            if op == "promote":
+                # The held element IS the private draft, so a diff against it says nothing: this is the draft's
+                # first publication, not "no changes" (sd-dcat advisory).
+                out["impact"].update(first_publication=True, changes=[], breaking=[])
             out["needs_breaking_confirm"] = out["impact"]["breaking"] is None or bool(out["impact"]["breaking"])
         else:
             out["impact"] = {"used_by": {"available": False, "words": USED_BY_MISSING}, "steps": p.get("steps", []),
@@ -181,13 +199,14 @@ async def apply(user, settings, op: str, *, step: str, digest: Optional[str], co
             if digest != p.get("digest"):
                 raise StaleDigest("The plan changed since you previewed it (the draft, or what Egeria holds). "
                                   "Preview it again before running it.")
-            if d is not None:
+            if op == "withdraw":
+                if not confirm_breaking:
+                    raise a.AuthoringRefused("Withdrawing removes it from consumers' folders. Confirm that first.")
+            elif op == "publish":                   # promote is a first publication: it can't break a consumer
                 imp = _impact(client, d, p)
                 if (imp["breaking"] is None or imp["breaking"]) and not confirm_breaking:
                     raise a.AuthoringRefused("This changes or may change what consumers see (breaking changes, "
                                              "or the held version couldn't be read). Confirm that first.")
-            elif not confirm_breaking:
-                raise a.AuthoringRefused("Withdrawing removes it from consumers' folders. Confirm that first.")
         run = a.inprocess_runner(client) if step in ("validate", "process") else None
         out = _run_sync(a.async_apply(p, step=step, run=run, client=client, confirmed=confirmed, digest=digest))
         return {"op": op, "step": step, "result": out.get("result"), "plan": _plan_public(out)}

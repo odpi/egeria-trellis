@@ -89,3 +89,19 @@ def test_the_panel_is_resizable_and_optional():
 def test_config_gives_the_page_eas_origin(authed):
     body = authed.get("/api/config").json()
     assert body["advisor_url"] == "http://localhost:8880/" and body["advisor_origin"] == "http://localhost:8880"
+
+
+def test_sign_out_unloads_the_frame_and_a_new_session_reloads_it(harness):
+    assert harness["firstUserJwt"]
+    assert harness["unloadedFrameSrc"] == "about:blank" and harness["unloadedReady"] is False
+    assert harness["staysUnloadedWithoutSession"]
+    assert harness["reloadedSrc"] == "http://localhost:8880/?embed=studio"
+    assert harness["secondUserJwt"]
+
+
+def test_page_unloads_ea_when_the_session_ends():
+    js = (STATIC / "studio.js").read_text()
+    assert "document.addEventListener('studio:session-ended', () => ea.unload());" in js
+    auth = (STATIC / "studio_auth.js").read_text()
+    assert auth.count("new CustomEvent('studio:session-ended')") == 2      # sign-out and an expired session
+    assert "window.location.replace(window.location.pathname);" in auth

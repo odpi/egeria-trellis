@@ -35,7 +35,12 @@ def fake_egeria(monkeypatch):
     async def load_held(kind, label, client):
         assert client.user_id == "peterprofile"
         if state["refuse"]:
-            raise a.AuthoringRefused(state["refuse"])
+            # As pyegeria raises it: with its machine-readable answer when this pyegeria has one (5e38d483+).
+            answer = "absent" if state["refuse"].startswith("Egeria holds no") else "unknown"
+            try:
+                raise a.AuthoringRefused(state["refuse"], answer=answer)
+            except TypeError:
+                raise a.AuthoringRefused(state["refuse"])
         return state["held"]
 
     async def publish_plan(draft, client, *, folders=(), **kw):
@@ -204,3 +209,92 @@ def test_diff_against_held(authed, clients, fake_egeria):
 def test_consumers_are_pyegerias(authed):
     body = authed.get("/api/consumers").json()
     assert "Portal" in body["consumers"] and body["spec_prefix"] == "ReportSpecFolder::Consumer::"
+
+
+# ---- S3 R2: absent vs unknown from pyegeria's answer; the words only as a pinned fallback ----------------
+
+def _real_absent_refusals(monkeypatch):
+    """Refusals produced by pyegeria's REAL async_load_held for an artifact Egeria doesn't hold (the reads faked
+    to find nothing), so the fallback's words are pinned to pyegeria's own text, not a copy."""
+    import asyncio
+    import pyegeria.authoring as a
+    import pyegeria.authoring.lifecycle as lc
+    import md_processing.v2.report as rep
+    import pyegeria.view.dashboards as dash
+
+    async def none(*args, **kw):
+        return None
+    monkeypatch.setattr(rep, "find_report_spec_element", none)
+    monkeypatch.setattr(lc, "_report_element", none)
+    monkeypatch.setattr(dash, "read_sheet_from_chain", none)
+    out = []
+    for kind in ("spec", "report", "sheet"):
+        try:
+            asyncio.run(lc.async_load_held(kind, "Nothing Held", object()))
+        except a.AuthoringRefused as exc:
+            out.append(exc)
+    assert len(out) == 3
+    return out
+
+
+def test_pyegerias_real_absent_refusals_read_as_absent(monkeypatch):
+    for exc in _real_absent_refusals(monkeypatch):
+        assert lifecycle.refusal_state(exc) == "absent", str(exc)
+        # The fallback (a pyegeria without `answer`) depends on these words: a rewording fails here, not silently.
+        assert str(exc).startswith(lifecycle.HOLDS_NO_PREFIX), str(exc)
+
+
+def test_without_answer_the_words_decide_and_anything_else_is_unknown(monkeypatch):
+    for exc in _real_absent_refusals(monkeypatch):
+        if hasattr(exc, "answer"):
+            del exc.answer                    # as an older pyegeria raises it
+        assert lifecycle.refusal_state(exc) == "absent"
+    import pyegeria.authoring as a
+    assert lifecycle.refusal_state(a.AuthoringRefused("Couldn't confirm whether Egeria holds a Report named 'x'.")) == "unknown"
+
+
+def test_answer_decides_over_the_words():
+    import pyegeria.authoring as a
+    e = a.AuthoringRefused("Egeria holds no report spec 'x' that you can see.")
+    e.answer = "unknown"                      # words say absent; pyegeria's answer says unknown
+    assert lifecycle.refusal_state(e) == "unknown"
+    e.answer = "refused"
+    assert lifecycle.refusal_state(e) == "unknown"
+    e2 = a.AuthoringRefused("anything at all")
+    e2.answer = "absent"
+    assert lifecycle.refusal_state(e2) == "absent"
+
+
+def test_promote_says_first_publication_and_needs_no_breaking_confirm(authed, clients, monkeypatch):
+    import pyegeria.authoring as a
+    d = _spec()
+
+    class Store:
+        def __init__(self, *args, **kw):
+            pass
+
+        async def async_load(self, uid, kind, name):
+            return d
+
+        async def async_promotion_plan(self, uid, kind, name, *, folders=()):
+            return {"kind": "spec", "label": name, "markdown": "# doc", "digest": "dg", "steps": ["declassify"],
+                    "publication": {"resolved": True}}
+
+    async def load_held(kind, label, client):
+        return d
+    applied = []
+
+    async def apply(plan, *, step, run=None, client=None, confirmed=False, digest=None):
+        applied.append(step)
+        return {**plan, "step": step, "result": {"success": True}}
+    monkeypatch.setattr(a, "EgeriaDraftStore", Store)
+    monkeypatch.setattr(a, "async_load_held", load_held)
+    monkeypatch.setattr(a, "async_apply", apply)
+    monkeypatch.setattr(a, "inprocess_runner", lambda c: None)
+    body = authed.post("/api/lifecycle/plan", json={"op": "promote", "ref": {"kind": "spec", "name": d.label},
+                                                     "folders": ["Portal"]}).json()
+    assert body["impact"]["first_publication"] is True and body["needs_breaking_confirm"] is False
+    r = authed.post("/api/lifecycle/apply", json={"op": "promote", "ref": {"kind": "spec", "name": d.label},
+                                                   "folders": ["Portal"], "step": "process", "digest": "dg",
+                                                   "confirmed": True})
+    assert r.status_code == 200 and applied == ["process"], r.text

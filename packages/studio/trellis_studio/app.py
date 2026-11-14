@@ -26,7 +26,8 @@ import trellis_ui
 from trellis_auth import LoginRequiredMiddleware, resolve_policy
 
 from trellis_studio import __version__
-from trellis_studio.auth import STUDIO_PUBLIC_PATHS, auth_config, current_user, require_user, user_id_of
+from trellis_studio.auth import (STUDIO_PUBLIC_PATHS, auth_config, current_user, refuse_service_account,
+                                 require_user, user_id_of)
 from trellis_studio.config import StudioSettings, get_settings
 
 logger = logging.getLogger("trellis_studio")
@@ -57,6 +58,19 @@ def create_app(settings: Optional[StudioSettings] = None) -> FastAPI:
     app.add_middleware(LoginRequiredMiddleware, config=cfg, policy=policy)
     logger.info("studio: %s", policy.describe())
 
+    # A token Egeria rejects is a 401 wherever it surfaces, never a retry and never a 500 (S0 R1).
+    try:
+        from pyegeria.core._exceptions import PyegeriaUnauthorizedException
+    except Exception:  # pragma: no cover -- pyegeria is a dependency
+        PyegeriaUnauthorizedException = None
+    if PyegeriaUnauthorizedException is not None:
+        from fastapi.responses import JSONResponse
+
+        @app.exception_handler(PyegeriaUnauthorizedException)
+        async def _egeria_refused_token(request: Request, exc: Exception):
+            return JSONResponse(status_code=401, headers={"WWW-Authenticate": "Bearer"},
+                                content={"detail": "Egeria no longer accepts your sign-in. Sign in again."})
+
     # ---- health (public) -------------------------------------------------------------------------------
     @app.get("/health")
     async def health() -> Dict[str, Any]:
@@ -76,6 +90,7 @@ def create_app(settings: Optional[StudioSettings] = None) -> FastAPI:
     async def auth_login(req: LoginRequest) -> Dict[str, Any]:
         if not req.username or not req.password:
             raise HTTPException(status_code=400, detail="username and password required")
+        refuse_service_account(req.username, settings)   # before any Egeria call
         # The password is used once, here, for an Egeria bearer token, and never stored or signed into the JWT.
         token = await asyncio.to_thread(trellis_auth.login_with_password, req.username, req.password, cfg)
         if not token:
@@ -89,6 +104,7 @@ def create_app(settings: Optional[StudioSettings] = None) -> FastAPI:
         payload = trellis_auth.exchange_portal_token(req.portal_token, cfg)  # 401/400/503 in words
         user = payload.get("sub", "")
         egeria_token = payload.get("egeria_token", "")
+        refuse_service_account(user, settings)           # before the Egeria check
         # The token was minted by the Portal: Egeria checks it before Studio wraps a session round it.
         ok = await asyncio.to_thread(trellis_auth.validate_egeria_token, egeria_token, cfg)
         if not ok:

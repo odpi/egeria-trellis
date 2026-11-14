@@ -29,6 +29,7 @@ async function start() {
   await mountDrafts(appHost);
   wireEaToggle(ea);
   document.addEventListener('studio:session', () => ea.sessionChanged());
+  document.addEventListener('studio:session-ended', () => ea.unload());
   document.addEventListener('studio:ask-ea', (e) => { showEa(ea, true); ea.askAbout(e.detail); });
 }
 
@@ -52,5 +53,4 @@ function wireEaToggle(ea) {
   showEa(ea, open);
 }
 
-document.addEventListener('studio:signed-out', () => { main.innerHTML = ''; document.getElementById('st-user').textContent = ''; });
 start();
