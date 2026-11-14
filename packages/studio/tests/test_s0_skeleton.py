@@ -139,6 +139,7 @@ class _Recorder:
     def __init__(self, **kw):
         _Recorder.built.append(kw)
         self.token = None
+        self.user_pwd = "demo-default-from-settings"   # what pyegeria does with user_pwd=None
 
     def set_bearer_token(self, t):
         self.token = t
@@ -163,7 +164,8 @@ def test_user_client_runs_as_the_signed_in_user(settings, monkeypatch):
     c = studio_egeria.user_client({"sub": "peterprofile", "user_id": "peterprofile", "egeria_token": tok}, settings)
     assert c.token == tok
     assert _Recorder.built == [{"view_server": "qs-view-server", "platform_url": "https://egeria.test:9443",
-                                "user_id": "peterprofile"}]
+                                "user_id": "peterprofile", "user_pwd": None}]
+    assert c.user_pwd is None
 
 
 def test_settings_have_no_service_account(settings):
@@ -175,3 +177,110 @@ def test_origin_of_is_exact():
     assert origin_of("http://localhost:8880/") == "http://localhost:8880"
     assert origin_of("https://laz.example:8840/x?y") == "https://laz.example:8840"
     assert origin_of("localhost:8880") == ""
+
+
+
+# ---- S0 read-back R1: no password on any client; a rejected token is a 401, never a second sign-in ----------
+
+def _real_client(settings, monkeypatch):
+    """A REAL EgeriaTech built by Studio, with pyegeria's settings carrying a demo default password."""
+    from pyegeria.core.config import settings as pyeg_settings
+    from pyegeria.core._base_server_client import BaseServerClient
+    monkeypatch.setattr(pyeg_settings.User_Profile, "user_pwd", "secret-demo-default", raising=False)
+
+    async def origin(self):          # a sub-client asks the platform for its origin when it's built: no network here
+        return "test platform"
+    monkeypatch.setattr(BaseServerClient, "async_get_platform_origin", origin)
+    from trellis_studio.egeria import user_client
+    return user_client({"sub": "peterprofile", "user_id": "peterprofile", "egeria_token": fake_egeria_token()},
+                       settings)
+
+
+def test_no_password_on_the_client_or_any_sub_client(settings, monkeypatch):
+    c = _real_client(settings, monkeypatch)
+    assert c.user_pwd is None
+    sub = c.classification_manager                 # built lazily, after the scrub was installed
+    assert sub.user_pwd is None
+    from trellis_studio.egeria import assert_no_password
+    assert_no_password(c)
+    c.close_session()
+
+
+def test_a_rejected_token_is_401_with_no_second_sign_in(settings, monkeypatch):
+    import asyncio
+    import httpx
+    c = _real_client(settings, monkeypatch)
+    sub = c.classification_manager
+    minted = []
+
+    async def no_mint(*a, **k):
+        minted.append(a)
+        return "should-never-happen"
+    monkeypatch.setattr(type(sub), "_async_create_egeria_bearer_token", no_mint)
+    monkeypatch.setattr(type(c), "_async_create_egeria_bearer_token", no_mint, raising=False)
+    sub.session = httpx.AsyncClient(transport=httpx.MockTransport(lambda req: httpx.Response(401)))
+    from pyegeria.core._exceptions import PyegeriaUnauthorizedException
+    with pytest.raises(PyegeriaUnauthorizedException):
+        asyncio.run(sub._async_get_elements_by_property_value("x", ["qualifiedName"], page_size=1))
+    assert minted == [] and sub.user_pwd is None and c.user_pwd is None
+
+
+def test_the_app_answers_pyegerias_unauthorized_with_401(app, settings, monkeypatch):
+    import httpx
+    from fastapi.testclient import TestClient
+    from pyegeria.core._exceptions import PyegeriaUnauthorizedException
+    import trellis_auth
+
+    @app.get("/api/_test_refused")
+    async def refused():
+        raise PyegeriaUnauthorizedException(httpx.Response(401, request=httpx.Request("GET", "https://e.test/x")),
+                                            context={"caller method": "test"})
+    tok = trellis_auth.create_access_token("peterprofile", fake_egeria_token(), app.state.auth_config)
+    r = TestClient(app).get("/api/_test_refused", headers={"Authorization": f"Bearer {tok}"})
+    assert r.status_code == 401 and "Sign in again" in r.json()["detail"]
+
+
+def test_a_request_closes_its_client_and_checks_for_a_password(settings, monkeypatch):
+    import asyncio
+    from trellis_studio import authoring
+
+    class C:
+        user_pwd = None
+        closed = False
+
+        def close_session(self):
+            C.closed = True
+    monkeypatch.setattr(authoring, "user_client", lambda user, s: C())
+    out = asyncio.run(authoring.in_user_thread({"user_id": "u"}, settings, lambda c: "done"))
+    assert out == "done" and C.closed
+
+    class Leaky(C):
+        def close_session(self):
+            Leaky.closed = True
+    monkeypatch.setattr(authoring, "user_client", lambda user, s: Leaky())
+
+    def put_one_back(c):
+        c.user_pwd = "oops"
+    from trellis_studio.egeria import PasswordOnClient
+    with pytest.raises(PasswordOnClient):
+        asyncio.run(authoring.in_user_thread({"user_id": "u"}, settings, put_one_back))
+    assert Leaky.closed
+
+
+# ---- S0 advisories: one secret per box; service accounts refused as EA refuses them ---------------------
+
+def test_no_studio_only_jwt_secret(monkeypatch):
+    monkeypatch.setenv("STUDIO_JWT_SECRET", "per-app-secret-0123456789abcdef0123")
+    monkeypatch.setenv("TRELLIS_JWT_SECRET", "box-secret-0123456789abcdef0123")
+    assert StudioSettings().jwt_secret == "box-secret-0123456789abcdef0123"
+
+
+def test_service_accounts_are_refused_on_both_ways_in(client, monkeypatch):
+    s = StudioSettings(jwt_secret=SECRET, portal_secret=PORTAL_SECRET, service_accounts_raw="EAService, other",
+                       re_daemon_user_id="re-daemon")
+    app = create_app(s)
+    c = TestClient(app)
+    monkeypatch.setattr(trellis_auth, "login_with_password", lambda *a: (_ for _ in ()).throw(AssertionError("no Egeria call")))
+    monkeypatch.setattr(trellis_auth, "validate_egeria_token", lambda *a: (_ for _ in ()).throw(AssertionError("no Egeria call")))
+    assert c.post("/api/auth/login", json={"username": "eaSERVICE", "password": "x"}).status_code == 403
+    assert c.post("/api/auth/portal", json={"portal_token": _portal_token(sub="re-daemon")}).status_code == 403

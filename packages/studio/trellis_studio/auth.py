@@ -62,3 +62,15 @@ def egeria_token_or_401(user: Dict[str, Any]) -> str:
         raise HTTPException(status_code=401, detail="Your Studio session carries no Egeria sign-in. Sign in again.",
                             headers={"WWW-Authenticate": "Bearer"})
     return token
+
+
+SERVICE_ACCOUNT_DETAIL = "this is a service account; sign in as yourself"
+
+
+def refuse_service_account(user_id: str, settings: StudioSettings) -> None:
+    """403 before any Egeria call when `user_id` is a service account (EA's rule, A-I1): the same identities are
+    refused by both apps, so the panel never carries a session EA would not accept."""
+    if user_id and user_id.strip().casefold() in settings.service_accounts:
+        import logging
+        logging.getLogger("trellis_studio").warning("studio: refused a session for service account %r", user_id)
+        raise HTTPException(status_code=403, detail=SERVICE_ACCOUNT_DETAIL)

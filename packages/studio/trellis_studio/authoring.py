@@ -18,7 +18,7 @@ import inspect
 from typing import Any, Callable, Dict, List, Optional
 
 from trellis_studio.config import StudioSettings
-from trellis_studio.egeria import user_client
+from trellis_studio.egeria import assert_no_password, close, user_client
 
 KINDS = ("spec", "report", "sheet")
 
@@ -41,7 +41,13 @@ async def in_user_thread(user: Dict[str, Any], settings: StudioSettings, fn: Cal
     """Run `fn(client)` on a worker thread with a client signed in as `user` (built in that thread)."""
     def work():
         client = user_client(user, settings)
-        return fn(client)
+        try:
+            return fn(client)
+        finally:
+            try:
+                assert_no_password(client)      # nothing in the call put one back
+            finally:
+                close(client)
     return await asyncio.to_thread(work)
 
 

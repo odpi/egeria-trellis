@@ -2,7 +2,10 @@
 
 Names are the box-wide ones, so a deploy sets each value once for every trellis app:
   EGERIA_PLATFORM_URL (EGERIA_VIEW_SERVER_URL accepted, EA's name)   EGERIA_VIEW_SERVER
-  TRELLIS_JWT_SECRET    signs Studio's session JWT; the SAME secret EA and RE verify with (owner decision A)
+  TRELLIS_JWT_SECRET    signs Studio's session JWT; the SAME secret EA and RE verify with (owner decision A). There
+                        is deliberately no Studio-only override: a per-app secret would silently break one sign-in
+                        per box.
+  TRELLIS_SERVICE_ACCOUNTS, RE_DAEMON_USER_ID  ids no person may sign in to Studio as (EA refuses the same ones)
   TRELLIS_PORTAL_SECRET verifies the Portal's short-lived SSO token (the Portal's EGERIA_ADVISOR_SSO_SECRET)
   EGERIA_ADVISOR_URL    where the embedded EA panel loads from (default, as the Portal's: http://localhost:8880/)
   STUDIO_PUBLIC_URL     Studio's own public origin (for EA's frame-ancestors / embed origins)
@@ -41,13 +44,22 @@ class StudioSettings(BaseSettings):
         validation_alias=AliasChoices("EGERIA_PLATFORM_URL", "EGERIA_VIEW_SERVER_URL"),
     )
     egeria_view_server: str = Field(default="qs-view-server", validation_alias="EGERIA_VIEW_SERVER")
-    jwt_secret: str = Field(default="", validation_alias=AliasChoices("STUDIO_JWT_SECRET", "TRELLIS_JWT_SECRET"))
+    jwt_secret: str = Field(default="", validation_alias="TRELLIS_JWT_SECRET")
     portal_secret: str = Field(default="", validation_alias=AliasChoices("STUDIO_PORTAL_SECRET",
                                                                         "TRELLIS_PORTAL_SECRET"))
     jwt_ttl_hours: int = Field(default=8, validation_alias="STUDIO_JWT_TTL_HOURS")
     advisor_url: str = Field(default="http://localhost:8880/", validation_alias="EGERIA_ADVISOR_URL")
     public_url: str = Field(default=f"http://localhost:{DEFAULT_PORT}", validation_alias="STUDIO_PUBLIC_URL")
     portal_origins_raw: str = Field(default="", validation_alias="STUDIO_PORTAL_ORIGINS")
+    service_accounts_raw: str = Field(default="", validation_alias="TRELLIS_SERVICE_ACCOUNTS")
+    re_daemon_user_id: str = Field(default="", validation_alias="RE_DAEMON_USER_ID")
+
+    @property
+    def service_accounts(self) -> frozenset:
+        ids = {p.strip().casefold() for p in self.service_accounts_raw.split(",") if p.strip()}
+        if self.re_daemon_user_id.strip():
+            ids.add(self.re_daemon_user_id.strip().casefold())
+        return frozenset(ids)
 
     @property
     def advisor_origin(self) -> str:

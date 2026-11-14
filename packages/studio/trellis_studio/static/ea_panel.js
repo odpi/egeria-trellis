@@ -37,7 +37,7 @@ export function createEaPanel(opts) {
   frame.referrerPolicy = 'no-referrer';
   root.append(status, frame);
 
-  const state = { ready: false, sent: false, timer: null, unreachable: false };
+  const state = { ready: false, sent: false, timer: null, unreachable: false, unloaded: false };
   const say = (text, cls = 'st-muted') => { status.textContent = text; status.className = `st-ea-status ${cls}`; status.hidden = !text; };
 
   function sendSession() {
@@ -86,10 +86,29 @@ export function createEaPanel(opts) {
     return true;
   }
 
-  /** Studio's session changed (signed in again): hand EA the new one; signed out: EA gets nothing more. */
-  function sessionChanged() { if (state.ready) sendSession(); }
+  /** Studio's session ended (signed out, or it expired): unload EA, so no frame keeps the old session in its own
+   *  storage and a different person signing in to this tab never sees the previous user's EA (S4 R1). */
+  function unload() {
+    if (state.timer) { win.clearTimeout(state.timer); state.timer = null; }
+    state.ready = false; state.sent = false; state.unloaded = true;
+    frame.removeAttribute('src');
+    frame.src = 'about:blank';
+    say('Signed out of Studio: EA is closed until you sign in again.', 'st-muted');
+  }
+
+  /** Studio has a new session: after an unload, load EA again (it asks for the session afresh); otherwise hand the
+   *  new one over. */
+  function sessionChanged() {
+    if (state.unloaded) {
+      if (!getToken()) return;
+      state.unloaded = false;
+      if (!root.hidden) load();
+      return;
+    }
+    if (state.ready) sendSession();
+  }
 
   win.addEventListener('message', onMessage);
-  return { root, frame, load, askAbout, sessionChanged, state, origin, src,
+  return { root, frame, load, unload, askAbout, sessionChanged, state, origin, src,
            destroy: () => win.removeEventListener('message', onMessage) };
 }

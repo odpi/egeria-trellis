@@ -45,20 +45,28 @@ def static_dir() -> Path:
 
 
 def _pyegeria_renderer():
-    """pyegeria's egeria-table.js and its version, or None when the installed pyegeria predates D3."""
+    """pyegeria's egeria-table.js and its version, or None when the installed pyegeria predates D3.
+
+    Found WITHOUT importing pyegeria (gate b408): pyegeria does event-loop work at import time, and Resource
+    Explorer's web modules must not import it (test_web_startup_under_uvloop). `find_spec("pyegeria")` on the
+    top-level name only locates the package; the file is then looked up under its directory, and the version comes
+    from the installed distribution's metadata."""
+    from importlib.metadata import PackageNotFoundError, version
+    from importlib.util import find_spec
     try:
-        from pyegeria.view.renderers import egeria_table_js
-    except Exception:  # no pyegeria, or one without the renderers module
+        spec = find_spec("pyegeria")
+    except (ImportError, ValueError):
         return None
-    path = egeria_table_js()
-    if not path.is_file():
-        return None
-    try:
-        from importlib.metadata import version
-        ver = version("pyegeria")
-    except Exception:
-        ver = "unknown"
-    return path, ver
+    locations = list(getattr(spec, "submodule_search_locations", None) or []) if spec else []
+    for loc in locations:
+        path = Path(loc) / "view" / "static" / EGERIA_TABLE
+        if path.is_file():
+            try:
+                ver = version("pyegeria")
+            except PackageNotFoundError:
+                ver = "unknown"
+            return path, ver
+    return None
 
 
 def egeria_table_source() -> Dict[str, str]:

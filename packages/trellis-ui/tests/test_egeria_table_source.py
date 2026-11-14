@@ -46,3 +46,33 @@ def test_other_files_still_come_from_trellis_ui(monkeypatch):
 def test_real_pyegeria_probe_never_raises():
     src = trellis_ui.egeria_table_source()
     assert src["source"] in ("pyegeria", "vendored") and Path(src["path"]).is_file()
+
+
+def test_import_and_mount_never_import_pyegeria():
+    """RE's invariant (test_web_startup_under_uvloop): its web modules, which import trellis_ui and mount it at
+    import time, must not import pyegeria. Checked in a fresh interpreter."""
+    import subprocess
+    import sys
+    code = ("import sys, trellis_ui\n"
+            "from starlette.applications import Starlette\n"
+            "trellis_ui.mount(Starlette())\n"
+            "trellis_ui.egeria_table_source()\n"
+            "bad = sorted(m for m in sys.modules if m == 'pyegeria' or m.startswith('pyegeria.'))\n"
+            "print(','.join(bad))\n")
+    out = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, timeout=60)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip() == "", f"pyegeria imported: {out.stdout.strip()}"
+
+
+def test_found_from_the_package_directory(monkeypatch, tmp_path):
+    """The file is located under pyegeria's directory without importing it."""
+    import importlib.util
+    pkg = tmp_path / "pyegeria"
+    (pkg / "view" / "static").mkdir(parents=True)
+    (pkg / "view" / "static" / "egeria-table.js").write_text("/* x */")
+
+    class _Spec:
+        submodule_search_locations = [str(pkg)]
+    monkeypatch.setattr(importlib.util, "find_spec", lambda name: _Spec() if name == "pyegeria" else None)
+    path, _ver = trellis_ui._pyegeria_renderer()
+    assert path == pkg / "view" / "static" / "egeria-table.js"
