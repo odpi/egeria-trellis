@@ -288,6 +288,12 @@ class PrefectPoolStatus:
     #: Live workers that advertise no commit (`re-worker-<sha12>-<host>` is the form that does): RE can still
     #: dispatch to them, but cannot check they run its own code (Architect ruling, 2026-11-13). Never silent.
     parity_unchecked: list[str] = field(default_factory=list)
+    #: The deployment a dispatched step would go to now, from the same decision dispatch makes
+    #: (`prefect_adapter.resolve_dispatch`, on the configured pool). "" while none would be chosen.
+    dispatch_to: str = ""
+    #: Why a dispatched step would run locally although a worker is live (the refusal dispatch would give, in
+    #: its words: the configured pool, the default deployment's pool, the online commits). "" when it would go.
+    dispatch_refused: str = ""
     last_checked_at: str = ""
     last_check_error: str = ""
 
@@ -502,11 +508,26 @@ def check_prefect_pool_workers(pool: str | None = None, *, now: datetime | None 
     try:
         import asyncio
 
-        from resource_explorer.surveyors.prefect_adapter import re_prefect_client
+        from resource_explorer.surveyors.prefect_adapter import (
+            DispatchChoice,
+            re_prefect_client,
+            resolve_dispatch,
+        )
+
+        now = now or datetime.now(timezone.utc)
+        factor = _live_factor()
 
         async def _fetch():
             async with re_prefect_client() as client:
-                return await client.read_workers_for_work_pool(pool)
+                found = await client.read_workers_for_work_pool(pool)
+                # The same decision dispatch makes (one function, Architect ruling 2026-11-14), fed the workers
+                # judged live here, so the banner never calls a pool fine that a step would not be sent to.
+                live = [w for w in found if _worker_is_live(w, now, factor)]
+                try:
+                    decided = await resolve_dispatch(client, pool, online=live)
+                except Exception as exc:  # noqa: BLE001 - said on the status, never a silent all-clear
+                    decided = DispatchChoice(pool=pool, refused=f"dispatch could not be checked: {exc}")
+                return found, decided
 
         try:
             loop = asyncio.get_running_loop()
@@ -515,12 +536,10 @@ def check_prefect_pool_workers(pool: str | None = None, *, now: datetime | None 
         if loop and loop.is_running():
             from resource_explorer.concurrency import run_sync
 
-            workers = run_sync(lambda: asyncio.run(_fetch()))
+            workers, choice = run_sync(lambda: asyncio.run(_fetch()))
         else:
-            workers = asyncio.run(_fetch())
+            workers, choice = asyncio.run(_fetch())
 
-        now = now or datetime.now(timezone.utc)
-        factor = _live_factor()
         status.reachable = True
         status.registered_count = len(workers)
         status.live_count = sum(1 for w in workers if _worker_is_live(w, now, factor))
@@ -552,7 +571,15 @@ def check_prefect_pool_workers(pool: str | None = None, *, now: datetime | None 
                               f"registered; last heartbeat {age}")
         if status.never_heard_from and state != "none_registered":
             status.summary += f"; {status.never_heard_from} never heard from"
+        status.dispatch_to = choice.deployment_name
         if state != "live":
+            status.runs_locally_instead = prefect_pool_runs_locally_instead()
+        elif choice.refused:
+            # A live worker that a step would still not be sent to (another pool's deployment, other code):
+            # its own state, said at WARNING once, and what runs locally is listed as for no live worker.
+            status.dispatch_refused = choice.refused
+            state = "live_dispatch_refused:" + choice.refused
+            status.summary += "; but a dispatched step runs locally: " + choice.refused
             status.runs_locally_instead = prefect_pool_runs_locally_instead()
         elif status.parity_unchecked:
             # Its own state, so it is said once when it starts and once when it ends, at WARNING while it lasts.
@@ -562,7 +589,7 @@ def check_prefect_pool_workers(pool: str | None = None, *, now: datetime | None 
         if state != _prefect_pool_logged_state:
             if state == "live":
                 log.info("bootstrap: Prefect work pool %r: %s", pool, status.summary)
-            elif state.startswith("live_parity_unchecked:"):
+            elif state.startswith(("live_parity_unchecked:", "live_dispatch_refused:")):
                 log.warning("bootstrap: Prefect work pool %r: %s", pool, status.summary)
             else:
                 log.warning(
@@ -1869,6 +1896,8 @@ def get_status(docs_dir: Path = DOCS_DIR) -> dict:
             "summary": pool_st.summary,
             "runs_locally_instead": list(pool_st.runs_locally_instead),
             "parity_unchecked": list(pool_st.parity_unchecked),
+            "dispatch_to": pool_st.dispatch_to,
+            "dispatch_refused": pool_st.dispatch_refused,
             "runs_locally_words": (unreachable_words(pool_st.runs_locally_instead)
                                    if pool_st.reachable is False
                                    else runs_locally_words(pool_st.runs_locally_instead)),

@@ -27,6 +27,16 @@ from resource_explorer import bootstrap as bs
 
 
 @pytest.fixture(autouse=True)
+def _own_sha(monkeypatch):
+    """This RE runs the commit ON_SHA's worker advertises, so a live ON_SHA worker is one a step goes to."""
+    from resource_explorer import build_info
+    monkeypatch.setenv("TRELLIS_RE_SHA", "0123456789ab" + "cdef0123456789abcdef01234567")
+    build_info.re_sha.cache_clear()
+    yield
+    build_info.re_sha.cache_clear()
+
+
+@pytest.fixture(autouse=True)
 def _clear_pool_status():
     with bs._prefect_pool_status_lock:
         bs._prefect_pool_status = bs.PrefectPoolStatus()
@@ -41,17 +51,30 @@ def _fake_worker(name="worker-1", last_heartbeat="2026-09-28T00:00:00Z", **extra
     return SimpleNamespace(name=name, last_heartbeat_time=last_heartbeat, **extra)
 
 
-def _client(workers):
+#: The deployments the fake Prefect knows, by name, and their pool (resolve_dispatch reads them).
+DEPLOYMENTS = {"RE Survey Flow/re-survey-step-deployment": "resource-explorer-pool",
+               "RE Survey Flow/re-survey-step-0123456789ab": "resource-explorer-pool"}
+
+
+def _client(workers, deployments=None):
     fake_client = MagicMock()
     fake_client.read_workers_for_work_pool = AsyncMock(return_value=workers)
+    known = DEPLOYMENTS if deployments is None else deployments
+
+    async def read_deployment(name):
+        if name not in known:
+            raise LookupError(f"{name} not found")
+        return SimpleNamespace(id=name, name=name.split("/", 1)[-1], work_pool_name=known[name])
+
+    fake_client.read_deployment_by_name = AsyncMock(side_effect=read_deployment)
     fake_client.__aenter__ = AsyncMock(return_value=fake_client)
     fake_client.__aexit__ = AsyncMock(return_value=False)
     return fake_client
 
 
-def _check(workers, now):
+def _check(workers, now, deployments=None):
     with patch("resource_explorer.surveyors.prefect_adapter.re_prefect_client",
-               return_value=_client(workers)):
+               return_value=_client(workers, deployments)):
         return bs.check_prefect_pool_workers(pool="resource-explorer-pool", now=now)
 
 
@@ -237,7 +260,7 @@ class TestRunsLocallyInstead:
         with patch("resource_explorer.surveyors.prefect_adapter.re_prefect_client", return_value=client):
             bs.check_prefect_pool_workers(pool="resource-explorer-pool", now=NOW)
         called = {c[0] for c in client.method_calls} - {"__aenter__", "__aexit__"}
-        assert called == {"read_workers_for_work_pool"}
+        assert called <= {"read_workers_for_work_pool", "read_deployment_by_name"}, called
 
 
 class TestServerUnreachable:
@@ -341,3 +364,41 @@ class TestPoolMissing:
             pass
         assert bs._is_not_found(ObjectNotFound("x"))
         assert not bs._is_not_found(ConnectionError("refused"))
+
+
+#: hedwig's state: the default deployment left on the pool of the stopped 11-09 host worker.
+OTHER_POOL = {"RE Survey Flow/re-survey-step-deployment": "default-agent-pool"}
+
+
+class TestDispatchRefusedWhileAWorkerIsLive:
+    """Architect ruling 2026-11-14: the banner uses the same decision dispatch makes (resolve_dispatch on the
+    configured pool). hedwig 2026-11-14: "1 live worker(s) of 1 registered" with no warning, while every
+    dispatched step ran locally because the default deployment was on another pool."""
+
+    def test_a_worker_with_no_commit_and_the_default_deployment_on_another_pool(self, caplog):
+        caplog.set_level(logging.INFO, logger=bs.log.name)
+        status = _check([_fake_worker("re-host-worker-hedwig", FRESH)], NOW, deployments=OTHER_POOL)
+        assert status.live_count == 1 and status.dispatch_to == ""
+        assert status.dispatch_refused.startswith(
+            "default deployment 'RE Survey Flow/re-survey-step-deployment' is on pool default-agent-pool but "
+            "Resource Explorer is configured for pool resource-explorer-pool")
+        assert "but a dispatched step runs locally: default deployment" in status.summary
+        assert status.runs_locally_instead, "what runs locally instead is listed, as for no live worker"
+        _check([_fake_worker("re-host-worker-hedwig", FRESH)], NOW, deployments=OTHER_POOL)
+        warns = [r for r in caplog.records if r.levelno == logging.WARNING]
+        assert len(warns) == 1 and "configured for pool resource-explorer-pool" in warns[0].getMessage()
+        payload = bs.get_status()["prefect_pool"]
+        assert payload["dispatch_refused"] == status.dispatch_refused and payload["dispatch_to"] == ""
+
+    def test_a_worker_on_this_commit_goes_to_its_own_deployment(self):
+        status = _check([_fake_worker(ON_SHA, FRESH)], NOW, deployments={
+            **OTHER_POOL, "RE Survey Flow/re-survey-step-0123456789ab": "resource-explorer-pool"})
+        assert status.dispatch_refused == "" and status.dispatch_to == "re-survey-step-0123456789ab"
+        assert bs.get_status()["prefect_pool"]["dispatch_to"] == "re-survey-step-0123456789ab"
+
+    def test_a_check_that_fails_is_said_not_cleared(self):
+        client = _client([_fake_worker(ON_SHA, FRESH)])
+        client.read_deployment_by_name = AsyncMock(side_effect=RuntimeError("boom"))
+        with patch("resource_explorer.surveyors.prefect_adapter.re_prefect_client", return_value=client):
+            status = bs.check_prefect_pool_workers(pool="resource-explorer-pool", now=NOW)
+        assert "is missing: RuntimeError: boom" in status.dispatch_refused

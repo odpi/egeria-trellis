@@ -109,3 +109,18 @@ test('a pool the server says does not exist is its own warning, not "server not 
   assert.equal(text(document.querySelector('[data-prefect-pool-word]')), "Prefect: pool resource-explorer-pool doesn't exist");
   assert.doesNotMatch(text(line), /not reachable/);
 });
+
+test('a live worker a step would not be sent to is a warning line with the refusal and what runs locally', async () => {
+  // Architect ruling 2026-11-14: the banner reads the same decision dispatch makes (hedwig: the default deployment
+  // on default-agent-pool while RE is configured for resource-explorer-pool, every step ran locally, no warning).
+  const { document, mod } = await loadShell();
+  const refused = "default deployment 'RE Survey Flow/re-survey-step-deployment' is on pool default-agent-pool but "
+    + 'Resource Explorer is configured for pool resource-explorer-pool';
+  const summary = `1 live worker(s) of 1 registered; last heartbeat 20 seconds ago; but a dispatched step runs locally: ${refused}`;
+  mod.renderBootstrapBanner(document, STATUS(POOL({ live_count: 1, registered_count: 1, summary,
+    dispatch_refused: refused, parity_unchecked: ['re-host-worker-hedwig'] })));
+  const line = document.querySelector('[data-prefect-pool-line]');
+  assert.equal(line.dataset.prefectPoolLine, 'dispatch_refused', 'the refusal wins over parity-unchecked');
+  assert.equal(text(document.querySelector('[data-prefect-pool-word]')), `Prefect: ${summary}`);
+  assert.equal(text(document.querySelector('[data-prefect-pool-runs-locally]')), RUNS_LOCALLY);
+});

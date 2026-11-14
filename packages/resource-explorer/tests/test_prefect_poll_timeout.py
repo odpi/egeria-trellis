@@ -30,7 +30,8 @@ FLOW_RUN_ID = "11111111-2222-3333-4444-555555555555"
 
 
 def _cfg(timeout=None):
-    prefect = types.SimpleNamespace(enabled=True, api_url="http://x/api", work_pool="cfg-pool")
+    # The configured pool is the one looked up (Architect ruling 2026-11-14); the fake deployment is on it.
+    prefect = types.SimpleNamespace(enabled=True, api_url="http://x/api", work_pool="resource-explorer-pool")
     if timeout is not None:
         prefect.step_timeout_seconds = timeout
     return types.SimpleNamespace(prefect=prefect)

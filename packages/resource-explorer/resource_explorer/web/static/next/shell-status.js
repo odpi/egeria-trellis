@@ -141,6 +141,8 @@ export function engineLine(status) {
  *    - 'unreachable': the Prefect server could not be asked. Runs still happen (the local fallback), but none is
  *      recorded in Prefect, and dispatched steps run in RE's process (the Architect's ruling, 2026-11-13);
  *    - 'no_live': the server answered and no worker is live; dispatched steps run in RE's process instead.
+ *    - 'dispatch_refused': a worker is live but a dispatched step would still run locally (its deployment is on
+ *      another pool than the configured one, or it runs other code): the same decision dispatch makes;
  *    - 'parity_unchecked': a worker is live but advertises no commit, so RE cannot check it runs RE's code.
  *  Nothing is drawn while the pool is unread (reachable null), while a worker on a known commit is live, or when Prefect is off by
  *  configuration (enabled false: every step runs locally by choice). Nothing waits in either warning state. */
@@ -158,6 +160,10 @@ export function prefectPoolLine(status) {
   if (p.reachable !== true) return null;
   if (p.live_count === 0) {
     return { kind: 'no_live', word: `Prefect: ${p.summary || 'no live worker'}`, runsLocally: p.runs_locally_words || '' };
+  }
+  // A live worker a step would still not be sent to (Architect ruling 2026-11-14): the server's own refusal.
+  if (p.live_count > 0 && p.dispatch_refused) {
+    return { kind: 'dispatch_refused', word: `Prefect: ${p.summary || p.dispatch_refused}`, runsLocally: p.runs_locally_words || '' };
   }
   // A live worker that advertises no commit: RE can dispatch to it but cannot check it runs RE's own code
   // (Architect ruling 2026-11-13). The server's summary carries the words.

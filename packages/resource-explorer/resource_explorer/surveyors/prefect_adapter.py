@@ -36,6 +36,7 @@ import asyncio
 import re
 import logging
 import time
+from dataclasses import dataclass, field
 from typing import Any, Awaitable, Callable
 from prefect.client.orchestration import PrefectClient
 from resource_explorer.config import DEFAULT_PREFECT_STEP_TIMEOUT_SECONDS, get_config
@@ -352,55 +353,115 @@ def worker_sha(worker: Any) -> str:
     return m.group(1) if m else ""
 
 
-async def _choose_deployment(client: Any, pool_default: str) -> Any:
-    """The deployment a step's flow run goes to, or RuntimeError with the reason (run_prefect_step then
-    runs the step locally and records why). Read only: nothing is created here.
+@dataclass
+class DispatchChoice:
+    """Where a dispatched step would go on `pool`, or why it would not go (`refused`, which names the configured
+    pool, the default deployment's pool and the online commits). One decision for dispatch and for the pool
+    banner (`resolve_dispatch`), so the banner never says a worker is live for a step that would run locally."""
 
-      - a worker that advertises THIS RE's commit is ONLINE: its own deployment (its own queue, so only
-        a worker on the same code picks the run up);
-      - else a worker that advertises no commit is ONLINE: the default deployment, as before;
-      - else ONLINE workers exist but all run other code: refused, naming both commits. Running a step
-        on different code would be silent drift (§1.6);
-      - else: no ONLINE worker at all (PREFECT-POLL-TIMEOUT: a run would sit Scheduled forever).
+    pool: str
+    deployment: Any = None
+    refused: str = ""
+    default_pool: str | None = None
+    online_commits: list[str] = field(default_factory=list)
+    unchecked: list[str] = field(default_factory=list)
+    #: True when `deployment` is the default one (a worker that advertises no commit): parity is not checked.
+    via_default: bool = False
+
+    @property
+    def deployment_name(self) -> str:
+        return str(getattr(self.deployment, "name", "") or "") if self.deployment is not None else ""
+
+
+async def _read_deployment_or_none(client: Any, name: str) -> tuple[Any, str]:
+    """(deployment, "") or (None, the reason it could not be read). Read only."""
+    try:
+        return await client.read_deployment_by_name(name), ""
+    except Exception as e:  # noqa: BLE001 - every failure is a refusal reason, returned to the caller
+        return None, f"{type(e).__name__}: {e}"
+
+
+async def resolve_dispatch(client: Any, pool: str, online: list[Any] | None = None) -> DispatchChoice:
+    """The deployment a step's flow run goes to on the CONFIGURED pool `pool`, or the refusal. Read only.
+
+    The configured pool (`config.prefect.work_pool`) is authoritative (Architect ruling 2026-11-14, §RE-RULING
+    of RULING-RE-PREFECT-AB-ENGINE-2026-11-13): workers are looked up there and nowhere else, and a deployment
+    on any other pool is refused by name, never dispatched to. Before this, the pool came from the default
+    deployment, so on hedwig (default deployment left on default-agent-pool from 11-09) the live container
+    worker on resource-explorer-pool was never seen and every step ran locally.
+
+      - an ONLINE worker on this RE's commit: its deployment `re-survey-step-<sha12>`, which must be on `pool`;
+      - else an ONLINE worker that advertises no commit: the default deployment, only when it is on `pool`;
+      - else ONLINE workers that all run other code: refused, naming the commits (§1.6, no silent drift);
+      - else no ONLINE worker on `pool` (PREFECT-POLL-TIMEOUT: a run would sit Scheduled forever).
+
+    `online` lets a caller pass the workers it already judged live (bootstrap's heartbeat check); by default the
+    pool's workers with status ONLINE are read here.
     """
     from resource_explorer.build_info import re_sha_short
 
-    try:
-        deployment = await client.read_deployment_by_name(DEFAULT_DEPLOYMENT)
-    except Exception as e:
-        raise RuntimeError(
-            f"Prefect deployment '{DEFAULT_DEPLOYMENT}' not found. "
-            f"Did you run 'resource-explorer prefect deploy'? Error: {e}"
-        )
-    pool = getattr(deployment, "work_pool_name", None) or pool_default
-    online = [w for w in await client.read_workers_for_work_pool(pool) if _is_online(w)]
+    choice = DispatchChoice(pool=pool)
+    if online is None:
+        online = [w for w in await client.read_workers_for_work_pool(pool) if _is_online(w)]
     own = re_sha_short()
-    advertised = sorted({worker_sha(w) for w in online} - {""})
-    if own and own in advertised:
+    choice.online_commits = sorted({worker_sha(w) for w in online} - {""})
+    choice.unchecked = sorted(str(getattr(w, "name", "") or "?") for w in online if not worker_sha(w))
+    default, default_err = await _read_deployment_or_none(client, DEFAULT_DEPLOYMENT)
+    if default is not None:
+        choice.default_pool = getattr(default, "work_pool_name", None) or None
+
+    def refuse(reason: str) -> DispatchChoice:
+        where = (f"on pool {choice.default_pool}" if choice.default_pool
+                 else ("on no pool" if default is not None else "missing"))
+        commits = ", ".join(choice.online_commits + [f"none advertised by {n}" for n in choice.unchecked])
+        choice.refused = (f"{reason} (Resource Explorer is configured for pool {pool}; the default deployment "
+                          f"'{DEFAULT_DEPLOYMENT}' is {where}; online commits: {commits or 'none'})")
+        return choice
+
+    if own and own in choice.online_commits:
         name = f"RE Survey Flow/{sha_deployment(own)}"
-        try:
-            return await client.read_deployment_by_name(name)
-        except Exception as e:
-            raise RuntimeError(
-                f"a Prefect worker on this Resource Explorer's code ({own}) is online but its deployment "
-                f"'{name}' is missing: {e}"
-            )
-    unchecked = sorted(str(getattr(w, "name", "") or "?") for w in online if not worker_sha(w))
-    if unchecked:
+        deployment, err = await _read_deployment_or_none(client, name)
+        if deployment is None:
+            return refuse(f"a Prefect worker on this Resource Explorer's code ({own}) is online but its "
+                          f"deployment '{name}' is missing: {err}")
+        on = getattr(deployment, "work_pool_name", None)
+        if on != pool:
+            return refuse(f"deployment '{name}' is on pool {on} but Resource Explorer is configured for pool {pool}")
+        choice.deployment = deployment
+        return choice
+    if choice.unchecked:
+        if default is None:
+            return refuse(f"Prefect deployment '{DEFAULT_DEPLOYMENT}' not found. "
+                          f"Did you run 'resource-explorer prefect deploy'? Error: {default_err}")
+        if choice.default_pool != pool:
+            return refuse(f"default deployment '{DEFAULT_DEPLOYMENT}' is on pool {choice.default_pool} but "
+                          f"Resource Explorer is configured for pool {pool}")
+        choice.deployment = default
+        choice.via_default = True
+        return choice
+    if choice.online_commits:
+        return refuse(f"no online Prefect worker runs this Resource Explorer's code ({own or 'commit unknown'}); "
+                      f"online workers on pool {pool} run {', '.join(choice.online_commits)}")
+    return refuse(f"no online Prefect worker for pool {pool}; run `make prefect-up`")
+
+
+async def _choose_deployment(client: Any, pool: str) -> Any:
+    """The deployment a step's flow run goes to on the configured `pool` (`resolve_dispatch`), or RuntimeError
+    with the refusal (run_prefect_step then runs the step locally and records why). Read only."""
+    choice = await resolve_dispatch(client, pool)
+    if choice.refused:
+        raise RuntimeError(choice.refused)
+    for name in choice.unchecked if choice.via_default else []:
         # Allowed, never silent (Architect ruling 2026-11-13): said once per worker, and the pool banner line
         # names it for as long as it lasts (bootstrap.PrefectPoolStatus.parity_unchecked).
-        for name in unchecked:
-            if name not in _PARITY_UNCHECKED_WARNED:
-                _PARITY_UNCHECKED_WARNED.add(name)
-                logging.warning("commit parity not checked: worker %s advertises none; dispatching to the "
-                                "default deployment (this Resource Explorer runs %s)", name, own or "commit unknown")
-        return deployment
-    if advertised:
-        raise RuntimeError(
-            f"no online Prefect worker runs this Resource Explorer's code ({own or 'commit unknown'}); "
-            f"online workers on pool {pool} run {', '.join(advertised)}"
-        )
-    raise RuntimeError(f"no online Prefect worker for pool {pool}; run `make prefect-up`")
+        if name not in _PARITY_UNCHECKED_WARNED:
+            _PARITY_UNCHECKED_WARNED.add(name)
+            from resource_explorer.build_info import re_sha_short
+
+            logging.warning("commit parity not checked: worker %s advertises none; dispatching to the "
+                            "default deployment (this Resource Explorer runs %s)", name,
+                            re_sha_short() or "commit unknown")
+    return choice.deployment
 
 
 async def _cancel_flow_run_best_effort(client: Any, flow_run_id: Any) -> str:
@@ -435,9 +496,12 @@ async def _run_prefect_step_api(
 
     Two guards against the hang found 2026-10-02 (see
     PREFECT-POLL-TIMEOUT-IMPLEMENTED.md): (1) before creating a flow run,
-    require >= 1 ONLINE worker on the deployment's work pool, else raise
-    RuntimeError (run_prefect_step's existing policy then falls back to local
-    and records the cause); (2) the poll loop has a deadline
+    `_choose_deployment` requires >= 1 ONLINE worker on the CONFIGURED pool
+    (`config.prefect.work_pool`, never the default deployment's pool) and a
+    deployment on that same pool, else raises RuntimeError naming the
+    configured pool, the default deployment's pool and the online commits
+    (run_prefect_step's existing policy then falls back to local and records
+    the cause); (2) the poll loop has a deadline
     (`timeout_seconds`, default `PrefectConfig.step_timeout_seconds`) and on
     expiry cancels the run best-effort and raises PrefectFlowRunTimeout.
     `poll_interval`, `clock` and `sleep` are injectable so tests never sleep.

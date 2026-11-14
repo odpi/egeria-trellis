@@ -41,9 +41,11 @@ def _worker(name, status="ONLINE"):
     return types.SimpleNamespace(name=name, status=types.SimpleNamespace(value=status))
 
 
-def _client(workers, deployments=("RE Survey Flow/re-survey-step-deployment",)):
+def _client(workers, deployments=("RE Survey Flow/re-survey-step-deployment",), pools=None):
+    """`pools` maps a deployment name to its pool; every other deployment is on resource-explorer-pool."""
     c = MagicMock()
-    known = {n: types.SimpleNamespace(id=n, name=n, work_pool_name="resource-explorer-pool") for n in deployments}
+    known = {n: types.SimpleNamespace(id=n, name=n, work_pool_name=(pools or {}).get(n, "resource-explorer-pool"))
+             for n in deployments}
 
     async def read_deployment(name):
         if name not in known:
@@ -89,7 +91,10 @@ class TestChooseDeployment:
         with pytest.raises(RuntimeError) as ei:
             _choose(c)
         assert str(ei.value) == (f"no online Prefect worker runs this Resource Explorer's code ({OWN}); "
-                                 f"online workers on pool resource-explorer-pool run {OTHER}")
+                                 f"online workers on pool resource-explorer-pool run {OTHER} "
+                                 "(Resource Explorer is configured for pool resource-explorer-pool; the default "
+                                 "deployment 'RE Survey Flow/re-survey-step-deployment' is on pool "
+                                 f"resource-explorer-pool; online commits: {OTHER})")
 
     def test_an_offline_worker_on_this_commit_does_not_count(self):
         c = _client([_worker(f"re-worker-{OWN}-pop-os", "OFFLINE")], deployments=(
@@ -117,6 +122,72 @@ class TestChooseDeployment:
             assert adapter.worker_sha(_worker(name)) == ""
         assert adapter.sha_deployment(OWN) == f"re-survey-step-{OWN}"
         assert adapter.sha_work_queue(OWN) == f"re-{OWN}"
+
+
+DEFAULT = "RE Survey Flow/re-survey-step-deployment"
+
+
+class TestTheConfiguredPoolIsAuthoritative:
+    """Architect ruling 2026-11-14 (§RE-RULING of RULING-RE-PREFECT-AB-ENGINE-2026-11-13). Found on hedwig: the
+    default deployment was left on default-agent-pool, the pool was taken from it, and the live container worker
+    on resource-explorer-pool was never seen, so every step ran locally while the banner said "1 live worker"."""
+
+    def test_1_a_worker_on_this_commit_with_its_deployment_on_the_configured_pool(self):
+        c = _client([_worker(f"re-worker-{OWN}-pop-os")], deployments=(DEFAULT, SHA_DEP),
+                    pools={DEFAULT: "default-agent-pool"})
+        assert _choose(c).name == SHA_DEP, "a default deployment on another pool does not get in the way"
+        c.read_workers_for_work_pool.assert_awaited_once_with("resource-explorer-pool")
+
+    def test_2_its_deployment_on_another_pool_is_refused_naming_both(self):
+        c = _client([_worker(f"re-worker-{OWN}-pop-os")], deployments=(DEFAULT, SHA_DEP),
+                    pools={SHA_DEP: "default-agent-pool"})
+        with pytest.raises(RuntimeError) as ei:
+            _choose(c)
+        assert str(ei.value).startswith(f"deployment '{SHA_DEP}' is on pool default-agent-pool but Resource "
+                                        "Explorer is configured for pool resource-explorer-pool")
+        assert f"online commits: {OWN}" in str(ei.value)
+
+    def test_3_a_worker_with_no_commit_and_the_default_deployment_on_the_configured_pool(self):
+        """laz's case: the host worker, the default deployment on resource-explorer-pool. Unchanged."""
+        c = _client([_worker("re-host-worker-laz")])
+        assert _choose(c).name == DEFAULT
+        c.read_workers_for_work_pool.assert_awaited_once_with("resource-explorer-pool")
+
+    def test_4_the_default_deployment_on_another_pool_is_refused_never_dispatched(self):
+        """hedwig's case, with a worker that advertises no commit: never sent to another pool silently."""
+        c = _client([_worker("re-host-worker-hedwig")], pools={DEFAULT: "default-agent-pool"})
+        with pytest.raises(RuntimeError) as ei:
+            _choose(c)
+        msg = str(ei.value)
+        assert msg.startswith(f"default deployment '{DEFAULT}' is on pool default-agent-pool but Resource "
+                              "Explorer is configured for pool resource-explorer-pool")
+        assert "online commits: none advertised by re-host-worker-hedwig" in msg
+        c.read_workers_for_work_pool.assert_awaited_once_with("resource-explorer-pool")
+
+    def test_5_no_online_worker_on_the_configured_pool(self):
+        c = _client([_worker(f"re-worker-{OWN}-pop-os", "OFFLINE")], deployments=(DEFAULT, SHA_DEP),
+                    pools={DEFAULT: "default-agent-pool"})
+        with pytest.raises(RuntimeError) as ei:
+            _choose(c)
+        assert str(ei.value) == ("no online Prefect worker for pool resource-explorer-pool; run `make prefect-up` "
+                                 "(Resource Explorer is configured for pool resource-explorer-pool; the default "
+                                 f"deployment '{DEFAULT}' is on pool default-agent-pool; online commits: none)")
+        c.read_workers_for_work_pool.assert_awaited_once_with("resource-explorer-pool")
+
+    def test_a_missing_default_deployment_does_not_stop_a_worker_on_this_commit(self):
+        c = _client([_worker(f"re-worker-{OWN}-pop-os")], deployments=(SHA_DEP,))
+        assert _choose(c).name == SHA_DEP
+
+    def test_a_missing_default_deployment_is_said_for_a_worker_with_no_commit(self):
+        c = _client([_worker("re-host-worker-laz")], deployments=())
+        with pytest.raises(RuntimeError, match=f"Prefect deployment '{DEFAULT}' not found") as ei:
+            _choose(c)
+        assert f"the default deployment '{DEFAULT}' is missing" in str(ei.value)
+
+    def test_the_lookup_is_read_only(self):
+        c = _client([_worker(f"re-worker-{OWN}-pop-os")], deployments=(DEFAULT, SHA_DEP))
+        _choose(c)
+        assert {m[0] for m in c.method_calls} <= {"read_deployment_by_name", "read_workers_for_work_pool"}
 
 
 def test_a_refused_dispatch_runs_locally_and_says_why(monkeypatch):
