@@ -39,6 +39,7 @@ jobs:
               "packages/studio/**" \
               "packages/trellis-auth/**" \
               "packages/trellis-ui/**" \
+              "packages/resource-explorer/frontend-build/package-lock.json" \
               "pyproject.toml" \
               "uv.lock" \
               ".github/workflows/studio.yml" \
@@ -60,9 +61,24 @@ jobs:
         # never on a developer tree, where a bare `uv sync --package` drops the other members).
         run: uv sync --package trellis-studio --extra dev
 
-      - name: Studio tests
+      - name: Set up Node
+        if: steps.scope.outputs.run == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install jsdom for the EA panel harness
+        if: steps.scope.outputs.run == 'true'
+        # Studio has no JS toolchain of its own; RE's frontend-build lockfile already pins jsdom (as EA's CI uses).
+        working-directory: packages/resource-explorer/frontend-build
+        run: npm ci
+
+      - name: Studio tests (with the EA panel harness, jsdom required)
         if: steps.scope.outputs.run == 'true'
         working-directory: packages/studio
+        env:
+          STUDIO_JSDOM_DIR: ${{ github.workspace }}/packages/resource-explorer/frontend-build/node_modules
+          STUDIO_JS_REQUIRED: "1"
         run: uv run --no-sync pytest tests -q --no-header -rs
 
       - name: trellis-ui tests (its egeria-table.js source)

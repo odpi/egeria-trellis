@@ -245,6 +245,8 @@ function actions() {
     h('button', { class: 'st-btn st-btn-quiet', onclick: () => previewDraft(Number(rows.value) || 25, runAll.checked) }, 'Preview'),
     h('label', { class: 'st-muted' }, ' rows ', rows),
     state.draft.kind === 'sheet' ? h('label', { class: 'st-muted' }, runAll, ' run every placement') : null,
+    state.savedAs ? h('button', { class: 'st-btn st-btn-quiet', onclick: () => document.dispatchEvent(
+      new CustomEvent('studio:ask-ea', { detail: { kind: state.draft.kind, name: state.savedAs } })) }, 'Ask EA about this draft') : null,
     state.savedAs ? h('button', { class: 'st-btn st-btn-quiet', onclick: deleteDraft }, 'Delete draft') : null);
 }
 
@@ -301,7 +303,7 @@ export async function mountDrafts(main) {
   panes.preview = h('div', { 'aria-label': 'Preview' });
   const right = h('section', { 'aria-label': 'Checks and preview' },
     h('h4', {}, 'Validation'), panes.checks, h('h4', {}, 'Preview'), panes.preview);
-  clear(main).append(makeSplit('drafts', [{ el: panes.list, width: 260 }, { el: panes.form, width: 560 }, { el: right }]));
+  clear(main).append(makeSplit('drafts', [{ el: panes.list, width: 240 }, { el: panes.form, grow: true }, { el: right, width: 340, min: 220 }]));
   main.setAttribute('data-studio-app', 'drafts');
   const t = await readJson(await api('/api/templates'));
   state.templates = t.ok ? t.data.templates : [];

@@ -9,7 +9,8 @@ const TOKEN_KEY = 'studio_token';
 function store() { try { return window.sessionStorage; } catch (e) { return null; } }
 
 export function getToken() { const s = store(); try { return s ? s.getItem(TOKEN_KEY) : null; } catch (e) { return null; } }
-function setToken(t) { const s = store(); try { if (s) s.setItem(TOKEN_KEY, t); } catch (e) { /* no storage: session lasts this page */ } memo = t; }
+function setToken(t) { const s = store(); try { if (s) s.setItem(TOKEN_KEY, t); } catch (e) { /* no storage: session lasts this page */ } memo = t;
+  document.dispatchEvent(new CustomEvent('studio:session')); }
 function clearToken() { const s = store(); try { if (s) s.removeItem(TOKEN_KEY); } catch (e) {} memo = null; }
 let memo = null;
 
