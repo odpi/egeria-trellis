@@ -38,6 +38,7 @@ members = [
     "trellis-step-hub-tables",
     "trellis-step-schema-comparison",
     "trellis-step-statistics-freshness",
+    "trellis-studio",
     "trellis-ui",
     "trellis-vectorstore",
     "trellis-workspace",
@@ -10457,6 +10458,40 @@ dependencies = [
 requires-dist = [{ name = "egeria-trellis-analytics", specifier = ">=0.4,<0.5" }]
 
 [[package]]
+name = "trellis-studio"
+version = "0.1.0"
+source = { editable = "packages/studio" }
+dependencies = [
+    { name = "fastapi" },
+    { name = "pydantic" },
+    { name = "pydantic-settings" },
+    { name = "pyegeria" },
+    { name = "trellis-auth", extra = ["egeria"] },
+    { name = "trellis-ui" },
+    { name = "uvicorn" },
+]
+
+[package.optional-dependencies]
+dev = [
+    { name = "httpx" },
+    { name = "pytest" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "fastapi", specifier = ">=0.115.0" },
+    { name = "httpx", marker = "extra == 'dev'", specifier = ">=0.27.0" },
+    { name = "pydantic", specifier = ">=2.0.0" },
+    { name = "pydantic-settings", specifier = ">=2.0.0" },
+    { name = "pyegeria", specifier = ">=6.2.41" },
+    { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.3.0" },
+    { name = "trellis-auth", extras = ["egeria"], editable = "packages/trellis-auth" },
+    { name = "trellis-ui", editable = "packages/trellis-ui" },
+    { name = "uvicorn", specifier = ">=0.32.0" },
+]
+provides-extras = ["dev"]
+
+[[package]]
 name = "trellis-ui"
 version = "0.1.0"
 source = { editable = "packages/trellis-ui" }
@@ -10520,6 +10555,7 @@ dev = [
     { name = "trellis-step-hub-tables" },
     { name = "trellis-step-schema-comparison" },
     { name = "trellis-step-statistics-freshness" },
+    { name = "trellis-studio", extra = ["dev"] },
     { name = "trellis-ui" },
     { name = "trellis-vectorstore" },
 ]
@@ -10548,6 +10584,7 @@ dev = [
     { name = "trellis-step-hub-tables", editable = "packages/trellis-analytics/examples/steps/hub_tables" },
     { name = "trellis-step-schema-comparison", editable = "packages/trellis-analytics/examples/steps/schema_comparison" },
     { name = "trellis-step-statistics-freshness", editable = "packages/trellis-analytics/examples/steps/statistics_freshness" },
+    { name = "trellis-studio", extras = ["dev"], editable = "packages/studio" },
     { name = "trellis-ui", editable = "packages/trellis-ui" },
     { name = "trellis-vectorstore", editable = "packages/trellis-vectorstore" },
 ]

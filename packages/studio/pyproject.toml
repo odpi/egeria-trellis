@@ -1,0 +1,40 @@
+[project]
+name = "trellis-studio"
+version = "0.1.0"
+description = "Trellis Studio: the deliberate authoring surface for report specs, Reports and dashboard sheets (forms, preview, lifecycle) over pyegeria.authoring. No LLM of its own; AI-assisted authoring is Egeria Advisor's, embedded as a panel."
+readme = "README.md"
+authors = [{ name = "Dan Wolfson" }]
+requires-python = ">=3.12,<4.0"
+dependencies = [
+    # pyegeria.authoring (phase 1) arrived in 6.2.41; the renderer as package data (D3, P1) comes later and
+    # trellis-ui falls back to its vendored copy until then, saying which it serves.
+    "pyegeria>=6.2.41",
+    # Sign-in (password + Portal SSO), the session JWT and the shared login policy. The JWT is signed with the
+    # box-wide TRELLIS_JWT_SECRET, which is what makes a Studio session valid at EA (owner decision A).
+    "trellis-auth[egeria]",
+    # The looks, the look picker, colresize and egeria-table.js, served at /static/trellis-ui/.
+    "trellis-ui",
+    "fastapi>=0.115.0",
+    "uvicorn>=0.32.0",
+    "pydantic>=2.0.0",
+    "pydantic-settings>=2.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.3.0",
+    "httpx>=0.27.0",
+]
+
+[project.scripts]
+studio = "trellis_studio.cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["trellis_studio"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
