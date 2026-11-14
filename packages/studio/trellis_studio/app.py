@@ -122,6 +122,16 @@ def create_app(settings: Optional[StudioSettings] = None) -> FastAPI:
             "version": __version__,
         }
 
+    # ---- authoring (S1+) --------------------------------------------------------------------------------
+    from trellis_studio.routes_drafts import router as drafts_router
+    app.include_router(drafts_router)
+
+    @app.get("/api/renderer")
+    async def renderer(request: Request) -> Dict[str, Any]:
+        require_user(request)
+        src = trellis_ui.egeria_table_source()
+        return {"source": src["source"], "version": src.get("version"), "commit": src.get("commit")}
+
     # ---- the page ---------------------------------------------------------------------------------------
     trellis_ui.mount(app)  # before /static
     app.mount("/static", StaticFiles(directory=static_dir()), name="studio-static")
