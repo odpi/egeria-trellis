@@ -251,6 +251,9 @@ _EA_PUBLIC_PATHS = (
     "/api/auth/me",
     "/api/auth/defaults",
     "/api/auth/policy",
+    # E1: the origins allowed to frame EA and hand it a session by postMessage (no secret in it); the page needs
+    # them before it holds a token.
+    "/api/embed/config",
 )
 
 _policy_cache = None

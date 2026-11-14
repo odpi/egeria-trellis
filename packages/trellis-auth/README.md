@@ -115,6 +115,29 @@ that supplies its own resolved `AuthConfig` and the shared policy below, the
 same shape `trellis-querycache`/`trellis-vectorstore` use. See
 `advisor/auth.py`.
 
+## One sign-in per box: a session JWT is valid at every trellis app on it (owner decision A, 2026-11-14)
+
+**An intended contract, not an accident.** Every trellis app on a box signs its session JWT with the same
+`TRELLIS_JWT_SECRET` and verifies with it, so a session minted by one app (Trellis Studio, RE, EA) is valid at the
+others. The owner decided on 2026-11-14 that this is how it should work: a user signed in to Studio uses the EA
+panel embedded in Studio with no second sign-in.
+
+What holds it in place:
+- **One secret per box.** Set `TRELLIS_JWT_SECRET` once, for every app. An app-specific override
+  (`ADVISOR_JWT_SECRET`, `RE_JWT_SECRET`, `STUDIO_JWT_SECRET`) takes that app out of the shared sign-in: a JWT from
+  another app no longer verifies there. Studio refuses to start without a secret, and never derives one.
+- **The JWT travels only by `postMessage`, to an exact origin.** Studio hands its session to the embedded EA as
+  `{type: 'trellis_auth', jwt}`, targeted at EA's origin. EA accepts it only from the parent window and only from an
+  origin in `ADVISOR_EMBED_ORIGINS`, and checks it with its own token check (`GET /api/embed/whoami`, which also
+  refuses a service account) before keeping it. Never in a URL, a query string, a log line, or a message to `*`.
+- **Same payload, same checks.** `{sub, user_id, role, display_name, egeria_token, iat, exp}`; `exp` is capped at
+  the Egeria token's own expiry, so a session can't outlive the Egeria sign-in it carries.
+- **Not an SSO issuer.** Studio does not mint Portal-shaped tokens with `TRELLIS_PORTAL_SECRET` (the alternative
+  the owner turned down): only the Portal issues those.
+
+So a stolen session JWT is worth the same at every app on the box, for at most its own lifetime. Keep it in
+`sessionStorage` (each app does) and never put it anywhere else.
+
 ## Login policy: shared, and required
 
 **Decided 2026-09-04 by the project owner**, replacing this README's original

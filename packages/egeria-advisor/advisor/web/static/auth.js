@@ -13,6 +13,15 @@
 const Auth = (() => {
   const TOKEN_KEY = 'ea_token';
 
+  // ── Embed mode (E1): EA inside Trellis Studio, /?embed=studio ────────────
+  // No password form. The session arrives only by postMessage {type:'trellis_auth', jwt} from an origin in
+  // ADVISOR_EMBED_ORIGINS (GET /api/embed/config), from the parent window, and EA checks it with its own token check
+  // (GET /api/embed/whoami) before keeping it. Owner decision A: a Studio JWT is valid at EA.
+  const EMBED = (() => { try { return new URLSearchParams(window.location.search).get('embed') === 'studio'; } catch { return false; } })();
+  const EMBED_WAIT_MS = 5000;
+  let embedOrigins = [];      // exact origins allowed to frame EA and talk to it by postMessage
+  let embedParent = null;     // the origin whose trellis_auth EA accepted: every message to Studio targets it
+
   // ── Token helpers ────────────────────────────────────────────────────────
 
   function getToken() {
@@ -73,7 +82,26 @@ const Auth = (() => {
     }
   }
 
+  function showEmbedSignIn(message) {
+    let el = document.getElementById('embed-signin');
+    if (!el) {
+      el = document.createElement('div');
+      el.id = 'embed-signin';
+      el.setAttribute('role', 'status');
+      el.className = 'fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/90 text-slate-200 text-sm p-6 text-center';
+      document.body.appendChild(el);
+    }
+    el.textContent = message || 'Sign in to Studio to use EA here.';
+    el.hidden = false;
+  }
+
+  function hideEmbedSignIn() {
+    const el = document.getElementById('embed-signin');
+    if (el) el.hidden = true;
+  }
+
   function showLogin(message) {
+    if (EMBED) { showEmbedSignIn(message && /Studio/.test(message) ? message : 'Sign in to Studio to use EA here.'); return; }
     // The "continue without signing in" footer only makes sense in the dev-only
     // anonymous-read mode; with login required it leads straight to a 401.
     const anonFooter = document.getElementById('login-anon-footer');
@@ -210,13 +238,62 @@ const Auth = (() => {
     }
   }
 
+  async function loadEmbedOrigins() {
+    try {
+      const r = await _origFetch('/api/embed/config');
+      if (r.ok) embedOrigins = (await r.json()).embed_origins || [];
+    } catch {
+      embedOrigins = [];   // unreachable: accept no postMessage at all (fail closed)
+    }
+  }
+
+  async function acceptEmbedToken(jwt, origin) {
+    let r;
+    try {
+      r = await _origFetch('/api/embed/whoami', { headers: { 'Authorization': `Bearer ${jwt}` } });
+    } catch {
+      showEmbedSignIn("EA couldn't check your Studio session. Try again from Studio.");
+      return false;
+    }
+    if (!r.ok) {
+      let detail = '';
+      try { detail = (await r.json()).detail || ''; } catch {}
+      clearToken();
+      updateUserDisplay();
+      showEmbedSignIn(r.status === 403 ? detail : 'Sign in to Studio to use EA here.');
+      return false;
+    }
+    setToken(jwt);
+    embedParent = origin;
+    hideEmbedSignIn();
+    updateUserDisplay();
+    document.dispatchEvent(new CustomEvent('ea:authenticated', { detail: { user: getUser()?.sub, embed: true } }));
+    return true;
+  }
+
+  function postToParent(message) {
+    // Only ever to an exact, allowed origin: the one Studio's session came from, else each listed origin (a
+    // postMessage to an origin the parent doesn't have is dropped by the browser, so only the real parent hears it).
+    if (!EMBED || window.parent === window) return;
+    const targets = embedParent ? [embedParent]
+      : (() => { const a = window.location.ancestorOrigins?.[0]; return a && embedOrigins.includes(a) ? [a] : embedOrigins; })();
+    for (const t of targets) window.parent.postMessage(message, t);
+  }
+
   function listenForPortalMessage() {
     window.addEventListener('message', async (event) => {
-      // Only accept messages from configured portal origins
-      const allowed = ['http://localhost:8885', window.location.origin];
+      // Only configured origins (ADVISOR_EMBED_ORIGINS) and EA itself; before E1 one Portal origin was hard-coded.
+      const allowed = [...embedOrigins, window.location.origin];
       if (!allowed.includes(event.origin)) return;
-      if (event.data?.type !== 'egeria_auth' || !event.data?.portal_token) return;
-      await exchangePortalToken(event.data.portal_token);
+      const data = event.data || {};
+      if (EMBED && data.type === 'trellis_auth') {
+        if (event.source !== window.parent || !embedOrigins.includes(event.origin)) return;
+        if (typeof data.jwt !== 'string' || !data.jwt) return;
+        await acceptEmbedToken(data.jwt, event.origin);
+        return;
+      }
+      if (data.type !== 'egeria_auth' || !data.portal_token) return;
+      await exchangePortalToken(data.portal_token);
     });
   }
 
@@ -306,8 +383,26 @@ const Auth = (() => {
       if (typeof loadDrafts  === 'function') loadDrafts();
     });
 
-    // Start portal SSO listener
+    // The postMessage listener accepts only the configured origins, so load them first.
+    await loadEmbedOrigins();
     listenForPortalMessage();
+
+    if (EMBED) {
+      // No password form in embed mode: remove it, so it can't be shown or filled in.
+      document.documentElement.classList.add('ea-embed');
+      document.getElementById('login-overlay')?.remove();
+      document.getElementById('login-header-btn')?.remove();
+      await loadPolicy();
+      if (isAuthenticated()) {
+        updateUserDisplay();
+        onReady && onReady();
+      } else {
+        appStartDeferred = true;
+      }
+      postToParent({ type: 'ea.ready' });
+      setTimeout(() => { if (!isAuthenticated()) showEmbedSignIn('Sign in to Studio to use EA here.'); }, EMBED_WAIT_MS);
+      return;
+    }
 
     // Ask the server whether login is required before deciding what to do with
     // an unauthenticated visitor. Runs alongside the Portal fragment check
@@ -339,7 +434,8 @@ const Auth = (() => {
     showLogin();
   }
 
-  return { init, isAuthenticated, getToken, getHeaders, getUser, showLogin, hideLogin, doLogout, handle401, updateUserDisplay };
+  const embed = { active: EMBED, parentOrigin: () => embedParent, post: postToParent, origins: () => embedOrigins.slice() };
+  return { init, isAuthenticated, getToken, getHeaders, getUser, showLogin, hideLogin, doLogout, handle401, updateUserDisplay, embed };
 })();
 
 // A top-level `const` is a global binding but NOT a property of window, so `window.Auth` / `root.Auth` were
