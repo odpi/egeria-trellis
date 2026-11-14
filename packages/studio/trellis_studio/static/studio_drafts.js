@@ -292,6 +292,7 @@ async function previewDraft(maxRows, runPlacements = false) {
 }
 
 document.addEventListener('studio:published', () => loadList());
+document.addEventListener('studio:status', (e) => { if (panes.status) setStatus(String(e.detail || '')); });
 
 // ---- mount -------------------------------------------------------------------------------------------------
 

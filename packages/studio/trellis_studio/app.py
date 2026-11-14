@@ -127,6 +127,8 @@ def create_app(settings: Optional[StudioSettings] = None) -> FastAPI:
     app.include_router(drafts_router)
     from trellis_studio.routes_lifecycle import router as lifecycle_router
     app.include_router(lifecycle_router)
+    from trellis_studio.routes_rights import router as rights_router
+    app.include_router(rights_router)
 
     @app.get("/api/renderer")
     async def renderer(request: Request) -> Dict[str, Any]:

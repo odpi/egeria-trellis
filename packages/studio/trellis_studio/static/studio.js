@@ -28,8 +28,30 @@ async function start() {
   main.append(makeSplit('studio-ea', [{ el: appHost, grow: true }, { el: ea.root, width: 380, min: 240 }]));
   await mountDrafts(appHost);
   wireEaToggle(ea);
+  await openFromHandOff();
   document.addEventListener('studio:session', () => ea.sessionChanged());
   document.addEventListener('studio:ask-ea', (e) => { showEa(ea, true); ea.askAbout(e.detail); });
+}
+
+/** The Portal's "Edit in Studio" lands on /?open=<kind>:<label> (no secret: the session came by #pt=). Studio checks
+ *  the user's rights itself before opening it; the link was only a hint. */
+async function openFromHandOff() {
+  let open = null;
+  try { open = new URLSearchParams(window.location.search).get('open'); } catch (e) { open = null; }
+  if (!open) return;
+  history.replaceState(null, '', window.location.pathname);
+  const at = open.indexOf(':');
+  const kind = open.slice(0, at), label = open.slice(at + 1);
+  if (at < 1 || !['spec', 'sheet', 'report'].includes(kind) || !label) return;
+  const r = await api(`/api/held/${kind}/${encodeURIComponent(label)}`);
+  let body = {};
+  try { body = await r.json(); } catch (e) {}
+  if (!r.ok) {
+    alert(body.detail || `Couldn't open ${label} (HTTP ${r.status}).`);
+    return;
+  }
+  studioDrafts.showDraft(body.draft, null);
+  document.dispatchEvent(new CustomEvent('studio:status', { detail: `Opened ${label} from Egeria to make a new version.` }));
 }
 
 const EA_KEY = 'studio.ea.open';
