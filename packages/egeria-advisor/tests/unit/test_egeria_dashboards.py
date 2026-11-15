@@ -121,6 +121,25 @@ def _viewer(user_id, *, hide_peter_only: bool):
 
 
 @pytest.fixture(autouse=True)
+def _no_real_explorer(monkeypatch):
+    """The fakes answer every read; a real ClassificationExplorer would try to reach the fake URL."""
+    built = []
+    try:
+        import pyegeria.omvs.classification_explorer as ce
+    except ImportError:
+        yield built
+        return
+
+    class _Refused:
+        def __init__(self, *a, **k):
+            built.append(a)
+            raise AssertionError("a real ClassificationExplorer was built: a fake lacks a read pyegeria uses")
+    monkeypatch.setattr(ce, "ClassificationExplorer", _Refused)
+    yield built
+    assert not built, "a real ClassificationExplorer was built: a fake lacks a read pyegeria uses"
+
+
+@pytest.fixture(autouse=True)
 def _isolated(tmp_path, monkeypatch):
     monkeypatch.setenv("PYEGERIA_REPORT_SPEC_CACHE_DIR", str(tmp_path / "cache"))
     ed._reset_for_tests()
