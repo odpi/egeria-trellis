@@ -5956,8 +5956,17 @@ class ProjectRegistry:
                                (now, error, run_id))
             return bool(getattr(cur, "rowcount", 0))
 
-    def cancel_queued_run(self, run_id: str, *, now: str | None = None) -> bool:
+    def cancel_queued_run(self, run_id: str, *, now: str | None = None, by: str | None = None,
+                          activity_status: str = "cancelled", activity_summary: str = "") -> bool:
         """Cancel a row that has NOT been claimed yet. Returns False otherwise.
+
+        **The run's activity entry closes in the same transaction** (TR-2, 2026-11-15). The route that queued
+        the run opened that entry as 'running' and handed it over as `result_ref`; only a worker closes it,
+        and a cancelled row never reaches one. Before this, every cancel left its entry 'running' for ever:
+        381 phantom running entries on hedwig after one flood was cancelled. The entry is closed as
+        `activity_status` ('cancelled' by default) with who and when, and only if it is still 'running', so an
+        entry something else already finalised is never overwritten. `by` defaults to the signed-in caller
+        (`current_user_id()`). A caller with its own words (first-index withdraw) passes them.
 
         A claimed or running row is deliberately not cancellable here: it owns a
         real Python thread inside some worker process, and Python threads cannot
@@ -5985,6 +5994,18 @@ class ProjectRegistry:
                 (now, run_id, *held),
             )
             cancelled = bool(getattr(cur, "rowcount", 0))
+            if cancelled:
+                ref = conn.execute("SELECT result_ref FROM runs WHERE id=?", (run_id,)).fetchone()
+                result_ref = (ref["result_ref"] if ref else "") or ""
+                if result_ref:
+                    who = current_user_id() if by is None else by
+                    summary = activity_summary or (
+                        f"Cancelled before it was claimed, by {who or 'the service account'} at {now}; "
+                        "nothing ran.")
+                    conn.execute(
+                        "UPDATE activity_log SET status = ?, summary = ? WHERE id = ? AND status = 'running'",
+                        (activity_status, summary, result_ref),
+                    )
         if cancelled:
             # A pressed run cancelled before any worker claimed it: the presser's held session ends with it.
             from resource_explorer import presser_hold
