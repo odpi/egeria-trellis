@@ -668,9 +668,10 @@ def _risk_spec():
                  conditions=dict(C03_COND))
 
 
-def _egeria(monkeypatch, rows, fail_big=False):
-    """A fake preview that behaves like Egeria + pyegeria: rows in Egeria's alphabetical-descending order, one
-    page of max_rows, capped when there are more. Records each read's max_rows."""
+def _egeria(monkeypatch, rows, fail_big=False, end="confirmed"):
+    """A fake preview that behaves like Egeria + pyegeria 6.2.42: rows in Egeria's alphabetical-descending
+    order, up to max_rows, capped when there are more. `end` is the paging contract's end for a read that got
+    everything ("confirmed", or e.g. "not_confirmed"; None: an older pyegeria). Records each read's max_rows."""
     seen = []
     ordered = sorted(rows, key=lambda nv: nv[1], reverse=True)            # Egeria: by the letters
 
@@ -679,7 +680,11 @@ def _egeria(monkeypatch, rows, fail_big=False):
         if fail_big and max_rows > v2.ANSWER_ROWS:
             raise TimeoutError("slow")
         page = ordered[:max_rows]
-        return {**_table(page), "capped": len(ordered) > max_rows, "shown": len(page)}
+        more = len(ordered) > max_rows
+        out = {**_table(page), "capped": more, "shown": len(page)}
+        if end is not None:
+            out["end"] = "capped" if more else end
+        return out
     monkeypatch.setattr("pyegeria.authoring.preview", fake_preview)
     monkeypatch.setattr(v2, "spec_draft", lambda one: object())
     return seen
@@ -724,3 +729,15 @@ def test_no_re_read_when_not_capped_or_not_re_ranked(monkeypatch):
     seen = _egeria(monkeypatch, [(f"x{i}", f"Colour {i}") for i in range(40)])   # capped, off the scale
     v2.answer(_risk_spec(), client=object())
     assert seen == [v2.ANSWER_ROWS]
+
+
+@pytest.mark.parametrize("end", ["not_confirmed", None])
+def test_not_capped_but_not_a_confirmed_end_is_the_first_n_not_all(monkeypatch, end):
+    """Read-back R1 on 5b01e72a: a read that stopped below the bound without a confirmed end (a suspect null,
+    an unconfirmed empty, or an older pyegeria with no `end`) may not be everything."""
+    _egeria(monkeypatch, MANY, end=end)
+    out = v2.answer(_risk_spec(), client=object())
+    assert any("ranked the first 40 rows" in n for n in out["notes"])
+    assert not any("ranked all" in n for n in out["notes"])
+    assert any("rows ranked higher may be among those not shown" in n for n in out["notes"])
+    assert out["result"]["rows"][0]["importance"] == "Critical"

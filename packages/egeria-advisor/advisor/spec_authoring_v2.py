@@ -775,13 +775,20 @@ def _rank_read(spec: Dict[str, Any], client: Any, prev: Dict[str, Any], max_rows
     except Exception as exc:  # noqa: BLE001 -- the capped answer, honestly noted, is still an answer
         return {**prev, "notes": list(prev.get("notes") or []) +
                 [f"couldn't read more rows to rank them ({type(exc).__name__})"]}
+    end0 = full.get("end") if full.get("end") is not None else (full.get("result") or {}).get("end")
+    if end0 != "confirmed":
+        full = {**full, "capped": True}          # so order_rows keeps "rows ranked higher may be missing"
     ranked = order_rows(full, spec.get("conditions"))
     res = ranked.get("result") or {}
     if not ranked.get("reordered") or not isinstance(res, dict) or res.get("kind") != "table":
         return prev
     rows = list(res.get("rows") or [])
     read = len(rows)
-    whole = not full.get("capped")
+    # Read-back R1: "all" only when the paging contract confirmed the end (pyegeria's preview `end`, or its
+    # result's). Not capped isn't that: a suspect or unconfirmed end can stop short. No `end` (an older
+    # pyegeria) is not whole either.
+    end = full.get("end") if full.get("end") is not None else res.get("end")
+    whole = end == "confirmed" and not full.get("capped")
     notes = list(ranked.get("notes") or [])
     notes.append(f"ranked {'all ' if whole else 'the first '}{read} rows Egeria returned, showing the top "
                  f"{min(max_rows, read)}")
