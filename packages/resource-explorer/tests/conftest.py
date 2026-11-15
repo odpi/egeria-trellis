@@ -930,18 +930,23 @@ def isolate_pgvector_schema(monkeypatch, isolate_database_url_settings, reset_ca
     _scratch_counter["n"] += 1
     scratch = f"{_TEST_SCHEMA_PREFIX}_{os.getpid()}_v{_scratch_counter['n']}"
     monkeypatch.setenv("PGVECTOR_SCHEMA", scratch)
+    # Read the connection settings NOW, before the test runs. A test may remove the password, change the host or
+    # chdir away from the .env that names it (test_db_password_fail_closed's bare_env does all three), and
+    # monkeypatch only undoes that AFTER this teardown. Reading them at teardown connected to the test's
+    # environment, not the run's: gate b421a, "connection to server at localhost (::1) ... refused".
+    drop_with = None
+    if _PGVECTOR_AVAILABLE:
+        from resource_explorer.config import PgVectorConfig
+
+        cfg = PgVectorConfig()
+        drop_with = dict(host=cfg.host, port=cfg.port, dbname=cfg.dbname, user=cfg.db_user, password=cfg.password)
     yield scratch
     if scratch in shared_registry_guard._state["vector_schemas_built"]:
         shared_registry_guard._state["vector_schemas_built"].discard(scratch)
-        if _PGVECTOR_AVAILABLE:
+        if drop_with is not None:
             import psycopg2
-            from resource_explorer.config import PgVectorConfig
 
-            cfg = PgVectorConfig()
-            conn = psycopg2.connect(
-                host=cfg.host, port=cfg.port, dbname=cfg.dbname,
-                user=cfg.db_user, password=cfg.password,
-            )
+            conn = psycopg2.connect(**drop_with)
             conn.autocommit = True
             try:
                 with conn.cursor() as cur:
