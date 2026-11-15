@@ -302,9 +302,44 @@ def test_the_pages_refresh_decision(tmp_path):
     assert json.loads(out.stdout) == [c[3] for c in CASES]
 
 
+def test_refresh_is_single_flight(tmp_path):
+    """Read-back advisory on d8f56034: a double-fire would send one refresh token twice, which Studio reads as a
+    replay and ends the session. singleFlight shares one running call; a later call runs afresh."""
+    node = shutil.which("node")
+    if not node:
+        pytest.skip("node not found")
+    mod = tmp_path / "session_refresh.mjs"
+    mod.write_text((STATIC / "session_refresh.js").read_text())
+    script = f"""
+      const m = await import({json.dumps(mod.as_uri())});
+      let calls = 0, release;
+      const gate = new Promise(r => {{ release = r; }});
+      const once = m.singleFlight(async () => {{ calls++; await gate; return calls; }});
+      const a = once(), b = once(), c = once();
+      release();
+      const got = await Promise.all([a, b, c]);
+      const after = await once();
+      console.log(JSON.stringify({{ calls, got, after }}));
+    """
+    out = subprocess.run([node, "--input-type=module", "-e", script], capture_output=True, text=True, timeout=30)
+    assert out.returncode == 0, out.stderr
+    assert json.loads(out.stdout) == {"calls": 2, "got": [1, 1, 1], "after": 2}
+
+
+def test_the_page_refreshes_one_tab_at_a_time_and_tells_its_other_tabs():
+    js = (STATIC / "studio_auth.js").read_text()
+    assert "const refreshOnce = singleFlight(" in js and "navigator.locks.request('studio-refresh', sendRefresh)" in js
+    assert "if (what === 'refresh') await refreshOnce();" in js
+    # inside the lock it re-reads, so a tab another tab just rotated doesn't send its stale refresh token
+    send = js[js.index("async function sendRefresh()"):js.index("const refreshOnce")]
+    assert send.index("refreshDue(payload(t), nowSec(), lastActive) !== 'refresh'") < send.index("fetch('/api/auth/refresh'")
+    assert "channel.postMessage({ type: 'rotated', sid:" in js and "channel.postMessage({ type: 'ended', sid:" in js
+    assert "if (!mine || d.sid !== mine) return;" in js       # only this session's news
+
+
 def test_the_page_rotates_signs_out_with_both_tokens_and_ends_on_a_refusal():
     js = (STATIC / "studio_auth.js").read_text()
-    assert "import { refreshDue } from '/static/session_refresh.js'" in js
+    assert "import { refreshDue, singleFlight } from '/static/session_refresh.js'" in js
     assert "body: JSON.stringify({ refresh_token: rt })" in js
     assert "setRefresh(data.refresh_token); setToken(data.access_token);" in js        # both replaced
     assert "body: JSON.stringify({ refresh_token: rt || null })" in js                  # sign-out sends it

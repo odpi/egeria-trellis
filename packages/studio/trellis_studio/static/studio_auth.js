@@ -10,14 +10,16 @@
  * that has run out, ends the session here. The new JWT reaches the EA panel through the 'studio:session' event;
  * the refresh token never leaves this page.
  */
-import { refreshDue } from '/static/session_refresh.js';
+import { refreshDue, singleFlight } from '/static/session_refresh.js';
 
 const TOKEN_KEY = 'studio_token';
 const REFRESH_KEY = 'studio_refresh';
 const TICK_MS = 20000;
 let lastActive = null;
-let refreshing = false;
 let ticking = null;
+// Tabs of one session (a duplicated tab copies sessionStorage, so it holds the same refresh token) tell each
+// other when they rotate or end it, and refresh one at a time (Web Locks), so no refresh token is sent twice.
+const channel = (() => { try { return 'BroadcastChannel' in window ? new BroadcastChannel('studio-session') : null; } catch (e) { return null; } })();
 
 function store() { try { return window.sessionStorage; } catch (e) { return null; } }
 
@@ -81,24 +83,50 @@ function endSession(message) {
 
 const nowSec = () => Math.floor(Date.now() / 1000);
 
+const sidOf = (t) => (payload(t) || {}).sid;
+
+async function sendRefresh() {
+  // Re-read inside the lock: another tab of this session may have just rotated (and told us), so ours may
+  // already be fresh, or our refresh token already replaced.
+  const t = getToken() || memo;
+  if (refreshDue(payload(t), nowSec(), lastActive) !== 'refresh') return;
+  const rt = getRefresh();
+  if (!rt) return;
+  try {
+    const r = await fetch('/api/auth/refresh', { method: 'POST',
+      headers: { Authorization: `Bearer ${t}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ refresh_token: rt }) });
+    if (r.ok) {
+      const data = await r.json();
+      if (data.access_token) {
+        setRefresh(data.refresh_token); setToken(data.access_token);
+        if (channel) channel.postMessage({ type: 'rotated', sid: sidOf(data.access_token), access: data.access_token, refresh: data.refresh_token });
+      }
+    } else if (r.status === 401 || r.status === 403) {
+      let detail = '';
+      try { detail = (await r.json()).detail || ''; } catch (e) {}
+      if (channel) channel.postMessage({ type: 'ended', sid: sidOf(t) });
+      endSession(detail || 'Your session has ended. Sign in again.');
+    }
+    // anything else (Egeria couldn't be asked): keep this JWT and try again next tick
+  } catch (e) { /* network: try again next tick */ }
+}
+
+const refreshOnce = singleFlight(() => (navigator.locks && navigator.locks.request)
+  ? navigator.locks.request('studio-refresh', sendRefresh) : sendRefresh());
+
+if (channel) channel.onmessage = (ev) => {
+  const d = ev.data || {};
+  const mine = sidOf(getToken() || memo);
+  if (!mine || d.sid !== mine) return;                    // another session's news is not ours
+  if (d.type === 'rotated' && d.access && d.refresh) { setRefresh(d.refresh); setToken(d.access); }
+  if (d.type === 'ended') endSession('Your session has ended. Sign in again.');
+};
+
 async function tick() {
   const t = getToken() || memo;
   const what = refreshDue(payload(t), nowSec(), lastActive);
   if (what === 'none') { if (t) endSession('Your session has ended. Sign in again.'); return; }
-  const rt = getRefresh();
-  if (what !== 'refresh' || refreshing || !rt) return;
-  refreshing = true;
-  try {
-    const r = await fetch('/api/auth/refresh', { method: 'POST',
-      headers: { Authorization: `Bearer ${t}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ refresh_token: rt }) });
-    if (r.ok) { const data = await r.json(); if (data.access_token) { setRefresh(data.refresh_token); setToken(data.access_token); } }
-    else if (r.status === 401 || r.status === 403) {
-      let detail = '';
-      try { detail = (await r.json()).detail || ''; } catch (e) {}
-      endSession(detail || 'Your session has ended. Sign in again.');
-    }
-    // anything else (Egeria couldn't be asked): keep this JWT and try again next tick
-  } catch (e) { /* network: try again next tick */ } finally { refreshing = false; }
+  if (what === 'refresh') await refreshOnce();
 }
 
 function startRefresh() {
@@ -111,6 +139,7 @@ function startRefresh() {
 export function signOut() {
   const t = getToken() || memo;
   const rt = getRefresh();
+  if (channel && sidOf(t)) channel.postMessage({ type: 'ended', sid: sidOf(t) });
   clearToken();
   document.dispatchEvent(new CustomEvent('studio:session-ended'));   // unload EA's frame first
   // Both tokens go with it, so Studio refuses (and won't refresh) this session from now on.

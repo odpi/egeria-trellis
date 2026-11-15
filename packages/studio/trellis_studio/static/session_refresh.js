@@ -14,3 +14,13 @@ export function refreshDue(p, nowSec, lastActiveSec) {
   if (p.exp - nowSec > lead) return 'wait';
   return typeof lastActiveSec === 'number' && lastActiveSec >= issued ? 'refresh' : 'idle';
 }
+
+/* singleFlight(fn): calls made while one is running share its promise, so a refresh is never sent twice at
+ * once from this page (a second send of the same refresh token reads as a replay and ends the session). */
+export function singleFlight(fn) {
+  let running = null;
+  return (...args) => {
+    if (!running) running = Promise.resolve().then(() => fn(...args)).finally(() => { running = null; });
+    return running;
+  };
+}
