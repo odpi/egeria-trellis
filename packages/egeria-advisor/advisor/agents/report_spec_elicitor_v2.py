@@ -192,6 +192,8 @@ def _conditions_line(spec: Dict[str, Any]) -> str:
             out.append(f"{v.get('property')} in {', '.join(v.get('values') or [])} ({v.get('note')})")
         elif k == "element_status":
             out.append(f"element status {', '.join(v)} (Egeria's header status)")
+        elif k == v2.STATUS_REFUSED:
+            out.append(f"status refused: {v}")
         else:
             out.append(f"{k} = {v}")
     return ", ".join(out) or "none (everything of this type)"

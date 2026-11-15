@@ -53,6 +53,9 @@ _ALIASES = {"Term": "GlossaryTerm", "DataProduct": "DigitalProduct", "Product": 
 #: into a finder and its parameters by `find_action`; the others are pyegeria's FIND_PARAMETERS names.
 CONDITION_PARAMS = ("search_string", "functional_status", "element_status", "output_sort_order",
                     "order_property_name")
+#: Set by ground_conditions when status words were asked of a type that has a status, but none is a valid value
+#: of it: the run is refused before any search (TR-7 (b)). Never a spec parameter.
+STATUS_REFUSED = "status_refused"
 #: Accepted from an older draft or a stray LLM reply, and read as `functional_status`: a status word never
 #: reaches Egeria as the element status (B02, B05, B10, B11, B15, H05 on laz, 2026-11-13).
 LEGACY_STATUS_PARAM = "limit_result_by_status"
@@ -84,6 +87,24 @@ ELEMENT_STATUS_WORDS = {"DELETED": ["DELETED"], "INCLUDE_DELETED": ["ACTIVE", "D
 #: The finder that filters each property on the server. A list parameter takes several values; the
 #: property-value finder (`value_param`) matches one value exactly.
 _PROPERTY_VALUE_FIND = "ClassificationExplorer.find_elements_by_property_value"
+#: TR-7 phase 2 (RULING-TR7-EA-PHASE2-STATUS-SEARCH-2026-11-15): contentStatus takes every asked value in one
+#: search, a server-side OR scoped by type, so the chat answer is what the saved spec runs (no client merge).
+_CONTENT_STATUS_FIND = "ClassificationExplorer.find_authored_elements"
+
+
+def content_status_list_find() -> bool:
+    """find_authored_elements with content_status_list can carry several contentStatus values: when the client
+    has it AND pyegeria pages a run to its end (pyegeria.core.paging.paging_for). Its first page can be empty
+    though matches follow (Egeria's paging contract; the 2026-11-14 DRAFT GlossaryTerm case), so without the
+    pager it would read as "none". Feature-detected by name, never by version string."""
+    import importlib
+    try:
+        paging = importlib.import_module("pyegeria.core.paging")
+        explorer = importlib.import_module("pyegeria.omvs.classification_explorer")
+    except ImportError:
+        return False
+    return hasattr(paging, "paging_for") and hasattr(getattr(explorer, "ClassificationExplorer", None),
+                                                     "find_authored_elements")
 SORT_ORDERS = ("ANY", "CREATION_DATE_RECENT", "CREATION_DATE_OLDEST", "LAST_UPDATE_RECENT",
                "LAST_UPDATE_OLDEST", "PROPERTY_ASCENDING", "PROPERTY_DESCENDING")
 
@@ -312,10 +333,12 @@ def _values_text(prop: str) -> str:
 def _status_finder(type_name: str, prop: str) -> Tuple[str, Optional[str]]:
     """(function, list parameter) that filters `prop` on the server for `type_name`; a None list parameter
     means the property-value finder, which matches one value."""
-    # contentStatus: the property-value finder for every type. `find_authored_elements` (and its DataAsset
-    # sibling `find_data_assets`) misses non-ACTIVE content on laz: DRAFT + GlossaryTerm gave 0 where the
-    # property-value search finds all 86 (Architect read-back c7488781, 2026-11-14). find_data_assets
-    # returns only if a DataAsset DRAFT census check shows it complete.
+    # contentStatus: find_authored_elements, every value in one list, scoped by type (TR-7 phase 2), where the
+    # run pages to its end; it doesn't miss DRAFT once paged (the Architect's 2026-11-14 ~04:30Z correction).
+    # Without the pager, the property-value finder on one value, which fills its first page. find_data_assets
+    # stays out: the DataAsset census didn't show it complete.
+    if prop == "contentStatus" and content_status_list_find():
+        return _CONTENT_STATUS_FIND, "content_status_list"
     if prop == "deploymentStatus":
         if is_a(type_name, "Infrastructure"):
             return "AssetMaker.find_infrastructure", "deployment_status_list"
@@ -373,8 +396,8 @@ def ground_functional_status(type_name: Optional[str], values: Any
     unmet: List[str] = []
     if takes_one_value(type_name, best) and len(chosen) > 1 and not status_merge_enabled():
         # the question's first value, never "the one with rows"; the rest are said, not dropped
-        unmet.append(f"one {best} search matches one value, so {', '.join(chosen[1:])} isn't applied "
-                     f"(filtered on {chosen[0]}, the first value asked)")
+        unmet.append(f"searched for {chosen[0]} only; {', '.join(chosen[1:])} "
+                     f"{'was' if len(chosen) == 2 else 'were'} not searched (one {best} value per search here)")
         chosen = chosen[:1]
     for k in keys:
         if k in takes[best]:
@@ -520,6 +543,10 @@ def ground_conditions(params: Dict[str, Any], type_name: Optional[str] = None
     if words:
         status, missed = ground_functional_status(type_name, words)
         unmet += missed
+        if status is None and type_name and status_properties(type_name):
+            # TR-7 (b): the type has a status, but none of the asked values is one of its valid values. Refused
+            # before any search: an unfiltered run would answer a question about a status nobody has.
+            out[STATUS_REFUSED] = "; ".join(missed)
         if status:
             out["functional_status"] = status
             if takes_one_value(type_name, status["property"]) and out.get("search_string", "*").strip() not in ("", "*"):
@@ -571,8 +598,8 @@ def build_format_set(spec: Dict[str, Any]):
     action = find_action(target, conditions)
     params = dict(action["spec_params"])
     for k, v in conditions.items():
-        if k == "functional_status":
-            continue   # in the action: its finder and filter parameter
+        if k in ("functional_status", STATUS_REFUSED):
+            continue   # in the action (its finder and filter parameter), or not a parameter at all
         params[LEGACY_STATUS_PARAM if k == "element_status" else k] = v
     cols = [Column(name=c["name"], key=c["key"]) for c in spec.get("columns") or []]
     return FormatSet(
@@ -673,12 +700,31 @@ def merge_previews(prevs: List[Dict[str, Any]], values: List[str], prop: str, ma
     return {**tables[0], "result": result, "capped": capped, "shown": len(rows), "notes": notes}
 
 
+def count_words(prev: Dict[str, Any]) -> str:
+    """How many rows, said only as far as it is known (TR-7 (d), PY-17's rule): "N rows" only when the paging
+    contract confirmed the end and nothing was cut off; otherwise "at least N rows". "" for a result that isn't
+    a table of rows, or an empty one (pyegeria says its own absence)."""
+    res = prev.get("result")
+    if not isinstance(res, dict) or res.get("kind") != "table":
+        return ""
+    n = len(res.get("rows") or [])
+    if n == 0:
+        return ""
+    end = prev.get("end") if prev.get("end") is not None else res.get("end")
+    rows = f"{n} row{'s' if n != 1 else ''}"
+    return rows if end == "confirmed" and not prev.get("capped") else f"at least {rows}"
+
+
 def answer(spec: Dict[str, Any], client: Any, *, max_rows: int = ANSWER_ROWS) -> Dict[str, Any]:
     """Run the spec as `client`'s user (structured TABLE, capped) and render it for the reply. A status
     the finder matches one value at a time runs once per value, merged."""
     import time
     from pyegeria.authoring import preview
     t = time.time()
+    refused = (spec.get("conditions") or {}).get(STATUS_REFUSED)
+    if refused:
+        return {"ok": False, "refused": True, "error": refused, "s": 0.0,
+                "markdown": f"I didn't search: {refused}. Ask again with one of those values."}
     runs = per_value_specs(spec)
     prevs = []
     for one in runs:
@@ -696,6 +742,9 @@ def answer(spec: Dict[str, Any], client: Any, *, max_rows: int = ANSWER_ROWS) ->
         prev = merge_previews(prevs, status["values"], status["property"], max_rows)
     else:
         prev = prevs[0]
+    said = count_words(prev)
+    if said:
+        prev = {**prev, "notes": [said] + list(prev.get("notes") or [])}
     out = {"ok": True, **prev, "s": round(time.time() - t, 2)}
     out["markdown"] = render_markdown(prev)
     return out

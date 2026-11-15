@@ -42,6 +42,18 @@ def fixes_on(monkeypatch):
 
 
 @pytest.fixture
+def one_value_content(monkeypatch):
+    """contentStatus on the property-value finder (one value per search): a pyegeria without the pager."""
+    monkeypatch.setattr(v2, "content_status_list_find", lambda: False)
+
+
+@pytest.fixture
+def list_content(monkeypatch):
+    """contentStatus on find_authored_elements with every value (TR-7 phase 2): a pyegeria with the pager."""
+    monkeypatch.setattr(v2, "content_status_list_find", lambda: True)
+
+
+@pytest.fixture
 def merge_on(fixes_on, monkeypatch):
     """The per-value merge: off by default until a spec can run it (Architect's ruling 2026-11-14)."""
     monkeypatch.setenv(v2.STATUS_MERGE_FLAG, "1")
@@ -94,8 +106,12 @@ def _sent_params(spec):
      "ClassificationExplorer.find_elements_by_property_value", "content_status"),
 ])
 @pytest.mark.parametrize("legacy", [False, True])
+@pytest.mark.parametrize("list_mode", [False, True])
 def test_status_words_become_the_types_own_status(fixes_on, stores, monkeypatch, question, target, words,
-                                                  prop, values, finder, column, legacy):
+                                                  prop, values, finder, column, legacy, list_mode):
+    monkeypatch.setattr(v2, "content_status_list_find", lambda: list_mode)
+    if prop == "contentStatus" and list_mode:
+        finder = "ClassificationExplorer.find_authored_elements"     # TR-7 phase 2: every value, one search
     r, spec = _elicit(monkeypatch, question, target, words, legacy=legacy)
     status = spec["conditions"]["functional_status"]
     assert (status["property"], status["values"]) == (prop, values)
@@ -121,7 +137,7 @@ def test_a_type_with_no_status_of_its_own_is_unmet(fixes_on, stores, monkeypatch
     assert v2.LEGACY_STATUS_PARAM not in _sent_params(spec)
 
 
-def test_draft_projects_is_projects_content_status(fixes_on, stores, monkeypatch):
+def test_draft_projects_is_projects_content_status(fixes_on, stores, monkeypatch, one_value_content):
     """The brief expected "draft projects" to be unmet. Egeria's type system says otherwise: Project's
     supertype is AuthoredReferenceable (OpenMetadataTypesArchive1_2.getProjectEntity), so it carries
     contentStatus as well as projectStatus, and DRAFT is a contentStatus value."""
@@ -132,17 +148,19 @@ def test_draft_projects_is_projects_content_status(fixes_on, stores, monkeypatch
     assert spec["action_function"] == "ClassificationExplorer.find_elements_by_property_value"
 
 
-def test_content_status_filters_the_first_value_asked_and_says_what_was_left_out(fixes_on, stores, monkeypatch):
+def test_content_status_filters_the_first_value_asked_and_says_what_was_left_out(fixes_on, stores, monkeypatch,
+                                                                                 one_value_content):
     # B15 "approved and active": the saved spec runs one search, so chat previews just that (§5b-1)
     _, spec = _elicit(monkeypatch, "Which governance policies are approved and active?", "GovernancePolicy",
                       ["APPROVED", "ACTIVE"])
     status = spec["conditions"]["functional_status"]
     assert (status["property"], status["values"]) == ("contentStatus", ["APPROVED"])   # question order
-    assert "so ACTIVE isn't applied (filtered on APPROVED, the first value asked)" in spec["unmet"]
+    assert ("searched for APPROVED only; ACTIVE was not searched (one contentStatus value per search here)"
+            in spec["unmet"])
     assert "merges" not in status["note"]
 
 
-def test_content_status_keeps_every_value_with_the_merge_on(merge_on, stores, monkeypatch):
+def test_content_status_keeps_every_value_with_the_merge_on(merge_on, stores, monkeypatch, one_value_content):
     # flag on: one exact property-value search per value, merged by answer()
     _, spec = _elicit(monkeypatch, "Which governance policies are active and approved?", "GovernancePolicy",
                       ["ACTIVE", "APPROVED"])
@@ -212,7 +230,11 @@ def test_status_properties_most_specific_first(type_name, want):
     ("Process", "activityStatus", "AssetMaker.find_processes"),
     ("Project", "projectStatus", "ClassificationExplorer.find_elements_by_property_value"),
 ])
-def test_each_property_has_a_server_side_finder_that_takes_it(type_name, prop, finder):
+@pytest.mark.parametrize("list_mode", [False, True])
+def test_each_property_has_a_server_side_finder_that_takes_it(monkeypatch, type_name, prop, finder, list_mode):
+    monkeypatch.setattr(v2, "content_status_list_find", lambda: list_mode)
+    if prop == "contentStatus" and list_mode:
+        finder = "ClassificationExplorer.find_authored_elements"
     action = v2.status_find_action(type_name, prop, ["X"])
     assert action["function"] == finder
     param = {"contentStatus": "content_status_list", "deploymentStatus": "deployment_status_list",
@@ -224,7 +246,8 @@ def test_each_property_has_a_server_side_finder_that_takes_it(type_name, prop, f
 
 def test_a_one_value_finder_keeps_the_first_value_by_default(fixes_on):
     status, unmet = v2.ground_functional_status("Project", ["planned", "Active"])
-    assert status["values"] == ["Planned"] and "Active isn't applied" in unmet[0]
+    assert status["values"] == ["Planned"]
+    assert unmet[0] == "searched for Planned only; Active was not searched (one projectStatus value per search here)"
     spec = {"title": "t", "target_type": "Project", "conditions": {"functional_status": status}}
     assert v2.per_value_specs(spec) == [spec]
 
@@ -345,8 +368,9 @@ class _Client:
     ("Project", ["active"], "/by-property-value-search", "propertyValue", "Active",
      {"projectStatus": "Active"}, ("project_status", "Active")),
 ])
-def test_the_request_filters_on_the_server_and_the_column_shows_it(egeria_offline, target, words, endpoint,
-                                                                    body_key, body_value, bean_prop, cell):
+def test_the_request_filters_on_the_server_and_the_column_shows_it(egeria_offline, one_value_content, target,
+                                                                    words, endpoint, body_key, body_value,
+                                                                    bean_prop, cell):
     calls, beans = egeria_offline
     beans.append(_bean(**bean_prop))
     cond, _, unmet = v2.ground_conditions({"functional_status": words}, target)
@@ -364,7 +388,8 @@ def test_the_request_filters_on_the_server_and_the_column_shows_it(egeria_offlin
     assert out["result"]["rows"][0][cell[0]] == cell[1]
 
 
-def test_several_values_run_one_search_each_merged_by_guid_and_capped(merge_on, egeria_offline, monkeypatch):
+def test_several_values_run_one_search_each_merged_by_guid_and_capped(merge_on, egeria_offline, monkeypatch,
+                                                                       one_value_content):
     """Architect read-back 18add498: B15's first value (APPROVED) has no rows on laz; keeping only the first
     value answered with 0 rows although ACTIVE policies exist."""
     from pyegeria.core._server_client import ServerClient
@@ -401,7 +426,7 @@ def test_several_values_run_one_search_each_merged_by_guid_and_capped(merge_on, 
     assert "there may be more" in capped["markdown"]
 
 
-def test_by_default_a_run_is_the_saved_specs_one_search(fixes_on, egeria_offline):
+def test_by_default_a_run_is_the_saved_specs_one_search(fixes_on, egeria_offline, one_value_content):
     calls, beans = egeria_offline
     beans.append(_bean(contentStatus="APPROVED"))
     cond, _, unmet = v2.ground_conditions({"functional_status": ["APPROVED", "ACTIVE"]}, "GovernancePolicy")
@@ -413,14 +438,14 @@ def test_by_default_a_run_is_the_saved_specs_one_search(fixes_on, egeria_offline
     assert not any("merged" in n for n in out.get("notes") or [])
 
 
-def test_saving_repeats_what_the_spec_leaves_out(fixes_on, stores, monkeypatch):
+def test_saving_repeats_what_the_spec_leaves_out(fixes_on, stores, monkeypatch, one_value_content):
     from advisor.agents.report_spec_elicitor import ReportSpecElicitor
     r, spec = _elicit(monkeypatch, "Which governance policies are approved and active?", "GovernancePolicy",
                       ["APPROVED", "ACTIVE"])
     el = ReportSpecElicitor()
     r = el.process(r["draft_id"], "generate now")
-    line = "⚠️ **Saved spec is narrower than your question. Not applied:** one contentStatus search"
-    assert r["phase"] == "refine" and line in r["response"] and "ACTIVE isn't applied" in r["response"]
+    line = "⚠️ **Saved spec is narrower than your question. Not applied:** searched for APPROVED only"
+    assert r["phase"] == "refine" and line in r["response"] and "ACTIVE was not searched" in r["response"]
     saved = el.save_and_exit(r["draft_id"])
     assert line in saved["response"]
 
@@ -437,3 +462,143 @@ def test_no_value_with_rows_says_so():
     prevs = [{"result": {"kind": "empty"}, "notes": []}, {"result": {"kind": "empty"}, "notes": []}]
     out = v2.merge_previews(prevs, ["APPROVED", "PROPOSED"], "contentStatus", 25)
     assert out["notes"][-1] == "one contentStatus search per value (APPROVED, PROPOSED): none had rows"
+
+
+# ── TR-7 phase 2 (RULING-TR7-EA-PHASE2-STATUS-SEARCH-2026-11-15): contentStatus in one search, every value ──
+
+def test_content_status_list_finder_is_feature_detected():
+    import importlib
+    try:
+        paging = importlib.import_module("pyegeria.core.paging")
+        want = hasattr(paging, "paging_for")
+    except ImportError:
+        want = False                     # 6.2.41: find_authored_elements exists, but nothing pages a run to its end
+    from pyegeria.omvs.classification_explorer import ClassificationExplorer
+    assert v2.content_status_list_find() is (want and hasattr(ClassificationExplorer, "find_authored_elements"))
+
+
+def test_b15_keeps_every_value_in_one_saved_search(fixes_on, stores, monkeypatch, list_content):
+    r, spec = _elicit(monkeypatch, "Which governance policies are approved and active?", "GovernancePolicy",
+                      ["APPROVED", "ACTIVE"])
+    status = spec["conditions"]["functional_status"]
+    assert (status["property"], status["values"]) == ("contentStatus", ["APPROVED", "ACTIVE"])
+    assert not spec.get("unmet") and "merges" not in status["note"]
+    action = v2.build_format_set(spec).action
+    assert action.function == "ClassificationExplorer.find_authored_elements"
+    assert action.spec_params["content_status_list"] == ["APPROVED", "ACTIVE"]
+    assert action.spec_params["metadata_element_type"] == "GovernancePolicy"
+    assert v2.per_value_specs(spec) == [spec]                       # no client merge: the server ORs them
+    from advisor.agents.report_spec_elicitor import ReportSpecElicitor
+    r = ReportSpecElicitor().process(r["draft_id"], "generate now")
+    assert "narrower" not in r["response"]
+
+
+def _typed_egeria(monkeypatch):
+    """Egeria holding an ACTIVE GovernancePolicy and an ACTIVE GlossaryTerm; a search scoped by type returns
+    only that type, as Egeria does (metadataElementTypeName)."""
+    from pyegeria.core._server_client import ServerClient
+    held = [dict(_bean(contentStatus="ACTIVE"), elementHeader={**_bean()["elementHeader"], "guid": "g-pol",
+                                                                "type": {"typeName": "GovernancePolicy"}}),
+            dict(_bean(contentStatus="ACTIVE"), elementHeader={**_bean()["elementHeader"], "guid": "g-term",
+                                                                "type": {"typeName": "GlossaryTerm"}})]
+    held[0]["properties"] = {**held[0]["properties"], "displayName": "Retention policy"}
+    held[1]["properties"] = {**held[1]["properties"], "displayName": "Customer (term)"}
+    calls = []
+
+    async def fake(self, request_type, endpoint, payload=None, *a, **k):
+        body = json.loads(payload) if isinstance(payload, str) else payload
+        calls.append((request_type, endpoint, body))
+        if request_type != "POST":
+            return _Resp([])
+        t = (body or {}).get("metadataElementTypeName")
+        want = set((body or {}).get("contentStatusList") or [])
+        rows = [e for e in held if (not t or e["elementHeader"]["type"]["typeName"] == t)
+                and (not want or e["properties"].get("contentStatus") in want)]
+        return _page(body, rows)
+    monkeypatch.setattr(ServerClient, "_async_make_request", fake)
+    monkeypatch.setattr(ServerClient, "create_egeria_bearer_token", lambda self, *a, **k: "token")
+    monkeypatch.setattr(ServerClient, "set_bearer_token", lambda self, token: None)
+    return calls
+
+
+def _policies_spec(values=("ACTIVE",)):
+    cond, _, unmet = v2.ground_conditions({"functional_status": list(values)}, "GovernancePolicy")
+    return {"title": "t", "target_type": "GovernancePolicy", "answers": {"Heading": "Policies"}, "conditions": cond,
+            "columns": [{"name": "Name", "key": "display_name"}, {"name": "GUID", "key": "guid"},
+                        {"name": "Status", "key": "content_status"}]}
+
+
+def test_a_the_type_filter_is_honoured(list_content, monkeypatch):
+    calls = _typed_egeria(monkeypatch)
+    out = v2.answer(_policies_spec(("APPROVED", "ACTIVE")), _Client())
+    assert out["ok"], out
+    (_, url, body), = _searches(calls)
+    assert url.endswith("/authored-elements/by-search-string")
+    assert body["metadataElementTypeName"] == "GovernancePolicy"
+    assert body["contentStatusList"] == ["APPROVED", "ACTIVE"]
+    assert [r["guid"] for r in out["result"]["rows"]] == ["g-pol"]        # never the ACTIVE glossary term
+
+
+@pytest.mark.parametrize("words", [["shiny"], ["shiny", "sparkly"]])
+def test_b_an_invalid_status_value_is_refused_before_any_search(list_content, monkeypatch, words):
+    calls = _typed_egeria(monkeypatch)
+    spec = _policies_spec(words)
+    assert v2.STATUS_REFUSED in spec["conditions"] and "functional_status" not in spec["conditions"]
+    out = v2.answer(spec, _Client())
+    assert out["ok"] is False and out["refused"] and out["markdown"].startswith("I didn't search:")
+    assert "shiny" in out["markdown"] and "contentStatus" in out["markdown"]
+    assert calls == []                                                     # nothing reached Egeria
+    assert v2.STATUS_REFUSED not in v2.build_format_set(spec).action.spec_params
+
+
+def test_b_a_valid_value_beside_an_invalid_one_searches_the_valid_one_and_says_so(list_content, monkeypatch):
+    calls = _typed_egeria(monkeypatch)
+    cond, _, unmet = v2.ground_conditions({"functional_status": ["active", "shiny"]}, "GovernancePolicy")
+    assert cond["functional_status"]["values"] == ["ACTIVE"] and v2.STATUS_REFUSED not in cond
+    assert any("'shiny'" in u for u in unmet)
+
+
+def test_c_the_saved_spec_round_trips_to_the_same_search(list_content, monkeypatch):
+    calls = _typed_egeria(monkeypatch)
+    spec = _policies_spec(("APPROVED", "ACTIVE"))
+    fs = v2.build_format_set(spec)
+    md = v2.serialize(spec)                                          # save
+    back = v2.format_set_from_document(md, v2.label_for(spec))      # load
+    for one in (fs, back):
+        assert one.action.function == "ClassificationExplorer.find_authored_elements"
+        assert one.action.spec_params["content_status_list"] == ["APPROVED", "ACTIVE"]
+        assert one.action.spec_params["metadata_element_type"] == "GovernancePolicy"
+    from pyegeria.authoring import preview, SpecDraft                # run the loaded one
+    out = preview(SpecDraft(label="tr7-roundtrip", format_set=back), client=_Client(), max_rows=25,
+                  params={"start_from": 0, "search_string": "*"})
+    (_, url, body), = _searches(calls)
+    assert url.endswith("/authored-elements/by-search-string") and body["contentStatusList"] == ["APPROVED", "ACTIVE"]
+    assert [r["guid"] for r in out["result"]["rows"]] == ["g-pol"]
+
+
+@pytest.mark.parametrize("end, capped, want", [
+    ("confirmed", False, "86 rows"),
+    ("not_confirmed", False, "at least 86 rows"),
+    ("first_page", False, "at least 86 rows"),
+    (None, False, "at least 86 rows"),                               # an older pyegeria: no end at all
+    ("confirmed", True, "at least 86 rows"),
+])
+def test_d_the_86_draft_terms_say_n_only_on_a_confirmed_end(end, capped, want):
+    rows = [{"display_name": f"term {i}", "content_status": "DRAFT"} for i in range(86)]
+    prev = {"result": {"kind": "table", "columns": ["display_name", "content_status"], "rows": rows},
+            "capped": capped, "shown": 86, "notes": []}
+    if end is not None:
+        prev["end"] = end
+    assert v2.count_words(prev) == want
+
+
+def test_d_the_answer_leads_with_its_count(list_content, monkeypatch):
+    def fake_preview(draft, *, client, max_rows, params=None, **kw):
+        rows = [{"display_name": f"term {i}", "content_status": "DRAFT"} for i in range(3)]
+        return {"result": {"kind": "table", "columns": ["display_name", "content_status"], "rows": rows},
+                "capped": False, "shown": 3, "notes": [], "end": "not_confirmed"}
+    monkeypatch.setattr("pyegeria.authoring.preview", fake_preview)
+    cond, _, _ = v2.ground_conditions({"functional_status": ["draft"]}, "GlossaryTerm")
+    out = v2.answer({"title": "t", "target_type": "GlossaryTerm", "answers": {"Heading": "H"}, "conditions": cond,
+                     "columns": [{"name": "Name", "key": "display_name"}]}, _Client())
+    assert out["notes"][0] == "at least 3 rows" and "*at least 3 rows" in out["markdown"]
