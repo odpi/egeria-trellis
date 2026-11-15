@@ -456,7 +456,8 @@ _VIEW_BEAN = {
 def egeria_offline(monkeypatch):
     """The real pyegeria client classes, executor and preview, with only the HTTP transport faked."""
     from pyegeria.core._server_client import ServerClient
-    calls = []
+    calls = _Calls()
+    beans = [_VIEW_BEAN]
 
     class _Resp:
         def __init__(self, elements):
@@ -469,13 +470,21 @@ def egeria_offline(monkeypatch):
     async def fake_make_request(self, request_type, endpoint, payload=None, *args, **kwargs):
         calls.append((request_type, endpoint, payload))
         body = json.loads(payload) if isinstance(payload, str) else (payload or {})
-        # the paging contract (pyegeria 6.2.42 pages a preview): rows on the first page, then null (the end)
-        return _Resp([_VIEW_BEAN] if not body.get("startFrom") else None)
+        # the paging contract (pyegeria 6.2.42 pages a preview): rows from startFrom up to pageSize, then the
+        # end (no "elements") once there are none left. One bean unless the test asks for more.
+        start, size = int(body.get("startFrom") or 0), int(body.get("pageSize") or 100)
+        page = beans[start:start + size]
+        return _Resp(page if page else None)
     monkeypatch.setattr(ServerClient, "_async_make_request", fake_make_request)
     monkeypatch.setattr(ServerClient, "create_egeria_bearer_token", lambda self, *a, **k: "token")
     monkeypatch.setattr(ServerClient, "set_bearer_token", lambda self, token: None)
     monkeypatch.setattr(ServerClient, "check_connection", lambda self: "ok", raising=False)
+    calls.beans = beans
     return calls
+
+
+class _Calls(list):
+    """The requests a run made; `.beans` are the elements the fake Egeria holds (add to it for more)."""
 
 
 class _Client:
@@ -541,6 +550,8 @@ def test_the_old_generic_finder_returned_raw_elements_and_blank_cells(egeria_off
 def test_a_run_asks_for_only_the_rows_it_shows(egeria_offline):
     # Architect read-back 2c6e4667: preview's page_size was dropped as "not a parameter of this report",
     # so the finder fetched its default 100 (generic Asset ~21 s live)
+    egeria_offline.beans[:] = [{**_VIEW_BEAN, "elementHeader": {**_VIEW_BEAN["elementHeader"], "guid": f"g-{i}"}}
+                               for i in range(12)]          # more than max_rows
     out = v2.answer(_asset_spec(), _Client(), max_rows=7)
     bodies = [json.loads(b) if isinstance(b, str) else b for m, _, b in egeria_offline if m == "POST"]
     first = bodies[0]
@@ -550,7 +561,7 @@ def test_a_run_asks_for_only_the_rows_it_shows(egeria_offline):
     from pyegeria.view import format_set_executor as fse
     assert first.get("pageSize") in (7, getattr(fse, "DEFAULT_FETCH_PAGE_SIZE", 7))
     assert first.get("graphQueryDepth") == 0 and not first.get("startFrom")
-    assert out["shown"] <= 7
+    assert out["shown"] == 7 and len(out["result"]["rows"]) == 7 and out["capped"]
 
 
 def test_registered_specs_keep_their_optional_params_and_gain_paging():
