@@ -720,7 +720,15 @@ def _read_flow_run_output(flow_run_id: str, message: str) -> dict[str, Any]:
             f"{', '.join(disagree)} (summary {[summary[k] for k in disagree]}, row "
             f"{[row.get(k) for k in disagree]}); nothing is used from it", flow_run_id, status="mismatch",
             state="COMPLETED")
-    return row.get("output") or {}
+
+    from resource_explorer.surveyors import step_output_codec
+
+    try:
+        return step_output_codec.decode_step_output(row.get("output") or {}) or {}
+    except step_output_codec.StepOutputDecodeError as e:
+        raise PrefectResultUnreadable(
+            f"Prefect flow run {flow_run_id} COMPLETED but its stored output does not decode ({e}); nothing is used "
+            "from it and the step was NOT run locally", flow_run_id, state="COMPLETED") from e
 
 
 def _state_type(state: Any) -> str:
