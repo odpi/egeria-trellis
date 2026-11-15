@@ -33,6 +33,7 @@ import os
 os.environ.setdefault("PREFECT_SERVER_EPHEMERAL_ENABLED", "false")
 
 import asyncio
+import json
 import re
 import logging
 import time
@@ -232,7 +233,47 @@ def log_prefect_reachability_at_startup() -> None:
 # nothing more.
 
 
-class PrefectFlowRunCancelled(Exception):
+class PrefectRunOutcome(RuntimeError):
+    """A step's flow run EXISTS and this is its outcome; nothing may run the step locally after it (TR-20, Architect
+    ruling 2026-11-15, RULING-PREFECT-NO-LOCAL-FALLBACK-AND-RESULT-TRANSPORT-2026-11-15 on laz).
+
+    A local fallback is allowed only BEFORE create_flow_run has returned an id. From then on the step's outcome is the
+    flow run's, whatever goes wrong while waiting for it or reading it: re-running it locally is a second execution
+    (found on hedwig 2026-11-15: a COMPLETED container run whose result could not be read was run again in RE's
+    process, two step_runs rows and two downloads). `status` is one of:
+
+      - "failed": the run reached FAILED or CRASHED (`state` says which, `detail` its message);
+      - "cancelled": the run was cancelled (PrefectFlowRunCancelled);
+      - "result_unreadable": the run COMPLETED but its result could not be read;
+      - "mismatch": the run COMPLETED but its summary disagrees with its flow_run_results row (TR-21);
+      - "unknown": the wait timed out (PrefectFlowRunTimeout) or the run could not be read: a reconciler or operator
+        reads the flow run later.
+
+    A retry is an operator's or Prefect's, never a silent local run."""
+
+    status = "unknown"
+
+    def __init__(self, message: str, flow_run_id: str = "", *, status: str | None = None, state: str = "") -> None:
+        super().__init__(message)
+        self.flow_run_id = flow_run_id
+        if status:
+            self.status = status
+        self.state = state
+
+
+class PrefectFlowRunFailed(PrefectRunOutcome):
+    """The flow run reached FAILED or CRASHED."""
+
+    status = "failed"
+
+
+class PrefectResultUnreadable(PrefectRunOutcome):
+    """The flow run COMPLETED, but its result could not be read here."""
+
+    status = "result_unreadable"
+
+
+class PrefectFlowRunCancelled(PrefectRunOutcome):
     """A flow run was cancelled through Prefect (e.g. the Admin "⚡ Prefect"
     panel's Cancel button — see web/routes/prefect_status.py). Deliberately
     NOT caught by run_prefect_step's fallback-to-local except block: falling
@@ -243,10 +284,14 @@ class PrefectFlowRunCancelled(Exception):
     the fallback ran the step again, and it just... finished — cancel had
     no actual effect. Every other failure (unreachable server, a real bug)
     should still fall back; only a genuine user-initiated cancellation
-    should not."""
+    should not.
+
+    Since TR-20 (2026-11-15) the rule is wider: no outcome of a run that exists falls back (PrefectRunOutcome)."""
+
+    status = "cancelled"
 
 
-class PrefectFlowRunTimeout(Exception):
+class PrefectFlowRunTimeout(PrefectRunOutcome):
     """A dispatched flow run did not reach a terminal state before the
     configured deadline (`PrefectConfig.step_timeout_seconds`). Carries the
     flow run id so a person can find it in Prefect.
@@ -258,9 +303,7 @@ class PrefectFlowRunTimeout(Exception):
     Found 2026-10-02: the poll loop had no deadline, so a pool with no online
     worker left the run Scheduled forever and hung the survey thread."""
 
-    def __init__(self, message: str, flow_run_id: str = "") -> None:
-        super().__init__(message)
-        self.flow_run_id = flow_run_id
+    status = "unknown"
 
 
 def _step_timeout_seconds() -> float:
@@ -570,43 +613,99 @@ async def _run_prefect_step_api(
         )
         flow_run_id = str(flow_run.id)
 
-        # 3. Poll for the flow run to complete, bounded by a deadline
-        deadline = clock() + timeout_seconds
-        while True:
-            run = await client.read_flow_run(flow_run.id)
-            state = run.state
-            if state.is_completed():
-                # `PrefectClient.resolve_value` doesn't exist in Prefect 3.x — this
-                # line has never successfully returned a result; the exception it
-                # always raised was swallowed by run_prefect_step's broad `except`,
-                # so the flow run completed for real (verified live against a local
-                # server + worker 2026-08-26) but its result was silently discarded
-                # and every call fell through to a second, duplicate local
-                # execution. `State.result()`/`State.aresult()` is the real 3.8.x
-                # API on this installed version — no `fetch` kwarg here (that's a
-                # newer/older-version signature; this one auto-resolves).
-                result = await state.result(raise_on_failure=True)
-                return result or {}, flow_run_id
-            elif state.is_failed():
-                raise RuntimeError(
-                    f"Prefect flow run '{flow_run.id}' failed: {state.message}"
-                )
-            elif state.is_cancelled():
-                raise PrefectFlowRunCancelled(f"Prefect flow run '{flow_run.id}' was cancelled.")
+        # From here the run EXISTS: every way out is that run's outcome, never a local run (TR-20).
+        try:
+            return await _await_flow_run(client, flow_run.id, flow_run_id, timeout_seconds=timeout_seconds,
+                                         poll_interval=poll_interval, clock=clock, sleep=sleep)
+        except PrefectRunOutcome:
+            raise
+        except Exception as e:  # after the id: an outcome, never a reason to run locally
+            raise PrefectRunOutcome(
+                f"Prefect flow run {flow_run_id} could not be followed ({type(e).__name__}: {e}); its outcome is "
+                "unknown and the step was NOT run locally", flow_run_id, status="unknown") from e
 
-            if clock() >= deadline:
-                cancel_failure = await _cancel_flow_run_best_effort(client, flow_run.id)
-                msg = (
-                    f"timed out after {timeout_seconds:g} s waiting for Prefect flow run "
-                    f"{flow_run_id} (state {getattr(state, 'name', None) or state.type})"
-                )
-                msg += (
-                    f"; cancel attempt FAILED ({cancel_failure}) - the run may still be live"
-                    if cancel_failure else "; the run was cancelled"
-                )
-                raise PrefectFlowRunTimeout(msg, flow_run_id=flow_run_id)
 
-            await sleep(poll_interval)
+def _results_registry():
+    """The registry a dispatched step's result is read from. One seam so tests can substitute one."""
+    from resource_explorer.registry import ProjectRegistry
+
+    return ProjectRegistry()
+
+
+def _read_flow_run_output(flow_run_id: str, message: str) -> dict[str, Any]:
+    """A COMPLETED flow run's output, from flow_run_results by its id (TR-21). Raises PrefectResultUnreadable when no
+    row exists, and a "mismatch" PrefectRunOutcome when the run's own summary (its state message) disagrees with
+    the row. Either way nothing is returned, so nothing is published and no guard is produced."""
+    try:
+        row = _results_registry().read_flow_run_result(flow_run_id)
+    except Exception as e:  # the run completed: an unreadable result, never a re-run
+        raise PrefectResultUnreadable(
+            f"Prefect flow run {flow_run_id} COMPLETED but its result could not be read from the registry "
+            f"({type(e).__name__}: {e}); the step was NOT run locally", flow_run_id, state="COMPLETED") from e
+    if row is None:
+        raise PrefectResultUnreadable(
+            f"Prefect flow run {flow_run_id} COMPLETED but wrote no flow_run_results row; the step was NOT run "
+            "locally", flow_run_id, state="COMPLETED")
+    summary: dict[str, Any] = {}
+    if message:
+        try:
+            parsed = json.loads(message)
+            summary = parsed if isinstance(parsed, dict) else {}
+        except ValueError:
+            summary = {}
+    disagree = [k for k in ("norm_hash", "step_run_id") if k in summary and summary[k] != row.get(k)]
+    if disagree:
+        raise PrefectRunOutcome(
+            f"Prefect flow run {flow_run_id}: its summary disagrees with its flow_run_results row on "
+            f"{', '.join(disagree)} (summary {[summary[k] for k in disagree]}, row "
+            f"{[row.get(k) for k in disagree]}); nothing is used from it", flow_run_id, status="mismatch",
+            state="COMPLETED")
+    return row.get("output") or {}
+
+
+def _state_type(state: Any) -> str:
+    """A state's type name (COMPLETED, FAILED, CRASHED, ...), upper case; "" when it has none."""
+    kind = getattr(state, "type", None)
+    return str(getattr(kind, "value", kind) or "").upper()
+
+
+async def _await_flow_run(client: Any, run_id: Any, flow_run_id: str, *, timeout_seconds: float,
+                          poll_interval: float, clock: Callable[[], float],
+                          sleep: Callable[[float], Awaitable[Any]]) -> tuple[dict[str, Any], str]:
+    """Poll an EXISTING flow run to its outcome: (result, id), or a PrefectRunOutcome (TR-20). Never runs anything."""
+    # 3. Poll for the flow run to complete, bounded by a deadline
+    deadline = clock() + timeout_seconds
+    while True:
+        run = await client.read_flow_run(run_id)
+        state = run.state
+        if state.is_completed():
+            # TR-21 (Architect ruling 2026-11-15): the result is the registry row the flow wrote BEFORE it returned,
+            # read by flow_run_id only. Not the state's own result: that read a result file from the worker's own disk,
+            # which a container worker's is not (hedwig 2026-11-15: "outside of the base path"), and before that it
+            # was the 2026-08-26 bug, an unreadable result silently re-run locally. Never the kept survey snapshot
+            # either: that is "latest per slug and step", and another run could have written it.
+            return _read_flow_run_output(flow_run_id, getattr(state, "message", "") or ""), flow_run_id
+        elif state.is_failed() or _state_type(state) == "CRASHED":
+            kind = "FAILED" if state.is_failed() else "CRASHED"
+            raise PrefectFlowRunFailed(
+                f"Prefect flow run '{flow_run_id}' {kind.lower()}: {state.message}", flow_run_id, state=kind)
+        elif state.is_cancelled():
+            raise PrefectFlowRunCancelled(f"Prefect flow run '{flow_run_id}' was cancelled.", flow_run_id,
+                                          state="CANCELLED")
+
+        if clock() >= deadline:
+            cancel_failure = await _cancel_flow_run_best_effort(client, run_id)
+            msg = (
+                f"timed out after {timeout_seconds:g} s waiting for Prefect flow run "
+                f"{flow_run_id} (state {getattr(state, 'name', None) or state.type})"
+            )
+            msg += (
+                f"; cancel attempt FAILED ({cancel_failure}) - the run may still be live"
+                if cancel_failure else "; the run was cancelled"
+            )
+            raise PrefectFlowRunTimeout(msg, flow_run_id=flow_run_id, state=str(getattr(state, "name", "") or ""))
+
+        await sleep(poll_interval)
 
 
 def _in_process_step_flow() -> Callable[..., dict]:
@@ -627,7 +726,8 @@ def _run_step_in_process_flow(
     it, and nothing else. A worker could not do this -- it is another process.
 
     Raises RuntimeError when Prefect is unreachable, so `run_prefect_step`
-    degrades to its local path exactly as it does for the REST dispatch.
+    degrades to its local path exactly as it does for the REST dispatch. Any failure once the flow has started is
+    a PrefectFlowRunFailed (TR-20): the step already ran here, and running it again locally would run it twice.
     """
     reachable, detail = check_prefect_reachable_sync()
     if not reachable:
@@ -642,15 +742,24 @@ def _run_step_in_process_flow(
         loop = asyncio.get_running_loop()
     except RuntimeError:
         loop = None
-    if loop and loop.is_running():
-        from resource_explorer.concurrency import run_sync
+    # From here the flow runs in THIS process, as a flow run Prefect records: a failure is that run's outcome,
+    # never a reason to run the step again locally (TR-20). Only the reachability check above falls back.
+    try:
+        if loop and loop.is_running():
+            from resource_explorer.concurrency import run_sync
 
-        # The shared pool carries the caller/daemon identity into its thread itself
-        # (concurrency._CallersContextPool) and leaves the request's Egeria client scope behind
-        # (pyegeria ISSUE-96); an explicit ctx.run here would bring that scope back.
-        out = run_sync(lambda: flow_fn(**parameters))
-    else:
-        out = flow_fn(**parameters)
+            # The shared pool carries the caller/daemon identity into its thread itself
+            # (concurrency._CallersContextPool) and leaves the request's Egeria client scope behind
+            # (pyegeria ISSUE-96); an explicit ctx.run here would bring that scope back.
+            out = run_sync(lambda: flow_fn(**parameters))
+        else:
+            out = flow_fn(**parameters)
+    except PrefectRunOutcome:
+        raise
+    except Exception as e:  # the in-process flow ran: an outcome, never a second local run
+        raise PrefectFlowRunFailed(
+            f"the in-process Prefect flow for {step_name} failed ({type(e).__name__}: {e}); the step was NOT run "
+            "locally again", "", state="FAILED") from e
     return (out.get("result") or {}), str(out.get("flow_run_id") or "")
 
 
@@ -731,15 +840,23 @@ def run_prefect_step(
                     _run_prefect_step_api(entity_type, slug, step_name, runner_kwargs))
             _fill("prefect", flow_run_id=flow_run_id)
             return result
-        except (PrefectFlowRunCancelled, PrefectFlowRunTimeout):
-            # (A timeout is the same shape: the run may still be live, and a
-            # local re-run would duplicate its work.) Must NOT fall through to local execution — that would silently
-            # redo the step's work outside Prefect, defeating the cancel.
-            # Re-raise so the caller (and whatever activity_log entry is
-            # tracking this) sees a real cancellation, not a quiet success.
+        except PrefectRunOutcome as outcome:
+            # TR-20: the flow run exists, so this is ITS outcome (failed, cancelled, result unreadable, unknown).
+            # Never a local run: that would execute the step a second time (the 2026-08-26 cancel bug, the
+            # 2026-11-15 hedwig unreadable-result double run). Recorded as engine=prefect, then re-raised so the
+            # caller writes an honest error step.
+            _fill("prefect", flow_run_id=outcome.flow_run_id)
+            if dispatch_info is not None:
+                dispatch_info["status"] = outcome.status
+                dispatch_info["state"] = outcome.state
+                dispatch_info["detail"] = str(outcome)
+            logging.getLogger(__name__).warning("Prefect flow run %s: %s (%s); not run locally",
+                                                outcome.flow_run_id or "?",
+                            outcome.status, outcome)
             raise
         except Exception as e:
-            # Falling back is right for an unreachable or failing Prefect server —
+            # Reached only BEFORE a flow run id exists (deployment not chosen, create_flow_run raised, server
+            # unreachable): every later failure is a PrefectRunOutcome above. Falling back is right here —
             # the work still gets done locally. But catching everything is what hid
             # the UnboundLocalError above for the entire life of this integration,
             # so log the exception type and traceback rather than just str(e): a

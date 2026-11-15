@@ -197,21 +197,89 @@ def run_gx_validation_task(
     }
 
 
-@flow(name="RE Survey Flow", persist_result=True)
+def output_json_and_hash(output: Any) -> tuple[str, str]:
+    """The canonical JSON of a step's output and its sha256 (`norm_hash`): what flow_run_results keeps and what the
+    flow's summary carries as a cross-check (TR-21)."""
+    import hashlib
+
+    text = json.dumps(output if output is not None else {}, sort_keys=True, default=str)
+    return text, hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def _run_step_as_flow_run(flow_run_id: str, entity_type: str, slug: str, step_name: str,
+                          runner_kwargs: dict[str, Any], *, credential_ref: str = "",
+                          keep_result: bool) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Run one step as the work of flow run `flow_run_id`: (output, summary). TR-21 (Architect ruling 2026-11-15):
+
+      - exactly ONE work row in step_runs for the flow run, for every entity type: every row observed while the
+        step runs carries executor=prefect and the flow run id (step_cost_observer.in_flow_run). A runner that records
+        its own row (the repo orchestrator) has written it; for one that records none (database, filesystem), the
+        row is written here, from the same measurement;
+      - with `keep_result`, the output is kept in flow_run_results BEFORE the flow returns, so COMPLETED implies the
+        row. The output is already scrubbed of any one-run secret by run_surveyor_step_task.
+
+    The summary (step_run_id, norm_hash, counts) is the flow's state message: a cross-check, never the data."""
+    from resource_explorer.survey_time import now_utc_iso
+
+    registry = ProjectRegistry()
+    info = _step_info_for(entity_type, step_name)
+    kwargs = {"credential_ref": credential_ref} if credential_ref else {}
+    with step_cost_observer.in_flow_run(flow_run_id):
+        with step_cost_observer.observe(
+            step_name, getattr(info, "fetch_cost", ""), getattr(info, "compute_cost", ""),
+            entity_type=entity_type, slug=slug, job_family="survey",
+        ) as observed:
+            output = run_surveyor_step_task(
+                entity_type=entity_type, slug=slug, step_name=step_name, runner_kwargs=runner_kwargs, **kwargs)
+
+    def own_rows() -> list[dict]:
+        return [r for r in registry.step_run_ids_for_flow_run(flow_run_id)
+                if r.get("step_key") == step_name and not r.get("demanded_by")]
+
+    rows = own_rows() if flow_run_id else []
+    if flow_run_id and not rows and observed:
+        obs = observed[0]
+        annotations = (output or {}).get("annotations") if isinstance(output, dict) else None
+        obs.annotations, obs.outcomes = step_cost_observer.describe_work(annotations)
+        obs.disagreement = step_cost_observer._disagreement(obs)
+        commit = output.get("survey_commit_sha") if isinstance(output, dict) else None
+        surveyed_at = (runner_kwargs or {}).get("surveyed_at") or now_utc_iso()
+        step_cost_observer.record(registry, slug, obs, surveyed_at, entity_type=entity_type,
+                                  survey_commit_sha=commit or None)
+        rows = own_rows()
+    if len(rows) > 1:
+        log.error("flow run %s wrote %d work rows for %s (expected 1): %s", flow_run_id, len(rows), step_name,
+                  [r.get("id") for r in rows])
+    step_run_id = rows[0]["id"] if rows else None
+    text, norm_hash = output_json_and_hash(output)
+    if keep_result:
+        if not flow_run_id:
+            raise RuntimeError("RE Survey Flow ran without a flow run id: its result could not be kept")
+        registry.write_flow_run_result(flow_run_id, entity_type=entity_type, slug=slug, step_key=step_name,
+                                       step_run_id=step_run_id, output_json=text, norm_hash=norm_hash)
+    annotations = (output or {}).get("annotations") if isinstance(output, dict) else None
+    summary = {"flow_run_id": flow_run_id, "step_run_id": step_run_id, "norm_hash": norm_hash,
+               "annotations": len(annotations) if isinstance(annotations, list) else 0}
+    return output or {}, summary
+
+
+@flow(name="RE Survey Flow", persist_result=False)
 @_daemon_entry
 def re_survey_flow(
     entity_type: str,
     slug: str,
     step_name: str,
     runner_kwargs: dict[str, Any],
-) -> dict[str, Any]:
-    """Prefect orchestration flow managing surveyor step runs."""
-    return run_surveyor_step_task(
-        entity_type=entity_type,
-        slug=slug,
-        step_name=step_name,
-        runner_kwargs=runner_kwargs,
-    )
+):
+    """One dispatched step, run on a worker. TR-21: nothing is persisted to a result file (a container worker's
+    files are not RE's: found on hedwig 2026-11-15). The output goes to the registry (flow_run_results, by this flow
+    run's id) and the final state's message carries only the summary RE cross-checks."""
+    from prefect.runtime import flow_run as _flow_run_ctx
+    from prefect.states import Completed
+
+    _, summary = _run_step_as_flow_run(str(_flow_run_ctx.id or ""), entity_type, slug, step_name, runner_kwargs,
+                                       keep_result=True)
+    return Completed(message=json.dumps(summary, sort_keys=True), data=summary)
 
 
 @flow(name="RE Survey Step (in process)", persist_result=False)
@@ -231,13 +299,14 @@ def re_survey_step_in_process_flow(
     Prefect still records the run (state, logs, flow-run id). Returns the
     step's output and this flow run's id.
     """
-    result = run_surveyor_step_task(
-        entity_type=entity_type, slug=slug, step_name=step_name,
-        runner_kwargs=runner_kwargs, credential_ref=credential_ref,
-    )
     from prefect.runtime import flow_run as _flow_run_ctx
 
-    return {"result": result, "flow_run_id": str(_flow_run_ctx.id or "")}
+    flow_run_id = str(_flow_run_ctx.id or "")
+    # In RE's own process: the output comes straight back, so nothing is kept in flow_run_results; the one work row
+    # carries this flow run's id like a worker's (TR-21).
+    result, _summary = _run_step_as_flow_run(flow_run_id, entity_type, slug, step_name, runner_kwargs,
+                                             credential_ref=credential_ref, keep_result=False)
+    return {"result": result, "flow_run_id": flow_run_id}
 
 
 # ── whole-survey orchestration ──────────────────────────────────────────────

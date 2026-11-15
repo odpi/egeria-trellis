@@ -318,6 +318,13 @@ def _drain_egeria_outbox() -> None:
     except Exception:
         # Housekeeping must never break the drain that precedes it.
         log.exception("Egeria outbox: retention purge failed")
+    # TR-21: a dispatched step's output row (flow_run_results) is kept 30 days, then pruned here.
+    try:
+        pruned = registry.prune_flow_run_results()
+        if pruned:
+            log.info("flow_run_results: pruned %d row(s) past retention", pruned)
+    except Exception:
+        log.exception("flow_run_results: retention prune failed")
 
 
 def _coalesce_repo_surveys(due: list[dict], registry) -> dict[tuple[str, str], list[str]]:
