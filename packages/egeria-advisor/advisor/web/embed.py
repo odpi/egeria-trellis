@@ -200,6 +200,10 @@ async def open_in_studio(request: Request, body: OpenDraftRequest) -> Dict[str, 
         # Never overwrite: a repeat "Open in Studio" with a name the user already has is refused in words, so
         # their private draft (perhaps edited in Studio since) is never silently replaced. An unreadable check
         # refuses too (pyegeria raises; nothing is saved).
+        # NOT ATOMIC (accepted for v1, Architect read-back 2026-11-14): this is check-then-save, so two concurrent
+        # "Open in Studio" calls by the same user with the same label can both pass the check and the later save
+        # wins. The window is one user racing themself; when the draft store offers a create-if-absent (or Egeria a
+        # conditional create), use that here instead of the load check.
         if run_sync(store.async_load(client.user_id, "spec", label)) is not None:
             raise _AlreadyHeld(label)
         return run_sync(store.async_save(client.user_id, draft))
