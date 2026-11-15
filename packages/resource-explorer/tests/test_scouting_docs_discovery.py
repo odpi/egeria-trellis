@@ -182,7 +182,7 @@ def test_not_checked_is_not_unreachable(registry, monkeypatch):
     monkeypatch.setenv("RE_OFFLINE", "1")
     def boom(*a, **k):
         raise AssertionError("a request was made while offline")
-    monkeypatch.setattr("urllib.request.urlopen", boom)
+    monkeypatch.setattr("httpx.Client", boom)
     anns = _run(registry, _gh({"pyproject.toml": PYPROJECT}), HttpProbe())
     assert anns[1].additional_properties["reachability"] == "not_checked"
     s = dd.read_summary(registry, "testgen")
@@ -234,49 +234,70 @@ def test_scouting_definition_chains_the_step():
 
 
 class TestRealProbeBoundary:
-    """HttpProbe itself, with only urlopen faked."""
+    """HttpProbe itself, through httpx with only the transport faked (TR-15: httpx/certifi, not urllib)."""
 
-    def _resp(self, status, headers=None, url=DOCS):
-        class R:
-            def __init__(s):
-                s.status, s.headers, s._u = status, headers or {}, url
-            def geturl(s): return s._u
-            def getcode(s): return s.status
-            def __enter__(s): return s
-            def __exit__(s, *a): return False
-        return R()
+    def test_head_ok_follows_the_redirect(self, monkeypatch):
+        import httpx
 
-    def test_head_ok(self, monkeypatch):
         monkeypatch.delenv("RE_OFFLINE", raising=False)
         seen = []
-        def fake(req, timeout=None):
-            seen.append((req.get_method(), timeout))
-            return self._resp(200, {"Last-Modified": "Mon"}, "https://docs.x/final")
-        monkeypatch.setattr("urllib.request.urlopen", fake)
-        r = HttpProbe().probe(DOCS)
-        assert (r.state, r.status, r.final_url, r.last_modified) == ("reachable", 200, "https://docs.x/final", "Mon")
-        assert seen == [("HEAD", 8.0)]                 # one bounded request
 
-    def test_head_refused_falls_back_to_get(self, monkeypatch):
-        import urllib.error
+        def handle(request):
+            seen.append((request.method, str(request.url)))
+            if str(request.url) == DOCS:
+                return httpx.Response(301, headers={"Location": "https://docs.x/final"})
+            return httpx.Response(200, headers={"Last-Modified": "Mon"})
+
+        r = HttpProbe(transport=httpx.MockTransport(handle)).probe(DOCS)
+        assert (r.state, r.status, r.final_url, r.last_modified) == ("reachable", 200, "https://docs.x/final", "Mon")
+        assert [m for m, _ in seen] == ["HEAD", "HEAD"]          # the request and its redirect, nothing else
+
+    def test_head_refused_falls_back_to_get_for_one_byte(self, monkeypatch):
+        import httpx
+
         monkeypatch.delenv("RE_OFFLINE", raising=False)
         calls = []
-        def fake(req, timeout=None):
-            calls.append(req.get_method())
-            if req.get_method() == "HEAD":
-                raise urllib.error.HTTPError(DOCS, 405, "no", {}, None)
-            return self._resp(200)
-        monkeypatch.setattr("urllib.request.urlopen", fake)
-        assert HttpProbe().probe(DOCS).state == "reachable"
-        assert calls == ["HEAD", "GET"]
+
+        def handle(request):
+            calls.append((request.method, request.headers.get("Range")))
+            return httpx.Response(405) if request.method == "HEAD" else httpx.Response(206)
+
+        assert HttpProbe(transport=httpx.MockTransport(handle)).probe(DOCS).state == "reachable"
+        assert calls == [("HEAD", None), ("GET", "bytes=0-0")]
+
+    def test_an_error_status_is_unreachable_with_it(self, monkeypatch):
+        import httpx
+
+        monkeypatch.delenv("RE_OFFLINE", raising=False)
+        r = HttpProbe(transport=httpx.MockTransport(lambda req: httpx.Response(404))).probe(DOCS)
+        assert (r.state, r.status, r.reason) == ("unreachable", 404, "HTTP 404")
 
     def test_connection_error_is_unreachable(self, monkeypatch):
+        import httpx
+
         monkeypatch.delenv("RE_OFFLINE", raising=False)
-        def fake(req, timeout=None):
-            raise OSError("name not resolved")
-        monkeypatch.setattr("urllib.request.urlopen", fake)
-        r = HttpProbe().probe(DOCS)
+
+        def handle(request):
+            raise httpx.ConnectError("name not resolved", request=request)
+
+        r = HttpProbe(transport=httpx.MockTransport(handle)).probe(DOCS)
         assert r.state == "unreachable" and r.status is None
+
+    def test_it_verifies_with_certifi_not_the_platform_bundle(self):
+        """TR-15: neither module imports urllib or calls urlopen; httpx verifies with certifi by default."""
+        import ast
+        import inspect
+
+        from resource_explorer.ingestion import docs_probe
+        from resource_explorer.surveyors.sub_surveyors import cve_scan
+
+        for mod in (docs_probe, cve_scan):
+            tree = ast.parse(inspect.getsource(mod))
+            imported = {a.name for n in ast.walk(tree) if isinstance(n, ast.Import) for a in n.names}
+            imported |= {n.module for n in ast.walk(tree) if isinstance(n, ast.ImportFrom) and n.module}
+            assert not any(m.startswith("urllib") for m in imported), mod.__name__
+            assert not any(isinstance(n, ast.Attribute) and n.attr == "urlopen" for n in ast.walk(tree)), mod.__name__
+            assert "httpx" in imported, mod.__name__
 
 
 class TestOverviewRoute:
