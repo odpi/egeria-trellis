@@ -19,6 +19,7 @@ never fall back to EA's service account.
 from __future__ import annotations
 
 import asyncio
+from contextlib import nullcontext
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, HTTPException, Request
@@ -72,6 +73,28 @@ class PasswordOnClient(RuntimeError):
     """A client built for the embed routes must never hold a password (E1 read-back R1)."""
 
 
+def no_password() -> Any:
+    """pyegeria's explicit opt-out of its configured default password (`pyegeria.core._no_password.NO_PASSWORD`,
+    egeria-python 7dd64417), which EgeriaTech carries to every sub-client and helper client, when this pyegeria
+    has it; else None, and `_scrub` alone keeps the password off (older pyegeria). `_scrub` runs either way until
+    the release with NO_PASSWORD is the floor."""
+    # Detected by name, not `from ... import`: the module is absent before 7dd64417, and the pyegeria contract
+    # test must pass on either side of it (an allow-list entry would be stale on the newer one).
+    import importlib
+    try:
+        return getattr(importlib.import_module("pyegeria.core._no_password"), "NO_PASSWORD", None)
+    except ImportError:
+        return None
+
+
+def bound_to(client):
+    """Every report-spec read made with `client` is for its user (`pyegeria.view.egeria_spec_cache.as_client`):
+    in a process declared multi-user, a read with no identity sees no private spec. A pyegeria without it: no-op."""
+    from pyegeria.view import egeria_spec_cache
+    as_client = getattr(egeria_spec_cache, "as_client", None)   # by name: absent before 8dd9e087's line
+    return as_client(client) if as_client else nullcontext()
+
+
 def _scrub(client) -> None:
     """pyegeria fills a missing password from its settings default, on EgeriaTech and on each sub-client it builds
     lazily, and a client holding one may re-sign-in after a 401 (the 2026-10-28 identity-switch shape). Remove it
@@ -109,7 +132,7 @@ def _user_client(request: Request):
     conn = get_pyegeria_platform_config()
     from pyegeria.egeria_tech_client import EgeriaTech
     client = EgeriaTech(view_server=conn["view_server"], platform_url=conn["platform_url"], user_id=creds["user_id"],
-                        user_pwd=None)
+                        user_pwd=no_password())
     _scrub(client)
     apply_token(client, creds["token"])
     assert_no_password(client)
@@ -127,10 +150,12 @@ def _close(client) -> None:
 
 
 def _as_user(request: Request, fn):
-    """Run fn(client) with a fresh client for the request's user; check no password crept back, then close it."""
+    """Run fn(client) with a fresh client for the request's user, its spec reads bound to that user; check no
+    password crept back, then close it."""
     client = _user_client(request)
     try:
-        return fn(client)
+        with bound_to(client):
+            return fn(client)
     finally:
         try:
             assert_no_password(client)
