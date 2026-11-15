@@ -7,8 +7,9 @@ A plan is never taken from the browser. Every step rebuilds it on the server, as
   - when the diff against the held version has breaking changes, the user confirmed those too.
 pyegeria's own checks run on top (async_apply re-reads the target and refuses a changed one).
 
-"Used by": pyegeria.authoring has no used-by read yet. Until it does (feature-detected as async_used_by), the
-impact view says so in words: it never claims "used by none".
+"Used by": pyegeria.authoring's used-by read (async_used_by, pyegeria 6.2.42), as the user. A failed read is said
+in words and never claims "used by none"; a first publish of something Egeria doesn't hold yet says nothing uses
+it yet.
 """
 from __future__ import annotations
 
@@ -16,8 +17,9 @@ from typing import Any, Dict, List, Optional
 
 from trellis_studio.authoring import _authoring, _run_sync, as_draft_dict, in_user_thread, parse_draft
 
-USED_BY_MISSING = ("Not available yet: pyegeria.authoring has no used-by read, so Studio can't list the Reports, "
-                   "sheets or folders that use this. This is not \"used by none\".")
+USED_BY_NOT_READ = ("Not read for a withdraw: Studio doesn't list the Reports, sheets or folders that use this here. "
+                    "This is not \"used by none\".")
+USED_BY_UNPUBLISHED = "Nothing uses it yet: it isn't published."
 
 
 def consumers() -> Dict[str, Any]:
@@ -128,13 +130,16 @@ def _impact(client, d, plan: Dict[str, Any]) -> Dict[str, Any]:
         notes.append("Not held in Egeria yet as far as you can see: this publish creates it.")
     else:
         breaking, changes = None, []   # unknown: confirmation is required, as for a breaking change
-    used = {"available": False, "words": USED_BY_MISSING}
-    fn = getattr(a, "async_used_by", None)
-    if fn is not None:
-        try:
-            used = {"available": True, **_run_sync(fn(d.kind, _key(d), client))}
-        except Exception as exc:  # noqa: BLE001
+    try:
+        used = {"available": True, **_run_sync(a.async_used_by(d.kind, _key(d), client))}
+    except a.AuthoringRefused as exc:
+        if state == "absent" and getattr(exc, "answer", None) == "absent":
+            # Both reads agree Egeria holds nothing by this name (as this user): a first publish.
+            used = {"available": False, "words": USED_BY_UNPUBLISHED}
+        else:
             used = {"available": False, "words": f"The used-by read failed ({type(exc).__name__}): not \"none\"."}
+    except Exception as exc:  # noqa: BLE001
+        used = {"available": False, "words": f"The used-by read failed ({type(exc).__name__}): not \"none\"."}
     return {"held": state, "changes": changes, "breaking": breaking, "notes": notes, "used_by": used,
             "steps": plan.get("steps", []), "plan_notes": plan.get("notes", [])}
 
@@ -175,7 +180,7 @@ async def plan(user, settings, op: str, **kw) -> Dict[str, Any]:
                 out["impact"].update(first_publication=True, changes=[], breaking=[])
             out["needs_breaking_confirm"] = out["impact"]["breaking"] is None or bool(out["impact"]["breaking"])
         else:
-            out["impact"] = {"used_by": {"available": False, "words": USED_BY_MISSING}, "steps": p.get("steps", []),
+            out["impact"] = {"used_by": {"available": False, "words": USED_BY_NOT_READ}, "steps": p.get("steps", []),
                              "notes": ["Withdrawing removes it from these folders only; the element stays in "
                                        "Egeria and published versions stay readable (D14)."]}
             out["needs_breaking_confirm"] = True   # a consumer loses it: always confirm

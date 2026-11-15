@@ -69,7 +69,10 @@ def _publish(authed, draft, **extra):
 
 def test_plan_shows_breaking_changes_from_pyegerias_diff(authed, clients, fake_egeria, monkeypatch):
     import pyegeria.authoring as a
-    monkeypatch.delattr(a, "async_used_by", raising=False)   # the no-used-by-read path (pyegeria 6.2.42 has one)
+
+    async def used_by(kind, label, client):          # a read that fails: the words never say "none"
+        raise RuntimeError("Egeria could not be read")
+    monkeypatch.setattr(a, "async_used_by", used_by)
     held = _spec()
     fake_egeria["held"] = held
     r = _publish(authed, _without_last_column(held))
@@ -79,7 +82,7 @@ def test_plan_shows_breaking_changes_from_pyegerias_diff(authed, clients, fake_e
     assert body["needs_breaking_confirm"] is True
     assert any(c["breaking"] and c["change"] == "removed" for c in body["impact"]["breaking"])
     assert body["impact"]["used_by"]["available"] is False
-    assert "not \"used by none\"" in body["impact"]["used_by"]["words"]
+    assert 'not "none"' in body["impact"]["used_by"]["words"]
 
 
 def test_unreadable_held_version_needs_confirmation_too(authed, clients, fake_egeria):
@@ -148,9 +151,33 @@ def test_a_failed_used_by_read_is_never_none(authed, clients, fake_egeria, monke
 
     async def used_by(kind, label, client):
         raise a.AuthoringRefused("Egeria could not be read.")
-    monkeypatch.setattr(a, "async_used_by", used_by, raising=False)
+    monkeypatch.setattr(a, "async_used_by", used_by)
     used = _publish(authed, _spec().model_dump(mode="json")).json()["impact"]["used_by"]
     assert used["available"] is False and 'not "none"' in used["words"]
+
+
+def _absent_used_by(a):
+    async def used_by(kind, label, client):
+        raise a.AuthoringRefused(f"Egeria holds no report spec named {label!r} that you can see.", answer="absent")
+    return used_by
+
+
+def test_first_publish_says_nothing_uses_it_yet(authed, clients, fake_egeria, monkeypatch):
+    import pyegeria.authoring as a
+    from trellis_studio.lifecycle import USED_BY_UNPUBLISHED
+    fake_egeria["refuse"] = "Egeria holds no report spec named 'Glossary Terms Lite' that you can see."
+    monkeypatch.setattr(a, "async_used_by", _absent_used_by(a))
+    used = _publish(authed, _spec().model_dump(mode="json")).json()["impact"]["used_by"]
+    assert used == {"available": False, "words": USED_BY_UNPUBLISHED}
+
+
+def test_used_by_absent_but_held_is_a_failed_read(authed, clients, fake_egeria, monkeypatch):
+    """The two reads disagree (the spec is held, used_by can't find it): never "nothing uses it"."""
+    import pyegeria.authoring as a
+    fake_egeria["held"] = _spec()
+    monkeypatch.setattr(a, "async_used_by", _absent_used_by(a))
+    used = _publish(authed, _spec().model_dump(mode="json")).json()["impact"]["used_by"]
+    assert used["available"] is False and 'not "none"' in used["words"] and "isn't published" not in used["words"]
 
 
 def test_used_by_is_used_when_pyegeria_has_it(authed, clients, fake_egeria, monkeypatch):
@@ -160,7 +187,7 @@ def test_used_by_is_used_when_pyegeria_has_it(authed, clients, fake_egeria, monk
     async def used_by(kind, label, client):
         return {"items": [{"kind": "report", "name": "Glossary report", "via": "runs it"}], "complete": False,
                 "notes": ["Showing at least 1 Reports."]}
-    monkeypatch.setattr(a, "async_used_by", used_by, raising=False)
+    monkeypatch.setattr(a, "async_used_by", used_by)
     body = _publish(authed, _spec().model_dump(mode="json")).json()
     used = body["impact"]["used_by"]
     assert used["available"] and used["complete"] is False and used["items"][0]["name"] == "Glossary report"
