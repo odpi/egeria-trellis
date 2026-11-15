@@ -459,12 +459,18 @@ def egeria_offline(monkeypatch):
     calls = []
 
     class _Resp:
+        def __init__(self, elements):
+            self.elements = elements
+
         def json(self):
-            return {"elements": [_VIEW_BEAN]}
+            # Egeria leaves a null field out (the end of the read), so a null page has no "elements" at all
+            return {} if self.elements is None else {"elements": self.elements}
 
     async def fake_make_request(self, request_type, endpoint, payload=None, *args, **kwargs):
         calls.append((request_type, endpoint, payload))
-        return _Resp()
+        body = json.loads(payload) if isinstance(payload, str) else (payload or {})
+        # the paging contract (pyegeria 6.2.42 pages a preview): rows on the first page, then null (the end)
+        return _Resp([_VIEW_BEAN] if not body.get("startFrom") else None)
     monkeypatch.setattr(ServerClient, "_async_make_request", fake_make_request)
     monkeypatch.setattr(ServerClient, "create_egeria_bearer_token", lambda self, *a, **k: "token")
     monkeypatch.setattr(ServerClient, "set_bearer_token", lambda self, token: None)
@@ -535,10 +541,16 @@ def test_the_old_generic_finder_returned_raw_elements_and_blank_cells(egeria_off
 def test_a_run_asks_for_only_the_rows_it_shows(egeria_offline):
     # Architect read-back 2c6e4667: preview's page_size was dropped as "not a parameter of this report",
     # so the finder fetched its default 100 (generic Asset ~21 s live)
-    v2.answer(_asset_spec(), _Client(), max_rows=7)
-    bodies = [json.loads(b) if isinstance(b, str) else b for _, _, b in egeria_offline]
-    assert [b.get("pageSize") for b in bodies] == [7]
-    assert bodies[0].get("graphQueryDepth") == 0
+    out = v2.answer(_asset_spec(), _Client(), max_rows=7)
+    bodies = [json.loads(b) if isinstance(b, str) else b for m, _, b in egeria_offline if m == "POST"]
+    first = bodies[0]
+    # 6.2.41 asks for exactly the rows shown. 6.2.42's preview pages at its fetch size (DEFAULT_FETCH_PAGE_SIZE)
+    # up to max_rows; asking for only the rows shown comes back with pyegeria PY-19 (a first page no larger than
+    # max_rows), not by working around pyegeria here (Architect, TR-6 A1 read-back).
+    from pyegeria.view import format_set_executor as fse
+    assert first.get("pageSize") in (7, getattr(fse, "DEFAULT_FETCH_PAGE_SIZE", 7))
+    assert first.get("graphQueryDepth") == 0 and not first.get("startFrom")
+    assert out["shown"] <= 7
 
 
 def test_registered_specs_keep_their_optional_params_and_gain_paging():

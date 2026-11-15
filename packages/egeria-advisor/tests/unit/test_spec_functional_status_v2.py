@@ -294,18 +294,36 @@ def _bean(**props):
             "properties": {"qualifiedName": "X::one", "displayName": "One", **props}}
 
 
+class _Resp:
+    def __init__(self, elements):
+        self.elements = elements
+
+    def json(self):
+        # Egeria leaves a null field out (the end of the read), so a null page has no "elements" at all
+        return {} if self.elements is None else {"elements": self.elements}
+
+
+def _page(body, elements):
+    """What Egeria sends for one page, under the paging contract (pyegeria 6.2.42 pages a preview): the rows
+    on the first page, then null (the end). An older pyegeria asks once and never sees the null."""
+    return _Resp(list(elements) if not (body or {}).get("startFrom") else None)
+
+
+def _searches(calls):
+    """The finds a run made, one per search: the first page of each (no /api/about version read, and no
+    follow-on page the pager asks for)."""
+    return [(m, u, b) for m, u, b in calls if m == "POST" and isinstance(b, dict) and not b.get("startFrom")]
+
+
 @pytest.fixture
 def egeria_offline(monkeypatch):
     from pyegeria.core._server_client import ServerClient
     calls, beans = [], []
 
-    class _Resp:
-        def json(self):
-            return {"elements": list(beans)}
-
     async def fake_make_request(self, request_type, endpoint, payload=None, *args, **kwargs):
-        calls.append((request_type, endpoint, json.loads(payload) if isinstance(payload, str) else payload))
-        return _Resp()
+        body = json.loads(payload) if isinstance(payload, str) else payload
+        calls.append((request_type, endpoint, body))
+        return _page(body, beans)
     monkeypatch.setattr(ServerClient, "_async_make_request", fake_make_request)
     monkeypatch.setattr(ServerClient, "create_egeria_bearer_token", lambda self, *a, **k: "token")
     monkeypatch.setattr(ServerClient, "set_bearer_token", lambda self, token: None)
@@ -336,7 +354,7 @@ def test_the_request_filters_on_the_server_and_the_column_shows_it(egeria_offlin
     out = v2.answer({"title": "t", "target_type": target, "answers": {"Heading": "H"}, "conditions": cond,
                      "columns": cols}, _Client())
     assert out["ok"], out
-    (_, url, body), = calls
+    (_, url, body), = _searches(calls)
     assert url.endswith(endpoint), url
     assert body[body_key] == body_value
     assert "limitResultsByStatus" not in body
@@ -356,17 +374,12 @@ def test_several_values_run_one_search_each_merged_by_guid_and_capped(merge_on, 
     by_value["DRAFT"] = [by_value["ACTIVE"][0], _bean(contentStatus="DRAFT")]   # g-1 again: dropped
     by_value["DRAFT"][1]["elementHeader"] = {**by_value["DRAFT"][1]["elementHeader"], "guid": "g-3"}
 
-    class _Resp:
-        def __init__(self, elements):
-            self.elements = elements
-
-        def json(self):
-            return {"elements": self.elements}
-
     async def per_value(self, request_type, endpoint, payload=None, *a, **k):
         body = json.loads(payload) if isinstance(payload, str) else payload
         calls.append((request_type, endpoint, body))
-        return _Resp(by_value[body["propertyValue"]])
+        if request_type != "POST":
+            return _Resp([])                                      # /api/about (6.2.42's version read)
+        return _page(body, by_value[body["propertyValue"]])
     monkeypatch.setattr(ServerClient, "_async_make_request", per_value)
     cond, _, _ = v2.ground_conditions({"functional_status": ["APPROVED", "ACTIVE", "DRAFT"]}, "GovernancePolicy")
     spec = {"title": "t", "target_type": "GovernancePolicy", "answers": {"Heading": "H"}, "conditions": cond,
@@ -374,10 +387,14 @@ def test_several_values_run_one_search_each_merged_by_guid_and_capped(merge_on, 
                         {"name": "Status", "key": "content_status"}]}
     out = v2.answer(spec, _Client())
     assert out["ok"], out
-    assert [b["propertyValue"] for _, _, b in calls] == ["APPROVED", "ACTIVE", "DRAFT"]
+    assert [b["propertyValue"] for _, _, b in _searches(calls)] == ["APPROVED", "ACTIVE", "DRAFT"]
     assert [r["guid"] for r in out["result"]["rows"]] == ["g-1", "g-2", "g-3"]
     assert [r["content_status"] for r in out["result"]["rows"]] == ["ACTIVE", "ACTIVE", "DRAFT"]
-    assert any("merged: 3 rows shown" in n for n in out["notes"]) and not out["capped"]
+    assert any("merged: 3 rows shown" in n for n in out["notes"])
+    # 6.2.41 never pages, so 3 rows of 25 is the whole answer. 6.2.42 pages under the paging contract, and
+    # this finder's ends aren't confirmed, so the merge honestly says there may be more, never "all".
+    unconfirmed = [n for n in out["notes"] if "didn't confirm" in n or "can't rule out" in n]
+    assert out["capped"] is bool(unconfirmed)
     calls.clear()
     capped = v2.answer(spec, _Client(), max_rows=2)
     assert [r["guid"] for r in capped["result"]["rows"]] == ["g-1", "g-2"] and capped["capped"]
@@ -391,7 +408,7 @@ def test_by_default_a_run_is_the_saved_specs_one_search(fixes_on, egeria_offline
     spec = {"title": "t", "target_type": "GovernancePolicy", "answers": {"Heading": "H"}, "conditions": cond,
             "columns": [{"name": "Name", "key": "display_name"}]}
     out = v2.answer(spec, _Client())
-    assert out["ok"] and [b["propertyValue"] for _, _, b in calls] == ["APPROVED"]
+    assert out["ok"] and [b["propertyValue"] for _, _, b in _searches(calls)] == ["APPROVED"]
     assert v2.build_format_set(spec).action.spec_params["property_value"] == "APPROVED"   # what is saved
     assert not any("merged" in n for n in out.get("notes") or [])
 
