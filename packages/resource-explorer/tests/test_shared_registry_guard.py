@@ -367,3 +367,15 @@ def test_both_isolation_fixtures_coexist_in_one_test(isolate_pgvector_schema, tm
     assert get_config().pgvector.schema_name == scratch
     assert PgVectorStore()._config.schema == scratch
     G._state["vector_schemas_built"].discard(scratch)
+
+
+@pytest.mark.parametrize("host", ["localhost", "127.0.0.1", "[::1]", "0.0.0.0", "LOCALHOST"])
+def test_every_spelling_of_this_machine_is_the_shared_host(host):
+    """TR-12 read-back advisory: localhost, 127.0.0.1, ::1 (and 0.0.0.0) are one host to the guard and the label."""
+    from resource_explorer.registry_label import is_shared_registry
+
+    url = f"postgresql://u:p@{host}:5442/egeria_advisor?options=-csearch_path%3Dresource_explorer"
+    assert is_shared_registry(url)
+    assert G.classify(G._params_from_args((url,), {}), strict=True) is not None
+    other = f"postgresql://u:p@{host}:5442/egeria_advisor?options=-csearch_path%3Dresource_explorer_test_1"
+    assert not is_shared_registry(other)

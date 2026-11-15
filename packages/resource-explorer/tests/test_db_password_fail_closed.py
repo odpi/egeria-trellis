@@ -84,3 +84,14 @@ def test_the_vector_store_refuses_to_connect_without_the_password(bare_env):
 
 def test_require_database_url_passes_a_value_through():
     assert require_database_url("sqlite:///a.db", "REGISTRY_DATABASE_URL", "registry") == "sqlite:///a.db"
+
+
+def test_the_derived_urls_keep_the_registry_schema_whatever_pgvector_schema_says(bare_env):
+    """Hedwig's review (TR-12): the registry, feedback and metrics URLs always search `resource_explorer`. Deriving
+    the search path from PGVECTOR_SCHEMA (the VECTOR store's schema) broke the shared-registry guard in a draft."""
+    bare_env.setenv("PGVECTOR_PASSWORD", SECRET)
+    bare_env.setenv("PGVECTOR_SCHEMA", "re_test")
+    cfg = get_config()
+    assert cfg.pgvector.schema_name == "re_test"
+    for url in (cfg.registry.database_url, cfg.feedback.database_url, cfg.observability.metrics_database_url):
+        assert url.endswith("?options=-csearch_path%3Dresource_explorer"), url.split("@")[-1]

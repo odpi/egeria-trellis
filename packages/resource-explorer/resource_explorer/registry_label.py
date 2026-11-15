@@ -41,7 +41,8 @@ def is_shared_registry(database_url: str) -> bool:
     except ValueError:
         return False
     d_host, d_port, d_db = _shared_default()
-    if host.lower() not in ("localhost", "127.0.0.1", "::1", d_host) or (port, db) != (d_port, d_db):
+    # Every spelling of this machine is the same host (read-back advisory, TR-12): an alias must not slip past.
+    if host.lower() not in ("localhost", "127.0.0.1", "::1", "0.0.0.0", d_host) or (port, db) != (d_port, d_db):
         return False
     schema = _search_path(u.query)
     return not (schema or "").startswith(TEST_SCHEMA_PREFIX)
