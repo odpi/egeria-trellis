@@ -1,0 +1,243 @@
+{
+ "led_by": "re_only",
+ "persisted": true,
+ "survey_data": {
+  "broken_symlink_count": 0,
+  "broken_symlinks": [],
+  "classification": {
+   "asset_type_counts": {},
+   "deployed_type_counts": {
+    "CSV Data File": 1,
+    "JSON File": 1,
+    "Markdown Document": 1,
+    "Text File": 1
+   },
+   "extension_counts": {
+    "csv": 1,
+    "json": 1,
+    "md": 1,
+    "txt": 1
+   },
+   "file_type_counts": {},
+   "source": "extension",
+   "type_counts": {
+    "CSV Data File": 1,
+    "JSON File": 1,
+    "Markdown Document": 1,
+    "Text File": 1
+   },
+   "unclassified_count": 4,
+   "unclassified_sample": [
+    "a.txt",
+    "b.csv",
+    "sub/c.json",
+    "sub/d.md"
+   ]
+  },
+  "executable_count": 0,
+  "folder_narratives": [],
+  "formats": {
+   "CSV": {
+    "count": 1,
+    "total_size": "20 B",
+    "total_size_bytes": 20
+   }
+  },
+  "hidden_count": 0,
+  "inaccessible_file_count": 0,
+  "inaccessible_files": [],
+  "inventory": [
+   {
+    "file_name": "a.txt",
+    "file_path": "a.txt",
+    "file_size": "10 B",
+    "file_size_bytes": 10,
+    "format": "Unknown",
+    "is_data_file": false,
+    "is_executable": false,
+    "is_hidden": false,
+    "is_symlink": false,
+    "is_writable": true,
+    "modified_at": "2026-11-15T20:06:41.690049"
+   },
+   {
+    "file_name": "b.csv",
+    "file_path": "b.csv",
+    "file_size": "20 B",
+    "file_size_bytes": 20,
+    "format": "CSV",
+    "is_data_file": true,
+    "is_executable": false,
+    "is_hidden": false,
+    "is_symlink": false,
+    "is_writable": true,
+    "modified_at": "2026-11-15T20:06:41.690123"
+   },
+   {
+    "file_name": "c.json",
+    "file_path": "sub/c.json",
+    "file_size": "30 B",
+    "file_size_bytes": 30,
+    "format": "Unknown",
+    "is_data_file": false,
+    "is_executable": false,
+    "is_hidden": false,
+    "is_symlink": false,
+    "is_writable": true,
+    "modified_at": "2026-11-15T20:06:41.690154"
+   },
+   {
+    "file_name": "d.md",
+    "file_path": "sub/d.md",
+    "file_size": "40 B",
+    "file_size_bytes": 40,
+    "format": "Unknown",
+    "is_data_file": false,
+    "is_executable": false,
+    "is_hidden": false,
+    "is_symlink": false,
+    "is_writable": true,
+    "modified_at": "2026-11-15T20:06:41.690171"
+   }
+  ],
+  "last_access_time": "2026-11-15T20:06:41.690154",
+  "last_creation_time": "2026-11-15T20:06:41.690171",
+  "last_modification_time": "2026-11-15T20:06:41.690171",
+  "profiling_errors": [],
+  "readable_count": 4,
+  "surveyed_at": "2026-11-15T20:06:41.721838+00:00",
+  "surveyed_by": {
+   "reach": {
+    "checked_at": "2026-11-15T20:06:41.720381+00:00",
+    "checked_date": "2026-11-15",
+    "container_path": "/survey-root",
+    "decided": true,
+    "evidence_action_guid": "",
+    "path": "/survey-root",
+    "path_changed": false,
+    "prefix": "",
+    "prefix_source": "",
+    "report_sentence": "surveyed by Resource Explorer \u00b7 Egeria could not reach the path",
+    "sentence": "only Resource Explorer can read this path \u00b7 checked 2026-11-15",
+    "state": "re_only",
+    "surveyor": "Resource Explorer",
+    "why": ""
+   },
+   "surveyor": "Resource Explorer"
+  },
+  "symlink_count": 0,
+  "total_data_files": 1,
+  "total_directories": 1,
+  "total_files": 4,
+  "total_size": "100 B",
+  "total_size_bytes": 100,
+  "unique_extension_count": 4,
+  "unique_filename_count": 4,
+  "walk_extensions": {
+   "capped_words": "",
+   "files": 4,
+   "folders": {
+    "deepest_folder_depth": 1,
+    "depth_histogram": [
+     {
+      "bytes": 30,
+      "depth": 0,
+      "files": 2,
+      "folders": 1
+     },
+     {
+      "bytes": 70,
+      "depth": 1,
+      "files": 2,
+      "folders": 1
+     }
+    ],
+    "folders_with_files": 2,
+    "largest_folders": [
+     {
+      "bytes": 70,
+      "depth": 1,
+      "files": 2,
+      "path": "sub"
+     }
+    ],
+    "largest_folders_bytes": 70,
+    "total_bytes": 100
+   },
+   "hashing": {
+    "algorithm": "SHA-256",
+    "budget_stopped_by": "",
+    "budget_words": "",
+    "hashed_bytes": 100,
+    "hashed_files": 4,
+    "limit_bytes": 10485760,
+    "off": false,
+    "over_budget_files": 0,
+    "over_limit_files": 0,
+    "secret_named_files": 0,
+    "symlink_files": 0,
+    "unreadable_files": 0
+   },
+   "led_by": "re",
+   "modes": {
+    "0664": 4
+   },
+   "narratives": {
+    "entries_found": 0,
+    "entries_kept": 0,
+    "files_read": 0,
+    "folders": 2,
+    "folders_with_licence": 0,
+    "folders_with_narrative": 0,
+    "folders_with_stated_dates": 0,
+    "folders_with_stated_owner": 0,
+    "folders_with_stated_source": 0,
+    "licences": {},
+    "read_cap": 1000,
+    "stopped_at_read_cap": false,
+    "too_large_to_read": 0
+   },
+   "owners": {
+    "distinct_groups": 1,
+    "distinct_owners": 1,
+    "world_readable_files": 4
+   },
+   "rows_kept": {
+    "error": "",
+    "pruned_runs": [],
+    "rows": 4
+   },
+   "run_id": "2026-11-15T20:06:41.721838+00:00"
+  },
+  "walk_limits": {
+   "broken_symlink_count": 0,
+   "capped": false,
+   "capped_reasons": [],
+   "capped_words": "",
+   "deepest_level_reached": 1,
+   "entries_examined": 5,
+   "machine": "hedwig",
+   "max_depth": 20,
+   "max_entries": 100000,
+   "not_walked_by_name": {},
+   "not_walked_directories": 0,
+   "not_walked_directory_names": [
+    ".gemini",
+    ".git",
+    ".github",
+    ".idea",
+    ".pytest_cache",
+    ".venv",
+    "__pycache__",
+    "build",
+    "dist",
+    "node_modules",
+    "venv"
+   ],
+   "not_walked_names_found": [],
+   "symlinked_directories_not_followed": 0,
+   "walk_seconds": 0.001
+  },
+  "writable_count": 4
+ }
+}

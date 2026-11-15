@@ -198,12 +198,13 @@ def run_gx_validation_task(
 
 
 def output_json_and_hash(output: Any) -> tuple[str, str]:
-    """The canonical JSON of a step's output and its sha256 (`norm_hash`): what flow_run_results keeps and what the
-    flow's summary carries as a cross-check (TR-21)."""
-    import hashlib
+    """The canonical encoded text of a step's output and its sha256 (`norm_hash`): what flow_run_results keeps and
+    what the flow's summary carries as a cross-check. Through the ONE codec both sides share (TR-21 R4,
+    surveyors/step_output_codec.py): annotations encoded losslessly, any value with no lossless encoding raises
+    StepOutputEncodeError, which fails the flow run."""
+    from resource_explorer.surveyors.step_output_codec import encode_step_output
 
-    text = json.dumps(output if output is not None else {}, sort_keys=True, default=str)
-    return text, hashlib.sha256(text.encode("utf-8")).hexdigest()
+    return encode_step_output(output)
 
 
 def _run_step_as_flow_run(flow_run_id: str, entity_type: str, slug: str, step_name: str,
@@ -253,11 +254,13 @@ def _run_step_as_flow_run(flow_run_id: str, entity_type: str, slug: str, step_na
             step_cost_observer.record(registry, slug, obs, surveyed_at, entity_type=entity_type,
                                       survey_commit_sha=commit or None)
     rows = own_rows() if flow_run_id else []
+    # Encoded (and so checked) BEFORE anything is kept or returned: a value with no lossless encoding fails the flow
+    # run here, loudly, with its type and key path (TR-21 R4). Never str().
+    text, norm_hash = output_json_and_hash(output)
     if len(rows) > 1:
         log.error("flow run %s wrote %d work rows for %s (expected 1): %s", flow_run_id, len(rows), step_name,
                   [r.get("id") for r in rows])
     step_run_id = rows[0]["id"] if rows else None
-    text, norm_hash = output_json_and_hash(output)
     if keep_result:
         if not flow_run_id:
             raise RuntimeError("RE Survey Flow ran without a flow run id: its result could not be kept")
