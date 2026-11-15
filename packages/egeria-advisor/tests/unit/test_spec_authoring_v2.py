@@ -638,3 +638,23 @@ def test_answer_ranks_c03_in_the_reply(monkeypatch):
     lines = [ln for ln in out["markdown"].splitlines() if ln.startswith("| ") and "Importance" not in ln]
     assert lines[0].endswith("| Critical |") and lines[-1].endswith("| Medium-High |")
     assert "not alphabetically" in out["markdown"]
+
+
+def test_c03_in_the_real_recorded_shape():
+    """The read-back asks for C03's REAL data shape: the quiet re-run's own run record (31e359c5,
+    results_rebased_fixes_live_quiet.json: check.run) is what the elicitor's preview handed over. Its columns
+    are bare keys and its rows are flat {key: text} dicts, and the 12 rows are the transcript's, in Egeria's
+    order. pyegeria may also give a cell as a dict ({"value": ...}): ranked the same."""
+    recorded = {"kind": "table", "shown": 12, "capped": False, "notes": [],
+                "columns": ["display_name", "importance"],
+                "rows": [{"display_name": n, "importance": v} for n, v in C03_ROWS]}
+    prev = {"result": {"kind": "table", "columns": recorded["columns"], "rows": recorded["rows"]},
+            "capped": recorded["capped"], "shown": recorded["shown"], "notes": recorded["notes"]}
+    out = v2.order_rows(prev, C03_COND)
+    assert [r["importance"] for r in out["result"]["rows"]] == ["Critical"] * 4 + ["High"] * 5 + ["Medium-High"] * 3
+    md = v2.render_markdown(out)
+    assert md.splitlines()[2].endswith("| Critical |")
+    dict_cells = {**prev, "result": {**prev["result"], "rows": [
+        {"display_name": {"value": n}, "importance": {"value": v}} for n, v in C03_ROWS]}}
+    out = v2.order_rows(dict_cells, C03_COND)
+    assert [r["importance"]["value"] for r in out["result"]["rows"]][:4] == ["Critical"] * 4
