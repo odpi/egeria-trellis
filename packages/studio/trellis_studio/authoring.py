@@ -18,7 +18,7 @@ import inspect
 from typing import Any, Callable, Dict, List, Optional
 
 from trellis_studio.config import StudioSettings
-from trellis_studio.egeria import assert_no_password, close, user_client
+from trellis_studio.egeria import assert_no_password, bound_to, close, user_client
 
 KINDS = ("spec", "report", "sheet")
 
@@ -42,7 +42,8 @@ async def in_user_thread(user: Dict[str, Any], settings: StudioSettings, fn: Cal
     def work():
         client = user_client(user, settings)
         try:
-            return fn(client)
+            with bound_to(client):              # every spec read in the call is this user's (spec-cache R-A)
+                return fn(client)
         finally:
             try:
                 assert_no_password(client)      # nothing in the call put one back

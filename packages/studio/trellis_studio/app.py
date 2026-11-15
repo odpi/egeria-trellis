@@ -58,6 +58,13 @@ def create_app(settings: Optional[StudioSettings] = None) -> FastAPI:
     app.add_middleware(LoginRequiredMiddleware, config=cfg, policy=policy)
     logger.info("studio: %s", policy.describe())
 
+    # Studio serves many users: say so to pyegeria's spec cache at startup (spec-cache R-A, feature-detected).
+    @app.on_event("startup")
+    async def _declare_multi_user() -> None:
+        from trellis_studio.egeria import declare_multi_user_process
+        if not declare_multi_user_process():
+            logger.info("studio: pyegeria has no declare_multi_user (spec-cache R-A); running undeclared")
+
     # A token Egeria rejects is a 401 wherever it surfaces, never a retry and never a 500 (S0 R1).
     try:
         from pyegeria.core._exceptions import PyegeriaUnauthorizedException

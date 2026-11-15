@@ -164,7 +164,7 @@ def test_user_client_runs_as_the_signed_in_user(settings, monkeypatch):
     c = studio_egeria.user_client({"sub": "peterprofile", "user_id": "peterprofile", "egeria_token": tok}, settings)
     assert c.token == tok
     assert _Recorder.built == [{"view_server": "qs-view-server", "platform_url": "https://egeria.test:9443",
-                                "user_id": "peterprofile", "user_pwd": None}]
+                                "user_id": "peterprofile", "user_pwd": studio_egeria.no_password()}]
     assert c.user_pwd is None
 
 
@@ -284,3 +284,64 @@ def test_service_accounts_are_refused_on_both_ways_in(client, monkeypatch):
     monkeypatch.setattr(trellis_auth, "validate_egeria_token", lambda *a: (_ for _ in ()).throw(AssertionError("no Egeria call")))
     assert c.post("/api/auth/login", json={"username": "eaSERVICE", "password": "x"}).status_code == 403
     assert c.post("/api/auth/portal", json={"portal_token": _portal_token(sub="re-daemon")}).status_code == 403
+
+
+# ---- spec-cache R-A (egeria-python 8dd9e087) and the NO_PASSWORD opt-out (7dd64417), feature-detected --------
+
+def _has(module: str, name: str) -> bool:
+    import importlib
+    try:
+        return hasattr(importlib.import_module(module), name)
+    except ImportError:
+        return False
+
+
+def test_studio_declares_itself_multi_user_at_startup_when_pyegeria_can(settings, monkeypatch):
+    monkeypatch.delenv("PYEGERIA_MULTI_USER", raising=False)
+    if not _has("pyegeria.view.egeria_spec_cache", "declare_multi_user"):
+        with TestClient(create_app(settings)) as c:        # older pyegeria: starts, undeclared, never an error
+            assert c.get("/health").status_code == 200
+        assert studio_egeria.declare_multi_user_process() is False
+        return
+    from pyegeria.view.egeria_spec_cache import declare_multi_user, is_multi_user
+    declare_multi_user(False)
+    try:
+        app = create_app(settings)
+        assert not is_multi_user()                         # building the app declares nothing...
+        with TestClient(app):
+            assert is_multi_user()                         # ...its startup does
+    finally:
+        declare_multi_user(False)
+
+
+def test_without_declare_multi_user_studio_says_so(monkeypatch):
+    from pyegeria.view import egeria_spec_cache
+    monkeypatch.delattr(egeria_spec_cache, "declare_multi_user", raising=False)   # as on 6.2.41
+    assert studio_egeria.declare_multi_user_process() is False
+
+
+def test_clients_use_no_password_when_pyegeria_has_it(settings, monkeypatch):
+    c = _real_client(settings, monkeypatch)
+    sub = c.classification_manager
+    if not _has("pyegeria.core._no_password", "NO_PASSWORD"):
+        assert studio_egeria.no_password() is None
+        assert c.user_pwd is None and sub.user_pwd is None          # _scrub's fallback
+        return
+    from pyegeria.core._no_password import NO_PASSWORD
+    assert studio_egeria.no_password() is NO_PASSWORD
+    assert c.use_default_password is False and getattr(sub, "use_default_password", False) is False
+    assert c.user_pwd is None and sub.user_pwd is None
+
+
+def test_in_user_thread_binds_spec_reads_to_the_user(settings, monkeypatch):
+    import asyncio
+    from trellis_studio import authoring
+    _real_client(settings, monkeypatch)                            # the patches a real client needs
+    user = {"sub": "peterprofile", "user_id": "peterprofile", "egeria_token": fake_egeria_token()}
+    if not _has("pyegeria.view.egeria_spec_cache", "as_client"):
+        with studio_egeria.bound_to(object()):                    # older pyegeria: a no-op, never an error
+            pass
+        return
+    from pyegeria.view.egeria_spec_cache import current_spec_identity
+    seen = asyncio.run(authoring.in_user_thread(user, settings, lambda c: current_spec_identity()))
+    assert seen and "peterprofile" in seen
