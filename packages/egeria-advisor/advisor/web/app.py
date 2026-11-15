@@ -125,6 +125,17 @@ _install_login_required_middleware()
 
 
 @app.middleware("http")
+async def _frame_ancestors_middleware(request: Request, call_next):
+    """E1: who may frame EA. Every response says `frame-ancestors 'self' <ADVISOR_EMBED_ORIGINS>`, so only Studio
+    (and EA itself) can embed it; before E1 anyone could. Registered after the login middleware, so it is outside it
+    and a 401 carries the header too."""
+    from advisor.web.embed import frame_ancestors_header
+    response = await call_next(request)
+    response.headers["Content-Security-Policy"] = frame_ancestors_header()
+    return response
+
+
+@app.middleware("http")
 async def _user_context_middleware(request: Request, call_next):
     """
     Sets advisor.request_context's per-request ContextVar from this
@@ -161,6 +172,9 @@ async def _user_context_middleware(request: Request, call_next):
 
 from advisor.web.admin import router as _admin_router
 app.include_router(_admin_router)
+
+from advisor.web.embed import router as _embed_router
+app.include_router(_embed_router)
 
 from advisor.web.auth import router as _auth_router
 app.include_router(_auth_router)
