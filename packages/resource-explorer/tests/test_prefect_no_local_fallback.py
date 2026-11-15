@@ -159,10 +159,24 @@ class TestTr20OutcomeTable:
         assert exc is None and out == {"ran": "locally"} and local == 1
         assert info["engine"] == "local" and info["flow_run_id"] == "" and "not found" in info["dispatch_failed"]
 
-    def test_a_create_that_could_not_connect_falls_back_once(self):
-        """R1: a connect failure means the request was never sent, so no run can exist."""
-        _, exc, info, local = _dispatch(_client(create_raises=httpx.ConnectError("connection refused")))
-        assert exc is None and local == 1 and info["engine"] == "local" and "refused" in info["dispatch_failed"]
+    @pytest.mark.parametrize("error", [httpx.ConnectError("connection refused"), httpx.ConnectTimeout("t/o")])
+    def test_a_create_that_could_not_connect_is_retried_then_unknown_never_local(self, error):
+        """R3 (Architect read-back 2026-11-15): Prefect's client retries inside send, so a ConnectError or
+        ConnectTimeout on the create can follow a send that reached the server. No exception type proves "never
+        sent": retried once with the same key, then unknown, never a local run."""
+        c = _client(create_raises=error)
+        _, exc, info, local = _dispatch(c)
+        assert isinstance(exc, adapter.PrefectRunOutcome) and exc.status == "unknown" and local == 0
+        assert c.create_flow_run_from_deployment.await_count == 2
+        keys = {call.kwargs["idempotency_key"] for call in c.create_flow_run_from_deployment.await_args_list}
+        assert len(keys) == 1 and info["engine"] == "prefect"
+
+    def test_only_a_failure_before_the_create_falls_back_locally(self):
+        """The one local fallback: choosing the deployment failed, so no create was attempted."""
+        c = _client(deployment_missing=True)
+        _, exc, info, local = _dispatch(c)
+        assert exc is None and local == 1 and info["engine"] == "local"
+        c.create_flow_run_from_deployment.assert_not_called()
 
     def test_a_create_that_failed_after_the_server_made_the_run_is_followed_not_run_locally(self):
         """R1 (Architect read-back 2026-11-15): the first create times out on the response although the server made

@@ -658,14 +658,16 @@ async def _run_prefect_step_api(
 
 async def _create_flow_run(client: Any, deployment: Any, parameters: dict[str, Any], tags: list[str],
                            dispatch: dict[str, Any]) -> Any:
-    """Create the step's flow run under this dispatch's idempotency key (R1, Architect read-back 2026-11-15).
+    """Create the step's flow run under this dispatch's idempotency key (R1 and R3, Architect read-backs 2026-11-15).
 
     A create can fail AFTER the server made the run (a read timeout, a reset on the response): the client has no id,
-    but a worker will pick the run up. So only a failure to CONNECT (the request was never sent) leaves
-    `dispatch["may_exist"]` False and is re-raised for the local fallback. Any other failure is retried ONCE with the
-    same key, which returns the run the first attempt made, if it did. A second failure is "unknown", never local."""
-    import httpx
-
+    but a worker will pick the run up. No exception type proves the request was never sent. Prefect's own client
+    retries inside send (prefect/client/base.py: ReadTimeout, ReadError, WriteError, RemoteProtocolError and
+    ConnectTimeout, and ConnectError once it has connected, which `_choose_deployment` always has), so a
+    ConnectError here can follow a send that reached the server. So EVERY create failure keeps
+    `dispatch["may_exist"]` True: it is retried ONCE with the same key, which returns the run the first attempt made,
+    if it did, and a second failure is "unknown", never a local run. The only local fallback is a failure before
+    the create is attempted (choosing the deployment)."""
     def create():
         return client.create_flow_run_from_deployment(
             deployment_id=deployment.id, parameters=parameters, tags=tags, idempotency_key=dispatch["key"])
@@ -673,10 +675,7 @@ async def _create_flow_run(client: Any, deployment: Any, parameters: dict[str, A
     dispatch["may_exist"] = True
     try:
         return await create()
-    except (httpx.ConnectError, httpx.ConnectTimeout):
-        dispatch["may_exist"] = False  # nothing was sent: no run can exist
-        raise
-    except Exception as first:  # noqa: BLE001 - any other create failure: the run may exist, so retry with the key
+    except Exception as first:  # noqa: BLE001 - any create failure: the run may exist, so retry with the key
         try:
             return await create()
         except Exception as second:
