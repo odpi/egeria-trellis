@@ -13230,6 +13230,8 @@ class ProjectRegistry:
         "analysis_table_rows": "per surveyed resource, never an investigation",
         "step_annotations": "per surveyed resource, never an investigation",
         "step_runs": "per surveyed resource, never an investigation",
+        "flow_run_results": "a dispatched step's output, per surveyed resource (by flow_run_id), never an "
+                            "investigation; pruned after 30 days",
         "sub_resources": "per surveyed resource, never an investigation",
         "feedback_rfas": "the one RFA routed per question (closed-loop step 2b), keyed by the resource the answer "
                          "was about or the catalog/questions pseudo-entity, never an investigation; the RFA itself "
