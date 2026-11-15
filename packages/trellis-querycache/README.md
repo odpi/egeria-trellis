@@ -53,6 +53,14 @@ can only hold JSON-serializable values; anything else is logged and left
 uncached rather than raised — a cache that cannot store something must not
 break the operation it was speeding up.
 
+**An unavailable Redis is a miss, not an error.** When Redis is down,
+unreachable or refuses a command, `get` returns `None` (counted as a miss) and
+`set` stores nothing, each with a logged warning, so the caller recomputes the
+answer instead of failing the request. `invalidate_scope()` and `clear()` still
+raise: they are explicit maintenance calls, and reporting an invalidation that
+never reached Redis as done would leave stale answers to be served once it is
+back.
+
 **`ttl_seconds=None` means never expires** — entries leave only by LRU
 eviction or explicit invalidation. That is EA's historical behaviour, kept
 rather than silently given a TTL.
