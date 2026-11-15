@@ -690,6 +690,9 @@ ORDINAL_SCALE: Tuple[Tuple[str, ...], ...] = (
 )
 _ORDINAL_RANK = {w: i for i, words in enumerate(ORDINAL_SCALE) for w in words}
 _PROPERTY_SORTS = ("PROPERTY_ASCENDING", "PROPERTY_DESCENDING")
+#: TR-6 A1: how many rows a capped run re-reads before ranking, so the top of a "highest X" answer is the real
+#: top and not only the best of what Egeria's alphabetical order let in. Past it, the note stays.
+RANK_READ_ROWS = 500
 
 
 def _cell_text(v: Any) -> str:
@@ -726,7 +729,8 @@ def order_rows(prev: Dict[str, Any], conditions: Optional[Dict[str, Any]]) -> Di
     cond = conditions or {}
     order, name = str(cond.get("output_sort_order") or "").upper(), cond.get("order_property_name")
     res = prev.get("result")
-    if order not in _PROPERTY_SORTS or not name or not isinstance(res, dict) or res.get("kind") != "table":
+    if order not in _PROPERTY_SORTS or not name or not isinstance(res, dict) or res.get("kind") != "table" \
+            or prev.get("reordered"):
         return prev
     key = _snake(str(name))
     rows = list(res.get("rows") or [])
@@ -751,12 +755,38 @@ def order_rows(prev: Dict[str, Any], conditions: Optional[Dict[str, Any]]) -> Di
     with_value = [(r, t) for r, t in zip(rows, texts) if t]
     without = [r for r, t in zip(rows, texts) if not t]
     with_value.sort(key=lambda rt: rank(rt[1]), reverse=descending)       # stable: Egeria's order on a tie
-    if prev.get("capped"):
+    if prev.get("capped") and prev.get("rank_whole") is not True:
         note += (f"; Egeria chose these {len(rows)} rows by {name}'s letters, so rows ranked "
                  f"{'higher' if descending else 'lower'} may be among those not shown")
     notes.append(note)
     return {**prev, "result": {**res, "rows": [r for r, _ in with_value] + without}, "notes": notes,
             "reordered": kind}
+
+
+def _rank_read(spec: Dict[str, Any], client: Any, prev: Dict[str, Any], max_rows: int) -> Dict[str, Any]:
+    """TR-6 A1: `prev` was capped and its rows will be re-ranked, so read up to RANK_READ_ROWS, rank them all,
+    and keep the first `max_rows`. The answer's top rows are then the real top of everything read. If the
+    bigger read is capped too, order_rows' note (rows ranked higher may be missing) stays. If the re-read fails,
+    `prev` stands, with its note."""
+    from pyegeria.authoring import preview
+    try:
+        full = preview(spec_draft(spec), client=client, max_rows=RANK_READ_ROWS,
+                       params={"start_from": 0, "search_string": search_of(spec)})
+    except Exception as exc:  # noqa: BLE001 -- the capped answer, honestly noted, is still an answer
+        return {**prev, "notes": list(prev.get("notes") or []) +
+                [f"couldn't read more rows to rank them ({type(exc).__name__})"]}
+    ranked = order_rows(full, spec.get("conditions"))
+    res = ranked.get("result") or {}
+    if not ranked.get("reordered") or not isinstance(res, dict) or res.get("kind") != "table":
+        return prev
+    rows = list(res.get("rows") or [])
+    read = len(rows)
+    whole = not full.get("capped")
+    notes = list(ranked.get("notes") or [])
+    notes.append(f"ranked {'all ' if whole else 'the first '}{read} rows Egeria returned, showing the top "
+                 f"{min(max_rows, read)}")
+    return {**ranked, "result": {**res, "rows": rows[:max_rows]}, "shown": min(max_rows, read),
+            "capped": read > max_rows or not whole, "notes": notes, "ranked_read": read, "rank_whole": whole}
 
 
 def answer(spec: Dict[str, Any], client: Any, *, max_rows: int = ANSWER_ROWS) -> Dict[str, Any]:
@@ -782,6 +812,8 @@ def answer(spec: Dict[str, Any], client: Any, *, max_rows: int = ANSWER_ROWS) ->
         prev = merge_previews(prevs, status["values"], status["property"], max_rows)
     else:
         prev = prevs[0]
+        if prev.get("capped") and order_rows(prev, spec.get("conditions")).get("reordered"):
+            prev = _rank_read(spec, client, prev, max_rows)
     prev = order_rows(prev, spec.get("conditions"))
     out = {"ok": True, **prev, "s": round(time.time() - t, 2)}
     out["markdown"] = render_markdown(prev)

@@ -658,3 +658,69 @@ def test_c03_in_the_real_recorded_shape():
         {"display_name": {"value": n}, "importance": {"value": v}} for n, v in C03_ROWS]}}
     out = v2.order_rows(dict_cells, C03_COND)
     assert [r["importance"]["value"] for r in out["result"]["rows"]][:4] == ["Critical"] * 4
+
+
+# ---- TR-6 A1: a capped run is re-read (bounded) before ranking ------------------------------------------
+
+def _risk_spec():
+    return _spec(target_type="Risk", columns=[{"name": "Risk Name", "key": "display_name"},
+                                              {"name": "Importance", "key": "importance"}],
+                 conditions=dict(C03_COND))
+
+
+def _egeria(monkeypatch, rows, fail_big=False):
+    """A fake preview that behaves like Egeria + pyegeria: rows in Egeria's alphabetical-descending order, one
+    page of max_rows, capped when there are more. Records each read's max_rows."""
+    seen = []
+    ordered = sorted(rows, key=lambda nv: nv[1], reverse=True)            # Egeria: by the letters
+
+    def fake_preview(draft, *, client, max_rows, params=None, **kw):
+        seen.append(max_rows)
+        if fail_big and max_rows > v2.ANSWER_ROWS:
+            raise TimeoutError("slow")
+        page = ordered[:max_rows]
+        return {**_table(page), "capped": len(ordered) > max_rows, "shown": len(page)}
+    monkeypatch.setattr("pyegeria.authoring.preview", fake_preview)
+    monkeypatch.setattr(v2, "spec_draft", lambda one: object())
+    return seen
+
+
+#: 30 Medium-High, 5 High, 5 Critical: Egeria's first 25 (descending letters) are all Medium-High.
+MANY = ([(f"mh {i}", "Medium-High") for i in range(30)] + [(f"h {i}", "High") for i in range(5)]
+        + [(f"c {i}", "Critical") for i in range(5)])
+
+
+def test_a_capped_highest_answer_is_re_read_so_its_top_rows_are_the_real_top(monkeypatch):
+    seen = _egeria(monkeypatch, MANY)
+    out = v2.answer(_risk_spec(), client=object())
+    assert seen == [v2.ANSWER_ROWS, v2.RANK_READ_ROWS]
+    got = [r["importance"] for r in out["result"]["rows"]]
+    assert got[:10] == ["Critical"] * 5 + ["High"] * 5 and len(got) == v2.ANSWER_ROWS
+    assert out["shown"] == v2.ANSWER_ROWS and out["capped"] is True            # more exist than shown...
+    assert any("ranked all 40 rows" in n for n in out["notes"])                 # ...but the ranking saw them all
+    assert not any("may be among those not shown" in n for n in out["notes"])
+    assert out["markdown"].splitlines()[2].endswith("| Critical |")
+
+
+def test_past_the_bound_the_note_stays(monkeypatch):
+    monkeypatch.setattr(v2, "RANK_READ_ROWS", 30)                           # 40 rows, read 30
+    _egeria(monkeypatch, MANY)
+    out = v2.answer(_risk_spec(), client=object())
+    assert any("ranked the first 30 rows" in n for n in out["notes"])
+    assert any("rows ranked higher may be among those not shown" in n for n in out["notes"])
+
+
+def test_a_failed_re_read_keeps_the_capped_answer_and_says_so(monkeypatch):
+    _egeria(monkeypatch, MANY, fail_big=True)
+    out = v2.answer(_risk_spec(), client=object())
+    assert out["ok"] and any("couldn't read more rows to rank them (TimeoutError)" in n for n in out["notes"])
+    assert any("may be among those not shown" in n for n in out["notes"])
+
+
+def test_no_re_read_when_not_capped_or_not_re_ranked(monkeypatch):
+    seen = _egeria(monkeypatch, C03_ROWS)                                    # 12 rows: not capped
+    v2.answer(_risk_spec(), client=object())
+    assert seen == [v2.ANSWER_ROWS]
+    seen = _egeria(monkeypatch, [(f"x{i}", f"Colour {i}") for i in range(40)])   # capped, off the scale
+    v2.answer(_risk_spec(), client=object())
+    assert seen == [v2.ANSWER_ROWS]
