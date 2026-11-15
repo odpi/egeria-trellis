@@ -26,6 +26,12 @@ from pathlib import Path
 
 import pytest
 
+# TR-12: there is no built-in Postgres password any more, and EA refuses to connect without one, by name. Unit tests
+# mock the connection, so they get a placeholder that opens nothing. Set before advisor.config is imported (its
+# settings are read once). A real PGVECTOR_PASSWORD exported in the shell (e.g. `source
+# ~/.re-gate/secrets/pgvector.env`) wins, and only then does the requires_pgvector tier reach Postgres.
+os.environ.setdefault("PGVECTOR_PASSWORD", "test-only-not-a-password")
+
 # Add project root to path
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))

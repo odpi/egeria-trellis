@@ -56,7 +56,8 @@ uv sync --extra dev --extra phoenix
 cp .env.example .env
 # Edit .env: set GITHUB_TOKEN, LLM_BACKEND, Egeria connection, etc.
 # pgvector/registry defaults already point at the shared egeria_advisor
-# Postgres instance — no .env entries needed in a Trellis checkout.
+# Postgres instance, but PGVECTOR_PASSWORD must be set: there is no built-in
+# password (TR-12). Unset, RE refuses to start and names it.
 ```
 
 External services:

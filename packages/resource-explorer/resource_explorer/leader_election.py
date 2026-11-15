@@ -97,7 +97,10 @@ class LeaderLock:
         if database_url is None:
             from resource_explorer.config import get_config
 
-            database_url = get_config().registry.database_url
+            from resource_explorer.config import require_database_url
+
+            database_url = require_database_url(get_config().registry.database_url, "REGISTRY_DATABASE_URL",
+                                                "registry")   # TR-12
         self.database_url = database_url
         self.is_postgres = database_url.startswith("postgresql")
         self._conn = None

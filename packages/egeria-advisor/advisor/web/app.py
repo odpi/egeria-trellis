@@ -237,6 +237,10 @@ async def _startup():
     """
     import threading
 
+    # TR-12: fail closed, naming the variable, never its value: there is no built-in Postgres password any more.
+    from advisor.config import require_pgvector_password
+    require_pgvector_password()
+
     try:
         from advisor.vector_store_pg import PgVectorStore
         PgVectorStore().provision_schema()

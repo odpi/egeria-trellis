@@ -1973,6 +1973,10 @@ class ProjectRegistry:
                 self.database_url = os.environ.get("REGISTRY_DATABASE_URL", f"sqlite:///{db_path}")
         else:
             self.database_url = f"sqlite:///{db_path}"
+        if not self.database_url:
+            from resource_explorer.config import require_database_url
+
+            require_database_url(self.database_url, "REGISTRY_DATABASE_URL", "registry")   # TR-12: names it
 
         if self.database_url.startswith("sqlite:///"):
             path_str = self.database_url[len("sqlite:///"):]

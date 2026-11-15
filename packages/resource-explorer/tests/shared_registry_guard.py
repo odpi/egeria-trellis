@@ -60,13 +60,12 @@ def _truthy(value: str | None) -> bool:
 
 def shared_instances() -> set[tuple[int, str]]:
     """(port, dbname) pairs of the dev instance, from declared defaults."""
-    from resource_explorer.config import PgVectorConfig, RegistryConfig
+    from resource_explorer.config import PgVectorConfig
 
-    pairs = {(int(PgVectorConfig.model_fields["port"].default),
-              str(PgVectorConfig.model_fields["dbname"].default))}
-    url = urlsplit(RegistryConfig.model_fields["database_url"].default)
-    pairs.add((url.port or 5432, (url.path or "/").lstrip("/")))
-    return pairs
+    # TR-12: the registry URL has no default of its own any more (it is built from these settings), so the shared
+    # instance is the pgvector defaults' (port, dbname) alone.
+    return {(int(PgVectorConfig.model_fields["port"].default),
+             str(PgVectorConfig.model_fields["dbname"].default))}
 
 
 def _search_path(options: Any) -> str | None:
