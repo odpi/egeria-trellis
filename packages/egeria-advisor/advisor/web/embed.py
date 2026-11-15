@@ -19,7 +19,6 @@ never fall back to EA's service account.
 from __future__ import annotations
 
 import asyncio
-from contextlib import nullcontext
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, HTTPException, Request
@@ -73,44 +72,11 @@ class PasswordOnClient(RuntimeError):
     """A client built for the embed routes must never hold a password (E1 read-back R1)."""
 
 
-def no_password() -> Any:
-    """pyegeria's explicit opt-out of its configured default password (`pyegeria.core._no_password.NO_PASSWORD`,
-    egeria-python 7dd64417), which EgeriaTech carries to every sub-client and helper client, when this pyegeria
-    has it; else None, and `_scrub` alone keeps the password off (older pyegeria). `_scrub` runs either way until
-    the release with NO_PASSWORD is the floor."""
-    # Detected by name, not `from ... import`: the module is absent before 7dd64417, and the pyegeria contract
-    # test must pass on either side of it (an allow-list entry would be stale on the newer one).
-    import importlib
-    try:
-        return getattr(importlib.import_module("pyegeria.core._no_password"), "NO_PASSWORD", None)
-    except ImportError:
-        return None
-
-
 def bound_to(client):
     """Every report-spec read made with `client` is for its user (`pyegeria.view.egeria_spec_cache.as_client`):
-    in a process declared multi-user, a read with no identity sees no private spec. A pyegeria without it: no-op."""
-    from pyegeria.view import egeria_spec_cache
-    as_client = getattr(egeria_spec_cache, "as_client", None)   # by name: absent before 8dd9e087's line
-    return as_client(client) if as_client else nullcontext()
-
-
-def _scrub(client) -> None:
-    """pyegeria fills a missing password from its settings default, on EgeriaTech and on each sub-client it builds
-    lazily, and a client holding one may re-sign-in after a 401 (the 2026-10-28 identity-switch shape). Remove it
-    from the client and from every sub-client as it is built."""
-    client.user_pwd = None
-    get_sub = getattr(client, "_get_subclient", None)
-    if get_sub is None:
-        return
-
-    def scrubbed(name, _get=get_sub):
-        sub = _get(name)
-        sub.user_pwd = None
-        return sub
-    client._get_subclient = scrubbed
-    for sub in (getattr(client, "_instantiated_clients", None) or {}).values():
-        sub.user_pwd = None
+    in a process declared multi-user, a read with no identity sees no private spec."""
+    from pyegeria.view.egeria_spec_cache import as_client
+    return as_client(client)
 
 
 def assert_no_password(client) -> None:
@@ -130,10 +96,13 @@ def _user_client(request: Request):
         raise HTTPException(status_code=401, detail=SIGN_IN_TO_READ_EGERIA, headers={"WWW-Authenticate": "Bearer"})
     refuse_service_account(creds["user_id"])
     conn = get_pyegeria_platform_config()
+    from pyegeria.core._no_password import NO_PASSWORD
     from pyegeria.egeria_tech_client import EgeriaTech
+    # NO_PASSWORD (pyegeria 6.2.42, the floor): the client opts out of the configured default password, and every
+    # sub-client and helper client it builds carries the opt-out (helper_client), so a 401 can never re-sign-in
+    # as anyone (the 2026-10-28 identity-switch shape). assert_no_password still refuses a client holding one.
     client = EgeriaTech(view_server=conn["view_server"], platform_url=conn["platform_url"], user_id=creds["user_id"],
-                        user_pwd=no_password())
-    _scrub(client)
+                        user_pwd=NO_PASSWORD)
     apply_token(client, creds["token"])
     assert_no_password(client)
     return client

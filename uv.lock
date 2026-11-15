@@ -2137,7 +2137,7 @@ requires-dist = [
     { name = "psycopg2-binary", specifier = ">=2.9.9" },
     { name = "pydantic", specifier = ">=2.0.0" },
     { name = "pydantic-settings", specifier = ">=2.0.0" },
-    { name = "pyegeria", specifier = ">=6.2.41" },
+    { name = "pyegeria", specifier = ">=6.2.42" },
     { name = "pygments", specifier = ">=2.17.0" },
     { name = "pygount", specifier = ">=1.6.1" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0.0" },
@@ -7455,7 +7455,7 @@ wheels = [
 
 [[package]]
 name = "pyegeria"
-version = "6.2.41"
+version = "6.2.42"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "altair" },
@@ -7492,9 +7492,9 @@ dependencies = [
     { name = "validators" },
     { name = "wcwidth" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/ee/c6/6690e522a37c4332e9161786173ad4b234b34d861682d582101f50722711/pyegeria-6.2.41.tar.gz", hash = "sha256:c29800424d5ec498a07356f2b06a57cc77997a6db7a23bf71b5408dd234dd42f", size = 3008789, upload-time = "2026-11-13T15:53:10Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/0d/02/229317aabfda91c8c4533972be52d396b3d78ff47416c8f28da5ddda77fd/pyegeria-6.2.42.tar.gz", hash = "sha256:5cc16d8bfc3eb23a940a5c85dc3bcb3df43acdd6f8393cb100724a2f4b90284f", size = 3147607, upload-time = "2026-11-15T14:53:01.813Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/1f/83/6d712dc2679a8505060f8c6b43b39d381829e96d8c6e382c0fca87d723ff/pyegeria-6.2.41-py3-none-any.whl", hash = "sha256:17b5b29f41a6ae9bbbf4035b3aa07521121bfd96e602398c92a91dbbaea5b07b", size = 3494630, upload-time = "2026-11-13T15:53:07.87Z" },
+    { url = "https://files.pythonhosted.org/packages/f3/19/60149fb006fad4a7ba72e7ab8de0a3b07af33146f3fac84a9907c3d19526/pyegeria-6.2.42-py3-none-any.whl", hash = "sha256:415397d7fa54a7afdf129bfa10d09046c136fc94d8bcac0b52bbb1d2db1cd72c", size = 3570413, upload-time = "2026-11-15T14:52:59.525Z" },
 ]
 
 [[package]]
@@ -10483,7 +10483,7 @@ requires-dist = [
     { name = "httpx", marker = "extra == 'dev'", specifier = ">=0.27.0" },
     { name = "pydantic", specifier = ">=2.0.0" },
     { name = "pydantic-settings", specifier = ">=2.0.0" },
-    { name = "pyegeria", specifier = ">=6.2.41" },
+    { name = "pyegeria", specifier = ">=6.2.42" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.3.0" },
     { name = "trellis-auth", extras = ["egeria"], editable = "packages/trellis-auth" },
     { name = "trellis-ui", editable = "packages/trellis-ui" },

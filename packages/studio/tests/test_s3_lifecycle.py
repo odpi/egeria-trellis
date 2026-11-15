@@ -67,7 +67,9 @@ def _publish(authed, draft, **extra):
     return authed.post("/api/lifecycle/plan", json=body)
 
 
-def test_plan_shows_breaking_changes_from_pyegerias_diff(authed, clients, fake_egeria):
+def test_plan_shows_breaking_changes_from_pyegerias_diff(authed, clients, fake_egeria, monkeypatch):
+    import pyegeria.authoring as a
+    monkeypatch.delattr(a, "async_used_by", raising=False)   # the no-used-by-read path (pyegeria 6.2.42 has one)
     held = _spec()
     fake_egeria["held"] = held
     r = _publish(authed, _without_last_column(held))
@@ -138,6 +140,17 @@ def test_the_browser_never_supplies_the_plan(authed, clients, fake_egeria):
                                                    "plan": {"markdown": "# Delete everything"}})
     assert r.status_code == 200
     assert fake_egeria["applied"][0]["digest"] == digest   # ran the server's rebuilt plan; "plan" was ignored
+
+
+def test_a_failed_used_by_read_is_never_none(authed, clients, fake_egeria, monkeypatch):
+    import pyegeria.authoring as a
+    fake_egeria["held"] = _spec()
+
+    async def used_by(kind, label, client):
+        raise a.AuthoringRefused("Egeria could not be read.")
+    monkeypatch.setattr(a, "async_used_by", used_by, raising=False)
+    used = _publish(authed, _spec().model_dump(mode="json")).json()["impact"]["used_by"]
+    assert used["available"] is False and 'not "none"' in used["words"]
 
 
 def test_used_by_is_used_when_pyegeria_has_it(authed, clients, fake_egeria, monkeypatch):

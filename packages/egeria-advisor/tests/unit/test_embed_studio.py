@@ -393,60 +393,47 @@ def test_open_in_studio_unreadable_check_saves_nothing(client, store, monkeypatc
     assert r.status_code == 409 and "Couldn't confirm" in r.json()["detail"]
 
 
-# ---- spec-cache R-A (egeria-python 8dd9e087) and the NO_PASSWORD opt-out (7dd64417), feature-detected --------
+# ---- spec-cache R-A and the NO_PASSWORD opt-out (pyegeria 6.2.42, the floor) ----------------------------------
 
-def _has(module: str, name: str) -> bool:
-    import importlib
-    try:
-        return hasattr(importlib.import_module(module), name)
-    except ImportError:
-        return False
-
-
-def test_ea_declares_itself_multi_user_at_startup_when_pyegeria_can(monkeypatch):
+def test_ea_declares_itself_multi_user_at_startup(monkeypatch):
     import inspect
     from advisor.web import app as ea_app
+    from pyegeria.view.egeria_spec_cache import declare_multi_user, is_multi_user
     src = inspect.getsource(ea_app._startup)
     assert src.index("declare_multi_user_process()") < src.index("PgVectorStore")   # before any spec read
-    if not _has("pyegeria.view.egeria_spec_cache", "declare_multi_user"):
-        assert ea_app.declare_multi_user_process() is False          # older pyegeria: said, never an error
-        return
-    from pyegeria.view.egeria_spec_cache import declare_multi_user, is_multi_user
     monkeypatch.delenv("PYEGERIA_MULTI_USER", raising=False)
+    declare_multi_user(False)
     try:
-        assert ea_app.declare_multi_user_process() is True and is_multi_user()
+        ea_app.declare_multi_user_process()
+        assert is_multi_user()
     finally:
         declare_multi_user(False)
 
 
-def test_without_declare_multi_user_startup_says_so(monkeypatch):
-    from pyegeria.view import egeria_spec_cache
-    from advisor.web import app as ea_app
-    monkeypatch.delattr(egeria_spec_cache, "declare_multi_user", raising=False)   # as on 6.2.41
-    assert ea_app.declare_multi_user_process() is False
-
-
-def test_embed_clients_use_no_password_when_pyegeria_has_it(monkeypatch):
-    from advisor.web import embed
+def test_embed_clients_use_no_password(monkeypatch):
     c = _real_client(monkeypatch)
-    if not _has("pyegeria.core._no_password", "NO_PASSWORD"):
-        assert embed.no_password() is None
-        assert c.user_pwd is None and c.classification_manager.user_pwd is None   # _scrub's fallback
-        return
-    from pyegeria.core._no_password import NO_PASSWORD
-    assert embed.no_password() is NO_PASSWORD
-    sub = c.classification_manager
-    assert c.use_default_password is False and getattr(sub, "use_default_password", False) is False
+    sub = c.classification_manager                 # built lazily, by pyegeria's helper_client
+    assert c.use_default_password is False and getattr(sub, "use_default_password", None) is False
     assert c.user_pwd is None and sub.user_pwd is None
+
+
+def test_a_client_holding_a_password_is_refused(monkeypatch):
+    """The guard stands without _scrub: a client that ends up holding the configured default is refused."""
+    from advisor.web import embed
+    from pyegeria.egeria_tech_client import EgeriaTech
+    real_init = EgeriaTech.__init__
+
+    def takes_default(self, *a, **k):
+        real_init(self, *a, **k)
+        self.user_pwd = "secret-demo-default"
+    monkeypatch.setattr(EgeriaTech, "__init__", takes_default)
+    with pytest.raises(embed.PasswordOnClient):
+        _real_client(monkeypatch)
 
 
 def test_as_user_binds_spec_reads_to_the_user(monkeypatch):
     from advisor.web import embed
-    _real_client(monkeypatch)
-    if not _has("pyegeria.view.egeria_spec_cache", "as_client"):
-        with embed.bound_to(object()):     # older pyegeria: a no-op, never an error
-            pass
-        return
     from pyegeria.view.egeria_spec_cache import current_spec_identity
+    _real_client(monkeypatch)
     seen = embed._as_user(object(), lambda c: current_spec_identity())
     assert seen and "peterprofile" in seen

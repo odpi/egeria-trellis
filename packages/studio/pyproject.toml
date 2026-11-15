@@ -6,9 +6,10 @@ readme = "README.md"
 authors = [{ name = "Dan Wolfson" }]
 requires-python = ">=3.12,<4.0"
 dependencies = [
-    # pyegeria.authoring (phase 1) arrived in 6.2.41; the renderer as package data (D3, P1) comes later and
-    # trellis-ui falls back to its vendored copy until then, saying which it serves.
-    "pyegeria>=6.2.41",
+    # pyegeria.authoring (phase 1) arrived in 6.2.41; 6.2.42 (PY-12, 2026-11-15) brings NO_PASSWORD + helper_client
+    # (no scrub needed) and spec-cache R-A (declare_multi_user, as_client). The renderer as package data (D3, P1)
+    # comes later and trellis-ui falls back to its vendored copy until then, saying which it serves.
+    "pyegeria>=6.2.42",
     # Sign-in (password + Portal SSO), the session JWT and the shared login policy. The JWT is signed with the
     # box-wide TRELLIS_JWT_SECRET, which is what makes a Studio session valid at EA (owner decision A).
     "trellis-auth[egeria]",
