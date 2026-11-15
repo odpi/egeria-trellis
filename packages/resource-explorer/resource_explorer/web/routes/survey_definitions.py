@@ -9,8 +9,13 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import threading
+import time
+from collections import defaultdict, deque
+from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Header, HTTPException, Query
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 log = logging.getLogger(__name__)
@@ -849,25 +854,84 @@ def _caller_identity():
     return caller()
 
 
+class RunAlreadyInFlight(Exception):
+    """The same Survey Definition is already queued, claimed or running on this resource (TR-1).
+
+    `existing` is the in-flight runs row; `words` is the sentence a person reads. Raised by
+    `enqueue_definition_run`, so every caller decides what a duplicate means for it: the route answers 409,
+    a scheduled or batch caller skips that one and logs it."""
+
+    def __init__(self, existing: dict, words: str, stale: list[dict] | None = None):
+        super().__init__(words)
+        self.existing = existing
+        self.words = words
+        self.stale = stale or []
+
+
+def _hhmm(ts: str) -> str:
+    """'12:03Z' from an ISO UTC timestamp; the raw value when it does not parse."""
+    try:
+        return datetime.fromisoformat(ts).astimezone(timezone.utc).strftime("%H:%MZ")
+    except (TypeError, ValueError):
+        return ts or "an unknown time"
+
+
+def in_flight_words(existing: dict, slug: str) -> str:
+    """The ruling's sentence: what is already running, since when, by whom, and what to do."""
+    state = existing.get("state") or "queued"
+    when = _hhmm(existing.get("claimed_at") if state != "queued" and existing.get("claimed_at")
+                 else existing.get("enqueued_at") or "")
+    who = existing.get("requested_by") or "the service account"
+    ref = ((existing.get("target_decoded") or {}).get("params") or {}).get("survey_definition_ref") or "This survey"
+    verb = "queued" if state == "queued" else ("started" if state == "running" else "claimed by a worker")
+    return (f"'{ref}' is already {'queued' if state == 'queued' else 'running'} on {slug} "
+            f"({verb} {when} by {who}; run {existing.get('id')}). Wait for it, or cancel it first.")
+
+
+def _stale_cutoff() -> str:
+    """A claimed or running row silent for longer than this is stale: it does not block a new run."""
+    from resource_explorer.run_queue import HEARTBEAT_INTERVAL_SECONDS, STALE_AFTER_INTERVALS
+
+    return (datetime.now(timezone.utc)
+            - timedelta(seconds=HEARTBEAT_INTERVAL_SECONDS * STALE_AFTER_INTERVALS)).isoformat()
+
+
+def _same_definition_run(entity_type: str, slug: str, ref: str):
+    """The in-flight key: (survey definition, entity_type, slug). Different parameters on the same key are
+    still the same key: folding a different request into the first would answer something nobody asked."""
+    def same(target: dict) -> bool:
+        params = target.get("params") or {}
+        return (target.get("entity_type") == entity_type and target.get("slug") == slug
+                and (params.get("survey_definition_ref") or "") == (ref or ""))
+    return same
+
+
 def enqueue_definition_run(registry, entity_type: str, slug: str, params: SurveyDefinitionRunParams, *,
-                           pressed=None, requested_by_user: str = "", as_presser: bool = True) -> dict:
+                           pressed=None, requested_by_user: str = "", as_presser: bool = True,
+                           idempotency_key: str = "") -> dict:
     """Queue one `survey_definition_run`: its activity row, the presser's held session (when `pressed` carries an
     Egeria token and this process consumes the kind), and the queue row. The Survey press and the quality batch
     (`quality_batch.enqueue_quality_batch`, one call per database) both go through here, so a batch row is the same
     row a press makes. Synchronous: call it off the event loop.
 
     `as_presser=False` is the unattended case (a scheduled batch): nobody pressed, so no session is held and the run
-    does not publish as a presser; it runs as the queue row's requester like any timer run."""
+    does not publish as a presser; it runs as the queue row's requester like any timer run.
+
+    **One run per (definition, resource) at a time** (TR-1). While the same definition is queued, claimed or
+    running on this resource, a second request raises `RunAlreadyInFlight` and queues nothing (no activity row
+    either), unless it carries the same `idempotency_key` as the in-flight run (a retried press): then the
+    existing run is returned with `"coalesced": True`. The check and the insert are atomic in the registry."""
     import json
 
     from resource_explorer.activity_logger import log_survey
 
-    activity_id = log_survey(
-        registry, entity_type=entity_type, entity_slug=slug, entity_name=slug,
-        entity_location="", intent="assessment", status="running",
-        summary=f"Running Survey Definition '{params.survey_definition_ref}' on {slug}…",
-        detail=json.dumps({"survey_definition_ref": params.survey_definition_ref}),
-    )
+    def _open_activity() -> str:
+        return log_survey(
+            registry, entity_type=entity_type, entity_slug=slug, entity_name=slug,
+            entity_location="", intent="assessment", status="running",
+            summary=f"Running Survey Definition '{params.survey_definition_ref}' on {slug}…",
+            detail=json.dumps({"survey_definition_ref": params.survey_definition_ref}),
+        )
     # The press publishes AS the person who pressed it: their Egeria session is held in memory for this run's
     # lifetime (`presser_hold`), keyed by the run id, which is made first so a worker can never claim a row whose
     # session is not there yet. The token is never in the row, the params or a log line; the row carries only the flag.
@@ -891,27 +955,100 @@ def enqueue_definition_run(registry, entity_type: str, slug: str, params: Survey
             target["held_by"] = held_by
         elif held:
             presser_hold.release(run_id)         # no usable stamp: do not keep a session nobody is bound to
-        registry.enqueue_run(
+        outcome = registry.enqueue_run_once(
             "survey_definition_run",
             # Case 3, decision 5: RE's own Run coordinates the definition itself and creates no engine action; its
             # params say so (`started_by: re`, and who pressed), and the run's activity detail carries them to
             # Understanding.
             target,
-            result_ref=activity_id, requested_by=requested_by_user, run_id=run_id,
+            lock_key=f"survey_definition_run|{params.survey_definition_ref}|{entity_type}|{slug}",
+            same=_same_definition_run(entity_type, slug, params.survey_definition_ref),
+            stale_before=_stale_cutoff(),
+            idempotency_key=idempotency_key,
+            before_insert=_open_activity,
+            requested_by=requested_by_user, run_id=run_id,
         )
     except BaseException:
         if held:
             presser_hold.release(run_id)
         raise
+    for row in outcome.get("stale") or []:
+        log.warning("survey_definition_run %s on %s/%s is %s with no sign of life since %s: not blocking a new "
+                    "run; the run reconciler resolves it", row.get("id"), entity_type, slug, row.get("state"),
+                    row.get("heartbeat_at") or row.get("claimed_at"))
+    if not outcome["created"]:
+        if held:
+            presser_hold.release(run_id)      # nothing was queued under this id: no session to keep
+        existing = outcome["existing"]
+        if outcome.get("coalesced"):
+            log.info("survey_definition_run retry for %s/%s coalesced into run %s (same idempotency key)",
+                     entity_type, slug, existing["id"])
+            return {"status": "started", "activity_id": existing.get("result_ref") or "",
+                    "run_id": existing["id"], "coalesced": True}
+        raise RunAlreadyInFlight(existing, in_flight_words(existing, slug), outcome.get("stale"))
+    activity_id = outcome["result_ref"]
     log.info("enqueued survey_definition_run %s for %s/%s (activity %s)",
              run_id, entity_type, slug, activity_id)
 
     return {"status": "started", "activity_id": activity_id, "run_id": run_id}
 
 
+#: TR-1 backstop: more run POSTs than this per user per minute get 429. The in-flight key cannot catch a loop over
+#: DIFFERENT definitions or resources; this can. Per process, in memory: a backstop, not an accounting.
+RUN_POSTS_PER_MINUTE = 10
+_run_posts: "defaultdict[str, deque]" = defaultdict(deque)
+_run_posts_lock = threading.Lock()
+
+
+def _over_rate(user: str, *, now: float | None = None) -> bool:
+    """Record one run POST for `user`; True when it is over RUN_POSTS_PER_MINUTE in the last 60 s."""
+    now = time.monotonic() if now is None else now
+    with _run_posts_lock:
+        q = _run_posts[user or ""]
+        while q and now - q[0] > 60:
+            q.popleft()
+        q.append(now)
+        return len(q) > RUN_POSTS_PER_MINUTE
+
+
+def _in_flight_409(exc: RunAlreadyInFlight, entity_type: str) -> JSONResponse:
+    existing = exc.existing
+    activity_id = existing.get("result_ref") or ""
+    return JSONResponse(status_code=409, content={
+        "detail": exc.words,
+        "error": "run_in_flight",
+        "run": {
+            "run_id": existing.get("id"), "state": existing.get("state"),
+            "requested_by": existing.get("requested_by") or "", "enqueued_at": existing.get("enqueued_at") or "",
+            "claimed_at": existing.get("claimed_at") or "", "activity_id": activity_id,
+            "progress": f"/api/activity/{activity_id}" if activity_id else f"/api/runs/{existing.get('id')}",
+        },
+        "stale_ignored": [r.get("id") for r in exc.stale],
+    })
+
+
+def _find_in_flight(registry, entity_type: str, slug: str, ref: str) -> dict | None:
+    """Read-only: the in-flight queued run for this key, for the override path (which is never queued)."""
+    import json
+
+    same = _same_definition_run(entity_type, slug, ref)
+    cutoff = _stale_cutoff()
+    for state in ("queued", "claimed", "running"):
+        for row in registry.list_runs(state=state, kind="survey_definition_run", limit=1000):
+            try:
+                target = json.loads(row.get("target") or "{}")
+            except (TypeError, ValueError):
+                continue
+            alive_at = row.get("heartbeat_at") or row.get("claimed_at") or ""
+            if same(target) and (state == "queued" or not alive_at or alive_at >= cutoff):
+                return {**row, "target_decoded": target}
+    return None
+
+
 @router.post("/{entity_type}/{slug}/run")
 async def run_survey_definition_route(entity_type: str, slug: str,
-                                      body: SurveyDefinitionRunRequest) -> dict:
+                                      body: SurveyDefinitionRunRequest,
+                                      idempotency_key: str | None = Header(default=None, alias="Idempotency-Key")):
     """Queue a Survey Definition run against one resource.
 
     **Enqueues; does not run.** Before step 2b this spawned a daemon thread
@@ -926,9 +1063,25 @@ async def run_survey_definition_route(entity_type: str, slug: str,
     then mark a run interrupted while a worker was still driving it. The queue
     row records the real owner at claim time, and run_queue.execute_run stamps
     the same identity onto this activity entry when the work actually starts.
+
+    **Duplicates (TR-1).** While the same definition is queued, claimed or running on this resource, a second POST
+    gets **409** naming that run, and queues nothing. A POST carrying the same `Idempotency-Key` header as the
+    in-flight run (a retried press) gets **200 with that run** (`"coalesced": true`). More than
+    `RUN_POSTS_PER_MINUTE` run POSTs a minute from one user get **429**. The 2026-11-14 hedwig flood (382 queued
+    runs in 96 s, a resent console request without a key) is the case all three stop.
     """
     from resource_explorer.registry import ProjectRegistry
     from resource_explorer.run_queue import requested_by
+
+    user = requested_by() or ""
+    if _over_rate(user):
+        log.warning("survey definition run POST refused (429): %s sent more than %d in a minute",
+                    user or "the service account", RUN_POSTS_PER_MINUTE)
+        return JSONResponse(status_code=429, content={
+            "detail": (f"Too many survey runs started in the last minute (more than {RUN_POSTS_PER_MINUTE}). "
+                       "Nothing was queued; wait a minute and try again."),
+            "error": "run_rate_limited",
+        })
 
     if body.engine is not None and body.engine not in ("resource-explorer", "prefect"):
         raise HTTPException(
@@ -944,7 +1097,17 @@ async def run_survey_definition_route(entity_type: str, slug: str,
         await authorize_resource_write(registry, entity_type, slug, write="publish")
 
     if body.db_pwd:
+        # Never queued (the password must not reach the registry), so the registry's atomic check cannot cover it:
+        # refuse it while a queued run of the same definition is in flight. Two override runs are not serialised.
+        existing = await asyncio.to_thread(_find_in_flight, registry, entity_type, slug, body.survey_definition_ref)
+        if existing:
+            return _in_flight_409(RunAlreadyInFlight(existing, in_flight_words(existing, slug)), entity_type)
         return _start_override_run(registry, entity_type, slug, body)
 
-    return await asyncio.to_thread(enqueue_definition_run, registry, entity_type, slug, _params(body),
-                                   pressed=_caller_identity(), requested_by_user=requested_by())
+    try:
+        return await asyncio.to_thread(enqueue_definition_run, registry, entity_type, slug, _params(body),
+                                       pressed=_caller_identity(), requested_by_user=user,
+                                       idempotency_key=(idempotency_key or "").strip()[:200])
+    except RunAlreadyInFlight as exc:
+        log.info("survey definition run POST refused (409): %s", exc.words)
+        return _in_flight_409(exc, entity_type)

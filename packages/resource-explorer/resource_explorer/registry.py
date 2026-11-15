@@ -5764,6 +5764,94 @@ class ProjectRegistry:
             )
         return run_id
 
+    #: SQLite has no advisory lock; its check-and-insert is serialised in-process instead (tests, a dev box).
+    _enqueue_once_lock = threading.Lock()
+
+    def enqueue_run_once(
+        self,
+        kind: str,
+        target: dict,
+        *,
+        lock_key: str,
+        same: "Callable[[dict], bool]",
+        stale_before: str,
+        idempotency_key: str = "",
+        before_insert: "Callable[[], str] | None" = None,
+        requested_by: str = "",
+        run_id: str | None = None,
+        now: str | None = None,
+    ) -> dict:
+        """Enqueue one `kind` row unless the same work is already in flight (TR-1, ruling 2026-11-13).
+
+        **In flight** = a `kind` row in queued, claimed or running whose decoded target `same()` accepts. A
+        claimed or running row whose last sign of life (`heartbeat_at`, else `claimed_at`) is older than
+        `stale_before` does NOT count: a worker that died must not lock the resource out. It is returned in
+        `stale` so the caller can say so and point to the reconciler.
+
+        **Atomic.** On Postgres the check and the insert share one transaction behind
+        `pg_advisory_xact_lock(hashtext(lock_key))`, so two requests in the same millisecond cannot both pass;
+        on SQLite an in-process lock does the same. No DDL: a unique partial index would be cleaner but is DDL
+        on a shared table and needs the owner's word.
+
+        `before_insert` runs only when the row will be inserted, under the lock, and returns the `result_ref`
+        (the route's activity entry), so a refused request leaves no 'running' activity entry behind.
+
+        Returns `{"created": True, "run_id", "result_ref"}`; or, when one is in flight, `{"created": False,
+        "existing": <row>, "coalesced": bool}`, where `coalesced` is True only when the in-flight row was queued
+        with the same non-empty `idempotency_key` (a true retry of the same press). Either way `stale` lists the
+        rows that were ignored as stale.
+        """
+        if kind not in self.RUN_KINDS:
+            raise ValueError(f"unknown run kind {kind!r} — expected one of {list(self.RUN_KINDS)}")
+        run_id = run_id or str(uuid.uuid4())
+        now = now or datetime.now(timezone.utc).isoformat()
+        target = dict(target or {})
+        if idempotency_key:
+            target["idempotency_key"] = idempotency_key
+        sqlite_lock = None if self.database_url.startswith("postgresql") else self._enqueue_once_lock
+        if sqlite_lock is not None:
+            sqlite_lock.acquire()
+        try:
+            with self._conn() as conn:
+                if getattr(conn, "is_postgres", False):
+                    conn.execute("SELECT pg_advisory_xact_lock(hashtext(?))", (lock_key,))
+                rows = [dict(r) for r in conn.execute(
+                    "SELECT id, kind, target, requested_by, state, claimed_by, enqueued_at, claimed_at, "
+                    "heartbeat_at, result_ref FROM runs WHERE kind = ? AND state IN ('queued', 'claimed', 'running') "
+                    "ORDER BY enqueued_at",
+                    (kind,),
+                ).fetchall()]
+                live, stale = [], []
+                for row in rows:
+                    try:
+                        row_target = json.loads(row.get("target") or "{}")
+                    except (TypeError, ValueError):
+                        continue
+                    if not isinstance(row_target, dict) or not same(row_target):
+                        continue
+                    row["target_decoded"] = row_target
+                    alive_at = row.get("heartbeat_at") or row.get("claimed_at") or ""
+                    if row["state"] != "queued" and alive_at and alive_at < stale_before:
+                        stale.append(row)
+                    else:
+                        live.append(row)
+                if live:
+                    existing = live[0]
+                    coalesced = bool(idempotency_key) and (
+                        existing["target_decoded"].get("idempotency_key") == idempotency_key)
+                    return {"created": False, "existing": existing, "coalesced": coalesced, "stale": stale}
+                result_ref = before_insert() if before_insert else ""
+                conn.execute(
+                    """INSERT INTO runs (id, kind, target, requested_by, state,
+                                         enqueued_at, result_ref)
+                       VALUES (?, ?, ?, ?, 'queued', ?, ?)""",
+                    (run_id, kind, json.dumps(target), requested_by, now, result_ref),
+                )
+            return {"created": True, "run_id": run_id, "result_ref": result_ref, "stale": stale}
+        finally:
+            if sqlite_lock is not None:
+                sqlite_lock.release()
+
     def claim_next_run(
         self,
         claimed_by: str,

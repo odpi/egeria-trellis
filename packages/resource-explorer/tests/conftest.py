@@ -577,6 +577,16 @@ def fresh_registry_schema_marker(request, registry_schema_template):
 
 
 @pytest.fixture(autouse=True)
+def survey_run_rate_window_starts_empty():
+    """TR-1's per-user run-POST backstop (`survey_definitions._run_posts`) is process memory. Without this, the
+    eleventh run POST of a whole test session would be refused 429 in whichever test sent it."""
+    mod = sys.modules.get("resource_explorer.web.routes.survey_definitions")
+    if mod is not None:
+        mod._run_posts.clear()
+    yield
+
+
+@pytest.fixture(autouse=True)
 def api_reference_fetch_workers_finish():
     """After each test, wait for API-reference fetch workers it left running.
 
