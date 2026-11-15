@@ -5855,7 +5855,10 @@ class ProjectRegistry:
                         try:
                             self.close_activity_if_running(
                                 result_ref, "error", f"The run could not be queued, so nothing ran: {type(exc).__name__}.")
-                        except Exception:  # noqa: BLE001 - the original failure is the one to raise
+                        except Exception as close_exc:  # noqa: BLE001 - the original failure is the one raised
+                            # Not swallowed: the raised error says the entry may still read 'running'.
+                            exc.add_note(f"activity {result_ref} could not be closed after the failed enqueue "
+                                         f"({type(close_exc).__name__}: {close_exc}); it may still read 'running'")
                             log.exception("could not close activity %s after a failed enqueue", result_ref)
                     raise
             return {"created": True, "run_id": run_id, "result_ref": result_ref, "stale": stale}
