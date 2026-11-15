@@ -233,6 +233,23 @@ def _log_hardware_in_background(log) -> None:
     threading.Thread(target=run, name="hardware-report", daemon=True).start()
 
 
+def declare_multi_user_process() -> bool:
+    """EA serves many users: declare it to pyegeria's spec cache (egeria-python 8dd9e087, spec-cache R-A), so a
+    report-spec read made with no user's identity takes no fallback identity and sees no private spec. Returns
+    whether it was declared; an older pyegeria has no declaration (its seen-count backstop is all there is)."""
+    try:
+        from pyegeria.view import egeria_spec_cache
+    except ImportError:
+        egeria_spec_cache = None
+    # By name, not `from ... import declare_multi_user`: the contract test must pass on either side of 8dd9e087.
+    declare_multi_user = getattr(egeria_spec_cache, "declare_multi_user", None)
+    if declare_multi_user is None:
+        logger.info("pyegeria has no declare_multi_user (spec-cache R-A); EA runs undeclared")
+        return False
+    declare_multi_user()
+    return True
+
+
 @app.on_event("startup")
 async def _startup():
     """Ensure pgvector collection tables exist, then pre-warm the MCP agent
@@ -250,6 +267,8 @@ async def _startup():
     `TestClient(app, ...)` rather than `with TestClient(app) as client:`.
     """
     import threading
+
+    declare_multi_user_process()   # first: before any spec read, the background sync's included
 
     try:
         from advisor.vector_store_pg import PgVectorStore

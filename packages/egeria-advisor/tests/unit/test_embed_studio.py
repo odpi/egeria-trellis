@@ -391,3 +391,62 @@ def test_open_in_studio_unreadable_check_saves_nothing(client, store, monkeypatc
     monkeypatch.setattr(a, "EgeriaDraftStore", Store)
     r = client.post("/api/studio/open-draft", json={"draft_id": "d-1", "label": "x"}, headers=_bearer(studio_jwt()))
     assert r.status_code == 409 and "Couldn't confirm" in r.json()["detail"]
+
+
+# ---- spec-cache R-A (egeria-python 8dd9e087) and the NO_PASSWORD opt-out (7dd64417), feature-detected --------
+
+def _has(module: str, name: str) -> bool:
+    import importlib
+    try:
+        return hasattr(importlib.import_module(module), name)
+    except ImportError:
+        return False
+
+
+def test_ea_declares_itself_multi_user_at_startup_when_pyegeria_can(monkeypatch):
+    import inspect
+    from advisor.web import app as ea_app
+    src = inspect.getsource(ea_app._startup)
+    assert src.index("declare_multi_user_process()") < src.index("PgVectorStore")   # before any spec read
+    if not _has("pyegeria.view.egeria_spec_cache", "declare_multi_user"):
+        assert ea_app.declare_multi_user_process() is False          # older pyegeria: said, never an error
+        return
+    from pyegeria.view.egeria_spec_cache import declare_multi_user, is_multi_user
+    monkeypatch.delenv("PYEGERIA_MULTI_USER", raising=False)
+    try:
+        assert ea_app.declare_multi_user_process() is True and is_multi_user()
+    finally:
+        declare_multi_user(False)
+
+
+def test_without_declare_multi_user_startup_says_so(monkeypatch):
+    from pyegeria.view import egeria_spec_cache
+    from advisor.web import app as ea_app
+    monkeypatch.delattr(egeria_spec_cache, "declare_multi_user", raising=False)   # as on 6.2.41
+    assert ea_app.declare_multi_user_process() is False
+
+
+def test_embed_clients_use_no_password_when_pyegeria_has_it(monkeypatch):
+    from advisor.web import embed
+    c = _real_client(monkeypatch)
+    if not _has("pyegeria.core._no_password", "NO_PASSWORD"):
+        assert embed.no_password() is None
+        assert c.user_pwd is None and c.classification_manager.user_pwd is None   # _scrub's fallback
+        return
+    from pyegeria.core._no_password import NO_PASSWORD
+    assert embed.no_password() is NO_PASSWORD
+    sub = c.classification_manager
+    assert c.use_default_password is False and getattr(sub, "use_default_password", False) is False
+    assert c.user_pwd is None and sub.user_pwd is None
+
+
+def test_as_user_binds_spec_reads_to_the_user(monkeypatch):
+    from advisor.web import embed
+    _real_client(monkeypatch)
+    if not _has("pyegeria.view.egeria_spec_cache", "as_client"):
+        with embed.bound_to(object()):     # older pyegeria: a no-op, never an error
+            pass
+        return
+    from pyegeria.view.egeria_spec_cache import current_spec_identity
+    seen = embed._as_user(object(), lambda c: current_spec_identity())
+    assert seen and "peterprofile" in seen
