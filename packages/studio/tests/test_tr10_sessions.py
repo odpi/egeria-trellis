@@ -1,5 +1,6 @@
-"""TR-10: short-lived session JWTs, a refresh that re-checks the sign-in with Egeria, and a sign-out that ends
-refresh (sessions.py). Egeria is faked at trellis_studio.egeria.check_signin; the refresh decision in the page
+"""TR-10: short-lived access JWTs; rotating refresh tokens bound to one user and session (a replay revokes the
+session); a refresh that re-checks the sign-in with Egeria; a sign-out that ends refresh (sessions.py). One test
+per read-back criterion. Egeria is faked at trellis_studio.egeria.check_signin; the refresh decision in the page
 (static/session_refresh.js) runs under plain node."""
 from __future__ import annotations
 
@@ -69,94 +70,163 @@ def test_a_jwt_studio_did_not_mint_is_refused(client):
     assert client.get("/api/config", headers=_h(plain)).status_code == 401
 
 
-def test_sign_in_mints_a_tr10_jwt(client, monkeypatch):
-    monkeypatch.setattr(trellis_auth, "login_with_password", lambda u, p, cfg: fake_egeria_token(u))
-    tok = client.post("/api/auth/login", json={"username": "peterprofile", "password": "x"}).json()["access_token"]
-    assert _claims(tok)["sid"]
-    assert client.get("/api/auth/me", headers=_h(tok)).status_code == 200
+def _signin(client, monkeypatch, who="peterprofile", egeria_ttl=3600):
+    monkeypatch.setattr(trellis_auth, "login_with_password", lambda u, p, cfg: fake_egeria_token(u, ttl=egeria_ttl))
+    r = client.post("/api/auth/login", json={"username": who, "password": "x"})
+    assert r.status_code == 200, r.text
+    return r.json()
 
 
-# ---- refresh ------------------------------------------------------------------------------------------
+def _refresh(client, rt, access=None):
+    return client.post("/api/auth/refresh", json={"refresh_token": rt}, headers=_h(access) if access else {})
 
-def test_refresh_re_checks_egeria_as_the_user_and_keeps_the_session(client, session_jwt, checks):
-    before = _claims(session_jwt)
+
+def test_sign_in_gives_an_access_jwt_and_a_refresh_token(client, monkeypatch):
+    s = _signin(client, monkeypatch)
+    assert _claims(s["access_token"])["sid"] and s["refresh_token"]
+    assert s["refresh_token"] not in json.dumps(_claims(s["access_token"]))       # never inside the JWT
+    assert client.get("/api/auth/me", headers=_h(s["access_token"])).status_code == 200
+    store = client.app.state.refresh_store
+    assert s["refresh_token"] not in json.dumps({k: vars(v) for k, v in store._by_hash.items()})  # hash only
+
+
+# ---- refresh: bound to the user and session, re-checks Egeria ------------------------------------------
+
+def test_refresh_re_checks_egeria_as_the_user_and_keeps_the_session(client, monkeypatch, checks):
+    s = _signin(client, monkeypatch)
+    before = _claims(s["access_token"])
     time.sleep(1.1)                                            # a later iat/exp, to the second
-    r = client.post("/api/auth/refresh", headers=_h(session_jwt))
+    r = _refresh(client, s["refresh_token"], s["access_token"])
     assert r.status_code == 200, r.text
     after = _claims(r.json()["access_token"])
     assert checks["asked"] == ["peterprofile"]
-    assert after["sid"] == before["sid"] and after["auth_time"] == before["auth_time"]
+    assert (after["sub"], after["sid"], after["auth_time"]) == (before["sub"], before["sid"], before["auth_time"])
     assert after["exp"] > before["exp"] and after["egeria_token"] == before["egeria_token"]
 
 
-def test_egeria_refusing_the_token_ends_the_session(client, session_jwt, checks):
+def test_refresh_tokens_rotate_on_use(client, monkeypatch, checks):
+    s = _signin(client, monkeypatch)
+    r1 = _refresh(client, s["refresh_token"]).json()
+    assert r1["refresh_token"] != s["refresh_token"]
+    r2 = _refresh(client, r1["refresh_token"])                 # the new one works, once
+    assert r2.status_code == 200 and r2.json()["refresh_token"] not in (s["refresh_token"], r1["refresh_token"])
+
+
+def test_reusing_an_old_refresh_token_revokes_the_whole_session(client, monkeypatch, checks):
+    s = _signin(client, monkeypatch)
+    r1 = _refresh(client, s["refresh_token"]).json()
+    replay = _refresh(client, s["refresh_token"])               # the first one, again
+    assert replay.status_code == 401 and "already renewed" in replay.json()["detail"]
+    assert _refresh(client, r1["refresh_token"]).status_code == 401              # its successor too
+    for tok in (s["access_token"], r1["access_token"]):          # and every access token of the session
+        assert client.get("/api/auth/me", headers=_h(tok)).status_code == 401
+
+
+def test_identity_never_changes_across_a_refresh(client, monkeypatch, checks):
+    peter = _signin(client, monkeypatch, "peterprofile")
+    erin = _signin(client, monkeypatch, "erinoverview")
+    # The new access token is the refresh token's own user's, whatever the request says...
+    ok = _refresh(client, peter["refresh_token"]).json()
+    assert _claims(ok["access_token"])["sub"] == "peterprofile"
+    # ...and presenting someone else's access token with it is refused and revokes the session.
+    r = _refresh(client, ok["refresh_token"], erin["access_token"])
+    assert r.status_code == 401 and "didn't match" in r.json()["detail"]
+    assert client.get("/api/auth/me", headers=_h(ok["access_token"])).status_code == 401
+    assert client.get("/api/auth/me", headers=_h(erin["access_token"])).status_code == 200  # erin's untouched
+
+
+def test_egeria_refusing_the_token_means_no_refresh_and_401(client, monkeypatch, checks):
+    s = _signin(client, monkeypatch)
     checks["answer"] = "refused"
-    r = client.post("/api/auth/refresh", headers=_h(session_jwt))
+    r = _refresh(client, s["refresh_token"])
     assert r.status_code == 401 and "no longer accepts" in r.json()["detail"]
-    assert client.get("/api/auth/me", headers=_h(session_jwt)).status_code == 401   # signed out here too
+    assert client.get("/api/auth/me", headers=_h(s["access_token"])).status_code == 401   # signed out here too
+    checks["answer"] = None
+    assert _refresh(client, s["refresh_token"]).status_code == 401
 
 
-def test_egeria_unreachable_is_not_a_refusal(client, session_jwt, checks):
-    checks["answer"] = ConnectionError("down")
-    r = client.post("/api/auth/refresh", headers=_h(session_jwt))
-    assert r.status_code == 503 and "carries on" in r.json()["detail"]
-    assert client.get("/api/auth/me", headers=_h(session_jwt)).status_code == 200   # the session runs on
-
-
-def test_no_refresh_past_the_maximum_age(client, app, checks):
-    old = int(time.time()) - 8 * 3600 + 30                    # signed in almost 8 hours ago
-    tok = sessions.mint("peterprofile", fake_egeria_token(), app.state.auth_config, app.state.settings,
-                        auth_time=old)
-    assert _claims(tok)["exp"] <= old + 8 * 3600               # never past the session's limit
-    later = jwt.encode({**_claims(tok), "auth_time": old - 60}, SECRET, algorithm="HS256")
-    r = client.post("/api/auth/refresh", headers=_h(later))
-    assert r.status_code == 401 and "8-hour limit" in r.json()["detail"]
-    assert checks["asked"] == []                               # refused before Egeria is asked
-
-
-def test_no_refresh_once_the_egeria_token_has_expired(client, app, checks):
-    c = _claims(sessions.mint("peterprofile", fake_egeria_token(), app.state.auth_config, app.state.settings))
-    stale = jwt.encode({**c, "egeria_token": fake_egeria_token(ttl=-5)}, SECRET, algorithm="HS256")
-    r = client.post("/api/auth/refresh", headers=_h(stale))
+def test_an_expired_egeria_token_means_no_refresh_and_401(client, monkeypatch, checks):
+    s = _signin(client, monkeypatch, egeria_ttl=2)
+    time.sleep(2.1)
+    r = _refresh(client, s["refresh_token"])
     assert r.status_code == 401 and "Egeria sign-in has expired" in r.json()["detail"]
+    assert checks["asked"] == []                                # refused before Egeria is asked
+
+
+def test_egeria_unreachable_leaves_the_refresh_token_usable(client, monkeypatch, checks):
+    s = _signin(client, monkeypatch)
+    checks["answer"] = ConnectionError("down")
+    r = _refresh(client, s["refresh_token"])
+    assert r.status_code == 503 and "carries on" in r.json()["detail"]
+    assert client.get("/api/auth/me", headers=_h(s["access_token"])).status_code == 200
+    checks["answer"] = None
+    assert _refresh(client, s["refresh_token"]).status_code == 200    # not a replay: it was never used
+
+
+def test_no_refresh_past_the_maximum_age(client, monkeypatch, checks):
+    s = _signin(client, monkeypatch)
+    rec = client.app.state.refresh_store.peek(s["refresh_token"])
+    rec.auth_time -= 8 * 3600                                   # as if signed in 8 hours ago
+    r = _refresh(client, s["refresh_token"])
+    assert r.status_code == 401 and "8-hour limit" in r.json()["detail"]
     assert checks["asked"] == []
 
 
-def test_refresh_needs_a_live_session(client, checks):
-    assert client.post("/api/auth/refresh").status_code == 401
-    expired = jwt.encode({"sub": "peterprofile", "user_id": "peterprofile", "egeria_token": fake_egeria_token(),
-                          "sid": "s", "auth_time": int(time.time()) - 100,
-                          "iat": int(time.time()) - 100, "exp": int(time.time()) - 1}, SECRET, algorithm="HS256")
-    assert client.post("/api/auth/refresh", headers=_h(expired)).status_code == 401
+def test_mint_never_runs_past_the_maximum_age(app):
+    old = int(time.time()) - 8 * 3600 + 30
+    tok = sessions.mint("peterprofile", fake_egeria_token(), app.state.auth_config, app.state.settings,
+                        sid="s", auth_time=old)
+    assert _claims(tok)["exp"] <= old + 8 * 3600
+
+
+def test_an_unknown_or_missing_refresh_token_is_401(client, checks):
+    assert _refresh(client, "not-a-token").status_code == 401
+    assert client.post("/api/auth/refresh", json={}).status_code in (401, 422)
     assert checks["asked"] == []
 
 
-# ---- sign-out -----------------------------------------------------------------------------------------
+# ---- expired access tokens and sign-out ----------------------------------------------------------------
 
-def test_sign_out_refuses_the_session_everywhere_and_ends_refresh(client, session_jwt, checks):
-    assert client.post("/api/auth/logout", headers=_h(session_jwt)).json() == {"status": "ok"}
-    for method, path in (("get", "/api/auth/me"), ("get", "/api/config"), ("post", "/api/auth/refresh")):
-        assert getattr(client, method)(path, headers=_h(session_jwt)).status_code == 401, path
-    assert checks["asked"] == []
-
-
-def test_sign_out_ends_every_jwt_of_the_session(client, session_jwt, checks):
-    refreshed = client.post("/api/auth/refresh", headers=_h(session_jwt)).json()["access_token"]
-    client.post("/api/auth/logout", headers=_h(refreshed))
-    assert client.get("/api/auth/me", headers=_h(session_jwt)).status_code == 401     # the earlier one too
-
-
-def test_sign_out_without_a_session_is_ok_and_touches_no_one(client, session_jwt):
-    assert client.post("/api/auth/logout").json() == {"status": "ok"}
-    assert client.get("/api/auth/me", headers=_h(session_jwt)).status_code == 200
-
-
-def test_after_sign_out_the_old_jwt_is_refused_once_expired_too(client, app):
-    """The read-back advisory: re-sending a signed-out JWT after its exp is refused (here and, by exp, at EA)."""
-    c = _claims(sessions.mint("peterprofile", fake_egeria_token(), app.state.auth_config, app.state.settings))
-    client.post("/api/auth/logout", headers=_h(jwt.encode(c, SECRET, algorithm="HS256")))
+def test_an_expired_access_token_with_no_refresh_is_401_never_anonymous(client, app):
+    c = _claims(sessions.mint("peterprofile", fake_egeria_token(), app.state.auth_config, app.state.settings,
+                              sid="s1", auth_time=int(time.time()) - 60))
     lapsed = jwt.encode({**c, "exp": int(time.time()) - 1}, SECRET, algorithm="HS256")
-    assert client.get("/api/auth/me", headers=_h(lapsed)).status_code == 401
+    for path in ("/api/auth/me", "/api/config", "/api/drafts"):
+        r = client.get(path, headers=_h(lapsed))
+        assert r.status_code == 401, path
+        assert "user_id" not in r.text                           # nothing answered as anyone
+    assert client.get("/api/auth/me").status_code == 401
+
+
+def test_sign_out_revokes_server_side_so_refresh_fails(client, monkeypatch, checks):
+    s = _signin(client, monkeypatch)
+    r1 = _refresh(client, s["refresh_token"]).json()
+    out = client.post("/api/auth/logout", json={"refresh_token": r1["refresh_token"]}, headers=_h(r1["access_token"]))
+    assert out.json() == {"status": "ok"}
+    assert _refresh(client, r1["refresh_token"]).status_code == 401
+    for method, path in (("get", "/api/auth/me"), ("get", "/api/config")):
+        for tok in (s["access_token"], r1["access_token"]):     # the earlier access token too
+            assert getattr(client, method)(path, headers=_h(tok)).status_code == 401, path
+
+
+def test_sign_out_with_only_the_refresh_token_ends_the_session(client, monkeypatch, checks):
+    s = _signin(client, monkeypatch)
+    client.post("/api/auth/logout", json={"refresh_token": s["refresh_token"]})
+    assert client.get("/api/auth/me", headers=_h(s["access_token"])).status_code == 401
+    assert _refresh(client, s["refresh_token"]).status_code == 401
+
+
+def test_sign_out_with_an_expired_access_token_still_ends_the_session(client, monkeypatch, checks):
+    s = _signin(client, monkeypatch)
+    lapsed = jwt.encode({**_claims(s["access_token"]), "exp": int(time.time()) - 1}, SECRET, algorithm="HS256")
+    client.post("/api/auth/logout", headers=_h(lapsed))
+    assert _refresh(client, s["refresh_token"]).status_code == 401
+
+
+def test_sign_out_without_a_session_is_ok_and_touches_no_one(client, monkeypatch):
+    s = _signin(client, monkeypatch)
+    assert client.post("/api/auth/logout").json() == {"status": "ok"}
+    assert client.get("/api/auth/me", headers=_h(s["access_token"])).status_code == 200
 
 
 def test_revocations_forget_a_session_once_no_jwt_of_it_can_verify():
@@ -232,12 +302,16 @@ def test_the_pages_refresh_decision(tmp_path):
     assert json.loads(out.stdout) == [c[3] for c in CASES]
 
 
-def test_the_page_refreshes_signs_out_with_its_jwt_and_ends_on_a_refusal():
+def test_the_page_rotates_signs_out_with_both_tokens_and_ends_on_a_refusal():
     js = (STATIC / "studio_auth.js").read_text()
     assert "import { refreshDue } from '/static/session_refresh.js'" in js
-    assert "'/api/auth/refresh'" in js and "setToken(data.access_token)" in js
-    assert "fetch('/api/auth/logout', { method: 'POST', headers: t ? { Authorization: `Bearer ${t}` }" in js
+    assert "body: JSON.stringify({ refresh_token: rt })" in js
+    assert "setRefresh(data.refresh_token); setToken(data.access_token);" in js        # both replaced
+    assert "body: JSON.stringify({ refresh_token: rt || null })" in js                  # sign-out sends it
+    assert "s.removeItem(REFRESH_KEY)" in js                                            # cleared with the JWT
     assert "r.status === 401 || r.status === 403" in js and "endSession(" in js
+    panel = (STATIC / "ea_panel.js").read_text()
+    assert "refresh" not in panel.lower()                                               # never handed to EA
 
 
 def test_ea_swaps_a_refreshed_jwt_of_the_same_session_quietly():

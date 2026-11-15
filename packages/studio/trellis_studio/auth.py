@@ -20,8 +20,9 @@ from trellis_auth import AuthConfig
 from trellis_studio.config import StudioSettings
 
 #: Paths that work before sign-in, on top of trellis-auth's defaults (/health, /static/, the auth routes).
-#: "/" is the page shell (matched exactly), "/api/auth/policy" tells the page to show its sign-in form.
-STUDIO_PUBLIC_PATHS = ("/", "/api/auth/policy")
+#: "/" is the page shell (matched exactly), "/api/auth/policy" tells the page to show its sign-in form, and
+#: "/api/auth/refresh" is gated by its refresh token, not the access token (which may just have expired).
+STUDIO_PUBLIC_PATHS = ("/", "/api/auth/policy", "/api/auth/refresh")
 
 
 def auth_config(settings: StudioSettings) -> AuthConfig:

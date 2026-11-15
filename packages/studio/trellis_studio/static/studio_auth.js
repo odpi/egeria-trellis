@@ -4,13 +4,16 @@
  * at once) or as postMessage({type:'egeria_auth', portal_token}) from an origin in STUDIO_PORTAL_ORIGINS
  * (exact match; anything else is ignored). The JWT itself is never put in a URL.
  *
- * TR-10: the JWT is short-lived. While you use the page it is refreshed before it ends (POST /api/auth/refresh,
- * which re-checks your sign-in with Egeria); an untouched tab lets it lapse. A refused refresh, or a JWT that has
- * run out, ends the session here. The new JWT reaches the EA panel through the usual 'studio:session' event.
+ * TR-10: the access JWT is short-lived. Sign-in also gives a refresh token (opaque, works once). While you use
+ * the page, the refresh token is traded before the JWT ends (POST /api/auth/refresh, which re-checks your sign-in
+ * with Egeria) for a new JWT and a new refresh token; an untouched tab lets it lapse. A refused refresh, or a JWT
+ * that has run out, ends the session here. The new JWT reaches the EA panel through the 'studio:session' event;
+ * the refresh token never leaves this page.
  */
 import { refreshDue } from '/static/session_refresh.js';
 
 const TOKEN_KEY = 'studio_token';
+const REFRESH_KEY = 'studio_refresh';
 const TICK_MS = 20000;
 let lastActive = null;
 let refreshing = false;
@@ -21,8 +24,11 @@ function store() { try { return window.sessionStorage; } catch (e) { return null
 export function getToken() { const s = store(); try { return s ? s.getItem(TOKEN_KEY) : null; } catch (e) { return null; } }
 function setToken(t) { const s = store(); try { if (s) s.setItem(TOKEN_KEY, t); } catch (e) { /* no storage: session lasts this page */ } memo = t;
   document.dispatchEvent(new CustomEvent('studio:session')); }
-function clearToken() { const s = store(); try { if (s) s.removeItem(TOKEN_KEY); } catch (e) {} memo = null; }
+function clearToken() { const s = store(); try { if (s) { s.removeItem(TOKEN_KEY); s.removeItem(REFRESH_KEY); } } catch (e) {} memo = null; refreshMemo = null; }
+function getRefresh() { const s = store(); try { return (s && s.getItem(REFRESH_KEY)) || refreshMemo; } catch (e) { return refreshMemo; } }
+function setRefresh(t) { const s = store(); refreshMemo = t || null; try { if (s) { if (t) s.setItem(REFRESH_KEY, t); else s.removeItem(REFRESH_KEY); } } catch (e) {} }
 let memo = null;
+let refreshMemo = null;
 
 export function payload(token = getToken() || memo) {
   if (!token) return null;
@@ -54,6 +60,7 @@ async function exchange(url, body) {
   let data = {};
   try { data = await r.json(); } catch (e) {}
   if (!r.ok) return { ok: false, detail: data.detail || `HTTP ${r.status}` };
+  setRefresh(data.refresh_token);
   setToken(data.access_token);
   return { ok: true };
 }
@@ -78,11 +85,13 @@ async function tick() {
   const t = getToken() || memo;
   const what = refreshDue(payload(t), nowSec(), lastActive);
   if (what === 'none') { if (t) endSession('Your session has ended. Sign in again.'); return; }
-  if (what !== 'refresh' || refreshing) return;
+  const rt = getRefresh();
+  if (what !== 'refresh' || refreshing || !rt) return;
   refreshing = true;
   try {
-    const r = await fetch('/api/auth/refresh', { method: 'POST', headers: { Authorization: `Bearer ${t}` } });
-    if (r.ok) { const data = await r.json(); if (data.access_token) setToken(data.access_token); }
+    const r = await fetch('/api/auth/refresh', { method: 'POST',
+      headers: { Authorization: `Bearer ${t}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ refresh_token: rt }) });
+    if (r.ok) { const data = await r.json(); if (data.access_token) { setRefresh(data.refresh_token); setToken(data.access_token); } }
     else if (r.status === 401 || r.status === 403) {
       let detail = '';
       try { detail = (await r.json()).detail || ''; } catch (e) {}
@@ -101,10 +110,12 @@ function startRefresh() {
 
 export function signOut() {
   const t = getToken() || memo;
+  const rt = getRefresh();
   clearToken();
   document.dispatchEvent(new CustomEvent('studio:session-ended'));   // unload EA's frame first
-  // The JWT goes with it, so Studio refuses (and won't refresh) this session from now on.
-  fetch('/api/auth/logout', { method: 'POST', headers: t ? { Authorization: `Bearer ${t}` } : {} }).catch(() => {}).finally(() => {
+  // Both tokens go with it, so Studio refuses (and won't refresh) this session from now on.
+  const h = { 'Content-Type': 'application/json', ...(t ? { Authorization: `Bearer ${t}` } : {}) };
+  fetch('/api/auth/logout', { method: 'POST', headers: h, body: JSON.stringify({ refresh_token: rt || null }) }).catch(() => {}).finally(() => {
     // A fresh page: nothing of the previous user's work or EA stays in this tab.
     window.location.replace(window.location.pathname);
   });

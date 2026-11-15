@@ -48,6 +48,29 @@ class PortalTokenRequest(BaseModel):
     portal_token: str
 
 
+class RefreshRequest(BaseModel):
+    refresh_token: str
+
+
+class LogoutRequest(BaseModel):
+    refresh_token: Optional[str] = None
+
+
+def _claims_even_if_expired(request: Request) -> Optional[Dict[str, Any]]:
+    """The claims of the request's Studio access token, signature checked, expiry NOT: for matching a refresh to
+    its session and for signing out. Never used to let a request in."""
+    import jwt as pyjwt
+    header = request.headers.get("Authorization", "")
+    if not header.startswith("Bearer "):
+        return None
+    cfg = request.app.state.auth_config
+    try:
+        return pyjwt.decode(header[len("Bearer "):].strip(), cfg.jwt_secret, algorithms=[cfg.jwt_algorithm],
+                            options={"verify_exp": False})
+    except pyjwt.PyJWTError:
+        return None
+
+
 def create_app(settings: Optional[StudioSettings] = None) -> FastAPI:
     settings = settings or get_settings()
     cfg = auth_config(settings)
@@ -106,8 +129,7 @@ def create_app(settings: Optional[StudioSettings] = None) -> FastAPI:
         if not token:
             raise HTTPException(status_code=401, detail="Egeria did not sign you in: wrong user id or password, "
                                                         "or Egeria could not be reached.")
-        jwt_ = sessions.mint(req.username, token, cfg, settings)
-        return {"access_token": jwt_, "token_type": "bearer", "user_id": req.username}
+        return sessions.start_session(app, req.username, token, cfg, settings)
 
     @app.post("/api/auth/portal")
     async def auth_portal(req: PortalTokenRequest) -> Dict[str, Any]:
@@ -123,56 +145,77 @@ def create_app(settings: Optional[StudioSettings] = None) -> FastAPI:
             raise HTTPException(status_code=401, headers={"WWW-Authenticate": "Bearer"},
                                 detail="Egeria did not accept the Portal's sign-in (or could not be reached). "
                                        "Sign in again from the Portal, or with your user id and password.")
-        jwt_ = sessions.mint(user, egeria_token, cfg, settings, role=payload.get("role", "user"),
-                             display_name=payload.get("display_name") or user)
-        return {"access_token": jwt_, "token_type": "bearer", "user_id": user}
+        return sessions.start_session(app, user, egeria_token, cfg, settings, role=payload.get("role", "user"),
+                                      display_name=payload.get("display_name") or user)
 
     @app.post("/api/auth/refresh")
-    async def auth_refresh(request: Request) -> Dict[str, Any]:
-        """A new session JWT for the session presented, only if everything still holds (sessions.py): it isn't
-        signed out or past its maximum age, its Egeria token hasn't expired, and Egeria still accepts that
-        token, asked as the user. Egeria refusing it ends the session here too."""
+    async def auth_refresh(req: RefreshRequest, request: Request) -> Dict[str, Any]:
+        """Trade a refresh token for a new access token and a new refresh token (rotation, sessions.py). The
+        identity is the refresh token's own; a used refresh token, or an access token for someone else sent
+        with it, revokes the whole session. Egeria must still accept the session's token, asked as the user."""
         from trellis_studio.egeria import SignInRefused, check_signin
-        user = require_user(request)
-        uid = user_id_of(user)
-        refuse_service_account(uid, settings)
-        ended = HTTPException(status_code=401, headers={"WWW-Authenticate": "Bearer"},
-                              detail=f"Your Studio session has reached its {settings.session_max_hours}-hour limit. "
-                                     "Sign in again.")
-        if not user.get("auth_time") or time.time() >= user["auth_time"] + settings.session_max_hours * 3600:
-            raise ended
-        egeria_exp = trellis_auth.egeria_token_expiry(user.get("egeria_token") or "")
+        store = sessions.refresh_store(app)
+        again = "Sign in again."
+        refused = lambda detail: HTTPException(status_code=401, headers={"WWW-Authenticate": "Bearer"},
+                                               detail=detail)
+        rec = store.peek(req.refresh_token)
+        if rec is None or sessions.revocations(app).is_revoked(rec.sid):
+            raise refused(f"Your Studio session has ended. {again}")
+        if rec.used:
+            sessions.end_session(app, rec.sid, settings, auth_time=rec.auth_time)
+            logger.warning("studio: a used refresh token was presented again for %r; session revoked", rec.sub)
+            raise refused(f"That sign-in was already renewed, so Studio ended the session to be safe. {again}")
+        presented = _claims_even_if_expired(request)
+        if presented is not None and (presented.get("sub") != rec.sub or presented.get("sid") != rec.sid):
+            sessions.end_session(app, rec.sid, settings, auth_time=rec.auth_time)
+            logger.warning("studio: refresh for %r presented an access token for %r; session revoked",
+                           rec.sub, presented.get("sub"))
+            raise refused(f"The sign-in didn't match. {again}")
+        refuse_service_account(rec.sub, settings)
+        if time.time() >= rec.auth_time + settings.session_max_hours * 3600:
+            raise refused(f"Your Studio session has reached its {settings.session_max_hours}-hour limit. {again}")
+        egeria_exp = trellis_auth.egeria_token_expiry(rec.egeria_token)
         if egeria_exp is not None and egeria_exp <= time.time():
-            raise HTTPException(status_code=401, headers={"WWW-Authenticate": "Bearer"},
-                                detail="Your Egeria sign-in has expired. Sign in again.")
+            sessions.end_session(app, rec.sid, settings, auth_time=rec.auth_time)
+            raise refused(f"Your Egeria sign-in has expired. {again}")
+        user = {"sub": rec.sub, "user_id": rec.sub, "egeria_token": rec.egeria_token}
         try:
             await asyncio.to_thread(check_signin, user, settings)
         except SignInRefused:
-            sessions.revocations(app).revoke(user["sid"], sessions.revoke_until(user, settings))
-            logger.info("studio: refresh refused for %r: Egeria no longer accepts the token; session ended", uid)
-            raise HTTPException(status_code=401, headers={"WWW-Authenticate": "Bearer"},
-                                detail="Egeria no longer accepts your sign-in. Sign in again.")
+            sessions.end_session(app, rec.sid, settings, auth_time=rec.auth_time)
+            logger.info("studio: refresh refused for %r: Egeria no longer accepts the token; session ended", rec.sub)
+            raise refused(f"Egeria no longer accepts your sign-in. {again}")
         except HTTPException:
             raise
-        except Exception as exc:  # noqa: BLE001 -- couldn't ask is not refused: no new JWT, the session runs on
-            logger.warning("studio: refresh for %r couldn't re-check Egeria: %s: %s", uid, type(exc).__name__, exc)
+        except Exception as exc:  # noqa: BLE001 -- couldn't ask is not refused: the refresh token stays unused
+            logger.warning("studio: refresh for %r couldn't re-check Egeria: %s: %s", rec.sub, type(exc).__name__, exc)
             raise HTTPException(status_code=503, detail="Studio couldn't re-check your sign-in with Egeria just "
                                                         "now. Your session carries on until it expires.")
+        if not store.consume(req.refresh_token):        # used meanwhile (a concurrent use): a replay
+            sessions.end_session(app, rec.sid, settings, auth_time=rec.auth_time)
+            raise refused(f"That sign-in was already renewed, so Studio ended the session to be safe. {again}")
         try:
-            jwt_ = sessions.mint(uid, user["egeria_token"], cfg, settings, role=user.get("role", "user"),
-                                 display_name=user.get("display_name"), sid=user["sid"],
-                                 auth_time=user["auth_time"])
+            access = sessions.mint(rec.sub, rec.egeria_token, cfg, settings, role=rec.role,
+                                   display_name=rec.display_name, sid=rec.sid, auth_time=rec.auth_time)
         except ValueError:
-            raise ended
-        return {"access_token": jwt_, "token_type": "bearer", "user_id": uid}
+            raise refused(f"Your Studio session has reached its {settings.session_max_hours}-hour limit. {again}")
+        refresh = store.issue(sessions.RefreshRecord(
+            sid=rec.sid, sub=rec.sub, egeria_token=rec.egeria_token, role=rec.role,
+            display_name=rec.display_name, auth_time=rec.auth_time, expires=rec.expires))
+        return {"access_token": access, "refresh_token": refresh, "token_type": "bearer", "user_id": rec.sub}
 
     @app.post("/api/auth/logout")
-    async def auth_logout(request: Request) -> Dict[str, str]:
-        """Sign out: this session's JWTs are refused from now on and can't be refreshed (sessions.py). Always ok,
-        so a page with an expired or missing JWT can still sign out."""
-        user = trellis_auth.get_current_user(request, cfg)
-        if user and user.get("sid"):
-            sessions.revocations(app).revoke(user["sid"], sessions.revoke_until(user, settings))
+    async def auth_logout(request: Request, req: Optional[LogoutRequest] = None) -> Dict[str, str]:
+        """Sign out: the session's access tokens are refused from now on and its refresh tokens are dropped
+        (sessions.py). Takes the access token, the refresh token, or both, so a page whose access token has
+        expired can still sign out. Always ok."""
+        claims = _claims_even_if_expired(request)
+        if claims and claims.get("sid"):
+            sessions.end_session(app, claims["sid"], settings, auth_time=claims.get("auth_time"),
+                                 exp=claims.get("exp"))
+        rec = sessions.refresh_store(app).peek(req.refresh_token) if req and req.refresh_token else None
+        if rec is not None:
+            sessions.end_session(app, rec.sid, settings, auth_time=rec.auth_time)
         return {"status": "ok"}
 
     @app.get("/api/auth/me")
