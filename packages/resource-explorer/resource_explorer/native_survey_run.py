@@ -2649,9 +2649,6 @@ REFUSED, UNREACHABLE, UNKNOWN = "refused", "unreachable", "unknown"
 #: Egeria's HTTP answers that are a REFUSAL of the cancel (it heard it and said no). 5xx and 404 are not: Egeria
 #: (or the View Server's route) could not act on it, so nothing was refused.
 _REFUSAL_HTTP = frozenset({400, 401, 403, 409})
-_NOT_PERMITTED_HTTP = frozenset({401, 403})
-
-
 def _self_and_causes(exc: BaseException) -> list:
     out, seen, e = [], set(), exc
     while isinstance(e, BaseException) and id(e) not in seen and len(out) < 4:
@@ -2727,18 +2724,15 @@ def classify_cancel_answer(exc: BaseException) -> str:
 
 
 def _refusal_kind(exc: BaseException) -> str:
-    """not_permitted ONLY from Egeria's own answer: HTTP 401/403, or a UserNotAuthorized message id / class in it.
-    Any other refusal is `refused` (a read-back may later show it too late)."""
-    if _http_code(exc) in _NOT_PERMITTED_HTTP:
+    """not_permitted ONLY from Egeria's own answer: pyegeria's PyegeriaUnauthorizedException (Egeria's
+    UserNotAuthorizedException, or a transport 401) or an HTTP 401/403 from Egeria, anywhere in the chain. By class and
+    code (TR-22, `trellis_auth.egeria_errors`), never by text: the old "-403-" message-id match also took
+    OMAG-GENERIC-HANDLERS-403-005 (an invalid parameter) for a refusal. Any other refusal is `refused` (a read-back
+    may later show it too late)."""
+    from trellis_auth.egeria_errors import auth_error_status
+
+    if any(auth_error_status(e) is not None for e in _self_and_causes(exc)):
         return CANCEL_NOT_PERMITTED
-    for e in _self_and_causes(exc):
-        info = getattr(e, "additional_info", None) or {}
-        if not isinstance(info, dict):
-            continue
-        said = " ".join(str(info.get(k) or "") for k in ("exceptionClassName", "exceptionErrorMessageId",
-                                                         "exceptionErrorMessage"))
-        if "UserNotAuthorized" in said or "-403-" in str(info.get("exceptionErrorMessageId") or ""):
-            return CANCEL_NOT_PERMITTED
     return CANCEL_REFUSED_KIND
 
 

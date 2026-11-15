@@ -302,7 +302,9 @@ def test_a_detach_egeria_security_refuses_is_not_permitted_in_egerias_words(worl
 
     def refuse(*a, **kw):
         REMOVE.bind(cm, *a, **kw)
-        raise RuntimeError(SECURITY_403)
+        from tests.egeria_refusals import not_permitted
+
+        raise not_permitted(SECURITY_403, user="garygeeke")
 
     monkeypatch.setattr(cm, "remove_from_collection", refuse)
     out = _publish(world)

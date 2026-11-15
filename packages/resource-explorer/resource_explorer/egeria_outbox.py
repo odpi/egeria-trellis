@@ -316,13 +316,15 @@ def _http_code_of(exc: Exception) -> int | None:
 
 
 def is_security_refusal(exc: Exception) -> bool:
-    """True for an Egeria security-connector refusal: an OPEN-METADATA-SECURITY-403-* message, or an
-    HTTP 403 on the exception. A bare 401 is NOT one (it can be a stale token and a retry can fix it);
-    nor are 5xx, timeouts or network errors."""
-    for e in _self_and_cause(exc):
-        if SECURITY_REFUSAL_MARKER in str(e) or _http_code_of(e) == 403:
-            return True
-    return False
+    """True for an Egeria security-connector refusal: Egeria's own UserNotAuthorizedException (pyegeria's
+    PyegeriaUnauthorizedException with relatedHTTPCode 403) or an HTTP 403 from Egeria, on the exception or the
+    Egeria exception it was raised from. Decided by class and code (TR-22, `trellis_auth.egeria_errors`), never by
+    the OPEN-METADATA-SECURITY-403 text: a relatedHTTPCode 403 that is not a refusal (OMAG-GENERIC-HANDLERS-403-005,
+    deleting an element with dependents) is not one, and neither is an httpx 403 from GitHub. A bare 401 is NOT
+    one (it can be a stale token and a retry can fix it); nor are 5xx, timeouts or network errors."""
+    from trellis_auth.egeria_errors import NOT_PERMITTED, auth_error_status
+
+    return any(auth_error_status(e) == NOT_PERMITTED for e in _self_and_cause(exc))
 
 
 def _self_and_cause(exc: BaseException) -> list:

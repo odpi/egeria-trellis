@@ -1009,7 +1009,10 @@ def ensure_private_zone_exists(identity: Optional[EgeriaIdentity] = None) -> dic
         return private_zone_status()
     except Exception as exc:
         detail = f"{type(exc).__name__}: {exc}"
-        unauthorized = "UserNotAuthorized" in detail or "not authorized" in detail.lower()
+        # By class and code (TR-22), not by the words "not authorized" in the text.
+        from trellis_auth.egeria_errors import auth_error_status
+
+        unauthorized = auth_error_status(exc) is not None
         log.warning(
             "egeria: could not ensure the private zone %r is enforced — %s. "
             "Creator-only investigations will NOT publish until this is fixed.", zone, detail)

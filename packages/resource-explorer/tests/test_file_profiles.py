@@ -1008,12 +1008,7 @@ def test_the_ambiguity_words_say_what_the_elements_did_not_carry(registry, tmp_p
 
 # ── F58: a dead Egeria sign-in is said before the per-file loop ──────────────────────────────────────────────────────
 
-class PyegeriaUnauthorizedException(Exception):
-    """pyegeria's own type by NAME (what `classify_token_check_failure` reads), with the live 2026-11-05 text."""
-
-
-LIVE_401_TEXT = ("=> AUTHORIZATION_ERROR_401 => User not authorized received for user - `peterprofile` "
-                 "requesting on behalf of `peterprofile`")
+from tests.egeria_refusals import LIVE_401_TEXT, refused_token  # noqa: E402  (what pyegeria raises: TR-22)
 
 
 def _refusing_port(*, at: str):
@@ -1022,7 +1017,7 @@ def _refusing_port(*, at: str):
     port = create_autospec(fp.CsvSurveyPort, instance=True, spec_set=True)
     port.csv_survey_listed.return_value = True
     port.egeria_file_system_name.return_value = "egeria-deployment"
-    getattr(port, at).side_effect = PyegeriaUnauthorizedException(LIVE_401_TEXT)
+    getattr(port, at).side_effect = refused_token(LIVE_401_TEXT)
     return port
 
 

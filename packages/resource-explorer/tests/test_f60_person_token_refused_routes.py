@@ -20,26 +20,24 @@ MARKER_BODY = {"error": "egeria_token_refused",
 GUID = "11111111-2222-3333-4444-555555555555"
 
 
-class PyegeriaUnauthorizedException(Exception):
-    """pyegeria's own type by NAME (what `classify_token_check_failure` reads), with the live 2026-11-05 text."""
+from pyegeria.core._exceptions import PyegeriaUnauthorizedException  # noqa: E402  (the real class: TR-22)
+
+from tests.egeria_refusals import not_permitted, refused_token  # noqa: E402
 
 
 def live_401():
-    return PyegeriaUnauthorizedException("=> AUTHORIZATION_ERROR_401 => User not authorized received for user - "
-                                         "`peterprofile` requesting on behalf of `peterprofile`")
+    """What pyegeria raises for a dead token (a transport 401), with the live 2026-11-05 words."""
+    return refused_token()
 
 
 def transport_failure():
     return ConnectionError("connection refused")
 
 
-class SecurityRefusal(Exception):
-    """Egeria's security connector refusing what this person may do: Brief I's `EgeriaRefused`, never a dead token."""
-
-    related_http_code = 403
-
-    def __init__(self):
-        super().__init__("OPEN-METADATA-SECURITY-403-020 User peterprofile is not authorized to read element x")
+def SecurityRefusal():  # noqa: N802 - kept as the name the parametrised tests use
+    """Egeria's security connector refusing what this person may do (UserNotAuthorizedException, relatedHTTPCode 403,
+    raised by pyegeria as PyegeriaUnauthorizedException): Brief I's `EgeriaRefused`, never a dead token."""
+    return not_permitted("OPEN-METADATA-SECURITY-403-020 User peterprofile is not authorized to read element x")
 
 
 class _DeadClient:
@@ -120,7 +118,7 @@ def test_every_other_failure_of_a_persons_call_passes_unchanged(monkeypatch, fai
             client.get_metadata_element_by_guid(GUID)
     finally:
         undo()
-    assert type(info.value) is (ConnectionError if fail is transport_failure else SecurityRefusal)
+    assert type(info.value) is (ConnectionError if fail is transport_failure else PyegeriaUnauthorizedException)
     assert not isinstance(info.value, ec.EgeriaTokenRefused)
 
 
