@@ -3,8 +3,18 @@
  * Ways in: the password form; a Portal hand-over as a URL fragment `#pt=<token>` (cleared from the address bar
  * at once) or as postMessage({type:'egeria_auth', portal_token}) from an origin in STUDIO_PORTAL_ORIGINS
  * (exact match; anything else is ignored). The JWT itself is never put in a URL.
+ *
+ * TR-10: the JWT is short-lived. While you use the page it is refreshed before it ends (POST /api/auth/refresh,
+ * which re-checks your sign-in with Egeria); an untouched tab lets it lapse. A refused refresh, or a JWT that has
+ * run out, ends the session here. The new JWT reaches the EA panel through the usual 'studio:session' event.
  */
+import { refreshDue } from '/static/session_refresh.js';
+
 const TOKEN_KEY = 'studio_token';
+const TICK_MS = 20000;
+let lastActive = null;
+let refreshing = false;
+let ticking = null;
 
 function store() { try { return window.sessionStorage; } catch (e) { return null; } }
 
@@ -35,11 +45,7 @@ export function headers(extra = {}) {
 /** fetch with the session; a 401 drops the session and shows the sign-in form. */
 export async function api(path, opts = {}) {
   const r = await fetch(path, { ...opts, headers: headers(opts.headers || {}) });
-  if (r.status === 401) {
-    clearToken();
-    document.dispatchEvent(new CustomEvent('studio:session-ended'));
-    showLogin('Your session has ended. Sign in again.');
-  }
+  if (r.status === 401) endSession('Your session has ended. Sign in again.');
   return r;
 }
 
@@ -60,10 +66,45 @@ function showLogin(message) {
 }
 function hideLogin() { const el = document.getElementById('st-login'); if (el) el.hidden = true; }
 
+function endSession(message) {
+  clearToken();
+  document.dispatchEvent(new CustomEvent('studio:session-ended'));
+  showLogin(message);
+}
+
+const nowSec = () => Math.floor(Date.now() / 1000);
+
+async function tick() {
+  const t = getToken() || memo;
+  const what = refreshDue(payload(t), nowSec(), lastActive);
+  if (what === 'none') { if (t) endSession('Your session has ended. Sign in again.'); return; }
+  if (what !== 'refresh' || refreshing) return;
+  refreshing = true;
+  try {
+    const r = await fetch('/api/auth/refresh', { method: 'POST', headers: { Authorization: `Bearer ${t}` } });
+    if (r.ok) { const data = await r.json(); if (data.access_token) setToken(data.access_token); }
+    else if (r.status === 401 || r.status === 403) {
+      let detail = '';
+      try { detail = (await r.json()).detail || ''; } catch (e) {}
+      endSession(detail || 'Your session has ended. Sign in again.');
+    }
+    // anything else (Egeria couldn't be asked): keep this JWT and try again next tick
+  } catch (e) { /* network: try again next tick */ } finally { refreshing = false; }
+}
+
+function startRefresh() {
+  if (ticking) return;
+  const seen = () => { lastActive = nowSec(); };
+  for (const ev of ['pointerdown', 'keydown', 'wheel', 'touchstart']) window.addEventListener(ev, seen, { passive: true, capture: true });
+  ticking = window.setInterval(tick, TICK_MS);
+}
+
 export function signOut() {
+  const t = getToken() || memo;
   clearToken();
   document.dispatchEvent(new CustomEvent('studio:session-ended'));   // unload EA's frame first
-  fetch('/api/auth/logout', { method: 'POST' }).catch(() => {}).finally(() => {
+  // The JWT goes with it, so Studio refuses (and won't refresh) this session from now on.
+  fetch('/api/auth/logout', { method: 'POST', headers: t ? { Authorization: `Bearer ${t}` } : {} }).catch(() => {}).finally(() => {
     // A fresh page: nothing of the previous user's work or EA stays in this tab.
     window.location.replace(window.location.pathname);
   });
@@ -75,7 +116,7 @@ export async function init() {
   try { const r = await fetch('/api/auth/policy'); if (r.ok) portalOrigins = (await r.json()).portal_origins || []; } catch (e) {}
 
   return new Promise((resolve) => {
-    const done = () => { hideLogin(); resolve(payload()); };
+    const done = () => { hideLogin(); lastActive = nowSec(); startRefresh(); resolve(payload()); };
 
     window.addEventListener('message', async (ev) => {
       if (!portalOrigins.includes(ev.origin)) return;

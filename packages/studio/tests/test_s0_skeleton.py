@@ -13,6 +13,7 @@ import trellis_auth
 from trellis_studio.app import create_app
 from trellis_studio.config import StudioSettings, origin_of
 from trellis_studio import egeria as studio_egeria
+from trellis_studio import sessions
 
 from conftest import PORTAL_SECRET, SECRET, fake_egeria_token
 
@@ -237,7 +238,7 @@ def test_the_app_answers_pyegerias_unauthorized_with_401(app, settings, monkeypa
     async def refused():
         raise PyegeriaUnauthorizedException(httpx.Response(401, request=httpx.Request("GET", "https://e.test/x")),
                                             context={"caller method": "test"})
-    tok = trellis_auth.create_access_token("peterprofile", fake_egeria_token(), app.state.auth_config)
+    tok = sessions.mint("peterprofile", fake_egeria_token(), app.state.auth_config, app.state.settings)
     r = TestClient(app).get("/api/_test_refused", headers={"Authorization": f"Bearer {tok}"})
     assert r.status_code == 401 and "Sign in again" in r.json()["detail"]
 

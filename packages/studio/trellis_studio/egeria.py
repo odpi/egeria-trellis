@@ -67,3 +67,25 @@ def close(client: Any) -> None:
         fn()
     except Exception:  # noqa: BLE001 -- closing never turns a request's answer into an error
         pass
+
+
+class SignInRefused(RuntimeError):
+    """Egeria no longer accepts the user's token (expired or revoked upstream)."""
+
+
+def check_signin(user: Dict[str, Any], settings: StudioSettings) -> None:
+    """Ask Egeria, as the user, whether it still accepts their token (TR-10's refresh check): the cheapest read as
+    them, `get_my_profile`, on a client with no password (so a refused token can't be quietly re-signed). Returns
+    if it does; raises SignInRefused if Egeria refuses it; anything else (Egeria unreachable) propagates as is,
+    because "couldn't ask" isn't "refused". Run it in a worker thread: it's a sync pyegeria call."""
+    from pyegeria.core._exceptions import PyegeriaUnauthorizedException
+    client = user_client(user, settings)
+    try:
+        client.get_my_profile()
+    except PyegeriaUnauthorizedException as exc:
+        raise SignInRefused(str(exc)) from exc
+    finally:
+        try:
+            assert_no_password(client)
+        finally:
+            close(client)

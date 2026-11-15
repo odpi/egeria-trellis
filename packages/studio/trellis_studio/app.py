@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from importlib import resources
 from pathlib import Path
 from typing import Any, Dict, Optional
@@ -23,12 +24,13 @@ from pydantic import BaseModel
 
 import trellis_auth
 import trellis_ui
-from trellis_auth import LoginRequiredMiddleware, resolve_policy
+from trellis_auth import resolve_policy
 
 from trellis_studio import __version__
 from trellis_studio.auth import (STUDIO_PUBLIC_PATHS, auth_config, current_user, refuse_service_account,
                                  require_user, user_id_of)
 from trellis_studio.config import StudioSettings, get_settings
+from trellis_studio import sessions
 
 logger = logging.getLogger("trellis_studio")
 
@@ -55,7 +57,9 @@ def create_app(settings: Optional[StudioSettings] = None) -> FastAPI:
     app.state.settings = settings
     app.state.auth_config = cfg
     app.state.policy = policy
-    app.add_middleware(LoginRequiredMiddleware, config=cfg, policy=policy)
+    # trellis-auth's gate, plus: a signed-out session's JWT is refused like no JWT (TR-10, sessions.py).
+    app.add_middleware(sessions.StudioLoginMiddleware, config=cfg, policy=policy,
+                       revoked=sessions.revocations(app))
     logger.info("studio: %s", policy.describe())
 
     # Studio serves many users: say so to pyegeria's spec cache at startup (spec-cache R-A).
@@ -102,7 +106,7 @@ def create_app(settings: Optional[StudioSettings] = None) -> FastAPI:
         if not token:
             raise HTTPException(status_code=401, detail="Egeria did not sign you in: wrong user id or password, "
                                                         "or Egeria could not be reached.")
-        jwt_ = trellis_auth.create_access_token(req.username, token, cfg)
+        jwt_ = sessions.mint(req.username, token, cfg, settings)
         return {"access_token": jwt_, "token_type": "bearer", "user_id": req.username}
 
     @app.post("/api/auth/portal")
@@ -119,19 +123,64 @@ def create_app(settings: Optional[StudioSettings] = None) -> FastAPI:
             raise HTTPException(status_code=401, headers={"WWW-Authenticate": "Bearer"},
                                 detail="Egeria did not accept the Portal's sign-in (or could not be reached). "
                                        "Sign in again from the Portal, or with your user id and password.")
-        jwt_ = trellis_auth.create_access_token(user, egeria_token, cfg, role=payload.get("role", "user"),
-                                                display_name=payload.get("display_name") or user)
+        jwt_ = sessions.mint(user, egeria_token, cfg, settings, role=payload.get("role", "user"),
+                             display_name=payload.get("display_name") or user)
         return {"access_token": jwt_, "token_type": "bearer", "user_id": user}
 
+    @app.post("/api/auth/refresh")
+    async def auth_refresh(request: Request) -> Dict[str, Any]:
+        """A new session JWT for the session presented, only if everything still holds (sessions.py): it isn't
+        signed out or past its maximum age, its Egeria token hasn't expired, and Egeria still accepts that
+        token, asked as the user. Egeria refusing it ends the session here too."""
+        from trellis_studio.egeria import SignInRefused, check_signin
+        user = require_user(request)
+        uid = user_id_of(user)
+        refuse_service_account(uid, settings)
+        ended = HTTPException(status_code=401, headers={"WWW-Authenticate": "Bearer"},
+                              detail=f"Your Studio session has reached its {settings.session_max_hours}-hour limit. "
+                                     "Sign in again.")
+        if not user.get("auth_time") or time.time() >= user["auth_time"] + settings.session_max_hours * 3600:
+            raise ended
+        egeria_exp = trellis_auth.egeria_token_expiry(user.get("egeria_token") or "")
+        if egeria_exp is not None and egeria_exp <= time.time():
+            raise HTTPException(status_code=401, headers={"WWW-Authenticate": "Bearer"},
+                                detail="Your Egeria sign-in has expired. Sign in again.")
+        try:
+            await asyncio.to_thread(check_signin, user, settings)
+        except SignInRefused:
+            sessions.revocations(app).revoke(user["sid"], sessions.revoke_until(user, settings))
+            logger.info("studio: refresh refused for %r: Egeria no longer accepts the token; session ended", uid)
+            raise HTTPException(status_code=401, headers={"WWW-Authenticate": "Bearer"},
+                                detail="Egeria no longer accepts your sign-in. Sign in again.")
+        except HTTPException:
+            raise
+        except Exception as exc:  # noqa: BLE001 -- couldn't ask is not refused: no new JWT, the session runs on
+            logger.warning("studio: refresh for %r couldn't re-check Egeria: %s: %s", uid, type(exc).__name__, exc)
+            raise HTTPException(status_code=503, detail="Studio couldn't re-check your sign-in with Egeria just "
+                                                        "now. Your session carries on until it expires.")
+        try:
+            jwt_ = sessions.mint(uid, user["egeria_token"], cfg, settings, role=user.get("role", "user"),
+                                 display_name=user.get("display_name"), sid=user["sid"],
+                                 auth_time=user["auth_time"])
+        except ValueError:
+            raise ended
+        return {"access_token": jwt_, "token_type": "bearer", "user_id": uid}
+
     @app.post("/api/auth/logout")
-    async def auth_logout() -> Dict[str, str]:
-        return {"status": "ok"}  # nothing server-side: the page drops its JWT
+    async def auth_logout(request: Request) -> Dict[str, str]:
+        """Sign out: this session's JWTs are refused from now on and can't be refreshed (sessions.py). Always ok,
+        so a page with an expired or missing JWT can still sign out."""
+        user = trellis_auth.get_current_user(request, cfg)
+        if user and user.get("sid"):
+            sessions.revocations(app).revoke(user["sid"], sessions.revoke_until(user, settings))
+        return {"status": "ok"}
 
     @app.get("/api/auth/me")
     async def auth_me(request: Request) -> Dict[str, Any]:
         user = require_user(request)
         return {"authenticated": True, "user_id": user_id_of(user), "role": user.get("role", "user"),
-                "display_name": user.get("display_name") or user_id_of(user), "exp": user.get("exp")}
+                "display_name": user.get("display_name") or user_id_of(user), "exp": user.get("exp"),
+                "session_ends_by": (user.get("auth_time") or 0) + settings.session_max_hours * 3600}
 
     # ---- what the page needs to know (signed in) --------------------------------------------------------
     @app.get("/api/config")

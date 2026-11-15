@@ -1,7 +1,7 @@
 """Studio's thin adapter over trellis-auth: the same sign-in as EA and RE, and nothing of its own.
 
-The session JWT is trellis-auth's `{sub, user_id, role, display_name, egeria_token, iat, exp}`, HS256, signed with
-the box-wide TRELLIS_JWT_SECRET. Owner decision A (2026-11-14): a Studio session JWT is valid at EA, so the
+The session JWT is trellis-auth's `{sub, user_id, role, display_name, egeria_token, iat, exp}` plus Studio's
+`{sid, auth_time}` (TR-10, see sessions.py), HS256, signed with the box-wide TRELLIS_JWT_SECRET. Owner decision A (2026-11-14): a Studio session JWT is valid at EA, so the
 embedded EA panel runs as the user signed in here with no second login. The JWT travels to EA only by
 postMessage, to EA's exact origin (see static/ea_panel.js once S4 lands), never in a URL.
 
@@ -32,7 +32,7 @@ def auth_config(settings: StudioSettings) -> AuthConfig:
         )
     return AuthConfig(
         jwt_secret=settings.jwt_secret,
-        jwt_ttl_hours=settings.jwt_ttl_hours,
+        jwt_ttl_hours=settings.session_max_hours,   # unused for Studio's own JWTs: sessions.mint passes its ttl
         portal_secret=settings.portal_secret,
         egeria_view_server=settings.egeria_view_server,
         egeria_platform_url=settings.egeria_platform_url,
@@ -40,8 +40,12 @@ def auth_config(settings: StudioSettings) -> AuthConfig:
 
 
 def current_user(request: Request) -> Optional[Dict[str, Any]]:
+    """The signed-in user: a valid, unexpired session JWT that Studio minted (it has a `sid`) and that hasn't been
+    signed out (TR-10). Anything else is no user."""
+    from trellis_studio.sessions import usable
     cfg: AuthConfig = request.app.state.auth_config
-    return trellis_auth.get_current_user(request, cfg)
+    user = trellis_auth.get_current_user(request, cfg)
+    return user if usable(request.app, user) else None
 
 
 def require_user(request: Request) -> Dict[str, Any]:

@@ -12,7 +12,7 @@ from pathlib import Path
 
 import pytest
 
-from trellis_studio import authoring
+from trellis_studio import authoring, sessions
 
 FIX = json.loads((Path(__file__).parent / "fixtures" / "drafts_real_shape.json").read_text())
 
@@ -112,7 +112,7 @@ def test_each_request_builds_its_own_client_for_its_own_user(app, client, client
     _use_store(monkeypatch, drafts=[])
     monkeypatch.setattr(authoring, "list_drafts_supports_notes", lambda: True)
     for who in ("peterprofile", "erinoverview"):
-        tok = trellis_auth.create_access_token(who, fake_egeria_token(who), app.state.auth_config)
+        tok = sessions.mint(who, fake_egeria_token(who), app.state.auth_config, app.state.settings)
         assert client.get("/api/drafts", headers={"Authorization": f"Bearer {tok}"}).status_code == 200
     assert [c.user_id for c in clients] == ["peterprofile", "erinoverview"]
     assert all(c.thread != threading.get_ident() for c in clients)   # built on a worker thread
