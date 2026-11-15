@@ -700,6 +700,129 @@ def merge_previews(prevs: List[Dict[str, Any]], values: List[str], prop: str, ma
     return {**tables[0], "result": result, "capped": capped, "shown": len(rows), "notes": notes}
 
 
+#: Ordinal words, lowest rank first (TR-6, C03 on laz 2026-11-13). Egeria sorts a string property by its letters,
+#: so "highest importance" came back Medium-High, High, ... Critical: the most important last. A text property
+#: whose values all sit on this scale (importance, priority, criticality, severity, confidence...) is ranked by
+#: it in the answer instead; one whose values are all numbers is sorted as numbers.
+ORDINAL_SCALE: Tuple[Tuple[str, ...], ...] = (
+    ("none",),
+    ("negligible", "minimal", "very-low", "lowest"),
+    ("low",),
+    ("low-medium", "medium-low"),
+    ("medium", "moderate", "normal"),
+    ("medium-high", "high-medium"),
+    ("high",),
+    ("very-high", "highest"),
+    ("critical", "severe", "extreme"),
+)
+_ORDINAL_RANK = {w: i for i, words in enumerate(ORDINAL_SCALE) for w in words}
+_PROPERTY_SORTS = ("PROPERTY_ASCENDING", "PROPERTY_DESCENDING")
+#: TR-6 A1: how many rows a capped run re-reads before ranking, so the top of a "highest X" answer is the real
+#: top and not only the best of what Egeria's alphabetical order let in. Past it, the note stays.
+RANK_READ_ROWS = 500
+
+
+def _cell_text(v: Any) -> str:
+    if isinstance(v, dict):
+        v = v.get("display") or v.get("value") or v.get("text") or ""
+    if isinstance(v, list):
+        return ", ".join(_cell_text(x) for x in v)
+    return " ".join(str(v if v is not None else "").split())
+
+
+def _ordinal_word(text: str) -> str:
+    return re.sub(r"[\s_\-]+", "-", text.strip().lower())
+
+
+def _number(text: str) -> Optional[float]:
+    try:
+        return float(text.replace(",", ""))
+    except ValueError:
+        return None
+
+
+def _iso_date(text: str) -> bool:
+    return bool(re.match(r"^\d{4}-\d{2}-\d{2}([T ][\d:.]+)?(Z|[+-]\d{2}:?\d{2})?$", text))
+
+
+def order_rows(prev: Dict[str, Any], conditions: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    """`prev` with its rows in the order the question means when it sorts by a property (TR-6).
+
+    Egeria sorts PROPERTY_ASCENDING/DESCENDING by the property's text. When every value shown is a number,
+    or every value sits on ORDINAL_SCALE, the rows are re-ranked here, and a note says so. Re-ranking only
+    orders the rows Egeria returned: when the run was capped, Egeria picked those rows alphabetically, so the
+    note says that rows ranked higher (or lower) may be among those not shown. Text not on the scale keeps
+    Egeria's order, with a note that it is alphabetical."""
+    cond = conditions or {}
+    order, name = str(cond.get("output_sort_order") or "").upper(), cond.get("order_property_name")
+    res = prev.get("result")
+    if order not in _PROPERTY_SORTS or not name or not isinstance(res, dict) or res.get("kind") != "table" \
+            or prev.get("reordered"):
+        return prev
+    key = _snake(str(name))
+    rows = list(res.get("rows") or [])
+    texts = [_cell_text(r.get(key)) if isinstance(r, dict) else "" for r in rows]
+    present = [t for t in texts if t]
+    if not present:
+        return prev
+    descending = order == "PROPERTY_DESCENDING"
+    notes = list(prev.get("notes") or [])
+    if all(_number(t) is not None for t in present):
+        kind, rank = "numbers", lambda t: _number(t)
+        note = f"sorted by {name} as numbers, not as text"
+    elif all(_ordinal_word(t) in _ORDINAL_RANK for t in present):
+        kind, rank = "rank", lambda t: _ORDINAL_RANK[_ordinal_word(t)]
+        scale = sorted(dict.fromkeys(present), key=rank)
+        note = f"sorted by {name} by its rank ({' < '.join(scale)}), not alphabetically as Egeria sorts text"
+    else:
+        if not all(_iso_date(t) for t in present):
+            notes.append(f"{name} is text, so Egeria sorted it alphabetically: the order is by its letters, "
+                         f"not by what the values mean")
+        return {**prev, "notes": notes}
+    with_value = [(r, t) for r, t in zip(rows, texts) if t]
+    without = [r for r, t in zip(rows, texts) if not t]
+    with_value.sort(key=lambda rt: rank(rt[1]), reverse=descending)       # stable: Egeria's order on a tie
+    if prev.get("capped") and prev.get("rank_whole") is not True:
+        note += (f"; Egeria chose these {len(rows)} rows by {name}'s letters, so rows ranked "
+                 f"{'higher' if descending else 'lower'} may be among those not shown")
+    notes.append(note)
+    return {**prev, "result": {**res, "rows": [r for r, _ in with_value] + without}, "notes": notes,
+            "reordered": kind}
+
+
+def _rank_read(spec: Dict[str, Any], client: Any, prev: Dict[str, Any], max_rows: int) -> Dict[str, Any]:
+    """TR-6 A1: `prev` was capped and its rows will be re-ranked, so read up to RANK_READ_ROWS, rank them all,
+    and keep the first `max_rows`. The answer's top rows are then the real top of everything read. If the
+    bigger read is capped too, order_rows' note (rows ranked higher may be missing) stays. If the re-read fails,
+    `prev` stands, with its note."""
+    from pyegeria.authoring import preview
+    try:
+        full = preview(spec_draft(spec), client=client, max_rows=RANK_READ_ROWS,
+                       params={"start_from": 0, "search_string": search_of(spec)})
+    except Exception as exc:  # noqa: BLE001 -- the capped answer, honestly noted, is still an answer
+        return {**prev, "notes": list(prev.get("notes") or []) +
+                [f"couldn't read more rows to rank them ({type(exc).__name__})"]}
+    end0 = full.get("end") if full.get("end") is not None else (full.get("result") or {}).get("end")
+    if end0 != "confirmed":
+        full = {**full, "capped": True}          # so order_rows keeps "rows ranked higher may be missing"
+    ranked = order_rows(full, spec.get("conditions"))
+    res = ranked.get("result") or {}
+    if not ranked.get("reordered") or not isinstance(res, dict) or res.get("kind") != "table":
+        return prev
+    rows = list(res.get("rows") or [])
+    read = len(rows)
+    # Read-back R1: "all" only when the paging contract confirmed the end (pyegeria's preview `end`, or its
+    # result's). Not capped isn't that: a suspect or unconfirmed end can stop short. No `end` (an older
+    # pyegeria) is not whole either.
+    end = full.get("end") if full.get("end") is not None else res.get("end")
+    whole = end == "confirmed" and not full.get("capped")
+    notes = list(ranked.get("notes") or [])
+    notes.append(f"ranked {'all ' if whole else 'the first '}{read} rows Egeria returned, showing the top "
+                 f"{min(max_rows, read)}")
+    return {**ranked, "result": {**res, "rows": rows[:max_rows]}, "shown": min(max_rows, read),
+            "capped": read > max_rows or not whole, "notes": notes, "ranked_read": read, "rank_whole": whole}
+
+
 def count_words(prev: Dict[str, Any]) -> str:
     """How many rows, said only as far as it is known (TR-7 (d), PY-17's rule): "N rows" only when the paging
     contract confirmed the end and nothing was cut off; otherwise "at least N rows". "" for a result that isn't
@@ -710,6 +833,11 @@ def count_words(prev: Dict[str, Any]) -> str:
     n = len(res.get("rows") or [])
     if n == 0:
         return ""
+    if prev.get("ranked_read") is not None:
+        # TR-6 A1 re-read: the count is what was read and ranked; "all" only on its confirmed end
+        n = int(prev["ranked_read"])
+        rows = f"{n} row{'s' if n != 1 else ''}"
+        return rows if prev.get("rank_whole") is True else f"at least {rows}"
     end = prev.get("end") if prev.get("end") is not None else res.get("end")
     rows = f"{n} row{'s' if n != 1 else ''}"
     return rows if end == "confirmed" and not prev.get("capped") else f"at least {rows}"
@@ -742,6 +870,9 @@ def answer(spec: Dict[str, Any], client: Any, *, max_rows: int = ANSWER_ROWS) ->
         prev = merge_previews(prevs, status["values"], status["property"], max_rows)
     else:
         prev = prevs[0]
+        if prev.get("capped") and order_rows(prev, spec.get("conditions")).get("reordered"):
+            prev = _rank_read(spec, client, prev, max_rows)
+    prev = order_rows(prev, spec.get("conditions"))
     said = count_words(prev)
     if said:
         prev = {**prev, "notes": [said] + list(prev.get("notes") or [])}
