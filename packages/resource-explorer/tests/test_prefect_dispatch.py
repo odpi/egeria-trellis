@@ -148,22 +148,22 @@ class TestApiResultRetrieval:
             "via local fallback before this was caught. See the module "
             "docstring's third fault.")
 
-    def test_fetches_the_result_via_state_result(self):
+    def test_the_result_is_read_from_the_registry_by_flow_run_id(self):
+        """TR-21 (2026-11-15): `state.result()` read a result FILE from the worker's own disk, which a container
+        worker's is not ("outside of the base path", hedwig 2026-11-15). The output is now the flow_run_results row
+        the flow wrote, read by flow_run_id only."""
         import inspect
 
-        src = inspect.getsource(adapter._run_prefect_step_api)
-        assert "state.result(raise_on_failure=True)" in src, (
-            "State.result()/aresult() is the real Prefect 3.x API for pulling "
-            "a completed flow run's return value back out.")
+        src = inspect.getsource(adapter._await_flow_run)
+        assert "state.result(" not in src, "a result file on the worker's disk is not readable from RE's process"
+        assert "_read_flow_run_output(flow_run_id" in src
+        assert "read_flow_run_result(flow_run_id)" in inspect.getsource(adapter._read_flow_run_output)
 
-    def test_the_flow_persists_its_result(self):
-        """Without this, `state.result()` raises MissingResult for any run
-        polled back via read_flow_run from a different process than the one
-        that executed it — i.e. every real distributed dispatch, which is the
-        entire point of the API path."""
+    def test_the_flow_persists_no_result_file(self):
+        """The registry is the result (TR-21): no persisted result, so nothing depends on the worker's filesystem."""
         from resource_explorer.prefect.flows import re_survey_flow
 
-        assert re_survey_flow.persist_result is True
+        assert re_survey_flow.persist_result is False
 
 
 class TestEngineRouting:

@@ -5248,6 +5248,7 @@ class ProjectRegistry:
         self._migrate_file_systems_key_tail()
         self._migrate_feedback_routes_table()
         self._migrate_feedback_rfas_table()
+        self._migrate_flow_run_results_table()
 
     #: Artifacts slice 1 (DESIGN-ARTIFACTS-VIEW-AND-DOC-LINKS.md §3; owner's go 2026-10-15; DDL record
     #: docs/ddl-artifact-columns.md). file_role: core | test | generated | vendored | docs from
@@ -5441,6 +5442,81 @@ class ProjectRegistry:
         short transaction. Nothing existing is altered."""
         with self._conn() as conn:
             conn.execute(self.FEEDBACK_RFAS_DDL)
+
+    #: TR-21 (Architect ruling 2026-11-15; DDL record docs/ddl-flow-run-results.md): a dispatched step's OUTPUT, one row
+    #: per Prefect flow run, written by the flow on the worker before it returns and read by RE by flow_run_id only.
+    #: `output` is TEXT holding JSON, like every other JSON column here (one DDL for SQLite and Postgres; see
+    #: step_runs' note), not jsonb.
+    FLOW_RUN_RESULTS_DDL = (
+        "CREATE TABLE IF NOT EXISTS flow_run_results ("
+        " flow_run_id TEXT PRIMARY KEY,"
+        " entity_type TEXT NOT NULL,"
+        " slug TEXT NOT NULL,"
+        " step_key TEXT NOT NULL,"
+        " step_run_id INTEGER,"
+        " output TEXT NOT NULL,"
+        " norm_hash TEXT NOT NULL,"
+        " written_at TEXT NOT NULL)"
+    )
+    #: Rows older than this are pruned by `prune_flow_run_results` (the Architect's default; change it only on the
+    #: project owner's word).
+    FLOW_RUN_RESULTS_KEEP_DAYS = 30
+
+    def _migrate_flow_run_results_table(self) -> None:
+        """TR-21 (docs/ddl-flow-run-results.md): one new table, `CREATE TABLE IF NOT EXISTS` in its own short
+        transaction. Nothing existing is altered."""
+        with self._conn() as conn:
+            conn.execute(self.FLOW_RUN_RESULTS_DDL)
+
+    def write_flow_run_result(self, flow_run_id: str, *, entity_type: str, slug: str, step_key: str,
+                              step_run_id: int | None, output_json: str, norm_hash: str) -> bool:
+        """Keep a flow run's output. True when this call wrote the row. Never overwrites: a second write for the same
+        flow run is a no-op, and one that carries a DIFFERENT norm_hash is logged as an error (TR-21)."""
+        if not flow_run_id:
+            raise ValueError("a flow run result needs its flow_run_id")
+        now = datetime.now(UTC).isoformat(timespec="microseconds")
+        with self._conn() as conn:
+            made = conn.execute(
+                "INSERT INTO flow_run_results (flow_run_id, entity_type, slug, step_key, step_run_id, output, "
+                "norm_hash, written_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT (flow_run_id) DO NOTHING",
+                (flow_run_id, entity_type, slug, step_key, step_run_id, output_json, norm_hash, now)).rowcount
+            if made:
+                return True
+            row = conn.execute("SELECT norm_hash FROM flow_run_results WHERE flow_run_id = ?",
+                               (flow_run_id,)).fetchone()
+        if row is not None and row["norm_hash"] != norm_hash:
+            log.error("flow_run_results: a second result for flow run %s with a different norm_hash (%s, kept %s) "
+                      "was refused; the first is kept", flow_run_id, norm_hash, row["norm_hash"])
+        return False
+
+    def read_flow_run_result(self, flow_run_id: str) -> dict | None:
+        """The output row a flow run wrote, by flow_run_id only, or None. `output` is decoded."""
+        if not flow_run_id:
+            return None
+        with self._conn() as conn:
+            row = conn.execute("SELECT * FROM flow_run_results WHERE flow_run_id = ?", (flow_run_id,)).fetchone()
+        if row is None:
+            return None
+        record = dict(row)
+        record["output"] = json.loads(record["output"]) if record.get("output") else {}
+        return record
+
+    def prune_flow_run_results(self, keep_days: int | None = None, *, now: datetime | None = None) -> int:
+        """Delete flow run results older than `keep_days` (default FLOW_RUN_RESULTS_KEEP_DAYS). Returns the count."""
+        days = self.FLOW_RUN_RESULTS_KEEP_DAYS if keep_days is None else keep_days
+        cutoff = ((now or datetime.now(UTC)) - timedelta(days=days)).isoformat(timespec="microseconds")
+        with self._conn() as conn:
+            return int(conn.execute("DELETE FROM flow_run_results WHERE written_at < ?", (cutoff,)).rowcount or 0)
+
+    def step_run_ids_for_flow_run(self, flow_run_id: str) -> list[dict]:
+        """The step_runs rows carrying this flow run id (id, step_key, executor, demanded_by), oldest first."""
+        if not flow_run_id:
+            return []
+        with self._conn() as conn:
+            rows = conn.execute(
+                "SELECT id, step_key, executor, demanded_by FROM step_runs WHERE flow_run_id = ? ORDER BY id",
+                (flow_run_id,)).fetchall()
+        return [dict(r) for r in rows]
 
     def claim_feedback_rfa(self, question_key: str, cause: str, entity_type: str, entity_slug: str) -> bool:
         """Claim the one RFA for (question, cause, entity) before raising it. True when this call made the row;
@@ -13154,6 +13230,8 @@ class ProjectRegistry:
         "analysis_table_rows": "per surveyed resource, never an investigation",
         "step_annotations": "per surveyed resource, never an investigation",
         "step_runs": "per surveyed resource, never an investigation",
+        "flow_run_results": "a dispatched step's output, per surveyed resource (by flow_run_id), never an "
+                            "investigation; pruned after 30 days",
         "sub_resources": "per surveyed resource, never an investigation",
         "feedback_rfas": "the one RFA routed per question (closed-loop step 2b), keyed by the resource the answer "
                          "was about or the catalog/questions pseudo-entity, never an investigation; the RFA itself "

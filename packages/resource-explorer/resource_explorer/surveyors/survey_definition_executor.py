@@ -955,19 +955,37 @@ class SurveyDefinitionExecutor:
                                 credential_handoff.revoke(_pf_ref)
                     _pf_engine = _pf_dispatch.get("engine", "local")
                     _pf_dispatch_failed = _pf_dispatch.get("dispatch_failed", "")
-                    if _pf_observed:
-                        _pf_observed[0].executor = _pf_engine
-                        _pf_observed[0].source = _pf_engine
-                        _pf_observed[0].executor_ref = _pf_dispatch.get("flow_run_id", "")
-                        _pf_observed[0].flow_run_id = _pf_dispatch.get("flow_run_id", "")
-                        _pf_observed[0].dispatch_failed = _pf_dispatch_failed
-                    self._record_cost(_pf_observed, entity_type, slug, output, surveyed_at)
+                    _pf_flow_run_id = _pf_dispatch.get("flow_run_id", "")
+                    _pf_wait_ms = round(_pf_observed[0].elapsed * 1000.0, 1) if _pf_observed else None
+                    _pf_in_process = bool(_pf_dispatch.get("in_process_flow"))
+                    if _pf_flow_run_id or _pf_in_process:
+                        # TR-21 (Architect ruling 2026-11-15): the flow run's WORK row was written by the flow
+                        # (executor=prefect, its flow_run_id). What was measured here is the wait, dispatch to
+                        # terminal state, not the work: it goes to the report and the log as dispatch_wait_ms, never
+                        # into step_runs (that double-counted every Prefect step's cost).
+                        log.info("Prefect step %s: flow run %s, dispatch_wait_ms=%s", step.re_analysis_step,
+                                 _pf_flow_run_id, _pf_wait_ms)
+                    else:
+                        # No flow run exists: the step ran locally (the TR-20 fallback), so this row is its work.
+                        if _pf_observed:
+                            _pf_observed[0].executor = _pf_engine
+                            _pf_observed[0].source = _pf_engine
+                            _pf_observed[0].executor_ref = ""
+                            _pf_observed[0].flow_run_id = ""
+                            _pf_observed[0].dispatch_failed = _pf_dispatch_failed
+                        self._record_cost(_pf_observed, entity_type, slug, output, surveyed_at)
                     _stamp_definition_provenance(output)
                     step_outputs.append(output)
                     _pf_report_entry = {
                         "step": step.qualified_name, "re_analysis_step": _step_key(step),
                         "status": "ok", "engine": _pf_engine,
                     }
+                    if _pf_flow_run_id or _pf_in_process:
+                        _pf_report_entry["flow_run_id"] = _pf_flow_run_id
+                        _pf_report_entry["dispatch_wait_ms"] = _pf_wait_ms
+                        if not _pf_flow_run_id:
+                            _pf_report_entry["detail"] = ("ran as an in-process Prefect flow; Prefect returned no "
+                                                          "flow run id")
                     if _pf_dispatch_failed:
                         # The pane-line contract (app.js's survey launch/status
                         # code): a run that fell back reads "ran locally:
@@ -1005,7 +1023,18 @@ class SurveyDefinitionExecutor:
                     msg = f"Prefect step '{step.re_analysis_step}' failed: {exc}"
                     log.exception(msg)
                     errors.append(msg)
-                    steps_report.append({"step": step.qualified_name, "re_analysis_step": _step_key(step), "status": "error", "engine": "prefect"})
+                    _pf_err_entry = {"step": step.qualified_name, "re_analysis_step": _step_key(step),
+                                     "status": "error", "engine": "prefect"}
+                    _pf_fr = getattr(exc, "flow_run_id", "")
+                    _pf_status = getattr(exc, "status", "")
+                    if _pf_status:
+                        # TR-20/21: the flow run's own outcome (failed, result_unreadable, mismatch, unknown). Nothing
+                        # of it is published and no guard is produced, so conditional edges on it are not taken.
+                        _pf_err_entry.update({
+                            "flow_run_id": _pf_fr, "prefect_status": _pf_status, "detail": str(exc),
+                            "guard": "not produced: steps conditional on this one are not run",
+                        })
+                    steps_report.append(_pf_err_entry)
             elif step.executes_at == "resource-explorer":
                 runner = adapter.re_analysis_steps.get(step.re_analysis_step)
                 if runner is None:
