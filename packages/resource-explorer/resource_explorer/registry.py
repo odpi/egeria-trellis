@@ -5841,12 +5841,23 @@ class ProjectRegistry:
                         existing["target_decoded"].get("idempotency_key") == idempotency_key)
                     return {"created": False, "existing": existing, "coalesced": coalesced, "stale": stale}
                 result_ref = before_insert() if before_insert else ""
-                conn.execute(
-                    """INSERT INTO runs (id, kind, target, requested_by, state,
-                                         enqueued_at, result_ref)
-                       VALUES (?, ?, ?, ?, 'queued', ?, ?)""",
-                    (run_id, kind, json.dumps(target), requested_by, now, result_ref),
-                )
+                try:
+                    conn.execute(
+                        """INSERT INTO runs (id, kind, target, requested_by, state,
+                                             enqueued_at, result_ref)
+                           VALUES (?, ?, ?, ?, 'queued', ?, ?)""",
+                        (run_id, kind, json.dumps(target), requested_by, now, result_ref),
+                    )
+                except Exception as exc:
+                    # The activity entry was opened for a run that now never exists: close it, or it is the TR-2
+                    # phantom by another road (read-back advisory b). Its own connection: this transaction failed.
+                    if result_ref:
+                        try:
+                            self.close_activity_if_running(
+                                result_ref, "error", f"The run could not be queued, so nothing ran: {type(exc).__name__}.")
+                        except Exception:  # noqa: BLE001 - the original failure is the one to raise
+                            log.exception("could not close activity %s after a failed enqueue", result_ref)
+                    raise
             return {"created": True, "run_id": run_id, "result_ref": result_ref, "stale": stale}
         finally:
             if sqlite_lock is not None:

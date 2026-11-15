@@ -210,4 +210,26 @@ def test_the_in_flight_words_read_as_the_ruling_wrote_them():
                              "target_decoded": {"params": {"survey_definition_ref": "RepoAnalysisSurvey"}}},
                             "nobel_network")
     assert words == ("'RepoAnalysisSurvey' is already queued on nobel_network (queued 12:03Z by peterprofile; "
-                     "run r1). Wait for it, or cancel it first.")
+                     "run r1). Wait for it, or cancel it first. To cancel it: POST /api/runs/r1/cancel, or "
+                     "`resource-explorer runs cancel r1`.")
+    running = in_flight_words({"id": "r2", "state": "running", "claimed_at": "2026-11-14T12:05:00+00:00",
+                               "target_decoded": {"params": {"survey_definition_ref": "X"}}}, "y")
+    assert "To cancel it" not in running and running.endswith("Wait for it, or cancel it first.")
+
+
+def test_a_failed_insert_closes_the_activity_entry_it_opened(tmp_path, monkeypatch):
+    """Read-back advisory b: the entry is opened under the lock just before the INSERT; a failed INSERT must not
+    leave it 'running' for ever."""
+    from resource_explorer.activity_logger import log_scout
+
+    reg = ProjectRegistry(db_path=str(tmp_path / "fail.db"))
+    opened = []
+
+    def before():
+        opened.append(log_scout(reg, "repo", "a", "A", "", "running", "queued…"))
+        return opened[-1]
+
+    with pytest.raises(Exception):
+        reg.enqueue_run_once("survey_definition_run", {"not": "serialisable", "x": object()}, lock_key="k",
+                             same=lambda t: False, stale_before="", before_insert=before)
+    assert reg.get_activity(opened[0])["status"] == "error"

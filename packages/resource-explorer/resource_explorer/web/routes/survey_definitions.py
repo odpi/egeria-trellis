@@ -884,8 +884,13 @@ def in_flight_words(existing: dict, slug: str) -> str:
     who = existing.get("requested_by") or "the service account"
     ref = ((existing.get("target_decoded") or {}).get("params") or {}).get("survey_definition_ref") or "This survey"
     verb = "queued" if state == "queued" else ("started" if state == "running" else "claimed by a worker")
-    return (f"'{ref}' is already {'queued' if state == 'queued' else 'running'} on {slug} "
-            f"({verb} {when} by {who}; run {existing.get('id')}). Wait for it, or cancel it first.")
+    run_id = existing.get("id")
+    head = (f"'{ref}' is already {'queued' if state == 'queued' else 'running'} on {slug} "
+            f"({verb} {when} by {who}; run {run_id}). Wait for it, or cancel it first.")
+    if state == "queued":
+        # A queued row is never stale (read-back advisory a): an orphaned one blocks until it is cancelled, so say how.
+        head += f" To cancel it: POST /api/runs/{run_id}/cancel, or `resource-explorer runs cancel {run_id}`."
+    return head
 
 
 def _stale_cutoff() -> str:
