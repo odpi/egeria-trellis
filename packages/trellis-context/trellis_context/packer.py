@@ -235,8 +235,25 @@ def pack(
                 return rung
         return None
 
+    # REQUIRED FIRST, then optional, each tier in spec order. Admitting in plain
+    # spec order let an optional section declared ahead of a required one spend
+    # the budget the required one needed, and the compile then failed with
+    # "does not fit" although the required section fitted on its own -- the
+    # optional one was what should have gone. Required means required: only a
+    # required section that cannot fit after every optional one has been left
+    # out may fail the compile. A group containing any required member is
+    # admitted with the required tier, because its members pack together.
+    # Admission order only; the packed context keeps spec order (see `packed`).
+    required_groups = {s.group for s in live if s.group and s.required}
+
+    def _admits_first(s: Section) -> bool:
+        return s.required or s.group in required_groups
+
+    admission = ([s for s in live if _admits_first(s)]
+                 + [s for s in live if not _admits_first(s)])
+
     handled: set[str] = set()
-    for section in live:
+    for section in admission:
         if section.key in handled:
             continue
         if section.group:
