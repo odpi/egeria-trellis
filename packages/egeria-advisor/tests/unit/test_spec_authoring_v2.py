@@ -546,3 +546,95 @@ def test_registered_specs_keep_their_optional_params_and_gain_paging():
                               "columns": [{"name": "Name", "key": "display_name"}]})
     assert {"page_size", "start_from"} <= set(fs.action.optional_params)
     assert not set(v2.CONDITION_PARAMS) & set(fs.action.optional_params)
+
+
+# ---- TR-6: an ordinal text property is ranked, not sorted by its letters (C03) ---------------------------
+
+#: C03's rows as the quiet live re-run returned them (31e359c5, results_rebased_fixes_live_quiet.json): Egeria's
+#: PROPERTY_DESCENDING on importance, which is text, so Medium-High came first and Critical last.
+C03_ROWS = [("Inconsistent Data Definitions Undermining Cross-Department Reporting", "Medium-High"),
+            ("Terrorism-Related Incident at the Annual Conference", "Medium-High"),
+            ("Failure to Discharge Martyn's Law Responsible Person Duties", "Medium-High"),
+            ("Onboarding of a Fraudulent or Compromised Supplier", "High"),
+            ("Loss of Undocumented Governance Knowledge on Staff Departure", "High"),
+            ("Accidental Disclosure of Patient Data through Misconfigured Access", "High"),
+            ("Insider Misuse of Sensitive Patient Data", "High"),
+            ("Manufacturing Batch Records Failing GMP Traceability Requirements", "High"),
+            ("Counterfeit or Substandard Materials Entering Manufacturing", "Critical"),
+            ("Ransomware Disruption to Manufacturing Operations", "Critical"),
+            ("Theft of Personalised Treatment Intellectual Property", "Critical"),
+            ("Loss of Clinical Trial Data Integrity", "Critical")]
+C03_COND = {"output_sort_order": "PROPERTY_DESCENDING", "order_property_name": "importance"}
+
+
+def _table(rows, key="importance", capped=False):
+    return {"result": {"kind": "table", "columns": [{"key": "display_name", "label": "Risk Name"},
+                                                    {"key": key, "label": "Importance"}],
+                       "rows": [{"display_name": n, key: v} for n, v in rows]},
+            "capped": capped, "shown": len(rows), "notes": []}
+
+
+def _order(prev):
+    return [r["importance"] for r in prev["result"]["rows"]]
+
+
+def test_c03_highest_importance_comes_first():
+    out = v2.order_rows(_table(C03_ROWS), C03_COND)
+    assert _order(out) == ["Critical"] * 4 + ["High"] * 5 + ["Medium-High"] * 3
+    assert out["result"]["rows"][0]["display_name"] == "Counterfeit or Substandard Materials Entering Manufacturing"
+    assert out["reordered"] == "rank"
+    assert any("Medium-High < High < Critical" in n and "not alphabetically" in n for n in out["notes"])
+    assert not any("may be among those not shown" in n for n in out["notes"])     # not capped
+
+
+def test_ascending_puts_the_lowest_rank_first_and_keeps_egerias_order_on_a_tie():
+    rows = [("a", "high"), ("b", "Low"), ("c", "MEDIUM"), ("d", "low"), ("e", "very high"), ("f", "medium_high")]
+    out = v2.order_rows(_table(rows), {**C03_COND, "output_sort_order": "PROPERTY_ASCENDING"})
+    assert [r["display_name"] for r in out["result"]["rows"]] == ["b", "d", "c", "f", "a", "e"]
+
+
+def test_a_capped_run_says_higher_ranked_rows_may_be_missing():
+    out = v2.order_rows(_table(C03_ROWS[:5], capped=True), C03_COND)
+    assert _order(out) == ["High", "High", "Medium-High", "Medium-High", "Medium-High"]
+    assert any("rows ranked higher may be among those not shown" in n for n in out["notes"])
+
+
+def test_numbers_held_as_text_sort_as_numbers():
+    out = v2.order_rows(_table([("a", "9"), ("b", "10"), ("c", "2.5")]), C03_COND)
+    assert _order(out) == ["10", "9", "2.5"] and out["reordered"] == "numbers"
+
+
+def test_text_off_the_scale_keeps_egerias_order_and_says_it_is_alphabetical():
+    rows = [("a", "Amber"), ("b", "Red"), ("c", "Green")]
+    out = v2.order_rows(_table(rows), C03_COND)
+    assert _order(out) == ["Amber", "Red", "Green"] and "reordered" not in out
+    assert any("sorted it alphabetically" in n for n in out["notes"])
+
+
+def test_dates_need_no_note_and_rows_without_a_value_go_last():
+    rows = [("a", "2026-11-01"), ("b", "2026-11-13T10:00:00Z")]
+    out = v2.order_rows(_table(rows), C03_COND)
+    assert out["notes"] == [] and _order(out) == ["2026-11-01", "2026-11-13T10:00:00Z"]
+    out = v2.order_rows(_table([("a", ""), ("b", "Low"), ("c", "High")]), C03_COND)
+    assert _order(out) == ["High", "Low", ""]
+
+
+def test_no_property_sort_no_change():
+    prev = _table(C03_ROWS)
+    assert v2.order_rows(prev, {"output_sort_order": "LAST_UPDATE_RECENT"}) is prev
+    assert v2.order_rows(prev, {}) is prev
+    assert v2.order_rows({"result": {"kind": "text", "content": "x"}}, C03_COND)["result"]["kind"] == "text"
+
+
+def test_answer_ranks_c03_in_the_reply(monkeypatch):
+    def fake_preview(draft, *, client, max_rows, params=None, **kw):
+        return _table(C03_ROWS)
+    monkeypatch.setattr("pyegeria.authoring.preview", fake_preview)
+    spec = _spec(target_type="Risk", columns=[{"name": "Risk Name", "key": "display_name"},
+                                              {"name": "Importance", "key": "importance"}],
+                 conditions=dict(C03_COND))
+    monkeypatch.setattr(v2, "spec_draft", lambda one: object())
+    out = v2.answer(spec, client=object())
+    lines = [ln for ln in out["markdown"].splitlines() if ln.startswith("| ") and "Importance" not in ln]
+    assert lines[0].endswith("| Critical |") and lines[-1].endswith("| Medium-High |")
+    assert "not alphabetically" in out["markdown"]

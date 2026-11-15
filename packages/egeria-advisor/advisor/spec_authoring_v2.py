@@ -673,6 +673,92 @@ def merge_previews(prevs: List[Dict[str, Any]], values: List[str], prop: str, ma
     return {**tables[0], "result": result, "capped": capped, "shown": len(rows), "notes": notes}
 
 
+#: Ordinal words, lowest rank first (TR-6, C03 on laz 2026-11-13). Egeria sorts a string property by its letters,
+#: so "highest importance" came back Medium-High, High, ... Critical: the most important last. A text property
+#: whose values all sit on this scale (importance, priority, criticality, severity, confidence...) is ranked by
+#: it in the answer instead; one whose values are all numbers is sorted as numbers.
+ORDINAL_SCALE: Tuple[Tuple[str, ...], ...] = (
+    ("none",),
+    ("negligible", "minimal", "very-low", "lowest"),
+    ("low",),
+    ("low-medium", "medium-low"),
+    ("medium", "moderate", "normal"),
+    ("medium-high", "high-medium"),
+    ("high",),
+    ("very-high", "highest"),
+    ("critical", "severe", "extreme"),
+)
+_ORDINAL_RANK = {w: i for i, words in enumerate(ORDINAL_SCALE) for w in words}
+_PROPERTY_SORTS = ("PROPERTY_ASCENDING", "PROPERTY_DESCENDING")
+
+
+def _cell_text(v: Any) -> str:
+    if isinstance(v, dict):
+        v = v.get("display") or v.get("value") or v.get("text") or ""
+    if isinstance(v, list):
+        return ", ".join(_cell_text(x) for x in v)
+    return " ".join(str(v if v is not None else "").split())
+
+
+def _ordinal_word(text: str) -> str:
+    return re.sub(r"[\s_\-]+", "-", text.strip().lower())
+
+
+def _number(text: str) -> Optional[float]:
+    try:
+        return float(text.replace(",", ""))
+    except ValueError:
+        return None
+
+
+def _iso_date(text: str) -> bool:
+    return bool(re.match(r"^\d{4}-\d{2}-\d{2}([T ][\d:.]+)?(Z|[+-]\d{2}:?\d{2})?$", text))
+
+
+def order_rows(prev: Dict[str, Any], conditions: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    """`prev` with its rows in the order the question means when it sorts by a property (TR-6).
+
+    Egeria sorts PROPERTY_ASCENDING/DESCENDING by the property's text. When every value shown is a number,
+    or every value sits on ORDINAL_SCALE, the rows are re-ranked here, and a note says so. Re-ranking only
+    orders the rows Egeria returned: when the run was capped, Egeria picked those rows alphabetically, so the
+    note says that rows ranked higher (or lower) may be among those not shown. Text not on the scale keeps
+    Egeria's order, with a note that it is alphabetical."""
+    cond = conditions or {}
+    order, name = str(cond.get("output_sort_order") or "").upper(), cond.get("order_property_name")
+    res = prev.get("result")
+    if order not in _PROPERTY_SORTS or not name or not isinstance(res, dict) or res.get("kind") != "table":
+        return prev
+    key = _snake(str(name))
+    rows = list(res.get("rows") or [])
+    texts = [_cell_text(r.get(key)) if isinstance(r, dict) else "" for r in rows]
+    present = [t for t in texts if t]
+    if not present:
+        return prev
+    descending = order == "PROPERTY_DESCENDING"
+    notes = list(prev.get("notes") or [])
+    if all(_number(t) is not None for t in present):
+        kind, rank = "numbers", lambda t: _number(t)
+        note = f"sorted by {name} as numbers, not as text"
+    elif all(_ordinal_word(t) in _ORDINAL_RANK for t in present):
+        kind, rank = "rank", lambda t: _ORDINAL_RANK[_ordinal_word(t)]
+        scale = sorted(dict.fromkeys(present), key=rank)
+        note = f"sorted by {name} by its rank ({' < '.join(scale)}), not alphabetically as Egeria sorts text"
+    else:
+        if not all(_iso_date(t) for t in present):
+            notes.append(f"{name} is text, so Egeria sorted it alphabetically: the order is by its letters, "
+                         f"not by what the values mean")
+        return {**prev, "notes": notes}
+    with_value = [(r, t) for r, t in zip(rows, texts) if t]
+    without = [r for r, t in zip(rows, texts) if not t]
+    with_value.sort(key=lambda rt: rank(rt[1]), reverse=descending)       # stable: Egeria's order on a tie
+    if prev.get("capped"):
+        note += (f"; Egeria chose these {len(rows)} rows by {name}'s letters, so rows ranked "
+                 f"{'higher' if descending else 'lower'} may be among those not shown")
+    notes.append(note)
+    return {**prev, "result": {**res, "rows": [r for r, _ in with_value] + without}, "notes": notes,
+            "reordered": kind}
+
+
 def answer(spec: Dict[str, Any], client: Any, *, max_rows: int = ANSWER_ROWS) -> Dict[str, Any]:
     """Run the spec as `client`'s user (structured TABLE, capped) and render it for the reply. A status
     the finder matches one value at a time runs once per value, merged."""
@@ -696,6 +782,7 @@ def answer(spec: Dict[str, Any], client: Any, *, max_rows: int = ANSWER_ROWS) ->
         prev = merge_previews(prevs, status["values"], status["property"], max_rows)
     else:
         prev = prevs[0]
+    prev = order_rows(prev, spec.get("conditions"))
     out = {"ok": True, **prev, "s": round(time.time() - t, 2)}
     out["markdown"] = render_markdown(prev)
     return out
