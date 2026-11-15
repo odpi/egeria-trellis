@@ -242,15 +242,21 @@ def _cpu_seconds() -> float:
 #: worker runs (prefect/flows.py), so every step_runs row written while it is set is that flow run's WORK row
 #: (executor=prefect, source=prefect, flow_run_id). "" everywhere else: a local run records executor=local as before.
 _FLOW_RUN: ContextVar[str] = ContextVar("re_step_flow_run", default="")
+#: The (step_key, demanded_by) of every row `record` persisted inside an `in_flow_run` scope, so the flow can tell
+#: whether its runner wrote the work row itself, with or without a flow run id. None outside a scope.
+_RECORDED: ContextVar[list | None] = ContextVar("re_step_flow_run_recorded", default=None)
 
 
 @contextmanager
 def in_flow_run(flow_run_id: str):
     """Rows observed inside this scope are the work of Prefect flow run `flow_run_id`."""
     token = _FLOW_RUN.set(str(flow_run_id or ""))
+    recorded: list = []
+    rtoken = _RECORDED.set(recorded)
     try:
-        yield
+        yield recorded
     finally:
+        _RECORDED.reset(rtoken)
         _FLOW_RUN.reset(token)
 
 
@@ -517,6 +523,9 @@ def record(registry, slug: str, obs: Observation, surveyed_at: str | None = None
     try:
         if obs.questions_answered < 0:
             obs.questions_answered = count_questions_answered(obs.step_key, entity_type)
+        scope = _RECORDED.get()
+        if scope is not None:
+            scope.append((obs.step_key, obs.demanded_by or ""))
         registry.record_step_run(
             slug, obs.step_key, surveyed_at or "",
             entity_type=entity_type,

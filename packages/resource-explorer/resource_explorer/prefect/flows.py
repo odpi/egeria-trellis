@@ -224,7 +224,7 @@ def _run_step_as_flow_run(flow_run_id: str, entity_type: str, slug: str, step_na
     registry = ProjectRegistry()
     info = _step_info_for(entity_type, step_name)
     kwargs = {"credential_ref": credential_ref} if credential_ref else {}
-    with step_cost_observer.in_flow_run(flow_run_id):
+    with step_cost_observer.in_flow_run(flow_run_id) as recorded:
         with step_cost_observer.observe(
             step_name, getattr(info, "fetch_cost", ""), getattr(info, "compute_cost", ""),
             entity_type=entity_type, slug=slug, job_family="survey",
@@ -236,17 +236,23 @@ def _run_step_as_flow_run(flow_run_id: str, entity_type: str, slug: str, step_na
         return [r for r in registry.step_run_ids_for_flow_run(flow_run_id)
                 if r.get("step_key") == step_name and not r.get("demanded_by")]
 
-    rows = own_rows() if flow_run_id else []
-    if flow_run_id and not rows and observed:
+    runner_wrote_it = (step_name, "") in recorded
+    if not runner_wrote_it and observed:
+        # The runner recorded no work row of its own (database, filesystem): write the one, from the flow's own
+        # measurement, still inside the flow run so it carries the id.
         obs = observed[0]
         annotations = (output or {}).get("annotations") if isinstance(output, dict) else None
         obs.annotations, obs.outcomes = step_cost_observer.describe_work(annotations)
         obs.disagreement = step_cost_observer._disagreement(obs)
         commit = output.get("survey_commit_sha") if isinstance(output, dict) else None
         surveyed_at = (runner_kwargs or {}).get("surveyed_at") or now_utc_iso()
-        step_cost_observer.record(registry, slug, obs, surveyed_at, entity_type=entity_type,
-                                  survey_commit_sha=commit or None)
-        rows = own_rows()
+        with step_cost_observer.in_flow_run(flow_run_id):
+            if flow_run_id:
+                obs.executor = obs.source = "prefect"
+                obs.executor_ref = obs.flow_run_id = flow_run_id
+            step_cost_observer.record(registry, slug, obs, surveyed_at, entity_type=entity_type,
+                                      survey_commit_sha=commit or None)
+    rows = own_rows() if flow_run_id else []
     if len(rows) > 1:
         log.error("flow run %s wrote %d work rows for %s (expected 1): %s", flow_run_id, len(rows), step_name,
                   [r.get("id") for r in rows])

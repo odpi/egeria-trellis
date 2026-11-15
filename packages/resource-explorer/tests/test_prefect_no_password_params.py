@@ -61,6 +61,7 @@ class World:
         self.received: list[dict] = []        # what the step's runner connected with, in memory
         self.prefect_saw: list = []           # EVERYTHING handed to the fake Prefect
         self.soda_saw: list[dict] = []
+        self.inproc_run_id = "fr-inproc"
 
         entity = types.SimpleNamespace(slug="mydb", display_name="mydb", db_user=STORED_USER,
                                        db_password=STORED_PW, db_type="postgresql", host="h",
@@ -125,7 +126,7 @@ def _patches(world, *, reachable=True, mode="rest"):
             return types.SimpleNamespace(id="dep-1", work_pool_name="pool")
         async def read_workers_for_work_pool(self, pool):
             return [types.SimpleNamespace(status="ONLINE")]
-        async def create_flow_run_from_deployment(self, deployment_id, parameters, tags):
+        async def create_flow_run_from_deployment(self, deployment_id, parameters, tags, idempotency_key=None):
             world.prefect_saw.append({"flow_run_parameters": parameters, "tags": tags})
             # the worker is ANOTHER process: it sees only what was sent
             ref = parameters.get("credential_ref", "")
@@ -146,8 +147,10 @@ def _patches(world, *, reachable=True, mode="rest"):
     # --- in-process one-step flow ---------------------------------------------
     def fake_inproc_flow(**params):
         world.prefect_saw.append({"in_process_flow_parameters": params})
-        result = flows.run_surveyor_step_task.fn(**params)
-        return {"result": result, "flow_run_id": "fr-inproc"}
+        # The real in-process flow body (TR-21): its one work row carries the flow run id.
+        with patch.object(flows, "run_surveyor_step_task", flows.run_surveyor_step_task.fn):
+            result, _ = flows._run_step_as_flow_run(world.inproc_run_id, keep_result=False, **params)
+        return {"result": result, "flow_run_id": world.inproc_run_id}
 
     ctx.append(patch.object(pa, "_in_process_step_flow", lambda: fake_inproc_flow))
     ctx.append(patch.object(pa, "check_prefect_reachable_sync",
@@ -397,3 +400,17 @@ def test_a_dispatched_database_step_has_exactly_one_work_row_and_no_host_row(reg
     assert [(r["executor"], r["source"], r["flow_run_id"]) for r in rows] == [("prefect", "prefect", "fr-rest-1")]
     kept = registry.read_flow_run_result("fr-rest-1")
     assert kept["step_run_id"] == rows[0]["id"] and kept["output"]["ok"] is True
+
+
+def test_an_in_process_flow_with_no_flow_run_id_gets_no_host_row(registry):
+    """Architect advisory on TR-21: an in-process flow that returned writes its own work row, even when Prefect gave
+    no id; the host must not add a local row next to it."""
+    w = World(registry, steps=("local_step",))
+    w.inproc_run_id = ""
+    with _Stack(_patches(w)), \
+         patch.object(SurveyDefinitionExecutor, "_any_step_needs_prerequisites", return_value=True):
+        res = _run(w, db_user=OVERRIDE_USER, db_pwd=OVERRIDE_PW, credential_scope="this run")
+    step = res["steps"][0]
+    assert step["status"] == "ok" and step["flow_run_id"] == "" and "in-process Prefect flow" in step["detail"]
+    rows = registry.query_step_runs(slug="mydb", step_key="local_step", entity_type="database")
+    assert len(rows) == 1, rows

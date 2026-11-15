@@ -15,6 +15,7 @@ import types
 from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import httpx
 import pytest
 
 import resource_explorer.surveyors.prefect_adapter as adapter
@@ -61,6 +62,24 @@ def _client(states=None, *, create_raises=None, read_raises=None, deployment_mis
     c.read_flow_run = read
     c.set_flow_run_state = AsyncMock()
     return c
+
+
+class _Server:
+    """A Prefect server that keeps runs by idempotency key, as Prefect does: a create with a key it has seen returns
+    the existing run. `fail_first_after_creating`: the first create MAKES the run, then the response is lost."""
+
+    def __init__(self, fail_first_after_creating=False):
+        self.runs: dict[str, object] = {}
+        self.keys_seen: list[str] = []
+        self.fail_first = fail_first_after_creating
+
+    async def create(self, deployment_id, parameters, tags, idempotency_key=None):
+        self.keys_seen.append(idempotency_key)
+        run = self.runs.setdefault(idempotency_key, types.SimpleNamespace(id=RUN_ID))
+        if self.fail_first:
+            self.fail_first = False
+            raise httpx.ReadTimeout("the response was lost")
+        return run
 
 
 class _Results:
@@ -140,9 +159,45 @@ class TestTr20OutcomeTable:
         assert exc is None and out == {"ran": "locally"} and local == 1
         assert info["engine"] == "local" and info["flow_run_id"] == "" and "not found" in info["dispatch_failed"]
 
-    def test_create_flow_run_raising_falls_back_once(self):
+    def test_a_create_that_could_not_connect_falls_back_once(self):
+        """R1: a connect failure means the request was never sent, so no run can exist."""
+        _, exc, info, local = _dispatch(_client(create_raises=httpx.ConnectError("connection refused")))
+        assert exc is None and local == 1 and info["engine"] == "local" and "refused" in info["dispatch_failed"]
+
+    def test_a_create_that_failed_after_the_server_made_the_run_is_followed_not_run_locally(self):
+        """R1 (Architect read-back 2026-11-15): the first create times out on the response although the server made
+        the run; the retry with the same idempotency key returns that run, which is followed."""
+        server = _Server(fail_first_after_creating=True)
+        c = _client([_state("Completed")])
+        c.create_flow_run_from_deployment = AsyncMock(side_effect=server.create)
+        out, exc, info, local = _dispatch(c)
+        assert exc is None and out == {"findings": 3} and local == 0
+        assert info["engine"] == "prefect" and info["flow_run_id"] == RUN_ID
+        assert len(server.runs) == 1 and len(server.keys_seen) == 2 and len(set(server.keys_seen)) == 1
+
+    def test_two_failing_creates_are_unknown_and_never_run_locally(self):
         _, exc, info, local = _dispatch(_client(create_raises=RuntimeError("422 bad parameters")))
-        assert exc is None and local == 1 and info["engine"] == "local" and "422" in info["dispatch_failed"]
+        assert isinstance(exc, adapter.PrefectRunOutcome) and exc.status == "unknown" and local == 0
+        assert "idempotency key" in str(exc) and info["engine"] == "prefect" and info["status"] == "unknown"
+
+    def test_a_client_that_fails_to_close_after_a_completed_run_returns_the_result(self):
+        """R2: closing the client after the result was read must not turn into a local run."""
+        c = _client([_state("Completed")])
+        c.__aexit__ = AsyncMock(side_effect=RuntimeError("close failed"))
+        out, exc, info, local = _dispatch(c)
+        assert exc is None and out == {"findings": 3} and local == 0 and info["engine"] == "prefect"
+
+    def test_a_client_that_fails_to_close_after_a_failed_run_keeps_the_runs_outcome(self):
+        c = _client([_state("Failed")])
+        c.__aexit__ = AsyncMock(side_effect=RuntimeError("close failed"))
+        _, exc, info, local = _dispatch(c)
+        assert isinstance(exc, adapter.PrefectFlowRunFailed) and local == 0 and info["flow_run_id"] == RUN_ID
+
+    def test_a_client_that_fails_to_close_before_any_create_still_falls_back(self):
+        c = _client(deployment_missing=True)
+        c.__aexit__ = AsyncMock(side_effect=RuntimeError("close failed"))
+        _, exc, info, local = _dispatch(c)
+        assert exc is None and local == 1 and info["engine"] == "local"
 
     def test_the_in_process_flow_failing_is_never_run_again_locally(self):
         cfg = types.SimpleNamespace(prefect=types.SimpleNamespace(enabled=True, api_url="http://x/api",
@@ -242,3 +297,10 @@ def test_the_targeted_ddl_file_is_the_registrys_own_statement():
     body = sql[sql.index("CREATE TABLE"):sql.index(";", sql.index("CREATE TABLE"))]
     assert norm(body) == norm(ProjectRegistry.FLOW_RUN_RESULTS_DDL)
     assert "lock_timeout" in sql and "statement_timeout" in sql
+
+
+def test_every_create_carries_an_idempotency_key():
+    c = _client([_state("Completed")])
+    _dispatch(c)
+    key = c.create_flow_run_from_deployment.await_args.kwargs["idempotency_key"]
+    assert isinstance(key, str) and len(key) == 32

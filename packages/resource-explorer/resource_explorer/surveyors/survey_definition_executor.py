@@ -957,7 +957,8 @@ class SurveyDefinitionExecutor:
                     _pf_dispatch_failed = _pf_dispatch.get("dispatch_failed", "")
                     _pf_flow_run_id = _pf_dispatch.get("flow_run_id", "")
                     _pf_wait_ms = round(_pf_observed[0].elapsed * 1000.0, 1) if _pf_observed else None
-                    if _pf_flow_run_id:
+                    _pf_in_process = bool(_pf_dispatch.get("in_process_flow"))
+                    if _pf_flow_run_id or _pf_in_process:
                         # TR-21 (Architect ruling 2026-11-15): the flow run's WORK row was written by the flow
                         # (executor=prefect, its flow_run_id). What was measured here is the wait, dispatch to
                         # terminal state, not the work: it goes to the report and the log as dispatch_wait_ms, never
@@ -979,9 +980,12 @@ class SurveyDefinitionExecutor:
                         "step": step.qualified_name, "re_analysis_step": _step_key(step),
                         "status": "ok", "engine": _pf_engine,
                     }
-                    if _pf_flow_run_id:
+                    if _pf_flow_run_id or _pf_in_process:
                         _pf_report_entry["flow_run_id"] = _pf_flow_run_id
                         _pf_report_entry["dispatch_wait_ms"] = _pf_wait_ms
+                        if not _pf_flow_run_id:
+                            _pf_report_entry["detail"] = ("ran as an in-process Prefect flow; Prefect returned no "
+                                                          "flow run id")
                     if _pf_dispatch_failed:
                         # The pane-line contract (app.js's survey launch/status
                         # code): a run that fell back reads "ran locally:

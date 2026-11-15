@@ -37,6 +37,7 @@ import json
 import re
 import logging
 import time
+import uuid
 from dataclasses import dataclass, field
 from typing import Any, Awaitable, Callable
 from prefect.client.orchestration import PrefectClient
@@ -586,43 +587,103 @@ async def _run_prefect_step_api(
     config = get_config()
     if timeout_seconds is None:
         timeout_seconds = _step_timeout_seconds()
-    async with re_prefect_client() as client:
-        # 1. Which deployment, and fail fast: a pool with no ONLINE worker (or none on this RE's code)
-        # would leave the run Scheduled forever, or run it on other code. Read-only; nothing is created yet.
-        deployment = await _choose_deployment(client, config.prefect.work_pool)
+    # R1/R2 (Architect read-back of TR-20, 2026-11-15): whether a run CAN exist, not whether this client holds an
+    # id, decides between a local fallback and that run's outcome. `dispatch` tracks it across the client context, so
+    # an exception from closing the client (R2) is judged by it too.
+    dispatch = {"may_exist": False, "flow_run_id": "", "key": uuid.uuid4().hex}
+    outcome: PrefectRunOutcome | None = None
+    result: tuple[dict[str, Any], str] | None = None
+    try:
+        async with re_prefect_client() as client:
+            # 1. Which deployment, and fail fast: a pool with no ONLINE worker (or none on this RE's code)
+            # would leave the run Scheduled forever, or run it on other code. Read-only; nothing is created yet.
+            deployment = await _choose_deployment(client, config.prefect.work_pool)
 
-        # 2. Trigger the flow run — tagged so the admin "⚡ Prefect" panel can
-        # group/filter flow-runs by the resource they belong to. Not the RE
-        # activity_id (run_prefect_step doesn't have one in scope — threading
-        # it through SurveyDefinitionExecutor.run()'s whole call chain is a
-        # bigger change than this pass makes; slug+step is enough for "what's
-        # running/stuck for resource X").
-        parameters = {
-            "entity_type": entity_type,
-            "slug": slug,
-            "step_name": step_name,
-            "runner_kwargs": runner_kwargs,
-        }
-        # Prefect persists these in its own database and shows them in its UI.
-        # A credential here is a bug somewhere upstream: fail loud, never send.
-        assert_no_credentials(parameters, where="Prefect flow-run parameters")
-        flow_run = await client.create_flow_run_from_deployment(
-            deployment_id=deployment.id,
-            parameters=parameters,
-            tags=[f"entity_type:{entity_type}", f"slug:{slug}", f"step:{step_name}"],
-        )
-        flow_run_id = str(flow_run.id)
-
-        # From here the run EXISTS: every way out is that run's outcome, never a local run (TR-20).
-        try:
-            return await _await_flow_run(client, flow_run.id, flow_run_id, timeout_seconds=timeout_seconds,
-                                         poll_interval=poll_interval, clock=clock, sleep=sleep)
-        except PrefectRunOutcome:
-            raise
-        except Exception as e:  # after the id: an outcome, never a reason to run locally
+            # 2. Trigger the flow run — tagged so the admin "⚡ Prefect" panel can
+            # group/filter flow-runs by the resource they belong to. Not the RE
+            # activity_id (run_prefect_step doesn't have one in scope — threading
+            # it through SurveyDefinitionExecutor.run()'s whole call chain is a
+            # bigger change than this pass makes; slug+step is enough for "what's
+            # running/stuck for resource X").
+            parameters = {
+                "entity_type": entity_type,
+                "slug": slug,
+                "step_name": step_name,
+                "runner_kwargs": runner_kwargs,
+            }
+            # Prefect persists these in its own database and shows them in its UI.
+            # A credential here is a bug somewhere upstream: fail loud, never send.
+            assert_no_credentials(parameters, where="Prefect flow-run parameters")
+            try:
+                flow_run = await _create_flow_run(
+                    client, deployment, parameters,
+                    [f"entity_type:{entity_type}", f"slug:{slug}", f"step:{step_name}"], dispatch)
+                dispatch["flow_run_id"] = str(flow_run.id)
+                # From here the run EXISTS: every way out is that run's outcome, never a local run (TR-20).
+                result = await _await_flow_run(client, flow_run.id, dispatch["flow_run_id"],
+                                               timeout_seconds=timeout_seconds, poll_interval=poll_interval,
+                                               clock=clock, sleep=sleep)
+            except PrefectRunOutcome as o:
+                outcome = o
+            except Exception as e:  # after the create was sent: an outcome, never a reason to run locally
+                if not dispatch["may_exist"]:
+                    raise
+                outcome = PrefectRunOutcome(
+                    f"Prefect flow run {dispatch['flow_run_id'] or '(id not known)'} could not be followed "
+                    f"({type(e).__name__}: {e}; idempotency key {dispatch['key']}); its outcome is unknown and the "
+                    "step was NOT run locally", dispatch["flow_run_id"], status="unknown")
+                outcome.__cause__ = e
+    except Exception as e:
+        # R2: closing the client (or anything else outside the run's own handling) failed.
+        if outcome is not None:
+            logging.getLogger(__name__).warning("Prefect client close failed after flow run %s's outcome: %s: %s",
+                                                outcome.flow_run_id or "?", type(e).__name__, e)
+            raise outcome from None
+        if result is not None:
+            logging.getLogger(__name__).warning("Prefect client close failed after flow run %s completed and its "
+                                                "result was read; the result is used: %s: %s",
+                                                result[1], type(e).__name__, e)
+            return result
+        if dispatch["may_exist"]:
             raise PrefectRunOutcome(
-                f"Prefect flow run {flow_run_id} could not be followed ({type(e).__name__}: {e}); its outcome is "
-                "unknown and the step was NOT run locally", flow_run_id, status="unknown") from e
+                f"Prefect dispatch failed after the create was sent ({type(e).__name__}: {e}; idempotency key "
+                f"{dispatch['key']}); a run may exist, so the step was NOT run locally",
+                dispatch["flow_run_id"], status="unknown") from e
+        raise  # no run can exist: run_prefect_step falls back locally
+    if outcome is not None:
+        raise outcome
+    assert result is not None
+    return result
+
+
+async def _create_flow_run(client: Any, deployment: Any, parameters: dict[str, Any], tags: list[str],
+                           dispatch: dict[str, Any]) -> Any:
+    """Create the step's flow run under this dispatch's idempotency key (R1, Architect read-back 2026-11-15).
+
+    A create can fail AFTER the server made the run (a read timeout, a reset on the response): the client has no id,
+    but a worker will pick the run up. So only a failure to CONNECT (the request was never sent) leaves
+    `dispatch["may_exist"]` False and is re-raised for the local fallback. Any other failure is retried ONCE with the
+    same key, which returns the run the first attempt made, if it did. A second failure is "unknown", never local."""
+    import httpx
+
+    def create():
+        return client.create_flow_run_from_deployment(
+            deployment_id=deployment.id, parameters=parameters, tags=tags, idempotency_key=dispatch["key"])
+
+    dispatch["may_exist"] = True
+    try:
+        return await create()
+    except (httpx.ConnectError, httpx.ConnectTimeout):
+        dispatch["may_exist"] = False  # nothing was sent: no run can exist
+        raise
+    except Exception as first:  # noqa: BLE001 - any other create failure: the run may exist, so retry with the key
+        try:
+            return await create()
+        except Exception as second:
+            raise PrefectRunOutcome(
+                f"creating the Prefect flow run failed twice ({type(first).__name__}: {first}; then "
+                f"{type(second).__name__}: {second}); a run may exist under idempotency key {dispatch['key']}, so "
+                "the step was NOT run locally", "", status="unknown") from second
 
 
 def _results_registry():
@@ -822,6 +883,10 @@ def run_prefect_step(
             if credential_ref:
                 result, flow_run_id = _run_step_in_process_flow(
                     entity_type, slug, step_name, runner_kwargs, credential_ref)
+                if dispatch_info is not None:
+                    # The flow ran HERE and wrote its own work row, even when Prefect gave no id: the caller must
+                    # not add a host row (Architect advisory on TR-21, 2026-11-15).
+                    dispatch_info["in_process_flow"] = True
             elif loop and loop.is_running():
                 # Already inside an event loop (a FastAPI request thread): asyncio.run
                 # cannot nest, so hand the coroutine to a worker thread with its own
