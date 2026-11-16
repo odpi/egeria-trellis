@@ -36,10 +36,18 @@ class _Boom(Exception):
     pass
 
 
+from tests.egeria_refusals import http_status, not_permitted, refused_token  # noqa: E402
+
+
 @pytest.mark.parametrize("exc,expected", [
-    (_Boom("AUTHORIZATION_ERROR_401 User not authorized received for user - `rover`"), "refused"),
-    (_Boom("OPEN-METADATA-SECURITY-403-001 nope"), "refused"),
-    (type("PyegeriaUnauthorizedException", (Exception,), {})("401"), "refused"),
+    # TR-22: by class and code, as pyegeria raises them; the old words in a plain exception are not a refusal.
+    (refused_token("AUTHORIZATION_ERROR_401 User not authorized received for user - `rover`", user="rover"), "refused"),
+    (not_permitted("OPEN-METADATA-SECURITY-403-001 nope", user="rover"), "refused"),
+    (http_status(401), "refused"),
+    (http_status(403), "refused"),
+    (_Boom("AUTHORIZATION_ERROR_401 User not authorized received for user - `rover`"), "unreachable"),
+    (_Boom("OPEN-METADATA-SECURITY-403-001 nope"), "unreachable"),
+    (type("PyegeriaUnauthorizedException", (Exception,), {})("401"), "unreachable"),
     (type("PyegeriaConnectionException", (Exception,), {})("connect failed"), "unreachable"),
     (httpx.ConnectError("refused"), "unreachable"),
     (httpx.ReadTimeout("slow"), "unreachable"),

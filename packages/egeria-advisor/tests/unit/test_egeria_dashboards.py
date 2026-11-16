@@ -465,14 +465,22 @@ def test_report_error_from_executor_is_failed(viewers, monkeypatch):
     assert out["state"] == "failed" and "does not support output format" in out["message"]
 
 
-def test_a_403_worded_401_is_not_a_refused_token():
-    """pyegeria <= 6.2.32 words a 403-020 (hidden zone) with AUTHORIZATION_ERROR_401."""
-    class Exc(Exception):
-        related_http_code = 403
-    assert not ed._is_token_refused(Exc("AUTHORIZATION_ERROR_401 unauthorized token"))
-    assert not ed._is_token_refused(RuntimeError(
-        "AUTHORIZATION_ERROR_401 OPEN-METADATA-SECURITY-403-020 User x is not authorized to issue an operation read"))
-    assert ed._is_token_refused(RuntimeError("HTTP 401: bearer token expired, unauthorized"))
+def test_a_refused_token_is_told_by_class_and_code_not_by_words():
+    """TR-22: a transport 401 (pyegeria's PyegeriaUnauthorizedException, related_http_code 401) is the viewer's token;
+    Egeria's hidden-zone 403-020 (the same class, related_http_code 403) is "restricted"; words alone are neither."""
+    import httpx
+    from pyegeria.core._exceptions import PyegeriaUnauthorizedException
+
+    req = httpx.Request("POST", "http://x")
+    refused = PyegeriaUnauthorizedException(httpx.Response(401, request=req), {}, {"userid": "e"})
+    body = {"relatedHTTPCode": 403, "exceptionClassName": "UserNotAuthorizedException",
+            "exceptionErrorMessageId": "OPEN-METADATA-SECURITY-403-020",
+            "exceptionErrorMessage": "User x is not authorized to issue an operation read"}
+    hidden = PyegeriaUnauthorizedException(httpx.Response(200, request=req, json=body), {}, body)
+    assert ed._is_token_refused(refused)
+    assert not ed._is_token_refused(hidden)
+    assert not ed._is_token_refused(RuntimeError("HTTP 401: bearer token expired, unauthorized"))
+    assert not ed._is_token_refused(RuntimeError("AUTHORIZATION_ERROR_401 OPEN-METADATA-SECURITY-403-020 read"))
 
 
 def test_spec_sync_invalidates_resolved_sheets(viewers):

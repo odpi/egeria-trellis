@@ -86,22 +86,14 @@ def _build_client(conn: Dict[str, str]) -> Any:
 
 def _is_token_refused(exc: BaseException) -> bool:
     """A 401 is the viewer's token, not an element: it must reach the UI as "sign in again". A 403 for an
-    element in a hidden zone is the resolver's business ("restricted"), not this."""
-    try:
-        from pyegeria.core._exceptions import PyegeriaUnauthorizedException
-    except ImportError:  # pragma: no cover
-        PyegeriaUnauthorizedException = ()  # type: ignore[assignment]
-    code = getattr(exc, "related_http_code", None)
-    if isinstance(exc, PyegeriaUnauthorizedException) and code == 401:
-        return True
-    if code == 403:
-        # pyegeria <= 6.2.32 words a 403-020 (element in a hidden zone) "AUTHORIZATION_ERROR_401":
-        # that is the resolver's "restricted", never the viewer's token.
-        return False
-    text = str(exc)
-    if "403-020" in text or "is not authorized to issue an operation read" in text:
-        return False
-    return "401" in text and ("token" in text.lower() or "unauthor" in text.lower())
+    element in a hidden zone is the resolver's business ("restricted"), not this.
+
+    By exception class and HTTP code along the cause chain (TR-22, `trellis_auth.egeria_errors`), never by text: the
+    old fallback read "401" plus "token"/"unauthor" anywhere in a message. pyegeria 6.2.34+ raises a hidden-zone
+    403-020 as PyegeriaUnauthorizedException with related_http_code 403, so it is told apart by its code."""
+    from trellis_auth.egeria_errors import SIGN_IN_AGAIN, auth_error_status
+
+    return auth_error_status(exc) == SIGN_IN_AGAIN
 
 
 def _words(exc: BaseException) -> str:

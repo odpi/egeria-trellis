@@ -10259,7 +10259,7 @@ egeria = [
 
 [package.metadata]
 requires-dist = [
-    { name = "pyegeria", marker = "extra == 'egeria'", specifier = ">=6.2.32" },
+    { name = "pyegeria", marker = "extra == 'egeria'", specifier = ">=6.2.42" },
     { name = "pyjwt", specifier = ">=2.8.0" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.3.0" },
     { name = "pytest-cov", marker = "extra == 'dev'", specifier = ">=5.0.0" },

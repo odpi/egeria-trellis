@@ -1308,7 +1308,15 @@ export const runSurveyDefinition = (slug, ref, { entityType, credential = null, 
     body.db_pwd = credential.password;
   }
   if (forceCustom) body.force_custom = true;
-  return post(`/api/survey-definitions/${encodeURIComponent(requireKind('runSurveyDefinition', entityType))}/${encodeURIComponent(slug)}/run`, body);
+  // TR-1: one key per press. A network retry of THIS press gets the same run back; a second press while it is in
+  // flight gets the server's 409 sentence ("… is already running on …. Wait for it, or cancel it first.").
+  const key = (globalThis.crypto && typeof globalThis.crypto.randomUUID === 'function')
+    ? globalThis.crypto.randomUUID() : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  return request(`/api/survey-definitions/${encodeURIComponent(requireKind('runSurveyDefinition', entityType))}/${encodeURIComponent(slug)}/run`, {
+    method: 'POST',
+    headers: { ...JSON_HEADERS, 'Idempotency-Key': key },
+    body: JSON.stringify(body),
+  });
 };
 
 /* ── Register one database, change a stored credential (parity G2) ─────────

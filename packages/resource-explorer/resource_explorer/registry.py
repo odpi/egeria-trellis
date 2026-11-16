@@ -5764,6 +5764,108 @@ class ProjectRegistry:
             )
         return run_id
 
+    #: SQLite has no advisory lock; its check-and-insert is serialised in-process instead (tests, a dev box).
+    _enqueue_once_lock = threading.Lock()
+
+    def enqueue_run_once(
+        self,
+        kind: str,
+        target: dict,
+        *,
+        lock_key: str,
+        same: "Callable[[dict], bool]",
+        stale_before: str,
+        idempotency_key: str = "",
+        before_insert: "Callable[[], str] | None" = None,
+        requested_by: str = "",
+        run_id: str | None = None,
+        now: str | None = None,
+    ) -> dict:
+        """Enqueue one `kind` row unless the same work is already in flight (TR-1, ruling 2026-11-13).
+
+        **In flight** = a `kind` row in queued, claimed or running whose decoded target `same()` accepts. A
+        claimed or running row whose last sign of life (`heartbeat_at`, else `claimed_at`) is older than
+        `stale_before` does NOT count: a worker that died must not lock the resource out. It is returned in
+        `stale` so the caller can say so and point to the reconciler.
+
+        **Atomic.** On Postgres the check and the insert share one transaction behind
+        `pg_advisory_xact_lock(hashtext(lock_key))`, so two requests in the same millisecond cannot both pass;
+        on SQLite an in-process lock does the same. No DDL: a unique partial index would be cleaner but is DDL
+        on a shared table and needs the owner's word.
+
+        `before_insert` runs only when the row will be inserted, under the lock, and returns the `result_ref`
+        (the route's activity entry), so a refused request leaves no 'running' activity entry behind.
+
+        Returns `{"created": True, "run_id", "result_ref"}`; or, when one is in flight, `{"created": False,
+        "existing": <row>, "coalesced": bool}`, where `coalesced` is True only when the in-flight row was queued
+        with the same non-empty `idempotency_key` (a true retry of the same press). Either way `stale` lists the
+        rows that were ignored as stale.
+        """
+        if kind not in self.RUN_KINDS:
+            raise ValueError(f"unknown run kind {kind!r} — expected one of {list(self.RUN_KINDS)}")
+        run_id = run_id or str(uuid.uuid4())
+        now = now or datetime.now(timezone.utc).isoformat()
+        target = dict(target or {})
+        if idempotency_key:
+            target["idempotency_key"] = idempotency_key
+        sqlite_lock = None if self.database_url.startswith("postgresql") else self._enqueue_once_lock
+        if sqlite_lock is not None:
+            sqlite_lock.acquire()
+        try:
+            with self._conn() as conn:
+                if getattr(conn, "is_postgres", False):
+                    conn.execute("SELECT pg_advisory_xact_lock(hashtext(?))", (lock_key,))
+                rows = [dict(r) for r in conn.execute(
+                    "SELECT id, kind, target, requested_by, state, claimed_by, enqueued_at, claimed_at, "
+                    "heartbeat_at, result_ref FROM runs WHERE kind = ? AND state IN ('queued', 'claimed', 'running') "
+                    "ORDER BY enqueued_at",
+                    (kind,),
+                ).fetchall()]
+                live, stale = [], []
+                for row in rows:
+                    try:
+                        row_target = json.loads(row.get("target") or "{}")
+                    except (TypeError, ValueError):
+                        continue
+                    if not isinstance(row_target, dict) or not same(row_target):
+                        continue
+                    row["target_decoded"] = row_target
+                    alive_at = row.get("heartbeat_at") or row.get("claimed_at") or ""
+                    if row["state"] != "queued" and alive_at and alive_at < stale_before:
+                        stale.append(row)
+                    else:
+                        live.append(row)
+                if live:
+                    existing = live[0]
+                    coalesced = bool(idempotency_key) and (
+                        existing["target_decoded"].get("idempotency_key") == idempotency_key)
+                    return {"created": False, "existing": existing, "coalesced": coalesced, "stale": stale}
+                result_ref = before_insert() if before_insert else ""
+                try:
+                    conn.execute(
+                        """INSERT INTO runs (id, kind, target, requested_by, state,
+                                             enqueued_at, result_ref)
+                           VALUES (?, ?, ?, ?, 'queued', ?, ?)""",
+                        (run_id, kind, json.dumps(target), requested_by, now, result_ref),
+                    )
+                except Exception as exc:
+                    # The activity entry was opened for a run that now never exists: close it, or it is the TR-2
+                    # phantom by another road (read-back advisory b). Its own connection: this transaction failed.
+                    if result_ref:
+                        try:
+                            self.close_activity_if_running(
+                                result_ref, "error", f"The run could not be queued, so nothing ran: {type(exc).__name__}.")
+                        except Exception as close_exc:  # noqa: BLE001 - the original failure is the one raised
+                            # Not swallowed: the raised error says the entry may still read 'running'.
+                            exc.add_note(f"activity {result_ref} could not be closed after the failed enqueue "
+                                         f"({type(close_exc).__name__}: {close_exc}); it may still read 'running'")
+                            log.exception("could not close activity %s after a failed enqueue", result_ref)
+                    raise
+            return {"created": True, "run_id": run_id, "result_ref": result_ref, "stale": stale}
+        finally:
+            if sqlite_lock is not None:
+                sqlite_lock.release()
+
     def claim_next_run(
         self,
         claimed_by: str,
@@ -5956,8 +6058,17 @@ class ProjectRegistry:
                                (now, error, run_id))
             return bool(getattr(cur, "rowcount", 0))
 
-    def cancel_queued_run(self, run_id: str, *, now: str | None = None) -> bool:
+    def cancel_queued_run(self, run_id: str, *, now: str | None = None, by: str | None = None,
+                          activity_status: str = "cancelled", activity_summary: str = "") -> bool:
         """Cancel a row that has NOT been claimed yet. Returns False otherwise.
+
+        **The run's activity entry closes in the same transaction** (TR-2, 2026-11-15). The route that queued
+        the run opened that entry as 'running' and handed it over as `result_ref`; only a worker closes it,
+        and a cancelled row never reaches one. Before this, every cancel left its entry 'running' for ever:
+        381 phantom running entries on hedwig after one flood was cancelled. The entry is closed as
+        `activity_status` ('cancelled' by default) with who and when, and only if it is still 'running', so an
+        entry something else already finalised is never overwritten. `by` defaults to the signed-in caller
+        (`current_user_id()`). A caller with its own words (first-index withdraw) passes them.
 
         A claimed or running row is deliberately not cancellable here: it owns a
         real Python thread inside some worker process, and Python threads cannot
@@ -5985,6 +6096,18 @@ class ProjectRegistry:
                 (now, run_id, *held),
             )
             cancelled = bool(getattr(cur, "rowcount", 0))
+            if cancelled:
+                ref = conn.execute("SELECT result_ref FROM runs WHERE id=?", (run_id,)).fetchone()
+                result_ref = (ref["result_ref"] if ref else "") or ""
+                if result_ref:
+                    who = current_user_id() if by is None else by
+                    summary = activity_summary or (
+                        f"Cancelled before it was claimed, by {who or 'the service account'} at {now}; "
+                        "nothing ran.")
+                    conn.execute(
+                        "UPDATE activity_log SET status = ?, summary = ? WHERE id = ? AND status = 'running'",
+                        (activity_status, summary, result_ref),
+                    )
         if cancelled:
             # A pressed run cancelled before any worker claimed it: the presser's held session ends with it.
             from resource_explorer import presser_hold

@@ -419,9 +419,23 @@ def _connected_config() -> AuthConfig:
     )
 
 
+class _NoPasswordSentinel:
+    def __bool__(self):
+        return False
+
+    def __repr__(self):
+        return "NO_PASSWORD"
+
+
+FAKE_NO_PASSWORD = _NoPasswordSentinel()
+
+
 def _install_fake_pyegeria(monkeypatch, cls):
     fake_module = type("module", (), {"EgeriaTech": cls})
     monkeypatch.setitem(sys.modules, "pyegeria.egeria_tech_client", fake_module)
+    # pyegeria 6.2.42's NO_PASSWORD (TR-24), faked so these tests do not depend on the installed pyegeria.
+    monkeypatch.setitem(sys.modules, "pyegeria.core._no_password",
+                        type("module", (), {"NO_PASSWORD": FAKE_NO_PASSWORD}))
 
 
 def test_login_with_password_returns_the_token(monkeypatch):
@@ -497,6 +511,92 @@ def test_validate_egeria_token_rejected_by_egeria(monkeypatch):
     _install_fake_pyegeria(monkeypatch, _FakeEgeriaTech)
 
     assert validate_egeria_token(make_egeria_token(), _connected_config()) is False
+
+
+class _LikePyegeria:
+    """Models pyegeria 6.x's password handling (TR-24): a client given no password takes the configured default and
+    its one 401 auto-retry signs in again with it; NO_PASSWORD opts out (no password, use_default_password False)."""
+
+    built: list = []
+
+    def __init__(self, view_server, platform_url, user_id, user_pwd=None):
+        self.user_id, self.signins, self.closed, self.bearer = user_id, 0, False, None
+        if user_pwd is FAKE_NO_PASSWORD:
+            self.user_pwd, self.use_default_password = None, False
+        else:
+            self.user_pwd, self.use_default_password = (user_pwd or "configured-default-password"), True
+        _LikePyegeria.built.append(self)
+
+    def set_bearer_token(self, token):
+        self.bearer = token
+
+    def create_egeria_bearer_token(self, *a, **k):
+        self.signins += 1
+        self.bearer = "fresh-token-for-" + self.user_id
+        return self.bearer
+
+    def get_my_profile(self):
+        if self.bearer and self.bearer.startswith("fresh-token-for-"):
+            return {"class": "OpenMetadataRootElement"}
+        # Egeria refuses the presented (revoked) token: a client that may use a password re-signs in, as pyegeria's
+        # auto-retry does; one with NO_PASSWORD gets the 401.
+        if self.user_pwd or self.use_default_password:
+            self.create_egeria_bearer_token()
+            return {"class": "OpenMetadataRootElement"}
+        raise RuntimeError("401 refused")
+
+    def close_session(self):
+        self.closed = True
+
+
+def test_a_refused_token_is_false_with_no_password_sign_in(monkeypatch):
+    """TR-24: a token Egeria refuses (revoked, exp still ahead) must not "validate" through a silent re-sign-in."""
+    _LikePyegeria.built = []
+    _install_fake_pyegeria(monkeypatch, _LikePyegeria)
+    config = _connected_config()
+
+    assert validate_egeria_token(make_egeria_token(user_id="peterprofile"), config) is False
+    client = _LikePyegeria.built[-1]
+    assert client.signins == 0
+    assert client.user_id == "peterprofile" != config.egeria_service_account_user
+    assert client.user_pwd is None and client.use_default_password is False
+    assert client.closed
+
+
+def test_a_client_holding_a_password_is_refused(monkeypatch):
+    from trellis_auth.auth import PasswordOnClient, assert_no_password
+
+    class _Holder:
+        user_pwd = "secret"
+
+    class _Defaulting:
+        user_pwd, use_default_password = None, True
+
+    class _Clean:
+        user_pwd, use_default_password = None, False
+        _instantiated_clients = {"x": _Holder()}
+
+    for c in (_Holder(), _Defaulting(), _Clean()):
+        with pytest.raises(PasswordOnClient):
+            assert_no_password(c)
+
+    class _AllClean:
+        user_pwd, use_default_password = None, False
+
+    assert_no_password(_AllClean())
+
+
+def test_the_check_is_made_as_the_tokens_user(monkeypatch):
+    seen = []
+
+    class _Ok(_LikePyegeria):
+        def get_my_profile(self):
+            seen.append((self.user_id, self.user_pwd, self.use_default_password))
+            return {"class": "OpenMetadataRootElement"}
+
+    _install_fake_pyegeria(monkeypatch, _Ok)
+    assert validate_egeria_token(make_egeria_token(user_id="erinoverview"), _connected_config()) is True
+    assert seen == [("erinoverview", None, False)]
 
 
 def test_validate_egeria_token_expired_short_circuits(monkeypatch):

@@ -567,16 +567,13 @@ def _build(cls: Any, view_server: str, platform_url: str, user_id: str, password
 
 
 def is_person_token_refused(exc: BaseException) -> bool:
-    """F60: Egeria refused a PERSON's token — the reading `classify_token_check_failure` makes (a 401, pyegeria's
-    PyegeriaUnauthorizedException, the AUTHORIZATION_ERROR_401 text, wrapped or bare) — and NOT Egeria's security
-    connector refusing what this person may do (an OPEN-METADATA-SECURITY-403 or an HTTP 403): that is Brief I's
-    `EgeriaRefused` ("refused by Egeria", 403), which a route raises itself and which a new sign-in would not change.
-    A timeout or a refused connection is neither."""
-    from resource_explorer.egeria_outbox import is_security_refusal
+    """F60: Egeria refused a PERSON's token (a 401: pyegeria's PyegeriaUnauthorizedException from a transport 401,
+    or an HTTP 401 from Egeria, wrapped or bare) — and NOT Egeria's security connector refusing what this person may
+    do (a 403): that is Brief I's `EgeriaRefused` ("refused by Egeria"), which a route raises itself and which a new
+    sign-in would not change. A timeout or a refused connection is neither. By class and code (TR-22)."""
+    from trellis_auth.egeria_errors import SIGN_IN_AGAIN, auth_error_status
 
-    if isinstance(exc, Exception) and is_security_refusal(exc):
-        return False
-    return classify_token_check_failure(exc) == TOKEN_REFUSED
+    return auth_error_status(exc) == SIGN_IN_AGAIN
 
 
 class _GuardedCall:
@@ -785,24 +782,15 @@ TOKEN_UNREACHABLE = "unreachable"
 
 
 def classify_token_check_failure(exc: BaseException) -> str:
-    """`TOKEN_REFUSED` when Egeria answered and said this user is not authorized (a 401/403, or
-    its AUTHORIZATION_ERROR_401 / security-403 text, wrapped or bare); else `TOKEN_UNREACHABLE`.
-    A timeout, a refused connection or any error that is not Egeria's answer is not a refusal."""
-    from resource_explorer.egeria_outbox import _http_code_of, is_security_refusal
+    """`TOKEN_REFUSED` when Egeria answered and refused this user (a 401 or a 403), else `TOKEN_UNREACHABLE`.
 
-    for e in (exc, getattr(exc, "__cause__", None)):
-        if not isinstance(e, BaseException):
-            continue
-        if type(e).__name__ == "PyegeriaUnauthorizedException":
-            return TOKEN_REFUSED
-        text = str(e)
-        if "AUTHORIZATION_ERROR_401" in text or "User not authorized" in text:
-            return TOKEN_REFUSED
-        if _http_code_of(e) in (401, 403):
-            return TOKEN_REFUSED
-    if isinstance(exc, Exception) and is_security_refusal(exc):
-        return TOKEN_REFUSED
-    return TOKEN_UNREACHABLE
+    Decided by exception class and HTTP code along the cause chain (TR-22, `trellis_auth.egeria_errors`), never by
+    message text: the old "AUTHORIZATION_ERROR_401" / "User not authorized" / any-403 reading also took a
+    relatedHTTPCode 403 that is not a refusal (OMAG-GENERIC-HANDLERS-403-005) for one. A timeout, a refused
+    connection or any error that is not Egeria's answer is not a refusal."""
+    from trellis_auth.egeria_errors import auth_error_status
+
+    return TOKEN_REFUSED if auth_error_status(exc) is not None else TOKEN_UNREACHABLE
 
 
 def check_token_accepted(user_id: str, token: str) -> str:

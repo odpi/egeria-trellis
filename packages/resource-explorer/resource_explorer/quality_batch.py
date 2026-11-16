@@ -45,6 +45,8 @@ WORK_LIST_ENTITY = "work_list"
 #: wins, then the Group's"), so the list's firing leaves it to its own cadence and says so.
 QUEUED, SKIPPED, NOT_PERMITTED, CANNOT_RUN, OWN_SCHEDULE = (
     "queued", "skipped", "not permitted", "cannot run", "own schedule")
+#: TR-1: the same definition is already queued or running on this database; this firing queues nothing for it.
+ALREADY_RUNNING = "already running"
 
 #: How many succeeded runs the time estimate reads, newest first.
 _MEASURED_RUNS = 5
@@ -357,7 +359,7 @@ def enqueue_quality_batch(registry, slugs, *, work_list_slug: str = "", requeste
     which runs as `requested_by` without a held session. `own_schedules` ({slug: cadence}, scheduled batches only):
     members whose own schedule for the definition wins over the list's."""
     from resource_explorer.engine_host import STARTED_BY_RE
-    from resource_explorer.web.routes.survey_definitions import enqueue_definition_run
+    from resource_explorer.web.routes.survey_definitions import RunAlreadyInFlight, enqueue_definition_run
     from resource_explorer.workflows.survey_definition import SurveyDefinitionRunParams
 
     members = list(dict.fromkeys(slugs))
@@ -388,8 +390,13 @@ def enqueue_quality_batch(registry, slugs, *, work_list_slug: str = "", requeste
         # Egeria; a display name is never used).
         params = SurveyDefinitionRunParams(survey_definition_ref=qualified_process_name(definition), started_by=STARTED_BY_RE,
                                            started_by_person=started_by_person)
-        started = enqueue_definition_run(registry, "database", slug, params, pressed=pressed,
-                                         requested_by_user=requested_by, as_presser=pressed is not None)
+        try:
+            started = enqueue_definition_run(registry, "database", slug, params, pressed=pressed,
+                                             requested_by_user=requested_by, as_presser=pressed is not None)
+        except RunAlreadyInFlight as exc:
+            outcomes.append({**base, "outcome": ALREADY_RUNNING, "run_id": exc.existing.get("id"),
+                             "words": f"already running · {exc.words}"})
+            continue
         row = {"run_id": started["run_id"], "entity_slug": slug, "activity_id": started["activity_id"]}
         queued.append(row)
         outcomes.append({**base, **row, "outcome": QUEUED, "words": f"queued · {price['words']}"})
@@ -403,7 +410,7 @@ def enqueue_quality_batch(registry, slugs, *, work_list_slug: str = "", requeste
 def batch_summary(outcomes: list[dict]) -> str:
     """One sentence for the activity row and the schedule: counts first, then each member that did not run, by name,
     with its words (a skip says why; nothing is silently dropped)."""
-    others = (SKIPPED, OWN_SCHEDULE, NOT_PERMITTED, CANNOT_RUN)
+    others = (SKIPPED, OWN_SCHEDULE, ALREADY_RUNNING, NOT_PERMITTED, CANNOT_RUN)
     n = {k: sum(1 for o in outcomes if o["outcome"] == k) for k in (QUEUED, *others)}
     head = [f"{n[QUEUED]} queued"] + [f"{n[k]} {k}" for k in others if n[k]]
     tail = [f"{o['entity_slug']} {o['words']}" for o in outcomes if o["outcome"] != QUEUED]

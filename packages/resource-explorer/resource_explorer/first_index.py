@@ -256,11 +256,10 @@ def withdraw(registry, run_id: str) -> bool:
     run = registry.get_run(run_id)
     if run is None or run["kind"] != RUN_KIND:
         return False
-    if not registry.cancel_queued_run(run_id):
-        return False
-    registry.close_activity_if_running(run.get("result_ref") or "", "ok",
-                                       "First index withdrawn before it started; nothing was indexed.")
-    return True
+    # The registry closes the run's activity entry in the cancel's own transaction, with these words.
+    return registry.cancel_queued_run(
+        run_id, activity_status="ok",
+        activity_summary="First index withdrawn before it started; nothing was indexed.")
 
 
 # ── the state of each yes, from run rows ─────────────────────────────────────

@@ -10,6 +10,7 @@ import resource_explorer.run_queue as rq
 from resource_explorer.activity_logger import log_survey
 from resource_explorer.curate_plan import Curations
 from resource_explorer.registry import Project, ProjectRegistry
+from tests.egeria_refusals import http_status, not_permitted, refused_token
 
 # Brief I: these tests drive the drain mechanics, as the background loop does: a declared daemon job.
 pytestmark = pytest.mark.usefixtures("as_daemon")
@@ -67,7 +68,7 @@ def _drain_with(reg, exc, kind="collection_membership"):
 
 class TestSecurityRefusal:
     def test_security_403_message_is_dead_on_first_failure(self, reg):
-        summary, row = _drain_with(reg, _Coded(SEC))
+        summary, row = _drain_with(reg, not_permitted(SEC, user="erinoverview"))
         assert row["status"] == "dead" and row["attempts"] == 1
         assert row["last_error"] == (
             "refused by Egeria's security: OPEN-METADATA-SECURITY-403-007 User erinoverview is not authorized "
@@ -76,9 +77,9 @@ class TestSecurityRefusal:
         assert summary["dead"] == 1 and summary["security_refused"] == 1
 
     def test_http_403_is_dead_on_first_failure(self, reg):
-        _, row = _drain_with(reg, _Coded("User not authorized received for user - ``.", 403))
+        _, row = _drain_with(reg, http_status(403, "User not authorized received for user - ``."))
         assert row["status"] == "dead"
-        assert row["last_error"].startswith("refused by Egeria's security: User not authorized")
+        assert row["last_error"].startswith("refused by Egeria's security: ")
 
     @pytest.mark.parametrize("exc", [
         _Coded("bare token problem", 401),
@@ -95,15 +96,34 @@ class TestSecurityRefusal:
 
     def test_destructive_kinds_keep_their_own_never_retry_wording(self, reg, monkeypatch):
         def refuse(row, clients, find, **kw):
-            raise _Coded(SEC)
+            raise not_permitted(SEC)
         monkeypatch.setattr(outbox, "apply_element", refuse)
-        _, row = _drain_with(reg, _Coded(SEC), kind="doc_source_unpublish")
+        _, row = _drain_with(reg, not_permitted(SEC), kind="doc_source_unpublish")
         assert row["status"] == "dead"
         assert row["last_error"].startswith(outbox.NOT_RETRIED)
 
     def test_classifier(self):
-        assert outbox.is_security_refusal(_Coded(SEC))
-        assert outbox.is_security_refusal(_Coded("x", 403))
-        assert not outbox.is_security_refusal(_Coded("x", 401))
+        """By class and code (TR-22): Egeria's UserNotAuthorizedException and an HTTP 403 from Egeria are refusals;
+        a 401, the refusal's words in a plain exception, and a 403 code on anything that is not pyegeria's are not."""
+        assert outbox.is_security_refusal(not_permitted(SEC))
+        assert outbox.is_security_refusal(http_status(403))
+        assert not outbox.is_security_refusal(http_status(401))
+        assert not outbox.is_security_refusal(refused_token())
         assert not outbox.is_security_refusal(RuntimeError("x"))
+        assert not outbox.is_security_refusal(RuntimeError(SEC))
+        assert not outbox.is_security_refusal(_Coded("x", 403))
+
+    def test_a_relatedhttpcode_403_that_is_not_a_refusal_is_retried(self, reg):
+        """OMAG-GENERIC-HANDLERS-403-005 (an element with dependents) carries 403 and is an invalid parameter: the
+        text match used to dead-letter it as a security refusal."""
+        import httpx
+        from pyegeria.core._exceptions import PyegeriaAPIException
+
+        body = {"relatedHTTPCode": 403, "exceptionClassName": "InvalidParameterException",
+                "exceptionErrorMessageId": "OMAG-GENERIC-HANDLERS-403-005", "exceptionErrorMessage": "has dependents"}
+        exc = PyegeriaAPIException(httpx.Response(200, request=httpx.Request("POST", "https://e/x"), json=body), {},
+                                   additional_info=body)
+        assert not outbox.is_security_refusal(exc)
+        summary, row = _drain_with(reg, exc)
+        assert row["status"] == "failed" and not summary.get("security_refused")
 
