@@ -457,6 +457,14 @@ class AdvisorSettings(BaseSettings):
     # from the same host:port as the API) never needs this.
     advisor_extra_cors_origins: str = Field(default="", alias="ADVISOR_EXTRA_CORS_ORIGINS")
 
+    # Origins that may FRAME this Advisor and talk to it by postMessage (E1, 2026-11-14): Trellis Studio's embedded
+    # EA panel (/?embed=studio). Comma-separated exact origins (scheme://host:port). They are sent as
+    # Content-Security-Policy frame-ancestors (with 'self'), and they are the only origins whose postMessage the
+    # page accepts: the Studio session hand-over (trellis_auth) and the Portal token (egeria_auth). Default:
+    # Studio on laz (8840) and its freshstart twin (7840). Empty means nobody may frame it but itself.
+    advisor_embed_origins: str = Field(default="http://localhost:8840,http://localhost:7840",
+                                       alias="ADVISOR_EMBED_ORIGINS")
+
     # Ollama
     ollama_base_url: str = Field(
         default="http://localhost:11434",

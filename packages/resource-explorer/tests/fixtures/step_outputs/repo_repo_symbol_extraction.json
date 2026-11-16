@@ -1,0 +1,42 @@
+{
+ "_source": "the kept snapshot of egeria_workspaces' repo_symbol_extraction, 2026-11-15 A/B rerun (commit 6edadfda)",
+ "annotations": [
+  {
+   "additional_properties": {},
+   "analysis_step": "SymbolExtraction",
+   "annotation_type": "ResourceMeasureAnnotation",
+   "annotation_type_name": "",
+   "check_name": "symbol_extraction",
+   "confidence": 100,
+   "content_status": "",
+   "evidence_of": null,
+   "explanation": "",
+   "expression": "",
+   "item_key": "",
+   "json_properties": {
+    "outcome": "recovered",
+    "outcome_cause": "",
+    "outcome_detail": {
+     "files_scanned": 331
+    },
+    "outcome_known_positive": false
+   },
+   "label": "",
+   "resource_properties": {
+    "files_scanned": 331,
+    "marker_counts_by_language": {
+     "python": 625
+    },
+    "relationship_count": 112,
+    "symbol_counts_by_language": {
+     "java": 35,
+     "javascript": 4279,
+     "python": 4645
+    }
+   },
+   "source": "local",
+   "summary": "Extracted 8959 symbol(s) across 3 language(s), 112 inheritance relationship(s)"
+  }
+ ],
+ "survey_commit_sha": "6edadfda59b66bae054ea4a5754e09f42c6534e4"
+}

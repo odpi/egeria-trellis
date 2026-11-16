@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Trellis Studio</title>
+  <!-- The look (Dark, Light, Paper) is trellis-ui's, set before first paint from localStorage["trellis.look"]. -->
+  <script>(function () { var l = 'dark'; try { var v = localStorage.getItem('trellis.look');
+    if (v === 'light' || v === 'paper' || v === 'dark') l = v; } catch (e) {} document.documentElement.setAttribute('data-look', l); })();</script>
+  <link rel="stylesheet" href="/static/trellis-ui/themes.css">
+  <link rel="stylesheet" href="/static/studio.css">
+</head>
+<body>
+  <header class="st-header">
+    <strong class="st-title">Trellis Studio</strong>
+    <nav class="st-nav" id="st-nav" hidden></nav>
+    <span class="st-spacer"></span>
+    <button id="st-ea-toggle" class="st-btn st-btn-quiet" hidden aria-pressed="true" title="Show or hide Egeria Advisor">EA</button>
+    <span data-look-host></span>
+    <span id="st-user" class="st-user"></span>
+    <button id="st-signout" class="st-btn st-btn-quiet" hidden>Sign out</button>
+  </header>
+
+  <main id="st-main" class="st-main">
+    <p class="st-muted">Loading…</p>
+  </main>
+
+  <div id="st-login" class="st-overlay" hidden>
+    <form id="st-login-form" class="st-card st-login" autocomplete="on">
+      <h2>Sign in to Studio</h2>
+      <p class="st-muted">With your Egeria user id and password, or open Studio from the Egeria Portal.</p>
+      <label>User id <input id="st-login-user" name="username" autocomplete="username" required></label>
+      <label>Password <input id="st-login-pwd" name="password" type="password" autocomplete="current-password" required></label>
+      <p id="st-login-error" class="st-error" hidden></p>
+      <button type="submit" class="st-btn">Sign in</button>
+    </form>
+  </div>
+
+  <!-- The structured-TABLE renderer from pyegeria (D3), served by trellis-ui from the installed pyegeria. -->
+  <script src="/static/trellis-ui/egeria-table.js"></script>
+  <script type="module" src="/static/studio_look.js"></script>
+  <script type="module" src="/static/studio.js"></script>
+</body>
+</html>
