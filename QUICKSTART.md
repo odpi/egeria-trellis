@@ -102,7 +102,8 @@ existing `PGVECTOR_PASSWORD=` line rather than adding a second one.
 
 ```bash
 for f in packages/resource-explorer/.env packages/egeria-advisor/.env; do
-  grep -v '^PGVECTOR_PASSWORD=' "$f" > "$f.tmp"; printf 'PGVECTOR_PASSWORD=%s\n' "$PGVECTOR_PASSWORD" >> "$f.tmp"
+  [ -f "$f" ] || (umask 077; : > "$f")
+  (umask 077; grep -v '^PGVECTOR_PASSWORD=' "$f" > "$f.tmp"; printf 'PGVECTOR_PASSWORD=%s\n' "$PGVECTOR_PASSWORD" >> "$f.tmp")
   mv "$f.tmp" "$f"; chmod 600 "$f"
 done
 ```
