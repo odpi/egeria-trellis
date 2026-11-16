@@ -97,13 +97,18 @@ cp packages/resource-explorer/.env.example packages/resource-explorer/.env
 cp packages/egeria-advisor/.env.example packages/egeria-advisor/.env
 ```
 
-Put the database password in both (the same value as step 2):
+Put the database password in both (the same value as step 2). Safe to re-run: it replaces an
+existing `PGVECTOR_PASSWORD=` line rather than adding a second one.
 
 ```bash
 for f in packages/resource-explorer/.env packages/egeria-advisor/.env; do
-  printf 'PGVECTOR_PASSWORD=%s\n' "$PGVECTOR_PASSWORD" >> "$f"; chmod 600 "$f"
+  grep -v '^PGVECTOR_PASSWORD=' "$f" > "$f.tmp"; printf 'PGVECTOR_PASSWORD=%s\n' "$PGVECTOR_PASSWORD" >> "$f.tmp"
+  mv "$f.tmp" "$f"; chmod 600 "$f"
 done
 ```
+
+This is for a standalone setup. A deployment that keeps the password in a separate secrets file (for
+example a shared host) should leave it out of the apps' `.env` files, so there is only one copy to rotate.
 
 The other defaults point at the Postgres and Ollama you just started. To let Resource Explorer read
 GitHub at a sensible rate limit, add a token to its `.env`:
