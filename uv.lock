@@ -1301,11 +1301,11 @@ wheels = [
 
 [[package]]
 name = "click"
-version = "8.5.0"
+version = "8.5.1"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/c7/0e/7fa0ef50764b67090eca4114772a2abf8b6148198475e54c660b97caeee6/click-8.5.0.tar.gz", hash = "sha256:ba0d2089de75ea0310e2dde03160e6ca10009947fb95a182f9b54021bb272e34", size = 382235, upload-time = "2026-08-26T13:33:14.56Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/45/37/edbf1b0707709013c0cf2e8317e03d97ed29bf4cac709fe328904ae92a38/click-8.5.1.tar.gz", hash = "sha256:9bbfada76703fd1d784b83eea012e3e8c6a001a876543ef104fa56aaaeb072b4", size = 399151, upload-time = "2026-11-06T17:37:01.021Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/58/50/6c0d534c5f134586a8e1ba4e330569e32f057e33372ae556463212fb4cd3/click-8.5.0-py3-none-any.whl", hash = "sha256:255bc9599cf7748b4b1a446ccc735421bd08a2ae529a8b88597d3de5664ee360", size = 125251, upload-time = "2026-08-26T13:33:12.928Z" },
+    { url = "https://files.pythonhosted.org/packages/31/7d/164b7ffc8624fe9efb4221bf9af485d5c1e41b9ae118045d2b6dc5457d8b/click-8.5.1-py3-none-any.whl", hash = "sha256:8bb5376d2006950386f8c6427613334a2acadc5f559cb80e638d00b4df957e37", size = 126163, upload-time = "2026-11-06T17:36:59.287Z" },
 ]
 
 [[package]]
@@ -2137,7 +2137,7 @@ requires-dist = [
     { name = "psycopg2-binary", specifier = ">=2.9.9" },
     { name = "pydantic", specifier = ">=2.0.0" },
     { name = "pydantic-settings", specifier = ">=2.0.0" },
-    { name = "pyegeria", specifier = ">=6.2.42" },
+    { name = "pyegeria", specifier = ">=6.3.0" },
     { name = "pygments", specifier = ">=2.17.0" },
     { name = "pygount", specifier = ">=1.6.1" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0.0" },
@@ -7455,7 +7455,7 @@ wheels = [
 
 [[package]]
 name = "pyegeria"
-version = "6.2.42"
+version = "6.3.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "altair" },
@@ -7492,9 +7492,9 @@ dependencies = [
     { name = "validators" },
     { name = "wcwidth" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/0d/02/229317aabfda91c8c4533972be52d396b3d78ff47416c8f28da5ddda77fd/pyegeria-6.2.42.tar.gz", hash = "sha256:5cc16d8bfc3eb23a940a5c85dc3bcb3df43acdd6f8393cb100724a2f4b90284f", size = 3147607, upload-time = "2026-11-15T14:53:01.813Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/c8/cd/559342459f491e3645d88dfb0d482e29e0c205e48ce0ce4cb89fdabbe78d/pyegeria-6.3.0.tar.gz", hash = "sha256:e16adf49bca5559b1b357f545d5ec609a1e4a3056f9e1e13063f34491ba38702", size = 3177771, upload-time = "2026-11-16T15:49:59.841Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/f3/19/60149fb006fad4a7ba72e7ab8de0a3b07af33146f3fac84a9907c3d19526/pyegeria-6.2.42-py3-none-any.whl", hash = "sha256:415397d7fa54a7afdf129bfa10d09046c136fc94d8bcac0b52bbb1d2db1cd72c", size = 3570413, upload-time = "2026-11-15T14:52:59.525Z" },
+    { url = "https://files.pythonhosted.org/packages/2d/7f/04709657c020912d9a3f8ac83207163bd4afe4c5226dd46f5e5811cbab4a/pyegeria-6.3.0-py3-none-any.whl", hash = "sha256:80ad2b67697c9d59926fa81f8219ac91949425dca0e70c355fcff5ff8141e489", size = 3583256, upload-time = "2026-11-16T15:49:57.205Z" },
 ]
 
 [[package]]
@@ -8614,7 +8614,7 @@ requires-dist = [
     { name = "pyarrow", specifier = ">=23.0.1" },
     { name = "pydantic", specifier = ">=2.10.0" },
     { name = "pydantic-settings", specifier = ">=2.7.0" },
-    { name = "pyegeria", specifier = ">=6.2.42" },
+    { name = "pyegeria", specifier = ">=6.3.0" },
     { name = "pygithub", specifier = ">=2.5.0" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.3.0" },
     { name = "pytest-asyncio", marker = "extra == 'dev'", specifier = ">=0.24.0" },
@@ -10259,7 +10259,7 @@ egeria = [
 
 [package.metadata]
 requires-dist = [
-    { name = "pyegeria", marker = "extra == 'egeria'", specifier = ">=6.2.42" },
+    { name = "pyegeria", marker = "extra == 'egeria'", specifier = ">=6.3.0" },
     { name = "pyjwt", specifier = ">=2.8.0" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.3.0" },
     { name = "pytest-cov", marker = "extra == 'dev'", specifier = ">=5.0.0" },
@@ -10483,7 +10483,7 @@ requires-dist = [
     { name = "httpx", marker = "extra == 'dev'", specifier = ">=0.27.0" },
     { name = "pydantic", specifier = ">=2.0.0" },
     { name = "pydantic-settings", specifier = ">=2.0.0" },
-    { name = "pyegeria", specifier = ">=6.2.42" },
+    { name = "pyegeria", specifier = ">=6.3.0" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.3.0" },
     { name = "trellis-auth", extras = ["egeria"], editable = "packages/trellis-auth" },
     { name = "trellis-ui", editable = "packages/trellis-ui" },
