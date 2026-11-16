@@ -18,7 +18,8 @@ FOLDER_GUID = "f0000000-0000-0000-0000-000000000001"
 
 
 def _folder_el():
-    return {"elementHeader": {"guid": FOLDER_GUID, "type": {"typeName": "CollectionFolder"}},
+    return {"elementHeader": {"guid": FOLDER_GUID, "type": {"typeName": "CollectionFolder",
+                                                            "superTypeNames": ["Collection"]}},
             "properties": {"qualifiedName": FOLDER, "displayName": "Egeria Advisor"}}
 
 
@@ -38,7 +39,7 @@ def _spec_el(label: str, guid: str, *, status: str = "ACTIVE", purpose: str = "C
 
 
 class FakeEgeria:
-    """Only the three reads sync_report_specs makes. Records nothing it is not asked; writes nothing."""
+    """Only the reads sync_report_specs makes. Records nothing it is not asked; writes nothing."""
     platform_url = "https://fake-egeria:9443"
     view_server = "fake-view-server"
     user_id = "ea-service"
@@ -48,8 +49,19 @@ class FakeEgeria:
         self.members = {m["elementHeader"]["guid"]: m for m in members}
 
     def get_collections_by_name(self, name, metadata_element_type=None, output_format="JSON"):
+        # The folder read before pyegeria's unique-name reads (kept for an older pyegeria, 6.2.41).
         if metadata_element_type == "CollectionFolder" and self.folder and name == FOLDER:
             return [_folder_el()]
+        return "No elements found"
+
+    def get_element_by_unique_name(self, qualified_name, *_, **__):
+        # Egeria's exact unique-name read (classification explorer), which a newer pyegeria's folder and
+        # consumers-root reads use when the client has it. Without it here, pyegeria builds a real
+        # ClassificationExplorer on the fake URL, and the folder reads as "couldn't tell" (folder_unreadable).
+        # Only EA's folder exists (when `folder`); anything else, the consumers root included, is Egeria's
+        # not-found, as the paged read said.
+        if self.folder and qualified_name == FOLDER:
+            return _folder_el()
         return "No elements found"
 
     def get_collection_members(self, collection_guid=None, start_from=0, page_size=0,
@@ -66,6 +78,25 @@ class FakeEgeria:
 
     def get_collection_by_guid(self, guid, output_format="JSON"):
         return self.members.get(guid) or "No elements found"
+
+
+@pytest.fixture(autouse=True)
+def _no_real_explorer(monkeypatch):
+    """The fake answers every read; a real ClassificationExplorer would try to reach the fake URL."""
+    built = []
+    try:
+        import pyegeria.omvs.classification_explorer as ce
+    except ImportError:
+        yield built
+        return
+
+    class _Refused:
+        def __init__(self, *a, **k):
+            built.append(a)
+            raise AssertionError("a real ClassificationExplorer was built: the fake lacks a read pyegeria uses")
+    monkeypatch.setattr(ce, "ClassificationExplorer", _Refused)
+    yield built
+    assert not built, "a real ClassificationExplorer was built: the fake lacks a read pyegeria uses"
 
 
 @pytest.fixture(autouse=True)

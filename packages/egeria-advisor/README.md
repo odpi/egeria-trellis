@@ -417,6 +417,22 @@ Primary config: `config/advisor.yaml`. Key sections:
 
 Settings are managed via Pydantic models in `advisor/config.py`.
 
+### Embedded in Trellis Studio (`/?embed=studio`)
+
+Trellis Studio shows EA's chat as a resizable side panel: the same page at `/?embed=studio`, compact, with **no
+password form**. The session is Studio's (trellis-auth, owner decision A): EA posts `{type:'ea.ready'}` to its
+parent, Studio answers `{type:'trellis_auth', jwt}` to EA's exact origin, and EA keeps it only after its own check
+(`GET /api/embed/whoami`). Without one within about 5 s the panel says "Sign in to Studio to use EA here".
+
+- `ADVISOR_EMBED_ORIGINS` (default `http://localhost:8840,http://localhost:7840`, Studio on laz and freshstart):
+  the only origins that may frame EA (`Content-Security-Policy: frame-ancestors 'self' …` on every response) and
+  the only ones whose `postMessage` EA accepts. Empty: only EA itself may frame it.
+- **Open in Studio** (owner decision B): saves the spec the conversation is eliciting as a `pyegeria.authoring`
+  `SpecDraft`, as you, in your private draft zone, then posts `{type:'studio.openDraft', draft_ref}` to Studio.
+- **Ask EA about this draft**: Studio posts `{type:'ea.askAbout', draft_ref}`; EA reads that draft from Egeria as
+  you and puts it in the question box.
+- Only a draft reference ever crosses between the two; each side reads the draft from Egeria as the user.
+
 ## Operating the web server
 
 These defaults changed on 2026-11-10 (EA Phase 1, Q4).

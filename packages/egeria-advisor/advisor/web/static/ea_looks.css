@@ -190,3 +190,11 @@
 @supports (-moz-appearance: none) {
   :root .dash-etable .et-scroll { scrollbar-width: thin; scrollbar-color: rgb(var(--ea-raised-hi)) rgb(var(--ea-surface)); }
 }
+
+/* E1: embedded in Trellis Studio (/?embed=studio). Compact: no sidebar, a short header, no sign-in/out controls
+   (the session is Studio's). Pane content still wraps. */
+html.ea-embed #left-sidebar { display: none; }
+html.ea-embed header { padding-top: 4px; padding-bottom: 4px; }
+html.ea-embed header img { height: 20px; }
+html.ea-embed header .text-lg { font-size: .875rem; }
+html.ea-embed #logout-btn, html.ea-embed #login-header-btn, html.ea-embed #admin-link { display: none !important; }

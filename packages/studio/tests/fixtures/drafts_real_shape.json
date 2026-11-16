@@ -1,0 +1,48 @@
+{
+ "_about": "Real-shape fixtures for Studio's S1 tests. `laz_report_element` is copied unchanged from egeria-python tests/micro-tests/data/authoring/catalog_health_laz_2026_11_12.json (reports['216cc161-...']), which Portal-2 captured read-only from laz on 2026-11-12/13. `drafts_list` is what pyegeria.authoring's EgeriaDraftStore.async_list returns for that element as a private draft (release/next 72447ab2, pyegeria/authoring/drafts.py:384-388): BUILT, not captured, because nothing on laz is a draft yet (the D16 live privacy proof is still to run). The zone and version values follow the live header shape in egeria-python tests/micro-tests/data/semantic_assignment_live_ends_2026_11_11.json. Re-check against laz once a draft exists (Architect read-back).",
+ "laz_report_element": {
+  "class": "OpenMetadataRootElement",
+  "elementHeader": {
+   "class": "ElementHeader",
+   "guid": "216cc161-fee1-4bab-b460-b2a2bd66ed82",
+   "type": {
+    "superTypeNames": [
+     "DataSet",
+     "DataAsset",
+     "Asset",
+     "Referenceable",
+     "OpenMetadataRoot"
+    ],
+    "typeCategory": "ENTITY_DEF",
+    "typeDescription": "A collection of data items that describe a situation.  This is an instance of a report.",
+    "typeId": "e9077f4f-955b-4d7b-b1f7-12ee769ff0c3",
+    "typeName": "Report",
+    "typeVersion": 2
+   }
+  },
+  "properties": {
+   "additionalProperties": {
+    "outputFormat": "DICT",
+    "reportSpec": "Analytic Demo - AI Context Readiness"
+   },
+   "description": "Assets at each step from cataloged to AI-ready.",
+   "displayName": "Catalog Health - AI Context Readiness",
+   "qualifiedName": "Coco Pharmaceuticals::DeployedReport::Catalog-Health---AI-Context-Readiness::1.0"
+  }
+ },
+ "drafts_list": [
+  {
+   "kind": "report",
+   "name": "Catalog Health - AI Context Readiness",
+   "qualified_name": "Coco Pharmaceuticals::DeployedReport::Catalog-Health---AI-Context-Readiness::1.0",
+   "guid": "216cc161-fee1-4bab-b460-b2a2bd66ed82",
+   "created": "2026-11-14T18:02:11.000+00:00",
+   "updated": "2026-11-14T18:05:40.000+00:00",
+   "zones": [
+    "peterprofile"
+   ],
+   "marked": true,
+   "published_version": null
+  }
+ ]
+}
