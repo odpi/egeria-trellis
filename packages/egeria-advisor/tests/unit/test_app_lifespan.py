@@ -20,6 +20,9 @@ import threading
 
 import pytest
 
+# Opens a real Postgres connection on construction (the metrics store): needs the password (TR-12 R1).
+pytestmark = pytest.mark.requires_pgvector
+
 
 @pytest.fixture
 def recorded(monkeypatch):

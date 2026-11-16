@@ -174,8 +174,8 @@ breakdown than to either of RE's other two stores.
 
 `feedback` (`config.py:293-302`), `resource_feedback`/registry (`config.py:262-271`), and
 `chunk_feedback`/`query_log` (`config.py:145-151`) all default to the **same** Postgres
-instance and database that EA uses — `postgresql://egeria_advisor:advisor@localhost:5442/
-egeria_advisor`, with RE's connections pinned to the `resource_explorer` schema via
+instance and database that EA uses — `postgresql://egeria_advisor:<PGVECTOR_PASSWORD>@localhost:5442/
+egeria_advisor` (built from the PGVECTOR_* settings since TR-12; there is no built-in password), with RE's connections pinned to the `resource_explorer` schema via
 `options=-csearch_path%3Dresource_explorer` in each URL. EA's own tables (`query_metrics`,
 etc., `advisor/db_consolidated.py`) live in the same database's default schema. So "one
 physical Postgres, two independently deployed services" — the framing this doc's precedent

@@ -186,7 +186,7 @@ class PgVectorConfig(BaseModel):
     port: int = 5442
     dbname: str = "egeria_advisor"
     user: str = "egeria_advisor"
-    password: str = "advisor"
+    password: str = ""   # TR-12: no built-in password; PGVECTOR_PASSWORD must be set
     max_connections: int = 10
     ef_search: int = 128
 
@@ -429,7 +429,9 @@ class AdvisorSettings(BaseSettings):
     pgvector_port: int = Field(default=5442, alias="PGVECTOR_PORT")
     pgvector_dbname: str = Field(default="egeria_advisor", alias="PGVECTOR_DBNAME")
     pgvector_user: str = Field(default="egeria_advisor", alias="PGVECTOR_USER")
-    pgvector_password: str = Field(default="advisor", alias="PGVECTOR_PASSWORD")
+    # No default (TR-12, 2026-11-15): it was "advisor", so a deployment that set nothing ran on a password written in
+    # this repository. Unset, EA refuses to start and every Postgres user refuses by name (require_pgvector_password).
+    pgvector_password: str = Field(default="", alias="PGVECTOR_PASSWORD")
     pgvector_max_connections: int = Field(default=10, alias="PGVECTOR_MAX_CONNECTIONS")
     pgvector_ef_search: int = Field(default=128, alias="PGVECTOR_EF_SEARCH")
 
@@ -843,3 +845,18 @@ __all__ = [
     "ObservabilityConfig",
     "LoggingConfig",
 ]
+
+
+class MissingDatabaseSetting(RuntimeError):
+    """A Postgres setting EA needs is unset (TR-12). Names the variable, never a value."""
+
+
+def require_pgvector_password(password: "str | None" = None) -> str:
+    """The pgvector password (`password`, else `settings.pgvector_password`), or MissingDatabaseSetting naming
+    PGVECTOR_PASSWORD. There is no built-in default any more (TR-12)."""
+    value = password if password is not None else settings.pgvector_password
+    if value:
+        return value
+    raise MissingDatabaseSetting(
+        "EA cannot connect to its Postgres (pgvector): PGVECTOR_PASSWORD is not set. Set it in the .env file. There is "
+        "no built-in password any more (TR-12).")

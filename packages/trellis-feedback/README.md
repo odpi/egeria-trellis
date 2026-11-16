@@ -46,10 +46,14 @@ Both apps grew feedback separately and both have gaps (§1 of the design doc):
 ## Usage
 
 ```python
+import os
+from urllib.parse import quote
+
 from trellis_feedback import FeedbackItem, FeedbackStore
 
 store = FeedbackStore(
-    "postgresql://egeria_advisor:advisor@localhost:5442/egeria_advisor",
+    # The password comes from the environment (PGVECTOR_PASSWORD); never written into code (TR-12).
+    f"postgresql://egeria_advisor:{quote(os.environ['PGVECTOR_PASSWORD'], safe='')}@localhost:5442/egeria_advisor",
     app="resource-explorer",
     schema="resource_explorer",
     external_sources=("resource_feedback",),
@@ -113,6 +117,7 @@ schema, admin check and current user.
 ```bash
 uv run --package trellis-feedback pytest packages/trellis-feedback/tests
 # and on Postgres too, in a throwaway schema that is dropped afterwards:
-TRELLIS_FEEDBACK_TEST_PG_URL=postgresql://egeria_advisor:advisor@localhost:5442/egeria_advisor \
+# (PGVECTOR_PASSWORD from the environment, e.g. `source ~/.re-gate/secrets/pgvector.env`; no password in this file)
+TRELLIS_FEEDBACK_TEST_PG_URL="postgresql://egeria_advisor:${PGVECTOR_PASSWORD}@localhost:5442/egeria_advisor" \
   uv run --package trellis-feedback pytest packages/trellis-feedback/tests
 ```

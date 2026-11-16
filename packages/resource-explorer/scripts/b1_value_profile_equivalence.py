@@ -18,7 +18,14 @@ import psycopg2
 import psycopg2.extras
 import yaml
 
-PG = "postgresql://egeria_advisor:advisor@localhost:5442/egeria_advisor?options=-csearch_path%3Dresource_explorer"
+def _registry_url() -> str:
+    """REGISTRY_DATABASE_URL, else the shared-Postgres URL from PGVECTOR_* (TR-12: no password in this file)."""
+    from resource_explorer.config import get_config, require_database_url
+
+    return require_database_url(get_config().registry.database_url, "REGISTRY_DATABASE_URL", "registry")
+
+
+PG = _registry_url()
 OLD_CATALOG = next((a for a in sys.argv[2:] if a.endswith(".yaml")), None)
 
 

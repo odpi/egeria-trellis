@@ -114,14 +114,14 @@ RE_PUBLIC_URL=http://<box-hostname>:8810
 
 ```bash
 # Defaults already point at the shared egeria_advisor Postgres instance
-# (localhost:5442, database egeria_advisor, schema resource_explorer) — no
-# .env entries needed in a Trellis checkout. Override for a from-scratch
-# environment:
+# (localhost:5442, database egeria_advisor, schema resource_explorer), but
+# PGVECTOR_PASSWORD must be set: there is no built-in password (TR-12), and RE
+# refuses to start naming it. Override the rest for a from-scratch environment:
 PGVECTOR_HOST=localhost
 PGVECTOR_PORT=5442
 PGVECTOR_DBNAME=egeria_advisor
 PGVECTOR_USER=egeria_advisor
-PGVECTOR_PASSWORD=advisor
+PGVECTOR_PASSWORD=<the shared Postgres password>   # REQUIRED: no built-in default (TR-12)
 
 # Registry defaults to the same Postgres instance/database, own schema. To
 # fall back to local SQLite instead:

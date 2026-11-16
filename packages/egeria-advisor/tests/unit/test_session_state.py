@@ -34,13 +34,15 @@ try:
         except Exception:
             return False
 
-    _PGVECTOR_AVAILABLE = _pgvector_reachable()
+    # TR-12 R1: no supplied password (only the conftest placeholder), no connection attempt.
+    _PGVECTOR_AVAILABLE = (settings.pgvector_password not in ("", "test-only-not-a-password")
+                           and _pgvector_reachable())
 except Exception:
     _PGVECTOR_AVAILABLE = False
 
-requires_pgvector = pytest.mark.skipif(
-    not _PGVECTOR_AVAILABLE, reason="pgvector/Postgres not reachable at the configured host:port"
-)
+#: The shared marker: tests/conftest.py skips it with "PGVECTOR_PASSWORD not set (TR-12)" or "not reachable", and
+#: TRELLIS_REQUIRE_PG=1 (the gate) makes either a failure.
+requires_pgvector = pytest.mark.requires_pgvector
 
 
 @pytest.fixture

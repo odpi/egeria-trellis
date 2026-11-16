@@ -110,7 +110,9 @@ class PgVectorConfig(BaseSettings):
     # PGVECTOR_USER default, which is exactly what happened during Phase 1
     # live verification. db_user avoids the collision outright.
     db_user: str = Field(default="egeria_advisor", alias="PGVECTOR_USER")
-    password: str = Field(default="advisor", alias="PGVECTOR_PASSWORD")
+    # No default (TR-12, 2026-11-15): it used to be "advisor", so a deployment that set nothing ran on a password
+    # written in this repository. Unset, every shared-Postgres user refuses at use and names the variable.
+    password: str = Field(default="", alias="PGVECTOR_PASSWORD")
     schema_name: str = Field(default="resource_explorer", alias="PGVECTOR_SCHEMA")
     max_connections: int = Field(default=10, alias="PGVECTOR_MAX_CONNECTIONS")
     ef_search: int = Field(default=100, alias="PGVECTOR_EF_SEARCH")
@@ -292,10 +294,8 @@ class ObservabilityConfig(BaseSettings):
     #: from-scratch environment without the shared instance.
     metrics_db: str = "data/metrics.db"
     metrics_database_url: str = Field(
-        default=(
-            "postgresql://egeria_advisor:advisor@localhost:5442/egeria_advisor"
-            "?options=-csearch_path%3Dresource_explorer"
-        ),
+        # Empty: get_config() builds the shared-Postgres URL from PGVECTOR_* (TR-12). It used to carry the password.
+        default="",
         alias="METRICS_DATABASE_URL",
     )
 
@@ -532,10 +532,8 @@ class RegistryConfig(BaseSettings):
     environment without the shared instance.
     """
     database_url: str = Field(
-        default=(
-            "postgresql://egeria_advisor:advisor@localhost:5442/egeria_advisor"
-            "?options=-csearch_path%3Dresource_explorer"
-        ),
+        # Empty: get_config() builds the shared-Postgres URL from PGVECTOR_* (TR-12). It used to carry the password.
+        default="",
         alias="REGISTRY_DATABASE_URL",
     )
 
@@ -575,10 +573,8 @@ class FeedbackConfig(BaseSettings):
     #: Override FEEDBACK_DATABASE_URL (e.g. back to sqlite:///data/feedback.db)
     #: for a from-scratch environment without the shared instance.
     database_url: str = Field(
-        default=(
-            "postgresql://egeria_advisor:advisor@localhost:5442/egeria_advisor"
-            "?options=-csearch_path%3Dresource_explorer"
-        ),
+        # Empty: get_config() builds the shared-Postgres URL from PGVECTOR_* (TR-12). It used to carry the password.
+        default="",
         alias="FEEDBACK_DATABASE_URL",
     )
     admin_users: NameList = Field(default_factory=list, alias="FEEDBACK_ADMIN_USERS")
@@ -984,10 +980,84 @@ def egeria_view_server() -> str:
     return get_config().egeria.view_server
 
 
+class MissingDatabaseSetting(RuntimeError):
+    """A shared-Postgres setting RE needs is unset (TR-12). Names the variable(s), never a value."""
+
+
+#: The search path of the three shared-Postgres URLs (registry, feedback, metrics), as their old defaults had it.
+_SHARED_SEARCH_PATH = "resource_explorer"
+
+
+def shared_postgres_url(pg: "PgVectorConfig") -> str:
+    """The shared-Postgres URL from PGVECTOR_HOST/PORT/DBNAME/USER/PASSWORD, or "" when PGVECTOR_PASSWORD is unset."""
+    if not pg.password:
+        return ""
+    from urllib.parse import quote
+
+    return (f"postgresql://{quote(pg.db_user, safe='')}:{quote(pg.password, safe='')}@{pg.host}:{pg.port}/"
+            f"{pg.dbname}?options=-csearch_path%3D{_SHARED_SEARCH_PATH}")
+
+
+def require_database_url(url: str, env_name: str, what: str) -> str:
+    """`url`, or MissingDatabaseSetting naming `env_name` and PGVECTOR_PASSWORD (never a value)."""
+    if url:
+        return url
+    raise MissingDatabaseSetting(
+        f"RE cannot open its {what}: neither {env_name} nor PGVECTOR_PASSWORD is set. Set PGVECTOR_PASSWORD (the "
+        f"shared Postgres password) or {env_name} in the .env file. There is no built-in password any more (TR-12).")
+
+
+def require_pgvector_password(pg: "PgVectorConfig") -> str:
+    """PGVECTOR_PASSWORD, or MissingDatabaseSetting naming it (never a value)."""
+    if pg.password:
+        return pg.password
+    raise MissingDatabaseSetting(
+        "RE cannot connect to the shared Postgres (pgvector): PGVECTOR_PASSWORD is not set. Set it in the .env file. "
+        "There is no built-in password any more (TR-12).")
+
+
+#: (env var, what it is, how to read and write it on an ExplorerConfig) for each shared-Postgres URL.
+DATABASE_URL_SETTINGS = (
+    ("REGISTRY_DATABASE_URL", "registry", lambda c: c.registry, "database_url"),
+    ("FEEDBACK_DATABASE_URL", "feedback store", lambda c: c.feedback, "database_url"),
+    ("METRICS_DATABASE_URL", "metrics store", lambda c: c.observability, "metrics_database_url"),
+)
+
+
+def missing_database_urls(cfg: "ExplorerConfig | None" = None) -> list[str]:
+    """The URL settings still empty after get_config() filled them: neither the URL nor PGVECTOR_PASSWORD is set.
+    Names only."""
+    cfg = cfg or get_config()
+    return [env for env, _what, holder, attr in DATABASE_URL_SETTINGS if not getattr(holder(cfg), attr)]
+
+
+def check_database_settings_at_startup(cfg: "ExplorerConfig | None" = None) -> None:
+    """Fail closed at startup with one clear message naming what is unset (TR-12); the values are never shown.
+
+    A missing registry, feedback or metrics URL refuses the start. A missing PGVECTOR_PASSWORD with all three URLs
+    set (a SQLite dev registry, say) is logged by name and refused where it is used (`require_pgvector_password`:
+    the vector store), since nothing else needs it."""
+    cfg = cfg or get_config()
+    missing = missing_database_urls(cfg)
+    if missing:
+        raise MissingDatabaseSetting(
+            "RE cannot start: these shared-Postgres settings are not set: " + ", ".join(missing + ["PGVECTOR_PASSWORD"])
+            + ". Set PGVECTOR_PASSWORD in the .env file (it also fills the registry, feedback and metrics URLs), or "
+            "set each URL itself. There is no built-in password any more (TR-12).")
+    if not cfg.pgvector.password:
+        log.warning("PGVECTOR_PASSWORD is not set: the vector store (chat, retrieval) will refuse to connect until "
+                       "it is (TR-12: there is no built-in password any more)")
+
+
 def get_config() -> ExplorerConfig:
     global _config
     if _config is None:
         _config = ExplorerConfig()
+        # TR-12: the three shared-Postgres URLs come from PGVECTOR_* when not set themselves; empty when
+        # PGVECTOR_PASSWORD is unset too, and each user then refuses with require_database_url().
+        for _env, _what, holder, attr in DATABASE_URL_SETTINGS:
+            if not getattr(holder(_config), attr):
+                setattr(holder(_config), attr, shared_postgres_url(_config.pgvector))
         # Apply the resolved model tier on top of the pydantic-parsed llm/rag
         # blocks: Ollama model, num_ctx, and the RAG context token budget.
         # See resolve_llm_tier_config()'s docstring for override precedence.
