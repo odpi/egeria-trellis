@@ -82,7 +82,9 @@ def _isolated(monkeypatch, tmp_path):
     from pyegeria.view.egeria_spec_cache import SyncReport
 
     def fake_sync(client, folders=None, **kwargs):
-        seen.calls.append((list(folders or []), dict(kwargs)))
+        # Recorded raw (R1): in pyegeria, folders=None means "configured_folders()", which falls back to
+        # PYEGERIA_REPORT_SPEC_FOLDERS / config.json and could name another tool's folder; [] means read none.
+        seen.calls.append((folders, dict(kwargs)))
         return SyncReport(folders=list(folders or []))
     monkeypatch.setattr(egeria_spec_cache, "sync_report_specs", fake_sync)
     yield seen
@@ -92,6 +94,14 @@ def _isolated(monkeypatch, tmp_path):
 
 def _bearer(user: str) -> dict:
     return {"Authorization": f"Bearer {auth.create_access_token(user_id=user, egeria_token=CALLER_EGERIA_TOKEN)}"}
+
+
+def _one_call(seen: _Seen):
+    """The single sync_report_specs call. Its folders are always an explicit list, never None."""
+    assert len(seen.calls) == 1, seen.calls
+    folders, kwargs = seen.calls[0]
+    assert folders is not None and isinstance(folders, list), folders
+    return folders, kwargs
 
 
 def _wait_done(limit_s: float = 5.0) -> dict:
@@ -122,7 +132,8 @@ def test_an_admins_sync_reads_as_the_service_account_never_as_the_admin(_isolate
     assert st["state"] == "ok", st
 
     assert built_from == [1]                                     # the connection came from _service_connection()
-    assert len(seen.calls) == 1 and len(seen.clients) == 1
+    _one_call(seen)
+    assert len(seen.clients) == 1
     assert seen.conns[0] == {"view_server": VIEW, "platform_url": PLATFORM, "user_id": SERVICE_USER,
                              "user_pwd": SERVICE_PWD, "token": ""}
     assert seen.clients[0].user_id == SERVICE_USER and not seen.clients[0].token
@@ -158,7 +169,7 @@ def test_the_service_connection_ignores_any_signed_in_user(_isolated):
 def test_sync_now_is_shared_and_reads_only_the_default_consumer_folder(_isolated):
     """(b) No folders configured: the one default consumer folder, as a shared sync."""
     ess.sync_now()
-    (folders, kwargs), = _isolated.calls
+    folders, kwargs = _one_call(_isolated)
     assert folders == [ess.DEFAULT_FOLDER] == ["ReportSpecFolder::Consumer::EgeriaAdvisor"]
     assert kwargs["shared"] is True
     assert set(kwargs) <= {"shared", "recursive"}      # nothing that widens what is read, or asks as a user
@@ -168,7 +179,7 @@ def test_sync_now_is_shared_and_reads_only_the_default_consumer_folder(_isolated
 def test_sync_now_reads_exactly_the_configured_folders(_isolated, monkeypatch, var):
     monkeypatch.setenv(var, "ReportSpecFolder::Consumer::EgeriaAdvisor, ReportSpecFolder::Consumer::Other")
     ess.sync_now()
-    (folders, kwargs), = _isolated.calls
+    folders, kwargs = _one_call(_isolated)
     assert folders == ["ReportSpecFolder::Consumer::EgeriaAdvisor", "ReportSpecFolder::Consumer::Other"]
     assert kwargs["shared"] is True
 
@@ -176,8 +187,8 @@ def test_sync_now_reads_exactly_the_configured_folders(_isolated, monkeypatch, v
 def test_no_folder_configured_reads_no_folder(_isolated, monkeypatch):
     monkeypatch.setenv(ess.ADVISOR_FOLDERS_ENV, "")
     ess.sync_now()
-    (folders, kwargs), = _isolated.calls
-    assert folders == [] and kwargs["shared"] is True
+    folders, kwargs = _one_call(_isolated)
+    assert folders == [] and folders is not None and kwargs["shared"] is True   # read none, not "configured"
 
 
 def test_the_admin_sync_is_shared_and_folder_scoped_too(_isolated, monkeypatch):
@@ -187,5 +198,5 @@ def test_the_admin_sync_is_shared_and_folder_scoped_too(_isolated, monkeypatch):
     assert TestClient(app, raise_server_exceptions=False).post(
         "/api/admin/specs/sync", headers=_bearer(ADMIN)).status_code == 200
     _wait_done()
-    (folders, kwargs), = _isolated.calls
+    folders, kwargs = _one_call(_isolated)
     assert folders == [ess.DEFAULT_FOLDER] and kwargs["shared"] is True
