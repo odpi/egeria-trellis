@@ -1681,7 +1681,8 @@ def reattach_egeria_by_name(ctx: typer.Context):
 
     DRY RUN by default: prints a table per registry table (rows, distinct names, each verdict's count), writes a
     0600 plan file and prints the exact "to apply:" line. --show <verdict> lists the rows of one verdict.
-    Run it AFTER scripts/clear_egeria_pointers_after_reset.py, never before: the clear script blanks every pointer.
+    Run it AFTER scripts/clear_egeria_pointers_after_reset.py, never before: the clear script blanks every pointer
+    that no longer resolves in Egeria.
     Pass --help for every flag and guard (resource_explorer/egeria_reattach.py's docstring).
     """
     from resource_explorer.egeria_reattach import run
