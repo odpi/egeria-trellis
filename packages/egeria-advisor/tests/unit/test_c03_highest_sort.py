@@ -200,6 +200,9 @@ def test_c03_has_no_narrower_banner(fixes_on, stores, monkeypatch):
     ("Filtering by owner isn't supported, so all owners' risks are listed.", True),
     ("There is no specific attribute for region, so the region filter was not applied.", True),
     ("The spec does not include the date range you asked for.", True),
+    # read-back R4: a two-part unmet keeps its real half
+    ("The request does not specify a status. Filtering by owner isn't supported.", True),
+    ("Request does not specify a region; owners filter not supported", True),
 ])
 def test_narrows(text, narrows):
     assert v2.narrows(text) is narrows
@@ -212,3 +215,26 @@ def test_a_real_unmet_still_raises_the_banner(fixes_on, stores, monkeypatch):
     assert spec["unmet"] == "no leader"
     r = el.process(r["draft_id"], "generate now")
     assert "⚠️ **Saved spec is narrower than your question. Not applied:** no leader" in r["response"]
+
+
+@pytest.mark.parametrize("text, kept", [
+    ("The request does not specify a status. Filtering by owner isn't supported.", "Filtering by owner isn't supported"),
+    ("Request does not specify a region; owners filter not supported", "owners filter not supported"),
+    ("The question doesn't ask for a date, but the region filter isn't available", "the region filter isn't available"),
+    ("The request does not specify a particular importance level or status, so all risks are listed.", None),
+    ("no leader", "no leader"),
+])
+def test_kept_unmet_keeps_only_the_clauses_that_narrow(text, kept):
+    assert v2.kept_unmet(text) == kept
+
+
+def test_a_two_part_unmet_bans_only_its_real_half(fixes_on, stores, monkeypatch):
+    """R4: the banner names the owner part only."""
+    reply = {**RECORDED, "unmet": "The request does not specify a status. Filtering by owner isn't supported."}
+    el, r, spec = _start(monkeypatch, reply=reply)
+    assert spec["unmet"] == "Filtering by owner isn't supported"
+    r = el.process(r["draft_id"], "generate now")
+    line = "⚠️ **Saved spec is narrower than your question. Not applied:** Filtering by owner isn't supported"
+    assert line in r["response"] and "does not specify" not in r["response"]
+    saved = el.save_and_exit(r["draft_id"])["response"]
+    assert line in saved and "does not specify" not in saved

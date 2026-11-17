@@ -590,10 +590,20 @@ _NOT_NARROWED = re.compile(
     r"(?:specify|ask|mention|request|name|say|state)\b|^\s*(?:none|n/?a|nothing|null)\.?\s*$", re.IGNORECASE)
 
 
-def narrows(unmet: Any) -> bool:
-    """`unmet` names a part of the question that wasn't applied (not: the question didn't ask for it)."""
+def kept_unmet(unmet: Any) -> Optional[str]:
+    """The parts of an LLM `unmet` that name something not applied, or None. It is read clause by clause
+    (split on ". ", ";" and " but "): a clause that only says the question didn't ask for something is
+    dropped, and every other clause is kept (read-back R4: "The request does not specify a status.
+    Filtering by owner isn't supported." keeps the owner part)."""
     text = str(unmet or "").strip()
-    return bool(text) and text.lower() != "null" and not _NOT_NARROWED.search(text)
+    clauses = [c.strip(" .;") for c in re.split(r"(?<=\.)\s+|\.$|;|\s+but\s+", text, flags=re.IGNORECASE)]
+    kept = [c for c in clauses if c and not _NOT_NARROWED.search(c)]
+    return "; ".join(kept) if kept else None
+
+
+def narrows(unmet: Any) -> bool:
+    """`unmet` names a part of the question that wasn't applied (not only: the question didn't ask for it)."""
+    return kept_unmet(unmet) is not None
 
 
 def ground_conditions(params: Dict[str, Any], type_name: Optional[str] = None

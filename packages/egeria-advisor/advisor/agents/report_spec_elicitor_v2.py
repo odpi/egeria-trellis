@@ -178,7 +178,7 @@ def _create(elicitor, query: str, data: Dict[str, Any], target: str, conditions:
                      answers={"Heading": data.get("heading"), "Description": data.get("description")})
     spec["conditions"] = conditions
     # only an LLM "unmet" that names something not applied; "the request doesn't specify X" narrows nothing
-    spec["unmet"] = str(data["unmet"]).strip() if v2.narrows(data.get("unmet")) else None
+    spec["unmet"] = v2.kept_unmet(data.get("unmet"))
     _add_unmet(spec, unmet or [])
     spec["v2"] = True
     spec["phase"] = "confirm_action"
