@@ -774,7 +774,30 @@ def build_format_set(spec: Dict[str, Any]):
 
 def spec_draft(spec: Dict[str, Any], fs=None):
     from pyegeria.authoring import SpecDraft
-    return SpecDraft(label=label_for(spec), format_set=fs or build_format_set(spec))
+    return SpecDraft(label=label_for(spec), format_set=fs or spec.get(SAVED_FORMAT_SET) or build_format_set(spec))
+
+
+#: Key of the FormatSet a saved document holds, in a spec made by `spec_from_document` (never saved to a draft).
+SAVED_FORMAT_SET = "_saved_format_set"
+
+
+def spec_from_document(markdown: str, label: str) -> Dict[str, Any]:
+    """A spec `answer` can run from a saved v2 document (ruling 2026-11-17 A3: Execute == the chat answer).
+    The FormatSet is the document's own microflow, so it runs exactly what was saved. The conditions
+    order_rows / count_words read come from its parameters: the sort, the name filter."""
+    fs = format_set_from_document(markdown, label)
+    params = dict((fs.action.spec_params if fs.action else None) or {})
+    conditions: Dict[str, Any] = {}
+    order = params.get("output_sort_order") or params.get("sequencing_order")
+    prop = params.get("order_property_name") or params.get("sequencing_property")
+    if order:
+        conditions["output_sort_order"] = str(order).upper()
+    if prop:
+        conditions["order_property_name"] = str(prop)
+    if isinstance(params.get("search_string"), str) and params["search_string"].strip() not in ("", "*"):
+        conditions["search_string"] = params["search_string"]
+    return {"title": label, "draft_id": label, "target_type": fs.target_type, "conditions": conditions,
+            SAVED_FORMAT_SET: fs}
 
 
 def validate(spec: Dict[str, Any], *, client: Any = None, run: Any = None):

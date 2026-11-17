@@ -216,7 +216,7 @@ def test_generate_answers_in_the_reply_when_signed_in(fixes_on, stores, monkeypa
     client = object()
     el = ReportSpecElicitor()
     r = el.start("which projects are active", egeria_client=client)
-    r = el.process(r["draft_id"], "generate now")
+    r = el.process(r["draft_id"], "generate now", egeria_client=client)   # per call: nothing kept between
     assert seen["client"] is client and seen["max_rows"] == v2.ANSWER_ROWS
     # the LLM's old element-status key is read as a functional status: Project's own projectStatus
     assert seen["fs"].action.spec_params["property_value"] == "Active"
@@ -224,7 +224,6 @@ def test_generate_answers_in_the_reply_when_signed_in(fixes_on, stores, monkeypa
     assert "project_status" in [c.key for f in seen["fs"].formats for c in f.attributes]   # shown
     assert "| Campaign X | Active |" in r["response"] and r["answer"]["ok"]
     assert r["validation"]["dr_egeria"]["success"]
-    v2e._CLIENTS.clear()
 
 
 def test_refine_edits_the_draft_and_regenerates(fixes_on, stores, monkeypatch):

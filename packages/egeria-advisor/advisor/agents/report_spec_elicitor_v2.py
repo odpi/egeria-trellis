@@ -24,8 +24,63 @@ from advisor.llm_client import get_planning_llm
 from advisor.report_draft import get_report_draft_manager
 from advisor.report_spec_docs import get_report_spec_doc_manager
 
-#: Signed-in clients for live drafts, by draft id (never written to the draft file).
-_CLIENTS: Dict[str, Any] = {}
+# ── Whose client: per call, never a process-global store (ruling 2026-11-17 A1, A2, A4) ──
+#
+# The client a call may use is set for that call only: the harness passes its own client; the web service
+# passes the request's own credentials, and a client is built from them (bearer token, no password) only when
+# a run needs one, then closed. Nothing keeps a client between calls, so one user's client can never serve
+# another request. A draft records who made it (`owner`), and only that user may continue or run it.
+import contextlib
+import contextvars
+
+_SCOPE: "contextvars.ContextVar[Optional[Dict[str, Any]]]" = contextvars.ContextVar("ea_v2_request_scope",
+                                                                                     default=None)
+NOT_YOUR_DRAFT = "This draft belongs to another user's session, so I can't continue it as you. Start a new one."
+
+
+@contextlib.contextmanager
+def request_scope(*, client: Any = None, credentials: Optional[Dict[str, str]] = None):
+    """The client (or the credentials to build one) this call may use, for the duration of the call."""
+    token = _SCOPE.set({"client": client, "credentials": credentials})
+    try:
+        yield
+    finally:
+        _SCOPE.reset(token)
+
+
+def request_user() -> Optional[str]:
+    """The user this call acts for: its client's user, else its credentials' user; None when it has neither."""
+    scope = _SCOPE.get() or {}
+    if scope.get("client") is not None:
+        return getattr(scope["client"], "user_id", None) or None
+    creds = scope.get("credentials") or {}
+    return creds.get("user_id") or None
+
+
+def owner_refusal(spec: Dict[str, Any]) -> Optional[str]:
+    """NOT_YOUR_DRAFT when this call acts for a user and the draft isn't theirs (A4); None otherwise."""
+    user = request_user()
+    if user is None:
+        return None
+    owner = spec.get("owner") or spec.get("user_id")
+    return None if owner == user else NOT_YOUR_DRAFT
+
+
+@contextlib.contextmanager
+def _call_client():
+    """The client for a run in this call, or None (then the answer says "sign in"). A client the caller passed
+    is the caller's to close; one built here from the request's credentials is closed here."""
+    from advisor.egeria_user_client import build_user_client, close_client
+    scope = _SCOPE.get() or {}
+    if scope.get("client") is not None:
+        yield scope["client"]
+        return
+    client = build_user_client(scope.get("credentials"))
+    try:
+        yield client
+    finally:
+        if client is not None:
+            close_client(client)
 
 
 def _json(raw: str) -> Any:
@@ -177,6 +232,7 @@ def _create(elicitor, query: str, data: Dict[str, Any], target: str, conditions:
                      action_function=action["function"], target_type=target, columns=cols,
                      answers={"Heading": data.get("heading"), "Description": data.get("description")})
     spec["conditions"] = conditions
+    spec["owner"] = request_user()     # A4: only this user may continue or run it
     # only an LLM "unmet" that names something not applied; "the request doesn't specify X" narrows nothing
     spec["unmet"] = v2.kept_unmet(data.get("unmet"))
     _add_unmet(spec, unmet or [])
@@ -184,8 +240,6 @@ def _create(elicitor, query: str, data: Dict[str, Any], target: str, conditions:
     spec["phase"] = "confirm_action"
     spec["phase_label"] = "Confirming report basic configuration"
     dm.save(spec)
-    if egeria_client is not None:
-        _CLIENTS[spec["draft_id"]] = egeria_client
     return confirm_response(elicitor, spec, notes=dropped + notes)
 
 
@@ -305,9 +359,17 @@ def retarget(spec: Dict[str, Any], user_response: str) -> List[str]:
 
 def generate(elicitor, spec: Dict[str, Any]) -> Dict[str, Any]:
     """Validate with pyegeria; serialize with pyegeria; run as the user when signed in."""
+    refused = owner_refusal(spec)
+    if refused:
+        from advisor.agents.report_spec_elicitor import _error_result
+        return _error_result(spec.get("draft_id") or "", refused)
+    with _call_client() as client:
+        return _generate(elicitor, spec, client)
+
+
+def _generate(elicitor, spec: Dict[str, Any], client: Any) -> Dict[str, Any]:
     from advisor.agents.report_spec_elicitor import _NAV_FINAL
     dm = get_report_draft_manager()
-    client = _CLIENTS.get(spec["draft_id"])
     run = None
     if client is not None:
         from pyegeria.authoring import inprocess_runner

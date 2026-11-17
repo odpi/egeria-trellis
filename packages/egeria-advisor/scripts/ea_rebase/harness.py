@@ -135,7 +135,7 @@ def drive(question: Dict[str, Any], ctx: Dict[str, Any]) -> Dict[str, Any]:
         if reply is None:
             break
         t = time.time()
-        r = el.process(r["draft_id"], reply)
+        r = el.process(r["draft_id"], reply, **ctx.get("start_kwargs", {}))   # the client, per call
         turns += 1
         transcript.append({"turn": turns, "user": reply, "phase": r.get("phase"),
                            "response": r.get("response"), "s": round(time.time() - t, 2)})

@@ -70,11 +70,16 @@ class ReportSpecElicitor:
         query: str,
         perspective: Optional[str] = None,
         egeria_client: Any = None,
+        egeria_credentials: Optional[Dict[str, str]] = None,
     ) -> Dict[str, Any]:
-        """Decompose intent, propose basic structure, save draft, and return response."""
+        """Decompose intent, propose basic structure, save draft, and return response.
+
+        Re-based (v2): `egeria_client` (the harness's) or `egeria_credentials` (the web request's own) is
+        what this call may run as; neither is kept after the call (ruling 2026-11-17 A1/A2)."""
         if _v2.enabled():
             from advisor.agents import report_spec_elicitor_v2 as v2e
-            return v2e.start(self, query, perspective, egeria_client)
+            with v2e.request_scope(client=egeria_client, credentials=egeria_credentials):
+                return v2e.start(self, query, perspective, egeria_client)
         llm = get_planning_llm()
         prompt = decompose_prompt(query, perspective)
         try:
@@ -118,12 +123,26 @@ class ReportSpecElicitor:
 
         return self._build_confirm_response(spec)
 
-    def process(self, draft_id: str, user_response: str) -> Dict[str, Any]:
-        """Advance the elicitation conversation based on current phase and user response."""
+    def process(self, draft_id: str, user_response: str, egeria_client: Any = None,
+                egeria_credentials: Optional[Dict[str, str]] = None) -> Dict[str, Any]:
+        """Advance the elicitation conversation based on current phase and user response.
+
+        A re-based (v2) draft runs as `egeria_client` / `egeria_credentials` for this call only, and only
+        for the user who made it (ruling 2026-11-17 A2/A4)."""
         dm = get_report_draft_manager()
         spec = dm.load(draft_id)
         if not spec:
             return _error_result(draft_id, f"Draft session `{draft_id}` not found.")
+        if spec.get("v2"):
+            from advisor.agents import report_spec_elicitor_v2 as v2e
+            with v2e.request_scope(client=egeria_client, credentials=egeria_credentials):
+                refused = v2e.owner_refusal(spec)
+                if refused:
+                    return _error_result(draft_id, refused)
+                return self._process(dm, spec, draft_id, user_response)
+        return self._process(dm, spec, draft_id, user_response)
+
+    def _process(self, dm, spec: Dict[str, Any], draft_id: str, user_response: str) -> Dict[str, Any]:
 
         # Save history before changing
         dm.push_history(spec)
