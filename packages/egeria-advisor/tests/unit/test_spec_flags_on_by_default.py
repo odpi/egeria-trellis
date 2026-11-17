@@ -100,3 +100,20 @@ def test_each_harness_mode_runs_with_its_own_flags(clean, mode, rebase, fixes):
     assert os.environ[v2.FLAG] == ("1" if rebase else "0") and os.environ[v2.FIXES_FLAG] == ("1" if fixes else "0")
     h.set_mode_env(mode, env)
     assert env == h.MODE_ENV[mode]
+
+
+@pytest.mark.parametrize("env, want", [
+    ({}, {"v2": True, "elicitor_fixes": True, "status_merge": False}),
+    ({v2.FLAG: "0"}, {"v2": False, "elicitor_fixes": False, "status_merge": False}),
+    ({v2.FIXES_FLAG: "off"}, {"v2": True, "elicitor_fixes": False, "status_merge": False}),
+    ({v2.STATUS_MERGE_FLAG: "1"}, {"v2": True, "elicitor_fixes": True, "status_merge": True}),
+])
+def test_health_reports_the_resolved_flags_without_signing_in(clean, env, want):
+    """U3: the post-deploy check reads the flags from the running service (public /health, on/off only)."""
+    from fastapi.testclient import TestClient
+    import advisor.web.app as web
+    for k, v in env.items():
+        clean.setenv(k, v)
+    r = TestClient(web.app).get("/health")
+    assert r.status_code == 200
+    assert r.json() == {"status": "ok", "spec_authoring": want}

@@ -319,8 +319,11 @@ async def index() -> FileResponse:
 
 
 @app.get("/health")
-async def health() -> Dict[str, str]:
-    return {"status": "ok"}
+async def health() -> Dict[str, Any]:
+    """Liveness, plus the RESOLVED report-spec authoring flags (on/off only, no settings values), so a
+    post-deploy check can read them from the running service without its log."""
+    from advisor import spec_authoring_v2
+    return {"status": "ok", "spec_authoring": spec_authoring_v2.flags_state()}
 
 
 

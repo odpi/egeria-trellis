@@ -170,6 +170,11 @@ def status_merge_enabled() -> bool:
     return fixes_enabled() and _on(STATUS_MERGE_FLAG)
 
 
+def flags_state() -> Dict[str, bool]:
+    """The effective values, for /health."""
+    return {"v2": enabled(), "elicitor_fixes": fixes_enabled(), "status_merge": status_merge_enabled()}
+
+
 def flags_line() -> str:
     """The effective values, for the startup log."""
     def word(b):
