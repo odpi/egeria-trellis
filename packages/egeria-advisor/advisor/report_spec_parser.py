@@ -128,11 +128,13 @@ def parse_report_spec_markdown(content: str) -> FormatSet:
     report_spec_docs (register on create/update, validate, inbox registration at load),
     web/reports.py (draft preview, register on run, the validate and import routes).
     """
-    from advisor.spec_authoring_v2 import enabled as _v2_enabled
-    if _v2_enabled() and "### Microflow" in content:
-        from advisor.spec_authoring_v2 import format_set_from_document
-        m = re.search(r"^### Display Name\s*\n(.+)$", content, flags=re.M)
-        return format_set_from_document(content, (m.group(1).strip() if m else "ea-spec"))
+    # Only a document with a microflow can take the V2 path, so look for one before importing the Advisor:
+    # trellis-analytics loads this module by path, without the `advisor` package.
+    if "### Microflow" in content:
+        from advisor.spec_authoring_v2 import enabled as _v2_enabled, format_set_from_document
+        if _v2_enabled():
+            m = re.search(r"^### Display Name\s*\n(.+)$", content, flags=re.M)
+            return format_set_from_document(content, (m.group(1).strip() if m else "ea-spec"))
     extractor = UniversalExtractor(content)
     commands = extractor.extract_commands()
     

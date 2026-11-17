@@ -170,6 +170,9 @@ def test_discover_draft_schema_internal(monkeypatch):
                 "columns": [],
                 "answers": {"Heading": "Test Title"}
             }
+    # Import the elicitor BEFORE patching report_draft: it binds get_report_draft_manager by name at import, so a
+    # first import while the patch is on would keep the mock for every later test on this worker.
+    import advisor.agents.report_spec_elicitor  # noqa: F401
     monkeypatch.setattr("advisor.report_draft.get_report_draft_manager", lambda *a, **k: MockDraftManager())
     
     class MockElicitor:
@@ -226,6 +229,9 @@ def test_discover_draft_schema_cache(monkeypatch):
     class MockDraftManager:
         def load(self, draft_id):
             return draft_store.get(draft_id)
+    # Import the elicitor BEFORE patching report_draft: it binds get_report_draft_manager by name at import, so a
+    # first import while the patch is on would keep the mock for every later test on this worker.
+    import advisor.agents.report_spec_elicitor  # noqa: F401
     monkeypatch.setattr("advisor.report_draft.get_report_draft_manager", lambda *a, **k: MockDraftManager())
     
     class MockElicitor:
