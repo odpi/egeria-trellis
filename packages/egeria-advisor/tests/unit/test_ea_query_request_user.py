@@ -160,3 +160,45 @@ def test_the_owner_can_still_navigate(drafts):
     with using_user("erinoverview"):
         out = ReportSpecElicitor().cancel(draft_id)
     assert out["response"] != "" and not path.exists()
+
+
+# ── W1: cancel says "discarded" only when something was ─────────────────────
+
+@pytest.mark.parametrize("nav", ["cancel", "discard"])
+def test_cancelling_an_id_not_in_your_drafts_says_nothing_was_discarded(drafts, nav):
+    from advisor.agents.report_spec_elicitor import NO_SUCH_DRAFT, ReportSpecElicitor
+    from advisor.request_context import using_user
+    draft_id, path = _erins_draft("erinoverview")
+    before = path.read_bytes()
+    with using_user("peterprofile"):
+        out = getattr(ReportSpecElicitor(), nav)(draft_id)
+    assert out["response"] == NO_SUCH_DRAFT
+    assert path.read_bytes() == before
+
+
+def test_cancelling_your_own_draft_still_says_discarded(drafts):
+    from advisor.agents.report_spec_elicitor import ReportSpecElicitor
+    from advisor.request_context import using_user
+    draft_id, path = _erins_draft("erinoverview")
+    with using_user("erinoverview"):
+        out = ReportSpecElicitor().cancel(draft_id)
+    assert out["response"] == "Report building session cancelled. Draft has been discarded."
+    assert not path.exists()
+
+
+def test_cancelling_a_plan_that_isnt_there_says_nothing_was_discarded(tmp_path, monkeypatch):
+    import advisor.agents.plan_elicitor as pe
+    from advisor.agents.report_spec_elicitor import NO_SUCH_DRAFT
+
+    class _DM:
+        def __init__(self, found):
+            self.found = found
+
+        def delete(self, draft_id):
+            return self.found
+    monkeypatch.setattr("advisor.session_logger.get_session_logger",
+                        lambda: type("L", (), {"finalize": lambda *a, **k: None})())
+    for found, words in ((False, NO_SUCH_DRAFT), (True, "Planning session cancelled. Your draft has been discarded.")):
+        monkeypatch.setattr(pe, "get_draft_manager", lambda f=found: _DM(f))
+        out = pe.PlanElicitor().cancel("draft_x")
+        assert out["response"].startswith(words)

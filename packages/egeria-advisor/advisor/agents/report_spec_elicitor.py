@@ -62,6 +62,10 @@ _NAV_FINAL   = ["run_spec", "back", "cancel"]
 _NAV_CONFIRM = ["continue_columns", "try_again", "cancel"]
 
 
+#: Cancel/discard of an id that isn't in the caller's drafts: nothing was deleted, so it doesn't say it was.
+NO_SUCH_DRAFT = "There's no draft with that id in your drafts, so nothing was discarded."
+
+
 class ReportSpecElicitor:
     """Conversational elicitor for report specs."""
 
@@ -407,10 +411,12 @@ Do not output any introductory or summary text. Just the markdown document:
         refused = self._not_yours(draft_id)
         if refused:
             return refused
-        get_report_draft_manager().delete(draft_id)
+        deleted = get_report_draft_manager().delete(draft_id)
         return {
             "query": draft_id,
-            "response": "Report building session cancelled. Draft has been discarded.",
+            # W1: say "discarded" only when a draft was deleted (since F1, another user's id isn't in your folder)
+            "response": ("Report building session cancelled. Draft has been discarded." if deleted
+                         else NO_SUCH_DRAFT),
             "query_type": "report_spec_clarification",
             "routing_agent": "report_spec_agent",
             "draft_id": None,
