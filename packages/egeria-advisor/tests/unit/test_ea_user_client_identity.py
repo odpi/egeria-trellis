@@ -64,14 +64,15 @@ def exec_guard(monkeypatch):
     # validate's Egeria checks, recording the client they get (Architect's appendix item 1): the type-fit
     # check reads the target's super types; the publication check reads the held spec. Both answer offline.
     async def super_chain(client, type_name):
-        seen.append({"check": "type_fit", "client": client})
+        seen.append({"check": "type_fit", "client": client, "user": getattr(client, "user_id", None)})
         return [type_name, "GovernanceDefinition", "Referenceable"]
 
-    async def held_notes(client, draft):
-        seen.append({"check": "held_spec", "client": client})
-        return [], []
+    async def find_exact(client, type_name, prop, value):
+        # pyegeria's real publication check runs; only its one Egeria read (the unique-name lookup) is answered
+        seen.append({"check": "held_spec", "client": client, "user": getattr(client, "user_id", None)})
+        return []                       # Egeria's not-found: the spec isn't published yet
     monkeypatch.setattr("md_processing.md_processing_utils.typed_properties.type_super_chain", super_chain)
-    monkeypatch.setattr("pyegeria.authoring.publication.async_publication_notes", held_notes)
+    monkeypatch.setattr("pyegeria.authoring.publication._find_exact", find_exact)
     return seen
 
 
@@ -180,15 +181,18 @@ def test_validates_egeria_checks_ran_with_the_users_client(offline, exec_guard, 
     from pyegeria.egeria_tech_client import EgeriaTech
     _llm(monkeypatch)
     r = _chat()
-    checks = {s["check"]: s["client"] for s in exec_guard if "check" in s}
-    assert set(checks) == {"type_fit", "held_spec"}
-    for c in checks.values():
-        assert isinstance(c, EgeriaTech) and c.user_id == "erinoverview" and c.token == "erin-bearer-token"
+    checks = [s for s in exec_guard if "check" in s]
+    assert {s["check"] for s in checks} == {"type_fit", "held_spec"}      # type_super_chain and _find_exact ran
+    for s in checks:                                                        # R1: as the request's user
+        assert s["user"] == "erinoverview", s
+        c = s["client"]
+        assert isinstance(c, EgeriaTech) and c.token == "erin-bearer-token"
     v = r["validation"]
     assert not any("Can't tell" in w for w in v["warnings"]), v["warnings"]
     assert not any("super types not read" in n for n in v["not_checked"]), v["not_checked"]
     assert "find method fits the target type" in v["checked"]
-    assert "not every check ran" not in r["response"]
+    assert "warning" not in r["response"].split("\n\n")[0]     # a clean run: a plain "validated with pyegeria"
+    assert "validated with pyegeria)" in r["response"]
 
 
 def test_a_check_that_couldnt_run_is_said_in_the_reply(offline, exec_guard, egeria_type_fit, stores, monkeypatch):
@@ -198,8 +202,12 @@ def test_a_check_that_couldnt_run_is_said_in_the_reply(offline, exec_guard, eger
     monkeypatch.setattr("md_processing.md_processing_utils.typed_properties.type_super_chain", unreadable)
     _llm(monkeypatch)
     r = _chat()
-    assert "validated with pyegeria, but not every check ran" in r["response"]
-    assert "⚠️ **Not every check ran:**" in r["response"]
+    warnings = r["validation"]["warnings"]
+    assert warnings
+    n = len(warnings)
+    assert f"validated with pyegeria, with {n} warning{'s' if n != 1 else ''}:" in r["response"]   # R2
+    for w in warnings:
+        assert f"- {w}" in r["response"]
     assert "super types couldn't be read from Egeria" in r["response"]
     assert "not checked: find method GovernanceOfficer.find_governance_definitions fits target type Risk" \
         in r["response"]

@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import json
 import re
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from loguru import logger
 
@@ -367,16 +367,20 @@ def retarget(spec: Dict[str, Any], user_response: str) -> List[str]:
     return update_from_request(spec, user_response) + notes
 
 
-def validation_caveats(result: Any) -> str:
-    """pyegeria's warnings and what it couldn't check, in words, or "" when every check ran. A check that
-    didn't run is said, never shown as a bare "validated" (ruling RULING-EA-U3-IDENTITY-SWITCH appendix:
-    with a broken client the Egeria checks silently didn't run)."""
+def validation_caveats(result: Any) -> Tuple[str, str]:
+    """(heading words, list) for pyegeria's warnings and what it couldn't check. ("validated with pyegeria",
+    "") when every check ran. A warning or an unrun check is said, never a bare "validated" (ruling
+    RULING-EA-U3-IDENTITY-SWITCH appendix; read-back R2: "validated with pyegeria, with N warnings:")."""
     warnings = list(getattr(result, "warnings", None) or [])
     unchecked = [n for n in (getattr(result, "not_checked", None) or []) if n not in warnings]
-    if not warnings and not unchecked:
-        return ""
-    lines = ["⚠️ **Not every check ran:**"] + [f"- {w}" for w in warnings] + [f"- not checked: {n}" for n in unchecked]
-    return "\n".join(lines)
+    lines = [f"- {w}" for w in warnings] + [f"- not checked: {n}" for n in unchecked]
+    if warnings:
+        words = f"validated with pyegeria, with {len(warnings)} warning{'s' if len(warnings) != 1 else ''}:"
+    elif unchecked:
+        words = f"validated with pyegeria; {len(unchecked)} check{'s' if len(unchecked) != 1 else ''} didn't run:"
+    else:
+        return "validated with pyegeria", ""
+    return words, "\n".join(lines)
 
 
 def generate(elicitor, spec: Dict[str, Any]) -> Dict[str, Any]:
@@ -423,11 +427,10 @@ def _generate(elicitor, spec: Dict[str, Any], client: Any) -> Dict[str, Any]:
         "can_go_back": True, "navigation": _NAV_FINAL, "doc_id": doc_id, "next_context": None,
         "validation": result.model_dump(),
     }
-    caveats = validation_caveats(result)
-    head = (f"**{spec['answers'].get('Heading')}** (draft spec **{doc_id}**, "
-            f"{'validated with pyegeria, but not every check ran' if caveats else 'validated with pyegeria'})")
+    words, caveats = validation_caveats(result)
+    head = f"**{spec['answers'].get('Heading')}** (draft spec **{doc_id}**, {words.rstrip(':')})"
     if caveats:
-        head += "\n\n" + caveats
+        head += f"\n\n⚠️ {words}\n" + caveats
     if spec.get("unmet"):
         head += "\n\n" + narrower_line(spec)
     if client is None:
