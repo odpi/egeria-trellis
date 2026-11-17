@@ -366,8 +366,22 @@ Do not output any introductory or summary text. Just the markdown document:
             return v2e.refine(self, spec, user_response)
         return _error_result(spec["draft_id"], f"Invalid phase: {phase}")
 
+    def _not_yours(self, draft_id: str) -> Optional[Dict[str, Any]]:
+        """An error result when the draft has an owner and this request isn't that user (A4 / F1), else
+        None. The request's user is the signed-in user the web request runs as
+        (request_context.current_user_id); discard goes through cancel."""
+        spec = get_report_draft_manager().load(draft_id)
+        if not spec:
+            return None
+        from advisor.agents import report_spec_elicitor_v2 as v2e
+        refused = v2e.owner_refusal(spec)
+        return _error_result(draft_id, refused) if refused else None
+
     def back(self, draft_id: str) -> Dict[str, Any]:
         """Rewind to previous phase."""
+        refused = self._not_yours(draft_id)
+        if refused:
+            return refused
         dm = get_report_draft_manager()
         spec = dm.load(draft_id)
         if not spec:
@@ -390,6 +404,9 @@ Do not output any introductory or summary text. Just the markdown document:
 
     def cancel(self, draft_id: str) -> Dict[str, Any]:
         """Discard the session."""
+        refused = self._not_yours(draft_id)
+        if refused:
+            return refused
         get_report_draft_manager().delete(draft_id)
         return {
             "query": draft_id,
@@ -405,6 +422,9 @@ Do not output any introductory or summary text. Just the markdown document:
 
     def save_and_exit(self, draft_id: str) -> Dict[str, Any]:
         """Save draft and exit flow."""
+        refused = self._not_yours(draft_id)
+        if refused:
+            return refused
         spec = get_report_draft_manager().load(draft_id)
         title = spec.get("title", draft_id) if spec else draft_id
         response = f"Session saved. You can resume building **{title}** from the drafts list."
@@ -425,6 +445,9 @@ Do not output any introductory or summary text. Just the markdown document:
 
     def resume(self, draft_id: str) -> Dict[str, Any]:
         """Resume a saved draft session."""
+        refused = self._not_yours(draft_id)
+        if refused:
+            return refused
         spec = get_report_draft_manager().load(draft_id)
         if not spec:
             return _error_result(draft_id, f"Draft `{draft_id}` not found.")
@@ -453,6 +476,9 @@ Do not output any introductory or summary text. Just the markdown document:
 
     def restart_qa(self, draft_id: str) -> Dict[str, Any]:
         """Restart Q&A from confirm_action phase."""
+        refused = self._not_yours(draft_id)
+        if refused:
+            return refused
         dm = get_report_draft_manager()
         spec = dm.load(draft_id)
         if not spec:

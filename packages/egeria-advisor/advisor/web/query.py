@@ -14,6 +14,7 @@ Endpoints:
 from __future__ import annotations
 
 import asyncio
+import contextvars
 import json
 from functools import partial
 from typing import Any, Dict, Optional
@@ -53,8 +54,11 @@ async def query_endpoint(request: Request, req: QueryRequest) -> Dict[str, Any]:
         # cleaner than the nested-thread approach used when called on-loop.
         loop = asyncio.get_event_loop()
         user_id = current_user.get("sub") if current_user else None
+        # copy_context: the worker thread acts for this request's user (request_context.current_user_id), so
+        # drafts land in that user's own folder. run_in_executor alone doesn't carry contextvars (F1).
         result = await loop.run_in_executor(
             None,
+            contextvars.copy_context().run,
             partial(
                 rag.query,
                 user_query=user_query,
@@ -116,6 +120,9 @@ async def query_stream_endpoint(request: Request, req: QueryRequest) -> Streamin
 
     loop = asyncio.get_event_loop()
     rag  = _get_rag()
+    # This request's context (its user, set by the user-context middleware), captured now: the producer runs
+    # in a worker thread, which run_in_executor doesn't give the caller's contextvars (F1).
+    request_ctx = contextvars.copy_context()
 
     async def event_gen():
         # Bridge sync generator → async generator via asyncio.Queue so the
@@ -148,7 +155,7 @@ async def query_stream_endpoint(request: Request, req: QueryRequest) -> Streamin
 
         import concurrent.futures
         executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
-        future = loop.run_in_executor(executor, producer)
+        future = loop.run_in_executor(executor, request_ctx.run, producer)
 
         while True:
             item = await q.get()

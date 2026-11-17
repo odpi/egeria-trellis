@@ -49,12 +49,17 @@ def request_scope(*, client: Any = None, credentials: Optional[Dict[str, str]] =
 
 
 def request_user() -> Optional[str]:
-    """The user this call acts for: its client's user, else its credentials' user; None when it has neither."""
+    """The user this call acts for: its client's user, else its credentials' user, else the signed-in user the
+    request runs as (request_context, for calls that carry no credentials: back/cancel/save/resume); None
+    when there is none."""
     scope = _SCOPE.get() or {}
     if scope.get("client") is not None:
         return getattr(scope["client"], "user_id", None) or None
     creds = scope.get("credentials") or {}
-    return creds.get("user_id") or None
+    if creds.get("user_id"):
+        return creds["user_id"]
+    from advisor.request_context import current_user_id
+    return current_user_id() or None
 
 
 def owner_refusal(spec: Dict[str, Any]) -> Optional[str]:
