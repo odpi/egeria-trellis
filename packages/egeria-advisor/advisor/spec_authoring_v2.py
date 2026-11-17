@@ -507,6 +507,86 @@ def condition_columns(type_name: str, columns: List[Dict[str, Any]], conditions:
     return out
 
 
+#: Words that make "<word> <attribute>" a property sort. C03 live re-run 2026-11-17 (21f906da): for "Which risks
+#: have the highest importance?" the LLM set no sort and asked for a column `importanceLevel`, which isn't an
+#: attribute of Risk, so the rows came back in Egeria's order with no importance column. The 11-13 run had set
+#: the sort. The question's own words now decide it, whatever the LLM returns.
+_SORT_WORDS = {"highest": "PROPERTY_DESCENDING", "greatest": "PROPERTY_DESCENDING",
+               "largest": "PROPERTY_DESCENDING", "biggest": "PROPERTY_DESCENDING",
+               "lowest": "PROPERTY_ASCENDING", "smallest": "PROPERTY_ASCENDING", "least": "PROPERTY_ASCENDING"}
+#: "most/least <adjective>" for the scale attributes: "the most important risks" sorts by importance.
+_SORT_ADJECTIVES = {"important": "importance", "critical": "criticality", "severe": "severity",
+                    "urgent": "urgency", "confident": "confidence", "likely": "likelihood",
+                    "impactful": "impact", "valuable": "value"}
+#: Never a sort attribute read from a question's words.
+_NOT_SORT_KEYS = {"guid", "status", "type_name", "anchor", "classifications", "properties", "related",
+                  "members", "member_of", "mermaid", "extended_properties", "additional_properties"}
+
+
+def resolve_attribute(type_name: Optional[str], name: Any) -> Optional[str]:
+    """The attribute key of `type_name` that `name` means, or None: exact (camelCase or snake_case), then one
+    is the other plus a qualifier ("importanceLevel" -> importance, "risk_importance" -> importance), then
+    a near spelling. Without a type there is nothing to check against: None."""
+    import difflib
+    if not type_name or not name:
+        return None
+    menu = [k for k, _ in attribute_menu(type_name) if k not in _NOT_SORT_KEYS]
+    key = _snake(re.sub(r"\s+", "_", str(name).strip()))
+    if key in menu:
+        return key
+    near = [k for k in menu if key.startswith(k + "_") or key.endswith("_" + k)
+            or k.startswith(key + "_") or k.endswith("_" + key)]
+    if len(near) == 1:
+        return near[0]
+    close = difflib.get_close_matches(key, menu, n=1, cutoff=0.85)
+    return close[0] if close else None
+
+
+def _camel(key: str) -> str:
+    head, *rest = key.split("_")
+    return head + "".join(w[:1].upper() + w[1:] for w in rest)
+
+
+def sort_from_question(query: str, type_name: Optional[str], conditions: Dict[str, Any]
+                       ) -> Tuple[Dict[str, Any], Optional[str]]:
+    """(conditions, note): a property sort for "highest/lowest <attribute>" (or "most/least <adjective>")
+    when the question says so and the conditions set no sort. Only an attribute of `type_name` counts, so
+    "the top 5" or "the highest-ranked team" (no such attribute) adds nothing."""
+    if not query or not type_name or (conditions or {}).get("output_sort_order"):
+        return conditions, None
+    words = re.findall(r"[A-Za-z][\w-]*", query.lower())
+    for i, w in enumerate(words[:-1]):
+        order = _SORT_WORDS.get(w)
+        phrase = words[i + 1:i + 3]
+        if w in ("most", "least") and words[i + 1] in _SORT_ADJECTIVES:
+            order = "PROPERTY_DESCENDING" if w == "most" else "PROPERTY_ASCENDING"
+            phrase = [_SORT_ADJECTIVES[words[i + 1]]]
+        if not order:
+            continue
+        for cand in ([" ".join(phrase)] if len(phrase) > 1 else []) + phrase[:1]:
+            key = resolve_attribute(type_name, cand)
+            if key:
+                out = {**(conditions or {}), "output_sort_order": order, "order_property_name": _camel(key)}
+                first = "highest" if order == "PROPERTY_DESCENDING" else "lowest"
+                return out, f"'{w} {' '.join(phrase)}' read as a sort by {key}, {first} first"
+    return conditions, None
+
+
+#: An LLM "unmet" that only says the question didn't ask for something: nothing was narrowed, so it isn't
+#: shown as "Saved spec is narrower than your question" (C03 2026-11-17: "The request does not specify a
+#: particular importance level or status, so all risks are listed.").
+_NOT_NARROWED = re.compile(
+    r"\b(?:does not|doesn't|did not|didn't|do not|don't)\s+(?:specify|ask|mention|request|name|say|state|"
+    r"include|give|define)\b|\bnot (?:specified|requested|asked|mentioned)\b|\bno (?:particular|specific)\b|"
+    r"\bso all\b|^\s*(?:none|n/?a|nothing)\.?\s*$", re.IGNORECASE)
+
+
+def narrows(unmet: Any) -> bool:
+    """`unmet` names a part of the question that wasn't applied (not: the question didn't ask for it)."""
+    text = str(unmet or "").strip()
+    return bool(text) and text.lower() != "null" and not _NOT_NARROWED.search(text)
+
+
 def ground_conditions(params: Dict[str, Any], type_name: Optional[str] = None
                       ) -> Tuple[Dict[str, Any], List[str], List[str]]:
     """(conditions, notes, unmet): the conditions a question may set, checked for `type_name`.
@@ -538,8 +618,18 @@ def ground_conditions(params: Dict[str, Any], type_name: Optional[str] = None
         if k == "output_sort_order":
             if str(v).upper() in SORT_ORDERS:
                 out[k] = str(v).upper()
+        elif k == "order_property_name" and type_name:
+            key = resolve_attribute(type_name, v)
+            if key:
+                out[k] = _camel(key)
+                if _snake(str(v)) != key:
+                    notes.append(f"sort attribute '{v}' read as {key}, the attribute of {type_name}")
+            else:
+                unmet.append(f"sorting by '{v}': it isn't an attribute of {type_name}")
         else:
             out[k] = str(v)
+    if out.get("output_sort_order") in _PROPERTY_SORTS and not out.get("order_property_name"):
+        out.pop("output_sort_order")   # a property sort without a property sorts nothing
     if words:
         status, missed = ground_functional_status(type_name, words)
         unmet += missed

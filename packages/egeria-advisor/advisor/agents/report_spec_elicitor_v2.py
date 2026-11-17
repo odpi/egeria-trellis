@@ -63,7 +63,9 @@ def _condition_help(type_name: Optional[str] = None) -> str:
 - "element_status": only when the user explicitly asks for deleted elements: "DELETED", or
   "INCLUDE_DELETED" for deleted ones as well as the rest
 - "output_sort_order": one of {list(v2.SORT_ORDERS)}; with PROPERTY_ASCENDING/DESCENDING also
-  "order_property_name": the attribute to sort by"""
+  "order_property_name": the attribute to sort by. "highest/lowest <attribute>" is a sort, not a filter:
+  "Which risks have the highest importance?" -> {{"output_sort_order": "PROPERTY_DESCENDING",
+  "order_property_name": "importance"}}, with that attribute as a column"""
 
 
 _CONDITION_HELP = _condition_help()
@@ -128,7 +130,8 @@ or
   "target_type": "one type from the list above",
   "conditions": {{}},
   "columns": [{{"name": "Column Label", "key": "snake_case_attribute"}}],
-  "unmet": "any part of the question these conditions cannot apply (e.g. an absence), or null"}}
+  "unmet": "any part of the question these conditions cannot apply (e.g. an absence), or null when
+            everything the question asks is applied; never for something the question doesn't ask"}}
 """
     try:
         data = _json(llm.generate(prompt, temperature=0.1, max_tokens=700))
@@ -154,6 +157,9 @@ or
         return _clarify(query, f"I don't know an Egeria type called '{data.get('target_type')}'. Which kind of "
                                f"element do you mean? For example: {', '.join(v2.known_types()[:12])}.")
     conditions, cnotes, unmet = v2.ground_conditions(data.get("conditions") or {}, target)
+    conditions, snote = v2.sort_from_question(query, target, conditions)
+    if snote:
+        cnotes.append(snote)
     return _create(elicitor, query, data, target, conditions, egeria_client, cnotes, unmet)
 
 
@@ -167,7 +173,8 @@ def _create(elicitor, query: str, data: Dict[str, Any], target: str, conditions:
                      action_function=action["function"], target_type=target, columns=cols,
                      answers={"Heading": data.get("heading"), "Description": data.get("description")})
     spec["conditions"] = conditions
-    spec["unmet"] = data.get("unmet") if data.get("unmet") not in (None, "null", "") else None
+    # only an LLM "unmet" that names something not applied; "the request doesn't specify X" narrows nothing
+    spec["unmet"] = str(data["unmet"]).strip() if v2.narrows(data.get("unmet")) else None
     _add_unmet(spec, unmet or [])
     spec["v2"] = True
     spec["phase"] = "confirm_action"
