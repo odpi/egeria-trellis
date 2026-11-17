@@ -67,10 +67,11 @@ class TreeBuildResult:
 def _store():
     from trellis_artifact_tree import ArtifactTreeConfig, ArtifactTreeStore
 
-    from resource_explorer.config import get_config
+    from resource_explorer.config import get_config, require_pgvector_password
 
     cfg = get_config()
     pg = cfg.pgvector
+    require_pgvector_password(pg)      # TR-12: refused by name, never libpq's authentication error
     return ArtifactTreeStore(ArtifactTreeConfig(
         host=pg.host, port=pg.port, dbname=pg.dbname,
         # RE's PgVectorConfig deliberately avoids a bare `user` field (it would

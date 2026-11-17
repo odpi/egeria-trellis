@@ -74,8 +74,18 @@ COPY packages/trellis-accel packages/trellis-accel
 COPY packages/trellis-feedback packages/trellis-feedback
 COPY packages/trellis-analytics packages/trellis-analytics
 
+# resource-explorer AND every reference step under trellis-analytics/examples/steps (2026-11-13). A bare
+# `--package resource-explorer` re-resolves the venv down to that one package and leaves the library steps
+# out, so every image (the web image too) carried none of them. The step list is read from the
+# tree, never hand-kept: a step added there is installed here. The prefect-worker role refuses to start if
+# `library_steps_line()` still reports one missing.
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --frozen --no-dev --package resource-explorer
+    set -eu; steps=""; \
+    for f in packages/trellis-analytics/examples/steps/*/pyproject.toml; do \
+        n="$(sed -n 's/^name = "\(.*\)"$/\1/p' "$f" | head -1)"; \
+        [ -n "$n" ] && steps="$steps --package $n"; \
+    done; \
+    uv sync --frozen --no-dev --package resource-explorer $steps
 
 # Swap torch/torchvision for CPU-only builds and drop the CUDA runtime
 # packages torch's default linux wheel drags in, as the LAST dependency
@@ -118,6 +128,13 @@ RUN --mount=type=cache,target=/app/.cache/huggingface \
 # ---- runtime ----------------------------------------------------------
 FROM python:${PYTHON_VERSION}-slim AS runtime
 
+# The commit this image is built from (`make image-re` and CI pass it). Resource Explorer matches a Prefect
+# worker to its own code by it (resource_explorer/build_info.py); the prefect-worker role refuses to start
+# without it. Empty for an image built by hand without --build-arg.
+ARG TRELLIS_RE_SHA=""
+LABEL org.opencontainers.image.revision="${TRELLIS_RE_SHA}"
+ENV TRELLIS_RE_SHA="${TRELLIS_RE_SHA}"
+
 RUN groupadd --gid 1000 trellis && \
     useradd --uid 1000 --gid trellis --shell /bin/bash --create-home trellis && \
     apt-get update && apt-get install -y --no-install-recommends curl git && \
@@ -144,17 +161,13 @@ ENV PATH="/app/.venv/bin:${PATH}" \
     PGVECTOR_HOST=egeria-shared-postgres \
     KROKI_URL=http://egeria-shared-kroki:8000 \
     EGERIA_PLATFORM_URL=https://egeria-main:9443 \
-    LLM__OLLAMA__BASE_URL=http://host.docker.internal:11434 \
-    # RegistryConfig/FeedbackConfig/ObservabilityConfig each hardcode their
-    # own "postgresql://...@localhost:5442/..." default independently of
-    # PGVECTOR_HOST/PGVECTOR_PORT (config.py:280-283, :309-312, :146-150) —
-    # found live testing this image, 2026-09-04: PGVECTOR_HOST alone left
-    # the registry trying to reach Postgres at localhost from inside the
-    # container and failing /health/ready. These three need their own
-    # container-friendly override.
-    REGISTRY_DATABASE_URL=postgresql://egeria_advisor:advisor@egeria-shared-postgres:5442/egeria_advisor?options=-csearch_path%3Dresource_explorer \
-    FEEDBACK_DATABASE_URL=postgresql://egeria_advisor:advisor@egeria-shared-postgres:5442/egeria_advisor?options=-csearch_path%3Dresource_explorer \
-    METRICS_DATABASE_URL=postgresql://egeria_advisor:advisor@egeria-shared-postgres:5442/egeria_advisor?options=-csearch_path%3Dresource_explorer
+    LLM__OLLAMA__BASE_URL=http://host.docker.internal:11434
+# No REGISTRY_/FEEDBACK_/METRICS_DATABASE_URL here, and no password (TR-12/TR-25, 2026-11-15). Those three used to be
+# baked in with the password, so a rotated password silently broke the container's feedback and metrics connections
+# while a compose override fixed only the registry. RE now builds all three at runtime from PGVECTOR_HOST (above),
+# PGVECTOR_PORT/DBNAME/USER and PGVECTOR_PASSWORD, which the deployment supplies (compose env/secret). Unset, the
+# container refuses to start naming it, exactly as the host does. (The 2026-09-04 reason they were baked, a
+# localhost default that ignored PGVECTOR_HOST, is gone: the URLs follow PGVECTOR_HOST now.)
 
 COPY --from=builder --chown=trellis:trellis /app/.venv /app/.venv
 COPY --from=builder --chown=trellis:trellis /app/hf-cache /app/.cache/huggingface

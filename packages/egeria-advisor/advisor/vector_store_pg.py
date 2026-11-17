@@ -136,6 +136,14 @@ class PgVectorStore(_SharedPgVectorStore):
         )
         logger.info(f"Initialized PgVectorStore for {config.host}:{config.port}/{config.dbname}")
 
+    def connect(self) -> None:
+        """TR-12: no password, no connection: refused by name here rather than as libpq's authentication error (the
+        built-in "advisor" default is gone). Construction stays side-effect free."""
+        from advisor.config import require_pgvector_password
+
+        require_pgvector_password(self._config.password)
+        super().connect()
+
     # ------------------------------------------------------------------
     # Schema provisioning helper
     # ------------------------------------------------------------------

@@ -100,8 +100,9 @@ checkout or standalone:
 **With egeria-workspaces (recommended if you have it):** the shared Postgres container is
 already running, managed by egeria-workspaces-fs's
 `compose-configs/shared-infra/shared-infra.yaml` (container name `egeria-shared-postgres`).
-Its init script (`docker-entrypoint-initdb.d/init_egeria.sql`) already creates the
-`egeria_advisor` role/database and runs `CREATE EXTENSION IF NOT EXISTS vector` — but it does
+Its init script (`docker-entrypoint-initdb.d/init_trellis.sh`) already creates the
+`egeria_advisor` role/database with the password `PGVECTOR_PASSWORD` from `shared-infra/.env` (there is
+no default; set the same value for Trellis) and runs `CREATE EXTENSION IF NOT EXISTS vector` — but it does
 **not** create Resource Explorer's named Postgres schema. Create it once, explicitly (it's
 not reliably auto-created by the app itself — see note below):
 
@@ -114,8 +115,9 @@ docker exec egeria-shared-postgres psql -U egeria_advisor -d egeria_advisor -p 5
 container, then create the same schema against it:
 
 ```bash
-docker run -p 5442:5432 -e POSTGRES_DB=egeria_advisor -e POSTGRES_USER=egeria_advisor \
-  -e POSTGRES_PASSWORD=advisor pgvector/pgvector:pg17
+export PGVECTOR_PASSWORD="$(openssl rand -hex 24)"   # no default; give both apps this value
+POSTGRES_PASSWORD="$PGVECTOR_PASSWORD" docker run -p 5442:5432 -e POSTGRES_DB=egeria_advisor \
+  -e POSTGRES_USER=egeria_advisor -e POSTGRES_PASSWORD pgvector/pgvector:pg17
 
 docker exec <container_name_or_id> psql -U egeria_advisor -d egeria_advisor \
   -c 'CREATE SCHEMA IF NOT EXISTS resource_explorer AUTHORIZATION egeria_advisor;'

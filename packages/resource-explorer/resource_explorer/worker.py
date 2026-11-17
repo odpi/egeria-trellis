@@ -456,9 +456,10 @@ def run_worker(
     _preload_pyegeria()
     stop_event = stop_event if stop_event is not None else threading.Event()
 
-    from resource_explorer.config import check_public_url, log_llm_tier_config
+    from resource_explorer.config import check_database_settings_at_startup, check_public_url, log_llm_tier_config
 
     check_public_url()  # refuses to start on a malformed RE_PUBLIC_URL, quoting it
+    check_database_settings_at_startup()  # TR-12: refuses to start naming an unset shared-Postgres setting
     log_llm_tier_config()  # the resolved tier/model/num_ctx/budgets; the lazy first-call line predates logging setup
 
     log.info(

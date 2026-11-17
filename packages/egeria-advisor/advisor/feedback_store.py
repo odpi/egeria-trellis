@@ -50,9 +50,9 @@ def feedback_database_url() -> str:
     explicit = (os.environ.get(URL_ENV) or "").strip()
     if explicit:
         return explicit
-    from advisor.config import settings
+    from advisor.config import require_pgvector_password, settings
     return (f"postgresql+psycopg2://{quote(settings.pgvector_user, safe='')}:"
-            f"{quote(settings.pgvector_password, safe='')}@{settings.pgvector_host}:"
+            f"{quote(require_pgvector_password(), safe='')}@{settings.pgvector_host}:"
             f"{settings.pgvector_port}/{settings.pgvector_dbname}")
 
 

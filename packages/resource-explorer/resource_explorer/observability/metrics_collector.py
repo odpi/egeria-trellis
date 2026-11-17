@@ -39,7 +39,9 @@ def resolve_metrics_url(cfg=None) -> str:
     cfg = cfg or get_config().observability
     if cfg.metrics_db and cfg.metrics_db != "data/metrics.db":
         return f"sqlite:///{cfg.metrics_db}"
-    return cfg.metrics_database_url
+    from resource_explorer.config import require_database_url
+
+    return require_database_url(cfg.metrics_database_url, "METRICS_DATABASE_URL", "metrics store")   # TR-12
 
 
 def chunk_boost(positive: int, neutral: int, total: int) -> float:

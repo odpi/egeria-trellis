@@ -37,6 +37,9 @@ def env(tmp_path, monkeypatch):
     monkeypatch.setenv("PGVECTOR_PORT", "1")
     reg = ProjectRegistry(db_path=str(db))
     seed(reg)
+    # Every seeded GUID answers "not found" in Egeria unless a test says otherwise (the liveness reads are never
+    # real here): the pre-liveness behaviour, where every pointer is cleared.
+    monkeypatch.setattr(S, "default_reads", lambda: (lambda guid: {"state": S.GONE}))
     return {"reg": reg, "dir": tmp_path / "plans", "name": "reset_test.db"}
 
 

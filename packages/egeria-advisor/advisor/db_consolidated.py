@@ -189,6 +189,9 @@ class ConsolidatedDBManager:
         """Initialize connection pool if not already initialized."""
         if self._pool is not None:
             return
+        from advisor.config import require_pgvector_password
+
+        require_pgvector_password(self.password)      # TR-12: refused by name, not as libpq's auth error
         with self._lock:
             if self._pool is not None:
                 return

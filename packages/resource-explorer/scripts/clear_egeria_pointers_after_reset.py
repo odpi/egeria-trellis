@@ -35,7 +35,26 @@ APPLY needs ALL of these, and refuses (exit 2, saying which) when any is missing
     RE process looks active (activity_log rows still 'running' whose owner is alive or cannot be judged, runs
     claimed or running, outbox rows running).
 
-What it does (all in RE's registry; no Egeria call; no DDL; no proof row is ever deleted or edited):
+What it does (all its writes are in RE's registry; no DDL; no proof row is ever deleted or edited):
+
+  KEEP a pointer that still resolves (owner's decision 2026-11-13, after the 11-11 recovery's dry run found three
+        live pointers it would have blanked). Before planning to clear or remove a row, the script reads each of its
+        Egeria GUIDs BY GUID, as RE's service account (the daemon identity the re-attach tool uses). Its only
+        Egeria calls are those reads; it never writes to Egeria. Per row:
+          - every GUID is GONE (Egeria says not found FOR RE'S SERVICE ACCOUNT) -> cleared or removed as below.
+            "Gone" is what that account can see: since e9fd817f4c a zone without a control is private, so an
+            element in a zone RE's account cannot see answers not found too and its pointer is cleared;
+          - any GUID RESOLVES                           -> the row is KEPT: "keep: live, created <time>";
+          - any GUID cannot be READ (refused, unreachable, an unexpected answer) -> the row is KEPT: "keep:
+            unreadable (<why>): not treated as gone". An unread pointer is never taken for a dead one.
+        The kept rows, their reason and what each GUID answered are in the plan, so in its hash: an answer that
+        changes between the dry run and the apply refuses the apply like any other change. A resource with a
+        kept publish pointer (its asset, sub-resource or report GUID) gets no egeria_reset marker. Checked: the
+        pointer columns below, the app_settings GUID keys (egeria.github_source_control_library_guid,
+        egeria_server_guid::*, egeria_asset_guid::*) and the cache rows that hold a GUID (the materialized
+        architecture rows, survey_definition_cache). Not checked: egeria_linkage_status (it records that a GUID
+        was found stale, it is not a pointer RE follows) and the claim/credential settings (their values are not
+        GUIDs). If Egeria cannot be reached at all the run REFUSES rather than planning without the reads.
 
   CLEAR a pointer column (row kept):      projects/databases/file_systems.egeria_asset_guid, sub_resources.egeria_guid,
         investigations.egeria_project_guid (+ egeria_project_status becomes `unbound`, only for rows that were
@@ -101,7 +120,7 @@ from resource_explorer.registry_guards import (  # noqa: E402,F401
 
 #: Written into every plan file and into its hash. A plan made by another version of this script is refused with
 #: its own sentence (not the registry-changed one). Bump it when the plan's shape or meaning changes.
-SCRIPT_VERSION = "2026-10-09.1"
+SCRIPT_VERSION = "2026-11-13.2"
 #: The exact prefix of the printed "to apply:" line: what actually works (see the docstring).
 RUN_PREFIX = "uv run python scripts/clear_egeria_pointers_after_reset.py"
 
@@ -117,6 +136,26 @@ SETTING_PREFIXES = ("egeria_register_claim::", "egeria_server_claim::", "egeria_
 LAZY_TABLES = ("work_lists",)
 SETTING_KEYS = ("egeria.github_source_control_library_guid",)
 PROOF_KIND = "egeria_reset"
+
+#: What a by-GUID read of one pointer answered. GONE is Egeria's own not-found; anything else that is not a
+#: readable element is UNREADABLE, and both LIVE and UNREADABLE keep the row (absence-as-answer).
+LIVE, GONE, UNREADABLE = "live", "gone", "unreadable"
+#: app_settings keys whose VALUE is an Egeria GUID (checked like any pointer). The other removed keys hold claims,
+#: credential slugs or confirmation flags, not GUIDs, and are removed as before.
+SETTING_GUID_KEYS = SETTING_KEYS
+SETTING_GUID_PREFIXES = ("egeria_server_guid::", "egeria_asset_guid::")
+#: Cache rows that hold an Egeria GUID: a live one is kept like a pointer. egeria_linkage_status is deliberately
+#: absent (it records that a GUID was found stale; it is not a pointer RE follows).
+DELETE_POINTERS = {"architecture_materialized_blueprints": ["guid"], "architecture_materialized_components": ["guid"],
+                   "architecture_materialized_ports": ["guid"], "survey_definition_cache": ["process_guid"]}
+#: Tables whose kept row means the RESOURCE's publish is still in Egeria, so it gets no egeria_reset marker
+#: (table -> the column naming the resource).
+PUBLISH_POINTER_RESOURCE = {
+    "projects": "slug", "databases": "slug", "file_systems": "slug", "sub_resources": "resource_slug",
+    "database_surveys": "database_slug", "filesystem_surveys": "filesystem_slug",
+    "project_egeria_surveys": "project_slug", "project_published_analyses": "project_slug",
+    "project_published_annotation_types": "project_slug",
+}
 
 #: (table, key columns, {column: new value}, trigger columns (the row is touched when one is non-empty)
 #: [, extra SQL condition that must also hold, [, id suffix]])
@@ -160,7 +199,16 @@ EXTRA_READS = {
     "egeria_outbox_snapshot": ["claimed_at", "next_attempt_at", "completed_at", "last_error"],
     "activity_log": ["id", "status", "detail"], "runs": ["id", "state"],
     "databases": ["slug"], "projects": ["slug"], "file_systems": ["slug"],
+    "project_egeria_surveys": ["project_slug", "published_at", "egeria_report_guid"],
+    "project_published_analyses": ["project_slug", "published_at"],
+    "project_published_annotation_types": ["project_slug", "published_at"],
 }
+#: Publish-state tables that record WHEN a publish happened (database_surveys and filesystem_surveys keep only
+#: surveyed_at, so they cannot say). A row published after --reset-at is evidence of a post-reset publish even
+#: when no proof row exists: the survey-run publisher (surveyors/egeria_publisher.py, the path a scheduled
+#: RepoRefreshSurvey takes) records the asset GUID and project_egeria_surveys but writes no
+#: catalogue_commit_proofs row; only the Publish button's read-back path (repo_publish) does.
+PUBLISHED_AT_TABLES = ("project_egeria_surveys", "project_published_analyses", "project_published_annotation_types")
 
 NODE_DATABASE, NODE_REPO, NODE_OTHER = "database", "repo_report", "resource"
 
@@ -192,6 +240,127 @@ def check_schema(conn, skip: tuple = ()) -> list[str]:
     return skipped
 
 
+# ── which pointers still resolve (by-GUID reads in Egeria, as RE's service account) ────────────────────────
+
+class GuidLiveness:
+    """What Egeria says about one GUID, read once per distinct GUID in a run. `read` is a by-GUID element read
+    (pyegeria's `get_metadata_element_by_guid`). Each answer is a small JSON-able dict, so it goes into the plan
+    and its hash: {"state": live|gone|unreadable, "type", "qualified_name", "created", "why"}."""
+
+    def __init__(self, read):
+        self._read = read
+        self._seen: dict[str, dict] = {}
+
+    def __call__(self, guid: str) -> dict:
+        if guid not in self._seen:
+            self._seen[guid] = self._answer(guid)
+        return self._seen[guid]
+
+    @property
+    def answers(self) -> dict[str, dict]:
+        return dict(self._seen)
+
+    def _answer(self, guid: str) -> dict:
+        from resource_explorer.egeria_absence import ABSENT, PRESENT, is_absent
+
+        try:
+            answer = self._read(guid)
+        except Exception as exc:  # noqa: BLE001 - classified, never swallowed as a miss
+            if is_absent(exc) == ABSENT:
+                return {"state": GONE}
+            return {"state": UNREADABLE, "why": f"by-GUID read raised {type(exc).__name__}"}
+        state = is_absent(answer)
+        if state == ABSENT:
+            return {"state": GONE}
+        if state != PRESENT or not isinstance(answer, dict):
+            return {"state": UNREADABLE, "why": "by-GUID read gave an answer of an unexpected shape"}
+        from resource_explorer.egeria_reattach import _qualified_name_of
+
+        header = answer.get("elementHeader") if isinstance(answer.get("elementHeader"), dict) else answer
+        typ = (header.get("type") or {}).get("typeName", "") if isinstance(header.get("type"), dict) else ""
+        created = (header.get("versions") or {}).get("createTime", "") if isinstance(header.get("versions"), dict) else ""
+        return {"state": LIVE, "type": str(typ or ""), "qualified_name": _qualified_name_of(answer),
+                "created": str(created or "")}
+
+
+def default_reads() -> GuidLiveness:
+    """The reads as RE's own daemon identity (the identity the re-attach tool reads with): no person's session."""
+    from resource_explorer.egeria_reattach import daemon_reads
+
+    return GuidLiveness(daemon_reads().expert.get_metadata_element_by_guid)
+
+
+def keep_reason(answers: dict[str, dict], reset_at: str) -> str:
+    """The plan's one-line reason for a kept row, from what each of its GUIDs answered (`answers`: col -> answer).
+    LIVE wins over UNREADABLE in the wording; both keep the row."""
+    live = [a for a in answers.values() if a["state"] == LIVE]
+    if live:
+        created = sorted(a.get("created", "") for a in live)[0]
+        if not created:
+            return "keep: live, created at an unknown time"
+        before = _known(created) and _ts(created) < _ts(reset_at)
+        return f"keep: live, created {created}" + (" (BEFORE the reset: check --reset-at)" if before else "")
+    why = next(a.get("why", "") for a in answers.values() if a["state"] == UNREADABLE)
+    return f"keep: unreadable ({why}): not treated as gone"
+
+
+class _Reads:
+    """The liveness reads, opened on first use: a plan with no pointer to check never contacts Egeria."""
+
+    def __init__(self, factory):
+        self._factory = factory
+        self._reads = None
+
+    def __call__(self, guid: str) -> dict:
+        if self._reads is None:
+            try:
+                self._reads = self._factory()
+            except Exception as exc:  # noqa: BLE001 - named, and nothing is planned without the reads
+                raise Refused("cannot read Egeria to check which pointers still resolve "
+                              f"({type(exc).__name__}); nothing is planned, because the clear never treats an "
+                              "unread pointer as gone") from None
+        return self._reads(guid)
+
+
+def split_live(rows: list[dict], cols: list[str], reads, reset_at: str) -> tuple[list[dict], list[dict]]:
+    """(rows to change, rows kept). A row is kept when any of its non-empty GUIDs in `cols` is LIVE or UNREADABLE;
+    a kept entry carries the row, what each GUID answered and the reason. A relationship GUID (doc_sources) goes
+    with its row's element GUID: the relationship cannot outlive the element it links."""
+    change, kept = [], []
+    element_cols = [c for c in cols if "relationship" not in c]
+    rel_cols = [c for c in cols if "relationship" in c]
+    for r in rows:
+        answers = {c: {"guid": str(r[c]), **reads(str(r[c]))} for c in element_cols if r.get(c) not in (None, "")}
+        if not answers:
+            # A relationship GUID is not an element: a by-GUID element read would say "not found" for a live
+            # one. With no element GUID beside it to judge the row by, it is unread, so kept.
+            answers = {c: {"guid": str(r[c]), "state": UNREADABLE,
+                           "why": "a relationship GUID with no element GUID beside it: not read"}
+                       for c in rel_cols if r.get(c) not in (None, "")}
+        if any(a["state"] != GONE for a in answers.values()):
+            kept.append({"row": r, "pointers": answers, "reason": keep_reason(answers, reset_at)})
+        else:
+            change.append(r)
+    return change, kept
+
+
+def _kept_resources(conn, action: dict) -> set[str]:
+    """The resources (slugs) whose publish pointer this action keeps."""
+    col = PUBLISH_POINTER_RESOURCE.get(action["table"])
+    if not col or not action.get("kept"):
+        return set()
+    out = set()
+    for k in action["kept"]:
+        r = k["row"]
+        if col in r:
+            out.add(r[col])
+            continue
+        where = " AND ".join(f"{key} = ?" for key in action["keys"])
+        got = _rows(conn, f"SELECT {col} FROM {action['table']} WHERE {where}", [r[key] for key in action["keys"]])
+        out.update(g[col] for g in got)
+    return out
+
+
 # ── time ─────────────────────────────────────────────────────────────────────
 
 def human_when(reset_at: str) -> str:
@@ -201,7 +370,9 @@ def human_when(reset_at: str) -> str:
 # ── the plan ─────────────────────────────────────────────────────────────────
 
 def build_plan(conn, db_name: str, reset_at: str, old_id: str, new_id: str, schema: str = "main",
-               skipped: list | None = None, live_schema: str = "main") -> dict:
+               skipped: list | None = None, live_schema: str = "main", reads=None) -> dict:
+    """`reads`: GUID -> what Egeria answers (GuidLiveness); default RE's service account, opened on first use."""
+    reads = reads if reads is not None else _Reads(default_reads)
     actions = []
     skipped = sorted(skipped or [])
     for table, keys, setcols, trig, *more in CLEAR_SPECS:
@@ -213,18 +384,28 @@ def build_plan(conn, db_name: str, reset_at: str, old_id: str, new_id: str, sche
         cols = list(dict.fromkeys(keys + list(setcols)))
         where = "(" + " OR ".join(_nonempty(c) for c in trig) + ")" + (f" AND {extra}" if extra else "")
         rows = _rows(conn, f"SELECT {', '.join(cols)} FROM {table} WHERE {where} ORDER BY {', '.join(keys)}")
+        rows, kept = split_live(rows, [c for c in setcols if "guid" in c], reads, reset_at)
         actions.append({"id": f"clear:{table}{suffix}", "kind": "clear_columns", "table": table, "keys": keys,
-                        "set": setcols, "trigger": trig, "extra": extra, "rows": rows, "count": len(rows)})
+                        "set": setcols, "trigger": trig, "extra": extra, "rows": rows, "count": len(rows),
+                        "kept": kept})
     for table, keys in DELETE_SPECS:
-        rows = _rows(conn, f"SELECT {', '.join(keys)} FROM {table} ORDER BY {', '.join(keys)}")
         # the whole row is the snapshot for a removed cache row (these tables hold no credentials)
         full = _rows(conn, f"SELECT * FROM {table} ORDER BY {', '.join(keys)}")
+        full, kept = split_live(full, DELETE_POINTERS.get(table, []), reads, reset_at)
         actions.append({"id": f"delete:{table}", "kind": "delete_rows", "table": table, "keys": keys,
-                        "rows": full, "count": len(rows)})
+                        "rows": full, "count": len(full), "kept": kept})
     keyrows = _rows(conn, "SELECT key, value FROM app_settings ORDER BY key")
     hit = [r for r in keyrows if r["key"].startswith(SETTING_PREFIXES) or r["key"] in SETTING_KEYS]
+    guid_keys = [r for r in hit if r["key"] in SETTING_GUID_KEYS or r["key"].startswith(SETTING_GUID_PREFIXES)]
+    _gone, kept = split_live(guid_keys, ["value"], reads, reset_at)
+    kept_keys = {k["row"]["key"] for k in kept}
+    hit = [r for r in hit if r["key"] not in kept_keys]
     actions.append({"id": "delete:app_settings", "kind": "delete_rows", "table": "app_settings", "keys": ["key"],
-                    "rows": hit, "count": len(hit)})
+                    "rows": hit, "count": len(hit), "kept": kept})
+    kept_resources: dict[str, list[str]] = {}
+    for a in actions:
+        for slug in _kept_resources(conn, a):
+            kept_resources.setdefault(slug, []).append(a["table"])
 
     ob = _rows(conn, "SELECT id, entity_slug, element_kind, status, last_error, claimed_at, next_attempt_at, "
                "completed_at FROM egeria_outbox ORDER BY id")
@@ -252,7 +433,18 @@ def build_plan(conn, db_name: str, reset_at: str, old_id: str, new_id: str, sche
                              "WHERE published_at IS NOT NULL AND published_at <> ''"):
             if _known(r["published_at"]) and _ts(r["published_at"]) < _ts(reset_at):
                 pub_earlier[r["project_slug"]] = pub_earlier.get(r["project_slug"], 0) + 1
-    markers, after = [], []
+    # Publishes AFTER the reset, from the publish-state rows' own times: the proof rows alone miss a publish made
+    # by the survey-run publisher (it writes none). Reported beside the proofs' list; the liveness reads above are
+    # what actually keeps such a publish's pointers.
+    published_after: dict[tuple[str, str], str] = {}
+    for table in PUBLISHED_AT_TABLES:
+        for r in _rows(conn, f"SELECT project_slug, published_at FROM {table} "
+                             "WHERE published_at IS NOT NULL AND published_at <> ''"):
+            if _known(r["published_at"]) and _ts(r["published_at"]) > _ts(reset_at):
+                key = (r["project_slug"], table)
+                if key not in published_after or _ts(r["published_at"]) > _ts(published_after[key]):
+                    published_after[key] = r["published_at"]
+    markers, after, marker_skipped = [], [], []
     for slug in sorted(set(by) | set(pub_earlier)):
         rows_for = by.get(slug, [])
         real = [p for p in rows_for if p["proof"] != PROOF_KIND]
@@ -263,6 +455,10 @@ def build_plan(conn, db_name: str, reset_at: str, old_id: str, new_id: str, sche
         n_earlier = sum(1 for p in real if _known(p["read_at"]) and _ts(p["read_at"]) < _ts(reset_at))
         if have or not (n_earlier or pub_earlier.get(slug)):
             continue
+        if slug in kept_resources:
+            marker_skipped.append({"slug": slug, "reason": "a publish pointer still resolves in Egeria (kept in "
+                                   + ", ".join(sorted(set(kept_resources[slug]))) + "): its publish is not gone"})
+            continue
         markers.append({"slug": slug, "node_kind": kinds.get(slug, NODE_OTHER),
                         "earlier_proofs": n_earlier, "earlier_published_rows": pub_earlier.get(slug, 0),
                         "text": f"Egeria reset {human_when(reset_at)} · {old_id or 'unknown'} → {new_id or 'unknown'}"
@@ -272,11 +468,27 @@ def build_plan(conn, db_name: str, reset_at: str, old_id: str, new_id: str, sche
     plan = {"script_version": SCRIPT_VERSION, "database": db_name, "schema": schema, "current_schema": live_schema, "reset_at": reset_at, "old_collection_id": old_id or "unknown",
             "new_collection_id": new_id or "unknown", "actions": actions,
             "dead_outbox_untouched": [r["id"] for r in dead], "skipped_tables": skipped,
-            "slugs_with_proofs_after_reset": after}
+            "slugs_with_proofs_after_reset": after, "markers_skipped": marker_skipped,
+            "slugs_published_after_reset": [{"slug": slug, "table": table, "published_at": at}
+                                            for (slug, table), at in sorted(published_after.items())],
+            "liveness": _liveness_summary(actions)}
     # the markers go FIRST (see ORDER in the module docstring)
     plan["actions"].sort(key=lambda a: a["kind"] != "write_markers")
     plan["hash"] = plan_hash(plan)
     return plan
+
+
+def _liveness_summary(actions: list[dict]) -> dict:
+    """How many distinct GUIDs were read and what they answered; who read them."""
+    seen: dict[str, str] = {}
+    for a in actions:
+        for k in a.get("kept", []):
+            for p in k["pointers"].values():
+                seen[p["guid"]] = p["state"]
+    kept = sum(len(a.get("kept", [])) for a in actions)
+    return {"read_as": "RE's service account (daemon identity)", "rows_kept": kept,
+            "guids_live": sum(1 for v in seen.values() if v == LIVE),
+            "guids_unreadable": sum(1 for v in seen.values() if v == UNREADABLE)}
 
 
 def render(plan: dict, title: str) -> str:
@@ -299,7 +511,25 @@ def render(plan: dict, title: str) -> str:
         elif a["table"] == "app_settings":
             detail = ", ".join(r["key"] for r in a["rows"][:20])
         out.append(f"{verb:<10}{a['table']:<44}{a['count']:>6}  {detail}")
+        if a.get("kept"):
+            out.append(f"{'keep':<10}{a['table']:<44}{len(a['kept']):>6}  still resolves or unreadable in Egeria: "
+                       "left as it is (listed below)")
     out.append("")
+    kept = [(a["table"], k) for a in plan["actions"] for k in a.get("kept", [])]
+    live = plan.get("liveness", {})
+    out.append(f"pointers checked in Egeria by GUID, as {live.get('read_as', 'RE')}: {len(kept)} rows KEPT "
+               f"({live.get('guids_live', 0)} GUIDs live, {live.get('guids_unreadable', 0)} unreadable); "
+               "every other GUID listed above answered not found for RE's service account "
+               "(an element in a zone it cannot see reads the same way)")
+    for table, k in kept[:60]:
+        ident = ", ".join(f"{key}={k['row'][key]}" for key in sorted(k["row"]) if "guid" not in key and key != "value"
+                          and key in ("slug", "id", "key", "entity_slug", "entity_type", "user_id", "technology_type"))
+        what = "; ".join(f"{c} {p['guid']}" + (f" = {p.get('type', '')} {p.get('qualified_name', '')}".rstrip()
+                                                 if p["state"] == LIVE else f" = {p['state']}")
+                         for c, p in k["pointers"].items())
+        out.append(f"  KEPT {table} [{ident}] {k['reason']} · {what}")
+    for m in plan.get("markers_skipped", []):
+        out.append(f"  NO MARKER for {m['slug']}: {m['reason']}")
     if plan.get("skipped_tables"):
         out.append("SKIPPED (table does not exist yet): " + ", ".join(plan["skipped_tables"]))
     out.append(f"dead before the reset · untouched: {len(plan['dead_outbox_untouched'])} outbox rows "
@@ -307,8 +537,14 @@ def render(plan: dict, title: str) -> str:
     if plan["slugs_with_proofs_after_reset"]:
         out.append("WARNING proofs newer than the reset time exist for: "
                    + ", ".join(plan["slugs_with_proofs_after_reset"]) + " (published after the reset? check --reset-at)")
+    if plan.get("slugs_published_after_reset"):
+        out.append("WARNING publish rows newer than the reset time exist (a publish with no proof row, e.g. a scheduled "
+                   "survey's): " + ", ".join(f"{p['slug']} ({p['table']} {p['published_at']})"
+                                             for p in plan["slugs_published_after_reset"][:20])
+                   + "; their pointers are kept only if they still resolve (KEPT above)")
     out.append("kept untouched: every proof row, verdicts, scope events, enrichment, journal, groups, "
-               "native_survey_annotations, step_runs, survey history, 'done' outbox rows")
+               "native_survey_annotations, step_runs, survey history, 'done' outbox rows, and every pointer "
+               "that still resolves (KEPT above)")
     out.append(f"plan hash: {plan['hash']}")
     return "\n".join(out)
 
@@ -329,7 +565,9 @@ def apply_plan(conn, plan: dict, cleared_by: str, snapshot_path: Path, now: date
     act_id = str(uuid.uuid4())
     ts = now.isoformat()
     detail = {"cleared_by": cleared_by, "plan_hash": plan["hash"], "snapshot": snapshot_path.name,
-              "skipped_tables": plan.get("skipped_tables", []), "_runner": process_identity()}
+              "skipped_tables": plan.get("skipped_tables", []), "_runner": process_identity(),
+              "kept_live": plan.get("liveness", {}).get("rows_kept", 0),
+              "markers_skipped": [m["slug"] for m in plan.get("markers_skipped", [])]}
     _group(conn, lambda: conn.execute(
         "INSERT INTO activity_log (id, ts, operation, intent, entity_type, entity_slug, entity_name, "
         "entity_location, status, summary, detail, items_json, annotations_json) "
@@ -399,7 +637,8 @@ def apply_plan(conn, plan: dict, cleared_by: str, snapshot_path: Path, now: date
 
 # ── main ─────────────────────────────────────────────────────────────────────
 
-def run(argv: list[str], out=print, now: datetime | None = None) -> int:
+def run(argv: list[str], out=print, now: datetime | None = None, reads_factory=None) -> int:
+    """`reads_factory`: builds the GUID liveness reads (default: RE's service account); a test passes a fake."""
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--reset-at", required=True, help="when the owner reset Egeria, UTC, e.g. 2026-10-08T18:30Z")
     ap.add_argument("--old-collection-id", default="")
@@ -440,7 +679,7 @@ def run(argv: list[str], out=print, now: datetime | None = None) -> int:
             live = check_live_schema(conn, url, schema)
             skipped = check_schema(conn, tuple(args.skip_missing_table))
             plan = build_plan(conn, name, reset_at, args.old_collection_id, args.new_collection_id, schema, skipped,
-                              live)
+                              live, reads=_Reads(reads_factory or default_reads))
             if not args.apply:
                 out_dir = Path(args.out_dir)
                 out_dir.mkdir(parents=True, exist_ok=True)
@@ -466,7 +705,8 @@ def run(argv: list[str], out=print, now: datetime | None = None) -> int:
             if plan["hash"] != args.plan_hash:
                 raise Refused("the registry changed since the dry run; run the dry run again "
                               f"(the plan recomputed now has hash {plan['hash'][:12]}, the dry run's was "
-                              f"{args.plan_hash[:12]}; --reset-at and the collection ids must also be the same)")
+                              f"{args.plan_hash[:12]}; --reset-at and the collection ids must also be the same, "
+                              "and so must what Egeria answered for each pointer)")
             reasons = activity_guard(conn)
             if reasons:
                 raise Refused("a Resource Explorer process looks active: " + "; ".join(reasons))

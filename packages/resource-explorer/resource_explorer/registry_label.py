@@ -22,11 +22,13 @@ def _search_path(query: str) -> str | None:
 
 
 def _shared_default() -> tuple[str, int, str]:
-    """(host, port, dbname) of the declared default registry, never the env."""
-    from resource_explorer.config import RegistryConfig
+    """(host, port, dbname) of the declared default registry, never the env: the shared Postgres's declared
+    PGVECTOR_HOST/PORT/DBNAME defaults. Since TR-12 the registry URL has no default of its own (it is built from
+    those settings plus PGVECTOR_PASSWORD), so it can no longer be read off that URL."""
+    from resource_explorer.config import PgVectorConfig
 
-    u = urlsplit(RegistryConfig.model_fields["database_url"].default)
-    return (u.hostname or "localhost", u.port or 5432, (u.path or "/").lstrip("/"))
+    f = PgVectorConfig.model_fields
+    return (str(f["host"].default), int(f["port"].default), str(f["dbname"].default))
 
 
 def is_shared_registry(database_url: str) -> bool:
@@ -39,7 +41,8 @@ def is_shared_registry(database_url: str) -> bool:
     except ValueError:
         return False
     d_host, d_port, d_db = _shared_default()
-    if host.lower() not in ("localhost", "127.0.0.1", "::1", d_host) or (port, db) != (d_port, d_db):
+    # Every spelling of this machine is the same host (read-back advisory, TR-12): an alias must not slip past.
+    if host.lower() not in ("localhost", "127.0.0.1", "::1", "0.0.0.0", d_host) or (port, db) != (d_port, d_db):
         return False
     schema = _search_path(u.query)
     return not (schema or "").startswith(TEST_SCHEMA_PREFIX)

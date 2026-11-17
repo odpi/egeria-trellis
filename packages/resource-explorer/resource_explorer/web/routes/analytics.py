@@ -15,8 +15,8 @@ router = APIRouter()
 
 def registry_url() -> str:
     """The registry RE itself reads (the same default ProjectRegistry takes)."""
-    from resource_explorer.config import get_config
-    return get_config().registry.database_url
+    from resource_explorer.config import get_config, require_database_url
+    return require_database_url(get_config().registry.database_url, "REGISTRY_DATABASE_URL", "registry")  # TR-12
 
 
 def _unavailable(resource_type: str, slug: str, reason: str) -> dict:

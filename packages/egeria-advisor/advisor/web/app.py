@@ -125,6 +125,17 @@ _install_login_required_middleware()
 
 
 @app.middleware("http")
+async def _frame_ancestors_middleware(request: Request, call_next):
+    """E1: who may frame EA. Every response says `frame-ancestors 'self' <ADVISOR_EMBED_ORIGINS>`, so only Studio
+    (and EA itself) can embed it; before E1 anyone could. Registered after the login middleware, so it is outside it
+    and a 401 carries the header too."""
+    from advisor.web.embed import frame_ancestors_header
+    response = await call_next(request)
+    response.headers["Content-Security-Policy"] = frame_ancestors_header()
+    return response
+
+
+@app.middleware("http")
 async def _user_context_middleware(request: Request, call_next):
     """
     Sets advisor.request_context's per-request ContextVar from this
@@ -161,6 +172,9 @@ async def _user_context_middleware(request: Request, call_next):
 
 from advisor.web.admin import router as _admin_router
 app.include_router(_admin_router)
+
+from advisor.web.embed import router as _embed_router
+app.include_router(_embed_router)
 
 from advisor.web.auth import router as _auth_router
 app.include_router(_auth_router)
@@ -219,6 +233,13 @@ def _log_hardware_in_background(log) -> None:
     threading.Thread(target=run, name="hardware-report", daemon=True).start()
 
 
+def declare_multi_user_process() -> None:
+    """EA serves many users: declare it to pyegeria's spec cache (spec-cache R-A, pyegeria 6.2.42), so a
+    report-spec read made with no user's identity takes no fallback identity and sees no private spec."""
+    from pyegeria.view.egeria_spec_cache import declare_multi_user
+    declare_multi_user()
+
+
 @app.on_event("startup")
 async def _startup():
     """Ensure pgvector collection tables exist, then pre-warm the MCP agent
@@ -236,6 +257,11 @@ async def _startup():
     `TestClient(app, ...)` rather than `with TestClient(app) as client:`.
     """
     import threading
+
+    declare_multi_user_process()   # first: before any spec read, the background sync's included
+    # TR-12: fail closed, naming the variable, never its value: there is no built-in Postgres password any more.
+    from advisor.config import require_pgvector_password
+    require_pgvector_password()
 
     try:
         from advisor.vector_store_pg import PgVectorStore

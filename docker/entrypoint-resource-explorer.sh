@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Entrypoint for trellis/resource-explorer. Dispatches on the first arg to
 # one of the process roles from docs/runtime-architecture-plan.md §2:
-# web, worker, cli, tui, a2a. Everything after the role is passed through
+# web, worker, cli, tui, a2a, prefect-worker. Everything after the role is passed through
 # to the underlying command untouched.
 #
 # `resource-explorer worker` and the `web` command's `--embed-worker`/
@@ -80,6 +80,40 @@ EOF
     exit 1
 }
 
+# Resource Explorer's Prefect worker (2026-11-13; DESIGN-PREFECT-ROLE-AND-RE-WORKER-2026-11-13 §1.6).
+# Serves PREFECT_WORK_POOL (default resource-explorer-pool) and, deliberately, only this image's own queue:
+#   - refuses to start without TRELLIS_RE_SHA (the image's build commit): RE matches a worker to its own code
+#     by it, and a worker it cannot match would never be sent anything;
+#   - refuses to start when a catalogued library step is missing from the image (the `uv sync --package`
+#     hazard): it would accept a run and fail it;
+#   - deploys its own deployment, re-survey-step-<sha12>, whose flows load from this image's source and land
+#     on queue re-<sha12>, prunes per-commit deployments beyond the newest 3 (never one in use), then polls only
+#     that queue as re-worker-<sha12>-<host>. Deploy and prune are Prefect writes, at every start. RE dispatches there only
+#     when it runs the same commit (prefect_adapter._choose_deployment); otherwise it warns and runs locally.
+# Needs the Prefect API (PREFECT_API_URL) and whatever a step needs (registry, Egeria) from the environment.
+run_prefect_worker() {
+    local sha="${TRELLIS_RE_SHA:-}"
+    if [ -z "$sha" ]; then
+        echo "[entrypoint] prefect-worker: TRELLIS_RE_SHA is not set, so Resource Explorer could never match this worker to its own code. Build the image with --build-arg TRELLIS_RE_SHA=<commit> (make image-re does)." >&2
+        exit 1
+    fi
+    local sha12="${sha:0:12}"
+    local pool="${PREFECT_WORK_POOL:-resource-explorer-pool}"
+    local steps
+    steps="$(python -c 'from resource_explorer.engine_host import library_steps_line; print(library_steps_line())')"
+    echo "[entrypoint] prefect-worker ${sha12}: ${steps}" >&2
+    if echo "$steps" | grep -q " missing:"; then
+        echo "[entrypoint] prefect-worker: library steps are missing from this image; not starting a worker that would fail their runs." >&2
+        exit 1
+    fi
+    resource-explorer prefect deploy --name "re-survey-step-${sha12}" --work-queue "re-${sha12}"
+    # One deployment per commit: keep the newest 3, never one in use (Architect ruling 2026-11-13). A failed
+    # prune is said and does not stop the worker.
+    resource-explorer prefect prune-deployments --keep 3 || echo "[entrypoint] prefect-worker: prune-deployments failed; continuing" >&2
+    exec prefect worker start --pool "$pool" --type process --work-queue "re-${sha12}" \
+        --name "re-worker-${sha12}-$(hostname)" "$@"
+}
+
 run_cli() {
     exec resource-explorer "$@"
 }
@@ -98,9 +132,10 @@ case "$ROLE" in
     cli)    run_cli "$@" ;;
     tui)    run_tui "$@" ;;
     a2a)    run_a2a "$@" ;;
+    prefect-worker) run_prefect_worker "$@" ;;
     *)
         echo "Unknown role '$ROLE'." >&2
-        echo "Usage: docker run ... trellis/resource-explorer:local {web|worker|cli|tui|a2a} [args...]" >&2
+        echo "Usage: docker run ... trellis/resource-explorer:local {web|worker|cli|tui|a2a|prefect-worker} [args...]" >&2
         exit 1
         ;;
 esac

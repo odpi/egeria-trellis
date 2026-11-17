@@ -33,8 +33,12 @@ import os
 os.environ.setdefault("PREFECT_SERVER_EPHEMERAL_ENABLED", "false")
 
 import asyncio
+import json
+import re
 import logging
 import time
+import uuid
+from dataclasses import dataclass, field
 from typing import Any, Awaitable, Callable
 from prefect.client.orchestration import PrefectClient
 from resource_explorer.config import DEFAULT_PREFECT_STEP_TIMEOUT_SECONDS, get_config
@@ -230,7 +234,47 @@ def log_prefect_reachability_at_startup() -> None:
 # nothing more.
 
 
-class PrefectFlowRunCancelled(Exception):
+class PrefectRunOutcome(RuntimeError):
+    """A step's flow run EXISTS and this is its outcome; nothing may run the step locally after it (TR-20, Architect
+    ruling 2026-11-15, RULING-PREFECT-NO-LOCAL-FALLBACK-AND-RESULT-TRANSPORT-2026-11-15 on laz).
+
+    A local fallback is allowed only BEFORE create_flow_run has returned an id. From then on the step's outcome is the
+    flow run's, whatever goes wrong while waiting for it or reading it: re-running it locally is a second execution
+    (found on hedwig 2026-11-15: a COMPLETED container run whose result could not be read was run again in RE's
+    process, two step_runs rows and two downloads). `status` is one of:
+
+      - "failed": the run reached FAILED or CRASHED (`state` says which, `detail` its message);
+      - "cancelled": the run was cancelled (PrefectFlowRunCancelled);
+      - "result_unreadable": the run COMPLETED but its result could not be read;
+      - "mismatch": the run COMPLETED but its summary disagrees with its flow_run_results row (TR-21);
+      - "unknown": the wait timed out (PrefectFlowRunTimeout) or the run could not be read: a reconciler or operator
+        reads the flow run later.
+
+    A retry is an operator's or Prefect's, never a silent local run."""
+
+    status = "unknown"
+
+    def __init__(self, message: str, flow_run_id: str = "", *, status: str | None = None, state: str = "") -> None:
+        super().__init__(message)
+        self.flow_run_id = flow_run_id
+        if status:
+            self.status = status
+        self.state = state
+
+
+class PrefectFlowRunFailed(PrefectRunOutcome):
+    """The flow run reached FAILED or CRASHED."""
+
+    status = "failed"
+
+
+class PrefectResultUnreadable(PrefectRunOutcome):
+    """The flow run COMPLETED, but its result could not be read here."""
+
+    status = "result_unreadable"
+
+
+class PrefectFlowRunCancelled(PrefectRunOutcome):
     """A flow run was cancelled through Prefect (e.g. the Admin "⚡ Prefect"
     panel's Cancel button — see web/routes/prefect_status.py). Deliberately
     NOT caught by run_prefect_step's fallback-to-local except block: falling
@@ -241,10 +285,14 @@ class PrefectFlowRunCancelled(Exception):
     the fallback ran the step again, and it just... finished — cancel had
     no actual effect. Every other failure (unreachable server, a real bug)
     should still fall back; only a genuine user-initiated cancellation
-    should not."""
+    should not.
+
+    Since TR-20 (2026-11-15) the rule is wider: no outcome of a run that exists falls back (PrefectRunOutcome)."""
+
+    status = "cancelled"
 
 
-class PrefectFlowRunTimeout(Exception):
+class PrefectFlowRunTimeout(PrefectRunOutcome):
     """A dispatched flow run did not reach a terminal state before the
     configured deadline (`PrefectConfig.step_timeout_seconds`). Carries the
     flow run id so a person can find it in Prefect.
@@ -256,9 +304,7 @@ class PrefectFlowRunTimeout(Exception):
     Found 2026-10-02: the poll loop had no deadline, so a pool with no online
     worker left the run Scheduled forever and hung the survey thread."""
 
-    def __init__(self, message: str, flow_run_id: str = "") -> None:
-        super().__init__(message)
-        self.flow_run_id = flow_run_id
+    status = "unknown"
 
 
 def _step_timeout_seconds() -> float:
@@ -274,6 +320,226 @@ def _step_timeout_seconds() -> float:
 def _is_online(worker: Any) -> bool:
     status = getattr(worker, "status", None)
     return str(getattr(status, "value", status) or "").upper() == "ONLINE"
+
+
+# ── version parity (DESIGN-PREFECT-ROLE-AND-RE-WORKER-2026-11-13 §1.6) ─────────────────────────────
+#: The deployment every worker without a commit of its own serves (the host worker on laz).
+DEFAULT_DEPLOYMENT = "RE Survey Flow/re-survey-step-deployment"
+#: Workers already warned about (no advertised commit): once per worker per process.
+_PARITY_UNCHECKED_WARNED: set[str] = set()
+_WORKER_SHA = re.compile(r"^re-worker-([0-9a-f]{12})(?:-|$)")
+#: Resource Explorer's own worker names: the container worker (`re-worker-<sha12>-<host>`) and the host worker
+#: (`re-host-worker-<host>`). A generic `ProcessWorker <uuid>` cannot be told apart from another product's.
+_RE_WORKER = re.compile(r"^re-(?:host-)?worker-")
+
+
+def sha_deployment(sha12: str) -> str:
+    """The deployment a container worker on commit `sha12` creates for itself at start (entrypoint role
+    `prefect-worker`): its flows load from the image's own source and land on its own work queue."""
+    return f"re-survey-step-{sha12}"
+
+
+def sha_work_queue(sha12: str) -> str:
+    return f"re-{sha12}"
+
+
+#: The deployments a worker creates for its own commit, and nothing else: prune touches only these.
+_COMMIT_DEPLOYMENT = re.compile(r"^re-survey-step-[0-9a-f]{12}$")
+#: A deployment with a flow run in one of these states is in use: never pruned.
+_ACTIVE_RUN_STATES = ("SCHEDULED", "PENDING", "RUNNING", "PAUSED", "CANCELLING")
+
+
+async def prune_commit_deployments(keep: int, pool: str) -> dict[str, list[str]]:
+    """Delete RE's per-commit deployments (`re-survey-step-<sha12>`, RE's flow, on `pool`) beyond the newest
+    `keep` by creation time (Architect ruling 2026-11-13, READBACK-re-launchd-worker-8f5af544 §D).
+
+    Never deleted: the default deployment, any other flow's or pool's, the newest `keep`, any with a flow run
+    that is scheduled, pending, running, paused or cancelling, and any whose commit has an ONLINE worker
+    (`re-worker-<sha12>-*`): an idle worker on an older commit keeps the deployment it serves (read-back of
+    6888a58c). Returns {"kept", "deleted", "skipped_active", "skipped_online_worker"}, by name; the caller logs
+    each deleted name. A standing Prefect write: workers run it after their own deploy."""
+    from prefect.client.schemas.filters import (
+        DeploymentFilter, DeploymentFilterId, FlowFilter, FlowFilterName, FlowRunFilter, FlowRunFilterState,
+        FlowRunFilterStateType,
+    )
+    from prefect.client.schemas.objects import StateType
+
+    if keep < 1:
+        raise ValueError("keep must be at least 1: a worker's own deployment is never pruned")
+    flow_name = DEFAULT_DEPLOYMENT.split("/", 1)[0]
+    out: dict[str, list[str]] = {"kept": [], "deleted": [], "skipped_active": [], "skipped_online_worker": []}
+    async with re_prefect_client() as client:
+        served = {worker_sha(w) for w in await client.read_workers_for_work_pool(pool) if _is_online(w)} - {""}
+        deployments = await client.read_deployments(flow_filter=FlowFilter(name=FlowFilterName(any_=[flow_name])))
+        ours = [d for d in deployments
+                if _COMMIT_DEPLOYMENT.match(str(getattr(d, "name", ""))) and getattr(d, "work_pool_name", None) == pool]
+        ours.sort(key=lambda d: str(getattr(d, "created", "") or ""), reverse=True)
+        out["kept"] = [d.name for d in ours[:keep]]
+        active = FlowRunFilter(state=FlowRunFilterState(type=FlowRunFilterStateType(
+            any_=[StateType[s] for s in _ACTIVE_RUN_STATES])))
+        for d in ours[keep:]:
+            if d.name.rsplit("-", 1)[-1] in served:
+                out["skipped_online_worker"].append(d.name)
+                continue
+            runs = await client.read_flow_runs(
+                deployment_filter=DeploymentFilter(id=DeploymentFilterId(any_=[d.id])),
+                flow_run_filter=active, limit=1)
+            if runs:
+                out["skipped_active"].append(d.name)
+                continue
+            await client.delete_deployment(d.id)
+            out["deleted"].append(d.name)
+    return out
+
+
+def worker_sha(worker: Any) -> str:
+    """The commit a worker advertises in its name (`re-worker-<sha12>-<host>`), or "" for one that
+    advertises none (a host worker, which runs the checkout's own code)."""
+    name = getattr(worker, "name", "")
+    m = _WORKER_SHA.match(name) if isinstance(name, str) else None
+    return m.group(1) if m else ""
+
+
+@dataclass
+class DispatchChoice:
+    """Where a dispatched step would go on `pool`, or why it would not go (`refused`, which names the configured
+    pool, the default deployment's pool and the online commits). One decision for dispatch and for the pool
+    banner (`resolve_dispatch`), so the banner never says a worker is live for a step that would run locally."""
+
+    pool: str
+    deployment: Any = None
+    refused: str = ""
+    default_pool: str | None = None
+    online_commits: list[str] = field(default_factory=list)
+    unchecked: list[str] = field(default_factory=list)
+    #: True when `deployment` is the default one (a worker that advertises no commit): parity is not checked.
+    via_default: bool = False
+    #: Resource Explorer's own workers ONLINE on another pool than `pool`, as "<worker> on pool <name>": a worker
+    #: started with a --pool other than the web app's PREFECT_WORK_POOL, which never gets a step. Only read when
+    #: asked (`look_elsewhere`); None when not read, [] when read and none found.
+    elsewhere: list[str] | None = None
+    #: Why `elsewhere` could not be read, or "".
+    elsewhere_error: str = ""
+
+    @property
+    def deployment_name(self) -> str:
+        return str(getattr(self.deployment, "name", "") or "") if self.deployment is not None else ""
+
+
+async def _read_deployment_or_none(client: Any, name: str) -> tuple[Any, str]:
+    """(deployment, "") or (None, the reason it could not be read). Read only."""
+    try:
+        return await client.read_deployment_by_name(name), ""
+    except Exception as e:  # noqa: BLE001 - every failure is a refusal reason, returned to the caller
+        return None, f"{type(e).__name__}: {e}"
+
+
+async def _re_workers_elsewhere(client: Any, pool: str) -> list[str]:
+    """Resource Explorer's own workers (`_RE_WORKER` names) ONLINE on any work pool other than `pool`. Read only."""
+    found: list[str] = []
+    for wp in await client.read_work_pools():
+        name = str(getattr(wp, "name", "") or "")
+        if not name or name == pool:
+            continue
+        for w in await client.read_workers_for_work_pool(name):
+            wname = str(getattr(w, "name", "") or "")
+            if _is_online(w) and _RE_WORKER.match(wname):
+                found.append(f"{wname} on pool {name}")
+    return sorted(found)
+
+
+async def resolve_dispatch(client: Any, pool: str, online: list[Any] | None = None, *,
+                           look_elsewhere: bool = False) -> DispatchChoice:
+    """The deployment a step's flow run goes to on the CONFIGURED pool `pool`, or the refusal. Read only.
+
+    The configured pool (`config.prefect.work_pool`) is authoritative (Architect ruling 2026-11-14, §RE-RULING
+    of RULING-RE-PREFECT-AB-ENGINE-2026-11-13): workers are looked up there and nowhere else, and a deployment
+    on any other pool is refused by name, never dispatched to. Before this, the pool came from the default
+    deployment, so on hedwig (default deployment left on default-agent-pool from 11-09) the live container
+    worker on resource-explorer-pool was never seen and every step ran locally.
+
+      - an ONLINE worker on this RE's commit: its deployment `re-survey-step-<sha12>`, which must be on `pool`;
+      - else an ONLINE worker that advertises no commit: the default deployment, only when it is on `pool`;
+      - else ONLINE workers that all run other code: refused, naming the commits (§1.6, no silent drift);
+      - else no ONLINE worker on `pool` (PREFECT-POLL-TIMEOUT: a run would sit Scheduled forever).
+
+    `online` lets a caller pass the workers it already judged live (bootstrap's heartbeat check); by default the
+    pool's workers with status ONLINE are read here.
+
+    `look_elsewhere` (bootstrap's check, not each dispatch) also lists Resource Explorer's own workers ONLINE on
+    any other pool (`elsewhere`): a worker whose --pool is not the web app's PREFECT_WORK_POOL gets no step, and
+    re-config-parity.sh ignores PREFECT_WORK_POOL by design, so this is where that mismatch is caught (Architect,
+    2026-11-14). It never changes the decision; a failure to read is `elsewhere_error`, not a refusal.
+    """
+    from resource_explorer.build_info import re_sha_short
+
+    choice = DispatchChoice(pool=pool)
+    if look_elsewhere:
+        try:
+            choice.elsewhere = await _re_workers_elsewhere(client, pool)
+        except Exception as e:  # noqa: BLE001 - said on the status (elsewhere_error), never a silent "none"
+            choice.elsewhere_error = f"{type(e).__name__}: {e}"
+    if online is None:
+        online = [w for w in await client.read_workers_for_work_pool(pool) if _is_online(w)]
+    own = re_sha_short()
+    choice.online_commits = sorted({worker_sha(w) for w in online} - {""})
+    choice.unchecked = sorted(str(getattr(w, "name", "") or "?") for w in online if not worker_sha(w))
+    default, default_err = await _read_deployment_or_none(client, DEFAULT_DEPLOYMENT)
+    if default is not None:
+        choice.default_pool = getattr(default, "work_pool_name", None) or None
+
+    def refuse(reason: str) -> DispatchChoice:
+        where = (f"on pool {choice.default_pool}" if choice.default_pool
+                 else ("on no pool" if default is not None else "missing"))
+        commits = ", ".join(choice.online_commits + [f"none advertised by {n}" for n in choice.unchecked])
+        choice.refused = (f"{reason} (Resource Explorer is configured for pool {pool}; the default deployment "
+                          f"'{DEFAULT_DEPLOYMENT}' is {where}; online commits: {commits or 'none'})")
+        return choice
+
+    if own and own in choice.online_commits:
+        name = f"RE Survey Flow/{sha_deployment(own)}"
+        deployment, err = await _read_deployment_or_none(client, name)
+        if deployment is None:
+            return refuse(f"a Prefect worker on this Resource Explorer's code ({own}) is online but its "
+                          f"deployment '{name}' is missing: {err}")
+        on = getattr(deployment, "work_pool_name", None)
+        if on != pool:
+            return refuse(f"deployment '{name}' is on pool {on} but Resource Explorer is configured for pool {pool}")
+        choice.deployment = deployment
+        return choice
+    if choice.unchecked:
+        if default is None:
+            return refuse(f"Prefect deployment '{DEFAULT_DEPLOYMENT}' not found. "
+                          f"Did you run 'resource-explorer prefect deploy'? Error: {default_err}")
+        if choice.default_pool != pool:
+            return refuse(f"default deployment '{DEFAULT_DEPLOYMENT}' is on pool {choice.default_pool} but "
+                          f"Resource Explorer is configured for pool {pool}")
+        choice.deployment = default
+        choice.via_default = True
+        return choice
+    if choice.online_commits:
+        return refuse(f"no online Prefect worker runs this Resource Explorer's code ({own or 'commit unknown'}); "
+                      f"online workers on pool {pool} run {', '.join(choice.online_commits)}")
+    return refuse(f"no online Prefect worker for pool {pool}; run `make prefect-up`")
+
+
+async def _choose_deployment(client: Any, pool: str) -> Any:
+    """The deployment a step's flow run goes to on the configured `pool` (`resolve_dispatch`), or RuntimeError
+    with the refusal (run_prefect_step then runs the step locally and records why). Read only."""
+    choice = await resolve_dispatch(client, pool)
+    if choice.refused:
+        raise RuntimeError(choice.refused)
+    for name in choice.unchecked if choice.via_default else []:
+        # Allowed, never silent (Architect ruling 2026-11-13): said once per worker, and the pool banner line
+        # names it for as long as it lasts (bootstrap.PrefectPoolStatus.parity_unchecked).
+        if name not in _PARITY_UNCHECKED_WARNED:
+            _PARITY_UNCHECKED_WARNED.add(name)
+            from resource_explorer.build_info import re_sha_short
+
+            logging.warning("commit parity not checked: worker %s advertises none; dispatching to the "
+                            "default deployment (this Resource Explorer runs %s)", name,
+                            re_sha_short() or "commit unknown")
+    return choice.deployment
 
 
 async def _cancel_flow_run_best_effort(client: Any, flow_run_id: Any) -> str:
@@ -308,9 +574,12 @@ async def _run_prefect_step_api(
 
     Two guards against the hang found 2026-10-02 (see
     PREFECT-POLL-TIMEOUT-IMPLEMENTED.md): (1) before creating a flow run,
-    require >= 1 ONLINE worker on the deployment's work pool, else raise
-    RuntimeError (run_prefect_step's existing policy then falls back to local
-    and records the cause); (2) the poll loop has a deadline
+    `_choose_deployment` requires >= 1 ONLINE worker on the CONFIGURED pool
+    (`config.prefect.work_pool`, never the default deployment's pool) and a
+    deployment on that same pool, else raises RuntimeError naming the
+    configured pool, the default deployment's pool and the online commits
+    (run_prefect_step's existing policy then falls back to local and records
+    the cause); (2) the poll loop has a deadline
     (`timeout_seconds`, default `PrefectConfig.step_timeout_seconds`) and on
     expiry cancels the run best-effort and raises PrefectFlowRunTimeout.
     `poll_interval`, `clock` and `sleep` are injectable so tests never sleep.
@@ -318,86 +587,193 @@ async def _run_prefect_step_api(
     config = get_config()
     if timeout_seconds is None:
         timeout_seconds = _step_timeout_seconds()
-    deployment_name = "RE Survey Flow/re-survey-step-deployment"
+    # R1/R2 (Architect read-back of TR-20, 2026-11-15): whether a run CAN exist, not whether this client holds an
+    # id, decides between a local fallback and that run's outcome. `dispatch` tracks it across the client context, so
+    # an exception from closing the client (R2) is judged by it too.
+    dispatch = {"may_exist": False, "flow_run_id": "", "key": uuid.uuid4().hex}
+    outcome: PrefectRunOutcome | None = None
+    result: tuple[dict[str, Any], str] | None = None
+    try:
+        async with re_prefect_client() as client:
+            # 1. Which deployment, and fail fast: a pool with no ONLINE worker (or none on this RE's code)
+            # would leave the run Scheduled forever, or run it on other code. Read-only; nothing is created yet.
+            deployment = await _choose_deployment(client, config.prefect.work_pool)
 
-    async with re_prefect_client() as client:
-        # 1. Fetch the deployment ID
+            # 2. Trigger the flow run — tagged so the admin "⚡ Prefect" panel can
+            # group/filter flow-runs by the resource they belong to. Not the RE
+            # activity_id (run_prefect_step doesn't have one in scope — threading
+            # it through SurveyDefinitionExecutor.run()'s whole call chain is a
+            # bigger change than this pass makes; slug+step is enough for "what's
+            # running/stuck for resource X").
+            parameters = {
+                "entity_type": entity_type,
+                "slug": slug,
+                "step_name": step_name,
+                "runner_kwargs": runner_kwargs,
+            }
+            # Prefect persists these in its own database and shows them in its UI.
+            # A credential here is a bug somewhere upstream: fail loud, never send.
+            assert_no_credentials(parameters, where="Prefect flow-run parameters")
+            try:
+                flow_run = await _create_flow_run(
+                    client, deployment, parameters,
+                    [f"entity_type:{entity_type}", f"slug:{slug}", f"step:{step_name}"], dispatch)
+                dispatch["flow_run_id"] = str(flow_run.id)
+                # From here the run EXISTS: every way out is that run's outcome, never a local run (TR-20).
+                result = await _await_flow_run(client, flow_run.id, dispatch["flow_run_id"],
+                                               timeout_seconds=timeout_seconds, poll_interval=poll_interval,
+                                               clock=clock, sleep=sleep)
+            except PrefectRunOutcome as o:
+                outcome = o
+            except Exception as e:  # after the create was sent: an outcome, never a reason to run locally
+                if not dispatch["may_exist"]:
+                    raise
+                outcome = PrefectRunOutcome(
+                    f"Prefect flow run {dispatch['flow_run_id'] or '(id not known)'} could not be followed "
+                    f"({type(e).__name__}: {e}; idempotency key {dispatch['key']}); its outcome is unknown and the "
+                    "step was NOT run locally", dispatch["flow_run_id"], status="unknown")
+                outcome.__cause__ = e
+    except Exception as e:
+        # R2: closing the client (or anything else outside the run's own handling) failed.
+        if outcome is not None:
+            logging.getLogger(__name__).warning("Prefect client close failed after flow run %s's outcome: %s: %s",
+                                                outcome.flow_run_id or "?", type(e).__name__, e)
+            raise outcome from None
+        if result is not None:
+            logging.getLogger(__name__).warning("Prefect client close failed after flow run %s completed and its "
+                                                "result was read; the result is used: %s: %s",
+                                                result[1], type(e).__name__, e)
+            return result
+        if dispatch["may_exist"]:
+            raise PrefectRunOutcome(
+                f"Prefect dispatch failed after the create was sent ({type(e).__name__}: {e}; idempotency key "
+                f"{dispatch['key']}); a run may exist, so the step was NOT run locally",
+                dispatch["flow_run_id"], status="unknown") from e
+        raise  # no run can exist: run_prefect_step falls back locally
+    if outcome is not None:
+        raise outcome
+    assert result is not None
+    return result
+
+
+async def _create_flow_run(client: Any, deployment: Any, parameters: dict[str, Any], tags: list[str],
+                           dispatch: dict[str, Any]) -> Any:
+    """Create the step's flow run under this dispatch's idempotency key (R1 and R3, Architect read-backs 2026-11-15).
+
+    A create can fail AFTER the server made the run (a read timeout, a reset on the response): the client has no id,
+    but a worker will pick the run up. No exception type proves the request was never sent. Prefect's own client
+    retries inside send (prefect/client/base.py: ReadTimeout, ReadError, WriteError, RemoteProtocolError and
+    ConnectTimeout, and ConnectError once it has connected, which `_choose_deployment` always has), so a
+    ConnectError here can follow a send that reached the server. So EVERY create failure keeps
+    `dispatch["may_exist"]` True: it is retried ONCE with the same key, which returns the run the first attempt made,
+    if it did, and a second failure is "unknown", never a local run. The only local fallback is a failure before
+    the create is attempted (choosing the deployment)."""
+    def create():
+        return client.create_flow_run_from_deployment(
+            deployment_id=deployment.id, parameters=parameters, tags=tags, idempotency_key=dispatch["key"])
+
+    dispatch["may_exist"] = True
+    try:
+        return await create()
+    except Exception as first:  # noqa: BLE001 - any create failure: the run may exist, so retry with the key
         try:
-            deployment = await client.read_deployment_by_name(deployment_name)
-        except Exception as e:
-            raise RuntimeError(
-                f"Prefect deployment '{deployment_name}' not found. "
-                "Did you run 'resource-explorer prefect deploy'? Error: {e}"
+            return await create()
+        except Exception as second:
+            raise PrefectRunOutcome(
+                f"creating the Prefect flow run failed twice ({type(first).__name__}: {first}; then "
+                f"{type(second).__name__}: {second}); a run may exist under idempotency key {dispatch['key']}, so "
+                "the step was NOT run locally", "", status="unknown") from second
+
+
+def _results_registry():
+    """The registry a dispatched step's result is read from. One seam so tests can substitute one."""
+    from resource_explorer.registry import ProjectRegistry
+
+    return ProjectRegistry()
+
+
+def _read_flow_run_output(flow_run_id: str, message: str) -> dict[str, Any]:
+    """A COMPLETED flow run's output, from flow_run_results by its id (TR-21). Raises PrefectResultUnreadable when no
+    row exists, and a "mismatch" PrefectRunOutcome when the run's own summary (its state message) disagrees with
+    the row. Either way nothing is returned, so nothing is published and no guard is produced."""
+    try:
+        row = _results_registry().read_flow_run_result(flow_run_id)
+    except Exception as e:  # the run completed: an unreadable result, never a re-run
+        raise PrefectResultUnreadable(
+            f"Prefect flow run {flow_run_id} COMPLETED but its result could not be read from the registry "
+            f"({type(e).__name__}: {e}); the step was NOT run locally", flow_run_id, state="COMPLETED") from e
+    if row is None:
+        raise PrefectResultUnreadable(
+            f"Prefect flow run {flow_run_id} COMPLETED but wrote no flow_run_results row; the step was NOT run "
+            "locally", flow_run_id, state="COMPLETED")
+    summary: dict[str, Any] = {}
+    if message:
+        try:
+            parsed = json.loads(message)
+            summary = parsed if isinstance(parsed, dict) else {}
+        except ValueError:
+            summary = {}
+    disagree = [k for k in ("norm_hash", "step_run_id") if k in summary and summary[k] != row.get(k)]
+    if disagree:
+        raise PrefectRunOutcome(
+            f"Prefect flow run {flow_run_id}: its summary disagrees with its flow_run_results row on "
+            f"{', '.join(disagree)} (summary {[summary[k] for k in disagree]}, row "
+            f"{[row.get(k) for k in disagree]}); nothing is used from it", flow_run_id, status="mismatch",
+            state="COMPLETED")
+
+    from resource_explorer.surveyors import step_output_codec
+
+    try:
+        return step_output_codec.decode_step_output(row.get("output") or {}) or {}
+    except step_output_codec.StepOutputDecodeError as e:
+        raise PrefectResultUnreadable(
+            f"Prefect flow run {flow_run_id} COMPLETED but its stored output does not decode ({e}); nothing is used "
+            "from it and the step was NOT run locally", flow_run_id, state="COMPLETED") from e
+
+
+def _state_type(state: Any) -> str:
+    """A state's type name (COMPLETED, FAILED, CRASHED, ...), upper case; "" when it has none."""
+    kind = getattr(state, "type", None)
+    return str(getattr(kind, "value", kind) or "").upper()
+
+
+async def _await_flow_run(client: Any, run_id: Any, flow_run_id: str, *, timeout_seconds: float,
+                          poll_interval: float, clock: Callable[[], float],
+                          sleep: Callable[[float], Awaitable[Any]]) -> tuple[dict[str, Any], str]:
+    """Poll an EXISTING flow run to its outcome: (result, id), or a PrefectRunOutcome (TR-20). Never runs anything."""
+    # 3. Poll for the flow run to complete, bounded by a deadline
+    deadline = clock() + timeout_seconds
+    while True:
+        run = await client.read_flow_run(run_id)
+        state = run.state
+        if state.is_completed():
+            # TR-21 (Architect ruling 2026-11-15): the result is the registry row the flow wrote BEFORE it returned,
+            # read by flow_run_id only. Not the state's own result: that read a result file from the worker's own disk,
+            # which a container worker's is not (hedwig 2026-11-15: "outside of the base path"), and before that it
+            # was the 2026-08-26 bug, an unreadable result silently re-run locally. Never the kept survey snapshot
+            # either: that is "latest per slug and step", and another run could have written it.
+            return _read_flow_run_output(flow_run_id, getattr(state, "message", "") or ""), flow_run_id
+        elif state.is_failed() or _state_type(state) == "CRASHED":
+            kind = "FAILED" if state.is_failed() else "CRASHED"
+            raise PrefectFlowRunFailed(
+                f"Prefect flow run '{flow_run_id}' {kind.lower()}: {state.message}", flow_run_id, state=kind)
+        elif state.is_cancelled():
+            raise PrefectFlowRunCancelled(f"Prefect flow run '{flow_run_id}' was cancelled.", flow_run_id,
+                                          state="CANCELLED")
+
+        if clock() >= deadline:
+            cancel_failure = await _cancel_flow_run_best_effort(client, run_id)
+            msg = (
+                f"timed out after {timeout_seconds:g} s waiting for Prefect flow run "
+                f"{flow_run_id} (state {getattr(state, 'name', None) or state.type})"
             )
-
-        # 1b. Fail fast: a pool with no ONLINE worker would leave the run
-        # Scheduled forever. Read-only; nothing is created yet.
-        pool = getattr(deployment, "work_pool_name", None) or config.prefect.work_pool
-        workers = await client.read_workers_for_work_pool(pool)
-        if not any(_is_online(w) for w in workers):
-            raise RuntimeError(
-                f"no online Prefect worker for pool {pool}; run `make prefect-up`"
+            msg += (
+                f"; cancel attempt FAILED ({cancel_failure}) - the run may still be live"
+                if cancel_failure else "; the run was cancelled"
             )
+            raise PrefectFlowRunTimeout(msg, flow_run_id=flow_run_id, state=str(getattr(state, "name", "") or ""))
 
-        # 2. Trigger the flow run — tagged so the admin "⚡ Prefect" panel can
-        # group/filter flow-runs by the resource they belong to. Not the RE
-        # activity_id (run_prefect_step doesn't have one in scope — threading
-        # it through SurveyDefinitionExecutor.run()'s whole call chain is a
-        # bigger change than this pass makes; slug+step is enough for "what's
-        # running/stuck for resource X").
-        parameters = {
-            "entity_type": entity_type,
-            "slug": slug,
-            "step_name": step_name,
-            "runner_kwargs": runner_kwargs,
-        }
-        # Prefect persists these in its own database and shows them in its UI.
-        # A credential here is a bug somewhere upstream: fail loud, never send.
-        assert_no_credentials(parameters, where="Prefect flow-run parameters")
-        flow_run = await client.create_flow_run_from_deployment(
-            deployment_id=deployment.id,
-            parameters=parameters,
-            tags=[f"entity_type:{entity_type}", f"slug:{slug}", f"step:{step_name}"],
-        )
-        flow_run_id = str(flow_run.id)
-
-        # 3. Poll for the flow run to complete, bounded by a deadline
-        deadline = clock() + timeout_seconds
-        while True:
-            run = await client.read_flow_run(flow_run.id)
-            state = run.state
-            if state.is_completed():
-                # `PrefectClient.resolve_value` doesn't exist in Prefect 3.x — this
-                # line has never successfully returned a result; the exception it
-                # always raised was swallowed by run_prefect_step's broad `except`,
-                # so the flow run completed for real (verified live against a local
-                # server + worker 2026-08-26) but its result was silently discarded
-                # and every call fell through to a second, duplicate local
-                # execution. `State.result()`/`State.aresult()` is the real 3.8.x
-                # API on this installed version — no `fetch` kwarg here (that's a
-                # newer/older-version signature; this one auto-resolves).
-                result = await state.result(raise_on_failure=True)
-                return result or {}, flow_run_id
-            elif state.is_failed():
-                raise RuntimeError(
-                    f"Prefect flow run '{flow_run.id}' failed: {state.message}"
-                )
-            elif state.is_cancelled():
-                raise PrefectFlowRunCancelled(f"Prefect flow run '{flow_run.id}' was cancelled.")
-
-            if clock() >= deadline:
-                cancel_failure = await _cancel_flow_run_best_effort(client, flow_run.id)
-                msg = (
-                    f"timed out after {timeout_seconds:g} s waiting for Prefect flow run "
-                    f"{flow_run_id} (state {getattr(state, 'name', None) or state.type})"
-                )
-                msg += (
-                    f"; cancel attempt FAILED ({cancel_failure}) - the run may still be live"
-                    if cancel_failure else "; the run was cancelled"
-                )
-                raise PrefectFlowRunTimeout(msg, flow_run_id=flow_run_id)
-
-            await sleep(poll_interval)
+        await sleep(poll_interval)
 
 
 def _in_process_step_flow() -> Callable[..., dict]:
@@ -418,7 +794,8 @@ def _run_step_in_process_flow(
     it, and nothing else. A worker could not do this -- it is another process.
 
     Raises RuntimeError when Prefect is unreachable, so `run_prefect_step`
-    degrades to its local path exactly as it does for the REST dispatch.
+    degrades to its local path exactly as it does for the REST dispatch. Any failure once the flow has started is
+    a PrefectFlowRunFailed (TR-20): the step already ran here, and running it again locally would run it twice.
     """
     reachable, detail = check_prefect_reachable_sync()
     if not reachable:
@@ -433,15 +810,24 @@ def _run_step_in_process_flow(
         loop = asyncio.get_running_loop()
     except RuntimeError:
         loop = None
-    if loop and loop.is_running():
-        from resource_explorer.concurrency import run_sync
+    # From here the flow runs in THIS process, as a flow run Prefect records: a failure is that run's outcome,
+    # never a reason to run the step again locally (TR-20). Only the reachability check above falls back.
+    try:
+        if loop and loop.is_running():
+            from resource_explorer.concurrency import run_sync
 
-        # The shared pool carries the caller/daemon identity into its thread itself
-        # (concurrency._CallersContextPool) and leaves the request's Egeria client scope behind
-        # (pyegeria ISSUE-96); an explicit ctx.run here would bring that scope back.
-        out = run_sync(lambda: flow_fn(**parameters))
-    else:
-        out = flow_fn(**parameters)
+            # The shared pool carries the caller/daemon identity into its thread itself
+            # (concurrency._CallersContextPool) and leaves the request's Egeria client scope behind
+            # (pyegeria ISSUE-96); an explicit ctx.run here would bring that scope back.
+            out = run_sync(lambda: flow_fn(**parameters))
+        else:
+            out = flow_fn(**parameters)
+    except PrefectRunOutcome:
+        raise
+    except Exception as e:  # the in-process flow ran: an outcome, never a second local run
+        raise PrefectFlowRunFailed(
+            f"the in-process Prefect flow for {step_name} failed ({type(e).__name__}: {e}); the step was NOT run "
+            "locally again", "", state="FAILED") from e
     return (out.get("result") or {}), str(out.get("flow_run_id") or "")
 
 
@@ -504,6 +890,10 @@ def run_prefect_step(
             if credential_ref:
                 result, flow_run_id = _run_step_in_process_flow(
                     entity_type, slug, step_name, runner_kwargs, credential_ref)
+                if dispatch_info is not None:
+                    # The flow ran HERE and wrote its own work row, even when Prefect gave no id: the caller must
+                    # not add a host row (Architect advisory on TR-21, 2026-11-15).
+                    dispatch_info["in_process_flow"] = True
             elif loop and loop.is_running():
                 # Already inside an event loop (a FastAPI request thread): asyncio.run
                 # cannot nest, so hand the coroutine to a worker thread with its own
@@ -522,15 +912,23 @@ def run_prefect_step(
                     _run_prefect_step_api(entity_type, slug, step_name, runner_kwargs))
             _fill("prefect", flow_run_id=flow_run_id)
             return result
-        except (PrefectFlowRunCancelled, PrefectFlowRunTimeout):
-            # (A timeout is the same shape: the run may still be live, and a
-            # local re-run would duplicate its work.) Must NOT fall through to local execution — that would silently
-            # redo the step's work outside Prefect, defeating the cancel.
-            # Re-raise so the caller (and whatever activity_log entry is
-            # tracking this) sees a real cancellation, not a quiet success.
+        except PrefectRunOutcome as outcome:
+            # TR-20: the flow run exists, so this is ITS outcome (failed, cancelled, result unreadable, unknown).
+            # Never a local run: that would execute the step a second time (the 2026-08-26 cancel bug, the
+            # 2026-11-15 hedwig unreadable-result double run). Recorded as engine=prefect, then re-raised so the
+            # caller writes an honest error step.
+            _fill("prefect", flow_run_id=outcome.flow_run_id)
+            if dispatch_info is not None:
+                dispatch_info["status"] = outcome.status
+                dispatch_info["state"] = outcome.state
+                dispatch_info["detail"] = str(outcome)
+            logging.getLogger(__name__).warning("Prefect flow run %s: %s (%s); not run locally",
+                                                outcome.flow_run_id or "?",
+                            outcome.status, outcome)
             raise
         except Exception as e:
-            # Falling back is right for an unreachable or failing Prefect server —
+            # Reached only BEFORE a flow run id exists (deployment not chosen, create_flow_run raised, server
+            # unreachable): every later failure is a PrefectRunOutcome above. Falling back is right here —
             # the work still gets done locally. But catching everything is what hid
             # the UnboundLocalError above for the entire life of this integration,
             # so log the exception type and traceback rather than just str(e): a

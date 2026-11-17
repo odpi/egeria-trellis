@@ -469,20 +469,73 @@ def validate_egeria_token(token: str, config: AuthConfig) -> bool:
     if not view_server or not platform_url:
         logger.warning("auth: Egeria connection config incomplete — cannot validate bearer token")
         return False
+    # TR-24 (2026-11-15): the check is made AS THE TOKEN'S OWN USER with NO password. It used to build the client as
+    # the service account with no user_pwd, so pyegeria's configured default password applied: a token Egeria refused
+    # (revoked, exp still ahead) was "validated" by the 401 auto-retry signing in again as the service account.
+    client = None
     try:
+        from pyegeria.core._no_password import NO_PASSWORD
         from pyegeria.egeria_tech_client import EgeriaTech
 
         client = EgeriaTech(
             view_server=view_server,
             platform_url=platform_url,
-            user_id=config.egeria_service_account_user or "unknown",
+            user_id=egeria_token_user(token) or "unknown",
+            user_pwd=NO_PASSWORD,
         )
+        assert_no_password(client)
         apply_token(client, token)
         client.get_my_profile()
+        assert_no_password(client)          # still none after the call: nothing signed in with a password
         return True
-    except Exception as exc:
-        logger.info("auth: bearer-token validation failed — %s: %s", type(exc).__name__, exc)
+    except PasswordOnClient:
+        logger.error("auth: bearer-token validation refused: the client held a password (TR-24)")
         return False
+    except ImportError as exc:
+        logger.error("auth: bearer-token validation needs pyegeria>=6.2.42 (NO_PASSWORD) — %s", exc)
+        return False
+    except Exception as exc:
+        from trellis_auth.egeria_errors import auth_error_status
+
+        reason = "refused" if auth_error_status(exc) is not None else "unreachable"
+        logger.info("auth: bearer-token validation failed (%s) — %s: %s", reason, type(exc).__name__, exc)
+        return False
+    finally:
+        _close_quietly(client)
+
+
+class PasswordOnClient(RuntimeError):
+    """A token-only Egeria client held a password (TR-24); refused."""
+
+
+def assert_no_password(client: Any) -> None:
+    """Raise PasswordOnClient when `client`, or any sub-client it built, holds a password or may still take the
+    configured default one (`use_default_password`, pyegeria 6.2.42's NO_PASSWORD opt-out records it False)."""
+    holders = [client, *((getattr(client, "_instantiated_clients", None) or {}).values())]
+    for c in holders:
+        if getattr(c, "user_pwd", None) or getattr(c, "use_default_password", False) is True:
+            raise PasswordOnClient("an Egeria client used to check a bearer token holds a password; refused (TR-24)")
+
+
+def _close_quietly(client: Any) -> None:
+    fn = getattr(client, "close_session", None) if client is not None else None
+    if fn is None:
+        return
+    try:
+        fn()
+    except Exception:  # noqa: BLE001 -- closing never turns the answer into an error
+        pass
+
+
+def egeria_token_user(egeria_token: str) -> Optional[str]:
+    """The `sub` claim of an Egeria bearer token (its user), read without verifying the signature: it only names
+    whom the check is made as. Egeria itself decides whether the token is good. None when opaque or absent."""
+    try:
+        claims = jwt.decode(egeria_token, options={"verify_signature": False})
+    except jwt.PyJWTError:
+        return None
+    sub = claims.get("sub")
+    return str(sub) if sub else None
 
 
 def validate_egeria_credentials(user_id: str, password: str, config: AuthConfig) -> bool:

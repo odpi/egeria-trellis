@@ -88,6 +88,17 @@ existing `batches`/`egeria_reachable` fields the admin banner already reads. A p
 workers logs a WARNING naming the exact failure mode this exists to catch: "the API is reachable but
 nothing will pick up dispatched work" — reported *before* a run hits it, not discovered by one.
 
+> **Corrected 2026-11-13** (BRIEF-RE-PREFECT-POOL-LIVE-WORKERS): two things above no longer hold.
+> (1) The check counted *registrations*, so a pool whose only worker had stopped a month earlier
+> read "has 3 worker(s)"; it now counts live workers (Prefect's own `ONLINE` status, else a
+> heartbeat within `PREFECT_WORKER_LIVE_FACTOR` × the heartbeat interval) and reports
+> `live_count`/`registered_count`/`summary`, with `worker_count` a deprecated alias of the live
+> count. (2) A whole-definition run does **not** need a pool worker: `_run_via_prefect` calls
+> `re_survey_definition_flow` in RE's own process. Only a step dispatched to Prefect on its own
+> (`_use_prefect`) uses the pool, and with no ONLINE worker it runs locally instead
+> (PREFECT-POLL-TIMEOUT-IMPLEMENTED.md). So no live worker means lost Prefect run history,
+> retries and cancel for those steps, not work that waits; the warning and the banner now say that.
+
 ### 4. `step_runs` snapshot — first default-engine day
 
 `step_runs-2026-09-28-prefect-default-day.csv` — same convention PR #333

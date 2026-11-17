@@ -1681,7 +1681,8 @@ def reattach_egeria_by_name(ctx: typer.Context):
 
     DRY RUN by default: prints a table per registry table (rows, distinct names, each verdict's count), writes a
     0600 plan file and prints the exact "to apply:" line. --show <verdict> lists the rows of one verdict.
-    Run it AFTER scripts/clear_egeria_pointers_after_reset.py, never before: the clear script blanks every pointer.
+    Run it AFTER scripts/clear_egeria_pointers_after_reset.py, never before: the clear script blanks every pointer
+    that no longer resolves in Egeria.
     Pass --help for every flag and guard (resource_explorer/egeria_reattach.py's docstring).
     """
     from resource_explorer.egeria_reattach import run
@@ -2925,8 +2926,21 @@ app.add_typer(prefect_app)
 
 
 @prefect_app.command(name="deploy")
-def prefect_deploy():
-    """Deploy Resource Explorer flows to the Prefect server."""
+def prefect_deploy(
+    name: str = typer.Option(
+        "re-survey-step-deployment", "--name",
+        help="Deployment name. The container worker deploys its own, re-survey-step-<sha12>."),
+    work_queue: Optional[str] = typer.Option(
+        None, "--work-queue",
+        help="Work queue for this deployment's runs (the container worker's own, re-<sha12>), so only a "
+             "worker on the same code picks them up. Default: the pool's default queue."),
+):
+    """Deploy Resource Explorer flows to the Prefect server.
+
+    The deployment's flows load from THIS checkout or image (`from_source` below): a worker can only run
+    them where that path exists. The host worker serves the default deployment; each container worker
+    deploys its own, named for its commit (docker/entrypoint-resource-explorer.sh, role prefect-worker).
+    """
     from pathlib import Path
 
     from resource_explorer.prefect.flows import re_survey_flow
@@ -2948,13 +2962,46 @@ def prefect_deploy():
             source=str(source_root),
             entrypoint="resource_explorer/prefect/flows.py:re_survey_flow",
         ).deploy(
-            name="re-survey-step-deployment",
+            name=name,
             work_pool_name=config.prefect.work_pool,
+            work_queue_name=work_queue,
         )
         console.print(f"[green]✓ Flows successfully deployed to work pool '[bold]{config.prefect.work_pool}[/bold]'![/green]")
     except Exception as e:
         console.print(f"[red]Failed to deploy flows: {e}[/red]")
         raise typer.Exit(1)
+
+
+@prefect_app.command(name="prune-deployments")
+def prefect_prune_deployments(
+    keep: int = typer.Option(3, "--keep", min=1, help="How many of the newest per-commit deployments to keep."),
+):
+    """Delete Resource Explorer's per-commit deployments (re-survey-step-<sha12>) beyond the newest KEEP.
+
+    Workers run this right after deploying their own commit's deployment, so a deployment per 8813 deploy
+    does not pile up. Never touches the default deployment, another flow's or pool's, one with a scheduled,
+    pending, running, paused or cancelling flow run, or one whose commit has an ONLINE worker. Prints every name
+    it deletes. A Prefect write.
+    """
+    import asyncio
+
+    from resource_explorer.config import get_config
+    from resource_explorer.surveyors.prefect_adapter import prune_commit_deployments
+
+    pool = get_config().prefect.work_pool
+    try:
+        out = asyncio.run(prune_commit_deployments(keep, pool))
+    except Exception as e:
+        console.print(f"[red]Could not prune deployments on pool {pool}: {e}[/red]")
+        raise typer.Exit(1)
+    for name in out["deleted"]:
+        console.print(f"deleted deployment {name}")
+    for name in out["skipped_active"]:
+        console.print(f"kept {name}: it has an active flow run")
+    for name in out.get("skipped_online_worker", []):
+        console.print(f"kept {name}: a worker on its commit is online")
+    console.print(f"prune-deployments on {pool}: kept {len(out['kept'])} newest, deleted {len(out['deleted'])}, "
+                  f"in use {len(out['skipped_active'])}")
 
 
 @prefect_app.command(name="worker")

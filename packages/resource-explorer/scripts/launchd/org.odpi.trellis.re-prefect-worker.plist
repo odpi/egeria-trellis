@@ -1,0 +1,84 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  SPDX-License-Identifier: Apache-2.0
+  Copyright Contributors to the ODPi Egeria project.
+
+  A launchd agent (macOS) that keeps Resource Explorer's Prefect worker for `resource-explorer-pool`
+  running: started at login, restarted if it exits. The interim host worker the owner chose on
+  2026-11-13 ("both host worker and launchd as well as container"); the container worker is the
+  target for container deployments (DESIGN-PREFECT-ROLE-AND-RE-WORKER-2026-11-13 §5/§6).
+
+  NOT installed by anything in this repo: installing a login agent is a standing host change and
+  needs the owner's word. Installing it ALSO approves a standing automated Prefect write: at every
+  worker start (login, KeepAlive restart, kickstart), once its tree's `resource-explorer prefect`
+  has the commands, the wrapper deploys re-survey-step-<commit> and prunes per-commit deployments
+  beyond the newest 3, never one in use, printing each name it deletes (Architect ruling 2026-11-13). The paths below are laz's; replace them for another Mac. Install (or
+  re-install), from a checkout holding this directory:
+
+    cp packages/resource-explorer/scripts/launchd/re-prefect-worker.sh ~/.re-gate/re-prefect-worker.sh
+    cp packages/resource-explorer/scripts/launchd/re-runtime-env.sh ~/.re-gate/re-runtime-env.sh   # once; the web app's launcher sources it too
+    cp packages/resource-explorer/scripts/launchd/org.odpi.trellis.re-prefect-worker.plist ~/Library/LaunchAgents/
+    launchctl bootout gui/$(id -u)/org.odpi.trellis.re-prefect-worker 2>/dev/null || true
+    launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/org.odpi.trellis.re-prefect-worker.plist
+
+  Check:  the first lines of the log name the commit, the tree and the settings (by name), then the
+          library steps ("none missing"); the pool shows the worker ONLINE; and
+          re-config-parity.sh <web-app pid> <worker pid> says "parity: OK".
+  Restart with every web-app deploy (it re-reads the commit and the settings):
+          launchctl kickstart -k gui/$(id -u)/org.odpi.trellis.re-prefect-worker
+  Stop:   launchctl bootout gui/$(id -u)/org.odpi.trellis.re-prefect-worker
+
+  Why it is shaped this way (read-back of 8f5af544, 2026-11-13):
+  - Same code: RE_TREE is the checkout the web app runs from (laz: wt-relgraph, also its working
+    directory), and the worker uses that tree's venv binaries, never `uv run --package` (which
+    re-resolves the venv down to one package and has dropped RE's survey steps).
+  - Same settings: the wrapper sources RE_RUNTIME_ENV, the one env file the web app's launcher sources
+    too, then runs under `dotenv -f RE_DOTENV run`, as the web app does. Flow runs inherit the worker's
+    environment, so a step sees what the web app sees. No secret is in this file or the wrapper.
+  - Same commit: the wrapper exports TRELLIS_RE_SHA from RE_TREE at start, and advertises it once the
+    tree's `prefect deploy` takes --work-queue (re-prefect-worker.sh says what that changes).
+  - ThrottleInterval stops a tight respawn loop while the Prefect server is down.
+  - The log is not rotated by launchd; the worker writes little (a line per poll error or flow run).
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>org.odpi.trellis.re-prefect-worker</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>/Users/dwolfson/.re-gate/re-prefect-worker.sh</string>
+  </array>
+  <key>WorkingDirectory</key>
+  <string>/Users/dwolfson/localGit/egeria-v6/trellis/.claude/worktrees/wt-relgraph</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>RE_TREE</key>
+    <string>/Users/dwolfson/localGit/egeria-v6/trellis/.claude/worktrees/wt-relgraph</string>
+    <key>RE_DOTENV</key>
+    <string>/Users/dwolfson/localGit/egeria-v6/trellis/packages/resource-explorer/.env</string>
+    <key>RE_RUNTIME_ENV</key>
+    <string>/Users/dwolfson/.re-gate/re-runtime-env.sh</string>
+    <key>PATH</key>
+    <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+    <key>PREFECT_API_URL</key>
+    <string>http://localhost:4200/api</string>
+    <!-- Never let Prefect's client start an ephemeral in-process server (the 2026-09-04 leak). -->
+    <key>PREFECT_SERVER_EPHEMERAL_ENABLED</key>
+    <string>false</string>
+    <key>PYTHONUNBUFFERED</key>
+    <string>1</string>
+  </dict>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+  <key>ThrottleInterval</key>
+  <integer>30</integer>
+  <key>StandardOutPath</key>
+  <string>/Users/dwolfson/.re-gate/re-prefect-worker-launchd.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/dwolfson/.re-gate/re-prefect-worker-launchd.log</string>
+</dict>
+</plist>

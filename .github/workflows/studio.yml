@@ -1,0 +1,86 @@
+# Trellis Studio's tests: no network, no Egeria, no database. Studio's dependency closure is small (trellis-auth,
+# trellis-ui, pyegeria, FastAPI), so this installs only that, from the workspace lock, rather than every member.
+name: studio
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+    paths:
+      - "packages/studio/**"
+      - "packages/trellis-auth/**"
+      - "packages/trellis-ui/**"
+      - ".github/workflows/studio.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+jobs:
+  studio-tests:
+    name: studio-tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Decide whether this change needs the Studio suite
+        id: scope
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE: ${{ github.event.pull_request.base.sha }}
+        run: |
+          if [ "$EVENT" != "pull_request" ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"; echo "$EVENT: the suite always runs"; exit 0
+          fi
+          git fetch --no-tags --depth=1 origin "$BASE"
+          python3 .github/scripts/changed_paths.py --base "$BASE" --head HEAD --include \
+              "packages/studio/**" \
+              "packages/trellis-auth/**" \
+              "packages/trellis-ui/**" \
+              "packages/resource-explorer/frontend-build/package-lock.json" \
+              "pyproject.toml" \
+              "uv.lock" \
+              ".github/workflows/studio.yml" \
+              ".github/scripts/changed_paths.py"
+
+      - name: Install uv
+        if: steps.scope.outputs.run == 'true'
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Set up Python
+        if: steps.scope.outputs.run == 'true'
+        run: uv python install 3.13
+
+      - name: Install Studio and its closure from the lock
+        if: steps.scope.outputs.run == 'true'
+        # From the workspace root. --package scopes the install to Studio's closure (CI's own throwaway venv;
+        # never on a developer tree, where a bare `uv sync --package` drops the other members).
+        run: uv sync --package trellis-studio --extra dev
+
+      - name: Set up Node
+        if: steps.scope.outputs.run == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install jsdom for the EA panel harness
+        if: steps.scope.outputs.run == 'true'
+        # Studio has no JS toolchain of its own; RE's frontend-build lockfile already pins jsdom (as EA's CI uses).
+        working-directory: packages/resource-explorer/frontend-build
+        run: npm ci
+
+      - name: Studio tests (with the EA panel harness, jsdom required)
+        if: steps.scope.outputs.run == 'true'
+        working-directory: packages/studio
+        env:
+          STUDIO_JSDOM_DIR: ${{ github.workspace }}/packages/resource-explorer/frontend-build/node_modules
+          STUDIO_JS_REQUIRED: "1"
+        run: uv run --no-sync pytest tests -q --no-header -rs
+
+      - name: trellis-ui tests (its egeria-table.js source)
+        if: steps.scope.outputs.run == 'true'
+        run: uv run --no-sync pytest packages/trellis-ui/tests -q --no-header -rs

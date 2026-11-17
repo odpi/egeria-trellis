@@ -186,7 +186,7 @@ class PgVectorConfig(BaseModel):
     port: int = 5442
     dbname: str = "egeria_advisor"
     user: str = "egeria_advisor"
-    password: str = "advisor"
+    password: str = ""   # TR-12: no built-in password; PGVECTOR_PASSWORD must be set
     max_connections: int = 10
     ef_search: int = 128
 
@@ -429,7 +429,9 @@ class AdvisorSettings(BaseSettings):
     pgvector_port: int = Field(default=5442, alias="PGVECTOR_PORT")
     pgvector_dbname: str = Field(default="egeria_advisor", alias="PGVECTOR_DBNAME")
     pgvector_user: str = Field(default="egeria_advisor", alias="PGVECTOR_USER")
-    pgvector_password: str = Field(default="advisor", alias="PGVECTOR_PASSWORD")
+    # No default (TR-12, 2026-11-15): it was "advisor", so a deployment that set nothing ran on a password written in
+    # this repository. Unset, EA refuses to start and every Postgres user refuses by name (require_pgvector_password).
+    pgvector_password: str = Field(default="", alias="PGVECTOR_PASSWORD")
     pgvector_max_connections: int = Field(default=10, alias="PGVECTOR_MAX_CONNECTIONS")
     pgvector_ef_search: int = Field(default=128, alias="PGVECTOR_EF_SEARCH")
 
@@ -454,6 +456,14 @@ class AdvisorSettings(BaseSettings):
     # "https://egeria.pdr-associates.com". Same-origin browser access (the SPA served
     # from the same host:port as the API) never needs this.
     advisor_extra_cors_origins: str = Field(default="", alias="ADVISOR_EXTRA_CORS_ORIGINS")
+
+    # Origins that may FRAME this Advisor and talk to it by postMessage (E1, 2026-11-14): Trellis Studio's embedded
+    # EA panel (/?embed=studio). Comma-separated exact origins (scheme://host:port). They are sent as
+    # Content-Security-Policy frame-ancestors (with 'self'), and they are the only origins whose postMessage the
+    # page accepts: the Studio session hand-over (trellis_auth) and the Portal token (egeria_auth). Default:
+    # Studio on laz (8840) and its freshstart twin (7840). Empty means nobody may frame it but itself.
+    advisor_embed_origins: str = Field(default="http://localhost:8840,http://localhost:7840",
+                                       alias="ADVISOR_EMBED_ORIGINS")
 
     # Ollama
     ollama_base_url: str = Field(
@@ -835,3 +845,18 @@ __all__ = [
     "ObservabilityConfig",
     "LoggingConfig",
 ]
+
+
+class MissingDatabaseSetting(RuntimeError):
+    """A Postgres setting EA needs is unset (TR-12). Names the variable, never a value."""
+
+
+def require_pgvector_password(password: "str | None" = None) -> str:
+    """The pgvector password (`password`, else `settings.pgvector_password`), or MissingDatabaseSetting naming
+    PGVECTOR_PASSWORD. There is no built-in default any more (TR-12)."""
+    value = password if password is not None else settings.pgvector_password
+    if value:
+        return value
+    raise MissingDatabaseSetting(
+        "EA cannot connect to its Postgres (pgvector): PGVECTOR_PASSWORD is not set. Set it in the .env file. There is "
+        "no built-in password any more (TR-12).")

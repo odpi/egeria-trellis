@@ -179,7 +179,7 @@ prefect-down: ## Stop what prefect-up started
 # servers hold (8810 RE, 8880 EA per re-web/ea-web above): 8811.
 
 image-re: ## Build the resource-explorer image for the host arch, tag :local
-	docker buildx build -f docker/Dockerfile.resource-explorer -t trellis/resource-explorer:local --load .
+	docker buildx build -f docker/Dockerfile.resource-explorer --build-arg TRELLIS_RE_SHA=$$(git rev-parse HEAD) -t trellis/resource-explorer:local -t trellis/resource-explorer:$$(git rev-parse --short=12 HEAD) --load .
 
 image-ea: ## Build the egeria-advisor image for the host arch, tag :local
 	docker buildx build -f docker/Dockerfile.egeria-advisor -t trellis/egeria-advisor:local --load .

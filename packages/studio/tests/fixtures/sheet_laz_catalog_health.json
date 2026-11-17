@@ -1,0 +1,101 @@
+{
+ "_about": "The catalog-health sheet as laz's Egeria holds it (7 placements), in the shape pyegeria's reader returns (EgeriaDashboardSheet). Copied unchanged from egeria-python tests/micro-tests/data/authoring/catalog_health_laz_2026_11_12.json ['sheet'], which Portal-2 captured read-only from laz on 2026-11-12/13.",
+ "sheet": {
+  "aliases": [],
+  "breaks": [],
+  "description": "How complete and how current the catalog is: readiness for AI use, ownership, staleness and what the assets are.",
+  "family": "Overview",
+  "folders": [],
+  "guid": "f9d714a2-6678-4622-9919-212d909a88b7",
+  "heading": "Catalog Health",
+  "name": "catalog-health",
+  "placements": [
+   {
+    "content": "**What these tiles measure**\n\nThe readiness funnel counts assets at each step from cataloged to AI-ready. Ownership counts assets with an owner, by the kind of owner. Stale assets have not changed in 180 days. The composition chart shows the asset types the catalog holds.",
+    "detail_spec": null,
+    "emphasis": "panel",
+    "kind": "text",
+    "note": null,
+    "perspectives": [],
+    "ref": "What these tiles measure",
+    "report_guid": null,
+    "source": "egeria",
+    "span": "full"
+   },
+   {
+    "content": null,
+    "detail_spec": null,
+    "emphasis": "panel",
+    "kind": "report",
+    "note": null,
+    "perspectives": [],
+    "ref": "Catalog Health - AI Context Readiness",
+    "report_guid": "216cc161-fee1-4bab-b460-b2a2bd66ed82",
+    "source": "egeria",
+    "span": "2"
+   },
+   {
+    "content": null,
+    "detail_spec": null,
+    "emphasis": "panel",
+    "kind": "report",
+    "note": null,
+    "perspectives": [],
+    "ref": "Catalog Health - Asset Ownership",
+    "report_guid": "ef57f942-8689-445f-bac7-ea03dde1eb95",
+    "source": "egeria",
+    "span": "2"
+   },
+   {
+    "content": null,
+    "detail_spec": null,
+    "emphasis": "kpi",
+    "kind": "report",
+    "note": null,
+    "perspectives": [],
+    "ref": "Catalog Health - Stale Assets",
+    "report_guid": "9417f393-6248-4169-8ccf-34cc86b2fa0b",
+    "source": "egeria",
+    "span": "1"
+   },
+   {
+    "content": null,
+    "detail_spec": null,
+    "emphasis": "panel",
+    "kind": "report",
+    "note": null,
+    "perspectives": [],
+    "ref": "Catalog Health - Asset Composition",
+    "report_guid": "be894a68-9f3c-4692-83a0-2a30e85d5d2b",
+    "source": "egeria",
+    "span": "2"
+   },
+   {
+    "content": null,
+    "detail_spec": null,
+    "emphasis": "panel",
+    "kind": "report",
+    "note": null,
+    "perspectives": [],
+    "ref": "Catalog Health - Catalog Growth, 90 Days",
+    "report_guid": "43d61836-0db9-4bb3-b509-e766dc0ccdff",
+    "source": "egeria",
+    "span": "full"
+   },
+   {
+    "content": null,
+    "detail_spec": null,
+    "emphasis": "panel",
+    "kind": "report",
+    "note": null,
+    "perspectives": [],
+    "ref": "Catalog Health - Assets with No Lineage",
+    "report_guid": "04ec469d-2c75-4264-9356-0dba0566e21c",
+    "source": "egeria",
+    "span": "full"
+   }
+  ],
+  "source": "egeria",
+  "used_by": []
+ }
+}

@@ -106,5 +106,8 @@ jobs:
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          # RE matches a Prefect worker to its own code by this (docker/Dockerfile.resource-explorer); EA ignores it.
+          build-args: |
+            TRELLIS_RE_SHA=${{ github.sha }}
           cache-from: type=gha,scope=${{ matrix.app }}
           cache-to: type=gha,mode=max,scope=${{ matrix.app }}

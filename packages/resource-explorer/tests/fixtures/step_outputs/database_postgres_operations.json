@@ -1,0 +1,206 @@
+{
+ "operations": {
+  "activity_signals": {
+   "database_activity": {
+    "active_time": 50.053,
+    "session_time": 84.271,
+    "tup_deleted": 0,
+    "tup_fetched": 2905,
+    "tup_inserted": 0,
+    "tup_updated": 0
+   },
+   "stats_reset": "",
+   "stats_reset_evidence": "never",
+   "table_activity": [],
+   "table_count": 0
+  },
+  "capabilities": {
+   "column_stats": true,
+   "credential_introspection": true,
+   "external_dependencies": true,
+   "index_stats": true,
+   "privileges": true,
+   "query_stats": false,
+   "replication_status": true,
+   "resilience": true,
+   "row_preview": true,
+   "tuple_counters": true,
+   "value_sampling": true
+  },
+  "external_dependencies": {
+   "extensions": [
+    {
+     "extname": "plpgsql",
+     "extversion": "1.0"
+    }
+   ],
+   "foreign_servers": [],
+   "foreign_tables": [],
+   "publications": [],
+   "subscriptions": []
+  },
+  "privilege_audit": {
+   "default_acl": [],
+   "roles": [
+    {
+     "rolbypassrls": false,
+     "rolcanlogin": true,
+     "rolcreatedb": false,
+     "rolcreaterole": false,
+     "rolname": "airflow_user",
+     "rolreplication": false,
+     "rolsuper": true
+    },
+    {
+     "rolbypassrls": false,
+     "rolcanlogin": true,
+     "rolcreatedb": false,
+     "rolcreaterole": false,
+     "rolname": "dagster_user",
+     "rolreplication": false,
+     "rolsuper": true
+    },
+    {
+     "rolbypassrls": false,
+     "rolcanlogin": true,
+     "rolcreatedb": false,
+     "rolcreaterole": false,
+     "rolname": "demo_user",
+     "rolreplication": false,
+     "rolsuper": false
+    },
+    {
+     "rolbypassrls": false,
+     "rolcanlogin": true,
+     "rolcreatedb": false,
+     "rolcreaterole": false,
+     "rolname": "fixture_role",
+     "rolreplication": false,
+     "rolsuper": true
+    },
+    {
+     "rolbypassrls": false,
+     "rolcanlogin": true,
+     "rolcreatedb": false,
+     "rolcreaterole": false,
+     "rolname": "egeria_advisor",
+     "rolreplication": false,
+     "rolsuper": false
+    },
+    {
+     "rolbypassrls": false,
+     "rolcanlogin": true,
+     "rolcreatedb": false,
+     "rolcreaterole": false,
+     "rolname": "egeria_user",
+     "rolreplication": false,
+     "rolsuper": false
+    },
+    {
+     "rolbypassrls": false,
+     "rolcanlogin": true,
+     "rolcreatedb": false,
+     "rolcreaterole": false,
+     "rolname": "example_user",
+     "rolreplication": false,
+     "rolsuper": false
+    },
+    {
+     "rolbypassrls": false,
+     "rolcanlogin": true,
+     "rolcreatedb": false,
+     "rolcreaterole": false,
+     "rolname": "marquez_user",
+     "rolreplication": false,
+     "rolsuper": true
+    },
+    {
+     "rolbypassrls": false,
+     "rolcanlogin": true,
+     "rolcreatedb": false,
+     "rolcreaterole": false,
+     "rolname": "mlflow_user",
+     "rolreplication": false,
+     "rolsuper": true
+    },
+    {
+     "rolbypassrls": true,
+     "rolcanlogin": true,
+     "rolcreatedb": true,
+     "rolcreaterole": true,
+     "rolname": "postgres",
+     "rolreplication": true,
+     "rolsuper": true
+    },
+    {
+     "rolbypassrls": false,
+     "rolcanlogin": true,
+     "rolcreatedb": false,
+     "rolcreaterole": false,
+     "rolname": "prefect_user",
+     "rolreplication": false,
+     "rolsuper": true
+    },
+    {
+     "rolbypassrls": false,
+     "rolcanlogin": true,
+     "rolcreatedb": false,
+     "rolcreaterole": false,
+     "rolname": "provisioner",
+     "rolreplication": false,
+     "rolsuper": false
+    },
+    {
+     "rolbypassrls": false,
+     "rolcanlogin": true,
+     "rolcreatedb": false,
+     "rolcreaterole": false,
+     "rolname": "surveyor",
+     "rolreplication": false,
+     "rolsuper": false
+    },
+    {
+     "rolbypassrls": false,
+     "rolcanlogin": true,
+     "rolcreatedb": false,
+     "rolcreaterole": false,
+     "rolname": "uc_user",
+     "rolreplication": false,
+     "rolsuper": true
+    }
+   ],
+   "table_grants": []
+  },
+  "resilience": {
+   "backup_tool_signals": {
+    "detected_extensions": []
+   },
+   "clustering": {
+    "citus_detected": false,
+    "citus_version": null
+   },
+   "replication": {
+    "is_in_recovery": false,
+    "replicas": []
+   },
+   "wal_archiving": {
+    "archive_mode": "off",
+    "archived_count": 0,
+    "failed_count": 0,
+    "last_archived_time": "",
+    "last_failed_time": ""
+   }
+  }
+ },
+ "schema_info": {
+  "schemas": [
+   {
+    "description": "standard public schema",
+    "name": "public",
+    "tables": []
+   }
+  ],
+  "total_columns": 0,
+  "total_tables": 0
+ }
+}

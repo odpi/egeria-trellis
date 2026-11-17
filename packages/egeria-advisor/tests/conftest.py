@@ -26,6 +26,23 @@ from pathlib import Path
 
 import pytest
 
+# TR-12: there is no built-in Postgres password any more, and EA refuses to connect without one, by name. Unit tests
+# mock the connection, so they get a placeholder that opens nothing. Set before advisor.config is imported (its
+# settings are read once). A real PGVECTOR_PASSWORD exported in the shell (e.g. `source
+# ~/.re-gate/secrets/pgvector.env`) wins, and only then does the requires_pgvector tier reach Postgres.
+#: Whether a REAL password was supplied (shell or `source ~/.re-gate/secrets/pgvector.env`), decided before the
+#: placeholder below is set. Only then may a requires_pgvector test reach Postgres.
+#: (The placeholder itself is not a supplied password: xdist workers inherit it from the controller's environment.)
+_PG_PLACEHOLDER = "test-only-not-a-password"
+_PG_PASSWORD_SUPPLIED = os.environ.get("PGVECTOR_PASSWORD", "") not in ("", _PG_PLACEHOLDER)
+os.environ.setdefault("PGVECTOR_PASSWORD", _PG_PLACEHOLDER)
+
+#: TR-12 R1: a requires_pgvector test SKIPS, never errors, when no password is supplied, with this reason.
+PG_PASSWORD_SKIP_REASON = "PGVECTOR_PASSWORD not set (TR-12)"
+#: TR-12 R1: the gate sets this (with the secret sourced). Then a missing password or an unreachable Postgres FAILS
+#: the run instead of skipping the requires_pgvector tier, so that tier can never be lost silently.
+_REQUIRE_PG = os.environ.get("TRELLIS_REQUIRE_PG") == "1"
+
 # Add project root to path
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
@@ -72,7 +89,21 @@ def _pgvector_reachable() -> bool:
         return False
 
 
-_PGVECTOR_AVAILABLE = _pgvector_reachable()
+_PGVECTOR_AVAILABLE = _PG_PASSWORD_SUPPLIED and _pgvector_reachable()
+
+
+def pg_unavailable_reason() -> str:
+    """Why the Postgres tier cannot run: the missing password first (TR-12 R1), else reachability."""
+    return (PG_PASSWORD_SKIP_REASON if not _PG_PASSWORD_SUPPLIED
+            else "pgvector/Postgres not reachable at the configured host:port")
+
+
+def skip_or_fail_pg() -> None:
+    """For a fixture that needs Postgres: skip with the reason, or FAIL under TRELLIS_REQUIRE_PG=1 (the gate), so a
+    fixture-level skip cannot lose the tier silently either (TR-12 R1)."""
+    if _REQUIRE_PG:
+        pytest.fail(f"TRELLIS_REQUIRE_PG=1 but {pg_unavailable_reason()}")
+    pytest.skip(pg_unavailable_reason())
 
 
 def pytest_configure(config):
@@ -109,10 +140,17 @@ def pytest_collection_modifyitems(config, items):
 
     if _PGVECTOR_AVAILABLE:
         return
-    skip = pytest.mark.skip(reason="pgvector/Postgres not reachable at the configured host:port")
-    for item in items:
-        if "requires_pgvector" in item.keywords:
-            item.add_marker(skip)
+    needing = [item for item in items if "requires_pgvector" in item.keywords]
+    if not needing:
+        return
+    why = pg_unavailable_reason()
+    if _REQUIRE_PG:
+        raise pytest.UsageError(
+            f"TRELLIS_REQUIRE_PG=1 but {len(needing)} requires_pgvector test(s) cannot run: {why}. "
+            "Source ~/.re-gate/secrets/pgvector.env (or export PGVECTOR_PASSWORD) and check Postgres is up.")
+    skip = pytest.mark.skip(reason=why)
+    for item in needing:
+        item.add_marker(skip)
 
 
 @pytest.fixture
@@ -121,7 +159,7 @@ def vs_test_prefix():
     EA collection name. Drops any leftover zzz_vstest_* tables before and
     after, so a previous crashed run can't leave stale state behind."""
     if not _PGVECTOR_AVAILABLE:
-        pytest.skip("pgvector/Postgres not reachable")
+        skip_or_fail_pg()
 
     import psycopg2
     from advisor.config import settings
@@ -252,7 +290,7 @@ def _sweep_orphan_ea_test_schemas(cur) -> None:
 def ea_test_schema():
     """A Postgres schema of this test's own, dropped afterwards. Never public, never resource_explorer."""
     if not _PGVECTOR_AVAILABLE:
-        pytest.skip("pgvector/Postgres not reachable at the configured host:port")
+        skip_or_fail_pg()
     import uuid
     name = f"{_EA_TEST_SCHEMA_PREFIX}{os.getpid()}_{uuid.uuid4().hex[:8]}"
     conn = _pg_connect()

@@ -35,7 +35,9 @@ docker exec egeria-shared-postgres psql -U egeria_advisor -d egeria_advisor -p 5
 
 # Without egeria-workspaces (standalone/from-scratch): create your own container, then
 # the same schema against it:
-docker run -p 5442:5432 -e POSTGRES_DB=egeria_advisor -e POSTGRES_USER=egeria_advisor -e POSTGRES_PASSWORD=advisor pgvector/pgvector:pg17
+# There is no default password: choose one and put the same value in RE's .env as PGVECTOR_PASSWORD.
+export PGVECTOR_PASSWORD="$(openssl rand -hex 24)"
+POSTGRES_PASSWORD="$PGVECTOR_PASSWORD" docker run -p 5442:5432 -e POSTGRES_DB=egeria_advisor -e POSTGRES_USER=egeria_advisor -e POSTGRES_PASSWORD pgvector/pgvector:pg17
 docker exec <container_name_or_id> psql -U egeria_advisor -d egeria_advisor \
   -c 'CREATE SCHEMA IF NOT EXISTS resource_explorer AUTHORIZATION egeria_advisor;'
 

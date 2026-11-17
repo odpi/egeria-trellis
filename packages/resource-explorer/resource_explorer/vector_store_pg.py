@@ -161,6 +161,17 @@ class PgVectorStore(_SharedPgVectorStore):
             auto_provision_on_insert=True,  # RE's insert_with_embeddings always self-provisions
         )
 
+    def connect(self) -> None:
+        """TR-12: no password, no connection: refused by name here, where it is used, rather than as libpq's
+        authentication error (the built-in "advisor" default is gone). Construction stays side-effect free."""
+        if not self._config.password:
+            from resource_explorer.config import MissingDatabaseSetting
+
+            raise MissingDatabaseSetting(
+                "RE cannot connect to the shared Postgres (pgvector): PGVECTOR_PASSWORD is not set. Set it in the "
+                ".env file. There is no built-in password any more (TR-12).")
+        super().connect()
+
 
 # ---------------------------------------------------------------------------
 # Compatibility wrapper — preserves MultiCollectionStore's exact public
