@@ -117,3 +117,24 @@ def test_health_reports_the_resolved_flags_without_signing_in(clean, env, want):
     r = TestClient(web.app).get("/health")
     assert r.status_code == 200
     assert r.json() == {"status": "ok", "spec_authoring": want}
+
+
+def test_an_unknown_value_warns_once_per_name_and_value(clean):
+    """R1: _flag runs on every request; the warning is logged once per (name, value), not per call."""
+    from loguru import logger
+    seen = []
+    sink = logger.add(lambda m: seen.append(m.record["message"]), level="WARNING")
+    clean.setattr(v2, "_WARNED", set())
+    try:
+        clean.setenv(v2.FLAG, "maybe")
+        for _ in range(5):
+            v2.flags_line()
+            v2.enabled()
+        assert sum("EA_SPEC_AUTHORING_V2='maybe'" in m for m in seen) == 1
+        clean.setenv(v2.FLAG, "perhaps")             # a different value warns again, once
+        v2.flags_line()
+        v2.flags_line()
+        assert sum("EA_SPEC_AUTHORING_V2='perhaps'" in m for m in seen) == 1
+        assert v2.enabled()                           # still the default
+    finally:
+        logger.remove(sink)

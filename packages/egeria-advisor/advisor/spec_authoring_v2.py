@@ -121,9 +121,13 @@ _ON_WORDS = ("1", "true", "yes", "on")
 _OFF_WORDS = ("0", "false", "no", "off")
 
 
+#: (name, value) pairs already warned about: `_flag` runs on every request (~21 sites), so warn once.
+_WARNED: set = set()
+
+
 def _flag(name: str, default: bool) -> bool:
     """`name` read as a switch: unset or blank is `default`; an on or off word is that; anything else is
-    the default too, with a warning (a typo never flips a default silently)."""
+    the default too, with a warning once per (name, value) (a typo never flips a default silently)."""
     raw = os.environ.get(name, "").strip().lower()
     if not raw:
         return default
@@ -131,6 +135,9 @@ def _flag(name: str, default: bool) -> bool:
         return True
     if raw in _OFF_WORDS:
         return False
+    if (name, raw) in _WARNED:
+        return default
+    _WARNED.add((name, raw))
     from loguru import logger
     logger.warning(f"{name}={raw!r} is not one of {_ON_WORDS + _OFF_WORDS}; using the default "
                    f"({'on' if default else 'off'})")
