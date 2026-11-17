@@ -160,6 +160,10 @@ or
     conditions, snote = v2.sort_from_question(query, target, conditions)
     if snote:
         cnotes.append(snote)
+        # R3: the LLM's own sort attribute didn't resolve, but the question's words gave one: not unmet
+        stale = [u for u in unmet if u.startswith(v2.SORT_UNMET)]
+        unmet = [u for u in unmet if u not in stale]
+        cnotes += [f"{u}; sorted from the question's words instead" for u in stale]
     return _create(elicitor, query, data, target, conditions, egeria_client, cnotes, unmet)
 
 

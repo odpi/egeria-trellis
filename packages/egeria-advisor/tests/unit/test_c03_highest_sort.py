@@ -122,6 +122,38 @@ def test_other_wordings_sort_too(fixes_on, stores, monkeypatch, question, order)
     assert spec["conditions"].get("order_property_name") == "importance"
 
 
+@pytest.mark.parametrize("question", [
+    "Show risks with at least medium importance",          # read-back R1
+    "List risks with an importance of at least high",
+    "Which risks have at most low urgency?",
+    "Which risks have the least medium importance?",       # a scale value after the sort word: a threshold
+    "Show the lowest 3 importance risks",                  # a count, not an attribute
+])
+def test_a_threshold_is_not_a_sort(fixes_on, stores, monkeypatch, question):
+    _, _, spec = _start(monkeypatch, question)
+    assert "output_sort_order" not in spec["conditions"]
+
+
+def test_an_llm_sort_attribute_that_fails_is_not_unmet_when_the_words_sort(fixes_on, stores, monkeypatch):
+    """R3: the LLM's order_property_name didn't resolve, the question's words did: no stale unmet, no banner."""
+    reply = {**RECORDED, "unmet": None,
+             "conditions": {"output_sort_order": "PROPERTY_DESCENDING", "order_property_name": "riskScore"}}
+    el, r, spec = _start(monkeypatch, reply=reply)
+    assert spec["conditions"] == {"output_sort_order": "PROPERTY_DESCENDING", "order_property_name": "importance"}
+    assert spec["unmet"] is None
+    assert "sorting by 'riskScore': it isn't an attribute of Risk; sorted from the question's words instead" \
+        in r["response"]
+    assert "narrower" not in el.process(r["draft_id"], "generate now")["response"]
+
+
+def test_an_llm_sort_attribute_that_fails_stays_unmet_without_a_sort_from_the_words(fixes_on, stores, monkeypatch):
+    reply = {**RECORDED, "unmet": None,
+             "conditions": {"output_sort_order": "PROPERTY_DESCENDING", "order_property_name": "riskScore"}}
+    _, _, spec = _start(monkeypatch, "Which risks are in the register?", reply)
+    assert "output_sort_order" not in spec["conditions"]
+    assert spec["unmet"] == "sorting by 'riskScore': it isn't an attribute of Risk"
+
+
 def test_a_word_that_is_no_attribute_adds_no_sort(fixes_on, stores, monkeypatch):
     _, _, spec = _start(monkeypatch, "Which risks have the highest exposure?")
     assert "output_sort_order" not in spec["conditions"]
@@ -159,11 +191,15 @@ def test_c03_has_no_narrower_banner(fixes_on, stores, monkeypatch):
 @pytest.mark.parametrize("text, narrows", [
     ("The request does not specify a particular importance level or status, so all risks are listed.", False),
     ("The question doesn't ask for a status.", False),
-    ("No specific owner was requested", False),
-    ("null", False), ("", False), (None, False),
+    ("User did not mention a time range", False),
+    ("null", False), ("", False), (None, False), ("None.", False), ("n/a", False),
     ("no leader", True),
     ("risks with no owner: an absence can't be filtered", True),
     ("searched for APPROVED only; ACTIVE was not searched (one contentStatus value per search here)", True),
+    # read-back R2: real unmets that the first pattern swallowed
+    ("Filtering by owner isn't supported, so all owners' risks are listed.", True),
+    ("There is no specific attribute for region, so the region filter was not applied.", True),
+    ("The spec does not include the date range you asked for.", True),
 ])
 def test_narrows(text, narrows):
     assert v2.narrows(text) is narrows

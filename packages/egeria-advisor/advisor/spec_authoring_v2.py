@@ -523,6 +523,10 @@ _NOT_SORT_KEYS = {"guid", "status", "type_name", "anchor", "classifications", "p
                   "members", "member_of", "mermaid", "extended_properties", "additional_properties"}
 
 
+#: How an LLM sort attribute the type hasn't got is worded in `unmet` (R3 finds it by this prefix).
+SORT_UNMET = "sorting by "
+
+
 def resolve_attribute(type_name: Optional[str], name: Any) -> Optional[str]:
     """The attribute key of `type_name` that `name` means, or None: exact (camelCase or snake_case), then one
     is the other plus a qualifier ("importanceLevel" -> importance, "risk_importance" -> importance), then
@@ -554,10 +558,14 @@ def sort_from_question(query: str, type_name: Optional[str], conditions: Dict[st
     "the top 5" or "the highest-ranked team" (no such attribute) adds nothing."""
     if not query or not type_name or (conditions or {}).get("output_sort_order"):
         return conditions, None
-    words = re.findall(r"[A-Za-z][\w-]*", query.lower())
+    words = re.findall(r"[A-Za-z0-9][\w-]*", query.lower())
     for i, w in enumerate(words[:-1]):
+        if i and words[i - 1] == "at":
+            continue    # "at least medium importance", "at most low urgency": a threshold, not an order
         order = _SORT_WORDS.get(w)
         phrase = words[i + 1:i + 3]
+        if _ordinal_word(phrase[0]) in _ORDINAL_RANK or _number(phrase[0]) is not None:
+            continue    # "least medium importance", "lowest 3 ...": a value follows, so a threshold or a count
         if w in ("most", "least") and words[i + 1] in _SORT_ADJECTIVES:
             order = "PROPERTY_DESCENDING" if w == "most" else "PROPERTY_ASCENDING"
             phrase = [_SORT_ADJECTIVES[words[i + 1]]]
@@ -572,13 +580,14 @@ def sort_from_question(query: str, type_name: Optional[str], conditions: Dict[st
     return conditions, None
 
 
-#: An LLM "unmet" that only says the question didn't ask for something: nothing was narrowed, so it isn't
-#: shown as "Saved spec is narrower than your question" (C03 2026-11-17: "The request does not specify a
-#: particular importance level or status, so all risks are listed.").
+#: An LLM "unmet" whose subject is the question itself, saying it didn't ask for something: nothing was
+#: narrowed, so it isn't shown as "Saved spec is narrower than your question" (C03 2026-11-17: "The request
+#: does not specify a particular importance level or status, so all risks are listed."). Only that form, and
+#: the empty ones, are dropped (read-back R2): any other unmet stays, because a hidden narrowing is a
+#: confident wrong answer while a stray banner costs little.
 _NOT_NARROWED = re.compile(
-    r"\b(?:does not|doesn't|did not|didn't|do not|don't)\s+(?:specify|ask|mention|request|name|say|state|"
-    r"include|give|define)\b|\bnot (?:specified|requested|asked|mentioned)\b|\bno (?:particular|specific)\b|"
-    r"\bso all\b|^\s*(?:none|n/?a|nothing)\.?\s*$", re.IGNORECASE)
+    r"^\s*(?:the\s+)?(?:request|question|user|query)\s+(?:does not|doesn't|did not|didn't)\s+"
+    r"(?:specify|ask|mention|request|name|say|state)\b|^\s*(?:none|n/?a|nothing|null)\.?\s*$", re.IGNORECASE)
 
 
 def narrows(unmet: Any) -> bool:
@@ -625,7 +634,7 @@ def ground_conditions(params: Dict[str, Any], type_name: Optional[str] = None
                 if _snake(str(v)) != key:
                     notes.append(f"sort attribute '{v}' read as {key}, the attribute of {type_name}")
             else:
-                unmet.append(f"sorting by '{v}': it isn't an attribute of {type_name}")
+                unmet.append(f"{SORT_UNMET}'{v}': it isn't an attribute of {type_name}")
         else:
             out[k] = str(v)
     if out.get("output_sort_order") in _PROPERTY_SORTS and not out.get("order_property_name"):
