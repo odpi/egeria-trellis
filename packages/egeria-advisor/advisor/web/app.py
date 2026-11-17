@@ -259,6 +259,8 @@ async def _startup():
     import threading
 
     declare_multi_user_process()   # first: before any spec read, the background sync's included
+    from advisor import spec_authoring_v2
+    logger.info(spec_authoring_v2.flags_line())   # the effective values (re-base + fixes on by default)
     # TR-12: fail closed, naming the variable, never its value: there is no built-in Postgres password any more.
     from advisor.config import require_pgvector_password
     require_pgvector_password()
@@ -317,8 +319,11 @@ async def index() -> FileResponse:
 
 
 @app.get("/health")
-async def health() -> Dict[str, str]:
-    return {"status": "ok"}
+async def health() -> Dict[str, Any]:
+    """Liveness, plus the RESOLVED report-spec authoring flags (on/off only, no settings values), so a
+    post-deploy check can read them from the running service without its log."""
+    from advisor import spec_authoring_v2
+    return {"status": "ok", "spec_authoring": spec_authoring_v2.flags_state()}
 
 
 

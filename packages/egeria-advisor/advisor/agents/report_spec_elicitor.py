@@ -62,6 +62,10 @@ _NAV_FINAL   = ["run_spec", "back", "cancel"]
 _NAV_CONFIRM = ["continue_columns", "try_again", "cancel"]
 
 
+#: Cancel/discard of an id that isn't in the caller's drafts: nothing was deleted, so it doesn't say it was.
+NO_SUCH_DRAFT = "There's no draft with that id in your drafts, so nothing was discarded."
+
+
 class ReportSpecElicitor:
     """Conversational elicitor for report specs."""
 
@@ -70,11 +74,16 @@ class ReportSpecElicitor:
         query: str,
         perspective: Optional[str] = None,
         egeria_client: Any = None,
+        egeria_credentials: Optional[Dict[str, str]] = None,
     ) -> Dict[str, Any]:
-        """Decompose intent, propose basic structure, save draft, and return response."""
+        """Decompose intent, propose basic structure, save draft, and return response.
+
+        Re-based (v2): `egeria_client` (the harness's) or `egeria_credentials` (the web request's own) is
+        what this call may run as; neither is kept after the call (ruling 2026-11-17 A1/A2)."""
         if _v2.enabled():
             from advisor.agents import report_spec_elicitor_v2 as v2e
-            return v2e.start(self, query, perspective, egeria_client)
+            with v2e.request_scope(client=egeria_client, credentials=egeria_credentials):
+                return v2e.start(self, query, perspective, egeria_client)
         llm = get_planning_llm()
         prompt = decompose_prompt(query, perspective)
         try:
@@ -118,12 +127,26 @@ class ReportSpecElicitor:
 
         return self._build_confirm_response(spec)
 
-    def process(self, draft_id: str, user_response: str) -> Dict[str, Any]:
-        """Advance the elicitation conversation based on current phase and user response."""
+    def process(self, draft_id: str, user_response: str, egeria_client: Any = None,
+                egeria_credentials: Optional[Dict[str, str]] = None) -> Dict[str, Any]:
+        """Advance the elicitation conversation based on current phase and user response.
+
+        A re-based (v2) draft runs as `egeria_client` / `egeria_credentials` for this call only, and only
+        for the user who made it (ruling 2026-11-17 A2/A4)."""
         dm = get_report_draft_manager()
         spec = dm.load(draft_id)
         if not spec:
             return _error_result(draft_id, f"Draft session `{draft_id}` not found.")
+        if spec.get("v2"):
+            from advisor.agents import report_spec_elicitor_v2 as v2e
+            with v2e.request_scope(client=egeria_client, credentials=egeria_credentials):
+                refused = v2e.owner_refusal(spec)
+                if refused:
+                    return _error_result(draft_id, refused)
+                return self._process(dm, spec, draft_id, user_response)
+        return self._process(dm, spec, draft_id, user_response)
+
+    def _process(self, dm, spec: Dict[str, Any], draft_id: str, user_response: str) -> Dict[str, Any]:
 
         # Save history before changing
         dm.push_history(spec)
@@ -347,8 +370,22 @@ Do not output any introductory or summary text. Just the markdown document:
             return v2e.refine(self, spec, user_response)
         return _error_result(spec["draft_id"], f"Invalid phase: {phase}")
 
+    def _not_yours(self, draft_id: str) -> Optional[Dict[str, Any]]:
+        """An error result when the draft has an owner and this request isn't that user (A4 / F1), else
+        None. The request's user is the signed-in user the web request runs as
+        (request_context.current_user_id); discard goes through cancel."""
+        spec = get_report_draft_manager().load(draft_id)
+        if not spec:
+            return None
+        from advisor.agents import report_spec_elicitor_v2 as v2e
+        refused = v2e.owner_refusal(spec)
+        return _error_result(draft_id, refused) if refused else None
+
     def back(self, draft_id: str) -> Dict[str, Any]:
         """Rewind to previous phase."""
+        refused = self._not_yours(draft_id)
+        if refused:
+            return refused
         dm = get_report_draft_manager()
         spec = dm.load(draft_id)
         if not spec:
@@ -371,10 +408,15 @@ Do not output any introductory or summary text. Just the markdown document:
 
     def cancel(self, draft_id: str) -> Dict[str, Any]:
         """Discard the session."""
-        get_report_draft_manager().delete(draft_id)
+        refused = self._not_yours(draft_id)
+        if refused:
+            return refused
+        deleted = get_report_draft_manager().delete(draft_id)
         return {
             "query": draft_id,
-            "response": "Report building session cancelled. Draft has been discarded.",
+            # W1: say "discarded" only when a draft was deleted (since F1, another user's id isn't in your folder)
+            "response": ("Report building session cancelled. Draft has been discarded." if deleted
+                         else NO_SUCH_DRAFT),
             "query_type": "report_spec_clarification",
             "routing_agent": "report_spec_agent",
             "draft_id": None,
@@ -386,6 +428,9 @@ Do not output any introductory or summary text. Just the markdown document:
 
     def save_and_exit(self, draft_id: str) -> Dict[str, Any]:
         """Save draft and exit flow."""
+        refused = self._not_yours(draft_id)
+        if refused:
+            return refused
         spec = get_report_draft_manager().load(draft_id)
         title = spec.get("title", draft_id) if spec else draft_id
         response = f"Session saved. You can resume building **{title}** from the drafts list."
@@ -406,6 +451,9 @@ Do not output any introductory or summary text. Just the markdown document:
 
     def resume(self, draft_id: str) -> Dict[str, Any]:
         """Resume a saved draft session."""
+        refused = self._not_yours(draft_id)
+        if refused:
+            return refused
         spec = get_report_draft_manager().load(draft_id)
         if not spec:
             return _error_result(draft_id, f"Draft `{draft_id}` not found.")
@@ -434,6 +482,9 @@ Do not output any introductory or summary text. Just the markdown document:
 
     def restart_qa(self, draft_id: str) -> Dict[str, Any]:
         """Restart Q&A from confirm_action phase."""
+        refused = self._not_yours(draft_id)
+        if refused:
+            return refused
         dm = get_report_draft_manager()
         spec = dm.load(draft_id)
         if not spec:

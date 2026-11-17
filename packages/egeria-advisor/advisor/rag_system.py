@@ -612,7 +612,7 @@ class RAGSystem:
                     return result
                 except Exception as exc:
                     logger.warning(f"Draft execute failed: {exc}")
-            return _rse.process(_ctx_draft_id, user_query)
+            return _rse.process(_ctx_draft_id, user_query, egeria_credentials=egeria_credentials)
 
         elif _ctx_task == "plan_elicitor" and _ctx_draft_id:
             from advisor.agents.governance_plan_agent import get_governance_plan_agent
@@ -814,10 +814,11 @@ class RAGSystem:
                     exec_id,
                     perspective=perspective,
                     output_format=_output_fmt,
-                    custom_params=custom_params if custom_params else None
+                    custom_params=custom_params if custom_params else None,
+                    egeria_credentials=egeria_credentials,
                 )
 
-            return elicitor.process(draft_id, user_query)
+            return elicitor.process(draft_id, user_query, egeria_credentials=egeria_credentials)
 
         # ------------------------------------------------------------------ #
         # Draft navigation: route to PlanElicitor when a draft is active       #
@@ -1234,7 +1235,8 @@ class RAGSystem:
             elif destination == 'report_spec':
                 logger.info("Create intent → ReportSpecElicitor")
                 from advisor.agents.report_spec_elicitor import get_report_spec_elicitor
-                result = get_report_spec_elicitor().start(user_query, perspective=perspective)
+                result = get_report_spec_elicitor().start(user_query, perspective=perspective,
+                                                            egeria_credentials=egeria_credentials)
                 result.setdefault("routing_agent", "report_spec_agent")
                 result.update(_ctx)
                 return result
@@ -1335,7 +1337,8 @@ class RAGSystem:
         if _wants_elicitor:
             logger.info("Routing to ReportSpecElicitor to build a new report spec")
             from advisor.agents.report_spec_elicitor import get_report_spec_elicitor
-            result = get_report_spec_elicitor().start(user_query, perspective=perspective)
+            result = get_report_spec_elicitor().start(user_query, perspective=perspective,
+                                                            egeria_credentials=egeria_credentials)
             result.setdefault("routing_agent", "report_spec_agent")
             result.update({
                 "active_perspective": active_perspective,

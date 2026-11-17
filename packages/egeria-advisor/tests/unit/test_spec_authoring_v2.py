@@ -44,7 +44,7 @@ class FakeLLM:
 def flag_on(monkeypatch):
     """The re-base alone."""
     monkeypatch.setenv(v2.FLAG, "1")
-    monkeypatch.delenv(v2.FIXES_FLAG, raising=False)
+    monkeypatch.setenv(v2.FIXES_FLAG, "0")
 
 
 @pytest.fixture
@@ -63,8 +63,8 @@ def _llm(monkeypatch, *replies):
 
 # ── grounding ────────────────────────────────────────────────────────────────
 
-def test_flag_is_off_by_default(monkeypatch):
-    monkeypatch.delenv(v2.FLAG, raising=False)
+def test_flag_off_turns_the_rebase_off(monkeypatch):
+    monkeypatch.setenv(v2.FLAG, "0")
     assert not v2.enabled()
 
 
@@ -216,7 +216,7 @@ def test_generate_answers_in_the_reply_when_signed_in(fixes_on, stores, monkeypa
     client = object()
     el = ReportSpecElicitor()
     r = el.start("which projects are active", egeria_client=client)
-    r = el.process(r["draft_id"], "generate now")
+    r = el.process(r["draft_id"], "generate now", egeria_client=client)   # per call: nothing kept between
     assert seen["client"] is client and seen["max_rows"] == v2.ANSWER_ROWS
     # the LLM's old element-status key is read as a functional status: Project's own projectStatus
     assert seen["fs"].action.spec_params["property_value"] == "Active"
@@ -224,7 +224,6 @@ def test_generate_answers_in_the_reply_when_signed_in(fixes_on, stores, monkeypa
     assert "project_status" in [c.key for f in seen["fs"].formats for c in f.attributes]   # shown
     assert "| Campaign X | Active |" in r["response"] and r["answer"]["ok"]
     assert r["validation"]["dr_egeria"]["success"]
-    v2e._CLIENTS.clear()
 
 
 def test_refine_edits_the_draft_and_regenerates(fixes_on, stores, monkeypatch):
@@ -256,7 +255,7 @@ def test_execute_reads_a_v2_document_through_its_microflow(flag_on, stores, monk
 
 
 def test_flag_off_keeps_the_old_elicitor(stores, monkeypatch):
-    monkeypatch.delenv(v2.FLAG, raising=False)
+    monkeypatch.setenv(v2.FLAG, "0")
     from advisor.agents.report_spec_elicitor import ReportSpecElicitor
     _llm(monkeypatch, {"title": "t", "heading": "H", "target_type": "Project",
                        "action_function": "ProjectManager.find_projects", "description": "d",
@@ -281,7 +280,7 @@ def _fs(target="Project"):
 ])
 def test_golden_publish_document_is_the_same_from_pyegeria(monkeypatch, kw):
     from advisor import egeria_spec_publish as pub
-    monkeypatch.delenv(v2.FLAG, raising=False)
+    monkeypatch.setenv(v2.FLAG, "0")
     ea = pub.build_publish_document("my-spec", _fs(), **kw)
     monkeypatch.setenv(v2.FLAG, "1")
     shared = pub.build_publish_document("my-spec", _fs(), **kw)
@@ -293,7 +292,7 @@ def test_golden_restricted_publish_document(monkeypatch):
     from advisor import egeria_spec_publish as pub
     monkeypatch.setenv(pub.RESTRICTED_PROOF_ENV, "READBACK-X")
     kw = dict(visibility="restricted", zones=["b-zone", "a-zone", "a-zone"])
-    monkeypatch.delenv(v2.FLAG, raising=False)
+    monkeypatch.setenv(v2.FLAG, "0")
     ea = pub.build_publish_document("my-spec", _fs(), **kw)
     monkeypatch.setenv(v2.FLAG, "1")
     assert pub.build_publish_document("my-spec", _fs(), **kw)["markdown"] == ea["markdown"]
@@ -303,7 +302,7 @@ def test_golden_restricted_publish_document(monkeypatch):
                                      ["ReportSpecFolder::Consumer::EgeriaAdvisor", "ReportSpecFolder::Consumer::Portal"]])
 def test_golden_withdraw_document(monkeypatch, folders):
     from advisor import egeria_spec_publish as pub
-    monkeypatch.delenv(v2.FLAG, raising=False)
+    monkeypatch.setenv(v2.FLAG, "0")
     ea = pub.build_withdraw_document("my-spec", folders=folders)
     monkeypatch.setenv(v2.FLAG, "1")
     shared = pub.build_withdraw_document("my-spec", folders=folders)
@@ -396,7 +395,7 @@ def test_rebase_only_offers_no_conditions_and_no_near_miss(flag_on):
 
 
 def test_fixes_need_the_rebase(monkeypatch):
-    monkeypatch.delenv(v2.FLAG, raising=False)
+    monkeypatch.setenv(v2.FLAG, "0")
     monkeypatch.setenv(v2.FIXES_FLAG, "1")
     assert not v2.fixes_enabled()
 
@@ -405,7 +404,7 @@ def test_parser_dispatch_is_off_without_the_flag(monkeypatch):
     from advisor.report_spec_parser import parse_report_spec_markdown
     monkeypatch.setenv(v2.FLAG, "1")
     md = v2.serialize(_spec())
-    monkeypatch.delenv(v2.FLAG, raising=False)
+    monkeypatch.setenv(v2.FLAG, "0")
     monkeypatch.setattr(v2, "format_set_from_document",
                         lambda *a, **k: pytest.fail("V2 reader used with the flag off"))
     fs = parse_report_spec_markdown(md)   # EA's own parser, as before the prototype
@@ -422,7 +421,7 @@ def test_same_question_same_llm_reply_takes_a_different_path_with_and_without_th
     if fixes:
         monkeypatch.setenv(v2.FIXES_FLAG, "1")
     else:
-        monkeypatch.delenv(v2.FIXES_FLAG, raising=False)
+        monkeypatch.setenv(v2.FIXES_FLAG, "0")
     reply = {"clarify": "Which teams?", "title": "teams", "heading": "Teams", "target_type": "Team",
              "conditions": {"limit_result_by_status": ["ACTIVE"]},
              "columns": [{"name": "Name", "key": "display_name"}]}
