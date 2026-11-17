@@ -12,7 +12,9 @@ Live mode reads the persona's password from EA_HARNESS_EGERIA_PASSWORD and never
 platform comes from EGERIA_VIEW_SERVER_URL / EGERIA_VIEW_SERVER, else EA's own config
 (advisor.mcp_config.get_pyegeria_platform_config).
 
-`--mode rebased` sets EA_SPEC_AUTHORING_V2=1 (the prototype's feature flag) before EA is imported.
+Each mode sets both flags explicitly before EA is imported (they are ON by default since the 6.3 Tech
+Preview, so "baseline" has to turn them off): baseline EA_SPEC_AUTHORING_V2=0 + EA_SPEC_ELICITOR_FIXES=0;
+`rebased` 1 + 0; `rebased_fixes` 1 + 1. EA_SPEC_STATUS_MERGE is cleared (off) in every mode.
 
 Drafts and spec documents go to a temp directory, never ~/egeria-reports. The elicitor's LLM is EA's
 planning model on the local Ollama. Results: <out>/results_<mode>.json (raw, per question) and
@@ -311,6 +313,19 @@ def summary_md(mode: str, rows: List[Dict[str, Any]]) -> str:
     return "\n".join(lines) + "\n"
 
 
+#: What each mode means, set explicitly: the flags are ON by default, so an unset flag is not "off".
+MODE_ENV = {"baseline": {"EA_SPEC_AUTHORING_V2": "0", "EA_SPEC_ELICITOR_FIXES": "0"},
+            "rebased": {"EA_SPEC_AUTHORING_V2": "1", "EA_SPEC_ELICITOR_FIXES": "0"},
+            "rebased_fixes": {"EA_SPEC_AUTHORING_V2": "1", "EA_SPEC_ELICITOR_FIXES": "1"}}
+
+
+def set_mode_env(mode: str, environ: Any = None) -> None:
+    """Set the flags for `mode` in `environ` (os.environ by default); the status merge is always off."""
+    environ = os.environ if environ is None else environ
+    environ.update(MODE_ENV[mode])
+    environ.pop("EA_SPEC_STATUS_MERGE", None)
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--mode", choices=("baseline", "rebased", "rebased_fixes"), required=True,
@@ -324,12 +339,7 @@ def main() -> None:
     ap.add_argument("--out", default=str(HERE / "results"))
     args = ap.parse_args()
 
-    os.environ.pop("EA_SPEC_AUTHORING_V2", None)
-    os.environ.pop("EA_SPEC_ELICITOR_FIXES", None)
-    if args.mode in ("rebased", "rebased_fixes"):
-        os.environ["EA_SPEC_AUTHORING_V2"] = "1"
-    if args.mode == "rebased_fixes":
-        os.environ["EA_SPEC_ELICITOR_FIXES"] = "1"
+    set_mode_env(args.mode)
     sys.path.insert(0, str(PKG))
     storage = Path(tempfile.mkdtemp(prefix=f"ea-rebase-{args.mode}-"))
     _isolate_storage(storage)

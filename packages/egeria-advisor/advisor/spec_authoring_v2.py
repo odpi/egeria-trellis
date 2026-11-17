@@ -1,7 +1,8 @@
 """Report-spec authoring on pyegeria's authoring API (the EA re-base prototype, behind a flag).
 
-`EA_SPEC_AUTHORING_V2=1` turns it on. Off (the default), nothing here is on any path and EA behaves as
-before. On, the report-spec elicitor keeps its conversation and EA's canvas, and hands these to pyegeria:
+On by default since the 6.3 Tech Preview (owner, 2026-11-17: "Turn them on by default").
+`EA_SPEC_AUTHORING_V2=0` (or false/no/off) turns it off, and then nothing here is on any path and EA
+behaves as it did before the re-base. On, the report-spec elicitor keeps its conversation and EA's canvas, and hands these to pyegeria:
 
 - **Grounding.** The target type is resolved against Egeria's type system (pyegeria's Properties-class
   catalog and its registered specs); the find method and its scoping parameters come from the type's own
@@ -116,17 +117,44 @@ SORT_ORDERS = ("ANY", "CREATION_DATE_RECENT", "CREATION_DATE_OLDEST", "LAST_UPDA
 FIXES_FLAG = "EA_SPEC_ELICITOR_FIXES"
 
 
+_ON_WORDS = ("1", "true", "yes", "on")
+_OFF_WORDS = ("0", "false", "no", "off")
+
+
+def _flag(name: str, default: bool) -> bool:
+    """`name` read as a switch: unset or blank is `default`; an on or off word is that; anything else is
+    the default too, with a warning (a typo never flips a default silently)."""
+    raw = os.environ.get(name, "").strip().lower()
+    if not raw:
+        return default
+    if raw in _ON_WORDS:
+        return True
+    if raw in _OFF_WORDS:
+        return False
+    from loguru import logger
+    logger.warning(f"{name}={raw!r} is not one of {_ON_WORDS + _OFF_WORDS}; using the default "
+                   f"({'on' if default else 'off'})")
+    return default
+
+
 def _on(name: str) -> bool:
-    return os.environ.get(name, "").strip().lower() in ("1", "true", "yes", "on")
+    """`name` explicitly on (default off)."""
+    return _flag(name, False)
+
+
+#: Defaults: the re-base and the elicitor fixes ON (6.3 Tech Preview, owner 2026-11-17), the status merge
+#: OFF (the Architect's ruling 2026-11-14, below).
+FLAG_DEFAULTS = {FLAG: True, FIXES_FLAG: True}
 
 
 def enabled() -> bool:
-    return _on(FLAG)
+    """The re-base: on unless EA_SPEC_AUTHORING_V2 is 0/false/no/off."""
+    return _flag(FLAG, FLAG_DEFAULTS[FLAG])
 
 
 def fixes_enabled() -> bool:
-    """The elicitor fixes, only with the re-base on."""
-    return enabled() and _on(FIXES_FLAG)
+    """The elicitor fixes: on unless EA_SPEC_ELICITOR_FIXES is 0/false/no/off, and only with the re-base on."""
+    return enabled() and _flag(FIXES_FLAG, FLAG_DEFAULTS[FIXES_FLAG])
 
 
 #: Several status values through a one-value finder: one search per value, merged in `answer`. OFF, and
@@ -138,7 +166,16 @@ STATUS_MERGE_FLAG = "EA_SPEC_STATUS_MERGE"
 
 
 def status_merge_enabled() -> bool:
+    """Off unless EA_SPEC_STATUS_MERGE is 1/true/yes/on, and only with the fixes on."""
     return fixes_enabled() and _on(STATUS_MERGE_FLAG)
+
+
+def flags_line() -> str:
+    """The effective values, for the startup log."""
+    def word(b):
+        return "on" if b else "off"
+    return (f"report-spec authoring: {FLAG}={word(enabled())}, {FIXES_FLAG}={word(fixes_enabled())}, "
+            f"{STATUS_MERGE_FLAG}={word(status_merge_enabled())}")
 
 
 # ── Grounding ────────────────────────────────────────────────────────────────

@@ -259,6 +259,8 @@ async def _startup():
     import threading
 
     declare_multi_user_process()   # first: before any spec read, the background sync's included
+    from advisor import spec_authoring_v2
+    logger.info(spec_authoring_v2.flags_line())   # the effective values (re-base + fixes on by default)
     # TR-12: fail closed, naming the variable, never its value: there is no built-in Postgres password any more.
     from advisor.config import require_pgvector_password
     require_pgvector_password()
