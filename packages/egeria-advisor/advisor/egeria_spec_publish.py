@@ -49,6 +49,11 @@ NOT_PROVEN = ("Restricted publish is not yet proven on this platform: Egeria's z
               "public, or wait for the zone proof.")
 
 
+def _v2_enabled() -> bool:
+    from advisor.spec_authoring_v2 import enabled
+    return enabled()
+
+
 class PublishRefused(ValueError):
     """The request cannot be turned into a document: the words say why."""
 
@@ -202,6 +207,15 @@ def _section(title: str, rows: List[tuple]) -> str:
 def build_publish_document(label: str, fs, *, visibility: str = "public", zones: Optional[List[str]] = None,
                            also_portal: bool = False, held: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     """The Dr.Egeria document that publishes `fs` as `label`, with a plain summary of what it does."""
+    if _v2_enabled():
+        # Stage 1b (EA re-base prototype): pyegeria's shared helper builds the same document.
+        from pyegeria.view import report_spec_publish as rsp
+        try:
+            return rsp.build_publish_document(
+                label, fs, folders=[ADVISOR_FOLDER] + ([PORTAL_FOLDER] if also_portal else []),
+                visibility=visibility, zones=zones, held=held, restricted=restricted_publish_status())
+        except rsp.PublishRefused as exc:
+            raise PublishRefused(str(exc)) from exc
     label = _check_label(label)
     zones = _check_zones(visibility, zones)
     held = held or {"held": False, "zones": []}
@@ -234,6 +248,14 @@ def build_publish_document(label: str, fs, *, visibility: str = "public", zones:
 
 
 def build_withdraw_document(label: str, *, folders: Optional[List[str]] = None) -> Dict[str, Any]:
+    if _v2_enabled():
+        from pyegeria.view import report_spec_publish as rsp
+        try:
+            return rsp.build_withdraw_document(
+                label, folders or [ADVISOR_FOLDER], allowed=(ADVISOR_FOLDER, PORTAL_FOLDER),
+                allowed_words="EA's and the Portal's consumer folders")
+        except rsp.PublishRefused as exc:
+            raise PublishRefused(str(exc)) from exc
     label = _check_label(label)
     qn = spec_qualified_name(label)
     folders = folders or [ADVISOR_FOLDER]

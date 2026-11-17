@@ -1,0 +1,1196 @@
+[
+ {
+  "id": "H01",
+  "set": "clear",
+  "question": "Which glossaries exist, and how many terms does each have?",
+  "expect": null,
+  "mode": "rebased",
+  "offline": true,
+  "turns": 1,
+  "final_phase": "error",
+  "transcript": [
+   {
+    "turn": 1,
+    "user": "Which glossaries exist, and how many terms does each have?",
+    "phase": "error",
+    "response": "'None' isn't an Egeria type I can report on.",
+    "s": 16.53
+   }
+  ],
+  "elicit_s": 16.53,
+  "draft": null,
+  "check": {
+   "doc_id": null,
+   "document": null,
+   "completed": false,
+   "asked_clarifying": false,
+   "format_set_source": null,
+   "format_set_error": "no spec document"
+  },
+  "total_s": 17.76
+ },
+ {
+  "id": "H02",
+  "set": "clear",
+  "question": "Which projects have no project manager assigned?",
+  "expect": null,
+  "mode": "rebased",
+  "offline": true,
+  "turns": 3,
+  "final_phase": "refine",
+  "transcript": [
+   {
+    "turn": 1,
+    "user": "Which projects have no project manager assigned?",
+    "phase": "confirm_action",
+    "response": "### Proposed Report Spec: **Projects with No Project Manager Assigned**\n\n- **Target Type:** Project\n- **Found with:** `ProjectManager.find_projects` (from Project-DrE-Basic)\n- **Condition:** none (everything of this type)\n- **Description:** This report lists all projects that do not have a project manager assigned.\n\n---\n\nDoes this look correct? Use the buttons below, or describe adjustments.",
+    "s": 14.85
+   },
+   {
+    "turn": 2,
+    "user": "continue_columns",
+    "phase": "elicit_columns",
+    "response": "### Columns Configuration\n\n**1. Project Name** \u2014 key: `qualified_name`\n**2. Description** \u2014 key: `description`\n\n**Condition:** none (everything of this type)\n\n---\n\nDoes this look right? Use **Generate now**, or describe changes (only attributes of Project can be columns).",
+    "s": 0.0
+   },
+   {
+    "turn": 3,
+    "user": "generate now",
+    "phase": "refine",
+    "response": "**Projects with No Project Manager Assigned** (draft spec **report_20261113_070802_projects_without_project_manager**, validated with pyegeria)\n\nSign in to see the answer here; you can run it with **Execute Spec**.",
+    "s": 0.0
+   }
+  ],
+  "elicit_s": 14.85,
+  "draft": {
+   "draft_id": "draft_report_20261113_070802_projects_without_project_manager",
+   "title": "projects-without-project-manager",
+   "phase": "refine",
+   "phase_label": "Refinement session",
+   "original_query": "Which projects have no project manager assigned?",
+   "action_function": "ProjectManager.find_projects",
+   "target_type": "Project",
+   "columns": [
+    {
+     "name": "Project Name",
+     "key": "qualified_name",
+     "format": false,
+     "detail_spec": null,
+     "formats": "ALL"
+    },
+    {
+     "name": "Description",
+     "key": "description",
+     "format": false,
+     "detail_spec": null,
+     "formats": "ALL"
+    }
+   ],
+   "content_filters": {
+    "search_string": "*"
+   },
+   "shape_defaults": {},
+   "performance_hints": {
+    "page_size": 100,
+    "start_from": 0
+   },
+   "perspectives": [],
+   "questions": [],
+   "answers": {
+    "Heading": "Projects with No Project Manager Assigned",
+    "Description": "This report lists all projects that do not have a project manager assigned."
+   },
+   "pending_questions": {},
+   "doc_id": "report_20261113_070802_projects_without_project_manager",
+   "history_stack": [
+    {
+     "phase": "confirm_action",
+     "phase_label": "Confirming report basic configuration",
+     "columns": [
+      {
+       "name": "Project Name",
+       "key": "qualified_name",
+       "format": false,
+       "detail_spec": null,
+       "formats": "ALL"
+      },
+      {
+       "name": "Description",
+       "key": "description",
+       "format": false,
+       "detail_spec": null,
+       "formats": "ALL"
+      }
+     ],
+     "content_filters": {
+      "search_string": "*"
+     },
+     "shape_defaults": {},
+     "performance_hints": {
+      "page_size": 100,
+      "start_from": 0
+     },
+     "perspectives": [],
+     "questions": [],
+     "answers": {
+      "Heading": "Projects with No Project Manager Assigned",
+      "Description": "This report lists all projects that do not have a project manager assigned."
+     },
+     "pending_questions": {},
+     "summary_of_answers": ""
+    },
+    {
+     "phase": "elicit_columns",
+     "phase_label": "Reviewing and customizing columns",
+     "columns": [
+      {
+       "name": "Project Name",
+       "key": "qualified_name",
+       "format": false,
+       "detail_spec": null,
+       "formats": "ALL"
+      },
+      {
+       "name": "Description",
+       "key": "description",
+       "format": false,
+       "detail_spec": null,
+       "formats": "ALL"
+      }
+     ],
+     "content_filters": {
+      "search_string": "*"
+     },
+     "shape_defaults": {},
+     "performance_hints": {
+      "page_size": 100,
+      "start_from": 0
+     },
+     "perspectives": [],
+     "questions": [],
+     "answers": {
+      "Heading": "Projects with No Project Manager Assigned",
+      "Description": "This report lists all projects that do not have a project manager assigned."
+     },
+     "pending_questions": {},
+     "summary_of_answers": ""
+    }
+   ],
+   "created_at": 1794575282.3639941,
+   "updated_at": 1794575282.368541,
+   "summary_of_answers": "",
+   "user_id": "erinoverview",
+   "conditions": {},
+   "unmet": null,
+   "v2": true,
+   "format_set": {
+    "target_type": "Project",
+    "heading": "Projects with No Project Manager Assigned",
+    "description": "This report lists all projects that do not have a project manager assigned.",
+    "aliases": [],
+    "annotations": {},
+    "formats": [
+     {
+      "types": [
+       "ALL"
+      ],
+      "attributes": [
+       {
+        "name": "Project Name",
+        "key": "qualified_name",
+        "format": false
+       },
+       {
+        "name": "Description",
+        "key": "description",
+        "format": false
+       }
+      ]
+     }
+    ],
+    "action": {
+     "function": "ProjectManager.find_projects",
+     "required_params": [
+      "search_string"
+     ],
+     "optional_params": [],
+     "spec_params": {},
+     "analytic_spec_params": {}
+    }
+   }
+  },
+  "check": {
+   "doc_id": "report_20261113_070802_projects_without_project_manager",
+   "document": "# Projects with No Project Manager Assigned\n\n## Create Report Spec\n### Display Name\nprojects-without-project-manager\n### Qualified Name\nReportSpec::projects-without-project-manager\n### Description\nThis report lists all projects that do not have a project manager assigned.\n### Content Status\nACTIVE\n### Target Type Name\nProject\n### Output Types\nALL\n### Microflow\n{\"format\":\"microflow/1\",\"params\":{\"search_string\":{\"type\":\"string\",\"required\":true}},\"stages\":[{\"stage\":\"producer/find\",\"type\":\"Project\",\"function\":\"ProjectManager.find_projects\",\"params\":{\"search_string\":\"$search_string\"}}],\"formatters\":{\"ALL\":{\"columns\":[{\"field\":\"qualified_name\",\"label\":\"Project Name\"},{\"field\":\"description\",\"label\":\"Description\"}]}}}\n\n___\n",
+   "completed": true,
+   "asked_clarifying": false,
+   "dre_offline_parse": {
+    "ok": true,
+    "commands": [
+     "Create Report Spec"
+    ]
+   },
+   "format_set_source": "draft",
+   "format_set_error": null,
+   "target_type": "Project",
+   "action_function": "ProjectManager.find_projects",
+   "columns": [
+    {
+     "name": "Project Name",
+     "key": "qualified_name"
+    },
+    {
+     "name": "Description",
+     "key": "description"
+    }
+   ],
+   "nonexistent_attributes": {
+    "checked": true,
+    "keys": [],
+    "strict_keys": []
+   },
+   "pyegeria_validate": {
+    "ok": true,
+    "errors": [],
+    "warnings": [],
+    "not_applied": [],
+    "checked": [
+     "structure",
+     "target type",
+     "column attributes",
+     "load-time resolution (find method / analytic routine, parameters, formats)"
+    ],
+    "not_checked": [
+     "Dr.Egeria validate: no runner given"
+    ],
+    "dr_egeria": null,
+    "s": 0.0
+   },
+   "validates": true,
+   "run": {
+    "ran": false,
+    "why": "offline"
+   }
+  },
+  "total_s": 14.99
+ },
+ {
+  "id": "H03",
+  "set": "clear",
+  "question": "List the data specifications and the data structures they contain.",
+  "expect": null,
+  "mode": "rebased",
+  "offline": true,
+  "turns": 1,
+  "final_phase": "error",
+  "transcript": [
+   {
+    "turn": 1,
+    "user": "List the data specifications and the data structures they contain.",
+    "phase": "error",
+    "response": "'None' isn't an Egeria type I can report on.",
+    "s": 19.43
+   }
+  ],
+  "elicit_s": 19.43,
+  "draft": null,
+  "check": {
+   "doc_id": null,
+   "document": null,
+   "completed": false,
+   "asked_clarifying": false,
+   "format_set_source": null,
+   "format_set_error": "no spec document"
+  },
+  "total_s": 19.43
+ },
+ {
+  "id": "H04",
+  "set": "clear",
+  "question": "What solution blueprints exist, and which components make up each one?",
+  "expect": null,
+  "mode": "rebased",
+  "offline": true,
+  "turns": 1,
+  "final_phase": "error",
+  "transcript": [
+   {
+    "turn": 1,
+    "user": "What solution blueprints exist, and which components make up each one?",
+    "phase": "error",
+    "response": "'None' isn't an Egeria type I can report on.",
+    "s": 23.23
+   }
+  ],
+  "elicit_s": 23.23,
+  "draft": null,
+  "check": {
+   "doc_id": null,
+   "document": null,
+   "completed": false,
+   "asked_clarifying": false,
+   "format_set_source": null,
+   "format_set_error": "no spec document"
+  },
+  "total_s": 23.23
+ },
+ {
+  "id": "H05",
+  "set": "clear",
+  "question": "Which governance rules or controls are still in draft?",
+  "expect": null,
+  "mode": "rebased",
+  "offline": true,
+  "turns": 3,
+  "final_phase": "refine",
+  "transcript": [
+   {
+    "turn": 1,
+    "user": "Which governance rules or controls are still in draft?",
+    "phase": "confirm_action",
+    "response": "### Proposed Report Spec: **Governance Rules or Controls Still in Draft**\n\n- **Target Type:** GovernanceRule\n- **Found with:** `GovernanceOfficer.find_governance_definitions` (from Governance-Rule-DrE-Basic)\n- **Condition:** none (everything of this type)\n- **Description:** This report lists all governance rules and controls that are currently still in draft status.\n\n---\n\nDoes this look correct? Use the buttons below, or describe adjustments.",
+    "s": 18.07
+   },
+   {
+    "turn": 2,
+    "user": "continue_columns",
+    "phase": "elicit_columns",
+    "response": "### Columns Configuration\n\n**1. Rule Name** \u2014 key: `display_name`\n**2. Description** \u2014 key: `description`\n**3. Status** \u2014 key: `status`\n\n**Condition:** none (everything of this type)\n\n---\n\nDoes this look right? Use **Generate now**, or describe changes (only attributes of GovernanceRule can be columns).",
+    "s": 0.0
+   },
+   {
+    "turn": 3,
+    "user": "generate now",
+    "phase": "refine",
+    "response": "**Governance Rules or Controls Still in Draft** (draft spec **report_20261113_070903_draft_governance_rules_report**, validated with pyegeria)\n\nSign in to see the answer here; you can run it with **Execute Spec**.",
+    "s": 0.03
+   }
+  ],
+  "elicit_s": 18.1,
+  "draft": {
+   "draft_id": "draft_report_20261113_070903_draft_governance_rules_report",
+   "title": "draft-governance-rules-report",
+   "phase": "refine",
+   "phase_label": "Refinement session",
+   "original_query": "Which governance rules or controls are still in draft?",
+   "action_function": "GovernanceOfficer.find_governance_definitions",
+   "target_type": "GovernanceRule",
+   "columns": [
+    {
+     "name": "Rule Name",
+     "key": "display_name",
+     "format": false,
+     "detail_spec": null,
+     "formats": "ALL"
+    },
+    {
+     "name": "Description",
+     "key": "description",
+     "format": false,
+     "detail_spec": null,
+     "formats": "ALL"
+    },
+    {
+     "name": "Status",
+     "key": "status",
+     "format": false,
+     "detail_spec": null,
+     "formats": "ALL"
+    }
+   ],
+   "content_filters": {
+    "search_string": "*"
+   },
+   "shape_defaults": {},
+   "performance_hints": {
+    "page_size": 100,
+    "start_from": 0
+   },
+   "perspectives": [],
+   "questions": [],
+   "answers": {
+    "Heading": "Governance Rules or Controls Still in Draft",
+    "Description": "This report lists all governance rules and controls that are currently still in draft status."
+   },
+   "pending_questions": {},
+   "doc_id": "report_20261113_070903_draft_governance_rules_report",
+   "history_stack": [
+    {
+     "phase": "confirm_action",
+     "phase_label": "Confirming report basic configuration",
+     "columns": [
+      {
+       "name": "Rule Name",
+       "key": "display_name",
+       "format": false,
+       "detail_spec": null,
+       "formats": "ALL"
+      },
+      {
+       "name": "Description",
+       "key": "description",
+       "format": false,
+       "detail_spec": null,
+       "formats": "ALL"
+      },
+      {
+       "name": "Status",
+       "key": "status",
+       "format": false,
+       "detail_spec": null,
+       "formats": "ALL"
+      }
+     ],
+     "content_filters": {
+      "search_string": "*"
+     },
+     "shape_defaults": {},
+     "performance_hints": {
+      "page_size": 100,
+      "start_from": 0
+     },
+     "perspectives": [],
+     "questions": [],
+     "answers": {
+      "Heading": "Governance Rules or Controls Still in Draft",
+      "Description": "This report lists all governance rules and controls that are currently still in draft status."
+     },
+     "pending_questions": {},
+     "summary_of_answers": ""
+    },
+    {
+     "phase": "elicit_columns",
+     "phase_label": "Reviewing and customizing columns",
+     "columns": [
+      {
+       "name": "Rule Name",
+       "key": "display_name",
+       "format": false,
+       "detail_spec": null,
+       "formats": "ALL"
+      },
+      {
+       "name": "Description",
+       "key": "description",
+       "format": false,
+       "detail_spec": null,
+       "formats": "ALL"
+      },
+      {
+       "name": "Status",
+       "key": "status",
+       "format": false,
+       "detail_spec": null,
+       "formats": "ALL"
+      }
+     ],
+     "content_filters": {
+      "search_string": "*"
+     },
+     "shape_defaults": {},
+     "performance_hints": {
+      "page_size": 100,
+      "start_from": 0
+     },
+     "perspectives": [],
+     "questions": [],
+     "answers": {
+      "Heading": "Governance Rules or Controls Still in Draft",
+      "Description": "This report lists all governance rules and controls that are currently still in draft status."
+     },
+     "pending_questions": {},
+     "summary_of_answers": ""
+    }
+   ],
+   "created_at": 1794575343.23409,
+   "updated_at": 1794575343.263298,
+   "summary_of_answers": "",
+   "user_id": "erinoverview",
+   "conditions": {},
+   "unmet": null,
+   "v2": true,
+   "format_set": {
+    "target_type": "GovernanceRule",
+    "heading": "Governance Rules or Controls Still in Draft",
+    "description": "This report lists all governance rules and controls that are currently still in draft status.",
+    "aliases": [],
+    "annotations": {},
+    "formats": [
+     {
+      "types": [
+       "ALL"
+      ],
+      "attributes": [
+       {
+        "name": "Rule Name",
+        "key": "display_name",
+        "format": false
+       },
+       {
+        "name": "Description",
+        "key": "description",
+        "format": false
+       },
+       {
+        "name": "Status",
+        "key": "status",
+        "format": false
+       }
+      ]
+     }
+    ],
+    "action": {
+     "function": "GovernanceOfficer.find_governance_definitions",
+     "required_params": [
+      "search_string"
+     ],
+     "optional_params": [],
+     "spec_params": {
+      "metadata_element_type": "GovernanceRule"
+     },
+     "analytic_spec_params": {}
+    }
+   }
+  },
+  "check": {
+   "doc_id": "report_20261113_070903_draft_governance_rules_report",
+   "document": "# Governance Rules or Controls Still in Draft\n\n## Create Report Spec\n### Display Name\ndraft-governance-rules-report\n### Qualified Name\nReportSpec::draft-governance-rules-report\n### Description\nThis report lists all governance rules and controls that are currently still in draft status.\n### Content Status\nACTIVE\n### Target Type Name\nGovernanceRule\n### Output Types\nALL\n### Microflow\n{\"format\":\"microflow/1\",\"params\":{\"search_string\":{\"type\":\"string\",\"required\":true}},\"stages\":[{\"stage\":\"producer/find\",\"type\":\"GovernanceRule\",\"function\":\"GovernanceOfficer.find_governance_definitions\",\"params\":{\"search_string\":\"$search_string\",\"metadata_element_type\":\"GovernanceRule\"}}],\"formatters\":{\"ALL\":{\"columns\":[{\"field\":\"display_name\",\"label\":\"Rule Name\"},{\"field\":\"description\",\"label\":\"Description\"},{\"field\":\"status\",\"label\":\"Status\"}]}}}\n\n___\n",
+   "completed": true,
+   "asked_clarifying": false,
+   "dre_offline_parse": {
+    "ok": true,
+    "commands": [
+     "Create Report Spec"
+    ]
+   },
+   "format_set_source": "draft",
+   "format_set_error": null,
+   "target_type": "GovernanceRule",
+   "action_function": "GovernanceOfficer.find_governance_definitions",
+   "columns": [
+    {
+     "name": "Rule Name",
+     "key": "display_name"
+    },
+    {
+     "name": "Description",
+     "key": "description"
+    },
+    {
+     "name": "Status",
+     "key": "status"
+    }
+   ],
+   "nonexistent_attributes": {
+    "checked": true,
+    "keys": [],
+    "strict_keys": []
+   },
+   "pyegeria_validate": {
+    "ok": true,
+    "errors": [],
+    "warnings": [],
+    "not_applied": [],
+    "checked": [
+     "structure",
+     "target type",
+     "column attributes",
+     "load-time resolution (find method / analytic routine, parameters, formats)"
+    ],
+    "not_checked": [
+     "Dr.Egeria validate: no runner given"
+    ],
+    "dr_egeria": null,
+    "s": 0.0
+   },
+   "validates": true,
+   "run": {
+    "ran": false,
+    "why": "offline"
+   }
+  },
+  "total_s": 18.11
+ },
+ {
+  "id": "H06",
+  "set": "clear",
+  "question": "Who works at Coco Pharmaceuticals, and what roles do they hold?",
+  "expect": null,
+  "mode": "rebased",
+  "offline": true,
+  "turns": 1,
+  "final_phase": "error",
+  "transcript": [
+   {
+    "turn": 1,
+    "user": "Who works at Coco Pharmaceuticals, and what roles do they hold?",
+    "phase": "error",
+    "response": "'UserProfile' isn't an Egeria type I can report on.",
+    "s": 15.05
+   }
+  ],
+  "elicit_s": 15.05,
+  "draft": null,
+  "check": {
+   "doc_id": null,
+   "document": null,
+   "completed": false,
+   "asked_clarifying": false,
+   "format_set_source": null,
+   "format_set_error": "no spec document"
+  },
+  "total_s": 15.05
+ },
+ {
+  "id": "H07",
+  "set": "clear",
+  "question": "Which collections have the most members?",
+  "expect": null,
+  "mode": "rebased",
+  "offline": true,
+  "turns": 1,
+  "final_phase": "error",
+  "transcript": [
+   {
+    "turn": 1,
+    "user": "Which collections have the most members?",
+    "phase": "error",
+    "response": "'None' isn't an Egeria type I can report on.",
+    "s": 16.34
+   }
+  ],
+  "elicit_s": 16.34,
+  "draft": null,
+  "check": {
+   "doc_id": null,
+   "document": null,
+   "completed": false,
+   "asked_clarifying": false,
+   "format_set_source": null,
+   "format_set_error": "no spec document"
+  },
+  "total_s": 16.34
+ },
+ {
+  "id": "H08",
+  "set": "clear",
+  "question": "Which data fields have no data class assigned?",
+  "expect": null,
+  "mode": "rebased",
+  "offline": true,
+  "turns": 1,
+  "final_phase": "error",
+  "transcript": [
+   {
+    "turn": 1,
+    "user": "Which data fields have no data class assigned?",
+    "phase": "error",
+    "response": "'Attribute' isn't an Egeria type I can report on.",
+    "s": 14.91
+   }
+  ],
+  "elicit_s": 14.91,
+  "draft": null,
+  "check": {
+   "doc_id": null,
+   "document": null,
+   "completed": false,
+   "asked_clarifying": false,
+   "format_set_source": null,
+   "format_set_error": "no spec document"
+  },
+  "total_s": 14.92
+ },
+ {
+  "id": "H09",
+  "set": "clear",
+  "question": "Which teams does Coco Pharmaceuticals have, and who leads each one?",
+  "expect": null,
+  "mode": "rebased",
+  "offline": true,
+  "turns": 3,
+  "final_phase": "refine",
+  "transcript": [
+   {
+    "turn": 1,
+    "user": "Which teams does Coco Pharmaceuticals have, and who leads each one?",
+    "phase": "confirm_action",
+    "response": "\u26a0\ufe0f Left out: 'Leader's Name' (owner.name) isn't an attribute of Project.\n### Proposed Report Spec: **Coco Pharmaceuticals Teams and Their Leaders**\n\n- **Target Type:** Project\n- **Found with:** `ProjectManager.find_projects` (from Project-DrE-Basic)\n- **Condition:** none (everything of this type)\n- **Description:** This report lists all the teams within Coco Pharmaceuticals along with their respective leaders.\n\n---\n\nDoes this look correct? Use the buttons below, or describe adjustments.",
+    "s": 15.36
+   },
+   {
+    "turn": 2,
+    "user": "continue_columns",
+    "phase": "elicit_columns",
+    "response": "### Columns Configuration\n\n**1. Team Name** \u2014 key: `display_name`\n\n**Condition:** none (everything of this type)\n\n---\n\nDoes this look right? Use **Generate now**, or describe changes (only attributes of Project can be columns).",
+    "s": 0.0
+   },
+   {
+    "turn": 3,
+    "user": "generate now",
+    "phase": "refine",
+    "response": "**Coco Pharmaceuticals Teams and Their Leaders** (draft spec **report_20261113_071004_coco_pharmaceuticals_teams_leaders_report**, validated with pyegeria)\n\nSign in to see the answer here; you can run it with **Execute Spec**.",
+    "s": 0.02
+   }
+  ],
+  "elicit_s": 15.38,
+  "draft": {
+   "draft_id": "draft_report_20261113_071004_coco_pharmaceuticals_teams_leaders_repor",
+   "title": "coco-pharmaceuticals-teams-leaders-report",
+   "phase": "refine",
+   "phase_label": "Refinement session",
+   "original_query": "Which teams does Coco Pharmaceuticals have, and who leads each one?",
+   "action_function": "ProjectManager.find_projects",
+   "target_type": "Project",
+   "columns": [
+    {
+     "name": "Team Name",
+     "key": "display_name",
+     "format": false,
+     "detail_spec": null,
+     "formats": "ALL"
+    }
+   ],
+   "content_filters": {
+    "search_string": "*"
+   },
+   "shape_defaults": {},
+   "performance_hints": {
+    "page_size": 100,
+    "start_from": 0
+   },
+   "perspectives": [],
+   "questions": [],
+   "answers": {
+    "Heading": "Coco Pharmaceuticals Teams and Their Leaders",
+    "Description": "This report lists all the teams within Coco Pharmaceuticals along with their respective leaders."
+   },
+   "pending_questions": {},
+   "doc_id": "report_20261113_071004_coco_pharmaceuticals_teams_leaders_report",
+   "history_stack": [
+    {
+     "phase": "confirm_action",
+     "phase_label": "Confirming report basic configuration",
+     "columns": [
+      {
+       "name": "Team Name",
+       "key": "display_name",
+       "format": false,
+       "detail_spec": null,
+       "formats": "ALL"
+      }
+     ],
+     "content_filters": {
+      "search_string": "*"
+     },
+     "shape_defaults": {},
+     "performance_hints": {
+      "page_size": 100,
+      "start_from": 0
+     },
+     "perspectives": [],
+     "questions": [],
+     "answers": {
+      "Heading": "Coco Pharmaceuticals Teams and Their Leaders",
+      "Description": "This report lists all the teams within Coco Pharmaceuticals along with their respective leaders."
+     },
+     "pending_questions": {},
+     "summary_of_answers": ""
+    },
+    {
+     "phase": "elicit_columns",
+     "phase_label": "Reviewing and customizing columns",
+     "columns": [
+      {
+       "name": "Team Name",
+       "key": "display_name",
+       "format": false,
+       "detail_spec": null,
+       "formats": "ALL"
+      }
+     ],
+     "content_filters": {
+      "search_string": "*"
+     },
+     "shape_defaults": {},
+     "performance_hints": {
+      "page_size": 100,
+      "start_from": 0
+     },
+     "perspectives": [],
+     "questions": [],
+     "answers": {
+      "Heading": "Coco Pharmaceuticals Teams and Their Leaders",
+      "Description": "This report lists all the teams within Coco Pharmaceuticals along with their respective leaders."
+     },
+     "pending_questions": {},
+     "summary_of_answers": ""
+    }
+   ],
+   "created_at": 1794575404.952163,
+   "updated_at": 1794575404.970986,
+   "summary_of_answers": "",
+   "user_id": "erinoverview",
+   "conditions": {},
+   "unmet": null,
+   "v2": true,
+   "format_set": {
+    "target_type": "Project",
+    "heading": "Coco Pharmaceuticals Teams and Their Leaders",
+    "description": "This report lists all the teams within Coco Pharmaceuticals along with their respective leaders.",
+    "aliases": [],
+    "annotations": {},
+    "formats": [
+     {
+      "types": [
+       "ALL"
+      ],
+      "attributes": [
+       {
+        "name": "Team Name",
+        "key": "display_name",
+        "format": false
+       }
+      ]
+     }
+    ],
+    "action": {
+     "function": "ProjectManager.find_projects",
+     "required_params": [
+      "search_string"
+     ],
+     "optional_params": [],
+     "spec_params": {},
+     "analytic_spec_params": {}
+    }
+   }
+  },
+  "check": {
+   "doc_id": "report_20261113_071004_coco_pharmaceuticals_teams_leaders_report",
+   "document": "# Coco Pharmaceuticals Teams and Their Leaders\n\n## Create Report Spec\n### Display Name\ncoco-pharmaceuticals-teams-leaders-report\n### Qualified Name\nReportSpec::coco-pharmaceuticals-teams-leaders-report\n### Description\nThis report lists all the teams within Coco Pharmaceuticals along with their respective leaders.\n### Content Status\nACTIVE\n### Target Type Name\nProject\n### Output Types\nALL\n### Microflow\n{\"format\":\"microflow/1\",\"params\":{\"search_string\":{\"type\":\"string\",\"required\":true}},\"stages\":[{\"stage\":\"producer/find\",\"type\":\"Project\",\"function\":\"ProjectManager.find_projects\",\"params\":{\"search_string\":\"$search_string\"}}],\"formatters\":{\"ALL\":{\"columns\":[{\"field\":\"display_name\",\"label\":\"Team Name\"}]}}}\n\n___\n",
+   "completed": true,
+   "asked_clarifying": false,
+   "dre_offline_parse": {
+    "ok": true,
+    "commands": [
+     "Create Report Spec"
+    ]
+   },
+   "format_set_source": "draft",
+   "format_set_error": null,
+   "target_type": "Project",
+   "action_function": "ProjectManager.find_projects",
+   "columns": [
+    {
+     "name": "Team Name",
+     "key": "display_name"
+    }
+   ],
+   "nonexistent_attributes": {
+    "checked": true,
+    "keys": [],
+    "strict_keys": []
+   },
+   "pyegeria_validate": {
+    "ok": true,
+    "errors": [],
+    "warnings": [],
+    "not_applied": [],
+    "checked": [
+     "structure",
+     "target type",
+     "column attributes",
+     "load-time resolution (find method / analytic routine, parameters, formats)"
+    ],
+    "not_checked": [
+     "Dr.Egeria validate: no runner given"
+    ],
+    "dr_egeria": null,
+    "s": 0.0
+   },
+   "validates": true,
+   "run": {
+    "ran": false,
+    "why": "offline"
+   }
+  },
+  "total_s": 15.39
+ },
+ {
+  "id": "H10",
+  "set": "clear",
+  "question": "Which sites or locations does Coco Pharmaceuticals operate from?",
+  "expect": null,
+  "mode": "rebased",
+  "offline": true,
+  "turns": 3,
+  "final_phase": "refine",
+  "transcript": [
+   {
+    "turn": 1,
+    "user": "Which sites or locations does Coco Pharmaceuticals operate from?",
+    "phase": "confirm_action",
+    "response": "\u26a0\ufe0f Left out: 'Location Type' (locationType) isn't an attribute of Location.\n\u26a0\ufe0f Left out: 'Address' (address) isn't an attribute of Location.\n### Proposed Report Spec: **Sites or Locations Operated by Coco Pharmaceuticals**\n\n- **Target Type:** Location\n- **Found with:** `MetadataExpert.find_metadata_elements_with_string` (from generic finder)\n- **Condition:** none (everything of this type)\n- **Description:** This report lists all the sites and locations where Coco Pharmaceuticals operates from.\n\n---\n\nDoes this look correct? Use the buttons below, or describe adjustments.",
+    "s": 19.32
+   },
+   {
+    "turn": 2,
+    "user": "continue_columns",
+    "phase": "elicit_columns",
+    "response": "### Columns Configuration\n\n**1. Site Name** \u2014 key: `display_name`\n\n**Condition:** none (everything of this type)\n\n---\n\nDoes this look right? Use **Generate now**, or describe changes (only attributes of Location can be columns).",
+    "s": 0.0
+   },
+   {
+    "turn": 3,
+    "user": "generate now",
+    "phase": "refine",
+    "response": "**Sites or Locations Operated by Coco Pharmaceuticals** (draft spec **report_20261113_071024_coco_pharmaceuticals_sites_report**, validated with pyegeria)\n\nSign in to see the answer here; you can run it with **Execute Spec**.",
+    "s": 0.02
+   }
+  ],
+  "elicit_s": 19.33,
+  "draft": {
+   "draft_id": "draft_report_20261113_071024_coco_pharmaceuticals_sites_report",
+   "title": "coco-pharmaceuticals-sites-report",
+   "phase": "refine",
+   "phase_label": "Refinement session",
+   "original_query": "Which sites or locations does Coco Pharmaceuticals operate from?",
+   "action_function": "MetadataExpert.find_metadata_elements_with_string",
+   "target_type": "Location",
+   "columns": [
+    {
+     "name": "Site Name",
+     "key": "display_name",
+     "format": false,
+     "detail_spec": null,
+     "formats": "ALL"
+    }
+   ],
+   "content_filters": {
+    "search_string": "*"
+   },
+   "shape_defaults": {},
+   "performance_hints": {
+    "page_size": 100,
+    "start_from": 0
+   },
+   "perspectives": [],
+   "questions": [],
+   "answers": {
+    "Heading": "Sites or Locations Operated by Coco Pharmaceuticals",
+    "Description": "This report lists all the sites and locations where Coco Pharmaceuticals operates from."
+   },
+   "pending_questions": {},
+   "doc_id": "report_20261113_071024_coco_pharmaceuticals_sites_report",
+   "history_stack": [
+    {
+     "phase": "confirm_action",
+     "phase_label": "Confirming report basic configuration",
+     "columns": [
+      {
+       "name": "Site Name",
+       "key": "display_name",
+       "format": false,
+       "detail_spec": null,
+       "formats": "ALL"
+      }
+     ],
+     "content_filters": {
+      "search_string": "*"
+     },
+     "shape_defaults": {},
+     "performance_hints": {
+      "page_size": 100,
+      "start_from": 0
+     },
+     "perspectives": [],
+     "questions": [],
+     "answers": {
+      "Heading": "Sites or Locations Operated by Coco Pharmaceuticals",
+      "Description": "This report lists all the sites and locations where Coco Pharmaceuticals operates from."
+     },
+     "pending_questions": {},
+     "summary_of_answers": ""
+    },
+    {
+     "phase": "elicit_columns",
+     "phase_label": "Reviewing and customizing columns",
+     "columns": [
+      {
+       "name": "Site Name",
+       "key": "display_name",
+       "format": false,
+       "detail_spec": null,
+       "formats": "ALL"
+      }
+     ],
+     "content_filters": {
+      "search_string": "*"
+     },
+     "shape_defaults": {},
+     "performance_hints": {
+      "page_size": 100,
+      "start_from": 0
+     },
+     "perspectives": [],
+     "questions": [],
+     "answers": {
+      "Heading": "Sites or Locations Operated by Coco Pharmaceuticals",
+      "Description": "This report lists all the sites and locations where Coco Pharmaceuticals operates from."
+     },
+     "pending_questions": {},
+     "summary_of_answers": ""
+    }
+   ],
+   "created_at": 1794575424.300926,
+   "updated_at": 1794575424.318281,
+   "summary_of_answers": "",
+   "user_id": "erinoverview",
+   "conditions": {},
+   "unmet": null,
+   "v2": true,
+   "format_set": {
+    "target_type": "Location",
+    "heading": "Sites or Locations Operated by Coco Pharmaceuticals",
+    "description": "This report lists all the sites and locations where Coco Pharmaceuticals operates from.",
+    "aliases": [],
+    "annotations": {},
+    "formats": [
+     {
+      "types": [
+       "ALL"
+      ],
+      "attributes": [
+       {
+        "name": "Site Name",
+        "key": "display_name",
+        "format": false
+       }
+      ]
+     }
+    ],
+    "action": {
+     "function": "MetadataExpert.find_metadata_elements_with_string",
+     "required_params": [
+      "search_string"
+     ],
+     "optional_params": [],
+     "spec_params": {
+      "metadata_element_type": "Location"
+     },
+     "analytic_spec_params": {}
+    }
+   }
+  },
+  "check": {
+   "doc_id": "report_20261113_071024_coco_pharmaceuticals_sites_report",
+   "document": "# Sites or Locations Operated by Coco Pharmaceuticals\n\n## Create Report Spec\n### Display Name\ncoco-pharmaceuticals-sites-report\n### Qualified Name\nReportSpec::coco-pharmaceuticals-sites-report\n### Description\nThis report lists all the sites and locations where Coco Pharmaceuticals operates from.\n### Content Status\nACTIVE\n### Target Type Name\nLocation\n### Output Types\nALL\n### Microflow\n{\"format\":\"microflow/1\",\"params\":{\"search_string\":{\"type\":\"string\",\"required\":true}},\"stages\":[{\"stage\":\"producer/find\",\"type\":\"Location\",\"function\":\"MetadataExpert.find_metadata_elements_with_string\",\"params\":{\"search_string\":\"$search_string\",\"metadata_element_type\":\"Location\"}}],\"formatters\":{\"ALL\":{\"columns\":[{\"field\":\"display_name\",\"label\":\"Site Name\"}]}}}\n\n___\n",
+   "completed": true,
+   "asked_clarifying": false,
+   "dre_offline_parse": {
+    "ok": true,
+    "commands": [
+     "Create Report Spec"
+    ]
+   },
+   "format_set_source": "draft",
+   "format_set_error": null,
+   "target_type": "Location",
+   "action_function": "MetadataExpert.find_metadata_elements_with_string",
+   "columns": [
+    {
+     "name": "Site Name",
+     "key": "display_name"
+    }
+   ],
+   "nonexistent_attributes": {
+    "checked": true,
+    "keys": [],
+    "strict_keys": []
+   },
+   "pyegeria_validate": {
+    "ok": true,
+    "errors": [],
+    "warnings": [],
+    "not_applied": [],
+    "checked": [
+     "structure",
+     "target type",
+     "column attributes",
+     "load-time resolution (find method / analytic routine, parameters, formats)"
+    ],
+    "not_checked": [
+     "Dr.Egeria validate: no runner given"
+    ],
+    "dr_egeria": null,
+    "s": 0.01
+   },
+   "validates": true,
+   "run": {
+    "ran": false,
+    "why": "offline"
+   }
+  },
+  "total_s": 19.35
+ },
+ {
+  "id": "H11",
+  "set": "ambiguous",
+  "question": "How healthy is the catalog?",
+  "expect": null,
+  "mode": "rebased",
+  "offline": true,
+  "turns": 1,
+  "final_phase": "error",
+  "transcript": [
+   {
+    "turn": 1,
+    "user": "How healthy is the catalog?",
+    "phase": "error",
+    "response": "'None' isn't an Egeria type I can report on.",
+    "s": 34.77
+   }
+  ],
+  "elicit_s": 34.78,
+  "draft": null,
+  "check": {
+   "doc_id": null,
+   "document": null,
+   "completed": false,
+   "asked_clarifying": false,
+   "format_set_source": null,
+   "format_set_error": "no spec document"
+  },
+  "total_s": 34.78
+ },
+ {
+  "id": "H12",
+  "set": "ambiguous",
+  "question": "Show me what's new for me.",
+  "expect": null,
+  "mode": "rebased",
+  "offline": true,
+  "turns": 1,
+  "final_phase": "error",
+  "transcript": [
+   {
+    "turn": 1,
+    "user": "Show me what's new for me.",
+    "phase": "error",
+    "response": "'User Profile' isn't an Egeria type I can report on.",
+    "s": 27.36
+   }
+  ],
+  "elicit_s": 27.36,
+  "draft": null,
+  "check": {
+   "doc_id": null,
+   "document": null,
+   "completed": false,
+   "asked_clarifying": false,
+   "format_set_source": null,
+   "format_set_error": "no spec document"
+  },
+  "total_s": 27.36
+ }
+]

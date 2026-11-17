@@ -15,26 +15,12 @@ from loguru import logger
 from advisor.report_draft import get_report_draft_manager
 from advisor.report_spec_docs import get_report_spec_doc_manager
 from advisor.llm_client import get_planning_llm
+from advisor import spec_authoring_v2 as _v2
 
 
-_NAV_FIRST   = ["save_exit", "cancel"]
-_NAV_MIDDLE  = ["generate_now", "back", "cancel"]
-_NAV_FINAL   = ["run_spec", "back", "cancel"]
-_NAV_CONFIRM = ["continue_columns", "try_again", "cancel"]
-
-
-class ReportSpecElicitor:
-    """Conversational elicitor for report specs."""
-
-    def start(
-        self,
-        query: str,
-        perspective: Optional[str] = None,
-    ) -> Dict[str, Any]:
-        """Decompose intent, propose basic structure, save draft, and return response."""
-        llm = get_planning_llm()
-
-        prompt = f"""
+def decompose_prompt(query: str, perspective: Optional[str] = None) -> str:
+    """The elicitor's decomposition prompt (shared with the re-base-only V2 path, unchanged)."""
+    return f"""
 You are an expert Egeria metadata analyst. A user wants to build a report specification.
 User request: "{query}"
 Perspective: {perspective or "None"}
@@ -68,6 +54,29 @@ Respond ONLY with a JSON object containing the proposed spec:
 
 JSON object:
 """
+
+
+_NAV_FIRST   = ["save_exit", "cancel"]
+_NAV_MIDDLE  = ["generate_now", "back", "cancel"]
+_NAV_FINAL   = ["run_spec", "back", "cancel"]
+_NAV_CONFIRM = ["continue_columns", "try_again", "cancel"]
+
+
+class ReportSpecElicitor:
+    """Conversational elicitor for report specs."""
+
+    def start(
+        self,
+        query: str,
+        perspective: Optional[str] = None,
+        egeria_client: Any = None,
+    ) -> Dict[str, Any]:
+        """Decompose intent, propose basic structure, save draft, and return response."""
+        if _v2.enabled():
+            from advisor.agents import report_spec_elicitor_v2 as v2e
+            return v2e.start(self, query, perspective, egeria_client)
+        llm = get_planning_llm()
+        prompt = decompose_prompt(query, perspective)
         try:
             raw = llm.generate(prompt, temperature=0.1, max_tokens=1000)
             # Extract JSON from Markdown block if present
@@ -120,6 +129,9 @@ JSON object:
         dm.push_history(spec)
 
         response_clean = user_response.strip().lower()
+
+        if spec.get("v2"):
+            return self._process_v2(spec, user_response, response_clean)
 
         if spec["phase"] == "confirm_action":
             if response_clean in ("yes", "y", "continue", "confirm", "generate", "generate now", "generate_now",
@@ -300,6 +312,41 @@ Do not output any introductory or summary text. Just the markdown document:
 
         return _error_result(draft_id, f"Invalid phase: {spec['phase']}")
 
+    def _process_v2(self, spec: Dict, user_response: str, response_clean: str) -> Dict[str, Any]:
+        """A draft made with EA_SPEC_AUTHORING_V2: the same phases, on pyegeria's authoring API."""
+        from advisor.agents import report_spec_elicitor_v2 as v2e
+        dm = get_report_draft_manager()
+        phase = spec["phase"]
+        if phase == "confirm_action":
+            if response_clean in ("generate now", "generate_now") and spec.get("columns"):
+                return v2e.generate(self, spec)
+            if response_clean in ("yes", "y", "continue", "confirm", "continue to column definitions",
+                                  "continue_columns"):
+                spec["phase"], spec["phase_label"] = "elicit_columns", "Reviewing and customizing columns"
+                dm.save(spec)
+                return v2e.columns_response(self, spec)
+            if response_clean in ("completely wrong", "completely_wrong", "try again", "try_again", "no", "n"):
+                dm.pop_history(spec)
+                return _error_result(spec["draft_id"], "Please describe the report you would like to build in more detail.")
+            notes = v2e.retarget(spec, user_response)
+            dm.save(spec)
+            return v2e.confirm_response(self, spec, notes=notes)
+        if phase == "elicit_columns":
+            if response_clean in ("yes", "y", "continue", "confirm", "generate now", "generate_now"):
+                return v2e.generate(self, spec)
+            notes = v2e.update_from_request(spec, user_response)
+            dm.save(spec)
+            return v2e.columns_response(self, spec, notes=notes)
+        if phase == "refine":
+            if re.match(r'^(?:execute|run)(?:\s+(?:the\s+)?(?:report\s+spec|spec|report))?\b',
+                        user_response.strip(), re.IGNORECASE):
+                from advisor.agents.report_spec_agent import get_report_spec_agent
+                result = get_report_spec_agent().execute(spec["doc_id"], output_format="TABLE")
+                result["next_context"] = None
+                return result
+            return v2e.refine(self, spec, user_response)
+        return _error_result(spec["draft_id"], f"Invalid phase: {phase}")
+
     def back(self, draft_id: str) -> Dict[str, Any]:
         """Rewind to previous phase."""
         dm = get_report_draft_manager()
@@ -310,6 +357,12 @@ Do not output any introductory or summary text. Just the markdown document:
             return _error_result(draft_id, "Cannot go back any further.")
         dm.save(spec)
 
+        if spec.get("v2"):
+            from advisor.agents import report_spec_elicitor_v2 as v2e
+            if spec["phase"] == "confirm_action":
+                return v2e.confirm_response(self, spec)
+            if spec["phase"] == "elicit_columns":
+                return v2e.columns_response(self, spec)
         if spec["phase"] == "confirm_action":
             return self._build_confirm_response(spec)
         elif spec["phase"] == "elicit_columns":
@@ -335,9 +388,13 @@ Do not output any introductory or summary text. Just the markdown document:
         """Save draft and exit flow."""
         spec = get_report_draft_manager().load(draft_id)
         title = spec.get("title", draft_id) if spec else draft_id
+        response = f"Session saved. You can resume building **{title}** from the drafts list."
+        if spec and spec.get("v2") and spec.get("unmet"):
+            from advisor.agents.report_spec_elicitor_v2 import narrower_line
+            response += "\n\n" + narrower_line(spec)
         return {
             "query": draft_id,
-            "response": f"Session saved. You can resume building **{title}** from the drafts list.",
+            "response": response,
             "query_type": "report_spec_clarification",
             "routing_agent": "report_spec_agent",
             "draft_id": None,
@@ -352,7 +409,10 @@ Do not output any introductory or summary text. Just the markdown document:
         spec = get_report_draft_manager().load(draft_id)
         if not spec:
             return _error_result(draft_id, f"Draft `{draft_id}` not found.")
-        
+
+        if spec.get("v2") and spec["phase"] in ("confirm_action", "elicit_columns"):
+            from advisor.agents import report_spec_elicitor_v2 as v2e
+            return (v2e.confirm_response if spec["phase"] == "confirm_action" else v2e.columns_response)(self, spec)
         if spec["phase"] == "confirm_action":
             return self._build_confirm_response(spec)
         elif spec["phase"] == "elicit_columns":
@@ -440,6 +500,9 @@ Do not output any introductory or summary text. Just the markdown document:
         )
 
     def _generate_report_spec(self, spec: Dict) -> Dict[str, Any]:
+        if spec.get("v2"):
+            from advisor.agents import report_spec_elicitor_v2 as v2e
+            return v2e.generate(self, spec)
         doc_manager = get_report_spec_doc_manager()
         doc_content = self._generate_report_spec_md(spec)
         doc_id = doc_manager.create(spec["title"], doc_content)
@@ -473,6 +536,10 @@ Do not output any introductory or summary text. Just the markdown document:
         }
 
     def _generate_report_spec_md(self, spec: Dict) -> str:
+        if spec.get("v2"):
+            # pyegeria serializes a V2 draft (canvas edits come here too: re-ground the columns first)
+            spec["columns"], _ = _v2.ground_columns(spec["target_type"], spec.get("columns") or [])
+            return _v2.serialize(spec)
         lines = []
         lines.append(f"# {spec['answers'].get('Heading', 'Untitled Report')}\n")
         lines.append("## Create Report Spec")

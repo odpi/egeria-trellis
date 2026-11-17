@@ -81,8 +81,16 @@ class ReportSpecAgent:
                 f"Report spec document `{doc_id}` not found."
             )
 
+        # A document written by pyegeria (EA_SPEC_AUTHORING_V2) carries its spec as a microflow and was
+        # validated by pyegeria when it was generated; EA's own parser and checks are for the old documents.
+        from advisor.spec_authoring_v2 import enabled as _v2_enabled
+        is_v2_doc = _v2_enabled() and "### Microflow" in content
         try:
-            spec = parse_report_spec_markdown(content)
+            if is_v2_doc:
+                from advisor.spec_authoring_v2 import format_set_from_document
+                spec = format_set_from_document(content, base_doc_id)
+            else:
+                spec = parse_report_spec_markdown(content)
             # Ensure the spec is registered under this doc_id
             register_report_spec(base_doc_id, spec)
         except Exception as exc:
@@ -92,7 +100,7 @@ class ReportSpecAgent:
             )
 
         # Validate action function
-        val_warnings = validate_report_spec(spec)
+        val_warnings = [] if is_v2_doc else validate_report_spec(spec)
         if val_warnings:
             logger.warning(f"Validation warnings for report spec {doc_id}: {val_warnings}")
 

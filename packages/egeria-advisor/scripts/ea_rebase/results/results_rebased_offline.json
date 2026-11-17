@@ -1,0 +1,5905 @@
+[
+ {
+  "id": "B01",
+  "set": "builtin",
+  "question": "Show me the data flow and lineage for the assets in our catalog.",
+  "expect": {
+   "target_type": "Asset",
+   "condition": null,
+   "columns": [
+    "Display Name",
+    "lineage / data flow"
+   ]
+  },
+  "mode": "rebased",
+  "offline": true,
+  "turns": 3,
+  "final_phase": "refine",
+  "transcript": [
+   {
+    "turn": 1,
+    "user": "Show me the data flow and lineage for the assets in our catalog.",
+    "phase": "confirm_action",
+    "response": "\u26a0\ufe0f Left out: 'Process ID' (process.processId) isn't an attribute of Process.\n\u26a0\ufe0f Left out: 'Relationship Type' (relationship.typeDefName) isn't an attribute of Process.\n### Proposed Report Spec: **Data Flow and Lineage for Assets in Our Catalog**\n\n- **Target Type:** Process\n- **Found with:** `MetadataExpert.find_metadata_elements_with_string` (from generic finder)\n- **Condition:** none (everything of this type)\n- **Description:** This report displays the data flow and lineage information for assets within our catalog, illustrating how data moves between different processes.\n\n---\n\nDoes this look correct? Use the buttons below, or describe adjustments.",
+    "s": 49.32
+   },
+   {
+    "turn": 2,
+    "user": "continue_columns",
+    "phase": "elicit_columns",
+    "response": "### Columns Configuration\n\n**1. Asset Name** \u2014 key: `display_name`\n\n**Condition:** none (everything of this type)\n\n---\n\nDoes this look right? Use **Generate now**, or describe changes (only attributes of Process can be columns).",
+    "s": 0.0
+   },
+   {
+    "turn": 3,
+    "user": "generate now",
+    "phase": "refine",
+    "response": "**Data Flow and Lineage for Assets in Our Catalog** (draft spec **report_20261113_062642_data_flow_and_lineage_report**, validated with pyegeria)\n\nSign in to see the answer here; you can run it with **Execute Spec**.",
+    "s": 0.01
+   }
+  ],
+  "elicit_s": 49.34,
+  "draft": {
+   "draft_id": "draft_report_20261113_062642_data_flow_and_lineage_report",
+   "title": "data-flow-and-lineage-report",
+   "phase": "refine",
+   "phase_label": "Refinement session",
+   "original_query": "Show me the data flow and lineage for the assets in our catalog.",
+   "action_function": "MetadataExpert.find_metadata_elements_with_string",
+   "target_type": "Process",
+   "columns": [
+    {
+     "name": "Asset Name",
+     "key": "display_name",
+     "format": false,
+     "detail_spec": null,
+     "formats": "ALL"
+    }
+   ],
+   "content_filters": {
+    "search_string": "*"
+   },
+   "shape_defaults": {},
+   "performance_hints": {
+    "page_size": 100,
+    "start_from": 0
+   },
+   "perspectives": [],
+   "questions": [],
+   "answers": {
+    "Heading": "Data Flow and Lineage for Assets in Our Catalog",
+    "Description": "This report displays the data flow and lineage information for assets within our catalog, illustrating how data moves between different processes."
+   },
+   "pending_questions": {},
+   "doc_id": "report_20261113_062642_data_flow_and_lineage_report",
+   "history_stack": [
+    {
+     "phase": "confirm_action",
+     "phase_label": "Confirming report basic configuration",
+     "columns": [
+      {
+       "name": "Asset Name",
+       "key": "display_name",
+       "format": false,
+       "detail_spec": null,
+       "formats": "ALL"
+      }
+     ],
+     "content_filters": {
+      "search_string": "*"
+     },
+     "shape_defaults": {},
+     "performance_hints": {
+      "page_size": 100,
+      "start_from": 0
+     },
+     "perspectives": [],
+     "questions": [],
+     "answers": {
+      "Heading": "Data Flow and Lineage for Assets in Our Catalog",
+      "Description": "This report displays the data flow and lineage information for assets within our catalog, illustrating how data moves between different processes."
+     },
+     "pending_questions": {},
+     "summary_of_answers": ""
+    },
+    {
+     "phase": "elicit_columns",
+     "phase_label": "Reviewing and customizing columns",
+     "columns": [
+      {
+       "name": "Asset Name",
+       "key": "display_name",
+       "format": false,
+       "detail_spec": null,
+       "formats": "ALL"
+      }
+     ],
+     "content_filters": {
+      "search_string": "*"
+     },
+     "shape_defaults": {},
+     "performance_hints": {
+      "page_size": 100,
+      "start_from": 0
+     },
+     "perspectives": [],
+     "questions": [],
+     "answers": {
+      "Heading": "Data Flow and Lineage for Assets in Our Catalog",
+      "Description": "This report displays the data flow and lineage information for assets within our catalog, illustrating how data moves between different processes."
+     },
+     "pending_questions": {},
+     "summary_of_answers": ""
+    }
+   ],
+   "created_at": 1794572802.6774411,
+   "updated_at": 1794572802.6888661,
+   "summary_of_answers": "",
+   "user_id": "erinoverview",
+   "conditions": {},
+   "unmet": null,
+   "v2": true,
+   "format_set": {
+    "target_type": "Process",
+    "heading": "Data Flow and Lineage for Assets in Our Catalog",
+    "description": "This report displays the data flow and lineage information for assets within our catalog, illustrating how data moves between different processes.",
+    "aliases": [],
+    "annotations": {},
+    "formats": [
+     {
+      "types": [
+       "ALL"
+      ],
+      "attributes": [
+       {
+        "name": "Asset Name",
+        "key": "display_name",
+        "format": false
+       }
+      ]
+     }
+    ],
+    "action": {
+     "function": "MetadataExpert.find_metadata_elements_with_string",
+     "required_params": [
+      "search_string"
+     ],
+     "optional_params": [],
+     "spec_params": {
+      "metadata_element_type": "Process"
+     },
+     "analytic_spec_params": {}
+    }
+   }
+  },
+  "check": {
+   "doc_id": "report_20261113_062642_data_flow_and_lineage_report",
+   "document": "# Data Flow and Lineage for Assets in Our Catalog\n\n## Create Report Spec\n### Display Name\ndata-flow-and-lineage-report\n### Qualified Name\nReportSpec::data-flow-and-lineage-report\n### Description\nThis report displays the data flow and lineage information for assets within our catalog, illustrating how data moves between different processes.\n### Content Status\nACTIVE\n### Target Type Name\nProcess\n### Output Types\nALL\n### Microflow\n{\"format\":\"microflow/1\",\"params\":{\"search_string\":{\"type\":\"string\",\"required\":true}},\"stages\":[{\"stage\":\"producer/find\",\"type\":\"Process\",\"function\":\"MetadataExpert.find_metadata_elements_with_string\",\"params\":{\"search_string\":\"$search_string\",\"metadata_element_type\":\"Process\"}}],\"formatters\":{\"ALL\":{\"columns\":[{\"field\":\"display_name\",\"label\":\"Asset Name\"}]}}}\n\n___\n",
+   "completed": true,
+   "asked_clarifying": false,
+   "dre_offline_parse": {
+    "ok": true,
+    "commands": [
+     "Create Report Spec"
+    ]
+   },
+   "format_set_source": "draft",
+   "format_set_error": null,
+   "target_type": "Process",
+   "action_function": "MetadataExpert.find_metadata_elements_with_string",
+   "columns": [
+    {
+     "name": "Asset Name",
+     "key": "display_name"
+    }
+   ],
+   "nonexistent_attributes": {
+    "checked": true,
+    "keys": [],
+    "strict_keys": []
+   },
+   "pyegeria_validate": {
+    "ok": true,
+    "errors": [],
+    "warnings": [],
+    "not_applied": [],
+    "checked": [
+     "structure",
+     "target type",
+     "column attributes",
+     "load-time resolution (find method / analytic routine, parameters, formats)"
+    ],
+    "not_checked": [
+     "Dr.Egeria validate: no runner given"
+    ],
+    "dr_egeria": null,
+    "s": 0.0
+   },
+   "validates": true,
+   "run": {
+    "ran": false,
+    "why": "offline"
+   }
+  },
+  "total_s": 49.48
+ },
+ {
+  "id": "B02",
+  "set": "builtin",
+  "question": "What projects are currently active?",
+  "expect": {
+   "target_type": "Project",
+   "condition": "status ACTIVE",
+   "columns": [
+    "Display Name",
+    "Status"
+   ]
+  },
+  "mode": "rebased",
+  "offline": true,
+  "turns": 3,
+  "final_phase": "refine",
+  "transcript": [
+   {
+    "turn": 1,
+    "user": "What projects are currently active?",
+    "phase": "confirm_action",
+    "response": "### Proposed Report Spec: **Currently Active Projects Report**\n\n- **Target Type:** Project\n- **Found with:** `ProjectManager.find_projects` (from Project-DrE-Basic)\n- **Condition:** none (everything of this type)\n- **Description:** This report lists all projects that are currently active.\n\n---\n\nDoes this look correct? Use the buttons below, or describe adjustments.",
+    "s": 29.18
+   },
+   {
+    "turn": 2,
+    "user": "continue_columns",
+    "phase": "elicit_columns",
+    "response": "### Columns Configuration\n\n**1. Project Name** \u2014 key: `qualified_name`\n**2. Description** \u2014 key: `description`\n**3. Status** \u2014 key: `status`\n\n**Condition:** none (everything of this type)\n\n---\n\nDoes this look right? Use **Generate now**, or describe changes (only attributes of Project can be columns).",
+    "s": 0.01
+   },
+   {
+    "turn": 3,
+    "user": "generate now",
+    "phase": "refine",
+    "response": "**Currently Active Projects Report** (draft spec **report_20261113_062712_active_projects_report**, validated with pyegeria)\n\nSign in to see the answer here; you can run it with **Execute Spec**.",
+    "s": 0.09
+   }
+  ],
+  "elicit_s": 29.28,
+  "draft": {
+   "draft_id": "draft_report_20261113_062711_active_projects_report",
+   "title": "active-projects-report",
+   "phase": "refine",
+   "phase_label": "Refinement session",
+   "original_query": "What projects are currently active?",
+   "action_function": "ProjectManager.find_projects",
+   "target_type": "Project",
+   "columns": [
+    {
+     "name": "Project Name",
+     "key": "qualified_name",
+     "format": false,
+     "detail_spec": null,
+     "formats": "ALL"
+    },
+    {
+     "name": "Description",
+     "key": "description",
+     "format": false,
+     "detail_spec": null,
+     "formats": "ALL"
+    },
+    {
+     "name": "Status",
+     "key": "status",
+     "format": false,
+     "detail_spec": null,
+     "formats": "ALL"
+    }
+   ],
+   "content_filters": {
+    "search_string": "*"
+   },
+   "shape_defaults": {},
+   "performance_hints": {
+    "page_size": 100,
+    "start_from": 0
+   },
+   "perspectives": [],
+   "questions": [],
+   "answers": {
+    "Heading": "Currently Active Projects Report",
+    "Description": "This report lists all projects that are currently active."
+   },
+   "pending_questions": {},
+   "doc_id": "report_20261113_062712_active_projects_report",
+   "history_stack": [
+    {
+     "phase": "confirm_action",
+     "phase_label": "Confirming report basic configuration",
+     "columns": [
+      {
+       "name": "Project Name",
+       "key": "qualified_name",
+       "format": false,
+       "detail_spec": null,
+       "formats": "ALL"
+      },
+      {
+       "name": "Description",
+       "key": "description",
+       "format": false,
+       "detail_spec": null,
+       "formats": "ALL"
+      },
+      {
+       "name": "Status",
+       "key": "status",
+       "format": false,
+       "detail_spec": null,
+       "formats": "ALL"
+      }
+     ],
+     "content_filters": {
+      "search_string": "*"
+     },
+     "shape_defaults": {},
+     "performance_hints": {
+      "page_size": 100,
+      "start_from": 0
+     },
+     "perspectives": [],
+     "questions": [],
+     "answers": {
+      "Heading": "Currently Active Projects Report",
+      "Description": "This report lists all projects that are currently active."
+     },
+     "pending_questions": {},
+     "summary_of_answers": ""
+    },
+    {
+     "phase": "elicit_columns",
+     "phase_label": "Reviewing and customizing columns",
+     "columns": [
+      {
+       "name": "Project Name",
+       "key": "qualified_name",
+       "format": false,
+       "detail_spec": null,
+       "formats": "ALL"
+      },
+      {
+       "name": "Description",
+       "key": "description",
+       "format": false,
+       "detail_spec": null,
+       "formats": "ALL"
+      },
+      {
+       "name": "Status",
+       "key": "status",
+       "format": false,
+       "detail_spec": null,
+       "formats": "ALL"
+      }
+     ],
+     "content_filters": {
+      "search_string": "*"
+     },
+     "shape_defaults": {},
+     "performance_hints": {
+      "page_size": 100,
+      "start_from": 0
+     },
+     "perspectives": [],
+     "questions": [],
+     "answers": {
+      "Heading": "Currently Active Projects Report",
+      "Description": "This report lists all projects that are currently active."
+     },
+     "pending_questions": {},
+     "summary_of_answers": ""
+    }
+   ],
+   "created_at": 1794572831.996277,
+   "updated_at": 1794572832.105451,
+   "summary_of_answers": "",
+   "user_id": "erinoverview",
+   "conditions": {},
+   "unmet": null,
+   "v2": true,
+   "format_set": {
+    "target_type": "Project",
+    "heading": "Currently Active Projects Report",
+    "description": "This report lists all projects that are currently active.",
+    "aliases": [],
+    "annotations": {},
+    "formats": [
+     {
+      "types": [
+       "ALL"
+      ],
+      "attributes": [
+       {
+        "name": "Project Name",
+        "key": "qualified_name",
+        "format": false
+       },
+       {
+        "name": "Description",
+        "key": "description",
+        "format": false
+       },
+       {
+        "name": "Status",
+        "key": "status",
+        "format": false
+       }
+      ]
+     }
+    ],
+    "action": {
+     "function": "ProjectManager.find_projects",
+     "required_params": [
+      "search_string"
+     ],
+     "optional_params": [],
+     "spec_params": {},
+     "analytic_spec_params": {}
+    }
+   }
+  },
+  "check": {
+   "doc_id": "report_20261113_062712_active_projects_report",
+   "document": "# Currently Active Projects Report\n\n## Create Report Spec\n### Display Name\nactive-projects-report\n### Qualified Name\nReportSpec::active-projects-report\n### Description\nThis report lists all projects that are currently active.\n### Content Status\nACTIVE\n### Target Type Name\nProject\n### Output Types\nALL\n### Microflow\n{\"format\":\"microflow/1\",\"params\":{\"search_string\":{\"type\":\"string\",\"required\":true}},\"stages\":[{\"stage\":\"producer/find\",\"type\":\"Project\",\"function\":\"ProjectManager.find_projects\",\"params\":{\"search_string\":\"$search_string\"}}],\"formatters\":{\"ALL\":{\"columns\":[{\"field\":\"qualified_name\",\"label\":\"Project Name\"},{\"field\":\"description\",\"label\":\"Description\"},{\"field\":\"status\",\"label\":\"Status\"}]}}}\n\n___\n",
+   "completed": true,
+   "asked_clarifying": false,
+   "dre_offline_parse": {
+    "ok": true,
+    "commands": [
+     "Create Report Spec"
+    ]
+   },
+   "format_set_source": "draft",
+   "format_set_error": null,
+   "target_type": "Project",
+   "action_function": "ProjectManager.find_projects",
+   "columns": [
+    {
+     "name": "Project Name",
+     "key": "qualified_name"
+    },
+    {
+     "name": "Description",
+     "key": "description"
+    },
+    {
+     "name": "Status",
+     "key": "status"
+    }
+   ],
+   "nonexistent_attributes": {
+    "checked": true,
+    "keys": [],
+    "strict_keys": []
+   },
+   "pyegeria_validate": {
+    "ok": true,
+    "errors": [],
+    "warnings": [],
+    "not_applied": [],
+    "checked": [
+     "structure",
+     "target type",
+     "column attributes",
+     "load-time resolution (find method / analytic routine, parameters, formats)"
+    ],
+    "not_checked": [
+     "Dr.Egeria validate: no runner given"
+    ],
+    "dr_egeria": null,
+    "s": 0.01
+   },
+   "validates": true,
+   "run": {
+    "ran": false,
+    "why": "offline"
+   }
+  },
+  "total_s": 29.31
+ },
+ {
+  "id": "B03",
+  "set": "builtin",
+  "question": "Show me projects by priority.",
+  "expect": {
+   "target_type": "Project",
+   "condition": "sorted by priority",
+   "columns": [
+    "Display Name",
+    "Priority"
+   ]
+  },
+  "mode": "rebased",
+  "offline": true,
+  "turns": 3,
+  "final_phase": "refine",
+  "transcript": [
+   {
+    "turn": 1,
+    "user": "Show me projects by priority.",
+    "phase": "confirm_action",
+    "response": "\u26a0\ufe0f Left out: 'Priority' (priorityLevel) isn't an attribute of Project.\n### Proposed Report Spec: **Projects by Priority**\n\n- **Target Type:** Project\n- **Found with:** `ProjectManager.find_projects` (from Project-DrE-Basic)\n- **Condition:** none (everything of this type)\n- **Description:** This report lists all projects sorted by their priority.\n\n---\n\nDoes this look correct? Use the buttons below, or describe adjustments.",
+    "s": 24.21
+   },
+   {
+    "turn": 2,
+    "user": "continue_columns",
+    "phase": "elicit_columns",
+    "response": "### Columns Configuration\n\n**1. Project Name** \u2014 key: `qualified_name`\n\n**Condition:** none (everything of this type)\n\n---\n\nDoes this look right? Use **Generate now**, or describe changes (only attributes of Project can be columns).",
+    "s": 0.0
+   },
+   {
+    "turn": 3,
+    "user": "generate now",
+    "phase": "refine",
+    "response": "**Projects by Priority** (draft spec **report_20261113_062736_projects_by_priority_report**, validated with pyegeria)\n\nSign in to see the answer here; you can run it with **Execute Spec**.",
+    "s": 0.02
+   }
+  ],
+  "elicit_s": 24.23,
+  "draft": {
+   "draft_id": "draft_report_20261113_062736_projects_by_priority_report",
+   "title": "projects-by-priority-report",
+   "phase": "refine",
+   "phase_label": "Refinement session",
+   "original_query": "Show me projects by priority.",
+   "action_function": "ProjectManager.find_projects",
+   "target_type": "Project",
+   "columns": [
+    {
+     "name": "Project Name",
+     "key": "qualified_name",
+     "format": false,
+     "detail_spec": null,
+     "formats": "ALL"
+    }
+   ],
+   "content_filters": {
+    "search_string": "*"
+   },
+   "shape_defaults": {},
+   "performance_hints": {
+    "page_size": 100,
+    "start_from": 0
+   },
+   "perspectives": [],
+   "questions": [],
+   "answers": {
+    "Heading": "Projects by Priority",
+    "Description": "This report lists all projects sorted by their priority."
+   },
+   "pending_questions": {},
+   "doc_id": "report_20261113_062736_projects_by_priority_report",
+   "history_stack": [
+    {
+     "phase": "confirm_action",
+     "phase_label": "Confirming report basic configuration",
+     "columns": [
+      {
+       "name": "Project Name",
+       "key": "qualified_name",
+       "format": false,
+       "detail_spec": null,
+       "formats": "ALL"
+      }
+     ],
+     "content_filters": {
+      "search_string": "*"
+     },
+     "shape_defaults": {},
+     "performance_hints": {
+      "page_size": 100,
+      "start_from": 0
+     },
+     "perspectives": [],
+     "questions": [],
+     "answers": {
+      "Heading": "Projects by Priority",
+      "Description": "This report lists all projects sorted by their priority."
+     },
+     "pending_questions": {},
+     "summary_of_answers": ""
+    },
+    {
+     "phase": "elicit_columns",
+     "phase_label": "Reviewing and customizing columns",
+     "columns": [
+      {
+       "name": "Project Name",
+       "key": "qualified_name",
+       "format": false,
+       "detail_spec": null,
+       "formats": "ALL"
+      }
+     ],
+     "content_filters": {
+      "search_string": "*"
+     },
+     "shape_defaults": {},
+     "performance_hints": {
+      "page_size": 100,
+      "start_from": 0
+     },
+     "perspectives": [],
+     "questions": [],
+     "answers": {
+      "Heading": "Projects by Priority",
+      "Description": "This report lists all projects sorted by their priority."
+     },
+     "pending_questions": {},
+     "summary_of_answers": ""
+    }
+   ],
+   "created_at": 1794572856.354621,
+   "updated_at": 1794572856.373726,
+   "summary_of_answers": "",
+   "user_id": "erinoverview",
+   "conditions": {},
+   "unmet": null,
+   "v2": true,
+   "format_set": {
+    "target_type": "Project",
+    "heading": "Projects by Priority",
+    "description": "This report lists all projects sorted by their priority.",
+    "aliases": [],
+    "annotations": {},
+    "formats": [
+     {
+      "types": [
+       "ALL"
+      ],
+      "attributes": [
+       {
+        "name": "Project Name",
+        "key": "qualified_name",
+        "format": false
+       }
+      ]
+     }
+    ],
+    "action": {
+     "function": "ProjectManager.find_projects",
+     "required_params": [
+      "search_string"
+     ],
+     "optional_params": [],
+     "spec_params": {},
+     "analytic_spec_params": {}
+    }
+   }
+  },
+  "check": {
+   "doc_id": "report_20261113_062736_projects_by_priority_report",
+   "document": "# Projects by Priority\n\n## Create Report Spec\n### Display Name\nprojects-by-priority-report\n### Qualified Name\nReportSpec::projects-by-priority-report\n### Description\nThis report lists all projects sorted by their priority.\n### Content Status\nACTIVE\n### Target Type Name\nProject\n### Output Types\nALL\n### Microflow\n{\"format\":\"microflow/1\",\"params\":{\"search_string\":{\"type\":\"string\",\"required\":true}},\"stages\":[{\"stage\":\"producer/find\",\"type\":\"Project\",\"function\":\"ProjectManager.find_projects\",\"params\":{\"search_string\":\"$search_string\"}}],\"formatters\":{\"ALL\":{\"columns\":[{\"field\":\"qualified_name\",\"label\":\"Project Name\"}]}}}\n\n___\n",
+   "completed": true,
+   "asked_clarifying": false,
+   "dre_offline_parse": {
+    "ok": true,
+    "commands": [
+     "Create Report Spec"
+    ]
+   },
+   "format_set_source": "draft",
+   "format_set_error": null,
+   "target_type": "Project",
+   "action_function": "ProjectManager.find_projects",
+   "columns": [
+    {
+     "name": "Project Name",
+     "key": "qualified_name"
+    }
+   ],
+   "nonexistent_attributes": {
+    "checked": true,
+    "keys": [],
+    "strict_keys": []
+   },
+   "pyegeria_validate": {
+    "ok": true,
+    "errors": [],
+    "warnings": [],
+    "not_applied": [],
+    "checked": [
+     "structure",
+     "target type",
+     "column attributes",
+     "load-time resolution (find method / analytic routine, parameters, formats)"
+    ],
+    "not_checked": [
+     "Dr.Egeria validate: no runner given"
+    ],
+    "dr_egeria": null,
+    "s": 0.01
+   },
+   "validates": true,
+   "run": {
+    "ran": false,
+    "why": "offline"
+   }
+  },
+  "total_s": 24.25
+ },
+ {
+  "id": "B04",
+  "set": "builtin",
+  "question": "Which glossary terms have usage notes?",
+  "expect": {
+   "target_type": "GlossaryTerm",
+   "condition": "usage present",
+   "columns": [
+    "Display Name",
+    "Usage"
+   ]
+  },
+  "mode": "rebased",
+  "offline": true,
+  "turns": 3,
+  "final_phase": "refine",
+  "transcript": [
+   {
+    "turn": 1,
+    "user": "Which glossary terms have usage notes?",
+    "phase": "confirm_action",
+    "response": "### Proposed Report Spec: **Glossary Terms with Usage Notes**\n\n- **Target Type:** GlossaryTerm\n- **Found with:** `GlossaryManager.find_glossary_terms` (from Glossary-Term-DrE-Basic)\n- **Condition:** none (everything of this type)\n- **Description:** This report lists all glossary terms that have usage notes associated with them.\n\n---\n\nDoes this look correct? Use the buttons below, or describe adjustments.",
+    "s": 27.41
+   },
+   {
+    "turn": 2,
+    "user": "continue_columns",
+    "phase": "elicit_columns",
+    "response": "### Columns Configuration\n\n**1. Glossary Term Name** \u2014 key: `display_name`\n**2. Usage Notes** \u2014 key: `usage`\n\n**Condition:** none (everything of this type)\n\n---\n\nDoes this look right? Use **Generate now**, or describe changes (only attributes of GlossaryTerm can be columns).",
+    "s": 0.0
+   },
+   {
+    "turn": 3,
+    "user": "generate now",
+    "phase": "refine",
+    "response": "**Glossary Terms with Usage Notes** (draft spec **report_20261113_062803_glossary_terms_with_usage_notes**, validated with pyegeria)\n\nSign in to see the answer here; you can run it with **Execute Spec**.",
+    "s": 0.01
+   }
+  ],
+  "elicit_s": 27.43,
+  "draft": {
+   "draft_id": "draft_report_20261113_062803_glossary_terms_with_usage_notes",
+   "title": "glossary-terms-with-usage-notes",
+   "phase": "refine",
+   "phase_label": "Refinement session",
+   "original_query": "Which glossary terms have usage notes?",
+   "action_function": "GlossaryManager.find_glossary_terms",
+   "target_type": "GlossaryTerm",
+   "columns": [
+    {
+     "name": "Glossary Term Name",
+     "key": "display_name",
+     "format": false,
+     "detail_spec": null,
+     "formats": "ALL"
+    },
+    {
+     "name": "Usage Notes",
+     "key": "usage",
+     "format": false,
+     "detail_spec": null,
+     "formats": "ALL"
+    }
+   ],
+   "content_filters": {
+    "search_string": "*"
+   },
+   "shape_defaults": {},
+   "performance_hints": {
+    "page_size": 100,
+    "start_from": 0
+   },
+   "perspectives": [],
+   "questions": [],
+   "answers": {
+    "Heading": "Glossary Terms with Usage Notes",
+    "Description": "This report lists all glossary terms that have usage notes associated with them."
+   },
+   "pending_questions": {},
+   "doc_id": "report_20261113_062803_glossary_terms_with_usage_notes",
+   "history_stack": [
+    {
+     "phase": "confirm_action",
+     "phase_label": "Confirming report basic configuration",
+     "columns": [
+      {
+       "name": "Glossary Term Name",
+       "key": "display_name",
+       "format": false,
+       "detail_spec": null,
+       "formats": "ALL"
+      },
+      {
+       "name": "Usage Notes",
+       "key": "usage",
+       "format": false,
+       "detail_spec": null,
+       "formats": "ALL"
+      }
+     ],
+     "content_filters": {
+      "search_string": "*"
+     },
+     "shape_defaults": {},
+     "performance_hints": {
+      "page_size": 100,
+      "start_from": 0
+     },
+     "perspectives": [],
+     "questions": [],
+     "answers": {
+      "Heading": "Glossary Terms with Usage Notes",
+      "Description": "This report lists all glossary terms that have usage notes associated with them."
+     },
+     "pending_questions": {},
+     "summary_of_answers": ""
+    },
+    {
+     "phase": "elicit_columns",
+     "phase_label": "Reviewing and customizing columns",
+     "columns": [
+      {
+       "name": "Glossary Term Name",
+       "key": "display_name",
+       "format": false,
+       "detail_spec": null,
+       "formats": "ALL"
+      },
+      {
+       "name": "Usage Notes",
+       "key": "usage",
+       "format": false,
+       "detail_spec": null,
+       "formats": "ALL"
+      }
+     ],
+     "content_filters": {
+      "search_string": "*"
+     },
+     "shape_defaults": {},
+     "performance_hints": {
+      "page_size": 100,
+      "start_from": 0
+     },
+     "perspectives": [],
+     "questions": [],
+     "answers": {
+      "Heading": "Glossary Terms with Usage Notes",
+      "Description": "This report lists all glossary terms that have usage notes associated with them."
+     },
+     "pending_questions": {},
+     "summary_of_answers": ""
+    }
+   ],
+   "created_at": 1794572883.8027809,
+   "updated_at": 1794572883.818679,
+   "summary_of_answers": "",
+   "user_id": "erinoverview",
+   "conditions": {},
+   "unmet": null,
+   "v2": true,
+   "format_set": {
+    "target_type": "GlossaryTerm",
+    "heading": "Glossary Terms with Usage Notes",
+    "description": "This report lists all glossary terms that have usage notes associated with them.",
+    "aliases": [],
+    "annotations": {},
+    "formats": [
+     {
+      "types": [
+       "ALL"
+      ],
+      "attributes": [
+       {
+        "name": "Glossary Term Name",
+        "key": "display_name",
+        "format": false
+       },
+       {
+        "name": "Usage Notes",
+        "key": "usage",
+        "format": false
+       }
+      ]
+     }
+    ],
+    "action": {
+     "function": "GlossaryManager.find_glossary_terms",
+     "required_params": [
+      "search_string"
+     ],
+     "optional_params": [],
+     "spec_params": {},
+     "analytic_spec_params": {}
+    }
+   }
+  },
+  "check": {
+   "doc_id": "report_20261113_062803_glossary_terms_with_usage_notes",
+   "document": "# Glossary Terms with Usage Notes\n\n## Create Report Spec\n### Display Name\nglossary-terms-with-usage-notes\n### Qualified Name\nReportSpec::glossary-terms-with-usage-notes\n### Description\nThis report lists all glossary terms that have usage notes associated with them.\n### Content Status\nACTIVE\n### Target Type Name\nGlossaryTerm\n### Output Types\nALL\n### Microflow\n{\"format\":\"microflow/1\",\"params\":{\"search_string\":{\"type\":\"string\",\"required\":true}},\"stages\":[{\"stage\":\"producer/find\",\"type\":\"GlossaryTerm\",\"function\":\"GlossaryManager.find_glossary_terms\",\"params\":{\"search_string\":\"$search_string\"}}],\"formatters\":{\"ALL\":{\"columns\":[{\"field\":\"display_name\",\"label\":\"Glossary Term Name\"},{\"field\":\"usage\",\"label\":\"Usage Notes\"}]}}}\n\n___\n",
+   "completed": true,
+   "asked_clarifying": false,
+   "dre_offline_parse": {
+    "ok": true,
+    "commands": [
+     "Create Report Spec"
+    ]
+   },
+   "format_set_source": "draft",
+   "format_set_error": null,
+   "target_type": "GlossaryTerm",
+   "action_function": "GlossaryManager.find_glossary_terms",
+   "columns": [
+    {
+     "name": "Glossary Term Name",
+     "key": "display_name"
+    },
+    {
+     "name": "Usage Notes",
+     "key": "usage"
+    }
+   ],
+   "nonexistent_attributes": {
+    "checked": true,
+    "keys": [],
+    "strict_keys": []
+   },
+   "pyegeria_validate": {
+    "ok": true,
+    "errors": [],
+    "warnings": [],
+    "not_applied": [],
+    "checked": [
+     "structure",
+     "target type",
+     "column attributes",
+     "load-time resolution (find method / analytic routine, parameters, formats)"
+    ],
+    "not_checked": [
+     "Dr.Egeria validate: no runner given"
+    ],
+    "dr_egeria": null,
+    "s": 0.01
+   },
+   "validates": true,
+   "run": {
+    "ran": false,
+    "why": "offline"
+   }
+  },
+  "total_s": 27.44
+ },
+ {
+  "id": "B05",
+  "set": "builtin",
+  "question": "Which glossary terms are still in draft status?",
+  "expect": {
+   "target_type": "GlossaryTerm",
+   "condition": "status DRAFT",
+   "columns": [
+    "Display Name",
+    "Status"
+   ]
+  },
+  "mode": "rebased",
+  "offline": true,
+  "turns": 3,
+  "final_phase": "refine",
+  "transcript": [
+   {
+    "turn": 1,
+    "user": "Which glossary terms are still in draft status?",
+    "phase": "confirm_action",
+    "response": "### Proposed Report Spec: **Report of Glossary Terms in Draft Status**\n\n- **Target Type:** GlossaryTerm\n- **Found with:** `GlossaryManager.find_glossary_terms` (from Glossary-Term-DrE-Basic)\n- **Condition:** none (everything of this type)\n- **Description:** This report lists all glossary terms that are currently in draft status.\n\n---\n\nDoes this look correct? Use the buttons below, or describe adjustments.",
+    "s": 26.79
+   },
+   {
+    "turn": 2,
+    "user": "continue_columns",
+    "phase": "elicit_columns",
+    "response": "### Columns Configuration\n\n**1. Term Name** \u2014 key: `display_name`\n**2. Status** \u2014 key: `status`\n\n**Condition:** none (everything of this type)\n\n---\n\nDoes this look right? Use **Generate now**, or describe changes (only attributes of GlossaryTerm can be columns).",
+    "s": 0.0
+   },
+   {
+    "turn": 3,
+    "user": "generate now",
+    "phase": "refine",
+    "response": "**Report of Glossary Terms in Draft Status** (draft spec **report_20261113_062830_draft_glossary_terms_report**, validated with pyegeria)\n\nSign in to see the answer here; you can run it with **Execute Spec**.",
+    "s": 0.02
+   }
+  ],
+  "elicit_s": 26.81,
+  "draft": {
+   "draft_id": "draft_report_20261113_062830_draft_glossary_terms_report",
+   "title": "draft-glossary-terms-report",
+   "phase": "refine",
+   "phase_label": "Refinement session",
+   "original_query": "Which glossary terms are still in draft status?",
+   "action_function": "GlossaryManager.find_glossary_terms",
+   "target_type": "GlossaryTerm",
+   "columns": [
+    {
+     "name": "Term Name",
+     "key": "display_name",
+     "format": false,
+     "detail_spec": null,
+     "formats": "ALL"
+    },
+    {
+     "name": "Status",
+     "key": "status",
+     "format": false,
+     "detail_spec": null,
+     "formats": "ALL"
+    }
+   ],
+   "content_filters": {
+    "search_string": "*"
+   },
+   "shape_defaults": {},
+   "performance_hints": {
+    "page_size": 100,
+    "start_from": 0
+   },
+   "perspectives": [],
+   "questions": [],
+   "answers": {
+    "Heading": "Report of Glossary Terms in Draft Status",
+    "Description": "This report lists all glossary terms that are currently in draft status."
+   },
+   "pending_questions": {},
+   "doc_id": "report_20261113_062830_draft_glossary_terms_report",
+   "history_stack": [
+    {
+     "phase": "confirm_action",
+     "phase_label": "Confirming report basic configuration",
+     "columns": [
+      {
+       "name": "Term Name",
+       "key": "display_name",
+       "format": false,
+       "detail_spec": null,
+       "formats": "ALL"
+      },
+      {
+       "name": "Status",
+       "key": "status",
+       "format": false,
+       "detail_spec": null,
+       "formats": "ALL"
+      }
+     ],
+     "content_filters": {
+      "search_string": "*"
+     },
+     "shape_defaults": {},
+     "performance_hints": {
+      "page_size": 100,
+      "start_from": 0
+     },
+     "perspectives": [],
+     "questions": [],
+     "answers": {
+      "Heading": "Report of Glossary Terms in Draft Status",
+      "Description": "This report lists all glossary terms that are currently in draft status."
+     },
+     "pending_questions": {},
+     "summary_of_answers": ""
+    },
+    {
+     "phase": "elicit_columns",
+     "phase_label": "Reviewing and customizing columns",
+     "columns": [
+      {
+       "name": "Term Name",
+       "key": "display_name",
+       "format": false,
+       "detail_spec": null,
+       "formats": "ALL"
+      },
+      {
+       "name": "Status",
+       "key": "status",
+       "format": false,
+       "detail_spec": null,
+       "formats": "ALL"
+      }
+     ],
+     "content_filters": {
+      "search_string": "*"
+     },
+     "shape_defaults": {},
+     "performance_hints": {
+      "page_size": 100,
+      "start_from": 0
+     },
+     "perspectives": [],
+     "questions": [],
+     "answers": {
+      "Heading": "Report of Glossary Terms in Draft Status",
+      "Description": "This report lists all glossary terms that are currently in draft status."
+     },
+     "pending_questions": {},
+     "summary_of_answers": ""
+    }
+   ],
+   "created_at": 1794572910.6316118,
+   "updated_at": 1794572910.6552541,
+   "summary_of_answers": "",
+   "user_id": "erinoverview",
+   "conditions": {},
+   "unmet": null,
+   "v2": true,
+   "format_set": {
+    "target_type": "GlossaryTerm",
+    "heading": "Report of Glossary Terms in Draft Status",
+    "description": "This report lists all glossary terms that are currently in draft status.",
+    "aliases": [],
+    "annotations": {},
+    "formats": [
+     {
+      "types": [
+       "ALL"
+      ],
+      "attributes": [
+       {
+        "name": "Term Name",
+        "key": "display_name",
+        "format": false
+       },
+       {
+        "name": "Status",
+        "key": "status",
+        "format": false
+       }
+      ]
+     }
+    ],
+    "action": {
+     "function": "GlossaryManager.find_glossary_terms",
+     "required_params": [
+      "search_string"
+     ],
+     "optional_params": [],
+     "spec_params": {},
+     "analytic_spec_params": {}
+    }
+   }
+  },
+  "check": {
+   "doc_id": "report_20261113_062830_draft_glossary_terms_report",
+   "document": "# Report of Glossary Terms in Draft Status\n\n## Create Report Spec\n### Display Name\ndraft-glossary-terms-report\n### Qualified Name\nReportSpec::draft-glossary-terms-report\n### Description\nThis report lists all glossary terms that are currently in draft status.\n### Content Status\nACTIVE\n### Target Type Name\nGlossaryTerm\n### Output Types\nALL\n### Microflow\n{\"format\":\"microflow/1\",\"params\":{\"search_string\":{\"type\":\"string\",\"required\":true}},\"stages\":[{\"stage\":\"producer/find\",\"type\":\"GlossaryTerm\",\"function\":\"GlossaryManager.find_glossary_terms\",\"params\":{\"search_string\":\"$search_string\"}}],\"formatters\":{\"ALL\":{\"columns\":[{\"field\":\"display_name\",\"label\":\"Term Name\"},{\"field\":\"status\",\"label\":\"Status\"}]}}}\n\n___\n",
+   "completed": true,
+   "asked_clarifying": false,
+   "dre_offline_parse": {
+    "ok": true,
+    "commands": [
+     "Create Report Spec"
+    ]
+   },
+   "format_set_source": "draft",
+   "format_set_error": null,
+   "target_type": "GlossaryTerm",
+   "action_function": "GlossaryManager.find_glossary_terms",
+   "columns": [
+    {
+     "name": "Term Name",
+     "key": "display_name"
+    },
+    {
+     "name": "Status",
+     "key": "status"
+    }
+   ],
+   "nonexistent_attributes": {
+    "checked": true,
+    "keys": [],
+    "strict_keys": []
+   },
+   "pyegeria_validate": {
+    "ok": true,
+    "errors": [],
+    "warnings": [],
+    "not_applied": [],
+    "checked": [
+     "structure",
+     "target type",
+     "column attributes",
+     "load-time resolution (find method / analytic routine, parameters, formats)"
+    ],
+    "not_checked": [
+     "Dr.Egeria validate: no runner given"
+    ],
+    "dr_egeria": null,
+    "s": 0.01
+   },
+   "validates": true,
+   "run": {
+    "ran": false,
+    "why": "offline"
+   }
+  },
+  "total_s": 26.84
+ },
+ {
+  "id": "B06",
+  "set": "builtin",
+  "question": "Can I see all glossary terms with their effective dates?",
+  "expect": {
+   "target_type": "GlossaryTerm",
+   "condition": null,
+   "columns": [
+    "Display Name",
+    "Effective From",
+    "Effective To"
+   ]
+  },
+  "mode": "rebased",
+  "offline": true,
+  "turns": 3,
+  "final_phase": "refine",
+  "transcript": [
+   {
+    "turn": 1,
+    "user": "Can I see all glossary terms with their effective dates?",
+    "phase": "confirm_action",
+    "response": "\u26a0\ufe0f Left out: 'Effective Date' (effectiveFromTime) isn't an attribute of GlossaryTerm.\n### Proposed Report Spec: **All Glossary Terms with Their Effective Dates**\n\n- **Target Type:** GlossaryTerm\n- **Found with:** `GlossaryManager.find_glossary_terms` (from Glossary-Term-DrE-Basic)\n- **Condition:** none (everything of this type)\n- **Description:** This report lists all glossary terms along with their effective dates.\n\n---\n\nDoes this look correct? Use the buttons below, or describe adjustments.",
+    "s": 28.89
+   },
+   {
+    "turn": 2,
+    "user": "continue_columns",
+    "phase": "elicit_columns",
+    "response": "### Columns Configuration\n\n**1. Term Name** \u2014 key: `display_name`\n\n**Condition:** none (everything of this type)\n\n---\n\nDoes this look right? Use **Generate now**, or describe changes (only attributes of GlossaryTerm can be columns).",
+    "s": 0.0
+   },
+   {
+    "turn": 3,
+    "user": "generate now",
+    "phase": "refine",
+    "response": "**All Glossary Terms with Their Effective Dates** (draft spec **report_20261113_062859_glossary_terms_with_effective_dates**, validated with pyegeria)\n\nSign in to see the answer here; you can run it with **Execute Spec**.",
+    "s": 0.02
+   }
+  ],
+  "elicit_s": 28.9,
+  "draft": {
+   "draft_id": "draft_report_20261113_062859_glossary_terms_with_effective_dates",
+   "title": "glossary-terms-with-effective-dates",
+   "phase": "refine",
+   "phase_label": "Refinement session",
+   "original_query": "Can I see all glossary terms with their effective dates?",
+   "action_function": "GlossaryManager.find_glossary_terms",
+   "target_type": "GlossaryTerm",
+   "columns": [
+    {
+     "name": "Term Name",
+     "key": "display_name",
+     "format": false,
+     "detail_spec": null,
+     "formats": "ALL"
+    }
+   ],
+   "content_filters": {
+    "search_string": "*"
+   },
+   "shape_defaults": {},
+   "performance_hints": {
+    "page_size": 100,
+    "start_from": 0
+   },
+   "perspectives": [],
+   "questions": [],
+   "answers": {
+    "Heading": "All Glossary Terms with Their Effective Dates",
+    "Description": "This report lists all glossary terms along with their effective dates."
+   },
+   "pending_questions": {},
+   "doc_id": "report_20261113_062859_glossary_terms_with_effective_dates",
+   "history_stack": [
+    {
+     "phase": "confirm_action",
+     "phase_label": "Confirming report basic configuration",
+     "columns": [
+      {
+       "name": "Term Name",
+       "key": "display_name",
+       "format": false,
+       "detail_spec": null,
+       "formats": "ALL"
+      }
+     ],
+     "content_filters": {
+      "search_string": "*"
+     },
+     "shape_defaults": {},
+     "performance_hints": {
+      "page_size": 100,
+      "start_from": 0
+     },
+     "perspectives": [],
+     "questions": [],
+     "answers": {
+      "Heading": "All Glossary Terms with Their Effective Dates",
+      "Description": "This report lists all glossary terms along with their effective dates."
+     },
+     "pending_questions": {},
+     "summary_of_answers": ""
+    },
+    {
+     "phase": "elicit_columns",
+     "phase_label": "Reviewing and customizing columns",
+     "columns": [
+      {
+       "name": "Term Name",
+       "key": "display_name",
+       "format": false,
+       "detail_spec": null,
+       "formats": "ALL"
+      }
+     ],
+     "content_filters": {
+      "search_string": "*"
+     },
+     "shape_defaults": {},
+     "performance_hints": {
+      "page_size": 100,
+      "start_from": 0
+     },
+     "perspectives": [],
+     "questions": [],
+     "answers": {
+      "Heading": "All Glossary Terms with Their Effective Dates",
+      "Description": "This report lists all glossary terms along with their effective dates."
+     },
+     "pending_questions": {},
+     "summary_of_answers": ""
+    }
+   ],
+   "created_at": 1794572939.5660968,
+   "updated_at": 1794572939.583143,
+   "summary_of_answers": "",
+   "user_id": "erinoverview",
+   "conditions": {},
+   "unmet": null,
+   "v2": true,
+   "format_set": {
+    "target_type": "GlossaryTerm",
+    "heading": "All Glossary Terms with Their Effective Dates",
+    "description": "This report lists all glossary terms along with their effective dates.",
+    "aliases": [],
+    "annotations": {},
+    "formats": [
+     {
+      "types": [
+       "ALL"
+      ],
+      "attributes": [
+       {
+        "name": "Term Name",
+        "key": "display_name",
+        "format": false
+       }
+      ]
+     }
+    ],
+    "action": {
+     "function": "GlossaryManager.find_glossary_terms",
+     "required_params": [
+      "search_string"
+     ],
+     "optional_params": [],
+     "spec_params": {},
+     "analytic_spec_params": {}
+    }
+   }
+  },
+  "check": {
+   "doc_id": "report_20261113_062859_glossary_terms_with_effective_dates",
+   "document": "# All Glossary Terms with Their Effective Dates\n\n## Create Report Spec\n### Display Name\nglossary-terms-with-effective-dates\n### Qualified Name\nReportSpec::glossary-terms-with-effective-dates\n### Description\nThis report lists all glossary terms along with their effective dates.\n### Content Status\nACTIVE\n### Target Type Name\nGlossaryTerm\n### Output Types\nALL\n### Microflow\n{\"format\":\"microflow/1\",\"params\":{\"search_string\":{\"type\":\"string\",\"required\":true}},\"stages\":[{\"stage\":\"producer/find\",\"type\":\"GlossaryTerm\",\"function\":\"GlossaryManager.find_glossary_terms\",\"params\":{\"search_string\":\"$search_string\"}}],\"formatters\":{\"ALL\":{\"columns\":[{\"field\":\"display_name\",\"label\":\"Term Name\"}]}}}\n\n___\n",
+   "completed": true,
+   "asked_clarifying": false,
+   "dre_offline_parse": {
+    "ok": true,
+    "commands": [
+     "Create Report Spec"
+    ]
+   },
+   "format_set_source": "draft",
+   "format_set_error": null,
+   "target_type": "GlossaryTerm",
+   "action_function": "GlossaryManager.find_glossary_terms",
+   "columns": [
+    {
+     "name": "Term Name",
+     "key": "display_name"
+    }
+   ],
+   "nonexistent_attributes": {
+    "checked": true,
+    "keys": [],
+    "strict_keys": []
+   },
+   "pyegeria_validate": {
+    "ok": true,
+    "errors": [],
+    "warnings": [],
+    "not_applied": [],
+    "checked": [
+     "structure",
+     "target type",
+     "column attributes",
+     "load-time resolution (find method / analytic routine, parameters, formats)"
+    ],
+    "not_checked": [
+     "Dr.Egeria validate: no runner given"
+    ],
+    "dr_egeria": null,
+    "s": 0.01
+   },
+   "validates": true,
+   "run": {
+    "ran": false,
+    "why": "offline"
+   }
+  },
+  "total_s": 28.92
+ },
+ {
+  "id": "B07",
+  "set": "builtin",
+  "question": "Which collections have no classification?",
+  "expect": {
+   "target_type": "Collection",
+   "condition": "no classification",
+   "columns": [
+    "Display Name",
+    "Classifications"
+   ]
+  },
+  "mode": "rebased",
+  "offline": true,
+  "turns": 3,
+  "final_phase": "refine",
+  "transcript": [
+   {
+    "turn": 1,
+    "user": "Which collections have no classification?",
+    "phase": "confirm_action",
+    "response": "### Proposed Report Spec: **Collections with No Classification**\n\n- **Target Type:** Collection\n- **Found with:** `CollectionManager.find_collections` (from Collection-DrE-Basic)\n- **Condition:** none (everything of this type)\n- **Description:** This report lists all collections that do not have any classifications associated with them.\n\n---\n\nDoes this look correct? Use the buttons below, or describe adjustments.",
+    "s": 25.62
+   },
+   {
+    "turn": 2,
+    "user": "continue_columns",
+    "phase": "elicit_columns",
+    "response": "### Columns Configuration\n\n**1. Collection Name** \u2014 key: `display_name`\n**2. Description** \u2014 key: `description`\n\n**Condition:** none (everything of this type)\n\n---\n\nDoes this look right? Use **Generate now**, or describe changes (only attributes of Collection can be columns).",
+    "s": 0.0
+   },
+   {
+    "turn": 3,
+    "user": "generate now",
+    "phase": "refine",
+    "response": "**Collections with No Classification** (draft spec **report_20261113_062925_collections_with_no_classification**, validated with pyegeria)\n\nSign in to see the answer here; you can run it with **Execute Spec**.",
+    "s": 0.02
+   }
+  ],
+  "elicit_s": 25.64,
+  "draft": {
+   "draft_id": "draft_report_20261113_062925_collections_with_no_classification",
+   "title": "collections-with-no-classification",
+   "phase": "refine",
+   "phase_label": "Refinement session",
+   "original_query": "Which collections have no classification?",
+   "action_function": "CollectionManager.find_collections",
+   "target_type": "Collection",
+   "columns": [
+    {
+     "name": "Collection Name",
+     "key": "display_name",
+     "format": false,
+     "detail_spec": null,
+     "formats": "ALL"
+    },
+    {
+     "name": "Description",
+     "key": "description",
+     "format": false,
+     "detail_spec": null,
+     "formats": "ALL"
+    }
+   ],
+   "content_filters": {
+    "search_string": "*"
+   },
+   "shape_defaults": {},
+   "performance_hints": {
+    "page_size": 100,
+    "start_from": 0
+   },
+   "perspectives": [],
+   "questions": [],
+   "answers": {
+    "Heading": "Collections with No Classification",
+    "Description": "This report lists all collections that do not have any classifications associated with them."
+   },
+   "pending_questions": {},
+   "doc_id": "report_20261113_062925_collections_with_no_classification",
+   "history_stack": [
+    {
+     "phase": "confirm_action",
+     "phase_label": "Confirming report basic configuration",
+     "columns": [
+      {
+       "name": "Collection Name",
+       "key": "display_name",
+       "format": false,
+       "detail_spec": null,
+       "formats": "ALL"
+      },
+      {
+       "name": "Description",
+       "key": "description",
+       "format": false,
+       "detail_spec": null,
+       "formats": "ALL"
+      }
+     ],
+     "content_filters": {
+      "search_string": "*"
+     },
+     "shape_defaults": {},
+     "performance_hints": {
+      "page_size": 100,
+      "start_from": 0
+     },
+     "perspectives": [],
+     "questions": [],
+     "answers": {
+      "Heading": "Collections with No Classification",
+      "Description": "This report lists all collections that do not have any classifications associated with them."
+     },
+     "pending_questions": {},
+     "summary_of_answers": ""
+    },
+    {
+     "phase": "elicit_columns",
+     "phase_label": "Reviewing and customizing columns",
+     "columns": [
+      {
+       "name": "Collection Name",
+       "key": "display_name",
+       "format": false,
+       "detail_spec": null,
+       "formats": "ALL"
+      },
+      {
+       "name": "Description",
+       "key": "description",
+       "format": false,
+       "detail_spec": null,
+       "formats": "ALL"
+      }
+     ],
+     "content_filters": {
+      "search_string": "*"
+     },
+     "shape_defaults": {},
+     "performance_hints": {
+      "page_size": 100,
+      "start_from": 0
+     },
+     "perspectives": [],
+     "questions": [],
+     "answers": {
+      "Heading": "Collections with No Classification",
+      "Description": "This report lists all collections that do not have any classifications associated with them."
+     },
+     "pending_questions": {},
+     "summary_of_answers": ""
+    }
+   ],
+   "created_at": 1794572965.219341,
+   "updated_at": 1794572965.237542,
+   "summary_of_answers": "",
+   "user_id": "erinoverview",
+   "conditions": {},
+   "unmet": null,
+   "v2": true,
+   "format_set": {
+    "target_type": "Collection",
+    "heading": "Collections with No Classification",
+    "description": "This report lists all collections that do not have any classifications associated with them.",
+    "aliases": [],
+    "annotations": {},
+    "formats": [
+     {
+      "types": [
+       "ALL"
+      ],
+      "attributes": [
+       {
+        "name": "Collection Name",
+        "key": "display_name",
+        "format": false
+       },
+       {
+        "name": "Description",
+        "key": "description",
+        "format": false
+       }
+      ]
+     }
+    ],
+    "action": {
+     "function": "CollectionManager.find_collections",
+     "required_params": [
+      "search_string"
+     ],
+     "optional_params": [],
+     "spec_params": {},
+     "analytic_spec_params": {}
+    }
+   }
+  },
+  "check": {
+   "doc_id": "report_20261113_062925_collections_with_no_classification",
+   "document": "# Collections with No Classification\n\n## Create Report Spec\n### Display Name\ncollections-with-no-classification\n### Qualified Name\nReportSpec::collections-with-no-classification\n### Description\nThis report lists all collections that do not have any classifications associated with them.\n### Content Status\nACTIVE\n### Target Type Name\nCollection\n### Output Types\nALL\n### Microflow\n{\"format\":\"microflow/1\",\"params\":{\"search_string\":{\"type\":\"string\",\"required\":true}},\"stages\":[{\"stage\":\"producer/find\",\"type\":\"Collection\",\"function\":\"CollectionManager.find_collections\",\"params\":{\"search_string\":\"$search_string\"}}],\"formatters\":{\"ALL\":{\"columns\":[{\"field\":\"display_name\",\"label\":\"Collection Name\"},{\"field\":\"description\",\"label\":\"Description\"}]}}}\n\n___\n",
+   "completed": true,
+   "asked_clarifying": false,
+   "dre_offline_parse": {
+    "ok": true,
+    "commands": [
+     "Create Report Spec"
+    ]
+   },
+   "format_set_source": "draft",
+   "format_set_error": null,
+   "target_type": "Collection",
+   "action_function": "CollectionManager.find_collections",
+   "columns": [
+    {
+     "name": "Collection Name",
+     "key": "display_name"
+    },
+    {
+     "name": "Description",
+     "key": "description"
+    }
+   ],
+   "nonexistent_attributes": {
+    "checked": true,
+    "keys": [],
+    "strict_keys": []
+   },
+   "pyegeria_validate": {
+    "ok": true,
+    "errors": [],
+    "warnings": [],
+    "not_applied": [],
+    "checked": [
+     "structure",
+     "target type",
+     "column attributes",
+     "load-time resolution (find method / analytic routine, parameters, formats)"
+    ],
+    "not_checked": [
+     "Dr.Egeria validate: no runner given"
+    ],
+    "dr_egeria": null,
+    "s": 0.01
+   },
+   "validates": true,
+   "run": {
+    "ran": false,
+    "why": "offline"
+   }
+  },
+  "total_s": 25.65
+ },
+ {
+  "id": "B08",
+  "set": "builtin",
+  "question": "What collections were created recently?",
+  "expect": {
+   "target_type": "Collection",
+   "condition": "sorted/filtered by create time",
+   "columns": [
+    "Display Name",
+    "Create Time"
+   ]
+  },
+  "mode": "rebased",
+  "offline": true,
+  "turns": 3,
+  "final_phase": "refine",
+  "transcript": [
+   {
+    "turn": 1,
+    "user": "What collections were created recently?",
+    "phase": "confirm_action",
+    "response": "### Proposed Report Spec: **Collections Created Recently**\n\n- **Target Type:** Collection\n- **Found with:** `CollectionManager.find_collections` (from Collection-DrE-Basic)\n- **Condition:** none (everything of this type)\n- **Description:** This report lists all collections that were created recently.\n\n---\n\nDoes this look correct? Use the buttons below, or describe adjustments.",
+    "s": 30.39
+   },
+   {
+    "turn": 2,
+    "user": "continue_columns",
+    "phase": "elicit_columns",
+    "response": "### Columns Configuration\n\n**1. Name** \u2014 key: `display_name`\n**2. Description** \u2014 key: `description`\n**3. Created Time** \u2014 key: `create_time`\n\n**Condition:** none (everything of this type)\n\n---\n\nDoes this look right? Use **Generate now**, or describe changes (only attributes of Collection can be columns).",
+    "s": 0.0
+   },
+   {
+    "turn": 3,
+    "user": "generate now",
+    "phase": "refine",
+    "response": "**Collections Created Recently** (draft spec **report_20261113_062955_recent_collections_report**, validated with pyegeria)\n\nSign in to see the answer here; you can run it with **Execute Spec**.",
+    "s": 0.03
+   }
+  ],
+  "elicit_s": 30.42,
+  "draft": {
+   "draft_id": "draft_report_20261113_062955_recent_collections_report",
+   "title": "recent-collections-report",
+   "phase": "refine",
+   "phase_label": "Refinement session",
+   "original_query": "What collections were created recently?",
+   "action_function": "CollectionManager.find_collections",
+   "target_type": "Collection",
+   "columns": [
+    {
+     "name": "Name",
+     "key": "display_name",
+     "format": false,
+     "detail_spec": null,
+     "formats": "ALL"
+    },
+    {
+     "name": "Description",
+     "key": "description",
+     "format": false,
+     "detail_spec": null,
+     "formats": "ALL"
+    },
+    {
+     "name": "Created Time",
+     "key": "create_time",
+     "format": true,
+     "detail_spec": null,
+     "formats": [
+      "DATE_TIME"
+     ]
+    }
+   ],
+   "content_filters": {
+    "search_string": "*"
+   },
+   "shape_defaults": {},
+   "performance_hints": {
+    "page_size": 100,
+    "start_from": 0
+   },
+   "perspectives": [],
+   "questions": [],
+   "answers": {
+    "Heading": "Collections Created Recently",
+    "Description": "This report lists all collections that were created recently."
+   },
+   "pending_questions": {},
+   "doc_id": "report_20261113_062955_recent_collections_report",
+   "history_stack": [
+    {
+     "phase": "confirm_action",
+     "phase_label": "Confirming report basic configuration",
+     "columns": [
+      {
+       "name": "Name",
+       "key": "display_name",
+       "format": false,
+       "detail_spec": null,
+       "formats": "ALL"
+      },
+      {
+       "name": "Description",
+       "key": "description",
+       "format": false,
+       "detail_spec": null,
+       "formats": "ALL"
+      },
+      {
+       "name": "Created Time",
+       "key": "create_time",
+       "format": true,
+       "detail_spec": null,
+       "formats": [
+        "DATE_TIME"
+       ]
+      }
+     ],
+     "content_filters": {
+      "search_string": "*"
+     },
+     "shape_defaults": {},
+     "performance_hints": {
+      "page_size": 100,
+      "start_from": 0
+     },
+     "perspectives": [],
+     "questions": [],
+     "answers": {
+      "Heading": "Collections Created Recently",
+      "Description": "This report lists all collections that were created recently."
+     },
+     "pending_questions": {},
+     "summary_of_answers": ""
+    },
+    {
+     "phase": "elicit_columns",
+     "phase_label": "Reviewing and customizing columns",
+     "columns": [
+      {
+       "name": "Name",
+       "key": "display_name",
+       "format": false,
+       "detail_spec": null,
+       "formats": "ALL"
+      },
+      {
+       "name": "Description",
+       "key": "description",
+       "format": false,
+       "detail_spec": null,
+       "formats": "ALL"
+      },
+      {
+       "name": "Created Time",
+       "key": "create_time",
+       "format": true,
+       "detail_spec": null,
+       "formats": [
+        "DATE_TIME"
+       ]
+      }
+     ],
+     "content_filters": {
+      "search_string": "*"
+     },
+     "shape_defaults": {},
+     "performance_hints": {
+      "page_size": 100,
+      "start_from": 0
+     },
+     "perspectives": [],
+     "questions": [],
+     "answers": {
+      "Heading": "Collections Created Recently",
+      "Description": "This report lists all collections that were created recently."
+     },
+     "pending_questions": {},
+     "summary_of_answers": ""
+    }
+   ],
+   "created_at": 1794572995.64113,
+   "updated_at": 1794572995.6766589,
+   "summary_of_answers": "",
+   "user_id": "erinoverview",
+   "conditions": {},
+   "unmet": null,
+   "v2": true,
+   "format_set": {
+    "target_type": "Collection",
+    "heading": "Collections Created Recently",
+    "description": "This report lists all collections that were created recently.",
+    "aliases": [],
+    "annotations": {},
+    "formats": [
+     {
+      "types": [
+       "ALL"
+      ],
+      "attributes": [
+       {
+        "name": "Name",
+        "key": "display_name",
+        "format": false
+       },
+       {
+        "name": "Description",
+        "key": "description",
+        "format": false
+       },
+       {
+        "name": "Created Time",
+        "key": "create_time",
+        "format": false
+       }
+      ]
+     }
+    ],
+    "action": {
+     "function": "CollectionManager.find_collections",
+     "required_params": [
+      "search_string"
+     ],
+     "optional_params": [],
+     "spec_params": {},
+     "analytic_spec_params": {}
+    }
+   }
+  },
+  "check": {
+   "doc_id": "report_20261113_062955_recent_collections_report",
+   "document": "# Collections Created Recently\n\n## Create Report Spec\n### Display Name\nrecent-collections-report\n### Qualified Name\nReportSpec::recent-collections-report\n### Description\nThis report lists all collections that were created recently.\n### Content Status\nACTIVE\n### Target Type Name\nCollection\n### Output Types\nALL\n### Microflow\n{\"format\":\"microflow/1\",\"params\":{\"search_string\":{\"type\":\"string\",\"required\":true}},\"stages\":[{\"stage\":\"producer/find\",\"type\":\"Collection\",\"function\":\"CollectionManager.find_collections\",\"params\":{\"search_string\":\"$search_string\"}}],\"formatters\":{\"ALL\":{\"columns\":[{\"field\":\"display_name\",\"label\":\"Name\"},{\"field\":\"description\",\"label\":\"Description\"},{\"field\":\"create_time\",\"label\":\"Created Time\"}]}}}\n\n___\n",
+   "completed": true,
+   "asked_clarifying": false,
+   "dre_offline_parse": {
+    "ok": true,
+    "commands": [
+     "Create Report Spec"
+    ]
+   },
+   "format_set_source": "draft",
+   "format_set_error": null,
+   "target_type": "Collection",
+   "action_function": "CollectionManager.find_collections",
+   "columns": [
+    {
+     "name": "Name",
+     "key": "display_name"
+    },
+    {
+     "name": "Description",
+     "key": "description"
+    },
+    {
+     "name": "Created Time",
+     "key": "create_time"
+    }
+   ],
+   "nonexistent_attributes": {
+    "checked": true,
+    "keys": [],
+    "strict_keys": []
+   },
+   "pyegeria_validate": {
+    "ok": true,
+    "errors": [],
+    "warnings": [],
+    "not_applied": [],
+    "checked": [
+     "structure",
+     "target type",
+     "column attributes",
+     "load-time resolution (find method / analytic routine, parameters, formats)"
+    ],
+    "not_checked": [
+     "Dr.Egeria validate: no runner given"
+    ],
+    "dr_egeria": null,
+    "s": 0.01
+   },
+   "validates": true,
+   "run": {
+    "ran": false,
+    "why": "offline"
+   }
+  },
+  "total_s": 30.44
+ },
+ {
+  "id": "B09",
+  "set": "builtin",
+  "question": "What data products are available?",
+  "expect": {
+   "target_type": "DigitalProduct",
+   "condition": null,
+   "columns": [
+    "Display Name",
+    "Description"
+   ]
+  },
+  "mode": "rebased",
+  "offline": true,
+  "turns": 3,
+  "final_phase": "refine",
+  "transcript": [
+   {
+    "turn": 1,
+    "user": "What data products are available?",
+    "phase": "confirm_action",
+    "response": "\u26a0\ufe0f Left out: 'Owner' (owner.name) isn't an attribute of DigitalProduct.\n### Proposed Report Spec: **Available Data Products Report**\n\n- **Target Type:** DigitalProduct\n- **Found with:** `CollectionManager.find_collections` (from Digital-Product-DrE-Basic)\n- **Condition:** none (everything of this type)\n- **Description:** This report lists all available data products in the organization.\n\n---\n\nDoes this look correct? Use the buttons below, or describe adjustments.",
+    "s": 30.9
+   },
+   {
+    "turn": 2,
+    "user": "continue_columns",
+    "phase": "elicit_columns",
+    "response": "### Columns Configuration\n\n**1. Name** \u2014 key: `display_name`\n**2. Description** \u2014 key: `description`\n\n**Condition:** none (everything of this type)\n\n---\n\nDoes this look right? Use **Generate now**, or describe changes (only attributes of DigitalProduct can be columns).",
+    "s": 0.0
+   },
+   {
+    "turn": 3,
+    "user": "generate now",
+    "phase": "refine",
+    "response": "**Available Data Products Report** (draft spec **report_20261113_063026_available_data_products_report**, validated with pyegeria)\n\nSign in to see the answer here; you can run it with **Execute Spec**.",
+    "s": 0.04
+   }
+  ],
+  "elicit_s": 30.95,
+  "draft": {
+   "draft_id": "draft_report_20261113_063026_available_data_products_report",
+   "title": "available-data-products-report",
+   "phase": "refine",
+   "phase_label": "Refinement session",
+   "original_query": "What data products are available?",
+   "action_function": "CollectionManager.find_collections",
+   "target_type": "DigitalProduct",
+   "columns": [
+    {
+     "name": "Name",
+     "key": "display_name",
+     "format": false,
+     "detail_spec": null,
+     "formats": "ALL"
+    },
+    {
+     "name": "Description",
+     "key": "description",
+     "format": false,
+     "detail_spec": null,
+     "formats": "ALL"
+    }
+   ],
+   "content_filters": {
+    "search_string": "*"
+   },
+   "shape_defaults": {},
+   "performance_hints": {
+    "page_size": 100,
+    "start_from": 0
+   },
+   "perspectives": [],
+   "questions": [],
+   "answers": {
+    "Heading": "Available Data Products Report",
+    "Description": "This report lists all available data products in the organization."
+   },
+   "pending_questions": {},
+   "doc_id": "report_20261113_063026_available_data_products_report",
+   "history_stack": [
+    {
+     "phase": "confirm_action",
+     "phase_label": "Confirming report basic configuration",
+     "columns": [
+      {
+       "name": "Name",
+       "key": "display_name",
+       "format": false,
+       "detail_spec": null,
+       "formats": "ALL"
+      },
+      {
+       "name": "Description",
+       "key": "description",
+       "format": false,
+       "detail_spec": null,
+       "formats": "ALL"
+      }
+     ],
+     "content_filters": {
+      "search_string": "*"
+     },
+     "shape_defaults": {},
+     "performance_hints": {
+      "page_size": 100,
+      "start_from": 0
+     },
+     "perspectives": [],
+     "questions": [],
+     "answers": {
+      "Heading": "Available Data Products Report",
+      "Description": "This report lists all available data products in the organization."
+     },
+     "pending_questions": {},
+     "summary_of_answers": ""
+    },
+    {
+     "phase": "elicit_columns",
+     "phase_label": "Reviewing and customizing columns",
+     "columns": [
+      {
+       "name": "Name",
+       "key": "display_name",
+       "format": false,
+       "detail_spec": null,
+       "formats": "ALL"
+      },
+      {
+       "name": "Description",
+       "key": "description",
+       "format": false,
+       "detail_spec": null,
+       "formats": "ALL"
+      }
+     ],
+     "content_filters": {
+      "search_string": "*"
+     },
+     "shape_defaults": {},
+     "performance_hints": {
+      "page_size": 100,
+      "start_from": 0
+     },
+     "perspectives": [],
+     "questions": [],
+     "answers": {
+      "Heading": "Available Data Products Report",
+      "Description": "This report lists all available data products in the organization."
+     },
+     "pending_questions": {},
+     "summary_of_answers": ""
+    }
+   ],
+   "created_at": 1794573026.598336,
+   "updated_at": 1794573026.64434,
+   "summary_of_answers": "",
+   "user_id": "erinoverview",
+   "conditions": {},
+   "unmet": null,
+   "v2": true,
+   "format_set": {
+    "target_type": "DigitalProduct",
+    "heading": "Available Data Products Report",
+    "description": "This report lists all available data products in the organization.",
+    "aliases": [],
+    "annotations": {},
+    "formats": [
+     {
+      "types": [
+       "ALL"
+      ],
+      "attributes": [
+       {
+        "name": "Name",
+        "key": "display_name",
+        "format": false
+       },
+       {
+        "name": "Description",
+        "key": "description",
+        "format": false
+       }
+      ]
+     }
+    ],
+    "action": {
+     "function": "CollectionManager.find_collections",
+     "required_params": [
+      "search_string"
+     ],
+     "optional_params": [],
+     "spec_params": {
+      "metadata_element_type": "DigitalProduct"
+     },
+     "analytic_spec_params": {}
+    }
+   }
+  },
+  "check": {
+   "doc_id": "report_20261113_063026_available_data_products_report",
+   "document": "# Available Data Products Report\n\n## Create Report Spec\n### Display Name\navailable-data-products-report\n### Qualified Name\nReportSpec::available-data-products-report\n### Description\nThis report lists all available data products in the organization.\n### Content Status\nACTIVE\n### Target Type Name\nDigitalProduct\n### Output Types\nALL\n### Microflow\n{\"format\":\"microflow/1\",\"params\":{\"search_string\":{\"type\":\"string\",\"required\":true}},\"stages\":[{\"stage\":\"producer/find\",\"type\":\"DigitalProduct\",\"function\":\"CollectionManager.find_collections\",\"params\":{\"search_string\":\"$search_string\",\"metadata_element_type\":\"DigitalProduct\"}}],\"formatters\":{\"ALL\":{\"columns\":[{\"field\":\"display_name\",\"label\":\"Name\"},{\"field\":\"description\",\"label\":\"Description\"}]}}}\n\n___\n",
+   "completed": true,
+   "asked_clarifying": false,
+   "dre_offline_parse": {
+    "ok": true,
+    "commands": [
+     "Create Report Spec"
+    ]
+   },
+   "format_set_source": "draft",
+   "format_set_error": null,
+   "target_type": "DigitalProduct",
+   "action_function": "CollectionManager.find_collections",
+   "columns": [
+    {
+     "name": "Name",
+     "key": "display_name"
+    },
+    {
+     "name": "Description",
+     "key": "description"
+    }
+   ],
+   "nonexistent_attributes": {
+    "checked": true,
+    "keys": [],
+    "strict_keys": []
+   },
+   "pyegeria_validate": {
+    "ok": true,
+    "errors": [],
+    "warnings": [],
+    "not_applied": [],
+    "checked": [
+     "structure",
+     "target type",
+     "column attributes",
+     "load-time resolution (find method / analytic routine, parameters, formats)"
+    ],
+    "not_checked": [
+     "Dr.Egeria validate: no runner given"
+    ],
+    "dr_egeria": null,
+    "s": 0.01
+   },
+   "validates": true,
+   "run": {
+    "ran": false,
+    "why": "offline"
+   }
+  },
+  "total_s": 30.97
+ },
+ {
+  "id": "B10",
+  "set": "builtin",
+  "question": "Which products are still in development or draft?",
+  "expect": {
+   "target_type": "DigitalProduct",
+   "condition": "status draft/in development",
+   "columns": [
+    "Display Name",
+    "Status / Maturity"
+   ]
+  },
+  "mode": "rebased",
+  "offline": true,
+  "turns": 3,
+  "final_phase": "refine",
+  "transcript": [
+   {
+    "turn": 1,
+    "user": "Which products are still in development or draft?",
+    "phase": "confirm_action",
+    "response": "### Proposed Report Spec: **Products Still in Development or Draft**\n\n- **Target Type:** Project\n- **Found with:** `ProjectManager.find_projects` (from Project-DrE-Basic)\n- **Condition:** none (everything of this type)\n- **Description:** This report lists all products that are currently in the development or draft stage.\n\n---\n\nDoes this look correct? Use the buttons below, or describe adjustments.",
+    "s": 26.57
+   },
+   {
+    "turn": 2,
+    "user": "continue_columns",
+    "phase": "elicit_columns",
+    "response": "### Columns Configuration\n\n**1. Product Name** \u2014 key: `display_name`\n**2. Status** \u2014 key: `status`\n\n**Condition:** none (everything of this type)\n\n---\n\nDoes this look right? Use **Generate now**, or describe changes (only attributes of Project can be columns).",
+    "s": 0.0
+   },
+   {
+    "turn": 3,
+    "user": "generate now",
+    "phase": "refine",
+    "response": "**Products Still in Development or Draft** (draft spec **report_20261113_063053_products_in_development_or_draft_report**, validated with pyegeria)\n\nSign in to see the answer here; you can run it with **Execute Spec**.",
+    "s": 0.04
+   }
+  ],
+  "elicit_s": 26.61,
+  "draft": {
+   "draft_id": "draft_report_20261113_063053_products_in_development_or_draft_report",
+   "title": "products-in-development-or-draft-report",
+   "phase": "refine",
+   "phase_label": "Refinement session",
+   "original_query": "Which products are still in development or draft?",
+   "action_function": "ProjectManager.find_projects",
+   "target_type": "Project",
+   "columns": [
+    {
+     "name": "Product Name",
+     "key": "display_name",
+     "format": false,
+     "detail_spec": null,
+     "formats": "ALL"
+    },
+    {
+     "name": "Status",
+     "key": "status",
+     "format": false,
+     "detail_spec": null,
+     "formats": "ALL"
+    }
+   ],
+   "content_filters": {
+    "search_string": "*"
+   },
+   "shape_defaults": {},
+   "performance_hints": {
+    "page_size": 100,
+    "start_from": 0
+   },
+   "perspectives": [],
+   "questions": [],
+   "answers": {
+    "Heading": "Products Still in Development or Draft",
+    "Description": "This report lists all products that are currently in the development or draft stage."
+   },
+   "pending_questions": {},
+   "doc_id": "report_20261113_063053_products_in_development_or_draft_report",
+   "history_stack": [
+    {
+     "phase": "confirm_action",
+     "phase_label": "Confirming report basic configuration",
+     "columns": [
+      {
+       "name": "Product Name",
+       "key": "display_name",
+       "format": false,
+       "detail_spec": null,
+       "formats": "ALL"
+      },
+      {
+       "name": "Status",
+       "key": "status",
+       "format": false,
+       "detail_spec": null,
+       "formats": "ALL"
+      }
+     ],
+     "content_filters": {
+      "search_string": "*"
+     },
+     "shape_defaults": {},
+     "performance_hints": {
+      "page_size": 100,
+      "start_from": 0
+     },
+     "perspectives": [],
+     "questions": [],
+     "answers": {
+      "Heading": "Products Still in Development or Draft",
+      "Description": "This report lists all products that are currently in the development or draft stage."
+     },
+     "pending_questions": {},
+     "summary_of_answers": ""
+    },
+    {
+     "phase": "elicit_columns",
+     "phase_label": "Reviewing and customizing columns",
+     "columns": [
+      {
+       "name": "Product Name",
+       "key": "display_name",
+       "format": false,
+       "detail_spec": null,
+       "formats": "ALL"
+      },
+      {
+       "name": "Status",
+       "key": "status",
+       "format": false,
+       "detail_spec": null,
+       "formats": "ALL"
+      }
+     ],
+     "content_filters": {
+      "search_string": "*"
+     },
+     "shape_defaults": {},
+     "performance_hints": {
+      "page_size": 100,
+      "start_from": 0
+     },
+     "perspectives": [],
+     "questions": [],
+     "answers": {
+      "Heading": "Products Still in Development or Draft",
+      "Description": "This report lists all products that are currently in the development or draft stage."
+     },
+     "pending_questions": {},
+     "summary_of_answers": ""
+    }
+   ],
+   "created_at": 1794573053.2403631,
+   "updated_at": 1794573053.2851431,
+   "summary_of_answers": "",
+   "user_id": "erinoverview",
+   "conditions": {},
+   "unmet": null,
+   "v2": true,
+   "format_set": {
+    "target_type": "Project",
+    "heading": "Products Still in Development or Draft",
+    "description": "This report lists all products that are currently in the development or draft stage.",
+    "aliases": [],
+    "annotations": {},
+    "formats": [
+     {
+      "types": [
+       "ALL"
+      ],
+      "attributes": [
+       {
+        "name": "Product Name",
+        "key": "display_name",
+        "format": false
+       },
+       {
+        "name": "Status",
+        "key": "status",
+        "format": false
+       }
+      ]
+     }
+    ],
+    "action": {
+     "function": "ProjectManager.find_projects",
+     "required_params": [
+      "search_string"
+     ],
+     "optional_params": [],
+     "spec_params": {},
+     "analytic_spec_params": {}
+    }
+   }
+  },
+  "check": {
+   "doc_id": "report_20261113_063053_products_in_development_or_draft_report",
+   "document": "# Products Still in Development or Draft\n\n## Create Report Spec\n### Display Name\nproducts-in-development-or-draft-report\n### Qualified Name\nReportSpec::products-in-development-or-draft-report\n### Description\nThis report lists all products that are currently in the development or draft stage.\n### Content Status\nACTIVE\n### Target Type Name\nProject\n### Output Types\nALL\n### Microflow\n{\"format\":\"microflow/1\",\"params\":{\"search_string\":{\"type\":\"string\",\"required\":true}},\"stages\":[{\"stage\":\"producer/find\",\"type\":\"Project\",\"function\":\"ProjectManager.find_projects\",\"params\":{\"search_string\":\"$search_string\"}}],\"formatters\":{\"ALL\":{\"columns\":[{\"field\":\"display_name\",\"label\":\"Product Name\"},{\"field\":\"status\",\"label\":\"Status\"}]}}}\n\n___\n",
+   "completed": true,
+   "asked_clarifying": false,
+   "dre_offline_parse": {
+    "ok": true,
+    "commands": [
+     "Create Report Spec"
+    ]
+   },
+   "format_set_source": "draft",
+   "format_set_error": null,
+   "target_type": "Project",
+   "action_function": "ProjectManager.find_projects",
+   "columns": [
+    {
+     "name": "Product Name",
+     "key": "display_name"
+    },
+    {
+     "name": "Status",
+     "key": "status"
+    }
+   ],
+   "nonexistent_attributes": {
+    "checked": true,
+    "keys": [],
+    "strict_keys": []
+   },
+   "pyegeria_validate": {
+    "ok": true,
+    "errors": [],
+    "warnings": [],
+    "not_applied": [],
+    "checked": [
+     "structure",
+     "target type",
+     "column attributes",
+     "load-time resolution (find method / analytic routine, parameters, formats)"
+    ],
+    "not_checked": [
+     "Dr.Egeria validate: no runner given"
+    ],
+    "dr_egeria": null,
+    "s": 0.01
+   },
+   "validates": true,
+   "run": {
+    "ran": false,
+    "why": "offline"
+   }
+  },
+  "total_s": 26.64
+ },
+ {
+  "id": "B11",
+  "set": "builtin",
+  "question": "Which products are nearing end of service life?",
+  "expect": {
+   "target_type": "DigitalProduct",
+   "condition": "service life / withdrawal date near",
+   "columns": [
+    "Display Name",
+    "Service Life",
+    "Withdrawal Date"
+   ]
+  },
+  "mode": "rebased",
+  "offline": true,
+  "turns": 3,
+  "final_phase": "refine",
+  "transcript": [
+   {
+    "turn": 1,
+    "user": "Which products are nearing end of service life?",
+    "phase": "confirm_action",
+    "response": "\u26a0\ufe0f Left out: 'Service Life End Date' (endDate) isn't an attribute of Asset.\n\u26a0\ufe0f Left out: 'Days Remaining' (daysRemainingUntilEndOfLife) isn't an attribute of Asset.\n### Proposed Report Spec: **Products Nearing End of Service Life Report**\n\n- **Target Type:** Asset\n- **Found with:** `MetadataExpert.find_metadata_elements_with_string` (from generic finder)\n- **Condition:** none (everything of this type)\n- **Description:** This report lists products that are nearing the end of their service life.\n\n---\n\nDoes this look correct? Use the buttons below, or describe adjustments.",
+    "s": 35.25
+   },
+   {
+    "turn": 2,
+    "user": "continue_columns",
+    "phase": "elicit_columns",
+    "response": "### Columns Configuration\n\n**1. Product Name** \u2014 key: `display_name`\n\n**Condition:** none (everything of this type)\n\n---\n\nDoes this look right? Use **Generate now**, or describe changes (only attributes of Asset can be columns).",
+    "s": 0.0
+   },
+   {
+    "turn": 3,
+    "user": "generate now",
+    "phase": "refine",
+    "response": "**Products Nearing End of Service Life Report** (draft spec **report_20261113_063128_products_nearing_eos_life_report**, validated with pyegeria)\n\nSign in to see the answer here; you can run it with **Execute Spec**.",
+    "s": 0.02
+   }
+  ],
+  "elicit_s": 35.27,
+  "draft": {
+   "draft_id": "draft_report_20261113_063128_products_nearing_eos_life_report",
+   "title": "products-nearing-eos-life-report",
+   "phase": "refine",
+   "phase_label": "Refinement session",
+   "original_query": "Which products are nearing end of service life?",
+   "action_function": "MetadataExpert.find_metadata_elements_with_string",
+   "target_type": "Asset",
+   "columns": [
+    {
+     "name": "Product Name",
+     "key": "display_name",
+     "format": false,
+     "detail_spec": null,
+     "formats": "ALL"
+    }
+   ],
+   "content_filters": {
+    "search_string": "*"
+   },
+   "shape_defaults": {},
+   "performance_hints": {
+    "page_size": 100,
+    "start_from": 0
+   },
+   "perspectives": [],
+   "questions": [],
+   "answers": {
+    "Heading": "Products Nearing End of Service Life Report",
+    "Description": "This report lists products that are nearing the end of their service life."
+   },
+   "pending_questions": {},
+   "doc_id": "report_20261113_063128_products_nearing_eos_life_report",
+   "history_stack": [
+    {
+     "phase": "confirm_action",
+     "phase_label": "Confirming report basic configuration",
+     "columns": [
+      {
+       "name": "Product Name",
+       "key": "display_name",
+       "format": false,
+       "detail_spec": null,
+       "formats": "ALL"
+      }
+     ],
+     "content_filters": {
+      "search_string": "*"
+     },
+     "shape_defaults": {},
+     "performance_hints": {
+      "page_size": 100,
+      "start_from": 0
+     },
+     "perspectives": [],
+     "questions": [],
+     "answers": {
+      "Heading": "Products Nearing End of Service Life Report",
+      "Description": "This report lists products that are nearing the end of their service life."
+     },
+     "pending_questions": {},
+     "summary_of_answers": ""
+    },
+    {
+     "phase": "elicit_columns",
+     "phase_label": "Reviewing and customizing columns",
+     "columns": [
+      {
+       "name": "Product Name",
+       "key": "display_name",
+       "format": false,
+       "detail_spec": null,
+       "formats": "ALL"
+      }
+     ],
+     "content_filters": {
+      "search_string": "*"
+     },
+     "shape_defaults": {},
+     "performance_hints": {
+      "page_size": 100,
+      "start_from": 0
+     },
+     "perspectives": [],
+     "questions": [],
+     "answers": {
+      "Heading": "Products Nearing End of Service Life Report",
+      "Description": "This report lists products that are nearing the end of their service life."
+     },
+     "pending_questions": {},
+     "summary_of_answers": ""
+    }
+   ],
+   "created_at": 1794573088.5594618,
+   "updated_at": 1794573088.582537,
+   "summary_of_answers": "",
+   "user_id": "erinoverview",
+   "conditions": {},
+   "unmet": null,
+   "v2": true,
+   "format_set": {
+    "target_type": "Asset",
+    "heading": "Products Nearing End of Service Life Report",
+    "description": "This report lists products that are nearing the end of their service life.",
+    "aliases": [],
+    "annotations": {},
+    "formats": [
+     {
+      "types": [
+       "ALL"
+      ],
+      "attributes": [
+       {
+        "name": "Product Name",
+        "key": "display_name",
+        "format": false
+       }
+      ]
+     }
+    ],
+    "action": {
+     "function": "MetadataExpert.find_metadata_elements_with_string",
+     "required_params": [
+      "search_string"
+     ],
+     "optional_params": [],
+     "spec_params": {
+      "metadata_element_type": "Asset"
+     },
+     "analytic_spec_params": {}
+    }
+   }
+  },
+  "check": {
+   "doc_id": "report_20261113_063128_products_nearing_eos_life_report",
+   "document": "# Products Nearing End of Service Life Report\n\n## Create Report Spec\n### Display Name\nproducts-nearing-eos-life-report\n### Qualified Name\nReportSpec::products-nearing-eos-life-report\n### Description\nThis report lists products that are nearing the end of their service life.\n### Content Status\nACTIVE\n### Target Type Name\nAsset\n### Output Types\nALL\n### Microflow\n{\"format\":\"microflow/1\",\"params\":{\"search_string\":{\"type\":\"string\",\"required\":true}},\"stages\":[{\"stage\":\"producer/find\",\"type\":\"Asset\",\"function\":\"MetadataExpert.find_metadata_elements_with_string\",\"params\":{\"search_string\":\"$search_string\",\"metadata_element_type\":\"Asset\"}}],\"formatters\":{\"ALL\":{\"columns\":[{\"field\":\"display_name\",\"label\":\"Product Name\"}]}}}\n\n___\n",
+   "completed": true,
+   "asked_clarifying": false,
+   "dre_offline_parse": {
+    "ok": true,
+    "commands": [
+     "Create Report Spec"
+    ]
+   },
+   "format_set_source": "draft",
+   "format_set_error": null,
+   "target_type": "Asset",
+   "action_function": "MetadataExpert.find_metadata_elements_with_string",
+   "columns": [
+    {
+     "name": "Product Name",
+     "key": "display_name"
+    }
+   ],
+   "nonexistent_attributes": {
+    "checked": true,
+    "keys": [],
+    "strict_keys": []
+   },
+   "pyegeria_validate": {
+    "ok": true,
+    "errors": [],
+    "warnings": [],
+    "not_applied": [],
+    "checked": [
+     "structure",
+     "target type",
+     "column attributes",
+     "load-time resolution (find method / analytic routine, parameters, formats)"
+    ],
+    "not_checked": [
+     "Dr.Egeria validate: no runner given"
+    ],
+    "dr_egeria": null,
+    "s": 0.0
+   },
+   "validates": true,
+   "run": {
+    "ran": false,
+    "why": "offline"
+   }
+  },
+  "total_s": 35.29
+ },
+ {
+  "id": "B12",
+  "set": "builtin",
+  "question": "What data product catalogs exist?",
+  "expect": {
+   "target_type": "DigitalProductCatalog",
+   "condition": null,
+   "columns": [
+    "Display Name",
+    "Description"
+   ]
+  },
+  "mode": "rebased",
+  "offline": true,
+  "turns": 3,
+  "final_phase": "refine",
+  "transcript": [
+   {
+    "turn": 1,
+    "user": "What data product catalogs exist?",
+    "phase": "confirm_action",
+    "response": "### Proposed Report Spec: **List of Existing Data Product Catalogs**\n\n- **Target Type:** Collection\n- **Found with:** `CollectionManager.find_collections` (from Collection-DrE-Basic)\n- **Condition:** none (everything of this type)\n- **Description:** This report lists all the data product catalogs available in the metadata repository.\n\n---\n\nDoes this look correct? Use the buttons below, or describe adjustments.",
+    "s": 26.4
+   },
+   {
+    "turn": 2,
+    "user": "continue_columns",
+    "phase": "elicit_columns",
+    "response": "### Columns Configuration\n\n**1. Catalog Name** \u2014 key: `display_name`\n**2. Description** \u2014 key: `description`\n\n**Condition:** none (everything of this type)\n\n---\n\nDoes this look right? Use **Generate now**, or describe changes (only attributes of Collection can be columns).",
+    "s": 0.0
+   },
+   {
+    "turn": 3,
+    "user": "generate now",
+    "phase": "refine",
+    "response": "**List of Existing Data Product Catalogs** (draft spec **report_20261113_063155_data_product_catalogs_report**, validated with pyegeria)\n\nSign in to see the answer here; you can run it with **Execute Spec**.",
+    "s": 0.02
+   }
+  ],
+  "elicit_s": 26.43,
+  "draft": {
+   "draft_id": "draft_report_20261113_063154_data_product_catalogs_report",
+   "title": "data-product-catalogs-report",
+   "phase": "refine",
+   "phase_label": "Refinement session",
+   "original_query": "What data product catalogs exist?",
+   "action_function": "CollectionManager.find_collections",
+   "target_type": "Collection",
+   "columns": [
+    {
+     "name": "Catalog Name",
+     "key": "display_name",
+     "format": false,
+     "detail_spec": null,
+     "formats": "ALL"
+    },
+    {
+     "name": "Description",
+     "key": "description",
+     "format": false,
+     "detail_spec": null,
+     "formats": "ALL"
+    }
+   ],
+   "content_filters": {
+    "search_string": "*"
+   },
+   "shape_defaults": {},
+   "performance_hints": {
+    "page_size": 100,
+    "start_from": 0
+   },
+   "perspectives": [],
+   "questions": [],
+   "answers": {
+    "Heading": "List of Existing Data Product Catalogs",
+    "Description": "This report lists all the data product catalogs available in the metadata repository."
+   },
+   "pending_questions": {},
+   "doc_id": "report_20261113_063155_data_product_catalogs_report",
+   "history_stack": [
+    {
+     "phase": "confirm_action",
+     "phase_label": "Confirming report basic configuration",
+     "columns": [
+      {
+       "name": "Catalog Name",
+       "key": "display_name",
+       "format": false,
+       "detail_spec": null,
+       "formats": "ALL"
+      },
+      {
+       "name": "Description",
+       "key": "description",
+       "format": false,
+       "detail_spec": null,
+       "formats": "ALL"
+      }
+     ],
+     "content_filters": {
+      "search_string": "*"
+     },
+     "shape_defaults": {},
+     "performance_hints": {
+      "page_size": 100,
+      "start_from": 0
+     },
+     "perspectives": [],
+     "questions": [],
+     "answers": {
+      "Heading": "List of Existing Data Product Catalogs",
+      "Description": "This report lists all the data product catalogs available in the metadata repository."
+     },
+     "pending_questions": {},
+     "summary_of_answers": ""
+    },
+    {
+     "phase": "elicit_columns",
+     "phase_label": "Reviewing and customizing columns",
+     "columns": [
+      {
+       "name": "Catalog Name",
+       "key": "display_name",
+       "format": false,
+       "detail_spec": null,
+       "formats": "ALL"
+      },
+      {
+       "name": "Description",
+       "key": "description",
+       "format": false,
+       "detail_spec": null,
+       "formats": "ALL"
+      }
+     ],
+     "content_filters": {
+      "search_string": "*"
+     },
+     "shape_defaults": {},
+     "performance_hints": {
+      "page_size": 100,
+      "start_from": 0
+     },
+     "perspectives": [],
+     "questions": [],
+     "answers": {
+      "Heading": "List of Existing Data Product Catalogs",
+      "Description": "This report lists all the data product catalogs available in the metadata repository."
+     },
+     "pending_questions": {},
+     "summary_of_answers": ""
+    }
+   ],
+   "created_at": 1794573115.000053,
+   "updated_at": 1794573115.028445,
+   "summary_of_answers": "",
+   "user_id": "erinoverview",
+   "conditions": {},
+   "unmet": null,
+   "v2": true,
+   "format_set": {
+    "target_type": "Collection",
+    "heading": "List of Existing Data Product Catalogs",
+    "description": "This report lists all the data product catalogs available in the metadata repository.",
+    "aliases": [],
+    "annotations": {},
+    "formats": [
+     {
+      "types": [
+       "ALL"
+      ],
+      "attributes": [
+       {
+        "name": "Catalog Name",
+        "key": "display_name",
+        "format": false
+       },
+       {
+        "name": "Description",
+        "key": "description",
+        "format": false
+       }
+      ]
+     }
+    ],
+    "action": {
+     "function": "CollectionManager.find_collections",
+     "required_params": [
+      "search_string"
+     ],
+     "optional_params": [],
+     "spec_params": {},
+     "analytic_spec_params": {}
+    }
+   }
+  },
+  "check": {
+   "doc_id": "report_20261113_063155_data_product_catalogs_report",
+   "document": "# List of Existing Data Product Catalogs\n\n## Create Report Spec\n### Display Name\ndata-product-catalogs-report\n### Qualified Name\nReportSpec::data-product-catalogs-report\n### Description\nThis report lists all the data product catalogs available in the metadata repository.\n### Content Status\nACTIVE\n### Target Type Name\nCollection\n### Output Types\nALL\n### Microflow\n{\"format\":\"microflow/1\",\"params\":{\"search_string\":{\"type\":\"string\",\"required\":true}},\"stages\":[{\"stage\":\"producer/find\",\"type\":\"Collection\",\"function\":\"CollectionManager.find_collections\",\"params\":{\"search_string\":\"$search_string\"}}],\"formatters\":{\"ALL\":{\"columns\":[{\"field\":\"display_name\",\"label\":\"Catalog Name\"},{\"field\":\"description\",\"label\":\"Description\"}]}}}\n\n___\n",
+   "completed": true,
+   "asked_clarifying": false,
+   "dre_offline_parse": {
+    "ok": true,
+    "commands": [
+     "Create Report Spec"
+    ]
+   },
+   "format_set_source": "draft",
+   "format_set_error": null,
+   "target_type": "Collection",
+   "action_function": "CollectionManager.find_collections",
+   "columns": [
+    {
+     "name": "Catalog Name",
+     "key": "display_name"
+    },
+    {
+     "name": "Description",
+     "key": "description"
+    }
+   ],
+   "nonexistent_attributes": {
+    "checked": true,
+    "keys": [],
+    "strict_keys": []
+   },
+   "pyegeria_validate": {
+    "ok": true,
+    "errors": [],
+    "warnings": [],
+    "not_applied": [],
+    "checked": [
+     "structure",
+     "target type",
+     "column attributes",
+     "load-time resolution (find method / analytic routine, parameters, formats)"
+    ],
+    "not_checked": [
+     "Dr.Egeria validate: no runner given"
+    ],
+    "dr_egeria": null,
+    "s": 0.01
+   },
+   "validates": true,
+   "run": {
+    "ran": false,
+    "why": "offline"
+   }
+  },
+  "total_s": 26.45
+ },
+ {
+  "id": "B13",
+  "set": "builtin",
+  "question": "What are the current governance metrics for our organization?",
+  "expect": {
+   "target_type": "GovernanceMetric",
+   "condition": null,
+   "columns": [
+    "Display Name",
+    "Measurement / Target"
+   ]
+  },
+  "mode": "rebased",
+  "offline": true,
+  "turns": 3,
+  "final_phase": "refine",
+  "transcript": [
+   {
+    "turn": 1,
+    "user": "What are the current governance metrics for our organization?",
+    "phase": "confirm_action",
+    "response": "\u26a0\ufe0f Left out: 'Metric Name' (metricName) isn't an attribute of GovernanceMetric.\n\u26a0\ufe0f Left out: 'Value' (metricValue) isn't an attribute of GovernanceMetric.\n\u26a0\ufe0f Left out: 'Measurement Date' (measurementDate) isn't an attribute of GovernanceMetric.\n### Proposed Report Spec: **Current Governance Metrics for Our Organization**\n\n- **Target Type:** GovernanceMetric\n- **Found with:** `GovernanceOfficer.find_governance_definitions` (from Governance-Metric-DrE-Basic)\n- **Condition:** none (everything of this type)\n- **Description:** This report provides an overview of the current governance metrics within our organization.\n\n---\n\nDoes this look correct? Use the buttons below, or describe adjustments.",
+    "s": 40.53
+   },
+   {
+    "turn": 2,
+    "user": "continue_columns",
+    "phase": "elicit_columns",
+    "response": "### Columns Configuration\n\n**1. Description** \u2014 key: `description`\n\n**Condition:** none (everything of this type)\n\n---\n\nDoes this look right? Use **Generate now**, or describe changes (only attributes of GovernanceMetric can be columns).",
+    "s": 0.0
+   },
+   {
+    "turn": 3,
+    "user": "generate now",
+    "phase": "refine",
+    "response": "**Current Governance Metrics for Our Organization** (draft spec **report_20261113_063235_current_governance_metrics_report**, validated with pyegeria)\n\nSign in to see the answer here; you can run it with **Execute Spec**.",
+    "s": 0.02
+   }
+  ],
+  "elicit_s": 40.55,
+  "draft": {
+   "draft_id": "draft_report_20261113_063235_current_governance_metrics_report",
+   "title": "current-governance-metrics-report",
+   "phase": "refine",
+   "phase_label": "Refinement session",
+   "original_query": "What are the current governance metrics for our organization?",
+   "action_function": "GovernanceOfficer.find_governance_definitions",
+   "target_type": "GovernanceMetric",
+   "columns": [
+    {
+     "name": "Description",
+     "key": "description",
+     "format": false,
+     "detail_spec": null,
+     "formats": "ALL"
+    }
+   ],
+   "content_filters": {
+    "search_string": "*"
+   },
+   "shape_defaults": {},
+   "performance_hints": {
+    "page_size": 100,
+    "start_from": 0
+   },
+   "perspectives": [],
+   "questions": [],
+   "answers": {
+    "Heading": "Current Governance Metrics for Our Organization",
+    "Description": "This report provides an overview of the current governance metrics within our organization."
+   },
+   "pending_questions": {},
+   "doc_id": "report_20261113_063235_current_governance_metrics_report",
+   "history_stack": [
+    {
+     "phase": "confirm_action",
+     "phase_label": "Confirming report basic configuration",
+     "columns": [
+      {
+       "name": "Description",
+       "key": "description",
+       "format": false,
+       "detail_spec": null,
+       "formats": "ALL"
+      }
+     ],
+     "content_filters": {
+      "search_string": "*"
+     },
+     "shape_defaults": {},
+     "performance_hints": {
+      "page_size": 100,
+      "start_from": 0
+     },
+     "perspectives": [],
+     "questions": [],
+     "answers": {
+      "Heading": "Current Governance Metrics for Our Organization",
+      "Description": "This report provides an overview of the current governance metrics within our organization."
+     },
+     "pending_questions": {},
+     "summary_of_answers": ""
+    },
+    {
+     "phase": "elicit_columns",
+     "phase_label": "Reviewing and customizing columns",
+     "columns": [
+      {
+       "name": "Description",
+       "key": "description",
+       "format": false,
+       "detail_spec": null,
+       "formats": "ALL"
+      }
+     ],
+     "content_filters": {
+      "search_string": "*"
+     },
+     "shape_defaults": {},
+     "performance_hints": {
+      "page_size": 100,
+      "start_from": 0
+     },
+     "perspectives": [],
+     "questions": [],
+     "answers": {
+      "Heading": "Current Governance Metrics for Our Organization",
+      "Description": "This report provides an overview of the current governance metrics within our organization."
+     },
+     "pending_questions": {},
+     "summary_of_answers": ""
+    }
+   ],
+   "created_at": 1794573155.5994802,
+   "updated_at": 1794573155.617058,
+   "summary_of_answers": "",
+   "user_id": "erinoverview",
+   "conditions": {},
+   "unmet": null,
+   "v2": true,
+   "format_set": {
+    "target_type": "GovernanceMetric",
+    "heading": "Current Governance Metrics for Our Organization",
+    "description": "This report provides an overview of the current governance metrics within our organization.",
+    "aliases": [],
+    "annotations": {},
+    "formats": [
+     {
+      "types": [
+       "ALL"
+      ],
+      "attributes": [
+       {
+        "name": "Description",
+        "key": "description",
+        "format": false
+       }
+      ]
+     }
+    ],
+    "action": {
+     "function": "GovernanceOfficer.find_governance_definitions",
+     "required_params": [
+      "search_string"
+     ],
+     "optional_params": [],
+     "spec_params": {
+      "metadata_element_type": "GovernanceMetric"
+     },
+     "analytic_spec_params": {}
+    }
+   }
+  },
+  "check": {
+   "doc_id": "report_20261113_063235_current_governance_metrics_report",
+   "document": "# Current Governance Metrics for Our Organization\n\n## Create Report Spec\n### Display Name\ncurrent-governance-metrics-report\n### Qualified Name\nReportSpec::current-governance-metrics-report\n### Description\nThis report provides an overview of the current governance metrics within our organization.\n### Content Status\nACTIVE\n### Target Type Name\nGovernanceMetric\n### Output Types\nALL\n### Microflow\n{\"format\":\"microflow/1\",\"params\":{\"search_string\":{\"type\":\"string\",\"required\":true}},\"stages\":[{\"stage\":\"producer/find\",\"type\":\"GovernanceMetric\",\"function\":\"GovernanceOfficer.find_governance_definitions\",\"params\":{\"search_string\":\"$search_string\",\"metadata_element_type\":\"GovernanceMetric\"}}],\"formatters\":{\"ALL\":{\"columns\":[{\"field\":\"description\",\"label\":\"Description\"}]}}}\n\n___\n",
+   "completed": true,
+   "asked_clarifying": false,
+   "dre_offline_parse": {
+    "ok": true,
+    "commands": [
+     "Create Report Spec"
+    ]
+   },
+   "format_set_source": "draft",
+   "format_set_error": null,
+   "target_type": "GovernanceMetric",
+   "action_function": "GovernanceOfficer.find_governance_definitions",
+   "columns": [
+    {
+     "name": "Description",
+     "key": "description"
+    }
+   ],
+   "nonexistent_attributes": {
+    "checked": true,
+    "keys": [],
+    "strict_keys": []
+   },
+   "pyegeria_validate": {
+    "ok": true,
+    "errors": [],
+    "warnings": [],
+    "not_applied": [],
+    "checked": [
+     "structure",
+     "target type",
+     "column attributes",
+     "load-time resolution (find method / analytic routine, parameters, formats)"
+    ],
+    "not_checked": [
+     "Dr.Egeria validate: no runner given"
+    ],
+    "dr_egeria": null,
+    "s": 0.01
+   },
+   "validates": true,
+   "run": {
+    "ran": false,
+    "why": "offline"
+   }
+  },
+  "total_s": 40.56
+ },
+ {
+  "id": "B14",
+  "set": "builtin",
+  "question": "What measurements and targets are defined for governance controls?",
+  "expect": {
+   "target_type": "GovernanceControl",
+   "condition": null,
+   "columns": [
+    "Display Name",
+    "Measurement",
+    "Target"
+   ]
+  },
+  "mode": "rebased",
+  "offline": true,
+  "turns": 1,
+  "final_phase": "error",
+  "transcript": [
+   {
+    "turn": 1,
+    "user": "What measurements and targets are defined for governance controls?",
+    "phase": "error",
+    "response": "'GovernanceControlDefinition' isn't an Egeria type I can report on.",
+    "s": 56.07
+   }
+  ],
+  "elicit_s": 56.07,
+  "draft": null,
+  "check": {
+   "doc_id": null,
+   "document": null,
+   "completed": false,
+   "asked_clarifying": false,
+   "format_set_source": null,
+   "format_set_error": "no spec document"
+  },
+  "total_s": 56.07
+ },
+ {
+  "id": "B15",
+  "set": "builtin",
+  "question": "Which governance policies are active and approved?",
+  "expect": {
+   "target_type": "GovernancePolicy",
+   "condition": "status ACTIVE/APPROVED",
+   "columns": [
+    "Display Name",
+    "Status"
+   ]
+  },
+  "mode": "rebased",
+  "offline": true,
+  "turns": 3,
+  "final_phase": "refine",
+  "transcript": [
+   {
+    "turn": 1,
+    "user": "Which governance policies are active and approved?",
+    "phase": "confirm_action",
+    "response": "### Proposed Report Spec: **Active and Approved Governance Policies Report**\n\n- **Target Type:** GovernancePolicy\n- **Found with:** `GovernanceOfficer.find_governance_definitions` (from Governance-Policy-DrE-Basic)\n- **Condition:** none (everything of this type)\n- **Description:** This report lists all governance policies that are currently active and approved.\n\n---\n\nDoes this look correct? Use the buttons below, or describe adjustments.",
+    "s": 32.63
+   },
+   {
+    "turn": 2,
+    "user": "continue_columns",
+    "phase": "elicit_columns",
+    "response": "### Columns Configuration\n\n**1. Policy Name** \u2014 key: `display_name`\n**2. Description** \u2014 key: `description`\n**3. Status** \u2014 key: `status`\n\n**Condition:** none (everything of this type)\n\n---\n\nDoes this look right? Use **Generate now**, or describe changes (only attributes of GovernancePolicy can be columns).",
+    "s": 0.0
+   },
+   {
+    "turn": 3,
+    "user": "generate now",
+    "phase": "refine",
+    "response": "**Active and Approved Governance Policies Report** (draft spec **report_20261113_063404_active_approved_governance_policies**, validated with pyegeria)\n\nSign in to see the answer here; you can run it with **Execute Spec**.",
+    "s": 0.03
+   }
+  ],
+  "elicit_s": 32.66,
+  "draft": {
+   "draft_id": "draft_report_20261113_063404_active_approved_governance_policies",
+   "title": "active-approved-governance-policies",
+   "phase": "refine",
+   "phase_label": "Refinement session",
+   "original_query": "Which governance policies are active and approved?",
+   "action_function": "GovernanceOfficer.find_governance_definitions",
+   "target_type": "GovernancePolicy",
+   "columns": [
+    {
+     "name": "Policy Name",
+     "key": "display_name",
+     "format": false,
+     "detail_spec": null,
+     "formats": "ALL"
+    },
+    {
+     "name": "Description",
+     "key": "description",
+     "format": false,
+     "detail_spec": null,
+     "formats": "ALL"
+    },
+    {
+     "name": "Status",
+     "key": "status",
+     "format": false,
+     "detail_spec": null,
+     "formats": "ALL"
+    }
+   ],
+   "content_filters": {
+    "search_string": "*"
+   },
+   "shape_defaults": {},
+   "performance_hints": {
+    "page_size": 100,
+    "start_from": 0
+   },
+   "perspectives": [],
+   "questions": [],
+   "answers": {
+    "Heading": "Active and Approved Governance Policies Report",
+    "Description": "This report lists all governance policies that are currently active and approved."
+   },
+   "pending_questions": {},
+   "doc_id": "report_20261113_063404_active_approved_governance_policies",
+   "history_stack": [
+    {
+     "phase": "confirm_action",
+     "phase_label": "Confirming report basic configuration",
+     "columns": [
+      {
+       "name": "Policy Name",
+       "key": "display_name",
+       "format": false,
+       "detail_spec": null,
+       "formats": "ALL"
+      },
+      {
+       "name": "Description",
+       "key": "description",
+       "format": false,
+       "detail_spec": null,
+       "formats": "ALL"
+      },
+      {
+       "name": "Status",
+       "key": "status",
+       "format": false,
+       "detail_spec": null,
+       "formats": "ALL"
+      }
+     ],
+     "content_filters": {
+      "search_string": "*"
+     },
+     "shape_defaults": {},
+     "performance_hints": {
+      "page_size": 100,
+      "start_from": 0
+     },
+     "perspectives": [],
+     "questions": [],
+     "answers": {
+      "Heading": "Active and Approved Governance Policies Report",
+      "Description": "This report lists all governance policies that are currently active and approved."
+     },
+     "pending_questions": {},
+     "summary_of_answers": ""
+    },
+    {
+     "phase": "elicit_columns",
+     "phase_label": "Reviewing and customizing columns",
+     "columns": [
+      {
+       "name": "Policy Name",
+       "key": "display_name",
+       "format": false,
+       "detail_spec": null,
+       "formats": "ALL"
+      },
+      {
+       "name": "Description",
+       "key": "description",
+       "format": false,
+       "detail_spec": null,
+       "formats": "ALL"
+      },
+      {
+       "name": "Status",
+       "key": "status",
+       "format": false,
+       "detail_spec": null,
+       "formats": "ALL"
+      }
+     ],
+     "content_filters": {
+      "search_string": "*"
+     },
+     "shape_defaults": {},
+     "performance_hints": {
+      "page_size": 100,
+      "start_from": 0
+     },
+     "perspectives": [],
+     "questions": [],
+     "answers": {
+      "Heading": "Active and Approved Governance Policies Report",
+      "Description": "This report lists all governance policies that are currently active and approved."
+     },
+     "pending_questions": {},
+     "summary_of_answers": ""
+    }
+   ],
+   "created_at": 1794573244.330932,
+   "updated_at": 1794573244.371445,
+   "summary_of_answers": "",
+   "user_id": "erinoverview",
+   "conditions": {},
+   "unmet": null,
+   "v2": true,
+   "format_set": {
+    "target_type": "GovernancePolicy",
+    "heading": "Active and Approved Governance Policies Report",
+    "description": "This report lists all governance policies that are currently active and approved.",
+    "aliases": [],
+    "annotations": {},
+    "formats": [
+     {
+      "types": [
+       "ALL"
+      ],
+      "attributes": [
+       {
+        "name": "Policy Name",
+        "key": "display_name",
+        "format": false
+       },
+       {
+        "name": "Description",
+        "key": "description",
+        "format": false
+       },
+       {
+        "name": "Status",
+        "key": "status",
+        "format": false
+       }
+      ]
+     }
+    ],
+    "action": {
+     "function": "GovernanceOfficer.find_governance_definitions",
+     "required_params": [
+      "search_string"
+     ],
+     "optional_params": [],
+     "spec_params": {
+      "metadata_element_type": "GovernancePolicy"
+     },
+     "analytic_spec_params": {}
+    }
+   }
+  },
+  "check": {
+   "doc_id": "report_20261113_063404_active_approved_governance_policies",
+   "document": "# Active and Approved Governance Policies Report\n\n## Create Report Spec\n### Display Name\nactive-approved-governance-policies\n### Qualified Name\nReportSpec::active-approved-governance-policies\n### Description\nThis report lists all governance policies that are currently active and approved.\n### Content Status\nACTIVE\n### Target Type Name\nGovernancePolicy\n### Output Types\nALL\n### Microflow\n{\"format\":\"microflow/1\",\"params\":{\"search_string\":{\"type\":\"string\",\"required\":true}},\"stages\":[{\"stage\":\"producer/find\",\"type\":\"GovernancePolicy\",\"function\":\"GovernanceOfficer.find_governance_definitions\",\"params\":{\"search_string\":\"$search_string\",\"metadata_element_type\":\"GovernancePolicy\"}}],\"formatters\":{\"ALL\":{\"columns\":[{\"field\":\"display_name\",\"label\":\"Policy Name\"},{\"field\":\"description\",\"label\":\"Description\"},{\"field\":\"status\",\"label\":\"Status\"}]}}}\n\n___\n",
+   "completed": true,
+   "asked_clarifying": false,
+   "dre_offline_parse": {
+    "ok": true,
+    "commands": [
+     "Create Report Spec"
+    ]
+   },
+   "format_set_source": "draft",
+   "format_set_error": null,
+   "target_type": "GovernancePolicy",
+   "action_function": "GovernanceOfficer.find_governance_definitions",
+   "columns": [
+    {
+     "name": "Policy Name",
+     "key": "display_name"
+    },
+    {
+     "name": "Description",
+     "key": "description"
+    },
+    {
+     "name": "Status",
+     "key": "status"
+    }
+   ],
+   "nonexistent_attributes": {
+    "checked": true,
+    "keys": [],
+    "strict_keys": []
+   },
+   "pyegeria_validate": {
+    "ok": true,
+    "errors": [],
+    "warnings": [],
+    "not_applied": [],
+    "checked": [
+     "structure",
+     "target type",
+     "column attributes",
+     "load-time resolution (find method / analytic routine, parameters, formats)"
+    ],
+    "not_checked": [
+     "Dr.Egeria validate: no runner given"
+    ],
+    "dr_egeria": null,
+    "s": 0.01
+   },
+   "validates": true,
+   "run": {
+    "ran": false,
+    "why": "offline"
+   }
+  },
+  "total_s": 32.68
+ },
+ {
+  "id": "C01",
+  "set": "coco",
+  "question": "Show the campaign, phases and tasks of Jules Keeper's ninety day plan with their current status.",
+  "expect": {
+   "target_type": "Project",
+   "condition": "JulesKeeper:: plan items",
+   "columns": [
+    "Display Name",
+    "Status"
+   ]
+  },
+  "mode": "rebased",
+  "offline": true,
+  "turns": 1,
+  "final_phase": "error",
+  "transcript": [
+   {
+    "turn": 1,
+    "user": "Show the campaign, phases and tasks of Jules Keeper's ninety day plan with their current status.",
+    "phase": "error",
+    "response": "'None' isn't an Egeria type I can report on.",
+    "s": 47.84
+   }
+  ],
+  "elicit_s": 47.84,
+  "draft": null,
+  "check": {
+   "doc_id": null,
+   "document": null,
+   "completed": false,
+   "asked_clarifying": false,
+   "format_set_source": null,
+   "format_set_error": "no spec document"
+  },
+  "total_s": 47.84
+ },
+ {
+  "id": "C02",
+  "set": "coco",
+  "question": "List the risks in the company risk register.",
+  "expect": {
+   "target_type": "Risk",
+   "condition": null,
+   "columns": [
+    "Display Name",
+    "Description"
+   ]
+  },
+  "mode": "rebased",
+  "offline": true,
+  "turns": 3,
+  "final_phase": "refine",
+  "transcript": [
+   {
+    "turn": 1,
+    "user": "List the risks in the company risk register.",
+    "phase": "confirm_action",
+    "response": "\u26a0\ufe0f Left out: 'Risk Level' (additionalProperties.riskLevel) isn't an attribute of GovernanceDefinition.\n### Proposed Report Spec: **List of Risks in the Company Risk Register**\n\n- **Target Type:** GovernanceDefinition\n- **Found with:** `GovernanceOfficer.find_governance_definitions` (from Governance-Definition-DrE-Basic)\n- **Condition:** none (everything of this type)\n- **Description:** This report lists all risks documented in the company's risk register.\n\n---\n\nDoes this look correct? Use the buttons below, or describe adjustments.",
+    "s": 45.19
+   },
+   {
+    "turn": 2,
+    "user": "continue_columns",
+    "phase": "elicit_columns",
+    "response": "### Columns Configuration\n\n**1. Risk ID** \u2014 key: `qualified_name`\n**2. Risk Name** \u2014 key: `display_name`\n**3. Description** \u2014 key: `description`\n**4. Mitigation Strategy** \u2014 key: `summary`\n\n**Condition:** none (everything of this type)\n\n---\n\nDoes this look right? Use **Generate now**, or describe changes (only attributes of GovernanceDefinition can be columns).",
+    "s": 0.0
+   },
+   {
+    "turn": 3,
+    "user": "generate now",
+    "phase": "refine",
+    "response": "**List of Risks in the Company Risk Register** (draft spec **report_20261113_063537_company_risk_register_report**, validated with pyegeria)\n\nSign in to see the answer here; you can run it with **Execute Spec**.",
+    "s": 0.02
+   }
+  ],
+  "elicit_s": 45.22,
+  "draft": {
+   "draft_id": "draft_report_20261113_063537_company_risk_register_report",
+   "title": "company-risk-register-report",
+   "phase": "refine",
+   "phase_label": "Refinement session",
+   "original_query": "List the risks in the company risk register.",
+   "action_function": "GovernanceOfficer.find_governance_definitions",
+   "target_type": "GovernanceDefinition",
+   "columns": [
+    {
+     "name": "Risk ID",
+     "key": "qualified_name",
+     "format": false,
+     "detail_spec": null,
+     "formats": "ALL"
+    },
+    {
+     "name": "Risk Name",
+     "key": "display_name",
+     "format": false,
+     "detail_spec": null,
+     "formats": "ALL"
+    },
+    {
+     "name": "Description",
+     "key": "description",
+     "format": false,
+     "detail_spec": null,
+     "formats": "ALL"
+    },
+    {
+     "name": "Mitigation Strategy",
+     "key": "summary",
+     "format": false,
+     "detail_spec": null,
+     "formats": "ALL"
+    }
+   ],
+   "content_filters": {
+    "search_string": "*"
+   },
+   "shape_defaults": {},
+   "performance_hints": {
+    "page_size": 100,
+    "start_from": 0
+   },
+   "perspectives": [],
+   "questions": [],
+   "answers": {
+    "Heading": "List of Risks in the Company Risk Register",
+    "Description": "This report lists all risks documented in the company's risk register."
+   },
+   "pending_questions": {},
+   "doc_id": "report_20261113_063537_company_risk_register_report",
+   "history_stack": [
+    {
+     "phase": "confirm_action",
+     "phase_label": "Confirming report basic configuration",
+     "columns": [
+      {
+       "name": "Risk ID",
+       "key": "qualified_name",
+       "format": false,
+       "detail_spec": null,
+       "formats": "ALL"
+      },
+      {
+       "name": "Risk Name",
+       "key": "display_name",
+       "format": false,
+       "detail_spec": null,
+       "formats": "ALL"
+      },
+      {
+       "name": "Description",
+       "key": "description",
+       "format": false,
+       "detail_spec": null,
+       "formats": "ALL"
+      },
+      {
+       "name": "Mitigation Strategy",
+       "key": "summary",
+       "format": false,
+       "detail_spec": null,
+       "formats": "ALL"
+      }
+     ],
+     "content_filters": {
+      "search_string": "*"
+     },
+     "shape_defaults": {},
+     "performance_hints": {
+      "page_size": 100,
+      "start_from": 0
+     },
+     "perspectives": [],
+     "questions": [],
+     "answers": {
+      "Heading": "List of Risks in the Company Risk Register",
+      "Description": "This report lists all risks documented in the company's risk register."
+     },
+     "pending_questions": {},
+     "summary_of_answers": ""
+    },
+    {
+     "phase": "elicit_columns",
+     "phase_label": "Reviewing and customizing columns",
+     "columns": [
+      {
+       "name": "Risk ID",
+       "key": "qualified_name",
+       "format": false,
+       "detail_spec": null,
+       "formats": "ALL"
+      },
+      {
+       "name": "Risk Name",
+       "key": "display_name",
+       "format": false,
+       "detail_spec": null,
+       "formats": "ALL"
+      },
+      {
+       "name": "Description",
+       "key": "description",
+       "format": false,
+       "detail_spec": null,
+       "formats": "ALL"
+      },
+      {
+       "name": "Mitigation Strategy",
+       "key": "summary",
+       "format": false,
+       "detail_spec": null,
+       "formats": "ALL"
+      }
+     ],
+     "content_filters": {
+      "search_string": "*"
+     },
+     "shape_defaults": {},
+     "performance_hints": {
+      "page_size": 100,
+      "start_from": 0
+     },
+     "perspectives": [],
+     "questions": [],
+     "answers": {
+      "Heading": "List of Risks in the Company Risk Register",
+      "Description": "This report lists all risks documented in the company's risk register."
+     },
+     "pending_questions": {},
+     "summary_of_answers": ""
+    }
+   ],
+   "created_at": 1794573337.43067,
+   "updated_at": 1794573337.460404,
+   "summary_of_answers": "",
+   "user_id": "erinoverview",
+   "conditions": {},
+   "unmet": null,
+   "v2": true,
+   "format_set": {
+    "target_type": "GovernanceDefinition",
+    "heading": "List of Risks in the Company Risk Register",
+    "description": "This report lists all risks documented in the company's risk register.",
+    "aliases": [],
+    "annotations": {},
+    "formats": [
+     {
+      "types": [
+       "ALL"
+      ],
+      "attributes": [
+       {
+        "name": "Risk ID",
+        "key": "qualified_name",
+        "format": false
+       },
+       {
+        "name": "Risk Name",
+        "key": "display_name",
+        "format": false
+       },
+       {
+        "name": "Description",
+        "key": "description",
+        "format": false
+       },
+       {
+        "name": "Mitigation Strategy",
+        "key": "summary",
+        "format": false
+       }
+      ]
+     }
+    ],
+    "action": {
+     "function": "GovernanceOfficer.find_governance_definitions",
+     "required_params": [
+      "search_string"
+     ],
+     "optional_params": [],
+     "spec_params": {
+      "metadata_element_type": "GovernanceDefinition"
+     },
+     "analytic_spec_params": {}
+    }
+   }
+  },
+  "check": {
+   "doc_id": "report_20261113_063537_company_risk_register_report",
+   "document": "# List of Risks in the Company Risk Register\n\n## Create Report Spec\n### Display Name\ncompany-risk-register-report\n### Qualified Name\nReportSpec::company-risk-register-report\n### Description\nThis report lists all risks documented in the company's risk register.\n### Content Status\nACTIVE\n### Target Type Name\nGovernanceDefinition\n### Output Types\nALL\n### Microflow\n{\"format\":\"microflow/1\",\"params\":{\"search_string\":{\"type\":\"string\",\"required\":true}},\"stages\":[{\"stage\":\"producer/find\",\"type\":\"GovernanceDefinition\",\"function\":\"GovernanceOfficer.find_governance_definitions\",\"params\":{\"search_string\":\"$search_string\",\"metadata_element_type\":\"GovernanceDefinition\"}}],\"formatters\":{\"ALL\":{\"columns\":[{\"field\":\"qualified_name\",\"label\":\"Risk ID\"},{\"field\":\"display_name\",\"label\":\"Risk Name\"},{\"field\":\"description\",\"label\":\"Description\"},{\"field\":\"summary\",\"label\":\"Mitigation Strategy\"}]}}}\n\n___\n",
+   "completed": true,
+   "asked_clarifying": false,
+   "dre_offline_parse": {
+    "ok": true,
+    "commands": [
+     "Create Report Spec"
+    ]
+   },
+   "format_set_source": "draft",
+   "format_set_error": null,
+   "target_type": "GovernanceDefinition",
+   "action_function": "GovernanceOfficer.find_governance_definitions",
+   "columns": [
+    {
+     "name": "Risk ID",
+     "key": "qualified_name"
+    },
+    {
+     "name": "Risk Name",
+     "key": "display_name"
+    },
+    {
+     "name": "Description",
+     "key": "description"
+    },
+    {
+     "name": "Mitigation Strategy",
+     "key": "summary"
+    }
+   ],
+   "nonexistent_attributes": {
+    "checked": true,
+    "keys": [],
+    "strict_keys": []
+   },
+   "pyegeria_validate": {
+    "ok": true,
+    "errors": [],
+    "warnings": [],
+    "not_applied": [],
+    "checked": [
+     "structure",
+     "target type",
+     "column attributes",
+     "load-time resolution (find method / analytic routine, parameters, formats)"
+    ],
+    "not_checked": [
+     "Dr.Egeria validate: no runner given"
+    ],
+    "dr_egeria": null,
+    "s": 0.01
+   },
+   "validates": true,
+   "run": {
+    "ran": false,
+    "why": "offline"
+   }
+  },
+  "total_s": 45.24
+ },
+ {
+  "id": "C03",
+  "set": "coco",
+  "question": "Which risks in the risk register have the highest importance?",
+  "expect": {
+   "target_type": "Risk",
+   "condition": "sorted by importance",
+   "columns": [
+    "Display Name",
+    "Importance"
+   ]
+  },
+  "mode": "rebased",
+  "offline": true,
+  "turns": 1,
+  "final_phase": "error",
+  "transcript": [
+   {
+    "turn": 1,
+    "user": "Which risks in the risk register have the highest importance?",
+    "phase": "error",
+    "response": "'None' isn't an Egeria type I can report on.",
+    "s": 36.16
+   }
+  ],
+  "elicit_s": 36.16,
+  "draft": null,
+  "check": {
+   "doc_id": null,
+   "document": null,
+   "completed": false,
+   "asked_clarifying": false,
+   "format_set_source": null,
+   "format_set_error": "no spec document"
+  },
+  "total_s": 36.16
+ },
+ {
+  "id": "C04",
+  "set": "coco",
+  "question": "What has the data governance program committed to measure? List every governance metric with its domain.",
+  "expect": {
+   "target_type": "GovernanceMetric",
+   "condition": null,
+   "columns": [
+    "Display Name",
+    "Domain",
+    "Measurement"
+   ]
+  },
+  "mode": "rebased",
+  "offline": true,
+  "turns": 1,
+  "final_phase": "error",
+  "transcript": [
+   {
+    "turn": 1,
+    "user": "What has the data governance program committed to measure? List every governance metric with its domain.",
+    "phase": "error",
+    "response": "'GovernanceMetricDefinition' isn't an Egeria type I can report on.",
+    "s": 29.03
+   }
+  ],
+  "elicit_s": 29.03,
+  "draft": null,
+  "check": {
+   "doc_id": null,
+   "document": null,
+   "completed": false,
+   "asked_clarifying": false,
+   "format_set_source": null,
+   "format_set_error": "no spec document"
+  },
+  "total_s": 29.03
+ },
+ {
+  "id": "C05",
+  "set": "coco",
+  "question": "Which digital products does the Coco Pharmaceuticals data hub offer, and who is the product manager for each?",
+  "expect": {
+   "target_type": "DigitalProduct",
+   "condition": null,
+   "columns": [
+    "Display Name",
+    "Product Manager"
+   ]
+  },
+  "mode": "rebased",
+  "offline": true,
+  "turns": 1,
+  "final_phase": "error",
+  "transcript": [
+   {
+    "turn": 1,
+    "user": "Which digital products does the Coco Pharmaceuticals data hub offer, and who is the product manager for each?",
+    "phase": "error",
+    "response": "'None' isn't an Egeria type I can report on.",
+    "s": 30.83
+   }
+  ],
+  "elicit_s": 30.83,
+  "draft": null,
+  "check": {
+   "doc_id": null,
+   "document": null,
+   "completed": false,
+   "asked_clarifying": false,
+   "format_set_source": null,
+   "format_set_error": "no spec document"
+  },
+  "total_s": 30.83
+ },
+ {
+  "id": "C06",
+  "set": "coco",
+  "question": "Which digital products have no product manager?",
+  "expect": {
+   "target_type": "DigitalProduct",
+   "condition": "no product manager",
+   "columns": [
+    "Display Name",
+    "Product Manager"
+   ]
+  },
+  "mode": "rebased",
+  "offline": true,
+  "turns": 3,
+  "final_phase": "refine",
+  "transcript": [
+   {
+    "turn": 1,
+    "user": "Which digital products have no product manager?",
+    "phase": "confirm_action",
+    "response": "### Proposed Report Spec: **Digital Products with No Product Manager**\n\n- **Target Type:** Asset\n- **Found with:** `MetadataExpert.find_metadata_elements_with_string` (from generic finder)\n- **Condition:** none (everything of this type)\n- **Description:** This report lists all digital products that do not have an assigned product manager.\n\n---\n\nDoes this look correct? Use the buttons below, or describe adjustments.",
+    "s": 26.29
+   },
+   {
+    "turn": 2,
+    "user": "continue_columns",
+    "phase": "elicit_columns",
+    "response": "### Columns Configuration\n\n**1. Product Name** \u2014 key: `display_name`\n**2. Description** \u2014 key: `description`\n\n**Condition:** none (everything of this type)\n\n---\n\nDoes this look right? Use **Generate now**, or describe changes (only attributes of Asset can be columns).",
+    "s": 0.0
+   },
+   {
+    "turn": 3,
+    "user": "generate now",
+    "phase": "refine",
+    "response": "**Digital Products with No Product Manager** (draft spec **report_20261113_063739_digital_products_without_product_manager**, validated with pyegeria)\n\nSign in to see the answer here; you can run it with **Execute Spec**.",
+    "s": 0.03
+   }
+  ],
+  "elicit_s": 26.32,
+  "draft": {
+   "draft_id": "draft_report_20261113_063739_digital_products_without_product_manager",
+   "title": "digital-products-without-product-manager",
+   "phase": "refine",
+   "phase_label": "Refinement session",
+   "original_query": "Which digital products have no product manager?",
+   "action_function": "MetadataExpert.find_metadata_elements_with_string",
+   "target_type": "Asset",
+   "columns": [
+    {
+     "name": "Product Name",
+     "key": "display_name",
+     "format": false,
+     "detail_spec": null,
+     "formats": "ALL"
+    },
+    {
+     "name": "Description",
+     "key": "description",
+     "format": false,
+     "detail_spec": null,
+     "formats": "ALL"
+    }
+   ],
+   "content_filters": {
+    "search_string": "*"
+   },
+   "shape_defaults": {},
+   "performance_hints": {
+    "page_size": 100,
+    "start_from": 0
+   },
+   "perspectives": [],
+   "questions": [],
+   "answers": {
+    "Heading": "Digital Products with No Product Manager",
+    "Description": "This report lists all digital products that do not have an assigned product manager."
+   },
+   "pending_questions": {},
+   "doc_id": "report_20261113_063739_digital_products_without_product_manager",
+   "history_stack": [
+    {
+     "phase": "confirm_action",
+     "phase_label": "Confirming report basic configuration",
+     "columns": [
+      {
+       "name": "Product Name",
+       "key": "display_name",
+       "format": false,
+       "detail_spec": null,
+       "formats": "ALL"
+      },
+      {
+       "name": "Description",
+       "key": "description",
+       "format": false,
+       "detail_spec": null,
+       "formats": "ALL"
+      }
+     ],
+     "content_filters": {
+      "search_string": "*"
+     },
+     "shape_defaults": {},
+     "performance_hints": {
+      "page_size": 100,
+      "start_from": 0
+     },
+     "perspectives": [],
+     "questions": [],
+     "answers": {
+      "Heading": "Digital Products with No Product Manager",
+      "Description": "This report lists all digital products that do not have an assigned product manager."
+     },
+     "pending_questions": {},
+     "summary_of_answers": ""
+    },
+    {
+     "phase": "elicit_columns",
+     "phase_label": "Reviewing and customizing columns",
+     "columns": [
+      {
+       "name": "Product Name",
+       "key": "display_name",
+       "format": false,
+       "detail_spec": null,
+       "formats": "ALL"
+      },
+      {
+       "name": "Description",
+       "key": "description",
+       "format": false,
+       "detail_spec": null,
+       "formats": "ALL"
+      }
+     ],
+     "content_filters": {
+      "search_string": "*"
+     },
+     "shape_defaults": {},
+     "performance_hints": {
+      "page_size": 100,
+      "start_from": 0
+     },
+     "perspectives": [],
+     "questions": [],
+     "answers": {
+      "Heading": "Digital Products with No Product Manager",
+      "Description": "This report lists all digital products that do not have an assigned product manager."
+     },
+     "pending_questions": {},
+     "summary_of_answers": ""
+    }
+   ],
+   "created_at": 1794573459.825073,
+   "updated_at": 1794573459.85181,
+   "summary_of_answers": "",
+   "user_id": "erinoverview",
+   "conditions": {},
+   "unmet": null,
+   "v2": true,
+   "format_set": {
+    "target_type": "Asset",
+    "heading": "Digital Products with No Product Manager",
+    "description": "This report lists all digital products that do not have an assigned product manager.",
+    "aliases": [],
+    "annotations": {},
+    "formats": [
+     {
+      "types": [
+       "ALL"
+      ],
+      "attributes": [
+       {
+        "name": "Product Name",
+        "key": "display_name",
+        "format": false
+       },
+       {
+        "name": "Description",
+        "key": "description",
+        "format": false
+       }
+      ]
+     }
+    ],
+    "action": {
+     "function": "MetadataExpert.find_metadata_elements_with_string",
+     "required_params": [
+      "search_string"
+     ],
+     "optional_params": [],
+     "spec_params": {
+      "metadata_element_type": "Asset"
+     },
+     "analytic_spec_params": {}
+    }
+   }
+  },
+  "check": {
+   "doc_id": "report_20261113_063739_digital_products_without_product_manager",
+   "document": "# Digital Products with No Product Manager\n\n## Create Report Spec\n### Display Name\ndigital-products-without-product-manager\n### Qualified Name\nReportSpec::digital-products-without-product-manager\n### Description\nThis report lists all digital products that do not have an assigned product manager.\n### Content Status\nACTIVE\n### Target Type Name\nAsset\n### Output Types\nALL\n### Microflow\n{\"format\":\"microflow/1\",\"params\":{\"search_string\":{\"type\":\"string\",\"required\":true}},\"stages\":[{\"stage\":\"producer/find\",\"type\":\"Asset\",\"function\":\"MetadataExpert.find_metadata_elements_with_string\",\"params\":{\"search_string\":\"$search_string\",\"metadata_element_type\":\"Asset\"}}],\"formatters\":{\"ALL\":{\"columns\":[{\"field\":\"display_name\",\"label\":\"Product Name\"},{\"field\":\"description\",\"label\":\"Description\"}]}}}\n\n___\n",
+   "completed": true,
+   "asked_clarifying": false,
+   "dre_offline_parse": {
+    "ok": true,
+    "commands": [
+     "Create Report Spec"
+    ]
+   },
+   "format_set_source": "draft",
+   "format_set_error": null,
+   "target_type": "Asset",
+   "action_function": "MetadataExpert.find_metadata_elements_with_string",
+   "columns": [
+    {
+     "name": "Product Name",
+     "key": "display_name"
+    },
+    {
+     "name": "Description",
+     "key": "description"
+    }
+   ],
+   "nonexistent_attributes": {
+    "checked": true,
+    "keys": [],
+    "strict_keys": []
+   },
+   "pyegeria_validate": {
+    "ok": true,
+    "errors": [],
+    "warnings": [],
+    "not_applied": [],
+    "checked": [
+     "structure",
+     "target type",
+     "column attributes",
+     "load-time resolution (find method / analytic routine, parameters, formats)"
+    ],
+    "not_checked": [
+     "Dr.Egeria validate: no runner given"
+    ],
+    "dr_egeria": null,
+    "s": 0.01
+   },
+   "validates": true,
+   "run": {
+    "ran": false,
+    "why": "offline"
+   }
+  },
+  "total_s": 26.35
+ },
+ {
+  "id": "C07",
+  "set": "coco",
+  "question": "What subscription types can I choose from for the data hub's products?",
+  "expect": {
+   "target_type": "SubscriptionType",
+   "condition": null,
+   "columns": [
+    "Display Name",
+    "Description"
+   ]
+  },
+  "mode": "rebased",
+  "offline": true,
+  "turns": 3,
+  "final_phase": "refine",
+  "transcript": [
+   {
+    "turn": 1,
+    "user": "What subscription types can I choose from for the data hub's products?",
+    "phase": "confirm_action",
+    "response": "### Proposed Report Spec: **Available Subscription Types for Data Hub Products**\n\n- **Target Type:** GlossaryTerm\n- **Found with:** `GlossaryManager.find_glossary_terms` (from Glossary-Term-DrE-Basic)\n- **Condition:** none (everything of this type)\n- **Description:** This report lists all the available subscription types that can be chosen for the data hub's products.\n\n---\n\nDoes this look correct? Use the buttons below, or describe adjustments.",
+    "s": 28.24
+   },
+   {
+    "turn": 2,
+    "user": "continue_columns",
+    "phase": "elicit_columns",
+    "response": "### Columns Configuration\n\n**1. Subscription Type Name** \u2014 key: `display_name`\n**2. Description** \u2014 key: `description`\n\n**Condition:** none (everything of this type)\n\n---\n\nDoes this look right? Use **Generate now**, or describe changes (only attributes of GlossaryTerm can be columns).",
+    "s": 0.0
+   },
+   {
+    "turn": 3,
+    "user": "generate now",
+    "phase": "refine",
+    "response": "**Available Subscription Types for Data Hub Products** (draft spec **report_20261113_063808_data_hub_subscription_types**, validated with pyegeria)\n\nSign in to see the answer here; you can run it with **Execute Spec**.",
+    "s": 0.03
+   }
+  ],
+  "elicit_s": 28.27,
+  "draft": {
+   "draft_id": "draft_report_20261113_063808_data_hub_subscription_types",
+   "title": "data-hub-subscription-types",
+   "phase": "refine",
+   "phase_label": "Refinement session",
+   "original_query": "What subscription types can I choose from for the data hub's products?",
+   "action_function": "GlossaryManager.find_glossary_terms",
+   "target_type": "GlossaryTerm",
+   "columns": [
+    {
+     "name": "Subscription Type Name",
+     "key": "display_name",
+     "format": false,
+     "detail_spec": null,
+     "formats": "ALL"
+    },
+    {
+     "name": "Description",
+     "key": "description",
+     "format": false,
+     "detail_spec": null,
+     "formats": "ALL"
+    }
+   ],
+   "content_filters": {
+    "search_string": "*"
+   },
+   "shape_defaults": {},
+   "performance_hints": {
+    "page_size": 100,
+    "start_from": 0
+   },
+   "perspectives": [],
+   "questions": [],
+   "answers": {
+    "Heading": "Available Subscription Types for Data Hub Products",
+    "Description": "This report lists all the available subscription types that can be chosen for the data hub's products."
+   },
+   "pending_questions": {},
+   "doc_id": "report_20261113_063808_data_hub_subscription_types",
+   "history_stack": [
+    {
+     "phase": "confirm_action",
+     "phase_label": "Confirming report basic configuration",
+     "columns": [
+      {
+       "name": "Subscription Type Name",
+       "key": "display_name",
+       "format": false,
+       "detail_spec": null,
+       "formats": "ALL"
+      },
+      {
+       "name": "Description",
+       "key": "description",
+       "format": false,
+       "detail_spec": null,
+       "formats": "ALL"
+      }
+     ],
+     "content_filters": {
+      "search_string": "*"
+     },
+     "shape_defaults": {},
+     "performance_hints": {
+      "page_size": 100,
+      "start_from": 0
+     },
+     "perspectives": [],
+     "questions": [],
+     "answers": {
+      "Heading": "Available Subscription Types for Data Hub Products",
+      "Description": "This report lists all the available subscription types that can be chosen for the data hub's products."
+     },
+     "pending_questions": {},
+     "summary_of_answers": ""
+    },
+    {
+     "phase": "elicit_columns",
+     "phase_label": "Reviewing and customizing columns",
+     "columns": [
+      {
+       "name": "Subscription Type Name",
+       "key": "display_name",
+       "format": false,
+       "detail_spec": null,
+       "formats": "ALL"
+      },
+      {
+       "name": "Description",
+       "key": "description",
+       "format": false,
+       "detail_spec": null,
+       "formats": "ALL"
+      }
+     ],
+     "content_filters": {
+      "search_string": "*"
+     },
+     "shape_defaults": {},
+     "performance_hints": {
+      "page_size": 100,
+      "start_from": 0
+     },
+     "perspectives": [],
+     "questions": [],
+     "answers": {
+      "Heading": "Available Subscription Types for Data Hub Products",
+      "Description": "This report lists all the available subscription types that can be chosen for the data hub's products."
+     },
+     "pending_questions": {},
+     "summary_of_answers": ""
+    }
+   ],
+   "created_at": 1794573488.129932,
+   "updated_at": 1794573488.1612,
+   "summary_of_answers": "",
+   "user_id": "erinoverview",
+   "conditions": {},
+   "unmet": null,
+   "v2": true,
+   "format_set": {
+    "target_type": "GlossaryTerm",
+    "heading": "Available Subscription Types for Data Hub Products",
+    "description": "This report lists all the available subscription types that can be chosen for the data hub's products.",
+    "aliases": [],
+    "annotations": {},
+    "formats": [
+     {
+      "types": [
+       "ALL"
+      ],
+      "attributes": [
+       {
+        "name": "Subscription Type Name",
+        "key": "display_name",
+        "format": false
+       },
+       {
+        "name": "Description",
+        "key": "description",
+        "format": false
+       }
+      ]
+     }
+    ],
+    "action": {
+     "function": "GlossaryManager.find_glossary_terms",
+     "required_params": [
+      "search_string"
+     ],
+     "optional_params": [],
+     "spec_params": {},
+     "analytic_spec_params": {}
+    }
+   }
+  },
+  "check": {
+   "doc_id": "report_20261113_063808_data_hub_subscription_types",
+   "document": "# Available Subscription Types for Data Hub Products\n\n## Create Report Spec\n### Display Name\ndata-hub-subscription-types\n### Qualified Name\nReportSpec::data-hub-subscription-types\n### Description\nThis report lists all the available subscription types that can be chosen for the data hub's products.\n### Content Status\nACTIVE\n### Target Type Name\nGlossaryTerm\n### Output Types\nALL\n### Microflow\n{\"format\":\"microflow/1\",\"params\":{\"search_string\":{\"type\":\"string\",\"required\":true}},\"stages\":[{\"stage\":\"producer/find\",\"type\":\"GlossaryTerm\",\"function\":\"GlossaryManager.find_glossary_terms\",\"params\":{\"search_string\":\"$search_string\"}}],\"formatters\":{\"ALL\":{\"columns\":[{\"field\":\"display_name\",\"label\":\"Subscription Type Name\"},{\"field\":\"description\",\"label\":\"Description\"}]}}}\n\n___\n",
+   "completed": true,
+   "asked_clarifying": false,
+   "dre_offline_parse": {
+    "ok": true,
+    "commands": [
+     "Create Report Spec"
+    ]
+   },
+   "format_set_source": "draft",
+   "format_set_error": null,
+   "target_type": "GlossaryTerm",
+   "action_function": "GlossaryManager.find_glossary_terms",
+   "columns": [
+    {
+     "name": "Subscription Type Name",
+     "key": "display_name"
+    },
+    {
+     "name": "Description",
+     "key": "description"
+    }
+   ],
+   "nonexistent_attributes": {
+    "checked": true,
+    "keys": [],
+    "strict_keys": []
+   },
+   "pyegeria_validate": {
+    "ok": true,
+    "errors": [],
+    "warnings": [],
+    "not_applied": [],
+    "checked": [
+     "structure",
+     "target type",
+     "column attributes",
+     "load-time resolution (find method / analytic routine, parameters, formats)"
+    ],
+    "not_checked": [
+     "Dr.Egeria validate: no runner given"
+    ],
+    "dr_egeria": null,
+    "s": 0.01
+   },
+   "validates": true,
+   "run": {
+    "ran": false,
+    "why": "offline"
+   }
+  },
+  "total_s": 28.29
+ },
+ {
+  "id": "C08",
+  "set": "coco",
+  "question": "List the digital subscriptions that exist, with their status.",
+  "expect": {
+   "target_type": "DigitalSubscription",
+   "condition": null,
+   "columns": [
+    "Display Name",
+    "Status"
+   ]
+  },
+  "mode": "rebased",
+  "offline": true,
+  "turns": 3,
+  "final_phase": "refine",
+  "transcript": [
+   {
+    "turn": 1,
+    "user": "List the digital subscriptions that exist, with their status.",
+    "phase": "confirm_action",
+    "response": "### Proposed Report Spec: **List of Digital Subscriptions with Their Status**\n\n- **Target Type:** Agreement\n- **Found with:** `CollectionManager.find_collections` (from Agreement-DrE-Basic)\n- **Condition:** none (everything of this type)\n- **Description:** This report lists all digital subscriptions along with their current status.\n\n---\n\nDoes this look correct? Use the buttons below, or describe adjustments.",
+    "s": 26.08
+   },
+   {
+    "turn": 2,
+    "user": "continue_columns",
+    "phase": "elicit_columns",
+    "response": "### Columns Configuration\n\n**1. Subscription Name** \u2014 key: `display_name`\n**2. Status** \u2014 key: `status`\n\n**Condition:** none (everything of this type)\n\n---\n\nDoes this look right? Use **Generate now**, or describe changes (only attributes of Agreement can be columns).",
+    "s": 0.0
+   },
+   {
+    "turn": 3,
+    "user": "generate now",
+    "phase": "refine",
+    "response": "**List of Digital Subscriptions with Their Status** (draft spec **report_20261113_063834_digital_subscriptions_status_report**, validated with pyegeria)\n\nSign in to see the answer here; you can run it with **Execute Spec**.",
+    "s": 0.02
+   }
+  ],
+  "elicit_s": 26.1,
+  "draft": {
+   "draft_id": "draft_report_20261113_063834_digital_subscriptions_status_report",
+   "title": "digital-subscriptions-status-report",
+   "phase": "refine",
+   "phase_label": "Refinement session",
+   "original_query": "List the digital subscriptions that exist, with their status.",
+   "action_function": "CollectionManager.find_collections",
+   "target_type": "Agreement",
+   "columns": [
+    {
+     "name": "Subscription Name",
+     "key": "display_name",
+     "format": false,
+     "detail_spec": null,
+     "formats": "ALL"
+    },
+    {
+     "name": "Status",
+     "key": "status",
+     "format": false,
+     "detail_spec": null,
+     "formats": "ALL"
+    }
+   ],
+   "content_filters": {
+    "search_string": "*"
+   },
+   "shape_defaults": {},
+   "performance_hints": {
+    "page_size": 100,
+    "start_from": 0
+   },
+   "perspectives": [],
+   "questions": [],
+   "answers": {
+    "Heading": "List of Digital Subscriptions with Their Status",
+    "Description": "This report lists all digital subscriptions along with their current status."
+   },
+   "pending_questions": {},
+   "doc_id": "report_20261113_063834_digital_subscriptions_status_report",
+   "history_stack": [
+    {
+     "phase": "confirm_action",
+     "phase_label": "Confirming report basic configuration",
+     "columns": [
+      {
+       "name": "Subscription Name",
+       "key": "display_name",
+       "format": false,
+       "detail_spec": null,
+       "formats": "ALL"
+      },
+      {
+       "name": "Status",
+       "key": "status",
+       "format": false,
+       "detail_spec": null,
+       "formats": "ALL"
+      }
+     ],
+     "content_filters": {
+      "search_string": "*"
+     },
+     "shape_defaults": {},
+     "performance_hints": {
+      "page_size": 100,
+      "start_from": 0
+     },
+     "perspectives": [],
+     "questions": [],
+     "answers": {
+      "Heading": "List of Digital Subscriptions with Their Status",
+      "Description": "This report lists all digital subscriptions along with their current status."
+     },
+     "pending_questions": {},
+     "summary_of_answers": ""
+    },
+    {
+     "phase": "elicit_columns",
+     "phase_label": "Reviewing and customizing columns",
+     "columns": [
+      {
+       "name": "Subscription Name",
+       "key": "display_name",
+       "format": false,
+       "detail_spec": null,
+       "formats": "ALL"
+      },
+      {
+       "name": "Status",
+       "key": "status",
+       "format": false,
+       "detail_spec": null,
+       "formats": "ALL"
+      }
+     ],
+     "content_filters": {
+      "search_string": "*"
+     },
+     "shape_defaults": {},
+     "performance_hints": {
+      "page_size": 100,
+      "start_from": 0
+     },
+     "perspectives": [],
+     "questions": [],
+     "answers": {
+      "Heading": "List of Digital Subscriptions with Their Status",
+      "Description": "This report lists all digital subscriptions along with their current status."
+     },
+     "pending_questions": {},
+     "summary_of_answers": ""
+    }
+   ],
+   "created_at": 1794573514.257303,
+   "updated_at": 1794573514.281522,
+   "summary_of_answers": "",
+   "user_id": "erinoverview",
+   "conditions": {},
+   "unmet": null,
+   "v2": true,
+   "format_set": {
+    "target_type": "Agreement",
+    "heading": "List of Digital Subscriptions with Their Status",
+    "description": "This report lists all digital subscriptions along with their current status.",
+    "aliases": [],
+    "annotations": {},
+    "formats": [
+     {
+      "types": [
+       "ALL"
+      ],
+      "attributes": [
+       {
+        "name": "Subscription Name",
+        "key": "display_name",
+        "format": false
+       },
+       {
+        "name": "Status",
+        "key": "status",
+        "format": false
+       }
+      ]
+     }
+    ],
+    "action": {
+     "function": "CollectionManager.find_collections",
+     "required_params": [
+      "search_string"
+     ],
+     "optional_params": [],
+     "spec_params": {
+      "metadata_element_type": "Agreement"
+     },
+     "analytic_spec_params": {}
+    }
+   }
+  },
+  "check": {
+   "doc_id": "report_20261113_063834_digital_subscriptions_status_report",
+   "document": "# List of Digital Subscriptions with Their Status\n\n## Create Report Spec\n### Display Name\ndigital-subscriptions-status-report\n### Qualified Name\nReportSpec::digital-subscriptions-status-report\n### Description\nThis report lists all digital subscriptions along with their current status.\n### Content Status\nACTIVE\n### Target Type Name\nAgreement\n### Output Types\nALL\n### Microflow\n{\"format\":\"microflow/1\",\"params\":{\"search_string\":{\"type\":\"string\",\"required\":true}},\"stages\":[{\"stage\":\"producer/find\",\"type\":\"Agreement\",\"function\":\"CollectionManager.find_collections\",\"params\":{\"search_string\":\"$search_string\",\"metadata_element_type\":\"Agreement\"}}],\"formatters\":{\"ALL\":{\"columns\":[{\"field\":\"display_name\",\"label\":\"Subscription Name\"},{\"field\":\"status\",\"label\":\"Status\"}]}}}\n\n___\n",
+   "completed": true,
+   "asked_clarifying": false,
+   "dre_offline_parse": {
+    "ok": true,
+    "commands": [
+     "Create Report Spec"
+    ]
+   },
+   "format_set_source": "draft",
+   "format_set_error": null,
+   "target_type": "Agreement",
+   "action_function": "CollectionManager.find_collections",
+   "columns": [
+    {
+     "name": "Subscription Name",
+     "key": "display_name"
+    },
+    {
+     "name": "Status",
+     "key": "status"
+    }
+   ],
+   "nonexistent_attributes": {
+    "checked": true,
+    "keys": [],
+    "strict_keys": []
+   },
+   "pyegeria_validate": {
+    "ok": true,
+    "errors": [],
+    "warnings": [],
+    "not_applied": [],
+    "checked": [
+     "structure",
+     "target type",
+     "column attributes",
+     "load-time resolution (find method / analytic routine, parameters, formats)"
+    ],
+    "not_checked": [
+     "Dr.Egeria validate: no runner given"
+    ],
+    "dr_egeria": null,
+    "s": 0.01
+   },
+   "validates": true,
+   "run": {
+    "ran": false,
+    "why": "offline"
+   }
+  },
+  "total_s": 26.12
+ },
+ {
+  "id": "C09",
+  "set": "coco",
+  "question": "Which assets in the catalog have no owner?",
+  "expect": {
+   "target_type": "Asset",
+   "condition": "no owner",
+   "columns": [
+    "Display Name",
+    "Owner"
+   ]
+  },
+  "mode": "rebased",
+  "offline": true,
+  "turns": 3,
+  "final_phase": "refine",
+  "transcript": [
+   {
+    "turn": 1,
+    "user": "Which assets in the catalog have no owner?",
+    "phase": "confirm_action",
+    "response": "### Proposed Report Spec: **Assets in the Catalog with No Owner**\n\n- **Target Type:** Asset\n- **Found with:** `MetadataExpert.find_metadata_elements_with_string` (from generic finder)\n- **Condition:** none (everything of this type)\n- **Description:** This report lists all assets in the catalog that do not have an assigned owner.\n\n---\n\nDoes this look correct? Use the buttons below, or describe adjustments.",
+    "s": 27.01
+   },
+   {
+    "turn": 2,
+    "user": "continue_columns",
+    "phase": "elicit_columns",
+    "response": "### Columns Configuration\n\n**1. Asset Name** \u2014 key: `display_name`\n**2. GUID** \u2014 key: `guid`\n\n**Condition:** none (everything of this type)\n\n---\n\nDoes this look right? Use **Generate now**, or describe changes (only attributes of Asset can be columns).",
+    "s": 0.01
+   },
+   {
+    "turn": 3,
+    "user": "generate now",
+    "phase": "refine",
+    "response": "**Assets in the Catalog with No Owner** (draft spec **report_20261113_063901_assets_with_no_owner_report**, validated with pyegeria)\n\nSign in to see the answer here; you can run it with **Execute Spec**.",
+    "s": 0.06
+   }
+  ],
+  "elicit_s": 27.07,
+  "draft": {
+   "draft_id": "draft_report_20261113_063901_assets_with_no_owner_report",
+   "title": "assets-with-no-owner-report",
+   "phase": "refine",
+   "phase_label": "Refinement session",
+   "original_query": "Which assets in the catalog have no owner?",
+   "action_function": "MetadataExpert.find_metadata_elements_with_string",
+   "target_type": "Asset",
+   "columns": [
+    {
+     "name": "Asset Name",
+     "key": "display_name",
+     "format": false,
+     "detail_spec": null,
+     "formats": "ALL"
+    },
+    {
+     "name": "GUID",
+     "key": "guid",
+     "format": false,
+     "detail_spec": null,
+     "formats": "ALL"
+    }
+   ],
+   "content_filters": {
+    "search_string": "*"
+   },
+   "shape_defaults": {},
+   "performance_hints": {
+    "page_size": 100,
+    "start_from": 0
+   },
+   "perspectives": [],
+   "questions": [],
+   "answers": {
+    "Heading": "Assets in the Catalog with No Owner",
+    "Description": "This report lists all assets in the catalog that do not have an assigned owner."
+   },
+   "pending_questions": {},
+   "doc_id": "report_20261113_063901_assets_with_no_owner_report",
+   "history_stack": [
+    {
+     "phase": "confirm_action",
+     "phase_label": "Confirming report basic configuration",
+     "columns": [
+      {
+       "name": "Asset Name",
+       "key": "display_name",
+       "format": false,
+       "detail_spec": null,
+       "formats": "ALL"
+      },
+      {
+       "name": "GUID",
+       "key": "guid",
+       "format": false,
+       "detail_spec": null,
+       "formats": "ALL"
+      }
+     ],
+     "content_filters": {
+      "search_string": "*"
+     },
+     "shape_defaults": {},
+     "performance_hints": {
+      "page_size": 100,
+      "start_from": 0
+     },
+     "perspectives": [],
+     "questions": [],
+     "answers": {
+      "Heading": "Assets in the Catalog with No Owner",
+      "Description": "This report lists all assets in the catalog that do not have an assigned owner."
+     },
+     "pending_questions": {},
+     "summary_of_answers": ""
+    },
+    {
+     "phase": "elicit_columns",
+     "phase_label": "Reviewing and customizing columns",
+     "columns": [
+      {
+       "name": "Asset Name",
+       "key": "display_name",
+       "format": false,
+       "detail_spec": null,
+       "formats": "ALL"
+      },
+      {
+       "name": "GUID",
+       "key": "guid",
+       "format": false,
+       "detail_spec": null,
+       "formats": "ALL"
+      }
+     ],
+     "content_filters": {
+      "search_string": "*"
+     },
+     "shape_defaults": {},
+     "performance_hints": {
+      "page_size": 100,
+      "start_from": 0
+     },
+     "perspectives": [],
+     "questions": [],
+     "answers": {
+      "Heading": "Assets in the Catalog with No Owner",
+      "Description": "This report lists all assets in the catalog that do not have an assigned owner."
+     },
+     "pending_questions": {},
+     "summary_of_answers": ""
+    }
+   ],
+   "created_at": 1794573541.313445,
+   "updated_at": 1794573541.38022,
+   "summary_of_answers": "",
+   "user_id": "erinoverview",
+   "conditions": {},
+   "unmet": null,
+   "v2": true,
+   "format_set": {
+    "target_type": "Asset",
+    "heading": "Assets in the Catalog with No Owner",
+    "description": "This report lists all assets in the catalog that do not have an assigned owner.",
+    "aliases": [],
+    "annotations": {},
+    "formats": [
+     {
+      "types": [
+       "ALL"
+      ],
+      "attributes": [
+       {
+        "name": "Asset Name",
+        "key": "display_name",
+        "format": false
+       },
+       {
+        "name": "GUID",
+        "key": "guid",
+        "format": false
+       }
+      ]
+     }
+    ],
+    "action": {
+     "function": "MetadataExpert.find_metadata_elements_with_string",
+     "required_params": [
+      "search_string"
+     ],
+     "optional_params": [],
+     "spec_params": {
+      "metadata_element_type": "Asset"
+     },
+     "analytic_spec_params": {}
+    }
+   }
+  },
+  "check": {
+   "doc_id": "report_20261113_063901_assets_with_no_owner_report",
+   "document": "# Assets in the Catalog with No Owner\n\n## Create Report Spec\n### Display Name\nassets-with-no-owner-report\n### Qualified Name\nReportSpec::assets-with-no-owner-report\n### Description\nThis report lists all assets in the catalog that do not have an assigned owner.\n### Content Status\nACTIVE\n### Target Type Name\nAsset\n### Output Types\nALL\n### Microflow\n{\"format\":\"microflow/1\",\"params\":{\"search_string\":{\"type\":\"string\",\"required\":true}},\"stages\":[{\"stage\":\"producer/find\",\"type\":\"Asset\",\"function\":\"MetadataExpert.find_metadata_elements_with_string\",\"params\":{\"search_string\":\"$search_string\",\"metadata_element_type\":\"Asset\"}}],\"formatters\":{\"ALL\":{\"columns\":[{\"field\":\"display_name\",\"label\":\"Asset Name\"},{\"field\":\"guid\",\"label\":\"GUID\"}]}}}\n\n___\n",
+   "completed": true,
+   "asked_clarifying": false,
+   "dre_offline_parse": {
+    "ok": true,
+    "commands": [
+     "Create Report Spec"
+    ]
+   },
+   "format_set_source": "draft",
+   "format_set_error": null,
+   "target_type": "Asset",
+   "action_function": "MetadataExpert.find_metadata_elements_with_string",
+   "columns": [
+    {
+     "name": "Asset Name",
+     "key": "display_name"
+    },
+    {
+     "name": "GUID",
+     "key": "guid"
+    }
+   ],
+   "nonexistent_attributes": {
+    "checked": true,
+    "keys": [],
+    "strict_keys": []
+   },
+   "pyegeria_validate": {
+    "ok": true,
+    "errors": [],
+    "warnings": [],
+    "not_applied": [],
+    "checked": [
+     "structure",
+     "target type",
+     "column attributes",
+     "load-time resolution (find method / analytic routine, parameters, formats)"
+    ],
+    "not_checked": [
+     "Dr.Egeria validate: no runner given"
+    ],
+    "dr_egeria": null,
+    "s": 0.01
+   },
+   "validates": true,
+   "run": {
+    "ran": false,
+    "why": "offline"
+   }
+  },
+  "total_s": 27.09
+ },
+ {
+  "id": "C10",
+  "set": "coco",
+  "question": "Which assets haven't been updated in the last 180 days?",
+  "expect": {
+   "target_type": "Asset",
+   "condition": "update time older than 180 days",
+   "columns": [
+    "Display Name",
+    "Update Time"
+   ]
+  },
+  "mode": "rebased",
+  "offline": true,
+  "turns": 3,
+  "final_phase": "refine",
+  "transcript": [
+   {
+    "turn": 1,
+    "user": "Which assets haven't been updated in the last 180 days?",
+    "phase": "confirm_action",
+    "response": "### Proposed Report Spec: **Assets Not Updated in the Last 180 Days**\n\n- **Target Type:** Asset\n- **Found with:** `MetadataExpert.find_metadata_elements_with_string` (from generic finder)\n- **Condition:** none (everything of this type)\n- **Description:** This report lists all assets that have not been updated in the last 180 days.\n\n---\n\nDoes this look correct? Use the buttons below, or describe adjustments.",
+    "s": 28.52
+   },
+   {
+    "turn": 2,
+    "user": "continue_columns",
+    "phase": "elicit_columns",
+    "response": "### Columns Configuration\n\n**1. Asset Name** \u2014 key: `display_name`\n**2. Last Updated Time** \u2014 key: `update_time`\n\n**Condition:** none (everything of this type)\n\n---\n\nDoes this look right? Use **Generate now**, or describe changes (only attributes of Asset can be columns).",
+    "s": 0.0
+   },
+   {
+    "turn": 3,
+    "user": "generate now",
+    "phase": "refine",
+    "response": "**Assets Not Updated in the Last 180 Days** (draft spec **report_20261113_063929_stale_assets_report**, validated with pyegeria)\n\nSign in to see the answer here; you can run it with **Execute Spec**.",
+    "s": 0.04
+   }
+  ],
+  "elicit_s": 28.56,
+  "draft": {
+   "draft_id": "draft_report_20261113_063929_stale_assets_report",
+   "title": "stale-assets-report",
+   "phase": "refine",
+   "phase_label": "Refinement session",
+   "original_query": "Which assets haven't been updated in the last 180 days?",
+   "action_function": "MetadataExpert.find_metadata_elements_with_string",
+   "target_type": "Asset",
+   "columns": [
+    {
+     "name": "Asset Name",
+     "key": "display_name",
+     "format": false,
+     "detail_spec": null,
+     "formats": "ALL"
+    },
+    {
+     "name": "Last Updated Time",
+     "key": "update_time",
+     "format": true,
+     "detail_spec": null,
+     "formats": [
+      "DATE"
+     ]
+    }
+   ],
+   "content_filters": {
+    "search_string": "*"
+   },
+   "shape_defaults": {},
+   "performance_hints": {
+    "page_size": 100,
+    "start_from": 0
+   },
+   "perspectives": [],
+   "questions": [],
+   "answers": {
+    "Heading": "Assets Not Updated in the Last 180 Days",
+    "Description": "This report lists all assets that have not been updated in the last 180 days."
+   },
+   "pending_questions": {},
+   "doc_id": "report_20261113_063929_stale_assets_report",
+   "history_stack": [
+    {
+     "phase": "confirm_action",
+     "phase_label": "Confirming report basic configuration",
+     "columns": [
+      {
+       "name": "Asset Name",
+       "key": "display_name",
+       "format": false,
+       "detail_spec": null,
+       "formats": "ALL"
+      },
+      {
+       "name": "Last Updated Time",
+       "key": "update_time",
+       "format": true,
+       "detail_spec": null,
+       "formats": [
+        "DATE"
+       ]
+      }
+     ],
+     "content_filters": {
+      "search_string": "*"
+     },
+     "shape_defaults": {},
+     "performance_hints": {
+      "page_size": 100,
+      "start_from": 0
+     },
+     "perspectives": [],
+     "questions": [],
+     "answers": {
+      "Heading": "Assets Not Updated in the Last 180 Days",
+      "Description": "This report lists all assets that have not been updated in the last 180 days."
+     },
+     "pending_questions": {},
+     "summary_of_answers": ""
+    },
+    {
+     "phase": "elicit_columns",
+     "phase_label": "Reviewing and customizing columns",
+     "columns": [
+      {
+       "name": "Asset Name",
+       "key": "display_name",
+       "format": false,
+       "detail_spec": null,
+       "formats": "ALL"
+      },
+      {
+       "name": "Last Updated Time",
+       "key": "update_time",
+       "format": true,
+       "detail_spec": null,
+       "formats": [
+        "DATE"
+       ]
+      }
+     ],
+     "content_filters": {
+      "search_string": "*"
+     },
+     "shape_defaults": {},
+     "performance_hints": {
+      "page_size": 100,
+      "start_from": 0
+     },
+     "perspectives": [],
+     "questions": [],
+     "answers": {
+      "Heading": "Assets Not Updated in the Last 180 Days",
+      "Description": "This report lists all assets that have not been updated in the last 180 days."
+     },
+     "pending_questions": {},
+     "summary_of_answers": ""
+    }
+   ],
+   "created_at": 1794573569.910987,
+   "updated_at": 1794573569.9546509,
+   "summary_of_answers": "",
+   "user_id": "erinoverview",
+   "conditions": {},
+   "unmet": null,
+   "v2": true,
+   "format_set": {
+    "target_type": "Asset",
+    "heading": "Assets Not Updated in the Last 180 Days",
+    "description": "This report lists all assets that have not been updated in the last 180 days.",
+    "aliases": [],
+    "annotations": {},
+    "formats": [
+     {
+      "types": [
+       "ALL"
+      ],
+      "attributes": [
+       {
+        "name": "Asset Name",
+        "key": "display_name",
+        "format": false
+       },
+       {
+        "name": "Last Updated Time",
+        "key": "update_time",
+        "format": false
+       }
+      ]
+     }
+    ],
+    "action": {
+     "function": "MetadataExpert.find_metadata_elements_with_string",
+     "required_params": [
+      "search_string"
+     ],
+     "optional_params": [],
+     "spec_params": {
+      "metadata_element_type": "Asset"
+     },
+     "analytic_spec_params": {}
+    }
+   }
+  },
+  "check": {
+   "doc_id": "report_20261113_063929_stale_assets_report",
+   "document": "# Assets Not Updated in the Last 180 Days\n\n## Create Report Spec\n### Display Name\nstale-assets-report\n### Qualified Name\nReportSpec::stale-assets-report\n### Description\nThis report lists all assets that have not been updated in the last 180 days.\n### Content Status\nACTIVE\n### Target Type Name\nAsset\n### Output Types\nALL\n### Microflow\n{\"format\":\"microflow/1\",\"params\":{\"search_string\":{\"type\":\"string\",\"required\":true}},\"stages\":[{\"stage\":\"producer/find\",\"type\":\"Asset\",\"function\":\"MetadataExpert.find_metadata_elements_with_string\",\"params\":{\"search_string\":\"$search_string\",\"metadata_element_type\":\"Asset\"}}],\"formatters\":{\"ALL\":{\"columns\":[{\"field\":\"display_name\",\"label\":\"Asset Name\"},{\"field\":\"update_time\",\"label\":\"Last Updated Time\"}]}}}\n\n___\n",
+   "completed": true,
+   "asked_clarifying": false,
+   "dre_offline_parse": {
+    "ok": true,
+    "commands": [
+     "Create Report Spec"
+    ]
+   },
+   "format_set_source": "draft",
+   "format_set_error": null,
+   "target_type": "Asset",
+   "action_function": "MetadataExpert.find_metadata_elements_with_string",
+   "columns": [
+    {
+     "name": "Asset Name",
+     "key": "display_name"
+    },
+    {
+     "name": "Last Updated Time",
+     "key": "update_time"
+    }
+   ],
+   "nonexistent_attributes": {
+    "checked": true,
+    "keys": [],
+    "strict_keys": []
+   },
+   "pyegeria_validate": {
+    "ok": true,
+    "errors": [],
+    "warnings": [],
+    "not_applied": [],
+    "checked": [
+     "structure",
+     "target type",
+     "column attributes",
+     "load-time resolution (find method / analytic routine, parameters, formats)"
+    ],
+    "not_checked": [
+     "Dr.Egeria validate: no runner given"
+    ],
+    "dr_egeria": null,
+    "s": 0.01
+   },
+   "validates": true,
+   "run": {
+    "ran": false,
+    "why": "offline"
+   }
+  },
+  "total_s": 28.59
+ },
+ {
+  "id": "A01",
+  "set": "ambiguous",
+  "question": "Show me the important stuff.",
+  "expect": {
+   "clarify": true
+  },
+  "mode": "rebased",
+  "offline": true,
+  "turns": 1,
+  "final_phase": "error",
+  "transcript": [
+   {
+    "turn": 1,
+    "user": "Show me the important stuff.",
+    "phase": "error",
+    "response": "'None' isn't an Egeria type I can report on.",
+    "s": 36.03
+   }
+  ],
+  "elicit_s": 36.03,
+  "draft": null,
+  "check": {
+   "doc_id": null,
+   "document": null,
+   "completed": false,
+   "asked_clarifying": false,
+   "format_set_source": null,
+   "format_set_error": "no spec document"
+  },
+  "total_s": 36.03
+ },
+ {
+  "id": "A02",
+  "set": "ambiguous",
+  "question": "What's wrong with our data?",
+  "expect": {
+   "clarify": true
+  },
+  "mode": "rebased",
+  "offline": true,
+  "turns": 3,
+  "final_phase": "refine",
+  "transcript": [
+   {
+    "turn": 1,
+    "user": "What's wrong with our data?",
+    "phase": "confirm_action",
+    "response": "### Proposed Report Spec: **Data Quality Issues Report**\n\n- **Target Type:** GovernanceActionProcess\n- **Found with:** `GovernanceOfficer.find_governance_definitions` (from Governance-Action-Process-DrE-Basic)\n- **Condition:** none (everything of this type)\n- **Description:** This report identifies potential issues with the data by analyzing governance definitions and policies related to data quality.\n\n---\n\nDoes this look correct? Use the buttons below, or describe adjustments.",
+    "s": 39.43
+   },
+   {
+    "turn": 2,
+    "user": "continue_columns",
+    "phase": "elicit_columns",
+    "response": "### Columns Configuration\n\n**1. Policy Name** \u2014 key: `display_name`\n**2. Description** \u2014 key: `description`\n**3. Status** \u2014 key: `status`\n**4. Last Updated** \u2014 key: `update_time`\n\n**Condition:** none (everything of this type)\n\n---\n\nDoes this look right? Use **Generate now**, or describe changes (only attributes of GovernanceActionProcess can be columns).",
+    "s": 0.0
+   },
+   {
+    "turn": 3,
+    "user": "generate now",
+    "phase": "refine",
+    "response": "**Data Quality Issues Report** (draft spec **report_20261113_064045_data_quality_issues_report**, validated with pyegeria)\n\nSign in to see the answer here; you can run it with **Execute Spec**.",
+    "s": 0.02
+   }
+  ],
+  "elicit_s": 39.45,
+  "draft": {
+   "draft_id": "draft_report_20261113_064045_data_quality_issues_report",
+   "title": "data-quality-issues-report",
+   "phase": "refine",
+   "phase_label": "Refinement session",
+   "original_query": "What's wrong with our data?",
+   "action_function": "GovernanceOfficer.find_governance_definitions",
+   "target_type": "GovernanceActionProcess",
+   "columns": [
+    {
+     "name": "Policy Name",
+     "key": "display_name",
+     "format": false,
+     "detail_spec": null,
+     "formats": "ALL"
+    },
+    {
+     "name": "Description",
+     "key": "description",
+     "format": false,
+     "detail_spec": null,
+     "formats": "ALL"
+    },
+    {
+     "name": "Status",
+     "key": "status",
+     "format": false,
+     "detail_spec": null,
+     "formats": "ALL"
+    },
+    {
+     "name": "Last Updated",
+     "key": "update_time",
+     "format": true,
+     "detail_spec": null,
+     "formats": [
+      "DATE"
+     ]
+    }
+   ],
+   "content_filters": {
+    "search_string": "*"
+   },
+   "shape_defaults": {},
+   "performance_hints": {
+    "page_size": 100,
+    "start_from": 0
+   },
+   "perspectives": [],
+   "questions": [],
+   "answers": {
+    "Heading": "Data Quality Issues Report",
+    "Description": "This report identifies potential issues with the data by analyzing governance definitions and policies related to data quality."
+   },
+   "pending_questions": {},
+   "doc_id": "report_20261113_064045_data_quality_issues_report",
+   "history_stack": [
+    {
+     "phase": "confirm_action",
+     "phase_label": "Confirming report basic configuration",
+     "columns": [
+      {
+       "name": "Policy Name",
+       "key": "display_name",
+       "format": false,
+       "detail_spec": null,
+       "formats": "ALL"
+      },
+      {
+       "name": "Description",
+       "key": "description",
+       "format": false,
+       "detail_spec": null,
+       "formats": "ALL"
+      },
+      {
+       "name": "Status",
+       "key": "status",
+       "format": false,
+       "detail_spec": null,
+       "formats": "ALL"
+      },
+      {
+       "name": "Last Updated",
+       "key": "update_time",
+       "format": true,
+       "detail_spec": null,
+       "formats": [
+        "DATE"
+       ]
+      }
+     ],
+     "content_filters": {
+      "search_string": "*"
+     },
+     "shape_defaults": {},
+     "performance_hints": {
+      "page_size": 100,
+      "start_from": 0
+     },
+     "perspectives": [],
+     "questions": [],
+     "answers": {
+      "Heading": "Data Quality Issues Report",
+      "Description": "This report identifies potential issues with the data by analyzing governance definitions and policies related to data quality."
+     },
+     "pending_questions": {},
+     "summary_of_answers": ""
+    },
+    {
+     "phase": "elicit_columns",
+     "phase_label": "Reviewing and customizing columns",
+     "columns": [
+      {
+       "name": "Policy Name",
+       "key": "display_name",
+       "format": false,
+       "detail_spec": null,
+       "formats": "ALL"
+      },
+      {
+       "name": "Description",
+       "key": "description",
+       "format": false,
+       "detail_spec": null,
+       "formats": "ALL"
+      },
+      {
+       "name": "Status",
+       "key": "status",
+       "format": false,
+       "detail_spec": null,
+       "formats": "ALL"
+      },
+      {
+       "name": "Last Updated",
+       "key": "update_time",
+       "format": true,
+       "detail_spec": null,
+       "formats": [
+        "DATE"
+       ]
+      }
+     ],
+     "content_filters": {
+      "search_string": "*"
+     },
+     "shape_defaults": {},
+     "performance_hints": {
+      "page_size": 100,
+      "start_from": 0
+     },
+     "perspectives": [],
+     "questions": [],
+     "answers": {
+      "Heading": "Data Quality Issues Report",
+      "Description": "This report identifies potential issues with the data by analyzing governance definitions and policies related to data quality."
+     },
+     "pending_questions": {},
+     "summary_of_answers": ""
+    }
+   ],
+   "created_at": 1794573645.459222,
+   "updated_at": 1794573645.4839602,
+   "summary_of_answers": "",
+   "user_id": "erinoverview",
+   "conditions": {},
+   "unmet": null,
+   "v2": true,
+   "format_set": {
+    "target_type": "GovernanceActionProcess",
+    "heading": "Data Quality Issues Report",
+    "description": "This report identifies potential issues with the data by analyzing governance definitions and policies related to data quality.",
+    "aliases": [],
+    "annotations": {},
+    "formats": [
+     {
+      "types": [
+       "ALL"
+      ],
+      "attributes": [
+       {
+        "name": "Policy Name",
+        "key": "display_name",
+        "format": false
+       },
+       {
+        "name": "Description",
+        "key": "description",
+        "format": false
+       },
+       {
+        "name": "Status",
+        "key": "status",
+        "format": false
+       },
+       {
+        "name": "Last Updated",
+        "key": "update_time",
+        "format": false
+       }
+      ]
+     }
+    ],
+    "action": {
+     "function": "GovernanceOfficer.find_governance_definitions",
+     "required_params": [
+      "search_string"
+     ],
+     "optional_params": [],
+     "spec_params": {
+      "metadata_element_type": "GovernanceActionProcess"
+     },
+     "analytic_spec_params": {}
+    }
+   }
+  },
+  "check": {
+   "doc_id": "report_20261113_064045_data_quality_issues_report",
+   "document": "# Data Quality Issues Report\n\n## Create Report Spec\n### Display Name\ndata-quality-issues-report\n### Qualified Name\nReportSpec::data-quality-issues-report\n### Description\nThis report identifies potential issues with the data by analyzing governance definitions and policies related to data quality.\n### Content Status\nACTIVE\n### Target Type Name\nGovernanceActionProcess\n### Output Types\nALL\n### Microflow\n{\"format\":\"microflow/1\",\"params\":{\"search_string\":{\"type\":\"string\",\"required\":true}},\"stages\":[{\"stage\":\"producer/find\",\"type\":\"GovernanceActionProcess\",\"function\":\"GovernanceOfficer.find_governance_definitions\",\"params\":{\"search_string\":\"$search_string\",\"metadata_element_type\":\"GovernanceActionProcess\"}}],\"formatters\":{\"ALL\":{\"columns\":[{\"field\":\"display_name\",\"label\":\"Policy Name\"},{\"field\":\"description\",\"label\":\"Description\"},{\"field\":\"status\",\"label\":\"Status\"},{\"field\":\"update_time\",\"label\":\"Last Updated\"}]}}}\n\n___\n",
+   "completed": true,
+   "asked_clarifying": false,
+   "dre_offline_parse": {
+    "ok": true,
+    "commands": [
+     "Create Report Spec"
+    ]
+   },
+   "format_set_source": "draft",
+   "format_set_error": null,
+   "target_type": "GovernanceActionProcess",
+   "action_function": "GovernanceOfficer.find_governance_definitions",
+   "columns": [
+    {
+     "name": "Policy Name",
+     "key": "display_name"
+    },
+    {
+     "name": "Description",
+     "key": "description"
+    },
+    {
+     "name": "Status",
+     "key": "status"
+    },
+    {
+     "name": "Last Updated",
+     "key": "update_time"
+    }
+   ],
+   "nonexistent_attributes": {
+    "checked": true,
+    "keys": [],
+    "strict_keys": []
+   },
+   "pyegeria_validate": {
+    "ok": true,
+    "errors": [],
+    "warnings": [],
+    "not_applied": [],
+    "checked": [
+     "structure",
+     "target type",
+     "column attributes",
+     "load-time resolution (find method / analytic routine, parameters, formats)"
+    ],
+    "not_checked": [
+     "Dr.Egeria validate: no runner given"
+    ],
+    "dr_egeria": null,
+    "s": 0.01
+   },
+   "validates": true,
+   "run": {
+    "ran": false,
+    "why": "offline"
+   }
+  },
+  "total_s": 39.47
+ },
+ {
+  "id": "A03",
+  "set": "ambiguous",
+  "question": "Give me a report on everything that changed.",
+  "expect": {
+   "clarify": true
+  },
+  "mode": "rebased",
+  "offline": true,
+  "turns": 1,
+  "final_phase": "error",
+  "transcript": [
+   {
+    "turn": 1,
+    "user": "Give me a report on everything that changed.",
+    "phase": "error",
+    "response": "'None' isn't an Egeria type I can report on.",
+    "s": 60.17
+   }
+  ],
+  "elicit_s": 60.17,
+  "draft": null,
+  "check": {
+   "doc_id": null,
+   "document": null,
+   "completed": false,
+   "asked_clarifying": false,
+   "format_set_source": null,
+   "format_set_error": "no spec document"
+  },
+  "total_s": 60.17
+ },
+ {
+  "id": "A04",
+  "set": "ambiguous",
+  "question": "Who owns it?",
+  "expect": {
+   "clarify": true
+  },
+  "mode": "rebased",
+  "offline": true,
+  "turns": 3,
+  "final_phase": "refine",
+  "transcript": [
+   {
+    "turn": 1,
+    "user": "Who owns it?",
+    "phase": "confirm_action",
+    "response": "\u26a0\ufe0f Left out: 'Asset Name' (assetName) isn't an attribute of GovernanceActionProcess.\n\u26a0\ufe0f Left out: 'Owner' (owner) isn't an attribute of GovernanceActionProcess.\n### Proposed Report Spec: **Asset Ownership Report**\n\n- **Target Type:** GovernanceActionProcess\n- **Found with:** `GovernanceOfficer.find_governance_definitions` (from Governance-Action-Process-DrE-Basic)\n- **Condition:** none (everything of this type)\n- **Description:** This report identifies the ownership of assets by listing projects and their respective owners.\n\n---\n\nDoes this look correct? Use the buttons below, or describe adjustments.",
+    "s": 26.37
+   },
+   {
+    "turn": 2,
+    "user": "continue_columns",
+    "phase": "elicit_columns",
+    "response": "### Columns Configuration\n\n**1. Display Name** \u2014 key: `display_name`\n**2. Description** \u2014 key: `description`\n\n**Condition:** none (everything of this type)\n\n---\n\nDoes this look right? Use **Generate now**, or describe changes (only attributes of GovernanceActionProcess can be columns).",
+    "s": 0.0
+   },
+   {
+    "turn": 3,
+    "user": "generate now",
+    "phase": "refine",
+    "response": "**Asset Ownership Report** (draft spec **report_20261113_064212_asset_ownership_report**, validated with pyegeria)\n\nSign in to see the answer here; you can run it with **Execute Spec**.",
+    "s": 0.02
+   }
+  ],
+  "elicit_s": 26.4,
+  "draft": {
+   "draft_id": "draft_report_20261113_064212_asset_ownership_report",
+   "title": "asset-ownership-report",
+   "phase": "refine",
+   "phase_label": "Refinement session",
+   "original_query": "Who owns it?",
+   "action_function": "GovernanceOfficer.find_governance_definitions",
+   "target_type": "GovernanceActionProcess",
+   "columns": [
+    {
+     "name": "Display Name",
+     "key": "display_name"
+    },
+    {
+     "name": "Description",
+     "key": "description"
+    }
+   ],
+   "content_filters": {
+    "search_string": "*"
+   },
+   "shape_defaults": {},
+   "performance_hints": {
+    "page_size": 100,
+    "start_from": 0
+   },
+   "perspectives": [],
+   "questions": [],
+   "answers": {
+    "Heading": "Asset Ownership Report",
+    "Description": "This report identifies the ownership of assets by listing projects and their respective owners."
+   },
+   "pending_questions": {},
+   "doc_id": "report_20261113_064212_asset_ownership_report",
+   "history_stack": [
+    {
+     "phase": "confirm_action",
+     "phase_label": "Confirming report basic configuration",
+     "columns": [
+      {
+       "name": "Display Name",
+       "key": "display_name"
+      },
+      {
+       "name": "Description",
+       "key": "description"
+      }
+     ],
+     "content_filters": {
+      "search_string": "*"
+     },
+     "shape_defaults": {},
+     "performance_hints": {
+      "page_size": 100,
+      "start_from": 0
+     },
+     "perspectives": [],
+     "questions": [],
+     "answers": {
+      "Heading": "Asset Ownership Report",
+      "Description": "This report identifies the ownership of assets by listing projects and their respective owners."
+     },
+     "pending_questions": {},
+     "summary_of_answers": ""
+    },
+    {
+     "phase": "elicit_columns",
+     "phase_label": "Reviewing and customizing columns",
+     "columns": [
+      {
+       "name": "Display Name",
+       "key": "display_name"
+      },
+      {
+       "name": "Description",
+       "key": "description"
+      }
+     ],
+     "content_filters": {
+      "search_string": "*"
+     },
+     "shape_defaults": {},
+     "performance_hints": {
+      "page_size": 100,
+      "start_from": 0
+     },
+     "perspectives": [],
+     "questions": [],
+     "answers": {
+      "Heading": "Asset Ownership Report",
+      "Description": "This report identifies the ownership of assets by listing projects and their respective owners."
+     },
+     "pending_questions": {},
+     "summary_of_answers": ""
+    }
+   ],
+   "created_at": 1794573732.05246,
+   "updated_at": 1794573732.08016,
+   "summary_of_answers": "",
+   "user_id": "erinoverview",
+   "conditions": {},
+   "unmet": null,
+   "v2": true,
+   "format_set": {
+    "target_type": "GovernanceActionProcess",
+    "heading": "Asset Ownership Report",
+    "description": "This report identifies the ownership of assets by listing projects and their respective owners.",
+    "aliases": [],
+    "annotations": {},
+    "formats": [
+     {
+      "types": [
+       "ALL"
+      ],
+      "attributes": [
+       {
+        "name": "Display Name",
+        "key": "display_name",
+        "format": false
+       },
+       {
+        "name": "Description",
+        "key": "description",
+        "format": false
+       }
+      ]
+     }
+    ],
+    "action": {
+     "function": "GovernanceOfficer.find_governance_definitions",
+     "required_params": [
+      "search_string"
+     ],
+     "optional_params": [],
+     "spec_params": {
+      "metadata_element_type": "GovernanceActionProcess"
+     },
+     "analytic_spec_params": {}
+    }
+   }
+  },
+  "check": {
+   "doc_id": "report_20261113_064212_asset_ownership_report",
+   "document": "# Asset Ownership Report\n\n## Create Report Spec\n### Display Name\nasset-ownership-report\n### Qualified Name\nReportSpec::asset-ownership-report\n### Description\nThis report identifies the ownership of assets by listing projects and their respective owners.\n### Content Status\nACTIVE\n### Target Type Name\nGovernanceActionProcess\n### Output Types\nALL\n### Microflow\n{\"format\":\"microflow/1\",\"params\":{\"search_string\":{\"type\":\"string\",\"required\":true}},\"stages\":[{\"stage\":\"producer/find\",\"type\":\"GovernanceActionProcess\",\"function\":\"GovernanceOfficer.find_governance_definitions\",\"params\":{\"search_string\":\"$search_string\",\"metadata_element_type\":\"GovernanceActionProcess\"}}],\"formatters\":{\"ALL\":{\"columns\":[{\"field\":\"display_name\",\"label\":\"Display Name\"},{\"field\":\"description\",\"label\":\"Description\"}]}}}\n\n___\n",
+   "completed": true,
+   "asked_clarifying": false,
+   "dre_offline_parse": {
+    "ok": true,
+    "commands": [
+     "Create Report Spec"
+    ]
+   },
+   "format_set_source": "draft",
+   "format_set_error": null,
+   "target_type": "GovernanceActionProcess",
+   "action_function": "GovernanceOfficer.find_governance_definitions",
+   "columns": [
+    {
+     "name": "Display Name",
+     "key": "display_name"
+    },
+    {
+     "name": "Description",
+     "key": "description"
+    }
+   ],
+   "nonexistent_attributes": {
+    "checked": true,
+    "keys": [],
+    "strict_keys": []
+   },
+   "pyegeria_validate": {
+    "ok": true,
+    "errors": [],
+    "warnings": [],
+    "not_applied": [],
+    "checked": [
+     "structure",
+     "target type",
+     "column attributes",
+     "load-time resolution (find method / analytic routine, parameters, formats)"
+    ],
+    "not_checked": [
+     "Dr.Egeria validate: no runner given"
+    ],
+    "dr_egeria": null,
+    "s": 0.01
+   },
+   "validates": true,
+   "run": {
+    "ran": false,
+    "why": "offline"
+   }
+  },
+  "total_s": 26.41
+ },
+ {
+  "id": "A05",
+  "set": "ambiguous",
+  "question": "Build me a dashboard for the CDO.",
+  "expect": {
+   "clarify": true
+  },
+  "mode": "rebased",
+  "offline": true,
+  "turns": 1,
+  "final_phase": "error",
+  "transcript": [
+   {
+    "turn": 1,
+    "user": "Build me a dashboard for the CDO.",
+    "phase": "error",
+    "response": "'GovernanceDefinitions' isn't an Egeria type I can report on.",
+    "s": 48.29
+   }
+  ],
+  "elicit_s": 48.29,
+  "draft": null,
+  "check": {
+   "doc_id": null,
+   "document": null,
+   "completed": false,
+   "asked_clarifying": false,
+   "format_set_source": null,
+   "format_set_error": "no spec document"
+  },
+  "total_s": 48.29
+ }
+]

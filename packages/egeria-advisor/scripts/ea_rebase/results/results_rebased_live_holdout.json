@@ -1,0 +1,2291 @@
+[
+ {
+  "id": "H01",
+  "set": "clear",
+  "question": "Which glossaries exist, and how many terms does each have?",
+  "expect": null,
+  "mode": "rebased",
+  "offline": false,
+  "turns": 1,
+  "final_phase": "error",
+  "transcript": [
+   {
+    "turn": 1,
+    "user": "Which glossaries exist, and how many terms does each have?",
+    "phase": "error",
+    "response": "'None' isn't an Egeria type I can report on.",
+    "s": 17.51
+   }
+  ],
+  "elicit_s": 17.51,
+  "draft": null,
+  "check": {
+   "doc_id": null,
+   "document": null,
+   "completed": false,
+   "asked_clarifying": false,
+   "format_set_source": null,
+   "format_set_error": "no spec document"
+  },
+  "total_s": 17.52
+ },
+ {
+  "id": "H02",
+  "set": "clear",
+  "question": "Which projects have no project manager assigned?",
+  "expect": null,
+  "mode": "rebased",
+  "offline": false,
+  "turns": 3,
+  "final_phase": "refine",
+  "transcript": [
+   {
+    "turn": 1,
+    "user": "Which projects have no project manager assigned?",
+    "phase": "confirm_action",
+    "response": "### Proposed Report Spec: **Projects with No Project Manager Assigned**\n\n- **Target Type:** Project\n- **Found with:** `ProjectManager.find_projects` (from Project-DrE-Basic)\n- **Condition:** none (everything of this type)\n- **Description:** This report lists all projects that do not have a project manager assigned.\n\n---\n\nDoes this look correct? Use the buttons below, or describe adjustments.",
+    "s": 15.67
+   },
+   {
+    "turn": 2,
+    "user": "continue_columns",
+    "phase": "elicit_columns",
+    "response": "### Columns Configuration\n\n**1. Project Name** \u2014 key: `qualified_name`\n**2. Description** \u2014 key: `description`\n\n**Condition:** none (everything of this type)\n\n---\n\nDoes this look right? Use **Generate now**, or describe changes (only attributes of Project can be columns).",
+    "s": 0.0
+   },
+   {
+    "turn": 3,
+    "user": "generate now",
+    "phase": "refine",
+    "response": "**Projects with No Project Manager Assigned** (draft spec **report_20261113_111713_projects_without_project_manager**, validated with pyegeria)\n\n| qualified_name | description |\n|---|---|\n| CocoPharma::Project::AnnualConferenceLondon | Coco Pharmaceuticals' annual conference in London, bringing together employees, partners and customers. Attendance has g |\n| SimonBurr::Project::Next30DaysEstablishingPhase | With the landscape understood, I need to model the threats, agree a shared vocabulary, and plan the testing and monitori |\n| SimonBurr::Project::First30DaysLearningPhase | My first job is to listen. I need to get to know Ivor, Sidney, Gary and Lemmie, read the data security strategy and the  |\n| JulesKeeper::Project::First30DaysLearningPhase | First things first, I needed to get to know my team, understand their skills, current role, ambitions, and opinions on w |\n| Unblock find_method for Dashboard Sheet commands::1.0 | compact_spec_validator._load_omvs_classes() only scans pyegeria.omvs.*, so find_method can't be set on Create Dashboard  |\n| Build Egeria Advisor dashboard editor (NEXT-13)::1.0 | Backlog item only, not yet scoped: a UI in Egeria Advisor for authoring Dashboard Sheets/placements interactively instea |\n| Add drill-click parity for Vega bar/line charts::1.0 | The hand-drawn SVG tiles it replaced were clickable (drill into the owning app); the new Vega-Lite bar/line/funnel chart |\n| Render nested Dashboard Sheets inline::1.0 | local-dashboards.html currently just links out to a nested Dashboard Sheet placement (\"Open nested sheet ->\") instead of |\n| Wire funnelChart into AI & Context Intelligence tile::1.0 | Only 2 of 5 context-readiness funnel stages (Cataloged, Classified) are computed today; Documented/Lineage-traced/AI-Rea |\n| Project::Sales-Forecast-Consolidation-Project |  |\n| SimonBurr::Task::Final30DaysOperatingPhase::ReportProgress | Report to Ivor Padlock and the governance leaders on what has been found, what has been fixed, and what is planned next. |\n| SimonBurr::Task::Final30DaysOperatingPhase::FirstManagementReview | Hold the first ISMS management review, using the control implementation rate and the first test results to decide what t |\n| SimonBurr::Task::Final30DaysOperatingPhase::StartContinuousTesting | Start scheduled vulnerability scanning and automated penetration testing on the systems that implement the components wi |\n| SimonBurr::Project::Final30DaysOperatingPhase | By the end of my first ninety days, the testing should be running and its results flowing into Egeria, so that I can rep |\n| SimonBurr::Task::Next30DaysEstablishingPhase::DesignMonitoringExtension | Using the security event flows of the acquisitions' SIEMs as a template, identify where each original Coco Pharmaceutica |\n| SimonBurr::Task::Next30DaysEstablishingPhase::PlanContinuousPenetrationTesting | Design the layers of testing - scheduled vulnerability scanning, automated penetration testing and periodic expert-led t |\n| SimonBurr::Task::Next30DaysEstablishingPhase::WriteSecurityGlossary | Write the security glossary with Ivor Padlock and Sidney Seeker, for use in the security awareness training. |\n| SimonBurr::Task::Next30DaysEstablishingPhase::ThreatModelSupplyChains | Use the STRIDE method on the solution components of the strategic information supply chains, and scope each risk to the  |\n| SimonBurr::Task::First30DaysLearningPhase::AuditEgeriaUsers | Use Egeria Audit to review the user accounts, clear-text passwords, missing user identities and unsecured governance zon |\n| SimonBurr::Task::First30DaysLearningPhase::LearnFromAcquisitions | Meet the people who run the SIEM, threat detection, data loss prevention and penetration testing at Austin and Bucharest |\n| SimonBurr::Task::First30DaysLearningPhase::ReviewSystemsInventory | Work through the systems inventory in Egeria with Gary Geeke, including the systems of the Austin and Bucharest acquisit |\n| SimonBurr::Task::First30DaysLearningPhase::ReviewStrategyAndRisks | Read the data security strategy and the risk register, and the governance definitions in the Chief Security Officer's fo |\n| SimonBurr::Task::First30DaysLearningPhase::MeetTheTeam | Meet Ivor Padlock, Sidney Seeker, Gary Geeke and Lemmie Stage to learn how security has been handled, what the fraud inv |\n| SimonBurr::Campaign::FirstNinetyDays | A ninety-day plan covering my first three months as CISO, divided into three thirty-day projects: a Learning Phase, an E |\n| JulesKeeper::Project::Final30DaysImpactPhase | The final stage is all about setting up our team for long-term success. We needed to build a metrics system to demonstra |\n\n*capped: 25 of 64 rows shown*\n\n---\nTell me what to change, or save it.",
+    "s": 81.54
+   }
+  ],
+  "elicit_s": 97.21,
+  "draft": {
+   "draft_id": "draft_report_20261113_111712_projects_without_project_manager",
+   "title": "projects-without-project-manager",
+   "phase": "refine",
+   "phase_label": "Refinement session",
+   "original_query": "Which projects have no project manager assigned?",
+   "action_function": "ProjectManager.find_projects",
+   "target_type": "Project",
+   "columns": [
+    {
+     "name": "Project Name",
+     "key": "qualified_name",
+     "format": false,
+     "detail_spec": null,
+     "formats": "ALL"
+    },
+    {
+     "name": "Description",
+     "key": "description",
+     "format": false,
+     "detail_spec": null,
+     "formats": "ALL"
+    }
+   ],
+   "content_filters": {
+    "search_string": "*"
+   },
+   "shape_defaults": {},
+   "performance_hints": {
+    "page_size": 100,
+    "start_from": 0
+   },
+   "perspectives": [],
+   "questions": [],
+   "answers": {
+    "Heading": "Projects with No Project Manager Assigned",
+    "Description": "This report lists all projects that do not have a project manager assigned."
+   },
+   "pending_questions": {},
+   "doc_id": "report_20261113_111713_projects_without_project_manager",
+   "history_stack": [
+    {
+     "phase": "confirm_action",
+     "phase_label": "Confirming report basic configuration",
+     "columns": [
+      {
+       "name": "Project Name",
+       "key": "qualified_name",
+       "format": false,
+       "detail_spec": null,
+       "formats": "ALL"
+      },
+      {
+       "name": "Description",
+       "key": "description",
+       "format": false,
+       "detail_spec": null,
+       "formats": "ALL"
+      }
+     ],
+     "content_filters": {
+      "search_string": "*"
+     },
+     "shape_defaults": {},
+     "performance_hints": {
+      "page_size": 100,
+      "start_from": 0
+     },
+     "perspectives": [],
+     "questions": [],
+     "answers": {
+      "Heading": "Projects with No Project Manager Assigned",
+      "Description": "This report lists all projects that do not have a project manager assigned."
+     },
+     "pending_questions": {},
+     "summary_of_answers": ""
+    },
+    {
+     "phase": "elicit_columns",
+     "phase_label": "Reviewing and customizing columns",
+     "columns": [
+      {
+       "name": "Project Name",
+       "key": "qualified_name",
+       "format": false,
+       "detail_spec": null,
+       "formats": "ALL"
+      },
+      {
+       "name": "Description",
+       "key": "description",
+       "format": false,
+       "detail_spec": null,
+       "formats": "ALL"
+      }
+     ],
+     "content_filters": {
+      "search_string": "*"
+     },
+     "shape_defaults": {},
+     "performance_hints": {
+      "page_size": 100,
+      "start_from": 0
+     },
+     "perspectives": [],
+     "questions": [],
+     "answers": {
+      "Heading": "Projects with No Project Manager Assigned",
+      "Description": "This report lists all projects that do not have a project manager assigned."
+     },
+     "pending_questions": {},
+     "summary_of_answers": ""
+    }
+   ],
+   "created_at": 1794590232.934431,
+   "updated_at": 1794590233.696435,
+   "summary_of_answers": "",
+   "user_id": "erinoverview",
+   "conditions": {},
+   "unmet": null,
+   "v2": true,
+   "format_set": {
+    "target_type": "Project",
+    "heading": "Projects with No Project Manager Assigned",
+    "description": "This report lists all projects that do not have a project manager assigned.",
+    "aliases": [],
+    "annotations": {},
+    "formats": [
+     {
+      "types": [
+       "ALL"
+      ],
+      "attributes": [
+       {
+        "name": "Project Name",
+        "key": "qualified_name",
+        "format": false
+       },
+       {
+        "name": "Description",
+        "key": "description",
+        "format": false
+       }
+      ]
+     }
+    ],
+    "action": {
+     "function": "ProjectManager.find_projects",
+     "required_params": [
+      "search_string"
+     ],
+     "optional_params": [],
+     "spec_params": {},
+     "analytic_spec_params": {}
+    }
+   }
+  },
+  "check": {
+   "doc_id": "report_20261113_111713_projects_without_project_manager",
+   "document": "# Projects with No Project Manager Assigned\n\n## Create Report Spec\n### Display Name\nprojects-without-project-manager\n### Qualified Name\nReportSpec::projects-without-project-manager\n### Description\nThis report lists all projects that do not have a project manager assigned.\n### Content Status\nACTIVE\n### Target Type Name\nProject\n### Output Types\nALL\n### Microflow\n{\"format\":\"microflow/1\",\"params\":{\"search_string\":{\"type\":\"string\",\"required\":true}},\"stages\":[{\"stage\":\"producer/find\",\"type\":\"Project\",\"function\":\"ProjectManager.find_projects\",\"params\":{\"search_string\":\"$search_string\"}}],\"formatters\":{\"ALL\":{\"columns\":[{\"field\":\"qualified_name\",\"label\":\"Project Name\"},{\"field\":\"description\",\"label\":\"Description\"}]}}}\n\n___\n",
+   "completed": true,
+   "asked_clarifying": false,
+   "dre_offline_parse": {
+    "ok": true,
+    "commands": [
+     "Create Report Spec"
+    ]
+   },
+   "format_set_source": "draft",
+   "format_set_error": null,
+   "target_type": "Project",
+   "action_function": "ProjectManager.find_projects",
+   "columns": [
+    {
+     "name": "Project Name",
+     "key": "qualified_name"
+    },
+    {
+     "name": "Description",
+     "key": "description"
+    }
+   ],
+   "nonexistent_attributes": {
+    "checked": true,
+    "keys": [],
+    "strict_keys": []
+   },
+   "pyegeria_validate": {
+    "ok": true,
+    "errors": [],
+    "warnings": [],
+    "not_applied": [],
+    "checked": [
+     "structure",
+     "target type",
+     "column attributes",
+     "load-time resolution (find method / analytic routine, parameters, formats)",
+     "Dr.Egeria validate"
+    ],
+    "not_checked": [],
+    "dr_egeria": {
+     "success": true,
+     "validation_errors": [],
+     "commands_total": 3,
+     "commands_succeeded": 3,
+     "commands_failed": 0,
+     "commands_detail": [
+      {
+       "command": "",
+       "status": "success",
+       "message": "Block preserved",
+       "display_name": null,
+       "qualified_name": null,
+       "warnings": []
+      },
+      {
+       "command": "Create Report Spec",
+       "status": "success",
+       "message": "Validated Create Report Spec",
+       "display_name": "ea-rebase-H02-projects-without-project-manager",
+       "qualified_name": "ReportSpec::ea-rebase-H02-projects-without-project-manager",
+       "warnings": []
+      },
+      {
+       "command": "",
+       "status": "success",
+       "message": "Block preserved",
+       "display_name": null,
+       "qualified_name": null,
+       "warnings": []
+      }
+     ]
+    },
+    "s": 0.69
+   },
+   "dre_validate_ea_doc": {
+    "success": true,
+    "validation_errors": [],
+    "commands_total": 3,
+    "commands_succeeded": 3,
+    "commands_failed": 0,
+    "commands_detail": [
+     {
+      "command": "",
+      "status": "success",
+      "message": "Block preserved",
+      "display_name": null,
+      "qualified_name": null,
+      "warnings": []
+     },
+     {
+      "command": "Create Report Spec",
+      "status": "success",
+      "message": "Validated Create Report Spec",
+      "display_name": "projects-without-project-manager",
+      "qualified_name": "ReportSpec::projects-without-project-manager",
+      "warnings": []
+     },
+     {
+      "command": "",
+      "status": "success",
+      "message": "Block preserved",
+      "display_name": null,
+      "qualified_name": null,
+      "warnings": []
+     }
+    ]
+   },
+   "validates": true,
+   "run": {
+    "ran": true,
+    "by": "elicitor",
+    "kind": "table",
+    "shown": 25,
+    "capped": true,
+    "notes": [
+     "capped: 25 of 64 rows shown"
+    ],
+    "columns": [
+     "qualified_name",
+     "description"
+    ],
+    "sample": [
+     {
+      "qualified_name": "CocoPharma::Project::AnnualConferenceLondon",
+      "description": "Coco Pharmaceuticals' annual conference in London, bringing together employees, partners and customers.  Attendance has grown steadily and is now around 700 people, which places the conference in the standard tier of the Terrorism (Protection of Premises) Act 2025 (Martyn's Law).  If attendance reaches 800 the conference becomes a qualifying event in the enhanced tier, with additional duties for the Responsible Person."
+     },
+     {
+      "qualified_name": "SimonBurr::Project::Next30DaysEstablishingPhase",
+      "description": "With the landscape understood, I need to model the threats, agree a shared vocabulary, and plan the testing and monitoring that will tell us whether our defences work."
+     },
+     {
+      "qualified_name": "SimonBurr::Project::First30DaysLearningPhase",
+      "description": "My first job is to listen.  I need to get to know Ivor, Sidney, Gary and Lemmie, read the data security strategy and the risk register, and understand what is actually running.  The systems inventory in Egeria is my starting point.  The two acquisitions run security monitoring and testing that the original Coco Pharmaceuticals estate does not have, so I want to learn from the people who run it there."
+     },
+     {
+      "qualified_name": "JulesKeeper::Project::First30DaysLearningPhase",
+      "description": "First things first, I needed to get to know my team, understand their skills, current role, ambitions, and opinions on what should change. These were my primary allies in my new role. Then I needed to do the rounds with key people and teams across the organization. This was the best way to learn about the company's operations, products, services, and workflows, and it was also my starting point for building relationships across the business. I made sure to ask how they use data today and what they could do if they had additional data. Finally I needed to document the evidence I uncovered and outline my approach to share with the board."
+     },
+     {
+      "qualified_name": "Unblock find_method for Dashboard Sheet commands::1.0",
+      "description": "compact_spec_validator._load_omvs_classes() only scans pyegeria.omvs.*, so find_method can't be set on Create Dashboard Sheet / Link Report to Dashboard Sheet (their processors live in md_processing.v2 / pyegeria.view). Needs either a validator scope extension or moving processor entry points into pyegeria.omvs."
+     }
+    ],
+    "s": 80.78
+   }
+  },
+  "total_s": 98.85
+ },
+ {
+  "id": "H03",
+  "set": "clear",
+  "question": "List the data specifications and the data structures they contain.",
+  "expect": null,
+  "mode": "rebased",
+  "offline": false,
+  "turns": 1,
+  "final_phase": "error",
+  "transcript": [
+   {
+    "turn": 1,
+    "user": "List the data specifications and the data structures they contain.",
+    "phase": "error",
+    "response": "'None' isn't an Egeria type I can report on.",
+    "s": 22.81
+   }
+  ],
+  "elicit_s": 22.81,
+  "draft": null,
+  "check": {
+   "doc_id": null,
+   "document": null,
+   "completed": false,
+   "asked_clarifying": false,
+   "format_set_source": null,
+   "format_set_error": "no spec document"
+  },
+  "total_s": 22.81
+ },
+ {
+  "id": "H04",
+  "set": "clear",
+  "question": "What solution blueprints exist, and which components make up each one?",
+  "expect": null,
+  "mode": "rebased",
+  "offline": false,
+  "turns": 3,
+  "final_phase": "refine",
+  "transcript": [
+   {
+    "turn": 1,
+    "user": "What solution blueprints exist, and which components make up each one?",
+    "phase": "confirm_action",
+    "response": "### Proposed Report Spec: **Solution Blueprints and Their Components Report**\n\n- **Target Type:** GovernanceDefinition\n- **Found with:** `GovernanceOfficer.find_governance_definitions` (from Governance-Definition-DrE-Basic)\n- **Condition:** none (everything of this type)\n- **Description:** This report lists all existing solution blueprints along with their components.\n\n---\n\nDoes this look correct? Use the buttons below, or describe adjustments.",
+    "s": 26.41
+   },
+   {
+    "turn": 2,
+    "user": "continue_columns",
+    "phase": "elicit_columns",
+    "response": "### Columns Configuration\n\n**1. Blueprint Name** \u2014 key: `display_name`\n**2. Description** \u2014 key: `description`\n**3. Components** \u2014 key: `scope`\n**4. Status** \u2014 key: `status`\n\n**Condition:** none (everything of this type)\n\n---\n\nDoes this look right? Use **Generate now**, or describe changes (only attributes of GovernanceDefinition can be columns).",
+    "s": 0.0
+   },
+   {
+    "turn": 3,
+    "user": "generate now",
+    "phase": "refine",
+    "response": "**Solution Blueprints and Their Components Report** (draft spec **report_20261113_111926_solution_blueprints_report_specification**, validated with pyegeria)\n\nI couldn't run it: => TIMEOUT_ERROR_408 => Request timed out for endpoint `https://localhost:9443/servers/qs-view-server/api/open-metadata/governance-officer/governance-definitions/by-search-string`. * Context: * class name=`BaseServerClient` * caller method=`_async_find_request` * Error Kind: timeout * Timeout Second\n\n---\nTell me what to change, or save it.",
+    "s": 91.0
+   }
+  ],
+  "elicit_s": 117.42,
+  "draft": {
+   "draft_id": "draft_report_20261113_111925_solution_blueprints_report_specification",
+   "title": "solution-blueprints-report-specification",
+   "phase": "refine",
+   "phase_label": "Refinement session",
+   "original_query": "What solution blueprints exist, and which components make up each one?",
+   "action_function": "GovernanceOfficer.find_governance_definitions",
+   "target_type": "GovernanceDefinition",
+   "columns": [
+    {
+     "name": "Blueprint Name",
+     "key": "display_name",
+     "format": false,
+     "detail_spec": null,
+     "formats": "ALL"
+    },
+    {
+     "name": "Description",
+     "key": "description",
+     "format": false,
+     "detail_spec": null,
+     "formats": "ALL"
+    },
+    {
+     "name": "Components",
+     "key": "scope",
+     "format": true,
+     "detail_spec": [
+      {
+       "name": "Component Name",
+       "key": "displayName",
+       "format": false
+      }
+     ],
+     "formats": [
+      "TABLE",
+      "LIST"
+     ]
+    },
+    {
+     "name": "Status",
+     "key": "status",
+     "format": false,
+     "detail_spec": null,
+     "formats": "ALL"
+    }
+   ],
+   "content_filters": {
+    "search_string": "*"
+   },
+   "shape_defaults": {},
+   "performance_hints": {
+    "page_size": 100,
+    "start_from": 0
+   },
+   "perspectives": [],
+   "questions": [],
+   "answers": {
+    "Heading": "Solution Blueprints and Their Components Report",
+    "Description": "This report lists all existing solution blueprints along with their components."
+   },
+   "pending_questions": {},
+   "doc_id": "report_20261113_111926_solution_blueprints_report_specification",
+   "history_stack": [
+    {
+     "phase": "confirm_action",
+     "phase_label": "Confirming report basic configuration",
+     "columns": [
+      {
+       "name": "Blueprint Name",
+       "key": "display_name",
+       "format": false,
+       "detail_spec": null,
+       "formats": "ALL"
+      },
+      {
+       "name": "Description",
+       "key": "description",
+       "format": false,
+       "detail_spec": null,
+       "formats": "ALL"
+      },
+      {
+       "name": "Components",
+       "key": "scope",
+       "format": true,
+       "detail_spec": [
+        {
+         "name": "Component Name",
+         "key": "displayName",
+         "format": false
+        }
+       ],
+       "formats": [
+        "TABLE",
+        "LIST"
+       ]
+      },
+      {
+       "name": "Status",
+       "key": "status",
+       "format": false,
+       "detail_spec": null,
+       "formats": "ALL"
+      }
+     ],
+     "content_filters": {
+      "search_string": "*"
+     },
+     "shape_defaults": {},
+     "performance_hints": {
+      "page_size": 100,
+      "start_from": 0
+     },
+     "perspectives": [],
+     "questions": [],
+     "answers": {
+      "Heading": "Solution Blueprints and Their Components Report",
+      "Description": "This report lists all existing solution blueprints along with their components."
+     },
+     "pending_questions": {},
+     "summary_of_answers": ""
+    },
+    {
+     "phase": "elicit_columns",
+     "phase_label": "Reviewing and customizing columns",
+     "columns": [
+      {
+       "name": "Blueprint Name",
+       "key": "display_name",
+       "format": false,
+       "detail_spec": null,
+       "formats": "ALL"
+      },
+      {
+       "name": "Description",
+       "key": "description",
+       "format": false,
+       "detail_spec": null,
+       "formats": "ALL"
+      },
+      {
+       "name": "Components",
+       "key": "scope",
+       "format": true,
+       "detail_spec": [
+        {
+         "name": "Component Name",
+         "key": "displayName",
+         "format": false
+        }
+       ],
+       "formats": [
+        "TABLE",
+        "LIST"
+       ]
+      },
+      {
+       "name": "Status",
+       "key": "status",
+       "format": false,
+       "detail_spec": null,
+       "formats": "ALL"
+      }
+     ],
+     "content_filters": {
+      "search_string": "*"
+     },
+     "shape_defaults": {},
+     "performance_hints": {
+      "page_size": 100,
+      "start_from": 0
+     },
+     "perspectives": [],
+     "questions": [],
+     "answers": {
+      "Heading": "Solution Blueprints and Their Components Report",
+      "Description": "This report lists all existing solution blueprints along with their components."
+     },
+     "pending_questions": {},
+     "summary_of_answers": ""
+    }
+   ],
+   "created_at": 1794590365.3373609,
+   "updated_at": 1794590366.268546,
+   "summary_of_answers": "",
+   "user_id": "erinoverview",
+   "conditions": {},
+   "unmet": null,
+   "v2": true,
+   "format_set": {
+    "target_type": "GovernanceDefinition",
+    "heading": "Solution Blueprints and Their Components Report",
+    "description": "This report lists all existing solution blueprints along with their components.",
+    "aliases": [],
+    "annotations": {},
+    "formats": [
+     {
+      "types": [
+       "ALL"
+      ],
+      "attributes": [
+       {
+        "name": "Blueprint Name",
+        "key": "display_name",
+        "format": false
+       },
+       {
+        "name": "Description",
+        "key": "description",
+        "format": false
+       },
+       {
+        "name": "Components",
+        "key": "scope",
+        "format": false
+       },
+       {
+        "name": "Status",
+        "key": "status",
+        "format": false
+       }
+      ]
+     }
+    ],
+    "action": {
+     "function": "GovernanceOfficer.find_governance_definitions",
+     "required_params": [
+      "search_string"
+     ],
+     "optional_params": [],
+     "spec_params": {
+      "metadata_element_type": "GovernanceDefinition"
+     },
+     "analytic_spec_params": {}
+    }
+   }
+  },
+  "check": {
+   "doc_id": "report_20261113_111926_solution_blueprints_report_specification",
+   "document": "# Solution Blueprints and Their Components Report\n\n## Create Report Spec\n### Display Name\nsolution-blueprints-report-specification\n### Qualified Name\nReportSpec::solution-blueprints-report-specification\n### Description\nThis report lists all existing solution blueprints along with their components.\n### Content Status\nACTIVE\n### Target Type Name\nGovernanceDefinition\n### Output Types\nALL\n### Microflow\n{\"format\":\"microflow/1\",\"params\":{\"search_string\":{\"type\":\"string\",\"required\":true}},\"stages\":[{\"stage\":\"producer/find\",\"type\":\"GovernanceDefinition\",\"function\":\"GovernanceOfficer.find_governance_definitions\",\"params\":{\"search_string\":\"$search_string\",\"metadata_element_type\":\"GovernanceDefinition\"}}],\"formatters\":{\"ALL\":{\"columns\":[{\"field\":\"display_name\",\"label\":\"Blueprint Name\"},{\"field\":\"description\",\"label\":\"Description\"},{\"field\":\"scope\",\"label\":\"Components\"},{\"field\":\"status\",\"label\":\"Status\"}]}}}\n\n___\n",
+   "completed": true,
+   "asked_clarifying": false,
+   "dre_offline_parse": {
+    "ok": true,
+    "commands": [
+     "Create Report Spec"
+    ]
+   },
+   "format_set_source": "draft",
+   "format_set_error": null,
+   "target_type": "GovernanceDefinition",
+   "action_function": "GovernanceOfficer.find_governance_definitions",
+   "columns": [
+    {
+     "name": "Blueprint Name",
+     "key": "display_name"
+    },
+    {
+     "name": "Description",
+     "key": "description"
+    },
+    {
+     "name": "Components",
+     "key": "scope"
+    },
+    {
+     "name": "Status",
+     "key": "status"
+    }
+   ],
+   "nonexistent_attributes": {
+    "checked": true,
+    "keys": [],
+    "strict_keys": []
+   },
+   "pyegeria_validate": {
+    "ok": true,
+    "errors": [],
+    "warnings": [],
+    "not_applied": [],
+    "checked": [
+     "structure",
+     "target type",
+     "column attributes",
+     "load-time resolution (find method / analytic routine, parameters, formats)",
+     "Dr.Egeria validate"
+    ],
+    "not_checked": [],
+    "dr_egeria": {
+     "success": true,
+     "validation_errors": [],
+     "commands_total": 3,
+     "commands_succeeded": 3,
+     "commands_failed": 0,
+     "commands_detail": [
+      {
+       "command": "",
+       "status": "success",
+       "message": "Block preserved",
+       "display_name": null,
+       "qualified_name": null,
+       "warnings": []
+      },
+      {
+       "command": "Create Report Spec",
+       "status": "success",
+       "message": "Validated Create Report Spec",
+       "display_name": "ea-rebase-H04-solution-blueprints-report-specification",
+       "qualified_name": "ReportSpec::ea-rebase-H04-solution-blueprints-report-specification",
+       "warnings": []
+      },
+      {
+       "command": "",
+       "status": "success",
+       "message": "Block preserved",
+       "display_name": null,
+       "qualified_name": null,
+       "warnings": []
+      }
+     ]
+    },
+    "s": 0.94
+   },
+   "dre_validate_ea_doc": {
+    "success": true,
+    "validation_errors": [],
+    "commands_total": 3,
+    "commands_succeeded": 3,
+    "commands_failed": 0,
+    "commands_detail": [
+     {
+      "command": "",
+      "status": "success",
+      "message": "Block preserved",
+      "display_name": null,
+      "qualified_name": null,
+      "warnings": []
+     },
+     {
+      "command": "Create Report Spec",
+      "status": "success",
+      "message": "Validated Create Report Spec",
+      "display_name": "solution-blueprints-report-specification",
+      "qualified_name": "ReportSpec::solution-blueprints-report-specification",
+      "warnings": []
+     },
+     {
+      "command": "",
+      "status": "success",
+      "message": "Block preserved",
+      "display_name": null,
+      "qualified_name": null,
+      "warnings": []
+     }
+    ]
+   },
+   "validates": true,
+   "run": {
+    "ran": true,
+    "by": "elicitor",
+    "kind": null,
+    "shown": null,
+    "capped": null,
+    "notes": null,
+    "content": "",
+    "s": 90.08
+   }
+  },
+  "total_s": 119.17
+ },
+ {
+  "id": "H05",
+  "set": "clear",
+  "question": "Which governance rules or controls are still in draft?",
+  "expect": null,
+  "mode": "rebased",
+  "offline": false,
+  "turns": 3,
+  "final_phase": "refine",
+  "transcript": [
+   {
+    "turn": 1,
+    "user": "Which governance rules or controls are still in draft?",
+    "phase": "confirm_action",
+    "response": "### Proposed Report Spec: **Governance Rules or Controls Still in Draft**\n\n- **Target Type:** GovernanceRule\n- **Found with:** `GovernanceOfficer.find_governance_definitions` (from Governance-Rule-DrE-Basic)\n- **Condition:** none (everything of this type)\n- **Description:** This report lists all governance rules and controls that are currently still in draft status.\n\n---\n\nDoes this look correct? Use the buttons below, or describe adjustments.",
+    "s": 20.26
+   },
+   {
+    "turn": 2,
+    "user": "continue_columns",
+    "phase": "elicit_columns",
+    "response": "### Columns Configuration\n\n**1. Name** \u2014 key: `display_name`\n**2. Description** \u2014 key: `description`\n**3. Status** \u2014 key: `status`\n\n**Condition:** none (everything of this type)\n\n---\n\nDoes this look right? Use **Generate now**, or describe changes (only attributes of GovernanceRule can be columns).",
+    "s": 0.0
+   },
+   {
+    "turn": 3,
+    "user": "generate now",
+    "phase": "refine",
+    "response": "**Governance Rules or Controls Still in Draft** (draft spec **report_20261113_112119_draft_governance_rules_report**, validated with pyegeria)\n\n| display_name | description | status |\n|---|---|---|\n| IT System Identifier \u2014 EKG Pharmaceuticals Bucharest | Each IT system at EKG Pharmaceuticals in Bucharest, Romania is assigned a unique system identifier at the time it is rec | ACTIVE |\n| IT System Identifier \u2014 Coco Pharmaceuticals Austin | Each IT system at the Coco Pharmaceuticals Austin (Texas, USA) manufacturing plant is assigned a unique system identifie | ACTIVE |\n\n---\nTell me what to change, or save it.",
+    "s": 4.64
+   }
+  ],
+  "elicit_s": 24.9,
+  "draft": {
+   "draft_id": "draft_report_20261113_112118_draft_governance_rules_report",
+   "title": "draft-governance-rules-report",
+   "phase": "refine",
+   "phase_label": "Refinement session",
+   "original_query": "Which governance rules or controls are still in draft?",
+   "action_function": "GovernanceOfficer.find_governance_definitions",
+   "target_type": "GovernanceRule",
+   "columns": [
+    {
+     "name": "Name",
+     "key": "display_name",
+     "format": false,
+     "detail_spec": null,
+     "formats": "ALL"
+    },
+    {
+     "name": "Description",
+     "key": "description",
+     "format": false,
+     "detail_spec": null,
+     "formats": "ALL"
+    },
+    {
+     "name": "Status",
+     "key": "status",
+     "format": false,
+     "detail_spec": null,
+     "formats": "ALL"
+    }
+   ],
+   "content_filters": {
+    "search_string": "*"
+   },
+   "shape_defaults": {},
+   "performance_hints": {
+    "page_size": 100,
+    "start_from": 0
+   },
+   "perspectives": [],
+   "questions": [],
+   "answers": {
+    "Heading": "Governance Rules or Controls Still in Draft",
+    "Description": "This report lists all governance rules and controls that are currently still in draft status."
+   },
+   "pending_questions": {},
+   "doc_id": "report_20261113_112119_draft_governance_rules_report",
+   "history_stack": [
+    {
+     "phase": "confirm_action",
+     "phase_label": "Confirming report basic configuration",
+     "columns": [
+      {
+       "name": "Name",
+       "key": "display_name",
+       "format": false,
+       "detail_spec": null,
+       "formats": "ALL"
+      },
+      {
+       "name": "Description",
+       "key": "description",
+       "format": false,
+       "detail_spec": null,
+       "formats": "ALL"
+      },
+      {
+       "name": "Status",
+       "key": "status",
+       "format": false,
+       "detail_spec": null,
+       "formats": "ALL"
+      }
+     ],
+     "content_filters": {
+      "search_string": "*"
+     },
+     "shape_defaults": {},
+     "performance_hints": {
+      "page_size": 100,
+      "start_from": 0
+     },
+     "perspectives": [],
+     "questions": [],
+     "answers": {
+      "Heading": "Governance Rules or Controls Still in Draft",
+      "Description": "This report lists all governance rules and controls that are currently still in draft status."
+     },
+     "pending_questions": {},
+     "summary_of_answers": ""
+    },
+    {
+     "phase": "elicit_columns",
+     "phase_label": "Reviewing and customizing columns",
+     "columns": [
+      {
+       "name": "Name",
+       "key": "display_name",
+       "format": false,
+       "detail_spec": null,
+       "formats": "ALL"
+      },
+      {
+       "name": "Description",
+       "key": "description",
+       "format": false,
+       "detail_spec": null,
+       "formats": "ALL"
+      },
+      {
+       "name": "Status",
+       "key": "status",
+       "format": false,
+       "detail_spec": null,
+       "formats": "ALL"
+      }
+     ],
+     "content_filters": {
+      "search_string": "*"
+     },
+     "shape_defaults": {},
+     "performance_hints": {
+      "page_size": 100,
+      "start_from": 0
+     },
+     "perspectives": [],
+     "questions": [],
+     "answers": {
+      "Heading": "Governance Rules or Controls Still in Draft",
+      "Description": "This report lists all governance rules and controls that are currently still in draft status."
+     },
+     "pending_questions": {},
+     "summary_of_answers": ""
+    }
+   ],
+   "created_at": 1794590478.351866,
+   "updated_at": 1794590479.768814,
+   "summary_of_answers": "",
+   "user_id": "erinoverview",
+   "conditions": {},
+   "unmet": null,
+   "v2": true,
+   "format_set": {
+    "target_type": "GovernanceRule",
+    "heading": "Governance Rules or Controls Still in Draft",
+    "description": "This report lists all governance rules and controls that are currently still in draft status.",
+    "aliases": [],
+    "annotations": {},
+    "formats": [
+     {
+      "types": [
+       "ALL"
+      ],
+      "attributes": [
+       {
+        "name": "Name",
+        "key": "display_name",
+        "format": false
+       },
+       {
+        "name": "Description",
+        "key": "description",
+        "format": false
+       },
+       {
+        "name": "Status",
+        "key": "status",
+        "format": false
+       }
+      ]
+     }
+    ],
+    "action": {
+     "function": "GovernanceOfficer.find_governance_definitions",
+     "required_params": [
+      "search_string"
+     ],
+     "optional_params": [],
+     "spec_params": {
+      "metadata_element_type": "GovernanceRule"
+     },
+     "analytic_spec_params": {}
+    }
+   }
+  },
+  "check": {
+   "doc_id": "report_20261113_112119_draft_governance_rules_report",
+   "document": "# Governance Rules or Controls Still in Draft\n\n## Create Report Spec\n### Display Name\ndraft-governance-rules-report\n### Qualified Name\nReportSpec::draft-governance-rules-report\n### Description\nThis report lists all governance rules and controls that are currently still in draft status.\n### Content Status\nACTIVE\n### Target Type Name\nGovernanceRule\n### Output Types\nALL\n### Microflow\n{\"format\":\"microflow/1\",\"params\":{\"search_string\":{\"type\":\"string\",\"required\":true}},\"stages\":[{\"stage\":\"producer/find\",\"type\":\"GovernanceRule\",\"function\":\"GovernanceOfficer.find_governance_definitions\",\"params\":{\"search_string\":\"$search_string\",\"metadata_element_type\":\"GovernanceRule\"}}],\"formatters\":{\"ALL\":{\"columns\":[{\"field\":\"display_name\",\"label\":\"Name\"},{\"field\":\"description\",\"label\":\"Description\"},{\"field\":\"status\",\"label\":\"Status\"}]}}}\n\n___\n",
+   "completed": true,
+   "asked_clarifying": false,
+   "dre_offline_parse": {
+    "ok": true,
+    "commands": [
+     "Create Report Spec"
+    ]
+   },
+   "format_set_source": "draft",
+   "format_set_error": null,
+   "target_type": "GovernanceRule",
+   "action_function": "GovernanceOfficer.find_governance_definitions",
+   "columns": [
+    {
+     "name": "Name",
+     "key": "display_name"
+    },
+    {
+     "name": "Description",
+     "key": "description"
+    },
+    {
+     "name": "Status",
+     "key": "status"
+    }
+   ],
+   "nonexistent_attributes": {
+    "checked": true,
+    "keys": [],
+    "strict_keys": []
+   },
+   "pyegeria_validate": {
+    "ok": true,
+    "errors": [],
+    "warnings": [],
+    "not_applied": [],
+    "checked": [
+     "structure",
+     "target type",
+     "column attributes",
+     "load-time resolution (find method / analytic routine, parameters, formats)",
+     "Dr.Egeria validate"
+    ],
+    "not_checked": [],
+    "dr_egeria": {
+     "success": true,
+     "validation_errors": [],
+     "commands_total": 3,
+     "commands_succeeded": 3,
+     "commands_failed": 0,
+     "commands_detail": [
+      {
+       "command": "",
+       "status": "success",
+       "message": "Block preserved",
+       "display_name": null,
+       "qualified_name": null,
+       "warnings": []
+      },
+      {
+       "command": "Create Report Spec",
+       "status": "success",
+       "message": "Validated Create Report Spec",
+       "display_name": "ea-rebase-H05-draft-governance-rules-report",
+       "qualified_name": "ReportSpec::ea-rebase-H05-draft-governance-rules-report",
+       "warnings": []
+      },
+      {
+       "command": "",
+       "status": "success",
+       "message": "Block preserved",
+       "display_name": null,
+       "qualified_name": null,
+       "warnings": []
+      }
+     ]
+    },
+    "s": 1.42
+   },
+   "dre_validate_ea_doc": {
+    "success": true,
+    "validation_errors": [],
+    "commands_total": 3,
+    "commands_succeeded": 3,
+    "commands_failed": 0,
+    "commands_detail": [
+     {
+      "command": "",
+      "status": "success",
+      "message": "Block preserved",
+      "display_name": null,
+      "qualified_name": null,
+      "warnings": []
+     },
+     {
+      "command": "Create Report Spec",
+      "status": "success",
+      "message": "Validated Create Report Spec",
+      "display_name": "draft-governance-rules-report",
+      "qualified_name": "ReportSpec::draft-governance-rules-report",
+      "warnings": []
+     },
+     {
+      "command": "",
+      "status": "success",
+      "message": "Block preserved",
+      "display_name": null,
+      "qualified_name": null,
+      "warnings": []
+     }
+    ]
+   },
+   "validates": true,
+   "run": {
+    "ran": true,
+    "by": "elicitor",
+    "kind": "table",
+    "shown": 2,
+    "capped": false,
+    "notes": [],
+    "columns": [
+     "display_name",
+     "description",
+     "status"
+    ],
+    "sample": [
+     {
+      "display_name": "IT System Identifier \u2014 EKG Pharmaceuticals Bucharest",
+      "description": "Each IT system at EKG Pharmaceuticals in Bucharest, Romania is assigned a unique system identifier at the time it is recorded in the asset inventory.  The identifier is composed of two parts separated by a hyphen:\n\n1. **Asset-type prefix** \u2014 the fixed string `SYS` indicating this is a system-level asset.\n2. **Sequence number** \u2014 a three-digit integer, zero-padded to three places, assigned sequentially as each system is added to the inventory (e.g. `001`, `002`, \u2026 `030`).\n\nExample identifiers: `SYS-001`, `SYS-002`, `SYS-030`.\n\nSubsystems that group related systems together use a slightly different scheme that incorporates the site abbreviation to distinguish EKG subsystems from those at other sites: `SS-EKG-{NNN}` (e.g. `SS-EKG-001`).\n\nThis convention pre-dates the acquisition of EKG by Coco Pharmaceuticals and was established by the EKG IT team.  It is retained as-is for continuity.  The equivalent convention at the Austin manufacturing plant uses a site-prefixed form `AUS-SYS-{NNN}` \u2014 see the Austin System Identifier naming standard rule.",
+      "status": "ACTIVE"
+     },
+     {
+      "display_name": "IT System Identifier \u2014 Coco Pharmaceuticals Austin",
+      "description": "Each IT system at the Coco Pharmaceuticals Austin (Texas, USA) manufacturing plant is assigned a unique system identifier at the time it is recorded in the asset inventory.  The identifier is composed of three parts separated by hyphens:\n\n1. **Site prefix** \u2014 the fixed string `AUS` identifying the Austin site.\n2. **Asset-type segment** \u2014 the fixed string `SYS` indicating this is a system-level asset (as opposed to a subsystem, component, or individual device).\n3. **Sequence number** \u2014 a three-digit integer, zero-padded to three places, assigned sequentially as each system is added to the inventory (e.g. `001`, `002`, \u2026 `045`).\n\nExample identifiers: `AUS-SYS-001`, `AUS-SYS-002`, `AUS-SYS-045`.\n\nSubsystems that group related systems together use a parallel scheme: `SS-AUS-{NNN}` (e.g. `SS-AUS-001`).\n\nThe same structural convention is used at the EKG Pharmaceuticals Bucharest site, substituting `EKG` as the site prefix and omitting the `AUS` segment \u2014 system identifiers there follow `SYS-{NNN}` (e.g. `SYS-001`) and subsystem identifiers follow `SS-EKG-{NNN}` (e.g. `SS-EKG-001`). A separate naming standard rule covers the EKG scheme.",
+      "status": "ACTIVE"
+     }
+    ],
+    "s": 3.23
+   }
+  },
+  "total_s": 27.21
+ },
+ {
+  "id": "H06",
+  "set": "clear",
+  "question": "Who works at Coco Pharmaceuticals, and what roles do they hold?",
+  "expect": null,
+  "mode": "rebased",
+  "offline": false,
+  "turns": 1,
+  "final_phase": "error",
+  "transcript": [
+   {
+    "turn": 1,
+    "user": "Who works at Coco Pharmaceuticals, and what roles do they hold?",
+    "phase": "error",
+    "response": "'UserProfile' isn't an Egeria type I can report on.",
+    "s": 16.4
+   }
+  ],
+  "elicit_s": 16.4,
+  "draft": null,
+  "check": {
+   "doc_id": null,
+   "document": null,
+   "completed": false,
+   "asked_clarifying": false,
+   "format_set_source": null,
+   "format_set_error": "no spec document"
+  },
+  "total_s": 16.4
+ },
+ {
+  "id": "H07",
+  "set": "clear",
+  "question": "Which collections have the most members?",
+  "expect": null,
+  "mode": "rebased",
+  "offline": false,
+  "turns": 1,
+  "final_phase": "error",
+  "transcript": [
+   {
+    "turn": 1,
+    "user": "Which collections have the most members?",
+    "phase": "error",
+    "response": "'None' isn't an Egeria type I can report on.",
+    "s": 16.41
+   }
+  ],
+  "elicit_s": 16.41,
+  "draft": null,
+  "check": {
+   "doc_id": null,
+   "document": null,
+   "completed": false,
+   "asked_clarifying": false,
+   "format_set_source": null,
+   "format_set_error": "no spec document"
+  },
+  "total_s": 16.41
+ },
+ {
+  "id": "H08",
+  "set": "clear",
+  "question": "Which data fields have no data class assigned?",
+  "expect": null,
+  "mode": "rebased",
+  "offline": false,
+  "turns": 1,
+  "final_phase": "error",
+  "transcript": [
+   {
+    "turn": 1,
+    "user": "Which data fields have no data class assigned?",
+    "phase": "error",
+    "response": "'Attribute' isn't an Egeria type I can report on.",
+    "s": 15.97
+   }
+  ],
+  "elicit_s": 15.97,
+  "draft": null,
+  "check": {
+   "doc_id": null,
+   "document": null,
+   "completed": false,
+   "asked_clarifying": false,
+   "format_set_source": null,
+   "format_set_error": "no spec document"
+  },
+  "total_s": 15.97
+ },
+ {
+  "id": "H09",
+  "set": "clear",
+  "question": "Which teams does Coco Pharmaceuticals have, and who leads each one?",
+  "expect": null,
+  "mode": "rebased",
+  "offline": false,
+  "turns": 3,
+  "final_phase": "refine",
+  "transcript": [
+   {
+    "turn": 1,
+    "user": "Which teams does Coco Pharmaceuticals have, and who leads each one?",
+    "phase": "confirm_action",
+    "response": "\u26a0\ufe0f Left out: 'Leader's Name' (owner.name) isn't an attribute of Project.\n### Proposed Report Spec: **Coco Pharmaceuticals Teams and Their Leaders**\n\n- **Target Type:** Project\n- **Found with:** `ProjectManager.find_projects` (from Project-DrE-Basic)\n- **Condition:** none (everything of this type)\n- **Description:** This report lists all the teams within Coco Pharmaceuticals along with their respective leaders.\n\n---\n\nDoes this look correct? Use the buttons below, or describe adjustments.",
+    "s": 16.56
+   },
+   {
+    "turn": 2,
+    "user": "continue_columns",
+    "phase": "elicit_columns",
+    "response": "### Columns Configuration\n\n**1. Team Name** \u2014 key: `display_name`\n\n**Condition:** none (everything of this type)\n\n---\n\nDoes this look right? Use **Generate now**, or describe changes (only attributes of Project can be columns).",
+    "s": 0.0
+   },
+   {
+    "turn": 3,
+    "user": "generate now",
+    "phase": "refine",
+    "response": "**Coco Pharmaceuticals Teams and Their Leaders** (draft spec **report_20261113_112231_coco_pharmaceuticals_teams_leaders_report**, validated with pyegeria)\n\n| display_name |\n|---|\n| Coco Pharmaceuticals Annual Conference (London) |\n| Next 30 Days (Establishing Phase) |\n| First 30 Days (Learning Phase) |\n| First 30 Days (Learning Phase) |\n| Unblock find_method for Dashboard Sheet commands |\n| Build Egeria Advisor dashboard editor (NEXT-13) |\n| Add drill-click parity for Vega bar/line charts |\n| Render nested Dashboard Sheets inline |\n| Wire funnelChart into AI & Context Intelligence tile |\n| Sales Forecast Consolidation Project |\n| Report progress to the governance leaders |\n| Hold the first ISMS management review |\n| Start continuous testing |\n| Final 30 Days (Operating Phase) |\n| Design the extension of security monitoring |\n| Plan continuous penetration testing |\n| Write the security glossary |\n| Threat model the strategic information supply chains |\n| Audit Egeria's own users |\n| Learn from the Austin and Bucharest security teams |\n| Review the systems inventory |\n| Review the security strategy and risk register |\n| Meet Ivor, Sidney, Gary and Lemmie |\n| My First Ninety Days as CISO |\n| Final 30 Days (Impact Phase) |\n\n*capped: 25 of 64 rows shown*\n\n---\nTell me what to change, or save it.",
+    "s": 59.78
+   }
+  ],
+  "elicit_s": 76.34,
+  "draft": {
+   "draft_id": "draft_report_20261113_112230_coco_pharmaceuticals_teams_leaders_repor",
+   "title": "coco-pharmaceuticals-teams-leaders-report",
+   "phase": "refine",
+   "phase_label": "Refinement session",
+   "original_query": "Which teams does Coco Pharmaceuticals have, and who leads each one?",
+   "action_function": "ProjectManager.find_projects",
+   "target_type": "Project",
+   "columns": [
+    {
+     "name": "Team Name",
+     "key": "display_name",
+     "format": false,
+     "detail_spec": null,
+     "formats": "ALL"
+    }
+   ],
+   "content_filters": {
+    "search_string": "*"
+   },
+   "shape_defaults": {},
+   "performance_hints": {
+    "page_size": 100,
+    "start_from": 0
+   },
+   "perspectives": [],
+   "questions": [],
+   "answers": {
+    "Heading": "Coco Pharmaceuticals Teams and Their Leaders",
+    "Description": "This report lists all the teams within Coco Pharmaceuticals along with their respective leaders."
+   },
+   "pending_questions": {},
+   "doc_id": "report_20261113_112231_coco_pharmaceuticals_teams_leaders_report",
+   "history_stack": [
+    {
+     "phase": "confirm_action",
+     "phase_label": "Confirming report basic configuration",
+     "columns": [
+      {
+       "name": "Team Name",
+       "key": "display_name",
+       "format": false,
+       "detail_spec": null,
+       "formats": "ALL"
+      }
+     ],
+     "content_filters": {
+      "search_string": "*"
+     },
+     "shape_defaults": {},
+     "performance_hints": {
+      "page_size": 100,
+      "start_from": 0
+     },
+     "perspectives": [],
+     "questions": [],
+     "answers": {
+      "Heading": "Coco Pharmaceuticals Teams and Their Leaders",
+      "Description": "This report lists all the teams within Coco Pharmaceuticals along with their respective leaders."
+     },
+     "pending_questions": {},
+     "summary_of_answers": ""
+    },
+    {
+     "phase": "elicit_columns",
+     "phase_label": "Reviewing and customizing columns",
+     "columns": [
+      {
+       "name": "Team Name",
+       "key": "display_name",
+       "format": false,
+       "detail_spec": null,
+       "formats": "ALL"
+      }
+     ],
+     "content_filters": {
+      "search_string": "*"
+     },
+     "shape_defaults": {},
+     "performance_hints": {
+      "page_size": 100,
+      "start_from": 0
+     },
+     "perspectives": [],
+     "questions": [],
+     "answers": {
+      "Heading": "Coco Pharmaceuticals Teams and Their Leaders",
+      "Description": "This report lists all the teams within Coco Pharmaceuticals along with their respective leaders."
+     },
+     "pending_questions": {},
+     "summary_of_answers": ""
+    }
+   ],
+   "created_at": 1794590550.6364422,
+   "updated_at": 1794590551.839152,
+   "summary_of_answers": "",
+   "user_id": "erinoverview",
+   "conditions": {},
+   "unmet": null,
+   "v2": true,
+   "format_set": {
+    "target_type": "Project",
+    "heading": "Coco Pharmaceuticals Teams and Their Leaders",
+    "description": "This report lists all the teams within Coco Pharmaceuticals along with their respective leaders.",
+    "aliases": [],
+    "annotations": {},
+    "formats": [
+     {
+      "types": [
+       "ALL"
+      ],
+      "attributes": [
+       {
+        "name": "Team Name",
+        "key": "display_name",
+        "format": false
+       }
+      ]
+     }
+    ],
+    "action": {
+     "function": "ProjectManager.find_projects",
+     "required_params": [
+      "search_string"
+     ],
+     "optional_params": [],
+     "spec_params": {},
+     "analytic_spec_params": {}
+    }
+   }
+  },
+  "check": {
+   "doc_id": "report_20261113_112231_coco_pharmaceuticals_teams_leaders_report",
+   "document": "# Coco Pharmaceuticals Teams and Their Leaders\n\n## Create Report Spec\n### Display Name\ncoco-pharmaceuticals-teams-leaders-report\n### Qualified Name\nReportSpec::coco-pharmaceuticals-teams-leaders-report\n### Description\nThis report lists all the teams within Coco Pharmaceuticals along with their respective leaders.\n### Content Status\nACTIVE\n### Target Type Name\nProject\n### Output Types\nALL\n### Microflow\n{\"format\":\"microflow/1\",\"params\":{\"search_string\":{\"type\":\"string\",\"required\":true}},\"stages\":[{\"stage\":\"producer/find\",\"type\":\"Project\",\"function\":\"ProjectManager.find_projects\",\"params\":{\"search_string\":\"$search_string\"}}],\"formatters\":{\"ALL\":{\"columns\":[{\"field\":\"display_name\",\"label\":\"Team Name\"}]}}}\n\n___\n",
+   "completed": true,
+   "asked_clarifying": false,
+   "dre_offline_parse": {
+    "ok": true,
+    "commands": [
+     "Create Report Spec"
+    ]
+   },
+   "format_set_source": "draft",
+   "format_set_error": null,
+   "target_type": "Project",
+   "action_function": "ProjectManager.find_projects",
+   "columns": [
+    {
+     "name": "Team Name",
+     "key": "display_name"
+    }
+   ],
+   "nonexistent_attributes": {
+    "checked": true,
+    "keys": [],
+    "strict_keys": []
+   },
+   "pyegeria_validate": {
+    "ok": true,
+    "errors": [],
+    "warnings": [],
+    "not_applied": [],
+    "checked": [
+     "structure",
+     "target type",
+     "column attributes",
+     "load-time resolution (find method / analytic routine, parameters, formats)",
+     "Dr.Egeria validate"
+    ],
+    "not_checked": [],
+    "dr_egeria": {
+     "success": true,
+     "validation_errors": [],
+     "commands_total": 3,
+     "commands_succeeded": 3,
+     "commands_failed": 0,
+     "commands_detail": [
+      {
+       "command": "",
+       "status": "success",
+       "message": "Block preserved",
+       "display_name": null,
+       "qualified_name": null,
+       "warnings": []
+      },
+      {
+       "command": "Create Report Spec",
+       "status": "success",
+       "message": "Validated Create Report Spec",
+       "display_name": "ea-rebase-H09-coco-pharmaceuticals-teams-leaders-report",
+       "qualified_name": "ReportSpec::ea-rebase-H09-coco-pharmaceuticals-teams-leaders-report",
+       "warnings": []
+      },
+      {
+       "command": "",
+       "status": "success",
+       "message": "Block preserved",
+       "display_name": null,
+       "qualified_name": null,
+       "warnings": []
+      }
+     ]
+    },
+    "s": 0.55
+   },
+   "dre_validate_ea_doc": {
+    "success": true,
+    "validation_errors": [],
+    "commands_total": 3,
+    "commands_succeeded": 3,
+    "commands_failed": 0,
+    "commands_detail": [
+     {
+      "command": "",
+      "status": "success",
+      "message": "Block preserved",
+      "display_name": null,
+      "qualified_name": null,
+      "warnings": []
+     },
+     {
+      "command": "Create Report Spec",
+      "status": "success",
+      "message": "Validated Create Report Spec",
+      "display_name": "coco-pharmaceuticals-teams-leaders-report",
+      "qualified_name": "ReportSpec::coco-pharmaceuticals-teams-leaders-report",
+      "warnings": []
+     },
+     {
+      "command": "",
+      "status": "success",
+      "message": "Block preserved",
+      "display_name": null,
+      "qualified_name": null,
+      "warnings": []
+     }
+    ]
+   },
+   "validates": true,
+   "run": {
+    "ran": true,
+    "by": "elicitor",
+    "kind": "table",
+    "shown": 25,
+    "capped": true,
+    "notes": [
+     "capped: 25 of 64 rows shown"
+    ],
+    "columns": [
+     "display_name"
+    ],
+    "sample": [
+     {
+      "display_name": "Coco Pharmaceuticals Annual Conference (London)"
+     },
+     {
+      "display_name": "Next 30 Days (Establishing Phase)"
+     },
+     {
+      "display_name": "First 30 Days (Learning Phase)"
+     },
+     {
+      "display_name": "First 30 Days (Learning Phase)"
+     },
+     {
+      "display_name": "Unblock find_method for Dashboard Sheet commands"
+     }
+    ],
+    "s": 58.58
+   }
+  },
+  "total_s": 77.38
+ },
+ {
+  "id": "H10",
+  "set": "clear",
+  "question": "Which sites or locations does Coco Pharmaceuticals operate from?",
+  "expect": null,
+  "mode": "rebased",
+  "offline": false,
+  "turns": 3,
+  "final_phase": "refine",
+  "transcript": [
+   {
+    "turn": 1,
+    "user": "Which sites or locations does Coco Pharmaceuticals operate from?",
+    "phase": "confirm_action",
+    "response": "\u26a0\ufe0f Left out: 'Location Type' (locationType) isn't an attribute of Location.\n\u26a0\ufe0f Left out: 'Address' (address) isn't an attribute of Location.\n### Proposed Report Spec: **Sites or Locations Operated by Coco Pharmaceuticals**\n\n- **Target Type:** Location\n- **Found with:** `MetadataExpert.find_metadata_elements_with_string` (from generic finder)\n- **Condition:** none (everything of this type)\n- **Description:** This report lists all the sites and locations where Coco Pharmaceuticals operates.\n\n---\n\nDoes this look correct? Use the buttons below, or describe adjustments.",
+    "s": 20.29
+   },
+   {
+    "turn": 2,
+    "user": "continue_columns",
+    "phase": "elicit_columns",
+    "response": "### Columns Configuration\n\n**1. Site Name** \u2014 key: `display_name`\n\n**Condition:** none (everything of this type)\n\n---\n\nDoes this look right? Use **Generate now**, or describe changes (only attributes of Location can be columns).",
+    "s": 0.0
+   },
+   {
+    "turn": 3,
+    "user": "generate now",
+    "phase": "refine",
+    "response": "**Sites or Locations Operated by Coco Pharmaceuticals** (draft spec **report_20261113_112352_coco_pharmaceuticals_sites_report**, validated with pyegeria)\n\n| display_name |\n|---|\n|  |\n|  |\n|  |\n|  |\n|  |\n|  |\n|  |\n|  |\n|  |\n|  |\n|  |\n|  |\n|  |\n|  |\n|  |\n|  |\n|  |\n|  |\n|  |\n|  |\n|  |\n|  |\n|  |\n|  |\n|  |\n\n*capped: 25 of 39 rows shown*\n\n---\nTell me what to change, or save it.",
+    "s": 1.45
+   }
+  ],
+  "elicit_s": 21.74,
+  "draft": {
+   "draft_id": "draft_report_20261113_112351_coco_pharmaceuticals_sites_report",
+   "title": "coco-pharmaceuticals-sites-report",
+   "phase": "refine",
+   "phase_label": "Refinement session",
+   "original_query": "Which sites or locations does Coco Pharmaceuticals operate from?",
+   "action_function": "MetadataExpert.find_metadata_elements_with_string",
+   "target_type": "Location",
+   "columns": [
+    {
+     "name": "Site Name",
+     "key": "display_name",
+     "format": false,
+     "detail_spec": null,
+     "formats": "ALL"
+    }
+   ],
+   "content_filters": {
+    "search_string": "*"
+   },
+   "shape_defaults": {},
+   "performance_hints": {
+    "page_size": 100,
+    "start_from": 0
+   },
+   "perspectives": [],
+   "questions": [],
+   "answers": {
+    "Heading": "Sites or Locations Operated by Coco Pharmaceuticals",
+    "Description": "This report lists all the sites and locations where Coco Pharmaceuticals operates."
+   },
+   "pending_questions": {},
+   "doc_id": "report_20261113_112352_coco_pharmaceuticals_sites_report",
+   "history_stack": [
+    {
+     "phase": "confirm_action",
+     "phase_label": "Confirming report basic configuration",
+     "columns": [
+      {
+       "name": "Site Name",
+       "key": "display_name",
+       "format": false,
+       "detail_spec": null,
+       "formats": "ALL"
+      }
+     ],
+     "content_filters": {
+      "search_string": "*"
+     },
+     "shape_defaults": {},
+     "performance_hints": {
+      "page_size": 100,
+      "start_from": 0
+     },
+     "perspectives": [],
+     "questions": [],
+     "answers": {
+      "Heading": "Sites or Locations Operated by Coco Pharmaceuticals",
+      "Description": "This report lists all the sites and locations where Coco Pharmaceuticals operates."
+     },
+     "pending_questions": {},
+     "summary_of_answers": ""
+    },
+    {
+     "phase": "elicit_columns",
+     "phase_label": "Reviewing and customizing columns",
+     "columns": [
+      {
+       "name": "Site Name",
+       "key": "display_name",
+       "format": false,
+       "detail_spec": null,
+       "formats": "ALL"
+      }
+     ],
+     "content_filters": {
+      "search_string": "*"
+     },
+     "shape_defaults": {},
+     "performance_hints": {
+      "page_size": 100,
+      "start_from": 0
+     },
+     "perspectives": [],
+     "questions": [],
+     "answers": {
+      "Heading": "Sites or Locations Operated by Coco Pharmaceuticals",
+      "Description": "This report lists all the sites and locations where Coco Pharmaceuticals operates."
+     },
+     "pending_questions": {},
+     "summary_of_answers": ""
+    }
+   ],
+   "created_at": 1794590631.760702,
+   "updated_at": 1794590632.7069,
+   "summary_of_answers": "",
+   "user_id": "erinoverview",
+   "conditions": {},
+   "unmet": null,
+   "v2": true,
+   "format_set": {
+    "target_type": "Location",
+    "heading": "Sites or Locations Operated by Coco Pharmaceuticals",
+    "description": "This report lists all the sites and locations where Coco Pharmaceuticals operates.",
+    "aliases": [],
+    "annotations": {},
+    "formats": [
+     {
+      "types": [
+       "ALL"
+      ],
+      "attributes": [
+       {
+        "name": "Site Name",
+        "key": "display_name",
+        "format": false
+       }
+      ]
+     }
+    ],
+    "action": {
+     "function": "MetadataExpert.find_metadata_elements_with_string",
+     "required_params": [
+      "search_string"
+     ],
+     "optional_params": [],
+     "spec_params": {
+      "metadata_element_type": "Location"
+     },
+     "analytic_spec_params": {}
+    }
+   }
+  },
+  "check": {
+   "doc_id": "report_20261113_112352_coco_pharmaceuticals_sites_report",
+   "document": "# Sites or Locations Operated by Coco Pharmaceuticals\n\n## Create Report Spec\n### Display Name\ncoco-pharmaceuticals-sites-report\n### Qualified Name\nReportSpec::coco-pharmaceuticals-sites-report\n### Description\nThis report lists all the sites and locations where Coco Pharmaceuticals operates.\n### Content Status\nACTIVE\n### Target Type Name\nLocation\n### Output Types\nALL\n### Microflow\n{\"format\":\"microflow/1\",\"params\":{\"search_string\":{\"type\":\"string\",\"required\":true}},\"stages\":[{\"stage\":\"producer/find\",\"type\":\"Location\",\"function\":\"MetadataExpert.find_metadata_elements_with_string\",\"params\":{\"search_string\":\"$search_string\",\"metadata_element_type\":\"Location\"}}],\"formatters\":{\"ALL\":{\"columns\":[{\"field\":\"display_name\",\"label\":\"Site Name\"}]}}}\n\n___\n",
+   "completed": true,
+   "asked_clarifying": false,
+   "dre_offline_parse": {
+    "ok": true,
+    "commands": [
+     "Create Report Spec"
+    ]
+   },
+   "format_set_source": "draft",
+   "format_set_error": null,
+   "target_type": "Location",
+   "action_function": "MetadataExpert.find_metadata_elements_with_string",
+   "columns": [
+    {
+     "name": "Site Name",
+     "key": "display_name"
+    }
+   ],
+   "nonexistent_attributes": {
+    "checked": true,
+    "keys": [],
+    "strict_keys": []
+   },
+   "pyegeria_validate": {
+    "ok": true,
+    "errors": [],
+    "warnings": [],
+    "not_applied": [],
+    "checked": [
+     "structure",
+     "target type",
+     "column attributes",
+     "load-time resolution (find method / analytic routine, parameters, formats)",
+     "Dr.Egeria validate"
+    ],
+    "not_checked": [],
+    "dr_egeria": {
+     "success": true,
+     "validation_errors": [],
+     "commands_total": 3,
+     "commands_succeeded": 3,
+     "commands_failed": 0,
+     "commands_detail": [
+      {
+       "command": "",
+       "status": "success",
+       "message": "Block preserved",
+       "display_name": null,
+       "qualified_name": null,
+       "warnings": []
+      },
+      {
+       "command": "Create Report Spec",
+       "status": "success",
+       "message": "Validated Create Report Spec",
+       "display_name": "ea-rebase-H10-coco-pharmaceuticals-sites-report",
+       "qualified_name": "ReportSpec::ea-rebase-H10-coco-pharmaceuticals-sites-report",
+       "warnings": []
+      },
+      {
+       "command": "",
+       "status": "success",
+       "message": "Block preserved",
+       "display_name": null,
+       "qualified_name": null,
+       "warnings": []
+      }
+     ]
+    },
+    "s": 0.52
+   },
+   "dre_validate_ea_doc": {
+    "success": true,
+    "validation_errors": [],
+    "commands_total": 3,
+    "commands_succeeded": 3,
+    "commands_failed": 0,
+    "commands_detail": [
+     {
+      "command": "",
+      "status": "success",
+      "message": "Block preserved",
+      "display_name": null,
+      "qualified_name": null,
+      "warnings": []
+     },
+     {
+      "command": "Create Report Spec",
+      "status": "success",
+      "message": "Validated Create Report Spec",
+      "display_name": "coco-pharmaceuticals-sites-report",
+      "qualified_name": "ReportSpec::coco-pharmaceuticals-sites-report",
+      "warnings": []
+     },
+     {
+      "command": "",
+      "status": "success",
+      "message": "Block preserved",
+      "display_name": null,
+      "qualified_name": null,
+      "warnings": []
+     }
+    ]
+   },
+   "validates": true,
+   "run": {
+    "ran": true,
+    "by": "elicitor",
+    "kind": "table",
+    "shown": 25,
+    "capped": true,
+    "notes": [
+     "capped: 25 of 39 rows shown"
+    ],
+    "columns": [
+     "display_name"
+    ],
+    "sample": [
+     {
+      "display_name": null
+     },
+     {
+      "display_name": null
+     },
+     {
+      "display_name": null
+     },
+     {
+      "display_name": null
+     },
+     {
+      "display_name": null
+     }
+    ],
+    "s": 0.5
+   }
+  },
+  "total_s": 22.93
+ },
+ {
+  "id": "H11",
+  "set": "ambiguous",
+  "question": "How healthy is the catalog?",
+  "expect": null,
+  "mode": "rebased",
+  "offline": false,
+  "turns": 3,
+  "final_phase": "refine",
+  "transcript": [
+   {
+    "turn": 1,
+    "user": "How healthy is the catalog?",
+    "phase": "confirm_action",
+    "response": "\u26a0\ufe0f Left out: 'Type' (type.name) isn't an attribute of Asset.\n\u26a0\ufe0f Left out: 'Description Completeness (%)' (description_completeness_percentage) isn't an attribute of Asset.\n\u26a0\ufe0f Left out: 'Tagged with Governance Policies?' (governance_policies_applied) isn't an attribute of Asset.\n### Proposed Report Spec: **Catalog Health Report**\n\n- **Target Type:** Asset\n- **Found with:** `MetadataExpert.find_metadata_elements_with_string` (from generic finder)\n- **Condition:** none (everything of this type)\n- **Description:** This report provides an overview of the health and completeness of assets within the catalog, including metadata quality metrics.\n\n---\n\nDoes this look correct? Use the buttons below, or describe adjustments.",
+    "s": 34.85
+   },
+   {
+    "turn": 2,
+    "user": "continue_columns",
+    "phase": "elicit_columns",
+    "response": "### Columns Configuration\n\n**1. Asset Name** \u2014 key: `display_name`\n**2. GUID** \u2014 key: `guid`\n**3. Last Updated Date** \u2014 key: `update_time`\n\n**Condition:** none (everything of this type)\n\n---\n\nDoes this look right? Use **Generate now**, or describe changes (only attributes of Asset can be columns).",
+    "s": 0.0
+   },
+   {
+    "turn": 3,
+    "user": "generate now",
+    "phase": "refine",
+    "response": "**Catalog Health Report** (draft spec **report_20261113_112430_catalog_health_report**, validated with pyegeria)\n\n| display_name | guid | update_time |\n|---|---|---|\n|  |  |  |\n|  |  |  |\n|  |  |  |\n|  |  |  |\n|  |  |  |\n|  |  |  |\n|  |  |  |\n|  |  |  |\n|  |  |  |\n|  |  |  |\n|  |  |  |\n|  |  |  |\n|  |  |  |\n|  |  |  |\n|  |  |  |\n|  |  |  |\n|  |  |  |\n|  |  |  |\n|  |  |  |\n|  |  |  |\n|  |  |  |\n|  |  |  |\n|  |  |  |\n|  |  |  |\n|  |  |  |\n\n*capped: 25 of 1000 rows shown*\n\n---\nTell me what to change, or save it.",
+    "s": 9.11
+   }
+  ],
+  "elicit_s": 43.96,
+  "draft": {
+   "draft_id": "draft_report_20261113_112429_catalog_health_report",
+   "title": "catalog-health-report",
+   "phase": "refine",
+   "phase_label": "Refinement session",
+   "original_query": "How healthy is the catalog?",
+   "action_function": "MetadataExpert.find_metadata_elements_with_string",
+   "target_type": "Asset",
+   "columns": [
+    {
+     "name": "Asset Name",
+     "key": "display_name",
+     "format": false,
+     "detail_spec": null,
+     "formats": "ALL"
+    },
+    {
+     "name": "GUID",
+     "key": "guid",
+     "format": false,
+     "detail_spec": null,
+     "formats": "ALL"
+    },
+    {
+     "name": "Last Updated Date",
+     "key": "update_time",
+     "format": true,
+     "detail_spec": null,
+     "formats": [
+      "DATE"
+     ]
+    }
+   ],
+   "content_filters": {
+    "search_string": "*"
+   },
+   "shape_defaults": {},
+   "performance_hints": {
+    "page_size": 100,
+    "start_from": 0
+   },
+   "perspectives": [],
+   "questions": [],
+   "answers": {
+    "Heading": "Catalog Health Report",
+    "Description": "This report provides an overview of the health and completeness of assets within the catalog, including metadata quality metrics."
+   },
+   "pending_questions": {},
+   "doc_id": "report_20261113_112430_catalog_health_report",
+   "history_stack": [
+    {
+     "phase": "confirm_action",
+     "phase_label": "Confirming report basic configuration",
+     "columns": [
+      {
+       "name": "Asset Name",
+       "key": "display_name",
+       "format": false,
+       "detail_spec": null,
+       "formats": "ALL"
+      },
+      {
+       "name": "GUID",
+       "key": "guid",
+       "format": false,
+       "detail_spec": null,
+       "formats": "ALL"
+      },
+      {
+       "name": "Last Updated Date",
+       "key": "update_time",
+       "format": true,
+       "detail_spec": null,
+       "formats": [
+        "DATE"
+       ]
+      }
+     ],
+     "content_filters": {
+      "search_string": "*"
+     },
+     "shape_defaults": {},
+     "performance_hints": {
+      "page_size": 100,
+      "start_from": 0
+     },
+     "perspectives": [],
+     "questions": [],
+     "answers": {
+      "Heading": "Catalog Health Report",
+      "Description": "This report provides an overview of the health and completeness of assets within the catalog, including metadata quality metrics."
+     },
+     "pending_questions": {},
+     "summary_of_answers": ""
+    },
+    {
+     "phase": "elicit_columns",
+     "phase_label": "Reviewing and customizing columns",
+     "columns": [
+      {
+       "name": "Asset Name",
+       "key": "display_name",
+       "format": false,
+       "detail_spec": null,
+       "formats": "ALL"
+      },
+      {
+       "name": "GUID",
+       "key": "guid",
+       "format": false,
+       "detail_spec": null,
+       "formats": "ALL"
+      },
+      {
+       "name": "Last Updated Date",
+       "key": "update_time",
+       "format": true,
+       "detail_spec": null,
+       "formats": [
+        "DATE"
+       ]
+      }
+     ],
+     "content_filters": {
+      "search_string": "*"
+     },
+     "shape_defaults": {},
+     "performance_hints": {
+      "page_size": 100,
+      "start_from": 0
+     },
+     "perspectives": [],
+     "questions": [],
+     "answers": {
+      "Heading": "Catalog Health Report",
+      "Description": "This report provides an overview of the health and completeness of assets within the catalog, including metadata quality metrics."
+     },
+     "pending_questions": {},
+     "summary_of_answers": ""
+    }
+   ],
+   "created_at": 1794590669.26111,
+   "updated_at": 1794590670.171117,
+   "summary_of_answers": "",
+   "user_id": "erinoverview",
+   "conditions": {},
+   "unmet": null,
+   "v2": true,
+   "format_set": {
+    "target_type": "Asset",
+    "heading": "Catalog Health Report",
+    "description": "This report provides an overview of the health and completeness of assets within the catalog, including metadata quality metrics.",
+    "aliases": [],
+    "annotations": {},
+    "formats": [
+     {
+      "types": [
+       "ALL"
+      ],
+      "attributes": [
+       {
+        "name": "Asset Name",
+        "key": "display_name",
+        "format": false
+       },
+       {
+        "name": "GUID",
+        "key": "guid",
+        "format": false
+       },
+       {
+        "name": "Last Updated Date",
+        "key": "update_time",
+        "format": false
+       }
+      ]
+     }
+    ],
+    "action": {
+     "function": "MetadataExpert.find_metadata_elements_with_string",
+     "required_params": [
+      "search_string"
+     ],
+     "optional_params": [],
+     "spec_params": {
+      "metadata_element_type": "Asset"
+     },
+     "analytic_spec_params": {}
+    }
+   }
+  },
+  "check": {
+   "doc_id": "report_20261113_112430_catalog_health_report",
+   "document": "# Catalog Health Report\n\n## Create Report Spec\n### Display Name\ncatalog-health-report\n### Qualified Name\nReportSpec::catalog-health-report\n### Description\nThis report provides an overview of the health and completeness of assets within the catalog, including metadata quality metrics.\n### Content Status\nACTIVE\n### Target Type Name\nAsset\n### Output Types\nALL\n### Microflow\n{\"format\":\"microflow/1\",\"params\":{\"search_string\":{\"type\":\"string\",\"required\":true}},\"stages\":[{\"stage\":\"producer/find\",\"type\":\"Asset\",\"function\":\"MetadataExpert.find_metadata_elements_with_string\",\"params\":{\"search_string\":\"$search_string\",\"metadata_element_type\":\"Asset\"}}],\"formatters\":{\"ALL\":{\"columns\":[{\"field\":\"display_name\",\"label\":\"Asset Name\"},{\"field\":\"guid\",\"label\":\"GUID\"},{\"field\":\"update_time\",\"label\":\"Last Updated Date\"}]}}}\n\n___\n",
+   "completed": true,
+   "asked_clarifying": false,
+   "dre_offline_parse": {
+    "ok": true,
+    "commands": [
+     "Create Report Spec"
+    ]
+   },
+   "format_set_source": "draft",
+   "format_set_error": null,
+   "target_type": "Asset",
+   "action_function": "MetadataExpert.find_metadata_elements_with_string",
+   "columns": [
+    {
+     "name": "Asset Name",
+     "key": "display_name"
+    },
+    {
+     "name": "GUID",
+     "key": "guid"
+    },
+    {
+     "name": "Last Updated Date",
+     "key": "update_time"
+    }
+   ],
+   "nonexistent_attributes": {
+    "checked": true,
+    "keys": [],
+    "strict_keys": []
+   },
+   "pyegeria_validate": {
+    "ok": true,
+    "errors": [],
+    "warnings": [],
+    "not_applied": [],
+    "checked": [
+     "structure",
+     "target type",
+     "column attributes",
+     "load-time resolution (find method / analytic routine, parameters, formats)",
+     "Dr.Egeria validate"
+    ],
+    "not_checked": [],
+    "dr_egeria": {
+     "success": true,
+     "validation_errors": [],
+     "commands_total": 3,
+     "commands_succeeded": 3,
+     "commands_failed": 0,
+     "commands_detail": [
+      {
+       "command": "",
+       "status": "success",
+       "message": "Block preserved",
+       "display_name": null,
+       "qualified_name": null,
+       "warnings": []
+      },
+      {
+       "command": "Create Report Spec",
+       "status": "success",
+       "message": "Validated Create Report Spec",
+       "display_name": "ea-rebase-H11-catalog-health-report",
+       "qualified_name": "ReportSpec::ea-rebase-H11-catalog-health-report",
+       "warnings": []
+      },
+      {
+       "command": "",
+       "status": "success",
+       "message": "Block preserved",
+       "display_name": null,
+       "qualified_name": null,
+       "warnings": []
+      }
+     ]
+    },
+    "s": 0.69
+   },
+   "dre_validate_ea_doc": {
+    "success": true,
+    "validation_errors": [],
+    "commands_total": 3,
+    "commands_succeeded": 3,
+    "commands_failed": 0,
+    "commands_detail": [
+     {
+      "command": "",
+      "status": "success",
+      "message": "Block preserved",
+      "display_name": null,
+      "qualified_name": null,
+      "warnings": []
+     },
+     {
+      "command": "Create Report Spec",
+      "status": "success",
+      "message": "Validated Create Report Spec",
+      "display_name": "catalog-health-report",
+      "qualified_name": "ReportSpec::catalog-health-report",
+      "warnings": []
+     },
+     {
+      "command": "",
+      "status": "success",
+      "message": "Block preserved",
+      "display_name": null,
+      "qualified_name": null,
+      "warnings": []
+     }
+    ]
+   },
+   "validates": true,
+   "run": {
+    "ran": true,
+    "by": "elicitor",
+    "kind": "table",
+    "shown": 25,
+    "capped": true,
+    "notes": [
+     "capped: 25 of 1000 rows shown"
+    ],
+    "columns": [
+     "display_name",
+     "guid",
+     "update_time"
+    ],
+    "sample": [
+     {
+      "display_name": null,
+      "guid": null,
+      "update_time": null
+     },
+     {
+      "display_name": null,
+      "guid": null,
+      "update_time": null
+     },
+     {
+      "display_name": null,
+      "guid": null,
+      "update_time": null
+     },
+     {
+      "display_name": null,
+      "guid": null,
+      "update_time": null
+     },
+     {
+      "display_name": null,
+      "guid": null,
+      "update_time": null
+     }
+    ],
+    "s": 8.2
+   }
+  },
+  "total_s": 45.17
+ },
+ {
+  "id": "H12",
+  "set": "ambiguous",
+  "question": "Show me what's new for me.",
+  "expect": null,
+  "mode": "rebased",
+  "offline": false,
+  "turns": 1,
+  "final_phase": "error",
+  "transcript": [
+   {
+    "turn": 1,
+    "user": "Show me what's new for me.",
+    "phase": "error",
+    "response": "'User Profile' isn't an Egeria type I can report on.",
+    "s": 21.9
+   }
+  ],
+  "elicit_s": 21.9,
+  "draft": null,
+  "check": {
+   "doc_id": null,
+   "document": null,
+   "completed": false,
+   "asked_clarifying": false,
+   "format_set_source": null,
+   "format_set_error": "no spec document"
+  },
+  "total_s": 21.9
+ }
+]

@@ -1,0 +1,74 @@
+{
+ "H01": {
+  "score": "0",
+  "spec_score": "1",
+  "outcome": "timeout",
+  "why": "LIVE: timeout (Egeria timed out at 90 s (laz loaded)); spec 1: same spec as offline: Glossary names; term counts not shown"
+ },
+ "H02": {
+  "score": "1",
+  "spec_score": "1",
+  "outcome": "rows",
+  "why": "LIVE: rows (25 rows with values); spec 1: same spec as offline: Project; 'no project manager' not applied (said unmet)"
+ },
+ "H03": {
+  "score": "1",
+  "spec_score": "1",
+  "outcome": "rows",
+  "why": "LIVE: rows (25 rows with values); spec 1: same spec as offline: data specifications listed; the structures they contain not shown"
+ },
+ "H04": {
+  "score": "1",
+  "spec_score": "1",
+  "outcome": "rows",
+  "why": "LIVE: rows (25 rows with values); spec 1: same spec as offline: SolutionBlueprint names; components not shown"
+ },
+ "H05": {
+  "score": "0",
+  "spec_score": "1",
+  "outcome": "error",
+  "why": "LIVE: error (=> CLIENT_ERROR_400 => Client error occurred with status code `https://localhost:9443/servers/qs-view-server/api/open-metadata/governance-officer/governance-def); spec 1: same spec as offline: GovernanceRule DRAFT + status; controls not covered"
+ },
+ "H06": {
+  "score": "0",
+  "spec_score": "1",
+  "outcome": "empty",
+  "why": "LIVE: empty (no rows returned); spec 1: same spec as offline: PersonRole with search '*Coco Pharmaceuticals*': people not shown; filter likely matches nothing"
+ },
+ "H07": {
+  "score": "1",
+  "spec_score": "1",
+  "outcome": "rows",
+  "why": "LIVE: rows (25 rows with values); spec 1: same spec as offline: Collection names; member counts / ordering not shown"
+ },
+ "H08": {
+  "score": "0",
+  "spec_score": "0",
+  "outcome": "rows",
+  "why": "LIVE: rows (25 rows with values); spec 0: same spec as offline: SchemaAttribute, not DataField: wrong type"
+ },
+ "H09": {
+  "score": "1",
+  "spec_score": "1",
+  "outcome": "rows",
+  "why": "LIVE: rows (25 rows with values); spec 1: same spec as offline: Team names; leaders not shown (prompt example close to this question: see write-up)"
+ },
+ "H10": {
+  "score": "0",
+  "spec_score": "0",
+  "outcome": "no_run",
+  "why": "LIVE: no_run (clarified); spec 0: same spec as offline: clear question, asked instead (C on a clear question = 0)"
+ },
+ "H11": {
+  "score": "C",
+  "spec_score": "C",
+  "outcome": "no_run",
+  "why": "LIVE: no_run (clarified); spec C: same spec as offline: asked"
+ },
+ "H12": {
+  "score": "C",
+  "spec_score": "C",
+  "outcome": "no_run",
+  "why": "LIVE: no_run (clarified); spec C: same spec as offline: asked"
+ }
+}

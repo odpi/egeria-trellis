@@ -1,0 +1,182 @@
+{
+ "B01": {
+  "score": "1",
+  "spec_score": "1",
+  "outcome": "rows",
+  "why": "LIVE: rows (25 rows with values); spec 1: live spec differs from offline: Asset names + description: lineage not shown"
+ },
+ "B02": {
+  "score": "1",
+  "spec_score": "1",
+  "outcome": "rows",
+  "why": "LIVE: rows (25 rows with values); spec 1: same spec as offline: Project, ACTIVE filter + status | REVISED 2 -> 1 (Architect, quiet read-back 31e359c5): limit_result_by_status filters ElementStatus, which on laz is only ACTIVE/DELETED, so it is a no-op; 'currently active' is Project.projectStatus (the quiet run listed every project)"
+ },
+ "B03": {
+  "score": "1",
+  "spec_score": "1",
+  "outcome": "rows",
+  "why": "LIVE: rows (25 rows with values); spec 1: same spec as offline: Project + priority column, not sorted"
+ },
+ "B04": {
+  "score": "1",
+  "spec_score": "1",
+  "outcome": "rows",
+  "why": "LIVE: rows (25 rows with values); spec 1: same spec as offline: GlossaryTerm + usage, 'has usage' not applied"
+ },
+ "B05": {
+  "score": "0",
+  "spec_score": "1",
+  "outcome": "error",
+  "why": "LIVE: error (=> CLIENT_ERROR_400 => Client error occurred with status code `https://localhost:9443/servers/qs-view-server/api/open-metadata/glossary-manager/glossaries/terms); spec 1: same spec as offline: GlossaryTerm, DRAFT filter + status | REVISED 2 -> 1 (Architect, 2026-11-13): a content status (DRAFT/UNDER_DEVELOPMENT) in limit_result_by_status filters ElementStatus, so the condition is not expressed; Egeria rejects it live (HTTP 400)"
+ },
+ "B06": {
+  "score": "1",
+  "spec_score": "1",
+  "outcome": "rows",
+  "why": "LIVE: rows (25 rows with values); spec 1: same spec as offline: GlossaryTerm, effective-date columns missing"
+ },
+ "B07": {
+  "score": "1",
+  "spec_score": "1",
+  "outcome": "rows",
+  "why": "LIVE: rows (25 rows with values); spec 1: same spec as offline: Collection, no classification column/condition (said unmet)"
+ },
+ "B08": {
+  "score": "2",
+  "spec_score": "2",
+  "outcome": "rows",
+  "why": "LIVE: rows (25 rows with values); spec 2: same spec as offline: Collection, newest-created first + create time"
+ },
+ "B09": {
+  "score": "2",
+  "spec_score": "2",
+  "outcome": "rows",
+  "why": "LIVE: rows (25 rows with values); spec 2: live spec differs from offline: DigitalProduct names + description"
+ },
+ "B10": {
+  "score": "0",
+  "spec_score": "1",
+  "outcome": "error",
+  "why": "LIVE: error (=> CLIENT_ERROR_400 => Client error occurred with status code `https://localhost:9443/servers/qs-view-server/api/open-metadata/collection-manager/collections/by); spec 1: same spec as offline: DigitalProduct, DRAFT/UNDER_DEVELOPMENT + status | REVISED 2 -> 1 (Architect, 2026-11-13): a content status (DRAFT/UNDER_DEVELOPMENT) in limit_result_by_status filters ElementStatus, so the condition is not expressed; Egeria rejects it live (HTTP 400)"
+ },
+ "B11": {
+  "score": "0",
+  "spec_score": "1",
+  "outcome": "error",
+  "why": "LIVE: error (=> CLIENT_ERROR_400 => Client error occurred with status code `https://localhost:9443/servers/qs-view-server/api/open-metadata/collection-manager/collections/by); spec 1: same spec as offline: DigitalProduct ACTIVE/STANDBY: service-life/withdrawal not shown"
+ },
+ "B12": {
+  "score": "2",
+  "spec_score": "2",
+  "outcome": "rows",
+  "why": "LIVE: rows (2 rows with values); spec 2: same spec as offline: DigitalProductCatalog, name + description"
+ },
+ "B13": {
+  "score": "2",
+  "spec_score": "2",
+  "outcome": "rows",
+  "why": "LIVE: rows (25 rows with values); spec 2: same spec as offline: GovernanceMetric, ACTIVE + status"
+ },
+ "B14": {
+  "score": "1",
+  "spec_score": "1",
+  "outcome": "rows",
+  "why": "LIVE: rows (25 rows with values); spec 1: live spec differs from offline: GovernanceControl names + description: measurements and targets not shown"
+ },
+ "B15": {
+  "score": "0",
+  "spec_score": "1",
+  "outcome": "error",
+  "why": "LIVE: error (=> CLIENT_ERROR_400 => Client error occurred with status code `https://localhost:9443/servers/qs-view-server/api/open-metadata/governance-officer/governance-def); spec 1: live spec differs from offline: GovernancePolicy, APPROVED + ACTIVE: a content status, so the condition isn't expressed"
+ },
+ "C01": {
+  "score": "0",
+  "spec_score": "1",
+  "outcome": "empty",
+  "why": "LIVE: empty (no rows returned); spec 1: live spec differs from offline: Campaign-classified projects searched 'ninety day plan': not Jules Keeper's items"
+ },
+ "C02": {
+  "score": "2",
+  "spec_score": "2",
+  "outcome": "rows",
+  "why": "LIVE: rows (12 rows with values); spec 2: same spec as offline: Risk (scoped), name + description"
+ },
+ "C03": {
+  "score": "1",
+  "spec_score": "2",
+  "outcome": "rows",
+  "why": "LIVE: rows (12 rows with values; same spec, same rows as before: importance sorted alphabetically, Critical risks last); spec 2: same spec as offline: Risk, sorted by importance + importance"
+ },
+ "C04": {
+  "score": "1",
+  "spec_score": "1",
+  "outcome": "rows",
+  "why": "LIVE: rows (25 rows with values); spec 1: same spec as offline: GovernanceMetric names, domain missing"
+ },
+ "C05": {
+  "score": "1",
+  "spec_score": "1",
+  "outcome": "rows",
+  "why": "LIVE: rows (25 rows with values); spec 1: same spec as offline: DigitalProduct names; product manager not available (said unmet)"
+ },
+ "C06": {
+  "score": "1",
+  "spec_score": "1",
+  "outcome": "rows",
+  "why": "LIVE: rows (25 rows with values); spec 1: live spec differs from offline: DigitalProduct names, 'no product manager' not applied"
+ },
+ "C07": {
+  "score": "0",
+  "spec_score": "0",
+  "outcome": "rows",
+  "why": "LIVE: rows (25 rows with values); spec 0: live spec differs from offline: DigitalSubscription names: subscriptions, not the subscription types offered (Architect: 0)"
+ },
+ "C08": {
+  "score": "2",
+  "spec_score": "2",
+  "outcome": "rows",
+  "why": "LIVE: rows (25 rows with values); spec 2: same spec as offline: DigitalSubscription + status"
+ },
+ "C09": {
+  "score": "1",
+  "spec_score": "1",
+  "outcome": "rows",
+  "why": "LIVE: rows (25 rows with values); spec 1: live spec differs from offline: Asset names + description, 'no owner' not applied"
+ },
+ "C10": {
+  "score": "0",
+  "spec_score": "1",
+  "outcome": "blank",
+  "why": "LIVE: blank (update_time blank in every sampled row: pyegeria's _extract_referenceable_properties (the generic finder's extractor) never sets update_time, though it sets create_time); spec 1: live spec differs from offline: Asset oldest-updated first + update time; the 180-day bound not applied"
+ },
+ "A01": {
+  "score": "C",
+  "spec_score": "C",
+  "outcome": "no_run",
+  "why": "LIVE: no_run (clarified); spec C: same spec as offline: asked"
+ },
+ "A02": {
+  "score": "C",
+  "spec_score": "C",
+  "outcome": "no_run",
+  "why": "LIVE: no_run (clarified); spec C: same spec as offline: asked"
+ },
+ "A03": {
+  "score": "C",
+  "spec_score": "C",
+  "outcome": "no_run",
+  "why": "LIVE: no_run (clarified); spec C: same spec as offline: asked"
+ },
+ "A04": {
+  "score": "C",
+  "spec_score": "C",
+  "outcome": "no_run",
+  "why": "LIVE: no_run (clarified); spec C: same spec as offline: asked"
+ },
+ "A05": {
+  "score": "C",
+  "spec_score": "C",
+  "outcome": "no_run",
+  "why": "LIVE: no_run (clarified); spec C: same spec as offline: asked"
+ }
+}

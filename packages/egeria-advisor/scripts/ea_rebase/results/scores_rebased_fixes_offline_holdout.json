@@ -1,0 +1,50 @@
+{
+ "H01": {
+  "score": "1",
+  "why": "PROVISIONAL, offline, spec-only (no rows seen): Glossary names; term counts not shown"
+ },
+ "H02": {
+  "score": "1",
+  "why": "PROVISIONAL, offline, spec-only (no rows seen): Project; 'no project manager' not applied (said unmet)"
+ },
+ "H03": {
+  "score": "1",
+  "why": "PROVISIONAL, offline, spec-only (no rows seen): data specifications listed; the structures they contain not shown"
+ },
+ "H04": {
+  "score": "1",
+  "why": "PROVISIONAL, offline, spec-only (no rows seen): SolutionBlueprint names; components not shown"
+ },
+ "H05": {
+  "score": "1",
+  "why": "PROVISIONAL, offline, spec-only (no rows seen): GovernanceRule DRAFT + status; controls not covered"
+ },
+ "H06": {
+  "score": "1",
+  "why": "PROVISIONAL, offline, spec-only (no rows seen): PersonRole with search '*Coco Pharmaceuticals*': people not shown; filter likely matches nothing"
+ },
+ "H07": {
+  "score": "1",
+  "why": "PROVISIONAL, offline, spec-only (no rows seen): Collection names; member counts / ordering not shown"
+ },
+ "H08": {
+  "score": "0",
+  "why": "PROVISIONAL, offline, spec-only (no rows seen): SchemaAttribute, not DataField: wrong type"
+ },
+ "H09": {
+  "score": "1",
+  "why": "PROVISIONAL, offline, spec-only (no rows seen): Team names; leaders not shown (prompt example close to this question: see write-up)"
+ },
+ "H10": {
+  "score": "0",
+  "why": "PROVISIONAL, offline, spec-only (no rows seen): clear question, asked instead (C on a clear question = 0)"
+ },
+ "H11": {
+  "score": "C",
+  "why": "PROVISIONAL, offline, spec-only (no rows seen): asked"
+ },
+ "H12": {
+  "score": "C",
+  "why": "PROVISIONAL, offline, spec-only (no rows seen): asked"
+ }
+}

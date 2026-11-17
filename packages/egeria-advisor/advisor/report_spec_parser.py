@@ -121,7 +121,20 @@ def parse_report_spec_markdown(content: str) -> FormatSet:
     """
     Parse a Report Spec Document (.md) into a FormatSet model.
     Reuses md_processing's UniversalExtractor to extract commands and attributes.
+
+    PROTOTYPE, only with EA_SPEC_AUTHORING_V2 on: a document pyegeria wrote (it carries a `### Microflow`)
+    is read through its microflow by pyegeria instead, so every caller reads both kinds. Callers this
+    reaches: agents/report_spec_agent.execute (non-V2 docs only; it reads V2 docs itself),
+    report_spec_docs (register on create/update, validate, inbox registration at load),
+    web/reports.py (draft preview, register on run, the validate and import routes).
     """
+    # Only a document with a microflow can take the V2 path, so look for one before importing the Advisor:
+    # trellis-analytics loads this module by path, without the `advisor` package.
+    if "### Microflow" in content:
+        from advisor.spec_authoring_v2 import enabled as _v2_enabled, format_set_from_document
+        if _v2_enabled():
+            m = re.search(r"^### Display Name\s*\n(.+)$", content, flags=re.M)
+            return format_set_from_document(content, (m.group(1).strip() if m else "ea-spec"))
     extractor = UniversalExtractor(content)
     commands = extractor.extract_commands()
     

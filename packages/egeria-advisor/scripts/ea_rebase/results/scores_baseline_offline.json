@@ -1,0 +1,122 @@
+{
+ "B01": {
+  "score": "0",
+  "why": "PROVISIONAL, offline, spec-only (no rows seen): crashed at generate (TypeError in _generate_report_spec_md)"
+ },
+ "B02": {
+  "score": "1",
+  "why": "PROVISIONAL, offline, spec-only (no rows seen): Project + Status column, ACTIVE not applied"
+ },
+ "B03": {
+  "score": "1",
+  "why": "PROVISIONAL, offline, spec-only (no rows seen): Project + Priority column, not sorted"
+ },
+ "B04": {
+  "score": "0",
+  "why": "PROVISIONAL, offline, spec-only (no rows seen): target GlossaryTerm but find_glossaries: lists glossaries, not terms"
+ },
+ "B05": {
+  "score": "0",
+  "why": "PROVISIONAL, offline, spec-only (no rows seen): Term via find_glossaries: lists glossaries"
+ },
+ "B06": {
+  "score": "0",
+  "why": "PROVISIONAL, offline, spec-only (no rows seen): crashed at generate"
+ },
+ "B07": {
+  "score": "1",
+  "why": "PROVISIONAL, offline, spec-only (no rows seen): Collection, no classification column or condition"
+ },
+ "B08": {
+  "score": "0",
+  "why": "PROVISIONAL, offline, spec-only (no rows seen): crashed at generate"
+ },
+ "B09": {
+  "score": "0",
+  "why": "PROVISIONAL, offline, spec-only (no rows seen): 'DataProduct' via unscoped find_collections: every collection, not products"
+ },
+ "B10": {
+  "score": "0",
+  "why": "PROVISIONAL, offline, spec-only (no rows seen): Project: wrong type"
+ },
+ "B11": {
+  "score": "0",
+  "why": "PROVISIONAL, offline, spec-only (no rows seen): crashed at generate"
+ },
+ "B12": {
+  "score": "1",
+  "why": "PROVISIONAL, offline, spec-only (no rows seen): all collections (catalogs among them): too broad, recoverable"
+ },
+ "B13": {
+  "score": "0",
+  "why": "PROVISIONAL, offline, spec-only (no rows seen): crashed at generate"
+ },
+ "B14": {
+  "score": "0",
+  "why": "PROVISIONAL, offline, spec-only (no rows seen): crashed at generate"
+ },
+ "B15": {
+  "score": "1",
+  "why": "PROVISIONAL, offline, spec-only (no rows seen): unscoped governance definitions + Status: too broad, condition not applied"
+ },
+ "C01": {
+  "score": "0",
+  "why": "PROVISIONAL, offline, spec-only (no rows seen): Referenceable via find_collections"
+ },
+ "C02": {
+  "score": "1",
+  "why": "PROVISIONAL, offline, spec-only (no rows seen): all governance definitions (risks among them): too broad"
+ },
+ "C03": {
+  "score": "0",
+  "why": "PROVISIONAL, offline, spec-only (no rows seen): Referenceable via find_collections"
+ },
+ "C04": {
+  "score": "0",
+  "why": "PROVISIONAL, offline, spec-only (no rows seen): Referenceable via find_collections"
+ },
+ "C05": {
+  "score": "0",
+  "why": "PROVISIONAL, offline, spec-only (no rows seen): Referenceable via find_collections"
+ },
+ "C06": {
+  "score": "0",
+  "why": "PROVISIONAL, offline, spec-only (no rows seen): Asset via find_projects"
+ },
+ "C07": {
+  "score": "0",
+  "why": "PROVISIONAL, offline, spec-only (no rows seen): GlossaryTerm via find_glossaries"
+ },
+ "C08": {
+  "score": "1",
+  "why": "PROVISIONAL, offline, spec-only (no rows seen): unscoped collections + Status: too broad"
+ },
+ "C09": {
+  "score": "0",
+  "why": "PROVISIONAL, offline, spec-only (no rows seen): find method CatalogManager.find_assets_with_no_owner doesn't exist (pyegeria: cannot run)"
+ },
+ "C10": {
+  "score": "0",
+  "why": "PROVISIONAL, offline, spec-only (no rows seen): find method DataEngineClient.find_assets_by_criteria doesn't exist"
+ },
+ "A01": {
+  "score": "0",
+  "why": "PROVISIONAL, offline, spec-only (no rows seen): crashed; no clarifying question"
+ },
+ "A02": {
+  "score": "0",
+  "why": "PROVISIONAL, offline, spec-only (no rows seen): guessed GovernanceActionProcess; no question"
+ },
+ "A03": {
+  "score": "0",
+  "why": "PROVISIONAL, offline, spec-only (no rows seen): guessed Referenceable; no question"
+ },
+ "A04": {
+  "score": "0",
+  "why": "PROVISIONAL, offline, spec-only (no rows seen): guessed GovernanceActionProcess; no question"
+ },
+ "A05": {
+  "score": "0",
+  "why": "PROVISIONAL, offline, spec-only (no rows seen): crashed; no clarifying question"
+ }
+}

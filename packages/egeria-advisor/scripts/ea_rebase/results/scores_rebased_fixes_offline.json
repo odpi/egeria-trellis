@@ -1,0 +1,122 @@
+{
+ "B01": {
+  "score": "1",
+  "why": "PROVISIONAL, offline, spec-only (no rows seen): Asset, name only: lineage not shown"
+ },
+ "B02": {
+  "score": "1",
+  "why": "PROVISIONAL, offline, spec-only (no rows seen): Project, ACTIVE filter + status | REVISED 2 -> 1 (Architect, quiet read-back 31e359c5): limit_result_by_status filters ElementStatus, which on laz is only ACTIVE/DELETED, so it is a no-op; 'currently active' is Project.projectStatus (the quiet run listed every project)"
+ },
+ "B03": {
+  "score": "1",
+  "why": "PROVISIONAL, offline, spec-only (no rows seen): Project + priority column, not sorted"
+ },
+ "B04": {
+  "score": "1",
+  "why": "PROVISIONAL, offline, spec-only (no rows seen): GlossaryTerm + usage, 'has usage' not applied"
+ },
+ "B05": {
+  "score": "1",
+  "why": "PROVISIONAL, offline, spec-only (no rows seen): GlossaryTerm, DRAFT filter + status | REVISED 2 -> 1 (Architect, 2026-11-13): a content status (DRAFT/UNDER_DEVELOPMENT) in limit_result_by_status filters ElementStatus, so the condition is not expressed; Egeria rejects it live (HTTP 400)"
+ },
+ "B06": {
+  "score": "1",
+  "why": "PROVISIONAL, offline, spec-only (no rows seen): GlossaryTerm, effective-date columns missing"
+ },
+ "B07": {
+  "score": "1",
+  "why": "PROVISIONAL, offline, spec-only (no rows seen): Collection, no classification column/condition (said unmet)"
+ },
+ "B08": {
+  "score": "2",
+  "why": "PROVISIONAL, offline, spec-only (no rows seen): Collection, newest-created first + create time"
+ },
+ "B09": {
+  "score": "2",
+  "why": "PROVISIONAL, offline, spec-only (no rows seen): DigitalProduct, names"
+ },
+ "B10": {
+  "score": "1",
+  "why": "PROVISIONAL, offline, spec-only (no rows seen): DigitalProduct, DRAFT/UNDER_DEVELOPMENT + status | REVISED 2 -> 1 (Architect, 2026-11-13): a content status (DRAFT/UNDER_DEVELOPMENT) in limit_result_by_status filters ElementStatus, so the condition is not expressed; Egeria rejects it live (HTTP 400)"
+ },
+ "B11": {
+  "score": "1",
+  "why": "PROVISIONAL, offline, spec-only (no rows seen): DigitalProduct ACTIVE/STANDBY: service-life/withdrawal not shown"
+ },
+ "B12": {
+  "score": "2",
+  "why": "PROVISIONAL, offline, spec-only (no rows seen): DigitalProductCatalog, name + description"
+ },
+ "B13": {
+  "score": "2",
+  "why": "PROVISIONAL, offline, spec-only (no rows seen): GovernanceMetric, ACTIVE + status"
+ },
+ "B14": {
+  "score": "1",
+  "why": "PROVISIONAL, offline, spec-only (no rows seen): GovernanceControl: measurements/targets aren't control attributes, not shown"
+ },
+ "B15": {
+  "score": "1",
+  "why": "PROVISIONAL, offline, spec-only (no rows seen): GovernancePolicy APPROVED + status, but no name column"
+ },
+ "C01": {
+  "score": "1",
+  "why": "PROVISIONAL, offline, spec-only (no rows seen): Campaign search '*Jules Keeper*': phases/tasks likely missed (live will tell)"
+ },
+ "C02": {
+  "score": "2",
+  "why": "PROVISIONAL, offline, spec-only (no rows seen): Risk (scoped), name + description"
+ },
+ "C03": {
+  "score": "2",
+  "why": "PROVISIONAL, offline, spec-only (no rows seen): Risk, sorted by importance + importance"
+ },
+ "C04": {
+  "score": "1",
+  "why": "PROVISIONAL, offline, spec-only (no rows seen): GovernanceMetric names, domain missing"
+ },
+ "C05": {
+  "score": "1",
+  "why": "PROVISIONAL, offline, spec-only (no rows seen): DigitalProduct names; product manager not available (said unmet)"
+ },
+ "C06": {
+  "score": "1",
+  "why": "PROVISIONAL, offline, spec-only (no rows seen): DigitalProduct; 'no manager' not applied (said unmet)"
+ },
+ "C07": {
+  "score": "1",
+  "why": "PROVISIONAL, offline, spec-only (no rows seen): DigitalSubscription for 'subscription types': close, not exact"
+ },
+ "C08": {
+  "score": "2",
+  "why": "PROVISIONAL, offline, spec-only (no rows seen): DigitalSubscription + status"
+ },
+ "C09": {
+  "score": "1",
+  "why": "PROVISIONAL, offline, spec-only (no rows seen): Asset; no owner column/condition"
+ },
+ "C10": {
+  "score": "1",
+  "why": "PROVISIONAL, offline, spec-only (no rows seen): Asset oldest-updated first + update time; 180-day filter not applied"
+ },
+ "A01": {
+  "score": "C",
+  "why": "PROVISIONAL, offline, spec-only (no rows seen): asked"
+ },
+ "A02": {
+  "score": "C",
+  "why": "PROVISIONAL, offline, spec-only (no rows seen): asked"
+ },
+ "A03": {
+  "score": "C",
+  "why": "PROVISIONAL, offline, spec-only (no rows seen): asked"
+ },
+ "A04": {
+  "score": "C",
+  "why": "PROVISIONAL, offline, spec-only (no rows seen): asked"
+ },
+ "A05": {
+  "score": "C",
+  "why": "PROVISIONAL, offline, spec-only (no rows seen): asked"
+ }
+}

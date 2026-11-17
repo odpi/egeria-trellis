@@ -1,0 +1,74 @@
+{
+ "H01": {
+  "score": "0",
+  "spec_score": "0",
+  "outcome": "no_run",
+  "why": "LIVE: no_run (did not complete); spec 0: same spec as offline: error: ungrounded type"
+ },
+ "H02": {
+  "score": "1",
+  "spec_score": "1",
+  "outcome": "rows",
+  "why": "LIVE: rows (25 rows with values); spec 1: same spec as offline: Project, no manager column, condition not applied"
+ },
+ "H03": {
+  "score": "0",
+  "spec_score": "0",
+  "outcome": "no_run",
+  "why": "LIVE: no_run (did not complete); spec 0: same spec as offline: error"
+ },
+ "H04": {
+  "score": "0",
+  "spec_score": "0",
+  "outcome": "timeout",
+  "why": "LIVE: timeout (Egeria timed out at 90 s (laz loaded)); spec 0: live spec differs from offline: GovernanceDefinition for solution blueprints"
+ },
+ "H05": {
+  "score": "1",
+  "spec_score": "1",
+  "outcome": "rows",
+  "why": "LIVE: rows (2 rows with values); spec 1: same spec as offline: GovernanceRule (scoped) + status, DRAFT not applied; controls not covered"
+ },
+ "H06": {
+  "score": "0",
+  "spec_score": "0",
+  "outcome": "no_run",
+  "why": "LIVE: no_run (did not complete); spec 0: same spec as offline: error"
+ },
+ "H07": {
+  "score": "0",
+  "spec_score": "0",
+  "outcome": "no_run",
+  "why": "LIVE: no_run (did not complete); spec 0: same spec as offline: error"
+ },
+ "H08": {
+  "score": "0",
+  "spec_score": "0",
+  "outcome": "no_run",
+  "why": "LIVE: no_run (did not complete); spec 0: same spec as offline: error"
+ },
+ "H09": {
+  "score": "0",
+  "spec_score": "0",
+  "outcome": "rows",
+  "why": "LIVE: rows (25 rows with values); spec 0: same spec as offline: Project: wrong type"
+ },
+ "H10": {
+  "score": "0",
+  "spec_score": "2",
+  "outcome": "blank",
+  "why": "LIVE: blank (25 rows, every sampled cell empty); spec 2: same spec as offline: Location (generic finder scoped to Location), names"
+ },
+ "H11": {
+  "score": "0",
+  "spec_score": "0",
+  "outcome": "blank",
+  "why": "LIVE: blank (25 rows, every sampled cell empty); spec 0: live spec differs from offline: ambiguous: built an Asset spec instead of asking"
+ },
+ "H12": {
+  "score": "0",
+  "spec_score": "0",
+  "outcome": "no_run",
+  "why": "LIVE: no_run (did not complete); spec 0: same spec as offline: error, no question"
+ }
+}
