@@ -180,7 +180,7 @@ def test_no_client_store_survives_a_call(on, stores, monkeypatch, egeria):
     assert not hasattr(v2e, "_CLIENTS") and v2e._SCOPE.get() is None
     egeria.clear()
     r = el.process(r["draft_id"], "generate now")          # the same draft, a call with no credentials
-    assert "Sign in to see the answer" in r["response"] and egeria == []
+    assert r["response"] == v2e.NOT_YOUR_DRAFT and egeria == []      # R1: an owned draft needs its owner
 
 
 def test_two_users_at_once_each_run_as_themselves(on, stores, monkeypatch, egeria):
@@ -211,6 +211,31 @@ def test_another_users_draft_is_refused(on, stores, monkeypatch, egeria):
         assert out["response"] == v2e.NOT_YOUR_DRAFT
     assert egeria == [] and FakeClient.built == []
     assert get_report_draft_manager().load(draft_id)["phase"] == "confirm_action"     # untouched
+
+
+@pytest.mark.parametrize("reply", ["continue_columns", "generate now", "add a description column"])
+def test_a_call_with_no_user_cannot_touch_an_owned_draft(on, stores, monkeypatch, egeria, reply):
+    """Read-back R1: no credentials is not the owner either; the draft file is unchanged."""
+    from advisor.agents import report_spec_elicitor_v2 as v2e
+    from advisor.agents.report_spec_elicitor import ReportSpecElicitor
+    _llm(monkeypatch)
+    el = ReportSpecElicitor()
+    draft_id = el.start(QUESTION, egeria_credentials=ERIN)["draft_id"]
+    from advisor.report_draft import get_report_draft_manager
+    path = next(get_report_draft_manager()._root.glob(f"{draft_id}*"))
+    before = path.read_bytes()
+    assert el.process(draft_id, reply)["response"] == v2e.NOT_YOUR_DRAFT
+    assert path.read_bytes() == before and egeria == []
+
+
+def test_an_ownerless_legacy_draft_is_unchanged_behaviour(on, stores, monkeypatch, egeria):
+    from advisor.agents.report_spec_elicitor import ReportSpecElicitor
+    from advisor.report_draft import get_report_draft_manager
+    _llm(monkeypatch)
+    el = ReportSpecElicitor()
+    draft_id = el.start(QUESTION)["draft_id"]                 # no user: no owner, as drafts before A4
+    assert get_report_draft_manager().load(draft_id)["owner"] is None
+    assert el.process(draft_id, "continue_columns")["phase"] == "elicit_columns"
 
 
 def test_another_users_draft_cannot_be_executed(on, stores, monkeypatch, egeria):

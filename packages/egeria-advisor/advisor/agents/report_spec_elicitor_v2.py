@@ -58,12 +58,12 @@ def request_user() -> Optional[str]:
 
 
 def owner_refusal(spec: Dict[str, Any]) -> Optional[str]:
-    """NOT_YOUR_DRAFT when this call acts for a user and the draft isn't theirs (A4); None otherwise."""
-    user = request_user()
-    if user is None:
-        return None
+    """NOT_YOUR_DRAFT when the draft has an owner and this call isn't that user, including a call with no
+    user at all (A4, read-back R1); None for the owner, and for an ownerless legacy draft."""
     owner = spec.get("owner") or spec.get("user_id")
-    return None if owner == user else NOT_YOUR_DRAFT
+    if not owner:
+        return None
+    return None if request_user() == owner else NOT_YOUR_DRAFT
 
 
 @contextlib.contextmanager
