@@ -15,6 +15,7 @@ pyegeria's preview faked to answer per client.
 """
 from __future__ import annotations
 
+import contextlib
 import json
 import threading
 from concurrent.futures import ThreadPoolExecutor
@@ -90,7 +91,7 @@ def egeria(monkeypatch):
     monkeypatch.setattr("advisor.mcp_config.get_pyegeria_platform_config",
                         lambda: {"view_server": "qs-view-server", "platform_url": "https://localhost:9443"})
     monkeypatch.setattr("advisor.auth._trellis_apply_token", lambda c, t: setattr(c, "token", t))
-    monkeypatch.setattr("pyegeria.view.egeria_spec_cache.as_client", lambda c: c)
+    monkeypatch.setattr("pyegeria.view.egeria_spec_cache.as_client", lambda c: contextlib.nullcontext())
     monkeypatch.setattr("advisor.auth.service_account_ids", lambda: frozenset({"svc-account"}))
     monkeypatch.setattr("advisor.auth.resolve_egeria_credentials",
                         lambda *a, **k: pytest.fail("the service-account fallback was asked for"))

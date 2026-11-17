@@ -75,14 +75,19 @@ def owner_refusal(spec: Dict[str, Any]) -> Optional[str]:
 def _call_client():
     """The client for a run in this call, or None (then the answer says "sign in"). A client the caller passed
     is the caller's to close; one built here from the request's credentials is closed here."""
-    from advisor.egeria_user_client import build_user_client, close_client
+    from advisor.egeria_user_client import bound_reads, build_user_client, close_client
     scope = _SCOPE.get() or {}
     if scope.get("client") is not None:
-        yield scope["client"]
+        with bound_reads(scope["client"]):
+            yield scope["client"]
         return
     client = build_user_client(scope.get("credentials"))
     try:
-        yield client
+        if client is None:
+            yield None
+        else:
+            with bound_reads(client):      # the reads are this user's; the client itself is what runs get
+                yield client
     finally:
         if client is not None:
             close_client(client)
