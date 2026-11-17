@@ -58,17 +58,36 @@ def exec_guard(monkeypatch):
                 "rows": [{"display_name": n, "importance": i} for n, i in ROWS], "end": "confirmed"}
     monkeypatch.setattr("pyegeria.view.format_set_executor.exec_report_spec", fake_exec)
 
-    async def no_notes(client, draft):
-        return [], []
-    monkeypatch.setattr("pyegeria.authoring.publication.async_publication_notes", no_notes)   # imported per call
     monkeypatch.setattr("pyegeria.authoring.inprocess_runner",
                         lambda client: (lambda md, d: {"success": True, "commands_total": 1}))
+
+    # validate's Egeria checks, recording the client they get (Architect's appendix item 1): the type-fit
+    # check reads the target's super types; the publication check reads the held spec. Both answer offline.
+    async def super_chain(client, type_name):
+        seen.append({"check": "type_fit", "client": client})
+        return [type_name, "GovernanceDefinition", "Referenceable"]
+
+    async def held_notes(client, draft):
+        seen.append({"check": "held_spec", "client": client})
+        return [], []
+    monkeypatch.setattr("md_processing.md_processing_utils.typed_properties.type_super_chain", super_chain)
+    monkeypatch.setattr("pyegeria.authoring.publication.async_publication_notes", held_notes)
     return seen
 
 
+@pytest.fixture
+def egeria_type_fit(monkeypatch):
+    """Risk + find_governance_definitions is a registered pair, so pyegeria checks the fit from its registry
+    without Egeria. Clear that shortcut so the check reads the super types from Egeria with the client."""
+    import sys
+    import pyegeria.authoring  # noqa: F401
+    monkeypatch.setattr(sys.modules["pyegeria.authoring.validate"], "_registry_pairs", lambda: set())
+
+
 def _assert_the_requests_identity(seen):
-    assert seen, "exec_report_spec was never called"
-    for s in seen:
+    runs = [s for s in seen if "check" not in s]
+    assert runs, "exec_report_spec was never called"
+    for s in runs:
         assert s["user"] == "erinoverview", s
         assert s["user"] not in (None, SERVICE)
         assert s["token"] == "erin-bearer-token"
@@ -151,6 +170,39 @@ def test_the_chat_answer_runs_as_the_request_user_never_the_service_account(offl
     assert r["answer"]["ok"], r.get("response")
     assert r["answer"]["result"]["rows"][0]["importance"] == "Critical"
     _assert_the_requests_identity(exec_guard)
+
+
+def test_validates_egeria_checks_ran_with_the_users_client(offline, exec_guard, egeria_type_fit, stores,
+                                                           monkeypatch):
+    """Appendix item 1: with the context-manager "client" these checks silently didn't run (an AttributeError
+    swallowed, no network call). With the real client, the type-fit and held-spec checks ran, with that
+    client, and a known type leaves no "can't tell"."""
+    from pyegeria.egeria_tech_client import EgeriaTech
+    _llm(monkeypatch)
+    r = _chat()
+    checks = {s["check"]: s["client"] for s in exec_guard if "check" in s}
+    assert set(checks) == {"type_fit", "held_spec"}
+    for c in checks.values():
+        assert isinstance(c, EgeriaTech) and c.user_id == "erinoverview" and c.token == "erin-bearer-token"
+    v = r["validation"]
+    assert not any("Can't tell" in w for w in v["warnings"]), v["warnings"]
+    assert not any("super types not read" in n for n in v["not_checked"]), v["not_checked"]
+    assert "find method fits the target type" in v["checked"]
+    assert "not every check ran" not in r["response"]
+
+
+def test_a_check_that_couldnt_run_is_said_in_the_reply(offline, exec_guard, egeria_type_fit, stores, monkeypatch):
+    """Appendix item 2: when Egeria's super types can't be read, the reply names it, not a bare "validated"."""
+    async def unreadable(client, type_name):
+        return None
+    monkeypatch.setattr("md_processing.md_processing_utils.typed_properties.type_super_chain", unreadable)
+    _llm(monkeypatch)
+    r = _chat()
+    assert "validated with pyegeria, but not every check ran" in r["response"]
+    assert "⚠️ **Not every check ran:**" in r["response"]
+    assert "super types couldn't be read from Egeria" in r["response"]
+    assert "not checked: find method GovernanceOfficer.find_governance_definitions fits target type Risk" \
+        in r["response"]
 
 
 def test_execute_on_the_saved_spec_runs_as_the_request_user_never_the_service_account(offline, exec_guard,

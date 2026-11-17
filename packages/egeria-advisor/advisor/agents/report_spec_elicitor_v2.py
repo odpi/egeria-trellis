@@ -367,6 +367,18 @@ def retarget(spec: Dict[str, Any], user_response: str) -> List[str]:
     return update_from_request(spec, user_response) + notes
 
 
+def validation_caveats(result: Any) -> str:
+    """pyegeria's warnings and what it couldn't check, in words, or "" when every check ran. A check that
+    didn't run is said, never shown as a bare "validated" (ruling RULING-EA-U3-IDENTITY-SWITCH appendix:
+    with a broken client the Egeria checks silently didn't run)."""
+    warnings = list(getattr(result, "warnings", None) or [])
+    unchecked = [n for n in (getattr(result, "not_checked", None) or []) if n not in warnings]
+    if not warnings and not unchecked:
+        return ""
+    lines = ["⚠️ **Not every check ran:**"] + [f"- {w}" for w in warnings] + [f"- not checked: {n}" for n in unchecked]
+    return "\n".join(lines)
+
+
 def generate(elicitor, spec: Dict[str, Any]) -> Dict[str, Any]:
     """Validate with pyegeria; serialize with pyegeria; run as the user when signed in."""
     refused = owner_refusal(spec)
@@ -411,7 +423,11 @@ def _generate(elicitor, spec: Dict[str, Any], client: Any) -> Dict[str, Any]:
         "can_go_back": True, "navigation": _NAV_FINAL, "doc_id": doc_id, "next_context": None,
         "validation": result.model_dump(),
     }
-    head = f"**{spec['answers'].get('Heading')}** (draft spec **{doc_id}**, validated with pyegeria)"
+    caveats = validation_caveats(result)
+    head = (f"**{spec['answers'].get('Heading')}** (draft spec **{doc_id}**, "
+            f"{'validated with pyegeria, but not every check ran' if caveats else 'validated with pyegeria'})")
+    if caveats:
+        head += "\n\n" + caveats
     if spec.get("unmet"):
         head += "\n\n" + narrower_line(spec)
     if client is None:
