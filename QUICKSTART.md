@@ -2,7 +2,8 @@
 
 From a fresh clone to a running app. Fifteen minutes, most of it waiting for model downloads.
 
-Trellis is a `uv` workspace holding two apps and six shared libraries. You do not need to
+Trellis is a `uv` workspace holding three apps (Resource Explorer, Egeria Advisor and Trellis
+Studio) and its shared libraries. You do not need to
 understand the whole thing to run one app — start with the [10-minute path](#the-10-minute-path).
 
 **You need a running Egeria platform.** Both apps sign you in against Egeria, so Egeria is the
@@ -108,7 +109,10 @@ wants `qwen2.5-coder:32b` (~20GB) — leave it until you need it.
 ```bash
 cp packages/resource-explorer/.env.example packages/resource-explorer/.env
 cp packages/egeria-advisor/.env.example packages/egeria-advisor/.env
+cp packages/studio/.env.example packages/studio/.env
 ```
+
+Studio needs no database password; its required `TRELLIS_JWT_SECRET` is written by `make up` below.
 
 Put the database password in both (the same value as step 2). Safe to re-run: it replaces an
 existing `PGVECTOR_PASSWORD=` line rather than adding a second one.
@@ -137,15 +141,18 @@ survey much.
 ### 5. Run
 
 ```bash
-make up         # preflight + shared JWT secret + start both   ← start here
+make up         # preflight + shared JWT secret + start RE, EA and Studio   ← start here
 make re-web     # Resource Explorer → http://localhost:8810
 make ea-web     # Egeria Advisor    → http://localhost:8880
-make dev        # both at once; Ctrl-C stops both
+make studio-web # Trellis Studio    → http://localhost:8840
+make dev        # RE and EA at once; Ctrl-C stops both
 ```
 
-Prefer `make up` on a fresh box: it generates the shared `TRELLIS_JWT_SECRET` both apps need
+Prefer `make up` on a fresh box: it generates the shared `TRELLIS_JWT_SECRET` the apps need
 (without it, sessions silently stop surviving restarts) and tells you if Egeria, Postgres or
-Ollama is not up, instead of letting the app fail later. `make check` runs those checks and
+Ollama is not up, instead of letting the app fail later. If an app fails to start, `make up` names
+it with its first error line (full log in `logs/trellis-up/<app>.log`) and exits non-zero.
+`make up-re`, `make up-ea` and `make up-studio` start one app the same way. `make check` runs those checks and
 starts nothing.
 
 `make help` lists every target.
