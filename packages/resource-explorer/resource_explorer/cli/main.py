@@ -184,9 +184,11 @@ def add(
         extra_docs_path = []
     from resource_explorer.cli.wizard import OnboardingWizard
     wizard = OnboardingWizard()
-    wizard.run(github_url, accept_all=yes, subproject_path=subpath, slug_override=name,
-               extra_docs_paths=extra_docs_path or None, local_path=from_local,
-               group_slug=group)
+    added = wizard.run(github_url, accept_all=yes, subproject_path=subpath, slug_override=name,
+                       extra_docs_paths=extra_docs_path or None, local_path=from_local,
+                       group_slug=group)
+    if not added:          # TR-46: the reason is already printed; a script must see the failure too
+        raise typer.Exit(1)
 
 
 @app.command()
