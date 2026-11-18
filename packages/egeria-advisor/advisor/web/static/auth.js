@@ -263,11 +263,16 @@ const Auth = (() => {
       showEmbedSignIn(r.status === 403 ? detail : 'Sign in to Studio to use EA here.');
       return false;
     }
+    // Studio refreshes its short-lived JWT while the user is active (TR-10) and hands each new one over. The same
+    // user's same session (same sid) just swaps the token in: no re-start, no sidebar reload.
+    const before = getUser();
     setToken(jwt);
     embedParent = origin;
     hideEmbedSignIn();
+    const after = getUser();
+    if (before && after && before.sid && before.sid === after.sid && before.sub === after.sub) return true;
     updateUserDisplay();
-    document.dispatchEvent(new CustomEvent('ea:authenticated', { detail: { user: getUser()?.sub, embed: true } }));
+    document.dispatchEvent(new CustomEvent('ea:authenticated', { detail: { user: after?.sub, embed: true } }));
     return true;
   }
 

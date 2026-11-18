@@ -19,6 +19,7 @@ never fall back to EA's service account.
 from __future__ import annotations
 
 import asyncio
+import threading
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, HTTPException, Request
@@ -167,6 +168,17 @@ def spec_draft_from_ea_draft(ea_draft: Dict[str, Any], label: str):
     return SpecDraft(label=label, format_set=fs, derived_from=f"ea:report-draft:{ea_draft.get('draft_id') or ''}")
 
 
+_OPEN_LOCKS: Dict[tuple, threading.Lock] = {}
+_OPEN_LOCKS_GUARD = threading.Lock()
+
+
+def _open_lock(user_id: str, label: str) -> threading.Lock:
+    """One lock per (user, label), held across open_in_studio's check and save."""
+    key = ((user_id or "").casefold(), label.casefold())
+    with _OPEN_LOCKS_GUARD:
+        return _OPEN_LOCKS.setdefault(key, threading.Lock())
+
+
 @router.post("/api/studio/open-draft")
 async def open_in_studio(request: Request, body: OpenDraftRequest) -> Dict[str, Any]:
     """Owner decision B: save EA's elicited spec as an authoring-API SpecDraft, as the user (D16: Egeria, private to
@@ -194,13 +206,14 @@ async def open_in_studio(request: Request, body: OpenDraftRequest) -> Dict[str, 
         # Never overwrite: a repeat "Open in Studio" with a name the user already has is refused in words, so
         # their private draft (perhaps edited in Studio since) is never silently replaced. An unreadable check
         # refuses too (pyegeria raises; nothing is saved).
-        # NOT ATOMIC (accepted for v1, Architect read-back 2026-11-14): this is check-then-save, so two concurrent
-        # "Open in Studio" calls by the same user with the same label can both pass the check and the later save
-        # wins. The window is one user racing themself; when the draft store offers a create-if-absent (or Egeria a
-        # conditional create), use that here instead of the load check.
-        if run_sync(store.async_load(client.user_id, "spec", label)) is not None:
-            raise _AlreadyHeld(label)
-        return run_sync(store.async_save(client.user_id, draft))
+        # Check-then-save, made atomic within this EA process (TR-10 advisory): a lock per (user, label) is held
+        # across both, so a double click or two tabs on one EA can't both pass the check. NOT atomic across
+        # processes: a second EA, or Studio saving a draft with that name at the same moment, can still race it.
+        # Closing that needs a create-if-absent in the draft store (or a conditional create in Egeria).
+        with _open_lock(client.user_id, label):
+            if run_sync(store.async_load(client.user_id, "spec", label)) is not None:
+                raise _AlreadyHeld(label)
+            return run_sync(store.async_save(client.user_id, draft))
     try:
         qn = await asyncio.to_thread(_as_user, request, save)
     except _AlreadyHeld:
