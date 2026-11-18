@@ -85,8 +85,8 @@ def fakes(monkeypatch):
     monkeypatch.setattr(pyegeria, "EgeriaTech", FakeEgeriaTech)
     monkeypatch.setattr(dr_egeria_mod, "setup_dispatcher", fake_setup_dispatcher)
     from advisor.config import settings
-    monkeypatch.setattr(settings, "egeria_user", "svc-user", raising=False)
-    monkeypatch.setattr(settings, "egeria_password", "svc-secret", raising=False)
+    monkeypatch.setattr(settings, "daemon_user_id", "svc-user", raising=False)
+    monkeypatch.setattr(settings, "daemon_user_password", "svc-secret", raising=False)
     return state
 
 

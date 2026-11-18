@@ -63,8 +63,8 @@ def _isolated(monkeypatch, tmp_path):
     ess._reset_for_tests()
 
     from advisor.config import settings
-    monkeypatch.setattr(settings, "egeria_user", SERVICE_USER)
-    monkeypatch.setattr(settings, "egeria_password", SERVICE_PWD)
+    monkeypatch.setattr(settings, "daemon_user_id", SERVICE_USER)
+    monkeypatch.setattr(settings, "daemon_user_password", SERVICE_PWD)
     import advisor.mcp_config as mcp_config
     monkeypatch.setattr(mcp_config, "get_pyegeria_platform_config",
                         lambda *a, **k: {"view_server": VIEW, "platform_url": PLATFORM})

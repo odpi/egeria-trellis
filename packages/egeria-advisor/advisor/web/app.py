@@ -261,6 +261,9 @@ async def _startup():
     declare_multi_user_process()   # first: before any spec read, the background sync's included
     from advisor import spec_authoring_v2
     logger.info(spec_authoring_v2.flags_line())   # the effective values (re-base + fixes on by default)
+    from advisor.config import warn_old_daemon_names, warn_server_identity_env
+    warn_server_identity_env("web")   # TR-34: EGERIA_USER/EGERIA_USER_PASSWORD are a CLI identity, never a server's
+    warn_old_daemon_names()           # TR-34: the service account's deprecated names, once
     # TR-12: fail closed, naming the variable, never its value: there is no built-in Postgres password any more.
     from advisor.config import require_pgvector_password
     require_pgvector_password()

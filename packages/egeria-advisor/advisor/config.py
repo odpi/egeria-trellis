@@ -16,7 +16,7 @@ load_dotenv()
 import os
 from pathlib import Path
 from typing import Optional, Dict, Any
-from pydantic import BaseModel, Field, field_validator
+from pydantic import AliasChoices, BaseModel, Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 import yaml
 from loguru import logger
@@ -414,6 +414,75 @@ class LoggingConfig(BaseModel):
     retention: str = "1 week"
 
 
+#: EA's service-account settings (TR-34) and the deprecated names they replace (removed after 6.3).
+DAEMON_USER_ID = "EA_DAEMON_USER_ID"
+DAEMON_USER_PASSWORD = "EA_DAEMON_USER_PASSWORD"
+OLD_DAEMON_USER_ID = "EGERIA_USER"
+OLD_DAEMON_USER_PASSWORD = "EGERIA_PASSWORD"
+#: pyegeria's own CLI identity: for running pyegeria tools as yourself in a shell, never in a server process
+#: (pyegeria's settings fallback reads them: the TR-33 identity switch went through exactly that path).
+CLI_IDENTITY_VARS = ("EGERIA_USER", "EGERIA_USER_PASSWORD")
+#: The words when EA's service account isn't configured.
+NO_SERVICE_ACCOUNT = (f"EA's service account isn't configured: set {DAEMON_USER_ID} and {DAEMON_USER_PASSWORD} "
+                      f"in EA's .env (the app's own service account, never a person).")
+_WARNED_ONCE: set = set()
+
+
+def _setting_sources() -> dict:
+    """Every raw setting as EA's settings see it: the .env file, then the environment (wins). Case-insensitive
+    names, as AdvisorSettings reads them."""
+    out: dict = {}
+    try:
+        from dotenv import dotenv_values
+        if Path(".env").is_file():
+            out.update({k.upper(): v for k, v in dotenv_values(".env").items() if v is not None})
+    except (OSError, UnicodeDecodeError, ValueError) as exc:   # an unreadable .env: settings report it themselves
+        logger.debug(f"EA settings: .env not read for the service-account name check: {type(exc).__name__}")
+    out.update({k.upper(): v for k, v in os.environ.items()})
+    return out
+
+
+def _warn_once(key: str, message: str) -> None:
+    if key in _WARNED_ONCE:
+        return
+    _WARNED_ONCE.add(key)
+    logger.warning(message)
+
+
+def warn_old_daemon_names(sources: Optional[dict] = None) -> list:
+    """The deprecation words for EA's service account (TR-34), logged once each, never with a value. pydantic
+    hands the validator only the first alias it found, so the raw sources are read here."""
+    src = _setting_sources() if sources is None else {k.upper(): v for k, v in sources.items()}
+    said = []
+    for new, old in ((DAEMON_USER_ID, OLD_DAEMON_USER_ID), (DAEMON_USER_PASSWORD, OLD_DAEMON_USER_PASSWORD)):
+        has_new, has_old = bool(src.get(new)), bool(src.get(old))
+        if has_old and not has_new:
+            msg = (f"{old} is deprecated for EA's service account and is removed after 6.3: set {new} instead "
+                   f"(using {old} for now)")
+        elif has_old and has_new and src.get(old) != src.get(new):
+            msg = f"{new} and {old} are both set and differ: using {new}; remove {old} (deprecated, removed after 6.3)"
+        else:
+            continue
+        said.append(msg)
+        _warn_once(f"daemon:{new}:{has_new}", msg)
+    return said
+
+
+def warn_server_identity_env(role: str, environ: Optional[dict] = None) -> list:
+    """A WARNING when an EA server process has pyegeria's CLI identity variables: they give pyegeria a silent
+    fallback identity in a process that must act only as its users or its own service account. Names only."""
+    env = os.environ if environ is None else environ
+    present = [v for v in CLI_IDENTITY_VARS if env.get(v)]
+    if not present:
+        return []
+    msg = (f"{' and '.join(present)} {'is' if len(present) == 1 else 'are'} set in the EA {role} process: these are "
+           f"for running pyegeria tools as yourself in a shell, never a server's settings. Unset "
+           f"{'it' if len(present) == 1 else 'them'}; EA's service account is {DAEMON_USER_ID} / "
+           f"{DAEMON_USER_PASSWORD}.")
+    _warn_once(f"cli-identity:{role}:{','.join(present)}", msg)
+    return [msg]
+
+
 class AdvisorSettings(BaseSettings):
     """Main settings loaded from environment and config file."""
 
@@ -423,6 +492,11 @@ class AdvisorSettings(BaseSettings):
         case_sensitive=False,
         extra="ignore"
     )
+
+    @model_validator(mode="after")
+    def _old_daemon_names(self) -> "AdvisorSettings":
+        warn_old_daemon_names()
+        return self
 
     # pgvector
     pgvector_host: str = Field(default="localhost", alias="PGVECTOR_HOST")
@@ -441,11 +515,17 @@ class AdvisorSettings(BaseSettings):
     # Egeria — the actual platform URL/view server are resolved via
     # advisor.mcp_config.get_pyegeria_platform_config() (EGERIA_VIEW_SERVER_URL /
     # EGERIA_VIEW_SERVER env vars, then config/mcp_servers.json), NOT read from
-    # here. egeria_user/egeria_password remain the .env-backed service-account
-    # fallback used by advisor.auth.resolve_egeria_credentials() when no
-    # per-request session credentials are present.
-    egeria_user: str = Field(default="garygeeke", alias="EGERIA_USER")
-    egeria_password: str = Field(default="secret", alias="EGERIA_PASSWORD")
+    # here.
+    #
+    # EA's own service account: the app's own account, never a person. Used by
+    # advisor.auth.resolve_egeria_credentials() only when a request has no signed-in user (the background spec
+    # sync, anonymous reads). TR-34 (ruling RULING-RE-SERVICE-ACCOUNT-ENV-NAMES-2026-11-17 §4):
+    # EA_DAEMON_USER_ID / EA_DAEMON_USER_PASSWORD. The old EGERIA_USER / EGERIA_PASSWORD are read for one release
+    # with a warning (removed after 6.3); the new name wins when both are set. NO default: the built-in
+    # "garygeeke"/"secret" pair is gone (the PO-45/PY-33 shape), so an unset account fails closed, in words.
+    daemon_user_id: str = Field(default="", validation_alias=AliasChoices(DAEMON_USER_ID, OLD_DAEMON_USER_ID))
+    daemon_user_password: str = Field(default="", validation_alias=AliasChoices(DAEMON_USER_PASSWORD,
+                                                                                OLD_DAEMON_USER_PASSWORD))
     # Optional login-form prefill (GET /api/auth/defaults, which is public). Never the service account
     # above: that id is refused at sign-in (advisor.auth.service_account_ids), so it is never offered (A-I1).
     advisor_login_default_user: str = Field(default="", alias="ADVISOR_LOGIN_DEFAULT_USER")

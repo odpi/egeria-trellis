@@ -58,7 +58,7 @@ def _get_doc_manager():
          "required — it defaults to whoever `egeria-advisor login` signed "
          "in, and with neither it behaves like an anonymous web request "
          "(shared namespace only). See egeria-advisor's own --user for why "
-         "this doesn't fall back to the EGERIA_USER service-account "
+         "this doesn't fall back to the EA_DAEMON_USER_ID service-account "
          "setting."
 )
 @click.pass_context

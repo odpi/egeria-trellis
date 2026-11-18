@@ -110,8 +110,13 @@ def _build_client(conn: Dict[str, str]):
         apply_token(client, token)
         return client
     if conn.get("auth") == "service":
+        if not (conn.get("user_id") and conn.get("user_pass")):
+            # TR-34: no service account configured. Minting with an empty id or password would let pyegeria fill
+            # them from its own settings; refuse, in words.
+            from advisor.config import NO_SERVICE_ACCOUNT
+            raise DrEgeriaAuthError(NO_SERVICE_ACCOUNT, "no_service_account")
         client = EgeriaTech(conn["server_name"], conn["url"], conn["user_id"], conn["user_pass"])
-        client.create_egeria_bearer_token()
+        client.create_egeria_bearer_token(conn["user_id"], conn["user_pass"])   # explicit, never pyegeria's fallback
         return client
     raise DrEgeriaAuthError(SIGN_IN_TO_RUN, "no_credentials")
 

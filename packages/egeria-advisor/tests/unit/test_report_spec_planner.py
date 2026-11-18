@@ -195,7 +195,7 @@ def test_discover_draft_schema_internal(monkeypatch):
     
     class MockEgeriaTech:
         def __init__(self, **kwargs):
-            pass
+            self.user_id, self.user_pwd = kwargs.get("user_id"), kwargs.get("user_pwd")   # as pyegeria's client
         def create_egeria_bearer_token(self):
             pass
         def get_report_spec_schema(self, **kwargs):
@@ -252,7 +252,7 @@ def test_discover_draft_schema_cache(monkeypatch):
     
     call_count = 0
     class MockEgeriaTech:
-        def __init__(self, **kwargs): pass
+        def __init__(self, **kwargs): self.user_id, self.user_pwd = kwargs.get("user_id"), kwargs.get("user_pwd")
         def create_egeria_bearer_token(self): pass
         def get_report_spec_schema(self, **kwargs):
             nonlocal call_count

@@ -137,8 +137,8 @@ def test_resolve_egeria_credentials_service_account_fallback_has_no_token(monkey
     signal, so a call site can refuse to attribute artifacts to it (2026-08-29
     decision)."""
     from advisor.config import settings
-    monkeypatch.setattr(settings, "egeria_user", "erinoverview", raising=False)
-    monkeypatch.setattr(settings, "egeria_password", "secret", raising=False)
+    monkeypatch.setattr(settings, "daemon_user_id", "erinoverview", raising=False)
+    monkeypatch.setattr(settings, "daemon_user_password", "secret", raising=False)
 
     resolved = auth.resolve_egeria_credentials(None)
 
@@ -242,15 +242,21 @@ def test_apply_token_prefers_the_users_token_over_the_clients_own_credentials():
         bearer = None
         self_authenticated = False
 
+        def __init__(self, user_id=None, user_pwd=None):
+            self.user_id, self.user_pwd = user_id, user_pwd
+
         def set_bearer_token(self, token):
             self.bearer = token
 
         def create_egeria_bearer_token(self):
             self.self_authenticated = True
 
-    signed_in, anonymous = Client(), Client()
+    signed_in, service, bare = Client("erinoverview"), Client("ea-svc", "svc-secret"), Client()
     auth.apply_token(signed_in, "tok")
-    auth.apply_token(anonymous, "")
-
+    auth.apply_token(service, "")
     assert signed_in.bearer == "tok" and signed_in.self_authenticated is False
-    assert anonymous.bearer is None and anonymous.self_authenticated is True
+    assert service.bearer is None and service.self_authenticated is True    # its own user and password
+    # TR-34: no token and no credential of its own: minting would be pyegeria's settings fallback. Refused.
+    with pytest.raises(PermissionError, match="EA_DAEMON_USER_ID and EA_DAEMON_USER_PASSWORD"):
+        auth.apply_token(bare, "")
+    assert bare.self_authenticated is False

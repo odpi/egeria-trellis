@@ -323,7 +323,7 @@ Minimum edits:
 |---|---|
 | both | `TRELLIS_JWT_SECRET=<one value shared by both files>` so sessions survive restarts (`RE_JWT_SECRET` / `ADVISOR_JWT_SECRET` per app also work) |
 | RE | `GITHUB_TOKEN`; `EGERIA_PLATFORM_URL=https://localhost:9443`, `EGERIA_VIEW_SERVER=qs-view-server`, `EGERIA_USER=erinoverview`, `EGERIA_USER_PASSWORD=secret`; `LLM__OLLAMA__BASE_URL=http://localhost:11434` |
-| EA | `EGERIA_VIEW_SERVER_URL=https://localhost:9443`, `EGERIA_VIEW_SERVER=qs-view-server`, `EGERIA_USER` / `EGERIA_PASSWORD`; `OLLAMA_BASE_URL=http://localhost:11434`; `ADVISOR_DATA_PATH` for EA's **writable** state (cache, feedback, index — default `./data`), and `ADVISOR_EGERIA_PYTHON_PATH` for the **read-only** egeria-python checkout its data-prep pipeline ingests. These were one env var until 2026-09-06, so setting it for either meaning silently redirected the other |
+| EA | `EGERIA_VIEW_SERVER_URL=https://localhost:9443`, `EGERIA_VIEW_SERVER=qs-view-server`, `EA_DAEMON_USER_ID` / `EA_DAEMON_USER_PASSWORD` (EA's own service account, never a person; before TR-34 `EGERIA_USER` / `EGERIA_PASSWORD`, read with a warning until after 6.3); `OLLAMA_BASE_URL=http://localhost:11434`; `ADVISOR_DATA_PATH` for EA's **writable** state (cache, feedback, index — default `./data`), and `ADVISOR_EGERIA_PYTHON_PATH` for the **read-only** egeria-python checkout its data-prep pipeline ingests. These were one env var until 2026-09-06, so setting it for either meaning silently redirected the other |
 | optional | `ADVISOR_PORTAL_SECRET` / `RE_PORTAL_SECRET` equal to the QuickStart's `EGERIA_ADVISOR_SSO_SECRET` for tile handoff; `EXPLORER_MODEL_TIER` / `ADVISOR_MODEL_TIER` (default `dev`) |
 
 Postgres defaults (`localhost:5442`, database `egeria_advisor`, user `egeria_advisor`, password
@@ -418,7 +418,7 @@ Keys the apps read, grouped by concern. `<APP>_` forms override the shared `TREL
 | Session lifetime | `RE_JWT_TTL_HOURS` (default 8; Egeria's token caps it at 1 h) | same mechanism | inherited |
 | Portal handoff secret | `RE_PORTAL_SECRET` or `TRELLIS_PORTAL_SECRET` | `ADVISOR_PORTAL_SECRET` or `TRELLIS_PORTAL_SECRET` | `ADVISOR_PORTAL_SECRET` (fed to both) |
 | Login policy | `TRELLIS_REQUIRE_LOGIN` (default true), `TRELLIS_ANONYMOUS_READ` (dev only), `RE_PUBLIC_PATHS` | same, `TRELLIS_PUBLIC_PATHS` | defaults |
-| Egeria platform | `EGERIA_PLATFORM_URL`, `EGERIA_VIEW_SERVER`, `EGERIA_USER`, `EGERIA_USER_PASSWORD`, `PYEGERIA_TIMEOUT_SECONDS` | `EGERIA_VIEW_SERVER_URL`, `EGERIA_VIEW_SERVER`, `EGERIA_USER`, `EGERIA_PASSWORD` | set in compose; service account from `EGERIA_USER` / `EGERIA_USER_PASSWORD` |
+| Egeria platform | `EGERIA_PLATFORM_URL`, `EGERIA_VIEW_SERVER`, `EGERIA_USER`, `EGERIA_USER_PASSWORD`, `PYEGERIA_TIMEOUT_SECONDS` | `EGERIA_VIEW_SERVER_URL`, `EGERIA_VIEW_SERVER`; service account `EA_DAEMON_USER_ID`, `EA_DAEMON_USER_PASSWORD` | set in compose; service account from `EGERIA_USER` / `EGERIA_USER_PASSWORD` |
 | Ollama | `LLM__OLLAMA__BASE_URL`, `LLM__OLLAMA__MODEL` | `OLLAMA_BASE_URL`, `OLLAMA_MODEL`, `OLLAMA_CODE_MODEL` | `TRELLIS_MODEL_GENERAL`, `TRELLIS_MODEL_CODE`, plus the overlay choice |
 | Model tier | `EXPLORER_MODEL_TIER` | `ADVISOR_MODEL_TIER` | `TRELLIS_MODEL_TIER` |
 | Postgres / pgvector | `PGVECTOR_*` or `REGISTRY_DATABASE_URL` | `PGVECTOR_*` | `PGVECTOR_PASSWORD` |

@@ -349,15 +349,14 @@ def _validation_config() -> AuthConfig:
     view_server = conn["view_server"]
     platform_url = conn["platform_url"]
 
+    # EA's own service account, from EA's settings (TR-34: EA_DAEMON_USER_ID / EA_DAEMON_USER_PASSWORD). No longer
+    # read from mcp_servers.json, whose pyegeria env is the MCP server's own (pyegeria CLI) identity, not EA's.
     svc_user = svc_pwd = ""
     try:
-        import json
-        cfg = json.loads(_MCP_PATH.read_text())
-        env = cfg.get("mcpServers", {}).get("pyegeria", {}).get("env", {})
-        svc_user = env.get("EGERIA_USER", "")
-        svc_pwd = env.get("EGERIA_PASSWORD", "")
-    except Exception as exc:
-        logger.warning(f"auth: failed to read {_MCP_PATH} for service-account check: {exc}")
+        from advisor.config import settings
+        svc_user, svc_pwd = settings.daemon_user_id or "", settings.daemon_user_password or ""
+    except Exception as exc:  # noqa: BLE001 -- config unreadable: no service account, and say so
+        logger.warning(f"auth: could not read EA's service account from config: {exc}")
 
     return AuthConfig(
         jwt_secret=_jwt_secret(),
@@ -400,14 +399,19 @@ def apply_token(client: Any, token: Optional[str]) -> None:
     if uid == ANONYMOUS_USER_ID:
         from advisor.egeria_signin import SIGN_IN_TO_READ_EGERIA
         raise PermissionError(f"{SIGN_IN_TO_READ_EGERIA} (an anonymous caller has no Egeria identity)")
+    if not token and not (uid and getattr(client, "user_pwd", None)):
+        # TR-34: no bearer token, and no user and password of its own: minting would let pyegeria fill the identity
+        # from its own settings (EGERIA_USER / EGERIA_USER_PASSWORD, or a built-in default). Refused, in words.
+        from advisor.config import NO_SERVICE_ACCOUNT
+        raise PermissionError(f"No Egeria identity for this call: no sign-in token, and {NO_SERVICE_ACCOUNT}")
     _trellis_apply_token(client, token)
 
 
 def _own_service_account() -> str:
-    """EA's own Egeria service account (EGERIA_USER, the resolve_egeria_credentials fallback)."""
+    """EA's own Egeria service account (EA_DAEMON_USER_ID, the resolve_egeria_credentials fallback)."""
     try:
         from advisor.config import settings
-        return (settings.egeria_user or "").strip()
+        return (settings.daemon_user_id or "").strip()
     except Exception as exc:  # noqa: BLE001 - config unreadable: nothing to add, and say so
         logger.warning(f"auth: could not read EA's service account from config: {exc}")
         return ""
@@ -415,7 +419,7 @@ def _own_service_account() -> str:
 
 def service_account_ids() -> frozenset:
     """Ids no human may sign in as: RE's daemon, TRELLIS_SERVICE_ACCOUNTS, and EA's own service account
-    (EGERIA_USER; added by A-I1, 2026-11-11)."""
+    (EA_DAEMON_USER_ID; added by A-I1, 2026-11-11)."""
     ids = set()
     own = _own_service_account()
     if own:
@@ -581,7 +585,9 @@ def resolve_egeria_credentials(creds: Optional[Dict[str, str]]) -> EgeriaCredent
     """
     Single fallback point for how a live Egeria call authenticates: use the
     per-request credentials if present, otherwise fall back to the .env-backed
-    service account (advisor.config.settings.egeria_user/egeria_password).
+    service account (advisor.config.settings.daemon_user_id/daemon_user_password: EA_DAEMON_USER_ID /
+    EA_DAEMON_USER_PASSWORD). Unset, it is an empty identity, and the call refuses in words (NO_SERVICE_ACCOUNT;
+    there is no built-in default).
 
     A signed-in request yields `token` set and `password` empty — the call site
     should hand `token` to `apply_token()`. The anonymous/background fallback
@@ -609,8 +615,12 @@ def resolve_egeria_credentials(creds: Optional[Dict[str, str]]) -> EgeriaCredent
             "password": creds.get("password", ""),
             "token": creds.get("token", ""),
         }
-    from advisor.config import settings
-    return {"user_id": settings.egeria_user, "password": settings.egeria_password, "token": ""}
+    from advisor.config import NO_SERVICE_ACCOUNT, settings
+    user, pwd = settings.daemon_user_id or "", settings.daemon_user_password or ""
+    if not (user and pwd):
+        logger.warning(f"auth: {NO_SERVICE_ACCOUNT} The call that needed it is refused.")
+        return {"user_id": "", "password": "", "token": ""}
+    return {"user_id": user, "password": pwd, "token": ""}
 
 
 # ---------------------------------------------------------------------------

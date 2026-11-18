@@ -135,8 +135,8 @@ def cli() -> None:
          'defaults to whoever is signed in; --user overrides the namespace '
          'without changing whose Egeria token live calls use. With neither, '
          'this is the shared namespace, same as an anonymous web request. '
-         'Deliberately does NOT fall back to the EGERIA_USER/.env '
-         'service-account setting (advisor.config.settings.egeria_user) — '
+         'Deliberately does NOT fall back to the EA_DAEMON_USER_ID/.env '
+         'service-account setting (advisor.config.settings.daemon_user_id) — '
          'that identity is a live-Egeria-call fallback only and is '
          'explicitly excluded from owning artifacts (see advisor/auth.py\'s '
          'module docstring).'
@@ -454,7 +454,7 @@ def start_interactive(options: dict):
 @click.option(
     "--user", "user_id", default=None,
     help="Egeria user id to sign in as. Prompted for if omitted; defaults to "
-         "the .env EGERIA_USER for convenience on a single-user box.",
+         "the .env EA_DAEMON_USER_ID for convenience on a single-user box.",
 )
 def login_command(user_id: Optional[str]) -> None:
     """Sign in to Egeria and cache the session for later commands.
@@ -474,7 +474,7 @@ def login_command(user_id: Optional[str]) -> None:
 
     if not user_id:
         from advisor.config import settings
-        user_id = click.prompt("Egeria user id", default=settings.egeria_user or None)
+        user_id = click.prompt("Egeria user id", default=settings.daemon_user_id or None)
     from advisor.auth import is_service_account, SERVICE_ACCOUNT_DETAIL
     if is_service_account(user_id):
         console.print(f"[red]✗ {SERVICE_ACCOUNT_DETAIL}[/red]")
