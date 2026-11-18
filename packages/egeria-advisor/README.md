@@ -352,7 +352,8 @@ uv run python -m advisor.incremental_indexer --collection pyegeria
 `--collection` takes an enabled collection name. egeria-docs is indexed as `egeria_concepts`, `egeria_types`
 and `egeria_general`; the old `egeria_docs` collection is disabled (see
 [INDEXING_AND_COLLECTIONS.md](docs/design/INDEXING_AND_COLLECTIONS.md)). There is no `--all` on the
-incremental indexer: to rebuild everything, rerun `ingest_collections.py --phase all`.
+incremental indexer. Rerunning `ingest_collections.py --phase all` builds only the collections that are still
+empty (existing ones are skipped); add `--force` to rebuild everything, which drops and re-embeds each collection.
 
 ### 6. Testing
 
