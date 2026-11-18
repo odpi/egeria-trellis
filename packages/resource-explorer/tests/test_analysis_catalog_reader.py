@@ -285,7 +285,8 @@ class TestListPerspectives:
         from pathlib import Path as _P
 
         doc = _P(__file__).resolve().parents[1] / "docs" / "dr-egeria" / "foundations" / "foundations.md"
-        authored = set(_re.findall(r"^Perspective::(.+)$", doc.read_text(), _re.M))
+        # `- `Perspective::<name>`` list lines: the content pack's elements, listed not created (2026-11-09)
+        authored = set(_re.findall(r"^-\s*`Perspective::([^`]+)`\s*$", doc.read_text(), _re.M))
         assert authored == set(acr.EGERIA_PERSPECTIVES)
 
     def test_sorted(self):

@@ -119,6 +119,24 @@ class TestQueryOsv:
         )
         assert "positional pairing would be unsafe" in error
 
+    def test_the_default_sender_is_httpx_and_an_error_status_is_an_error(self, monkeypatch):
+        """TR-15: the real sender goes through httpx (certifi), and OSV answering 503 is "we could not ask", as
+        urlopen's HTTPError was, never an empty result."""
+        import httpx
+
+        from resource_explorer.surveyors.sub_surveyors import cve_scan
+
+        sent = []
+
+        def fake_request(method, url, **kw):
+            sent.append((method, url, kw.get("headers")))
+            return httpx.Response(503, request=httpx.Request(method, url))
+
+        monkeypatch.setattr(cve_scan.httpx, "request", fake_request)
+        results, error = query_osv([{"package": {"name": "x", "ecosystem": "npm"}, "version": "1.0.0"}])
+        assert results == [] and "HTTPStatusError" in error
+        assert sent[0][0] == "POST" and sent[0][2] == {"Content-Type": "application/json"}
+
     def test_no_queries_is_not_an_error(self):
         assert query_osv([]) == ([], "")
 

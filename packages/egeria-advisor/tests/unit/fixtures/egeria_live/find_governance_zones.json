@@ -1,0 +1,782 @@
+[
+ {
+  "class": "OpenMetadataRootElement",
+  "elementHeader": {
+   "class": "ElementHeader",
+   "headerVersion": 0,
+   "status": "ACTIVE",
+   "type": {
+    "typeId": "290a192b-42a7-449a-935a-269ca62cfdac",
+    "typeName": "GovernanceZone",
+    "superTypeNames": [
+     "SecurityAccessControl",
+     "GovernanceControl",
+     "GovernanceDefinition",
+     "AuthoredReferenceable",
+     "Referenceable",
+     "OpenMetadataRoot"
+    ],
+    "typeVersion": 1,
+    "typeDescription": "Defines a collection of elements that are suitable for a particular usage or are governed by a particular process.",
+    "typeCategory": "ENTITY_DEF"
+   },
+   "origin": {
+    "sourceServer": "qs-metadata-store",
+    "originCategory": "LOCAL_COHORT",
+    "homeMetadataCollectionId": "9905c3cb-94c5-4494-9229-0d6f69c0b842",
+    "homeMetadataCollectionName": "qs-metadata-store"
+   },
+   "versions": {
+    "createdBy": "secretsstorecatnpa",
+    "updatedBy": "secretsstorecatnpa",
+    "maintainedBy": [
+     "secretsstorecatnpa"
+    ],
+    "createTime": "2026-11-07T15:10:24.790+00:00",
+    "updateTime": "2026-11-07T15:10:24.790+00:00",
+    "version": 1,
+    "lastRequestId": "1f6914b1-4b30-4645-bda8-c65ebd055112"
+   },
+   "guid": "5f33bf8e-d6eb-421b-9a97-b58d56223999",
+   "anchor": {
+    "class": "ElementClassification",
+    "headerVersion": 0,
+    "status": "ACTIVE",
+    "type": {
+     "typeId": "aa44f302-2e43-4669-a1e7-edaae414fc6e",
+     "typeName": "Anchors",
+     "typeVersion": 1,
+     "typeDescription": "Identifies the anchor entity for an element that is part of a large composite object such as an asset.",
+     "typeCategory": "CLASSIFICATION_DEF"
+    },
+    "origin": {
+     "sourceServer": "qs-metadata-store",
+     "originCategory": "LOCAL_COHORT",
+     "homeMetadataCollectionId": "9905c3cb-94c5-4494-9229-0d6f69c0b842",
+     "homeMetadataCollectionName": "qs-metadata-store"
+    },
+    "versions": {
+     "createdBy": "secretsstorecatnpa",
+     "updatedBy": "secretsstorecatnpa",
+     "maintainedBy": [
+      "secretsstorecatnpa"
+     ],
+     "createTime": "2026-11-07T15:10:24.786+00:00",
+     "updateTime": "2026-11-07T15:10:24.786+00:00",
+     "version": 1,
+     "lastRequestId": "1f6914b1-4b30-4645-bda8-c65ebd055112"
+    },
+    "classificationOrigin": "ASSIGNED",
+    "classificationName": "Anchors",
+    "classificationProperties": {
+     "class": "AnchorsProperties",
+     "typeName": "Anchors",
+     "anchorGUID": "68894392-8508-4252-bde6-ed378e2e3e69",
+     "anchorTypeName": "SecretsCollection",
+     "anchorDomainName": "Asset"
+    }
+   },
+   "zoneMembershipProfile": {
+    "class": "ElementClassification",
+    "headerVersion": 0,
+    "status": "ACTIVE",
+    "type": {
+     "typeId": "b01d574f-5987-4849-a6b3-1f27b79e8ed5",
+     "typeName": "ZoneMembershipProfile",
+     "typeVersion": 2,
+     "typeDescription": "Statistics covering the membership of the governance zone.",
+     "typeCategory": "CLASSIFICATION_DEF"
+    },
+    "origin": {
+     "sourceServer": "qs-metadata-store",
+     "originCategory": "LOCAL_COHORT",
+     "homeMetadataCollectionId": "9905c3cb-94c5-4494-9229-0d6f69c0b842",
+     "homeMetadataCollectionName": "qs-metadata-store"
+    },
+    "versions": {
+     "createdBy": "egeriagovernanceengine",
+     "updatedBy": "egeriagovernanceengine",
+     "maintainedBy": [
+      "egeriagovernanceengine"
+     ],
+     "createTime": "2026-11-07T15:10:41.997+00:00",
+     "updateTime": "2026-11-11T08:11:10.254+00:00",
+     "version": 160,
+     "lastRequestId": "872643f5-e617-4c15-9eef-e7418dcb7d51"
+    },
+    "classificationOrigin": "ASSIGNED",
+    "classificationName": "ZoneMembershipProfile",
+    "classificationProperties": {
+     "class": "ZoneMembershipProfileProperties",
+     "typeName": "ZoneMembershipProfile",
+     "totalMembership": 9,
+     "typeMembership": {
+      "SoftwareServer": 9
+     },
+     "anchoredTotalMembership": 0,
+     "allTotalMembership": 9,
+     "allTypeMembership": {
+      "SoftwareServer": 9
+     },
+     "analysisTime": "2026-11-11T08:11:10.220+00:00"
+    }
+   }
+  },
+  "properties": {
+   "class": "GovernanceZoneProperties",
+   "typeName": "GovernanceZone",
+   "qualifiedName": "GovernanceZone::68894392-8508-4252-bde6-ed378e2e3e69::sustainability",
+   "identifier": "sustainability",
+   "displayName": "Sustainability Zone",
+   "description": "Resources used to build reports that illustrate the status of Coco Pharmaceuticals' greenhouse gas emissions and sustainability initiatives.",
+   "domainIdentifier": 9,
+   "criteria": "Activity data that relates to sustainability."
+  }
+ },
+ {
+  "class": "OpenMetadataRootElement",
+  "elementHeader": {
+   "class": "ElementHeader",
+   "headerVersion": 0,
+   "status": "ACTIVE",
+   "type": {
+    "typeId": "290a192b-42a7-449a-935a-269ca62cfdac",
+    "typeName": "GovernanceZone",
+    "superTypeNames": [
+     "SecurityAccessControl",
+     "GovernanceControl",
+     "GovernanceDefinition",
+     "AuthoredReferenceable",
+     "Referenceable",
+     "OpenMetadataRoot"
+    ],
+    "typeVersion": 1,
+    "typeDescription": "Defines a collection of elements that are suitable for a particular usage or are governed by a particular process.",
+    "typeCategory": "ENTITY_DEF"
+   },
+   "origin": {
+    "sourceServer": "qs-metadata-store",
+    "originCategory": "LOCAL_COHORT",
+    "homeMetadataCollectionId": "9905c3cb-94c5-4494-9229-0d6f69c0b842",
+    "homeMetadataCollectionName": "qs-metadata-store"
+   },
+   "versions": {
+    "createdBy": "secretsstorecatnpa",
+    "updatedBy": "secretsstorecatnpa",
+    "maintainedBy": [
+     "secretsstorecatnpa"
+    ],
+    "createTime": "2026-11-07T15:10:24.230+00:00",
+    "updateTime": "2026-11-07T15:10:24.230+00:00",
+    "version": 1,
+    "lastRequestId": "1f6914b1-4b30-4645-bda8-c65ebd055112"
+   },
+   "guid": "f6aaa3d4-abf7-493a-87be-b4bd5ebc2daa",
+   "anchor": {
+    "class": "ElementClassification",
+    "headerVersion": 0,
+    "status": "ACTIVE",
+    "type": {
+     "typeId": "aa44f302-2e43-4669-a1e7-edaae414fc6e",
+     "typeName": "Anchors",
+     "typeVersion": 1,
+     "typeDescription": "Identifies the anchor entity for an element that is part of a large composite object such as an asset.",
+     "typeCategory": "CLASSIFICATION_DEF"
+    },
+    "origin": {
+     "sourceServer": "qs-metadata-store",
+     "originCategory": "LOCAL_COHORT",
+     "homeMetadataCollectionId": "9905c3cb-94c5-4494-9229-0d6f69c0b842",
+     "homeMetadataCollectionName": "qs-metadata-store"
+    },
+    "versions": {
+     "createdBy": "secretsstorecatnpa",
+     "updatedBy": "secretsstorecatnpa",
+     "maintainedBy": [
+      "secretsstorecatnpa"
+     ],
+     "createTime": "2026-11-07T15:10:24.227+00:00",
+     "updateTime": "2026-11-07T15:10:24.227+00:00",
+     "version": 1,
+     "lastRequestId": "1f6914b1-4b30-4645-bda8-c65ebd055112"
+    },
+    "classificationOrigin": "ASSIGNED",
+    "classificationName": "Anchors",
+    "classificationProperties": {
+     "class": "AnchorsProperties",
+     "typeName": "Anchors",
+     "anchorGUID": "68894392-8508-4252-bde6-ed378e2e3e69",
+     "anchorTypeName": "SecretsCollection",
+     "anchorDomainName": "Asset"
+    }
+   },
+   "zoneMembershipProfile": {
+    "class": "ElementClassification",
+    "headerVersion": 0,
+    "status": "ACTIVE",
+    "type": {
+     "typeId": "b01d574f-5987-4849-a6b3-1f27b79e8ed5",
+     "typeName": "ZoneMembershipProfile",
+     "typeVersion": 2,
+     "typeDescription": "Statistics covering the membership of the governance zone.",
+     "typeCategory": "CLASSIFICATION_DEF"
+    },
+    "origin": {
+     "sourceServer": "qs-metadata-store",
+     "originCategory": "LOCAL_COHORT",
+     "homeMetadataCollectionId": "9905c3cb-94c5-4494-9229-0d6f69c0b842",
+     "homeMetadataCollectionName": "qs-metadata-store"
+    },
+    "versions": {
+     "createdBy": "egeriagovernanceengine",
+     "updatedBy": "egeriagovernanceengine",
+     "maintainedBy": [
+      "egeriagovernanceengine"
+     ],
+     "createTime": "2026-11-07T15:10:42.055+00:00",
+     "updateTime": "2026-11-11T08:11:10.354+00:00",
+     "version": 160,
+     "lastRequestId": "872643f5-e617-4c15-9eef-e7418dcb7d51"
+    },
+    "classificationOrigin": "ASSIGNED",
+    "classificationName": "ZoneMembershipProfile",
+    "classificationProperties": {
+     "class": "ZoneMembershipProfileProperties",
+     "typeName": "ZoneMembershipProfile",
+     "totalMembership": 0,
+     "anchoredTotalMembership": 0,
+     "allTotalMembership": 0,
+     "analysisTime": "2026-11-11T08:11:10.299+00:00"
+    }
+   }
+  },
+  "properties": {
+   "class": "GovernanceZoneProperties",
+   "typeName": "GovernanceZone",
+   "qualifiedName": "GovernanceZone::68894392-8508-4252-bde6-ed378e2e3e69::governance",
+   "identifier": "governance",
+   "displayName": "Governance Zone",
+   "description": "Resources that support the governance of Coco Pharmaceuticals' operations.",
+   "domainIdentifier": 0,
+   "criteria": "Resources that support the governance teams."
+  }
+ },
+ {
+  "class": "OpenMetadataRootElement",
+  "elementHeader": {
+   "class": "ElementHeader",
+   "headerVersion": 0,
+   "status": "ACTIVE",
+   "type": {
+    "typeId": "290a192b-42a7-449a-935a-269ca62cfdac",
+    "typeName": "GovernanceZone",
+    "superTypeNames": [
+     "SecurityAccessControl",
+     "GovernanceControl",
+     "GovernanceDefinition",
+     "AuthoredReferenceable",
+     "Referenceable",
+     "OpenMetadataRoot"
+    ],
+    "typeVersion": 1,
+    "typeDescription": "Defines a collection of elements that are suitable for a particular usage or are governed by a particular process.",
+    "typeCategory": "ENTITY_DEF"
+   },
+   "origin": {
+    "sourceServer": "qs-metadata-store",
+    "originCategory": "LOCAL_COHORT",
+    "homeMetadataCollectionId": "9905c3cb-94c5-4494-9229-0d6f69c0b842",
+    "homeMetadataCollectionName": "qs-metadata-store"
+   },
+   "versions": {
+    "createdBy": "secretsstorecatnpa",
+    "updatedBy": "secretsstorecatnpa",
+    "maintainedBy": [
+     "secretsstorecatnpa"
+    ],
+    "createTime": "2026-11-07T15:10:23.570+00:00",
+    "updateTime": "2026-11-07T15:10:23.570+00:00",
+    "version": 1,
+    "lastRequestId": "1f6914b1-4b30-4645-bda8-c65ebd055112"
+   },
+   "guid": "17c22720-026c-4b70-a74d-ab3686f53821",
+   "anchor": {
+    "class": "ElementClassification",
+    "headerVersion": 0,
+    "status": "ACTIVE",
+    "type": {
+     "typeId": "aa44f302-2e43-4669-a1e7-edaae414fc6e",
+     "typeName": "Anchors",
+     "typeVersion": 1,
+     "typeDescription": "Identifies the anchor entity for an element that is part of a large composite object such as an asset.",
+     "typeCategory": "CLASSIFICATION_DEF"
+    },
+    "origin": {
+     "sourceServer": "qs-metadata-store",
+     "originCategory": "LOCAL_COHORT",
+     "homeMetadataCollectionId": "9905c3cb-94c5-4494-9229-0d6f69c0b842",
+     "homeMetadataCollectionName": "qs-metadata-store"
+    },
+    "versions": {
+     "createdBy": "secretsstorecatnpa",
+     "updatedBy": "secretsstorecatnpa",
+     "maintainedBy": [
+      "secretsstorecatnpa"
+     ],
+     "createTime": "2026-11-07T15:10:23.568+00:00",
+     "updateTime": "2026-11-07T15:10:23.568+00:00",
+     "version": 1,
+     "lastRequestId": "1f6914b1-4b30-4645-bda8-c65ebd055112"
+    },
+    "classificationOrigin": "ASSIGNED",
+    "classificationName": "Anchors",
+    "classificationProperties": {
+     "class": "AnchorsProperties",
+     "typeName": "Anchors",
+     "anchorGUID": "68894392-8508-4252-bde6-ed378e2e3e69",
+     "anchorTypeName": "SecretsCollection",
+     "anchorDomainName": "Asset"
+    }
+   },
+   "zoneMembershipProfile": {
+    "class": "ElementClassification",
+    "headerVersion": 0,
+    "status": "ACTIVE",
+    "type": {
+     "typeId": "b01d574f-5987-4849-a6b3-1f27b79e8ed5",
+     "typeName": "ZoneMembershipProfile",
+     "typeVersion": 2,
+     "typeDescription": "Statistics covering the membership of the governance zone.",
+     "typeCategory": "CLASSIFICATION_DEF"
+    },
+    "origin": {
+     "sourceServer": "qs-metadata-store",
+     "originCategory": "LOCAL_COHORT",
+     "homeMetadataCollectionId": "9905c3cb-94c5-4494-9229-0d6f69c0b842",
+     "homeMetadataCollectionName": "qs-metadata-store"
+    },
+    "versions": {
+     "createdBy": "egeriagovernanceengine",
+     "updatedBy": "egeriagovernanceengine",
+     "maintainedBy": [
+      "egeriagovernanceengine"
+     ],
+     "createTime": "2026-11-07T15:10:42.153+00:00",
+     "updateTime": "2026-11-11T08:11:10.467+00:00",
+     "version": 160,
+     "lastRequestId": "872643f5-e617-4c15-9eef-e7418dcb7d51"
+    },
+    "classificationOrigin": "ASSIGNED",
+    "classificationName": "ZoneMembershipProfile",
+    "classificationProperties": {
+     "class": "ZoneMembershipProfileProperties",
+     "typeName": "ZoneMembershipProfile",
+     "totalMembership": 0,
+     "anchoredTotalMembership": 0,
+     "allTotalMembership": 0,
+     "analysisTime": "2026-11-11T08:11:10.412+00:00"
+    }
+   }
+  },
+  "properties": {
+   "class": "GovernanceZoneProperties",
+   "typeName": "GovernanceZone",
+   "qualifiedName": "GovernanceZone::68894392-8508-4252-bde6-ed378e2e3e69::sales",
+   "identifier": "sales",
+   "displayName": "Sales Zone",
+   "description": "Customers, sales plans, orders and fulfilment tracking.",
+   "domainIdentifier": 0,
+   "criteria": "Resources supported by the sales teams."
+  }
+ },
+ {
+  "class": "OpenMetadataRootElement",
+  "elementHeader": {
+   "class": "ElementHeader",
+   "headerVersion": 0,
+   "status": "ACTIVE",
+   "type": {
+    "typeId": "290a192b-42a7-449a-935a-269ca62cfdac",
+    "typeName": "GovernanceZone",
+    "superTypeNames": [
+     "SecurityAccessControl",
+     "GovernanceControl",
+     "GovernanceDefinition",
+     "AuthoredReferenceable",
+     "Referenceable",
+     "OpenMetadataRoot"
+    ],
+    "typeVersion": 1,
+    "typeDescription": "Defines a collection of elements that are suitable for a particular usage or are governed by a particular process.",
+    "typeCategory": "ENTITY_DEF"
+   },
+   "origin": {
+    "sourceServer": "qs-metadata-store",
+    "originCategory": "LOCAL_COHORT",
+    "homeMetadataCollectionId": "9905c3cb-94c5-4494-9229-0d6f69c0b842",
+    "homeMetadataCollectionName": "qs-metadata-store"
+   },
+   "versions": {
+    "createdBy": "secretsstorecatnpa",
+    "updatedBy": "secretsstorecatnpa",
+    "maintainedBy": [
+     "secretsstorecatnpa"
+    ],
+    "createTime": "2026-11-07T15:10:23.075+00:00",
+    "updateTime": "2026-11-07T15:10:23.075+00:00",
+    "version": 1,
+    "lastRequestId": "1f6914b1-4b30-4645-bda8-c65ebd055112"
+   },
+   "guid": "dca5897a-0c0f-49fd-a7e3-6e1701679de6",
+   "anchor": {
+    "class": "ElementClassification",
+    "headerVersion": 0,
+    "status": "ACTIVE",
+    "type": {
+     "typeId": "aa44f302-2e43-4669-a1e7-edaae414fc6e",
+     "typeName": "Anchors",
+     "typeVersion": 1,
+     "typeDescription": "Identifies the anchor entity for an element that is part of a large composite object such as an asset.",
+     "typeCategory": "CLASSIFICATION_DEF"
+    },
+    "origin": {
+     "sourceServer": "qs-metadata-store",
+     "originCategory": "LOCAL_COHORT",
+     "homeMetadataCollectionId": "9905c3cb-94c5-4494-9229-0d6f69c0b842",
+     "homeMetadataCollectionName": "qs-metadata-store"
+    },
+    "versions": {
+     "createdBy": "secretsstorecatnpa",
+     "updatedBy": "secretsstorecatnpa",
+     "maintainedBy": [
+      "secretsstorecatnpa"
+     ],
+     "createTime": "2026-11-07T15:10:23.071+00:00",
+     "updateTime": "2026-11-07T15:10:23.071+00:00",
+     "version": 1,
+     "lastRequestId": "1f6914b1-4b30-4645-bda8-c65ebd055112"
+    },
+    "classificationOrigin": "ASSIGNED",
+    "classificationName": "Anchors",
+    "classificationProperties": {
+     "class": "AnchorsProperties",
+     "typeName": "Anchors",
+     "anchorGUID": "68894392-8508-4252-bde6-ed378e2e3e69",
+     "anchorTypeName": "SecretsCollection",
+     "anchorDomainName": "Asset"
+    }
+   },
+   "zoneMembershipProfile": {
+    "class": "ElementClassification",
+    "headerVersion": 0,
+    "status": "ACTIVE",
+    "type": {
+     "typeId": "b01d574f-5987-4849-a6b3-1f27b79e8ed5",
+     "typeName": "ZoneMembershipProfile",
+     "typeVersion": 2,
+     "typeDescription": "Statistics covering the membership of the governance zone.",
+     "typeCategory": "CLASSIFICATION_DEF"
+    },
+    "origin": {
+     "sourceServer": "qs-metadata-store",
+     "originCategory": "LOCAL_COHORT",
+     "homeMetadataCollectionId": "9905c3cb-94c5-4494-9229-0d6f69c0b842",
+     "homeMetadataCollectionName": "qs-metadata-store"
+    },
+    "versions": {
+     "createdBy": "egeriagovernanceengine",
+     "updatedBy": "egeriagovernanceengine",
+     "maintainedBy": [
+      "egeriagovernanceengine"
+     ],
+     "createTime": "2026-11-07T15:10:42.216+00:00",
+     "updateTime": "2026-11-11T08:11:10.589+00:00",
+     "version": 160,
+     "lastRequestId": "872643f5-e617-4c15-9eef-e7418dcb7d51"
+    },
+    "classificationOrigin": "ASSIGNED",
+    "classificationName": "ZoneMembershipProfile",
+    "classificationProperties": {
+     "class": "ZoneMembershipProfileProperties",
+     "typeName": "ZoneMembershipProfile",
+     "totalMembership": 0,
+     "anchoredTotalMembership": 0,
+     "allTotalMembership": 0,
+     "analysisTime": "2026-11-11T08:11:10.520+00:00"
+    }
+   }
+  },
+  "properties": {
+   "class": "GovernanceZoneProperties",
+   "typeName": "GovernanceZone",
+   "qualifiedName": "GovernanceZone::68894392-8508-4252-bde6-ed378e2e3e69::manufacturing",
+   "identifier": "manufacturing",
+   "displayName": "Supply, Manufacturing and Distribution Zone",
+   "description": "Suppliers, manufacturing infrastructure, schedules and outputs.",
+   "domainIdentifier": 0,
+   "criteria": "These are the resources that support the production of Coco Pharmaceutical's products."
+  }
+ },
+ {
+  "class": "OpenMetadataRootElement",
+  "elementHeader": {
+   "class": "ElementHeader",
+   "headerVersion": 0,
+   "status": "ACTIVE",
+   "type": {
+    "typeId": "290a192b-42a7-449a-935a-269ca62cfdac",
+    "typeName": "GovernanceZone",
+    "superTypeNames": [
+     "SecurityAccessControl",
+     "GovernanceControl",
+     "GovernanceDefinition",
+     "AuthoredReferenceable",
+     "Referenceable",
+     "OpenMetadataRoot"
+    ],
+    "typeVersion": 1,
+    "typeDescription": "Defines a collection of elements that are suitable for a particular usage or are governed by a particular process.",
+    "typeCategory": "ENTITY_DEF"
+   },
+   "origin": {
+    "sourceServer": "qs-metadata-store",
+    "originCategory": "LOCAL_COHORT",
+    "homeMetadataCollectionId": "9905c3cb-94c5-4494-9229-0d6f69c0b842",
+    "homeMetadataCollectionName": "qs-metadata-store"
+   },
+   "versions": {
+    "createdBy": "secretsstorecatnpa",
+    "updatedBy": "secretsstorecatnpa",
+    "maintainedBy": [
+     "secretsstorecatnpa"
+    ],
+    "createTime": "2026-11-07T15:10:22.454+00:00",
+    "updateTime": "2026-11-07T15:10:22.454+00:00",
+    "version": 1,
+    "lastRequestId": "1f6914b1-4b30-4645-bda8-c65ebd055112"
+   },
+   "guid": "18367062-b647-4cec-a1ed-0bbb9630a89f",
+   "anchor": {
+    "class": "ElementClassification",
+    "headerVersion": 0,
+    "status": "ACTIVE",
+    "type": {
+     "typeId": "aa44f302-2e43-4669-a1e7-edaae414fc6e",
+     "typeName": "Anchors",
+     "typeVersion": 1,
+     "typeDescription": "Identifies the anchor entity for an element that is part of a large composite object such as an asset.",
+     "typeCategory": "CLASSIFICATION_DEF"
+    },
+    "origin": {
+     "sourceServer": "qs-metadata-store",
+     "originCategory": "LOCAL_COHORT",
+     "homeMetadataCollectionId": "9905c3cb-94c5-4494-9229-0d6f69c0b842",
+     "homeMetadataCollectionName": "qs-metadata-store"
+    },
+    "versions": {
+     "createdBy": "secretsstorecatnpa",
+     "updatedBy": "secretsstorecatnpa",
+     "maintainedBy": [
+      "secretsstorecatnpa"
+     ],
+     "createTime": "2026-11-07T15:10:22.453+00:00",
+     "updateTime": "2026-11-07T15:10:22.453+00:00",
+     "version": 1,
+     "lastRequestId": "1f6914b1-4b30-4645-bda8-c65ebd055112"
+    },
+    "classificationOrigin": "ASSIGNED",
+    "classificationName": "Anchors",
+    "classificationProperties": {
+     "class": "AnchorsProperties",
+     "typeName": "Anchors",
+     "anchorGUID": "68894392-8508-4252-bde6-ed378e2e3e69",
+     "anchorTypeName": "SecretsCollection",
+     "anchorDomainName": "Asset"
+    }
+   },
+   "zoneMembershipProfile": {
+    "class": "ElementClassification",
+    "headerVersion": 0,
+    "status": "ACTIVE",
+    "type": {
+     "typeId": "b01d574f-5987-4849-a6b3-1f27b79e8ed5",
+     "typeName": "ZoneMembershipProfile",
+     "typeVersion": 2,
+     "typeDescription": "Statistics covering the membership of the governance zone.",
+     "typeCategory": "CLASSIFICATION_DEF"
+    },
+    "origin": {
+     "sourceServer": "qs-metadata-store",
+     "originCategory": "LOCAL_COHORT",
+     "homeMetadataCollectionId": "9905c3cb-94c5-4494-9229-0d6f69c0b842",
+     "homeMetadataCollectionName": "qs-metadata-store"
+    },
+    "versions": {
+     "createdBy": "egeriagovernanceengine",
+     "updatedBy": "egeriagovernanceengine",
+     "maintainedBy": [
+      "egeriagovernanceengine"
+     ],
+     "createTime": "2026-11-07T15:10:42.278+00:00",
+     "updateTime": "2026-11-11T08:11:10.751+00:00",
+     "version": 160,
+     "lastRequestId": "872643f5-e617-4c15-9eef-e7418dcb7d51"
+    },
+    "classificationOrigin": "ASSIGNED",
+    "classificationName": "ZoneMembershipProfile",
+    "classificationProperties": {
+     "class": "ZoneMembershipProfileProperties",
+     "typeName": "ZoneMembershipProfile",
+     "totalMembership": 0,
+     "anchoredTotalMembership": 0,
+     "allTotalMembership": 0,
+     "analysisTime": "2026-11-11T08:11:10.656+00:00"
+    }
+   }
+  },
+  "properties": {
+   "class": "GovernanceZoneProperties",
+   "typeName": "GovernanceZone",
+   "qualifiedName": "GovernanceZone::68894392-8508-4252-bde6-ed378e2e3e69::it-development",
+   "identifier": "it-development",
+   "displayName": "IT Development and DevOps Zone",
+   "description": "Software components and assets that support their ongoing development.",
+   "domainIdentifier": 4,
+   "criteria": "Resources controlled by the Software Development team."
+  }
+ },
+ {
+  "class": "OpenMetadataRootElement",
+  "elementHeader": {
+   "class": "ElementHeader",
+   "headerVersion": 0,
+   "status": "ACTIVE",
+   "type": {
+    "typeId": "290a192b-42a7-449a-935a-269ca62cfdac",
+    "typeName": "GovernanceZone",
+    "superTypeNames": [
+     "SecurityAccessControl",
+     "GovernanceControl",
+     "GovernanceDefinition",
+     "AuthoredReferenceable",
+     "Referenceable",
+     "OpenMetadataRoot"
+    ],
+    "typeVersion": 1,
+    "typeDescription": "Defines a collection of elements that are suitable for a particular usage or are governed by a particular process.",
+    "typeCategory": "ENTITY_DEF"
+   },
+   "origin": {
+    "sourceServer": "qs-metadata-store",
+    "originCategory": "LOCAL_COHORT",
+    "homeMetadataCollectionId": "9905c3cb-94c5-4494-9229-0d6f69c0b842",
+    "homeMetadataCollectionName": "qs-metadata-store"
+   },
+   "versions": {
+    "createdBy": "secretsstorecatnpa",
+    "updatedBy": "secretsstorecatnpa",
+    "maintainedBy": [
+     "secretsstorecatnpa"
+    ],
+    "createTime": "2026-11-07T15:10:21.882+00:00",
+    "updateTime": "2026-11-07T15:10:21.882+00:00",
+    "version": 1,
+    "lastRequestId": "1f6914b1-4b30-4645-bda8-c65ebd055112"
+   },
+   "guid": "050d8a90-72ee-4519-b5c5-a6bd71299feb",
+   "anchor": {
+    "class": "ElementClassification",
+    "headerVersion": 0,
+    "status": "ACTIVE",
+    "type": {
+     "typeId": "aa44f302-2e43-4669-a1e7-edaae414fc6e",
+     "typeName": "Anchors",
+     "typeVersion": 1,
+     "typeDescription": "Identifies the anchor entity for an element that is part of a large composite object such as an asset.",
+     "typeCategory": "CLASSIFICATION_DEF"
+    },
+    "origin": {
+     "sourceServer": "qs-metadata-store",
+     "originCategory": "LOCAL_COHORT",
+     "homeMetadataCollectionId": "9905c3cb-94c5-4494-9229-0d6f69c0b842",
+     "homeMetadataCollectionName": "qs-metadata-store"
+    },
+    "versions": {
+     "createdBy": "secretsstorecatnpa",
+     "updatedBy": "secretsstorecatnpa",
+     "maintainedBy": [
+      "secretsstorecatnpa"
+     ],
+     "createTime": "2026-11-07T15:10:21.877+00:00",
+     "updateTime": "2026-11-07T15:10:21.877+00:00",
+     "version": 1,
+     "lastRequestId": "1f6914b1-4b30-4645-bda8-c65ebd055112"
+    },
+    "classificationOrigin": "ASSIGNED",
+    "classificationName": "Anchors",
+    "classificationProperties": {
+     "class": "AnchorsProperties",
+     "typeName": "Anchors",
+     "anchorGUID": "68894392-8508-4252-bde6-ed378e2e3e69",
+     "anchorTypeName": "SecretsCollection",
+     "anchorDomainName": "Asset"
+    }
+   },
+   "zoneMembershipProfile": {
+    "class": "ElementClassification",
+    "headerVersion": 0,
+    "status": "ACTIVE",
+    "type": {
+     "typeId": "b01d574f-5987-4849-a6b3-1f27b79e8ed5",
+     "typeName": "ZoneMembershipProfile",
+     "typeVersion": 2,
+     "typeDescription": "Statistics covering the membership of the governance zone.",
+     "typeCategory": "CLASSIFICATION_DEF"
+    },
+    "origin": {
+     "sourceServer": "qs-metadata-store",
+     "originCategory": "LOCAL_COHORT",
+     "homeMetadataCollectionId": "9905c3cb-94c5-4494-9229-0d6f69c0b842",
+     "homeMetadataCollectionName": "qs-metadata-store"
+    },
+    "versions": {
+     "createdBy": "egeriagovernanceengine",
+     "updatedBy": "egeriagovernanceengine",
+     "maintainedBy": [
+      "egeriagovernanceengine"
+     ],
+     "createTime": "2026-11-07T15:10:42.372+00:00",
+     "updateTime": "2026-11-11T08:11:10.944+00:00",
+     "version": 160,
+     "lastRequestId": "872643f5-e617-4c15-9eef-e7418dcb7d51"
+    },
+    "classificationOrigin": "ASSIGNED",
+    "classificationName": "ZoneMembershipProfile",
+    "classificationProperties": {
+     "class": "ZoneMembershipProfileProperties",
+     "typeName": "ZoneMembershipProfile",
+     "totalMembership": 3,
+     "typeMembership": {
+      "SoftwareServer": 3
+     },
+     "anchoredTotalMembership": 0,
+     "allTotalMembership": 3,
+     "allTypeMembership": {
+      "SoftwareServer": 3
+     },
+     "analysisTime": "2026-11-11T08:11:10.854+00:00"
+    }
+   }
+  },
+  "properties": {
+   "class": "GovernanceZoneProperties",
+   "typeName": "GovernanceZone",
+   "qualifiedName": "GovernanceZone::68894392-8508-4252-bde6-ed378e2e3e69::depot-systems",
+   "identifier": "depot-systems",
+   "displayName": "Depot Systems Zone (part of Infrastructure Zone)",
+   "description": "Systems running applications that support the Coco Pharmaceuticals' depot operations.",
+   "domainIdentifier": 4,
+   "criteria": "Depot systems controlled by the IT Infrastructure team."
+  }
+ }
+]

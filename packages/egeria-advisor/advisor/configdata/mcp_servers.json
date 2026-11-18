@@ -6,8 +6,6 @@
         "<path-to-egeria-workspaces-fs-checkout>/compose-configs/egeria-quickstart/PyegeriaWebHandler/mcp_server.py"
       ],
       "env": {
-        "EGERIA_USER": "erinoverview",
-        "EGERIA_USER_PASSWORD": "secret",
         "EGERIA_VIEW_SERVER": "qs-view-server",
         "EGERIA_VIEW_SERVER_URL": "https://localhost:9443",
         "EGERIA_ROOT_PATH": "<path-to-egeria-workspaces-fs-checkout>/exchange-quickstart",
@@ -20,12 +18,11 @@
     "pyegeria": {
       "command": "python3",
       "args": [
-        "-m", "pyegeria.core.mcp_server"
+        "-m",
+        "pyegeria.core.mcp_server"
       ],
       "env": {
-        "EGERIA_USER": "erinoverview",
         "EGERIA_VIEW_SERVER": "qs-view-server",
-        "EGERIA_PASSWORD": "secret",
         "EGERIA_VIEW_SERVER_URL": "https://localhost:9443",
         "PYEGERIA_USER_REPORT_SPECS_DIR": "config/report_specs"
       },

@@ -4,6 +4,7 @@ INSIDE its own box and its headers wrap. The behaviour is in the harness test
 from pathlib import Path
 
 NEXT = Path(__file__).resolve().parents[1] / "resource_explorer" / "web" / "static" / "next"
+SHARED_UI = Path(__file__).resolve().parents[2] / "trellis-ui" / "trellis_ui" / "static"  # RE's files shared with EA
 SCOPE = (NEXT / "stages" / "curate-scope.js").read_text(encoding="utf-8")
 BANDS = (NEXT / "stages" / "curate-bands.js").read_text(encoding="utf-8")
 
@@ -21,7 +22,7 @@ def test_the_classification_header_is_the_full_word_on_one_line():
     # ellipsis and the full text in the title, so a header never breaks mid-word.
     assert "hc('cls', 'Classification'" in SCOPE
     assert "'Classes'" not in SCOPE
-    assert "white-space:nowrap" in (NEXT / "colresize.js").read_text(encoding="utf-8")
+    assert "white-space:nowrap" in (SHARED_UI / "colresize.js").read_text(encoding="utf-8")
 
 
 def test_no_truncating_class_in_the_scope_table():

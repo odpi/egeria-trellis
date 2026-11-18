@@ -283,7 +283,7 @@ GENERAL QUERY - Provide comprehensive overview:
             primary_collection: Name of primary collection being searched
             content_type: Type of content (code, documentation, examples)
             language: Primary language (python, java, markdown)
-            perspective: User role perspective (developer, data_engineer, etc.)
+            perspective: Perspective advisor_key (or an old role key); its role_profile picks the addendum
 
         Returns:
             Tailored system prompt
@@ -310,7 +310,10 @@ GENERAL QUERY - Provide comprehensive overview:
             base = self.system_prompts["python_code"]
 
         if perspective:
-            addendum = self._PERSPECTIVE_ADDENDA.get(perspective)
+            # Keyed by role profile, not perspective key (A-P P-1): several Egeria perspectives
+            # share one role's addendum, and "general" has none.
+            from advisor.perspective_manager import role_profile
+            addendum = self._PERSPECTIVE_ADDENDA.get(role_profile(perspective))
             if addendum:
                 base = base + "\n\n" + addendum
         return base

@@ -283,6 +283,23 @@ def reconcile_runs(
         # avoid doing lightly.
         left_alone.append(row["id"])
 
+    # An undo of a rebuild runs in a request, not in the queue: one that died is found by its phase and an unheld
+    # claim (reindex.recover_undos), and finished or reversed by what its tables say.
+    # Recovery outcomes go in the result, not only the log (tests/test_no_silent_success.py): a caller can branch on
+    # `reindex_recovery_errors`, and a failed recovery is never reported as a quiet success.
+    undos: list[str] = []
+    recovered: list[str] = []
+    recovery_errors: list[str] = []
+    try:
+        from resource_explorer import reindex
+
+        undos = reindex.recover_undos(registry)
+        for words in undos:
+            log.info("reconciled a rebuild's undo: %s", words)
+    except Exception as exc:
+        log.exception("could not check for unfinished undos of rebuilds")
+        recovery_errors.append(f"undo check: {type(exc).__name__}: {exc}"[:300])
+
     for row in resolved:
         last_beat = row.get("heartbeat_at") or row.get("claimed_at") or "unknown"
         error = (
@@ -293,12 +310,27 @@ def reconcile_runs(
         )
         registry.finish_run(row["id"], "failed", error=error)
         log.info("reconciled stale run %s (%s): %s", row["id"], row.get("kind"), error)
+        if row.get("kind") == "reindex":
+            # A rebuild that died part-way is finished forward or rolled back by the phase it recorded, so it never
+            # leaves a list naming a missing table, or an added type never queried (BRIEF-REINDEX-FROM-SCRATCH.md).
+            try:
+                from resource_explorer import reindex
+
+                words = reindex.recover(registry, row)
+                recovered.append(f"{row['id']}: {words}")
+                log.info("reconciled rebuild %s: %s", row["id"], words)
+            except Exception as exc:
+                log.exception("could not recover rebuild %s; its run row says how far it got", row["id"])
+                recovery_errors.append(f"{row['id']}: {type(exc).__name__}: {exc}"[:300])
 
     return {
         "resolved": len(resolved),
         "still_running": len(still_running),
         "left_alone": len(left_alone),
         "resolved_ids": [r["id"] for r in resolved],
+        "undos_recovered": undos,
+        "reindex_recovered": recovered,
+        "reindex_recovery_errors": recovery_errors,
     }
 
 

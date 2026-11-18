@@ -127,7 +127,7 @@ test('the journal entry preview renders markdown, keeps the stored text exactly,
 });
 
 test('showMarkdown (the saved journal list uses the same renderer) is safe on hostile text', async () => {
-  const { showMarkdown } = await import('/static/next/markdown.js');
+  const { showMarkdown } = await import('/static/trellis-ui/markdown.js');
   const { document } = await setUp();
   const el = document.createElement('div'); document.body.appendChild(el);
   await showMarkdown(el, HOSTILE);

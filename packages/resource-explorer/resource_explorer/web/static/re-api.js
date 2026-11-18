@@ -1034,10 +1034,14 @@ export const ask = (query, { resourceSlug, entityType, perspectives = [], sessio
  * computes it — so that a vote on the same question text lands under one key
  * whether the answer came from retrieval or from measurements.
  */
-export const sendFeedback = (queryHash, vote, compileId = null) =>
-  post('/api/query/feedback',
-       compileId ? { query_hash: queryHash, vote, compile_id: compileId }
-                 : { query_hash: queryHash, vote });
+/** Rate one chat answer. `turn` carries what makes the vote readable in Admin → Feedback: `session_id` +
+ *  `exchange_id` (the server reads the question and answer from the stored exchange), else `question`/`answer`,
+ *  plus `intent`, `resource_slug`, `entity_type` and a per-turn `idempotency_key`. The reply's `stored` says
+ *  whether it was kept as a feedback item (`feedback_id`); a caller must not report a vote as recorded without it. */
+export const sendFeedback = (queryHash, vote, compileId = null, turn = {}) =>
+  post('/api/query/feedback', {
+    query_hash: queryHash, vote, ...(compileId ? { compile_id: compileId } : {}), ...turn,
+  });
 
 /**
  * Join a chat vote to the gaps loop (item 8 — ITEM-8-FEEDBACK-IMPLEMENTED.md).
@@ -1057,8 +1061,8 @@ export const sendFeedback = (queryHash, vote, compileId = null) =>
  * the per-resource gaps collection. Callers should skip this call rather
  * than let it throw when `slug` is empty.
  */
-export const submitAnswerFeedback = ({ slug, question, verdict, comment = '', sessionId = '', page = '', entityType }) =>
-  post('/api/feedback/answer', { slug, question, verdict, comment, session_id: sessionId, page, entity_type: requireKind('submitAnswerFeedback', entityType) });
+export const submitAnswerFeedback = ({ slug, question, verdict, comment = '', sessionId = '', page = '', entityType, feedbackId = '' }) =>
+  post('/api/feedback/answer', { slug, question, verdict, comment, session_id: sessionId, page, entity_type: requireKind('submitAnswerFeedback', entityType), feedback_id: feedbackId });
 
 /** What would answer this question, WITHOUT asking it: the sections that have a stored result and the
  *  analyses that would answer it and have none (`manifest.gaps`). The same compile the Ask path runs
@@ -1304,7 +1308,15 @@ export const runSurveyDefinition = (slug, ref, { entityType, credential = null, 
     body.db_pwd = credential.password;
   }
   if (forceCustom) body.force_custom = true;
-  return post(`/api/survey-definitions/${encodeURIComponent(requireKind('runSurveyDefinition', entityType))}/${encodeURIComponent(slug)}/run`, body);
+  // TR-1: one key per press. A network retry of THIS press gets the same run back; a second press while it is in
+  // flight gets the server's 409 sentence ("… is already running on …. Wait for it, or cancel it first.").
+  const key = (globalThis.crypto && typeof globalThis.crypto.randomUUID === 'function')
+    ? globalThis.crypto.randomUUID() : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  return request(`/api/survey-definitions/${encodeURIComponent(requireKind('runSurveyDefinition', entityType))}/${encodeURIComponent(slug)}/run`, {
+    method: 'POST',
+    headers: { ...JSON_HEADERS, 'Idempotency-Key': key },
+    body: JSON.stringify(body),
+  });
 };
 
 /* ── Register one database, change a stored credential (parity G2) ─────────
@@ -2115,9 +2127,11 @@ export const deleteSchedule = (entityType, entitySlug, analysisId) =>
  *  action posts to (classic's `saveSchedule()`, index.html) and chat's inline
  *  scheduling form reuses (`_chatSubmitSchedule()`) — one scheduling code
  *  path, not a new one for every place that offers to set a cadence. */
-export const saveSchedule = (entityType, entitySlug, analysisId, schedule, enabled = true, targetKind = 'analysis') =>
+export const saveSchedule = (entityType, entitySlug, analysisId, schedule, enabled = true, targetKind = 'analysis',
+  { onlyIfFaster = false } = {}) =>
   post(`/api/schedules/${encodeURIComponent(entityType)}/${encodeURIComponent(entitySlug)}`,
-       { analysis_id: analysisId, schedule, enabled, target_kind: targetKind });
+       { analysis_id: analysisId, schedule, enabled, target_kind: targetKind,
+         ...(onlyIfFaster ? { only_if_faster: true } : {}) });
 
 /** Runs THE SCHEDULE, through the same dispatch its timer uses — so what
  *  this does is exactly what the cadence would do, not a separate code
@@ -2215,7 +2229,9 @@ export const getResyncStatus = () => get('/api/egeria/resync/scheduler-status');
 
 /** Runs exactly the named repair steps — nothing runs unless asked for by
  *  name. `steps` is a plain array of `Finding.repair_step` values. */
-export const applyResyncSteps = (steps) => post('/api/egeria/resync/apply', { steps });
+// planHashes: step -> the plan hash its scan showed (`finding.plan_hash`); reattach_by_name refuses without it.
+export const applyResyncSteps = (steps, planHashes = {}) =>
+  post('/api/egeria/resync/apply', { steps, plan_hashes: planHashes });
 
 /* ── Egeria on a resource (parity slice G1) ────────────────────────────────
  * The Publish section of Curate (next/stages/publish.js). The state and the

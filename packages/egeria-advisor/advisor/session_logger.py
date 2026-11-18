@@ -9,6 +9,11 @@ Each line is one turn:
 
 A summary line is appended when the session reaches a terminal state.
 
+Owned per user (SS-4, A-I1 2026-11-11): every entry written while a signed-in user is ambient
+(advisor.request_context) carries "owner". A transcript's owner is its first entry's. The owner sees it,
+an admin sees all; a transcript with no owner (written before SS-4, or in anonymous mode) is a private
+conversation of unknown authorship, so only an admin sees it. Not visible reads as not found.
+
 The session_id maps 1:1 to a draft_id for planning sessions.  For non-plan
 queries the caller may pass any stable session identifier.
 
@@ -119,8 +124,16 @@ class SessionLogger:
         self._append(session_id, summary)
         logger.info(f"SessionLogger: session {session_id!r} finalised → {outcome}")
 
-    def list_sessions(self) -> list:
-        """Return metadata for all saved sessions, newest first."""
+    @staticmethod
+    def _visible(owner: Optional[str], user_id: Optional[str], role: Optional[str], all_users: bool) -> bool:
+        if all_users or (role or "").lower() in ("admin", "curator"):
+            return True
+        return owner is not None and user_id is not None and owner == user_id
+
+    def list_sessions(self, user_id: Optional[str] = None, role: Optional[str] = None,
+                      all_users: bool = False) -> list:
+        """Metadata for the sessions this requester may see, newest first: their own, or every session for
+        an admin/curator role (or all_users=True, for non-request callers)."""
         entries = []
         for p in sorted(self._root.glob("*.jsonl"), reverse=True):
             try:
@@ -129,6 +142,8 @@ class SessionLogger:
                     continue
                 first = json.loads(lines[0])
                 last  = json.loads(lines[-1])
+                if not self._visible(first.get("owner"), user_id, role, all_users):
+                    continue
                 entries.append({
                     "session_id":  p.stem,
                     "started_at":  first.get("ts", ""),
@@ -137,13 +152,16 @@ class SessionLogger:
                     "user":        last.get("user") or first.get("meta", {}).get("user", ""),
                     "perspective": last.get("perspective") or first.get("perspective", ""),
                     "turns":       sum(1 for l in lines if '"role"' in l),
+                    "owner":       first.get("owner"),
                 })
             except Exception:
                 pass
         return entries
 
-    def load_session(self, session_id: str) -> list:
-        """Return all entries for a session as a list of dicts."""
+    def load_session(self, session_id: str, user_id: Optional[str] = None, role: Optional[str] = None,
+                     all_users: bool = True) -> list:
+        """All entries for a session, or [] when it doesn't exist or this requester may not see it.
+        all_users defaults to True for non-request callers; the web route passes the requester."""
         p = self._path(session_id)
         if not p.exists():
             return []
@@ -153,11 +171,18 @@ class SessionLogger:
                 entries.append(json.loads(line))
             except Exception:
                 pass
+        if entries and not self._visible(entries[0].get("owner"), user_id, role, all_users):
+            return []
         return entries
 
     # ── Internal ──────────────────────────────────────────────────────────────
 
     def _append(self, session_id: str, entry: Dict[str, Any]) -> None:
+        if "owner" not in entry:
+            from advisor.request_context import current_user_id
+            owner = current_user_id()
+            if owner:
+                entry = {**entry, "owner": owner}
         try:
             with open(self._path(session_id), "a", encoding="utf-8") as f:
                 f.write(json.dumps(entry, ensure_ascii=False) + "\n")

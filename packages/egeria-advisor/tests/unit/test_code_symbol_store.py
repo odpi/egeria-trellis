@@ -1,10 +1,17 @@
+"""CodeSymbolStore round trip.
+
+Isolation (Phase 1 Q1-1, 2026-11-10): runs against conftest's ea_test_db, EA's db manager scoped to a
+throwaway schema (`ea_test_<pid>_<hex>`, dropped afterwards). Until then it wrote EA's real
+code_symbols / code_relationships in the shared Postgres on every EA unit run.
+"""
 import pytest
 from advisor.code_symbol_store import get_symbol_store
 from advisor.data_prep.code_parser import CodeElement
 from advisor.db_consolidated import get_db_manager
 
-def test_code_symbol_store():
+def test_code_symbol_store(ea_test_db, ea_test_schema):
     store = get_symbol_store()
+    assert store.db_manager is ea_test_db             # the throwaway schema, never public
     
     # 1. Clear test collection
     test_col = "test_collection_dummy"

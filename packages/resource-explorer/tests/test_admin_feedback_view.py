@@ -131,6 +131,7 @@ def test_both_stores_are_genuinely_empty_and_both_counts_say_so(client, admin_he
     assert data["counts"] == {
         "resource": {"total": 0, "resources": 0},
         "page": {"total": 0},
+        "answer": {"total": 0},
     }
 
 
@@ -165,9 +166,10 @@ def test_the_route_combines_both_sources_badged_by_origin(client, tmp_path, feed
     assert "entity_type" not in page_row or page_row.get("entity_type") in (None, "")
     assert resource_row["message"] == "from Curate"
     assert resource_row["entity_slug"] == "some-repo"
-    # A resource_feedback row has no triage_status — that column belongs
-    # only to the page-level `feedback` table's workflow.
-    assert "triage_status" not in resource_row
+    # Since part D (2026-11-09) a resource_feedback row has a status too, held by reference in
+    # trellis-feedback (source "resource_feedback"), not a column of its own table. Untouched, it is `new`.
+    assert resource_row["triage_status"] == "new"
+    assert resource_row["triage"]["events"] == 0
 
 
 def test_source_is_itself_a_filter(client, tmp_path, feedback_store, admin_headers):

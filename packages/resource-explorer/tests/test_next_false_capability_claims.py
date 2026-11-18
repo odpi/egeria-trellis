@@ -8,6 +8,8 @@ from pathlib import Path
 
 NEXT = (Path(__file__).resolve().parents[1] / "resource_explorer" / "web"
         / "static" / "next")
+# The files RE shares with EA (packages/trellis-ui) are scanned too: they left next/ but are still RE's code.
+SHARED_UI = Path(__file__).resolve().parents[2] / "trellis-ui" / "trellis_ui" / "static"
 CURATE = (NEXT / "stages" / "curate.js").read_text()
 APP = (NEXT / "app.js").read_text()
 
@@ -34,7 +36,7 @@ def test_tag_note_feedback_calls_live_only_in_the_curate_bands_module():
     # The controls exist now (stages/curate-bands.js, via re-api.js). The
     # claim "the header has them" stays false: no other /next file may call
     # the routes, so the controls are reached from Curate and nowhere implied.
-    for f in NEXT.rglob("*.js"):
+    for f in [*NEXT.rglob("*.js"), *SHARED_UI.rglob("*.js")]:
         if "admin" in f.parts:
             continue  # admin/feedback.js is a cross-resource list
         if f.name == "curate-bands.js":

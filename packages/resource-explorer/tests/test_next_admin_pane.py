@@ -456,7 +456,13 @@ class TestResyncPane:
 
     def test_expensive_steps_default_unticked(self):
         src = _admin_module("resync.js")
-        assert "f.expensive ? '' : 'checked'" in src
+        # expensive steps, and steps that rewrite links by name (`unticked`, reattach_by_name), stay unticked
+        assert "f.expensive || f.unticked ? '' : 'checked'" in src
+
+    def test_apply_sends_the_scans_plan_hashes(self):
+        src = _admin_module("resync.js")
+        assert "applyResyncSteps(steps, planHashes)" in src and "plan_hash" in src
+        assert "reattach_by_name:" in src          # it has its own blast-radius line
 
 
 class TestRepairPane:

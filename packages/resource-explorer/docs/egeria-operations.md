@@ -1,6 +1,8 @@
 # Egeria operations — recovery, resync, and republishing
 
-**Status:** consolidated runbook. Current as of 2026-09-02.
+**Status:** consolidated runbook. Current as of 2026-09-02; §2.0, §2.3, §2.5, §7 and §8.1 rewritten
+2026-11-12 for the Egeria DB-clear recovery tooling (record-egeria-reset, the clear script, re-attach by
+qualifiedName).
 **This is the operational manual.** For how Resource Explorer integrates with
 Egeria by design, see `egeria-integration.md`.
 
@@ -70,6 +72,136 @@ sweep has already cleared the pointers. Both non-zero means you are not in flavo
 
 ## 2. Flavour 1 — platform reset
 
+### 2.0 The procedure after an Egeria metadata clear, in order (2026-11-12)
+
+This is the one procedure for "Egeria's metadata database was cleared and RE must be brought back into
+line". §8.1 points here. Each command is labelled **read-only** or **writes (owner's word)**: a write to the
+shared registry, or a stop or start of the shared RE on 8813, needs the owner's direct word, each one
+separately.
+
+**An image upgrade with `--no-clear` needs none of this.** Egeria keeps its store, so RE's pointers still
+resolve. Run the Alignment Scan once (step 6, read-only) to confirm, and stop there.
+
+**The platform side comes first, and is not in this document.** The egeria-workspaces page
+`portal-docs/Internals/upgrading-or-resetting-egeria.md` (the `egeria-upgrade-reset` tool) clears and
+upgrades Egeria. Its `freeze-writers` step stops RE on 8813 and EA on 8880. Its `unfreeze` step restarts them
+through `~/.re-gate/start-8813.sh` and `~/.re-gate/start-ea-8880.sh`. Start here once that run has reached
+`unfreeze`.
+
+**Run the order exactly.** Re-attach comes after the clear script and never before it, for the reason in
+step 4.
+
+1. **Stop RE.** **Writes (owner's word):** stopping 8813 is a shared-service action, done by the Coordinator.
+   If you came from `egeria-upgrade-reset`, its `unfreeze` has just restarted RE, so stop it again. Steps 2–4
+   refuse to apply while an RE writer is active. (A maintenance mode that replaces this stop is planned; until
+   it lands, stop the process.)
+
+2. **Record the reset.** **Writes (owner's word):**
+
+   ```bash
+   resource-explorer registry record-egeria-reset --reset-at <UTC of the clear, e.g. 2026-11-11T20:27Z> \
+       --old-digest <old image digest> --new-digest <new image digest>
+   ```
+
+   - *What it changes:* adds one row to `egeria_resets` in RE's registry. From then on, every proof row read
+     before that time reads "published before the <date> reset · not in Egeria now", never ✓.
+   - *What it never touches:* Egeria, and every other registry table. A mistyped time is corrected with
+     `--supersedes <id>`, which adds a new row; the old row stays on record.
+   - Use the actual clear time from the `egeria-upgrade-reset` run folder
+     (`runtime-volumes/egeria-resets/<UTC>/`) when it is recorded. Otherwise use the egeria-main container's
+     `StartedAt`.
+
+3. **Clear RE's Egeria pointers:** `scripts/clear_egeria_pointers_after_reset.py`.
+   - **Dry run: read-only** (it writes only a plan file).
+   - **Apply: writes (owner's word).**
+   - Then a second dry run, **read-only**, which must show nothing left to clear.
+
+   ```bash
+   cd packages/resource-explorer
+   REGISTRY_DATABASE_URL='postgresql://…/egeria_advisor?options=-csearch_path=resource_explorer' \
+       uv run python scripts/clear_egeria_pointers_after_reset.py --reset-at <same UTC as step 2>
+   # then paste the "to apply:" line it printed, with --cleared-by <who>/<UTC now>
+   # then run the dry run again: every row 0
+   ```
+
+   - *What it changes:*
+     - It clears every non-empty Egeria GUID column RE keeps that **no longer resolves**: asset GUIDs,
+       project and collection GUIDs, report GUIDs, work-list, doc-source and RFA GUIDs.
+     - It **keeps a pointer that still resolves** (**Decision (project owner, 2026-11-13):** fix the script so it
+       can keep live pointers, after the 11-11 recovery's dry run would have blanked three written after the
+       reset). Each GUID is read by GUID first, as RE's service account. A row whose GUID resolves is kept
+       ("keep: live, created <time>"), and so is one whose GUID cannot be read ("keep: unreadable (<why>): not
+       treated as gone"). The kept rows, and what each GUID answered, are in the plan and its hash, so an answer
+       that changes before the apply refuses the apply. A resource with a kept asset or report pointer gets no
+       `egeria_reset` marker. If Egeria cannot be reached at all, the run refuses.
+     - "Gone" means **not found for RE's service account**, not "absent from Egeria". Since e9fd817f4c a zone
+       without a control is private, so an element in a zone that account cannot see answers not found too,
+       and its pointer is cleared. Before the apply, check that any element you expect to survive is visible
+       to RE's service account.
+     - It warns about a publish made after the reset that left no proof row: a scheduled survey publishes
+       through the survey-run publisher, which records `project_egeria_surveys` but writes no proof row, so the
+       proofs-only warning missed docling's 2026-11-12 publish.
+     - It sets a project context or investigation that was `linked` to `unbound`.
+     - It removes cache rows: materialized blueprints, `survey_definition_cache`, `egeria_linkage_status`, and
+       the Egeria claim settings.
+     - It supersedes outbox rows that are not terminal.
+     - It writes one `egeria_reset` marker proof per resource.
+     - It writes a 0600 snapshot of every changed row first, and one `activity_log` row.
+   - *What it never touches:* Egeria (it only reads GUIDs there, never writes), any proof row, verdicts, scope events,
+     enrichment, the journal, survey history, `done` outbox rows, and **the qualifiedName mirrors**. Those
+     names are what step 4 re-attaches by.
+   - *Guards:*
+     - The apply needs `--plan-file`, `--plan-hash`, `--database`, `--schema` and `--cleared-by`.
+     - The plan must be less than 15 minutes old and identical when it is recomputed.
+     - It refuses while an RE writer is active.
+     - A Postgres URL with no `search_path` is refused.
+
+4. **Re-attach by qualifiedName.** **Coming: not on main yet.** It is branch `re/reattach-egeria-by-name`; the
+   PR is pending. Until it merges, skip this step. The contexts stay `unbound` and their publishes are gated
+   until someone rebinds them.
+
+   Once it merges, the command will be as follows. The dry run is **read-only** (a plan file, plus Egeria
+   reads); the apply **writes (owner's word)**; then a second dry run must show `to re-attach: 0`.
+
+   ```bash
+   resource-explorer registry reattach-egeria-by-name                     # dry run
+   resource-explorer registry reattach-egeria-by-name --show missing      # the rows of one verdict
+   # then the printed "to apply:" line, with --reattached-by <who>/<UTC now>
+   ```
+
+   - *What it will change:* for each stored qualifiedName whose GUID is empty or dead, if Egeria holds exactly
+     one element of the right type under that name, it writes that element's GUID. A project context or
+     investigation that is `unbound` becomes `linked`. That is the only status change it makes.
+   - *What it never touches:* Egeria (it reads only), and any row whose answer is not exactly one element.
+   - **Why it runs after step 3 and never before:** the clear script blanks **every** pointer, re-attached ones
+     included. Run it after the re-attach and the re-attach is undone.
+   - Its details will be filled in here from the merged CLI help.
+
+5. **Start RE.** **Writes (owner's word):** the Coordinator restarts 8813 with `~/.re-gate/start-8813.sh`
+   (the launcher that sets RE's environment), then checks that `/health` answers 200 and that the start log
+   has no errors.
+
+6. **Admin → 🔄 Egeria Alignment** (see §2.3 for what Scan and Apply each do).
+   - **Scan: read-only.**
+   - **Apply: writes (owner's word),** in this order:
+     1. `catalog_assets`;
+     2. `relink_investigation_members`;
+     3. `republish_survey_results`, which is the slow one and downloads archives.
+   - Re-scan between the passes (§2.4).
+
+7. **Databases and file systems:** republish each from its own panel (Curate → Publish).
+   - **Writes (owner's word):** these are Egeria writes.
+   - Alignment never republishes a database or a file system. Its `flag_stale_dbfs_assets` step only flags
+     them.
+
+**The result to expect after a DB clear: many `missing · needs republish`, which is the right answer.** Only
+names that Egeria itself re-seeded can re-attach, such as the Coco projects and the survey definitions RE's
+bootstrap re-authors. Every other name is honestly gone, and is republished in steps 6–7. A large `missing`
+count is not a fault in the tooling.
+
+**What the platform side already did, so do not repeat it:** `bootstrap.check_and_heal()` re-authors the
+survey definitions unattended once RE is up (§2.1). Verify it (§2.2); do not hand-run the documents.
+
 ### 2.1 Let bootstrap heal. Do not hand-run Dr.Egeria documents.
 
 `bootstrap.check_and_heal()` re-runs any batch whose canary is missing, every 10 minutes
@@ -117,21 +249,62 @@ uv run python scripts/verify_perspectives.py   # 0 all present · 1 missing · 2
 
 ### 2.3 Then use Admin → 🔄 Egeria Alignment for everything else
 
-This is the part no older runbook describes. **Scanning never writes.** Repairs run only
-for steps you tick, always in dependency order regardless of tick order.
+This is the part no older runbook describes. Repairs run only for the steps you tick, always in dependency
+order, whatever order you tick them in.
 
-`REPAIR_STEPS` — the order is load-bearing:
+**Scan is read-only.**
+- It is the page's Re-scan button, or `GET /api/egeria/resync/scan`.
+- It runs registry SELECTs and Egeria reads, and nothing else.
+- A lookup that fails is listed as *undetermined*. It is never counted as drift and never cleared.
+- `GET /api/egeria/resync/scheduler-status` shows when the unattended pass last ran and what it did.
 
-| # | Step | What it does | Cost |
-|---|---|---|---|
-| 1 | `reauthor_survey_definitions` | Re-runs the definitions batch + reconciler | slow, writes |
-| 2 | `clear_stale_assets` | Drops asset GUIDs that no longer resolve | local only |
-| 3 | `clear_orphan_publish_claims` | Drops claims naming reports that are gone | local only |
-| 4 | `clear_stale_investigations` | Clears dead Project/Collection GUIDs | local only |
-| 5 | `clear_stale_contexts` | Resets contexts pointing at dead Projects | local only |
-| 6 | `catalog_assets` | Publishes `repo_health` → registers the asset | **no downloads** |
-| 7 | `republish_survey_results` | Full survey → SurveyReport | **slow, downloads archives** |
-| 8 | `relink_investigation_members` | Attaches members to their assets | fast, writes |
+**Apply writes.**
+- It is the "Apply selected" button, or `POST /api/egeria/resync/apply`.
+- The `clear_*` and `flag_*` steps write RE's registry only.
+- `reauthor_survey_definitions`, `catalog_assets`, `republish_survey_results` and
+  `relink_investigation_members` write to Egeria.
+- The page never offers the clear script of §2.0 step 3: that stays a stopped-RE CLI step.
+
+`REPAIR_STEPS` (current main); the order is load-bearing:
+
+| # | Step | What it does | Writes | Unattended? |
+|---|---|---|---|---|
+| 1 | `reauthor_survey_definitions` | Re-runs the definitions batch + reconciler | Egeria; slow, unticked | never |
+| 2 | `clear_stale_assets` | Drops repo asset GUIDs that no longer resolve | registry | **yes** |
+| 3 | `clear_orphan_publish_claims` | Drops claims naming reports that are gone | registry | **yes** |
+| 4 | `flag_vanished_publishes` | Flags (never deletes) a publish whose report vanished | registry | **yes** |
+| 5 | `flag_stale_dbfs_assets` | Flags a database/file-system asset GUID that no longer resolves; keeps the GUID | registry | **yes** |
+| 6 | `clear_stale_investigations` | Clears dead Project/Collection GUIDs (investigations become `local`)† | registry | never |
+| 7 | `clear_stale_contexts` | Resets contexts pointing at dead Projects to `unset`, and blanks their name† | registry | never |
+
+† **On main today these two erase what re-attach needs, and they are ticked by default.** Untick them after
+an Egeria clear until the re-attach PR merges.
+
+The re-attach branch changes both steps to keep the name. Each blanks only the GUID; the stored
+qualifiedName is kept (the clear script's rule: the name is the decision, the GUID is the pointer). A context,
+or an investigation that was `linked`, becomes `unbound`, which gates a publish exactly as `unset` does.
+`reattach_by_name` can then recover the row once Egeria holds the name again.
+| 8 | `catalog_assets` | Publishes `repo_health` → registers the asset | Egeria; **no downloads** | never |
+| 9 | `republish_survey_results` | Full survey → SurveyReport | Egeria; **slow, downloads archives**, unticked | never |
+| 10 | `relink_investigation_members` | Attaches members to their assets | Egeria | never |
+
+**Coming with re-attach** (branch `re/reattach-egeria-by-name`, not on main yet):
+- A manual step, `reattach_by_name`, placed before `clear_stale_investigations` and `clear_stale_contexts`
+  in the ordered pass. Re-attaching first means nothing is left for them to clear. With the same change,
+  both steps keep the name (†), so they no longer destroy what a later re-attach needs.
+- It is unticked by default: it rewrites links by name.
+- It is never unattended.
+- Its Apply refuses when the plan changed since the Scan, or while another RE writer is active.
+
+**The scheduler's unattended pass.**
+- What it is: `egeria_resync.scan_and_clear`. It runs about every 600 s while RE is up, and once at start.
+- What it applies: only `SAFE_SCHEDULED_STEPS`, which are `clear_stale_assets`, `clear_orphan_publish_claims`,
+  `flag_vanished_publishes` and `flag_stale_dbfs_assets`. Each of those writes RE's registry only, after
+  verifying live, and never needs a decision.
+- What it never runs unattended: any step that writes to Egeria, and the two that can unbind a Project a person
+  chose (`clear_stale_investigations`, `clear_stale_contexts`).
+- So after a clear, by the time you open the page, the scheduler may already have cleared stale repo asset
+  GUIDs and flagged databases and file systems. The Scan shows what is left.
 
 **Why the order matters, stated as failures rather than rules:**
 
@@ -159,6 +332,25 @@ assets existing:
 **The counts line separates the two kinds:** *"0 repairable · 28 slow, not selected"*. The
 second number does not go down when you complete work — it is work you declined, and it
 persists across every re-scan by design.
+
+### 2.5 Read-only looks you can take at any time
+
+All of these are **read-only** and need no owner decision beyond "go":
+- The Alignment Scan, and `GET /api/egeria/resync/scheduler-status`.
+- The clear script's dry run. It writes only its plan file; the plan expires after 15 minutes, which is
+  fine for a look.
+- Counts of the pointer columns, done in SQL. For example, compare the number of rows with a GUID against
+  the number with a qualifiedName:
+
+  ```sql
+  SELECT count(*) FILTER (WHERE coalesce(egeria_project_guid,'')<>'') AS with_guid,
+         count(*) FILTER (WHERE coalesce(egeria_project_qualified_name,'')<>'') AS with_name
+  FROM resource_explorer.entity_egeria_project_context;
+  ```
+- `egeria-upgrade-reset plan` on the platform side. It writes only its own run folder.
+
+Run the scripts **from a separate trellis checkout or venv, never inside 8813's serving worktree**
+(`.claude/worktrees/wt-relgraph`); see §7.
 
 ---
 
@@ -220,6 +412,22 @@ equivalent: it re-derives current state, and loses the history that
 
 ## 7. Traps, each of which cost time
 
+- **Do not run the clear script after the re-attach.** Since 2026-11-13 it keeps a pointer that resolves, so a
+  re-attached one should survive, but that is a safety net, not the procedure: the order is the clear script,
+  then the re-attach (§2.0). And it keeps only what RE's service account can SEE: an element in a zone that
+  account cannot read answers not found and is cleared (§2.0 step 3). `scripts/sweep_stale_egeria_guids.py
+  --apply` and the Alignment steps `clear_stale_investigations` / `clear_stale_contexts` also clear project
+  and collection pointers, so none of them goes between the clear script and the re-attach either.
+- **On main today, `clear_stale_contexts` also blanks the stored name, and it is ticked by default.** So
+  pressing Apply on the Alignment page with the default ticks erases the names re-attach needs, and those
+  rows cannot be recovered by name afterwards. Untick `clear_stale_contexts` and `clear_stale_investigations`
+  after a clear. Once the re-attach PR merges, both steps keep the name (§2.3 †).
+- **Do not run `uv run` or `uv sync --package` inside the 8813 worktree** (`wt-relgraph`). Either can
+  re-sync that venv and drop the nine RE survey steps installed in it. Run the scripts from a separate
+  trellis checkout or venv.
+- **The clear script needs `?options=-csearch_path=resource_explorer` in `REGISTRY_DATABASE_URL`.** Without
+  it the script refuses, dry run included: the tables would resolve in `public`, which is not where RE keeps
+  them. It also compares the open connection's `current_schema()` with that schema.
 - **`node --check` with the wrong Node.** nvm can move `node` under you; v14 cannot parse
   `||=` and reports valid code as a syntax error. Verify with a runtime matching browsers.
 - **Start the app WITHOUT `--reload`.** `SourceCache` uses the relative path
@@ -271,13 +479,17 @@ The reset erases the Egeria state that explains a failed publish, so read the ev
 
 ### 8.1 After the reset
 
-*(from `egeria-reset-recovery.md`, written from an actual reset)*
+**The procedure is §2.0** (rewritten 2026-11-12): stop RE, record the reset, run the clear script, re-attach by
+qualifiedName (once it lands), start RE, then Alignment, then databases and file systems from their panels.
+What follows is background to it.
 
-1. **Let the bootstrap heal the definitions, then verify it.** `bootstrap.check_and_heal()`
-   re-runs any batch whose canary is missing, every 10 minutes while the web server is up. On a
-   wiped platform it heals unattended — let it, and verify the result rather than hand-running
-   documents on top of it.
-2. **Deal with the stale asset GUIDs.** `scripts/sweep_stale_egeria_guids.py` clears them.
+1. **Let the bootstrap heal the definitions, then verify it.** `bootstrap.check_and_heal()` re-runs any
+   batch whose canary is missing, every 10 minutes while the web server is up. On a wiped platform it heals
+   unattended. Let it, and verify the result (§2.2) rather than hand-running documents on top of it.
+2. **The stale pointers are the clear script's job (§2.0 step 3), not the sweep's.**
+   `scripts/sweep_stale_egeria_guids.py` predates the clear script and covers only repo assets,
+   investigation Projects and working-set Collections. It is kept for drift without a reset (§3), not for
+   this.
 3. **Do not expect the outbox to restore anything.**
 
 > ### The outbox does NOT restore anything

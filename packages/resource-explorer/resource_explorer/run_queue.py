@@ -430,6 +430,16 @@ def _handle_first_index(target: dict, result_ref: str) -> RunOutcome:
     return RunOutcome(state="succeeded" if result.status == "ok" else "failed", error=result.error or "")
 
 
+def _handle_reindex(target: dict, result_ref: str) -> RunOutcome:
+    """Rebuild a repository's chat index aside, then swap (reindex.run). The run row carries each phase, so a run that
+    dies part-way is finished forward or rolled back by `reindex.recover` from run_reconciler."""
+    from resource_explorer import reindex
+
+    run = current_run.get() or {}
+    state, error = reindex.run(run.get("id", ""), reindex.Deps(registry=run.get("registry")))
+    return RunOutcome(state=state, error=error)
+
+
 def _handle_engine_action(target: dict, result_ref: str) -> RunOutcome:
     """An Egeria engine action RE claimed as an engine host (engine_host.py, E4). Runs as
     `Daemon(ENGINE_HOST, requested_by)` (see `_run_as`), never as `_run_as_requester`'s RUN_QUEUE."""
@@ -454,6 +464,7 @@ HANDLERS: dict[str, Callable[[dict, str], RunOutcome]] = {
     "discovery_expand": _handle_discovery_expand,
     "engine_action": _handle_engine_action,
     "first_index": _handle_first_index,
+    "reindex": _handle_reindex,
 }
 
 
@@ -524,7 +535,8 @@ class _Heartbeat:
 #: requester: queued with none, they fail loudly rather than write anonymously on someone's behalf.
 #: (`materialize_components` is a run kind with a handler but nothing enqueues it today, so it is
 #: not listed; whoever starts queueing it adds it here.)
-PERSON_ACTION_KINDS = frozenset({"publish_architecture", "curate_commit", "catalogue_commit", "first_index"})
+PERSON_ACTION_KINDS = frozenset({"publish_architecture", "curate_commit", "catalogue_commit", "first_index",
+                                 "reindex"})
 
 NO_REQUESTER_SENTENCE = ("this action was queued with no requester recorded; RE does not write to "
                          "Egeria on a person's behalf without saying whose")
@@ -618,6 +630,15 @@ def _activity_words(registry, kind: str, target: dict, outcome: "RunOutcome") ->
         if ok:
             return status, f"First index of {name} for chat: done."
         return status, f"First index of {name} for chat failed: {_first_sentence(outcome.error, 400) or 'no reason recorded'}."
+    if kind == "reindex":
+        name = slug or "the repository"
+        if ok and isinstance(target, dict) and target.get("held"):
+            # The held first rebuild ends its run once built; nothing has swapped. Saying "done" here read as finished.
+            return status, (f"Rebuild of {name}'s chat index: built and held for an admin to accept; nothing has "
+                            "been swapped yet.")
+        if ok:
+            return status, f"Rebuild of {name}'s chat index: done."
+        return status, f"Rebuild of {name}'s chat index failed: {_first_sentence(outcome.error, 400) or 'no reason recorded'}."
     if kind == "materialize_components":
         n = len(target.get("paths") or []) if isinstance(target, dict) else 0
         if ok:

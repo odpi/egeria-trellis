@@ -92,7 +92,8 @@ async def get_template_fields(request: Request, command_name: str, level: str = 
     action = unquote(command_name)
     root   = _templates_root()
     if root is None:
-        return {"fields": [], "level": level}
+        return {"fields": [], "level": level, "state": "no_templates",
+                "message": "No Dr.Egeria templates are available to this advisor."}
 
     level_dir = root / level
     if not level_dir.is_dir():
@@ -118,36 +119,37 @@ async def get_template_fields(request: Request, command_name: str, level: str = 
             best_file  = md_file
 
     if best_file is None or best_score == 0:
-        return {"fields": [], "level": level}
+        return {"fields": [], "level": level, "state": "not_found",
+                "message": f"No {level} Dr.Egeria template matches '{action}'."}
 
     try:
         template = parse_template(str(best_file))
-    except Exception:
-        return {"fields": [], "level": level}
+    except Exception as exc:
+        logger.info(f"get_template_fields: could not parse {best_file.name}: {exc}")
+        return {"fields": [], "level": level, "state": "read_failed",
+                "message": f"The {level} template for '{action}' ({best_file.name}) could not be read: {exc}"}
 
-    # Enrich valid_values for known field patterns with live Egeria data
-    zone_values: list[str] = []
-    tech_type_values: list[str] = []
+    # Enrich valid_values for known field patterns with live Egeria data. A field whose live values
+    # could not be read, or of which Egeria holds none, says so (valid_values_state/_message) rather
+    # than looking like a free-text field (A-P2).
+    ctx = None
     for a in template["attributes"]:
         name_low = a["name"].lower()
-        if not a.get("valid_values") and "zone" in name_low:
-            if not zone_values:
-                try:
-                    from advisor.egeria_context import EgeriaContext
-                    zone_values = EgeriaContext(egeria_credentials=egeria_credentials).list_governance_zones()
-                except Exception:
-                    pass
-            if zone_values:
-                a["valid_values"] = zone_values
-        elif not a.get("valid_values") and "deployed implementation type" in name_low:
-            if not tech_type_values:
-                try:
-                    from advisor.egeria_context import EgeriaContext
-                    tech_type_values = EgeriaContext(egeria_credentials=egeria_credentials).list_technology_types()
-                except Exception:
-                    pass
-            if tech_type_values:
-                a["valid_values"] = tech_type_values
+        if a.get("valid_values"):
+            continue
+        if "zone" in name_low:
+            values_of, kind = "zones", "governance_zones_answer"
+        elif "deployed implementation type" in name_low:
+            values_of, kind = "technology_types", "technology_types_answer"
+        else:
+            continue
+        if ctx is None:
+            from advisor.egeria_context import EgeriaContext
+            ctx = EgeriaContext(egeria_credentials=egeria_credentials)
+        answer = getattr(ctx, kind)()  # cached per instance, so each list is read once
+        a["valid_values"] = answer[values_of]
+        a["valid_values_state"] = answer["state"]
+        a["valid_values_message"] = answer["message"]
 
     return {
         "level": level,
@@ -160,7 +162,12 @@ async def get_template_fields(request: Request, command_name: str, level: str = 
                 "valid_values":       a.get("valid_values", []),
                 "default_value":      a.get("default_value", ""),
                 "alternative_labels": a.get("alternative_labels", []),
+                **({"valid_values_state": a["valid_values_state"],
+                    "valid_values_message": a["valid_values_message"]}
+                   if "valid_values_state" in a else {}),
             }
             for a in template["attributes"]
         ],
+        "state": "ok",
+        "message": None,
     }

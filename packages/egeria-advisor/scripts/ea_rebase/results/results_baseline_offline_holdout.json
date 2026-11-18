@@ -1,0 +1,2277 @@
+[
+ {
+  "id": "H01",
+  "set": "clear",
+  "question": "Which glossaries exist, and how many terms does each have?",
+  "expect": null,
+  "mode": "baseline",
+  "offline": true,
+  "turns": 3,
+  "final_phase": "refine",
+  "transcript": [
+   {
+    "turn": 1,
+    "user": "Which glossaries exist, and how many terms does each have?",
+    "phase": "confirm_action",
+    "response": "### Proposed Report Spec: **Custom Report**\n\n- **Target Type:** Referenceable\n- **Action Function:** `CollectionManager.find_collections`\n- **Description:** Custom report based on: Which glossaries exist, and how many terms does each have?\n\n---\n\nDoes this look correct? Use the buttons below, or describe adjustments: *\"change the target type to Asset\"*.",
+    "s": 32.55
+   },
+   {
+    "turn": 2,
+    "user": "continue_columns",
+    "phase": "elicit_columns",
+    "response": "### Columns Configuration\n\nHere are the columns I'll configure for this report:\n\n**1. Display Name** \u2014 key: `display_name`\n**2. Qualified Name** \u2014 key: `qualified_name`\n**3. GUID** \u2014 key: `guid` [Formatted]\n\n---\n\nDoes this look right? Use **Generate now** to write the spec, or describe changes: *\"add a prioritization column\"* / *\"set Detail Spec for Roles to UserRolesDetail\"*.",
+    "s": 0.0
+   },
+   {
+    "turn": 3,
+    "user": "generate now",
+    "phase": "refine",
+    "response": "\ud83c\udf89 **Report spec document generated!**\n\nThe spec document **report_20261113_065950_custom_report** is now available in your Reports inbox.\nYou can view and edit the columns visually in the canvas sidebar or run it using **Execute Spec**.\n\n---\n\nIf you'd like to adjust the specification via chat, tell me what to change!",
+    "s": 0.0
+   }
+  ],
+  "elicit_s": 32.56,
+  "draft": {
+   "draft_id": "draft_report_20261113_065950_custom_report",
+   "title": "custom_report",
+   "phase": "refine",
+   "phase_label": "Refinement session",
+   "original_query": "Which glossaries exist, and how many terms does each have?",
+   "action_function": "CollectionManager.find_collections",
+   "target_type": "Referenceable",
+   "columns": [
+    {
+     "name": "Display Name",
+     "key": "display_name",
+     "format": false,
+     "detail_spec": null,
+     "formats": "ALL"
+    },
+    {
+     "name": "Qualified Name",
+     "key": "qualified_name",
+     "format": false,
+     "detail_spec": null,
+     "formats": "ALL"
+    },
+    {
+     "name": "GUID",
+     "key": "guid",
+     "format": true,
+     "detail_spec": null,
+     "formats": "ALL"
+    }
+   ],
+   "content_filters": {
+    "search_string": "*"
+   },
+   "shape_defaults": {},
+   "performance_hints": {
+    "page_size": 100,
+    "start_from": 0
+   },
+   "perspectives": [],
+   "questions": [],
+   "answers": {
+    "Heading": "Custom Report",
+    "Description": "Custom report based on: Which glossaries exist, and how many terms does each have?"
+   },
+   "pending_questions": {},
+   "doc_id": "report_20261113_065950_custom_report",
+   "history_stack": [
+    {
+     "phase": "confirm_action",
+     "phase_label": "Confirming report basic configuration",
+     "columns": [
+      {
+       "name": "Display Name",
+       "key": "display_name",
+       "format": false,
+       "detail_spec": null,
+       "formats": "ALL"
+      },
+      {
+       "name": "Qualified Name",
+       "key": "qualified_name",
+       "format": false,
+       "detail_spec": null,
+       "formats": "ALL"
+      },
+      {
+       "name": "GUID",
+       "key": "guid",
+       "format": true,
+       "detail_spec": null,
+       "formats": "ALL"
+      }
+     ],
+     "content_filters": {
+      "search_string": "*"
+     },
+     "shape_defaults": {},
+     "performance_hints": {
+      "page_size": 100,
+      "start_from": 0
+     },
+     "perspectives": [],
+     "questions": [],
+     "answers": {
+      "Heading": "Custom Report",
+      "Description": "Custom report based on: Which glossaries exist, and how many terms does each have?"
+     },
+     "pending_questions": {},
+     "summary_of_answers": ""
+    },
+    {
+     "phase": "elicit_columns",
+     "phase_label": "Reviewing and customizing columns",
+     "columns": [
+      {
+       "name": "Display Name",
+       "key": "display_name",
+       "format": false,
+       "detail_spec": null,
+       "formats": "ALL"
+      },
+      {
+       "name": "Qualified Name",
+       "key": "qualified_name",
+       "format": false,
+       "detail_spec": null,
+       "formats": "ALL"
+      },
+      {
+       "name": "GUID",
+       "key": "guid",
+       "format": true,
+       "detail_spec": null,
+       "formats": "ALL"
+      }
+     ],
+     "content_filters": {
+      "search_string": "*"
+     },
+     "shape_defaults": {},
+     "performance_hints": {
+      "page_size": 100,
+      "start_from": 0
+     },
+     "perspectives": [],
+     "questions": [],
+     "answers": {
+      "Heading": "Custom Report",
+      "Description": "Custom report based on: Which glossaries exist, and how many terms does each have?"
+     },
+     "pending_questions": {},
+     "summary_of_answers": ""
+    }
+   ],
+   "created_at": 1794574790.131957,
+   "updated_at": 1794574790.134788,
+   "summary_of_answers": "",
+   "user_id": "erinoverview"
+  },
+  "check": {
+   "doc_id": "report_20261113_065950_custom_report",
+   "document": "# Custom Report\n\n## Create Report Spec\n### Target Type\nReferenceable\n\n### Heading\nCustom Report\n\n### Description\nCustom report based on: Which glossaries exist, and how many terms does each have?\n\n### Action Function\nCollectionManager.find_collections\n\n### Required Params\nsearch_string\n\n### Content Filters\nsearch_string=*\n\n### Performance Hints\npage_size=100\nstart_from=0\n\n## Create Column\n### Name\nDisplay Name\n\n### Key\ndisplay_name\n\n## Create Column\n### Name\nQualified Name\n\n### Key\nqualified_name\n\n## Create Column\n### Name\nGUID\n\n### Key\nguid\n\n### Format\nTrue\n",
+   "completed": true,
+   "asked_clarifying": false,
+   "dre_offline_parse": {
+    "ok": true,
+    "commands": [
+     "Create Report Spec",
+     "Create Column",
+     "Create Column",
+     "Create Column"
+    ]
+   },
+   "format_set_source": "ea_parser",
+   "format_set_error": null,
+   "target_type": "Referenceable",
+   "action_function": "CollectionManager.find_collections",
+   "columns": [
+    {
+     "name": "Display Name",
+     "key": "display_name"
+    },
+    {
+     "name": "Qualified Name",
+     "key": "qualified_name"
+    },
+    {
+     "name": "GUID",
+     "key": "guid"
+    }
+   ],
+   "nonexistent_attributes": {
+    "checked": true,
+    "keys": [],
+    "strict_keys": []
+   },
+   "pyegeria_validate": {
+    "ok": true,
+    "errors": [],
+    "warnings": [],
+    "not_applied": [],
+    "checked": [
+     "structure",
+     "target type",
+     "column attributes",
+     "load-time resolution (find method / analytic routine, parameters, formats)"
+    ],
+    "not_checked": [
+     "Dr.Egeria validate: no runner given"
+    ],
+    "dr_egeria": null,
+    "s": 0.0
+   },
+   "validates": true,
+   "run": {
+    "ran": false,
+    "why": "offline"
+   }
+  },
+  "total_s": 35.44
+ },
+ {
+  "id": "H02",
+  "set": "clear",
+  "question": "Which projects have no project manager assigned?",
+  "expect": null,
+  "mode": "baseline",
+  "offline": true,
+  "turns": 3,
+  "final_phase": "refine",
+  "transcript": [
+   {
+    "turn": 1,
+    "user": "Which projects have no project manager assigned?",
+    "phase": "confirm_action",
+    "response": "### Proposed Report Spec: **Projects with No Project Manager Assigned**\n\n- **Target Type:** Project\n- **Action Function:** `ProjectManager.find_projects`\n- **Description:** This report lists all projects that do not have a project manager assigned.\n\n---\n\nDoes this look correct? Use the buttons below, or describe adjustments: *\"change the target type to Asset\"*.",
+    "s": 25.91
+   },
+   {
+    "turn": 2,
+    "user": "continue_columns",
+    "phase": "elicit_columns",
+    "response": "### Columns Configuration\n\nHere are the columns I'll configure for this report:\n\n**1. Project Name** \u2014 key: `qualifiedName`\n**2. Description** \u2014 key: `description`\n\n---\n\nDoes this look right? Use **Generate now** to write the spec, or describe changes: *\"add a prioritization column\"* / *\"set Detail Spec for Roles to UserRolesDetail\"*.",
+    "s": 0.0
+   },
+   {
+    "turn": 3,
+    "user": "generate now",
+    "phase": "refine",
+    "response": "\ud83c\udf89 **Report spec document generated!**\n\nThe spec document **report_20261113_070018_projects_without_project_manager** is now available in your Reports inbox.\nYou can view and edit the columns visually in the canvas sidebar or run it using **Execute Spec**.\n\n---\n\nIf you'd like to adjust the specification via chat, tell me what to change!",
+    "s": 0.0
+   }
+  ],
+  "elicit_s": 25.91,
+  "draft": {
+   "draft_id": "draft_report_20261113_070018_projects_without_project_manager",
+   "title": "projects-without-project-manager",
+   "phase": "refine",
+   "phase_label": "Refinement session",
+   "original_query": "Which projects have no project manager assigned?",
+   "action_function": "ProjectManager.find_projects",
+   "target_type": "Project",
+   "columns": [
+    {
+     "name": "Project Name",
+     "key": "qualifiedName",
+     "format": false,
+     "detail_spec": null,
+     "formats": "ALL"
+    },
+    {
+     "name": "Description",
+     "key": "description",
+     "format": false,
+     "detail_spec": null,
+     "formats": "ALL"
+    }
+   ],
+   "content_filters": {
+    "search_string": "*"
+   },
+   "shape_defaults": {},
+   "performance_hints": {
+    "page_size": 100,
+    "start_from": 0
+   },
+   "perspectives": [],
+   "questions": [],
+   "answers": {
+    "Heading": "Projects with No Project Manager Assigned",
+    "Description": "This report lists all projects that do not have a project manager assigned."
+   },
+   "pending_questions": {},
+   "doc_id": "report_20261113_070018_projects_without_project_manager",
+   "history_stack": [
+    {
+     "phase": "confirm_action",
+     "phase_label": "Confirming report basic configuration",
+     "columns": [
+      {
+       "name": "Project Name",
+       "key": "qualifiedName",
+       "format": false,
+       "detail_spec": null,
+       "formats": "ALL"
+      },
+      {
+       "name": "Description",
+       "key": "description",
+       "format": false,
+       "detail_spec": null,
+       "formats": "ALL"
+      }
+     ],
+     "content_filters": {
+      "search_string": "*"
+     },
+     "shape_defaults": {},
+     "performance_hints": {
+      "page_size": 100,
+      "start_from": 0
+     },
+     "perspectives": [],
+     "questions": [],
+     "answers": {
+      "Heading": "Projects with No Project Manager Assigned",
+      "Description": "This report lists all projects that do not have a project manager assigned."
+     },
+     "pending_questions": {},
+     "summary_of_answers": ""
+    },
+    {
+     "phase": "elicit_columns",
+     "phase_label": "Reviewing and customizing columns",
+     "columns": [
+      {
+       "name": "Project Name",
+       "key": "qualifiedName",
+       "format": false,
+       "detail_spec": null,
+       "formats": "ALL"
+      },
+      {
+       "name": "Description",
+       "key": "description",
+       "format": false,
+       "detail_spec": null,
+       "formats": "ALL"
+      }
+     ],
+     "content_filters": {
+      "search_string": "*"
+     },
+     "shape_defaults": {},
+     "performance_hints": {
+      "page_size": 100,
+      "start_from": 0
+     },
+     "perspectives": [],
+     "questions": [],
+     "answers": {
+      "Heading": "Projects with No Project Manager Assigned",
+      "Description": "This report lists all projects that do not have a project manager assigned."
+     },
+     "pending_questions": {},
+     "summary_of_answers": ""
+    }
+   ],
+   "created_at": 1794574818.923906,
+   "updated_at": 1794574818.925772,
+   "summary_of_answers": "",
+   "user_id": "erinoverview"
+  },
+  "check": {
+   "doc_id": "report_20261113_070018_projects_without_project_manager",
+   "document": "# Projects with No Project Manager Assigned\n\n## Create Report Spec\n### Target Type\nProject\n\n### Heading\nProjects with No Project Manager Assigned\n\n### Description\nThis report lists all projects that do not have a project manager assigned.\n\n### Action Function\nProjectManager.find_projects\n\n### Required Params\nsearch_string\n\n### Content Filters\nsearch_string=*\n\n### Performance Hints\npage_size=100\nstart_from=0\n\n## Create Column\n### Name\nProject Name\n\n### Key\nqualifiedName\n\n## Create Column\n### Name\nDescription\n\n### Key\ndescription\n",
+   "completed": true,
+   "asked_clarifying": false,
+   "dre_offline_parse": {
+    "ok": true,
+    "commands": [
+     "Create Report Spec",
+     "Create Column",
+     "Create Column"
+    ]
+   },
+   "format_set_source": "ea_parser",
+   "format_set_error": null,
+   "target_type": "Project",
+   "action_function": "ProjectManager.find_projects",
+   "columns": [
+    {
+     "name": "Project Name",
+     "key": "qualifiedName"
+    },
+    {
+     "name": "Description",
+     "key": "description"
+    }
+   ],
+   "nonexistent_attributes": {
+    "checked": true,
+    "keys": [],
+    "strict_keys": []
+   },
+   "pyegeria_validate": {
+    "ok": true,
+    "errors": [],
+    "warnings": [],
+    "not_applied": [],
+    "checked": [
+     "structure",
+     "target type",
+     "column attributes",
+     "load-time resolution (find method / analytic routine, parameters, formats)"
+    ],
+    "not_checked": [
+     "Dr.Egeria validate: no runner given"
+    ],
+    "dr_egeria": null,
+    "s": 0.0
+   },
+   "validates": true,
+   "run": {
+    "ran": false,
+    "why": "offline"
+   }
+  },
+  "total_s": 25.93
+ },
+ {
+  "id": "H03",
+  "set": "clear",
+  "question": "List the data specifications and the data structures they contain.",
+  "expect": null,
+  "mode": "baseline",
+  "offline": true,
+  "turns": 3,
+  "final_phase": "refine",
+  "transcript": [
+   {
+    "turn": 1,
+    "user": "List the data specifications and the data structures they contain.",
+    "phase": "confirm_action",
+    "response": "### Proposed Report Spec: **Custom Report**\n\n- **Target Type:** Referenceable\n- **Action Function:** `CollectionManager.find_collections`\n- **Description:** Custom report based on: List the data specifications and the data structures they contain.\n\n---\n\nDoes this look correct? Use the buttons below, or describe adjustments: *\"change the target type to Asset\"*.",
+    "s": 61.46
+   },
+   {
+    "turn": 2,
+    "user": "continue_columns",
+    "phase": "elicit_columns",
+    "response": "### Columns Configuration\n\nHere are the columns I'll configure for this report:\n\n**1. Display Name** \u2014 key: `display_name`\n**2. Qualified Name** \u2014 key: `qualified_name`\n**3. GUID** \u2014 key: `guid` [Formatted]\n\n---\n\nDoes this look right? Use **Generate now** to write the spec, or describe changes: *\"add a prioritization column\"* / *\"set Detail Spec for Roles to UserRolesDetail\"*.",
+    "s": 0.15
+   },
+   {
+    "turn": 3,
+    "user": "generate now",
+    "phase": "refine",
+    "response": "\ud83c\udf89 **Report spec document generated!**\n\nThe spec document **report_20261113_070120_custom_report** is now available in your Reports inbox.\nYou can view and edit the columns visually in the canvas sidebar or run it using **Execute Spec**.\n\n---\n\nIf you'd like to adjust the specification via chat, tell me what to change!",
+    "s": 0.13
+   }
+  ],
+  "elicit_s": 61.74,
+  "draft": {
+   "draft_id": "draft_report_20261113_070120_custom_report",
+   "title": "custom_report",
+   "phase": "refine",
+   "phase_label": "Refinement session",
+   "original_query": "List the data specifications and the data structures they contain.",
+   "action_function": "CollectionManager.find_collections",
+   "target_type": "Referenceable",
+   "columns": [
+    {
+     "name": "Display Name",
+     "key": "display_name",
+     "format": false,
+     "detail_spec": null,
+     "formats": "ALL"
+    },
+    {
+     "name": "Qualified Name",
+     "key": "qualified_name",
+     "format": false,
+     "detail_spec": null,
+     "formats": "ALL"
+    },
+    {
+     "name": "GUID",
+     "key": "guid",
+     "format": true,
+     "detail_spec": null,
+     "formats": "ALL"
+    }
+   ],
+   "content_filters": {
+    "search_string": "*"
+   },
+   "shape_defaults": {},
+   "performance_hints": {
+    "page_size": 100,
+    "start_from": 0
+   },
+   "perspectives": [],
+   "questions": [],
+   "answers": {
+    "Heading": "Custom Report",
+    "Description": "Custom report based on: List the data specifications and the data structures they contain."
+   },
+   "pending_questions": {},
+   "doc_id": "report_20261113_070120_custom_report",
+   "history_stack": [
+    {
+     "phase": "confirm_action",
+     "phase_label": "Confirming report basic configuration",
+     "columns": [
+      {
+       "name": "Display Name",
+       "key": "display_name",
+       "format": false,
+       "detail_spec": null,
+       "formats": "ALL"
+      },
+      {
+       "name": "Qualified Name",
+       "key": "qualified_name",
+       "format": false,
+       "detail_spec": null,
+       "formats": "ALL"
+      },
+      {
+       "name": "GUID",
+       "key": "guid",
+       "format": true,
+       "detail_spec": null,
+       "formats": "ALL"
+      }
+     ],
+     "content_filters": {
+      "search_string": "*"
+     },
+     "shape_defaults": {},
+     "performance_hints": {
+      "page_size": 100,
+      "start_from": 0
+     },
+     "perspectives": [],
+     "questions": [],
+     "answers": {
+      "Heading": "Custom Report",
+      "Description": "Custom report based on: List the data specifications and the data structures they contain."
+     },
+     "pending_questions": {},
+     "summary_of_answers": ""
+    },
+    {
+     "phase": "elicit_columns",
+     "phase_label": "Reviewing and customizing columns",
+     "columns": [
+      {
+       "name": "Display Name",
+       "key": "display_name",
+       "format": false,
+       "detail_spec": null,
+       "formats": "ALL"
+      },
+      {
+       "name": "Qualified Name",
+       "key": "qualified_name",
+       "format": false,
+       "detail_spec": null,
+       "formats": "ALL"
+      },
+      {
+       "name": "GUID",
+       "key": "guid",
+       "format": true,
+       "detail_spec": null,
+       "formats": "ALL"
+      }
+     ],
+     "content_filters": {
+      "search_string": "*"
+     },
+     "shape_defaults": {},
+     "performance_hints": {
+      "page_size": 100,
+      "start_from": 0
+     },
+     "perspectives": [],
+     "questions": [],
+     "answers": {
+      "Heading": "Custom Report",
+      "Description": "Custom report based on: List the data specifications and the data structures they contain."
+     },
+     "pending_questions": {},
+     "summary_of_answers": ""
+    }
+   ],
+   "created_at": 1794574880.278775,
+   "updated_at": 1794574880.574987,
+   "summary_of_answers": "",
+   "user_id": "erinoverview"
+  },
+  "check": {
+   "doc_id": "report_20261113_070120_custom_report",
+   "document": "# Custom Report\n\n## Create Report Spec\n### Target Type\nReferenceable\n\n### Heading\nCustom Report\n\n### Description\nCustom report based on: List the data specifications and the data structures they contain.\n\n### Action Function\nCollectionManager.find_collections\n\n### Required Params\nsearch_string\n\n### Content Filters\nsearch_string=*\n\n### Performance Hints\npage_size=100\nstart_from=0\n\n## Create Column\n### Name\nDisplay Name\n\n### Key\ndisplay_name\n\n## Create Column\n### Name\nQualified Name\n\n### Key\nqualified_name\n\n## Create Column\n### Name\nGUID\n\n### Key\nguid\n\n### Format\nTrue\n",
+   "completed": true,
+   "asked_clarifying": false,
+   "dre_offline_parse": {
+    "ok": true,
+    "commands": [
+     "Create Report Spec",
+     "Create Column",
+     "Create Column",
+     "Create Column"
+    ]
+   },
+   "format_set_source": "ea_parser",
+   "format_set_error": null,
+   "target_type": "Referenceable",
+   "action_function": "CollectionManager.find_collections",
+   "columns": [
+    {
+     "name": "Display Name",
+     "key": "display_name"
+    },
+    {
+     "name": "Qualified Name",
+     "key": "qualified_name"
+    },
+    {
+     "name": "GUID",
+     "key": "guid"
+    }
+   ],
+   "nonexistent_attributes": {
+    "checked": true,
+    "keys": [],
+    "strict_keys": []
+   },
+   "pyegeria_validate": {
+    "ok": true,
+    "errors": [],
+    "warnings": [],
+    "not_applied": [],
+    "checked": [
+     "structure",
+     "target type",
+     "column attributes",
+     "load-time resolution (find method / analytic routine, parameters, formats)"
+    ],
+    "not_checked": [
+     "Dr.Egeria validate: no runner given"
+    ],
+    "dr_egeria": null,
+    "s": 1.04
+   },
+   "validates": true,
+   "run": {
+    "ran": false,
+    "why": "offline"
+   }
+  },
+  "total_s": 85.65
+ },
+ {
+  "id": "H04",
+  "set": "clear",
+  "question": "What solution blueprints exist, and which components make up each one?",
+  "expect": null,
+  "mode": "baseline",
+  "offline": true,
+  "error": "TypeError: sequence item 48: expected str instance, list found",
+  "traceback": "Traceback (most recent call last):\n  File \"/Users/dwolfson/localGit/egeria-v6/trellis/.claude/worktrees/re-docs-tidy-guides-4bf2dc/packages/egeria-advisor/scripts/ea_rebase/harness.py\", line 360, in main\n    drove = drive(q, ctx)\n  File \"/Users/dwolfson/localGit/egeria-v6/trellis/.claude/worktrees/re-docs-tidy-guides-4bf2dc/packages/egeria-advisor/scripts/ea_rebase/harness.py\", line 136, in drive\n    r = el.process(r[\"draft_id\"], reply)\n  File \"/Users/dwolfson/localGit/egeria-v6/trellis/.claude/worktrees/re-docs-tidy-guides-4bf2dc/packages/egeria-advisor/advisor/agents/report_spec_elicitor.py\", line 211, in process\n    return self._generate_report_spec(spec)\n           ~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^\n  File \"/Users/dwolfson/localGit/egeria-v6/trellis/.claude/worktrees/re-docs-tidy-guides-4bf2dc/packages/egeria-advisor/advisor/agents/report_spec_elicitor.py\", line 503, in _generate_report_spec\n    doc_content = self._generate_report_spec_md(spec)\n  File \"/Users/dwolfson/localGit/egeria-v6/trellis/.claude/worktrees/re-docs-tidy-guides-4bf2dc/packages/egeria-advisor/advisor/agents/report_spec_elicitor.py\", line 619, in _generate_report_spec_md\n    return \"\\n\".join(lines)\n           ~~~~~~~~~^^^^^^^\nTypeError: sequence item 48: expected str instance, list found\n",
+  "total_s": 57.15
+ },
+ {
+  "id": "H05",
+  "set": "clear",
+  "question": "Which governance rules or controls are still in draft?",
+  "expect": null,
+  "mode": "baseline",
+  "offline": true,
+  "turns": 3,
+  "final_phase": "refine",
+  "transcript": [
+   {
+    "turn": 1,
+    "user": "Which governance rules or controls are still in draft?",
+    "phase": "confirm_action",
+    "response": "### Proposed Report Spec: **Governance Rules or Controls in Draft Status Report**\n\n- **Target Type:** governanceRule\n- **Action Function:** `GovernanceOfficer.find_governance_definitions`\n- **Description:** This report lists all governance rules and controls that are currently in draft status.\n\n---\n\nDoes this look correct? Use the buttons below, or describe adjustments: *\"change the target type to Asset\"*.",
+    "s": 39.36
+   },
+   {
+    "turn": 2,
+    "user": "continue_columns",
+    "phase": "elicit_columns",
+    "response": "### Columns Configuration\n\nHere are the columns I'll configure for this report:\n\n**1. Name** \u2014 key: `displayName`\n**2. Description** \u2014 key: `description`\n**3. Status** \u2014 key: `status`\n\n---\n\nDoes this look right? Use **Generate now** to write the spec, or describe changes: *\"add a prioritization column\"* / *\"set Detail Spec for Roles to UserRolesDetail\"*.",
+    "s": 0.0
+   },
+   {
+    "turn": 3,
+    "user": "generate now",
+    "phase": "refine",
+    "response": "\ud83c\udf89 **Report spec document generated!**\n\nThe spec document **report_20261113_070321_draft_governance_rules_report** is now available in your Reports inbox.\nYou can view and edit the columns visually in the canvas sidebar or run it using **Execute Spec**.\n\n---\n\nIf you'd like to adjust the specification via chat, tell me what to change!",
+    "s": 0.01
+   }
+  ],
+  "elicit_s": 39.37,
+  "draft": {
+   "draft_id": "draft_report_20261113_070321_draft_governance_rules_report",
+   "title": "draft-governance-rules-report",
+   "phase": "refine",
+   "phase_label": "Refinement session",
+   "original_query": "Which governance rules or controls are still in draft?",
+   "action_function": "GovernanceOfficer.find_governance_definitions",
+   "target_type": "governanceRule",
+   "columns": [
+    {
+     "name": "Name",
+     "key": "displayName",
+     "format": false,
+     "detail_spec": null,
+     "formats": "ALL"
+    },
+    {
+     "name": "Description",
+     "key": "description",
+     "format": false,
+     "detail_spec": null,
+     "formats": "ALL"
+    },
+    {
+     "name": "Status",
+     "key": "status",
+     "format": false,
+     "detail_spec": null,
+     "formats": "ALL"
+    }
+   ],
+   "content_filters": {
+    "search_string": "*"
+   },
+   "shape_defaults": {},
+   "performance_hints": {
+    "page_size": 100,
+    "start_from": 0
+   },
+   "perspectives": [],
+   "questions": [],
+   "answers": {
+    "Heading": "Governance Rules or Controls in Draft Status Report",
+    "Description": "This report lists all governance rules and controls that are currently in draft status."
+   },
+   "pending_questions": {},
+   "doc_id": "report_20261113_070321_draft_governance_rules_report",
+   "history_stack": [
+    {
+     "phase": "confirm_action",
+     "phase_label": "Confirming report basic configuration",
+     "columns": [
+      {
+       "name": "Name",
+       "key": "displayName",
+       "format": false,
+       "detail_spec": null,
+       "formats": "ALL"
+      },
+      {
+       "name": "Description",
+       "key": "description",
+       "format": false,
+       "detail_spec": null,
+       "formats": "ALL"
+      },
+      {
+       "name": "Status",
+       "key": "status",
+       "format": false,
+       "detail_spec": null,
+       "formats": "ALL"
+      }
+     ],
+     "content_filters": {
+      "search_string": "*"
+     },
+     "shape_defaults": {},
+     "performance_hints": {
+      "page_size": 100,
+      "start_from": 0
+     },
+     "perspectives": [],
+     "questions": [],
+     "answers": {
+      "Heading": "Governance Rules or Controls in Draft Status Report",
+      "Description": "This report lists all governance rules and controls that are currently in draft status."
+     },
+     "pending_questions": {},
+     "summary_of_answers": ""
+    },
+    {
+     "phase": "elicit_columns",
+     "phase_label": "Reviewing and customizing columns",
+     "columns": [
+      {
+       "name": "Name",
+       "key": "displayName",
+       "format": false,
+       "detail_spec": null,
+       "formats": "ALL"
+      },
+      {
+       "name": "Description",
+       "key": "description",
+       "format": false,
+       "detail_spec": null,
+       "formats": "ALL"
+      },
+      {
+       "name": "Status",
+       "key": "status",
+       "format": false,
+       "detail_spec": null,
+       "formats": "ALL"
+      }
+     ],
+     "content_filters": {
+      "search_string": "*"
+     },
+     "shape_defaults": {},
+     "performance_hints": {
+      "page_size": 100,
+      "start_from": 0
+     },
+     "perspectives": [],
+     "questions": [],
+     "answers": {
+      "Heading": "Governance Rules or Controls in Draft Status Report",
+      "Description": "This report lists all governance rules and controls that are currently in draft status."
+     },
+     "pending_questions": {},
+     "summary_of_answers": ""
+    }
+   ],
+   "created_at": 1794575001.200524,
+   "updated_at": 1794575001.213682,
+   "summary_of_answers": "",
+   "user_id": "erinoverview"
+  },
+  "check": {
+   "doc_id": "report_20261113_070321_draft_governance_rules_report",
+   "document": "# Governance Rules or Controls in Draft Status Report\n\n## Create Report Spec\n### Target Type\ngovernanceRule\n\n### Heading\nGovernance Rules or Controls in Draft Status Report\n\n### Description\nThis report lists all governance rules and controls that are currently in draft status.\n\n### Action Function\nGovernanceOfficer.find_governance_definitions\n\n### Required Params\nsearch_string\n\n### Content Filters\nsearch_string=*\n\n### Performance Hints\npage_size=100\nstart_from=0\n\n## Create Column\n### Name\nName\n\n### Key\ndisplayName\n\n## Create Column\n### Name\nDescription\n\n### Key\ndescription\n\n## Create Column\n### Name\nStatus\n\n### Key\nstatus\n",
+   "completed": true,
+   "asked_clarifying": false,
+   "dre_offline_parse": {
+    "ok": true,
+    "commands": [
+     "Create Report Spec",
+     "Create Column",
+     "Create Column",
+     "Create Column"
+    ]
+   },
+   "format_set_source": "ea_parser",
+   "format_set_error": null,
+   "target_type": "governanceRule",
+   "action_function": "GovernanceOfficer.find_governance_definitions",
+   "columns": [
+    {
+     "name": "Name",
+     "key": "displayName"
+    },
+    {
+     "name": "Description",
+     "key": "description"
+    },
+    {
+     "name": "Status",
+     "key": "status"
+    }
+   ],
+   "nonexistent_attributes": {
+    "checked": false,
+    "why": "no attribute catalog for target type 'governanceRule'",
+    "keys": []
+   },
+   "pyegeria_validate": {
+    "ok": true,
+    "errors": [],
+    "warnings": [],
+    "not_applied": [],
+    "checked": [
+     "structure",
+     "target type",
+     "load-time resolution (find method / analytic routine, parameters, formats)"
+    ],
+    "not_checked": [
+     "column attributes: no attribute catalog for target type 'governanceRule'",
+     "Dr.Egeria validate: no runner given"
+    ],
+    "dr_egeria": null,
+    "s": 0.01
+   },
+   "validates": true,
+   "run": {
+    "ran": false,
+    "why": "offline"
+   }
+  },
+  "total_s": 39.41
+ },
+ {
+  "id": "H06",
+  "set": "clear",
+  "question": "Who works at Coco Pharmaceuticals, and what roles do they hold?",
+  "expect": null,
+  "mode": "baseline",
+  "offline": true,
+  "turns": 3,
+  "final_phase": "refine",
+  "transcript": [
+   {
+    "turn": 1,
+    "user": "Who works at Coco Pharmaceuticals, and what roles do they hold?",
+    "phase": "confirm_action",
+    "response": "### Proposed Report Spec: **Who Works at Coco Pharmaceuticals and What Roles Do They Hold?**\n\n- **Target Type:** UserProfile\n- **Action Function:** `MyProfile.get_my_profile`\n- **Description:** This report lists all employees of Coco Pharmaceuticals along with their roles within the organization.\n\n---\n\nDoes this look correct? Use the buttons below, or describe adjustments: *\"change the target type to Asset\"*.",
+    "s": 32.4
+   },
+   {
+    "turn": 2,
+    "user": "continue_columns",
+    "phase": "elicit_columns",
+    "response": "### Columns Configuration\n\nHere are the columns I'll configure for this report:\n\n**1. Employee Name** \u2014 key: `displayName`\n**2. Role Title** \u2014 key: `jobTitle`\n\n---\n\nDoes this look right? Use **Generate now** to write the spec, or describe changes: *\"add a prioritization column\"* / *\"set Detail Spec for Roles to UserRolesDetail\"*.",
+    "s": 0.0
+   },
+   {
+    "turn": 3,
+    "user": "generate now",
+    "phase": "refine",
+    "response": "\ud83c\udf89 **Report spec document generated!**\n\nThe spec document **report_20261113_070353_coco_pharmaceuticals_employees_report** is now available in your Reports inbox.\nYou can view and edit the columns visually in the canvas sidebar or run it using **Execute Spec**.\n\n---\n\nIf you'd like to adjust the specification via chat, tell me what to change!",
+    "s": 0.0
+   }
+  ],
+  "elicit_s": 32.4,
+  "draft": {
+   "draft_id": "draft_report_20261113_070353_coco_pharmaceuticals_employees_report",
+   "title": "coco-pharmaceuticals-employees-report",
+   "phase": "refine",
+   "phase_label": "Refinement session",
+   "original_query": "Who works at Coco Pharmaceuticals, and what roles do they hold?",
+   "action_function": "MyProfile.get_my_profile",
+   "target_type": "UserProfile",
+   "columns": [
+    {
+     "name": "Employee Name",
+     "key": "displayName",
+     "format": false,
+     "detail_spec": null,
+     "formats": "ALL"
+    },
+    {
+     "name": "Role Title",
+     "key": "jobTitle",
+     "format": false,
+     "detail_spec": null,
+     "formats": "ALL"
+    }
+   ],
+   "content_filters": {
+    "search_string": "*"
+   },
+   "shape_defaults": {},
+   "performance_hints": {
+    "page_size": 100,
+    "start_from": 0
+   },
+   "perspectives": [],
+   "questions": [],
+   "answers": {
+    "Heading": "Who Works at Coco Pharmaceuticals and What Roles Do They Hold?",
+    "Description": "This report lists all employees of Coco Pharmaceuticals along with their roles within the organization."
+   },
+   "pending_questions": {},
+   "doc_id": "report_20261113_070353_coco_pharmaceuticals_employees_report",
+   "history_stack": [
+    {
+     "phase": "confirm_action",
+     "phase_label": "Confirming report basic configuration",
+     "columns": [
+      {
+       "name": "Employee Name",
+       "key": "displayName",
+       "format": false,
+       "detail_spec": null,
+       "formats": "ALL"
+      },
+      {
+       "name": "Role Title",
+       "key": "jobTitle",
+       "format": false,
+       "detail_spec": null,
+       "formats": "ALL"
+      }
+     ],
+     "content_filters": {
+      "search_string": "*"
+     },
+     "shape_defaults": {},
+     "performance_hints": {
+      "page_size": 100,
+      "start_from": 0
+     },
+     "perspectives": [],
+     "questions": [],
+     "answers": {
+      "Heading": "Who Works at Coco Pharmaceuticals and What Roles Do They Hold?",
+      "Description": "This report lists all employees of Coco Pharmaceuticals along with their roles within the organization."
+     },
+     "pending_questions": {},
+     "summary_of_answers": ""
+    },
+    {
+     "phase": "elicit_columns",
+     "phase_label": "Reviewing and customizing columns",
+     "columns": [
+      {
+       "name": "Employee Name",
+       "key": "displayName",
+       "format": false,
+       "detail_spec": null,
+       "formats": "ALL"
+      },
+      {
+       "name": "Role Title",
+       "key": "jobTitle",
+       "format": false,
+       "detail_spec": null,
+       "formats": "ALL"
+      }
+     ],
+     "content_filters": {
+      "search_string": "*"
+     },
+     "shape_defaults": {},
+     "performance_hints": {
+      "page_size": 100,
+      "start_from": 0
+     },
+     "perspectives": [],
+     "questions": [],
+     "answers": {
+      "Heading": "Who Works at Coco Pharmaceuticals and What Roles Do They Hold?",
+      "Description": "This report lists all employees of Coco Pharmaceuticals along with their roles within the organization."
+     },
+     "pending_questions": {},
+     "summary_of_answers": ""
+    }
+   ],
+   "created_at": 1794575033.642625,
+   "updated_at": 1794575033.6545012,
+   "summary_of_answers": "",
+   "user_id": "erinoverview"
+  },
+  "check": {
+   "doc_id": "report_20261113_070353_coco_pharmaceuticals_employees_report",
+   "document": "# Who Works at Coco Pharmaceuticals and What Roles Do They Hold?\n\n## Create Report Spec\n### Target Type\nUserProfile\n\n### Heading\nWho Works at Coco Pharmaceuticals and What Roles Do They Hold?\n\n### Description\nThis report lists all employees of Coco Pharmaceuticals along with their roles within the organization.\n\n### Action Function\nMyProfile.get_my_profile\n\n### Required Params\nsearch_string\n\n### Content Filters\nsearch_string=*\n\n### Performance Hints\npage_size=100\nstart_from=0\n\n## Create Column\n### Name\nEmployee Name\n\n### Key\ndisplayName\n\n## Create Column\n### Name\nRole Title\n\n### Key\njobTitle\n",
+   "completed": true,
+   "asked_clarifying": false,
+   "dre_offline_parse": {
+    "ok": true,
+    "commands": [
+     "Create Report Spec",
+     "Create Column",
+     "Create Column"
+    ]
+   },
+   "format_set_source": "ea_parser",
+   "format_set_error": null,
+   "target_type": "UserProfile",
+   "action_function": "MyProfile.get_my_profile",
+   "columns": [
+    {
+     "name": "Employee Name",
+     "key": "displayName"
+    },
+    {
+     "name": "Role Title",
+     "key": "jobTitle"
+    }
+   ],
+   "nonexistent_attributes": {
+    "checked": false,
+    "why": "no attribute catalog for target type 'UserProfile'",
+    "keys": []
+   },
+   "pyegeria_validate": {
+    "ok": true,
+    "errors": [],
+    "warnings": [],
+    "not_applied": [],
+    "checked": [
+     "structure",
+     "target type",
+     "load-time resolution (find method / analytic routine, parameters, formats)"
+    ],
+    "not_checked": [
+     "column attributes: no attribute catalog for target type 'UserProfile'",
+     "Dr.Egeria validate: no runner given"
+    ],
+    "dr_egeria": null,
+    "s": 0.01
+   },
+   "validates": true,
+   "run": {
+    "ran": false,
+    "why": "offline"
+   }
+  },
+  "total_s": 32.43
+ },
+ {
+  "id": "H07",
+  "set": "clear",
+  "question": "Which collections have the most members?",
+  "expect": null,
+  "mode": "baseline",
+  "offline": true,
+  "turns": 3,
+  "final_phase": "refine",
+  "transcript": [
+   {
+    "turn": 1,
+    "user": "Which collections have the most members?",
+    "phase": "confirm_action",
+    "response": "### Proposed Report Spec: **Custom Report**\n\n- **Target Type:** Referenceable\n- **Action Function:** `CollectionManager.find_collections`\n- **Description:** Custom report based on: Which collections have the most members?\n\n---\n\nDoes this look correct? Use the buttons below, or describe adjustments: *\"change the target type to Asset\"*.",
+    "s": 34.75
+   },
+   {
+    "turn": 2,
+    "user": "continue_columns",
+    "phase": "elicit_columns",
+    "response": "### Columns Configuration\n\nHere are the columns I'll configure for this report:\n\n**1. Display Name** \u2014 key: `display_name`\n**2. Qualified Name** \u2014 key: `qualified_name`\n**3. GUID** \u2014 key: `guid` [Formatted]\n\n---\n\nDoes this look right? Use **Generate now** to write the spec, or describe changes: *\"add a prioritization column\"* / *\"set Detail Spec for Roles to UserRolesDetail\"*.",
+    "s": 0.0
+   },
+   {
+    "turn": 3,
+    "user": "generate now",
+    "phase": "refine",
+    "response": "\ud83c\udf89 **Report spec document generated!**\n\nThe spec document **report_20261113_070428_custom_report** is now available in your Reports inbox.\nYou can view and edit the columns visually in the canvas sidebar or run it using **Execute Spec**.\n\n---\n\nIf you'd like to adjust the specification via chat, tell me what to change!",
+    "s": 0.0
+   }
+  ],
+  "elicit_s": 34.75,
+  "draft": {
+   "draft_id": "draft_report_20261113_070428_custom_report",
+   "title": "custom_report",
+   "phase": "refine",
+   "phase_label": "Refinement session",
+   "original_query": "Which collections have the most members?",
+   "action_function": "CollectionManager.find_collections",
+   "target_type": "Referenceable",
+   "columns": [
+    {
+     "name": "Display Name",
+     "key": "display_name",
+     "format": false,
+     "detail_spec": null,
+     "formats": "ALL"
+    },
+    {
+     "name": "Qualified Name",
+     "key": "qualified_name",
+     "format": false,
+     "detail_spec": null,
+     "formats": "ALL"
+    },
+    {
+     "name": "GUID",
+     "key": "guid",
+     "format": true,
+     "detail_spec": null,
+     "formats": "ALL"
+    }
+   ],
+   "content_filters": {
+    "search_string": "*"
+   },
+   "shape_defaults": {},
+   "performance_hints": {
+    "page_size": 100,
+    "start_from": 0
+   },
+   "perspectives": [],
+   "questions": [],
+   "answers": {
+    "Heading": "Custom Report",
+    "Description": "Custom report based on: Which collections have the most members?"
+   },
+   "pending_questions": {},
+   "doc_id": "report_20261113_070428_custom_report",
+   "history_stack": [
+    {
+     "phase": "confirm_action",
+     "phase_label": "Confirming report basic configuration",
+     "columns": [
+      {
+       "name": "Display Name",
+       "key": "display_name",
+       "format": false,
+       "detail_spec": null,
+       "formats": "ALL"
+      },
+      {
+       "name": "Qualified Name",
+       "key": "qualified_name",
+       "format": false,
+       "detail_spec": null,
+       "formats": "ALL"
+      },
+      {
+       "name": "GUID",
+       "key": "guid",
+       "format": true,
+       "detail_spec": null,
+       "formats": "ALL"
+      }
+     ],
+     "content_filters": {
+      "search_string": "*"
+     },
+     "shape_defaults": {},
+     "performance_hints": {
+      "page_size": 100,
+      "start_from": 0
+     },
+     "perspectives": [],
+     "questions": [],
+     "answers": {
+      "Heading": "Custom Report",
+      "Description": "Custom report based on: Which collections have the most members?"
+     },
+     "pending_questions": {},
+     "summary_of_answers": ""
+    },
+    {
+     "phase": "elicit_columns",
+     "phase_label": "Reviewing and customizing columns",
+     "columns": [
+      {
+       "name": "Display Name",
+       "key": "display_name",
+       "format": false,
+       "detail_spec": null,
+       "formats": "ALL"
+      },
+      {
+       "name": "Qualified Name",
+       "key": "qualified_name",
+       "format": false,
+       "detail_spec": null,
+       "formats": "ALL"
+      },
+      {
+       "name": "GUID",
+       "key": "guid",
+       "format": true,
+       "detail_spec": null,
+       "formats": "ALL"
+      }
+     ],
+     "content_filters": {
+      "search_string": "*"
+     },
+     "shape_defaults": {},
+     "performance_hints": {
+      "page_size": 100,
+      "start_from": 0
+     },
+     "perspectives": [],
+     "questions": [],
+     "answers": {
+      "Heading": "Custom Report",
+      "Description": "Custom report based on: Which collections have the most members?"
+     },
+     "pending_questions": {},
+     "summary_of_answers": ""
+    }
+   ],
+   "created_at": 1794575068.442284,
+   "updated_at": 1794575068.4450612,
+   "summary_of_answers": "",
+   "user_id": "erinoverview"
+  },
+  "check": {
+   "doc_id": "report_20261113_070428_custom_report",
+   "document": "# Custom Report\n\n## Create Report Spec\n### Target Type\nReferenceable\n\n### Heading\nCustom Report\n\n### Description\nCustom report based on: Which collections have the most members?\n\n### Action Function\nCollectionManager.find_collections\n\n### Required Params\nsearch_string\n\n### Content Filters\nsearch_string=*\n\n### Performance Hints\npage_size=100\nstart_from=0\n\n## Create Column\n### Name\nDisplay Name\n\n### Key\ndisplay_name\n\n## Create Column\n### Name\nQualified Name\n\n### Key\nqualified_name\n\n## Create Column\n### Name\nGUID\n\n### Key\nguid\n\n### Format\nTrue\n",
+   "completed": true,
+   "asked_clarifying": false,
+   "dre_offline_parse": {
+    "ok": true,
+    "commands": [
+     "Create Report Spec",
+     "Create Column",
+     "Create Column",
+     "Create Column"
+    ]
+   },
+   "format_set_source": "ea_parser",
+   "format_set_error": null,
+   "target_type": "Referenceable",
+   "action_function": "CollectionManager.find_collections",
+   "columns": [
+    {
+     "name": "Display Name",
+     "key": "display_name"
+    },
+    {
+     "name": "Qualified Name",
+     "key": "qualified_name"
+    },
+    {
+     "name": "GUID",
+     "key": "guid"
+    }
+   ],
+   "nonexistent_attributes": {
+    "checked": true,
+    "keys": [],
+    "strict_keys": []
+   },
+   "pyegeria_validate": {
+    "ok": true,
+    "errors": [],
+    "warnings": [],
+    "not_applied": [],
+    "checked": [
+     "structure",
+     "target type",
+     "column attributes",
+     "load-time resolution (find method / analytic routine, parameters, formats)"
+    ],
+    "not_checked": [
+     "Dr.Egeria validate: no runner given"
+    ],
+    "dr_egeria": null,
+    "s": 0.01
+   },
+   "validates": true,
+   "run": {
+    "ran": false,
+    "why": "offline"
+   }
+  },
+  "total_s": 34.79
+ },
+ {
+  "id": "H08",
+  "set": "clear",
+  "question": "Which data fields have no data class assigned?",
+  "expect": null,
+  "mode": "baseline",
+  "offline": true,
+  "turns": 3,
+  "final_phase": "refine",
+  "transcript": [
+   {
+    "turn": 1,
+    "user": "Which data fields have no data class assigned?",
+    "phase": "confirm_action",
+    "response": "### Proposed Report Spec: **Data Fields with No Data Class Assigned**\n\n- **Target Type:** Attribute\n- **Action Function:** `AssetManager.find_attributes_without_data_class`\n- **Description:** This report lists all data fields that do not have a data class assigned to them.\n\n---\n\nDoes this look correct? Use the buttons below, or describe adjustments: *\"change the target type to Asset\"*.",
+    "s": 31.41
+   },
+   {
+    "turn": 2,
+    "user": "continue_columns",
+    "phase": "elicit_columns",
+    "response": "### Columns Configuration\n\nHere are the columns I'll configure for this report:\n\n**1. Field Name** \u2014 key: `displayName`\n**2. Description** \u2014 key: `description`\n\n---\n\nDoes this look right? Use **Generate now** to write the spec, or describe changes: *\"add a prioritization column\"* / *\"set Detail Spec for Roles to UserRolesDetail\"*.",
+    "s": 0.0
+   },
+   {
+    "turn": 3,
+    "user": "generate now",
+    "phase": "refine",
+    "response": "\ud83c\udf89 **Report spec document generated!**\n\nThe spec document **report_20261113_070459_data_fields_without_data_class** is now available in your Reports inbox.\nYou can view and edit the columns visually in the canvas sidebar or run it using **Execute Spec**.\n\n---\n\nIf you'd like to adjust the specification via chat, tell me what to change!",
+    "s": 0.0
+   }
+  ],
+  "elicit_s": 31.41,
+  "draft": {
+   "draft_id": "draft_report_20261113_070459_data_fields_without_data_class",
+   "title": "data-fields-without-data-class",
+   "phase": "refine",
+   "phase_label": "Refinement session",
+   "original_query": "Which data fields have no data class assigned?",
+   "action_function": "AssetManager.find_attributes_without_data_class",
+   "target_type": "Attribute",
+   "columns": [
+    {
+     "name": "Field Name",
+     "key": "displayName",
+     "format": false,
+     "detail_spec": null,
+     "formats": "ALL"
+    },
+    {
+     "name": "Description",
+     "key": "description",
+     "format": false,
+     "detail_spec": null,
+     "formats": "ALL"
+    }
+   ],
+   "content_filters": {
+    "search_string": "*"
+   },
+   "shape_defaults": {},
+   "performance_hints": {
+    "page_size": 100,
+    "start_from": 0
+   },
+   "perspectives": [],
+   "questions": [],
+   "answers": {
+    "Heading": "Data Fields with No Data Class Assigned",
+    "Description": "This report lists all data fields that do not have a data class assigned to them."
+   },
+   "pending_questions": {},
+   "doc_id": "report_20261113_070459_data_fields_without_data_class",
+   "history_stack": [
+    {
+     "phase": "confirm_action",
+     "phase_label": "Confirming report basic configuration",
+     "columns": [
+      {
+       "name": "Field Name",
+       "key": "displayName",
+       "format": false,
+       "detail_spec": null,
+       "formats": "ALL"
+      },
+      {
+       "name": "Description",
+       "key": "description",
+       "format": false,
+       "detail_spec": null,
+       "formats": "ALL"
+      }
+     ],
+     "content_filters": {
+      "search_string": "*"
+     },
+     "shape_defaults": {},
+     "performance_hints": {
+      "page_size": 100,
+      "start_from": 0
+     },
+     "perspectives": [],
+     "questions": [],
+     "answers": {
+      "Heading": "Data Fields with No Data Class Assigned",
+      "Description": "This report lists all data fields that do not have a data class assigned to them."
+     },
+     "pending_questions": {},
+     "summary_of_answers": ""
+    },
+    {
+     "phase": "elicit_columns",
+     "phase_label": "Reviewing and customizing columns",
+     "columns": [
+      {
+       "name": "Field Name",
+       "key": "displayName",
+       "format": false,
+       "detail_spec": null,
+       "formats": "ALL"
+      },
+      {
+       "name": "Description",
+       "key": "description",
+       "format": false,
+       "detail_spec": null,
+       "formats": "ALL"
+      }
+     ],
+     "content_filters": {
+      "search_string": "*"
+     },
+     "shape_defaults": {},
+     "performance_hints": {
+      "page_size": 100,
+      "start_from": 0
+     },
+     "perspectives": [],
+     "questions": [],
+     "answers": {
+      "Heading": "Data Fields with No Data Class Assigned",
+      "Description": "This report lists all data fields that do not have a data class assigned to them."
+     },
+     "pending_questions": {},
+     "summary_of_answers": ""
+    }
+   ],
+   "created_at": 1794575099.895691,
+   "updated_at": 1794575099.898277,
+   "summary_of_answers": "",
+   "user_id": "erinoverview"
+  },
+  "check": {
+   "doc_id": "report_20261113_070459_data_fields_without_data_class",
+   "document": "# Data Fields with No Data Class Assigned\n\n## Create Report Spec\n### Target Type\nAttribute\n\n### Heading\nData Fields with No Data Class Assigned\n\n### Description\nThis report lists all data fields that do not have a data class assigned to them.\n\n### Action Function\nAssetManager.find_attributes_without_data_class\n\n### Required Params\nsearch_string\n\n### Content Filters\nsearch_string=*\n\n### Performance Hints\npage_size=100\nstart_from=0\n\n## Create Column\n### Name\nField Name\n\n### Key\ndisplayName\n\n## Create Column\n### Name\nDescription\n\n### Key\ndescription\n",
+   "completed": true,
+   "asked_clarifying": false,
+   "dre_offline_parse": {
+    "ok": true,
+    "commands": [
+     "Create Report Spec",
+     "Create Column",
+     "Create Column"
+    ]
+   },
+   "format_set_source": "ea_parser",
+   "format_set_error": null,
+   "target_type": "Attribute",
+   "action_function": "AssetManager.find_attributes_without_data_class",
+   "columns": [
+    {
+     "name": "Field Name",
+     "key": "displayName"
+    },
+    {
+     "name": "Description",
+     "key": "description"
+    }
+   ],
+   "nonexistent_attributes": {
+    "checked": false,
+    "why": "no attribute catalog for target type 'Attribute'",
+    "keys": []
+   },
+   "pyegeria_validate": {
+    "ok": false,
+    "errors": [
+     "Spec 'ea-rebase-H08-data-fields-without-data-class' cannot run (check 1): its find method 'AssetManager.find_attributes_without_data_class' does not exist: EgeriaTech or any client it proxies to has no '_async_find_attributes_without_data_class'."
+    ],
+    "warnings": [],
+    "not_applied": [],
+    "checked": [
+     "structure",
+     "target type",
+     "load-time resolution (find method / analytic routine, parameters, formats)"
+    ],
+    "not_checked": [
+     "column attributes: no attribute catalog for target type 'Attribute'",
+     "Dr.Egeria validate: no runner given"
+    ],
+    "dr_egeria": null,
+    "s": 0.01
+   },
+   "validates": false,
+   "run": {
+    "ran": false,
+    "why": "offline"
+   }
+  },
+  "total_s": 31.44
+ },
+ {
+  "id": "H09",
+  "set": "clear",
+  "question": "Which teams does Coco Pharmaceuticals have, and who leads each one?",
+  "expect": null,
+  "mode": "baseline",
+  "offline": true,
+  "turns": 3,
+  "final_phase": "refine",
+  "transcript": [
+   {
+    "turn": 1,
+    "user": "Which teams does Coco Pharmaceuticals have, and who leads each one?",
+    "phase": "confirm_action",
+    "response": "### Proposed Report Spec: **Coco Pharmaceuticals Teams and Their Leaders**\n\n- **Target Type:** Project\n- **Action Function:** `ProjectManager.find_projects`\n- **Description:** This report lists all the teams within Coco Pharmaceuticals along with their respective leaders.\n\n---\n\nDoes this look correct? Use the buttons below, or describe adjustments: *\"change the target type to Asset\"*.",
+    "s": 32.37
+   },
+   {
+    "turn": 2,
+    "user": "continue_columns",
+    "phase": "elicit_columns",
+    "response": "### Columns Configuration\n\nHere are the columns I'll configure for this report:\n\n**1. Team Name** \u2014 key: `displayName`\n**2. Leader's Name** \u2014 key: `owner.name`\n\n---\n\nDoes this look right? Use **Generate now** to write the spec, or describe changes: *\"add a prioritization column\"* / *\"set Detail Spec for Roles to UserRolesDetail\"*.",
+    "s": 0.0
+   },
+   {
+    "turn": 3,
+    "user": "generate now",
+    "phase": "refine",
+    "response": "\ud83c\udf89 **Report spec document generated!**\n\nThe spec document **report_20261113_070532_coco_pharmaceuticals_teams_leaders_report** is now available in your Reports inbox.\nYou can view and edit the columns visually in the canvas sidebar or run it using **Execute Spec**.\n\n---\n\nIf you'd like to adjust the specification via chat, tell me what to change!",
+    "s": 0.0
+   }
+  ],
+  "elicit_s": 32.38,
+  "draft": {
+   "draft_id": "draft_report_20261113_070532_coco_pharmaceuticals_teams_leaders_repor",
+   "title": "coco-pharmaceuticals-teams-leaders-report",
+   "phase": "refine",
+   "phase_label": "Refinement session",
+   "original_query": "Which teams does Coco Pharmaceuticals have, and who leads each one?",
+   "action_function": "ProjectManager.find_projects",
+   "target_type": "Project",
+   "columns": [
+    {
+     "name": "Team Name",
+     "key": "displayName",
+     "format": false,
+     "detail_spec": null,
+     "formats": "ALL"
+    },
+    {
+     "name": "Leader's Name",
+     "key": "owner.name",
+     "format": false,
+     "detail_spec": null,
+     "formats": "ALL"
+    }
+   ],
+   "content_filters": {
+    "search_string": "*"
+   },
+   "shape_defaults": {},
+   "performance_hints": {
+    "page_size": 100,
+    "start_from": 0
+   },
+   "perspectives": [],
+   "questions": [],
+   "answers": {
+    "Heading": "Coco Pharmaceuticals Teams and Their Leaders",
+    "Description": "This report lists all the teams within Coco Pharmaceuticals along with their respective leaders."
+   },
+   "pending_questions": {},
+   "doc_id": "report_20261113_070532_coco_pharmaceuticals_teams_leaders_report",
+   "history_stack": [
+    {
+     "phase": "confirm_action",
+     "phase_label": "Confirming report basic configuration",
+     "columns": [
+      {
+       "name": "Team Name",
+       "key": "displayName",
+       "format": false,
+       "detail_spec": null,
+       "formats": "ALL"
+      },
+      {
+       "name": "Leader's Name",
+       "key": "owner.name",
+       "format": false,
+       "detail_spec": null,
+       "formats": "ALL"
+      }
+     ],
+     "content_filters": {
+      "search_string": "*"
+     },
+     "shape_defaults": {},
+     "performance_hints": {
+      "page_size": 100,
+      "start_from": 0
+     },
+     "perspectives": [],
+     "questions": [],
+     "answers": {
+      "Heading": "Coco Pharmaceuticals Teams and Their Leaders",
+      "Description": "This report lists all the teams within Coco Pharmaceuticals along with their respective leaders."
+     },
+     "pending_questions": {},
+     "summary_of_answers": ""
+    },
+    {
+     "phase": "elicit_columns",
+     "phase_label": "Reviewing and customizing columns",
+     "columns": [
+      {
+       "name": "Team Name",
+       "key": "displayName",
+       "format": false,
+       "detail_spec": null,
+       "formats": "ALL"
+      },
+      {
+       "name": "Leader's Name",
+       "key": "owner.name",
+       "format": false,
+       "detail_spec": null,
+       "formats": "ALL"
+      }
+     ],
+     "content_filters": {
+      "search_string": "*"
+     },
+     "shape_defaults": {},
+     "performance_hints": {
+      "page_size": 100,
+      "start_from": 0
+     },
+     "perspectives": [],
+     "questions": [],
+     "answers": {
+      "Heading": "Coco Pharmaceuticals Teams and Their Leaders",
+      "Description": "This report lists all the teams within Coco Pharmaceuticals along with their respective leaders."
+     },
+     "pending_questions": {},
+     "summary_of_answers": ""
+    }
+   ],
+   "created_at": 1794575132.300229,
+   "updated_at": 1794575132.30763,
+   "summary_of_answers": "",
+   "user_id": "erinoverview"
+  },
+  "check": {
+   "doc_id": "report_20261113_070532_coco_pharmaceuticals_teams_leaders_report",
+   "document": "# Coco Pharmaceuticals Teams and Their Leaders\n\n## Create Report Spec\n### Target Type\nProject\n\n### Heading\nCoco Pharmaceuticals Teams and Their Leaders\n\n### Description\nThis report lists all the teams within Coco Pharmaceuticals along with their respective leaders.\n\n### Action Function\nProjectManager.find_projects\n\n### Required Params\nsearch_string\n\n### Content Filters\nsearch_string=*\n\n### Performance Hints\npage_size=100\nstart_from=0\n\n## Create Column\n### Name\nTeam Name\n\n### Key\ndisplayName\n\n## Create Column\n### Name\nLeader's Name\n\n### Key\nowner.name\n",
+   "completed": true,
+   "asked_clarifying": false,
+   "dre_offline_parse": {
+    "ok": true,
+    "commands": [
+     "Create Report Spec",
+     "Create Column",
+     "Create Column"
+    ]
+   },
+   "format_set_source": "ea_parser",
+   "format_set_error": null,
+   "target_type": "Project",
+   "action_function": "ProjectManager.find_projects",
+   "columns": [
+    {
+     "name": "Team Name",
+     "key": "displayName"
+    },
+    {
+     "name": "Leader's Name",
+     "key": "owner.name"
+    }
+   ],
+   "nonexistent_attributes": {
+    "checked": true,
+    "keys": [],
+    "strict_keys": [
+     "owner.name"
+    ]
+   },
+   "pyegeria_validate": {
+    "ok": true,
+    "errors": [],
+    "warnings": [],
+    "not_applied": [],
+    "checked": [
+     "structure",
+     "target type",
+     "column attributes",
+     "load-time resolution (find method / analytic routine, parameters, formats)"
+    ],
+    "not_checked": [
+     "Dr.Egeria validate: no runner given"
+    ],
+    "dr_egeria": null,
+    "s": 0.02
+   },
+   "validates": true,
+   "run": {
+    "ran": false,
+    "why": "offline"
+   }
+  },
+  "total_s": 32.45
+ },
+ {
+  "id": "H10",
+  "set": "clear",
+  "question": "Which sites or locations does Coco Pharmaceuticals operate from?",
+  "expect": null,
+  "mode": "baseline",
+  "offline": true,
+  "turns": 3,
+  "final_phase": "refine",
+  "transcript": [
+   {
+    "turn": 1,
+    "user": "Which sites or locations does Coco Pharmaceuticals operate from?",
+    "phase": "confirm_action",
+    "response": "### Proposed Report Spec: **Sites or Locations Operated by Coco Pharmaceuticals**\n\n- **Target Type:** Location\n- **Action Function:** `CollectionManager.find_collections`\n- **Description:** This report lists all the sites and locations where Coco Pharmaceuticals operates.\n\n---\n\nDoes this look correct? Use the buttons below, or describe adjustments: *\"change the target type to Asset\"*.",
+    "s": 38.11
+   },
+   {
+    "turn": 2,
+    "user": "continue_columns",
+    "phase": "elicit_columns",
+    "response": "### Columns Configuration\n\nHere are the columns I'll configure for this report:\n\n**1. Site Name** \u2014 key: `displayName`\n**2. Location Type** \u2014 key: `locationType`\n**3. Address** \u2014 key: `address`\n\n---\n\nDoes this look right? Use **Generate now** to write the spec, or describe changes: *\"add a prioritization column\"* / *\"set Detail Spec for Roles to UserRolesDetail\"*.",
+    "s": 0.0
+   },
+   {
+    "turn": 3,
+    "user": "generate now",
+    "phase": "refine",
+    "response": "\ud83c\udf89 **Report spec document generated!**\n\nThe spec document **report_20261113_070610_coco_pharmaceuticals_sites_report** is now available in your Reports inbox.\nYou can view and edit the columns visually in the canvas sidebar or run it using **Execute Spec**.\n\n---\n\nIf you'd like to adjust the specification via chat, tell me what to change!",
+    "s": 0.0
+   }
+  ],
+  "elicit_s": 38.12,
+  "draft": {
+   "draft_id": "draft_report_20261113_070610_coco_pharmaceuticals_sites_report",
+   "title": "coco-pharmaceuticals-sites-report",
+   "phase": "refine",
+   "phase_label": "Refinement session",
+   "original_query": "Which sites or locations does Coco Pharmaceuticals operate from?",
+   "action_function": "CollectionManager.find_collections",
+   "target_type": "Location",
+   "columns": [
+    {
+     "name": "Site Name",
+     "key": "displayName",
+     "format": false,
+     "detail_spec": null,
+     "formats": "ALL"
+    },
+    {
+     "name": "Location Type",
+     "key": "locationType",
+     "format": false,
+     "detail_spec": null,
+     "formats": "ALL"
+    },
+    {
+     "name": "Address",
+     "key": "address",
+     "format": false,
+     "detail_spec": null,
+     "formats": "ALL"
+    }
+   ],
+   "content_filters": {
+    "search_string": "*"
+   },
+   "shape_defaults": {},
+   "performance_hints": {
+    "page_size": 100,
+    "start_from": 0
+   },
+   "perspectives": [],
+   "questions": [],
+   "answers": {
+    "Heading": "Sites or Locations Operated by Coco Pharmaceuticals",
+    "Description": "This report lists all the sites and locations where Coco Pharmaceuticals operates."
+   },
+   "pending_questions": {},
+   "doc_id": "report_20261113_070610_coco_pharmaceuticals_sites_report",
+   "history_stack": [
+    {
+     "phase": "confirm_action",
+     "phase_label": "Confirming report basic configuration",
+     "columns": [
+      {
+       "name": "Site Name",
+       "key": "displayName",
+       "format": false,
+       "detail_spec": null,
+       "formats": "ALL"
+      },
+      {
+       "name": "Location Type",
+       "key": "locationType",
+       "format": false,
+       "detail_spec": null,
+       "formats": "ALL"
+      },
+      {
+       "name": "Address",
+       "key": "address",
+       "format": false,
+       "detail_spec": null,
+       "formats": "ALL"
+      }
+     ],
+     "content_filters": {
+      "search_string": "*"
+     },
+     "shape_defaults": {},
+     "performance_hints": {
+      "page_size": 100,
+      "start_from": 0
+     },
+     "perspectives": [],
+     "questions": [],
+     "answers": {
+      "Heading": "Sites or Locations Operated by Coco Pharmaceuticals",
+      "Description": "This report lists all the sites and locations where Coco Pharmaceuticals operates."
+     },
+     "pending_questions": {},
+     "summary_of_answers": ""
+    },
+    {
+     "phase": "elicit_columns",
+     "phase_label": "Reviewing and customizing columns",
+     "columns": [
+      {
+       "name": "Site Name",
+       "key": "displayName",
+       "format": false,
+       "detail_spec": null,
+       "formats": "ALL"
+      },
+      {
+       "name": "Location Type",
+       "key": "locationType",
+       "format": false,
+       "detail_spec": null,
+       "formats": "ALL"
+      },
+      {
+       "name": "Address",
+       "key": "address",
+       "format": false,
+       "detail_spec": null,
+       "formats": "ALL"
+      }
+     ],
+     "content_filters": {
+      "search_string": "*"
+     },
+     "shape_defaults": {},
+     "performance_hints": {
+      "page_size": 100,
+      "start_from": 0
+     },
+     "perspectives": [],
+     "questions": [],
+     "answers": {
+      "Heading": "Sites or Locations Operated by Coco Pharmaceuticals",
+      "Description": "This report lists all the sites and locations where Coco Pharmaceuticals operates."
+     },
+     "pending_questions": {},
+     "summary_of_answers": ""
+    }
+   ],
+   "created_at": 1794575170.495083,
+   "updated_at": 1794575170.503068,
+   "summary_of_answers": "",
+   "user_id": "erinoverview"
+  },
+  "check": {
+   "doc_id": "report_20261113_070610_coco_pharmaceuticals_sites_report",
+   "document": "# Sites or Locations Operated by Coco Pharmaceuticals\n\n## Create Report Spec\n### Target Type\nLocation\n\n### Heading\nSites or Locations Operated by Coco Pharmaceuticals\n\n### Description\nThis report lists all the sites and locations where Coco Pharmaceuticals operates.\n\n### Action Function\nCollectionManager.find_collections\n\n### Required Params\nsearch_string\n\n### Content Filters\nsearch_string=*\n\n### Performance Hints\npage_size=100\nstart_from=0\n\n## Create Column\n### Name\nSite Name\n\n### Key\ndisplayName\n\n## Create Column\n### Name\nLocation Type\n\n### Key\nlocationType\n\n## Create Column\n### Name\nAddress\n\n### Key\naddress\n",
+   "completed": true,
+   "asked_clarifying": false,
+   "dre_offline_parse": {
+    "ok": true,
+    "commands": [
+     "Create Report Spec",
+     "Create Column",
+     "Create Column",
+     "Create Column"
+    ]
+   },
+   "format_set_source": "ea_parser",
+   "format_set_error": null,
+   "target_type": "Location",
+   "action_function": "CollectionManager.find_collections",
+   "columns": [
+    {
+     "name": "Site Name",
+     "key": "displayName"
+    },
+    {
+     "name": "Location Type",
+     "key": "locationType"
+    },
+    {
+     "name": "Address",
+     "key": "address"
+    }
+   ],
+   "nonexistent_attributes": {
+    "checked": true,
+    "keys": [],
+    "strict_keys": [
+     "address",
+     "locationType"
+    ]
+   },
+   "pyegeria_validate": {
+    "ok": true,
+    "errors": [],
+    "warnings": [],
+    "not_applied": [],
+    "checked": [
+     "structure",
+     "target type",
+     "column attributes",
+     "load-time resolution (find method / analytic routine, parameters, formats)"
+    ],
+    "not_checked": [
+     "Dr.Egeria validate: no runner given"
+    ],
+    "dr_egeria": null,
+    "s": 0.01
+   },
+   "validates": true,
+   "run": {
+    "ran": false,
+    "why": "offline"
+   }
+  },
+  "total_s": 38.17
+ },
+ {
+  "id": "H11",
+  "set": "ambiguous",
+  "question": "How healthy is the catalog?",
+  "expect": null,
+  "mode": "baseline",
+  "offline": true,
+  "turns": 3,
+  "final_phase": "refine",
+  "transcript": [
+   {
+    "turn": 1,
+    "user": "How healthy is the catalog?",
+    "phase": "confirm_action",
+    "response": "### Proposed Report Spec: **Custom Report**\n\n- **Target Type:** Referenceable\n- **Action Function:** `CollectionManager.find_collections`\n- **Description:** Custom report based on: How healthy is the catalog?\n\n---\n\nDoes this look correct? Use the buttons below, or describe adjustments: *\"change the target type to Asset\"*.",
+    "s": 49.85
+   },
+   {
+    "turn": 2,
+    "user": "continue_columns",
+    "phase": "elicit_columns",
+    "response": "### Columns Configuration\n\nHere are the columns I'll configure for this report:\n\n**1. Display Name** \u2014 key: `display_name`\n**2. Qualified Name** \u2014 key: `qualified_name`\n**3. GUID** \u2014 key: `guid` [Formatted]\n\n---\n\nDoes this look right? Use **Generate now** to write the spec, or describe changes: *\"add a prioritization column\"* / *\"set Detail Spec for Roles to UserRolesDetail\"*.",
+    "s": 0.0
+   },
+   {
+    "turn": 3,
+    "user": "generate now",
+    "phase": "refine",
+    "response": "\ud83c\udf89 **Report spec document generated!**\n\nThe spec document **report_20261113_070700_custom_report** is now available in your Reports inbox.\nYou can view and edit the columns visually in the canvas sidebar or run it using **Execute Spec**.\n\n---\n\nIf you'd like to adjust the specification via chat, tell me what to change!",
+    "s": 0.0
+   }
+  ],
+  "elicit_s": 49.86,
+  "draft": {
+   "draft_id": "draft_report_20261113_070700_custom_report",
+   "title": "custom_report",
+   "phase": "refine",
+   "phase_label": "Refinement session",
+   "original_query": "How healthy is the catalog?",
+   "action_function": "CollectionManager.find_collections",
+   "target_type": "Referenceable",
+   "columns": [
+    {
+     "name": "Display Name",
+     "key": "display_name",
+     "format": false,
+     "detail_spec": null,
+     "formats": "ALL"
+    },
+    {
+     "name": "Qualified Name",
+     "key": "qualified_name",
+     "format": false,
+     "detail_spec": null,
+     "formats": "ALL"
+    },
+    {
+     "name": "GUID",
+     "key": "guid",
+     "format": true,
+     "detail_spec": null,
+     "formats": "ALL"
+    }
+   ],
+   "content_filters": {
+    "search_string": "*"
+   },
+   "shape_defaults": {},
+   "performance_hints": {
+    "page_size": 100,
+    "start_from": 0
+   },
+   "perspectives": [],
+   "questions": [],
+   "answers": {
+    "Heading": "Custom Report",
+    "Description": "Custom report based on: How healthy is the catalog?"
+   },
+   "pending_questions": {},
+   "doc_id": "report_20261113_070700_custom_report",
+   "history_stack": [
+    {
+     "phase": "confirm_action",
+     "phase_label": "Confirming report basic configuration",
+     "columns": [
+      {
+       "name": "Display Name",
+       "key": "display_name",
+       "format": false,
+       "detail_spec": null,
+       "formats": "ALL"
+      },
+      {
+       "name": "Qualified Name",
+       "key": "qualified_name",
+       "format": false,
+       "detail_spec": null,
+       "formats": "ALL"
+      },
+      {
+       "name": "GUID",
+       "key": "guid",
+       "format": true,
+       "detail_spec": null,
+       "formats": "ALL"
+      }
+     ],
+     "content_filters": {
+      "search_string": "*"
+     },
+     "shape_defaults": {},
+     "performance_hints": {
+      "page_size": 100,
+      "start_from": 0
+     },
+     "perspectives": [],
+     "questions": [],
+     "answers": {
+      "Heading": "Custom Report",
+      "Description": "Custom report based on: How healthy is the catalog?"
+     },
+     "pending_questions": {},
+     "summary_of_answers": ""
+    },
+    {
+     "phase": "elicit_columns",
+     "phase_label": "Reviewing and customizing columns",
+     "columns": [
+      {
+       "name": "Display Name",
+       "key": "display_name",
+       "format": false,
+       "detail_spec": null,
+       "formats": "ALL"
+      },
+      {
+       "name": "Qualified Name",
+       "key": "qualified_name",
+       "format": false,
+       "detail_spec": null,
+       "formats": "ALL"
+      },
+      {
+       "name": "GUID",
+       "key": "guid",
+       "format": true,
+       "detail_spec": null,
+       "formats": "ALL"
+      }
+     ],
+     "content_filters": {
+      "search_string": "*"
+     },
+     "shape_defaults": {},
+     "performance_hints": {
+      "page_size": 100,
+      "start_from": 0
+     },
+     "perspectives": [],
+     "questions": [],
+     "answers": {
+      "Heading": "Custom Report",
+      "Description": "Custom report based on: How healthy is the catalog?"
+     },
+     "pending_questions": {},
+     "summary_of_answers": ""
+    }
+   ],
+   "created_at": 1794575220.40919,
+   "updated_at": 1794575220.4124448,
+   "summary_of_answers": "",
+   "user_id": "erinoverview"
+  },
+  "check": {
+   "doc_id": "report_20261113_070700_custom_report",
+   "document": "# Custom Report\n\n## Create Report Spec\n### Target Type\nReferenceable\n\n### Heading\nCustom Report\n\n### Description\nCustom report based on: How healthy is the catalog?\n\n### Action Function\nCollectionManager.find_collections\n\n### Required Params\nsearch_string\n\n### Content Filters\nsearch_string=*\n\n### Performance Hints\npage_size=100\nstart_from=0\n\n## Create Column\n### Name\nDisplay Name\n\n### Key\ndisplay_name\n\n## Create Column\n### Name\nQualified Name\n\n### Key\nqualified_name\n\n## Create Column\n### Name\nGUID\n\n### Key\nguid\n\n### Format\nTrue\n",
+   "completed": true,
+   "asked_clarifying": false,
+   "dre_offline_parse": {
+    "ok": true,
+    "commands": [
+     "Create Report Spec",
+     "Create Column",
+     "Create Column",
+     "Create Column"
+    ]
+   },
+   "format_set_source": "ea_parser",
+   "format_set_error": null,
+   "target_type": "Referenceable",
+   "action_function": "CollectionManager.find_collections",
+   "columns": [
+    {
+     "name": "Display Name",
+     "key": "display_name"
+    },
+    {
+     "name": "Qualified Name",
+     "key": "qualified_name"
+    },
+    {
+     "name": "GUID",
+     "key": "guid"
+    }
+   ],
+   "nonexistent_attributes": {
+    "checked": true,
+    "keys": [],
+    "strict_keys": []
+   },
+   "pyegeria_validate": {
+    "ok": true,
+    "errors": [],
+    "warnings": [],
+    "not_applied": [],
+    "checked": [
+     "structure",
+     "target type",
+     "column attributes",
+     "load-time resolution (find method / analytic routine, parameters, formats)"
+    ],
+    "not_checked": [
+     "Dr.Egeria validate: no runner given"
+    ],
+    "dr_egeria": null,
+    "s": 0.01
+   },
+   "validates": true,
+   "run": {
+    "ran": false,
+    "why": "offline"
+   }
+  },
+  "total_s": 49.88
+ },
+ {
+  "id": "H12",
+  "set": "ambiguous",
+  "question": "Show me what's new for me.",
+  "expect": null,
+  "mode": "baseline",
+  "offline": true,
+  "error": "TypeError: sequence item 58: expected str instance, list found",
+  "traceback": "Traceback (most recent call last):\n  File \"/Users/dwolfson/localGit/egeria-v6/trellis/.claude/worktrees/re-docs-tidy-guides-4bf2dc/packages/egeria-advisor/scripts/ea_rebase/harness.py\", line 360, in main\n    drove = drive(q, ctx)\n  File \"/Users/dwolfson/localGit/egeria-v6/trellis/.claude/worktrees/re-docs-tidy-guides-4bf2dc/packages/egeria-advisor/scripts/ea_rebase/harness.py\", line 136, in drive\n    r = el.process(r[\"draft_id\"], reply)\n  File \"/Users/dwolfson/localGit/egeria-v6/trellis/.claude/worktrees/re-docs-tidy-guides-4bf2dc/packages/egeria-advisor/advisor/agents/report_spec_elicitor.py\", line 211, in process\n    return self._generate_report_spec(spec)\n           ~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^\n  File \"/Users/dwolfson/localGit/egeria-v6/trellis/.claude/worktrees/re-docs-tidy-guides-4bf2dc/packages/egeria-advisor/advisor/agents/report_spec_elicitor.py\", line 503, in _generate_report_spec\n    doc_content = self._generate_report_spec_md(spec)\n  File \"/Users/dwolfson/localGit/egeria-v6/trellis/.claude/worktrees/re-docs-tidy-guides-4bf2dc/packages/egeria-advisor/advisor/agents/report_spec_elicitor.py\", line 619, in _generate_report_spec_md\n    return \"\\n\".join(lines)\n           ~~~~~~~~~^^^^^^^\nTypeError: sequence item 58: expected str instance, list found\n",
+  "total_s": 24.46
+ }
+]

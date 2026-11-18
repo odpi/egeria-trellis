@@ -1,0 +1,32 @@
+[project]
+name = "trellis-feedback"
+version = "0.3.0"
+description = "Shared feedback store and triage workflow for Resource Explorer and Egeria Advisor — answer ratings and product reports, with append-only triage events. See docs/trellis-feedback-extraction.md."
+readme = "README.md"
+authors = [{ name = "Dan Wolfson" }]
+requires-python = ">=3.12,<4.0"
+dependencies = [
+    "sqlalchemy>=2.0.0",
+]
+
+# Deliberately NOT a core dependency: fastapi/pydantic. The store works without them; the router
+# factory (trellis_feedback.router) needs the `api` extra. Neither does this package read the
+# environment: each app passes its own URL, schema and admin check in.
+# psycopg2 is not listed either: a Postgres URL needs a driver the app already has.
+
+[project.optional-dependencies]
+api = [
+    "fastapi>=0.115.0",
+]
+dev = [
+    "pytest>=8.3.0",
+    "fastapi>=0.115.0",
+    "httpx>=0.27.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["trellis_feedback"]

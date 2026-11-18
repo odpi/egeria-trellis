@@ -23,12 +23,12 @@ from __future__ import annotations
 import json as _json
 import logging
 from collections import defaultdict
-from datetime import datetime
 from pathlib import Path
 from typing import Any
 
 from resource_explorer.registry import Project, ProjectRegistry
 from resource_explorer.step_outcome import UNVERIFIED, StepOutcome, from_upstream_table
+from resource_explorer.survey_time import now_utc_iso
 from resource_explorer.surveyors.base_surveyor import BaseSurveyor
 from resource_explorer.surveyors.scoping import path_matches_scope
 from resource_explorer.surveyors.survey_report import (
@@ -126,7 +126,7 @@ class DataProfilerSurveyor(BaseSurveyor):
         # run-timestamp from SurveyOrchestrator (Phase B, D1). Previously
         # unused — this surveyor never persisted a snapshot at all (found
         # while wiring the generic upsert_metric call below).
-        self._surveyed_at = surveyed_at or datetime.utcnow().isoformat()
+        self._surveyed_at = surveyed_at or now_utc_iso()
         # Repo scope-narrowing funnel plan (docs/repo-scope-narrowing-funnel.md),
         # D5/D6 — "" (default) = whole-repo, unchanged from every existing
         # caller; a non-empty locator narrows to one cataloged sub-resource

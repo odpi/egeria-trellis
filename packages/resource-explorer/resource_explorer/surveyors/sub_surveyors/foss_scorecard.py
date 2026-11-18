@@ -32,13 +32,13 @@ from __future__ import annotations
 import json
 import logging
 import re
-from datetime import datetime
 from dataclasses import dataclass
 from typing import Callable
 
 from resource_explorer.surveyors.base_surveyor import BaseSurveyor
 from resource_explorer.step_outcome import StepOutcome, no_signal
 from resource_explorer.surveyors.survey_report import Annotation, QualityScoreAnnotation
+from resource_explorer.survey_time import now_utc_iso
 
 log = logging.getLogger(__name__)
 
@@ -324,7 +324,7 @@ class FossScorecardSurveyor(BaseSurveyor):
         super().__init__(project, registry)
         # One timestamp per orchestrator run, so this batch groups with the
         # rest of its survey rather than landing milliseconds apart.
-        self._surveyed_at = surveyed_at or datetime.utcnow().isoformat()
+        self._surveyed_at = surveyed_at or now_utc_iso()
 
     @property
     def step_name(self) -> str:

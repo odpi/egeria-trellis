@@ -13,6 +13,7 @@ from pathlib import Path
 import pytest
 
 NEXT = Path(__file__).resolve().parents[1] / "resource_explorer" / "web" / "static" / "next"
+SHARED_UI = Path(__file__).resolve().parents[2] / "trellis-ui" / "trellis_ui" / "static"  # RE's files shared with EA
 
 
 def _app():
@@ -61,6 +62,6 @@ class TestTheOfferIsAnOfferNotAGate:
         assert "window.confirm" not in body and "window.prompt" not in body   # never a modal
 
     def test_the_trail_carries_the_outcome(self):
-        fmt = (NEXT / "format.js").read_text(encoding="utf-8")
+        fmt = (SHARED_UI / "format.js").read_text(encoding="utf-8")
         assert "export function depthOfferText(" in fmt and "depth offered, " in fmt
         assert "depthOfferText(r.depth_offer, esc)" in fmt

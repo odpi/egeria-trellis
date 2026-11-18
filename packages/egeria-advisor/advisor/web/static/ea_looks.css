@@ -1,0 +1,200 @@
+/* Egeria Advisor in the three looks (Dark, Light, Paper), shared with Resource Explorer (A-U3).
+
+   EA's pages are written in Tailwind's palettes (about 760 slate-* classes and 440 more in violet, amber, red,
+   emerald, cyan and friends). Rather than edit each class, ea_tailwind.js points every shade of those palettes at
+   a variable here: `--ea-<palette>-<shade>`, a channel triple, so `/40` opacity keeps working. Each shade stands
+   for a ROLE (page, card, raised control, text, muted text, accent text, a solid button, ...), and each role has
+   a value per look, taken from themes.css's tokens (`--c-*`) wherever one fits.
+
+   Loaded after /static/trellis-ui/themes.css, which defines the `--c-*` tokens and the `data-look` blocks.
+   packages/egeria-advisor/tests/unit/test_looks_contrast.py resolves these per look and fails a text pair under
+   4.5:1. Edit a value, run that test. */
+
+/* ── Shades to roles (the same in every look) ───────────────────────────────────────────────────────────── */
+:root {
+  /* slate: EA's neutrals. Light shades are text, dark shades are grounds. */
+  --ea-slate-50: var(--ea-ink);   --ea-slate-100: var(--ea-ink);  --ea-slate-200: var(--ea-ink);
+  --ea-slate-300: var(--ea-ink);  --ea-slate-400: var(--ea-muted); --ea-slate-500: var(--ea-muted);
+  --ea-slate-600: var(--ea-raised-hi);  /* hover on a raised control; a strong border */
+  --ea-slate-700: var(--ea-raised);     /* a raised control (button, input, chip); a border */
+  --ea-slate-750: var(--ea-surface);
+  --ea-slate-800: var(--ea-card);       /* cards, panels, the header */
+  --ea-slate-900: var(--ea-page);       /* the page */
+  --ea-slate-950: var(--ea-sunk);       /* code and log wells */
+
+  /* The hues, each one of four roles: accent (violet, cyan, sky, blue, indigo), ok (emerald, green, teal),
+     warn (amber, orange, yellow), danger (red, rose, pink). 50-500 are text and strokes; 600 is a solid's hover;
+     700-800 are solids with white text; 900-950 are tints (always used with an opacity): deep in Dark, pastel in
+     Light and Paper, so the hue's own text reads on its own tint. */
+  --ea-violet-50: var(--ea-accent-fg); --ea-violet-100: var(--ea-accent-fg); --ea-violet-200: var(--ea-accent-fg);
+  --ea-violet-300: var(--ea-accent-fg); --ea-violet-400: var(--ea-accent-fg); --ea-violet-500: var(--ea-accent-fg);
+  --ea-violet-600: var(--ea-accent-hi); --ea-violet-700: var(--ea-accent-solid); --ea-violet-800: var(--ea-accent-solid);
+  --ea-violet-900: var(--ea-accent-tint); --ea-violet-950: var(--ea-accent-tint);
+
+  --ea-emerald-50: var(--ea-ok-fg); --ea-emerald-100: var(--ea-ok-fg); --ea-emerald-200: var(--ea-ok-fg);
+  --ea-emerald-300: var(--ea-ok-fg); --ea-emerald-400: var(--ea-ok-fg); --ea-emerald-500: var(--ea-ok-fg);
+  --ea-emerald-600: var(--ea-ok-hi); --ea-emerald-700: var(--ea-ok-solid); --ea-emerald-800: var(--ea-ok-solid);
+  --ea-emerald-900: var(--ea-ok-tint); --ea-emerald-950: var(--ea-ok-tint);
+
+  --ea-amber-50: var(--ea-warn-fg); --ea-amber-100: var(--ea-warn-fg); --ea-amber-200: var(--ea-warn-fg);
+  --ea-amber-300: var(--ea-warn-fg); --ea-amber-400: var(--ea-warn-fg); --ea-amber-500: var(--ea-warn-fg);
+  --ea-amber-600: var(--ea-warn-hi); --ea-amber-700: var(--ea-warn-solid); --ea-amber-800: var(--ea-warn-solid);
+  --ea-amber-900: var(--ea-warn-tint); --ea-amber-950: var(--ea-warn-tint);
+
+  --ea-red-50: var(--ea-danger-fg); --ea-red-100: var(--ea-danger-fg); --ea-red-200: var(--ea-danger-fg);
+  --ea-red-300: var(--ea-danger-fg); --ea-red-400: var(--ea-danger-fg); --ea-red-500: var(--ea-danger-fg);
+  --ea-red-600: var(--ea-danger-hi); --ea-red-700: var(--ea-danger-solid); --ea-red-800: var(--ea-danger-solid);
+  --ea-red-900: var(--ea-danger-tint); --ea-red-950: var(--ea-danger-tint);
+}
+
+/* ── Roles per look ─────────────────────────────────────────────────────────────────────────────────────── */
+
+/* Dark: the Portal's dark look, and the default (no attribute at all reads as Dark). */
+:root,
+:root[data-look="dark"] {
+  --ea-page: var(--c-paper);           --ea-card: var(--c-card);          --ea-surface: var(--c-paper-surface);
+  --ea-sunk: var(--c-chrome);          --ea-raised: 36 52 92;             --ea-raised-hi: 46 64 110;
+  --ea-ink: var(--c-ink);              --ea-muted: var(--c-ink-muted);
+  --ea-accent-fg: var(--c-accent-ink); --ea-accent-hi: 39 84 160;        --ea-accent-solid: var(--c-accent-deep);
+  --ea-ok-fg: var(--c-state-ok);       --ea-ok-hi: 18 112 53;            --ea-ok-solid: 21 128 61;
+  --ea-warn-fg: var(--c-state-warn);   --ea-warn-hi: 160 74 8;           --ea-warn-solid: 180 83 9;
+  --ea-danger-fg: 248 113 113;         --ea-danger-hi: 205 40 40;        --ea-danger-solid: 185 28 28;
+  --ea-accent-tint: var(--c-accent-tint); --ea-ok-tint: 14 60 34;        --ea-warn-tint: 120 53 15;
+  --ea-danger-tint: 90 20 20;
+}
+
+/* Light: the Portal's light look. */
+:root[data-look="light"] {
+  --ea-page: var(--c-paper);           --ea-card: var(--c-card);          --ea-surface: var(--c-paper-surface);
+  --ea-sunk: var(--c-chrome-surface);  --ea-raised: 214 220 232;         --ea-raised-hi: 190 199 216;
+  --ea-ink: var(--c-ink);              --ea-muted: var(--c-ink-muted);
+  --ea-accent-fg: var(--c-accent-ink); --ea-accent-hi: 29 78 216;        --ea-accent-solid: var(--c-accent);
+  --ea-ok-fg: var(--c-state-ok);       --ea-ok-hi: 30 90 34;             --ea-ok-solid: var(--c-state-ok);
+  --ea-warn-fg: var(--c-state-warn);   --ea-warn-hi: 128 60 5;           --ea-warn-solid: var(--c-state-warn);
+  --ea-danger-fg: 185 28 28;           --ea-danger-hi: 153 27 27;        --ea-danger-solid: 185 28 28;
+  --ea-accent-tint: var(--c-accent-tint); --ea-ok-tint: 220 245 225;     --ea-warn-tint: 254 236 210;
+  --ea-danger-tint: 254 226 226;
+}
+
+/* Paper: RE's paper look. In EA the page and cards are paper; RE's dark chrome has no place here. */
+:root[data-look="paper"] {
+  --ea-page: var(--c-paper);           --ea-card: var(--c-card);          --ea-surface: var(--c-paper-surface);
+  --ea-sunk: var(--c-paper-surface);   --ea-raised: 222 219 217;         --ea-raised-hi: 200 196 194;
+  --ea-ink: var(--c-ink);              --ea-muted: var(--c-ink-muted);
+  --ea-accent-fg: var(--c-accent-ink); --ea-accent-hi: 105 70 12;        --ea-accent-solid: var(--c-accent-ink);
+  --ea-ok-fg: var(--c-state-ok);       --ea-ok-hi: 22 88 52;             --ea-ok-solid: var(--c-state-ok);
+  --ea-warn-fg: var(--c-state-warn);   --ea-warn-hi: 130 55 15;          --ea-warn-solid: var(--c-state-warn);
+  --ea-danger-fg: 168 40 30;           --ea-danger-hi: 140 33 25;        --ea-danger-solid: 168 40 30;
+  --ea-accent-tint: var(--c-accent-tint); --ea-ok-tint: 222 242 228;     --ea-warn-tint: 253 236 214;
+  --ea-danger-tint: 252 228 224;
+}
+
+/* ── EA's own <style> rules, followed ───────────────────────────────────────────────────────────────────────
+   index.html and admin.html style a few things with fixed colours in <style> blocks (some of them in <body>).
+   These rules give the same things the look's colours; `:root` puts them above the page's own rules wherever those
+   are, so the pages' <style> blocks are left as they are. A rule that set only a background (code wells) or only a
+   text colour (sidebar tabs) would otherwise be unreadable in Light and Paper. */
+:root .msg-you       { border-left-color: rgb(var(--ea-accent-fg)); }
+:root .msg-assistant { border-left-color: rgb(var(--ea-ok-fg)); }
+:root .msg-clarify   { border-left-color: rgb(var(--ea-warn-fg)); }
+:root .msg-plan      { border-left-color: rgb(var(--ea-accent-fg)); }
+:root .msg-executed  { border-left-color: rgb(var(--ea-ok-fg)); }
+:root .todo-fill { background: rgb(var(--ea-warn-tint)); color: rgb(var(--ea-warn-fg)); border-color: rgb(var(--ea-warn-solid)); }
+:root .prose pre, :root .prose code { background: rgb(var(--ea-sunk)); color: rgb(var(--ea-ink)); }
+:root .prose th, :root .prose td { border-color: rgb(var(--ea-raised)); }
+:root .prose th { background: rgb(var(--ea-card)); }
+:root .resize-handle { border-top-color: rgb(var(--ea-raised)); }
+:root .resize-handle-v { border-left-color: rgb(var(--ea-raised)); }
+:root .resize-handle::after, :root .resize-handle-v::after { background: rgb(var(--ea-raised-hi)); }
+:root .resize-handle:hover, :root .resize-handle.dragging,
+:root .resize-handle-v:hover, :root .resize-handle-v.dragging { background: rgb(var(--ea-accent-fg) / .13); }
+:root .resize-handle:hover, :root .resize-handle.dragging { border-top-color: rgb(var(--ea-accent-fg) / .53); }
+:root .resize-handle-v:hover, :root .resize-handle-v.dragging { border-left-color: rgb(var(--ea-accent-fg) / .53); }
+:root .pcanvas-card.dragging-over, :root .ped-cmd-card.ped-dragging-over { box-shadow: 0 -2px 0 rgb(var(--ea-accent-fg)); }
+:root ::-webkit-scrollbar-track { background: rgb(var(--ea-page)); }
+:root ::-webkit-scrollbar-thumb { background: rgb(var(--ea-raised-hi)); }
+:root ::-webkit-scrollbar-thumb:hover { background: rgb(var(--ea-muted)); }
+:root details > summary::before { color: rgb(var(--ea-muted)); }
+:root .sidebar-tab { color: rgb(var(--ea-muted)); }
+:root .sidebar-tab:hover { color: rgb(var(--ea-ink)); background: rgb(var(--ea-card) / .27); }
+:root .sidebar-tab.active { color: rgb(var(--ea-ink)); border-bottom-color: rgb(var(--ea-accent-fg)); background: rgb(var(--ea-card) / .4); }
+/* Chips and small buttons (index.html: format, intent and perspective; admin.html: maintenance and actions). */
+:root .fmt-btn, :root .intent-btn, :root .persp-btn, :root .maint-btn { background: rgb(var(--ea-raised)); color: rgb(var(--ea-muted)); }
+:root .fmt-btn:hover, :root .intent-btn:hover, :root .persp-btn:hover,
+:root .maint-btn:hover { background: rgb(var(--ea-raised-hi)); color: rgb(var(--ea-ink)); }
+:root .fmt-btn.active    { background: rgb(var(--ea-accent-solid)); color: #fff; }
+:root .intent-btn.active { background: rgb(var(--ea-accent-solid)); color: #fff; }
+:root .persp-btn.active  { background: rgb(var(--ea-ok-solid)); color: #fff; }
+/* admin.html's status badges and action buttons: a tint with its hue's text; a solid with white on hover. */
+:root .badge-healthy, :root .badge-done, :root .sys-ok { background: rgb(var(--ea-ok-tint)); color: rgb(var(--ea-ok-fg)); }
+:root .badge-stale  { background: rgb(var(--ea-warn-tint)); color: rgb(var(--ea-warn-fg)); }
+:root .badge-empty, :root .badge-failed, :root .sys-err, :root .badge-error { background: rgb(var(--ea-danger-tint)); color: rgb(var(--ea-danger-fg)); }
+:root .badge-disabled { background: rgb(var(--ea-card)); color: rgb(var(--ea-muted)); }
+:root .badge-running  { background: rgb(var(--ea-accent-tint)); color: rgb(var(--ea-accent-fg)); }
+:root .btn-blue  { background: rgb(var(--ea-accent-tint)); color: rgb(var(--ea-accent-fg)); }
+:root .btn-amber { background: rgb(var(--ea-warn-tint)); color: rgb(var(--ea-warn-fg)); }
+:root .btn-red   { background: rgb(var(--ea-danger-tint)); color: rgb(var(--ea-danger-fg)); }
+:root .btn-slate { background: rgb(var(--ea-card)); color: rgb(var(--ea-muted)); }
+:root .btn-blue:hover  { background: rgb(var(--ea-accent-solid)); color: #fff; }
+:root .btn-amber:hover { background: rgb(var(--ea-warn-solid)); color: #fff; }
+:root .btn-red:hover   { background: rgb(var(--ea-danger-solid)); color: #fff; }
+:root .btn-slate:hover { background: rgb(var(--ea-raised)); color: rgb(var(--ea-ink)); }
+
+/* ── Large tables in dashboard tiles (dashboards_view.js wrapTable; the Portal's .tbl-scroll, #833) ────────
+   A table scrolls inside its tile, both ways, with the header row kept in view, instead of growing the tile
+   without limit. Small tables lay out as before. Tables with 5 or more columns keep a 120px minimum column
+   width and scroll sideways rather than wrapping every few characters. */
+:root .dash-tbl-scroll { overflow: auto; max-width: 100%; margin-bottom: .5rem; }
+:root .dash-tile .dash-tbl-scroll { max-height: 420px; }
+:root .dash-tbl-scroll table.dash-tbl-wide { min-width: calc(var(--tbl-cols) * 120px); }
+/* Separate borders, not collapsed: with collapse the shared borders scroll with the table and the sticky
+   header does not cover them, so scrolled rows show through a 1-2px strip above the header (found on the
+   Portal). Each cell draws its right and bottom edge, the table its top and left: it looks the same. */
+:root .dash-tbl-scroll table {
+  border-collapse: separate; border-spacing: 0; margin-bottom: 0;
+  border-top: 1px solid rgb(var(--ea-raised)); border-left: 1px solid rgb(var(--ea-raised));
+}
+:root .dash-tbl-scroll th, :root .dash-tbl-scroll td { border-style: solid; border-width: 0 1px 1px 0; }
+/* Sticky and opaque in every look: --ea-card is a solid colour in each. */
+:root .dash-tbl-scroll thead th {
+  position: sticky; top: 0; z-index: 1;
+  background: rgb(var(--ea-card)); box-shadow: inset 0 -1px 0 rgb(var(--ea-raised));
+}
+/* Always-visible scroll bars (WebKit/Blink hide overlay bars until you scroll). */
+:root .dash-tbl-scroll::-webkit-scrollbar { width: 10px; height: 10px; }
+:root .dash-tbl-scroll::-webkit-scrollbar-track { background: rgb(var(--ea-surface)); border-radius: 5px; }
+:root .dash-tbl-scroll::-webkit-scrollbar-thumb {
+  background: rgb(var(--ea-raised-hi)); border-radius: 5px; border: 2px solid rgb(var(--ea-surface));
+}
+:root .dash-tbl-scroll::-webkit-scrollbar-corner { background: rgb(var(--ea-surface)); }
+/* Firefox, scoped by a Firefox-only feature query: Chrome 121+ ignores the ::-webkit-scrollbar rules above
+   once scrollbar-width or scrollbar-color is set. */
+@supports (-moz-appearance: none) {
+  :root .dash-tbl-scroll { scrollbar-width: thin; scrollbar-color: rgb(var(--ea-raised-hi)) rgb(var(--ea-surface)); }
+}
+
+/* The shared structured TABLE (trellis-ui egeria-table.js, vendored unchanged from the Portal; T1): its colour
+   variables from EA's look, and the same scroll box as EA's other tile tables (420px in a tile, always-visible
+   bars). Column edges are dragged by dashboards_view.js (attachTableColumnResize). */
+:root .dash-etable {
+  --border: rgb(var(--ea-raised)); --card: rgb(var(--ea-card)); --muted: rgb(var(--ea-muted));
+  --accent: rgb(var(--ea-accent-fg)); --subtle: rgb(var(--ea-surface));
+  color: rgb(var(--ea-ink));
+}
+:root .dash-tile .dash-etable .et-scroll { max-height: 420px; }
+:root .dash-etable .et-scroll::-webkit-scrollbar { width: 10px; height: 10px; }
+:root .dash-etable .et-scroll::-webkit-scrollbar-track { background: rgb(var(--ea-surface)); border-radius: 5px; }
+:root .dash-etable .et-scroll::-webkit-scrollbar-thumb {
+  background: rgb(var(--ea-raised-hi)); border-radius: 5px; border: 2px solid rgb(var(--ea-surface));
+}
+@supports (-moz-appearance: none) {
+  :root .dash-etable .et-scroll { scrollbar-width: thin; scrollbar-color: rgb(var(--ea-raised-hi)) rgb(var(--ea-surface)); }
+}
+
+/* E1: embedded in Trellis Studio (/?embed=studio). Compact: no sidebar, a short header, no sign-in/out controls
+   (the session is Studio's). Pane content still wraps. */
+html.ea-embed #left-sidebar { display: none; }
+html.ea-embed header { padding-top: 4px; padding-bottom: 4px; }
+html.ea-embed header img { height: 20px; }
+html.ea-embed header .text-lg { font-size: .875rem; }
+html.ea-embed #logout-btn, html.ea-embed #login-header-btn, html.ea-embed #admin-link { display: none !important; }

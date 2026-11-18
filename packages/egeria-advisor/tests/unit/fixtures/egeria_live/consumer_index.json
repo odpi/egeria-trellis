@@ -1,0 +1,70 @@
+{
+ "format": "pyegeria-report-spec-consumers/1",
+ "root": "RootCollection::ReportSpecs",
+ "read_at": "2026-11-11T11:16:20Z",
+ "read_as": "erinoverview",
+ "status": "read",
+ "reason": null,
+ "consumers": [
+  {
+   "name": "Egeria Advisor",
+   "qualifiedName": "ReportSpecFolder::Consumer::EgeriaAdvisor",
+   "guid": "2db38a22-91f6-4be0-9aeb-d851bf098737",
+   "status": "read",
+   "reason": null,
+   "specs": 0
+  },
+  {
+   "name": "Jupyter",
+   "qualifiedName": "ReportSpecFolder::Consumer::Jupyter",
+   "guid": "33942290-c1b8-4f79-8dd7-cc8e1d6cf07c",
+   "status": "read",
+   "reason": null,
+   "specs": 0
+  },
+  {
+   "name": "My Egeria",
+   "qualifiedName": "ReportSpecFolder::Consumer::MyEgeria",
+   "guid": "972c117f-0d3d-4dc0-9d7b-d861cbc5a0b9",
+   "status": "read",
+   "reason": null,
+   "specs": 0
+  },
+  {
+   "name": "Portal",
+   "qualifiedName": "ReportSpecFolder::Consumer::Portal",
+   "guid": "fe5aad27-1587-4d4e-a7c0-ab806650a6e2",
+   "status": "read",
+   "reason": null,
+   "specs": 3
+  },
+  {
+   "name": "Resource Explorer",
+   "qualifiedName": "ReportSpecFolder::Consumer::ResourceExplorer",
+   "guid": "ec8450b7-9a16-4352-89ce-15d4de182be0",
+   "status": "read",
+   "reason": null,
+   "specs": 0
+  },
+  {
+   "name": "pyegeria",
+   "qualifiedName": "ReportSpecFolder::Consumer::Pyegeria",
+   "guid": "d2677214-2a75-492c-90c3-0d64dfea5689",
+   "status": "read",
+   "reason": null,
+   "specs": 0
+  }
+ ],
+ "index": {
+  "Analytic - Generic Metric Trend": [
+   "Portal"
+  ],
+  "Resource Explorer - Curation Coverage": [
+   "Portal"
+  ],
+  "Saved Query Answer": [
+   "Portal"
+  ]
+ },
+ "notes": []
+}

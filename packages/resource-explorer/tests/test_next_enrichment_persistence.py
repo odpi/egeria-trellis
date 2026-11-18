@@ -32,6 +32,7 @@ import pytest
 
 NEXT = Path(__file__).resolve().parents[1] / "resource_explorer" / "web" / "static" / "next"
 ENRICHMENT_JS = NEXT / "stages" / "enrichment.js"
+SHARED_UI = Path(__file__).resolve().parents[2] / "trellis-ui" / "trellis_ui" / "static"  # RE's files shared with EA
 
 
 def _extract(src: str, signature: str) -> str:
@@ -53,7 +54,7 @@ class TestMovedSinceReactsToLiveFacts:
 
     def _run(self, body: str, tmp_path: Path) -> str:
         fmt = tmp_path / "format.mjs"
-        fmt.write_text(ENRICHMENT_JS.parent.parent.joinpath("format.js").read_text(encoding="utf-8"), encoding="utf-8")
+        fmt.write_text(SHARED_UI.joinpath("format.js").read_text(encoding="utf-8"), encoding="utf-8")
         script = f"""
 import {{ whenMs }} from '{fmt.as_uri()}';
 globalThis.whenMs = whenMs;
@@ -118,7 +119,7 @@ class TestEvidenceSnapshotReadsLiveFacts:
         src = ENRICHMENT_JS.read_text(encoding="utf-8")
         fn = _extract(src, "function evidenceSnapshot()")
         fmt = tmp_path / "format.mjs"
-        fmt.write_text((ENRICHMENT_JS.parent.parent / "format.js").read_text(encoding="utf-8"), encoding="utf-8")
+        fmt.write_text((SHARED_UI / "format.js").read_text(encoding="utf-8"), encoding="utf-8")
         script = f"""
 {fn}
 globalThis.state = {{ enrichmentFacts: {{

@@ -45,7 +45,7 @@ import {
   activityFailure, failureText, getSchedules, saveSchedule, addAlias, listAliases, writeJournalTurn,
 } from '/static/re-api.js';
 import { stateEntry } from '/static/next/glyphs.js';
-import { showMarkdown } from '/static/next/markdown.js';
+import { showMarkdown } from '/static/trellis-ui/markdown.js';
 import {
   state, esc, icon, tnum, $, selectResourceFromChat,
   ensureRailShowing, railFrame, railClaim, openMembers,
@@ -500,20 +500,46 @@ function feedbackHtml(turn, i) {
   </div>`;
 }
 
+/** A per-turn nonce. crypto.randomUUID needs a secure context, which a plain-http deployment is not. */
+function voteNonce() {
+  if (globalThis.crypto?.randomUUID) return crypto.randomUUID();
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+}
+
 async function vote(i, value) {
   const turn = state.chat[i];
   if (!turn || !turn.queryHash) return;
+  // One vote per turn. Once stored (or refused) the thumbs are replaced by words, so the only way to a second
+  // vote is a click while the first is in flight: ignored here. The key is per TURN, not per value, so even a
+  // second request that got through is the same item on the server, which answers with the vote it kept.
+  if (turn.voting || turn.voted !== undefined) return;
+  turn.voting = true;
+  // A stored turn's key is derived from its exchange, so a turn restored after a reload (no page state, thumbs
+  // back) is still the same vote on the server. Only a turn that was never stored falls back to a nonce.
+  turn.voteKey = turn.voteKey || (turn.exchangeId != null
+    ? `vote:${sessionId()}:${turn.exchangeId}` : `vote:${voteNonce()}`);
   try {
-    await sendFeedback(turn.queryHash, value, turn.compileId || null);
-    turn.voted = value;
+    const res = await sendFeedback(turn.queryHash, value, turn.compileId || null, {
+      session_id: sessionId(), exchange_id: turn.exchangeId ?? null,
+      question: turn.question || '', answer: turn.answer || '', intent: turn.intent || '',
+      resource_slug: turn.slug || '', entity_type: turn.entityType || '',
+      idempotency_key: turn.voteKey,
+    });
+    // "Marked helpful" only when the vote was kept where Admin reads it, not merely hashed into query_log.
+    if (!res || !res.stored) throw new Error((res && res.reason) || 'the server did not keep it');
+    turn.feedbackId = res.feedback_id;
+    // The vote the server kept: the first one, if a second request for this turn ever reached it.
+    turn.voted = res.vote ?? value;
   } catch (err) {
     // Say it failed. A vote that silently did not record is worse than no
     // vote control, because the person believes they have reported it.
     turn.voteError = err.message;
+    turn.voting = false;
     if (state.promoted === turn) renderPromotedFooter(turn, i);
     renderTurnList();
     return;
   }
+  turn.voting = false;
 
   // ASSESSMENT-CHAT.md §3(c): join the vote to the gaps loop item 8 built,
   // the same way the Questions-checklist bar does. A chat question is
@@ -531,9 +557,9 @@ async function vote(i, value) {
   if (turn.slug) {
     try {
       const res = await submitAnswerFeedback({
-        slug: turn.slug, question: turn.question, verdict: VOTE_VERDICT[String(value)],
+        slug: turn.slug, question: turn.question, verdict: VOTE_VERDICT[String(turn.voted)],
         sessionId: sessionId(), page: location.pathname + location.search,
-        entityType: turn.entityType,
+        entityType: turn.entityType, feedbackId: turn.feedbackId || '',
       });
       turn.gapReason = res.gap
         ? `in this project's gaps, marked ${res.gap.destination}`

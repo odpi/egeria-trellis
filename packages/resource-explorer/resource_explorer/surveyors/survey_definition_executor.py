@@ -18,17 +18,23 @@ from __future__ import annotations
 import json
 import logging
 from dataclasses import dataclass, field
-from datetime import datetime
 from typing import Any, Callable
 
 from resource_explorer import credential_handoff, presser_hold
 from resource_explorer.credential_handoff import split_credentials
+from resource_explorer.survey_time import now_utc_iso
 from resource_explorer.surveyors import result_status, step_cost_observer
 from resource_explorer.surveyors.survey_definition_reader import SurveyDefinitionReader
 
 log = logging.getLogger(__name__)
 
 from resource_explorer.activity_logger import PRESSED_ON, log_survey
+
+#: Steps that exist only as Prefect flows (resource_explorer/prefect/flows.py) and have no
+#: STEP_REGISTRY entry: `_use_prefect` always sends them to Prefect. Module level so the pool
+#: liveness check (bootstrap.prefect_pool_runs_locally_instead) can name them from the same list;
+#: they should carry executes_at="prefect" once authored.
+PREFECT_ONLY_STEPS = ("soda_data_quality", "great_expectations_validation")
 
 
 class SurveyDefinitionExecutorError(RuntimeError):
@@ -397,21 +403,27 @@ class SurveyDefinitionExecutor:
 
         engine_override: per-RUN choice of which engine runs this definition's
         `resource-explorer`-tagged steps, taking precedence over
-        `config.prefect.enabled`/`route_local_steps` for the duration of THIS
-        call only — a local parameter, never a global mutation, so it cannot
-        leak into a concurrent request.
+        `config.prefect.enabled` and the step dispatch policy
+        (`PREFECT_DISPATCH_STEPS`, see `surveyors/step_dispatch_policy.py`) for
+        the duration of THIS call only — a local parameter, never a global
+        mutation, so it cannot leak into a concurrent request.
 
           - None (default): unchanged, config-driven behaviour (see
             `_use_prefect` below).
           - "resource-explorer": force every `resource-explorer`-tagged step
             to run locally for this run, and skip whole-definition Prefect
             orchestration (`_run_via_prefect`) entirely.
-          - "prefect": force every `resource-explorer`-tagged step to run via
-            Prefect for this run (`run_prefect_step` already degrades to
-            running the step locally if no Prefect server is actually
-            reachable — see its own docstring — so this is safe to select
-            even when Prefect isn't configured; it just won't do anything
-            useful).
+          - "prefect": orchestrate the run with Prefect. Corrected 2026-11-17
+            (TR-11 F-AB-3): this does NOT send every step to a worker. A
+            definition Prefect can run whole (`_run_via_prefect`) runs as ONE
+            flow, `re_survey_definition_flow`, in THIS process; inside it each
+            step runs in-process unless `dispatch_decision` sends it to a
+            worker (executes_at=prefect, or selected by PREFECT_DISPATCH_STEPS).
+            Only when the whole-definition path is not taken (mixed engines,
+            unmet prerequisites, Prefect unreachable) does the local loop run,
+            and there this override forces each `resource-explorer` step
+            through `run_prefect_step`, which degrades to running it locally
+            if no Prefect server or worker is reachable (see its docstring).
 
         This is genuinely a choice between two runners for the SAME function
         and the SAME result — it is deliberately narrower than `executes_at`
@@ -539,7 +551,7 @@ class SurveyDefinitionExecutor:
         to run one step.
         """
         adapter = get_adapter(entity_type)
-        surveyed_at = datetime.utcnow().isoformat()
+        surveyed_at = now_utc_iso()
         if entity_type == "database":
             # Brief D 7f.1: one scan, one snapshot. Every step of this run --
             # prerequisite auto-runs and batch/Prefect paths included, they
@@ -761,24 +773,22 @@ class SurveyDefinitionExecutor:
             return True, ""
 
         from resource_explorer.config import get_config
+        from resource_explorer.surveyors import step_dispatch_policy
         from resource_explorer.surveyors.prefect_adapter import (
             PrefectFlowRunCancelled, PrefectFlowRunTimeout, run_prefect_step,
         )
-
-        # Steps that exist only as Prefect flows (resource_explorer/prefect/flows.py)
-        # and have no STEP_REGISTRY entry, so there is nothing local to run them
-        # with. Named here rather than inline so the list is findable from both
-        # sides; they should carry executes_at="prefect" once authored.
-        PREFECT_ONLY_STEPS = ("soda_data_quality", "great_expectations_validation")
 
         def _use_prefect(step) -> bool:
             """Which engine runs this step.
 
             executes_at is what the definition asked for, and it is honoured.
             `prefect.enabled` says Prefect is reachable — it does not re-route a
-            step that named a different engine; `prefect.route_local_steps` is
-            the explicit opt-in for that, because taking RE's own steps to
-            Prefect is a real deployment choice but not one to make silently.
+            step that named a different engine; the step dispatch policy
+            (`PREFECT_DISPATCH_STEPS`, of which `PREFECT_ROUTE_LOCAL_STEPS=true`
+            is the deprecated `all` alias) is the explicit, per-step opt-in for
+            that, because taking RE's own steps to Prefect is a real deployment
+            choice but not one to make silently. The decision itself is
+            `step_dispatch_policy.dispatch_decision` (TR-11 F-AB-3).
 
             `engine_override` (this run's local parameter — see `run`'s own
             docstring) takes precedence over both config values, but ONLY for
@@ -791,20 +801,37 @@ class SurveyDefinitionExecutor:
             force it onto. `executes_at="egeria"` steps never reach this
             function's True branches at all — they fall through to `return
             False` below regardless of engine_override, same as today.
+
+            This per-step path is the only one that uses the Prefect work
+            pool (`run_prefect_step` creates a flow run from the deployment).
+            A whole-definition run (`_run_via_prefect`) calls its flow in this
+            process and needs no worker. With no ONLINE worker on the pool, a
+            step this returns True for runs locally instead
+            (`_run_prefect_step_api`'s precheck); bootstrap's pool check
+            names those steps (`prefect_pool_runs_locally_instead`).
             """
-            if step.executes_at == "prefect" or step.re_analysis_step in PREFECT_ONLY_STEPS:
+            # The policy itself is `step_dispatch_policy.dispatch_decision`, shared with the whole-definition
+            # flow and the startup summary (TR-11 F-AB-3, C2). What stays here is this run's override and
+            # whether Prefect is enabled at all, which only gate RE's own steps.
+            key = step.re_analysis_step
+            own_step = step.executes_at == "resource-explorer" and key not in PREFECT_ONLY_STEPS
+            if own_step and engine_override == "prefect":
                 return True
-            if step.executes_at == "resource-explorer":
-                if engine_override == "prefect":
-                    return True
-                if engine_override == "resource-explorer":
+            if own_step and engine_override == "resource-explorer":
+                return False
+            try:
+                cfg = get_config().prefect
+                policy = step_dispatch_policy.resolve(cfg)
+                enabled = bool(cfg.enabled)
+            except Exception:
+                if own_step:
                     return False
-                try:
-                    cfg = get_config().prefect
-                    return bool(cfg.enabled and getattr(cfg, "route_local_steps", False))
-                except Exception:
-                    return False
-            return False
+                policy, enabled = step_dispatch_policy.DispatchPolicy(), False
+            where, _why = step_dispatch_policy.dispatch_decision(
+                key, step.executes_at, self._step_info(adapter, key), policy)
+            if where != step_dispatch_policy.WORKER:
+                return False
+            return enabled or not own_step
 
         i = 0
         n = len(pending_steps)
@@ -947,19 +974,46 @@ class SurveyDefinitionExecutor:
                                 credential_handoff.revoke(_pf_ref)
                     _pf_engine = _pf_dispatch.get("engine", "local")
                     _pf_dispatch_failed = _pf_dispatch.get("dispatch_failed", "")
-                    if _pf_observed:
-                        _pf_observed[0].executor = _pf_engine
-                        _pf_observed[0].source = _pf_engine
-                        _pf_observed[0].executor_ref = _pf_dispatch.get("flow_run_id", "")
-                        _pf_observed[0].flow_run_id = _pf_dispatch.get("flow_run_id", "")
-                        _pf_observed[0].dispatch_failed = _pf_dispatch_failed
-                    self._record_cost(_pf_observed, entity_type, slug, output, surveyed_at)
+                    _pf_flow_run_id = _pf_dispatch.get("flow_run_id", "")
+                    _pf_wait_ms = round(_pf_observed[0].elapsed * 1000.0, 1) if _pf_observed else None
+                    _pf_in_process = bool(_pf_dispatch.get("in_process_flow"))
+                    if _pf_flow_run_id or _pf_in_process:
+                        # TR-21 (Architect ruling 2026-11-15): the flow run's WORK row was written by the flow
+                        # (executor=prefect, its flow_run_id). What was measured here is the wait, dispatch to
+                        # terminal state, not the work: it goes to the report and the log as dispatch_wait_ms, never
+                        # into step_runs (that double-counted every Prefect step's cost).
+                        log.info("Prefect step %s: flow run %s, dispatch_wait_ms=%s", step.re_analysis_step,
+                                 _pf_flow_run_id, _pf_wait_ms)
+                    else:
+                        # No flow run exists: the step ran locally (the TR-20 fallback), so this row is its work.
+                        if _pf_observed:
+                            _pf_observed[0].executor = _pf_engine
+                            _pf_observed[0].source = _pf_engine
+                            _pf_observed[0].executor_ref = ""
+                            _pf_observed[0].flow_run_id = ""
+                            _pf_observed[0].dispatch_failed = _pf_dispatch_failed
+                            if _pf_dispatch_failed:
+                                # R1 (TR-11 F-AB-3): a fallback's placement, beside dispatch_failed.
+                                _pf_observed[0].placement = step_cost_observer.fallback_placement(
+                                    _pf_dispatch_failed)
+                        self._record_cost(_pf_observed, entity_type, slug, output, surveyed_at)
                     _stamp_definition_provenance(output)
                     step_outputs.append(output)
                     _pf_report_entry = {
                         "step": step.qualified_name, "re_analysis_step": _step_key(step),
                         "status": "ok", "engine": _pf_engine,
+                        # R1 (TR-11 F-AB-3): where it actually ran.
+                        "placement": (step_dispatch_policy.WORKER if _pf_flow_run_id and not _pf_in_process
+                                      else step_dispatch_policy.IN_PROCESS if _pf_in_process
+                                      else step_cost_observer.fallback_placement(_pf_dispatch_failed)
+                                      if _pf_dispatch_failed else step_dispatch_policy.IN_PROCESS),
                     }
+                    if _pf_flow_run_id or _pf_in_process:
+                        _pf_report_entry["flow_run_id"] = _pf_flow_run_id
+                        _pf_report_entry["dispatch_wait_ms"] = _pf_wait_ms
+                        if not _pf_flow_run_id:
+                            _pf_report_entry["detail"] = ("ran as an in-process Prefect flow; Prefect returned no "
+                                                          "flow run id")
                     if _pf_dispatch_failed:
                         # The pane-line contract (app.js's survey launch/status
                         # code): a run that fell back reads "ran locally:
@@ -997,7 +1051,18 @@ class SurveyDefinitionExecutor:
                     msg = f"Prefect step '{step.re_analysis_step}' failed: {exc}"
                     log.exception(msg)
                     errors.append(msg)
-                    steps_report.append({"step": step.qualified_name, "re_analysis_step": _step_key(step), "status": "error", "engine": "prefect"})
+                    _pf_err_entry = {"step": step.qualified_name, "re_analysis_step": _step_key(step),
+                                     "status": "error", "engine": "prefect"}
+                    _pf_fr = getattr(exc, "flow_run_id", "")
+                    _pf_status = getattr(exc, "status", "")
+                    if _pf_status:
+                        # TR-20/21: the flow run's own outcome (failed, result_unreadable, mismatch, unknown). Nothing
+                        # of it is published and no guard is produced, so conditional edges on it are not taken.
+                        _pf_err_entry.update({
+                            "flow_run_id": _pf_fr, "prefect_status": _pf_status, "detail": str(exc),
+                            "guard": "not produced: steps conditional on this one are not run",
+                        })
+                    steps_report.append(_pf_err_entry)
             elif step.executes_at == "resource-explorer":
                 runner = adapter.re_analysis_steps.get(step.re_analysis_step)
                 if runner is None:
@@ -2005,6 +2070,53 @@ class SurveyDefinitionExecutor:
                       producer, lookup_exc)
         return base
 
+    def _verified_cached_process(self, entity_type: str, slug: str, technology_type: str,
+                                 cached: dict) -> tuple | None:
+        """A cached Survey Definition GUID is never trusted unchecked (brief RE-REATTACH-BY-QN 2026-11-12 §5:
+        after an Egeria clear the cache held GUIDs that pointed at nothing). One read of the GUID:
+
+          * live                       -> use it;
+          * not found, the stored name resolves to one GovernanceActionProcess -> re-cache that GUID, use it;
+          * not found, the name is not in Egeria (or no name is stored) -> drop the row: None, a cold cache;
+          * anything else (unreadable, ambiguous, wrong type) -> refuse; never run with a GUID that may be dead.
+
+        The path taken is logged. The reads are `egeria_reattach.EgeriaReads`, the same as the re-attach tool's."""
+        from resource_explorer.egeria_absence import ABSENT, PRESENT
+        from resource_explorer.egeria_reattach import MISSING, REATTACH, WORDS, EgeriaReads
+        from resource_explorer.surveyors.survey_definition_reader import qualified_process_name
+
+        guid = cached.get("process_guid") or ""
+        name = cached.get("process_qualified_name") or ""
+        connect = getattr(self.reader, "_connect_metadata_expert", None)
+        if not guid or connect is None:
+            return (guid, name) if guid else None
+        reads = EgeriaReads(connect())
+        state, why = reads.element(guid)
+        if state == PRESENT:
+            log.info("survey definition cache: %s/%s/%s uses its cached GUID %s (live)",
+                     entity_type, slug, technology_type, guid)
+            return guid, name
+        if state != ABSENT:
+            raise SurveyDefinitionExecutorError(
+                f"Could not check the cached Survey Definition GUID {guid} in Egeria ({why}); not running with a "
+                "GUID that may point at nothing. This is not a finding that it is gone.")
+        if name:
+            verdict, new_guid, detail = reads.by_name(qualified_process_name(name), "GovernanceActionProcess")
+            if verdict == REATTACH:
+                self.registry.set_survey_definition_guid(entity_type, slug, technology_type, new_guid, name)
+                log.info("survey definition cache: %s/%s/%s cached GUID %s is gone; re-resolved %r by name to %s",
+                         entity_type, slug, technology_type, guid, name, new_guid)
+                return new_guid, name
+            if verdict != MISSING:
+                raise SurveyDefinitionExecutorError(
+                    f"The cached Survey Definition GUID {guid} is gone from Egeria and its name {name!r} could not "
+                    f"be re-resolved: {WORDS[verdict]}{' (' + detail + ')' if detail else ''}.")
+        self.registry.delete_survey_definition_guid(entity_type, slug, technology_type)
+        log.info("survey definition cache: %s/%s/%s cached GUID %s is gone and %s; dropped the row, resolving "
+                 "as on a cold cache", entity_type, slug, technology_type, guid,
+                 f"{name!r} is not in Egeria" if name else "no name was stored")
+        return None
+
     def _resolve_process_guid(
         self,
         entity_type: str,
@@ -2036,7 +2148,9 @@ class SurveyDefinitionExecutor:
         if not refresh_definition:
             cached = self.registry.get_survey_definition_guid(entity_type, slug, technology_type)
             if cached:
-                return cached["process_guid"], cached["process_qualified_name"]
+                live = self._verified_cached_process(entity_type, slug, technology_type, cached)
+                if live is not None:
+                    return live
 
         candidates = self.reader.find_candidate_process_guids(technology_type)
         if not candidates:

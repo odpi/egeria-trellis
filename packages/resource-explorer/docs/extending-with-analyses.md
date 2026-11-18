@@ -82,7 +82,8 @@ my_step/
 The entry-point group is **`pyegeria.analytics`**. Installing the package registers the step: Resource Explorer and
 the Egeria Portal both read this group, so there is nothing else to configure. A report spec names the step by its
 registered name (the manifest's `name`), never by its Python path. Steps built before 2026-10-31 declare
-`trellis.analytics`, which is still read as an alias for now; write `pyegeria.analytics` in anything new.
+`trellis.analytics`; pyegeria no longer reads that group (the alias was removed in pyegeria 6.2.19), so rename the group
+to `pyegeria.analytics`.
 
 Its value names the manifest object:
 
@@ -101,6 +102,13 @@ The entry point's value may be a manifest, or a callable that returns one manife
 them. **A broken entry point is an error, never skipped:** discovery raises, naming the entry point.
 RE logs `user steps not loaded for database: …` and starts with no user steps, so one bad package
 cannot leave the others half-loaded.
+
+**A report spec does not run a step.** A step registers with a python binding, so the resolver does find it, but it
+then reads the step's `inputs`. A step's `ods`, `source_report`, `resource` and `connection` are not role words, so pyegeria
+refuses the run with, for a step declaring `inputs=["ods"]`: "Routine 'demo_step' cannot run: routine demo_step's input
+'ods' is not a role word (egeria_client:<Class>, reader:<name>, viewer, subject)." (checked on pyegeria 6.2.28 with
+library 0.4.0). A spec that names a step therefore shows the step's registration, as the Explorer's Analytic Functions
+panel does, but neither runs it nor reads its stored results; the design's `results` producer is not built.
 
 ### The function
 
@@ -142,6 +150,51 @@ including the path where there is no data yet.
 answer, so RE stores nothing from that run.
 
 ---
+
+### Inputs by role (pyegeria 6.2.26)
+
+Two vocabularies are named "inputs". Do not mix them up.
+
+| | Where | Words | Supplied by |
+|---|---|---|---|
+| Step-host inputs | a `StepManifest`'s `inputs` | `ods`, `source_report`, `resource`, `connection` | Resource Explorer's own step host |
+| Roles | a routine's declared `inputs` in pyegeria | `egeria_client:<Class>`, `reader:<source>`, `viewer`, `subject` | whatever runs the routine, through a `RoleSupply` |
+
+Resource Explorer runs a step with its own vocabulary. It does not use pyegeria roles.
+pyegeria lists a routine's declared inputs with `declared_inputs` (`pyegeria/view/spec_resolver.py`): the
+registry entry's `inputs`, in declared order, each checked to be a role word. An entry that is not registered declares
+none and is refused. The executor asks the `RoleSupply` for each before the first stage runs.
+
+- Plain pyegeria's `PlainSupply` hands out the caller's `EgeriaTech` for every client class and nothing else.
+- The Portal's `PortalSupply` builds a client of each declared class as the signed-in user, and `viewer` is the
+  persona chosen in the browser. It has **no readers and no subject**. A routine that declares `reader:<name>` or
+  `subject` is refused before it runs, with the supply's words, for example "The Portal has no reader named 'ods'".
+- `analytic_binders` is gone (6.2.26). A spec that still carries the key loads: an empty key is dropped silently, a
+  non-empty one with a `DeprecationWarning`.
+
+### What else changed in pyegeria's report specs (6.2.27 and 6.2.28)
+
+These are pyegeria behaviours, described by the release that introduced them. Trellis locks pyegeria 6.2.24 today, so
+they are not what Resource Explorer runs. Resource Explorer's own step host, `inputs` vocabulary and absence words did not
+change, and RE does not use pyegeria's `overview_metrics` counts, so none of the count changes alters an RE screen.
+They matter to an analysis author because the Portal's report specs list a step by its registered name.
+
+- **A count that was not measured is `None` (6.2.27, 6.2.28).** A capped or timed-out count is `None` with an
+  `unmeasured` note, never the 500-element cap (6.2.27). A failed viewer count is `None`, not `0`, strict or not (6.2.28).
+  Scans read every page or report nothing: one that cannot finish is `None` with a note, never a figure from the part
+  it read (6.2.28).
+- **Totals count the whole repository (6.2.27).** The count routines default to `population="repository"`, which includes
+  elements the viewer may not see. `population="viewer"` is an explicit opt-in.
+- **Report specs held in Egeria (6.2.28).** `pyegeria report-specs sync` fills a local cache from configured
+  `CollectionFolder`s; a spec is addressed `egeria:<label>`. A run reads the cache, not Egeria. A held spec is
+  untrusted: a find stage may name only a method on pyegeria's positive allowlist (`FIND_METHOD_ALLOWLIST`), and an
+  analytic stage only a registered analytic name, never a dotted module path or a `python` binding.
+- **Filters are universal and checked (6.2.28).** Every `find_*` and `get_*` takes the standard filters as keyword
+  arguments. An unknown name warns with `UnknownFilterWarning` and is left out of the request; a future release will raise
+  `TypeError`. The type filters are spelt `metadata_element_type` and `metadata_element_subtypes`; the old spellings
+  still work, with a `DeprecationWarning`. A report spec's `spec_params` are checked the same way.
+- **Technology report specs take `deployed_implementation_type` (6.2.28).** The default is the spec's own technology,
+  matched exactly (ignoring case; this wording may change in 6.2.29); `*` means any technology.
 
 ## 2. The manifest and its declaration
 

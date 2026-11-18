@@ -59,6 +59,7 @@ def vector_search_raw(query: str, collection_names: str) -> str:
     if not collections:
         return "Error: no collection names provided."
     results = MultiCollectionStore().search(query, collections)
+    note_retrieved(results)
     if not results:
         return "No relevant content found in the specified collections."
     parts = [f"[{r.collection} | score={r.score:.2f}]\n{r.text}" for r in results]
@@ -617,6 +618,7 @@ def _build_example_context_raw(resource_slug: str, topic: str) -> str:
             continue
         for r in store.search(query_text, cols, top_k=top_k):
             if r.text not in seen and r.score >= 0.3:
+                note_retrieved([r])
                 seen.add(r.text)
                 sections.append(f"[{r.collection} | score={r.score:.2f}]\n{r.text}")
 
@@ -1487,9 +1489,38 @@ _LOW_WORD = re.compile(r"\blow\b", re.IGNORECASE)
 _turn_facts: ContextVar[list | None] = ContextVar("_turn_facts", default=None)
 
 
+#: Every chunk retrieval returned this turn, as `collection:id` (the chunk_feedback key). Same list-not-value
+#: reason as `_turn_facts`. The chat route logs them on the turn's query_log row, which is what a vote on the
+#: answer scores (MetricsCollector.record_feedback); without them a chat vote moved no chunk score.
+_turn_chunk_refs: ContextVar[list | None] = ContextVar("_turn_chunk_refs", default=None)
+
+
 def set_current_question(question: str) -> None:
     _current_question.set(question or "")
     _turn_facts.set([])
+    _turn_chunk_refs.set([])
+
+
+def use_turn_log(turn_log: dict) -> None:
+    """Collect this turn's retrieved chunks into `turn_log["refs"]`, a list the caller owns: the chat route reads
+    its own record rather than an attribute of a session agent another turn may be using."""
+    _turn_chunk_refs.set(turn_log.setdefault("refs", []))
+
+
+def note_retrieved(results) -> None:
+    """Record search results as this turn's retrieved chunks (no-op outside a chat turn)."""
+    refs = _turn_chunk_refs.get()
+    if refs is None:
+        return
+    for r in results:
+        ref = f"{r.collection}:{r.id}"
+        if ref not in refs:
+            refs.append(ref)
+
+
+def turn_chunk_refs() -> list[str]:
+    """The chunks retrieved so far this turn, in first-seen order."""
+    return list(_turn_chunk_refs.get() or [])
 
 
 def turn_fact_lead() -> str:

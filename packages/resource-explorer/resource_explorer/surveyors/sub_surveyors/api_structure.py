@@ -3,10 +3,10 @@ from __future__ import annotations
 
 import logging
 from collections import defaultdict
-from datetime import datetime
 
 from resource_explorer.registry import Project, ProjectRegistry
 from resource_explorer.step_outcome import UNVERIFIED, StepOutcome, from_upstream_table
+from resource_explorer.survey_time import now_utc_iso
 from resource_explorer.surveyors.base_surveyor import BaseSurveyor
 from resource_explorer.surveyors.scoping import sql_scope_filter
 from resource_explorer.surveyors.survey_report import (
@@ -68,7 +68,7 @@ class ApiStructureSurveyor(BaseSurveyor):
         super().__init__(project, registry)
         # See SecurityHygieneSurveyor's identical constructor comment — shared
         # run-timestamp from SurveyOrchestrator (Phase B, D1).
-        self._surveyed_at = surveyed_at or datetime.utcnow().isoformat()
+        self._surveyed_at = surveyed_at or now_utc_iso()
         # Repo scope-narrowing funnel plan (docs/repo-scope-narrowing-funnel.md),
         # D5/D6 — "" (default) = whole-repo, unchanged from every existing
         # caller; a non-empty locator narrows to one cataloged sub-resource

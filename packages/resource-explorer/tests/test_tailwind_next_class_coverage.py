@@ -55,6 +55,8 @@ from pathlib import Path
 
 PACKAGE_ROOT = Path(__file__).resolve().parents[1]
 NEXT_DIR = PACKAGE_ROOT / "resource_explorer" / "web" / "static" / "next"
+# The files RE shares with EA (packages/trellis-ui) are scanned too: they left next/ but are still RE's code.
+SHARED_UI = Path(__file__).resolve().parents[2] / "trellis-ui" / "trellis_ui" / "static"
 CSS_PATH = NEXT_DIR / "tailwind-next.css"
 INDEX_HTML_PATH = NEXT_DIR / "index.html"
 
@@ -220,8 +222,18 @@ def _style_block_text(html_path: Path) -> str:
     return "".join(STYLE_BLOCK_RE.findall(html_path.read_text(encoding="utf-8")))
 
 
+#: Shared files that are not RE's code and are not scanned. Each names why.
+VENDORED_SHARED_UI = {
+    # Vendored byte-identical from odpi/egeria-workspaces (the Portal's structured-TABLE renderer, used by EA's
+    # dashboards); it styles itself with its own injected CSS (its "et-*" classes), so RE's Tailwind build has
+    # nothing to provide, and it must never be edited here (EA's sha256 pin test).
+    "egeria-table.js",
+}
+
+
 def _all_js_files() -> list[Path]:
-    return sorted(NEXT_DIR.rglob("*.js"))
+    shared = [f for f in SHARED_UI.rglob("*.js") if f.relative_to(SHARED_UI).as_posix() not in VENDORED_SHARED_UI]
+    return sorted([*NEXT_DIR.rglob("*.js"), *shared])
 
 
 def test_every_class_literal_used_in_next_js_exists_in_committed_css_or_style_block():
@@ -234,7 +246,9 @@ def test_every_class_literal_used_in_next_js_exists_in_committed_css_or_style_bl
         toks, excluded = _extract_from_file(f)
         excluded_total += len(excluded)
         for t in toks:
-            token_files.setdefault(t, []).append(f.relative_to(NEXT_DIR).as_posix())
+            token_files.setdefault(t, []).append(
+                f"trellis-ui/{f.relative_to(SHARED_UI).as_posix()}" if SHARED_UI in f.parents
+                else f.relative_to(NEXT_DIR).as_posix())
 
     missing = []
     for tok in sorted(token_files):

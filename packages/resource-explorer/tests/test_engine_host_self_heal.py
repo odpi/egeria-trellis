@@ -373,9 +373,14 @@ def test_price_route(client):
 def test_live_the_canary_resolves_by_qualified_name_once_declared():
     """Live, read-only (opt-in tier): the canary's qualifiedName is the one resolve_engine_guid looks up, and the
     bootstrap canary read answers without raising (True after act A, False before it; None means unreachable)."""
+    from resource_explorer.egeria_clients import Daemon, DaemonReason, acting_as
+
     batch = next(b for b in bs.discover_batches() if b.batch_id == "engine-host")
     assert batch.canary["qualified_name"] == "ResourceExplorerSurvey"
-    assert bs.canary_present(batch) in (True, False)
+    # The canary read is bootstrap's (DaemonReason.BOOTSTRAP: "bootstrap heal, its canary reads"). Since Brief I it
+    # needs that declared, or it answers None ("no one is signed in") rather than True/False.
+    with acting_as(Daemon(DaemonReason.BOOTSTRAP)):
+        assert bs.canary_present(batch) in (True, False)
 
 
 # ── W64: every RE-engine card refuses before the press while the engine is verified absent ──

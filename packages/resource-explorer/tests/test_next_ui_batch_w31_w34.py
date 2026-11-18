@@ -8,9 +8,10 @@ from pathlib import Path
 
 PKG = Path(__file__).resolve().parents[1]
 NEXT = PKG / "resource_explorer" / "web" / "static" / "next"
+SHARED_UI = Path(__file__).resolve().parents[2] / "trellis-ui" / "trellis_ui" / "static"  # RE's files shared with EA
 COVERAGE = (NEXT / "stages" / "curate-coverage.js").read_text(encoding="utf-8")
 SCOPE = (NEXT / "stages" / "curate-scope.js").read_text(encoding="utf-8")
-FORMAT = (NEXT / "format.js").read_text(encoding="utf-8")
+FORMAT = (SHARED_UI / "format.js").read_text(encoding="utf-8")
 OD = (NEXT / "admin" / "open_data.js").read_text(encoding="utf-8")
 ADMIN = (NEXT / "admin" / "index.js").read_text(encoding="utf-8")
 CSS = (NEXT / "tailwind-next.css").read_text(encoding="utf-8")

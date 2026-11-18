@@ -1,6 +1,6 @@
 [project]
 name = "trellis-context"
-version = "0.1.0"
+version = "0.2.0"
 description = "Context compilation — ContextSpec, and a deterministic packer that turns resolved sources into a bounded context plus a manifest saying what it did. See docs/context-compilation-design.md."
 readme = "README.md"
 authors = [{ name = "Dan Wolfson" }]

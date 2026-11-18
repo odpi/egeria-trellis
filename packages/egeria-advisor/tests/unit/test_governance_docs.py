@@ -112,4 +112,9 @@ def test_restore_version(mock_doc_manager):
     # Verify the document is back in the inbox under the original ID, with original content
     assert dm.folder_of(outbox_doc_id) is None
     assert dm.folder_of(doc_id) == "inbox"
-    assert dm.load(doc_id) == "# Test Restore\n\nVersion Content"
+    # ...and, since the plan ran, a previously_executed marker: restoring an older text does not undo that it
+    # ran, so executing it again is a re-run (test_plan_recovered_rerun.py)
+    from advisor.governance_docs import _PREV_EXEC_RE, previously_executed
+    restored = dm.load(doc_id)
+    assert previously_executed(restored).endswith(f"· as {outbox_doc_id}")
+    assert _PREV_EXEC_RE.sub("", restored) == "# Test Restore\n\nVersion Content"

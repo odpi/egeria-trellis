@@ -72,17 +72,25 @@ const BLAST_RADIUS = {
     `WRITES a stale flag (egeria_linkage_status) on ${n} database/filesystem record(s) whose `
     + `asset no longer resolves in Egeria, and clears the flag on any that resolve again. It `
     + `never deletes the GUID and writes nothing to Egeria.`,
+  reattach_by_name: (n) =>
+    `REWRITES ${n} Egeria link(s) BY NAME in RE's registry: each stored GUID is empty or gone, and Egeria `
+    + `holds exactly one element of the right type under the stored qualifiedName, so that element's GUID is `
+    + `written (a project context marked "unbound" becomes "linked"). Writes nothing to Egeria. Refused if `
+    + `anything changed since the scan, or while another RE writer is active. The snapshot of the rows before `
+    + `the change is kept on the server.`,
   clear_stale_investigations: (n) =>
     `⚠ Clears the Egeria Project/working-set binding on ${n} investigation(s)/working set(s) `
     + `whose target no longer resolves in Egeria. THIS CAN UNBIND A REAL EGERIA PROJECT A `
     + `PERSON DELIBERATELY CHOSE — nothing distinguishes a binding this app created from one `
     + `you bound by hand, and a transient Egeria outage can make a live binding look gone. `
-    + `Not reversible by this app: you would need to re-bind it yourself.`,
+    + `The Project's name is kept (only the GUID is blanked, linked becomes unbound), so `
+    + `reattach_by_name can restore the binding when Egeria holds that name again; otherwise `
+    + `you re-bind it yourself.`,
   clear_stale_contexts: (n) =>
     `Clears ${n} entity→Egeria-Project context row(s) that decide whether a resource may `
     + `publish and what it attaches to, where the target Project no longer resolves. Same `
     + `binding risk as clear_stale_investigations above — a bound choice, not just a cached `
-    + `pointer. Not reversible by this app.`,
+    + `pointer. The name is kept and the context becomes unbound, so reattach_by_name can restore it.`,
   catalog_assets: (n) =>
     `CREATES an Egeria asset for ${n} repo(s) — publishes only the repository-health step, `
     + `no archives downloaded. Reversible in Egeria directly (the asset can be deleted there).`,
@@ -168,8 +176,9 @@ function repairableRowHtml(f) {
         <div class="mt-[2px] text-caveat text-ink-muted">${esc(f.detail)}</div>
       </div>
       <label class="flex shrink-0 items-center gap-[6px] text-caveat text-ink"
-        title="${f.expensive ? 'Writes to Egeria and can take minutes — ticked deliberately, not by default' : ''}">
-        <input type="checkbox" data-resync-step="${esc(f.repair_step)}" ${f.expensive ? '' : 'checked'}>
+        title="${f.expensive ? 'Writes to Egeria and can take minutes — ticked deliberately, not by default'
+          : f.unticked ? 'Rewrites links by name — ticked deliberately, not by default' : ''}">
+        <input type="checkbox" data-resync-step="${esc(f.repair_step)}" ${f.expensive || f.unticked ? '' : 'checked'}>
         fix
         ${f.expensive ? '<span class="text-provenance uppercase tracking-caps text-state-warn">slow</span>' : ''}
       </label>
@@ -276,8 +285,10 @@ function render() {
 
   const expensiveCount = repairable.filter((f) => f.expensive)
     .reduce((n, f) => n + f.count, 0);
+  const untickedCount = repairable.filter((f) => f.unticked && !f.expensive)
+    .reduce((n, f) => n + f.count, 0);
   const nowRepairable = (d.repairable || 0)
-    - scheduled.reduce((n, f) => n + f.count, 0) - expensiveCount;
+    - scheduled.reduce((n, f) => n + f.count, 0) - expensiveCount - untickedCount;
 
   _host.innerHTML = `
     <div class="mb-s2 flex items-center justify-between">
@@ -296,6 +307,8 @@ function render() {
       <span class="text-accent-ink">${Math.max(0, nowRepairable)} repairable now</span>
       ${expensiveCount ? `<span class="text-ink-muted">·</span>
         <span class="text-state-warn" title="Slow repairs that write to Egeria — unticked by default">${expensiveCount} slow, not selected</span>` : ''}
+      ${untickedCount ? `<span class="text-ink-muted">·</span>
+        <span class="text-state-warn" title="Repairs that rewrite links by name — unticked by default">${untickedCount} re-attach by name, not selected</span>` : ''}
       <span class="text-ink-muted">·</span>
       <span class="text-state-warn">${d.needs_decision || 0} need a decision</span>
       ${d.undetermined_count ? `<span class="text-ink-muted">·</span>
@@ -340,6 +353,7 @@ export function applyFailures(data) {
     out.push(`Egeria is unreachable — nothing was applied. ${data.unreachable_reason || ''}`.trim());
   }
   for (const [step, v] of Object.entries((data && data.applied) || {})) {
+    if (v && v.refused) out.push(`${step}: refused — ${v.refused}`);
     if (!v || !(v.failed > 0)) continue;
     const errs = v.errors || [];
     if (!errs.length) out.push(`${step}: ${v.failed} failed`);
@@ -411,7 +425,10 @@ async function applySelected() {
   const btn = _host.querySelector('[data-apply-selected]');
   if (btn) { btn.disabled = true; btn.textContent = 'Applying…'; }
   try {
-    const data = await applyResyncSteps(steps);
+    const planHashes = Object.fromEntries(steps
+      .map((s) => [s, (findingByStep.get(s) || {}).plan_hash])
+      .filter(([, h]) => h));
+    const data = await applyResyncSteps(steps, planHashes);
     await showApplyResult(data);
     _busy = false;
     const b = _host.querySelector('[data-apply-selected]');

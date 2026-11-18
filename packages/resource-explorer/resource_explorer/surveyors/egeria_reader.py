@@ -16,6 +16,7 @@ import logging
 import os
 from typing import TYPE_CHECKING
 from resource_explorer.config import egeria_platform_url, egeria_view_server  # noqa: E402,F401
+from resource_explorer.survey_time import egeria_name_time
 
 if TYPE_CHECKING:
     from resource_explorer.registry import ProjectRegistry
@@ -177,7 +178,7 @@ class EgeriaReader:
                     explanation, expression, json_properties, subtype_data}
         """
         self.connect()
-        search_prefix = f"Annotation::{slug}::{surveyed_at}::"
+        search_prefix = f"Annotation::{slug}::{egeria_name_time(surveyed_at)}::"
         annotations = []
         try:
             results = self._discovery.find_annotations(

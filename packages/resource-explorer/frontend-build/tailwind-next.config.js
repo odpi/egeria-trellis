@@ -3,7 +3,7 @@
  * (The Classic UI had its own tailwind.config.js and tailwind.css; both were
  * deleted with Classic, 2026-10-21.)
  *
- * THE VALUES NOW LIVE IN static/next/themes.css (RULING-THEMES-PORTAL-DARK-LIGHT.md,
+ * THE VALUES NOW LIVE IN themes.css (packages/trellis-ui, shared with EA; RULING-THEMES-PORTAL-DARK-LIGHT.md,
  * 2026-10-20), one block per look (Dark, Light, Paper). This file holds the
  * token NAMES and points each at a CSS variable: a colour is
  * `rgb(var(--c-<name>) / <alpha-value>)` (channels, so `/20` opacity keeps
@@ -18,114 +18,30 @@
  * both, and three attempts to make one work by adjusting greys are what
  * produced this split.
  */
+const tokens = require('../../trellis-ui/trellis_ui/static/tokens.js');
+
 module.exports = {
-  content: ['../resource_explorer/web/static/next/**/*.{html,js}'],
+  // RE's files shared with EA (packages/trellis-ui) carry classes too (the look menu, markdown, tables): scanned,
+  // or those classes would silently drop out of this sheet.
+  // tokens.js is not scanned: it names the tokens, and its strings would be read as classes (accent-ink, ...).
+  content: ['../resource_explorer/web/static/next/**/*.{html,js}', '../../trellis-ui/trellis_ui/static/**/*.js',
+    '!../../trellis-ui/trellis_ui/static/tokens.js'],
   theme: {
     extend: {
-      colors: {
-        // ── Chrome (dark): nav, sidebar, right rail ──────────────────
-        chrome: 'rgb(var(--c-chrome) / <alpha-value>)',              // ground; one step below neutral-900
-        'chrome-alt': 'rgb(var(--c-chrome-alt) / <alpha-value>)',        // right rail / secondary chrome ground
-        'chrome-surface': 'rgb(var(--c-chrome-surface) / <alpha-value>)',    // selected row, raised block
-        'chrome-line': 'rgb(var(--c-chrome-line) / <alpha-value>)',       // borders and dividers on chrome
-        'chrome-line-soft': 'rgb(var(--c-chrome-line-soft) / <alpha-value>)',  // inner hairlines within a panel
-        'chrome-ink': 'rgb(var(--c-chrome-ink) / <alpha-value>)',        // primary text on chrome
-        'chrome-muted': 'rgb(var(--c-chrome-muted) / <alpha-value>)',      // secondary text on chrome — 6.7:1.
-                                        // Do not go darker. There is no dim
-                                        // role below this one.
-        accent: 'rgb(var(--c-accent) / <alpha-value>)',              // strokes, borders, underlines
-        'accent-on-dark': 'rgb(var(--c-accent-on-dark) / <alpha-value>)',    // accent TEXT on chrome
-        'accent-deep': 'rgb(var(--c-accent-deep) / <alpha-value>)',       // accent border on chrome (accent-800)
-
-        // ── Paper (light): the content pane ──────────────────────────
-        paper: 'rgb(var(--c-paper) / <alpha-value>)',
-        'paper-surface': 'rgb(var(--c-paper-surface) / <alpha-value>)',
-        rule: 'var(--c-rule)', // hairline divider
-        ink: 'rgb(var(--c-ink) / <alpha-value>)',
-        // #4a463e, not #605d5d. Two reasons, and the second is why a palette
-        // that measures fine was genuinely too light in place:
-        //
-        //  1. Drift. "No muted tokens on content lines" was settled in the
-        //     fix round, and secondary greys crept back onto text that
-        //     carries meaning — analysis ids, dates, descriptions.
-        //  2. Perception. The dark chrome SURROUNDS the paper pane, and after
-        //     the eye adapts to a dark surround, mid-greys on white read
-        //     lighter than they measure. This pane wants to be set a step
-        //     firmer than a normal light UI, not the same.
-        //
-        // ~9:1 on paper. Informational text goes no lighter than this.
-        'ink-muted': 'rgb(var(--c-ink-muted) / <alpha-value>)',
-        'accent-ink': 'rgb(var(--c-accent-ink) / <alpha-value>)',        // accent TEXT on paper; #b68235 is
-                                        // not legible at body size
-        'accent-tint': 'rgb(var(--c-accent-tint) / <alpha-value>)',       // selected-row tint
-        // 3.05:1 on paper. Was #d7d3d3 at 1.33:1 — a chip outline that faint
-        // is a boundary you cannot see, and the round's done-criteria put a
-        // floor under anything carrying meaning.
-        'rule-strong': 'rgb(var(--c-rule-strong) / <alpha-value>)',
-
-        // ── Cards and tiles (PLAN-CARDS-AND-TILES.md §1) ─────────────
-        // The fill and the border of a card, per look. The border is stronger than the Portal's
-        // (1.9:1 on the ground in Dark and Light, 1.5:1 in Paper).
-        card: 'rgb(var(--c-card) / <alpha-value>)',
-        'card-line': 'rgb(var(--c-card-line) / <alpha-value>)',
-
-        // ── State roles ──────────────────────────────────────────────
-        //
-        // Hue is BACK, alongside the glyph rather than instead of it. The
-        // mono-only first pass applied the design system's constraint where
-        // it does not belong: a list of rows scanned for exceptions is
-        // exactly where hue earns its keep.
-        //
-        // Two variants per role, for the same reason `ink-muted` and
-        // `chrome-muted` are two tokens. ONE value cannot hold 4.5:1 against
-        // both grounds — measured, not assumed: passing on paper needs
-        // luminance <= 0.159, passing on chrome needs >= 0.222, and that
-        // window is empty. Any single "state-ok" would fail on one ground.
-        //
-        // Measured contrast, each against its own ground:
-        //   state-ok        5.82:1     state-ok-on-dark    8.44:1
-        //   state-warn      5.87:1     state-warn-on-dark  8.40:1
-        //   state-gap       6.47:1     state-gap-on-dark   6.94:1
-        //
-        // Gold is NOT a state role. It means "needs your attention" and is
-        // used for the human-input row, links and held chips. KNOWN RISK:
-        // `state-warn` and gold are both warm and within 1.02:1 of each
-        // other in luminance, so they separate by hue alone. Tolerable only
-        // because colour is never the sole channel here — the two states
-        // carry different glyphs (○ vs ⚠) and different words in the legend.
-        'state-ok': 'rgb(var(--c-state-ok) / <alpha-value>)',
-        'state-ok-on-dark': 'rgb(var(--c-state-ok-on-dark) / <alpha-value>)',
-        'state-warn': 'rgb(var(--c-state-warn) / <alpha-value>)',
-        'state-warn-on-dark': 'rgb(var(--c-state-warn-on-dark) / <alpha-value>)',
-        'state-gap': 'rgb(var(--c-state-gap) / <alpha-value>)',
-        'state-gap-on-dark': 'rgb(var(--c-state-gap-on-dark) / <alpha-value>)',
-      },
+      // The token NAMES are shared with EA (packages/trellis-ui/trellis_ui/static/tokens.js); the values are
+      // themes.css's, per look.
+      colors: tokens.colors,
 
       // A 1.15x density scale. Airy by intent — the existing UI is tighter,
       // and mixing the two is the one thing a find-and-replace cannot reason
       // about, so /next commits to this scale throughout.
-      spacing: {
-        s1: '4.6px',
-        s2: '9.2px',
-        s3: '13.8px',
-        s4: '18.4px',
-        // s5 was missing (used by app.js's gap-s5/mb-s5/mt-s5 with no rule
-        // ever compiled for it) -- added to fit the existing sN = N*4.6px
-        // progression rather than changing the usages, per
-        // TAILWIND-NEXT-FRESHNESS-CHECK-IMPLEMENTED.md.
-        s5: '23px',
-        s6: '27.6px',
-        s8: '36.8px',
-      },
+      // The token NAMES are shared with EA (packages/trellis-ui/trellis_ui/static/tokens.js); the values are
+      // themes.css's, per look.
+      spacing: tokens.spacing,
 
-      borderRadius: {
-        // Per look (themes.css): Dark and Light take 6px for controls and 8px for
-        // cards; Paper keeps 2px and 4px.
-        sm: 'var(--r-sm)',   // chrome and dense controls
-        md: 'var(--r-md)',   // default; cards
-        lg: 'var(--r-lg)',
-        pill: '11px',
-      },
+      // The token NAMES are shared with EA (packages/trellis-ui/trellis_ui/static/tokens.js); the values are
+      // themes.css's, per look.
+      borderRadius: tokens.borderRadius,
 
       // Elevation is a whisper. Nothing here is a drop shadow.
       boxShadow: {

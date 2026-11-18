@@ -54,14 +54,19 @@ before starting either app.
 
 ### 1.3 Identities
 
-All identities are the QuickStart's demo users, defined in
-`compose-configs/egeria-quickstart/secrets/coco-user-directory.omsecrets` (password `secret`):
+All identities are in the QuickStart's user directory,
+`compose-configs/egeria-quickstart/secrets/coco-user-directory.omsecrets` (each account's `clearPassword`):
 
-| Purpose | User |
-|---|---|
-| Service account for background work (the RE worker role, EA's non-interactive calls) | `erinoverview` |
-| Signing in to either app, in the browser or on the command line | any demo user, e.g. `peterprofile` |
-| Platform-services reads used in the checks below | `garygeeke` |
+| Purpose | User | Set in |
+|---|---|---|
+| Resource Explorer's own service account (background work: the worker role, surveys, publishing) | `resourceexplorernpa` | `RE_DAEMON_USER_ID` / `RE_DAEMON_USER_PASSWORD` |
+| Egeria Advisor's own service account (its report-spec sync and anonymous reads) | `egeriaadvisornpa` | `EA_DAEMON_USER_ID` / `EA_DAEMON_USER_PASSWORD` |
+| Signing in to either app, in the browser or on the command line | any demo user, e.g. `peterprofile` (the demo users share the QuickStart's standard demo password) | nothing: you type it |
+| Platform-services reads used in the checks below | `garygeeke` | nothing |
+
+A service account is the app's own account, never a person, and no one can sign in to an app as one. Don't
+put a person's account in `RE_DAEMON_*` / `EA_DAEMON_*`, and don't set `EGERIA_USER` / `EGERIA_USER_PASSWORD` for
+the apps (those are pyegeria's names for running its tools as yourself in a shell).
 
 **Login is required by both apps.** A signed-in user's Egeria bearer token travels inside the app's
 session token; the apps never hold the user's password. Everything a user publishes, surveys or
@@ -75,10 +80,11 @@ platform tokens last one hour; an app session is the shorter of that and the app
 | `TRELLIS_JWT_SECRET` | signs the apps' own session tokens; every RE/EA process on a box must share it | generate once per box: `openssl rand -hex 32` |
 | `RE_DAEMON_USER_ID` / `TRELLIS_SERVICE_ACCOUNTS` | Egeria user ids no human may sign in as (RE's background account; comma-separated list); EA refuses them with 403 because it shares `TRELLIS_JWT_SECRET` with RE | RE's `EGERIA_USER_ID`; unset refuses nobody |
 | `ADVISOR_PORTAL_SECRET` / `TRELLIS_PORTAL_SECRET` | lets the Portal hand a signed-in user to EA and RE | the same value as the QuickStart's `EGERIA_ADVISOR_SSO_SECRET` |
-| `PGVECTOR_PASSWORD` | the `egeria_advisor` Postgres role | `shared-infra/docker-entrypoint-initdb.d/init_egeria.sql` (default `advisor`) |
+| `PGVECTOR_PASSWORD` | the `egeria_advisor` Postgres role. Required, no default: compose, RE and EA refuse to start without it | `compose-configs/shared-infra/.env` (`gen-env.sh` generates it on a new install; `init_trellis.sh` creates the role with it). A role still on the old `advisor`: change it first (shared-infra README) |
 | `GITHUB_TOKEN` | RE's GitHub API access for surveys and discovery | a personal token with read scope; without it GitHub's 60 calls/hour are gone in one survey |
-| `EGERIA_USER` / `EGERIA_USER_PASSWORD` | the service account above | `erinoverview` / `secret` |
-| `EGERIA_USER_ID` / `EGERIA_USER_PASSWORD` for RE | RE's daemon identity, RE's own account `resourceexplorernpa` (not a person: RE refuses an interactive sign-in as it). Development bootstrap; not for a shipped product | the account's password in Egeria's user directory; see RE's `docs/admin-guide.md`, "RE's daemon account" |
+| `EA_DAEMON_USER_ID` / `EA_DAEMON_USER_PASSWORD` | EA's own service account (the app's own account, never a person): the background report-spec sync and anonymous reads, and EA's MCP children. Required for those; no default, unset refuses in words. Before TR-34: `EGERIA_USER` / `EGERIA_PASSWORD`, read with a warning until after 6.3 | `egeriaadvisornpa`; its password from the QuickStart's user directory |
+| `EGERIA_USER` / `EGERIA_USER_PASSWORD` | CLI only: pyegeria's own names for running its tools as yourself in a shell. Never in a server's `.env`: EA and RE warn at startup if they see them | your own demo user, e.g. `erinoverview` |
+| `RE_DAEMON_USER_ID` / `RE_DAEMON_USER_PASSWORD` for RE | RE's daemon identity (TR-37, 2026-11-17: these replace RE's `EGERIA_USER_ID` / `EGERIA_USER_PASSWORD`, still read for one release and removed after 6.3; keep `EGERIA_USER` / `EGERIA_USER_PASSWORD` out of RE's environment), RE's own account `resourceexplorernpa` (not a person: RE refuses an interactive sign-in as it). Development bootstrap; not for a shipped product | the account's password in Egeria's user directory; see RE's `docs/admin-guide.md`, "RE's daemon account" |
 
 Never commit any of these, and never bake them into an image (the trellis `.dockerignore`
 excludes `.env` files for that reason).
@@ -237,9 +243,11 @@ Load EA's retrieval corpus once per box (clones the Egeria repositories into the
 volume and indexes them into pgvector):
 
 ```bash
-docker exec -w /app/packages/egeria-advisor trellis-ea-web python scripts/clone_repos.py --phase 1
-docker exec -w /app/packages/egeria-advisor trellis-ea-web python scripts/ingest_collections.py --phase 1
+docker exec -w /app/packages/egeria-advisor trellis-ea-web python scripts/clone_repos.py --phase all
+docker exec -w /app/packages/egeria-advisor trellis-ea-web python scripts/ingest_collections.py --phase all
 ```
+
+Phase 1 alone is only egeria-python; concept questions need egeria-docs and the other phase 2 repositories.
 
 ### 2.6 Operating
 
@@ -322,8 +330,8 @@ Minimum edits:
 | File | Keys |
 |---|---|
 | both | `TRELLIS_JWT_SECRET=<one value shared by both files>` so sessions survive restarts (`RE_JWT_SECRET` / `ADVISOR_JWT_SECRET` per app also work) |
-| RE | `GITHUB_TOKEN`; `EGERIA_PLATFORM_URL=https://localhost:9443`, `EGERIA_VIEW_SERVER=qs-view-server`, `EGERIA_USER=erinoverview`, `EGERIA_USER_PASSWORD=secret`; `LLM__OLLAMA__BASE_URL=http://localhost:11434` |
-| EA | `EGERIA_VIEW_SERVER_URL=https://localhost:9443`, `EGERIA_VIEW_SERVER=qs-view-server`, `EGERIA_USER` / `EGERIA_PASSWORD`; `OLLAMA_BASE_URL=http://localhost:11434`; `ADVISOR_DATA_PATH` for EA's **writable** state (cache, feedback, index — default `./data`), and `ADVISOR_EGERIA_PYTHON_PATH` for the **read-only** egeria-python checkout its data-prep pipeline ingests. These were one env var until 2026-09-06, so setting it for either meaning silently redirected the other |
+| RE | `GITHUB_TOKEN`; `EGERIA_PLATFORM_URL=https://localhost:9443`, `EGERIA_VIEW_SERVER=qs-view-server`, `RE_DAEMON_USER_ID=resourceexplorernpa` / `RE_DAEMON_USER_PASSWORD` (RE's own service account, never a person; its password is in the QuickStart's `coco-user-directory.omsecrets`); `LLM__OLLAMA__BASE_URL=http://localhost:11434` |
+| EA | `EGERIA_VIEW_SERVER_URL=https://localhost:9443`, `EGERIA_VIEW_SERVER=qs-view-server`, `EA_DAEMON_USER_ID` / `EA_DAEMON_USER_PASSWORD` (EA's own service account, never a person; before TR-34 `EGERIA_USER` / `EGERIA_PASSWORD`, read with a warning until after 6.3); `OLLAMA_BASE_URL=http://localhost:11434`; `ADVISOR_DATA_PATH` for EA's **writable** state (cache, feedback, index — default `./data`), and `ADVISOR_EGERIA_PYTHON_PATH` for the **read-only** egeria-python checkout its data-prep pipeline ingests. These were one env var until 2026-09-06, so setting it for either meaning silently redirected the other |
 | optional | `ADVISOR_PORTAL_SECRET` / `RE_PORTAL_SECRET` equal to the QuickStart's `EGERIA_ADVISOR_SSO_SECRET` for tile handoff; `EXPLORER_MODEL_TIER` / `ADVISOR_MODEL_TIER` (default `dev`) |
 
 Postgres defaults (`localhost:5442`, database `egeria_advisor`, user `egeria_advisor`, password
@@ -397,7 +405,7 @@ these changes.
 ### 4.2 Embeddings device
 
 The apps auto-detect `cuda`, `mps` or `cpu` for the sentence-transformer embeddings. Set
-`EMBEDDINGS__DEVICE` (RE) and `EMBEDDING_DEVICE` (EA) explicitly if detection picks the wrong one.
+`EMBEDDING_DEVICE` (RE, read by `explorer.yaml`) and `embeddings.device` in EA's `advisor.yaml` explicitly if detection picks the wrong one.
 
 ### 4.3 Expectations
 
@@ -418,15 +426,48 @@ Keys the apps read, grouped by concern. `<APP>_` forms override the shared `TREL
 | Session lifetime | `RE_JWT_TTL_HOURS` (default 8; Egeria's token caps it at 1 h) | same mechanism | inherited |
 | Portal handoff secret | `RE_PORTAL_SECRET` or `TRELLIS_PORTAL_SECRET` | `ADVISOR_PORTAL_SECRET` or `TRELLIS_PORTAL_SECRET` | `ADVISOR_PORTAL_SECRET` (fed to both) |
 | Login policy | `TRELLIS_REQUIRE_LOGIN` (default true), `TRELLIS_ANONYMOUS_READ` (dev only), `RE_PUBLIC_PATHS` | same, `TRELLIS_PUBLIC_PATHS` | defaults |
-| Egeria platform | `EGERIA_PLATFORM_URL`, `EGERIA_VIEW_SERVER`, `EGERIA_USER`, `EGERIA_USER_PASSWORD`, `PYEGERIA_TIMEOUT_SECONDS` | `EGERIA_VIEW_SERVER_URL`, `EGERIA_VIEW_SERVER`, `EGERIA_USER`, `EGERIA_PASSWORD` | set in compose; service account from `EGERIA_USER` / `EGERIA_USER_PASSWORD` |
+| Egeria platform | `EGERIA_PLATFORM_URL`, `EGERIA_VIEW_SERVER`, `PYEGERIA_TIMEOUT_SECONDS`; service account `RE_DAEMON_USER_ID`, `RE_DAEMON_USER_PASSWORD` | `EGERIA_VIEW_SERVER_URL`, `EGERIA_VIEW_SERVER`; service account `EA_DAEMON_USER_ID`, `EA_DAEMON_USER_PASSWORD` | set in compose; service accounts from `RE_DAEMON_*` / `EA_DAEMON_*` in `trellis/.env` |
 | Ollama | `LLM__OLLAMA__BASE_URL`, `LLM__OLLAMA__MODEL` | `OLLAMA_BASE_URL`, `OLLAMA_MODEL`, `OLLAMA_CODE_MODEL` | `TRELLIS_MODEL_GENERAL`, `TRELLIS_MODEL_CODE`, plus the overlay choice |
 | Model tier | `EXPLORER_MODEL_TIER` | `ADVISOR_MODEL_TIER` | `TRELLIS_MODEL_TIER` |
 | Postgres / pgvector | `PGVECTOR_*` or `REGISTRY_DATABASE_URL` | `PGVECTOR_*` | `PGVECTOR_PASSWORD` |
+| Prefect (RE only) | `PREFECT_ENABLED` (on by default), `PREFECT_API_URL`, `PREFECT_WORK_POOL` (default `resource-explorer-pool`, the pool the bundled workers serve), `PREFECT_DISPATCH_STEPS` (see §5.1) | | `PREFECT_ENABLED=false` |
 | Kroki | `KROKI_URL` | `KROKI_URL` | set in compose |
 | GitHub | `GITHUB_TOKEN`, `GITHUB_WEBHOOK_SECRET` | | `GITHUB_TOKEN` |
 | Process roles | `EXPLORER_EMBED_WORKER`, `EXPLORER_SYNC_POOL_SIZE` | | `TRELLIS_RE_WEB_WORKERS`; `WORKERS` / `EMBED_WORKER` read by the image entrypoint |
 | Data root | `data/` under the package | `ADVISOR_DATA_PATH`, `ADVISOR_CACHE_DIR` | `/app/data` volumes |
 | Observability (optional) | `OBSERVABILITY__MLFLOW__*`, `OBSERVABILITY__PHOENIX__*` | `MLFLOW_*`, `PHOENIX_*` | off |
+
+### 5.1 Prefect step dispatch (Resource Explorer)
+
+Prefect is **on by default**. With no Prefect server reachable, RE says so at startup and runs everything
+in-process. Set `PREFECT_ENABLED=false` only if you will never use Prefect. The work pool defaults to
+`resource-explorer-pool`, which is the pool the bundled workers serve. If an older install used `prefect_up.sh`'s
+earlier default (`default-agent-pool`), restart the worker first after upgrading, then RE, so both use the same pool;
+RE's startup check names both pools if they differ.
+
+With Prefect enabled, `PREFECT_DISPATCH_STEPS` chooses which of Resource Explorer's own steps
+(`executes_at: resource-explorer`) run on a Prefect **worker** instead of in RE's own process. Steps a survey
+definition marks `executes_at: prefect` always go to the worker; `executes_at: egeria` steps never do.
+
+| Value | Meaning |
+|---|---|
+| empty (the default) | none of RE's own steps are dispatched |
+| step keys, e.g. `repo_symbol_extraction` | those steps (an unknown key is a startup warning) |
+| `heavy` | every step whose declared `compute_cost` is `high` (the startup log lists them) |
+| `all` | every one of RE's own steps |
+
+Any other value stops RE at startup, saying why. `PREFECT_ROUTE_LOCAL_STEPS=true` is a deprecated alias for `all`.
+Each dispatched step costs about 10–15 s of hand-off on top of the step itself (9 s measured warm, 2026-11-18). Dispatch
+moves work off RE's process; it does not make a step faster. List only steps heavy enough to be worth moving.
+
+**Where each step ran** is recorded with the step: `worker`, `in-process`, or `in-process (fallback: <reason>)`
+when no worker on RE's own commit was online. A fallback never reads as dispatched. Signed in to RE,
+`/api/prefect/status` shows the policy and the most recent placements.
+
+**After a code change, restart the worker first, then RE.** The worker advertises its commit, and RE only dispatches
+to a worker on its own commit. Restarting RE first makes its startup check report "no online Prefect worker runs this
+Resource Explorer's code" until its next check (every 10 minutes). Either order fails open: a step with no matching
+worker runs in-process, recorded as a fallback.
 
 Neither app uses SQLite in these configurations; the registry, run queue and vector store are all
 in the shared Postgres.
@@ -447,7 +488,7 @@ in the shared Postgres.
 | Stack "disappeared", or `docker inspect` says `no such object` for a container that is running | The active context flipped to `desktop-linux` and you are addressing the wrong engine. Desktop may have started itself. `docker context show` to confirm, `docker context use default` to fix, and `export DOCKER_CONTEXT=default` for anything scripted. |
 | A Portal tile shows as reachable but the link is dead in the browser | `advisor_check_urls()` / `resource_explorer_check_urls()` probe a `host.docker.internal` fallback as well as the configured URL, so the server-side check passes whenever the app is up on the box. It says nothing about whether a *browser* can reach the URL you configured. Test the configured URL itself, from where the browser actually runs. |
 | Docker Desktop's log pane is blank for a container | A viewer glitch after restart or log rotation; reopen the tab, or use `docker logs -f <container>`. |
-| Orphaned `prefect` server processes | Prefect is off by default (`PREFECT_ENABLED=false`); `make ps` lists strays. Enable it only against the Prefect optional runtime. |
+| Orphaned `prefect` server processes | Prefect is on by default in a native install (with no server, RE says so and runs in-process); the QuickStart demo compose turns it off (`PREFECT_ENABLED=false`). `make ps` lists strays. See §5.1. |
 | `qs-engine-host` logs `startMissedEngineActions` errors every few seconds on a fresh repository | Egeria-side (egeria-python `PYEGERIA_ISSUES.md` ISSUE-90); costs CPU but does not affect the apps. |
 | The apps talk to Egeria through `host.docker.internal` rather than the container name | Deliberate: the platform image's certificate names only `localhost` and `host.docker.internal`. A request for more SANs is filed with Egeria; do not switch to the container name until it lands. |
 

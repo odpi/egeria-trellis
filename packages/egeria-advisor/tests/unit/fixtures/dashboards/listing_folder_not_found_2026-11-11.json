@@ -1,0 +1,17 @@
+{
+ "_about": "pyegeria 6.2.36 list_dashboard_sheets(folders=['DashboardFolder::Consumer::EgeriaAdvisor']), read-only against hedwig's Egeria on 2026-11-11 as erinoverview. That Egeria has no EA consumer folder, so this is the real 'not found, or not visible' listing. notes and folders are verbatim.",
+ "pyegeria": "6.2.36",
+ "viewer": "erinoverview",
+ "sheets": [],
+ "notes": [
+  "DashboardFolder::Consumer::EgeriaAdvisor: not found, or not visible to erinoverview"
+ ],
+ "folders": [
+  {
+   "qualifiedName": "DashboardFolder::Consumer::EgeriaAdvisor",
+   "status": "not found",
+   "reason": "not found, or not visible to erinoverview",
+   "sheets": 0
+  }
+ ]
+}

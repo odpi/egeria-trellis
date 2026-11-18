@@ -44,7 +44,6 @@ precedent this file follows for outcome labelling).
 from __future__ import annotations
 
 import logging
-from datetime import datetime
 from pathlib import Path
 
 from resource_explorer.registry import Project, ProjectRegistry
@@ -52,6 +51,7 @@ from resource_explorer.step_outcome import RECOVERED, UNVERIFIED, StepOutcome, n
 from resource_explorer.surveyors.base_surveyor import BaseSurveyor
 from resource_explorer.surveyors.survey_report import Annotation, ResourceMeasureAnnotation
 from resource_explorer.ingestion.vendored import is_vendored_abs
+from resource_explorer.survey_time import now_utc_iso
 
 log = logging.getLogger(__name__)
 
@@ -105,7 +105,7 @@ class ManifestParseSurveyor(BaseSurveyor):
     ) -> None:
         super().__init__(project, registry)
         self._local_path = local_path
-        self._surveyed_at = surveyed_at or datetime.utcnow().isoformat()
+        self._surveyed_at = surveyed_at or now_utc_iso()
 
     @property
     def step_name(self) -> str:

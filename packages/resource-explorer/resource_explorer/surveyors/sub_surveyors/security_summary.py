@@ -37,6 +37,7 @@ from resource_explorer.registry import Project, ProjectRegistry
 from resource_explorer.surveyors.base_surveyor import BaseSurveyor
 from resource_explorer.step_outcome import StepOutcome
 from resource_explorer.surveyors.survey_report import Annotation, ClassificationAnnotation
+from resource_explorer.survey_time import now_utc_iso
 
 log = logging.getLogger(__name__)
 
@@ -255,7 +256,7 @@ class SecuritySummarySurveyor(BaseSurveyor):
     def __init__(self, project: Project, registry: ProjectRegistry,
                  surveyed_at: str | None = None) -> None:
         super().__init__(project, registry)
-        self._surveyed_at = surveyed_at or datetime.utcnow().isoformat()
+        self._surveyed_at = surveyed_at or now_utc_iso()
 
     @property
     def step_name(self) -> str:

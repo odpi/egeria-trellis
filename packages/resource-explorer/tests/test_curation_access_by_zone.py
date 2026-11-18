@@ -83,8 +83,12 @@ class TestZoneGrants:
     def test_a_zone_named_after_the_user_grants(self):
         assert self._grants(["resource-explorer-private", ERIN], {}).allowed is True
 
-    def test_a_zone_with_no_control_is_ignored_not_restrictive(self):
-        assert self._grants(["decorative"], {}).allowed is True
+    def test_a_zone_with_no_control_grants_no_one(self):
+        """Egeria b49c5ed0 (e9fd817f4c): "Every named zone is secured. A zone with no security access control ...
+        grants access to no-one" (validateZoneAccess :1156-1161). Before, such a zone was ignored (this test was
+        `..._is_ignored_not_restrictive`)."""
+        v = self._grants(["decorative"], {})
+        assert v.allowed is False and v.secured == ["decorative"] and v.uncontrolled == ["decorative"]
 
     def test_a_secured_zone_without_the_user_denies_and_names_the_zone(self):
         v = self._grants([SECURED], {SECURED: {"associatedSecurityList": {"DEFAULT": ["salesTeam"]}}},
@@ -452,7 +456,12 @@ def test_the_cli_publish_asks_curation_access(registry, monkeypatch):
 
 # ── 6. round 2 (2026-10-10): every operation, members, run-time re-check, shapes, accounts, databases ──────
 
-STEWARDS = {"associatedSecurityList": {"UPDATE_PROPERTIES": ["allUsers"], "PUBLISH": ["stewards"]}}
+#: DEFAULT allUsers so that the write's other operations (CREATE, CLASSIFY) are open and PUBLISH is what refuses:
+#: Egeria b49c5ed0 grants no one an operation whose list is missing with no DEFAULT ("whose control has neither a
+#: list for this operation nor a DEFAULT list, grants access to no-one", validateZoneAccess :1156-1161); before,
+#: such a zone was ignored for that operation, so this control needed no DEFAULT.
+STEWARDS = {"associatedSecurityList": {"UPDATE_PROPERTIES": ["allUsers"], "PUBLISH": ["stewards"],
+                                       "DEFAULT": ["allUsers"]}}
 
 
 class TestRound2:

@@ -23,9 +23,9 @@ on:
   # cannot (2026-10-27: a test passed every gate because the gate machine's
   # Egeria answered pyegeria's constructor probe, and failed here).
   #
-  # Not a merge requirement: main has no branch protection and no rulesets
-  # requiring this check (verified 2026-10-27). The local gate is the bar for
-  # merging; a red run here is read after the fact and fixed on a branch.
+  # A merge requirement from 2026-11-11 (owner): branch protection on main
+  # requires the `re-tests` check (and EA's `ea-tests`). Before that it was
+  # read after the fact; the local gate is still the bar for a branch.
   #
   # pull_request + push are split as in images.yml: `pull_request` covers
   # every PR branch, `push` covers main only, so one commit never fires both
@@ -33,20 +33,16 @@ on:
   # on every branch AND pull_request). A branch with no PR gets no run; use
   # workflow_dispatch to run one by hand.
   pull_request:
-    paths-ignore:
-      # Docs-only changes skip the run (owner-approved 2026-10-14).
-      # ONLY paths that nothing reads are listed. Verified by grep 2026-10-14:
-      #   - docs/dr-egeria/** is read at runtime (bootstrap.py, egeria_resync.py,
-      #     survey_definition_docs.py) and by the generator-equality tests: NOT ignored.
-      #   - docs/design-notes/** is NOT ignored: test_design_note_references_resolve.py
-      #     checks every cited note name against the files that exist there, so a
-      #     rename or delete in that directory can turn the suite red.
-      #   - the package README.md and CLAUDE.md are scanned by that same test: NOT ignored.
-      # Nothing else under docs/ is opened by any test, script or source file
-      # (every other mention is a comment or docstring).
-      - "packages/resource-explorer/docs/*.md"
-      - "packages/resource-explorer/docs/archive/**"
-      - "packages/resource-explorer/docs/experiments/**"
+    # No path filter (owner, 2026-11-11): the job `re-tests` is a REQUIRED check, and a path-filtered
+    # workflow never reports on a PR it skips, so a required check would wait forever. The docs-only
+    # skip (owner-approved 2026-10-14) moved into the job's "Decide whether this change needs the RE
+    # suite" step, with the SAME ignore list and the same reasons:
+    #   - docs/dr-egeria/** is read at runtime (bootstrap.py, egeria_resync.py,
+    #     survey_definition_docs.py) and by the generator-equality tests: NOT ignored.
+    #   - docs/design-notes/** is NOT ignored: test_design_note_references_resolve.py
+    #     checks every cited note name against the files that exist there.
+    #   - the package README.md and CLAUDE.md are scanned by that same test: NOT ignored.
+    # Keep that step's list and push's paths-ignore below in step.
   push:
     branches: [main]
     paths-ignore:  # the same list as pull_request's, and the same reasons
@@ -67,7 +63,8 @@ defaults:
     working-directory: packages/resource-explorer
 
 jobs:
-  test:
+  re-tests:
+    name: re-tests
     runs-on: ubuntu-latest
 
     # GitHub's default is 360 minutes. The first run sat 20+ minutes on a step
@@ -130,15 +127,39 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Decide whether this change needs the RE suite
+        # Lets this job be a REQUIRED check (owner, 2026-11-11). A path-filtered workflow never reports on
+        # a PR it doesn't match, so a required check on it would wait forever; instead the job always
+        # runs and skips its heavy steps here. On push / workflow_dispatch it always runs. If this step
+        # fails (an unknown base sha, a failed diff), the job fails; it never skips by accident.
+        id: scope
+        working-directory: .
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE: ${{ github.event.pull_request.base.sha }}
+        run: |
+          if [ "$EVENT" != "pull_request" ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"; echo "$EVENT: the suite always runs"; exit 0
+          fi
+          git fetch --no-tags --depth=1 origin "$BASE"
+          python3 .github/scripts/changed_paths.py --base "$BASE" --head HEAD --ignore \
+              "packages/resource-explorer/docs/*.md" \
+              "packages/resource-explorer/docs/archive/**" \
+              "packages/resource-explorer/docs/experiments/**"
+
+
       - name: Install uv
+        if: steps.scope.outputs.run == 'true'
         uses: astral-sh/setup-uv@v5
         with:
           enable-cache: true
 
       - name: Set up Python
+        if: steps.scope.outputs.run == 'true'
         run: uv python install 3.13
 
       - name: Install dependencies
+        if: steps.scope.outputs.run == 'true'
         # Run from packages/resource-explorer (the workflow default), NOT the
         # repo root: `dev` is defined in that package's optional-dependencies,
         # and `uv sync --extra dev` at the root fails outright with
@@ -147,6 +168,7 @@ jobs:
         run: uv sync --extra dev
 
       - name: Cache the sentence-transformers model
+        if: steps.scope.outputs.run == 'true'
         # The pgvector tier calls MultiCollectionStore.insert(), which embeds
         # its text — so a cold runner downloads all-MiniLM-L6-v2 (~90MB) from
         # HuggingFace and warms torch before a single assertion runs. That is
@@ -158,6 +180,7 @@ jobs:
           key: hf-all-MiniLM-L6-v2-${{ runner.os }}
 
       - name: Set up Node
+        if: steps.scope.outputs.run == 'true'
         # Pinned rather than relying on ubuntu-latest's preinstalled Node
         # (test_next_renders_text_cross_check.py and friends get away with
         # that because they only run plain, hookless `node -e`/`--check`).
@@ -172,6 +195,7 @@ jobs:
           node-version: '20'
 
       - name: Install frontend-build JS dependencies
+        if: steps.scope.outputs.run == 'true'
         # test_tailwind_next_freshness.py and test_tailwind_next_class_
         # coverage.py need the actual pinned tailwindcss CLI installed at
         # frontend-build/node_modules/.bin/, which `npm ci` (using the
@@ -186,6 +210,7 @@ jobs:
         run: npm ci
 
       - name: Run the /next render harness tests
+        if: steps.scope.outputs.run == 'true'
         # node+jsdom tests that actually load app.js's real ES module graph
         # and render it into a real DOM -- distinct from every other JS-
         # related test in this package (test_next_*.py), which asserts only
@@ -199,12 +224,14 @@ jobs:
         run: npm run test:harness
 
       - name: Create the schema and the vector extension
+        if: steps.scope.outputs.run == 'true'
         run: |
           PGPASSWORD=advisor psql -h localhost -p 5442 -U egeria_advisor -d egeria_advisor \
             -c 'CREATE SCHEMA IF NOT EXISTS resource_explorer;' \
             -c 'CREATE EXTENSION IF NOT EXISTS vector;'
 
       - name: Confirm Postgres is reachable
+        if: steps.scope.outputs.run == 'true'
         # Fails fast if the service is misconfigured, before thousands of unit
         # tests scroll past and bury the reason. The requires_pgvector tests
         # themselves run inside the full suite below (RE_REQUIRE_POSTGRES=1
@@ -212,6 +239,7 @@ jobs:
         run: PGPASSWORD=advisor psql -h localhost -p 5442 -U egeria_advisor -d egeria_advisor -c 'select 1;'
 
       - name: Full suite
+        if: steps.scope.outputs.run == 'true'
         # -rs prints the reason for every skip in this same run.
         #
         # There used to be a separate "Report what was skipped" step doing
@@ -236,9 +264,23 @@ jobs:
         run: uv run pytest tests/ -q --no-header -rs --durations=25 -n auto
 
       - name: Analytic Library tests (trellis-analytics)
+        if: steps.scope.outputs.run == 'true'
         # Its routines read RE's registry through resolve_node_set, so its tests need resource_explorer installed;
         # `--with-editable` layers the library on this job's environment without re-syncing it. Its scratch
         # registries are temp SQLite (ProjectRegistry(db_path=...)), never this job's Postgres.
         # `[dev]` adds papermill + a kernel for the notebook host; the spec-document test loads the Advisor's
         # parser by path (it needs only pyegeria + md_processing, not the Advisor's install).
         run: uv run --with-editable '../trellis-analytics[dev]' pytest ../trellis-analytics/tests -q --no-header -rs
+
+      - name: Shared feedback library tests (trellis-feedback)
+        if: steps.scope.outputs.run == 'true'
+        # Every store test runs twice: on temp SQLite, and on this job's Postgres in a schema with a random name
+        # (tf_test_*) that the fixture drops afterwards, so it never meets the resource_explorer schema's tables.
+        # A workspace member, so it is already installed; [dev] adds fastapi + httpx for the router tests.
+        env:
+          TRELLIS_FEEDBACK_TEST_PG_URL: postgresql://egeria_advisor:advisor@localhost:5442/egeria_advisor
+        run: uv run --with-editable '../trellis-feedback[dev]' pytest ../trellis-feedback/tests -q --no-header -rs
+
+      - name: RE suite not needed for this change
+        if: steps.scope.outputs.run != 'true'
+        run: echo "::notice title=RE suite skipped::This PR changes only RE docs that nothing reads (docs/*.md, docs/archive, docs/experiments), so the RE suite did not run."

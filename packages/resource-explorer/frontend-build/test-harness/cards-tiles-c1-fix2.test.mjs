@@ -8,7 +8,9 @@ import { makeDomEnvironment, ensureLoaderRegistered, loadAppModule } from './dom
 
 ensureLoaderRegistered();
 const NEXT = new URL('../../resource_explorer/web/static/next/', import.meta.url);
-const read = (p) => fs.readFileSync(new URL(p, NEXT), 'utf8');
+// themes.css is shared with EA (packages/trellis-ui).
+const SHARED_UI = new URL('../../../trellis-ui/trellis_ui/static/', import.meta.url);
+const read = (p) => fs.readFileSync(new URL(p, p === 'themes.css' ? SHARED_UI : NEXT), 'utf8');
 const ROOT_PX = { A: 16, 'A+': 17.9, 'A++': 20 };
 const tick = (ms = 60) => new Promise((r) => setTimeout(r, ms));
 const cls = (el) => [...el.classList];
@@ -119,7 +121,7 @@ test('At a glance, Contents and Over time (the Understanding tabs): every data t
   const app = await import('/static/next/app.js');
   Object.assign(app.state, { resourceType: 'db', selectedSlug: 'adv', stage: 'scouting', subTab: 'questions', investigations: [], investigation: '', workListSlug: null, workListIndex: false });
   for (const id of ['content', 'intent-nav', 'rail-evidence', 'perspective-row', 'app-grid']) { const d = document.createElement('div'); d.id = id; document.body.appendChild(d); }
-  const { watchTables } = await import('/static/next/colresize.js');
+  const { watchTables } = await import('/static/trellis-ui/colresize.js');
   watchTables(document.body);
   app.renderIntentNav();
   document.querySelector('#intent-nav button[data-stage="understanding"]').click();
@@ -138,7 +140,7 @@ test('At a glance, Contents and Over time (the Understanding tabs): every data t
 test('Schema Inventory: the column table of an expanded table has resize handles', async () => {
   const { document } = makeDomEnvironment();
   const app = await loadAppModule();
-  const { watchTables } = await import('/static/next/colresize.js');
+  const { watchTables } = await import('/static/trellis-ui/colresize.js');
   const host = document.createElement('div'); document.body.appendChild(host);
   watchTables(host);
   host.innerHTML = app.schemaTreeHtml(SCHEMAS);
@@ -157,7 +159,7 @@ test('Survey & analyses: the chosen files-and-folders table has resize handles',
   };
   const app = await import('/static/next/app.js');
   const { mountSubResourcePanel } = await import('/static/next/stages/analysis.js');
-  const { watchTables } = await import('/static/next/colresize.js');
+  const { watchTables } = await import('/static/trellis-ui/colresize.js');
   const host = document.createElement('div'); document.body.appendChild(host);
   watchTables(host);
   await mountSubResourcePanel('repo_one', host);
@@ -182,7 +184,7 @@ test('Automate: the subscriptions and the schedules tables have resize handles',
   const app = await import('/static/next/app.js');
   app.state.resourceType = 'repo'; app.state.selectedSlug = 'r';
   const host = document.createElement('div'); host.id = 'content'; document.body.appendChild(host);
-  const { watchTables } = await import('/static/next/colresize.js');
+  const { watchTables } = await import('/static/trellis-ui/colresize.js');
   watchTables(document.body);
   const automate = await import(`/static/next/stages/automate.js?t=${Math.random()}`);
   await automate.renderAutomate();
@@ -197,7 +199,7 @@ test('Automate: the subscriptions and the schedules tables have resize handles',
 
 test('a table drawn after the watcher starts is enhanced; a header press resizes and never sorts', async () => {
   const { document, window } = makeDomEnvironment();
-  const { watchTables } = await import('/static/next/colresize.js');
+  const { watchTables } = await import('/static/trellis-ui/colresize.js');
   const host = document.createElement('div'); document.body.appendChild(host);
   watchTables(host);
   let sorted = 0;
@@ -224,7 +226,7 @@ test('a table drawn after the watcher starts is enhanced; a header press resizes
 
 test('layout and key/value tables are left alone: no header row, or the opt-out', async () => {
   const { document } = makeDomEnvironment();
-  const { enhanceTables } = await import('/static/next/colresize.js');
+  const { enhanceTables } = await import('/static/trellis-ui/colresize.js');
   const host = document.createElement('div');
   host.innerHTML = '<table id="kv"><tr><td>Key</td><td>Value</td></tr></table>'
     + '<div data-no-resize><table id="opt"><thead><tr><th>A</th><th>B</th></tr></thead></table></div>';

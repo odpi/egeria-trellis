@@ -6,7 +6,8 @@ from pathlib import PurePath
 
 from resource_explorer.github.client import GitHubClient
 from resource_explorer.ingestion.pipeline import IngestionPipeline
-from resource_explorer.vector_store_pg import MultiCollectionStore
+from resource_explorer import chunk_votes
+from resource_explorer.vector_store_pg import MultiCollectionStore, record_inserts
 from resource_explorer.index_state import has_own_index
 from resource_explorer.registry import Project, ProjectRegistry, ProjectStatus
 
@@ -18,6 +19,7 @@ class RefreshResult(str, Enum):
     NO_CHANGES = "no_changes"                # latest commit equals the stored one
     NOT_YET_INDEXED = "not_yet_indexed"      # no own collection: nothing to refresh, SHA left alone
     NOTHING_AFFECTED = "nothing_affected"    # changed files touch none of the project's own collection types
+    REBUILDING = "rebuilding"                # a rebuild from scratch is in progress (reindex.py): refresh waits
 
 
 class IncrementalIndexer:
@@ -47,10 +49,22 @@ class IncrementalIndexer:
     def __init__(self) -> None:
         self.registry = ProjectRegistry()
         self.client = GitHubClient()
+        #: (file, why) for each PDF the last refresh got no text from; its old chunks were replaced with none.
+        self.pdf_failures: list[tuple[str, str]] = []
 
     def refresh(self, project: Project) -> RefreshResult:
         import tempfile
         from pathlib import Path
+
+        self.pdf_failures = []
+
+        from resource_explorer import reindex
+
+        if reindex.is_rebuilding(self.registry, project.slug):
+            # The rebuild writes these collections' replacements aside and swaps them in; rows a refresh wrote into
+            # the live tables meanwhile would be swapped out and lost. It runs after the rebuild instead.
+            print(f"Rebuild in progress: {project.slug} is refreshed after its rebuild finishes")
+            return RefreshResult.REBUILDING
 
         repo = self.client.get_repo(project.github_url)
         latest_sha = self.client.get_latest_commit_sha(repo)
@@ -155,28 +169,44 @@ class IncrementalIndexer:
                 # relative_changed can match — both fall back to the
                 # original collection-level drop+full-rebuild.
                 use_full_rebuild = name == "release_notes" or bool(extra)
-
+                # Chat votes on the chunks about to be replaced are read first and carried to the ids the
+                # re-insert gives them (chunk_votes, R0): a moved chunk keeps its vote instead of losing it.
+                voted = chunk_votes.snapshot(store, collection_name,
+                                             None if use_full_rebuild else relative_changed)
+                with record_inserts({collection_name}) as inserted:
+                    if use_full_rebuild:
+                        store.drop_collection(collection_name)
+                        count = pipeline._ingest_collection(
+                            repo, project.slug, collection_name, ctype,
+                            local_root if name != "release_notes" else None,
+                            extra_paths=extra,
+                        )
+                    else:
+                        # Real row-level delete-then-reinsert: only the changed
+                        # files' chunks are touched, everything else in the
+                        # collection is left alone (migration plan decision D4).
+                        deleted = store.delete_by_metadata(collection_name, "file_path", list(relative_changed))
+                        count = pipeline._ingest_collection(
+                            repo, project.slug, collection_name, ctype, local_root,
+                            changed_files=relative_changed,
+                        )
+                failed_pdfs = [(f, why) for f, why in getattr(pipeline, "pdf_failures", []) or []
+                               if name == "pdfs" and (use_full_rebuild or f in relative_changed)]
+                if failed_pdfs:
+                    # Said in the refresh's own output, not left to the pipeline's console line: these files' old
+                    # chunks were replaced with none (Docling can return an empty document without raising).
+                    print(f"  WARNING {collection_name}: {len(failed_pdfs)} PDF(s) yielded no text: "
+                          + "; ".join(f"{f} ({why})" for f, why in failed_pdfs[:5]))
+                    self.pdf_failures.extend(failed_pdfs)
+                carried = chunk_votes.carry(voted, inserted)
+                votes = f"; {carried.words()}" if voted else ""
                 if use_full_rebuild:
-                    store.drop_collection(collection_name)
-                    count = pipeline._ingest_collection(
-                        repo, project.slug, collection_name, ctype,
-                        local_root if name != "release_notes" else None,
-                        extra_paths=extra,
-                    )
                     if count > 0:
                         surviving.append(collection_name)
-                        print(f"  {collection_name}: {count} chunks (full rebuild)")
+                        print(f"  {collection_name}: {count} chunks (full rebuild){votes}")
                 else:
-                    # Real row-level delete-then-reinsert: only the changed
-                    # files' chunks are touched, everything else in the
-                    # collection is left alone (migration plan decision D4).
-                    deleted = store.delete_by_metadata(collection_name, "file_path", list(relative_changed))
-                    count = pipeline._ingest_collection(
-                        repo, project.slug, collection_name, ctype, local_root,
-                        changed_files=relative_changed,
-                    )
                     surviving.append(collection_name)
-                    print(f"  {collection_name}: -{deleted} +{count} chunks (partial update)")
+                    print(f"  {collection_name}: -{deleted} +{count} chunks (partial update){votes}")
 
             if local_root is not None:
                 file_count, loc = pipeline._count_repo_stats(local_root)

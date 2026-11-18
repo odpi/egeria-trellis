@@ -30,7 +30,8 @@ FLOW_RUN_ID = "11111111-2222-3333-4444-555555555555"
 
 
 def _cfg(timeout=None):
-    prefect = types.SimpleNamespace(enabled=True, api_url="http://x/api", work_pool="cfg-pool")
+    # The configured pool is the one looked up (Architect ruling 2026-11-14); the fake deployment is on it.
+    prefect = types.SimpleNamespace(enabled=True, api_url="http://x/api", work_pool="resource-explorer-pool")
     if timeout is not None:
         prefect.step_timeout_seconds = timeout
     return types.SimpleNamespace(prefect=prefect)
@@ -86,8 +87,19 @@ def _worker(status):
     return types.SimpleNamespace(name="w", status=types.SimpleNamespace(value=status))
 
 
+class _Results:
+    """The registry a completed run's output is read from (TR-21): the row the flow wrote, by flow_run_id."""
+
+    def __init__(self, output=None):
+        self.output = {"findings": 3} if output is None else output
+
+    def read_flow_run_result(self, flow_run_id):
+        return {"flow_run_id": flow_run_id, "output": self.output, "norm_hash": "h", "step_run_id": 1}
+
+
 def _run_api(client, clock, timeout=None, cfg=None):
     with patch.object(adapter, "get_config", lambda: cfg or _cfg()), \
+         patch.object(adapter, "_results_registry", lambda: _Results()), \
          patch.object(adapter, "re_prefect_client", return_value=client):
         return asyncio.run(adapter._run_prefect_step_api(
             "repo", "slug", "repo_secret_scan", {}, timeout_seconds=timeout,

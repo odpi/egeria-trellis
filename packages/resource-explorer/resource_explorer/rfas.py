@@ -103,6 +103,8 @@ def _emit_rfa(rfas, entry, ann, idx, sub, member, n_members,
         "explanation": (member or ann).get("explanation", ""),
         "action_requested": (member or ann).get("action_requested", ""),
         "action_target_name": (member or ann).get("action_target_name", ""),
+        # An action the drawer can take for the reader (log_rfa's `offer`): today, Automate's schedule proposal.
+        "offer": ann.get("offer") or None,
         "status": ann.get("status", "local"),
         "rfa_status": override["rfa_status"] if override else "open",
         "assignee": override["assignee"] if override else "",

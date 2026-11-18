@@ -14,7 +14,7 @@ const env = makeDomEnvironment();
 await loadAppModule();
 const { commitPanelHtml } = await import('/static/next/stages/curate-scope.js');
 const { MANIFEST_COLS } = await import('/static/next/stages/scope-columns.js');
-const { attachColumnResize } = await import('/static/next/colresize.js');
+const { attachColumnResize } = await import('/static/trellis-ui/colresize.js');
 
 const L = (id, mechanism, text) => ({ id, mechanism, text });
 const preview = {

@@ -6,6 +6,7 @@ import os
 from datetime import datetime
 from typing import TYPE_CHECKING
 from resource_explorer.config import egeria_platform_url, egeria_view_server  # noqa: E402,F401
+from resource_explorer.survey_time import egeria_name_time
 
 if TYPE_CHECKING:
     from resource_explorer.registry import DatabaseEntity
@@ -836,7 +837,7 @@ class EgeriaDatabaseSurveyor:
             column_profile=column_profile, nested_columns=nested_columns,
             quality_annotations=quality_annotations, step_annotations=step_annotations)
 
-        qualified_name = f"SurveyReport::PostgreSQL::{db_entity.slug}::{surveyed_at}"
+        qualified_name = f"SurveyReport::PostgreSQL::{db_entity.slug}::{egeria_name_time(surveyed_at)}"
         body = {
             "class": "NewElementRequestBody",
             "parentGUID": db_guid,
@@ -1209,7 +1210,7 @@ class EgeriaDatabaseSurveyor:
         """
         self.connect()
         
-        search_prefix = f"Annotation::PostgreSQL::{db_slug}::{surveyed_at}::"
+        search_prefix = f"Annotation::PostgreSQL::{db_slug}::{egeria_name_time(surveyed_at)}::"
         annotations = []
         
         try:
@@ -1377,7 +1378,7 @@ class EgeriaDatabaseSurveyor:
                 declared_start = len(annotations)
                 annotations.extend(declared["annotations"])
 
-            qualified_name = f"SurveyReport::PostgreSQL::{db_entity.slug}::{surveyed_at}"
+            qualified_name = f"SurveyReport::PostgreSQL::{db_entity.slug}::{egeria_name_time(surveyed_at)}"
             body = {
                 "class": "NewElementRequestBody",
                 "parentGUID": db_guid,
@@ -1417,7 +1418,7 @@ class EgeriaDatabaseSurveyor:
             from resource_explorer.surveyors.survey_report import annotation_qualified_name
 
             guids = pub.get("read_back_guids")
-            prefix = f"Annotation::PostgreSQL::{db_entity.slug}::{surveyed_at}"
+            prefix = f"Annotation::PostgreSQL::{db_entity.slug}::{egeria_name_time(surveyed_at)}"
             why = ("" if guids is not None else
                    (report_error or pub.get("annotation_error") or "the report could not be read back"))
             for i, (row, ann) in enumerate(zip(declared["rows"], declared["annotations"])):
@@ -1826,7 +1827,7 @@ class EgeriaDatabaseSurveyor:
         if not targets:
             return counts
         counts["of"] = len(targets)
-        prefix = f"Annotation::PostgreSQL::{db_entity.slug}::{surveyed_at}"
+        prefix = f"Annotation::PostgreSQL::{db_entity.slug}::{egeria_name_time(surveyed_at)}"
         try:
             expert = self._metadata_expert_client()
             officer = self._clients().of(GovernanceOfficer)
@@ -1883,7 +1884,7 @@ class EgeriaDatabaseSurveyor:
         from resource_explorer.surveyors.survey_report import annotation_qualified_name
 
         counts = {"linked": 0, "already_linked": 0, "no_element": 0, "not_checked": 0, "failed": 0}
-        prefix = f"Annotation::PostgreSQL::{db_entity.slug}::{surveyed_at}"
+        prefix = f"Annotation::PostgreSQL::{db_entity.slug}::{egeria_name_time(surveyed_at)}"
         server = server_name_for(db_entity)
         element_guids: dict[str, str | None] = {}
         if not targets:
@@ -2066,7 +2067,7 @@ class EgeriaDatabaseSurveyor:
         relinked = relinked or {}
         by_name = {a.get("qualified_name"): a.get("guid") or "" for a in every}
         held_guids = {a.get("guid") for a in every if a.get("guid")}
-        prefix = f"Annotation::PostgreSQL::{db_slug}::{surveyed_at}"
+        prefix = f"Annotation::PostgreSQL::{db_slug}::{egeria_name_time(surveyed_at)}"
         guids: dict[int, str] = {}
         quality = 0
         for i, a in enumerate(annotations):
@@ -2217,7 +2218,7 @@ class EgeriaDatabaseSurveyor:
         qualifiedName) — do not recompute it here."""
         from resource_explorer.surveyors.annotation_props import publish_annotations
 
-        qualified_name_prefix = f"Annotation::PostgreSQL::{db_slug}::{surveyed_at}"
+        qualified_name_prefix = f"Annotation::PostgreSQL::{db_slug}::{egeria_name_time(surveyed_at)}"
         return publish_annotations(
             self._discovery, self._find_element_guid,
             annotations, report_guid, qualified_name_prefix, skip=skip,

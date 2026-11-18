@@ -3,10 +3,16 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <!-- The look (Dark / Light / Paper), shared with Resource Explorer (packages/trellis-ui): set before first paint
+       from localStorage["trellis.look"]; nothing stored, or storage blocked, means Dark. ea_look.js switches it. -->
+  <script>(function () { var l = 'dark'; try { var v = localStorage.getItem('trellis.look');
+    if (v === 'light' || v === 'paper' || v === 'dark') l = v; } catch (e) {} document.documentElement.setAttribute('data-look', l); })();</script>
   <title>Egeria Advisor — Admin</title>
-  <script src="/static/auth.js?v=20260908a"></script>
+  <script src="/static/auth.js?v=20261112a"></script>
+  <script src="/static/feedback_review.js?v=20261111a"></script>
   <script src="https://cdn.tailwindcss.com"></script>
-  <script>tailwind.config = { darkMode: 'class' };</script>
+  <script src="/static/trellis-ui/tokens.js"></script>
+  <script src="/static/ea_tailwind.js?v=20261111a"></script>
   <style>
     body { font-family: 'Inter', system-ui, sans-serif; }
     .badge-healthy  { background:#14532d; color:#86efac; }
@@ -24,6 +30,10 @@
     ::-webkit-scrollbar-track { background: #0f172a; }
     ::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }
   </style>
+  <!-- The looks' variables (trellis-ui) and EA's roles for them; after the <style> above, which they follow. -->
+  <link rel="stylesheet" href="/static/trellis-ui/themes.css">
+  <link rel="stylesheet" href="/static/ea_looks.css?v=20261111a">
+  <script type="module" src="/static/ea_look.js?v=20261111a"></script>
 </head>
 <body class="dark bg-slate-900 text-slate-100 min-h-screen">
 
@@ -36,7 +46,8 @@
   </div>
   <div class="flex items-center gap-3">
     <div id="sys-health" class="flex gap-2 text-xs"></div>
-    <span class="text-slate-600 text-xs">Auto-refresh <span id="countdown" class="text-slate-400">10s</span></span>
+    <span data-look-host class="text-xs"></span>
+    <span class="text-slate-500 text-xs">Auto-refresh <span id="countdown" class="text-slate-400">10s</span></span>
     <button onclick="refresh()" class="px-3 py-1 text-xs bg-slate-700 hover:bg-slate-600 rounded transition-colors">↺ Refresh</button>
     <a href="/" class="px-3 py-1 text-xs bg-cyan-800 hover:bg-cyan-700 rounded text-white transition-colors">← Chat</a>
   </div>
@@ -118,6 +129,7 @@
         <select id="fb-filter-triage" onchange="loadFeedbackReview()" class="text-xs bg-slate-700 border border-slate-600 rounded px-2 py-1 text-slate-200">
           <option value="all">All statuses</option>
           <option value="new">New</option>
+          <option value="triaged">Triaged</option>
           <option value="known_issue">Known issue</option>
           <option value="actioned">Actioned</option>
           <option value="deferred">Deferred</option>
@@ -165,8 +177,9 @@
         <div class="grid grid-cols-2 gap-2">
           <button onclick="maintenance('refresh_perspectives')"
             class="maint-btn">↺ Refresh Perspectives</button>
-          <button onclick="maintenance('refresh_specs')"
-            class="maint-btn">↺ Refresh Report Specs</button>
+          <button onclick="maintenance('sync_specs')"
+            title="Sync the report specs held in Egeria (EA's consumer folder) into the EGERIA tier"
+            class="maint-btn">↺ Sync Report Specs from Egeria</button>
           <button onclick="maintenance('clear_cache')"
             class="maint-btn">🗑 Clear Query Cache</button>
           <button onclick="maintenance('invalidate_index')"
@@ -254,6 +267,45 @@
 </style>
 
 <script>
+// ── Escaping and the admin credential (Phase 0 S1, 2026-11-10) ───────────────
+// Every server or stored value goes into HTML through _esc; a value passed to an inline handler goes through
+// _jsArg (a JSON string literal, then HTML-escaped for the attribute it sits in).
+function _esc(v) {
+  return String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+function _jsArg(v) { return _esc(JSON.stringify(String(v ?? ''))); }
+
+// The admin token (optional): kept in this tab's sessionStorage only, sent as X-Admin-Token. The server is the
+// gate; this only carries the credential (RE's `re_admin_token` pattern).
+const _ADMIN_TOKEN_KEY = 'ea_admin_token';
+function _adminToken() { try { return sessionStorage.getItem(_ADMIN_TOKEN_KEY) || ''; } catch { return ''; } }
+function _adminHeaders(extra) {
+  const h = { ...Auth.getHeaders(), ...(extra || {}) };
+  const t = _adminToken();
+  if (t) h['X-Admin-Token'] = t;
+  return h;
+}
+function _setAdminToken() {
+  const t = prompt('Admin token (kept in this browser tab only; leave empty to clear):', '');
+  if (t === null) return;
+  try { t ? sessionStorage.setItem(_ADMIN_TOKEN_KEY, t) : sessionStorage.removeItem(_ADMIN_TOKEN_KEY); } catch {}
+  refresh();
+}
+const _ADMIN_ONLY_WORDS = 'Admin only: sign in as an admin, or set the admin token';
+function _showAdminOnly(show) {
+  let el = document.getElementById('admin-only-banner');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'admin-only-banner';
+    el.className = 'hidden m-4 p-3 rounded border border-amber-600 bg-amber-950/40 text-amber-300 text-sm';
+    el.innerHTML = `<span>${_esc(_ADMIN_ONLY_WORDS)}.</span>
+      <button class="action-btn btn-amber ml-2" onclick="_setAdminToken()">Set admin token</button>`;
+    document.body.prepend(el);
+  }
+  el.classList.toggle('hidden', !show);
+}
+
 // ── State ──────────────────────────────────────────────────────────────────
 let _pollTimer = null;
 let _countdownVal = 10;
@@ -290,11 +342,13 @@ async function refresh() {
   startCountdown();
   let data;
   try {
-    const r = await fetch('/api/admin/status', { headers: Auth.getHeaders() });
+    const r = await fetch('/api/admin/status', { headers: _adminHeaders() });
+    if (r.status === 403) { _showAdminOnly(true); return; }
+    _showAdminOnly(false);
     data = await r.json();
   } catch (e) { return; }
 
-  renderSystemHealth(data.system || {});
+  renderSystemHealth(data.system || {}, data.dr_egeria_templates || null);
   renderCollections(data.collections || []);
   renderRepos(data.repos || []);
   await refreshJobs();
@@ -305,7 +359,7 @@ async function refresh() {
 }
 
 // ── System health ──────────────────────────────────────────────────────────
-function renderSystemHealth(sys) {
+function renderSystemHealth(sys, tpl) {
   const el = document.getElementById('sys-health');
   el.innerHTML = '';
   const items = [
@@ -318,6 +372,23 @@ function renderSystemHealth(sys) {
     span.textContent = label;
     el.appendChild(span);
   });
+  // Dr.Egeria templates (B2): green when read from the installed pyegeria,
+  // red when EA has fallen back to a copy that may not match the dispatcher.
+  if (tpl) {
+    const span = document.createElement('span');
+    const ok = !!tpl.matches_executor;
+    span.className = `px-2 py-0.5 rounded text-xs font-medium ${ok ? 'sys-ok' : 'sys-err'}`;
+    span.textContent = ok
+      ? `Dr.Egeria templates: pyegeria ${tpl.pyegeria_version || ''}`.trim()
+      : 'Dr.Egeria templates: fallback copy';
+    span.title = ok
+      ? `From the installed pyegeria (${tpl.source}): ${tpl.root}`
+      : (tpl.root
+          ? `Installed pyegeria ${tpl.pyegeria_version || ''} has no packaged templates, so these copies may not match the Dr.Egeria executor:\n` +
+            Object.entries(tpl.fallback_roots || {}).map(([k, v]) => `${k}: ${v || 'none'}`).join('\n')
+          : 'No Dr.Egeria templates found');
+    el.appendChild(span);
+  }
 }
 
 // ── Collections ────────────────────────────────────────────────────────────
@@ -336,15 +407,15 @@ function renderCollections(cols) {
     const tr = document.createElement('tr');
     tr.className = 'border-b border-slate-700/50 hover:bg-slate-700/20 transition-colors';
     const countStr = c.vector_count < 0 ? '—' : c.vector_count.toLocaleString();
-    const badge = `<span class="px-2 py-0.5 rounded text-xs font-medium badge-${c.badge}">${c.badge}</span>`;
+    const badge = `<span class="px-2 py-0.5 rounded text-xs font-medium badge-${_esc(c.badge)}">${_esc(c.badge)}</span>`;
     const actions = c.enabled ? `
-      <button class="action-btn btn-blue mr-1" onclick="reindex('${c.name}', false)" title="Incremental update (changed files only)">▲ Update</button>
-      <button class="action-btn btn-amber" onclick="reindex('${c.name}', true)" title="Drop and rebuild the full collection">▲▲ Rebuild</button>
-    ` : `<span class="text-xs text-slate-600">disabled</span>`;
+      <button class="action-btn btn-blue mr-1" onclick="reindex(${_jsArg(c.name)}, false)" title="Incremental update (changed files only)">▲ Update</button>
+      <button class="action-btn btn-amber" onclick="reindex(${_jsArg(c.name)}, true)" title="Drop and rebuild the full collection">▲▲ Rebuild</button>
+    ` : `<span class="text-xs text-slate-500">disabled</span>`;
     tr.innerHTML = `
-      <td class="px-4 py-2.5 font-mono text-xs text-cyan-300">${c.name}</td>
-      <td class="px-4 py-2.5 text-xs text-slate-500 hidden md:table-cell">${c.repo || '—'}</td>
-      <td class="px-4 py-2.5 text-xs text-right font-mono">${countStr}</td>
+      <td class="px-4 py-2.5 font-mono text-xs text-cyan-300">${_esc(c.name)}</td>
+      <td class="px-4 py-2.5 text-xs text-slate-500 hidden md:table-cell">${_esc(c.repo || '—')}</td>
+      <td class="px-4 py-2.5 text-xs text-right font-mono">${_esc(countStr)}</td>
       <td class="px-4 py-2.5 text-xs text-slate-400">${fmtAge(c.age_days)}</td>
       <td class="px-4 py-2.5 text-center">${badge}</td>
       <td class="px-4 py-2.5 text-right">${actions}</td>
@@ -354,10 +425,19 @@ function renderCollections(cols) {
 }
 
 async function reindex(name, force) {
-  const label = force ? 'Full rebuild' : 'Incremental update';
-  if (force && !confirm(`Force rebuild of "${name}"?\n\nThis drops and recreates the collection — may take several minutes.`)) return;
-  const r = await fetch(`/api/admin/collections/${encodeURIComponent(name)}/reindex?force=${force}`, { method: 'POST', headers: Auth.getHeaders() });
+  // A full rebuild drops the collection's table: the server refuses it unless confirm= names the collection, so
+  // the person types the name (Phase 0 S1).
+  let confirmParam = '';
+  if (force) {
+    const typed = prompt(`Full rebuild DROPS and recreates "${name}" (it may take several minutes).\n\nType the collection name to confirm:`, '');
+    if (typed === null) return;
+    if (typed.trim() !== name) { alert('The name did not match; nothing was started.'); return; }
+    confirmParam = `&confirm=${encodeURIComponent(typed.trim())}`;
+  }
+  const r = await fetch(`/api/admin/collections/${encodeURIComponent(name)}/reindex?force=${force}${confirmParam}`, { method: 'POST', headers: _adminHeaders() });
+  if (r.status === 403) { _showAdminOnly(true); return; }
   const data = await r.json();
+  if (!r.ok) { alert(data.detail || `Refused (${r.status})`); return; }
   if (data.job_id) openJobModal(data.job_id, data.description);
   await refreshJobs();
 }
@@ -374,12 +454,12 @@ function renderRepos(repos) {
       ? `<span class="px-2 py-0.5 rounded text-xs badge-healthy">cloned</span>`
       : `<span class="px-2 py-0.5 rounded text-xs badge-empty">missing</span>`;
     const action = r.exists
-      ? `<button class="action-btn btn-blue" onclick="pullRepo('${r.name}')">↓ Pull</button>`
-      : `<span class="text-xs text-slate-600">—</span>`;
+      ? `<button class="action-btn btn-blue" onclick="pullRepo(${_jsArg(r.name)})">↓ Pull</button>`
+      : `<span class="text-xs text-slate-500">—</span>`;
     tr.innerHTML = `
-      <td class="px-4 py-2.5 font-mono text-xs text-cyan-300">${r.name}</td>
-      <td class="px-4 py-2.5 text-xs text-slate-500 hidden lg:table-cell">${r.last_commit_date ? r.last_commit_date.slice(0,19) : '—'} <span class="font-mono text-slate-600">${r.last_commit || ''}</span></td>
-      <td class="px-4 py-2.5 text-xs text-slate-400 hidden xl:table-cell truncate max-w-xs">${r.last_commit_msg || '—'}</td>
+      <td class="px-4 py-2.5 font-mono text-xs text-cyan-300">${_esc(r.name)}</td>
+      <td class="px-4 py-2.5 text-xs text-slate-500 hidden lg:table-cell">${_esc(r.last_commit_date ? r.last_commit_date.slice(0,19) : '—')} <span class="font-mono text-slate-500">${_esc(r.last_commit || '')}</span></td>
+      <td class="px-4 py-2.5 text-xs text-slate-400 hidden xl:table-cell truncate max-w-xs">${_esc(r.last_commit_msg || '—')}</td>
       <td class="px-4 py-2.5 text-center">${badge}</td>
       <td class="px-4 py-2.5 text-right">${action}</td>
     `;
@@ -388,7 +468,7 @@ function renderRepos(repos) {
 }
 
 async function pullRepo(name) {
-  const r = await fetch(`/api/admin/repos/${encodeURIComponent(name)}/pull`, { method: 'POST', headers: Auth.getHeaders() });
+  const r = await fetch(`/api/admin/repos/${encodeURIComponent(name)}/pull`, { method: 'POST', headers: _adminHeaders() });
   const data = await r.json();
   if (data.job_id) openJobModal(data.job_id, data.description);
   await refreshJobs();
@@ -396,21 +476,29 @@ async function pullRepo(name) {
 
 // ── Maintenance ────────────────────────────────────────────────────────────
 async function maintenance(action) {
-  const r = await fetch(`/api/admin/maintenance/${action}`, { method: 'POST', headers: Auth.getHeaders() });
-  const data = await r.json();
   const msg = document.getElementById('maint-msg');
-  msg.textContent = data.message || data.status;
-  msg.className = `text-xs mt-2 ${data.status === 'ok' ? 'text-emerald-400' : 'text-red-400'}`;
+  let r = null, data = {};
+  try {
+    r = await fetch(`/api/admin/maintenance/${encodeURIComponent(action)}`, { method: 'POST', headers: _adminHeaders() });
+    try { data = await r.json(); } catch { data = {}; }
+  } catch (e) {
+    data = { detail: `not sent: ${(e && e.message) || e}` };
+  }
+  // A failure is a non-2xx with the reason in `detail` (409 busy, 500 failed, 400 unknown action).
+  const ok = !!(r && r.ok) && data.status === 'ok';
+  const why = typeof data.detail === 'string' ? data.detail : (data.detail ? JSON.stringify(data.detail) : '');
+  msg.textContent = ok ? (data.message || 'Done.') : `${action}: ${why || data.message || (r ? 'HTTP ' + r.status : 'failed')}`;
+  msg.className = `text-xs mt-2 ${ok ? 'text-emerald-400' : 'text-red-400'}`;
   msg.classList.remove('hidden');
   // check/repair_draft_doc_ids return a per-draft report — log it for detail
   // beyond the one-line summary shown in the UI.
   if (data.report) console.table(data.report);
-  setTimeout(() => msg.classList.add('hidden'), 4000);
+  setTimeout(() => msg.classList.add('hidden'), action === 'sync_specs' ? 15000 : 4000);
 }
 
 // ── Jobs ───────────────────────────────────────────────────────────────────
 async function refreshJobs() {
-  const r = await fetch('/api/admin/jobs', { headers: Auth.getHeaders() });
+  const r = await fetch('/api/admin/jobs', { headers: _adminHeaders() });
   const data = await r.json();
   renderJobs(data.jobs || []);
   // Update modal if open
@@ -439,18 +527,18 @@ function renderJobs(jobs) {
   jobs.forEach(job => {
     const div = document.createElement('div');
     div.className = 'flex items-center justify-between gap-2 py-1.5 border-b border-slate-700/40 last:border-0';
-    const statusBadge = `<span class="px-1.5 py-0.5 rounded text-xs badge-${job.status}">${job.status}</span>`;
+    const statusBadge = `<span class="px-1.5 py-0.5 rounded text-xs badge-${_esc(job.status)}">${_esc(job.status)}</span>`;
     const age = job.completed_at
       ? Math.round((Date.now() - new Date(job.completed_at)) / 60000) + 'm ago'
       : Math.round((Date.now() - new Date(job.started_at)) / 1000) + 's';
     div.innerHTML = `
       <div class="flex items-center gap-2 min-w-0">
         ${statusBadge}
-        <span class="text-xs text-slate-300 truncate">${job.description}</span>
+        <span class="text-xs text-slate-300 truncate">${_esc(job.description)}</span>
       </div>
       <div class="flex items-center gap-2 shrink-0">
-        <span class="text-xs text-slate-600">${age}</span>
-        <button class="action-btn btn-slate text-xs" onclick="openJobModal('${job.id}', '${job.description.replace(/'/g,"\\'")}')">View</button>
+        <span class="text-xs text-slate-500">${_esc(age)}</span>
+        <button class="action-btn btn-slate text-xs" onclick="openJobModal(${_jsArg(job.id)}, ${_jsArg(job.description)})">View</button>
       </div>
     `;
     el.appendChild(div);
@@ -461,7 +549,7 @@ function renderJobs(jobs) {
 async function loadPlanStats() {
   let data;
   try {
-    const r = await fetch('/api/admin/plan-stats', { headers: Auth.getHeaders() });
+    const r = await fetch('/api/admin/plan-stats', { headers: _adminHeaders() });
     data = await r.json();
   } catch { return; }
 
@@ -483,11 +571,11 @@ async function loadPlanStats() {
       <div class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Summary</div>
       <div class="flex justify-between text-sm">
         <span class="text-slate-400">Plans created</span>
-        <span class="font-mono text-cyan-300">${data.total_created}</span>
+        <span class="font-mono text-cyan-300">${_esc(data.total_created)}</span>
       </div>
       <div class="flex justify-between text-sm">
         <span class="text-slate-400">Plans executed</span>
-        <span class="font-mono text-cyan-300">${data.total_executed}</span>
+        <span class="font-mono text-cyan-300">${_esc(data.total_executed)}</span>
       </div>
       <div class="flex justify-between text-sm">
         <span class="text-slate-400">Execution rate</span>
@@ -496,10 +584,10 @@ async function loadPlanStats() {
       ${data.total_executed ? `
       <div class="mt-2 pt-2 border-t border-slate-700 text-xs text-slate-500 uppercase tracking-wider mb-1">Outcomes</div>
       <div class="space-y-1">
-        ${successN ? `<div class="flex justify-between text-xs"><span class="text-emerald-400">✓ Success</span><span class="font-mono">${successN} (${Math.round(successN/totalExec*100)}%)</span></div>` : ''}
-        ${partialN ? `<div class="flex justify-between text-xs"><span class="text-amber-400">~ Partial</span><span class="font-mono">${partialN} (${Math.round(partialN/totalExec*100)}%)</span></div>` : ''}
-        ${failedN  ? `<div class="flex justify-between text-xs"><span class="text-red-400">✗ Failed</span><span class="font-mono">${failedN} (${Math.round(failedN/totalExec*100)}%)</span></div>` : ''}
-        ${(data.by_outcome['Unknown']||0) ? `<div class="flex justify-between text-xs"><span class="text-slate-500">? Unknown</span><span class="font-mono">${data.by_outcome['Unknown']}</span></div>` : ''}
+        ${successN ? `<div class="flex justify-between text-xs"><span class="text-emerald-400">✓ Success</span><span class="font-mono">${_esc(successN)} (${Math.round(successN/totalExec*100)}%)</span></div>` : ''}
+        ${partialN ? `<div class="flex justify-between text-xs"><span class="text-amber-400">~ Partial</span><span class="font-mono">${_esc(partialN)} (${Math.round(partialN/totalExec*100)}%)</span></div>` : ''}
+        ${failedN  ? `<div class="flex justify-between text-xs"><span class="text-red-400">✗ Failed</span><span class="font-mono">${_esc(failedN)} (${Math.round(failedN/totalExec*100)}%)</span></div>` : ''}
+        ${(data.by_outcome['Unknown']||0) ? `<div class="flex justify-between text-xs"><span class="text-slate-500">? Unknown</span><span class="font-mono">${_esc(data.by_outcome['Unknown'])}</span></div>` : ''}
       </div>` : ''}
     </div>`;
 
@@ -511,18 +599,18 @@ async function loadPlanStats() {
       <div class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Command Families Used</div>
       ${famEntries.length ? famEntries.map(([fam, n]) => `
         <div class="flex items-center gap-2">
-          <span class="text-xs text-slate-300 flex-1 truncate capitalize">${fam}</span>
+          <span class="text-xs text-slate-300 flex-1 truncate capitalize">${_esc(fam)}</span>
           <div class="w-24 bg-slate-700 rounded-full h-1.5">
-            <div class="bg-cyan-500 h-1.5 rounded-full" style="width:${Math.round(n/famEntries[0][1]*100)}%"></div>
+            <div class="bg-cyan-500 h-1.5 rounded-full" style="width:${Number(Math.round(n/famEntries[0][1]*100)) || 0}%"></div>
           </div>
-          <span class="text-xs font-mono text-slate-400 w-6 text-right">${n}</span>
+          <span class="text-xs font-mono text-slate-400 w-6 text-right">${_esc(n)}</span>
         </div>`).join('') : '<div class="text-xs text-slate-500">No data yet</div>'}
       ${perspEntries.length ? `
       <div class="text-xs font-semibold text-slate-400 uppercase tracking-wider mt-3 mb-2">By Perspective</div>
       ${perspEntries.map(([p, n]) => `
         <div class="flex justify-between text-xs">
-          <span class="text-slate-300 capitalize">${p.replace('_', ' ')}</span>
-          <span class="font-mono text-slate-400">${n}</span>
+          <span class="text-slate-300 capitalize">${_esc(p.replace('_', ' '))}</span>
+          <span class="font-mono text-slate-400">${_esc(n)}</span>
         </div>`).join('')}` : ''}
     </div>`;
 
@@ -541,11 +629,11 @@ async function loadPlanStats() {
           <span class="text-xs mt-0.5">${icon}</span>
           <div class="min-w-0 flex-1">
             <div class="flex items-center gap-1.5">
-              <span class="text-xs ${color} font-medium">${e.event_type}</span>
-              ${e.outcome_status ? `<span class="text-xs text-slate-500">${e.outcome_status}</span>` : ''}
-              <span class="text-xs text-slate-600 ml-auto shrink-0">${ts}</span>
+              <span class="text-xs ${color} font-medium">${_esc(e.event_type)}</span>
+              ${e.outcome_status ? `<span class="text-xs text-slate-500">${_esc(e.outcome_status)}</span>` : ''}
+              <span class="text-xs text-slate-500 ml-auto shrink-0">${_esc(ts)}</span>
             </div>
-            <div class="text-xs text-slate-400 truncate">${e.title || e.doc_id}</div>
+            <div class="text-xs text-slate-400 truncate">${_esc(e.title || e.doc_id)}</div>
           </div>
         </div>`;
       }).join('') + `</div>` : '<div class="text-xs text-slate-500">No events yet</div>'}
@@ -560,11 +648,17 @@ async function loadFeedbackAnalysis() {
   if (!el) return;
   let data;
   try {
-    const r = await fetch('/api/feedback/analysis', { headers: Auth.getHeaders() });
+    const r = await fetch('/api/feedback/analysis', { headers: _adminHeaders() });
+    if (r.status === 403) throw new Error(_ADMIN_ONLY_WORDS);
     if (!r.ok) throw new Error(r.statusText);
     data = await r.json();
   } catch (e) {
-    el.innerHTML = `<div class="bg-slate-800 rounded-lg border border-slate-700 p-4 text-xs text-slate-500 lg:col-span-3">Unable to load feedback data.</div>`;
+    el.innerHTML = `<div class="bg-slate-800 rounded-lg border border-slate-700 p-4 text-xs text-slate-500 lg:col-span-3">Unable to load feedback data${e && e.message === _ADMIN_ONLY_WORDS ? ': ' + _esc(_ADMIN_ONLY_WORDS) : ''}.</div>`;
+    return;
+  }
+  // A-F1: the store says whether it was read. not_read / none carry their own sentence.
+  if (data.state && data.state !== 'ok') {
+    el.innerHTML = `<div class="bg-slate-800 rounded-lg border border-slate-700 p-4 text-xs text-slate-500 lg:col-span-3">${_esc(data.message || data.state)}</div>`;
     return;
   }
 
@@ -583,20 +677,20 @@ async function loadFeedbackAnalysis() {
       <div class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Overall Satisfaction</div>
       <div class="flex items-end gap-3 mb-4">
         <span class="text-4xl font-bold ${satColor}">${sat}%</span>
-        <span class="text-xs text-slate-500 pb-1">${pos} 👍 / ${neu} 😐 / ${neg} 👎 / ${total} total</span>
+        <span class="text-xs text-slate-500 pb-1">${_esc(pos)} 👍 / ${_esc(neu)} 😐 / ${_esc(neg)} 👎 / ${_esc(total)} total</span>
       </div>
       <div class="grid grid-cols-3 gap-2 text-center">
         <div class="bg-slate-900 rounded p-2">
           <div class="text-xs text-slate-500">Positive</div>
-          <div class="text-base font-semibold text-emerald-400">${pos}</div>
+          <div class="text-base font-semibold text-emerald-400">${_esc(pos)}</div>
         </div>
         <div class="bg-slate-900 rounded p-2">
           <div class="text-xs text-slate-500">Negative</div>
-          <div class="text-base font-semibold text-red-400">${neg}</div>
+          <div class="text-base font-semibold text-red-400">${_esc(neg)}</div>
         </div>
         <div class="bg-slate-900 rounded p-2">
           <div class="text-xs text-slate-500">Neutral</div>
-          <div class="text-base font-semibold text-slate-400">${stats.neutral || 0}</div>
+          <div class="text-base font-semibold text-slate-400">${_esc(stats.neutral || 0)}</div>
         </div>
       </div>
     </div>`;
@@ -609,8 +703,8 @@ async function loadFeedbackAnalysis() {
       const agentSat = d.total ? Math.round(((d.positive || 0) + 0.5 * (d.neutral || 0)) / d.total * 100) : 0;
       const color = agentSat >= 60 ? 'text-emerald-400' : agentSat >= 40 ? 'text-amber-400' : 'text-red-400';
       return `<tr class="border-t border-slate-700/50">
-        <td class="py-1.5 pr-3 text-xs text-slate-300 font-mono">${agent}</td>
-        <td class="py-1.5 pr-2 text-xs text-slate-500 text-right">${d.total}</td>
+        <td class="py-1.5 pr-3 text-xs text-slate-300 font-mono">${_esc(agent)}</td>
+        <td class="py-1.5 pr-2 text-xs text-slate-500 text-right">${_esc(d.total)}</td>
         <td class="py-1.5 text-xs ${color} text-right font-semibold">${agentSat}%</td>
       </tr>`;
     }).join('');
@@ -636,8 +730,8 @@ async function loadFeedbackAnalysis() {
       const qtSat = d.total ? Math.round(((d.positive || 0) + 0.5 * (d.neutral || 0)) / d.total * 100) : 0;
       const color = qtSat >= 60 ? 'text-emerald-400' : qtSat >= 40 ? 'text-amber-400' : 'text-red-400';
       return `<tr class="border-t border-slate-700/50">
-        <td class="py-1.5 pr-3 text-xs text-slate-300">${qt}</td>
-        <td class="py-1.5 pr-2 text-xs text-slate-500 text-right">${d.total}</td>
+        <td class="py-1.5 pr-3 text-xs text-slate-300">${_esc(qt)}</td>
+        <td class="py-1.5 pr-2 text-xs text-slate-500 text-right">${_esc(d.total)}</td>
         <td class="py-1.5 text-xs ${color} text-right font-semibold">${qtSat}%</td>
       </tr>`;
     }).join('');
@@ -665,10 +759,10 @@ async function loadFeedbackAnalysis() {
     ...(gaps.rag_fallback_negatives || []).map(g => ({ ...g, tag: 'rag fallback' })),
   ];
   const lowAgents = (gaps.low_satisfaction_agents || []).map(g =>
-    `<li class="text-xs text-red-300">${g.routing_agent} — ${Math.round(g.satisfaction_rate * 100)}% sat (${g.total} queries)</li>`
+    `<li class="text-xs text-red-300">${_esc(g.routing_agent)} — ${_esc(Math.round(g.satisfaction_rate * 100))}% sat (${_esc(g.total)} queries)</li>`
   ).join('');
   const lowPersp = (gaps.low_satisfaction_perspectives || []).map(g =>
-    `<li class="text-xs text-red-300">${g.perspective} — ${Math.round(g.satisfaction_rate * 100)}% sat (${g.total} queries)</li>`
+    `<li class="text-xs text-red-300">${_esc(g.perspective)} — ${_esc(Math.round(g.satisfaction_rate * 100))}% sat (${_esc(g.total)} queries)</li>`
   ).join('');
 
   const gapCard = `
@@ -678,12 +772,12 @@ async function loadFeedbackAnalysis() {
 
         <div>
           <div class="text-xs text-slate-500 font-medium mb-1">Low-satisfaction agents (≥5 queries)</div>
-          ${lowAgents ? `<ul class="space-y-0.5">${lowAgents}</ul>` : '<div class="text-xs text-slate-600">None</div>'}
+          ${lowAgents ? `<ul class="space-y-0.5">${lowAgents}</ul>` : '<div class="text-xs text-slate-500">None</div>'}
         </div>
 
         <div>
           <div class="text-xs text-slate-500 font-medium mb-1">Low-satisfaction perspectives (≥5 queries)</div>
-          ${lowPersp ? `<ul class="space-y-0.5">${lowPersp}</ul>` : '<div class="text-xs text-slate-600">None (or insufficient data)</div>'}
+          ${lowPersp ? `<ul class="space-y-0.5">${lowPersp}</ul>` : '<div class="text-xs text-slate-500">None (or insufficient data)</div>'}
         </div>
 
         <div>
@@ -691,9 +785,9 @@ async function loadFeedbackAnalysis() {
           ${gapItems.length
             ? `<div class="space-y-1 max-h-40 overflow-y-auto">` +
               gapItems.map(g =>
-                `<div class="text-xs text-slate-400 truncate" title="${g.query}">${g.query}</div>`
+                `<div class="text-xs text-slate-400 truncate" title="${_esc(g.query)}">${_esc(g.query)}</div>`
               ).join('') + `</div>`
-            : '<div class="text-xs text-slate-600">None</div>'}
+            : '<div class="text-xs text-slate-500">None</div>'}
         </div>
       </div>
     </div>`;
@@ -702,120 +796,16 @@ async function loadFeedbackAnalysis() {
 }
 
 // ── Feedback Review ────────────────────────────────────────────────────────
-const _TRIAGE_OPTIONS = [
-  { value: 'new',          label: 'New',          cls: 'text-sky-400' },
-  { value: 'known_issue',  label: 'Known issue',  cls: 'text-amber-400' },
-  { value: 'actioned',     label: 'Actioned',     cls: 'text-emerald-400' },
-  { value: 'deferred',     label: 'Deferred',     cls: 'text-slate-400' },
-  { value: 'not_an_issue', label: 'Not an issue', cls: 'text-slate-500' },
-];
-
-function _triageCls(status) {
-  return (_TRIAGE_OPTIONS.find(o => o.value === status) || _TRIAGE_OPTIONS[0]).cls;
-}
-
+// The rows, their triage and every empty state are built by feedback_review.js, by item id (A-F1).
 async function loadFeedbackReview() {
   const el = document.getElementById('fb-review-body');
   if (!el) return;
-  // Don't rebuild while the user is editing a textarea — the refresh would wipe their text.
-  if (el.contains(document.activeElement) && document.activeElement.tagName === 'TEXTAREA') return;
-  let records = [];
-  try {
-    const r = await fetch('/api/feedback/extended', { headers: Auth.getHeaders() });
-    if (!r.ok) throw new Error(r.statusText);
-    const data = await r.json();
-    records = data.records || [];
-  } catch (e) {
-    el.innerHTML = `<div class="p-4 text-xs text-slate-500">Unable to load feedback records.</div>`;
-    return;
-  }
-
-  // Apply filters
-  const voteFilter   = document.getElementById('fb-filter-vote')?.value || 'all';
-  const triageFilter = document.getElementById('fb-filter-triage')?.value || 'all';
-  let filtered = records.filter((rec, idx) => { rec._idx = idx; return true; });
-  if (voteFilter !== 'all') filtered = filtered.filter(r => String(r.vote) === voteFilter);
-  if (triageFilter !== 'all') filtered = filtered.filter(r => (r.triage_status || 'new') === triageFilter);
-
-  if (!filtered.length) {
-    el.innerHTML = `<div class="p-4 text-xs text-slate-500">No records match current filter (${records.length} total).</div>`;
-    return;
-  }
-
-  // Newest first
-  filtered = filtered.slice().reverse();
-
-  const rows = filtered.map(rec => {
-    const idx = rec._idx;
-    const voteIcon   = rec.vote === 1 ? '👍' : rec.vote === -1 ? '👎' : (rec.vote === 0 ? '😐' : '—');
-    const triageCls  = _triageCls(rec.triage_status || 'new');
-    const triageOpts = _TRIAGE_OPTIONS.map(o =>
-      `<option value="${o.value}"${(rec.triage_status || 'new') === o.value ? ' selected' : ''}>${o.label}</option>`
-    ).join('');
-    const ts = rec.timestamp ? rec.timestamp.slice(0, 19).replace('T', ' ') : '—';
-    const perspective = rec.perspective || '—';
-    const intent = rec.intent_override || 'auto';
-    const queryType  = rec.query_type || '—';
-    const agent      = rec.routing_agent || '—';
-    const query      = (rec.query || '').replace(/</g, '&lt;');
-    const respText   = (rec.response_text || '').replace(/</g, '&lt;');
-    const comments   = (rec.analysis_comments || '').replace(/</g, '&lt;');
-    const respId = `resp-${idx}`;
-    const commentId = `comment-${idx}`;
-
-    return `<tr class="border-t border-slate-700/50 align-top hover:bg-slate-750/30" data-idx="${idx}">
-      <td class="px-3 py-2 text-sm">${voteIcon}</td>
-      <td class="px-3 py-2 text-xs text-slate-400 whitespace-nowrap">${ts}</td>
-      <td class="px-3 py-2 text-xs">
-        <div class="font-medium text-slate-200 max-w-xs">${query}</div>
-        <div class="text-slate-500 mt-0.5">${perspective} / ${intent} → <span class="font-mono">${queryType}</span> <span class="text-slate-600">[${agent}]</span></div>
-        ${respText ? `<details class="mt-1"><summary class="cursor-pointer text-slate-500 hover:text-slate-300">Response ▸</summary><pre id="${respId}" class="mt-1 text-xs text-slate-400 whitespace-pre-wrap max-h-40 overflow-y-auto bg-slate-900/60 rounded p-2">${respText}</pre></details>` : ''}
-      </td>
-      <td class="px-3 py-2">
-        <select onchange="fbUpdateTriage(${idx}, this.value)" class="text-xs bg-slate-700 border border-slate-600 rounded px-2 py-1 ${triageCls} w-full">
-          ${triageOpts}
-        </select>
-      </td>
-      <td class="px-3 py-2 min-w-[200px]">
-        <textarea id="${commentId}" rows="2" placeholder="Analysis notes…"
-          class="w-full text-xs bg-slate-900/60 border border-slate-700 rounded px-2 py-1 text-slate-300 resize-y"
-          onblur="fbSaveComment(${idx}, this.value)"
-        >${comments}</textarea>
-      </td>
-    </tr>`;
-  }).join('');
-
-  el.innerHTML = `
-    <table class="w-full text-sm">
-      <thead>
-        <tr class="border-b border-slate-700 text-xs text-slate-500 uppercase tracking-wider">
-          <th class="text-left px-3 py-2 w-6"></th>
-          <th class="text-left px-3 py-2 whitespace-nowrap">Time</th>
-          <th class="text-left px-3 py-2">Query / Routing</th>
-          <th class="text-left px-3 py-2 w-36">Triage</th>
-          <th class="text-left px-3 py-2">Analysis notes</th>
-        </tr>
-      </thead>
-      <tbody>${rows}</tbody>
-    </table>
-    <div class="px-3 py-2 text-xs text-slate-600 border-t border-slate-700/50">${filtered.length} of ${records.length} records</div>
-  `;
-}
-
-async function fbUpdateTriage(idx, value) {
-  await fetch(`/api/feedback/extended/${idx}`, {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json', ...Auth.getHeaders() },
-    body: JSON.stringify({ triage_status: value }),
-  }).catch(() => {});
-}
-
-async function fbSaveComment(idx, value) {
-  await fetch(`/api/feedback/extended/${idx}`, {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json', ...Auth.getHeaders() },
-    body: JSON.stringify({ analysis_comments: value }),
-  }).catch(() => {});
+  if (!window.FeedbackReview) { el.textContent = 'Feedback review did not load (feedback_review.js).'; return; }
+  await window.FeedbackReview.load(el, {
+    headers: () => _adminHeaders(),
+    vote: document.getElementById('fb-filter-vote')?.value || 'all',
+    status: document.getElementById('fb-filter-triage')?.value || 'all',
+  });
 }
 
 // ── Job modal ──────────────────────────────────────────────────────────────
@@ -897,7 +887,7 @@ function _fmtTs(ts) {
 async function loadSessions() {
   const tbody = document.getElementById('sessions-body');
   try {
-    const r = await fetch('/api/sessions', { headers: Auth.getHeaders() });
+    const r = await fetch('/api/sessions', { headers: _adminHeaders() });
     const data = await r.json();
     const sessions = data.sessions || [];
     if (!sessions.length) {
@@ -908,22 +898,22 @@ async function loadSessions() {
       const cls  = _outcomeClass(s.outcome);
       const lbl  = _outcomeLabel(s.outcome);
       const warn = _hasFailure(s) ? 'bg-amber-950/30' : '';
-      const sid  = s.session_id.replace(/"/g, '&quot;');
+      const sid  = String(s.session_id ?? '');
       return `<tr class="border-b border-slate-700/50 hover:bg-slate-750 ${warn}">
-        <td class="px-4 py-2 text-slate-400 text-xs font-mono">${s.session_id.slice(0, 32)}&hellip;</td>
-        <td class="px-4 py-2 text-xs text-slate-500 hidden md:table-cell">${_fmtTs(s.started_at)}</td>
-        <td class="px-4 py-2 text-xs text-slate-500 hidden lg:table-cell">${s.user || '—'}</td>
-        <td class="px-4 py-2 text-center text-xs text-slate-400">${s.turns}</td>
+        <td class="px-4 py-2 text-slate-400 text-xs font-mono">${_esc(sid.slice(0, 32))}&hellip;</td>
+        <td class="px-4 py-2 text-xs text-slate-500 hidden md:table-cell">${_esc(_fmtTs(s.started_at))}</td>
+        <td class="px-4 py-2 text-xs text-slate-500 hidden lg:table-cell">${_esc(s.user || '—')}</td>
+        <td class="px-4 py-2 text-center text-xs text-slate-400">${_esc(s.turns)}</td>
         <td class="px-4 py-2 text-center">
-          <span class="px-2 py-0.5 rounded text-xs font-medium ${cls}">${lbl}</span>
+          <span class="px-2 py-0.5 rounded text-xs font-medium ${cls}">${_esc(lbl)}</span>
         </td>
         <td class="px-4 py-2 text-right">
-          <button onclick="openSessionModal('${sid}')" class="action-btn btn-blue">View</button>
+          <button onclick="openSessionModal(${_jsArg(sid)})" class="action-btn btn-blue">View</button>
         </td>
       </tr>`;
     }).join('');
   } catch (e) {
-    tbody.innerHTML = `<tr><td colspan="6" class="px-4 py-6 text-center text-red-400 text-xs">Error loading sessions: ${e.message}</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="6" class="px-4 py-6 text-center text-red-400 text-xs">Error loading sessions: ${_esc(e.message)}</td></tr>`;
   }
 }
 
@@ -939,7 +929,7 @@ async function openSessionModal(sessionId) {
   modal.classList.remove('hidden');
 
   try {
-    const r = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}`, { headers: Auth.getHeaders() });
+    const r = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}`, { headers: _adminHeaders() });
     if (!r.ok) { body.innerHTML = `<div class="text-red-400 p-4">Session not found.</div>`; return; }
     const data = await r.json();
     const entries = data.entries || [];
@@ -961,10 +951,10 @@ async function openSessionModal(sessionId) {
     body.innerHTML = entries.map(e => {
       if (e.event === 'session_end') return '';   // skip — shown in header
 
-      const ts      = e.ts ? e.ts.slice(11, 19) : '';
-      const role    = e.role || e.event || 'event';
-      const content = (e.content || JSON.stringify(e)).replace(/</g, '&lt;').replace(/>/g, '&gt;');
-      const phase   = e.phase ? `<span class="text-slate-600">[${e.phase}]</span> ` : '';
+      const ts      = _esc(e.ts ? String(e.ts).slice(11, 19) : '');
+      const role    = _esc(e.role || e.event || 'event');
+      const rawContent = String(e.content || JSON.stringify(e));
+      const phase   = e.phase ? `<span class="text-slate-500">[${_esc(e.phase)}]</span> ` : '';
 
       // Detect failure signals
       const contentLow = (e.content || '').toLowerCase();
@@ -989,13 +979,13 @@ async function openSessionModal(sessionId) {
 
       // Truncate very long messages
       const maxLen = 600;
-      const displayContent = content.length > maxLen
-        ? content.slice(0, maxLen) + `<span class="text-slate-600">…(${content.length} chars)</span>`
-        : content;
+      const displayContent = rawContent.length > maxLen
+        ? _esc(rawContent.slice(0, maxLen)) + `<span class="text-slate-500">…(${rawContent.length} chars)</span>`
+        : _esc(rawContent);
 
       return `<div class="p-2 rounded ${rowCls}">
         <div class="flex items-baseline gap-2 mb-0.5">
-          <span class="text-slate-600 shrink-0">${ts}</span>
+          <span class="text-slate-500 shrink-0">${ts}</span>
           <span class="${roleColor} font-semibold shrink-0">${role}</span>
           ${badge}
           ${phase}
@@ -1005,7 +995,7 @@ async function openSessionModal(sessionId) {
     }).join('');
 
   } catch (err) {
-    body.innerHTML = `<div class="text-red-400 p-4">Error loading transcript: ${err.message}</div>`;
+    body.innerHTML = `<div class="text-red-400 p-4">Error loading transcript: ${_esc(err.message)}</div>`;
   }
 }
 

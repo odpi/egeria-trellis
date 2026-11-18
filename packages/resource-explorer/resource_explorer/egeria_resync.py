@@ -43,6 +43,10 @@ REPAIR_STEPS = (
     "clear_orphan_publish_claims",
     "flag_vanished_publishes",
     "flag_stale_dbfs_assets",
+    # Before the two clears below, which blank a dead project/collection pointer (and the context's
+    # qualifiedName): re-attaching by that name must come first in the ordered pass, or nothing is left to
+    # re-attach (brief RE-REATTACH-BY-QN 2026-11-12 §5).
+    "reattach_by_name",
     "clear_stale_investigations",
     "clear_stale_contexts",
     "catalog_assets",
@@ -122,6 +126,11 @@ SAFE_SCHEDULED_STEPS = (
     "flag_stale_dbfs_assets",
 )
 
+#: Steps the page leaves unticked although they are neither expensive nor scheduled. `reattach_by_name` reads
+#: Egeria only and is cheap, but it REWRITES links by name (a project or collection binding), so a person ticks
+#: it. It is deliberately NOT in SAFE_SCHEDULED_STEPS for the same reason.
+UNTICKED_STEPS = frozenset({"reattach_by_name"})
+
 
 @dataclass
 class Finding:
@@ -132,6 +141,8 @@ class Finding:
     items: list = field(default_factory=list)
     repair_step: str = ""       # "" when no automatic repair is correct
     needs_decision: bool = False
+    #: the plan hash the repair must recompute identically before it writes ("" for repairs without one)
+    plan_hash: str = ""
 
     @property
     def count(self) -> int:
@@ -155,6 +166,9 @@ class Finding:
             # is a fact about the backend's schedule, not something the UI
             # should keep a second, hand-maintained copy of.
             "scheduled": self.repair_step in SAFE_SCHEDULED_STEPS,
+            # Left unticked by default although cheap (UNTICKED_STEPS): it rewrites links by name.
+            "unticked": self.repair_step in UNTICKED_STEPS,
+            "plan_hash": self.plan_hash,
         }
 
 
@@ -188,6 +202,8 @@ class EgeriaResync:
 
         self._registry = registry or ProjectRegistry()
         self._clients: dict = {}
+        #: step -> the plan hash its scan showed (from the page); only `reattach_by_name` uses one
+        self._plan_hashes: dict = {}
 
     # ── connections ─────────────────────────────────────────────────────────
     def _connect(self) -> tuple[bool, str]:
@@ -238,7 +254,9 @@ class EgeriaResync:
         return bool(found)
 
     # ── scan ────────────────────────────────────────────────────────────────
-    def scan(self) -> ScanResult:
+    def scan(self, include_reattach: bool = True) -> ScanResult:
+        """`include_reattach=False` (the unattended pass): skip the by-name reads of `reattach_by_name`, a step
+        the scheduler never applies."""
         res = ScanResult()
         ok, why = self._connect()
         if not ok:
@@ -252,6 +270,8 @@ class EgeriaResync:
         res.findings.append(self._scan_flagged_publish_rows())
         res.findings.append(self._scan_dbfs_assets(res))
         res.findings.append(self._scan_flagged_dbfs_rows())
+        if include_reattach:
+            res.findings.append(self._scan_reattach_by_name(res))
         res.findings.append(self._scan_investigation_guids(res))
         res.findings.append(self._scan_contexts(res))
         res.findings.append(self._scan_unlinked_members(res))
@@ -492,6 +512,63 @@ class EgeriaResync:
             items=items, repair_step="flag_stale_dbfs_assets",
         )
 
+    def _reattach_reads(self):
+        """The by-name and by-GUID reads `reattach_by_name` uses, on a MetadataExpert built only when that step
+        scans or applies (the unattended pass never builds one). None when it cannot be built."""
+        from resource_explorer.egeria_reattach import EgeriaReads
+
+        if "expert" not in self._clients:
+            try:
+                from pyegeria import MetadataExpert
+
+                from resource_explorer.egeria_clients import current_principal, egeria_client
+
+                self._clients["expert"] = egeria_client(current_principal(), purpose="egeria resync").of(
+                    MetadataExpert)
+            except Exception as exc:  # noqa: BLE001 - reported by the caller, never read as "nothing to do"
+                log.warning("egeria_resync: no MetadataExpert for reattach_by_name: %s", type(exc).__name__)
+                return None
+        return EgeriaReads(self._clients["expert"])
+
+    def _scan_reattach_by_name(self, res: ScanResult) -> Finding:
+        """Stored GUIDs that a by-qualifiedName read can re-attach: the CLI's dry run, as a finding. Its counts
+        and plan hash come from the same `egeria_reattach.build_plan` the apply recomputes."""
+        from resource_explorer.egeria_reattach import UNREADABLE, VERDICTS, WORDS, alignment_plan, changes
+
+        empty = Finding(key="reattach_by_name", title="Links that can be re-attached by qualifiedName", detail="",
+                        repair_step="reattach_by_name")
+        reads = self._reattach_reads()
+        if reads is None:
+            res.undetermined.append({"kind": "re-attach by name", "ref": "registry",
+                                     "reason": "no Egeria client for the by-name reads"})
+            return empty
+        try:
+            plan = alignment_plan(self._registry, reads)
+        except Exception as exc:  # noqa: BLE001 - "could not tell", never "nothing to do"
+            res.undetermined.append({"kind": "re-attach by name", "ref": "registry",
+                                     "reason": f"{type(exc).__name__}: {str(exc)[:80]}"})
+            return empty
+        for t in plan["tables"]:
+            for r in t["rows"]:
+                if r["verdict"] == UNREADABLE:
+                    res.undetermined.append({"kind": "re-attach by name", "ref": f"{t['table']}:{r['qn']}",
+                                             "reason": r["detail"] or "lookup failed"})
+        totals = {v: sum(t["counts"][v] for t in plan["tables"]) for v in VERDICTS}
+        counts = ", ".join(f"{WORDS[v]} {n}" for v, n in totals.items() if n) or "nothing stored"
+        return Finding(
+            key="reattach_by_name",
+            title="Links that can be re-attached by qualifiedName",
+            detail=("Rewrites links by name: each of these stored GUIDs is empty or no longer resolves, and Egeria "
+                    "holds exactly one element of the right type under the stored qualifiedName. Writes the "
+                    "registry only. Run it before clearing stale projects or contexts. "
+                    f"Counts: {counts}; distinct names looked up: {plan['distinct_names_looked_up']}; "
+                    f"plan {plan['hash'][:12]}."),
+            items=[{"table": t["table"], "key": "/".join(str(x) for x in r["key"].values()), "qn": r["qn"],
+                    "old_guid": r["old_guid"] or "-", "new_guid": r["new_guid"]}
+                   for t, r in changes(plan)],
+            repair_step="reattach_by_name", plan_hash=plan["hash"],
+        )
+
     def _scan_investigation_guids(self, res: ScanResult) -> Finding:
         pm, cm = self._clients["project"], self._clients["collection"]
         stale = []
@@ -555,7 +632,8 @@ class EgeriaResync:
             key="stale_contexts",
             title="Resources bound to an Egeria Project that no longer exists",
             detail="Publishing these would attach them to a Project that is gone. "
-                   "Clearing returns them to 'unset' so the question is asked again.",
+                   "Clearing blanks the dead GUID and marks them unbound (publish is gated until they are "
+                   "rebound); the project's name is kept, so a re-attach by name can recover them.",
             items=stale, repair_step="clear_stale_contexts",
         )
 
@@ -1054,12 +1132,16 @@ class EgeriaResync:
             return ""
 
     # ── repair ──────────────────────────────────────────────────────────────
-    def apply(self, steps: list) -> dict:
+    def apply(self, steps: list, plan_hashes: dict | None = None) -> dict:
         """Run the named repairs, in REPAIR_STEPS order regardless of input order.
 
         Order is load-bearing — clearing must precede relinking — so a caller
         cannot get it wrong by listing them in a different order.
+
+        `plan_hashes`: step -> the plan hash its scan showed. `reattach_by_name` refuses without its own, or when
+        the plan recomputed now differs ("something changed since the scan; scan again").
         """
+        self._plan_hashes = dict(plan_hashes or {})
         unknown = [s for s in steps if s not in REPAIR_STEPS]
         if unknown:
             raise ValueError(f"unknown repair step(s): {unknown}")
@@ -1070,8 +1152,53 @@ class EgeriaResync:
         applied: dict = {}
         for step in REPAIR_STEPS:
             if step in steps:
-                applied[step] = getattr(self, f"_do_{step}")()
+                try:
+                    applied[step] = getattr(self, f"_do_{step}")()
+                except Exception as exc:
+                    self._audit(step, {"error": type(exc).__name__}, "error")
+                    raise
+                self._audit(step, applied[step])
         return {"reachable": True, "unreachable_reason": "", "applied": applied}
+
+    #: activity_log.operation of the audit row each applied repair step writes
+    AUDIT_OPERATION = "egeria_alignment_apply"
+
+    @staticmethod
+    def _who() -> str:
+        try:
+            from resource_explorer.egeria_clients import current_principal
+
+            return current_principal().user_id or "unknown"
+        except Exception:  # noqa: BLE001 - the record says it could not tell
+            return "unknown"
+
+    def _audit(self, step: str, result, status: str | None = None) -> None:
+        """One activity_log row per applied step: who, when, the step, what it reports (its counts) and the plan
+        hash it was applied against. A writing admin action otherwise left no trace (only the publish heals did).
+        Written after the step; a failure to write it is logged, never raised over the step's own result."""
+        import json
+        import uuid
+
+        from resource_explorer.registry import ActivityEntry
+
+        result = result if isinstance(result, dict) else {"result": result}
+        if status is None:
+            status = "error" if result.get("failed") or result.get("error") else (
+                "refused" if result.get("refused") else "ok")
+        plan_hash = result.get("plan_hash") or self._plan_hashes.get(step, "")
+        counts = {k: v for k, v in result.items() if isinstance(v, (int, float)) and not isinstance(v, bool)}
+        who = self._who()
+        try:
+            self._registry.write_activity(ActivityEntry(
+                id=str(uuid.uuid4()), ts=_now(), operation=self.AUDIT_OPERATION, intent="maintenance",
+                entity_type="registry", entity_slug=step, status=status,
+                summary=f"Egeria Alignment {step} applied by {who}: "
+                        + (", ".join(f"{k} {v}" for k, v in counts.items()) or status),
+                detail=json.dumps({"step": step, "applied_by": who, "status": status, "counts": counts,
+                                   "plan_hash": plan_hash, "result": result}, default=str, sort_keys=True),
+            ))
+        except Exception:
+            log.exception("egeria_resync: could not write the audit row for %s", step)
 
     def _do_reauthor_survey_definitions(self) -> dict:
         """Re-execute the survey-definitions batch, then reconcile its links.
@@ -1275,17 +1402,38 @@ class EgeriaResync:
         except Exception:
             log.exception("egeria_resync: could not write heal activity for %s", slug)
 
+    def _do_reattach_by_name(self) -> dict:
+        """The CLI's apply, from the page: recompute, compare with the scan's hash, refuse while another RE writer
+        is active, snapshot, write. Registry only."""
+        from resource_explorer.egeria_reattach import alignment_apply
+
+        reads = self._reattach_reads()
+        if reads is None:
+            return {"reattached": 0, "refused": "no Egeria client for the by-name reads"}
+        who = self._who()
+        now = datetime.now(timezone.utc).replace(tzinfo=None)
+        return alignment_apply(self._registry, reads, self._plan_hashes.get("reattach_by_name", ""),
+                               f"{who}/{now:%Y-%m-%dT%H:%MZ} (Egeria Alignment)", now)
+
     def _do_clear_stale_investigations(self) -> dict:
         res = ScanResult()
         finding = self._scan_investigation_guids(res)
         invs = [i for i in finding.items if i["kind"] == "investigation"]
         sets = [i for i in finding.items if i["kind"] == "working set"]
+        from resource_explorer.catalogue_commit import PROJECT_LINKED, PROJECT_UNBOUND
+
         with self._registry._conn() as conn:
             for i in invs:
+                # Only the GUID (the pointer) is blanked; egeria_project_qualified_name (the decision) is KEPT, so
+                # `reattach_by_name` can recover the binding if Egeria holds the name again (Architect read-back
+                # 2026-11-12: this step used to run with the defaults ticked and leave nothing to re-attach by).
+                # A `linked` row becomes `unbound` (the clear script's rule); any other status is kept.
                 conn.execute(
-                    "UPDATE investigations SET egeria_project_guid = '', "
-                    "egeria_project_status = 'local' WHERE slug = ?", (i["ref"],))
+                    "UPDATE investigations SET egeria_project_guid = '', egeria_project_status = CASE "
+                    "WHEN egeria_project_status = ? THEN ? ELSE egeria_project_status END WHERE slug = ?",
+                    (PROJECT_LINKED, PROJECT_UNBOUND, i["ref"]))
             for i in sets:
+                # the collection's qualifiedName is kept for the same reason
                 conn.execute(
                     "UPDATE working_sets SET egeria_collection_guid = '' WHERE slug = ?",
                     (i["ref"],))
@@ -1293,20 +1441,24 @@ class EgeriaResync:
                 "undetermined": len(res.undetermined)}
 
     def _do_clear_stale_contexts(self) -> dict:
+        from resource_explorer.catalogue_commit import PROJECT_UNBOUND
+
         res = ScanResult()
         finding = self._scan_contexts(res)
         with self._registry._conn() as conn:
             for item in finding.items:
                 etype, _, eslug = item["ref"].partition(":")
-                # Back to 'unset', not 'personal' or 'declined': the decision
-                # that was made pointed at something gone, so it must be asked
-                # again rather than reinterpreted as an answer never given. ('unset', not 'unbound': this
-                # heal is for a GUID that went stale WITHOUT a reset marker; 'unbound' is only what the
-                # post-reset clean-up script writes. Both gate a publish identically.)
+                # The GUID (the pointer) is blanked and the context becomes `unbound`; the
+                # egeria_project_qualified_name (the decision) is KEPT. That is the clear script's rule, and
+                # it is what lets `reattach_by_name` recover the binding when Egeria holds the name again.
+                # This step used to blank the name and write `unset`: run with the page's defaults ticked,
+                # it erased the only thing a re-attach could use (Architect read-back 2026-11-12).
+                # `unbound` gates a publish exactly as `unset` does (PROJECT_UNANSWERED), and keeps the
+                # name visible (repo_publish.project_words).
                 conn.execute(
-                    "UPDATE entity_egeria_project_context SET egeria_project_guid = '', "
-                    "egeria_project_qualified_name = '', status = 'unset' "
-                    "WHERE entity_type = ? AND entity_slug = ?", (etype, eslug))
+                    "UPDATE entity_egeria_project_context SET egeria_project_guid = '', status = ? "
+                    "WHERE entity_type = ? AND entity_slug = ? AND egeria_project_guid = ?",
+                    (PROJECT_UNBOUND, etype, eslug, item["guid"]))
         return {"contexts_cleared": len(finding.items),
                 "undetermined": len(res.undetermined)}
 
@@ -1612,7 +1764,7 @@ def scan_and_clear(registry: "ProjectRegistry | None" = None) -> dict:
     'unreachable is never stale' discipline the rest of this module uses.
     """
     resync = EgeriaResync(registry=registry)
-    result = resync.scan()
+    result = resync.scan(include_reattach=False)
     if not result.reachable:
         return {"reachable": False, "unreachable_reason": result.unreachable_reason, "applied": {}}
 

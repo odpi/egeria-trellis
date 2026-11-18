@@ -13,6 +13,86 @@ from dotenv import load_dotenv
 # have to already be real process env vars by then.
 load_dotenv()
 
+import os as _os
+import sys as _sys
+from pathlib import Path as _Path
+
+
+def hf_hub_cache_dir() -> _Path:
+    """The Hugging Face hub cache, by huggingface_hub's own precedence.
+
+    HF_HUB_CACHE, else HUGGINGFACE_HUB_CACHE (the older name), else
+    $HF_HOME/hub, else ~/.cache/huggingface/hub. Computed here without
+    importing huggingface_hub, because importing it fixes its offline flag.
+    """
+    for var in ("HF_HUB_CACHE", "HUGGINGFACE_HUB_CACHE"):
+        val = _os.environ.get(var, "").strip()
+        if val:
+            return _Path(val).expanduser()
+    hf_home = _os.environ.get("HF_HOME", "").strip()
+    if hf_home:
+        return _Path(hf_home).expanduser() / "hub"
+    xdg = _os.environ.get("XDG_CACHE_HOME", "").strip()
+    base = _Path(xdg).expanduser() if xdg else _Path.home() / ".cache"
+    return base / "huggingface" / "hub"
+
+
+def hf_model_cached(model_name: str, cache_dir: "_Path | None" = None) -> bool:
+    """True when ``model_name`` can load with no network.
+
+    A local directory counts. A hub id ("org/name", or a bare sentence-
+    transformers name, which resolves to "sentence-transformers/<name>") counts
+    when its cache entry has at least one non-empty snapshot.
+    """
+    if not model_name:
+        return False
+    if _Path(model_name).expanduser().is_dir():
+        return True
+    repo_id = model_name if "/" in model_name else f"sentence-transformers/{model_name}"
+    entry = (cache_dir or hf_hub_cache_dir()) / ("models--" + repo_id.replace("/", "--"))
+    snapshots = entry / "snapshots"
+    try:
+        return any(snap.is_dir() and any(snap.iterdir()) for snap in snapshots.iterdir())
+    except OSError:
+        return False
+
+
+def _configured_model_name() -> str:
+    try:
+        from advisor.config import get_full_config
+        return get_full_config()["embeddings"].model
+    except Exception:  # pragma: no cover - config problems surface at EmbeddingGenerator()
+        return ""
+
+
+def prefer_offline_if_cached(model_name: str, cache_dir: "_Path | None" = None) -> str:
+    """Set HF_HUB_OFFLINE/TRANSFORMERS_OFFLINE (setdefault) when the model is cached.
+
+    Returns how the model will load: "offline" (cached; the flags are set or
+    were already 1), "explicit-online" (cached, but the operator set a flag to
+    something other than 1, which is left alone) or "download" (not cached: the
+    first load fetches it from the Hugging Face Hub).
+
+    Must run before huggingface_hub is imported: it reads these variables once,
+    at import. If it was already imported (by another module), its constant is
+    updated too, so the flag still takes effect.
+    """
+    if not hf_model_cached(model_name, cache_dir):
+        return "download"
+    _os.environ.setdefault("HF_HUB_OFFLINE", "1")
+    _os.environ.setdefault("TRANSFORMERS_OFFLINE", "1")
+    if _os.environ["HF_HUB_OFFLINE"].strip().lower() not in ("1", "true", "yes", "on"):
+        return "explicit-online"
+    hub_constants = _sys.modules.get("huggingface_hub.constants")
+    if hub_constants is not None and hasattr(hub_constants, "HF_HUB_OFFLINE"):
+        hub_constants.HF_HUB_OFFLINE = True
+    return "offline"
+
+
+#: How the configured model loads; decided before sentence_transformers is imported.
+_MODEL_LOAD_MODE = {"model": _configured_model_name()}
+_MODEL_LOAD_MODE["mode"] = prefer_offline_if_cached(_MODEL_LOAD_MODE["model"])
+
 import torch
 from sentence_transformers import SentenceTransformer
 from typing import List, Union, Optional
@@ -63,6 +143,7 @@ class EmbeddingGenerator:
 
         logger.info(f"Initializing embedding model: {self.model_name}")
         logger.info(f"Using device: {self.device}")
+        self.load_mode = self._announce_load_mode()
 
         # Load model
         try:
@@ -74,6 +155,7 @@ class EmbeddingGenerator:
             self.model = SentenceTransformer(self.model_name, device=self.device)
             self.embedding_dim = self.model.get_sentence_embedding_dimension()
             logger.info(f"Model loaded successfully. Embedding dimension: {self.embedding_dim}")
+            self._log_loaded()
 
             # Test GPU if using any GPU device
             if self.device in ["cuda", "mps"] or "hip" in self.device:
@@ -91,49 +173,47 @@ class EmbeddingGenerator:
                     self.model = SentenceTransformer(self.model_name, device="cpu")
                     self.embedding_dim = self.model.get_sentence_embedding_dimension()
                     logger.info(f"Model loaded successfully on CPU. Embedding dimension: {self.embedding_dim}")
+                    self._log_loaded()
                 except Exception as cpu_error:
                     logger.error(f"Failed to load embedding model on CPU: {cpu_error}")
                     raise
             else:
                 raise
 
+    def _announce_load_mode(self) -> str:
+        """Say once whether the model comes from the local cache or the network."""
+        if self.model_name == _MODEL_LOAD_MODE["model"]:
+            mode = _MODEL_LOAD_MODE["mode"]
+        else:
+            mode = prefer_offline_if_cached(self.model_name)
+        if mode == "offline":
+            pass  # said after the load succeeds (_log_loaded), so it is never claimed for a failed load
+        elif mode == "explicit-online":
+            logger.info(f"embedding model {self.model_name} is cached; HF_HUB_OFFLINE is set to "
+                        f"{_os.environ.get('HF_HUB_OFFLINE')!r}, so the Hub may still be checked")
+        else:
+            logger.warning(
+                f"embedding model {self.model_name} is not in the Hugging Face cache "
+                f"({hf_hub_cache_dir()}): downloading it from huggingface.co. Later starts "
+                f"load it offline from the cache."
+            )
+        return mode
+
+    def _log_loaded(self) -> None:
+        if self.load_mode == "offline":
+            logger.info(f"embedding model loaded from cache (offline): {self.model_name}")
+
     def _detect_best_device(self) -> str:
-        """
-        Detect the best available device for acceleration.
-        
-        Checks in priority order:
-        1. NVIDIA CUDA
-        2. AMD ROCm
-        3. Apple Metal (MPS)
-        4. CPU (fallback)
-        
-        Returns:
-            Device string: "cuda", "mps", "cpu", or ROCm device
-        """
-        # Check for NVIDIA CUDA or AMD ROCm — PyTorch's ROCm builds report AMD GPUs
-        # through the same torch.cuda.* API (there is no separate torch.hip namespace
-        # to check in current PyTorch), so both vendors are detected here;
-        # torch.version.hip is only set on ROCm builds and distinguishes which one it
-        # actually is, for logging purposes only.
-        if torch.cuda.is_available():
-            device_name = torch.cuda.get_device_name(0)
-            if getattr(torch.version, "hip", None):
-                logger.info(f"✓ AMD ROCm available: {device_name} (ROCm {torch.version.hip})")
-            else:
-                logger.info(f"✓ NVIDIA CUDA available: {device_name}")
-            return "cuda"
-        
-        # Check for Apple Metal (MPS)
-        try:
-            if hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
-                logger.info("✓ Apple Metal (MPS) available")
-                return "mps"
-        except Exception as e:
-            logger.debug(f"MPS check failed: {e}")
-        
-        # Fallback to CPU
-        logger.info("No GPU acceleration available, using CPU")
-        return "cpu"
+        """The device for an embeddings device of "auto": the shared choice
+        (packages/trellis-accel): TRELLIS_DEVICE when set, else an NVIDIA or AMD (ROCm) GPU,
+        then Apple's GPU, then the CPU, and says why. EA's setting is advisor.yaml's
+        `embeddings.device`, shipped as "auto" (EmbeddingConfig's own default, "cpu", applies
+        only when the file leaves it out); EMBEDDING_DEVICE is not read on this path."""
+        from trellis_accel import pick_device
+
+        choice = pick_device("auto", purpose="embeddings")
+        logger.info(f"Embedding device: {choice.device} ({choice.reason})")
+        return choice.device
 
     def _test_gpu(self):
         """Test GPU functionality with a sample encoding."""

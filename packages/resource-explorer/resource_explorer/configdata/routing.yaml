@@ -15,7 +15,10 @@ intent_patterns:
       - '(open|pending|unanswered).{0,20}(rfa|request)'
       - '(how many|count).{0,20}(annotation|rfa|survey)'
       - '(activity|audit).{0,20}log'
-      - '(what|who).{0,30}(catalog|cataloged|published|egeria)'
+      # 'egeria' dropped from this alternation 2026-11-10: the bare word made "what is the purpose of Egeria?"
+      # survey_meta, so the chat answered from survey metrics instead of Egeria's own docs (query_log row 1426).
+      # Questions about Egeria's survey results still match the next pattern.
+      - '(what|who).{0,30}(catalog|cataloged|published)'
       - 'egeria.{0,30}(survey|scan|status|result|annotati)'
       - '(data|schema).{0,20}(freshness|staleness|age|last updated)'
       - '(context|environment|owner|steward|sensitivity).{0,20}(for|of|set|stored)'

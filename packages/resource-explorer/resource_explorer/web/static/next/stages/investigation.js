@@ -57,7 +57,7 @@ import {
   loadPurposes, purposesNow, purposePickerHtml, readPurposePicker, wirePurposePicker, purposesSummaryHtml,
 } from '/static/next/purposes.js';
 import { openDialog, closeCellDetail } from '/static/next/worklist.js';
-import { renderMarkdown } from '/static/next/markdown.js';
+import { renderMarkdown } from '/static/trellis-ui/markdown.js';
 import { saveCsv } from '/static/next/download.js';
 import { inPageConfirm } from '/static/next/confirm-dialog.js';
 import { cue } from '/static/next/stages/repo-manifest.js';

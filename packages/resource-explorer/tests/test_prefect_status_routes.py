@@ -12,6 +12,7 @@ from __future__ import annotations
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import httpx
 import pytest
 from fastapi.testclient import TestClient
 
@@ -39,6 +40,76 @@ class TestStatus:
             r = client.get("/api/prefect/status")
         assert r.status_code == 200
         assert r.json()["reachable"] is True
+
+    def test_reports_unreachable_when_healthcheck_returns_its_failure(self):
+        """The real client's shape when no server is listening: entering the client
+        succeeds and api_healthcheck() RETURNS the ConnectError (it never raises)."""
+        mock_client = AsyncMock()
+        mock_client.api_healthcheck = AsyncMock(return_value=httpx.ConnectError("All connection attempts failed"))
+        mock_client.__aenter__.return_value = mock_client
+        mock_client.__aexit__.return_value = None
+        with patch("resource_explorer.web.routes.prefect_status.re_prefect_client", return_value=mock_client):
+            r = client.get("/api/prefect/status")
+        assert r.status_code == 200
+        body = r.json()
+        assert body["reachable"] is False
+        assert "All connection attempts failed" in body["error"]
+
+
+class TestReachabilityCheck:
+    """prefect_adapter._check_prefect_reachable_async: the startup log line and the
+    dispatch gates (check_prefect_reachable_sync) both read it."""
+
+    @staticmethod
+    def _client_whose_healthcheck_returns(value):
+        mock_client = AsyncMock()
+        mock_client.api_healthcheck = AsyncMock(return_value=value)
+        mock_client.__aenter__.return_value = mock_client
+        mock_client.__aexit__.return_value = None
+        return mock_client
+
+    def test_a_returned_failure_is_unreachable(self):
+        import asyncio
+
+        from resource_explorer.surveyors import prefect_adapter
+        mock_client = self._client_whose_healthcheck_returns(httpx.ConnectError("All connection attempts failed"))
+        with patch.object(prefect_adapter, "re_prefect_client", return_value=mock_client):
+            ok, detail = asyncio.run(prefect_adapter._check_prefect_reachable_async())
+        assert ok is False
+        assert "All connection attempts failed" in detail
+
+    def test_a_failure_with_empty_text_still_says_what_it_was(self):
+        import asyncio
+
+        from resource_explorer.surveyors import prefect_adapter
+        mock_client = self._client_whose_healthcheck_returns(httpx.ConnectError(""))
+        with patch.object(prefect_adapter, "re_prefect_client", return_value=mock_client):
+            ok, detail = asyncio.run(prefect_adapter._check_prefect_reachable_async())
+        assert (ok, detail) == (False, "ConnectError")
+
+    def test_none_is_reachable(self):
+        import asyncio
+
+        from resource_explorer.surveyors import prefect_adapter
+        mock_client = self._client_whose_healthcheck_returns(None)
+        with patch.object(prefect_adapter, "re_prefect_client", return_value=mock_client):
+            ok, _ = asyncio.run(prefect_adapter._check_prefect_reachable_async())
+        assert ok is True
+
+    def test_against_a_port_nothing_listens_on(self, monkeypatch):
+        """No mock: the real PrefectClient against a closed port must read as unreachable."""
+        import asyncio
+        import socket
+
+        from resource_explorer.surveyors import prefect_adapter
+        with socket.socket() as s:
+            s.bind(("127.0.0.1", 0))
+            port = s.getsockname()[1]       # bound then closed: nothing is listening on it
+        cfg = MagicMock()
+        cfg.prefect.api_url = f"http://127.0.0.1:{port}/api"
+        monkeypatch.setattr(prefect_adapter, "get_config", lambda: cfg)
+        ok, detail = asyncio.run(prefect_adapter._check_prefect_reachable_async())
+        assert ok is False, detail
 
 
 class TestFlowRuns:

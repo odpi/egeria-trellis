@@ -195,6 +195,9 @@ def _press_summary(row: dict | None) -> dict | None:
 #: the words: the words are display text only. It is "not answered" exactly as `unset` is, so a publish is
 #: gated and offers the same two choices (bind a project, or publish without one).
 PROJECT_UNBOUND = "unbound"
+#: The status value of a context bound to a live Egeria project. The re-attach by qualifiedName
+#: (`egeria_reattach`) moves `unbound` to this value, and only `unbound`.
+PROJECT_LINKED = "linked"
 PROJECT_UNBOUND_WORDS = "unbound by reset \u00b7 rebind to recreate"
 PROJECT_UNANSWERED = ("unset", PROJECT_UNBOUND)
 RESET_WORDS = "published earlier · Egeria was reset · not in Egeria now"

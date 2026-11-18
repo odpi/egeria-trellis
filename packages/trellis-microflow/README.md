@@ -1,5 +1,11 @@
 # trellis-microflow
 
+> **Vocabulary.** "Microflow" here is Resource Explorer's survey-step sense: one self-contained survey step. It is not
+> the report-spec `microflow`, an in-thread sequence of producer, processor and formatter stages; there, a *step* is a
+> routine deployed to an engine host. See the
+> [report-spec pipeline model](https://github.com/odpi/egeria-workspaces/blob/main/portal-docs/Internals/report-spec-pipeline-model.md)
+> (Vocabulary used here). Nothing is renamed.
+
 Shared resource-sharing primitives for microflow-style step execution —
 the generic half of `resource-explorer`'s D6 design
 (`docs/unified-survey-execution-model-plan.md`).

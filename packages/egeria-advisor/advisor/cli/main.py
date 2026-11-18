@@ -135,11 +135,14 @@ def cli() -> None:
          'defaults to whoever is signed in; --user overrides the namespace '
          'without changing whose Egeria token live calls use. With neither, '
          'this is the shared namespace, same as an anonymous web request. '
-         'Deliberately does NOT fall back to the EGERIA_USER/.env '
-         'service-account setting (advisor.config.settings.egeria_user) — '
+         'Deliberately does NOT fall back to the EA_DAEMON_USER_ID/.env '
+         'service-account setting (advisor.config.settings.daemon_user_id) — '
          'that identity is a live-Egeria-call fallback only and is '
          'explicitly excluded from owning artifacts (see advisor/auth.py\'s '
-         'module docstring).'
+         'module docstring). This runs as a user, so EA\'s MCP tools (pyegeria and '
+         'Dr.Egeria, which sign in as EA\'s service account) are not used: a step '
+         'that would need one says "That tool can\'t run as you yet, so I '
+         'didn\'t use it." (TR-34; per-call tokens come with TR-43.)'
 )
 def ask(
     query: Optional[str],
@@ -181,11 +184,12 @@ def ask(
     """
     # Configure logging level based on debug flag
     if not debug:
-        # Disable all loguru logs when not in debug mode
-        logger.remove()  # Remove all handlers
-        # Redirect stderr to suppress library warnings (like amdgpu.ids)
-        devnull = os.open(os.devnull, os.O_WRONLY)
-        os.dup2(devnull, 2)  # Redirect stderr (fd 2) to /dev/null
+        # Quiet by default, but never silent about failures: loguru keeps an
+        # ERROR-level sink on stderr. (Until 2026-11-10 this also pointed fd 2
+        # at /dev/null to hide library chatter such as amdgpu.ids, which hid
+        # every error and traceback along with it.)
+        from advisor.config import configure_logging
+        configure_logging("ERROR")
     
     # Disable colors if requested
     if no_color:
@@ -453,7 +457,7 @@ def start_interactive(options: dict):
 @click.option(
     "--user", "user_id", default=None,
     help="Egeria user id to sign in as. Prompted for if omitted; defaults to "
-         "the .env EGERIA_USER for convenience on a single-user box.",
+         "the .env EA_DAEMON_USER_ID for convenience on a single-user box.",
 )
 def login_command(user_id: Optional[str]) -> None:
     """Sign in to Egeria and cache the session for later commands.
@@ -473,7 +477,7 @@ def login_command(user_id: Optional[str]) -> None:
 
     if not user_id:
         from advisor.config import settings
-        user_id = click.prompt("Egeria user id", default=settings.egeria_user or None)
+        user_id = click.prompt("Egeria user id", default=settings.daemon_user_id or None)
     from advisor.auth import is_service_account, SERVICE_ACCOUNT_DETAIL
     if is_service_account(user_id):
         console.print(f"[red]✗ {SERVICE_ACCOUNT_DETAIL}[/red]")
@@ -517,13 +521,30 @@ def logout_command() -> None:
 @click.command("web")
 @click.option("--host", default="127.0.0.1", show_default=True, help="Bind host")
 @click.option("--port", default=8880, show_default=True, help="Bind port")
-@click.option("--reload/--no-reload", default=True, show_default=True,
-              help="Auto-reload the server on code changes (dev mode)")
-def web_command(host: str, port: int, reload: bool):
+@click.option("--reload/--no-reload", default=False, show_default=True,
+              help="Auto-reload the server on code changes. A dev convenience only: "
+                   "the reloader runs the app in a child process that restarts on "
+                   "every edit under advisor/, and it does not apply --log-level there.")
+@click.option("--log-level", "log_level", default=None,
+              help="Log level for the server (TRACE, DEBUG, INFO, WARNING, ERROR, CRITICAL). "
+                   "Default: ADVISOR_LOG_LEVEL, else INFO.")
+@click.option("--ssl-certfile", default=None, help="Serve HTTPS with this certificate (with --ssl-keyfile).")
+@click.option("--ssl-keyfile", default=None, help="Private key for --ssl-certfile.")
+def web_command(host: str, port: int, reload: bool, log_level: Optional[str],
+                ssl_certfile: Optional[str], ssl_keyfile: Optional[str]):
     """Launch the browser-based web UI."""
     import uvicorn
+    from advisor.config import configure_logging, resolve_log_level, uvicorn_log_level
+
+    level = resolve_log_level(log_level)
+    configure_logging(level)
+    scheme = "https" if ssl_certfile and ssl_keyfile else "http"
     mode = "auto-reload on" if reload else "auto-reload off"
-    console.print(f"[cyan]Starting Egeria Advisor web UI at http://{host}:{port} ({mode})[/cyan]")
+    console.print(f"[cyan]Starting Egeria Advisor web UI at {scheme}://{host}:{port} "
+                  f"({mode}, log level {level})[/cyan]")
+    kwargs = {}
+    if scheme == "https":
+        kwargs = {"ssl_certfile": ssl_certfile, "ssl_keyfile": ssl_keyfile}
     uvicorn.run(
         "advisor.web.app:app",
         host=host,
@@ -531,7 +552,8 @@ def web_command(host: str, port: int, reload: bool):
         reload=reload,
         # Watch the advisor package so edits to Python and static assets restart the server.
         reload_dirs=["advisor"] if reload else None,
-        log_level="warning",
+        log_level=uvicorn_log_level(level),
+        **kwargs,
     )
 
 

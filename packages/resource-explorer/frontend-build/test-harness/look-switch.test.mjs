@@ -21,7 +21,7 @@ async function setUp() {
   host.id = 'look';
   env.document.body.appendChild(host);
   await loadAppModule();                                   // app.js: its re-look-change listener is part of what is tested
-  const look = await import('/static/next/look.js');       // the same instance app.js imported
+  const look = await import('/static/trellis-ui/look.js');   // the same instance app.js imported
   look.wireLook(host);
   return { ...env, host, posts, look };
 }
@@ -44,7 +44,7 @@ test('choosing Light sets data-look on <html> with no reload, fires re-look-chan
   assert.equal(document.documentElement.getAttribute('data-look'), 'light');
   assert.deepEqual(seen, [{ look: 'light', previous: 'dark' }, 'window']);
   assert.equal(document.body.contains(sentinel), true, 'the page was not reloaded');
-  assert.equal(window.localStorage.getItem('re-next.look'), 'light');
+  assert.equal(window.localStorage.getItem('trellis.look'), 'light');
   assert.equal(host.querySelector('[data-look-current]').textContent, 'Light');
   assert.equal(host.querySelector('[data-look-menu]').hidden, true, 'choosing closes the menu');
 });
@@ -112,7 +112,7 @@ function headSnippet() {
   const html = fs.readFileSync(INDEX, 'utf8');
   const m = html.match(/<script>\s*\(function \(\) \{\s*var look = 'dark';[\s\S]*?<\/script>/);
   assert.ok(m, 'index.html carries the before-first-paint snippet in <head>');
-  assert.ok(html.indexOf(m[0]) < html.indexOf('href="/static/next/themes.css"'), 'it runs before the stylesheets');
+  assert.ok(html.indexOf(m[0]) < html.indexOf('href="/static/trellis-ui/themes.css"'), 'it runs before the stylesheets');
   return m[0].replace(/^<script>/, '').replace(/<\/script>$/, '');
 }
 
@@ -129,10 +129,16 @@ test('before first paint: the remembered look is applied; garbage, missing or bl
   assert.equal(run(() => {}), 'dark');
   assert.equal(run((w) => w.localStorage.setItem('re-next.look', 'neon')), 'dark');
   assert.equal(run((w) => Object.defineProperty(w, 'localStorage', { get() { throw new Error('blocked'); } })), 'dark');
+  // The shared key (trellis.look, also EA's) wins; RE's old key is read once and carried over to it.
+  assert.equal(run((w) => { w.localStorage.setItem('trellis.look', 'light'); w.localStorage.setItem('re-next.look', 'paper'); }), 'light');
+  const { window } = makeDomEnvironment();
+  window.localStorage.setItem('re-next.look', 'paper');
+  window.eval(code);
+  assert.equal(window.localStorage.getItem('trellis.look'), 'paper', 'the old key is carried over once');
 });
 
 test('index.html: the control sits beside the text size, and themes.css loads before the Tailwind sheet', () => {
   const html = fs.readFileSync(INDEX, 'utf8');
   assert.ok(html.indexOf('id="look"') > 0 && html.indexOf('id="look"') < html.indexOf('id="textsize"'));
-  assert.ok(html.indexOf('href="/static/next/themes.css"') < html.indexOf('href="/static/next/tailwind-next.css"'));
+  assert.ok(html.indexOf('href="/static/trellis-ui/themes.css"') < html.indexOf('href="/static/next/tailwind-next.css"'));
 });

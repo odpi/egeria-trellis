@@ -22,7 +22,7 @@ import {
 } from '/static/re-api.js';
 import { esc } from '/static/next/app.js';
 import { ago } from '/static/next/format.js';
-import { watchTables } from '/static/next/colresize.js';
+import { watchTables } from '/static/trellis-ui/colresize.js';
 
 export const NOT_REPORTED = 'not_reported';
 export const NOT_REPORTED_WORDS = 'not reported by this source';
@@ -313,17 +313,26 @@ export function drawRepositoryImport(host) {
   });
 }
 
+/* The import result: every column readable in the dialog's width (2026-11-09: a portal slug and an identifier URL
+ * with no break points widened the table to ~1,235px in a ~920px pane and pushed RESULT, the column that says why a
+ * row was refused, off the edge). Fixed layout with stated shares, every cell wraps anywhere, and the table scrolls
+ * in its own box if a person widens columns past the pane (colresize keeps them resizable). */
+const RESULT_COLS = [['', '2rem'], ['Title', '20%'], ['Identifier', '20%'], ['Portals', '14%'], ['Result', '32%'], ['DataCite', '12%']];
+const WRAP = 'overflow-wrap:anywhere;word-break:break-word';
+
 export function importResultHtml(r) {
   const cue = (o) => (o.outcome === 'imported' ? '✓' : o.outcome === 'already_in_catalog' ? '=' : '✗');
-  return `<p class="mb-s2 text-answer text-ink tnum">${r.imported} imported · ${r.already_in_catalog} already in the catalog${r.refused ? ` · ${r.refused} refused` : ''}
+  return `<p class="mb-s2 text-answer text-ink tnum" style="${WRAP}">${r.imported} imported · ${r.already_in_catalog} already in the catalog${r.refused ? ` · ${r.refused} refused` : ''}
       ${r.work_list ? ` · work list <span class="font-mono">${esc(r.work_list)}</span>` : ''}</p>
-    <table class="w-full text-left" data-rc-id="od-import-result"><thead><tr class="border-b border-rule text-caps uppercase tracking-caps text-ink-muted">
-      <th class="pb-s2 pr-s3 font-normal"></th><th class="pb-s2 pr-s3 font-normal">Title</th><th class="pb-s2 pr-s3 font-normal">Identifier</th><th class="pb-s2 pr-s3 font-normal">Portals</th><th class="pb-s2 pr-s3 font-normal">Result</th><th class="pb-s2 pr-s3 font-normal">DataCite</th></tr></thead>
+    <div data-od-import-scroll class="overflow-x-auto overflow-y-auto" style="max-height:60vh">
+    <table class="w-full table-fixed text-left" style="min-width:36rem" data-rc-id="od-import-result"><thead><tr class="border-b border-rule text-caps uppercase tracking-caps text-ink-muted">
+      ${RESULT_COLS.map(([label, w]) => `<th class="pb-s2 pr-s3 font-normal" style="width:${w}">${label}</th>`).join('')}</tr></thead>
     <tbody>${r.rows.map((o) => `<tr class="border-b border-rule" data-od-result="${esc(o.outcome)}">
-      <td class="py-s2 pr-s3 text-caveat align-top">${cue(o)}</td><td class="py-s2 pr-s3 text-caveat align-top">${show(o.title)}</td><td class="py-s2 pr-s3 text-caveat align-top font-mono text-provenance">${esc(o.identifier || o.dataset_id || '')}</td>
-      <td class="py-s2 pr-s3 text-caveat align-top text-ink-muted">${esc((o.portals || [o.portal]).join(', '))}</td>
-      <td class="py-s2 pr-s3 text-caveat align-top ${o.outcome === 'refused' ? 'text-state-warn' : ''}">${esc(o.words)}</td>
-      <td class="py-s2 pr-s3 text-caveat align-top text-ink-muted">${esc(o.datacite || '')}</td></tr>`).join('')}</tbody></table>`;
+      <td class="py-s2 pr-s3 text-caveat align-top" style="${WRAP}">${cue(o)}</td><td class="py-s2 pr-s3 text-caveat align-top" style="${WRAP}">${show(o.title)}</td>
+      <td class="py-s2 pr-s3 text-caveat align-top font-mono text-provenance" style="${WRAP}">${esc(o.identifier || o.dataset_id || '')}</td>
+      <td class="py-s2 pr-s3 text-caveat align-top text-ink-muted" style="${WRAP}">${esc((o.portals || [o.portal]).join(', '))}</td>
+      <td class="py-s2 pr-s3 text-caveat align-top ${o.outcome === 'refused' ? 'text-state-warn' : ''}" style="${WRAP}">${esc(o.words)}</td>
+      <td class="py-s2 pr-s3 text-caveat align-top text-ink-muted" style="${WRAP}">${esc(o.datacite || '')}</td></tr>`).join('')}</tbody></table></div>`;
 }
 
 // ── Portal directories ────────────────────────────────────────────────────────

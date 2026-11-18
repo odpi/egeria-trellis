@@ -252,3 +252,34 @@ class TestUpgradePolicy:
         s, c = self._setup()
         out = pack(s, c, 5000)
         assert {p.rung for p in out.sections} == {Rung.FULL}
+
+
+class TestAsOf:
+    """0.2.0: a section's evidence age travels to the manifest's packed entry, only when known, and costs nothing."""
+
+    def _pack(self, **as_of):
+        s = spec(Section("a", role="evidence"), Section("b", role="evidence"))
+        c = {"a": Candidate("a", {Rung.FULL: "x" * 50}, **as_of), "b": Candidate("b", {Rung.FULL: "y" * 50})}
+        return pack(s, c, 1000)
+
+    def test_a_known_as_of_is_on_the_packed_entry_with_its_source(self):
+        out = self._pack(as_of="2026-11-01T00:00:00+00:00", as_of_source="result",
+                         as_of_newest="2026-11-05T00:00:00+00:00")
+        a = next(p for p in out.manifest.packed if p["key"] == "a")
+        assert a["as_of"] == "2026-11-01T00:00:00+00:00" and a["as_of_source"] == "result"
+        assert a["as_of_newest"] == "2026-11-05T00:00:00+00:00"
+        assert next(p for p in out.sections if p.key == "a").as_of == "2026-11-01T00:00:00+00:00"
+
+    def test_an_unknown_as_of_is_left_out_not_filled_in(self):
+        b = next(p for p in self._pack(as_of="2026-11-01T00:00:00+00:00").manifest.packed if p["key"] == "b")
+        assert "as_of" not in b and "as_of_source" not in b and "as_of_newest" not in b
+
+    def test_newest_equal_to_oldest_is_not_repeated(self):
+        a = next(p for p in self._pack(as_of="2026-11-01T00:00:00+00:00",
+                                       as_of_newest="2026-11-01T00:00:00+00:00").manifest.packed if p["key"] == "a")
+        assert "as_of_newest" not in a
+
+    def test_as_of_does_not_change_size_or_text(self):
+        with_date = self._pack(as_of="2026-11-01T00:00:00+00:00", as_of_source="fact")
+        without = self._pack()
+        assert [(p.key, p.size, p.text) for p in with_date.sections] == [(p.key, p.size, p.text) for p in without.sections]

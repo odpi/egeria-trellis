@@ -26,11 +26,13 @@ and "we asked and nothing came back" are opposite answers.
 """
 from __future__ import annotations
 
+import io
 import json
 import logging
-import urllib.error
-import urllib.request
-from datetime import datetime
+from contextlib import contextmanager
+from typing import NamedTuple
+
+import httpx
 
 from resource_explorer.surveyors.base_surveyor import BaseSurveyor
 from resource_explorer.step_outcome import StepOutcome, no_signal
@@ -39,6 +41,7 @@ from resource_explorer.surveyors.survey_report import (
     RequestForActionAnnotation,
     ResourceMeasureAnnotation,
 )
+from resource_explorer.survey_time import now_utc_iso
 
 log = logging.getLogger(__name__)
 
@@ -123,6 +126,33 @@ _OSV_VULN_URL = "https://api.osv.dev/v1/vulns/{}"
 _MAX_DETAIL_LOOKUPS = 40
 
 
+class _Request(NamedTuple):
+    """What a sender is handed for the batch POST (`opener` in tests receives this, or a URL string for a GET)."""
+    method: str
+    url: str
+    data: bytes
+    headers: dict
+
+
+#: What a failed request raises. `httpx.HTTPError` covers transport errors and (via raise_for_status) an error
+#: status, which the old urlopen raised as HTTPError; the rest are as before.
+_SEND_ERRORS = (httpx.HTTPError, TimeoutError, ValueError, OSError)
+
+
+@contextmanager
+def _send(req):
+    """One request to OSV through httpx (TR-15, 2026-11-15): verified against certifi's CA bundle, not the platform's
+    (the old urlopen used the system bundle, which on some hosts still trusts the emSign ECC Root CA - G3 that certifi
+    2026.10.18 dropped). An error status raises, as urlopen did. Yields an object with `read()`, the shape `json.load`
+    and the tests' openers use."""
+    if isinstance(req, str):
+        req = _Request("GET", req, b"", {})
+    resp = httpx.request(req.method, req.url, content=req.data or None, headers=req.headers,
+                         timeout=_TIMEOUT_SECONDS, follow_redirects=True)
+    resp.raise_for_status()
+    yield io.BytesIO(resp.content)
+
+
 def fetch_severities(advisory_ids: list, *, opener=None) -> dict:
     """{advisory_id: severity} for as many as the cap allows.
 
@@ -133,12 +163,12 @@ def fetch_severities(advisory_ids: list, *, opener=None) -> dict:
     unrated rather than being guessed at.
     """
     out: dict = {}
-    send = opener or (lambda url: urllib.request.urlopen(url, timeout=_TIMEOUT_SECONDS))
+    send = opener or _send
     for advisory_id in advisory_ids[:_MAX_DETAIL_LOOKUPS]:
         try:
             with send(_OSV_VULN_URL.format(advisory_id)) as resp:
                 out[advisory_id] = _severity_of(json.load(resp))
-        except (urllib.error.URLError, TimeoutError, ValueError, OSError) as exc:
+        except _SEND_ERRORS as exc:
             log.debug("severity lookup failed for %s: %s", advisory_id, exc)
     return out
 
@@ -179,16 +209,15 @@ def query_osv(queries: list, *, url: str = _OSV_BATCH_URL,
     if not queries:
         return [], ""
     results: list = []
-    send = opener or (lambda req: urllib.request.urlopen(req, timeout=_TIMEOUT_SECONDS))
+    send = opener or _send
     for start in range(0, len(queries), _BATCH_SIZE):
         chunk = queries[start:start + _BATCH_SIZE]
         body = json.dumps({"queries": chunk}).encode()
-        req = urllib.request.Request(
-            url, data=body, headers={"Content-Type": "application/json"})
+        req = _Request("POST", url, body, {"Content-Type": "application/json"})
         try:
             with send(req) as resp:
                 payload = json.load(resp)
-        except (urllib.error.URLError, TimeoutError, ValueError, OSError) as exc:
+        except _SEND_ERRORS as exc:
             return results, f"{type(exc).__name__}: {str(exc)[:120]}"
         batch = payload.get("results") or []
         if len(batch) != len(chunk):
@@ -242,7 +271,7 @@ class CveScanSurveyor(BaseSurveyor):
                  osv_url: str = _OSV_BATCH_URL, opener=None,
                  detail_opener=None) -> None:
         super().__init__(project, registry)
-        self._surveyed_at = surveyed_at or datetime.utcnow().isoformat()
+        self._surveyed_at = surveyed_at or now_utc_iso()
         self._osv_url = osv_url
         self._opener = opener
         self._detail_opener = detail_opener

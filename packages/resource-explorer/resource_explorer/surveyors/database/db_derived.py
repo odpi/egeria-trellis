@@ -54,6 +54,7 @@ from resource_explorer.registry import (
     STATE_NOT_COLLECTED,
     STATE_NOT_MEASURED,
 )
+from resource_explorer.survey_time import now_utc_iso
 from resource_explorer.surveyors.database import schema_scope
 from resource_explorer.surveyors.database.relationship_dot import (
     build_relationship_diagrams,
@@ -5306,7 +5307,7 @@ def _run_db_derived_once(registry, slug: str, *, surveyed_at, source, lens) -> d
 
     return {
         "database_slug": slug,
-        "surveyed_at": datetime.utcnow().isoformat(),
+        "surveyed_at": now_utc_iso(),
         "read_snapshot": inputs.surveyed_at,
         "source": source,
         "derived": derived,

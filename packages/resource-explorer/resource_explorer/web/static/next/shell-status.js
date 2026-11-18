@@ -136,6 +136,56 @@ export function engineLine(status) {
   return null;
 }
 
+/** The Prefect pool's own line (2026-11-13): null, or {kind, word, runsLocally}. Two warnings, in the server's
+ *  own words (`summary`, `runs_locally_words`), so the banner and the log say the same thing:
+ *    - 'unreachable': the Prefect server could not be asked. Runs still happen (the local fallback), but none is
+ *      recorded in Prefect, and dispatched steps run in RE's process (the Architect's ruling, 2026-11-13);
+ *    - 'no_live': the server answered and no worker is live; dispatched steps run in RE's process instead.
+ *    - 'dispatch_refused': a worker is live but a dispatched step would still run locally (its deployment is on
+ *      another pool than the configured one, or it runs other code): the same decision dispatch makes;
+ *    - 'parity_unchecked': a worker is live but advertises no commit, so RE cannot check it runs RE's code.
+ *    - 'workers_elsewhere': RE's own worker is live on another pool than the one RE dispatches to, so it gets no
+ *      step (its --pool differs from the web app's PREFECT_WORK_POOL). In the other states the summary says it.
+ *  Nothing is drawn while the pool is unread (reachable null), while a worker on a known commit is live, or when Prefect is off by
+ *  configuration (enabled false: every step runs locally by choice). Nothing waits in either warning state. */
+export function prefectPoolLine(status) {
+  const p = status?.prefect_pool;
+  if (!p || p.enabled === false) return null;
+  if (p.reachable === false) {
+    return { kind: 'unreachable', word: `Prefect: ${p.summary || 'server not reachable'}`, runsLocally: p.runs_locally_words || '' };
+  }
+  if (p.reachable === true && p.pool_exists === false) {
+    // The server answered: this pool does not exist. Its own words, because the fix is to create the pool,
+    // not to start the server (read-back of 377c3353).
+    return { kind: 'pool_missing', word: `Prefect: ${p.summary || 'pool does not exist'}`, runsLocally: p.runs_locally_words || '' };
+  }
+  if (p.reachable !== true) return null;
+  if (p.live_count === 0) {
+    return { kind: 'no_live', word: `Prefect: ${p.summary || 'no live worker'}`, runsLocally: p.runs_locally_words || '' };
+  }
+  // A live worker a step would still not be sent to (Architect ruling 2026-11-14): the server's own refusal.
+  if (p.live_count > 0 && p.dispatch_refused) {
+    return { kind: 'dispatch_refused', word: `Prefect: ${p.summary || p.dispatch_refused}`, runsLocally: p.runs_locally_words || '' };
+  }
+  // A live worker that advertises no commit: RE can dispatch to it but cannot check it runs RE's own code
+  // (Architect ruling 2026-11-13). The server's summary carries the words.
+  if (p.live_count > 0 && (p.parity_unchecked || []).length) {
+    return { kind: 'parity_unchecked', word: `Prefect: ${p.summary || 'commit parity not checked'}`, runsLocally: '' };
+  }
+  if (p.live_count > 0 && (p.workers_elsewhere || []).length) {
+    return { kind: 'workers_elsewhere', word: `Prefect: ${p.summary || 'a worker is on another pool'}`, runsLocally: '' };
+  }
+  return null;
+}
+
+function poolLineHtml(pool) {
+  if (!pool) return '';
+  return `<span data-prefect-pool-line="${esc(pool.kind)}" class="basis-full text-state-warn">`
+    + `<span aria-hidden="true">⚠</span> <span data-prefect-pool-word>${esc(pool.word)}</span>`
+    + (pool.runsLocally ? ` · <span data-prefect-pool-runs-locally>${esc(pool.runsLocally)}</span>` : '')
+    + '</span>';
+}
+
 function engineLineHtml(eng) {
   if (!eng) return '';
   return `<span data-engine-line="${esc(eng.kind)}" class="basis-full ${eng.kind === 'declaring' ? 'text-accent-ink' : 'text-state-warn'}">`
@@ -152,12 +202,38 @@ function healLine(status) {
 /** True while a run is in flight: a poll must not rebuild the button under it, or a second run could be started. */
 let runInFlight = false;
 
+/* The banner's close box (2026-11-17). Closing hides exactly what is showing now: the dismissal is keyed by the
+ * words of every line, so any change (a new condition, a different worker, the need going from missing to
+ * restoring) draws the banner again, and a new tab or session starts with it showing. It is kept for the tab only
+ * (sessionStorage), never sent anywhere, and never makes a condition healthier: the checks and the log lines
+ * still run, only this tab's banner is hidden. */
+export const BANNER_DISMISSED_KEY = 're_bootstrap_banner_dismissed';
+function bannerSignature(need, eng, pool) {
+  return JSON.stringify([need ? [need.kind, need.word] : null, eng ? [eng.kind, eng.word] : null, pool ? [pool.kind, pool.word] : null]);
+}
+function dismissedSignature(doc) {
+  try { return doc.defaultView?.sessionStorage?.getItem(BANNER_DISMISSED_KEY) ?? globalThis.sessionStorage?.getItem(BANNER_DISMISSED_KEY) ?? null; }
+  catch { return null; }
+}
+function rememberDismissed(doc, sig) {
+  try { (doc.defaultView?.sessionStorage ?? globalThis.sessionStorage)?.setItem(BANNER_DISMISSED_KEY, sig); } catch { /* storage off: closed until the next poll */ }
+}
+const CLOSE_HTML = '<button type="button" data-banner-close aria-label="Close this banner" title="Close this banner (it returns if the condition changes)"'
+  + ' class="ml-auto cursor-pointer border-0 bg-transparent px-2 text-ink-muted hover:text-ink">×</button>';
+function bindClose(doc, bar, sig) {
+  bar.insertAdjacentHTML('beforeend', CLOSE_HTML);
+  bar.querySelector('[data-banner-close]').addEventListener('click', () => { rememberDismissed(doc, sig); bar.remove(); });
+}
+
 /** Draw, update or remove the bootstrap banner for `status` (null = could not be read: no banner, no claim). */
 export function renderBootstrapBanner(doc, status, { run = runBootstrapMissingOnly, onDone, locked = false } = {}) {
   const need = bootstrapAttention(status);
   const eng = engineLine(status);
+  const pool = prefectPoolLine(status);
   if (runInFlight && doc.getElementById(BOOTSTRAP_BANNER_ID)) return need;
-  if (!need && !eng) { removeEl(doc, BOOTSTRAP_BANNER_ID); return null; }
+  if (!need && !eng && !pool) { removeEl(doc, BOOTSTRAP_BANNER_ID); return null; }
+  const sig = bannerSignature(need, eng, pool);
+  if (dismissedSignature(doc) === sig) { removeEl(doc, BOOTSTRAP_BANNER_ID); return need; }
   let bar = doc.getElementById(BOOTSTRAP_BANNER_ID);
   if (!bar) {
     bar = doc.createElement('div');
@@ -167,14 +243,15 @@ export function renderBootstrapBanner(doc, status, { run = runBootstrapMissingOn
     doc.body.insertBefore(bar, doc.body.firstChild);
   }
   if (!need) {
-    // Only the engine line: no batch word, no run button (the press is Admin › Repair's).
-    bar.dataset.bootstrapKind = 'engine';
-    bar.innerHTML = engineLineHtml(eng);
-    return { kind: 'engine', word: eng.word, missing: 0 };
+    // Only the engine and/or pool lines: no batch word, no run button (neither is healed by a bootstrap run).
+    bar.dataset.bootstrapKind = eng ? 'engine' : 'prefect-pool';
+    bar.innerHTML = engineLineHtml(eng) + poolLineHtml(pool);
+    bindClose(doc, bar, sig);
+    return eng ? { kind: 'engine', word: eng.word, missing: 0 } : { kind: 'prefect-pool', word: pool.word, missing: 0 };
   }
   const canRun = need.kind === 'missing';
   bar.dataset.bootstrapKind = need.kind;
-  bar.innerHTML = `${engineLineHtml(eng)}<span class="${need.kind === 'restoring' ? 'text-accent-ink' : 'text-state-warn'}" aria-hidden="true">${need.kind === 'restoring' ? '◔' : '⚠'}</span>
+  bar.innerHTML = `${engineLineHtml(eng)}${poolLineHtml(pool)}<span class="${need.kind === 'restoring' ? 'text-accent-ink' : 'text-state-warn'}" aria-hidden="true">${need.kind === 'restoring' ? '◔' : '⚠'}</span>
     <span data-bootstrap-word>${esc(need.word)}</span>
     ${canRun ? `<button type="button" data-bootstrap-run ${locked ? 'disabled data-admin-only' : ''}
       title="${locked ? 'Admin only: needs the admin credential (Admin → Feedback)' : 'Heal only what is missing. Nothing already present is re-run.'}"
@@ -183,6 +260,7 @@ export function renderBootstrapBanner(doc, status, { run = runBootstrapMissingOn
     <span data-bootstrap-heal class="text-provenance text-ink-muted">${esc(healLine(status))}</span>`;
   const btn = bar.querySelector('[data-bootstrap-run]');
   if (btn) bindRun(btn, bar, { run, onDone });
+  bindClose(doc, bar, sig);
   return need;
 }
 

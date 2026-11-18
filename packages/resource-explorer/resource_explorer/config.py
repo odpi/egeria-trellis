@@ -7,7 +7,7 @@ from pathlib import Path
 import json
 from typing import Annotated, Any, Optional
 
-from pydantic import BaseModel, BeforeValidator, Field
+from pydantic import AliasChoices, BaseModel, BeforeValidator, Field, model_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 log = logging.getLogger(__name__)
@@ -110,7 +110,9 @@ class PgVectorConfig(BaseSettings):
     # PGVECTOR_USER default, which is exactly what happened during Phase 1
     # live verification. db_user avoids the collision outright.
     db_user: str = Field(default="egeria_advisor", alias="PGVECTOR_USER")
-    password: str = Field(default="advisor", alias="PGVECTOR_PASSWORD")
+    # No default (TR-12, 2026-11-15): it used to be "advisor", so a deployment that set nothing ran on a password
+    # written in this repository. Unset, every shared-Postgres user refuses at use and names the variable.
+    password: str = Field(default="", alias="PGVECTOR_PASSWORD")
     schema_name: str = Field(default="resource_explorer", alias="PGVECTOR_SCHEMA")
     max_connections: int = Field(default=10, alias="PGVECTOR_MAX_CONNECTIONS")
     ef_search: int = Field(default=100, alias="PGVECTOR_EF_SEARCH")
@@ -292,10 +294,8 @@ class ObservabilityConfig(BaseSettings):
     #: from-scratch environment without the shared instance.
     metrics_db: str = "data/metrics.db"
     metrics_database_url: str = Field(
-        default=(
-            "postgresql://egeria_advisor:advisor@localhost:5442/egeria_advisor"
-            "?options=-csearch_path%3Dresource_explorer"
-        ),
+        # Empty: get_config() builds the shared-Postgres URL from PGVECTOR_* (TR-12). It used to carry the password.
+        default="",
         alias="METRICS_DATABASE_URL",
     )
 
@@ -333,16 +333,32 @@ class EgeriaConfig(BaseSettings):
     #: the same endpoint under any other. Declared here only; `endpoint_identity.host_aliases` is its one reader.
     #: Configured, never guessed: a host not listed compares as itself.
     host_aliases: str = Field(default="localhost,127.0.0.1,host.docker.internal,laz", alias="EGERIA_HOST_ALIASES")
-    #: RE's own service account. NO default: a code default here was once a person's persona ("erinoverview"), so a
-    #: missing EGERIA_USER_ID silently made RE act as that person. Unset now means every path that needs the
-    #: service account refuses (egeria_clients.NoServiceAccount).
-    user_id: str = Field(default="", alias="EGERIA_USER_ID")
-    user_password: str = Field(default="", alias="EGERIA_USER_PASSWORD")
+    #: RE's own service account, never a person (TR-37, owner decision 2026-11-17). NO default: a code default here
+    #: was once a person's persona ("erinoverview"), so a missing id silently made RE act as that person. Unset
+    #: means every path that needs the service account refuses (egeria_clients.NoServiceAccount).
+    #: Named `RE_DAEMON_USER_ID` / `RE_DAEMON_USER_PASSWORD`, which is what the trellis compose already passes.
+    #: The old names `EGERIA_USER_ID` / `EGERIA_USER_PASSWORD` are read for one release (removed after 6.3, see
+    #: `LEGACY_DAEMON_ENV`): the new name wins when both are set, and `warn_daemon_env_once()` says so, by name only.
+    #: Why not the old names: pyegeria's own fallback identity (settings.User_Profile) reads EGERIA_USER and
+    #: EGERIA_USER_PASSWORD, so a service password kept under that name was one half of a silent fallback login.
+    user_id: str = Field(default="", validation_alias=AliasChoices("RE_DAEMON_USER_ID", "EGERIA_USER_ID"))
+    user_password: str = Field(default="", validation_alias=AliasChoices("RE_DAEMON_USER_PASSWORD", "EGERIA_USER_PASSWORD"))
+
+    @model_validator(mode="after")
+    def _new_daemon_names_win(self) -> "EgeriaConfig":
+        """AliasChoices alone lets the old name win when it sits in a higher-priority SOURCE (the process
+        environment outranks `.env`), so an old name in the environment would beat the new name in `.env`.
+        The ruling is that the new name wins wherever it is: resolve it here, from the same sources."""
+        for new, attr in (("RE_DAEMON_USER_ID", "user_id"), ("RE_DAEMON_USER_PASSWORD", "user_password")):
+            value = _setting_value(new, dict(os.environ), _ENV_FILES)
+            if value and getattr(self, attr) != value:
+                setattr(self, attr, value)
+        return self
     #: Further Egeria platforms a credential may be sent to, comma separated (Brief I). The
     #: configured `platform_url` is always allowed; any other URL is refused before a request.
     allowed_platform_urls: str = Field(default="", alias="EGERIA_ALLOWED_PLATFORM_URLS")
     #: Optional login-form prefill (`GET /api/auth/defaults`). Never the daemon's userId: the
-    #: daemon (EGERIA_USER_ID) is RE's service account, and the endpoint is public (Brief L).
+    #: daemon (RE_DAEMON_USER_ID) is RE's service account, and the endpoint is public (Brief L).
     login_default_user: str = Field(default="", alias="RE_LOGIN_DEFAULT_USER")
     kafka_endpoint: str = Field(default="localhost:9092", alias="EGERIA_KAFKA_ENDPOINT")
     # Base URL for Egeria Workspaces' "The Catalog" app (egeria-workspaces-fs
@@ -493,7 +509,7 @@ class PrefectConfig(BaseSettings):
     # Steps that don't declare executes_at: prefect are unaffected regardless
     # of this setting (see route_local_steps).
     enabled: bool = Field(default=True, alias="PREFECT_ENABLED")
-    work_pool: str = Field(default="default-agent-pool", alias="PREFECT_WORK_POOL")
+    work_pool: str = Field(default="resource-explorer-pool", alias="PREFECT_WORK_POOL")   # TR-45: the bundled workers' pool
     # Deadline for a dispatched step's flow run (seconds); see
     # DEFAULT_PREFECT_STEP_TIMEOUT_SECONDS for the basis of the default.
     step_timeout_seconds: float = Field(
@@ -512,7 +528,20 @@ class PrefectConfig(BaseSettings):
     #
     # Wanting RE's own steps run through Prefect for retries and telemetry is a
     # legitimate deployment choice; it just has to be asked for.
+    #
+    # DEPRECATED (TR-11 F-AB-3, 2026-11-17): `true` is an alias for PREFECT_DISPATCH_STEPS=all. Read through
+    # surveyors/step_dispatch_policy.resolve, never on its own; PREFECT_DISPATCH_STEPS wins when both are set.
     route_local_steps: bool = Field(default=False, alias="PREFECT_ROUTE_LOCAL_STEPS")
+    # Which of Resource Explorer's own (executes_at: resource-explorer) steps go to a Prefect worker, per step:
+    # a comma list of step keys and/or the tokens `heavy` (StepInfo.compute_cost in
+    # step_dispatch_policy.HEAVY_COMPUTE) and `all`. "" (default) dispatches none of them. Each dispatched step
+    # costs ~15 s of hand-off (TR-11 A/B, 2026-11-17), so list only steps heavy enough to move off RE's process.
+    # Decided in one place, step_dispatch_policy.dispatch_decision; validated and logged at startup.
+    dispatch_steps: str = Field(default="", alias="PREFECT_DISPATCH_STEPS")
+    # A pool worker with no Prefect `status` of its own counts as live when its last heartbeat is within
+    # this many heartbeat intervals (the worker's own `heartbeat_interval_seconds`, else 30 s). Read by
+    # bootstrap.check_prefect_pool_workers, which counts live workers rather than registrations.
+    worker_live_factor: float = Field(default=3.0, gt=0, alias="PREFECT_WORKER_LIVE_FACTOR")
 
     model_config = _ENV_FILE_CONFIG
 
@@ -528,10 +557,8 @@ class RegistryConfig(BaseSettings):
     environment without the shared instance.
     """
     database_url: str = Field(
-        default=(
-            "postgresql://egeria_advisor:advisor@localhost:5442/egeria_advisor"
-            "?options=-csearch_path%3Dresource_explorer"
-        ),
+        # Empty: get_config() builds the shared-Postgres URL from PGVECTOR_* (TR-12). It used to carry the password.
+        default="",
         alias="REGISTRY_DATABASE_URL",
     )
 
@@ -553,9 +580,10 @@ class WebUIConfig(BaseSettings):
 class FeedbackConfig(BaseSettings):
     """Product/UI feedback storage + minimal admin gating.
 
-    Kept as its own database file (separate from the project/resource
-    registry) since feedback is an operationally distinct support/triage
-    workflow — see resource_explorer/feedback_store.py.
+    Kept apart from the project/resource registry, since feedback is an
+    operationally distinct support/triage workflow. Since 2026-11-09 the rows
+    live in the shared trellis-feedback tables, on this URL's search_path —
+    see resource_explorer/feedback_store.py.
 
     admin_token / admin_users are NOT a general auth system — see
     resource_explorer/web/admin_auth.py. Leaving both unset means every
@@ -570,10 +598,8 @@ class FeedbackConfig(BaseSettings):
     #: Override FEEDBACK_DATABASE_URL (e.g. back to sqlite:///data/feedback.db)
     #: for a from-scratch environment without the shared instance.
     database_url: str = Field(
-        default=(
-            "postgresql://egeria_advisor:advisor@localhost:5442/egeria_advisor"
-            "?options=-csearch_path%3Dresource_explorer"
-        ),
+        # Empty: get_config() builds the shared-Postgres URL from PGVECTOR_* (TR-12). It used to carry the password.
+        default="",
         alias="FEEDBACK_DATABASE_URL",
     )
     admin_users: NameList = Field(default_factory=list, alias="FEEDBACK_ADMIN_USERS")
@@ -979,10 +1005,155 @@ def egeria_view_server() -> str:
     return get_config().egeria.view_server
 
 
+class MissingDatabaseSetting(RuntimeError):
+    """A shared-Postgres setting RE needs is unset (TR-12). Names the variable(s), never a value."""
+
+
+#: The search path of the three shared-Postgres URLs (registry, feedback, metrics), as their old defaults had it.
+_SHARED_SEARCH_PATH = "resource_explorer"
+
+
+def shared_postgres_url(pg: "PgVectorConfig") -> str:
+    """The shared-Postgres URL from PGVECTOR_HOST/PORT/DBNAME/USER/PASSWORD, or "" when PGVECTOR_PASSWORD is unset."""
+    if not pg.password:
+        return ""
+    from urllib.parse import quote
+
+    return (f"postgresql://{quote(pg.db_user, safe='')}:{quote(pg.password, safe='')}@{pg.host}:{pg.port}/"
+            f"{pg.dbname}?options=-csearch_path%3D{_SHARED_SEARCH_PATH}")
+
+
+def require_database_url(url: str, env_name: str, what: str) -> str:
+    """`url`, or MissingDatabaseSetting naming `env_name` and PGVECTOR_PASSWORD (never a value)."""
+    if url:
+        return url
+    raise MissingDatabaseSetting(
+        f"RE cannot open its {what}: neither {env_name} nor PGVECTOR_PASSWORD is set. Set PGVECTOR_PASSWORD (the "
+        f"shared Postgres password) or {env_name} in the .env file. There is no built-in password any more (TR-12).")
+
+
+def require_pgvector_password(pg: "PgVectorConfig") -> str:
+    """PGVECTOR_PASSWORD, or MissingDatabaseSetting naming it (never a value)."""
+    if pg.password:
+        return pg.password
+    raise MissingDatabaseSetting(
+        "RE cannot connect to the shared Postgres (pgvector): PGVECTOR_PASSWORD is not set. Set it in the .env file. "
+        "There is no built-in password any more (TR-12).")
+
+
+#: (env var, what it is, how to read and write it on an ExplorerConfig) for each shared-Postgres URL.
+DATABASE_URL_SETTINGS = (
+    ("REGISTRY_DATABASE_URL", "registry", lambda c: c.registry, "database_url"),
+    ("FEEDBACK_DATABASE_URL", "feedback store", lambda c: c.feedback, "database_url"),
+    ("METRICS_DATABASE_URL", "metrics store", lambda c: c.observability, "metrics_database_url"),
+)
+
+
+def missing_database_urls(cfg: "ExplorerConfig | None" = None) -> list[str]:
+    """The URL settings still empty after get_config() filled them: neither the URL nor PGVECTOR_PASSWORD is set.
+    Names only."""
+    cfg = cfg or get_config()
+    return [env for env, _what, holder, attr in DATABASE_URL_SETTINGS if not getattr(holder(cfg), attr)]
+
+
+def check_database_settings_at_startup(cfg: "ExplorerConfig | None" = None) -> None:
+    """Fail closed at startup with one clear message naming what is unset (TR-12); the values are never shown.
+
+    A missing registry, feedback or metrics URL refuses the start. A missing PGVECTOR_PASSWORD with all three URLs
+    set (a SQLite dev registry, say) is logged by name and refused where it is used (`require_pgvector_password`:
+    the vector store), since nothing else needs it."""
+    cfg = cfg or get_config()
+    missing = missing_database_urls(cfg)
+    if missing:
+        raise MissingDatabaseSetting(
+            "RE cannot start: these shared-Postgres settings are not set: " + ", ".join(missing + ["PGVECTOR_PASSWORD"])
+            + ". Set PGVECTOR_PASSWORD in the .env file (it also fills the registry, feedback and metrics URLs), or "
+            "set each URL itself. There is no built-in password any more (TR-12).")
+    if not cfg.pgvector.password:
+        log.warning("PGVECTOR_PASSWORD is not set: the vector store (chat, retrieval) will refuse to connect until "
+                       "it is (TR-12: there is no built-in password any more)")
+
+
+# ── The service account's variable names (TR-37, owner decision 2026-11-17) ─────────────────────────
+#: new name -> the old name read for one release. Remove the old names after 6.3 (Architect ruling TR-37 §2).
+LEGACY_DAEMON_ENV = {
+    "RE_DAEMON_USER_ID": "EGERIA_USER_ID",
+    "RE_DAEMON_USER_PASSWORD": "EGERIA_USER_PASSWORD",
+}
+#: pyegeria's own fallback identity (settings.User_Profile) reads these two. They are pyegeria's CLI convention
+#: for running its tools as yourself in a shell, so they must not be in a server process's environment at all.
+PYEGERIA_CLI_ENV = ("EGERIA_USER", "EGERIA_USER_PASSWORD")
+_daemon_env_warned = False
+
+
+def _setting_value(name: str, environ: dict[str, str], env_files: tuple) -> str:
+    """The effective value of one setting: the process environment, else the `.env` files (later wins), as
+    pydantic-settings reads them. Used only to compare and to say which names are set, never to report a value."""
+    if environ.get(name, "") != "":
+        return environ[name]
+    value = ""
+    try:
+        from dotenv import dotenv_values
+        for f in env_files:
+            if Path(f).is_file():
+                value = dotenv_values(f).get(name) or value
+    except Exception:  # noqa: BLE001 - a .env that cannot be read is pydantic-settings' error, not this check's
+        return value
+    return value
+
+
+def daemon_env_findings(environ: dict[str, str] | None = None, env_files: tuple | None = None) -> list[str]:
+    """What is wrong with how the service account's variables are named, as warning sentences. Names only: no
+    sentence carries a value (a password's length, prefix or fingerprint included). Empty list: nothing to say.
+
+      - old name set, new name not: the old name is used, once-a-release warning naming both;
+      - both set and different: the new name wins, and it says so;
+      - EGERIA_USER / EGERIA_USER_PASSWORD present in the process environment: pyegeria's fallback identity
+        would read them (TR-37 §3)."""
+    environ = dict(os.environ if environ is None else environ)
+    files = _ENV_FILES if env_files is None else env_files
+    out: list[str] = []
+    old_only: list[str] = []
+    for new, old in LEGACY_DAEMON_ENV.items():
+        new_v, old_v = _setting_value(new, environ, files), _setting_value(old, environ, files)
+        if old_v and not new_v:
+            old_only.append(f"{old} -> {new}")
+        elif old_v and new_v and old_v != new_v:
+            out.append(f"{new} and {old} are both set and differ: {new} is used; remove {old}")
+    if old_only:
+        out.insert(0, "the service account is set under deprecated names, read for one more release (removed after "
+                      "6.3); rename: " + "; ".join(old_only))
+    present = [n for n in PYEGERIA_CLI_ENV if environ.get(n, "") != ""]
+    if present:
+        out.append(f"{' and '.join(present)} {'is' if len(present) == 1 else 'are'} set in this server process's "
+                   "environment: they are pyegeria's CLI convention for running its tools as yourself in a shell, and "
+                   "pyegeria's fallback identity reads them. Unset them for a server (RE_DAEMON_USER_ID / "
+                   "RE_DAEMON_USER_PASSWORD are the service account)")
+    return out
+
+
+def warn_daemon_env_once() -> list[str]:
+    """Log `daemon_env_findings` once per process, at WARNING. Returns what it logged ([] after the first call)."""
+    global _daemon_env_warned
+    if _daemon_env_warned:
+        return []
+    _daemon_env_warned = True
+    findings = daemon_env_findings()
+    for line in findings:
+        logging.getLogger(__name__).warning("service account: %s", line)
+    return findings
+
+
 def get_config() -> ExplorerConfig:
     global _config
     if _config is None:
         _config = ExplorerConfig()
+        warn_daemon_env_once()
+        # TR-12: the three shared-Postgres URLs come from PGVECTOR_* when not set themselves; empty when
+        # PGVECTOR_PASSWORD is unset too, and each user then refuses with require_database_url().
+        for _env, _what, holder, attr in DATABASE_URL_SETTINGS:
+            if not getattr(holder(_config), attr):
+                setattr(holder(_config), attr, shared_postgres_url(_config.pgvector))
         # Apply the resolved model tier on top of the pydantic-parsed llm/rag
         # blocks: Ollama model, num_ctx, and the RAG context token budget.
         # See resolve_llm_tier_config()'s docstring for override precedence.

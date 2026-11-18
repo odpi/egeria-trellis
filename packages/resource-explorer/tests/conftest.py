@@ -117,7 +117,20 @@ def _pgvector_reachable() -> bool:
         return False
 
 
-_PGVECTOR_AVAILABLE = _pgvector_reachable()
+def _pg_password_supplied() -> bool:
+    """TR-12: there is no built-in password; the Postgres tier needs one supplied (shell or pgvector.env)."""
+    try:
+        from resource_explorer.config import get_config
+
+        return bool(get_config().pgvector.password)
+    except Exception:
+        return False
+
+
+_PG_PASSWORD_SUPPLIED = _pg_password_supplied()
+#: TR-12 R1: the skip reason when no password is supplied (never an error).
+PG_PASSWORD_SKIP_REASON = "PGVECTOR_PASSWORD not set (TR-12)"
+_PGVECTOR_AVAILABLE = _PG_PASSWORD_SUPPLIED and _pgvector_reachable()
 
 
 # The test suite must never CLAIM rows from the shared registry's run queue.
@@ -133,7 +146,7 @@ _PGVECTOR_AVAILABLE = _pgvector_reachable()
 # Enqueueing, reading and reconciling are unaffected — only claiming.
 os.environ.setdefault("EXPLORER_RUN_QUEUE_ENABLED", "false")
 
-# RE has no code default for its service account (config.EgeriaConfig.user_id is blank when EGERIA_USER_ID is unset
+# RE has no code default for its service account (config.EgeriaConfig.user_id is blank when RE_DAEMON_USER_ID is unset
 # and every path that needs it refuses). The tests that act as the daemon get an explicit test account here.
 #
 # Clearly fake, non-person values, and ONLY when the live tier is off: an env var outranks the package .env
@@ -146,8 +159,8 @@ def _live_tier_requested() -> bool:
 
 
 if not _live_tier_requested():
-    os.environ.setdefault("EGERIA_USER_ID", "re-test-service-account")
-    os.environ.setdefault("EGERIA_USER_PASSWORD", "re-test-password")
+    os.environ.setdefault("RE_DAEMON_USER_ID", "re-test-service-account")
+    os.environ.setdefault("RE_DAEMON_USER_PASSWORD", "re-test-password")
 
 
 def _egeria_reachable() -> bool:
@@ -387,9 +400,10 @@ _REQUIRE_POSTGRES = os.environ.get("RE_REQUIRE_POSTGRES", "").strip() not in (""
 def pytest_collection_modifyitems(config, items):
     if _REQUIRE_POSTGRES and not _PGVECTOR_AVAILABLE:
         marked = sum(1 for i in items if "requires_pgvector" in i.keywords)
+        why = (PG_PASSWORD_SKIP_REASON + " (source ~/.re-gate/secrets/pgvector.env or export it)"
+               if not _PG_PASSWORD_SUPPLIED else "Postgres is not reachable at the configured host:port")
         pytest.exit(
-            f"RE_REQUIRE_POSTGRES is set but Postgres is not reachable at the "
-            f"configured host:port, so {marked} requires_pgvector test(s) would "
+            f"RE_REQUIRE_POSTGRES is set but {why}, so {marked} requires_pgvector test(s) would "
             f"have been silently skipped. Check the service container and the "
             f"PGVECTOR_* environment variables.",
             returncode=1,
@@ -416,7 +430,9 @@ def pytest_collection_modifyitems(config, items):
     )
     run_corpus = config.getoption("--corpus")
 
-    skip_pgvector = pytest.mark.skip(reason="pgvector/Postgres not reachable at the configured host:port")
+    skip_pgvector = pytest.mark.skip(
+        reason=PG_PASSWORD_SKIP_REASON if not _PG_PASSWORD_SUPPLIED
+        else "pgvector/Postgres not reachable at the configured host:port")
     decision = live_egeria_tier.decide(
         os.environ,
         reads_flag=config.getoption("--live-egeria-reads"),
@@ -445,7 +461,7 @@ def pg_test_schema():
     """The throwaway schema name integration tests write to — created fresh
     (drop-then-create) once per test session, dropped again at teardown."""
     if not _PGVECTOR_AVAILABLE:
-        pytest.skip("pgvector/Postgres not reachable")
+        pytest.skip(PG_PASSWORD_SKIP_REASON if not _PG_PASSWORD_SUPPLIED else "pgvector/Postgres not reachable")
 
     import psycopg2
     from resource_explorer.config import get_config
@@ -558,6 +574,16 @@ def fresh_registry_schema_marker(request, registry_schema_template):
     registry_template.suspended(fresh)
     yield
     registry_template.suspended(False)
+
+
+@pytest.fixture(autouse=True)
+def survey_run_rate_window_starts_empty():
+    """TR-1's per-user run-POST backstop (`survey_definitions._run_posts`) is process memory. Without this, the
+    eleventh run POST of a whole test session would be refused 429 in whichever test sent it."""
+    mod = sys.modules.get("resource_explorer.web.routes.survey_definitions")
+    if mod is not None:
+        mod._run_posts.clear()
+    yield
 
 
 @pytest.fixture(autouse=True)
@@ -914,18 +940,23 @@ def isolate_pgvector_schema(monkeypatch, isolate_database_url_settings, reset_ca
     _scratch_counter["n"] += 1
     scratch = f"{_TEST_SCHEMA_PREFIX}_{os.getpid()}_v{_scratch_counter['n']}"
     monkeypatch.setenv("PGVECTOR_SCHEMA", scratch)
+    # Read the connection settings NOW, before the test runs. A test may remove the password, change the host or
+    # chdir away from the .env that names it (test_db_password_fail_closed's bare_env does all three), and
+    # monkeypatch only undoes that AFTER this teardown. Reading them at teardown connected to the test's
+    # environment, not the run's: gate b421a, "connection to server at localhost (::1) ... refused".
+    drop_with = None
+    if _PGVECTOR_AVAILABLE:
+        from resource_explorer.config import PgVectorConfig
+
+        cfg = PgVectorConfig()
+        drop_with = dict(host=cfg.host, port=cfg.port, dbname=cfg.dbname, user=cfg.db_user, password=cfg.password)
     yield scratch
     if scratch in shared_registry_guard._state["vector_schemas_built"]:
         shared_registry_guard._state["vector_schemas_built"].discard(scratch)
-        if _PGVECTOR_AVAILABLE:
+        if drop_with is not None:
             import psycopg2
-            from resource_explorer.config import PgVectorConfig
 
-            cfg = PgVectorConfig()
-            conn = psycopg2.connect(
-                host=cfg.host, port=cfg.port, dbname=cfg.dbname,
-                user=cfg.db_user, password=cfg.password,
-            )
+            conn = psycopg2.connect(**drop_with)
             conn.autocommit = True
             try:
                 with conn.cursor() as cur:

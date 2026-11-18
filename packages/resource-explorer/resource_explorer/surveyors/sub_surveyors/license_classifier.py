@@ -16,12 +16,12 @@ this surveyor — see stats_fetcher.py's _license_info()).
 from __future__ import annotations
 
 import logging
-from datetime import datetime
 
 from resource_explorer.registry import Project, ProjectRegistry
 from resource_explorer.surveyors.base_surveyor import BaseSurveyor
 from resource_explorer.step_outcome import StepOutcome, no_signal
 from resource_explorer.surveyors.survey_report import Annotation, ClassificationAnnotation
+from resource_explorer.survey_time import now_utc_iso
 
 log = logging.getLogger(__name__)
 
@@ -91,7 +91,7 @@ class LicenseClassifierSurveyor(BaseSurveyor):
 
     def __init__(self, project: Project, registry: ProjectRegistry, surveyed_at: str | None = None) -> None:
         super().__init__(project, registry)
-        self._surveyed_at = surveyed_at or datetime.utcnow().isoformat()
+        self._surveyed_at = surveyed_at or now_utc_iso()
 
     @property
     def step_name(self) -> str:

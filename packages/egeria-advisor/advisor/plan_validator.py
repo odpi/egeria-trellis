@@ -30,6 +30,27 @@ from advisor.action_catalog import get_action_catalog
 
 # ── Public entry point ────────────────────────────────────────────────────────
 
+def _remove_chat_refused(
+    commands: List[Dict[str, Any]], answers: Dict[str, Any]
+) -> Tuple[List[Dict[str, Any]], Dict[str, Any], List[str]]:
+    """Commands chat may never propose (advisor.chat_command_policy: MetadataExpert, `chat_allowed: false`)
+    leave the plan here, every composer path's choke point, each with a warning that says which and why;
+    never a silent drop. Plan execute refuses them again server-side, for a hand-edited document."""
+    from advisor.chat_command_policy import plan_step_refusal
+    kept: List[Dict[str, Any]] = []
+    warnings: List[str] = []
+    for cmd in commands:
+        words = plan_step_refusal(cmd.get("action", ""))
+        if words is None:
+            kept.append(cmd)
+            continue
+        name = cmd.get("display_name") or ""
+        warnings.append(f"Left out of the plan: {words} (requested{' for ' + repr(name) if name else ''}). "
+                        "Nothing was added for it.")
+        answers.pop(cmd.get("_answers_key") or cmd.get("action", ""), None)
+    return kept, answers, warnings
+
+
 def validate_commands(
     commands: List[Dict[str, Any]],
     answers: Optional[Dict[str, Any]] = None,
@@ -53,6 +74,9 @@ def validate_commands(
         answers = {}
 
     warnings: List[str] = []
+
+    commands, answers, w = _remove_chat_refused(commands, answers)
+    warnings.extend(w)
 
     commands, w = _deduplicate(commands)
     warnings.extend(w)

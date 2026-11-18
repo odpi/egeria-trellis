@@ -3,7 +3,8 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from datetime import datetime
+
+from resource_explorer.survey_time import now_utc_iso
 
 log = logging.getLogger(__name__)
 
@@ -497,7 +498,7 @@ class DatabaseSurveyor:
 
         results = {
             "database_slug": self.db_entity.slug,
-            "surveyed_at": surveyed_at or datetime.utcnow().isoformat(),
+            "surveyed_at": surveyed_at or now_utc_iso(),
             "source": "custom",
             "annotations": [],
             "schema_info": {},

@@ -84,7 +84,7 @@ test('F22: a library step that is the lead shows its headline as the answer, not
     library: true, headline: 'measured · 3 files modified within 7 days; 12 within 30 days' })]));
   const text = html.replace(/<[^>]*>/g, '');
   assert.match(text, /measured · 3 files modified within 7 days; 12 within 30 days/);
-  const { readEnvelope } = await import('/static/next/envelope.js');
+  const { readEnvelope } = await import('/static/trellis-ui/envelope.js');
   const lines = readEnvelope(q, env([fact('fs_activity', { library: true, headline: 'measured · 3 files modified within 7 days' })]),
     (s) => s, (s) => s);
   assert.notEqual(lines.answer.trim(), 'measured', 'never the bare state word');
@@ -93,7 +93,7 @@ test('F22: a library step that is the lead shows its headline as the answer, not
 
 test('F22: a non-library headline is still cut to its first sentence', async () => {
   await load();
-  const { readEnvelope } = await import('/static/next/envelope.js');
+  const { readEnvelope } = await import('/static/trellis-ui/envelope.js');
   const lines = readEnvelope(entry, env([fact('db_statistics_freshness', { headline: '3 of 4 stale · 1 schema' })]),
     (s) => s, (s) => s);
   assert.equal(lines.answer, '3 of 4 stale');

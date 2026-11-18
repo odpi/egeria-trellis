@@ -11,13 +11,18 @@ confused:
 
 `not_checked` is not `unreachable`: reporting a check that did not happen would
 turn "we did not look" into "it is down".
+
+**Trust store (TR-15, 2026-11-15).** The request goes through httpx, which verifies
+against certifi's CA bundle, not the platform's (`urllib.request` used the system
+bundle, which on some hosts still trusts the emSign ECC Root CA - G3 that certifi
+2026.10.18 dropped after its key compromise).
 """
 from __future__ import annotations
 
 import os
-import urllib.error
-import urllib.request
 from dataclasses import dataclass, asdict
+
+import httpx
 
 TIMEOUT_SECONDS = 8.0
 _UA = "resource-explorer/1.0 (+docs reachability)"
@@ -41,7 +46,10 @@ def network_disabled() -> bool:
 
 
 class HttpProbe:
-    """The HTTP boundary. Tests substitute an autospec of this class."""
+    """The HTTP boundary. Tests substitute an autospec of this class, or hand it an `httpx.MockTransport`."""
+
+    def __init__(self, transport: "httpx.BaseTransport | None" = None):
+        self._transport = transport
 
     def probe(self, url: str, timeout: float = TIMEOUT_SECONDS) -> ProbeResult:
         if network_disabled():
@@ -58,17 +66,15 @@ class HttpProbe:
         headers = {"User-Agent": _UA}
         if method == "GET":
             headers["Range"] = "bytes=0-0"
-        req = urllib.request.Request(url, method=method, headers=headers)
         try:
-            with urllib.request.urlopen(req, timeout=timeout) as resp:
-                status = getattr(resp, "status", None) or resp.getcode()
-                return ProbeResult(
-                    "reachable" if status < 400 else "unreachable", status,
-                    resp.geturl() or url, resp.headers.get("Last-Modified", "") or "",
-                    "" if status < 400 else f"HTTP {status}")
-        except urllib.error.HTTPError as exc:
-            return ProbeResult("unreachable", exc.code, getattr(exc, "url", "") or url,
-                               exc.headers.get("Last-Modified", "") if exc.headers else "",
-                               f"HTTP {exc.code}")
+            # Redirects followed, as urlopen did; stream so the body is never read (HEAD has none; GET asks for one
+            # byte). httpx verifies against certifi.
+            with httpx.Client(follow_redirects=True, timeout=timeout, transport=self._transport) as client:
+                with client.stream(method, url, headers=headers) as resp:
+                    status = resp.status_code
+                    return ProbeResult(
+                        "reachable" if status < 400 else "unreachable", status,
+                        str(resp.url) or url, resp.headers.get("Last-Modified", "") or "",
+                        "" if status < 400 else f"HTTP {status}")
         except Exception as exc:
             return ProbeResult("unreachable", None, "", "", f"{type(exc).__name__}: {str(exc)[:80]}")

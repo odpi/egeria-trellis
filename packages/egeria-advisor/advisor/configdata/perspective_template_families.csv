@@ -1,4 +1,6 @@
 perspective,family,level
+# The perspective column is a ROLE PROFILE (perspectives.csv role_profile), not a perspective key:
+# developer, data_engineer, data_steward, governance_officer. A general perspective gets only the any rows.
 # ANY rows apply to every perspective
 any,Report,both
 any,Feedback,both

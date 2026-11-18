@@ -34,9 +34,9 @@ derived from our own connectivity — the failure `cii_badge` refuses for badges
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
 
 from resource_explorer.registry import Project, ProjectRegistry
+from resource_explorer.survey_time import now_utc_iso
 from resource_explorer.surveyors.base_surveyor import BaseSurveyor
 from resource_explorer.surveyors.survey_report import Annotation, ClassificationAnnotation
 
@@ -157,8 +157,7 @@ class RefreshPlanSurveyor(BaseSurveyor):
     def __init__(self, project: Project, registry: ProjectRegistry,
                  surveyed_at: str | None = None) -> None:
         super().__init__(project, registry)
-        self._surveyed_at = surveyed_at or datetime.now(timezone.utc).replace(
-            tzinfo=None).isoformat()
+        self._surveyed_at = surveyed_at or now_utc_iso()
 
     @property
     def step_name(self) -> str:

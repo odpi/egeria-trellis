@@ -26,10 +26,8 @@ async def list_drafts(request: Request) -> Dict[str, Any]:
     """Return active planning session drafts visible to the requester:
     shared + their own namespace, or every namespace for a curator role."""
     from advisor.governance_draft import list_visible_drafts
-    from advisor.auth import get_current_user
-    user = get_current_user(request)
-    user_id = None if not user or user.get("anonymous") else user.get("user_id") or user.get("sub")
-    role = (user or {}).get("role")
+    from advisor.web.ownership import requester
+    user_id, role = requester(request)
     return {"drafts": list_visible_drafts(user_id=user_id, role=role)}
 
 
@@ -46,10 +44,8 @@ async def get_draft(request: Request, draft_id: str) -> Dict[str, Any]:
     namespace, unless the requester is a curator.
     """
     from advisor.governance_draft import resolve_draft
-    from advisor.auth import get_current_user
-    user = get_current_user(request)
-    user_id = None if not user or user.get("anonymous") else user.get("user_id") or user.get("sub")
-    role = (user or {}).get("role")
+    from advisor.web.ownership import requester
+    user_id, role = requester(request)
     resolved = resolve_draft(draft_id, user_id=user_id, role=role)
     if resolved is None:
         raise HTTPException(status_code=404, detail=f"Draft {draft_id!r} not found")
@@ -77,8 +73,8 @@ async def patch_draft_commands(request: Request, draft_id: str, body: Dict[str, 
     from advisor.plan_validator import validate_commands
     user = get_current_user(request)
     edited_by = (user or {}).get("sub")
-    user_id = None if not user or user.get("anonymous") else user.get("user_id") or user.get("sub")
-    role = (user or {}).get("role")
+    from advisor.web.ownership import requester
+    user_id, role = requester(request)
     resolved = resolve_draft(draft_id, user_id=user_id, role=role)
     if resolved is None:
         raise HTTPException(status_code=404, detail=f"Draft {draft_id!r} not found")
@@ -140,10 +136,8 @@ async def patch_draft_commands(request: Request, draft_id: str, body: Dict[str, 
 async def delete_draft(request: Request, draft_id: str) -> Dict[str, str]:
     """Discard a planning session draft. Ownership-checked (see GET above)."""
     from advisor.governance_draft import resolve_draft
-    from advisor.auth import get_current_user
-    user = get_current_user(request)
-    user_id = None if not user or user.get("anonymous") else user.get("user_id") or user.get("sub")
-    role = (user or {}).get("role")
+    from advisor.web.ownership import requester
+    user_id, role = requester(request)
     resolved = resolve_draft(draft_id, user_id=user_id, role=role)
     if resolved is None:
         return {"status": "not_found"}

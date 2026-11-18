@@ -35,7 +35,7 @@ import { setCommitLine, commitLineFromRecord } from '/static/next/stages/curate-
 import { glyphSpan, stateEntry } from '/static/next/glyphs.js';
 import { cue } from '/static/next/stages/repo-manifest.js';
 import { SCOPE_COLS, MANIFEST_COLS } from '/static/next/stages/scope-columns.js';
-import { cellStyle, handleHtml, innerStyle, headCellStyle, attachColumnResize } from '/static/next/colresize.js';
+import { cellStyle, handleHtml, innerStyle, headCellStyle, attachColumnResize } from '/static/trellis-ui/colresize.js';
 import { savedLine, stamp } from '/static/next/format.js';
 import {
   SOURCE_WORD, EGERIA_NOT_MEASURED, md, nodeSourceLine, scopeCollapsedText,

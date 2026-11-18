@@ -28,7 +28,6 @@ from __future__ import annotations
 import json
 import logging
 import re
-from datetime import datetime
 from pathlib import Path
 
 from resource_explorer.ingestion.vendored import is_vendored_abs
@@ -36,6 +35,7 @@ from resource_explorer.open_data.absence import NOT_REPORTED, reported_or_absent
 from resource_explorer.open_data.ckan import normalise_doi
 from resource_explorer.open_data.licences import licence_flags, licence_id_from_iri
 from resource_explorer.registry import ProjectRegistry
+from resource_explorer.survey_time import now_utc_iso
 
 log = logging.getLogger(__name__)
 
@@ -522,5 +522,5 @@ def store_descriptors(registry: ProjectRegistry, slug: str, root: str | Path,
     `no_descriptor` finding, superseding the previous run's rows (a descriptor that was removed stops answering)."""
     found = read_descriptors(root)
     registry.upsert_finding(slug, FINDINGS_KIND, findings_for(found),
-                            surveyed_at=surveyed_at or datetime.utcnow().isoformat(), supersedes_previous=True)
+                            surveyed_at=surveyed_at or now_utc_iso(), supersedes_previous=True)
     return found

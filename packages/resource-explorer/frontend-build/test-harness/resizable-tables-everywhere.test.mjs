@@ -14,6 +14,8 @@ import { makeDomEnvironment, ensureLoaderRegistered } from './dom-harness.mjs';
 
 const tick = (ms = 30) => new Promise((r) => setTimeout(r, ms));
 const NEXT = new URL('../../resource_explorer/web/static/next/', import.meta.url).pathname;
+// The files RE shares with EA (packages/trellis-ui) are RE's tables too.
+const SHARED_UI = new URL('../../../trellis-ui/trellis_ui/static/', import.meta.url).pathname;
 
 function setUp() {
   const env = makeDomEnvironment();
@@ -29,7 +31,7 @@ const drag = (window, document, handle, from, to) => {
 
 test('a table drawn into a panel appended to the body after the watcher started is resizable', async () => {
   const { document } = setUp();
-  const { watchTables } = await import('/static/next/colresize.js');
+  const { watchTables } = await import('/static/trellis-ui/colresize.js');
   watchTables(document.body);
   const panel = document.createElement('div');                 // the Admin panel, drill-downs and bands are appended like this
   document.body.appendChild(panel);
@@ -48,7 +50,7 @@ test('a table drawn into a panel appended to the body after the watcher started 
 
 test('a spec-driven grid (gridHtml) is wired when drawn late, with no attachGrids call (the quality-checks gap)', async () => {
   const { document, window } = setUp();
-  const { watchTables } = await import('/static/next/colresize.js');
+  const { watchTables } = await import('/static/trellis-ui/colresize.js');
   const { gridHtml, RANKED_COLS } = await import('/static/next/stages/report-tables.js');
   watchTables(document.body);
   const slot = document.createElement('div');
@@ -66,7 +68,7 @@ test('a spec-driven grid (gridHtml) is wired when drawn late, with no attachGrid
 
 test('a div grid with columnheaders (dependencies, the repo manifest) resizes like a table', async () => {
   const { document, window } = setUp();
-  const { watchTables } = await import('/static/next/colresize.js');
+  const { watchTables } = await import('/static/trellis-ui/colresize.js');
   const { dependencyTableHtml } = await import('/static/next/stages/dependencies.js');
   watchTables(document.body);
   const slot = document.createElement('div');
@@ -89,7 +91,7 @@ test('a div grid with columnheaders (dependencies, the repo manifest) resizes li
 
 test('a table with no header row and under three columns is not a data table and gets no handles', async () => {
   const { document } = setUp();
-  const { enhanceTables } = await import('/static/next/colresize.js');
+  const { enhanceTables } = await import('/static/trellis-ui/colresize.js');
   const host = document.createElement('div');
   host.innerHTML = '<table><tbody><tr><td>key</td><td>value</td></tr></tbody></table>';
   document.body.appendChild(host);
@@ -121,9 +123,12 @@ function walk(dir, out = []) {
 test('every table site in the source has a header row or is named as excluded', () => {
   const unnamed = [];
   const seen = {};
-  for (const f of walk(NEXT)) {
-    const rel = relative(NEXT, f);
+  for (const f of [...walk(NEXT), ...walk(SHARED_UI)]) {
+    const rel = f.startsWith(SHARED_UI) ? relative(SHARED_UI, f) : relative(NEXT, f);
     if (rel === 'colresize.js') continue;
+    // Vendored byte-identical from odpi/egeria-workspaces (the Portal's structured-TABLE renderer, used by EA's
+    // dashboards): it renders its own header rows, EA makes its columns resizable, and it is never edited here.
+    if (rel === 'egeria-table.js') continue;
     const src = readFileSync(f, 'utf-8');
     for (const m of src.matchAll(/`<table\b|<table\b[^>]*>|role="table"/g)) {
       const seg = src.slice(m.index, m.index + 6000);

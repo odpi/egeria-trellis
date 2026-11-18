@@ -6,6 +6,8 @@ from pathlib import Path
 
 STATIC = Path(__file__).resolve().parents[1] / "resource_explorer/web/static"
 NEXT = STATIC / "next"
+# The files RE shares with EA (packages/trellis-ui) are scanned too: they left next/ but are still RE's code.
+SHARED_UI = Path(__file__).resolve().parents[2] / "trellis-ui" / "trellis_ui" / "static"
 APP = (NEXT / "app.js").read_text()
 HTML = (NEXT / "index.html").read_text()
 API = (STATIC / "re-api.js").read_text()
@@ -34,10 +36,10 @@ def test_bootstrap_run_never_sends_force_true():
     one = API[API.index("export const runBootstrapBatch"):]
     one = one[:one.index(";") + 1]
     assert "{ batch }" in one and "force" not in one, "the one-batch press (W65) is never forced"
-    for js in NEXT.rglob("*.js"):
+    for js in [*NEXT.rglob("*.js"), *SHARED_UI.rglob("*.js")]:
         text = js.read_text()
         assert "bootstrap/run" not in text or js.name == "re-api.js", f"{js} posts the bootstrap run itself"
-    assert "bootstrap/run" not in "".join(p.read_text() for p in NEXT.rglob("*.js"))
+    assert "bootstrap/run" not in "".join(p.read_text() for p in [*NEXT.rglob("*.js"), *SHARED_UI.rglob("*.js")])
 
 
 def test_the_bootstrap_route_is_the_one_the_client_calls():

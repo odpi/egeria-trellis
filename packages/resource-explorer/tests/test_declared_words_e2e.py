@@ -25,6 +25,7 @@ from tests.library_step_install import install_steps  # noqa: F401 - the fixture
 ABSENCE = {"not_measured": "Not measured: nobody looked.", "not_permitted": "Not permitted.",
            "not_applicable": "Not applicable.", "nothing_found": "Measured: nothing there."}
 NEXT = Path(__file__).resolve().parents[1] / "resource_explorer" / "web" / "static" / "next"
+SHARED_UI = Path(__file__).resolve().parents[2] / "trellis-ui" / "trellis_ui" / "static"  # RE's files shared with EA
 
 
 def _decl(measure: dict, **over) -> Declaration:
@@ -180,9 +181,10 @@ def test_the_graph_renderer_stacks_exclusive_categories_by_the_stated_total_only
     # The renderer imports the table block (envelope.js, which imports format.js) and the glyphs: copy the four, with
     # their root-relative imports pointed at the copies, so the registration travels with the renderer.
     for name in ("graph-renderer.js", "envelope.js", "format.js", "glyphs.js"):
-        src = (NEXT / name).read_text(encoding="utf-8")
+        src = ((SHARED_UI if name in ("envelope.js", "format.js") else NEXT) / name).read_text(encoding="utf-8")
         for dep in ("envelope", "format", "glyphs"):
-            src = src.replace(f"'/static/next/{dep}.js'", f"'./{dep}.mjs'")
+            for root in ("/static/next/", "/static/trellis-ui/"):
+                src = src.replace(f"'{root}{dep}.js'", f"'./{dep}.mjs'")
         (tmp_path / name.replace("graph-renderer.js", "g.mjs").replace(".js", ".mjs")).write_text(src, encoding="utf-8")
     script = ("import * as G from '" + (tmp_path / "g.mjs").as_uri() + "';"
               "const items=[{label:'a',count:1500},{label:'b',count:509}];"

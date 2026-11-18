@@ -7,7 +7,7 @@ import { makeDomEnvironment, ensureLoaderRegistered } from './dom-harness.mjs';
 
 ensureLoaderRegistered();
 const { categoriesHtml, categoriesSpec, graphHtml, OVERLAP_NOTE } = await import('/static/next/graph-renderer.js');
-const { readEnvelope } = await import('/static/next/envelope.js');
+const { readEnvelope } = await import('/static/trellis-ui/envelope.js');
 
 // #603's own case: the categories add up to 2,009; the result states 2,098.
 const ITEMS = [{ label: 'tables', count: 1500 }, { label: 'views', count: 509 }];

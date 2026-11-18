@@ -1,0 +1,122 @@
+{
+ "B01": {
+  "score": "0",
+  "why": "PROVISIONAL, offline, spec-only (no rows seen): Process: wrong type"
+ },
+ "B02": {
+  "score": "1",
+  "why": "PROVISIONAL, offline, spec-only (no rows seen): Project + status, ACTIVE not applied"
+ },
+ "B03": {
+  "score": "1",
+  "why": "PROVISIONAL, offline, spec-only (no rows seen): Project, qualified name only: no priority column, not sorted"
+ },
+ "B04": {
+  "score": "1",
+  "why": "PROVISIONAL, offline, spec-only (no rows seen): GlossaryTerm (grounded find_glossary_terms) + usage, condition not applied"
+ },
+ "B05": {
+  "score": "1",
+  "why": "PROVISIONAL, offline, spec-only (no rows seen): GlossaryTerm + status, DRAFT not applied"
+ },
+ "B06": {
+  "score": "1",
+  "why": "PROVISIONAL, offline, spec-only (no rows seen): GlossaryTerm, effective-date columns missing"
+ },
+ "B07": {
+  "score": "1",
+  "why": "PROVISIONAL, offline, spec-only (no rows seen): Collection, no classification column or condition"
+ },
+ "B08": {
+  "score": "1",
+  "why": "PROVISIONAL, offline, spec-only (no rows seen): Collection + create time, not sorted"
+ },
+ "B09": {
+  "score": "2",
+  "why": "PROVISIONAL, offline, spec-only (no rows seen): DigitalProduct (scoped), name + description"
+ },
+ "B10": {
+  "score": "0",
+  "why": "PROVISIONAL, offline, spec-only (no rows seen): Project: wrong type"
+ },
+ "B11": {
+  "score": "0",
+  "why": "PROVISIONAL, offline, spec-only (no rows seen): Asset: wrong type"
+ },
+ "B12": {
+  "score": "1",
+  "why": "PROVISIONAL, offline, spec-only (no rows seen): all collections: too broad, recoverable"
+ },
+ "B13": {
+  "score": "1",
+  "why": "PROVISIONAL, offline, spec-only (no rows seen): GovernanceMetric, description only (no name column)"
+ },
+ "B14": {
+  "score": "0",
+  "why": "PROVISIONAL, offline, spec-only (no rows seen): error: LLM type not an Egeria type"
+ },
+ "B15": {
+  "score": "1",
+  "why": "PROVISIONAL, offline, spec-only (no rows seen): GovernancePolicy + status, condition not applied"
+ },
+ "C01": {
+  "score": "0",
+  "why": "PROVISIONAL, offline, spec-only (no rows seen): error: ungrounded type"
+ },
+ "C02": {
+  "score": "1",
+  "why": "PROVISIONAL, offline, spec-only (no rows seen): GovernanceDefinition: all definitions, too broad"
+ },
+ "C03": {
+  "score": "0",
+  "why": "PROVISIONAL, offline, spec-only (no rows seen): error: ungrounded type"
+ },
+ "C04": {
+  "score": "0",
+  "why": "PROVISIONAL, offline, spec-only (no rows seen): error: ungrounded type"
+ },
+ "C05": {
+  "score": "0",
+  "why": "PROVISIONAL, offline, spec-only (no rows seen): error: ungrounded type"
+ },
+ "C06": {
+  "score": "0",
+  "why": "PROVISIONAL, offline, spec-only (no rows seen): Asset: wrong type"
+ },
+ "C07": {
+  "score": "0",
+  "why": "PROVISIONAL, offline, spec-only (no rows seen): GlossaryTerm: wrong type"
+ },
+ "C08": {
+  "score": "1",
+  "why": "PROVISIONAL, offline, spec-only (no rows seen): Agreement: too broad (subscriptions among them)"
+ },
+ "C09": {
+  "score": "1",
+  "why": "PROVISIONAL, offline, spec-only (no rows seen): Asset, no owner column or condition"
+ },
+ "C10": {
+  "score": "1",
+  "why": "PROVISIONAL, offline, spec-only (no rows seen): Asset + update time, condition not applied"
+ },
+ "A01": {
+  "score": "0",
+  "why": "PROVISIONAL, offline, spec-only (no rows seen): error, no question"
+ },
+ "A02": {
+  "score": "0",
+  "why": "PROVISIONAL, offline, spec-only (no rows seen): guessed, no question"
+ },
+ "A03": {
+  "score": "0",
+  "why": "PROVISIONAL, offline, spec-only (no rows seen): error, no question"
+ },
+ "A04": {
+  "score": "0",
+  "why": "PROVISIONAL, offline, spec-only (no rows seen): guessed, no question"
+ },
+ "A05": {
+  "score": "0",
+  "why": "PROVISIONAL, offline, spec-only (no rows seen): error, no question"
+ }
+}

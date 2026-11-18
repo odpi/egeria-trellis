@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Start Resource Explorer and/or Egeria Advisor, natively or in containers.
+# Start Resource Explorer, Egeria Advisor and/or Trellis Studio, natively or in containers.
 #
 # The equivalent of egeria-workspaces' quick-start-local, for this repo. It
 # deliberately does NOT reimplement what already works: the native path runs
@@ -20,8 +20,10 @@
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-RE_ENV="$REPO_ROOT/packages/resource-explorer/.env"
-EA_ENV="$REPO_ROOT/packages/egeria-advisor/.env"
+# TRELLIS_UP_<APP>_ENV point at other files (for tests: they never write the real .env files).
+RE_ENV="${TRELLIS_UP_RE_ENV:-$REPO_ROOT/packages/resource-explorer/.env}"
+EA_ENV="${TRELLIS_UP_EA_ENV:-$REPO_ROOT/packages/egeria-advisor/.env}"
+STUDIO_ENV="${TRELLIS_UP_STUDIO_ENV:-$REPO_ROOT/packages/studio/.env}"
 
 # The compose overlay and the Portal's own .env both live in egeria-workspaces-fs.
 # Sibling of this repo, or of its parent -- the same two layouts the egeria-advisor
@@ -48,19 +50,26 @@ PORTAL_ENV="${WORKSPACES:+$WORKSPACES/compose-configs/egeria-quickstart/.env}"
 MODE=native
 WANT_RE=1
 WANT_EA=1
+WANT_STUDIO=1
+SELECTED=""
 CHECK_ONLY=0
 INIT_SECRETS=1
+PREFLIGHT=1
+START_CHECK=0
+# How long each app gets to answer its /health before it counts as not started (seconds).
+START_TIMEOUT="${TRELLIS_UP_START_TIMEOUT:-180}"
+LOG_DIR="${TRELLIS_UP_LOG_DIR:-$REPO_ROOT/logs/trellis-up}"
 
 usage() {
   cat <<'USAGE'
 Usage: ./trellis-up [OPTIONS]
 
-  Starts Resource Explorer (8810) and Egeria Advisor (8880).
+  Starts Resource Explorer (8810), Egeria Advisor (8880) and Trellis Studio (8840).
 
-Which apps:
-  --re                Resource Explorer only.
-  --ea                Egeria Advisor only.
-                      Default is both.
+Which apps (combine them; default is all three):
+  --re                Resource Explorer.
+  --ea                Egeria Advisor.
+  --studio            Trellis Studio (native only: there is no Studio image yet).
 
 How:
   --native            Run as host processes via the Makefile (default).
@@ -71,16 +80,28 @@ Other:
   --check             Run the preflight checks and exit without starting
                       anything. Reports what is missing rather than starting
                       something that will half-work.
+  --start-check       Start the apps, wait until each answers its /health (or
+                      fails), report, stop them all, and exit 0 only if every
+                      one started. For CI and for "does it come up?".
+  --no-preflight      Skip the Egeria/Postgres/Ollama/port checks.
   --no-init-secrets   Do not create missing JWT secrets. The apps still start;
                       they derive a per-hostname secret, so sessions will not
                       survive a move or a container restart.
   -h, --help          This text.
 
+Starting (native):
+  Each app's output is shown prefixed [RE]/[EA]/[Studio] and kept in
+  logs/trellis-up/<app>.log. An app that exits, or does not answer its /health
+  within TRELLIS_UP_START_TIMEOUT seconds (default 180), is reported by name
+  with the first error line of its output; the others are then stopped and
+  trellis-up exits non-zero. Once all are up, Ctrl-C stops them all, and an
+  app that stops later is reported the same way.
+
 Secrets:
-  A missing TRELLIS_JWT_SECRET is generated once and written to BOTH packages'
-  .env files with the same value -- both apps read that name, and a session is
-  only portable between them if it matches. Existing values are never
-  overwritten.
+  A missing TRELLIS_JWT_SECRET is generated once and written to all three
+  packages' .env files with the same value -- every app reads that name, and a
+  session is only portable between them if it matches. Existing values are
+  never overwritten.
 
   TRELLIS_PORTAL_SECRET is only needed if this deployment accepts the Egeria
   Portal's SSO handoff. It must equal the Portal's EGERIA_ADVISOR_SSO_SECRET,
@@ -92,8 +113,11 @@ USAGE
 
 while [ $# -gt 0 ]; do
   case "$1" in
-    --re) WANT_EA=0 ;;
-    --ea) WANT_RE=0 ;;
+    --re) SELECTED="$SELECTED re" ;;
+    --ea) SELECTED="$SELECTED ea" ;;
+    --studio) SELECTED="$SELECTED studio" ;;
+    --start-check) START_CHECK=1 ;;
+    --no-preflight) PREFLIGHT=0 ;;
     --native) MODE=native ;;
     --container) MODE=container ;;
     --check) CHECK_ONLY=1 ;;
@@ -103,6 +127,13 @@ while [ $# -gt 0 ]; do
   esac
   shift
 done
+# Named apps are exactly the ones started; none named is all three.
+if [ -n "$SELECTED" ]; then
+  WANT_RE=0; WANT_EA=0; WANT_STUDIO=0
+  case " $SELECTED " in *" re "*) WANT_RE=1 ;; esac
+  case " $SELECTED " in *" ea "*) WANT_EA=1 ;; esac
+  case " $SELECTED " in *" studio "*) WANT_STUDIO=1 ;; esac
+fi
 
 say()  { printf '[trellis-up] %s\n' "$*"; }
 warn() { printf '[trellis-up] WARNING: %s\n' "$*" >&2; }
@@ -132,13 +163,14 @@ env_set() {
   else
     printf '%s=%s\n' "$key" "$val" >> "$file"
   fi
+  chmod 600 "$file"   # it holds secrets (TRELLIS_JWT_SECRET, TRELLIS_PORTAL_SECRET): owner-only, whatever the umask
 }
 
 gen_secret() { openssl rand -hex 32; }
 
 init_secrets() {
   local existing="" src=""
-  for f in "$RE_ENV" "$EA_ENV"; do
+  for f in "$RE_ENV" "$EA_ENV" "$STUDIO_ENV"; do
     local v; v="$(env_get "$f" TRELLIS_JWT_SECRET)"
     if [ -n "$v" ]; then existing="$v"; src="$f"; break; fi
   done
@@ -154,12 +186,12 @@ init_secrets() {
   # .env is the bug, not the fix. Sessions are portable between the two apps
   # only when both resolve the same secret.
   local wrote=0
-  for f in "$RE_ENV" "$EA_ENV"; do
+  for f in "$RE_ENV" "$EA_ENV" "$STUDIO_ENV"; do
     if [ "$(env_get "$f" TRELLIS_JWT_SECRET)" != "$existing" ]; then
       env_set "$f" TRELLIS_JWT_SECRET "$existing"; wrote=1
     fi
   done
-  [ "$wrote" = 1 ] && say "  written to both packages' .env" || true
+  [ "$wrote" = 1 ] && say "  written to the RE, EA and Studio .env files" || true
 
   # Portal secret: copied, never invented.
   local portal; portal="$(env_get "$RE_ENV" TRELLIS_PORTAL_SECRET)"
@@ -170,7 +202,7 @@ init_secrets() {
   elif [ -n "$PORTAL_ENV" ] && [ -f "$PORTAL_ENV" ] \
        && [ -n "$(env_get "$PORTAL_ENV" EGERIA_ADVISOR_SSO_SECRET)" ]; then
     portal="$(env_get "$PORTAL_ENV" EGERIA_ADVISOR_SSO_SECRET)"
-    for f in "$RE_ENV" "$EA_ENV"; do env_set "$f" TRELLIS_PORTAL_SECRET "$portal"; done
+    for f in "$RE_ENV" "$EA_ENV" "$STUDIO_ENV"; do env_set "$f" TRELLIS_PORTAL_SECRET "$portal"; done
     say "TRELLIS_PORTAL_SECRET: copied from the Portal's EGERIA_ADVISOR_SSO_SECRET"
   else
     say "TRELLIS_PORTAL_SECRET: not set — Portal SSO stays off (the tile reads"
@@ -221,6 +253,7 @@ preflight() {
   # Ports: only a problem for the app we are about to start.
   [ "$WANT_RE" = 1 ] && port_busy 8810 && { warn "port 8810 already in use (RE). \`make ps\` shows what holds it."; problems=$((problems+1)); }
   [ "$WANT_EA" = 1 ] && port_busy 8880 && { warn "port 8880 already in use (EA). \`make ps\` shows what holds it."; problems=$((problems+1)); }
+  [ "$WANT_STUDIO" = 1 ] && port_busy 8840 && { warn "port 8840 already in use (Studio). \`make ps\` shows what holds it."; problems=$((problems+1)); }
 
   if [ "$MODE" = container ]; then
     docker info >/dev/null 2>&1 || { warn "docker is not available"; problems=$((problems+1)); }
@@ -233,7 +266,7 @@ preflight() {
 
 # -------------------------------------------------------------------- run ---
 
-say "mode: $MODE   apps: $( [ "$WANT_RE" = 1 ] && printf 'RE '; [ "$WANT_EA" = 1 ] && printf 'EA' )"
+say "mode: $MODE   apps: $( [ "$WANT_RE" = 1 ] && printf 'RE '; [ "$WANT_EA" = 1 ] && printf 'EA '; [ "$WANT_STUDIO" = 1 ] && printf 'Studio' )"
 # Label it neutrally: the directory is called egeria-workspaces-fs on some
 # machines and egeria-workspaces on others, so printing a fixed name beside
 # a resolved path can state the wrong one.
@@ -242,7 +275,7 @@ say "mode: $MODE   apps: $( [ "$WANT_RE" = 1 ] && printf 'RE '; [ "$WANT_EA" = 1
 # --check must not mutate anything: a check that writes is not a check, and
 # .env is the file a user would least expect a dry run to touch.
 if [ "$CHECK_ONLY" = 1 ]; then
-  for f in "$RE_ENV" "$EA_ENV"; do
+  for f in "$RE_ENV" "$EA_ENV" "$STUDIO_ENV"; do
     v="$(env_get "$f" TRELLIS_JWT_SECRET)"
     [ -n "$v" ] && say "TRELLIS_JWT_SECRET: set in $(basename "$(dirname "$f")")/.env" \
                 || say "TRELLIS_JWT_SECRET: MISSING in $(basename "$(dirname "$f")")/.env — a run without --no-init-secrets would write one"
@@ -253,7 +286,11 @@ else
   say "secrets: skipped (--no-init-secrets)"
 fi
 
-set +e; preflight; PROBLEMS=$?; set -e
+if [ "$PREFLIGHT" = 1 ]; then
+  set +e; preflight; PROBLEMS=$?; set -e
+else
+  PROBLEMS=0; say "preflight: skipped (--no-preflight)"
+fi
 
 if [ "$CHECK_ONLY" = 1 ]; then
   [ "$PROBLEMS" -eq 0 ] && say "check: all clear" || say "check: $PROBLEMS problem(s) above"
@@ -263,16 +300,145 @@ fi
 
 if [ "$MODE" = container ]; then
   [ -f "$COMPOSE_OVERLAY" ] || die "compose overlay not found; set EGERIA_WORKSPACES_FS"
+  [ "$WANT_STUDIO" = 1 ] && warn "Studio has no container image yet: start it natively (\`make up-studio\`)"
   services=""
   [ "$WANT_RE" = 1 ] && services="$services resource-explorer-web resource-explorer-worker"
   [ "$WANT_EA" = 1 ] && services="$services egeria-advisor"
+  [ -n "$services" ] || die "nothing to start in container mode"
   say "docker compose -f $COMPOSE_OVERLAY up -d$services"
   # shellcheck disable=SC2086
   exec docker compose -f "$COMPOSE_OVERLAY" up -d $services
 fi
 
+# ----------------------------------------------------------- native start ---
+# TR-47: each app is started and watched here (not by `make dev`, which kept
+# going and printed nothing when one app refused to start). An app that exits,
+# or does not answer /health in time, is reported by name with the first error
+# line of its output, the others are stopped, and the exit is non-zero.
+# Bash 3.2 (macOS) compatible: indexed arrays and polling, no `wait -n`.
+
+APP_KEYS=(); APP_NAMES=(); APP_HEALTH=(); APP_PIDS=(); APP_LOGS=(); APP_UP=()
+
+cmd_for() {  # key -> the command line that starts it (TRELLIS_UP_CMD_<KEY> overrides, for tests)
+  case "$1" in
+    re)     echo "${TRELLIS_UP_CMD_RE:-make -s re-web}" ;;
+    ea)     echo "${TRELLIS_UP_CMD_EA:-make -s ea-web}" ;;
+    studio) echo "${TRELLIS_UP_CMD_STUDIO:-make -s studio-web}" ;;
+  esac
+}
+
+add_app() {  # key name health-url
+  APP_KEYS+=("$1"); APP_NAMES+=("$2"); APP_HEALTH+=("$3"); APP_UP+=(0)
+  APP_LOGS+=("$LOG_DIR/$1.log"); APP_PIDS+=("")
+}
+[ "$WANT_RE" = 1 ]     && add_app re     "Resource Explorer" "${TRELLIS_UP_HEALTH_RE:-http://localhost:8810/health}"
+[ "$WANT_EA" = 1 ]     && add_app ea     "Egeria Advisor"    "${TRELLIS_UP_HEALTH_EA:-http://localhost:8880/health}"
+[ "$WANT_STUDIO" = 1 ] && add_app studio "Trellis Studio"    "${TRELLIS_UP_HEALTH_STUDIO:-http://localhost:8840/health}"
+[ "${#APP_KEYS[@]}" -gt 0 ] || die "no app selected"
+
+first_error_line() {  # log -> the first line that reads like an error, else the last non-empty line
+  local line
+  line="$(grep -m1 -iE 'error|exception|traceback|refus|fatal|failed|not set|missing|denied|no such' "$1" 2>/dev/null)"
+  [ -n "$line" ] || line="$(grep -v '^[[:space:]]*$' "$1" 2>/dev/null | tail -1)"
+  printf '%s' "${line:-(no output)}"
+}
+
+stop_all() {  # each app runs in its own process group (job control below): signal the whole group
+  local i pid
+  for i in "${!APP_PIDS[@]}"; do
+    pid="${APP_PIDS[$i]}"; [ -n "$pid" ] && kill -TERM -- "-$pid" 2>/dev/null || true
+  done
+  sleep 1
+  for i in "${!APP_PIDS[@]}"; do
+    pid="${APP_PIDS[$i]}"; [ -n "$pid" ] && kill -KILL -- "-$pid" 2>/dev/null || true
+  done
+}
+
+alive() { kill -0 "$1" 2>/dev/null; }
+
+mkdir -p "$LOG_DIR"
 cd "$REPO_ROOT"
-if [ "$WANT_RE" = 1 ] && [ "$WANT_EA" = 1 ]; then exec make dev
-elif [ "$WANT_RE" = 1 ]; then exec make re-web
-else exec make ea-web
+trap 'say "stopping"; stop_all; exit 130' INT TERM
+
+health_port() {  # url -> its port (http://host:PORT/...), or nothing
+  printf '%s' "$1" | sed -nE 's#^[a-z]+://[^/:]+:([0-9]+).*#\1#p'
+}
+
+FAILED=0
+# A port already held is checked here even with --no-preflight: an old process answering /health there would
+# otherwise read as this app having started (read-back W2).
+for i in "${!APP_KEYS[@]}"; do
+  p="$(health_port "${APP_HEALTH[$i]}")"
+  if [ -n "$p" ] && port_busy "$p"; then
+    APP_UP[$i]=2; FAILED=$((FAILED+1))
+    warn "${APP_NAMES[$i]} not started: port $p is already in use (\`make ps\` shows what holds it)"
+  fi
+done
+
+for i in "${!APP_KEYS[@]}"; do
+  [ "${APP_UP[$i]}" = 0 ] || continue
+  key="${APP_KEYS[$i]}"; name="${APP_NAMES[$i]}"; log="${APP_LOGS[$i]}"
+  label="$(printf '%s' "$key" | tr '[:lower:]' '[:upper:]')"; [ "$key" = studio ] && label="Studio"
+  : > "$log"
+  cmd="$(cmd_for "$key")"
+  # Job control on for the launch: the app gets its own process group, so make -> uv -> python all stop
+  # together (stop_all), and a Ctrl-C here doesn't race the trap.
+  set -m
+  ( set +e; bash -c "$cmd" > >(tee -a "$log" | sed -u "s/^/[$label] /") 2>&1; exit $? ) &
+  APP_PIDS[$i]=$!
+  set +m
+  say "$name: starting ($cmd) — log: ${log#$REPO_ROOT/}"
+done
+
+deadline=$(( $(date +%s) + START_TIMEOUT ))
+while :; do
+  pending=0
+  for i in "${!APP_KEYS[@]}"; do
+    [ "${APP_UP[$i]}" = 0 ] || continue
+    if ! alive "${APP_PIDS[$i]}"; then   # its own process first: a /health answer from anything else isn't it
+      APP_UP[$i]=2; FAILED=$((FAILED+1))
+      warn "${APP_NAMES[$i]} failed to start: $(first_error_line "${APP_LOGS[$i]}")"
+      warn "  full output: ${APP_LOGS[$i]#$REPO_ROOT/}"
+    elif curl -sf -o /dev/null --max-time 2 "${APP_HEALTH[$i]}" 2>/dev/null; then
+      APP_UP[$i]=1; say "${APP_NAMES[$i]}: started (${APP_HEALTH[$i]})"
+    else
+      pending=$((pending+1))
+    fi
+  done
+  [ "$pending" -eq 0 ] && break
+  if [ "$(date +%s)" -ge "$deadline" ]; then
+    for i in "${!APP_KEYS[@]}"; do
+      [ "${APP_UP[$i]}" = 0 ] || continue
+      APP_UP[$i]=2; FAILED=$((FAILED+1))
+      warn "${APP_NAMES[$i]} failed to start: no answer at ${APP_HEALTH[$i]} within ${START_TIMEOUT}s; last output: $(first_error_line "${APP_LOGS[$i]}")"
+      warn "  full output: ${APP_LOGS[$i]#$REPO_ROOT/}"
+    done
+    break
+  fi
+  sleep 1
+done
+
+if [ "$FAILED" -gt 0 ]; then
+  printf '[trellis-up] ERROR: %s of %s app(s) did not start; stopping the others.\n' "$FAILED" "${#APP_KEYS[@]}" >&2
+  stop_all
+  exit 1
 fi
+
+if [ "$START_CHECK" = 1 ]; then
+  say "start check: all ${#APP_KEYS[@]} app(s) started; stopping them"
+  stop_all
+  exit 0
+fi
+
+say "all started — Ctrl-C stops them"
+while :; do
+  for i in "${!APP_KEYS[@]}"; do
+    if ! alive "${APP_PIDS[$i]}"; then
+      printf '[trellis-up] ERROR: %s stopped: %s\n' "${APP_NAMES[$i]}" "$(first_error_line "${APP_LOGS[$i]}")" >&2
+      APP_PIDS[$i]=""
+      stop_all
+      exit 1
+    fi
+  done
+  sleep 2
+done

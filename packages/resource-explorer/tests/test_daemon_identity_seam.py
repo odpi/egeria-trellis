@@ -1,5 +1,5 @@
 """Brief L (as scoped by the owner, 2026-10-09): RE's daemon identity is `.env`
-(EGERIA_USER_ID / EGERIA_USER_PASSWORD, set to RE's own account `resourceexplorernpa`) behind the
+(RE_DAEMON_USER_ID / RE_DAEMON_USER_PASSWORD, set to RE's own account `resourceexplorernpa`) behind the
 one seam `egeria_clients._daemon_credential()`, a development bootstrap; and because that userId
 is now a service account, not a person:
 
@@ -64,7 +64,7 @@ def test_the_seam_logs_one_info_line_naming_the_source_and_never_a_value(cfg, ca
         first = ec.Daemon(ec.DaemonReason.SCHEDULER)
         ec.Daemon(ec.DaemonReason.OUTBOX)
     lines = [(r.levelno, r.getMessage()) for r in caplog.records if r.name == "resource_explorer.egeria_clients"]
-    assert lines == [(logging.INFO, "daemon identity: 'resourceexplorernpa' from .env (EGERIA_USER_ID) — "
+    assert lines == [(logging.INFO, "daemon identity: 'resourceexplorernpa' from .env (RE_DAEMON_USER_ID) — "
                                     "development bootstrap; not for a shipped product")]
     assert not any(NPA_PW in m for _l, m in lines)
     assert (first.client_user, first.password) == (NPA, NPA_PW)
@@ -97,7 +97,7 @@ def test_the_web_app_start_logs_the_source_line(cfg, monkeypatch):
         logger.disabled = saved[1]
         logging.disable(saved[2])
     lines = [m for m in seen if m.startswith("daemon identity:")]
-    assert lines == ["daemon identity: 'resourceexplorernpa' from .env (EGERIA_USER_ID) — development "
+    assert lines == ["daemon identity: 'resourceexplorernpa' from .env (RE_DAEMON_USER_ID) — development "
                      "bootstrap; not for a shipped product"], "logged once, at the web app's start"
 
 
@@ -244,13 +244,14 @@ def test_a_cached_cli_session_for_the_daemon_is_refused(cfg, monkeypatch, tmp_pa
 def test_an_unset_egeria_user_id_is_warned_and_has_no_persona_default(cfg, monkeypatch, caplog):
     from resource_explorer.config import EgeriaConfig
 
-    monkeypatch.delenv("EGERIA_USER_ID", raising=False)
+    for name in ("RE_DAEMON_USER_ID", "EGERIA_USER_ID"):         # the deprecated name fills the field too
+        monkeypatch.delenv(name, raising=False)
     cfg.egeria = EgeriaConfig(_env_file=None)                   # nothing set: no code default names a person
-    assert cfg.egeria.user_id == ""
+    assert not cfg.egeria.user_id
     with caplog.at_level(logging.INFO, logger="resource_explorer.egeria_clients"):
         ec.log_daemon_identity_at_startup()
     lines = [(r.levelno, r.getMessage()) for r in caplog.records if r.name == "resource_explorer.egeria_clients"]
-    assert lines == [(logging.WARNING, "daemon identity: EGERIA_USER_ID not set: RE has no service account; "
+    assert lines == [(logging.WARNING, "daemon identity: RE_DAEMON_USER_ID not set: RE has no service account; "
                                        "set it in .env")]
     assert ec.daemon_identity_status() == {"user_id": None, "source": "unset"}
 

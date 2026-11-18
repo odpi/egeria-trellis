@@ -199,7 +199,7 @@ test('a table that cannot be read says so, and a resource with no declared measu
 });
 
 test("a zero-fetch fact's as-of reaches the answer line: its read snapshot, never 'run time not recorded'", async () => {
-  const { readEnvelope } = await import('/static/next/envelope.js');
+  const { readEnvelope } = await import('/static/trellis-ui/envelope.js');
   const esc = (s) => String(s);
   const fact = { analysis_id: 'schema_diff', state: 'measured', is_known: true, headline: '2 columns added.', value: {},
     last_run_at: '', as_of: '2026-10-20T07:00:00', can_run: [] };
@@ -233,7 +233,7 @@ test("a file system's table names its own press, offers no Contents button, and 
 
 test("the question row never says 'the figures above' for an analysis whose figures are not above (F3)", async () => {
   await open({ table: TABLE() });
-  const { readEnvelope } = await import('/static/next/envelope.js');
+  const { readEnvelope } = await import('/static/trellis-ui/envelope.js');
   const esc = (s) => String(s);
   const fact = (id, over = {}) => ({ analysis_id: id, state: 'measured', is_known: true, value: { Owners: 3, Groups: 2 }, last_run_at: '2026-10-29T10:00:00', ...over });
   // fs_permissions is not the lead: the lead has a headline, so fs_permissions' figures are not on the row
@@ -248,7 +248,7 @@ test("the question row never says 'the figures above' for an analysis whose figu
 
 test("a library step whose value is nested measures shows no figures, and the row says where they are (F3)", async () => {
   await open({ table: TABLE() });
-  const { readEnvelope } = await import('/static/next/envelope.js');
+  const { readEnvelope } = await import('/static/trellis-ui/envelope.js');
   const esc = (s) => String(s);
   const nested = { analysis_id: 'fs_activity', state: 'measured', is_known: true, value: { bands: { hot: 3 } }, last_run_at: '2026-10-29T10:00:00' };
   const lines = readEnvelope({ analysis_ids: ['fs_activity'] }, { facts: [nested], answerable: true }, esc, esc);

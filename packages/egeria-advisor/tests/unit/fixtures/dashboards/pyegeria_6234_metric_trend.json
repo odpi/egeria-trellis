@@ -1,0 +1,460 @@
+{
+ "_source": "Generated 2026-11-11 by pyegeria 6.2.34 itself (release/6.2.34, 78db87cd): exec_report_spec of 'Analytic Demo - Metric Trend (Governance Coverage)' over metric_trend(count_elements GlossaryTerm, 90d, 3 points), with the Egeria fake of pyegeria's tests/micro-tests/test_w2_trend_points_exact.py (_Egeria): exact = the live shape (200, 200, 1065); capped = native count refusing asOfTime, viewer population (two >=500 lower bounds); not_measured = repository population, no fallback. spec_source dropped.",
+ "exact_DICT": {
+  "kind": "json",
+  "data": [
+   {
+    "label": "13 Aug",
+    "date": "13 Aug 2026",
+    "value": 200,
+    "measurement": {
+     "exact": true,
+     "capped": false,
+     "at_least": null,
+     "how": "native",
+     "reasons": []
+    },
+    "display": "200"
+   },
+   {
+    "label": "27 Sep",
+    "date": "27 Sep 2026",
+    "value": 200,
+    "measurement": {
+     "exact": true,
+     "capped": false,
+     "at_least": null,
+     "how": "native",
+     "reasons": []
+    },
+    "display": "200"
+   },
+   {
+    "label": "11 Nov",
+    "date": "11 Nov 2026",
+    "value": 1065,
+    "measurement": {
+     "exact": true,
+     "capped": false,
+     "at_least": null,
+     "how": "native",
+     "reasons": []
+    },
+    "display": "1065"
+   }
+  ]
+ },
+ "exact_SERIES": {
+  "kind": "json",
+  "data": {
+   "$schema": "https://vega.github.io/schema/vega-lite/v5.json",
+   "title": "Metric Trend: Governance Coverage Over Time",
+   "description": "Metric Trend: Governance Coverage Over Time",
+   "data": {
+    "values": [
+     {
+      "label": "13 Aug",
+      "date": "13 Aug 2026",
+      "value": 200,
+      "measurement": {
+       "exact": true,
+       "capped": false,
+       "at_least": null,
+       "how": "native",
+       "reasons": []
+      },
+      "display": "200"
+     },
+     {
+      "label": "27 Sep",
+      "date": "27 Sep 2026",
+      "value": 200,
+      "measurement": {
+       "exact": true,
+       "capped": false,
+       "at_least": null,
+       "how": "native",
+       "reasons": []
+      },
+      "display": "200"
+     },
+     {
+      "label": "11 Nov",
+      "date": "11 Nov 2026",
+      "value": 1065,
+      "measurement": {
+       "exact": true,
+       "capped": false,
+       "at_least": null,
+       "how": "native",
+       "reasons": []
+      },
+      "display": "1065"
+     }
+    ]
+   },
+   "transform": [
+    {
+     "fold": [
+      "value"
+     ],
+     "as": [
+      "series",
+      "value"
+     ]
+    }
+   ],
+   "mark": "line",
+   "encoding": {
+    "x": {
+     "field": "label",
+     "type": "nominal",
+     "title": "Label"
+    },
+    "y": {
+     "field": "value",
+     "type": "quantitative",
+     "title": "Count"
+    },
+    "color": {
+     "field": "series",
+     "type": "nominal",
+     "title": "Series"
+    },
+    "tooltip": [
+     {
+      "field": "label",
+      "type": "nominal",
+      "title": "Label"
+     },
+     {
+      "field": "series",
+      "type": "nominal"
+     },
+     {
+      "field": "value",
+      "type": "quantitative"
+     }
+    ]
+   }
+  }
+ },
+ "capped_DICT": {
+  "kind": "json",
+  "data": [
+   {
+    "label": "13 Aug",
+    "date": "13 Aug 2026",
+    "value": null,
+    "measurement": {
+     "exact": false,
+     "capped": true,
+     "at_least": 500,
+     "how": "find-capped",
+     "reasons": [
+      {
+       "count": "GlossaryTerm",
+       "reason": "the native count failed (RuntimeError), and the find fallback stopped at its 500-element page cap, so there are at least 500",
+       "at_least": 500
+      }
+     ]
+    },
+    "display": "≥500"
+   },
+   {
+    "label": "27 Sep",
+    "date": "27 Sep 2026",
+    "value": null,
+    "measurement": {
+     "exact": false,
+     "capped": true,
+     "at_least": 500,
+     "how": "find-capped",
+     "reasons": [
+      {
+       "count": "GlossaryTerm",
+       "reason": "the native count failed (RuntimeError), and the find fallback stopped at its 500-element page cap, so there are at least 500",
+       "at_least": 500
+      }
+     ]
+    },
+    "display": "≥500"
+   },
+   {
+    "label": "11 Nov",
+    "date": "11 Nov 2026",
+    "value": 1065,
+    "measurement": {
+     "exact": true,
+     "capped": false,
+     "at_least": null,
+     "how": "native",
+     "reasons": []
+    },
+    "display": "1065"
+   }
+  ],
+  "unmeasured": [
+   {
+    "count": "GlossaryTerm",
+    "reason": "the native count failed (RuntimeError), and the find fallback stopped at its 500-element page cap, so there are at least 500",
+    "at_least": 500
+   }
+  ]
+ },
+ "capped_SERIES": {
+  "kind": "json",
+  "data": {
+   "$schema": "https://vega.github.io/schema/vega-lite/v5.json",
+   "title": {
+    "text": "Metric Trend: Governance Coverage Over Time",
+    "subtitle": "2 of 3 points are lower bounds (shown as ≥N): the count stopped at its page cap"
+   },
+   "description": "Metric Trend: Governance Coverage Over Time",
+   "data": {
+    "values": [
+     {
+      "label": "13 Aug",
+      "date": "13 Aug 2026",
+      "value": 500,
+      "display": "≥500",
+      "lowerBound": true
+     },
+     {
+      "label": "27 Sep",
+      "date": "27 Sep 2026",
+      "value": 500,
+      "display": "≥500",
+      "lowerBound": true
+     },
+     {
+      "label": "11 Nov",
+      "date": "11 Nov 2026",
+      "value": 1065,
+      "display": "1065",
+      "lowerBound": false
+     }
+    ]
+   },
+   "transform": [
+    {
+     "fold": [
+      "value"
+     ],
+     "as": [
+      "series",
+      "value"
+     ]
+    }
+   ],
+   "layer": [
+    {
+     "mark": {
+      "type": "line",
+      "point": true
+     },
+     "encoding": {
+      "x": {
+       "field": "label",
+       "type": "nominal",
+       "title": "Label"
+      },
+      "y": {
+       "field": "value",
+       "type": "quantitative",
+       "title": "Count"
+      },
+      "color": {
+       "field": "series",
+       "type": "nominal",
+       "title": "Series"
+      },
+      "tooltip": [
+       {
+        "field": "label",
+        "type": "nominal"
+       },
+       {
+        "field": "display",
+        "type": "nominal",
+        "title": "Count"
+       }
+      ]
+     }
+    },
+    {
+     "transform": [
+      {
+       "filter": "datum.lowerBound"
+      }
+     ],
+     "mark": {
+      "type": "text",
+      "dy": -10
+     },
+     "encoding": {
+      "x": {
+       "field": "label",
+       "type": "nominal",
+       "title": "Label"
+      },
+      "y": {
+       "field": "value",
+       "type": "quantitative",
+       "title": "Count"
+      },
+      "text": {
+       "field": "display",
+       "type": "nominal"
+      }
+     }
+    }
+   ]
+  },
+  "unmeasured": [
+   {
+    "count": "GlossaryTerm",
+    "reason": "the native count failed (RuntimeError), and the find fallback stopped at its 500-element page cap, so there are at least 500",
+    "at_least": 500
+   }
+  ]
+ },
+ "not_measured_DICT": {
+  "kind": "json",
+  "data": [
+   {
+    "label": "13 Aug",
+    "date": "13 Aug 2026",
+    "value": null,
+    "measurement": {
+     "exact": false,
+     "capped": false,
+     "at_least": null,
+     "how": "not-measured",
+     "reasons": [
+      {
+       "count": "GlossaryTerm",
+       "reason": "the native count failed (RuntimeError), and a repository-population count has no fallback (the find fallback only sees what the viewer may see)",
+       "at_least": null
+      }
+     ]
+    },
+    "display": "not measured"
+   },
+   {
+    "label": "27 Sep",
+    "date": "27 Sep 2026",
+    "value": null,
+    "measurement": {
+     "exact": false,
+     "capped": false,
+     "at_least": null,
+     "how": "not-measured",
+     "reasons": [
+      {
+       "count": "GlossaryTerm",
+       "reason": "the native count failed (RuntimeError), and a repository-population count has no fallback (the find fallback only sees what the viewer may see)",
+       "at_least": null
+      }
+     ]
+    },
+    "display": "not measured"
+   },
+   {
+    "label": "11 Nov",
+    "date": "11 Nov 2026",
+    "value": 1065,
+    "measurement": {
+     "exact": true,
+     "capped": false,
+     "at_least": null,
+     "how": "native",
+     "reasons": []
+    },
+    "display": "1065"
+   }
+  ],
+  "unmeasured": [
+   {
+    "count": "GlossaryTerm",
+    "reason": "the native count failed (RuntimeError), and a repository-population count has no fallback (the find fallback only sees what the viewer may see)",
+    "at_least": null
+   }
+  ]
+ },
+ "not_measured_SERIES": {
+  "kind": "absent",
+  "content": "The trend was not measured: the target routine failed at every snapshot. Not measured: GlossaryTerm: the native count failed (RuntimeError), and a repository-population count has no fallback (the find fallback only sees what the viewer may see).",
+  "absence": {
+   "state": "not_measured",
+   "sentence": "The trend was not measured: the target routine failed at every snapshot.",
+   "reason": "GlossaryTerm: the native count failed (RuntimeError), and a repository-population count has no fallback (the find fallback only sees what the viewer may see)",
+   "declared": true
+  },
+  "detail": [
+   {
+    "label": "13 Aug",
+    "date": "13 Aug 2026",
+    "value": null,
+    "measurement": {
+     "exact": false,
+     "capped": false,
+     "at_least": null,
+     "how": "not-measured",
+     "reasons": [
+      {
+       "count": "GlossaryTerm",
+       "reason": "the native count failed (RuntimeError), and a repository-population count has no fallback (the find fallback only sees what the viewer may see)",
+       "at_least": null
+      }
+     ]
+    },
+    "display": "not measured"
+   },
+   {
+    "label": "27 Sep",
+    "date": "27 Sep 2026",
+    "value": null,
+    "measurement": {
+     "exact": false,
+     "capped": false,
+     "at_least": null,
+     "how": "not-measured",
+     "reasons": [
+      {
+       "count": "GlossaryTerm",
+       "reason": "the native count failed (RuntimeError), and a repository-population count has no fallback (the find fallback only sees what the viewer may see)",
+       "at_least": null
+      }
+     ]
+    },
+    "display": "not measured"
+   },
+   {
+    "label": "11 Nov",
+    "date": "11 Nov 2026",
+    "value": 1065,
+    "measurement": {
+     "exact": true,
+     "capped": false,
+     "at_least": null,
+     "how": "native",
+     "reasons": []
+    },
+    "display": "1065"
+   }
+  ],
+  "unmeasured": [
+   {
+    "count": "GlossaryTerm",
+    "reason": "the native count failed (RuntimeError), and a repository-population count has no fallback (the find fallback only sees what the viewer may see)",
+    "at_least": null
+   }
+  ],
+  "envelope": {
+   "state": "not_established",
+   "reason": "GlossaryTerm: the native count failed (RuntimeError), and a repository-population count has no fallback (the find fallback only sees what the viewer may see)",
+   "subtitle": "not established · GlossaryTerm: the native count failed (RuntimeError), and a repository-population count has no fallback (the find fallback only sees what the viewer may see)"
+  }
+ }
+}

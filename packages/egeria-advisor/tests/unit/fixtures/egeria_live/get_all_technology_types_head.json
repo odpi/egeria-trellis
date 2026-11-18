@@ -1,0 +1,23 @@
+[
+ {
+  "technologyTypeGUID": "9f0c7636-9ce4-44a0-a944-5e6fda006ce4",
+  "qualifiedName": "Egeria:ValidMetadataValue:AnalyticsModelRun:deployedImplementationType-(Unity Catalog Registered Model Version)",
+  "displayName": "Unity Catalog Registered Model Version",
+  "description": "A version of an analytics model deployed to Unity Catalog (UC).",
+  "category": "Valid Metadata Values"
+ },
+ {
+  "technologyTypeGUID": "18dbff2f-0909-4e85-bbe2-5b5332ddf1f8",
+  "qualifiedName": "Egeria:ValidMetadataValue:APIManager:deployedImplementationType-(API Manager)",
+  "displayName": "API Manager",
+  "description": "A software capability that provides callable APIs.",
+  "category": "Valid Metadata Values"
+ },
+ {
+  "technologyTypeGUID": "0a9947b4-6686-4710-a64f-645f9ce430bd",
+  "qualifiedName": "Egeria:ValidMetadataValue:APIManager:deployedImplementationType-(REST API Manager)",
+  "displayName": "REST API Manager",
+  "description": "A software capability that provides callable APIs supporting the REST protocol.",
+  "category": "Valid Metadata Values"
+ }
+]

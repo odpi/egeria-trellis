@@ -23,13 +23,23 @@ from tests.qn_lookup_bridge import expert_from_legacy
 
 import pytest
 
+from pyegeria.core._exceptions import PyegeriaUnauthorizedException
 from resource_explorer.registry import Project, ProjectRegistry
 
 OWNER, OTHER = "alice", "bob"
 
 
-class Denied(RuntimeError):
-    """Egeria's 403 for a zone the user is not admitted to."""
+class Denied(PyegeriaUnauthorizedException):
+    """Egeria's 403 for a zone the user is not admitted to: its UserNotAuthorizedException (relatedHTTPCode 403), raised
+    as pyegeria raises it (TR-22: RE decides by class and code, not by the words)."""
+
+    def __init__(self, words: str):
+        import httpx
+
+        body = {"relatedHTTPCode": 403, "exceptionClassName": "UserNotAuthorizedException",
+                "exceptionErrorMessageId": "OPEN-METADATA-SECURITY-403", "exceptionErrorMessage": words}
+        super().__init__(httpx.Response(200, request=httpx.Request("POST", "https://egeria.test/x"), json=body), {},
+                         additional_info=body)
 
 
 # ── the fake Egeria: one store, one set of autospec clients per user ──────────────────────────────────────────

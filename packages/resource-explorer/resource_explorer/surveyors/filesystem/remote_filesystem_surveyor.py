@@ -16,7 +16,6 @@ from __future__ import annotations
 import logging
 import time
 from collections import Counter
-from datetime import datetime
 
 from resource_explorer.reach_mechanisms import NOT_REPORTED, ReachError, ReachMechanism
 from resource_explorer.surveyors.file_classifier.file_classifier_surveyor import classify_file_paths
@@ -28,6 +27,7 @@ from resource_explorer.surveyors.filesystem.local_filesystem_surveyor import (
     IGNORE_DIRS,
 )
 from resource_explorer.surveyors.sub_surveyors.data_profiler import _DATA_EXTENSIONS, _fmt_size
+from resource_explorer.survey_time import now_utc_iso
 
 log = logging.getLogger(__name__)
 
@@ -134,7 +134,7 @@ class RemoteFileSystemSurveyor:
 
         limits["machine"] = re_host()
         sd = {
-            "surveyed_at": datetime.utcnow().isoformat(),
+            "surveyed_at": now_utc_iso(),
             "total_files": len(inventory), "total_data_files": data_files, "total_size_bytes": total_size,
             "total_size": _fmt_size(total_size),
             "formats": {k: {"count": v["count"], "total_size": _fmt_size(v["total_size_bytes"]),

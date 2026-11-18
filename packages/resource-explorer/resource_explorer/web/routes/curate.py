@@ -16,10 +16,9 @@ from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 
 from resource_explorer.auth import get_current_user
+from resource_explorer.config import get_config
 from resource_explorer.feedback_store import FeedbackStore
 from resource_explorer.registry import ProjectRegistry
-
-from resource_explorer.config import get_config
 from resource_explorer.web.admin_auth import is_admin_request
 
 
@@ -346,6 +345,10 @@ class FeedbackCreate(BaseModel):
 #: stay: they are the feedback itself, which is the point of the pane.
 _CONTACT_FIELDS = ("email", "session_id", "user_agent", "viewport", "locale")
 
+#: A Curate row's triage status is held by reference, not in its own table, so a status filter reads this many of the
+#: newest rows and filters after. When the read comes back full the listing says `resource_limited`.
+RESOURCE_STATUS_READ_CAP = 2000
+
 
 def _without_contact_fields(row: dict) -> dict:
     """A page-feedback row with contact/identifying fields removed.
@@ -360,7 +363,8 @@ def _without_contact_fields(row: dict) -> dict:
 @router.get("/feedback")
 def list_all_feedback(
     request: Request,
-    limit: int = 200, entity_type: str = "", category: str = "", source: str = ""
+    limit: int = 200, entity_type: str = "", category: str = "", source: str = "", status: str = "",
+    cause: str = "",
 ) -> dict:
     """Every feedback item in one place, for Admin — from BOTH stores.
 
@@ -383,7 +387,7 @@ def list_all_feedback(
     have genuinely different shapes (session/page/consent fields on one side,
     entity_type/slug on the other), and a real merge is a separate, deliberate
     task (see docs/Backlog.md) — not something to fold in as a side effect of
-    fixing visibility. Each row carries `source: "page" | "resource"` so the
+    fixing visibility. Each row carries `source: "page" | "resource" | "answer"` (answer: a rated chat or checklist answer, since 2026-11-09) so the
     two stay distinguishable until that task exists, and `source` is itself a
     filter for the same reason `entity_type`/`category` are.
 
@@ -397,18 +401,63 @@ def list_all_feedback(
     fact worth stating plainly.
     """
     _require_admin(request)
+    from trellis_feedback import CAUSE_CHAIN, CAUSES, STATUSES, UNDIAGNOSED
+
+    from resource_explorer.feedback_store import VALID_TRIAGE_STATUSES
+
+    # `status`: a triage status (trellis-feedback's six). Page and answer items carry one; Curate's
+    # resource_feedback rows carry one by reference (part D: events under source "resource_feedback").
+    status = (status or "").strip()
+    if status and status not in VALID_TRIAGE_STATUSES:
+        raise HTTPException(status_code=400, detail=f"status must be one of {list(STATUSES)}, got {status!r}")
+
+    # `cause`: a diagnosis (closed-loop design §2), or "undiagnosed". Only rated answers carry one, so a cause
+    # filter shows answers alone.
+    cause = (cause or "").strip()
+    if cause and cause not in CAUSES and cause != UNDIAGNOSED:
+        raise HTTPException(status_code=400, detail=f"cause must be one of {[*CAUSES, UNDIAGNOSED]}, got {cause!r}")
 
     reg = _registry()
-    resource_rows = reg.list_all_resource_feedback(
-        limit=limit, entity_type=entity_type, category=category)
+    page_store = FeedbackStore()
+    # A resource row's status is not in its own table, so the status filter is applied after reading. It reads
+    # more rows than `limit` when a status is asked for, so a filtered page is not cut short by rows it then drops.
+    # A cause filter shows answers alone (only they carry a diagnosis), so it reads no resource rows at all.
+    read_cap = max(limit, RESOURCE_STATUS_READ_CAP) if status else limit
+    resource_rows = [] if cause else reg.list_all_resource_feedback(
+        limit=read_cap, entity_type=entity_type, category=category)
+    # The over-read is still a cap: when it came back full there are older rows it never read, and some of them
+    # may have the asked status. Say so rather than present a short list as complete (#1020 P3).
+    resource_read = len(resource_rows)  # rows read, before the status filter drops any
+    resource_limited = bool(status) and resource_read >= read_cap
+    states = page_store.resource_states([r["id"] for r in resource_rows])
+    for r in resource_rows:
+        r["triage"] = states.get(str(r["id"])) or {"status": "new", "note": "", "actor": "", "updated_at": "",
+                                                   "events": 0}
+        r["triage_status"] = r["triage"]["status"]
+    if status:
+        resource_rows = [r for r in resource_rows if r["triage_status"] == status][:limit]
     resource_counts = reg.count_all_resource_feedback()
 
-    page_store = FeedbackStore()
     # entity_type has no meaning for page-level feedback — it was never
     # recorded against a resource at all. A filter on it must exclude every
     # page row, not silently ignore the filter and show them regardless.
-    page_rows = [] if entity_type else page_store.list(category=category or None, limit=limit)
+    page_rows = [] if (entity_type or cause) else page_store.list(
+        triage_status=status or None, category=category or None, limit=limit)
     page_stats = page_store.stats()
+    # Ratings of answers (chat votes and Questions-checklist verdicts, kind `answer` in trellis-feedback). They
+    # have a resource type when one was in scope, so that filter applies; they have no category, so a category
+    # filter excludes them, as entity_type excludes page rows.
+    answer_rows = page_store.list(triage_status=status or None, category=category or None, limit=limit,
+                                  kind="answer", cause=cause or None)
+    if entity_type:
+        answer_rows = [r for r in answer_rows if r.get("entity_type") == entity_type]
+    # Where each diagnosis was routed (closed-loop step 2a), read in one query for the page's answers.
+    if answer_rows:
+        from resource_explorer import feedback_routing
+
+        routes = reg.list_feedback_routes([r["id"] for r in answer_rows])
+        for r in answer_rows:
+            r["routes"] = [feedback_routing.describe(x, reg) for x in routes.get(r["id"], [])]
 
     combined = [dict(r, source="resource") for r in resource_rows]
     # Full rows now. `_without_contact_fields` was the INTERIM fix while this
@@ -417,6 +466,7 @@ def list_all_feedback(
     # which is the drift this change exists to end. The helper is kept and
     # tested, since an ungated caller may exist again.
     combined += [dict(r, source="page") for r in page_rows]
+    combined += [dict(r, source="answer") for r in answer_rows]
     if source:
         combined = [r for r in combined if r["source"] == source]
     combined.sort(key=lambda r: r.get("created_at") or "", reverse=True)
@@ -426,8 +476,21 @@ def list_all_feedback(
         "counts": {
             "resource": resource_counts,
             "page": {"total": page_stats["total"]},
+            "answer": {"total": page_store.count(kind="answer")},
         },
-        "filtered": bool(entity_type or category or source),
+        "filtered": bool(entity_type or category or source or status or cause),
+        #: True when a status filter read the newest `resource_read` Curate rows and there may be older ones it
+        #: did not read; the page says so. False whenever the read was not cut short (or no status was asked).
+        #: `resource_read` is how many Curate rows were read, before any status filter.
+        "resource_limited": resource_limited,
+        "resource_read": resource_read,
+        # Q7: Curate rows deleted since they were triaged. Their history is kept until an admin clears it
+        # (DELETE /api/feedback/resource_feedback/{id}); deleting a row never reaches into the feedback store.
+        "gone": page_store.gone_resource_rows(reg.resource_feedback_ids_present),
+        #: The triage vocabulary, in order, so the page's status control is not a second copy of it.
+        "statuses": list(STATUSES),
+        #: The cause vocabulary (closed-loop design §2.1), in order; `cause_chain` is the precedence chain.
+        "causes": list(CAUSES), "cause_chain": list(CAUSE_CHAIN), "undiagnosed": UNDIAGNOSED,
     }
 
 

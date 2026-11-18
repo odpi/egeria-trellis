@@ -14,6 +14,8 @@ import re
 from pathlib import Path
 
 NEXT = Path(__file__).resolve().parent.parent / "resource_explorer" / "web" / "static" / "next"
+# The files RE shares with EA (packages/trellis-ui) are scanned too: they left next/ but are still RE's code.
+SHARED_UI = Path(__file__).resolve().parents[2] / "trellis-ui" / "trellis_ui" / "static"
 LOOKUP = re.compile(r"""(?:\$|getElementById)\(\s*['"]([A-Za-z][\w-]*)['"]\s*\)""")
 
 
@@ -34,7 +36,7 @@ KNOWN_DEAD = {("enrichment.js", "enrichment-form")}
 
 
 def missing_ids() -> list[tuple[str, str]]:
-    haystacks = [p.read_text() for p in NEXT.rglob("*.js")] + [(NEXT / "index.html").read_text()]
+    haystacks = [p.read_text() for p in [*NEXT.rglob("*.js"), *SHARED_UI.rglob("*.js")]] + [(NEXT / "index.html").read_text()]
     out = []
     for f in sorted((NEXT / "stages").glob("*.js")):
         for id_ in sorted(looked_up_ids(f.read_text())):
@@ -68,7 +70,7 @@ def test_curate_mounts_its_own_host():
 
 def test_allowlisted_enrichment_form_is_still_dead():
     callers = []
-    for p in NEXT.rglob("*.js"):
+    for p in [*NEXT.rglob("*.js"), *SHARED_UI.rglob("*.js")]:
         for n, line in enumerate(p.read_text().splitlines(), 1):
             code = line.split("//")[0]
             if code.lstrip().startswith("*"):

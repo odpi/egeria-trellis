@@ -193,6 +193,10 @@ def _tick_body() -> None:
         _reconcile_rfa_actions()
     except Exception:
         log.exception("RFA reconciliation iteration failed")
+    try:
+        _drop_expired_previous_indexes()
+    except Exception:
+        log.exception("Dropping expired previous chat indexes failed")
     # The native-survey read-back sweep and the outbox drain are NOT called here: `_readback_loop` owns both, so
     # a long `_run_due` cannot starve them (and nothing runs them twice).
 
@@ -223,6 +227,16 @@ def _readback_pass() -> None:
             _drain_egeria_outbox()
         except Exception:
             log.exception("Egeria outbox drain iteration failed")
+
+
+def _drop_expired_previous_indexes() -> None:
+    """A rebuild keeps its previous chat index 7 days for undo (reindex.py, R1c); after that, drop it."""
+    from resource_explorer import reindex
+    from resource_explorer.registry import ProjectRegistry
+
+    dropped = reindex.drop_expired_previous(ProjectRegistry())
+    if dropped:
+        log.info("Scheduler: dropped the previous chat index of %s", ", ".join(dropped))
 
 
 def _reconcile_rfa_actions() -> None:
@@ -304,6 +318,13 @@ def _drain_egeria_outbox() -> None:
     except Exception:
         # Housekeeping must never break the drain that precedes it.
         log.exception("Egeria outbox: retention purge failed")
+    # TR-21: a dispatched step's output row (flow_run_results) is kept 30 days, then pruned here.
+    try:
+        pruned = registry.prune_flow_run_results()
+        if pruned:
+            log.info("flow_run_results: pruned %d row(s) past retention", pruned)
+    except Exception:
+        log.exception("flow_run_results: retention prune failed")
 
 
 def _coalesce_repo_surveys(due: list[dict], registry) -> dict[tuple[str, str], list[str]]:
@@ -419,12 +440,35 @@ def _as_schedule_creator(sched: dict):
         current_caller.reset(reset)
 
 
+def _defer_while_rebuilding(due: list[dict], registry) -> list[dict]:
+    """Leave a repository's schedules due while its chat index is being rebuilt (reindex.py; the architect's Q6 point
+    4): the rebuild re-runs the same survey writers from its own download, and the two would write the same tables at
+    once. A deferred schedule is not run and not advanced, so it runs on the first tick after the rebuild ends."""
+    try:
+        from resource_explorer import reindex
+    except Exception:  # noqa: BLE001 -- a broken import must not stop every other schedule
+        return due
+    keep, held = [], set()
+    for sched in due:
+        slug = sched.get("entity_slug", "")
+        if sched.get("entity_type") == "repo" and (slug in held or reindex.is_rebuilding(registry, slug)):
+            held.add(slug)
+            continue
+        keep.append(sched)
+    for slug in sorted(held):
+        log.info("Scheduler: %s's schedules wait while its chat index is rebuilt", slug)
+    return keep
+
+
 def _run_due() -> None:
     from resource_explorer.activity_logger import log_survey
     from resource_explorer.registry import ProjectRegistry
 
     registry = ProjectRegistry()
     due = registry.get_due_schedules()
+    if not due:
+        return
+    due = _defer_while_rebuilding(due, registry)
     if not due:
         return
     log.info("Scheduler: %d analysis(es) due", len(due))
@@ -705,6 +749,10 @@ def _run_repo_survey(slug: str, analysis_id: str, registry) -> tuple[str, str, l
             QueryCache().invalidate_project(slug)
         except Exception as exc:
             return (project.display_name, project.github_url, [str(exc)])
+        if result is RefreshResult.REBUILDING:
+            return (project.display_name, project.github_url, [
+                ("Not refreshed: a rebuild of this repository's chat index is in progress. The schedule "
+                 "runs again after it.")])
         if result is RefreshResult.NOT_YET_INDEXED:
             # Not a success: nothing was refreshed because there is nothing of the repository's own
             # to refresh. Saying so on the schedule is what keeps a recurring run from reading as

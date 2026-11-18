@@ -110,18 +110,30 @@ re-measure the cap if you do, since the cap was chosen at 6000.
 RE_PUBLIC_URL=http://<box-hostname>:8810
 ```
 
+### Prefect (optional): running steps on a worker
+
+RE can hand chosen survey steps to a Prefect worker instead of running them in its own process. Prefect is on by
+default: with no Prefect server, RE says so at startup and runs everything in-process. Set `PREFECT_ENABLED=false`
+only if you will never use Prefect (the QuickStart demo compose does). The settings are `PREFECT_API_URL`,
+`PREFECT_WORK_POOL` (default `resource-explorer-pool`, the pool the bundled workers serve) and
+`PREFECT_DISPATCH_STEPS`.
+
+`PREFECT_DISPATCH_STEPS` (empty by default, so nothing is dispatched) and where each step's placement is recorded
+are described in [deploying-trellis-with-quickstart.md §5.1](../../../docs/deploying-trellis-with-quickstart.md#51-prefect-step-dispatch-resource-explorer).
+**After a code change, restart the worker first, then RE**, so RE's startup check finds a worker on its own commit.
+
 ### pgvector / registry
 
 ```bash
 # Defaults already point at the shared egeria_advisor Postgres instance
-# (localhost:5442, database egeria_advisor, schema resource_explorer) — no
-# .env entries needed in a Trellis checkout. Override for a from-scratch
-# environment:
+# (localhost:5442, database egeria_advisor, schema resource_explorer), but
+# PGVECTOR_PASSWORD must be set: there is no built-in password (TR-12), and RE
+# refuses to start naming it. Override the rest for a from-scratch environment:
 PGVECTOR_HOST=localhost
 PGVECTOR_PORT=5442
 PGVECTOR_DBNAME=egeria_advisor
 PGVECTOR_USER=egeria_advisor
-PGVECTOR_PASSWORD=advisor
+PGVECTOR_PASSWORD=<the shared Postgres password>   # REQUIRED: no built-in default (TR-12)
 
 # Registry defaults to the same Postgres instance/database, own schema. To
 # fall back to local SQLite instead:
@@ -136,8 +148,8 @@ EGERIA_VIEW_SERVER=view-server
 EGERIA_ENGINE_HOST=engine-host
 # RE's daemon identity: RE's own Egeria account (see "RE's daemon account" below).
 # Development bootstrap; not for a shipped product.
-EGERIA_USER_ID=resourceexplorernpa
-EGERIA_USER_PASSWORD=…
+RE_DAEMON_USER_ID=resourceexplorernpa
+RE_DAEMON_USER_PASSWORD=…
 # Optional login-form prefill; never the daemon's userId (which is never offered or accepted)
 RE_LOGIN_DEFAULT_USER=
 # Further Egeria platforms RE may send a credential to (comma separated); the platform above is
@@ -191,9 +203,9 @@ account in Egeria's platform user directory, in its `governanceEngine` and `omag
 (ITProfile `ITProfile::ResourceExplorer`). Egeria's administrator creates and maintains the
 account; RE holds only the credential it presents.
 
-- **Today: `.env`.** `EGERIA_USER_ID` / `EGERIA_USER_PASSWORD`. **Development bootstrap; not for a
+- **Today: `.env`.** `RE_DAEMON_USER_ID` / `RE_DAEMON_USER_PASSWORD` (the old `EGERIA_USER_ID` / `EGERIA_USER_PASSWORD` are read for one release, removed after 6.3). **Development bootstrap; not for a
   shipped product.** RE logs one INFO line at startup naming the source, e.g. `daemon identity:
-  'resourceexplorernpa' from .env (EGERIA_USER_ID) — development bootstrap; not for a shipped
+  'resourceexplorernpa' from .env (RE_DAEMON_USER_ID) — development bootstrap; not for a shipped
   product` (never a password).
 - **The product source is an open decision**, pending a discussion with the Egeria lead. The
   options: an RE-side secret store or file, or an Egeria API path (being researched). Whatever is
@@ -205,7 +217,7 @@ account; RE holds only the credential it presents.
   login form, a Portal token, or a raw Egeria bearer on the agent endpoint) is refused with "this
   is Resource Explorer's own service account; sign in as yourself", and the public login-form
   defaults (`GET /api/auth/defaults`) never offer it: they return `RE_LOGIN_DEFAULT_USER` when
-  set, else nothing. Anyone who used to sign in with the old shared persona in `EGERIA_USER_ID`
+  set, else nothing. Anyone who used to sign in with the old shared persona in `EGERIA_USER_ID` (now `RE_DAEMON_USER_ID`)
   now signs in as themselves.
 - **Where to see it.** The connection popover's "Background work as" row and `GET
   /api/egeria/whoami` (`daemon: {user_id, source}`).
@@ -213,7 +225,7 @@ account; RE holds only the credential it presents.
 ### RE in Egeria's actor graph (7h)
 
 - **At startup** (the worker's one-shot bootstrap, as the daemon) RE ensures the ITProfile
-  `ITProfile::ResourceExplorer`, a UserIdentity `UserIdentity::<EGERIA_USER_ID>` and their
+  `ITProfile::ResourceExplorer`, a UserIdentity `UserIdentity::<RE_DAEMON_USER_ID>` and their
   ProfileIdentity link. It adopts existing ones by qualifiedName, creates only when Egeria says
   they are absent, and refuses (creating nothing) on duplicates, on a UserIdentity for the same
   userId under another qualifiedName, or on a link to another profile. A changed daemon userId
@@ -352,10 +364,19 @@ blueprint, dependency confirmations, node reclassify), every Publish item, the C
    and `PUBLISH` (the zone change of promotion), and a blueprint also `ATTACH` on itself and on each member
    component and child blueprint. RE reads the element's zones (or, for an element not in Egeria yet, the zones
    RE will give it), the caller's user account first (an unknown or disabled account is refused, as Egeria
-   does), and each zone's security access control. A zone named after the caller grants; a zone with no control
-   is ignored; a secured zone grants only through its list (`allUsers`, the account-type group, the account's
-   groups or roles, `instanceOwner`, maintainer groups). Reads run as RE's daemon account (reason
-   `access_check`), which needs the same platform-operator rights the private-zone setup already needs.
+   does), and each zone's security access control. A zone named after the caller grants (their personal zone);
+   **every other zone is secured**: a zone with no control, or whose control has neither a list for the operation
+   nor a `DEFAULT` list, grants no one, and any other zone grants only through its list (`allUsers`, the
+   account-type group, the account's groups or roles, `instanceOwner`, maintainer groups). One granting zone is
+   enough. This is Egeria's rule since e9fd817f4c (in b49c5ed0, the quickstart image 242abf68 and later). A
+   refusal never names a zone with no control unless it is one of RE's own configured zones, since such a zone
+   is normally someone's personal zone and its name says whose element it is. Reads run as RE's daemon account
+   (reason `access_check`), which needs the same platform-operator rights the private-zone setup already needs.
+
+   **`RE_ZONE_RULE`.** Leave it unset for the quickstart (b49c5ed0 or later). Set `RE_ZONE_RULE=legacy` only
+   against an Egeria platform built before e9fd817f4c, whose connector ignored a zone with no control (so an
+   element whose zones all lacked one was open). RE cannot tell which rule a platform runs; any value other than
+   `legacy` is the current rule, which refuses where the old one opened.
 5. **Could not check** (Egeria unreachable, or a zone, control or account read failed): refused, with
    "could not check access in Egeria (<reason>)". RE never opens by default when zones might apply.
    This is stricter than the connector, which treats an unreadable control as an unsecured zone.
@@ -535,10 +556,14 @@ docker ps --filter name=egeria-shared-postgres
 ### Standalone pgvector (from-scratch environment, Docker)
 
 ```bash
-docker run -d --name resource-explorer-pgvector -p 5442:5432 \
-  -e POSTGRES_DB=egeria_advisor -e POSTGRES_USER=egeria_advisor -e POSTGRES_PASSWORD=advisor \
+export PGVECTOR_PASSWORD="$(openssl rand -hex 24)"   # no default (TR-12); RE's .env needs the same value
+POSTGRES_PASSWORD="$PGVECTOR_PASSWORD" docker run -d --name resource-explorer-pgvector -p 5442:5432 \
+  -e POSTGRES_DB=egeria_advisor -e POSTGRES_USER=egeria_advisor -e POSTGRES_PASSWORD \
   pgvector/pgvector:pg17
 ```
+
+With egeria-workspaces' shared Postgres instead, the password is `PGVECTOR_PASSWORD` in
+`compose-configs/shared-infra/.env` (generated by `gen-env.sh` on a new install).
 
 ### Ollama
 
@@ -765,7 +790,7 @@ host does. Design: [`design-notes/DESIGN-RE-ENGINE-HOST-BY-EQUIVALENCE.md`](desi
     present, "declared in this Egeria · N of 8 documents applied · checked …" (W67: the count comes from the same
     run-row read as the press's words, without a press; an unreadable history reads "documents applied: not
     known", never 0) — the self-heal setting and the price: the documents, the elements they create, who they apply
-    as (RE's service account, `EGERIA_USER_ID`), and how long the last run took. When N < 8 the press is offered as
+    as (RE's service account, `RE_DAEMON_USER_ID`), and how long the last run took. When N < 8 the press is offered as
     "Complete the declaration" (F55). The press asks in the page, then runs the batch once through the same lock as
     the heal. It is refused with "a bootstrap heal is already running" while one runs. It is refused without a
     write if the engine is already declared and every document is verified present in Egeria ("already declared ·
@@ -853,6 +878,49 @@ other path is refused. There is also an admin route, `POST /api/bootstrap/dr-ege
 - **A verb allow-list.** Only *Create, Update, Display, View, Search, Find, Validate, Link, Attach, Add,
   Classify, Reclassify, Setup* and *Set* commands run. Everything else (Delete, Remove, Unlink, Detach,
   Declassify, Publish, Run, Process, Import and any verb added later) is refused, whatever the document says.
+
+### Egeria Alignment (Admin → 🔄 Egeria Alignment)
+
+*Added 2026-11-12.* This page finds and repairs drift between RE's registry and Egeria. It is the step after a
+platform reset, and the check to run whenever something "published" cannot be found. The full procedure,
+including the step order and the traps, is in [`egeria-operations.md`](egeria-operations.md): §2.0 for the
+order after an Egeria clear, and §2.3 for each step.
+
+- **Scan (read-only).**
+  - It is the page's Re-scan button, or `GET /api/egeria/resync/scan`.
+  - It runs registry SELECTs and Egeria reads, and nothing else.
+  - It lists each kind of drift with its count, and splits it into repairs (a tick box) and questions for a
+    person (no button).
+  - A lookup that fails is listed as *undetermined*. It is never counted as drift and never cleared.
+- **Apply (writes).**
+  - It is "Apply selected", or `POST /api/egeria/resync/apply`, and runs only the ticked steps, always in
+    dependency order.
+  - The `clear_*` and `flag_*` steps write RE's registry.
+  - `reauthor_survey_definitions`, `catalog_assets`, `republish_survey_results` and
+    `relink_investigation_members` write to Egeria. On a shared platform these need the owner's word.
+- **Unattended.** The scheduler applies only `clear_stale_assets`, `clear_orphan_publish_claims`,
+  `flag_vanished_publishes` and `flag_stale_dbfs_assets`. It runs them at start and about every 600 s.
+  `GET /api/egeria/resync/scheduler-status` shows its last pass. Every other step needs a person.
+
+### Registry commands after an Egeria reset
+
+Both commands write RE's registry only, and never Egeria. On a shared registry each one needs the owner's word.
+[`egeria-operations.md`](egeria-operations.md) §2.0 gives the order they run in.
+
+- **`resource-explorer registry record-egeria-reset --reset-at <UTC> [--old-digest … --new-digest …]`**
+  - It records one reset of Egeria's metadata database, in `egeria_resets`.
+  - Proof rows read before that time then read "published before the <date> reset · not in Egeria now".
+  - It refuses a time in the future, or one not newer than the latest recorded reset.
+  - A mistyped reset is corrected with `--supersedes <id>`.
+- **`resource-explorer registry reattach-egeria-by-name`: coming, not on main yet.**
+  - It is branch `re/reattach-egeria-by-name`.
+  - It re-attaches stored Egeria GUIDs by the qualifiedName kept beside them.
+  - It is a dry run by default, and its apply carries the clear script's guards.
+  - It runs **after** `scripts/clear_egeria_pointers_after_reset.py`, never before.
+  - This entry will be completed from the CLI help once the branch merges.
+
+The clear script itself, `scripts/clear_egeria_pointers_after_reset.py`, is a script and not a CLI command. Its
+use is in `egeria-operations.md` §2.0 step 3.
 
 ### Admin settings at a glance
 

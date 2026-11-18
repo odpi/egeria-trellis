@@ -86,11 +86,14 @@ class GitHubClient:
         repo: Repository,
         dest_dir: "Path",
         subproject_path: str | None = None,
+        ref: str | None = None,
     ) -> "Path":
         """
         Download entire repo as a single zipball (1 API call) and extract it.
         Returns the extracted repo root (or the subproject subdirectory when
-        subproject_path is specified).
+        subproject_path is specified). `ref`: a commit SHA to download that
+        commit rather than the default branch's head (a rebuild's survey writes
+        come from the commit its index was built from).
         """
         import time
         import zipfile
@@ -99,7 +102,7 @@ class GitHubClient:
         from requests.exceptions import ConnectionError, SSLError, Timeout
 
         zip_path = Path(dest_dir) / "_repo.zip"
-        self.fetch_zipball(repo, zip_path)
+        self.fetch_zipball(repo, zip_path, ref=ref)
 
         with zipfile.ZipFile(zip_path) as zf:
             zf.extractall(dest_dir)

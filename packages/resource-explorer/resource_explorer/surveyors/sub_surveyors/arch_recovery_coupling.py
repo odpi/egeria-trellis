@@ -29,10 +29,10 @@ See `coupling.py`'s module docstring for the full reasoning.
 from __future__ import annotations
 
 import logging
-from datetime import datetime
 
 from resource_explorer.registry import Project, ProjectRegistry
 from resource_explorer.step_outcome import UNVERIFIED, StepOutcome, no_signal
+from resource_explorer.survey_time import now_utc_iso
 from resource_explorer.surveyors.base_surveyor import BaseSurveyor
 from resource_explorer.surveyors.scoping import path_matches_scope
 from resource_explorer.surveyors.survey_report import (
@@ -85,7 +85,7 @@ class ArchCouplingSurveyor(BaseSurveyor):
         self.source_path = source_path
         self.history_path = history_path
         self._scope_locator = scope_locator
-        self._surveyed_at = surveyed_at or datetime.utcnow().isoformat()
+        self._surveyed_at = surveyed_at or now_utc_iso()
 
     @property
     def step_name(self) -> str:

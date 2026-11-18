@@ -10,6 +10,36 @@ This is a list, not a design doc — keep entries short. Link to a full design d
 
 ---
 
+## Remove the old service-account variable names after 6.3 (registered 2026-11-17, TR-37)
+
+**Decision (project owner, 2026-11-17):** RE's service account is `RE_DAEMON_USER_ID` / `RE_DAEMON_USER_PASSWORD`;
+the old `EGERIA_USER_ID` / `EGERIA_USER_PASSWORD` are read for one release with a startup warning, then removed.
+
+To do in the release after 6.3: drop the `EGERIA_*` choices from `EgeriaConfig.user_id` / `user_password` and
+`LEGACY_DAEMON_ENV` in `config.py`, the two `os.getenv("EGERIA_USER_ID", ...)` fallbacks in
+`surveyors/egeria_tech_type_catalog.py` and `surveyors/egeria_project_finder.py`, and their tests
+(`tests/test_re_daemon_env_names.py`). EA's `EA_DAEMON_*` follows only after TR-33 is deployed and U3 passes.
+
+## A schedule proposal is completed by hand (logged 2026-11-10, from the step 2c read-back)
+
+**What:** closed-loop step 2c's schedule-proposal RFA (`feedback_routing._propose_schedule`) is left open after its drawer button saves the schedule, because scheduling is not the fix: a fresh result reaching a compile is.
+**Fix:** complete the RFA automatically when the next scheduled run of that analysis on that resource succeeds (`scheduler.py` records `last_run_status`), with a resolution note naming the run.
+**Status:** not scheduled.
+
+## Gaps exist for repositories only (logged 2026-11-10, from the step 2a read-back)
+
+**What:** `analysis_gaps.project_slug` is a foreign key to `projects`, and `upsert_gap` checks `registry.get`, so only a repository can hold a gap. A database or file-system analysis that could not be established, or an answer about one diagnosed in Admin → Feedback, has nowhere to be recorded.
+**Today:** closed-loop step 2a records such a diagnosis as "not routed", with that reason (`feedback_routing.py`).
+**Fix:** key gaps by `(entity_type, slug)`, as `resource_schedules` is keyed. That is real-schema DDL on the shared registry, so it needs its own DDL record and the coordinator's clearance.
+**Status:** not scheduled.
+
+## The RFA drawer shows every RFA to every signed-in user (logged 2026-11-10, from the step 2 read-back)
+
+**What:** `GET /api/activity/rfas` needs sign-in, but `rfas.flatten_rfas` returns every RFA to every signed-in user. There is no per-viewer filter: no private-investigation, membership or zone check. An RFA raised about a private investigation or a zone-restricted resource is readable by all RE users.
+**Today:** closed-loop step 2 works around it for routed feedback: an answer from a private or zone-restricted context is routed with the item reference and cause only, no question text (`docs/design-notes/BRIEF-CLOSED-LOOP-STEP2-ROUTING.md`, Q8's limit). Other RFA writers (Automate, Enrichment, linkage divergences) have no such rule.
+**Fix:** filter the drawer by viewer, so an RFA from a private context is seen only by that context's members. Once it exists, step 2's reference-only rule can be revisited.
+**Status:** not scheduled.
+
 ## TestGen deployment as a data channel (deferred 2026-10-30)
 
 **Decision (project owner, 2026-10-30):** TestGen deployment as a data channel (`DESIGN-TESTGEN-DEPLOYMENT-AS-DATA-CHANNEL`, slices TG1–TG3, owner rulings §9): deferred to the backlog by the owner 2026-10-30.
@@ -39,7 +69,22 @@ Fixed in the same pass: `scripts/regen_docs_index.py` filed a status reading "no
 **Fix:** reset or drain that semaphore in a fixture, or assert the cap relative to the slots free at the start of the test.
 **Status:** small; not scheduled.
 
-## Repositories added by scouting or the bulk add are never first-indexed for chat; the Analysis `rag_ingestion` step cannot do it (found 2026-10-18)
+## Chat votes are not carried when website or narrative-doc chunks are re-inserted (logged 2026-11-10, from the R0 read-back)
+
+**What:** R0 (`chunk_votes`, per-file chunk ids) carries a chat vote to its chunk's new id across a repository refresh and the CLI wizard's re-index. `website_ingestion` (the shared `web_docs_*` collections) and file-system narrative docs (`surveyors/filesystem/narrative_docs.py`) still drop or replace their chunks without the carrier, so a vote on one of their chunks can be left pointing at nothing.
+**Today:** all 25 chunk votes on laz are on repository markdown collections (the coordinator's read, 2026-11-10), so nothing is lost yet.
+**Fix:** wrap those re-inserts in `chunk_votes.snapshot` / `record_inserts({collection})` / `carry`, with R1 (the rebuild) or the site re-crawl brief.
+**Status:** not scheduled.
+
+## DONE (2026-10-20, fb383152): Repositories added by scouting or the bulk add are never first-indexed for chat; the Analysis `rag_ingestion` step cannot do it (found 2026-10-18)
+
+**Resolved by the first index, asked first** (`resource_explorer/first_index.py`, `web/routes/first_index.py`, `web/static/next/first-index.js`; designed in `docs/design-notes/REPLY-DESIGNER-GROUP-SCHEDULING-AND-FIRST-INDEX-2026-10-19.md` §4 and `REPLY-DESIGNER-FIRST-INDEX-CONSENT-CHOICE-2026-10-20.md`). How it answered the four questions below:
+1. A separate action, not `rag_ingestion`: the step still only refreshes, and a first index is its own run (run-queue kind `first_index`).
+2. It asks first, per repository, with measured size and estimates from repositories already indexed (or "unknown until the first index" when fewer than three give a basis).
+3. A repository's header shows "○ not yet indexed · index it ›"; Automate → First indexing lists every one not yet indexed and its progress.
+4. A bulk add queues nothing. A person chooses "Index all N" or "Ask me for each" in Automate → First indexing.
+
+Kept below as the record of the finding. Not covered by it: rebuilding an index that already exists, see the brief `BRIEF-REINDEX-FROM-SCRATCH.md` (2026-11-10).
 
 **Observed (coordinator, laz, 2026-10-18):** 42 of 73 repositories have no pgvector collections: 34 with a 0-chunk `rag_ingestion` row and 8 with none. docling, marquez and amundsen have `collections = []` and `last_indexed_at = ''`, were created 2026-08-21 by the bulk add, and show no index, ingest or register operation in their activity log at all. For these repositories nothing about the code or documentation is searchable, so chat answers from documents are empty. Per-repo chunk counts for indexed repositories are correct (they include the shared `web_docs_*` collection, so a cross-repo sum double-counts it).
 
@@ -54,7 +99,7 @@ Fixed in the same pass: `scripts/regen_docs_index.py` filed a status reading "no
 4. Does a bulk add queue the index work, or leave it to the person?
 
 **Done so far:** the step now reports "Not indexed for chat (no collections registered)" with outcome `unverified`, instead of "indexed no chunks" (branch `re/rag-never-indexed`).
-**Status:** design question, then slice. Not scheduled.
+**Status:** done, 2026-10-20 (fb383152). Entry corrected 2026-11-10; it had still read "not scheduled".
 
 ## Admin → Discovery Sources is repo-only by name and by behaviour; generalize or rename, and add CSV import/export (logged 2026-10-01, owner)
 

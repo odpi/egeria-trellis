@@ -46,13 +46,13 @@ how big is it?" — and stay correct when the step no-ops.
 from __future__ import annotations
 
 import logging
-from datetime import datetime
 
 from resource_explorer.index_state import has_own_index, shared_collections
 from resource_explorer.registry import Project, ProjectRegistry
 from resource_explorer.surveyors.base_surveyor import BaseSurveyor
 from resource_explorer.step_outcome import StepOutcome
 from resource_explorer.surveyors.survey_report import Annotation, ResourceMeasureAnnotation
+from resource_explorer.survey_time import now_utc_iso
 
 log = logging.getLogger(__name__)
 
@@ -68,7 +68,7 @@ class RagIngestionSurveyor(BaseSurveyor):
         surveyed_at: str | None = None,
     ) -> None:
         super().__init__(project, registry)
-        self._surveyed_at = surveyed_at or datetime.utcnow().isoformat()
+        self._surveyed_at = surveyed_at or now_utc_iso()
 
     @property
     def step_name(self) -> str:
@@ -78,14 +78,18 @@ class RagIngestionSurveyor(BaseSurveyor):
         slug = self.project.slug
         ingested, error = False, ""
         try:
-            from resource_explorer.ingestion.incremental import IncrementalIndexer
+            from resource_explorer.ingestion.incremental import IncrementalIndexer, RefreshResult
             from resource_explorer.query_cache import QueryCache
 
-            IncrementalIndexer().refresh(self.project)
-            # The on-demand route does this too, and skipping it would leave
-            # chat answering from cache built against the pre-refresh index.
-            QueryCache().invalidate_project(slug)
-            ingested = True
+            result = IncrementalIndexer().refresh(self.project)
+            if result is RefreshResult.REBUILDING:
+                # Not ingested: a rebuild from scratch owns these collections until it swaps (reindex.py).
+                error = "a rebuild of this repository's chat index is in progress; it is refreshed after the rebuild"
+            else:
+                # The on-demand route does this too, and skipping it would leave
+                # chat answering from cache built against the pre-refresh index.
+                QueryCache().invalidate_project(slug)
+                ingested = True
         except Exception as exc:
             # Best-effort, exactly as repo_git_statistics is: a GitHub or
             # embedding hiccup must not fail the survey. The counts below still

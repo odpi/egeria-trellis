@@ -279,6 +279,14 @@ class TestEveryRoute:
         _patch(monkeypatch, patches)
         r = _call(client, method, path, body)
         assert r.status_code == 403, r.text
+        if name == "investigation promote":
+            # The NEW Project is created in the private zones [SECURED, OWNER]. The owner's personal zone has no
+            # control, and Egeria b49c5ed0 secures it ("A zone with no security access control ... grants access
+            # to no-one", validateZoneAccess :1156-1161): it refuses USER too, and is never named to USER.
+            assert r.json()["detail"] == (f"zones {SECURED} and a zone private to its owner do not grant {USER} "
+                                          "create in Egeria"), r.json()
+            assert OWNER not in r.json()["detail"]
+            return
         assert r.json()["detail"].startswith(f"zone {SECURED} does not grant {USER} "), r.json()
         assert r.json()["detail"].endswith(" in Egeria")
 

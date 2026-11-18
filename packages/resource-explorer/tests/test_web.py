@@ -396,7 +396,9 @@ class TestQueryFeedbackRouter:
                 "query_hash": "abc123", "vote": 0,
             })
         assert resp.status_code == 200
-        assert resp.json() == {"recorded": True}
+        # recorded: query_log's hash row. Not `stored`: a hash-only vote carries no question for Admin to read
+        # (tests/test_chat_vote_feedback.py covers the kept item).
+        assert resp.json()["recorded"] is True and resp.json()["stored"] is False
         mock_cls.return_value.record_feedback.assert_called_once_with("abc123", 0)
 
     def test_positive_and_negative_votes_still_pass_through(self, client):
@@ -526,7 +528,9 @@ class TestQueryFeedbackRouter:
                 "query_hash": "abc123", "vote": 0,
             })
         assert resp.status_code == 200
-        assert resp.json() == {"recorded": True}
+        # recorded: query_log's hash row. Not `stored`: a hash-only vote carries no question for Admin to read
+        # (tests/test_chat_vote_feedback.py covers the kept item).
+        assert resp.json()["recorded"] is True and resp.json()["stored"] is False
         mock_cls.return_value.record_feedback.assert_called_once_with("abc123", 0)
 
     def test_positive_and_negative_votes_still_pass_through(self, client):

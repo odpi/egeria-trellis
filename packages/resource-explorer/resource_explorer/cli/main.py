@@ -87,7 +87,7 @@ def login_command(
     if not user:
         from resource_explorer.config import get_config
 
-        # Never the daemon's userId (EGERIA_USER_ID is RE's service account, Brief L).
+        # Never the daemon's userId (RE_DAEMON_USER_ID is RE's service account, Brief L).
         prefill = (get_config().egeria.login_default_user or "").strip()
         user = typer.prompt("Egeria user id", default=(None if not prefill or is_daemon_user(prefill) else prefill))
     try:
@@ -184,9 +184,11 @@ def add(
         extra_docs_path = []
     from resource_explorer.cli.wizard import OnboardingWizard
     wizard = OnboardingWizard()
-    wizard.run(github_url, accept_all=yes, subproject_path=subpath, slug_override=name,
-               extra_docs_paths=extra_docs_path or None, local_path=from_local,
-               group_slug=group)
+    added = wizard.run(github_url, accept_all=yes, subproject_path=subpath, slug_override=name,
+                       extra_docs_paths=extra_docs_path or None, local_path=from_local,
+                       group_slug=group)
+    if not added:          # TR-46: the reason is already printed; a script must see the failure too
+        raise typer.Exit(1)
 
 
 @app.command()
@@ -324,6 +326,37 @@ def _ingest_web_docs(project, docs_url: str, registry) -> None:
     console.print(f"[green]Inserted {count} chunks into {collection_name}.[/green]")
 
 
+def _queue_rebuild(registry, slugs, all_projects: bool, yes: bool) -> None:
+    """`refresh --rebuild`: queue one rebuild (reindex.py). One repository, never --all: rebuilds run one at a time."""
+    from rich.prompt import Confirm
+
+    from resource_explorer import reindex
+    from resource_explorer.registry import current_user_id
+
+    if all_projects or not slugs or len(slugs) != 1:
+        console.print("[red]--rebuild takes exactly one repository slug, and not --all: rebuilds run one at a time.[/red]")
+        raise typer.Exit(1)
+    slug = slugs[0]
+    who = (current_user_id() or "").strip()
+    if not who:
+        console.print("[red]A rebuild records who asked for it. Sign in first: resource-explorer login[/red]")
+        raise typer.Exit(1)
+    console.print(f"Rebuild [bold]{slug}[/bold]'s chat index from scratch: a fresh download and embed, built "
+                  "alongside the live index (chat keeps answering from it), then swapped. The previous index is "
+                  f"kept {reindex.KEEP_PREVIOUS_DAYS} days for undo. Survey results are updated too, and an undo "
+                  "does not revert them.")
+    if not yes and not Confirm.ask("Queue the rebuild?", default=False):
+        console.print("Not queued.")
+        return
+    try:
+        out = reindex.queue(registry, slug, requested_by=who)
+    except reindex.ReindexRefused as exc:
+        console.print(f"[red]Not queued:[/red] {exc}")
+        raise typer.Exit(1) from exc
+    held = " It is the first rebuild, so it is held for an admin to accept before it swaps." if out["held"] else ""
+    console.print(f"[green]Queued[/green] as run {out['run_id']}; a worker runs it. It {out['needs_words']}.{held}")
+
+
 @app.command()
 def refresh(
     slugs: Optional[list[str]] = typer.Argument(
@@ -344,6 +377,12 @@ def refresh(
         False, "--symbols",
         help="Extract (or re-extract) code symbols from source files.",
     ),
+    rebuild: bool = typer.Option(
+        False, "--rebuild",
+        help="Rebuild ONE repository's chat index from scratch, alongside the live one, then swap "
+             "(BRIEF-REINDEX-FROM-SCRATCH.md). Queued for a worker; asks first unless --yes.",
+    ),
+    yes: bool = typer.Option(False, "--yes", "-y", help="With --rebuild: do not ask for confirmation"),
 ):
     """Incrementally re-index one or more projects and refresh GitHub statistics.
 
@@ -359,6 +398,9 @@ def refresh(
     from resource_explorer.registry import ProjectRegistry
 
     registry = ProjectRegistry()
+    if rebuild:
+        _queue_rebuild(registry, slugs, all_projects, yes)
+        return
     targets = _resolve_slugs(registry, slugs, all_projects, top_level)
     if not targets:
         raise typer.Exit(1)
@@ -1467,7 +1509,7 @@ def survey_definition(
         None, "--engine",
         help="Force which engine runs this definition's 'resource-explorer'-tagged "
              "steps for THIS run only: 'resource-explorer' (local) or 'prefect'. "
-             "Omit to use the configured behaviour (PREFECT_ROUTE_LOCAL_STEPS). "
+             "Omit to use the configured behaviour (PREFECT_DISPATCH_STEPS). "
              "Does not affect executes_at='egeria' steps.",
     ),
 ):
@@ -1629,6 +1671,26 @@ def record_egeria_reset(
     console.print(f"[green]Recorded Egeria reset {_ts(reset_at)}Z UTC (from {reset_at!r}; row {row_id}"
                   + (f", supersedes row {supersedes}" if supersedes is not None else "")
                   + f"). Latest reset now {registry.latest_egeria_reset_at()}.[/green]")
+
+
+@registry_app.command(
+    name="reattach-egeria-by-name",
+    context_settings={"allow_extra_args": True, "ignore_unknown_options": True, "help_option_names": []},
+    add_help_option=False,
+)
+def reattach_egeria_by_name(ctx: typer.Context):
+    """Re-attach stored Egeria GUIDs by qualifiedName after an Egeria clear (registry writes only; Egeria is read).
+
+    DRY RUN by default: prints a table per registry table (rows, distinct names, each verdict's count), writes a
+    0600 plan file and prints the exact "to apply:" line. --show <verdict> lists the rows of one verdict.
+    Run it AFTER scripts/clear_egeria_pointers_after_reset.py, never before: the clear script blanks every pointer
+    that no longer resolves in Egeria.
+    Pass --help for every flag and guard (resource_explorer/egeria_reattach.py's docstring).
+    """
+    from resource_explorer.egeria_reattach import run
+
+    code = run(list(ctx.args), out=print)
+    raise typer.Exit(code)
 
 
 @app.command(name="egeria-reports")
@@ -2202,7 +2264,7 @@ def database_survey_definition(
         None, "--engine",
         help="Force which engine runs this definition's 'resource-explorer'-tagged "
              "steps for THIS run only: 'resource-explorer' (local) or 'prefect'. "
-             "Omit to use the configured behaviour (PREFECT_ROUTE_LOCAL_STEPS). "
+             "Omit to use the configured behaviour (PREFECT_DISPATCH_STEPS). "
              "Does not affect executes_at='egeria' steps.",
     ),
 ):
@@ -2703,7 +2765,7 @@ def filesystem_survey_definition(
         None, "--engine",
         help="Force which engine runs this definition's 'resource-explorer'-tagged "
              "steps for THIS run only: 'resource-explorer' (local) or 'prefect'. "
-             "Omit to use the configured behaviour (PREFECT_ROUTE_LOCAL_STEPS). "
+             "Omit to use the configured behaviour (PREFECT_DISPATCH_STEPS). "
              "Does not affect executes_at='egeria' steps.",
     ),
 ):
@@ -2866,8 +2928,21 @@ app.add_typer(prefect_app)
 
 
 @prefect_app.command(name="deploy")
-def prefect_deploy():
-    """Deploy Resource Explorer flows to the Prefect server."""
+def prefect_deploy(
+    name: str = typer.Option(
+        "re-survey-step-deployment", "--name",
+        help="Deployment name. The container worker deploys its own, re-survey-step-<sha12>."),
+    work_queue: Optional[str] = typer.Option(
+        None, "--work-queue",
+        help="Work queue for this deployment's runs (the container worker's own, re-<sha12>), so only a "
+             "worker on the same code picks them up. Default: the pool's default queue."),
+):
+    """Deploy Resource Explorer flows to the Prefect server.
+
+    The deployment's flows load from THIS checkout or image (`from_source` below): a worker can only run
+    them where that path exists. The host worker serves the default deployment; each container worker
+    deploys its own, named for its commit (docker/entrypoint-resource-explorer.sh, role prefect-worker).
+    """
     from pathlib import Path
 
     from resource_explorer.prefect.flows import re_survey_flow
@@ -2889,13 +2964,46 @@ def prefect_deploy():
             source=str(source_root),
             entrypoint="resource_explorer/prefect/flows.py:re_survey_flow",
         ).deploy(
-            name="re-survey-step-deployment",
+            name=name,
             work_pool_name=config.prefect.work_pool,
+            work_queue_name=work_queue,
         )
         console.print(f"[green]✓ Flows successfully deployed to work pool '[bold]{config.prefect.work_pool}[/bold]'![/green]")
     except Exception as e:
         console.print(f"[red]Failed to deploy flows: {e}[/red]")
         raise typer.Exit(1)
+
+
+@prefect_app.command(name="prune-deployments")
+def prefect_prune_deployments(
+    keep: int = typer.Option(3, "--keep", min=1, help="How many of the newest per-commit deployments to keep."),
+):
+    """Delete Resource Explorer's per-commit deployments (re-survey-step-<sha12>) beyond the newest KEEP.
+
+    Workers run this right after deploying their own commit's deployment, so a deployment per 8813 deploy
+    does not pile up. Never touches the default deployment, another flow's or pool's, one with a scheduled,
+    pending, running, paused or cancelling flow run, or one whose commit has an ONLINE worker. Prints every name
+    it deletes. A Prefect write.
+    """
+    import asyncio
+
+    from resource_explorer.config import get_config
+    from resource_explorer.surveyors.prefect_adapter import prune_commit_deployments
+
+    pool = get_config().prefect.work_pool
+    try:
+        out = asyncio.run(prune_commit_deployments(keep, pool))
+    except Exception as e:
+        console.print(f"[red]Could not prune deployments on pool {pool}: {e}[/red]")
+        raise typer.Exit(1)
+    for name in out["deleted"]:
+        console.print(f"deleted deployment {name}")
+    for name in out["skipped_active"]:
+        console.print(f"kept {name}: it has an active flow run")
+    for name in out.get("skipped_online_worker", []):
+        console.print(f"kept {name}: a worker on its commit is online")
+    console.print(f"prune-deployments on {pool}: kept {len(out['kept'])} newest, deleted {len(out['deleted'])}, "
+                  f"in use {len(out['skipped_active'])}")
 
 
 @prefect_app.command(name="worker")

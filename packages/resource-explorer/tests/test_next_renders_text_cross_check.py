@@ -1,6 +1,6 @@
 """BRIEF-KEYS-AND-ACTIVITY-CLOBBER.md §D: `facts.py`'s `_renders_text` is a
 Python hand-mirror of `readEnvelope`'s rendering rungs in
-`web/static/next/app.js` (now split into `web/static/next/envelope.js`, see
+`web/static/next/app.js` (now split into `web/static/trellis-ui/envelope.js`, see
 that module's own header comment). There is no shared source between the two
 implementations, and they have drifted twice already — once the day
 `_renders_text` was written, and again in Slice 21a (the Level column
@@ -79,9 +79,10 @@ from resource_explorer.surveyors.result_status import (
 )
 
 NEXT = Path(__file__).resolve().parents[1] / "resource_explorer" / "web" / "static" / "next"
+SHARED_UI = Path(__file__).resolve().parents[2] / "trellis-ui" / "trellis_ui" / "static"  # RE's files shared with EA
 APP_JS = NEXT / "app.js"
-ENVELOPE_JS = NEXT / "envelope.js"
-FORMAT_JS = NEXT / "format.js"
+ENVELOPE_JS = SHARED_UI / "envelope.js"
+FORMAT_JS = SHARED_UI / "format.js"
 
 STATES = [MEASURED, NOTHING_FOUND, NOT_ESTABLISHED, NO_READER, MEASURED_WITHIN_CREDENTIAL_SCOPE]
 LEVELS = ["resource", "container", "member", "field"]
@@ -222,7 +223,7 @@ class TestRendersTextMatchesReadEnvelope:
         format_mjs = tmp_path / "format.mjs"
         format_mjs.write_text(FORMAT_JS.read_text(encoding="utf-8"), encoding="utf-8")
         envelope_src = ENVELOPE_JS.read_text(encoding="utf-8")
-        envelope_src = envelope_src.replace("/static/next/format.js", "./format.mjs")
+        envelope_src = envelope_src.replace("/static/trellis-ui/format.js", "./format.mjs")
         envelope_mjs = tmp_path / "envelope.mjs"
         envelope_mjs.write_text(envelope_src, encoding="utf-8")
 
@@ -438,7 +439,7 @@ class TestLeadAnalysisSelection:
         format_mjs = tmp_path / "format2.mjs"
         format_mjs.write_text(FORMAT_JS.read_text(encoding="utf-8"), encoding="utf-8")
         envelope_src = ENVELOPE_JS.read_text(encoding="utf-8")
-        envelope_src = envelope_src.replace("/static/next/format.js", "./format2.mjs")
+        envelope_src = envelope_src.replace("/static/trellis-ui/format.js", "./format2.mjs")
         envelope_mjs = tmp_path / "envelope2.mjs"
         envelope_mjs.write_text(envelope_src, encoding="utf-8")
 
@@ -624,7 +625,7 @@ class TestFirstSentenceTruncation:
         format_mjs = tmp_path / "format3.mjs"
         format_mjs.write_text(FORMAT_JS.read_text(encoding="utf-8"), encoding="utf-8")
         envelope_src = ENVELOPE_JS.read_text(encoding="utf-8")
-        envelope_src = envelope_src.replace("/static/next/format.js", "./format3.mjs")
+        envelope_src = envelope_src.replace("/static/trellis-ui/format.js", "./format3.mjs")
         envelope_mjs = tmp_path / "envelope3.mjs"
         envelope_mjs.write_text(envelope_src, encoding="utf-8")
         cases_json = json.dumps([{"name": c["name"], "text": c["text"]} for c in cases])

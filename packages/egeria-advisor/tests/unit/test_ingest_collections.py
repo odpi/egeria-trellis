@@ -78,6 +78,9 @@ _CURRENT_LAYOUT = {
     "md_processing/v2/parser.py": "def parse():\n    pass\n",
     "docs/README.md": "# docs\n",
     "docs/gen.py": "def gen():\n    pass\n",
+    # Dr.Egeria templates: egeria_templates is a phase-1 collection since TR-50.
+    "sample-data/templates/basic/Create_Glossary.md": "# Create Glossary\n",
+    "sample-data/templates/advanced/Create_Term.md": "# Create Term\n",
 }
 
 

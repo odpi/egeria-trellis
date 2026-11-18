@@ -39,6 +39,9 @@ COPY packages/trellis-artifact-tree/pyproject.toml packages/trellis-artifact-tre
 COPY packages/trellis-context/pyproject.toml packages/trellis-context/pyproject.toml
 COPY packages/trellis-querycache/pyproject.toml packages/trellis-querycache/pyproject.toml
 COPY packages/trellis-auth/pyproject.toml packages/trellis-auth/pyproject.toml
+COPY packages/trellis-ui/pyproject.toml packages/trellis-ui/pyproject.toml
+COPY packages/trellis-accel/pyproject.toml packages/trellis-accel/pyproject.toml
+COPY packages/trellis-feedback/pyproject.toml packages/trellis-feedback/pyproject.toml
 
 # Dependency layer, cache-mounted. No torch swap here yet — see the swap
 # step below the source COPY, and docker/Dockerfile.resource-explorer's
@@ -54,6 +57,9 @@ COPY packages/trellis-artifact-tree packages/trellis-artifact-tree
 COPY packages/trellis-context packages/trellis-context
 COPY packages/trellis-querycache packages/trellis-querycache
 COPY packages/trellis-auth packages/trellis-auth
+COPY packages/trellis-ui packages/trellis-ui
+COPY packages/trellis-accel packages/trellis-accel
+COPY packages/trellis-feedback packages/trellis-feedback
 
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-dev --package egeria-advisor
@@ -124,6 +130,9 @@ COPY --chown=trellis:trellis packages/trellis-artifact-tree packages/trellis-art
 COPY --chown=trellis:trellis packages/trellis-context packages/trellis-context
 COPY --chown=trellis:trellis packages/trellis-querycache packages/trellis-querycache
 COPY --chown=trellis:trellis packages/trellis-auth packages/trellis-auth
+COPY --chown=trellis:trellis packages/trellis-ui packages/trellis-ui
+COPY --chown=trellis:trellis packages/trellis-accel packages/trellis-accel
+COPY --chown=trellis:trellis packages/trellis-feedback packages/trellis-feedback
 # Repo-level config/ — Dr.Egeria templates and the annotated report specs.
 # Both used to live inside packages/egeria-advisor (examples/templates and
 # advisor/configdata/report_specs) and so were copied with the package. They

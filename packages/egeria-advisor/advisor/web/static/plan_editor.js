@@ -295,8 +295,7 @@ function _renderEditor() {
   if (_ped.outcome) {
     outcomeEl.classList.remove('hidden');
     const outcomeBody = outcomeEl.querySelector('.ped-outcome-body');
-    outcomeBody.innerHTML =
-      typeof marked !== 'undefined' ? marked.parse(_ped.outcome) : _ped.outcome.replace(/\n/g, '<br>');
+    outcomeBody.innerHTML = renderMarkdown(_ped.outcome);  // render.js: parsed, then sanitised
     // Activate Mermaid diagrams in the outcome (e.g. from View Report)
     outcomeBody.querySelectorAll('code.language-mermaid').forEach(el => {
       const c = document.createElement('div');
@@ -444,11 +443,11 @@ function _buildCommandCard(cmd, idx) {
     const noteHdr = document.createElement('div');
     noteHdr.className = 'flex items-center gap-2 px-4 py-2 select-none';
     noteHdr.innerHTML =
-      (_ped.isInbox ? `<span class="text-slate-600 cursor-grab shrink-0" title="Drag to reorder">⠿</span>` : '') +
+      (_ped.isInbox ? `<span class="text-slate-500 cursor-grab shrink-0" title="Drag to reorder">⠿</span>` : '') +
       `<span class="text-amber-400/80 text-xs font-semibold flex-1">📝 Note</span>`;
     if (_ped.isInbox) {
       const rmBtn = document.createElement('button');
-      rmBtn.className = 'text-slate-600 hover:text-red-400 text-xs px-1 transition-colors shrink-0';
+      rmBtn.className = 'text-slate-500 hover:text-red-400 text-xs px-1 transition-colors shrink-0';
       rmBtn.title = 'Remove this note';
       rmBtn.textContent = '✕';
       rmBtn.onclick = (e) => { e.stopPropagation(); _pedRemoveStep(idx); };
@@ -487,14 +486,14 @@ function _buildCommandCard(cmd, idx) {
   hdr.className = 'flex items-center gap-2 px-4 py-2 cursor-pointer select-none border-b border-slate-700';
   hdr.style.background = '#1e293b';
   hdr.innerHTML =
-    (_ped.isInbox ? `<span class="text-slate-600 cursor-grab shrink-0" title="Drag to reorder">⠿</span>` : '') +
+    (_ped.isInbox ? `<span class="text-slate-500 cursor-grab shrink-0" title="Drag to reorder">⠿</span>` : '') +
     `<span class="text-xs font-semibold text-violet-400 shrink-0">Step ${cmd.stepNum}</span>` +
     `<span class="text-sm font-semibold text-slate-100 flex-1">${_esc(cmd.action)}</span>` +
     `<span class="ped-cmd-status text-xs"></span>` +
     `<span class="ped-cmd-toggle text-slate-500 text-xs ml-1">▼</span>`;
   if (_ped.isInbox) {
     const rmBtn = document.createElement('button');
-    rmBtn.className = 'text-slate-600 hover:text-red-400 text-xs px-1 ml-1 transition-colors shrink-0';
+    rmBtn.className = 'text-slate-500 hover:text-red-400 text-xs px-1 ml-1 transition-colors shrink-0';
     rmBtn.title = 'Remove this step';
     rmBtn.textContent = '✕';
     rmBtn.onclick = (e) => { e.stopPropagation(); _pedRemoveStep(idx); };
@@ -888,8 +887,7 @@ async function _validatePlanDoc() {
 
     let html = `<div class="flex items-center justify-between mb-2">` +
       `<span class="font-semibold ${headerCls}">${headerTxt}</span>` +
-      `<button onclick="document.getElementById('ped-validate-result').classList.add('hidden')" ` +
-      `class="text-slate-500 hover:text-slate-200 text-xs">✕ close</button></div>`;
+      `<button class="ped-validate-close text-slate-500 hover:text-slate-200 text-xs">✕ close</button></div>`;
 
     // Structured errors table
     if (allErrors.length) {
@@ -930,6 +928,7 @@ async function _validatePlanDoc() {
     }
 
     panel.innerHTML = html;
+    panel.querySelector('.ped-validate-close')?.addEventListener('click', () => panel.classList.add('hidden'));
     panel.scrollTop = 0;
   } catch (renderErr) {
     console.error('[validate] render error:', renderErr);
@@ -945,30 +944,138 @@ async function _validatePlanDoc() {
 
 // ── Execute ───────────────────────────────────────────────────────────────────
 
+/** The plan confirm gate (server: GovernancePlanAgent.prepare_execute). The first POST runs nothing and
+ *  returns the plan as it would run; the user confirms that command sequence; the second POST carries
+ *  {pending_id, digest} and runs it once. A plan edited in between is refused by the server, in words.
+ *  Returns the server's result, or {cancelled: true}. Throws on an HTTP error (with the server's detail).
+ *  Shared by every Execute / Re-run button (index.html and this file). */
+async function runPlanConfirmed(url, body) {
+  const post = async (b) => {
+    const r = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...Auth.getHeaders() },
+      body: JSON.stringify(b),
+    });
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(data.detail || `Server error ${r.status}`);
+    return data;
+  };
+  const shown = await post(body || {});
+  if (!shown || !shown.confirm_required) return shown;       // not found, refused, sign in: the server says
+  const choice = await planConfirmDialog(shown);
+  if (!choice.ok) return { cancelled: true, response: 'Cancelled: the plan was not run, and nothing was written.' };
+  const confirmBody = { ...(body || {}), pending_id: shown.pending_id, digest: shown.plan_digest };
+  if (choice.ack) confirmBody.ack_non_idempotent = true;
+  return post(confirmBody);
+}
+
+/** How many command names the confirm dialog lists before it says "first N of M commands". */
+const PLAN_CONFIRM_LIST_MAX = 30;
+
+/** The plan confirm dialog: what will run, by name ("first N of M commands" when there are more), the
+ *  full Command Sequence (scrollable, never cut), and on a re-run that repeats non-idempotent commands a
+ *  checkbox that must be ticked before Run is enabled. Every server value reaches the page as textContent.
+ *  Resolves {ok, ack}. */
+function planConfirmDialog(shown) {
+  return new Promise(resolve => {
+    const el = (tag, cls, text) => {
+      const e = document.createElement(tag);
+      if (cls) e.className = cls;
+      if (text != null) e.textContent = text;
+      return e;
+    };
+    const section = String(shown.command_section || '');
+    const names = Array.isArray(shown.command_names) && shown.command_names.length
+      ? shown.command_names
+      : [...section.matchAll(/^##\s+(.+?)\s*$/gm)].map(m => m[1]);
+    const total = names.length;
+    const listed = names.slice(0, PLAN_CONFIRM_LIST_MAX);
+    const unsafe = Array.isArray(shown.non_idempotent) ? shown.non_idempotent : [];
+    const ackNeeded = !!shown.ack_required && unsafe.length > 0;
+
+    const overlay = el('div', 'fixed inset-0 z-50 flex items-center justify-center bg-black/60');
+    overlay.dataset.planConfirm = 'dialog';
+    const panel = el('div', 'bg-slate-800 text-slate-100 rounded-lg shadow-xl p-4 w-[min(42rem,92vw)] max-h-[85vh] overflow-y-auto text-sm space-y-3');
+    panel.appendChild(el('h3', 'text-base font-semibold', `${shown.rerun ? 'Run plan again' : 'Run plan'} ${shown.doc_id || ''}?`));
+    panel.appendChild(el('p', '', `${total} command(s) will be processed in Egeria as you.`));
+    const summary = el('p', 'text-slate-400 text-xs', total > listed.length
+      ? `First ${listed.length} of ${total} commands:` : `All ${total} commands:`);
+    summary.dataset.planConfirm = 'count';
+    panel.appendChild(summary);
+    const ol = el('ol', 'list-decimal pl-6 space-y-0.5');
+    listed.forEach(n => ol.appendChild(el('li', '', n)));
+    panel.appendChild(ol);
+    if (total > listed.length) panel.appendChild(el('p', 'text-slate-400 text-xs', `…and ${total - listed.length} more, in the full Command Sequence below.`));
+    const details = el('details', '');
+    details.appendChild(el('summary', 'cursor-pointer text-slate-300', 'Show the full Command Sequence'));
+    const pre = el('pre', 'mt-2 max-h-64 overflow-auto bg-slate-900 p-2 rounded text-xs whitespace-pre-wrap', section.trim());
+    pre.dataset.planConfirm = 'script';
+    details.appendChild(pre);
+    panel.appendChild(details);
+
+    let ack = null;
+    if (ackNeeded) {
+      const warn = el('div', 'border border-amber-500 rounded p-2 space-y-1');
+      warn.dataset.planConfirm = 'unsafe';
+      warn.appendChild(el('p', 'text-amber-300 font-semibold', 'This is a re-run, and these commands are not safe to run twice:'));
+      const ul = el('ul', 'list-disc pl-6');
+      unsafe.forEach(u => ul.appendChild(el('li', '', `${u.command}${u.count > 1 ? ` (×${u.count})` : ''}: ${u.why}`)));
+      warn.appendChild(ul);
+      const label = el('label', 'flex items-center gap-2 mt-1');
+      ack = el('input', '');
+      ack.type = 'checkbox';
+      ack.dataset.planConfirm = 'ack';
+      label.appendChild(ack);
+      label.appendChild(el('span', '', 'I understand these commands will run again, and want to re-run the plan anyway.'));
+      warn.appendChild(label);
+      panel.appendChild(warn);
+    }
+
+    const buttons = el('div', 'flex justify-end gap-2 pt-1');
+    const cancel = el('button', 'px-3 py-1 rounded bg-slate-600 hover:bg-slate-500', 'Cancel');
+    cancel.type = 'button';
+    cancel.dataset.planConfirm = 'cancel';
+    const run = el('button', 'px-3 py-1 rounded bg-violet-700 hover:bg-violet-600 disabled:opacity-40', shown.rerun ? 'Run again' : 'Run');
+    run.type = 'button';
+    run.dataset.planConfirm = 'run';
+    run.disabled = ackNeeded;
+    if (ack) ack.addEventListener('change', () => { run.disabled = !ack.checked; });
+    buttons.appendChild(cancel);
+    buttons.appendChild(run);
+    panel.appendChild(buttons);
+    overlay.appendChild(panel);
+
+    const done = (result) => { overlay.remove(); resolve(result); };
+    cancel.addEventListener('click', () => done({ ok: false, ack: false }));
+    run.addEventListener('click', () => {
+      if (run.disabled) return;
+      done({ ok: true, ack: !!(ack && ack.checked) });
+    });
+    document.body.appendChild(overlay);
+  });
+}
+
 async function _executePlanDoc() {
-  if (!confirm(`Execute plan ${_ped.doc_id}?\nThis will submit all commands to Dr.Egeria.`)) return;
-  if (_ped.dirty) await _savePlanEdits();
+  if (_ped.dirty) await _savePlanEdits();     // saved first, so what is confirmed is what is stored
   const docId = _ped.doc_id;
   const draftId = _ped.draft_id;
-  closePlanEditor();
   // Direct REST call (not a faked chat message) — "execute the plan X" sent
   // as chat text can be intercepted by context-based routing (e.g. an open
   // Plan Canvas session for the same plan) and mistaken for a plan-
   // modification instruction instead of an execute command. See BACKLOG.md.
-  if (typeof appendMessage === 'function') appendMessage('you', `Execute plan ${docId}`);
+  let result;
   try {
-    const r = await fetch(`/api/plans/${encodeURIComponent(docId)}/execute`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...Auth.getHeaders() },
-      body: JSON.stringify({ draft_id: draftId || null }),
-    });
-    const result = await r.json();
-    if (typeof appendMessage === 'function') {
-      const wrap = appendMessage('assistant', result.response || '', {});
-      if (typeof _applyQueryResult === 'function') _applyQueryResult(`execute the plan ${docId}`, result, wrap);
-    }
+    result = await runPlanConfirmed(`/api/plans/${encodeURIComponent(docId)}/execute`, { draft_id: draftId || null });
   } catch (e) {
     if (typeof appendMessage === 'function') appendMessage('assistant', `**Error:** ${e.message}`);
+    return;
+  }
+  if (result.cancelled) return;
+  closePlanEditor();
+  if (typeof appendMessage === 'function') {
+    appendMessage('you', `Execute plan ${docId}`);
+    const wrap = appendMessage('assistant', result.response || '', {});
+    if (typeof _applyQueryResult === 'function') _applyQueryResult(`execute the plan ${docId}`, result, wrap);
   }
 }
 
@@ -1002,12 +1109,12 @@ async function pedRecoverForEditing() {
 // ── Re-run Now (outbox → outbox, no inbox detour) ─────────────────────────────
 
 async function pedRerunNow() {
-  if (!confirm(`Re-run "${_ped.doc_id}" now?\nThis submits its commands to Egeria again, as-is, and appends a new outcome.`)) return;
   const bar = document.getElementById('ped-recovery-bar');
   if (bar) bar.innerHTML = '<span class="text-emerald-300">Re-running…</span>';
   try {
-    const r = await fetch(`/api/plans/${encodeURIComponent(_ped.doc_id)}/rerun`, { method: 'POST', headers: Auth.getHeaders() });
-    if (!r.ok) { const e = await r.json(); throw new Error(e.detail || r.statusText); }
+    const res = await runPlanConfirmed(`/api/plans/${encodeURIComponent(_ped.doc_id)}/rerun`, {});
+    if (res.cancelled) { if (bar) bar.innerHTML = ''; return; }
+    if (res.state === 'refused') throw new Error(res.response);
     await openPlanEditor(_ped.doc_id, null);
     if (typeof loadPlans === 'function') loadPlans();
     _showToast('Plan re-executed — outcome updated.');
@@ -1031,11 +1138,15 @@ async function pedShowVersionHistory() {
     `<span class="flex gap-1 shrink-0">` +
     `<button class="px-2 py-0.5 rounded bg-slate-700 hover:bg-slate-600 text-slate-100 transition-colors" ` +
     `title="Save the specification only — no history, no reference data" ` +
-    `onclick="openSaveAsModal('${_esc(_ped.doc_id)}', null, '${_esc(_pedTitle())}')">Save As</button>` +
+    `data-action="save-as">Save As</button>` +
     `<button class="px-2 py-0.5 rounded bg-violet-700 hover:bg-violet-600 text-white transition-colors" ` +
-    `onclick="openForkModal('${_esc(_ped.doc_id)}', null, '${_esc(_pedTitle())}')">Fork Current</button>` +
+    `data-action="fork-current">Fork Current</button>` +
     `</span></div>` +
     `<div id="ped-version-list-items">Loading…</div>`;
+  // Handlers are bound here, never written into onclick strings: doc ids, titles and version file
+  // names come from the server, and an inline handler would run them as code.
+  list.querySelector('[data-action="save-as"]').addEventListener('click', () => openSaveAsModal(_ped.doc_id, null, _pedTitle()));
+  list.querySelector('[data-action="fork-current"]').addEventListener('click', () => openForkModal(_ped.doc_id, null, _pedTitle()));
   const itemsEl = document.getElementById('ped-version-list-items');
   try {
     const r    = await fetch(`/api/plans/${encodeURIComponent(_ped.doc_id)}/versions`, { headers: Auth.getHeaders() });
@@ -1050,11 +1161,13 @@ async function pedShowVersionHistory() {
       const ts = v.timestamp.replace(/^(\d{4})(\d{2})(\d{2})_(\d{2})(\d{2})(\d{2})$/, '$1-$2-$3 $4:$5:$6');
       const desc = v.description ? `<span class="text-slate-500 italic ml-1">— ${_esc(v.description)}</span>` : '';
       row.innerHTML =
-        `<span class="flex-1 text-slate-300">${ts || v.version_file}${desc}</span>` +
+        `<span class="flex-1 text-slate-300">${_esc(ts || v.version_file)}${desc}</span>` +
         `<button class="px-2 py-0.5 rounded bg-slate-700 hover:bg-slate-600 text-slate-100 transition-colors" ` +
-        `onclick="pedRestoreVersion('${_esc(v.version_file)}')">Restore</button>` +
+        `data-action="restore">Restore</button>` +
         `<button class="px-2 py-0.5 rounded bg-violet-800 hover:bg-violet-700 text-white transition-colors" ` +
-        `onclick="openForkModal('${_esc(_ped.doc_id)}', '${_esc(v.version_file)}', '${_esc(_pedTitle())}')">Fork</button>`;
+        `data-action="fork">Fork</button>`;
+      row.querySelector('[data-action="restore"]').addEventListener('click', () => pedRestoreVersion(v.version_file));
+      row.querySelector('[data-action="fork"]').addEventListener('click', () => openForkModal(_ped.doc_id, v.version_file, _pedTitle()));
       itemsEl.appendChild(row);
     });
   } catch (e) {

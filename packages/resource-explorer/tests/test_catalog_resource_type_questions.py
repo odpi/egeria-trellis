@@ -242,9 +242,11 @@ class TestTheCatalogDocument:
         assert text.count("## Create Glossary Term") == 40
 
     def test_every_linked_perspective_exists_in_the_foundations(self):
-        defined = {line.strip() for doc in (DOCS / "foundations").glob("*.md")
-                   for line in doc.read_text(encoding="utf-8").splitlines()
-                   if line.strip().startswith("Perspective::")}
+        # foundations.md lists them as `- `Perspective::<name>`` lines (content-pack elements, 2026-11-09)
+        stripped = (line.strip().removeprefix("- ").strip("`")
+                    for doc in (DOCS / "foundations").glob("*.md")
+                    for line in doc.read_text(encoding="utf-8").splitlines())
+        defined = {line for line in stripped if line.startswith("Perspective::")}
         assert defined
         linked = set()
         for block in CATALOG_DOC.read_text(encoding="utf-8").split("\n___\n"):

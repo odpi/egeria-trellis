@@ -146,10 +146,10 @@ def test_get_report_draft_schema_endpoint(monkeypatch):
     async def mock_discover(draft_id, egeria_credentials=None):
         captured["draft_id"] = draft_id
         captured["creds"] = egeria_credentials
-        return [{"attribute_path": "guid", "data_type": "string"}]
+        return {"state": "ok", "attributes": [{"attribute_path": "guid", "data_type": "string"}], "message": None}
 
     fake_creds = {"user_id": "test_user", "password": "", "token": "egeria-token"}
-    monkeypatch.setattr("advisor.web.reports.discover_draft_schema_internal", mock_discover)
+    monkeypatch.setattr("advisor.web.reports.discover_draft_schema_with_status", mock_discover)
     monkeypatch.setattr("advisor.auth.require_egeria_user", lambda request: {"user_id": "test_user"})
     monkeypatch.setattr("advisor.auth.get_egeria_credentials", lambda request: fake_creds)
 
@@ -170,6 +170,9 @@ def test_discover_draft_schema_internal(monkeypatch):
                 "columns": [],
                 "answers": {"Heading": "Test Title"}
             }
+    # Import the elicitor BEFORE patching report_draft: it binds get_report_draft_manager by name at import, so a
+    # first import while the patch is on would keep the mock for every later test on this worker.
+    import advisor.agents.report_spec_elicitor  # noqa: F401
     monkeypatch.setattr("advisor.report_draft.get_report_draft_manager", lambda *a, **k: MockDraftManager())
     
     class MockElicitor:
@@ -192,7 +195,7 @@ def test_discover_draft_schema_internal(monkeypatch):
     
     class MockEgeriaTech:
         def __init__(self, **kwargs):
-            pass
+            self.user_id, self.user_pwd = kwargs.get("user_id"), kwargs.get("user_pwd")   # as pyegeria's client
         def create_egeria_bearer_token(self):
             pass
         def get_report_spec_schema(self, **kwargs):
@@ -226,6 +229,9 @@ def test_discover_draft_schema_cache(monkeypatch):
     class MockDraftManager:
         def load(self, draft_id):
             return draft_store.get(draft_id)
+    # Import the elicitor BEFORE patching report_draft: it binds get_report_draft_manager by name at import, so a
+    # first import while the patch is on would keep the mock for every later test on this worker.
+    import advisor.agents.report_spec_elicitor  # noqa: F401
     monkeypatch.setattr("advisor.report_draft.get_report_draft_manager", lambda *a, **k: MockDraftManager())
     
     class MockElicitor:
@@ -246,7 +252,7 @@ def test_discover_draft_schema_cache(monkeypatch):
     
     call_count = 0
     class MockEgeriaTech:
-        def __init__(self, **kwargs): pass
+        def __init__(self, **kwargs): self.user_id, self.user_pwd = kwargs.get("user_id"), kwargs.get("user_pwd")
         def create_egeria_bearer_token(self): pass
         def get_report_spec_schema(self, **kwargs):
             nonlocal call_count

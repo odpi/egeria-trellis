@@ -19,4 +19,15 @@ What stays here, because it needs Resource Explorer:
 
 Resource Explorer registers the readers in the library's `trellis_analytics.readers` entry-point group (its
 `pyproject.toml`): `ods` and `catalogue_scope` from this package, and `investigation_purposes`, `question_ids` and
-`table_rows` from RE itself. Without RE (the Portal) the library answers `not_established` in words instead.
+`table_rows` from RE itself. Without RE the library answers in words, but which words depends on how it is called:
+
+- **Called directly** (the library's `portal.curation_coverage_tile` opens its readers itself): a missing reader gives
+  `no_reader(...)`, which is `not_established` with words.
+- **Run as a report spec** through pyegeria's executor (the Portal's path, pyegeria 6.2.26 and later): the executor
+  asks the Portal's role supply for each input the routine declares. Library 0.4.0 declares
+  `inputs=["reader:ods", "reader:catalogue_scope", "subject"]` for both `curation_coverage` and
+  `curation_coverage_tile` (`manifests.py`), and the Portal supplies no readers (the library is not installed in the Portal today). The run is **refused before it
+  starts**, with the supply's words ("The Portal has no reader named 'ods'"). It is not a result with a state.
+
+pyegeria 6.2.26 removed `analytic_binders`, so no binder makes the Portal read RE's database. See
+[Inputs by role](../resource-explorer/docs/extending-with-analyses.md#inputs-by-role-pyegeria-6226).

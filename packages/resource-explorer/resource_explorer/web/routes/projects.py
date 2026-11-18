@@ -2726,11 +2726,22 @@ def raise_gap_rfa(slug: str, gap_id: int, request: Request) -> dict:
         )
     user = get_current_user(request)
     author = (user or {}).get("user_id") or (user or {}).get("sub") or (user or {}).get("username") or ""
-    kind_label = "a disagreement between two measures" if gap["gap_kind"] == "disagreement" \
-        else "a check that could not be established"
-    summary = f"{gap['analysis_id']}: {gap['sentence']}"
+    # Every gap kind gaps.py knows. A disagreement raised by a person (the checklist) is a disputed answer, not two
+    # measures disagreeing; the diagnosed kinds come from an admin's diagnosis of a rated answer (closed-loop step 2a).
+    from resource_explorer.gaps import SOURCE_PERSON
+    person = (gap.get("evidence") or {}).get("source") == SOURCE_PERSON
+    kind_label = {
+        "disagreement": "an answer a person disputed" if person else "a disagreement between two measures",
+        "not_measurable": "a check that could not be established",
+        "missing_evidence": "an answer an admin diagnosed as missing this analysis's result",
+        "analysis_defect": "an answer an admin diagnosed as a wrong result from this analysis",
+        "catalog_gap": "a question nothing in the catalog answers",
+    }.get(gap["gap_kind"], f"a gap of kind {gap['gap_kind']!r}")
+    # A catalog gap names no analysis: say "the question catalog" rather than an empty name.
+    where = f"the '{gap['analysis_id']}' analysis" if gap["analysis_id"] else "the question catalog"
+    summary = f"{gap['analysis_id'] or 'question catalog'}: {gap['sentence']}"
     detail = (
-        f"This is {kind_label} in the '{gap['analysis_id']}' analysis, not a "
+        f"This is {kind_label}, in {where}, not a "
         f"finding about {project.display_name or slug} itself — raised "
         "against the repository because no 'analysis' RFA entity type exists "
         "yet (see this route's docstring)."

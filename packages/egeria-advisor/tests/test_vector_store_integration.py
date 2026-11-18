@@ -15,7 +15,10 @@ import json
 import psycopg2
 import pytest
 
-pytestmark = pytest.mark.requires_pgvector
+pytestmark = [
+    pytest.mark.requires_pgvector,
+    pytest.mark.live(reason="Postgres with pgvector (writes zzz_vstest_* tables in public, dropped after)"),
+]
 
 
 def _live_columns(schema: str, table: str) -> list[list]:

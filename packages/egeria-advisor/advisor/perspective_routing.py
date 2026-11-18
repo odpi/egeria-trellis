@@ -101,18 +101,20 @@ class PerspectiveRoutingEngine:
         if session_id:
             history = self.get_session_perspective_history(session_id)
         
+        # Stored history may hold pre-P-1 role keys (developer, ...): resolve_key maps them.
+        from advisor.perspective_manager import resolve_key
         if explicit_perspective:
-            return explicit_perspective, history
+            return resolve_key(explicit_perspective), history
 
         # Fallback to session history
         if history:
-            return history[0], history
+            return resolve_key(history[0]), history
 
         # Fallback to user history
         if user_id:
             user_hist = self.get_user_perspective_history(user_id)
             if user_hist:
-                return user_hist[0], history + user_hist
+                return resolve_key(user_hist[0]), history + user_hist
 
         return "", history
 
@@ -180,8 +182,10 @@ class PerspectiveRoutingEngine:
 
         query_lower = query.lower()
 
-        # Perspective Specific Rules:
+        # Perspective Specific Rules: keyed by role profile (A-P P-1), not perspective key.
+        from advisor.perspective_manager import role_profile
         tech_roles = {"developer", "data_engineer"}
+        resolved_profile = role_profile(resolved_persp)
 
         code_signals = any(sig in query_lower for sig in (
             "python", "code example", "code sample", "write python",
@@ -277,7 +281,7 @@ class PerspectiveRoutingEngine:
             # Tech perspective + an *explicit* code/python signal — not ambiguous, so still
             # fast-paths straight to Python (or CodeIntelAgent for structural questions) with
             # no clarify. (dre_signals/cli_signals/java_signals already returned above.)
-            if resolved_persp in tech_roles and code_signals:
+            if resolved_profile in tech_roles and code_signals:
                 if any(term in query_lower for term in ("class", "inherit", "method", "parent", "child", "subclass", "superclass", "hierarchy")):
                     return {
                         "action": "route",

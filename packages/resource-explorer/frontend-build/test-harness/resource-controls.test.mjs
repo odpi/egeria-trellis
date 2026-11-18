@@ -706,6 +706,7 @@ test('source scan: no resource-removal label or tooltip in static/next says "del
     }
   };
   walk(NEXT_DIR);
+  walk(path.resolve(HERE, '../../../trellis-ui/trellis_ui/static'));   // RE's files shared with EA, still RE's labels
   assert.deepEqual(offenders, [], 'a "delete" label/tooltip crept back into static/next');
 });
 

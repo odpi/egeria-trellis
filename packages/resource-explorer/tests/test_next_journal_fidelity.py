@@ -13,6 +13,7 @@ from pathlib import Path
 import pytest
 
 NEXT = Path(__file__).resolve().parents[1] / "resource_explorer" / "web" / "static" / "next"
+SHARED_UI = Path(__file__).resolve().parents[2] / "trellis-ui" / "trellis_ui" / "static"  # RE's files shared with EA
 
 
 class TestOneTrailFormat:
@@ -46,7 +47,7 @@ class TestOneTrailFormat:
 class TestTheFormatter:
     def _run(self, expr: str, tmp_path: Path):
         mod = tmp_path / "format.mjs"
-        mod.write_text((NEXT / "format.js").read_text(encoding="utf-8"), encoding="utf-8")
+        mod.write_text((SHARED_UI / "format.js").read_text(encoding="utf-8"), encoding="utf-8")
         script = (f"import {{ verdictLineHtml, changedTimesHtml }} from '{mod.as_uri()}';\n"
                   f"const esc = (s) => String(s);\nconsole.log(JSON.stringify({expr}));")
         out = subprocess.run(["node", "--input-type=module", "-e", script], capture_output=True, text=True, check=True)

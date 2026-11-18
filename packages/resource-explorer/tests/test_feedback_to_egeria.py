@@ -458,8 +458,10 @@ def test_egeria_unreachable_leaves_each_row_not_sent(registry, egeria, monkeypat
 
 def test_egerias_security_refusal_reads_not_permitted(registry, egeria):
     rid = rate(registry, "alice", 5, "great")
-    egeria.fail["add_rating_to_element"] = RuntimeError(
-        "OPEN-METADATA-SECURITY-403-007 User alice is not authorized to issue operation addFeedback.")
+    from tests.egeria_refusals import not_permitted
+
+    egeria.fail["add_rating_to_element"] = not_permitted(
+        "OPEN-METADATA-SECURITY-403-007 User alice is not authorized to issue operation addFeedback.", user="alice")
     press(registry, "alice")
     item = by_id(plan(registry, "alice")["ratings"], rid)
     assert item["state"] == fe.NOT_PERMITTED and item["word"].startswith("not permitted · ")

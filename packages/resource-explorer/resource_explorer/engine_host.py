@@ -114,6 +114,7 @@ from datetime import UTC
 from typing import Any
 
 from resource_explorer.step_outcome import SURVEY_GUARDS, TRIGGERED_TWICE_SENTENCE
+from resource_explorer.surveyors.step_dispatch_policy import HEAVY_COMPUTE as _HEAVY_COMPUTE
 
 log = logging.getLogger(__name__)
 
@@ -400,7 +401,7 @@ REGISTRY_ENTITY_TYPES = ("database", "repo")
 
 #: Repository steps whose fetch or compute is out of this slice (§5.4): "steps fetch sources or call models".
 _HEAVY_FETCH = frozenset({"api_heavy", "download"})
-_HEAVY_COMPUTE = frozenset({"high"})
+# _HEAVY_COMPUTE: what "heavy compute" means is said once, in step_dispatch_policy (TR-11 F-AB-3, C3), imported above.
 
 
 @dataclass(frozen=True)
@@ -487,7 +488,13 @@ LIBRARY_HOSTS = (("Egeria host", "database"), ("Files host", "filesystem"))
 def library_steps_line() -> str:
     """The one start-up line: every installed library step, named, per host, with the catalogued steps whose package
     is missing there. Example: `library steps · Egeria host: change_rates, hub_tables (none missing) · Files host:
-    fs_activity (1 missing: fs_duplicates)`. A host with no step says so rather than leaving a gap."""
+    fs_activity (1 missing: fs_duplicates) · set steps: schema_comparison (not in the catalog: a missing set step is not
+    detected)`. A host with no step says so rather than leaving a gap.
+
+    Set steps (a work list's members, `subject="set"`) run under neither host, so they get their own part
+    (RULING-HEDWIG-ACCELERATOR-AND-IMAGE-2026-11-13 §1): installed ones are named, and "none installed" when there are
+    none, so their absence shows. The catalogue does not list set steps, so nothing says which SHOULD be installed:
+    the part says so rather than claiming "none missing" for a check that was never made."""
     from resource_explorer.surveyors.survey_step_host import installed_library_steps
     from resource_explorer.surveyors.survey_step_host import missing_library_steps as _missing
 
@@ -498,7 +505,24 @@ def library_steps_line() -> str:
         names = ", ".join(installed) if installed else "none installed"
         gone = f"{len(missing)} missing: {', '.join(missing)}" if missing else "none missing"
         parts.append(f"{host}: {names} ({gone})")
+    parts.append(f"set steps: {', '.join(installed_set_steps()) or 'none installed'} "
+                 f"({SET_STEPS_NOT_CHECKED})")
     return "library steps \u00b7 " + " \u00b7 ".join(parts)
+
+
+#: What the set-steps part says instead of "none missing": nothing declares which set steps should be installed.
+#: Deliberately without "missing:" (the image's prefect-worker role refuses to start on " missing:").
+SET_STEPS_NOT_CHECKED = "not in the catalog: a missing set step is not detected"
+
+
+def installed_set_steps() -> list[str]:
+    """Sorted names of the installed set steps (a work list's members), across the resource types RE's hosts serve."""
+    from resource_explorer.surveyors.survey_step_host import discover_set_steps
+
+    names: set[str] = set()
+    for _host, entity_type in LIBRARY_HOSTS:
+        names.update(discover_set_steps(entity_type))
+    return sorted(names)
 
 
 def supported_request_types() -> dict[str, str]:

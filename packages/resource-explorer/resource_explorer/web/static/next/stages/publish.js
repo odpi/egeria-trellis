@@ -22,7 +22,7 @@
  * `mountEgeriaReports(el, { entityType, slug, inEgeria, onAsk })` is the entry point stage code reuses
  * (G3's runs dialog links a report GUID into it). See PARITY-G1-IMPLEMENTED.md.
  */
-import { ago } from '/static/next/format.js';
+import { ago, whenMs } from '/static/next/format.js';
 import { stateEntry } from '/static/next/glyphs.js';
 import {
   getRepoPublishState, publishRepoReport, forgetEgeriaLinks, resurveyRepo,
@@ -107,8 +107,10 @@ const byAttr = (root, attr, value) => [...root.querySelectorAll(`[${attr}]`)].fi
 /** The published report was made from an older survey than the kept one: a visible cue and a short word,
  *  the sentence on hover. Nothing when the two match, or when either date is unknown. */
 export function behindCue(row, kept) {
-  const a = Date.parse(row && row.surveyed_at);
-  const b = Date.parse(kept && kept.exists ? kept.surveyed_at : '');
+  // whenMs, not Date.parse: survey times written before 2026-11 carry no zone and are UTC, and Date.parse would read
+  // them as local time, so an old report could compare wrongly against a newer, zoned kept survey.
+  const a = whenMs(row && row.surveyed_at);
+  const b = whenMs(kept && kept.exists ? kept.surveyed_at : '');
   if (Number.isNaN(a) || Number.isNaN(b) || a >= b) return '';
   return ` <span data-publish-behind>${cue('partial', 'behind', `The report in Egeria was made from the survey of ${String(row.surveyed_at).slice(0, 10)}; the kept survey is newer (${String(kept.surveyed_at).slice(0, 10)}). Publish again to bring it up to date.`)}</span>`;
 }

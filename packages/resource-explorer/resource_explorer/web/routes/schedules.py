@@ -38,6 +38,9 @@ def _cost_hint(entity_type: str, analysis_id: str) -> dict:
 
 _VALID_SCHEDULES = {"manual", "daily", "weekly", "monthly"}
 
+#: Cadences from slowest to fastest, for `only_if_faster`. "manual" is no cadence at all.
+_CADENCE_RANK = {"manual": 0, "monthly": 1, "weekly": 2, "daily": 3}
+
 
 class ScheduleEntry(BaseModel):
     #: The target reference. An analysis id, or a Survey Definition's
@@ -51,6 +54,10 @@ class ScheduleEntry(BaseModel):
     #: expose it, so a survey could be authored, listed and run by hand but
     #: never actually put on a cadence.
     target_kind: str = TARGET_ANALYSIS
+    #: Save only when this makes the schedule FASTER than the one stored (closed-loop step 2c, the architect's R1):
+    #: an offer written when the analysis was weekly must not slow it down if someone has since made it daily. A
+    #: schedule already at or faster than this one is left as it is, and the response says so.
+    only_if_faster: bool = False
 
 
 #: How to find a resource of each schedulable kind. A schedule names a
@@ -236,6 +243,14 @@ def save_schedule(entity_type: str, slug: str, entry: ScheduleEntry) -> dict:
         _require_quality_work_list(registry, slug, entry)
     else:
         _require_resource(registry, entity_type, slug)
+    if entry.only_if_faster:
+        current = next((s for s in registry.get_schedules(entity_type, slug)
+                        if s.get("analysis_id") == entry.analysis_id), None)
+        now = (current or {}).get("schedule", "manual") if (current or {}).get("enabled") else "manual"
+        if _CADENCE_RANK.get(now, 0) >= _CADENCE_RANK.get(entry.schedule, 0):
+            return {"status": "unchanged", "entity_type": entity_type, "entity_slug": slug,
+                    "analysis_id": entry.analysis_id, "schedule": now,
+                    "reason": f"already scheduled {now}, which is at least as often as {entry.schedule}"}
     if entry.enabled and entity_type != WORK_LIST_ENTITY:
         # Brief Z2 round 2: a scheduled run publishes what it measures (auto-publish when the resource has an
         # Egeria Project), so the person creating the schedule must be allowed to publish the resource. Round 3:

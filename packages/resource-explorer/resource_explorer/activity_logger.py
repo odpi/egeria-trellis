@@ -301,8 +301,14 @@ def log_rfa(
     detail: str = "",
     analysis_name: str = "",
     items: list[dict] | None = None,
+    offer: dict | None = None,
 ) -> str:
     """Write an RFA and make sure it actually reaches the RFA drawer.
+
+    `offer` is an action the drawer can take for the reader, carried on the annotation because the drawer reads
+    annotations, not the entry's items. Today one kind: `{"kind": "schedule", "entity_type", "entity_slug",
+    "analysis_id", "cadence"}` (closed-loop step 2c, Automate's proposal), which the drawer saves through the same
+    schedule call the per-card "Schedule" control makes.
 
     `items` carries the same structured pointers an ordinary activity entry can
     (see renderActivityLog's link handling) — an RFA that says "3 publishes are
@@ -347,6 +353,7 @@ def log_rfa(
             "count": 1,
             "summary": summary,
             "status": status,
+            **({"offer": offer} if offer else {}),
         }],
     ))
     return entry_id
@@ -390,6 +397,18 @@ def log_first_index(registry: "ProjectRegistry", slug: str, name: str, status: s
     entry_id = str(uuid.uuid4())
     registry.write_activity(ActivityEntry(
         id=entry_id, ts=_now(), operation="first_index", intent="automate", entity_type="repo",
+        entity_slug=slug, entity_name=name, entity_location="", status=status, summary=summary,
+    ))
+    return entry_id
+
+
+def log_reindex(registry: ProjectRegistry, slug: str, name: str, status: str, summary: str,
+                entry_id: str = "") -> str:
+    """One row per rebuild of a repository's chat index (reindex.py), and one per undo. The run queue closes a
+    rebuild's row with its terminal words; an undo writes its own, finished row."""
+    entry_id = entry_id or str(uuid.uuid4())
+    registry.write_activity(ActivityEntry(
+        id=entry_id, ts=_now(), operation="reindex", intent="automate", entity_type="repo",
         entity_slug=slug, entity_name=name, entity_location="", status=status, summary=summary,
     ))
     return entry_id

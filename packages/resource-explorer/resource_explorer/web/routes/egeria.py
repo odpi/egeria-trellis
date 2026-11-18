@@ -984,6 +984,8 @@ async def resync_scan() -> dict:
 
 class ResyncApplyRequest(BaseModel):
     steps: list[str] = []
+    #: step -> the plan hash its scan showed (`Finding.plan_hash`); `reattach_by_name` refuses without it
+    plan_hashes: dict[str, str] = {}
 
 
 @router.post("/resync/apply")
@@ -1001,7 +1003,7 @@ async def resync_apply(req: ResyncApplyRequest) -> dict:
     if not req.steps:
         raise HTTPException(status_code=400, detail="no repair steps requested")
     try:
-        return await asyncio.to_thread(EgeriaResync().apply, req.steps)
+        return await asyncio.to_thread(EgeriaResync().apply, req.steps, req.plan_hashes)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 

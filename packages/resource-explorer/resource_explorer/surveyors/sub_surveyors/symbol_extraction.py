@@ -25,7 +25,6 @@ while this step also stays independently runnable/schedulable on its own.
 from __future__ import annotations
 
 import logging
-from datetime import datetime
 from pathlib import Path
 
 from resource_explorer.configdata.collection_config import COLLECTION_TYPES
@@ -34,6 +33,7 @@ from resource_explorer.surveyors.base_surveyor import BaseSurveyor
 from resource_explorer.step_outcome import StepOutcome, no_signal
 from resource_explorer.surveyors.survey_report import Annotation, ResourceMeasureAnnotation
 from resource_explorer.ingestion.vendored import is_vendored_abs
+from resource_explorer.survey_time import now_utc_iso
 
 log = logging.getLogger(__name__)
 
@@ -91,7 +91,7 @@ class SymbolExtractionSurveyor(BaseSurveyor):
     ) -> None:
         super().__init__(project, registry)
         self._local_path = local_path
-        self._surveyed_at = surveyed_at or datetime.utcnow().isoformat()
+        self._surveyed_at = surveyed_at or now_utc_iso()
 
     @property
     def step_name(self) -> str:

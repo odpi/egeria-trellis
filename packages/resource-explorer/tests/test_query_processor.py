@@ -106,3 +106,18 @@ class TestRelationshipRoutesToIntegration:
 
     def test_difference_between_stays_comparison(self, qp):
         assert qp.classify("what is the difference between docling and marker") == QueryIntent.COMPARISON
+
+
+class TestEgeriaIsNotSurveyMetaByItself:
+    """The bare word "egeria" made "what is the purpose of Egeria?" survey_meta (8813 query_log row 1426,
+    2026-11-10), so chat answered from survey metrics. Catalog and survey questions about Egeria stay survey_meta."""
+
+    def test_purpose_of_egeria_is_not_survey_meta(self):
+        assert QueryProcessor().classify("what is the purpose of Egeria?") != QueryIntent.SURVEY_META
+
+    @pytest.mark.parametrize("question", [
+        "what has egeria published?", "what is cataloged in egeria", "egeria survey results for this repo",
+        "what is the egeria status of this repo",
+    ])
+    def test_egeria_catalog_and_survey_questions_stay_survey_meta(self, question):
+        assert QueryProcessor().classify(question) == QueryIntent.SURVEY_META

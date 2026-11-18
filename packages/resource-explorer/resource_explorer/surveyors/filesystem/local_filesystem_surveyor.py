@@ -20,6 +20,7 @@ from resource_explorer.surveyors.sub_surveyors.data_profiler import (
     DataProfilerSurveyor,
     _fmt_size,
 )
+from resource_explorer.survey_time import now_utc_iso
 
 log = logging.getLogger(__name__)
 
@@ -252,7 +253,7 @@ class LocalFileSystemSurveyor:
         three_way = classify_for_folder_survey(paths)
 
         survey_data = {
-            "surveyed_at": datetime.utcnow().isoformat(),
+            "surveyed_at": now_utc_iso(),
             "total_files": total_files,
             "total_data_files": total_data_files,
             "total_size_bytes": total_size_bytes,

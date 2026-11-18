@@ -15,7 +15,6 @@ from fastapi.testclient import TestClient
 from resource_explorer.config import FeedbackConfig
 from resource_explorer.feedback_store import FeedbackStore
 
-
 ADMIN_TOKEN = "test-admin-token"
 
 
@@ -115,3 +114,34 @@ class TestAdminGating:
         assert c.get("/api/feedback/stats").status_code == 403
         # Even presenting *some* token must still fail — nothing is configured to match.
         assert c.get("/api/feedback", headers={"X-Admin-Token": "anything"}).status_code == 403
+
+
+class TestTriageThroughTheLibrary:
+    def test_a_change_records_its_note_and_who_made_it(self, client):
+        client.post("/api/feedback", json={"message": "x"})
+        h = {"X-Admin-Token": ADMIN_TOKEN}
+        [row] = client.get("/api/feedback", headers=h).json()
+        resp = client.patch(f"/api/feedback/{row['id']}",
+                            json={"triage_status": "known_issue", "note": "  dup  "}, headers=h)
+        assert resp.status_code == 200
+        [event] = resp.json()["history"]
+        assert (event["status"], event["note"], event["actor"]) == ("known_issue", "dup", "admin-token")
+
+    def test_one_item_with_its_history_is_admin_only(self, client):
+        client.post("/api/feedback", json={"message": "x"})
+        h = {"X-Admin-Token": ADMIN_TOKEN}
+        [row] = client.get("/api/feedback", headers=h).json()
+        assert client.get(f"/api/feedback/{row['id']}").status_code == 403
+        got = client.get(f"/api/feedback/{row['id']}", headers=h)
+        assert got.status_code == 200 and got.json()["history"] == []
+        assert client.get("/api/feedback/nope", headers=h).status_code == 404
+
+    def test_an_empty_submission_is_a_400_not_a_500(self, client):
+        assert client.post("/api/feedback", json={}).status_code == 400
+
+    def test_an_unknown_status_is_refused(self, client):
+        client.post("/api/feedback", json={"message": "x"})
+        h = {"X-Admin-Token": ADMIN_TOKEN}
+        [row] = client.get("/api/feedback", headers=h).json()
+        assert client.patch(f"/api/feedback/{row['id']}", json={"triage_status": "closed"},
+                            headers=h).status_code == 400

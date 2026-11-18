@@ -737,10 +737,13 @@ class TestCurateRoutes:
         verdict route. The promotion now happens in Publish (architecture_publish._publish_component)."""
         api, reg = client
         monkeypatch.setenv("EXPLORER_DRAFT_ZONE", "resource-explorer-draft")
-        # Zones are configured, so the verdict asks Egeria about them (Brief Z): neither zone has a control.
+        # Zones are configured, so the verdict asks Egeria about them (Brief Z): both admit every user. (Until
+        # 2026-11-10 neither had a control, which then meant open. Egeria b49c5ed0: "A zone with no security access
+        # control ... grants access to no-one", validateZoneAccess :1156-1161.)
         monkeypatch.setattr("resource_explorer.zone_access._platform", lambda: ("plat", "g"))
         monkeypatch.setattr("resource_explorer.zone_access._security_officer",
-                            lambda: type("SO", (), {"get_security_access_control": lambda self, *a, **k: None,
+                            lambda: type("SO", (), {"get_security_access_control": lambda self, *a, **k: {
+                                                        "associatedSecurityList": {"DEFAULT": ["allUsers"]}},
                                                     "get_user_account": lambda self, *a, **k: {
                                                         "userAccountStatus": "AVAILABLE"}})())
         spy = _ClassificationSpy()

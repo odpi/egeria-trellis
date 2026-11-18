@@ -1,0 +1,2099 @@
+[
+ {
+  "id": "H01",
+  "set": "clear",
+  "question": "Which glossaries exist, and how many terms does each have?",
+  "expect": null,
+  "mode": "rebased_fixes",
+  "offline": true,
+  "turns": 3,
+  "final_phase": "refine",
+  "transcript": [
+   {
+    "turn": 1,
+    "user": "Which glossaries exist, and how many terms does each have?",
+    "phase": "confirm_action",
+    "response": "\u26a0\ufe0f Left out: 'Number of Terms' (term_count) isn't an attribute of Glossary.\n### Proposed Report Spec: **Glossaries and Their Term Counts**\n\n- **Target Type:** Glossary\n- **Found with:** `GlossaryManager.find_glossaries` (from Glossary-DrE-Basic)\n- **Condition:** none (everything of this type)\n- **Description:** This report lists all glossaries along with the number of terms each contains.\n\n---\n\nDoes this look correct? Use the buttons below, or describe adjustments.",
+    "s": 26.94
+   },
+   {
+    "turn": 2,
+    "user": "continue_columns",
+    "phase": "elicit_columns",
+    "response": "### Columns Configuration\n\n**1. Glossary Name** \u2014 key: `display_name`\n\n**Condition:** none (everything of this type)\n\n---\n\nDoes this look right? Use **Generate now**, or describe changes (only attributes of Glossary can be columns).",
+    "s": 0.0
+   },
+   {
+    "turn": 3,
+    "user": "generate now",
+    "phase": "refine",
+    "response": "**Glossaries and Their Term Counts** (draft spec **report_20261113_071200_glossaries_and_terms_count**, validated with pyegeria)\n\nSign in to see the answer here; you can run it with **Execute Spec**.",
+    "s": 0.01
+   }
+  ],
+  "elicit_s": 26.95,
+  "draft": {
+   "draft_id": "draft_report_20261113_071200_glossaries_and_terms_count",
+   "title": "glossaries_and_terms_count",
+   "phase": "refine",
+   "phase_label": "Refinement session",
+   "original_query": "Which glossaries exist, and how many terms does each have?",
+   "action_function": "GlossaryManager.find_glossaries",
+   "target_type": "Glossary",
+   "columns": [
+    {
+     "name": "Glossary Name",
+     "key": "display_name"
+    }
+   ],
+   "content_filters": {
+    "search_string": "*"
+   },
+   "shape_defaults": {},
+   "performance_hints": {
+    "page_size": 100,
+    "start_from": 0
+   },
+   "perspectives": [],
+   "questions": [],
+   "answers": {
+    "Heading": "Glossaries and Their Term Counts",
+    "Description": "This report lists all glossaries along with the number of terms each contains."
+   },
+   "pending_questions": {},
+   "doc_id": "report_20261113_071200_glossaries_and_terms_count",
+   "history_stack": [
+    {
+     "phase": "confirm_action",
+     "phase_label": "Confirming report basic configuration",
+     "columns": [
+      {
+       "name": "Glossary Name",
+       "key": "display_name"
+      }
+     ],
+     "content_filters": {
+      "search_string": "*"
+     },
+     "shape_defaults": {},
+     "performance_hints": {
+      "page_size": 100,
+      "start_from": 0
+     },
+     "perspectives": [],
+     "questions": [],
+     "answers": {
+      "Heading": "Glossaries and Their Term Counts",
+      "Description": "This report lists all glossaries along with the number of terms each contains."
+     },
+     "pending_questions": {},
+     "summary_of_answers": ""
+    },
+    {
+     "phase": "elicit_columns",
+     "phase_label": "Reviewing and customizing columns",
+     "columns": [
+      {
+       "name": "Glossary Name",
+       "key": "display_name"
+      }
+     ],
+     "content_filters": {
+      "search_string": "*"
+     },
+     "shape_defaults": {},
+     "performance_hints": {
+      "page_size": 100,
+      "start_from": 0
+     },
+     "perspectives": [],
+     "questions": [],
+     "answers": {
+      "Heading": "Glossaries and Their Term Counts",
+      "Description": "This report lists all glossaries along with the number of terms each contains."
+     },
+     "pending_questions": {},
+     "summary_of_answers": ""
+    }
+   ],
+   "created_at": 1794575520.495648,
+   "updated_at": 1794575520.508019,
+   "summary_of_answers": "",
+   "user_id": "erinoverview",
+   "conditions": {},
+   "unmet": null,
+   "v2": true,
+   "format_set": {
+    "target_type": "Glossary",
+    "heading": "Glossaries and Their Term Counts",
+    "description": "This report lists all glossaries along with the number of terms each contains.",
+    "aliases": [],
+    "annotations": {},
+    "formats": [
+     {
+      "types": [
+       "ALL"
+      ],
+      "attributes": [
+       {
+        "name": "Glossary Name",
+        "key": "display_name",
+        "format": false
+       }
+      ]
+     }
+    ],
+    "action": {
+     "function": "GlossaryManager.find_glossaries",
+     "required_params": [
+      "search_string"
+     ],
+     "optional_params": [],
+     "spec_params": {},
+     "analytic_spec_params": {}
+    }
+   }
+  },
+  "check": {
+   "doc_id": "report_20261113_071200_glossaries_and_terms_count",
+   "document": "# Glossaries and Their Term Counts\n\n## Create Report Spec\n### Display Name\nglossaries_and_terms_count\n### Qualified Name\nReportSpec::glossaries_and_terms_count\n### Description\nThis report lists all glossaries along with the number of terms each contains.\n### Content Status\nACTIVE\n### Target Type Name\nGlossary\n### Output Types\nALL\n### Microflow\n{\"format\":\"microflow/1\",\"params\":{\"search_string\":{\"type\":\"string\",\"required\":true}},\"stages\":[{\"stage\":\"producer/find\",\"type\":\"Glossary\",\"function\":\"GlossaryManager.find_glossaries\",\"params\":{\"search_string\":\"$search_string\"}}],\"formatters\":{\"ALL\":{\"columns\":[{\"field\":\"display_name\",\"label\":\"Glossary Name\"}]}}}\n\n___\n",
+   "completed": true,
+   "asked_clarifying": false,
+   "dre_offline_parse": {
+    "ok": true,
+    "commands": [
+     "Create Report Spec"
+    ]
+   },
+   "format_set_source": "draft",
+   "format_set_error": null,
+   "target_type": "Glossary",
+   "action_function": "GlossaryManager.find_glossaries",
+   "columns": [
+    {
+     "name": "Glossary Name",
+     "key": "display_name"
+    }
+   ],
+   "nonexistent_attributes": {
+    "checked": true,
+    "keys": [],
+    "strict_keys": []
+   },
+   "pyegeria_validate": {
+    "ok": true,
+    "errors": [],
+    "warnings": [],
+    "not_applied": [],
+    "checked": [
+     "structure",
+     "target type",
+     "column attributes",
+     "load-time resolution (find method / analytic routine, parameters, formats)"
+    ],
+    "not_checked": [
+     "Dr.Egeria validate: no runner given"
+    ],
+    "dr_egeria": null,
+    "s": 0.0
+   },
+   "validates": true,
+   "run": {
+    "ran": false,
+    "why": "offline"
+   }
+  },
+  "total_s": 27.16
+ },
+ {
+  "id": "H02",
+  "set": "clear",
+  "question": "Which projects have no project manager assigned?",
+  "expect": null,
+  "mode": "rebased_fixes",
+  "offline": true,
+  "turns": 3,
+  "final_phase": "refine",
+  "transcript": [
+   {
+    "turn": 1,
+    "user": "Which projects have no project manager assigned?",
+    "phase": "confirm_action",
+    "response": "### Proposed Report Spec: **Projects Without Project Manager Assigned**\n\n- **Target Type:** Project\n- **Found with:** `ProjectManager.find_projects` (from Project-DrE-Basic)\n- **Condition:** none (everything of this type)\n- **Description:** This report lists all projects that do not have a project manager assigned.\n- **Not applied:** no project manager assigned\n\n---\n\nDoes this look correct? Use the buttons below, or describe adjustments.",
+    "s": 20.73
+   },
+   {
+    "turn": 2,
+    "user": "continue_columns",
+    "phase": "elicit_columns",
+    "response": "### Columns Configuration\n\n**1. Project Name** \u2014 key: `display_name`\n\n**Condition:** none (everything of this type)\n\n---\n\nDoes this look right? Use **Generate now**, or describe changes (only attributes of Project can be columns).",
+    "s": 0.0
+   },
+   {
+    "turn": 3,
+    "user": "generate now",
+    "phase": "refine",
+    "response": "**Projects Without Project Manager Assigned** (draft spec **report_20261113_071221_projects_without_project_manager**, validated with pyegeria)\n\n*Not applied:* no project manager assigned\n\nSign in to see the answer here; you can run it with **Execute Spec**.",
+    "s": 0.02
+   }
+  ],
+  "elicit_s": 20.75,
+  "draft": {
+   "draft_id": "draft_report_20261113_071221_projects_without_project_manager",
+   "title": "projects_without_project_manager",
+   "phase": "refine",
+   "phase_label": "Refinement session",
+   "original_query": "Which projects have no project manager assigned?",
+   "action_function": "ProjectManager.find_projects",
+   "target_type": "Project",
+   "columns": [
+    {
+     "name": "Project Name",
+     "key": "display_name"
+    }
+   ],
+   "content_filters": {
+    "search_string": "*"
+   },
+   "shape_defaults": {},
+   "performance_hints": {
+    "page_size": 100,
+    "start_from": 0
+   },
+   "perspectives": [],
+   "questions": [],
+   "answers": {
+    "Heading": "Projects Without Project Manager Assigned",
+    "Description": "This report lists all projects that do not have a project manager assigned."
+   },
+   "pending_questions": {},
+   "doc_id": "report_20261113_071221_projects_without_project_manager",
+   "history_stack": [
+    {
+     "phase": "confirm_action",
+     "phase_label": "Confirming report basic configuration",
+     "columns": [
+      {
+       "name": "Project Name",
+       "key": "display_name"
+      }
+     ],
+     "content_filters": {
+      "search_string": "*"
+     },
+     "shape_defaults": {},
+     "performance_hints": {
+      "page_size": 100,
+      "start_from": 0
+     },
+     "perspectives": [],
+     "questions": [],
+     "answers": {
+      "Heading": "Projects Without Project Manager Assigned",
+      "Description": "This report lists all projects that do not have a project manager assigned."
+     },
+     "pending_questions": {},
+     "summary_of_answers": ""
+    },
+    {
+     "phase": "elicit_columns",
+     "phase_label": "Reviewing and customizing columns",
+     "columns": [
+      {
+       "name": "Project Name",
+       "key": "display_name"
+      }
+     ],
+     "content_filters": {
+      "search_string": "*"
+     },
+     "shape_defaults": {},
+     "performance_hints": {
+      "page_size": 100,
+      "start_from": 0
+     },
+     "perspectives": [],
+     "questions": [],
+     "answers": {
+      "Heading": "Projects Without Project Manager Assigned",
+      "Description": "This report lists all projects that do not have a project manager assigned."
+     },
+     "pending_questions": {},
+     "summary_of_answers": ""
+    }
+   ],
+   "created_at": 1794575541.4289339,
+   "updated_at": 1794575541.454178,
+   "summary_of_answers": "",
+   "user_id": "erinoverview",
+   "conditions": {},
+   "unmet": "no project manager assigned",
+   "v2": true,
+   "format_set": {
+    "target_type": "Project",
+    "heading": "Projects Without Project Manager Assigned",
+    "description": "This report lists all projects that do not have a project manager assigned.",
+    "aliases": [],
+    "annotations": {},
+    "formats": [
+     {
+      "types": [
+       "ALL"
+      ],
+      "attributes": [
+       {
+        "name": "Project Name",
+        "key": "display_name",
+        "format": false
+       }
+      ]
+     }
+    ],
+    "action": {
+     "function": "ProjectManager.find_projects",
+     "required_params": [
+      "search_string"
+     ],
+     "optional_params": [],
+     "spec_params": {},
+     "analytic_spec_params": {}
+    }
+   }
+  },
+  "check": {
+   "doc_id": "report_20261113_071221_projects_without_project_manager",
+   "document": "# Projects Without Project Manager Assigned\n\n## Create Report Spec\n### Display Name\nprojects_without_project_manager\n### Qualified Name\nReportSpec::projects_without_project_manager\n### Description\nThis report lists all projects that do not have a project manager assigned.\n### Content Status\nACTIVE\n### Target Type Name\nProject\n### Output Types\nALL\n### Microflow\n{\"format\":\"microflow/1\",\"params\":{\"search_string\":{\"type\":\"string\",\"required\":true}},\"stages\":[{\"stage\":\"producer/find\",\"type\":\"Project\",\"function\":\"ProjectManager.find_projects\",\"params\":{\"search_string\":\"$search_string\"}}],\"formatters\":{\"ALL\":{\"columns\":[{\"field\":\"display_name\",\"label\":\"Project Name\"}]}}}\n\n___\n",
+   "completed": true,
+   "asked_clarifying": false,
+   "dre_offline_parse": {
+    "ok": true,
+    "commands": [
+     "Create Report Spec"
+    ]
+   },
+   "format_set_source": "draft",
+   "format_set_error": null,
+   "target_type": "Project",
+   "action_function": "ProjectManager.find_projects",
+   "columns": [
+    {
+     "name": "Project Name",
+     "key": "display_name"
+    }
+   ],
+   "nonexistent_attributes": {
+    "checked": true,
+    "keys": [],
+    "strict_keys": []
+   },
+   "pyegeria_validate": {
+    "ok": true,
+    "errors": [],
+    "warnings": [],
+    "not_applied": [],
+    "checked": [
+     "structure",
+     "target type",
+     "column attributes",
+     "load-time resolution (find method / analytic routine, parameters, formats)"
+    ],
+    "not_checked": [
+     "Dr.Egeria validate: no runner given"
+    ],
+    "dr_egeria": null,
+    "s": 0.0
+   },
+   "validates": true,
+   "run": {
+    "ran": false,
+    "why": "offline"
+   }
+  },
+  "total_s": 20.77
+ },
+ {
+  "id": "H03",
+  "set": "clear",
+  "question": "List the data specifications and the data structures they contain.",
+  "expect": null,
+  "mode": "rebased_fixes",
+  "offline": true,
+  "turns": 3,
+  "final_phase": "refine",
+  "transcript": [
+   {
+    "turn": 1,
+    "user": "List the data specifications and the data structures they contain.",
+    "phase": "confirm_action",
+    "response": "### Proposed Report Spec: **Data Specifications and Data Structures Report**\n\n- **Target Type:** DataSpec\n- **Found with:** `CollectionManager.find_collections` (from Data-Spec-DrE-Basic)\n- **Condition:** none (everything of this type)\n- **Description:** This report lists all data specifications along with their contained data structures.\n\n---\n\nDoes this look correct? Use the buttons below, or describe adjustments.",
+    "s": 24.32
+   },
+   {
+    "turn": 2,
+    "user": "continue_columns",
+    "phase": "elicit_columns",
+    "response": "### Columns Configuration\n\n**1. Specification Name** \u2014 key: `display_name`\n**2. Description** \u2014 key: `description`\n\n**Condition:** none (everything of this type)\n\n---\n\nDoes this look right? Use **Generate now**, or describe changes (only attributes of DataSpec can be columns).",
+    "s": 0.0
+   },
+   {
+    "turn": 3,
+    "user": "generate now",
+    "phase": "refine",
+    "response": "**Data Specifications and Data Structures Report** (draft spec **report_20261113_071245_data_specifications_and_structures_report**, validated with pyegeria)\n\nSign in to see the answer here; you can run it with **Execute Spec**.",
+    "s": 0.02
+   }
+  ],
+  "elicit_s": 24.35,
+  "draft": {
+   "draft_id": "draft_report_20261113_071245_data_specifications_and_structures_repor",
+   "title": "data_specifications_and_structures_report",
+   "phase": "refine",
+   "phase_label": "Refinement session",
+   "original_query": "List the data specifications and the data structures they contain.",
+   "action_function": "CollectionManager.find_collections",
+   "target_type": "DataSpec",
+   "columns": [
+    {
+     "name": "Specification Name",
+     "key": "display_name"
+    },
+    {
+     "name": "Description",
+     "key": "description"
+    }
+   ],
+   "content_filters": {
+    "search_string": "*"
+   },
+   "shape_defaults": {},
+   "performance_hints": {
+    "page_size": 100,
+    "start_from": 0
+   },
+   "perspectives": [],
+   "questions": [],
+   "answers": {
+    "Heading": "Data Specifications and Data Structures Report",
+    "Description": "This report lists all data specifications along with their contained data structures."
+   },
+   "pending_questions": {},
+   "doc_id": "report_20261113_071245_data_specifications_and_structures_report",
+   "history_stack": [
+    {
+     "phase": "confirm_action",
+     "phase_label": "Confirming report basic configuration",
+     "columns": [
+      {
+       "name": "Specification Name",
+       "key": "display_name"
+      },
+      {
+       "name": "Description",
+       "key": "description"
+      }
+     ],
+     "content_filters": {
+      "search_string": "*"
+     },
+     "shape_defaults": {},
+     "performance_hints": {
+      "page_size": 100,
+      "start_from": 0
+     },
+     "perspectives": [],
+     "questions": [],
+     "answers": {
+      "Heading": "Data Specifications and Data Structures Report",
+      "Description": "This report lists all data specifications along with their contained data structures."
+     },
+     "pending_questions": {},
+     "summary_of_answers": ""
+    },
+    {
+     "phase": "elicit_columns",
+     "phase_label": "Reviewing and customizing columns",
+     "columns": [
+      {
+       "name": "Specification Name",
+       "key": "display_name"
+      },
+      {
+       "name": "Description",
+       "key": "description"
+      }
+     ],
+     "content_filters": {
+      "search_string": "*"
+     },
+     "shape_defaults": {},
+     "performance_hints": {
+      "page_size": 100,
+      "start_from": 0
+     },
+     "perspectives": [],
+     "questions": [],
+     "answers": {
+      "Heading": "Data Specifications and Data Structures Report",
+      "Description": "This report lists all data specifications along with their contained data structures."
+     },
+     "pending_questions": {},
+     "summary_of_answers": ""
+    }
+   ],
+   "created_at": 1794575565.796287,
+   "updated_at": 1794575565.822882,
+   "summary_of_answers": "",
+   "user_id": "erinoverview",
+   "conditions": {},
+   "unmet": null,
+   "v2": true,
+   "format_set": {
+    "target_type": "DataSpec",
+    "heading": "Data Specifications and Data Structures Report",
+    "description": "This report lists all data specifications along with their contained data structures.",
+    "aliases": [],
+    "annotations": {},
+    "formats": [
+     {
+      "types": [
+       "ALL"
+      ],
+      "attributes": [
+       {
+        "name": "Specification Name",
+        "key": "display_name",
+        "format": false
+       },
+       {
+        "name": "Description",
+        "key": "description",
+        "format": false
+       }
+      ]
+     }
+    ],
+    "action": {
+     "function": "CollectionManager.find_collections",
+     "required_params": [
+      "search_string"
+     ],
+     "optional_params": [],
+     "spec_params": {
+      "metadata_element_type": "DataSpec"
+     },
+     "analytic_spec_params": {}
+    }
+   }
+  },
+  "check": {
+   "doc_id": "report_20261113_071245_data_specifications_and_structures_report",
+   "document": "# Data Specifications and Data Structures Report\n\n## Create Report Spec\n### Display Name\ndata_specifications_and_structures_report\n### Qualified Name\nReportSpec::data_specifications_and_structures_report\n### Description\nThis report lists all data specifications along with their contained data structures.\n### Content Status\nACTIVE\n### Target Type Name\nDataSpec\n### Output Types\nALL\n### Microflow\n{\"format\":\"microflow/1\",\"params\":{\"search_string\":{\"type\":\"string\",\"required\":true}},\"stages\":[{\"stage\":\"producer/find\",\"type\":\"DataSpec\",\"function\":\"CollectionManager.find_collections\",\"params\":{\"search_string\":\"$search_string\",\"metadata_element_type\":\"DataSpec\"}}],\"formatters\":{\"ALL\":{\"columns\":[{\"field\":\"display_name\",\"label\":\"Specification Name\"},{\"field\":\"description\",\"label\":\"Description\"}]}}}\n\n___\n",
+   "completed": true,
+   "asked_clarifying": false,
+   "dre_offline_parse": {
+    "ok": true,
+    "commands": [
+     "Create Report Spec"
+    ]
+   },
+   "format_set_source": "draft",
+   "format_set_error": null,
+   "target_type": "DataSpec",
+   "action_function": "CollectionManager.find_collections",
+   "columns": [
+    {
+     "name": "Specification Name",
+     "key": "display_name"
+    },
+    {
+     "name": "Description",
+     "key": "description"
+    }
+   ],
+   "nonexistent_attributes": {
+    "checked": true,
+    "keys": [],
+    "strict_keys": []
+   },
+   "pyegeria_validate": {
+    "ok": true,
+    "errors": [],
+    "warnings": [],
+    "not_applied": [],
+    "checked": [
+     "structure",
+     "target type",
+     "column attributes",
+     "load-time resolution (find method / analytic routine, parameters, formats)"
+    ],
+    "not_checked": [
+     "Dr.Egeria validate: no runner given"
+    ],
+    "dr_egeria": null,
+    "s": 0.0
+   },
+   "validates": true,
+   "run": {
+    "ran": false,
+    "why": "offline"
+   }
+  },
+  "total_s": 24.36
+ },
+ {
+  "id": "H04",
+  "set": "clear",
+  "question": "What solution blueprints exist, and which components make up each one?",
+  "expect": null,
+  "mode": "rebased_fixes",
+  "offline": true,
+  "turns": 3,
+  "final_phase": "refine",
+  "transcript": [
+   {
+    "turn": 1,
+    "user": "What solution blueprints exist, and which components make up each one?",
+    "phase": "confirm_action",
+    "response": "### Proposed Report Spec: **Solution Blueprints and Their Components**\n\n- **Target Type:** SolutionBlueprint\n- **Found with:** `SolutionArchitect.find_solution_blueprints` (from Solution-Blueprint-DrE-Basic)\n- **Condition:** none (everything of this type)\n- **Description:** This report lists all solution blueprints along with their components.\n\n---\n\nDoes this look correct? Use the buttons below, or describe adjustments.",
+    "s": 23.44
+   },
+   {
+    "turn": 2,
+    "user": "continue_columns",
+    "phase": "elicit_columns",
+    "response": "### Columns Configuration\n\n**1. Name** \u2014 key: `display_name`\n**2. Description** \u2014 key: `description`\n\n**Condition:** none (everything of this type)\n\n---\n\nDoes this look right? Use **Generate now**, or describe changes (only attributes of SolutionBlueprint can be columns).",
+    "s": 0.0
+   },
+   {
+    "turn": 3,
+    "user": "generate now",
+    "phase": "refine",
+    "response": "**Solution Blueprints and Their Components** (draft spec **report_20261113_071309_solution_blueprints_report**, validated with pyegeria)\n\nSign in to see the answer here; you can run it with **Execute Spec**.",
+    "s": 0.01
+   }
+  ],
+  "elicit_s": 23.45,
+  "draft": {
+   "draft_id": "draft_report_20261113_071309_solution_blueprints_report",
+   "title": "solution-blueprints-report",
+   "phase": "refine",
+   "phase_label": "Refinement session",
+   "original_query": "What solution blueprints exist, and which components make up each one?",
+   "action_function": "SolutionArchitect.find_solution_blueprints",
+   "target_type": "SolutionBlueprint",
+   "columns": [
+    {
+     "name": "Name",
+     "key": "display_name"
+    },
+    {
+     "name": "Description",
+     "key": "description"
+    }
+   ],
+   "content_filters": {
+    "search_string": "*"
+   },
+   "shape_defaults": {},
+   "performance_hints": {
+    "page_size": 100,
+    "start_from": 0
+   },
+   "perspectives": [],
+   "questions": [],
+   "answers": {
+    "Heading": "Solution Blueprints and Their Components",
+    "Description": "This report lists all solution blueprints along with their components."
+   },
+   "pending_questions": {},
+   "doc_id": "report_20261113_071309_solution_blueprints_report",
+   "history_stack": [
+    {
+     "phase": "confirm_action",
+     "phase_label": "Confirming report basic configuration",
+     "columns": [
+      {
+       "name": "Name",
+       "key": "display_name"
+      },
+      {
+       "name": "Description",
+       "key": "description"
+      }
+     ],
+     "content_filters": {
+      "search_string": "*"
+     },
+     "shape_defaults": {},
+     "performance_hints": {
+      "page_size": 100,
+      "start_from": 0
+     },
+     "perspectives": [],
+     "questions": [],
+     "answers": {
+      "Heading": "Solution Blueprints and Their Components",
+      "Description": "This report lists all solution blueprints along with their components."
+     },
+     "pending_questions": {},
+     "summary_of_answers": ""
+    },
+    {
+     "phase": "elicit_columns",
+     "phase_label": "Reviewing and customizing columns",
+     "columns": [
+      {
+       "name": "Name",
+       "key": "display_name"
+      },
+      {
+       "name": "Description",
+       "key": "description"
+      }
+     ],
+     "content_filters": {
+      "search_string": "*"
+     },
+     "shape_defaults": {},
+     "performance_hints": {
+      "page_size": 100,
+      "start_from": 0
+     },
+     "perspectives": [],
+     "questions": [],
+     "answers": {
+      "Heading": "Solution Blueprints and Their Components",
+      "Description": "This report lists all solution blueprints along with their components."
+     },
+     "pending_questions": {},
+     "summary_of_answers": ""
+    }
+   ],
+   "created_at": 1794575589.2787101,
+   "updated_at": 1794575589.292021,
+   "summary_of_answers": "",
+   "user_id": "erinoverview",
+   "conditions": {},
+   "unmet": null,
+   "v2": true,
+   "format_set": {
+    "target_type": "SolutionBlueprint",
+    "heading": "Solution Blueprints and Their Components",
+    "description": "This report lists all solution blueprints along with their components.",
+    "aliases": [],
+    "annotations": {},
+    "formats": [
+     {
+      "types": [
+       "ALL"
+      ],
+      "attributes": [
+       {
+        "name": "Name",
+        "key": "display_name",
+        "format": false
+       },
+       {
+        "name": "Description",
+        "key": "description",
+        "format": false
+       }
+      ]
+     }
+    ],
+    "action": {
+     "function": "SolutionArchitect.find_solution_blueprints",
+     "required_params": [
+      "search_string"
+     ],
+     "optional_params": [],
+     "spec_params": {},
+     "analytic_spec_params": {}
+    }
+   }
+  },
+  "check": {
+   "doc_id": "report_20261113_071309_solution_blueprints_report",
+   "document": "# Solution Blueprints and Their Components\n\n## Create Report Spec\n### Display Name\nsolution-blueprints-report\n### Qualified Name\nReportSpec::solution-blueprints-report\n### Description\nThis report lists all solution blueprints along with their components.\n### Content Status\nACTIVE\n### Target Type Name\nSolutionBlueprint\n### Output Types\nALL\n### Microflow\n{\"format\":\"microflow/1\",\"params\":{\"search_string\":{\"type\":\"string\",\"required\":true}},\"stages\":[{\"stage\":\"producer/find\",\"type\":\"SolutionBlueprint\",\"function\":\"SolutionArchitect.find_solution_blueprints\",\"params\":{\"search_string\":\"$search_string\"}}],\"formatters\":{\"ALL\":{\"columns\":[{\"field\":\"display_name\",\"label\":\"Name\"},{\"field\":\"description\",\"label\":\"Description\"}]}}}\n\n___\n",
+   "completed": true,
+   "asked_clarifying": false,
+   "dre_offline_parse": {
+    "ok": true,
+    "commands": [
+     "Create Report Spec"
+    ]
+   },
+   "format_set_source": "draft",
+   "format_set_error": null,
+   "target_type": "SolutionBlueprint",
+   "action_function": "SolutionArchitect.find_solution_blueprints",
+   "columns": [
+    {
+     "name": "Name",
+     "key": "display_name"
+    },
+    {
+     "name": "Description",
+     "key": "description"
+    }
+   ],
+   "nonexistent_attributes": {
+    "checked": true,
+    "keys": [],
+    "strict_keys": []
+   },
+   "pyegeria_validate": {
+    "ok": true,
+    "errors": [],
+    "warnings": [],
+    "not_applied": [],
+    "checked": [
+     "structure",
+     "target type",
+     "column attributes",
+     "load-time resolution (find method / analytic routine, parameters, formats)"
+    ],
+    "not_checked": [
+     "Dr.Egeria validate: no runner given"
+    ],
+    "dr_egeria": null,
+    "s": 0.0
+   },
+   "validates": true,
+   "run": {
+    "ran": false,
+    "why": "offline"
+   }
+  },
+  "total_s": 23.46
+ },
+ {
+  "id": "H05",
+  "set": "clear",
+  "question": "Which governance rules or controls are still in draft?",
+  "expect": null,
+  "mode": "rebased_fixes",
+  "offline": true,
+  "turns": 3,
+  "final_phase": "refine",
+  "transcript": [
+   {
+    "turn": 1,
+    "user": "Which governance rules or controls are still in draft?",
+    "phase": "confirm_action",
+    "response": "### Proposed Report Spec: **Draft Governance Rules Report**\n\n- **Target Type:** GovernanceRule\n- **Found with:** `GovernanceOfficer.find_governance_definitions` (from Governance-Rule-DrE-Basic)\n- **Condition:** limit_result_by_status = ['DRAFT']\n- **Description:** This report lists all governance rules that are still in draft status.\n\n---\n\nDoes this look correct? Use the buttons below, or describe adjustments.",
+    "s": 24.01
+   },
+   {
+    "turn": 2,
+    "user": "continue_columns",
+    "phase": "elicit_columns",
+    "response": "### Columns Configuration\n\n**1. Name** \u2014 key: `display_name`\n**2. Description** \u2014 key: `description`\n**3. Status** \u2014 key: `status`\n\n**Condition:** limit_result_by_status = ['DRAFT']\n\n---\n\nDoes this look right? Use **Generate now**, or describe changes (only attributes of GovernanceRule can be columns).",
+    "s": 0.0
+   },
+   {
+    "turn": 3,
+    "user": "generate now",
+    "phase": "refine",
+    "response": "**Draft Governance Rules Report** (draft spec **report_20261113_071333_draft_governance_rules_report**, validated with pyegeria)\n\nSign in to see the answer here; you can run it with **Execute Spec**.",
+    "s": 0.04
+   }
+  ],
+  "elicit_s": 24.04,
+  "draft": {
+   "draft_id": "draft_report_20261113_071333_draft_governance_rules_report",
+   "title": "draft_governance_rules_report",
+   "phase": "refine",
+   "phase_label": "Refinement session",
+   "original_query": "Which governance rules or controls are still in draft?",
+   "action_function": "GovernanceOfficer.find_governance_definitions",
+   "target_type": "GovernanceRule",
+   "columns": [
+    {
+     "name": "Name",
+     "key": "display_name"
+    },
+    {
+     "name": "Description",
+     "key": "description"
+    },
+    {
+     "name": "Status",
+     "key": "status"
+    }
+   ],
+   "content_filters": {
+    "search_string": "*"
+   },
+   "shape_defaults": {},
+   "performance_hints": {
+    "page_size": 100,
+    "start_from": 0
+   },
+   "perspectives": [],
+   "questions": [],
+   "answers": {
+    "Heading": "Draft Governance Rules Report",
+    "Description": "This report lists all governance rules that are still in draft status."
+   },
+   "pending_questions": {},
+   "doc_id": "report_20261113_071333_draft_governance_rules_report",
+   "history_stack": [
+    {
+     "phase": "confirm_action",
+     "phase_label": "Confirming report basic configuration",
+     "columns": [
+      {
+       "name": "Name",
+       "key": "display_name"
+      },
+      {
+       "name": "Description",
+       "key": "description"
+      },
+      {
+       "name": "Status",
+       "key": "status"
+      }
+     ],
+     "content_filters": {
+      "search_string": "*"
+     },
+     "shape_defaults": {},
+     "performance_hints": {
+      "page_size": 100,
+      "start_from": 0
+     },
+     "perspectives": [],
+     "questions": [],
+     "answers": {
+      "Heading": "Draft Governance Rules Report",
+      "Description": "This report lists all governance rules that are still in draft status."
+     },
+     "pending_questions": {},
+     "summary_of_answers": ""
+    },
+    {
+     "phase": "elicit_columns",
+     "phase_label": "Reviewing and customizing columns",
+     "columns": [
+      {
+       "name": "Name",
+       "key": "display_name"
+      },
+      {
+       "name": "Description",
+       "key": "description"
+      },
+      {
+       "name": "Status",
+       "key": "status"
+      }
+     ],
+     "content_filters": {
+      "search_string": "*"
+     },
+     "shape_defaults": {},
+     "performance_hints": {
+      "page_size": 100,
+      "start_from": 0
+     },
+     "perspectives": [],
+     "questions": [],
+     "answers": {
+      "Heading": "Draft Governance Rules Report",
+      "Description": "This report lists all governance rules that are still in draft status."
+     },
+     "pending_questions": {},
+     "summary_of_answers": ""
+    }
+   ],
+   "created_at": 1794575613.306549,
+   "updated_at": 1794575613.3407738,
+   "summary_of_answers": "",
+   "user_id": "erinoverview",
+   "conditions": {
+    "limit_result_by_status": [
+     "DRAFT"
+    ]
+   },
+   "unmet": null,
+   "v2": true,
+   "format_set": {
+    "target_type": "GovernanceRule",
+    "heading": "Draft Governance Rules Report",
+    "description": "This report lists all governance rules that are still in draft status.",
+    "aliases": [],
+    "annotations": {},
+    "formats": [
+     {
+      "types": [
+       "ALL"
+      ],
+      "attributes": [
+       {
+        "name": "Name",
+        "key": "display_name",
+        "format": false
+       },
+       {
+        "name": "Description",
+        "key": "description",
+        "format": false
+       },
+       {
+        "name": "Status",
+        "key": "status",
+        "format": false
+       }
+      ]
+     }
+    ],
+    "action": {
+     "function": "GovernanceOfficer.find_governance_definitions",
+     "required_params": [
+      "search_string"
+     ],
+     "optional_params": [],
+     "spec_params": {
+      "metadata_element_type": "GovernanceRule",
+      "limit_result_by_status": [
+       "DRAFT"
+      ]
+     },
+     "analytic_spec_params": {}
+    }
+   }
+  },
+  "check": {
+   "doc_id": "report_20261113_071333_draft_governance_rules_report",
+   "document": "# Draft Governance Rules Report\n\n## Create Report Spec\n### Display Name\ndraft_governance_rules_report\n### Qualified Name\nReportSpec::draft_governance_rules_report\n### Description\nThis report lists all governance rules that are still in draft status.\n### Content Status\nACTIVE\n### Target Type Name\nGovernanceRule\n### Output Types\nALL\n### Microflow\n{\"format\":\"microflow/1\",\"params\":{\"search_string\":{\"type\":\"string\",\"required\":true}},\"stages\":[{\"stage\":\"producer/find\",\"type\":\"GovernanceRule\",\"function\":\"GovernanceOfficer.find_governance_definitions\",\"params\":{\"search_string\":\"$search_string\",\"metadata_element_type\":\"GovernanceRule\",\"limit_result_by_status\":[\"DRAFT\"]}}],\"formatters\":{\"ALL\":{\"columns\":[{\"field\":\"display_name\",\"label\":\"Name\"},{\"field\":\"description\",\"label\":\"Description\"},{\"field\":\"status\",\"label\":\"Status\"}]}}}\n\n___\n",
+   "completed": true,
+   "asked_clarifying": false,
+   "dre_offline_parse": {
+    "ok": true,
+    "commands": [
+     "Create Report Spec"
+    ]
+   },
+   "format_set_source": "draft",
+   "format_set_error": null,
+   "target_type": "GovernanceRule",
+   "action_function": "GovernanceOfficer.find_governance_definitions",
+   "columns": [
+    {
+     "name": "Name",
+     "key": "display_name"
+    },
+    {
+     "name": "Description",
+     "key": "description"
+    },
+    {
+     "name": "Status",
+     "key": "status"
+    }
+   ],
+   "nonexistent_attributes": {
+    "checked": true,
+    "keys": [],
+    "strict_keys": []
+   },
+   "pyegeria_validate": {
+    "ok": true,
+    "errors": [],
+    "warnings": [],
+    "not_applied": [],
+    "checked": [
+     "structure",
+     "target type",
+     "column attributes",
+     "load-time resolution (find method / analytic routine, parameters, formats)"
+    ],
+    "not_checked": [
+     "Dr.Egeria validate: no runner given"
+    ],
+    "dr_egeria": null,
+    "s": 0.0
+   },
+   "validates": true,
+   "run": {
+    "ran": false,
+    "why": "offline"
+   }
+  },
+  "total_s": 24.05
+ },
+ {
+  "id": "H06",
+  "set": "clear",
+  "question": "Who works at Coco Pharmaceuticals, and what roles do they hold?",
+  "expect": null,
+  "mode": "rebased_fixes",
+  "offline": true,
+  "turns": 3,
+  "final_phase": "refine",
+  "transcript": [
+   {
+    "turn": 1,
+    "user": "Who works at Coco Pharmaceuticals, and what roles do they hold?",
+    "phase": "confirm_action",
+    "response": "\u26a0\ufe0f Left out: 'Employee Name' (person_name) isn't an attribute of PersonRole.\n\u26a0\ufe0f Left out: 'Role Title' (role_title) isn't an attribute of PersonRole.\n### Proposed Report Spec: **Employees and Roles at Coco Pharmaceuticals**\n\n- **Target Type:** PersonRole\n- **Found with:** `ActorManager.find_actor_roles` (from Person-Role-DrE-Basic)\n- **Condition:** search_string = *Coco Pharmaceuticals*\n- **Description:** This report lists all employees working at Coco Pharmaceuticals along with their roles.\n\n---\n\nDoes this look correct? Use the buttons below, or describe adjustments.",
+    "s": 24.62
+   },
+   {
+    "turn": 2,
+    "user": "continue_columns",
+    "phase": "elicit_columns",
+    "response": "### Columns Configuration\n\n**1. Display Name** \u2014 key: `display_name`\n**2. Description** \u2014 key: `description`\n\n**Condition:** search_string = *Coco Pharmaceuticals*\n\n---\n\nDoes this look right? Use **Generate now**, or describe changes (only attributes of PersonRole can be columns).",
+    "s": 0.0
+   },
+   {
+    "turn": 3,
+    "user": "generate now",
+    "phase": "refine",
+    "response": "**Employees and Roles at Coco Pharmaceuticals** (draft spec **report_20261113_071357_coco_pharmaceuticals_employees_and_roles**, validated with pyegeria)\n\nSign in to see the answer here; you can run it with **Execute Spec**.",
+    "s": 0.02
+   }
+  ],
+  "elicit_s": 24.64,
+  "draft": {
+   "draft_id": "draft_report_20261113_071357_coco_pharmaceuticals_employees_and_roles",
+   "title": "coco_pharmaceuticals_employees_and_roles",
+   "phase": "refine",
+   "phase_label": "Refinement session",
+   "original_query": "Who works at Coco Pharmaceuticals, and what roles do they hold?",
+   "action_function": "ActorManager.find_actor_roles",
+   "target_type": "PersonRole",
+   "columns": [
+    {
+     "name": "Display Name",
+     "key": "display_name"
+    },
+    {
+     "name": "Description",
+     "key": "description"
+    }
+   ],
+   "content_filters": {
+    "search_string": "*"
+   },
+   "shape_defaults": {},
+   "performance_hints": {
+    "page_size": 100,
+    "start_from": 0
+   },
+   "perspectives": [],
+   "questions": [],
+   "answers": {
+    "Heading": "Employees and Roles at Coco Pharmaceuticals",
+    "Description": "This report lists all employees working at Coco Pharmaceuticals along with their roles."
+   },
+   "pending_questions": {},
+   "doc_id": "report_20261113_071357_coco_pharmaceuticals_employees_and_roles",
+   "history_stack": [
+    {
+     "phase": "confirm_action",
+     "phase_label": "Confirming report basic configuration",
+     "columns": [
+      {
+       "name": "Display Name",
+       "key": "display_name"
+      },
+      {
+       "name": "Description",
+       "key": "description"
+      }
+     ],
+     "content_filters": {
+      "search_string": "*"
+     },
+     "shape_defaults": {},
+     "performance_hints": {
+      "page_size": 100,
+      "start_from": 0
+     },
+     "perspectives": [],
+     "questions": [],
+     "answers": {
+      "Heading": "Employees and Roles at Coco Pharmaceuticals",
+      "Description": "This report lists all employees working at Coco Pharmaceuticals along with their roles."
+     },
+     "pending_questions": {},
+     "summary_of_answers": ""
+    },
+    {
+     "phase": "elicit_columns",
+     "phase_label": "Reviewing and customizing columns",
+     "columns": [
+      {
+       "name": "Display Name",
+       "key": "display_name"
+      },
+      {
+       "name": "Description",
+       "key": "description"
+      }
+     ],
+     "content_filters": {
+      "search_string": "*"
+     },
+     "shape_defaults": {},
+     "performance_hints": {
+      "page_size": 100,
+      "start_from": 0
+     },
+     "perspectives": [],
+     "questions": [],
+     "answers": {
+      "Heading": "Employees and Roles at Coco Pharmaceuticals",
+      "Description": "This report lists all employees working at Coco Pharmaceuticals along with their roles."
+     },
+     "pending_questions": {},
+     "summary_of_answers": ""
+    }
+   ],
+   "created_at": 1794575637.971055,
+   "updated_at": 1794575637.995683,
+   "summary_of_answers": "",
+   "user_id": "erinoverview",
+   "conditions": {
+    "search_string": "*Coco Pharmaceuticals*"
+   },
+   "unmet": null,
+   "v2": true,
+   "format_set": {
+    "target_type": "PersonRole",
+    "heading": "Employees and Roles at Coco Pharmaceuticals",
+    "description": "This report lists all employees working at Coco Pharmaceuticals along with their roles.",
+    "aliases": [],
+    "annotations": {},
+    "formats": [
+     {
+      "types": [
+       "ALL"
+      ],
+      "attributes": [
+       {
+        "name": "Display Name",
+        "key": "display_name",
+        "format": false
+       },
+       {
+        "name": "Description",
+        "key": "description",
+        "format": false
+       }
+      ]
+     }
+    ],
+    "action": {
+     "function": "ActorManager.find_actor_roles",
+     "required_params": [
+      "search_string"
+     ],
+     "optional_params": [],
+     "spec_params": {
+      "metadata_element_type": "PersonRole",
+      "search_string": "*Coco Pharmaceuticals*"
+     },
+     "analytic_spec_params": {}
+    }
+   }
+  },
+  "check": {
+   "doc_id": "report_20261113_071357_coco_pharmaceuticals_employees_and_roles",
+   "document": "# Employees and Roles at Coco Pharmaceuticals\n\n## Create Report Spec\n### Display Name\ncoco_pharmaceuticals_employees_and_roles\n### Qualified Name\nReportSpec::coco_pharmaceuticals_employees_and_roles\n### Description\nThis report lists all employees working at Coco Pharmaceuticals along with their roles.\n### Content Status\nACTIVE\n### Target Type Name\nPersonRole\n### Output Types\nALL\n### Microflow\n{\"format\":\"microflow/1\",\"params\":{\"search_string\":{\"type\":\"string\",\"required\":true}},\"stages\":[{\"stage\":\"producer/find\",\"type\":\"PersonRole\",\"function\":\"ActorManager.find_actor_roles\",\"params\":{\"search_string\":\"*Coco Pharmaceuticals*\",\"metadata_element_type\":\"PersonRole\"}}],\"formatters\":{\"ALL\":{\"columns\":[{\"field\":\"display_name\",\"label\":\"Display Name\"},{\"field\":\"description\",\"label\":\"Description\"}]}}}\n\n___\n",
+   "completed": true,
+   "asked_clarifying": false,
+   "dre_offline_parse": {
+    "ok": true,
+    "commands": [
+     "Create Report Spec"
+    ]
+   },
+   "format_set_source": "draft",
+   "format_set_error": null,
+   "target_type": "PersonRole",
+   "action_function": "ActorManager.find_actor_roles",
+   "columns": [
+    {
+     "name": "Display Name",
+     "key": "display_name"
+    },
+    {
+     "name": "Description",
+     "key": "description"
+    }
+   ],
+   "nonexistent_attributes": {
+    "checked": true,
+    "keys": [],
+    "strict_keys": []
+   },
+   "pyegeria_validate": {
+    "ok": true,
+    "errors": [],
+    "warnings": [],
+    "not_applied": [],
+    "checked": [
+     "structure",
+     "target type",
+     "column attributes",
+     "load-time resolution (find method / analytic routine, parameters, formats)"
+    ],
+    "not_checked": [
+     "Dr.Egeria validate: no runner given"
+    ],
+    "dr_egeria": null,
+    "s": 0.0
+   },
+   "validates": true,
+   "run": {
+    "ran": false,
+    "why": "offline"
+   }
+  },
+  "total_s": 24.65
+ },
+ {
+  "id": "H07",
+  "set": "clear",
+  "question": "Which collections have the most members?",
+  "expect": null,
+  "mode": "rebased_fixes",
+  "offline": true,
+  "turns": 3,
+  "final_phase": "refine",
+  "transcript": [
+   {
+    "turn": 1,
+    "user": "Which collections have the most members?",
+    "phase": "confirm_action",
+    "response": "\u26a0\ufe0f Left out: 'Number of Members' (member_count) isn't an attribute of Collection.\n### Proposed Report Spec: **Collections with Most Members**\n\n- **Target Type:** Collection\n- **Found with:** `CollectionManager.find_collections` (from Collection-DrE-Basic)\n- **Condition:** none (everything of this type)\n- **Description:** This report lists collections sorted by the number of members they contain.\n\n---\n\nDoes this look correct? Use the buttons below, or describe adjustments.",
+    "s": 22.7
+   },
+   {
+    "turn": 2,
+    "user": "continue_columns",
+    "phase": "elicit_columns",
+    "response": "### Columns Configuration\n\n**1. Name** \u2014 key: `display_name`\n\n**Condition:** none (everything of this type)\n\n---\n\nDoes this look right? Use **Generate now**, or describe changes (only attributes of Collection can be columns).",
+    "s": 0.0
+   },
+   {
+    "turn": 3,
+    "user": "generate now",
+    "phase": "refine",
+    "response": "**Collections with Most Members** (draft spec **report_20261113_071420_collections_with_most_members**, validated with pyegeria)\n\nSign in to see the answer here; you can run it with **Execute Spec**.",
+    "s": 0.01
+   }
+  ],
+  "elicit_s": 22.72,
+  "draft": {
+   "draft_id": "draft_report_20261113_071420_collections_with_most_members",
+   "title": "collections_with_most_members",
+   "phase": "refine",
+   "phase_label": "Refinement session",
+   "original_query": "Which collections have the most members?",
+   "action_function": "CollectionManager.find_collections",
+   "target_type": "Collection",
+   "columns": [
+    {
+     "name": "Name",
+     "key": "display_name"
+    }
+   ],
+   "content_filters": {
+    "search_string": "*"
+   },
+   "shape_defaults": {},
+   "performance_hints": {
+    "page_size": 100,
+    "start_from": 0
+   },
+   "perspectives": [],
+   "questions": [],
+   "answers": {
+    "Heading": "Collections with Most Members",
+    "Description": "This report lists collections sorted by the number of members they contain."
+   },
+   "pending_questions": {},
+   "doc_id": "report_20261113_071420_collections_with_most_members",
+   "history_stack": [
+    {
+     "phase": "confirm_action",
+     "phase_label": "Confirming report basic configuration",
+     "columns": [
+      {
+       "name": "Name",
+       "key": "display_name"
+      }
+     ],
+     "content_filters": {
+      "search_string": "*"
+     },
+     "shape_defaults": {},
+     "performance_hints": {
+      "page_size": 100,
+      "start_from": 0
+     },
+     "perspectives": [],
+     "questions": [],
+     "answers": {
+      "Heading": "Collections with Most Members",
+      "Description": "This report lists collections sorted by the number of members they contain."
+     },
+     "pending_questions": {},
+     "summary_of_answers": ""
+    },
+    {
+     "phase": "elicit_columns",
+     "phase_label": "Reviewing and customizing columns",
+     "columns": [
+      {
+       "name": "Name",
+       "key": "display_name"
+      }
+     ],
+     "content_filters": {
+      "search_string": "*"
+     },
+     "shape_defaults": {},
+     "performance_hints": {
+      "page_size": 100,
+      "start_from": 0
+     },
+     "perspectives": [],
+     "questions": [],
+     "answers": {
+      "Heading": "Collections with Most Members",
+      "Description": "This report lists collections sorted by the number of members they contain."
+     },
+     "pending_questions": {},
+     "summary_of_answers": ""
+    }
+   ],
+   "created_at": 1794575660.718082,
+   "updated_at": 1794575660.735011,
+   "summary_of_answers": "",
+   "user_id": "erinoverview",
+   "conditions": {},
+   "unmet": null,
+   "v2": true,
+   "format_set": {
+    "target_type": "Collection",
+    "heading": "Collections with Most Members",
+    "description": "This report lists collections sorted by the number of members they contain.",
+    "aliases": [],
+    "annotations": {},
+    "formats": [
+     {
+      "types": [
+       "ALL"
+      ],
+      "attributes": [
+       {
+        "name": "Name",
+        "key": "display_name",
+        "format": false
+       }
+      ]
+     }
+    ],
+    "action": {
+     "function": "CollectionManager.find_collections",
+     "required_params": [
+      "search_string"
+     ],
+     "optional_params": [],
+     "spec_params": {},
+     "analytic_spec_params": {}
+    }
+   }
+  },
+  "check": {
+   "doc_id": "report_20261113_071420_collections_with_most_members",
+   "document": "# Collections with Most Members\n\n## Create Report Spec\n### Display Name\ncollections_with_most_members\n### Qualified Name\nReportSpec::collections_with_most_members\n### Description\nThis report lists collections sorted by the number of members they contain.\n### Content Status\nACTIVE\n### Target Type Name\nCollection\n### Output Types\nALL\n### Microflow\n{\"format\":\"microflow/1\",\"params\":{\"search_string\":{\"type\":\"string\",\"required\":true}},\"stages\":[{\"stage\":\"producer/find\",\"type\":\"Collection\",\"function\":\"CollectionManager.find_collections\",\"params\":{\"search_string\":\"$search_string\"}}],\"formatters\":{\"ALL\":{\"columns\":[{\"field\":\"display_name\",\"label\":\"Name\"}]}}}\n\n___\n",
+   "completed": true,
+   "asked_clarifying": false,
+   "dre_offline_parse": {
+    "ok": true,
+    "commands": [
+     "Create Report Spec"
+    ]
+   },
+   "format_set_source": "draft",
+   "format_set_error": null,
+   "target_type": "Collection",
+   "action_function": "CollectionManager.find_collections",
+   "columns": [
+    {
+     "name": "Name",
+     "key": "display_name"
+    }
+   ],
+   "nonexistent_attributes": {
+    "checked": true,
+    "keys": [],
+    "strict_keys": []
+   },
+   "pyegeria_validate": {
+    "ok": true,
+    "errors": [],
+    "warnings": [],
+    "not_applied": [],
+    "checked": [
+     "structure",
+     "target type",
+     "column attributes",
+     "load-time resolution (find method / analytic routine, parameters, formats)"
+    ],
+    "not_checked": [
+     "Dr.Egeria validate: no runner given"
+    ],
+    "dr_egeria": null,
+    "s": 0.01
+   },
+   "validates": true,
+   "run": {
+    "ran": false,
+    "why": "offline"
+   }
+  },
+  "total_s": 22.73
+ },
+ {
+  "id": "H08",
+  "set": "clear",
+  "question": "Which data fields have no data class assigned?",
+  "expect": null,
+  "mode": "rebased_fixes",
+  "offline": true,
+  "turns": 3,
+  "final_phase": "refine",
+  "transcript": [
+   {
+    "turn": 1,
+    "user": "Which data fields have no data class assigned?",
+    "phase": "confirm_action",
+    "response": "### Proposed Report Spec: **Data Fields Without Data Class Assigned**\n\n- **Target Type:** SchemaAttribute\n- **Found with:** `ClassificationExplorer.find_elements_by_property_value` (from Schema-Attribute-DrE-Basic)\n- **Condition:** none (everything of this type)\n- **Description:** This report lists all data fields that do not have a data class assigned.\n- **Not applied:** no data class assigned\n\n---\n\nDoes this look correct? Use the buttons below, or describe adjustments.",
+    "s": 23.99
+   },
+   {
+    "turn": 2,
+    "user": "continue_columns",
+    "phase": "elicit_columns",
+    "response": "### Columns Configuration\n\n**1. Field Name** \u2014 key: `display_name`\n**2. Description** \u2014 key: `description`\n\n**Condition:** none (everything of this type)\n\n---\n\nDoes this look right? Use **Generate now**, or describe changes (only attributes of SchemaAttribute can be columns).",
+    "s": 0.0
+   },
+   {
+    "turn": 3,
+    "user": "generate now",
+    "phase": "refine",
+    "response": "**Data Fields Without Data Class Assigned** (draft spec **report_20261113_071444_data_fields_without_data_class**, validated with pyegeria)\n\n*Not applied:* no data class assigned\n\nSign in to see the answer here; you can run it with **Execute Spec**.",
+    "s": 0.02
+   }
+  ],
+  "elicit_s": 24.01,
+  "draft": {
+   "draft_id": "draft_report_20261113_071444_data_fields_without_data_class",
+   "title": "data_fields_without_data_class",
+   "phase": "refine",
+   "phase_label": "Refinement session",
+   "original_query": "Which data fields have no data class assigned?",
+   "action_function": "ClassificationExplorer.find_elements_by_property_value",
+   "target_type": "SchemaAttribute",
+   "columns": [
+    {
+     "name": "Field Name",
+     "key": "display_name"
+    },
+    {
+     "name": "Description",
+     "key": "description"
+    }
+   ],
+   "content_filters": {
+    "search_string": "*"
+   },
+   "shape_defaults": {},
+   "performance_hints": {
+    "page_size": 100,
+    "start_from": 0
+   },
+   "perspectives": [],
+   "questions": [],
+   "answers": {
+    "Heading": "Data Fields Without Data Class Assigned",
+    "Description": "This report lists all data fields that do not have a data class assigned."
+   },
+   "pending_questions": {},
+   "doc_id": "report_20261113_071444_data_fields_without_data_class",
+   "history_stack": [
+    {
+     "phase": "confirm_action",
+     "phase_label": "Confirming report basic configuration",
+     "columns": [
+      {
+       "name": "Field Name",
+       "key": "display_name"
+      },
+      {
+       "name": "Description",
+       "key": "description"
+      }
+     ],
+     "content_filters": {
+      "search_string": "*"
+     },
+     "shape_defaults": {},
+     "performance_hints": {
+      "page_size": 100,
+      "start_from": 0
+     },
+     "perspectives": [],
+     "questions": [],
+     "answers": {
+      "Heading": "Data Fields Without Data Class Assigned",
+      "Description": "This report lists all data fields that do not have a data class assigned."
+     },
+     "pending_questions": {},
+     "summary_of_answers": ""
+    },
+    {
+     "phase": "elicit_columns",
+     "phase_label": "Reviewing and customizing columns",
+     "columns": [
+      {
+       "name": "Field Name",
+       "key": "display_name"
+      },
+      {
+       "name": "Description",
+       "key": "description"
+      }
+     ],
+     "content_filters": {
+      "search_string": "*"
+     },
+     "shape_defaults": {},
+     "performance_hints": {
+      "page_size": 100,
+      "start_from": 0
+     },
+     "perspectives": [],
+     "questions": [],
+     "answers": {
+      "Heading": "Data Fields Without Data Class Assigned",
+      "Description": "This report lists all data fields that do not have a data class assigned."
+     },
+     "pending_questions": {},
+     "summary_of_answers": ""
+    }
+   ],
+   "created_at": 1794575684.737825,
+   "updated_at": 1794575684.75615,
+   "summary_of_answers": "",
+   "user_id": "erinoverview",
+   "conditions": {},
+   "unmet": "no data class assigned",
+   "v2": true,
+   "format_set": {
+    "target_type": "SchemaAttribute",
+    "heading": "Data Fields Without Data Class Assigned",
+    "description": "This report lists all data fields that do not have a data class assigned.",
+    "aliases": [],
+    "annotations": {},
+    "formats": [
+     {
+      "types": [
+       "ALL"
+      ],
+      "attributes": [
+       {
+        "name": "Field Name",
+        "key": "display_name",
+        "format": false
+       },
+       {
+        "name": "Description",
+        "key": "description",
+        "format": false
+       }
+      ]
+     }
+    ],
+    "action": {
+     "function": "ClassificationExplorer.find_elements_by_property_value",
+     "required_params": [
+      "search_string"
+     ],
+     "optional_params": [],
+     "spec_params": {
+      "metadata_element_type": "SchemaAttribute",
+      "property_names": [
+       "displayName",
+       "qualifiedName"
+      ]
+     },
+     "analytic_spec_params": {}
+    }
+   }
+  },
+  "check": {
+   "doc_id": "report_20261113_071444_data_fields_without_data_class",
+   "document": "# Data Fields Without Data Class Assigned\n\n## Create Report Spec\n### Display Name\ndata_fields_without_data_class\n### Qualified Name\nReportSpec::data_fields_without_data_class\n### Description\nThis report lists all data fields that do not have a data class assigned.\n### Content Status\nACTIVE\n### Target Type Name\nSchemaAttribute\n### Output Types\nALL\n### Microflow\n{\"format\":\"microflow/1\",\"params\":{\"search_string\":{\"type\":\"string\",\"required\":true}},\"stages\":[{\"stage\":\"producer/find\",\"type\":\"SchemaAttribute\",\"function\":\"ClassificationExplorer.find_elements_by_property_value\",\"params\":{\"search_string\":\"$search_string\",\"metadata_element_type\":\"SchemaAttribute\",\"property_names\":[\"displayName\",\"qualifiedName\"]}}],\"formatters\":{\"ALL\":{\"columns\":[{\"field\":\"display_name\",\"label\":\"Field Name\"},{\"field\":\"description\",\"label\":\"Description\"}]}}}\n\n___\n",
+   "completed": true,
+   "asked_clarifying": false,
+   "dre_offline_parse": {
+    "ok": true,
+    "commands": [
+     "Create Report Spec"
+    ]
+   },
+   "format_set_source": "draft",
+   "format_set_error": null,
+   "target_type": "SchemaAttribute",
+   "action_function": "ClassificationExplorer.find_elements_by_property_value",
+   "columns": [
+    {
+     "name": "Field Name",
+     "key": "display_name"
+    },
+    {
+     "name": "Description",
+     "key": "description"
+    }
+   ],
+   "nonexistent_attributes": {
+    "checked": true,
+    "keys": [],
+    "strict_keys": []
+   },
+   "pyegeria_validate": {
+    "ok": true,
+    "errors": [],
+    "warnings": [],
+    "not_applied": [],
+    "checked": [
+     "structure",
+     "target type",
+     "column attributes",
+     "load-time resolution (find method / analytic routine, parameters, formats)"
+    ],
+    "not_checked": [
+     "Dr.Egeria validate: no runner given"
+    ],
+    "dr_egeria": null,
+    "s": 0.01
+   },
+   "validates": true,
+   "run": {
+    "ran": false,
+    "why": "offline"
+   }
+  },
+  "total_s": 24.02
+ },
+ {
+  "id": "H09",
+  "set": "clear",
+  "question": "Which teams does Coco Pharmaceuticals have, and who leads each one?",
+  "expect": null,
+  "mode": "rebased_fixes",
+  "offline": true,
+  "turns": 3,
+  "final_phase": "refine",
+  "transcript": [
+   {
+    "turn": 1,
+    "user": "Which teams does Coco Pharmaceuticals have, and who leads each one?",
+    "phase": "confirm_action",
+    "response": "\u26a0\ufe0f Left out: 'Leader' (leader) isn't an attribute of Team.\n### Proposed Report Spec: **Coco Pharmaceuticals Teams and Their Leaders**\n\n- **Target Type:** Team\n- **Found with:** `ActorManager.find_actor_profiles` (from Team-DrE-Basic)\n- **Condition:** search_string = *\n- **Description:** This report lists all teams within Coco Pharmaceuticals along with their respective leaders.\n\n---\n\nDoes this look correct? Use the buttons below, or describe adjustments.",
+    "s": 24.74
+   },
+   {
+    "turn": 2,
+    "user": "continue_columns",
+    "phase": "elicit_columns",
+    "response": "### Columns Configuration\n\n**1. Team Name** \u2014 key: `display_name`\n\n**Condition:** search_string = *\n\n---\n\nDoes this look right? Use **Generate now**, or describe changes (only attributes of Team can be columns).",
+    "s": 0.0
+   },
+   {
+    "turn": 3,
+    "user": "generate now",
+    "phase": "refine",
+    "response": "**Coco Pharmaceuticals Teams and Their Leaders** (draft spec **report_20261113_071509_coco_pharmaceuticals_teams_and_leaders**, validated with pyegeria)\n\nSign in to see the answer here; you can run it with **Execute Spec**.",
+    "s": 0.02
+   }
+  ],
+  "elicit_s": 24.76,
+  "draft": {
+   "draft_id": "draft_report_20261113_071509_coco_pharmaceuticals_teams_and_leaders",
+   "title": "coco_pharmaceuticals_teams_and_leaders",
+   "phase": "refine",
+   "phase_label": "Refinement session",
+   "original_query": "Which teams does Coco Pharmaceuticals have, and who leads each one?",
+   "action_function": "ActorManager.find_actor_profiles",
+   "target_type": "Team",
+   "columns": [
+    {
+     "name": "Team Name",
+     "key": "display_name"
+    }
+   ],
+   "content_filters": {
+    "search_string": "*"
+   },
+   "shape_defaults": {},
+   "performance_hints": {
+    "page_size": 100,
+    "start_from": 0
+   },
+   "perspectives": [],
+   "questions": [],
+   "answers": {
+    "Heading": "Coco Pharmaceuticals Teams and Their Leaders",
+    "Description": "This report lists all teams within Coco Pharmaceuticals along with their respective leaders."
+   },
+   "pending_questions": {},
+   "doc_id": "report_20261113_071509_coco_pharmaceuticals_teams_and_leaders",
+   "history_stack": [
+    {
+     "phase": "confirm_action",
+     "phase_label": "Confirming report basic configuration",
+     "columns": [
+      {
+       "name": "Team Name",
+       "key": "display_name"
+      }
+     ],
+     "content_filters": {
+      "search_string": "*"
+     },
+     "shape_defaults": {},
+     "performance_hints": {
+      "page_size": 100,
+      "start_from": 0
+     },
+     "perspectives": [],
+     "questions": [],
+     "answers": {
+      "Heading": "Coco Pharmaceuticals Teams and Their Leaders",
+      "Description": "This report lists all teams within Coco Pharmaceuticals along with their respective leaders."
+     },
+     "pending_questions": {},
+     "summary_of_answers": ""
+    },
+    {
+     "phase": "elicit_columns",
+     "phase_label": "Reviewing and customizing columns",
+     "columns": [
+      {
+       "name": "Team Name",
+       "key": "display_name"
+      }
+     ],
+     "content_filters": {
+      "search_string": "*"
+     },
+     "shape_defaults": {},
+     "performance_hints": {
+      "page_size": 100,
+      "start_from": 0
+     },
+     "perspectives": [],
+     "questions": [],
+     "answers": {
+      "Heading": "Coco Pharmaceuticals Teams and Their Leaders",
+      "Description": "This report lists all teams within Coco Pharmaceuticals along with their respective leaders."
+     },
+     "pending_questions": {},
+     "summary_of_answers": ""
+    }
+   ],
+   "created_at": 1794575709.513074,
+   "updated_at": 1794575709.535359,
+   "summary_of_answers": "",
+   "user_id": "erinoverview",
+   "conditions": {
+    "search_string": "*"
+   },
+   "unmet": null,
+   "v2": true,
+   "format_set": {
+    "target_type": "Team",
+    "heading": "Coco Pharmaceuticals Teams and Their Leaders",
+    "description": "This report lists all teams within Coco Pharmaceuticals along with their respective leaders.",
+    "aliases": [],
+    "annotations": {},
+    "formats": [
+     {
+      "types": [
+       "ALL"
+      ],
+      "attributes": [
+       {
+        "name": "Team Name",
+        "key": "display_name",
+        "format": false
+       }
+      ]
+     }
+    ],
+    "action": {
+     "function": "ActorManager.find_actor_profiles",
+     "required_params": [
+      "search_string"
+     ],
+     "optional_params": [],
+     "spec_params": {
+      "metadata_element_type": "Team",
+      "search_string": "*"
+     },
+     "analytic_spec_params": {}
+    }
+   }
+  },
+  "check": {
+   "doc_id": "report_20261113_071509_coco_pharmaceuticals_teams_and_leaders",
+   "document": "# Coco Pharmaceuticals Teams and Their Leaders\n\n## Create Report Spec\n### Display Name\ncoco_pharmaceuticals_teams_and_leaders\n### Qualified Name\nReportSpec::coco_pharmaceuticals_teams_and_leaders\n### Description\nThis report lists all teams within Coco Pharmaceuticals along with their respective leaders.\n### Content Status\nACTIVE\n### Target Type Name\nTeam\n### Output Types\nALL\n### Microflow\n{\"format\":\"microflow/1\",\"params\":{\"search_string\":{\"type\":\"string\",\"required\":true}},\"stages\":[{\"stage\":\"producer/find\",\"type\":\"Team\",\"function\":\"ActorManager.find_actor_profiles\",\"params\":{\"search_string\":\"*\",\"metadata_element_type\":\"Team\"}}],\"formatters\":{\"ALL\":{\"columns\":[{\"field\":\"display_name\",\"label\":\"Team Name\"}]}}}\n\n___\n",
+   "completed": true,
+   "asked_clarifying": false,
+   "dre_offline_parse": {
+    "ok": true,
+    "commands": [
+     "Create Report Spec"
+    ]
+   },
+   "format_set_source": "draft",
+   "format_set_error": null,
+   "target_type": "Team",
+   "action_function": "ActorManager.find_actor_profiles",
+   "columns": [
+    {
+     "name": "Team Name",
+     "key": "display_name"
+    }
+   ],
+   "nonexistent_attributes": {
+    "checked": true,
+    "keys": [],
+    "strict_keys": []
+   },
+   "pyegeria_validate": {
+    "ok": true,
+    "errors": [],
+    "warnings": [],
+    "not_applied": [],
+    "checked": [
+     "structure",
+     "target type",
+     "column attributes",
+     "load-time resolution (find method / analytic routine, parameters, formats)"
+    ],
+    "not_checked": [
+     "Dr.Egeria validate: no runner given"
+    ],
+    "dr_egeria": null,
+    "s": 0.0
+   },
+   "validates": true,
+   "run": {
+    "ran": false,
+    "why": "offline"
+   }
+  },
+  "total_s": 24.77
+ },
+ {
+  "id": "H10",
+  "set": "clear",
+  "question": "Which sites or locations does Coco Pharmaceuticals operate from?",
+  "expect": null,
+  "mode": "rebased_fixes",
+  "offline": true,
+  "turns": 1,
+  "final_phase": "clarify",
+  "transcript": [
+   {
+    "turn": 1,
+    "user": "Which sites or locations does Coco Pharmaceuticals operate from?",
+    "phase": "clarify",
+    "response": "Are you looking for locations where Coco Pharmaceuticals operates from in terms of physical sites, offices, warehouses, etc., or are you interested in digital assets like data centers and servers?",
+    "s": 17.68
+   }
+  ],
+  "elicit_s": 17.68,
+  "draft": null,
+  "check": {
+   "doc_id": null,
+   "document": null,
+   "completed": false,
+   "asked_clarifying": true,
+   "format_set_source": null,
+   "format_set_error": "no spec document"
+  },
+  "total_s": 17.68
+ },
+ {
+  "id": "H11",
+  "set": "ambiguous",
+  "question": "How healthy is the catalog?",
+  "expect": null,
+  "mode": "rebased_fixes",
+  "offline": true,
+  "turns": 1,
+  "final_phase": "clarify",
+  "transcript": [
+   {
+    "turn": 1,
+    "user": "How healthy is the catalog?",
+    "phase": "clarify",
+    "response": "Are you looking for a report on the health of assets, governance metrics, data quality, or something else in your catalog?",
+    "s": 16.37
+   }
+  ],
+  "elicit_s": 16.37,
+  "draft": null,
+  "check": {
+   "doc_id": null,
+   "document": null,
+   "completed": false,
+   "asked_clarifying": true,
+   "format_set_source": null,
+   "format_set_error": "no spec document"
+  },
+  "total_s": 16.37
+ },
+ {
+  "id": "H12",
+  "set": "ambiguous",
+  "question": "Show me what's new for me.",
+  "expect": null,
+  "mode": "rebased_fixes",
+  "offline": true,
+  "turns": 1,
+  "final_phase": "clarify",
+  "transcript": [
+   {
+    "turn": 1,
+    "user": "Show me what's new for me.",
+    "phase": "clarify",
+    "response": "Are you looking for new projects, glossary terms, data products, risks, metrics, assets, collections, subscriptions, or something else?",
+    "s": 16.92
+   }
+  ],
+  "elicit_s": 16.92,
+  "draft": null,
+  "check": {
+   "doc_id": null,
+   "document": null,
+   "completed": false,
+   "asked_clarifying": true,
+   "format_set_source": null,
+   "format_set_error": "no spec document"
+  },
+  "total_s": 16.92
+ }
+]

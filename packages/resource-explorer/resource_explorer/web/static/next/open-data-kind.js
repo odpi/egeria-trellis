@@ -12,7 +12,7 @@ import { listOpenData, getOpenData, listOpenDataPortals } from '/static/re-api.j
 import { openDialog } from '/static/next/worklist.js';
 import { esc } from '/static/next/app.js';
 import { datasetPageHtml, openPortalPane, show } from '/static/next/admin/open_data.js';
-import { watchTables } from '/static/next/colresize.js';
+import { watchTables } from '/static/trellis-ui/colresize.js';
 import { mountShortlist } from '/static/next/open-data-shortlist.js';
 import { mountPublish } from '/static/next/open-data-publish.js';
 import { mountQuestions } from '/static/next/open-data-questions.js';

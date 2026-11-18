@@ -23,6 +23,10 @@ trellis-artifact-tree = { workspace = true }
 trellis-context = { workspace = true }
 trellis-querycache = { workspace = true }
 trellis-auth = { workspace = true }
+trellis-feedback = { workspace = true }
+trellis-ui = { workspace = true }
+trellis-accel = { workspace = true }
+trellis-studio = { workspace = true }
 trellis-analytics-re = { workspace = true }
 # The Analytic Library left trellis in LS2 (odpi/egeria-trellis-analytics). It has no entry here on purpose: since
 # v0.2.0 (2026-11-05) the requirement (egeria-trellis-analytics>=0.4,<0.5 since 0.4.0) resolves from PyPI like any other dependency.
@@ -51,6 +55,10 @@ dev = [
     "trellis-context",
     "trellis-querycache",
     "trellis-auth",
+    "trellis-feedback[dev]",
+    "trellis-ui",
+    "trellis-accel",
+    "trellis-studio[dev]",
     "trellis-analytics-re[dev]",
     "trellis-step-change-rates",
     "trellis-step-database-staleness",

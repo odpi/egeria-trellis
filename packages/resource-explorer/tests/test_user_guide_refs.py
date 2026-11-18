@@ -33,6 +33,8 @@ NOT_ANALYSES = {
     # annotation verdicts and properties
     "partial_match", "no_match", "unmatched_patterned", "not_sampled", "no_candidates",
     "not_applicable", "complexity_score", "join_count", "proposed_by",
+    # a result state (the Portal tile turns a failure into it), not an analysis
+    "not_established",
     # urls and identifiers
     "re_database_staleness",
     # a registered file system used as the worked example

@@ -40,12 +40,15 @@ FOUNDATIONS = ROOT / "docs" / "dr-egeria" / "foundations"
 
 
 def _perspectives_the_foundations_define() -> set[str]:
-    """Every `Perspective::<name>` the foundations batch creates — the only
-    names a `Link Perspective to Question` block may legitimately reference."""
+    """Every `Perspective::<name>` the foundations batch lists — the only names a
+    `Link Perspective to Question` block may legitimately reference. Since
+    2026-11-09 these are a `- `Perspective::<name>`` reference list (the
+    elements are the content pack's), not `### Qualified Name` values of
+    `Create Perspective` commands."""
     names: set[str] = set()
     for doc in FOUNDATIONS.glob("*.md"):
         for line in doc.read_text(encoding="utf-8").splitlines():
-            line = line.strip()
+            line = line.strip().removeprefix("- ").strip("`")
             if line.startswith("Perspective::"):
                 names.add(line)
     return names
@@ -86,7 +89,7 @@ def test_every_perspective_the_document_links_exists_in_the_foundations():
             linked.add(after[1].strip().splitlines()[0].strip())
     phantoms = sorted(linked - defined)
     assert not phantoms, (
-        f"scouting-questions.md links Perspectives the foundations never create: {phantoms}. "
+        f"scouting-questions.md links Perspectives the foundations never list: {phantoms}. "
         "A CSV column is being read as a perspective — add it to OPTIONAL_LEAD_COLUMNS in "
         "scripts/csv_to_dr_egeria_questions.py and regenerate."
     )

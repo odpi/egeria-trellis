@@ -300,6 +300,11 @@ def feed_search_words(matched: int, read: int, pages_read: int, total, terms: st
 
 # ── import ───────────────────────────────────────────────────────────────────
 
+#: Long enough for "could not read from <portal>: <url>: <what happened; what to do> [<library detail>]" to keep
+#: its what-to-do part; the library detail at the end is what gets cut.
+REFUSAL_WORDS_MAX = 400
+
+
 @dataclass
 class Chosen:
     portal_slug: str
@@ -325,6 +330,10 @@ def import_datasets(store: OpenDataStore, chosen: list[Chosen], *, work_list_nam
     # 1. describe each, collapse equal identifiers to one dataset listing every portal
     datasets: dict[str, dict] = {}
     errors: list[dict] = []
+    # One adapter per portal for the whole import, as `scout_work_list` does: a one-document feed (a Project Open
+    # Data `data.json`; healthdata.gov's is 31 MB) is then read once, not once per chosen row. Reading it per row
+    # tripled the time spent on the slowest source and gave a busy portal three chances to time out (2026-11-09).
+    adapters_by_portal: dict[str, Adapter] = {}
     for c in dict.fromkeys((c.portal_slug, c.dataset_id) for c in chosen):
         portal_slug, dataset_id = c
         portal = store.get_portal(portal_slug)
@@ -333,10 +342,12 @@ def import_datasets(store: OpenDataStore, chosen: list[Chosen], *, work_list_nam
                            "words": f"no portal '{portal_slug}'"})
             continue
         try:
-            row = portal_adapter(portal, transport).describe(dataset_id)
+            if portal_slug not in adapters_by_portal:
+                adapters_by_portal[portal_slug] = portal_adapter(portal, transport)
+            row = adapters_by_portal[portal_slug].describe(dataset_id)
         except Exception as exc:                       # the source did not answer: not imported, said so
             errors.append({"portal": portal_slug, "dataset_id": dataset_id, "outcome": "refused",
-                           "words": f"could not read from {portal['display_name']}: {exc}"[:240]})
+                           "words": f"could not read from {portal['display_name']}: {exc}"[:REFUSAL_WORDS_MAX]})
             continue
         retrieved = now()
         if row["identifier_kind"] == "portal_id":
@@ -677,7 +688,7 @@ def scout_work_list(store: OpenDataStore, work_list_slug: str, *, transport) -> 
                     adapters_by_portal[portal_slug] = portal_adapter(portal, transport)
                 row = adapters_by_portal[portal_slug].describe(dataset_id)
             except Exception as exc:
-                outcome["words"] = f"could not read from {portal['display_name']}: {exc}"[:240]
+                outcome["words"] = f"could not read from {portal['display_name']}: {exc}"[:REFUSAL_WORDS_MAX]
                 continue
             changed = row["modified"] != d["modified"]
             store.update_scouted(d["slug"], row, now())

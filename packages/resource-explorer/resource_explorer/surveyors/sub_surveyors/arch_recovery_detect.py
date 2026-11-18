@@ -18,7 +18,6 @@ repo_arch_coupling's job, which needs a real clone instead).
 from __future__ import annotations
 
 import logging
-from datetime import datetime
 
 from resource_explorer.registry import Project, ProjectRegistry
 from resource_explorer.step_outcome import UNVERIFIED, StepOutcome, no_signal
@@ -30,6 +29,7 @@ from resource_explorer.surveyors.survey_report import (
     RequestForActionAnnotation,
     ResourceMeasureAnnotation,
 )
+from resource_explorer.survey_time import now_utc_iso
 
 log = logging.getLogger(__name__)
 
@@ -71,7 +71,7 @@ class ArchDetectSurveyor(BaseSurveyor):
         super().__init__(project, registry)
         self.local_path = local_path
         self._scope_locator = scope_locator
-        self._surveyed_at = surveyed_at or datetime.utcnow().isoformat()
+        self._surveyed_at = surveyed_at or now_utc_iso()
         #: Honour `repo_classification`'s architecture_recovery_gate. An
         #: explicit "run this anyway" from a person passes False — the gate is
         #: advisory, and a user who wants the answer for a tutorial repo is

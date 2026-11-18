@@ -19,7 +19,7 @@
  * box; counts are labelled; "nothing declared" is never drawn as a result; every string is escaped.
  */
 
-import { tableResultHtml } from '/static/next/envelope.js';
+import { tableResultHtml } from '/static/trellis-ui/envelope.js';
 import { glyphOf } from '/static/next/glyphs.js';
 
 const esc = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')

@@ -40,7 +40,11 @@ code = [
     "tree-sitter-javascript>=0.23.0",
 ]
 pdf = [
-    "docling>=2.0.0",
+    # Docling's device: the shared choice (Apple's GPU only where it is safe). No dependencies of its own.
+    "trellis-accel",
+    "docling>=2.150.0",
+    # 5.22.2 fixed RT-DETRv2 hard-coding float64 on Apple MPS (see keep_off_mps).
+    "transformers>=5.22.2",
 ]
 # OCR engines. Deliberately NOT bundled into [pdf]: OCR is only needed for text
 # that exists as pixels -- scanned pages, or labels inside a diagram -- and

@@ -187,14 +187,14 @@ def Caller() -> EgeriaIdentity:  # noqa: N802 - named as the brief names it
 
 
 SOURCE_ENV = "env"
-SOURCE_DEFAULT = "default"          # EGERIA_USER_ID unset: the code default from config.py
+SOURCE_DEFAULT = "default"          # RE_DAEMON_USER_ID unset: the code default from config.py
 
 _source_lock = threading.Lock()
 _source_logged = False
 
 
 def _daemon_source(egeria) -> str:
-    """`env` when EGERIA_USER_ID was set (environment or .env file), `default` when the value is
+    """`env` when RE_DAEMON_USER_ID (or the deprecated EGERIA_USER_ID) was set (environment or .env file), `default` when the value is
     config.py's code default (pydantic's `model_fields_set` says which)."""
     fields_set = getattr(egeria, "model_fields_set", None)
     if fields_set is None:
@@ -205,22 +205,22 @@ def _daemon_source(egeria) -> str:
 def daemon_identity_source_line(user_id: str, source: str = SOURCE_ENV) -> str:
     """The one line naming where the daemon identity came from. The userId only, never a password."""
     if source == SOURCE_DEFAULT:
-        return (f"daemon identity: {user_id!r} from the code default (EGERIA_USER_ID unset) — a "
-                "person's persona as RE's daemon; set EGERIA_USER_ID to RE's own account")
-    return (f"daemon identity: {user_id!r} from .env (EGERIA_USER_ID) — development bootstrap; "
+        return (f"daemon identity: {user_id!r} from the code default (RE_DAEMON_USER_ID unset) — a "
+                "person's persona as RE's daemon; set RE_DAEMON_USER_ID to RE's own account")
+    return (f"daemon identity: {user_id!r} from .env (RE_DAEMON_USER_ID) — development bootstrap; "
             "not for a shipped product")
 
 
 def _daemon_credential() -> tuple[str, str]:
     """THE one place RE's daemon credential is loaded.
 
-    Today: `config.egeria` (EGERIA_USER_ID / EGERIA_USER_PASSWORD), set to RE's own Egeria account
+    Today: `config.egeria` (RE_DAEMON_USER_ID / RE_DAEMON_USER_PASSWORD; the old EGERIA_USER_ID / EGERIA_USER_PASSWORD are read for one release), set to RE's own Egeria account
     `resourceexplorernpa` (ITProfile `ITProfile::ResourceExplorer`). **Development bootstrap; not
     for a shipped product** (owner, 2026-10-09: ".env is ok for the short term — we just can't ship
     that as product"). The product source (an RE-side secret store, or an Egeria API path) is an
     open decision; it replaces THIS function and no caller changes.
 
-    Logs `daemon_identity_source_line` once per process: INFO when EGERIA_USER_ID is set, WARNING
+    Logs `daemon_identity_source_line` once per process: INFO when RE_DAEMON_USER_ID is set, WARNING
     when it is unset and the code default (a person's persona) is the daemon. Never a value."""
     global _source_logged
     from resource_explorer.config import get_config
@@ -263,17 +263,29 @@ def daemon_identity_status() -> dict:
 DAEMON_SIGN_IN_SENTENCE = "this is Resource Explorer's own service account; sign in as yourself"
 
 
-NO_SERVICE_ACCOUNT_SENTENCE = "EGERIA_USER_ID not set: RE has no service account; set it in .env"
-NO_SERVICE_PASSWORD_SENTENCE = "EGERIA_USER_PASSWORD not set: RE has no service account credential; set it in .env"
+NO_SERVICE_ACCOUNT_SENTENCE = "RE_DAEMON_USER_ID not set: RE has no service account; set it in .env"
+NO_SERVICE_PASSWORD_SENTENCE = "RE_DAEMON_USER_PASSWORD not set: RE has no service account credential; set it in .env"
 
 
 class NoServiceAccount(PermissionError):
-    """RE's service account is not configured (EGERIA_USER_ID, or its password, is blank). Anything that needs the
-    service account refuses with this; it never falls back to a person's name (a missing EGERIA_USER_ID once
+    """RE's service account is not configured (RE_DAEMON_USER_ID, or its password, is blank). Anything that needs the
+    service account refuses with this; it never falls back to a person's name (a missing RE_DAEMON_USER_ID once
     fell back to a person's persona)."""
 
     def __init__(self, message: str = NO_SERVICE_ACCOUNT_SENTENCE) -> None:
         super().__init__(message)
+
+
+def daemon_user_id() -> str:
+    """RE's service account's userId from config (RE_DAEMON_USER_ID, or the deprecated EGERIA_USER_ID), for code
+    that records WHICH account it is, not for one that authenticates. Fails closed: unset raises NoServiceAccount,
+    never a person's persona (TR-37; the two surveyors that read the variable themselves used to default to one)."""
+    from resource_explorer.config import get_config
+
+    user_id = (get_config().egeria.user_id or "").strip()
+    if not user_id:
+        raise NoServiceAccount()
+    return user_id
 
 
 class DaemonSignInRefused(PermissionError):
@@ -567,16 +579,13 @@ def _build(cls: Any, view_server: str, platform_url: str, user_id: str, password
 
 
 def is_person_token_refused(exc: BaseException) -> bool:
-    """F60: Egeria refused a PERSON's token — the reading `classify_token_check_failure` makes (a 401, pyegeria's
-    PyegeriaUnauthorizedException, the AUTHORIZATION_ERROR_401 text, wrapped or bare) — and NOT Egeria's security
-    connector refusing what this person may do (an OPEN-METADATA-SECURITY-403 or an HTTP 403): that is Brief I's
-    `EgeriaRefused` ("refused by Egeria", 403), which a route raises itself and which a new sign-in would not change.
-    A timeout or a refused connection is neither."""
-    from resource_explorer.egeria_outbox import is_security_refusal
+    """F60: Egeria refused a PERSON's token (a 401: pyegeria's PyegeriaUnauthorizedException from a transport 401,
+    or an HTTP 401 from Egeria, wrapped or bare) — and NOT Egeria's security connector refusing what this person may
+    do (a 403): that is Brief I's `EgeriaRefused` ("refused by Egeria"), which a route raises itself and which a new
+    sign-in would not change. A timeout or a refused connection is neither. By class and code (TR-22)."""
+    from trellis_auth.egeria_errors import SIGN_IN_AGAIN, auth_error_status
 
-    if isinstance(exc, Exception) and is_security_refusal(exc):
-        return False
-    return classify_token_check_failure(exc) == TOKEN_REFUSED
+    return auth_error_status(exc) == SIGN_IN_AGAIN
 
 
 class _GuardedCall:
@@ -785,24 +794,15 @@ TOKEN_UNREACHABLE = "unreachable"
 
 
 def classify_token_check_failure(exc: BaseException) -> str:
-    """`TOKEN_REFUSED` when Egeria answered and said this user is not authorized (a 401/403, or
-    its AUTHORIZATION_ERROR_401 / security-403 text, wrapped or bare); else `TOKEN_UNREACHABLE`.
-    A timeout, a refused connection or any error that is not Egeria's answer is not a refusal."""
-    from resource_explorer.egeria_outbox import _http_code_of, is_security_refusal
+    """`TOKEN_REFUSED` when Egeria answered and refused this user (a 401 or a 403), else `TOKEN_UNREACHABLE`.
 
-    for e in (exc, getattr(exc, "__cause__", None)):
-        if not isinstance(e, BaseException):
-            continue
-        if type(e).__name__ == "PyegeriaUnauthorizedException":
-            return TOKEN_REFUSED
-        text = str(e)
-        if "AUTHORIZATION_ERROR_401" in text or "User not authorized" in text:
-            return TOKEN_REFUSED
-        if _http_code_of(e) in (401, 403):
-            return TOKEN_REFUSED
-    if isinstance(exc, Exception) and is_security_refusal(exc):
-        return TOKEN_REFUSED
-    return TOKEN_UNREACHABLE
+    Decided by exception class and HTTP code along the cause chain (TR-22, `trellis_auth.egeria_errors`), never by
+    message text: the old "AUTHORIZATION_ERROR_401" / "User not authorized" / any-403 reading also took a
+    relatedHTTPCode 403 that is not a refusal (OMAG-GENERIC-HANDLERS-403-005) for one. A timeout, a refused
+    connection or any error that is not Egeria's answer is not a refusal."""
+    from trellis_auth.egeria_errors import auth_error_status
+
+    return TOKEN_REFUSED if auth_error_status(exc) is not None else TOKEN_UNREACHABLE
 
 
 def check_token_accepted(user_id: str, token: str) -> str:

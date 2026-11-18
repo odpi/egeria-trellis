@@ -16,10 +16,33 @@ import json
 import re
 import threading
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 from loguru import logger
 
 import numpy as np
+
+#: The generic markdown table (a result with no TABLE columns in its spec) keeps this much, and says what
+#: it left out ("+N more rows", "+N more columns: a, b, ..."); a cut cell ends in "…". Rows and columns
+#: match the Portal (200 x 20) now that a tile's table scrolls; a cell is cut at 200 characters.
+MAX_TABLE_ROWS = 200
+MAX_TABLE_COLS = 20
+MAX_CELL_CHARS = 200
+#: A long list of hidden columns names the first few and counts the rest (as the Portal does).
+HIDDEN_COLS_NAMED = 6
+
+
+def table_cell(value: Any) -> str:
+    """A value as one markdown table cell: `|` escaped and a line break as <br>, so neither ends the row."""
+    text = str(value).replace("|", "\\|")
+    return re.sub(r"\r\n|\r|\n", "<br>", text)
+
+
+def hidden_columns_note(hidden: List[str]) -> str:
+    """"+2 more columns: x, y": names the columns past the cap, so a reader knows what is not shown."""
+    n = len(hidden)
+    named = ", ".join(str(c) for c in hidden[:HIDDEN_COLS_NAMED])
+    rest = n - min(n, HIDDEN_COLS_NAMED)
+    return f"+{n} more column{'' if n == 1 else 's'}: {named}" + (f", and {rest} more" if rest else "")
 
 
 def _run_async(coro, timeout: int = 90) -> Any:
@@ -231,7 +254,8 @@ class QuestionSpecIndex:
         Returns a flat list of (spec_name, perspectives, question) triples —
         the same shape used by _build.  Specs already indexed from JSON are
         skipped here; the registry supplements, not replaces, the file-based data.
-        Called after load_egeria_report_specs() has merged Egeria data in.
+        Egeria-held specs (the EGERIA tier) carry no question_spec, so they are
+        indexed separately by _load_egeria_tier_sources().
         """
         entries: List[tuple] = []
         try:
@@ -254,11 +278,42 @@ class QuestionSpecIndex:
         logger.debug(f"QuestionSpecIndex: registry sources yielded {len(entries)} entries")
         return entries
 
+    def _load_egeria_tier_sources(self) -> List[tuple]:
+        """Search text for the report specs held in Egeria (D3: "read question specs from the
+        synced ReportSpecs").
+
+        A ReportSpec element has no question_spec property. What it does carry is read here:
+        - `additionalProperties.annotations["questions"]` (string list), if the author wrote
+          questions there; `annotations["perspectives"]` tags them, as question_spec does;
+        - otherwise its purpose (the spec's heading) and description, so a spec published to
+          EA's folder is findable by what it is for, with no extra authoring.
+        Returns (spec_name, perspectives, text) triples. Never raises.
+        """
+        entries: List[tuple] = []
+        try:
+            from pyegeria.view.egeria_spec_cache import egeria_tier
+            tier = egeria_tier()
+        except Exception as exc:
+            logger.debug(f"QuestionSpecIndex: EGERIA tier unavailable — {exc}")
+            return entries
+        for label, fs in tier.items():
+            annotations = getattr(fs, "annotations", None) or {}
+            perspectives = list(annotations.get("perspectives") or []) if isinstance(annotations, dict) else []
+            questions = list(annotations.get("questions") or []) if isinstance(annotations, dict) else []
+            if not questions:
+                questions = [t for t in (getattr(fs, "heading", None), getattr(fs, "description", None))
+                             if t and t != label]
+            for q in questions:
+                if isinstance(q, str) and q.strip():
+                    entries.append((label, perspectives, q.strip()))
+        logger.debug(f"QuestionSpecIndex: EGERIA tier yielded {len(entries)} entries")
+        return entries
+
     def invalidate(self) -> None:
         """Clear the built index so the next search triggers a full rebuild.
 
-        Call this after load_egeria_report_specs() has merged new data into
-        the pyegeria registry so the rebuild picks up the fresh question_specs.
+        Called after a report spec sync from Egeria (advisor.egeria_spec_sync)
+        so the rebuild picks up the specs the EGERIA tier now holds.
         """
         with self._lock:
             self._embeddings = None
@@ -298,10 +353,18 @@ class QuestionSpecIndex:
                         entries.append((spec_name, perspectives, q))
                         texts.append(q)
 
-        # Source 2: pyegeria runtime registry (includes Egeria-sourced specs after
-        # load_egeria_report_specs has run).  Deduplicate by (spec, question) pair.
+        # Source 2: pyegeria runtime registry (built-in, local and EA-registered specs
+        # that carry question_spec).  Deduplicate by (spec, question) pair.
         seen = {(spec, q) for spec, _, q in entries}
         for spec_name, perspectives, q in self._load_registry_sources():
+            if (spec_name, q) not in seen:
+                entries.append((spec_name, perspectives, q))
+                texts.append(q)
+                seen.add((spec_name, q))
+
+        # Source 3: report specs held in Egeria (the EGERIA tier, synced from EA's consumer
+        # folder). This replaces the retired Phase-1 QuestionSpec convention (D3).
+        for spec_name, perspectives, q in self._load_egeria_tier_sources():
             if (spec_name, q) not in seen:
                 entries.append((spec_name, perspectives, q))
                 texts.append(q)
@@ -360,10 +423,13 @@ class QuestionSpecIndex:
         # relevant to the selected role ranks higher — but a report is never hidden
         # just because the role isn't tagged on it.
         if perspective:
-            persp_lower = perspective.strip().lower()
+            # Tags are role names ("Data Steward"); match them through the perspective's names and
+            # role profile (A-P P-1). Comparing the raw key ("data_steward") never matched.
+            from advisor.perspective_manager import perspective_tags
+            wanted = perspective_tags(perspective) | {"any"}
             for i, (_, persp_list, _) in enumerate(entries):
-                normed = [p.strip().lower() for p in persp_list]
-                if persp_lower in normed or "any" in normed:
+                normed = {p.strip().lower() for p in persp_list}
+                if normed & wanted:
                     scores[i] = float(scores[i]) + self._PERSPECTIVE_BOOST
 
         # Collect best score per unique spec name
@@ -408,7 +474,6 @@ class ReportPipeline:
     def __init__(self, config_path: str = str(Path(__file__).parent / "configdata" / "mcp_servers.json")):
         self._config_path = config_path
         self._agent = None          # lazy MCP agent
-        self._egeria_specs_tried = False  # attempt once per process lifetime
         # Read report tuning params from advisor.yaml (with safe fallbacks)
         try:
             import yaml as _yaml
@@ -453,39 +518,6 @@ class ReportPipeline:
             }
         except Exception:
             return {}
-
-    def _try_refresh_egeria_specs(self) -> None:
-        """Attempt to load question specs from Egeria into the pyegeria registry.
-
-        Uses a direct EgeriaTech client (not MCP) so this works even when
-        the MCP agent hasn't been started yet.  Silently skips if Egeria is
-        unreachable or pyegeria is not installed.  Invalidates _question_index so
-        the next search rebuilds from the merged registry.
-        """
-        if self._egeria_specs_tried:
-            return
-        self._egeria_specs_tried = True  # don't retry on failure
-        conn = self._read_pyegeria_connection()
-        if not _conn_is_complete(conn):
-            logger.debug("ReportPipeline: incomplete Egeria connection config — skipping spec refresh")
-            return
-        try:
-            from pyegeria.egeria_tech_client import EgeriaTech
-            from pyegeria.view.base_report_formats import load_egeria_report_specs
-            client = EgeriaTech(
-                view_server=conn["view_server"],
-                platform_url=conn["platform_url"],
-                user_id=conn["user_id"],
-                user_pwd=conn["user_pwd"],
-            )
-            from advisor.auth import apply_token
-            apply_token(client, conn.get("token"))
-            refreshed = load_egeria_report_specs(client)
-            if refreshed:
-                _question_index.invalidate()
-                logger.info("ReportPipeline: merged Egeria question specs into index")
-        except Exception as exc:
-            logger.info(f"ReportPipeline: Egeria spec refresh skipped [{type(exc).__name__}] — {exc}")
 
     def _ensure_agent(self):
         """Connect to MCP servers if not already done. Raises ConnectionError if unreachable."""
@@ -535,6 +567,12 @@ class ReportPipeline:
                 return semantic_hits
         except Exception as exc:
             logger.warning(f"Semantic search failed: {exc}")
+
+        # Strategies 2 and 3 use Egeria's own search through an MCP child, which runs as EA's service account:
+        # never for a user's request (TR-34 R3). Stop at the local copy, and say so.
+        from advisor.mcp_agent import user_request_in_flight
+        if user_request_in_flight():
+            return SpecHits([], note=LOCAL_ONLY_SEARCH)
 
         # Strategy 2: MCP question-based search with extracted keywords
         stop = {"show", "me", "the", "a", "an", "list", "all", "get", "run",
@@ -607,7 +645,7 @@ class ReportPipeline:
             logger.warning(f"Keyword fallback for find_specs failed: {e}")
             return []
 
-    def run_report(
+    def exec_spec_raw(
         self,
         report_name: str,
         search_string: str = "*",
@@ -615,21 +653,25 @@ class ReportPipeline:
         page_size: Optional[int] = None,
         extra_params: Optional[Dict[str, Any]] = None,
         egeria_credentials: Optional[Dict[str, str]] = None,
-    ) -> Optional[str]:
-        """
-        Execute a named report and return the output string.
+        exact_params: bool = False,
+        table_shape: Optional[str] = None,
+    ) -> Tuple[Any, Optional[str]]:
+        """Run a named report spec: (pyegeria's raw result, None), or (None, why it did not run).
 
-        page_size: limits graph nodes Egeria traverses. None → use self._default_page_size.
-        egeria_credentials: the authenticated caller's {user_id, password}; falls back
-            to the service account (see advisor.auth.resolve_egeria_credentials) when None.
-        Returns None on failure.
+        `table_shape="structured"` with output_type TABLE asks pyegeria (>= 6.2.37) for the structured table
+        ({"kind": "table", "columns", "rows", "total", "total_basis", "shown", "notes"}); when it is not given,
+        exec_report_spec gets no table_shape at all, exactly as before.
+
+        The raw result is exec_report_spec's own shape ({"kind": "json"|"text"|"empty"|"absent", ...}), so
+        a caller that renders it itself (a dashboard tile: a KPI, a chart, a trend) sees the data, not a
+        text flattening of it. Raises ConnectionError when Egeria cannot be reached.
+
+        The error is RETURNED, never stored on this shared instance: dashboard tiles run concurrently, and
+        `_last_run_error` would let one run report another's failure. run_report() keeps that attribute
+        for its existing callers. Arguments as run_report().
         """
         effective_page_size = page_size if page_size is not None else self._default_page_size
         is_wildcard = not search_string or search_string.strip() in ("*", "")
-        # Record why we return None so the caller can distinguish a genuine
-        # "no records" empty result from an execution error/timeout, and never
-        # mask a failure behind an unrelated convenience-listing fallback.
-        self._last_run_error = None
 
         # Execute in-process via pyegeria's exec_report_spec (a fresh Egeria client
         # bound to this call's event loop) rather than the MCP run_report tool.
@@ -643,6 +685,12 @@ class ReportPipeline:
         from pyegeria import exec_report_spec
 
         conn = self._read_pyegeria_connection(egeria_credentials=egeria_credentials)
+        from advisor.egeria_signin import SIGN_IN_TO_RUN_REPORTS, lacks_credential
+        if conn and lacks_credential(conn.get("token"), conn.get("user_pwd")):
+            # Neither a token nor a password: exec_report_spec would mint on
+            # pyegeria's configured password under this user id. Refuse, and
+            # say "sign in" rather than "not configured".
+            return None, SIGN_IN_TO_RUN_REPORTS
         if not _conn_is_complete(conn):
             raise ConnectionError("Egeria connection is not configured (config/mcp_servers.json → pyegeria.env)")
         # pyegeria >= 6.1.10 (ISSUE-86): exec_report_spec accepts the caller's
@@ -650,16 +698,19 @@ class ReportPipeline:
         # provenance -- are theirs, not the service account's.
         bearer = conn.get("token") or None
 
-        params: Dict[str, Any] = {
-            "search_string": search_string,
-            "page_size": effective_page_size,
-            "start_from": 0,
-        }
-        # Prefix search is more efficient than full regex when a specific term is given
-        if not is_wildcard and self._starts_with_on_filter:
-            params["starts_with"] = True
-        if extra_params:
-            params.update(extra_params)
+        if exact_params:
+            params: Dict[str, Any] = dict(extra_params or {})
+        else:
+            params = {
+                "search_string": search_string,
+                "page_size": effective_page_size,
+                "start_from": 0,
+            }
+            # Prefix search is more efficient than full regex when a specific term is given
+            if not is_wildcard and self._starts_with_on_filter:
+                params["starts_with"] = True
+            if extra_params:
+                params.update(extra_params)
         # Egeria type names are always PascalCase — auto-capitalize first letter
         if "metadata_element_type" in params and isinstance(params["metadata_element_type"], str):
             met = params["metadata_element_type"].strip()
@@ -676,25 +727,58 @@ class ReportPipeline:
                 user=conn["user_id"],
                 user_pass=conn["user_pwd"],
                 token=bearer,
+                **({"table_shape": table_shape} if table_shape else {}),
             )
         except ValueError as e:
             # Unknown report, unsupported output_format, or missing action —
             # surface honestly via _classify_run_error.
-            self._last_run_error = str(e)
             logger.info(f"run_report({report_name}) report error: {e}")
-            return None
+            return None, str(e)
         except Exception as e:
             err = type(e).__name__
             msg = f"{err}: {e}"
             if "timeout" in err.lower() or "timeout" in str(e).lower():
-                self._last_run_error = "The report timed out (Egeria took too long to respond)."
                 logger.error(f"run_report({report_name}) timed out: {e}")
-                return None
+                return None, "The report timed out (Egeria took too long to respond)."
             # Treat anything else (connection refused, 4xx/5xx transport) as a
             # reachability problem so the caller shows the "Egeria not reachable" path.
             logger.error(f"run_report({report_name}) failed [{err}]: {e}")
             raise ConnectionError(msg) from e
 
+        return raw, None
+
+    def run_report(
+        self,
+        report_name: str,
+        search_string: str = "*",
+        output_type: str = "DICT",
+        page_size: Optional[int] = None,
+        extra_params: Optional[Dict[str, Any]] = None,
+        egeria_credentials: Optional[Dict[str, str]] = None,
+        exact_params: bool = False,
+    ) -> Optional[str]:
+        """
+        Execute a named report and return the output string.
+
+        page_size: limits graph nodes Egeria traverses. None → use self._default_page_size.
+        egeria_credentials: the authenticated caller's {user_id, password}; falls back
+            to the service account (see advisor.auth.resolve_egeria_credentials) when None.
+        exact_params: send `extra_params` and nothing else -- no search_string / page_size /
+            start_from. An analytic spec's function takes only its own parameters and refuses
+            the find vocabulary (TypeError: unexpected keyword argument 'search_string').
+        Returns None on failure.
+        """
+        # Record why we return None so the caller can distinguish a genuine
+        # "no records" empty result from an execution error/timeout, and never
+        # mask a failure behind an unrelated convenience-listing fallback.
+        self._last_run_error = None
+        raw, error = self.exec_spec_raw(
+            report_name, search_string=search_string, output_type=output_type, page_size=page_size,
+            extra_params=extra_params, egeria_credentials=egeria_credentials, exact_params=exact_params,
+        )
+        if error:
+            self._last_run_error = error
+            return None
         if raw is None:
             return None
         if isinstance(raw, str):
@@ -858,8 +942,7 @@ class ReportPipeline:
                 markdown_lines.append("| " + " | ".join(headers) + " |")
                 markdown_lines.append("| " + " | ".join(["---"] * len(headers)) + " |")
 
-                # Extract _get_element_value and materialize_egeria_summary from pyegeria
-                from pyegeria.view.output_formatter import _get_element_value, materialize_egeria_summary
+                from pyegeria.view.output_formatter import materialize_egeria_summary
 
                 for raw_el in elements_list:
                     # Materialize headers (like status, versions, created_by, etc.)
@@ -871,7 +954,7 @@ class ReportPipeline:
                         if col.key in el_flat:
                             val = el_flat[col.key]
                         else:
-                            val = _get_element_value(raw_el, col.key)
+                            val = element_value(raw_el, col.key)
                             
                         if isinstance(val, list):
                             val = ", ".join(str(x) for x in val)
@@ -882,7 +965,7 @@ class ReportPipeline:
                         else:
                             val = str(val)
                             
-                        val = val.replace("|", "\\|")
+                        val = table_cell(val)
                         row_vals.append(val)
                         
                     markdown_lines.append("| " + " | ".join(row_vals) + " |")
@@ -917,48 +1000,87 @@ class ReportPipeline:
                 if k not in cols:
                     cols.append(k)
 
-        # Cap columns so the table stays readable (drop GUIDs / raw JSON blobs)
+        # Cap columns so the table stays readable (drop GUIDs / raw JSON blobs). A cap is counted, never
+        # silent: past MAX_TABLE_COLS / MAX_TABLE_ROWS the table is followed by "+N more ...", naming the
+        # hidden columns, and a cell cut at MAX_CELL_CHARS ends in "…".
         _skip = {"guid", "qualifiedName", "versions", "additionalProperties", "extendedProperties"}
-        display_cols = [c for c in cols if c.lower() not in _skip][:8] or cols[:8]
+        shown = [c for c in cols if c.lower() not in _skip] or cols
+        display_cols = shown[:MAX_TABLE_COLS]
+        hidden_cols = shown[MAX_TABLE_COLS:]
+
+        def _cell(value: Any) -> str:
+            text = str(value)
+            if len(text) > MAX_CELL_CHARS:
+                text = text[:MAX_CELL_CHARS - 1] + "…"      # cut before escaping: never half an escape
+            return table_cell(text)
 
         header = "| " + " | ".join(display_cols) + " |"
         sep = "| " + " | ".join("---" for _ in display_cols) + " |"
         lines = [header, sep]
-        for row in rows[:50]:  # safety cap
-            cells = [str(row.get(c, "")).replace("|", "\\|")[:80] for c in display_cols]
+        for row in rows[:MAX_TABLE_ROWS]:
+            cells = [_cell(row.get(c, "")) for c in display_cols]
             lines.append("| " + " | ".join(cells) + " |")
 
+        more = []
+        if len(rows) > MAX_TABLE_ROWS:
+            n = len(rows) - MAX_TABLE_ROWS
+            more.append(f"+{n} more row{'' if n == 1 else 's'}")
+        if hidden_cols:
+            more.append(hidden_columns_note(hidden_cols))
+        if more:
+            lines.append("")                      # a blank line: the note is not another table row
+            note = "; ".join(more)
+            for ch in ("\\", "*", "_", "`", "|"):  # column names stay literal text, not emphasis or code
+                note = note.replace(ch, "\\" + ch)
+            lines.append("*" + note + "*")
         return "\n".join(lines)
 
     # Convenience MCP listing tools are ONLY equivalent to the plain "list all X"
     # report specs — never to a sub-type report (e.g. Glossary-Terms, which lists
     # terms, not glossaries). Match the exact spec name, normalised, so a failed
     # sub-type report is never silently answered with an unrelated listing.
+    # Each value is (MCP server, tool): pyegeria's own MCP server does not register
+    # these; only the dr-egeria server does (tests/unit/test_pyegeria_contract.py
+    # checks the pair against that server's configured description).
     _LISTING_TOOL_BY_SPEC = {
-        "glossaries": "egeria_list_glossaries",
-        "collections": "egeria_list_collections",
+        "glossaries": ("dr-egeria", "egeria_list_glossaries"),
+        "collections": ("dr-egeria", "egeria_list_collections"),
     }
 
-    def _try_listing_tool(self, report_name: str) -> Optional[str]:
+    def _try_listing_tool(self, report_name: str) -> tuple[Optional[str], Optional[str]]:
         """
         When a plain "list all X" report spec returns *no records*, fall back to the
         equivalent convenience MCP tool. Only fires for the exact all-listing specs
-        (Glossaries, Collections) — sub-type reports get None so the caller reports
-        the empty/failed result honestly instead of showing irrelevant data.
+        (Glossaries, Collections) — sub-type reports get (None, None) so the caller
+        reports the empty result honestly instead of showing irrelevant data.
+
+        Returns (output, None) when the tool answered, or (None, reason) when the
+        fallback could not run: the tool needs another MCP server that is not
+        connected, or the call failed. The reason is shown with the empty result.
         """
         key = re.sub(r"[-_\s]", "", report_name).lower()
-        tool = self._LISTING_TOOL_BY_SPEC.get(key)
-        if tool is None:
-            return None
-
+        entry = self._LISTING_TOOL_BY_SPEC.get(key)
+        if entry is None:
+            return None, None
+        server, tool = entry
+        agent = self._agent
+        if agent is None or agent.get_tool(tool) is None:
+            connected = sorted(getattr(agent, "clients", {}) or {}) if agent is not None else []
+            return None, (
+                f"The {tool} listing needs the {server} MCP server, which is not connected"
+                + (f" (connected: {', '.join(connected)})." if connected else ".")
+            )
+        from advisor.mcp_agent import MCPRunsAsServiceAccount
         try:
             raw = self._call_tool(tool, {})
-            if raw is None:
-                return None
-            return raw if isinstance(raw, str) else str(raw)
+        except MCPRunsAsServiceAccount as exc:   # deliberately not run for a user request (TR-34 R3): not a failure
+            return None, f"The {tool} listing on the {server} MCP server was not used: {exc}"
         except Exception as exc:
-            logger.debug(f"_try_listing_tool({tool}) failed: {exc}")
-            return None
+            logger.info(f"_try_listing_tool({tool}) failed: {exc}")
+            return None, f"The {tool} listing on the {server} MCP server failed: {exc}"
+        if raw is None:
+            return None, None
+        return (raw if isinstance(raw, str) else str(raw)), None
 
     # DrE specs are designed for Dr.Egeria operators and contain operator-facing
     # fields (Journal, Term, Search Keywords) irrelevant to general users.
@@ -1153,7 +1275,7 @@ class ReportPipeline:
         except Exception:
             specs = []
         if not specs:
-            return {
+            return with_search_note({
                 "query": query,
                 "response": (
                     "I couldn't find any report specs matching that topic. "
@@ -1163,7 +1285,7 @@ class ReportPipeline:
                 "sources": [], "num_sources": 0,
                 "retrieval_time": 0.0, "generation_time": 0.0,
                 "avg_relevance_score": 0.0, "context_length": 0,
-            }
+            }, specs)
         ranked = self._rank_specs(specs)
         lines = ["Here are the report specs that match:\n"]
         for item in ranked[:10]:
@@ -1198,11 +1320,8 @@ class ReportPipeline:
 
         Falls back to a helpful message if no spec is found or Egeria is unreachable.
         """
-        # Kick off spec refresh in background on first call — non-blocking so the
-        # current query is never delayed.  Subsequent queries benefit once done.
-        if not self._egeria_specs_tried:
-            import threading
-            threading.Thread(target=self._try_refresh_egeria_specs, daemon=True).start()
+        # Egeria-held specs reach the registry through the EGERIA tier, synced at startup and
+        # by the admin action (advisor/egeria_spec_sync.py), never on a query's path.
 
         # Discovery: "what/which reports are about X" → list matching specs, don't run.
         if self._REPORT_DISCOVERY_RE.match(query.strip()):
@@ -1243,7 +1362,7 @@ class ReportPipeline:
 
         if not specs:
             logger.info("No matching report specs found for query")
-            return _no_report_found(query)
+            return with_search_note(_no_report_found(query), specs)
 
         ranked = self._rank_specs(specs)
         top = ranked[0]
@@ -1280,6 +1399,9 @@ class ReportPipeline:
         pyegeria already distinguishes unknown-report, unsupported-format and
         no-action cases — we surface that distinction instead of a generic failure.
         """
+        from advisor.egeria_signin import SIGN_IN_TO_RUN_REPORTS
+        if run_error == SIGN_IN_TO_RUN_REPORTS:
+            return SIGN_IN_TO_RUN_REPORTS
         # Strip a leading "ExceptionType: " prefix for readability.
         detail = re.sub(r"^[A-Za-z_][A-Za-z0-9_]*Error:\s*", "", run_error or "").strip()
         low = detail.lower()
@@ -1375,8 +1497,13 @@ class ReportPipeline:
         extra_params: Optional[Dict[str, Any]] = None,
         output_type: Optional[str] = None,
         egeria_credentials: Optional[Dict[str, str]] = None,
+        exact_params: bool = False,
     ) -> Dict[str, Any]:
-        """Shared execution path: run a named report and format the result."""
+        """Shared execution path: run a named report and format the result.
+
+        On failure the result also carries `run_error` (the executor's words, or the connection
+        failure), so a caller that is not a chat turn can tell a failed run from a report.
+        """
         # Normalise to exact catalog name (catches camelCase / hyphen / space variants)
         report_name = self._resolve_report_name(report_name)
         fmt = output_type or self._detect_output_format(query)
@@ -1403,6 +1530,7 @@ class ReportPipeline:
                 output_type=mcp_output_type, page_size=page_size,
                 extra_params=extra_params,
                 egeria_credentials=egeria_credentials,
+                exact_params=exact_params,
             )
         except ConnectionError as exc:
             egeria_reachable = False
@@ -1414,11 +1542,9 @@ class ReportPipeline:
         # Only fall back to a convenience listing tool when the report ran cleanly
         # but returned no records — never to paper over an error/timeout, and only
         # for the exact all-listing specs (handled inside _try_listing_tool).
+        listing_note: Optional[str] = None
         if raw_output is None and egeria_reachable and not run_error:
-            try:
-                raw_output = self._try_listing_tool(report_name)
-            except Exception as exc:
-                logger.debug(f"listing-tool fallback skipped: {exc}")
+            raw_output, listing_note = self._try_listing_tool(report_name)
 
         output = self._format_output(raw_output, fmt, report_name) if raw_output is not None else None
 
@@ -1428,6 +1554,7 @@ class ReportPipeline:
                 return {
                     "query": query,
                     "response": err_response,
+                    "run_error": run_error,
                     "query_type": "report",
                     "report_name": report_name,
                     "sources": [],
@@ -1451,13 +1578,15 @@ class ReportPipeline:
                 filt = "" if search_string in (None, "", "*") else f" matching *{search_string}*"
                 err_response = (
                     f"**{report_name}** ran successfully but found no records{filt}.\n\n"
-                    "Tips:\n"
+                    + (f"*{listing_note}*\n\n" if listing_note else "")
+                    + "Tips:\n"
                     "- Broaden or clear the search filter\n"
                     "- Confirm there is data of this type in the connected Egeria instance"
                 )
             return {
                 "query": query,
                 "response": err_response,
+                "run_error": None if egeria_reachable else (connection_err or "Egeria is not reachable"),
                 "query_type": "report",
                 "report_name": report_name,
                 "sources": [],
@@ -1484,6 +1613,38 @@ class ReportPipeline:
         }
 
 
+def _dot_path(obj: Any, path: str) -> Any:
+    cur = obj
+    for part in path.split("."):
+        if not isinstance(cur, dict) or part not in cur:
+            return None
+        cur = cur[part]
+    return cur
+
+
+def element_value(element: Dict[str, Any], key: str) -> Any:
+    """A report column's value from a raw Egeria element: the element itself, then its
+    ``properties``, by the key as written or its camelCase form; dotted keys are paths.
+
+    EA's own reader (A-P3), replacing a private pyegeria output_formatter helper, which is not part
+    of pyegeria's API and may change in any release. Same lookup order.
+    """
+    if not isinstance(element, dict) or not key:
+        return None
+    props = element.get("properties") if isinstance(element.get("properties"), dict) else {}
+    if "." in key:
+        val = _dot_path(element, key)
+        return val if val is not None else _dot_path(props, key)
+    if key in element:
+        return element[key]
+    from pyegeria.models import to_camel_case  # public; the same converter pyegeria's formatter uses
+    camel = to_camel_case(key)
+    for src, k in ((props, key), (props, camel), (element, camel)):
+        if k in src:
+            return src[k]
+    return None
+
+
 def _detail_to_masters() -> Dict[str, List[str]]:
     """Build reverse map: detail_spec_name → [master_spec_names] from the registry.
     Cached on first call; returns {} if the registry is unavailable."""
@@ -1502,6 +1663,29 @@ def _detail_to_masters() -> Dict[str, List[str]]:
     except Exception:
         pass
     _detail_to_masters._cache = result  # type: ignore[attr-defined]
+    return result
+
+
+#: TR-34 R3 W1: the words when spec search stopped at EA's local copy because Egeria's own search (an MCP
+#: child, running as EA's service account) can't run as the user.
+LOCAL_ONLY_SEARCH = ("Searched EA's local copy only; Egeria's own spec search can't run as you yet, so results "
+                     "may be incomplete.")
+
+
+class SpecHits(list):
+    """find_specs' result: a list of spec dicts, plus `note` (words for the reader, or "")."""
+
+    def __init__(self, items=(), note: str = "") -> None:
+        super().__init__(items)
+        self.note = note
+
+
+def with_search_note(result: Dict[str, Any], specs: Any) -> Dict[str, Any]:
+    """`result` with the search's note (if any) under its response and in notes."""
+    note = getattr(specs, "note", "")
+    if note:
+        result = {**result, "response": f"{result.get('response', '')}\n\n*{note}*",
+                  "notes": list(result.get("notes") or []) + [note]}
     return result
 
 

@@ -2,8 +2,9 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime
 from typing import TYPE_CHECKING
+
+from resource_explorer.survey_time import now_utc_iso
 
 if TYPE_CHECKING:
     from resource_explorer.registry import DatabaseEntity, ProjectRegistry
@@ -93,7 +94,7 @@ class HybridDatabaseSurveyor:
             return {
                 "source": "error",
                 "database_slug": db_slug,
-                "surveyed_at": datetime.utcnow().isoformat(),
+                "surveyed_at": now_utc_iso(),
                 "errors": [f"Database '{db_slug}' not found in registry"],
             }
 
@@ -149,7 +150,7 @@ class HybridDatabaseSurveyor:
                 log.info(f"Publishing local survey results to Egeria for {db_entity.slug}")
                 schema_info = local_result.get("schema_info", {})
                 statistics = local_result.get("statistics", {})
-                surveyed_at = local_result.get("surveyed_at", datetime.utcnow().isoformat())
+                surveyed_at = local_result.get("surveyed_at", now_utc_iso())
                 
                 pub_result = egeria_surveyor.publish_local_survey(
                     db_entity=db_entity,
@@ -194,7 +195,7 @@ class HybridDatabaseSurveyor:
                     return {
                         "source": "egeria",
                         "database_slug": db_entity.slug,
-                        "surveyed_at": datetime.utcnow().isoformat(),
+                        "surveyed_at": now_utc_iso(),
                         "status": "pending",
                         "engine_action_guid": engine_action_guid,
                         "message": "Egeria survey triggered. Results will be available in Egeria after processing.",
@@ -207,7 +208,7 @@ class HybridDatabaseSurveyor:
                 # The local result (if any) stands, and the outcome says what the person must confirm, and where.
                 log.warning("Egeria publish held for %s: %s", db_entity.slug, exc)
                 out = local_result or {"database_slug": db_entity.slug,
-                                       "surveyed_at": datetime.utcnow().isoformat(), "errors": []}
+                                       "surveyed_at": now_utc_iso(), "errors": []}
                 out["source"] = "custom" if local_result else "egeria"
                 out["egeria_status"] = "needs_confirmation"
                 out["needs_confirmation"] = {"node": "database", "archived_guid": exc.archived_guid,
@@ -233,7 +234,7 @@ class HybridDatabaseSurveyor:
             return {
                 "source": "error",
                 "database_slug": db_entity.slug,
-                "surveyed_at": datetime.utcnow().isoformat(),
+                "surveyed_at": now_utc_iso(),
                 "errors": [
                     "Custom survey requires credentials. "
                     "Provide --user and --password options."
@@ -256,7 +257,7 @@ class HybridDatabaseSurveyor:
             return {
                 "source": "error",
                 "database_slug": db_entity.slug,
-                "surveyed_at": datetime.utcnow().isoformat(),
+                "surveyed_at": now_utc_iso(),
                 "errors": [f"Custom survey failed: {str(exc)}"],
             }
 
@@ -288,7 +289,7 @@ class HybridDatabaseSurveyor:
             return {
                 "source": "error",
                 "database_slug": db_slug,
-                "surveyed_at": datetime.utcnow().isoformat(),
+                "surveyed_at": now_utc_iso(),
                 "errors": [f"Failed to retrieve Egeria survey: {str(exc)}"],
             }
 

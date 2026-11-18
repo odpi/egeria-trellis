@@ -76,8 +76,9 @@ class TestTheDrawerIsChromeLevelNotAStage:
 
     def test_it_imports_only_the_api_it_needs(self):
         rfa = _rfa_js()
-        # PI-112/113/114 added dismiss, restore and note to the same drawer.
-        assert ("import { listRfas, updateRfaAction, dismissRfa, restoreRfaDismissal, saveRfaNote } "
+        # PI-112/113/114 added dismiss, restore and note to the same drawer. Closed-loop step 2c added saveSchedule:
+        # Automate's schedule proposal is saved through the same call the per-card "Schedule" control makes.
+        assert ("import { listRfas, updateRfaAction, dismissRfa, restoreRfaDismissal, saveRfaNote, saveSchedule } "
                 "from '/static/re-api.js';") in rfa
 
 

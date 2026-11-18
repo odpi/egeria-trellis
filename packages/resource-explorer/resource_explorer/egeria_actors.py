@@ -6,7 +6,7 @@ Two jobs, and nothing else:
     leader-elected bootstrap, as the daemon (`Daemon(DaemonReason.IDENTITY_BOOTSTRAP)`):
 
     * the ITProfile `ITProfile::ResourceExplorer`;
-    * a UserIdentity `UserIdentity::<daemon userId>` (the configured EGERIA_USER_ID);
+    * a UserIdentity `UserIdentity::<daemon userId>` (the configured RE_DAEMON_USER_ID);
     * the ProfileIdentity link between them.
 
     Each is ADOPTED by its qualifiedName when it is there (the owner created all three by hand on

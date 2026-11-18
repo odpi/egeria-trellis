@@ -38,7 +38,7 @@
  * succeeding.
  */
 
-import { listRfas, updateRfaAction, dismissRfa, restoreRfaDismissal, saveRfaNote } from '/static/re-api.js';
+import { listRfas, updateRfaAction, dismissRfa, restoreRfaDismissal, saveRfaNote, saveSchedule } from '/static/re-api.js';
 import { ago } from '/static/next/format.js';
 import { stateEntry } from '/static/next/glyphs.js';
 import { cue } from '/static/next/stages/repo-manifest.js';
@@ -168,7 +168,12 @@ function _rowHtml(rfa) {
     ? ` · until <span class="tnum">${esc(rfa.defer_until)}</span>`
     : '';
   const canAct = rfa.rfa_status !== 'completed' && !rfa.dismissed;
+  // Automate's proposal (closed-loop step 2c): save the offered schedule through the same call the per-card
+  // "⏱ Schedule" control makes, rather than sending the reader to find that card.
+  const offer = rfa.offer && rfa.offer.kind === 'schedule' && rfa.offer.cadence ? rfa.offer : null;
   const actions = `
+    ${canAct && offer ? `<button type="button" data-rfa-schedule="${esc(rfa.id)}"
+        class="cursor-pointer bg-transparent text-accent-ink underline">Schedule ${esc(offer.analysis_id)} ${esc(offer.cadence)}</button>` : ''}
     ${canAct ? `<button type="button" data-rfa-act="deferred" data-rfa-id="${esc(rfa.id)}"
         class="cursor-pointer bg-transparent text-accent-ink underline">Defer</button>` : ''}
     ${canAct ? `<button type="button" data-rfa-act="reassigned" data-rfa-id="${esc(rfa.id)}"
@@ -313,7 +318,31 @@ function _openNoteForm(rfaId) {
   });
 }
 
+async function _schedule(button) {
+  const row = _rfas.find((r) => r.id === button.dataset.rfaSchedule);
+  const offer = row && row.offer;
+  if (!offer) return;
+  button.disabled = true;
+  let out;
+  try {
+    // Only ever faster (the architect's R1): someone may have scheduled it more often since this RFA was written.
+    out = await saveSchedule(offer.entity_type, offer.entity_slug, offer.analysis_id, offer.cadence, true, 'analysis',
+      { onlyIfFaster: true });
+  } catch (err) {
+    flash(`Not scheduled: ${err.message || err}`);
+    button.disabled = false;
+    return;
+  }
+  if (out && out.status === 'unchanged') {
+    flash(`Not changed: ${offer.analysis_id} on ${offer.entity_slug} is ${out.reason}.`);
+    return;
+  }
+  flash(`Scheduled ${offer.analysis_id} ${offer.cadence} on ${offer.entity_slug}. Complete this RFA once it has run.`);
+}
+
 async function _onListClick(e) {
+  const schedule = e.target.closest('[data-rfa-schedule]');
+  if (schedule) { await _schedule(schedule); return; }
   const dismiss = e.target.closest('[data-rfa-dismiss]');
   if (dismiss) { _openDismissForm(dismiss.dataset.rfaDismiss); return; }
   const restore = e.target.closest('[data-rfa-restore]');

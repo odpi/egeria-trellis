@@ -43,7 +43,6 @@ linked to the repo's own Asset; the docs URL is NOT published by this step.
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -52,6 +51,7 @@ from resource_explorer.registry import Project, ProjectRegistry
 from resource_explorer.surveyors.base_surveyor import BaseSurveyor
 from resource_explorer.step_outcome import StepOutcome, no_signal
 from resource_explorer.surveyors.survey_report import Annotation, ClassificationAnnotation
+from resource_explorer.survey_time import now_utc_iso
 
 log = logging.getLogger(__name__)
 
@@ -203,7 +203,7 @@ class HomepageSurveyor(BaseSurveyor):
                  [{"check_name": "documentation", "label": state,
                    "summary": docs.url if docs else "", "confidence": docs.confidence if docs else 0,
                    "detail": detail}],
-                 surveyed_at=self._surveyed_at or datetime.now(timezone.utc).replace(tzinfo=None).isoformat(),
+                 surveyed_at=self._surveyed_at or now_utc_iso(),
                  supersedes_previous=True)
 
         out: list[Annotation] = [

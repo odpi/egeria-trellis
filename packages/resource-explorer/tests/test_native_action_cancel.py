@@ -276,7 +276,9 @@ def test_a_5xx_from_Egeria_stays_the_502_the_page_words_as_not_sent(web, egeria,
 
 def test_egeria_security_refusal_is_a_403_in_egerias_words(web, egeria, access):
     client, _ = web
-    egeria.cancel_error = RuntimeError("OPEN-METADATA-SECURITY-403-002 user dana is not authorized to update")
+    from tests.egeria_refusals import not_permitted
+
+    egeria.cancel_error = not_permitted("OPEN-METADATA-SECURITY-403-002 user dana is not authorized to update", user="dana")
     r = client.post(URL.format(G_OURS))
     assert r.status_code == 403 and "OPEN-METADATA-SECURITY-403" in r.json()["detail"]
 

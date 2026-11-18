@@ -11,11 +11,12 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
+import trellis_ui
 
 from resource_explorer.web.routes import work_lists as work_lists_routes
 from resource_explorer.web.routes import quality_batch as quality_batch_routes
 from resource_explorer.web.routes import publish_table as publish_table_routes
-from resource_explorer.web.routes import api_reference as api_reference_routes, analytics as analytics_routes, activity, aliases, auth as auth_routes, compile_context as compile_context_routes, analyses, automate, bootstrap as bootstrap_routes, context, catalogue_scope, quality_checks, curate, databases, first_index as first_index_routes, db_servers as db_servers_routes, diagrams, discovery, doc_sources, egeria, feedback, investigations, journal, logs as logs_routes, prefect_status, prerequisites as prerequisite_routes, project_context, outbox, projects, query, repair, runs as runs_routes, schedules, stats, webhook, filesystems, survey_definitions, native_surveys, open_data as open_data_routes
+from resource_explorer.web.routes import api_reference as api_reference_routes, analytics as analytics_routes, activity, aliases, auth as auth_routes, compile_context as compile_context_routes, analyses, automate, bootstrap as bootstrap_routes, context, catalogue_scope, quality_checks, curate, databases, first_index as first_index_routes, reindex as reindex_routes, db_servers as db_servers_routes, diagrams, discovery, doc_sources, egeria, feedback, investigations, journal, logs as logs_routes, prefect_status, prerequisites as prerequisite_routes, project_context, outbox, projects, query, repair, runs as runs_routes, schedules, stats, webhook, filesystems, survey_definitions, native_surveys, open_data as open_data_routes
 from resource_explorer.web.routes import table_preview as table_preview_routes
 from resource_explorer.web.routes import value_profile as value_profile_routes
 from resource_explorer.web.routes import table_results as table_results_routes
@@ -63,6 +64,30 @@ async def start_line_within(seconds: float) -> str:
         return issue_117_start_line(lambda: "")
 
 
+def _hardware_purposes() -> dict:
+    """The device setting each of RE's models really runs with: its embeddings from EmbeddingsConfig.device, Docling
+    on auto (with trellis-accel's rule for Apple's GPU). The report states these, not one generic choice."""
+    from resource_explorer.config import get_config
+
+    return {"embeddings": get_config().embeddings.device, "docling": "auto"}
+
+
+def _log_hardware_in_background(log) -> None:
+    """The start-up hardware line (packages/trellis-accel): what the machine has, what this PyTorch can use, the device
+    chosen and any finding that names a fix. Built off the startup path (importing torch takes seconds) and cached,
+    so /health/hardware serves it without touching torch again. It reports; it never installs anything."""
+    import threading
+
+    def run():
+        try:
+            from trellis_accel import report_once, startup_line
+            log.info("%s", startup_line(report_once(_hardware_purposes())))
+        except Exception as exc:  # noqa: BLE001 -- a report, never a reason to stop serving
+            log.warning("hardware report could not be made: %s", exc)
+
+    threading.Thread(target=run, name="hardware-report", daemon=True).start()
+
+
 async def _lifespan(app: FastAPI):
     """Serve HTTP. Start background loops only when asked to embed one.
 
@@ -76,14 +101,20 @@ async def _lifespan(app: FastAPI):
     to, and even then leader election decides whether that thread's loops
     actually fire. See docs/process-model.md.
     """
-    from resource_explorer.config import check_public_url, log_llm_tier_config
+    from resource_explorer.config import check_database_settings_at_startup, check_public_url, log_llm_tier_config
 
     check_public_url()  # refuses to start on a malformed RE_PUBLIC_URL, quoting it (PublicUrlInvalid)
+    check_database_settings_at_startup()  # TR-12: refuses to start naming an unset shared-Postgres setting
     log_llm_tier_config()  # the resolved tier/model/num_ctx/budgets; the lazy first-call line predates logging setup
 
     from resource_explorer.surveyors.prefect_adapter import alog_prefect_reachability_at_startup
 
     await alog_prefect_reachability_at_startup()
+    from resource_explorer.surveyors.step_dispatch_policy import log_dispatch_policy_at_startup
+
+    # TR-11 F-AB-3 (C4/C5): an unknown PREFECT_DISPATCH_STEPS token stops startup; the policy, the heavy steps it
+    # resolved and the per-step dispatch cost are logged once.
+    log_dispatch_policy_at_startup()
     import asyncio as _asyncio
 
     # on, or off with the lift's evidence, then the platform's origin beside the proven build (one read, off-loop)
@@ -92,6 +123,7 @@ async def _lifespan(app: FastAPI):
     log_daemon_identity_at_startup()        # INFO: which source the daemon identity came from (Brief L)
     from resource_explorer.bootstrap import log_heal_identity_at_startup
     log_heal_identity_at_startup()          # who the heal applies Dr.Egeria as, and from where; warns when unset
+    _log_hardware_in_background(logging.getLogger(__name__))   # trellis-accel: device, build, findings
 
     # Re-project stored credentials if a redeploy deleted the secrets file.
     # Non-fatal by construction (heal_missing never raises) and no network.
@@ -107,6 +139,16 @@ async def _lifespan(app: FastAPI):
         egeria_mounts.load_at_start()
     except Exception:  # noqa: BLE001
         logging.getLogger(__name__).warning("could not build the Egeria mount map", exc_info=True)
+
+    # Page feedback lives in trellis-feedback since 2026-11-09: open the store once here, which copies any
+    # legacy `feedback` rows it does not hold yet (feedback_store.py). Off the loop, and never fails the start:
+    # a store that cannot open now is retried by the first request that needs it.
+    try:
+        from resource_explorer.feedback_store import FeedbackStore
+
+        await _asyncio.to_thread(FeedbackStore)
+    except Exception:  # noqa: BLE001
+        logging.getLogger(__name__).warning("could not open the feedback store at startup", exc_info=True)
 
     worker_stop = None
     if _embed_worker_enabled():
@@ -466,6 +508,7 @@ app.include_router(investigations.router, prefix="/api/investigations", tags=["i
 app.include_router(repair.router, prefix="/api/admin/repair", tags=["repair"])
 app.include_router(logs_routes.router, prefix="/api/logs", tags=["logs"])
 app.include_router(first_index_routes.router, prefix="/api/first-index", tags=["first-index"])
+app.include_router(reindex_routes.router, prefix="/api/reindex", tags=["reindex"])
 app.include_router(runs_routes.router, prefix="/api/runs", tags=["runs"])
 # Design §17.1 — "answering this needs X first; run it?" The plan is
 # read-only; the run is the user's consent, and goes through the same
@@ -476,6 +519,9 @@ app.include_router(work_lists_routes.router, prefix="/api/work-lists", tags=["wo
 app.include_router(quality_batch_routes.router, prefix="/api/quality-batch", tags=["quality-batch"])
 
 _STATIC = Path(__file__).parent / "static"
+# The files RE shares with EA (packages/trellis-ui: the looks, column resizing, markdown, the envelope renderer),
+# at /static/trellis-ui/. Mounted FIRST: Starlette matches mounts in order, and "/static" would answer these paths.
+trellis_ui.mount(app)
 app.mount("/static", StaticFiles(directory=_STATIC), name="static")
 
 
@@ -489,6 +535,18 @@ async def health() -> dict:
     route 500'd while this kept returning 200, which is useless for
     detecting the actual problem. Frontend uses /health/ready instead."""
     return {"status": "ok"}
+
+
+
+@app.get("/health/hardware")
+async def health_hardware() -> dict:
+    """The hardware report made at start-up (packages/trellis-accel): the machine's GPUs, the installed PyTorch, the
+    device chosen and findings that name a fix. Signed-in only: it is not in the public paths (GPU names and versions
+    are not for anyone who can reach the port), unlike /health."""
+    import asyncio
+
+    from trellis_accel import report_once
+    return await asyncio.to_thread(lambda: report_once(_hardware_purposes()))
 
 
 # A fresh token per server process: a page that sees it change knows the server restarted (and so what it can

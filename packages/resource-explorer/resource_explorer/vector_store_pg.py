@@ -29,6 +29,7 @@ Two classes:
     than a rewrite of the callers themselves.
 """
 
+import logging
 import re
 import threading
 
@@ -36,6 +37,69 @@ from trellis_vectorstore import PgVectorStoreConfig, SearchResult
 from trellis_vectorstore.pg import PgVectorStore as _SharedPgVectorStore
 
 from resource_explorer.config import get_config
+
+
+def _chunk_file(metadata: dict | None) -> str:
+    """The file a chunk came from, for its id: `file_path` (code, docs, API specs, notebooks, a website's page URL,
+    a file system's narrative), else `source_url`, else "" (release notes, which are per GitHub release)."""
+    m = metadata or {}
+    return str(m.get("file_path") or m.get("source_url") or "")
+
+
+def chunk_ids(collection: str, texts: list[str], metadatas: list[dict]) -> list[str]:
+    """Deterministic chunk ids, minted per FILE (BRIEF-REINDEX-FROM-SCRATCH.md, R0, the project owner's Q8).
+
+    `sha256("<collection>:<file>:<index in file>:<text>")[:32]`. Until R0 the index was the chunk's position in the
+    insert batch: a first index numbered a whole collection from 0 and a refresh numbered only its changed files from
+    0, so one added chunk shifted every later id, and two refreshes could give different files' chunks the same id
+    (identical text at the same batch index), which `ON CONFLICT (id)` resolved by overwriting one with the other.
+    Per file, an unchanged file keeps its ids through a refresh or a rebuild, and two files can never share one.
+
+    Every caller inserts a file's chunks in one call (pipeline, website, narrative docs, add-docs), so the index in
+    file is complete. Rows written before R0 keep their old ids until their file is next re-inserted; `chunk_votes`
+    carries a vote across that change. Not Python's hash(): it is randomized per process.
+    """
+    import hashlib
+    seen: dict[str, int] = {}
+    ids: list[str] = []
+    for text, meta in zip(texts, metadatas):
+        f = _chunk_file(meta)
+        n = seen.get(f, 0)
+        seen[f] = n + 1
+        ids.append(hashlib.sha256(f"{collection}:{f}:{n}:{text}".encode()).hexdigest()[:32])
+    return ids
+
+
+#: While a vote carrier is recording (`record_inserts`), each inserted chunk's (collection, id, text, file) is appended
+#: to every recorder that asked for its collection, whichever MultiCollectionStore instance inserted it. Module-level,
+#: not a ContextVar: a ContextVar is not inherited by pool threads, so it would record nothing if embedding ever moves
+#: to workers (the architect's read-back of 7af6ea51).
+_INSERT_RECORDERS: list[tuple[frozenset[str] | None, list[tuple[str, str, str, str]]]] = []
+_RECORDERS_LOCK = threading.Lock()
+
+
+class record_inserts:  # a context manager, named for what it does
+    """Record what is inserted while open: `with record_inserts({"c1", "c2"}) as rows:` gives a list of
+    (collection, id, text, file) for inserts into those collections only. Used by `chunk_votes` to find where a voted
+    chunk went after its file was re-inserted, by matching in memory rather than by searching the table.
+
+    Name the collections being carried: with none named (None), every concurrent insert from any repository would be
+    buffered, full text and all, for as long as the block runs (the architect's read-back of 7af6ea51). An empty set
+    records nothing."""
+
+    def __init__(self, collections=None) -> None:
+        self._only = None if collections is None else frozenset(collections)
+
+    def __enter__(self) -> list[tuple[str, str, str, str]]:
+        self._rows: list[tuple[str, str, str, str]] = []
+        self._entry = (self._only, self._rows)
+        with _RECORDERS_LOCK:
+            _INSERT_RECORDERS.append(self._entry)
+        return self._rows
+
+    def __exit__(self, *exc) -> None:
+        with _RECORDERS_LOCK:
+            _INSERT_RECORDERS.remove(self._entry)
 
 
 class _ReEmbeddingProvider:
@@ -97,6 +161,17 @@ class PgVectorStore(_SharedPgVectorStore):
             auto_provision_on_insert=True,  # RE's insert_with_embeddings always self-provisions
         )
 
+    def connect(self) -> None:
+        """TR-12: no password, no connection: refused by name here, where it is used, rather than as libpq's
+        authentication error (the built-in "advisor" default is gone). Construction stays side-effect free."""
+        if not self._config.password:
+            from resource_explorer.config import MissingDatabaseSetting
+
+            raise MissingDatabaseSetting(
+                "RE cannot connect to the shared Postgres (pgvector): PGVECTOR_PASSWORD is not set. Set it in the "
+                ".env file. There is no built-in password any more (TR-12).")
+        super().connect()
+
 
 # ---------------------------------------------------------------------------
 # Compatibility wrapper — preserves MultiCollectionStore's exact public
@@ -108,6 +183,24 @@ class PgVectorStore(_SharedPgVectorStore):
 
 _shared_store: PgVectorStore | None = None
 _shared_store_lock = threading.Lock()
+
+log = logging.getLogger(__name__)
+
+_boosts_warned = {"done": False}
+
+
+def _metrics_collector():
+    from resource_explorer.observability.metrics_collector import shared_collector
+
+    return shared_collector()
+
+
+def _warn_boosts_unavailable(exc: BaseException) -> None:
+    """Once per process at WARNING, then at DEBUG: a metrics outage is worth one line, not one per search."""
+    level = logging.DEBUG if _boosts_warned["done"] else logging.WARNING
+    _boosts_warned["done"] = True
+    log.log(level, "chunk feedback boosts unavailable, retrieving without them: %s: %s",
+            type(exc).__name__, str(exc).splitlines()[0] if str(exc) else "")
 
 
 def _get_shared_store() -> PgVectorStore:
@@ -152,6 +245,9 @@ class MultiCollectionStore:
     def delete_by_metadata(self, collection: str, field: str, values: list[str]) -> int:
         return self._store.delete_by_metadata(collection, field, values)
 
+    def count_by_metadata(self, collection: str, field: str) -> dict[str, int]:
+        return self._store.count_by_metadata(collection, field)
+
     def search(
         self,
         query: str,
@@ -178,53 +274,45 @@ class MultiCollectionStore:
         return results[:k]
 
     def _load_boosts(self) -> dict[str, float]:
-        """Load per-chunk feedback boosts from SQLite metrics DB."""
+        """Per-chunk score adjustments from chat votes, read from the store MetricsCollector writes them to.
+
+        Until 2026-11-09 this opened `observability.metrics_db` with sqlite3 while the votes went to
+        METRICS_DATABASE_URL (Postgres since 2026-08-23): the connect created an empty `data/metrics.db`, the
+        query failed, and a bare except returned {}, so no vote adjusted any retrieval and nothing said so
+        (docs/feedback-closed-loop-design.md §1, step 0). It still fails soft, since a metrics outage must not
+        stop retrieval, but it says so in the log.
+        """
         try:
-            import sqlite3
-            db_path = self._cfg.observability.metrics_db
-            conn = sqlite3.connect(db_path)
-            # neutral_count: migration-added column (metrics_collector.py's
-            # _init_schema), so a pre-migration sqlite file may not have it
-            # yet — fall back to 0 rather than erroring.
-            try:
-                rows = conn.execute(
-                    "SELECT chunk_ref, positive_count, neutral_count, total_count "
-                    "FROM chunk_feedback"
-                ).fetchall()
-            except sqlite3.OperationalError:
-                rows = [
-                    (ref, pos, 0, total)
-                    for ref, pos, total in conn.execute(
-                        "SELECT chunk_ref, positive_count, total_count FROM chunk_feedback"
-                    ).fetchall()
-                ]
-            conn.close()
-            boosts = {}
-            for ref, pos, neutral, total in rows:
-                if total > 0:
-                    # Neutral ("partially correct") gets half credit, same
-                    # weighting EA's satisfaction formula uses
-                    # (advisor/web/admin.html:570) — not zero credit, which
-                    # would score a partially-relevant chunk the same as a
-                    # fully negative one.
-                    precision = (pos + 0.5 * neutral) / total
-                    confidence = min(total / 5.0, 1.0)  # grows with 5+ votes
-                    boosts[ref] = (precision - 0.5) * confidence * 0.3
-            return boosts
-        except Exception:
+            return _metrics_collector().chunk_boosts()
+        except Exception as exc:  # noqa: BLE001 -- retrieval must not fail because metrics are unreachable
+            _warn_boosts_unavailable(exc)
             return {}
 
-    def insert(self, collection: str, texts: list[str], metadatas: list[dict]) -> int:
-        # Deterministic ids (sha256 of collection+index+text), NOT Python's
-        # built-in hash() — that's randomized per-process (PYTHONHASHSEED),
-        # so re-running ingestion would mint a fresh id for the same chunk
-        # every time and defeat the ON CONFLICT (id) upsert entirely.
-        import hashlib
-        ids = [
-            hashlib.sha256(f"{collection}:{i}:{t}".encode()).hexdigest()[:32]
-            for i, t in enumerate(texts)
-        ]
-        return self._store.insert_data(collection, texts, ids=ids, metadata=metadatas)
+    def insert(self, collection: str, texts: list[str], metadatas: list[dict], *,
+               id_collection: str | None = None) -> int:
+        # Deterministic ids, minted per file (`chunk_ids`). `id_collection`: hash the ids under this name instead of
+        # the table written to. A rebuild writes into `{name}__rebuild` but mints the ids the live `{name}` will hold
+        # after the swap, so an unchanged chunk keeps its id and its votes (BRIEF-REINDEX-FROM-SCRATCH.md §3 step 2).
+        ids = chunk_ids(id_collection or collection, texts, metadatas)
+        count = self._store.insert_data(collection, texts, ids=ids, metadata=metadatas)
+        if _INSERT_RECORDERS:
+            with _RECORDERS_LOCK:
+                wanting = [rows for only, rows in _INSERT_RECORDERS if only is None or collection in only]
+                if wanting:
+                    inserted = [(collection, i, t, _chunk_file(m)) for i, t, m in zip(ids, texts, metadatas)]
+                    for rows in wanting:
+                        rows.extend(inserted)
+        return count
+
+    def rows_by_ids(self, collection: str, ids: list[str]) -> list[dict]:
+        """The stored rows (id, text, metadata) for these ids; ids not in the collection are absent. One query per id:
+        it is used for the handful of voted chunks only."""
+        out: list[dict] = []
+        for chunk_id in ids:
+            if not re.fullmatch(r"[0-9a-f]{1,64}", chunk_id or ""):
+                continue                         # ids are hex; anything else cannot be one, and is not queried
+            out.extend(self._store.query_by_filter(collection, f'id == "{chunk_id}"', limit=1))
+        return out
 
     def drop_collection(self, collection: str) -> None:
         self._store.delete_collection(collection)
@@ -235,6 +323,24 @@ class MultiCollectionStore:
         PgVectorStore.rename_collection's docstring (trellis-vectorstore) for
         why this is a rename rather than a drop+reingest."""
         self._store.rename_collection(old_collection, new_collection)
+
+    # The rebuild's swap (BRIEF-REINDEX-FROM-SCRATCH.md §3, R1a): one transaction for every table and index rename.
+    def swap_collections(self, renames: list[tuple[str, str]], **kw) -> None:
+        self._store.swap_collections(renames, **kw)
+
+    def all_rows(self, collection: str) -> list[dict]:
+        """Every row (id, text, metadata) of a collection. Used by a rebuild to carry votes, for the collections that
+        have votes only."""
+        return self._store.query_by_filter(collection, limit=max(1, self.count(collection)) + 1)
+
+    def has_vector_index(self, collection: str) -> bool:
+        return self._store.has_vector_index(collection)
+
+    def table_bytes(self, collection: str) -> int:
+        return self._store.table_bytes(collection)
+
+    def check_names(self, *collections: str) -> list[str]:
+        return self._store.check_names(*collections)
 
     def count(self, collection: str) -> int:
         return int(self._store.get_collection_stats(collection).get("num_entities", 0))

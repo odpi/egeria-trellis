@@ -1,22 +1,26 @@
-"""Sentence-transformer embeddings with automatic MPS/CUDA/CPU device selection."""
+"""Sentence-transformer embeddings on the shared device choice (packages/trellis-accel)."""
 from __future__ import annotations
 
-import torch
+import logging
+
 from sentence_transformers import SentenceTransformer
 
 from resource_explorer.config import get_config
+
+logger = logging.getLogger(__name__)
 
 _model: SentenceTransformer | None = None
 
 
 def _resolve_device(device: str) -> str:
-    if device != "auto":
-        return device
-    if torch.backends.mps.is_available():
-        return "mps"
-    if torch.cuda.is_available():
-        return "cuda"
-    return "cpu"
+    """The shared device choice (packages/trellis-accel): this setting when it is not "auto", else TRELLIS_DEVICE,
+    else an NVIDIA or AMD GPU, then Apple's GPU, then the CPU. A device this PyTorch cannot use raises
+    trellis_accel.DeviceUnavailable with a sentence, instead of failing later inside torch."""
+    from trellis_accel import pick_device
+
+    choice = pick_device(device, purpose="embeddings")
+    logger.info(f"embeddings: device {choice.device} ({choice.reason})")
+    return choice.device
 
 
 def get_embedding_model() -> SentenceTransformer:

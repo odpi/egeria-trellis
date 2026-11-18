@@ -44,8 +44,12 @@ class DataPrep:
     def __init__(self, min_chars: int = 50, max_repetition_ratio: float = 0.6) -> None:
         self.min_chars = min_chars
         self.max_repetition_ratio = max_repetition_ratio
-        self._seen_hashes: set[str] = set()
-        self._seen_norm_hashes: set[str] = set()
+        # hash -> the file_path of the chunk that first had it, so a dropped duplicate can say what it duplicated.
+        self._seen_hashes: dict[str, str] = {}
+        self._seen_norm_hashes: dict[str, str] = {}
+        # file -> {the earlier file whose chunk it duplicated: chunks dropped}. Only across files: a chunk repeated
+        # inside one file explains nothing about that file. Read by a rebuild, so a file left with no chunks says why.
+        self.duplicate_of: dict[str, dict[str, int]] = {}
         self._boilerplate_re = [
             re.compile(p, re.IGNORECASE) for p in self.BOILERPLATE_PATTERNS
         ]
@@ -56,6 +60,7 @@ class DataPrep:
     def reset_dedup(self) -> None:
         self._seen_hashes.clear()
         self._seen_norm_hashes.clear()
+        self.duplicate_of.clear()
 
     def score(self, chunk) -> float:
         """
@@ -72,6 +77,21 @@ class DataPrep:
 
     def _text(self, chunk) -> str:
         return chunk.text if hasattr(chunk, "text") else str(chunk)
+
+    @staticmethod
+    def _file(chunk) -> str:
+        meta = getattr(chunk, "metadata", None)
+        return str(meta.get("file_path") or "") if isinstance(meta, dict) else ""
+
+    def _seen(self, seen: dict[str, str], digest: str, chunk) -> bool:
+        if digest not in seen:
+            seen[digest] = self._file(chunk)
+            return False
+        here, first = self._file(chunk), seen[digest]
+        if here and first and here != first:
+            per = self.duplicate_of.setdefault(here, {})
+            per[first] = per.get(first, 0) + 1
+        return True
 
     def _keep(self, chunk) -> bool:
         text = self._text(chunk)
@@ -90,19 +110,14 @@ class DataPrep:
 
         # Exact dedup
         exact_hash = hashlib.sha256(text.encode()).hexdigest()
-        if exact_hash in self._seen_hashes:
+        if self._seen(self._seen_hashes, exact_hash, chunk):
             return False
-        self._seen_hashes.add(exact_hash)
 
         # Near-duplicate dedup (normalise whitespace + case)
         norm = re.sub(r"\s+", " ", text.lower().strip())
         norm = unicodedata.normalize("NFKD", norm)
         norm_hash = hashlib.sha256(norm.encode()).hexdigest()
-        if norm_hash in self._seen_norm_hashes:
-            return False
-        self._seen_norm_hashes.add(norm_hash)
-
-        return True
+        return not self._seen(self._seen_norm_hashes, norm_hash, chunk)
 
     def _is_boilerplate(self, text: str) -> bool:
         first_line = text.strip().splitlines()[0].lower() if text.strip() else ""

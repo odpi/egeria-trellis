@@ -1,0 +1,87 @@
+{
+ "_source": "Generated 2026-11-11 by pyegeria 6.2.34 itself (release/6.2.34, 78db87cd): format_set_executor._run_analytic_function({'analytic_function': 'saved_query'}, ...) on the viewer fake of pyegeria's tests/micro-tests/test_saved_query_analytic.py (_Viewer, _saved_query). These are saved_query's answers, the `data` of exec_report_spec's {'kind': 'json', 'data': ...}.",
+ "cached_count": {
+  "savedQuery": "SavedQuery::insights-query::Assets with no lineage::a1b2",
+  "mode": "cached",
+  "output": "count",
+  "state": "measured",
+  "state_reason": "",
+  "value": 37,
+  "capped": false,
+  "atLeast": null,
+  "asOf": "2026-11-10T18:02:11+00:00",
+  "display": "37",
+  "elements": null,
+  "subtitle": "as of 2026-11-10T18:02:11+00:00"
+ },
+ "cached_capped": {
+  "savedQuery": "SavedQuery::insights-query::Assets with no lineage::a1b2",
+  "mode": "cached",
+  "output": "count",
+  "state": "measured",
+  "state_reason": "",
+  "value": null,
+  "capped": true,
+  "atLeast": 30,
+  "asOf": "2026-11-10T18:02:11+00:00",
+  "display": "≥30",
+  "elements": null,
+  "subtitle": "as of 2026-11-10T18:02:11+00:00 · at least 30: the read stopped at its bound"
+ },
+ "never_refreshed": {
+  "savedQuery": "SavedQuery::insights-query::Assets with no lineage::a1b2",
+  "mode": "cached",
+  "output": "count",
+  "state": "not_established",
+  "state_reason": "the saved query has never been refreshed, so its Results Set holds no answer yet (not an empty answer)",
+  "value": null,
+  "capped": false,
+  "atLeast": null,
+  "asOf": null,
+  "display": null,
+  "absence": "not_measured",
+  "elements": null
+ },
+ "live_count": {
+  "savedQuery": "SavedQuery::insights-query::Assets with no lineage::a1b2",
+  "mode": "live",
+  "output": "count",
+  "state": "measured",
+  "state_reason": "",
+  "value": 1200,
+  "capped": false,
+  "atLeast": null,
+  "asOf": "2026-11-11T08:44:32+00:00",
+  "display": "1200",
+  "elements": null,
+  "subtitle": "as of 2026-11-11T08:44:32+00:00",
+  "how": "find_metadata_elements on this client's platform"
+ },
+ "cached_list": {
+  "savedQuery": "SavedQuery::insights-query::Assets with no lineage::a1b2",
+  "mode": "cached",
+  "output": "list",
+  "state": "measured",
+  "state_reason": "",
+  "value": 2,
+  "capped": false,
+  "atLeast": null,
+  "asOf": "2026-11-10T18:02:11+00:00",
+  "display": "2",
+  "elements": [
+   {
+    "guid": "m0",
+    "typeName": "DataSet",
+    "qualifiedName": "Asset::0",
+    "displayName": "Asset 0"
+   },
+   {
+    "guid": "m1",
+    "typeName": "DataSet",
+    "qualifiedName": "Asset::1",
+    "displayName": "Asset 1"
+   }
+  ],
+  "subtitle": "as of 2026-11-10T18:02:11+00:00"
+ }
+}

@@ -26,7 +26,7 @@ test('everything else reads as before', async () => {
 
 test("a raw-measures answer line shows a stored time in the house format (data_class_match, change_rates)", async () => {
   await load();
-  const { scalarMeasures } = await import('/static/next/envelope.js');
+  const { scalarMeasures } = await import('/static/trellis-ui/envelope.js');
   const line = scalarMeasures({ from_surveyed_at: '2026-10-13T13:59:00.394550', to_surveyed_at: '2026-10-20T21:07:32.063533',
     column_count: 1236 });
   assert.equal(line, 'from surveyed at 2026-10-13 13:59 · to surveyed at 2026-10-20 21:07 · column count 1236');
@@ -35,7 +35,7 @@ test("a raw-measures answer line shows a stored time in the house format (data_c
 
 test('QS-4: a number of days reads as days to one place, not "interval days 7.2976"', async () => {
   await load();
-  const { scalarMeasures } = await import('/static/next/envelope.js');
+  const { scalarMeasures } = await import('/static/trellis-ui/envelope.js');
   const line = scalarMeasures({ interval_days: 7.2976, table_count: 68 });
   assert.equal(line, 'interval 7.3 days · table count 68');
 });

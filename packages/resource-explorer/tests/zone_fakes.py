@@ -32,6 +32,8 @@ class FakeEgeria:
     def __init__(self):
         self.elements: dict[str, dict] = {}
         self.controls: dict[str, dict] = {}
+        #: The control of a zone not in `controls` (None: Egeria holds no control for it).
+        self.default_control: dict | None = None
         self.accounts: dict[str, dict | None] = {}
         self.fail_control = ""
         self.fail_element = ""
@@ -47,7 +49,7 @@ class FakeEgeria:
         self.calls.append(("control", zone))
         if zone == self.fail_control:
             raise ConnectionError("secrets store unreadable")
-        return self.controls.get(zone)
+        return self.controls.get(zone, self.default_control)
 
     def get_user_account(self, platform, user_id, **kw):
         self.calls.append(("account", user_id))
@@ -87,12 +89,16 @@ def permit_publish_routes(monkeypatch, user_id: str = "publisher") -> FakeEgeria
 def open_access(monkeypatch, *, caller_if_none: str = "") -> FakeEgeria:
     """For tests of a write path that are about something else (Brief Z2): the access reads are faked at the
     client boundary and every element answers with no ZoneMembership, so the check runs and permits. RE's own
-    zone configuration is left as the test set it (a configured zone with no access control is not secured).
+    zone configuration is left as the test set it, and every zone's control admits every user
+    (`GRANT_ALL_CONTROL`): Egeria b49c5ed0 secures every named zone ("A zone with no security access control ...
+    grants access to no-one", OpenMetadataAccessSecurityConnector.validateZoneAccess :1156-1161), so a configured
+    zone that is to be open needs such a control, as RE's start-up zone check already requires.
     `caller_if_none`: when the test publishes no caller identity of its own (a route test that patches only the
     route's author lookup), the curation check sees this signed-in user; a caller the test did set is kept."""
     from resource_explorer.a2a_auth import CallerIdentity
 
     fake = FakeEgeria()
+    fake.default_control = GRANT_ALL_CONTROL
     monkeypatch.setattr("resource_explorer.zone_access._metadata_expert", lambda: fake)
     monkeypatch.setattr("resource_explorer.zone_access._security_officer", lambda: fake)
     monkeypatch.setattr("resource_explorer.zone_access._platform", lambda: ("Quickstart platform", "plat-guid"))

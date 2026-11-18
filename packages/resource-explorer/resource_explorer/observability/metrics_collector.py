@@ -17,9 +17,10 @@ looking at.
 from __future__ import annotations
 
 import json
+import threading
 import time
 from contextlib import contextmanager
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 
 from sqlalchemy import create_engine
@@ -28,17 +29,55 @@ from resource_explorer.config import get_config
 from resource_explorer.registry import ConnectionWrapper
 
 
+def resolve_metrics_url(cfg=None) -> str:
+    """Where query_log and chunk_feedback live: an explicit sqlite:/// `metrics_db` wins, so a from-scratch or
+    offline environment can keep a file; otherwise METRICS_DATABASE_URL (the shared Postgres by default).
+
+    One resolver for the writer and every reader. Until 2026-11-09 retrieval read chunk_feedback from the old
+    SQLite path while this class wrote to Postgres, so no vote adjusted any retrieval
+    (docs/feedback-closed-loop-design.md §1)."""
+    cfg = cfg or get_config().observability
+    if cfg.metrics_db and cfg.metrics_db != "data/metrics.db":
+        return f"sqlite:///{cfg.metrics_db}"
+    from resource_explorer.config import require_database_url
+
+    return require_database_url(cfg.metrics_database_url, "METRICS_DATABASE_URL", "metrics store")   # TR-12
+
+
+def chunk_boost(positive: int, neutral: int, total: int) -> float:
+    """A chunk's retrieval score adjustment from its votes: precision around 0.5, scaled by confidence (full at
+    5+ votes), capped at ±0.15. Neutral ("partially correct") counts as half, the weighting EA's satisfaction
+    formula uses (advisor/web/admin.html:570), not zero, which would score it like a negative."""
+    if total <= 0:
+        return 0.0
+    precision = (positive + 0.5 * neutral) / total
+    confidence = min(total / 5.0, 1.0)
+    return (precision - 0.5) * confidence * 0.3
+
+
+_shared: dict[str, MetricsCollector] = {}
+#: Bumped by every vote recorded in this process, through any collector instance: a cached chunk_boosts read
+#: older than the latest vote is not reused (the vote route builds its own collector).
+_vote_generation = {"n": 0}
+_shared_lock = threading.Lock()
+
+
+def shared_collector() -> MetricsCollector:
+    """One collector per metrics URL per process, for hot paths (every search, every chat turn): building one
+    creates an engine and checks the schema. Keyed by URL, so a changed config (tests reset it) gets its own."""
+    url = resolve_metrics_url()
+    with _shared_lock:
+        collector = _shared.get(url)
+        if collector is None:
+            collector = MetricsCollector(database_url=url)
+            _shared[url] = collector
+        return collector
+
+
 class MetricsCollector:
     def __init__(self, database_url: str | None = None) -> None:
         cfg = get_config().observability
-        # An explicit sqlite:/// metrics_db still wins, so a from-scratch or
-        # offline environment can keep a file; otherwise the shared instance.
-        if database_url is not None:
-            self.database_url = database_url
-        elif cfg.metrics_db and cfg.metrics_db != "data/metrics.db":
-            self.database_url = f"sqlite:///{cfg.metrics_db}"
-        else:
-            self.database_url = cfg.metrics_database_url
+        self.database_url = database_url if database_url is not None else resolve_metrics_url(cfg)
 
         self.db_path = cfg.metrics_db
         if self.database_url.startswith("sqlite:///"):
@@ -205,6 +244,13 @@ class MetricsCollector:
         than inferred from a sign check. See test_metrics_collector_neutral_feedback.py
         for the regression this guards.
         """
+        try:
+            self._record_feedback(query_hash, feedback, compile_id)
+        finally:
+            # After the write commits, so no search in between caches a read without this vote.
+            _vote_generation["n"] += 1
+
+    def _record_feedback(self, query_hash: str, feedback: int, compile_id: str | None) -> None:
         with self._conn() as conn:
             # Update query_log feedback column
             conn.execute(
@@ -268,6 +314,67 @@ class MetricsCollector:
                 FROM query_log
             """).fetchone()
         return _numeric(dict(row)) if row else {}
+
+    #: Seconds a read of chunk_feedback is reused (read-back P3: every search read the whole table). A vote
+    #: recorded through this collector clears it at once, so this process never serves a score older than its
+    #: own last vote; another process's vote shows within this long.
+    BOOST_TTL_SECONDS = 30.0
+
+    def chunk_boosts(self) -> dict[str, float]:
+        """`chunk_ref` -> retrieval score adjustment, for every chunk with a vote (chunk_boost)."""
+        cached = getattr(self, "_boost_cache", None)
+        generation = _vote_generation["n"]
+        if (cached is not None and cached[1] == generation
+                and time.monotonic() - cached[0] < self.BOOST_TTL_SECONDS):
+            return cached[2]
+        boosts = self._read_chunk_boosts()
+        self._boost_cache = (time.monotonic(), generation, boosts)
+        return boosts
+
+    def chunk_vote_refs(self, collection: str) -> list[str]:
+        """Every `chunk_ref` with a vote in one collection (`<collection>:<id>`)."""
+        prefix = collection + ":"
+        with self._conn() as conn:
+            # A prefix compare, not LIKE: collection names hold "_", a LIKE wildcard, and the two dialects escape it
+            # differently.
+            rows = conn.execute("SELECT chunk_ref FROM chunk_feedback WHERE substr(chunk_ref, 1, ?) = ? "
+                                "AND total_count > 0", (len(prefix), prefix)).fetchall()
+        return [r["chunk_ref"] for r in rows]
+
+    def move_chunk_votes(self, old_ref: str, new_ref: str) -> bool:
+        """Move one chunk's votes to the ref it now has (`chunk_votes`, R0): added to any the new ref already holds,
+        then the old row removed, in one transaction. False when the old ref has no row."""
+        if old_ref == new_ref:
+            return False
+        # The same naive-UTC form record_feedback writes, without utcnow()'s deprecation.
+        now = datetime.now(UTC).replace(tzinfo=None).isoformat()
+        with self._conn() as conn:
+            row = conn.execute("SELECT positive_count, neutral_count, total_count FROM chunk_feedback "
+                               "WHERE chunk_ref = ?", (old_ref,)).fetchone()
+            if row is None:
+                return False
+            p, n, t = int(row["positive_count"] or 0), int(row["neutral_count"] or 0), int(row["total_count"] or 0)
+            conn.execute(
+                """INSERT INTO chunk_feedback (chunk_ref, positive_count, neutral_count, total_count, last_updated)
+                   VALUES (?, ?, ?, ?, ?)
+                   ON CONFLICT(chunk_ref) DO UPDATE SET
+                       positive_count = chunk_feedback.positive_count + ?,
+                       neutral_count = chunk_feedback.neutral_count + ?,
+                       total_count = chunk_feedback.total_count + ?,
+                       last_updated = ?""",
+                (new_ref, p, n, t, now, p, n, t, now))
+            conn.execute("DELETE FROM chunk_feedback WHERE chunk_ref = ?", (old_ref,))
+        _vote_generation["n"] += 1
+        return True
+
+    def _read_chunk_boosts(self) -> dict[str, float]:
+        with self._conn() as conn:
+            rows = conn.execute(
+                "SELECT chunk_ref, positive_count, neutral_count, total_count "
+                "FROM chunk_feedback WHERE total_count > 0"
+            ).fetchall()
+        return {r["chunk_ref"]: chunk_boost(int(r["positive_count"] or 0), int(r["neutral_count"] or 0),
+                                            int(r["total_count"] or 0)) for r in rows}
 
     def feedback_stats(self) -> dict:
         """Summary of feedback quality across all chunks."""

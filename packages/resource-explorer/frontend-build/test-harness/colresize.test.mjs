@@ -8,7 +8,7 @@ import { ensureLoaderRegistered } from './dom-harness.mjs';
 import { baseView, setUp, scopeEl } from './scope-test-kit.mjs';
 
 ensureLoaderRegistered();
-const { attachColumnResize, handleHtml, cellStyle } = await import('/static/next/colresize.js');
+const { attachColumnResize, handleHtml, cellStyle } = await import('/static/trellis-ui/colresize.js');
 
 const SPEC = {
   id: 't1', chrome: 20,

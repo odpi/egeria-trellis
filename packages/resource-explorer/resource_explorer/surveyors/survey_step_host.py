@@ -61,7 +61,8 @@ import contextlib
 import logging
 from contextlib import contextmanager
 from dataclasses import dataclass, field
-from datetime import datetime
+
+from resource_explorer.survey_time import now_utc_iso
 
 log = logging.getLogger(__name__)
 
@@ -581,7 +582,7 @@ class SurveyStepHost:
             raise StepNotInstalled(f"step '{step}' is about a set of resources: run it from a work list, not on one "
                                    f"{self.entity_type}")
         # The run's own time when the executor stamped one (a database scan's), so the annotations name the run.
-        run = runner_kwargs.get("scan_surveyed_at") or datetime.utcnow().isoformat()
+        run = runner_kwargs.get("scan_surveyed_at") or now_utc_iso()
 
         def store(annotations) -> int:
             # One stored set per measure: the step's own under its name, each further declared measure under
@@ -866,7 +867,7 @@ def run_set_step(manifest, registry, work_list_slug: str, members: list[tuple[st
 
     step = manifest.name
     provided_by = dict(provided_by or {})
-    run = datetime.utcnow().isoformat()
+    run = now_utc_iso()
     where = {slug: etype for etype, slug in members}
     stored: dict[tuple[str, str, str], int] = {}
 

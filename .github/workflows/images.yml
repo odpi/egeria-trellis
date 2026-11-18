@@ -14,7 +14,24 @@
 name: images
 
 on:
+  # PRs build images only when something that shapes an image changes:
+  # Dockerfiles, the build context filter, the workspace lock, or any
+  # pyproject.toml (adding a workspace member changes the root pyproject
+  # and uv.lock, so a new package still triggers a build). Plain code
+  # changes are covered by the re-tests / ea-tests checks; the image is
+  # still built and published from main on every push. Owner decision
+  # 2026-11-11: each PR images run took 35-52 min of runner time and
+  # queued the required test checks behind it.
   pull_request:
+    paths:
+      - "docker/**"
+      - "**/Dockerfile*"
+      - ".dockerignore"
+      - "**/.dockerignore"
+      - "uv.lock"
+      - "pyproject.toml"
+      - "packages/*/pyproject.toml"
+      - ".github/workflows/images.yml"
   push:
     branches: [main]
     tags: ["v*"]
@@ -89,5 +106,8 @@ jobs:
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          # RE matches a Prefect worker to its own code by this (docker/Dockerfile.resource-explorer); EA ignores it.
+          build-args: |
+            TRELLIS_RE_SHA=${{ github.sha }}
           cache-from: type=gha,scope=${{ matrix.app }}
           cache-to: type=gha,mode=max,scope=${{ matrix.app }}

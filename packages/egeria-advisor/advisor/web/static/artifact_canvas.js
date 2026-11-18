@@ -160,7 +160,7 @@ class ArtifactCanvas {
     container.innerHTML = '';
     if (!this._items.length) {
       container.innerHTML =
-        '<p class="text-xs text-slate-600 text-center py-6">No steps yet — describe what you want in the chat.</p>';
+        '<p class="text-xs text-slate-500 text-center py-6">No steps yet — describe what you want in the chat.</p>';
       return;
     }
     this._items.forEach((item, idx) => container.appendChild(this._buildCard(item, idx)));
@@ -191,10 +191,10 @@ class ArtifactCanvas {
       card.classList.add('border-amber-800/30');
       card.innerHTML = `
         <div class="card-header flex items-center gap-1.5 px-2.5 py-2 cursor-grab active:cursor-grabbing">
-          <span class="text-slate-600 text-base leading-none shrink-0 select-none">≡</span>
-          <span class="text-slate-600 text-xs w-5 shrink-0 text-right">${idx + 1}.</span>
+          <span class="text-slate-500 text-base leading-none shrink-0 select-none">≡</span>
+          <span class="text-slate-500 text-xs w-5 shrink-0 text-right">${idx + 1}.</span>
           <span class="text-amber-400/80 text-xs font-semibold flex-1">📝 Note</span>
-          <button class="remove-btn text-slate-700 hover:text-red-400 text-xs px-1 transition-colors" title="Remove">✕</button>
+          <button class="remove-btn text-slate-500 hover:text-red-400 text-xs px-1 transition-colors" title="Remove">✕</button>
         </div>
         <div class="px-2.5 pb-2.5">
           <textarea class="narrative-input w-full bg-amber-950/20 text-slate-300 text-sm rounded p-2
@@ -224,17 +224,17 @@ class ArtifactCanvas {
 
     card.innerHTML = `
       <div class="card-header flex items-center gap-1.5 px-2.5 py-2 cursor-grab active:cursor-grabbing">
-        <span class="text-slate-600 text-base leading-none shrink-0 select-none">≡</span>
-        <span class="text-slate-600 text-xs w-5 shrink-0 text-right">${idx + 1}.</span>
+        <span class="text-slate-500 text-base leading-none shrink-0 select-none">≡</span>
+        <span class="text-slate-500 text-xs w-5 shrink-0 text-right">${idx + 1}.</span>
         <span class="ac-type text-violet-300 text-xs font-semibold flex-1 truncate">${_acEsc(type)}</span>
         <span class="w-2 h-2 rounded-full shrink-0 ${statusColor}" title="${statusTitle}"></span>
         <button class="expand-btn flex items-center gap-1.5 text-slate-400 hover:text-violet-200 px-2 py-1 rounded hover:bg-slate-700/60 transition-colors" title="Expand / collapse fields">
           <span class="expand-arrow text-lg leading-none">▾</span><span class="text-xs font-medium">Fields</span>
         </button>
-        <button class="remove-btn text-slate-700 hover:text-red-400 text-xs px-1 transition-colors" title="Remove">✕</button>
+        <button class="remove-btn text-slate-500 hover:text-red-400 text-xs px-1 transition-colors" title="Remove">✕</button>
       </div>
       <div class="px-2.5 pb-1.5 flex flex-col gap-0.5">
-        <span class="ac-dn text-slate-200 text-sm font-medium">${dn ? _acEsc(dn) : '<span class="text-slate-600 italic">name TBD</span>'}</span>
+        <span class="ac-dn text-slate-200 text-sm font-medium">${dn ? _acEsc(dn) : '<span class="text-slate-500 italic">name TBD</span>'}</span>
         ${paramChips ? `<div class="flex flex-wrap gap-x-3 gap-y-0.5">${paramChips}</div>` : ''}
       </div>
       <div class="narrative-wrap px-2.5 pb-2">
@@ -321,7 +321,7 @@ class ArtifactCanvas {
     const section  = card.querySelector('.fields-section');
     const type     = this._opts.itemAdapter.getType(item);
     const fieldUrl = this._opts.adapter.fieldUrl(type, this._mode);
-    section.innerHTML = '<p class="text-xs text-slate-600 p-1">Loading fields…</p>';
+    section.innerHTML = '<p class="text-xs text-slate-500 p-1">Loading fields…</p>';
 
     this._fieldsCache = this._fieldsCache || {};
     let fields = this._fieldsCache[fieldUrl];
@@ -338,7 +338,7 @@ class ArtifactCanvas {
     const existingValues = this._opts.itemAdapter.getFieldValues(item);
     section.innerHTML = '';
     if (!fields.length) {
-      section.innerHTML = '<p class="text-xs text-slate-600">No template fields found.</p>';
+      section.innerHTML = '<p class="text-xs text-slate-500">No template fields found.</p>';
       return;
     }
 
@@ -430,7 +430,7 @@ class ArtifactCanvas {
   _updateCardSummary(card, item) {
     const dn   = this._opts.itemAdapter.getDisplayName(item);
     const dnEl = card.querySelector('.ac-dn');
-    if (dnEl) dnEl.innerHTML = dn ? _acEsc(dn) : '<span class="text-slate-600 italic">name TBD</span>';
+    if (dnEl) dnEl.innerHTML = dn ? _acEsc(dn) : '<span class="text-slate-500 italic">name TBD</span>';
     const dot = card.querySelector('.w-2.h-2.rounded-full');
     if (dot) dot.className = `w-2 h-2 rounded-full shrink-0 ${dn ? 'bg-emerald-500' : 'bg-amber-400'}`;
   }

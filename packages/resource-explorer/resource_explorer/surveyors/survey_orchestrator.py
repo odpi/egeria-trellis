@@ -4,7 +4,7 @@ from __future__ import annotations
 import logging
 from collections import defaultdict
 from contextlib import ExitStack
-from datetime import datetime
+from datetime import UTC, datetime
 
 from trellis_microflow import resolve_resources
 
@@ -14,6 +14,7 @@ from resource_explorer.observability import openlineage
 from resource_explorer.surveyors import credential_capability, prerequisite_resolver, step_cost_observer
 from resource_explorer.surveyors import result_status, step_preconditions
 from resource_explorer.surveyors.survey_report import summarise_annotations, ClassificationAnnotation, SurveyResult
+from resource_explorer.survey_time import as_utc_iso
 
 log = logging.getLogger(__name__)
 
@@ -30,6 +31,24 @@ def _cost_orders() -> tuple[list[str], list[str]]:
         COMPUTE_COST_ORDER, FETCH_COST_ORDER,
     )
     return FETCH_COST_ORDER, COMPUTE_COST_ORDER
+
+
+def _naive_utc(value: str) -> datetime | None:
+    """A caller's shared run time (ISO, zoned or naive UTC) as the naive UTC datetime `SurveyResult.surveyed_at`
+    names Egeria objects with; None if it is not an ISO time, so the run takes its own time rather than failing."""
+    try:
+        moment = datetime.fromisoformat(str(value))
+    except (TypeError, ValueError):
+        log.warning("ignoring a shared surveyed_at that is not an ISO time: %r", value)
+        return None
+    return moment.astimezone(UTC).replace(tzinfo=None) if moment.tzinfo else moment
+
+
+def _acquisitions_for(info, acquired: dict) -> list:
+    """The run-level acquisitions of the resources step `info` reads. A
+    resource the run did not acquire (a caller's `data_path`) is not one."""
+    return [acquired[name] for name in (getattr(info, "requires_resources", None) or {})
+            if name in acquired]
 
 
 class SurveyOrchestrator:
@@ -56,7 +75,8 @@ class SurveyOrchestrator:
         self._data_path = data_path  # local clone path for DataProfilerSurveyor Tier 2
 
     def _auto_run(self, producer: str, demanding_step: str, resolution,
-                  project, result, surveyed_at: str, construct) -> str:
+                  project, result, surveyed_at: str, construct,
+                  acquired: dict | None = None) -> str:
         """Run one prerequisite step on the run's own initiative (§17.1).
 
         **An auto-run is a recorded result, never a silent omission** — the
@@ -114,6 +134,8 @@ class SurveyOrchestrator:
         if observed:
             observed[0].annotations, observed[0].outcomes = (
                 step_cost_observer.describe_work(annotations))
+            step_cost_observer.attribute_acquisition(
+                observed[0], _acquisitions_for(info, acquired or {}))
             observed[0].disagreement = step_cost_observer._disagreement(observed[0])
             commit = result.survey_commit_sha if step_cost_observer.completed(annotations, raised) else None
             if commit:
@@ -156,6 +178,7 @@ class SurveyOrchestrator:
         self, resource_slug: str, steps: list[str] | None = None,
         scope_locator: str = "", fast: bool = False,
         max_fetch_cost: str | None = None, max_compute_cost: str | None = None,
+        surveyed_at: str = "",
     ) -> SurveyResult:
         """Survey a single project and return the assembled SurveyResult.
 
@@ -188,12 +211,18 @@ class SurveyOrchestrator:
             deliberately the only new surface this plan adds — no new
             survey types, no scheduler changes; see the plan's "Out of
             scope".
+        surveyed_at : the shared time of a larger run this call is one step
+            of (F-AB-1: a whole-definition Prefect flow calls this once per
+            step). Given, every row this call writes carries it, so the
+            flow's steps read as one run; "" (default) takes the time now.
         """
         project = self._registry.get(resource_slug)
         if project is None:
             raise ValueError(f"Project '{resource_slug}' not found in registry.")
 
-        surveyed_at_dt = datetime.utcnow()
+        surveyed_at_dt = _naive_utc(surveyed_at) if surveyed_at else None
+        if surveyed_at_dt is None:
+            surveyed_at_dt, surveyed_at = datetime.utcnow(), ""
         # Shared run-timestamp, passed into the surveyors that persist
         # structured findings at survey time (Phase B, D1) — lets one
         # orchestrator run's writes across those tables be correlated,
@@ -201,7 +230,10 @@ class SurveyOrchestrator:
         # apart. Dependency/DataProfiler persistence isn't threaded here —
         # those write at ingest/refresh time via IngestionPipeline, a
         # separate code path this orchestrator doesn't touch.
-        surveyed_at = surveyed_at_dt.isoformat()
+        # Stored with its zone (survey_time); `surveyed_at_dt` stays naive because it names Egeria's SurveyReport
+        # and Annotations, and a kept survey published later must produce the same names (survey_snapshot.to_result
+        # strips the zone back off). Same instant either way.
+        surveyed_at = surveyed_at or as_utc_iso(surveyed_at_dt)
 
         result = SurveyResult(
             resource_slug=project.slug,
@@ -275,13 +307,16 @@ class SurveyOrchestrator:
         # projects.last_commit_sha.
         served: dict = {}
         with ExitStack() as stack:
-            resources = (
-                resolve_resources(
-                    stack, _resource_providers_for(project, self._registry, served), needed_resources
-                )
-                if needed_resources
-                else {}
-            )
+            # One resource at a time, each inside its own measurement (F-AB-2): resolved here, before any
+            # step's `observe` opens, a download is otherwise charged to no step at all. The first step
+            # that reads a resource is charged with it (`attribute_acquisition`); later readers are `reused`.
+            providers = _resource_providers_for(project, self._registry, served)
+            resources = {}
+            acquired: dict[str, step_cost_observer.AcquisitionCost] = {}
+            for resource_name in sorted(needed_resources):
+                with step_cost_observer.measure_acquisition(resource_name) as cost:
+                    resources.update(resolve_resources(stack, providers, {resource_name}))
+                acquired[resource_name] = cost
             result.survey_commit_sha = served.get("zipball_root") or served.get("git_clone_root") or None
 
             # Iterate STEP_REGISTRY's own insertion order, not
@@ -407,7 +442,7 @@ class SurveyOrchestrator:
                     for producer in resolution.auto_run:
                         why_ran = self._auto_run(
                             producer, step_key, resolution, project, result,
-                            surveyed_at, _construct)
+                            surveyed_at, _construct, acquired=acquired)
                         auto_ran.add(producer)
                         log.info("Auto-ran %s for %s — %s", producer, project.slug, why_ran)
                     if resolution.auto_run:
@@ -499,6 +534,8 @@ class SurveyOrchestrator:
                     # the absence-looks-like-zero shape inside the instrument.
                     _observed[0].annotations, _observed[0].outcomes = (
                         step_cost_observer.describe_work(locals().get("annotations")))
+                    step_cost_observer.attribute_acquisition(
+                        _observed[0], _acquisitions_for(info, acquired))
 
                     _observed[0].disagreement = step_cost_observer._disagreement(_observed[0])
                     # The commit only on a step that completed; a failed step read nothing to cite.

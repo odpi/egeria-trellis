@@ -19,6 +19,7 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
+import trellis_ui
 from loguru import logger
 
 # Cross-cutting helpers used by more than one route group live in
@@ -53,6 +54,9 @@ app.add_middleware(
     allow_headers=["*"],
     allow_credentials=True,
 )
+# The looks and the other pieces shared with Resource Explorer (packages/trellis-ui), at /static/trellis-ui/.
+# Mounted FIRST: Starlette matches mounts in order, and "/static" would answer these paths with a 404.
+trellis_ui.mount(app)
 app.mount("/static", StaticFiles(directory=_STATIC), name="static")
 
 
@@ -91,7 +95,44 @@ def _install_login_required_middleware() -> None:
     )
 
 
+#: Admin-only paths (Phase 0 S1, owner's decision 2026-11-10: one admin definition for RE and EA). A prefix, so a
+#: route added under it is gated by default; plus the feedback triage reads and edits. NOT `POST /api/feedback`
+#: (voting is for every signed-in user), and not `/admin` (the static page: every call it makes is gated).
+ADMIN_PATH_PREFIXES = ("/api/admin/",)
+ADMIN_EXACT_PATHS = ("/api/feedback/analysis",)  # A-F1: /api/feedback/v2 checks admin itself
+
+
+def _install_admin_path_middleware() -> None:
+    """Install `trellis_auth.AdminPathMiddleware` for the admin paths above.
+
+    Added BEFORE the login middleware, so it sits INSIDE it (Starlette: the last added is the outermost): a
+    request with no session gets the login 401, and this 403 answers only signed-in non-admins. The identity is
+    EA's own `get_current_user` (its anonymous-mode stand-in counts as anonymous, so it is refused)."""
+    from trellis_auth import AdminPathMiddleware
+    from advisor.auth import ADMIN_ENV_PREFIX, get_current_user
+
+    app.add_middleware(
+        AdminPathMiddleware,
+        app_prefix=ADMIN_ENV_PREFIX,
+        current_user=get_current_user,
+        prefixes=ADMIN_PATH_PREFIXES,
+        exact=ADMIN_EXACT_PATHS,
+    )
+
+
+_install_admin_path_middleware()
 _install_login_required_middleware()
+
+
+@app.middleware("http")
+async def _frame_ancestors_middleware(request: Request, call_next):
+    """E1: who may frame EA. Every response says `frame-ancestors 'self' <ADVISOR_EMBED_ORIGINS>`, so only Studio
+    (and EA itself) can embed it; before E1 anyone could. Registered after the login middleware, so it is outside it
+    and a 401 carries the header too."""
+    from advisor.web.embed import frame_ancestors_header
+    response = await call_next(request)
+    response.headers["Content-Security-Policy"] = frame_ancestors_header()
+    return response
 
 
 @app.middleware("http")
@@ -132,6 +173,9 @@ async def _user_context_middleware(request: Request, call_next):
 from advisor.web.admin import router as _admin_router
 app.include_router(_admin_router)
 
+from advisor.web.embed import router as _embed_router
+app.include_router(_embed_router)
+
 from advisor.web.auth import router as _auth_router
 app.include_router(_auth_router)
 
@@ -159,6 +203,42 @@ app.include_router(_plans_router)
 from advisor.web.reports import router as _reports_router
 app.include_router(_reports_router)
 
+from advisor.web.dashboards import router as _dashboards_router
+app.include_router(_dashboards_router)
+
+
+def _hardware_purposes() -> dict:
+    """The device setting each of EA's models really runs with: its embeddings from
+    advisor.yaml's `embeddings.device` (what advisor/embeddings.py reads; shipped as "auto"),
+    Docling on auto. The report states these, not one generic choice."""
+    from advisor.config import get_full_config
+
+    return {"embeddings": get_full_config()["embeddings"].device, "docling": "auto"}
+
+
+def _log_hardware_in_background(log) -> None:
+    """The start-up hardware line (packages/trellis-accel): what the machine has, what this
+    PyTorch can use, the device chosen and any finding that names a fix. Built off the startup
+    path (importing torch takes seconds) and cached, so /health/hardware serves it without
+    touching torch again. It reports; it never installs anything."""
+    import threading
+
+    def run():
+        try:
+            from trellis_accel import report_once, startup_line
+            log.info(startup_line(report_once(_hardware_purposes())))
+        except Exception as exc:  # noqa: BLE001 -- a report, never a reason to stop serving
+            log.warning(f"hardware report could not be made: {exc}")
+
+    threading.Thread(target=run, name="hardware-report", daemon=True).start()
+
+
+def declare_multi_user_process() -> None:
+    """EA serves many users: declare it to pyegeria's spec cache (spec-cache R-A, pyegeria 6.2.42), so a
+    report-spec read made with no user's identity takes no fallback identity and sees no private spec."""
+    from pyegeria.view.egeria_spec_cache import declare_multi_user
+    declare_multi_user()
+
 
 @app.on_event("startup")
 async def _startup():
@@ -178,6 +258,16 @@ async def _startup():
     """
     import threading
 
+    declare_multi_user_process()   # first: before any spec read, the background sync's included
+    from advisor import spec_authoring_v2
+    logger.info(spec_authoring_v2.flags_line())   # the effective values (re-base + fixes on by default)
+    from advisor.config import warn_old_daemon_names, warn_server_identity_env
+    warn_server_identity_env("web")   # TR-34: EGERIA_USER/EGERIA_USER_PASSWORD are a CLI identity, never a server's
+    warn_old_daemon_names()           # TR-34: the service account's deprecated names, once
+    # TR-12: fail closed, naming the variable, never its value: there is no built-in Postgres password any more.
+    from advisor.config import require_pgvector_password
+    require_pgvector_password()
+
     try:
         from advisor.vector_store_pg import PgVectorStore
         PgVectorStore().provision_schema()
@@ -193,6 +283,15 @@ async def _startup():
             logger.warning(f"MCP pre-warm failed (reports will initialize on first use): {exc}")
 
     threading.Thread(target=_warm, daemon=True).start()
+    _log_hardware_in_background(logger)   # trellis-accel: device, build, findings
+
+    # Report specs held in Egeria: sync EA's consumer folder into the EGERIA tier in the
+    # background, retrying while Egeria starts. Never blocks startup (advisor/egeria_spec_sync.py).
+    try:
+        from advisor.egeria_spec_sync import start_background_sync
+        start_background_sync()
+    except Exception as exc:
+        logger.warning(f"Report spec sync from Egeria not started: {exc}")
 
 
 @app.on_event("shutdown")
@@ -223,31 +322,59 @@ async def index() -> FileResponse:
 
 
 @app.get("/health")
-async def health() -> Dict[str, str]:
-    return {"status": "ok"}
+async def health() -> Dict[str, Any]:
+    """Liveness, plus the RESOLVED report-spec authoring flags (on/off only, no settings values), so a
+    post-deploy check can read them from the running service without its log."""
+    from advisor import spec_authoring_v2
+    return {"status": "ok", "spec_authoring": spec_authoring_v2.flags_state()}
+
+
+
+@app.get("/health/hardware")
+async def health_hardware() -> dict:
+    """The hardware report made at start-up (packages/trellis-accel): the machine's GPUs, the
+    installed PyTorch, the device chosen and findings that name a fix. Signed-in only: it is not
+    in the public paths (GPU names and versions are not for anyone who can reach the port),
+    unlike /health."""
+    import asyncio
+
+    from trellis_accel import report_once
+    return await asyncio.to_thread(lambda: report_once(_hardware_purposes()))
 
 
 @app.get("/api/status")
 async def system_status() -> Dict[str, Any]:
-    """Return connection status for Egeria MCP servers."""
+    """The MCP servers EA is configured to use: {state, message, mcp_servers}.
+
+    state: ok | none (no server enabled) | not_configured (no config file) | read_failed. It reports
+    configuration only; it does not connect to any server or check the RAG system.
+    """
     mcp_status: List[Dict[str, Any]] = []
+    cfg_path = Path(__file__).parent.parent / "configdata" / "mcp_servers.json"
+    if not cfg_path.exists():
+        return {"state": "not_configured", "mcp_servers": [],
+                "message": f"No MCP server configuration found at {cfg_path.name}."}
     try:
-        cfg_path = Path(__file__).parent.parent / "configdata" / "mcp_servers.json"
-        if cfg_path.exists():
-            cfg = json.loads(cfg_path.read_text())
-            for name, srv in cfg.get("mcpServers", {}).items():
-                if name.startswith("_"):
-                    continue
-                mcp_status.append({
-                    "name": name,
-                    "enabled": srv.get("enabled", True),
-                    "transport": srv.get("transport", "stdio"),
-                    "description": srv.get("description", ""),
-                })
+        cfg = json.loads(cfg_path.read_text())
+        for name, srv in cfg.get("mcpServers", {}).items():
+            if name.startswith("_"):
+                continue
+            mcp_status.append({
+                "name": name,
+                "enabled": srv.get("enabled", True),
+                "transport": srv.get("transport", "stdio"),
+                "description": srv.get("description", ""),
+            })
     except Exception as exc:
         logger.warning(f"Status check failed: {exc}")
-
-    return {"mcp_servers": mcp_status, "rag": "ok"}
+        return {"state": "read_failed", "mcp_servers": [],
+                "message": f"Could not read the MCP server configuration: {exc}"}
+    enabled = [s["name"] for s in mcp_status if s["enabled"]]
+    if not enabled:
+        return {"state": "none", "mcp_servers": mcp_status, "message": "No MCP server is enabled."}
+    return {"state": "ok", "mcp_servers": mcp_status,
+            "message": f"{len(enabled)} MCP server(s) configured: {', '.join(enabled)}. "
+                       "Configured, not checked for a connection."}
 
 
 @app.get("/api/actions")
@@ -263,25 +390,31 @@ async def list_actions() -> Dict[str, Any]:
 
 @app.get("/api/egeria/zones")
 async def get_governance_zones(request: Request) -> Dict[str, Any]:
-    """Return all governance zone names from the live Egeria instance.
+    """Every governance zone name the signed-in user can see in Egeria.
 
-    Requires login — this performs a live Egeria read and must be
-    attributable to the signed-in user, not a shared service account.
+    {state, zones, count, message}: state is ok | capped | none | not_configured | not_signed_in |
+    refused | unreachable | read_failed (advisor.egeria_context). count 0 with state "none" means
+    Egeria answered and holds none; any other state with count 0 means Egeria was not read.
+
+    Requires login: this is a live Egeria read and must be attributable to the signed-in user, not
+    a shared service account.
     """
     from advisor.auth import require_egeria_user, get_egeria_credentials
     require_egeria_user(request)
     egeria_credentials = get_egeria_credentials(request)
-    try:
-        from advisor.egeria_context import EgeriaContext
-        zones = EgeriaContext(egeria_credentials=egeria_credentials).list_governance_zones()
-        return {"zones": zones, "count": len(zones)}
-    except Exception as exc:
-        return {"zones": [], "count": 0, "error": str(exc)}
+    from advisor.egeria_context import EgeriaContext
+    answer = EgeriaContext(egeria_credentials=egeria_credentials).governance_zones_answer()
+    return {**answer, "count": len(answer["zones"])}
 
 
 @app.get("/api/perspectives")
-async def list_perspectives() -> Dict[str, Any]:
-    """Return available perspectives (live from Egeria or CSV fallback)."""
-    from advisor.perspective_manager import get_all
-    return {"perspectives": get_all()}
+async def list_perspectives(request: Request) -> Dict[str, Any]:
+    """Available perspectives, and where they came from.
 
+    {perspectives, source, message}: source "egeria" ("from Egeria") or "built_in" ("built-in list:
+    Egeria not reached: <reason>"). A due Egeria refresh runs as the signed-in caller.
+    """
+    from advisor.auth import get_egeria_credentials
+    from advisor.perspective_manager import get_all, status
+    perspectives = get_all(get_egeria_credentials(request))
+    return {"perspectives": perspectives, **status()}

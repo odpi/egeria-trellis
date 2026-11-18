@@ -22,7 +22,13 @@ handler's bare-name call resolves against its *own* module's globals, so a
 test patching the old module path would silently mock nothing here).
 
 Endpoints:
-  GET    /api/reports                                     → report spec catalog
+  GET    /api/reports                                     → report spec catalog (+ restricted, used_by)
+  GET    /api/reports/restricted                          → this user's zone-restricted specs (B6)
+  POST   /api/reports/restricted/{label}/run              → run one restricted spec as the user (B6)
+  POST   /api/reports/specs/{label}/publish               → publish to Egeria: preview|validate|process (B6)
+  POST   /api/reports/specs/{label}/withdraw              → withdraw from the consumer folder (B6)
+  POST   /api/admin/specs/sync                            → start a sync from Egeria (admin, async; B6/G2)
+  GET    /api/admin/specs/sync                            → the sync's status (admin)
   GET    /api/reports/docs                                 → inbox/outbox/trash lists
   GET    /api/reports/docs/{doc_id}                         → doc content
   GET    /api/reports/docs/{doc_id}/export                  → download doc markdown
@@ -60,18 +66,151 @@ router = APIRouter()
 
 
 @router.get("/api/reports")
-async def list_reports(include_dre: bool = False) -> Dict[str, Any]:
-    """Return the report spec catalog grouped by topic."""
-    catalog = _load_report_catalog(include_dre=include_dre)
+async def list_reports(request: Request, include_dre: bool = False, refresh: bool = False) -> Dict[str, Any]:
+    """Return the report spec catalog grouped by topic.
+
+    Beside the shared catalog: `catalog_status` (what was left out and why, B6 hand-off from A-P),
+    `restricted` (the zone-restricted specs this signed-in user can see, read as them and merged per
+    user; never in the shared cache) and `used_by` (consumer folders per label, from the last sync's
+    consumer index). Each says why when it is empty."""
+    from starlette.concurrency import run_in_threadpool
+    from advisor.web.shared import _load_report_catalog_with_status
+    catalog, catalog_status = _load_report_catalog_with_status(include_dre=include_dre)
     total = sum(len(v) for v in catalog.values())
     formats = _catalog_formats(catalog)
+    # Where each spec comes from (builtin | egeria | local | user) and what it shadows, plus the
+    # Egeria-held status, which always says why when nothing is held (never a bare empty list).
+    from advisor.egeria_spec_sync import egeria_held_status, spec_sources
+    from advisor import egeria_spec_restricted as rs
+    all_sources = spec_sources()
+    listed = {n for names in catalog.values() for n in names}
+    sources = {n: all_sources.get(n, {"source": "unknown", "shadows": None, "shadowed_by": None})
+               for n in listed}
+    shadowed = [{"name": n, **v} for n, v in sorted(all_sources.items()) if v.get("shadowed_by")]
+    restricted = await run_in_threadpool(_restricted_for, request, refresh)
+    used_by = rs.used_by_index()
     return {
         "catalog": catalog,
         "formats": formats,
         "format_labels": dict(_BROWSER_FORMATS),
         "total": total,
         "include_dre": include_dre,
+        "sources": sources,
+        "shadowed": shadowed,
+        "egeria_held": egeria_held_status(),
+        "catalog_status": catalog_status,
+        "restricted": rs.with_used_by(restricted, used_by),
+        "used_by": used_by,
+        "publish": _publish_status(),
     }
+
+
+def _publish_status() -> Dict[str, Any]:
+    """What the publish dialog may offer: restricted publish stays off until the live zone proof (D5)."""
+    from advisor.egeria_spec_publish import restricted_publish_status
+    return {"restricted": restricted_publish_status()}
+
+
+def _user_creds(request: Optional[Request]) -> Optional[Dict[str, str]]:
+    from advisor.auth import get_egeria_credentials
+    return get_egeria_credentials(request) if request is not None else None
+
+
+def _restricted_for(request: Request, refresh: bool) -> Dict[str, Any]:
+    """This user's restricted specs, or a state that says why there are none. A refused token is
+    "sign in again" in the catalog, not a failed page."""
+    from advisor import egeria_dashboards as ed
+    from advisor import egeria_spec_restricted as rs
+    try:
+        return rs.restricted_specs(_user_creds(request), refresh=refresh)
+    except ed.TokenRefused as exc:
+        return {"state": "not_signed_in", "specs": [], "message": str(exc), "viewer": None, "cached": False,
+                "folders": []}
+
+
+# ── B6: restricted specs, publish, withdraw, the async sync ────────────────────
+
+def _signed_in(request: Request) -> Dict[str, str]:
+    from advisor.auth import refuse_service_account, require_egeria_user
+    require_egeria_user(request)
+    creds = _user_creds(request) or {}
+    refuse_service_account(creds.get("user_id"))
+    return creds
+
+
+@router.get("/api/reports/restricted")
+async def list_restricted_specs(request: Request, refresh: bool = False) -> Dict[str, Any]:
+    """The zone-restricted report specs this user can see (read as them, cached per credential)."""
+    from starlette.concurrency import run_in_threadpool
+    return await run_in_threadpool(_restricted_for, request, refresh)
+
+
+@router.post("/api/reports/restricted/{label}/run")
+async def run_restricted(request: Request, label: str, body: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    """Run one restricted spec as this user, fetched from Egeria for the call."""
+    from starlette.concurrency import run_in_threadpool
+    from advisor import egeria_dashboards as ed
+    from advisor import egeria_spec_restricted as rs
+    body = body or {}
+    try:
+        return await run_in_threadpool(rs.run_restricted_spec, _signed_in(request), label,
+                                       output_format=body.get("output_format") or "TABLE",
+                                       params=body.get("params") or None)
+    except ed.TokenRefused as exc:
+        raise HTTPException(status_code=401, detail=str(exc), headers={"WWW-Authenticate": "Bearer"})
+
+
+async def _publish_call(fn, request: Request, label: str, body: Dict[str, Any], **kw) -> Dict[str, Any]:
+    from starlette.concurrency import run_in_threadpool
+    from advisor import egeria_dashboards as ed
+    from advisor.egeria_spec_publish import PublishRefused
+    creds = _signed_in(request)
+    try:
+        return await run_in_threadpool(lambda: fn(creds, label, step=body.get("step") or "preview",
+                                                  confirmed=bool(body.get("confirmed")),
+                                                  digest=body.get("digest"), **kw))
+    except PublishRefused as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except ed.TokenRefused as exc:
+        raise HTTPException(status_code=401, detail=str(exc), headers={"WWW-Authenticate": "Bearer"})
+
+
+@router.post("/api/reports/specs/{label}/publish")
+async def publish_spec(request: Request, label: str, body: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    """Publish a local spec to Egeria as this user: step preview | validate | process (process needs
+    `confirmed` and the previewed `digest`). Body: {step, visibility: public|restricted, zones,
+    also_portal, confirmed, digest}."""
+    from advisor.egeria_spec_publish import publish
+    body = body or {}
+    return await _publish_call(publish, request, label, body, visibility=body.get("visibility") or "public",
+                               zones=body.get("zones") or [], also_portal=bool(body.get("also_portal")))
+
+
+@router.post("/api/reports/specs/{label}/withdraw")
+async def withdraw_spec(request: Request, label: str, body: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    """Withdraw a spec from EA's consumer folder (and the Portal's, when named), as this user.
+    Body: {step, folders, confirmed, digest}."""
+    from advisor.egeria_spec_publish import withdraw
+    body = body or {}
+    return await _publish_call(withdraw, request, label, body, folders=body.get("folders") or None)
+
+
+@router.post("/api/admin/specs/sync")
+async def start_spec_sync() -> Dict[str, Any]:
+    """Start a report-spec sync from Egeria in the background (admin; gated by the /api/admin/ path).
+    One at a time: a second start answers 409 "A report spec sync is already running." """
+    from advisor.egeria_spec_sync import SyncBusy, start_sync
+    try:
+        return start_sync()
+    except SyncBusy as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+
+
+@router.get("/api/admin/specs/sync")
+async def spec_sync_status() -> Dict[str, Any]:
+    """The sync's state (running | ok | failed | not_synced) and what is held, with its words."""
+    from advisor.egeria_spec_sync import sync_status
+    return sync_status()
 
 
 # ── Report Spec Document endpoints ──────────────────────────────────────────────
@@ -87,20 +226,61 @@ async def list_report_docs(request: Request) -> Dict[str, Any]:
     user_id = None if not user or user.get("anonymous") else user.get("user_id") or user.get("sub")
     role = (user or {}).get("role")
     dm = get_report_spec_doc_manager()
-    inbox = dm.list_inbox(requester_user_id=user_id, requester_role=role)
-    outbox = dm.list_outbox(requester_user_id=user_id, requester_role=role)
-    trash = dm.list_trash(requester_user_id=user_id, requester_role=role)
+    lists: Dict[str, List[Dict[str, Any]]] = {}
+    messages: Dict[str, Optional[str]] = {}
+    for folder, fn in (("inbox", dm.list_inbox), ("outbox", dm.list_outbox), ("trash", dm.list_trash)):
+        try:
+            lists[folder] = fn(requester_user_id=user_id, requester_role=role)
+            messages[folder] = None
+        except Exception as exc:  # noqa: BLE001 -- stated per folder, never an empty list on its own
+            logger.warning(f"report docs: the {folder} could not be read: {exc}")
+            lists[folder] = []
+            messages[folder] = f"Your report spec {folder} could not be read: {type(exc).__name__}: {exc}"
+    inbox = lists["inbox"]
 
     # Build doc_id -> draft_id map for active report drafts
     doc_to_draft: Dict[str, str] = {}
-    for d in list_visible_report_drafts(user_id=user_id, role=role):
-        if d.get("doc_id") and d.get("phase") in ("generate", "refine"):
-            doc_to_draft[d["doc_id"]] = d["draft_id"]
+    try:
+        for d in list_visible_report_drafts(user_id=user_id, role=role):
+            if d.get("doc_id") and d.get("phase") in ("generate", "refine"):
+                doc_to_draft[d["doc_id"]] = d["draft_id"]
+    except Exception as exc:  # noqa: BLE001 -- stated
+        logger.warning(f"report docs: drafts could not be listed: {exc}")
+        messages["drafts"] = f"Open drafts could not be listed, so no document shows its draft: {exc}"
 
     for entry in inbox:
         entry["draft_id"] = doc_to_draft.get(entry.get("doc_id"))
+        _mark_runnable(entry)
 
-    return {"inbox": inbox, "outbox": outbox, "trash": trash}
+    scope = ("shared documents only (sign in to see your own)" if user_id is None
+             else "shared documents and your own" + (" and every user's (curator)" if role == "curator" else ""))
+    for folder, what in (("inbox", "report spec documents"), ("outbox", "executed reports"),
+                         ("trash", "deleted documents")):
+        if messages.get(folder) is None and not lists[folder]:
+            messages[folder] = f"No {what} here yet; listing {scope}."
+    return {"inbox": inbox, "outbox": lists["outbox"], "trash": lists["trash"], "messages": messages,
+            "scope": scope}
+
+
+def _mark_runnable(entry: Dict[str, Any]) -> None:
+    """Say when an inbox document is listed but not registered (so it cannot run), and why: the doc
+    store logs a failed parse or a taken name and lists the document anyway."""
+    from pyegeria.view.base_report_formats import get_report_registry
+    doc_id = entry.get("doc_id")
+    if not doc_id or get_report_registry().get(doc_id) is not None:
+        entry["registered"] = True
+        return
+    entry["registered"] = False
+    why = "it is not registered"
+    try:
+        from pathlib import Path
+        from advisor.report_spec_parser import parse_report_spec_markdown, register_report_spec
+        register_report_spec(doc_id, parse_report_spec_markdown(Path(entry["path"]).read_text(encoding="utf-8")))
+        entry["registered"] = True
+        return
+    except Exception as exc:  # noqa: BLE001 -- the words go on the entry
+        why = f"{type(exc).__name__}: {exc}"
+    entry["not_runnable_reason"] = f"Listed, but it cannot run: {why}"
 
 
 @router.get("/api/reports/docs/{doc_id}")
@@ -321,10 +501,20 @@ async def get_report_draft(request: Request, draft_id: str) -> Dict[str, Any]:
 _SCHEMA_CACHE: Dict[str, Dict[str, Any]] = {}
 
 
-async def discover_draft_schema_internal(
+def _schema_answer(state: str, message: Optional[str], attributes: Optional[List[Dict[str, str]]] = None
+                   ) -> Dict[str, Any]:
+    return {"state": state, "attributes": attributes or [], "message": message}
+
+
+async def discover_draft_schema_with_status(
     draft_id: str, egeria_credentials: Optional[Dict[str, str]] = None
-) -> List[Dict[str, str]]:
-    """Internal helper to dynamically retrieve the schema for a draft report specification.
+) -> Dict[str, Any]:
+    """Discover a draft's schema, and say why when there is none (A-P P2 hand-off to B6).
+
+    {"state", "attributes", "message"}; state is ok | empty | draft_not_found | spec_invalid |
+    connection_unreadable | connection_incomplete | discovery_failed. Only "ok" has attributes;
+    every other state has a sentence. A caller without credentials of their own is refused with
+    HTTP 401 "Sign in to run reports." (S3b), never a guess.
 
     Ownership-checked via the ambient request context (advisor.request_context):
     resolves draft_id across the shared root and every namespace exactly like
@@ -345,7 +535,7 @@ async def discover_draft_schema_internal(
     draft = resolved[1] if resolved else None
     if not draft:
         logger.warning(f"Draft {draft_id} not found for schema discovery")
-        return []
+        return _schema_answer("draft_not_found", f"Report draft '{draft_id}' was not found, or is not yours to see.")
 
     # Check cache first
     current_config = copy.deepcopy({
@@ -358,32 +548,40 @@ async def discover_draft_schema_internal(
         time_elapsed = time.time() - cached["timestamp"]
         if time_elapsed < 3600 and cached["draft_config"] == current_config:
             logger.info(f"Returning cached schema for draft {draft_id}")
-            return cached["schema_data"]
+            return _schema_answer("ok", None, cached["schema_data"])
 
     try:
         elicitor = get_report_spec_elicitor()
         md_content = elicitor._generate_report_spec_md(draft)
         spec = parse_report_spec_markdown(md_content)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- stated
         logger.warning(f"Failed to parse draft spec in schema discovery: {exc}")
-        return []
+        return _schema_answer("spec_invalid", f"The draft could not be turned into a report spec: {exc}")
 
     pipeline = get_report_pipeline()
     try:
         conn = pipeline._read_pyegeria_connection(egeria_credentials=egeria_credentials)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 -- stated
         logger.error(f"Failed to read Egeria connection info: {exc}")
-        return []
+        return _schema_answer("connection_unreadable", f"EA's Egeria connection settings could not be read: {exc}")
+
+    from advisor.egeria_signin import SIGN_IN_TO_RUN_REPORTS, lacks_credential
+    if conn and lacks_credential(conn.get("token"), conn.get("user_pwd")):
+        # Never reach apply_token with neither: it would mint on pyegeria's
+        # configured password under this user id.
+        logger.info(f"Schema discovery refused for {conn.get('user_id')!r}: {SIGN_IN_TO_RUN_REPORTS}")
+        raise HTTPException(status_code=401, detail=SIGN_IN_TO_RUN_REPORTS)
 
     from advisor.report_pipeline import _conn_is_complete
     if not _conn_is_complete(conn):
         logger.warning("Egeria connection is not fully configured; skipping schema discovery")
-        return []
+        return _schema_answer("connection_incomplete",
+                              "Egeria connection is not configured (config/mcp_servers.json -> pyegeria.env): "
+                              "the view server and platform URL are needed to discover a schema.")
 
     temp_spec_id = f"temp_schema_{draft_id}"
-    register_report_spec(temp_spec_id, spec)
-
     try:
+        register_report_spec(temp_spec_id, spec)
         client = EgeriaTech(
             view_server=conn["view_server"],
             platform_url=conn["platform_url"],
@@ -400,16 +598,31 @@ async def discover_draft_schema_internal(
             graph_query_depth=5,
             exclude_system_properties=True
         )
-        # Store in cache
-        _SCHEMA_CACHE[draft_id] = {
-            "timestamp": time.time(),
-            "draft_config": current_config,
-            "schema_data": schema_data
-        }
-        return schema_data
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001 -- stated
         logger.warning(f"Live schema discovery failed on Egeria server: {e}")
-        return []
+        return _schema_answer("discovery_failed", f"Egeria could not be asked for the schema: {e}")
+    rows = schema_data if isinstance(schema_data, list) else []
+    if len(rows) == 1 and rows[0].get("attribute_path") == "Error":
+        return _schema_answer("discovery_failed", f"Egeria could not be asked for the schema: "
+                                                  f"{rows[0].get('data_type') or 'no reason given'}")
+    if not rows or (len(rows) == 1 and rows[0].get("attribute_path") == "Info"):
+        return _schema_answer("empty", "Egeria returned no sample elements to inspect, so no attributes can be "
+                                       "discovered until an element of this type exists (and is visible to you).")
+    # Store in cache
+    _SCHEMA_CACHE[draft_id] = {
+        "timestamp": time.time(),
+        "draft_config": current_config,
+        "schema_data": rows
+    }
+    return _schema_answer("ok", None, rows)
+
+
+async def discover_draft_schema_internal(
+    draft_id: str, egeria_credentials: Optional[Dict[str, str]] = None
+) -> List[Dict[str, str]]:
+    """The discovered attributes only (an empty list when there are none). Callers that show the
+    answer to someone use `discover_draft_schema_with_status`, which says why."""
+    return (await discover_draft_schema_with_status(draft_id, egeria_credentials))["attributes"]
 
 
 @router.get("/api/reports/drafts/{draft_id}/schema")
@@ -422,7 +635,11 @@ async def get_report_draft_schema(request: Request, draft_id: str) -> List[Dict[
     from advisor.auth import require_egeria_user, get_egeria_credentials
     require_egeria_user(request)
     egeria_credentials = get_egeria_credentials(request)
-    return await discover_draft_schema_internal(draft_id, egeria_credentials=egeria_credentials)
+    answer = await discover_draft_schema_with_status(draft_id, egeria_credentials=egeria_credentials)
+    if answer["state"] == "ok":
+        return answer["attributes"]
+    # The canvas's schema explorer already renders an "Error" row's data_type as "Discovery failed: <why>".
+    return [{"attribute_path": "Error", "data_type": answer["message"], "state": answer["state"]}]
 
 
 @router.delete("/api/reports/drafts/{draft_id}")
@@ -655,6 +872,17 @@ async def patch_report_draft_columns(request: Request, draft_id: str, body: Dict
         spec["answers"].update(body["answers"])
     if "action_function" in body:
         spec["action_function"] = body["action_function"]
+    if "saved_query" in body:
+        # Route B (B6/N6): a SavedQuery as the spec's source; null clears it
+        if body["saved_query"] is None:
+            spec.pop("saved_query", None)
+        else:
+            from advisor.spec_saved_query import check_saved_query
+            try:
+                spec["saved_query"] = check_saved_query(body["saved_query"])
+            except ValueError as exc:
+                raise HTTPException(status_code=400, detail=str(exc))
+            spec["action_function"] = None
     if "target_type" in body:
         spec["target_type"] = body["target_type"]
     if "heading" in body:

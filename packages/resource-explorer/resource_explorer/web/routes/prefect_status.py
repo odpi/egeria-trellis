@@ -20,19 +20,23 @@ import logging
 
 from fastapi import APIRouter, HTTPException
 
-from resource_explorer.surveyors.prefect_adapter import re_prefect_client
+from resource_explorer.surveyors.prefect_adapter import healthcheck_failure_words, re_prefect_client
 
 router = APIRouter()
 log = logging.getLogger(__name__)
 
 
 async def _reachable() -> tuple[bool, str]:
+    # api_healthcheck() RETURNS the connection failure rather than raising it (None
+    # on success); see prefect_adapter._check_prefect_reachable_async.
     try:
         async with re_prefect_client() as client:
-            await client.api_healthcheck()
-        return True, ""
+            failure = await client.api_healthcheck()
     except Exception as exc:  # pragma: no cover — exact exception shape depends on failure mode
         return False, str(exc)
+    if failure is not None:
+        return False, healthcheck_failure_words(failure)
+    return True, ""
 
 
 @router.get("/status")
@@ -47,6 +51,10 @@ def get_status() -> dict:
     return {
         "enabled": config.prefect.enabled,
         "route_local_steps": config.prefect.route_local_steps,
+        # TR-11 F-AB-3: the effective per-step dispatch policy (PREFECT_DISPATCH_STEPS, or the deprecated alias).
+        "dispatch_policy": _dispatch_policy_words(config.prefect),
+        # R1: where recent Prefect-routed steps ACTUALLY ran (worker | in-process | in-process (fallback: ...)).
+        "recent_placements": _recent_placements(),
         "reachable": ok,
         "error": error,
         "api_url": config.prefect.api_url,
@@ -117,3 +125,39 @@ def cancel_flow_run(flow_run_id: str) -> dict:
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"Could not cancel flow run: {exc}")
     return {"status": "cancelling", "id": flow_run_id}
+
+
+def _dispatch_policy_words(prefect_cfg) -> str:
+    from resource_explorer.surveyors.step_dispatch_policy import DispatchPolicyError, resolve
+
+    try:
+        return resolve(prefect_cfg).describe()
+    except DispatchPolicyError as exc:
+        return f"invalid: {exc}"
+
+
+#: How many recent step_runs rows /status scans for a placement, and how many it shows.
+_PLACEMENT_SCAN, _PLACEMENT_SHOW = 500, 20
+
+
+def _recent_placements(registry=None) -> list[dict] | dict:
+    """The most recent step_runs rows that record a placement (TR-11 F-AB-3, R1), newest first. A registry that
+    cannot be read gives {"error": ...}, never an empty list that would read as "nothing ran"."""
+    try:
+        if registry is None:
+            from resource_explorer.registry import ProjectRegistry
+
+            registry = ProjectRegistry()
+        rows = registry.query_step_runs(limit=_PLACEMENT_SCAN)
+    except Exception as exc:  # noqa: BLE001 - reported in the payload
+        return {"error": f"{type(exc).__name__}: {exc}"}
+    out = []
+    for row in rows:
+        where = (row.get("metrics") or {}).get("placement")
+        if where:
+            out.append({"step_key": row.get("step_key"), "slug": row.get("slug"),
+                        "surveyed_at": row.get("surveyed_at"), "executor": row.get("executor"),
+                        "flow_run_id": row.get("flow_run_id") or "", "placement": where})
+            if len(out) >= _PLACEMENT_SHOW:
+                break
+    return out

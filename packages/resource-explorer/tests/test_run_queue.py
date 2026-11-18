@@ -187,6 +187,46 @@ class TestCancel:
         assert reg.cancel_queued_run(run_id) is True
         assert reg.get_run(run_id)["state"] == "cancelled"
 
+    def test_a_cancel_closes_the_runs_running_activity_entry(self, reg):
+        """TR-2: a cancelled row never reaches a worker, so nothing else would ever close its entry. On hedwig one
+        cancelled flood left 381 entries 'running' for ever. The cancel closes it, with who and when."""
+        from resource_explorer.activity_logger import log_scout
+
+        act = log_scout(reg, "repo", "a", "A", "", "running", "Survey queued")
+        run_id = reg.enqueue_run("scouting_scan", {"slug": "a"}, result_ref=act)
+        assert reg.cancel_queued_run(run_id, by="peterprofile") is True
+        entry = reg.get_activity(act)
+        assert entry["status"] == "cancelled"
+        assert "peterprofile" in entry["summary"] and "nothing ran" in entry["summary"]
+        assert reg.get_run(run_id)["state"] == "cancelled"
+
+    def test_a_cancel_never_overwrites_an_entry_already_closed(self, reg):
+        from resource_explorer.activity_logger import log_scout
+
+        act = log_scout(reg, "repo", "a", "A", "", "ok", "done elsewhere")
+        run_id = reg.enqueue_run("scouting_scan", {"slug": "a"}, result_ref=act)
+        assert reg.cancel_queued_run(run_id) is True
+        assert reg.get_activity(act)["status"] == "ok"
+        assert reg.get_activity(act)["summary"] == "done elsewhere"
+
+    def test_a_refused_cancel_leaves_the_entry_running(self, reg):
+        """A claimed row is live work; its entry stays 'running' for the worker to close."""
+        from resource_explorer.activity_logger import log_scout
+
+        act = log_scout(reg, "repo", "a", "A", "", "running", "Survey queued")
+        run_id = reg.enqueue_run("scouting_scan", {"slug": "a"}, result_ref=act)
+        reg.claim_next_run("a:1")
+        assert reg.cancel_queued_run(run_id) is False
+        assert reg.get_activity(act)["status"] == "running"
+
+    def test_a_caller_may_close_with_its_own_words(self, reg):
+        from resource_explorer.activity_logger import log_scout
+
+        act = log_scout(reg, "repo", "a", "A", "", "running", "First index queued")
+        run_id = reg.enqueue_run("scouting_scan", {"slug": "a"}, result_ref=act)
+        assert reg.cancel_queued_run(run_id, activity_status="ok", activity_summary="withdrawn") is True
+        assert (reg.get_activity(act)["status"], reg.get_activity(act)["summary"]) == ("ok", "withdrawn")
+
     def test_a_claimed_row_is_refused_rather_than_mislabelled(self, reg):
         """Python threads cannot be interrupted. Writing `cancelled` over a row
         whose worker is still running it would be a false claim about live

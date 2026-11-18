@@ -11,10 +11,11 @@
 
 RE_WEB_URL := http://localhost:8810
 EA_WEB_URL := http://localhost:8880
+STUDIO_WEB_URL := http://localhost:8840
 
 .PHONY: help sync re re-web re-worker ea ea-web dev ps test test-re test-ea lint fmt \
         prefect-up prefect-down re-resync re-resync-apply re-sweep \
-        up up-re up-ea up-container check
+        studio-web up up-re up-ea up-studio up-container check test-scripts
 
 help: ## List available targets
 	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z_-]+:.*?## /{printf "  \033[36m%-10s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -26,10 +27,10 @@ re: ## Run a resource-explorer CLI command: make re CMD="survey ..."
 	uv run --package resource-explorer resource-explorer $(CMD)
 
 re-web: ## Start Resource Explorer's web UI (http://localhost:8810)
-	uv run --package resource-explorer resource-explorer web
+	env -u EGERIA_USER -u EGERIA_USER_PASSWORD uv run --package resource-explorer resource-explorer web
 
 re-worker: ## Start Resource Explorer's worker role (background loops only, no HTTP)
-	uv run --package resource-explorer resource-explorer worker
+	env -u EGERIA_USER -u EGERIA_USER_PASSWORD uv run --package resource-explorer resource-explorer worker
 
 ea: ## Run an egeria-advisor CLI command: make ea CMD="..."
 	uv run --package egeria-advisor egeria-advisor $(CMD)
@@ -37,11 +38,14 @@ ea: ## Run an egeria-advisor CLI command: make ea CMD="..."
 ea-web: ## Start Egeria Advisor's web UI (http://localhost:8880)
 	uv run --package egeria-advisor egeria-advisor-web
 
+studio-web: ## Start Trellis Studio's web UI (http://localhost:8840); settings from packages/studio/.env
+	packages/studio/scripts/start-studio.sh 8840
+
 dev: ## Start both web UIs concurrently; Ctrl-C stops both
 	@echo "Resource Explorer -> $(RE_WEB_URL)"
 	@echo "Egeria Advisor    -> $(EA_WEB_URL)"
 	@trap 'kill 0' INT TERM; \
-	( uv run --package resource-explorer resource-explorer web 2>&1 | sed -u 's/^/[RE] /' ) & \
+	( env -u EGERIA_USER -u EGERIA_USER_PASSWORD uv run --package resource-explorer resource-explorer web 2>&1 | sed -u 's/^/[RE] /' ) & \
 	( uv run --package egeria-advisor egeria-advisor-web 2>&1 | sed -u 's/^/[EA] /' ) & \
 	wait
 
@@ -54,7 +58,7 @@ dev: ## Start both web UIs concurrently; Ctrl-C stops both
 # later. `dev`/`re-web`/`ea-web` above remain the direct route when the
 # environment is already known-good.
 
-up: ## Preflight, ensure secrets, then start both apps natively
+up: ## Preflight, ensure secrets, then start RE, EA and Studio natively; reports any that fails to start
 	./trellis-up
 
 up-re: ## Same, Resource Explorer only
@@ -62,6 +66,9 @@ up-re: ## Same, Resource Explorer only
 
 up-ea: ## Same, Egeria Advisor only
 	./trellis-up --ea
+
+up-studio: ## Same, Trellis Studio only
+	./trellis-up --studio
 
 up-container: ## Start both via the trellis compose overlay in egeria-workspaces-fs (needs `make images`)
 	./trellis-up --container
@@ -128,6 +135,9 @@ ps: ## List trellis-owned processes and containers: role, pid, age, port
 
 test: test-re test-ea ## Run both test suites
 
+test-scripts: ## Test the repo-level scripts (trellis-up's start check)
+	uv run --no-sync python -m pytest -q scripts/tests
+
 test-re: ## Run resource-explorer's test suite
 	uv run --package resource-explorer pytest packages/resource-explorer/tests
 
@@ -179,7 +189,7 @@ prefect-down: ## Stop what prefect-up started
 # servers hold (8810 RE, 8880 EA per re-web/ea-web above): 8811.
 
 image-re: ## Build the resource-explorer image for the host arch, tag :local
-	docker buildx build -f docker/Dockerfile.resource-explorer -t trellis/resource-explorer:local --load .
+	docker buildx build -f docker/Dockerfile.resource-explorer --build-arg TRELLIS_RE_SHA=$$(git rev-parse HEAD) -t trellis/resource-explorer:local -t trellis/resource-explorer:$$(git rev-parse --short=12 HEAD) --load .
 
 image-ea: ## Build the egeria-advisor image for the host arch, tag :local
 	docker buildx build -f docker/Dockerfile.egeria-advisor -t trellis/egeria-advisor:local --load .

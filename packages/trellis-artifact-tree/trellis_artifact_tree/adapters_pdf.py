@@ -21,6 +21,9 @@ descending, which is what `cut()` is for.
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
+from importlib import (
+    metadata,  # noqa: F401 -- kept: tests patch adapters_pdf.metadata.version (the shared module)
+)
 from typing import Iterable
 
 from trellis_artifact_tree.model import ArtifactTree, Node, Provenance, Rung
@@ -31,6 +34,63 @@ _HEADING_LABELS = {"title", "section_header"}
 # repeated on ninety pages is noise a packer would pay for ninety times.
 _CONTENT_LABELS = {"text", "list_item", "table", "code", "formula", "caption"}
 _DROPPED_LABELS = {"page_header", "page_footer", "picture"}
+
+
+def disable_torch_compile() -> None:
+    """Turn off Docling's torch.compile of its models, before any pipeline options are built.
+
+    Docling (2.118) compiles its layout model by default (`settings.inference.compile_torch_models`). On Apple
+    MPS, which has no float64, every batch then fails inside the layout stage ("KeyError: torch.float64"), and
+    Docling returns an EMPTY document without raising. Found on laz by the first timed rebuild (2026-11-10): 36
+    chunks of PDFs became none. Compilation is only a speed-up, so it is off everywhere; the engines read this
+    setting when their options are constructed, so it must be set before `PdfPipelineOptions()`.
+    """
+    try:
+        from docling.datamodel.settings import settings
+    except ImportError:  # pragma: no cover - the [pdf] extra is not installed
+        return
+    settings.inference.compile_torch_models = False
+
+
+# The device choice is trellis-accel's, shared with RE's and EA's embeddings (docs/hardware-acceleration-proposal.md).
+# These names stay here for callers that import them from this module.
+from trellis_accel import (  # noqa: F401 -- re-exported
+    ALLOW_MPS_ENV,
+    MPS_SAFE_TRANSFORMERS,
+)
+
+
+def mps_is_safe() -> bool:
+    """Whether Docling may run on Apple's GPU here: `TRELLIS_DOCLING_ALLOW_MPS` when set (1/true/yes allows, anything
+    else forbids), else transformers 5.22.2 or later (whose RT-DETR models compute in float32 on MPS). The rule is
+    trellis_accel.mps_problem's; this is its yes/no."""
+    from trellis_accel import mps_problem
+
+    return mps_problem("docling") is None
+
+
+def keep_off_mps(options) -> None:
+    """Point Docling at the device trellis-accel chooses for it, where that matters: the CPU instead of Apple's GPU
+    when the GPU is not safe for Docling, and the CPU whenever `TRELLIS_DEVICE=cpu`. A GPU it chooses (CUDA/ROCm, or
+    a safe Apple GPU) is what Docling's own AUTO picks too, so AUTO is left alone; a device set explicitly on the
+    options is left alone unless it is an unsafe Apple GPU.
+
+    History: Docling's compiled layout model, then transformers' float64 in RT-DETRv2, failed on Apple's GPU (gate
+    b354, laz, 2026-11-11); transformers 5.22.2 fixed the latter. A `TRELLIS_DEVICE` this PyTorch cannot use raises
+    trellis_accel.DeviceUnavailable with a sentence.
+    """
+    try:
+        from docling.datamodel.accelerator_options import AcceleratorDevice
+    except ImportError:  # pragma: no cover - the [pdf] extra is not installed
+        return
+    from trellis_accel import pick_device
+
+    device = options.accelerator_options.device
+    choice = pick_device("auto", purpose="docling")
+    auto_or_mps = device in (AcceleratorDevice.AUTO, AcceleratorDevice.AUTO.value,
+                             AcceleratorDevice.MPS, AcceleratorDevice.MPS.value)
+    if choice.device == "cpu" and auto_or_mps:
+        options.accelerator_options.device = AcceleratorDevice.CPU
 
 
 @dataclass(frozen=True)
@@ -238,6 +298,7 @@ class PdfAdapter:
         return getattr(po, options_name)()
 
     def _convert(self, path: str) -> list[DocItem]:
+        disable_torch_compile()
         try:
             from docling.datamodel.base_models import InputFormat
             from docling.datamodel.pipeline_options import PdfPipelineOptions
@@ -249,6 +310,7 @@ class PdfAdapter:
             ) from exc
 
         options = PdfPipelineOptions()
+        keep_off_mps(options)
         options.do_ocr = self.ocr
         # Left on regardless of OCR: table structure recognition is a separate
         # Docling stage and works without it. Tying them together would mean

@@ -1,0 +1,50 @@
+{
+ "H01": {
+  "score": "0",
+  "why": "PROVISIONAL, offline, spec-only (no rows seen): error: ungrounded type"
+ },
+ "H02": {
+  "score": "1",
+  "why": "PROVISIONAL, offline, spec-only (no rows seen): Project, no manager column, condition not applied"
+ },
+ "H03": {
+  "score": "0",
+  "why": "PROVISIONAL, offline, spec-only (no rows seen): error"
+ },
+ "H04": {
+  "score": "0",
+  "why": "PROVISIONAL, offline, spec-only (no rows seen): error"
+ },
+ "H05": {
+  "score": "1",
+  "why": "PROVISIONAL, offline, spec-only (no rows seen): GovernanceRule (scoped) + status, DRAFT not applied; controls not covered"
+ },
+ "H06": {
+  "score": "0",
+  "why": "PROVISIONAL, offline, spec-only (no rows seen): error"
+ },
+ "H07": {
+  "score": "0",
+  "why": "PROVISIONAL, offline, spec-only (no rows seen): error"
+ },
+ "H08": {
+  "score": "0",
+  "why": "PROVISIONAL, offline, spec-only (no rows seen): error"
+ },
+ "H09": {
+  "score": "0",
+  "why": "PROVISIONAL, offline, spec-only (no rows seen): Project: wrong type"
+ },
+ "H10": {
+  "score": "2",
+  "why": "PROVISIONAL, offline, spec-only (no rows seen): Location (generic finder scoped to Location), names"
+ },
+ "H11": {
+  "score": "0",
+  "why": "PROVISIONAL, offline, spec-only (no rows seen): error, no question"
+ },
+ "H12": {
+  "score": "0",
+  "why": "PROVISIONAL, offline, spec-only (no rows seen): error, no question"
+ }
+}

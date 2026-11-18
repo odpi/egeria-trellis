@@ -5,12 +5,17 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <!-- Before first paint: the remembered look, so the page never flashes the wrong
      one. No storage (blocked, private window) means Dark, which is also what
-     themes.css falls back to with no attribute at all. look.js writes the key. -->
+     themes.css falls back to with no attribute at all. look.js writes the key,
+     `trellis.look`, which EA's pages share; RE's old key is carried over once. -->
 <script>
 (function () {
   var look = 'dark';
   try {
-    var v = localStorage.getItem('re-next.look');
+    var v = localStorage.getItem('trellis.look');
+    if (v === null) {
+      v = localStorage.getItem('re-next.look');
+      if (v === 'light' || v === 'paper' || v === 'dark') localStorage.setItem('trellis.look', v);
+    }
     if (v === 'light' || v === 'paper' || v === 'dark') look = v;
   } catch (e) { /* storage unavailable: Dark */ }
   document.documentElement.setAttribute('data-look', look);
@@ -26,7 +31,7 @@
 <!-- The three looks (Dark default, Light, Paper): every colour, font and radius
      as a CSS variable. Loaded BEFORE the Tailwind sheet and the <style> below,
      which read these variables. RULING-THEMES-PORTAL-DARK-LIGHT.md. -->
-<link rel="stylesheet" href="/static/next/themes.css">
+<link rel="stylesheet" href="/static/trellis-ui/themes.css">
 
 <style>
   /* Base and the handful of things a utility class is the wrong tool for.

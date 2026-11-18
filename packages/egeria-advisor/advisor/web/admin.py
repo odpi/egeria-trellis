@@ -5,13 +5,17 @@ Endpoints:
   GET  /admin                           → admin.html
   GET  /api/admin/status                → collection + repo + system status
   POST /api/admin/collections/{n}/reindex  → start incremental or force re-index
+                                          (force=true also needs confirm=<n>: it drops the collection)
   POST /api/admin/repos/{repo}/pull     → start git pull
   GET  /api/admin/jobs                  → list recent jobs (last 20)
   GET  /api/admin/jobs/{job_id}         → single job status + output
-  POST /api/admin/maintenance/{action}  → refresh_perspectives | refresh_specs |
+  POST /api/admin/maintenance/{action}  → refresh_perspectives | sync_specs (alias refresh_specs) |
                                           clear_cache | invalidate_index |
                                           refresh_templates | check_draft_doc_ids |
                                           repair_draft_doc_ids
+
+Every route here is admin-only: `advisor.web.app` gates the whole `/api/admin/` prefix with
+`trellis_auth.AdminPathMiddleware` (Phase 0 S1, 2026-11-10), so a route added here later is gated by default.
 """
 from __future__ import annotations
 
@@ -278,6 +282,16 @@ async def admin_page() -> FileResponse:
     return FileResponse(_STATIC / "admin.html")
 
 
+def _dre_templates_status() -> Dict[str, Any]:
+    """Where Dr.Egeria templates are read from (B2): the installed pyegeria,
+    or a fallback copy that may not match the dispatcher."""
+    try:
+        from advisor.dre_templates import templates_status
+        return templates_status()
+    except Exception as exc:
+        return {"source": "error", "root": None, "matches_executor": False, "error": str(exc)}
+
+
 @router.get("/api/admin/status")
 async def admin_status() -> Dict[str, Any]:
     from advisor.collection_config import ALL_COLLECTIONS
@@ -332,15 +346,25 @@ async def admin_status() -> Dict[str, Any]:
         "collections": sorted(collections_out, key=lambda c: (not c["enabled"], c["name"])),
         "repos": list(repos_seen.values()),
         "system": _system_health(),
+        "dr_egeria_templates": _dre_templates_status(),
         "jobs_running": sum(1 for j in _jobs.values() if j.status == "running"),
     }
 
 
 @router.post("/api/admin/collections/{name}/reindex")
-async def reindex_collection(name: str, force: bool = False) -> Dict[str, Any]:
+async def reindex_collection(name: str, force: bool = False, confirm: str = "") -> Dict[str, Any]:
+    """Start a re-index job. A FORCE re-index runs `ingest_collections.py --force`, which drops the collection's
+    table (`DROP TABLE ... CASCADE`), so it also needs `confirm=<the collection's name>`; without it, or with any
+    other name, nothing starts (400). An incremental re-index needs only the admin gate."""
     from advisor.collection_config import ALL_COLLECTIONS
     if name not in ALL_COLLECTIONS:
         raise HTTPException(status_code=404, detail=f"Collection '{name}' not found")
+
+    if force and (confirm or "").strip() != name:
+        raise HTTPException(
+            status_code=400,
+            detail=f"A force re-index drops '{name}' and rebuilds it: confirm it by passing confirm={name}",
+        )
 
     if force:
         desc = f"Force re-index: {name}"
@@ -385,25 +409,35 @@ async def get_job(job_id: str) -> Dict[str, Any]:
 
 @router.post("/api/admin/maintenance/{action}")
 async def maintenance_action(action: str) -> Dict[str, Any]:
+    """Run one maintenance action. {"status": "ok", "message"} when it was done (or, for sync_specs,
+    started); otherwise a non-2xx with the reason in `detail`: 409 when a spec sync is already running,
+    500 when the action failed, 400 for an unknown action. A failure is never a 200 (A-F1)."""
     if action == "refresh_perspectives":
         from advisor.perspective_manager import invalidate
         invalidate()
         return {"status": "ok", "message": "Perspective cache invalidated — will reload on next request"}
 
-    if action == "refresh_specs":
-        from advisor.report_pipeline import get_report_pipeline
-        pipe = get_report_pipeline()
-        pipe._egeria_specs_tried = False
-        threading.Thread(target=pipe._try_refresh_egeria_specs, daemon=True).start()
-        return {"status": "ok", "message": "Report spec refresh started in background"}
+    if action in ("sync_specs", "refresh_specs"):
+        # "Sync report specs from Egeria": fill the EGERIA tier from EA's consumer folder
+        # (advisor/egeria_spec_sync.py). refresh_specs is the old name, kept for callers.
+        # Started in the background (G2); poll GET /api/admin/specs/sync for the outcome.
+        from advisor.egeria_spec_sync import SyncBusy, start_sync
+        try:
+            st = start_sync()
+        except SyncBusy as exc:
+            # The same answer as POST /api/admin/specs/sync: a conflict, not a 200 saying "error".
+            raise HTTPException(status_code=409, detail=str(exc))
+        return {"status": "ok", "message": st["message"] + " The outcome shows in the report catalog's "
+                                                    "'held in Egeria' line once it finishes.",
+                "sync": st, "status_url": "/api/admin/specs/sync"}
 
     if action == "clear_cache":
         try:
             from advisor.query_cache import get_query_cache
             get_query_cache().clear()
-            return {"status": "ok", "message": "Query cache cleared"}
-        except Exception as exc:
-            return {"status": "error", "message": str(exc)}
+        except Exception as exc:  # noqa: BLE001 -- reported to the admin with its reason
+            raise HTTPException(status_code=500, detail=f"Query cache not cleared: {type(exc).__name__}: {exc}")
+        return {"status": "ok", "message": "Query cache cleared"}
 
     if action == "invalidate_index":
         from advisor.report_pipeline import _question_index

@@ -7,7 +7,7 @@ import { makeDomEnvironment, ensureLoaderRegistered } from './dom-harness.mjs';
 
 ensureLoaderRegistered();
 const S = await import('/static/next/worklist-set-steps.js');
-const { watchTables } = await import('/static/next/colresize.js');
+const { watchTables } = await import('/static/trellis-ui/colresize.js');
 
 const text = (el) => el.textContent.replace(/\s+/g, ' ').trim();
 const tick = (ms = 20) => new Promise((r) => setTimeout(r, ms));

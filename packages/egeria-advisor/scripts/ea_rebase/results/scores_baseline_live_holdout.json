@@ -1,0 +1,74 @@
+{
+ "H01": {
+  "score": "0",
+  "spec_score": "0",
+  "outcome": "timeout",
+  "why": "LIVE: timeout (Egeria timed out at 90 s (laz loaded)); spec 0: same spec as offline: Referenceable via find_collections"
+ },
+ "H02": {
+  "score": "0",
+  "spec_score": "1",
+  "outcome": "timeout",
+  "why": "LIVE: timeout (Egeria timed out at 90 s (laz loaded)); spec 1: same spec as offline: Project, no manager column, condition not applied"
+ },
+ "H03": {
+  "score": "0",
+  "spec_score": "0",
+  "outcome": "rows",
+  "why": "LIVE: rows (100 rows with values); spec 0: same spec as offline: Referenceable via find_collections"
+ },
+ "H04": {
+  "score": "0",
+  "spec_score": "0",
+  "outcome": "no_run",
+  "why": "LIVE: no_run (did not complete); spec 0: same spec as offline: crashed at generate"
+ },
+ "H05": {
+  "score": "0",
+  "spec_score": "1",
+  "outcome": "timeout",
+  "why": "LIVE: timeout (Egeria timed out at 90 s (laz loaded)); spec 1: same spec as offline: unscoped governance definitions + status: too broad, DRAFT not applied"
+ },
+ "H06": {
+  "score": "0",
+  "spec_score": "0",
+  "outcome": "rows",
+  "why": "LIVE: rows (1 rows with values); spec 0: same spec as offline: MyProfile.get_my_profile: the caller's own profile, not Coco's people"
+ },
+ "H07": {
+  "score": "0",
+  "spec_score": "0",
+  "outcome": "rows",
+  "why": "LIVE: rows (100 rows with values); spec 0: same spec as offline: Referenceable via find_collections"
+ },
+ "H08": {
+  "score": "0",
+  "spec_score": "0",
+  "outcome": "error",
+  "why": "LIVE: error (AttributeError: Method 'find_attributes_without_data_class' not found in client class 'EgeriaTech'.); spec 0: same spec as offline: find method AssetManager.find_attributes_without_data_class doesn't exist"
+ },
+ "H09": {
+  "score": "0",
+  "spec_score": "0",
+  "outcome": "rows",
+  "why": "LIVE: rows (100 rows with values); spec 0: live spec differs from offline: Referenceable via find_collections: not teams"
+ },
+ "H10": {
+  "score": "0",
+  "spec_score": "0",
+  "outcome": "rows",
+  "why": "LIVE: rows (100 rows with values); spec 0: same spec as offline: Location via find_collections: locations aren't collections"
+ },
+ "H11": {
+  "score": "0",
+  "spec_score": "0",
+  "outcome": "no_run",
+  "why": "LIVE: no_run (did not complete); spec 0: live spec differs from offline: ambiguous: crashed, did not ask"
+ },
+ "H12": {
+  "score": "0",
+  "spec_score": "0",
+  "outcome": "no_run",
+  "why": "LIVE: no_run (did not complete); spec 0: same spec as offline: crashed; no question"
+ }
+}

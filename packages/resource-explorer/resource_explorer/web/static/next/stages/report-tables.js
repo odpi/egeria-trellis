@@ -6,7 +6,7 @@
  *  - when the columns outgrow the page the table scrolls inside its own box, never the page.
  *
  * Imports colresize.js only, so a plain page or a node test can load it. */
-import { cellStyle, handleHtml, innerStyle, headCellStyle, attachColumnResize, registerSpec } from '/static/next/colresize.js';
+import { cellStyle, handleHtml, innerStyle, headCellStyle, attachColumnResize, registerSpec } from '/static/trellis-ui/colresize.js';
 
 export const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => (
   { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));

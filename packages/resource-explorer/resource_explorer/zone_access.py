@@ -8,22 +8,35 @@ the zones that govern an element, does Egeria's access connector grant this user
 Mirrored from Egeria's `OpenMetadataAccessSecurityConnector` (egeria-v6/egeria,
 open-metadata-implementation/adapters/open-connectors/metadata-security-connectors/
 open-metadata-access-security-connector/src/main/java/org/odpi/openmetadata/metadatasecurity/accessconnector/
-OpenMetadataAccessSecurityConnector.java at egeria af400039c2, read 2026-10-10):
+OpenMetadataAccessSecurityConnector.java at egeria **b49c5ed0**, the build of the pinned quickstart image 242abf68,
+read 2026-11-10; the zone rule changed in e9fd817f4c, 2026-10-14, "Make governance zones without a security control
+private"):
 
-* `validateUserForElementDetailUpdate` (:1497-1522) checks `validateZoneAccess` with
-  `AccessOperation.UPDATE_PROPERTIES`: what a verdict needs. Publish needs more (see the constants below).
-* `validateZoneAccess` (:1090-1206) loops the element's `ZoneMembership`:
-    - a zone whose name equals the userId grants outright (:1122-1125);
-    - a zone with NO associated security list "is not a secured zone and is ignored" (:1130-1134);
-    - a secured zone grants when its list holds `allUsers` (:1141-1144), the account type's group
-      (:1149-1155), one of the account's security groups (:1157-1166) or roles (:1168-1177), or one of the
-      instance groups (:1179-1189);
-    - after the loop, any secured zone seen and none granted => denied (:1195-1198); otherwise allowed (:1205).
-* `getAssociatedSecurityListForZone` (:911-958) reads the control named after the zone and takes the list for
-  the operation's enum NAME, falling back to `DEFAULT`; no control, or neither key => `null` (not secured).
-* `getInstanceBasedGroups` (:1218-1248): the userId itself; `instanceOwner` when `isUserAnOwner`
-  (:1260-1286: TRUE when the element has no `Ownership`, or its `userIds` holds the user); and
-  `existingMaintainer` / `newMaintainer` from the element's maintainers.
+* `validateZoneAccess` (:1118-1200) reads the account first (:1131, `getActiveUserAccount` :267), then loops the
+  element's `ZoneMembership` (:1146-1192):
+    - no zones at all => every active user has access (:1196-1199);
+    - a zone whose name equals the userId grants outright (:1150-1153): the user's personal zone;
+    - "Every named zone is secured. A zone with no security access control, or whose control has neither a list
+      for this operation nor a DEFAULT list, grants access to no-one" (:1156-1161): each other zone counts as
+      secured whether or not it has a control;
+    - a zone with a list grants when `isAccountInSecurityList` (:1167, :1210-1255) finds `allUsers`, the account
+      type's group, one of the account's security groups or roles in it, or the list holds one of the instance
+      groups (:1172-1184);
+    - after the loop, any zone seen and none granted => denied (:1188-1191).
+* `getAssociatedSecurityListForZone` (:935-980) reads the control named after the zone and takes the list for
+  the operation's enum NAME, falling back to `DEFAULT`; no control, or neither key => `null` (grants no one).
+* `getInstanceBasedGroups` (:1379) : the userId itself; `instanceOwner` when `isUserAnOwner` (:1421: TRUE when
+  the element has no `Ownership`, or its `userIds` holds the user); and `existingMaintainer` / `newMaintainer`
+  from the element's maintainers.
+* The validator line numbers in the operation table and in `ANCHOR_OPERATIONS` below were read at af400039c2
+  (2026-10-10). Which operation each validator checks did not change with the zone rule; the line numbers did
+  (e.g. `validateUserForElementDetailUpdate` is :1658 at b49c5ed0).
+
+**The older rule, for an older platform only: `RE_ZONE_RULE=legacy`.** Before e9fd817f4c a zone with no security
+list "is not a secured zone and is ignored" (af400039c2 :1130-1134), so an element whose zones all lacked a list was
+open. RE cannot tell which rule a platform runs, so the current rule is the default and the quickstart
+(b49c5ed0 and later) needs it; set `RE_ZONE_RULE=legacy` only against a platform built before e9fd817f4c. Any other
+value is the current rule (the safe side: it refuses where the old one opened).
 * Group names are the connector's defaults (`controls/OpenMetadataSecurityConfigurationProperty.java`
   :46-110): allUsers, instanceOwner, existingMaintainer, newMaintainer, employeeUsers, contractUsers,
   externalUsers, digitalUsers. A deployment that renamed them in the connector's configuration would need
@@ -114,15 +127,37 @@ ACCOUNT_TYPE_GROUPS = {
 #: Seconds an access read may take before RE stops waiting and denies ("could not check").
 ACCESS_READ_TIMEOUT_SECONDS = 20
 
+#: `RE_ZONE_RULE`: unset (or anything but "legacy") follows the connector at b49c5ed0, where a zone with no
+#: control grants no one; "legacy" follows the connector before e9fd817f4c, where such a zone was ignored.
+ZONE_RULE_ENV = "RE_ZONE_RULE"
+ZONE_RULE_CURRENT = "current"
+ZONE_RULE_LEGACY = "legacy"
+
+
+def zone_rule() -> str:
+    """Which connector rule RE emulates: `ZONE_RULE_LEGACY` only when `RE_ZONE_RULE=legacy`, else current.
+    Read on every decision, so a test or an operator change takes effect without a restart."""
+    import os
+
+    raw = (os.environ.get(ZONE_RULE_ENV) or "").strip().lower()
+    if raw == ZONE_RULE_LEGACY:
+        return ZONE_RULE_LEGACY
+    if raw and raw != ZONE_RULE_CURRENT:
+        log.warning("%s=%r is not a zone rule; using the current one (a zone with no control grants no one)",
+                    ZONE_RULE_ENV, raw)
+    return ZONE_RULE_CURRENT
+
 
 class AccessUnreadable(RuntimeError):
     """A zone, control, account or element could not be read: never the same as "no restriction"."""
 
 
 def security_list_for(control: Optional[dict], operation: str = UPDATE_OPERATION) -> Optional[list[str]]:
-    """The security list a control gives `operation`, or None when the zone is not secured for it.
+    """The security list a control gives `operation`, or None when the control has none for it (no control, or
+    neither the operation's key nor DEFAULT). None grants no one under the current rule (b49c5ed0 :1156-1161);
+    only `RE_ZONE_RULE=legacy` reads it as "not secured".
 
-    Mirrors `getAssociatedSecurityListForZone` (:911-958): the operation's own key first, then DEFAULT.
+    Mirrors `getAssociatedSecurityListForZone` (b49c5ed0 :935-980): the operation's own key first, then DEFAULT.
     """
     if not isinstance(control, dict):
         return None
@@ -157,42 +192,61 @@ class ZoneVerdict:
     granted_by: str = ""
     operation: str = ""
     why: str = ""
-    #: The `secured` zones named after a PERSON who owns or maintains the element (a private element is zoned
-    #: `[private zone, <owner's userId>]`). A refusal sentence must not name them: it would tell the caller whose
-    #: element it is. Detail for the server log only.
+    #: The `secured` zones a refusal sentence must not name: those named after a PERSON who owns or maintains the
+    #: element (a private element is zoned `[private zone, <owner's userId>]`), and (current rule) every zone with
+    #: no security list that is not one of RE's own configured zones (`withheld_zone_names`), since a zone with no
+    #: control is typically someone's personal zone. Naming them would tell the caller whose element it is. Detail
+    #: for the server log only.
     person_zones: list[str] = field(default_factory=list)
+    #: The `secured` zones that have no security list for the operation (no control, or neither the operation's
+    #: list nor DEFAULT): under the current rule each grants no one but the user it is named after.
+    uncontrolled: list[str] = field(default_factory=list)
+    #: The `uncontrolled` zones that DO have a control, just no list for this operation and no DEFAULT.
+    unlisted: list[str] = field(default_factory=list)
 
 
 def _one_operation(user_id: str, zones: list[str], operation: str, account: dict,
                    control_for: Callable[[str], Optional[dict]],
                    owners: Optional[list[str]], maintainers: Optional[list[str]]) -> ZoneVerdict:
-    """The zone loop of `validateZoneAccess` (:1117-1198) for one operation; the account is already read."""
-    # :1122 — a zone named after the user grants outright. Checked across every zone before any read: any
+    """The zone loop of `validateZoneAccess` (b49c5ed0 :1146-1191) for one operation; the account is already read.
+
+    Current rule: every zone is secured, and one with no list for the operation grants no one (:1156-1161).
+    `RE_ZONE_RULE=legacy`: such a zone is skipped, as before e9fd817f4c (af400039c2 :1130-1134)."""
+    # :1150 — a zone named after the user grants outright. Checked across every zone before any read: any
     # grant returns true in Egeria's loop, so the answer is the same and no control is read for nothing.
     if user_id in zones:
         return ZoneVerdict(True, granted_by=f"zone {user_id}", operation=operation)
-    secured: list[tuple[str, list[str]]] = []
+    legacy = zone_rule() == ZONE_RULE_LEGACY
+    secured: list[tuple[str, Optional[list[str]]]] = []
+    unlisted: list[str] = []
     for zone in zones:
-        sl = security_list_for(control_for(zone), operation)
-        if sl is None:
-            continue                      # :1130 not a secured zone: ignored, not "everyone"
-        secured.append((zone, sl))
+        control = control_for(zone)
+        sl = security_list_for(control, operation)
+        if sl is None and legacy:
+            continue                      # legacy (af400039c2 :1130): not a secured zone, ignored
+        if sl is None and isinstance(control, dict):
+            unlisted.append(zone)
+        secured.append((zone, sl))        # :1161 every named zone is secured; no list grants no one
     if not secured:
-        return ZoneVerdict(True, operation=operation)               # :1205 no secured zone: access
+        return ZoneVerdict(True, operation=operation)               # legacy only: no secured zone, access
     names = [z for z, _ in secured]
+    uncontrolled = [z for z, sl in secured if sl is None]
     type_group = ACCOUNT_TYPE_GROUPS.get(str(account.get("userAccountType") or "").upper())
     groups = [str(g) for g in (account.get("securityGroups") or [])]
     roles = [str(r) for r in (account.get("securityRoles") or [])]
     own = instance_groups(user_id, owners, maintainers)
     for zone, sl in secured:
-        if ALL_USERS_GROUP in sl:                                   # :1141
+        if sl is None:
+            continue                                                # :1165 no list: this zone grants no one
+        if ALL_USERS_GROUP in sl:                                   # :1167 isAccountInSecurityList
             return ZoneVerdict(True, names, f"zone {zone} · {ALL_USERS_GROUP}", operation)
-        if type_group and type_group in sl:                         # :1149-1155
+        if type_group and type_group in sl:                         # isAccountInSecurityList
             return ZoneVerdict(True, names, f"zone {zone} · {type_group}", operation)
-        hit = next((g for g in [*groups, *roles, *own] if g in sl), None)   # :1157-1189
+        hit = next((g for g in [*groups, *roles, *own] if g in sl), None)   # :1167 groups, roles; :1172-1184
         if hit:
             return ZoneVerdict(True, names, f"zone {zone} · {hit}", operation)
-    return ZoneVerdict(False, names, "", operation)                 # :1195 secured, nothing granted
+    return ZoneVerdict(False, names, "", operation, uncontrolled=uncontrolled,    # :1188 nothing granted
+                       unlisted=unlisted)
 
 
 def zone_grants(user_id: str, zones: Iterable[str], *,
@@ -202,7 +256,7 @@ def zone_grants(user_id: str, zones: Iterable[str], *,
                 maintainers: Optional[list[str]] = None,
                 operations: Iterable[str] = (UPDATE_OPERATION,),
                 creating: bool = False) -> ZoneVerdict:
-    """`validateZoneAccess` (:1090-1206) for `user_id` on an element in `zones`, for EVERY operation in
+    """`validateZoneAccess` (b49c5ed0 :1118-1200) for `user_id` on an element in `zones`, for EVERY operation in
     `operations` (all must be granted: a write that performs several is checked for each).
 
     `control_for(zone)` returns the zone's security access control (None: none set up) and RAISES
@@ -211,7 +265,7 @@ def zone_grants(user_id: str, zones: Iterable[str], *,
     only maintainer (:1324), so the maintainer group is `existingMaintainer`.
 
     With no zone at all nothing is read (the owner's "not in use" rule). With any zone the ACCOUNT IS READ
-    FIRST, as `validateZoneAccess` does (:1103, `getActiveUserAccount` :244-258): an unknown or disabled
+    FIRST, as `validateZoneAccess` does (:1131, `getActiveUserAccount` :267): an unknown or disabled
     account is refused whatever the zones would grant. A session minted before the account was disabled, or
     by another app sharing the JWT secret, must not outlive the account.
     """
@@ -232,10 +286,67 @@ def zone_grants(user_id: str, zones: Iterable[str], *,
     for op in ops:
         last = _one_operation(user_id, zones, op, account, control_for, owners, maintainers)
         if not last.allowed:
-            people = {str(p) for p in [*(owners or []), *(maintainers or [])] if p and p != user_id}
-            last.person_zones = [z for z in last.secured if z in people]
+            no_control = [z for z in last.uncontrolled if z not in last.unlisted]
+            last.person_zones = withheld_zone_names(last.secured, no_control, owners, maintainers, user_id)
+            last.why = uncontrolled_refusal_words(user_id, last)
             return last
     return last
+
+
+def _re_configured_zones() -> set[str]:
+    """RE's own zones (private, draft, publish: `egeria_identity.stamped_zones`), which are configuration, not
+    people, so a refusal may name them. Empty when they cannot be read (the safe side: name fewer zones)."""
+    try:
+        from resource_explorer.egeria_identity import stamped_zones
+
+        return {z for z in stamped_zones() if z}
+    except Exception:  # noqa: BLE001 - naming fewer zones is the safe answer
+        return set()
+
+
+def withheld_zone_names(zones: Iterable[str], no_control: Iterable[str], owners: Optional[list],
+                        maintainers: Optional[list], user_id: str = "") -> list[str]:
+    """The zones of `zones` a sentence shown to someone else must not name: a zone named after an owner or
+    maintainer of the element, and a zone with no security access control at all (`no_control`) that is not one
+    of RE's own. A zone that has a control (even one without a list for the operation) is configuration and is
+    named, as before.
+
+    Why the second (new with Egeria b49c5ed0): a personal zone (named after a userId) normally has no control.
+    Under the old rule it was skipped, so no refusal ever listed it; under the current rule it is secured and
+    grants only its own user, so it would be listed, and its name says whose element this is. RE's own zones are
+    configuration and stay nameable, so a mistyped or uncontrolled configured zone is still reported by name."""
+    people = {str(p) for p in [*(owners or []), *(maintainers or [])] if p and p != user_id}
+    open_ = set(no_control or ())
+    ours = _re_configured_zones() if open_ else set()
+    return [z for z in zones if z in people or (z in open_ and z not in ours)]
+
+
+def uncontrolled_refusal_words(user_id: str, verdict: ZoneVerdict) -> str:
+    """The reason for a refusal in which a zone with no security access control took part, or "" (the caller's
+    usual "zone ... does not grant" sentence then applies). Never names a zone in `person_zones`: a zone named
+    after the element's owner would tell the caller whose element it is."""
+    hidden = set(verdict.person_zones or ())
+    shown_open = [z for z in verdict.uncontrolled if z not in hidden]
+    if verdict.allowed or not shown_open:
+        return ""
+    word = OPERATION_WORDS.get(verdict.operation, verdict.operation.lower())
+    parts = []
+    bare = [z for z in shown_open if z not in verdict.unlisted]
+    listless = [z for z in shown_open if z in verdict.unlisted]
+    if bare:
+        parts.append((f"zone {bare[0]} has" if len(bare) == 1 else f"zones {', '.join(bare)} have")
+                     + " no security access control, so only its own user may access it")
+    if listless:
+        parts.append((f"the control of zone {listless[0]} lists" if len(listless) == 1
+                      else f"the controls of zones {', '.join(listless)} list")
+                     + f" neither {verdict.operation} nor DEFAULT, so only its own user may {word} it")
+    rest = [z for z in verdict.secured if z not in hidden and z not in verdict.uncontrolled]
+    if rest:
+        parts.append(f"zone {rest[0]} does not grant {user_id} {word}" if len(rest) == 1
+                     else f"zones {', '.join(rest)} do not grant {user_id} {word}")
+    if hidden:
+        parts.append("a zone private to its owner does not either")
+    return "; ".join(parts) + f" ({user_id} may not {word} it in Egeria)"
 
 
 #: Brief Z2 round 2: what Egeria checks on the ANCHOR when the element written is an anchored member (its

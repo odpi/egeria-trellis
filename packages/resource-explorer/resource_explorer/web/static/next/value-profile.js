@@ -17,9 +17,9 @@
  *  name never breaks inside a word), made resizable by colresize.js's enhanceTable like every other /next data table:
  *  a drag fixes the widths from what was drawn, and only then can the table outgrow its panel and scroll. */
 import { esc } from '/static/next/stages/report-tables.js';
-import { enhanceTable } from '/static/next/colresize.js';
+import { enhanceTable } from '/static/trellis-ui/colresize.js';
 import { stateEntry, glyphOf } from '/static/next/glyphs.js';
-import { tableResultHtml } from '/static/next/envelope.js';
+import { tableResultHtml } from '/static/trellis-ui/envelope.js';
 
 /** The column table's columns, in order. `nowrap` keeps a column name whole (a name has no spaces to wrap at) and the
  *  short counts on one line; Range, Most common, Flags and Checks wrap at their spaces to fit the panel. */

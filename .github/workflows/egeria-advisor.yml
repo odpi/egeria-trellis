@@ -1,0 +1,155 @@
+name: egeria-advisor
+
+# Egeria Advisor on a clean machine (EA Phase 1 Q1, 2026-11-10). Modelled on resource-explorer.yml:
+# no live Egeria, MLflow or Phoenix; no sign-ins; no local settings. It catches what a gate machine
+# cannot, because that machine's services answer.
+#
+# Triggers: pull_request covers PR branches, push covers main only, as in resource-explorer.yml, so
+# one commit never fires both. Use workflow_dispatch for a branch with no PR.
+#
+# Required check (owner, 2026-11-11): the job is `ea-tests`. pull_request has NO path filter, so the
+# check reports on every PR; the "Decide whether this change needs the EA suite" step skips the suite
+# (with a notice) when the PR changes nothing EA tests: EA, the shared packages it imports, the
+# workspace lockfile, the jsdom lockfile the render harness uses, and this workflow and its script.
+# push to main keeps its path filter: no check is required there.
+on:
+  pull_request:
+  push:
+    branches: [main]
+    paths:
+      - "packages/egeria-advisor/**"
+      - "packages/trellis-auth/**"
+      - "packages/trellis-vectorstore/**"
+      - ".github/workflows/egeria-advisor.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+defaults:
+  run:
+    working-directory: packages/egeria-advisor
+
+jobs:
+  ea-tests:
+    name: ea-tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    # Postgres is a SERVICE here, not a live dependency: 38 tests under tests/unit construct EA's
+    # db manager (QueryProcessor and others) and fail without a Postgres to connect to. Checked on
+    # 2026-11-10 against an empty pgvector container: they pass on an empty database. The tests that
+    # WRITE a database are marked live (tests/conftest.py) and skipped below.
+    services:
+      postgres:
+        image: pgvector/pgvector:pg17
+        env:
+          POSTGRES_USER: egeria_advisor
+          POSTGRES_PASSWORD: advisor
+          POSTGRES_DB: egeria_advisor
+        ports:
+          - 5442:5432
+        options: >-
+          --health-cmd "pg_isready -U egeria_advisor -d egeria_advisor"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      PGVECTOR_HOST: localhost
+      PGVECTOR_PORT: 5442
+      PGVECTOR_DBNAME: egeria_advisor
+      PGVECTOR_USER: egeria_advisor
+      PGVECTOR_PASSWORD: advisor
+      # Every @pytest.mark.live test is SKIPPED with its reason (listed by -rs), never deselected.
+      EA_SKIP_LIVE: "1"
+      # Nothing listens on these: a test that reaches for them fails fast instead of hanging.
+      MLFLOW_TRACKING_URI: http://127.0.0.1:1
+      PHOENIX_ENABLE: "false"
+      # The static render harness (tests/unit/test_static_render_safety.py, Phase 0 S2): with
+      # REQUIRED, a missing node or jsdom, or any skipped harness test, is a failure, not a skip.
+      EA_RENDER_HARNESS_REQUIRED: "1"
+      EA_JSDOM_DIR: ${{ github.workspace }}/packages/resource-explorer/frontend-build/node_modules
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Decide whether this change needs the EA suite
+        # Lets this job be a REQUIRED check (owner, 2026-11-11). A path-filtered workflow never reports on
+        # a PR it doesn't match, so a required check on it would wait forever; instead the job always
+        # runs and skips its heavy steps here. On push / workflow_dispatch it always runs. If this step
+        # fails (an unknown base sha, a failed diff), the job fails; it never skips by accident.
+        id: scope
+        working-directory: .
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE: ${{ github.event.pull_request.base.sha }}
+        run: |
+          if [ "$EVENT" != "pull_request" ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"; echo "$EVENT: the suite always runs"; exit 0
+          fi
+          git fetch --no-tags --depth=1 origin "$BASE"
+          # Keep in step with EA's dependencies (packages/egeria-advisor/pyproject.toml): every workspace
+          # package EA imports belongs here. Add packages/trellis-feedback/** with A-F1 and
+          # packages/trellis-ui/** with A-U3.
+          python3 .github/scripts/changed_paths.py --base "$BASE" --head HEAD --include \
+              "packages/egeria-advisor/**" \
+              "packages/trellis-auth/**" \
+              "packages/trellis-vectorstore/**" \
+              "packages/trellis-querycache/**" \
+              "pyproject.toml" \
+              "uv.lock" \
+              "packages/resource-explorer/frontend-build/package.json" \
+              "packages/resource-explorer/frontend-build/package-lock.json" \
+              ".github/workflows/egeria-advisor.yml" \
+              ".github/scripts/changed_paths.py"
+
+
+      - name: Install uv
+        if: steps.scope.outputs.run == 'true'
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Set up Python
+        if: steps.scope.outputs.run == 'true'
+        run: uv python install 3.13
+
+      - name: Install dependencies
+        if: steps.scope.outputs.run == 'true'
+        # From the workspace root, never a package directory: a bare `uv sync` at the root installs
+        # every member (root CLAUDE.md, "uv: run uv sync from the workspace root").
+        working-directory: .
+        run: uv sync
+
+      - name: Cache the sentence-transformers model
+        if: steps.scope.outputs.run == 'true'
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/huggingface
+          key: hf-all-MiniLM-L6-v2-${{ runner.os }}
+
+      - name: Set up Node
+        if: steps.scope.outputs.run == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install jsdom for the render harness
+        if: steps.scope.outputs.run == 'true'
+        # EA has no JS toolchain of its own; RE's frontend-build lockfile already pins jsdom.
+        working-directory: packages/resource-explorer/frontend-build
+        run: npm ci
+
+      - name: EA unit tests (with the render harness, jsdom required)
+        if: steps.scope.outputs.run == 'true'
+        run: uv run pytest tests/unit -q --no-header -rs
+
+      - name: EA top-level tests (live ones skipped with their reasons)
+        if: steps.scope.outputs.run == 'true'
+        run: uv run pytest tests -q --no-header -rs --ignore=tests/unit
+
+      - name: EA suite not needed for this change
+        if: steps.scope.outputs.run != 'true'
+        run: echo "::notice title=EA suite skipped::This PR changes no EA path (EA, trellis-auth, trellis-vectorstore, trellis-querycache, the lockfiles, this workflow), so the EA suite did not run."

@@ -95,6 +95,14 @@ class Candidate:
     rungs: dict[Rung, str]
     provenance: tuple[dict, ...] = ()
     pointer: Pointer | None = None
+    #: The age of the evidence: when the result this section packs was produced (an ISO time). Never compile time;
+    #: empty when unknown, and then left out of the manifest rather than filled in. When the section packs rows of
+    #: different ages it is the OLDEST, since that is what a staleness check ages; `as_of_newest` is the newest.
+    #: `as_of_source` says where it came from (the caller's vocabulary, e.g. "result" or "fact"). Provenance: it
+    #: travels in the manifest and is not part of a section's size or text.
+    as_of: str = ""
+    as_of_source: str = ""
+    as_of_newest: str = ""
 
     def pointer_cost(self, measure: Callable[[str], int]) -> int:
         return measure(self.pointer.render()) if self.pointer is not None else 0
@@ -122,6 +130,9 @@ class PackedSection:
     size: int
     provenance: tuple[dict, ...] = ()
     pointer: Pointer | None = None
+    as_of: str = ""
+    as_of_source: str = ""
+    as_of_newest: str = ""
 
 
 @dataclass(frozen=True)
@@ -335,6 +346,9 @@ def pack(
             size=_size(s.key, chosen[s.key]),
             provenance=candidates[s.key].provenance,
             pointer=candidates[s.key].pointer,
+            as_of=candidates[s.key].as_of,
+            as_of_source=candidates[s.key].as_of_source,
+            as_of_newest=candidates[s.key].as_of_newest,
         )
         for s in order if s.key in chosen
     ]
@@ -350,6 +364,13 @@ def pack(
         entry = {"key": p.key, "role": p.role, "rung": p.rung.name, "size": p.size}
         if p.pointer is not None:
             entry["pointer"] = p.pointer.as_dict()
+        # Written only when known: an absent as-of is a fact about the evidence, and a filled-in one would be a lie.
+        if p.as_of:
+            entry["as_of"] = p.as_of
+            if p.as_of_source:
+                entry["as_of_source"] = p.as_of_source
+            if p.as_of_newest and p.as_of_newest != p.as_of:
+                entry["as_of_newest"] = p.as_of_newest
         return entry
 
     manifest = Manifest(

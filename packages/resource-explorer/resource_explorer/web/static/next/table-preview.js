@@ -18,7 +18,7 @@ import {
   getSchemaInventoryTree, getPreviewCredential, holdPreviewCredential, forgetPreviewCredential, previewTable,
 } from '/static/re-api.js';
 import { credentialChangeHtml, bindCredentialChange } from '/static/next/credential-change.js';
-import { enhanceTable } from '/static/next/colresize.js';
+import { enhanceTable } from '/static/trellis-ui/colresize.js';
 
 const MASK = '••••••';                       // fixed width: a value's length leaks nothing
 const PICKER_MAX = 200;

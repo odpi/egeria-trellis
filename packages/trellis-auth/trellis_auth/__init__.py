@@ -22,11 +22,22 @@ superseding "whether an app requires login at all is each app's own answer"):
 Each app wraps this in a thin adapter that supplies its own resolved
 `AuthConfig` and the policy above — see `advisor/auth.py`.
 
+**One admin gate** (owner's decision, 2026-11-10): `require_admin` / `AdminPathMiddleware` in
+`trellis_auth.admin`, a configured user list plus an admin token, failing closed.
+
 `trellis_auth.session_file` holds the CLI's cached login (the app JWT, mode
 0600, under `$XDG_CONFIG_HOME/trellis/<app>/session.json`), shared so both
 apps' `login`/`logout` commands behave identically.
 """
 from trellis_auth import session_file
+from trellis_auth.admin import (
+    ADMIN_TOKEN_HEADER,
+    AdminConfig,
+    AdminPathMiddleware,
+    is_admin_request,
+    require_admin,
+    resolve_admin,
+)
 from trellis_auth.auth import (
     EGERIA_TOKEN_TTL_SECONDS_OBSERVED,
     apply_token,
@@ -64,6 +75,12 @@ from trellis_auth.session_file import (
 )
 
 __all__ = [
+    "ADMIN_TOKEN_HEADER",
+    "AdminConfig",
+    "AdminPathMiddleware",
+    "is_admin_request",
+    "require_admin",
+    "resolve_admin",
     "AuthConfig",
     "AuthPolicy",
     "DEFAULT_LOGIN_REQUIRED_MESSAGE",

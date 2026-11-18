@@ -30,6 +30,28 @@ _DEPENDENCY_DRIFT = re.compile(
     re.IGNORECASE,
 )
 
+#: A question about what a resource is or how to use it: the answer is in its documentation, not its metrics.
+#: Traced on 8813 2026-11-10 (query_log rows 1425, 1426): "What is the purpose of Amundsen" and "what is the
+#: purpose of Egeria?" made no vector_search call and answered from profile metrics ("not explicitly stated").
+_ABOUT_RESOURCE = re.compile(
+    r"\bpurpose\b|\bwhat\s+(?:is|are|was)\b|\bwhat(?:'s| does| do)\b.{0,60}\bdo\b|\boverview\b"
+    r"|\bgetting started\b|\bget started\b|\bhow (?:do|can|should) (?:i|we|you)\b|\bhow to\b"
+    r"|\bexplain\b|\bdescribe\b|\bintroduc\w*\b",
+    re.IGNORECASE,
+)
+
+#: A question about what changed: only then are release notes part of a resource's documentation evidence.
+_ABOUT_CHANGES = re.compile(
+    r"\b(?:chang\w*|release\w*|new in|what'?s new|version\w*|upgrad\w*)\b", re.IGNORECASE
+)
+
+#: Doc search in front of the model (_doc_evidence): passages asked for, the cap on each passage, and the cap on
+#: the whole block, so the compiled evidence and the question still fit the model's context.
+DOC_EVIDENCE_TOP_K = 5
+DOC_EVIDENCE_PASSAGE_CHARS = 1200
+DOC_EVIDENCE_BLOCK_CHARS = 4800
+
+
 #: A question about the fleet rather than one resource: "which repos have no license classification".
 _FLEET_QUESTION = re.compile(
     r"^\s*(?:which|what|list|show|name|how many)\b(?:\s+\w+){0,2}?\s+"
@@ -56,6 +78,19 @@ def _bare_word_binding(query: str, slug: str) -> bool:
     words = re.findall(r"[\w'-]+", query.lower())
     hits = [i for i, w in enumerate(words) if w == slug.lower()]
     return bool(hits) and all(i > 0 and words[i - 1] in _COMMON_NOUN_CUES for i in hits)
+
+
+def _wants_doc_evidence(query: str, intent) -> bool:
+    """A conceptual question, or one about what a resource is or how to use it, and not a code, examples, numbers,
+    health or dependency question (those have their own evidence)."""
+    from resource_explorer.query_processor import QueryIntent
+
+    if intent in (
+        QueryIntent.CODE_SEARCH, QueryIntent.EXAMPLES, QueryIntent.STATISTICAL, QueryIntent.HEALTH,
+        QueryIntent.DEPENDENCY,
+    ):
+        return False
+    return intent == QueryIntent.CONCEPTUAL or bool(_ABOUT_RESOURCE.search(query))
 
 
 class ConversationAgent(BaseExplorerAgent):
@@ -248,9 +283,14 @@ class ConversationAgent(BaseExplorerAgent):
         resource_type: str | None = None,
         **kwargs,
     ) -> str:
-        from resource_explorer.agents.tools import set_current_question
+        from resource_explorer.agents.tools import set_current_question, use_turn_log
 
         set_current_question(query)
+        # The caller's own record of this turn (the chat route's), so what is logged is THIS turn's, never another
+        # concurrent turn's on the same session agent (read-back P3).
+        turn_log = kwargs.get("turn_log")
+        if turn_log is not None:
+            use_turn_log(turn_log)
         # The journal tool resolves the session and the open investigation from here, never from model arguments.
         from resource_explorer.agents import journal_tool
 
@@ -319,12 +359,14 @@ class ConversationAgent(BaseExplorerAgent):
                     query, slug, kwargs.get("perspectives"), resource_type=entity_type
                 )
             )
-            # Not only the DEPENDENCY label: "what does egeria_python_git depend on" classifies as
-            # survey_meta (the slug contains "egeria") and "what does it depend on" as general.
+            # Not only the DEPENDENCY label: "what does egeria_python_git depend on" classified as
+            # survey_meta (the slug contains "egeria"; narrowed 2026-11-10) and "what does it depend on" as general.
             if classified_intent == QueryIntent.DEPENDENCY or _DEPENDS_ON.search(query):
                 lines.extend(self._dependency_evidence(slug))
             if _DEPENDENCY_DRIFT.search(query):
                 lines.extend(self._dependency_drift_evidence(slug))
+            if entity_type == "repo" and _wants_doc_evidence(query, classified_intent):
+                lines.extend(self._doc_evidence(query, slug))
         lines.append(f"Question: {query}")
         prompt = "\n".join(lines)
 
@@ -337,11 +379,86 @@ class ConversationAgent(BaseExplorerAgent):
                 from resource_explorer.rag_system import RAGSystem
 
                 self._rag = RAGSystem()
+            if turn_log is not None:
+                turn_log["logged_by_rag"] = True    # RAGSystem.query writes its own query_log row
             return self._rag.query(query, resource_slug=slug)
         from resource_explorer.agents.tools import turn_fact_lead
 
         lead = turn_fact_lead()
         return f"{lead}\n\n{answer}" if lead else answer
+
+    @staticmethod
+    def _doc_evidence(query: str, slug: str) -> list[str]:
+        """The resource's own documentation, searched before the model runs, for a "what is / how to" question.
+
+        Traced on 8813 2026-11-10: "What is the purpose of Amundsen" and "what is the purpose of Egeria?" made no
+        vector_search call; the model answered from the compiled profile metrics that the purpose was "not
+        explicitly stated". Those turns retrieved no chunk, so a vote on them moved no chunk score (#1015). Same
+        remedy as _dependency_evidence: a model that skips the tool still has the passages in front of it. The
+        vector_search tool stays; this is a first look, not a replacement.
+
+        Collections come from the registry (the slug's doc-type collections that exist), not from
+        CollectionRouter.select(query, ...): that routes by the query's own intent, which was survey_meta for any
+        "what ... Egeria" question until 2026-11-10 and can still be general, either of which adds code collections.
+
+        Three absences, three sentences (never one generic "not stated"): no doc collection at all, collections
+        searched with nothing above the threshold, and a read that failed.
+        """
+        from resource_explorer.configdata.collection_config import AGENT_COLLECTION_MAP
+
+        try:
+            registry = _registry()
+            project = registry.get(slug)
+            existing = set(project.collections or []) if project is not None else set()
+            name = registry._normalize_slug(slug)
+        except Exception as exc:
+            return [f"Documentation for {slug}: could not be read ({type(exc).__name__})."]
+        doc_types = list(AGENT_COLLECTION_MAP["doc"])
+        if _ABOUT_CHANGES.search(query):
+            doc_types.append("release_notes")
+        cols = [f"{name}_{t}" for t in doc_types if f"{name}_{t}" in existing]
+        if not cols:
+            return [
+                f"Documentation for {slug}: none ingested (no doc collection), so the purpose cannot be read "
+                "from its docs; say so rather than inferring it from metrics."
+            ]
+        try:
+            from resource_explorer.config import get_config
+            from resource_explorer.vector_store_pg import MultiCollectionStore
+
+            floor = get_config().rag.min_score
+            results = MultiCollectionStore().search(query, cols, top_k=DOC_EVIDENCE_TOP_K)
+            results = [r for r in results if r.score >= floor]
+        except Exception as exc:
+            return [f"Documentation for {slug}: could not be read ({type(exc).__name__}); searched {', '.join(cols)}."]
+        if not results:
+            return [
+                f"Documentation for {slug}: searched {len(cols)} doc collection(s) ({', '.join(cols)}); nothing "
+                "matched the question above the relevance threshold. Say so rather than inferring it from metrics."
+            ]
+        shown, parts, used = [], [], 0
+        for r in results:
+            text = (r.text or "").strip()
+            if len(text) > DOC_EVIDENCE_PASSAGE_CHARS:
+                text = text[: DOC_EVIDENCE_PASSAGE_CHARS - 3].rstrip() + "..."
+            entry = f"[{r.collection} | score={r.score:.2f}]\n{text}"
+            if shown and used + len(entry) > DOC_EVIDENCE_BLOCK_CHARS:
+                break
+            if not shown and len(entry) > DOC_EVIDENCE_BLOCK_CHARS:
+                entry = entry[: DOC_EVIDENCE_BLOCK_CHARS - 3].rstrip() + "..."
+            shown.append(r)
+            parts.append(entry)
+            used += len(entry)
+        from resource_explorer.agents.tools import note_retrieved
+
+        note_retrieved(shown)
+        return [
+            # Not "answer from these first": "what is the health score of X" classifies as conceptual, and a header
+            # that ranks README prose above the measurements would steer a numbers question away from them.
+            f"Documentation for {slug} ({len(shown)} passages): use these for what it is, what it is for and how to "
+            "use it; for measurements, use the evidence above. Cite the collection.",
+            "\n\n".join(parts),
+        ]
 
     @staticmethod
     def _dependency_drift_evidence(slug: str) -> list[str]:

@@ -11,11 +11,12 @@ import threading
 import uuid
 from contextlib import contextmanager
 from dataclasses import asdict, dataclass, field
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta, timezone
 from enum import Enum
 from pathlib import Path
 from typing import Any, ClassVar, NamedTuple
 from sqlalchemy import create_engine
+from resource_explorer.survey_time import now_utc_iso
 
 log = logging.getLogger(__name__)
 
@@ -1972,6 +1973,10 @@ class ProjectRegistry:
                 self.database_url = os.environ.get("REGISTRY_DATABASE_URL", f"sqlite:///{db_path}")
         else:
             self.database_url = f"sqlite:///{db_path}"
+        if not self.database_url:
+            from resource_explorer.config import require_database_url
+
+            require_database_url(self.database_url, "REGISTRY_DATABASE_URL", "registry")   # TR-12: names it
 
         if self.database_url.startswith("sqlite:///"):
             path_str = self.database_url[len("sqlite:///"):]
@@ -5245,6 +5250,9 @@ class ProjectRegistry:
         self._migrate_open_data_tables()
         self._migrate_investigation_visibility()
         self._migrate_file_systems_key_tail()
+        self._migrate_feedback_routes_table()
+        self._migrate_feedback_rfas_table()
+        self._migrate_flow_run_results_table()
 
     #: Artifacts slice 1 (DESIGN-ARTIFACTS-VIEW-AND-DOC-LINKS.md §3; owner's go 2026-10-15; DDL record
     #: docs/ddl-artifact-columns.md). file_role: core | test | generated | vendored | docs from
@@ -5400,6 +5408,244 @@ class ProjectRegistry:
                 f"UPDATE investigations SET visibility = ? WHERE project_classification IN ({placeholders})",
                 (self.VISIBILITY_CREATOR_ONLY, *self._VISIBILITY_BACKFILL_KINDS))
 
+    #: Closed-loop step 2 (BRIEF-CLOSED-LOOP-STEP2-ROUTING.md §5; DDL record docs/ddl-feedback-routes.md): where each
+    #: diagnosis of a rated answer was routed. One row per (item, cause); the key is what makes Save idempotent.
+    FEEDBACK_ROUTES_DDL = (
+        "CREATE TABLE IF NOT EXISTS feedback_routes ("
+        " item_id TEXT NOT NULL,"
+        " cause TEXT NOT NULL,"
+        " consumer TEXT NOT NULL DEFAULT '',"
+        " target TEXT NOT NULL DEFAULT '',"
+        " reason TEXT NOT NULL DEFAULT '',"
+        " routed_at TEXT NOT NULL,"
+        " routed_by TEXT NOT NULL DEFAULT '',"
+        " PRIMARY KEY (item_id, cause))"
+    )
+
+    def _migrate_feedback_routes_table(self) -> None:
+        """Closed-loop step 2a (docs/ddl-feedback-routes.md): one new table, `CREATE TABLE IF NOT EXISTS` in its own
+        short transaction. Nothing existing is altered."""
+        with self._conn() as conn:
+            conn.execute(self.FEEDBACK_ROUTES_DDL)
+
+    #: Closed-loop step 2b (BRIEF-CLOSED-LOOP-STEP2-ROUTING.md §3; DDL record docs/ddl-feedback-rfas.md): the one RFA
+    #: raised per question, cause and entity. The key is what keeps two Saves on one question to one RFA.
+    FEEDBACK_RFAS_DDL = (
+        "CREATE TABLE IF NOT EXISTS feedback_rfas ("
+        " question_key TEXT NOT NULL,"
+        " cause TEXT NOT NULL,"
+        " entity_type TEXT NOT NULL,"
+        " entity_slug TEXT NOT NULL,"
+        " rfa_id TEXT NOT NULL DEFAULT '',"
+        " created_at TEXT NOT NULL,"
+        " PRIMARY KEY (question_key, cause, entity_type, entity_slug))"
+    )
+
+    def _migrate_feedback_rfas_table(self) -> None:
+        """Closed-loop step 2b (docs/ddl-feedback-rfas.md): one new table, `CREATE TABLE IF NOT EXISTS` in its own
+        short transaction. Nothing existing is altered."""
+        with self._conn() as conn:
+            conn.execute(self.FEEDBACK_RFAS_DDL)
+
+    #: TR-21 (Architect ruling 2026-11-15; DDL record docs/ddl-flow-run-results.md): a dispatched step's OUTPUT, one row
+    #: per Prefect flow run, written by the flow on the worker before it returns and read by RE by flow_run_id only.
+    #: `output` is TEXT holding JSON, like every other JSON column here (one DDL for SQLite and Postgres; see
+    #: step_runs' note), not jsonb.
+    FLOW_RUN_RESULTS_DDL = (
+        "CREATE TABLE IF NOT EXISTS flow_run_results ("
+        " flow_run_id TEXT PRIMARY KEY,"
+        " entity_type TEXT NOT NULL,"
+        " slug TEXT NOT NULL,"
+        " step_key TEXT NOT NULL,"
+        " step_run_id INTEGER,"
+        " output TEXT NOT NULL,"
+        " norm_hash TEXT NOT NULL,"
+        " written_at TEXT NOT NULL)"
+    )
+    #: Rows older than this are pruned by `prune_flow_run_results` (the Architect's default; change it only on the
+    #: project owner's word).
+    FLOW_RUN_RESULTS_KEEP_DAYS = 30
+
+    def _migrate_flow_run_results_table(self) -> None:
+        """TR-21 (docs/ddl-flow-run-results.md): one new table, `CREATE TABLE IF NOT EXISTS` in its own short
+        transaction. Nothing existing is altered."""
+        with self._conn() as conn:
+            conn.execute(self.FLOW_RUN_RESULTS_DDL)
+
+    def write_flow_run_result(self, flow_run_id: str, *, entity_type: str, slug: str, step_key: str,
+                              step_run_id: int | None, output_json: str, norm_hash: str) -> bool:
+        """Keep a flow run's output. True when this call wrote the row. Never overwrites: a second write for the same
+        flow run is a no-op, and one that carries a DIFFERENT norm_hash is logged as an error (TR-21)."""
+        if not flow_run_id:
+            raise ValueError("a flow run result needs its flow_run_id")
+        now = datetime.now(UTC).isoformat(timespec="microseconds")
+        with self._conn() as conn:
+            made = conn.execute(
+                "INSERT INTO flow_run_results (flow_run_id, entity_type, slug, step_key, step_run_id, output, "
+                "norm_hash, written_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT (flow_run_id) DO NOTHING",
+                (flow_run_id, entity_type, slug, step_key, step_run_id, output_json, norm_hash, now)).rowcount
+            if made:
+                return True
+            row = conn.execute("SELECT norm_hash FROM flow_run_results WHERE flow_run_id = ?",
+                               (flow_run_id,)).fetchone()
+        if row is not None and row["norm_hash"] != norm_hash:
+            log.error("flow_run_results: a second result for flow run %s with a different norm_hash (%s, kept %s) "
+                      "was refused; the first is kept", flow_run_id, norm_hash, row["norm_hash"])
+        return False
+
+    def read_flow_run_result(self, flow_run_id: str) -> dict | None:
+        """The output row a flow run wrote, by flow_run_id only, or None. `output` is decoded."""
+        if not flow_run_id:
+            return None
+        with self._conn() as conn:
+            row = conn.execute("SELECT * FROM flow_run_results WHERE flow_run_id = ?", (flow_run_id,)).fetchone()
+        if row is None:
+            return None
+        record = dict(row)
+        record["output"] = json.loads(record["output"]) if record.get("output") else {}
+        return record
+
+    def prune_flow_run_results(self, keep_days: int | None = None, *, now: datetime | None = None) -> int:
+        """Delete flow run results older than `keep_days` (default FLOW_RUN_RESULTS_KEEP_DAYS). Returns the count."""
+        days = self.FLOW_RUN_RESULTS_KEEP_DAYS if keep_days is None else keep_days
+        cutoff = ((now or datetime.now(UTC)) - timedelta(days=days)).isoformat(timespec="microseconds")
+        with self._conn() as conn:
+            return int(conn.execute("DELETE FROM flow_run_results WHERE written_at < ?", (cutoff,)).rowcount or 0)
+
+    def step_run_ids_for_flow_run(self, flow_run_id: str) -> list[dict]:
+        """The step_runs rows carrying this flow run id (id, step_key, executor, demanded_by), oldest first."""
+        if not flow_run_id:
+            return []
+        with self._conn() as conn:
+            rows = conn.execute(
+                "SELECT id, step_key, executor, demanded_by FROM step_runs WHERE flow_run_id = ? ORDER BY id",
+                (flow_run_id,)).fetchall()
+        return [dict(r) for r in rows]
+
+    def claim_feedback_rfa(self, question_key: str, cause: str, entity_type: str, entity_slug: str) -> bool:
+        """Claim the one RFA for (question, cause, entity) before raising it. True when this call made the row;
+        False when it exists, raised by an earlier Save or one running at the same moment."""
+        now = datetime.now(UTC).isoformat(timespec="microseconds")
+        with self._conn() as conn:
+            made = conn.execute(
+                "INSERT INTO feedback_rfas (question_key, cause, entity_type, entity_slug, rfa_id, created_at) "
+                "VALUES (?, ?, ?, ?, 'pending', ?) "
+                "ON CONFLICT (question_key, cause, entity_type, entity_slug) DO NOTHING",
+                (question_key, cause, entity_type, entity_slug, now)).rowcount
+        return bool(made)
+
+    def set_feedback_rfa(self, question_key: str, cause: str, entity_type: str, entity_slug: str,
+                         rfa_id: str) -> None:
+        with self._conn() as conn:
+            conn.execute("UPDATE feedback_rfas SET rfa_id = ? WHERE question_key = ? AND cause = ? "
+                         "AND entity_type = ? AND entity_slug = ?",
+                         (rfa_id, question_key, cause, entity_type, entity_slug))
+
+    def release_feedback_rfa(self, question_key: str, cause: str, entity_type: str, entity_slug: str) -> None:
+        """Drop a claim whose RFA could not be written, so the next Save raises it."""
+        with self._conn() as conn:
+            conn.execute("DELETE FROM feedback_rfas WHERE question_key = ? AND cause = ? AND entity_type = ? "
+                         "AND entity_slug = ? AND rfa_id = 'pending'",
+                         (question_key, cause, entity_type, entity_slug))
+
+    def get_feedback_rfa(self, question_key: str, cause: str, entity_type: str, entity_slug: str) -> str:
+        """The RFA's activity id, 'pending' while it is being raised, or "" when there is none."""
+        with self._conn() as conn:
+            row = conn.execute("SELECT rfa_id FROM feedback_rfas WHERE question_key = ? AND cause = ? "
+                               "AND entity_type = ? AND entity_slug = ?",
+                               (question_key, cause, entity_type, entity_slug)).fetchone()
+        return row["rfa_id"] if row else ""
+
+    def add_activity_item(self, entry_id: str, item: dict) -> bool:
+        """Append one structured pointer to an activity entry's `items` (an RFA that another answer joins). Returns
+        False when the entry is gone. An item already there is not added twice.
+
+        One transaction, and on Postgres the row is locked (`SELECT ... FOR UPDATE`, as `record_compile` does), so two
+        answers joining the same RFA at once both land: a pointer that silently vanished would be an absence nobody
+        could see (the architect's read-back of 4b522bc5). SQLite has no row lock; there, two joins at the same instant
+        can still race, which only a test or a one-box dev registry would meet."""
+        with self._conn() as conn:
+            row = conn.execute("SELECT items_json FROM activity_log WHERE id = ?"
+                               + (" FOR UPDATE" if conn.is_postgres else ""), (entry_id,)).fetchone()
+            if not row:
+                return False
+            items = json.loads(row["items_json"] or "[]")
+            if item not in items:
+                items.append(item)
+                conn.execute("UPDATE activity_log SET items_json = ? WHERE id = ?", (json.dumps(items), entry_id))
+        return True
+
+    def claim_feedback_route(self, item_id: str, cause: str, routed_by: str = "") -> bool:
+        """Claim the route of one diagnosis before routing it. True when this call made the row; False when the
+        (item, cause) was routed already, by an earlier Save or by a Save running at the same moment. The insert
+        is the lock: a second Save cannot pass this point for the same pair."""
+        # Microseconds, so routes saved within one second still list in the order they were made.
+        now = datetime.now(UTC).isoformat(timespec="microseconds")
+        with self._conn() as conn:
+            made = conn.execute(
+                "INSERT INTO feedback_routes (item_id, cause, consumer, routed_at, routed_by) VALUES (?, ?, ?, ?, ?) "
+                "ON CONFLICT (item_id, cause) DO NOTHING",
+                (item_id, cause, "pending", now, routed_by)).rowcount
+        return bool(made)
+
+    def finish_feedback_route(self, item_id: str, cause: str, consumer: str, target: str = "",
+                              reason: str = "") -> None:
+        """Record what a claimed route did: the consumer (`gap`, `rfa`, `automate`, `none`), its target id, and,
+        when nothing was routed, why."""
+        with self._conn() as conn:
+            conn.execute("UPDATE feedback_routes SET consumer = ?, target = ?, reason = ? "
+                         "WHERE item_id = ? AND cause = ?", (consumer, target, reason, item_id, cause))
+
+    def release_feedback_route(self, item_id: str, cause: str) -> None:
+        """Drop a claimed route that failed for a passing reason (a registry error), so the next Save tries again.
+        A route that could not be made for a lasting reason is finished as `none` instead, and stays."""
+        with self._conn() as conn:
+            conn.execute("DELETE FROM feedback_routes WHERE item_id = ? AND cause = ? AND consumer = 'pending'",
+                         (item_id, cause))
+
+    def drop_feedback_route(self, item_id: str, cause: str) -> int:
+        """Remove one finished route so it can be routed again: an admin's explicit re-route (the architect's P2 on
+        6c050de2). Never called by a Save, which leaves a finished route standing."""
+        with self._conn() as conn:
+            return conn.execute("DELETE FROM feedback_routes WHERE item_id = ? AND cause = ? AND consumer <> 'pending'",
+                                (item_id, cause)).rowcount or 0
+
+    def get_feedback_route(self, item_id: str, cause: str) -> dict | None:
+        with self._conn() as conn:
+            row = conn.execute("SELECT item_id, cause, consumer, target, reason, routed_at, routed_by "
+                               "FROM feedback_routes WHERE item_id = ? AND cause = ?", (item_id, cause)).fetchone()
+        return dict(row) if row else None
+
+    def list_feedback_routes(self, item_ids: list[str]) -> dict[str, list[dict]]:
+        """Every route of each item, oldest first: {item_id: [route, ...]}. Items with none are absent."""
+        ids = [i for i in dict.fromkeys(item_ids) if i]
+        if not ids:
+            return {}
+        out: dict[str, list[dict]] = {}
+        with self._conn() as conn:
+            for start in range(0, len(ids), 500):
+                chunk = ids[start:start + 500]
+                rows = conn.execute(
+                    "SELECT item_id, cause, consumer, target, reason, routed_at, routed_by FROM feedback_routes "
+                    f"WHERE item_id IN ({', '.join('?' * len(chunk))}) ORDER BY routed_at, cause", tuple(chunk)
+                ).fetchall()
+                for r in rows:
+                    out.setdefault(r["item_id"], []).append(dict(r))
+        return out
+
+    def delete_feedback_routes(self, item_id: str) -> int:
+        """Forget every route of one item, for when the item itself is deleted (the architect's A2). The gaps and
+        RFAs a route made are left: they are work in their own right, and they say "feedback item deleted"."""
+        with self._conn() as conn:
+            return conn.execute("DELETE FROM feedback_routes WHERE item_id = ?", (item_id,)).rowcount or 0
+
+    def set_gap_evidence(self, gap_id: int, evidence: dict) -> None:
+        """Replace one gap's evidence WITHOUT counting a sighting. `upsert_gap` bumps `last_seen_at`, which is the
+        count a curator acts on; linking a gap to another one is not a new sighting of it."""
+        with self._conn() as conn:
+            conn.execute("UPDATE analysis_gaps SET evidence_json = ? WHERE id = ?",
+                         (json.dumps(evidence) if evidence else None, gap_id))
+
     def _migrate_file_systems_key_tail(self) -> None:
         """W42 (docs/ddl-file-systems-key-tail.md): `file_systems.access_key_id` keeps only the key id's last four
         characters as `…XXXX` (`reach_mechanisms.s3.key_tail`); the whole id never lands in the shared registry (the
@@ -5479,6 +5725,8 @@ class ProjectRegistry:
         # A repository's first index for chat, queued by a person's yes (first_index.py, run by
         # run_queue._handle_first_index). Not a survey step: a refresh cannot make a first index.
         "first_index",
+        # Rebuilding a repository's chat index from scratch, alongside the live one (reindex.py, R1b).
+        "reindex",
     )
 
     #: States that occupy a user's one fairness slot.
@@ -5515,6 +5763,108 @@ class ProjectRegistry:
                 (run_id, kind, json.dumps(target or {}), requested_by, now, result_ref),
             )
         return run_id
+
+    #: SQLite has no advisory lock; its check-and-insert is serialised in-process instead (tests, a dev box).
+    _enqueue_once_lock = threading.Lock()
+
+    def enqueue_run_once(
+        self,
+        kind: str,
+        target: dict,
+        *,
+        lock_key: str,
+        same: "Callable[[dict], bool]",
+        stale_before: str,
+        idempotency_key: str = "",
+        before_insert: "Callable[[], str] | None" = None,
+        requested_by: str = "",
+        run_id: str | None = None,
+        now: str | None = None,
+    ) -> dict:
+        """Enqueue one `kind` row unless the same work is already in flight (TR-1, ruling 2026-11-13).
+
+        **In flight** = a `kind` row in queued, claimed or running whose decoded target `same()` accepts. A
+        claimed or running row whose last sign of life (`heartbeat_at`, else `claimed_at`) is older than
+        `stale_before` does NOT count: a worker that died must not lock the resource out. It is returned in
+        `stale` so the caller can say so and point to the reconciler.
+
+        **Atomic.** On Postgres the check and the insert share one transaction behind
+        `pg_advisory_xact_lock(hashtext(lock_key))`, so two requests in the same millisecond cannot both pass;
+        on SQLite an in-process lock does the same. No DDL: a unique partial index would be cleaner but is DDL
+        on a shared table and needs the owner's word.
+
+        `before_insert` runs only when the row will be inserted, under the lock, and returns the `result_ref`
+        (the route's activity entry), so a refused request leaves no 'running' activity entry behind.
+
+        Returns `{"created": True, "run_id", "result_ref"}`; or, when one is in flight, `{"created": False,
+        "existing": <row>, "coalesced": bool}`, where `coalesced` is True only when the in-flight row was queued
+        with the same non-empty `idempotency_key` (a true retry of the same press). Either way `stale` lists the
+        rows that were ignored as stale.
+        """
+        if kind not in self.RUN_KINDS:
+            raise ValueError(f"unknown run kind {kind!r} — expected one of {list(self.RUN_KINDS)}")
+        run_id = run_id or str(uuid.uuid4())
+        now = now or datetime.now(timezone.utc).isoformat()
+        target = dict(target or {})
+        if idempotency_key:
+            target["idempotency_key"] = idempotency_key
+        sqlite_lock = None if self.database_url.startswith("postgresql") else self._enqueue_once_lock
+        if sqlite_lock is not None:
+            sqlite_lock.acquire()
+        try:
+            with self._conn() as conn:
+                if getattr(conn, "is_postgres", False):
+                    conn.execute("SELECT pg_advisory_xact_lock(hashtext(?))", (lock_key,))
+                rows = [dict(r) for r in conn.execute(
+                    "SELECT id, kind, target, requested_by, state, claimed_by, enqueued_at, claimed_at, "
+                    "heartbeat_at, result_ref FROM runs WHERE kind = ? AND state IN ('queued', 'claimed', 'running') "
+                    "ORDER BY enqueued_at",
+                    (kind,),
+                ).fetchall()]
+                live, stale = [], []
+                for row in rows:
+                    try:
+                        row_target = json.loads(row.get("target") or "{}")
+                    except (TypeError, ValueError):
+                        continue
+                    if not isinstance(row_target, dict) or not same(row_target):
+                        continue
+                    row["target_decoded"] = row_target
+                    alive_at = row.get("heartbeat_at") or row.get("claimed_at") or ""
+                    if row["state"] != "queued" and alive_at and alive_at < stale_before:
+                        stale.append(row)
+                    else:
+                        live.append(row)
+                if live:
+                    existing = live[0]
+                    coalesced = bool(idempotency_key) and (
+                        existing["target_decoded"].get("idempotency_key") == idempotency_key)
+                    return {"created": False, "existing": existing, "coalesced": coalesced, "stale": stale}
+                result_ref = before_insert() if before_insert else ""
+                try:
+                    conn.execute(
+                        """INSERT INTO runs (id, kind, target, requested_by, state,
+                                             enqueued_at, result_ref)
+                           VALUES (?, ?, ?, ?, 'queued', ?, ?)""",
+                        (run_id, kind, json.dumps(target), requested_by, now, result_ref),
+                    )
+                except Exception as exc:
+                    # The activity entry was opened for a run that now never exists: close it, or it is the TR-2
+                    # phantom by another road (read-back advisory b). Its own connection: this transaction failed.
+                    if result_ref:
+                        try:
+                            self.close_activity_if_running(
+                                result_ref, "error", f"The run could not be queued, so nothing ran: {type(exc).__name__}.")
+                        except Exception as close_exc:  # noqa: BLE001 - the original failure is the one raised
+                            # Not swallowed: the raised error says the entry may still read 'running'.
+                            exc.add_note(f"activity {result_ref} could not be closed after the failed enqueue "
+                                         f"({type(close_exc).__name__}: {close_exc}); it may still read 'running'")
+                            log.exception("could not close activity %s after a failed enqueue", result_ref)
+                    raise
+            return {"created": True, "run_id": run_id, "result_ref": result_ref, "stale": stale}
+        finally:
+            if sqlite_lock is not None:
+                sqlite_lock.release()
 
     def claim_next_run(
         self,
@@ -5708,8 +6058,17 @@ class ProjectRegistry:
                                (now, error, run_id))
             return bool(getattr(cur, "rowcount", 0))
 
-    def cancel_queued_run(self, run_id: str, *, now: str | None = None) -> bool:
+    def cancel_queued_run(self, run_id: str, *, now: str | None = None, by: str | None = None,
+                          activity_status: str = "cancelled", activity_summary: str = "") -> bool:
         """Cancel a row that has NOT been claimed yet. Returns False otherwise.
+
+        **The run's activity entry closes in the same transaction** (TR-2, 2026-11-15). The route that queued
+        the run opened that entry as 'running' and handed it over as `result_ref`; only a worker closes it,
+        and a cancelled row never reaches one. Before this, every cancel left its entry 'running' for ever:
+        381 phantom running entries on hedwig after one flood was cancelled. The entry is closed as
+        `activity_status` ('cancelled' by default) with who and when, and only if it is still 'running', so an
+        entry something else already finalised is never overwritten. `by` defaults to the signed-in caller
+        (`current_user_id()`). A caller with its own words (first-index withdraw) passes them.
 
         A claimed or running row is deliberately not cancellable here: it owns a
         real Python thread inside some worker process, and Python threads cannot
@@ -5737,6 +6096,18 @@ class ProjectRegistry:
                 (now, run_id, *held),
             )
             cancelled = bool(getattr(cur, "rowcount", 0))
+            if cancelled:
+                ref = conn.execute("SELECT result_ref FROM runs WHERE id=?", (run_id,)).fetchone()
+                result_ref = (ref["result_ref"] if ref else "") or ""
+                if result_ref:
+                    who = current_user_id() if by is None else by
+                    summary = activity_summary or (
+                        f"Cancelled before it was claimed, by {who or 'the service account'} at {now}; "
+                        "nothing ran.")
+                    conn.execute(
+                        "UPDATE activity_log SET status = ?, summary = ? WHERE id = ? AND status = 'running'",
+                        (activity_status, summary, result_ref),
+                    )
         if cancelled:
             # A pressed run cancelled before any worker claimed it: the presser's held session ends with it.
             from resource_explorer import presser_hold
@@ -5847,6 +6218,15 @@ class ProjectRegistry:
                     datetime.utcnow().isoformat(),
                 ),
             )
+
+    def delete_survey_definition_guid(self, entity_type: str, entity_slug: str, technology_type: str) -> int:
+        """Drop one cached Survey Definition GUID (it pointed at nothing in Egeria); the next resolve is cold."""
+        entity_slug = self._normalize_slug(entity_slug)
+        with self._conn() as conn:
+            cur = conn.execute(
+                "DELETE FROM survey_definition_cache WHERE entity_type = ? AND entity_slug = ? AND technology_type = ?",
+                (entity_type, entity_slug, technology_type))
+            return cur.rowcount or 0
 
     # ── generic runtime settings ("Discover repos to scout" plan, D1) ──────────
 
@@ -6401,6 +6781,26 @@ class ProjectRegistry:
                 tuple(params),
             ).fetchall()
         return [self._with_author(dict(r)) for r in rows]
+
+    def get_resource_feedback(self, feedback_id: str) -> dict | None:
+        """One resource_feedback row by id, or None."""
+        with self._conn() as conn:
+            row = conn.execute("SELECT * FROM resource_feedback WHERE id = ?", (str(feedback_id),)).fetchone()
+        return self._with_author(dict(row)) if row else None
+
+    def resource_feedback_ids_present(self, ids: list[str]) -> set[str]:
+        """Which of `ids` are still resource_feedback rows. Admin's triage of these rows lives in trellis-feedback
+        by reference (feedback_store.py); an id with triage events but no row is shown as "item gone" (Q7)."""
+        ids = [str(i) for i in ids if str(i)]
+        present: set[str] = set()
+        with self._conn() as conn:
+            for start in range(0, len(ids), 500):
+                chunk = ids[start:start + 500]
+                rows = conn.execute(
+                    f"SELECT id FROM resource_feedback WHERE id IN ({', '.join('?' * len(chunk))})", tuple(chunk)
+                ).fetchall()
+                present.update(str(r["id"]) for r in rows)
+        return present
 
     def count_all_resource_feedback(self) -> dict:
         """Totals for the Admin header: how much feedback exists, and on how
@@ -7308,6 +7708,13 @@ class ProjectRegistry:
                 (datetime.utcnow().isoformat(), json.dumps(collections), slug),
             )
 
+    def set_project_collections(self, slug: str, collections: list[str]) -> None:
+        """Set a project's collections list without touching `last_indexed_at`: a rebuild prunes and extends the list
+        around its swap (reindex.py), and only its final step says the project was indexed."""
+        slug = self._normalize_slug(slug)
+        with self._conn() as conn:
+            conn.execute("UPDATE projects SET collections = ? WHERE slug = ?", (json.dumps(collections), slug))
+
     def update_extra_docs_paths(self, slug: str, paths: list[str]) -> None:
         slug = self._normalize_slug(slug)
         with self._conn() as conn:
@@ -7981,7 +8388,7 @@ class ProjectRegistry:
         details: optional per-label breakdown dict (e.g. {"Other": {".toml": 5, ".yaml": 3}})
         """
         slug = self._normalize_slug(slug)
-        surveyed_at = datetime.utcnow().isoformat()
+        surveyed_at = now_utc_iso()
         details = details or {}
         with self._conn() as conn:
             conn.executemany(
@@ -8262,7 +8669,7 @@ class ProjectRegistry:
                 "no such project in the registry (it was never added, or was "
                 "removed since this survey run started)."
             )
-        surveyed_at = surveyed_at or datetime.utcnow().isoformat()
+        surveyed_at = surveyed_at or now_utc_iso()
         # `surveyed_at` is the READ KEY, not a label: query_findings returns
         # only the rows at MAX(surveyed_at). A non-timestamp string therefore
         # shadows every real run FOREVER, because any word starting above '2'
@@ -9329,7 +9736,7 @@ class ProjectRegistry:
                 "no such project in the registry (it was never added, or was "
                 "removed since this survey run started)."
             )
-        surveyed_at = surveyed_at or datetime.utcnow().isoformat()
+        surveyed_at = surveyed_at or now_utc_iso()
         rows = [
             {
                 "project_slug": slug, "kind": kind, "surveyed_at": surveyed_at,
@@ -11359,21 +11766,45 @@ class ProjectRegistry:
         `last_seen_at` moves; a new compile_id inserts. The first writer's
         user/session/timestamp stay on the row: the row describes the compile,
         and a repeat by someone else is evidence of replay, not a new compile.
+
+        One thing a repeat may change: the age of the evidence. The id hashes text only, so a re-surveyed but
+        unchanged result compiles to the same id with newer dates. Those are written into the stored manifest, and
+        the change is kept in its `as_of_seen` history (compile_as_of.refreshed; BRIEF-CONTEXT-SECTION-AS-OF.md
+        §3h), so the stored dates are never frozen at the first compile's. On Postgres the row is locked for the
+        read-modify-write, so concurrent repeats cannot drop a history entry. On SQLite (tests, single-user
+        fallback) two repeats racing could drop one; the packed dates stay right either way.
         Returns {"compile_id", "created": bool}.
         """
         import json as _json
+
+        from resource_explorer.compile_as_of import refreshed
         user_id = current_user_id() if user_id is None else user_id
         now = datetime.utcnow().isoformat()
         with self._conn() as conn:
             row = conn.execute(
-                "SELECT compile_id FROM context_compiles WHERE compile_id = ?", (compile_id,)
+                "SELECT compile_id, manifest FROM context_compiles WHERE compile_id = ?"
+                + (" FOR UPDATE" if conn.is_postgres else ""), (compile_id,)
             ).fetchone()
             if row is not None:
-                conn.execute(
-                    "UPDATE context_compiles SET hits = hits + 1, last_seen_at = ? "
-                    "WHERE compile_id = ?",
-                    (now, compile_id),
-                )
+                try:
+                    stored = _json.loads(row["manifest"] or "{}")
+                    # The history's own times carry a zone, unlike this table's columns, so they can be compared
+                    # with an answer's time.
+                    updated = refreshed(stored, manifest, datetime.now(timezone.utc).isoformat())
+                except (TypeError, ValueError):
+                    updated = None
+                if updated is not None:
+                    conn.execute(
+                        "UPDATE context_compiles SET hits = hits + 1, last_seen_at = ?, manifest = ? "
+                        "WHERE compile_id = ?",
+                        (now, _json.dumps(updated, sort_keys=True, default=str), compile_id),
+                    )
+                else:
+                    conn.execute(
+                        "UPDATE context_compiles SET hits = hits + 1, last_seen_at = ? "
+                        "WHERE compile_id = ?",
+                        (now, compile_id),
+                    )
                 return {"compile_id": compile_id, "created": False}
             conn.execute(
                 "INSERT INTO context_compiles (compile_id, project_slug, question, spec_id, "
@@ -12926,7 +13357,12 @@ class ProjectRegistry:
         "analysis_table_rows": "per surveyed resource, never an investigation",
         "step_annotations": "per surveyed resource, never an investigation",
         "step_runs": "per surveyed resource, never an investigation",
+        "flow_run_results": "a dispatched step's output, per surveyed resource (by flow_run_id), never an "
+                            "investigation; pruned after 30 days",
         "sub_resources": "per surveyed resource, never an investigation",
+        "feedback_rfas": "the one RFA routed per question (closed-loop step 2b), keyed by the resource the answer "
+                         "was about or the catalog/questions pseudo-entity, never an investigation; the RFA itself "
+                         "is activity_log history and stays",
     }
 
     @staticmethod
@@ -13717,7 +14153,7 @@ class ProjectRegistry:
         call's freshly-generated timestamp happened to sort later.
         """
         slug = self._normalize_slug(slug)
-        surveyed_at = surveyed_at or datetime.utcnow().isoformat()
+        surveyed_at = surveyed_at or now_utc_iso()
         merged = False
         with self._conn() as conn:
             # One scan, one snapshot (Brief D 7f.1): the steps of a scan share

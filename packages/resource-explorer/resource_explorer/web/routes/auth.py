@@ -169,7 +169,7 @@ async def auth_logout(request: Request) -> Dict[str, str]:
 async def auth_defaults() -> Dict[str, Any]:
     """The login-form prefill: `RE_LOGIN_DEFAULT_USER` when set, else empty.
 
-    Never the daemon's userId (Brief L): `EGERIA_USER_ID` is RE's own service account, and
+    Never the daemon's userId (Brief L): `RE_DAEMON_USER_ID` is RE's own service account, and
     prefilling it would invite people to sign in as the daemon. Never a password either: this
     endpoint is public by necessity.
     """

@@ -13,6 +13,7 @@ from pathlib import Path
 import pytest
 
 NEXT = Path(__file__).resolve().parents[1] / "resource_explorer" / "web" / "static" / "next"
+SHARED_UI = Path(__file__).resolve().parents[2] / "trellis-ui" / "trellis_ui" / "static"  # RE's files shared with EA
 pytestmark = pytest.mark.skipif(shutil.which("node") is None, reason="node not installed")
 
 
@@ -22,7 +23,7 @@ _MOD: list[str] = []
 @pytest.fixture(autouse=True)
 def _module(tmp_path):
     # format.js is a plain ES module with no package.json beside it, so node needs it as .mjs
-    (tmp_path / "format.mjs").write_text((NEXT / "format.js").read_text(encoding="utf-8"), encoding="utf-8")
+    (tmp_path / "format.mjs").write_text((SHARED_UI / "format.js").read_text(encoding="utf-8"), encoding="utf-8")
     _MOD[:] = [(tmp_path / "format.mjs").as_uri()]
 
 

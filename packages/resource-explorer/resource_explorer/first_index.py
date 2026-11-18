@@ -228,6 +228,9 @@ def queue(registry, slug: str, *, requested_by: str, batch_id: str = "", batch_t
         raise FirstIndexRefused(f"{p.display_name or slug} already has an index of its own; a refresh updates it.")
     if active_run_for(registry, slug) is not None:
         raise FirstIndexRefused(f"{p.display_name or slug} is already waiting to be indexed, or is being indexed.")
+    from resource_explorer import reindex
+    if reindex.is_rebuilding(registry, slug):
+        raise FirstIndexRefused(f"{p.display_name or slug} has a rebuild in progress.")
     m = measured(registry, slug)
     position = 1
     if batch_id:
@@ -253,11 +256,10 @@ def withdraw(registry, run_id: str) -> bool:
     run = registry.get_run(run_id)
     if run is None or run["kind"] != RUN_KIND:
         return False
-    if not registry.cancel_queued_run(run_id):
-        return False
-    registry.close_activity_if_running(run.get("result_ref") or "", "ok",
-                                       "First index withdrawn before it started; nothing was indexed.")
-    return True
+    # The registry closes the run's activity entry in the cancel's own transaction, with these words.
+    return registry.cancel_queued_run(
+        run_id, activity_status="ok",
+        activity_summary="First index withdrawn before it started; nothing was indexed.")
 
 
 # ── the state of each yes, from run rows ─────────────────────────────────────

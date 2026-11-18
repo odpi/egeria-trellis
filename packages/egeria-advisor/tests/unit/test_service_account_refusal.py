@@ -37,6 +37,7 @@ def _no_egeria(monkeypatch):
         raise AssertionError("Egeria was called before the refusal")
     monkeypatch.setattr("advisor.auth.login_with_password", boom)
     monkeypatch.setattr("advisor.auth.validate_egeria_token", boom)
+    monkeypatch.setattr("advisor.auth.check_portal_egeria_token", boom)  # the Portal route's check (A-I1)
     monkeypatch.setattr("advisor.auth.validate_egeria_credentials", boom)
 
 
@@ -107,7 +108,8 @@ def test_portal_token_for_normal_user_still_works(client, monkeypatch):
         "advisor.auth.exchange_portal_token",
         lambda t: {"sub": "peterprofile", "egeria_token": "tok", "role": "user"},
     )
-    monkeypatch.setattr("advisor.auth.validate_egeria_token", lambda t: True)
+    # The route's Egeria check is check_portal_egeria_token since A-I1 (it refuses a rejected token).
+    monkeypatch.setattr("advisor.auth.check_portal_egeria_token", lambda t: (auth.PORTAL_TOKEN_ACCEPTED, ""))
     r = client.post("/api/auth/portal", json={"portal_token": "whatever"})
     assert r.status_code == 200
 

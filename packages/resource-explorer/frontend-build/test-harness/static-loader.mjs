@@ -1,6 +1,6 @@
 /** Node ESM loader hook (registered via `node:module`'s `register()`) that
  *  makes `/next`'s own root-relative import specifiers -- e.g.
- *  `'/static/next/envelope.js'`, `'/static/re-api.js'` -- resolve to the
+ *  `'/static/trellis-ui/envelope.js'`, `'/static/re-api.js'` -- resolve to the
  *  real files under `resource_explorer/web/static/` instead of Node's
  *  default behaviour, which is to treat a specifier starting with `/` as an
  *  absolute FILESYSTEM path and look for it at the OS root (confirmed
@@ -25,6 +25,12 @@ const STATIC_ROOT = path.resolve(
   fileURLToPath(new URL('.', import.meta.url)),
   '..', '..', 'resource_explorer', 'web', 'static',
 );
+// The files RE shares with EA (packages/trellis-ui), which both apps serve at /static/trellis-ui/.
+const SHARED_PREFIX = '/static/trellis-ui/';
+const SHARED_ROOT = path.resolve(
+  fileURLToPath(new URL('.', import.meta.url)),
+  '..', '..', '..', 'trellis-ui', 'trellis_ui', 'static',
+);
 
 function isStaticSpecifier(specifier) {
   return specifier.startsWith('/static/');
@@ -40,14 +46,16 @@ export async function resolve(specifier, context, nextResolve) {
       ? specifier.slice('/static/'.length)
       : specifier.slice('/static/'.length, queryIndex);
     const search = queryIndex === -1 ? '' : specifier.slice(queryIndex);
-    const fileUrl = pathToFileURL(path.join(STATIC_ROOT, rel)).href + search;
+    const fileUrl = (specifier.startsWith(SHARED_PREFIX)
+      ? pathToFileURL(path.join(SHARED_ROOT, rel.slice(SHARED_PREFIX.length - '/static/'.length))).href
+      : pathToFileURL(path.join(STATIC_ROOT, rel)).href) + search;
     return { url: fileUrl, shortCircuit: true };
   }
   return nextResolve(specifier, context);
 }
 
 export async function load(url, context, nextLoad) {
-  if (url.startsWith(pathToFileURL(STATIC_ROOT).href)) {
+  if (url.startsWith(pathToFileURL(STATIC_ROOT).href) || url.startsWith(pathToFileURL(SHARED_ROOT).href)) {
     // These files have no nearby package.json declaring "type": "module",
     // so Node's default format sniffing would treat them as CommonJS and
     // choke on `export`/`import`. They are ES modules -- say so explicitly.

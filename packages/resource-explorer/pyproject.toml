@@ -28,7 +28,7 @@ dependencies = [
     # makes it available in a workspace-wide sync but does NOT make it a
     # requirement. Any install that resolves resource-explorer alone — CI, a
     # clean per-package install — would have failed on the import.
-    "trellis-context",
+    "trellis-context>=0.2",
     # Shared TTL/LRU query cache, extracted alongside Egeria Advisor's
     # equivalent — packages/trellis-querycache
     "trellis-querycache",
@@ -40,6 +40,16 @@ dependencies = [
     # in a workspace-wide sync, it does not make it a requirement, so a
     # per-package install would fail on the import.
     "trellis-auth",
+    # Page feedback and its triage (feedback_store.py), shared with Egeria Advisor —
+    # packages/trellis-feedback, docs/trellis-feedback-extraction.md.
+    "trellis-feedback>=0.2,<0.4",  # stats() reads its items table directly
+    # The browser pieces shared with Egeria Advisor (the looks, column resizing, markdown, the envelope
+    # renderer) -- packages/trellis-ui, served at /static/trellis-ui/ (web/app.py). Declared for the reason
+    # trellis-auth is: a root sources entry makes it available, not required.
+    "trellis-ui",
+    # One device choice (GPU / Apple GPU / CPU) and the start-up hardware report -- packages/trellis-accel,
+    # docs/hardware-acceleration-proposal.md. No dependencies of its own; never pulls a PyTorch build.
+    "trellis-accel",
     # The Analytic Library: Curate's By-analysis tab calls
     # trellis_analytics.routines.curation_coverage (brief 2b). Since LS2 it is its own
     # distribution (odpi/egeria-trellis-analytics); the readers it asks for are RE's, in
@@ -55,7 +65,9 @@ dependencies = [
     "openai>=1.54.0",
     "anthropic>=0.39.0",
     # Document ingestion
-    "docling>=2.0.0",
+    "docling>=2.150.0",
+    # 5.22.2 fixed RT-DETRv2 hard-coding float64 on Apple MPS (see keep_off_mps).
+    "transformers>=5.22.2",
     "nbconvert>=7.16.0",
     "PyGitHub>=2.5.0",
     "httpx>=0.27.0",
@@ -187,7 +199,12 @@ dependencies = [
     # Raised to 6.2.24 (2026-11-07, RS-W2-1b): the release that carries egeria-python #539-#544 (the Egeria 6.3
     # report-spec, measurement and dashboard types; exec_report_spec for MetadataExpert-backed specs), the floor the
     # Portal runs. The library 0.4.0 tile is declared, so pyegeria's executor shows its declared absence sentence.
-    "pyegeria>=6.2.24",
+    # Raised to 6.2.31 (2026-11-10, B1 of the EA catch-up brief): 6.2.30 fixed a data-loss bug, where a blank Zone
+    # Membership on a Dr.Egeria Update called clear_zone_membership and wiped the element's zones; 6.2.29-6.2.31 also
+    # changed report-spec seeding, Dashboard Sheet wording and Ownership, and added semantic_grounding fields.
+    # Raised to 6.2.32 (2026-11-10, B2): the rendered Dr.Egeria templates ship in the wheel (md_processing.templates);
+    # Egeria Advisor reads them from there so its templates match the installed Dr.Egeria executor.
+    "pyegeria>=6.3.0",  # 6.3.0 (2026-11-16) matches Egeria 6.3 (trusted paging on released 6.3, egeria-python #600). 6.2.42 (2026-11-15): the floor the Egeria 6.3 release notes state everywhere (owner, 2026-11-16), level with Egeria Advisor and Studio (#1095). 6.2.41 (2026-11-13): authoring API, MetadataExpert guards, additionalProperties merge. 6.2.40: Dr.Egeria create/update default handling, Feedback Rating/Like links (pyegeria docs/release-notes/6.2.40.md); 6.2.39: one list item per Dr.Egeria bullet, DCAT search-mode file names (6.2.38 unpublished); 6.2.37: DOCUMENT/DCAT export, structured tables and native DICT (opt-in), rendering fixes; 6.2.36: get_collection_members pages; saved_query counts distinct elements; folder walks page every folder (ISSUE-185)
     "mcp>=2.0.0",
     # nest-asyncio removed 2026-09-04 with the shared-pool refactor: RE no
     # longer imports it anywhere. Its one site, surveyors/prefect_adapter.py's

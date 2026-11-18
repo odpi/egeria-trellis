@@ -58,8 +58,8 @@ def _get_doc_manager():
          "required — it defaults to whoever `egeria-advisor login` signed "
          "in, and with neither it behaves like an anonymous web request "
          "(shared namespace only). See egeria-advisor's own --user for why "
-         "this doesn't fall back to the EGERIA_USER service-account "
-         "setting."
+         "this doesn't fall back to the EA_DAEMON_USER_ID service-account "
+         "setting. This runs as a user, so EA's MCP tools (pyegeria and Dr.Egeria, which sign in as EA's service account) are not used: a step that would need one says \"That tool can't run as you yet, so I didn't use it.\" (TR-34; per-call tokens come with TR-43.)"
 )
 @click.pass_context
 def plans(ctx: click.Context, user_id: Optional[str]):
@@ -238,14 +238,32 @@ def execute_plan(ctx: click.Context, doc_id: str, dry_run: bool, perspective: st
     else:
         egeria_credentials = cli_session.require_egeria_credentials(console)
 
+    agent = get_governance_plan_agent()
+    if not dry_run:
+        # The plan confirm gate: show exactly what would run, ask, then run it with the shown digest.
+        shown = agent.prepare_execute(doc_id, egeria_credentials=egeria_credentials)
+        if not shown.get("confirm_required"):
+            console.print(Panel(Markdown(shown.get("response", "")), title=f"[bold]{doc_id}[/bold]",
+                                border_style="red"))
+            sys.exit(1)
+        console.print(Panel(Markdown(f"```markdown\n{shown['command_section'].strip()}\n```"),
+                            title=f"[bold]{doc_id}[/bold]: {shown['command_count']} command(s)",
+                            border_style="cyan"))
+        if not click.confirm(f"Process these {shown['command_count']} command(s) in Egeria as you?", default=False):
+            agent.cancel_execute(shown["pending_id"])
+            console.print("[yellow]Cancelled: nothing was written.[/yellow]")
+            return
+
     label = f"[dry run] {doc_id}" if dry_run else doc_id
     console.print(f"[cyan]Executing plan:[/cyan] {label}")
 
     try:
-        result = get_governance_plan_agent().execute(
-            doc_id, perspective=perspective, dry_run=dry_run,
-            egeria_credentials=egeria_credentials,
-        )
+        if dry_run:
+            result = agent.execute(doc_id, perspective=perspective, dry_run=True,
+                                   egeria_credentials=egeria_credentials)
+        else:
+            result = agent.execute(doc_id, perspective=perspective, egeria_credentials=egeria_credentials,
+                                   pending_id=shown["pending_id"], digest=shown["plan_digest"])
     except Exception as exc:
         console.print(f"[red]✗ Execution failed:[/red] {exc}")
         sys.exit(1)

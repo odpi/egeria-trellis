@@ -16,10 +16,38 @@ load_dotenv()
 import os
 from pathlib import Path
 from typing import Optional, Dict, Any
-from pydantic import BaseModel, Field
+from pydantic import AliasChoices, BaseModel, Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 import yaml
 from loguru import logger
+
+
+#: Where Advisor keeps its writable state when ADVISOR_DATA_PATH is unset.
+#: Outside any repository on purpose; see resolve_advisor_data_root().
+DEFAULT_ADVISOR_DATA_ROOT = Path.home() / "egeria-advisor-data"
+
+
+class AdvisorDataRootError(RuntimeError):
+    """The configured data root is unusable (today: it is inside a git checkout)."""
+
+
+def enclosing_git_checkout(path: Path) -> Optional[Path]:
+    """The git work tree containing ``path``, or None.
+
+    Walks ``path`` (which need not exist yet) and its ancestors for a ``.git``
+    entry. Both a directory (an ordinary clone) and a file (a linked worktree
+    or a submodule) count. Relative paths are taken against the cwd, so
+    ``./data`` from inside a checkout is caught.
+    """
+    candidate = Path(os.path.abspath(Path(path).expanduser()))
+    try:
+        candidate = candidate.resolve(strict=False)
+    except OSError:
+        pass
+    for parent in (candidate, *candidate.parents):
+        if (parent / ".git").exists():
+            return parent
+    return None
 
 
 def resolve_advisor_data_root() -> Path:
@@ -38,8 +66,19 @@ def resolve_advisor_data_root() -> Path:
     Priority: ``ADVISOR_DATA_PATH`` env var if explicitly set (checked via
     ``os.environ`` directly, matching ``resolve_mlflow_tracking_uri()``'s
     established idiom, so an unset var never masquerades as a setting), else
-    ``"./data"`` — the unchanged default for a native checkout, where the
-    process cwd is normally the package root and writable.
+    ``~/egeria-advisor-data`` (``DEFAULT_ADVISOR_DATA_ROOT``). Until
+    2026-11-10 the default was ``./data``, which for a native checkout put
+    feedback logs, the embedding cache and cloned repos inside the trellis
+    git work tree.
+
+    **Refused inside a git checkout.** The root (explicit or default) must not
+    sit inside a git work tree: Advisor's state is runtime data, and inside a
+    checkout it is one ``git clean``/``reset``/branch switch away from being
+    lost, or one ``git add`` away from being committed. Any ancestor holding a
+    ``.git`` (a directory, or the file a linked worktree has) counts. The
+    error names the path and the fix rather than quietly falling back, so a
+    deployment that still points into a checkout stops at startup instead of
+    writing there.
 
     A container's non-root user typically can't write to its image cwd
     (e.g. ``/app``), which is exactly the "Permission denied: 'data'" startup
@@ -47,9 +86,25 @@ def resolve_advisor_data_root() -> Path:
     volume (e.g. ``/tmp/advisor-data``) to route every write here instead.
     """
     env_val = os.environ.get("ADVISOR_DATA_PATH", "").strip()
-    if env_val:
-        return Path(env_val).expanduser()
-    return Path("./data")
+    root = Path(env_val).expanduser() if env_val else DEFAULT_ADVISOR_DATA_ROOT
+    return refuse_inside_git_checkout(root, "ADVISOR_DATA_PATH", "~/egeria-advisor-data")
+
+
+def refuse_inside_git_checkout(path: Path, env_var: str, example: str) -> Path:
+    """Return ``path``, or raise AdvisorDataRootError if it is inside a git checkout.
+
+    Used for every directory Advisor writes runtime state to: the data root
+    (ADVISOR_DATA_PATH) and the cache (ADVISOR_CACHE_DIR, which may be set on
+    its own, e.g. a relative ``./data/cache``).
+    """
+    checkout = enclosing_git_checkout(path)
+    if checkout is not None:
+        raise AdvisorDataRootError(
+            f"{env_var} ({path}) is inside a git checkout; set it to a directory "
+            f"outside any repository, e.g. {example} "
+            f"(the checkout is {checkout})."
+        )
+    return path
 
 
 def ensure_writable_dir(path: Path, env_var: str) -> Path:
@@ -131,7 +186,7 @@ class PgVectorConfig(BaseModel):
     port: int = 5442
     dbname: str = "egeria_advisor"
     user: str = "egeria_advisor"
-    password: str = "advisor"
+    password: str = ""   # TR-12: no built-in password; PGVECTOR_PASSWORD must be set
     max_connections: int = 10
     ef_search: int = 128
 
@@ -359,6 +414,75 @@ class LoggingConfig(BaseModel):
     retention: str = "1 week"
 
 
+#: EA's service-account settings (TR-34) and the deprecated names they replace (removed after 6.3).
+DAEMON_USER_ID = "EA_DAEMON_USER_ID"
+DAEMON_USER_PASSWORD = "EA_DAEMON_USER_PASSWORD"
+OLD_DAEMON_USER_ID = "EGERIA_USER"
+OLD_DAEMON_USER_PASSWORD = "EGERIA_PASSWORD"
+#: pyegeria's own CLI identity: for running pyegeria tools as yourself in a shell, never in a server process
+#: (pyegeria's settings fallback reads them: the TR-33 identity switch went through exactly that path).
+CLI_IDENTITY_VARS = ("EGERIA_USER", "EGERIA_USER_PASSWORD")
+#: The words when EA's service account isn't configured.
+NO_SERVICE_ACCOUNT = (f"EA's service account isn't configured: set {DAEMON_USER_ID} and {DAEMON_USER_PASSWORD} "
+                      f"in EA's .env (the app's own service account, never a person).")
+_WARNED_ONCE: set = set()
+
+
+def _setting_sources() -> dict:
+    """Every raw setting as EA's settings see it: the .env file, then the environment (wins). Case-insensitive
+    names, as AdvisorSettings reads them."""
+    out: dict = {}
+    try:
+        from dotenv import dotenv_values
+        if Path(".env").is_file():
+            out.update({k.upper(): v for k, v in dotenv_values(".env").items() if v is not None})
+    except (OSError, UnicodeDecodeError, ValueError) as exc:   # an unreadable .env: settings report it themselves
+        logger.debug(f"EA settings: .env not read for the service-account name check: {type(exc).__name__}")
+    out.update({k.upper(): v for k, v in os.environ.items()})
+    return out
+
+
+def _warn_once(key: str, message: str) -> None:
+    if key in _WARNED_ONCE:
+        return
+    _WARNED_ONCE.add(key)
+    logger.warning(message)
+
+
+def warn_old_daemon_names(sources: Optional[dict] = None) -> list:
+    """The deprecation words for EA's service account (TR-34), logged once each, never with a value. pydantic
+    hands the validator only the first alias it found, so the raw sources are read here."""
+    src = _setting_sources() if sources is None else {k.upper(): v for k, v in sources.items()}
+    said = []
+    for new, old in ((DAEMON_USER_ID, OLD_DAEMON_USER_ID), (DAEMON_USER_PASSWORD, OLD_DAEMON_USER_PASSWORD)):
+        has_new, has_old = bool(src.get(new)), bool(src.get(old))
+        if has_old and not has_new:
+            msg = (f"{old} is deprecated for EA's service account and is removed after 6.3: set {new} instead "
+                   f"(using {old} for now)")
+        elif has_old and has_new and src.get(old) != src.get(new):
+            msg = f"{new} and {old} are both set and differ: using {new}; remove {old} (deprecated, removed after 6.3)"
+        else:
+            continue
+        said.append(msg)
+        _warn_once(f"daemon:{new}:{has_new}", msg)
+    return said
+
+
+def warn_server_identity_env(role: str, environ: Optional[dict] = None) -> list:
+    """A WARNING when an EA server process has pyegeria's CLI identity variables: they give pyegeria a silent
+    fallback identity in a process that must act only as its users or its own service account. Names only."""
+    env = os.environ if environ is None else environ
+    present = [v for v in CLI_IDENTITY_VARS if env.get(v)]
+    if not present:
+        return []
+    msg = (f"{' and '.join(present)} {'is' if len(present) == 1 else 'are'} set in the EA {role} process: these are "
+           f"for running pyegeria tools as yourself in a shell, never a server's settings. Unset "
+           f"{'it' if len(present) == 1 else 'them'}; EA's service account is {DAEMON_USER_ID} / "
+           f"{DAEMON_USER_PASSWORD}.")
+    _warn_once(f"cli-identity:{role}:{','.join(present)}", msg)
+    return [msg]
+
+
 class AdvisorSettings(BaseSettings):
     """Main settings loaded from environment and config file."""
 
@@ -369,12 +493,19 @@ class AdvisorSettings(BaseSettings):
         extra="ignore"
     )
 
+    @model_validator(mode="after")
+    def _old_daemon_names(self) -> "AdvisorSettings":
+        warn_old_daemon_names()
+        return self
+
     # pgvector
     pgvector_host: str = Field(default="localhost", alias="PGVECTOR_HOST")
     pgvector_port: int = Field(default=5442, alias="PGVECTOR_PORT")
     pgvector_dbname: str = Field(default="egeria_advisor", alias="PGVECTOR_DBNAME")
     pgvector_user: str = Field(default="egeria_advisor", alias="PGVECTOR_USER")
-    pgvector_password: str = Field(default="advisor", alias="PGVECTOR_PASSWORD")
+    # No default (TR-12, 2026-11-15): it was "advisor", so a deployment that set nothing ran on a password written in
+    # this repository. Unset, EA refuses to start and every Postgres user refuses by name (require_pgvector_password).
+    pgvector_password: str = Field(default="", alias="PGVECTOR_PASSWORD")
     pgvector_max_connections: int = Field(default=10, alias="PGVECTOR_MAX_CONNECTIONS")
     pgvector_ef_search: int = Field(default=128, alias="PGVECTOR_EF_SEARCH")
 
@@ -384,11 +515,20 @@ class AdvisorSettings(BaseSettings):
     # Egeria — the actual platform URL/view server are resolved via
     # advisor.mcp_config.get_pyegeria_platform_config() (EGERIA_VIEW_SERVER_URL /
     # EGERIA_VIEW_SERVER env vars, then config/mcp_servers.json), NOT read from
-    # here. egeria_user/egeria_password remain the .env-backed service-account
-    # fallback used by advisor.auth.resolve_egeria_credentials() when no
-    # per-request session credentials are present.
-    egeria_user: str = Field(default="garygeeke", alias="EGERIA_USER")
-    egeria_password: str = Field(default="secret", alias="EGERIA_PASSWORD")
+    # here.
+    #
+    # EA's own service account: the app's own account, never a person. Used by
+    # advisor.auth.resolve_egeria_credentials() only when a request has no signed-in user (the background spec
+    # sync, anonymous reads). TR-34 (ruling RULING-RE-SERVICE-ACCOUNT-ENV-NAMES-2026-11-17 §4):
+    # EA_DAEMON_USER_ID / EA_DAEMON_USER_PASSWORD. The old EGERIA_USER / EGERIA_PASSWORD are read for one release
+    # with a warning (removed after 6.3); the new name wins when both are set. NO default: the built-in
+    # "garygeeke"/"secret" pair is gone (the PO-45/PY-33 shape), so an unset account fails closed, in words.
+    daemon_user_id: str = Field(default="", validation_alias=AliasChoices(DAEMON_USER_ID, OLD_DAEMON_USER_ID))
+    daemon_user_password: str = Field(default="", validation_alias=AliasChoices(DAEMON_USER_PASSWORD,
+                                                                                OLD_DAEMON_USER_PASSWORD))
+    # Optional login-form prefill (GET /api/auth/defaults, which is public). Never the service account
+    # above: that id is refused at sign-in (advisor.auth.service_account_ids), so it is never offered (A-I1).
+    advisor_login_default_user: str = Field(default="", alias="ADVISOR_LOGIN_DEFAULT_USER")
 
     # Comma-separated extra origins allowed to call the API cross-origin, on top of
     # localhost (always allowed for local dev). Needed when this Advisor is embedded
@@ -396,6 +536,14 @@ class AdvisorSettings(BaseSettings):
     # "https://egeria.pdr-associates.com". Same-origin browser access (the SPA served
     # from the same host:port as the API) never needs this.
     advisor_extra_cors_origins: str = Field(default="", alias="ADVISOR_EXTRA_CORS_ORIGINS")
+
+    # Origins that may FRAME this Advisor and talk to it by postMessage (E1, 2026-11-14): Trellis Studio's embedded
+    # EA panel (/?embed=studio). Comma-separated exact origins (scheme://host:port). They are sent as
+    # Content-Security-Policy frame-ancestors (with 'self'), and they are the only origins whose postMessage the
+    # page accepts: the Studio session hand-over (trellis_auth) and the Portal token (egeria_auth). Default:
+    # Studio on laz (8840) and its freshstart twin (7840). Empty means nobody may frame it but itself.
+    advisor_embed_origins: str = Field(default="http://localhost:8840,http://localhost:7840",
+                                       alias="ADVISOR_EMBED_ORIGINS")
 
     # Ollama
     ollama_base_url: str = Field(
@@ -419,7 +567,9 @@ class AdvisorSettings(BaseSettings):
         default="sentence-transformers/all-MiniLM-L6-v2",
         alias="EMBEDDING_MODEL"
     )
-    embedding_device: str = Field(default="cpu", alias="EMBEDDING_DEVICE")
+    # No embedding_device field: EA reads the device from advisor.yaml's
+    # embeddings.device (shipped "auto"). An EMBEDDING_DEVICE env var used to be
+    # declared here but nothing read it, which misled two reviews on 2026-11-11.
 
     # MLflow
     # Default matches advisor.yaml observability.mlflow.tracking_uri (the
@@ -466,6 +616,18 @@ class AdvisorSettings(BaseSettings):
         default_factory=lambda: resolve_advisor_data_root() / "cache",
         alias="ADVISOR_CACHE_DIR"
     )
+
+    @field_validator("advisor_cache_dir")
+    @classmethod
+    def _cache_dir_outside_git(cls, value: Path) -> Path:
+        # An explicit ADVISOR_CACHE_DIR gets the same refusal as the data root
+        # (the default is under the data root, which is already checked).
+        # AdvisorDataRootError is a RuntimeError, so pydantic lets it through
+        # unwrapped and the module-level settings re-raise it.
+        return refuse_inside_git_checkout(Path(value).expanduser(), "ADVISOR_CACHE_DIR",
+                                          "~/egeria-advisor-data/cache")
+    # Read by resolve_log_level() (the web process's loguru sink and uvicorn's
+    # level). Was defined here but never read until 2026-11-10.
     advisor_log_level: str = Field(default="INFO", alias="ADVISOR_LOG_LEVEL")
 
 
@@ -676,10 +838,58 @@ def get_full_config(config_path: Optional[Path] = None) -> Dict[str, Any]:
 try:
     settings = AdvisorSettings()
     logger.info("Settings loaded successfully")
+except AdvisorDataRootError:
+    # Not a parse problem to paper over with defaults: the defaults resolve
+    # the same data root and would fail the same way. Stop, with the reason.
+    raise
 except Exception as e:
     logger.warning(f"Could not load settings from environment: {e}")
     logger.info("Using default settings")
     settings = AdvisorSettings()
+
+
+
+#: loguru's level names, which are also what ADVISOR_LOG_LEVEL accepts.
+_LOG_LEVELS = ("TRACE", "DEBUG", "INFO", "SUCCESS", "WARNING", "ERROR", "CRITICAL")
+#: uvicorn has no TRACE/SUCCESS; map them to its nearest level.
+_UVICORN_LEVEL = {"TRACE": "trace", "DEBUG": "debug", "INFO": "info", "SUCCESS": "info",
+                  "WARNING": "warning", "ERROR": "error", "CRITICAL": "critical"}
+
+
+def resolve_log_level(value: Optional[str] = None) -> str:
+    """The web process's log level: ``value``, else ADVISOR_LOG_LEVEL, else INFO.
+
+    Upper-cased; ``WARN`` is accepted as ``WARNING``. An unknown name is not
+    silently swapped: it falls back to INFO with a warning naming the bad
+    value, so a typo is visible rather than a quiet change of verbosity.
+    """
+    raw = value
+    if raw is None:
+        raw = os.environ.get("ADVISOR_LOG_LEVEL") or getattr(settings, "advisor_log_level", None) or "INFO"
+    level = str(raw).strip().upper()
+    if level == "WARN":
+        level = "WARNING"
+    if level not in _LOG_LEVELS:
+        logger.warning(f"ADVISOR_LOG_LEVEL={raw!r} is not a log level ({', '.join(_LOG_LEVELS)}); using INFO")
+        return "INFO"
+    return level
+
+
+def configure_logging(level: str, sink=None) -> int:
+    """Replace loguru's handlers with one sink (stderr by default) at ``level``.
+
+    Returns the new handler id. The web command calls this once at startup so
+    ADVISOR_LOG_LEVEL decides what the server logs (loguru's own default is
+    DEBUG, which is what the server logged before 2026-11-10).
+    """
+    import sys as _sys
+    logger.remove()
+    return logger.add(sink if sink is not None else _sys.stderr, level=level)
+
+
+def uvicorn_log_level(level: str) -> str:
+    """uvicorn's name for a level resolve_log_level() returned."""
+    return _UVICORN_LEVEL.get(level, "info")
 
 
 __all__ = [
@@ -687,6 +897,13 @@ __all__ = [
     "load_config",
     "get_full_config",
     "resolve_advisor_data_root",
+    "DEFAULT_ADVISOR_DATA_ROOT",
+    "AdvisorDataRootError",
+    "enclosing_git_checkout",
+    "refuse_inside_git_checkout",
+    "resolve_log_level",
+    "uvicorn_log_level",
+    "configure_logging",
     "ensure_writable_dir",
     "DEFAULT_MODEL_TIER",
     "TIER_PRESETS",
@@ -708,3 +925,18 @@ __all__ = [
     "ObservabilityConfig",
     "LoggingConfig",
 ]
+
+
+class MissingDatabaseSetting(RuntimeError):
+    """A Postgres setting EA needs is unset (TR-12). Names the variable, never a value."""
+
+
+def require_pgvector_password(password: "str | None" = None) -> str:
+    """The pgvector password (`password`, else `settings.pgvector_password`), or MissingDatabaseSetting naming
+    PGVECTOR_PASSWORD. There is no built-in default any more (TR-12)."""
+    value = password if password is not None else settings.pgvector_password
+    if value:
+        return value
+    raise MissingDatabaseSetting(
+        "EA cannot connect to its Postgres (pgvector): PGVECTOR_PASSWORD is not set. Set it in the .env file. There is "
+        "no built-in password any more (TR-12).")

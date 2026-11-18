@@ -116,9 +116,14 @@ User Query  [+ perspective + intent_override]
 A browser-based chat interface is the primary way to interact with Egeria Advisor.
 
 ```bash
-# Start the web server (default: http://localhost:8880)
-uvicorn advisor.web.app:app --reload --port 8880
+# Start the web server (default: http://localhost:8880), one process, no auto-reload
+egeria-advisor-web --port 8880
+# or, loading .env first:
+scripts/run_web.sh
 ```
+
+See [Operating the web server](#operating-the-web-server) for the log level, the data
+directory, offline model loading and HTTPS.
 
 ### Layout
 
@@ -216,21 +221,19 @@ curl http://localhost:5025
 curl -k https://localhost:9443/open-metadata/platform-services/users/garygeeke/server-platform/origin
 ```
 
-### Installation
+### Installation and configuration
+
+EA is one package of the Trellis monorepo, installed with the rest:
 
 ```bash
-# Navigate to project
-cd /Users/dwolfson/localGit/egeria-v6/egeria-advisor
-
-# Activate virtual environment
-source activate_venv.sh
-
-# Install with dev dependencies
-pip install -e ".[dev]"
-
-# Verify setup
-python -c "from advisor.config import settings; print('✓ Config loaded')"
+# from the repository root (see the top-level README)
+uv sync
+cp packages/egeria-advisor/.env.example packages/egeria-advisor/.env
 ```
+
+Then set EA's own service account (`EA_DAEMON_USER_ID` / `EA_DAEMON_USER_PASSWORD`) and `PGVECTOR_PASSWORD` in
+`packages/egeria-advisor/.env`. The [Quick Start](docs/user-docs/QUICK_START.md#configure) says what each one is, how to
+start EA (`make up-ea`), and that you sign in as yourself.
 
 ### Pull Ollama Models
 
@@ -325,21 +328,32 @@ egeria> /dry-run
 egeria> Create a project called 'Data Quality Initiative'
 ```
 
-### 5. Monitoring & Incremental Updates
+### 5. Building, Monitoring & Incremental Updates
+
+Run these from `packages/egeria-advisor/`. That is where EA's `.env` (with `PGVECTOR_PASSWORD`) is read
+from, so from the repository root they fail with "PGVECTOR_PASSWORD is not set".
 
 ```bash
+cd packages/egeria-advisor
+
+# First build: clone the source repositories, then embed every enabled collection.
+# Use --phase all on both; phase 1 is egeria-python only and can't answer concept questions.
+../../.venv/bin/python scripts/clone_repos.py --phase all
+../../.venv/bin/python scripts/ingest_collections.py --phase all
+
 # Start real-time monitoring dashboard
-python -m advisor.dashboard.terminal_dashboard
+../../.venv/bin/python -m advisor.dashboard.terminal_dashboard
 
-# Detect changes in a collection (dry-run)
-python -m advisor.incremental_indexer --collection pyegeria --dry-run
-
-# Apply incremental updates to a collection
-python -m advisor.incremental_indexer --collection pyegeria
-
-# Update all collections
-python -m advisor.incremental_indexer --all
+# Detect changes in one collection (dry-run), then apply them
+../../.venv/bin/python -m advisor.incremental_indexer --collection pyegeria --dry-run
+../../.venv/bin/python -m advisor.incremental_indexer --collection pyegeria
 ```
+
+`--collection` takes an enabled collection name. egeria-docs is indexed as `egeria_concepts`, `egeria_types`
+and `egeria_general`; the old `egeria_docs` collection is disabled (see
+[INDEXING_AND_COLLECTIONS.md](docs/design/INDEXING_AND_COLLECTIONS.md)). There is no `--all` on the
+incremental indexer. Rerunning `ingest_collections.py --phase all` builds only the collections that are still
+empty (existing ones are skipped); add `--force` to rebuild everything, which drops and re-embeds each collection.
 
 ### 6. Testing
 
@@ -357,6 +371,10 @@ python scripts/test_end_to_end.py --categories environment,config,vector_store
 pytest tests/ -v
 pytest --cov=advisor --cov-report=html
 ```
+
+**pyegeria floor bumps.** Every pyegeria floor bump runs `tests/unit/test_pyegeria_contract.py`.
+A new failure there means pyegeria's API moved under EA: fix it, or record it as a strict `xfail`
+with a phase reference.
 
 ## Project Structure
 
@@ -407,6 +425,55 @@ Primary config: `config/advisor.yaml`. Key sections:
 - **Service accounts**: `RE_DAEMON_USER_ID` and `TRELLIS_SERVICE_ACCOUNTS` (comma-separated) list Egeria user ids no human may sign in as; EA answers HTTP 403 "this is a service account; sign in as yourself" before any Egeria call (case-insensitive, trimmed; unset refuses nobody).
 
 Settings are managed via Pydantic models in `advisor/config.py`.
+
+### Embedded in Trellis Studio (`/?embed=studio`)
+
+Trellis Studio shows EA's chat as a resizable side panel: the same page at `/?embed=studio`, compact, with **no
+password form**. The session is Studio's (trellis-auth, owner decision A): EA posts `{type:'ea.ready'}` to its
+parent, Studio answers `{type:'trellis_auth', jwt}` to EA's exact origin, and EA keeps it only after its own check
+(`GET /api/embed/whoami`). Without one within about 5 s the panel says "Sign in to Studio to use EA here".
+
+- `ADVISOR_EMBED_ORIGINS` (default `http://localhost:8840,http://localhost:7840`, Studio on laz and freshstart):
+  the only origins that may frame EA (`Content-Security-Policy: frame-ancestors 'self' …` on every response) and
+  the only ones whose `postMessage` EA accepts. Empty: only EA itself may frame it.
+- **Open in Studio** (owner decision B): saves the spec the conversation is eliciting as a `pyegeria.authoring`
+  `SpecDraft`, as you, in your private draft zone, then posts `{type:'studio.openDraft', draft_ref}` to Studio.
+- **Ask EA about this draft**: Studio posts `{type:'ea.askAbout', draft_ref}`; EA reads that draft from Egeria as
+  you and puts it in the question box.
+- Only a draft reference ever crosses between the two; each side reads the draft from Egeria as the user.
+
+## Operating the web server
+
+These defaults changed on 2026-11-10 (EA Phase 1, Q4).
+
+- **Log level.** `ADVISOR_LOG_LEVEL` (default `INFO`; also `TRACE`, `DEBUG`, `WARNING`, `ERROR`,
+  `CRITICAL`) sets the server's loguru level and the matching uvicorn level. `egeria-advisor-web
+  --log-level DEBUG` overrides it for one run. An unknown name falls back to `INFO` with a warning
+  naming it. The query CLI (`egeria-advisor "..."`) is quiet unless `--debug`, but errors still
+  reach stderr.
+- **Data directory outside git.** `ADVISOR_DATA_PATH` holds Advisor's writable state (feedback
+  logs, the embedding cache unless `ADVISOR_CACHE_DIR` says otherwise, cloned repos, index state).
+  Unset, it is `~/egeria-advisor-data` (it used to be `./data`). Advisor **refuses to start** if
+  it resolves inside a git checkout, with `ADVISOR_DATA_PATH (<path>) is inside a git checkout;
+  set it to a directory outside any repository, e.g. ~/egeria-advisor-data`. To move an existing
+  install: stop Advisor, `mv <old>/data ~/egeria-advisor-data` (or wherever you choose), set
+  `ADVISOR_DATA_PATH` to it, and start again. An explicit `ADVISOR_CACHE_DIR` gets the same
+  refusal: a relative `./data/cache` run from the package directory is inside the checkout, so
+  point it outside too (e.g. `~/egeria-advisor-data/cache`), or unset it to use
+  `<data root>/cache`.
+- **Offline model loading.** When the embedding model (`embeddings.model` in `advisor.yaml`) is
+  already in the Hugging Face cache (`HF_HUB_CACHE`, else `$HF_HOME/hub`, else
+  `~/.cache/huggingface/hub`), Advisor sets `HF_HUB_OFFLINE=1` and `TRANSFORMERS_OFFLINE=1`
+  (unless you set them yourself) and logs "embedding model loaded from cache (offline)". There is
+  no Hugging Face Hub call at startup. When it is not cached, Advisor logs one warning naming the
+  download, and the first start fetches it.
+- **No auto-reload.** `egeria-advisor-web` runs with `--no-reload` by default. `--reload` is a
+  development convenience: it runs the app in a child process that restarts on every edit under
+  `advisor/`, and `--log-level` does not reach that child.
+- **One process.** `scripts/run_web.sh` starts one process: HTTP on `ADVISOR_HTTP_PORT` (8880) by
+  default, or HTTPS only on `ADVISOR_HTTPS_PORT` (8881) with `--https`. For both schemes, put a TLS
+  proxy in front of the HTTP process. `--both` keeps the old two-process mode, but the two
+  processes do not share running jobs, and each runs its own startup sync and MCP warm-up.
 
 ## Monitoring & Observability
 

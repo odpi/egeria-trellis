@@ -61,6 +61,7 @@ class World:
         self.received: list[dict] = []        # what the step's runner connected with, in memory
         self.prefect_saw: list = []           # EVERYTHING handed to the fake Prefect
         self.soda_saw: list[dict] = []
+        self.inproc_run_id = "fr-inproc"
 
         entity = types.SimpleNamespace(slug="mydb", display_name="mydb", db_user=STORED_USER,
                                        db_password=STORED_PW, db_type="postgresql", host="h",
@@ -109,38 +110,47 @@ def _patches(world, *, reachable=True, mode="rest"):
     ctx = []
 
     # --- REST: a recording client; its 'worker' runs the real task body -------
+    run_ids: list[str] = []
     class FakeState:
-        def __init__(self, out): self._out = out
+        # TR-21: a completed run's message is the flow's summary; its output is the registry row it wrote.
+        def __init__(self, message): self.message = message
         def is_completed(self): return True
         def is_failed(self): return False
         def is_cancelled(self): return False
-        async def result(self, raise_on_failure=True): return self._out
 
     class FakeClient:
-        def __init__(self): self.out = {}
+        def __init__(self): self.message = ""
         async def __aenter__(self): return self
         async def __aexit__(self, *a): return False
         async def read_deployment_by_name(self, name):
             return types.SimpleNamespace(id="dep-1", work_pool_name="pool")
         async def read_workers_for_work_pool(self, pool):
             return [types.SimpleNamespace(status="ONLINE")]
-        async def create_flow_run_from_deployment(self, deployment_id, parameters, tags):
+        async def create_flow_run_from_deployment(self, deployment_id, parameters, tags, idempotency_key=None):
             world.prefect_saw.append({"flow_run_parameters": parameters, "tags": tags})
             # the worker is ANOTHER process: it sees only what was sent
             ref = parameters.get("credential_ref", "")
             assert not ref, "a worker cannot read RE's memory, so no reference is sent to one"
-            self.out = flows.run_surveyor_step_task.fn(**parameters)
-            return types.SimpleNamespace(id="fr-rest")
+            # The worker runs the real flow body: one work row, then the output kept by flow run id (TR-21).
+            with patch.object(flows, "run_surveyor_step_task", flows.run_surveyor_step_task.fn):
+                run_ids.append(f"fr-rest-{len(run_ids) + 1}")  # a new id per flow run, as Prefect gives
+                run_id = run_ids[-1]
+                _, summary = flows._run_step_as_flow_run(run_id, keep_result=True, **parameters)
+            self.message = json.dumps(summary, sort_keys=True)
+            return types.SimpleNamespace(id=run_id)
         async def read_flow_run(self, fid):
-            return types.SimpleNamespace(state=FakeState(self.out))
+            return types.SimpleNamespace(state=FakeState(self.message))
 
     ctx.append(patch.object(pa, "re_prefect_client", lambda: FakeClient()))
+    ctx.append(patch.object(pa, "_results_registry", lambda: world.registry))
 
     # --- in-process one-step flow ---------------------------------------------
     def fake_inproc_flow(**params):
         world.prefect_saw.append({"in_process_flow_parameters": params})
-        result = flows.run_surveyor_step_task.fn(**params)
-        return {"result": result, "flow_run_id": "fr-inproc"}
+        # The real in-process flow body (TR-21): its one work row carries the flow run id.
+        with patch.object(flows, "run_surveyor_step_task", flows.run_surveyor_step_task.fn):
+            result, _ = flows._run_step_as_flow_run(world.inproc_run_id, keep_result=False, **params)
+        return {"result": result, "flow_run_id": world.inproc_run_id}
 
     ctx.append(patch.object(pa, "_in_process_step_flow", lambda: fake_inproc_flow))
     ctx.append(patch.object(pa, "check_prefect_reachable_sync",
@@ -371,3 +381,36 @@ def test_the_store_holds_the_password_encrypted():
         assert OVERRIDE_PW.encode() not in ch._store[ref][1]
     finally:
         ch.revoke(ref)
+
+
+# ── TR-21: one work row per flow run, and none from the host ────────────────
+
+def test_a_dispatched_database_step_has_exactly_one_work_row_and_no_host_row(registry):
+    """Architect ruling 2026-11-15 (TR-21): a database step's runner records no row of its own, so the flow writes
+    the one work row (executor=prefect, its flow_run_id). The host, which only waited, writes none: the old host row
+    measured the wait as if it were work and double-counted every Prefect step's cost."""
+    w = World(registry, steps=("local_step",))
+    with _Stack(_patches(w)), \
+         patch.object(SurveyDefinitionExecutor, "_any_step_needs_prerequisites", return_value=True):
+        res = _run(w)
+    step = res["steps"][0]
+    assert step["status"] == "ok" and step["engine"] == "prefect" and step["flow_run_id"] == "fr-rest-1"
+    assert isinstance(step["dispatch_wait_ms"], float)
+    rows = registry.query_step_runs(slug="mydb", step_key="local_step", entity_type="database")
+    assert [(r["executor"], r["source"], r["flow_run_id"]) for r in rows] == [("prefect", "prefect", "fr-rest-1")]
+    kept = registry.read_flow_run_result("fr-rest-1")
+    assert kept["step_run_id"] == rows[0]["id"] and kept["output"]["ok"] is True
+
+
+def test_an_in_process_flow_with_no_flow_run_id_gets_no_host_row(registry):
+    """Architect advisory on TR-21: an in-process flow that returned writes its own work row, even when Prefect gave
+    no id; the host must not add a local row next to it."""
+    w = World(registry, steps=("local_step",))
+    w.inproc_run_id = ""
+    with _Stack(_patches(w)), \
+         patch.object(SurveyDefinitionExecutor, "_any_step_needs_prerequisites", return_value=True):
+        res = _run(w, db_user=OVERRIDE_USER, db_pwd=OVERRIDE_PW, credential_scope="this run")
+    step = res["steps"][0]
+    assert step["status"] == "ok" and step["flow_run_id"] == "" and "in-process Prefect flow" in step["detail"]
+    rows = registry.query_step_runs(slug="mydb", step_key="local_step", entity_type="database")
+    assert len(rows) == 1, rows

@@ -17,11 +17,14 @@ Both apps subclass rather than construct this directly — see `resource_explore
 and `advisor/vector_store_pg.py` for the two live adapters. Direct use looks like:
 
 ```python
+import os
 from trellis_vectorstore import PgVectorStore, PgVectorStoreConfig
 
 store = PgVectorStore(
     PgVectorStoreConfig(host="localhost", port=5442, dbname="egeria_advisor",
-                        user="egeria_advisor", password="advisor",
+                        user="egeria_advisor",
+                        password=os.environ["PGVECTOR_PASSWORD"],   # no default password
+
                         schema="resource_explorer"),   # None = unqualified, public
     metric="cosine",              # REQUIRED — no default, see below
     embeddings=my_provider,       # REQUIRED — an EmbeddingProvider

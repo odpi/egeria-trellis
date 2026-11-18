@@ -32,7 +32,7 @@ _env_var() {
 API_URL="${PREFECT_API_URL:-$(_env_var PREFECT_API_URL)}"
 API_URL="${API_URL:-http://localhost:4200/api}"
 WORK_POOL="${PREFECT_WORK_POOL:-$(_env_var PREFECT_WORK_POOL)}"
-WORK_POOL="${WORK_POOL:-default-agent-pool}"
+WORK_POOL="${WORK_POOL:-resource-explorer-pool}"   # TR-45: matches config.py and the bundled workers
 DEPLOYMENT_NAME="RE Survey Flow/re-survey-step-deployment"
 
 _reachable() {
@@ -80,7 +80,7 @@ if _pid_alive worker; then
   echo "✓ Worker already running (pid $(cat "$STATE_DIR/worker.pid"))"
 else
   echo "→ Starting worker for pool '$WORK_POOL' (log: $STATE_DIR/worker.log)…"
-  nohup uv run --package resource-explorer resource-explorer prefect worker --pool "$WORK_POOL" \
+  nohup env -u EGERIA_USER -u EGERIA_USER_PASSWORD uv run --package resource-explorer resource-explorer prefect worker --pool "$WORK_POOL" \
     > "$STATE_DIR/worker.log" 2>&1 &
   echo $! > "$STATE_DIR/worker.pid"
   sleep 2

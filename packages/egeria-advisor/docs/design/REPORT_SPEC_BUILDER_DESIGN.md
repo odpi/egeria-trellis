@@ -1,5 +1,9 @@
 # Report Spec Builder — Design Reference
 
+> **Status (2026-11-09).** pyegeria 6.2.26 removed `analytic_binders` and declares inputs by role. The report-spec
+> design ([pipeline model](https://github.com/odpi/egeria-workspaces/blob/main/portal-docs/Internals/report-spec-pipeline-model.md))
+> replaces the Advisor-era `Create Report Spec` format (§9.13). This page is revisited with the Advisor work.
+
 **Last updated:** 2026-06-26
 
 ---

@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""Do the 12 Perspectives from foundations.md exist in live Egeria?
+"""Do the 12 Perspectives listed in foundations.md exist in live Egeria?
 
 `docs/open-stack-checklist.md` §7 gives three post-redeploy checks — questions
 resolve, no duplicate/stale links, both surveys load — and **none of them looks
-at Perspectives**. They are authored by `docs/dr-egeria/foundations/foundations.md`
-in the same batch as the glossary and funnel stages, so a heal that reports
-success can leave them missing exactly the way 8 of 49 questions went missing on
+at Perspectives**. They come from Egeria's core content pack and are listed (not
+created) in `docs/dr-egeria/foundations/foundations.md`, so a heal that reports
+success says nothing about them — they can be missing exactly the way 8 of 49 questions went missing on
 2026-08-31.
 
 **Compared against the generative source, not a snapshot.**
@@ -35,12 +35,12 @@ from pathlib import Path
 _FOUNDATIONS = (Path(__file__).resolve().parents[1]
                 / "docs" / "dr-egeria" / "foundations" / "foundations.md")
 
-#: `## Create Perspective` followed by `### Display Name` and its value. Reading
-#: the authored document rather than a list in this file: a hard-coded list here
-#: would be a second copy to keep in step, which is the duplication this
-#: codebase keeps removing.
-_PERSPECTIVE_RE = re.compile(
-    r"##\s*Create Perspective\s*\n+###\s*Display Name\s*\n+([^\n]+)")
+#: A `- `Perspective::<Name>`` list line in foundations.md's Perspectives section.
+#: Until 2026-11-09 this matched `## Create Perspective` commands; those were
+#: removed because the perspectives are content-pack elements RE may not update
+#: (see that section). Reading the document rather than a list in this file: a
+#: hard-coded list here would be a second copy to keep in step.
+_PERSPECTIVE_RE = re.compile(r"^-\s*`Perspective::([^`]+)`\s*$", re.MULTILINE)
 
 
 def expected_perspectives() -> list[str]:
@@ -72,8 +72,8 @@ def _main() -> int:
     missing: list[str] = []
     undetermined: list[str] = []
     for name in expected:
-        # qualifiedName ONLY. `Perspective::<name>` is what foundations.md
-        # authors for all 12, and it is unique by construction.
+        # qualifiedName ONLY. `Perspective::<name>` is the content pack's
+        # qualified name for all 12, and it is unique by construction.
         #
         # The first version also fell back to displayName, and on its first
         # live run (2026-08-31, straight after the redeploy) that fallback
@@ -109,7 +109,8 @@ def _main() -> int:
         print(f"{len(undetermined)} could not be determined and are NOT counted as missing.")
     if missing:
         print(f"{len(missing)} of {len(expected)} perspective(s) are absent from Egeria.")
-        print("Re-run the foundations document, then "
+        print("They come from Egeria's core content pack, not from foundations.md: "
+              "check the content pack loaded, then run "
               "scripts/reconcile_survey_definition_links.py.")
         return 1
     if undetermined:

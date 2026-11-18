@@ -171,3 +171,43 @@ class TestMetricMismatchGuard:
         with pytest.raises(Exception) as exc_info:
             store.create_index("mycollection")
         assert "disagrees with this store's configured metric" not in str(exc_info.value)
+
+
+class TestCountByMetadata:
+    """Rows per value of one metadata field: a rebuild compares a file's live chunks with its rebuilt ones."""
+
+    @staticmethod
+    def _wired(monkeypatch, rows, *, exists=True):
+        store = _store(schema="resource_explorer")
+        seen = {}
+
+        class Cur:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *a):
+                return False
+
+            def execute(self, sql, params):
+                seen["sql"], seen["params"] = sql, params
+
+            def fetchall(self):
+                return rows
+
+        conn = type("Conn", (), {"cursor": lambda self: Cur()})()
+        monkeypatch.setattr(store, "connect", lambda: None)
+        monkeypatch.setattr(store, "collection_exists", lambda n: exists)
+        monkeypatch.setattr(store, "_get_conn", lambda: conn)
+        monkeypatch.setattr(store, "_put_conn", lambda c: None)
+        return store, seen
+
+    def test_groups_by_the_field_and_names_rows_without_it_as_empty(self, monkeypatch):
+        store, seen = self._wired(monkeypatch, [("docs/a.pdf", 3), ("", 1)])
+        assert store.count_by_metadata("rr_pdfs", "file_path") == {"docs/a.pdf": 3, "": 1}
+        assert seen["params"] == ["file_path"]
+        assert "GROUP BY 1" in seen["sql"] and '"resource_explorer"."rr_pdfs"' in seen["sql"]
+
+    def test_a_missing_collection_has_no_counts(self, monkeypatch):
+        store, seen = self._wired(monkeypatch, [], exists=False)
+        assert store.count_by_metadata("rr_pdfs", "file_path") == {}
+        assert "sql" not in seen

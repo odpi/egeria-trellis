@@ -1,0 +1,945 @@
+{
+ "name": "Chief Data Officer Dashboard",
+ "heading": "How the Data Governance Program is Going",
+ "description": "Jules Keeper's view of the data governance program at Coco Pharmaceuticals: whether the program has been built, whether the DATA domain's own metrics are moving, whether the common vocabulary is in use, whether the data hub is delivering, and where things stand against the ninety day plan and the risk register.",
+ "family": "dashboard",
+ "aliases": [],
+ "guid": "e775814a-46f7-4556-8712-e0b699bac8c6",
+ "source": "egeria",
+ "breaks": [],
+ "perspective": null,
+ "viewer": "peterprofile",
+ "placements": [
+  {
+   "position": 1,
+   "ref": "Introduction",
+   "kind": "text",
+   "title": "Introduction",
+   "span": "full",
+   "emphasis": "panel",
+   "perspectives": [],
+   "detail_spec": null,
+   "content": "**How is the data governance program going?**  Every tile below is a live query against Egeria, so this page changes as the domain teams, the data hub team and the data governance team add to the catalog.  The DATA domain exists in service of the domains that carry business and regulatory responsibility, so most tiles measure the shared foundation those domains depend on.  Where a governance metric has no live measure yet, the dashboard says so rather than leaving it out.",
+   "note": null,
+   "restricted": false,
+   "restricted_element": null,
+   "reason": null,
+   "report_guid": null,
+   "report": null,
+   "spec": null,
+   "spec_source": null,
+   "runnable": null,
+   "refusal": null,
+   "result": null,
+   "error": null
+  },
+  {
+   "position": 2,
+   "ref": "Section 1 - Program Built",
+   "kind": "text",
+   "title": "Section 1 - Program Built",
+   "span": "full",
+   "emphasis": "panel",
+   "perspectives": [],
+   "detail_spec": null,
+   "content": "**1. Has the governance program been built?**  The governance definitions defined by all the governance leaders and their teams, the metrics that make them observable, and the information supply chains and blueprints that put the data in a business context.",
+   "note": null,
+   "restricted": false,
+   "restricted_element": null,
+   "reason": null,
+   "report_guid": null,
+   "report": null,
+   "spec": null,
+   "spec_source": null,
+   "runnable": null,
+   "refusal": null,
+   "result": null,
+   "error": null
+  },
+  {
+   "position": 3,
+   "ref": "Governance Definitions by Type",
+   "kind": "report",
+   "title": "Governance Definitions by Type",
+   "span": "2",
+   "emphasis": "panel",
+   "perspectives": [
+    "governance"
+   ],
+   "detail_spec": null,
+   "content": null,
+   "note": null,
+   "restricted": false,
+   "restricted_element": null,
+   "reason": null,
+   "report_guid": "96715900-d944-4b05-9dc8-4de271a437ee",
+   "report": {
+    "guid": "96715900-d944-4b05-9dc8-4de271a437ee",
+    "name": "Governance Definitions by Type",
+    "qualified_name": "CocoPharma::Report::CDODashboard::GovernanceDefinitionsByType",
+    "description": "The number of governance definitions of each kind across all the governance domains, from the drivers (business imperatives, regulations and threats), through the policies (principles, obligations and approaches), to the controls (roles and metrics) and the risk register.",
+    "report_spec": "Analytic Demo - Assets by Type Breakdown",
+    "output_format": "BAR",
+    "params": {
+     "searchString": "*",
+     "graphQueryDepth": "1",
+     "startFrom": "0",
+     "ignoreCase": "False",
+     "endsWith": "False",
+     "pageSize": "0",
+     "limitResultByStatus": "['ACTIVE']",
+     "startsWith": "True"
+    },
+    "analytic_params": {
+     "type_map": [
+      [
+       "Business Imperatives",
+       "BusinessImperative"
+      ],
+      [
+       "Regulations",
+       "Regulation"
+      ],
+      [
+       "Threats",
+       "Threat"
+      ],
+      [
+       "Principles",
+       "GovernancePrinciple"
+      ],
+      [
+       "Obligations",
+       "GovernanceObligation"
+      ],
+      [
+       "Approaches",
+       "GovernanceApproach"
+      ],
+      [
+       "Roles",
+       "GovernanceRole"
+      ],
+      [
+       "Metrics",
+       "GovernanceMetric"
+      ],
+      [
+       "Risks",
+       "Risk"
+      ]
+     ]
+    }
+   },
+   "spec": "Analytic Demo - Assets by Type Breakdown",
+   "spec_source": {
+    "tier": "builtin",
+    "label": "Analytic Demo - Assets by Type Breakdown",
+    "version": null,
+    "seed": "Analytic Function Demo.json"
+   },
+   "runnable": true,
+   "refusal": null,
+   "result": null,
+   "error": null
+  },
+  {
+   "position": 4,
+   "ref": "Governance Metrics Defined",
+   "kind": "report",
+   "title": "Governance Metrics Defined",
+   "span": "1",
+   "emphasis": "kpi",
+   "perspectives": [
+    "governance"
+   ],
+   "detail_spec": "Governance-Metric-DrE-Basic",
+   "content": null,
+   "note": null,
+   "restricted": false,
+   "restricted_element": null,
+   "reason": null,
+   "report_guid": "a07d0499-151e-4745-a837-598aedfb7712",
+   "report": {
+    "guid": "a07d0499-151e-4745-a837-598aedfb7712",
+    "name": "Governance Metrics Defined",
+    "qualified_name": "CocoPharma::Report::CDODashboard::GovernanceMetricsDefined",
+    "description": "The number of governance metrics defined across all the domains.  The metrics are what make the program observable, so this is the size of the metrics system the Impact Phase set out to build.",
+    "report_spec": "Analytic Demo - Element Count by Type",
+    "output_format": "DICT",
+    "params": {
+     "searchString": "*",
+     "graphQueryDepth": "1",
+     "startFrom": "0",
+     "ignoreCase": "False",
+     "endsWith": "False",
+     "pageSize": "0",
+     "limitResultByStatus": "['ACTIVE']",
+     "startsWith": "True"
+    },
+    "analytic_params": {
+     "type_name": "GovernanceMetric"
+    }
+   },
+   "spec": "Analytic Demo - Element Count by Type",
+   "spec_source": {
+    "tier": "builtin",
+    "label": "Analytic Demo - Element Count by Type",
+    "version": null,
+    "seed": "Analytic Function Demo.json"
+   },
+   "runnable": true,
+   "refusal": null,
+   "result": null,
+   "error": null
+  },
+  {
+   "position": 5,
+   "ref": "Supply Chains and Blueprints",
+   "kind": "report",
+   "title": "Supply Chains and Blueprints",
+   "span": "1",
+   "emphasis": "kpi",
+   "perspectives": [
+    "governance"
+   ],
+   "detail_spec": null,
+   "content": null,
+   "note": null,
+   "restricted": false,
+   "restricted_element": null,
+   "reason": null,
+   "report_guid": "9942174b-32f5-4d85-82d3-21d710ef8363",
+   "report": {
+    "guid": "9942174b-32f5-4d85-82d3-21d710ef8363",
+    "name": "Supply Chains and Blueprints",
+    "qualified_name": "CocoPharma::Report::CDODashboard::SupplyChainsAndBlueprints",
+    "description": "The number of information supply chains and solution blueprints in the catalog — the two structures that put data in a business context.  Identifying the key information supply chains was one of the tasks in the Initiation Phase of the ninety day plan.",
+    "report_spec": "Analytic Demo - Usage Context: Supply Chains & Blueprints",
+    "output_format": "DICT",
+    "params": {
+     "searchString": "*",
+     "graphQueryDepth": "1",
+     "startFrom": "0",
+     "ignoreCase": "False",
+     "endsWith": "False",
+     "pageSize": "0",
+     "limitResultByStatus": "['ACTIVE']",
+     "startsWith": "True"
+    },
+    "analytic_params": {}
+   },
+   "spec": "Analytic Demo - Usage Context: Supply Chains & Blueprints",
+   "spec_source": {
+    "tier": "builtin",
+    "label": "Analytic Demo - Usage Context: Supply Chains & Blueprints",
+    "version": null,
+    "seed": "Analytic Function Demo.json"
+   },
+   "runnable": true,
+   "refusal": null,
+   "result": null,
+   "error": null
+  },
+  {
+   "position": 6,
+   "ref": "Section 2 - DATA Metrics",
+   "kind": "text",
+   "title": "Section 2 - DATA Metrics",
+   "span": "full",
+   "emphasis": "panel",
+   "perspectives": [],
+   "detail_spec": null,
+   "content": "**2. Are the DATA domain's own metrics moving?**  The data governance program defines six metrics.  Three have a live measure below: *Percentage of Data Assets with Designated Owner* (Data Asset Ownership, a direct measure), *Catalog Registration Coverage* (Governance Classification Coverage and Catalog Freshness, a partial measure until discovery scanning runs) and *Lineage Coverage for Critical Data Elements* (Solution Design Context, a proxy: the first hop from an asset to the design it implements, not an end-to-end lineage path).",
+   "note": null,
+   "restricted": false,
+   "restricted_element": null,
+   "reason": null,
+   "report_guid": null,
+   "report": null,
+   "spec": null,
+   "spec_source": null,
+   "runnable": null,
+   "refusal": null,
+   "result": null,
+   "error": null
+  },
+  {
+   "position": 7,
+   "ref": "Data Asset Ownership",
+   "kind": "report",
+   "title": "Data Asset Ownership",
+   "span": "1",
+   "emphasis": "kpi",
+   "perspectives": [
+    "governance",
+    "owner"
+   ],
+   "detail_spec": null,
+   "content": null,
+   "note": null,
+   "restricted": false,
+   "restricted_element": null,
+   "reason": null,
+   "report_guid": "acd719e1-b61c-40d2-a444-ebdfbb071205",
+   "report": {
+    "guid": "acd719e1-b61c-40d2-a444-ebdfbb071205",
+    "name": "Data Asset Ownership",
+    "qualified_name": "CocoPharma::Report::CDODashboard::DataAssetOwnership",
+    "description": "How many catalogued assets carry an Ownership classification naming who is responsible for them, broken down by the kind of owner.  This is the live measure of the governance metric Percentage of Data Assets with Designated Owner, whose target is 100%.",
+    "report_spec": "Analytic Demo - Ownership Coverage",
+    "output_format": "DICT",
+    "params": {
+     "searchString": "*",
+     "graphQueryDepth": "1",
+     "startFrom": "0",
+     "ignoreCase": "False",
+     "endsWith": "False",
+     "pageSize": "0",
+     "limitResultByStatus": "['ACTIVE']",
+     "startsWith": "True"
+    },
+    "analytic_params": {}
+   },
+   "spec": "Analytic Demo - Ownership Coverage",
+   "spec_source": {
+    "tier": "builtin",
+    "label": "Analytic Demo - Ownership Coverage",
+    "version": null,
+    "seed": "Analytic Function Demo.json"
+   },
+   "runnable": true,
+   "refusal": null,
+   "result": null,
+   "error": null
+  },
+  {
+   "position": 8,
+   "ref": "Governance Classification Coverage",
+   "kind": "report",
+   "title": "Governance Classification Coverage",
+   "span": "1",
+   "emphasis": "kpi",
+   "perspectives": [
+    "governance",
+    "steward"
+   ],
+   "detail_spec": null,
+   "content": null,
+   "note": null,
+   "restricted": false,
+   "restricted_element": null,
+   "reason": null,
+   "report_guid": "01339d39-ba7d-4c23-a704-a6f1ff2b084e",
+   "report": {
+    "guid": "01339d39-ba7d-4c23-a704-a6f1ff2b084e",
+    "name": "Governance Classification Coverage",
+    "qualified_name": "CocoPharma::Report::CDODashboard::GovernanceClassificationCoverage",
+    "description": "How many catalogued assets carry at least one governance classification, with a breakdown by classification and by governance zone.  Together with Catalog Freshness, this is the partial measure of the governance metric Catalog Registration Coverage.",
+    "report_spec": "Analytic Demo - Governance Coverage",
+    "output_format": "DICT",
+    "params": {
+     "searchString": "*",
+     "graphQueryDepth": "1",
+     "startFrom": "0",
+     "ignoreCase": "False",
+     "endsWith": "False",
+     "pageSize": "0",
+     "limitResultByStatus": "['ACTIVE']",
+     "startsWith": "True"
+    },
+    "analytic_params": {}
+   },
+   "spec": "Analytic Demo - Governance Coverage",
+   "spec_source": {
+    "tier": "builtin",
+    "label": "Analytic Demo - Governance Coverage",
+    "version": null,
+    "seed": "Analytic Function Demo.json"
+   },
+   "runnable": true,
+   "refusal": null,
+   "result": null,
+   "error": null
+  },
+  {
+   "position": 9,
+   "ref": "Catalog Freshness",
+   "kind": "report",
+   "title": "Catalog Freshness",
+   "span": "1",
+   "emphasis": "kpi",
+   "perspectives": [
+    "governance",
+    "steward"
+   ],
+   "detail_spec": null,
+   "content": null,
+   "note": null,
+   "restricted": false,
+   "restricted_element": null,
+   "reason": null,
+   "report_guid": "58a01052-2edc-461d-adaf-64e7750664c9",
+   "report": {
+    "guid": "58a01052-2edc-461d-adaf-64e7750664c9",
+    "name": "Catalog Freshness",
+    "qualified_name": "CocoPharma::Report::CDODashboard::CatalogFreshness",
+    "description": "How many catalogued assets have not been updated for six months.  A catalog entry that nobody maintains decays into a record of how things used to be, so stale assets are candidates for review by their owners.",
+    "report_spec": "Analytic Demo - Stale Assets",
+    "output_format": "DICT",
+    "params": {
+     "searchString": "*",
+     "graphQueryDepth": "1",
+     "startFrom": "0",
+     "ignoreCase": "False",
+     "endsWith": "False",
+     "pageSize": "0",
+     "limitResultByStatus": "['ACTIVE']",
+     "startsWith": "True"
+    },
+    "analytic_params": {
+     "days": 180
+    }
+   },
+   "spec": "Analytic Demo - Stale Assets",
+   "spec_source": {
+    "tier": "builtin",
+    "label": "Analytic Demo - Stale Assets",
+    "version": null,
+    "seed": "Analytic Function Demo.json"
+   },
+   "runnable": true,
+   "refusal": null,
+   "result": null,
+   "error": null
+  },
+  {
+   "position": 10,
+   "ref": "Solution Design Context",
+   "kind": "report",
+   "title": "Solution Design Context",
+   "span": "1",
+   "emphasis": "kpi",
+   "perspectives": [
+    "governance",
+    "engineer"
+   ],
+   "detail_spec": null,
+   "content": null,
+   "note": null,
+   "restricted": false,
+   "restricted_element": null,
+   "reason": null,
+   "report_guid": "7e87d5a4-97b9-4d9d-8da1-a113c9b699e9",
+   "report": {
+    "guid": "7e87d5a4-97b9-4d9d-8da1-a113c9b699e9",
+    "name": "Solution Design Context",
+    "qualified_name": "CocoPharma::Report::CDODashboard::SolutionDesignContext",
+    "description": "The percentage of catalogued assets linked to the solution component they implement.  This is a proxy for the governance metric Lineage Coverage for Critical Data Elements: it shows that an asset has been placed in its designed information supply chain, which is the first step towards end-to-end lineage, but not that the full path from origin to point of use is recorded.",
+    "report_spec": "Analytic Demo - Contextualised Coverage",
+    "output_format": "DICT",
+    "params": {
+     "searchString": "*",
+     "graphQueryDepth": "1",
+     "startFrom": "0",
+     "ignoreCase": "False",
+     "endsWith": "False",
+     "pageSize": "0",
+     "limitResultByStatus": "['ACTIVE']",
+     "startsWith": "True"
+    },
+    "analytic_params": {}
+   },
+   "spec": "Analytic Demo - Contextualised Coverage",
+   "spec_source": {
+    "tier": "builtin",
+    "label": "Analytic Demo - Contextualised Coverage",
+    "version": null,
+    "seed": "Analytic Function Demo.json"
+   },
+   "runnable": true,
+   "refusal": null,
+   "result": null,
+   "error": null
+  },
+  {
+   "position": 11,
+   "ref": "Data Quality Not Yet Measured",
+   "kind": "text",
+   "title": "Data Quality Not Yet Measured",
+   "span": "full",
+   "emphasis": "panel",
+   "perspectives": [
+    "governance",
+    "steward"
+   ],
+   "detail_spec": null,
+   "content": "**Not yet measured: data quality.**  Three of the DATA domain's metrics — *Critical Data Element Quality Expectation Coverage*, *Data Quality Rule Pass Rate* (target 98% or above) and *Open Data Quality Issues by Age* (target: nothing older than seven days on critical data) — need automated quality rule results and a record of the issues they raise.  The clinical trials pipeline in `2. clinical-trials` runs quality checks, but their results are not yet recorded in the catalog in a form these tiles can count.  Until they are, the honest answer to *how good is our data?* is *we cannot yet say*, and closing this gap is the next priority for Erin Overview and Peter Profile.",
+   "note": null,
+   "restricted": false,
+   "restricted_element": null,
+   "reason": null,
+   "report_guid": null,
+   "report": null,
+   "spec": null,
+   "spec_source": null,
+   "runnable": null,
+   "refusal": null,
+   "result": null,
+   "error": null
+  },
+  {
+   "position": 12,
+   "ref": "Section 3 - Vocabulary",
+   "kind": "text",
+   "title": "Section 3 - Vocabulary",
+   "span": "full",
+   "emphasis": "panel",
+   "perspectives": [],
+   "detail_spec": null,
+   "content": "**3. Is the common vocabulary being used?**  A glossary term is only useful once it is defined, and only does its job once it is attached to the data it describes.  The first tile shows how many terms have a definition; the second shows how many terms are actually assigned to something in the catalog.",
+   "note": null,
+   "restricted": false,
+   "restricted_element": null,
+   "reason": null,
+   "report_guid": null,
+   "report": null,
+   "spec": null,
+   "spec_source": null,
+   "runnable": null,
+   "refusal": null,
+   "result": null,
+   "error": null
+  },
+  {
+   "position": 13,
+   "ref": "Glossary Definition Completeness",
+   "kind": "report",
+   "title": "Glossary Definition Completeness",
+   "span": "1",
+   "emphasis": "kpi",
+   "perspectives": [
+    "governance",
+    "steward"
+   ],
+   "detail_spec": null,
+   "content": null,
+   "note": null,
+   "restricted": false,
+   "restricted_element": null,
+   "reason": null,
+   "report_guid": "9426e7fe-da8c-4cf2-adf6-7a8b3391462a",
+   "report": {
+    "guid": "9426e7fe-da8c-4cf2-adf6-7a8b3391462a",
+    "name": "Glossary Definition Completeness",
+    "qualified_name": "CocoPharma::Report::CDODashboard::GlossaryDefinitionCompleteness",
+    "description": "How many glossary terms carry a definition.  A term with a name and no definition invites every team to read its own meaning into it — the problem the data quality glossary was created to solve.",
+    "report_spec": "Analytic Demo - Term Definition Completeness",
+    "output_format": "DICT",
+    "params": {
+     "searchString": "*",
+     "graphQueryDepth": "1",
+     "startFrom": "0",
+     "ignoreCase": "False",
+     "endsWith": "False",
+     "pageSize": "0",
+     "limitResultByStatus": "['ACTIVE']",
+     "startsWith": "True"
+    },
+    "analytic_params": {}
+   },
+   "spec": "Analytic Demo - Term Definition Completeness",
+   "spec_source": {
+    "tier": "builtin",
+    "label": "Analytic Demo - Term Definition Completeness",
+    "version": null,
+    "seed": "Analytic Function Demo.json"
+   },
+   "runnable": true,
+   "refusal": null,
+   "result": null,
+   "error": null
+  },
+  {
+   "position": 14,
+   "ref": "Glossary Terms in Use",
+   "kind": "report",
+   "title": "Glossary Terms in Use",
+   "span": "1",
+   "emphasis": "kpi",
+   "perspectives": [
+    "governance",
+    "steward"
+   ],
+   "detail_spec": null,
+   "content": null,
+   "note": null,
+   "restricted": false,
+   "restricted_element": null,
+   "reason": null,
+   "report_guid": "260438c2-9e16-40e0-a0f2-ee6ffd88a7e1",
+   "report": {
+    "guid": "260438c2-9e16-40e0-a0f2-ee6ffd88a7e1",
+    "name": "Glossary Terms in Use",
+    "qualified_name": "CocoPharma::Report::CDODashboard::GlossaryTermsInUse",
+    "description": "How many glossary terms are assigned to at least one element in the catalog, and how many have been defined but never used to describe any data.",
+    "report_spec": "Analytic Demo - Orphan Glossary Terms",
+    "output_format": "DICT",
+    "params": {
+     "searchString": "*",
+     "graphQueryDepth": "1",
+     "startFrom": "0",
+     "ignoreCase": "False",
+     "endsWith": "False",
+     "pageSize": "0",
+     "limitResultByStatus": "['ACTIVE']",
+     "startsWith": "True"
+    },
+    "analytic_params": {}
+   },
+   "spec": "Analytic Demo - Orphan Glossary Terms",
+   "spec_source": {
+    "tier": "builtin",
+    "label": "Analytic Demo - Orphan Glossary Terms",
+    "version": null,
+    "seed": "Analytic Function Demo.json"
+   },
+   "runnable": true,
+   "refusal": null,
+   "result": null,
+   "error": null
+  },
+  {
+   "position": 15,
+   "ref": "Section 4 - Data Hub",
+   "kind": "text",
+   "title": "Section 4 - Data Hub",
+   "span": "full",
+   "emphasis": "panel",
+   "perspectives": [],
+   "detail_spec": null,
+   "content": "**4. Is the data hub delivering?**  The digital products that deliver critical data between systems, how the catalog has grown over the last ninety days, and the register of strategic information supply chains the company governs and monitors at company level.",
+   "note": null,
+   "restricted": false,
+   "restricted_element": null,
+   "reason": null,
+   "report_guid": null,
+   "report": null,
+   "spec": null,
+   "spec_source": null,
+   "runnable": null,
+   "refusal": null,
+   "result": null,
+   "error": null
+  },
+  {
+   "position": 16,
+   "ref": "Digital Products Published",
+   "kind": "report",
+   "title": "Digital Products Published",
+   "span": "1",
+   "emphasis": "kpi",
+   "perspectives": [],
+   "detail_spec": "Digital-Products",
+   "content": null,
+   "note": null,
+   "restricted": false,
+   "restricted_element": null,
+   "reason": null,
+   "report_guid": "d05322ae-7a4a-4d86-a6f7-93ff50931467",
+   "report": {
+    "guid": "d05322ae-7a4a-4d86-a6f7-93ff50931467",
+    "name": "Digital Products Published",
+    "qualified_name": "CocoPharma::Report::CDODashboard::DigitalProductsPublished",
+    "description": "The number of digital products in the catalog.  Each digital product delivers critical data between systems along a strategic information supply chain, so this is the most direct measure of the data hub's output.",
+    "report_spec": "Analytic Demo - Element Count by Type",
+    "output_format": "DICT",
+    "params": {
+     "searchString": "*",
+     "graphQueryDepth": "1",
+     "startFrom": "0",
+     "ignoreCase": "False",
+     "endsWith": "False",
+     "pageSize": "0",
+     "limitResultByStatus": "['ACTIVE']",
+     "startsWith": "True"
+    },
+    "analytic_params": {
+     "type_name": "DigitalProduct"
+    }
+   },
+   "spec": "Analytic Demo - Element Count by Type",
+   "spec_source": {
+    "tier": "builtin",
+    "label": "Analytic Demo - Element Count by Type",
+    "version": null,
+    "seed": "Analytic Function Demo.json"
+   },
+   "runnable": true,
+   "refusal": null,
+   "result": null,
+   "error": null
+  },
+  {
+   "position": 17,
+   "ref": "Catalog Growth - Last Ninety Days",
+   "kind": "report",
+   "title": "Catalog Growth - Last Ninety Days",
+   "span": "2",
+   "emphasis": "panel",
+   "perspectives": [],
+   "detail_spec": null,
+   "content": null,
+   "note": null,
+   "restricted": false,
+   "restricted_element": null,
+   "reason": null,
+   "report_guid": "646a2b17-84e5-459d-ba40-39aa1c075c9a",
+   "report": {
+    "guid": "646a2b17-84e5-459d-ba40-39aa1c075c9a",
+    "name": "Catalog Growth - Last Ninety Days",
+    "qualified_name": "CocoPharma::Report::CDODashboard::CatalogGrowthLastNinetyDays",
+    "description": "Catalogued assets, glossary terms, governed assets and digital products over the last ninety days, as six snapshots.  A flat line is a program that has stalled.",
+    "report_spec": "Analytic Demo - Catalog Growth Trend",
+    "output_format": "SERIES",
+    "params": {
+     "searchString": "*",
+     "graphQueryDepth": "1",
+     "startFrom": "0",
+     "ignoreCase": "False",
+     "endsWith": "False",
+     "pageSize": "0",
+     "limitResultByStatus": "['ACTIVE']",
+     "startsWith": "True"
+    },
+    "analytic_params": {
+     "window": "90d",
+     "points": 6
+    }
+   },
+   "spec": "Analytic Demo - Catalog Growth Trend",
+   "spec_source": {
+    "tier": "builtin",
+    "label": "Analytic Demo - Catalog Growth Trend",
+    "version": null,
+    "seed": "Analytic Function Demo.json"
+   },
+   "runnable": true,
+   "refusal": null,
+   "result": null,
+   "error": null
+  },
+  {
+   "position": 18,
+   "ref": "Strategic Information Supply Chain Register",
+   "kind": "report",
+   "title": "Strategic Information Supply Chain Register",
+   "span": "full",
+   "emphasis": "panel",
+   "perspectives": [],
+   "detail_spec": "Information-Supply-Chain-DrE-Basic",
+   "content": null,
+   "note": null,
+   "restricted": false,
+   "restricted_element": null,
+   "reason": null,
+   "report_guid": "67672294-2d3b-46d1-87b9-ec803a5cbed2",
+   "report": {
+    "guid": "67672294-2d3b-46d1-87b9-ec803a5cbed2",
+    "name": "Strategic Information Supply Chain Register",
+    "qualified_name": "CocoPharma::Report::CDODashboard::StrategicInformationSupplyChainRegister",
+    "description": "The register of information supply chains that Coco Pharmaceuticals governs and monitors at company level, from strategic-information-supply-chains.md.",
+    "report_spec": "Collections",
+    "output_format": "MERMAID",
+    "params": {
+     "searchString": "Strategic Information Supply Chains",
+     "graphQueryDepth": "1",
+     "startFrom": "0",
+     "ignoreCase": "False",
+     "endsWith": "False",
+     "pageSize": "0",
+     "limitResultByStatus": "['ACTIVE']",
+     "startsWith": "True"
+    },
+    "analytic_params": {}
+   },
+   "spec": "Collections",
+   "spec_source": {
+    "tier": "builtin",
+    "label": "Collections",
+    "version": null,
+    "seed": "Collection Manager.json"
+   },
+   "runnable": true,
+   "refusal": null,
+   "result": null,
+   "error": null
+  },
+  {
+   "position": 19,
+   "ref": "Section 5 - Plan Risks Metrics",
+   "kind": "text",
+   "title": "Section 5 - Plan Risks Metrics",
+   "span": "full",
+   "emphasis": "panel",
+   "perspectives": [],
+   "detail_spec": null,
+   "content": "**5. The plan, the risks and the metrics.**  The ninety day plan with the status of each phase and task, the company risk register built by all the governance leaders, and the full governance metric register — the metrics system the Impact Phase set out to build, of which the tiles above are the first live measures.",
+   "note": null,
+   "restricted": false,
+   "restricted_element": null,
+   "reason": null,
+   "report_guid": null,
+   "report": null,
+   "spec": null,
+   "spec_source": null,
+   "runnable": null,
+   "refusal": null,
+   "result": null,
+   "error": null
+  },
+  {
+   "position": 20,
+   "ref": "My Ninety Day Plan Progress",
+   "kind": "report",
+   "title": "My Ninety Day Plan Progress",
+   "span": "full",
+   "emphasis": "panel",
+   "perspectives": [],
+   "detail_spec": null,
+   "content": null,
+   "note": null,
+   "restricted": false,
+   "restricted_element": null,
+   "reason": null,
+   "report_guid": "ede254dd-b82a-4033-811e-f5fb60c5f8d1",
+   "report": {
+    "guid": "ede254dd-b82a-4033-811e-f5fb60c5f8d1",
+    "name": "My Ninety Day Plan Progress",
+    "qualified_name": "CocoPharma::Report::CDODashboard::MyNinetyDayPlanProgress",
+    "description": "The campaign, phases and tasks of Jules Keeper's ninety day plan, from jules-90-day-plan.md, with their current status.",
+    "report_spec": "Project-DrE-Basic",
+    "output_format": "LIST",
+    "params": {
+     "searchString": "JulesKeeper::",
+     "graphQueryDepth": "1",
+     "startFrom": "0",
+     "ignoreCase": "False",
+     "endsWith": "False",
+     "pageSize": "0",
+     "limitResultByStatus": "['ACTIVE']",
+     "startsWith": "True"
+    },
+    "analytic_params": {}
+   },
+   "spec": "Project-DrE-Basic",
+   "spec_source": {
+    "tier": "builtin",
+    "label": "Project-DrE-Basic",
+    "version": null,
+    "seed": "Projects.json"
+   },
+   "runnable": true,
+   "refusal": null,
+   "result": null,
+   "error": null
+  },
+  {
+   "position": 21,
+   "ref": "Company Risk Register",
+   "kind": "report",
+   "title": "Company Risk Register",
+   "span": "full",
+   "emphasis": "panel",
+   "perspectives": [
+    "governance"
+   ],
+   "detail_spec": null,
+   "content": null,
+   "note": null,
+   "restricted": false,
+   "restricted_element": null,
+   "reason": null,
+   "report_guid": "88b1a608-d177-4d34-a16a-5be3986c4b5a",
+   "report": {
+    "guid": "88b1a608-d177-4d34-a16a-5be3986c4b5a",
+    "name": "Company Risk Register",
+    "qualified_name": "CocoPharma::Report::CDODashboard::CompanyRiskRegister",
+    "description": "The risks in the company risk register, from risk-register.md, built and owned jointly by the governance leaders.",
+    "report_spec": "Risk-DrE-Basic",
+    "output_format": "LIST",
+    "params": {
+     "searchString": "CocoPharma::Risk::",
+     "graphQueryDepth": "1",
+     "startFrom": "0",
+     "ignoreCase": "False",
+     "endsWith": "False",
+     "pageSize": "0",
+     "limitResultByStatus": "['ACTIVE']",
+     "startsWith": "True"
+    },
+    "analytic_params": {}
+   },
+   "spec": "Risk-DrE-Basic",
+   "spec_source": {
+    "tier": "builtin",
+    "label": "Risk-DrE-Basic",
+    "version": null,
+    "seed": "Governance Officer.json"
+   },
+   "runnable": true,
+   "refusal": null,
+   "result": null,
+   "error": null
+  },
+  {
+   "position": 22,
+   "ref": "Governance Metric Register",
+   "kind": "report",
+   "title": "Governance Metric Register",
+   "span": "full",
+   "emphasis": "panel",
+   "perspectives": [
+    "governance"
+   ],
+   "detail_spec": null,
+   "content": null,
+   "note": null,
+   "restricted": false,
+   "restricted_element": null,
+   "reason": null,
+   "report_guid": "c13b5b19-0844-489a-a1f9-615d93f3b524",
+   "report": {
+    "guid": "c13b5b19-0844-489a-a1f9-615d93f3b524",
+    "name": "Governance Metric Register",
+    "qualified_name": "CocoPharma::Report::CDODashboard::GovernanceMetricRegister",
+    "description": "Every governance metric defined by the governance domains — what the program has committed to measure.",
+    "report_spec": "Governance-Metric-DrE-Basic",
+    "output_format": "LIST",
+    "params": {
+     "searchString": "CocoPharma::GovernanceMetric::",
+     "graphQueryDepth": "1",
+     "startFrom": "0",
+     "ignoreCase": "False",
+     "endsWith": "False",
+     "pageSize": "0",
+     "limitResultByStatus": "['ACTIVE']",
+     "startsWith": "True"
+    },
+    "analytic_params": {}
+   },
+   "spec": "Governance-Metric-DrE-Basic",
+   "spec_source": {
+    "tier": "builtin",
+    "label": "Governance-Metric-DrE-Basic",
+    "version": null,
+    "seed": "Governance Officer.json"
+   },
+   "runnable": true,
+   "refusal": null,
+   "result": null,
+   "error": null
+  }
+ ],
+ "_source": "pyegeria 6.2.32 resolve_dashboard_sheet(run=False).model_dump(), laz 2026-11-11, read-only, as EA's service account."
+}

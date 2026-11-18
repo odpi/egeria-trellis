@@ -118,11 +118,13 @@ class TestADisagreementBecomesAGap:
             "slug": slug, "question": question, "verdict": "partly",
             "comment": "Right about the licence, wrong about the date.",
         })
-        recorded = store.list(limit=10)
+        # An `answer` item since 2026-11-09 (was a page row with "[partly]" in its message).
+        recorded = store.list(limit=10, kind="answer")
         assert len(recorded) == 1
         # keyed by the question's stable id, not its wording
         assert recorded[0]["element_guid"] == f"answer:{slug}:{qid}"
-        assert "[partly]" in recorded[0]["message"]
+        assert (recorded[0]["vote"], recorded[0]["extra"]["verdict"]) == (0, "partly")
+        assert recorded[0]["message"] == "Right about the licence, wrong about the date."
 
 
 class TestWhatItRefuses:

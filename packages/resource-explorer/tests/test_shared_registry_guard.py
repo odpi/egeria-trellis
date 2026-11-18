@@ -151,6 +151,9 @@ def test_default_config_without_env_file_fails_closed(fake_connect, monkeypatch)
     from resource_explorer.registry import ProjectRegistry
 
     monkeypatch.delenv("REGISTRY_DATABASE_URL", raising=False)
+    # TR-12: the default URL is built from PGVECTOR_* and needs the password; a worktree with it exported but no URL
+    # is the case that still reaches the guard (with neither, test_no_password_refuses_by_name_before_any_connect).
+    monkeypatch.setenv("PGVECTOR_PASSWORD", "test-only-not-a-password")
     monkeypatch.setitem(config.RegistryConfig.model_config, "env_file", None)
     monkeypatch.setattr(config, "_config", None)
     url = config.get_config().registry.database_url
@@ -286,6 +289,7 @@ def test_refusal_names_the_metrics_setting(fake_connect, monkeypatch):
 
     for name in ("REGISTRY_DATABASE_URL", "METRICS_DATABASE_URL", "FEEDBACK_DATABASE_URL"):
         monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("PGVECTOR_PASSWORD", "test-only-not-a-password")     # TR-12: see above
     monkeypatch.setitem(config.ObservabilityConfig.model_config, "env_file", None)
     monkeypatch.setattr(config, "_config", None)
     with pytest.raises(G.SharedRegistryAccessError) as exc:
@@ -300,11 +304,30 @@ def test_feedback_store_default_is_refused_and_named(fake_connect, monkeypatch):
 
     for name in ("REGISTRY_DATABASE_URL", "METRICS_DATABASE_URL", "FEEDBACK_DATABASE_URL"):
         monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("PGVECTOR_PASSWORD", "test-only-not-a-password")     # TR-12: see above
     monkeypatch.setitem(config.FeedbackConfig.model_config, "env_file", None)
     monkeypatch.setattr(config, "_config", None)
     with pytest.raises(G.SharedRegistryAccessError) as exc:
         FeedbackStore()
     assert "FEEDBACK_DATABASE_URL" in str(exc.value)
+
+
+def test_no_password_refuses_by_name_before_any_connect(fake_connect, monkeypatch, tmp_path):
+    """TR-12: with neither the URL nor PGVECTOR_PASSWORD, nothing is built to connect to: each store refuses by name."""
+    import resource_explorer.config as config
+    from resource_explorer.feedback_store import FeedbackStore
+    from resource_explorer.observability.metrics_collector import MetricsCollector
+    from resource_explorer.registry import ProjectRegistry
+
+    monkeypatch.chdir(tmp_path)                                  # no .env here
+    for name in ("REGISTRY_DATABASE_URL", "METRICS_DATABASE_URL", "FEEDBACK_DATABASE_URL", "PGVECTOR_PASSWORD"):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setattr(config, "_config", None)
+    for build, name in ((ProjectRegistry, "REGISTRY_DATABASE_URL"), (MetricsCollector, "METRICS_DATABASE_URL"),
+                        (FeedbackStore, "FEEDBACK_DATABASE_URL")):
+        with pytest.raises(config.MissingDatabaseSetting, match=name):
+            build()
+    assert fake_connect == []
 
 
 def test_setting_hint_reads_the_calling_module():
@@ -344,3 +367,15 @@ def test_both_isolation_fixtures_coexist_in_one_test(isolate_pgvector_schema, tm
     assert get_config().pgvector.schema_name == scratch
     assert PgVectorStore()._config.schema == scratch
     G._state["vector_schemas_built"].discard(scratch)
+
+
+@pytest.mark.parametrize("host", ["localhost", "127.0.0.1", "[::1]", "0.0.0.0", "LOCALHOST"])
+def test_every_spelling_of_this_machine_is_the_shared_host(host):
+    """TR-12 read-back advisory: localhost, 127.0.0.1, ::1 (and 0.0.0.0) are one host to the guard and the label."""
+    from resource_explorer.registry_label import is_shared_registry
+
+    url = f"postgresql://u:p@{host}:5442/egeria_advisor?options=-csearch_path%3Dresource_explorer"
+    assert is_shared_registry(url)
+    assert G.classify(G._params_from_args((url,), {}), strict=True) is not None
+    other = f"postgresql://u:p@{host}:5442/egeria_advisor?options=-csearch_path%3Dresource_explorer_test_1"
+    assert not is_shared_registry(other)

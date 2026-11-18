@@ -259,17 +259,53 @@ class PrefectPoolStatus:
 
     Same tri-state shape as `BatchStatus`: `reachable` says whether the last
     attempt could actually reach the Prefect API at all, independent of
-    whether a worker was found — a real incident earlier tonight was
+    whether a worker was found — a real incident on 2026-09-28 was
     `prefect_up.sh` starting a worker on the wrong pool, silent until a run
     degraded; this exists so that shows up here, before anyone hits it in a
     run.
+
+    Live, not registered (2026-11-13): Prefect keeps a worker registered long
+    after its process has gone, so `len(workers)` read "has 3 worker(s)" for a
+    month after the pool's only worker stopped. `live_count` is what answers
+    "will a dispatched step be picked up"; `registered_count` is what Prefect
+    lists; `never_heard_from` counts registrations with no heartbeat at all.
+    `worker_count` is kept as a deprecated alias of `live_count`, so an older
+    reader sees the honest number rather than the registration count.
     """
 
     reachable: bool | None = None
-    worker_count: int = 0
+    live_count: int = 0
+    registered_count: int = 0
+    never_heard_from: int = 0
+    #: False when the server answered that the pool does not exist (404): reachable, but the fix is to create
+    #: the pool, not to start the server. None until a check has answered either way.
+    pool_exists: bool | None = None
     last_heartbeat: str = ""
+    summary: str = ""
+    #: When live_count == 0: what runs in Resource Explorer's own process instead of on a
+    #: Prefect worker (prefect_pool_runs_locally_instead). Empty while a worker is live.
+    runs_locally_instead: list[str] = field(default_factory=list)
+    #: Live workers that advertise no commit (`re-worker-<sha12>-<host>` is the form that does): RE can still
+    #: dispatch to them, but cannot check they run its own code (Architect ruling, 2026-11-13). Never silent.
+    parity_unchecked: list[str] = field(default_factory=list)
+    #: The deployment a dispatched step would go to now, from the same decision dispatch makes
+    #: (`prefect_adapter.resolve_dispatch`, on the configured pool). "" while none would be chosen.
+    dispatch_to: str = ""
+    #: Why a dispatched step would run locally although a worker is live (the refusal dispatch would give, in
+    #: its words: the configured pool, the default deployment's pool, the online commits). "" when it would go.
+    dispatch_refused: str = ""
+    #: Resource Explorer's own workers live on ANOTHER pool than the one it dispatches to (PREFECT_WORK_POOL),
+    #: as "<worker> on pool <name>": a worker whose --pool differs from the web app's, which never gets a step.
+    workers_elsewhere: list[str] = field(default_factory=list)
+    #: Why the other pools could not be read ("" when they were).
+    workers_elsewhere_error: str = ""
     last_checked_at: str = ""
     last_check_error: str = ""
+
+    @property
+    def worker_count(self) -> int:
+        """Deprecated: the live count (it used to be the registration count)."""
+        return self.live_count
 
 
 _status: dict[str, BatchStatus] = {}
@@ -298,17 +334,196 @@ _prefect_pool_status = PrefectPoolStatus()
 _prefect_pool_status_lock = threading.Lock()
 
 
-def check_prefect_pool_workers(pool: str | None = None) -> PrefectPoolStatus:
-    """Query Prefect's own API for `pool`'s registered workers — the same
+#: The last pool state logged at WARNING/INFO, so a state is said once, not on every pass:
+#: None (nothing logged yet), "live", "no_live", "none_registered", "unreachable".
+_prefect_pool_logged_state: str | None = None
+
+#: Prefect's default worker heartbeat interval, used when a worker does not report its own.
+_DEFAULT_WORKER_HEARTBEAT_S = 30.0
+
+#: Words for the steps PREFECT_ONLY_STEPS names. A step without words here is reported by its
+#: key, so a step added to that list is never left out of the banner.
+_STEP_WORDS = {
+    "soda_data_quality": "Soda data-quality",
+    "great_expectations_validation": "Great Expectations validation",
+}
+
+RUNS_LOCALLY_EFFECT = "no Prefect run history, retries or cancel"
+
+
+def prefect_pool_runs_locally_instead() -> list[str]:
+    """What runs in Resource Explorer's own process, instead of on a pool worker, while the pool has
+    no live worker. Derived from the code's own routing, not a hand-kept list:
+
+    - a whole-definition run calls `re_survey_definition_flow` in this process; only the steps
+      `step_dispatch_policy.dispatch_decision` sends to a worker use the pool from there;
+    - a step dispatched to a worker -- by the in-process loop's `_use_prefect` or by the
+      whole-definition flow's `run_planned_step_task`, which both ask `dispatch_decision` -- goes
+      through `run_prefect_step` -> `_run_prefect_step_api`, which refuses to create a flow run when
+      the pool has no ONLINE worker; `run_prefect_step` then runs the step locally
+      (PREFECT-POLL-TIMEOUT-IMPLEMENTED.md). Those steps are: every PREFECT_ONLY_STEPS entry, any step
+      marked executes_at=prefect, and RE's own (executes_at=resource-explorer) steps the dispatch
+      policy (PREFECT_DISPATCH_STEPS, or the deprecated PREFECT_ROUTE_LOCAL_STEPS) selects.
+    """
+    from resource_explorer.config import get_config
+    from resource_explorer.surveyors import step_dispatch_policy as sdp
+    from resource_explorer.surveyors.survey_definition_executor import PREFECT_ONLY_STEPS
+
+    out = [_STEP_WORDS.get(k, k) for k in PREFECT_ONLY_STEPS]
+    out.append("any step marked executes_at=prefect")
+    # Called inside check_prefect_pool_workers' own try: a config that cannot be read makes the
+    # whole check "could not check", never a silently shorter list.
+    policy = sdp.resolve(get_config().prefect)
+    if policy.all:
+        out.append("Resource Explorer's own steps (PREFECT_ROUTE_LOCAL_STEPS is on)"
+                   if policy.source == sdp.ENV_ROUTE_LOCAL else
+                   "Resource Explorer's own steps (PREFECT_DISPATCH_STEPS=all)")
+    elif not policy.empty:
+        # The same decision the executors make, over every registry step (TR-11 F-AB-3, C2).
+        picked = [k for k in sdp.dispatched_steps(policy) if k not in PREFECT_ONLY_STEPS]
+        if picked:
+            out.append(f"Resource Explorer's own steps PREFECT_DISPATCH_STEPS selects: {', '.join(picked)}")
+    return out
+
+
+def prefect_pool_runs_locally_instead_safe() -> list[str]:
+    """prefect_pool_runs_locally_instead for the unreachable branch, which is already handling one failure:
+    a config that cannot be read there gives the generic words rather than a second exception."""
+    try:
+        return prefect_pool_runs_locally_instead()
+    except Exception as exc:  # noqa: BLE001 - reported in the list itself, never silently shorter
+        return [f"(could not list the dispatched steps: {type(exc).__name__})"]
+
+
+def unreachable_words(steps: list[str]) -> str:
+    """The banner's sentence while the Prefect server cannot be reached: nothing is recorded in Prefect, and
+    every dispatched step runs in RE's process (the fallback triggers before any flow run is created)."""
+    listed = f" ({', '.join(steps)})" if steps else ""
+    return (f"Runs are not recorded in Prefect; dispatched steps{listed} run in Resource Explorer's "
+            "process instead.")
+
+
+def workers_elsewhere_words(pool: str, elsewhere: list[str]) -> str:
+    """The words for Resource Explorer's own workers live on another pool than the one it dispatches to."""
+    return (f"Resource Explorer's worker(s) {', '.join(elsewhere)} are live on another pool than {pool}, the one "
+            f"this Resource Explorer dispatches to (PREFECT_WORK_POOL): they get no step; start them with "
+            f"--pool {pool}")
+
+
+def parity_unchecked_words(names: list[str]) -> str:
+    """The words for live workers that advertise no commit (empty list: "")."""
+    if not names:
+        return ""
+    verb = "advertises" if len(names) == 1 else "advertise"
+    return (f"commit parity not checked: worker {', '.join(names)} {verb} no commit, so a step dispatched to it "
+            "may run on other code than this Resource Explorer's")
+
+
+def runs_locally_words(steps: list[str]) -> str:
+    """The banner's sentence for `steps` ("" when there are none)."""
+    if not steps:
+        return ""
+    return (f"Prefect-dispatched steps ({', '.join(steps)}) run in Resource Explorer's process "
+            f"instead: {RUNS_LOCALLY_EFFECT}.")
+
+
+def _parse_time(value) -> datetime | None:
+    if not value:
+        return None
+    if isinstance(value, datetime):
+        dt = value
+    else:
+        try:
+            dt = datetime.fromisoformat(str(value))
+        except ValueError:
+            return None
+    return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+
+
+def _age_words(seconds: float) -> str:
+    """One age wording everywhere: seconds, minutes, hours under 2 days, then days."""
+    seconds = max(0.0, seconds)
+    if seconds < 120:
+        n, unit = int(seconds), "second"
+    elif seconds < 2 * 3600:
+        n, unit = int(seconds // 60), "minute"
+    elif seconds < 2 * 86400:
+        n, unit = int(seconds // 3600), "hour"
+    else:
+        n, unit = int(seconds // 86400), "day"
+    return f"{n} {unit}{'' if n == 1 else 's'}"
+
+
+def _worker_is_live(worker, now: datetime, factor: float) -> bool:
+    """Prefect's own `status` when the worker carries one (ONLINE or not); else a heartbeat within
+    `factor` x the worker's heartbeat interval. No heartbeat at all is not live."""
+    status = getattr(worker, "status", None)
+    status = str(getattr(status, "value", status) or "").upper()
+    if status:
+        return status == "ONLINE"
+    beat = _parse_time(getattr(worker, "last_heartbeat_time", None))
+    if beat is None:
+        return False
+    interval = getattr(worker, "heartbeat_interval_seconds", None)
+    try:
+        interval = float(interval) if interval else _DEFAULT_WORKER_HEARTBEAT_S
+    except (TypeError, ValueError):
+        interval = _DEFAULT_WORKER_HEARTBEAT_S
+    return (now - beat).total_seconds() <= factor * interval
+
+
+def _prefect_enabled() -> bool | None:
+    try:
+        from resource_explorer.config import get_config
+
+        return bool(get_config().prefect.enabled)
+    except Exception:  # noqa: BLE001 - None: the banner then claims nothing either way
+        return None
+
+
+def _is_not_found(exc: BaseException) -> bool:
+    """Prefect's answer that the object does not exist: an HTTP 404 (PrefectHTTPStatusError) or its
+    ObjectNotFound, as distinct from not reaching the server at all."""
+    if type(exc).__name__ == "ObjectNotFound":
+        return True
+    response = getattr(exc, "response", None)
+    return getattr(response, "status_code", None) == 404
+
+
+def _live_factor() -> float:
+    try:
+        from resource_explorer.config import get_config
+
+        value = float(get_config().prefect.worker_live_factor)
+        return value if value > 0 else 3.0
+    except Exception:
+        return 3.0
+
+
+def check_prefect_pool_workers(pool: str | None = None, *, now: datetime | None = None) -> PrefectPoolStatus:
+    """Query Prefect's own API for `pool`'s workers — the same
     `work_pools/{pool}/workers/filter` data `prefect_up.sh` and the
     dispatch-honesty live gate checked by hand — and update/return the
-    module-level status.
+    module-level status. Read only: it never starts, stops or deregisters a
+    worker.
+
+    Counts LIVE workers, not registrations (see PrefectPoolStatus). With no
+    live worker nothing waits and nothing fails: a whole-definition run is
+    sequenced in this process and never uses the pool, and a step dispatched
+    to Prefect on its own runs locally when `_run_prefect_step_api` finds no
+    ONLINE worker. What is lost is Prefect's run history, retries and cancel
+    for those steps; `runs_locally_instead` names them.
+
+    A state (live / no live worker / none registered) is logged once, when it
+    is entered — WARNING for no live worker, INFO on recovery — not on every
+    pass.
 
     Fails open like the batch canary checks above: an unreachable Prefect
     API reports `reachable=False` with the error text, never a false
     "0 workers" that would look identical to a real empty pool. `pool`
     defaults to `config.prefect.work_pool`.
     """
+    global _prefect_pool_logged_state
     from resource_explorer.config import get_config
 
     pool = pool or get_config().prefect.work_pool
@@ -316,11 +531,26 @@ def check_prefect_pool_workers(pool: str | None = None) -> PrefectPoolStatus:
     try:
         import asyncio
 
-        from resource_explorer.surveyors.prefect_adapter import re_prefect_client
+        from resource_explorer.surveyors.prefect_adapter import (
+            DispatchChoice,
+            re_prefect_client,
+            resolve_dispatch,
+        )
+
+        now = now or datetime.now(timezone.utc)
+        factor = _live_factor()
 
         async def _fetch():
             async with re_prefect_client() as client:
-                return await client.read_workers_for_work_pool(pool)
+                found = await client.read_workers_for_work_pool(pool)
+                # The same decision dispatch makes (one function, Architect ruling 2026-11-14), fed the workers
+                # judged live here, so the banner never calls a pool fine that a step would not be sent to.
+                live = [w for w in found if _worker_is_live(w, now, factor)]
+                try:
+                    decided = await resolve_dispatch(client, pool, online=live, look_elsewhere=True)
+                except Exception as exc:  # noqa: BLE001 - said on the status, never a silent all-clear
+                    decided = DispatchChoice(pool=pool, refused=f"dispatch could not be checked: {exc}")
+                return found, decided
 
         try:
             loop = asyncio.get_running_loop()
@@ -329,32 +559,102 @@ def check_prefect_pool_workers(pool: str | None = None) -> PrefectPoolStatus:
         if loop and loop.is_running():
             from resource_explorer.concurrency import run_sync
 
-            workers = run_sync(lambda: asyncio.run(_fetch()))
+            workers, choice = run_sync(lambda: asyncio.run(_fetch()))
         else:
-            workers = asyncio.run(_fetch())
+            workers, choice = asyncio.run(_fetch())
 
         status.reachable = True
-        status.worker_count = len(workers)
-        heartbeats = [
-            str(w.last_heartbeat_time) for w in workers if getattr(w, "last_heartbeat_time", None)
-        ]
-        status.last_heartbeat = max(heartbeats) if heartbeats else ""
-        if status.worker_count == 0:
-            log.warning(
-                "bootstrap: Prefect work pool %r has NO registered workers — a "
-                "default whole-definition run will find the API reachable but "
-                "have nothing to dispatch to; see the design note "
-                "PREFECT-DEFAULT-WHOLE-DEFINITION-IMPLEMENTED.md", pool,
+        status.registered_count = len(workers)
+        status.live_count = sum(1 for w in workers if _worker_is_live(w, now, factor))
+        from resource_explorer.surveyors.prefect_adapter import worker_sha
+
+        status.parity_unchecked = sorted(
+            str(getattr(w, "name", "") or "?") for w in workers
+            if _worker_is_live(w, now, factor) and not worker_sha(w)
+        )
+        beats = [b for b in (_parse_time(getattr(w, "last_heartbeat_time", None)) for w in workers) if b]
+        status.never_heard_from = status.registered_count - len(beats)
+        newest = max(beats) if beats else None
+        status.last_heartbeat = (newest.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+                                 if newest else "")
+        age = _age_words((now - newest).total_seconds()) + " ago" if newest else "never"
+
+        if status.registered_count == 0:
+            state = "none_registered"
+            status.summary = "no registered worker"
+        elif status.live_count == 0:
+            state = "no_live"
+            status.summary = (
+                f"no live worker: {status.registered_count} registered, last heartbeat {age}"
+                + (f" ({status.last_heartbeat})" if newest else "")
             )
         else:
-            log.info(
-                "bootstrap: Prefect work pool %r has %d worker(s), last "
-                "heartbeat %s", pool, status.worker_count, status.last_heartbeat or "unknown",
-            )
+            state = "live"
+            status.summary = (f"{status.live_count} live worker(s) of {status.registered_count} "
+                              f"registered; last heartbeat {age}")
+        if status.never_heard_from and state != "none_registered":
+            status.summary += f"; {status.never_heard_from} never heard from"
+        status.dispatch_to = choice.deployment_name
+        status.workers_elsewhere = list(choice.elsewhere or [])
+        status.workers_elsewhere_error = choice.elsewhere_error
+        if state != "live":
+            status.runs_locally_instead = prefect_pool_runs_locally_instead()
+        elif choice.refused:
+            # A live worker that a step would still not be sent to (another pool's deployment, other code):
+            # its own state, said at WARNING once, and what runs locally is listed as for no live worker.
+            status.dispatch_refused = choice.refused
+            state = "live_dispatch_refused:" + choice.refused
+            status.summary += "; but a dispatched step runs locally: " + choice.refused
+            status.runs_locally_instead = prefect_pool_runs_locally_instead()
+        elif status.parity_unchecked:
+            # Its own state, so it is said once when it starts and once when it ends, at WARNING while it lasts.
+            state = "live_parity_unchecked:" + ",".join(status.parity_unchecked)
+            status.summary += "; " + parity_unchecked_words(status.parity_unchecked)
+        if status.workers_elsewhere:
+            # Whatever else is true: a worker started on another pool than PREFECT_WORK_POOL gets no step
+            # (Architect, 2026-11-14). Part of the state, so it is said once when it appears and once when it goes.
+            state += "|elsewhere:" + ",".join(status.workers_elsewhere)
+            status.summary += "; " + workers_elsewhere_words(pool, status.workers_elsewhere)
+
+        if state != _prefect_pool_logged_state:
+            if state == "live":
+                log.info("bootstrap: Prefect work pool %r: %s", pool, status.summary)
+            elif state.startswith(("live_parity_unchecked:", "live_dispatch_refused:", "live|")):
+                log.warning("bootstrap: Prefect work pool %r: %s", pool, status.summary)
+            else:
+                log.warning(
+                    "bootstrap: Prefect work pool %r: %s. Nothing waits: %s", pool, status.summary,
+                    runs_locally_words(status.runs_locally_instead),
+                )
+            _prefect_pool_logged_state = state
+        else:
+            log.debug("bootstrap: Prefect work pool %r: %s", pool, status.summary)
     except Exception as exc:
-        status.reachable = False
-        status.last_check_error = str(exc)
-        log.warning("bootstrap: could not check Prefect pool %r workers: %s", pool, exc)
+        if _is_not_found(exc):
+            # The server answered: this pool does not exist. Not "server not reachable" (read-back of 377c3353):
+            # the fix differs. Every dispatched step runs locally; whole-definition runs are still recorded.
+            status.reachable = True
+            status.pool_exists = False
+            status.last_check_error = str(exc)
+            status.summary = f"pool {pool} doesn't exist"
+            status.runs_locally_instead = prefect_pool_runs_locally_instead_safe()
+            if _prefect_pool_logged_state != "pool_missing":
+                log.warning("bootstrap: Prefect work pool %r: %s. Nothing waits: %s", pool, status.summary,
+                            runs_locally_words(status.runs_locally_instead))
+                _prefect_pool_logged_state = "pool_missing"
+        else:
+            # The server could not be asked: never a 0 that reads as an empty pool, and never silence.
+            # Runs still happen (the local fallback), but none of them is recorded in Prefect.
+            status.reachable = False
+            status.last_check_error = str(exc)
+            status.summary = "server not reachable; the pool could not be checked"
+            status.runs_locally_instead = prefect_pool_runs_locally_instead_safe()
+            if _prefect_pool_logged_state != "unreachable":
+                log.warning("bootstrap: Prefect work pool %r: %s (%s). %s", pool, status.summary, exc,
+                            unreachable_words(status.runs_locally_instead))
+                _prefect_pool_logged_state = "unreachable"
+            else:
+                log.debug("bootstrap: could not check Prefect pool %r workers: %s", pool, exc)
 
     with _prefect_pool_status_lock:
         global _prefect_pool_status
@@ -702,24 +1002,24 @@ def command_outcome(stdout: str) -> tuple[bool, str]:
 
 
 def heal_identity() -> DrEgeriaIdentity:
-    """The identity a bootstrap heal applies documents as: RE's service account (`EGERIA_USER_ID` and its
+    """The identity a bootstrap heal applies documents as: RE's service account (`RE_DAEMON_USER_ID` and its
     password, read by `egeria_clients._daemon_credential()`). The only service-account case for Dr.Egeria."""
     from resource_explorer.egeria_clients import _daemon_credential
 
     try:
         user, password = _daemon_credential()
-    except PermissionError as exc:          # NoServiceAccount: EGERIA_USER_ID / its password not set
+    except PermissionError as exc:          # NoServiceAccount: RE_DAEMON_USER_ID / its password not set
         raise NoDrEgeriaIdentity(str(exc)) from exc
     return DrEgeriaIdentity(user=user, source=SOURCE_STARTUP_HEAL, password=password)
 
 
 def log_heal_identity_at_startup() -> dict:
     """At startup: log who the heal applies Dr.Egeria documents as, and where that identity comes from. Both are the
-    same source (`EGERIA_USER_ID` / `EGERIA_USER_PASSWORD` via `_daemon_credential()`), so there is nothing to
+    same source (`RE_DAEMON_USER_ID` / `RE_DAEMON_USER_PASSWORD` via `_daemon_credential()`), so there is nothing to
     compare; a heal with no service account is logged as a loud warning. Never a password. Returns what it logged."""
     from resource_explorer.config import get_config
 
-    source = "EGERIA_USER_ID (environment or .env)"
+    source = "RE_DAEMON_USER_ID (environment or .env)"
     try:
         heal_user = heal_identity().user
     except NoDrEgeriaIdentity as exc:
@@ -1259,7 +1559,7 @@ def batch_price(batch_id: str, docs_dir: Path = DOCS_DIR, registry=None) -> dict
     # the press's words use (`applied_documents`), so a partial declaration is visible without a press.
     applied = applied_count(batch, registry)
     words = (f"runs {n} Dr.Egeria document{'s' if n != 1 else ''} in order as "
-             f"{applying_as or 'NO service account (EGERIA_USER_ID unset): refused'} · creates "
+             f"{applying_as or 'NO service account (RE_DAEMON_USER_ID unset): refused'} · creates "
              f"{len(engines)} engine, {len(services)} services, {gats} governance action types, "
              f"{processes} process{'es' if processes != 1 else ''} · "
              + (f"about {seconds} s" if seconds is not None else "time not measured here yet")
@@ -1612,9 +1912,29 @@ def get_status(docs_dir: Path = DOCS_DIR) -> dict:
         # reads, so a missing/offline Prefect worker is a monitored
         # condition rather than something discovered by a confusing run
         # failure or silent local fallback.
+        # 2026-11-13: live vs registered; `worker_count` is the deprecated alias of live_count.
+        # Counts are None until a check has reached Prefect, so an unread or unreachable pool is
+        # never shown as an empty one.
         "prefect_pool": {
             "reachable": pool_st.reachable,
-            "worker_count": pool_st.worker_count,
+            "live_count": pool_st.live_count if pool_st.reachable else None,
+            "registered_count": pool_st.registered_count if pool_st.reachable else None,
+            "never_heard_from": pool_st.never_heard_from if pool_st.reachable else None,
+            # False: the server answered the pool does not exist. None: not known (unread or unreachable).
+            "pool_exists": False if pool_st.pool_exists is False else (True if pool_st.reachable else None),
+            "worker_count": pool_st.worker_count if pool_st.reachable else None,
+            "summary": pool_st.summary,
+            "runs_locally_instead": list(pool_st.runs_locally_instead),
+            "parity_unchecked": list(pool_st.parity_unchecked),
+            "dispatch_to": pool_st.dispatch_to,
+            "dispatch_refused": pool_st.dispatch_refused,
+            "workers_elsewhere": list(pool_st.workers_elsewhere),
+            "workers_elsewhere_error": pool_st.workers_elsewhere_error,
+            "runs_locally_words": (unreachable_words(pool_st.runs_locally_instead)
+                                   if pool_st.reachable is False
+                                   else runs_locally_words(pool_st.runs_locally_instead)),
+            # With Prefect off every step runs locally by configuration: nothing to warn about.
+            "enabled": _prefect_enabled(),
             "last_heartbeat": pool_st.last_heartbeat,
             "last_checked_at": pool_st.last_checked_at,
             "last_check_error": pool_st.last_check_error,

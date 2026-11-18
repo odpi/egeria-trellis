@@ -25,7 +25,7 @@ const PAYLOAD = {
 async function render(p = PAYLOAD) {
   makeDomEnvironment();
   await loadAppModule();
-  const { tableResultHtml } = await import('/static/next/envelope.js');
+  const { tableResultHtml } = await import('/static/trellis-ui/envelope.js');
   const { glyphOf } = await import('/static/next/glyphs.js');
   const host = document.createElement('div');
   host.innerHTML = tableResultHtml(p, esc, glyphOf);

@@ -1,0 +1,8 @@
+{
+  "_about": "egeria-table.js is VENDORED, byte for byte, from the Egeria Portal (one renderer for pyegeria's structured TABLE, shared by the Portal and Egeria Advisor). Never edit it here: EA-specific needs go through its options (linkBuilder). To update it, copy the file unchanged from the new commit and change this record; packages/egeria-advisor/tests/unit/test_dashboard_structured_table.py (test_vendored_egeria_table_is_the_portals_file_unchanged) checks the sha256.",
+  "repo": "odpi/egeria-workspaces",
+  "path": "compose-configs/egeria-quickstart/PyegeriaWebHandler/static/egeria-table.js",
+  "commit": "3b8ac7e2836ec24eec469be14bf36e35dc1d4bbc",
+  "sha256": "5ad395feb3e7402fd58825a7ceddccc1c9ae1883edf343d56880ebb12ea95069",
+  "lines": 549
+}

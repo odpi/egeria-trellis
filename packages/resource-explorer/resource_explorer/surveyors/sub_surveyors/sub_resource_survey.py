@@ -21,13 +21,13 @@ from __future__ import annotations
 
 import fnmatch
 import logging
-from datetime import datetime
 
 from resource_explorer.registry import Project, ProjectRegistry
 from resource_explorer.ingestion.vendored import GENERATED_DIRS, VENDORED_DIRS
 from resource_explorer.step_outcome import from_upstream_table
 from resource_explorer.surveyors.base_surveyor import BaseSurveyor
 from resource_explorer.surveyors.survey_report import Annotation, ClassificationAnnotation
+from resource_explorer.survey_time import now_utc_iso
 
 log = logging.getLogger(__name__)
 
@@ -139,7 +139,7 @@ class SubResourceSurveyor(BaseSurveyor):
         max_depth: int = 2,
     ) -> None:
         super().__init__(project, registry)
-        self._surveyed_at = surveyed_at or datetime.utcnow().isoformat()
+        self._surveyed_at = surveyed_at or now_utc_iso()
         self._max_depth = max_depth
 
     @property

@@ -28,7 +28,6 @@ caller rather than refetch-per-request).
 from __future__ import annotations
 
 import logging
-import os
 from resource_explorer.config import egeria_platform_url, egeria_view_server  # noqa: E402,F401
 
 log = logging.getLogger(__name__)
@@ -48,7 +47,9 @@ class EgeriaProjectFinder:
     ) -> None:
         self.platform_url = platform_url or egeria_platform_url()
         self.view_server = view_server or egeria_view_server()
-        self.user_id = user_id or os.getenv("EGERIA_USER_ID", "erinoverview")
+        from resource_explorer.egeria_clients import daemon_user_id
+        # The service account, from config, failing closed when unset: never a persona default (TR-37).
+        self.user_id = user_id or daemon_user_id()
         self.user_password = user_password or ""   # not used to authenticate (Brief I)
         self._project_manager = None
 

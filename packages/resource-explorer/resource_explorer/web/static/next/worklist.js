@@ -2011,8 +2011,12 @@ export function openDialog(title, sub, { wide = false } = {}) {
   // import dialog's search-results grid is the first caller
   // (discovery-import.js); every other dialog on this shell is prose or a
   // short list and keeps the original width unless it opts in.
+  // A wide dialog opens at 960px (or the window, if narrower) and a person can drag its corner wider, up to the
+  // window, or narrower: every pane's width is resizable. Anything wider than it scrolls inside the panel, never
+  // out over the backdrop (2026-11-09: the open-data import result ran under the Ask rail).
+  const wideStyle = wide ? ' style="width:min(960px,100%);max-width:100%;min-width:min(28rem,100%);resize:horizontal;overflow:auto"' : '';
   el.innerHTML = `
-    <div class="mt-[6vh] w-full ${wide ? 'max-w-[960px]' : 'max-w-[640px]'} rounded bg-paper p-s4 shadow-lg"
+    <div class="mt-[6vh] w-full ${wide ? 'max-w-[960px]' : 'max-w-[640px]'} rounded bg-paper p-s4 shadow-lg"${wideStyle}
       role="dialog" aria-modal="true" aria-label="${esc(title)}">
       <div class="flex items-start justify-between gap-s3">
         <div>

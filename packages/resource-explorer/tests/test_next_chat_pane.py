@@ -206,7 +206,32 @@ class TestJoinTheVoteToTheGapsLoop:
         replacement."""
         chat = _chat()
         vote_fn = chat[chat.index("async function vote(i, value)"):chat.index("/** One chat turn, as markdown")]
-        assert "await sendFeedback(turn.queryHash, value, turn.compileId || null);" in vote_fn
+        assert "await sendFeedback(turn.queryHash, value, turn.compileId || null, {" in vote_fn
+
+    def test_a_vote_is_reported_recorded_only_when_it_was_stored(self):
+        """The vote carries the turn (session + exchange, question, answer) so it is kept as an `answer` item
+        Admin can read, and the pane says "Marked ..." only when the reply says it was stored."""
+        chat = _chat()
+        vote_fn = chat[chat.index("async function vote(i, value)"):chat.index("/** One chat turn, as markdown")]
+        for field in ("session_id: sessionId()", "exchange_id: turn.exchangeId", "question: turn.question",
+                      "answer: turn.answer", "idempotency_key:"):
+            assert field in vote_fn, field
+        assert "if (!res || !res.stored) throw" in vote_fn
+        assert vote_fn.index("if (!res || !res.stored) throw") < vote_fn.index("turn.voted = res.vote ?? value;")
+        # The gaps-loop call names the item, so the verdict is not stored a second time.
+        assert "feedbackId: turn.feedbackId" in vote_fn
+
+    def test_one_turn_gets_one_vote(self):
+        """Read-back P2: a click while the first vote is in flight is ignored, and the key is per turn (not per
+        value), so a flipped vote cannot become a second item; the pane shows the vote the server kept."""
+        chat = _chat()
+        vote_fn = chat[chat.index("async function vote(i, value)"):chat.index("/** One chat turn, as markdown")]
+        assert "if (turn.voting || turn.voted !== undefined) return;" in vote_fn
+        assert "idempotency_key: turn.voteKey," in vote_fn
+        assert "turn.voted = res.vote ?? value;" in vote_fn
+        assert vote_fn.count("turn.voting = false;") == 2      # released on success and on failure
+        # A stored turn's key survives a reload: derived from session + exchange, not a nonce.
+        assert "`vote:${sessionId()}:${turn.exchangeId}`" in vote_fn
 
     def test_a_negative_vote_maps_to_the_disagree_verdict_gaps_dot_py_expects(self):
         chat = _chat()
@@ -217,7 +242,8 @@ class TestJoinTheVoteToTheGapsLoop:
         vote_fn = chat[chat.index("async function vote(i, value)"):chat.index("/** One chat turn, as markdown")]
         assert "if (turn.slug) {" in vote_fn
         assert "await submitAnswerFeedback({" in vote_fn
-        assert "verdict: VOTE_VERDICT[String(value)]" in vote_fn
+        # The verdict follows the vote the server kept (read-back P2), not the button that was pressed.
+        assert "verdict: VOTE_VERDICT[String(turn.voted)]" in vote_fn
 
     def test_an_unscoped_turn_states_the_boundary_rather_than_silently_skipping(self):
         """A chat question asked with no resource selected has no slug to

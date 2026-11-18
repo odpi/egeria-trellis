@@ -45,16 +45,8 @@ else
 fi
 echo ""
 
-echo "Step 3: Generating Report Spec Metadata..."
-echo "--------------------------------------"
-python scripts/generate_report_specs.py
-if [ $? -eq 0 ]; then
-    echo "✓ Report spec metadata generated successfully"
-else
-    echo "✗ Failed to generate report spec metadata"
-    exit 1
-fi
-echo ""
+# (Step 3, scripts/generate_report_specs.py, was removed 2026-11-11 (A-P3): it imported dead
+# pre-6.x pyegeria paths and its output, data/cache/report_specs.json, had no reader.)
 
 echo "=========================================="
 echo "All Analysis Data Updated Successfully!"
@@ -63,7 +55,6 @@ echo ""
 echo "Generated files:"
 echo "  - data/cache/enhanced_metrics.json"
 echo "  - data/cache/enhanced_relationships.json"
-echo "  - data/cache/report_specs.json"
 echo ""
 echo "You can now query the enhanced data using:"
 echo "  - Enhanced analytics queries (metrics, complexity, maintainability)"

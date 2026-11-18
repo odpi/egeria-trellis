@@ -16,13 +16,22 @@ ALL = "change_rates, database_staleness, hub_tables, statistics_freshness"
 FS_ALL = "fs_activity, fs_change_rates, fs_duplicates, fs_layout_signals, fs_permissions"
 FILES_NONE = f"Files host: none installed (5 missing: {FS_ALL})"
 FILES_ALL = f"Files host: {FS_ALL} (none missing)"
+SET_NOTE = "not in the catalog: a missing set step is not detected"
+
+
+@pytest.fixture(autouse=True)
+def _no_set_steps(monkeypatch):
+    """These tests are about the per-host steps; the set-steps part is pinned on its own below."""
+    from resource_explorer import engine_host
+    monkeypatch.setattr(engine_host, "installed_set_steps", lambda: [])
 
 
 def test_none_installed_the_line_names_every_missing_step():
     from resource_explorer import engine_host
 
     assert engine_host.library_steps_line() == (
-        f"library steps \u00b7 Egeria host: none installed (4 missing: {ALL}) \u00b7 {FILES_NONE}")
+        f"library steps \u00b7 Egeria host: none installed (4 missing: {ALL}) \u00b7 {FILES_NONE}"
+        f" \u00b7 set steps: none installed ({SET_NOTE})")
     assert set(engine_host.missing_library_steps()) == {
         "re-change-rates", "re-database-staleness", "re-hub-tables", "re-statistics-freshness"}
 
@@ -32,14 +41,15 @@ def test_some_installed_the_line_names_only_the_missing_ones(staleness_installed
 
     assert engine_host.library_steps_line() == (
         "library steps \u00b7 Egeria host: database_staleness (3 missing: change_rates, hub_tables, "
-        f"statistics_freshness) \u00b7 {FILES_NONE}")
+        f"statistics_freshness) \u00b7 {FILES_NONE} \u00b7 set steps: none installed ({SET_NOTE})")
 
 
 def test_all_installed_says_none_missing(library_installed):
     from resource_explorer import engine_host
 
     assert engine_host.library_steps_line() == (
-        f"library steps \u00b7 Egeria host: {ALL} (none missing) \u00b7 {FILES_ALL}")
+        f"library steps \u00b7 Egeria host: {ALL} (none missing) \u00b7 {FILES_ALL}"
+        f" \u00b7 set steps: none installed ({SET_NOTE})")
     assert engine_host.missing_library_steps() == {}
 
 
@@ -108,3 +118,26 @@ def test_a_built_in_analysis_is_unaffected():
     from resource_explorer.workflows.stage_page import runnable_and_reason
 
     assert runnable_and_reason("schema_inventory", "database") == (True, "")
+
+
+def test_set_steps_get_their_own_part_and_never_claim_none_missing(monkeypatch):
+    """RULING-HEDWIG-ACCELERATOR-AND-IMAGE-2026-11-13 §1: schema_comparison is a set step, in neither host's part.
+    Named when installed, "none installed" when not, so its absence shows; and never "none missing", since nothing
+    declares which set steps should be installed."""
+    from resource_explorer import engine_host
+    from resource_explorer.surveyors import survey_step_host
+
+    monkeypatch.setattr(engine_host, "installed_set_steps", lambda: ["schema_comparison"])
+    line = engine_host.library_steps_line()
+    assert line.endswith(f" \u00b7 set steps: schema_comparison ({SET_NOTE})")
+    assert " missing:" not in line.split("set steps:", 1)[1], "the worker role refuses to start on ' missing:'"
+    monkeypatch.setattr(engine_host, "installed_set_steps", lambda: [])
+    assert engine_host.library_steps_line().endswith(f"set steps: none installed ({SET_NOTE})")
+
+    # The real lookup: set steps of every host's resource type, deduplicated and sorted.
+    monkeypatch.undo()
+    seen = []
+    monkeypatch.setattr(survey_step_host, "discover_set_steps",
+                        lambda et: seen.append(et) or ({"schema_comparison": object()} if et == "database" else {}))
+    assert engine_host.installed_set_steps() == ["schema_comparison"]
+    assert seen == [et for _h, et in engine_host.LIBRARY_HOSTS]

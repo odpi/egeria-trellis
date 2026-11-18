@@ -1,5 +1,9 @@
 # Report Spec Builder Guide
 
+> **Status (2026-11-09).** pyegeria 6.2.26 removed `analytic_binders` and declares inputs by role. The report-spec
+> design ([pipeline model](https://github.com/odpi/egeria-workspaces/blob/main/portal-docs/Internals/report-spec-pipeline-model.md))
+> replaces the Advisor-era `Create Report Spec` format (§9.13). This page is revisited with the Advisor work.
+
 Egeria Advisor lets you build, save, and re-run **report specs** — reusable view
 definitions that fetch and format Egeria metadata on demand.  Unlike LGCI plans (which run
 once), a report spec is persistent: save it once, run it whenever you need fresh data.

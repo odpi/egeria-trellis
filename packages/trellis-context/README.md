@@ -52,3 +52,11 @@ packed.manifest.gaps     # sections with no candidate at all
 A section with no candidate becomes a **gap**, not a silent omission — that distinction is the
 reason the manifest exists. `budget` is in characters by default; pass `measure=` to count
 tokens instead.
+
+## Evidence age (0.2.0)
+
+A `Candidate` may carry `as_of`: when the evidence it packs was produced, never when the context was compiled.
+When a section packs rows of different ages, `as_of` is the oldest (what a staleness check should age) and
+`as_of_newest` the newest. `as_of_source` names where the date came from, in the caller's own vocabulary. All
+three are written to the section's manifest `packed` entry only when `as_of` is set: an unknown age is left
+out, not filled in. They are provenance, so they add nothing to a section's size or text.

@@ -1,0 +1,98 @@
+[
+ {
+  "class": "OpenMetadataRootElement",
+  "elementHeader": {
+   "class": "ElementHeader",
+   "headerVersion": 0,
+   "status": "ACTIVE",
+   "type": {
+    "typeId": "ac406bf8-e53e-49f1-9088-2af28bbbd285",
+    "typeName": "Person",
+    "superTypeNames": [
+     "ActorProfile",
+     "Actor",
+     "Referenceable",
+     "OpenMetadataRoot"
+    ],
+    "typeVersion": 2,
+    "typeDescription": "An individual.",
+    "typeCategory": "ENTITY_DEF"
+   },
+   "origin": {
+    "sourceServer": "qs-metadata-store",
+    "originCategory": "CONTENT_PACK",
+    "homeMetadataCollectionId": "655b1965-4c29-4a0e-8a5d-3f55a37b3799",
+    "homeMetadataCollectionName": "Coco Pharmaceuticals Combination",
+    "license": "Apache 2.0"
+   },
+   "versions": {
+    "createdBy": "Egeria Project",
+    "updatedBy": "Egeria Project",
+    "maintainedBy": [
+     "Egeria Project"
+    ],
+    "createTime": "2021-12-20T07:20:40.038+00:00",
+    "updateTime": "2021-12-20T07:20:40.038+00:00",
+    "version": 1787846084192
+   },
+   "guid": "10dc7da9-e9e1-471f-9afd-46a7ff414cb7",
+   "anchor": {
+    "class": "ElementClassification",
+    "headerVersion": 0,
+    "status": "ACTIVE",
+    "type": {
+     "typeId": "aa44f302-2e43-4669-a1e7-edaae414fc6e",
+     "typeName": "Anchors",
+     "typeVersion": 1,
+     "typeDescription": "Identifies the anchor entity for an element that is part of a large composite object such as an asset.",
+     "typeCategory": "CLASSIFICATION_DEF"
+    },
+    "origin": {
+     "sourceServer": "qs-metadata-store",
+     "originCategory": "CONTENT_PACK",
+     "homeMetadataCollectionId": "655b1965-4c29-4a0e-8a5d-3f55a37b3799",
+     "homeMetadataCollectionName": "Coco Pharmaceuticals Combination"
+    },
+    "versions": {
+     "createdBy": "Egeria Project",
+     "updatedBy": "Egeria Project",
+     "maintainedBy": [
+      "Egeria Project"
+     ],
+     "createTime": "2021-12-20T07:20:40.038+00:00",
+     "updateTime": "2021-12-20T07:20:40.038+00:00",
+     "version": 1787846084192
+    },
+    "classificationOrigin": "ASSIGNED",
+    "classificationName": "Anchors",
+    "classificationProperties": {
+     "class": "AnchorsProperties",
+     "typeName": "Anchors",
+     "anchorTypeName": "Person",
+     "anchorDomainName": "Actor"
+    }
+   }
+  },
+  "properties": {
+   "class": "PersonProperties",
+   "typeName": "Person",
+   "qualifiedName": "Person::UK::324713",
+   "displayName": "Erin Overview",
+   "additionalProperties": {
+    "workLocation": "2",
+    "countryCode": "UK",
+    "organization": "Coco Pharmaceuticals Ltd",
+    "jobLevel": "5"
+   },
+   "courtesyTitle": "Dr",
+   "initials": "E",
+   "givenNames": "Erin",
+   "surname": "Overview",
+   "fullName": "Dr Erin Overview",
+   "pronouns": "She/her/hers",
+   "jobTitle": "Information Architect",
+   "employeeNumber": "324713",
+   "employeeType": "FTP"
+  }
+ }
+]

@@ -924,6 +924,28 @@ def _provenance(findings: list[dict], analysis_id: str) -> tuple[dict, ...]:
     )
 
 
+def _evidence_as_of(provenance: tuple[dict, ...], fact_as_of=None) -> dict[str, str]:
+    """The age of a packed evidence section (BRIEF-CONTEXT-SECTION-AS-OF.md §3a/§3b), as Candidate keyword arguments.
+
+    The result's own `surveyed_at` first, and the OLDEST of them when the section packs rows of several ages (the
+    one a staleness check must age), with the newest beside it. Otherwise the fact layer's `as_of`
+    (`read_snapshot`, else `last_run_at`), which `fact_as_of` supplies lazily, since reading a fact is not free.
+    Otherwise nothing: an unknown age stays unknown and is never filled with compile time.
+
+    Stamped as stored. A stored time without a zone stays without one and reads as "cannot be read" downstream;
+    making the writes zone-aware is PR B of the brief, not a guess made here.
+    """
+    stamps = sorted({str(p["surveyed_at"]) for p in provenance or () if p.get("surveyed_at")})
+    if stamps:
+        return {"as_of": stamps[0], "as_of_source": "result", "as_of_newest": stamps[-1]}
+    try:
+        as_of = str(fact_as_of() or "") if callable(fact_as_of) else str(fact_as_of or "")
+    except Exception:
+        logger.debug("no fact as-of", exc_info=True)
+        as_of = ""
+    return {"as_of": as_of, "as_of_source": "fact"} if as_of else {}
+
+
 def _judge_gap(fact_layer, slug: str, analysis_id: str) -> dict:
     """Why this section has nothing, in the vocabulary that already exists.
 
@@ -1319,8 +1341,10 @@ def compile_context(
                 sections.append(Section(analysis_id, role="evidence", weight=weight))
                 provenance = ({"analysis_id": analysis_id, "check": None,
                                "surveyed_at": fact.get("last_run_at") or None},)
+                # The fact's as-of (read_snapshot, else the run time), as the declared section itself quotes it.
                 candidates[analysis_id] = Candidate(analysis_id, rungs, provenance=provenance,
-                                                    pointer=_pointer_for(analysis_id, slug, provenance))
+                                                    pointer=_pointer_for(analysis_id, slug, provenance),
+                                                    **_evidence_as_of((), fact.get("as_of")))
                 declared_seen[analysis_id] = seen
                 lists = declared_context.list_extents(seen)
                 if lists:
@@ -1396,8 +1420,10 @@ def compile_context(
                                     f"({type(exc).__name__}); section packed "
                                     f"without its verdict line")
                         rungs = _with_headline(from_reader, headline)
+                        # The results envelope carries the run's own time; it was dropped here before (brief §3e).
+                        env_at = results.get("surveyed_at") if isinstance(results, dict) else None
                         provenance = ({"analysis_id": analysis_id,
-                                       "check": None, "surveyed_at": None},)
+                                       "check": None, "surveyed_at": str(env_at) if env_at else None},)
                         if extents:
                             list_extents[analysis_id] = extents
 
@@ -1428,9 +1454,12 @@ def compile_context(
             rungs = _with_caveat(rungs, coverage["caveat"])
         sections.append(Section(analysis_id, role="evidence", weight=weight))
         if rungs:
+            # interface_surface / chaoss_metrics / api_structure extras carry no time of their own; for them, and for
+            # a reader without an envelope time, the fact layer's as-of is the age (brief §3e).
             candidates[analysis_id] = Candidate(
                 analysis_id, rungs, provenance=provenance,
                 pointer=_pointer_for(analysis_id, slug, provenance),
+                **_evidence_as_of(provenance, lambda aid=analysis_id: _facts.fact(slug, aid).as_of),
             )
             packed_count += 1
         elif dec is not None and fact is not None:

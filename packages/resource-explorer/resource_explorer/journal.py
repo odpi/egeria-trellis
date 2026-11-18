@@ -223,16 +223,19 @@ def last_turn_exchange(exchanges: list[dict]) -> dict | None:
 
 
 def _as_ofs_of(compile_row: dict | None) -> dict[str, str]:
-    """{section: the as-of the compile declared for it}, never guessed. A declared section's as-of is in
-    `manifest.declared`; a packed section's pointer may carry one. A section with none is left out, not filled in."""
+    """{section: the as-of the compile recorded for it}, never guessed. Read through compile_as_of, the one place the
+    diagnosis reads too: the packed entry's `as_of` (refreshed by repeat compiles), else `manifest.declared`. In a
+    manifest from before trellis-context 0.2.0 a packed section's pointer may be the only date; the journal still
+    reads it as a last resort, since here it dates what the entry cites (the diagnosis does not read it for
+    staleness). A section with none is left out, not filled in."""
+    from resource_explorer.compile_as_of import section_as_ofs
+
     manifest = (compile_row or {}).get("manifest") or {}
     out: dict[str, str] = {}
     for p in manifest.get("packed") or []:
         if isinstance(p, dict) and p.get("key") and (p.get("pointer") or {}).get("as_of"):
             out[p["key"]] = str(p["pointer"]["as_of"])
-    for key, seen in (manifest.get("declared") or {}).items():
-        if isinstance(seen, dict) and seen.get("as_of"):
-            out[key] = str(seen["as_of"])
+    out.update(section_as_ofs(manifest))
     return out
 
 

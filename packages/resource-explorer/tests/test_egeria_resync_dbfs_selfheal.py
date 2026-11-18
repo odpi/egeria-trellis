@@ -177,7 +177,7 @@ def test_the_unattended_pass_applies_it_end_to_end(registry, monkeypatch):
     _db(registry, "dead", "g-dead")
     stub = StubClassification()
 
-    def fake_scan(self):
+    def fake_scan(self, include_reattach=True):
         self._clients = {"classification": stub}
         res = ScanResult()
         res.findings = [f for f in (self._scan_dbfs_assets(res), self._scan_flagged_dbfs_rows()) if f.count]

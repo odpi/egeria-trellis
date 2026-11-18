@@ -30,7 +30,7 @@ import { esc, state } from '/static/next/app.js';
 import { getFolderSurvey, attachFilesystemRoot, runFolderSurvey, publishFolderSurvey, checkFilesystemReach, runWalkExtensions, publishWalkExtensions,
   runFileProfiles, readFileProfilesFromEgeria, publishFileProfiles, runFilesystemAnalysis, runNarrativeDocs, runClassMatch,
   pollActivity, activityFailure, failureText } from '/static/re-api.js';
-import { enhanceTable } from '/static/next/colresize.js';
+import { enhanceTable } from '/static/trellis-ui/colresize.js';
 import { fmtBytes } from '/static/next/stages/native-report.js';
 import { readSectionPref, writeSectionPref, sectionStartsOpen } from '/static/next/sections.js';
 

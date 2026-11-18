@@ -22,6 +22,7 @@ from resource_explorer.registry import Project, ProjectRegistry
 from resource_explorer.surveyors.sub_surveyors.rag_ingestion import RagIngestionSurveyor
 
 NEXT = Path(__file__).resolve().parents[1] / "resource_explorer" / "web" / "static" / "next"
+SHARED_UI = Path(__file__).resolve().parents[2] / "trellis-ui" / "trellis_ui" / "static"  # RE's files shared with EA
 WEB_DOCS = "web_docs_egeria_project_org"
 
 
@@ -196,7 +197,7 @@ class TestCueHarness:
     def _render(self, tmp_path, states):
         node = str(NODE) if NODE.exists() else shutil.which("node")
         for name in ("glyphs.js", "link-actions.js", "format.js"):
-            (tmp_path / name).write_text((NEXT / name).read_text(), encoding="utf-8")
+            (tmp_path / name).write_text(((SHARED_UI if name == "format.js" else NEXT) / name).read_text(), encoding="utf-8")
         src = (NEXT / "stages" / "repo-header.js").read_text()
         src = (src.replace("'/static/next/glyphs.js'", "'./glyphs.mjs'")
                   .replace("'/static/next/link-actions.js'", "'./link-actions.mjs'")

@@ -1,0 +1,444 @@
+{
+ "_source": "Captured 2026-11-11 on laz, read-only: pyegeria 6.2.32 resolve_dashboard_sheet(run=True) as EA's service account against qs-view-server (sheets 'Assets by Type and Location Demo', 'Chief Data Officer Dashboard', 'local-dashboards-next-steps'). spec_source dropped; the Work-Item list trimmed to its first 3 records. The LIST text kept to its first 12 lines (header and first rows); text_mermaid is local-dashboards-next-steps position 2. Its mermaid block is cut to its first 12 lines and closed (the live one is 186 kB).",
+ "count_int": {
+  "spec": "Analytic Demo - Element Count by Type",
+  "output_format": "DICT",
+  "analytic_params": {
+   "type_name": "Asset"
+  },
+  "result": {
+   "kind": "json",
+   "data": 68739
+  }
+ },
+ "vega_pie": {
+  "spec": "Analytic Demo - Assets by Type Breakdown",
+  "output_format": "PIE",
+  "analytic_params": {
+   "type_map": [
+    [
+     "Data Stores",
+     "DataStore"
+    ],
+    [
+     "Data Sets",
+     "DataSet"
+    ],
+    [
+     "Software Components",
+     "DeployedSoftwareComponent"
+    ],
+    [
+     "Infrastructure",
+     "ITInfrastructure"
+    ],
+    [
+     "APIs",
+     "DeployedAPI"
+    ],
+    [
+     "Processes",
+     "Process"
+    ]
+   ]
+  },
+  "result": {
+   "kind": "json",
+   "data": {
+    "$schema": "https://vega.github.io/schema/vega-lite/v5.json",
+    "title": "Assets by Type Breakdown",
+    "description": "Assets by Type Breakdown",
+    "data": {
+     "values": [
+      {
+       "category": "Data Stores",
+       "count": 2014
+      },
+      {
+       "category": "Data Sets",
+       "count": 2009
+      },
+      {
+       "category": "Software Components",
+       "count": 588
+      },
+      {
+       "category": "Infrastructure",
+       "count": 150
+      },
+      {
+       "category": "APIs",
+       "count": 5
+      },
+      {
+       "category": "Processes",
+       "count": 64500
+      }
+     ]
+    },
+    "mark": {
+     "type": "arc",
+     "tooltip": true,
+     "innerRadius": 50
+    },
+    "encoding": {
+     "theta": {
+      "field": "count",
+      "type": "quantitative"
+     },
+     "color": {
+      "field": "category",
+      "type": "nominal"
+     },
+     "tooltip": [
+      {
+       "field": "category",
+       "type": "nominal",
+       "title": "Category"
+      },
+      {
+       "field": "count",
+       "type": "quantitative",
+       "title": "Count"
+      }
+     ]
+    }
+   }
+  }
+ },
+ "vega_bar": {
+  "spec": "Analytic Demo - Assets by Type Breakdown",
+  "output_format": "BAR",
+  "analytic_params": {
+   "type_map": [
+    [
+     "Business Imperatives",
+     "BusinessImperative"
+    ],
+    [
+     "Regulations",
+     "Regulation"
+    ],
+    [
+     "Threats",
+     "Threat"
+    ],
+    [
+     "Principles",
+     "GovernancePrinciple"
+    ],
+    [
+     "Obligations",
+     "GovernanceObligation"
+    ],
+    [
+     "Approaches",
+     "GovernanceApproach"
+    ],
+    [
+     "Roles",
+     "GovernanceRole"
+    ],
+    [
+     "Metrics",
+     "GovernanceMetric"
+    ],
+    [
+     "Risks",
+     "Risk"
+    ]
+   ]
+  },
+  "result": {
+   "kind": "json",
+   "data": {
+    "$schema": "https://vega.github.io/schema/vega-lite/v5.json",
+    "title": "Assets by Type Breakdown",
+    "description": "Assets by Type Breakdown",
+    "data": {
+     "values": [
+      {
+       "category": "Business Imperatives",
+       "count": 19
+      },
+      {
+       "category": "Regulations",
+       "count": 26
+      },
+      {
+       "category": "Threats",
+       "count": 33
+      },
+      {
+       "category": "Principles",
+       "count": 48
+      },
+      {
+       "category": "Obligations",
+       "count": 68
+      },
+      {
+       "category": "Approaches",
+       "count": 44
+      },
+      {
+       "category": "Roles",
+       "count": 87
+      },
+      {
+       "category": "Metrics",
+       "count": 69
+      },
+      {
+       "category": "Risks",
+       "count": 12
+      }
+     ]
+    },
+    "mark": {
+     "type": "bar",
+     "tooltip": true
+    },
+    "encoding": {
+     "color": {
+      "field": "category",
+      "type": "nominal",
+      "legend": null
+     },
+     "tooltip": [
+      {
+       "field": "category",
+       "type": "nominal",
+       "title": "Category"
+      },
+      {
+       "field": "count",
+       "type": "quantitative",
+       "title": "Count"
+      }
+     ],
+     "y": {
+      "field": "category",
+      "type": "nominal",
+      "sort": "-x",
+      "title": "Category"
+     },
+     "x": {
+      "field": "count",
+      "type": "quantitative",
+      "title": "Count"
+     }
+    }
+   }
+  }
+ },
+ "vega_series_growth": {
+  "spec": "Analytic Demo - Catalog Growth Trend",
+  "output_format": "SERIES",
+  "analytic_params": {
+   "window": "90d",
+   "points": 6
+  },
+  "result": {
+   "kind": "json",
+   "data": {
+    "$schema": "https://vega.github.io/schema/vega-lite/v5.json",
+    "title": "Catalog Growth Trend (6 Month)",
+    "description": "Catalog Growth Trend (6 Month)",
+    "data": {
+     "values": [
+      {
+       "label": "13 Aug",
+       "date": "13 Aug 2026",
+       "assets": 288,
+       "terms": 200,
+       "governed": 55,
+       "products": 3
+      },
+      {
+       "label": "31 Aug",
+       "date": "31 Aug 2026",
+       "assets": 288,
+       "terms": 200,
+       "governed": 55,
+       "products": 3
+      },
+      {
+       "label": "18 Sep",
+       "date": "18 Sep 2026",
+       "assets": 288,
+       "terms": 200,
+       "governed": 55,
+       "products": 3
+      },
+      {
+       "label": "6 Oct",
+       "date": "06 Oct 2026",
+       "assets": 288,
+       "terms": 200,
+       "governed": 55,
+       "products": 3
+      },
+      {
+       "label": "24 Oct",
+       "date": "24 Oct 2026",
+       "assets": 288,
+       "terms": 200,
+       "governed": 55,
+       "products": 3
+      },
+      {
+       "label": "11 Nov",
+       "date": "11 Nov 2026",
+       "assets": 68739,
+       "terms": 1065,
+       "governed": 896,
+       "products": 445
+      }
+     ]
+    },
+    "transform": [
+     {
+      "fold": [
+       "assets",
+       "governed",
+       "products",
+       "terms"
+      ],
+      "as": [
+       "series",
+       "value"
+      ]
+     }
+    ],
+    "mark": "line",
+    "encoding": {
+     "x": {
+      "field": "label",
+      "type": "nominal",
+      "title": "Label"
+     },
+     "y": {
+      "field": "value",
+      "type": "quantitative",
+      "title": "Count"
+     },
+     "color": {
+      "field": "series",
+      "type": "nominal",
+      "title": "Series"
+     },
+     "tooltip": [
+      {
+       "field": "label",
+       "type": "nominal",
+       "title": "Label"
+      },
+      {
+       "field": "series",
+       "type": "nominal"
+      },
+      {
+       "field": "value",
+       "type": "quantitative"
+      }
+     ]
+    }
+   }
+  }
+ },
+ "kpis_dict": {
+  "spec": "Analytic Demo - Term Definition Completeness",
+  "output_format": "DICT",
+  "analytic_params": {},
+  "result": {
+   "kind": "json",
+   "data": {
+    "total": 1065,
+    "defined": 540,
+    "undefinedPct": 49
+   }
+  }
+ },
+ "kpis_with_unmeasured": {
+  "spec": "Analytic Demo - Contextualised Coverage",
+  "output_format": "DICT",
+  "analytic_params": {},
+  "result": {
+   "kind": "json",
+   "data": {
+    "contextualisedCount": 272,
+    "assetTotal": null,
+    "contextualisedPct": null
+   },
+   "unmeasured": [
+    {
+     "count": "Asset",
+     "reason": "the native count timed out, and the find fallback stopped at its 500-element page cap, so there are at least 500",
+     "at_least": 500
+    }
+   ]
+  }
+ },
+ "nested_dict": {
+  "spec": "Analytic Demo - Ownership Coverage",
+  "output_format": "DICT",
+  "analytic_params": {},
+  "result": {
+   "kind": "json",
+   "data": {
+    "ownershipCount": 428,
+    "ownershipCapped": false,
+    "byOwnerType": {
+     "UserIdentity": 6,
+     "Unspecified": 411,
+     "SolutionActorRole": 11
+    }
+   }
+  }
+ },
+ "record_list": {
+  "spec": "Work-Item-List-DrE-Basic",
+  "output_format": "DICT",
+  "analytic_params": {},
+  "result": {
+   "kind": "json",
+   "data": [
+    {
+     "Zone Membership": "",
+     "Category": "Roadmap",
+     "Description": "Punch list of remaining work for the Local Dashboards / Egeria Overview feature (NEXT-10). Tracked as real Egeria Tasks so it can be browsed like any other dashboard content.",
+     "Display Name": "Local Dashboards - Next Steps",
+     "GUID": "7265cf16-c589-42ee-a251-4b8e3fb00b17",
+     "Legal": null,
+     "Qualified Name": "Coco Pharmaceuticals::WorkItemList::Local-Dashboards---Next-Steps::1.0",
+     "URL": null,
+     "Version Identifier": "1.0",
+     "Authors": null,
+     "Content Status": "ACTIVE",
+     "Purpose": null
+    }
+   ]
+  }
+ },
+ "text_mermaid": {
+  "spec": "Collections",
+  "output_format": "MERMAID",
+  "analytic_params": {},
+  "result": {
+   "kind": "text",
+   "mime": "text/markdown",
+   "content": "# Common Collection Information\nAttributes generic to all Collections.\n\n```mermaid\nflowchart TD\n%%{init: {\"flowchart\": {\"htmlLabels\": false}} }%%\n\n1(\"*Digital Product*<br/>**null Reference Data Set**\")\n2[\"*Search Keyword*<br/>**Reference Data**\"]\n1==>|\"Search Keyword Link\"|2\n3[\"*Subscribing Action Process*<br/>**Create Ongoing update subscription for Reference Data Set - null**\"]\n1==>|\"Create Subscription [Resource List]\"|3\n4[\"*Subscribing Action Process*<br/>**Create Weekly refresh subscription for Reference Data Set - null**\"]\n1==>|\"Create Subscription [Resource List]\"|4\n5[\"*Subscribing Action Process*<br/>**Create Daily refresh subscription for Reference Data Set - null**\"]\n1==>|\"Create Subscription [Resource List]\"|5\n```\n"
+  }
+ },
+ "text_list": {
+  "spec": "Project-DrE-Basic",
+  "output_format": "LIST",
+  "analytic_params": {},
+  "result": {
+   "kind": "text",
+   "mime": "text/markdown",
+   "content": "### Projects Table\n\nProjects found from the search string: `All`\n\n| Display Name | Qualified Name | GUID | Zone Membership | Description | Legal | Authors | Actual Completion Date | Actual Start Date | Mission | Planned Completion Date | Planned Start Date | Priority | Project Approach | Project Health | Project Identifier | Project Management Style | Project Phase | Project Results Usage | Project Scope | Project Type | Purposes | Sub-Projects | Success Criteria | Version Identifier | Content Status | Project Status | Category | \n|-------------|-------------|-------------|-------------|-------------|-------------|-------------|-------------|-------------|-------------|-------------|-------------|-------------|-------------|-------------|-------------|-------------|-------------|-------------|-------------|-------------|-------------|-------------|-------------|-------------|-------------|-------------|-------------|\n| Data analysis for Werewolf Transformation Clinical Trial | Project::PROJ-CT-WTF::DataAnalysis |  ---  |  ---  | Analyse the data from the hospitals to support this clinical trial. |  ---  |  ---  |  ---  |  ---  |  ---  |  ---  |  ---  |  ---  |  ---  |  ---  |  ---  |  ---  |  ---  |  ---  |  ---  |  ---  |  ---  |  ---  |  ---  |  ---  |  ---  |  ---  |  ---  | \n| Weekly data onboarding pipelines for Werewolf Transformation Clinical Trial | Project::PROJ-CT-WTF::OnboardingPipelines |  ---  |  ---  | Set up data onboarding pipelines from hospitals to support this clinical trial. |  ---  |  ---  |  ---  |  ---  |  ---  |  ---  |  ---  |  ---  |  ---  |  ---  |  ---  |  ---  |  ---  |  ---  |  ---  |  ---  |  ---  |  ---  |  ---  |  ---  |  ---  |  ---  |  ---  | \n| Create new data quality survey services for Werewolf Transformation Clinical Trial | Project::PROJ-CT-WTF::DataQualityComponents |  ---  |  ---  | Create the survey action services used to validate the values delivered to this clinical trial. |  ---  |  ---  |  ---  |  ---  |  ---  |  ---  |  ---  |  ---  |  ---  |  ---  |  ---  |  ---  |  ---  |  ---  |  ---  |  ---  |  ---  |  ---  |  ---  |  ---  |  ---  |  ---  |  ---  | \n| Create new templates and data stores for Werewolf Transformation Clinical Trial | Project::PROJ-CT-WTF::TemplatesAndStores |  ---  |  ---  | Define the metadata templates and data store definitions to support this clinical trial. |  ---  |  ---  |  ---  |  ---  |  ---  |  ---  |  ---  |  ---  |  ---  |  ---  |  ---  |  ---  |  ---  |  ---  |  ---  |  ---  |  ---  |  ---  |  ---  |  ---  |  ---  |  ---  |  ---  | \n| Create new components for Werewolf Transformation Clinical Trial | Project::PROJ-CT-WTF::ITDevelopment |  ---  |  ---  | Define the data-oriented components to support this clinical trial. |  ---  |  ---  |  ---  |  ---  |  ---  |  ---  |  ---  |  ---  |  ---  |  ---  |  ---  |  ---  |  ---  |  ---  |  ---  |  ---  |  ---  |  ---  |  ---  |  ---  |  ---  |  ---  |  ---  | \n| Manage hospitals relationships for Werewolf Transformation Clinical Trial | Project::PROJ-CT-WTF::HospitalManagement |  ---  |  ---  | Set up the data sharing agreements and ensure certification and data delivery by the hospitals chosen to support this clinical trial. |  ---  |  ---  |  ---  |  ---  |  ---  |  ---  |  ---  |  ---  |  ---  |  ---  |  ---  |  ---  |  ---  |  ---  |  ---  |  ---  |  ---  |  ---  |  ---  |  ---  |  ---  |  ---  |  ---  | "
+  }
+ }
+}

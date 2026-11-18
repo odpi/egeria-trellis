@@ -1,0 +1,12 @@
+{
+ "get_actor_profiles_by_name_missing": "No elements found",
+ "bad_token": {
+  "__error__": "PyegeriaUnauthorizedException",
+  "text": "=> AUTHORIZATION_ERROR_401 => User not authorized received for user - `erinoverview`. * Context: * class name=`BaseServerClient` * caller method=`_async_find_request` * System Action: The user credentials provided were not authorized. * User Action: Check that your user credentials are correct - please see documentation, if unsure. * HTTP Code: 401",
+  "related_http_code": 401
+ },
+ "unreachable": {
+  "__error__": "PyegeriaConnectionException",
+  "text": "=> CONNECTION_ERROR_1 => Client failed to connect to the Egeria platform using URL `https://127.0.0.1:9/api/about`. * Context: * class name=`BaseServerClient` * caller method=`async_get_platform_origin` * Error Kind: connection * System Action: The client is unable to connect to the Egeria platform. * User Action: Check the URL to ensure the valid platform url, server, user id are correct."
+ }
+}

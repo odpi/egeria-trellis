@@ -4,7 +4,6 @@ from __future__ import annotations
 import logging
 import tempfile
 from dataclasses import dataclass
-from datetime import datetime
 from pathlib import Path
 
 from rich.console import Console
@@ -15,6 +14,7 @@ from resource_explorer.ingestion.vendored import is_vendored, is_vendored_abs
 from resource_explorer.vector_store_pg import MultiCollectionStore
 from resource_explorer.registry import ProjectRegistry, ProjectStatus
 from resource_explorer.ingestion.vendored import is_vendored_abs
+from resource_explorer.survey_time import now_utc_iso
 
 log = logging.getLogger(__name__)
 
@@ -43,6 +43,10 @@ class IngestionPipeline:
         self.registry = ProjectRegistry()
         self.store = MultiCollectionStore()
         self.console = Console()
+        #: (display path, why) for each PDF the last `_ingest_pdfs` got no text from. See `_ingest_pdfs`.
+        self.pdf_failures: list[tuple[str, str]] = []
+        self.last_kept_per_file: dict[str, int] = {}
+        self.last_duplicate_of: dict[str, dict[str, int]] = {}
 
     # Collection types that can ingest from extra_docs_paths
     _DOC_CTYPES: frozenset[str] = frozenset({
@@ -166,9 +170,12 @@ class IngestionPipeline:
         local_root: Path | None = None,
         extra_paths: list[tuple[str, Path]] | None = None,
         changed_files: set[str] | None = None,
+        id_collection: str | None = None,
     ) -> int:
         """
         Ingest one collection type. local_root is the extracted repo directory;
+        `id_collection`: the name chunk ids are minted under, when it is not
+        `collection_name` (a rebuild writing aside; vector_store_pg.insert).
         if None (incremental single-collection re-index), downloads on the spot.
         extra_paths is a list of (display_prefix, abs_path) for repo paths outside
         the code subproject; used by doc/example collections only.
@@ -219,12 +226,25 @@ class IngestionPipeline:
             else:
                 chunks = _file_dispatch[ctype.name](local_root, resource_slug, ctype)
 
-        chunks = DataPrep().filter(chunks)
+        prep = DataPrep()
+        chunks = prep.filter(chunks)
+        # Per file, before any changed-files narrowing: what survived preparation, and what was dropped as a copy of
+        # an earlier file. A rebuild reads both so a file left with no chunks says why (laz 2026-11-11: three
+        # egeria_docs PDFs were content duplicates of others, and nothing said so).
+        kept: dict[str, int] = {}
+        for c in chunks:
+            f = str(c.metadata.get("file_path") or "")
+            kept[f] = kept.get(f, 0) + 1
+        self.last_kept_per_file = kept
+        self.last_duplicate_of = prep.duplicate_of
         if changed_files is not None:
             chunks = [c for c in chunks if c.metadata.get("file_path") in changed_files]
         if not chunks:
             return 0
 
+        if id_collection:
+            return self.store.insert(collection_name, [c.text for c in chunks],
+                                     [c.metadata for c in chunks], id_collection=id_collection)
         return self.store.insert(collection_name, [c.text for c in chunks],
                                  [c.metadata for c in chunks])
 
@@ -348,7 +368,7 @@ class IngestionPipeline:
             if findings:
                 self.registry.upsert_finding(
                     resource_slug, "ci_quality", findings,
-                    surveyed_at=datetime.utcnow().isoformat(),
+                    surveyed_at=now_utc_iso(),
                 )
                 self.console.print(f"[dim]CI quality: {len(findings)} check(s) evaluated.[/dim]")
         except Exception as exc:
@@ -368,7 +388,7 @@ class IngestionPipeline:
             if findings:
                 self.registry.upsert_finding(
                     resource_slug, "supply_chain", findings,
-                    surveyed_at=datetime.utcnow().isoformat(),
+                    surveyed_at=now_utc_iso(),
                 )
                 self.console.print(
                     f"[dim]Supply chain: {len(findings)} check(s) evaluated.[/dim]")
@@ -388,7 +408,7 @@ class IngestionPipeline:
             if findings:
                 self.registry.upsert_finding(
                     resource_slug, "repo_conventions", findings,
-                    surveyed_at=datetime.utcnow().isoformat(),
+                    surveyed_at=now_utc_iso(),
                 )
                 self.console.print(f"[dim]Repo conventions: {len(findings)} check(s) evaluated.[/dim]")
         except Exception as exc:
@@ -753,10 +773,26 @@ class IngestionPipeline:
         from resource_explorer.ingestion.doc_parser import DocChunk, DocParser
         parser = DocParser(ctype.chunk_size, ctype.chunk_overlap)
         chunks = []
-        all_files = (
+        from resource_explorer.ingestion.site_templates import skip_reason
+        candidates = (
             self._local_files(local_root, ctype.file_extensions)
             + self._local_files_for_paths(extra_paths or [], ctype.file_extensions)
         )
+        # Site-generator scaffolding (template folders, redirect stubs) is not documentation: it
+        # made the whole of egeria_docs' web_docs collection (site/overrides). Skipped and counted.
+        all_files, skipped = [], {}
+        for path, content in candidates:
+            reason = skip_reason(path, content)
+            if reason:
+                skipped.setdefault(reason, []).append(path)
+            else:
+                all_files.append((path, content))
+        for reason, paths in skipped.items():
+            self.console.print(f"  [dim]web_docs: skipped {len(paths)} {reason} file(s): "
+                               f"{', '.join(paths[:5])}{' ...' if len(paths) > 5 else ''}[/dim]")
+        # Read by a rebuild (reindex._build): when EVERY candidate was scaffolding, an empty web_docs is the
+        # planned result, not a regression, and the collection is dropped with a note instead of refused.
+        self.last_web_docs_scaffolding = {"candidates": len(candidates), "skipped": skipped}
         for path, content in all_files:
             text = re.sub(r"<[^>]+>", " ", content)
             text = re.sub(r"\s+", " ", text).strip()
@@ -846,19 +882,32 @@ class IngestionPipeline:
                 _converter = build_pdf_converter()
             return _converter.convert(path_str).document
 
+        # Every PDF that yields no text is recorded, not skipped quietly (tests/test_no_silent_success.py): Docling
+        # can return an empty document without raising (its compiled layout model on Apple MPS, laz 2026-11-10),
+        # and a re-ingest then replaces a file's chunks with none. Read by callers after the collection.
+        self.pdf_failures = []
+
         def _handle(display: str, abs_str: str) -> None:
             try:
                 document = _convert(abs_str)
-            except Exception:
-                # Unchanged from before: an unconvertible PDF is skipped, and
-                # now it yields neither chunks nor a tree rather than half of
-                # each.
+            except Exception as exc:
+                # An unconvertible PDF yields neither chunks nor a tree rather than half of each.
+                self.pdf_failures.append((display, f"conversion failed: {type(exc).__name__}: {exc}"[:300]))
                 return
             converted.append((display, document))
             try:
-                chunks.extend(parser.parse_pdf(abs_str, resource_slug, document=document))
-            except Exception:
-                pass
+                found = parser.parse_pdf(abs_str, resource_slug, document=document)
+            except Exception as exc:
+                self.pdf_failures.append((display, f"parsing failed: {type(exc).__name__}: {exc}"[:300]))
+                return
+            if not any((c.text or "").strip() for c in found):
+                self.pdf_failures.append((display, "converted to no text"))
+            # The repository-relative path, as every other collection stores, not this run's download folder: a
+            # temporary path differs on every run, so a refresh's per-file replace never matched a PDF and a
+            # rebuild could not compare a file with its live chunks.
+            for c in found:
+                c.metadata["file_path"] = display
+            chunks.extend(found)
 
         for path in local_root.rglob("*.pdf"):
             if is_vendored_abs(path, local_root):
@@ -879,6 +928,11 @@ class IngestionPipeline:
         self._report_tree_result(
             build_pdf_trees_from_documents(converted, resource_slug), resource_slug,
         )
+        if self.pdf_failures:
+            shown = "; ".join(f"{d} ({why})" for d, why in self.pdf_failures[:5])
+            more = f" and {len(self.pdf_failures) - 5} more" if len(self.pdf_failures) > 5 else ""
+            self.console.print(f"[yellow]{len(self.pdf_failures)} PDF(s) in {resource_slug} yielded no text: "
+                               f"{shown}{more}[/yellow]")
 
         return chunks
 

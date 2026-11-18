@@ -1,36 +1,66 @@
 """BeeAI @tool functions shared across Egeria Advisor agents."""
 from __future__ import annotations
+import contextlib
+import contextvars
 import csv
 import re
 from functools import lru_cache
 from pathlib import Path
+import time
+from typing import Optional
 
 from beeai_framework.tools import tool
+from loguru import logger
 
 
 @lru_cache(maxsize=1)
 def _load_perspective_families() -> dict[str, list[str]]:
     """Load perspective→template-family mappings from config/perspective_template_families.csv.
 
-    Returns a dict keyed by lowercase advisor perspective key (e.g. 'developer', 'any')
+    Returns a dict keyed by lowercase role profile (e.g. 'developer', 'any'; see A-P P-1)
     with values being dicts of {normalised_family: boost} where boost is 2 for level='both'
     and 1 for level='basic'.  Comment lines (starting with #) are skipped.
     """
     csv_path = Path(__file__).parent.parent / "configdata" / "perspective_template_families.csv"
     result: dict[str, dict[str, int]] = {}
+    # Comment rows ("# ...") are skipped before any other field is read: csv gives them None for
+    # the missing columns, and a None.strip() here used to raise into a bare `except: pass`, so this
+    # returned {} and no perspective's template families ever applied (found by A-P P-1).
     try:
         with open(csv_path, newline="", encoding="utf-8") as f:
             for row in csv.DictReader(f):
-                perspective = row.get("perspective", "").strip()
-                family = row.get("family", "").strip()
-                level = row.get("level", "basic").strip().lower()
-                if not perspective or not family or perspective.startswith("#"):
+                perspective = (row.get("perspective") or "").strip()
+                if not perspective or perspective.startswith("#"):
+                    continue
+                family = (row.get("family") or "").strip()
+                level = (row.get("level") or "basic").strip().lower()
+                if not family:
                     continue
                 boost = 2 if level == "both" else 1
                 result.setdefault(perspective.lower(), {})[family.lower()] = boost
-    except Exception:
-        pass
+    except OSError as exc:
+        logger.warning(f"Template families unavailable: could not read {csv_path.name}: {exc}")
+        return {}
     return result
+
+
+def _priority_families(perspective: str | None) -> dict[str, int]:
+    """Normalised template family -> boost (+2 for level both, +1 for basic) for a perspective.
+
+    The families CSV is keyed by ROLE PROFILE (A-P P-1), so the perspective's role_profile is looked
+    up; a "general" perspective gets only the "any" rows. No perspective: no boosts.
+    """
+    priority: dict[str, int] = {}
+    if not perspective:
+        return priority
+    from advisor.perspective_manager import role_profile
+    mappings = _load_perspective_families()
+    for key in (role_profile(perspective) or "", "any"):
+        for fam, boost in mappings.get(key, {}).items():
+            norm = _normalise(fam)
+            # Take the higher boost if the same family appears in both "any" and the profile
+            priority[norm] = max(priority.get(norm, 0), boost)
+    return priority
 
 
 @tool(description=(
@@ -58,13 +88,62 @@ def search_egeria_content(query: str, collections: str) -> str:
     return "\n\n---\n\n".join(parts)
 
 
+# ── What an answer retrieved (TR-51 c) ──────────────────────────────────────
+# An agent's answer built from these searches must report them: its sources, how many, how long they took. The
+# agents used to return hard-coded "sources": [], "num_sources": 0, "retrieval_time": 0.0 (absence-as-answer).
+# Each search records into the request's log; the agent's handle() reads it back (with_retrieval).
+_RETRIEVAL: "contextvars.ContextVar[Optional[dict]]" = contextvars.ContextVar("ea_agent_retrieval", default=None)
+
+
+@contextlib.contextmanager
+def recording_retrieval():
+    """`with recording_retrieval() as log:` -- every _search_egeria_content_raw inside records its hits and time."""
+    log = {"sources": [], "seconds": 0.0, "searches": 0}
+    token = _RETRIEVAL.set(log)
+    try:
+        yield log
+    finally:
+        _RETRIEVAL.reset(token)
+
+
+def _source_of(r) -> dict:
+    md = getattr(r, "metadata", None) or {}
+    col = md.get("_collection") or md.get("collection", "N/A")
+    return {"text": getattr(r, "text", ""), "score": getattr(r, "score", 0.0),
+            "file_path": md.get("file_path") or md.get("source", "unknown"), "name": md.get("name", "unnamed"),
+            "type": md.get("type", "unknown"), "module": md.get("module", ""), "collection": col, "_collection": col}
+
+
+def with_retrieval(result: dict, log: Optional[dict]) -> dict:
+    """`result` reporting what was retrieved for it: the distinct sources, their number, the search time and their
+    mean score. A result that reports its own sources keeps them; with nothing retrieved, the zeros are true."""
+    if not log or result.get("num_sources"):
+        return result
+    seen, sources = set(), []
+    for src in log["sources"]:
+        key = (src["collection"], src["file_path"], src["text"][:200])
+        if key not in seen:
+            seen.add(key)
+            sources.append(src)
+    scores = [s["score"] for s in sources if isinstance(s.get("score"), (int, float))]
+    return {**result, "sources": sources, "num_sources": len(sources),
+            "retrieval_time": log["seconds"] if log["searches"] else result.get("retrieval_time", 0.0),
+            "avg_relevance_score": (sum(scores) / len(scores)) if scores else result.get("avg_relevance_score", 0.0)}
+
+
 def _search_egeria_content_raw(query: str, collections: list[str], top_k: int = 8) -> str:
     """Direct call to the search logic without going through the BeeAI tool wrapper."""
     from advisor.multi_collection_store import get_multi_collection_store
     if not collections:
         return "No collections specified."
     store = get_multi_collection_store()
+    started = time.perf_counter()
     result = store.search_specific_collections(query=query, collection_names=collections, top_k=top_k)
+    log = _RETRIEVAL.get()
+    if log is not None:
+        log["seconds"] += time.perf_counter() - started
+        log["searches"] += 1
+        log["sources"].extend(_source_of(r) for r in (result.results or []))
     if not result.results:
         return "No relevant content found."
     parts = []
@@ -154,7 +233,29 @@ def _get_egeria_symbol_raw(name: str) -> str:
 
 def _templates_root() -> Path | None:
     """
-    Return the Dr.Egeria templates root directory, or None if not found.
+    Return the Dr.Egeria templates root directory (holding basic/ and
+    advanced/), or None if not found.
+
+    The installed pyegeria's packaged templates come first (BRIEF
+    EA-CATCHUP-AND-DASHBOARDS-2026-11-10 B2): they match the dispatcher that
+    executes the commands. Only when that pyegeria predates
+    ``md_processing.templates`` does this fall back, with a logged note, to
+    ``_legacy_templates_root()``.
+    """
+    from advisor.dre_templates import installed_templates_root, note_fallback
+
+    root = installed_templates_root()
+    if root is not None:
+        return root
+    legacy = _legacy_templates_root()
+    note_fallback("agents.tools._templates_root", legacy)
+    return legacy
+
+
+def _legacy_templates_root() -> Path | None:
+    """
+    Pre-B2 template discovery; used only when the installed pyegeria has no
+    packaged templates. Remove once trellis' pyegeria floor carries them.
 
     Candidate paths tried in order:
       1. {pyegeria_root}/Templates/Dr-Egeria-Templates   (case-sensitive, workspace layout)
@@ -232,15 +333,7 @@ def _find_dre_template_raw(query: str, level: str = "basic", perspective: str | 
 
     query_norm = _normalise(query)
 
-    # Build perspective-relevant family → boost map (+2 for both, +1 for basic).
-    priority_families: dict[str, int] = {}
-    if perspective:
-        mappings = _load_perspective_families()
-        for key in (perspective.lower(), "any"):
-            for fam, boost in mappings.get(key, {}).items():
-                norm = _normalise(fam)
-                # Take the higher boost if the same family appears in both "any" and perspective
-                priority_families[norm] = max(priority_families.get(norm, 0), boost)
+    priority_families = _priority_families(perspective)
 
     # Score every template file.
     # Tier 4: exact substring match between full normalised query and stem (or vice-versa).

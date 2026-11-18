@@ -71,7 +71,7 @@ async function setUp() {
 test('envelope: the other analysis with numbers at the level gets a numbers line; the first and the rest do not', async () => {
   makeDomEnvironment();
   ensureLoaderRegistered();
-  const { readEnvelope } = await import('/static/next/envelope.js');
+  const { readEnvelope } = await import('/static/trellis-ui/envelope.js');
   const lines = readEnvelope(Q0079, env(FACTS), (s) => s, (s) => s);
   assert.deepEqual(lines.numbersLines, [{ id: 'value_profile', sentence: '7 of 10 columns profiled.' }]);
   const firstHasIt = readEnvelope(Q0079, env([fact('data_class_match', { numbers_at_level: true, headline: 'x.' })]), (s) => s, (s) => s);

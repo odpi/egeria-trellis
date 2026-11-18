@@ -8,7 +8,9 @@ import { makeDomEnvironment, ensureLoaderRegistered } from './dom-harness.mjs';
 
 ensureLoaderRegistered();
 const NEXT = new URL('../../resource_explorer/web/static/next/', import.meta.url);
-const read = (p) => fs.readFileSync(new URL(p, NEXT), 'utf8');
+// themes.css is shared with EA (packages/trellis-ui).
+const SHARED_UI = new URL('../../../trellis-ui/trellis_ui/static/', import.meta.url);
+const read = (p) => fs.readFileSync(new URL(p, p === 'themes.css' ? SHARED_UI : NEXT), 'utf8');
 const CONFIG = fs.readFileSync(new URL('../tailwind-next.config.js', import.meta.url), 'utf8');
 const ROOT_PX = { A: 16, 'A+': 17.9, 'A++': 20 };   // index.html: html { font-size } at data-textsize unset / 112 / 125
 const cls = (el) => [...el.classList];
@@ -106,7 +108,7 @@ test('Look menu: anchored to the control\'s LEFT edge, above the panes, clamped 
   const env = makeDomEnvironment();
   const host = env.document.createElement('span');
   env.document.body.appendChild(host);
-  const look = await import('/static/next/look.js');
+  const look = await import('/static/trellis-ui/look.js');
   look.wireLook(host);
   const menu = host.querySelector('[data-look-menu]');
   assert.ok(cls(menu).includes('left-0') && !cls(menu).includes('right-0'));

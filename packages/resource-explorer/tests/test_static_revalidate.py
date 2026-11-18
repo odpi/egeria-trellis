@@ -27,7 +27,7 @@ def client():
     "path",
     [
         "/static/auth.js",
-        "/static/next/themes.css",
+        "/static/trellis-ui/themes.css",
         "/static/next/app.js",
         "/static/re-api.js",
         "/",

@@ -3,16 +3,23 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <!-- The look (Dark / Light / Paper), shared with Resource Explorer (packages/trellis-ui): set before first paint
+       from localStorage["trellis.look"]; nothing stored, or storage blocked, means Dark. ea_look.js switches it. -->
+  <script>(function () { var l = 'dark'; try { var v = localStorage.getItem('trellis.look');
+    if (v === 'light' || v === 'paper' || v === 'dark') l = v; } catch (e) {} document.documentElement.setAttribute('data-look', l); })();</script>
   <title>Egeria Advisor</title>
-  <script src="https://cdn.tailwindcss.com"></script>
-  <script src="/static/auth.js?v=20260905a"></script>
-  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script>
-  <script>mermaid.initialize({ startOnLoad: false, theme: 'dark' });</script>
-  <script src="https://cdn.jsdelivr.net/npm/vega@5/build/vega.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/vega-lite@5/build/vega-lite.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/vega-embed@6/build/vega-embed.min.js"></script>
-  <script>tailwind.config = { darkMode: 'class' };</script>
+  <script src="/static/vendor/tailwindcss-play.min.js?v=3.4.17"></script>
+  <script src="/static/auth.js?v=20261114e"></script>
+  <script src="/static/vendor/marked.min.js?v=18.0.9"></script>
+  <script src="/static/vendor/purify.min.js?v=3.4.17"></script>
+  <script src="/static/render.js?v=20261110a"></script>
+  <script src="/static/vendor/mermaid.min.js?v=12.2.0"></script>
+  <script>mermaid.initialize({ startOnLoad: false, theme: 'dark', securityLevel: 'strict' });</script>
+  <script src="/static/vendor/vega.min.js?v=5.33.1"></script>
+  <script src="/static/vendor/vega-lite.min.js?v=5.23.0"></script>
+  <script src="/static/vendor/vega-embed.min.js?v=6.29.0"></script>
+  <script src="/static/trellis-ui/tokens.js"></script>
+  <script src="/static/ea_tailwind.js?v=20261111a"></script>
   <style>
     body { font-family: 'Inter', system-ui, sans-serif; }
     #messages { scroll-behavior: smooth; }
@@ -145,6 +152,10 @@
     .sidebar-tab:hover { color: #cbd5e1; background: #1e293b44; }
     .sidebar-tab.active { color: #e2e8f0; border-bottom-color: #06b6d4; background: #1e293b66; }
   </style>
+  <!-- The looks' variables (trellis-ui) and EA's roles for them; after the <style> above, which they follow. -->
+  <link rel="stylesheet" href="/static/trellis-ui/themes.css">
+  <link rel="stylesheet" href="/static/ea_looks.css?v=20261114e">
+  <script type="module" src="/static/ea_look.js?v=20261111a"></script>
 </head>
 <body class="dark bg-slate-900 text-slate-100 h-screen flex flex-col overflow-hidden">
 
@@ -158,14 +169,19 @@
   <div class="flex items-center gap-3 text-xs text-slate-500">
     <span>Enter=send &nbsp; Shift+Enter=newline</span>
     <span>·</span>
+    <span data-look-host class="text-xs"></span>
     <span id="current-user" class="hidden text-cyan-400 font-medium"></span>
+    <!-- Shown only when /api/auth/me says is_admin === true (refreshAdminLink); hidden otherwise.
+         Cosmetic: the server's admin gate decides access to /admin and /api/admin/*. -->
+    <a id="admin-link" href="/admin" hidden
+      class="px-2 py-0.5 rounded bg-slate-700 hover:bg-slate-600 text-amber-300 transition-colors">Admin</a>
     <button id="logout-btn"
       class="hidden px-2 py-0.5 rounded bg-slate-700 hover:bg-slate-600 text-slate-300 transition-colors">
       Sign out
     </button>
     <button id="login-header-btn"
       onclick="Auth.showLogin()"
-      class="hidden px-2 py-0.5 rounded bg-cyan-800 hover:bg-cyan-700 text-cyan-100 transition-colors">
+      class="hidden px-2 py-0.5 rounded bg-cyan-800 hover:bg-cyan-700 text-white transition-colors">
       Sign in
     </button>
   </div>
@@ -181,6 +197,7 @@
     <div class="flex shrink-0 border-b border-slate-700">
       <button class="sidebar-tab active" data-tab="reports" onclick="setSidebarTab('reports')">Reports</button>
       <button class="sidebar-tab" data-tab="plans" onclick="setSidebarTab('plans')">Plans</button>
+      <button class="sidebar-tab" data-tab="dashboards" onclick="setSidebarTab('dashboards')" title="Dashboard Sheets held in Egeria, read as you">Dashboards</button>
       <button class="sidebar-tab" data-tab="recent" onclick="setSidebarTab('recent')">Recent</button>
     </div>
 
@@ -193,9 +210,10 @@
             <input type="checkbox" id="dre-toggle" onchange="loadReports()" class="accent-cyan-500">
             <span>DrE</span>
           </label>
-          <span id="report-count" class="text-xs text-slate-600"></span>
+          <span id="report-count" class="text-xs text-slate-500"></span>
         </div>
       </div>
+      <div id="report-egeria-held" class="px-3 pb-1 text-xs text-slate-500 shrink-0"></div>
       <div id="report-catalog" class="px-2 pb-2 flex flex-col gap-0.5 text-sm border-b border-slate-700/60 pb-3" style="max-height:40%; overflow-y:auto;"></div>
 
       <!-- Custom Report Specs Section -->
@@ -204,7 +222,7 @@
         <div class="flex items-center gap-2">
           <button onclick="openReportBuilderModal()" class="text-xs text-violet-400 hover:text-violet-200 transition-colors font-medium" title="New Report Spec (Builder)">+ Builder</button>
           <button onclick="openReportSpecImportModal()" class="text-xs text-slate-400 hover:text-slate-200 transition-colors font-medium" title="Import a Report Spec markdown file (paste or upload)">⇧ Import</button>
-          <button onclick="loadReportDocs();" class="text-xs text-slate-600 hover:text-slate-400 transition-colors" title="Refresh report specs">↺</button>
+          <button onclick="loadReportDocs();" class="text-xs text-slate-500 hover:text-slate-400 transition-colors" title="Refresh report specs">↺</button>
         </div>
       </div>
       <div id="report-doc-list" class="px-2 pb-2 flex flex-col gap-0.5 text-xs overflow-y-auto flex-1"></div>
@@ -217,7 +235,7 @@
         <div class="flex items-center gap-2">
           <button onclick="openBuilderModal()" class="text-xs text-violet-400 hover:text-violet-200 transition-colors font-medium" title="New Plan (Builder) — browse and select Dr.Egeria commands directly">+ Builder</button>
           <button onclick="openImportModal()" class="text-xs text-slate-400 hover:text-slate-200 transition-colors font-medium" title="Import a Dr.Egeria markdown file (paste or upload)">⇧ Import</button>
-          <button onclick="loadPlans();loadDrafts();loadTemplates();" class="text-xs text-slate-600 hover:text-slate-400 transition-colors" title="Refresh plans, drafts, and templates">↺</button>
+          <button onclick="loadPlans();loadDrafts();loadTemplates();" class="text-xs text-slate-500 hover:text-slate-400 transition-colors" title="Refresh plans, drafts, and templates">↺</button>
         </div>
       </div>
       <!-- Active drafts sub-section -->
@@ -227,16 +245,26 @@
       <!-- Plan Templates sub-section -->
       <div class="px-3 pt-2 pb-1 shrink-0 flex items-center justify-between">
         <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Plan Templates</span>
-        <button onclick="loadTemplates()" class="text-xs text-slate-600 hover:text-slate-400 transition-colors" title="Refresh plan templates">↺</button>
+        <button onclick="loadTemplates()" class="text-xs text-slate-500 hover:text-slate-400 transition-colors" title="Refresh plan templates">↺</button>
       </div>
       <div id="template-list" class="px-2 pb-2 flex flex-col gap-0.5 text-xs overflow-y-auto flex-1"></div>
+    </div>
+
+    <!-- Dashboards panel (brief B5): Dashboard Sheets held in Egeria, read as the signed-in user -->
+    <div id="sidebar-dashboards" class="flex flex-col flex-1 sidebar-pane min-h-0 hidden">
+      <div class="px-3 pt-2 pb-1 shrink-0 flex items-center justify-between">
+        <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Dashboard Sheets</span>
+        <button onclick="loadDashboards(true)" class="text-xs text-slate-500 hover:text-slate-400 transition-colors" title="Read the sheets from Egeria again">↺</button>
+      </div>
+      <div id="dashboard-status" class="px-3 pb-1 text-xs text-slate-500 shrink-0"></div>
+      <div id="dashboard-list" class="px-2 pb-2 flex flex-col gap-0.5 text-xs overflow-y-auto flex-1"></div>
     </div>
 
     <!-- Recent Queries panel -->
     <div id="sidebar-recent" class="flex flex-col flex-1 sidebar-pane min-h-0 hidden">
       <div class="px-3 pt-2 pb-1 shrink-0 flex items-center justify-between">
         <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Recent Queries</span>
-        <button onclick="clearHistory()" class="text-xs text-slate-600 hover:text-slate-400 transition-colors">clear</button>
+        <button onclick="clearHistory()" class="text-xs text-slate-500 hover:text-slate-400 transition-colors">clear</button>
       </div>
       <div id="recent-queries" class="px-2 pb-2 flex flex-col gap-0.5 text-xs"></div>
     </div>
@@ -444,7 +472,7 @@
     <input id="add-column-name" type="text" placeholder="e.g. Description"
       class="w-full bg-slate-700 text-slate-100 rounded px-3 py-1.5 text-sm border border-slate-600
              focus:outline-none focus:border-violet-500 mb-2">
-    <label class="text-xs text-slate-400 block mb-1">Attribute key <span class="text-slate-600">(auto-filled from name)</span></label>
+    <label class="text-xs text-slate-400 block mb-1">Attribute key <span class="text-slate-500">(auto-filled from name)</span></label>
     <input id="add-column-key" type="text" placeholder="e.g. description"
       class="w-full bg-slate-700 text-slate-100 rounded px-3 py-1.5 text-sm border border-slate-600
              focus:outline-none focus:border-violet-500 mb-4">
@@ -583,14 +611,14 @@
     <p id="modal-report-name" class="text-xs text-cyan-400 mb-3 truncate"></p>
     <label class="text-xs text-slate-400 block mb-1">
       Search string
-      <span class="text-slate-600 ml-1">(leave blank for all records)</span>
+      <span class="text-slate-500 ml-1">(leave blank for all records)</span>
     </label>
     <input id="search-string-input" type="text" placeholder="e.g. finance  or  *"
       class="w-full bg-slate-700 text-slate-100 rounded-lg px-3 py-1.5 text-sm
              border border-slate-600 focus:outline-none focus:border-cyan-500 mb-3">
     <label class="text-xs text-slate-400 block mb-1">
       Output format
-      <span class="text-slate-600 ml-1">(how to render the results)</span>
+      <span class="text-slate-500 ml-1">(how to render the results)</span>
     </label>
     <!-- Options are populated per-report from the spec's supported formats -->
     <select id="output-format-select"
@@ -599,7 +627,7 @@
     </select>
     <label class="text-xs text-slate-400 block mb-1">
       Max results
-      <span class="text-slate-600 ml-1">(limits graph nodes queried; default 100)</span>
+      <span class="text-slate-500 ml-1">(limits graph nodes queried; default 100)</span>
     </label>
     <input id="page-size-input" type="number" min="10" max="500" placeholder="100"
       class="w-full bg-slate-700 text-slate-100 rounded-lg px-3 py-1.5 text-sm
@@ -707,8 +735,11 @@ document.addEventListener('DOMContentLoaded', () => {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendQuery(); }
   });
 
+  _watchAdminLink();
+
   // Auth.init fires onReady once the user is authenticated
   Auth.init(() => {
+    refreshAdminLink();
     loadStatus();
     loadReports();
     loadReportDocs();
@@ -739,9 +770,9 @@ async function loadStatus() {
     const dot = document.getElementById('status-dot');
     const enabled = (data.mcp_servers || []).filter(s => s.enabled).length;
     dot.className = `w-2 h-2 rounded-full ${enabled > 0 ? 'bg-green-400' : 'bg-red-400'}`;
-    dot.title = enabled > 0
+    dot.title = data.message || (enabled > 0
       ? `${enabled} MCP server(s) configured`
-      : 'No MCP servers enabled';
+      : 'No MCP servers enabled');
   } catch {}
 }
 
@@ -753,6 +784,8 @@ async function loadReports() {
   reportFormats = data.formats || {};
   reportFormatLabels = data.format_labels || {};
   document.getElementById('report-count').textContent = `${data.total}`;
+  renderEgeriaHeld(data.egeria_held, data.shadowed || []);
+  const sources = data.sources || {};
   const el = document.getElementById('report-catalog');
   el.innerHTML = '';
   for (const [topic, names] of Object.entries(data.catalog)) {
@@ -770,12 +803,66 @@ async function loadReports() {
       btn.className = 'text-left px-2 py-0.5 rounded text-xs hover:bg-slate-700 transition-colors ' +
         (isDre ? 'text-slate-500 italic' : 'text-slate-300');
       btn.textContent = name;
-      btn.title = isDre ? 'Dr.Egeria operator report' : '';
+      const src = sources[name] || {};
+      const srcTitle = _specSourceTitle(src);
+      btn.title = [isDre ? 'Dr.Egeria operator report' : '', srcTitle].filter(Boolean).join(' — ');
+      if (src.source && src.source !== 'builtin') {
+        const badge = document.createElement('span');
+        badge.className = 'ml-1 px-1 rounded text-[10px] align-middle ' + (_SPEC_SOURCE_STYLE[src.source] || 'bg-slate-700 text-slate-300');
+        badge.textContent = _SPEC_SOURCE_LABEL[src.source] || src.source;
+        btn.appendChild(badge);
+      }
       btn.onclick = () => runReport(name);
       ul.appendChild(btn);
     });
     det.appendChild(ul);
     el.appendChild(det);
+  }
+  if (window.SpecsPublish) SpecsPublish.onCatalog(data, el);  // B6: used-by, restricted, publish/withdraw
+}
+
+// ── Report spec sources (EGERIA tier, brief B3) ──────────────────────────────
+// Same words as the Portal: built-in / held in Egeria / local; "user" is a spec
+// authored in this Advisor. Built-ins get no badge (they are the majority).
+const _SPEC_SOURCE_LABEL = { builtin: 'built-in', egeria: 'held in Egeria', local: 'local', user: 'user', unknown: 'source unknown' };
+const _SPEC_SOURCE_STYLE = {
+  egeria: 'bg-cyan-900/60 text-cyan-300', local: 'bg-amber-900/50 text-amber-300',
+  user: 'bg-violet-900/50 text-violet-300', unknown: 'bg-slate-700 text-slate-400',
+};
+
+function _specSourceTitle(src) {
+  if (!src || !src.source) return '';
+  let t = `Source: ${_SPEC_SOURCE_LABEL[src.source] || src.source}`;
+  if (src.shadows) t += ` (shadows the ${_SPEC_SOURCE_LABEL[src.shadows] || src.shadows} copy)`;
+  return t;
+}
+
+// Never an empty list on its own: when nothing is held in Egeria, say why.
+function renderEgeriaHeld(held, shadowed) {
+  const el = document.getElementById('report-egeria-held');
+  if (!el) return;
+  el.innerHTML = '';
+  if (!held) { el.textContent = 'Held in Egeria: not reported by the server.'; return; }
+  const line = document.createElement('div');
+  if (held.count > 0) {
+    line.textContent = `Held in Egeria: ${held.count}` + (held.message ? ` — ${held.message}` : '');
+  } else {
+    line.textContent = held.message || 'None held in Egeria (no reason given).';
+  }
+  line.title = [
+    `Folders (${held.folders_source}): ${(held.folders || []).join(', ') || 'none'}`,
+    held.recursive ? 'Sub-folders are followed.' : 'Direct members only (sub-folders: pyegeria consumer-folders phase 2).',
+    held.synced_at ? `Last synced ${held.synced_at} as ${held.identity}` : 'Not synced in this run',
+    `Visibility: ${held.visibility}`,
+    `Zone filter: ${held.zone_filter || 'unknown'}` + (held.zone_filter === 'not applied' ? ' (pyegeria has no public_only yet; consumer folders must hold no zoned specs)' : ''),
+  ].join('\n');
+  el.appendChild(line);
+  if (shadowed.length) {
+    const sh = document.createElement('div');
+    sh.className = 'text-slate-500';
+    sh.textContent = `Shadowed copies: ${shadowed.length}`;
+    sh.title = shadowed.map(s => `${s.name} (${_SPEC_SOURCE_LABEL[s.source] || s.source}) shadowed by the ${_SPEC_SOURCE_LABEL[s.shadowed_by] || s.shadowed_by} copy`).join('\n');
+    el.appendChild(sh);
   }
 }
 
@@ -848,7 +935,7 @@ function renderRecent() {
   el.innerHTML = '';
   const shown = recentQueries.slice(-15).reverse();
   if (!shown.length) {
-    el.innerHTML = '<div class="px-2 text-slate-600 italic">No queries yet</div>';
+    el.innerHTML = '<div class="px-2 text-slate-500 italic">No queries yet</div>';
     return;
   }
   shown.forEach(q => {
@@ -901,6 +988,13 @@ async function loadPerspectives() {
     btn.textContent = label;
     bar.appendChild(btn);
   });
+  // Where the list came from (A-P1): "from Egeria", or "built-in list: Egeria not reached: <reason>".
+  bar.querySelector('.persp-source')?.remove();
+  const src = document.createElement('span');
+  src.className = 'persp-source self-center text-[10px] text-slate-500 ml-1';
+  src.textContent = data.source === 'egeria' ? 'from Egeria' : 'built-in list';
+  src.title = data.message || '';
+  bar.appendChild(src);
 }
 
 // ── Plans sidebar ──────────────────────────────────────────────────────────────
@@ -918,7 +1012,7 @@ async function loadPlans() {
   const outbox = data.outbox || [];
   const trash = data.trash || [];
   if (!inbox.length && !outbox.length && !trash.length) {
-    el.innerHTML = '<div class="px-2 text-slate-600 italic">No plans yet</div>';
+    el.innerHTML = '<div class="px-2 text-slate-500 italic">No plans yet</div>';
     return;
   }
 
@@ -944,14 +1038,12 @@ async function loadPlans() {
         e.stopPropagation();
         // Direct REST call (not a faked chat message) — see BACKLOG.md.
         execBtn.disabled = true; execBtn.textContent = '…';
-        appendMessage('you', `Execute plan ${plan.doc_id}`);
         try {
-          const r = await fetch(`/api/plans/${encodeURIComponent(plan.doc_id)}/execute`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', ...Auth.getHeaders() },
-            body: JSON.stringify({ draft_id: plan.draft_id || null }),
-          });
-          const result = await r.json();
+          // the plan confirm gate: shown and confirmed first (runPlanConfirmed, plan_editor.js)
+          const result = await runPlanConfirmed(`/api/plans/${encodeURIComponent(plan.doc_id)}/execute`,
+                                                { draft_id: plan.draft_id || null });
+          if (result.cancelled) return;
+          appendMessage('you', `Execute plan ${plan.doc_id}`);
           const wrap = appendMessage('assistant', result.response || '', {});
           _applyQueryResult(`execute the plan ${plan.doc_id}`, result, wrap);
         } catch (err) {
@@ -991,14 +1083,12 @@ async function loadPlans() {
       rerunBtn.textContent = '▶';
       rerunBtn.onclick = async e => {
         e.stopPropagation();
-        if (!confirm(`Re-run "${plan.title || plan.doc_id}" now? This submits its commands to Egeria again.`)) return;
         rerunBtn.disabled = true; rerunBtn.textContent = '…';
         try {
-          const r = await fetch(`/api/plans/${encodeURIComponent(plan.doc_id)}/rerun`, { method: 'POST', headers: Auth.getHeaders() });
-          if (!r.ok) {
-            const err = await r.json().catch(() => ({}));
-            throw new Error(err.detail || `Server error ${r.status}`);
-          }
+          // the plan confirm gate: shown and confirmed first (runPlanConfirmed, plan_editor.js)
+          const res = await runPlanConfirmed(`/api/plans/${encodeURIComponent(plan.doc_id)}/rerun`, {});
+          if (res.cancelled) return;
+          if (res.state === 'refused') throw new Error(res.response);
           await loadPlans();
           openPlanEditor(plan.doc_id, null);
         } catch (err) {
@@ -1031,7 +1121,7 @@ async function loadPlans() {
       row.appendChild(restoreBtn);
 
       const purgeBtn = document.createElement('button');
-      purgeBtn.className = 'shrink-0 px-1 py-0.5 rounded text-slate-600 hover:text-red-400 hover:bg-red-950/40 text-xs transition-colors';
+      purgeBtn.className = 'shrink-0 px-1 py-0.5 rounded text-slate-500 hover:text-red-400 hover:bg-red-950/40 text-xs transition-colors';
       purgeBtn.title = 'Permanently delete (version history is kept)';
       purgeBtn.textContent = '🗑';
       purgeBtn.onclick = async e => {
@@ -1057,7 +1147,7 @@ async function loadPlans() {
 
     // Export button — inbox and outbox only
     const exportBtn = document.createElement('button');
-    exportBtn.className = 'shrink-0 px-1 py-0.5 rounded text-slate-600 hover:text-slate-300 hover:bg-slate-800/50 text-xs transition-colors';
+    exportBtn.className = 'shrink-0 px-1 py-0.5 rounded text-slate-500 hover:text-slate-300 hover:bg-slate-800/50 text-xs transition-colors';
     exportBtn.title = 'Download this plan as a markdown file';
     exportBtn.textContent = '⤓';
     exportBtn.onclick = e => {
@@ -1068,7 +1158,7 @@ async function loadPlans() {
 
     // Delete button — inbox and outbox only (moves to trash)
     const delBtn = document.createElement('button');
-    delBtn.className = 'shrink-0 px-1 py-0.5 rounded text-slate-600 hover:text-red-400 hover:bg-red-950/40 text-xs transition-colors';
+    delBtn.className = 'shrink-0 px-1 py-0.5 rounded text-slate-500 hover:text-red-400 hover:bg-red-950/40 text-xs transition-colors';
     delBtn.title = 'Move this plan to Trash (a version backup is saved first)';
     delBtn.textContent = '×';
     delBtn.onclick = async e => {
@@ -1097,7 +1187,7 @@ async function loadPlans() {
   const renderGroup = (items, folder, label) => {
     if (!items.length) return;
     const hdr = document.createElement('div');
-    hdr.className = 'px-2 pt-1 text-slate-600 uppercase text-xs font-semibold tracking-wider';
+    hdr.className = 'px-2 pt-1 text-slate-500 uppercase text-xs font-semibold tracking-wider';
     hdr.textContent = label;
     el.appendChild(hdr);
     items.forEach(plan => el.appendChild(makeRow(plan, folder)));
@@ -1108,7 +1198,7 @@ async function loadPlans() {
 
   if (trash.length) {
     const hdr = document.createElement('div');
-    hdr.className = 'px-2 pt-1 flex items-center gap-1 cursor-pointer text-slate-600 uppercase text-xs font-semibold tracking-wider hover:text-slate-400';
+    hdr.className = 'px-2 pt-1 flex items-center gap-1 cursor-pointer text-slate-500 uppercase text-xs font-semibold tracking-wider hover:text-slate-400';
     hdr.textContent = `${_trashExpanded ? '▾' : '▸'} Trash (${trash.length})`;
     hdr.onclick = () => { _trashExpanded = !_trashExpanded; loadPlans(); };
     el.appendChild(hdr);
@@ -1157,7 +1247,7 @@ async function loadTemplates() {
   el.innerHTML = '';
   const templates = data.templates || [];
   if (!templates.length) {
-    el.innerHTML = '<div class="px-2 text-slate-600 italic">No saved templates yet — use "Save as Template" from a plan to create one.</div>';
+    el.innerHTML = '<div class="px-2 text-slate-500 italic">No saved templates yet — use "Save as Template" from a plan to create one.</div>';
     return;
   }
 
@@ -1179,7 +1269,7 @@ async function loadTemplates() {
     row.appendChild(btn);
 
     const delBtn = document.createElement('button');
-    delBtn.className = 'shrink-0 px-1 py-0.5 rounded text-slate-600 hover:text-red-400 hover:bg-red-950/40 text-xs transition-colors';
+    delBtn.className = 'shrink-0 px-1 py-0.5 rounded text-slate-500 hover:text-red-400 hover:bg-red-950/40 text-xs transition-colors';
     delBtn.title = 'Delete this template';
     delBtn.textContent = '×';
     delBtn.onclick = async e => {
@@ -1217,7 +1307,7 @@ async function loadDrafts() {
   if (!drafts.length) return;
 
   const hdr = document.createElement('div');
-  hdr.className = 'px-2 pt-1 text-amber-500/80 uppercase text-xs font-semibold tracking-wider';
+  hdr.className = 'px-2 pt-1 text-amber-500 uppercase text-xs font-semibold tracking-wider';
   hdr.textContent = 'Active Drafts';
   el.appendChild(hdr);
 
@@ -1261,7 +1351,7 @@ async function loadDrafts() {
 
     // Discard button
     const del = document.createElement('button');
-    del.className = 'shrink-0 text-slate-700 hover:text-red-400 transition-colors text-xs px-1';
+    del.className = 'shrink-0 text-slate-500 hover:text-red-400 transition-colors text-xs px-1';
     del.title = 'Discard this draft';
     del.textContent = '✕';
     del.onclick = async e => {
@@ -1271,7 +1361,7 @@ async function loadDrafts() {
         _activeDraftId = null;
         sessionStorage.removeItem('ea_active_draft');
       }
-      await fetch(`/api/drafts/${d.draft_id}`, { method: 'DELETE', headers: Auth.getHeaders() }).catch(() => {});
+      await fetch(`/api/drafts/${encodeURIComponent(d.draft_id)}`, { method: 'DELETE', headers: Auth.getHeaders() }).catch(() => {});
       loadDrafts();
     };
     row.appendChild(del);
@@ -1305,11 +1395,14 @@ function setIntent(btn) {
 // ── Sidebar tab switcher ───────────────────────────────────────────────────────
 function setSidebarTab(name) {
   document.querySelectorAll('.sidebar-tab').forEach(b => b.classList.toggle('active', b.dataset.tab === name));
-  ['reports', 'plans', 'recent'].forEach(t => {
+  ['reports', 'plans', 'dashboards', 'recent'].forEach(t => {
     document.getElementById('sidebar-' + t).classList.toggle('hidden', t !== name);
   });
   localStorage.setItem('ea_sidebar_tab', name);
+  if (name === 'dashboards' && window.EADashboards) EADashboards.ensureLoaded();
 }
+
+// ── Dashboards (briefs B5, B7a): static/dashboards_view.js (EADashboards) ─────
 
 // ── Send / query ───────────────────────────────────────────────────────────────
 function sendQuery() {
@@ -1411,7 +1504,7 @@ async function submitQuery(query, extra = {}) {
             hdr.textContent = 'Assistant';
             streamWrap.appendChild(hdr);
             streamBody = document.createElement('div');
-            streamBody.className = 'prose prose-invert text-sm text-slate-200 max-w-none whitespace-pre-wrap';
+            streamBody.className = 'msg-answer prose prose-invert text-sm text-slate-200 max-w-none whitespace-pre-wrap';
             streamWrap.appendChild(streamBody);
             document.getElementById('messages').appendChild(streamWrap);
           }
@@ -1426,8 +1519,8 @@ async function submitQuery(query, extra = {}) {
           const result = evt.result;
           // Re-render the streamed content as markdown
           if (streamBody && result.response) {
-            streamBody.className = 'prose prose-invert text-sm text-slate-200 max-w-none';
-            streamBody.innerHTML = marked.parse(preprocessMarkdown(result.response));
+            streamBody.className = 'msg-answer prose prose-invert text-sm text-slate-200 max-w-none';
+            streamBody.innerHTML = renderMarkdown(preprocessMarkdown(result.response));
             streamBody.querySelectorAll('code.language-mermaid').forEach(el => {
               const c = document.createElement('div');
               c.className = 'mermaid my-2';
@@ -1504,6 +1597,7 @@ async function submitQuery(query, extra = {}) {
 // ── Shared result post-processing (called by both streaming and non-streaming) ──
 function _applyQueryResult(query, result, wrap) {
   const qtype = result.query_type || 'general';
+  if (window.EADashAuthor) EADashAuthor.offerSave(wrap, result);   // B7b: Save to a dashboard
   const routingAgentFromResult = result.routing_agent || qtype;
   const intent = result.intent || {};
   const isClarify = qtype === 'clarification';
@@ -1612,7 +1706,7 @@ function _applyQueryResult(query, result, wrap) {
     planInfo.className = 'text-slate-300 flex-1';
     planInfo.innerHTML =
       `<span class="text-violet-400 font-semibold">Plan saved</span> — ` +
-      `<code class="text-violet-300">${result.doc_id}.md</code> is in your inbox. ` +
+      `<code class="text-violet-300">${_esc(result.doc_id)}.md</code> is in your inbox. ` +
       `Open the editor to review, fill in details, validate, and execute.`;
     planBanner.appendChild(planInfo);
 
@@ -1634,7 +1728,7 @@ function _applyQueryResult(query, result, wrap) {
     reportInfo.className = 'text-slate-300 flex-1';
     reportInfo.innerHTML =
       `<span class="text-violet-400 font-semibold">Report Spec saved</span> — ` +
-      `<code class="text-violet-300">${result.doc_id}.md</code> is in your inbox. ` +
+      `<code class="text-violet-300">${_esc(result.doc_id)}.md</code> is in your inbox. ` +
       `You can edit the columns in the Canvas sidebar or execute it.`;
     reportBanner.appendChild(reportInfo);
 
@@ -1844,7 +1938,7 @@ function _applyQueryResult(query, result, wrap) {
     execBanner.className = 'mt-2 px-3 py-2 rounded bg-emerald-950/60 border border-emerald-700/50 text-xs';
     execBanner.innerHTML =
       `<span class="text-emerald-400 font-semibold">Executed</span> — ` +
-      `<code class="text-emerald-300">${result.doc_id}.md</code> has been moved to your outbox with the outcome appended.`;
+      `<code class="text-emerald-300">${_esc(result.doc_id)}.md</code> has been moved to your outbox with the outcome appended.`;
     wrap.appendChild(execBanner);
   }
 
@@ -1971,7 +2065,7 @@ function _applyQueryResult(query, result, wrap) {
     execBanner.className = 'mt-2 px-3 py-2 rounded bg-emerald-950/60 border border-emerald-700/50 text-xs';
     execBanner.innerHTML =
       `<span class="text-emerald-400 font-semibold">Executed</span> — ` +
-      `<code class="text-emerald-300">${result.doc_id}.md</code> has been moved to your outbox with the outcome appended.`;
+      `<code class="text-emerald-300">${_esc(result.doc_id)}.md</code> has been moved to your outbox with the outcome appended.`;
     wrap.appendChild(execBanner);
   }
 
@@ -1988,7 +2082,7 @@ function _applyQueryResult(query, result, wrap) {
   const uniqueSrcs = [...new Set(srcLabels)].slice(0, 6);
   if (uniqueSrcs.length) {
     const src = document.createElement('div');
-    src.className = 'mt-1 text-xs text-slate-600';
+    src.className = 'mt-1 text-xs text-slate-500';
     src.textContent = 'Sources: ' + uniqueSrcs.join(' · ');
     wrap.appendChild(src);
   }
@@ -1996,17 +2090,16 @@ function _applyQueryResult(query, result, wrap) {
   // Feedback buttons — use data attributes to avoid JSON/HTML escaping issues
   const fb = document.createElement('div');
   fb.className = 'mt-1.5 flex gap-2 items-center';
+  fb.dataset.feedbackRow = '1';
   const btnUp = document.createElement('button');
   btnUp.className = 'text-xs text-slate-500 hover:text-green-400 transition-colors';
   btnUp.textContent = '👍';
-  const responseText = wrap.querySelector('.msg-body')?.textContent || '';
   btnUp.dataset.q = query;
   btnUp.dataset.qt = qtype;
   btnUp.dataset.vote = '1';
   btnUp.dataset.perspective = selectedPerspective || '';
   btnUp.dataset.routingAgent = routingAgentFromResult;
   btnUp.dataset.intentOverride = selectedIntent || 'auto';
-  btnUp.dataset.responseText = responseText.slice(0, 2000);
   btnUp.addEventListener('click', feedbackClick);
   
   const btnNeutral = document.createElement('button');
@@ -2019,7 +2112,6 @@ function _applyQueryResult(query, result, wrap) {
   btnNeutral.dataset.perspective = selectedPerspective || '';
   btnNeutral.dataset.routingAgent = routingAgentFromResult;
   btnNeutral.dataset.intentOverride = selectedIntent || 'auto';
-  btnNeutral.dataset.responseText = responseText.slice(0, 2000);
   btnNeutral.addEventListener('click', feedbackClick);
   
   const btnDown = document.createElement('button');
@@ -2031,7 +2123,6 @@ function _applyQueryResult(query, result, wrap) {
   btnDown.dataset.perspective = selectedPerspective || '';
   btnDown.dataset.routingAgent = routingAgentFromResult;
   btnDown.dataset.intentOverride = selectedIntent || 'auto';
-  btnDown.dataset.responseText = responseText.slice(0, 2000);
   btnDown.addEventListener('click', feedbackClick);
   
   fb.appendChild(btnUp);
@@ -2055,7 +2146,7 @@ function renderClarification(mdText, candidates) {
   const intro = mdText.split('\n').slice(0, 2).join('\n');
   const body = document.createElement('div');
   body.className = 'prose prose-invert text-sm text-slate-200 max-w-none mb-2';
-  body.innerHTML = marked.parse(intro);
+  body.innerHTML = renderMarkdown(intro);
   wrap.appendChild(body);
 
   // Candidate buttons
@@ -2104,7 +2195,7 @@ function renderIntentClarification(mdText, labels, intents, originalQuery) {
 
   const body = document.createElement('div');
   body.className = 'prose prose-invert text-sm text-slate-200 max-w-none mb-2';
-  body.innerHTML = marked.parse(mdText);
+  body.innerHTML = renderMarkdown(mdText);
   wrap.appendChild(body);
 
   const btnRow = document.createElement('div');
@@ -2187,8 +2278,8 @@ function appendMessage(role, text, opts = {}) {
   wrap.appendChild(header);
 
   const body = document.createElement('div');
-  body.className = 'msg-body prose prose-invert text-sm text-slate-200 max-w-none';
-  body.innerHTML = marked.parse(preprocessMarkdown(text));
+  body.className = 'msg-body msg-answer prose prose-invert text-sm text-slate-200 max-w-none';
+  body.innerHTML = renderMarkdown(preprocessMarkdown(text));
   wrap.appendChild(body);
   // Render Mermaid diagrams inside this message
   body.querySelectorAll('code.language-mermaid').forEach((el, i) => {
@@ -2203,7 +2294,7 @@ function appendMessage(role, text, opts = {}) {
     try {
       const spec = JSON.parse(el.textContent);
       const div = document.createElement('div');
-      div.style.cssText = 'background:#0f172a;padding:8px;border-radius:6px;';
+      div.style.cssText = 'background:rgb(var(--ea-sunk));padding:8px;border-radius:6px;';
       el.closest('pre').replaceWith(div);
       vegaEmbed(div, spec, { theme: 'dark', actions: false }).catch(() => {});
     } catch {}
@@ -2215,26 +2306,110 @@ function appendMessage(role, text, opts = {}) {
 }
 
 // ── Feedback ───────────────────────────────────────────────────────────────────
+// The answer's text, read when the button is clicked (the streamed answer is only rendered once the
+// stream completes, so reading it while the buttons are built sent ""). Both answer paths mark their
+// body with .msg-answer.
+function _feedbackAnswerText(fbRow) {
+  const wrap = fbRow && fbRow.parentElement;
+  const ans = wrap && wrap.querySelector('.msg-answer');
+  const text = ans ? (ans.innerText || ans.textContent || '') : '';
+  return text.trim().slice(0, 2000) || null;
+}
+
 async function feedbackClick(e) {
   const btn = e.currentTarget;
+  const fb = btn.closest('[data-feedback-row]') || btn.parentElement;
   const vote = parseInt(btn.dataset.vote, 10);
-  const query = btn.dataset.q;
-  const queryType = btn.dataset.qt;
-  const perspective = btn.dataset.perspective || null;
-  const routingAgent = btn.dataset.routingAgent || null;
-  const intentOverride = btn.dataset.intentOverride || null;
-  const responseText = btn.dataset.responseText || null;
-  await fetch('/api/feedback', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...Auth.getHeaders() },
-    body: JSON.stringify({ query, query_type: queryType, vote, perspective, routing_agent: routingAgent, intent_override: intentOverride, response_text: responseText }),
-  }).catch(() => {});
-  const fb = btn.parentElement;
-  fb.innerHTML = vote > 0
-    ? '<span class="text-xs text-green-400">👍 Thanks!</span>'
-    : (vote === 0
-        ? '<span class="text-xs text-amber-400">😐 Noted (Partially helpful).</span>'
-        : '<span class="text-xs text-red-400">👎 Noted.</span>');
+  const payload = {
+    query: btn.dataset.q,
+    query_type: btn.dataset.qt,
+    vote,
+    perspective: btn.dataset.perspective || null,
+    routing_agent: btn.dataset.routingAgent || null,
+    intent_override: btn.dataset.intentOverride || null,
+    response_text: _feedbackAnswerText(fb),
+    // A-F1: session + exchange + vote_seq is the idempotency key: only a re-sent click replays. Retry is a
+    // new click (a new item); feedback analysis counts the latest vote per answer, so it is counted once.
+    session_id: (window._eaFeedbackSession ||= (crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`)),
+    exchange_id: (fb.dataset.exchangeId ||= (crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`)),
+    // N1: each click on this row is its own vote; the latest on an answer is the one counted.
+    vote_seq: (fb._voteSeq = (fb._voteSeq || 0) + 1),
+  };
+  // Keep the buttons so a failed send can be retried; acknowledge the click at once.
+  if (!fb._buttons) fb._buttons = [...fb.querySelectorAll('button')];
+  fb.replaceChildren();
+  const status = document.createElement('span');
+  status.className = 'text-xs text-slate-400';
+  status.textContent = 'Sending…';
+  fb.appendChild(status);
+
+  let failure = null;
+  try {
+    const res = await fetch('/api/feedback', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...Auth.getHeaders() },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      let detail = '';
+      try { const d = await res.json(); detail = d.detail || d.message || d.error || ''; } catch { /* not JSON */ }
+      if (typeof detail !== 'string') detail = JSON.stringify(detail);
+      failure = `HTTP ${res.status}${detail ? ': ' + detail : ''}`;
+    }
+  } catch (err) {
+    failure = (err && err.message) || String(err);
+  }
+
+  if (!failure) {
+    status.className = 'text-xs ' + (vote > 0 ? 'text-green-400' : vote === 0 ? 'text-amber-400' : 'text-red-400');
+    status.textContent = vote > 0 ? '👍 Thanks!' : (vote === 0 ? '😐 Noted (Partially helpful).' : '👎 Noted.');
+    return;
+  }
+  console.warn('Feedback not recorded:', failure);
+  status.className = 'text-xs text-red-400';
+  status.textContent = `Not recorded: ${failure}`;
+  const retry = document.createElement('button');
+  retry.className = 'text-xs text-slate-400 hover:text-slate-200 underline';
+  retry.textContent = 'Retry';
+  retry.addEventListener('click', () => { fb.replaceChildren(...fb._buttons); });
+  fb.appendChild(retry);
+}
+
+// ── Admin link ─────────────────────────────────────────────────────────────────
+// Shown only when the server says this user is an admin. Fails closed: hidden before the answer
+// arrives, and on a non-2xx response, a network error, unparseable JSON, or is_admin missing or not
+// exactly true. Only a cue: the server gates /admin and /api/admin/* itself.
+let _adminCheckSeq = 0;
+async function refreshAdminLink() {
+  const link = document.getElementById('admin-link');
+  if (!link) return false;
+  const seq = ++_adminCheckSeq;            // a later check (sign-out, new sign-in) wins over a slow one
+  link.hidden = true;
+  let isAdmin = false;
+  try {
+    const res = await fetch('/api/auth/me', { headers: Auth.getHeaders() });
+    if (res.ok) {
+      const me = await res.json();
+      isAdmin = !!me && me.is_admin === true;
+    }
+  } catch (err) {
+    console.warn('Admin link hidden: could not read /api/auth/me:', err);
+    isAdmin = false;
+  }
+  if (seq !== _adminCheckSeq) return false;
+  link.hidden = !isAdmin;
+  return isAdmin;
+}
+
+// Re-check whenever the signed-in user changes: auth.js shows/hides #current-user on sign-in,
+// sign-out and a 401, and fires ea:authenticated on sign-in.
+function _watchAdminLink() {
+  document.addEventListener('ea:authenticated', () => { refreshAdminLink(); });
+  const who = document.getElementById('current-user');
+  if (who && typeof MutationObserver === 'function') {
+    new MutationObserver(() => { refreshAdminLink(); })
+      .observe(who, { attributes: true, attributeFilter: ['class'], childList: true, characterData: true, subtree: true });
+  }
 }
 
 // ── Utils ──────────────────────────────────────────────────────────────────────
@@ -2299,7 +2474,7 @@ function initCanvasButtons() {
     btn.disabled = true;
     btn.textContent = '⏳ Validating…';
     try {
-      const r = await fetch(`/api/plans/${docId}/validate`, {
+      const r = await fetch(`/api/plans/${encodeURIComponent(docId)}/validate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...Auth.getHeaders() },
       });
@@ -2340,14 +2515,12 @@ function initCanvasButtons() {
     // instead of an execute command. See BACKLOG.md.
     const btn = document.getElementById('pcanvas-execute-btn');
     btn.disabled = true; btn.textContent = '⏳ Executing…';
-    appendMessage('you', `Execute plan ${docId}`);
     try {
-      const r = await fetch(`/api/plans/${encodeURIComponent(docId)}/execute`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...Auth.getHeaders() },
-        body: JSON.stringify({ draft_id: _ctx?.draft_id || null }),
-      });
-      const result = await r.json();
+      // the plan confirm gate: shown and confirmed first (runPlanConfirmed, plan_editor.js)
+      const result = await runPlanConfirmed(`/api/plans/${encodeURIComponent(docId)}/execute`,
+                                            { draft_id: _ctx?.draft_id || null });
+      if (result.cancelled) return;
+      appendMessage('you', `Execute plan ${docId}`);
       const wrap = appendMessage('assistant', result.response || '', {});
       _applyQueryResult(`execute the plan ${docId}`, result, wrap);
       // Execution moves the plan to outbox under a new "_executed_<ts>" doc_id —
@@ -2821,7 +2994,9 @@ function _renderCmdPickerList(searchQ) {
 }
 
 function _esc(s) {
-  return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  // Quotes too: some callers put the result inside an attribute value.
+  return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 }
 
 // ── Custom Specs Helper Functions ────────────────────────────────────────────────
@@ -2847,7 +3022,7 @@ async function loadReportDocs() {
   const trash = docData.trash || [];
 
   if (!drafts.length && !inbox.length && !outbox.length && !trash.length) {
-    el.innerHTML = '<div class="px-2 text-slate-600 italic text-[11px]">No report specs yet</div>';
+    el.innerHTML = '<div class="px-2 text-slate-500 italic text-[11px]">No report specs yet</div>';
     return;
   }
 
@@ -2874,12 +3049,12 @@ async function loadReportDocs() {
       row.appendChild(btn);
 
       const phase = document.createElement('span');
-      phase.className = 'shrink-0 text-slate-600 text-[10px] truncate max-w-[60px]';
+      phase.className = 'shrink-0 text-slate-500 text-[10px] truncate max-w-[60px]';
       phase.textContent = (item.phase_label || item.phase || '').replace('elicit_', 'Q&A:').replace('_', ' ');
       row.appendChild(phase);
 
       const del = document.createElement('button');
-      del.className = 'shrink-0 text-slate-700 hover:text-red-400 transition-colors text-xs px-1';
+      del.className = 'shrink-0 text-slate-500 hover:text-red-400 transition-colors text-xs px-1';
       del.title = 'Discard this draft';
       del.textContent = '✕';
       del.onclick = async e => {
@@ -2890,7 +3065,7 @@ async function loadReportDocs() {
           sessionStorage.removeItem('ea_active_draft');
           ReportSpecCanvas.close();
         }
-        await fetch(`/api/reports/drafts/${item.draft_id}`, { method: 'DELETE', headers: Auth.getHeaders() }).catch(() => {});
+        await fetch(`/api/reports/drafts/${encodeURIComponent(item.draft_id)}`, { method: 'DELETE', headers: Auth.getHeaders() }).catch(() => {});
         loadReportDocs();
       };
       row.appendChild(del);
@@ -3036,7 +3211,7 @@ async function loadReportDocs() {
         row.appendChild(restoreBtn);
 
         const purgeBtn = document.createElement('button');
-        purgeBtn.className = 'shrink-0 px-1 py-0.5 rounded text-slate-600 hover:text-red-400 hover:bg-red-950/40 text-xs transition-colors';
+        purgeBtn.className = 'shrink-0 px-1 py-0.5 rounded text-slate-500 hover:text-red-400 hover:bg-red-950/40 text-xs transition-colors';
         purgeBtn.title = 'Permanently delete';
         purgeBtn.textContent = '🗑';
         purgeBtn.onclick = async e => {
@@ -3061,7 +3236,7 @@ async function loadReportDocs() {
 
       // Export button — inbox and outbox only
       const exportBtn = document.createElement('button');
-      exportBtn.className = 'shrink-0 px-1 py-0.5 rounded text-slate-600 hover:text-slate-300 hover:bg-slate-800/50 text-xs transition-colors';
+      exportBtn.className = 'shrink-0 px-1 py-0.5 rounded text-slate-500 hover:text-slate-300 hover:bg-slate-800/50 text-xs transition-colors';
       exportBtn.title = 'Download this report spec as a markdown file';
       exportBtn.textContent = '⤓';
       exportBtn.onclick = e => {
@@ -3071,7 +3246,7 @@ async function loadReportDocs() {
       row.appendChild(exportBtn);
 
       const delBtn = document.createElement('button');
-      delBtn.className = 'shrink-0 px-1 py-0.5 rounded text-slate-600 hover:text-red-400 hover:bg-red-950/40 text-xs transition-colors';
+      delBtn.className = 'shrink-0 px-1 py-0.5 rounded text-slate-500 hover:text-red-400 hover:bg-red-950/40 text-xs transition-colors';
       delBtn.title = 'Move this report spec to Trash';
       delBtn.textContent = '×';
       delBtn.onclick = async e => {
@@ -3098,7 +3273,7 @@ async function loadReportDocs() {
   const renderGroup = (items, type, label) => {
     if (!items.length) return;
     const hdr = document.createElement('div');
-    hdr.className = 'px-2 pt-1 text-slate-600 uppercase text-xs font-semibold tracking-wider';
+    hdr.className = 'px-2 pt-1 text-slate-500 uppercase text-xs font-semibold tracking-wider';
     hdr.textContent = label;
     el.appendChild(hdr);
     items.forEach(item => el.appendChild(makeRow(item, type)));
@@ -3110,7 +3285,7 @@ async function loadReportDocs() {
 
   if (trash.length) {
     const hdr = document.createElement('div');
-    hdr.className = 'px-2 pt-1 flex items-center gap-1 cursor-pointer text-slate-600 uppercase text-xs font-semibold tracking-wider hover:text-slate-400';
+    hdr.className = 'px-2 pt-1 flex items-center gap-1 cursor-pointer text-slate-500 uppercase text-xs font-semibold tracking-wider hover:text-slate-400';
     hdr.textContent = `${_trashExpandedReports ? '▾' : '▸'} Trash (${trash.length})`;
     hdr.onclick = () => { _trashExpandedReports = !_trashExpandedReports; loadReportDocs(); };
     el.appendChild(hdr);
@@ -3277,7 +3452,7 @@ function initReportCanvasResize() {
     <span class="text-slate-500 text-sm">—</span>
     <span id="ped-title" class="text-slate-100 text-sm font-semibold flex-1 truncate"></span>
     <button id="ped-discuss-btn"
-      class="hidden px-3 py-1 rounded bg-amber-800/60 hover:bg-amber-700/80 text-amber-300 text-xs font-semibold transition-colors"
+      class="hidden px-3 py-1 rounded bg-amber-900/60 hover:bg-amber-700/80 text-amber-300 text-xs font-semibold transition-colors"
       title="Return to chat to add or refine steps conversationally"
       onclick="discussPlanChanges()">
       💬 Discuss changes
@@ -3356,7 +3531,7 @@ function initReportCanvasResize() {
         class="w-full bg-slate-800 text-slate-200 text-sm rounded-lg p-3 border border-slate-700 resize-none font-mono leading-relaxed focus:outline-none focus:border-violet-500"
         rows="8"
         placeholder="Goal, requirements, and approach..."></textarea>
-      <div class="text-xs text-slate-600 mt-1">Free-form markdown — edit the goal, requirements, and approach sections here.</div>
+      <div class="text-xs text-slate-500 mt-1">Free-form markdown — edit the goal, requirements, and approach sections here.</div>
     </div>
 
     <!-- Command cards -->
@@ -3455,7 +3630,12 @@ function initReportCanvasResize() {
 
 <script src="/static/artifact_canvas.js?v=20260713a"></script>
 <script src="/static/plan_canvas.js?v=20260713b"></script>
-<script src="/static/plan_editor.js?v=20260713a"></script>
+<script src="/static/plan_editor.js?v=20261113b"></script>
 <script src="/static/report_spec_canvas.js?v=20260629i"></script>
+<script src="/static/specs_publish.js?v=20261111a"></script>
+<script src="/static/trellis-ui/egeria-table.js?v=3b8ac7e2"></script>
+<script src="/static/dashboards_view.js?v=20261112a"></script>
+<script src="/static/dashboards_author.js?v=20261111a"></script>
+<script src="/static/embed.js?v=20261114e"></script>
 </body>
 </html>

@@ -358,12 +358,14 @@ class PlanElicitor:
             )
         except Exception:
             pass
-        get_draft_manager().delete(draft_id)
+        deleted = get_draft_manager().delete(draft_id)
+        from advisor.agents.report_spec_elicitor import NO_SUCH_DRAFT
         return {
             "query": draft_id,
+            # W1: "discarded" only when a draft was deleted
             "response": (
-                "Planning session cancelled. Your draft has been discarded.\n\n"
-                "Start a new plan any time by describing what you want to set up."
+                ("Planning session cancelled. Your draft has been discarded." if deleted else NO_SUCH_DRAFT)
+                + "\n\nStart a new plan any time by describing what you want to set up."
             ),
             "query_type": "plan_clarification",
             "routing_agent": "governance_plan_agent",

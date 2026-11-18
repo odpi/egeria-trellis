@@ -82,8 +82,8 @@ That last block is the entry point. It tells Resource Explorer, and the Egeria P
 once the package is installed. Nothing else announces your step: installing the package registers it. There is no
 environment variable to set and no list of modules to edit.
 
-(Older step packages say `trellis.analytics` here. It still works for now, as an alias, but write
-`pyegeria.analytics`.)
+(Older step packages say `trellis.analytics` here. pyegeria no longer reads that group: the alias was removed in
+pyegeria 6.2.19, so rename it to `pyegeria.analytics`.)
 
 ## Step 3. Write the code
 
@@ -153,7 +153,7 @@ MANIFEST = StepManifest(
     version=__version__,                         # stamped on every result you produce
     resource_types=["database"],                 # what kind of thing you measure
     credential_tier="none",                      # you touch no credential; "read_only" is the most you may ask
-    inputs=["ods"],                              # what run() receives
+    inputs=["ods"],                              # what run() receives (RE step-host inputs, not pyegeria roles: see "Inputs by role" in extending-with-analyses.md)
     stage="discovery",                           # the stage your question belongs to (Q-0041 is a Discovery question)
     questions=["Q-0041"],                        # the question in the catalogue you answer (see below)
     purposes=["Maintain"],                       # the kinds of investigation you serve
@@ -305,4 +305,7 @@ Explain to anyone what a 0 meant.
 - Putting your result on a Portal dashboard: the Portal's *Local Dashboards* tutorial. Your step is already listed in
   the Portal's Analytic Functions Browser, because the same registry serves both. A report spec names it by its
   registered name, `my_row_changes`, never by its Python path.
+  The Explorer's Analytic Functions panel shows each function's inputs, parameter categories and output fields.
+  The panel lists it; a spec cannot run it, because `ods` is not one of pyegeria's role words
+  ([Inputs by role](../../resource-explorer/docs/extending-with-analyses.md#inputs-by-role-pyegeria-6226)).
 - How steps are versioned, retired and governed: the lifecycle design note.

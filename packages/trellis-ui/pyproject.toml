@@ -1,0 +1,17 @@
+[project]
+name = "trellis-ui"
+version = "0.1.0"
+description = "The browser pieces Resource Explorer and Egeria Advisor share: the three looks (themes.css, look.js), resizable table columns, markdown rendering, the run-envelope renderer and its formatting helpers. Static files served by each app at /static/trellis-ui/."
+readme = "README.md"
+authors = [{ name = "Dan Wolfson" }]
+requires-python = ">=3.12,<4.0"
+dependencies = [
+    "starlette>=0.37.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["trellis_ui"]

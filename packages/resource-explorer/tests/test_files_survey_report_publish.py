@@ -86,6 +86,7 @@ def _fake(monkeypatch, *, readable=True, missing=()):
     `missing`: indices the report read does not find; `readable=False`: the report cannot be read at all."""
     from pyegeria import AssetMaker
 
+    from resource_explorer.survey_time import egeria_name_time
     from resource_explorer.surveyors.filesystem import egeria_filesystem_surveyor as mod
     from resource_explorer.surveyors.survey_report import annotation_qualified_name
 
@@ -108,7 +109,7 @@ def _fake(monkeypatch, *, readable=True, missing=()):
         def _report_annotations(self, report_guid):
             if not readable:
                 return None
-            prefix = f"Annotation::FileSystem::{seen['slug']}::{seen['at']}"
+            prefix = f"Annotation::FileSystem::{seen['slug']}::{egeria_name_time(seen['at'])}"  # names stay naive
             return [{"qualified_name": annotation_qualified_name(prefix, i, a), "guid": f"g{i}"}
                     for i, a in enumerate(seen["anns"]) if i not in missing]
 
@@ -193,7 +194,9 @@ def test_each_sent_result_carries_its_qualified_name_and_the_guid_the_report_rea
     fs, sd = _setup(registry, tmp_path)
     surveyor, seen = _fake(monkeypatch, missing=())
     proof = surveyor.publish_step_annotations(fs, sd, registry)
-    at = seen["at"]
+    from resource_explorer.survey_time import egeria_name_time
+
+    at = egeria_name_time(seen["at"])  # the stored time has a zone; the Egeria name does not
     dup = next(r for r in proof["derived"]["sent"] if r["measure"] == "fs_duplicates")
     assert dup["qualified_name"] == f"Annotation::FileSystem::tree::{at}::fs_duplicates::tree"
     assert dup["guid"].startswith("g") and dup["why"] == ""

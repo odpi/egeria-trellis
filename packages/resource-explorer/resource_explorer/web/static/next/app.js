@@ -26,12 +26,12 @@
 import { listWorkLists, openWorkList, saveAsWorkList, openDialog, closeCellDetail, CELL }
   from '/static/next/worklist.js';
 import { ago, whenMs, houseTime, verdictLineHtml, changedTimesHtml, savedLine, readBackAt, stepOutcome, statusToken, publishedEarlierSentence, PUBLISHED_EARLIER_WORD } from '/static/next/format.js';
-import { showMarkdown } from '/static/next/markdown.js';
+import { showMarkdown } from '/static/trellis-ui/markdown.js';
 // The one glyph table (REPLY-DESIGNER-ROUND2-DATABASE-SCREENS.md §1). `GLYPH`
 // and `factGlyph` below are thin views over `GLYPH_STATES` -- this file
 // declares no glyph-to-meaning mapping of its own any more.
 import { STATES as GLYPH_STATES, stateEntry } from '/static/next/glyphs.js';
-import { watchTables } from '/static/next/colresize.js';
+import { watchTables } from '/static/trellis-ui/colresize.js';
 import { barChartHeight, PIE_TOP_MARGIN } from '/static/next/chart-labels.js';
 import { publishProofHtml } from '/static/next/publish-proof.js';
 import { cardHtml, cardStackHtml, tileHtml, tileRowHtml, bindTiles } from '/static/next/ui-cards.js';
@@ -45,7 +45,7 @@ import { cardHtml, cardStackHtml, tileHtml, tileRowHtml, bindTiles } from '/stat
 import {
   readEnvelope, factMermaid, factGraphviz, prose, scalarMeasures, cap,
   firstSentence, leadAnalysisId, answerHtml,
-} from '/static/next/envelope.js';
+} from '/static/trellis-ui/envelope.js';
 // One module per stage (PLAN-FINISH-REPOS.md, Part 2 §1) — each exports its
 // own pane renderer(s); app.js keeps routing, shared state and the chrome.
 // Enrichment, Understanding, Curate, Automate, Investigation and (item 11)
@@ -75,6 +75,7 @@ import { openApiReference } from '/static/next/stages/api-reference.js';
 import { inPageConfirm, inPageNotice, inPagePrompt } from '/static/next/confirm-dialog.js';
 import { scoutingTilesHtml, scoutingSignalHtml, staleLinkBannerHtml, bindStaleLinkBanner, indexStateCueHtml } from '/static/next/stages/repo-header.js';
 import { bindFirstIndexDoor, ensureFirstIndexFresh } from '/static/next/first-index.js';
+import { bindReindexDoor, refreshReindexCue } from '/static/next/reindex.js';
 import { contextRecordedSpec, contextRecordedState } from '/static/next/context-recorded.js';
 import { followUntil, ACTIVITY_LIVE } from '/static/next/live-status.js';
 import { nativeSurveysSectionHtml, nativeSurveysUnreadableHtml, bindNativeSurveys, coordinateControlHtml, coordinateOffNoteHtml, bindCoordinateControls, definitionRunLineHtml, definitionRunsListHtml, bindRunLineControls, ownSurveyRows } from '/static/next/stages/native-surveys.js';
@@ -89,7 +90,9 @@ import { addActWording, addListToInvestigation, openStartFromList, START_LABEL }
 import { loadChartsPane, renderUnderstandingTabs } from '/static/next/stages/understanding.js';
 import { datasetKindHtml, wireDatasetImport, DATASET_NOT_CHECKED_WORDS } from '/static/next/stages/repo-analysis-views.js';
 import { renderCurate, jumpToCurateSection } from '/static/next/stages/curate.js';
-import { wireLook } from '/static/next/look.js';
+import { configureLook, wireLook } from '/static/trellis-ui/look.js';
+// RE records each look change in its activity log and offers "Tell us ›" (feedback.js listens for it).
+configureLook({ recordUrl: '/api/activity/look-change', feedback: true });
 import { coverageHtml } from '/static/next/stages/curate-coverage.js';
 // Stage-specific leading tabs (Brief S0, dormant): the gate and ids are a leaf module, the label counts and the
 // running-commit line need `state`.
@@ -3670,7 +3673,7 @@ export function resourceHeaderHtml(slug) {
         </button>
       </span>
     </div>
-    <div class="mt-s1 text-provenance text-ink-muted">${surveyed} · ${published}${state.resourceType === 'repo' && indexStateCueHtml(p, state.firstIndex?.lines?.[slug]) ? ` · ${indexStateCueHtml(p, state.firstIndex?.lines?.[slug])}` : ''}</div>
+    <div class="mt-s1 text-provenance text-ink-muted">${surveyed} · ${published}${state.resourceType === 'repo' && indexStateCueHtml(p, state.firstIndex?.lines?.[slug]) ? ` · ${indexStateCueHtml(p, state.firstIndex?.lines?.[slug])}` : ''}${state.resourceType === 'repo' && p && p.index_state === 'indexed' ? '<span data-reindex-host></span>' : ''}</div>
     ${credentialBanner}
     ${staleLinkBannerHtml(staleOv)}${state.resourceType === 'repo' ? scoutingTilesHtml(ov) + scoutingSignalHtml(state.scoutingSignal?.slug === slug ? state.scoutingSignal : null) : ''}
     ${state.resourceType === 'db' ? changeCredentialsLineHtml(p) : ''}
@@ -3920,7 +3923,11 @@ export function bindResourceHeader() {
   const note = (html) => { slot.innerHTML = `<div class="text-caveat text-ink">${html}</div>`; };
 
   // `index it ›` on the not-yet-indexed cue opens the first-index ask; the cue then follows the run rows in place.
-  if (state.resourceType === 'repo') { bindFirstIndexDoor(el); ensureFirstIndexFresh(); }
+  if (state.resourceType === 'repo') {
+    bindFirstIndexDoor(el); ensureFirstIndexFresh();
+    // The rebuild door (reindex.js, R2): drawn only once the admin-only progress read succeeds.
+    bindReindexDoor(el); refreshReindexCue();
+  }
 
   // Classic's own "Open Investigation →" (index.html ~5779) just switches
   // the main view to Investigations — no deep link to a resource's

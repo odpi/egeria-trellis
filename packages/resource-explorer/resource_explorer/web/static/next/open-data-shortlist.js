@@ -7,7 +7,7 @@
  */
 import { openDataScoutPrice, scoutOpenData, fitOpenData } from '/static/re-api.js';
 import { esc, state as appState } from '/static/next/app.js';
-import { watchTables } from '/static/next/colresize.js';
+import { watchTables } from '/static/trellis-ui/colresize.js';
 import { mountProfile } from '/static/next/open-data-profile.js';
 import { mountRefresh } from '/static/next/open-data-publish.js';
 

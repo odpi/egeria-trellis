@@ -81,3 +81,21 @@ def test_dcat_ap_registration_help_and_refusal_use_us_spelling_and_say_there_is_
         assert words
         assert not re.search(r"licen[cs]e|colou?r|catalogue|behaviour|organis", words, re.I), words   # US spelling
     assert refusal.endswith(").") and ". " not in refusal      # one sentence
+
+
+def test_the_import_result_table_wraps_every_cell_and_scrolls_in_its_own_box():
+    """2026-11-09: a portal slug and an identifier URL with no break points widened the import result past the dialog
+    and RESULT (the refusal's reason) was cut off under the Ask rail."""
+    body = OD[OD.index("export function importResultHtml(r) {"):]
+    body = body[:body.index("\n}\n")]
+    assert "table-fixed" in body and 'data-rc-id="od-import-result"' in body       # stated shares; still resizable
+    assert "overflow-wrap:anywhere" in OD and "${WRAP}" in body                     # every cell wraps, URLs included
+    assert "data-od-import-scroll" in body and "overflow-x-auto" in body            # its own scroll box
+    cols = OD[OD.index("const RESULT_COLS"):].split("\n", 1)[0]
+    assert "['Result', '32%']" in cols                                               # the widest share is the reason
+
+
+def test_a_wide_dialog_is_user_resizable_and_keeps_its_content_inside():
+    body = WORKLIST[WORKLIST.index("export function openDialog"):]
+    body = body[:body.index("return el;")]
+    assert "resize:horizontal" in body and "overflow:auto" in body and "max-width:100%" in body

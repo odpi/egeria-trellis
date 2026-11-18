@@ -39,13 +39,21 @@ SURVEY_TYPES_CSV = (Path(__file__).resolve().parents[1]
 NONEXISTENT_GUID = "00000000-dead-beef-0000-000000000000"
 
 
+# Since Brief I (ba2e2dc5) nothing falls back to the service account: an Egeria call needs a signed-in caller or a
+# declared daemon job, or it raises NoCallerIdentity. These live tests run no web request, so each declares the daemon
+# job that runs the same path in production. In the live tier conftest leaves EGERIA_USER_ID/PASSWORD to the real .env,
+# so the daemon is the real service account.
+
 @pytest.fixture(scope="module")
 def reader():
+    from resource_explorer.egeria_clients import Daemon, DaemonReason, acting_as
     from resource_explorer.surveyors.survey_definition_reader import SurveyDefinitionReader
 
-    r = SurveyDefinitionReader()
-    r.connect()
-    return r
+    # Bootstrap reconciles the authored definitions against their CSV, so it is bootstrap's read that is checked here.
+    with acting_as(Daemon(DaemonReason.BOOTSTRAP)):
+        r = SurveyDefinitionReader(identity=Daemon(DaemonReason.BOOTSTRAP))
+        r.connect()
+        yield r
 
 
 @pytest.fixture(scope="module")
@@ -210,6 +218,13 @@ class TestTheByNameFallbackWorks:
     mechanism the reverse case (RE reset, Egeria intact) depends on."""
 
     def test_a_cataloged_database_is_findable_by_name(self):
+        from resource_explorer.egeria_clients import Daemon, DaemonReason, acting_as
+
+        # The linkage recheck and the by-name lookup are the resync loop's work in production.
+        with acting_as(Daemon(DaemonReason.RESYNC)):
+            self._findable_by_name()
+
+    def _findable_by_name(self):
         from resource_explorer.config import get_config
         from resource_explorer.registry import ProjectRegistry
         from resource_explorer.surveyors.database.egeria_database_surveyor import (

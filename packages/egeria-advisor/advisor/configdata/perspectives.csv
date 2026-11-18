@@ -1,5 +1,13 @@
-advisor_key,display_name,egeria_name,description,tooltip
-developer,Developer,Developer,Software developers working with pyegeria APIs and Dr.Egeria commands,Code examples · API signatures · Dr.Egeria samples
-data_engineer,Data Engineer,Data Engineer,Engineers building data pipelines and integrations,Pipelines · connectors · ingestion patterns
-data_steward,Data Steward,Data Steward,Responsible for data quality and governance metadata,Glossary · ownership · data quality
-governance_officer,Governance Officer,Governance Officer,Defines and enforces governance policies,Policies · compliance · governance zones
+advisor_key,display_name,egeria_name,role_profile,description,tooltip
+app_ai_builder,App/AI Builder,App/AI Builder,developer,A focus on selecting resources to support the development of applications and AI models.,Code examples · API signatures · Dr.Egeria samples
+data_expert,Data Expert,Data Expert,data_engineer,"A focus on developing valuable data resource for the organization. This involves understanding various data resource's quality, relevance, and utility.",Pipelines · connectors · ingestion patterns
+steward,Steward,Steward,data_steward,A focus on protecting the quality and trustworthiness of specific resources of the organization.,Glossary · ownership · data quality
+governance,Governance,Governance,governance_officer,A focus on the executive and policy-led oversight of the organization's operations.,Policies · compliance · governance zones
+privacy,Privacy,Privacy,governance_officer,A focus on protecting the privacy of individuals and their data.,Policies · compliance · governance zones
+security,Security,Security,governance_officer,A focus on the security of the organization's resources.,Policies · compliance · governance zones
+architecture,Architecture,Architecture,general,"A focus on developing a coherent architecture for the resources of the organization. This involves understanding various data resource's quality, relevance, and utility.",General guidance: no role-specific prompt
+owner,Owner,Owner,general,"A focus on the the existence, protection and investment, of specific resources of the organization.",General guidance: no role-specific prompt
+community,Community,Community,general,"A focus on the health of the community around a resource — contributor activity, responsiveness to issues, adoption — relevant mainly to community-driven resources like open-source repos organization's resources.",General guidance: no role-specific prompt
+consumer,Consumer,Consumer,general,A focus on the selection and use of appropriate resources of the organization.,General guidance: no role-specific prompt
+administration,Administration,Administration,general,"A focus on the operational and administrative aspects of the organization's resources. This involves the day-to-day upkeep, access, and reliability of these resources.",General guidance: no role-specific prompt
+financial,Financial,Financial,general,A focus on the cost and effective financial management of the organization's operations.,General guidance: no role-specific prompt

@@ -6,7 +6,8 @@ gaps").
 
 Covers:
   - resolve_advisor_data_root() honours ADVISOR_DATA_PATH when set, and
-    falls back to the unchanged "./data" native-checkout default otherwise
+    falls back to ~/egeria-advisor-data otherwise (it was "./data" until
+    2026-11-10; the git-checkout refusal is in test_ops_defaults.py)
   - AdvisorSettings.advisor_cache_dir's default follows the same resolution
     (ADVISOR_CACHE_DIR still wins outright when set)
   - ensure_writable_dir() creates missing parents idempotently
@@ -19,6 +20,7 @@ import pytest
 
 from advisor.config import (
     AdvisorSettings,
+    DEFAULT_ADVISOR_DATA_ROOT,
     resolve_advisor_data_root,
     ensure_writable_dir,
 )
@@ -28,9 +30,9 @@ from advisor.config import (
 # resolve_advisor_data_root()
 # ---------------------------------------------------------------------------
 
-def test_data_root_defaults_to_relative_data(monkeypatch):
+def test_data_root_defaults_to_home_egeria_advisor_data(monkeypatch):
     monkeypatch.delenv("ADVISOR_DATA_PATH", raising=False)
-    assert resolve_advisor_data_root() == Path("./data")
+    assert resolve_advisor_data_root() == DEFAULT_ADVISOR_DATA_ROOT == Path.home() / "egeria-advisor-data"
 
 
 def test_data_root_honours_env_var(monkeypatch, tmp_path):
@@ -48,7 +50,7 @@ def test_data_root_expands_user(monkeypatch):
 
 def test_data_root_ignores_blank_env_var(monkeypatch):
     monkeypatch.setenv("ADVISOR_DATA_PATH", "   ")
-    assert resolve_advisor_data_root() == Path("./data")
+    assert resolve_advisor_data_root() == DEFAULT_ADVISOR_DATA_ROOT
 
 
 # ---------------------------------------------------------------------------
@@ -63,11 +65,11 @@ def test_cache_dir_default_follows_data_path_when_unset(monkeypatch, tmp_path):
     assert s.advisor_cache_dir == target / "cache"
 
 
-def test_cache_dir_default_is_native_relative_when_nothing_set(monkeypatch):
+def test_cache_dir_default_is_under_default_data_root_when_nothing_set(monkeypatch):
     monkeypatch.delenv("ADVISOR_CACHE_DIR", raising=False)
     monkeypatch.delenv("ADVISOR_DATA_PATH", raising=False)
     s = AdvisorSettings()
-    assert s.advisor_cache_dir == Path("./data/cache")
+    assert s.advisor_cache_dir == DEFAULT_ADVISOR_DATA_ROOT / "cache"
 
 
 def test_cache_dir_env_var_wins_outright(monkeypatch, tmp_path):

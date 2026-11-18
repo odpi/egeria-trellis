@@ -67,24 +67,27 @@ async def auth_portal(req: PortalTokenRequest) -> Dict[str, Any]:
     no Egeria round-trip on this path beyond the optional cheap validation
     below, and no password anywhere.
     """
-    from advisor.auth import exchange_portal_token, create_access_token, validate_egeria_token, refuse_service_account
+    from advisor.auth import (PORTAL_TOKEN_ACCEPTED, PORTAL_TOKEN_UNREACHABLE, check_portal_egeria_token,
+                              create_access_token, exchange_portal_token, refuse_service_account)
     payload = exchange_portal_token(req.portal_token)
     egeria_user = payload.get("sub", "")
-    refuse_service_account(egeria_user)  # before the Egeria liveness check
+    refuse_service_account(egeria_user)  # before the Egeria check
     egeria_token = payload.get("egeria_token", "")
 
-    # Optional liveness check: the token was minted by someone else, so confirm
-    # it still works before wrapping a session around it. Deliberately NOT a
-    # gate — a briefly unreachable Egeria degrades SSO to "signed in, live
-    # features will fail on use", which is what a self-minted token does too.
-    ok = await asyncio.get_event_loop().run_in_executor(
-        None, validate_egeria_token, egeria_token
+    # The token was minted by someone else, so Egeria checks it before a session is wrapped round it
+    # (A-I1, 2026-11-11). A token Egeria REJECTS (401, expired, forged, missing) is refused. Egeria
+    # briefly unreachable still degrades SSO to "signed in, live features will fail on use", logged.
+    verdict, reason = await asyncio.get_event_loop().run_in_executor(
+        None, check_portal_egeria_token, egeria_token
     )
-    if not ok:
-        logger.warning(
-            f"auth: Portal token for {egeria_user!r} did not validate against Egeria; "
-            "issuing the session anyway (live calls may 401)"
-        )
+    if verdict == PORTAL_TOKEN_UNREACHABLE:
+        logger.warning(f"auth: Portal token for {egeria_user!r} not checked, Egeria not reached ({reason}); "
+                       "issuing the session (live calls will fail until Egeria answers)")
+    elif verdict != PORTAL_TOKEN_ACCEPTED:
+        logger.warning(f"auth: refused Portal sign-in for {egeria_user!r}: {reason}")
+        raise HTTPException(status_code=401, detail=f"Egeria did not accept the Portal's sign-in for "
+                                                    f"{egeria_user!r}: {reason}. Sign in again in the Portal.",
+                            headers={"WWW-Authenticate": "Bearer"})
 
     token = create_access_token(
         user_id=egeria_user,
@@ -97,14 +100,19 @@ async def auth_portal(req: PortalTokenRequest) -> Dict[str, Any]:
 
 @router.get("/api/auth/me")
 async def auth_me(request: Request) -> Dict[str, Any]:
-    """Return info about the currently authenticated user."""
-    from advisor.auth import get_current_user
+    """Return info about the currently authenticated user.
+
+    `is_admin` (Phase 0 S1, 2026-11-10) is the one shared admin gate's answer for this request
+    (`advisor.auth.is_admin` -> `trellis_auth.require_admin`), so the UI can hide the Admin link. Cosmetic: the
+    server's gate on the admin paths is `trellis_auth.AdminPathMiddleware`."""
+    from advisor.auth import get_current_user, is_admin
     user = get_current_user(request)
     if user is None:
-        return {"authenticated": False}
+        return {"authenticated": False, "is_admin": False}
     user_id = user.get("user_id") or user.get("sub", "")
     return {
         "authenticated": True,
+        "is_admin": is_admin(request),
         "user_id": user_id,
         # `egeria_user` kept as a response key for the existing UI; since
         # 2026-09-04 the JWT identifies the user by `sub`/`user_id` and carries
@@ -124,13 +132,18 @@ async def auth_logout() -> Dict[str, str]:
 
 @router.get("/api/auth/defaults")
 async def auth_defaults() -> Dict[str, Any]:
-    """Return the configured default Egeria username, for login-form prefill
-    convenience on this local, single-user tool. Deliberately does NOT return
-    the password — this is an unauthenticated endpoint, and returning a
-    plaintext password from it would let anyone who can reach the server
-    retrieve it before ever logging in."""
+    """The optional login-form prefill (ADVISOR_LOGIN_DEFAULT_USER), or "".
+
+    Public, so it never names a service account (A-I1): it used to return EGERIA_USER, EA's own
+    service account, to anyone. That id is now on the refusal list, and a configured default that is a
+    service account is dropped with a warning. Never a password."""
+    from advisor.auth import is_service_account
     from advisor.config import settings
-    return {"username": settings.egeria_user}
+    name = (settings.advisor_login_default_user or "").strip()
+    if name and is_service_account(name):
+        logger.warning(f"auth: ADVISOR_LOGIN_DEFAULT_USER {name!r} is a service account; not offered")
+        name = ""
+    return {"username": name}
 
 
 @router.get("/api/auth/policy")

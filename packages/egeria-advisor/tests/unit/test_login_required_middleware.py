@@ -89,7 +89,7 @@ def test_an_unknown_private_path_401s_rather_than_404ing(client):
 def test_health_is_public(client):
     r = client.get("/health")
     assert r.status_code == 200
-    assert r.json() == {"status": "ok"}
+    assert r.json()["status"] == "ok"
 
 
 def test_the_portal_exchange_route_is_public(client):

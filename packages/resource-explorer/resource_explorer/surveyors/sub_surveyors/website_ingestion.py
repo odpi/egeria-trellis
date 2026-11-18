@@ -47,6 +47,7 @@ from resource_explorer.step_outcome import (
     StepOutcome,
     no_signal,
 )
+from resource_explorer.survey_time import now_utc_iso
 from resource_explorer.surveyors.base_surveyor import BaseSurveyor
 from resource_explorer.surveyors.survey_report import Annotation, ResourceMeasureAnnotation
 
@@ -67,7 +68,7 @@ class WebsiteIngestionSurveyor(BaseSurveyor):
         max_pages: int = _MAX_PAGES,
     ) -> None:
         super().__init__(project, registry)
-        self._surveyed_at = surveyed_at or datetime.utcnow().isoformat()
+        self._surveyed_at = surveyed_at or now_utc_iso()
         self._max_pages = max_pages
 
     @property
@@ -461,9 +462,9 @@ def _already_ingested(registry, collection: str, this_slug: str):
     is not built: the step has no force-refresh path today, and adding one on
     the assumption that somebody wants it would be inventing a requirement.
     """
-    from datetime import datetime, timedelta
+    from datetime import UTC, timedelta
 
-    cutoff = datetime.utcnow() - timedelta(hours=SITE_FRESHNESS_HOURS)
+    cutoff = datetime.now(UTC) - timedelta(hours=SITE_FRESHNESS_HOURS)
     for other in registry.list_all():
         try:
             m = registry.query_metrics(other.slug, "website_ingestion") or {}
@@ -481,7 +482,12 @@ def _already_ingested(registry, collection: str, this_slug: str):
             continue
         when = str(m.get("surveyed_at") or "")
         try:
-            if datetime.fromisoformat(when) < cutoff:
+            # Rows written before 2026-11 carry no zone; they were written as UTC (datetime.utcnow()), so they are read
+            # as UTC here. Newer rows carry one (survey_time.now_utc_iso). Comparing a naive with an aware time raises.
+            then = datetime.fromisoformat(when)
+            if then.tzinfo is None:
+                then = then.replace(tzinfo=UTC)
+            if then < cutoff:
                 continue
         except ValueError:
             continue

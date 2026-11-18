@@ -980,3 +980,170 @@ def test_the_canadian_open_government_licence_has_its_three_flags():
     from resource_explorer.open_data.licences import licence_flags
     assert licence_flags("ca-ogl-lgo") == {"attribution": True, "share_alike": False, "commercial": True}
     assert licence_flags("CA-OGL-LGO ") == licence_flags("ca-ogl-lgo")
+
+
+# ── a slow portal at import (2026-11-09: healthdata.gov's 31 MB data.json, a TLS handshake timeout) ─────────────────
+
+def _pod_portal(store, t):
+    return service.register_portal(store, display_name="NASA", api_kind="data.json", base_url="https://data.nasa.gov",
+                                   transport=t)
+
+
+def _pod_reads(t):
+    return sum(1 for url, _ in t.calls if url == POD)
+
+
+def test_an_import_reads_a_one_document_feed_once_not_once_per_chosen_row(store):
+    t = DcatFake({"https://data.nasa.gov/catalog.jsonld": TransportError("HTTP 404")})
+    p = _pod_portal(store, t)
+    rows = service.run_search(store, p["slug"], terms="", pages=1, transport=t)["rows"][:3]
+    before = _pod_reads(t)
+    got = service.import_datasets(store, [service.Chosen(p["slug"], r["dataset_id"]) for r in rows],
+                                  work_list_name="pod", transport=t, egeria_lookup=NO_EGERIA)
+    assert got["imported"] == 3 and got["refused"] == 0
+    assert _pod_reads(t) - before == 1
+
+
+def test_a_feed_that_times_out_refuses_that_row_saying_try_again_and_the_next_row_reads_it_afresh(store):
+    import httpx
+
+    from resource_explorer.open_data.transport import failure_words
+
+    class FlakyOnce(DcatFake):
+        failed = False
+
+        def get_json(self, url, params=None, headers=None):
+            if url == POD and not self.failed and self.armed:
+                self.failed = True
+                self.calls.append((url, params))
+                raise TransportError(failure_words(url, httpx.ConnectTimeout(
+                    "_ssl.c:1015: The handshake operation timed out"), 3))
+            return super().get_json(url, params, headers)
+
+    t = FlakyOnce({"https://data.nasa.gov/catalog.jsonld": TransportError("HTTP 404")})
+    t.armed = False
+    p = _pod_portal(store, t)
+    rows = service.run_search(store, p["slug"], terms="", pages=1, transport=t)["rows"][:3]
+    t.armed, before = True, _pod_reads(t)
+    got = service.import_datasets(store, [service.Chosen(p["slug"], r["dataset_id"]) for r in rows],
+                                  work_list_name="pod", transport=t, egeria_lookup=NO_EGERIA)
+    assert (got["imported"], got["refused"]) == (2, 1)
+    refused = next(o for o in got["rows"] if o["outcome"] == "refused")
+    assert refused["words"].startswith("could not read from NASA: https://data.nasa.gov/data.json: timed out reaching "
+                                       "data.nasa.gov (3 tries); it may be busy, try again later")
+    assert "_ssl.c:1015" in refused["words"]               # the library's own words, kept for whoever debugs it
+    assert _pod_reads(t) - before == 2                      # the failed read, then one good read for both other rows
+
+
+def _streaming(monkeypatch, outcomes):
+    """Patch httpx.stream: each call takes the next outcome, an exception to raise or a JSON body to answer."""
+    import httpx
+
+    from resource_explorer.open_data import transport as tr
+
+    monkeypatch.setattr(tr, "RETRY_PAUSE_SECONDS", 0)
+    tries = []
+
+    class _Stream:
+        def __init__(self, body):
+            self.body = body
+
+        def __enter__(self):
+            return httpx.Response(200, headers={"content-type": "application/json"}, content=self.body)
+
+        def __exit__(self, *exc):
+            return False
+
+    def stream(method, url, **kw):
+        tries.append(kw.get("timeout"))
+        got = outcomes[min(len(tries), len(outcomes)) - 1]
+        if isinstance(got, Exception):
+            raise got
+        return _Stream(got)
+
+    monkeypatch.setattr(httpx, "stream", stream)
+    return tries
+
+
+def test_http_transport_retries_a_handshake_timeout_before_anything_is_read(monkeypatch):
+    import httpx
+
+    from resource_explorer.open_data import transport as tr
+
+    hs = httpx.ConnectTimeout("_ssl.c:1015: The handshake operation timed out")
+    tries = _streaming(monkeypatch, [hs, hs, b'{"dataset": []}'])
+    assert HttpTransport().get_json("https://healthdata.gov/data.json") == {"dataset": []}
+    assert len(tries) == 3
+    assert tries[0].connect == tr.CONNECT_TIMEOUT_SECONDS and tries[0].read == tr.TIMEOUT_SECONDS
+
+
+def test_http_transport_names_a_handshake_timeout_that_persists_and_says_try_again(monkeypatch):
+    import httpx
+
+    from resource_explorer.open_data import transport as tr
+
+    tries = _streaming(monkeypatch, [httpx.ConnectTimeout("_ssl.c:1015: The handshake operation timed out")])
+    with pytest.raises(TransportError) as got:
+        HttpTransport().get_json("https://healthdata.gov/data.json")
+    assert len(tries) == tr.CONNECT_TRIES
+    assert str(got.value) == ("https://healthdata.gov/data.json: timed out reaching healthdata.gov (3 tries); it may be "
+                              "busy, try again later [_ssl.c:1015: The handshake operation timed out]")
+
+
+def test_http_transport_does_not_retry_once_the_answer_has_started(monkeypatch):
+    """A read timeout means the portal was reached and part of the body may be in: a retry would read a large feed
+    again, so it is reported, not repeated."""
+    import httpx
+
+    tries = _streaming(monkeypatch, [httpx.ReadTimeout("timed out"), b"{}"])
+    with pytest.raises(TransportError, match=r"healthdata.gov stopped answering part-way .*try again later"):
+        HttpTransport().get_bytes("https://healthdata.gov/x.csv", 10)
+    assert len(tries) == 1
+
+
+def test_a_connect_error_and_an_unnamed_failure_say_what_to_do(monkeypatch):
+    import httpx
+
+    from resource_explorer.open_data.transport import failure_words
+
+    tries = _streaming(monkeypatch, [httpx.ConnectError("[Errno 8] nodename nor servname provided")])
+    with pytest.raises(TransportError) as got:
+        HttpTransport().get_json("https://no-such-portal.example/data.json")
+    assert len(tries) == 3
+    assert str(got.value) == ("https://no-such-portal.example/data.json: could not connect to no-such-portal.example "
+                              "(3 tries); check the portal's address, or try again later "
+                              "[[Errno 8] nodename nor servname provided]")
+    words = failure_words("https://x.example/a", httpx.TooManyRedirects("Exceeded maximum allowed redirects."))
+    assert words == ("https://x.example/a: Exceeded maximum allowed redirects.; check the portal's address, "
+                     "or try again later")
+
+
+@pytest.mark.parametrize("status, said", [
+    (404, "HTTP 404, not found at healthdata.gov; the dataset or feed may have moved"),
+    (410, "HTTP 410, not found at healthdata.gov; the dataset or feed may have moved"),
+    (403, "HTTP 403, healthdata.gov refused access; the portal may need an API key"),
+    (429, "HTTP 429, healthdata.gov is limiting how often it is asked; wait a while and try again"),
+    (503, "HTTP 503, healthdata.gov is busy or down for maintenance; try again later"),
+    (502, "HTTP 502, healthdata.gov had a server error; try again later"),
+    (400, "HTTP 400, healthdata.gov refused the request"),
+])
+def test_an_error_status_is_said_in_words_with_its_code_kept(monkeypatch, status, said):
+    import httpx
+
+    class _Stream:
+        def __enter__(self):
+            return httpx.Response(status, headers={"content-type": "application/json"}, content=b"{}")
+
+        def __exit__(self, *exc):
+            return False
+
+    calls = []
+    monkeypatch.setattr(httpx, "stream", lambda method, url, **kw: calls.append(url) or _Stream())
+    monkeypatch.setattr(httpx, "get", lambda url, **kw: calls.append(url) or httpx.Response(status, text="x"))
+    url = "https://healthdata.gov/data.json"
+    for read in (lambda: HttpTransport().get_json(url), lambda: HttpTransport().get_bytes(url, 10),
+                 lambda: HttpTransport().get_text(url)):
+        with pytest.raises(TransportError) as got:
+            read()
+        assert str(got.value) == f"{url}: {said}"
+    assert len(calls) == 3                                   # an answered status is never retried

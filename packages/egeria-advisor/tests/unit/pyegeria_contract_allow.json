@@ -1,0 +1,8 @@
+{
+  "_about": "Deliberate dynamic pyegeria access that test_pyegeria_contract.py reports but should not fail on. Key: a finding id as the test prints it (import:<file>::<module>[:<name>], attr:<file>::<function>::<chain>, mcp:<tool>). Value: why it is deliberate. Every entry must still match a finding, or the test fails.",
+  "allow": {},
+  "not_checked": {
+    "advisor/report_spec_parser.py::validate_report_spec": "getattr(pyegeria, client_name) on a client named in a report spec's action string. The name is data, not code, so the scan cannot see it; the report run fails visibly if it is wrong.",
+    "advisor/egeria_context.py::_make_client": "cls(**conn) with cls passed in. Covered instead through each caller: the scan follows self._make_client(<Class>) accessors."
+  }
+}

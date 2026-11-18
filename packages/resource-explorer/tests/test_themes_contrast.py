@@ -1,6 +1,6 @@
 """The three looks keep their contrast (RULING-THEMES-PORTAL-DARK-LIGHT.md section 3).
 
-Reads `static/next/themes.css`, computes the WCAG ratio for every pair the ruling's table lists, for each look, and
+Reads `themes.css` (packages/trellis-ui, shared with EA), computes the WCAG ratio for every pair the ruling's table lists, for each look, and
 fails a text pair under 4.5 or an outline pair under 3. So a later edit to a palette value cannot quietly fail a pair
 that the owner chose a look for.
 
@@ -13,7 +13,7 @@ from pathlib import Path
 
 import pytest
 
-THEMES = (Path(__file__).resolve().parents[1] / "resource_explorer" / "web" / "static" / "next" / "themes.css")
+THEMES = (Path(__file__).resolve().parents[2] / "trellis-ui" / "trellis_ui" / "static" / "themes.css")
 LOOKS = ("dark", "light", "paper")
 
 #: (foreground, background) tokens, text. Needs 4.5:1.

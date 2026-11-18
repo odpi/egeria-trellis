@@ -7,6 +7,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 from resource_explorer.config import egeria_platform_url, egeria_view_server  # noqa: E402,F401
+from resource_explorer.survey_time import egeria_name_time
 
 if TYPE_CHECKING:
     from resource_explorer.registry import FileSystemEntity, ProjectRegistry
@@ -357,7 +358,7 @@ class EgeriaFileSystemSurveyor:
 
         # 4. Create and publish the SurveyReport
         surveyed_at = survey_data.get("surveyed_at") or datetime.utcnow().isoformat()
-        qualified_name = f"SurveyReport::FileSystem::{fs_entity.slug}::{surveyed_at}"
+        qualified_name = f"SurveyReport::FileSystem::{fs_entity.slug}::{egeria_name_time(surveyed_at)}"
         body = {
             "class": "NewElementRequestBody",
             "parentGUID": fs_guid,
@@ -591,7 +592,7 @@ class EgeriaFileSystemSurveyor:
         annotations.extend(declared.get("annotations") or [])
 
         surveyed_at = survey_data.get("surveyed_at") or datetime.utcnow().isoformat()
-        qualified_name = f"SurveyReport::FileSystem::{fs_entity.slug}::{surveyed_at}"
+        qualified_name = f"SurveyReport::FileSystem::{fs_entity.slug}::{egeria_name_time(surveyed_at)}"
         body = {
             "class": "NewElementRequestBody",
             "parentGUID": fs_guid,
@@ -674,7 +675,7 @@ class EgeriaFileSystemSurveyor:
         if every is None:
             return None
         by_name = {a.get("qualified_name"): a.get("guid") or "" for a in every}
-        prefix = f"Annotation::FileSystem::{fs_slug}::{surveyed_at}"
+        prefix = f"Annotation::FileSystem::{fs_slug}::{egeria_name_time(surveyed_at)}"
         return {i: by_name[n] for i, a in enumerate(annotations)
                 if (n := annotation_qualified_name(prefix, i, a)) in by_name}
 
@@ -684,7 +685,7 @@ class EgeriaFileSystemSurveyor:
         """Each appended row with its annotation's qualifiedName and the GUID the report read found ("" with why)."""
         from resource_explorer.surveyors.survey_report import annotation_qualified_name
 
-        prefix = f"Annotation::FileSystem::{fs_slug}::{surveyed_at}"
+        prefix = f"Annotation::FileSystem::{fs_slug}::{egeria_name_time(surveyed_at)}"
         out = []
         for i, (row, ann) in enumerate(zip(rows, annotations)):
             idx = start + i
@@ -908,7 +909,7 @@ class EgeriaFileSystemSurveyor:
         qualifiedName) — do not recompute it here."""
         from resource_explorer.surveyors.annotation_props import publish_annotations
 
-        qualified_name_prefix = f"Annotation::FileSystem::{fs_slug}::{surveyed_at}"
+        qualified_name_prefix = f"Annotation::FileSystem::{fs_slug}::{egeria_name_time(surveyed_at)}"
         return publish_annotations(
             self._discovery, lambda qn: self._find_element_guid(qn, qualified_name=True),
             annotations, report_guid, qualified_name_prefix,

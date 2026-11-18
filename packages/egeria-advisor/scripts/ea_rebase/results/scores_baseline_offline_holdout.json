@@ -1,0 +1,50 @@
+{
+ "H01": {
+  "score": "0",
+  "why": "PROVISIONAL, offline, spec-only (no rows seen): Referenceable via find_collections"
+ },
+ "H02": {
+  "score": "1",
+  "why": "PROVISIONAL, offline, spec-only (no rows seen): Project, no manager column, condition not applied"
+ },
+ "H03": {
+  "score": "0",
+  "why": "PROVISIONAL, offline, spec-only (no rows seen): Referenceable via find_collections"
+ },
+ "H04": {
+  "score": "0",
+  "why": "PROVISIONAL, offline, spec-only (no rows seen): crashed at generate"
+ },
+ "H05": {
+  "score": "1",
+  "why": "PROVISIONAL, offline, spec-only (no rows seen): unscoped governance definitions + status: too broad, DRAFT not applied"
+ },
+ "H06": {
+  "score": "0",
+  "why": "PROVISIONAL, offline, spec-only (no rows seen): MyProfile.get_my_profile: the caller's own profile, not Coco's people"
+ },
+ "H07": {
+  "score": "0",
+  "why": "PROVISIONAL, offline, spec-only (no rows seen): Referenceable via find_collections"
+ },
+ "H08": {
+  "score": "0",
+  "why": "PROVISIONAL, offline, spec-only (no rows seen): find method AssetManager.find_attributes_without_data_class doesn't exist"
+ },
+ "H09": {
+  "score": "0",
+  "why": "PROVISIONAL, offline, spec-only (no rows seen): Project: wrong type"
+ },
+ "H10": {
+  "score": "0",
+  "why": "PROVISIONAL, offline, spec-only (no rows seen): Location via find_collections: locations aren't collections"
+ },
+ "H11": {
+  "score": "0",
+  "why": "PROVISIONAL, offline, spec-only (no rows seen): guessed Referenceable; no question"
+ },
+ "H12": {
+  "score": "0",
+  "why": "PROVISIONAL, offline, spec-only (no rows seen): crashed; no question"
+ }
+}

@@ -209,6 +209,39 @@ def touch_edit_header(content: str, editor: str) -> str:
     return content
 
 
+#: A plan that ran before and came back to inbox (move_to_inbox: Recover, Retry) keeps this marker, so executing
+#: it again is treated as a re-run (GovernancePlanAgent: non-idempotent commands need "yes, re-run"). It sits in
+#: the document's header, above "## Command Sequence", so Dr.Egeria never sees it, and it is sticky: update()
+#: and restore_version() carry it forward, so neither an edit nor a canvas re-compose erases the history.
+_PREV_EXEC_RE = re.compile(r'^<!--\s*previously_executed:\s*(.*?)\s*-->[ \t]*\n?', re.MULTILINE)
+_EXECUTED_SUFFIX_RE = re.compile(r'_executed_(\d{8})_(\d{6})$')
+
+
+def previously_executed(content: Optional[str]) -> Optional[str]:
+    """The marker's text when this plan ran before and came back to inbox, else None."""
+    m = _PREV_EXEC_RE.search(content or "")
+    return m.group(1) if m else None
+
+
+def executed_note(doc_id: str) -> str:
+    """'<when it ran> · as <the executed doc_id>', from the outbox id's _executed_YYYYMMDD_HHMMSS suffix."""
+    m = _EXECUTED_SUFFIX_RE.search(doc_id)
+    if not m:
+        return f"before {datetime.now().strftime('%Y-%m-%dT%H:%M:%S')} · as {doc_id}"
+    d, t = m.groups()
+    return f"{d[:4]}-{d[4:6]}-{d[6:]}T{t[:2]}:{t[2:4]}:{t[4:]} · as {doc_id}"
+
+
+def mark_previously_executed(content: str, note: str) -> str:
+    """The content with exactly one previously_executed marker (this note), placed after the H1 title."""
+    body = _PREV_EXEC_RE.sub('', content)
+    marker = f"<!-- previously_executed: {note} -->\n"
+    lines = body.splitlines(keepends=True)
+    if lines and lines[0].startswith("# "):
+        return lines[0] + marker + "".join(lines[1:])
+    return marker + body
+
+
 _VERSION_NOTE_RE = re.compile(r'^<!--\s*version_note:\s*(.*?)\s*-->\n')
 
 
@@ -529,7 +562,11 @@ class DocumentManager:
         root_paths, _folder, path = loc
         if edited_by:
             content = touch_edit_header(content, edited_by)
-        self._save_version(doc_id, path.read_text(encoding="utf-8"), new_content=content, root_paths=root_paths)
+        old = path.read_text(encoding="utf-8")
+        ran_before = previously_executed(old)
+        if ran_before and not previously_executed(content):
+            content = mark_previously_executed(content, ran_before)   # history is not editable away
+        self._save_version(doc_id, old, new_content=content, root_paths=root_paths)
         path.write_text(content, encoding="utf-8")
         logger.info(f"DocumentManager: updated {path}")
         return True
@@ -621,13 +658,20 @@ class DocumentManager:
         # remove it from wherever it was living (inbox/outbox/trash) — restoring
         # a version always lands the document back in inbox, in the same
         # namespace it was already in.
+        ran_before: Optional[str] = None
         for folder in ("inbox", "outbox", "trash"):
             for name in (doc_id, original_doc_id):
                 existing = root_paths[folder] / f"{name}.md"
                 if existing.exists():
-                    self._save_version(name, existing.read_text(encoding="utf-8"), new_content=content, root_paths=root_paths)
+                    old = existing.read_text(encoding="utf-8")
+                    ran_before = ran_before or previously_executed(old) or (
+                        executed_note(name) if folder == "outbox" or _EXECUTED_SUFFIX_RE.search(name) else None)
+                    self._save_version(name, old, new_content=content, root_paths=root_paths)
                     existing.unlink()
 
+        # restoring an older text does not undo that the plan ran
+        if ran_before and not previously_executed(content):
+            content = mark_previously_executed(content, ran_before)
         inbox_path.write_text(content, encoding="utf-8")
         logger.info(f"DocumentManager: restored {version_file} to inbox as {original_doc_id}")
         return True
@@ -789,8 +833,9 @@ class DocumentManager:
             logger.warning(f"DocumentManager.move_to_inbox: {original_doc_id!r} already exists in inbox")
             return None
         content = outbox_path.read_text(encoding="utf-8")
-        # Strip the outcome section (everything from the separator before ## Outcome onward)
-        stripped = strip_outcome_sections(content)
+        # Strip the outcome section (everything from the separator before ## Outcome onward), but keep
+        # that it ran: executing it from inbox again is a re-run (previously_executed).
+        stripped = mark_previously_executed(strip_outcome_sections(content), executed_note(doc_id))
         self._save_version(original_doc_id, content, new_content=stripped + "\n", root_paths=root_paths)
         inbox_path.write_text(stripped + "\n", encoding="utf-8")
         outbox_path.unlink()

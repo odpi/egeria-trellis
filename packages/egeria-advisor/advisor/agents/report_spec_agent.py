@@ -69,6 +69,12 @@ class ReportSpecAgent:
                     doc_id,
                     f"Report spec draft `{doc_id}` not found."
                 )
+            if draft.get("v2"):
+                from advisor.agents import report_spec_elicitor_v2 as v2e
+                with v2e.request_scope(credentials=egeria_credentials):
+                    refused = v2e.owner_refusal(draft)       # A4: only its maker runs a draft as themselves
+                if refused:
+                    return self._error_result(doc_id, refused)
             elicitor = get_report_spec_elicitor()
             content = elicitor._generate_report_spec_md(draft)
         else:
@@ -81,8 +87,16 @@ class ReportSpecAgent:
                 f"Report spec document `{doc_id}` not found."
             )
 
+        # A document written by pyegeria (EA_SPEC_AUTHORING_V2) carries its spec as a microflow and was
+        # validated by pyegeria when it was generated; EA's own parser and checks are for the old documents.
+        from advisor.spec_authoring_v2 import enabled as _v2_enabled
+        is_v2_doc = _v2_enabled() and "### Microflow" in content
         try:
-            spec = parse_report_spec_markdown(content)
+            if is_v2_doc:
+                from advisor.spec_authoring_v2 import format_set_from_document
+                spec = format_set_from_document(content, base_doc_id)
+            else:
+                spec = parse_report_spec_markdown(content)
             # Ensure the spec is registered under this doc_id
             register_report_spec(base_doc_id, spec)
         except Exception as exc:
@@ -92,7 +106,7 @@ class ReportSpecAgent:
             )
 
         # Validate action function
-        val_warnings = validate_report_spec(spec)
+        val_warnings = [] if is_v2_doc else validate_report_spec(spec)
         if val_warnings:
             logger.warning(f"Validation warnings for report spec {doc_id}: {val_warnings}")
 
@@ -121,6 +135,11 @@ class ReportSpecAgent:
                 "context_length": len(summary),
             }
 
+        if is_v2_doc:
+            # Ruling 2026-11-17 A3: a saved v2 document runs the SAME answer as the chat (v2.answer: the
+            # property-sort re-rank, the rank re-read, the count wording), as the request's own user.
+            return self._execute_v2(doc_id, base_doc_id, content, spec, egeria_credentials)
+
         # Resolve connection details
         pipeline = get_report_pipeline()
         try:
@@ -131,6 +150,12 @@ class ReportSpecAgent:
 
         # A signed-in caller carries an Egeria bearer token and no password
         # (since 2026-09-04); only the service-account fallback has a password.
+        # Neither (expired/token-less session, anonymous): refuse with "sign in";
+        # exec_report_spec would otherwise mint on pyegeria's configured password
+        # under this user id.
+        from advisor.egeria_signin import SIGN_IN_TO_RUN_REPORTS, lacks_credential
+        if conn and lacks_credential(conn.get("token"), conn.get("user_pwd")):
+            return self._error_result(doc_id, SIGN_IN_TO_RUN_REPORTS)
         if not _conn_is_complete(conn):
             return self._error_result(
                 doc_id,
@@ -234,6 +259,44 @@ class ReportSpecAgent:
             "dry_run": False,
             "status": status,
             "error_message": error_msg,
+            "sources": [],
+            "num_sources": 0,
+            "retrieval_time": 0.0,
+            "generation_time": 0.0,
+            "avg_relevance_score": 0.0,
+            "context_length": len(response),
+        }
+
+    def _execute_v2(self, doc_id: str, base_doc_id: str, content: str, fs: Any,
+                    egeria_credentials: Optional[Dict[str, str]]) -> Dict[str, Any]:
+        """Run a v2 document with v2.answer as the request's own user (a bearer-token client holding no
+        password, built for this call and closed after). No usable credentials: "sign in", no Egeria call,
+        no service-account fallback (A1)."""
+        from advisor import spec_authoring_v2 as v2
+        from advisor.egeria_signin import SIGN_IN_TO_RUN_REPORTS
+        from advisor.egeria_user_client import bound_reads, build_user_client, close_client
+        client = build_user_client(egeria_credentials)
+        if client is None:
+            return self._error_result(doc_id, SIGN_IN_TO_RUN_REPORTS)
+        try:
+            with bound_reads(client):
+                spec = v2.spec_from_document(content, base_doc_id)
+                ans = v2.answer(spec, client)
+        finally:
+            close_client(client)
+        execution_output = ans.get("markdown") or ""
+        response = f"# {fs.heading}\n\n{execution_output}"
+        return {
+            "query": doc_id,
+            "response": response,
+            "query_type": "act_report_result",
+            "matched_spec_id": base_doc_id,
+            "execution_output": execution_output,
+            "base_doc_id": base_doc_id,
+            "answer": ans,
+            "dry_run": False,
+            "status": "Completed" if ans.get("ok") else "Failed",
+            "error_message": "" if ans.get("ok") else str(ans.get("error") or ""),
             "sources": [],
             "num_sources": 0,
             "retrieval_time": 0.0,

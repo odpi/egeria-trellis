@@ -174,8 +174,12 @@ def test_a_tightening_by_a_non_owner_is_refused_on_the_new_zones_before_anything
         "i", "PersonalProject", access=lambda ws: access_words(registry, ws, entity_type="investigation", slug="i"),
         visibility="creator-only")
     assert moved == []
-    assert res.not_permitted == (f"not permitted · the investigation Project in its new zones: zone {SECURED} "
-                                 f"does not grant {USER} classify in Egeria")
+    # The new zones are the private ones, [SECURED, OWNER]. OWNER's personal zone has no control: Egeria b49c5ed0
+    # secures it too ("A zone with no security access control ... grants access to no-one", validateZoneAccess
+    # :1156-1161), so it refuses USER as well, and it is never named to USER.
+    assert res.not_permitted == (f"not permitted · the investigation Project in its new zones: zones {SECURED} "
+                                 f"and a zone private to its owner do not grant {USER} classify in Egeria")
+    assert OWNER not in res.not_permitted
 
 
 def test_a_loosening_with_no_configured_zone_judges_the_kind_on_the_zones_that_stay(registry, monkeypatch):

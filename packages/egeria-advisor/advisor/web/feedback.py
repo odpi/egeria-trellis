@@ -1,126 +1,148 @@
 """
 Feedback API routes for Egeria Advisor.
 
-Extracted from `app.py` (TC-5, BACKLOG.md — router-per-domain refactor,
-slice 2). Follows `admin.py`'s/`auth.py`'s existing pattern: a bare
-`APIRouter()` with full paths on each route (no `prefix=` at
-`include_router` time). Depends on `advisor.web.shared` for
-`FeedbackRequest` and `_extended_feedback_path` — the two pieces of
-cross-cutting state these routes share with the rest of app.py.
+Since Phase 2 (A-F1, 2026-11-11) feedback lives in the shared trellis-feedback store
+(`advisor.feedback_store`), not in JSONL files under the data root.
 
 Endpoints:
-  POST  /api/feedback                 → record 👍/😐/👎 feedback
-  GET   /api/feedback/extended        → all extended feedback records
-  PATCH /api/feedback/extended/{idx}  → update triage_status/analysis_comments
-  GET   /api/feedback/analysis        → feedback stats + gap analysis
+  POST /api/feedback            → record a 👍/😐/👎 vote as an `answer` item (honest status; see the route)
+  GET  /api/feedback/analysis   → statistics + gap analysis, read from the store (admin only)
+  /api/feedback/v2/...          → the library's own router (`trellis_feedback.router.make_router`):
+                                  GET /items, GET /items/{id}, POST /triage, DELETE /items/{id} and
+                                  GET /causes are admin-only; GET /meta and POST /items are open to
+                                  whoever the login middleware lets through.
+
+Retired, with the JSONL writes:
+- `GET /api/feedback/extended`;
+- `PATCH /api/feedback/extended/{idx}`, which edited a record by its line position and could land on
+  the wrong one once a line was skipped.
+
+Triage is now an append-only event on an item, by the item's id.
 """
 from __future__ import annotations
 
-import json
-from datetime import datetime
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from loguru import logger
+from starlette.concurrency import run_in_threadpool
 
-from advisor.web.shared import FeedbackRequest, _extended_feedback_path
+from advisor.web.shared import FeedbackRequest
 
 router = APIRouter()
 
 
+def _voter_id(request: Request) -> Optional[str]:
+    """The signed-in user's id, or None when anonymous: the same extraction as the app's
+    user-context middleware (a claim from EA's own validated session JWT, not a client field)."""
+    from advisor.auth import get_current_user
+    user = get_current_user(request)
+    if not user or user.get("anonymous"):
+        return None
+    return user.get("user_id") or user.get("sub") or None
+
+
+def _record_vote(req: FeedbackRequest, user_id: Optional[str]) -> Dict[str, Any]:
+    """The synchronous work of one vote; run in a worker thread, never on the event loop.
+    Raises FeedbackWriteError when the library item was not written."""
+    from advisor.feedback_collector import get_feedback_collector
+    from advisor.feedback_store import RATING_BY_VOTE, vote_key
+    if req.vote not in RATING_BY_VOTE:
+        raise HTTPException(status_code=400, detail=f"vote must be one of {sorted(RATING_BY_VOTE)}, got {req.vote!r}")
+    fc = get_feedback_collector()
+    outcome = fc.record_vote(
+        query=req.query,
+        query_type=req.query_type,
+        collections_searched=[],
+        response_length=len(req.response_text or ""),
+        rating=RATING_BY_VOTE[req.vote],
+        session_id=req.session_id or None,
+        perspective=req.perspective or None,
+        routing_agent=req.routing_agent or None,
+        # The intent selector is not something the user wrote: its own field, never user_comment.
+        intent_override=req.intent_override or None,
+        user_id=user_id,
+        response_text=req.response_text or "",
+        idempotency_key=vote_key(req.session_id, req.exchange_id, req.vote, req.vote_seq),
+        exchange_id=req.exchange_id or None,
+    )
+    return {
+        "status": "ok",
+        "item": {"id": outcome.get("item_id")},
+        "created": bool(outcome.get("created", True)),
+        # MLflow is queued in the background and never reported here: its outcome is logged once.
+        "secondary": {"query_metrics": outcome.get("query_metrics")},
+    }
+
+
 @router.post("/api/feedback")
-async def record_feedback(req: FeedbackRequest) -> Dict[str, str]:
-    """Record 👍/😐/👎 feedback."""
+async def record_feedback(req: FeedbackRequest, request: Request) -> Dict[str, Any]:
+    """Record a 👍/😐/👎 vote as a trellis-feedback `answer` item.
+
+    - The vote's idempotency key is session + exchange + vote. A retried send with the same key is the
+      same vote: one item, `created` false.
+    - The work runs in a worker thread, and MLflow is queued in the background and never awaited
+      (Phase 0 S4).
+
+    Honest status:
+    - {"status": "ok", "item": {"id"}, "created", "secondary": {"query_metrics": ok|no_match|skipped|
+      error|not_run}} only when the library item was written, or already held.
+    - Otherwise HTTP 500 "could not record your feedback: <reason>".
+    """
+    from advisor.feedback_collector import FeedbackWriteError
+    user_id = _voter_id(request)
     try:
-        from advisor.feedback_collector import get_feedback_collector
-        fc = get_feedback_collector()
-        if req.vote > 0:
-            rating = "positive"
-        elif req.vote == 0:
-            rating = "neutral"
-        else:
-            rating = "negative"
-        fc.record_feedback(
-            query=req.query,
-            query_type=req.query_type,
-            collections_searched=[],
-            response_length=len(req.response_text or ""),
-            rating=rating,
-            perspective=req.perspective or None,
-            routing_agent=req.routing_agent or None,
-            feedback_text=req.intent_override or None,  # repurpose for intent label until schema expanded
-            user_comment=req.intent_override,
-        )
-        # Also write the full record including response_text to an extended JSONL
-        try:
-            from advisor.config import ensure_writable_dir
-            ext_path = _extended_feedback_path()
-            ensure_writable_dir(ext_path.parent, "ADVISOR_DATA_PATH")
-            record = {
-                "timestamp": datetime.utcnow().isoformat(),
-                "query": req.query,
-                "query_type": req.query_type,
-                "vote": req.vote,
-                "rating": rating,
-                "perspective": req.perspective,
-                "intent_override": req.intent_override,
-                "routing_agent": req.routing_agent,
-                "response_text": req.response_text,
-                "triage_status": "new",
-                "analysis_comments": "",
-            }
-            with open(ext_path, "a") as f:
-                f.write(json.dumps(record) + "\n")
-        except Exception as exc:
-            logger.warning(f"Extended feedback write failed: {exc}")
-    except Exception as exc:
-        logger.warning(f"Feedback recording failed: {exc}")
-    return {"status": "ok"}
-
-
-@router.get("/api/feedback/extended")
-async def feedback_extended() -> Dict[str, Any]:
-    """Return all extended feedback records (with response_text, triage_status, etc.)."""
-    path = _extended_feedback_path()
-    records = []
-    if path.exists():
-        for line in path.read_text().splitlines():
-            try:
-                records.append(json.loads(line))
-            except Exception:
-                pass
-    return {"records": records, "total": len(records)}
-
-
-@router.patch("/api/feedback/extended/{idx}")
-async def update_feedback_record(idx: int, body: Dict[str, Any]) -> Dict[str, Any]:
-    """Update triage_status or analysis_comments on a feedback record by line index."""
-    path = _extended_feedback_path()
-    if not path.exists():
-        raise HTTPException(status_code=404, detail="No feedback records")
-    lines = path.read_text().splitlines()
-    if idx < 0 or idx >= len(lines):
-        raise HTTPException(status_code=404, detail=f"Record {idx} not found")
-    try:
-        record = json.loads(lines[idx])
-    except Exception:
-        raise HTTPException(status_code=500, detail="Corrupt record")
-    allowed = {"triage_status", "analysis_comments"}
-    for k, v in body.items():
-        if k in allowed:
-            record[k] = v
-    lines[idx] = json.dumps(record)
-    path.write_text("\n".join(lines) + "\n")
-    return {"status": "ok", "record": record}
+        return await run_in_threadpool(_record_vote, req, user_id)
+    except HTTPException:
+        raise
+    except FeedbackWriteError as exc:
+        logger.error(f"Feedback not recorded: {exc}")
+        raise HTTPException(status_code=500, detail=f"could not record your feedback: {exc}")
+    except Exception as exc:  # the collector itself could not start
+        logger.error(f"Feedback not recorded: {exc}")
+        raise HTTPException(status_code=500,
+                            detail=f"could not record your feedback: {type(exc).__name__}: {exc}")
 
 
 @router.get("/api/feedback/analysis")
-async def feedback_analysis() -> Dict[str, Any]:
-    """Return feedback statistics plus gap analysis."""
-    from advisor.feedback_collector import get_feedback_collector
+def feedback_analysis() -> Dict[str, Any]:
+    """Feedback statistics plus gap analysis, read from the trellis-feedback store (admin only: the
+    path is gated in advisor.web.app).
+
+    {state, message, source, stats, gaps, improvements, count}:
+    - `ok`: the votes were read.
+    - `none`: the store was read and holds no votes yet.
+    - `not_read`: the store could not be read, with `message` saying why. `stats` is then null, never
+      zeros that would read as "no votes".
+    """
+    from advisor.feedback_collector import FeedbackReadError, get_feedback_collector
     fc = get_feedback_collector()
+    source = "legacy file" if getattr(fc, "legacy_file", None) else "trellis-feedback"
+    try:
+        result = fc.analysis()
+    except FeedbackReadError as exc:
+        logger.warning(f"Feedback analysis not read: {exc}")
+        return {"state": "not_read", "message": f"Feedback not read: {exc}", "source": source,
+                "stats": None, "gaps": None, "improvements": None, "count": None}
+    count = result.get("count", 0)
     return {
-        "stats": fc.get_feedback_stats(),
-        "gaps": fc.get_gap_analysis(),
-        "improvements": fc.get_routing_improvements(),
+        "state": "ok" if count else "none",
+        "message": None if count else "No votes have been recorded yet.",
+        "source": source,
+        **result,
     }
+
+
+def _mount_library_router() -> None:
+    """The library's own routes, at /api/feedback/v2. The store is opened on first use (LazyStore), so
+    EA starts without Postgres; until it can be reached those routes answer 503 with the reason."""
+    from trellis_feedback.router import make_router
+    from advisor.auth import is_admin
+    from advisor.feedback_store import LazyStore
+    router.include_router(
+        make_router(LazyStore(), is_admin=is_admin, current_user=lambda request: _voter_id(request) or ""),
+        prefix="/api/feedback/v2",
+    )
+
+
+_mount_library_router()

@@ -340,8 +340,13 @@ class TestAgainstLiveEgeria:
     ~2s `_egeria_reachable()` check takes."""
 
     def test_every_linked_type_exists(self):
+        from resource_explorer.egeria_clients import Daemon, DaemonReason, acting_as
+
         linked = sorted({t.egeria_technology_type for t in ds.load_mapping() if t.egeria_technology_type})
-        present, state, detail = ds.egeria_technology_types_present(linked)
+        # Since Brief I an Egeria call needs a declared identity; this read runs inside a survey, which unattended is
+        # the scheduler's. Without it the call raises NoCallerIdentity and the check reports "not checked".
+        with acting_as(Daemon(DaemonReason.SCHEDULER)):
+            present, state, detail = ds.egeria_technology_types_present(linked)
         if state != "checked":
             pytest.skip(f"Egeria not reachable: {detail}")
         missing = sorted(n for n, ok in present.items() if not ok)

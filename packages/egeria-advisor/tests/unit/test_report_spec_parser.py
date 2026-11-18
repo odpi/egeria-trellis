@@ -168,13 +168,33 @@ EgeriaTech.my_valid_method
 
 
 def test_register_report_spec():
-    from pyegeria.view.base_report_formats import report_specs
-    
+    """Through pyegeria's public RUNTIME tier, under EA's own source; never its private dicts."""
+    import pyegeria.view.base_report_formats as brf
+    from advisor.report_spec_parser import EA_REGISTRY_SOURCE, ea_registered_specs
+
     spec = parse_report_spec_markdown(SAMPLE_RSD)
-    register_report_spec("test_spec_123", spec)
-    
-    assert "test_spec_123" in report_specs
-    assert report_specs["test_spec_123"] == spec
+    try:
+        register_report_spec("test_spec_123", spec)
+        assert brf.get_report_registry().get("test_spec_123") is spec
+        assert brf._RUNTIME_REPORT_SOURCES["test_spec_123"] == EA_REGISTRY_SOURCE
+        assert "test_spec_123" not in getattr(brf, "report_specs", {})  # not made to look built-in
+        assert "test_spec_123" in ea_registered_specs()
+        register_report_spec("test_spec_123", spec)  # re-registering EA's own name replaces it
+    finally:
+        brf.unregister_report_spec("test_spec_123")
+
+
+def test_register_report_spec_refuses_another_sources_name_with_words():
+    import pyegeria.view.base_report_formats as brf
+    from advisor.report_spec_parser import ReportSpecNameTaken
+
+    spec = parse_report_spec_markdown(SAMPLE_RSD)
+    brf.register_report_specs({"someone_elses_spec": spec}, source="another-app")
+    try:
+        with pytest.raises(ReportSpecNameTaken, match="already comes from another source"):
+            register_report_spec("someone_elses_spec", spec)
+    finally:
+        brf.unregister_report_spec("someone_elses_spec")
 
 
 def test_load_outbox_fallback(tmp_path, monkeypatch):

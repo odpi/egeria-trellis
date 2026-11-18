@@ -35,6 +35,14 @@ log = logging.getLogger(__name__)
 
 NOT_MEASURABLE = "not_measurable"
 DISAGREEMENT = "disagreement"
+#: Raised by an admin's diagnosis of a rated answer (closed-loop step 2a, feedback_routing.py,
+#: BRIEF-CLOSED-LOOP-STEP2-ROUTING.md): the analysis had no result, gave a wrong one, or nothing in the catalog
+#: answers the question. Each is its own kind: a missing run and a defect go to different work.
+MISSING_EVIDENCE = "missing_evidence"
+ANALYSIS_DEFECT = "analysis_defect"
+CATALOG_GAP = "catalog_gap"
+#: Every kind, in the order the counts list them. `gaps_summary` counts each in its own bucket.
+GAP_KINDS = (NOT_MEASURABLE, DISAGREEMENT, MISSING_EVIDENCE, ANALYSIS_DEFECT, CATALOG_GAP)
 
 #: Who noticed the gap. Stored inside `evidence` (no schema change) and
 #: surfaced as a top-level `source` by `gaps_summary`, because "two of our
@@ -316,20 +324,30 @@ def gaps_summary(registry, slug: str) -> dict:
         # UI reads the same word (`ours`) here and on a finding row.
         r["destination"] = OURS
         r["source"] = (r.get("evidence") or {}).get("source") or SOURCE_MEASURED
+    # A diagnosed gap names the feedback items that raised it; one deleted since says so (the architect's A2).
+    if any((r.get("evidence") or {}).get("feedback_items") for r in rows):
+        from resource_explorer.feedback_routing import mark_deleted_items
+        from resource_explorer.feedback_store import FeedbackStore
+
+        store = FeedbackStore()
+        mark_deleted_items(rows, lambda item_id: store.get(item_id) is not None)
     open_rows = [r for r in rows if not r.get("resolved_at")]
-    counts = {
-        NOT_MEASURABLE: sum(1 for r in open_rows if r["gap_kind"] == NOT_MEASURABLE),
-        DISAGREEMENT: sum(1 for r in open_rows if r["gap_kind"] == DISAGREEMENT),
-        "total": len(open_rows),
-        # A SUBSET of DISAGREEMENT above, not a fourth bucket — the two
-        # numbers overlap on purpose and a consumer must not add them. It is
-        # surfaced because the two kinds go to different people: a disputed
-        # answer is work for whoever wrote the analysis, a measured
-        # disagreement is work for whoever reconciles two measures.
-        "disputed_by_a_person": sum(
-            1 for r in open_rows if r.get("source") == SOURCE_PERSON
-        ),
-    }
+    # One bucket per kind, so the buckets sum to `total` (the architect's A1 read-back of the step 2 brief: the
+    # diagnosed kinds would otherwise land in the total and in no bucket). A kind this code does not know still
+    # gets its own bucket rather than vanishing from the sum.
+    counts: dict = {kind: 0 for kind in GAP_KINDS}
+    for r in open_rows:
+        counts[r["gap_kind"]] = counts.get(r["gap_kind"], 0) + 1
+    counts["total"] = len(open_rows)
+    # A SUBSET of DISAGREEMENT above, not another bucket — the two numbers
+    # overlap on purpose and a consumer must not add them. It is surfaced
+    # because the two go to different people: a disputed answer is work for
+    # whoever wrote the analysis, a measured disagreement is work for whoever
+    # reconciles two measures. Disagreements only: the diagnosed kinds are also
+    # raised by a person, but they have their own buckets.
+    counts["disputed_by_a_person"] = sum(
+        1 for r in open_rows if r["gap_kind"] == DISAGREEMENT and r.get("source") == SOURCE_PERSON
+    )
     by_analysis: dict[str, int] = {}
     for r in open_rows:
         by_analysis[r["analysis_id"]] = by_analysis.get(r["analysis_id"], 0) + 1

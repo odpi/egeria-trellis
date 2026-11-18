@@ -21,18 +21,10 @@ from __future__ import annotations
 import json
 import re
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from loguru import logger
-from pydantic import BaseModel
-
-
-def _extended_feedback_path() -> Path:
-    """Path to the extended-feedback JSONL log, under the resolved writable
-    advisor data root (ADVISOR_DATA_PATH) rather than a bare relative
-    ``data/`` path — see advisor.config.resolve_advisor_data_root()."""
-    from advisor.config import resolve_advisor_data_root
-    return resolve_advisor_data_root() / "feedback" / "feedback_extended.jsonl"
+from pydantic import BaseModel, Field
 
 
 _STATIC = Path(__file__).parent / "static"
@@ -79,6 +71,13 @@ class FeedbackRequest(BaseModel):
     routing_agent: Optional[str] = None
     response_text: Optional[str] = None   # actual response shown to user
     intent_override: Optional[str] = None  # intent selector value from UI ("auto", "explain", etc.)
+    # A-F1: the vote's idempotency key is session + exchange + vote (advisor.feedback_store.vote_key),
+    # so a retried send is one item. A client that sends neither gets a plain submit.
+    session_id: Optional[str] = Field(default=None, max_length=64)
+    exchange_id: Optional[str] = Field(default=None, max_length=64)
+    # A-F1 N1: which click on this row this is (1, 2, ...). A changed vote is a new click and is stored;
+    # the latest per answer is the one counted. A network re-send of one click keeps its number.
+    vote_seq: Optional[int] = Field(default=None, ge=1, le=10_000)
 
 
 # ── intent → badge metadata ────────────────────────────────────────────────────
@@ -194,61 +193,107 @@ def _catalog_formats(catalog: Dict[str, List[str]]) -> Dict[str, List[str]]:
     return formats
 
 
-def _is_runnable_spec(name: str) -> bool:
-    """Return True if the spec has an action (can be executed standalone)."""
-    try:
-        from pyegeria.view.base_report_formats import get_report_registry
-        spec = get_report_registry().get(name)
-        if spec is None:
-            return True  # unknown to registry — assume runnable, let executor decide
-        return getattr(spec, "action", None) is not None
-    except Exception:
-        return True  # registry unavailable — assume runnable
+def _registry_status() -> Dict[str, Dict[str, Any]]:
+    """name -> {"runnable", "unrunnable_reason"} from pyegeria's load-time resolution
+    (`list_report_specs(with_status=True)`). Raises when the registry cannot be read: the caller
+    states that, it never guesses."""
+    from pyegeria.view.base_report_formats import list_report_specs
+    return {row["name"]: row for row in list_report_specs(with_status=True)}
 
 
-def _load_report_catalog(include_dre: bool = False) -> Dict[str, List[str]]:
-    """Return {topic: [spec_name, ...]}, runnable specs only.
+def _is_runnable_spec(name: str, status: Optional[Dict[str, Dict[str, Any]]] = None) -> Tuple[bool, Optional[str]]:
+    """(runnable, why not) for one spec, from pyegeria's own `runnable`/`unrunnable_reason`.
 
-    Primary source is pyegeria's own in-process report registry
-    (get_report_registry(), which already combines built-ins, generated,
-    config-loaded, and runtime-registered specs) — report specs are not all
-    produced by the dr-egeria-command-sync JSON pipeline, so the catalog must
-    not be JSON-file-only. The bundled JSON files below still supplement this
-    for any name the registry doesn't (yet) know about, and are read fresh on
-    every call, so a live-updated JSON file needs no server restart either.
+    A spec with no action is a format-only spec (columns for another report's output), not a report:
+    (False, "format-only: it has no action to run"). A name the registry does not know is the
+    caller's to state (see `_load_report_catalog_with_status`'s `bundled_only`); here it is
+    (True, None) so the executor decides, as before."""
+    if status is None:
+        status = _registry_status()
+    row = status.get(name)
+    if row is None:
+        return True, None
+    from pyegeria.view.base_report_formats import get_report_registry
+    spec = get_report_registry().get(name)
+    if spec is not None and getattr(spec, "action", None) is None:
+        return False, "format-only: it has no action to run"
+    if not row.get("runnable", True):
+        return False, row.get("unrunnable_reason") or "pyegeria lists it as not runnable"
+    return True, None
+
+
+def _load_report_catalog_with_status(include_dre: bool = False) -> Tuple[Dict[str, List[str]], Dict[str, Any]]:
+    """({topic: [spec_name, ...]} runnable specs only, and what the catalog left out and why).
+
+    Primary source is pyegeria's in-process report registry (built-ins, generated, config-loaded,
+    Egeria-held and runtime-registered specs). The bundled JSON files supplement it for names the
+    registry does not know; those are listed in `bundled_only`, so a spec that came only from a
+    bundled file is never presented as a registry spec. When the registry cannot be read at all,
+    the catalog falls back to the bundled files and `message` says so.
+
+    The status: {"registry": "ok" | "unavailable", "registry_error", "unrunnable": [{name, reason}],
+    "format_only": int, "bundled_only": [names], "bundled_errors": [{file, error}], "message"}.
     """
     catalog: Dict[str, List[str]] = {}
     seen: set = set()
+    info: Dict[str, Any] = {"registry": "ok", "registry_error": None, "unrunnable": [], "format_only": 0,
+                            "bundled_only": [], "bundled_errors": [], "message": None}
+    try:
+        from pyegeria.view.base_report_formats import get_report_registry
+        status = _registry_status()
+        registry_names = list(get_report_registry().keys())
+    except Exception as exc:  # noqa: BLE001 -- stated in the status below
+        logger.warning(f"_load_report_catalog: pyegeria registry unavailable: {exc}")
+        info.update(registry="unavailable", registry_error=f"{type(exc).__name__}: {exc}")
+        status, registry_names = {}, []
 
-    def _add(name: str) -> None:
+    def _add(name: str, *, bundled: bool) -> None:
         if name in seen:
             return
         seen.add(name)
         if not include_dre and _is_dre(name):
             return
-        if not _is_runnable_spec(name):
+        runnable, why = _is_runnable_spec(name, status) if status else (True, None)
+        if not runnable:
+            if why and why.startswith("format-only"):
+                info["format_only"] += 1
+            else:
+                info["unrunnable"].append({"name": name, "reason": why})
             return
-        topic = _topic_for(name)
-        catalog.setdefault(topic, []).append(name)
+        if bundled:
+            info["bundled_only"].append(name)
+        catalog.setdefault(_topic_for(name), []).append(name)
 
-    try:
-        from pyegeria.view.base_report_formats import get_report_registry
-        for name in get_report_registry().keys():
-            _add(name)
-    except Exception as exc:
-        logger.debug(f"_load_report_catalog: pyegeria registry unavailable — {exc}")
+    for name in registry_names:
+        _add(name, bundled=False)
 
     for path in _SPEC_FILES:
         if not path.exists():
             continue
         try:
             data = json.loads(path.read_text())
-            for name in data:
-                _add(name)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 -- stated in the status below
             logger.warning(f"Failed to load {path}: {exc}")
+            info["bundled_errors"].append({"file": path.name, "error": f"{type(exc).__name__}: {exc}"})
+            continue
+        for name in data:
+            _add(name, bundled=True)
 
-    # Sort within each topic
     for topic in catalog:
         catalog[topic].sort()
-    return dict(sorted(catalog.items()))
+    info["unrunnable"].sort(key=lambda r: r["name"])
+    info["bundled_only"].sort()
+    if info["registry"] == "unavailable":
+        info["message"] = (f"pyegeria's report registry could not be read ({info['registry_error']}); "
+                           f"showing only the {len(info['bundled_only'])} spec(s) from EA's bundled spec "
+                           f"files, unchecked.")
+    elif info["unrunnable"]:
+        info["message"] = (f"{len(info['unrunnable'])} spec(s) are not listed because they cannot run; "
+                           f"each says why.")
+    return dict(sorted(catalog.items())), info
+
+
+def _load_report_catalog(include_dre: bool = False) -> Dict[str, List[str]]:
+    """{topic: [spec_name, ...]}, runnable specs only. `_load_report_catalog_with_status` also says
+    what was left out and why; prefer it wherever the answer is shown to someone."""
+    return _load_report_catalog_with_status(include_dre)[0]

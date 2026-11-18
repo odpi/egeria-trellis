@@ -1,0 +1,182 @@
+{
+ "B01": {
+  "score": "0",
+  "spec_score": "0",
+  "outcome": "blank",
+  "why": "LIVE: blank (25 rows, every sampled cell empty); spec 0: live spec differs from offline: Process names: not assets, no lineage"
+ },
+ "B02": {
+  "score": "0",
+  "spec_score": "1",
+  "outcome": "timeout",
+  "why": "LIVE: timeout (Egeria timed out at 90 s (laz loaded)); spec 1: live spec differs from offline: Project + status column, ACTIVE not applied"
+ },
+ "B03": {
+  "score": "0",
+  "spec_score": "1",
+  "outcome": "timeout",
+  "why": "LIVE: timeout (Egeria timed out at 90 s (laz loaded)); spec 1: same spec as offline: Project, qualified name only: no priority column, not sorted"
+ },
+ "B04": {
+  "score": "0",
+  "spec_score": "1",
+  "outcome": "timeout",
+  "why": "LIVE: timeout (Egeria timed out at 90 s (laz loaded)); spec 1: same spec as offline: GlossaryTerm (grounded find_glossary_terms) + usage, condition not applied"
+ },
+ "B05": {
+  "score": "0",
+  "spec_score": "1",
+  "outcome": "timeout",
+  "why": "LIVE: timeout (Egeria timed out at 90 s (laz loaded)); spec 1: same spec as offline: GlossaryTerm + status, DRAFT not applied"
+ },
+ "B06": {
+  "score": "0",
+  "spec_score": "1",
+  "outcome": "timeout",
+  "why": "LIVE: timeout (Egeria timed out at 90 s (laz loaded)); spec 1: same spec as offline: GlossaryTerm, effective-date columns missing"
+ },
+ "B07": {
+  "score": "0",
+  "spec_score": "1",
+  "outcome": "timeout",
+  "why": "LIVE: timeout (Egeria timed out at 90 s (laz loaded)); spec 1: same spec as offline: Collection, no classification column or condition"
+ },
+ "B08": {
+  "score": "0",
+  "spec_score": "1",
+  "outcome": "timeout",
+  "why": "LIVE: timeout (Egeria timed out at 90 s (laz loaded)); spec 1: same spec as offline: Collection + create time, not sorted"
+ },
+ "B09": {
+  "score": "0",
+  "spec_score": "2",
+  "outcome": "timeout",
+  "why": "LIVE: timeout (Egeria timed out at 90 s (laz loaded)); spec 2: same spec as offline: DigitalProduct (scoped), name + description"
+ },
+ "B10": {
+  "score": "0",
+  "spec_score": "0",
+  "outcome": "timeout",
+  "why": "LIVE: timeout (Egeria timed out at 90 s (laz loaded)); spec 0: same spec as offline: Project: wrong type"
+ },
+ "B11": {
+  "score": "0",
+  "spec_score": "0",
+  "outcome": "blank",
+  "why": "LIVE: blank (25 rows, every sampled cell empty); spec 0: same spec as offline: Asset: wrong type"
+ },
+ "B12": {
+  "score": "0",
+  "spec_score": "1",
+  "outcome": "timeout",
+  "why": "LIVE: timeout (Egeria timed out at 90 s (laz loaded)); spec 1: same spec as offline: all collections: too broad, recoverable"
+ },
+ "B13": {
+  "score": "0",
+  "spec_score": "1",
+  "outcome": "timeout",
+  "why": "LIVE: timeout (Egeria timed out at 90 s (laz loaded)); spec 1: same spec as offline: GovernanceMetric, description only (no name column)"
+ },
+ "B14": {
+  "score": "0",
+  "spec_score": "0",
+  "outcome": "no_run",
+  "why": "LIVE: no_run (did not complete); spec 0: same spec as offline: error: LLM type not an Egeria type"
+ },
+ "B15": {
+  "score": "0",
+  "spec_score": "1",
+  "outcome": "timeout",
+  "why": "LIVE: timeout (Egeria timed out at 90 s (laz loaded)); spec 1: same spec as offline: GovernancePolicy + status, condition not applied"
+ },
+ "C01": {
+  "score": "0",
+  "spec_score": "0",
+  "outcome": "no_run",
+  "why": "LIVE: no_run (did not complete); spec 0: same spec as offline: error: ungrounded type"
+ },
+ "C02": {
+  "score": "0",
+  "spec_score": "1",
+  "outcome": "timeout",
+  "why": "LIVE: timeout (Egeria timed out at 90 s (laz loaded)); spec 1: same spec as offline: GovernanceDefinition: all definitions, too broad"
+ },
+ "C03": {
+  "score": "0",
+  "spec_score": "0",
+  "outcome": "no_run",
+  "why": "LIVE: no_run (did not complete); spec 0: same spec as offline: error: ungrounded type"
+ },
+ "C04": {
+  "score": "0",
+  "spec_score": "1",
+  "outcome": "timeout",
+  "why": "LIVE: timeout (Egeria timed out at 90 s (laz loaded)); spec 1: live spec differs from offline: GovernanceMetric names, no domain"
+ },
+ "C05": {
+  "score": "0",
+  "spec_score": "0",
+  "outcome": "timeout",
+  "why": "LIVE: timeout (Egeria timed out at 90 s (laz loaded)); spec 0: live spec differs from offline: Project for digital products"
+ },
+ "C06": {
+  "score": "0",
+  "spec_score": "0",
+  "outcome": "blank",
+  "why": "LIVE: blank (25 rows, every sampled cell empty); spec 0: same spec as offline: Asset: wrong type"
+ },
+ "C07": {
+  "score": "0",
+  "spec_score": "0",
+  "outcome": "timeout",
+  "why": "LIVE: timeout (Egeria timed out at 90 s (laz loaded)); spec 0: same spec as offline: GlossaryTerm: wrong type"
+ },
+ "C08": {
+  "score": "0",
+  "spec_score": "1",
+  "outcome": "timeout",
+  "why": "LIVE: timeout (Egeria timed out at 90 s (laz loaded)); spec 1: same spec as offline: Agreement: too broad (subscriptions among them)"
+ },
+ "C09": {
+  "score": "0",
+  "spec_score": "1",
+  "outcome": "blank",
+  "why": "LIVE: blank (25 rows, every sampled cell empty); spec 1: same spec as offline: Asset, no owner column or condition"
+ },
+ "C10": {
+  "score": "0",
+  "spec_score": "1",
+  "outcome": "blank",
+  "why": "LIVE: blank (25 rows, every sampled cell empty); spec 1: same spec as offline: Asset + update time, condition not applied"
+ },
+ "A01": {
+  "score": "0",
+  "spec_score": "0",
+  "outcome": "no_run",
+  "why": "LIVE: no_run (did not complete); spec 0: same spec as offline: error, no question"
+ },
+ "A02": {
+  "score": "0",
+  "spec_score": "0",
+  "outcome": "timeout",
+  "why": "LIVE: timeout (Egeria timed out at 90 s (laz loaded)); spec 0: live spec differs from offline: ambiguous: built a spec instead of asking"
+ },
+ "A03": {
+  "score": "0",
+  "spec_score": "0",
+  "outcome": "no_run",
+  "why": "LIVE: no_run (did not complete); spec 0: same spec as offline: error, no question"
+ },
+ "A04": {
+  "score": "0",
+  "spec_score": "0",
+  "outcome": "timeout",
+  "why": "LIVE: timeout (Egeria timed out at 90 s (laz loaded)); spec 0: same spec as offline: guessed, no question"
+ },
+ "A05": {
+  "score": "0",
+  "spec_score": "0",
+  "outcome": "no_run",
+  "why": "LIVE: no_run (did not complete); spec 0: same spec as offline: error, no question"
+ }
+}

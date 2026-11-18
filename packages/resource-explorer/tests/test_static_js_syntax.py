@@ -36,17 +36,20 @@ import pytest
 STATIC_DIR = (
     Path(__file__).resolve().parents[1] / "resource_explorer" / "web" / "static"
 )
+# The files RE shares with EA (packages/trellis-ui) are scanned too: they left next/ but are still RE's code.
+SHARED_UI = Path(__file__).resolve().parents[2] / "trellis-ui" / "trellis_ui" / "static"
 
 _JS_FILES = sorted(
-    p
-    for p in STATIC_DIR.rglob("*.js")
-    if "vendor" not in p.relative_to(STATIC_DIR).parts
+    [p for p in STATIC_DIR.rglob("*.js") if "vendor" not in p.relative_to(STATIC_DIR).parts]
+    + list(SHARED_UI.rglob("*.js"))
 )
 
 
-@pytest.mark.parametrize(
-    "js_path", _JS_FILES, ids=[str(p.relative_to(STATIC_DIR)) for p in _JS_FILES]
-)
+def _js_id(p: Path) -> str:
+    return f"trellis-ui/{p.relative_to(SHARED_UI)}" if SHARED_UI in p.parents else str(p.relative_to(STATIC_DIR))
+
+
+@pytest.mark.parametrize("js_path", _JS_FILES, ids=[_js_id(p) for p in _JS_FILES])
 def test_static_js_file_parses(js_path: Path) -> None:
     if shutil.which("node") is None:
         pytest.skip(
