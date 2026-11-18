@@ -13,19 +13,24 @@ from typing import Any, List, Optional
 
 from loguru import logger
 
-#: From the repository root, after `make sync`. `.venv/bin/python`, not `uv run` in a package directory, which
-#: can re-sync the workspace.
+#: Exactly what QUICKSTART.md says (read-back R1, docs 114d7373): run from packages/egeria-advisor, so the
+#: package's .env (PGVECTOR_PASSWORD among it) is found. From the repository root those scripts failed for Rocky
+#: with "PGVECTOR_PASSWORD is not set". tests/unit/test_tr49_knowledge_base_not_built.py checks each one is in
+#: QUICKSTART.md verbatim.
+BUILD_DIR = "cd packages/egeria-advisor"
 BUILD_COMMANDS = (
-    "`.venv/bin/python packages/egeria-advisor/scripts/clone_repos.py --phase all` (fetches the Egeria repositories)",
-    "`.venv/bin/python packages/egeria-advisor/scripts/ingest_collections.py --phase all` (indexes them)",
+    "../../.venv/bin/python scripts/clone_repos.py --phase all",
+    "../../.venv/bin/python scripts/ingest_collections.py --phase all",
 )
+_WHAT = ("fetches the Egeria repositories", "indexes them")
 
 
 def not_built_message(count: int) -> str:
-    steps = "\n".join(f"{i}. {c}" for i, c in enumerate(BUILD_COMMANDS, 1))
+    steps = "\n".join(f"{i}. `{c}` ({w})" for i, (c, w) in enumerate(zip(BUILD_COMMANDS, _WHAT), 2))
     return (f"My knowledge base hasn't been built yet: all {count} of its collections are empty, so I have nothing "
             f"from the Egeria code and documentation to answer from. This isn't a problem with the model or your "
-            f"question. To build it, from the repository root run:\n{steps}\nThen ask again.")
+            f"question. To build it, from the repository root (see QUICKSTART.md):\n1. `{BUILD_DIR}`\n{steps}\n"
+            f"Then ask again.")
 
 
 def enabled_collection_names() -> List[str]:

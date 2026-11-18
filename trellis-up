@@ -20,9 +20,10 @@
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-RE_ENV="$REPO_ROOT/packages/resource-explorer/.env"
-EA_ENV="$REPO_ROOT/packages/egeria-advisor/.env"
-STUDIO_ENV="$REPO_ROOT/packages/studio/.env"
+# TRELLIS_UP_<APP>_ENV point at other files (for tests: they never write the real .env files).
+RE_ENV="${TRELLIS_UP_RE_ENV:-$REPO_ROOT/packages/resource-explorer/.env}"
+EA_ENV="${TRELLIS_UP_EA_ENV:-$REPO_ROOT/packages/egeria-advisor/.env}"
+STUDIO_ENV="${TRELLIS_UP_STUDIO_ENV:-$REPO_ROOT/packages/studio/.env}"
 
 # The compose overlay and the Portal's own .env both live in egeria-workspaces-fs.
 # Sibling of this repo, or of its parent -- the same two layouts the egeria-advisor
@@ -162,6 +163,7 @@ env_set() {
   else
     printf '%s=%s\n' "$key" "$val" >> "$file"
   fi
+  chmod 600 "$file"   # it holds secrets (TRELLIS_JWT_SECRET, TRELLIS_PORTAL_SECRET): owner-only, whatever the umask
 }
 
 gen_secret() { openssl rand -hex 32; }
@@ -358,7 +360,23 @@ mkdir -p "$LOG_DIR"
 cd "$REPO_ROOT"
 trap 'say "stopping"; stop_all; exit 130' INT TERM
 
+health_port() {  # url -> its port (http://host:PORT/...), or nothing
+  printf '%s' "$1" | sed -nE 's#^[a-z]+://[^/:]+:([0-9]+).*#\1#p'
+}
+
+FAILED=0
+# A port already held is checked here even with --no-preflight: an old process answering /health there would
+# otherwise read as this app having started (read-back W2).
 for i in "${!APP_KEYS[@]}"; do
+  p="$(health_port "${APP_HEALTH[$i]}")"
+  if [ -n "$p" ] && port_busy "$p"; then
+    APP_UP[$i]=2; FAILED=$((FAILED+1))
+    warn "${APP_NAMES[$i]} not started: port $p is already in use (\`make ps\` shows what holds it)"
+  fi
+done
+
+for i in "${!APP_KEYS[@]}"; do
+  [ "${APP_UP[$i]}" = 0 ] || continue
   key="${APP_KEYS[$i]}"; name="${APP_NAMES[$i]}"; log="${APP_LOGS[$i]}"
   label="$(printf '%s' "$key" | tr '[:lower:]' '[:upper:]')"; [ "$key" = studio ] && label="Studio"
   : > "$log"
@@ -372,18 +390,17 @@ for i in "${!APP_KEYS[@]}"; do
   say "$name: starting ($cmd) — log: ${log#$REPO_ROOT/}"
 done
 
-FAILED=0
 deadline=$(( $(date +%s) + START_TIMEOUT ))
 while :; do
   pending=0
   for i in "${!APP_KEYS[@]}"; do
     [ "${APP_UP[$i]}" = 0 ] || continue
-    if curl -sf -o /dev/null --max-time 2 "${APP_HEALTH[$i]}" 2>/dev/null; then
-      APP_UP[$i]=1; say "${APP_NAMES[$i]}: started (${APP_HEALTH[$i]})"
-    elif ! alive "${APP_PIDS[$i]}"; then
+    if ! alive "${APP_PIDS[$i]}"; then   # its own process first: a /health answer from anything else isn't it
       APP_UP[$i]=2; FAILED=$((FAILED+1))
       warn "${APP_NAMES[$i]} failed to start: $(first_error_line "${APP_LOGS[$i]}")"
       warn "  full output: ${APP_LOGS[$i]#$REPO_ROOT/}"
+    elif curl -sf -o /dev/null --max-time 2 "${APP_HEALTH[$i]}" 2>/dev/null; then
+      APP_UP[$i]=1; say "${APP_NAMES[$i]}: started (${APP_HEALTH[$i]})"
     else
       pending=$((pending+1))
     fi
