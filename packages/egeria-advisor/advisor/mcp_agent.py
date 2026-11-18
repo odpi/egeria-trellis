@@ -7,6 +7,8 @@ High-level agent for managing multiple MCP servers and coordinating tool executi
 import asyncio
 import json
 import shutil
+import contextlib
+import contextvars
 import logging
 import os
 from pathlib import Path
@@ -325,6 +327,46 @@ class MCPConfig:
         ]
 
 
+#: TR-34 R3: the MCP children sign in as EA's own service account (they can't take a user's token per call yet;
+#: TR-43). EA is multi-user, so a user's request never reaches them: it would run as the service account, the
+#: TR-33 shape. These are the words a user sees instead.
+MCP_NOT_AS_YOU = "That tool can't run as you yet, so I didn't use it."
+
+
+class MCPRunsAsServiceAccount(MCPError):
+    """A user request asked for an MCP child tool; refused before any call (MCP_NOT_AS_YOU)."""
+
+    def __init__(self, message: str = MCP_NOT_AS_YOU) -> None:
+        super().__init__(message)
+
+
+_SERVICE_MCP: "contextvars.ContextVar[bool]" = contextvars.ContextVar("ea_service_mcp", default=False)
+
+
+@contextlib.contextmanager
+def service_mcp():
+    """`with service_mcp():` -- explicit service-level work that may use the MCP children (as EA's service
+    account) even inside a request. Nothing a user asked for belongs in here."""
+    token = _SERVICE_MCP.set(True)
+    try:
+        yield
+    finally:
+        _SERVICE_MCP.reset(token)
+
+
+def user_request_in_flight() -> bool:
+    """A request (signed in or anonymous) or a CLI user context is running, and this isn't explicit service
+    work. request_context is set by the web middleware, and carried into the query threads (F1)."""
+    from advisor.request_context import current_user
+    return current_user() is not None and not _SERVICE_MCP.get()
+
+
+def refuse_for_user_request() -> None:
+    """Raise MCPRunsAsServiceAccount when a user request is in flight (TR-34 R3)."""
+    if user_request_in_flight():
+        raise MCPRunsAsServiceAccount()
+
+
 class MCPAgent:
     """High-level agent for managing multiple MCP servers."""
     
@@ -469,6 +511,7 @@ class MCPAgent:
         Raises:
             MCPError: If tool execution fails
         """
+        refuse_for_user_request()   # TR-34 R3: first, before the cache (which may hold service-account results)
         if not self._initialized:
             raise MCPError("MCP agent not initialized")
         
@@ -528,6 +571,7 @@ class MCPAgent:
         Returns:
             List of results (or exceptions)
         """
+        refuse_for_user_request()   # TR-34 R3 (execute_tool refuses each one too)
         # Limit concurrent executions
         semaphore = asyncio.Semaphore(self.config.max_concurrent_tools)
         
