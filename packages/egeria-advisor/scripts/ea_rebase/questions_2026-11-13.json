@@ -3,9 +3,9 @@
   "sources": {
     "plain": "config/report_specs/plain_spec_question_specs_batch1.json (question_spec of pyegeria built-in specs; each label resolves in pyegeria's registry)",
     "dre": "config/report_specs/report_specs_annotated.json (question_spec of the DrE-generated specs)",
-    "cdo": "egeria-workspaces data-governance-program/chief-data-officer-dashboard.md (the CDO sheet's three register Reports; ~/.re-gate/CDO-REPORTS-TABLE-2026-11-12.md)",
-    "datahub": "Coco 1. Data Hub workbooks (digital-product-subscriptions.md; ~/.re-gate/DATAHUB-SUBSCRIPTIONS-EXISTENCE-CHECK-2026-11-12.md)",
-    "health": "Catalog Health sheet (~/.re-gate/BRIEF-USEFUL-SHEETS-AND-SAVED-QUERY-REPORTS-2026-11-10.md §2.1)",
+    "cdo": "egeria-workspaces data-governance-program/chief-data-officer-dashboard.md (the CDO sheet's three register Reports)",
+    "datahub": "Coco 1. Data Hub workbooks (digital-product-subscriptions.md)",
+    "health": "Catalog Health sheet",
     "ambiguous": "written for this prototype"
   },
   "notes": [
