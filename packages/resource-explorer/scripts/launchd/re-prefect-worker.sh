@@ -45,7 +45,10 @@ names="$(run env | grep -E '^(EGERIA|PYEGERIA|PREFECT|RE|LLM_|REGISTRY|PGVECTOR|
 echo "re-prefect-worker: commit ${sha12} · tree ${RE_TREE} · settings ($(echo "$names" | wc -w | tr -d ' ')): ${names}"
 run python -c 'from resource_explorer.engine_host import library_steps_line; print("re-prefect-worker:", library_steps_line())'
 
-if run resource-explorer prefect deploy --help 2>/dev/null | grep -q -- "--work-queue"; then
+# Capture the help first: `... | grep -q` under `set -o pipefail` fails whenever grep exits at its first match (the
+# writer gets SIGPIPE, status 141), so the flag was always reported absent and every worker advertised no commit.
+deploy_help="$(run resource-explorer prefect deploy --help 2>/dev/null || true)"
+if grep -q -- "--work-queue" <<<"$deploy_help"; then
     run resource-explorer prefect deploy --name "re-survey-step-${sha12}" --work-queue "re-${sha12}"
     # One deployment per commit: keep the newest 3, never one in use (Architect ruling 2026-11-13, §D). Every
     # deleted name is printed; a failed prune is said and does not stop the worker.
