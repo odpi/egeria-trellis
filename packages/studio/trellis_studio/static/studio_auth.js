@@ -3,16 +3,34 @@
  * Ways in: the password form; a Portal hand-over as a URL fragment `#pt=<token>` (cleared from the address bar
  * at once) or as postMessage({type:'egeria_auth', portal_token}) from an origin in STUDIO_PORTAL_ORIGINS
  * (exact match; anything else is ignored). The JWT itself is never put in a URL.
+ *
+ * TR-10: the access JWT is short-lived. Sign-in also gives a refresh token (opaque, works once). While you use
+ * the page, the refresh token is traded before the JWT ends (POST /api/auth/refresh, which re-checks your sign-in
+ * with Egeria) for a new JWT and a new refresh token; an untouched tab lets it lapse. A refused refresh, or a JWT
+ * that has run out, ends the session here. The new JWT reaches the EA panel through the 'studio:session' event;
+ * the refresh token never leaves this page.
  */
+import { refreshDue, singleFlight } from '/static/session_refresh.js';
+
 const TOKEN_KEY = 'studio_token';
+const REFRESH_KEY = 'studio_refresh';
+const TICK_MS = 20000;
+let lastActive = null;
+let ticking = null;
+// Tabs of one session (a duplicated tab copies sessionStorage, so it holds the same refresh token) tell each
+// other when they rotate or end it, and refresh one at a time (Web Locks), so no refresh token is sent twice.
+const channel = (() => { try { return 'BroadcastChannel' in window ? new BroadcastChannel('studio-session') : null; } catch (e) { return null; } })();
 
 function store() { try { return window.sessionStorage; } catch (e) { return null; } }
 
 export function getToken() { const s = store(); try { return s ? s.getItem(TOKEN_KEY) : null; } catch (e) { return null; } }
 function setToken(t) { const s = store(); try { if (s) s.setItem(TOKEN_KEY, t); } catch (e) { /* no storage: session lasts this page */ } memo = t;
   document.dispatchEvent(new CustomEvent('studio:session')); }
-function clearToken() { const s = store(); try { if (s) s.removeItem(TOKEN_KEY); } catch (e) {} memo = null; }
+function clearToken() { const s = store(); try { if (s) { s.removeItem(TOKEN_KEY); s.removeItem(REFRESH_KEY); } } catch (e) {} memo = null; refreshMemo = null; }
+function getRefresh() { const s = store(); try { return (s && s.getItem(REFRESH_KEY)) || refreshMemo; } catch (e) { return refreshMemo; } }
+function setRefresh(t) { const s = store(); refreshMemo = t || null; try { if (s) { if (t) s.setItem(REFRESH_KEY, t); else s.removeItem(REFRESH_KEY); } } catch (e) {} }
 let memo = null;
+let refreshMemo = null;
 
 export function payload(token = getToken() || memo) {
   if (!token) return null;
@@ -35,11 +53,7 @@ export function headers(extra = {}) {
 /** fetch with the session; a 401 drops the session and shows the sign-in form. */
 export async function api(path, opts = {}) {
   const r = await fetch(path, { ...opts, headers: headers(opts.headers || {}) });
-  if (r.status === 401) {
-    clearToken();
-    document.dispatchEvent(new CustomEvent('studio:session-ended'));
-    showLogin('Your session has ended. Sign in again.');
-  }
+  if (r.status === 401) endSession('Your session has ended. Sign in again.');
   return r;
 }
 
@@ -48,6 +62,7 @@ async function exchange(url, body) {
   let data = {};
   try { data = await r.json(); } catch (e) {}
   if (!r.ok) return { ok: false, detail: data.detail || `HTTP ${r.status}` };
+  setRefresh(data.refresh_token);
   setToken(data.access_token);
   return { ok: true };
 }
@@ -60,10 +75,76 @@ function showLogin(message) {
 }
 function hideLogin() { const el = document.getElementById('st-login'); if (el) el.hidden = true; }
 
+function endSession(message) {
+  clearToken();
+  document.dispatchEvent(new CustomEvent('studio:session-ended'));
+  showLogin(message);
+}
+
+const nowSec = () => Math.floor(Date.now() / 1000);
+
+const sidOf = (t) => (payload(t) || {}).sid;
+
+async function sendRefresh() {
+  // Re-read inside the lock: another tab of this session may have just rotated (and told us), so ours may
+  // already be fresh, or our refresh token already replaced.
+  const t = getToken() || memo;
+  if (refreshDue(payload(t), nowSec(), lastActive) !== 'refresh') return;
+  const rt = getRefresh();
+  if (!rt) return;
+  try {
+    const r = await fetch('/api/auth/refresh', { method: 'POST',
+      headers: { Authorization: `Bearer ${t}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ refresh_token: rt }) });
+    if (r.ok) {
+      const data = await r.json();
+      if (data.access_token) {
+        setRefresh(data.refresh_token); setToken(data.access_token);
+        if (channel) channel.postMessage({ type: 'rotated', sid: sidOf(data.access_token), access: data.access_token, refresh: data.refresh_token });
+      }
+    } else if (r.status === 401 || r.status === 403) {
+      let detail = '';
+      try { detail = (await r.json()).detail || ''; } catch (e) {}
+      if (channel) channel.postMessage({ type: 'ended', sid: sidOf(t) });
+      endSession(detail || 'Your session has ended. Sign in again.');
+    }
+    // anything else (Egeria couldn't be asked): keep this JWT and try again next tick
+  } catch (e) { /* network: try again next tick */ }
+}
+
+const refreshOnce = singleFlight(() => (navigator.locks && navigator.locks.request)
+  ? navigator.locks.request('studio-refresh', sendRefresh) : sendRefresh());
+
+if (channel) channel.onmessage = (ev) => {
+  const d = ev.data || {};
+  const mine = sidOf(getToken() || memo);
+  if (!mine || d.sid !== mine) return;                    // another session's news is not ours
+  if (d.type === 'rotated' && d.access && d.refresh) { setRefresh(d.refresh); setToken(d.access); }
+  if (d.type === 'ended') endSession('Your session has ended. Sign in again.');
+};
+
+async function tick() {
+  const t = getToken() || memo;
+  const what = refreshDue(payload(t), nowSec(), lastActive);
+  if (what === 'none') { if (t) endSession('Your session has ended. Sign in again.'); return; }
+  if (what === 'refresh') await refreshOnce();
+}
+
+function startRefresh() {
+  if (ticking) return;
+  const seen = () => { lastActive = nowSec(); };
+  for (const ev of ['pointerdown', 'keydown', 'wheel', 'touchstart']) window.addEventListener(ev, seen, { passive: true, capture: true });
+  ticking = window.setInterval(tick, TICK_MS);
+}
+
 export function signOut() {
+  const t = getToken() || memo;
+  const rt = getRefresh();
+  if (channel && sidOf(t)) channel.postMessage({ type: 'ended', sid: sidOf(t) });
   clearToken();
   document.dispatchEvent(new CustomEvent('studio:session-ended'));   // unload EA's frame first
-  fetch('/api/auth/logout', { method: 'POST' }).catch(() => {}).finally(() => {
+  // Both tokens go with it, so Studio refuses (and won't refresh) this session from now on.
+  const h = { 'Content-Type': 'application/json', ...(t ? { Authorization: `Bearer ${t}` } : {}) };
+  fetch('/api/auth/logout', { method: 'POST', headers: h, body: JSON.stringify({ refresh_token: rt || null }) }).catch(() => {}).finally(() => {
     // A fresh page: nothing of the previous user's work or EA stays in this tab.
     window.location.replace(window.location.pathname);
   });
@@ -75,7 +156,7 @@ export async function init() {
   try { const r = await fetch('/api/auth/policy'); if (r.ok) portalOrigins = (await r.json()).portal_origins || []; } catch (e) {}
 
   return new Promise((resolve) => {
-    const done = () => { hideLogin(); resolve(payload()); };
+    const done = () => { hideLogin(); lastActive = nowSec(); startRefresh(); resolve(payload()); };
 
     window.addEventListener('message', async (ev) => {
       if (!portalOrigins.includes(ev.origin)) return;

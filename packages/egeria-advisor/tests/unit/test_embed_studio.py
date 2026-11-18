@@ -11,6 +11,7 @@
 """
 from __future__ import annotations
 
+import asyncio
 import re
 import time
 from pathlib import Path
@@ -125,6 +126,18 @@ def test_another_secret_or_expired_is_refused(client):
     assert client.get("/api/embed/whoami").status_code == 401
 
 
+def test_a_tr10_studio_jwt_works_at_ea_and_is_refused_once_expired(client):
+    """TR-10: Studio's JWTs carry sid and auth_time and live minutes. EA can't see Studio's sign-outs, so a
+    signed-out JWT works at EA until its exp: once that has passed, EA refuses it (the read-back advisory)."""
+    now = int(time.time())
+    claims = {"sub": "peterprofile", "user_id": "peterprofile", "role": "user", "display_name": "Peter",
+              "egeria_token": _egeria_token(), "sid": "s-1", "auth_time": now - 600}
+    live = jwt.encode({**claims, "iat": now, "exp": now + 900}, SECRET, algorithm="HS256")
+    assert client.get("/api/embed/whoami", headers=_bearer(live)).status_code == 200
+    lapsed = jwt.encode({**claims, "iat": now - 900, "exp": now - 1}, SECRET, algorithm="HS256")
+    assert client.get("/api/embed/whoami", headers=_bearer(lapsed)).status_code == 401
+
+
 def test_service_account_is_refused(client, monkeypatch):
     monkeypatch.setattr(auth, "is_service_account", lambda uid: uid == "easervice")
     assert client.get("/api/embed/whoami", headers=_bearer(studio_jwt("easervice"))).status_code == 403
@@ -184,6 +197,36 @@ def test_open_in_studio_saves_a_spec_draft_as_the_user(client, store, monkeypatc
     assert draft.kind == "spec" and draft.format_set.heading == "Open glossaries"
     assert draft.format_set.action.function == "GlossaryManager.find_glossaries"
     assert draft.derived_from == "ea:report-draft:d-1"
+
+
+def test_open_in_studio_twice_at_once_saves_once(client, store, monkeypatch):
+    """TR-10 advisory: two concurrent opens with one label (a double click) can't both pass the check."""
+    import threading
+    import advisor.report_draft as rd
+    from pyegeria.authoring import EgeriaDraftStore
+    monkeypatch.setattr(rd, "resolve_report_draft", lambda draft_id, user_id=None, role=None: (None, EA_DRAFT))
+    Store = EgeriaDraftStore                       # the fixture's fake
+    real_save, real_load = Store.async_save, Store.async_load
+
+    async def slow_save(self, uid, draft):
+        await asyncio.sleep(0.2)                   # the window two unlocked opens would both slip through
+        return await real_save(self, uid, draft)
+
+    async def load(self, uid, kind, name):
+        return next((d for (u, _, d) in store["saved"] if u == uid and d.label == name), None)
+    monkeypatch.setattr(Store, "async_save", slow_save)
+    monkeypatch.setattr(Store, "async_load", load)
+    codes = []
+
+    def open_it():
+        codes.append(client.post("/api/studio/open-draft", json={"draft_id": "d-1", "label": "Twice"},
+                                 headers=_bearer(studio_jwt())).status_code)
+    threads = [threading.Thread(target=open_it) for _ in range(2)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    assert sorted(codes) == [200, 409] and len(store["saved"]) == 1
 
 
 def test_open_in_studio_someone_elses_draft_is_404(client, store, monkeypatch):

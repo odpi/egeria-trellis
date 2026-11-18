@@ -50,8 +50,8 @@ def client(app):
 
 @pytest.fixture
 def session_jwt(app):
-    import trellis_auth
-    return trellis_auth.create_access_token("peterprofile", fake_egeria_token(), app.state.auth_config)
+    from trellis_studio import sessions
+    return sessions.mint("peterprofile", fake_egeria_token(), app.state.auth_config, app.state.settings)
 
 
 @pytest.fixture
