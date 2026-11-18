@@ -63,8 +63,8 @@ def test_all_collections_empty_says_the_knowledge_base_isnt_built(nine, outcome)
     out = _ask(system)
     assert system.llm_client.called is False
     assert out["response"].startswith("My knowledge base hasn't been built yet: all 9 of its collections are empty")
-    assert "scripts/clone_repos.py --phase all" in out["response"]
-    assert "scripts/ingest_collections.py --phase all" in out["response"]
+    for command in (kb.BUILD_DIR, *kb.BUILD_COMMANDS):
+        assert f"`{command}`" in out["response"]
     assert "enough information" not in out["response"]
     assert out["context_diagnosis"]["reason"] == "knowledge_base_not_built"
 
@@ -92,3 +92,13 @@ def test_not_built_only_on_a_confirmed_zero_everywhere():
     assert kb.not_built(_Store({"trellis": 3}), NAMES) is None
     assert kb.not_built(_Store(fail="trellis"), NAMES) is None
     assert kb.not_built(None, NAMES) is None and kb.not_built(_Store(), []) is None
+
+
+def test_the_build_commands_are_exactly_what_quickstart_says():
+    """Read-back R1: the message gives the commands QUICKSTART.md gives, verbatim (the repository-root form
+    failed for Rocky with "PGVECTOR_PASSWORD is not set")."""
+    from pathlib import Path
+    quickstart = (Path(__file__).resolve().parents[4] / "QUICKSTART.md").read_text()
+    for command in (kb.BUILD_DIR, *kb.BUILD_COMMANDS):
+        assert command in quickstart, f"{command!r} is not in QUICKSTART.md"
+    assert ".venv/bin/python packages/egeria-advisor/scripts" not in kb.not_built_message(9)
